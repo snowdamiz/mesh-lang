@@ -62,7 +62,7 @@ pub enum SyntaxKind {
     WHERE_KW,
     WITH_KW,
 
-    // ── Operators (23) ─────────────────────────────────────────────────
+    // ── Operators (24) ─────────────────────────────────────────────────
     PLUS,
     MINUS,
     STAR,
@@ -87,6 +87,8 @@ pub enum SyntaxKind {
     FAT_ARROW,
     COLON_COLON,
     QUESTION,
+    /// `|` bare pipe for or-patterns
+    BAR,
 
     // ── Delimiters (6) ─────────────────────────────────────────────────
     L_PAREN,
@@ -235,6 +237,22 @@ pub enum SyntaxKind {
     OPTION_TYPE,
     /// Result type sugar: `T!E` => `Result<T, E>`
     RESULT_TYPE,
+
+    // ── Sum type / ADT node kinds ────────────────────────────────────────
+    /// Sum type definition: `type Shape do ... end`
+    SUM_TYPE_DEF,
+    /// Variant definition inside a sum type: `Circle(Float)` or `Rectangle(width: Float, height: Float)`
+    VARIANT_DEF,
+    /// Named field inside a variant: `width: Float`
+    VARIANT_FIELD,
+    /// Constructor pattern: `Shape.Circle(r)` or `Some(x)` in patterns
+    CONSTRUCTOR_PAT,
+    /// Or-pattern: `Circle(_) | Point`
+    OR_PAT,
+    /// As-pattern: `Circle(_) as c`
+    AS_PAT,
+    /// Guard clause: `when r > 0.0` (for future use)
+    GUARD_CLAUSE,
 }
 
 impl SyntaxKind {
@@ -322,6 +340,7 @@ impl From<TokenKind> for SyntaxKind {
             TokenKind::FatArrow => SyntaxKind::FAT_ARROW,
             TokenKind::ColonColon => SyntaxKind::COLON_COLON,
             TokenKind::Question => SyntaxKind::QUESTION,
+            TokenKind::Bar => SyntaxKind::BAR,
             // Delimiters
             TokenKind::LParen => SyntaxKind::L_PAREN,
             TokenKind::RParen => SyntaxKind::R_PAREN,
@@ -404,7 +423,7 @@ mod tests {
             TokenKind::When,
             TokenKind::Where,
             TokenKind::With,
-            // Operators (23)
+            // Operators (24)
             TokenKind::Plus,
             TokenKind::Minus,
             TokenKind::Star,
@@ -428,6 +447,7 @@ mod tests {
             TokenKind::FatArrow,
             TokenKind::ColonColon,
             TokenKind::Question,
+            TokenKind::Bar,
             // Delimiters (6)
             TokenKind::LParen,
             TokenKind::RParen,
@@ -459,7 +479,7 @@ mod tests {
             TokenKind::Error,
         ];
 
-        assert_eq!(all_kinds.len(), 87, "must test all 87 TokenKind variants");
+        assert_eq!(all_kinds.len(), 88, "must test all 88 TokenKind variants");
 
         for kind in all_kinds {
             let _syntax_kind: SyntaxKind = kind.into();
@@ -544,10 +564,17 @@ mod tests {
             SyntaxKind::GENERIC_ARG_LIST,
             SyntaxKind::OPTION_TYPE,
             SyntaxKind::RESULT_TYPE,
+            SyntaxKind::SUM_TYPE_DEF,
+            SyntaxKind::VARIANT_DEF,
+            SyntaxKind::VARIANT_FIELD,
+            SyntaxKind::CONSTRUCTOR_PAT,
+            SyntaxKind::OR_PAT,
+            SyntaxKind::AS_PAT,
+            SyntaxKind::GUARD_CLAUSE,
         ];
         assert!(
-            node_kinds.len() >= 45,
-            "expected at least 45 composite node kinds, got {}",
+            node_kinds.len() >= 52,
+            "expected at least 52 composite node kinds, got {}",
             node_kinds.len()
         );
     }

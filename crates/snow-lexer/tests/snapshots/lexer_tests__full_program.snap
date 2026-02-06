@@ -302,7 +302,7 @@ expression: tokens
   span:
     - 246
     - 251
-- kind: Error
+- kind: Bar
   text: "|"
   span:
     - 252

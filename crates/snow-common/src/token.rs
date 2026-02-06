@@ -69,7 +69,7 @@ pub enum TokenKind {
     Where,
     With,
 
-    // ── Operators (23) ─────────────────────────────────────────────────
+    // ── Operators (24) ─────────────────────────────────────────────────
     /// `+`
     Plus,
     /// `-`
@@ -116,6 +116,8 @@ pub enum TokenKind {
     ColonColon,
     /// `?`
     Question,
+    /// `|` bare pipe for or-patterns
+    Bar,
 
     // ── Delimiters (6) ─────────────────────────────────────────────────
     /// `(`
@@ -312,13 +314,13 @@ mod tests {
         // Literals: 7, Identifiers/comments: 4, Special: 2 = 87 total
         // This test documents the expected count.
         let keywords = 40u32;
-        let operators = 23;
+        let operators = 24;
         let delimiters = 6;
         let punctuation = 5;
         let literals = 7;
         let ident_comments = 4;
         let special = 2;
         let total = keywords + operators + delimiters + punctuation + literals + ident_comments + special;
-        assert_eq!(total, 87, "TokenKind should have 87 variants");
+        assert_eq!(total, 88, "TokenKind should have 88 variants");
     }
 }

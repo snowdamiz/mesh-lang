@@ -675,15 +675,15 @@ fn parse_trailing_closure(p: &mut Parser) {
     p.advance(); // DO_KW
 
     // Optional closure params: `do |x, y| ... end`
-    // The lexer emits bare `|` as Error tokens, so we check for that.
-    if p.at(SyntaxKind::ERROR) && p.current_text() == "|" {
+    // The lexer emits bare `|` as BAR tokens.
+    if p.at(SyntaxKind::BAR) {
         p.advance(); // opening |
         // Parse params between pipes.
         let params = p.open();
-        if !(p.at(SyntaxKind::ERROR) && p.current_text() == "|") {
+        if !p.at(SyntaxKind::BAR) {
             parse_param(p);
             while p.eat(SyntaxKind::COMMA) {
-                if p.at(SyntaxKind::ERROR) && p.current_text() == "|" {
+                if p.at(SyntaxKind::BAR) {
                     break;
                 }
                 parse_param(p);
@@ -691,7 +691,7 @@ fn parse_trailing_closure(p: &mut Parser) {
         }
         p.close(params, SyntaxKind::PARAM_LIST);
         // Expect closing |
-        if p.at(SyntaxKind::ERROR) && p.current_text() == "|" {
+        if p.at(SyntaxKind::BAR) {
             p.advance(); // closing |
         } else {
             p.error("expected `|` to close trailing closure parameters");

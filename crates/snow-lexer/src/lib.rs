@@ -222,7 +222,7 @@ impl<'src> Lexer<'src> {
         }
     }
 
-    /// `||` -> `PipePipe`, `|>` -> `Pipe`, single `|` -> `Error`
+    /// `||` -> `PipePipe`, `|>` -> `Pipe`, single `|` -> `Bar`
     fn lex_pipe(&mut self, start: u32) -> Token {
         self.cursor.advance(); // consume '|'
         match self.cursor.peek() {
@@ -234,7 +234,7 @@ impl<'src> Lexer<'src> {
                 self.cursor.advance();
                 Token::new(TokenKind::Pipe, start, self.cursor.pos())
             }
-            _ => Token::new(TokenKind::Error, start, self.cursor.pos()),
+            _ => Token::new(TokenKind::Bar, start, self.cursor.pos()),
         }
     }
 
