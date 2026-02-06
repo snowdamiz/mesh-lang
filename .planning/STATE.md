@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-02-05)
 
 **Core value:** Expressive, readable concurrency -- writing concurrent programs should feel as natural as sequential code, with supervision and fault tolerance built in.
-**Current focus:** Phase 3 in progress. Plan 03-01 complete -- parser migration and type system foundation.
+**Current focus:** Phase 3 in progress. Plans 03-01 and 03-02 complete -- type system foundation and Algorithm J inference engine.
 
 ## Current Position
 
 Phase: 3 of 10 (Type System)
-Plan: 1 of 5 in current phase
+Plan: 2 of 5 in current phase
 Status: In progress
-Last activity: 2026-02-06 -- Completed 03-01-PLAN.md
+Last activity: 2026-02-06 -- Completed 03-02-PLAN.md
 
-Progress: [█████████░] 22% (9 plans of ~41 estimated total)
+Progress: [██████████░] 24% (10 plans of ~41 estimated total)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 9
+- Total plans completed: 10
 - Average duration: 5min
-- Total execution time: 47min
+- Total execution time: 52min
 
 **By Phase:**
 
@@ -29,11 +29,11 @@ Progress: [█████████░] 22% (9 plans of ~41 estimated total)
 |-------|-------|-------|----------|
 | 01-project-foundation-lexer | 3/3 | 12min | 4min |
 | 02-parser-ast | 5/5 | 23min | 5min |
-| 03-type-system | 1/5 | 12min | 12min |
+| 03-type-system | 2/5 | 17min | 9min |
 
 **Recent Trend:**
-- Last 5 plans: 02-03 (4min), 02-04 (4min), 02-05 (5min), 03-01 (12min)
-- Trend: Phase 3 plans are more complex (type system infrastructure)
+- Last 5 plans: 02-04 (4min), 02-05 (5min), 03-01 (12min), 03-02 (5min)
+- Trend: Phase 3 plans vary in complexity; 03-02 was faster than 03-01 despite being the core inference engine
 
 *Updated after each plan completion*
 
@@ -83,6 +83,10 @@ Recent decisions affecting current work:
 - [03-01]: Type variables use Option<Ty> as UnifyKey::Value with level-based generalization side-table
 - [03-01]: Builtin operators hardcoded as monomorphic -- trait dispatch deferred to 03-04
 - [03-01]: GENERIC_PARAM_LIST (definition) vs GENERIC_ARG_LIST (usage) distinction in CST
+- [03-02]: result_type field on TypeckResult for tracking last expression's inferred type
+- [03-02]: Single-element TupleExpr treated as grouping parens (returns element type, not Tuple)
+- [03-02]: Block tail_expr deduplication via range comparison to avoid double-inference
+- [03-02]: Named functions pre-bind name to fresh var for recursion support
 
 ### Pending Todos
 
@@ -97,5 +101,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-06
-Stopped at: Completed 03-01-PLAN.md
+Stopped at: Completed 03-02-PLAN.md
 Resume file: None
