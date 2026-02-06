@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-02-05)
 
 **Core value:** Expressive, readable concurrency -- writing concurrent programs should feel as natural as sequential code, with supervision and fault tolerance built in.
-**Current focus:** Phase 3 complete and verified (5/5 must-haves passed). Ready for Phase 4: Pattern Matching & Algebraic Data Types.
+**Current focus:** Phase 4 in progress -- Pattern Matching & Algebraic Data Types. Plan 01 complete (lexer/parser/AST for sum types and extended patterns).
 
 ## Current Position
 
-Phase: 3 of 10 (Type System) — COMPLETE ✓
-Plan: 5 of 5 in current phase
-Status: Phase verified and complete
-Last activity: 2026-02-06 -- Phase 3 verified (5/5 must-haves passed)
+Phase: 4 of 10 (Pattern Matching & ADTs)
+Plan: 1 of 5 in current phase
+Status: In progress
+Last activity: 2026-02-06 -- Completed 04-01-PLAN.md
 
-Progress: [█████████████░] 32% (13 plans of ~41 estimated total)
+Progress: [██████████████░░░░░░] 34% (14 plans of ~41 estimated total)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 13
+- Total plans completed: 14
 - Average duration: 9min
-- Total execution time: 118min
+- Total execution time: 126min
 
 **By Phase:**
 
@@ -30,10 +30,11 @@ Progress: [█████████████░] 32% (13 plans of ~41 esti
 | 01-project-foundation-lexer | 3/3 | 12min | 4min |
 | 02-parser-ast | 5/5 | 23min | 5min |
 | 03-type-system | 5/5 | 83min | 17min |
+| 04-pattern-matching-adts | 1/5 | 8min | 8min |
 
 **Recent Trend:**
-- Last 5 plans: 03-02 (5min), 03-03 (45min), 03-04 (15min), 03-05 (6min)
-- Trend: Phase 3 complete with 258 tests. High variance from 03-03 parallel execution.
+- Last 5 plans: 03-03 (45min), 03-04 (15min), 03-05 (6min), 04-01 (8min)
+- Trend: Phase 4 starting with parser work. Moderate complexity.
 
 *Updated after each plan completion*
 
@@ -56,7 +57,7 @@ Recent decisions affecting current work:
 - [01-03]: InString stays on stack when InInterpolation pushed; pop returns to string scanning
 - [01-03]: Pending token queue (Vec<Token>) for multi-token emissions
 - [01-03]: All newlines emit as Newline tokens; parser decides significance
-- [01-03]: Bare pipe | produces Error token; struct update syntax needs parser-level handling
+- [01-03]: Bare pipe | produces Bar token (upgraded from Error in 04-01)
 - [02-01]: SyntaxKind uses SCREAMING_SNAKE_CASE with #[allow(non_camel_case_types)] (rowan convention)
 - [02-01]: Comments always trivia in parser (skipped by lookahead, preserved in CST)
 - [02-01]: Forward parent technique for open_before() wrapping (matklad pattern)
@@ -101,6 +102,11 @@ Recent decisions affecting current work:
 - [03-05]: render_diagnostic() returns String for test capture (not printed directly)
 - [03-05]: Error codes E0001-E0009 for each TypeError variant
 - [03-05]: param_type_param_names maps fn params to type param names for call-site where-clause resolution
+- [04-01]: Bare `|` lexes as TokenKind::Bar / SyntaxKind::BAR (upgraded from Error)
+- [04-01]: Constructor patterns use heuristic: uppercase IDENT + L_PAREN = constructor, else IDENT_PAT; nullary constructors resolve in type checker
+- [04-01]: `as` is contextual keyword in patterns (IDENT text check, not reserved keyword)
+- [04-01]: Sum type vs type alias dispatch: scan past name/generics to find DO_KW vs EQ
+- [04-01]: Layered pattern precedence: as > or > primary (composable postfix pattern layers)
 
 ### Pending Todos
 
@@ -114,5 +120,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-06
-Stopped at: Phase 3 verified and complete
+Stopped at: Completed 04-01-PLAN.md
 Resume file: None
