@@ -5,21 +5,21 @@
 See: .planning/PROJECT.md (updated 2026-02-05)
 
 **Core value:** Expressive, readable concurrency -- writing concurrent programs should feel as natural as sequential code, with supervision and fault tolerance built in.
-**Current focus:** Phase 4 complete -- Pattern Matching & Algebraic Data Types. All 5 plans complete including exhaustiveness wiring (04-04) and diagnostic rendering + Option/Result ADT migration (04-05).
+**Current focus:** Phase 4 complete and verified (4/4 must-haves passed). Ready for Phase 5: LLVM Codegen & Native Binaries.
 
 ## Current Position
 
-Phase: 4 of 10 (Pattern Matching & ADTs)
+Phase: 4 of 10 (Pattern Matching & ADTs) — COMPLETE ✓
 Plan: 5 of 5 in current phase
-Status: Phase complete
-Last activity: 2026-02-06 -- Completed 04-04-PLAN.md
+Status: Phase verified and complete
+Last activity: 2026-02-06 -- Phase 4 verified (4/4 must-haves passed)
 
-Progress: [███████████████████░] 46% (19 plans of ~41 estimated total)
+Progress: [███████████████████░] 44% (18 plans of ~41 estimated total)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 19
+- Total plans completed: 18
 - Average duration: 9min
 - Total execution time: 160min
 
@@ -30,11 +30,11 @@ Progress: [███████████████████░] 46% (19
 | 01-project-foundation-lexer | 3/3 | 12min | 4min |
 | 02-parser-ast | 5/5 | 23min | 5min |
 | 03-type-system | 5/5 | 83min | 17min |
-| 04-pattern-matching-adts | 5/5 | 35min | 7min |
+| 04-pattern-matching-adts | 5/5 | 42min | 8min |
 
 **Recent Trend:**
-- Last 5 plans: 04-02 (9min), 04-03 (13min), 04-04 (7min), 04-05 (5min)
-- Trend: Phase 4 complete. All plans executed efficiently.
+- Last 5 plans: 04-01 (8min), 04-02 (9min), 04-03 (13min), 04-04 (7min), 04-05 (5min)
+- Trend: Phase 4 complete with 389 tests. Wave-parallel execution efficient.
 
 *Updated after each plan completion*
 
@@ -136,5 +136,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-06
-Stopped at: Completed 04-04-PLAN.md (phase 4 now fully complete)
+Stopped at: Phase 4 verified and complete
 Resume file: None

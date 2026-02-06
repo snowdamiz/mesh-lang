@@ -13,13 +13,13 @@ Requirements for initial release. Each maps to roadmap phases.
 - [x] **LANG-02**: Functions with parameters and return values (first-class)
 - [x] **LANG-03**: `do/end` block syntax (Elixir/Ruby-style)
 - [x] **LANG-04**: Control flow (`if/else`, `case/match`) as expressions
-- [ ] **LANG-05**: Pattern matching with exhaustiveness checking
-- [ ] **LANG-06**: Algebraic data types (sum types + product types/structs)
+- [x] **LANG-05**: Pattern matching with exhaustiveness checking
+- [x] **LANG-06**: Algebraic data types (sum types + product types/structs)
 - [x] **LANG-07**: String interpolation (`"Hello, #{name}"`)
 - [x] **LANG-08**: Closures / anonymous functions with scope capture
 - [x] **LANG-09**: Comments (`# line comment`)
 - [x] **LANG-10**: Pipe operator (`|>`) with type inference
-- [ ] **LANG-11**: Guards in pattern matching
+- [x] **LANG-11**: Guards in pattern matching
 
 ### Type System
 
@@ -117,13 +117,13 @@ Which phases cover which requirements. Updated during roadmap creation.
 | LANG-02 | Phase 2: Parser & AST | Complete |
 | LANG-03 | Phase 2: Parser & AST | Complete |
 | LANG-04 | Phase 2: Parser & AST | Complete |
-| LANG-05 | Phase 4: Pattern Matching & ADTs | Pending |
-| LANG-06 | Phase 4: Pattern Matching & ADTs | Pending |
+| LANG-05 | Phase 4: Pattern Matching & ADTs | Complete |
+| LANG-06 | Phase 4: Pattern Matching & ADTs | Complete |
 | LANG-07 | Phase 2: Parser & AST | Complete |
 | LANG-08 | Phase 2: Parser & AST | Complete |
 | LANG-09 | Phase 1: Project Foundation & Lexer | Complete |
 | LANG-10 | Phase 2: Parser & AST | Complete |
-| LANG-11 | Phase 4: Pattern Matching & ADTs | Pending |
+| LANG-11 | Phase 4: Pattern Matching & ADTs | Complete |
 | TYPE-01 | Phase 3: Type System | Complete |
 | TYPE-02 | Phase 3: Type System | Complete |
 | TYPE-03 | Phase 3: Type System | Complete |

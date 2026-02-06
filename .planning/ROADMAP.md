@@ -15,7 +15,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 1: Project Foundation & Lexer** - Reproducible build, test infrastructure, and tokenization of Snow source code
 - [x] **Phase 2: Parser & AST** - Recursive descent parser producing a complete abstract syntax tree for all Snow syntax
 - [x] **Phase 3: Type System** - Hindley-Milner type inference with generics, structs, traits, Option/Result types
-- [ ] **Phase 4: Pattern Matching & Algebraic Data Types** - Exhaustive pattern matching, sum types, and guards
+- [x] **Phase 4: Pattern Matching & Algebraic Data Types** - Exhaustive pattern matching, sum types, and guards
 - [ ] **Phase 5: LLVM Codegen & Native Binaries** - Full compilation pipeline producing native single-binary executables for sequential code
 - [ ] **Phase 6: Actor Runtime** - Lightweight actor processes with typed message passing, standalone runtime library integrated with compiler
 - [ ] **Phase 7: Supervision & Fault Tolerance** - Supervision trees with restart strategies and let-it-crash semantics
@@ -90,11 +90,11 @@ Plans:
 **Plans**: 5 plans
 
 Plans:
-- [ ] 04-01-PLAN.md -- Lexer BAR token, parser sum type definitions, extended pattern syntax (constructor/or/as), typed AST wrappers
-- [ ] 04-02-PLAN.md -- Type checking for sum types, variant constructors, constructor/or/as pattern inference
-- [ ] 04-03-PLAN.md -- Maranget's exhaustiveness and redundancy algorithm (TDD)
-- [ ] 04-04-PLAN.md -- Exhaustiveness/redundancy wiring, guard validation, multi-clause functions
-- [ ] 04-05-PLAN.md -- Diagnostic rendering, Option/Result migration to sum types, end-to-end integration
+- [x] 04-01-PLAN.md -- Lexer BAR token, parser sum type definitions, extended pattern syntax (constructor/or/as), typed AST wrappers
+- [x] 04-02-PLAN.md -- Type checking for sum types, variant constructors, constructor/or/as pattern inference
+- [x] 04-03-PLAN.md -- Maranget's exhaustiveness and redundancy algorithm (TDD)
+- [x] 04-04-PLAN.md -- Exhaustiveness/redundancy wiring, guard validation, multi-clause functions
+- [x] 04-05-PLAN.md -- Diagnostic rendering, Option/Result migration to sum types, end-to-end integration
 
 ### Phase 5: LLVM Codegen & Native Binaries
 **Goal**: The complete compilation pipeline from Snow source to native single-binary executables, producing correct and runnable programs for all sequential language features
@@ -211,7 +211,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8 -> 9 -> 10
 | 1. Project Foundation & Lexer | 3/3 | Complete | 2026-02-06 |
 | 2. Parser & AST | 5/5 | Complete | 2026-02-06 |
 | 3. Type System | 5/5 | Complete | 2026-02-06 |
-| 4. Pattern Matching & ADTs | 0/5 | Not started | - |
+| 4. Pattern Matching & ADTs | 5/5 | Complete | 2026-02-06 |
 | 5. LLVM Codegen & Native Binaries | 0/5 | Not started | - |
 | 6. Actor Runtime | 0/5 | Not started | - |
 | 7. Supervision & Fault Tolerance | 0/3 | Not started | - |
