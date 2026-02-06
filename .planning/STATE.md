@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-02-05)
 
 **Core value:** Expressive, readable concurrency -- writing concurrent programs should feel as natural as sequential code, with supervision and fault tolerance built in.
-**Current focus:** Phase 4 in progress -- Pattern Matching & Algebraic Data Types. Plan 02 complete (sum type type checking, variant constructor inference, pattern type inference).
+**Current focus:** Phase 4 in progress -- Pattern Matching & Algebraic Data Types. Plan 03 complete (Maranget's usefulness algorithm for exhaustiveness and redundancy checking).
 
 ## Current Position
 
 Phase: 4 of 10 (Pattern Matching & ADTs)
-Plan: 2 of 5 in current phase
+Plan: 3 of 5 in current phase
 Status: In progress
-Last activity: 2026-02-06 -- Completed 04-02-PLAN.md
+Last activity: 2026-02-06 -- Completed 04-03-PLAN.md
 
-Progress: [███████████████░░░░░] 37% (15 plans of ~41 estimated total)
+Progress: [████████████████░░░░] 39% (16 plans of ~41 estimated total)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 15
+- Total plans completed: 16
 - Average duration: 9min
-- Total execution time: 135min
+- Total execution time: 148min
 
 **By Phase:**
 
@@ -30,11 +30,11 @@ Progress: [███████████████░░░░░] 37% (15
 | 01-project-foundation-lexer | 3/3 | 12min | 4min |
 | 02-parser-ast | 5/5 | 23min | 5min |
 | 03-type-system | 5/5 | 83min | 17min |
-| 04-pattern-matching-adts | 2/5 | 17min | 9min |
+| 04-pattern-matching-adts | 3/5 | 30min | 10min |
 
 **Recent Trend:**
-- Last 5 plans: 03-04 (15min), 03-05 (6min), 04-01 (8min), 04-02 (9min)
-- Trend: Phase 4 type checker integration on target. Moderate complexity.
+- Last 5 plans: 03-05 (6min), 04-01 (8min), 04-02 (9min), 04-03 (13min)
+- Trend: Phase 4 progressing well. Algorithm U implementation slightly longer due to nested type info design.
 
 *Updated after each plan completion*
 
@@ -111,6 +111,9 @@ Recent decisions affecting current work:
 - [04-02]: Or-pattern binding validation uses semantic-aware env lookup to skip constructor names
 - [04-02]: Variant constructors registered under both qualified (Shape.Circle) and unqualified (Circle) names
 - [04-02]: Error codes E0010 (UnknownVariant), E0011 (OrPatternBindingMismatch)
+- [04-03]: TypeRegistry parameter on check_exhaustiveness/check_redundancy for complete nested type resolution
+- [04-03]: Bool literals treated as named constructors true/false (unifies with sum type handling)
+- [04-03]: Pattern-based registry building in is_useful() for standalone use; caller-provided registry for check_exhaustiveness/check_redundancy
 
 ### Pending Todos
 
@@ -124,5 +127,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-06
-Stopped at: Completed 04-02-PLAN.md
+Stopped at: Completed 04-03-PLAN.md
 Resume file: None
