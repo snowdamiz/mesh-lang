@@ -1,5 +1,397 @@
 //! Mid-level IR (MIR) definitions and lowering.
 //!
 //! The MIR is a desugared, closure-converted, monomorphized representation
-//! that sits between the typed Rowan CST and LLVM IR. MIR types and lowering
-//! will be implemented in subsequent plans.
+//! that sits between the typed Rowan CST and LLVM IR. All types are concrete
+//! (no type variables), closures are lifted to top-level functions with explicit
+//! capture lists, pipe operators are desugared to function calls, and string
+//! interpolation is compiled to runtime concat chains.
+
+pub mod lower;
+pub mod mono;
+pub mod types;
+
+use std::fmt;
+
+// ── MirModule ─────────────────────────────────────────────────────────
+
+/// Top-level compilation unit containing all functions, structs, and sum types.
+#[derive(Debug, Clone)]
+pub struct MirModule {
+    /// All functions (including lifted closure functions).
+    pub functions: Vec<MirFunction>,
+    /// Struct type definitions.
+    pub structs: Vec<MirStructDef>,
+    /// Sum type definitions.
+    pub sum_types: Vec<MirSumTypeDef>,
+    /// Name of main() function if present.
+    pub entry_function: Option<String>,
+}
+
+// ── MirFunction ───────────────────────────────────────────────────────
+
+/// A function in MIR -- either a user-defined function, a lifted closure,
+/// or a monomorphized generic instantiation.
+#[derive(Debug, Clone)]
+pub struct MirFunction {
+    /// Mangled name (e.g., "identity_Int" for monomorphized generics).
+    pub name: String,
+    /// Parameter names and their concrete types.
+    pub params: Vec<(String, MirType)>,
+    /// Concrete return type.
+    pub return_type: MirType,
+    /// Function body expression.
+    pub body: MirExpr,
+    /// If true, this is a lifted closure function; first param is env_ptr.
+    pub is_closure_fn: bool,
+    /// Captured variables (for closure functions only).
+    pub captures: Vec<(String, MirType)>,
+}
+
+// ── MirType ───────────────────────────────────────────────────────────
+
+/// A concrete MIR type. No type variables remain -- all types are fully resolved.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum MirType {
+    /// 64-bit signed integer.
+    Int,
+    /// 64-bit floating point.
+    Float,
+    /// Boolean (i8, 0 or 1).
+    Bool,
+    /// GC-managed string pointer.
+    String,
+    /// Unit type (void / empty tuple).
+    Unit,
+    /// Tuple of concrete types.
+    Tuple(Vec<MirType>),
+    /// Named struct reference.
+    Struct(std::string::String),
+    /// Named sum type reference.
+    SumType(std::string::String),
+    /// Known function pointer: params -> return.
+    FnPtr(Vec<MirType>, Box<MirType>),
+    /// Closure: {fn_ptr, env_ptr} with params -> return.
+    Closure(Vec<MirType>, Box<MirType>),
+    /// Raw pointer (for env_ptr, etc.).
+    Ptr,
+    /// Bottom type (never returns).
+    Never,
+}
+
+impl fmt::Display for MirType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            MirType::Int => write!(f, "Int"),
+            MirType::Float => write!(f, "Float"),
+            MirType::Bool => write!(f, "Bool"),
+            MirType::String => write!(f, "String"),
+            MirType::Unit => write!(f, "Unit"),
+            MirType::Tuple(elems) => {
+                write!(f, "(")?;
+                for (i, e) in elems.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, ", ")?;
+                    }
+                    write!(f, "{}", e)?;
+                }
+                write!(f, ")")
+            }
+            MirType::Struct(name) => write!(f, "{}", name),
+            MirType::SumType(name) => write!(f, "{}", name),
+            MirType::FnPtr(params, ret) => {
+                write!(f, "fn(")?;
+                for (i, p) in params.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, ", ")?;
+                    }
+                    write!(f, "{}", p)?;
+                }
+                write!(f, ") -> {}", ret)
+            }
+            MirType::Closure(params, ret) => {
+                write!(f, "closure(")?;
+                for (i, p) in params.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, ", ")?;
+                    }
+                    write!(f, "{}", p)?;
+                }
+                write!(f, ") -> {}", ret)
+            }
+            MirType::Ptr => write!(f, "Ptr"),
+            MirType::Never => write!(f, "Never"),
+        }
+    }
+}
+
+// ── MirExpr ───────────────────────────────────────────────────────────
+
+/// A MIR expression node. Each variant carries its resolved type.
+#[derive(Debug, Clone)]
+pub enum MirExpr {
+    /// Integer literal.
+    IntLit(i64, MirType),
+    /// Float literal.
+    FloatLit(f64, MirType),
+    /// Boolean literal.
+    BoolLit(bool, MirType),
+    /// String literal value.
+    StringLit(std::string::String, MirType),
+    /// Variable reference.
+    Var(std::string::String, MirType),
+    /// Binary operation.
+    BinOp {
+        op: BinOp,
+        lhs: Box<MirExpr>,
+        rhs: Box<MirExpr>,
+        ty: MirType,
+    },
+    /// Unary operation.
+    UnaryOp {
+        op: UnaryOp,
+        operand: Box<MirExpr>,
+        ty: MirType,
+    },
+    /// Direct function call.
+    Call {
+        func: Box<MirExpr>,
+        args: Vec<MirExpr>,
+        ty: MirType,
+    },
+    /// Call through a closure (closure = {fn_ptr, env_ptr}).
+    ClosureCall {
+        closure: Box<MirExpr>,
+        args: Vec<MirExpr>,
+        ty: MirType,
+    },
+    /// If-then-else expression.
+    If {
+        cond: Box<MirExpr>,
+        then_body: Box<MirExpr>,
+        else_body: Box<MirExpr>,
+        ty: MirType,
+    },
+    /// Let binding with continuation body.
+    Let {
+        name: std::string::String,
+        ty: MirType,
+        value: Box<MirExpr>,
+        body: Box<MirExpr>,
+    },
+    /// Sequence of expressions; last is the value.
+    Block(Vec<MirExpr>, MirType),
+    /// Pattern match (NOT yet compiled to decision tree -- that is Plan 03).
+    Match {
+        scrutinee: Box<MirExpr>,
+        arms: Vec<MirMatchArm>,
+        ty: MirType,
+    },
+    /// Struct literal construction.
+    StructLit {
+        name: std::string::String,
+        fields: Vec<(std::string::String, MirExpr)>,
+        ty: MirType,
+    },
+    /// Field access on a struct.
+    FieldAccess {
+        object: Box<MirExpr>,
+        field: std::string::String,
+        ty: MirType,
+    },
+    /// Construct a variant of a sum type.
+    ConstructVariant {
+        type_name: std::string::String,
+        variant: std::string::String,
+        fields: Vec<MirExpr>,
+        ty: MirType,
+    },
+    /// Create a closure object: {fn_ptr -> fn_name, env_ptr -> captures}.
+    MakeClosure {
+        fn_name: std::string::String,
+        captures: Vec<MirExpr>,
+        ty: MirType,
+    },
+    /// Return from function.
+    Return(Box<MirExpr>),
+    /// Runtime panic with message and source location.
+    Panic {
+        message: std::string::String,
+        file: std::string::String,
+        line: u32,
+    },
+    /// Unit value (empty tuple).
+    Unit,
+}
+
+impl MirExpr {
+    /// Get the type of this expression.
+    pub fn ty(&self) -> &MirType {
+        match self {
+            MirExpr::IntLit(_, ty) => ty,
+            MirExpr::FloatLit(_, ty) => ty,
+            MirExpr::BoolLit(_, ty) => ty,
+            MirExpr::StringLit(_, ty) => ty,
+            MirExpr::Var(_, ty) => ty,
+            MirExpr::BinOp { ty, .. } => ty,
+            MirExpr::UnaryOp { ty, .. } => ty,
+            MirExpr::Call { ty, .. } => ty,
+            MirExpr::ClosureCall { ty, .. } => ty,
+            MirExpr::If { ty, .. } => ty,
+            MirExpr::Let { ty, .. } => ty,
+            MirExpr::Block(_, ty) => ty,
+            MirExpr::Match { ty, .. } => ty,
+            MirExpr::StructLit { ty, .. } => ty,
+            MirExpr::FieldAccess { ty, .. } => ty,
+            MirExpr::ConstructVariant { ty, .. } => ty,
+            MirExpr::MakeClosure { ty, .. } => ty,
+            MirExpr::Return(_) => &MirType::Never,
+            MirExpr::Panic { .. } => &MirType::Never,
+            MirExpr::Unit => &MirType::Unit,
+        }
+    }
+}
+
+// ── MirMatchArm ───────────────────────────────────────────────────────
+
+/// A match arm in MIR with pattern, optional guard, and body.
+#[derive(Debug, Clone)]
+pub struct MirMatchArm {
+    /// The pattern to match.
+    pub pattern: MirPattern,
+    /// Optional guard expression.
+    pub guard: Option<MirExpr>,
+    /// The arm body.
+    pub body: MirExpr,
+}
+
+// ── MirPattern ────────────────────────────────────────────────────────
+
+/// A MIR pattern for match expressions.
+#[derive(Debug, Clone)]
+pub enum MirPattern {
+    /// Matches anything, binds nothing.
+    Wildcard,
+    /// Binds a name to the matched value.
+    Var(std::string::String, MirType),
+    /// Matches a literal value.
+    Literal(MirLiteral),
+    /// Matches a sum type constructor with sub-patterns.
+    Constructor {
+        type_name: std::string::String,
+        variant: std::string::String,
+        fields: Vec<MirPattern>,
+        bindings: Vec<(std::string::String, MirType)>,
+    },
+    /// Matches a tuple with sub-patterns.
+    Tuple(Vec<MirPattern>),
+    /// Or-pattern: matches if any alternative matches.
+    Or(Vec<MirPattern>),
+}
+
+// ── MirLiteral ────────────────────────────────────────────────────────
+
+/// A literal value used in patterns.
+#[derive(Debug, Clone)]
+pub enum MirLiteral {
+    Int(i64),
+    Float(f64),
+    Bool(bool),
+    String(std::string::String),
+}
+
+// ── BinOp / UnaryOp ──────────────────────────────────────────────────
+
+/// Binary operators.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BinOp {
+    // Arithmetic
+    Add,
+    Sub,
+    Mul,
+    Div,
+    Mod,
+    // Comparison
+    Eq,
+    NotEq,
+    Lt,
+    Gt,
+    LtEq,
+    GtEq,
+    // Boolean
+    And,
+    Or,
+    // String
+    Concat,
+}
+
+impl fmt::Display for BinOp {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            BinOp::Add => write!(f, "+"),
+            BinOp::Sub => write!(f, "-"),
+            BinOp::Mul => write!(f, "*"),
+            BinOp::Div => write!(f, "/"),
+            BinOp::Mod => write!(f, "%"),
+            BinOp::Eq => write!(f, "=="),
+            BinOp::NotEq => write!(f, "!="),
+            BinOp::Lt => write!(f, "<"),
+            BinOp::Gt => write!(f, ">"),
+            BinOp::LtEq => write!(f, "<="),
+            BinOp::GtEq => write!(f, ">="),
+            BinOp::And => write!(f, "and"),
+            BinOp::Or => write!(f, "or"),
+            BinOp::Concat => write!(f, "++"),
+        }
+    }
+}
+
+/// Unary operators.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum UnaryOp {
+    /// Arithmetic negation.
+    Neg,
+    /// Boolean negation.
+    Not,
+}
+
+impl fmt::Display for UnaryOp {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            UnaryOp::Neg => write!(f, "-"),
+            UnaryOp::Not => write!(f, "not"),
+        }
+    }
+}
+
+// ── MirStructDef ──────────────────────────────────────────────────────
+
+/// A struct type definition in MIR.
+#[derive(Debug, Clone)]
+pub struct MirStructDef {
+    /// Struct name.
+    pub name: std::string::String,
+    /// Field names and their concrete types.
+    pub fields: Vec<(std::string::String, MirType)>,
+}
+
+// ── MirSumTypeDef ─────────────────────────────────────────────────────
+
+/// A sum type definition in MIR.
+#[derive(Debug, Clone)]
+pub struct MirSumTypeDef {
+    /// Sum type name.
+    pub name: std::string::String,
+    /// Variant definitions with sequential tag assignments.
+    pub variants: Vec<MirVariantDef>,
+}
+
+/// A single variant in a MIR sum type definition.
+#[derive(Debug, Clone)]
+pub struct MirVariantDef {
+    /// Variant name.
+    pub name: std::string::String,
+    /// Field types (positional).
+    pub fields: Vec<MirType>,
+    /// Tag value (0, 1, 2, ...).
+    pub tag: u8,
+}
