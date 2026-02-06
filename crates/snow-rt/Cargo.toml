@@ -1,0 +1,8 @@
+[package]
+name = "snow-rt"
+version = "0.1.0"
+edition = "2021"
+description = "Snow language runtime library (GC, strings, panic handler)"
+
+[lib]
+crate-type = ["staticlib", "lib"]

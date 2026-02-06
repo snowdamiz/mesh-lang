@@ -4,6 +4,7 @@ members = [
     "crates/snow-lexer",
     "crates/snow-parser",
     "crates/snow-typeck",
+    "crates/snow-rt",
     "crates/snowc",
 ]
 resolver = "2"
