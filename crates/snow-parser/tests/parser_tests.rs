@@ -1129,7 +1129,6 @@ fn lossless_closure() {
     assert_lossless_roundtrip("fn (x) -> x + 1 end");
 }
 
-#[test]
 // ═══════════════════════════════════════════════════════════════════════
 // Plan 03-01: Phase 3 Syntax (interface, impl, type alias, generics)
 // ═══════════════════════════════════════════════════════════════════════
@@ -1219,4 +1218,102 @@ module Math do
   end
 end";
     assert_lossless_roundtrip(source);
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// Plan 04-01: Sum Types, Constructor Patterns, Or/As Patterns
+// ═══════════════════════════════════════════════════════════════════════
+
+// ── Sum Type Definitions ────────────────────────────────────────────
+
+#[test]
+fn sum_type_simple() {
+    assert_snapshot!(source_and_debug(
+        "type Shape do\n  Circle(Float)\n  Rectangle(width :: Float, height :: Float)\n  Point\nend"
+    ));
+}
+
+#[test]
+fn sum_type_generic() {
+    assert_snapshot!(source_and_debug(
+        "type Option<T> do\n  Some(T)\n  None\nend"
+    ));
+}
+
+#[test]
+fn sum_type_multiple_positional() {
+    assert_snapshot!(source_and_debug(
+        "type Pair do\n  Pair(Int, Int)\nend"
+    ));
+}
+
+// ── Constructor Patterns ────────────────────────────────────────────
+
+#[test]
+fn pattern_constructor_qualified() {
+    assert_snapshot!(parse_and_debug(
+        "case x do\n  Shape.Circle(r) -> r\n  _ -> 0\nend"
+    ));
+}
+
+#[test]
+fn pattern_constructor_unqualified() {
+    assert_snapshot!(parse_and_debug(
+        "case x do\n  Some(v) -> v\n  _ -> 0\nend"
+    ));
+}
+
+#[test]
+fn pattern_constructor_nested() {
+    assert_snapshot!(parse_and_debug(
+        "case x do\n  Some(Circle(r)) -> r\n  _ -> 0\nend"
+    ));
+}
+
+#[test]
+fn pattern_constructor_qualified_no_args() {
+    assert_snapshot!(parse_and_debug(
+        "case x do\n  Shape.Point -> 1\n  _ -> 0\nend"
+    ));
+}
+
+// ── Or Patterns ─────────────────────────────────────────────────────
+
+#[test]
+fn pattern_or_simple() {
+    assert_snapshot!(parse_and_debug(
+        "case x do\n  Circle(_) | Point -> 1\n  _ -> 0\nend"
+    ));
+}
+
+#[test]
+fn pattern_or_triple() {
+    assert_snapshot!(parse_and_debug(
+        "case x do\n  1 | 2 | 3 -> true\n  _ -> false\nend"
+    ));
+}
+
+// ── As Patterns ─────────────────────────────────────────────────────
+
+#[test]
+fn pattern_as_simple() {
+    assert_snapshot!(parse_and_debug(
+        "case x do\n  Circle(r) as c -> c\n  _ -> x\nend"
+    ));
+}
+
+// ── Combined Patterns ───────────────────────────────────────────────
+
+#[test]
+fn pattern_or_with_constructors() {
+    assert_snapshot!(parse_and_debug(
+        "case x do\n  Some(1) | Some(2) -> true\n  _ -> false\nend"
+    ));
+}
+
+// ── Lossless Round-Trip for Sum Types ───────────────────────────────
+
+#[test]
+fn lossless_sum_type() {
+    assert_lossless_roundtrip("type Shape do\n  Circle(Float)\n  Point\nend");
 }

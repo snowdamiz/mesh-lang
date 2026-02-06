@@ -156,13 +156,27 @@ impl<'src> Parser<'src> {
 
     /// Returns the text of the current significant token.
     pub(crate) fn current_text(&self) -> &str {
-        let pos = self.skip_to_significant(self.pos);
-        if pos < self.tokens.len() {
-            let span = &self.tokens[pos].span;
-            &self.source[span.start as usize..span.end as usize]
-        } else {
-            ""
+        self.nth_text(0)
+    }
+
+    /// Returns the text of the Nth significant token ahead.
+    pub(crate) fn nth_text(&self, n: usize) -> &str {
+        let mut pos = self.pos;
+        let mut remaining = n;
+        while pos < self.tokens.len() {
+            let token_kind = &self.tokens[pos].kind;
+            if self.should_skip(token_kind) {
+                pos += 1;
+                continue;
+            }
+            if remaining == 0 {
+                let span = &self.tokens[pos].span;
+                return &self.source[span.start as usize..span.end as usize];
+            }
+            remaining -= 1;
+            pos += 1;
         }
+        ""
     }
 
     /// Returns the span of the current significant token.
@@ -588,10 +602,30 @@ pub(crate) fn parse_item_or_stmt(p: &mut Parser) {
 
         SyntaxKind::IMPL_KW => items::parse_impl_def(p),
 
-        // type at top level followed by IDENT = type alias
-        // (distinguishes from `type` used in other contexts)
+        // type at top level followed by IDENT -> sum type def or type alias
+        // Distinguish: type Name do ... end (sum type) vs type Name = ... (alias)
+        // Also handles generics: type Name<T> do/= ...
         SyntaxKind::TYPE_KW if p.nth(1) == SyntaxKind::IDENT => {
-            items::parse_type_alias(p);
+            // Look past name and optional generic params to find `do` or `=`
+            let mut lookahead = 2; // past TYPE_KW and IDENT
+            if p.nth(lookahead) == SyntaxKind::LT {
+                // Skip generic params: <T, U, ...>
+                lookahead += 1; // past <
+                let mut depth = 1u32;
+                while depth > 0 {
+                    match p.nth(lookahead) {
+                        SyntaxKind::LT => { depth += 1; lookahead += 1; }
+                        SyntaxKind::GT => { depth -= 1; lookahead += 1; }
+                        SyntaxKind::EOF => break,
+                        _ => { lookahead += 1; }
+                    }
+                }
+            }
+            if p.nth(lookahead) == SyntaxKind::DO_KW {
+                items::parse_sum_type_def(p);
+            } else {
+                items::parse_type_alias(p);
+            }
         }
 
         SyntaxKind::LET_KW => expressions::parse_let_binding(p),

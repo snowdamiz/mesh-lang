@@ -577,6 +577,135 @@ pub(crate) fn parse_impl_def(p: &mut Parser) {
     p.close(m, SyntaxKind::IMPL_DEF);
 }
 
+// ── Sum Type Definition ──────────────────────────────────────────────────
+
+/// Parse a sum type definition: `[pub] type Name [<T>] do Variant1(Type) ... end`
+///
+/// Each variant is either:
+/// - Nullary: `Point` (no fields)
+/// - Positional: `Circle(Float)` or `Pair(Int, Int)`
+/// - Named: `Rectangle(width :: Float, height :: Float)`
+pub(crate) fn parse_sum_type_def(p: &mut Parser) {
+    let m = p.open();
+
+    // Optional visibility.
+    parse_optional_visibility(p);
+
+    p.advance(); // TYPE_KW
+
+    // Type name.
+    if p.at(SyntaxKind::IDENT) {
+        let name = p.open();
+        p.advance();
+        p.close(name, SyntaxKind::NAME);
+    } else {
+        p.error("expected sum type name");
+        p.close(m, SyntaxKind::SUM_TYPE_DEF);
+        return;
+    }
+
+    // Optional type parameters: <T, U>
+    if p.at(SyntaxKind::LT) {
+        parse_generic_param_list(p);
+    }
+
+    // Expect `do`.
+    let do_span = p.current_span();
+    p.expect(SyntaxKind::DO_KW);
+
+    // Parse variant definitions.
+    if !p.has_error() {
+        loop {
+            p.eat_newlines();
+
+            if p.at(SyntaxKind::END_KW) || p.at(SyntaxKind::EOF) {
+                break;
+            }
+
+            parse_variant_def(p);
+
+            if p.has_error() {
+                break;
+            }
+        }
+    }
+
+    // Expect `end`.
+    if !p.at(SyntaxKind::END_KW) {
+        p.error_with_related(
+            "expected `end` to close sum type body",
+            do_span,
+            "`do` block started here",
+        );
+    } else {
+        p.advance(); // END_KW
+    }
+
+    p.close(m, SyntaxKind::SUM_TYPE_DEF);
+}
+
+/// Parse a single variant definition inside a sum type.
+///
+/// Variants:
+/// - `VariantName` (nullary)
+/// - `VariantName(Type1, Type2)` (positional)
+/// - `VariantName(name1 :: Type1, name2 :: Type2)` (named fields)
+fn parse_variant_def(p: &mut Parser) {
+    let m = p.open();
+
+    // Variant name.
+    if p.at(SyntaxKind::IDENT) {
+        p.advance(); // variant name IDENT
+    } else {
+        p.error("expected variant name");
+        p.close(m, SyntaxKind::VARIANT_DEF);
+        return;
+    }
+
+    // Optional field list: (fields...)
+    if p.at(SyntaxKind::L_PAREN) {
+        p.advance(); // (
+
+        if !p.at(SyntaxKind::R_PAREN) {
+            parse_variant_field_or_type(p);
+            while p.eat(SyntaxKind::COMMA) {
+                if p.at(SyntaxKind::R_PAREN) {
+                    break; // trailing comma
+                }
+                parse_variant_field_or_type(p);
+            }
+        }
+
+        p.expect(SyntaxKind::R_PAREN);
+    }
+
+    p.close(m, SyntaxKind::VARIANT_DEF);
+}
+
+/// Parse either a named field (`name :: Type`) or a positional type in a variant.
+///
+/// Distinguishes by checking if IDENT is followed by COLON_COLON (named field)
+/// or something else (positional type).
+fn parse_variant_field_or_type(p: &mut Parser) {
+    // If IDENT followed by ::, it's a named field
+    if p.at(SyntaxKind::IDENT) && p.nth(1) == SyntaxKind::COLON_COLON {
+        let field = p.open();
+        let name = p.open();
+        p.advance(); // field name
+        p.close(name, SyntaxKind::NAME);
+        let ann = p.open();
+        p.advance(); // ::
+        parse_type(p);
+        p.close(ann, SyntaxKind::TYPE_ANNOTATION);
+        p.close(field, SyntaxKind::VARIANT_FIELD);
+    } else {
+        // Positional type
+        let ann = p.open();
+        parse_type(p);
+        p.close(ann, SyntaxKind::TYPE_ANNOTATION);
+    }
+}
+
 // ── Type Alias ──────────────────────────────────────────────────────────
 
 /// Parse a type alias: `type Name [<T>] = Type`
