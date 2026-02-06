@@ -77,6 +77,9 @@ pub struct CodeGen<'ctx> {
 
     /// The MIR module being compiled (borrowed for arm body lookup).
     pub(crate) mir_functions: Vec<MirFunction>,
+
+    /// MIR struct definitions (for field name -> index lookup).
+    pub(crate) mir_struct_defs: FxHashMap<String, Vec<(String, MirType)>>,
 }
 
 impl<'ctx> CodeGen<'ctx> {
@@ -145,6 +148,7 @@ impl<'ctx> CodeGen<'ctx> {
             locals: FxHashMap::default(),
             local_types: FxHashMap::default(),
             mir_functions: Vec::new(),
+            mir_struct_defs: FxHashMap::default(),
         })
     }
 
@@ -164,8 +168,12 @@ impl<'ctx> CodeGen<'ctx> {
         // Step 1: Declare runtime intrinsics.
         intrinsics::declare_intrinsics(&self.module);
 
-        // Step 2: Create type layouts.
+        // Step 2: Create type layouts and store MIR struct defs for field lookup.
         self.create_struct_types(&mir.structs);
+        for s in &mir.structs {
+            self.mir_struct_defs
+                .insert(s.name.clone(), s.fields.clone());
+        }
         self.create_sum_type_layouts(&mir.sum_types);
 
         // Step 3: Forward-declare all functions.
@@ -402,7 +410,10 @@ impl<'ctx> CodeGen<'ctx> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::mir::{MirExpr, MirModule, MirType};
+    use crate::mir::{
+        BinOp, MirExpr, MirLiteral, MirMatchArm, MirModule, MirPattern,
+        MirSumTypeDef, MirType, MirVariantDef, UnaryOp,
+    };
 
     fn empty_mir_module() -> MirModule {
         MirModule {
@@ -467,7 +478,6 @@ mod tests {
         let mir = hello_world_mir();
         codegen.compile(&mir).unwrap();
 
-        // Check that main wrapper exists
         let ir = codegen.get_llvm_ir();
         assert!(ir.contains("define i32 @main"), "Should have main wrapper");
         assert!(ir.contains("snow_rt_init"), "Should call snow_rt_init");
@@ -497,5 +507,503 @@ mod tests {
         codegen.emit_object(&tmp).unwrap();
         assert!(tmp.exists());
         std::fs::remove_file(&tmp).ok();
+    }
+
+    // ── Expression codegen tests ─────────────────────────────────────
+
+    /// Helper: compile a single function body and return the LLVM IR string.
+    fn compile_expr_to_ir(body: MirExpr, ret_ty: MirType) -> String {
+        let mir = MirModule {
+            functions: vec![MirFunction {
+                name: "test_fn".to_string(),
+                params: vec![],
+                return_type: ret_ty,
+                body,
+                is_closure_fn: false,
+                captures: vec![],
+            }],
+            structs: vec![],
+            sum_types: vec![],
+            entry_function: None,
+        };
+
+        let context = Context::create();
+        let mut codegen = CodeGen::new(&context, "test", 0, None).unwrap();
+        codegen.compile(&mir).unwrap();
+        codegen.get_llvm_ir()
+    }
+
+    /// Helper: compile a function with parameters (to avoid constant folding).
+    fn compile_fn_to_ir(
+        params: Vec<(String, MirType)>,
+        body: MirExpr,
+        ret_ty: MirType,
+    ) -> String {
+        let mir = MirModule {
+            functions: vec![MirFunction {
+                name: "test_fn".to_string(),
+                params,
+                return_type: ret_ty,
+                body,
+                is_closure_fn: false,
+                captures: vec![],
+            }],
+            structs: vec![],
+            sum_types: vec![],
+            entry_function: None,
+        };
+
+        let context = Context::create();
+        let mut codegen = CodeGen::new(&context, "test", 0, None).unwrap();
+        codegen.compile(&mir).unwrap();
+        codegen.get_llvm_ir()
+    }
+
+    #[test]
+    fn test_int_arithmetic() {
+        // Use parameters to avoid constant folding
+        let body = MirExpr::BinOp {
+            op: BinOp::Add,
+            lhs: Box::new(MirExpr::Var("a".to_string(), MirType::Int)),
+            rhs: Box::new(MirExpr::Var("b".to_string(), MirType::Int)),
+            ty: MirType::Int,
+        };
+        let ir = compile_fn_to_ir(
+            vec![
+                ("a".to_string(), MirType::Int),
+                ("b".to_string(), MirType::Int),
+            ],
+            body,
+            MirType::Int,
+        );
+        assert!(ir.contains("add i64"), "Should contain i64 add: {}", ir);
+    }
+
+    #[test]
+    fn test_int_constant_folding() {
+        // Constants should be folded by LLVM
+        let body = MirExpr::BinOp {
+            op: BinOp::Add,
+            lhs: Box::new(MirExpr::IntLit(1, MirType::Int)),
+            rhs: Box::new(MirExpr::IntLit(2, MirType::Int)),
+            ty: MirType::Int,
+        };
+        let ir = compile_expr_to_ir(body, MirType::Int);
+        assert!(
+            ir.contains("ret i64 3"),
+            "Constants should be folded to 3: {}",
+            ir
+        );
+    }
+
+    #[test]
+    fn test_float_arithmetic() {
+        let body = MirExpr::BinOp {
+            op: BinOp::Mul,
+            lhs: Box::new(MirExpr::Var("a".to_string(), MirType::Float)),
+            rhs: Box::new(MirExpr::Var("b".to_string(), MirType::Float)),
+            ty: MirType::Float,
+        };
+        let ir = compile_fn_to_ir(
+            vec![
+                ("a".to_string(), MirType::Float),
+                ("b".to_string(), MirType::Float),
+            ],
+            body,
+            MirType::Float,
+        );
+        assert!(ir.contains("fmul double"), "Should contain fmul: {}", ir);
+    }
+
+    #[test]
+    fn test_boolean_not() {
+        let body = MirExpr::UnaryOp {
+            op: UnaryOp::Not,
+            operand: Box::new(MirExpr::Var("b".to_string(), MirType::Bool)),
+            ty: MirType::Bool,
+        };
+        let ir = compile_fn_to_ir(
+            vec![("b".to_string(), MirType::Bool)],
+            body,
+            MirType::Bool,
+        );
+        assert!(ir.contains("xor i1"), "Should contain xor for not: {}", ir);
+    }
+
+    #[test]
+    fn test_string_literal_calls_snow_string_new() {
+        let body = MirExpr::Block(
+            vec![
+                MirExpr::StringLit("hello world".to_string(), MirType::String),
+            ],
+            MirType::String,
+        );
+        let ir = compile_expr_to_ir(body, MirType::String);
+        assert!(
+            ir.contains("snow_string_new"),
+            "Should call snow_string_new: {}",
+            ir
+        );
+    }
+
+    #[test]
+    fn test_if_else_branching() {
+        let body = MirExpr::If {
+            cond: Box::new(MirExpr::BoolLit(true, MirType::Bool)),
+            then_body: Box::new(MirExpr::IntLit(1, MirType::Int)),
+            else_body: Box::new(MirExpr::IntLit(2, MirType::Int)),
+            ty: MirType::Int,
+        };
+        let ir = compile_expr_to_ir(body, MirType::Int);
+        assert!(ir.contains("br i1"), "Should have conditional branch: {}", ir);
+        assert!(ir.contains("then"), "Should have then block: {}", ir);
+        assert!(ir.contains("else"), "Should have else block: {}", ir);
+        assert!(ir.contains("if_merge"), "Should have merge block: {}", ir);
+    }
+
+    #[test]
+    fn test_let_binding() {
+        let body = MirExpr::Let {
+            name: "x".to_string(),
+            ty: MirType::Int,
+            value: Box::new(MirExpr::IntLit(42, MirType::Int)),
+            body: Box::new(MirExpr::Var("x".to_string(), MirType::Int)),
+        };
+        let ir = compile_expr_to_ir(body, MirType::Int);
+        assert!(ir.contains("alloca i64"), "Should alloca for x: {}", ir);
+        assert!(ir.contains("store i64 42"), "Should store 42: {}", ir);
+    }
+
+    #[test]
+    fn test_function_call() {
+        // Create a module with an add function and a main that calls it
+        let mir = MirModule {
+            functions: vec![
+                MirFunction {
+                    name: "add".to_string(),
+                    params: vec![
+                        ("a".to_string(), MirType::Int),
+                        ("b".to_string(), MirType::Int),
+                    ],
+                    return_type: MirType::Int,
+                    body: MirExpr::BinOp {
+                        op: BinOp::Add,
+                        lhs: Box::new(MirExpr::Var("a".to_string(), MirType::Int)),
+                        rhs: Box::new(MirExpr::Var("b".to_string(), MirType::Int)),
+                        ty: MirType::Int,
+                    },
+                    is_closure_fn: false,
+                    captures: vec![],
+                },
+                MirFunction {
+                    name: "snow_main".to_string(),
+                    params: vec![],
+                    return_type: MirType::Unit,
+                    body: MirExpr::Block(
+                        vec![MirExpr::Call {
+                            func: Box::new(MirExpr::Var(
+                                "add".to_string(),
+                                MirType::FnPtr(
+                                    vec![MirType::Int, MirType::Int],
+                                    Box::new(MirType::Int),
+                                ),
+                            )),
+                            args: vec![
+                                MirExpr::IntLit(1, MirType::Int),
+                                MirExpr::IntLit(2, MirType::Int),
+                            ],
+                            ty: MirType::Int,
+                        }],
+                        MirType::Unit,
+                    ),
+                    is_closure_fn: false,
+                    captures: vec![],
+                },
+            ],
+            structs: vec![],
+            sum_types: vec![],
+            entry_function: Some("snow_main".to_string()),
+        };
+
+        let context = Context::create();
+        let mut codegen = CodeGen::new(&context, "test", 0, None).unwrap();
+        codegen.compile(&mir).unwrap();
+
+        let ir = codegen.get_llvm_ir();
+        assert!(ir.contains("define i64 @add"), "Should have add function");
+        assert!(ir.contains("call i64 @add"), "Should call add");
+    }
+
+    #[test]
+    fn test_println_hello_world() {
+        // Simulate: println("Hello, world!")
+        let body = MirExpr::Block(
+            vec![MirExpr::Call {
+                func: Box::new(MirExpr::Var(
+                    "snow_println".to_string(),
+                    MirType::FnPtr(vec![MirType::String], Box::new(MirType::Unit)),
+                )),
+                args: vec![MirExpr::StringLit(
+                    "Hello, world!".to_string(),
+                    MirType::String,
+                )],
+                ty: MirType::Unit,
+            }],
+            MirType::Unit,
+        );
+
+        let mir = MirModule {
+            functions: vec![MirFunction {
+                name: "snow_main".to_string(),
+                params: vec![],
+                return_type: MirType::Unit,
+                body,
+                is_closure_fn: false,
+                captures: vec![],
+            }],
+            structs: vec![],
+            sum_types: vec![],
+            entry_function: Some("snow_main".to_string()),
+        };
+
+        let context = Context::create();
+        let mut codegen = CodeGen::new(&context, "test", 0, None).unwrap();
+        codegen.compile(&mir).unwrap();
+
+        let ir = codegen.get_llvm_ir();
+        assert!(ir.contains("snow_string_new"), "Should call snow_string_new");
+        assert!(ir.contains("snow_println"), "Should call snow_println");
+        assert!(ir.contains("Hello, world!"), "Should contain string literal");
+    }
+
+    #[test]
+    fn test_construct_sum_type_variant() {
+        let mir = MirModule {
+            functions: vec![MirFunction {
+                name: "test_fn".to_string(),
+                params: vec![],
+                return_type: MirType::SumType("Option".to_string()),
+                body: MirExpr::ConstructVariant {
+                    type_name: "Option".to_string(),
+                    variant: "Some".to_string(),
+                    fields: vec![MirExpr::IntLit(42, MirType::Int)],
+                    ty: MirType::SumType("Option".to_string()),
+                },
+                is_closure_fn: false,
+                captures: vec![],
+            }],
+            structs: vec![],
+            sum_types: vec![MirSumTypeDef {
+                name: "Option".to_string(),
+                variants: vec![
+                    MirVariantDef {
+                        name: "Some".to_string(),
+                        fields: vec![MirType::Int],
+                        tag: 0,
+                    },
+                    MirVariantDef {
+                        name: "None".to_string(),
+                        fields: vec![],
+                        tag: 1,
+                    },
+                ],
+            }],
+            entry_function: None,
+        };
+
+        let context = Context::create();
+        let mut codegen = CodeGen::new(&context, "test", 0, None).unwrap();
+        codegen.compile(&mir).unwrap();
+
+        let ir = codegen.get_llvm_ir();
+        assert!(ir.contains("store i8 0"), "Should store tag 0 for Some");
+    }
+
+    #[test]
+    fn test_match_on_sum_type() {
+        let mir = MirModule {
+            functions: vec![MirFunction {
+                name: "test_fn".to_string(),
+                params: vec![],
+                return_type: MirType::Int,
+                body: MirExpr::Match {
+                    scrutinee: Box::new(MirExpr::ConstructVariant {
+                        type_name: "Option".to_string(),
+                        variant: "Some".to_string(),
+                        fields: vec![MirExpr::IntLit(42, MirType::Int)],
+                        ty: MirType::SumType("Option".to_string()),
+                    }),
+                    arms: vec![
+                        MirMatchArm {
+                            pattern: MirPattern::Constructor {
+                                type_name: "Option".to_string(),
+                                variant: "Some".to_string(),
+                                fields: vec![MirPattern::Var(
+                                    "x".to_string(),
+                                    MirType::Int,
+                                )],
+                                bindings: vec![("x".to_string(), MirType::Int)],
+                            },
+                            guard: None,
+                            body: MirExpr::Var("x".to_string(), MirType::Int),
+                        },
+                        MirMatchArm {
+                            pattern: MirPattern::Constructor {
+                                type_name: "Option".to_string(),
+                                variant: "None".to_string(),
+                                fields: vec![],
+                                bindings: vec![],
+                            },
+                            guard: None,
+                            body: MirExpr::IntLit(0, MirType::Int),
+                        },
+                    ],
+                    ty: MirType::Int,
+                },
+                is_closure_fn: false,
+                captures: vec![],
+            }],
+            structs: vec![],
+            sum_types: vec![MirSumTypeDef {
+                name: "Option".to_string(),
+                variants: vec![
+                    MirVariantDef {
+                        name: "Some".to_string(),
+                        fields: vec![MirType::Int],
+                        tag: 0,
+                    },
+                    MirVariantDef {
+                        name: "None".to_string(),
+                        fields: vec![],
+                        tag: 1,
+                    },
+                ],
+            }],
+            entry_function: None,
+        };
+
+        let context = Context::create();
+        let mut codegen = CodeGen::new(&context, "test", 0, None).unwrap();
+        codegen.compile(&mir).unwrap();
+
+        let ir = codegen.get_llvm_ir();
+        assert!(ir.contains("switch i8"), "Should have switch on tag: {}", ir);
+    }
+
+    #[test]
+    fn test_closure_creation() {
+        let mir = MirModule {
+            functions: vec![
+                MirFunction {
+                    name: "__closure_0".to_string(),
+                    params: vec![
+                        ("__env".to_string(), MirType::Ptr),
+                        ("x".to_string(), MirType::Int),
+                    ],
+                    return_type: MirType::Int,
+                    body: MirExpr::Var("x".to_string(), MirType::Int),
+                    is_closure_fn: true,
+                    captures: vec![],
+                },
+                MirFunction {
+                    name: "test_fn".to_string(),
+                    params: vec![],
+                    return_type: MirType::Closure(
+                        vec![MirType::Int],
+                        Box::new(MirType::Int),
+                    ),
+                    body: MirExpr::MakeClosure {
+                        fn_name: "__closure_0".to_string(),
+                        captures: vec![],
+                        ty: MirType::Closure(
+                            vec![MirType::Int],
+                            Box::new(MirType::Int),
+                        ),
+                    },
+                    is_closure_fn: false,
+                    captures: vec![],
+                },
+            ],
+            structs: vec![],
+            sum_types: vec![],
+            entry_function: None,
+        };
+
+        let context = Context::create();
+        let mut codegen = CodeGen::new(&context, "test", 0, None).unwrap();
+        codegen.compile(&mir).unwrap();
+
+        let ir = codegen.get_llvm_ir();
+        assert!(
+            ir.contains("@__closure_0"),
+            "Should have closure function: {}",
+            ir
+        );
+        // Closure function takes ptr as first arg
+        assert!(
+            ir.contains("define { ptr, ptr } @test_fn"),
+            "test_fn should return closure struct: {}",
+            ir
+        );
+    }
+
+    #[test]
+    fn test_comparison_operators() {
+        let body = MirExpr::BinOp {
+            op: BinOp::Lt,
+            lhs: Box::new(MirExpr::Var("a".to_string(), MirType::Int)),
+            rhs: Box::new(MirExpr::Var("b".to_string(), MirType::Int)),
+            ty: MirType::Bool,
+        };
+        let ir = compile_fn_to_ir(
+            vec![
+                ("a".to_string(), MirType::Int),
+                ("b".to_string(), MirType::Int),
+            ],
+            body,
+            MirType::Bool,
+        );
+        assert!(ir.contains("icmp slt"), "Should contain signed less-than: {}", ir);
+    }
+
+    #[test]
+    fn test_negation() {
+        let body = MirExpr::UnaryOp {
+            op: UnaryOp::Neg,
+            operand: Box::new(MirExpr::Var("x".to_string(), MirType::Int)),
+            ty: MirType::Int,
+        };
+        let ir = compile_fn_to_ir(
+            vec![("x".to_string(), MirType::Int)],
+            body,
+            MirType::Int,
+        );
+        assert!(ir.contains("sub i64 0"), "Should contain int negation: {}", ir);
+    }
+
+    #[test]
+    fn test_match_on_integer_literal() {
+        let body = MirExpr::Match {
+            scrutinee: Box::new(MirExpr::IntLit(1, MirType::Int)),
+            arms: vec![
+                MirMatchArm {
+                    pattern: MirPattern::Literal(MirLiteral::Int(1)),
+                    guard: None,
+                    body: MirExpr::IntLit(10, MirType::Int),
+                },
+                MirMatchArm {
+                    pattern: MirPattern::Wildcard,
+                    guard: None,
+                    body: MirExpr::IntLit(0, MirType::Int),
+                },
+            ],
+            ty: MirType::Int,
+        };
+        let ir = compile_expr_to_ir(body, MirType::Int);
+        assert!(
+            ir.contains("icmp eq i64"),
+            "Should have int comparison for literal match: {}",
+            ir
+        );
     }
 }

@@ -7,18 +7,24 @@
 //! ## Architecture
 //!
 //! - [`mir`]: Mid-level IR definitions and lowering from typed AST
+//! - [`pattern`]: Pattern match compilation to decision trees
 //! - [`codegen`]: LLVM IR generation from MIR
 //!
 //! ## Pipeline
 //!
 //! ```text
-//! Parse + TypeckResult -> MIR -> LLVM IR -> Object file -> Native binary
+//! Parse + TypeckResult -> MIR -> DecisionTree -> LLVM IR -> Object file -> Native binary
 //! ```
 
 pub mod codegen;
 pub mod mir;
 pub mod pattern;
 
+use std::path::Path;
+
+use inkwell::context::Context;
+
+use codegen::CodeGen;
 use mir::lower::lower_to_mir;
 use mir::mono::monomorphize;
 
@@ -40,19 +46,97 @@ pub fn lower_to_mir_module(
     Ok(module)
 }
 
-/// Compile a parsed and type-checked Snow program to a native binary.
+/// Compile a parsed and type-checked Snow program to an object file.
 ///
-/// This is the main entry point for code generation. It takes the parse tree
-/// and type-check results, lowers them through MIR to LLVM IR, and produces
-/// a native executable.
+/// This is the main entry point for code generation. It:
+/// 1. Lowers the AST to MIR
+/// 2. Monomorphizes generic code
+/// 3. Generates LLVM IR
+/// 4. Optionally optimizes
+/// 5. Emits an object file
+///
+/// # Arguments
+///
+/// * `parse` - The parsed Snow source
+/// * `typeck` - The type-checked results
+/// * `output` - Path to write the object file
+/// * `opt_level` - Optimization level (0 = none, 2 = default)
+/// * `target_triple` - Optional target triple; None = host default
 ///
 /// # Errors
 ///
-/// Returns an error string if compilation fails at any stage (MIR lowering,
-/// LLVM IR generation, object file emission, or linking).
-pub fn compile(
-    _parse: &snow_parser::Parse,
-    _typeck: &snow_typeck::TypeckResult,
+/// Returns an error string if compilation fails at any stage.
+pub fn compile_to_object(
+    parse: &snow_parser::Parse,
+    typeck: &snow_typeck::TypeckResult,
+    output: &Path,
+    opt_level: u8,
+    target_triple: Option<&str>,
 ) -> Result<(), String> {
-    todo!("compile: LLVM IR codegen will be implemented in Plan 05-04")
+    let mir = lower_to_mir_module(parse, typeck)?;
+
+    let context = Context::create();
+    let mut codegen = CodeGen::new(&context, "snow_module", opt_level, target_triple)?;
+    codegen.compile(&mir)?;
+
+    if opt_level > 0 {
+        codegen.run_optimization_passes(opt_level)?;
+    }
+
+    codegen.emit_object(output)?;
+    Ok(())
+}
+
+/// Compile a parsed and type-checked Snow program to LLVM IR text.
+///
+/// Similar to `compile_to_object` but emits human-readable LLVM IR (.ll file)
+/// instead of a binary object file. Useful for debugging and inspection.
+///
+/// # Arguments
+///
+/// * `parse` - The parsed Snow source
+/// * `typeck` - The type-checked results
+/// * `output` - Path to write the .ll file
+/// * `target_triple` - Optional target triple; None = host default
+///
+/// # Errors
+///
+/// Returns an error string if compilation fails at any stage.
+pub fn compile_to_llvm_ir(
+    parse: &snow_parser::Parse,
+    typeck: &snow_typeck::TypeckResult,
+    output: &Path,
+    target_triple: Option<&str>,
+) -> Result<(), String> {
+    let mir = lower_to_mir_module(parse, typeck)?;
+
+    let context = Context::create();
+    let mut codegen = CodeGen::new(&context, "snow_module", 0, target_triple)?;
+    codegen.compile(&mir)?;
+
+    codegen.emit_llvm_ir(output)?;
+    Ok(())
+}
+
+/// Compile a parsed and type-checked Snow program (full pipeline placeholder).
+///
+/// In later phases this will handle linking the object file into a final binary.
+/// For Phase 5, use `compile_to_object` or `compile_to_llvm_ir` directly.
+///
+/// # Errors
+///
+/// Returns an error string if compilation fails at any stage.
+pub fn compile(
+    parse: &snow_parser::Parse,
+    typeck: &snow_typeck::TypeckResult,
+) -> Result<(), String> {
+    let mir = lower_to_mir_module(parse, typeck)?;
+
+    let context = Context::create();
+    let mut codegen = CodeGen::new(&context, "snow_module", 0, None)?;
+    codegen.compile(&mir)?;
+
+    // Module compiled and verified successfully.
+    // In later phases, this would emit an object file and link it.
+    Ok(())
 }

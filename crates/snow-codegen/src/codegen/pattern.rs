@@ -4,4 +4,597 @@
 //! phase into LLVM basic blocks with switch instructions, conditional
 //! branches, and variable bindings.
 //!
-//! Full implementation in Task 2.
+//! ## Strategy
+//!
+//! - `Leaf`: Bind variables from AccessPath, codegen arm body, store result,
+//!   branch to merge block
+//! - `Switch`: Load tag from scrutinee, emit LLVM switch instruction,
+//!   recurse for each case
+//! - `Test`: Load scrutinee value, compare with literal, conditional branch,
+//!   recurse for success/failure
+//! - `Guard`: Codegen guard expression, conditional branch, recurse
+//! - `Fail`: Emit snow_panic + unreachable
+
+use inkwell::basic_block::BasicBlock;
+use inkwell::values::{BasicValueEnum, PointerValue};
+use inkwell::IntPredicate;
+
+use super::types::variant_struct_type;
+use super::CodeGen;
+use crate::mir::{MirLiteral, MirMatchArm, MirType};
+use crate::pattern::{AccessPath, DecisionTree};
+
+impl<'ctx> CodeGen<'ctx> {
+    /// Generate LLVM IR for a decision tree.
+    ///
+    /// The decision tree was compiled from pattern matching arms and controls
+    /// which arm body to execute based on the scrutinee value.
+    ///
+    /// # Arguments
+    ///
+    /// * `tree` - The decision tree to codegen
+    /// * `scrutinee_alloca` - Pointer to the scrutinee value (alloca'd)
+    /// * `scrutinee_ty` - The MIR type of the scrutinee
+    /// * `arms` - The original match arms (for arm body codegen)
+    /// * `result_alloca` - Pointer to store the match result
+    /// * `merge_bb` - Block to branch to after an arm body executes
+    pub(crate) fn codegen_decision_tree(
+        &mut self,
+        tree: &DecisionTree,
+        scrutinee_alloca: PointerValue<'ctx>,
+        scrutinee_ty: &MirType,
+        arms: &[MirMatchArm],
+        result_alloca: PointerValue<'ctx>,
+        merge_bb: BasicBlock<'ctx>,
+    ) -> Result<(), String> {
+        match tree {
+            DecisionTree::Leaf {
+                arm_index,
+                bindings,
+            } => {
+                self.codegen_leaf(
+                    *arm_index,
+                    bindings,
+                    scrutinee_alloca,
+                    scrutinee_ty,
+                    arms,
+                    result_alloca,
+                    merge_bb,
+                )
+            }
+            DecisionTree::Switch {
+                scrutinee_path,
+                cases,
+                default,
+            } => {
+                self.codegen_switch(
+                    scrutinee_path,
+                    cases,
+                    default.as_deref(),
+                    scrutinee_alloca,
+                    scrutinee_ty,
+                    arms,
+                    result_alloca,
+                    merge_bb,
+                )
+            }
+            DecisionTree::Test {
+                scrutinee_path,
+                value,
+                success,
+                failure,
+            } => {
+                self.codegen_test(
+                    scrutinee_path,
+                    value,
+                    success,
+                    failure,
+                    scrutinee_alloca,
+                    scrutinee_ty,
+                    arms,
+                    result_alloca,
+                    merge_bb,
+                )
+            }
+            DecisionTree::Guard {
+                guard_expr,
+                success,
+                failure,
+            } => {
+                self.codegen_guard(
+                    guard_expr,
+                    success,
+                    failure,
+                    scrutinee_alloca,
+                    scrutinee_ty,
+                    arms,
+                    result_alloca,
+                    merge_bb,
+                )
+            }
+            DecisionTree::Fail {
+                message,
+                file,
+                line,
+            } => {
+                self.codegen_fail(message, file, *line)
+            }
+        }
+    }
+
+    // ── Leaf node ────────────────────────────────────────────────────
+
+    fn codegen_leaf(
+        &mut self,
+        arm_index: usize,
+        bindings: &[(String, MirType, AccessPath)],
+        scrutinee_alloca: PointerValue<'ctx>,
+        scrutinee_ty: &MirType,
+        arms: &[MirMatchArm],
+        result_alloca: PointerValue<'ctx>,
+        merge_bb: BasicBlock<'ctx>,
+    ) -> Result<(), String> {
+        // Bind variables from access paths
+        for (name, ty, path) in bindings {
+            let val = self.navigate_access_path(scrutinee_alloca, scrutinee_ty, path)?;
+            let llvm_ty = self.llvm_type(ty);
+            let alloca = self
+                .builder
+                .build_alloca(llvm_ty, name)
+                .map_err(|e| e.to_string())?;
+            self.builder
+                .build_store(alloca, val)
+                .map_err(|e| e.to_string())?;
+            self.locals.insert(name.clone(), alloca);
+            self.local_types.insert(name.clone(), ty.clone());
+        }
+
+        // Codegen arm body
+        let arm = arms
+            .get(arm_index)
+            .ok_or_else(|| format!("Invalid arm index {}", arm_index))?;
+        let body_val = self.codegen_expr(&arm.body)?;
+
+        // Store result
+        self.builder
+            .build_store(result_alloca, body_val)
+            .map_err(|e| e.to_string())?;
+
+        // Branch to merge (only if not already terminated by return/panic)
+        if self.builder.get_insert_block().unwrap().get_terminator().is_none() {
+            self.builder
+                .build_unconditional_branch(merge_bb)
+                .map_err(|e| e.to_string())?;
+        }
+
+        Ok(())
+    }
+
+    // ── Switch node ──────────────────────────────────────────────────
+
+    fn codegen_switch(
+        &mut self,
+        scrutinee_path: &AccessPath,
+        cases: &[(crate::pattern::ConstructorTag, DecisionTree)],
+        default: Option<&DecisionTree>,
+        scrutinee_alloca: PointerValue<'ctx>,
+        scrutinee_ty: &MirType,
+        arms: &[MirMatchArm],
+        result_alloca: PointerValue<'ctx>,
+        merge_bb: BasicBlock<'ctx>,
+    ) -> Result<(), String> {
+        let fn_val = self.current_function();
+
+        // Navigate to the value at the access path to get its pointer
+        let switch_ptr = self.navigate_access_path_ptr(scrutinee_alloca, scrutinee_ty, scrutinee_path)?;
+
+        // The type at the path should be a sum type -- load the tag (i8 at offset 0)
+        let path_ty = self.resolve_path_type(scrutinee_ty, scrutinee_path)?;
+        let sum_layout = match &path_ty {
+            MirType::SumType(name) => {
+                self.sum_type_layouts
+                    .get(name)
+                    .ok_or_else(|| format!("Unknown sum type layout '{}'", name))?
+            }
+            _ => return Err(format!("Switch on non-sum type: {:?}", path_ty)),
+        };
+        let sum_layout = *sum_layout;
+
+        let tag_ptr = self
+            .builder
+            .build_struct_gep(sum_layout, switch_ptr, 0, "tag_ptr")
+            .map_err(|e| e.to_string())?;
+        let tag_val = self
+            .builder
+            .build_load(self.context.i8_type(), tag_ptr, "tag")
+            .map_err(|e| e.to_string())?
+            .into_int_value();
+
+        // Create blocks for each case
+        let default_bb = self.context.append_basic_block(fn_val, "switch_default");
+        let case_bbs: Vec<BasicBlock<'ctx>> = cases
+            .iter()
+            .map(|(tag, _)| {
+                self.context
+                    .append_basic_block(fn_val, &format!("case_{}", tag.variant_name))
+            })
+            .collect();
+
+        // Build switch instruction with all cases
+        let switch_cases: Vec<(inkwell::values::IntValue<'ctx>, BasicBlock<'ctx>)> = cases
+            .iter()
+            .enumerate()
+            .map(|(i, (tag, _))| {
+                let case_val = self.context.i8_type().const_int(tag.tag as u64, false);
+                (case_val, case_bbs[i])
+            })
+            .collect();
+
+        self.builder
+            .build_switch(tag_val, default_bb, &switch_cases)
+            .map_err(|e| e.to_string())?;
+
+        // Generate code for each case
+        for (i, (_, subtree)) in cases.iter().enumerate() {
+            self.builder.position_at_end(case_bbs[i]);
+            self.codegen_decision_tree(
+                subtree,
+                scrutinee_alloca,
+                scrutinee_ty,
+                arms,
+                result_alloca,
+                merge_bb,
+            )?;
+        }
+
+        // Generate default case
+        self.builder.position_at_end(default_bb);
+        if let Some(default_tree) = default {
+            self.codegen_decision_tree(
+                default_tree,
+                scrutinee_alloca,
+                scrutinee_ty,
+                arms,
+                result_alloca,
+                merge_bb,
+            )?;
+        } else {
+            // Default: unreachable (exhaustive match guaranteed by type checker)
+            self.codegen_fail(
+                "non-exhaustive match in switch",
+                "<unknown>",
+                0,
+            )?;
+        }
+
+        Ok(())
+    }
+
+    // ── Test node ────────────────────────────────────────────────────
+
+    fn codegen_test(
+        &mut self,
+        scrutinee_path: &AccessPath,
+        value: &MirLiteral,
+        success: &DecisionTree,
+        failure: &DecisionTree,
+        scrutinee_alloca: PointerValue<'ctx>,
+        scrutinee_ty: &MirType,
+        arms: &[MirMatchArm],
+        result_alloca: PointerValue<'ctx>,
+        merge_bb: BasicBlock<'ctx>,
+    ) -> Result<(), String> {
+        let fn_val = self.current_function();
+
+        // Load the value at the access path
+        let test_val = self.navigate_access_path(scrutinee_alloca, scrutinee_ty, scrutinee_path)?;
+
+        // Compare with the literal
+        let cond = match value {
+            MirLiteral::Int(n) => {
+                let lit_val = self.context.i64_type().const_int(*n as u64, true);
+                self.builder
+                    .build_int_compare(IntPredicate::EQ, test_val.into_int_value(), lit_val, "test_eq")
+                    .map_err(|e| e.to_string())?
+            }
+            MirLiteral::Float(f) => {
+                let lit_val = self.context.f64_type().const_float(*f);
+                self.builder
+                    .build_float_compare(
+                        inkwell::FloatPredicate::OEQ,
+                        test_val.into_float_value(),
+                        lit_val,
+                        "test_feq",
+                    )
+                    .map_err(|e| e.to_string())?
+            }
+            MirLiteral::Bool(b) => {
+                let lit_val = self.context.bool_type().const_int(if *b { 1 } else { 0 }, false);
+                self.builder
+                    .build_int_compare(IntPredicate::EQ, test_val.into_int_value(), lit_val, "test_beq")
+                    .map_err(|e| e.to_string())?
+            }
+            MirLiteral::String(_) => {
+                // String comparison: for Phase 5, just compare false (placeholder)
+                // A proper implementation would call a runtime string_eq function
+                self.context.bool_type().const_int(0, false)
+            }
+        };
+
+        let success_bb = self.context.append_basic_block(fn_val, "test_success");
+        let failure_bb = self.context.append_basic_block(fn_val, "test_failure");
+
+        self.builder
+            .build_conditional_branch(cond, success_bb, failure_bb)
+            .map_err(|e| e.to_string())?;
+
+        // Success branch
+        self.builder.position_at_end(success_bb);
+        self.codegen_decision_tree(
+            success,
+            scrutinee_alloca,
+            scrutinee_ty,
+            arms,
+            result_alloca,
+            merge_bb,
+        )?;
+
+        // Failure branch
+        self.builder.position_at_end(failure_bb);
+        self.codegen_decision_tree(
+            failure,
+            scrutinee_alloca,
+            scrutinee_ty,
+            arms,
+            result_alloca,
+            merge_bb,
+        )?;
+
+        Ok(())
+    }
+
+    // ── Guard node ───────────────────────────────────────────────────
+
+    fn codegen_guard(
+        &mut self,
+        guard_expr: &crate::mir::MirExpr,
+        success: &DecisionTree,
+        failure: &DecisionTree,
+        scrutinee_alloca: PointerValue<'ctx>,
+        scrutinee_ty: &MirType,
+        arms: &[MirMatchArm],
+        result_alloca: PointerValue<'ctx>,
+        merge_bb: BasicBlock<'ctx>,
+    ) -> Result<(), String> {
+        let fn_val = self.current_function();
+
+        let guard_val = self.codegen_expr(guard_expr)?.into_int_value();
+
+        let success_bb = self.context.append_basic_block(fn_val, "guard_pass");
+        let failure_bb = self.context.append_basic_block(fn_val, "guard_fail");
+
+        self.builder
+            .build_conditional_branch(guard_val, success_bb, failure_bb)
+            .map_err(|e| e.to_string())?;
+
+        // Guard passed
+        self.builder.position_at_end(success_bb);
+        self.codegen_decision_tree(
+            success,
+            scrutinee_alloca,
+            scrutinee_ty,
+            arms,
+            result_alloca,
+            merge_bb,
+        )?;
+
+        // Guard failed
+        self.builder.position_at_end(failure_bb);
+        self.codegen_decision_tree(
+            failure,
+            scrutinee_alloca,
+            scrutinee_ty,
+            arms,
+            result_alloca,
+            merge_bb,
+        )?;
+
+        Ok(())
+    }
+
+    // ── Fail node ────────────────────────────────────────────────────
+
+    fn codegen_fail(
+        &mut self,
+        message: &str,
+        file: &str,
+        line: u32,
+    ) -> Result<(), String> {
+        // Emit panic call
+        self.codegen_panic(message, file, line)?;
+        // codegen_panic already emits unreachable
+        Ok(())
+    }
+
+    // ── Access path navigation ───────────────────────────────────────
+
+    /// Navigate an access path and return the loaded value.
+    fn navigate_access_path(
+        &mut self,
+        scrutinee_alloca: PointerValue<'ctx>,
+        scrutinee_ty: &MirType,
+        path: &AccessPath,
+    ) -> Result<BasicValueEnum<'ctx>, String> {
+        let ptr = self.navigate_access_path_ptr(scrutinee_alloca, scrutinee_ty, path)?;
+        let path_ty = self.resolve_path_type(scrutinee_ty, path)?;
+        let llvm_ty = self.llvm_type(&path_ty);
+        let val = self
+            .builder
+            .build_load(llvm_ty, ptr, "path_val")
+            .map_err(|e| e.to_string())?;
+        Ok(val)
+    }
+
+    /// Navigate an access path and return a pointer to the value.
+    fn navigate_access_path_ptr(
+        &mut self,
+        scrutinee_alloca: PointerValue<'ctx>,
+        scrutinee_ty: &MirType,
+        path: &AccessPath,
+    ) -> Result<PointerValue<'ctx>, String> {
+        match path {
+            AccessPath::Root => Ok(scrutinee_alloca),
+
+            AccessPath::TupleField(parent, index) => {
+                let parent_ptr =
+                    self.navigate_access_path_ptr(scrutinee_alloca, scrutinee_ty, parent)?;
+                let parent_ty = self.resolve_path_type(scrutinee_ty, parent)?;
+                let llvm_parent_ty = self.llvm_type(&parent_ty);
+
+                // GEP into tuple struct
+                let field_ptr = self
+                    .builder
+                    .build_struct_gep(
+                        llvm_parent_ty.into_struct_type(),
+                        parent_ptr,
+                        *index as u32,
+                        "tuple_field",
+                    )
+                    .map_err(|e| e.to_string())?;
+                Ok(field_ptr)
+            }
+
+            AccessPath::VariantField(parent, variant_name, index) => {
+                let parent_ptr =
+                    self.navigate_access_path_ptr(scrutinee_alloca, scrutinee_ty, parent)?;
+                let parent_ty = self.resolve_path_type(scrutinee_ty, parent)?;
+
+                // Get sum type info
+                let type_name = match &parent_ty {
+                    MirType::SumType(name) => name.clone(),
+                    _ => return Err(format!("VariantField on non-sum type: {:?}", parent_ty)),
+                };
+
+                let sum_def = self
+                    .sum_type_defs
+                    .get(&type_name)
+                    .ok_or_else(|| format!("Unknown sum type '{}'", type_name))?
+                    .clone();
+
+                let variant_def = sum_def
+                    .variants
+                    .iter()
+                    .find(|v| v.name == *variant_name)
+                    .ok_or_else(|| format!("Unknown variant '{}'", variant_name))?;
+
+                // Create variant overlay type { i8 tag, field0, field1, ... }
+                let variant_ty = variant_struct_type(
+                    self.context,
+                    &variant_def.fields,
+                    &self.struct_types,
+                    &self.sum_type_layouts,
+                );
+
+                // GEP into the variant overlay (field 0 is tag, so field N is index+1)
+                let field_ptr = self
+                    .builder
+                    .build_struct_gep(
+                        variant_ty,
+                        parent_ptr,
+                        (*index + 1) as u32,
+                        "variant_field",
+                    )
+                    .map_err(|e| e.to_string())?;
+                Ok(field_ptr)
+            }
+
+            AccessPath::StructField(parent, field_name) => {
+                let parent_ptr =
+                    self.navigate_access_path_ptr(scrutinee_alloca, scrutinee_ty, parent)?;
+                let parent_ty = self.resolve_path_type(scrutinee_ty, parent)?;
+
+                let struct_name = match &parent_ty {
+                    MirType::Struct(name) => name.clone(),
+                    _ => return Err(format!("StructField on non-struct type: {:?}", parent_ty)),
+                };
+
+                let struct_ty = self
+                    .struct_types
+                    .get(&struct_name)
+                    .ok_or_else(|| format!("Unknown struct type '{}'", struct_name))?;
+                let struct_ty = *struct_ty;
+
+                let field_idx = self.find_struct_field_index(&struct_name, field_name)?;
+
+                let field_ptr = self
+                    .builder
+                    .build_struct_gep(struct_ty, parent_ptr, field_idx as u32, "struct_field")
+                    .map_err(|e| e.to_string())?;
+                Ok(field_ptr)
+            }
+        }
+    }
+
+    /// Resolve the MIR type at a given access path.
+    fn resolve_path_type(
+        &self,
+        scrutinee_ty: &MirType,
+        path: &AccessPath,
+    ) -> Result<MirType, String> {
+        match path {
+            AccessPath::Root => Ok(scrutinee_ty.clone()),
+
+            AccessPath::TupleField(parent, index) => {
+                let parent_ty = self.resolve_path_type(scrutinee_ty, parent)?;
+                match parent_ty {
+                    MirType::Tuple(elems) => elems
+                        .get(*index)
+                        .cloned()
+                        .ok_or_else(|| format!("Tuple field {} out of bounds", index)),
+                    _ => Err(format!("TupleField on non-tuple type: {:?}", parent_ty)),
+                }
+            }
+
+            AccessPath::VariantField(parent, variant_name, index) => {
+                let parent_ty = self.resolve_path_type(scrutinee_ty, parent)?;
+                match &parent_ty {
+                    MirType::SumType(type_name) => {
+                        let sum_def = self.sum_type_defs.get(type_name).ok_or_else(|| {
+                            format!("Unknown sum type '{}'", type_name)
+                        })?;
+                        let variant = sum_def
+                            .variants
+                            .iter()
+                            .find(|v| v.name == *variant_name)
+                            .ok_or_else(|| format!("Unknown variant '{}'", variant_name))?;
+                        variant
+                            .fields
+                            .get(*index)
+                            .cloned()
+                            .ok_or_else(|| format!("Variant field {} out of bounds", index))
+                    }
+                    _ => Err(format!("VariantField on non-sum type: {:?}", parent_ty)),
+                }
+            }
+
+            AccessPath::StructField(parent, field_name) => {
+                let parent_ty = self.resolve_path_type(scrutinee_ty, parent)?;
+                match &parent_ty {
+                    MirType::Struct(struct_name) => {
+                        let fields = self.mir_struct_defs.get(struct_name).ok_or_else(|| {
+                            format!("Unknown struct type '{}'", struct_name)
+                        })?;
+                        fields
+                            .iter()
+                            .find(|(n, _)| n == field_name)
+                            .map(|(_, ty)| ty.clone())
+                            .ok_or_else(|| {
+                                format!("Field '{}' not found in struct '{}'", field_name, struct_name)
+                            })
+                    }
+                    _ => Err(format!("StructField on non-struct type: {:?}", parent_ty)),
+                }
+            }
+        }
+    }
+}
