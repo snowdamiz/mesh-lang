@@ -5,33 +5,34 @@
 See: .planning/PROJECT.md (updated 2026-02-05)
 
 **Core value:** Expressive, readable concurrency -- writing concurrent programs should feel as natural as sequential code, with supervision and fault tolerance built in.
-**Current focus:** Phase 1 complete and verified. Ready for Phase 2: Parser & AST.
+**Current focus:** Phase 2 in progress. Parser crate scaffolded; next up is Pratt expression parsing.
 
 ## Current Position
 
-Phase: 1 of 10 (Project Foundation & Lexer) — COMPLETE ✓
-Plan: 3 of 3 in current phase
-Status: Phase verified and complete
-Last activity: 2026-02-06 -- Phase 1 verified (4/4 success criteria passed)
+Phase: 2 of 10 (Parser & AST)
+Plan: 1 of 5 in current phase
+Status: In progress
+Last activity: 2026-02-06 -- Completed 02-01-PLAN.md
 
-Progress: [███░░░░░░░] 10% (3 plans of ~40 estimated total)
+Progress: [████░░░░░░] 10% (4 plans of ~41 estimated total)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 3
-- Average duration: 4min
-- Total execution time: 12min
+- Total plans completed: 4
+- Average duration: 5min
+- Total execution time: 19min
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 01-project-foundation-lexer | 3/3 | 12min | 4min |
+| 02-parser-ast | 1/5 | 7min | 7min |
 
 **Recent Trend:**
-- Last 5 plans: 01-01 (3min), 01-02 (5min), 01-03 (4min)
-- Trend: stable
+- Last 5 plans: 01-01 (3min), 01-02 (5min), 01-03 (4min), 02-01 (7min)
+- Trend: slight increase (parser more complex than lexer scaffolding)
 
 *Updated after each plan completion*
 
@@ -55,6 +56,11 @@ Recent decisions affecting current work:
 - [01-03]: Pending token queue (Vec<Token>) for multi-token emissions
 - [01-03]: All newlines emit as Newline tokens; parser decides significance
 - [01-03]: Bare pipe | produces Error token; struct update syntax needs parser-level handling
+- [02-01]: SyntaxKind uses SCREAMING_SNAKE_CASE with #[allow(non_camel_case_types)] (rowan convention)
+- [02-01]: Comments always trivia in parser (skipped by lookahead, preserved in CST)
+- [02-01]: Forward parent technique for open_before() wrapping (matklad pattern)
+- [02-01]: Parser internals pub(crate); public API deferred to 02-05
+- [02-01]: Lexer does not emit whitespace tokens; WHITESPACE SyntaxKind exists for future use
 
 ### Pending Todos
 
@@ -69,5 +75,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-06
-Stopped at: Completed 01-03-PLAN.md (Phase 1 complete)
+Stopped at: Completed 02-01-PLAN.md
 Resume file: None

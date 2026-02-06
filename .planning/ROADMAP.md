@@ -53,7 +53,7 @@ Plans:
 **Plans**: 5 plans
 
 Plans:
-- [ ] 02-01-PLAN.md -- Parser crate scaffolding, SyntaxKind enum, rowan CST types, event-based Parser struct
+- [x] 02-01-PLAN.md -- Parser crate scaffolding, SyntaxKind enum, rowan CST types, event-based Parser struct
 - [ ] 02-02-PLAN.md -- Pratt expression parser with operator precedence, literals, calls, field access, pipe
 - [ ] 02-03-PLAN.md -- Compound expressions (if/else, case/match, closures, blocks) and let/return statements
 - [ ] 02-04-PLAN.md -- Declarations (fn, module, import, struct), patterns, type annotations, visibility
@@ -207,7 +207,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8 -> 9 -> 10
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Project Foundation & Lexer | 3/3 | Complete | 2026-02-06 |
-| 2. Parser & AST | 0/5 | Not started | - |
+| 2. Parser & AST | 1/5 | In progress | - |
 | 3. Type System | 0/5 | Not started | - |
 | 4. Pattern Matching & ADTs | 0/3 | Not started | - |
 | 5. LLVM Codegen & Native Binaries | 0/5 | Not started | - |
