@@ -10,7 +10,7 @@ SOURCE_FILE@0..29
     DO_KW@5..7 "do"
     NEWLINE@7..8 "\n"
     MATCH_ARM@8..16
-      LITERAL@8..9
+      LITERAL_PAT@8..9
         INT_LITERAL@8..9 "1"
       ARROW@9..11 "->"
       STRING_EXPR@11..16
@@ -19,7 +19,7 @@ SOURCE_FILE@0..29
         STRING_END@15..16 "\""
     NEWLINE@16..17 "\n"
     MATCH_ARM@17..25
-      LITERAL@17..18
+      LITERAL_PAT@17..18
         INT_LITERAL@17..18 "2"
       ARROW@18..20 "->"
       STRING_EXPR@20..25

@@ -322,8 +322,8 @@ pub(crate) fn parse_block_body(p: &mut Parser) {
             _ => {}
         }
 
-        // Parse a statement.
-        parse_stmt(p);
+        // Parse a statement or item.
+        super::parse_item_or_stmt(p);
 
         if p.has_error() {
             break;
@@ -351,59 +351,30 @@ pub(crate) fn parse_block_body(p: &mut Parser) {
     p.close(m, SyntaxKind::BLOCK);
 }
 
-/// Parse a single statement: let binding, return, or expression-statement.
-fn parse_stmt(p: &mut Parser) {
-    match p.current() {
-        SyntaxKind::LET_KW => parse_let_binding(p),
-        SyntaxKind::RETURN_KW => parse_return_expr(p),
-        _ => {
-            expr(p);
-        }
-    }
-}
-
 // ── Let Binding ───────────────────────────────────────────────────────
 
-/// Parse a let binding: `let name [:: Type] = expr`
-fn parse_let_binding(p: &mut Parser) {
+/// Parse a let binding: `let pattern [:: Type] = expr`
+pub(crate) fn parse_let_binding(p: &mut Parser) {
     let m = p.open();
     p.advance(); // LET_KW
 
-    // Parse the pattern (just an identifier for now).
-    if p.at(SyntaxKind::IDENT) {
+    // Parse the pattern: identifier, tuple, wildcard, etc.
+    if p.at(SyntaxKind::L_PAREN) {
+        // Tuple pattern: let (a, b) = expr
+        super::patterns::parse_pattern(p);
+    } else if p.at(SyntaxKind::IDENT) {
         let name = p.open();
         p.advance(); // identifier
         p.close(name, SyntaxKind::NAME);
     } else {
-        p.error("expected identifier after `let`");
+        p.error("expected identifier or pattern after `let`");
     }
 
     // Optional type annotation: `:: Type`
     if p.at(SyntaxKind::COLON_COLON) {
         let ann = p.open();
         p.advance(); // ::
-        // Parse type: IDENT possibly with type params [A, B]
-        if p.at(SyntaxKind::IDENT) {
-            p.advance(); // type name
-            // Optional type parameters: [A, B]
-            if p.at(SyntaxKind::L_BRACKET) {
-                let type_params = p.open();
-                p.advance(); // [
-                if !p.at(SyntaxKind::R_BRACKET) {
-                    p.expect(SyntaxKind::IDENT);
-                    while p.eat(SyntaxKind::COMMA) {
-                        if p.at(SyntaxKind::R_BRACKET) {
-                            break;
-                        }
-                        p.expect(SyntaxKind::IDENT);
-                    }
-                }
-                p.expect(SyntaxKind::R_BRACKET);
-                p.close(type_params, SyntaxKind::TYPE_PARAM_LIST);
-            }
-        } else {
-            p.error("expected type name");
-        }
+        super::items::parse_type(p);
         p.close(ann, SyntaxKind::TYPE_ANNOTATION);
     }
 
@@ -419,7 +390,7 @@ fn parse_let_binding(p: &mut Parser) {
 // ── Return Expression ─────────────────────────────────────────────────
 
 /// Parse a return expression: `return [expr]`
-fn parse_return_expr(p: &mut Parser) {
+pub(crate) fn parse_return_expr(p: &mut Parser) {
     let m = p.open();
     p.advance(); // RETURN_KW
 
@@ -538,8 +509,8 @@ fn parse_case_expr(p: &mut Parser) -> MarkClosed {
 fn parse_match_arm(p: &mut Parser) {
     let m = p.open();
 
-    // Parse pattern (treat as expression for now; Plan 04 adds proper patterns).
-    expr(p);
+    // Parse pattern.
+    super::patterns::parse_pattern(p);
 
     // Optional `when` guard.
     if p.at(SyntaxKind::WHEN_KW) {
@@ -619,11 +590,7 @@ fn parse_param(p: &mut Parser) {
     if p.at(SyntaxKind::COLON_COLON) {
         let ann = p.open();
         p.advance(); // ::
-        if p.at(SyntaxKind::IDENT) {
-            p.advance(); // type name
-        } else {
-            p.error("expected type name");
-        }
+        super::items::parse_type(p);
         p.close(ann, SyntaxKind::TYPE_ANNOTATION);
     }
 

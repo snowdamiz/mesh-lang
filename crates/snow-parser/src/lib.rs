@@ -46,8 +46,12 @@ impl Parse {
 /// This is the main entry point for the parser. It lexes the source,
 /// parses the token stream, and returns a [`Parse`] result containing
 /// the syntax tree and any errors.
-pub fn parse(_source: &str) -> Parse {
-    todo!("parse() will be implemented once the Parser struct is complete")
+pub fn parse(source: &str) -> Parse {
+    let tokens = snow_lexer::Lexer::tokenize(source);
+    let mut p = parser::Parser::new(tokens, source);
+    parser::parse_source_file(&mut p);
+    let (green, errors) = p.build_tree();
+    Parse { green, errors }
 }
 
 /// Parse a single expression from Snow source code.

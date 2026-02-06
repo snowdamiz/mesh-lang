@@ -9,4 +9,4 @@ SOURCE_FILE@0..4
       EQ@3..4 "="
 
 errors:
-  - expected identifier after `let` @4..5
+  - expected identifier or pattern after `let` @4..5

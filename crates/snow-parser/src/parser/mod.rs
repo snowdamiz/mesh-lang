@@ -26,6 +26,8 @@
 //! for all skipped trivia tokens so they appear in the CST.
 
 pub(crate) mod expressions;
+pub(crate) mod items;
+pub(crate) mod patterns;
 
 use snow_common::span::Span;
 use snow_common::token::{Token, TokenKind};
@@ -489,6 +491,105 @@ impl<'src> Parser<'src> {
         }
 
         (builder.finish(), self.errors)
+    }
+}
+
+// ── Top-level parsing ──────────────────────────────────────────────────
+
+/// Parse a complete source file.
+///
+/// Opens a SOURCE_FILE node, parses items and statements until EOF, and
+/// closes the root node.
+pub(crate) fn parse_source_file(p: &mut Parser) {
+    let root = p.open();
+
+    loop {
+        p.eat_newlines();
+        while p.eat(SyntaxKind::SEMICOLON) {
+            p.eat_newlines();
+        }
+
+        if p.at(SyntaxKind::EOF) {
+            break;
+        }
+
+        parse_item_or_stmt(p);
+
+        if p.has_error() {
+            // On error, skip to next newline or EOF.
+            while !p.at(SyntaxKind::NEWLINE) && !p.at(SyntaxKind::EOF) {
+                p.advance();
+            }
+            break;
+        }
+
+        // After a statement, handle separators.
+        match p.current() {
+            SyntaxKind::NEWLINE => {
+                p.eat_newlines();
+            }
+            SyntaxKind::SEMICOLON => {
+                // Will be eaten at top of loop.
+            }
+            SyntaxKind::EOF => break,
+            _ => {}
+        }
+    }
+
+    // Consume remaining tokens (including EOF).
+    while !p.at(SyntaxKind::EOF) {
+        p.advance();
+    }
+    p.advance(); // EOF
+
+    p.close(root, SyntaxKind::SOURCE_FILE);
+}
+
+/// Parse an item or statement.
+///
+/// Dispatches based on the current token to either an item parser (fn, module,
+/// import, struct) or a statement/expression parser.
+pub(crate) fn parse_item_or_stmt(p: &mut Parser) {
+    match p.current() {
+        // pub -> peek ahead for item keyword
+        SyntaxKind::PUB_KW => match p.nth(1) {
+            SyntaxKind::FN_KW | SyntaxKind::DEF_KW => items::parse_fn_def(p),
+            SyntaxKind::MODULE_KW => items::parse_module_def(p),
+            SyntaxKind::STRUCT_KW => items::parse_struct_def(p),
+            _ => {
+                p.error("expected `fn`, `module`, or `struct` after `pub`");
+            }
+        },
+
+        // fn/def: named function definition (fn + IDENT) vs closure (fn + L_PAREN/ARROW)
+        SyntaxKind::FN_KW | SyntaxKind::DEF_KW => {
+            // Disambiguate: if next token is IDENT, it's a named fn def.
+            // Otherwise it's a closure expression.
+            if p.nth(1) == SyntaxKind::IDENT {
+                items::parse_fn_def(p);
+            } else {
+                expressions::expr(p);
+            }
+        }
+
+        SyntaxKind::MODULE_KW => items::parse_module_def(p),
+
+        SyntaxKind::IMPORT_KW => items::parse_import_decl(p),
+
+        // "from" is an IDENT, not a keyword -- check text
+        SyntaxKind::IDENT if p.current_text() == "from" => {
+            items::parse_from_import_decl(p);
+        }
+
+        SyntaxKind::STRUCT_KW => items::parse_struct_def(p),
+
+        SyntaxKind::LET_KW => expressions::parse_let_binding(p),
+
+        SyntaxKind::RETURN_KW => expressions::parse_return_expr(p),
+
+        _ => {
+            expressions::expr(p);
+        }
     }
 }
 
