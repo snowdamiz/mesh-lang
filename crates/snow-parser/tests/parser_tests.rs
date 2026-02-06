@@ -5,7 +5,8 @@
 
 use insta::assert_snapshot;
 use snow_parser::ast::expr::{BinaryExpr, IfExpr, Literal};
-use snow_parser::ast::item::{FnDef, LetBinding, SourceFile, StructDef};
+use snow_parser::ast::item::{FnDef, LetBinding, SourceFile, StructDef, SumTypeDef};
+use snow_parser::ast::pat::{AsPat, ConstructorPat, OrPat, Pattern};
 use snow_parser::{debug_tree, parse, parse_block, parse_expr, AstNode};
 
 fn parse_and_debug(source: &str) -> String {
@@ -1316,4 +1317,182 @@ fn pattern_or_with_constructors() {
 #[test]
 fn lossless_sum_type() {
     assert_lossless_roundtrip("type Shape do\n  Circle(Float)\n  Point\nend");
+}
+
+// ── AST Accessor Tests (Phase 04-01) ─────────────────────────────────
+
+#[test]
+fn ast_sum_type_def_accessors() {
+    let p = parse("type Shape do\n  Circle(Float)\n  Rectangle(width :: Float, height :: Float)\n  Point\nend");
+    assert!(p.ok(), "parse errors: {:?}", p.errors());
+    let tree = p.tree();
+
+    let sum_type: SumTypeDef = tree
+        .syntax()
+        .children()
+        .find_map(SumTypeDef::cast)
+        .expect("should have sum type def");
+
+    // Name
+    assert_eq!(sum_type.name().unwrap().text().unwrap(), "Shape");
+
+    // No visibility
+    assert!(sum_type.visibility().is_none());
+
+    // Variants
+    let variants: Vec<_> = sum_type.variants().collect();
+    assert_eq!(variants.len(), 3);
+
+    // First variant: Circle(Float) - positional
+    assert_eq!(variants[0].name().unwrap().text(), "Circle");
+    let pos_types: Vec<_> = variants[0].positional_types().collect();
+    assert_eq!(pos_types.len(), 1);
+    assert_eq!(pos_types[0].type_name().unwrap().text(), "Float");
+
+    // Second variant: Rectangle(width :: Float, height :: Float) - named fields
+    assert_eq!(variants[1].name().unwrap().text(), "Rectangle");
+    let fields: Vec<_> = variants[1].fields().collect();
+    assert_eq!(fields.len(), 2);
+    assert_eq!(fields[0].name().unwrap().text().unwrap(), "width");
+    assert_eq!(fields[0].type_annotation().unwrap().type_name().unwrap().text(), "Float");
+    assert_eq!(fields[1].name().unwrap().text().unwrap(), "height");
+
+    // Third variant: Point - nullary
+    assert_eq!(variants[2].name().unwrap().text(), "Point");
+    assert_eq!(variants[2].fields().count(), 0);
+    assert_eq!(variants[2].positional_types().count(), 0);
+}
+
+#[test]
+fn ast_constructor_pat_qualified() {
+    let p = parse_expr("case x do\n  Shape.Circle(r) -> r\n  _ -> 0\nend");
+    assert!(p.ok(), "parse errors: {:?}", p.errors());
+    let root = p.syntax();
+
+    // Find the CONSTRUCTOR_PAT via tree traversal
+    fn find_constructor_pat(node: &snow_parser::SyntaxNode) -> Option<ConstructorPat> {
+        if let Some(pat) = ConstructorPat::cast(node.clone()) {
+            return Some(pat);
+        }
+        for child in node.children() {
+            if let Some(pat) = find_constructor_pat(&child) {
+                return Some(pat);
+            }
+        }
+        None
+    }
+
+    let ctor = find_constructor_pat(&root).expect("should have constructor pattern");
+
+    assert!(ctor.is_qualified());
+    assert_eq!(ctor.type_name().unwrap().text(), "Shape");
+    assert_eq!(ctor.variant_name().unwrap().text(), "Circle");
+
+    let fields: Vec<_> = ctor.fields().collect();
+    assert_eq!(fields.len(), 1);
+    match &fields[0] {
+        Pattern::Ident(ident) => assert_eq!(ident.name().unwrap().text(), "r"),
+        other => panic!("expected ident pattern, got {:?}", other),
+    }
+}
+
+#[test]
+fn ast_constructor_pat_unqualified() {
+    let p = parse_expr("case x do\n  Some(v) -> v\n  _ -> 0\nend");
+    assert!(p.ok(), "parse errors: {:?}", p.errors());
+    let root = p.syntax();
+
+    fn find_constructor_pat(node: &snow_parser::SyntaxNode) -> Option<ConstructorPat> {
+        if let Some(pat) = ConstructorPat::cast(node.clone()) {
+            return Some(pat);
+        }
+        for child in node.children() {
+            if let Some(pat) = find_constructor_pat(&child) {
+                return Some(pat);
+            }
+        }
+        None
+    }
+
+    let ctor = find_constructor_pat(&root).expect("should have constructor pattern");
+
+    assert!(!ctor.is_qualified());
+    assert!(ctor.type_name().is_none());
+    assert_eq!(ctor.variant_name().unwrap().text(), "Some");
+
+    let fields: Vec<_> = ctor.fields().collect();
+    assert_eq!(fields.len(), 1);
+}
+
+#[test]
+fn ast_or_pat_accessors() {
+    let p = parse_expr("case x do\n  1 | 2 | 3 -> true\n  _ -> false\nend");
+    assert!(p.ok(), "parse errors: {:?}", p.errors());
+    let root = p.syntax();
+
+    fn find_or_pat(node: &snow_parser::SyntaxNode) -> Option<OrPat> {
+        if let Some(pat) = OrPat::cast(node.clone()) {
+            return Some(pat);
+        }
+        for child in node.children() {
+            if let Some(pat) = find_or_pat(&child) {
+                return Some(pat);
+            }
+        }
+        None
+    }
+
+    let or_pat = find_or_pat(&root).expect("should have or-pattern");
+    let alts: Vec<_> = or_pat.alternatives().collect();
+    assert_eq!(alts.len(), 3, "should have 3 alternatives");
+}
+
+#[test]
+fn ast_as_pat_accessors() {
+    let p = parse_expr("case x do\n  Circle(r) as c -> c\n  _ -> x\nend");
+    assert!(p.ok(), "parse errors: {:?}", p.errors());
+    let root = p.syntax();
+
+    fn find_as_pat(node: &snow_parser::SyntaxNode) -> Option<AsPat> {
+        if let Some(pat) = AsPat::cast(node.clone()) {
+            return Some(pat);
+        }
+        for child in node.children() {
+            if let Some(pat) = find_as_pat(&child) {
+                return Some(pat);
+            }
+        }
+        None
+    }
+
+    let as_pat = find_as_pat(&root).expect("should have as-pattern");
+
+    // Inner pattern
+    let inner = as_pat.pattern().expect("should have inner pattern");
+    match inner {
+        Pattern::Constructor(_) => {} // expected
+        other => panic!("expected constructor pattern, got {:?}", other),
+    }
+
+    // Binding name
+    assert_eq!(as_pat.binding_name().unwrap().text(), "c");
+}
+
+#[test]
+fn ast_sum_type_in_items() {
+    let source = "type Shape do\n  Circle(Float)\n  Point\nend\n\nfn foo() do\n  1\nend";
+    let p = parse(source);
+    assert!(p.ok(), "parse errors: {:?}", p.errors());
+    let tree = p.tree();
+
+    let items: Vec<_> = tree.items().collect();
+    assert_eq!(items.len(), 2);
+    match &items[0] {
+        snow_parser::ast::item::Item::SumTypeDef(_) => {} // expected
+        other => panic!("expected SumTypeDef, got {:?}", other),
+    }
+    match &items[1] {
+        snow_parser::ast::item::Item::FnDef(_) => {} // expected
+        other => panic!("expected FnDef, got {:?}", other),
+    }
 }

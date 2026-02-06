@@ -278,6 +278,8 @@ fn infer_item(
         }
         // Declarations that don't produce a value type:
         Item::ModuleDef(_) | Item::ImportDecl(_) | Item::FromImportDecl(_) => None,
+        // Sum type defs will be fully implemented in Phase 04. For now, skip.
+        Item::SumTypeDef(_) => None,
     }
 }
 
@@ -1666,6 +1668,13 @@ fn infer_pattern(
                 elem_types.push(ty);
             }
             let ty = Ty::Tuple(elem_types);
+            types.insert(pat.syntax().text_range(), ty.clone());
+            Ok(ty)
+        }
+        // Constructor, or, and as patterns will be fully implemented in Phase 04.
+        // For now, infer a fresh type variable so existing code compiles.
+        Pattern::Constructor(_) | Pattern::Or(_) | Pattern::As(_) => {
+            let ty = ctx.fresh_var();
             types.insert(pat.syntax().text_range(), ty.clone());
             Ok(ty)
         }

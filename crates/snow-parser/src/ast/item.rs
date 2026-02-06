@@ -2,7 +2,7 @@
 //!
 //! Covers: SourceFile, FnDef, ParamList, Param, TypeAnnotation, ModuleDef,
 //! ImportDecl, FromImportDecl, ImportList, StructDef, StructField, LetBinding,
-//! Visibility, Block, Name, NameRef, Path.
+//! Visibility, Block, Name, NameRef, Path, SumTypeDef, VariantDef, VariantField.
 
 use crate::ast::{ast_node, child_node, child_nodes, child_token, AstNode};
 use crate::cst::{SyntaxNode, SyntaxToken};
@@ -43,6 +43,7 @@ pub enum Item {
     InterfaceDef(InterfaceDef),
     ImplDef(ImplDef),
     TypeAliasDef(TypeAliasDef),
+    SumTypeDef(SumTypeDef),
 }
 
 impl Item {
@@ -62,6 +63,9 @@ impl Item {
             SyntaxKind::IMPL_DEF => Some(Item::ImplDef(ImplDef { syntax: node })),
             SyntaxKind::TYPE_ALIAS_DEF => {
                 Some(Item::TypeAliasDef(TypeAliasDef { syntax: node }))
+            }
+            SyntaxKind::SUM_TYPE_DEF => {
+                Some(Item::SumTypeDef(SumTypeDef { syntax: node }))
             }
             _ => None,
         }
@@ -397,6 +401,68 @@ ast_node!(TypeAliasDef, TYPE_ALIAS_DEF);
 impl TypeAliasDef {
     /// The alias name.
     pub fn name(&self) -> Option<Name> {
+        child_node(&self.syntax)
+    }
+}
+
+// ── Sum Type Definition ──────────────────────────────────────────────────
+
+ast_node!(SumTypeDef, SUM_TYPE_DEF);
+
+impl SumTypeDef {
+    /// The visibility modifier, if present.
+    pub fn visibility(&self) -> Option<Visibility> {
+        child_node(&self.syntax)
+    }
+
+    /// The sum type name.
+    pub fn name(&self) -> Option<Name> {
+        child_node(&self.syntax)
+    }
+
+    /// The variant definitions in the sum type.
+    pub fn variants(&self) -> impl Iterator<Item = VariantDef> + '_ {
+        child_nodes(&self.syntax)
+    }
+}
+
+// ── Variant Definition ──────────────────────────────────────────────────
+
+ast_node!(VariantDef, VARIANT_DEF);
+
+impl VariantDef {
+    /// The variant name IDENT token.
+    pub fn name(&self) -> Option<SyntaxToken> {
+        child_token(&self.syntax, SyntaxKind::IDENT)
+    }
+
+    /// Named fields (VARIANT_FIELD children) in the variant.
+    ///
+    /// For `Rectangle(width :: Float, height :: Float)`, this yields the named fields.
+    pub fn fields(&self) -> impl Iterator<Item = VariantField> + '_ {
+        child_nodes(&self.syntax)
+    }
+
+    /// Positional type annotations (TYPE_ANNOTATION children) in the variant.
+    ///
+    /// For `Circle(Float)` or `Pair(Int, Int)`, this yields the positional types.
+    pub fn positional_types(&self) -> impl Iterator<Item = TypeAnnotation> + '_ {
+        child_nodes(&self.syntax)
+    }
+}
+
+// ── Variant Field ───────────────────────────────────────────────────────
+
+ast_node!(VariantField, VARIANT_FIELD);
+
+impl VariantField {
+    /// The field name.
+    pub fn name(&self) -> Option<Name> {
+        child_node(&self.syntax)
+    }
+
+    /// The field type annotation.
+    pub fn type_annotation(&self) -> Option<TypeAnnotation> {
         child_node(&self.syntax)
     }
 }

@@ -1,6 +1,6 @@
 //! Typed AST nodes for patterns.
 //!
-//! Covers: WildcardPat, IdentPat, LiteralPat, TuplePat.
+//! Covers: WildcardPat, IdentPat, LiteralPat, TuplePat, ConstructorPat, OrPat, AsPat.
 
 use crate::ast::{ast_node, child_token, AstNode};
 use crate::cst::{SyntaxNode, SyntaxToken};
@@ -15,6 +15,9 @@ pub enum Pattern {
     Ident(IdentPat),
     Literal(LiteralPat),
     Tuple(TuplePat),
+    Constructor(ConstructorPat),
+    Or(OrPat),
+    As(AsPat),
 }
 
 impl Pattern {
@@ -24,6 +27,11 @@ impl Pattern {
             SyntaxKind::IDENT_PAT => Some(Pattern::Ident(IdentPat { syntax: node })),
             SyntaxKind::LITERAL_PAT => Some(Pattern::Literal(LiteralPat { syntax: node })),
             SyntaxKind::TUPLE_PAT => Some(Pattern::Tuple(TuplePat { syntax: node })),
+            SyntaxKind::CONSTRUCTOR_PAT => {
+                Some(Pattern::Constructor(ConstructorPat { syntax: node }))
+            }
+            SyntaxKind::OR_PAT => Some(Pattern::Or(OrPat { syntax: node })),
+            SyntaxKind::AS_PAT => Some(Pattern::As(AsPat { syntax: node })),
             _ => None,
         }
     }
@@ -35,6 +43,9 @@ impl Pattern {
             Pattern::Ident(n) => &n.syntax,
             Pattern::Literal(n) => &n.syntax,
             Pattern::Tuple(n) => &n.syntax,
+            Pattern::Constructor(n) => &n.syntax,
+            Pattern::Or(n) => &n.syntax,
+            Pattern::As(n) => &n.syntax,
         }
     }
 }
@@ -86,5 +97,108 @@ impl TuplePat {
     /// The sub-patterns in the tuple.
     pub fn patterns(&self) -> impl Iterator<Item = Pattern> + '_ {
         self.syntax.children().filter_map(Pattern::cast)
+    }
+}
+
+// ── Constructor Pattern ──────────────────────────────────────────────────
+
+ast_node!(ConstructorPat, CONSTRUCTOR_PAT);
+
+impl ConstructorPat {
+    /// Whether this is a qualified constructor (e.g., `Shape.Circle` vs `Some`).
+    ///
+    /// Qualified constructors have a DOT token between type name and variant name.
+    pub fn is_qualified(&self) -> bool {
+        self.syntax
+            .children_with_tokens()
+            .filter_map(|it| it.into_token())
+            .any(|t| t.kind() == SyntaxKind::DOT)
+    }
+
+    /// The type qualifier name (e.g., "Shape" in `Shape.Circle`).
+    ///
+    /// Returns `None` for unqualified constructors like `Some(x)`.
+    pub fn type_name(&self) -> Option<SyntaxToken> {
+        if self.is_qualified() {
+            // First IDENT is the type name
+            self.syntax
+                .children_with_tokens()
+                .filter_map(|it| it.into_token())
+                .find(|t| t.kind() == SyntaxKind::IDENT)
+        } else {
+            None
+        }
+    }
+
+    /// The variant name (e.g., "Circle" in `Shape.Circle` or `Circle` in `Circle(r)`).
+    ///
+    /// For qualified constructors, this is the IDENT after the DOT.
+    /// For unqualified constructors, this is the first (and only) IDENT.
+    pub fn variant_name(&self) -> Option<SyntaxToken> {
+        let idents: Vec<_> = self
+            .syntax
+            .children_with_tokens()
+            .filter_map(|it| it.into_token())
+            .filter(|t| t.kind() == SyntaxKind::IDENT)
+            .collect();
+
+        if self.is_qualified() {
+            // Second IDENT is the variant name
+            idents.into_iter().nth(1)
+        } else {
+            // First IDENT is the variant name
+            idents.into_iter().next()
+        }
+    }
+
+    /// The sub-patterns inside the constructor's parentheses.
+    ///
+    /// For `Circle(r)` this yields the `r` pattern.
+    /// For nullary constructors like `Shape.Point`, this is empty.
+    pub fn fields(&self) -> impl Iterator<Item = Pattern> + '_ {
+        self.syntax.children().filter_map(Pattern::cast)
+    }
+}
+
+// ── Or Pattern ──────────────────────────────────────────────────────────
+
+ast_node!(OrPat, OR_PAT);
+
+impl OrPat {
+    /// The alternative patterns in this or-pattern.
+    ///
+    /// For `Circle(_) | Point` this yields both `Circle(_)` and `Point`.
+    pub fn alternatives(&self) -> impl Iterator<Item = Pattern> + '_ {
+        self.syntax.children().filter_map(Pattern::cast)
+    }
+}
+
+// ── As Pattern ──────────────────────────────────────────────────────────
+
+ast_node!(AsPat, AS_PAT);
+
+impl AsPat {
+    /// The inner pattern (before `as`).
+    ///
+    /// For `Circle(r) as c`, this is `Circle(r)`.
+    pub fn pattern(&self) -> Option<Pattern> {
+        self.syntax.children().find_map(Pattern::cast)
+    }
+
+    /// The binding name after `as`.
+    ///
+    /// For `Circle(r) as c`, this returns the token "c".
+    /// The binding is stored as an IDENT_PAT child; we get its IDENT token.
+    pub fn binding_name(&self) -> Option<SyntaxToken> {
+        // The binding is the last IDENT_PAT child (after the inner pattern)
+        let binding_pat = self
+            .syntax
+            .children()
+            .filter_map(Pattern::cast)
+            .last()?;
+        match binding_pat {
+            Pattern::Ident(ident_pat) => ident_pat.name(),
+            _ => None,
+        }
     }
 }
