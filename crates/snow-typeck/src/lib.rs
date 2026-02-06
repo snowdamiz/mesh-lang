@@ -39,6 +39,9 @@ pub struct TypeckResult {
     pub types: FxHashMap<TextRange, Ty>,
     /// Type errors found during checking.
     pub errors: Vec<TypeError>,
+    /// The inferred type of the last expression/item in the program.
+    /// `None` if the program has no items or only produces errors.
+    pub result_type: Option<Ty>,
 }
 
 /// Type-check a parsed Snow program.
@@ -53,5 +56,6 @@ pub fn check(_parse: &snow_parser::Parse) -> TypeckResult {
     TypeckResult {
         types: FxHashMap::default(),
         errors: Vec::new(),
+        result_type: None,
     }
 }
