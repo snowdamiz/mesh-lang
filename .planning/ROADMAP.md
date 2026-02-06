@@ -34,11 +34,12 @@ Decimal phases appear between their surrounding integers in numeric order.
   2. The lexer tokenizes a Snow source file containing all token types (keywords, operators, literals, identifiers, comments, string interpolation markers) and produces a correct token stream verified by snapshot tests
   3. Every token carries accurate source span information (line, column, byte offset) enabling error messages to point at the right location
   4. The test suite runs via `cargo test` with snapshot tests (insta) covering at least the full token vocabulary and error recovery cases
-**Plans**: TBD
+**Plans**: 3 plans
 
 Plans:
-- [ ] 01-01: Rust workspace, LLVM 18 build, CI, test infrastructure
-- [ ] 01-02: Hand-written lexer with span tracking and error recovery
+- [ ] 01-01-PLAN.md -- Rust workspace, shared types (TokenKind, Span, LexError), and test infrastructure
+- [ ] 01-02-PLAN.md -- Core lexer with Cursor, keywords, operators, numbers, identifiers, simple strings
+- [ ] 01-03-PLAN.md -- String interpolation, block comments, newlines, error recovery, full test suite
 
 ### Phase 2: Parser & AST
 **Goal**: A recursive descent parser that transforms token streams into a complete AST representing all Snow language constructs, with human-readable parse error messages
@@ -204,7 +205,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8 -> 9 -> 10
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Project Foundation & Lexer | 0/2 | Not started | - |
+| 1. Project Foundation & Lexer | 0/3 | Not started | - |
 | 2. Parser & AST | 0/4 | Not started | - |
 | 3. Type System | 0/5 | Not started | - |
 | 4. Pattern Matching & ADTs | 0/3 | Not started | - |
