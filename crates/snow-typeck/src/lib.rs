@@ -17,10 +17,12 @@
 //! - [`env`]: Type environment with scope stack
 //! - [`builtins`]: Built-in type and operator registration
 //! - [`error`]: Type error types with provenance tracking
+//! - [`infer`]: Algorithm J inference engine
 
 pub mod builtins;
 pub mod env;
 pub mod error;
+pub mod infer;
 pub mod ty;
 pub mod unify;
 
@@ -49,13 +51,6 @@ pub struct TypeckResult {
 /// This is the main entry point for the type checker. It walks the AST,
 /// infers types for all expressions, checks type annotations, and reports
 /// errors.
-///
-/// Note: The actual inference logic will be implemented in plan 03-02.
-/// This is currently a placeholder that returns an empty result.
-pub fn check(_parse: &snow_parser::Parse) -> TypeckResult {
-    TypeckResult {
-        types: FxHashMap::default(),
-        errors: Vec::new(),
-        result_type: None,
-    }
+pub fn check(parse: &snow_parser::Parse) -> TypeckResult {
+    infer::infer(parse)
 }
