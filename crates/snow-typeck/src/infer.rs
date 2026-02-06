@@ -101,6 +101,10 @@ struct FnConstraints {
     where_constraints: Vec<(String, String)>,
     /// Type parameter names mapped to their inference type variables.
     type_params: FxHashMap<String, Ty>,
+    /// For each function parameter (by index), the type parameter name it
+    /// was annotated with (if any). Used to resolve type params from call-site
+    /// argument types after instantiation + unification.
+    param_type_param_names: Vec<Option<String>>,
 }
 
 /// Infer types for a parsed Snow program.
@@ -714,16 +718,6 @@ fn infer_fn_def(
     // Extract where-clause constraints.
     let where_constraints = extract_where_constraints(fn_);
 
-    if !where_constraints.is_empty() || !type_params.is_empty() {
-        fn_constraints.insert(
-            fn_name.clone(),
-            FnConstraints {
-                where_constraints: where_constraints.clone(),
-                type_params: type_params.clone(),
-            },
-        );
-    }
-
     env.push_scope();
 
     // Insert type params into the scope.
@@ -732,21 +726,22 @@ fn infer_fn_def(
     }
 
     let mut param_types = Vec::new();
+    let mut param_type_param_names: Vec<Option<String>> = Vec::new();
 
     if let Some(param_list) = fn_.param_list() {
         for param in param_list.params() {
-            let param_ty = if let Some(ann) = param.type_annotation() {
+            let (param_ty, tp_name) = if let Some(ann) = param.type_annotation() {
                 if let Some(type_name) = resolve_type_name_str(&ann) {
                     if let Some(tp_ty) = type_params.get(&type_name) {
-                        tp_ty.clone()
+                        (tp_ty.clone(), Some(type_name))
                     } else {
-                        name_to_type(&type_name)
+                        (name_to_type(&type_name), None)
                     }
                 } else {
-                    ctx.fresh_var()
+                    (ctx.fresh_var(), None)
                 }
             } else {
-                ctx.fresh_var()
+                (ctx.fresh_var(), None)
             };
 
             if let Some(name_tok) = param.name() {
@@ -754,7 +749,19 @@ fn infer_fn_def(
                 env.insert(name_text, Scheme::mono(param_ty.clone()));
             }
             param_types.push(param_ty);
+            param_type_param_names.push(tp_name);
         }
+    }
+
+    if !where_constraints.is_empty() || !type_params.is_empty() {
+        fn_constraints.insert(
+            fn_name.clone(),
+            FnConstraints {
+                where_constraints: where_constraints.clone(),
+                type_params: type_params.clone(),
+                param_type_param_names,
+            },
+        );
     }
 
     // Parse return type annotation.
@@ -1111,14 +1118,31 @@ fn infer_call(
     ctx.unify(callee_ty, expected_fn_ty, origin.clone())?;
 
     // Check where-clause constraints at the call site.
+    // After unification, arg_types hold the resolved concrete types for each
+    // parameter. Use param_type_param_names to map from arg position back to
+    // type parameter name, then check trait constraints on the resolved types.
     if let Expr::NameRef(name_ref) = &callee_expr {
         if let Some(fn_name) = name_ref.text() {
             if let Some(constraints) = fn_constraints.get(&fn_name) {
                 if !constraints.where_constraints.is_empty() {
                     let mut resolved_type_args: FxHashMap<String, Ty> = FxHashMap::default();
+
+                    // Build type param -> resolved type mapping from call-site args.
+                    for (i, tp_name_opt) in constraints.param_type_param_names.iter().enumerate() {
+                        if let Some(tp_name) = tp_name_opt {
+                            if i < arg_types.len() {
+                                let resolved = ctx.resolve(arg_types[i].clone());
+                                resolved_type_args.insert(tp_name.clone(), resolved);
+                            }
+                        }
+                    }
+
+                    // Fallback: also try definition-time vars (may work for non-generic cases).
                     for (param_name, param_ty) in &constraints.type_params {
-                        let resolved = ctx.resolve(param_ty.clone());
-                        resolved_type_args.insert(param_name.clone(), resolved);
+                        if !resolved_type_args.contains_key(param_name) {
+                            let resolved = ctx.resolve(param_ty.clone());
+                            resolved_type_args.insert(param_name.clone(), resolved);
+                        }
                     }
 
                     let errors = trait_registry.check_where_constraints(

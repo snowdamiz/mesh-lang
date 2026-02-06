@@ -1,0 +1,12 @@
+---
+source: crates/snow-typeck/tests/diagnostics.rs
+expression: output
+---
+[E0001] Error: expected Int, found (Int) -> ?6
+   ╭─[ <unknown>:1:9 ]
+   │
+ 1 │ ╭─▶ let x = 42
+ 2 │ ├─▶ x(1)
+   │ │         
+   │ ╰───────── expected Int, found (Int) -> ?6
+───╯
