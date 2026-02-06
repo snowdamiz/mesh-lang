@@ -6,6 +6,7 @@
 //! suggestions when plausible.
 
 use snow_typeck::diagnostics::render_diagnostic;
+use snow_typeck::error::TypeError;
 use snow_typeck::TypeckResult;
 
 // ── Helpers ────────────────────────────────────────────────────────────
@@ -139,4 +140,100 @@ fn test_error_codes_present() {
         "expected E0004 in unbound var diagnostic: {}",
         output2
     );
+}
+
+// ── Phase 4 Diagnostic Tests ────────────────────────────────────────
+
+/// Non-exhaustive match renders with missing patterns and E0012 code.
+#[test]
+fn test_diag_non_exhaustive_match() {
+    let src = "case x do Some(v) -> v end";
+    let err = TypeError::NonExhaustiveMatch {
+        scrutinee_type: "Option<Int>".to_string(),
+        missing_patterns: vec!["None".to_string()],
+        span: rowan::TextRange::new(0.into(), 26.into()),
+    };
+    let output = render_diagnostic(&err, src, "test.snow");
+    insta::assert_snapshot!(output);
+}
+
+/// Non-exhaustive match with multiple missing variants.
+#[test]
+fn test_diag_non_exhaustive_match_multiple() {
+    let src = "case s do Circle(r) -> r end";
+    let err = TypeError::NonExhaustiveMatch {
+        scrutinee_type: "Shape".to_string(),
+        missing_patterns: vec!["Rect".to_string(), "Point".to_string()],
+        span: rowan::TextRange::new(0.into(), 28.into()),
+    };
+    let output = render_diagnostic(&err, src, "test.snow");
+    assert!(output.contains("E0012"), "expected E0012 code: {}", output);
+    assert!(output.contains("Rect"), "expected Rect in missing: {}", output);
+    assert!(output.contains("Point"), "expected Point in missing: {}", output);
+    assert!(output.contains("non-exhaustive"), "expected non-exhaustive message: {}", output);
+}
+
+/// Redundant arm renders as warning (not error) with W0001 code.
+#[test]
+fn test_diag_redundant_arm() {
+    let src = "case x do _ -> 1\n  _ -> 2 end";
+    let err = TypeError::RedundantArm {
+        arm_index: 1,
+        span: rowan::TextRange::new(18.into(), 24.into()),
+    };
+    let output = render_diagnostic(&err, src, "test.snow");
+    insta::assert_snapshot!(output);
+}
+
+/// Redundant arm diagnostic uses Warning report kind, not Error.
+#[test]
+fn test_diag_redundant_arm_is_warning() {
+    let src = "case x do _ -> 1\n  true -> 2 end";
+    let err = TypeError::RedundantArm {
+        arm_index: 1,
+        span: rowan::TextRange::new(18.into(), 27.into()),
+    };
+    let output = render_diagnostic(&err, src, "test.snow");
+    assert!(output.contains("Warning"), "expected Warning kind: {}", output);
+    assert!(output.contains("W0001"), "expected W0001 code: {}", output);
+    assert!(output.contains("unreachable"), "expected 'unreachable' label: {}", output);
+}
+
+/// Invalid guard expression renders with E0013 code.
+#[test]
+fn test_diag_invalid_guard_expression() {
+    let src = "case x do n when f(n) -> n end";
+    let err = TypeError::InvalidGuardExpression {
+        reason: "function calls not allowed in guards".to_string(),
+        span: rowan::TextRange::new(16.into(), 20.into()),
+    };
+    let output = render_diagnostic(&err, src, "test.snow");
+    insta::assert_snapshot!(output);
+}
+
+/// Unknown variant diagnostic renders with E0010 code.
+#[test]
+fn test_diag_unknown_variant() {
+    let src = "type Shape do Circle(Float) end\ncase s do Triangle(a) -> a end";
+    let err = TypeError::UnknownVariant {
+        name: "Triangle".to_string(),
+        span: rowan::TextRange::new(42.into(), 54.into()),
+    };
+    let output = render_diagnostic(&err, src, "test.snow");
+    assert!(output.contains("E0010"), "expected E0010 code: {}", output);
+    assert!(output.contains("Triangle"), "expected 'Triangle' in output: {}", output);
+}
+
+/// Or-pattern binding mismatch diagnostic renders with E0011 code.
+#[test]
+fn test_diag_or_pattern_binding_mismatch() {
+    let src = "case x do a | (b, c) -> a end";
+    let err = TypeError::OrPatternBindingMismatch {
+        expected_bindings: vec!["a".to_string()],
+        found_bindings: vec!["b".to_string(), "c".to_string()],
+        span: rowan::TextRange::new(10.into(), 20.into()),
+    };
+    let output = render_diagnostic(&err, src, "test.snow");
+    assert!(output.contains("E0011"), "expected E0011 code: {}", output);
+    assert!(output.contains("bind"), "expected binding-related message: {}", output);
 }

@@ -27,6 +27,10 @@ use snow_parser::Parse;
 use crate::builtins;
 use crate::env::TypeEnv;
 use crate::error::{ConstraintOrigin, TypeError};
+use crate::exhaustiveness::{
+    self, Pat as AbsPat, LitKind as AbsLitKind, TypeInfo as AbsTypeInfo,
+    TypeRegistry as AbsTypeRegistry, ConstructorSig,
+};
 use crate::traits::{
     ImplDef as TraitImplDef, ImplMethodSig, TraitDef, TraitMethodSig, TraitRegistry,
 };
@@ -194,6 +198,7 @@ pub fn infer(parse: &Parse) -> TypeckResult {
     let mut types = FxHashMap::default();
     let mut result_type = None;
     let mut fn_constraints: FxHashMap<String, FnConstraints> = FxHashMap::default();
+    let mut warnings: Vec<TypeError> = Vec::new();
 
     let tree = parse.tree();
 
@@ -245,9 +250,14 @@ pub fn infer(parse: &Parse) -> TypeckResult {
     // Resolve the result type as well.
     let resolved_result = result_type.map(|ty| ctx.resolve(ty));
 
+    // Merge any standalone warnings collected during inference.
+    let mut all_warnings = ctx.warnings;
+    all_warnings.extend(warnings);
+
     TypeckResult {
         types: resolved_types,
         errors: ctx.errors,
+        warnings: all_warnings,
         result_type: resolved_result,
     }
 }

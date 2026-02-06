@@ -128,6 +128,22 @@ pub enum TypeError {
         found_bindings: Vec<String>,
         span: TextRange,
     },
+    /// A match/case expression is not exhaustive.
+    NonExhaustiveMatch {
+        scrutinee_type: String,
+        missing_patterns: Vec<String>,
+        span: TextRange,
+    },
+    /// A match arm is redundant (unreachable given prior arms).
+    RedundantArm {
+        arm_index: usize,
+        span: TextRange,
+    },
+    /// A guard expression uses disallowed constructs.
+    InvalidGuardExpression {
+        reason: String,
+        span: TextRange,
+    },
 }
 
 impl fmt::Display for TypeError {
@@ -233,6 +249,24 @@ impl fmt::Display for TypeError {
                     expected_bindings.join(", "),
                     found_bindings.join(", ")
                 )
+            }
+            TypeError::NonExhaustiveMatch {
+                scrutinee_type,
+                missing_patterns,
+                ..
+            } => {
+                write!(
+                    f,
+                    "non-exhaustive match on `{}`: missing patterns [{}]",
+                    scrutinee_type,
+                    missing_patterns.join(", ")
+                )
+            }
+            TypeError::RedundantArm { arm_index, .. } => {
+                write!(f, "redundant match arm at index {}", arm_index)
+            }
+            TypeError::InvalidGuardExpression { reason, .. } => {
+                write!(f, "invalid guard expression: {}", reason)
             }
         }
     }

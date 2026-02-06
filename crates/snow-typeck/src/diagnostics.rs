@@ -28,6 +28,9 @@ fn error_code(err: &TypeError) -> &'static str {
         TypeError::MissingField { .. } | TypeError::UnknownField { .. } | TypeError::NoSuchField { .. } => "E0009",
         TypeError::UnknownVariant { .. } => "E0010",
         TypeError::OrPatternBindingMismatch { .. } => "E0011",
+        TypeError::NonExhaustiveMatch { .. } => "E0012",
+        TypeError::RedundantArm { .. } => "W0001",
+        TypeError::InvalidGuardExpression { .. } => "E0013",
     }
 }
 
@@ -450,6 +453,64 @@ pub fn render_diagnostic(error: &TypeError, source: &str, _filename: &str) -> St
                         .with_color(Color::Red),
                 )
                 .with_help("all alternatives in an or-pattern must bind the same set of variable names")
+                .finish()
+        }
+
+        TypeError::NonExhaustiveMatch {
+            scrutinee_type,
+            missing_patterns,
+            span,
+        } => {
+            let msg = format!(
+                "non-exhaustive match on `{}`",
+                scrutinee_type
+            );
+            let range = clamp(text_range_to_range(*span));
+
+            Report::build(ReportKind::Error, range.clone())
+                .with_code(code)
+                .with_message(&msg)
+                .with_config(config)
+                .with_label(
+                    Label::new(range)
+                        .with_message(format!("missing: {}", missing_patterns.join(", ")))
+                        .with_color(Color::Red),
+                )
+                .with_help("add the missing patterns or a wildcard `_` arm")
+                .finish()
+        }
+
+        TypeError::RedundantArm { arm_index, span } => {
+            let msg = format!("redundant match arm (arm {})", arm_index + 1);
+            let range = clamp(text_range_to_range(*span));
+
+            Report::build(ReportKind::Warning, range.clone())
+                .with_code(code)
+                .with_message(&msg)
+                .with_config(config)
+                .with_label(
+                    Label::new(range)
+                        .with_message("this arm is unreachable")
+                        .with_color(Color::Yellow),
+                )
+                .with_help("remove this arm or reorder the match")
+                .finish()
+        }
+
+        TypeError::InvalidGuardExpression { reason, span } => {
+            let msg = format!("invalid guard: {}", reason);
+            let range = clamp(text_range_to_range(*span));
+
+            Report::build(ReportKind::Error, range.clone())
+                .with_code(code)
+                .with_message(&msg)
+                .with_config(config)
+                .with_label(
+                    Label::new(range)
+                        .with_message("only comparisons, boolean ops, literals, and names allowed")
+                        .with_color(Color::Red),
+                )
+                .with_help("guards must be simple boolean expressions")
                 .finish()
         }
     };

@@ -1,0 +1,13 @@
+---
+source: crates/snow-typeck/tests/diagnostics.rs
+expression: output
+---
+[E0012] Error: non-exhaustive match on `Option<Int>`
+   ╭─[ <unknown>:1:1 ]
+   │
+ 1 │ case x do Some(v) -> v end
+   │ ─────────────┬────────────  
+   │              ╰────────────── missing: None
+   │ 
+   │ Help: add the missing patterns or a wildcard `_` arm
+───╯

@@ -25,6 +25,8 @@ pub struct InferCtx {
     var_levels: Vec<u32>,
     /// Type errors accumulated during inference.
     pub errors: Vec<TypeError>,
+    /// Warnings accumulated during inference (e.g. redundant match arms).
+    pub warnings: Vec<TypeError>,
 }
 
 impl InferCtx {
@@ -35,6 +37,7 @@ impl InferCtx {
             current_level: 0,
             var_levels: Vec::new(),
             errors: Vec::new(),
+            warnings: Vec::new(),
         }
     }
 

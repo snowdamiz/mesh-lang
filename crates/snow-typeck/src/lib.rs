@@ -44,6 +44,8 @@ pub struct TypeckResult {
     pub types: FxHashMap<TextRange, Ty>,
     /// Type errors found during checking.
     pub errors: Vec<TypeError>,
+    /// Warnings found during checking (e.g. redundant match arms).
+    pub warnings: Vec<TypeError>,
     /// The inferred type of the last expression/item in the program.
     /// `None` if the program has no items or only produces errors.
     pub result_type: Option<Ty>,

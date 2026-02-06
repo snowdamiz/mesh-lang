@@ -1,0 +1,13 @@
+---
+source: crates/snow-typeck/tests/diagnostics.rs
+expression: output
+---
+[W0001] Warning: redundant match arm (arm 2)
+   ╭─[ <unknown>:2:2 ]
+   │
+ 2 │   _ -> 2 end
+   │  ───┬──  
+   │     ╰──── this arm is unreachable
+   │ 
+   │ Help: remove this arm or reorder the match
+───╯
