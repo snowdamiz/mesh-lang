@@ -5,6 +5,7 @@ members = [
     "crates/snow-parser",
     "crates/snow-typeck",
     "crates/snow-rt",
+    "crates/snow-codegen",
     "crates/snowc",
 ]
 resolver = "2"
@@ -16,3 +17,5 @@ serde = { version = "1", features = ["derive"] }
 ena = "0.14"
 rustc-hash = "2"
 ariadne = "0.6"
+inkwell = { version = "0.8.0", features = ["llvm21-1"] }
+clap = { version = "4.5", features = ["derive"] }

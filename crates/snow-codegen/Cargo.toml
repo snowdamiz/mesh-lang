@@ -1,0 +1,15 @@
+[package]
+name = "snow-codegen"
+version = "0.1.0"
+edition = "2021"
+description = "LLVM code generation for the Snow compiler"
+
+[dependencies]
+inkwell = { workspace = true }
+snow-common = { path = "../snow-common" }
+snow-parser = { path = "../snow-parser" }
+snow-typeck = { path = "../snow-typeck" }
+rustc-hash = { workspace = true }
+
+[dev-dependencies]
+insta = { workspace = true }

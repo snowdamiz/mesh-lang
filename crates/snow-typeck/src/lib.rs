@@ -35,10 +35,17 @@ use rowan::TextRange;
 use crate::error::TypeError;
 use crate::ty::Ty;
 
+// Re-export type registry types for downstream crate consumption (codegen).
+pub use crate::infer::{
+    StructDefInfo, SumTypeDefInfo, TypeAliasInfo, TypeRegistry, VariantFieldInfo, VariantInfo,
+};
+
 /// The result of type checking a Snow program.
 ///
 /// Contains a mapping from source ranges to their inferred types, plus
-/// any type errors encountered during checking.
+/// any type errors encountered during checking. Also includes the type
+/// registry with struct/sum type/alias definitions needed by codegen
+/// to determine memory layouts.
 pub struct TypeckResult {
     /// Map from source text ranges to their inferred types.
     pub types: FxHashMap<TextRange, Ty>,
@@ -49,6 +56,9 @@ pub struct TypeckResult {
     /// The inferred type of the last expression/item in the program.
     /// `None` if the program has no items or only produces errors.
     pub result_type: Option<Ty>,
+    /// Registry of all struct, sum type, and type alias definitions.
+    /// Used by codegen to determine memory layouts and variant tags.
+    pub type_registry: TypeRegistry,
 }
 
 impl TypeckResult {

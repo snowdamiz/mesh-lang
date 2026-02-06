@@ -44,54 +44,54 @@ use rustc_hash::FxHashMap;
 
 /// A registered struct definition with its fields and generic parameters.
 #[derive(Clone, Debug)]
-struct StructDefInfo {
+pub struct StructDefInfo {
     /// The struct's name.
-    name: String,
+    pub name: String,
     /// Names of generic type parameters (e.g., ["A", "B"] for `Pair<A, B>`).
-    generic_params: Vec<String>,
+    pub generic_params: Vec<String>,
     /// Field names and their types. Types may reference generic params.
-    fields: Vec<(String, Ty)>,
+    pub fields: Vec<(String, Ty)>,
 }
 
 /// A registered type alias.
 #[derive(Clone, Debug)]
-struct TypeAliasInfo {
+pub struct TypeAliasInfo {
     /// The alias name.
     #[allow(dead_code)]
-    name: String,
+    pub name: String,
     /// Names of generic type parameters.
     #[allow(dead_code)]
-    generic_params: Vec<String>,
+    pub generic_params: Vec<String>,
     /// The aliased type (may reference generic params).
     #[allow(dead_code)]
-    aliased_type: Ty,
+    pub aliased_type: Ty,
 }
 
 // ── Sum Type Registry (04-02) ──────────────────────────────────────────
 
 /// A registered sum type definition with its variants and generic parameters.
 #[derive(Clone, Debug)]
-pub(crate) struct SumTypeDefInfo {
+pub struct SumTypeDefInfo {
     /// The sum type's name (e.g. "Shape", "Option").
-    name: String,
+    pub name: String,
     /// Names of generic type parameters (e.g. ["T"] for `Option<T>`).
-    generic_params: Vec<String>,
+    pub generic_params: Vec<String>,
     /// Variant definitions.
-    variants: Vec<VariantInfo>,
+    pub variants: Vec<VariantInfo>,
 }
 
 /// A single variant of a sum type.
 #[derive(Clone, Debug)]
-pub(crate) struct VariantInfo {
+pub struct VariantInfo {
     /// The variant's name (e.g. "Circle", "Some").
-    name: String,
+    pub name: String,
     /// The variant's fields (positional or named).
-    fields: Vec<VariantFieldInfo>,
+    pub fields: Vec<VariantFieldInfo>,
 }
 
 /// A field in a variant -- either positional (unnamed) or named.
 #[derive(Clone, Debug)]
-pub(crate) enum VariantFieldInfo {
+pub enum VariantFieldInfo {
     /// Positional field (e.g. `Float` in `Circle(Float)`).
     Positional(Ty),
     /// Named field (e.g. `width :: Float` in `Rectangle(width :: Float, height :: Float)`).
@@ -99,11 +99,17 @@ pub(crate) enum VariantFieldInfo {
 }
 
 /// Registry for struct definitions, type aliases, and sum type definitions.
+///
+/// This is the central store of all type definitions in a Snow program.
+/// Codegen uses this to determine memory layouts for structs and ADTs.
 #[derive(Clone, Debug, Default)]
-struct TypeRegistry {
-    struct_defs: FxHashMap<String, StructDefInfo>,
-    type_aliases: FxHashMap<String, TypeAliasInfo>,
-    sum_type_defs: FxHashMap<String, SumTypeDefInfo>,
+pub struct TypeRegistry {
+    /// Registered struct definitions, keyed by struct name.
+    pub struct_defs: FxHashMap<String, StructDefInfo>,
+    /// Registered type aliases, keyed by alias name.
+    pub type_aliases: FxHashMap<String, TypeAliasInfo>,
+    /// Registered sum type definitions, keyed by sum type name.
+    pub sum_type_defs: FxHashMap<String, SumTypeDefInfo>,
 }
 
 impl TypeRegistry {
@@ -254,6 +260,7 @@ pub fn infer(parse: &Parse) -> TypeckResult {
         errors: ctx.errors,
         warnings: ctx.warnings,
         result_type: resolved_result,
+        type_registry,
     }
 }
 
