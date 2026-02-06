@@ -5,10 +5,19 @@
 //! tree structure.
 
 use insta::assert_snapshot;
-use snow_parser::{debug_tree, parse_expr};
+use snow_parser::{debug_tree, parse_block, parse_expr};
 
 fn parse_and_debug(source: &str) -> String {
     let parse = parse_expr(source);
+    format_parse(&parse)
+}
+
+fn block_and_debug(source: &str) -> String {
+    let parse = parse_block(source);
+    format_parse(&parse)
+}
+
+fn format_parse(parse: &snow_parser::Parse) -> String {
     let tree = debug_tree(&parse.syntax());
     if !parse.errors().is_empty() {
         format!(
@@ -261,4 +270,131 @@ fn empty_tuple() {
 #[test]
 fn modulo_operator() {
     assert_snapshot!(parse_and_debug("a % b"));
+}
+
+// ── Let Bindings ──────────────────────────────────────────────────────
+
+#[test]
+fn let_simple() {
+    assert_snapshot!(block_and_debug("let x = 5"));
+}
+
+#[test]
+fn let_with_type_annotation() {
+    assert_snapshot!(block_and_debug("let name :: String = \"hello\""));
+}
+
+#[test]
+fn let_multiple_statements() {
+    assert_snapshot!(block_and_debug("let x = 1\nlet y = 2"));
+}
+
+// ── Return ────────────────────────────────────────────────────────────
+
+#[test]
+fn return_with_value() {
+    assert_snapshot!(block_and_debug("return x"));
+}
+
+#[test]
+fn return_with_expr() {
+    assert_snapshot!(block_and_debug("return x + 1"));
+}
+
+// ── If/Else ───────────────────────────────────────────────────────────
+
+#[test]
+fn if_simple() {
+    assert_snapshot!(parse_and_debug("if true do\n  1\nend"));
+}
+
+#[test]
+fn if_else() {
+    assert_snapshot!(parse_and_debug("if x > 0 do\n  x\nelse\n  -x\nend"));
+}
+
+#[test]
+fn if_else_if_else() {
+    assert_snapshot!(parse_and_debug("if a do\n  1\nelse if b do\n  2\nelse\n  3\nend"));
+}
+
+#[test]
+fn if_single_line() {
+    assert_snapshot!(parse_and_debug("if true do 1 end"));
+}
+
+// ── Case/Match ────────────────────────────────────────────────────────
+
+#[test]
+fn case_simple() {
+    assert_snapshot!(parse_and_debug("case x do\n  1 -> \"one\"\n  2 -> \"two\"\nend"));
+}
+
+#[test]
+fn match_boolean() {
+    assert_snapshot!(parse_and_debug("match value do\n  true -> 1\n  false -> 0\nend"));
+}
+
+// ── Closures ──────────────────────────────────────────────────────────
+
+#[test]
+fn closure_single_param() {
+    assert_snapshot!(parse_and_debug("fn (x) -> x + 1 end"));
+}
+
+#[test]
+fn closure_two_params() {
+    assert_snapshot!(parse_and_debug("fn (x, y) -> x + y end"));
+}
+
+#[test]
+fn closure_no_params() {
+    assert_snapshot!(parse_and_debug("fn () -> 42 end"));
+}
+
+// ── Blocks ────────────────────────────────────────────────────────────
+
+#[test]
+fn block_multi_statement() {
+    assert_snapshot!(block_and_debug("let x = 1\nx + 1"));
+}
+
+// ── Trailing Closures ────────────────────────────────────────────────
+
+#[test]
+fn trailing_closure_basic() {
+    assert_snapshot!(parse_and_debug("run() do\n  42\nend"));
+}
+
+// ── Error Cases (compound) ───────────────────────────────────────────
+
+#[test]
+fn error_if_missing_end() {
+    assert_snapshot!(parse_and_debug("if x do\n  1\n"));
+}
+
+#[test]
+fn error_let_missing_ident() {
+    assert_snapshot!(block_and_debug("let = 5"));
+}
+
+// ── Newline Significance ─────────────────────────────────────────────
+
+#[test]
+fn newlines_inside_parens_ignored() {
+    assert_snapshot!(parse_and_debug("foo(\n  1,\n  2\n)"));
+}
+
+// ── Return bare (no value) ───────────────────────────────────────────
+
+#[test]
+fn return_bare() {
+    assert_snapshot!(block_and_debug("return"));
+}
+
+// ── Case with when guard ─────────────────────────────────────────────
+
+#[test]
+fn case_with_when_guard() {
+    assert_snapshot!(parse_and_debug("case x do\n  n when n > 0 -> n\n  _ -> 0\nend"));
 }

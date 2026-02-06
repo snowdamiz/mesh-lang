@@ -102,15 +102,6 @@ fn expr_bp(p: &mut Parser, min_bp: u8) -> Option<MarkClosed> {
             continue;
         }
 
-        // ── Postfix: trailing closure without arg list (bare do) ──
-        // e.g., `run do ... end` -- only if the LHS was an identifier
-        if current == SyntaxKind::DO_KW && POSTFIX_BP >= min_bp {
-            let m = p.open_before(lhs);
-            parse_trailing_closure(p);
-            lhs = p.close(m, SyntaxKind::CALL_EXPR);
-            continue;
-        }
-
         // ── Postfix: field access ──
         if current == SyntaxKind::DOT && POSTFIX_BP >= min_bp {
             let m = p.open_before(lhs);
