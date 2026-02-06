@@ -3,10 +3,8 @@
 //! Implements operator precedence parsing using binding power tables.
 //! Handles all Snow expression forms: literals, identifiers, binary/unary
 //! operators, function calls, field access, indexing, pipe, grouping,
-//! and string interpolation.
-//!
-//! Compound expressions (if/else, case/match, closures, blocks) are NOT
-//! handled here -- they will be added in Plan 03.
+//! string interpolation, compound expressions (if/else, case/match,
+//! closures, blocks), and basic statements (let bindings, return).
 
 use crate::syntax_kind::SyntaxKind;
 
@@ -92,10 +90,23 @@ fn expr_bp(p: &mut Parser, min_bp: u8) -> Option<MarkClosed> {
 
         let current = p.current();
 
-        // ── Postfix: function call ──
+        // ── Postfix: function call (possibly with trailing closure) ──
         if current == SyntaxKind::L_PAREN && POSTFIX_BP >= min_bp {
             let m = p.open_before(lhs);
             parse_arg_list(p);
+            // Check for trailing closure: `foo() do ... end`
+            if p.at(SyntaxKind::DO_KW) {
+                parse_trailing_closure(p);
+            }
+            lhs = p.close(m, SyntaxKind::CALL_EXPR);
+            continue;
+        }
+
+        // ── Postfix: trailing closure without arg list (bare do) ──
+        // e.g., `run do ... end` -- only if the LHS was an identifier
+        if current == SyntaxKind::DO_KW && POSTFIX_BP >= min_bp {
+            let m = p.open_before(lhs);
+            parse_trailing_closure(p);
             lhs = p.close(m, SyntaxKind::CALL_EXPR);
             continue;
         }
@@ -221,6 +232,11 @@ fn lhs(p: &mut Parser) -> Option<MarkClosed> {
 
         // L_BRACKET for list literals could go here in the future.
 
+        // Compound expression atoms
+        SyntaxKind::IF_KW => Some(parse_if_expr(p)),
+        SyntaxKind::CASE_KW | SyntaxKind::MATCH_KW => Some(parse_case_expr(p)),
+        SyntaxKind::FN_KW => Some(parse_closure(p)),
+
         _ => {
             p.error("expected expression");
             None
@@ -289,4 +305,386 @@ fn parse_string_expr(p: &mut Parser) -> MarkClosed {
     }
 
     p.close(m, SyntaxKind::STRING_EXPR)
+}
+
+// ── Block Parsing ─────────────────────────────────────────────────────
+
+/// Parse a block body: a sequence of statements separated by newlines
+/// or semicolons.
+///
+/// A block is parsed until END_KW, ELSE_KW, or EOF is encountered.
+/// Each statement is either a let binding, return expression, or an
+/// expression-statement.
+pub(crate) fn parse_block_body(p: &mut Parser) {
+    let m = p.open();
+
+    loop {
+        // Eat leading newlines/semicolons between statements.
+        p.eat_newlines();
+        while p.eat(SyntaxKind::SEMICOLON) {
+            p.eat_newlines();
+        }
+
+        // Check if we've reached a block terminator.
+        match p.current() {
+            SyntaxKind::END_KW | SyntaxKind::ELSE_KW | SyntaxKind::EOF => break,
+            _ => {}
+        }
+
+        // Parse a statement.
+        parse_stmt(p);
+
+        if p.has_error() {
+            break;
+        }
+
+        // After a statement, expect a separator or block terminator.
+        match p.current() {
+            SyntaxKind::NEWLINE => {
+                p.eat_newlines();
+            }
+            SyntaxKind::SEMICOLON => {
+                // Will be eaten at top of loop.
+            }
+            SyntaxKind::END_KW | SyntaxKind::ELSE_KW | SyntaxKind::EOF => {
+                // Block terminator -- stop.
+            }
+            _ => {
+                // If we're not at a separator or terminator, that's ok --
+                // the next iteration will try to parse another statement
+                // or hit an error.
+            }
+        }
+    }
+
+    p.close(m, SyntaxKind::BLOCK);
+}
+
+/// Parse a single statement: let binding, return, or expression-statement.
+fn parse_stmt(p: &mut Parser) {
+    match p.current() {
+        SyntaxKind::LET_KW => parse_let_binding(p),
+        SyntaxKind::RETURN_KW => parse_return_expr(p),
+        _ => {
+            expr(p);
+        }
+    }
+}
+
+// ── Let Binding ───────────────────────────────────────────────────────
+
+/// Parse a let binding: `let name [:: Type] = expr`
+fn parse_let_binding(p: &mut Parser) {
+    let m = p.open();
+    p.advance(); // LET_KW
+
+    // Parse the pattern (just an identifier for now).
+    if p.at(SyntaxKind::IDENT) {
+        let name = p.open();
+        p.advance(); // identifier
+        p.close(name, SyntaxKind::NAME);
+    } else {
+        p.error("expected identifier after `let`");
+    }
+
+    // Optional type annotation: `:: Type`
+    if p.at(SyntaxKind::COLON_COLON) {
+        let ann = p.open();
+        p.advance(); // ::
+        // Parse type: IDENT possibly with type params [A, B]
+        if p.at(SyntaxKind::IDENT) {
+            p.advance(); // type name
+            // Optional type parameters: [A, B]
+            if p.at(SyntaxKind::L_BRACKET) {
+                let type_params = p.open();
+                p.advance(); // [
+                if !p.at(SyntaxKind::R_BRACKET) {
+                    p.expect(SyntaxKind::IDENT);
+                    while p.eat(SyntaxKind::COMMA) {
+                        if p.at(SyntaxKind::R_BRACKET) {
+                            break;
+                        }
+                        p.expect(SyntaxKind::IDENT);
+                    }
+                }
+                p.expect(SyntaxKind::R_BRACKET);
+                p.close(type_params, SyntaxKind::TYPE_PARAM_LIST);
+            }
+        } else {
+            p.error("expected type name");
+        }
+        p.close(ann, SyntaxKind::TYPE_ANNOTATION);
+    }
+
+    // Expect `=` and initializer.
+    p.expect(SyntaxKind::EQ);
+    if !p.has_error() {
+        expr(p);
+    }
+
+    p.close(m, SyntaxKind::LET_BINDING);
+}
+
+// ── Return Expression ─────────────────────────────────────────────────
+
+/// Parse a return expression: `return [expr]`
+fn parse_return_expr(p: &mut Parser) {
+    let m = p.open();
+    p.advance(); // RETURN_KW
+
+    // If next token looks like an expression start, parse the value.
+    if looks_like_expr_start(p) {
+        expr(p);
+    }
+
+    p.close(m, SyntaxKind::RETURN_EXPR);
+}
+
+/// Whether the current token could start an expression.
+/// Used to determine if `return` has a value.
+fn looks_like_expr_start(p: &Parser) -> bool {
+    match p.current() {
+        SyntaxKind::NEWLINE
+        | SyntaxKind::END_KW
+        | SyntaxKind::ELSE_KW
+        | SyntaxKind::EOF
+        | SyntaxKind::SEMICOLON => false,
+        _ => true,
+    }
+}
+
+// ── If/Else Expression ────────────────────────────────────────────────
+
+/// Parse an if expression: `if cond do body [else [if ...] body] end`
+fn parse_if_expr(p: &mut Parser) -> MarkClosed {
+    let m = p.open();
+    p.advance(); // IF_KW
+
+    // Parse condition.
+    expr(p);
+
+    // Expect `do`.
+    let do_span = p.current_span();
+    p.expect(SyntaxKind::DO_KW);
+
+    // Parse then-body.
+    parse_block_body(p);
+
+    // Check for else.
+    if p.at(SyntaxKind::ELSE_KW) {
+        let else_m = p.open();
+        p.advance(); // ELSE_KW
+
+        if p.at(SyntaxKind::IF_KW) {
+            // else-if chain: parse nested if expression.
+            parse_if_expr(p);
+        } else {
+            // else block.
+            parse_block_body(p);
+            p.expect(SyntaxKind::END_KW);
+        }
+
+        p.close(else_m, SyntaxKind::ELSE_BRANCH);
+    } else {
+        // No else -- expect `end`.
+        if !p.at(SyntaxKind::END_KW) {
+            p.error_with_related(
+                "expected `end` to close `do` block",
+                do_span,
+                "`do` block started here",
+            );
+        } else {
+            p.advance(); // END_KW
+        }
+    }
+
+    p.close(m, SyntaxKind::IF_EXPR)
+}
+
+// ── Case/Match Expression ─────────────────────────────────────────────
+
+/// Parse a case/match expression: `case expr do pattern -> body ... end`
+fn parse_case_expr(p: &mut Parser) -> MarkClosed {
+    let m = p.open();
+    p.advance(); // CASE_KW or MATCH_KW
+
+    // Parse scrutinee.
+    expr(p);
+
+    // Expect `do`.
+    let do_span = p.current_span();
+    p.expect(SyntaxKind::DO_KW);
+
+    // Parse match arms until END_KW.
+    loop {
+        p.eat_newlines();
+
+        if p.at(SyntaxKind::END_KW) || p.at(SyntaxKind::EOF) {
+            break;
+        }
+
+        parse_match_arm(p);
+
+        if p.has_error() {
+            break;
+        }
+    }
+
+    if !p.at(SyntaxKind::END_KW) {
+        p.error_with_related(
+            "expected `end` to close `case` block",
+            do_span,
+            "`do` block started here",
+        );
+    } else {
+        p.advance(); // END_KW
+    }
+
+    p.close(m, SyntaxKind::CASE_EXPR)
+}
+
+/// Parse a single match arm: `pattern [when guard] -> body`
+fn parse_match_arm(p: &mut Parser) {
+    let m = p.open();
+
+    // Parse pattern (treat as expression for now; Plan 04 adds proper patterns).
+    expr(p);
+
+    // Optional `when` guard.
+    if p.at(SyntaxKind::WHEN_KW) {
+        p.advance(); // WHEN_KW
+        expr(p);
+    }
+
+    // Expect `->`.
+    p.expect(SyntaxKind::ARROW);
+
+    // Parse arm body: a single expression.
+    if !p.has_error() {
+        expr(p);
+    }
+
+    p.close(m, SyntaxKind::MATCH_ARM);
+}
+
+// ── Closure Expression ────────────────────────────────────────────────
+
+/// Parse a closure: `fn (params) -> body end` or `fn () -> body end`
+fn parse_closure(p: &mut Parser) -> MarkClosed {
+    let m = p.open();
+    p.advance(); // FN_KW
+
+    // Parse parameter list if present.
+    if p.at(SyntaxKind::L_PAREN) {
+        parse_param_list(p);
+    }
+
+    // Expect `->`.
+    p.expect(SyntaxKind::ARROW);
+
+    // Parse body: block or single expression.
+    // Closures use `fn (params) -> body end`
+    // The body may be a multi-statement block ending in `end`.
+    if !p.has_error() {
+        parse_block_body(p);
+    }
+
+    p.expect(SyntaxKind::END_KW);
+
+    p.close(m, SyntaxKind::CLOSURE_EXPR)
+}
+
+// ── Parameter List ────────────────────────────────────────────────────
+
+/// Parse a parameter list: `(param, param, ...)`
+///
+/// Each parameter is `name [:: Type]`.
+pub(crate) fn parse_param_list(p: &mut Parser) {
+    let m = p.open();
+    p.advance(); // L_PAREN
+
+    if !p.at(SyntaxKind::R_PAREN) {
+        parse_param(p);
+        while p.eat(SyntaxKind::COMMA) {
+            if p.at(SyntaxKind::R_PAREN) {
+                break; // trailing comma
+            }
+            parse_param(p);
+        }
+    }
+
+    p.expect(SyntaxKind::R_PAREN);
+    p.close(m, SyntaxKind::PARAM_LIST);
+}
+
+/// Parse a single parameter: `name [:: Type]`
+fn parse_param(p: &mut Parser) {
+    let m = p.open();
+
+    // Parameter name.
+    p.expect(SyntaxKind::IDENT);
+
+    // Optional type annotation: `:: Type`
+    if p.at(SyntaxKind::COLON_COLON) {
+        let ann = p.open();
+        p.advance(); // ::
+        if p.at(SyntaxKind::IDENT) {
+            p.advance(); // type name
+        } else {
+            p.error("expected type name");
+        }
+        p.close(ann, SyntaxKind::TYPE_ANNOTATION);
+    }
+
+    p.close(m, SyntaxKind::PARAM);
+}
+
+// ── Trailing Closure ──────────────────────────────────────────────────
+
+/// Parse a trailing closure: `do [|params|] body end`
+///
+/// Attached to the preceding CALL_EXPR as a TRAILING_CLOSURE child.
+fn parse_trailing_closure(p: &mut Parser) {
+    let m = p.open();
+    let do_span = p.current_span();
+    p.advance(); // DO_KW
+
+    // Optional closure params: `do |x, y| ... end`
+    // The lexer emits bare `|` as Error tokens, so we check for that.
+    if p.at(SyntaxKind::ERROR) && p.current_text() == "|" {
+        p.advance(); // opening |
+        // Parse params between pipes.
+        let params = p.open();
+        if !(p.at(SyntaxKind::ERROR) && p.current_text() == "|") {
+            parse_param(p);
+            while p.eat(SyntaxKind::COMMA) {
+                if p.at(SyntaxKind::ERROR) && p.current_text() == "|" {
+                    break;
+                }
+                parse_param(p);
+            }
+        }
+        p.close(params, SyntaxKind::PARAM_LIST);
+        // Expect closing |
+        if p.at(SyntaxKind::ERROR) && p.current_text() == "|" {
+            p.advance(); // closing |
+        } else {
+            p.error("expected `|` to close trailing closure parameters");
+        }
+    }
+
+    // Parse block body.
+    parse_block_body(p);
+
+    if !p.at(SyntaxKind::END_KW) {
+        p.error_with_related(
+            "expected `end` to close `do` block",
+            do_span,
+            "`do` block started here",
+        );
+    } else {
+        p.advance(); // END_KW
+    }
+
+    p.close(m, SyntaxKind::TRAILING_CLOSURE);
 }

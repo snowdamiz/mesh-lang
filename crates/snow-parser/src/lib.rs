@@ -69,6 +69,25 @@ pub fn parse_expr(source: &str) -> Parse {
     Parse { green, errors }
 }
 
+/// Parse a block of Snow statements from source code.
+///
+/// This parses the source as a block body (sequence of statements separated
+/// by newlines), wrapped in a SOURCE_FILE root node. Useful for testing
+/// let bindings, return expressions, and multi-statement blocks.
+pub fn parse_block(source: &str) -> Parse {
+    let tokens = snow_lexer::Lexer::tokenize(source);
+    let mut p = parser::Parser::new(tokens, source);
+    let root = p.open();
+    parser::expressions::parse_block_body(&mut p);
+    // Consume EOF.
+    if p.at(SyntaxKind::EOF) {
+        p.advance();
+    }
+    p.close(root, SyntaxKind::SOURCE_FILE);
+    let (green, errors) = p.build_tree();
+    Parse { green, errors }
+}
+
 /// Format a syntax tree as an indented debug string.
 ///
 /// Each node is printed as `KIND` with children indented. Tokens show
