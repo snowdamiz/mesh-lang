@@ -42,7 +42,7 @@ Plans:
 - [x] 01-03-PLAN.md -- String interpolation, block comments, newlines, error recovery, full test suite
 
 ### Phase 2: Parser & AST
-**Goal**: A recursive descent parser that transforms token streams into a complete AST representing all Snow language constructs, with human-readable parse error messages
+**Goal**: A recursive descent parser that transforms token streams into a lossless CST and typed AST representing all Snow language constructs, with human-readable parse error messages
 **Depends on**: Phase 1
 **Requirements**: LANG-01, LANG-02, LANG-03, LANG-04, LANG-07, LANG-08, LANG-10, ORG-01, ORG-02, ORG-03
 **Success Criteria** (what must be TRUE):
@@ -50,13 +50,14 @@ Plans:
   2. Parse errors produce messages identifying the location and nature of the problem (e.g., "expected `end` to close `do` block started at line 5") rather than generic "unexpected token" errors
   3. The AST preserves enough structure for downstream type checking and codegen (function signatures, expression nesting, module boundaries, visibility modifiers)
   4. Pattern syntax (match arms, function parameter patterns) parses correctly even though exhaustiveness checking comes later
-**Plans**: TBD
+**Plans**: 5 plans
 
 Plans:
-- [ ] 02-01: AST data structures and arena-based representation
-- [ ] 02-02: Expression parser (Pratt parsing) with literals, operators, closures, pipe
-- [ ] 02-03: Statement and declaration parser (let, fn, module, import, control flow)
-- [ ] 02-04: Error recovery and diagnostic quality
+- [ ] 02-01-PLAN.md -- Parser crate scaffolding, SyntaxKind enum, rowan CST types, event-based Parser struct
+- [ ] 02-02-PLAN.md -- Pratt expression parser with operator precedence, literals, calls, field access, pipe
+- [ ] 02-03-PLAN.md -- Compound expressions (if/else, case/match, closures, blocks) and let/return statements
+- [ ] 02-04-PLAN.md -- Declarations (fn, module, import, struct), patterns, type annotations, visibility
+- [ ] 02-05-PLAN.md -- Typed AST wrappers, public parse() API, comprehensive snapshot tests
 
 ### Phase 3: Type System
 **Goal**: A Hindley-Milner type inference engine that type-checks Snow programs without requiring type annotations, supporting generics, structs, traits, and Option/Result types
@@ -206,7 +207,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8 -> 9 -> 10
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Project Foundation & Lexer | 3/3 | Complete | 2026-02-06 |
-| 2. Parser & AST | 0/4 | Not started | - |
+| 2. Parser & AST | 0/5 | Not started | - |
 | 3. Type System | 0/5 | Not started | - |
 | 4. Pattern Matching & ADTs | 0/3 | Not started | - |
 | 5. LLVM Codegen & Native Binaries | 0/5 | Not started | - |
