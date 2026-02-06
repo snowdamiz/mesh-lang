@@ -69,14 +69,14 @@ Plans:
   3. Struct types, Option[T], and Result[T, E] can be defined and used with full type inference (no annotations needed for straightforward usage)
   4. Trait definitions and implementations type-check correctly, enabling polymorphic function dispatch based on trait constraints
   5. Type errors include the source location of the conflict and the inferred types involved (e.g., "expected Int, found String at line 12, column 5")
-**Plans**: TBD
+**Plans**: 5 plans
 
 Plans:
-- [ ] 03-01: Type representation, unification, and constraint generation infrastructure (ena-based)
-- [ ] 03-02: Algorithm W implementation with let-polymorphism and occurs check
-- [ ] 03-03: Structs, Option[T], Result[T, E], type aliases
-- [ ] 03-04: Traits/protocols with constraint-based polymorphism
-- [ ] 03-05: Type error reporting with source locations
+- [ ] 03-01-PLAN.md -- Parser migration (angle brackets, interface/impl/type alias syntax), snow-typeck crate with type representation, unification, environment, builtins
+- [ ] 03-02-PLAN.md -- Algorithm J inference engine with let-polymorphism and occurs check (TDD)
+- [ ] 03-03-PLAN.md -- Structs, Option<T>, Result<T, E>, type aliases (TDD)
+- [ ] 03-04-PLAN.md -- Traits/interfaces with where-clause constraints and compiler-known operator traits (TDD)
+- [ ] 03-05-PLAN.md -- ariadne diagnostic rendering, fix suggestions, end-to-end phase verification
 
 ### Phase 4: Pattern Matching & Algebraic Data Types
 **Goal**: Exhaustive pattern matching compilation with algebraic data types (sum types), guards, and compile-time warnings for missing or redundant patterns
@@ -208,7 +208,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8 -> 9 -> 10
 |-------|----------------|--------|-----------|
 | 1. Project Foundation & Lexer | 3/3 | Complete | 2026-02-06 |
 | 2. Parser & AST | 5/5 | Complete | 2026-02-06 |
-| 3. Type System | 0/5 | Not started | - |
+| 3. Type System | 0/5 | Planned | - |
 | 4. Pattern Matching & ADTs | 0/3 | Not started | - |
 | 5. LLVM Codegen & Native Binaries | 0/5 | Not started | - |
 | 6. Actor Runtime | 0/5 | Not started | - |
