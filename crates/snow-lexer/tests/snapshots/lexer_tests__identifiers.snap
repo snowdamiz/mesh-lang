@@ -42,6 +42,11 @@ expression: tokens
   span:
     - 47
     - 48
+- kind: Newline
+  text: "\n"
+  span:
+    - 48
+    - 49
 - kind: Eof
   text: ""
   span:

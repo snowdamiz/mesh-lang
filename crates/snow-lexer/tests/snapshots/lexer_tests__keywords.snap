@@ -62,6 +62,11 @@ expression: tokens
   span:
     - 56
     - 59
+- kind: Newline
+  text: "\n"
+  span:
+    - 59
+    - 60
 - kind: Receive
   text: receive
   span:
@@ -97,6 +102,11 @@ expression: tokens
   span:
     - 103
     - 107
+- kind: Newline
+  text: "\n"
+  span:
+    - 107
+    - 108
 - kind: Cond
   text: cond
   span:
@@ -142,6 +152,11 @@ expression: tokens
   span:
     - 144
     - 147
+- kind: Newline
+  text: "\n"
+  span:
+    - 147
+    - 148
 - kind: Pub
   text: pub
   span:
@@ -182,6 +197,11 @@ expression: tokens
   span:
     - 183
     - 188
+- kind: Newline
+  text: "\n"
+  span:
+    - 188
+    - 189
 - kind: "True"
   text: "true"
   span:
@@ -197,6 +217,11 @@ expression: tokens
   span:
     - 200
     - 203
+- kind: Newline
+  text: "\n"
+  span:
+    - 203
+    - 204
 - kind: Eof
   text: ""
   span:

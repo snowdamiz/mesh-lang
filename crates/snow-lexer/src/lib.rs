@@ -5,15 +5,15 @@ mod cursor;
 use cursor::Cursor;
 use snow_common::token::{keyword_from_str, Token, TokenKind};
 
-/// Tracks whether the lexer is inside a string literal.
-#[derive(Debug, Clone, Copy)]
-enum StringMode {
-    /// Not inside a string.
-    None,
-    /// Inside a single-quoted string (after StringStart emitted).
-    Single,
-    /// Inside a triple-quoted string (after StringStart emitted).
-    Triple,
+/// Tracks what the lexer is currently doing.
+#[derive(Debug, Clone, PartialEq)]
+enum LexerState {
+    /// Normal top-level tokenization.
+    Normal,
+    /// Inside a string literal (after StringStart emitted).
+    InString { triple: bool },
+    /// Inside `${...}` string interpolation.
+    InInterpolation { brace_depth: u32 },
 }
 
 /// The Snow lexer. Converts source text into a stream of tokens.
@@ -21,15 +21,17 @@ enum StringMode {
 /// Wraps a [`Cursor`] for byte-level iteration and implements
 /// `Iterator<Item = Token>` so callers can consume tokens lazily
 /// or collect them into a `Vec`.
+///
+/// Uses a state stack to handle nested string interpolation contexts.
 pub struct Lexer<'src> {
     cursor: Cursor<'src>,
     source: &'src str,
     /// Whether we have already emitted the `Eof` token.
     emitted_eof: bool,
-    /// A token to emit on the next call to `next()` before resuming normal lexing.
-    pending_token: Option<Token>,
-    /// Tracks whether we are inside a string and need to lex content next.
-    string_mode: StringMode,
+    /// Pending tokens to emit before resuming normal lexing.
+    pending: Vec<Token>,
+    /// State stack for tracking nested lexing contexts.
+    state_stack: Vec<LexerState>,
 }
 
 impl<'src> Lexer<'src> {
@@ -39,8 +41,8 @@ impl<'src> Lexer<'src> {
             cursor: Cursor::new(source),
             source,
             emitted_eof: false,
-            pending_token: None,
-            string_mode: StringMode::None,
+            pending: Vec::new(),
+            state_stack: vec![LexerState::Normal],
         }
     }
 
@@ -51,19 +53,48 @@ impl<'src> Lexer<'src> {
         Lexer::new(source).collect()
     }
 
-    /// Produce the next token from the source (normal mode, not inside a string).
-    fn next_token(&mut self) -> Token {
+    /// Current lexer state (top of stack).
+    fn current_state(&self) -> &LexerState {
+        self.state_stack.last().expect("state stack must never be empty")
+    }
+
+    /// Produce the next token based on current state.
+    fn produce_token(&mut self) -> Token {
+        match self.current_state().clone() {
+            LexerState::Normal => self.lex_normal(),
+            LexerState::InString { triple } => self.lex_string_content(triple),
+            LexerState::InInterpolation { .. } => self.lex_interpolation(),
+        }
+    }
+
+    // ── Normal mode ────────────────────────────────────────────────────
+
+    /// Tokenize in normal mode (top-level or inside interpolation expression).
+    fn lex_normal(&mut self) -> Token {
         self.skip_whitespace();
 
         let start = self.cursor.pos();
 
         let Some(c) = self.cursor.peek() else {
-            // EOF
             return Token::new(TokenKind::Eof, start, start);
         };
 
         match c {
-            // ── Single-character delimiters ───────────────────────────────
+            // ── Newlines ───────────────────────────────────────────────────
+            '\n' => {
+                self.cursor.advance();
+                Token::new(TokenKind::Newline, start, self.cursor.pos())
+            }
+            '\r' => {
+                self.cursor.advance();
+                // \r\n = single Newline
+                if self.cursor.peek() == Some('\n') {
+                    self.cursor.advance();
+                }
+                Token::new(TokenKind::Newline, start, self.cursor.pos())
+            }
+
+            // ── Single-character delimiters ─────────────────────────────
             '(' => self.single_char_token(TokenKind::LParen, start),
             ')' => self.single_char_token(TokenKind::RParen, start),
             '[' => self.single_char_token(TokenKind::LBracket, start),
@@ -73,7 +104,7 @@ impl<'src> Lexer<'src> {
             ',' => self.single_char_token(TokenKind::Comma, start),
             ';' => self.single_char_token(TokenKind::Semicolon, start),
 
-            // ── Multi-character operators ─────────────────────────────────
+            // ── Multi-character operators ────────────────────────────────
             '=' => self.lex_eq(start),
             '!' => self.lex_bang(start),
             '<' => self.lex_lt(start),
@@ -88,19 +119,19 @@ impl<'src> Lexer<'src> {
             '/' => self.single_char_token(TokenKind::Slash, start),
             '%' => self.single_char_token(TokenKind::Percent, start),
 
-            // ── Comments ─────────────────────────────────────────────────
+            // ── Comments ────────────────────────────────────────────────
             '#' => self.lex_comment(start),
 
-            // ── Number literals ──────────────────────────────────────────
+            // ── Number literals ─────────────────────────────────────────
             '0'..='9' => self.lex_number(start),
 
-            // ── String literals ──────────────────────────────────────────
+            // ── String literals ─────────────────────────────────────────
             '"' => self.lex_string_start(start),
 
-            // ── Identifiers and keywords ─────────────────────────────────
+            // ── Identifiers and keywords ────────────────────────────────
             c if is_ident_start(c) => self.lex_ident(start),
 
-            // ── Unknown character (error recovery) ───────────────────────
+            // ── Unknown character (error recovery) ──────────────────────
             _ => {
                 self.cursor.advance();
                 Token::new(TokenKind::Error, start, self.cursor.pos())
@@ -108,15 +139,11 @@ impl<'src> Lexer<'src> {
         }
     }
 
-    // ── Helpers ──────────────────────────────────────────────────────────
+    // ── Helpers ────────────────────────────────────────────────────────
 
-    /// Skip whitespace characters (spaces, tabs, carriage returns, newlines).
-    ///
-    /// Note: In this plan, newlines are skipped as whitespace. Plan 03 will
-    /// add newline-as-terminator logic.
+    /// Skip whitespace characters (spaces and tabs only -- newlines are tokens).
     fn skip_whitespace(&mut self) {
-        self.cursor
-            .eat_while(|c| c == ' ' || c == '\t' || c == '\r' || c == '\n');
+        self.cursor.eat_while(|c| c == ' ' || c == '\t');
     }
 
     /// Consume one character and return a token of the given kind.
@@ -125,7 +152,7 @@ impl<'src> Lexer<'src> {
         Token::new(kind, start, self.cursor.pos())
     }
 
-    // ── Operator lexing ──────────────────────────────────────────────────
+    // ── Operator lexing ────────────────────────────────────────────────
 
     /// `=` -> `Eq`, `==` -> `EqEq`, `=>` -> `FatArrow`
     fn lex_eq(&mut self, start: u32) -> Token {
@@ -252,13 +279,13 @@ impl<'src> Lexer<'src> {
         }
     }
 
-    // ── Comments ─────────────────────────────────────────────────────────
+    // ── Comments ──────────────────────────────────────────────────────
 
     /// Lex a comment starting with `#`.
     ///
     /// - `##!` -> `ModuleDocComment`
     /// - `##`  -> `DocComment`
-    /// - `#=`  -> placeholder for block comments (Plan 03)
+    /// - `#=`  -> nestable block comment
     /// - `#`   -> `Comment`
     fn lex_comment(&mut self, start: u32) -> Token {
         self.cursor.advance(); // consume '#'
@@ -274,7 +301,7 @@ impl<'src> Lexer<'src> {
                 if self.cursor.peek() == Some(' ') {
                     self.cursor.advance();
                 }
-                self.cursor.eat_while(|c| c != '\n');
+                self.cursor.eat_while(|c| c != '\n' && c != '\r');
                 Token::new(TokenKind::ModuleDocComment, start, self.cursor.pos())
             } else {
                 // Doc comment: ##
@@ -282,26 +309,62 @@ impl<'src> Lexer<'src> {
                 if self.cursor.peek() == Some(' ') {
                     self.cursor.advance();
                 }
-                self.cursor.eat_while(|c| c != '\n');
+                self.cursor.eat_while(|c| c != '\n' && c != '\r');
                 Token::new(TokenKind::DocComment, start, self.cursor.pos())
             }
         } else if self.cursor.peek() == Some('=') {
-            // Block comment placeholder: #= ... =#
-            // For now, scan to end of line (Plan 03 adds nestable block comments)
-            self.cursor.eat_while(|c| c != '\n');
-            Token::new(TokenKind::Comment, start, self.cursor.pos())
+            // Block comment: #= ... =#
+            self.lex_block_comment(start)
         } else {
             // Regular line comment: #
             // Skip optional leading space
             if self.cursor.peek() == Some(' ') {
                 self.cursor.advance();
             }
-            self.cursor.eat_while(|c| c != '\n');
+            self.cursor.eat_while(|c| c != '\n' && c != '\r');
             Token::new(TokenKind::Comment, start, self.cursor.pos())
         }
     }
 
-    // ── Number literals ──────────────────────────────────────────────────
+    /// Lex a nestable block comment `#= ... =#`.
+    ///
+    /// Block comments can be nested: `#= outer #= inner =# still =#` is one comment.
+    /// Tracks nesting depth starting at 1 (for the opening `#=` already consumed).
+    fn lex_block_comment(&mut self, start: u32) -> Token {
+        self.cursor.advance(); // consume '=' (the '#' was already consumed)
+        let mut depth: u32 = 1;
+
+        loop {
+            match self.cursor.peek() {
+                None => {
+                    // Unterminated block comment
+                    return Token::new(TokenKind::Error, start, self.cursor.pos());
+                }
+                Some('#') => {
+                    self.cursor.advance();
+                    if self.cursor.peek() == Some('=') {
+                        self.cursor.advance();
+                        depth += 1;
+                    }
+                }
+                Some('=') => {
+                    self.cursor.advance();
+                    if self.cursor.peek() == Some('#') {
+                        self.cursor.advance();
+                        depth -= 1;
+                        if depth == 0 {
+                            return Token::new(TokenKind::Comment, start, self.cursor.pos());
+                        }
+                    }
+                }
+                Some(_) => {
+                    self.cursor.advance();
+                }
+            }
+        }
+    }
+
+    // ── Number literals ───────────────────────────────────────────────
 
     /// Lex a number literal starting with a digit.
     ///
@@ -383,12 +446,11 @@ impl<'src> Lexer<'src> {
         self.cursor.eat_while(|c| c.is_ascii_digit() || c == '_');
     }
 
-    // ── String literals ──────────────────────────────────────────────────
+    // ── String literals ───────────────────────────────────────────────
 
     /// Lex the opening of a string literal (`"` or `"""`).
     ///
-    /// Emits `StringStart` and sets the string mode so the next call to
-    /// `next()` will lex the string content.
+    /// Emits `StringStart` and pushes `InString` onto the state stack.
     fn lex_string_start(&mut self, start: u32) -> Token {
         self.cursor.advance(); // consume first '"'
 
@@ -396,65 +458,78 @@ impl<'src> Lexer<'src> {
         if self.cursor.peek() == Some('"') && self.cursor.peek_next() == Some('"') {
             self.cursor.advance(); // consume second '"'
             self.cursor.advance(); // consume third '"'
-            self.string_mode = StringMode::Triple;
+            self.state_stack.push(LexerState::InString { triple: true });
             Token::new(TokenKind::StringStart, start, self.cursor.pos())
         } else {
-            self.string_mode = StringMode::Single;
+            self.state_stack.push(LexerState::InString { triple: false });
             Token::new(TokenKind::StringStart, start, self.cursor.pos())
         }
     }
 
-    /// Lex the content and closing of a single-quoted string.
+    /// Lex string content when in InString state.
     ///
-    /// Returns `StringContent`, stores `StringEnd` as pending.
-    /// On unterminated string, returns `Error`.
-    fn lex_single_string_content(&mut self) -> Token {
+    /// Scans characters until finding:
+    /// - `${` -> emit StringContent (if any), then InterpolationStart
+    /// - closing delimiter -> emit StringContent (if any), then StringEnd
+    /// - escape sequence -> include in content
+    /// - EOF -> Error token
+    fn lex_string_content(&mut self, triple: bool) -> Token {
         let start = self.cursor.pos();
 
         loop {
             match self.cursor.peek() {
                 None => {
                     // Unterminated string
-                    self.string_mode = StringMode::None;
-                    return Token::new(TokenKind::Error, start, self.cursor.pos());
+                    self.state_stack.pop();
+                    let end = self.cursor.pos();
+                    if end > start {
+                        // Emit accumulated content first, then queue error
+                        self.pending.push(Token::new(TokenKind::Error, end, end));
+                        return Token::new(TokenKind::StringContent, start, end);
+                    }
+                    return Token::new(TokenKind::Error, start, end);
                 }
-                Some('"') => {
+                Some('$') if self.cursor.peek_next() == Some('{') => {
+                    let content_end = self.cursor.pos();
+                    self.cursor.advance(); // consume '$'
+                    self.cursor.advance(); // consume '{'
+                    let interp_end = self.cursor.pos();
+
+                    // Pop InString, push InString back (we'll return to it),
+                    // then push InInterpolation on top.
+                    // Actually, we keep InString on the stack and push InInterpolation on top.
+                    self.state_stack.push(LexerState::InInterpolation { brace_depth: 0 });
+
+                    // Queue the InterpolationStart token
+                    self.pending.push(Token::new(TokenKind::InterpolationStart, content_end, interp_end));
+
+                    if content_end > start {
+                        // There's content before the interpolation
+                        return Token::new(TokenKind::StringContent, start, content_end);
+                    } else {
+                        // No content before interpolation, emit InterpolationStart directly
+                        return self.pending.remove(0);
+                    }
+                }
+                Some('"') if !triple => {
                     let content_end = self.cursor.pos();
                     self.cursor.advance(); // consume closing '"'
-                    self.string_mode = StringMode::None;
-                    self.pending_token = Some(Token::new(
-                        TokenKind::StringEnd,
-                        content_end,
-                        self.cursor.pos(),
-                    ));
-                    return Token::new(TokenKind::StringContent, start, content_end);
-                }
-                Some('\\') => {
-                    self.cursor.advance(); // consume '\'
-                    self.cursor.advance(); // consume escaped char
-                }
-                Some(_) => {
-                    self.cursor.advance();
-                }
-            }
-        }
-    }
+                    let str_end = self.cursor.pos();
 
-    /// Lex the content and closing of a triple-quoted string.
-    ///
-    /// Returns `StringContent`, stores `StringEnd` as pending.
-    /// On unterminated string, returns `Error`.
-    fn lex_triple_string_content(&mut self) -> Token {
-        let start = self.cursor.pos();
+                    // Pop InString state
+                    self.state_stack.pop();
 
-        loop {
-            match self.cursor.peek() {
-                None => {
-                    // Unterminated triple-quote string
-                    self.string_mode = StringMode::None;
-                    return Token::new(TokenKind::Error, start, self.cursor.pos());
+                    // Queue StringEnd
+                    self.pending.push(Token::new(TokenKind::StringEnd, content_end, str_end));
+
+                    if content_end > start {
+                        return Token::new(TokenKind::StringContent, start, content_end);
+                    } else {
+                        // Empty content, just emit StringEnd
+                        return self.pending.remove(0);
+                    }
                 }
-                Some('"') => {
+                Some('"') if triple => {
                     // Check for closing """
                     if self.cursor.peek_next() == Some('"') {
                         let saved_pos = self.cursor.pos();
@@ -463,15 +538,21 @@ impl<'src> Lexer<'src> {
                         if self.cursor.peek() == Some('"') {
                             // Found closing """
                             self.cursor.advance(); // third '"'
-                            self.string_mode = StringMode::None;
-                            self.pending_token = Some(Token::new(
-                                TokenKind::StringEnd,
-                                saved_pos,
-                                self.cursor.pos(),
-                            ));
-                            return Token::new(TokenKind::StringContent, start, saved_pos);
+                            let str_end = self.cursor.pos();
+
+                            // Pop InString state
+                            self.state_stack.pop();
+
+                            // Queue StringEnd
+                            self.pending.push(Token::new(TokenKind::StringEnd, saved_pos, str_end));
+
+                            if saved_pos > start {
+                                return Token::new(TokenKind::StringContent, start, saved_pos);
+                            } else {
+                                return self.pending.remove(0);
+                            }
                         }
-                        // Only two quotes -- keep scanning (they're part of content)
+                        // Only two quotes -- they're part of content, keep scanning
                         continue;
                     }
                     // Single quote inside triple-quoted string is content
@@ -488,7 +569,96 @@ impl<'src> Lexer<'src> {
         }
     }
 
-    // ── Identifiers and keywords ─────────────────────────────────────────
+    // ── Interpolation ─────────────────────────────────────────────────
+
+    /// Lex tokens inside `${...}` interpolation.
+    ///
+    /// Tokenizes normally but tracks brace depth. When the closing `}` is
+    /// found (at depth 0), emits InterpolationEnd and pops back to InString.
+    fn lex_interpolation(&mut self) -> Token {
+        self.skip_whitespace();
+
+        let start = self.cursor.pos();
+
+        let Some(c) = self.cursor.peek() else {
+            // EOF inside interpolation -- error
+            self.state_stack.pop();
+            return Token::new(TokenKind::Error, start, start);
+        };
+
+        match c {
+            '{' => {
+                // Increment brace depth
+                if let Some(LexerState::InInterpolation { ref mut brace_depth }) = self.state_stack.last_mut() {
+                    *brace_depth += 1;
+                }
+                self.single_char_token(TokenKind::LBrace, start)
+            }
+            '}' => {
+                let brace_depth = if let Some(LexerState::InInterpolation { brace_depth }) = self.state_stack.last() {
+                    *brace_depth
+                } else {
+                    0
+                };
+
+                if brace_depth == 0 {
+                    // Closing interpolation
+                    self.cursor.advance();
+                    let end = self.cursor.pos();
+                    self.state_stack.pop(); // pop InInterpolation, back to InString
+                    Token::new(TokenKind::InterpolationEnd, start, end)
+                } else {
+                    // Decrement brace depth
+                    if let Some(LexerState::InInterpolation { ref mut brace_depth }) = self.state_stack.last_mut() {
+                        *brace_depth -= 1;
+                    }
+                    self.single_char_token(TokenKind::RBrace, start)
+                }
+            }
+            // ── Newlines inside interpolation ───────────────────────────
+            '\n' => {
+                self.cursor.advance();
+                Token::new(TokenKind::Newline, start, self.cursor.pos())
+            }
+            '\r' => {
+                self.cursor.advance();
+                if self.cursor.peek() == Some('\n') {
+                    self.cursor.advance();
+                }
+                Token::new(TokenKind::Newline, start, self.cursor.pos())
+            }
+            // All other tokens: delegate to normal tokenization helpers
+            '(' => self.single_char_token(TokenKind::LParen, start),
+            ')' => self.single_char_token(TokenKind::RParen, start),
+            '[' => self.single_char_token(TokenKind::LBracket, start),
+            ']' => self.single_char_token(TokenKind::RBracket, start),
+            ',' => self.single_char_token(TokenKind::Comma, start),
+            ';' => self.single_char_token(TokenKind::Semicolon, start),
+            '=' => self.lex_eq(start),
+            '!' => self.lex_bang(start),
+            '<' => self.lex_lt(start),
+            '>' => self.lex_gt(start),
+            '&' => self.lex_amp(start),
+            '|' => self.lex_pipe(start),
+            '+' => self.lex_plus(start),
+            '-' => self.lex_minus(start),
+            ':' => self.lex_colon(start),
+            '.' => self.lex_dot(start),
+            '*' => self.single_char_token(TokenKind::Star, start),
+            '/' => self.single_char_token(TokenKind::Slash, start),
+            '%' => self.single_char_token(TokenKind::Percent, start),
+            '#' => self.lex_comment(start),
+            '0'..='9' => self.lex_number(start),
+            '"' => self.lex_string_start(start),
+            c if is_ident_start(c) => self.lex_ident(start),
+            _ => {
+                self.cursor.advance();
+                Token::new(TokenKind::Error, start, self.cursor.pos())
+            }
+        }
+    }
+
+    // ── Identifiers and keywords ──────────────────────────────────────
 
     /// Lex an identifier or keyword.
     fn lex_ident(&mut self, start: u32) -> Token {
@@ -509,28 +679,16 @@ impl<'src> Iterator for Lexer<'src> {
             return None;
         }
 
-        // Check for pending token first (e.g. StringEnd after StringContent).
-        if let Some(token) = self.pending_token.take() {
+        // Drain pending tokens first.
+        if !self.pending.is_empty() {
+            let token = self.pending.remove(0);
             if token.kind == TokenKind::Eof {
                 self.emitted_eof = true;
             }
             return Some(token);
         }
 
-        // If we just emitted StringStart, lex the string body next.
-        match self.string_mode {
-            StringMode::Single => {
-                let token = self.lex_single_string_content();
-                return Some(token);
-            }
-            StringMode::Triple => {
-                let token = self.lex_triple_string_content();
-                return Some(token);
-            }
-            StringMode::None => {}
-        }
-
-        let token = self.next_token();
+        let token = self.produce_token();
         if token.kind == TokenKind::Eof {
             self.emitted_eof = true;
         }
@@ -598,5 +756,58 @@ mod tests {
         // 42: 8-10
         assert_eq!(tokens[3].span.start, 8);
         assert_eq!(tokens[3].span.end, 10);
+    }
+
+    #[test]
+    fn lex_string_interpolation_basic() {
+        let tokens = Lexer::tokenize(r#""hello ${name} world""#);
+        let kinds: Vec<_> = tokens.iter().map(|t| &t.kind).collect();
+        assert_eq!(
+            kinds,
+            vec![
+                &TokenKind::StringStart,
+                &TokenKind::StringContent,       // "hello "
+                &TokenKind::InterpolationStart,   // ${
+                &TokenKind::Ident,                // name
+                &TokenKind::InterpolationEnd,     // }
+                &TokenKind::StringContent,        // " world"
+                &TokenKind::StringEnd,
+                &TokenKind::Eof,
+            ]
+        );
+    }
+
+    #[test]
+    fn lex_nested_block_comment() {
+        let tokens = Lexer::tokenize("#= outer #= inner =# still =#");
+        let kinds: Vec<_> = tokens.iter().map(|t| &t.kind).collect();
+        assert_eq!(
+            kinds,
+            vec![
+                &TokenKind::Comment,
+                &TokenKind::Eof,
+            ]
+        );
+    }
+
+    #[test]
+    fn lex_newlines_emitted() {
+        let tokens = Lexer::tokenize("let x = 1\nlet y = 2");
+        let kinds: Vec<_> = tokens.iter().map(|t| &t.kind).collect();
+        assert_eq!(
+            kinds,
+            vec![
+                &TokenKind::Let,
+                &TokenKind::Ident,
+                &TokenKind::Eq,
+                &TokenKind::IntLiteral,
+                &TokenKind::Newline,
+                &TokenKind::Let,
+                &TokenKind::Ident,
+                &TokenKind::Eq,
+                &TokenKind::IntLiteral,
+                &TokenKind::Eof,
+            ]
+        );
     }
 }
