@@ -10,28 +10,28 @@ See: .planning/PROJECT.md (updated 2026-02-05)
 ## Current Position
 
 Phase: 1 of 10 (Project Foundation & Lexer)
-Plan: 0 of 2 in current phase
-Status: Ready to plan
-Last activity: 2026-02-06 -- Roadmap created
+Plan: 1 of 3 in current phase
+Status: In progress
+Last activity: 2026-02-06 -- Completed 01-01-PLAN.md
 
-Progress: [░░░░░░░░░░] 0%
+Progress: [█░░░░░░░░░] ~3% (1 plan of ~30 estimated total)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 0
-- Average duration: -
-- Total execution time: 0 hours
+- Total plans completed: 1
+- Average duration: 3min
+- Total execution time: 3min
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
-| - | - | - | - |
+| 01-project-foundation-lexer | 1/3 | 3min | 3min |
 
 **Recent Trend:**
-- Last 5 plans: -
-- Trend: -
+- Last 5 plans: 01-01 (3min)
+- Trend: baseline established
 
 *Updated after each plan completion*
 
@@ -45,10 +45,13 @@ Recent decisions affecting current work:
 - [Roadmap]: Compiler pipeline phases (1-5) must complete before actor runtime (Phase 6) -- sequential code first, actors later
 - [Roadmap]: Actor runtime (libsnowrt) developed as standalone Rust library tested independently before compiler integration
 - [Roadmap]: Type system and pattern matching are separate phases due to individual complexity and risk
+- [01-01]: 39 keywords (not 37 as plan header stated) -- when, where, with bring the actual count to 39
+- [01-01]: SelfKw variant for self keyword (Rust keyword conflict avoidance)
+- [01-01]: Match-based keyword dispatch over HashMap (compiler optimizes string matching)
 
 ### Pending Todos
 
-None yet.
+None.
 
 ### Blockers/Concerns
 
@@ -59,5 +62,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-06
-Stopped at: Roadmap created, ready to plan Phase 1
+Stopped at: Completed 01-01-PLAN.md
 Resume file: None
