@@ -121,7 +121,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | LANG-06 | Phase 4: Pattern Matching & ADTs | Pending |
 | LANG-07 | Phase 2: Parser & AST | Pending |
 | LANG-08 | Phase 2: Parser & AST | Pending |
-| LANG-09 | Phase 1: Project Foundation & Lexer | Pending |
+| LANG-09 | Phase 1: Project Foundation & Lexer | Complete |
 | LANG-10 | Phase 2: Parser & AST | Pending |
 | LANG-11 | Phase 4: Pattern Matching & ADTs | Pending |
 | TYPE-01 | Phase 3: Type System | Pending |

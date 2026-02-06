@@ -12,7 +12,7 @@ Snow is a statically typed, LLVM-compiled programming language with Elixir-style
 
 Decimal phases appear between their surrounding integers in numeric order.
 
-- [ ] **Phase 1: Project Foundation & Lexer** - Reproducible build, test infrastructure, and tokenization of Snow source code
+- [x] **Phase 1: Project Foundation & Lexer** - Reproducible build, test infrastructure, and tokenization of Snow source code
 - [ ] **Phase 2: Parser & AST** - Recursive descent parser producing a complete abstract syntax tree for all Snow syntax
 - [ ] **Phase 3: Type System** - Hindley-Milner type inference with generics, structs, traits, Option/Result types
 - [ ] **Phase 4: Pattern Matching & Algebraic Data Types** - Exhaustive pattern matching, sum types, and guards
@@ -37,9 +37,9 @@ Decimal phases appear between their surrounding integers in numeric order.
 **Plans**: 3 plans
 
 Plans:
-- [ ] 01-01-PLAN.md -- Rust workspace, shared types (TokenKind, Span, LexError), and test infrastructure
-- [ ] 01-02-PLAN.md -- Core lexer with Cursor, keywords, operators, numbers, identifiers, simple strings
-- [ ] 01-03-PLAN.md -- String interpolation, block comments, newlines, error recovery, full test suite
+- [x] 01-01-PLAN.md -- Rust workspace, shared types (TokenKind, Span, LexError), and test infrastructure
+- [x] 01-02-PLAN.md -- Core lexer with Cursor, keywords, operators, numbers, identifiers, simple strings
+- [x] 01-03-PLAN.md -- String interpolation, block comments, newlines, error recovery, full test suite
 
 ### Phase 2: Parser & AST
 **Goal**: A recursive descent parser that transforms token streams into a complete AST representing all Snow language constructs, with human-readable parse error messages
@@ -205,7 +205,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8 -> 9 -> 10
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Project Foundation & Lexer | 0/3 | Not started | - |
+| 1. Project Foundation & Lexer | 3/3 | Complete | 2026-02-06 |
 | 2. Parser & AST | 0/4 | Not started | - |
 | 3. Type System | 0/5 | Not started | - |
 | 4. Pattern Matching & ADTs | 0/3 | Not started | - |
