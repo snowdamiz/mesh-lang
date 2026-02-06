@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-02-05)
 
 **Core value:** Expressive, readable concurrency -- writing concurrent programs should feel as natural as sequential code, with supervision and fault tolerance built in.
-**Current focus:** Phase 5 in progress -- LLVM Codegen & Native Binaries. Plan 02 complete (MIR type system + AST-to-MIR lowering).
+**Current focus:** Phase 5 in progress -- LLVM Codegen & Native Binaries. Plan 03 complete (pattern match compilation to decision trees).
 
 ## Current Position
 
 Phase: 5 of 10 (LLVM Codegen & Native Binaries)
-Plan: 2 of 5 in current phase
+Plan: 3 of 5 in current phase
 Status: In progress
-Last activity: 2026-02-06 -- Completed 05-02-PLAN.md (MIR type system & AST-to-MIR lowering)
+Last activity: 2026-02-06 -- Completed 05-03-PLAN.md (pattern match compilation to decision trees)
 
-Progress: [█████████████████████░] 49% (20 plans of ~41 estimated total)
+Progress: [██████████████████████░] 51% (21 plans of ~41 estimated total)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 20
+- Total plans completed: 21
 - Average duration: 9min
-- Total execution time: 174min
+- Total execution time: 182min
 
 **By Phase:**
 
@@ -31,11 +31,11 @@ Progress: [█████████████████████░] 4
 | 02-parser-ast | 5/5 | 23min | 5min |
 | 03-type-system | 5/5 | 83min | 17min |
 | 04-pattern-matching-adts | 5/5 | 42min | 8min |
-| 05-llvm-codegen-native-binaries | 2/5 | 14min | 7min |
+| 05-llvm-codegen-native-binaries | 3/5 | 22min | 7min |
 
 **Recent Trend:**
-- Last 5 plans: 04-04 (7min), 04-05 (5min), 05-01 (5min), 05-02 (9min)
-- Trend: Phase 5 progressing. MIR lowering is the most complex part; 2,479 lines added.
+- Last 5 plans: 04-05 (5min), 05-01 (5min), 05-02 (9min), 05-03 (8min)
+- Trend: Phase 5 maintaining steady 7-9min pace. Pattern compilation was clean TDD cycle.
 
 *Updated after each plan completion*
 
@@ -134,6 +134,12 @@ Recent decisions affecting current work:
 - [05-02]: Closures lifted with __env first param; captures detected by free variable analysis
 - [05-02]: String interpolation compiled to snow_string_concat/snow_*_to_string runtime call chains
 - [05-02]: Monomorphization is reachability-based for Phase 5 (type checker resolves concrete types)
+- [05-03]: Constructor sub-pattern bindings collected via recursive column processing (not Constructor bindings field)
+- [05-03]: Or-patterns expanded before matrix construction by duplicating (arm_index, pattern, guard) tuples
+- [05-03]: Boolean exhaustive match produces Test chain with terminal Fail (LLVM optimizes away unreachable Fail)
+- [05-03]: Tuple patterns handled by column expansion, not Switch/Test
+- [05-03]: Column selection heuristic: column with most distinct head constructors wins
+- [05-03]: Guard failure chains to next row or Fail node
 
 ### Pending Todos
 
@@ -147,5 +153,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-06
-Stopped at: Completed 05-02-PLAN.md
+Stopped at: Completed 05-03-PLAN.md
 Resume file: None
