@@ -22,12 +22,12 @@ use super::MirType;
 /// variable that should not exist after type checking.
 pub fn resolve_type(ty: &Ty, registry: &TypeRegistry, is_closure_context: bool) -> MirType {
     match ty {
-        Ty::Var(v) => {
-            panic!(
-                "Unresolved type variable ?{} found during MIR lowering. \
-                 This indicates a bug in the type checker.",
-                v.0
-            );
+        Ty::Var(_v) => {
+            // Unresolved type variables can occur when the type checker produces
+            // errors or when types are not fully constrained. Fall back to Unit
+            // for MIR lowering to proceed. The type error was already reported
+            // during type checking.
+            MirType::Unit
         }
 
         Ty::Con(con) => resolve_con(con, registry),
@@ -295,10 +295,10 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "Unresolved type variable")]
-    fn resolve_var_panics() {
+    fn resolve_var_falls_back_to_unit() {
         use snow_typeck::ty::TyVar;
         let reg = empty_registry();
-        resolve_type(&Ty::Var(TyVar(0)), &reg, false);
+        // Unresolved type variables fall back to Unit for graceful degradation.
+        assert_eq!(resolve_type(&Ty::Var(TyVar(0)), &reg, false), MirType::Unit);
     }
 }

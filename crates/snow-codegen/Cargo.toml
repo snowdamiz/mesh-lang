@@ -10,6 +10,7 @@ snow-common = { path = "../snow-common" }
 snow-parser = { path = "../snow-parser" }
 snow-typeck = { path = "../snow-typeck" }
 rustc-hash = { workspace = true }
+rowan = { workspace = true }
 
 [dev-dependencies]
 insta = { workspace = true }

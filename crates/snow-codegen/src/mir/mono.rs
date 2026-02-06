@@ -1,5 +1,246 @@
 //! Monomorphization pass.
 //!
-//! Takes a MIR module with potentially generic functions and produces a module
-//! containing only monomorphic (concrete-typed) functions. Full implementation
-//! in Task 2.
+//! Takes a MIR module and ensures all functions use only concrete types.
+//! Since the type checker already resolves concrete types at each call site,
+//! this pass primarily:
+//! 1. Collects all reachable functions starting from the entry point.
+//! 2. Removes unreachable functions.
+//! 3. In future: creates specialized copies of generic functions for each
+//!    concrete type instantiation.
+//!
+//! For Phase 5, all types are already concrete after lowering (the type checker
+//! resolves all generics), so monomorphization is mainly a reachability pass.
+
+use std::collections::HashSet;
+
+use super::{MirExpr, MirModule};
+
+/// Run the monomorphization pass on a MIR module.
+///
+/// This collects all reachable functions starting from the entry point
+/// (or all top-level functions if no entry point exists), and removes
+/// any unreachable functions. In the future, this will also specialize
+/// generic functions for each concrete type instantiation.
+pub fn monomorphize(module: &mut MirModule) {
+    let reachable = collect_reachable_functions(module);
+
+    // Keep only reachable functions (plus closure functions that may be
+    // referenced transitively).
+    module.functions.retain(|f| reachable.contains(&f.name));
+}
+
+/// Collect the names of all reachable functions starting from the entry point.
+fn collect_reachable_functions(module: &MirModule) -> HashSet<String> {
+    let mut reachable = HashSet::new();
+    let mut worklist: Vec<String> = Vec::new();
+
+    // Start from the entry function, or all functions if no entry.
+    if let Some(ref entry) = module.entry_function {
+        worklist.push(entry.clone());
+    } else {
+        // No entry point: keep all functions reachable.
+        for f in &module.functions {
+            worklist.push(f.name.clone());
+        }
+    }
+
+    while let Some(name) = worklist.pop() {
+        if reachable.contains(&name) {
+            continue;
+        }
+        reachable.insert(name.clone());
+
+        // Find the function and scan its body for referenced functions.
+        if let Some(func) = module.functions.iter().find(|f| f.name == name) {
+            let mut refs = Vec::new();
+            collect_function_refs(&func.body, &mut refs);
+            for r in refs {
+                if !reachable.contains(&r) {
+                    worklist.push(r);
+                }
+            }
+        }
+    }
+
+    reachable
+}
+
+/// Recursively collect function names referenced in an expression.
+fn collect_function_refs(expr: &MirExpr, refs: &mut Vec<String>) {
+    match expr {
+        MirExpr::Call { func, args, .. } => {
+            if let MirExpr::Var(name, _) = func.as_ref() {
+                refs.push(name.clone());
+            }
+            collect_function_refs(func, refs);
+            for arg in args {
+                collect_function_refs(arg, refs);
+            }
+        }
+        MirExpr::ClosureCall {
+            closure, args, ..
+        } => {
+            collect_function_refs(closure, refs);
+            for arg in args {
+                collect_function_refs(arg, refs);
+            }
+        }
+        MirExpr::MakeClosure {
+            fn_name, captures, ..
+        } => {
+            refs.push(fn_name.clone());
+            for cap in captures {
+                collect_function_refs(cap, refs);
+            }
+        }
+        MirExpr::BinOp { lhs, rhs, .. } => {
+            collect_function_refs(lhs, refs);
+            collect_function_refs(rhs, refs);
+        }
+        MirExpr::UnaryOp { operand, .. } => {
+            collect_function_refs(operand, refs);
+        }
+        MirExpr::If {
+            cond,
+            then_body,
+            else_body,
+            ..
+        } => {
+            collect_function_refs(cond, refs);
+            collect_function_refs(then_body, refs);
+            collect_function_refs(else_body, refs);
+        }
+        MirExpr::Let { value, body, .. } => {
+            collect_function_refs(value, refs);
+            collect_function_refs(body, refs);
+        }
+        MirExpr::Block(exprs, _) => {
+            for e in exprs {
+                collect_function_refs(e, refs);
+            }
+        }
+        MirExpr::Match {
+            scrutinee, arms, ..
+        } => {
+            collect_function_refs(scrutinee, refs);
+            for arm in arms {
+                if let Some(guard) = &arm.guard {
+                    collect_function_refs(guard, refs);
+                }
+                collect_function_refs(&arm.body, refs);
+            }
+        }
+        MirExpr::StructLit { fields, .. } => {
+            for (_, val) in fields {
+                collect_function_refs(val, refs);
+            }
+        }
+        MirExpr::FieldAccess { object, .. } => {
+            collect_function_refs(object, refs);
+        }
+        MirExpr::ConstructVariant { fields, .. } => {
+            for f in fields {
+                collect_function_refs(f, refs);
+            }
+        }
+        MirExpr::Return(val) => {
+            collect_function_refs(val, refs);
+        }
+        MirExpr::Var(name, _) => {
+            // Variable references to known functions also count.
+            refs.push(name.clone());
+        }
+        MirExpr::IntLit(_, _)
+        | MirExpr::FloatLit(_, _)
+        | MirExpr::BoolLit(_, _)
+        | MirExpr::StringLit(_, _)
+        | MirExpr::Panic { .. }
+        | MirExpr::Unit => {}
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::mir::{MirFunction, MirType};
+
+    #[test]
+    fn monomorphize_keeps_reachable_functions() {
+        let mut module = MirModule {
+            functions: vec![
+                MirFunction {
+                    name: "main".to_string(),
+                    params: vec![],
+                    return_type: MirType::Int,
+                    body: MirExpr::Call {
+                        func: Box::new(MirExpr::Var(
+                            "helper".to_string(),
+                            MirType::FnPtr(vec![], Box::new(MirType::Int)),
+                        )),
+                        args: vec![],
+                        ty: MirType::Int,
+                    },
+                    is_closure_fn: false,
+                    captures: vec![],
+                },
+                MirFunction {
+                    name: "helper".to_string(),
+                    params: vec![],
+                    return_type: MirType::Int,
+                    body: MirExpr::IntLit(42, MirType::Int),
+                    is_closure_fn: false,
+                    captures: vec![],
+                },
+                MirFunction {
+                    name: "unused".to_string(),
+                    params: vec![],
+                    return_type: MirType::Int,
+                    body: MirExpr::IntLit(0, MirType::Int),
+                    is_closure_fn: false,
+                    captures: vec![],
+                },
+            ],
+            structs: vec![],
+            sum_types: vec![],
+            entry_function: Some("main".to_string()),
+        };
+
+        monomorphize(&mut module);
+
+        let names: Vec<&str> = module.functions.iter().map(|f| f.name.as_str()).collect();
+        assert!(names.contains(&"main"));
+        assert!(names.contains(&"helper"));
+        assert!(!names.contains(&"unused"), "unused function should be removed");
+    }
+
+    #[test]
+    fn monomorphize_keeps_all_without_entry() {
+        let mut module = MirModule {
+            functions: vec![
+                MirFunction {
+                    name: "foo".to_string(),
+                    params: vec![],
+                    return_type: MirType::Unit,
+                    body: MirExpr::Unit,
+                    is_closure_fn: false,
+                    captures: vec![],
+                },
+                MirFunction {
+                    name: "bar".to_string(),
+                    params: vec![],
+                    return_type: MirType::Unit,
+                    body: MirExpr::Unit,
+                    is_closure_fn: false,
+                    captures: vec![],
+                },
+            ],
+            structs: vec![],
+            sum_types: vec![],
+            entry_function: None,
+        };
+
+        monomorphize(&mut module);
+
+        assert_eq!(module.functions.len(), 2);
+    }
+}

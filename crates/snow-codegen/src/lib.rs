@@ -18,6 +18,27 @@
 pub mod codegen;
 pub mod mir;
 
+use mir::lower::lower_to_mir;
+use mir::mono::monomorphize;
+
+/// Lower a parsed and type-checked Snow program to MIR.
+///
+/// This runs the full MIR lowering pipeline: AST-to-MIR conversion (with
+/// pipe desugaring, string interpolation compilation, and closure conversion),
+/// followed by the monomorphization pass.
+///
+/// # Errors
+///
+/// Returns an error string if MIR lowering fails.
+pub fn lower_to_mir_module(
+    parse: &snow_parser::Parse,
+    typeck: &snow_typeck::TypeckResult,
+) -> Result<mir::MirModule, String> {
+    let mut module = lower_to_mir(parse, typeck)?;
+    monomorphize(&mut module);
+    Ok(module)
+}
+
 /// Compile a parsed and type-checked Snow program to a native binary.
 ///
 /// This is the main entry point for code generation. It takes the parse tree
@@ -32,5 +53,5 @@ pub fn compile(
     _parse: &snow_parser::Parse,
     _typeck: &snow_typeck::TypeckResult,
 ) -> Result<(), String> {
-    todo!("compile: MIR lowering and LLVM codegen will be implemented in subsequent plans")
+    todo!("compile: LLVM IR codegen will be implemented in Plan 05-04")
 }
