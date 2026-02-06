@@ -131,8 +131,113 @@ fn test_sum_type_multiple_fields() {
     );
 }
 
-// Case match with constructor patterns is tested after Task 2
-// (constructor pattern inference). See test_sum_type_case_match below.
+// ── Constructor Pattern Tests ─────────────────────────────────────────
+
+/// Test 8: Case match on sum type with constructor patterns.
+/// The constructor pattern `Circle(r)` binds `r` to the Float field.
+#[test]
+fn test_sum_type_case_match() {
+    let result = check_source(
+        "type Shape do\n  Circle(Float)\n  Point\nend\n\
+         let s = Shape.Circle(5.0)\n\
+         case s do\n  Circle(r) -> r\n  Point -> 0.0\nend",
+    );
+    assert_result_type(&result, Ty::float());
+}
+
+/// Test 9: Constructor pattern with qualified name in case arm.
+#[test]
+fn test_sum_type_qualified_constructor_pattern() {
+    let result = check_source(
+        "type Shape do\n  Circle(Float)\n  Point\nend\n\
+         let s = Shape.Circle(5.0)\n\
+         case s do\n  Shape.Circle(r) -> r\n  Shape.Point -> 0.0\nend",
+    );
+    assert_result_type(&result, Ty::float());
+}
+
+/// Test 10: Nested constructor patterns.
+#[test]
+fn test_nested_constructor_pattern() {
+    let result = check_source(
+        "type Shape do\n  Circle(Float)\nend\n\
+         let s = Some(Shape.Circle(3.14))\n\
+         case s do\n  Some(Circle(r)) -> r\n  None -> 0.0\nend",
+    );
+    assert_result_type(&result, Ty::float());
+}
+
+/// Test 11: Constructor pattern with wildcard sub-pattern.
+#[test]
+fn test_constructor_pattern_with_wildcard() {
+    let result = check_source(
+        "type Shape do\n  Circle(Float)\n  Point\nend\n\
+         let s = Shape.Circle(5.0)\n\
+         case s do\n  Circle(_) -> 1\n  Point -> 2\nend",
+    );
+    assert_result_type(&result, Ty::int());
+}
+
+/// Test 12: Unknown variant in constructor pattern produces error.
+#[test]
+fn test_unknown_variant_pattern() {
+    let result = check_source(
+        "type Shape do\n  Circle(Float)\nend\n\
+         let s = Shape.Circle(5.0)\n\
+         case s do\n  Triangle(a) -> a\nend",
+    );
+    assert_has_error(
+        &result,
+        |e| matches!(e, TypeError::UnknownVariant { .. }),
+        "UnknownVariant",
+    );
+}
+
+// ── As Pattern Tests ─────────────────────────────────────────────────
+
+/// Test 13: As-pattern binds the whole matched value.
+#[test]
+fn test_as_pattern_binds_whole_value() {
+    let result = check_source(
+        "type Shape do\n  Circle(Float)\n  Point\nend\n\
+         let s = Shape.Circle(5.0)\n\
+         case s do\n  Circle(r) as shape -> r\n  Point -> 0.0\nend",
+    );
+    assert_result_type(&result, Ty::float());
+}
+
+/// Test 14: As-pattern with literal.
+#[test]
+fn test_as_pattern_with_literal() {
+    let result = check_source(
+        "let x = 42\n\
+         case x do\n  n as val -> val\nend",
+    );
+    assert_result_type(&result, Ty::int());
+}
+
+// ── Or Pattern Tests ─────────────────────────────────────────────────
+
+/// Test 15: Or-pattern with nullary constructors.
+#[test]
+fn test_or_pattern_nullary() {
+    let result = check_source(
+        "type Color do\n  Red\n  Green\n  Blue\nend\n\
+         let c = Color.Red\n\
+         case c do\n  Red | Green -> 1\n  Blue -> 2\nend",
+    );
+    assert_result_type(&result, Ty::int());
+}
+
+/// Test 16: Or-pattern with literal alternatives.
+#[test]
+fn test_or_pattern_literals() {
+    let result = check_source(
+        "let x = 1\n\
+         case x do\n  1 | 2 | 3 -> true\n  _ -> false\nend",
+    );
+    assert_result_type(&result, Ty::bool());
+}
 
 // ── Helper for generic non-builtin types ──────────────────────────────
 

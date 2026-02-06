@@ -869,7 +869,7 @@ fn infer_let_binding(
             env.insert(name_text, scheme);
         }
     } else if let Some(pat) = let_.pattern() {
-        let pat_ty = infer_pattern(ctx, env, &pat, types)?;
+        let pat_ty = infer_pattern(ctx, env, &pat, types, type_registry)?;
         ctx.unify(
             pat_ty,
             init_ty.clone(),
@@ -1606,7 +1606,7 @@ fn infer_case(
         env.push_scope();
 
         if let Some(pat) = arm.pattern() {
-            let pat_ty = infer_pattern(ctx, env, &pat, types)?;
+            let pat_ty = infer_pattern(ctx, env, &pat, types, type_registry)?;
             ctx.unify(pat_ty, scrutinee_ty.clone(), ConstraintOrigin::Builtin)?;
         }
 
@@ -1851,16 +1851,37 @@ fn infer_pattern(
     env: &mut TypeEnv,
     pat: &Pattern,
     types: &mut FxHashMap<TextRange, Ty>,
+    type_registry: &TypeRegistry,
 ) -> Result<Ty, TypeError> {
     match pat {
         Pattern::Ident(ident) => {
-            let ty = ctx.fresh_var();
             if let Some(name_tok) = ident.name() {
                 let name_text = name_tok.text().to_string();
+
+                // Check if this identifier is a known nullary variant constructor.
+                // In Snow, bare uppercase names like `Red`, `None`, `Point` in pattern
+                // position should resolve to constructors, not create fresh bindings.
+                if let Some(scheme) = env.lookup(&name_text) {
+                    let candidate = ctx.instantiate(scheme);
+                    let resolved = ctx.resolve(candidate.clone());
+                    // If the name resolves to a sum type (nullary constructor), use it.
+                    let is_sum_type = matches!(&resolved, Ty::App(con, _) if matches!(con.as_ref(), Ty::Con(_)));
+                    if is_sum_type {
+                        types.insert(pat.syntax().text_range(), candidate.clone());
+                        return Ok(candidate);
+                    }
+                }
+
+                // Regular identifier pattern: create a fresh binding.
+                let ty = ctx.fresh_var();
                 env.insert(name_text, Scheme::mono(ty.clone()));
+                types.insert(pat.syntax().text_range(), ty.clone());
+                Ok(ty)
+            } else {
+                let ty = ctx.fresh_var();
+                types.insert(pat.syntax().text_range(), ty.clone());
+                Ok(ty)
             }
-            types.insert(pat.syntax().text_range(), ty.clone());
-            Ok(ty)
         }
         Pattern::Wildcard(_) => {
             let ty = ctx.fresh_var();
@@ -1886,22 +1907,268 @@ fn infer_pattern(
         Pattern::Tuple(tuple_pat) => {
             let mut elem_types = Vec::new();
             for sub_pat in tuple_pat.patterns() {
-                let ty = infer_pattern(ctx, env, &sub_pat, types)?;
+                let ty = infer_pattern(ctx, env, &sub_pat, types, type_registry)?;
                 elem_types.push(ty);
             }
             let ty = Ty::Tuple(elem_types);
             types.insert(pat.syntax().text_range(), ty.clone());
             Ok(ty)
         }
-        // Constructor, or, and as patterns will be fully implemented in Phase 04.
-        // For now, infer a fresh type variable so existing code compiles.
-        Pattern::Constructor(_) | Pattern::Or(_) | Pattern::As(_) => {
-            let ty = ctx.fresh_var();
-            types.insert(pat.syntax().text_range(), ty.clone());
-            Ok(ty)
+        Pattern::Constructor(ctor_pat) => {
+            infer_constructor_pattern(ctx, env, ctor_pat, pat, types, type_registry)
+        }
+        Pattern::Or(or_pat) => {
+            infer_or_pattern(ctx, env, or_pat, pat, types, type_registry)
+        }
+        Pattern::As(as_pat) => {
+            infer_as_pattern(ctx, env, as_pat, pat, types, type_registry)
         }
     }
 }
+
+/// Infer a constructor pattern: `Circle(r)` or `Shape.Circle(r)`.
+///
+/// 1. Look up the variant constructor (qualified or unqualified) in the env.
+/// 2. Instantiate the constructor scheme to get fresh type vars.
+/// 3. If it's a function type, unify sub-pattern types with param types.
+/// 4. Return the result type (the sum type).
+fn infer_constructor_pattern(
+    ctx: &mut InferCtx,
+    env: &mut TypeEnv,
+    ctor_pat: &snow_parser::ast::pat::ConstructorPat,
+    pat: &Pattern,
+    types: &mut FxHashMap<TextRange, Ty>,
+    type_registry: &TypeRegistry,
+) -> Result<Ty, TypeError> {
+    let variant_name = ctor_pat
+        .variant_name()
+        .map(|t| t.text().to_string())
+        .unwrap_or_else(|| "<unknown>".to_string());
+
+    // Build the lookup name -- qualified or unqualified.
+    let lookup_name = if ctor_pat.is_qualified() {
+        let type_name = ctor_pat
+            .type_name()
+            .map(|t| t.text().to_string())
+            .unwrap_or_else(|| "<unknown>".to_string());
+        format!("{}.{}", type_name, variant_name)
+    } else {
+        variant_name.clone()
+    };
+
+    // Look up the constructor in the environment.
+    let ctor_scheme = match env.lookup(&lookup_name) {
+        Some(scheme) => scheme.clone(),
+        None => {
+            // Try to find in type registry for better error message.
+            let err = TypeError::UnknownVariant {
+                name: lookup_name,
+                span: pat.syntax().text_range(),
+            };
+            ctx.errors.push(err.clone());
+            return Err(err);
+        }
+    };
+
+    let ctor_ty = ctx.instantiate(&ctor_scheme);
+
+    // Collect sub-patterns from the constructor.
+    let sub_patterns: Vec<Pattern> = ctor_pat.fields().collect();
+
+    match ctor_ty {
+        Ty::Fun(param_types, ret) => {
+            // Constructor with fields: unify sub-pattern types with param types.
+            if sub_patterns.len() != param_types.len() {
+                let err = TypeError::ArityMismatch {
+                    expected: param_types.len(),
+                    found: sub_patterns.len(),
+                    origin: ConstraintOrigin::Builtin,
+                };
+                ctx.errors.push(err.clone());
+                return Err(err);
+            }
+
+            for (sub_pat, expected_ty) in sub_patterns.iter().zip(param_types.iter()) {
+                let sub_ty = infer_pattern(ctx, env, sub_pat, types, type_registry)?;
+                ctx.unify(sub_ty, expected_ty.clone(), ConstraintOrigin::Builtin)?;
+            }
+
+            types.insert(pat.syntax().text_range(), (*ret).clone());
+            Ok(*ret)
+        }
+        _ => {
+            // Nullary constructor (not a function): no sub-patterns expected.
+            if !sub_patterns.is_empty() {
+                let err = TypeError::ArityMismatch {
+                    expected: 0,
+                    found: sub_patterns.len(),
+                    origin: ConstraintOrigin::Builtin,
+                };
+                ctx.errors.push(err.clone());
+                return Err(err);
+            }
+
+            types.insert(pat.syntax().text_range(), ctor_ty.clone());
+            Ok(ctor_ty)
+        }
+    }
+}
+
+/// Infer an or-pattern: `Circle(_) | Point`.
+///
+/// 1. Infer each alternative in a temporary scope.
+/// 2. Unify all alternatives (they must match the same type).
+/// 3. Validate that all alternatives bind the same set of variable names.
+/// 4. Re-bind variables from the first alternative into the current scope.
+fn infer_or_pattern(
+    ctx: &mut InferCtx,
+    env: &mut TypeEnv,
+    or_pat: &snow_parser::ast::pat::OrPat,
+    pat: &Pattern,
+    types: &mut FxHashMap<TextRange, Ty>,
+    type_registry: &TypeRegistry,
+) -> Result<Ty, TypeError> {
+    let alternatives: Vec<Pattern> = or_pat.alternatives().collect();
+
+    if alternatives.is_empty() {
+        let ty = ctx.fresh_var();
+        types.insert(pat.syntax().text_range(), ty.clone());
+        return Ok(ty);
+    }
+
+    // Collect binding names using semantic-aware collection (needs env).
+    let first_names = collect_pattern_binding_names(&alternatives[0], env);
+
+    // Infer first alternative in a temporary scope.
+    env.push_scope();
+    let first_ty = infer_pattern(ctx, env, &alternatives[0], types, type_registry)?;
+
+    // Save the bindings from the first alternative to re-apply later.
+    let first_bindings: Vec<(String, Scheme)> = first_names
+        .iter()
+        .filter_map(|name| {
+            env.lookup(name).map(|scheme| (name.clone(), scheme.clone()))
+        })
+        .collect();
+    env.pop_scope();
+
+    // Infer remaining alternatives, unify types, validate bindings.
+    for alt in alternatives.iter().skip(1) {
+        let alt_names = collect_pattern_binding_names(alt, env);
+
+        env.push_scope();
+        let alt_ty = infer_pattern(ctx, env, alt, types, type_registry)?;
+        ctx.unify(first_ty.clone(), alt_ty, ConstraintOrigin::Builtin)?;
+        env.pop_scope();
+
+        // Validate same variable names are bound.
+        let mut first_sorted = first_names.clone();
+        first_sorted.sort();
+        let mut alt_sorted = alt_names;
+        alt_sorted.sort();
+
+        if first_sorted != alt_sorted {
+            let err = TypeError::OrPatternBindingMismatch {
+                expected_bindings: first_sorted,
+                found_bindings: alt_sorted,
+                span: pat.syntax().text_range(),
+            };
+            ctx.errors.push(err.clone());
+            return Err(err);
+        }
+    }
+
+    // Re-bind the variables from the first alternative into the current scope.
+    for (name, scheme) in first_bindings {
+        env.insert(name, scheme);
+    }
+
+    types.insert(pat.syntax().text_range(), first_ty.clone());
+    Ok(first_ty)
+}
+
+/// Collect all variable names that would be *bound* by a pattern (recursively).
+///
+/// This is semantically aware: ident patterns that resolve to known constructors
+/// in the environment are NOT counted as bindings.
+fn collect_pattern_binding_names(pat: &Pattern, env: &TypeEnv) -> Vec<String> {
+    let mut names = Vec::new();
+    collect_binding_names_recursive(pat, &mut names, env);
+    names
+}
+
+fn collect_binding_names_recursive(pat: &Pattern, names: &mut Vec<String>, env: &TypeEnv) {
+    match pat {
+        Pattern::Ident(ident) => {
+            if let Some(name_tok) = ident.name() {
+                let name_text = name_tok.text().to_string();
+                // Check if this name is a known constructor (not a variable binding).
+                // If the name already exists in the env, it may be a constructor.
+                // We use the same heuristic as infer_pattern: if it resolves to
+                // a sum type (App(Con(_), _)), it's a constructor, not a binding.
+                let is_constructor = env.lookup(&name_text).is_some();
+                if !is_constructor {
+                    names.push(name_text);
+                }
+            }
+        }
+        Pattern::Wildcard(_) | Pattern::Literal(_) => {}
+        Pattern::Tuple(tuple_pat) => {
+            for sub in tuple_pat.patterns() {
+                collect_binding_names_recursive(&sub, names, env);
+            }
+        }
+        Pattern::Constructor(ctor) => {
+            for sub in ctor.fields() {
+                collect_binding_names_recursive(&sub, names, env);
+            }
+        }
+        Pattern::Or(or_pat) => {
+            // For binding collection, use the first alternative.
+            if let Some(first) = or_pat.alternatives().next() {
+                collect_binding_names_recursive(&first, names, env);
+            }
+        }
+        Pattern::As(as_pat) => {
+            if let Some(inner) = as_pat.pattern() {
+                collect_binding_names_recursive(&inner, names, env);
+            }
+            if let Some(binding) = as_pat.binding_name() {
+                names.push(binding.text().to_string());
+            }
+        }
+    }
+}
+
+/// Infer an as-pattern: `Circle(r) as c`.
+///
+/// 1. Infer the inner pattern.
+/// 2. Bind the "as" name to the inner pattern's type.
+fn infer_as_pattern(
+    ctx: &mut InferCtx,
+    env: &mut TypeEnv,
+    as_pat: &snow_parser::ast::pat::AsPat,
+    pat: &Pattern,
+    types: &mut FxHashMap<TextRange, Ty>,
+    type_registry: &TypeRegistry,
+) -> Result<Ty, TypeError> {
+    // Infer the inner pattern.
+    let inner_ty = if let Some(inner_pat) = as_pat.pattern() {
+        infer_pattern(ctx, env, &inner_pat, types, type_registry)?
+    } else {
+        ctx.fresh_var()
+    };
+
+    // Bind the "as" name to the whole matched value's type.
+    if let Some(binding_name_tok) = as_pat.binding_name() {
+        let binding_name = binding_name_tok.text().to_string();
+        env.insert(binding_name, Scheme::mono(inner_ty.clone()));
+    }
+
+    types.insert(pat.syntax().text_range(), inner_ty.clone());
+    Ok(inner_ty)
+}
+
 
 // ── Helpers ────────────────────────────────────────────────────────────
 

@@ -117,6 +117,17 @@ pub enum TypeError {
         field_name: String,
         span: TextRange,
     },
+    /// A variant name was used in a pattern but does not exist.
+    UnknownVariant {
+        name: String,
+        span: TextRange,
+    },
+    /// Or-pattern alternatives bind different sets of variables.
+    OrPatternBindingMismatch {
+        expected_bindings: Vec<String>,
+        found_bindings: Vec<String>,
+        span: TextRange,
+    },
 }
 
 impl fmt::Display for TypeError {
@@ -207,6 +218,21 @@ impl fmt::Display for TypeError {
                 ty, field_name, ..
             } => {
                 write!(f, "type `{}` has no field `{}`", ty, field_name)
+            }
+            TypeError::UnknownVariant { name, .. } => {
+                write!(f, "unknown variant `{}`", name)
+            }
+            TypeError::OrPatternBindingMismatch {
+                expected_bindings,
+                found_bindings,
+                ..
+            } => {
+                write!(
+                    f,
+                    "or-pattern binding mismatch: expected [{}], found [{}]",
+                    expected_bindings.join(", "),
+                    found_bindings.join(", ")
+                )
             }
         }
     }

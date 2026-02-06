@@ -26,6 +26,8 @@ fn error_code(err: &TypeError) -> &'static str {
         TypeError::MissingTraitMethod { .. } => "E0007",
         TypeError::TraitMethodSignatureMismatch { .. } => "E0008",
         TypeError::MissingField { .. } | TypeError::UnknownField { .. } | TypeError::NoSuchField { .. } => "E0009",
+        TypeError::UnknownVariant { .. } => "E0010",
+        TypeError::OrPatternBindingMismatch { .. } => "E0011",
     }
 }
 
@@ -407,6 +409,47 @@ pub fn render_diagnostic(error: &TypeError, source: &str, _filename: &str) -> St
                         .with_message(format!("no field `{}`", field_name))
                         .with_color(Color::Red),
                 )
+                .finish()
+        }
+
+        TypeError::UnknownVariant { name, span } => {
+            let msg = format!("unknown variant: {}", name);
+            let range = clamp(text_range_to_range(*span));
+
+            Report::build(ReportKind::Error, range.clone())
+                .with_code(code)
+                .with_message(&msg)
+                .with_config(config)
+                .with_label(
+                    Label::new(range)
+                        .with_message("not a known variant")
+                        .with_color(Color::Red),
+                )
+                .finish()
+        }
+
+        TypeError::OrPatternBindingMismatch {
+            expected_bindings,
+            found_bindings,
+            span,
+        } => {
+            let msg = format!(
+                "or-pattern alternatives bind different variables: [{}] vs [{}]",
+                expected_bindings.join(", "),
+                found_bindings.join(", ")
+            );
+            let range = clamp(text_range_to_range(*span));
+
+            Report::build(ReportKind::Error, range.clone())
+                .with_code(code)
+                .with_message(&msg)
+                .with_config(config)
+                .with_label(
+                    Label::new(range)
+                        .with_message("alternatives must bind the same variables")
+                        .with_color(Color::Red),
+                )
+                .with_help("all alternatives in an or-pattern must bind the same set of variable names")
                 .finish()
         }
     };
