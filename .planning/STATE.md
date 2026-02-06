@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-02-05)
 
 **Core value:** Expressive, readable concurrency -- writing concurrent programs should feel as natural as sequential code, with supervision and fault tolerance built in.
-**Current focus:** Phase 4 in progress -- Pattern Matching & Algebraic Data Types. Plan 05 complete (diagnostic rendering + Option/Result ADT migration). Plan 04 may still be in progress (exhaustiveness wiring).
+**Current focus:** Phase 4 complete -- Pattern Matching & Algebraic Data Types. All 5 plans complete including exhaustiveness wiring (04-04) and diagnostic rendering + Option/Result ADT migration (04-05).
 
 ## Current Position
 
 Phase: 4 of 10 (Pattern Matching & ADTs)
-Plan: 5 of 5 in current phase (04-04 may still be in progress)
-Status: In progress
-Last activity: 2026-02-06 -- Completed 04-05-PLAN.md
+Plan: 5 of 5 in current phase
+Status: Phase complete
+Last activity: 2026-02-06 -- Completed 04-04-PLAN.md
 
-Progress: [█████████████████░░░] 43% (18 plans of ~41 estimated total)
+Progress: [███████████████████░] 46% (19 plans of ~41 estimated total)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 18
+- Total plans completed: 19
 - Average duration: 9min
-- Total execution time: 153min
+- Total execution time: 160min
 
 **By Phase:**
 
@@ -33,8 +33,8 @@ Progress: [█████████████████░░░] 43% (18
 | 04-pattern-matching-adts | 5/5 | 35min | 7min |
 
 **Recent Trend:**
-- Last 5 plans: 04-01 (8min), 04-02 (9min), 04-03 (13min), 04-05 (5min)
-- Trend: Phase 4 progressing fast. Migration plan (04-05) completed quickly.
+- Last 5 plans: 04-02 (9min), 04-03 (13min), 04-04 (7min), 04-05 (5min)
+- Trend: Phase 4 complete. All plans executed efficiently.
 
 *Updated after each plan completion*
 
@@ -114,6 +114,10 @@ Recent decisions affecting current work:
 - [04-03]: TypeRegistry parameter on check_exhaustiveness/check_redundancy for complete nested type resolution
 - [04-03]: Bool literals treated as named constructors true/false (unifies with sum type handling)
 - [04-03]: Pattern-based registry building in is_useful() for standalone use; caller-provided registry for check_exhaustiveness/check_redundancy
+- [04-04]: Guards restricted to comparisons, boolean ops, literals, name refs, and named function calls
+- [04-04]: Guarded arms excluded from exhaustiveness matrix (treated as potentially non-matching)
+- [04-04]: Multi-clause function definitions deferred to future plan (requires parser + type checker changes)
+- [04-04]: Redundant arms stored in ctx.warnings (warning-level, not error)
 - [04-05]: Error codes E0012 (NonExhaustiveMatch), W0001 (RedundantArm), E0013 (InvalidGuardExpression)
 - [04-05]: RedundantArm uses Warning report kind (W0001), distinct from Error-level diagnostics
 - [04-05]: Option/Result registered as SumTypeDefInfo in TypeRegistry (proper sum types, not just constructors)
@@ -132,5 +136,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-06
-Stopped at: Completed 04-05-PLAN.md
+Stopped at: Completed 04-04-PLAN.md (phase 4 now fully complete)
 Resume file: None
