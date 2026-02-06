@@ -1,11 +1,10 @@
-//! Expression parser integration tests using insta snapshots.
+//! Parser integration tests using insta snapshots.
 //!
-//! Each test parses a Snow expression, builds the CST, and snapshots the
-//! debug tree output to verify correct precedence, associativity, and
-//! tree structure.
+//! Each test parses a Snow expression/declaration/program, builds the CST,
+//! and snapshots the debug tree output to verify correct structure.
 
 use insta::assert_snapshot;
-use snow_parser::{debug_tree, parse_block, parse_expr};
+use snow_parser::{debug_tree, parse, parse_block, parse_expr};
 
 fn parse_and_debug(source: &str) -> String {
     let parse = parse_expr(source);
@@ -14,6 +13,11 @@ fn parse_and_debug(source: &str) -> String {
 
 fn block_and_debug(source: &str) -> String {
     let parse = parse_block(source);
+    format_parse(&parse)
+}
+
+fn source_and_debug(source: &str) -> String {
+    let parse = parse(source);
     format_parse(&parse)
 }
 
@@ -397,4 +401,171 @@ fn return_bare() {
 #[test]
 fn case_with_when_guard() {
     assert_snapshot!(parse_and_debug("case x do\n  n when n > 0 -> n\n  _ -> 0\nend"));
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// Plan 02-04: Declarations, Patterns, and Types
+// ═══════════════════════════════════════════════════════════════════════
+
+// ── Function Definitions ─────────────────────────────────────────────
+
+#[test]
+fn fn_def_simple() {
+    assert_snapshot!(source_and_debug("fn greet(name) do\n  \"hello\"\nend"));
+}
+
+#[test]
+fn fn_def_pub() {
+    assert_snapshot!(source_and_debug("pub fn add(x, y) do\n  x + y\nend"));
+}
+
+#[test]
+fn fn_def_typed_params_and_return() {
+    assert_snapshot!(source_and_debug("fn typed(x :: Int, y :: Int) -> Int do\n  x + y\nend"));
+}
+
+#[test]
+fn def_keyword() {
+    assert_snapshot!(source_and_debug("def greet(name) do\n  \"hello\"\nend"));
+}
+
+#[test]
+fn fn_def_no_params() {
+    assert_snapshot!(source_and_debug("fn hello() do\n  \"world\"\nend"));
+}
+
+// ── Module Definitions ──────────────────────────────────────────────
+
+#[test]
+fn module_simple() {
+    assert_snapshot!(source_and_debug("module Math do\n  pub fn add(x, y) do\n    x + y\n  end\nend"));
+}
+
+#[test]
+fn module_nested() {
+    assert_snapshot!(source_and_debug("module Outer do\n  module Inner do\n  end\nend"));
+}
+
+// ── Import Declarations ─────────────────────────────────────────────
+
+#[test]
+fn import_simple() {
+    assert_snapshot!(source_and_debug("import Math"));
+}
+
+#[test]
+fn import_dotted_path() {
+    assert_snapshot!(source_and_debug("import Foo.Bar.Baz"));
+}
+
+#[test]
+fn from_import() {
+    assert_snapshot!(source_and_debug("from Math import sqrt, pow"));
+}
+
+// ── Struct Definitions ──────────────────────────────────────────────
+
+#[test]
+fn struct_simple() {
+    assert_snapshot!(source_and_debug("struct Point do\n  x :: Float\n  y :: Float\nend"));
+}
+
+#[test]
+fn struct_pub_with_generics() {
+    assert_snapshot!(source_and_debug("pub struct Pair[A, B] do\n  first :: A\n  second :: B\nend"));
+}
+
+// ── Pattern Matching ────────────────────────────────────────────────
+
+#[test]
+fn case_with_literal_patterns() {
+    assert_snapshot!(parse_and_debug("case x do\n  0 -> \"zero\"\n  _ -> \"other\"\nend"));
+}
+
+#[test]
+fn let_tuple_destructure() {
+    assert_snapshot!(source_and_debug("let (a, b) = pair"));
+}
+
+#[test]
+fn case_with_tuple_patterns() {
+    assert_snapshot!(parse_and_debug("case point do\n  (0, 0) -> \"origin\"\n  (x, y) -> \"other\"\nend"));
+}
+
+#[test]
+fn case_with_negative_literal() {
+    assert_snapshot!(parse_and_debug("case x do\n  -1 -> \"neg\"\n  0 -> \"zero\"\n  1 -> \"pos\"\nend"));
+}
+
+#[test]
+fn case_with_string_pattern() {
+    assert_snapshot!(parse_and_debug("case s do\n  \"hello\" -> 1\n  _ -> 0\nend"));
+}
+
+// ── Full Programs (integration) ─────────────────────────────────────
+
+#[test]
+fn full_program_module_with_fns() {
+    let source = "\
+module Math do
+  pub fn add(x, y) do
+    x + y
+  end
+
+  pub fn sub(x, y) do
+    x - y
+  end
+end";
+    assert_snapshot!(source_and_debug(source));
+}
+
+#[test]
+fn full_program_imports_and_pipes() {
+    let source = "\
+import IO
+from Math import sqrt
+
+fn main() do
+  42 |> sqrt() |> IO.puts()
+end";
+    assert_snapshot!(source_and_debug(source));
+}
+
+#[test]
+fn full_program_struct_and_fn() {
+    let source = "\
+struct Point do
+  x :: Float
+  y :: Float
+end
+
+fn distance(p :: Point) -> Float do
+  p.x + p.y
+end";
+    assert_snapshot!(source_and_debug(source));
+}
+
+// ── Error Cases (declarations) ──────────────────────────────────────
+
+#[test]
+fn error_fn_missing_name() {
+    assert_snapshot!(source_and_debug("fn do end"));
+}
+
+#[test]
+fn error_glob_import() {
+    assert_snapshot!(source_and_debug("from Math import *"));
+}
+
+// ── Public parse() API end-to-end ───────────────────────────────────
+
+#[test]
+fn parse_api_simple_expression() {
+    // parse() should work with simple expressions
+    assert_snapshot!(source_and_debug("1 + 2"));
+}
+
+#[test]
+fn parse_api_let_binding() {
+    assert_snapshot!(source_and_debug("let x = 42"));
 }
