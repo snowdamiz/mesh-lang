@@ -25,6 +25,8 @@
 //! always skipped by lookahead. The `advance()` method emits Advance events
 //! for all skipped trivia tokens so they appear in the CST.
 
+pub(crate) mod expressions;
+
 use snow_common::span::Span;
 use snow_common::token::{Token, TokenKind};
 
