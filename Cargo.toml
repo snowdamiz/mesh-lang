@@ -1,0 +1,11 @@
+[workspace]
+members = [
+    "crates/snow-common",
+    "crates/snow-lexer",
+    "crates/snowc",
+]
+resolver = "2"
+
+[workspace.dependencies]
+insta = { version = "1.46", features = ["yaml"] }
+serde = { version = "1", features = ["derive"] }

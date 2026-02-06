@@ -1,0 +1,11 @@
+[package]
+name = "snow-lexer"
+version = "0.1.0"
+edition = "2021"
+description = "Tokenizer for the Snow programming language"
+
+[dependencies]
+snow-common = { path = "../snow-common" }
+
+[dev-dependencies]
+insta = { workspace = true }

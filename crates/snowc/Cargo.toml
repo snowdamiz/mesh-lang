@@ -1,0 +1,9 @@
+[package]
+name = "snowc"
+version = "0.1.0"
+edition = "2021"
+description = "The Snow compiler"
+
+[dependencies]
+snow-common = { path = "../snow-common" }
+snow-lexer = { path = "../snow-lexer" }

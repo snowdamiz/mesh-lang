@@ -1,0 +1,7 @@
+[package]
+name = "snow-common"
+version = "0.1.0"
+edition = "2021"
+description = "Shared types for the Snow compiler (tokens, spans, errors)"
+
+[dependencies]

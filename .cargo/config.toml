@@ -1,0 +1,10 @@
+# Cargo build configuration for the Snow compiler.
+#
+# LLVM 18 configuration: Pre-configured for Phase 5 (codegen).
+# NOT required for Phases 1-4 (lexer, parser, type system, IR).
+# Do NOT add llvm-sys or inkwell dependencies until Phase 5.
+
+[env]
+# Homebrew LLVM 18 on Apple Silicon macOS.
+# Change to /usr/local/opt/llvm@18 on Intel Macs.
+LLVM_SYS_180_PREFIX = "/opt/homebrew/opt/llvm@18"
