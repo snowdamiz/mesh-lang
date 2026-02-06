@@ -5,33 +5,33 @@
 See: .planning/PROJECT.md (updated 2026-02-05)
 
 **Core value:** Expressive, readable concurrency -- writing concurrent programs should feel as natural as sequential code, with supervision and fault tolerance built in.
-**Current focus:** Phase 2 in progress. Compound expressions complete; next up is definitions (def, module, struct) and pattern matching.
+**Current focus:** Phase 2 in progress. Declarations, patterns, and types complete; next up is error recovery and public API polish (02-05).
 
 ## Current Position
 
 Phase: 2 of 10 (Parser & AST)
-Plan: 3 of 5 in current phase
+Plan: 4 of 5 in current phase
 Status: In progress
-Last activity: 2026-02-06 -- Completed 02-03-PLAN.md
+Last activity: 2026-02-06 -- Completed 02-04-PLAN.md
 
-Progress: [██████░░░░] 15% (6 plans of ~41 estimated total)
+Progress: [███████░░░] 17% (7 plans of ~41 estimated total)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 6
+- Total plans completed: 7
 - Average duration: 4min
-- Total execution time: 26min
+- Total execution time: 30min
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 01-project-foundation-lexer | 3/3 | 12min | 4min |
-| 02-parser-ast | 3/5 | 14min | 5min |
+| 02-parser-ast | 4/5 | 18min | 5min |
 
 **Recent Trend:**
-- Last 5 plans: 01-03 (4min), 02-01 (7min), 02-02 (3min), 02-03 (4min)
+- Last 5 plans: 02-01 (7min), 02-02 (3min), 02-03 (4min), 02-04 (4min)
 - Trend: stable at 4-5min average
 
 *Updated after each plan completion*
@@ -66,7 +66,12 @@ Recent decisions affecting current work:
 - [02-02]: parse_expr() and debug_tree() added as public API for testing
 - [02-03]: Trailing closures only attach after explicit arg list () -- bare `do` on identifier does not create CALL_EXPR
 - [02-03]: Closures always use `fn (params) -> body end` with explicit end keyword
-- [02-03]: Match arm patterns parsed as expressions for now (Plan 04 adds proper pattern parsing)
+- [02-04]: fn/def followed by IDENT = named fn def; fn followed by L_PAREN = closure expression
+- [02-04]: "from" is contextual identifier, not keyword -- recognized via text check
+- [02-04]: Glob imports (from M import *) rejected at parse time
+- [02-04]: Patterns replace expressions in match arms (LITERAL_PAT, IDENT_PAT, TUPLE_PAT, WILDCARD_PAT)
+- [02-04]: Let bindings support tuple destructuring via pattern parsing
+- [02-04]: Shared parse_type() for all type annotation positions
 
 ### Pending Todos
 
@@ -81,5 +86,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-06
-Stopped at: Completed 02-03-PLAN.md
+Stopped at: Completed 02-04-PLAN.md
 Resume file: None
