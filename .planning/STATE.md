@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-02-05)
 
 **Core value:** Expressive, readable concurrency -- writing concurrent programs should feel as natural as sequential code, with supervision and fault tolerance built in.
-**Current focus:** Phase 2 complete and verified. Ready for Phase 3: Type System.
+**Current focus:** Phase 3 in progress. Plan 03-01 complete -- parser migration and type system foundation.
 
 ## Current Position
 
-Phase: 2 of 10 (Parser & AST) — COMPLETE ✓
-Plan: 5 of 5 in current phase
-Status: Phase verified and complete
-Last activity: 2026-02-06 -- Phase 2 verified (8/8 must-haves passed)
+Phase: 3 of 10 (Type System)
+Plan: 1 of 5 in current phase
+Status: In progress
+Last activity: 2026-02-06 -- Completed 03-01-PLAN.md
 
-Progress: [████████░░] 20% (8 plans of ~41 estimated total)
+Progress: [█████████░] 22% (9 plans of ~41 estimated total)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 8
-- Average duration: 4min
-- Total execution time: 35min
+- Total plans completed: 9
+- Average duration: 5min
+- Total execution time: 47min
 
 **By Phase:**
 
@@ -29,10 +29,11 @@ Progress: [████████░░] 20% (8 plans of ~41 estimated total)
 |-------|-------|-------|----------|
 | 01-project-foundation-lexer | 3/3 | 12min | 4min |
 | 02-parser-ast | 5/5 | 23min | 5min |
+| 03-type-system | 1/5 | 12min | 12min |
 
 **Recent Trend:**
-- Last 5 plans: 02-01 (7min), 02-02 (3min), 02-03 (4min), 02-04 (4min), 02-05 (5min)
-- Trend: stable at 4-5min average
+- Last 5 plans: 02-03 (4min), 02-04 (4min), 02-05 (5min), 03-01 (12min)
+- Trend: Phase 3 plans are more complex (type system infrastructure)
 
 *Updated after each plan completion*
 
@@ -75,6 +76,13 @@ Recent decisions affecting current work:
 - [02-05]: pub(crate) syntax field in ast_node! macro for cross-module construction
 - [02-05]: Lossless round-trip tests strip spaces (lexer omits whitespace by design)
 - [02-05]: Expr/Item/Pattern enums provide polymorphic cast()-based access to typed AST nodes
+- [03-01]: Angle brackets <T> for generics (migrated from square brackets [T])
+- [03-01]: Option/Result sugar emits raw tokens (QUESTION/BANG) inside TYPE_ANNOTATION
+- [03-01]: self keyword accepted as parameter name (needed for interface methods)
+- [03-01]: ena unify_var_var/unify_var_value API for fallible unification
+- [03-01]: Type variables use Option<Ty> as UnifyKey::Value with level-based generalization side-table
+- [03-01]: Builtin operators hardcoded as monomorphic -- trait dispatch deferred to 03-04
+- [03-01]: GENERIC_PARAM_LIST (definition) vs GENERIC_ARG_LIST (usage) distinction in CST
 
 ### Pending Todos
 
@@ -89,5 +97,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-06
-Stopped at: Phase 2 verified and complete
+Stopped at: Completed 03-01-PLAN.md
 Resume file: None
