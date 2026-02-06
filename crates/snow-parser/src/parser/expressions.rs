@@ -90,6 +90,15 @@ fn expr_bp(p: &mut Parser, min_bp: u8) -> Option<MarkClosed> {
 
         let current = p.current();
 
+        // ── Postfix: struct literal ──
+        // After an identifier (NAME_REF), `{` starts a struct literal: `Point { x: 1, y: 2 }`
+        if current == SyntaxKind::L_BRACE && POSTFIX_BP >= min_bp {
+            let m = p.open_before(lhs);
+            parse_struct_literal_body(p);
+            lhs = p.close(m, SyntaxKind::STRUCT_LITERAL);
+            continue;
+        }
+
         // ── Postfix: function call (possibly with trailing closure) ──
         if current == SyntaxKind::L_PAREN && POSTFIX_BP >= min_bp {
             let m = p.open_before(lhs);
@@ -233,6 +242,60 @@ fn lhs(p: &mut Parser) -> Option<MarkClosed> {
             None
         }
     }
+}
+
+// ── Struct Literal ────────────────────────────────────────────────
+
+/// Parse a struct literal body: `{ field: expr, field: expr }`
+///
+/// Each field is `name: expr`, separated by commas or newlines.
+/// Produces STRUCT_LITERAL_FIELD children inside the struct literal.
+fn parse_struct_literal_body(p: &mut Parser) {
+    p.advance(); // L_BRACE
+
+    loop {
+        // Skip insignificant newlines inside braces (tracked by delimiter depth).
+        if p.at(SyntaxKind::R_BRACE) || p.at(SyntaxKind::EOF) {
+            break;
+        }
+
+        let field = p.open();
+
+        // Field name.
+        if p.at(SyntaxKind::IDENT) {
+            let name = p.open();
+            p.advance(); // field name
+            p.close(name, SyntaxKind::NAME);
+        } else {
+            p.error("expected field name in struct literal");
+            p.close(field, SyntaxKind::STRUCT_LITERAL_FIELD);
+            break;
+        }
+
+        // Colon.
+        p.expect(SyntaxKind::COLON);
+
+        // Field value expression.
+        if !p.has_error() {
+            expr_bp(p, 0);
+        }
+
+        p.close(field, SyntaxKind::STRUCT_LITERAL_FIELD);
+
+        if p.has_error() {
+            break;
+        }
+
+        // Separator: comma or implicit (newlines inside braces are insignificant).
+        if !p.eat(SyntaxKind::COMMA) {
+            // No comma -- if next is not `}`, that's fine (newlines handle separation).
+            if p.at(SyntaxKind::R_BRACE) || p.at(SyntaxKind::EOF) {
+                break;
+            }
+        }
+    }
+
+    p.expect(SyntaxKind::R_BRACE);
 }
 
 // ── Argument List ──────────────────────────────────────────────────────

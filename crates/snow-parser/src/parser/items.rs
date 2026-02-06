@@ -335,6 +335,22 @@ fn parse_generic_param_list(p: &mut Parser) {
 /// - Option sugar: `Int?` (desugars to `Option<Int>`)
 /// - Result sugar: `T!E` (desugars to `Result<T, E>`)
 pub(crate) fn parse_type(p: &mut Parser) {
+    // Tuple type: (A, B, C)
+    if p.at(SyntaxKind::L_PAREN) {
+        p.advance(); // (
+        if !p.at(SyntaxKind::R_PAREN) {
+            parse_type(p);
+            while p.eat(SyntaxKind::COMMA) {
+                if p.at(SyntaxKind::R_PAREN) {
+                    break;
+                }
+                parse_type(p);
+            }
+        }
+        p.expect(SyntaxKind::R_PAREN);
+        return;
+    }
+
     if !p.at(SyntaxKind::IDENT) {
         p.error("expected type name");
         return;

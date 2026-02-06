@@ -1,11 +1,14 @@
 //! Built-in type registration.
 //!
 //! Registers primitive types (Int, Float, String, Bool), generic type
-//! constructors (Option, Result), and built-in arithmetic operators into
-//! the type environment. These form the starting vocabulary of every
-//! Snow program.
+//! constructors (Option, Result), built-in arithmetic operators, and
+//! compiler-known traits (Add, Sub, Mul, Div, Mod, Eq, Ord, Not) into
+//! the type environment and trait registry.
+
+use rustc_hash::FxHashMap;
 
 use crate::env::TypeEnv;
+use crate::traits::{ImplDef, ImplMethodSig, TraitDef, TraitMethodSig, TraitRegistry};
 use crate::ty::{Scheme, Ty};
 use crate::unify::InferCtx;
 
@@ -15,13 +18,19 @@ use crate::unify::InferCtx;
 /// - Primitive types: Int, Float, String, Bool
 /// - Generic constructors: Option (arity 1), Result (arity 2)
 /// - Arithmetic operators: +, -, *, / for Int and Float
-/// - Comparison operators (placeholder for future trait-based dispatch)
+/// - Comparison operators (returns Bool)
+/// - Logical operators (and, or, not)
 ///
-/// Note: The current approach hardcodes arithmetic operators as
-/// `(Int, Int) -> Int` and `(Float, Float) -> Float`. When trait-based
-/// dispatch is added (plan 03-04), these will be replaced with type class
-/// constraints.
-pub fn register_builtins(_ctx: &mut InferCtx, env: &mut TypeEnv) {
+/// And the trait registry contains compiler-known traits:
+/// - Add, Sub, Mul, Div, Mod (numeric operations)
+/// - Eq (equality comparison)
+/// - Ord (ordering comparison)
+/// - Not (logical negation)
+pub fn register_builtins(
+    _ctx: &mut InferCtx,
+    env: &mut TypeEnv,
+    trait_registry: &mut TraitRegistry,
+) {
     // ── Primitive type constructors ─────────────────────────────────
 
     // These are registered as monomorphic schemes so they can be
@@ -31,10 +40,14 @@ pub fn register_builtins(_ctx: &mut InferCtx, env: &mut TypeEnv) {
     env.insert("String".into(), Scheme::mono(Ty::string()));
     env.insert("Bool".into(), Scheme::mono(Ty::bool()));
 
+    // ── Compiler-known traits ──────────────────────────────────────
+
+    register_compiler_known_traits(trait_registry);
+
     // ── Arithmetic operators (Int) ──────────────────────────────────
 
-    // For now, we register Int arithmetic. Float overloading and
-    // trait dispatch will come in plan 03-04.
+    // These remain in the env for backward compatibility. The binary
+    // operator inference also uses trait dispatch for type checking.
     let int_binop = Scheme::mono(Ty::fun(vec![Ty::int(), Ty::int()], Ty::int()));
     env.insert("+".into(), int_binop.clone());
     env.insert("-".into(), int_binop.clone());
@@ -80,6 +93,142 @@ pub fn register_builtins(_ctx: &mut InferCtx, env: &mut TypeEnv) {
     );
 }
 
+/// Register compiler-known traits and their built-in implementations.
+///
+/// These traits back the arithmetic and comparison operators. When the
+/// inference engine encounters `a + b`, it checks that the resolved type
+/// of `a` has an impl for `Add`.
+fn register_compiler_known_traits(registry: &mut TraitRegistry) {
+    // ── Arithmetic traits ──────────────────────────────────────────
+
+    let arithmetic_traits = ["Add", "Sub", "Mul", "Div", "Mod"];
+    for trait_name in &arithmetic_traits {
+        registry.register_trait(TraitDef {
+            name: trait_name.to_string(),
+            methods: vec![TraitMethodSig {
+                name: trait_name.to_lowercase(),
+                has_self: true,
+                param_count: 1,
+                return_type: None, // return type is Self (the implementing type)
+            }],
+        });
+
+        // Register impls for Int and Float.
+        for (ty, ty_name) in &[(Ty::int(), "Int"), (Ty::float(), "Float")] {
+            let mut methods = FxHashMap::default();
+            methods.insert(
+                trait_name.to_lowercase(),
+                ImplMethodSig {
+                    has_self: true,
+                    param_count: 1,
+                    return_type: Some(ty.clone()),
+                },
+            );
+            let _ = registry.register_impl(ImplDef {
+                trait_name: trait_name.to_string(),
+                impl_type: ty.clone(),
+                impl_type_name: ty_name.to_string(),
+                methods,
+            });
+        }
+    }
+
+    // ── Eq trait ────────────────────────────────────────────────────
+
+    registry.register_trait(TraitDef {
+        name: "Eq".to_string(),
+        methods: vec![TraitMethodSig {
+            name: "eq".to_string(),
+            has_self: true,
+            param_count: 1,
+            return_type: Some(Ty::bool()),
+        }],
+    });
+
+    // Eq impls for Int, Float, String, Bool.
+    for (ty, ty_name) in &[
+        (Ty::int(), "Int"),
+        (Ty::float(), "Float"),
+        (Ty::string(), "String"),
+        (Ty::bool(), "Bool"),
+    ] {
+        let mut methods = FxHashMap::default();
+        methods.insert(
+            "eq".to_string(),
+            ImplMethodSig {
+                has_self: true,
+                param_count: 1,
+                return_type: Some(Ty::bool()),
+            },
+        );
+        let _ = registry.register_impl(ImplDef {
+            trait_name: "Eq".to_string(),
+            impl_type: ty.clone(),
+            impl_type_name: ty_name.to_string(),
+            methods,
+        });
+    }
+
+    // ── Ord trait ───────────────────────────────────────────────────
+
+    registry.register_trait(TraitDef {
+        name: "Ord".to_string(),
+        methods: vec![TraitMethodSig {
+            name: "cmp".to_string(),
+            has_self: true,
+            param_count: 1,
+            return_type: Some(Ty::bool()),
+        }],
+    });
+
+    // Ord impls for Int, Float.
+    for (ty, ty_name) in &[(Ty::int(), "Int"), (Ty::float(), "Float")] {
+        let mut methods = FxHashMap::default();
+        methods.insert(
+            "cmp".to_string(),
+            ImplMethodSig {
+                has_self: true,
+                param_count: 1,
+                return_type: Some(Ty::bool()),
+            },
+        );
+        let _ = registry.register_impl(ImplDef {
+            trait_name: "Ord".to_string(),
+            impl_type: ty.clone(),
+            impl_type_name: ty_name.to_string(),
+            methods,
+        });
+    }
+
+    // ── Not trait ───────────────────────────────────────────────────
+
+    registry.register_trait(TraitDef {
+        name: "Not".to_string(),
+        methods: vec![TraitMethodSig {
+            name: "not".to_string(),
+            has_self: true,
+            param_count: 0,
+            return_type: Some(Ty::bool()),
+        }],
+    });
+
+    let mut not_methods = FxHashMap::default();
+    not_methods.insert(
+        "not".to_string(),
+        ImplMethodSig {
+            has_self: true,
+            param_count: 0,
+            return_type: Some(Ty::bool()),
+        },
+    );
+    let _ = registry.register_impl(ImplDef {
+        trait_name: "Not".to_string(),
+        impl_type: Ty::bool(),
+        impl_type_name: "Bool".to_string(),
+        methods: not_methods,
+    });
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -88,7 +237,8 @@ mod tests {
     fn builtins_register_primitives() {
         let mut ctx = InferCtx::new();
         let mut env = TypeEnv::new();
-        register_builtins(&mut ctx, &mut env);
+        let mut trait_registry = TraitRegistry::new();
+        register_builtins(&mut ctx, &mut env, &mut trait_registry);
 
         // Check primitive types exist.
         assert!(env.lookup("Int").is_some());
@@ -101,7 +251,8 @@ mod tests {
     fn builtins_register_operators() {
         let mut ctx = InferCtx::new();
         let mut env = TypeEnv::new();
-        register_builtins(&mut ctx, &mut env);
+        let mut trait_registry = TraitRegistry::new();
+        register_builtins(&mut ctx, &mut env, &mut trait_registry);
 
         // Check arithmetic operators exist.
         assert!(env.lookup("+").is_some());
@@ -112,5 +263,25 @@ mod tests {
         // Check comparison operators.
         assert!(env.lookup("==").is_some());
         assert!(env.lookup("<").is_some());
+    }
+
+    #[test]
+    fn builtins_register_compiler_known_traits() {
+        let mut ctx = InferCtx::new();
+        let mut env = TypeEnv::new();
+        let mut trait_registry = TraitRegistry::new();
+        register_builtins(&mut ctx, &mut env, &mut trait_registry);
+
+        // Check arithmetic traits.
+        assert!(trait_registry.get_trait("Add").is_some());
+        assert!(trait_registry.get_trait("Sub").is_some());
+        assert!(trait_registry.get_trait("Eq").is_some());
+        assert!(trait_registry.get_trait("Ord").is_some());
+
+        // Check impls.
+        assert!(trait_registry.has_impl("Add", &Ty::int()));
+        assert!(trait_registry.has_impl("Add", &Ty::float()));
+        assert!(!trait_registry.has_impl("Add", &Ty::string()));
+        assert!(trait_registry.has_impl("Eq", &Ty::string()));
     }
 }

@@ -99,6 +99,24 @@ pub enum TypeError {
         expected: Ty,
         found: Ty,
     },
+    /// A struct literal is missing a required field.
+    MissingField {
+        struct_name: String,
+        field_name: String,
+        span: TextRange,
+    },
+    /// A struct literal references an unknown field.
+    UnknownField {
+        struct_name: String,
+        field_name: String,
+        span: TextRange,
+    },
+    /// A field access on a type with no such field.
+    NoSuchField {
+        ty: Ty,
+        field_name: String,
+        span: TextRange,
+    },
 }
 
 impl fmt::Display for TypeError {
@@ -162,6 +180,33 @@ impl fmt::Display for TypeError {
                     "method `{}` in impl `{}` has wrong signature: expected `{}`, found `{}`",
                     method_name, trait_name, expected, found
                 )
+            }
+            TypeError::MissingField {
+                struct_name,
+                field_name,
+                ..
+            } => {
+                write!(
+                    f,
+                    "missing field `{}` in struct `{}`",
+                    field_name, struct_name
+                )
+            }
+            TypeError::UnknownField {
+                struct_name,
+                field_name,
+                ..
+            } => {
+                write!(
+                    f,
+                    "unknown field `{}` in struct `{}`",
+                    field_name, struct_name
+                )
+            }
+            TypeError::NoSuchField {
+                ty, field_name, ..
+            } => {
+                write!(f, "type `{}` has no field `{}`", ty, field_name)
             }
         }
     }

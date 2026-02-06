@@ -23,6 +23,7 @@ pub mod builtins;
 pub mod env;
 pub mod error;
 pub mod infer;
+pub mod traits;
 pub mod ty;
 pub mod unify;
 

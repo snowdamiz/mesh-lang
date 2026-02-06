@@ -94,6 +94,17 @@ impl Ty {
     pub fn fun(params: Vec<Ty>, ret: Ty) -> Ty {
         Ty::Fun(params, Box::new(ret))
     }
+
+    /// Create a named struct type with optional type arguments.
+    /// Non-generic structs: `Ty::struct_ty("Point", vec![])` -> `Point`
+    /// Generic structs: `Ty::struct_ty("Pair", vec![Ty::int(), Ty::string()])` -> `Pair<Int, String>`
+    pub fn struct_ty(name: &str, args: Vec<Ty>) -> Ty {
+        if args.is_empty() {
+            Ty::App(Box::new(Ty::Con(TyCon::new(name))), vec![])
+        } else {
+            Ty::App(Box::new(Ty::Con(TyCon::new(name))), args)
+        }
+    }
 }
 
 impl fmt::Display for Ty {

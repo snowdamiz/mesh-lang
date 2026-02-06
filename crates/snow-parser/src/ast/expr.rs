@@ -29,6 +29,7 @@ pub enum Expr {
     StringExpr(StringExpr),
     ReturnExpr(ReturnExpr),
     TupleExpr(TupleExpr),
+    StructLiteral(StructLiteral),
 }
 
 impl Expr {
@@ -49,6 +50,9 @@ impl Expr {
             SyntaxKind::STRING_EXPR => Some(Expr::StringExpr(StringExpr { syntax: node })),
             SyntaxKind::RETURN_EXPR => Some(Expr::ReturnExpr(ReturnExpr { syntax: node })),
             SyntaxKind::TUPLE_EXPR => Some(Expr::TupleExpr(TupleExpr { syntax: node })),
+            SyntaxKind::STRUCT_LITERAL => {
+                Some(Expr::StructLiteral(StructLiteral { syntax: node }))
+            }
             _ => None,
         }
     }
@@ -71,6 +75,7 @@ impl Expr {
             Expr::StringExpr(n) => &n.syntax,
             Expr::ReturnExpr(n) => &n.syntax,
             Expr::TupleExpr(n) => &n.syntax,
+            Expr::StructLiteral(n) => &n.syntax,
         }
     }
 }
@@ -382,5 +387,35 @@ impl TupleExpr {
     /// The elements of the tuple.
     pub fn elements(&self) -> impl Iterator<Item = Expr> + '_ {
         self.syntax.children().filter_map(Expr::cast)
+    }
+}
+
+// ── Struct Literal Expression ───────────────────────────────────────────
+
+ast_node!(StructLiteral, STRUCT_LITERAL);
+
+impl StructLiteral {
+    /// The struct name (NAME_REF child).
+    pub fn name_ref(&self) -> Option<NameRef> {
+        child_node(&self.syntax)
+    }
+
+    /// The struct literal fields.
+    pub fn fields(&self) -> impl Iterator<Item = StructLiteralField> + '_ {
+        child_nodes(&self.syntax)
+    }
+}
+
+ast_node!(StructLiteralField, STRUCT_LITERAL_FIELD);
+
+impl StructLiteralField {
+    /// The field name.
+    pub fn name(&self) -> Option<super::item::Name> {
+        child_node(&self.syntax)
+    }
+
+    /// The field value expression.
+    pub fn value(&self) -> Option<Expr> {
+        self.syntax.children().find_map(Expr::cast)
     }
 }

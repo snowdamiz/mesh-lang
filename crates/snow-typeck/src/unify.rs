@@ -63,7 +63,15 @@ impl InferCtx {
                 let probe = self.table.probe_value(v);
                 match probe {
                     Some(inner) => self.resolve(inner),
-                    None => Ty::Var(v),
+                    None => {
+                        // Normalize to the root key so that variables
+                        // in the same equivalence class resolve to the
+                        // same representative. This is critical for
+                        // generalization: two unified-but-unbound vars
+                        // must appear as the same variable.
+                        let root = self.table.find(v);
+                        Ty::Var(root)
+                    }
                 }
             }
             // For compound types, resolve recursively.

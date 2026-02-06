@@ -105,12 +105,13 @@ fn test_impl_wrong_method_signature() {
 // ── Where clauses ────────────────────────────────────────────────────
 
 /// 5. Function with where clause called with satisfying type.
+///    Note: Snow uses `::` for type annotations in params (not `:`).
 #[test]
 fn test_where_clause_satisfied() {
     let result = check_source(
         "interface Printable do\n  fn to_string(self) -> String\nend\n\
          impl Printable for Int do\n  fn to_string(self) -> String do\n    \"int\"\n  end\nend\n\
-         fn show<T>(x: T) -> String where T: Printable do\n  to_string(x)\nend\n\
+         fn show<T>(x :: T) -> String where T: Printable do\n  to_string(x)\nend\n\
          show(42)",
     );
     assert_result_type(&result, Ty::string());
@@ -121,7 +122,7 @@ fn test_where_clause_satisfied() {
 fn test_where_clause_unsatisfied() {
     let result = check_source(
         "interface Printable do\n  fn to_string(self) -> String\nend\n\
-         fn show<T>(x: T) -> String where T: Printable do\n  to_string(x)\nend\n\
+         fn show<T>(x :: T) -> String where T: Printable do\n  to_string(x)\nend\n\
          show(true)",
     );
     assert_has_error(
@@ -139,7 +140,7 @@ fn test_multiple_where_constraints() {
          interface Debuggable do\n  fn debug(self) -> String\nend\n\
          impl Printable for Int do\n  fn to_string(self) -> String do\n    \"int\"\n  end\nend\n\
          impl Debuggable for Int do\n  fn debug(self) -> String do\n    \"dbg:int\"\n  end\nend\n\
-         fn show_debug<T>(x: T) -> String where T: Printable, T: Debuggable do\n  to_string(x)\nend\n\
+         fn show_debug<T>(x :: T) -> String where T: Printable, T: Debuggable do\n  to_string(x)\nend\n\
          show_debug(42)",
     );
     assert_result_type(&result, Ty::string());
