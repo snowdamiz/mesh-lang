@@ -5,3 +5,4 @@ edition = "2021"
 description = "Shared types for the Snow compiler (tokens, spans, errors)"
 
 [dependencies]
+serde = { workspace = true }
