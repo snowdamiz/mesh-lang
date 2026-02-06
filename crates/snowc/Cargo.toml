@@ -7,3 +7,8 @@ description = "The Snow compiler"
 [dependencies]
 snow-common = { path = "../snow-common" }
 snow-lexer = { path = "../snow-lexer" }
+snow-parser = { path = "../snow-parser" }
+snow-typeck = { path = "../snow-typeck" }
+snow-codegen = { path = "../snow-codegen" }
+clap = { workspace = true }
+ariadne = { workspace = true }

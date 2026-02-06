@@ -17,6 +17,7 @@
 //! ```
 
 pub mod codegen;
+pub mod link;
 pub mod mir;
 pub mod pattern;
 
@@ -118,10 +119,46 @@ pub fn compile_to_llvm_ir(
     Ok(())
 }
 
-/// Compile a parsed and type-checked Snow program (full pipeline placeholder).
+/// Compile a parsed and type-checked Snow program to a native binary.
 ///
-/// In later phases this will handle linking the object file into a final binary.
-/// For Phase 5, use `compile_to_object` or `compile_to_llvm_ir` directly.
+/// This is the full compilation pipeline: lower to MIR, generate LLVM IR,
+/// optimize, emit object file, and link with snow-rt to produce a native
+/// executable.
+///
+/// # Arguments
+///
+/// * `parse` - The parsed Snow source
+/// * `typeck` - The type-checked results
+/// * `output` - Path to write the final executable
+/// * `opt_level` - Optimization level (0 = none, 2 = default)
+/// * `target_triple` - Optional target triple; None = host default
+/// * `rt_lib_path` - Optional path to `libsnow_rt.a`; None = auto-detect
+///
+/// # Errors
+///
+/// Returns an error string if compilation or linking fails.
+pub fn compile_to_binary(
+    parse: &snow_parser::Parse,
+    typeck: &snow_typeck::TypeckResult,
+    output: &Path,
+    opt_level: u8,
+    target_triple: Option<&str>,
+    rt_lib_path: Option<&Path>,
+) -> Result<(), String> {
+    // Generate object file to a temporary path
+    let obj_path = output.with_extension("o");
+    compile_to_object(parse, typeck, &obj_path, opt_level, target_triple)?;
+
+    // Link with snow-rt
+    link::link(&obj_path, output, rt_lib_path)?;
+
+    Ok(())
+}
+
+/// Compile a parsed and type-checked Snow program (verify-only pipeline).
+///
+/// Compiles through the full LLVM IR generation to verify correctness, but
+/// does not emit any files. Useful for testing.
 ///
 /// # Errors
 ///
@@ -136,7 +173,5 @@ pub fn compile(
     let mut codegen = CodeGen::new(&context, "snow_module", 0, None)?;
     codegen.compile(&mir)?;
 
-    // Module compiled and verified successfully.
-    // In later phases, this would emit an object file and link it.
     Ok(())
 }

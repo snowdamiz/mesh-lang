@@ -125,6 +125,15 @@ impl<'a> Lowerer<'a> {
             }
         }
 
+        // Register builtin I/O functions as known functions.
+        self.known_functions.insert(
+            "println".to_string(),
+            MirType::FnPtr(vec![MirType::String], Box::new(MirType::Unit)),
+        );
+        self.known_functions.insert(
+            "print".to_string(),
+            MirType::FnPtr(vec![MirType::String], Box::new(MirType::Unit)),
+        );
         // Also register variant constructors as known functions.
         for (_, sum_info) in &self.registry.sum_type_defs {
             for variant in &sum_info.variants {
@@ -464,6 +473,9 @@ impl<'a> Lowerer<'a> {
         let name = name_ref
             .text()
             .unwrap_or_else(|| "<unknown>".to_string());
+
+        // Map builtin function names to their runtime equivalents.
+        let name = map_builtin_name(&name);
 
         let ty = self.resolve_range(name_ref.syntax().text_range());
         MirExpr::Var(name, ty)
@@ -1103,6 +1115,19 @@ impl<'a> Lowerer<'a> {
 }
 
 // ── Helper functions ─────────────────────────────────────────────────
+
+/// Map Snow builtin function names to their runtime equivalents.
+///
+/// Snow source uses clean names like `println`, `print`, `to_string`.
+/// These are mapped to the actual runtime function names like `snow_println`,
+/// `snow_print`, `snow_int_to_string` at the MIR level.
+fn map_builtin_name(name: &str) -> String {
+    match name {
+        "println" => "snow_println".to_string(),
+        "print" => "snow_print".to_string(),
+        _ => name.to_string(),
+    }
+}
 
 /// Extract simple string content from a LITERAL or STRING_EXPR syntax node.
 /// Walks children looking for STRING_CONTENT tokens and concatenates them.

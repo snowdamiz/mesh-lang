@@ -40,6 +40,20 @@ pub fn register_builtins(
     env.insert("String".into(), Scheme::mono(Ty::string()));
     env.insert("Bool".into(), Scheme::mono(Ty::bool()));
 
+    // ── I/O builtins ──────────────────────────────────────────────
+
+    // println(String) -> () -- prints a string with trailing newline
+    env.insert(
+        "println".into(),
+        Scheme::mono(Ty::fun(vec![Ty::string()], Ty::Tuple(vec![]))),
+    );
+
+    // print(String) -> () -- prints a string without trailing newline
+    env.insert(
+        "print".into(),
+        Scheme::mono(Ty::fun(vec![Ty::string()], Ty::Tuple(vec![]))),
+    );
+
     // ── Compiler-known traits ──────────────────────────────────────
 
     register_compiler_known_traits(trait_registry);
