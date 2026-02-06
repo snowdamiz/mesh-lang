@@ -106,14 +106,14 @@ Plans:
   3. The output is a single binary with no external runtime dependencies (runtime statically linked)
   4. The compiler produces binaries on both macOS and Linux from the same Snow source code
   5. Compilation of a 100-line Snow program completes in under 5 seconds (including LLVM codegen at -O0)
-**Plans**: TBD
+**Plans**: 5 plans
 
 Plans:
-- [ ] 05-01: Mid-level IR design and lowering from typed AST
-- [ ] 05-02: Pattern matching compilation to decision trees
-- [ ] 05-03: LLVM codegen via Inkwell (functions, control flow, data types, closures)
-- [ ] 05-04: Binary linking, runtime stub, and `snowc build` CLI
-- [ ] 05-05: Cross-platform support (macOS + Linux) and end-to-end integration tests
+- [ ] 05-01-PLAN.md -- Runtime crate (snow-rt), codegen crate scaffolding, TypeckResult exposure, LLVM build config
+- [ ] 05-02-PLAN.md -- MIR type system, AST-to-MIR lowering, pipe/interpolation desugaring, closure conversion, monomorphization
+- [ ] 05-03-PLAN.md -- Pattern match compilation to decision trees (TDD)
+- [ ] 05-04-PLAN.md -- LLVM codegen via Inkwell (type layouts, expressions, control flow, closures, pattern matches)
+- [ ] 05-05-PLAN.md -- snowc build CLI, linking, end-to-end integration tests
 
 ### Phase 6: Actor Runtime
 **Goal**: Lightweight actor processes with typed message passing, a work-stealing scheduler, and per-actor isolation, integrated into compiled Snow programs
