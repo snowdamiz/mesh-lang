@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-02-05)
 
 **Core value:** Expressive, readable concurrency -- writing concurrent programs should feel as natural as sequential code, with supervision and fault tolerance built in.
-**Current focus:** Phase 3 in progress. Plans 03-01 and 03-02 complete -- type system foundation and Algorithm J inference engine.
+**Current focus:** Phase 3 in progress. Plans 03-01, 03-02, 03-03 complete -- type system foundation, Algorithm J inference engine, structs/Option/Result/aliases. Plan 03-04 (traits) in progress.
 
 ## Current Position
 
 Phase: 3 of 10 (Type System)
-Plan: 2 of 5 in current phase
+Plan: 3 of 5 in current phase
 Status: In progress
-Last activity: 2026-02-06 -- Completed 03-02-PLAN.md
+Last activity: 2026-02-06 -- Completed 03-03-PLAN.md
 
-Progress: [██████████░] 24% (10 plans of ~41 estimated total)
+Progress: [███████████░] 27% (11 plans of ~41 estimated total)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 10
-- Average duration: 5min
-- Total execution time: 52min
+- Total plans completed: 11
+- Average duration: 9min
+- Total execution time: 97min
 
 **By Phase:**
 
@@ -29,11 +29,11 @@ Progress: [██████████░] 24% (10 plans of ~41 estimated tot
 |-------|-------|-------|----------|
 | 01-project-foundation-lexer | 3/3 | 12min | 4min |
 | 02-parser-ast | 5/5 | 23min | 5min |
-| 03-type-system | 2/5 | 17min | 9min |
+| 03-type-system | 3/5 | 62min | 21min |
 
 **Recent Trend:**
-- Last 5 plans: 02-04 (4min), 02-05 (5min), 03-01 (12min), 03-02 (5min)
-- Trend: Phase 3 plans vary in complexity; 03-02 was faster than 03-01 despite being the core inference engine
+- Last 5 plans: 02-05 (5min), 03-01 (12min), 03-02 (5min), 03-03 (45min)
+- Trend: Phase 3 plans have high variance; 03-03 took longer due to parallel plan 03-04 conflicts, multiple blocking deviations, and subtle union-find bug
 
 *Updated after each plan completion*
 
@@ -87,6 +87,11 @@ Recent decisions affecting current work:
 - [03-02]: Single-element TupleExpr treated as grouping parens (returns element type, not Tuple)
 - [03-02]: Block tail_expr deduplication via range comparison to avoid double-inference
 - [03-02]: Named functions pre-bind name to fresh var for recursion support
+- [03-03]: Token-based type annotation parsing (collect_annotation_tokens + parse_type_tokens) for sugar syntax
+- [03-03]: enter_level/leave_level for proper polymorphic constructor generalization (Option/Result)
+- [03-03]: Union-find resolve() normalizes unbound vars to root key for correct identity
+- [03-03]: Struct literals parsed as postfix expressions (NAME_REF followed by L_BRACE)
+- [03-03]: Type aliases stored as resolved Ty values parsed from CST tokens after =
 
 ### Pending Todos
 
@@ -97,9 +102,10 @@ None.
 - Phase 3 (Type System) is highest intellectual risk -- HM inference has subtle implementation pitfalls
 - Phase 6 (Actor Runtime) is highest engineering risk -- preemptive scheduling, per-actor GC, work-stealing
 - Typed actor messaging (TYPE-07) is a research-level problem -- design on paper during early phases
+- Plan 03-04 (traits) has 3 failing tests in its GREEN phase -- may need attention when that plan completes
 
 ## Session Continuity
 
 Last session: 2026-02-06
-Stopped at: Completed 03-02-PLAN.md
+Stopped at: Completed 03-03-PLAN.md
 Resume file: None
