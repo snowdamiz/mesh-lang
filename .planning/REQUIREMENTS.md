@@ -17,20 +17,20 @@ Requirements for initial release. Each maps to roadmap phases.
 - [ ] **LANG-06**: Algebraic data types (sum types + product types/structs)
 - [x] **LANG-07**: String interpolation (`"Hello, #{name}"`)
 - [x] **LANG-08**: Closures / anonymous functions with scope capture
-- [ ] **LANG-09**: Comments (`# line comment`)
+- [x] **LANG-09**: Comments (`# line comment`)
 - [x] **LANG-10**: Pipe operator (`|>`) with type inference
 - [ ] **LANG-11**: Guards in pattern matching
 
 ### Type System
 
-- [ ] **TYPE-01**: Static type checking with Hindley-Milner inference
-- [ ] **TYPE-02**: Parametric polymorphism (generics) -- inferred, not annotated
-- [ ] **TYPE-03**: `Option[T]` type (no null/nil)
-- [ ] **TYPE-04**: `Result[T, E]` type with `?` propagation operator
-- [ ] **TYPE-05**: Struct types (named product types)
-- [ ] **TYPE-06**: Type aliases
+- [x] **TYPE-01**: Static type checking with Hindley-Milner inference
+- [x] **TYPE-02**: Parametric polymorphism (generics) -- inferred, not annotated
+- [x] **TYPE-03**: `Option[T]` type (no null/nil)
+- [x] **TYPE-04**: `Result[T, E]` type with `?` propagation operator
+- [x] **TYPE-05**: Struct types (named product types)
+- [x] **TYPE-06**: Type aliases
 - [ ] **TYPE-07**: Typed actor PIDs (`Pid[MessageType]`) -- compile-time protocol checking
-- [ ] **TYPE-08**: Traits/protocols for polymorphism
+- [x] **TYPE-08**: Traits/protocols for polymorphism
 
 ### Concurrency
 
@@ -124,14 +124,14 @@ Which phases cover which requirements. Updated during roadmap creation.
 | LANG-09 | Phase 1: Project Foundation & Lexer | Complete |
 | LANG-10 | Phase 2: Parser & AST | Complete |
 | LANG-11 | Phase 4: Pattern Matching & ADTs | Pending |
-| TYPE-01 | Phase 3: Type System | Pending |
-| TYPE-02 | Phase 3: Type System | Pending |
-| TYPE-03 | Phase 3: Type System | Pending |
-| TYPE-04 | Phase 3: Type System | Pending |
-| TYPE-05 | Phase 3: Type System | Pending |
-| TYPE-06 | Phase 3: Type System | Pending |
+| TYPE-01 | Phase 3: Type System | Complete |
+| TYPE-02 | Phase 3: Type System | Complete |
+| TYPE-03 | Phase 3: Type System | Complete |
+| TYPE-04 | Phase 3: Type System | Complete |
+| TYPE-05 | Phase 3: Type System | Complete |
+| TYPE-06 | Phase 3: Type System | Complete |
 | TYPE-07 | Phase 6: Actor Runtime | Pending |
-| TYPE-08 | Phase 3: Type System | Pending |
+| TYPE-08 | Phase 3: Type System | Complete |
 | CONC-01 | Phase 6: Actor Runtime | Pending |
 | CONC-02 | Phase 6: Actor Runtime | Pending |
 | CONC-03 | Phase 6: Actor Runtime | Pending |

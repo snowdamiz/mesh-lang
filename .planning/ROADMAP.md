@@ -14,7 +14,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 
 - [x] **Phase 1: Project Foundation & Lexer** - Reproducible build, test infrastructure, and tokenization of Snow source code
 - [x] **Phase 2: Parser & AST** - Recursive descent parser producing a complete abstract syntax tree for all Snow syntax
-- [ ] **Phase 3: Type System** - Hindley-Milner type inference with generics, structs, traits, Option/Result types
+- [x] **Phase 3: Type System** - Hindley-Milner type inference with generics, structs, traits, Option/Result types
 - [ ] **Phase 4: Pattern Matching & Algebraic Data Types** - Exhaustive pattern matching, sum types, and guards
 - [ ] **Phase 5: LLVM Codegen & Native Binaries** - Full compilation pipeline producing native single-binary executables for sequential code
 - [ ] **Phase 6: Actor Runtime** - Lightweight actor processes with typed message passing, standalone runtime library integrated with compiler
@@ -72,11 +72,11 @@ Plans:
 **Plans**: 5 plans
 
 Plans:
-- [ ] 03-01-PLAN.md -- Parser migration (angle brackets, interface/impl/type alias syntax), snow-typeck crate with type representation, unification, environment, builtins
-- [ ] 03-02-PLAN.md -- Algorithm J inference engine with let-polymorphism and occurs check (TDD)
-- [ ] 03-03-PLAN.md -- Structs, Option<T>, Result<T, E>, type aliases (TDD)
-- [ ] 03-04-PLAN.md -- Traits/interfaces with where-clause constraints and compiler-known operator traits (TDD)
-- [ ] 03-05-PLAN.md -- ariadne diagnostic rendering, fix suggestions, end-to-end phase verification
+- [x] 03-01-PLAN.md -- Parser migration (angle brackets, interface/impl/type alias syntax), snow-typeck crate with type representation, unification, environment, builtins
+- [x] 03-02-PLAN.md -- Algorithm J inference engine with let-polymorphism and occurs check (TDD)
+- [x] 03-03-PLAN.md -- Structs, Option<T>, Result<T, E>, type aliases (TDD)
+- [x] 03-04-PLAN.md -- Traits/interfaces with where-clause constraints and compiler-known operator traits (TDD)
+- [x] 03-05-PLAN.md -- ariadne diagnostic rendering, fix suggestions, end-to-end phase verification
 
 ### Phase 4: Pattern Matching & Algebraic Data Types
 **Goal**: Exhaustive pattern matching compilation with algebraic data types (sum types), guards, and compile-time warnings for missing or redundant patterns
@@ -208,7 +208,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8 -> 9 -> 10
 |-------|----------------|--------|-----------|
 | 1. Project Foundation & Lexer | 3/3 | Complete | 2026-02-06 |
 | 2. Parser & AST | 5/5 | Complete | 2026-02-06 |
-| 3. Type System | 0/5 | Planned | - |
+| 3. Type System | 5/5 | Complete | 2026-02-06 |
 | 4. Pattern Matching & ADTs | 0/3 | Not started | - |
 | 5. LLVM Codegen & Native Binaries | 0/5 | Not started | - |
 | 6. Actor Runtime | 0/5 | Not started | - |
