@@ -1,7 +1,7 @@
 # Requirements: Snow
 
 **Defined:** 2026-02-05
-**Core Value:** Expressive, readable concurrency — writing concurrent programs should feel as natural as sequential code, with supervision and fault tolerance built in.
+**Core Value:** Expressive, readable concurrency -- writing concurrent programs should feel as natural as sequential code, with supervision and fault tolerance built in.
 
 ## v1 Requirements
 
@@ -24,12 +24,12 @@ Requirements for initial release. Each maps to roadmap phases.
 ### Type System
 
 - [ ] **TYPE-01**: Static type checking with Hindley-Milner inference
-- [ ] **TYPE-02**: Parametric polymorphism (generics) — inferred, not annotated
+- [ ] **TYPE-02**: Parametric polymorphism (generics) -- inferred, not annotated
 - [ ] **TYPE-03**: `Option[T]` type (no null/nil)
 - [ ] **TYPE-04**: `Result[T, E]` type with `?` propagation operator
 - [ ] **TYPE-05**: Struct types (named product types)
 - [ ] **TYPE-06**: Type aliases
-- [ ] **TYPE-07**: Typed actor PIDs (`Pid[MessageType]`) — compile-time protocol checking
+- [ ] **TYPE-07**: Typed actor PIDs (`Pid[MessageType]`) -- compile-time protocol checking
 - [ ] **TYPE-08**: Traits/protocols for polymorphism
 
 ### Concurrency
@@ -113,13 +113,59 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| (populated by roadmapper) | | |
+| LANG-01 | Phase 2: Parser & AST | Pending |
+| LANG-02 | Phase 2: Parser & AST | Pending |
+| LANG-03 | Phase 2: Parser & AST | Pending |
+| LANG-04 | Phase 2: Parser & AST | Pending |
+| LANG-05 | Phase 4: Pattern Matching & ADTs | Pending |
+| LANG-06 | Phase 4: Pattern Matching & ADTs | Pending |
+| LANG-07 | Phase 2: Parser & AST | Pending |
+| LANG-08 | Phase 2: Parser & AST | Pending |
+| LANG-09 | Phase 1: Project Foundation & Lexer | Pending |
+| LANG-10 | Phase 2: Parser & AST | Pending |
+| LANG-11 | Phase 4: Pattern Matching & ADTs | Pending |
+| TYPE-01 | Phase 3: Type System | Pending |
+| TYPE-02 | Phase 3: Type System | Pending |
+| TYPE-03 | Phase 3: Type System | Pending |
+| TYPE-04 | Phase 3: Type System | Pending |
+| TYPE-05 | Phase 3: Type System | Pending |
+| TYPE-06 | Phase 3: Type System | Pending |
+| TYPE-07 | Phase 6: Actor Runtime | Pending |
+| TYPE-08 | Phase 3: Type System | Pending |
+| CONC-01 | Phase 6: Actor Runtime | Pending |
+| CONC-02 | Phase 6: Actor Runtime | Pending |
+| CONC-03 | Phase 6: Actor Runtime | Pending |
+| CONC-04 | Phase 6: Actor Runtime | Pending |
+| CONC-05 | Phase 7: Supervision & Fault Tolerance | Pending |
+| CONC-06 | Phase 7: Supervision & Fault Tolerance | Pending |
+| CONC-07 | Phase 7: Supervision & Fault Tolerance | Pending |
+| ORG-01 | Phase 2: Parser & AST | Pending |
+| ORG-02 | Phase 2: Parser & AST | Pending |
+| ORG-03 | Phase 2: Parser & AST | Pending |
+| STD-01 | Phase 8: Standard Library | Pending |
+| STD-02 | Phase 8: Standard Library | Pending |
+| STD-03 | Phase 8: Standard Library | Pending |
+| STD-04 | Phase 8: Standard Library | Pending |
+| STD-05 | Phase 8: Standard Library | Pending |
+| STD-06 | Phase 8: Standard Library | Pending |
+| STD-07 | Phase 9: Concurrency Standard Library | Pending |
+| STD-08 | Phase 9: Concurrency Standard Library | Pending |
+| STD-09 | Phase 8: Standard Library | Pending |
+| TOOL-01 | Phase 5: LLVM Codegen & Native Binaries | Pending |
+| TOOL-02 | Phase 10: Developer Tooling | Pending |
+| TOOL-03 | Phase 10: Developer Tooling | Pending |
+| TOOL-04 | Phase 10: Developer Tooling | Pending |
+| TOOL-05 | Phase 10: Developer Tooling | Pending |
+| TOOL-06 | Phase 10: Developer Tooling | Pending |
+| COMP-01 | Phase 5: LLVM Codegen & Native Binaries | Pending |
+| COMP-02 | Phase 5: LLVM Codegen & Native Binaries | Pending |
+| COMP-03 | Phase 5: LLVM Codegen & Native Binaries | Pending |
 
 **Coverage:**
-- v1 requirements: 38 total
-- Mapped to phases: 0
-- Unmapped: 38
+- v1 requirements: 47 total
+- Mapped to phases: 47
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-02-05*
-*Last updated: 2026-02-05 after initial definition*
+*Last updated: 2026-02-06 after roadmap creation*
