@@ -16,7 +16,8 @@ use snow_parser::ast::expr::{
     PipeExpr, ReturnExpr, StructLiteral, TupleExpr, UnaryExpr,
 };
 use snow_parser::ast::item::{
-    Block, FnDef, InterfaceDef, ImplDef as AstImplDef, Item, LetBinding, StructDef, TypeAliasDef,
+    Block, FnDef, InterfaceDef, ImplDef as AstImplDef, Item, LetBinding, StructDef, SumTypeDef,
+    TypeAliasDef,
 };
 use snow_parser::ast::pat::Pattern;
 use snow_parser::ast::AstNode;
@@ -62,11 +63,43 @@ struct TypeAliasInfo {
     aliased_type: Ty,
 }
 
-/// Registry for struct definitions and type aliases.
+// ── Sum Type Registry (04-02) ──────────────────────────────────────────
+
+/// A registered sum type definition with its variants and generic parameters.
+#[derive(Clone, Debug)]
+pub(crate) struct SumTypeDefInfo {
+    /// The sum type's name (e.g. "Shape", "Option").
+    name: String,
+    /// Names of generic type parameters (e.g. ["T"] for `Option<T>`).
+    generic_params: Vec<String>,
+    /// Variant definitions.
+    variants: Vec<VariantInfo>,
+}
+
+/// A single variant of a sum type.
+#[derive(Clone, Debug)]
+pub(crate) struct VariantInfo {
+    /// The variant's name (e.g. "Circle", "Some").
+    name: String,
+    /// The variant's fields (positional or named).
+    fields: Vec<VariantFieldInfo>,
+}
+
+/// A field in a variant -- either positional (unnamed) or named.
+#[derive(Clone, Debug)]
+pub(crate) enum VariantFieldInfo {
+    /// Positional field (e.g. `Float` in `Circle(Float)`).
+    Positional(Ty),
+    /// Named field (e.g. `width :: Float` in `Rectangle(width :: Float, height :: Float)`).
+    Named(String, Ty),
+}
+
+/// Registry for struct definitions, type aliases, and sum type definitions.
 #[derive(Clone, Debug, Default)]
 struct TypeRegistry {
     struct_defs: FxHashMap<String, StructDefInfo>,
     type_aliases: FxHashMap<String, TypeAliasInfo>,
+    sum_type_defs: FxHashMap<String, SumTypeDefInfo>,
 }
 
 impl TypeRegistry {
@@ -82,6 +115,10 @@ impl TypeRegistry {
         self.type_aliases.insert(info.name.clone(), info);
     }
 
+    fn register_sum_type(&mut self, info: SumTypeDefInfo) {
+        self.sum_type_defs.insert(info.name.clone(), info);
+    }
+
     fn lookup_struct(&self, name: &str) -> Option<&StructDefInfo> {
         self.struct_defs.get(name)
     }
@@ -89,6 +126,41 @@ impl TypeRegistry {
     #[allow(dead_code)]
     fn lookup_alias(&self, name: &str) -> Option<&TypeAliasInfo> {
         self.type_aliases.get(name)
+    }
+
+    fn lookup_sum_type(&self, name: &str) -> Option<&SumTypeDefInfo> {
+        self.sum_type_defs.get(name)
+    }
+
+    /// Look up a variant by its unqualified name (e.g. "Circle").
+    /// Returns the parent sum type info and the variant info.
+    #[allow(dead_code)]
+    fn lookup_variant(&self, variant_name: &str) -> Option<(&SumTypeDefInfo, &VariantInfo)> {
+        for sum_type in self.sum_type_defs.values() {
+            for variant in &sum_type.variants {
+                if variant.name == variant_name {
+                    return Some((sum_type, variant));
+                }
+            }
+        }
+        None
+    }
+
+    /// Look up a variant by qualified name (e.g. "Shape" + "Circle").
+    /// Returns the parent sum type info and the variant info.
+    fn lookup_qualified_variant(
+        &self,
+        type_name: &str,
+        variant_name: &str,
+    ) -> Option<(&SumTypeDefInfo, &VariantInfo)> {
+        if let Some(sum_type) = self.sum_type_defs.get(type_name) {
+            for variant in &sum_type.variants {
+                if variant.name == variant_name {
+                    return Some((sum_type, variant));
+                }
+            }
+        }
+        None
     }
 }
 
@@ -278,8 +350,10 @@ fn infer_item(
         }
         // Declarations that don't produce a value type:
         Item::ModuleDef(_) | Item::ImportDecl(_) | Item::FromImportDecl(_) => None,
-        // Sum type defs will be fully implemented in Phase 04. For now, skip.
-        Item::SumTypeDef(_) => None,
+        Item::SumTypeDef(sum_def) => {
+            register_sum_type_def(ctx, env, sum_def, type_registry);
+            None
+        }
     }
 }
 
@@ -412,6 +486,136 @@ fn parse_alias_type(node: &snow_parser::SyntaxNode, _generic_params: &[String]) 
     // Parse the tokens, treating generic_params as type variables
     // (they'll be represented as Ty::Con("A"), Ty::Con("B") etc.)
     parse_type_tokens(&tokens, &mut 0)
+}
+
+// ── Sum Type Registration (04-02) ──────────────────────────────────────
+
+/// Register a sum type definition: extract variants, fields, and generic params.
+/// Each variant constructor is registered as a polymorphic function in the env.
+fn register_sum_type_def(
+    ctx: &mut InferCtx,
+    env: &mut TypeEnv,
+    sum_def: &SumTypeDef,
+    type_registry: &mut TypeRegistry,
+) {
+    let name = sum_def
+        .name()
+        .and_then(|n| n.text())
+        .unwrap_or_else(|| "<unnamed>".to_string());
+
+    // Extract generic type parameters.
+    let generic_params: Vec<String> = sum_def
+        .syntax()
+        .children()
+        .filter(|n| n.kind() == SyntaxKind::GENERIC_PARAM_LIST)
+        .flat_map(|gpl| {
+            gpl.children_with_tokens()
+                .filter_map(|t| t.into_token())
+                .filter(|t| t.kind() == SyntaxKind::IDENT)
+                .map(|t| t.text().to_string())
+        })
+        .collect();
+
+    // Extract variants.
+    let mut variants = Vec::new();
+    for variant_def in sum_def.variants() {
+        let variant_name = variant_def
+            .name()
+            .map(|t| t.text().to_string())
+            .unwrap_or_else(|| "<unnamed>".to_string());
+
+        let mut fields = Vec::new();
+
+        // Check for named fields first (VARIANT_FIELD children).
+        let named_fields: Vec<_> = variant_def.fields().collect();
+        if !named_fields.is_empty() {
+            for field in named_fields {
+                let field_name = field
+                    .name()
+                    .and_then(|n| n.text())
+                    .unwrap_or_else(|| "<unnamed>".to_string());
+                let field_ty = field
+                    .type_annotation()
+                    .and_then(|ann| resolve_type_annotation(ctx, &ann, type_registry))
+                    .unwrap_or_else(|| ctx.fresh_var());
+                fields.push(VariantFieldInfo::Named(field_name, field_ty));
+            }
+        } else {
+            // Positional types (TYPE_ANNOTATION children directly under VARIANT_DEF).
+            for type_ann in variant_def.positional_types() {
+                let field_ty =
+                    resolve_type_annotation(ctx, &type_ann, type_registry)
+                        .unwrap_or_else(|| ctx.fresh_var());
+                fields.push(VariantFieldInfo::Positional(field_ty));
+            }
+        }
+
+        variants.push(VariantInfo {
+            name: variant_name,
+            fields,
+        });
+    }
+
+    // Register the sum type info.
+    let sum_info = SumTypeDefInfo {
+        name: name.clone(),
+        generic_params: generic_params.clone(),
+        variants: variants.clone(),
+    };
+    type_registry.register_sum_type(sum_info);
+
+    // Register each variant constructor as a polymorphic function in env.
+    for variant in &variants {
+        let field_types: Vec<Ty> = variant
+            .fields
+            .iter()
+            .map(|f| match f {
+                VariantFieldInfo::Positional(ty) => ty.clone(),
+                VariantFieldInfo::Named(_, ty) => ty.clone(),
+            })
+            .collect();
+
+        // Build the constructor type.
+        // For generics, use enter_level/leave_level to get proper generalization.
+        ctx.enter_level();
+
+        // Create fresh type vars for generic params.
+        let type_param_vars: Vec<Ty> = generic_params.iter().map(|_| ctx.fresh_var()).collect();
+
+        // Substitute generic params in field types.
+        let substituted_fields: Vec<Ty> = field_types
+            .iter()
+            .map(|fty| substitute_type_params(fty, &generic_params, &type_param_vars))
+            .collect();
+
+        // The result type of the constructor: SumTypeName<T1, T2, ...>
+        let result_ty = if type_param_vars.is_empty() {
+            Ty::App(Box::new(Ty::Con(TyCon::new(&name))), vec![])
+        } else {
+            Ty::App(
+                Box::new(Ty::Con(TyCon::new(&name))),
+                type_param_vars.clone(),
+            )
+        };
+
+        let ctor_ty = if substituted_fields.is_empty() {
+            // Nullary constructor: not a function, just the type itself.
+            result_ty.clone()
+        } else {
+            // Constructor with fields: function from fields to result type.
+            Ty::Fun(substituted_fields, Box::new(result_ty.clone()))
+        };
+
+        ctx.leave_level();
+        let scheme = ctx.generalize(ctor_ty);
+
+        // Register under qualified name: Shape.Circle
+        let qualified_name = format!("{}.{}", name, variant.name);
+        env.insert(qualified_name, scheme.clone());
+
+        // Register under unqualified name: Circle (for backward compat with Option/Result)
+        env.insert(variant.name.clone(), scheme);
+    }
 }
 
 // ── Interface/Impl Registration (03-04) ───────────────────────────────
@@ -1462,13 +1666,31 @@ fn infer_field_access(
         ctx.errors.push(err.clone());
         err
     })?;
-    let base_ty = infer_expr(ctx, env, &base_expr, types, type_registry, trait_registry, fn_constraints)?;
-    let resolved_base = ctx.resolve(base_ty);
 
     let field_name = match fa.field() {
         Some(tok) => tok.text().to_string(),
         None => "<unknown>".to_string(),
     };
+
+    // Check if base is a NameRef pointing to a sum type name for variant construction.
+    // e.g. Shape.Circle -- Shape is a sum type, Circle is a variant.
+    if let Expr::NameRef(ref name_ref) = base_expr {
+        if let Some(base_name) = name_ref.text() {
+            // Look up qualified variant: TypeName.VariantName
+            if let Some((_sum_info, _variant_info)) =
+                type_registry.lookup_qualified_variant(&base_name, &field_name)
+            {
+                let qualified = format!("{}.{}", base_name, field_name);
+                if let Some(scheme) = env.lookup(&qualified) {
+                    let ty = ctx.instantiate(scheme);
+                    return Ok(ty);
+                }
+            }
+        }
+    }
+
+    let base_ty = infer_expr(ctx, env, &base_expr, types, type_registry, trait_registry, fn_constraints)?;
+    let resolved_base = ctx.resolve(base_ty);
 
     let struct_name = match &resolved_base {
         Ty::App(con, _) => {
