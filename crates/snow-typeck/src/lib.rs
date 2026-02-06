@@ -20,6 +20,7 @@
 //! - [`infer`]: Algorithm J inference engine
 
 pub mod builtins;
+pub mod diagnostics;
 pub mod env;
 pub mod error;
 pub mod infer;
@@ -45,6 +46,20 @@ pub struct TypeckResult {
     /// The inferred type of the last expression/item in the program.
     /// `None` if the program has no items or only produces errors.
     pub result_type: Option<Ty>,
+}
+
+impl TypeckResult {
+    /// Render all type errors as formatted diagnostic strings using ariadne.
+    ///
+    /// Each error is rendered with labeled source spans, error codes, and
+    /// fix suggestions when applicable. Colors are disabled for consistent
+    /// output.
+    pub fn render_errors(&self, source: &str, filename: &str) -> Vec<String> {
+        self.errors
+            .iter()
+            .map(|err| diagnostics::render_diagnostic(err, source, filename))
+            .collect()
+    }
 }
 
 /// Type-check a parsed Snow program.

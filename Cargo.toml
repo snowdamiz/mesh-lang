@@ -14,3 +14,4 @@ rowan = "0.16"
 serde = { version = "1", features = ["derive"] }
 ena = "0.14"
 rustc-hash = "2"
+ariadne = "0.6"

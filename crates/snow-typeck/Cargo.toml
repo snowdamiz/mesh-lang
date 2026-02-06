@@ -9,6 +9,7 @@ snow-parser = { path = "../snow-parser" }
 ena = { workspace = true }
 rustc-hash = { workspace = true }
 rowan = { workspace = true }
+ariadne = { workspace = true }
 
 [dev-dependencies]
 insta = { workspace = true }
