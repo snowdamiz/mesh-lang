@@ -1,0 +1,57 @@
+---
+source: crates/snow-parser/tests/parser_tests.rs
+expression: source_and_debug(source)
+---
+SOURCE_FILE@0..86
+  FN_DEF@0..29
+    FN_KW@0..2 "fn"
+    NAME@2..9
+      IDENT@2..9 "process"
+    PARAM_LIST@9..15
+      L_PAREN@9..10 "("
+      PARAM@10..14
+        IDENT@10..14 "data"
+      R_PAREN@14..15 ")"
+    DO_KW@15..17 "do"
+    BLOCK@17..29
+      NEWLINE@17..18 "\n"
+      FIELD_ACCESS@18..28
+        NAME_REF@18..22
+          IDENT@18..22 "data"
+        DOT@22..23 "."
+        IDENT@23..28 "items"
+      NEWLINE@28..29 "\n"
+  PIPE@29..31 "|>"
+  IDENT@31..37 "filter"
+  L_PAREN@37..38 "("
+  FN_KW@38..40 "fn"
+  L_PAREN@40..41 "("
+  IDENT@41..42 "x"
+  R_PAREN@42..43 ")"
+  ARROW@43..45 "->"
+  IDENT@45..46 "x"
+  DOT@46..47 "."
+  IDENT@47..53 "active"
+  END_KW@53..56 "end"
+  R_PAREN@56..57 ")"
+  NEWLINE@57..58 "\n"
+  PIPE@58..60 "|>"
+  IDENT@60..63 "map"
+  L_PAREN@63..64 "("
+  FN_KW@64..66 "fn"
+  L_PAREN@66..67 "("
+  IDENT@67..68 "x"
+  R_PAREN@68..69 ")"
+  ARROW@69..71 "->"
+  IDENT@71..72 "x"
+  DOT@72..73 "."
+  IDENT@73..78 "value"
+  END_KW@78..81 "end"
+  R_PAREN@81..82 ")"
+  NEWLINE@82..83 "\n"
+  END_KW@83..86 "end"
+  EOF@86..86 ""
+
+errors:
+  - expected expression @37..39
+  - expected `end` to close function body @37..39
