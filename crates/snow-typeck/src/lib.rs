@@ -23,6 +23,7 @@ pub mod builtins;
 pub mod diagnostics;
 pub mod env;
 pub mod error;
+pub mod exhaustiveness;
 pub mod infer;
 pub mod traits;
 pub mod ty;
