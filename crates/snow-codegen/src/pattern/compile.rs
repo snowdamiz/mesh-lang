@@ -765,15 +765,6 @@ fn remove_wildcard_column(matrix: &PatMatrix, col: usize) -> PatMatrix {
 
 // ── Tuple expansion ─────────────────────────────────────────────────
 
-// Tuples are handled by expanding the column. When a tuple pattern is
-// detected in the selected column, we expand it into its sub-columns
-// before proceeding with the standard algorithm. This is done inside
-// `compile_matrix` before the head constructor phase, via the
-// `expand_tuple_column` function.
-
-// We need to detect and expand tuple columns in compile_matrix.
-// Let me refactor to handle this properly.
-
 /// Check if a column contains any tuple patterns.
 fn column_has_tuples(matrix: &PatMatrix, col: usize) -> bool {
     matrix.rows.iter().any(|row| {
@@ -902,7 +893,7 @@ fn compile_expr_patterns(expr: &mut MirExpr) {
         MirExpr::Match {
             scrutinee,
             arms,
-            ty,
+            ty: _,
         } => {
             // First, recursively process sub-expressions.
             compile_expr_patterns(scrutinee);
