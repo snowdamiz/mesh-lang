@@ -5,33 +5,33 @@
 See: .planning/PROJECT.md (updated 2026-02-05)
 
 **Core value:** Expressive, readable concurrency -- writing concurrent programs should feel as natural as sequential code, with supervision and fault tolerance built in.
-**Current focus:** Phase 2 in progress. Declarations, patterns, and types complete; next up is error recovery and public API polish (02-05).
+**Current focus:** Phase 2 complete. Parser & AST fully implemented with typed wrappers, 191 workspace tests. Ready for Phase 3 (Type System).
 
 ## Current Position
 
 Phase: 2 of 10 (Parser & AST)
-Plan: 4 of 5 in current phase
-Status: In progress
-Last activity: 2026-02-06 -- Completed 02-04-PLAN.md
+Plan: 5 of 5 in current phase
+Status: Phase complete
+Last activity: 2026-02-06 -- Completed 02-05-PLAN.md
 
-Progress: [███████░░░] 17% (7 plans of ~41 estimated total)
+Progress: [████████░░] 20% (8 plans of ~41 estimated total)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 7
+- Total plans completed: 8
 - Average duration: 4min
-- Total execution time: 30min
+- Total execution time: 35min
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 01-project-foundation-lexer | 3/3 | 12min | 4min |
-| 02-parser-ast | 4/5 | 18min | 5min |
+| 02-parser-ast | 5/5 | 23min | 5min |
 
 **Recent Trend:**
-- Last 5 plans: 02-01 (7min), 02-02 (3min), 02-03 (4min), 02-04 (4min)
+- Last 5 plans: 02-01 (7min), 02-02 (3min), 02-03 (4min), 02-04 (4min), 02-05 (5min)
 - Trend: stable at 4-5min average
 
 *Updated after each plan completion*
@@ -72,6 +72,9 @@ Recent decisions affecting current work:
 - [02-04]: Patterns replace expressions in match arms (LITERAL_PAT, IDENT_PAT, TUPLE_PAT, WILDCARD_PAT)
 - [02-04]: Let bindings support tuple destructuring via pattern parsing
 - [02-04]: Shared parse_type() for all type annotation positions
+- [02-05]: pub(crate) syntax field in ast_node! macro for cross-module construction
+- [02-05]: Lossless round-trip tests strip spaces (lexer omits whitespace by design)
+- [02-05]: Expr/Item/Pattern enums provide polymorphic cast()-based access to typed AST nodes
 
 ### Pending Todos
 
@@ -86,5 +89,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-06
-Stopped at: Completed 02-04-PLAN.md
+Stopped at: Completed 02-05-PLAN.md (Phase 2 complete)
 Resume file: None
