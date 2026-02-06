@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-02-05)
 
 **Core value:** Expressive, readable concurrency -- writing concurrent programs should feel as natural as sequential code, with supervision and fault tolerance built in.
-**Current focus:** Phase 4 in progress -- Pattern Matching & Algebraic Data Types. Plan 03 complete (Maranget's usefulness algorithm for exhaustiveness and redundancy checking).
+**Current focus:** Phase 4 in progress -- Pattern Matching & Algebraic Data Types. Plan 05 complete (diagnostic rendering + Option/Result ADT migration). Plan 04 may still be in progress (exhaustiveness wiring).
 
 ## Current Position
 
 Phase: 4 of 10 (Pattern Matching & ADTs)
-Plan: 3 of 5 in current phase
+Plan: 5 of 5 in current phase (04-04 may still be in progress)
 Status: In progress
-Last activity: 2026-02-06 -- Completed 04-03-PLAN.md
+Last activity: 2026-02-06 -- Completed 04-05-PLAN.md
 
-Progress: [████████████████░░░░] 39% (16 plans of ~41 estimated total)
+Progress: [█████████████████░░░] 43% (18 plans of ~41 estimated total)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 16
+- Total plans completed: 18
 - Average duration: 9min
-- Total execution time: 148min
+- Total execution time: 153min
 
 **By Phase:**
 
@@ -30,11 +30,11 @@ Progress: [████████████████░░░░] 39% (16
 | 01-project-foundation-lexer | 3/3 | 12min | 4min |
 | 02-parser-ast | 5/5 | 23min | 5min |
 | 03-type-system | 5/5 | 83min | 17min |
-| 04-pattern-matching-adts | 3/5 | 30min | 10min |
+| 04-pattern-matching-adts | 5/5 | 35min | 7min |
 
 **Recent Trend:**
-- Last 5 plans: 03-05 (6min), 04-01 (8min), 04-02 (9min), 04-03 (13min)
-- Trend: Phase 4 progressing well. Algorithm U implementation slightly longer due to nested type info design.
+- Last 5 plans: 04-01 (8min), 04-02 (9min), 04-03 (13min), 04-05 (5min)
+- Trend: Phase 4 progressing fast. Migration plan (04-05) completed quickly.
 
 *Updated after each plan completion*
 
@@ -114,6 +114,11 @@ Recent decisions affecting current work:
 - [04-03]: TypeRegistry parameter on check_exhaustiveness/check_redundancy for complete nested type resolution
 - [04-03]: Bool literals treated as named constructors true/false (unifies with sum type handling)
 - [04-03]: Pattern-based registry building in is_useful() for standalone use; caller-provided registry for check_exhaustiveness/check_redundancy
+- [04-05]: Error codes E0012 (NonExhaustiveMatch), W0001 (RedundantArm), E0013 (InvalidGuardExpression)
+- [04-05]: RedundantArm uses Warning report kind (W0001), distinct from Error-level diagnostics
+- [04-05]: Option/Result registered as SumTypeDefInfo in TypeRegistry (proper sum types, not just constructors)
+- [04-05]: Shared register_variant_constructors function unifies user-defined and builtin sum type registration
+- [04-05]: Qualified access (Option.Some, Result.Ok) works for builtin sum types
 
 ### Pending Todos
 
@@ -127,5 +132,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-06
-Stopped at: Completed 04-03-PLAN.md
+Stopped at: Completed 04-05-PLAN.md
 Resume file: None
