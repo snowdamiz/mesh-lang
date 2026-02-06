@@ -1,0 +1,13 @@
+[package]
+name = "snow-parser"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+snow-common = { path = "../snow-common" }
+snow-lexer = { path = "../snow-lexer" }
+rowan = { workspace = true }
+
+[dev-dependencies]
+insta = { workspace = true }
+serde = { workspace = true }

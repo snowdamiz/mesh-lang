@@ -2,10 +2,12 @@
 members = [
     "crates/snow-common",
     "crates/snow-lexer",
+    "crates/snow-parser",
     "crates/snowc",
 ]
 resolver = "2"
 
 [workspace.dependencies]
 insta = { version = "1.46", features = ["yaml"] }
+rowan = "0.16"
 serde = { version = "1", features = ["derive"] }
