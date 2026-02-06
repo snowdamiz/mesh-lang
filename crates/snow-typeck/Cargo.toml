@@ -1,0 +1,14 @@
+[package]
+name = "snow-typeck"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+snow-common = { path = "../snow-common" }
+snow-parser = { path = "../snow-parser" }
+ena = { workspace = true }
+rustc-hash = { workspace = true }
+rowan = { workspace = true }
+
+[dev-dependencies]
+insta = { workspace = true }

@@ -3,6 +3,7 @@ members = [
     "crates/snow-common",
     "crates/snow-lexer",
     "crates/snow-parser",
+    "crates/snow-typeck",
     "crates/snowc",
 ]
 resolver = "2"
@@ -11,3 +12,5 @@ resolver = "2"
 insta = { version = "1.46", features = ["yaml"] }
 rowan = "0.16"
 serde = { version = "1", features = ["derive"] }
+ena = "0.14"
+rustc-hash = "2"
