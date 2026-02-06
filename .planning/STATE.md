@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-02-05)
 
 **Core value:** Expressive, readable concurrency -- writing concurrent programs should feel as natural as sequential code, with supervision and fault tolerance built in.
-**Current focus:** Phase 5 in progress -- LLVM Codegen & Native Binaries. Plan 03 complete (pattern match compilation to decision trees).
+**Current focus:** Phase 5 in progress -- LLVM Codegen & Native Binaries. Plan 04 complete (LLVM IR code generation from MIR).
 
 ## Current Position
 
 Phase: 5 of 10 (LLVM Codegen & Native Binaries)
-Plan: 3 of 5 in current phase
+Plan: 4 of 5 in current phase
 Status: In progress
-Last activity: 2026-02-06 -- Completed 05-03-PLAN.md (pattern match compilation to decision trees)
+Last activity: 2026-02-06 -- Completed 05-04-PLAN.md (LLVM IR code generation)
 
-Progress: [██████████████████████░] 51% (21 plans of ~41 estimated total)
+Progress: [███████████████████████░] 54% (22 plans of ~41 estimated total)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 21
+- Total plans completed: 22
 - Average duration: 9min
-- Total execution time: 182min
+- Total execution time: 195min
 
 **By Phase:**
 
@@ -31,11 +31,11 @@ Progress: [██████████████████████░
 | 02-parser-ast | 5/5 | 23min | 5min |
 | 03-type-system | 5/5 | 83min | 17min |
 | 04-pattern-matching-adts | 5/5 | 42min | 8min |
-| 05-llvm-codegen-native-binaries | 3/5 | 22min | 7min |
+| 05-llvm-codegen-native-binaries | 4/5 | 35min | 9min |
 
 **Recent Trend:**
-- Last 5 plans: 04-05 (5min), 05-01 (5min), 05-02 (9min), 05-03 (8min)
-- Trend: Phase 5 maintaining steady 7-9min pace. Pattern compilation was clean TDD cycle.
+- Last 5 plans: 05-01 (5min), 05-02 (9min), 05-03 (8min), 05-04 (13min)
+- Trend: Phase 5 core codegen plan slightly longer due to comprehensive LLVM IR coverage.
 
 *Updated after each plan completion*
 
@@ -140,6 +140,11 @@ Recent decisions affecting current work:
 - [05-03]: Tuple patterns handled by column expansion, not Switch/Test
 - [05-03]: Column selection heuristic: column with most distinct head constructors wins
 - [05-03]: Guard failure chains to next row or Fail node
+- [05-04]: ValueKind::basic() replaces Either::left() in Inkwell 0.8.0 API
+- [05-04]: build_switch takes all cases upfront as &[(IntValue, BasicBlock)]
+- [05-04]: Struct field index lookup via mir_struct_defs stored during compile
+- [05-04]: Alloca+mem2reg pattern for if/else and match result merging
+- [05-04]: String comparison placeholder (pointer identity) for Phase 5
 
 ### Pending Todos
 
@@ -153,5 +158,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-06
-Stopped at: Completed 05-03-PLAN.md
+Stopped at: Completed 05-04-PLAN.md
 Resume file: None
