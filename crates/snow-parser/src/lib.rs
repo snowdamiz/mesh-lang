@@ -5,11 +5,13 @@
 //! all tokens including whitespace and comments, enabling future tooling
 //! (formatter, LSP) to work from the same tree.
 
+pub mod ast;
 pub mod cst;
 pub mod error;
 mod parser;
 pub mod syntax_kind;
 
+pub use ast::AstNode;
 pub use cst::{SyntaxElement, SyntaxNode, SyntaxToken};
 pub use error::ParseError;
 pub use syntax_kind::SyntaxKind;
@@ -38,6 +40,14 @@ impl Parse {
     /// Whether parsing completed without errors.
     pub fn ok(&self) -> bool {
         self.errors.is_empty()
+    }
+
+    /// Convenience: get the typed `SourceFile` AST root.
+    ///
+    /// This casts the root `SyntaxNode` to `SourceFile`. Should always
+    /// succeed for a parse result from [`parse()`].
+    pub fn tree(&self) -> ast::item::SourceFile {
+        ast::item::SourceFile::cast(self.syntax()).expect("root node is always SOURCE_FILE")
     }
 }
 
