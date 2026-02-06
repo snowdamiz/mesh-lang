@@ -87,12 +87,14 @@ Plans:
   2. The compiler warns when a match expression does not cover all variants of a sum type (exhaustiveness checking)
   3. The compiler warns when a pattern arm is unreachable (redundancy checking)
   4. Guards (`when` clauses) work in match arms and function heads, with the type checker understanding guard implications
-**Plans**: TBD
+**Plans**: 5 plans
 
 Plans:
-- [ ] 04-01: Algebraic data type representation and type checking integration
-- [ ] 04-02: Pattern matching exhaustiveness and redundancy checking (Maranget's algorithm)
-- [ ] 04-03: Guards in pattern matching and function heads
+- [ ] 04-01-PLAN.md -- Lexer BAR token, parser sum type definitions, extended pattern syntax (constructor/or/as), typed AST wrappers
+- [ ] 04-02-PLAN.md -- Type checking for sum types, variant constructors, constructor/or/as pattern inference
+- [ ] 04-03-PLAN.md -- Maranget's exhaustiveness and redundancy algorithm (TDD)
+- [ ] 04-04-PLAN.md -- Exhaustiveness/redundancy wiring, guard validation, multi-clause functions
+- [ ] 04-05-PLAN.md -- Diagnostic rendering, Option/Result migration to sum types, end-to-end integration
 
 ### Phase 5: LLVM Codegen & Native Binaries
 **Goal**: The complete compilation pipeline from Snow source to native single-binary executables, producing correct and runnable programs for all sequential language features
@@ -209,7 +211,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8 -> 9 -> 10
 | 1. Project Foundation & Lexer | 3/3 | Complete | 2026-02-06 |
 | 2. Parser & AST | 5/5 | Complete | 2026-02-06 |
 | 3. Type System | 5/5 | Complete | 2026-02-06 |
-| 4. Pattern Matching & ADTs | 0/3 | Not started | - |
+| 4. Pattern Matching & ADTs | 0/5 | Not started | - |
 | 5. LLVM Codegen & Native Binaries | 0/5 | Not started | - |
 | 6. Actor Runtime | 0/5 | Not started | - |
 | 7. Supervision & Fault Tolerance | 0/3 | Not started | - |
