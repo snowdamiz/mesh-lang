@@ -9,3 +9,4 @@ snow-common = { path = "../snow-common" }
 
 [dev-dependencies]
 insta = { workspace = true }
+serde = { workspace = true }

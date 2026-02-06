@@ -1,0 +1,64 @@
+---
+source: crates/snow-lexer/tests/lexer_tests.rs
+expression: tokens
+---
+- kind: IntLiteral
+  text: "42"
+  span:
+    - 0
+    - 2
+- kind: IntLiteral
+  text: 1_000_000
+  span:
+    - 3
+    - 12
+- kind: IntLiteral
+  text: "0xFF"
+  span:
+    - 13
+    - 17
+- kind: IntLiteral
+  text: "0xff_ff"
+  span:
+    - 18
+    - 25
+- kind: IntLiteral
+  text: 0b1010
+  span:
+    - 26
+    - 32
+- kind: IntLiteral
+  text: 0b1111_0000
+  span:
+    - 33
+    - 44
+- kind: IntLiteral
+  text: 0o777
+  span:
+    - 45
+    - 50
+- kind: FloatLiteral
+  text: "3.14"
+  span:
+    - 51
+    - 55
+- kind: FloatLiteral
+  text: "1.0e10"
+  span:
+    - 56
+    - 62
+- kind: FloatLiteral
+  text: "2.5e-3"
+  span:
+    - 63
+    - 69
+- kind: FloatLiteral
+  text: 100_000.50
+  span:
+    - 70
+    - 80
+- kind: Eof
+  text: ""
+  span:
+    - 81
+    - 81
