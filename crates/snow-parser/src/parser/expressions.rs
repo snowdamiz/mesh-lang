@@ -579,12 +579,16 @@ pub(crate) fn parse_param_list(p: &mut Parser) {
     p.close(m, SyntaxKind::PARAM_LIST);
 }
 
-/// Parse a single parameter: `name [:: Type]`
+/// Parse a single parameter: `name [:: Type]` or `self`
 fn parse_param(p: &mut Parser) {
     let m = p.open();
 
-    // Parameter name.
-    p.expect(SyntaxKind::IDENT);
+    // Parameter name: IDENT or self keyword.
+    if p.at(SyntaxKind::IDENT) || p.at(SyntaxKind::SELF_KW) {
+        p.advance();
+    } else {
+        p.error("expected parameter name");
+    }
 
     // Optional type annotation: `:: Type`
     if p.at(SyntaxKind::COLON_COLON) {

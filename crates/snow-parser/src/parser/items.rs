@@ -43,6 +43,11 @@ pub(crate) fn parse_fn_def(p: &mut Parser) {
         return;
     }
 
+    // Optional type parameters: <T, U>
+    if p.at(SyntaxKind::LT) {
+        parse_generic_param_list(p);
+    }
+
     // Parameter list.
     if p.at(SyntaxKind::L_PAREN) {
         parse_param_list(p);
@@ -54,6 +59,11 @@ pub(crate) fn parse_fn_def(p: &mut Parser) {
         p.advance(); // ->
         parse_type(p);
         p.close(ann, SyntaxKind::TYPE_ANNOTATION);
+    }
+
+    // Optional where clause: where T: Trait
+    if p.at(SyntaxKind::WHERE_KW) {
+        parse_where_clause(p);
     }
 
     // Expect `do`.
@@ -229,9 +239,9 @@ pub(crate) fn parse_struct_def(p: &mut Parser) {
         return;
     }
 
-    // Optional type parameters: [A, B]
-    if p.at(SyntaxKind::L_BRACKET) {
-        parse_type_param_list(p);
+    // Optional type parameters: <A, B>
+    if p.at(SyntaxKind::LT) {
+        parse_generic_param_list(p);
     }
 
     // Expect `do`.
@@ -295,57 +305,337 @@ fn parse_struct_field(p: &mut Parser) {
     p.close(m, SyntaxKind::STRUCT_FIELD);
 }
 
-/// Parse a type parameter list: `[A, B, C]`
-fn parse_type_param_list(p: &mut Parser) {
+/// Parse a generic parameter list: `<A, B, C>`
+fn parse_generic_param_list(p: &mut Parser) {
     let m = p.open();
-    p.advance(); // [
+    p.advance(); // <
 
-    if !p.at(SyntaxKind::R_BRACKET) {
+    if !p.at(SyntaxKind::GT) {
         p.expect(SyntaxKind::IDENT);
         while p.eat(SyntaxKind::COMMA) {
-            if p.at(SyntaxKind::R_BRACKET) {
+            if p.at(SyntaxKind::GT) {
                 break;
             }
             p.expect(SyntaxKind::IDENT);
         }
     }
 
-    p.expect(SyntaxKind::R_BRACKET);
-    p.close(m, SyntaxKind::TYPE_PARAM_LIST);
+    p.expect(SyntaxKind::GT);
+    p.close(m, SyntaxKind::GENERIC_PARAM_LIST);
 }
 
 // ── Type Parsing ─────────────────────────────────────────────────────────
 
-/// Parse a type expression: `Ident`, `Ident[A, B]`, `Mod.Type`
+/// Parse a type expression: `Ident`, `Ident<A, B>`, `Mod.Type`, `Int?`, `T!E`
+///
+/// Supports:
+/// - Simple types: `Int`, `String`
+/// - Qualified types: `Foo.Bar`
+/// - Generic applications: `List<Int>`, `Result<String, Error>`
+/// - Option sugar: `Int?` (desugars to `Option<Int>`)
+/// - Result sugar: `T!E` (desugars to `Result<T, E>`)
 pub(crate) fn parse_type(p: &mut Parser) {
-    if p.at(SyntaxKind::IDENT) {
-        p.advance(); // type name
-
-        // Optional dot-separated path: Foo.Bar
-        while p.at(SyntaxKind::DOT) {
-            p.advance(); // .
-            p.expect(SyntaxKind::IDENT);
-        }
-
-        // Optional type parameters: [A, B]
-        if p.at(SyntaxKind::L_BRACKET) {
-            let params = p.open();
-            p.advance(); // [
-            if !p.at(SyntaxKind::R_BRACKET) {
-                parse_type(p);
-                while p.eat(SyntaxKind::COMMA) {
-                    if p.at(SyntaxKind::R_BRACKET) {
-                        break;
-                    }
-                    parse_type(p);
-                }
-            }
-            p.expect(SyntaxKind::R_BRACKET);
-            p.close(params, SyntaxKind::TYPE_PARAM_LIST);
-        }
-    } else {
+    if !p.at(SyntaxKind::IDENT) {
         p.error("expected type name");
+        return;
     }
+
+    // Parse the base type: Ident possibly with dots and generic args.
+    // We emit the tokens directly (no wrapping node for simple types).
+    p.advance(); // type name IDENT
+
+    // Optional dot-separated path: Foo.Bar
+    while p.at(SyntaxKind::DOT) {
+        p.advance(); // .
+        p.expect(SyntaxKind::IDENT);
+    }
+
+    // Optional generic arguments: <A, B>
+    if p.at(SyntaxKind::LT) {
+        let args = p.open();
+        p.advance(); // <
+        if !p.at(SyntaxKind::GT) {
+            parse_type(p);
+            while p.eat(SyntaxKind::COMMA) {
+                if p.at(SyntaxKind::GT) {
+                    break;
+                }
+                parse_type(p);
+            }
+        }
+        p.expect(SyntaxKind::GT);
+        p.close(args, SyntaxKind::GENERIC_ARG_LIST);
+    }
+
+    // Option sugar: Type? => OPTION_TYPE wrapping the base type
+    if p.at(SyntaxKind::QUESTION) {
+        p.advance(); // ?
+        // The QUESTION token is emitted; the type checker will interpret
+        // the preceding type + QUESTION as Option<Type>.
+    }
+
+    // Result sugar: Type!ErrorType => RESULT_TYPE wrapping both types
+    if p.at(SyntaxKind::BANG) {
+        p.advance(); // !
+        parse_type(p); // error type
+        // The BANG token followed by another type is emitted; the type checker
+        // will interpret this as Result<Type, ErrorType>.
+    }
+}
+
+
+// ── Interface Definition ─────────────────────────────────────────────────
+
+/// Parse an interface definition: `[pub] interface Name [<T>] do method_sigs end`
+pub(crate) fn parse_interface_def(p: &mut Parser) {
+    let m = p.open();
+
+    // Optional visibility.
+    parse_optional_visibility(p);
+
+    p.advance(); // INTERFACE_KW
+
+    // Interface name.
+    if p.at(SyntaxKind::IDENT) {
+        let name = p.open();
+        p.advance();
+        p.close(name, SyntaxKind::NAME);
+    } else {
+        p.error("expected interface name");
+        p.close(m, SyntaxKind::INTERFACE_DEF);
+        return;
+    }
+
+    // Optional type parameters: <T>
+    if p.at(SyntaxKind::LT) {
+        parse_generic_param_list(p);
+    }
+
+    // Expect `do`.
+    let do_span = p.current_span();
+    p.expect(SyntaxKind::DO_KW);
+
+    // Parse method signatures.
+    if !p.has_error() {
+        loop {
+            p.eat_newlines();
+
+            if p.at(SyntaxKind::END_KW) || p.at(SyntaxKind::EOF) {
+                break;
+            }
+
+            parse_interface_method(p);
+
+            if p.has_error() {
+                break;
+            }
+        }
+    }
+
+    // Expect `end`.
+    if !p.at(SyntaxKind::END_KW) {
+        p.error_with_related(
+            "expected `end` to close interface body",
+            do_span,
+            "`do` block started here",
+        );
+    } else {
+        p.advance(); // END_KW
+    }
+
+    p.close(m, SyntaxKind::INTERFACE_DEF);
+}
+
+/// Parse a method signature inside an interface: `fn name(params) [-> ReturnType]`
+///
+/// No body (no `do ... end`), just the signature.
+fn parse_interface_method(p: &mut Parser) {
+    let m = p.open();
+
+    if !p.at(SyntaxKind::FN_KW) && !p.at(SyntaxKind::DEF_KW) {
+        p.error("expected method signature (fn)");
+        p.close(m, SyntaxKind::INTERFACE_METHOD);
+        return;
+    }
+
+    p.advance(); // FN_KW or DEF_KW
+
+    // Method name.
+    if p.at(SyntaxKind::IDENT) {
+        let name = p.open();
+        p.advance();
+        p.close(name, SyntaxKind::NAME);
+    } else {
+        p.error("expected method name");
+        p.close(m, SyntaxKind::INTERFACE_METHOD);
+        return;
+    }
+
+    // Parameter list.
+    if p.at(SyntaxKind::L_PAREN) {
+        parse_param_list(p);
+    }
+
+    // Optional return type: -> Type
+    if p.at(SyntaxKind::ARROW) {
+        let ann = p.open();
+        p.advance(); // ->
+        parse_type(p);
+        p.close(ann, SyntaxKind::TYPE_ANNOTATION);
+    }
+
+    p.close(m, SyntaxKind::INTERFACE_METHOD);
+}
+
+// ── Impl Definition ─────────────────────────────────────────────────────
+
+/// Parse an impl block: `impl TraitName for TypeName [where ...] do fn_defs end`
+pub(crate) fn parse_impl_def(p: &mut Parser) {
+    let m = p.open();
+
+    p.advance(); // IMPL_KW
+
+    // Trait name (possibly qualified: Foo.Bar).
+    if p.at(SyntaxKind::IDENT) {
+        parse_module_path(p);
+    } else {
+        p.error("expected trait name");
+        p.close(m, SyntaxKind::IMPL_DEF);
+        return;
+    }
+
+    // Optional generic arguments on the trait: impl Trait<T> for ...
+    if p.at(SyntaxKind::LT) {
+        let args = p.open();
+        p.advance(); // <
+        if !p.at(SyntaxKind::GT) {
+            parse_type(p);
+            while p.eat(SyntaxKind::COMMA) {
+                if p.at(SyntaxKind::GT) {
+                    break;
+                }
+                parse_type(p);
+            }
+        }
+        p.expect(SyntaxKind::GT);
+        p.close(args, SyntaxKind::GENERIC_ARG_LIST);
+    }
+
+    // Expect `for`.
+    p.expect(SyntaxKind::FOR_KW);
+
+    // Type name (possibly qualified).
+    if !p.has_error() {
+        if p.at(SyntaxKind::IDENT) {
+            parse_module_path(p);
+        } else {
+            p.error("expected type name");
+        }
+    }
+
+    // Optional where clause.
+    if p.at(SyntaxKind::WHERE_KW) {
+        parse_where_clause(p);
+    }
+
+    // Expect `do`.
+    let do_span = p.current_span();
+    p.expect(SyntaxKind::DO_KW);
+
+    // Parse method definitions.
+    if !p.has_error() {
+        parse_item_block_body(p);
+    }
+
+    // Expect `end`.
+    if !p.at(SyntaxKind::END_KW) {
+        p.error_with_related(
+            "expected `end` to close impl body",
+            do_span,
+            "`do` block started here",
+        );
+    } else {
+        p.advance(); // END_KW
+    }
+
+    p.close(m, SyntaxKind::IMPL_DEF);
+}
+
+// ── Type Alias ──────────────────────────────────────────────────────────
+
+/// Parse a type alias: `type Name [<T>] = Type`
+pub(crate) fn parse_type_alias(p: &mut Parser) {
+    let m = p.open();
+
+    p.advance(); // TYPE_KW
+
+    // Type name.
+    if p.at(SyntaxKind::IDENT) {
+        let name = p.open();
+        p.advance();
+        p.close(name, SyntaxKind::NAME);
+    } else {
+        p.error("expected type alias name");
+        p.close(m, SyntaxKind::TYPE_ALIAS_DEF);
+        return;
+    }
+
+    // Optional type parameters: <T>
+    if p.at(SyntaxKind::LT) {
+        parse_generic_param_list(p);
+    }
+
+    // Expect `=`.
+    p.expect(SyntaxKind::EQ);
+
+    // Parse the aliased type.
+    if !p.has_error() {
+        parse_type(p);
+    }
+
+    p.close(m, SyntaxKind::TYPE_ALIAS_DEF);
+}
+
+// ── Where Clause ────────────────────────────────────────────────────────
+
+/// Parse a where clause: `where T: Trait, U: OtherTrait`
+fn parse_where_clause(p: &mut Parser) {
+    let m = p.open();
+    p.advance(); // WHERE_KW
+
+    // Parse comma-separated trait bounds: T: Trait
+    parse_trait_bound(p);
+    while p.eat(SyntaxKind::COMMA) {
+        parse_trait_bound(p);
+    }
+
+    p.close(m, SyntaxKind::WHERE_CLAUSE);
+}
+
+/// Parse a single trait bound: `T: TraitName`
+fn parse_trait_bound(p: &mut Parser) {
+    let m = p.open();
+
+    // Type parameter name.
+    p.expect(SyntaxKind::IDENT);
+
+    // Colon.
+    p.expect(SyntaxKind::COLON);
+
+    // Trait name (possibly qualified).
+    if !p.has_error() {
+        if p.at(SyntaxKind::IDENT) {
+            p.advance();
+            while p.at(SyntaxKind::DOT) {
+                p.advance(); // .
+                p.expect(SyntaxKind::IDENT);
+            }
+        } else {
+            p.error("expected trait name");
+        }
+    }
+
+    p.close(m, SyntaxKind::TRAIT_BOUND);
 }
 
 // ── Item Block Body ──────────────────────────────────────────────────────

@@ -119,6 +119,9 @@ impl<'src> Lexer<'src> {
             '/' => self.single_char_token(TokenKind::Slash, start),
             '%' => self.single_char_token(TokenKind::Percent, start),
 
+            // ── Single-character operators ─────────────────────────────
+            '?' => self.single_char_token(TokenKind::Question, start),
+
             // ── Comments ────────────────────────────────────────────────
             '#' => self.lex_comment(start),
 
@@ -628,6 +631,7 @@ impl<'src> Lexer<'src> {
                 Token::new(TokenKind::Newline, start, self.cursor.pos())
             }
             // All other tokens: delegate to normal tokenization helpers
+            '?' => self.single_char_token(TokenKind::Question, start),
             '(' => self.single_char_token(TokenKind::LParen, start),
             ')' => self.single_char_token(TokenKind::RParen, start),
             '[' => self.single_char_token(TokenKind::LBracket, start),

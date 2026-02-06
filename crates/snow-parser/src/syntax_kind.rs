@@ -20,7 +20,7 @@ pub enum SyntaxKind {
     /// Wrapper for tokens/nodes that couldn't be parsed.
     ERROR_NODE = 1,
 
-    // ── Keywords (39) ──────────────────────────────────────────────────
+    // ── Keywords (40) ──────────────────────────────────────────────────
     AFTER_KW,
     ALIAS_KW,
     AND_KW,
@@ -36,6 +36,7 @@ pub enum SyntaxKind {
     IF_KW,
     IMPL_KW,
     IMPORT_KW,
+    INTERFACE_KW,
     IN_KW,
     LET_KW,
     LINK_KW,
@@ -61,7 +62,7 @@ pub enum SyntaxKind {
     WHERE_KW,
     WITH_KW,
 
-    // ── Operators (22) ─────────────────────────────────────────────────
+    // ── Operators (23) ─────────────────────────────────────────────────
     PLUS,
     MINUS,
     STAR,
@@ -85,6 +86,7 @@ pub enum SyntaxKind {
     ARROW,
     FAT_ARROW,
     COLON_COLON,
+    QUESTION,
 
     // ── Delimiters (6) ─────────────────────────────────────────────────
     L_PAREN,
@@ -213,6 +215,26 @@ pub enum SyntaxKind {
     STRUCT_LITERAL,
     /// Single field in a struct literal.
     STRUCT_LITERAL_FIELD,
+    /// Interface definition: `interface Printable do ... end`
+    INTERFACE_DEF,
+    /// Method signature in an interface definition.
+    INTERFACE_METHOD,
+    /// Impl block: `impl Printable for Int do ... end`
+    IMPL_DEF,
+    /// Type alias: `type Name = ExistingType`
+    TYPE_ALIAS_DEF,
+    /// Where clause: `where T: Trait`
+    WHERE_CLAUSE,
+    /// Trait bound: `T: TraitName`
+    TRAIT_BOUND,
+    /// Generic parameter list: `<A, B>`
+    GENERIC_PARAM_LIST,
+    /// Generic argument list in type application: `<Int, String>`
+    GENERIC_ARG_LIST,
+    /// Option type sugar: `Int?` => `Option<Int>`
+    OPTION_TYPE,
+    /// Result type sugar: `T!E` => `Result<T, E>`
+    RESULT_TYPE,
 }
 
 impl SyntaxKind {
@@ -251,6 +273,7 @@ impl From<TokenKind> for SyntaxKind {
             TokenKind::If => SyntaxKind::IF_KW,
             TokenKind::Impl => SyntaxKind::IMPL_KW,
             TokenKind::Import => SyntaxKind::IMPORT_KW,
+            TokenKind::Interface => SyntaxKind::INTERFACE_KW,
             TokenKind::In => SyntaxKind::IN_KW,
             TokenKind::Let => SyntaxKind::LET_KW,
             TokenKind::Link => SyntaxKind::LINK_KW,
@@ -298,6 +321,7 @@ impl From<TokenKind> for SyntaxKind {
             TokenKind::Arrow => SyntaxKind::ARROW,
             TokenKind::FatArrow => SyntaxKind::FAT_ARROW,
             TokenKind::ColonColon => SyntaxKind::COLON_COLON,
+            TokenKind::Question => SyntaxKind::QUESTION,
             // Delimiters
             TokenKind::LParen => SyntaxKind::L_PAREN,
             TokenKind::RParen => SyntaxKind::R_PAREN,
@@ -339,7 +363,7 @@ mod tests {
     fn all_token_kinds_convert_to_syntax_kind() {
         // Exhaustive test: every TokenKind variant must convert without panic.
         let all_kinds = [
-            // Keywords (39)
+            // Keywords (40)
             TokenKind::After,
             TokenKind::Alias,
             TokenKind::And,
@@ -355,6 +379,7 @@ mod tests {
             TokenKind::If,
             TokenKind::Impl,
             TokenKind::Import,
+            TokenKind::Interface,
             TokenKind::In,
             TokenKind::Let,
             TokenKind::Link,
@@ -379,7 +404,7 @@ mod tests {
             TokenKind::When,
             TokenKind::Where,
             TokenKind::With,
-            // Operators (22)
+            // Operators (23)
             TokenKind::Plus,
             TokenKind::Minus,
             TokenKind::Star,
@@ -402,6 +427,7 @@ mod tests {
             TokenKind::Arrow,
             TokenKind::FatArrow,
             TokenKind::ColonColon,
+            TokenKind::Question,
             // Delimiters (6)
             TokenKind::LParen,
             TokenKind::RParen,
@@ -433,7 +459,7 @@ mod tests {
             TokenKind::Error,
         ];
 
-        assert_eq!(all_kinds.len(), 85, "must test all 85 TokenKind variants");
+        assert_eq!(all_kinds.len(), 87, "must test all 87 TokenKind variants");
 
         for kind in all_kinds {
             let _syntax_kind: SyntaxKind = kind.into();
@@ -462,7 +488,7 @@ mod tests {
 
     #[test]
     fn syntax_kind_has_enough_variants() {
-        // 2 sentinels + 85 token kinds + 1 WHITESPACE + 43 node kinds = 131
+        // 2 sentinels + 87 token kinds + 1 WHITESPACE + 53 node kinds
         // Verify we have at least the expected count of composite node kinds.
         let node_kinds = [
             SyntaxKind::SOURCE_FILE,
@@ -508,10 +534,20 @@ mod tests {
             SyntaxKind::IMPORT_LIST,
             SyntaxKind::STRUCT_LITERAL,
             SyntaxKind::STRUCT_LITERAL_FIELD,
+            SyntaxKind::INTERFACE_DEF,
+            SyntaxKind::INTERFACE_METHOD,
+            SyntaxKind::IMPL_DEF,
+            SyntaxKind::TYPE_ALIAS_DEF,
+            SyntaxKind::WHERE_CLAUSE,
+            SyntaxKind::TRAIT_BOUND,
+            SyntaxKind::GENERIC_PARAM_LIST,
+            SyntaxKind::GENERIC_ARG_LIST,
+            SyntaxKind::OPTION_TYPE,
+            SyntaxKind::RESULT_TYPE,
         ];
         assert!(
-            node_kinds.len() >= 35,
-            "expected at least 35 composite node kinds, got {}",
+            node_kinds.len() >= 45,
+            "expected at least 45 composite node kinds, got {}",
             node_kinds.len()
         );
     }

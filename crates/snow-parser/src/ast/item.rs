@@ -40,6 +40,9 @@ pub enum Item {
     FromImportDecl(FromImportDecl),
     StructDef(StructDef),
     LetBinding(LetBinding),
+    InterfaceDef(InterfaceDef),
+    ImplDef(ImplDef),
+    TypeAliasDef(TypeAliasDef),
 }
 
 impl Item {
@@ -53,6 +56,13 @@ impl Item {
             }
             SyntaxKind::STRUCT_DEF => Some(Item::StructDef(StructDef { syntax: node })),
             SyntaxKind::LET_BINDING => Some(Item::LetBinding(LetBinding { syntax: node })),
+            SyntaxKind::INTERFACE_DEF => {
+                Some(Item::InterfaceDef(InterfaceDef { syntax: node }))
+            }
+            SyntaxKind::IMPL_DEF => Some(Item::ImplDef(ImplDef { syntax: node })),
+            SyntaxKind::TYPE_ALIAS_DEF => {
+                Some(Item::TypeAliasDef(TypeAliasDef { syntax: node }))
+            }
             _ => None,
         }
     }
@@ -317,5 +327,76 @@ impl Path {
             .filter(|t| t.kind() == SyntaxKind::IDENT)
             .map(|t| t.text().to_string())
             .collect()
+    }
+}
+
+// ── Interface Definition ────────────────────────────────────────────────
+
+ast_node!(InterfaceDef, INTERFACE_DEF);
+
+impl InterfaceDef {
+    /// The visibility modifier, if present.
+    pub fn visibility(&self) -> Option<Visibility> {
+        child_node(&self.syntax)
+    }
+
+    /// The interface name.
+    pub fn name(&self) -> Option<Name> {
+        child_node(&self.syntax)
+    }
+
+    /// The method signatures in the interface.
+    pub fn methods(&self) -> impl Iterator<Item = InterfaceMethod> + '_ {
+        child_nodes(&self.syntax)
+    }
+}
+
+ast_node!(InterfaceMethod, INTERFACE_METHOD);
+
+impl InterfaceMethod {
+    /// The method name.
+    pub fn name(&self) -> Option<Name> {
+        child_node(&self.syntax)
+    }
+
+    /// The parameter list.
+    pub fn param_list(&self) -> Option<ParamList> {
+        child_node(&self.syntax)
+    }
+
+    /// The return type annotation, if present.
+    pub fn return_type(&self) -> Option<TypeAnnotation> {
+        child_node(&self.syntax)
+    }
+}
+
+// ── Impl Definition ─────────────────────────────────────────────────────
+
+ast_node!(ImplDef, IMPL_DEF);
+
+impl ImplDef {
+    /// The trait path being implemented.
+    pub fn trait_path(&self) -> Option<Path> {
+        child_node(&self.syntax)
+    }
+
+    /// The function definitions in the impl block.
+    pub fn methods(&self) -> impl Iterator<Item = FnDef> + '_ {
+        // Methods are inside the BLOCK child.
+        self.syntax
+            .children()
+            .filter(|n| n.kind() == SyntaxKind::BLOCK)
+            .flat_map(|block| block.children().filter_map(FnDef::cast))
+    }
+}
+
+// ── Type Alias ──────────────────────────────────────────────────────────
+
+ast_node!(TypeAliasDef, TYPE_ALIAS_DEF);
+
+impl TypeAliasDef {
+    /// The alias name.
+    pub fn name(&self) -> Option<Name> {
+        child_node(&self.syntax)
     }
 }

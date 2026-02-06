@@ -9,10 +9,10 @@ SOURCE_FILE@0..129
     STRUCT_KW@3..9 "struct"
     NAME@9..14
       IDENT@9..14 "Point"
-    TYPE_PARAM_LIST@14..17
-      L_BRACKET@14..15 "["
+    GENERIC_PARAM_LIST@14..17
+      LT@14..15 "<"
       IDENT@15..16 "T"
-      R_BRACKET@16..17 "]"
+      GT@16..17 ">"
     DO_KW@17..19 "do"
     NEWLINE@19..20 "\n"
     STRUCT_FIELD@20..24

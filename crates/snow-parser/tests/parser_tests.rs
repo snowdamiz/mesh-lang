@@ -474,7 +474,7 @@ fn struct_simple() {
 
 #[test]
 fn struct_pub_with_generics() {
-    assert_snapshot!(source_and_debug("pub struct Pair[A, B] do\n  first :: A\n  second :: B\nend"));
+    assert_snapshot!(source_and_debug("pub struct Pair<A, B> do\n  first :: A\n  second :: B\nend"));
 }
 
 // ── Pattern Matching ────────────────────────────────────────────────
@@ -632,7 +632,7 @@ end";
 #[test]
 fn full_struct_definition_and_usage() {
     let source = "\
-pub struct Point[T] do
+pub struct Point<T> do
   x :: T
   y :: T
 end
@@ -1127,6 +1127,87 @@ fn lossless_pipe_chain() {
 #[test]
 fn lossless_closure() {
     assert_lossless_roundtrip("fn (x) -> x + 1 end");
+}
+
+#[test]
+// ═══════════════════════════════════════════════════════════════════════
+// Plan 03-01: Phase 3 Syntax (interface, impl, type alias, generics)
+// ═══════════════════════════════════════════════════════════════════════
+
+// ── Angle Bracket Generics ──────────────────────────────────────────
+
+#[test]
+fn struct_angle_bracket_generics() {
+    assert_snapshot!(source_and_debug("struct Foo<T> do\n  x :: T\nend"));
+}
+
+// ── Interface Definition ────────────────────────────────────────────
+
+#[test]
+fn interface_simple() {
+    assert_snapshot!(source_and_debug(
+        "interface Printable do\n  fn to_string(self) -> String\nend"
+    ));
+}
+
+#[test]
+fn interface_with_generic() {
+    assert_snapshot!(source_and_debug(
+        "interface Container<T> do\n  fn get(self) -> T\n  fn set(self, value :: T)\nend"
+    ));
+}
+
+// ── Impl Block ──────────────────────────────────────────────────────
+
+#[test]
+fn impl_simple() {
+    assert_snapshot!(source_and_debug(
+        "impl Printable for Int do\n  fn to_string(self) -> String do\n    \"int\"\n  end\nend"
+    ));
+}
+
+// ── Type Alias ──────────────────────────────────────────────────────
+
+#[test]
+fn type_alias_simple() {
+    assert_snapshot!(source_and_debug("type Alias = Int"));
+}
+
+#[test]
+fn type_alias_generic() {
+    assert_snapshot!(source_and_debug("type StringResult<T> = Result<T, String>"));
+}
+
+// ── Option Sugar ────────────────────────────────────────────────────
+
+#[test]
+fn option_sugar_in_type() {
+    // Int? should produce a QUESTION token after IDENT "Int"
+    assert_snapshot!(source_and_debug("fn foo(x :: Int?) do\n  x\nend"));
+}
+
+// ── Result Sugar ────────────────────────────────────────────────────
+
+#[test]
+fn result_sugar_in_type() {
+    // T!E should produce BANG token between T and E types
+    assert_snapshot!(source_and_debug("fn bar(x :: String!Error) do\n  x\nend"));
+}
+
+// ── Function with Where Clause ──────────────────────────────────────
+
+#[test]
+fn fn_with_where_clause() {
+    assert_snapshot!(source_and_debug(
+        "fn print<T>(x :: T) where T: Printable do\n  x\nend"
+    ));
+}
+
+// ── Function with Generic Params ────────────────────────────────────
+
+#[test]
+fn fn_with_generic_params() {
+    assert_snapshot!(source_and_debug("fn identity<T>(x :: T) -> T do\n  x\nend"));
 }
 
 #[test]

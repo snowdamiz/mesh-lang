@@ -556,8 +556,9 @@ pub(crate) fn parse_item_or_stmt(p: &mut Parser) {
             SyntaxKind::FN_KW | SyntaxKind::DEF_KW => items::parse_fn_def(p),
             SyntaxKind::MODULE_KW => items::parse_module_def(p),
             SyntaxKind::STRUCT_KW => items::parse_struct_def(p),
+            SyntaxKind::INTERFACE_KW => items::parse_interface_def(p),
             _ => {
-                p.error("expected `fn`, `module`, or `struct` after `pub`");
+                p.error("expected `fn`, `module`, `struct`, or `interface` after `pub`");
             }
         },
 
@@ -582,6 +583,16 @@ pub(crate) fn parse_item_or_stmt(p: &mut Parser) {
         }
 
         SyntaxKind::STRUCT_KW => items::parse_struct_def(p),
+
+        SyntaxKind::INTERFACE_KW => items::parse_interface_def(p),
+
+        SyntaxKind::IMPL_KW => items::parse_impl_def(p),
+
+        // type at top level followed by IDENT = type alias
+        // (distinguishes from `type` used in other contexts)
+        SyntaxKind::TYPE_KW if p.nth(1) == SyntaxKind::IDENT => {
+            items::parse_type_alias(p);
+        }
 
         SyntaxKind::LET_KW => expressions::parse_let_binding(p),
 

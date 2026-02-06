@@ -26,7 +26,7 @@ impl Token {
 /// identifiers, and special tokens.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub enum TokenKind {
-    // ── Keywords (39) ──────────────────────────────────────────────────
+    // ── Keywords (40) ──────────────────────────────────────────────────
     After,
     Alias,
     And,
@@ -42,6 +42,7 @@ pub enum TokenKind {
     If,
     Impl,
     Import,
+    Interface,
     In,
     Let,
     Link,
@@ -68,7 +69,7 @@ pub enum TokenKind {
     Where,
     With,
 
-    // ── Operators (22) ─────────────────────────────────────────────────
+    // ── Operators (23) ─────────────────────────────────────────────────
     /// `+`
     Plus,
     /// `-`
@@ -113,6 +114,8 @@ pub enum TokenKind {
     FatArrow,
     /// `::`
     ColonColon,
+    /// `?`
+    Question,
 
     // ── Delimiters (6) ─────────────────────────────────────────────────
     /// `(`
@@ -195,6 +198,7 @@ pub fn keyword_from_str(s: &str) -> Option<TokenKind> {
         "if" => Some(TokenKind::If),
         "impl" => Some(TokenKind::Impl),
         "import" => Some(TokenKind::Import),
+        "interface" => Some(TokenKind::Interface),
         "in" => Some(TokenKind::In),
         "let" => Some(TokenKind::Let),
         "link" => Some(TokenKind::Link),
@@ -245,6 +249,7 @@ mod tests {
             ("if", TokenKind::If),
             ("impl", TokenKind::Impl),
             ("import", TokenKind::Import),
+            ("interface", TokenKind::Interface),
             ("in", TokenKind::In),
             ("let", TokenKind::Let),
             ("link", TokenKind::Link),
@@ -279,8 +284,8 @@ mod tests {
             );
         }
 
-        // Verify we tested all 39 keywords
-        assert_eq!(keywords.len(), 39, "must test all 39 keywords");
+        // Verify we tested all 40 keywords
+        assert_eq!(keywords.len(), 40, "must test all 40 keywords");
     }
 
     #[test]
@@ -303,17 +308,17 @@ mod tests {
     #[test]
     fn token_kind_variant_count() {
         // Count variants by checking that all categories are covered.
-        // Keywords: 39, Operators: 22, Delimiters: 6, Punctuation: 5,
-        // Literals: 7, Identifiers/comments: 4, Special: 2 = 85 total
+        // Keywords: 40, Operators: 23, Delimiters: 6, Punctuation: 5,
+        // Literals: 7, Identifiers/comments: 4, Special: 2 = 87 total
         // This test documents the expected count.
-        let keywords = 39u32;
-        let operators = 22;
+        let keywords = 40u32;
+        let operators = 23;
         let delimiters = 6;
         let punctuation = 5;
         let literals = 7;
         let ident_comments = 4;
         let special = 2;
         let total = keywords + operators + delimiters + punctuation + literals + ident_comments + special;
-        assert_eq!(total, 85, "TokenKind should have 85 variants");
+        assert_eq!(total, 87, "TokenKind should have 87 variants");
     }
 }
