@@ -17,6 +17,7 @@
 
 pub mod codegen;
 pub mod mir;
+pub mod pattern;
 
 use mir::lower::lower_to_mir;
 use mir::mono::monomorphize;
