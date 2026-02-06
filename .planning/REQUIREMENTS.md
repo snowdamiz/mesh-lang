@@ -9,16 +9,16 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### Core Language
 
-- [ ] **LANG-01**: Variables with `let` bindings, immutable by default
-- [ ] **LANG-02**: Functions with parameters and return values (first-class)
-- [ ] **LANG-03**: `do/end` block syntax (Elixir/Ruby-style)
-- [ ] **LANG-04**: Control flow (`if/else`, `case/match`) as expressions
+- [x] **LANG-01**: Variables with `let` bindings, immutable by default
+- [x] **LANG-02**: Functions with parameters and return values (first-class)
+- [x] **LANG-03**: `do/end` block syntax (Elixir/Ruby-style)
+- [x] **LANG-04**: Control flow (`if/else`, `case/match`) as expressions
 - [ ] **LANG-05**: Pattern matching with exhaustiveness checking
 - [ ] **LANG-06**: Algebraic data types (sum types + product types/structs)
-- [ ] **LANG-07**: String interpolation (`"Hello, #{name}"`)
-- [ ] **LANG-08**: Closures / anonymous functions with scope capture
+- [x] **LANG-07**: String interpolation (`"Hello, #{name}"`)
+- [x] **LANG-08**: Closures / anonymous functions with scope capture
 - [ ] **LANG-09**: Comments (`# line comment`)
-- [ ] **LANG-10**: Pipe operator (`|>`) with type inference
+- [x] **LANG-10**: Pipe operator (`|>`) with type inference
 - [ ] **LANG-11**: Guards in pattern matching
 
 ### Type System
@@ -44,9 +44,9 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### Code Organization
 
-- [ ] **ORG-01**: Module system with namespacing
-- [ ] **ORG-02**: Import system
-- [ ] **ORG-03**: Visibility control (pub/private)
+- [x] **ORG-01**: Module system with namespacing
+- [x] **ORG-02**: Import system
+- [x] **ORG-03**: Visibility control (pub/private)
 
 ### Standard Library
 
@@ -113,16 +113,16 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| LANG-01 | Phase 2: Parser & AST | Pending |
-| LANG-02 | Phase 2: Parser & AST | Pending |
-| LANG-03 | Phase 2: Parser & AST | Pending |
-| LANG-04 | Phase 2: Parser & AST | Pending |
+| LANG-01 | Phase 2: Parser & AST | Complete |
+| LANG-02 | Phase 2: Parser & AST | Complete |
+| LANG-03 | Phase 2: Parser & AST | Complete |
+| LANG-04 | Phase 2: Parser & AST | Complete |
 | LANG-05 | Phase 4: Pattern Matching & ADTs | Pending |
 | LANG-06 | Phase 4: Pattern Matching & ADTs | Pending |
-| LANG-07 | Phase 2: Parser & AST | Pending |
-| LANG-08 | Phase 2: Parser & AST | Pending |
+| LANG-07 | Phase 2: Parser & AST | Complete |
+| LANG-08 | Phase 2: Parser & AST | Complete |
 | LANG-09 | Phase 1: Project Foundation & Lexer | Complete |
-| LANG-10 | Phase 2: Parser & AST | Pending |
+| LANG-10 | Phase 2: Parser & AST | Complete |
 | LANG-11 | Phase 4: Pattern Matching & ADTs | Pending |
 | TYPE-01 | Phase 3: Type System | Pending |
 | TYPE-02 | Phase 3: Type System | Pending |
@@ -139,9 +139,9 @@ Which phases cover which requirements. Updated during roadmap creation.
 | CONC-05 | Phase 7: Supervision & Fault Tolerance | Pending |
 | CONC-06 | Phase 7: Supervision & Fault Tolerance | Pending |
 | CONC-07 | Phase 7: Supervision & Fault Tolerance | Pending |
-| ORG-01 | Phase 2: Parser & AST | Pending |
-| ORG-02 | Phase 2: Parser & AST | Pending |
-| ORG-03 | Phase 2: Parser & AST | Pending |
+| ORG-01 | Phase 2: Parser & AST | Complete |
+| ORG-02 | Phase 2: Parser & AST | Complete |
+| ORG-03 | Phase 2: Parser & AST | Complete |
 | STD-01 | Phase 8: Standard Library | Pending |
 | STD-02 | Phase 8: Standard Library | Pending |
 | STD-03 | Phase 8: Standard Library | Pending |

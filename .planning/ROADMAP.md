@@ -13,7 +13,7 @@ Snow is a statically typed, LLVM-compiled programming language with Elixir-style
 Decimal phases appear between their surrounding integers in numeric order.
 
 - [x] **Phase 1: Project Foundation & Lexer** - Reproducible build, test infrastructure, and tokenization of Snow source code
-- [ ] **Phase 2: Parser & AST** - Recursive descent parser producing a complete abstract syntax tree for all Snow syntax
+- [x] **Phase 2: Parser & AST** - Recursive descent parser producing a complete abstract syntax tree for all Snow syntax
 - [ ] **Phase 3: Type System** - Hindley-Milner type inference with generics, structs, traits, Option/Result types
 - [ ] **Phase 4: Pattern Matching & Algebraic Data Types** - Exhaustive pattern matching, sum types, and guards
 - [ ] **Phase 5: LLVM Codegen & Native Binaries** - Full compilation pipeline producing native single-binary executables for sequential code
@@ -54,10 +54,10 @@ Plans:
 
 Plans:
 - [x] 02-01-PLAN.md -- Parser crate scaffolding, SyntaxKind enum, rowan CST types, event-based Parser struct
-- [ ] 02-02-PLAN.md -- Pratt expression parser with operator precedence, literals, calls, field access, pipe
-- [ ] 02-03-PLAN.md -- Compound expressions (if/else, case/match, closures, blocks) and let/return statements
-- [ ] 02-04-PLAN.md -- Declarations (fn, module, import, struct), patterns, type annotations, visibility
-- [ ] 02-05-PLAN.md -- Typed AST wrappers, public parse() API, comprehensive snapshot tests
+- [x] 02-02-PLAN.md -- Pratt expression parser with operator precedence, literals, calls, field access, pipe
+- [x] 02-03-PLAN.md -- Compound expressions (if/else, case/match, closures, blocks) and let/return statements
+- [x] 02-04-PLAN.md -- Declarations (fn, module, import, struct), patterns, type annotations, visibility
+- [x] 02-05-PLAN.md -- Typed AST wrappers, public parse() API, comprehensive snapshot tests
 
 ### Phase 3: Type System
 **Goal**: A Hindley-Milner type inference engine that type-checks Snow programs without requiring type annotations, supporting generics, structs, traits, and Option/Result types
@@ -207,7 +207,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8 -> 9 -> 10
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Project Foundation & Lexer | 3/3 | Complete | 2026-02-06 |
-| 2. Parser & AST | 1/5 | In progress | - |
+| 2. Parser & AST | 5/5 | Complete | 2026-02-06 |
 | 3. Type System | 0/5 | Not started | - |
 | 4. Pattern Matching & ADTs | 0/3 | Not started | - |
 | 5. LLVM Codegen & Native Binaries | 0/5 | Not started | - |
