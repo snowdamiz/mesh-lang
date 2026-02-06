@@ -49,3 +49,65 @@ impl Parse {
 pub fn parse(_source: &str) -> Parse {
     todo!("parse() will be implemented once the Parser struct is complete")
 }
+
+/// Parse a single expression from Snow source code.
+///
+/// This is primarily useful for testing the expression parser in isolation.
+/// Wraps the expression in a SOURCE_FILE root node.
+pub fn parse_expr(source: &str) -> Parse {
+    let tokens = snow_lexer::Lexer::tokenize(source);
+    let mut p = parser::Parser::new(tokens, source);
+    let root = p.open();
+    parser::expressions::expr(&mut p);
+    // Consume any remaining tokens (newlines, EOF).
+    while !p.at(SyntaxKind::EOF) {
+        p.advance();
+    }
+    p.advance(); // EOF
+    p.close(root, SyntaxKind::SOURCE_FILE);
+    let (green, errors) = p.build_tree();
+    Parse { green, errors }
+}
+
+/// Format a syntax tree as an indented debug string.
+///
+/// Each node is printed as `KIND` with children indented. Tokens show
+/// `KIND "text"`. This is useful for snapshot testing the tree structure.
+pub fn debug_tree(node: &SyntaxNode) -> String {
+    let mut buf = String::new();
+    debug_tree_recursive(node, &mut buf, 0);
+    buf
+}
+
+fn debug_tree_recursive(node: &SyntaxNode, buf: &mut String, indent: usize) {
+    let kind = node.kind();
+    let prefix = "  ".repeat(indent);
+    let range = node.text_range();
+    buf.push_str(&format!(
+        "{}{:?}@{:?}..{:?}\n",
+        prefix,
+        kind,
+        range.start(),
+        range.end()
+    ));
+    for child in node.children_with_tokens() {
+        match child {
+            rowan::NodeOrToken::Node(n) => {
+                debug_tree_recursive(&n, buf, indent + 1);
+            }
+            rowan::NodeOrToken::Token(t) => {
+                let t_kind = t.kind();
+                let text = t.text();
+                let t_range = t.text_range();
+                buf.push_str(&format!(
+                    "{}  {:?}@{:?}..{:?} {:?}\n",
+                    prefix,
+                    t_kind,
+                    t_range.start(),
+                    t_range.end(),
+                    text,
+                ));
+            }
+        }
+    }
+}
