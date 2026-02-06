@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-02-05)
 
 **Core value:** Expressive, readable concurrency -- writing concurrent programs should feel as natural as sequential code, with supervision and fault tolerance built in.
-**Current focus:** Phase 5 in progress -- LLVM Codegen & Native Binaries. Plan 01 complete (runtime + codegen scaffolding).
+**Current focus:** Phase 5 in progress -- LLVM Codegen & Native Binaries. Plan 02 complete (MIR type system + AST-to-MIR lowering).
 
 ## Current Position
 
 Phase: 5 of 10 (LLVM Codegen & Native Binaries)
-Plan: 1 of 5 in current phase
+Plan: 2 of 5 in current phase
 Status: In progress
-Last activity: 2026-02-06 -- Completed 05-01-PLAN.md (runtime & codegen foundation)
+Last activity: 2026-02-06 -- Completed 05-02-PLAN.md (MIR type system & AST-to-MIR lowering)
 
-Progress: [████████████████████░] 46% (19 plans of ~41 estimated total)
+Progress: [█████████████████████░] 49% (20 plans of ~41 estimated total)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 19
+- Total plans completed: 20
 - Average duration: 9min
-- Total execution time: 165min
+- Total execution time: 174min
 
 **By Phase:**
 
@@ -31,11 +31,11 @@ Progress: [████████████████████░] 46% 
 | 02-parser-ast | 5/5 | 23min | 5min |
 | 03-type-system | 5/5 | 83min | 17min |
 | 04-pattern-matching-adts | 5/5 | 42min | 8min |
-| 05-llvm-codegen-native-binaries | 1/5 | 5min | 5min |
+| 05-llvm-codegen-native-binaries | 2/5 | 14min | 7min |
 
 **Recent Trend:**
-- Last 5 plans: 04-03 (13min), 04-04 (7min), 04-05 (5min), 05-01 (5min)
-- Trend: Phase 5 started. Runtime + codegen scaffolding fast. Inkwell/LLVM builds successfully.
+- Last 5 plans: 04-04 (7min), 04-05 (5min), 05-01 (5min), 05-02 (9min)
+- Trend: Phase 5 progressing. MIR lowering is the most complex part; 2,479 lines added.
 
 *Updated after each plan completion*
 
@@ -129,6 +129,11 @@ Recent decisions affecting current work:
 - [05-01]: Mutex-protected global arena for thread safety (single-threaded in Phase 5)
 - [05-01]: TypeRegistry and all type definition info structs made fully pub with pub fields
 - [05-01]: LLVM_SYS_211_PREFIX configured for LLVM 21.1.8 at /opt/homebrew/opt/llvm
+- [05-02]: Ty::Var falls back to MirType::Unit for graceful degradation on type errors
+- [05-02]: Pipe operator desugared as pure syntactic transform at MIR level
+- [05-02]: Closures lifted with __env first param; captures detected by free variable analysis
+- [05-02]: String interpolation compiled to snow_string_concat/snow_*_to_string runtime call chains
+- [05-02]: Monomorphization is reachability-based for Phase 5 (type checker resolves concrete types)
 
 ### Pending Todos
 
@@ -142,5 +147,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-06
-Stopped at: Completed 05-01-PLAN.md
+Stopped at: Completed 05-02-PLAN.md
 Resume file: None
