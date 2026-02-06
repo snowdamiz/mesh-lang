@@ -239,6 +239,159 @@ fn test_or_pattern_literals() {
     assert_result_type(&result, Ty::bool());
 }
 
+// ── Phase 4 End-to-End: Option/Result as Sum Types ──────────────────
+
+/// Test 17: Option is registered as a proper sum type.
+/// Some(42) and None both type-check, and qualified access works.
+#[test]
+fn test_option_is_sum_type() {
+    // Unqualified Some(42) still works
+    let result = check_source("Some(42)");
+    assert_result_type(&result, Ty::option(Ty::int()));
+
+    // Qualified Option.Some(42) also works
+    let result2 = check_source("Option.Some(42)");
+    assert_result_type(&result2, Ty::option(Ty::int()));
+
+    // None still works
+    let result3 = check_source("let x :: Option<Int> = None\nx");
+    assert_result_type(&result3, Ty::option(Ty::int()));
+
+    // Qualified Option.None works
+    let result4 = check_source("let x :: Option<Int> = Option.None\nx");
+    assert_result_type(&result4, Ty::option(Ty::int()));
+}
+
+/// Test 18: Result is registered as a proper sum type.
+/// Ok(42) and Err("oops") both type-check, and qualified access works.
+#[test]
+fn test_result_is_sum_type() {
+    // Unqualified Ok(42) still works
+    let result = check_source("Ok(42)");
+    assert!(result.errors.is_empty(), "expected no errors, got: {:?}", result.errors);
+    let actual_str = format!("{}", result.result_type.as_ref().unwrap());
+    assert!(actual_str.starts_with("Result<Int"), "expected Result<Int, ...>, got `{}`", actual_str);
+
+    // Qualified Result.Ok(42) works
+    let result2 = check_source("Result.Ok(42)");
+    assert!(result2.errors.is_empty(), "expected no errors, got: {:?}", result2.errors);
+    let actual_str2 = format!("{}", result2.result_type.as_ref().unwrap());
+    assert!(actual_str2.starts_with("Result<Int"), "expected Result<Int, ...>, got `{}`", actual_str2);
+
+    // Qualified Result.Err("oops") works
+    let result3 = check_source("Result.Err(\"oops\")");
+    assert!(result3.errors.is_empty(), "expected no errors, got: {:?}", result3.errors);
+    let actual_str3 = format!("{}", result3.result_type.as_ref().unwrap());
+    assert!(actual_str3.contains("Result"), "expected Result<...>, got `{}`", actual_str3);
+}
+
+/// Test 19: Option pattern matching (Some + None = exhaustive).
+#[test]
+fn test_option_exhaustive_pattern_match() {
+    let result = check_source(
+        "let opt = Some(42)\n\
+         case opt do\n  Some(x) -> x\n  None -> 0\nend",
+    );
+    assert_result_type(&result, Ty::int());
+}
+
+/// Test 20: Result pattern matching (Ok + Err = exhaustive).
+#[test]
+fn test_result_exhaustive_pattern_match() {
+    let result = check_source(
+        "let r = Ok(42)\n\
+         case r do\n  Ok(x) -> x\n  Err(e) -> 0\nend",
+    );
+    assert_result_type(&result, Ty::int());
+}
+
+/// Test 21: Full sum type lifecycle -- define, construct, match, extract.
+#[test]
+fn test_sum_type_full_lifecycle() {
+    let result = check_source(
+        "type Shape do\n  Circle(Float)\n  Rect(Float, Float)\n  Point\nend\n\
+         let s = Shape.Circle(3.14)\n\
+         case s do\n\
+           Circle(r) -> r\n\
+           Rect(w, h) -> w\n\
+           Point -> 0.0\n\
+         end",
+    );
+    assert_result_type(&result, Ty::float());
+}
+
+/// Test 22: Generic sum type with nested pattern matching.
+#[test]
+fn test_generic_sum_type_nested_patterns() {
+    let result = check_source(
+        "type Shape do\n  Circle(Float)\n  Point\nend\n\
+         let s = Some(Shape.Circle(3.14))\n\
+         case s do\n\
+           Some(Circle(r)) -> r\n\
+           Some(Point) -> 0.0\n\
+           None -> 0.0\n\
+         end",
+    );
+    assert_result_type(&result, Ty::float());
+}
+
+/// Test 23: Or-pattern in sum type match.
+#[test]
+fn test_or_pattern_sum_type() {
+    let result = check_source(
+        "type Color do\n  Red\n  Green\n  Blue\nend\n\
+         let c = Color.Red\n\
+         case c do\n\
+           Red | Green | Blue -> 1\n\
+         end",
+    );
+    assert_result_type(&result, Ty::int());
+}
+
+/// Test 24: Option sugar (Int?) still works with sum type registration.
+#[test]
+fn test_option_sugar_with_sum_types() {
+    // Int? = Option<Int>
+    let result = check_source("let x :: Int? = Some(42)\nx");
+    assert_result_type(&result, Ty::option(Ty::int()));
+}
+
+/// Test 25: Existing Phase 3 Option/Result tests still pass.
+/// This is a regression check for the migration.
+#[test]
+fn test_option_result_backward_compat() {
+    // Some(42) -> Option<Int>
+    let result = check_source("Some(42)");
+    assert_result_type(&result, Ty::option(Ty::int()));
+
+    // None with annotation -> Option<Int>
+    let result2 = check_source("let x :: Option<Int> = None\nx");
+    assert_result_type(&result2, Ty::option(Ty::int()));
+
+    // Ok(42) -> Result<Int, ?>
+    let result3 = check_source("Ok(42)");
+    assert!(result3.errors.is_empty());
+
+    // Err("bad") -> Result<?, String>
+    let result4 = check_source("Err(\"bad\")");
+    assert!(result4.errors.is_empty());
+}
+
+/// Test 26: Nested generic sum types work correctly.
+/// Option<Option<Int>> with nested pattern matching.
+#[test]
+fn test_nested_generic_sum_types() {
+    let result = check_source(
+        "let x = Some(Some(42))\n\
+         case x do\n\
+           Some(Some(n)) -> n\n\
+           Some(None) -> 0\n\
+           None -> 0\n\
+         end",
+    );
+    assert_result_type(&result, Ty::int());
+}
+
 // ── Helper for generic non-builtin types ──────────────────────────────
 
 trait TyExt {

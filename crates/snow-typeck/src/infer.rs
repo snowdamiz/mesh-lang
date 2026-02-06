@@ -193,12 +193,11 @@ pub fn infer(parse: &Parse) -> TypeckResult {
     let mut trait_registry = TraitRegistry::new();
     let mut type_registry = TypeRegistry::new();
     builtins::register_builtins(&mut ctx, &mut env, &mut trait_registry);
-    register_option_result_constructors(&mut ctx, &mut env);
+    register_builtin_sum_types(&mut ctx, &mut env, &mut type_registry);
 
     let mut types = FxHashMap::default();
     let mut result_type = None;
     let mut fn_constraints: FxHashMap<String, FnConstraints> = FxHashMap::default();
-    let mut warnings: Vec<TypeError> = Vec::new();
 
     let tree = parse.tree();
 
@@ -250,73 +249,156 @@ pub fn infer(parse: &Parse) -> TypeckResult {
     // Resolve the result type as well.
     let resolved_result = result_type.map(|ty| ctx.resolve(ty));
 
-    // Merge any standalone warnings collected during inference.
-    let mut all_warnings = ctx.warnings;
-    all_warnings.extend(warnings);
-
     TypeckResult {
         types: resolved_types,
         errors: ctx.errors,
-        warnings: all_warnings,
+        warnings: ctx.warnings,
         result_type: resolved_result,
     }
 }
 
-/// Register Some, None, Ok, Err constructors for Option<T> and Result<T, E>.
+/// Register Option<T> and Result<T, E> as proper sum types in the type registry.
+///
+/// This replaces the old approach of registering constructors only in the type
+/// environment. By registering them as SumTypeDefInfo entries, exhaustiveness
+/// checking works for Option/Result: `case opt do Some(x) -> x end` triggers
+/// a non-exhaustive error because None is missing.
 ///
 /// Uses enter_level/leave_level to ensure fresh type variables are created
 /// at a higher level than current, so they get properly generalized into
 /// polymorphic schemes (forall).
-fn register_option_result_constructors(ctx: &mut InferCtx, env: &mut TypeEnv) {
-    // Some :: forall T. T -> Option<T>
-    {
-        ctx.enter_level();
-        let t_var = ctx.fresh_var();
-        let some_ty = Ty::Fun(
-            vec![t_var.clone()],
-            Box::new(Ty::option(t_var.clone())),
-        );
-        ctx.leave_level();
-        let scheme = ctx.generalize(some_ty);
-        env.insert("Some".into(), scheme);
-    }
+fn register_builtin_sum_types(
+    ctx: &mut InferCtx,
+    env: &mut TypeEnv,
+    type_registry: &mut TypeRegistry,
+) {
+    // ── Option<T> ──────────────────────────────────────────────────────
+    //
+    // type Option<T> do
+    //   Some(T)
+    //   None
+    // end
 
-    // None :: forall T. Option<T>
-    {
-        ctx.enter_level();
-        let t_var = ctx.fresh_var();
-        let none_ty = Ty::option(t_var);
-        ctx.leave_level();
-        let scheme = ctx.generalize(none_ty);
-        env.insert("None".into(), scheme);
-    }
+    let option_generic_params = vec!["T".to_string()];
+    let option_variants = vec![
+        VariantInfo {
+            name: "Some".to_string(),
+            fields: vec![VariantFieldInfo::Positional(Ty::Con(TyCon::new("T")))],
+        },
+        VariantInfo {
+            name: "None".to_string(),
+            fields: vec![],
+        },
+    ];
 
-    // Ok :: forall T E. T -> Result<T, E>
-    {
-        ctx.enter_level();
-        let t_var = ctx.fresh_var();
-        let e_var = ctx.fresh_var();
-        let ok_ty = Ty::Fun(
-            vec![t_var.clone()],
-            Box::new(Ty::result(t_var, e_var)),
-        );
-        ctx.leave_level();
-        let scheme = ctx.generalize(ok_ty);
-        env.insert("Ok".into(), scheme);
-    }
+    type_registry.register_sum_type(SumTypeDefInfo {
+        name: "Option".to_string(),
+        generic_params: option_generic_params.clone(),
+        variants: option_variants.clone(),
+    });
 
-    // Err :: forall T E. E -> Result<T, E>
-    {
+    register_variant_constructors(
+        ctx,
+        env,
+        "Option",
+        &option_generic_params,
+        &option_variants,
+    );
+
+    // ── Result<T, E> ───────────────────────────────────────────────────
+    //
+    // type Result<T, E> do
+    //   Ok(T)
+    //   Err(E)
+    // end
+
+    let result_generic_params = vec!["T".to_string(), "E".to_string()];
+    let result_variants = vec![
+        VariantInfo {
+            name: "Ok".to_string(),
+            fields: vec![VariantFieldInfo::Positional(Ty::Con(TyCon::new("T")))],
+        },
+        VariantInfo {
+            name: "Err".to_string(),
+            fields: vec![VariantFieldInfo::Positional(Ty::Con(TyCon::new("E")))],
+        },
+    ];
+
+    type_registry.register_sum_type(SumTypeDefInfo {
+        name: "Result".to_string(),
+        generic_params: result_generic_params.clone(),
+        variants: result_variants.clone(),
+    });
+
+    register_variant_constructors(
+        ctx,
+        env,
+        "Result",
+        &result_generic_params,
+        &result_variants,
+    );
+}
+
+/// Register variant constructors for a sum type as polymorphic functions in env.
+///
+/// This is the shared logic extracted from `register_sum_type_def` so that both
+/// user-defined sum types (parsed from source) and built-in sum types (Option,
+/// Result) use the same variant registration mechanism.
+fn register_variant_constructors(
+    ctx: &mut InferCtx,
+    env: &mut TypeEnv,
+    type_name: &str,
+    generic_params: &[String],
+    variants: &[VariantInfo],
+) {
+    for variant in variants {
+        let field_types: Vec<Ty> = variant
+            .fields
+            .iter()
+            .map(|f| match f {
+                VariantFieldInfo::Positional(ty) => ty.clone(),
+                VariantFieldInfo::Named(_, ty) => ty.clone(),
+            })
+            .collect();
+
         ctx.enter_level();
-        let t_var = ctx.fresh_var();
-        let e_var = ctx.fresh_var();
-        let err_ty = Ty::Fun(
-            vec![e_var.clone()],
-            Box::new(Ty::result(t_var, e_var)),
-        );
+
+        // Create fresh type vars for generic params.
+        let type_param_vars: Vec<Ty> = generic_params.iter().map(|_| ctx.fresh_var()).collect();
+
+        // Substitute generic params in field types.
+        let substituted_fields: Vec<Ty> = field_types
+            .iter()
+            .map(|fty| substitute_type_params(fty, generic_params, &type_param_vars))
+            .collect();
+
+        // The result type of the constructor: SumTypeName<T1, T2, ...>
+        let result_ty = if type_param_vars.is_empty() {
+            Ty::App(Box::new(Ty::Con(TyCon::new(type_name))), vec![])
+        } else {
+            Ty::App(
+                Box::new(Ty::Con(TyCon::new(type_name))),
+                type_param_vars.clone(),
+            )
+        };
+
+        let ctor_ty = if substituted_fields.is_empty() {
+            // Nullary constructor: not a function, just the type itself.
+            result_ty.clone()
+        } else {
+            // Constructor with fields: function from fields to result type.
+            Ty::Fun(substituted_fields, Box::new(result_ty.clone()))
+        };
+
         ctx.leave_level();
-        let scheme = ctx.generalize(err_ty);
-        env.insert("Err".into(), scheme);
+        let scheme = ctx.generalize(ctor_ty);
+
+        // Register under qualified name: Option.Some, Result.Ok
+        let qualified_name = format!("{}.{}", type_name, variant.name);
+        env.insert(qualified_name, scheme.clone());
+
+        // Register under unqualified name: Some, None, Ok, Err
+        env.insert(variant.name.clone(), scheme);
     }
 }
 
@@ -574,58 +656,8 @@ fn register_sum_type_def(
     };
     type_registry.register_sum_type(sum_info);
 
-    // Register each variant constructor as a polymorphic function in env.
-    for variant in &variants {
-        let field_types: Vec<Ty> = variant
-            .fields
-            .iter()
-            .map(|f| match f {
-                VariantFieldInfo::Positional(ty) => ty.clone(),
-                VariantFieldInfo::Named(_, ty) => ty.clone(),
-            })
-            .collect();
-
-        // Build the constructor type.
-        // For generics, use enter_level/leave_level to get proper generalization.
-        ctx.enter_level();
-
-        // Create fresh type vars for generic params.
-        let type_param_vars: Vec<Ty> = generic_params.iter().map(|_| ctx.fresh_var()).collect();
-
-        // Substitute generic params in field types.
-        let substituted_fields: Vec<Ty> = field_types
-            .iter()
-            .map(|fty| substitute_type_params(fty, &generic_params, &type_param_vars))
-            .collect();
-
-        // The result type of the constructor: SumTypeName<T1, T2, ...>
-        let result_ty = if type_param_vars.is_empty() {
-            Ty::App(Box::new(Ty::Con(TyCon::new(&name))), vec![])
-        } else {
-            Ty::App(
-                Box::new(Ty::Con(TyCon::new(&name))),
-                type_param_vars.clone(),
-            )
-        };
-
-        let ctor_ty = if substituted_fields.is_empty() {
-            // Nullary constructor: not a function, just the type itself.
-            result_ty.clone()
-        } else {
-            // Constructor with fields: function from fields to result type.
-            Ty::Fun(substituted_fields, Box::new(result_ty.clone()))
-        };
-
-        ctx.leave_level();
-        let scheme = ctx.generalize(ctor_ty);
-
-        // Register under qualified name: Shape.Circle
-        let qualified_name = format!("{}.{}", name, variant.name);
-        env.insert(qualified_name, scheme.clone());
-
-        // Register under unqualified name: Circle (for backward compat with Option/Result)
-        env.insert(variant.name.clone(), scheme);
-    }
+    // Register each variant constructor using the shared mechanism.
+    register_variant_constructors(ctx, env, &name, &generic_params, &variants);
 }
 
 // ── Interface/Impl Registration (03-04) ───────────────────────────────
@@ -1594,7 +1626,328 @@ fn infer_tuple(
     }
 }
 
+// ── AST-to-Abstract Pattern Conversion (04-04) ────────────────────────
+
+/// Convert an AST pattern to the abstract `Pat` used by the exhaustiveness algorithm.
+///
+/// Variable bindings become wildcards (they match anything). Literals, constructors,
+/// and or-patterns are mapped directly to their abstract equivalents.
+fn ast_pattern_to_abstract(
+    pat: &Pattern,
+    env: &TypeEnv,
+    type_registry: &TypeRegistry,
+) -> AbsPat {
+    match pat {
+        Pattern::Wildcard(_) => AbsPat::Wildcard,
+        Pattern::Ident(ident) => {
+            // Check if this identifier is a known constructor (nullary variant).
+            if let Some(name_tok) = ident.name() {
+                let name_text = name_tok.text().to_string();
+                if let Some(_scheme) = env.lookup(&name_text) {
+                    // Check if this resolves to a sum type constructor by looking
+                    // at the type registry for a variant with this name.
+                    if let Some((sum_info, _variant)) = type_registry.lookup_variant(&name_text) {
+                        return AbsPat::Constructor {
+                            name: name_text,
+                            type_name: sum_info.name.clone(),
+                            args: vec![],
+                        };
+                    }
+                }
+            }
+            // Regular variable binding -> wildcard for exhaustiveness.
+            AbsPat::Wildcard
+        }
+        Pattern::Literal(lit) => {
+            if let Some(token) = lit.token() {
+                match token.kind() {
+                    SyntaxKind::INT_LITERAL => AbsPat::Literal {
+                        value: token.text().to_string(),
+                        ty: AbsLitKind::Int,
+                    },
+                    SyntaxKind::FLOAT_LITERAL => AbsPat::Literal {
+                        value: token.text().to_string(),
+                        ty: AbsLitKind::Float,
+                    },
+                    SyntaxKind::TRUE_KW => AbsPat::Literal {
+                        value: "true".to_string(),
+                        ty: AbsLitKind::Bool,
+                    },
+                    SyntaxKind::FALSE_KW => AbsPat::Literal {
+                        value: "false".to_string(),
+                        ty: AbsLitKind::Bool,
+                    },
+                    SyntaxKind::STRING_START => AbsPat::Literal {
+                        value: token.text().to_string(),
+                        ty: AbsLitKind::String,
+                    },
+                    _ => AbsPat::Wildcard,
+                }
+            } else {
+                AbsPat::Wildcard
+            }
+        }
+        Pattern::Tuple(tuple_pat) => {
+            let args: Vec<AbsPat> = tuple_pat
+                .patterns()
+                .map(|sub| ast_pattern_to_abstract(&sub, env, type_registry))
+                .collect();
+            AbsPat::Constructor {
+                name: "Tuple".to_string(),
+                type_name: "Tuple".to_string(),
+                args,
+            }
+        }
+        Pattern::Constructor(ctor_pat) => {
+            let variant_name = ctor_pat
+                .variant_name()
+                .map(|t| t.text().to_string())
+                .unwrap_or_else(|| "<unknown>".to_string());
+
+            // Determine the type name.
+            let type_name = if ctor_pat.is_qualified() {
+                ctor_pat
+                    .type_name()
+                    .map(|t| t.text().to_string())
+                    .unwrap_or_default()
+            } else {
+                // Look up unqualified variant in the type registry.
+                type_registry
+                    .lookup_variant(&variant_name)
+                    .map(|(sum, _)| sum.name.clone())
+                    .unwrap_or_default()
+            };
+
+            let args: Vec<AbsPat> = ctor_pat
+                .fields()
+                .map(|sub| ast_pattern_to_abstract(&sub, env, type_registry))
+                .collect();
+
+            AbsPat::Constructor {
+                name: variant_name,
+                type_name,
+                args,
+            }
+        }
+        Pattern::Or(or_pat) => {
+            let alts: Vec<AbsPat> = or_pat
+                .alternatives()
+                .map(|alt| ast_pattern_to_abstract(&alt, env, type_registry))
+                .collect();
+            AbsPat::Or { alternatives: alts }
+        }
+        Pattern::As(as_pat) => {
+            // For exhaustiveness, an as-pattern is equivalent to its inner pattern.
+            if let Some(inner) = as_pat.pattern() {
+                ast_pattern_to_abstract(&inner, env, type_registry)
+            } else {
+                AbsPat::Wildcard
+            }
+        }
+    }
+}
+
+/// Convert a resolved scrutinee type to the abstract `TypeInfo` used by exhaustiveness.
+fn type_to_type_info(ty: &Ty, type_registry: &TypeRegistry) -> AbsTypeInfo {
+    let resolved = match ty {
+        Ty::App(con, _) => {
+            if let Ty::Con(tc) = con.as_ref() {
+                Some(tc.name.clone())
+            } else {
+                None
+            }
+        }
+        Ty::Con(tc) => Some(tc.name.clone()),
+        _ => None,
+    };
+
+    if let Some(ref name) = resolved {
+        // Check if it's Bool.
+        if name == "Bool" {
+            return AbsTypeInfo::Bool;
+        }
+
+        // Check if it's a registered sum type.
+        if let Some(sum_info) = type_registry.lookup_sum_type(name) {
+            let variants: Vec<ConstructorSig> = sum_info
+                .variants
+                .iter()
+                .map(|v| ConstructorSig {
+                    name: v.name.clone(),
+                    arity: v.fields.len(),
+                })
+                .collect();
+            return AbsTypeInfo::SumType { variants };
+        }
+    }
+
+    // Int, Float, String, or unknown -> infinite type.
+    AbsTypeInfo::Infinite
+}
+
+/// Build an exhaustiveness `TypeRegistry` from the infer `TypeRegistry`.
+///
+/// This populates the abstract type registry with all known sum types
+/// so that nested pattern checking can look up inner types.
+fn build_abs_type_registry(type_registry: &TypeRegistry) -> AbsTypeRegistry {
+    let mut abs_reg = AbsTypeRegistry::new();
+
+    for (name, sum_info) in &type_registry.sum_type_defs {
+        let variants: Vec<ConstructorSig> = sum_info
+            .variants
+            .iter()
+            .map(|v| ConstructorSig {
+                name: v.name.clone(),
+                arity: v.fields.len(),
+            })
+            .collect();
+        abs_reg.register(name.clone(), AbsTypeInfo::SumType { variants });
+    }
+
+    // Also register Bool for nested bool patterns.
+    abs_reg.register("Bool", AbsTypeInfo::Bool);
+
+    // Register Option and Result as sum types if they exist.
+    // These are built-in but not in our type_registry, so add them.
+    if abs_reg.lookup("Option").is_none() {
+        abs_reg.register(
+            "Option",
+            AbsTypeInfo::SumType {
+                variants: vec![
+                    ConstructorSig {
+                        name: "Some".to_string(),
+                        arity: 1,
+                    },
+                    ConstructorSig {
+                        name: "None".to_string(),
+                        arity: 0,
+                    },
+                ],
+            },
+        );
+    }
+    if abs_reg.lookup("Result").is_none() {
+        abs_reg.register(
+            "Result",
+            AbsTypeInfo::SumType {
+                variants: vec![
+                    ConstructorSig {
+                        name: "Ok".to_string(),
+                        arity: 1,
+                    },
+                    ConstructorSig {
+                        name: "Err".to_string(),
+                        arity: 1,
+                    },
+                ],
+            },
+        );
+    }
+
+    abs_reg
+}
+
+/// Format an abstract pattern as a human-readable string for error messages.
+fn format_abstract_pat(pat: &AbsPat) -> String {
+    match pat {
+        AbsPat::Wildcard => "_".to_string(),
+        AbsPat::Constructor { name, args, .. } => {
+            if args.is_empty() {
+                name.clone()
+            } else {
+                let args_str: Vec<String> = args.iter().map(format_abstract_pat).collect();
+                format!("{}({})", name, args_str.join(", "))
+            }
+        }
+        AbsPat::Literal { value, .. } => value.clone(),
+        AbsPat::Or { alternatives } => {
+            let alts_str: Vec<String> = alternatives.iter().map(format_abstract_pat).collect();
+            alts_str.join(" | ")
+        }
+    }
+}
+
+// ── Guard Expression Validation (04-04) ────────────────────────────────
+
+/// Validate that a guard expression only uses allowed constructs:
+/// comparisons, boolean operators, literals, and name references.
+///
+/// Guards must be simple boolean expressions. Function calls, assignments,
+/// and other complex expressions are disallowed.
+fn validate_guard_expr(expr: &Expr) -> Result<(), String> {
+    match expr {
+        Expr::Literal(_) | Expr::NameRef(_) => Ok(()),
+        Expr::BinaryExpr(bin) => {
+            // Allow comparisons and boolean ops.
+            if let Some(op) = bin.op() {
+                match op.kind() {
+                    SyntaxKind::EQ_EQ
+                    | SyntaxKind::NOT_EQ
+                    | SyntaxKind::LT
+                    | SyntaxKind::GT
+                    | SyntaxKind::LT_EQ
+                    | SyntaxKind::GT_EQ
+                    | SyntaxKind::AND_KW
+                    | SyntaxKind::OR_KW
+                    | SyntaxKind::AMP_AMP
+                    | SyntaxKind::PIPE_PIPE => {}
+                    _ => {
+                        return Err(format!(
+                            "operator `{}` not allowed in guard",
+                            op.text()
+                        ));
+                    }
+                }
+            }
+            if let Some(lhs) = bin.lhs() {
+                validate_guard_expr(&lhs)?;
+            }
+            if let Some(rhs) = bin.rhs() {
+                validate_guard_expr(&rhs)?;
+            }
+            Ok(())
+        }
+        Expr::UnaryExpr(un) => {
+            // Allow `not` / `!`
+            if let Some(op) = un.op() {
+                match op.kind() {
+                    SyntaxKind::BANG | SyntaxKind::NOT_KW => {}
+                    _ => {
+                        return Err(format!(
+                            "operator `{}` not allowed in guard",
+                            op.text()
+                        ));
+                    }
+                }
+            }
+            if let Some(operand) = un.operand() {
+                validate_guard_expr(&operand)?;
+            }
+            Ok(())
+        }
+        Expr::TupleExpr(_) => {
+            // Allow parenthesized grouping.
+            Ok(())
+        }
+        Expr::CallExpr(call) => {
+            // Allow calls to builtins (functions referenced by name).
+            if let Some(callee) = call.callee() {
+                match callee {
+                    Expr::NameRef(_) => Ok(()),
+                    _ => Err("only named function calls allowed in guard".to_string()),
+                }
+            } else {
+                Ok(())
+            }
+        }
+        _ => Err(format!("expression not allowed in guard")),
+    }
+}
+
 /// Infer the type of a case/match expression.
+///
+/// After type-checking all arms, runs exhaustiveness and redundancy analysis.
+/// Guarded arms are excluded from the exhaustiveness matrix (they may not match).
 fn infer_case(
     ctx: &mut InferCtx,
     env: &mut TypeEnv,
@@ -1612,12 +1965,46 @@ fn infer_case(
 
     let mut result_ty: Option<Ty> = None;
 
+    // Collect patterns and guard info for exhaustiveness checking.
+    let mut arm_patterns: Vec<AbsPat> = Vec::new();
+    let mut arm_has_guard: Vec<bool> = Vec::new();
+    let mut arm_spans: Vec<TextRange> = Vec::new();
+
     for arm in case.arms() {
         env.push_scope();
 
         if let Some(pat) = arm.pattern() {
             let pat_ty = infer_pattern(ctx, env, &pat, types, type_registry)?;
             ctx.unify(pat_ty, scrutinee_ty.clone(), ConstraintOrigin::Builtin)?;
+
+            // Convert to abstract pattern for exhaustiveness.
+            let abs_pat = ast_pattern_to_abstract(&pat, env, type_registry);
+            arm_patterns.push(abs_pat);
+        } else {
+            arm_patterns.push(AbsPat::Wildcard);
+        }
+
+        // Check for guard expression.
+        let has_guard = arm.guard().is_some();
+        arm_has_guard.push(has_guard);
+        arm_spans.push(arm.syntax().text_range());
+
+        // Validate and type-check guard if present.
+        if let Some(guard_expr) = arm.guard() {
+            // Validate guard uses only allowed constructs.
+            if let Err(reason) = validate_guard_expr(&guard_expr) {
+                let err = TypeError::InvalidGuardExpression {
+                    reason,
+                    span: guard_expr.syntax().text_range(),
+                };
+                ctx.errors.push(err);
+            }
+
+            // Type-check the guard -- it must be Bool.
+            let guard_ty = infer_expr(
+                ctx, env, &guard_expr, types, type_registry, trait_registry, fn_constraints,
+            )?;
+            let _ = ctx.unify(guard_ty, Ty::bool(), ConstraintOrigin::Builtin);
         }
 
         if let Some(body) = arm.body() {
@@ -1634,6 +2021,44 @@ fn infer_case(
         }
 
         env.pop_scope();
+    }
+
+    // ── Exhaustiveness and redundancy checking ─────────────────────────
+    let resolved_scrutinee = ctx.resolve(scrutinee_ty.clone());
+    let scrutinee_type_info = type_to_type_info(&resolved_scrutinee, type_registry);
+    let abs_registry = build_abs_type_registry(type_registry);
+
+    // For exhaustiveness: exclude guarded arms (they may not match).
+    let unguarded_patterns: Vec<AbsPat> = arm_patterns
+        .iter()
+        .zip(arm_has_guard.iter())
+        .filter(|(_, has_guard)| !**has_guard)
+        .map(|(pat, _)| pat.clone())
+        .collect();
+
+    if let Some(witnesses) = exhaustiveness::check_exhaustiveness(
+        &unguarded_patterns,
+        &scrutinee_type_info,
+        &abs_registry,
+    ) {
+        let missing: Vec<String> = witnesses.iter().map(format_abstract_pat).collect();
+        let err = TypeError::NonExhaustiveMatch {
+            scrutinee_type: format!("{}", resolved_scrutinee),
+            missing_patterns: missing,
+            span: case.syntax().text_range(),
+        };
+        ctx.errors.push(err);
+    }
+
+    // For redundancy: check all arms (including guarded ones).
+    let redundant_indices =
+        exhaustiveness::check_redundancy(&arm_patterns, &scrutinee_type_info, &abs_registry);
+    for idx in redundant_indices {
+        let warn = TypeError::RedundantArm {
+            arm_index: idx,
+            span: arm_spans.get(idx).copied().unwrap_or(case.syntax().text_range()),
+        };
+        ctx.warnings.push(warn);
     }
 
     Ok(result_ty.unwrap_or_else(|| Ty::Tuple(vec![])))
