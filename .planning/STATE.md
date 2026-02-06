@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-02-05)
 
 **Core value:** Expressive, readable concurrency -- writing concurrent programs should feel as natural as sequential code, with supervision and fault tolerance built in.
-**Current focus:** Phase 4 in progress -- Pattern Matching & Algebraic Data Types. Plan 01 complete (lexer/parser/AST for sum types and extended patterns).
+**Current focus:** Phase 4 in progress -- Pattern Matching & Algebraic Data Types. Plan 02 complete (sum type type checking, variant constructor inference, pattern type inference).
 
 ## Current Position
 
 Phase: 4 of 10 (Pattern Matching & ADTs)
-Plan: 1 of 5 in current phase
+Plan: 2 of 5 in current phase
 Status: In progress
-Last activity: 2026-02-06 -- Completed 04-01-PLAN.md
+Last activity: 2026-02-06 -- Completed 04-02-PLAN.md
 
-Progress: [██████████████░░░░░░] 34% (14 plans of ~41 estimated total)
+Progress: [███████████████░░░░░] 37% (15 plans of ~41 estimated total)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 14
+- Total plans completed: 15
 - Average duration: 9min
-- Total execution time: 126min
+- Total execution time: 135min
 
 **By Phase:**
 
@@ -30,11 +30,11 @@ Progress: [██████████████░░░░░░] 34% (14
 | 01-project-foundation-lexer | 3/3 | 12min | 4min |
 | 02-parser-ast | 5/5 | 23min | 5min |
 | 03-type-system | 5/5 | 83min | 17min |
-| 04-pattern-matching-adts | 1/5 | 8min | 8min |
+| 04-pattern-matching-adts | 2/5 | 17min | 9min |
 
 **Recent Trend:**
-- Last 5 plans: 03-03 (45min), 03-04 (15min), 03-05 (6min), 04-01 (8min)
-- Trend: Phase 4 starting with parser work. Moderate complexity.
+- Last 5 plans: 03-04 (15min), 03-05 (6min), 04-01 (8min), 04-02 (9min)
+- Trend: Phase 4 type checker integration on target. Moderate complexity.
 
 *Updated after each plan completion*
 
@@ -107,6 +107,10 @@ Recent decisions affecting current work:
 - [04-01]: `as` is contextual keyword in patterns (IDENT text check, not reserved keyword)
 - [04-01]: Sum type vs type alias dispatch: scan past name/generics to find DO_KW vs EQ
 - [04-01]: Layered pattern precedence: as > or > primary (composable postfix pattern layers)
+- [04-02]: Bare uppercase ident patterns (Red, None, Point) resolve to constructors when found in env
+- [04-02]: Or-pattern binding validation uses semantic-aware env lookup to skip constructor names
+- [04-02]: Variant constructors registered under both qualified (Shape.Circle) and unqualified (Circle) names
+- [04-02]: Error codes E0010 (UnknownVariant), E0011 (OrPatternBindingMismatch)
 
 ### Pending Todos
 
@@ -120,5 +124,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-06
-Stopped at: Completed 04-01-PLAN.md
+Stopped at: Completed 04-02-PLAN.md
 Resume file: None
