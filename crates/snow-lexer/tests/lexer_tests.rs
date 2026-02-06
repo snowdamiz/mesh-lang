@@ -29,7 +29,7 @@ fn tokenize_snapshot(source: &str) -> Vec<TokenSnapshot> {
         .collect()
 }
 
-// ── Fixture-based tests ──────────────────────────────────────────────────
+// ── Fixture-based tests (from plan 01-02) ───────────────────────────────
 
 #[test]
 fn test_keywords() {
@@ -59,7 +59,7 @@ fn test_identifiers() {
     assert_yaml_snapshot!(tokens);
 }
 
-// ── Inline tests ─────────────────────────────────────────────────────────
+// ── Inline tests (from plan 01-02) ──────────────────────────────────────
 
 #[test]
 fn test_simple_string() {
@@ -95,5 +95,143 @@ fn test_mixed_expression() {
 fn test_spans_accurate() {
     let tokens = tokenize_snapshot("let x = 42");
     // Verify exact span values via snapshot
+    assert_yaml_snapshot!(tokens);
+}
+
+// ── New fixture-based tests (plan 01-03) ────────────────────────────────
+
+#[test]
+fn test_simple_string_escapes() {
+    let source = include_str!("../../../tests/fixtures/strings.snow");
+    let tokens = tokenize_snapshot(source);
+    assert_yaml_snapshot!(tokens);
+}
+
+#[test]
+fn test_string_interpolation() {
+    let source = include_str!("../../../tests/fixtures/interpolation.snow");
+    let tokens = tokenize_snapshot(source);
+    assert_yaml_snapshot!(tokens);
+}
+
+#[test]
+fn test_comments() {
+    let source = include_str!("../../../tests/fixtures/comments.snow");
+    let tokens = tokenize_snapshot(source);
+    assert_yaml_snapshot!(tokens);
+}
+
+#[test]
+fn test_newlines() {
+    let source = include_str!("../../../tests/fixtures/newlines.snow");
+    let tokens = tokenize_snapshot(source);
+    assert_yaml_snapshot!(tokens);
+}
+
+#[test]
+fn test_error_recovery() {
+    let source = include_str!("../../../tests/fixtures/error_recovery.snow");
+    let tokens = tokenize_snapshot(source);
+    assert_yaml_snapshot!(tokens);
+}
+
+#[test]
+fn test_full_program() {
+    let source = include_str!("../../../tests/fixtures/full_program.snow");
+    let tokens = tokenize_snapshot(source);
+    assert_yaml_snapshot!(tokens);
+}
+
+// ── New inline tests (plan 01-03) ───────────────────────────────────────
+
+#[test]
+fn test_adjacent_interpolations() {
+    // Adjacent interpolations should NOT produce empty StringContent between them
+    let tokens = tokenize_snapshot(r#""${a}${b}""#);
+    assert_yaml_snapshot!(tokens);
+}
+
+#[test]
+fn test_interpolation_with_braces() {
+    // Braces inside interpolation should be tracked correctly
+    let tokens = tokenize_snapshot(r#""${map[key]}""#);
+    assert_yaml_snapshot!(tokens);
+}
+
+#[test]
+fn test_triple_quoted_string() {
+    let source = "\"\"\"hello\nworld\"\"\"";
+    let tokens = tokenize_snapshot(source);
+    assert_yaml_snapshot!(tokens);
+}
+
+#[test]
+fn test_triple_quoted_interpolation() {
+    let source = "\"\"\"hello ${name}\nworld\"\"\"";
+    let tokens = tokenize_snapshot(source);
+    assert_yaml_snapshot!(tokens);
+}
+
+#[test]
+fn test_nested_block_comment() {
+    let tokens = tokenize_snapshot("#= outer #= inner =# outer =#");
+    assert_yaml_snapshot!(tokens);
+}
+
+#[test]
+fn test_empty_input() {
+    let tokens = tokenize_snapshot("");
+    assert_yaml_snapshot!(tokens);
+}
+
+#[test]
+fn test_whitespace_only() {
+    let tokens = tokenize_snapshot("   \t  ");
+    assert_yaml_snapshot!(tokens);
+}
+
+#[test]
+fn test_span_accuracy_interpolation() {
+    // Verify spans are byte-accurate for interpolation
+    let source = r#""hello ${name}""#;
+    let tokens = tokenize_snapshot(source);
+    assert_yaml_snapshot!(tokens);
+}
+
+#[test]
+fn test_unterminated_block_comment() {
+    let tokens = tokenize_snapshot("#= no close");
+    assert_yaml_snapshot!(tokens);
+}
+
+#[test]
+fn test_empty_string() {
+    let tokens = tokenize_snapshot(r#""""#);
+    assert_yaml_snapshot!(tokens);
+}
+
+#[test]
+fn test_interpolation_with_expression() {
+    // Complex expression inside interpolation
+    let tokens = tokenize_snapshot(r#""result: ${a + b * 2}""#);
+    assert_yaml_snapshot!(tokens);
+}
+
+#[test]
+fn test_escaped_dollar_in_string() {
+    // Escaped dollar should not start interpolation
+    let tokens = tokenize_snapshot(r#""price: \$100""#);
+    assert_yaml_snapshot!(tokens);
+}
+
+#[test]
+fn test_crlf_newlines() {
+    let tokens = tokenize_snapshot("let x = 1\r\nlet y = 2");
+    assert_yaml_snapshot!(tokens);
+}
+
+#[test]
+fn test_consecutive_newlines() {
+    let tokens = tokenize_snapshot("let x = 1\n\n\nlet y = 2");
     assert_yaml_snapshot!(tokens);
 }
