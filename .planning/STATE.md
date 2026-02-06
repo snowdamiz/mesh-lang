@@ -5,32 +5,32 @@
 See: .planning/PROJECT.md (updated 2026-02-05)
 
 **Core value:** Expressive, readable concurrency -- writing concurrent programs should feel as natural as sequential code, with supervision and fault tolerance built in.
-**Current focus:** Phase 1: Project Foundation & Lexer
+**Current focus:** Phase 1 complete. Ready for Phase 2: Parser & AST.
 
 ## Current Position
 
 Phase: 1 of 10 (Project Foundation & Lexer)
-Plan: 2 of 3 in current phase
-Status: In progress
-Last activity: 2026-02-06 -- Completed 01-02-PLAN.md
+Plan: 3 of 3 in current phase
+Status: Phase complete
+Last activity: 2026-02-06 -- Completed 01-03-PLAN.md
 
-Progress: [██░░░░░░░░] ~7% (2 plans of ~30 estimated total)
+Progress: [███░░░░░░░] ~10% (3 plans of ~30 estimated total)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 2
+- Total plans completed: 3
 - Average duration: 4min
-- Total execution time: 8min
+- Total execution time: 12min
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
-| 01-project-foundation-lexer | 2/3 | 8min | 4min |
+| 01-project-foundation-lexer | 3/3 | 12min | 4min |
 
 **Recent Trend:**
-- Last 5 plans: 01-01 (3min), 01-02 (5min)
+- Last 5 plans: 01-01 (3min), 01-02 (5min), 01-03 (4min)
 - Trend: stable
 
 *Updated after each plan completion*
@@ -50,6 +50,11 @@ Recent decisions affecting current work:
 - [01-01]: Match-based keyword dispatch over HashMap (compiler optimizes string matching)
 - [01-02]: StringMode enum state machine (None/Single/Triple) with pending_token queue for string tokenization
 - [01-02]: Comments skip optional leading space after delimiter for cleaner content spans
+- [01-03]: State stack (Vec<LexerState>) replaces StringMode for nested interpolation contexts
+- [01-03]: InString stays on stack when InInterpolation pushed; pop returns to string scanning
+- [01-03]: Pending token queue (Vec<Token>) for multi-token emissions
+- [01-03]: All newlines emit as Newline tokens; parser decides significance
+- [01-03]: Bare pipe | produces Error token; struct update syntax needs parser-level handling
 
 ### Pending Todos
 
@@ -64,5 +69,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-06
-Stopped at: Completed 01-02-PLAN.md
+Stopped at: Completed 01-03-PLAN.md (Phase 1 complete)
 Resume file: None
