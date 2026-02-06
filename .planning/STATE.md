@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-02-05)
 
 **Core value:** Expressive, readable concurrency -- writing concurrent programs should feel as natural as sequential code, with supervision and fault tolerance built in.
-**Current focus:** Phase 4 complete and verified (4/4 must-haves passed). Ready for Phase 5: LLVM Codegen & Native Binaries.
+**Current focus:** Phase 5 in progress -- LLVM Codegen & Native Binaries. Plan 01 complete (runtime + codegen scaffolding).
 
 ## Current Position
 
-Phase: 4 of 10 (Pattern Matching & ADTs) — COMPLETE ✓
-Plan: 5 of 5 in current phase
-Status: Phase verified and complete
-Last activity: 2026-02-06 -- Phase 4 verified (4/4 must-haves passed)
+Phase: 5 of 10 (LLVM Codegen & Native Binaries)
+Plan: 1 of 5 in current phase
+Status: In progress
+Last activity: 2026-02-06 -- Completed 05-01-PLAN.md (runtime & codegen foundation)
 
-Progress: [███████████████████░] 44% (18 plans of ~41 estimated total)
+Progress: [████████████████████░] 46% (19 plans of ~41 estimated total)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 18
+- Total plans completed: 19
 - Average duration: 9min
-- Total execution time: 160min
+- Total execution time: 165min
 
 **By Phase:**
 
@@ -31,10 +31,11 @@ Progress: [███████████████████░] 44% (18
 | 02-parser-ast | 5/5 | 23min | 5min |
 | 03-type-system | 5/5 | 83min | 17min |
 | 04-pattern-matching-adts | 5/5 | 42min | 8min |
+| 05-llvm-codegen-native-binaries | 1/5 | 5min | 5min |
 
 **Recent Trend:**
-- Last 5 plans: 04-01 (8min), 04-02 (9min), 04-03 (13min), 04-04 (7min), 04-05 (5min)
-- Trend: Phase 4 complete with 389 tests. Wave-parallel execution efficient.
+- Last 5 plans: 04-03 (13min), 04-04 (7min), 04-05 (5min), 05-01 (5min)
+- Trend: Phase 5 started. Runtime + codegen scaffolding fast. Inkwell/LLVM builds successfully.
 
 *Updated after each plan completion*
 
@@ -123,6 +124,11 @@ Recent decisions affecting current work:
 - [04-05]: Option/Result registered as SumTypeDefInfo in TypeRegistry (proper sum types, not just constructors)
 - [04-05]: Shared register_variant_constructors function unifies user-defined and builtin sum type registration
 - [04-05]: Qualified access (Option.Some, Result.Ok) works for builtin sum types
+- [05-01]: Arena/bump allocator for Phase 5 GC (no collection); true mark-sweep deferred to Phase 6
+- [05-01]: SnowString repr(C) with inline length prefix: { u64 len, [u8; len] data }
+- [05-01]: Mutex-protected global arena for thread safety (single-threaded in Phase 5)
+- [05-01]: TypeRegistry and all type definition info structs made fully pub with pub fields
+- [05-01]: LLVM_SYS_211_PREFIX configured for LLVM 21.1.8 at /opt/homebrew/opt/llvm
 
 ### Pending Todos
 
@@ -136,5 +142,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-06
-Stopped at: Phase 4 verified and complete
+Stopped at: Completed 05-01-PLAN.md
 Resume file: None
