@@ -80,6 +80,25 @@ pub enum TypeError {
     UnboundVariable { name: String, span: TextRange },
     /// A non-function value is called as a function.
     NotAFunction { ty: Ty, span: TextRange },
+    /// A type does not satisfy a required trait constraint.
+    TraitNotSatisfied {
+        ty: Ty,
+        trait_name: String,
+        origin: ConstraintOrigin,
+    },
+    /// An impl block is missing a method required by the trait.
+    MissingTraitMethod {
+        trait_name: String,
+        method_name: String,
+        impl_ty: String,
+    },
+    /// An impl method's signature does not match the trait's method signature.
+    TraitMethodSignatureMismatch {
+        trait_name: String,
+        method_name: String,
+        expected: Ty,
+        found: Ty,
+    },
 }
 
 impl fmt::Display for TypeError {
@@ -111,6 +130,38 @@ impl fmt::Display for TypeError {
             }
             TypeError::NotAFunction { ty, .. } => {
                 write!(f, "`{}` is not a function", ty)
+            }
+            TypeError::TraitNotSatisfied {
+                ty, trait_name, ..
+            } => {
+                write!(
+                    f,
+                    "type `{}` does not satisfy trait `{}`",
+                    ty, trait_name
+                )
+            }
+            TypeError::MissingTraitMethod {
+                trait_name,
+                method_name,
+                impl_ty,
+            } => {
+                write!(
+                    f,
+                    "impl `{}` for `{}` is missing method `{}`",
+                    trait_name, impl_ty, method_name
+                )
+            }
+            TypeError::TraitMethodSignatureMismatch {
+                trait_name,
+                method_name,
+                expected,
+                found,
+            } => {
+                write!(
+                    f,
+                    "method `{}` in impl `{}` has wrong signature: expected `{}`, found `{}`",
+                    method_name, trait_name, expected, found
+                )
             }
         }
     }
