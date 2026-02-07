@@ -199,14 +199,19 @@ Plans:
   3. `snowc repl` starts an interactive session where expressions can be evaluated, types are displayed, and previous results are accessible
   4. A package manager can initialize a project, declare dependencies, and resolve/fetch them
   5. An LSP server provides diagnostics, go-to-definition, and type-on-hover in editors
-**Plans**: TBD
+**Plans**: 10 plans
 
 Plans:
-- [ ] 10-01: Error message polish (multi-span diagnostics, suggestions, Elm/Rust quality)
-- [ ] 10-02: Code formatter (AST-based pretty printer)
-- [ ] 10-03: REPL (interpreter mode or incremental compilation)
-- [ ] 10-04: Package manager
-- [ ] 10-05: LSP server (salsa + rowan for incremental parsing)
+- [ ] 10-01-PLAN.md -- Error message polish (multi-span diagnostics, --json output, fix suggestions)
+- [ ] 10-02-PLAN.md -- Formatter core (snow-fmt crate, FormatIR, CST walker, printer)
+- [ ] 10-03-PLAN.md -- Formatter CLI (snowc fmt, --check mode, idempotency tests)
+- [ ] 10-04-PLAN.md -- REPL core (snow-repl crate, JIT engine, session management, multi-line)
+- [ ] 10-05-PLAN.md -- REPL actor support and snowc repl CLI integration
+- [ ] 10-06-PLAN.md -- Package manager core (snow-pkg crate, snow.toml, dependency resolution)
+- [ ] 10-07-PLAN.md -- Package manager CLI (snowc init, snowc deps)
+- [ ] 10-08-PLAN.md -- LSP server core (snow-lsp crate, diagnostics, type-on-hover)
+- [ ] 10-09-PLAN.md -- LSP go-to-definition and integration tests
+- [ ] 10-10-PLAN.md -- E2E integration tests and human verification
 
 ## Progress
 
@@ -224,4 +229,4 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8 -> 9 -> 10
 | 7. Supervision & Fault Tolerance | 3/3 | Complete | 2026-02-06 |
 | 8. Standard Library | 7/7 | Complete | 2026-02-07 |
 | 9. Concurrency Standard Library | 5/5 | Complete | 2026-02-07 |
-| 10. Developer Tooling | 0/5 | Not started | - |
+| 10. Developer Tooling | 0/10 | Not started | - |
