@@ -1,0 +1,65 @@
+{
+  "name": "snow-lang",
+  "displayName": "Snow Language",
+  "description": "Snow language support — syntax highlighting, diagnostics, hover, and go-to-definition",
+  "version": "0.1.0",
+  "publisher": "snow-lang",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.75.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "activationEvents": [
+    "onLanguage:snow"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "languages": [
+      {
+        "id": "snow",
+        "aliases": [
+          "Snow",
+          "snow"
+        ],
+        "extensions": [
+          ".snow"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "snow",
+        "scopeName": "source.snow",
+        "path": "./syntaxes/snow.tmLanguage.json"
+      }
+    ],
+    "configuration": {
+      "title": "Snow",
+      "properties": {
+        "snow.lsp.path": {
+          "type": "string",
+          "default": "snowc",
+          "description": "Path to the snowc binary (must be in PATH, or provide absolute path)"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "package": "vsce package --no-dependencies",
+    "install-local": "vsce package --no-dependencies && code --install-extension snow-lang-0.1.0.vsix"
+  },
+  "dependencies": {
+    "vscode-languageclient": "^9.0.1"
+  },
+  "devDependencies": {
+    "@types/node": "^25.2.1",
+    "@types/vscode": "^1.75.0",
+    "@vscode/vsce": "^2.22.0",
+    "typescript": "^5.3.0"
+  }
+}
