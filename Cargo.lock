@@ -1371,8 +1371,6 @@ dependencies = [
  "insta",
  "rowan",
  "rustc-hash 2.1.1",
- "serde",
- "serde_json",
  "snow-common",
  "snow-parser",
 ]
@@ -1386,9 +1384,11 @@ dependencies = [
  "snow-codegen",
  "snow-common",
  "snow-lexer",
+ "snow-lsp",
  "snow-parser",
  "snow-typeck",
  "tempfile",
+ "tokio",
 ]
 
 [[package]]

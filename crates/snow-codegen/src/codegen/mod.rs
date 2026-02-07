@@ -238,6 +238,14 @@ impl<'ctx> CodeGen<'ctx> {
         self.module.print_to_string().to_string()
     }
 
+    /// Consume the CodeGen and return the underlying LLVM module.
+    ///
+    /// This is used by the REPL JIT engine to create an execution engine
+    /// from the compiled module.
+    pub fn into_module(self) -> Module<'ctx> {
+        self.module
+    }
+
     // ── Type layout creation ─────────────────────────────────────────
 
     fn create_struct_types(&mut self, structs: &[MirStructDef]) {

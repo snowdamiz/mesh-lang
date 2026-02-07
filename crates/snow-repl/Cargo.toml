@@ -1,0 +1,15 @@
+[package]
+name = "snow-repl"
+version = "0.1.0"
+edition = "2021"
+description = "Interactive REPL with LLVM JIT compilation for the Snow language"
+
+[dependencies]
+snow-common = { path = "../snow-common" }
+snow-lexer = { path = "../snow-lexer" }
+snow-parser = { path = "../snow-parser" }
+snow-typeck = { path = "../snow-typeck" }
+snow-codegen = { path = "../snow-codegen" }
+inkwell = { workspace = true }
+rowan = { workspace = true }
+rustyline = { workspace = true }
