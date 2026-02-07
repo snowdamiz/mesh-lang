@@ -134,8 +134,12 @@ impl<'ctx> CodeGen<'ctx> {
         result_alloca: PointerValue<'ctx>,
         merge_bb: BasicBlock<'ctx>,
     ) -> Result<(), String> {
-        // Bind variables from access paths
+        // Bind variables from access paths.
+        // Skip variables already bound by a guard node (avoids duplicate allocas).
         for (name, ty, path) in bindings {
+            if self.locals.contains_key(name) {
+                continue;
+            }
             let val = self.navigate_access_path(scrutinee_alloca, scrutinee_ty, path)?;
             let llvm_ty = self.llvm_type(ty);
             let alloca = self
@@ -366,6 +370,43 @@ impl<'ctx> CodeGen<'ctx> {
         merge_bb: BasicBlock<'ctx>,
     ) -> Result<(), String> {
         let fn_val = self.current_function();
+
+        // Guard expressions may reference variables bound by the pattern.
+        // Extract bindings from the success Leaf and bind them before evaluating
+        // the guard, so that guard expressions like `n < 0` can access `n`.
+        // Allocas are placed in the entry block to ensure proper LLVM domination.
+        if let DecisionTree::Leaf { bindings, .. } = success {
+            let current_bb = self.builder.get_insert_block().unwrap();
+            let entry_bb = fn_val.get_first_basic_block().unwrap();
+
+            for (name, ty, path) in bindings {
+                let val = self.navigate_access_path(scrutinee_alloca, scrutinee_ty, path)?;
+                let llvm_ty = self.llvm_type(ty);
+
+                // Place alloca in the entry block for proper domination.
+                if let Some(first_instr) = entry_bb.get_first_instruction() {
+                    self.builder.position_before(&first_instr);
+                } else {
+                    self.builder.position_at_end(entry_bb);
+                }
+                let alloca = self
+                    .builder
+                    .build_alloca(llvm_ty, name)
+                    .map_err(|e| e.to_string())?;
+
+                // Store the value at the original position (not in entry block).
+                self.builder.position_at_end(current_bb);
+                self.builder
+                    .build_store(alloca, val)
+                    .map_err(|e| e.to_string())?;
+
+                self.locals.insert(name.clone(), alloca);
+                self.local_types.insert(name.clone(), ty.clone());
+            }
+
+            // Restore insertion point.
+            self.builder.position_at_end(current_bb);
+        }
 
         let guard_val = self.codegen_expr(guard_expr)?.into_int_value();
 

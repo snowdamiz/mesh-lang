@@ -405,3 +405,65 @@ fn e2e_performance() {
         elapsed
     );
 }
+
+// ── Multi-Clause Function E2E Tests (Phase 11) ─────────────────────────
+
+/// Multi-clause functions with literal patterns, recursion, and = expr body form.
+#[test]
+fn e2e_multi_clause_functions() {
+    let source = read_fixture("multi_clause.snow");
+    let output = compile_and_run(&source);
+    assert_eq!(
+        output,
+        "55\nyes\nno\n42\n36\n",
+        "Expected: fib(10)=55, to_string(true)=yes, to_string(false)=no, double(21)=42, square(6)=36"
+    );
+}
+
+/// Multi-clause functions with guard clauses (when keyword).
+#[test]
+fn e2e_multi_clause_guards() {
+    let source = read_fixture("multi_clause_guards.snow");
+    let output = compile_and_run(&source);
+    assert_eq!(
+        output,
+        "5\n3\npositive\nnegative\nzero\n",
+        "Expected: abs(-5)=5, abs(3)=3, classify(10)=positive, classify(-3)=negative, classify(0)=zero"
+    );
+}
+
+/// Multi-clause function error: catch-all not last should produce compilation error.
+#[test]
+fn e2e_multi_clause_catch_all_not_last() {
+    let source = r#"
+fn foo(n) = n
+fn foo(0) = 0
+fn main() do
+  println("${foo(1)}")
+end
+"#;
+    let error = compile_expect_error(source);
+    assert!(
+        error.contains("catch-all") || error.contains("CatchAll") || error.contains("E0022"),
+        "Expected catch-all-not-last error, got: {}",
+        error
+    );
+}
+
+/// Multi-clause function error: return type mismatch across clauses.
+#[test]
+fn e2e_multi_clause_type_mismatch() {
+    let source = r#"
+fn bar(0) = 0
+fn bar(n) = "hello"
+fn main() do
+  println("${bar(1)}")
+end
+"#;
+    let error = compile_expect_error(source);
+    assert!(
+        error.contains("expected") || error.contains("mismatch") || error.contains("Int"),
+        "Expected type mismatch error, got: {}",
+        error
+    );
+}
