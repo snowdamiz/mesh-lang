@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-02-05)
 
 **Core value:** Expressive, readable concurrency -- writing concurrent programs should feel as natural as sequential code, with supervision and fault tolerance built in.
-**Current focus:** Phase 9 IN PROGRESS -- Concurrency Standard Library. Plan 02 complete (service type checking). Proceeding to Plan 03.
+**Current focus:** Phase 9 IN PROGRESS -- Concurrency Standard Library. Plan 03 complete (service runtime + codegen). Proceeding to Plan 04.
 
 ## Current Position
 
 Phase: 9 of 10 (Concurrency Standard Library)
-Plan: 2 of 5 in current phase
+Plan: 3 of 5 in current phase
 Status: In progress
-Last activity: 2026-02-07 -- Completed 09-02-PLAN.md (Service Type Checking)
+Last activity: 2026-02-07 -- Completed 09-03-PLAN.md (Service Runtime + Codegen)
 
-Progress: [███████████████████████████████████████████░░░] 89% (42 plans of ~47 estimated total)
+Progress: [████████████████████████████████████████████░░] 91% (43 plans of ~47 estimated total)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 42
+- Total plans completed: 43
 - Average duration: 9min
-- Total execution time: 387min
+- Total execution time: 406min
 
 **By Phase:**
 
@@ -35,10 +35,10 @@ Progress: [███████████████████████
 | 06-actor-runtime | 7/7 | 70min | 10min |
 | 07-supervision-fault-tolerance | 3/3 | 27min | 9min |
 | 08-standard-library | 7/7 | 67min | 10min |
-| 09-concurrency-standard-library | 2/5 | 13min | 7min |
+| 09-concurrency-standard-library | 3/5 | 32min | 11min |
 
 **Recent Trend:**
-- Last 5 plans: 08-07 (2min), 08-06 (10min), 09-01 (7min), 09-02 (6min)
+- Last 5 plans: 08-06 (10min), 09-01 (7min), 09-02 (6min), 09-03 (19min)
 
 *Updated after each plan completion*
 
@@ -232,6 +232,11 @@ Recent decisions affecting current work:
 - [09-02]: Service Pid type is Pid<Unit> for callers -- internal dispatching uses type_tags at runtime
 - [09-02]: Job module uses synthetic TyVars (u32::MAX - 10..12) for polymorphic Schemes
 - [09-02]: User-defined service modules resolved in infer_field_access before sum type variant lookup
+- [09-03]: Service loop function has MirExpr::Unit body; codegen generates dispatch loop by detecting __service_*_loop naming
+- [09-03]: Service dispatch uses switch on integer type_tag (call handlers: 0,1,2...; cast handlers: N,N+1,...)
+- [09-03]: Call handler returns tuple (new_state, reply); codegen extracts via snow_tuple_first/second
+- [09-03]: Cast message format [tag][0 caller][args] for uniform dispatch in service loop
+- [09-03]: Service call/cast helpers intercepted in codegen_call by function name pattern (snow_service_call/snow_actor_send)
 
 ### Pending Todos
 
@@ -239,7 +244,7 @@ None.
 
 ### Blockers/Concerns
 
-- Phase 9 plan 02 complete -- service type checking and Job module registration ready
+- Phase 9 plan 03 complete -- service runtime and codegen wired; Job module stubs ready for Plan 04
 - string_split now possible with List type available (can be added in future plan)
 - String-keyed maps use pointer identity (not content comparison) -- documented limitation
 - Multiline pipe operator (`|>` at start of continuation line) fails to parse -- pre-existing parser limitation
@@ -250,5 +255,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-07
-Stopped at: Completed 09-02-PLAN.md (Service Type Checking)
+Stopped at: Completed 09-03-PLAN.md (Service Runtime + Codegen)
 Resume file: None
