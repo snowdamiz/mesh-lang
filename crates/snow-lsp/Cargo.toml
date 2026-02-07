@@ -1,0 +1,17 @@
+[package]
+name = "snow-lsp"
+version = "0.1.0"
+edition = "2021"
+description = "LSP server for the Snow language"
+
+[dependencies]
+snow-parser = { path = "../snow-parser" }
+snow-typeck = { path = "../snow-typeck" }
+snow-common = { path = "../snow-common" }
+tower-lsp = { workspace = true }
+tokio = { workspace = true }
+rowan = { workspace = true }
+serde_json = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true }
