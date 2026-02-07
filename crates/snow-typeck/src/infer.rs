@@ -2562,7 +2562,6 @@ fn infer_multi_clause_closure(
 
     // Create fresh type variables for each parameter position.
     let param_types: Vec<Ty> = (0..arity).map(|_| ctx.fresh_var()).collect();
-    let mut result_ty: Option<Ty> = None;
 
     // ── Process the first clause (inline in CLOSURE_EXPR) ───────────────
 
@@ -2596,12 +2595,12 @@ fn infer_multi_clause_closure(
     }
 
     // Infer the body.
-    let body_ty = if let Some(body) = closure.body() {
+    let first_body_ty = if let Some(body) = closure.body() {
         infer_block(ctx, env, &body, types, type_registry, trait_registry, fn_constraints)?
     } else {
         Ty::Tuple(vec![])
     };
-    result_ty = Some(body_ty);
+    let mut result_ty: Option<Ty> = Some(first_body_ty);
 
     env.pop_scope();
 

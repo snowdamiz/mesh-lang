@@ -467,3 +467,38 @@ end
         error
     );
 }
+
+// ── Phase 12 Closure Syntax E2E Tests ───────────────────────────────────
+
+/// Bare param closures in pipe chains: the primary Phase 12 use case.
+#[test]
+fn e2e_closure_bare_params_pipe() {
+    let source = read_fixture("closure_bare_params_pipe.snow");
+    let output = compile_and_run(&source);
+    assert_eq!(
+        output, "24\n",
+        "Expected: doubled [2,4,6,8,10], filter >4 -> [6,8,10], sum = 24"
+    );
+}
+
+/// Multi-clause closures with literal pattern matching.
+#[test]
+fn e2e_closure_multi_clause() {
+    let source = read_fixture("closure_multi_clause.snow");
+    let output = compile_and_run(&source);
+    assert_eq!(
+        output, "3\n",
+        "Expected: 0->0, 1->1, 2->1, 3->1, sum of classified = 3"
+    );
+}
+
+/// Do/end body closures with multi-statement bodies.
+#[test]
+fn e2e_closure_do_end_body() {
+    let source = read_fixture("closure_do_end_body.snow");
+    let output = compile_and_run(&source);
+    assert_eq!(
+        output, "15\n",
+        "Expected: (1*2+1) + (2*2+1) + (3*2+1) = 3+5+7 = 15"
+    );
+}

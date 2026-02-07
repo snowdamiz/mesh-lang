@@ -871,7 +871,7 @@ fn walk_closure_expr(node: &SyntaxNode) -> FormatIR {
         .any(|c| c.kind() == SyntaxKind::DO_KW);
 
     // Detect whether this is a multi-clause closure (has CLOSURE_CLAUSE children).
-    let has_clauses = node
+    let _has_clauses = node
         .children()
         .any(|c| c.kind() == SyntaxKind::CLOSURE_CLAUSE);
 

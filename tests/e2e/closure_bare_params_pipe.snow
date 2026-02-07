@@ -1,0 +1,19 @@
+fn main() do
+  let list = List.new()
+  let list = List.append(list, 1)
+  let list = List.append(list, 2)
+  let list = List.append(list, 3)
+  let list = List.append(list, 4)
+  let list = List.append(list, 5)
+
+  # Bare single param closure
+  let doubled = map(list, fn x -> x * 2 end)
+
+  # Bare single param closure with filter
+  let filtered = filter(doubled, fn x -> x > 4 end)
+
+  # Multi-param bare closure
+  let sum = reduce(filtered, 0, fn acc, x -> acc + x end)
+
+  println("${sum}")
+end
