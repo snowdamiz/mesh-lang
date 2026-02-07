@@ -483,11 +483,45 @@ impl<'ctx> CodeGen<'ctx> {
         args: &[MirExpr],
         ty: &MirType,
     ) -> Result<BasicValueEnum<'ctx>, String> {
-        // Compile arguments
+        // Compile arguments, splitting closure structs into (fn_ptr, env_ptr) pairs
+        // when calling runtime intrinsics that expect separate pointer arguments.
         let mut arg_vals: Vec<BasicMetadataValueEnum<'ctx>> = Vec::new();
+        let mut _has_closure_args = false;
         for arg in args {
             let val = self.codegen_expr(arg)?;
-            arg_vals.push(val.into());
+            if matches!(arg.ty(), MirType::Closure(_, _)) {
+                // Extract fn_ptr and env_ptr from the closure struct { ptr, ptr }.
+                let cls_ty = closure_type(self.context);
+                let ptr_ty = self.context.ptr_type(inkwell::AddressSpace::default());
+                let closure_alloca = self
+                    .builder
+                    .build_alloca(cls_ty, "cls_split")
+                    .map_err(|e| e.to_string())?;
+                self.builder
+                    .build_store(closure_alloca, val)
+                    .map_err(|e| e.to_string())?;
+                let fn_ptr_gep = self
+                    .builder
+                    .build_struct_gep(cls_ty, closure_alloca, 0, "cls_fn_ptr")
+                    .map_err(|e| e.to_string())?;
+                let fn_ptr_val = self
+                    .builder
+                    .build_load(ptr_ty, fn_ptr_gep, "fn_ptr")
+                    .map_err(|e| e.to_string())?;
+                let env_ptr_gep = self
+                    .builder
+                    .build_struct_gep(cls_ty, closure_alloca, 1, "cls_env_ptr")
+                    .map_err(|e| e.to_string())?;
+                let env_ptr_val = self
+                    .builder
+                    .build_load(ptr_ty, env_ptr_gep, "env_ptr")
+                    .map_err(|e| e.to_string())?;
+                arg_vals.push(fn_ptr_val.into());
+                arg_vals.push(env_ptr_val.into());
+                _has_closure_args = true;
+            } else {
+                arg_vals.push(val.into());
+            }
         }
 
         // Check if it's a direct call to a known function
@@ -1052,7 +1086,6 @@ impl<'ctx> CodeGen<'ctx> {
         captures: &[MirExpr],
     ) -> Result<BasicValueEnum<'ctx>, String> {
         let cls_ty = closure_type(self.context);
-        let ptr_ty = self.context.ptr_type(inkwell::AddressSpace::default());
 
         // Get the function pointer
         let fn_val = self
@@ -1061,10 +1094,23 @@ impl<'ctx> CodeGen<'ctx> {
             .ok_or_else(|| format!("Closure function '{}' not found", fn_name))?;
         let fn_ptr = fn_val.as_global_value().as_pointer_value();
 
-        // Allocate environment on GC heap if there are captures
+        // Allocate environment on GC heap.
+        // Snow closures always have __env as first param, so env_ptr must be
+        // non-null even for zero-capture closures. This ensures runtime HOFs
+        // (map, filter, reduce) use the closure calling convention fn(env, ...).
         let env_ptr = if captures.is_empty() {
-            // No captures -> null env pointer
-            ptr_ty.const_null()
+            // No captures -> allocate a minimal 8-byte env (non-null sentinel).
+            let gc_alloc = get_intrinsic(&self.module, "snow_gc_alloc");
+            let size_val = self.context.i64_type().const_int(8, false);
+            let align_val = self.context.i64_type().const_int(8, false);
+            let env_raw = self
+                .builder
+                .build_call(gc_alloc, &[size_val.into(), align_val.into()], "env_dummy")
+                .map_err(|e| e.to_string())?
+                .try_as_basic_value()
+                .basic()
+                .ok_or("snow_gc_alloc returned void")?;
+            env_raw.into_pointer_value()
         } else {
             // Build an env struct type from capture types
             let cap_types: Vec<inkwell::types::BasicTypeEnum<'ctx>> = captures

@@ -319,6 +319,17 @@ end
     );
 }
 
+// ── List Pipe Chain E2E Tests (Phase 8 Plan 06 - Gap Closure) ─────────
+
+#[test]
+fn e2e_list_pipe_chain() {
+    // Verify map/filter/reduce with closures through the full compiler pipeline.
+    // Input: [1..10], map(x*2) -> [2..20], filter(x>10) -> [12,14,16,18,20], reduce(sum) -> 80.
+    let source = read_fixture("stdlib_list_pipe_chain.snow");
+    let output = compile_and_run(&source);
+    assert_eq!(output, "80\n");
+}
+
 // ── HTTP Runtime E2E Tests (Phase 8 Plan 07 - Gap Closure) ────────────
 //
 // These tests start a REAL HTTP server and make actual HTTP requests,
