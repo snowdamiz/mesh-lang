@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-02-05)
 
 **Core value:** Expressive, readable concurrency -- writing concurrent programs should feel as natural as sequential code, with supervision and fault tolerance built in.
-**Current focus:** Phase 7 in progress -- Supervisor compiler pipeline complete (07-02). Full parser, type checker, MIR, LLVM codegen for supervisor blocks. E2E test compiles and runs a Snow supervisor program. Ready for supervision tree tests (07-03).
+**Current focus:** Phase 7 COMPLETE -- Full OTP-style supervision with compile-time safety. All four success criteria verified. Ready for Phase 8: Channels & Select.
 
 ## Current Position
 
 Phase: 7 of 10 (Supervision & Fault Tolerance)
-Plan: 2 of 3 in current phase
-Status: In progress
-Last activity: 2026-02-06 -- Completed 07-02-PLAN.md (Supervisor compiler pipeline)
+Plan: 3 of 3 in current phase
+Status: Phase complete
+Last activity: 2026-02-07 -- Completed 07-03-PLAN.md (Child spec validation and E2E tests)
 
-Progress: [██████████████████████████████████░░░░░░░░░░] 71% (32 plans of ~45 estimated total)
+Progress: [███████████████████████████████████░░░░░░░░░] 73% (33 plans of ~45 estimated total)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 32
+- Total plans completed: 33
 - Average duration: 9min
-- Total execution time: 300min
+- Total execution time: 307min
 
 **By Phase:**
 
@@ -33,10 +33,10 @@ Progress: [███████████████████████
 | 04-pattern-matching-adts | 5/5 | 42min | 8min |
 | 05-llvm-codegen-native-binaries | 5/5 | 50min | 10min |
 | 06-actor-runtime | 7/7 | 70min | 10min |
-| 07-supervision-fault-tolerance | 2/3 | 20min | 10min |
+| 07-supervision-fault-tolerance | 3/3 | 27min | 9min |
 
 **Recent Trend:**
-- Last 5 plans: 06-06 (6min), 06-07 (21min), 07-01 (8min), 07-02 (12min)
+- Last 5 plans: 06-07 (21min), 07-01 (8min), 07-02 (12min), 07-03 (7min)
 
 *Updated after each plan completion*
 
@@ -190,6 +190,9 @@ Recent decisions affecting current work:
 - [07-02]: Supervisors registered as zero-arg functions returning Pid<Unit> -- they don't receive user messages
 - [07-02]: Function pointers in supervisor config patched at codegen time via stack-copied buffer with GEP stores
 - [07-02]: Child spec start closures resolved by walking CST tokens to find SPAWN_KW and extracting actor name
+- [07-03]: Child start fn validation uses SPAWN_KW token detection (not full type inference of closure body)
+- [07-03]: Error codes E0018 (InvalidChildStart), E0019 (InvalidStrategy), E0020 (InvalidRestartType), E0021 (InvalidShutdownValue)
+- [07-03]: Negative E2E test pattern: compile_only helper returns raw Output, test asserts failure + error code
 
 ### Pending Todos
 
@@ -197,13 +200,12 @@ None.
 
 ### Blockers/Concerns
 
+- Phase 7 fully complete -- all three plans executed, all four success criteria verified
 - Phase 6 risk fully mitigated -- all actor features integrated and verified with E2E tests
 - Typed actor messaging (TYPE-07) is a research-level problem -- design on paper during early phases
-- Plan 06-01 test isolation bugs fixed: all 27 snow-rt tests now pass (test counters isolated per-test)
-- Phase 7 supervisor compiler pipeline complete (07-02) -- ready for supervision tree tests (07-03)
 
 ## Session Continuity
 
-Last session: 2026-02-06
-Stopped at: Completed 07-02-PLAN.md -- Supervisor compiler pipeline
+Last session: 2026-02-07
+Stopped at: Completed 07-03-PLAN.md -- Child spec validation and E2E tests (Phase 7 complete)
 Resume file: None
