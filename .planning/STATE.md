@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-02-05)
 
 **Core value:** Expressive, readable concurrency -- writing concurrent programs should feel as natural as sequential code, with supervision and fault tolerance built in.
-**Current focus:** Phase 6 -- Actor Runtime. Plan 03 complete (per-actor heaps and FIFO message passing). Each actor has its own heap; messages deep-copied on send; FIFO mailbox with blocking receive.
+**Current focus:** Phase 6 -- Actor Runtime. Plan 04 complete (Pid<M> typed actor identity). Pid<M> in type system with compile-time send validation, spawn/receive/self inference, and untyped Pid escape hatch.
 
 ## Current Position
 
 Phase: 6 of 10 (Actor Runtime)
-Plan: 3 of 7 in current phase
+Plan: 4 of 7 in current phase
 Status: In progress
-Last activity: 2026-02-07 -- Completed 06-03-PLAN.md (per-actor heaps and message passing)
+Last activity: 2026-02-07 -- Completed 06-04-PLAN.md (Pid<M> typed actor identity)
 
-Progress: [██████████████████████████░░] 63% (26 plans of ~41 estimated total)
+Progress: [███████████████████████████░░] 66% (27 plans of ~41 estimated total)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 26
+- Total plans completed: 27
 - Average duration: 9min
-- Total execution time: 237min
+- Total execution time: 246min
 
 **By Phase:**
 
@@ -32,10 +32,10 @@ Progress: [███████████████████████
 | 03-type-system | 5/5 | 83min | 17min |
 | 04-pattern-matching-adts | 5/5 | 42min | 8min |
 | 05-llvm-codegen-native-binaries | 5/5 | 50min | 10min |
-| 06-actor-runtime | 3/7 | 27min | 9min |
+| 06-actor-runtime | 4/7 | 36min | 9min |
 
 **Recent Trend:**
-- Last 5 plans: 05-05 (15min), 06-01 (10min), 06-02 (10min), 06-03 (7min)
+- Last 5 plans: 05-05 (15min), 06-01 (10min), 06-02 (10min), 06-03 (7min), 06-04 (9min)
 
 *Updated after each plan completion*
 
@@ -163,6 +163,11 @@ Recent decisions affecting current work:
 - [06-03]: Blocking receive yields to scheduler (Waiting state); woken by state transition to Ready
 - [06-03]: Heap message layout: [u64 type_tag, u64 data_len, u8... data] -- 16-byte fixed header
 - [06-03]: snow_gc_alloc_actor falls back to global arena when no actor context
+- [06-04]: Pid<M> as Ty::App(Ty::Con("Pid"), [M]) -- uses existing generic type machinery, not a new Ty variant
+- [06-04]: Actor message type tracked via ACTOR_MSG_TYPE_KEY env binding (not a separate context struct)
+- [06-04]: Let binding with annotation uses annotation type for scheme (enables Pid escape hatch)
+- [06-04]: Untyped Pid unifies with typed Pid<M> bidirectionally without constraining M
+- [06-04]: Error codes E0014 (SendTypeMismatch), E0015 (SelfOutsideActor), E0016 (SpawnNonFunction), E0017 (ReceiveOutsideActor)
 
 ### Pending Todos
 
@@ -177,5 +182,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-07
-Stopped at: Completed 06-03-PLAN.md
+Stopped at: Completed 06-04-PLAN.md
 Resume file: None
