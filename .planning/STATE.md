@@ -10,11 +10,11 @@ See: .planning/PROJECT.md (updated 2026-02-07)
 ## Current Position
 
 Phase: 11 of 15 (Multi-Clause Functions)
-Plan: —
-Status: Ready to plan
-Last activity: 2026-02-07 -- Roadmap created for v1.1
+Plan: 1 of 3 in phase
+Status: In progress
+Last activity: 2026-02-07 - Completed 11-01-PLAN.md (parser + AST)
 
-Progress: ░░░░░░░░░░ 0%
+Progress: █░░░░░░░░░ ~14% (1/~7 v1.1 plans)
 
 ## Performance Metrics
 
@@ -26,8 +26,9 @@ Progress: ░░░░░░░░░░ 0%
 - Lines of Rust: 52,611
 
 **v1.1:**
-- Plans completed: 0
+- Plans completed: 1
 - Phases: 5 (11-15)
+- Average duration: 5min
 
 ## Accumulated Context
 
@@ -35,6 +36,12 @@ Progress: ░░░░░░░░░░ 0%
 
 Decisions logged in PROJECT.md Key Decisions table.
 Full decision history archived in milestones/v1.0-ROADMAP.md.
+
+| Decision | Phase | Rationale |
+|----------|-------|-----------|
+| Always use parse_fn_clause_param_list for all fn def param lists | 11-01 | Transparent backward compat -- handles both pattern and regular params |
+| Guard clause parsed before body detection | 11-01 | Grammar reads: fn name(params) [when guard] [= expr \| do/end] |
+| FN_EXPR_BODY node wraps body expression | 11-01 | Clean AST distinction between body forms via child node kind |
 
 ### Pending Todos
 
@@ -46,7 +53,7 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-02-07
-Stopped at: Roadmap created for v1.1 milestone
+Last session: 2026-02-07T19:35:47Z
+Stopped at: Completed 11-01-PLAN.md
 Resume file: None
-Next action: Plan Phase 11 (Multi-Clause Functions)
+Next action: Execute 11-02-PLAN.md (type checker desugaring)
