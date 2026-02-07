@@ -1207,7 +1207,7 @@ impl<'a> Lowerer<'a> {
                 SyntaxKind::GT_EQ => BinOp::GtEq,
                 SyntaxKind::AND_KW | SyntaxKind::AMP_AMP => BinOp::And,
                 SyntaxKind::OR_KW | SyntaxKind::PIPE_PIPE => BinOp::Or,
-                SyntaxKind::PLUS_PLUS => BinOp::Concat,
+                SyntaxKind::PLUS_PLUS | SyntaxKind::DIAMOND => BinOp::Concat,
                 _ => BinOp::Add, // fallback
             })
             .unwrap_or(BinOp::Add);

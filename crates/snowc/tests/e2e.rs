@@ -514,3 +514,69 @@ fn e2e_pipe_chain_closures() {
         "Expected: [1,2,3,4,5] -> map +1 [2,3,4,5,6] -> filter >3 [4,5,6] -> sum 15"
     );
 }
+
+// ── Phase 13: String Pattern Matching ────────────────────────────────
+
+/// String pattern matching in case expressions with wildcard default.
+#[test]
+fn e2e_string_pattern_matching() {
+    let source = r#"
+fn describe(name :: String) -> String do
+  case name do
+    "alice" -> "found alice"
+    "bob" -> "found bob"
+    _ -> "unknown"
+  end
+end
+
+fn main() do
+  println(describe("alice"))
+  println(describe("bob"))
+  println(describe("charlie"))
+end
+"#;
+    let output = compile_and_run(source);
+    assert_eq!(output, "found alice\nfound bob\nunknown\n");
+}
+
+/// String binary == and != comparison.
+#[test]
+fn e2e_string_equality_comparison() {
+    let source = r#"
+fn main() do
+  let x = "hello"
+  if x == "hello" do
+    println("equal")
+  else
+    println("not equal")
+  end
+  if x != "world" do
+    println("different")
+  else
+    println("same")
+  end
+end
+"#;
+    let output = compile_and_run(source);
+    assert_eq!(output, "equal\ndifferent\n");
+}
+
+/// String patterns mixed with variable bindings in the same case expression.
+#[test]
+fn e2e_string_pattern_mixed_with_variable() {
+    let source = r#"
+fn greet(name :: String) -> String do
+  case name do
+    "world" -> "Hello, world!"
+    other -> "Hi, " <> other <> "!"
+  end
+end
+
+fn main() do
+  println(greet("world"))
+  println(greet("Snow"))
+end
+"#;
+    let output = compile_and_run(source);
+    assert_eq!(output, "Hello, world!\nHi, Snow!\n");
+}
