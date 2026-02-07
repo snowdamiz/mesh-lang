@@ -70,8 +70,8 @@ pub fn llvm_type<'ctx>(
         MirType::Closure(_, _) => closure_type(context).into(),
         MirType::Ptr => context.ptr_type(inkwell::AddressSpace::default()).into(),
         MirType::Never => context.i8_type().into(),
-        // Actor PID is an opaque pointer to the process struct.
-        MirType::Pid(_) => context.ptr_type(inkwell::AddressSpace::default()).into(),
+        // Actor PID is i64 at the LLVM level (u64 at runtime, type-safety is compile-time only).
+        MirType::Pid(_) => context.i64_type().into(),
     }
 }
 
@@ -289,6 +289,28 @@ mod tests {
         let layout = create_sum_type_layout(&context, &sum_def, &structs, &sums);
         // { i8 tag, [N x i8] payload }
         assert_eq!(layout.count_fields(), 2);
+    }
+
+    #[test]
+    fn test_pid_type_is_i64() {
+        let context = Context::create();
+        let structs = FxHashMap::default();
+        let sums = FxHashMap::default();
+
+        // Untyped Pid -> i64
+        let pid_ty = llvm_type(&context, &MirType::Pid(None), &structs, &sums);
+        assert!(pid_ty.is_int_type(), "Pid should map to i64");
+        assert_eq!(pid_ty.into_int_type().get_bit_width(), 64);
+
+        // Typed Pid<Int> -> also i64
+        let pid_int_ty = llvm_type(
+            &context,
+            &MirType::Pid(Some(Box::new(MirType::Int))),
+            &structs,
+            &sums,
+        );
+        assert!(pid_int_ty.is_int_type(), "Pid<Int> should also map to i64");
+        assert_eq!(pid_int_ty.into_int_type().get_bit_width(), 64);
     }
 
     #[test]

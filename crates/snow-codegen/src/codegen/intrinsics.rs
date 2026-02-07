@@ -67,6 +67,46 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
     let println_ty = void_type.fn_type(&[ptr_type.into()], false);
     module.add_function("snow_println", println_ty, Some(inkwell::module::Linkage::External));
 
+    // ── Actor runtime functions ──────────────────────────────────────────
+
+    // snow_rt_init_actor(num_schedulers: i32) -> void
+    let init_actor_ty = void_type.fn_type(&[i32_type.into()], false);
+    module.add_function("snow_rt_init_actor", init_actor_ty, Some(inkwell::module::Linkage::External));
+
+    // snow_actor_spawn(fn_ptr: ptr, args: ptr, args_size: i64, priority: i8) -> i64
+    let spawn_ty = i64_type.fn_type(
+        &[ptr_type.into(), ptr_type.into(), i64_type.into(), i8_type.into()],
+        false,
+    );
+    module.add_function("snow_actor_spawn", spawn_ty, Some(inkwell::module::Linkage::External));
+
+    // snow_actor_send(target_pid: i64, msg_ptr: ptr, msg_size: i64) -> void
+    let send_ty = void_type.fn_type(
+        &[i64_type.into(), ptr_type.into(), i64_type.into()],
+        false,
+    );
+    module.add_function("snow_actor_send", send_ty, Some(inkwell::module::Linkage::External));
+
+    // snow_actor_receive(timeout_ms: i64) -> ptr
+    let receive_ty = ptr_type.fn_type(&[i64_type.into()], false);
+    module.add_function("snow_actor_receive", receive_ty, Some(inkwell::module::Linkage::External));
+
+    // snow_actor_self() -> i64
+    let self_ty = i64_type.fn_type(&[], false);
+    module.add_function("snow_actor_self", self_ty, Some(inkwell::module::Linkage::External));
+
+    // snow_actor_link(target_pid: i64) -> void
+    let link_ty = void_type.fn_type(&[i64_type.into()], false);
+    module.add_function("snow_actor_link", link_ty, Some(inkwell::module::Linkage::External));
+
+    // snow_reduction_check() -> void
+    let reduction_ty = void_type.fn_type(&[], false);
+    module.add_function("snow_reduction_check", reduction_ty, Some(inkwell::module::Linkage::External));
+
+    // snow_actor_set_terminate(pid: i64, callback_fn_ptr: ptr) -> void
+    let set_terminate_ty = void_type.fn_type(&[i64_type.into(), ptr_type.into()], false);
+    module.add_function("snow_actor_set_terminate", set_terminate_ty, Some(inkwell::module::Linkage::External));
+
     // snow_panic(msg: ptr, msg_len: u64, file: ptr, file_len: u64, line: u32) -> void
     // (noreturn -- marked via attribute)
     let panic_params: Vec<BasicMetadataTypeEnum<'ctx>> = vec![
@@ -119,6 +159,16 @@ mod tests {
         assert!(module.get_function("snow_print").is_some());
         assert!(module.get_function("snow_println").is_some());
         assert!(module.get_function("snow_panic").is_some());
+
+        // Actor runtime functions
+        assert!(module.get_function("snow_rt_init_actor").is_some());
+        assert!(module.get_function("snow_actor_spawn").is_some());
+        assert!(module.get_function("snow_actor_send").is_some());
+        assert!(module.get_function("snow_actor_receive").is_some());
+        assert!(module.get_function("snow_actor_self").is_some());
+        assert!(module.get_function("snow_actor_link").is_some());
+        assert!(module.get_function("snow_reduction_check").is_some());
+        assert!(module.get_function("snow_actor_set_terminate").is_some());
     }
 
     #[test]

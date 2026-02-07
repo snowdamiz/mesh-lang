@@ -432,6 +432,13 @@ impl<'ctx> CodeGen<'ctx> {
             .build_call(rt_init, &[], "")
             .map_err(|e| e.to_string())?;
 
+        // Call snow_rt_init_actor(0) -- initialize actor scheduler with default threads
+        let rt_init_actor = intrinsics::get_intrinsic(&self.module, "snow_rt_init_actor");
+        let zero = self.context.i32_type().const_int(0, false);
+        self.builder
+            .build_call(rt_init_actor, &[zero.into()], "")
+            .map_err(|e| e.to_string())?;
+
         // Call the Snow entry function
         let snow_main = self
             .functions
@@ -1039,6 +1046,261 @@ mod tests {
             MirType::Int,
         );
         assert!(ir.contains("sub i64 0"), "Should contain int negation: {}", ir);
+    }
+
+    #[test]
+    fn test_actor_spawn_codegen() {
+        // Test that ActorSpawn generates a call to snow_actor_spawn
+        let body = MirExpr::ActorSpawn {
+            func: Box::new(MirExpr::Var(
+                "my_actor".to_string(),
+                MirType::FnPtr(vec![MirType::Int], Box::new(MirType::Pid(None))),
+            )),
+            args: vec![MirExpr::IntLit(42, MirType::Int)],
+            priority: 1,
+            terminate_callback: None,
+            ty: MirType::Pid(None),
+        };
+
+        // Need to declare a "my_actor" function in the module
+        let mir = MirModule {
+            functions: vec![
+                MirFunction {
+                    name: "my_actor".to_string(),
+                    params: vec![("n".to_string(), MirType::Int)],
+                    return_type: MirType::Pid(None),
+                    body: MirExpr::ActorSelf { ty: MirType::Pid(None) },
+                    is_closure_fn: false,
+                    captures: vec![],
+                },
+                MirFunction {
+                    name: "test_fn".to_string(),
+                    params: vec![],
+                    return_type: MirType::Pid(None),
+                    body,
+                    is_closure_fn: false,
+                    captures: vec![],
+                },
+            ],
+            structs: vec![],
+            sum_types: vec![],
+            entry_function: None,
+        };
+
+        let context = Context::create();
+        let mut codegen = CodeGen::new(&context, "test", 0, None).unwrap();
+        codegen.compile(&mir).unwrap();
+
+        let ir = codegen.get_llvm_ir();
+        assert!(
+            ir.contains("snow_actor_spawn"),
+            "Should call snow_actor_spawn: {}",
+            ir
+        );
+        assert!(
+            ir.contains("snow_actor_self"),
+            "Should call snow_actor_self: {}",
+            ir
+        );
+    }
+
+    #[test]
+    fn test_actor_send_codegen() {
+        let body = MirExpr::ActorSend {
+            target: Box::new(MirExpr::Var("pid".to_string(), MirType::Pid(None))),
+            message: Box::new(MirExpr::IntLit(99, MirType::Int)),
+            ty: MirType::Unit,
+        };
+        let ir = compile_fn_to_ir(
+            vec![("pid".to_string(), MirType::Pid(None))],
+            body,
+            MirType::Unit,
+        );
+        assert!(
+            ir.contains("snow_actor_send"),
+            "Should call snow_actor_send: {}",
+            ir
+        );
+    }
+
+    #[test]
+    fn test_actor_receive_codegen() {
+        let body = MirExpr::ActorReceive {
+            arms: vec![],
+            timeout_ms: None,
+            timeout_body: None,
+            ty: MirType::Ptr,
+        };
+        let ir = compile_expr_to_ir(body, MirType::Ptr);
+        assert!(
+            ir.contains("snow_actor_receive"),
+            "Should call snow_actor_receive: {}",
+            ir
+        );
+    }
+
+    #[test]
+    fn test_actor_link_codegen() {
+        let body = MirExpr::ActorLink {
+            target: Box::new(MirExpr::Var("pid".to_string(), MirType::Pid(None))),
+            ty: MirType::Unit,
+        };
+        let ir = compile_fn_to_ir(
+            vec![("pid".to_string(), MirType::Pid(None))],
+            body,
+            MirType::Unit,
+        );
+        assert!(
+            ir.contains("snow_actor_link"),
+            "Should call snow_actor_link: {}",
+            ir
+        );
+    }
+
+    #[test]
+    fn test_main_wrapper_init_actor() {
+        let context = Context::create();
+        let mut codegen = CodeGen::new(&context, "test", 0, None).unwrap();
+        let mir = hello_world_mir();
+        codegen.compile(&mir).unwrap();
+
+        let ir = codegen.get_llvm_ir();
+        assert!(
+            ir.contains("snow_rt_init_actor"),
+            "Main should call snow_rt_init_actor: {}",
+            ir
+        );
+    }
+
+    #[test]
+    fn test_reduction_check_after_call() {
+        // After a user function call, there should be a snow_reduction_check
+        let mir = MirModule {
+            functions: vec![
+                MirFunction {
+                    name: "helper".to_string(),
+                    params: vec![],
+                    return_type: MirType::Int,
+                    body: MirExpr::IntLit(1, MirType::Int),
+                    is_closure_fn: false,
+                    captures: vec![],
+                },
+                MirFunction {
+                    name: "test_fn".to_string(),
+                    params: vec![],
+                    return_type: MirType::Int,
+                    body: MirExpr::Call {
+                        func: Box::new(MirExpr::Var(
+                            "helper".to_string(),
+                            MirType::FnPtr(vec![], Box::new(MirType::Int)),
+                        )),
+                        args: vec![],
+                        ty: MirType::Int,
+                    },
+                    is_closure_fn: false,
+                    captures: vec![],
+                },
+            ],
+            structs: vec![],
+            sum_types: vec![],
+            entry_function: None,
+        };
+
+        let context = Context::create();
+        let mut codegen = CodeGen::new(&context, "test", 0, None).unwrap();
+        codegen.compile(&mir).unwrap();
+
+        let ir = codegen.get_llvm_ir();
+        assert!(
+            ir.contains("snow_reduction_check"),
+            "Should insert snow_reduction_check after call: {}",
+            ir
+        );
+    }
+
+    #[test]
+    fn test_pid_is_i64_in_ir() {
+        // Verify that Pid type maps to i64 in the generated IR
+        let body = MirExpr::ActorSelf { ty: MirType::Pid(None) };
+        let ir = compile_expr_to_ir(body, MirType::Pid(None));
+        // snow_actor_self returns i64
+        assert!(
+            ir.contains("i64 @snow_actor_self"),
+            "snow_actor_self should return i64: {}",
+            ir
+        );
+    }
+
+    #[test]
+    fn test_actor_spawn_with_terminate_callback() {
+        // Test that snow_actor_set_terminate is called after spawn when callback exists
+        let body = MirExpr::ActorSpawn {
+            func: Box::new(MirExpr::Var(
+                "my_actor".to_string(),
+                MirType::FnPtr(vec![], Box::new(MirType::Pid(None))),
+            )),
+            args: vec![],
+            priority: 1,
+            terminate_callback: Some(Box::new(MirExpr::Var(
+                "__terminate_my_actor".to_string(),
+                MirType::FnPtr(
+                    vec![MirType::Ptr, MirType::Ptr],
+                    Box::new(MirType::Unit),
+                ),
+            ))),
+            ty: MirType::Pid(None),
+        };
+
+        let mir = MirModule {
+            functions: vec![
+                MirFunction {
+                    name: "my_actor".to_string(),
+                    params: vec![],
+                    return_type: MirType::Pid(None),
+                    body: MirExpr::ActorSelf { ty: MirType::Pid(None) },
+                    is_closure_fn: false,
+                    captures: vec![],
+                },
+                MirFunction {
+                    name: "__terminate_my_actor".to_string(),
+                    params: vec![
+                        ("state_ptr".to_string(), MirType::Ptr),
+                        ("reason_ptr".to_string(), MirType::Ptr),
+                    ],
+                    return_type: MirType::Unit,
+                    body: MirExpr::Unit,
+                    is_closure_fn: false,
+                    captures: vec![],
+                },
+                MirFunction {
+                    name: "test_fn".to_string(),
+                    params: vec![],
+                    return_type: MirType::Pid(None),
+                    body,
+                    is_closure_fn: false,
+                    captures: vec![],
+                },
+            ],
+            structs: vec![],
+            sum_types: vec![],
+            entry_function: None,
+        };
+
+        let context = Context::create();
+        let mut codegen = CodeGen::new(&context, "test", 0, None).unwrap();
+        codegen.compile(&mir).unwrap();
+
+        let ir = codegen.get_llvm_ir();
+        assert!(
+            ir.contains("snow_actor_spawn"),
+            "Should call snow_actor_spawn: {}",
+            ir
+        );
+        assert!(
+            ir.contains("snow_actor_set_terminate"),
+            "Should call snow_actor_set_terminate: {}",
+            ir
+        );
     }
 
     #[test]

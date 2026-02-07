@@ -325,6 +325,55 @@ fn copy_msg_to_actor_heap(
     }
 }
 
+/// Link the current actor to the target actor.
+///
+/// When either actor terminates, the other will receive an exit signal.
+/// This is the foundation for supervision trees.
+///
+/// - `target_pid`: the PID of the actor to link with
+#[no_mangle]
+pub extern "C" fn snow_actor_link(target_pid: u64) {
+    let my_pid = match stack::get_current_pid() {
+        Some(pid) => pid,
+        None => return,
+    };
+
+    let sched = global_scheduler().lock();
+    let target = ProcessId(target_pid);
+
+    // Add bidirectional link: my_pid <-> target_pid
+    if let Some(my_proc) = sched.get_process(my_pid) {
+        my_proc.lock().links.push(target);
+    }
+    if let Some(target_proc) = sched.get_process(target) {
+        target_proc.lock().links.push(my_pid);
+    }
+}
+
+/// Set the terminate callback for an actor.
+///
+/// The callback is invoked before the actor fully exits, allowing cleanup
+/// logic (e.g., closing resources, sending goodbye messages).
+///
+/// - `pid`: the PID of the actor to set the callback for
+/// - `callback_fn_ptr`: pointer to the terminate callback function
+///   with signature `extern "C" fn(state_ptr: *const u8, reason_ptr: *const u8)`
+#[no_mangle]
+pub extern "C" fn snow_actor_set_terminate(pid: u64, callback_fn_ptr: *const u8) {
+    if callback_fn_ptr.is_null() {
+        return;
+    }
+
+    let sched = global_scheduler().lock();
+    let target = ProcessId(pid);
+
+    if let Some(proc_arc) = sched.get_process(target) {
+        let cb: TerminateCallback =
+            unsafe { std::mem::transmute(callback_fn_ptr) };
+        proc_arc.lock().terminate_callback = Some(cb);
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------

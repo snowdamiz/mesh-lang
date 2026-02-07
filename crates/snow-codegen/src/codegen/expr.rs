@@ -108,22 +108,31 @@ impl<'ctx> CodeGen<'ctx> {
 
             MirExpr::Unit => Ok(self.context.struct_type(&[], false).const_zero().into()),
 
-            // Actor primitives -- codegen will be implemented in Phase 06 Plan 05.
-            MirExpr::ActorSpawn { .. } => {
-                Err("actor spawn codegen not yet implemented".to_string())
-            }
-            MirExpr::ActorSend { .. } => {
-                Err("actor send codegen not yet implemented".to_string())
-            }
-            MirExpr::ActorReceive { .. } => {
-                Err("actor receive codegen not yet implemented".to_string())
-            }
-            MirExpr::ActorSelf { .. } => {
-                Err("actor self codegen not yet implemented".to_string())
-            }
-            MirExpr::ActorLink { .. } => {
-                Err("actor link codegen not yet implemented".to_string())
-            }
+            // Actor primitives
+            MirExpr::ActorSpawn {
+                func,
+                args,
+                priority,
+                terminate_callback,
+                ty: _,
+            } => self.codegen_actor_spawn(func, args, *priority, terminate_callback.as_deref()),
+
+            MirExpr::ActorSend {
+                target,
+                message,
+                ty: _,
+            } => self.codegen_actor_send(target, message),
+
+            MirExpr::ActorReceive {
+                arms: _,
+                timeout_ms,
+                timeout_body: _,
+                ty: _,
+            } => self.codegen_actor_receive(timeout_ms.as_deref()),
+
+            MirExpr::ActorSelf { ty: _ } => self.codegen_actor_self(),
+
+            MirExpr::ActorLink { target, ty: _ } => self.codegen_actor_link(target),
         }
     }
 
@@ -480,6 +489,9 @@ impl<'ctx> CodeGen<'ctx> {
                     .build_call(fn_val, &arg_vals, "call")
                     .map_err(|e| e.to_string())?;
 
+                // Insert reduction check after function call
+                self.emit_reduction_check();
+
                 if matches!(ty, MirType::Unit) {
                     return Ok(self.context.struct_type(&[], false).const_zero().into());
                 }
@@ -490,7 +502,7 @@ impl<'ctx> CodeGen<'ctx> {
                     .ok_or_else(|| "Function call returned void".to_string());
             }
 
-            // Check if it's a runtime intrinsic
+            // Check if it's a runtime intrinsic (don't add reduction check for runtime calls)
             if let Some(fn_val) = self.module.get_function(name) {
                 let call = self
                     .builder
@@ -521,6 +533,9 @@ impl<'ctx> CodeGen<'ctx> {
             .builder
             .build_indirect_call(fn_type, fn_ptr.into_pointer_value(), &arg_vals, "icall")
             .map_err(|e| e.to_string())?;
+
+        // Insert reduction check after indirect call
+        self.emit_reduction_check();
 
         if matches!(ty, MirType::Unit) {
             return Ok(self.context.struct_type(&[], false).const_zero().into());
@@ -602,6 +617,9 @@ impl<'ctx> CodeGen<'ctx> {
             .builder
             .build_indirect_call(fn_type, fn_ptr.into_pointer_value(), &call_args, "clscall")
             .map_err(|e| e.to_string())?;
+
+        // Insert reduction check after closure call
+        self.emit_reduction_check();
 
         if matches!(ty, MirType::Unit) {
             return Ok(self.context.struct_type(&[], false).const_zero().into());
@@ -1059,6 +1077,244 @@ impl<'ctx> CodeGen<'ctx> {
             .map_err(|e| e.to_string())?;
         // Return a dummy value since we've already emitted a return
         Ok(self.context.struct_type(&[], false).const_zero().into())
+    }
+
+    // ── Actor primitives ──────────────────────────────────────────────
+
+    fn codegen_actor_spawn(
+        &mut self,
+        func: &MirExpr,
+        args: &[MirExpr],
+        priority: u8,
+        terminate_callback: Option<&MirExpr>,
+    ) -> Result<BasicValueEnum<'ctx>, String> {
+        let ptr_ty = self.context.ptr_type(inkwell::AddressSpace::default());
+        let i64_ty = self.context.i64_type();
+
+        // Get function pointer for the actor entry function.
+        let fn_ptr_val = self.codegen_expr(func)?;
+        let fn_ptr = if fn_ptr_val.is_pointer_value() {
+            fn_ptr_val.into_pointer_value()
+        } else {
+            // Cast to pointer if needed
+            self.builder
+                .build_int_to_ptr(fn_ptr_val.into_int_value(), ptr_ty, "fn_ptr")
+                .map_err(|e| e.to_string())?
+        };
+
+        // Serialize arguments to a byte buffer.
+        // Allocate an array of i64 on the stack for args. Each arg is stored
+        // as an i64 (ints directly, pointers via ptrtoint).
+        let (args_ptr, args_size) = if args.is_empty() {
+            (ptr_ty.const_null(), i64_ty.const_int(0, false))
+        } else {
+            let arg_vals: Vec<BasicValueEnum<'ctx>> = args
+                .iter()
+                .map(|a| self.codegen_expr(a))
+                .collect::<Result<Vec<_>, _>>()?;
+
+            // Allocate [N x i64] on the stack.
+            let arr_ty = i64_ty.array_type(arg_vals.len() as u32);
+            let buf_alloca = self
+                .builder
+                .build_alloca(arr_ty, "spawn_args")
+                .map_err(|e| e.to_string())?;
+
+            // Store each arg as i64 into the array.
+            for (i, val) in arg_vals.iter().enumerate() {
+                let int_val = if val.is_int_value() {
+                    val.into_int_value()
+                } else if val.is_pointer_value() {
+                    self.builder
+                        .build_ptr_to_int(val.into_pointer_value(), i64_ty, "arg_int")
+                        .map_err(|e| e.to_string())?
+                } else if val.is_float_value() {
+                    self.builder
+                        .build_bit_cast(val.into_float_value(), i64_ty, "arg_int")
+                        .map_err(|e: inkwell::builder::BuilderError| e.to_string())?
+                        .into_int_value()
+                } else {
+                    // Fallback: store as zero
+                    i64_ty.const_int(0, false)
+                };
+                let idx = self.context.i32_type().const_int(i as u64, false);
+                let zero = self.context.i32_type().const_int(0, false);
+                let element_ptr = unsafe {
+                    self.builder
+                        .build_gep(arr_ty, buf_alloca, &[zero, idx], "arg_ptr")
+                        .map_err(|e| e.to_string())?
+                };
+                self.builder
+                    .build_store(element_ptr, int_val)
+                    .map_err(|e| e.to_string())?;
+            }
+
+            let total_size = (arg_vals.len() * 8) as u64;
+            (buf_alloca, i64_ty.const_int(total_size, false))
+        };
+
+        let priority_val = self.context.i8_type().const_int(priority as u64, false);
+
+        // Call snow_actor_spawn(fn_ptr, args, args_size, priority) -> i64
+        let spawn_fn = get_intrinsic(&self.module, "snow_actor_spawn");
+        let pid_val = self
+            .builder
+            .build_call(
+                spawn_fn,
+                &[fn_ptr.into(), args_ptr.into(), args_size.into(), priority_val.into()],
+                "pid",
+            )
+            .map_err(|e| e.to_string())?
+            .try_as_basic_value()
+            .basic()
+            .ok_or("snow_actor_spawn returned void")?;
+
+        // If terminate callback exists, call snow_actor_set_terminate(pid, callback_fn_ptr)
+        if let Some(cb_expr) = terminate_callback {
+            let cb_val = self.codegen_expr(cb_expr)?;
+            let cb_ptr = if cb_val.is_pointer_value() {
+                cb_val.into_pointer_value()
+            } else {
+                self.builder
+                    .build_int_to_ptr(cb_val.into_int_value(), ptr_ty, "cb_ptr")
+                    .map_err(|e| e.to_string())?
+            };
+            let set_terminate_fn = get_intrinsic(&self.module, "snow_actor_set_terminate");
+            self.builder
+                .build_call(
+                    set_terminate_fn,
+                    &[pid_val.into(), cb_ptr.into()],
+                    "",
+                )
+                .map_err(|e| e.to_string())?;
+        }
+
+        Ok(pid_val)
+    }
+
+    fn codegen_actor_send(
+        &mut self,
+        target: &MirExpr,
+        message: &MirExpr,
+    ) -> Result<BasicValueEnum<'ctx>, String> {
+        let i64_ty = self.context.i64_type();
+        let ptr_ty = self.context.ptr_type(inkwell::AddressSpace::default());
+
+        // Evaluate the target PID (i64).
+        let target_val = self.codegen_expr(target)?.into_int_value();
+
+        // Serialize the message to bytes.
+        let msg_val = self.codegen_expr(message)?;
+        let (msg_ptr, msg_size) = if matches!(message.ty(), MirType::Unit) {
+            (ptr_ty.const_null(), i64_ty.const_int(0, false))
+        } else {
+            // Store the message value on the stack and pass a pointer + size.
+            let msg_ty = self.llvm_type(message.ty());
+            let msg_alloca = self
+                .builder
+                .build_alloca(msg_ty, "msg_buf")
+                .map_err(|e| e.to_string())?;
+            self.builder
+                .build_store(msg_alloca, msg_val)
+                .map_err(|e| e.to_string())?;
+
+            // Compute size via target data.
+            let target_data = inkwell::targets::TargetData::create("");
+            let size = target_data.get_store_size(&msg_ty);
+
+            (msg_alloca, i64_ty.const_int(size, false))
+        };
+
+        // Call snow_actor_send(target_pid, msg_ptr, msg_size)
+        let send_fn = get_intrinsic(&self.module, "snow_actor_send");
+        self.builder
+            .build_call(
+                send_fn,
+                &[target_val.into(), msg_ptr.into(), msg_size.into()],
+                "",
+            )
+            .map_err(|e| e.to_string())?;
+
+        // Send returns Unit.
+        Ok(self.context.struct_type(&[], false).const_zero().into())
+    }
+
+    fn codegen_actor_receive(
+        &mut self,
+        timeout_ms: Option<&MirExpr>,
+    ) -> Result<BasicValueEnum<'ctx>, String> {
+        let i64_ty = self.context.i64_type();
+
+        // Evaluate timeout: -1 for infinite wait, or the specified value.
+        let timeout_val = if let Some(timeout_expr) = timeout_ms {
+            self.codegen_expr(timeout_expr)?.into_int_value()
+        } else {
+            // Infinite wait: -1
+            i64_ty.const_int(u64::MAX, true) // -1 as i64
+        };
+
+        // Call snow_actor_receive(timeout_ms) -> ptr
+        let receive_fn = get_intrinsic(&self.module, "snow_actor_receive");
+        let result = self
+            .builder
+            .build_call(receive_fn, &[timeout_val.into()], "msg_ptr")
+            .map_err(|e| e.to_string())?
+            .try_as_basic_value()
+            .basic()
+            .ok_or("snow_actor_receive returned void")?;
+
+        // The result is a pointer to the message data.
+        // Pattern matching on the received message is handled at a higher
+        // level; for now we return the raw pointer.
+        Ok(result)
+    }
+
+    fn codegen_actor_self(&mut self) -> Result<BasicValueEnum<'ctx>, String> {
+        // Call snow_actor_self() -> i64
+        let self_fn = get_intrinsic(&self.module, "snow_actor_self");
+        let result = self
+            .builder
+            .build_call(self_fn, &[], "self_pid")
+            .map_err(|e| e.to_string())?
+            .try_as_basic_value()
+            .basic()
+            .ok_or("snow_actor_self returned void")?;
+
+        Ok(result)
+    }
+
+    fn codegen_actor_link(
+        &mut self,
+        target: &MirExpr,
+    ) -> Result<BasicValueEnum<'ctx>, String> {
+        // Evaluate the target PID.
+        let target_val = self.codegen_expr(target)?.into_int_value();
+
+        // Call snow_actor_link(target_pid)
+        let link_fn = get_intrinsic(&self.module, "snow_actor_link");
+        self.builder
+            .build_call(link_fn, &[target_val.into()], "")
+            .map_err(|e| e.to_string())?;
+
+        // Link returns Unit.
+        Ok(self.context.struct_type(&[], false).const_zero().into())
+    }
+
+    // ── Reduction check ─────────────────────────────────────────────────
+
+    /// Emit a call to snow_reduction_check() for preemptive scheduling.
+    ///
+    /// Inserted after function call sites and closure calls to enable
+    /// cooperative preemption of actor processes.
+    fn emit_reduction_check(&self) {
+        if let Some(check_fn) = self.module.get_function("snow_reduction_check") {
+            // Only emit if the current block is not yet terminated.
+            if let Some(bb) = self.builder.get_insert_block() {
+                if bb.get_terminator().is_none() {
+                    let _ = self.builder.build_call(check_fn, &[], "");
+                }
+            }
+        }
     }
 
     // ── Panic ────────────────────────────────────────────────────────
