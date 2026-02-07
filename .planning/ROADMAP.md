@@ -161,7 +161,7 @@ Plans:
   2. A Snow program can start an HTTP server that accepts requests and returns JSON responses
   3. List operations (map, filter, reduce) and Map (hash map) operations work with full type inference and pipe operator chaining
   4. Standard I/O (print, read from stdin) works for interactive CLI programs
-**Plans**: 5 plans
+**Plans**: 7 plans
 
 Plans:
 - [x] 08-01-PLAN.md -- String operations, console I/O, Env access, and module/import namespace resolution
@@ -169,6 +169,8 @@ Plans:
 - [x] 08-03-PLAN.md -- File I/O with Result types
 - [x] 08-04-PLAN.md -- JSON encoding/decoding with serde_json
 - [x] 08-05-PLAN.md -- HTTP client and server with thread-per-connection model
+- [ ] 08-06-PLAN.md -- Gap closure: pipe chain E2E test with closures, IO.read_line E2E test
+- [ ] 08-07-PLAN.md -- Gap closure: HTTP server runtime E2E test (start server, make request, verify response)
 
 ### Phase 9: Concurrency Standard Library
 **Goal**: High-level concurrency abstractions (GenServer, Task) built on the actor primitives, providing ergonomic patterns for common concurrent programming needs
@@ -217,6 +219,6 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8 -> 9 -> 10
 | 5. LLVM Codegen & Native Binaries | 5/5 | Complete | 2026-02-06 |
 | 6. Actor Runtime | 7/7 | Complete | 2026-02-07 |
 | 7. Supervision & Fault Tolerance | 3/3 | Complete | 2026-02-06 |
-| 8. Standard Library | 3/5 | In progress | - |
+| 8. Standard Library | 5/7 | In progress | - |
 | 9. Concurrency Standard Library | 0/2 | Not started | - |
 | 10. Developer Tooling | 0/5 | Not started | - |
