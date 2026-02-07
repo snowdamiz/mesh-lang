@@ -237,3 +237,93 @@ fn test_diag_or_pattern_binding_mismatch() {
     assert!(output.contains("E0011"), "expected E0011 code: {}", output);
     assert!(output.contains("bind"), "expected binding-related message: {}", output);
 }
+
+// ── Phase 6 Actor Diagnostic Tests ──────────────────────────────────
+
+/// Send type mismatch diagnostic renders with E0014 code, expected/found types, and help.
+#[test]
+fn test_diag_send_type_mismatch() {
+    let src = "send(pid, 42)";
+    let err = TypeError::SendTypeMismatch {
+        expected: snow_typeck::ty::Ty::string(),
+        found: snow_typeck::ty::Ty::int(),
+        span: rowan::TextRange::new(0.into(), 13.into()),
+    };
+    let output = render_diagnostic(&err, src, "test.snow");
+    insta::assert_snapshot!(output);
+}
+
+/// Self outside actor diagnostic renders with E0015 code.
+#[test]
+fn test_diag_self_outside_actor() {
+    let src = "let me = self()";
+    let result = check_source(src);
+    assert!(
+        !result.errors.is_empty(),
+        "expected SelfOutsideActor error"
+    );
+    let output = render_diagnostic(&result.errors[0], src, "test.snow");
+    assert!(output.contains("E0015"), "expected E0015 code: {}", output);
+    assert!(
+        output.contains("self()"),
+        "expected 'self()' in output: {}",
+        output
+    );
+    insta::assert_snapshot!(output);
+}
+
+/// Spawn non-function diagnostic renders with E0016 code.
+#[test]
+fn test_diag_spawn_non_function() {
+    let src = "spawn(42)";
+    let err = TypeError::SpawnNonFunction {
+        found: snow_typeck::ty::Ty::int(),
+        span: rowan::TextRange::new(0.into(), 9.into()),
+    };
+    let output = render_diagnostic(&err, src, "test.snow");
+    assert!(output.contains("E0016"), "expected E0016 code: {}", output);
+    assert!(
+        output.contains("function"),
+        "expected 'function' in output: {}",
+        output
+    );
+    insta::assert_snapshot!(output);
+}
+
+/// Receive outside actor diagnostic renders with E0017 code.
+#[test]
+fn test_diag_receive_outside_actor() {
+    let src = "receive do\nn -> n\nend";
+    let result = check_source(src);
+    assert!(
+        !result.errors.is_empty(),
+        "expected ReceiveOutsideActor error"
+    );
+    let output = render_diagnostic(&result.errors[0], src, "test.snow");
+    assert!(output.contains("E0017"), "expected E0017 code: {}", output);
+    assert!(
+        output.contains("receive"),
+        "expected 'receive' in output: {}",
+        output
+    );
+    insta::assert_snapshot!(output);
+}
+
+/// E0014 send type mismatch shows correct expected/found types and help text.
+#[test]
+fn test_diag_send_type_mismatch_details() {
+    let src = "send(pid, \"hello\")";
+    let err = TypeError::SendTypeMismatch {
+        expected: snow_typeck::ty::Ty::int(),
+        found: snow_typeck::ty::Ty::string(),
+        span: rowan::TextRange::new(0.into(), 18.into()),
+    };
+    let output = render_diagnostic(&err, src, "test.snow");
+    assert!(output.contains("Int"), "expected 'Int' type in output: {}", output);
+    assert!(output.contains("String"), "expected 'String' type in output: {}", output);
+    assert!(
+        output.contains("Pid"),
+        "expected 'Pid' in help text: {}",
+        output
+    );
+}

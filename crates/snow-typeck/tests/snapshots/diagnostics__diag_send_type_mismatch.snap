@@ -1,0 +1,13 @@
+---
+source: crates/snow-typeck/tests/diagnostics.rs
+expression: output
+---
+[E0014] Error: message type mismatch: expected String, found Int
+   ╭─[ <unknown>:1:1 ]
+   │
+ 1 │ send(pid, 42)
+   │ ──────┬──────  
+   │       ╰──────── expected String, found Int
+   │ 
+   │ Help: this Pid accepts messages of type String
+───╯
