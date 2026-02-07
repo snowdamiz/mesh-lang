@@ -147,7 +147,7 @@ impl<'ctx> CodeGen<'ctx> {
 
     // ── String literals ──────────────────────────────────────────────
 
-    fn codegen_string_lit(&mut self, s: &str) -> Result<BasicValueEnum<'ctx>, String> {
+    pub(crate) fn codegen_string_lit(&mut self, s: &str) -> Result<BasicValueEnum<'ctx>, String> {
         // Create a global constant for the string data
         let str_val = self.context.const_string(s.as_bytes(), false);
         let global = self.module.add_global(str_val.get_type(), None, ".str");
@@ -419,18 +419,36 @@ impl<'ctx> CodeGen<'ctx> {
     fn codegen_string_compare(
         &mut self,
         op: &BinOp,
-        _lhs: BasicValueEnum<'ctx>,
-        _rhs: BasicValueEnum<'ctx>,
+        lhs: BasicValueEnum<'ctx>,
+        rhs: BasicValueEnum<'ctx>,
     ) -> Result<BasicValueEnum<'ctx>, String> {
-        // For now, string comparison compares pointers (identity).
-        // A proper string comparison would need a runtime function.
-        // This is a placeholder for Phase 5.
-        let result = match op {
-            BinOp::Eq => self.context.bool_type().const_int(0, false),
-            BinOp::NotEq => self.context.bool_type().const_int(1, false),
+        let eq_fn = get_intrinsic(&self.module, "snow_string_eq");
+        let result = self
+            .builder
+            .build_call(eq_fn, &[lhs.into(), rhs.into()], "str_eq")
+            .map_err(|e| e.to_string())?;
+        let i8_result = result
+            .try_as_basic_value()
+            .basic()
+            .ok_or("snow_string_eq returned void")?
+            .into_int_value();
+
+        let zero = self.context.i8_type().const_int(0, false);
+        let eq_result = self
+            .builder
+            .build_int_compare(IntPredicate::NE, i8_result, zero, "str_eq_bool")
+            .map_err(|e| e.to_string())?;
+
+        let final_result = match op {
+            BinOp::Eq => eq_result,
+            BinOp::NotEq => self
+                .builder
+                .build_not(eq_result, "str_neq")
+                .map_err(|e| e.to_string())?,
             _ => return Err(format!("Unsupported string comparison: {:?}", op)),
         };
-        Ok(result.into())
+
+        Ok(final_result.into())
     }
 
     // ── Unary operations ─────────────────────────────────────────────

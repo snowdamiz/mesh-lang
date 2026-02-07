@@ -19,6 +19,7 @@ use inkwell::basic_block::BasicBlock;
 use inkwell::values::{BasicValueEnum, PointerValue};
 use inkwell::IntPredicate;
 
+use super::intrinsics::get_intrinsic;
 use super::types::variant_struct_type;
 use super::CodeGen;
 use crate::mir::{MirLiteral, MirMatchArm, MirType};
@@ -317,10 +318,27 @@ impl<'ctx> CodeGen<'ctx> {
                     .build_int_compare(IntPredicate::EQ, test_val.into_int_value(), lit_val, "test_beq")
                     .map_err(|e| e.to_string())?
             }
-            MirLiteral::String(_) => {
-                // String comparison: for Phase 5, just compare false (placeholder)
-                // A proper implementation would call a runtime string_eq function
-                self.context.bool_type().const_int(0, false)
+            MirLiteral::String(s) => {
+                // Create a SnowString for the pattern literal
+                let pattern_str = self.codegen_string_lit(s)?;
+
+                // Call snow_string_eq(scrutinee, pattern)
+                let eq_fn = get_intrinsic(&self.module, "snow_string_eq");
+                let result = self
+                    .builder
+                    .build_call(eq_fn, &[test_val.into(), pattern_str.into()], "str_eq")
+                    .map_err(|e| e.to_string())?;
+                let i8_result = result
+                    .try_as_basic_value()
+                    .basic()
+                    .ok_or("snow_string_eq returned void")?
+                    .into_int_value();
+
+                // Convert i8 result to i1 for branch condition
+                let zero = self.context.i8_type().const_int(0, false);
+                self.builder
+                    .build_int_compare(IntPredicate::NE, i8_result, zero, "str_eq_bool")
+                    .map_err(|e| e.to_string())?
             }
         };
 

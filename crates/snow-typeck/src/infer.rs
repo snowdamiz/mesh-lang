@@ -2979,10 +2979,21 @@ fn ast_pattern_to_abstract(
                         value: "false".to_string(),
                         ty: AbsLitKind::Bool,
                     },
-                    SyntaxKind::STRING_START => AbsPat::Literal {
-                        value: token.text().to_string(),
-                        ty: AbsLitKind::String,
-                    },
+                    SyntaxKind::STRING_START => {
+                        // Extract actual string content from the LITERAL_PAT node's children
+                        let mut content = String::new();
+                        for child in lit.syntax().children_with_tokens() {
+                            if child.kind() == SyntaxKind::STRING_CONTENT {
+                                if let Some(tok) = child.as_token() {
+                                    content.push_str(tok.text());
+                                }
+                            }
+                        }
+                        AbsPat::Literal {
+                            value: content,
+                            ty: AbsLitKind::String,
+                        }
+                    }
                     _ => AbsPat::Wildcard,
                 }
             } else {
