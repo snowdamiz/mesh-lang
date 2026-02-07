@@ -92,7 +92,9 @@ pub struct Scheduler {
     /// Worker deques are created per-thread; stealers are extracted at creation.
     /// We only store the stealers here; Workers are moved into their threads.
     /// This vec is populated during `new()` and consumed during `run()`.
-    workers: Vec<Option<Worker<SpawnRequest>>>,
+    /// Wrapped in Mutex so `run()` can take `&self` instead of `&mut self`,
+    /// allowing the Scheduler to be shared without an outer Mutex.
+    workers: Mutex<Vec<Option<Worker<SpawnRequest>>>>,
 
     /// Shared process table for PID lookup.
     process_table: ProcessTable,
@@ -135,7 +137,7 @@ impl Scheduler {
             high_priority_tx: high_tx,
             high_priority_rx: high_rx,
             stealers,
-            workers,
+            workers: Mutex::new(workers),
             process_table: Arc::new(RwLock::new(FxHashMap::default())),
             shutdown: Arc::new(AtomicBool::new(false)),
             active_count: Arc::new(AtomicU64::new(0)),
@@ -191,12 +193,12 @@ impl Scheduler {
     /// Workers run in a loop, picking up spawn requests, creating coroutines,
     /// and executing actors. The scheduler shuts down when the shutdown flag
     /// is set and all active processes have exited.
-    pub fn run(&mut self) {
+    pub fn run(&self) {
         let num_threads = self.num_threads;
 
         crossbeam_utils::thread::scope(|scope| {
             for i in 0..num_threads {
-                let worker = self.workers[i]
+                let worker = self.workers.lock()[i]
                     .take()
                     .expect("worker already consumed");
 

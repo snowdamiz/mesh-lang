@@ -29,7 +29,7 @@ pub mod string;
 pub use actor::{
     snow_actor_link, snow_actor_receive, snow_actor_register, snow_actor_self, snow_actor_send,
     snow_actor_set_terminate, snow_actor_spawn, snow_actor_whereis, snow_reduction_check,
-    snow_rt_init_actor,
+    snow_rt_init_actor, snow_rt_run_scheduler,
 };
 pub use gc::{snow_gc_alloc, snow_gc_alloc_actor, snow_rt_init};
 pub use panic::snow_panic;

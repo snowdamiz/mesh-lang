@@ -11,7 +11,7 @@ use inkwell::IntPredicate;
 use super::intrinsics::get_intrinsic;
 use super::types::{closure_type, variant_struct_type};
 use super::CodeGen;
-use crate::mir::{BinOp, MirExpr, MirMatchArm, MirType, UnaryOp};
+use crate::mir::{BinOp, MirExpr, MirMatchArm, MirPattern, MirType, UnaryOp};
 use crate::pattern::compile::compile_match;
 
 impl<'ctx> CodeGen<'ctx> {
@@ -124,11 +124,11 @@ impl<'ctx> CodeGen<'ctx> {
             } => self.codegen_actor_send(target, message),
 
             MirExpr::ActorReceive {
-                arms: _,
+                arms,
                 timeout_ms,
                 timeout_body: _,
-                ty: _,
-            } => self.codegen_actor_receive(timeout_ms.as_deref()),
+                ty,
+            } => self.codegen_actor_receive(arms, timeout_ms.as_deref(), ty),
 
             MirExpr::ActorSelf { ty: _ } => self.codegen_actor_self(),
 
@@ -1241,9 +1241,12 @@ impl<'ctx> CodeGen<'ctx> {
 
     fn codegen_actor_receive(
         &mut self,
+        arms: &[MirMatchArm],
         timeout_ms: Option<&MirExpr>,
+        result_ty: &MirType,
     ) -> Result<BasicValueEnum<'ctx>, String> {
         let i64_ty = self.context.i64_type();
+        let ptr_ty = self.context.ptr_type(inkwell::AddressSpace::default());
 
         // Evaluate timeout: -1 for infinite wait, or the specified value.
         let timeout_val = if let Some(timeout_expr) = timeout_ms {
@@ -1255,18 +1258,95 @@ impl<'ctx> CodeGen<'ctx> {
 
         // Call snow_actor_receive(timeout_ms) -> ptr
         let receive_fn = get_intrinsic(&self.module, "snow_actor_receive");
-        let result = self
+        let msg_ptr = self
             .builder
             .build_call(receive_fn, &[timeout_val.into()], "msg_ptr")
             .map_err(|e| e.to_string())?
             .try_as_basic_value()
             .basic()
-            .ok_or("snow_actor_receive returned void")?;
+            .ok_or("snow_actor_receive returned void")?
+            .into_pointer_value();
 
-        // The result is a pointer to the message data.
-        // Pattern matching on the received message is handled at a higher
-        // level; for now we return the raw pointer.
-        Ok(result)
+        // Message layout: [u64 type_tag (8 bytes), u64 data_len (8 bytes), u8... data]
+        // Skip the 16-byte header to get to the data.
+        let data_ptr = unsafe {
+            self.builder
+                .build_gep(
+                    self.context.i8_type(),
+                    msg_ptr,
+                    &[i64_ty.const_int(16, false)],
+                    "data_ptr",
+                )
+                .map_err(|e| e.to_string())?
+        };
+
+        // Load the message data as the expected type.
+        // For simple types (Int, Float, Bool), load directly from data_ptr.
+        // For String (ptr), load a pointer.
+        let msg_val: BasicValueEnum<'ctx> = match result_ty {
+            MirType::Int => {
+                self.builder
+                    .build_load(i64_ty, data_ptr, "msg_int")
+                    .map_err(|e| e.to_string())?
+            }
+            MirType::Float => {
+                self.builder
+                    .build_load(self.context.f64_type(), data_ptr, "msg_float")
+                    .map_err(|e| e.to_string())?
+            }
+            MirType::Bool => {
+                self.builder
+                    .build_load(self.context.i8_type(), data_ptr, "msg_bool")
+                    .map_err(|e| e.to_string())?
+            }
+            MirType::String => {
+                self.builder
+                    .build_load(ptr_ty, data_ptr, "msg_string")
+                    .map_err(|e| e.to_string())?
+            }
+            _ => {
+                // For other types, load as i64 (best effort).
+                self.builder
+                    .build_load(i64_ty, data_ptr, "msg_data")
+                    .map_err(|e| e.to_string())?
+            }
+        };
+
+        // Execute the first matching arm.
+        // For now, we support single-arm receive (wildcard/variable binding).
+        // More complex multi-arm pattern matching on messages is future work.
+        if let Some(arm) = arms.first() {
+            // Bind the pattern variable if it's a simple variable pattern.
+            match &arm.pattern {
+                MirPattern::Var(name, _) => {
+                    let alloca = self
+                        .builder
+                        .build_alloca(msg_val.get_type(), name)
+                        .map_err(|e| e.to_string())?;
+                    self.builder
+                        .build_store(alloca, msg_val)
+                        .map_err(|e| e.to_string())?;
+                    self.locals.insert(name.clone(), alloca);
+                }
+                MirPattern::Wildcard => {
+                    // No binding needed.
+                }
+                MirPattern::Literal(_) => {
+                    // Literal patterns in receive: just fall through to body.
+                    // Full pattern matching support is future work.
+                }
+                _ => {
+                    // For other pattern types (constructor, tuple, etc.), skip binding.
+                }
+            }
+
+            // Execute the arm body.
+            let body_val = self.codegen_expr(&arm.body)?;
+            Ok(body_val)
+        } else {
+            // No arms: return the raw message value.
+            Ok(msg_val)
+        }
     }
 
     fn codegen_actor_self(&mut self) -> Result<BasicValueEnum<'ctx>, String> {

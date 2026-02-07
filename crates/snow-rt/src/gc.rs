@@ -147,8 +147,7 @@ fn try_alloc_from_actor_heap(size: usize, align: usize) -> Option<*mut u8> {
 
     // Access the global scheduler's process table to find this actor's heap.
     use crate::actor::GLOBAL_SCHEDULER;
-    let sched_lock = GLOBAL_SCHEDULER.get()?;
-    let sched = sched_lock.lock();
+    let sched = GLOBAL_SCHEDULER.get()?;
     let proc_arc = sched.get_process(pid)?;
     let mut proc = proc_arc.lock();
     Some(proc.heap.alloc(size, align))

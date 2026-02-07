@@ -448,6 +448,13 @@ impl<'ctx> CodeGen<'ctx> {
             .build_call(*snow_main, &[], "")
             .map_err(|e| e.to_string())?;
 
+        // Run the actor scheduler to process all spawned actors.
+        // This blocks until all actors have completed.
+        let rt_run_scheduler = intrinsics::get_intrinsic(&self.module, "snow_rt_run_scheduler");
+        self.builder
+            .build_call(rt_run_scheduler, &[], "")
+            .map_err(|e| e.to_string())?;
+
         // Return 0
         self.builder
             .build_return(Some(&i32_type.const_int(0, false)))
@@ -1129,9 +1136,9 @@ mod tests {
             arms: vec![],
             timeout_ms: None,
             timeout_body: None,
-            ty: MirType::Ptr,
+            ty: MirType::Int,
         };
-        let ir = compile_expr_to_ir(body, MirType::Ptr);
+        let ir = compile_expr_to_ir(body, MirType::Int);
         assert!(
             ir.contains("snow_actor_receive"),
             "Should call snow_actor_receive: {}",
@@ -1168,6 +1175,11 @@ mod tests {
         assert!(
             ir.contains("snow_rt_init_actor"),
             "Main should call snow_rt_init_actor: {}",
+            ir
+        );
+        assert!(
+            ir.contains("snow_rt_run_scheduler"),
+            "Main should call snow_rt_run_scheduler: {}",
             ir
         );
     }

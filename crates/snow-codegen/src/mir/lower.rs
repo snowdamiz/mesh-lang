@@ -249,12 +249,16 @@ impl<'a> Lowerer<'a> {
 
         self.pop_scope();
 
-        if name == "main" {
-            self.entry_function = Some(name.clone());
-        }
+        // Rename "main" to "snow_main" to avoid collision with C main() entry point.
+        let fn_name = if name == "main" {
+            self.entry_function = Some("snow_main".to_string());
+            "snow_main".to_string()
+        } else {
+            name
+        };
 
         self.functions.push(MirFunction {
-            name,
+            name: fn_name,
             params,
             return_type,
             body,
@@ -1251,8 +1255,9 @@ impl<'a> Lowerer<'a> {
             }
         }
 
-        // Return type for actor function is Pid (the result of spawn).
-        let return_type = MirType::Pid(None);
+        // Actor entry functions are called by the scheduler. They don't return
+        // a value to the caller. The spawn expression returns the Pid.
+        let return_type = MirType::Unit;
 
         // Lower the actor body. The body contains a receive block that loops.
         let body = if let Some(block) = actor_def.body() {
@@ -1755,8 +1760,8 @@ mod tests {
             "fn double(x :: Int) -> Int do x * 2 end\n\
              fn main() do 5 |> double end",
         );
-        let main = mir.functions.iter().find(|f| f.name == "main");
-        assert!(main.is_some(), "Expected 'main' function in MIR");
+        let main = mir.functions.iter().find(|f| f.name == "snow_main");
+        assert!(main.is_some(), "Expected 'snow_main' function in MIR");
         let main = main.unwrap();
 
         // Body should be a Call with func=double, args=[5]
@@ -1779,7 +1784,7 @@ fn main() do
 end
 "#;
         let mir = lower(source);
-        let main = mir.functions.iter().find(|f| f.name == "main");
+        let main = mir.functions.iter().find(|f| f.name == "snow_main");
         assert!(main.is_some());
         let main = main.unwrap();
 
@@ -1836,7 +1841,7 @@ end
     #[test]
     fn lower_main_sets_entry_function() {
         let mir = lower("fn main() do 0 end");
-        assert_eq!(mir.entry_function, Some("main".to_string()));
+        assert_eq!(mir.entry_function, Some("snow_main".to_string()));
     }
 
     #[test]
@@ -1883,7 +1888,7 @@ fn main() do
 end
 "#;
         let mir = lower(source);
-        let main = mir.functions.iter().find(|f| f.name == "main");
+        let main = mir.functions.iter().find(|f| f.name == "snow_main");
         assert!(main.is_some());
         let main = main.unwrap();
 
@@ -1918,7 +1923,7 @@ fn main() do
 end
 "#;
         let mir = lower(source);
-        let main = mir.functions.iter().find(|f| f.name == "main");
+        let main = mir.functions.iter().find(|f| f.name == "snow_main");
         assert!(main.is_some());
     }
 

@@ -51,19 +51,22 @@ pub use stack::CoroutineHandle;
 
 use std::sync::OnceLock;
 
-use parking_lot::Mutex;
-
 // ---------------------------------------------------------------------------
 // Global scheduler instance
 // ---------------------------------------------------------------------------
 
 /// The global scheduler, initialized by `snow_rt_init_actor()`.
-pub(crate) static GLOBAL_SCHEDULER: OnceLock<Mutex<Scheduler>> = OnceLock::new();
+///
+/// The Scheduler itself uses interior mutability (Mutex on workers, Arc on
+/// shared state) so it can be shared without an outer Mutex. This prevents
+/// deadlocks when actor runtime functions (receive, send) need to access the
+/// scheduler while `run()` is executing on another thread.
+pub(crate) static GLOBAL_SCHEDULER: OnceLock<Scheduler> = OnceLock::new();
 
 /// Get a reference to the global scheduler.
 ///
 /// Panics if the scheduler has not been initialized via `snow_rt_init_actor()`.
-fn global_scheduler() -> &'static Mutex<Scheduler> {
+fn global_scheduler() -> &'static Scheduler {
     GLOBAL_SCHEDULER
         .get()
         .expect("actor scheduler not initialized -- call snow_rt_init_actor() first")
@@ -83,7 +86,7 @@ fn global_scheduler() -> &'static Mutex<Scheduler> {
 /// This function is idempotent -- subsequent calls are no-ops.
 #[no_mangle]
 pub extern "C" fn snow_rt_init_actor(num_schedulers: u32) {
-    GLOBAL_SCHEDULER.get_or_init(|| Mutex::new(Scheduler::new(num_schedulers)));
+    GLOBAL_SCHEDULER.get_or_init(|| Scheduler::new(num_schedulers));
 }
 
 /// Spawn a new actor process.
@@ -104,7 +107,7 @@ pub extern "C" fn snow_actor_spawn(
     args_size: u64,
     priority: u8,
 ) -> u64 {
-    let sched = global_scheduler().lock();
+    let sched = global_scheduler();
     sched.spawn(fn_ptr, args, args_size, priority).as_u64()
 }
 
@@ -136,6 +139,13 @@ pub extern "C" fn snow_reduction_check() {
         static LOCAL_REDUCTIONS: std::cell::Cell<u32> = const { std::cell::Cell::new(DEFAULT_REDUCTIONS) };
     }
 
+    // Only yield if we're running inside a coroutine context (i.e., inside an actor).
+    // The main thread also calls functions that trigger reduction_check, but the
+    // main thread is not a coroutine so yield_current would panic.
+    if stack::get_current_pid().is_none() {
+        return;
+    }
+
     LOCAL_REDUCTIONS.with(|cell| {
         let remaining = cell.get();
         if remaining == 0 {
@@ -164,7 +174,7 @@ pub extern "C" fn snow_reduction_check() {
 /// will use compiler-generated type tags.
 #[no_mangle]
 pub extern "C" fn snow_actor_send(target_pid: u64, msg_ptr: *const u8, msg_size: u64) {
-    let sched = global_scheduler().lock();
+    let sched = global_scheduler();
     let pid = ProcessId(target_pid);
 
     // Deep-copy the message bytes.
@@ -226,15 +236,12 @@ pub extern "C" fn snow_actor_receive(timeout_ms: i64) -> *const u8 {
     let sched = global_scheduler();
 
     // Try to pop a message.
-    {
-        let sched_lock = sched.lock();
-        if let Some(proc_arc) = sched_lock.get_process(my_pid) {
-            let proc = proc_arc.lock();
-            if let Some(msg) = proc.mailbox.pop() {
-                // Deep-copy message data into the current actor's heap.
-                drop(proc);
-                return copy_msg_to_actor_heap(&sched_lock, my_pid, msg);
-            }
+    if let Some(proc_arc) = sched.get_process(my_pid) {
+        let proc = proc_arc.lock();
+        if let Some(msg) = proc.mailbox.pop() {
+            // Deep-copy message data into the current actor's heap.
+            drop(proc);
+            return copy_msg_to_actor_heap(sched, my_pid, msg);
         }
     }
 
@@ -252,11 +259,8 @@ pub extern "C" fn snow_actor_receive(timeout_ms: i64) -> *const u8 {
 
     loop {
         // Set state to Waiting.
-        {
-            let sched_lock = sched.lock();
-            if let Some(proc_arc) = sched_lock.get_process(my_pid) {
-                proc_arc.lock().state = ProcessState::Waiting;
-            }
+        if let Some(proc_arc) = sched.get_process(my_pid) {
+            proc_arc.lock().state = ProcessState::Waiting;
         }
 
         // Yield to scheduler -- we will be resumed when a message arrives
@@ -264,14 +268,11 @@ pub extern "C" fn snow_actor_receive(timeout_ms: i64) -> *const u8 {
         stack::yield_current();
 
         // After resume, try to pop a message.
-        {
-            let sched_lock = sched.lock();
-            if let Some(proc_arc) = sched_lock.get_process(my_pid) {
-                let proc = proc_arc.lock();
-                if let Some(msg) = proc.mailbox.pop() {
-                    drop(proc);
-                    return copy_msg_to_actor_heap(&sched_lock, my_pid, msg);
-                }
+        if let Some(proc_arc) = sched.get_process(my_pid) {
+            let proc = proc_arc.lock();
+            if let Some(msg) = proc.mailbox.pop() {
+                drop(proc);
+                return copy_msg_to_actor_heap(sched, my_pid, msg);
             }
         }
 
@@ -279,8 +280,7 @@ pub extern "C" fn snow_actor_receive(timeout_ms: i64) -> *const u8 {
         if let Some(deadline) = deadline {
             if std::time::Instant::now() >= deadline {
                 // Timeout expired, set back to Ready and return null.
-                let sched_lock = sched.lock();
-                if let Some(proc_arc) = sched_lock.get_process(my_pid) {
+                if let Some(proc_arc) = sched.get_process(my_pid) {
                     proc_arc.lock().state = ProcessState::Ready;
                 }
                 return std::ptr::null();
@@ -348,7 +348,7 @@ pub extern "C" fn snow_actor_link(target_pid: u64) {
         None => return,
     };
 
-    let sched = global_scheduler().lock();
+    let sched = global_scheduler();
     let target = ProcessId(target_pid);
 
     // Add bidirectional link: my_pid <-> target_pid
@@ -374,7 +374,7 @@ pub extern "C" fn snow_actor_set_terminate(pid: u64, callback_fn_ptr: *const u8)
         return;
     }
 
-    let sched = global_scheduler().lock();
+    let sched = global_scheduler();
     let target = ProcessId(pid);
 
     if let Some(proc_arc) = sched.get_process(target) {
@@ -382,6 +382,26 @@ pub extern "C" fn snow_actor_set_terminate(pid: u64, callback_fn_ptr: *const u8)
             unsafe { std::mem::transmute(callback_fn_ptr) };
         proc_arc.lock().terminate_callback = Some(cb);
     }
+}
+
+/// Run the scheduler to execute all queued actors, then wait for them to finish.
+///
+/// This function must be called after all initial `snow_actor_spawn()` calls
+/// in the Snow main function. It starts the worker threads, processes queued
+/// spawn requests, and blocks until all actors have exited.
+///
+/// The scheduler shuts down when the active process count reaches zero
+/// (i.e., all spawned actors have completed).
+#[no_mangle]
+pub extern "C" fn snow_rt_run_scheduler() {
+    let sched = GLOBAL_SCHEDULER
+        .get()
+        .expect("actor scheduler not initialized -- call snow_rt_init_actor() first");
+
+    // Signal shutdown upfront so the scheduler stops once all actors finish.
+    // Then call run() which blocks until all actors complete.
+    sched.signal_shutdown();
+    sched.run();
 }
 
 /// Register the current actor under a name.

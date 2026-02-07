@@ -107,6 +107,10 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
     let set_terminate_ty = void_type.fn_type(&[i64_type.into(), ptr_type.into()], false);
     module.add_function("snow_actor_set_terminate", set_terminate_ty, Some(inkwell::module::Linkage::External));
 
+    // snow_rt_run_scheduler() -> void
+    let run_scheduler_ty = void_type.fn_type(&[], false);
+    module.add_function("snow_rt_run_scheduler", run_scheduler_ty, Some(inkwell::module::Linkage::External));
+
     // snow_panic(msg: ptr, msg_len: u64, file: ptr, file_len: u64, line: u32) -> void
     // (noreturn -- marked via attribute)
     let panic_params: Vec<BasicMetadataTypeEnum<'ctx>> = vec![
@@ -169,6 +173,7 @@ mod tests {
         assert!(module.get_function("snow_actor_link").is_some());
         assert!(module.get_function("snow_reduction_check").is_some());
         assert!(module.get_function("snow_actor_set_terminate").is_some());
+        assert!(module.get_function("snow_rt_run_scheduler").is_some());
     }
 
     #[test]
