@@ -260,6 +260,8 @@ pub enum SyntaxKind {
     GUARD_CLAUSE,
     /// Expression body for `fn name(pattern) = expr` form.
     FN_EXPR_BODY,
+    /// A single clause in a multi-clause closure: `params [when guard] -> body`
+    CLOSURE_CLAUSE,
 
     // ── Actor node kinds ──────────────────────────────────────────────
     /// Actor block declaration: `actor Name do ... end`
@@ -629,6 +631,7 @@ mod tests {
             SyntaxKind::AS_PAT,
             SyntaxKind::GUARD_CLAUSE,
             SyntaxKind::FN_EXPR_BODY,
+            SyntaxKind::CLOSURE_CLAUSE,
             // Actor node kinds
             SyntaxKind::ACTOR_DEF,
             SyntaxKind::SPAWN_EXPR,

@@ -4,7 +4,7 @@
 //! operators, function calls, pipe expressions, field access, index access,
 //! if/else, case/match, closures, blocks, strings, return, and tuples.
 
-use crate::ast::item::{Block, ParamList};
+use crate::ast::item::{Block, GuardClause, ParamList};
 use crate::ast::{ast_node, child_node, child_nodes, child_token, AstNode};
 use crate::cst::{SyntaxNode, SyntaxToken};
 use crate::syntax_kind::SyntaxKind;
@@ -371,13 +371,68 @@ ast_node!(ClosureExpr, CLOSURE_EXPR);
 
 impl ClosureExpr {
     /// The parameter list, if present.
+    ///
+    /// For single-clause closures, returns the PARAM_LIST child.
+    /// For multi-clause closures, returns the first clause's PARAM_LIST
+    /// (direct child of CLOSURE_EXPR, not inside a CLOSURE_CLAUSE).
     pub fn param_list(&self) -> Option<ParamList> {
         child_node(&self.syntax)
     }
 
     /// The closure body block.
+    ///
+    /// Returns the BLOCK child for both arrow closures (`-> expr`) and
+    /// do/end closures (`do ... end`).
     pub fn body(&self) -> Option<Block> {
         child_node(&self.syntax)
+    }
+
+    /// The guard clause on the first/only clause, if present.
+    pub fn guard(&self) -> Option<GuardClause> {
+        child_node(&self.syntax)
+    }
+
+    /// Whether this is a multi-clause closure.
+    ///
+    /// Multi-clause closures have CLOSURE_CLAUSE children for the 2nd+ clauses.
+    pub fn is_multi_clause(&self) -> bool {
+        self.syntax
+            .children()
+            .any(|c| c.kind() == SyntaxKind::CLOSURE_CLAUSE)
+    }
+
+    /// Returns additional clauses (2nd, 3rd, ...) for multi-clause closures.
+    ///
+    /// The first clause's data is stored as direct children of CLOSURE_EXPR
+    /// (param_list, guard, body). Additional clauses are CLOSURE_CLAUSE children.
+    pub fn clauses(&self) -> impl Iterator<Item = ClosureClause> + '_ {
+        self.syntax.children().filter_map(ClosureClause::cast)
+    }
+}
+
+// ── Closure Clause (multi-clause closures) ──────────────────────────────
+
+ast_node!(ClosureClause, CLOSURE_CLAUSE);
+
+impl ClosureClause {
+    /// The parameter list for this clause.
+    pub fn param_list(&self) -> Option<ParamList> {
+        child_node(&self.syntax)
+    }
+
+    /// The guard clause, if present.
+    pub fn guard(&self) -> Option<GuardClause> {
+        child_node(&self.syntax)
+    }
+
+    /// The body block.
+    pub fn body(&self) -> Option<Block> {
+        child_node(&self.syntax)
+    }
+
+    /// The body as an expression (first Expr child).
+    pub fn body_expr(&self) -> Option<Expr> {
+        self.syntax.children().find_map(Expr::cast)
     }
 }
 

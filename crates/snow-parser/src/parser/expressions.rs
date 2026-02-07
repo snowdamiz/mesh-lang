@@ -6,6 +6,8 @@
 //! string interpolation, compound expressions (if/else, case/match,
 //! closures, blocks), and basic statements (let bindings, return).
 
+use snow_common::span::Span;
+
 use crate::syntax_kind::SyntaxKind;
 
 use super::{MarkClosed, Parser};
@@ -601,29 +603,266 @@ fn parse_match_arm(p: &mut Parser) {
 
 // ── Closure Expression ────────────────────────────────────────────────
 
-/// Parse a closure: `fn (params) -> body end` or `fn () -> body end`
+/// Parse a closure expression.
+///
+/// Supports multiple syntax forms:
+/// - Parenthesized params: `fn(x, y) -> body end` or `fn (x) -> body end`
+/// - Bare params: `fn x -> body end` or `fn x, y -> body end`
+/// - No params: `fn -> body end` or `fn do body end`
+/// - do/end body: `fn x do body end`
+/// - Multi-clause: `fn 0 -> "zero" | n -> to_string(n) end`
+/// - Guard clause: `fn x when x > 0 -> x | x -> -x end`
+/// - Pattern params: `fn Some(x) -> x | None -> 0 end`
+///
+/// Multi-clause closures: the first clause's children (params, guard, arrow,
+/// body) are direct children of CLOSURE_EXPR. Subsequent clauses are wrapped
+/// in CLOSURE_CLAUSE nodes. The AST layer detects multi-clause by the
+/// presence of CLOSURE_CLAUSE children.
+///
+/// For arrow bodies (`->`), the body expression is wrapped in a BLOCK node
+/// (using `expr()` internally to stop at BAR for multi-clause detection).
+/// For do/end bodies, `parse_block_body()` produces the BLOCK as usual.
 fn parse_closure(p: &mut Parser) -> MarkClosed {
     let m = p.open();
+    let fn_span = p.current_span();
     p.advance(); // FN_KW
 
-    // Parse parameter list if present.
-    if p.at(SyntaxKind::L_PAREN) {
-        parse_param_list(p);
+    // Dispatch on what follows fn:
+    // - L_PAREN: parenthesized params
+    // - ARROW: no params, arrow body
+    // - DO_KW: no params, do/end body
+    // - IDENT/LITERAL/MINUS/_: bare params or pattern params
+
+    let has_paren_params = p.at(SyntaxKind::L_PAREN);
+    let has_arrow_immediately = p.at(SyntaxKind::ARROW);
+    let has_do_immediately = p.at(SyntaxKind::DO_KW);
+    let has_bare_params = looks_like_bare_closure_params(p);
+
+    // No-params closures: `fn -> body end` or `fn do body end`
+    if has_arrow_immediately || has_do_immediately {
+        parse_closure_body_block(p, fn_span);
+        expect_closure_end(p, fn_span);
+        return p.close(m, SyntaxKind::CLOSURE_EXPR);
     }
 
-    // Expect `->`.
-    p.expect(SyntaxKind::ARROW);
+    // Parse params
+    if has_paren_params {
+        parse_fn_clause_param_list(p);
+    } else if has_bare_params {
+        parse_bare_closure_params(p);
+    } else {
+        p.error("expected closure parameters, `->`, or `do`");
+        return p.close(m, SyntaxKind::CLOSURE_EXPR);
+    }
 
-    // Parse body: block or single expression.
-    // Closures use `fn (params) -> body end`
-    // The body may be a multi-statement block ending in `end`.
-    if !p.has_error() {
+    // Optional guard clause
+    if p.at(SyntaxKind::WHEN_KW) {
+        let guard = p.open();
+        p.advance(); // WHEN_KW
+        expr(p);
+        p.close(guard, SyntaxKind::GUARD_CLAUSE);
+    }
+
+    // Parse body
+    if p.at(SyntaxKind::ARROW) {
+        p.advance(); // ARROW
+
+        // Wrap body expression in BLOCK for consistency with downstream code.
+        // Use expr() instead of parse_block_body() so the Pratt parser exits
+        // at BAR (not an infix operator), enabling multi-clause detection.
+        if !p.has_error() {
+            let block = p.open();
+            expr(p);
+            p.close(block, SyntaxKind::BLOCK);
+        }
+
+        // Multi-clause: BAR follows the body expression
+        if p.at(SyntaxKind::BAR) {
+            // First clause's children are already direct children of CLOSURE_EXPR.
+            // Parse subsequent clauses wrapped in CLOSURE_CLAUSE nodes.
+            while p.at(SyntaxKind::BAR) {
+                parse_closure_clause(p);
+                if p.has_error() {
+                    break;
+                }
+            }
+
+            expect_closure_end(p, fn_span);
+            return p.close(m, SyntaxKind::CLOSURE_EXPR);
+        }
+
+        // Single-clause arrow closure
+        expect_closure_end(p, fn_span);
+        return p.close(m, SyntaxKind::CLOSURE_EXPR);
+    } else if p.at(SyntaxKind::DO_KW) {
+        // do/end body: `fn x do body end` -- single `end` for both block and closure.
+        let do_span = p.current_span();
+        p.advance(); // DO_KW
         parse_block_body(p);
+        if !p.at(SyntaxKind::END_KW) {
+            p.error_with_related(
+                "unclosed closure -- expected `end`",
+                do_span,
+                "`do` block started here",
+            );
+        } else {
+            p.advance(); // END_KW
+        }
+        return p.close(m, SyntaxKind::CLOSURE_EXPR);
+    } else {
+        p.error("expected `->` or `do` after closure parameters");
+        return p.close(m, SyntaxKind::CLOSURE_EXPR);
+    }
+}
+
+/// Parse a single additional closure clause: `| params [when guard] -> body`
+///
+/// Called for the 2nd, 3rd, ... clauses in a multi-clause closure.
+/// Wraps the clause in a CLOSURE_CLAUSE node.
+fn parse_closure_clause(p: &mut Parser) {
+    let clause = p.open();
+    p.advance(); // BAR
+
+    // Parse clause params
+    if p.at(SyntaxKind::L_PAREN) {
+        parse_fn_clause_param_list(p);
+    } else if looks_like_bare_closure_params(p) {
+        parse_bare_closure_params(p);
     }
 
-    p.expect(SyntaxKind::END_KW);
+    // Optional guard
+    if p.at(SyntaxKind::WHEN_KW) {
+        let guard = p.open();
+        p.advance(); // WHEN_KW
+        expr(p);
+        p.close(guard, SyntaxKind::GUARD_CLAUSE);
+    }
 
-    p.close(m, SyntaxKind::CLOSURE_EXPR)
+    // Arrow and body
+    if p.at(SyntaxKind::ARROW) {
+        p.advance(); // ARROW
+        if !p.has_error() {
+            let block = p.open();
+            expr(p);
+            p.close(block, SyntaxKind::BLOCK);
+        }
+    } else if p.at(SyntaxKind::DO_KW) {
+        let do_span = p.current_span();
+        p.advance(); // DO_KW
+        parse_block_body(p);
+        if !p.at(SyntaxKind::END_KW) {
+            p.error_with_related(
+                "unclosed closure clause -- expected `end`",
+                do_span,
+                "`do` block started here",
+            );
+        } else {
+            p.advance(); // END_KW (for do/end block)
+        }
+    } else {
+        p.error("expected `->` or `do` after closure clause parameters");
+    }
+
+    p.close(clause, SyntaxKind::CLOSURE_CLAUSE);
+}
+
+/// Parse a closure body for the no-params variant.
+/// Handles both `-> body` and `do body` forms. Produces a BLOCK.
+fn parse_closure_body_block(p: &mut Parser, _fn_span: Span) {
+    if p.at(SyntaxKind::ARROW) {
+        p.advance(); // ARROW
+        if !p.has_error() {
+            parse_block_body(p);
+        }
+    } else if p.at(SyntaxKind::DO_KW) {
+        p.advance(); // DO_KW
+        parse_block_body(p);
+    } else {
+        p.error("expected `->` or `do` after `fn`");
+    }
+}
+
+/// Expect END_KW to close a closure, emitting an error pointing back to fn if missing.
+fn expect_closure_end(p: &mut Parser, fn_span: Span) {
+    if !p.at(SyntaxKind::END_KW) {
+        p.error_with_related(
+            "unclosed closure -- expected `end`",
+            fn_span,
+            "closure started here",
+        );
+    } else {
+        p.advance(); // END_KW
+    }
+}
+
+/// Check whether the current position looks like bare closure parameters.
+///
+/// After `fn`, bare params can be:
+/// - IDENT followed by `,`, `->`, `when`, `do`, `::` (regular param or typed param)
+/// - INT_LITERAL/FLOAT_LITERAL/TRUE_KW/FALSE_KW/NIL_KW (pattern params)
+/// - MINUS followed by INT_LITERAL/FLOAT_LITERAL (negative literal pattern)
+/// - IDENT `_` (wildcard)
+/// - Uppercase IDENT followed by `(` (constructor pattern like `Some(x)`)
+fn looks_like_bare_closure_params(p: &Parser) -> bool {
+    match p.current() {
+        // Regular identifier param
+        SyntaxKind::IDENT => {
+            let text = p.current_text();
+            if text == "_" {
+                return true; // wildcard
+            }
+            // Uppercase IDENT followed by L_PAREN -> constructor pattern
+            if text.starts_with(|c: char| c.is_uppercase()) && p.nth(1) == SyntaxKind::L_PAREN {
+                return true;
+            }
+            // Lowercase ident -> bare param (check next token to be sure)
+            let next = p.nth(1);
+            matches!(
+                next,
+                SyntaxKind::COMMA
+                    | SyntaxKind::ARROW
+                    | SyntaxKind::WHEN_KW
+                    | SyntaxKind::DO_KW
+                    | SyntaxKind::COLON_COLON
+            )
+        }
+        // Literal patterns
+        SyntaxKind::INT_LITERAL
+        | SyntaxKind::FLOAT_LITERAL
+        | SyntaxKind::TRUE_KW
+        | SyntaxKind::FALSE_KW
+        | SyntaxKind::NIL_KW
+        | SyntaxKind::STRING_START => true,
+        // Negative literal pattern
+        SyntaxKind::MINUS
+            if matches!(
+                p.nth(1),
+                SyntaxKind::INT_LITERAL | SyntaxKind::FLOAT_LITERAL
+            ) =>
+        {
+            true
+        }
+        _ => false,
+    }
+}
+
+/// Parse bare (non-parenthesized) closure parameters.
+///
+/// Opens a PARAM_LIST, parses comma-separated params using
+/// parse_fn_clause_param, and closes. Stops at `->`, `when`, or `do`.
+fn parse_bare_closure_params(p: &mut Parser) {
+    let m = p.open();
+
+    parse_fn_clause_param(p);
+    while p.eat(SyntaxKind::COMMA) {
+        // Stop if next token terminates param list
+        if p.at(SyntaxKind::ARROW) || p.at(SyntaxKind::WHEN_KW) || p.at(SyntaxKind::DO_KW) {
+            break;
+        }
+        parse_fn_clause_param(p);
+    }
+
+    p.close(m, SyntaxKind::PARAM_LIST);
 }
 
 // ── Parameter List ────────────────────────────────────────────────────
