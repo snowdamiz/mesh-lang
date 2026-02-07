@@ -5,14 +5,14 @@
 See: .planning/PROJECT.md (updated 2026-02-07)
 
 **Core value:** Expressive, readable concurrency -- writing concurrent programs should feel as natural as sequential code, with supervision and fault tolerance built in.
-**Current focus:** v1.1 Language Polish -- fix all 5 documented v1.0 limitations
+**Current focus:** v1.1 Language Polish -- Phase 11: Multi-Clause Functions
 
 ## Current Position
 
-Phase: Not started (defining requirements)
+Phase: 11 of 15 (Multi-Clause Functions)
 Plan: —
-Status: Defining requirements
-Last activity: 2026-02-07 -- Milestone v1.1 started
+Status: Ready to plan
+Last activity: 2026-02-07 -- Roadmap created for v1.1
 
 Progress: ░░░░░░░░░░ 0%
 
@@ -24,6 +24,10 @@ Progress: ░░░░░░░░░░ 0%
 - Total execution time: 505min
 - Commits: 213
 - Lines of Rust: 52,611
+
+**v1.1:**
+- Plans completed: 0
+- Phases: 5 (11-15)
 
 ## Accumulated Context
 
@@ -43,6 +47,6 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-07
-Stopped at: Milestone v1.1 initialized
+Stopped at: Roadmap created for v1.1 milestone
 Resume file: None
-Next action: Define requirements → create roadmap
+Next action: Plan Phase 11 (Multi-Clause Functions)

@@ -59,24 +59,24 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| SYN-01 | — | Pending |
-| SYN-02 | — | Pending |
-| SYN-03 | — | Pending |
-| SYN-04 | — | Pending |
-| SYN-05 | — | Pending |
-| PAT-01 | — | Pending |
-| PAT-02 | — | Pending |
-| MAP-01 | — | Pending |
-| MAP-02 | — | Pending |
-| MAP-03 | — | Pending |
-| HTTP-01 | — | Pending |
-| HTTP-02 | — | Pending |
+| SYN-01 | Phase 11 | Pending |
+| SYN-02 | Phase 11 | Pending |
+| SYN-03 | Phase 11 | Pending |
+| SYN-04 | Phase 12 | Pending |
+| SYN-05 | Phase 12 | Pending |
+| PAT-01 | Phase 13 | Pending |
+| PAT-02 | Phase 13 | Pending |
+| MAP-01 | Phase 14 | Pending |
+| MAP-02 | Phase 14 | Pending |
+| MAP-03 | Phase 14 | Pending |
+| HTTP-01 | Phase 15 | Pending |
+| HTTP-02 | Phase 15 | Pending |
 
 **Coverage:**
 - v1.1 requirements: 12 total
-- Mapped to phases: 0
-- Unmapped: 12 ⚠️
+- Mapped to phases: 12
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-02-07*
-*Last updated: 2026-02-07 after initial definition*
+*Last updated: 2026-02-07 after roadmap creation*
