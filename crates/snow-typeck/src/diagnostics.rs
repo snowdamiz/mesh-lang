@@ -35,6 +35,10 @@ fn error_code(err: &TypeError) -> &'static str {
         TypeError::SelfOutsideActor { .. } => "E0015",
         TypeError::SpawnNonFunction { .. } => "E0016",
         TypeError::ReceiveOutsideActor { .. } => "E0017",
+        TypeError::InvalidChildStart { .. } => "E0018",
+        TypeError::InvalidStrategy { .. } => "E0019",
+        TypeError::InvalidRestartType { .. } => "E0020",
+        TypeError::InvalidShutdownValue { .. } => "E0021",
     }
 }
 
@@ -585,6 +589,92 @@ pub fn render_diagnostic(error: &TypeError, source: &str, _filename: &str) -> St
                         .with_color(Color::Red),
                 )
                 .with_help("move this receive expression into an actor block")
+                .finish()
+        }
+
+        TypeError::InvalidChildStart {
+            child_name,
+            found,
+            span,
+        } => {
+            let msg = format!(
+                "child `{}` start function must return Pid, found `{}`",
+                child_name, found
+            );
+            let range = clamp(text_range_to_range(*span));
+
+            Report::build(ReportKind::Error, range.clone())
+                .with_code(code)
+                .with_message(&msg)
+                .with_config(config)
+                .with_label(
+                    Label::new(range)
+                        .with_message(format!("expected Pid<M>, found {}", found))
+                        .with_color(Color::Red),
+                )
+                .with_help("the start function must call spawn() and return a Pid")
+                .finish()
+        }
+
+        TypeError::InvalidStrategy { found, span } => {
+            let msg = format!("unknown supervision strategy `{}`", found);
+            let range = clamp(text_range_to_range(*span));
+
+            Report::build(ReportKind::Error, range.clone())
+                .with_code(code)
+                .with_message(&msg)
+                .with_config(config)
+                .with_label(
+                    Label::new(range)
+                        .with_message("expected one_for_one, one_for_all, rest_for_one, or simple_one_for_one")
+                        .with_color(Color::Red),
+                )
+                .finish()
+        }
+
+        TypeError::InvalidRestartType {
+            found,
+            child_name,
+            span,
+        } => {
+            let msg = format!(
+                "invalid restart type `{}` for child `{}`",
+                found, child_name
+            );
+            let range = clamp(text_range_to_range(*span));
+
+            Report::build(ReportKind::Error, range.clone())
+                .with_code(code)
+                .with_message(&msg)
+                .with_config(config)
+                .with_label(
+                    Label::new(range)
+                        .with_message("expected permanent, transient, or temporary")
+                        .with_color(Color::Red),
+                )
+                .finish()
+        }
+
+        TypeError::InvalidShutdownValue {
+            found,
+            child_name,
+            span,
+        } => {
+            let msg = format!(
+                "invalid shutdown value `{}` for child `{}`",
+                found, child_name
+            );
+            let range = clamp(text_range_to_range(*span));
+
+            Report::build(ReportKind::Error, range.clone())
+                .with_code(code)
+                .with_message(&msg)
+                .with_config(config)
+                .with_label(
+                    Label::new(range)
+                        .with_message("expected a positive integer or brutal_kill")
+                        .with_color(Color::Red),
+                )
                 .finish()
         }
     };

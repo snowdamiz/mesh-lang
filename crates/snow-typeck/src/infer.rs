@@ -2788,6 +2788,13 @@ fn infer_actor_def(
 ///
 /// The supervisor is registered as a function: `supervisor_name :: () -> Pid<Unit>`.
 /// Supervisors don't receive user messages; they manage child processes.
+///
+/// Validates child specs at compile time:
+/// - Strategy must be one_for_one, one_for_all, rest_for_one, or simple_one_for_one
+/// - Child start functions must return Pid (checked via spawn reference)
+/// - Restart types must be permanent, transient, or temporary
+/// - Shutdown values must be positive integers or brutal_kill
+/// - Child names must be unique within the supervisor
 fn infer_supervisor_def(
     ctx: &mut InferCtx,
     env: &mut TypeEnv,
@@ -2802,8 +2809,194 @@ fn infer_supervisor_def(
         .and_then(|n| n.text())
         .unwrap_or_else(|| "<unnamed_supervisor>".to_string());
 
+    // ── Strategy validation ──────────────────────────────────────────
+    if let Some(strategy_node) = sup_def.strategy() {
+        let idents: Vec<_> = strategy_node
+            .children_with_tokens()
+            .filter_map(|c| c.into_token())
+            .filter(|t| t.kind() == SyntaxKind::IDENT)
+            .collect();
+        // The first IDENT is "strategy", the second is the value.
+        if idents.len() >= 2 {
+            let strategy_text = idents[1].text().to_string();
+            match strategy_text.as_str() {
+                "one_for_one" | "one_for_all" | "rest_for_one" | "simple_one_for_one" => {}
+                _ => {
+                    ctx.errors.push(TypeError::InvalidStrategy {
+                        found: strategy_text,
+                        span: idents[1].text_range(),
+                    });
+                }
+            }
+        }
+    }
+
+    // ── Child spec validation ────────────────────────────────────────
+    let child_specs = sup_def.child_specs();
+    let mut seen_child_names: Vec<String> = Vec::new();
+
+    for child_node in &child_specs {
+        // Extract child name.
+        let child_name = child_node
+            .children()
+            .find(|c| c.kind() == SyntaxKind::NAME)
+            .and_then(|n| {
+                n.children_with_tokens()
+                    .filter_map(|c| c.into_token())
+                    .find(|t| t.kind() == SyntaxKind::IDENT)
+                    .map(|t| t.text().to_string())
+            })
+            .unwrap_or_else(|| "<unnamed_child>".to_string());
+
+        // Check for duplicate child names.
+        if seen_child_names.contains(&child_name) {
+            ctx.errors.push(TypeError::InvalidStrategy {
+                found: format!("duplicate child name `{}`", child_name),
+                span: child_node.text_range(),
+            });
+        }
+        seen_child_names.push(child_name.clone());
+
+        // Walk the BLOCK child for key-value validation.
+        let block = child_node
+            .children()
+            .find(|c| c.kind() == SyntaxKind::BLOCK);
+
+        if let Some(block) = block {
+            let tokens: Vec<_> = block
+                .descendants_with_tokens()
+                .filter_map(|c| c.into_token())
+                .collect();
+
+            let mut i = 0;
+            let mut found_start = false;
+
+            while i < tokens.len() {
+                let text = tokens[i].text();
+
+                if text == "start" {
+                    found_start = true;
+                    // Validate that the start expression references a spawn call.
+                    // Walk forward to find SPAWN_KW -- if it's there, the start fn returns Pid.
+                    // If no SPAWN_KW is found before the next key or end, the start fn
+                    // may not return Pid. We check for the spawn keyword as evidence.
+                    let mut j = i + 1;
+                    let mut has_spawn = false;
+                    while j < tokens.len() {
+                        if tokens[j].kind() == SyntaxKind::SPAWN_KW {
+                            has_spawn = true;
+                            break;
+                        }
+                        // Stop at next key boundary.
+                        if tokens[j].text() == "restart"
+                            || tokens[j].text() == "shutdown"
+                        {
+                            break;
+                        }
+                        j += 1;
+                    }
+
+                    if !has_spawn {
+                        // Find the span of the start value for error reporting.
+                        // Skip "start" and ":" to find the expression start.
+                        let mut val_start = i + 1;
+                        while val_start < tokens.len()
+                            && tokens[val_start].kind() == SyntaxKind::COLON
+                        {
+                            val_start += 1;
+                        }
+                        let span = if val_start < j && val_start < tokens.len() {
+                            // Span from first value token to last before next key.
+                            let start = tokens[val_start].text_range().start();
+                            let end = tokens[(j - 1).min(tokens.len() - 1)]
+                                .text_range()
+                                .end();
+                            TextRange::new(start, end)
+                        } else {
+                            tokens[i].text_range()
+                        };
+
+                        ctx.errors.push(TypeError::InvalidChildStart {
+                            child_name: child_name.clone(),
+                            found: Ty::Con(crate::ty::TyCon::new("unknown")),
+                            span,
+                        });
+                    }
+                } else if text == "restart" {
+                    // Validate restart type.
+                    let mut j = i + 1;
+                    while j < tokens.len() {
+                        if tokens[j].kind() == SyntaxKind::IDENT
+                            && tokens[j].text() != "restart"
+                        {
+                            let restart_text = tokens[j].text().to_string();
+                            match restart_text.as_str() {
+                                "permanent" | "transient" | "temporary" => {}
+                                _ => {
+                                    ctx.errors.push(TypeError::InvalidRestartType {
+                                        found: restart_text,
+                                        child_name: child_name.clone(),
+                                        span: tokens[j].text_range(),
+                                    });
+                                }
+                            }
+                            break;
+                        }
+                        if tokens[j].kind() == SyntaxKind::COLON {
+                            j += 1;
+                            continue;
+                        }
+                        break;
+                    }
+                } else if text == "shutdown" {
+                    // Validate shutdown value.
+                    let mut j = i + 1;
+                    while j < tokens.len() {
+                        if tokens[j].kind() == SyntaxKind::COLON {
+                            j += 1;
+                            continue;
+                        }
+                        if tokens[j].kind() == SyntaxKind::INT_LITERAL {
+                            // Valid: positive integer.
+                            if let Ok(val) = tokens[j].text().parse::<i64>() {
+                                if val <= 0 {
+                                    ctx.errors.push(TypeError::InvalidShutdownValue {
+                                        found: tokens[j].text().to_string(),
+                                        child_name: child_name.clone(),
+                                        span: tokens[j].text_range(),
+                                    });
+                                }
+                            }
+                            break;
+                        }
+                        if tokens[j].kind() == SyntaxKind::IDENT {
+                            let shutdown_text = tokens[j].text().to_string();
+                            if shutdown_text == "brutal_kill" {
+                                // Valid.
+                            } else {
+                                ctx.errors.push(TypeError::InvalidShutdownValue {
+                                    found: shutdown_text,
+                                    child_name: child_name.clone(),
+                                    span: tokens[j].text_range(),
+                                });
+                            }
+                            break;
+                        }
+                        break;
+                    }
+                }
+
+                i += 1;
+            }
+
+            // If no start clause was found, that's also an error (but the parser
+            // should catch this, so we only flag it if we need to).
+            let _ = found_start;
+        }
+    }
+
+    // ── Register supervisor type ─────────────────────────────────────
     // Supervisors are zero-arg functions that return Pid<Unit>.
-    // The supervisor manages child processes internally.
     let pid_ty = Ty::pid(Ty::Tuple(vec![]));
     let fn_ty = Ty::Fun(vec![], Box::new(pid_ty.clone()));
 

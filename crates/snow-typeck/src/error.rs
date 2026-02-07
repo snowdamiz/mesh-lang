@@ -163,6 +163,29 @@ pub enum TypeError {
     ReceiveOutsideActor {
         span: TextRange,
     },
+    /// Child spec start function does not return Pid.
+    InvalidChildStart {
+        child_name: String,
+        found: Ty,
+        span: TextRange,
+    },
+    /// Unknown supervision strategy.
+    InvalidStrategy {
+        found: String,
+        span: TextRange,
+    },
+    /// Invalid restart type for child spec.
+    InvalidRestartType {
+        found: String,
+        child_name: String,
+        span: TextRange,
+    },
+    /// Invalid shutdown value for child spec.
+    InvalidShutdownValue {
+        found: String,
+        child_name: String,
+        span: TextRange,
+    },
 }
 
 impl fmt::Display for TypeError {
@@ -304,6 +327,40 @@ impl fmt::Display for TypeError {
             }
             TypeError::ReceiveOutsideActor { .. } => {
                 write!(f, "receive used outside actor block")
+            }
+            TypeError::InvalidChildStart {
+                child_name, found, ..
+            } => {
+                write!(
+                    f,
+                    "child `{}` start function must return Pid, found `{}`",
+                    child_name, found
+                )
+            }
+            TypeError::InvalidStrategy { found, .. } => {
+                write!(
+                    f,
+                    "unknown supervision strategy `{}`, expected one_for_one, one_for_all, rest_for_one, or simple_one_for_one",
+                    found
+                )
+            }
+            TypeError::InvalidRestartType {
+                found, child_name, ..
+            } => {
+                write!(
+                    f,
+                    "invalid restart type `{}` for child `{}`, expected permanent, transient, or temporary",
+                    found, child_name
+                )
+            }
+            TypeError::InvalidShutdownValue {
+                found, child_name, ..
+            } => {
+                write!(
+                    f,
+                    "invalid shutdown value `{}` for child `{}`, expected a positive integer or brutal_kill",
+                    found, child_name
+                )
             }
         }
     }
