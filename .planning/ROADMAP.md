@@ -66,10 +66,10 @@ Plans:
   1. `case name do "alice" -> ... "bob" -> ... end` compiles to direct string comparison (no runtime dispatch overhead)
   2. Compiler requires a wildcard/default clause when string match is non-exhaustive (strings are an open set)
   3. String patterns can be mixed with variable bindings in the same case expression (e.g., `"hello" -> ...` alongside `other -> ...`)
-**Plans**: TBD
+**Plans**: 1 plan
 
 Plans:
-- [ ] 13-01: TBD
+- [ ] 13-01-PLAN.md -- Fix codegen placeholders (pattern test + binary compare) and exhaustiveness string extraction, add e2e tests
 
 ### Phase 14: Generic Map Types
 **Goal**: Map type supports generic key/value types so users can build maps with string keys and any value type
@@ -108,6 +108,6 @@ Phases execute in numeric order: 11 -> 12 -> 13 -> 14 -> 15
 |-------|-----------|----------------|--------|-----------|
 | 11. Multi-Clause Functions | v1.1 | 3/3 | ✓ Complete | 2026-02-07 |
 | 12. Pipe Operator Closures | v1.1 | 3/3 | ✓ Complete | 2026-02-07 |
-| 13. String Pattern Matching | v1.1 | 0/TBD | Not started | - |
+| 13. String Pattern Matching | v1.1 | 0/1 | In progress | - |
 | 14. Generic Map Types | v1.1 | 0/TBD | Not started | - |
 | 15. HTTP Actor Model | v1.1 | 0/TBD | Not started | - |
