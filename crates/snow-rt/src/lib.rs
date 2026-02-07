@@ -27,7 +27,7 @@ pub mod string;
 
 // Re-export key functions for convenient Rust-side access and testing.
 pub use actor::{snow_actor_self, snow_actor_spawn, snow_reduction_check, snow_rt_init_actor};
-pub use gc::{snow_gc_alloc, snow_rt_init};
+pub use gc::{snow_gc_alloc, snow_gc_alloc_actor, snow_rt_init};
 pub use panic::snow_panic;
 pub use string::{
     snow_bool_to_string, snow_float_to_string, snow_int_to_string, snow_print, snow_println,

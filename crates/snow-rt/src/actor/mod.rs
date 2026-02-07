@@ -24,10 +24,12 @@
 //! - `snow_actor_self()` -- get current actor's PID
 //! - `snow_reduction_check()` -- decrement reductions, yield if exhausted
 
+pub mod heap;
 pub mod process;
 pub mod scheduler;
 pub mod stack;
 
+pub use heap::{ActorHeap, MessageBuffer};
 pub use process::{
     ExitReason, Message, Priority, Process, ProcessId, ProcessState, TerminateCallback,
     DEFAULT_REDUCTIONS, DEFAULT_STACK_SIZE,
@@ -44,7 +46,7 @@ use parking_lot::Mutex;
 // ---------------------------------------------------------------------------
 
 /// The global scheduler, initialized by `snow_rt_init_actor()`.
-static GLOBAL_SCHEDULER: OnceLock<Mutex<Scheduler>> = OnceLock::new();
+pub(crate) static GLOBAL_SCHEDULER: OnceLock<Mutex<Scheduler>> = OnceLock::new();
 
 /// Get a reference to the global scheduler.
 ///

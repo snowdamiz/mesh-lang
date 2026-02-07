@@ -115,6 +115,45 @@ pub extern "C" fn snow_gc_alloc(size: u64, align: u64) -> *mut u8 {
     arena.alloc(size as usize, align as usize)
 }
 
+/// Allocate `size` bytes with the given `align`ment from the current actor's
+/// per-actor heap.
+///
+/// If called from within an actor context (i.e., a thread running an actor
+/// coroutine), allocates from that actor's heap. Falls back to the global
+/// arena if no actor context is available.
+///
+/// # Safety
+///
+/// The returned pointer must not be freed by the caller. The actor's heap
+/// owns the memory.
+#[no_mangle]
+pub extern "C" fn snow_gc_alloc_actor(size: u64, align: u64) -> *mut u8 {
+    // Try to allocate from the current actor's heap.
+    if let Some(ptr) = try_alloc_from_actor_heap(size as usize, align as usize) {
+        return ptr;
+    }
+    // Fallback to global arena.
+    snow_gc_alloc(size, align)
+}
+
+/// Attempt to allocate from the current actor's per-actor heap.
+///
+/// Returns `Some(ptr)` if running in an actor context and the allocation
+/// succeeded. Returns `None` if no actor context is available.
+fn try_alloc_from_actor_heap(size: usize, align: usize) -> Option<*mut u8> {
+    use crate::actor::stack::get_current_pid;
+
+    let pid = get_current_pid()?;
+
+    // Access the global scheduler's process table to find this actor's heap.
+    use crate::actor::GLOBAL_SCHEDULER;
+    let sched_lock = GLOBAL_SCHEDULER.get()?;
+    let sched = sched_lock.lock();
+    let proc_arc = sched.get_process(pid)?;
+    let mut proc = proc_arc.lock();
+    Some(proc.heap.alloc(size, align))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

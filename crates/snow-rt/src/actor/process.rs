@@ -8,6 +8,8 @@ use std::collections::VecDeque;
 use std::fmt;
 use std::sync::atomic::{AtomicU64, Ordering};
 
+use super::heap::{ActorHeap, MessageBuffer};
+
 // ---------------------------------------------------------------------------
 // ProcessId
 // ---------------------------------------------------------------------------
@@ -105,19 +107,18 @@ impl Priority {
 }
 
 // ---------------------------------------------------------------------------
-// Message (placeholder)
+// Message
 // ---------------------------------------------------------------------------
 
 /// A message in an actor's mailbox.
 ///
-/// This is a placeholder for Plan 03 which will add proper deep-copy
-/// semantics and typed message handling.
+/// Contains a `MessageBuffer` with serialized data and a type tag for
+/// pattern matching dispatch. Messages are deep-copied between actor heaps
+/// on send to maintain complete isolation.
 #[derive(Debug, Clone)]
 pub struct Message {
-    /// Raw message payload.
-    pub data: Vec<u8>,
-    /// Type discriminator for pattern matching on message type.
-    pub type_tag: u64,
+    /// The serialized message payload with type tag.
+    pub buffer: MessageBuffer,
 }
 
 // ---------------------------------------------------------------------------
@@ -176,8 +177,13 @@ pub struct Process {
     /// propagated to all linked PIDs. Populated in Plan 06.
     pub links: Vec<ProcessId>,
 
-    /// FIFO mailbox for incoming messages. Populated in Plan 03.
+    /// FIFO mailbox for incoming messages.
     pub mailbox: VecDeque<Message>,
+
+    /// Per-actor bump allocator heap for memory allocation.
+    /// Each actor has its own heap to avoid global arena contention
+    /// and enable per-actor memory reclamation.
+    pub heap: ActorHeap,
 
     /// Optional cleanup callback invoked before termination.
     /// Set when the actor defines a `terminate do ... end` block.
@@ -194,6 +200,7 @@ impl Process {
             reductions: DEFAULT_REDUCTIONS,
             links: Vec::new(),
             mailbox: VecDeque::new(),
+            heap: ActorHeap::new(),
             terminate_callback: None,
         }
     }
@@ -208,6 +215,7 @@ impl fmt::Debug for Process {
             .field("reductions", &self.reductions)
             .field("links", &self.links)
             .field("mailbox_len", &self.mailbox.len())
+            .field("heap_bytes", &self.heap.total_bytes())
             .field("has_terminate_cb", &self.terminate_callback.is_some())
             .finish()
     }
