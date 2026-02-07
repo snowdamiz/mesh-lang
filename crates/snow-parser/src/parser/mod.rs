@@ -571,8 +571,9 @@ pub(crate) fn parse_item_or_stmt(p: &mut Parser) {
             SyntaxKind::MODULE_KW => items::parse_module_def(p),
             SyntaxKind::STRUCT_KW => items::parse_struct_def(p),
             SyntaxKind::INTERFACE_KW => items::parse_interface_def(p),
+            SyntaxKind::SUPERVISOR_KW => items::parse_supervisor_def(p),
             _ => {
-                p.error("expected `fn`, `module`, `struct`, or `interface` after `pub`");
+                p.error("expected `fn`, `module`, `struct`, `interface`, or `supervisor` after `pub`");
             }
         },
 
@@ -603,6 +604,8 @@ pub(crate) fn parse_item_or_stmt(p: &mut Parser) {
         SyntaxKind::IMPL_KW => items::parse_impl_def(p),
 
         SyntaxKind::ACTOR_KW => items::parse_actor_def(p),
+
+        SyntaxKind::SUPERVISOR_KW => items::parse_supervisor_def(p),
 
         // type at top level followed by IDENT -> sum type def or type alias
         // Distinguish: type Name do ... end (sum type) vs type Name = ... (alias)

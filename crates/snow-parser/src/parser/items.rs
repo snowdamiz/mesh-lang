@@ -954,3 +954,281 @@ fn parse_terminate_clause(p: &mut Parser) {
 
     p.close(m, SyntaxKind::TERMINATE_CLAUSE);
 }
+
+// ── Supervisor Definition ─────────────────────────────────────────────
+
+/// Parse a supervisor block definition: `[pub] supervisor Name do body end`
+///
+/// The supervisor body contains:
+/// - `strategy:` clause (one_for_one, one_for_all, rest_for_one, simple_one_for_one)
+/// - `max_restarts:` clause (integer)
+/// - `max_seconds:` clause (integer)
+/// - `child Name do ... end` blocks with start, restart, shutdown settings
+pub(crate) fn parse_supervisor_def(p: &mut Parser) {
+    let m = p.open();
+
+    // Optional visibility.
+    parse_optional_visibility(p);
+
+    p.advance(); // SUPERVISOR_KW
+
+    // Supervisor name.
+    if p.at(SyntaxKind::IDENT) {
+        let name = p.open();
+        p.advance();
+        p.close(name, SyntaxKind::NAME);
+    } else {
+        p.error("expected supervisor name");
+        p.close(m, SyntaxKind::SUPERVISOR_DEF);
+        return;
+    }
+
+    // Expect `do`.
+    let do_span = p.current_span();
+    p.expect(SyntaxKind::DO_KW);
+
+    // Parse supervisor body.
+    if !p.has_error() {
+        parse_supervisor_body(p);
+    }
+
+    // Expect `end`.
+    if !p.at(SyntaxKind::END_KW) {
+        p.error_with_related(
+            "expected `end` to close supervisor body",
+            do_span,
+            "`do` block started here",
+        );
+    } else {
+        p.advance(); // END_KW
+    }
+
+    p.close(m, SyntaxKind::SUPERVISOR_DEF);
+}
+
+/// Parse the body of a supervisor block.
+///
+/// Parses key-value clauses (strategy, max_restarts, max_seconds) and
+/// child spec blocks (`child Name do ... end`).
+fn parse_supervisor_body(p: &mut Parser) {
+    let m = p.open();
+
+    loop {
+        p.eat_newlines();
+        while p.eat(SyntaxKind::SEMICOLON) {
+            p.eat_newlines();
+        }
+
+        match p.current() {
+            SyntaxKind::END_KW | SyntaxKind::EOF => break,
+            SyntaxKind::IDENT => {
+                let text = p.current_text().to_string();
+                match text.as_str() {
+                    "strategy" => parse_strategy_clause(p),
+                    "max_restarts" => parse_restart_limit(p),
+                    "max_seconds" => parse_seconds_limit(p),
+                    "child" => parse_child_spec(p),
+                    _ => {
+                        p.error(&format!("unexpected `{}` in supervisor body", text));
+                        break;
+                    }
+                }
+            }
+            _ => {
+                p.error("expected `strategy`, `max_restarts`, `max_seconds`, `child`, or `end` in supervisor body");
+                break;
+            }
+        }
+
+        if p.has_error() {
+            break;
+        }
+
+        match p.current() {
+            SyntaxKind::NEWLINE => {
+                p.eat_newlines();
+            }
+            SyntaxKind::SEMICOLON => {}
+            SyntaxKind::END_KW | SyntaxKind::EOF => {}
+            _ => {}
+        }
+    }
+
+    p.close(m, SyntaxKind::BLOCK);
+}
+
+/// Parse `strategy: one_for_one` (or one_for_all, rest_for_one, simple_one_for_one).
+fn parse_strategy_clause(p: &mut Parser) {
+    let m = p.open();
+    p.advance(); // "strategy" IDENT
+
+    p.expect(SyntaxKind::COLON);
+
+    // Strategy value must be a known identifier.
+    if p.at(SyntaxKind::IDENT) {
+        p.advance();
+    } else {
+        p.error("expected strategy name (one_for_one, one_for_all, rest_for_one, simple_one_for_one)");
+    }
+
+    p.close(m, SyntaxKind::STRATEGY_CLAUSE);
+}
+
+/// Parse `max_restarts: 3`.
+fn parse_restart_limit(p: &mut Parser) {
+    let m = p.open();
+    p.advance(); // "max_restarts" IDENT
+
+    p.expect(SyntaxKind::COLON);
+
+    if p.at(SyntaxKind::INT_LITERAL) {
+        p.advance();
+    } else {
+        p.error("expected integer for max_restarts");
+    }
+
+    p.close(m, SyntaxKind::RESTART_LIMIT);
+}
+
+/// Parse `max_seconds: 5`.
+fn parse_seconds_limit(p: &mut Parser) {
+    let m = p.open();
+    p.advance(); // "max_seconds" IDENT
+
+    p.expect(SyntaxKind::COLON);
+
+    if p.at(SyntaxKind::INT_LITERAL) {
+        p.advance();
+    } else {
+        p.error("expected integer for max_seconds");
+    }
+
+    p.close(m, SyntaxKind::SECONDS_LIMIT);
+}
+
+/// Parse a child spec: `child Name do ... end`
+///
+/// The child body contains key-value pairs:
+/// - `start: fn -> spawn(Actor, args) end`
+/// - `restart: permanent | transient | temporary`
+/// - `shutdown: 5000 | brutal_kill`
+fn parse_child_spec(p: &mut Parser) {
+    let m = p.open();
+    p.advance(); // "child" IDENT
+
+    // Child name.
+    if p.at(SyntaxKind::IDENT) {
+        let name = p.open();
+        p.advance();
+        p.close(name, SyntaxKind::NAME);
+    } else {
+        p.error("expected child spec name");
+        p.close(m, SyntaxKind::CHILD_SPEC_DEF);
+        return;
+    }
+
+    // Expect `do`.
+    let do_span = p.current_span();
+    p.expect(SyntaxKind::DO_KW);
+
+    // Parse child body key-value pairs.
+    if !p.has_error() {
+        parse_child_spec_body(p);
+    }
+
+    // Expect `end`.
+    if !p.at(SyntaxKind::END_KW) {
+        p.error_with_related(
+            "expected `end` to close child spec body",
+            do_span,
+            "`do` block started here",
+        );
+    } else {
+        p.advance(); // END_KW
+    }
+
+    p.close(m, SyntaxKind::CHILD_SPEC_DEF);
+}
+
+/// Parse child spec body key-value pairs.
+///
+/// Keys: `start`, `restart`, `shutdown`.
+fn parse_child_spec_body(p: &mut Parser) {
+    let m = p.open();
+
+    loop {
+        p.eat_newlines();
+        while p.eat(SyntaxKind::SEMICOLON) {
+            p.eat_newlines();
+        }
+
+        match p.current() {
+            SyntaxKind::END_KW | SyntaxKind::EOF => break,
+            SyntaxKind::IDENT => {
+                let text = p.current_text().to_string();
+                match text.as_str() {
+                    "start" | "restart" | "shutdown" => {
+                        // Key: value pair. Advance key, expect colon.
+                        p.advance(); // key IDENT
+                        p.expect(SyntaxKind::COLON);
+
+                        if p.has_error() {
+                            break;
+                        }
+
+                        // Parse the value: could be an expression (fn -> ... end),
+                        // an identifier (permanent, brutal_kill), or an integer (5000).
+                        match text.as_str() {
+                            "start" => {
+                                // Parse as an expression (typically a closure).
+                                super::expressions::expr(p);
+                            }
+                            "restart" => {
+                                // Expect an identifier: permanent, transient, temporary.
+                                if p.at(SyntaxKind::IDENT) {
+                                    p.advance();
+                                } else {
+                                    p.error("expected restart strategy (permanent, transient, temporary)");
+                                }
+                            }
+                            "shutdown" => {
+                                // Either an integer or `brutal_kill`.
+                                if p.at(SyntaxKind::INT_LITERAL) {
+                                    p.advance();
+                                } else if p.at(SyntaxKind::IDENT) {
+                                    p.advance(); // brutal_kill
+                                } else {
+                                    p.error("expected shutdown timeout (integer or brutal_kill)");
+                                }
+                            }
+                            _ => unreachable!(),
+                        }
+                    }
+                    _ => {
+                        p.error(&format!("unexpected `{}` in child spec body", text));
+                        break;
+                    }
+                }
+            }
+            _ => {
+                p.error("expected `start`, `restart`, `shutdown`, or `end` in child spec body");
+                break;
+            }
+        }
+
+        if p.has_error() {
+            break;
+        }
+
+        match p.current() {
+            SyntaxKind::NEWLINE => {
+                p.eat_newlines();
+            }
+            SyntaxKind::SEMICOLON => {}
+            SyntaxKind::END_KW | SyntaxKind::EOF => {}
+            _ => {}
+        }
+    }
+
+    p.close(m, SyntaxKind::BLOCK);
+}

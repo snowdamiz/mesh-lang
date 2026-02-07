@@ -45,6 +45,7 @@ pub enum Item {
     TypeAliasDef(TypeAliasDef),
     SumTypeDef(SumTypeDef),
     ActorDef(ActorDef),
+    SupervisorDef(SupervisorDef),
 }
 
 impl Item {
@@ -69,6 +70,9 @@ impl Item {
                 Some(Item::SumTypeDef(SumTypeDef { syntax: node }))
             }
             SyntaxKind::ACTOR_DEF => Some(Item::ActorDef(ActorDef { syntax: node })),
+            SyntaxKind::SUPERVISOR_DEF => {
+                Some(Item::SupervisorDef(SupervisorDef { syntax: node }))
+            }
             _ => None,
         }
     }
@@ -508,5 +512,73 @@ impl TerminateClause {
     /// The body block of the terminate clause.
     pub fn body(&self) -> Option<Block> {
         child_node(&self.syntax)
+    }
+}
+
+// ── Supervisor Definition ──────────────────────────────────────────────
+
+ast_node!(SupervisorDef, SUPERVISOR_DEF);
+
+impl SupervisorDef {
+    /// The supervisor name.
+    pub fn name(&self) -> Option<Name> {
+        child_node(&self.syntax)
+    }
+
+    /// The strategy clause node, if present.
+    pub fn strategy(&self) -> Option<SyntaxNode> {
+        self.syntax
+            .children()
+            .flat_map(|n| {
+                if n.kind() == SyntaxKind::BLOCK {
+                    n.children().collect::<Vec<_>>()
+                } else {
+                    vec![n]
+                }
+            })
+            .find(|c| c.kind() == SyntaxKind::STRATEGY_CLAUSE)
+    }
+
+    /// The max_restarts clause node, if present.
+    pub fn max_restarts(&self) -> Option<SyntaxNode> {
+        self.syntax
+            .children()
+            .flat_map(|n| {
+                if n.kind() == SyntaxKind::BLOCK {
+                    n.children().collect::<Vec<_>>()
+                } else {
+                    vec![n]
+                }
+            })
+            .find(|c| c.kind() == SyntaxKind::RESTART_LIMIT)
+    }
+
+    /// The max_seconds clause node, if present.
+    pub fn max_seconds(&self) -> Option<SyntaxNode> {
+        self.syntax
+            .children()
+            .flat_map(|n| {
+                if n.kind() == SyntaxKind::BLOCK {
+                    n.children().collect::<Vec<_>>()
+                } else {
+                    vec![n]
+                }
+            })
+            .find(|c| c.kind() == SyntaxKind::SECONDS_LIMIT)
+    }
+
+    /// The child spec nodes inside the supervisor body.
+    pub fn child_specs(&self) -> Vec<SyntaxNode> {
+        self.syntax
+            .children()
+            .flat_map(|n| {
+                if n.kind() == SyntaxKind::BLOCK {
+                    n.children().collect::<Vec<_>>()
+                } else {
+                    vec![n]
+                }
+            })
+            .filter(|c| c.kind() == SyntaxKind::CHILD_SPEC_DEF)
+            .collect()
     }
 }

@@ -275,6 +275,18 @@ pub enum SyntaxKind {
     AFTER_CLAUSE,
     /// Terminate callback clause in actor block: `terminate do ... end`
     TERMINATE_CLAUSE,
+
+    // ── Supervisor node kinds ────────────────────────────────────────
+    /// Supervisor block declaration: `supervisor Name do ... end`
+    SUPERVISOR_DEF,
+    /// Child spec inside a supervisor: `child Name do ... end`
+    CHILD_SPEC_DEF,
+    /// Strategy clause in supervisor: `strategy: one_for_one`
+    STRATEGY_CLAUSE,
+    /// Restart limit in supervisor: `max_restarts: 3`
+    RESTART_LIMIT,
+    /// Seconds limit in supervisor: `max_seconds: 5`
+    SECONDS_LIMIT,
 }
 
 impl SyntaxKind {
@@ -607,10 +619,16 @@ mod tests {
             SyntaxKind::LINK_EXPR,
             SyntaxKind::AFTER_CLAUSE,
             SyntaxKind::TERMINATE_CLAUSE,
+            // Supervisor node kinds
+            SyntaxKind::SUPERVISOR_DEF,
+            SyntaxKind::CHILD_SPEC_DEF,
+            SyntaxKind::STRATEGY_CLAUSE,
+            SyntaxKind::RESTART_LIMIT,
+            SyntaxKind::SECONDS_LIMIT,
         ];
         assert!(
-            node_kinds.len() >= 61,
-            "expected at least 61 composite node kinds, got {}",
+            node_kinds.len() >= 66,
+            "expected at least 66 composite node kinds, got {}",
             node_kinds.len()
         );
     }
