@@ -20,7 +20,8 @@ pub enum SyntaxKind {
     /// Wrapper for tokens/nodes that couldn't be parsed.
     ERROR_NODE = 1,
 
-    // ── Keywords (40) ──────────────────────────────────────────────────
+    // ── Keywords (42) ──────────────────────────────────────────────────
+    ACTOR_KW,
     AFTER_KW,
     ALIAS_KW,
     AND_KW,
@@ -54,6 +55,7 @@ pub enum SyntaxKind {
     SPAWN_KW,
     STRUCT_KW,
     SUPERVISOR_KW,
+    TERMINATE_KW,
     TRAIT_KW,
     TRAP_KW,
     TRUE_KW,
@@ -253,6 +255,26 @@ pub enum SyntaxKind {
     AS_PAT,
     /// Guard clause: `when r > 0.0` (for future use)
     GUARD_CLAUSE,
+
+    // ── Actor node kinds ──────────────────────────────────────────────
+    /// Actor block declaration: `actor Name do ... end`
+    ACTOR_DEF,
+    /// Spawn expression: `spawn(func, args...)`
+    SPAWN_EXPR,
+    /// Send expression: `send(pid, message)`
+    SEND_EXPR,
+    /// Receive block expression: `receive do ... end`
+    RECEIVE_EXPR,
+    /// Individual arm within a receive block
+    RECEIVE_ARM,
+    /// Self expression: `self()` -- get own PID
+    SELF_EXPR,
+    /// Link expression: `link(pid)`
+    LINK_EXPR,
+    /// Timeout clause in receive: `after timeout -> body`
+    AFTER_CLAUSE,
+    /// Terminate callback clause in actor block: `terminate do ... end`
+    TERMINATE_CLAUSE,
 }
 
 impl SyntaxKind {
@@ -276,6 +298,7 @@ impl From<TokenKind> for SyntaxKind {
     fn from(kind: TokenKind) -> Self {
         match kind {
             // Keywords
+            TokenKind::Actor => SyntaxKind::ACTOR_KW,
             TokenKind::After => SyntaxKind::AFTER_KW,
             TokenKind::Alias => SyntaxKind::ALIAS_KW,
             TokenKind::And => SyntaxKind::AND_KW,
@@ -309,6 +332,7 @@ impl From<TokenKind> for SyntaxKind {
             TokenKind::Spawn => SyntaxKind::SPAWN_KW,
             TokenKind::Struct => SyntaxKind::STRUCT_KW,
             TokenKind::Supervisor => SyntaxKind::SUPERVISOR_KW,
+            TokenKind::Terminate => SyntaxKind::TERMINATE_KW,
             TokenKind::Trait => SyntaxKind::TRAIT_KW,
             TokenKind::Trap => SyntaxKind::TRAP_KW,
             TokenKind::True => SyntaxKind::TRUE_KW,
@@ -382,7 +406,8 @@ mod tests {
     fn all_token_kinds_convert_to_syntax_kind() {
         // Exhaustive test: every TokenKind variant must convert without panic.
         let all_kinds = [
-            // Keywords (40)
+            // Keywords (42)
+            TokenKind::Actor,
             TokenKind::After,
             TokenKind::Alias,
             TokenKind::And,
@@ -416,6 +441,7 @@ mod tests {
             TokenKind::Spawn,
             TokenKind::Struct,
             TokenKind::Supervisor,
+            TokenKind::Terminate,
             TokenKind::Trait,
             TokenKind::Trap,
             TokenKind::True,
@@ -479,7 +505,7 @@ mod tests {
             TokenKind::Error,
         ];
 
-        assert_eq!(all_kinds.len(), 88, "must test all 88 TokenKind variants");
+        assert_eq!(all_kinds.len(), 90, "must test all 90 TokenKind variants");
 
         for kind in all_kinds {
             let _syntax_kind: SyntaxKind = kind.into();
@@ -571,10 +597,20 @@ mod tests {
             SyntaxKind::OR_PAT,
             SyntaxKind::AS_PAT,
             SyntaxKind::GUARD_CLAUSE,
+            // Actor node kinds
+            SyntaxKind::ACTOR_DEF,
+            SyntaxKind::SPAWN_EXPR,
+            SyntaxKind::SEND_EXPR,
+            SyntaxKind::RECEIVE_EXPR,
+            SyntaxKind::RECEIVE_ARM,
+            SyntaxKind::SELF_EXPR,
+            SyntaxKind::LINK_EXPR,
+            SyntaxKind::AFTER_CLAUSE,
+            SyntaxKind::TERMINATE_CLAUSE,
         ];
         assert!(
-            node_kinds.len() >= 52,
-            "expected at least 52 composite node kinds, got {}",
+            node_kinds.len() >= 61,
+            "expected at least 61 composite node kinds, got {}",
             node_kinds.len()
         );
     }

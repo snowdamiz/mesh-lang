@@ -235,3 +235,41 @@ fn test_consecutive_newlines() {
     let tokens = tokenize_snapshot("let x = 1\n\n\nlet y = 2");
     assert_yaml_snapshot!(tokens);
 }
+
+// ── Actor keyword tests (plan 06-02) ─────────────────────────────────
+
+#[test]
+fn test_actor_keyword() {
+    let tokens = tokenize_snapshot("actor MyCounter do end");
+    assert_yaml_snapshot!(tokens);
+}
+
+#[test]
+fn test_terminate_keyword() {
+    let tokens = tokenize_snapshot("terminate do end");
+    assert_yaml_snapshot!(tokens);
+}
+
+#[test]
+fn test_spawn_expr_tokens() {
+    let tokens = tokenize_snapshot("spawn(func, args)");
+    assert_yaml_snapshot!(tokens);
+}
+
+#[test]
+fn test_send_expr_tokens() {
+    let tokens = tokenize_snapshot("send(pid, msg)");
+    assert_yaml_snapshot!(tokens);
+}
+
+#[test]
+fn test_receive_block_tokens() {
+    let tokens = tokenize_snapshot("receive do end");
+    assert_yaml_snapshot!(tokens);
+}
+
+#[test]
+fn test_self_expr_tokens() {
+    let tokens = tokenize_snapshot("self()");
+    assert_yaml_snapshot!(tokens);
+}

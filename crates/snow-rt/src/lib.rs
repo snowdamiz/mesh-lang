@@ -11,6 +11,7 @@
 //! - [`gc`]: Arena/bump allocator for GC-managed memory (Phase 5: no collection)
 //! - [`string`]: GC-managed string operations (create, concat, format, print)
 //! - [`panic`]: Runtime panic handler with source locations
+//! - [`actor`]: Actor runtime -- PCB, M:N scheduler, corosensei coroutines
 //!
 //! ## ABI Contract
 //!
@@ -19,6 +20,7 @@
 //! function signatures must remain stable across Snow compiler versions
 //! (or at least across a single phase).
 
+pub mod actor;
 pub mod gc;
 pub mod panic;
 pub mod string;

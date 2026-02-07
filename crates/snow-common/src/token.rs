@@ -26,7 +26,8 @@ impl Token {
 /// identifiers, and special tokens.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub enum TokenKind {
-    // ── Keywords (40) ──────────────────────────────────────────────────
+    // ── Keywords (42) ──────────────────────────────────────────────────
+    Actor,
     After,
     Alias,
     And,
@@ -61,6 +62,7 @@ pub enum TokenKind {
     Spawn,
     Struct,
     Supervisor,
+    Terminate,
     Trait,
     Trap,
     True,
@@ -185,6 +187,7 @@ pub enum TokenKind {
 /// an identifier-shaped token.
 pub fn keyword_from_str(s: &str) -> Option<TokenKind> {
     match s {
+        "actor" => Some(TokenKind::Actor),
         "after" => Some(TokenKind::After),
         "alias" => Some(TokenKind::Alias),
         "and" => Some(TokenKind::And),
@@ -218,6 +221,7 @@ pub fn keyword_from_str(s: &str) -> Option<TokenKind> {
         "spawn" => Some(TokenKind::Spawn),
         "struct" => Some(TokenKind::Struct),
         "supervisor" => Some(TokenKind::Supervisor),
+        "terminate" => Some(TokenKind::Terminate),
         "trait" => Some(TokenKind::Trait),
         "trap" => Some(TokenKind::Trap),
         "true" => Some(TokenKind::True),
@@ -236,6 +240,7 @@ mod tests {
     #[test]
     fn keyword_from_str_recognizes_all_keywords() {
         let keywords = [
+            ("actor", TokenKind::Actor),
             ("after", TokenKind::After),
             ("alias", TokenKind::Alias),
             ("and", TokenKind::And),
@@ -269,6 +274,7 @@ mod tests {
             ("spawn", TokenKind::Spawn),
             ("struct", TokenKind::Struct),
             ("supervisor", TokenKind::Supervisor),
+            ("terminate", TokenKind::Terminate),
             ("trait", TokenKind::Trait),
             ("trap", TokenKind::Trap),
             ("true", TokenKind::True),
@@ -286,8 +292,8 @@ mod tests {
             );
         }
 
-        // Verify we tested all 40 keywords
-        assert_eq!(keywords.len(), 40, "must test all 40 keywords");
+        // Verify we tested all 42 keywords
+        assert_eq!(keywords.len(), 42, "must test all 42 keywords");
     }
 
     #[test]
@@ -310,10 +316,10 @@ mod tests {
     #[test]
     fn token_kind_variant_count() {
         // Count variants by checking that all categories are covered.
-        // Keywords: 40, Operators: 23, Delimiters: 6, Punctuation: 5,
-        // Literals: 7, Identifiers/comments: 4, Special: 2 = 87 total
+        // Keywords: 42, Operators: 24, Delimiters: 6, Punctuation: 5,
+        // Literals: 7, Identifiers/comments: 4, Special: 2 = 90 total
         // This test documents the expected count.
-        let keywords = 40u32;
+        let keywords = 42u32;
         let operators = 24;
         let delimiters = 6;
         let punctuation = 5;
@@ -321,6 +327,6 @@ mod tests {
         let ident_comments = 4;
         let special = 2;
         let total = keywords + operators + delimiters + punctuation + literals + ident_comments + special;
-        assert_eq!(total, 88, "TokenKind should have 88 variants");
+        assert_eq!(total, 90, "TokenKind should have 90 variants");
     }
 }

@@ -2,7 +2,15 @@
 name = "snow-rt"
 version = "0.1.0"
 edition = "2021"
-description = "Snow language runtime library (GC, strings, panic handler)"
+description = "Snow language runtime library (GC, strings, panic handler, actor scheduler)"
 
 [lib]
 crate-type = ["staticlib", "lib"]
+
+[dependencies]
+crossbeam-deque = "0.8"
+crossbeam-utils = "0.8"
+crossbeam-channel = "0.5"
+corosensei = "0.3"
+parking_lot = "0.12"
+rustc-hash = { workspace = true }
