@@ -107,9 +107,39 @@ impl FnDef {
         child_node(&self.syntax)
     }
 
-    /// The function body block.
+    /// The function body block (for `do ... end` form).
+    ///
+    /// Returns `None` for `= expr` form functions -- use `expr_body()` instead.
     pub fn body(&self) -> Option<Block> {
         child_node(&self.syntax)
+    }
+
+    /// The guard clause (`when expr`), if present.
+    ///
+    /// Used in multi-clause function definitions: `fn abs(n) when n < 0 = -n`
+    pub fn guard(&self) -> Option<GuardClause> {
+        child_node(&self.syntax)
+    }
+
+    /// The expression body for `= expr` form functions.
+    ///
+    /// Returns the expression from the FN_EXPR_BODY node. Returns `None` for
+    /// `do ... end` form functions.
+    pub fn expr_body(&self) -> Option<super::expr::Expr> {
+        self.syntax
+            .children()
+            .find(|n| n.kind() == SyntaxKind::FN_EXPR_BODY)
+            .and_then(|body_node| body_node.children().find_map(super::expr::Expr::cast))
+    }
+
+    /// Whether this function definition uses the `= expr` body form.
+    ///
+    /// Returns `true` for `fn fib(0) = 0`, `false` for `fn foo(x) do ... end`.
+    /// Useful for the type checker to detect multi-clause function candidates.
+    pub fn has_eq_body(&self) -> bool {
+        self.syntax
+            .children()
+            .any(|n| n.kind() == SyntaxKind::FN_EXPR_BODY)
     }
 }
 
@@ -130,6 +160,9 @@ ast_node!(Param, PARAM);
 
 impl Param {
     /// The parameter name token (IDENT).
+    ///
+    /// For regular parameters like `fn foo(x)`, returns the IDENT token.
+    /// For pattern parameters like `fn foo(0)`, returns `None` -- use `pattern()` instead.
     pub fn name(&self) -> Option<SyntaxToken> {
         child_token(&self.syntax, SyntaxKind::IDENT)
     }
@@ -137,6 +170,17 @@ impl Param {
     /// The type annotation, if present.
     pub fn type_annotation(&self) -> Option<TypeAnnotation> {
         child_node(&self.syntax)
+    }
+
+    /// The pattern child, if this parameter contains a pattern instead of a plain IDENT.
+    ///
+    /// Returns `Some(pattern)` for literal, wildcard, constructor, or tuple patterns
+    /// (e.g., `fn fib(0)`, `fn foo(_)`, `fn bar(Some(x))`).
+    /// Returns `None` for regular named parameters (e.g., `fn foo(x)`).
+    pub fn pattern(&self) -> Option<super::pat::Pattern> {
+        self.syntax
+            .children()
+            .find_map(super::pat::Pattern::cast)
     }
 }
 
@@ -516,6 +560,36 @@ impl TerminateClause {
     /// The body block of the terminate clause.
     pub fn body(&self) -> Option<Block> {
         child_node(&self.syntax)
+    }
+}
+
+// ── Guard Clause ────────────────────────────────────────────────────────
+
+ast_node!(GuardClause, GUARD_CLAUSE);
+
+impl GuardClause {
+    /// The guard expression (the condition after `when`).
+    ///
+    /// For `fn abs(n) when n < 0 = -n`, this returns the expression `n < 0`.
+    pub fn expr(&self) -> Option<super::expr::Expr> {
+        self.syntax
+            .children()
+            .find_map(super::expr::Expr::cast)
+    }
+}
+
+// ── FnExprBody ──────────────────────────────────────────────────────────
+
+ast_node!(FnExprBody, FN_EXPR_BODY);
+
+impl FnExprBody {
+    /// The body expression.
+    ///
+    /// For `fn fib(0) = 0`, this returns the expression `0`.
+    pub fn expr(&self) -> Option<super::expr::Expr> {
+        self.syntax
+            .children()
+            .find_map(super::expr::Expr::cast)
     }
 }
 

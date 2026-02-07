@@ -2008,3 +2008,111 @@ fn fn_tuple_pattern_param() {
         .any(|n| n.kind() == SyntaxKind::TUPLE_PAT);
     assert!(has_tuple_pat, "expected TUPLE_PAT child in param for fn swap((a, b))");
 }
+
+// ── AST Accessor Tests for Multi-Clause Functions ────────────────────
+
+#[test]
+fn ast_fn_def_guard_accessor() {
+    let source = "fn abs(n) when n < 0 = -n";
+    let p = parse(source);
+    assert!(p.ok(), "parse errors: {:?}", p.errors());
+
+    let tree = p.tree();
+    let fn_def: FnDef = tree.fn_defs().next().unwrap();
+
+    // guard() should return Some
+    let guard = fn_def.guard();
+    assert!(guard.is_some(), "FnDef::guard() should return Some for guarded function");
+
+    // guard().expr() should return the guard expression
+    let guard_expr = guard.unwrap().expr();
+    assert!(guard_expr.is_some(), "GuardClause::expr() should return the guard expression");
+}
+
+#[test]
+fn ast_fn_def_no_guard() {
+    let source = "fn fib(0) = 0";
+    let p = parse(source);
+    assert!(p.ok(), "parse errors: {:?}", p.errors());
+
+    let tree = p.tree();
+    let fn_def: FnDef = tree.fn_defs().next().unwrap();
+
+    // guard() should return None for non-guarded functions
+    assert!(fn_def.guard().is_none(), "FnDef::guard() should return None");
+}
+
+#[test]
+fn ast_fn_def_expr_body_accessor() {
+    let source = "fn fib(0) = 0";
+    let p = parse(source);
+    assert!(p.ok(), "parse errors: {:?}", p.errors());
+
+    let tree = p.tree();
+    let fn_def: FnDef = tree.fn_defs().next().unwrap();
+
+    // expr_body() should return the body expression
+    let expr_body = fn_def.expr_body();
+    assert!(expr_body.is_some(), "FnDef::expr_body() should return Some for = expr form");
+
+    // has_eq_body() should be true
+    assert!(fn_def.has_eq_body(), "FnDef::has_eq_body() should be true for = expr form");
+
+    // body() should return None (no do/end block)
+    assert!(fn_def.body().is_none(), "FnDef::body() should return None for = expr form");
+}
+
+#[test]
+fn ast_fn_def_do_end_accessors() {
+    let source = "fn foo(x) do\n  x + 1\nend";
+    let p = parse(source);
+    assert!(p.ok(), "parse errors: {:?}", p.errors());
+
+    let tree = p.tree();
+    let fn_def: FnDef = tree.fn_defs().next().unwrap();
+
+    // body() should return Some for do/end form
+    assert!(fn_def.body().is_some(), "FnDef::body() should return Some for do/end form");
+
+    // has_eq_body() should be false
+    assert!(!fn_def.has_eq_body(), "FnDef::has_eq_body() should be false for do/end form");
+
+    // expr_body() should return None
+    assert!(fn_def.expr_body().is_none(), "FnDef::expr_body() should return None for do/end form");
+}
+
+#[test]
+fn ast_param_pattern_accessor() {
+    // Test literal pattern param
+    let source = "fn fib(0) = 0";
+    let p = parse(source);
+    assert!(p.ok(), "parse errors: {:?}", p.errors());
+
+    let tree = p.tree();
+    let fn_def: FnDef = tree.fn_defs().next().unwrap();
+    let param = fn_def.param_list().unwrap().params().next().unwrap();
+
+    // pattern() should return Some for literal pattern
+    assert!(param.pattern().is_some(), "Param::pattern() should return Some for literal pattern");
+
+    // name() may return None for pattern params (no direct IDENT child in some cases)
+}
+
+#[test]
+fn ast_param_ident_no_pattern() {
+    // Regular ident param should have no pattern
+    let source = "fn foo(x) do\n  x\nend";
+    let p = parse(source);
+    assert!(p.ok(), "parse errors: {:?}", p.errors());
+
+    let tree = p.tree();
+    let fn_def: FnDef = tree.fn_defs().next().unwrap();
+    let param = fn_def.param_list().unwrap().params().next().unwrap();
+
+    // pattern() should return None for plain ident params
+    assert!(param.pattern().is_none(), "Param::pattern() should return None for ident param");
+
+    // name() should return the IDENT
+    assert!(param.name().is_some(), "Param::name() should return Some for ident param");
+    assert_eq!(param.name().unwrap().text(), "x");
+}
