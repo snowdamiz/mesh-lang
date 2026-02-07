@@ -10,6 +10,7 @@ snow-lexer = { path = "../snow-lexer" }
 snow-parser = { path = "../snow-parser" }
 snow-typeck = { path = "../snow-typeck" }
 snow-codegen = { path = "../snow-codegen" }
+snow-rt = { path = "../snow-rt" }
 inkwell = { workspace = true }
 rowan = { workspace = true }
 rustyline = { workspace = true }

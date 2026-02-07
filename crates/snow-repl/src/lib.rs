@@ -278,15 +278,132 @@ fn load_file(path: &str, session: &mut ReplSession) -> CommandResult {
 
 /// Run the interactive REPL loop.
 ///
-/// This is the main entry point for the REPL. It reads input from the user,
-/// evaluates it using JIT compilation, and prints the result.
+/// This is the main entry point for the REPL. It reads input from the user
+/// using rustyline for line editing and history, evaluates it using JIT
+/// compilation through the full Snow compiler pipeline, and prints results.
 ///
-/// Full implementation with rustyline integration is provided in Plan 05.
-/// For now, this exports the core types and JIT engine.
-pub fn run_repl(_config: &ReplConfig) -> Result<(), String> {
-    // Full rustyline-based REPL loop will be implemented in Plan 05.
-    // The JIT engine and session management are ready for integration.
-    Err("REPL loop not yet implemented -- use jit_eval() directly".to_string())
+/// The actor runtime is initialized at startup so that spawn/send/receive
+/// work in the REPL.
+pub fn run_repl(config: &ReplConfig) -> Result<(), String> {
+    use rustyline::error::ReadlineError;
+    use rustyline::DefaultEditor;
+
+    // Initialize runtime (GC arena + actor scheduler) once at startup
+    jit::init_runtime();
+
+    let mut editor = DefaultEditor::new().map_err(|e| format!("Failed to create editor: {}", e))?;
+
+    // Load history from file (ignore errors -- first run won't have history)
+    let history_path = dirs_for_history();
+    if let Some(ref path) = history_path {
+        let _ = editor.load_history(path);
+    }
+
+    let mut session = ReplSession::new();
+
+    println!("Snow REPL v0.1.0 (type :help for commands)");
+
+    let mut input_buffer = String::new();
+    let mut in_continuation = false;
+
+    loop {
+        let prompt = if in_continuation {
+            &config.continuation
+        } else {
+            &config.prompt
+        };
+
+        match editor.readline(prompt) {
+            Ok(line) => {
+                if in_continuation {
+                    input_buffer.push('\n');
+                    input_buffer.push_str(&line);
+                } else {
+                    input_buffer = line;
+                }
+
+                // Check if input is complete (all blocks balanced)
+                if !is_input_complete(&input_buffer) {
+                    in_continuation = true;
+                    continue;
+                }
+
+                in_continuation = false;
+                let input = input_buffer.trim().to_string();
+
+                if input.is_empty() {
+                    continue;
+                }
+
+                // Add to history
+                let _ = editor.add_history_entry(&input);
+
+                // Check if it's a REPL command
+                if is_command(&input) {
+                    match process_command(&input, &mut session) {
+                        CommandResult::Output(text) => {
+                            if !text.is_empty() {
+                                println!("{}", text);
+                            }
+                        }
+                        CommandResult::TypeInfo(info) => println!("{}", info),
+                        CommandResult::Quit => {
+                            println!("Goodbye!");
+                            break;
+                        }
+                        CommandResult::Continue => {}
+                        CommandResult::Error(msg) => eprintln!("Error: {}", msg),
+                    }
+                    continue;
+                }
+
+                // Evaluate the input
+                match jit::jit_eval(&input, &mut session) {
+                    Ok(result) => {
+                        let formatted = format_result(&result);
+                        if !formatted.is_empty() {
+                            println!("{}", formatted);
+                        }
+                    }
+                    Err(msg) => eprintln!("Error: {}", msg),
+                }
+            }
+            Err(ReadlineError::Eof) => {
+                // Ctrl-D
+                println!("Goodbye!");
+                break;
+            }
+            Err(ReadlineError::Interrupted) => {
+                // Ctrl-C -- cancel current input, continue loop
+                if in_continuation {
+                    in_continuation = false;
+                    input_buffer.clear();
+                    println!("^C");
+                } else {
+                    println!("^C (use :quit or Ctrl-D to exit)");
+                }
+            }
+            Err(e) => {
+                eprintln!("Error: {}", e);
+                break;
+            }
+        }
+    }
+
+    // Save history
+    if let Some(ref path) = history_path {
+        let _ = editor.save_history(path);
+    }
+
+    Ok(())
+}
+
+/// Get the history file path, if available.
+fn dirs_for_history() -> Option<std::path::PathBuf> {
+    // Use $HOME/.snow_repl_history
+    std::env::var("HOME")
+        .ok()
+        .map(|home| std::path::PathBuf::from(home).join(".snow_repl_history"))
 }
 
 #[cfg(test)]

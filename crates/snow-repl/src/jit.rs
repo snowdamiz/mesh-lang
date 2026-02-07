@@ -3,8 +3,195 @@
 //! Uses the full Snow compiler pipeline (parse -> typecheck -> MIR -> LLVM IR)
 //! to compile expressions, then executes them via LLVM's JIT execution engine.
 //! This ensures REPL behavior is identical to compiled code.
+//!
+//! The actor runtime (snow-rt) is linked and its symbols are registered with
+//! LLVM so that JIT-compiled code can call runtime functions like
+//! `snow_gc_alloc`, `snow_actor_spawn`, etc.
 
 use crate::session::ReplSession;
+use std::sync::Once;
+
+static RUNTIME_INIT: Once = Once::new();
+
+/// Initialize the Snow runtime (GC + actor scheduler) and register all
+/// runtime symbols with LLVM so that JIT-compiled code can resolve them.
+///
+/// This is called once at REPL startup. Subsequent calls are no-ops.
+pub fn init_runtime() {
+    RUNTIME_INIT.call_once(|| {
+        // Initialize the GC arena
+        snow_rt::snow_rt_init();
+
+        // Initialize the actor scheduler with default number of workers
+        snow_rt::snow_rt_init_actor(0);
+
+        // Register snow-rt symbols with LLVM's global symbol table so the
+        // JIT execution engine can resolve them. LLVM's MCJIT uses dlsym
+        // on some platforms, but explicit registration is more reliable.
+        register_runtime_symbols();
+    });
+}
+
+/// Register all snow-rt extern "C" symbols with LLVM's dynamic lookup.
+///
+/// This calls LLVMAddSymbol for each runtime function, making them
+/// available to JIT-compiled code. Without this, the JIT engine cannot
+/// resolve calls to runtime functions like snow_gc_alloc, snow_print, etc.
+fn register_runtime_symbols() {
+    // LLVMAddSymbol is the LLVM C API for registering symbols with the
+    // JIT's symbol resolver. inkwell 0.8 doesn't expose it directly,
+    // so we call into llvm-sys through the re-exported C bindings.
+    extern "C" {
+        fn LLVMAddSymbol(name: *const std::ffi::c_char, value: *mut std::ffi::c_void);
+    }
+
+    /// Register a single symbol with LLVM's JIT resolver.
+    fn add_sym(name: &str, ptr: *const ()) {
+        let c_name = std::ffi::CString::new(name).unwrap();
+        unsafe {
+            LLVMAddSymbol(c_name.as_ptr(), ptr as *mut std::ffi::c_void);
+        }
+    }
+
+    // GC / runtime init
+    add_sym("snow_rt_init", snow_rt::snow_rt_init as *const ());
+    add_sym("snow_gc_alloc", snow_rt::snow_gc_alloc as *const ());
+    add_sym("snow_gc_alloc_actor", snow_rt::snow_gc_alloc_actor as *const ());
+
+    // IO
+    add_sym("snow_print", snow_rt::snow_print as *const ());
+    add_sym("snow_println", snow_rt::snow_println as *const ());
+    add_sym("snow_io_read_line", snow_rt::snow_io_read_line as *const ());
+    add_sym("snow_io_eprintln", snow_rt::snow_io_eprintln as *const ());
+
+    // String operations
+    add_sym("snow_string_new", snow_rt::snow_string_new as *const ());
+    add_sym("snow_string_concat", snow_rt::snow_string_concat as *const ());
+    add_sym("snow_string_length", snow_rt::snow_string_length as *const ());
+    add_sym("snow_string_eq", snow_rt::snow_string_eq as *const ());
+    add_sym("snow_string_contains", snow_rt::snow_string_contains as *const ());
+    add_sym("snow_string_slice", snow_rt::snow_string_slice as *const ());
+    add_sym("snow_string_replace", snow_rt::snow_string_replace as *const ());
+    add_sym("snow_string_starts_with", snow_rt::snow_string_starts_with as *const ());
+    add_sym("snow_string_ends_with", snow_rt::snow_string_ends_with as *const ());
+    add_sym("snow_string_trim", snow_rt::snow_string_trim as *const ());
+    add_sym("snow_string_to_upper", snow_rt::snow_string_to_upper as *const ());
+    add_sym("snow_string_to_lower", snow_rt::snow_string_to_lower as *const ());
+    add_sym("snow_int_to_string", snow_rt::snow_int_to_string as *const ());
+    add_sym("snow_bool_to_string", snow_rt::snow_bool_to_string as *const ());
+    add_sym("snow_float_to_string", snow_rt::snow_float_to_string as *const ());
+
+    // Panic
+    add_sym("snow_panic", snow_rt::snow_panic as *const ());
+
+    // Actor runtime
+    add_sym("snow_rt_init_actor", snow_rt::snow_rt_init_actor as *const ());
+    add_sym("snow_rt_run_scheduler", snow_rt::snow_rt_run_scheduler as *const ());
+    add_sym("snow_actor_spawn", snow_rt::snow_actor_spawn as *const ());
+    add_sym("snow_actor_send", snow_rt::snow_actor_send as *const ());
+    add_sym("snow_actor_receive", snow_rt::snow_actor_receive as *const ());
+    add_sym("snow_actor_self", snow_rt::snow_actor_self as *const ());
+    add_sym("snow_actor_link", snow_rt::snow_actor_link as *const ());
+    add_sym("snow_actor_set_terminate", snow_rt::snow_actor_set_terminate as *const ());
+    add_sym("snow_actor_register", snow_rt::snow_actor_register as *const ());
+    add_sym("snow_actor_whereis", snow_rt::snow_actor_whereis as *const ());
+    add_sym("snow_reduction_check", snow_rt::snow_reduction_check as *const ());
+
+    // Services
+    add_sym("snow_service_call", snow_rt::snow_service_call as *const ());
+    add_sym("snow_service_reply", snow_rt::snow_service_reply as *const ());
+
+    // Collections -- List
+    add_sym("snow_list_new", snow_rt::snow_list_new as *const ());
+    add_sym("snow_list_from_array", snow_rt::snow_list_from_array as *const ());
+    add_sym("snow_list_get", snow_rt::snow_list_get as *const ());
+    add_sym("snow_list_head", snow_rt::snow_list_head as *const ());
+    add_sym("snow_list_tail", snow_rt::snow_list_tail as *const ());
+    add_sym("snow_list_length", snow_rt::snow_list_length as *const ());
+    add_sym("snow_list_append", snow_rt::snow_list_append as *const ());
+    add_sym("snow_list_concat", snow_rt::snow_list_concat as *const ());
+    add_sym("snow_list_map", snow_rt::snow_list_map as *const ());
+    add_sym("snow_list_filter", snow_rt::snow_list_filter as *const ());
+    add_sym("snow_list_reduce", snow_rt::snow_list_reduce as *const ());
+    add_sym("snow_list_reverse", snow_rt::snow_list_reverse as *const ());
+
+    // Collections -- Map
+    add_sym("snow_map_new", snow_rt::snow_map_new as *const ());
+    add_sym("snow_map_put", snow_rt::snow_map_put as *const ());
+    add_sym("snow_map_get", snow_rt::snow_map_get as *const ());
+    add_sym("snow_map_delete", snow_rt::snow_map_delete as *const ());
+    add_sym("snow_map_has_key", snow_rt::snow_map_has_key as *const ());
+    add_sym("snow_map_size", snow_rt::snow_map_size as *const ());
+    add_sym("snow_map_keys", snow_rt::snow_map_keys as *const ());
+    add_sym("snow_map_values", snow_rt::snow_map_values as *const ());
+
+    // Collections -- Set
+    add_sym("snow_set_new", snow_rt::snow_set_new as *const ());
+    add_sym("snow_set_add", snow_rt::snow_set_add as *const ());
+    add_sym("snow_set_remove", snow_rt::snow_set_remove as *const ());
+    add_sym("snow_set_contains", snow_rt::snow_set_contains as *const ());
+    add_sym("snow_set_size", snow_rt::snow_set_size as *const ());
+    add_sym("snow_set_union", snow_rt::snow_set_union as *const ());
+    add_sym("snow_set_intersection", snow_rt::snow_set_intersection as *const ());
+
+    // Collections -- Queue
+    add_sym("snow_queue_new", snow_rt::snow_queue_new as *const ());
+    add_sym("snow_queue_push", snow_rt::snow_queue_push as *const ());
+    add_sym("snow_queue_pop", snow_rt::snow_queue_pop as *const ());
+    add_sym("snow_queue_peek", snow_rt::snow_queue_peek as *const ());
+    add_sym("snow_queue_size", snow_rt::snow_queue_size as *const ());
+    add_sym("snow_queue_is_empty", snow_rt::snow_queue_is_empty as *const ());
+
+    // Collections -- Range
+    add_sym("snow_range_new", snow_rt::snow_range_new as *const ());
+    add_sym("snow_range_to_list", snow_rt::snow_range_to_list as *const ());
+    add_sym("snow_range_length", snow_rt::snow_range_length as *const ());
+    add_sym("snow_range_map", snow_rt::snow_range_map as *const ());
+    add_sym("snow_range_filter", snow_rt::snow_range_filter as *const ());
+
+    // Collections -- Tuple
+    add_sym("snow_tuple_first", snow_rt::snow_tuple_first as *const ());
+    add_sym("snow_tuple_second", snow_rt::snow_tuple_second as *const ());
+    add_sym("snow_tuple_nth", snow_rt::snow_tuple_nth as *const ());
+    add_sym("snow_tuple_size", snow_rt::snow_tuple_size as *const ());
+
+    // File operations
+    add_sym("snow_file_read", snow_rt::snow_file_read as *const ());
+    add_sym("snow_file_write", snow_rt::snow_file_write as *const ());
+    add_sym("snow_file_append", snow_rt::snow_file_append as *const ());
+    add_sym("snow_file_exists", snow_rt::snow_file_exists as *const ());
+    add_sym("snow_file_delete", snow_rt::snow_file_delete as *const ());
+
+    // Environment
+    add_sym("snow_env_get", snow_rt::snow_env_get as *const ());
+    add_sym("snow_env_args", snow_rt::snow_env_args as *const ());
+
+    // JSON
+    add_sym("snow_json_parse", snow_rt::snow_json_parse as *const ());
+    add_sym("snow_json_encode", snow_rt::snow_json_encode as *const ());
+    add_sym("snow_json_from_string", snow_rt::snow_json_from_string as *const ());
+    add_sym("snow_json_from_int", snow_rt::snow_json_from_int as *const ());
+    add_sym("snow_json_from_float", snow_rt::snow_json_from_float as *const ());
+    add_sym("snow_json_from_bool", snow_rt::snow_json_from_bool as *const ());
+    add_sym("snow_json_encode_string", snow_rt::snow_json_encode_string as *const ());
+    add_sym("snow_json_encode_int", snow_rt::snow_json_encode_int as *const ());
+    add_sym("snow_json_encode_bool", snow_rt::snow_json_encode_bool as *const ());
+    add_sym("snow_json_encode_list", snow_rt::snow_json_encode_list as *const ());
+    add_sym("snow_json_encode_map", snow_rt::snow_json_encode_map as *const ());
+
+    // HTTP
+    add_sym("snow_http_get", snow_rt::snow_http_get as *const ());
+    add_sym("snow_http_post", snow_rt::snow_http_post as *const ());
+    add_sym("snow_http_router", snow_rt::snow_http_router as *const ());
+    add_sym("snow_http_route", snow_rt::snow_http_route as *const ());
+    add_sym("snow_http_serve", snow_rt::snow_http_serve as *const ());
+    add_sym("snow_http_request_method", snow_rt::snow_http_request_method as *const ());
+    add_sym("snow_http_request_path", snow_rt::snow_http_request_path as *const ());
+    add_sym("snow_http_request_body", snow_rt::snow_http_request_body as *const ());
+    add_sym("snow_http_request_header", snow_rt::snow_http_request_header as *const ());
+    add_sym("snow_http_request_query", snow_rt::snow_http_request_query as *const ());
+    add_sym("snow_http_response_new", snow_rt::snow_http_response_new as *const ());
+}
 
 /// The result of evaluating an expression in the REPL.
 #[derive(Debug, Clone)]
@@ -320,5 +507,19 @@ mod tests {
         let mut session = ReplSession::new();
         let result = jit_eval("   ", &mut session).unwrap();
         assert_eq!(result.ty, "Unit");
+    }
+
+    #[test]
+    fn test_init_runtime_is_idempotent() {
+        // Should not panic when called multiple times
+        init_runtime();
+        init_runtime();
+    }
+
+    #[test]
+    fn test_repl_config_default() {
+        let config = crate::ReplConfig::default();
+        assert_eq!(config.prompt, "snow> ");
+        assert_eq!(config.continuation, "  ... ");
     }
 }
