@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-02-05)
 
 **Core value:** Expressive, readable concurrency -- writing concurrent programs should feel as natural as sequential code, with supervision and fault tolerance built in.
-**Current focus:** Phase 6 complete -- Actor Runtime fully integrated and verified. 7 E2E test programs, 100K actor benchmark (~2.78s), all 6 success criteria met. Ready for Phase 7 (Supervision & Fault Tolerance).
+**Current focus:** Phase 7 in progress -- Supervisor runtime complete (07-01). All four OTP strategies implemented, restart limits, ordered shutdown, ExitReason expansion, 6 extern C ABI functions. Ready for compiler integration (07-02).
 
 ## Current Position
 
-Phase: 6 of 10 (Actor Runtime) -- COMPLETE
-Plan: 7 of 7 in current phase (all done)
-Status: Phase complete
-Last activity: 2026-02-07 -- Completed 06-07-PLAN.md (E2E integration tests, 100K benchmark)
+Phase: 7 of 10 (Supervision & Fault Tolerance)
+Plan: 1 of 3 in current phase
+Status: In progress
+Last activity: 2026-02-07 -- Completed 07-01-PLAN.md (Supervisor runtime)
 
-Progress: [██████████████████████████████░░░░░░░░░░░░░░] 67% (30 plans of ~45 estimated total)
+Progress: [████████████████████████████████░░░░░░░░░░░░] 69% (31 plans of ~45 estimated total)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 30
+- Total plans completed: 31
 - Average duration: 9min
-- Total execution time: 280min
+- Total execution time: 288min
 
 **By Phase:**
 
@@ -33,9 +33,10 @@ Progress: [███████████████████████
 | 04-pattern-matching-adts | 5/5 | 42min | 8min |
 | 05-llvm-codegen-native-binaries | 5/5 | 50min | 10min |
 | 06-actor-runtime | 7/7 | 70min | 10min |
+| 07-supervision-fault-tolerance | 1/3 | 8min | 8min |
 
 **Recent Trend:**
-- Last 5 plans: 06-03 (7min), 06-04 (9min), 06-05 (7min), 06-06 (6min), 06-07 (21min)
+- Last 5 plans: 06-05 (7min), 06-06 (6min), 06-07 (21min), 07-01 (8min)
 
 *Updated after each plan completion*
 
@@ -181,6 +182,11 @@ Recent decisions affecting current work:
 - [06-07]: Compiler emits snow_main (not main) to avoid symbol collision with runtime
 - [06-07]: Actor spawn functions return Unit at MIR/codegen level (runtime allocates Pid externally)
 - [06-07]: Reduction check only yields when inside coroutine context (guards against bare main thread)
+- [07-01]: OnceLock + Mutex<FxHashMap> for global supervisor state registry (no lazy_static dependency)
+- [07-01]: Supervisor state stored in global registry keyed by PID (coroutine entry only receives *const u8)
+- [07-01]: Shutdown treated as non-crashing for exit propagation (same as Normal) -- Transient children do NOT restart on Shutdown
+- [07-01]: Custom(String) treated as crashing for exit propagation (same as Error)
+- [07-01]: Binary config format for snow_supervisor_start: strategy(u8) + max_restarts(u32) + max_seconds(u64) + child specs
 
 ### Pending Todos
 
@@ -191,10 +197,10 @@ None.
 - Phase 6 risk fully mitigated -- all actor features integrated and verified with E2E tests
 - Typed actor messaging (TYPE-07) is a research-level problem -- design on paper during early phases
 - Plan 06-01 test isolation bugs fixed: all 27 snow-rt tests now pass (test counters isolated per-test)
-- Phase 7 (Supervision) depends on trap_exit flag and exit propagation from 06-06 -- both ready
+- Phase 7 supervisor runtime complete (07-01) -- ready for compiler integration (07-02)
 
 ## Session Continuity
 
 Last session: 2026-02-07
-Stopped at: Completed 06-07-PLAN.md -- Phase 6 complete
+Stopped at: Completed 07-01-PLAN.md -- Supervisor runtime
 Resume file: None
