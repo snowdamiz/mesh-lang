@@ -1383,6 +1383,7 @@ version = "0.1.0"
 dependencies = [
  "ariadne",
  "clap",
+ "serde_json",
  "snow-codegen",
  "snow-common",
  "snow-lexer",

@@ -29,7 +29,7 @@ pub use printer::FormatConfig;
 ///
 /// let source = "fn add(a, b) do\na + b\nend";
 /// let formatted = format_source(source, &FormatConfig::default());
-/// assert!(formatted.contains("add"));
+/// assert_eq!(formatted, "fn add(a, b) do\n  a + b\nend\n");
 /// ```
 pub fn format_source(source: &str, config: &FormatConfig) -> String {
     let parse = snow_parser::parse(source);
