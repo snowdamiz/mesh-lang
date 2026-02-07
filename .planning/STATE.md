@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-02-05)
 
 **Core value:** Expressive, readable concurrency -- writing concurrent programs should feel as natural as sequential code, with supervision and fault tolerance built in.
-**Current focus:** Phase 10 IN PROGRESS -- Developer Tooling. Plans 01, 02, 03, 04, 05, 06, 07, 08, 09 complete.
+**Current focus:** PROJECT COMPLETE -- All 10 phases finished. 55 of 55 plans executed.
 
 ## Current Position
 
 Phase: 10 of 10 (Developer Tooling)
-Plan: 09 of 10 in current phase (plans 01, 02, 03, 04, 05, 06, 07, 08, 09 complete)
-Status: In progress
-Last activity: 2026-02-07 -- Completed 10-09-PLAN.md (Go-to-Definition)
+Plan: 10 of 10 in current phase (all plans complete)
+Status: COMPLETE
+Last activity: 2026-02-07 -- Completed 10-10-PLAN.md (E2E Integration and Verification)
 
-Progress: [████████████████████████████████████████████████████] 96% (53 plans of 55 total)
+Progress: [████████████████████████████████████████████████████████] 100% (55 plans of 55 total)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 53
+- Total plans completed: 55
 - Average duration: 9min
-- Total execution time: 495min
+- Total execution time: 505min
 
 **By Phase:**
 
@@ -36,12 +36,12 @@ Progress: [███████████████████████
 | 07-supervision-fault-tolerance | 3/3 | 27min | 9min |
 | 08-standard-library | 7/7 | 67min | 10min |
 | 09-concurrency-standard-library | 5/5 | 51min | 10min |
-| 10-developer-tooling | 9/10 | 70min | 8min |
+| 10-developer-tooling | 10/10 | 80min | 8min |
 
 **Recent Trend:**
-- Last 5 plans: 10-09 (10min), 10-05 (7min), 10-07 (5min), 10-08 (8min), 10-04 (10min)
+- Last 5 plans: 10-10 (10min), 10-09 (10min), 10-05 (7min), 10-07 (5min), 10-08 (8min)
 
-*Updated after each plan completion*
+*Final update -- project complete*
 
 ## Accumulated Context
 
@@ -247,40 +247,41 @@ Recent decisions affecting current work:
 - [09-05]: snow_actor_receive detects coroutine context via CURRENT_YIELDER; uses spin-wait for main thread
 - [09-05]: Reduction check uses CURRENT_YIELDER (not CURRENT_PID) to detect coroutine context
 - [09-05]: Graceful service actor shutdown via wake-and-null pattern (avoids corosensei panic on force-drop through extern C)
+- [10-01]: DiagnosticOptions struct with color/json fields replaces hardcoded colorless config
+- [10-01]: JsonDiagnostic struct with Serialize derive for machine-readable output
+- [10-01]: FnArg multi-span uses call_site + param_idx (no param_span in ConstraintOrigin)
+- [10-01]: Levenshtein distance for "did you mean X?" suggestions (max distance 2)
+- [10-01]: --json and --no-color CLI flags on snowc build subcommand
+- [10-02]: Wadler-Lindig FormatIR with 8 variants (Text, Space, Hardline, Indent, Group, IfBreak, Concat, Empty)
+- [10-02]: sp() literal space helper vs ir::space() break-sensitive -- root context always break mode
+- [10-02]: TYPE_ANNOTATION gets space before it in inline token walker (Snow :: is type annotation, not path separator)
+- [10-02]: Stack-based printer with (indent, mode, ir_node) triples and measure_flat() for Group decisions
+- [10-03]: File not rewritten when already formatted (preserves mtime for build systems and CI)
+- [10-03]: Pipe operator and interface method body formatting are known idempotency limitations (pre-existing parser/walker issues)
+- [10-04]: LLVM Context created per evaluation (persistent context requires complex lifetime management)
+- [10-04]: Keyword-prefix heuristic for definition vs expression classification in REPL
+- [10-04]: Token-based do/end and delimiter balancing for multi-line input detection
+- [10-04]: value :: Type display format for REPL results (Haskell-inspired)
+- [10-04]: into_module() on CodeGen for JIT execution engine creation
+- [10-05]: LLVMAddSymbol via extern C block for JIT symbol registration (inkwell 0.8 lacks add_symbol)
+- [10-05]: snow-rt linked as Rust lib dependency for REPL runtime symbol availability
+- [10-05]: Runtime init (GC + actor scheduler) once at REPL startup via std::sync::Once
+- [10-05]: History persisted to $HOME/.snow_repl_history
 - [10-06]: Serde untagged enum for Dependency (Git variant with git/rev/branch/tag fields, Path variant with path field)
 - [10-06]: BTreeMap for dependencies and lockfile packages ensures deterministic ordering
 - [10-06]: DFS visiting set for cycle detection; source key comparison for conflict detection
 - [10-06]: Git deps cloned to project_dir/.snow/deps/<name>/ (project-local, not global cache)
 - [10-06]: Path dep source keys use canonicalize() for consistent diamond deduplication
 - [10-06]: Lockfile version field (always 1) for future format evolution
+- [10-07]: Lockfile freshness uses filesystem mtime comparison (manifest vs lockfile) -- simple, no hashing
 - [10-08]: Mutex<HashMap> document store for LSP (simple, correct for single-client model)
 - [10-08]: UTF-16 position conversion per LSP spec (char.len_utf16() for non-ASCII)
 - [10-08]: Smallest-range lookup for hover type (finds innermost expression at cursor)
 - [10-08]: tokio::runtime::Runtime::new() in snowc main for LSP (avoids async main)
-- [10-04]: LLVM Context created per evaluation (persistent context requires complex lifetime management)
-- [10-04]: Keyword-prefix heuristic for definition vs expression classification in REPL
-- [10-04]: Token-based do/end and delimiter balancing for multi-line input detection
-- [10-04]: value :: Type display format for REPL results (Haskell-inspired)
-- [10-04]: into_module() on CodeGen for JIT execution engine creation
-- [10-02]: Wadler-Lindig FormatIR with 8 variants (Text, Space, Hardline, Indent, Group, IfBreak, Concat, Empty)
-- [10-02]: sp() literal space helper vs ir::space() break-sensitive -- root context always break mode
-- [10-02]: TYPE_ANNOTATION gets space before it in inline token walker (Snow :: is type annotation, not path separator)
-- [10-02]: Stack-based printer with (indent, mode, ir_node) triples and measure_flat() for Group decisions
-- [10-01]: DiagnosticOptions struct with color/json fields replaces hardcoded colorless config
-- [10-01]: JsonDiagnostic struct with Serialize derive for machine-readable output
-- [10-01]: FnArg multi-span uses call_site + param_idx (no param_span in ConstraintOrigin)
-- [10-01]: Levenshtein distance for "did you mean X?" suggestions (max distance 2)
-- [10-01]: --json and --no-color CLI flags on snowc build subcommand
-- [10-07]: Lockfile freshness uses filesystem mtime comparison (manifest vs lockfile) -- simple, no hashing
-- [10-05]: LLVMAddSymbol via extern C block for JIT symbol registration (inkwell 0.8 lacks add_symbol)
-- [10-05]: snow-rt linked as Rust lib dependency for REPL runtime symbol availability
-- [10-05]: Runtime init (GC + actor scheduler) once at REPL startup via std::sync::Once
-- [10-05]: History persisted to $HOME/.snow_repl_history
-- [10-03]: File not rewritten when already formatted (preserves mtime for build systems and CI)
-- [10-03]: Pipe operator and interface method body formatting are known idempotency limitations (pre-existing parser/walker issues)
 - [10-09]: Source-to-tree offset conversion via re-lexing to handle whitespace-free rowan CST
 - [10-09]: SOURCE_FILE searches all children (forward references) while BLOCK searches only earlier siblings
 - [10-09]: Rowan CST coordinate mismatch (whitespace-free tree) discovered and handled with offset conversion functions
+- [10-10]: VS Code extension uses auto-discovery to find snowc binary (workspace target/, ~/.snow/bin, /usr/local/bin, PATH)
 
 ### Pending Todos
 
@@ -288,18 +289,18 @@ None.
 
 ### Blockers/Concerns
 
-- Phase 9 COMPLETE -- all 5 plans done, all E2E tests passing
-- Phase 10 IN PROGRESS -- plans 01, 02, 03, 04, 05, 06, 07, 08, 09 complete
-- string_split now possible with List type available (can be added in future plan)
-- String-keyed maps use pointer identity (not content comparison) -- documented limitation
-- Multiline pipe operator (`|>` at start of continuation line) fails to parse -- pre-existing parser limitation
-- Pipe operator also fails when used with inline closures (fn(x) -> expr end) on same line -- parser merges with previous expression
-- Closure handlers for HTTP.route not supported in Phase 8 (bare function handlers only)
-- Map.put typed as (Map, Int, Int) -- string-keyed maps need type system refinement for proper E2E testing
-- Rowan CST coordinate mismatch also affects hover accuracy for multi-token expressions (pre-existing, documented)
+- ALL PHASES COMPLETE -- 55 of 55 plans executed
+- Known limitations documented throughout:
+  - string_split possible with List type available (can be added in future work)
+  - String-keyed maps use pointer identity (not content comparison)
+  - Multiline pipe operator (`|>` at start of continuation line) fails to parse
+  - Pipe operator fails with inline closures on same line
+  - Closure handlers for HTTP.route not supported (bare function handlers only)
+  - Map.put typed as (Map, Int, Int) -- string-keyed maps need type system refinement
+  - Rowan CST coordinate mismatch affects hover accuracy for multi-token expressions
 
 ## Session Continuity
 
 Last session: 2026-02-07
-Stopped at: Completed 10-09-PLAN.md (Go-to-Definition)
+Stopped at: PROJECT COMPLETE -- All 10 phases, 55 plans executed
 Resume file: None
