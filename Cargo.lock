@@ -491,6 +491,7 @@ dependencies = [
  "snow-lexer",
  "snow-parser",
  "snow-typeck",
+ "tempfile",
 ]
 
 [[package]]

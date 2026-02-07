@@ -324,6 +324,66 @@ impl<'ctx> CodeGen<'ctx> {
             self.local_types.insert(name.clone(), ty.clone());
         }
 
+        // For closure functions, load captured variables from the __env struct.
+        if func.is_closure_fn && !func.captures.is_empty() {
+            let env_alloca = self
+                .locals
+                .get("__env")
+                .copied()
+                .ok_or("Missing __env parameter in closure function")?;
+            let env_ptr = self
+                .builder
+                .build_load(
+                    self.context.ptr_type(inkwell::AddressSpace::default()),
+                    env_alloca,
+                    "env_ptr",
+                )
+                .map_err(|e| e.to_string())?
+                .into_pointer_value();
+
+            // Build the env struct type from capture types.
+            let cap_llvm_types: Vec<inkwell::types::BasicTypeEnum<'ctx>> = func
+                .captures
+                .iter()
+                .map(|(_, ty)| {
+                    llvm_type(
+                        self.context,
+                        ty,
+                        &self.struct_types,
+                        &self.sum_type_layouts,
+                    )
+                })
+                .collect();
+            let env_struct_ty = self.context.struct_type(&cap_llvm_types, false);
+
+            // Load each captured variable from the env struct and create a local alloca.
+            for (i, (name, ty)) in func.captures.iter().enumerate() {
+                let cap_llvm_ty = llvm_type(
+                    self.context,
+                    ty,
+                    &self.struct_types,
+                    &self.sum_type_layouts,
+                );
+                let field_ptr = self
+                    .builder
+                    .build_struct_gep(env_struct_ty, env_ptr, i as u32, &format!("cap_{}", name))
+                    .map_err(|e| e.to_string())?;
+                let val = self
+                    .builder
+                    .build_load(cap_llvm_ty, field_ptr, name)
+                    .map_err(|e| e.to_string())?;
+                let alloca = self
+                    .builder
+                    .build_alloca(cap_llvm_ty, name)
+                    .map_err(|e| e.to_string())?;
+                self.builder
+                    .build_store(alloca, val)
+                    .map_err(|e| e.to_string())?;
+                self.locals.insert(name.clone(), alloca);
+                self.local_types.insert(name.clone(), ty.clone());
+            }
+        }
+
         // Compile the function body.
         let result = self.codegen_expr(&func.body)?;
 

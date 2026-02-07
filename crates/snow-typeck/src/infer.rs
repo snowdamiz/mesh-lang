@@ -1102,7 +1102,27 @@ fn infer_expr(
         Expr::ReturnExpr(ret) => {
             infer_return(ctx, env, ret, types, type_registry, trait_registry, fn_constraints)?
         }
-        Expr::StringExpr(_) => Ty::string(),
+        Expr::StringExpr(se) => {
+            // Recurse into interpolation expressions so their types are recorded.
+            for child in se.syntax().children() {
+                if child.kind() == SyntaxKind::INTERPOLATION {
+                    for inner in child.children() {
+                        if let Some(inner_expr) = Expr::cast(inner) {
+                            let _ = infer_expr(
+                                ctx,
+                                env,
+                                &inner_expr,
+                                types,
+                                type_registry,
+                                trait_registry,
+                                fn_constraints,
+                            );
+                        }
+                    }
+                }
+            }
+            Ty::string()
+        }
         Expr::FieldAccess(fa) => {
             infer_field_access(ctx, env, fa, types, type_registry, trait_registry, fn_constraints)?
         }
@@ -1552,52 +1572,71 @@ fn infer_block(
 ) -> Result<Ty, TypeError> {
     let mut last_ty = Ty::Tuple(vec![]);
 
-    for stmt in block.stmts() {
-        match &stmt {
-            Item::LetBinding(let_) => {
-                if let Ok(ty) = infer_let_binding(
-                    ctx,
-                    env,
-                    let_,
-                    types,
-                    type_registry,
-                    trait_registry,
-                    &FxHashMap::default(),
-                ) {
-                    last_ty = ty;
+    // Process ALL children in source order. This handles:
+    // - Items (let bindings, fn defs) as declarations
+    // - Expressions (function calls, etc.) as expression-statements
+    // Processing in order ensures let bindings are in scope for subsequent exprs.
+    let mut processed_ranges: Vec<TextRange> = Vec::new();
+
+    for child in block.syntax().children() {
+        let range = child.text_range();
+
+        // Try as Item first (let bindings, fn defs, etc.)
+        if let Some(item) = Item::cast(child.clone()) {
+            processed_ranges.push(range);
+            match &item {
+                Item::LetBinding(let_) => {
+                    if let Ok(ty) = infer_let_binding(
+                        ctx,
+                        env,
+                        let_,
+                        types,
+                        type_registry,
+                        trait_registry,
+                        &FxHashMap::default(),
+                    ) {
+                        last_ty = ty;
+                    }
+                }
+                Item::FnDef(fn_) => {
+                    if let Ok(ty) = infer_fn_def(
+                        ctx,
+                        env,
+                        fn_,
+                        types,
+                        type_registry,
+                        trait_registry,
+                        &mut FxHashMap::default(),
+                    ) {
+                        last_ty = ty;
+                    }
+                }
+                _ => {
+                    // Other items (interface, impl, struct, etc.)
                 }
             }
-            Item::FnDef(fn_) => {
-                if let Ok(ty) = infer_fn_def(
-                    ctx,
-                    env,
-                    fn_,
-                    types,
-                    type_registry,
-                    trait_registry,
-                    &mut FxHashMap::default(),
-                ) {
+            continue;
+        }
+
+        // Try as Expr (expression-statements and tail expression)
+        if let Some(expr) = Expr::cast(child) {
+            processed_ranges.push(range);
+            match infer_expr(ctx, env, &expr, types, type_registry, trait_registry, fn_constraints) {
+                Ok(ty) => {
                     last_ty = ty;
                 }
-            }
-            _ => {
-                // Other items (interface, impl, struct, etc.) don't produce values in blocks.
+                Err(_) => {}
             }
         }
     }
 
+    // Legacy: also process the tail expression if it wasn't already handled.
+    // This can happen if the tail expression's syntax node wasn't a direct child.
     if let Some(tail) = block.tail_expr() {
         let tail_range = tail.syntax().text_range();
-        let is_already_part_of_stmt = block.stmts().any(|stmt| {
-            let item_range = match &stmt {
-                Item::LetBinding(lb) => lb.syntax().text_range(),
-                Item::FnDef(fd) => fd.syntax().text_range(),
-                _ => return false,
-            };
-            item_range.start() <= tail_range.start() && tail_range.end() <= item_range.end()
-        });
+        let already_processed = processed_ranges.iter().any(|r| *r == tail_range);
 
-        if !is_already_part_of_stmt {
+        if !already_processed {
             match infer_expr(ctx, env, &tail, types, type_registry, trait_registry, fn_constraints) {
                 Ok(ty) => {
                     last_ty = ty;

@@ -338,50 +338,77 @@ impl<'a> Lowerer<'a> {
     // ── Block lowering ───────────────────────────────────────────────
 
     fn lower_block(&mut self, block: &Block) -> MirExpr {
-        let mut exprs: Vec<MirExpr> = Vec::new();
+        // Collect all children in source order as MIR expressions.
+        // Let bindings insert the variable into scope (for subsequent children)
+        // and are wrapped to nest the remaining block as the body.
+        let mut parts: Vec<MirExpr> = Vec::new();
+        let mut let_names: Vec<String> = Vec::new();
 
-        // Collect text ranges of items (stmts) so we can detect if the tail
-        // expression overlaps with an already-lowered item.
-        let mut stmt_ranges: Vec<TextRange> = Vec::new();
+        for child in block.syntax().children() {
+            if let Some(item) = Item::cast(child.clone()) {
+                match item {
+                    Item::LetBinding(ref let_) => {
+                        let name = let_
+                            .name()
+                            .and_then(|n| n.text())
+                            .unwrap_or_else(|| "_".to_string());
+                        let value = if let Some(init) = let_.initializer() {
+                            self.lower_expr(&init)
+                        } else {
+                            MirExpr::Unit
+                        };
+                        let ty = value.ty().clone();
+                        self.insert_var(name.clone(), ty.clone());
+                        let_names.push(name.clone());
+                        parts.push(MirExpr::Let {
+                            name,
+                            ty,
+                            value: Box::new(value),
+                            body: Box::new(MirExpr::Unit), // placeholder; nested below
+                        });
+                    }
+                    Item::FnDef(ref fn_def) => {
+                        self.lower_fn_def(fn_def);
+                    }
+                    _ => {}
+                }
+                continue;
+            }
+            if let Some(expr) = Expr::cast(child) {
+                let mir = self.lower_expr(&expr);
+                parts.push(mir);
+            }
+        }
 
-        // Process statements (items within the block).
-        for stmt in block.stmts() {
-            match stmt {
-                Item::LetBinding(ref let_) => {
-                    stmt_ranges.push(let_.syntax().text_range());
-                    let mir = self.lower_let_binding(let_);
-                    exprs.push(mir);
+        // Build the final expression. Let bindings need to nest their body
+        // over subsequent parts. We build from the end backwards:
+        // [Let(x), expr1, Let(y), expr2] becomes:
+        // Let(x, Block([expr1, Let(y, expr2)]))
+        if parts.is_empty() {
+            return MirExpr::Unit;
+        }
+
+        // Fold from right to left: each Let wraps everything after it as its body.
+        let mut result = parts.pop().unwrap();
+        while let Some(part) = parts.pop() {
+            match part {
+                MirExpr::Let { name, ty, value, body: _ } => {
+                    result = MirExpr::Let {
+                        name,
+                        ty,
+                        value,
+                        body: Box::new(result),
+                    };
                 }
-                Item::FnDef(ref fn_def) => {
-                    stmt_ranges.push(fn_def.syntax().text_range());
-                    // Nested function definition: lower and add to module functions.
-                    self.lower_fn_def(fn_def);
-                }
-                _ => {
-                    // Other items in blocks are skipped.
+                other => {
+                    // Non-let expression before result: wrap in a Block.
+                    let ty = result.ty().clone();
+                    result = MirExpr::Block(vec![other, result], ty);
                 }
             }
         }
 
-        // Process the tail expression.
-        if let Some(tail) = block.tail_expr() {
-            let tail_range = tail.syntax().text_range();
-            // Only add the tail expression if it was not already processed as a stmt.
-            let already_lowered = stmt_ranges.iter().any(|r| *r == tail_range);
-            if !already_lowered {
-                let mir = self.lower_expr(&tail);
-                exprs.push(mir);
-            }
-        }
-
-        if exprs.is_empty() {
-            MirExpr::Unit
-        } else if exprs.len() == 1 {
-            exprs.pop().unwrap()
-        } else {
-            let ty = exprs.last().map(|e| e.ty().clone()).unwrap_or(MirType::Unit);
-            MirExpr::Block(exprs, ty)
-        }
+        result
     }
 
     // ── Let binding lowering ─────────────────────────────────────────
@@ -474,10 +501,34 @@ impl<'a> Lowerer<'a> {
             .text()
             .unwrap_or_else(|| "<unknown>".to_string());
 
+        // Check if this is a nullary variant constructor (e.g., Red, None, Point).
+        // These are NameRef nodes that refer to sum type variants with no fields.
+        for (_, sum_info) in &self.registry.sum_type_defs {
+            for variant in &sum_info.variants {
+                if variant.name == name && variant.fields.is_empty() {
+                    let ty_name = &sum_info.name;
+                    let mir_ty = MirType::SumType(ty_name.clone());
+                    return MirExpr::ConstructVariant {
+                        type_name: ty_name.clone(),
+                        variant: name,
+                        fields: vec![],
+                        ty: mir_ty,
+                    };
+                }
+            }
+        }
+
         // Map builtin function names to their runtime equivalents.
         let name = map_builtin_name(&name);
 
-        let ty = self.resolve_range(name_ref.syntax().text_range());
+        // Check scope first for the type. This preserves MirType::Closure
+        // for variables bound to closures, which is needed for correct
+        // ClosureCall dispatch.
+        let ty = if let Some(scope_ty) = self.lookup_var(&name) {
+            scope_ty
+        } else {
+            self.resolve_range(name_ref.syntax().text_range())
+        };
         MirExpr::Var(name, ty)
     }
 
@@ -559,6 +610,24 @@ impl<'a> Lowerer<'a> {
             Some(c) => c,
             None => return MirExpr::Unit,
         };
+
+        // Check if this is a variant constructor call (e.g., Circle(5.0)).
+        if let MirExpr::Var(ref name, _) = callee {
+            for (_, sum_info) in &self.registry.sum_type_defs {
+                for variant in &sum_info.variants {
+                    if variant.name == *name && !variant.fields.is_empty() {
+                        let ty_name = &sum_info.name;
+                        let mir_ty = MirType::SumType(ty_name.clone());
+                        return MirExpr::ConstructVariant {
+                            type_name: ty_name.clone(),
+                            variant: name.clone(),
+                            fields: args,
+                            ty: mir_ty,
+                        };
+                    }
+                }
+            }
+        }
 
         // Determine if this is a direct function call or a closure call.
         let is_known_fn = match &callee {
