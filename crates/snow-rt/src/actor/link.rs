@@ -59,7 +59,7 @@ pub fn unlink(
 /// - reason_tag 1 = Error (followed by UTF-8 error string)
 /// - reason_tag 2 = Killed
 /// - reason_tag 3 = Linked (followed by u64 originator_pid + nested reason)
-fn encode_exit_signal(exiting_pid: ProcessId, reason: &ExitReason) -> Vec<u8> {
+pub fn encode_exit_signal(exiting_pid: ProcessId, reason: &ExitReason) -> Vec<u8> {
     let mut data = Vec::new();
     // Write the exiting PID (8 bytes).
     data.extend_from_slice(&exiting_pid.0.to_le_bytes());
@@ -87,6 +87,82 @@ fn encode_reason(data: &mut Vec<u8>, reason: &ExitReason) {
             data.extend_from_slice(&pid.0.to_le_bytes());
             encode_reason(data, inner);
         }
+        ExitReason::Shutdown => {
+            data.push(4);
+        }
+        ExitReason::Custom(msg) => {
+            data.push(5);
+            let bytes = msg.as_bytes();
+            data.extend_from_slice(&(bytes.len() as u64).to_le_bytes());
+            data.extend_from_slice(bytes);
+        }
+    }
+}
+
+/// Decode an exit signal message back into `(ProcessId, ExitReason)`.
+///
+/// This is the inverse of `encode_exit_signal`. The supervisor uses this to
+/// parse exit signals received in its mailbox.
+///
+/// Layout: `[u64 exiting_pid, u8 reason_tag, ...reason_data]`
+pub fn decode_exit_signal(data: &[u8]) -> Option<(ProcessId, ExitReason)> {
+    if data.len() < 9 {
+        return None;
+    }
+    let pid = ProcessId(u64::from_le_bytes(data[0..8].try_into().ok()?));
+    let (reason, _consumed) = decode_reason(&data[8..])?;
+    Some((pid, reason))
+}
+
+/// Decode an ExitReason from raw bytes.
+///
+/// Returns `(ExitReason, bytes_consumed)` or `None` if the data is malformed.
+fn decode_reason(data: &[u8]) -> Option<(ExitReason, usize)> {
+    if data.is_empty() {
+        return None;
+    }
+    let tag = data[0];
+    match tag {
+        0 => Some((ExitReason::Normal, 1)),
+        1 => {
+            // Error: tag(1) + u64 len + string bytes
+            if data.len() < 9 {
+                return None;
+            }
+            let str_len = u64::from_le_bytes(data[1..9].try_into().ok()?) as usize;
+            if data.len() < 9 + str_len {
+                return None;
+            }
+            let msg = std::str::from_utf8(&data[9..9 + str_len]).ok()?.to_string();
+            Some((ExitReason::Error(msg), 1 + 8 + str_len))
+        }
+        2 => Some((ExitReason::Killed, 1)),
+        3 => {
+            // Linked: tag(1) + u64 pid + nested reason
+            if data.len() < 9 {
+                return None;
+            }
+            let linked_pid = ProcessId(u64::from_le_bytes(data[1..9].try_into().ok()?));
+            let (inner, inner_consumed) = decode_reason(&data[9..])?;
+            Some((
+                ExitReason::Linked(linked_pid, Box::new(inner)),
+                1 + 8 + inner_consumed,
+            ))
+        }
+        4 => Some((ExitReason::Shutdown, 1)),
+        5 => {
+            // Custom: tag(1) + u64 len + string bytes
+            if data.len() < 9 {
+                return None;
+            }
+            let str_len = u64::from_le_bytes(data[1..9].try_into().ok()?) as usize;
+            if data.len() < 9 + str_len {
+                return None;
+            }
+            let msg = std::str::from_utf8(&data[9..9 + str_len]).ok()?.to_string();
+            Some((ExitReason::Custom(msg), 1 + 8 + str_len))
+        }
+        _ => None,
     }
 }
 
@@ -123,9 +199,9 @@ where
             // Remove the reverse link (the exiting process is gone).
             proc.links.remove(&exiting_pid);
 
-            let is_normal = matches!(reason, ExitReason::Normal);
+            let is_non_crashing = matches!(reason, ExitReason::Normal | ExitReason::Shutdown);
 
-            if is_normal || proc.trap_exit {
+            if is_non_crashing || proc.trap_exit {
                 // Deliver as a regular message -- the process does not crash.
                 let buffer = MessageBuffer::new(signal_data.clone(), EXIT_SIGNAL_TAG);
                 proc.mailbox.push(Message { buffer });
@@ -446,6 +522,169 @@ mod tests {
         let msg_len = u64::from_le_bytes(data[9..17].try_into().unwrap());
         assert_eq!(msg_len, 4);
         assert_eq!(&data[17..21], b"oops");
+    }
+
+    #[test]
+    fn test_shutdown_exit_delivers_message_no_crash() {
+        let (pid_a, _proc_a) = make_process();
+        let (pid_b, proc_b) = make_process();
+
+        let linked = {
+            let mut s = HashSet::new();
+            s.insert(pid_b);
+            s
+        };
+
+        let proc_b_clone = Arc::clone(&proc_b);
+        propagate_exit(pid_a, &ExitReason::Shutdown, linked, |pid| {
+            if pid == pid_b {
+                Some(Arc::clone(&proc_b_clone))
+            } else {
+                None
+            }
+        });
+
+        // Process B should NOT have crashed (Shutdown is non-crashing like Normal).
+        let b = proc_b.lock();
+        assert!(
+            !matches!(b.state, ProcessState::Exited(_)),
+            "Shutdown exit should not crash linked process"
+        );
+
+        // But it should have received an exit signal message.
+        let msg = b.mailbox.pop().unwrap();
+        assert_eq!(msg.buffer.type_tag, EXIT_SIGNAL_TAG);
+    }
+
+    #[test]
+    fn test_custom_exit_crashes_linked_process() {
+        let (pid_a, _proc_a) = make_process();
+        let (pid_b, proc_b) = make_process();
+
+        let linked = {
+            let mut s = HashSet::new();
+            s.insert(pid_b);
+            s
+        };
+
+        let proc_b_clone = Arc::clone(&proc_b);
+        propagate_exit(
+            pid_a,
+            &ExitReason::Custom("user_reason".to_string()),
+            linked,
+            |pid| {
+                if pid == pid_b {
+                    Some(Arc::clone(&proc_b_clone))
+                } else {
+                    None
+                }
+            },
+        );
+
+        // Process B should have crashed (Custom is crashing like Error).
+        let b = proc_b.lock();
+        match &b.state {
+            ProcessState::Exited(ExitReason::Linked(from_pid, inner)) => {
+                assert_eq!(*from_pid, pid_a);
+                match inner.as_ref() {
+                    ExitReason::Custom(msg) => assert_eq!(msg, "user_reason"),
+                    other => panic!("Expected Custom, got {:?}", other),
+                }
+            }
+            other => panic!("Expected Exited(Linked(...)), got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_encode_decode_roundtrip_normal() {
+        let pid = ProcessId(100);
+        let reason = ExitReason::Normal;
+        let data = encode_exit_signal(pid, &reason);
+        let (decoded_pid, decoded_reason) = decode_exit_signal(&data).unwrap();
+        assert_eq!(decoded_pid, pid);
+        assert!(matches!(decoded_reason, ExitReason::Normal));
+    }
+
+    #[test]
+    fn test_encode_decode_roundtrip_shutdown() {
+        let pid = ProcessId(200);
+        let reason = ExitReason::Shutdown;
+        let data = encode_exit_signal(pid, &reason);
+        let (decoded_pid, decoded_reason) = decode_exit_signal(&data).unwrap();
+        assert_eq!(decoded_pid, pid);
+        assert!(matches!(decoded_reason, ExitReason::Shutdown));
+    }
+
+    #[test]
+    fn test_encode_decode_roundtrip_error() {
+        let pid = ProcessId(300);
+        let reason = ExitReason::Error("division by zero".to_string());
+        let data = encode_exit_signal(pid, &reason);
+        let (decoded_pid, decoded_reason) = decode_exit_signal(&data).unwrap();
+        assert_eq!(decoded_pid, pid);
+        match decoded_reason {
+            ExitReason::Error(msg) => assert_eq!(msg, "division by zero"),
+            other => panic!("Expected Error, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_encode_decode_roundtrip_killed() {
+        let pid = ProcessId(400);
+        let reason = ExitReason::Killed;
+        let data = encode_exit_signal(pid, &reason);
+        let (decoded_pid, decoded_reason) = decode_exit_signal(&data).unwrap();
+        assert_eq!(decoded_pid, pid);
+        assert!(matches!(decoded_reason, ExitReason::Killed));
+    }
+
+    #[test]
+    fn test_encode_decode_roundtrip_linked() {
+        let pid = ProcessId(500);
+        let inner_pid = ProcessId(501);
+        let reason = ExitReason::Linked(inner_pid, Box::new(ExitReason::Error("crash".to_string())));
+        let data = encode_exit_signal(pid, &reason);
+        let (decoded_pid, decoded_reason) = decode_exit_signal(&data).unwrap();
+        assert_eq!(decoded_pid, pid);
+        match decoded_reason {
+            ExitReason::Linked(lp, inner) => {
+                assert_eq!(lp, inner_pid);
+                match *inner {
+                    ExitReason::Error(msg) => assert_eq!(msg, "crash"),
+                    other => panic!("Expected Error, got {:?}", other),
+                }
+            }
+            other => panic!("Expected Linked, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_encode_decode_roundtrip_custom() {
+        let pid = ProcessId(600);
+        let reason = ExitReason::Custom("user_shutdown".to_string());
+        let data = encode_exit_signal(pid, &reason);
+        let (decoded_pid, decoded_reason) = decode_exit_signal(&data).unwrap();
+        assert_eq!(decoded_pid, pid);
+        match decoded_reason {
+            ExitReason::Custom(msg) => assert_eq!(msg, "user_shutdown"),
+            other => panic!("Expected Custom, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_decode_exit_signal_too_short() {
+        // Less than 9 bytes should fail
+        assert!(decode_exit_signal(&[0u8; 8]).is_none());
+        assert!(decode_exit_signal(&[]).is_none());
+    }
+
+    #[test]
+    fn test_encode_decode_roundtrip_shutdown_signal() {
+        let pid = ProcessId(42);
+        let data = encode_exit_signal(pid, &ExitReason::Shutdown);
+        // 8 bytes PID + 1 byte reason_tag(4)
+        assert_eq!(data.len(), 9);
+        assert_eq!(data[8], 4); // Shutdown tag
     }
 
     #[test]

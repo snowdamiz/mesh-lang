@@ -74,12 +74,21 @@ pub enum ProcessState {
 pub enum ExitReason {
     /// Normal completion -- the actor's entry function returned.
     Normal,
+    /// Clean supervisor-initiated shutdown.
+    ///
+    /// Treated as non-crashing for exit propagation (like Normal).
+    /// Transient children do NOT restart on Shutdown.
+    Shutdown,
     /// Runtime error (e.g., pattern match failure, division by zero).
     Error(String),
     /// Explicitly killed via `Process.exit(pid, :kill)`.
     Killed,
     /// Linked process exited, propagating its reason.
     Linked(ProcessId, Box<ExitReason>),
+    /// User-defined exit reason.
+    ///
+    /// Treated as crashing for exit propagation (like Error).
+    Custom(String),
 }
 
 // ---------------------------------------------------------------------------

@@ -30,6 +30,7 @@
 //! - `snow_actor_register(name_ptr, name_len)` -- register current actor by name
 //! - `snow_actor_whereis(name_ptr, name_len)` -- look up actor PID by name
 
+pub mod child_spec;
 pub mod heap;
 pub mod link;
 pub mod mailbox;
@@ -37,9 +38,11 @@ pub mod process;
 pub mod registry;
 pub mod scheduler;
 pub mod stack;
+pub mod supervisor;
 
+pub use child_spec::{ChildSpec, ChildState, ChildType, RestartType, ShutdownType, Strategy};
 pub use heap::{ActorHeap, MessageBuffer};
-pub use link::{propagate_exit, EXIT_SIGNAL_TAG};
+pub use link::{decode_exit_signal, encode_exit_signal, propagate_exit, EXIT_SIGNAL_TAG};
 pub use mailbox::Mailbox;
 pub use registry::{global_registry, ProcessRegistry};
 pub use process::{
