@@ -33,7 +33,10 @@ use rustc_hash::FxHashMap;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 
-use super::process::{ExitReason, Priority, Process, ProcessId, ProcessState, DEFAULT_REDUCTIONS};
+use super::link;
+use super::process::{
+    ExitReason, Priority, Process, ProcessId, ProcessState, TerminateCallback, DEFAULT_REDUCTIONS,
+};
 use super::stack::{clear_current_pid, set_current_pid, CoroutineHandle, CURRENT_YIELDER};
 
 // ---------------------------------------------------------------------------
@@ -350,7 +353,7 @@ fn worker_loop(
                 still_suspended.push((pid, handle));
             } else {
                 // Actor completed.
-                mark_exited(&process_table, pid, ExitReason::Normal);
+                handle_process_exit(&process_table, pid, ExitReason::Normal);
                 active_count.fetch_sub(1, Ordering::SeqCst);
             }
         }
@@ -392,7 +395,7 @@ fn worker_loop(
                 suspended.push((req.pid, handle));
             } else {
                 // Actor completed on first run.
-                mark_exited(&process_table, req.pid, ExitReason::Normal);
+                handle_process_exit(&process_table, req.pid, ExitReason::Normal);
                 active_count.fetch_sub(1, Ordering::SeqCst);
             }
         }
@@ -466,12 +469,61 @@ fn try_get_request(
     None
 }
 
-/// Mark a process as exited in the process table.
-fn mark_exited(process_table: &ProcessTable, pid: ProcessId, reason: ExitReason) {
-    if let Some(proc) = process_table.read().get(&pid) {
-        let mut proc = proc.lock();
-        proc.state = ProcessState::Exited(reason);
+/// Handle process exit: invoke terminate callback, propagate exit to links,
+/// clean up from process table.
+///
+/// 1. FIRST: invoke terminate_callback if set (wrapped in catch_unwind for panic safety)
+/// 2. THEN: propagate exit signals to all linked processes
+/// 3. Mark the process as Exited
+fn handle_process_exit(process_table: &ProcessTable, pid: ProcessId, reason: ExitReason) {
+    // Extract terminate callback and linked PIDs under a single lock.
+    let (terminate_cb, linked_pids) = {
+        if let Some(proc_arc) = process_table.read().get(&pid) {
+            let mut proc = proc_arc.lock();
+            let cb = proc.terminate_callback.take();
+            let links = std::mem::take(&mut proc.links);
+            (cb, links)
+        } else {
+            return;
+        }
+    };
+
+    // Step 1: Invoke terminate callback (panic-safe).
+    if let Some(cb) = terminate_cb {
+        invoke_terminate_callback(cb, &reason);
     }
+
+    // Step 2: Propagate exit signals to linked processes.
+    let woken = link::propagate_exit(pid, &reason, linked_pids, |linked_pid| {
+        process_table.read().get(&linked_pid).cloned()
+    });
+
+    // Wake processes that were in Waiting state.
+    // (The state has already been set to Ready by propagate_exit.)
+    let _ = woken;
+
+    // Step 3: Mark the process as Exited.
+    if let Some(proc_arc) = process_table.read().get(&pid) {
+        proc_arc.lock().state = ProcessState::Exited(reason);
+    }
+}
+
+/// Invoke a terminate callback, catching any panics to prevent them from
+/// crashing the runtime.
+fn invoke_terminate_callback(cb: TerminateCallback, reason: &ExitReason) {
+    // Encode the reason as a simple tag byte for the callback.
+    let reason_tag: u8 = match reason {
+        ExitReason::Normal => 0,
+        ExitReason::Error(_) => 1,
+        ExitReason::Killed => 2,
+        ExitReason::Linked(_, _) => 3,
+    };
+
+    // catch_unwind ensures a panicking terminate callback does not unwind
+    // through the scheduler.
+    let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        cb(std::ptr::null(), &reason_tag as *const u8);
+    }));
 }
 
 // ---------------------------------------------------------------------------

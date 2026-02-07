@@ -4,6 +4,7 @@
 //! reduction counter, mailbox, and optional terminate callback. Processes are
 //! multiplexed across OS threads by the M:N scheduler.
 
+use std::collections::HashSet;
 use std::fmt;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
@@ -175,8 +176,13 @@ pub struct Process {
     pub reductions: u32,
 
     /// Linked processes. When this process exits, the exit reason is
-    /// propagated to all linked PIDs. Populated in Plan 06.
-    pub links: Vec<ProcessId>,
+    /// propagated to all linked PIDs.
+    pub links: HashSet<ProcessId>,
+
+    /// When true, exit signals from linked processes are delivered as
+    /// regular messages instead of causing this process to crash.
+    /// Used by supervisors to monitor child processes.
+    pub trap_exit: bool,
 
     /// FIFO mailbox for incoming messages.
     /// Wrapped in Arc for thread-safe access from sender threads.
@@ -200,7 +206,8 @@ impl Process {
             state: ProcessState::Ready,
             priority,
             reductions: DEFAULT_REDUCTIONS,
-            links: Vec::new(),
+            links: HashSet::new(),
+            trap_exit: false,
             mailbox: Arc::new(Mailbox::new()),
             heap: ActorHeap::new(),
             terminate_callback: None,
