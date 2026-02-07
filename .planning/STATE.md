@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-02-05)
 
 **Core value:** Expressive, readable concurrency -- writing concurrent programs should feel as natural as sequential code, with supervision and fault tolerance built in.
-**Current focus:** Phase 9 IN PROGRESS -- Concurrency Standard Library. Plan 01 complete (service parsing). Proceeding to Plan 02.
+**Current focus:** Phase 9 IN PROGRESS -- Concurrency Standard Library. Plan 02 complete (service type checking). Proceeding to Plan 03.
 
 ## Current Position
 
 Phase: 9 of 10 (Concurrency Standard Library)
-Plan: 1 of 5 in current phase
+Plan: 2 of 5 in current phase
 Status: In progress
-Last activity: 2026-02-07 -- Completed 09-01-PLAN.md (Service Definition Parsing)
+Last activity: 2026-02-07 -- Completed 09-02-PLAN.md (Service Type Checking)
 
-Progress: [██████████████████████████████████████████░░░] 87% (41 plans of ~47 estimated total)
+Progress: [███████████████████████████████████████████░░░] 89% (42 plans of ~47 estimated total)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 41
+- Total plans completed: 42
 - Average duration: 9min
-- Total execution time: 381min
+- Total execution time: 387min
 
 **By Phase:**
 
@@ -35,10 +35,10 @@ Progress: [███████████████████████
 | 06-actor-runtime | 7/7 | 70min | 10min |
 | 07-supervision-fault-tolerance | 3/3 | 27min | 9min |
 | 08-standard-library | 7/7 | 67min | 10min |
-| 09-concurrency-standard-library | 1/5 | 7min | 7min |
+| 09-concurrency-standard-library | 2/5 | 13min | 7min |
 
 **Recent Trend:**
-- Last 5 plans: 08-05 (13min), 08-07 (2min), 08-06 (10min), 09-01 (7min)
+- Last 5 plans: 08-07 (2min), 08-06 (10min), 09-01 (7min), 09-02 (6min)
 
 *Updated after each plan completion*
 
@@ -228,6 +228,10 @@ Recent decisions affecting current work:
 - [09-01]: State parameter uses simple |ident| bar-delimited parsing (single identifier, not full closure params)
 - [09-01]: Service body tuples use () not {} (Snow tuple syntax is parenthesized)
 - [09-01]: Keyword count increased from 42 to 45 (service, call, cast)
+- [09-02]: Service helper functions registered in TypeEnv as "ServiceName.method_name" entries (avoids threading user_modules)
+- [09-02]: Service Pid type is Pid<Unit> for callers -- internal dispatching uses type_tags at runtime
+- [09-02]: Job module uses synthetic TyVars (u32::MAX - 10..12) for polymorphic Schemes
+- [09-02]: User-defined service modules resolved in infer_field_access before sum type variant lookup
 
 ### Pending Todos
 
@@ -235,7 +239,7 @@ None.
 
 ### Blockers/Concerns
 
-- Phase 9 plan 01 complete -- service parsing infrastructure ready
+- Phase 9 plan 02 complete -- service type checking and Job module registration ready
 - string_split now possible with List type available (can be added in future plan)
 - String-keyed maps use pointer identity (not content comparison) -- documented limitation
 - Multiline pipe operator (`|>` at start of continuation line) fails to parse -- pre-existing parser limitation
@@ -246,5 +250,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-07
-Stopped at: Completed 09-01-PLAN.md (Service Definition Parsing)
+Stopped at: Completed 09-02-PLAN.md (Service Type Checking)
 Resume file: None
