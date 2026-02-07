@@ -38,9 +38,9 @@ Requirements for initial release. Each maps to roadmap phases.
 - [x] **CONC-02**: Typed message passing via `send`
 - [x] **CONC-03**: `receive` blocks with pattern matching
 - [x] **CONC-04**: Process linking and monitoring
-- [ ] **CONC-05**: Supervision trees (one_for_one, one_for_all, rest_for_one)
-- [ ] **CONC-06**: Let-it-crash with automatic restarts (permanent/transient/temporary)
-- [ ] **CONC-07**: Typed supervision (compile-time child spec validation)
+- [x] **CONC-05**: Supervision trees (one_for_one, one_for_all, rest_for_one)
+- [x] **CONC-06**: Let-it-crash with automatic restarts (permanent/transient/temporary)
+- [x] **CONC-07**: Typed supervision (compile-time child spec validation)
 
 ### Code Organization
 
@@ -50,15 +50,15 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### Standard Library
 
-- [ ] **STD-01**: Standard I/O (print, read)
-- [ ] **STD-02**: String operations
-- [ ] **STD-03**: List type with operations (map, filter, reduce)
-- [ ] **STD-04**: Map type (hash map)
-- [ ] **STD-05**: File I/O
-- [ ] **STD-06**: HTTP client and server
+- [x] **STD-01**: Standard I/O (print, read)
+- [x] **STD-02**: String operations
+- [x] **STD-03**: List type with operations (map, filter, reduce)
+- [x] **STD-04**: Map type (hash map)
+- [x] **STD-05**: File I/O
+- [x] **STD-06**: HTTP client and server
 - [ ] **STD-07**: GenServer behavior
 - [ ] **STD-08**: Task abstraction
-- [ ] **STD-09**: JSON encoding/decoding
+- [x] **STD-09**: JSON encoding/decoding
 
 ### Tooling
 
@@ -136,21 +136,21 @@ Which phases cover which requirements. Updated during roadmap creation.
 | CONC-02 | Phase 6: Actor Runtime | Complete |
 | CONC-03 | Phase 6: Actor Runtime | Complete |
 | CONC-04 | Phase 6: Actor Runtime | Complete |
-| CONC-05 | Phase 7: Supervision & Fault Tolerance | Pending |
-| CONC-06 | Phase 7: Supervision & Fault Tolerance | Pending |
-| CONC-07 | Phase 7: Supervision & Fault Tolerance | Pending |
+| CONC-05 | Phase 7: Supervision & Fault Tolerance | Complete |
+| CONC-06 | Phase 7: Supervision & Fault Tolerance | Complete |
+| CONC-07 | Phase 7: Supervision & Fault Tolerance | Complete |
 | ORG-01 | Phase 2: Parser & AST | Complete |
 | ORG-02 | Phase 2: Parser & AST | Complete |
 | ORG-03 | Phase 2: Parser & AST | Complete |
-| STD-01 | Phase 8: Standard Library | Pending |
-| STD-02 | Phase 8: Standard Library | Pending |
-| STD-03 | Phase 8: Standard Library | Pending |
-| STD-04 | Phase 8: Standard Library | Pending |
-| STD-05 | Phase 8: Standard Library | Pending |
-| STD-06 | Phase 8: Standard Library | Pending |
+| STD-01 | Phase 8: Standard Library | Complete |
+| STD-02 | Phase 8: Standard Library | Complete |
+| STD-03 | Phase 8: Standard Library | Complete |
+| STD-04 | Phase 8: Standard Library | Complete |
+| STD-05 | Phase 8: Standard Library | Complete |
+| STD-06 | Phase 8: Standard Library | Complete |
 | STD-07 | Phase 9: Concurrency Standard Library | Pending |
 | STD-08 | Phase 9: Concurrency Standard Library | Pending |
-| STD-09 | Phase 8: Standard Library | Pending |
+| STD-09 | Phase 8: Standard Library | Complete |
 | TOOL-01 | Phase 5: LLVM Codegen & Native Binaries | Complete |
 | TOOL-02 | Phase 10: Developer Tooling | Pending |
 | TOOL-03 | Phase 10: Developer Tooling | Pending |
@@ -168,4 +168,4 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 ---
 *Requirements defined: 2026-02-05*
-*Last updated: 2026-02-06 after roadmap creation*
+*Last updated: 2026-02-07 after Phase 8 completion*
