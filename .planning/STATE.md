@@ -5,14 +5,14 @@
 See: .planning/PROJECT.md (updated 2026-02-07)
 
 **Core value:** Expressive, readable concurrency -- writing concurrent programs should feel as natural as sequential code, with supervision and fault tolerance built in.
-**Current focus:** v1.1 Language Polish -- Phase 12 complete (Pipe Operator Closures)
+**Current focus:** v1.1 Language Polish -- Phase 12 fully complete (Pipe Operator Closures, including gap closure)
 
 ## Current Position
 
 Phase: 12 of 15 (Pipe Operator Closures)
-Plan: 2/2 complete (Phase 12 done)
+Plan: 3/3 complete (Phase 12 fully done, including gap closure)
 Status: Phase complete
-Last activity: 2026-02-07 - Completed 12-02-PLAN.md (formatter + typeck + MIR + e2e tests)
+Last activity: 2026-02-07 - Completed 12-03-PLAN.md (pipe-aware type checking gap closure)
 
 Progress: ███░░░░░░░ 33% (2/5 v1.1 phases)
 
@@ -26,9 +26,9 @@ Progress: ███░░░░░░░ 33% (2/5 v1.1 phases)
 - Lines of Rust: 52,611
 
 **v1.1:**
-- Plans completed: 5
+- Plans completed: 6
 - Phases: 5 (11-15)
-- Average duration: 9min
+- Average duration: 8min
 
 ## Accumulated Context
 
@@ -54,6 +54,7 @@ Full decision history archived in milestones/v1.0-ROADMAP.md.
 | fn do end is valid no-params closure | 12-01 | Natural extension of closure grammar; updated error_fn_missing_name test |
 | Pipe arity check limitation documented, not fixed | 12-02 | Pre-existing: typeck checks arity before pipe desugaring. Fixing requires architectural change. |
 | Multi-clause closure Match desugaring mirrors named fn pattern | 12-02 | Reuses Phase 11-03 approach: Match for single-param, if-else for multi-param |
+| Pipe-aware inference in infer_pipe, not infer_call | 12-03 | CallExpr RHS handled directly: extract callee+args, prepend lhs_ty, unify as full function type |
 
 ### Pending Todos
 
@@ -61,11 +62,11 @@ None.
 
 ### Blockers/Concerns
 
-- Pipe + multi-arg calls: `list |> map(fn x -> x * 2 end)` blocked by typeck arity check. Direct calls work. Fixing requires typeck pipe awareness (future phase).
+None. The pipe+multi-arg call limitation from 12-02 has been resolved by 12-03 gap closure.
 
 ## Session Continuity
 
-Last session: 2026-02-07T22:52:00Z
-Stopped at: Completed 12-02-PLAN.md (Phase 12 complete)
+Last session: 2026-02-07T23:24:56Z
+Stopped at: Completed 12-03-PLAN.md (Phase 12 gap closure complete)
 Resume file: None
 Next action: Execute Phase 13 plans
