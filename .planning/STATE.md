@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-02-05)
 
 **Core value:** Expressive, readable concurrency -- writing concurrent programs should feel as natural as sequential code, with supervision and fault tolerance built in.
-**Current focus:** Phase 9 IN PROGRESS -- Concurrency Standard Library. Plan 03 complete (service runtime + codegen). Proceeding to Plan 04.
+**Current focus:** Phase 9 IN PROGRESS -- Concurrency Standard Library. Plan 04 complete (Job runtime + codegen). Proceeding to Plan 05.
 
 ## Current Position
 
 Phase: 9 of 10 (Concurrency Standard Library)
-Plan: 3 of 5 in current phase
+Plan: 4 of 5 in current phase
 Status: In progress
-Last activity: 2026-02-07 -- Completed 09-03-PLAN.md (Service Runtime + Codegen)
+Last activity: 2026-02-07 -- Completed 09-04-PLAN.md (Job Runtime + Codegen)
 
-Progress: [████████████████████████████████████████████░░] 91% (43 plans of ~47 estimated total)
+Progress: [████████████████████████████████████████████░░] 94% (44 plans of ~47 estimated total)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 43
+- Total plans completed: 44
 - Average duration: 9min
-- Total execution time: 406min
+- Total execution time: 412min
 
 **By Phase:**
 
@@ -35,10 +35,10 @@ Progress: [███████████████████████
 | 06-actor-runtime | 7/7 | 70min | 10min |
 | 07-supervision-fault-tolerance | 3/3 | 27min | 9min |
 | 08-standard-library | 7/7 | 67min | 10min |
-| 09-concurrency-standard-library | 3/5 | 32min | 11min |
+| 09-concurrency-standard-library | 4/5 | 38min | 10min |
 
 **Recent Trend:**
-- Last 5 plans: 08-06 (10min), 09-01 (7min), 09-02 (6min), 09-03 (19min)
+- Last 5 plans: 09-01 (7min), 09-02 (6min), 09-03 (19min), 09-04 (6min)
 
 *Updated after each plan completion*
 
@@ -237,6 +237,10 @@ Recent decisions affecting current work:
 - [09-03]: Call handler returns tuple (new_state, reply); codegen extracts via snow_tuple_first/second
 - [09-03]: Cast message format [tag][0 caller][args] for uniform dispatch in service loop
 - [09-03]: Service call/cast helpers intercepted in codegen_call by function name pattern (snow_service_call/snow_actor_send)
+- [09-04]: JOB_RESULT_TAG = u64::MAX - 1 distinguishes job results from EXIT_SIGNAL_TAG = u64::MAX
+- [09-04]: Job.await returns SnowResult (tag 0 = Ok, tag 1 = Err) matching existing Result layout
+- [09-04]: Job entry function packs fn_ptr/env_ptr/caller_pid into GC-heap args buffer
+- [09-04]: Job.map spawns one actor per list element, awaits all in order
 
 ### Pending Todos
 
@@ -244,7 +248,7 @@ None.
 
 ### Blockers/Concerns
 
-- Phase 9 plan 03 complete -- service runtime and codegen wired; Job module stubs ready for Plan 04
+- Phase 9 plan 04 complete -- Job runtime and codegen wired; ready for Plan 05 E2E tests
 - string_split now possible with List type available (can be added in future plan)
 - String-keyed maps use pointer identity (not content comparison) -- documented limitation
 - Multiline pipe operator (`|>` at start of continuation line) fails to parse -- pre-existing parser limitation
@@ -255,5 +259,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-07
-Stopped at: Completed 09-03-PLAN.md (Service Runtime + Codegen)
+Stopped at: Completed 09-04-PLAN.md (Job Runtime + Codegen)
 Resume file: None
