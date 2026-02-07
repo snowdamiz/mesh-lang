@@ -265,6 +265,13 @@ fn e2e_json_parse_roundtrip() {
 }
 
 // ── HTTP E2E Tests (Phase 8 Plan 05) ──────────────────────────────────
+//
+// Note: The HTTP server uses thread-per-connection (std::thread::spawn)
+// rather than actor-per-connection (snow_actor_spawn). This was a deliberate
+// implementation decision [STATE.md 08-05] because the actor runtime uses
+// corosensei coroutines with cooperative scheduling, and integrating
+// tiny-http's blocking I/O model with it introduces unnecessary complexity.
+// Thread-per-connection is simple and correct for Phase 8.
 
 #[test]
 fn e2e_http_server_compiles() {
