@@ -10,11 +10,11 @@ See: .planning/PROJECT.md (updated 2026-02-07)
 ## Current Position
 
 Phase: 11 of 15 (Multi-Clause Functions)
-Plan: 1 of 3 in phase
+Plan: 2 of 3 in phase
 Status: In progress
-Last activity: 2026-02-07 - Completed 11-01-PLAN.md (parser + AST)
+Last activity: 2026-02-07 - Completed 11-02-PLAN.md (type checker desugaring)
 
-Progress: █░░░░░░░░░ ~14% (1/~7 v1.1 plans)
+Progress: ██░░░░░░░░ ~29% (2/~7 v1.1 plans)
 
 ## Performance Metrics
 
@@ -26,9 +26,9 @@ Progress: █░░░░░░░░░ ~14% (1/~7 v1.1 plans)
 - Lines of Rust: 52,611
 
 **v1.1:**
-- Plans completed: 1
+- Plans completed: 2
 - Phases: 5 (11-15)
-- Average duration: 5min
+- Average duration: 7min
 
 ## Accumulated Context
 
@@ -42,6 +42,10 @@ Full decision history archived in milestones/v1.0-ROADMAP.md.
 | Always use parse_fn_clause_param_list for all fn def param lists | 11-01 | Transparent backward compat -- handles both pattern and regular params |
 | Guard clause parsed before body detection | 11-01 | Grammar reads: fn name(params) [when guard] [= expr \| do/end] |
 | FN_EXPR_BODY node wraps body expression | 11-01 | Clean AST distinction between body forms via child node kind |
+| Single = expr FnDef treated as 1-clause MultiClause group | 11-02 | Consistent desugaring path for all expression-body functions |
+| Multi-clause guards bypass validate_guard_expr | 11-02 | User decision: arbitrary Bool expressions allowed in guards |
+| Non-first clause annotations produce warnings not errors | 11-02 | Gentle UX -- non-first visibility/generics/return type ignored with warning |
+| Exhaustiveness non-exhaustive is warning for multi-clause functions | 11-02 | Matches case expression behavior -- warn but don't block compilation |
 
 ### Pending Todos
 
@@ -53,7 +57,7 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-02-07T19:35:47Z
-Stopped at: Completed 11-01-PLAN.md
+Last session: 2026-02-07T19:48:33Z
+Stopped at: Completed 11-02-PLAN.md
 Resume file: None
-Next action: Execute 11-02-PLAN.md (type checker desugaring)
+Next action: Execute 11-03-PLAN.md (codegen for multi-clause functions)
