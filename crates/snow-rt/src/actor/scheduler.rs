@@ -244,6 +244,25 @@ impl Scheduler {
     pub fn get_process(&self, pid: ProcessId) -> Option<Arc<Mutex<Process>>> {
         self.process_table.read().get(&pid).cloned()
     }
+
+    /// Wake a process that was in Waiting state.
+    ///
+    /// This is called by `snow_actor_send` after setting the process state
+    /// to Ready. Since coroutines are `!Send` and thread-pinned, the actual
+    /// resumption happens in the worker loop when it notices the state change.
+    ///
+    /// The wake mechanism is cooperative: the worker thread that owns the
+    /// coroutine will see the Ready state on its next iteration and resume it.
+    pub fn wake_process(&self, _pid: ProcessId) {
+        // The process state has already been set to Ready by the caller.
+        // The worker loop checks process state before resuming suspended
+        // coroutines, so the state change is sufficient to wake the process.
+        //
+        // No additional signaling is needed because:
+        // 1. Workers poll suspended coroutines on every iteration
+        // 2. The Waiting state prevents busy-resume until a message arrives
+        // 3. The state change from Waiting -> Ready happens under lock
+    }
 }
 
 impl std::fmt::Debug for Scheduler {
@@ -289,8 +308,23 @@ fn worker_loop(
 
         // --- Phase 1: Run suspended coroutines (they have priority) ---
         // Drain suspended list, resuming each. If still not done, re-add.
+        // Skip Waiting processes -- they should not be resumed until woken
+        // (state changed to Ready by a message send).
         let mut still_suspended = Vec::new();
         for (pid, mut handle) in suspended.drain(..) {
+            // Check if process is Waiting (blocked on receive).
+            let is_waiting = process_table
+                .read()
+                .get(&pid)
+                .map(|p| matches!(p.lock().state, ProcessState::Waiting))
+                .unwrap_or(false);
+
+            if is_waiting {
+                // Don't resume -- keep suspended without counting as work.
+                still_suspended.push((pid, handle));
+                continue;
+            }
+
             did_work = true;
 
             // Set thread-local PID for snow_actor_self().
@@ -308,7 +342,10 @@ fn worker_loop(
                 if let Some(proc) = process_table.read().get(&pid) {
                     let mut proc = proc.lock();
                     proc.reductions = DEFAULT_REDUCTIONS;
-                    proc.state = ProcessState::Ready;
+                    // Only set Ready if not Waiting (receive may have set Waiting).
+                    if !matches!(proc.state, ProcessState::Waiting) {
+                        proc.state = ProcessState::Ready;
+                    }
                 }
                 still_suspended.push((pid, handle));
             } else {
@@ -347,7 +384,10 @@ fn worker_loop(
                 if let Some(proc) = process_table.read().get(&req.pid) {
                     let mut proc = proc.lock();
                     proc.reductions = DEFAULT_REDUCTIONS;
-                    proc.state = ProcessState::Ready;
+                    // Only set Ready if not Waiting (receive may have set Waiting).
+                    if !matches!(proc.state, ProcessState::Waiting) {
+                        proc.state = ProcessState::Ready;
+                    }
                 }
                 suspended.push((req.pid, handle));
             } else {

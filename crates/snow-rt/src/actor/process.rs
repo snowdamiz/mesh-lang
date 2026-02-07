@@ -4,11 +4,12 @@
 //! reduction counter, mailbox, and optional terminate callback. Processes are
 //! multiplexed across OS threads by the M:N scheduler.
 
-use std::collections::VecDeque;
 use std::fmt;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Arc;
 
 use super::heap::{ActorHeap, MessageBuffer};
+use super::mailbox::Mailbox;
 
 // ---------------------------------------------------------------------------
 // ProcessId
@@ -178,7 +179,8 @@ pub struct Process {
     pub links: Vec<ProcessId>,
 
     /// FIFO mailbox for incoming messages.
-    pub mailbox: VecDeque<Message>,
+    /// Wrapped in Arc for thread-safe access from sender threads.
+    pub mailbox: Arc<Mailbox>,
 
     /// Per-actor bump allocator heap for memory allocation.
     /// Each actor has its own heap to avoid global arena contention
@@ -199,7 +201,7 @@ impl Process {
             priority,
             reductions: DEFAULT_REDUCTIONS,
             links: Vec::new(),
-            mailbox: VecDeque::new(),
+            mailbox: Arc::new(Mailbox::new()),
             heap: ActorHeap::new(),
             terminate_callback: None,
         }
@@ -273,7 +275,7 @@ mod tests {
         let proc = Process::new(pid, Priority::Normal);
         assert_eq!(proc.reductions, DEFAULT_REDUCTIONS);
         assert!(proc.links.is_empty());
-        assert!(proc.mailbox.is_empty());
+        assert!(proc.mailbox.is_empty()); // Mailbox::is_empty()
         assert!(proc.terminate_callback.is_none());
         assert!(matches!(proc.state, ProcessState::Ready));
     }
