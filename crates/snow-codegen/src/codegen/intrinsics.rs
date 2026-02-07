@@ -318,6 +318,41 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
     // snow_json_from_string(s: ptr) -> ptr
     module.add_function("snow_json_from_string", ptr_type.fn_type(&[ptr_type.into()], false), Some(inkwell::module::Linkage::External));
 
+    // ── Standard library: HTTP functions (Phase 8 Plan 05) ──────────────
+
+    // snow_http_router() -> ptr
+    module.add_function("snow_http_router", ptr_type.fn_type(&[], false), Some(inkwell::module::Linkage::External));
+
+    // snow_http_route(router: ptr, pattern: ptr, handler_fn: ptr) -> ptr
+    module.add_function("snow_http_route", ptr_type.fn_type(&[ptr_type.into(), ptr_type.into(), ptr_type.into()], false), Some(inkwell::module::Linkage::External));
+
+    // snow_http_serve(router: ptr, port: i64) -> void
+    module.add_function("snow_http_serve", void_type.fn_type(&[ptr_type.into(), i64_type.into()], false), Some(inkwell::module::Linkage::External));
+
+    // snow_http_response_new(status: i64, body: ptr) -> ptr
+    module.add_function("snow_http_response_new", ptr_type.fn_type(&[i64_type.into(), ptr_type.into()], false), Some(inkwell::module::Linkage::External));
+
+    // snow_http_get(url: ptr) -> ptr (SnowResult)
+    module.add_function("snow_http_get", ptr_type.fn_type(&[ptr_type.into()], false), Some(inkwell::module::Linkage::External));
+
+    // snow_http_post(url: ptr, body: ptr) -> ptr (SnowResult)
+    module.add_function("snow_http_post", ptr_type.fn_type(&[ptr_type.into(), ptr_type.into()], false), Some(inkwell::module::Linkage::External));
+
+    // snow_http_request_method(req: ptr) -> ptr
+    module.add_function("snow_http_request_method", ptr_type.fn_type(&[ptr_type.into()], false), Some(inkwell::module::Linkage::External));
+
+    // snow_http_request_path(req: ptr) -> ptr
+    module.add_function("snow_http_request_path", ptr_type.fn_type(&[ptr_type.into()], false), Some(inkwell::module::Linkage::External));
+
+    // snow_http_request_body(req: ptr) -> ptr
+    module.add_function("snow_http_request_body", ptr_type.fn_type(&[ptr_type.into()], false), Some(inkwell::module::Linkage::External));
+
+    // snow_http_request_header(req: ptr, name: ptr) -> ptr (SnowOption)
+    module.add_function("snow_http_request_header", ptr_type.fn_type(&[ptr_type.into(), ptr_type.into()], false), Some(inkwell::module::Linkage::External));
+
+    // snow_http_request_query(req: ptr, name: ptr) -> ptr (SnowOption)
+    module.add_function("snow_http_request_query", ptr_type.fn_type(&[ptr_type.into(), ptr_type.into()], false), Some(inkwell::module::Linkage::External));
+
     // snow_panic(msg: ptr, msg_len: u64, file: ptr, file_len: u64, line: u32) -> void
     // (noreturn -- marked via attribute)
     let panic_params: Vec<BasicMetadataTypeEnum<'ctx>> = vec![
@@ -454,6 +489,19 @@ mod tests {
         assert!(module.get_function("snow_queue_peek").is_some());
         assert!(module.get_function("snow_queue_size").is_some());
         assert!(module.get_function("snow_queue_is_empty").is_some());
+
+        // HTTP functions (Phase 8 Plan 05)
+        assert!(module.get_function("snow_http_router").is_some());
+        assert!(module.get_function("snow_http_route").is_some());
+        assert!(module.get_function("snow_http_serve").is_some());
+        assert!(module.get_function("snow_http_response_new").is_some());
+        assert!(module.get_function("snow_http_get").is_some());
+        assert!(module.get_function("snow_http_post").is_some());
+        assert!(module.get_function("snow_http_request_method").is_some());
+        assert!(module.get_function("snow_http_request_path").is_some());
+        assert!(module.get_function("snow_http_request_body").is_some());
+        assert!(module.get_function("snow_http_request_header").is_some());
+        assert!(module.get_function("snow_http_request_query").is_some());
 
         // JSON functions (Phase 8 Plan 04)
         assert!(module.get_function("snow_json_parse").is_some());

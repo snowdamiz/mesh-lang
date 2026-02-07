@@ -380,12 +380,47 @@ fn stdlib_modules() -> HashMap<String, HashMap<String, Scheme>> {
     json_mod.insert("encode_list".to_string(), Scheme::mono(Ty::fun(vec![Ty::list_untyped()], Ty::string())));
     modules.insert("JSON".to_string(), json_mod);
 
+    // ── HTTP module (Phase 8 Plan 05) ────────────────────────────────
+    let request_t = Ty::Con(TyCon::new("Request"));
+    let response_t = Ty::Con(TyCon::new("Response"));
+    let router_t = Ty::Con(TyCon::new("Router"));
+
+    let mut http_mod = HashMap::new();
+    http_mod.insert("router".to_string(), Scheme::mono(Ty::fun(vec![], router_t.clone())));
+    http_mod.insert("route".to_string(), Scheme::mono(Ty::fun(
+        vec![router_t.clone(), Ty::string(), Ty::fun(vec![request_t.clone()], response_t.clone())],
+        router_t.clone(),
+    )));
+    http_mod.insert("serve".to_string(), Scheme::mono(Ty::fun(vec![router_t.clone(), Ty::int()], Ty::Tuple(vec![]))));
+    http_mod.insert("response".to_string(), Scheme::mono(Ty::fun(vec![Ty::int(), Ty::string()], response_t.clone())));
+    http_mod.insert("get".to_string(), Scheme::mono(Ty::fun(vec![Ty::string()], Ty::result(Ty::string(), Ty::string()))));
+    http_mod.insert("post".to_string(), Scheme::mono(Ty::fun(
+        vec![Ty::string(), Ty::string()],
+        Ty::result(Ty::string(), Ty::string()),
+    )));
+    modules.insert("HTTP".to_string(), http_mod);
+
+    // ── Request module (Phase 8 Plan 05) ─────────────────────────────
+    let mut request_mod = HashMap::new();
+    request_mod.insert("method".to_string(), Scheme::mono(Ty::fun(vec![request_t.clone()], Ty::string())));
+    request_mod.insert("path".to_string(), Scheme::mono(Ty::fun(vec![request_t.clone()], Ty::string())));
+    request_mod.insert("body".to_string(), Scheme::mono(Ty::fun(vec![request_t.clone()], Ty::string())));
+    request_mod.insert("header".to_string(), Scheme::mono(Ty::fun(
+        vec![request_t.clone(), Ty::string()],
+        Ty::option(Ty::string()),
+    )));
+    request_mod.insert("query".to_string(), Scheme::mono(Ty::fun(
+        vec![request_t.clone(), Ty::string()],
+        Ty::option(Ty::string()),
+    )));
+    modules.insert("Request".to_string(), request_mod);
+
     modules
 }
 
 /// Set of module names recognized by the stdlib for qualified access.
 const STDLIB_MODULE_NAMES: &[&str] = &[
-    "String", "IO", "Env", "File", "List", "Map", "Set", "Tuple", "Range", "Queue", "HTTP", "JSON",
+    "String", "IO", "Env", "File", "List", "Map", "Set", "Tuple", "Range", "Queue", "HTTP", "JSON", "Request",
 ];
 
 /// Check if a name is a known stdlib module.

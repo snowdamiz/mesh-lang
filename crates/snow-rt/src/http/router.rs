@@ -4,7 +4,6 @@
 //! Supports exact match and wildcard patterns (`/api/*` matches any
 //! path starting with `/api/`).
 
-use crate::gc::snow_gc_alloc;
 use crate::string::SnowString;
 
 /// A single route entry mapping a URL pattern to a handler.
@@ -66,14 +65,17 @@ pub extern "C" fn snow_http_router() -> *mut u8 {
 /// - `router`: pointer to an existing SnowRouter
 /// - `pattern`: pointer to a SnowString URL pattern
 /// - `handler_fn`: function pointer for the route handler
-/// - `handler_env`: closure environment pointer (null for bare functions)
+///
+/// The handler environment (env_ptr) is always null for bare named functions.
+/// Closure handlers are not supported in Phase 8 -- the handler must be a
+/// top-level named function.
 #[no_mangle]
 pub extern "C" fn snow_http_route(
     router: *mut u8,
     pattern: *const SnowString,
     handler_fn: *mut u8,
-    handler_env: *mut u8,
 ) -> *mut u8 {
+    let handler_env: *mut u8 = std::ptr::null_mut();
     unsafe {
         let old = &*(router as *const SnowRouter);
         let pat_str = (*pattern).as_str().to_string();
@@ -175,9 +177,8 @@ mod tests {
 
         let pattern = snow_string_new(b"/hello".as_ptr(), 6);
         let handler_fn = 42usize as *mut u8;
-        let handler_env = std::ptr::null_mut();
 
-        let router2 = snow_http_route(router, pattern, handler_fn, handler_env);
+        let router2 = snow_http_route(router, pattern, handler_fn);
         assert!(!router2.is_null());
 
         // Verify the new router has the route.

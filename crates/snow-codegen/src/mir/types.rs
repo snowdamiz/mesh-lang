@@ -72,8 +72,9 @@ fn resolve_con(con: &TyCon, registry: &TypeRegistry) -> MirType {
         "String" => MirType::String,
         "Unit" | "()" => MirType::Unit,
         "Pid" => MirType::Pid(None),
-        // Collection types and Json are opaque pointers at LLVM level.
-        "List" | "Map" | "Set" | "Range" | "Queue" | "Tuple" | "Json" => MirType::Ptr,
+        // Collection types, Json, and HTTP types are opaque pointers at LLVM level.
+        "List" | "Map" | "Set" | "Range" | "Queue" | "Tuple" | "Json"
+        | "Router" | "Request" | "Response" => MirType::Ptr,
         name => {
             // Check registry: struct or sum type?
             if registry.struct_defs.contains_key(name) {

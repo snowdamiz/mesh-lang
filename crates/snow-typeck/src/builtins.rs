@@ -487,6 +487,86 @@ pub fn register_builtins(
         "json_encode_list".into(),
         Scheme::mono(Ty::fun(vec![list_t.clone()], Ty::string())),
     );
+
+    // ── Standard library: HTTP functions (Phase 8 Plan 05) ────────────
+
+    // HTTP types (opaque, resolve to MirType::Ptr at codegen level)
+    let request_t = Ty::Con(TyCon::new("Request"));
+    let response_t = Ty::Con(TyCon::new("Response"));
+    let router_t = Ty::Con(TyCon::new("Router"));
+    env.insert("Request".into(), Scheme::mono(request_t.clone()));
+    env.insert("Response".into(), Scheme::mono(response_t.clone()));
+    env.insert("Router".into(), Scheme::mono(router_t.clone()));
+
+    // HTTP.router() -> Router
+    env.insert(
+        "http_router".into(),
+        Scheme::mono(Ty::fun(vec![], router_t.clone())),
+    );
+    // HTTP.route(Router, String, (Request) -> Response) -> Router
+    env.insert(
+        "http_route".into(),
+        Scheme::mono(Ty::fun(
+            vec![router_t.clone(), Ty::string(), Ty::fun(vec![request_t.clone()], response_t.clone())],
+            router_t.clone(),
+        )),
+    );
+    // HTTP.serve(Router, Int) -> ()
+    env.insert(
+        "http_serve".into(),
+        Scheme::mono(Ty::fun(vec![router_t.clone(), Ty::int()], Ty::Tuple(vec![]))),
+    );
+    // HTTP.response(Int, String) -> Response
+    env.insert(
+        "http_response".into(),
+        Scheme::mono(Ty::fun(vec![Ty::int(), Ty::string()], response_t.clone())),
+    );
+    // HTTP.get(String) -> Result<String, String>
+    env.insert(
+        "http_get".into(),
+        Scheme::mono(Ty::fun(vec![Ty::string()], Ty::result(Ty::string(), Ty::string()))),
+    );
+    // HTTP.post(String, String) -> Result<String, String>
+    env.insert(
+        "http_post".into(),
+        Scheme::mono(Ty::fun(
+            vec![Ty::string(), Ty::string()],
+            Ty::result(Ty::string(), Ty::string()),
+        )),
+    );
+
+    // Request accessor functions
+    // Request.method(Request) -> String
+    env.insert(
+        "request_method".into(),
+        Scheme::mono(Ty::fun(vec![request_t.clone()], Ty::string())),
+    );
+    // Request.path(Request) -> String
+    env.insert(
+        "request_path".into(),
+        Scheme::mono(Ty::fun(vec![request_t.clone()], Ty::string())),
+    );
+    // Request.body(Request) -> String
+    env.insert(
+        "request_body".into(),
+        Scheme::mono(Ty::fun(vec![request_t.clone()], Ty::string())),
+    );
+    // Request.header(Request, String) -> Option<String>
+    env.insert(
+        "request_header".into(),
+        Scheme::mono(Ty::fun(
+            vec![request_t.clone(), Ty::string()],
+            Ty::option(Ty::string()),
+        )),
+    );
+    // Request.query(Request, String) -> Option<String>
+    env.insert(
+        "request_query".into(),
+        Scheme::mono(Ty::fun(
+            vec![request_t.clone(), Ty::string()],
+            Ty::option(Ty::string()),
+        )),
+    );
 }
 
 /// Register compiler-known traits and their built-in implementations.
@@ -712,5 +792,20 @@ mod tests {
 
         // Env functions
         assert!(env.lookup("env_get").is_some());
+
+        // HTTP functions (Phase 8 Plan 05)
+        assert!(env.lookup("http_router").is_some());
+        assert!(env.lookup("http_route").is_some());
+        assert!(env.lookup("http_serve").is_some());
+        assert!(env.lookup("http_response").is_some());
+        assert!(env.lookup("http_get").is_some());
+        assert!(env.lookup("http_post").is_some());
+
+        // Request accessors
+        assert!(env.lookup("request_method").is_some());
+        assert!(env.lookup("request_path").is_some());
+        assert!(env.lookup("request_body").is_some());
+        assert!(env.lookup("request_header").is_some());
+        assert!(env.lookup("request_query").is_some());
     }
 }

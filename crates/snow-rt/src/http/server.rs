@@ -13,8 +13,6 @@
 //! introduces complex FFI concerns. Thread-per-connection with tiny-http
 //! is simple and correct for Phase 8.
 
-use std::io::Read;
-
 use crate::collections::map;
 use crate::gc::snow_gc_alloc;
 use crate::string::{snow_string_new, SnowString};

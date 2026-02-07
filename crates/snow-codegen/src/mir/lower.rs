@@ -295,6 +295,18 @@ impl<'a> Lowerer<'a> {
         self.known_functions.insert("snow_json_from_float".to_string(), MirType::FnPtr(vec![MirType::Float], Box::new(MirType::Ptr)));
         self.known_functions.insert("snow_json_from_bool".to_string(), MirType::FnPtr(vec![MirType::Bool], Box::new(MirType::Ptr)));
         self.known_functions.insert("snow_json_from_string".to_string(), MirType::FnPtr(vec![MirType::String], Box::new(MirType::Ptr)));
+        // HTTP functions (Phase 8 Plan 05)
+        self.known_functions.insert("snow_http_router".to_string(), MirType::FnPtr(vec![], Box::new(MirType::Ptr)));
+        self.known_functions.insert("snow_http_route".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::String, MirType::Ptr], Box::new(MirType::Ptr)));
+        self.known_functions.insert("snow_http_serve".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Int], Box::new(MirType::Unit)));
+        self.known_functions.insert("snow_http_response_new".to_string(), MirType::FnPtr(vec![MirType::Int, MirType::String], Box::new(MirType::Ptr)));
+        self.known_functions.insert("snow_http_get".to_string(), MirType::FnPtr(vec![MirType::String], Box::new(MirType::Ptr)));
+        self.known_functions.insert("snow_http_post".to_string(), MirType::FnPtr(vec![MirType::String, MirType::String], Box::new(MirType::Ptr)));
+        self.known_functions.insert("snow_http_request_method".to_string(), MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::String)));
+        self.known_functions.insert("snow_http_request_path".to_string(), MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::String)));
+        self.known_functions.insert("snow_http_request_body".to_string(), MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::String)));
+        self.known_functions.insert("snow_http_request_header".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::String], Box::new(MirType::Ptr)));
+        self.known_functions.insert("snow_http_request_query".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::String], Box::new(MirType::Ptr)));
 
         // Also register variant constructors as known functions.
         for (_, sum_info) in &self.registry.sum_type_defs {
@@ -1807,7 +1819,7 @@ impl<'a> Lowerer<'a> {
 
 /// Set of known stdlib module names for qualified access lowering.
 const STDLIB_MODULES: &[&str] = &[
-    "String", "IO", "Env", "File", "List", "Map", "Set", "Tuple", "Range", "Queue", "HTTP", "JSON",
+    "String", "IO", "Env", "File", "List", "Map", "Set", "Tuple", "Range", "Queue", "HTTP", "JSON", "Request",
 ];
 
 /// Map Snow builtin function names to their runtime equivalents.
@@ -1936,6 +1948,23 @@ fn map_builtin_name(name: &str) -> String {
         "encode_bool" => "snow_json_encode_bool".to_string(),
         "encode_map" => "snow_json_encode_map".to_string(),
         "encode_list" => "snow_json_encode_list".to_string(),
+        // ── HTTP functions (Phase 8 Plan 05) ──────────────────────────
+        "http_router" => "snow_http_router".to_string(),
+        "http_route" => "snow_http_route".to_string(),
+        "http_serve" => "snow_http_serve".to_string(),
+        "http_response" => "snow_http_response_new".to_string(),
+        "http_get" => "snow_http_get".to_string(),
+        "http_post" => "snow_http_post".to_string(),
+        // Request accessor functions (prefixed form from module-qualified access)
+        "request_method" => "snow_http_request_method".to_string(),
+        "request_path" => "snow_http_request_path".to_string(),
+        "request_body" => "snow_http_request_body".to_string(),
+        "request_header" => "snow_http_request_header".to_string(),
+        "request_query" => "snow_http_request_query".to_string(),
+        // NOTE: No bare name mappings for HTTP/Request (router, route, get,
+        // post, method, path, body, etc.) because they collide with common
+        // variable names. Use module-qualified access instead:
+        //   HTTP.router(), HTTP.route(), Request.method(), etc.
         _ => name.to_string(),
     }
 }

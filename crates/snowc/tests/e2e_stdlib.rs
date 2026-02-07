@@ -1,10 +1,10 @@
 //! End-to-end integration tests for Snow standard library functions (Phase 8).
 //!
 //! Tests string operations, module-qualified access (String.length),
-//! from/import resolution, and IO operations.
+//! from/import resolution, IO operations, and HTTP server/client compilation.
 
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Command, Output};
 
 /// Helper: compile a Snow source file and run the resulting binary, returning stdout.
 fn compile_and_run(source: &str) -> String {
@@ -63,6 +63,22 @@ fn find_snowc() -> PathBuf {
         snowc.display()
     );
     snowc
+}
+
+/// Helper: compile a Snow source file without running it. Returns compilation output.
+fn compile_only(source: &str) -> Output {
+    let temp_dir = tempfile::tempdir().expect("failed to create temp dir");
+    let project_dir = temp_dir.path().join("project");
+    std::fs::create_dir_all(&project_dir).expect("failed to create project dir");
+
+    let main_snow = project_dir.join("main.snow");
+    std::fs::write(&main_snow, source).expect("failed to write main.snow");
+
+    let snowc = find_snowc();
+    Command::new(&snowc)
+        .args(["build", project_dir.to_str().unwrap()])
+        .output()
+        .expect("failed to invoke snowc")
 }
 
 /// Read a test fixture from the tests/e2e/ directory.
@@ -245,4 +261,52 @@ fn e2e_json_parse_roundtrip() {
     let source = read_fixture("stdlib_json_parse_roundtrip.snow");
     let output = compile_and_run(&source);
     assert_eq!(output, "99\n");
+}
+
+// ── HTTP E2E Tests (Phase 8 Plan 05) ──────────────────────────────────
+
+#[test]
+fn e2e_http_server_compiles() {
+    // Verify a server program compiles (cannot run because it blocks on serve).
+    let source = read_fixture("stdlib_http_response.snow");
+    let output = compile_and_run(&source);
+    assert_eq!(output, "compiled\n");
+}
+
+#[test]
+fn e2e_http_client_compiles_and_runs() {
+    // Verify an HTTP client program compiles and runs.
+    // This makes a real HTTP request to example.com.
+    let source = read_fixture("stdlib_http_client.snow");
+    let output = compile_and_run(&source);
+    // Should print "ok" (successful GET to example.com) or "error" (no network).
+    assert!(
+        output == "ok\n" || output == "error\n",
+        "unexpected output: {}",
+        output
+    );
+}
+
+#[test]
+fn e2e_http_full_server_compile_only() {
+    // Verify a full server program with handler and serve compiles.
+    let source = r#"
+fn handler(request) do
+  let m = Request.method(request)
+  HTTP.response(200, m)
+end
+
+fn main() do
+  let r = HTTP.router()
+  let r = HTTP.route(r, "/", handler)
+  HTTP.serve(r, 0)
+end
+"#;
+    let result = compile_only(source);
+    assert!(
+        result.status.success(),
+        "HTTP server with Request accessors should compile:\nstdout: {}\nstderr: {}",
+        String::from_utf8_lossy(&result.stdout),
+        String::from_utf8_lossy(&result.stderr)
+    );
 }
