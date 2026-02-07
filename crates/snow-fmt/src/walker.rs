@@ -91,6 +91,7 @@ pub fn walk_node(node: &SyntaxNode) -> FormatIR {
         | SyntaxKind::OR_PAT
         | SyntaxKind::AS_PAT
         | SyntaxKind::GUARD_CLAUSE
+        | SyntaxKind::FN_EXPR_BODY
         | SyntaxKind::INTERPOLATION
         | SyntaxKind::TRAILING_CLOSURE
         | SyntaxKind::IMPORT_LIST
@@ -170,6 +171,7 @@ fn walk_source_file(node: &SyntaxNode) -> FormatIR {
 fn walk_fn_def(node: &SyntaxNode) -> FormatIR {
     let mut parts = Vec::new();
     let mut has_block = false;
+    let mut has_expr_body = false;
 
     for child in node.children_with_tokens() {
         match child {
@@ -185,6 +187,15 @@ fn walk_fn_def(node: &SyntaxNode) -> FormatIR {
                         has_block = true;
                     }
                     SyntaxKind::END_KW => {}
+                    SyntaxKind::EQ if !has_block => {
+                        // `= expr` body form -- the EQ token before FN_EXPR_BODY.
+                        // Don't emit here; it's handled with the FN_EXPR_BODY node.
+                    }
+                    SyntaxKind::WHEN_KW => {
+                        parts.push(sp());
+                        parts.push(ir::text("when"));
+                        parts.push(sp());
+                    }
                     SyntaxKind::NEWLINE => {}
                     SyntaxKind::COMMENT | SyntaxKind::DOC_COMMENT => {
                         parts.push(sp());
@@ -218,6 +229,22 @@ fn walk_fn_def(node: &SyntaxNode) -> FormatIR {
                     SyntaxKind::GENERIC_PARAM_LIST => {
                         parts.push(walk_node(&n));
                     }
+                    SyntaxKind::GUARD_CLAUSE => {
+                        // Guard clause: emit space + walk tokens inline.
+                        parts.push(sp());
+                        parts.push(walk_node(&n));
+                    }
+                    SyntaxKind::FN_EXPR_BODY => {
+                        // `= expr` body form.
+                        parts.push(sp());
+                        parts.push(ir::text("="));
+                        parts.push(sp());
+                        // Walk the expression child of FN_EXPR_BODY.
+                        for body_child in n.children() {
+                            parts.push(walk_node(&body_child));
+                        }
+                        has_expr_body = true;
+                    }
                     SyntaxKind::BLOCK if has_block => {
                         let body = walk_block_body(&n);
                         parts.push(ir::indent(ir::concat(vec![ir::hardline(), body])));
@@ -225,7 +252,9 @@ fn walk_fn_def(node: &SyntaxNode) -> FormatIR {
                         parts.push(ir::text("end"));
                     }
                     _ => {
-                        parts.push(walk_node(&n));
+                        if !has_expr_body {
+                            parts.push(walk_node(&n));
+                        }
                     }
                 }
             }
@@ -1745,5 +1774,48 @@ mod tests {
     fn typed_fn_def() {
         let result = fmt("fn typed(x :: Int, y :: Int) -> Int do\nx + y\nend");
         assert_eq!(result, "fn typed(x :: Int, y :: Int) -> Int do\n  x + y\nend\n");
+    }
+
+    #[test]
+    fn fn_expr_body_form() {
+        let result = fmt("fn double(x) = x * 2");
+        assert_eq!(result, "fn double(x) = x * 2\n");
+    }
+
+    #[test]
+    fn fn_expr_body_literal_pattern() {
+        let result = fmt("fn fib(0) = 0");
+        assert_eq!(result, "fn fib(0) = 0\n");
+    }
+
+    #[test]
+    fn fn_expr_body_with_guard() {
+        let result = fmt("fn abs(n) when n < 0 = -n");
+        assert_eq!(result, "fn abs(n) when n < 0 = -n\n");
+    }
+
+    #[test]
+    fn fn_expr_body_idempotent() {
+        let src = "fn fib(0) = 0";
+        let first = fmt(src);
+        let second = fmt(&first);
+        assert_eq!(first, second, "Idempotency failed.\nFirst: {:?}\nSecond: {:?}", first, second);
+    }
+
+    #[test]
+    fn fn_expr_body_guard_idempotent() {
+        let src = "fn abs(n) when n < 0 = -n";
+        let first = fmt(src);
+        let second = fmt(&first);
+        assert_eq!(first, second, "Idempotency failed.\nFirst: {:?}\nSecond: {:?}", first, second);
+    }
+
+    #[test]
+    fn multi_clause_fn_formatted() {
+        let src = "fn fib(0) = 0\nfn fib(1) = 1\nfn fib(n) = fib(n - 1) + fib(n - 2)";
+        let result = fmt(src);
+        assert!(result.contains("fn fib(0) = 0"), "Result: {:?}", result);
+        assert!(result.contains("fn fib(1) = 1"), "Result: {:?}", result);
+        assert!(result.contains("fn fib(n) = fib(n - 1) + fib(n - 2)"), "Result: {:?}", result);
     }
 }

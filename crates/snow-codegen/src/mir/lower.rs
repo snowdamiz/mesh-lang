@@ -123,13 +123,17 @@ impl<'a> Lowerer<'a> {
 
     fn lower_source_file(&mut self, sf: SourceFile) {
         // First pass: register all function names so we know which are direct calls.
+        // For multi-clause functions, only register the FIRST clause (which has the type).
         for item in sf.items() {
             match &item {
                 Item::FnDef(fn_def) => {
                     if let Some(name) = fn_def.name().and_then(|n| n.text()) {
-                        let fn_ty = self.resolve_range(fn_def.syntax().text_range());
-                        self.known_functions.insert(name.clone(), fn_ty.clone());
-                        self.insert_var(name, fn_ty);
+                        // Skip if already registered (subsequent clause of a multi-clause fn).
+                        if !self.known_functions.contains_key(&name) {
+                            let fn_ty = self.resolve_range(fn_def.syntax().text_range());
+                            self.known_functions.insert(name.clone(), fn_ty.clone());
+                            self.insert_var(name, fn_ty);
+                        }
                     }
                 }
                 Item::ActorDef(actor_def) => {
@@ -352,9 +356,41 @@ impl<'a> Lowerer<'a> {
             }
         }
 
-        // Second pass: lower all items.
-        for item in sf.items() {
-            self.lower_item(item);
+        // Second pass: lower all items, grouping consecutive same-name FnDefs.
+        let items: Vec<Item> = sf.items().collect();
+        let mut i = 0;
+        while i < items.len() {
+            if let Item::FnDef(ref fn_def) = items[i] {
+                // Check if this starts a multi-clause function group.
+                let fn_name = fn_def.name().and_then(|n| n.text());
+                if fn_def.has_eq_body() {
+                    if let Some(ref name) = fn_name {
+                        // Collect consecutive FnDefs with the same name.
+                        let mut group: Vec<&FnDef> = vec![fn_def];
+                        let mut j = i + 1;
+                        while j < items.len() {
+                            if let Item::FnDef(ref next_fn) = items[j] {
+                                let next_name = next_fn.name().and_then(|n| n.text());
+                                if next_name.as_deref() == Some(name) && next_fn.has_eq_body() {
+                                    group.push(next_fn);
+                                    j += 1;
+                                } else {
+                                    break;
+                                }
+                            } else {
+                                break;
+                            }
+                        }
+                        if group.len() > 1 {
+                            self.lower_multi_clause_fn(&group);
+                            i = j;
+                            continue;
+                        }
+                    }
+                }
+            }
+            self.lower_item(items[i].clone());
+            i += 1;
         }
     }
 
@@ -433,6 +469,9 @@ impl<'a> Lowerer<'a> {
         // Lower body.
         let body = if let Some(block) = fn_def.body() {
             self.lower_block(&block)
+        } else if let Some(expr) = fn_def.expr_body() {
+            // Handle `= expr` body form (e.g., `fn double(x) = x * 2`).
+            self.lower_expr(&expr)
         } else {
             MirExpr::Unit
         };
@@ -455,6 +494,397 @@ impl<'a> Lowerer<'a> {
             is_closure_fn: false,
             captures: Vec::new(),
         });
+    }
+
+    // ── Multi-clause function lowering ──────────────────────────────
+
+    /// Lower a group of consecutive same-name FnDef nodes (multi-clause function)
+    /// into a single MirFunction with a match body dispatching on parameter patterns.
+    fn lower_multi_clause_fn(&mut self, clauses: &[&FnDef]) {
+        let first = clauses[0];
+        let name = first
+            .name()
+            .and_then(|n| n.text())
+            .unwrap_or_else(|| "<anonymous>".to_string());
+
+        // Get the function type from typeck (stored on the FIRST clause's range).
+        let fn_range = first.syntax().text_range();
+        let fn_ty_raw = self.get_ty(fn_range).cloned();
+
+        // Extract parameter types from the function type.
+        let (param_tys, return_type) = if let Some(Ty::Fun(pts, ret)) = &fn_ty_raw {
+            (
+                pts.iter()
+                    .map(|t| resolve_type(t, self.registry, false))
+                    .collect::<Vec<_>>(),
+                resolve_type(ret, self.registry, false),
+            )
+        } else {
+            (Vec::new(), MirType::Unit)
+        };
+
+        let arity = param_tys.len();
+
+        // Create synthetic parameter names: __param_0, __param_1, etc.
+        let params: Vec<(String, MirType)> = param_tys
+            .iter()
+            .enumerate()
+            .map(|(i, ty)| (format!("__param_{}", i), ty.clone()))
+            .collect();
+
+        // Build match arms from clauses.
+        self.push_scope();
+
+        // Insert synthetic params into scope.
+        for (pname, pty) in &params {
+            self.insert_var(pname.clone(), pty.clone());
+        }
+
+        if arity == 1 {
+            // Single-parameter: use MirExpr::Match directly.
+            let scrutinee = MirExpr::Var(params[0].0.clone(), params[0].1.clone());
+            let mut arms = Vec::new();
+
+            for clause in clauses {
+                self.push_scope();
+                // Insert param into scope for body lowering.
+                self.insert_var(params[0].0.clone(), params[0].1.clone());
+
+                let pattern = self.lower_clause_param_pattern(clause, 0, &params);
+                let guard = self.lower_clause_guard(clause);
+                let body = self.lower_clause_body(clause);
+                self.pop_scope();
+
+                arms.push(MirMatchArm {
+                    pattern,
+                    guard,
+                    body,
+                });
+            }
+
+            let body = MirExpr::Match {
+                scrutinee: Box::new(scrutinee),
+                arms,
+                ty: return_type.clone(),
+            };
+
+            self.pop_scope();
+
+            let fn_name = if name == "main" {
+                self.entry_function = Some("snow_main".to_string());
+                "snow_main".to_string()
+            } else {
+                name
+            };
+
+            self.functions.push(MirFunction {
+                name: fn_name,
+                params,
+                return_type,
+                body,
+                is_closure_fn: false,
+                captures: Vec::new(),
+            });
+        } else {
+            // Multi-parameter: use an if-else chain.
+            // Each clause becomes: if (param_checks && guard) { bind_vars; body } else { next }
+            let body = self.lower_multi_clause_if_chain(clauses, &params, &return_type);
+            self.pop_scope();
+
+            let fn_name = if name == "main" {
+                self.entry_function = Some("snow_main".to_string());
+                "snow_main".to_string()
+            } else {
+                name
+            };
+
+            self.functions.push(MirFunction {
+                name: fn_name,
+                params,
+                return_type,
+                body,
+                is_closure_fn: false,
+                captures: Vec::new(),
+            });
+        }
+    }
+
+    /// Lower a single clause's parameter at `param_idx` to a MirPattern.
+    fn lower_clause_param_pattern(
+        &mut self,
+        clause: &FnDef,
+        param_idx: usize,
+        mir_params: &[(String, MirType)],
+    ) -> MirPattern {
+        if let Some(param_list) = clause.param_list() {
+            if let Some(param) = param_list.params().nth(param_idx) {
+                if let Some(pat) = param.pattern() {
+                    return self.lower_pattern(&pat);
+                }
+                // Regular named parameter -> wildcard-like variable binding.
+                if let Some(name_tok) = param.name() {
+                    let pname = name_tok.text().to_string();
+                    let pty = mir_params[param_idx].1.clone();
+                    self.insert_var(pname.clone(), pty.clone());
+                    return MirPattern::Var(pname, pty);
+                }
+            }
+        }
+        MirPattern::Wildcard
+    }
+
+    /// Lower a clause's guard expression to an optional MirExpr.
+    fn lower_clause_guard(&mut self, clause: &FnDef) -> Option<MirExpr> {
+        clause.guard().and_then(|gc| gc.expr()).map(|e| self.lower_expr(&e))
+    }
+
+    /// Lower a clause's body expression.
+    fn lower_clause_body(&mut self, clause: &FnDef) -> MirExpr {
+        if let Some(expr) = clause.expr_body() {
+            self.lower_expr(&expr)
+        } else if let Some(block) = clause.body() {
+            self.lower_block(&block)
+        } else {
+            MirExpr::Unit
+        }
+    }
+
+    /// Build an if-else chain for multi-parameter multi-clause functions.
+    /// Each clause becomes: if (all params match) { body } else { next clause }
+    fn lower_multi_clause_if_chain(
+        &mut self,
+        clauses: &[&FnDef],
+        mir_params: &[(String, MirType)],
+        return_type: &MirType,
+    ) -> MirExpr {
+        if clauses.is_empty() {
+            return MirExpr::Unit;
+        }
+
+        // Process clauses from last to first, building the else chain.
+        let mut else_body: Option<MirExpr> = None;
+
+        for clause in clauses.iter().rev() {
+            self.push_scope();
+            // Re-insert params into scope for this clause.
+            for (pname, pty) in mir_params {
+                self.insert_var(pname.clone(), pty.clone());
+            }
+
+            // Check if this is a catch-all clause (all params are wildcards/variables, no guard).
+            let is_catch_all = self.is_catch_all_clause(clause, mir_params);
+
+            if is_catch_all && else_body.is_none() {
+                // Last clause and catch-all: just emit the body directly.
+                let mut bindings = Vec::new();
+                self.collect_clause_bindings(clause, mir_params, &mut bindings);
+                let body = self.lower_clause_body(clause);
+                self.pop_scope();
+
+                // Wrap bindings around body.
+                let body = self.wrap_with_bindings(bindings, body);
+
+                else_body = Some(body);
+            } else {
+                // Build condition: check all param patterns.
+                let cond = self.build_clause_condition(clause, mir_params);
+                let guard = self.lower_clause_guard(clause);
+
+                // Combine pattern check with guard.
+                let full_cond = if let Some(guard_expr) = guard {
+                    if let Some(pattern_cond) = cond {
+                        MirExpr::BinOp {
+                            op: BinOp::And,
+                            lhs: Box::new(pattern_cond),
+                            rhs: Box::new(guard_expr),
+                            ty: MirType::Bool,
+                        }
+                    } else {
+                        guard_expr
+                    }
+                } else {
+                    cond.unwrap_or(MirExpr::BoolLit(true, MirType::Bool))
+                };
+
+                let mut bindings = Vec::new();
+                self.collect_clause_bindings(clause, mir_params, &mut bindings);
+                let body = self.lower_clause_body(clause);
+                let body = self.wrap_with_bindings(bindings, body);
+
+                self.pop_scope();
+
+                let fallthrough = else_body.unwrap_or(MirExpr::Unit);
+
+                else_body = Some(MirExpr::If {
+                    cond: Box::new(full_cond),
+                    then_body: Box::new(body),
+                    else_body: Box::new(fallthrough),
+                    ty: return_type.clone(),
+                });
+            }
+        }
+
+        else_body.unwrap_or(MirExpr::Unit)
+    }
+
+    /// Check if a clause is a catch-all (all params are wildcards or plain variables, no guard).
+    fn is_catch_all_clause(&self, clause: &FnDef, _mir_params: &[(String, MirType)]) -> bool {
+        if clause.guard().is_some() {
+            return false;
+        }
+        if let Some(param_list) = clause.param_list() {
+            for param in param_list.params() {
+                if let Some(pat) = param.pattern() {
+                    // Has a pattern -- check if it's a wildcard or ident.
+                    match pat {
+                        Pattern::Wildcard(_) | Pattern::Ident(_) => {}
+                        _ => return false,
+                    }
+                }
+                // Plain named param is always catch-all.
+            }
+            true
+        } else {
+            true
+        }
+    }
+
+    /// Build a boolean condition that checks if all params match the clause's patterns.
+    /// Returns None if the clause is a catch-all (no conditions needed).
+    fn build_clause_condition(
+        &self,
+        clause: &FnDef,
+        mir_params: &[(String, MirType)],
+    ) -> Option<MirExpr> {
+        let mut conditions: Vec<MirExpr> = Vec::new();
+
+        if let Some(param_list) = clause.param_list() {
+            for (idx, param) in param_list.params().enumerate() {
+                if idx >= mir_params.len() {
+                    break;
+                }
+                if let Some(pat) = param.pattern() {
+                    if let Some(cond) = self.pattern_to_condition(&pat, &mir_params[idx]) {
+                        conditions.push(cond);
+                    }
+                }
+                // Plain named param: no condition needed (matches everything).
+            }
+        }
+
+        if conditions.is_empty() {
+            None
+        } else {
+            let mut result = conditions.remove(0);
+            for cond in conditions {
+                result = MirExpr::BinOp {
+                    op: BinOp::And,
+                    lhs: Box::new(result),
+                    rhs: Box::new(cond),
+                    ty: MirType::Bool,
+                };
+            }
+            Some(result)
+        }
+    }
+
+    /// Convert a pattern to a boolean condition expression.
+    /// Returns None for wildcard/variable patterns (always match).
+    fn pattern_to_condition(
+        &self,
+        pat: &Pattern,
+        param: &(String, MirType),
+    ) -> Option<MirExpr> {
+        match pat {
+            Pattern::Wildcard(_) | Pattern::Ident(_) => None,
+            Pattern::Literal(lit) => {
+                let param_var = MirExpr::Var(param.0.clone(), param.1.clone());
+                if let Some(tok) = lit.token() {
+                    let text = tok.text().to_string();
+                    let lit_expr = match tok.kind() {
+                        SyntaxKind::INT_LITERAL => {
+                            MirExpr::IntLit(text.parse().unwrap_or(0), param.1.clone())
+                        }
+                        SyntaxKind::FLOAT_LITERAL => {
+                            MirExpr::FloatLit(text.parse().unwrap_or(0.0), param.1.clone())
+                        }
+                        SyntaxKind::TRUE_KW => MirExpr::BoolLit(true, MirType::Bool),
+                        SyntaxKind::FALSE_KW => MirExpr::BoolLit(false, MirType::Bool),
+                        SyntaxKind::MINUS => {
+                            // Negative literal: look for the next sibling INT_LITERAL.
+                            let neg_val = extract_negative_literal(lit.syntax());
+                            MirExpr::IntLit(neg_val, param.1.clone())
+                        }
+                        _ => return None,
+                    };
+                    Some(MirExpr::BinOp {
+                        op: BinOp::Eq,
+                        lhs: Box::new(param_var),
+                        rhs: Box::new(lit_expr),
+                        ty: MirType::Bool,
+                    })
+                } else {
+                    None
+                }
+            }
+            _ => None, // Constructor/Tuple/Or/As patterns in multi-param: skip (match-all)
+        }
+    }
+
+    /// Collect variable bindings from a clause's parameter list.
+    fn collect_clause_bindings(
+        &mut self,
+        clause: &FnDef,
+        mir_params: &[(String, MirType)],
+        bindings: &mut Vec<(String, MirExpr)>,
+    ) {
+        if let Some(param_list) = clause.param_list() {
+            for (idx, param) in param_list.params().enumerate() {
+                if idx >= mir_params.len() {
+                    break;
+                }
+                let param_var = MirExpr::Var(mir_params[idx].0.clone(), mir_params[idx].1.clone());
+                if let Some(pat) = param.pattern() {
+                    match pat {
+                        Pattern::Ident(ref ident) => {
+                            let name = ident
+                                .name()
+                                .map(|t| t.text().to_string())
+                                .unwrap_or_else(|| "_".to_string());
+                            if name != "_" {
+                                self.insert_var(name.clone(), mir_params[idx].1.clone());
+                                bindings.push((name, param_var));
+                            }
+                        }
+                        Pattern::Wildcard(_) | Pattern::Literal(_) => {
+                            // No binding needed.
+                        }
+                        _ => {} // Skip complex patterns for now.
+                    }
+                } else if let Some(name_tok) = param.name() {
+                    let pname = name_tok.text().to_string();
+                    if pname != "_" {
+                        self.insert_var(pname.clone(), mir_params[idx].1.clone());
+                        bindings.push((pname, param_var));
+                    }
+                }
+            }
+        }
+    }
+
+    /// Wrap an expression with let-bindings.
+    fn wrap_with_bindings(&self, bindings: Vec<(String, MirExpr)>, body: MirExpr) -> MirExpr {
+        let mut result = body;
+        for (name, value) in bindings.into_iter().rev() {
+            let ty = value.ty().clone();
+            result = MirExpr::Let {
+                name,
+                ty,
+                value: Box::new(value),
+                body: Box::new(result),
+            };
+        }
+        result
     }
 
     // ── Struct lowering ──────────────────────────────────────────────
@@ -2750,6 +3180,23 @@ fn extract_simple_string_content(node: &snow_parser::cst::SyntaxNode) -> String 
         }
     }
     content
+}
+
+/// Extract a negative integer literal value from a LITERAL_PAT node.
+/// Looks for MINUS token followed by INT_LITERAL.
+fn extract_negative_literal(node: &snow_parser::cst::SyntaxNode) -> i64 {
+    let mut found_minus = false;
+    for child in node.children_with_tokens() {
+        if let Some(token) = child.as_token() {
+            if token.kind() == SyntaxKind::MINUS {
+                found_minus = true;
+            } else if found_minus && token.kind() == SyntaxKind::INT_LITERAL {
+                let val: i64 = token.text().parse().unwrap_or(0);
+                return -val;
+            }
+        }
+    }
+    0
 }
 
 /// Find the type name that contains a given variant name.
