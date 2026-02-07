@@ -272,6 +272,24 @@ pub enum MirExpr {
         target: Box<MirExpr>,
         ty: MirType,
     },
+
+    // ── Supervisor primitives ──────────────────────────────────────
+
+    /// Start a supervisor with configured strategy, limits, and child specs.
+    SupervisorStart {
+        /// Supervisor name (for registration and debugging).
+        name: String,
+        /// Strategy enum value: 0=one_for_one, 1=one_for_all, 2=rest_for_one, 3=simple_one_for_one.
+        strategy: u8,
+        /// Max restarts within the time window.
+        max_restarts: u32,
+        /// Time window in seconds.
+        max_seconds: u64,
+        /// Child specs as MIR-level representations.
+        children: Vec<MirChildSpec>,
+        /// Result type (always Pid).
+        ty: MirType,
+    },
 }
 
 impl MirExpr {
@@ -303,8 +321,24 @@ impl MirExpr {
             MirExpr::ActorReceive { ty, .. } => ty,
             MirExpr::ActorSelf { ty } => ty,
             MirExpr::ActorLink { ty, .. } => ty,
+            MirExpr::SupervisorStart { ty, .. } => ty,
         }
     }
+}
+
+/// A child specification in a supervisor's MIR representation.
+#[derive(Debug, Clone)]
+pub struct MirChildSpec {
+    /// Child identifier string.
+    pub id: String,
+    /// Name of the start function (actor entry function).
+    pub start_fn: String,
+    /// Restart type: 0=permanent, 1=transient, 2=temporary.
+    pub restart_type: u8,
+    /// Shutdown timeout in milliseconds (0 = brutal_kill).
+    pub shutdown_ms: u64,
+    /// Child type: 0=worker, 1=supervisor.
+    pub child_type: u8,
 }
 
 // ── MirMatchArm ───────────────────────────────────────────────────────

@@ -18,7 +18,7 @@ use snow_parser::ast::expr::{
 };
 use snow_parser::ast::item::{
     ActorDef, Block, FnDef, InterfaceDef, ImplDef as AstImplDef, Item, LetBinding, StructDef,
-    SumTypeDef, TypeAliasDef,
+    SumTypeDef, SupervisorDef, TypeAliasDef,
 };
 use snow_parser::ast::pat::Pattern;
 use snow_parser::ast::AstNode;
@@ -456,6 +456,9 @@ fn infer_item(
         }
         Item::ActorDef(actor_def) => {
             infer_actor_def(ctx, env, actor_def, types, type_registry, trait_registry, fn_constraints).ok()
+        }
+        Item::SupervisorDef(sup_def) => {
+            infer_supervisor_def(ctx, env, sup_def, types, type_registry, trait_registry, fn_constraints).ok()
         }
     }
 }
@@ -2777,6 +2780,38 @@ fn infer_actor_def(
 
     let resolved = ctx.resolve(fn_ty);
     types.insert(actor_def.syntax().text_range(), resolved.clone());
+
+    Ok(resolved)
+}
+
+/// Infer the type of a supervisor definition.
+///
+/// The supervisor is registered as a function: `supervisor_name :: () -> Pid<Unit>`.
+/// Supervisors don't receive user messages; they manage child processes.
+fn infer_supervisor_def(
+    ctx: &mut InferCtx,
+    env: &mut TypeEnv,
+    sup_def: &SupervisorDef,
+    types: &mut FxHashMap<TextRange, Ty>,
+    _type_registry: &TypeRegistry,
+    _trait_registry: &TraitRegistry,
+    _fn_constraints: &mut FxHashMap<String, FnConstraints>,
+) -> Result<Ty, TypeError> {
+    let sup_name = sup_def
+        .name()
+        .and_then(|n| n.text())
+        .unwrap_or_else(|| "<unnamed_supervisor>".to_string());
+
+    // Supervisors are zero-arg functions that return Pid<Unit>.
+    // The supervisor manages child processes internally.
+    let pid_ty = Ty::pid(Ty::Tuple(vec![]));
+    let fn_ty = Ty::Fun(vec![], Box::new(pid_ty.clone()));
+
+    let scheme = ctx.generalize(fn_ty.clone());
+    env.insert(sup_name, scheme);
+
+    let resolved = ctx.resolve(fn_ty);
+    types.insert(sup_def.syntax().text_range(), resolved.clone());
 
     Ok(resolved)
 }

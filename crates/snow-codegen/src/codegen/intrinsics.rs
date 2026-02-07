@@ -111,6 +111,32 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
     let run_scheduler_ty = void_type.fn_type(&[], false);
     module.add_function("snow_rt_run_scheduler", run_scheduler_ty, Some(inkwell::module::Linkage::External));
 
+    // ── Supervisor runtime functions ─────────────────────────────────────
+
+    // snow_supervisor_start(config_ptr: ptr, config_size: i64) -> i64 (PID)
+    let sup_start_ty = i64_type.fn_type(&[ptr_type.into(), i64_type.into()], false);
+    module.add_function("snow_supervisor_start", sup_start_ty, Some(inkwell::module::Linkage::External));
+
+    // snow_supervisor_start_child(sup_pid: i64, args_ptr: ptr, args_size: i64) -> i64
+    let sup_start_child_ty = i64_type.fn_type(&[i64_type.into(), ptr_type.into(), i64_type.into()], false);
+    module.add_function("snow_supervisor_start_child", sup_start_child_ty, Some(inkwell::module::Linkage::External));
+
+    // snow_supervisor_terminate_child(sup_pid: i64, child_pid: i64) -> i64
+    let sup_term_child_ty = i64_type.fn_type(&[i64_type.into(), i64_type.into()], false);
+    module.add_function("snow_supervisor_terminate_child", sup_term_child_ty, Some(inkwell::module::Linkage::External));
+
+    // snow_supervisor_count_children(sup_pid: i64) -> i64
+    let sup_count_ty = i64_type.fn_type(&[i64_type.into()], false);
+    module.add_function("snow_supervisor_count_children", sup_count_ty, Some(inkwell::module::Linkage::External));
+
+    // snow_actor_trap_exit() -> void
+    let trap_exit_ty = void_type.fn_type(&[], false);
+    module.add_function("snow_actor_trap_exit", trap_exit_ty, Some(inkwell::module::Linkage::External));
+
+    // snow_actor_exit(target_pid: i64, reason_tag: i8) -> void
+    let actor_exit_ty = void_type.fn_type(&[i64_type.into(), i8_type.into()], false);
+    module.add_function("snow_actor_exit", actor_exit_ty, Some(inkwell::module::Linkage::External));
+
     // snow_panic(msg: ptr, msg_len: u64, file: ptr, file_len: u64, line: u32) -> void
     // (noreturn -- marked via attribute)
     let panic_params: Vec<BasicMetadataTypeEnum<'ctx>> = vec![
@@ -174,6 +200,14 @@ mod tests {
         assert!(module.get_function("snow_reduction_check").is_some());
         assert!(module.get_function("snow_actor_set_terminate").is_some());
         assert!(module.get_function("snow_rt_run_scheduler").is_some());
+
+        // Supervisor runtime functions
+        assert!(module.get_function("snow_supervisor_start").is_some());
+        assert!(module.get_function("snow_supervisor_start_child").is_some());
+        assert!(module.get_function("snow_supervisor_terminate_child").is_some());
+        assert!(module.get_function("snow_supervisor_count_children").is_some());
+        assert!(module.get_function("snow_actor_trap_exit").is_some());
+        assert!(module.get_function("snow_actor_exit").is_some());
     }
 
     #[test]

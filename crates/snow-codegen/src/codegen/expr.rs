@@ -11,7 +11,7 @@ use inkwell::IntPredicate;
 use super::intrinsics::get_intrinsic;
 use super::types::{closure_type, variant_struct_type};
 use super::CodeGen;
-use crate::mir::{BinOp, MirExpr, MirMatchArm, MirPattern, MirType, UnaryOp};
+use crate::mir::{BinOp, MirChildSpec, MirExpr, MirMatchArm, MirPattern, MirType, UnaryOp};
 use crate::pattern::compile::compile_match;
 
 impl<'ctx> CodeGen<'ctx> {
@@ -133,6 +133,15 @@ impl<'ctx> CodeGen<'ctx> {
             MirExpr::ActorSelf { ty: _ } => self.codegen_actor_self(),
 
             MirExpr::ActorLink { target, ty: _ } => self.codegen_actor_link(target),
+
+            MirExpr::SupervisorStart {
+                name,
+                strategy,
+                max_restarts,
+                max_seconds,
+                children,
+                ty: _,
+            } => self.codegen_supervisor_start(name, *strategy, *max_restarts, *max_seconds, children),
         }
     }
 
@@ -1395,6 +1404,150 @@ impl<'ctx> CodeGen<'ctx> {
                 }
             }
         }
+    }
+
+    // ── Supervisor start ──────────────────────────────────────────────
+
+    fn codegen_supervisor_start(
+        &mut self,
+        name: &str,
+        strategy: u8,
+        max_restarts: u32,
+        max_seconds: u64,
+        children: &[MirChildSpec],
+    ) -> Result<BasicValueEnum<'ctx>, String> {
+        let i64_ty = self.context.i64_type();
+        let ptr_ty = self.context.ptr_type(inkwell::AddressSpace::default());
+
+        // Build the binary config buffer for snow_supervisor_start.
+        // Format: strategy(u8) + max_restarts(u32 LE) + max_seconds(u64 LE) +
+        //         child_count(u32 LE) + for each child:
+        //           id_len(u32 LE) + id_bytes + fn_ptr_placeholder(u64) +
+        //           restart_type(u8) + shutdown_ms(u64 LE) + child_type(u8)
+        let mut config_bytes: Vec<u8> = Vec::new();
+
+        // Strategy (1 byte)
+        config_bytes.push(strategy);
+
+        // Max restarts (4 bytes LE)
+        config_bytes.extend_from_slice(&max_restarts.to_le_bytes());
+
+        // Max seconds (8 bytes LE)
+        config_bytes.extend_from_slice(&max_seconds.to_le_bytes());
+
+        // Child count (4 bytes LE)
+        config_bytes.extend_from_slice(&(children.len() as u32).to_le_bytes());
+
+        // For each child, we need to embed an offset/placeholder for the function pointer.
+        // The fn_ptr will be patched at runtime or we can store a function index.
+        // For now, store the child spec metadata; the start function is referenced by name.
+        let mut fn_ptr_offsets: Vec<(usize, String)> = Vec::new();
+
+        for child in children {
+            // id_len (4 bytes LE)
+            let id_bytes = child.id.as_bytes();
+            config_bytes.extend_from_slice(&(id_bytes.len() as u32).to_le_bytes());
+            // id_bytes
+            config_bytes.extend_from_slice(id_bytes);
+
+            // fn_ptr placeholder (8 bytes) -- we'll patch this with a relocation.
+            let fn_ptr_offset = config_bytes.len();
+            fn_ptr_offsets.push((fn_ptr_offset, child.start_fn.clone()));
+            config_bytes.extend_from_slice(&0u64.to_le_bytes()); // placeholder
+
+            // restart_type (1 byte)
+            config_bytes.push(child.restart_type);
+
+            // shutdown_ms (8 bytes LE)
+            config_bytes.extend_from_slice(&child.shutdown_ms.to_le_bytes());
+
+            // child_type (1 byte)
+            config_bytes.push(child.child_type);
+        }
+
+        // Create a global constant for the config buffer.
+        let config_data = self.context.const_string(&config_bytes, false);
+        let config_name = format!(".sup_config_{}", name);
+        let config_global = self.module.add_global(config_data.get_type(), None, &config_name);
+        config_global.set_initializer(&config_data);
+        config_global.set_constant(true);
+        config_global.set_unnamed_addr(true);
+
+        // For each child spec, we need to store the function pointer into the config buffer.
+        // We do this at runtime by writing the fn_ptr into the config buffer copy on the stack.
+        // Actually, since the config is a global constant, we can't patch it.
+        // Instead, let's allocate a stack copy and patch fn_ptrs there.
+        let config_size = config_bytes.len() as u64;
+        let config_size_val = i64_ty.const_int(config_size, false);
+
+        // Allocate stack copy of the config.
+        let config_arr_ty = self.context.i8_type().array_type(config_size as u32);
+        let config_alloca = self
+            .builder
+            .build_alloca(config_arr_ty, "sup_config")
+            .map_err(|e| e.to_string())?;
+
+        // Memcpy from global to stack.
+        let config_global_ptr = config_global.as_pointer_value();
+        self.builder
+            .build_memcpy(
+                config_alloca,
+                1,
+                config_global_ptr,
+                1,
+                i64_ty.const_int(config_size, false),
+            )
+            .map_err(|e| e.to_string())?;
+
+        // Patch function pointers into the stack copy.
+        for (offset, fn_name) in &fn_ptr_offsets {
+            if fn_name.is_empty() {
+                continue;
+            }
+            // Get the function pointer value.
+            let fn_ptr_val = if let Some(fn_val) = self.functions.get(fn_name).copied() {
+                fn_val.as_global_value().as_pointer_value()
+            } else {
+                // Function not found; use null.
+                ptr_ty.const_null()
+            };
+
+            // Convert fn_ptr to i64.
+            let fn_ptr_int = self
+                .builder
+                .build_ptr_to_int(fn_ptr_val, i64_ty, "fn_ptr_int")
+                .map_err(|e| e.to_string())?;
+
+            // GEP to the offset in the config buffer.
+            let offset_val = self.context.i32_type().const_int(*offset as u64, false);
+            let zero = self.context.i32_type().const_int(0, false);
+            let elem_ptr = unsafe {
+                self.builder
+                    .build_gep(config_arr_ty, config_alloca, &[zero, offset_val], "fn_ptr_slot")
+                    .map_err(|e| e.to_string())?
+            };
+
+            // Store the fn_ptr as i64 into the config buffer.
+            self.builder
+                .build_store(elem_ptr, fn_ptr_int)
+                .map_err(|e| e.to_string())?;
+        }
+
+        // Call snow_supervisor_start(config_ptr, config_size) -> i64 (PID)
+        let sup_start_fn = get_intrinsic(&self.module, "snow_supervisor_start");
+        let pid_val = self
+            .builder
+            .build_call(
+                sup_start_fn,
+                &[config_alloca.into(), config_size_val.into()],
+                "sup_pid",
+            )
+            .map_err(|e| e.to_string())?
+            .try_as_basic_value()
+            .basic()
+            .ok_or("snow_supervisor_start returned void")?;
+
+        Ok(pid_val)
     }
 
     // ── Panic ────────────────────────────────────────────────────────

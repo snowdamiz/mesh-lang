@@ -1012,6 +1012,8 @@ fn compile_expr_patterns(expr: &mut MirExpr) {
         MirExpr::ActorLink { target, .. } => {
             compile_expr_patterns(target);
         }
+        // Supervisor start -- no sub-expressions to recurse into.
+        MirExpr::SupervisorStart { .. } => {}
     }
 }
 

@@ -13,7 +13,7 @@ use snow_parser::ast::expr::{
     StructLiteral, TupleExpr, UnaryExpr,
 };
 use snow_parser::ast::item::{
-    ActorDef, Block, FnDef, Item, LetBinding, SourceFile, StructDef, SumTypeDef,
+    ActorDef, Block, FnDef, Item, LetBinding, SourceFile, StructDef, SumTypeDef, SupervisorDef,
 };
 use snow_parser::ast::pat::Pattern;
 use snow_parser::ast::AstNode;
@@ -24,8 +24,8 @@ use snow_typeck::TypeckResult;
 
 use super::types::resolve_type;
 use super::{
-    BinOp, MirExpr, MirFunction, MirLiteral, MirMatchArm, MirModule, MirPattern, MirStructDef,
-    MirSumTypeDef, MirType, MirVariantDef, UnaryOp,
+    BinOp, MirChildSpec, MirExpr, MirFunction, MirLiteral, MirMatchArm, MirModule, MirPattern,
+    MirStructDef, MirSumTypeDef, MirType, MirVariantDef, UnaryOp,
 };
 
 // ── Lowerer ──────────────────────────────────────────────────────────
@@ -135,6 +135,14 @@ impl<'a> Lowerer<'a> {
                         self.insert_var(name, fn_ty);
                     }
                 }
+                Item::SupervisorDef(sup_def) => {
+                    if let Some(name) = sup_def.name().and_then(|n| n.text()) {
+                        // Supervisor definitions produce a function that returns Pid
+                        let fn_ty = self.resolve_range(sup_def.syntax().text_range());
+                        self.known_functions.insert(name.clone(), fn_ty.clone());
+                        self.insert_var(name, fn_ty);
+                    }
+                }
                 _ => {}
             }
         }
@@ -189,6 +197,7 @@ impl<'a> Lowerer<'a> {
                 // Skip -- module/import handling is not needed for single-file compilation.
             }
             Item::ActorDef(actor_def) => self.lower_actor_def(&actor_def),
+            Item::SupervisorDef(sup_def) => self.lower_supervisor_def(&sup_def),
         }
     }
 
@@ -1317,6 +1326,181 @@ impl<'a> Lowerer<'a> {
         });
     }
 
+    // ── Supervisor lowering ─────────────────────────────────────────────
+
+    fn lower_supervisor_def(&mut self, sup_def: &SupervisorDef) {
+        let name = sup_def
+            .name()
+            .and_then(|n| n.text())
+            .unwrap_or_else(|| "<anonymous_supervisor>".to_string());
+
+        // Extract strategy (default: one_for_one = 0).
+        let strategy: u8 = sup_def
+            .strategy()
+            .and_then(|node| {
+                node.children_with_tokens()
+                    .filter_map(|c| c.into_token())
+                    .filter(|t| t.kind() == SyntaxKind::IDENT)
+                    .last()
+                    .map(|t| match t.text() {
+                        "one_for_one" => 0u8,
+                        "one_for_all" => 1,
+                        "rest_for_one" => 2,
+                        "simple_one_for_one" => 3,
+                        _ => 0,
+                    })
+            })
+            .unwrap_or(0);
+
+        // Extract max_restarts (default: 3).
+        let max_restarts: u32 = sup_def
+            .max_restarts()
+            .and_then(|node| {
+                node.children_with_tokens()
+                    .filter_map(|c| c.into_token())
+                    .find(|t| t.kind() == SyntaxKind::INT_LITERAL)
+                    .and_then(|t| t.text().parse().ok())
+            })
+            .unwrap_or(3);
+
+        // Extract max_seconds (default: 5).
+        let max_seconds: u64 = sup_def
+            .max_seconds()
+            .and_then(|node| {
+                node.children_with_tokens()
+                    .filter_map(|c| c.into_token())
+                    .find(|t| t.kind() == SyntaxKind::INT_LITERAL)
+                    .and_then(|t| t.text().parse().ok())
+            })
+            .unwrap_or(5);
+
+        // Extract child specs.
+        let mut children = Vec::new();
+        for child_node in sup_def.child_specs() {
+            // Child ID from the NAME child.
+            let child_id = child_node
+                .children()
+                .find(|c| c.kind() == SyntaxKind::NAME)
+                .and_then(|n| {
+                    n.children_with_tokens()
+                        .filter_map(|c| c.into_token())
+                        .find(|t| t.kind() == SyntaxKind::IDENT)
+                        .map(|t| t.text().to_string())
+                })
+                .unwrap_or_else(|| "child".to_string());
+
+            // Parse child body -- look inside the BLOCK child for key-value pairs.
+            let block = child_node
+                .children()
+                .find(|c| c.kind() == SyntaxKind::BLOCK);
+
+            let mut start_fn = String::new();
+            let mut restart_type: u8 = 0; // permanent
+            let mut shutdown_ms: u64 = 5000;
+
+            if let Some(block) = block {
+                for token_or_node in block.children_with_tokens() {
+                    if let Some(token) = token_or_node.as_token() {
+                        // Track identifiers for key-value pairs.
+                        let _text = token.text();
+                    }
+                }
+
+                // Walk tokens linearly to extract key-value pairs.
+                let tokens: Vec<_> = block
+                    .descendants_with_tokens()
+                    .filter_map(|c| c.into_token())
+                    .collect();
+                let mut i = 0;
+                while i < tokens.len() {
+                    let text = tokens[i].text();
+                    if text == "start" {
+                        // Skip "start", ":", then find the spawn call or actor reference.
+                        // In our simple model, the child start is a closure: fn -> spawn(ActorName, args) end
+                        // We need to find the actor name being spawned.
+                        // Look for SPAWN_KW or an ident matching an actor name after start: fn ->
+                        let mut j = i + 1;
+                        while j < tokens.len() {
+                            if tokens[j].kind() == SyntaxKind::SPAWN_KW {
+                                // Next non-trivia token after ( should be the actor name.
+                                let mut k = j + 1;
+                                while k < tokens.len() && tokens[k].kind() != SyntaxKind::IDENT {
+                                    k += 1;
+                                }
+                                if k < tokens.len() {
+                                    start_fn = tokens[k].text().to_string();
+                                }
+                                break;
+                            }
+                            if tokens[j].text() == "restart" || tokens[j].text() == "shutdown" {
+                                break;
+                            }
+                            j += 1;
+                        }
+                    } else if text == "restart" {
+                        // Skip "restart", ":", then grab the value.
+                        let mut j = i + 1;
+                        while j < tokens.len() {
+                            if tokens[j].kind() == SyntaxKind::IDENT {
+                                restart_type = match tokens[j].text() {
+                                    "permanent" => 0,
+                                    "transient" => 1,
+                                    "temporary" => 2,
+                                    _ => 0,
+                                };
+                                break;
+                            }
+                            j += 1;
+                        }
+                    } else if text == "shutdown" {
+                        // Skip "shutdown", ":", then grab int or brutal_kill.
+                        let mut j = i + 1;
+                        while j < tokens.len() {
+                            if tokens[j].kind() == SyntaxKind::INT_LITERAL {
+                                shutdown_ms = tokens[j].text().parse().unwrap_or(5000);
+                                break;
+                            }
+                            if tokens[j].kind() == SyntaxKind::IDENT && tokens[j].text() == "brutal_kill" {
+                                shutdown_ms = 0; // 0 = brutal kill
+                                break;
+                            }
+                            j += 1;
+                        }
+                    }
+                    i += 1;
+                }
+            }
+
+            children.push(MirChildSpec {
+                id: child_id,
+                start_fn,
+                restart_type,
+                shutdown_ms,
+                child_type: 0, // worker
+            });
+        }
+
+        // Create a MIR function for the supervisor.
+        // The supervisor's body is a SupervisorStart expression.
+        let body = MirExpr::SupervisorStart {
+            name: name.clone(),
+            strategy,
+            max_restarts,
+            max_seconds,
+            children,
+            ty: MirType::Pid(None),
+        };
+
+        self.functions.push(MirFunction {
+            name,
+            params: vec![],
+            return_type: MirType::Pid(None),
+            body,
+            is_closure_fn: false,
+            captures: Vec::new(),
+        });
+    }
+
     // ── Actor expression lowering ───────────────────────────────────────
 
     fn lower_spawn_expr(&mut self, spawn: &SpawnExpr) -> MirExpr {
@@ -1654,6 +1838,8 @@ fn collect_free_vars(
         MirExpr::ActorLink { target, .. } => {
             collect_free_vars(target, params, outer_vars, captures);
         }
+        // Supervisor start has no free variable captures (all config is static).
+        MirExpr::SupervisorStart { .. } => {}
     }
 }
 

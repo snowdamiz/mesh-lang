@@ -188,6 +188,14 @@ fn collect_function_refs(expr: &MirExpr, refs: &mut Vec<String>) {
         MirExpr::ActorLink { target, .. } => {
             collect_function_refs(target, refs);
         }
+        MirExpr::SupervisorStart { children, .. } => {
+            // Each child spec references a start function by name.
+            for child in children {
+                if !child.start_fn.is_empty() {
+                    refs.push(child.start_fn.clone());
+                }
+            }
+        }
     }
 }
 
