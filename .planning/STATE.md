@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-02-05)
 
 **Core value:** Expressive, readable concurrency -- writing concurrent programs should feel as natural as sequential code, with supervision and fault tolerance built in.
-**Current focus:** Phase 9 IN PROGRESS -- Concurrency Standard Library. Plan 04 complete (Job runtime + codegen). Proceeding to Plan 05.
+**Current focus:** Phase 9 COMPLETE -- Concurrency Standard Library. All 5 plans complete. Phase 10 next.
 
 ## Current Position
 
 Phase: 9 of 10 (Concurrency Standard Library)
-Plan: 4 of 5 in current phase
-Status: In progress
-Last activity: 2026-02-07 -- Completed 09-04-PLAN.md (Job Runtime + Codegen)
+Plan: 5 of 5 in current phase
+Status: Phase complete
+Last activity: 2026-02-07 -- Completed 09-05-PLAN.md (E2E Concurrency Integration Tests)
 
-Progress: [████████████████████████████████████████████░░] 94% (44 plans of ~47 estimated total)
+Progress: [█████████████████████████████████████████████░] 96% (45 plans of ~47 estimated total)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 44
+- Total plans completed: 45
 - Average duration: 9min
-- Total execution time: 412min
+- Total execution time: 425min
 
 **By Phase:**
 
@@ -35,10 +35,10 @@ Progress: [███████████████████████
 | 06-actor-runtime | 7/7 | 70min | 10min |
 | 07-supervision-fault-tolerance | 3/3 | 27min | 9min |
 | 08-standard-library | 7/7 | 67min | 10min |
-| 09-concurrency-standard-library | 4/5 | 38min | 10min |
+| 09-concurrency-standard-library | 5/5 | 51min | 10min |
 
 **Recent Trend:**
-- Last 5 plans: 09-01 (7min), 09-02 (6min), 09-03 (19min), 09-04 (6min)
+- Last 5 plans: 09-01 (7min), 09-02 (6min), 09-03 (19min), 09-04 (6min), 09-05 (13min)
 
 *Updated after each plan completion*
 
@@ -241,6 +241,11 @@ Recent decisions affecting current work:
 - [09-04]: Job.await returns SnowResult (tag 0 = Ok, tag 1 = Err) matching existing Result layout
 - [09-04]: Job entry function packs fn_ptr/env_ptr/caller_pid into GC-heap args buffer
 - [09-04]: Job.map spawns one actor per list element, awaits all in order
+- [09-05]: Main thread gets PID and mailbox via create_main_process for service call support from non-coroutine context
+- [09-05]: Scheduler workers start eagerly during snow_rt_init_actor so actors execute concurrently during snow_main
+- [09-05]: snow_actor_receive detects coroutine context via CURRENT_YIELDER; uses spin-wait for main thread
+- [09-05]: Reduction check uses CURRENT_YIELDER (not CURRENT_PID) to detect coroutine context
+- [09-05]: Graceful service actor shutdown via wake-and-null pattern (avoids corosensei panic on force-drop through extern C)
 
 ### Pending Todos
 
@@ -248,7 +253,7 @@ None.
 
 ### Blockers/Concerns
 
-- Phase 9 plan 04 complete -- Job runtime and codegen wired; ready for Plan 05 E2E tests
+- Phase 9 COMPLETE -- all 5 plans done, all E2E tests passing
 - string_split now possible with List type available (can be added in future plan)
 - String-keyed maps use pointer identity (not content comparison) -- documented limitation
 - Multiline pipe operator (`|>` at start of continuation line) fails to parse -- pre-existing parser limitation
@@ -259,5 +264,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-07
-Stopped at: Completed 09-04-PLAN.md (Job Runtime + Codegen)
+Stopped at: Completed 09-05-PLAN.md (E2E Concurrency Integration Tests) -- Phase 9 complete
 Resume file: None
