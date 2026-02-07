@@ -280,3 +280,51 @@ fn test_success_criterion_5_arity_location() {
         first
     );
 }
+
+// ── Phase 12-03: Pipe-Aware Call Inference ───────────────────────────────
+
+/// Pipe with multi-arg function: `5 |> add(10)` should type check as `add(5, 10)`.
+#[test]
+fn test_pipe_call_arity() {
+    let result = check_source(
+        "fn add(x :: Int, y :: Int) -> Int do x + y end\n\
+         5 |> add(10)",
+    );
+    assert!(
+        result.errors.is_empty(),
+        "expected no errors for pipe+call, got: {:?}",
+        result.errors
+    );
+    assert_result_type(&result, Ty::int());
+}
+
+/// Pipe with closure arg: `5 |> apply(fn x -> x * 2 end)` should type check.
+/// Uses untyped `f` parameter to let inference determine the closure type.
+#[test]
+fn test_pipe_call_with_closure() {
+    let result = check_source(
+        "fn apply(x, f) do f(x) end\n\
+         5 |> apply(fn (x) -> x * 2 end)",
+    );
+    assert!(
+        result.errors.is_empty(),
+        "expected no errors for pipe+closure call, got: {:?}",
+        result.errors
+    );
+    assert_result_type(&result, Ty::int());
+}
+
+/// Bare pipe (no call, just function ref) still works: `5 |> double`.
+#[test]
+fn test_pipe_bare_function_ref() {
+    let result = check_source(
+        "fn double(x :: Int) -> Int do x * 2 end\n\
+         5 |> double",
+    );
+    assert!(
+        result.errors.is_empty(),
+        "expected no errors for bare pipe, got: {:?}",
+        result.errors
+    );
+    assert_result_type(&result, Ty::int());
+}

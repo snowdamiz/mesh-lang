@@ -2426,12 +2426,99 @@ fn infer_pipe(
     })?;
 
     let lhs_ty = infer_expr(ctx, env, &lhs, types, type_registry, trait_registry, fn_constraints)?;
-    let rhs_ty = infer_expr(ctx, env, &rhs, types, type_registry, trait_registry, fn_constraints)?;
 
     let ret_var = ctx.fresh_var();
-    let expected_fn = Ty::Fun(vec![lhs_ty], Box::new(ret_var.clone()));
 
-    ctx.unify(rhs_ty, expected_fn, ConstraintOrigin::Builtin)?;
+    match &rhs {
+        Expr::CallExpr(call) => {
+            // Pipe-aware call inference: `x |> f(a, b)` desugars to `f(x, a, b)`.
+            // We infer the callee and explicit args separately, then prepend lhs_ty
+            // to construct the full expected function type -- matching MIR lowering.
+            let callee_expr = call.callee().ok_or_else(|| {
+                let err = TypeError::Mismatch {
+                    expected: Ty::Never,
+                    found: Ty::Never,
+                    origin: ConstraintOrigin::Builtin,
+                };
+                ctx.errors.push(err.clone());
+                err
+            })?;
+
+            let callee_ty = infer_expr(ctx, env, &callee_expr, types, type_registry, trait_registry, fn_constraints)?;
+
+            // Infer explicit argument types from the call's arg list.
+            let mut arg_types = Vec::new();
+            if let Some(arg_list) = call.arg_list() {
+                for arg in arg_list.args() {
+                    let arg_ty = infer_expr(ctx, env, &arg, types, type_registry, trait_registry, fn_constraints)?;
+                    arg_types.push(arg_ty);
+                }
+            }
+
+            // Build full arg list: [lhs_ty, ...explicit_arg_types]
+            let mut full_args = vec![lhs_ty];
+            full_args.extend(arg_types.clone());
+
+            let expected_fn_ty = Ty::Fun(full_args.clone(), Box::new(ret_var.clone()));
+
+            let origin = ConstraintOrigin::FnArg {
+                call_site: call.syntax().text_range(),
+                param_idx: 0,
+            };
+            ctx.unify(callee_ty, expected_fn_ty, origin.clone())?;
+
+            // Record type for the CallExpr node so MIR lowering can resolve it.
+            let resolved_call = ctx.resolve(ret_var.clone());
+            types.insert(call.syntax().text_range(), resolved_call);
+
+            // Check where-clause constraints at the call site (mirrors infer_call).
+            if let Expr::NameRef(name_ref) = &callee_expr {
+                if let Some(fn_name) = name_ref.text() {
+                    if let Some(constraints) = fn_constraints.get(&fn_name) {
+                        if !constraints.where_constraints.is_empty() {
+                            let mut resolved_type_args: FxHashMap<String, Ty> = FxHashMap::default();
+
+                            // Build type param -> resolved type mapping from full arg list
+                            // (including the piped argument at position 0).
+                            for (i, tp_name_opt) in constraints.param_type_param_names.iter().enumerate() {
+                                if let Some(tp_name) = tp_name_opt {
+                                    if i < full_args.len() {
+                                        let resolved = ctx.resolve(full_args[i].clone());
+                                        resolved_type_args.insert(tp_name.clone(), resolved);
+                                    }
+                                }
+                            }
+
+                            // Fallback: definition-time vars.
+                            for (param_name, param_ty) in &constraints.type_params {
+                                if !resolved_type_args.contains_key(param_name) {
+                                    let resolved = ctx.resolve(param_ty.clone());
+                                    resolved_type_args.insert(param_name.clone(), resolved);
+                                }
+                            }
+
+                            let errors = trait_registry.check_where_constraints(
+                                &constraints.where_constraints,
+                                &resolved_type_args,
+                                origin,
+                            );
+                            ctx.errors.extend(errors.clone());
+
+                            if let Some(first_err) = errors.into_iter().next() {
+                                return Err(first_err);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        _ => {
+            // Existing behavior: infer rhs as function, unify with Fun([lhs_ty], ret).
+            let rhs_ty = infer_expr(ctx, env, &rhs, types, type_registry, trait_registry, fn_constraints)?;
+            let expected_fn = Ty::Fun(vec![lhs_ty], Box::new(ret_var.clone()));
+            ctx.unify(rhs_ty, expected_fn, ConstraintOrigin::Builtin)?;
+        }
+    }
 
     Ok(ret_var)
 }
