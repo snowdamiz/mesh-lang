@@ -1540,7 +1540,15 @@ fn infer_closure(
 
     if let Some(param_list) = closure.param_list() {
         for param in param_list.params() {
-            let param_ty = ctx.fresh_var();
+            let param_ty = if let Some(ann) = param.type_annotation() {
+                if let Some(type_name) = resolve_type_name_str(&ann) {
+                    name_to_type(&type_name)
+                } else {
+                    ctx.fresh_var()
+                }
+            } else {
+                ctx.fresh_var()
+            };
             if let Some(name_tok) = param.name() {
                 let name_text = name_tok.text().to_string();
                 env.insert(name_text, Scheme::mono(param_ty.clone()));
