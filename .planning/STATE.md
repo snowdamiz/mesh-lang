@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-02-05)
 
 **Core value:** Expressive, readable concurrency -- writing concurrent programs should feel as natural as sequential code, with supervision and fault tolerance built in.
-**Current focus:** Phase 9 COMPLETE -- Concurrency Standard Library. All 5 plans complete. Phase 10 next.
+**Current focus:** Phase 10 IN PROGRESS -- Developer Tooling. Plan 06 complete (package manager core).
 
 ## Current Position
 
-Phase: 9 of 10 (Concurrency Standard Library)
-Plan: 5 of 5 in current phase
-Status: Phase complete
-Last activity: 2026-02-07 -- Completed 09-05-PLAN.md (E2E Concurrency Integration Tests)
+Phase: 10 of 10 (Developer Tooling)
+Plan: 06 of 10 in current phase
+Status: In progress
+Last activity: 2026-02-07 -- Completed 10-06-PLAN.md (Package Manager Core)
 
-Progress: [█████████████████████████████████████████████░] 96% (45 plans of ~47 estimated total)
+Progress: [██████████████████████████████████████████████░] 97% (46 plans of ~55 estimated total)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 45
+- Total plans completed: 46
 - Average duration: 9min
-- Total execution time: 425min
+- Total execution time: 431min
 
 **By Phase:**
 
@@ -36,9 +36,10 @@ Progress: [███████████████████████
 | 07-supervision-fault-tolerance | 3/3 | 27min | 9min |
 | 08-standard-library | 7/7 | 67min | 10min |
 | 09-concurrency-standard-library | 5/5 | 51min | 10min |
+| 10-developer-tooling | 1/10 | 6min | 6min |
 
 **Recent Trend:**
-- Last 5 plans: 09-01 (7min), 09-02 (6min), 09-03 (19min), 09-04 (6min), 09-05 (13min)
+- Last 5 plans: 09-03 (19min), 09-04 (6min), 09-05 (13min), 10-06 (6min)
 
 *Updated after each plan completion*
 
@@ -246,6 +247,12 @@ Recent decisions affecting current work:
 - [09-05]: snow_actor_receive detects coroutine context via CURRENT_YIELDER; uses spin-wait for main thread
 - [09-05]: Reduction check uses CURRENT_YIELDER (not CURRENT_PID) to detect coroutine context
 - [09-05]: Graceful service actor shutdown via wake-and-null pattern (avoids corosensei panic on force-drop through extern C)
+- [10-06]: Serde untagged enum for Dependency (Git variant with git/rev/branch/tag fields, Path variant with path field)
+- [10-06]: BTreeMap for dependencies and lockfile packages ensures deterministic ordering
+- [10-06]: DFS visiting set for cycle detection; source key comparison for conflict detection
+- [10-06]: Git deps cloned to project_dir/.snow/deps/<name>/ (project-local, not global cache)
+- [10-06]: Path dep source keys use canonicalize() for consistent diamond deduplication
+- [10-06]: Lockfile version field (always 1) for future format evolution
 
 ### Pending Todos
 
@@ -254,6 +261,7 @@ None.
 ### Blockers/Concerns
 
 - Phase 9 COMPLETE -- all 5 plans done, all E2E tests passing
+- Phase 10 IN PROGRESS -- plan 06 (package manager core) complete
 - string_split now possible with List type available (can be added in future plan)
 - String-keyed maps use pointer identity (not content comparison) -- documented limitation
 - Multiline pipe operator (`|>` at start of continuation line) fails to parse -- pre-existing parser limitation
@@ -264,5 +272,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-07
-Stopped at: Completed 09-05-PLAN.md (E2E Concurrency Integration Tests) -- Phase 9 complete
+Stopped at: Completed 10-06-PLAN.md (Package Manager Core)
 Resume file: None
