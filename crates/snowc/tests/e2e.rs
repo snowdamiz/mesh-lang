@@ -502,3 +502,15 @@ fn e2e_closure_do_end_body() {
         "Expected: (1*2+1) + (2*2+1) + (3*2+1) = 3+5+7 = 15"
     );
 }
+
+/// Chained pipes with closures: Phase 12 gap closure verification.
+/// list |> map(fn x -> x + 1 end) |> filter(fn x -> x > 3 end) |> reduce(0, fn acc, x -> acc + x end)
+#[test]
+fn e2e_pipe_chain_closures() {
+    let source = read_fixture("pipe_chain_closures.snow");
+    let output = compile_and_run(&source);
+    assert_eq!(
+        output, "15\n",
+        "Expected: [1,2,3,4,5] -> map +1 [2,3,4,5,6] -> filter >3 [4,5,6] -> sum 15"
+    );
+}
