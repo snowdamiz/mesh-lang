@@ -20,7 +20,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 6: Actor Runtime** - Lightweight actor processes with typed message passing, standalone runtime library integrated with compiler
 - [x] **Phase 7: Supervision & Fault Tolerance** - Supervision trees with restart strategies and let-it-crash semantics
 - [x] **Phase 8: Standard Library** - Core library for I/O, strings, collections, file operations, HTTP, and JSON
-- [ ] **Phase 9: Concurrency Standard Library** - GenServer, Task, and other OTP-style behavior abstractions
+- [ ] **Phase 9: Concurrency Standard Library** - Service (GenServer) and Job (Task) high-level concurrency abstractions
 - [ ] **Phase 10: Developer Tooling** - Error message polish, formatter, REPL, package manager, and LSP server
 
 ## Phase Details
@@ -173,18 +173,21 @@ Plans:
 - [x] 08-07-PLAN.md -- Gap closure: HTTP server runtime E2E test (start server, make request, verify response)
 
 ### Phase 9: Concurrency Standard Library
-**Goal**: High-level concurrency abstractions (GenServer, Task) built on the actor primitives, providing ergonomic patterns for common concurrent programming needs
+**Goal**: High-level concurrency abstractions (Service and Job) built on the actor primitives, providing ergonomic patterns for common concurrent programming needs
 **Depends on**: Phase 7, Phase 8
 **Requirements**: STD-07, STD-08
 **Success Criteria** (what must be TRUE):
-  1. A GenServer can be defined with init/handle_call/handle_cast callbacks, started under a supervisor, and interacted with via synchronous calls and asynchronous casts
-  2. A Task can be spawned to perform work asynchronously and its result awaited, with supervision ensuring the task is restarted on failure
-  3. Both GenServer and Task are fully type-checked (message types, return types) with inference
-**Plans**: TBD
+  1. A Service can be defined with init/call/cast callbacks, started under a supervisor, and interacted with via synchronous calls and asynchronous casts
+  2. A Job can be spawned to perform work asynchronously and its result awaited, with supervision ensuring the job is restarted on failure
+  3. Both Service and Job are fully type-checked (message types, return types) with inference
+**Plans**: 5 plans
 
 Plans:
-- [ ] 09-01: GenServer behavior (init, handle_call, handle_cast, typed interface)
-- [ ] 09-02: Task abstraction (async spawn, await, supervision integration)
+- [ ] 09-01-PLAN.md -- Service syntax: lexer keywords (service/call/cast), parser for service blocks, AST wrappers
+- [ ] 09-02-PLAN.md -- Type checking: infer_service_def with state unification, per-variant reply types, Job module registration
+- [ ] 09-03-PLAN.md -- Service runtime and codegen: snow_service_call/reply, MIR desugaring to actor primitives, LLVM wiring
+- [ ] 09-04-PLAN.md -- Job runtime and codegen: snow_job_async/await/map, closure argument handling, Result returns
+- [ ] 09-05-PLAN.md -- E2E integration tests: Service counter/state management, Job async/await, type error verification
 
 ### Phase 10: Developer Tooling
 **Goal**: Developer tools that make Snow practical for daily use -- polished error messages, code formatter, REPL, package manager, and LSP server
@@ -220,5 +223,5 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8 -> 9 -> 10
 | 6. Actor Runtime | 7/7 | Complete | 2026-02-07 |
 | 7. Supervision & Fault Tolerance | 3/3 | Complete | 2026-02-06 |
 | 8. Standard Library | 7/7 | Complete | 2026-02-07 |
-| 9. Concurrency Standard Library | 0/2 | Not started | - |
+| 9. Concurrency Standard Library | 0/5 | Not started | - |
 | 10. Developer Tooling | 0/5 | Not started | - |
