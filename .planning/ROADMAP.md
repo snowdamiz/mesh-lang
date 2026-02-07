@@ -21,7 +21,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 7: Supervision & Fault Tolerance** - Supervision trees with restart strategies and let-it-crash semantics
 - [x] **Phase 8: Standard Library** - Core library for I/O, strings, collections, file operations, HTTP, and JSON
 - [x] **Phase 9: Concurrency Standard Library** - Service (GenServer) and Job (Task) high-level concurrency abstractions
-- [ ] **Phase 10: Developer Tooling** - Error message polish, formatter, REPL, package manager, and LSP server
+- [x] **Phase 10: Developer Tooling** - Error message polish, formatter, REPL, package manager, and LSP server
 
 ## Phase Details
 
@@ -202,16 +202,16 @@ Plans:
 **Plans**: 10 plans
 
 Plans:
-- [ ] 10-01-PLAN.md -- Error message polish (multi-span diagnostics, --json output, fix suggestions)
-- [ ] 10-02-PLAN.md -- Formatter core (snow-fmt crate, FormatIR, CST walker, printer)
-- [ ] 10-03-PLAN.md -- Formatter CLI (snowc fmt, --check mode, idempotency tests)
-- [ ] 10-04-PLAN.md -- REPL core (snow-repl crate, JIT engine, session management, multi-line)
-- [ ] 10-05-PLAN.md -- REPL actor support and snowc repl CLI integration
-- [ ] 10-06-PLAN.md -- Package manager core (snow-pkg crate, snow.toml, dependency resolution)
-- [ ] 10-07-PLAN.md -- Package manager CLI (snowc init, snowc deps)
-- [ ] 10-08-PLAN.md -- LSP server core (snow-lsp crate, diagnostics, type-on-hover)
-- [ ] 10-09-PLAN.md -- LSP go-to-definition and integration tests
-- [ ] 10-10-PLAN.md -- E2E integration tests and human verification
+- [x] 10-01-PLAN.md -- Error message polish (multi-span diagnostics, --json output, fix suggestions)
+- [x] 10-02-PLAN.md -- Formatter core (snow-fmt crate, FormatIR, CST walker, printer)
+- [x] 10-03-PLAN.md -- Formatter CLI (snowc fmt, --check mode, idempotency tests)
+- [x] 10-04-PLAN.md -- REPL core (snow-repl crate, JIT engine, session management, multi-line)
+- [x] 10-05-PLAN.md -- REPL actor support and snowc repl CLI integration
+- [x] 10-06-PLAN.md -- Package manager core (snow-pkg crate, snow.toml, dependency resolution)
+- [x] 10-07-PLAN.md -- Package manager CLI (snowc init, snowc deps)
+- [x] 10-08-PLAN.md -- LSP server core (snow-lsp crate, diagnostics, type-on-hover)
+- [x] 10-09-PLAN.md -- LSP go-to-definition and integration tests
+- [x] 10-10-PLAN.md -- E2E integration tests and human verification
 
 ## Progress
 
@@ -229,4 +229,4 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8 -> 9 -> 10
 | 7. Supervision & Fault Tolerance | 3/3 | Complete | 2026-02-06 |
 | 8. Standard Library | 7/7 | Complete | 2026-02-07 |
 | 9. Concurrency Standard Library | 5/5 | Complete | 2026-02-07 |
-| 10. Developer Tooling | 0/10 | Not started | - |
+| 10. Developer Tooling | 10/10 | Complete | 2026-02-07 |
