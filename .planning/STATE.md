@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-02-05)
 
 **Core value:** Expressive, readable concurrency -- writing concurrent programs should feel as natural as sequential code, with supervision and fault tolerance built in.
-**Current focus:** Phase 10 IN PROGRESS -- Developer Tooling. Plan 04 complete (REPL with LLVM JIT).
+**Current focus:** Phase 10 IN PROGRESS -- Developer Tooling. Plan 02 complete (Code Formatter).
 
 ## Current Position
 
 Phase: 10 of 10 (Developer Tooling)
-Plan: 04 of 10 in current phase
+Plan: 05 of 10 in current phase
 Status: In progress
-Last activity: 2026-02-07 -- Completed 10-04-PLAN.md (REPL with LLVM JIT)
+Last activity: 2026-02-07 -- Completed 10-02-PLAN.md (Code Formatter)
 
-Progress: [████████████████████████████████████████████████░] 87% (48 plans of 55 total)
+Progress: [████████████████████████████████████████████████░░] 89% (49 plans of 55 total)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 48
+- Total plans completed: 49
 - Average duration: 9min
-- Total execution time: 449min
+- Total execution time: 461min
 
 **By Phase:**
 
@@ -36,10 +36,10 @@ Progress: [███████████████████████
 | 07-supervision-fault-tolerance | 3/3 | 27min | 9min |
 | 08-standard-library | 7/7 | 67min | 10min |
 | 09-concurrency-standard-library | 5/5 | 51min | 10min |
-| 10-developer-tooling | 3/10 | 24min | 8min |
+| 10-developer-tooling | 5/10 | 36min | 7min |
 
 **Recent Trend:**
-- Last 5 plans: 09-05 (13min), 10-06 (6min), 10-08 (8min), 10-04 (10min)
+- Last 5 plans: 10-06 (6min), 10-08 (8min), 10-04 (10min), 10-02 (12min)
 
 *Updated after each plan completion*
 
@@ -262,6 +262,10 @@ Recent decisions affecting current work:
 - [10-04]: Token-based do/end and delimiter balancing for multi-line input detection
 - [10-04]: value :: Type display format for REPL results (Haskell-inspired)
 - [10-04]: into_module() on CodeGen for JIT execution engine creation
+- [10-02]: Wadler-Lindig FormatIR with 8 variants (Text, Space, Hardline, Indent, Group, IfBreak, Concat, Empty)
+- [10-02]: sp() literal space helper vs ir::space() break-sensitive -- root context always break mode
+- [10-02]: TYPE_ANNOTATION gets space before it in inline token walker (Snow :: is type annotation, not path separator)
+- [10-02]: Stack-based printer with (indent, mode, ir_node) triples and measure_flat() for Group decisions
 
 ### Pending Todos
 
@@ -270,7 +274,7 @@ None.
 ### Blockers/Concerns
 
 - Phase 9 COMPLETE -- all 5 plans done, all E2E tests passing
-- Phase 10 IN PROGRESS -- plan 04 (REPL with LLVM JIT) complete
+- Phase 10 IN PROGRESS -- plan 02 (Code Formatter) complete
 - string_split now possible with List type available (can be added in future plan)
 - String-keyed maps use pointer identity (not content comparison) -- documented limitation
 - Multiline pipe operator (`|>` at start of continuation line) fails to parse -- pre-existing parser limitation
@@ -281,5 +285,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-07
-Stopped at: Completed 10-04-PLAN.md (REPL with LLVM JIT)
+Stopped at: Completed 10-02-PLAN.md (Code Formatter)
 Resume file: None
