@@ -1343,6 +1343,7 @@ dependencies = [
  "snow-common",
  "snow-lexer",
  "snow-parser",
+ "snow-rt",
  "snow-typeck",
 ]
 
@@ -1386,9 +1387,11 @@ dependencies = [
  "serde_json",
  "snow-codegen",
  "snow-common",
+ "snow-fmt",
  "snow-lexer",
  "snow-lsp",
  "snow-parser",
+ "snow-pkg",
  "snow-typeck",
  "tempfile",
  "tokio",

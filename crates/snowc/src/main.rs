@@ -3,6 +3,9 @@
 //! Provides the `snowc` command with the following subcommands:
 //!
 //! - `snowc build <dir>` - Compile a Snow project to a native binary
+//! - `snowc init <name>` - Initialize a new Snow project
+//! - `snowc deps [dir]` - Resolve and fetch dependencies
+//! - `snowc fmt <path>` - Format Snow source files in-place
 //! - `snowc lsp` - Start the LSP server (communicates via stdin/stdout)
 //!
 //! Options:
@@ -58,6 +61,34 @@ enum Commands {
         #[arg(long = "no-color")]
         no_color: bool,
     },
+    /// Initialize a new Snow project
+    Init {
+        /// Project name (creates directory with this name)
+        name: String,
+    },
+    /// Resolve and fetch dependencies
+    Deps {
+        /// Project directory (default: current directory)
+        #[arg(default_value = ".")]
+        dir: PathBuf,
+    },
+    /// Format Snow source files
+    Fmt {
+        /// Path to a Snow source file (or directory to format all .snow files)
+        path: PathBuf,
+
+        /// Check if files are formatted (exit 1 if not, don't modify)
+        #[arg(long)]
+        check: bool,
+
+        /// Maximum line width (default: 100)
+        #[arg(long = "line-width", default_value = "100")]
+        line_width: usize,
+
+        /// Indent size in spaces (default: 2)
+        #[arg(long = "indent-size", default_value = "2")]
+        indent_size: usize,
+    },
     /// Start the LSP server (communicates via stdin/stdout)
     Lsp,
 }
@@ -97,6 +128,51 @@ fn main() {
                     eprintln!("error: {}", e);
                 }
                 process::exit(1);
+            }
+        }
+        Commands::Init { name } => {
+            let dir = std::env::current_dir().unwrap_or_default();
+            if let Err(e) = snow_pkg::scaffold_project(&name, &dir) {
+                eprintln!("error: {}", e);
+                process::exit(1);
+            }
+        }
+        Commands::Deps { dir } => {
+            if let Err(e) = deps_command(&dir) {
+                eprintln!("error: {}", e);
+                process::exit(1);
+            }
+        }
+        Commands::Fmt {
+            path,
+            check,
+            line_width,
+            indent_size,
+        } => {
+            let config = snow_fmt::FormatConfig {
+                indent_size,
+                max_width: line_width,
+            };
+            match fmt_command(&path, check, &config) {
+                Ok(stats) => {
+                    if check {
+                        if stats.unformatted > 0 {
+                            eprintln!(
+                                "{} file(s) would be reformatted",
+                                stats.unformatted
+                            );
+                            process::exit(1);
+                        } else {
+                            eprintln!("{} file(s) already formatted", stats.total);
+                        }
+                    } else {
+                        eprintln!("Formatted {} file(s)", stats.total);
+                    }
+                }
+                Err(e) => {
+                    eprintln!("error: {}", e);
+                    process::exit(1);
+                }
             }
         }
         Commands::Lsp => {
@@ -239,4 +315,140 @@ fn report_diagnostics(
     }
 
     has_errors
+}
+
+// ── Deps subcommand ──────────────────────────────────────────────────
+
+/// Execute the `deps` subcommand: resolve dependencies and generate snow.lock.
+///
+/// If snow.lock already exists and the manifest hasn't changed, skips resolution.
+fn deps_command(dir: &Path) -> Result<(), String> {
+    let manifest_path = dir.join("snow.toml");
+    if !manifest_path.exists() {
+        return Err(format!(
+            "No 'snow.toml' found in '{}'. Run `snowc init` to create a project.",
+            dir.display()
+        ));
+    }
+
+    let lock_path = dir.join("snow.lock");
+
+    // Check if lockfile is fresh: exists and manifest hasn't been modified after it
+    if lock_path.exists() {
+        let manifest_modified = std::fs::metadata(&manifest_path)
+            .and_then(|m| m.modified())
+            .ok();
+        let lock_modified = std::fs::metadata(&lock_path)
+            .and_then(|m| m.modified())
+            .ok();
+        if let (Some(manifest_time), Some(lock_time)) = (manifest_modified, lock_modified) {
+            if manifest_time <= lock_time {
+                eprintln!("Dependencies up to date");
+                return Ok(());
+            }
+        }
+    }
+
+    let (resolved, lockfile) = snow_pkg::resolve_dependencies(dir)?;
+
+    lockfile.write(&lock_path)?;
+
+    if resolved.is_empty() {
+        eprintln!("No dependencies");
+    } else {
+        eprintln!("Resolved {} dependencies", resolved.len());
+    }
+
+    Ok(())
+}
+
+// ── Format subcommand ─────────────────────────────────────────────────
+
+/// Statistics from a format operation.
+struct FmtStats {
+    /// Total number of files processed.
+    total: usize,
+    /// Number of files that were not already formatted (check mode).
+    unformatted: usize,
+}
+
+/// Execute the `fmt` subcommand: format Snow source files in-place or check formatting.
+fn fmt_command(
+    path: &Path,
+    check: bool,
+    config: &snow_fmt::FormatConfig,
+) -> Result<FmtStats, String> {
+    let files = collect_snow_files(path)?;
+    if files.is_empty() {
+        return Err(format!(
+            "No .snow files found at '{}'",
+            path.display()
+        ));
+    }
+
+    let mut total = 0;
+    let mut unformatted = 0;
+
+    for file in &files {
+        let source = std::fs::read_to_string(file)
+            .map_err(|e| format!("Failed to read '{}': {}", file.display(), e))?;
+
+        let formatted = snow_fmt::format_source(&source, config);
+        total += 1;
+
+        if formatted != source {
+            if check {
+                eprintln!("  would reformat: {}", file.display());
+                unformatted += 1;
+            } else {
+                std::fs::write(file, &formatted)
+                    .map_err(|e| format!("Failed to write '{}': {}", file.display(), e))?;
+            }
+        }
+    }
+
+    Ok(FmtStats { total, unformatted })
+}
+
+/// Collect `.snow` files from a path. If the path is a file, return it directly.
+/// If it is a directory, recursively find all `.snow` files.
+fn collect_snow_files(path: &Path) -> Result<Vec<PathBuf>, String> {
+    if !path.exists() {
+        return Err(format!("Path '{}' does not exist", path.display()));
+    }
+
+    if path.is_file() {
+        if path.extension().and_then(|e| e.to_str()) == Some("snow") {
+            return Ok(vec![path.to_path_buf()]);
+        } else {
+            return Err(format!(
+                "'{}' is not a .snow file",
+                path.display()
+            ));
+        }
+    }
+
+    if path.is_dir() {
+        let mut files = Vec::new();
+        collect_snow_files_recursive(path, &mut files)
+            .map_err(|e| format!("Failed to walk directory '{}': {}", path.display(), e))?;
+        files.sort();
+        return Ok(files);
+    }
+
+    Err(format!("'{}' is not a file or directory", path.display()))
+}
+
+/// Recursively collect `.snow` files from a directory.
+fn collect_snow_files_recursive(dir: &Path, files: &mut Vec<PathBuf>) -> std::io::Result<()> {
+    for entry in std::fs::read_dir(dir)? {
+        let entry = entry?;
+        let entry_path = entry.path();
+        if entry_path.is_dir() {
+            collect_snow_files_recursive(&entry_path, files)?;
+        } else if entry_path.extension().and_then(|e| e.to_str()) == Some("snow") {
+            files.push(entry_path);
+        }
+    }
+    Ok(())
 }
