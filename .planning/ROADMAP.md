@@ -36,11 +36,12 @@ standard library, and developer tooling. See milestones/v1.0-ROADMAP.md for deta
   2. Compiler raises an exhaustiveness warning when multi-clause function does not cover all cases (e.g., missing wildcard clause for an Int-typed parameter)
   3. Type inference correctly unifies the return type across all clauses -- a function with clauses returning Int and String is a type error
   4. Multi-clause functions work with all existing pattern types (literals, variables, wildcards, constructors)
-**Plans**: TBD
+**Plans**: 3 plans
 
 Plans:
-- [ ] 11-01: TBD
-- [ ] 11-02: TBD
+- [ ] 11-01-PLAN.md -- Parser + AST: = expr body form, pattern params, guard clauses
+- [ ] 11-02-PLAN.md -- Type checker: clause grouping, desugaring, validation, guard relaxation
+- [ ] 11-03-PLAN.md -- MIR lowering, formatter, e2e tests
 
 ### Phase 12: Pipe Operator Closures
 **Goal**: Users can pipe values into expressions containing inline closures without parser errors
@@ -103,7 +104,7 @@ Phases execute in numeric order: 11 -> 12 -> 13 -> 14 -> 15
 
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
-| 11. Multi-Clause Functions | v1.1 | 0/TBD | Not started | - |
+| 11. Multi-Clause Functions | v1.1 | 0/3 | Planned | - |
 | 12. Pipe Operator Closures | v1.1 | 0/TBD | Not started | - |
 | 13. String Pattern Matching | v1.1 | 0/TBD | Not started | - |
 | 14. Generic Map Types | v1.1 | 0/TBD | Not started | - |
