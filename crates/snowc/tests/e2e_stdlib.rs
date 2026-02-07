@@ -82,6 +82,56 @@ fn compile_only(source: &str) -> Output {
         .expect("failed to invoke snowc")
 }
 
+/// Helper: compile a Snow source file and run the binary with piped stdin input.
+/// Useful for testing interactive I/O functions like IO.read_line().
+fn compile_and_run_with_stdin(source: &str, stdin_input: &str) -> String {
+    let temp_dir = tempfile::tempdir().expect("failed to create temp dir");
+    let project_dir = temp_dir.path().join("project");
+    std::fs::create_dir_all(&project_dir).expect("failed to create project dir");
+
+    let main_snow = project_dir.join("main.snow");
+    std::fs::write(&main_snow, source).expect("failed to write main.snow");
+
+    let snowc = find_snowc();
+    let output = Command::new(&snowc)
+        .args(["build", project_dir.to_str().unwrap()])
+        .output()
+        .expect("failed to invoke snowc");
+
+    assert!(
+        output.status.success(),
+        "snowc build failed:\nstdout: {}\nstderr: {}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let binary = project_dir.join("project");
+    let mut child = Command::new(&binary)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap_or_else(|e| panic!("failed to spawn binary at {}: {}", binary.display(), e));
+
+    // Write stdin input and drop to signal EOF
+    if let Some(mut stdin) = child.stdin.take() {
+        stdin.write_all(stdin_input.as_bytes()).expect("failed to write stdin");
+        // stdin is dropped here, closing the pipe
+    }
+
+    let run_output = child.wait_with_output().expect("failed to wait for child");
+
+    assert!(
+        run_output.status.success(),
+        "binary execution failed with exit code {:?}:\nstdout: {}\nstderr: {}",
+        run_output.status.code(),
+        String::from_utf8_lossy(&run_output.stdout),
+        String::from_utf8_lossy(&run_output.stderr)
+    );
+
+    String::from_utf8_lossy(&run_output.stdout).to_string()
+}
+
 /// Read a test fixture from the tests/e2e/ directory.
 fn read_fixture(name: &str) -> String {
     let manifest_dir = env!("CARGO_MANIFEST_DIR");
@@ -187,6 +237,14 @@ fn e2e_io_eprintln_does_not_crash() {
     let source = read_fixture("stdlib_io_eprintln.snow");
     let output = compile_and_run(&source);
     assert_eq!(output, "done\n");
+}
+
+#[test]
+fn e2e_io_read_line() {
+    // Verify IO.read_line() compiles and runs through the full pipeline with piped stdin.
+    let source = read_fixture("stdlib_io_read_line.snow");
+    let output = compile_and_run_with_stdin(&source, "hello world\n");
+    assert_eq!(output, "hello world\n");
 }
 
 // ── Collection E2E Tests (Phase 8 Plan 02) ────────────────────────────
