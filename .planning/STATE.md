@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-02-05)
 
 **Core value:** Expressive, readable concurrency -- writing concurrent programs should feel as natural as sequential code, with supervision and fault tolerance built in.
-**Current focus:** Phase 5 complete -- LLVM Codegen & Native Binaries. All 5 plans delivered. snowc build produces native binaries from Snow source code.
+**Current focus:** Phase 6 -- Actor Runtime. Plan 02 complete (actor syntax frontend). Lexer, parser, AST, and MIR all support actor constructs.
 
 ## Current Position
 
-Phase: 5 of 10 (LLVM Codegen & Native Binaries)
-Plan: 5 of 5 in current phase -- PHASE COMPLETE
-Status: Phase 5 complete, ready for Phase 6 planning
-Last activity: 2026-02-06 -- Completed 05-05-PLAN.md (snowc build CLI & E2E integration)
+Phase: 6 of 10 (Actor Runtime)
+Plan: 2 of 5 in current phase
+Status: In progress
+Last activity: 2026-02-07 -- Completed 06-02-PLAN.md (actor syntax frontend)
 
-Progress: [████████████████████████░] 56% (23 plans of ~41 estimated total)
+Progress: [█████████████████████████░░] 61% (25 plans of ~41 estimated total)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 23
+- Total plans completed: 25
 - Average duration: 9min
-- Total execution time: 210min
+- Total execution time: 230min
 
 **By Phase:**
 
@@ -32,10 +32,10 @@ Progress: [███████████████████████
 | 03-type-system | 5/5 | 83min | 17min |
 | 04-pattern-matching-adts | 5/5 | 42min | 8min |
 | 05-llvm-codegen-native-binaries | 5/5 | 50min | 10min |
+| 06-actor-runtime | 2/5 | 20min | 10min |
 
 **Recent Trend:**
-- Last 5 plans: 05-01 (5min), 05-02 (9min), 05-03 (8min), 05-04 (13min), 05-05 (15min)
-- Trend: Phase 5 final plan took longest due to full pipeline integration, linker, and comprehensive e2e testing.
+- Last 5 plans: 05-04 (13min), 05-05 (15min), 06-01 (10min), 06-02 (10min)
 
 *Updated after each plan completion*
 
@@ -148,6 +148,12 @@ Recent decisions affecting current work:
 - [05-05]: System cc as linker driver (handles macOS clang / Linux gcc transparently)
 - [05-05]: snowc build auto-builds snow-rt via cargo before linking
 - [05-05]: Closure parameter type annotations resolved in infer_closure (was missing, caused string interpolation to fail in closures)
+- [06-02]: Actor blocks parsed as top-level items (same level as fn/struct/module)
+- [06-02]: Actor expressions (spawn/send/receive/self/link) dispatch from expression lhs()
+- [06-02]: Receive arms reuse existing pattern matching infrastructure from case/match
+- [06-02]: Terminate clause enforces single-occurrence-per-actor at parse time
+- [06-02]: MirType::Pid uses Option<Box<MirType>> for optional message type parameterization
+- [06-02]: Placeholder stubs in type checker, MIR lowering, and LLVM codegen for actor constructs
 
 ### Pending Todos
 
@@ -157,9 +163,10 @@ None.
 
 - Phase 6 (Actor Runtime) is highest engineering risk -- preemptive scheduling, per-actor GC, work-stealing
 - Typed actor messaging (TYPE-07) is a research-level problem -- design on paper during early phases
+- 3 pre-existing test failures in snow-rt scheduler tests (test_high_priority, test_reduction_yield, test_reduction_yield_does_not_starve) from Plan 06-01
 
 ## Session Continuity
 
-Last session: 2026-02-06
-Stopped at: Completed 05-05-PLAN.md (Phase 5 complete)
+Last session: 2026-02-07
+Stopped at: Completed 06-02-PLAN.md
 Resume file: None
