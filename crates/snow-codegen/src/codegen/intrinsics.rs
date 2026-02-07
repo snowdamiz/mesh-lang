@@ -369,6 +369,24 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
     );
     module.add_function("snow_service_reply", service_reply_ty, Some(inkwell::module::Linkage::External));
 
+    // ── Job runtime functions (Phase 9 Plan 04) ──────────────────────────
+
+    // snow_job_async(fn_ptr: ptr, env_ptr: ptr) -> i64 (PID)
+    let job_async_ty = i64_type.fn_type(&[ptr_type.into(), ptr_type.into()], false);
+    module.add_function("snow_job_async", job_async_ty, Some(inkwell::module::Linkage::External));
+
+    // snow_job_await(job_pid: i64) -> ptr (SnowResult)
+    let job_await_ty = ptr_type.fn_type(&[i64_type.into()], false);
+    module.add_function("snow_job_await", job_await_ty, Some(inkwell::module::Linkage::External));
+
+    // snow_job_await_timeout(job_pid: i64, timeout_ms: i64) -> ptr (SnowResult)
+    let job_await_timeout_ty = ptr_type.fn_type(&[i64_type.into(), i64_type.into()], false);
+    module.add_function("snow_job_await_timeout", job_await_timeout_ty, Some(inkwell::module::Linkage::External));
+
+    // snow_job_map(list_ptr: ptr, fn_ptr: ptr, env_ptr: ptr) -> ptr (List of SnowResult)
+    let job_map_ty = ptr_type.fn_type(&[ptr_type.into(), ptr_type.into(), ptr_type.into()], false);
+    module.add_function("snow_job_map", job_map_ty, Some(inkwell::module::Linkage::External));
+
     // snow_panic(msg: ptr, msg_len: u64, file: ptr, file_len: u64, line: u32) -> void
     // (noreturn -- marked via attribute)
     let panic_params: Vec<BasicMetadataTypeEnum<'ctx>> = vec![
@@ -522,6 +540,12 @@ mod tests {
         // Service runtime functions (Phase 9 Plan 03)
         assert!(module.get_function("snow_service_call").is_some());
         assert!(module.get_function("snow_service_reply").is_some());
+
+        // Job runtime functions (Phase 9 Plan 04)
+        assert!(module.get_function("snow_job_async").is_some());
+        assert!(module.get_function("snow_job_await").is_some());
+        assert!(module.get_function("snow_job_await_timeout").is_some());
+        assert!(module.get_function("snow_job_map").is_some());
 
         // JSON functions (Phase 8 Plan 04)
         assert!(module.get_function("snow_json_parse").is_some());

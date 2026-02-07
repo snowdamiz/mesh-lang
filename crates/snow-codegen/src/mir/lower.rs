@@ -322,11 +322,15 @@ impl<'a> Lowerer<'a> {
         self.known_functions.insert("snow_http_request_body".to_string(), MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::String)));
         self.known_functions.insert("snow_http_request_header".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::String], Box::new(MirType::Ptr)));
         self.known_functions.insert("snow_http_request_query".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::String], Box::new(MirType::Ptr)));
-        // ── Job functions (Phase 9 Plan 04 prep) ────────────────────────
-        self.known_functions.insert("snow_job_async".to_string(), MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Ptr)));
-        self.known_functions.insert("snow_job_await".to_string(), MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Int)));
-        self.known_functions.insert("snow_job_await_all".to_string(), MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Ptr)));
-        self.known_functions.insert("snow_job_await_any".to_string(), MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Ptr)));
+        // ── Job functions (Phase 9 Plan 04) ──────────────────────────────
+        // snow_job_async takes (fn_ptr, env_ptr) -> i64 (PID)
+        // But the closure splitting at codegen will expand the closure arg into (fn_ptr, env_ptr)
+        self.known_functions.insert("snow_job_async".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr], Box::new(MirType::Int)));
+        self.known_functions.insert("snow_job_await".to_string(), MirType::FnPtr(vec![MirType::Int], Box::new(MirType::Ptr)));
+        self.known_functions.insert("snow_job_await_timeout".to_string(), MirType::FnPtr(vec![MirType::Int, MirType::Int], Box::new(MirType::Ptr)));
+        // snow_job_map takes (list_ptr, fn_ptr, env_ptr) -> ptr
+        // Closure splitting expands the closure arg into (fn_ptr, env_ptr)
+        self.known_functions.insert("snow_job_map".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
         // ── Service runtime functions (Phase 9 Plan 03) ─────────────────
         self.known_functions.insert("snow_service_call".to_string(), MirType::FnPtr(vec![MirType::Int, MirType::Int, MirType::Ptr, MirType::Int], Box::new(MirType::Ptr)));
         self.known_functions.insert("snow_service_reply".to_string(), MirType::FnPtr(vec![MirType::Int, MirType::Ptr, MirType::Int], Box::new(MirType::Unit)));
@@ -2690,11 +2694,11 @@ fn map_builtin_name(name: &str) -> String {
         // post, method, path, body, etc.) because they collide with common
         // variable names. Use module-qualified access instead:
         //   HTTP.router(), HTTP.route(), Request.method(), etc.
-        // ── Job functions (Phase 9 Plan 04 prep) ────────────────────────
+        // ── Job functions (Phase 9 Plan 04) ────────────────────────────
         "job_async" => "snow_job_async".to_string(),
         "job_await" => "snow_job_await".to_string(),
-        "job_await_all" => "snow_job_await_all".to_string(),
-        "job_await_any" => "snow_job_await_any".to_string(),
+        "job_await_timeout" => "snow_job_await_timeout".to_string(),
+        "job_map" => "snow_job_map".to_string(),
         _ => name.to_string(),
     }
 }
