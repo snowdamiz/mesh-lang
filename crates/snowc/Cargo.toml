@@ -13,6 +13,7 @@ snow-codegen = { path = "../snow-codegen" }
 snow-lsp = { path = "../snow-lsp" }
 snow-fmt = { path = "../snow-fmt" }
 snow-pkg = { path = "../snow-pkg" }
+snow-repl = { path = "../snow-repl" }
 clap = { workspace = true }
 ariadne = { workspace = true }
 serde_json = { workspace = true }

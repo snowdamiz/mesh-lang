@@ -6,6 +6,7 @@
 //! - `snowc init <name>` - Initialize a new Snow project
 //! - `snowc deps [dir]` - Resolve and fetch dependencies
 //! - `snowc fmt <path>` - Format Snow source files in-place
+//! - `snowc repl` - Start an interactive REPL with LLVM JIT
 //! - `snowc lsp` - Start the LSP server (communicates via stdin/stdout)
 //!
 //! Options:
@@ -89,6 +90,8 @@ enum Commands {
         #[arg(long = "indent-size", default_value = "2")]
         indent_size: usize,
     },
+    /// Start an interactive REPL with LLVM JIT compilation
+    Repl,
     /// Start the LSP server (communicates via stdin/stdout)
     Lsp,
 }
@@ -173,6 +176,12 @@ fn main() {
                     eprintln!("error: {}", e);
                     process::exit(1);
                 }
+            }
+        }
+        Commands::Repl => {
+            if let Err(e) = snow_repl::run_repl(&snow_repl::ReplConfig::default()) {
+                eprintln!("REPL error: {}", e);
+                process::exit(1);
             }
         }
         Commands::Lsp => {
