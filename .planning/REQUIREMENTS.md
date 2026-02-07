@@ -29,15 +29,15 @@ Requirements for initial release. Each maps to roadmap phases.
 - [x] **TYPE-04**: `Result[T, E]` type with `?` propagation operator
 - [x] **TYPE-05**: Struct types (named product types)
 - [x] **TYPE-06**: Type aliases
-- [ ] **TYPE-07**: Typed actor PIDs (`Pid[MessageType]`) -- compile-time protocol checking
+- [x] **TYPE-07**: Typed actor PIDs (`Pid[MessageType]`) -- compile-time protocol checking
 - [x] **TYPE-08**: Traits/protocols for polymorphism
 
 ### Concurrency
 
-- [ ] **CONC-01**: Lightweight actor processes (millions, not OS threads)
-- [ ] **CONC-02**: Typed message passing via `send`
-- [ ] **CONC-03**: `receive` blocks with pattern matching
-- [ ] **CONC-04**: Process linking and monitoring
+- [x] **CONC-01**: Lightweight actor processes (millions, not OS threads)
+- [x] **CONC-02**: Typed message passing via `send`
+- [x] **CONC-03**: `receive` blocks with pattern matching
+- [x] **CONC-04**: Process linking and monitoring
 - [ ] **CONC-05**: Supervision trees (one_for_one, one_for_all, rest_for_one)
 - [ ] **CONC-06**: Let-it-crash with automatic restarts (permanent/transient/temporary)
 - [ ] **CONC-07**: Typed supervision (compile-time child spec validation)
@@ -130,12 +130,12 @@ Which phases cover which requirements. Updated during roadmap creation.
 | TYPE-04 | Phase 3: Type System | Complete |
 | TYPE-05 | Phase 3: Type System | Complete |
 | TYPE-06 | Phase 3: Type System | Complete |
-| TYPE-07 | Phase 6: Actor Runtime | Pending |
+| TYPE-07 | Phase 6: Actor Runtime | Complete |
 | TYPE-08 | Phase 3: Type System | Complete |
-| CONC-01 | Phase 6: Actor Runtime | Pending |
-| CONC-02 | Phase 6: Actor Runtime | Pending |
-| CONC-03 | Phase 6: Actor Runtime | Pending |
-| CONC-04 | Phase 6: Actor Runtime | Pending |
+| CONC-01 | Phase 6: Actor Runtime | Complete |
+| CONC-02 | Phase 6: Actor Runtime | Complete |
+| CONC-03 | Phase 6: Actor Runtime | Complete |
+| CONC-04 | Phase 6: Actor Runtime | Complete |
 | CONC-05 | Phase 7: Supervision & Fault Tolerance | Pending |
 | CONC-06 | Phase 7: Supervision & Fault Tolerance | Pending |
 | CONC-07 | Phase 7: Supervision & Fault Tolerance | Pending |
