@@ -22,6 +22,7 @@
 
 pub mod actor;
 pub mod env;
+pub mod file;
 pub mod gc;
 pub mod io;
 pub mod panic;
@@ -34,6 +35,9 @@ pub use actor::{
     snow_rt_init_actor, snow_rt_run_scheduler,
 };
 pub use env::{snow_env_args, snow_env_get};
+pub use file::{
+    snow_file_append, snow_file_delete, snow_file_exists, snow_file_read, snow_file_write,
+};
 pub use gc::{snow_gc_alloc, snow_gc_alloc_actor, snow_rt_init};
 pub use io::{snow_io_eprintln, snow_io_read_line};
 pub use panic::snow_panic;
