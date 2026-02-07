@@ -32,6 +32,7 @@
 
 pub mod child_spec;
 pub mod heap;
+pub mod job;
 pub mod link;
 pub mod mailbox;
 pub mod process;
