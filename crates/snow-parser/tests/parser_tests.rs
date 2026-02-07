@@ -362,6 +362,101 @@ fn closure_no_params() {
     assert_snapshot!(parse_and_debug("fn () -> 42 end"));
 }
 
+// ── Closures (Phase 12: bare params, do/end, multi-clause, guards) ──
+
+#[test]
+fn closure_bare_single_param() {
+    assert_snapshot!(parse_and_debug("fn x -> x + 1 end"));
+}
+
+#[test]
+fn closure_bare_two_params() {
+    assert_snapshot!(parse_and_debug("fn x, y -> x + y end"));
+}
+
+#[test]
+fn closure_bare_param_pattern_matching() {
+    assert_snapshot!(parse_and_debug("fn 0 -> 42 end"));
+}
+
+#[test]
+fn closure_do_end_body() {
+    // Use a let binding so the closure is parsed in expression context
+    // (at statement level, `fn x do...end` is parsed as a named fn def)
+    assert_snapshot!(source_and_debug("let f = fn x do\n  let y = x * 2\n  y + 1\nend"));
+}
+
+#[test]
+fn closure_do_end_no_params() {
+    assert_snapshot!(parse_and_debug("fn do 42 end"));
+}
+
+#[test]
+fn closure_multi_clause() {
+    assert_snapshot!(parse_and_debug("fn 0 -> 42 | n -> n + 1 end"));
+}
+
+#[test]
+fn closure_multi_clause_three() {
+    assert_snapshot!(parse_and_debug("fn 0 -> 42 | 1 -> 99 | n -> n + 1 end"));
+}
+
+#[test]
+fn closure_guard_clause() {
+    assert_snapshot!(parse_and_debug("fn x when x > 0 -> x end"));
+}
+
+#[test]
+fn closure_multi_clause_with_guards() {
+    assert_snapshot!(parse_and_debug("fn x when x > 0 -> x | x -> 0 - x end"));
+}
+
+#[test]
+fn closure_in_pipe_chain() {
+    assert_snapshot!(source_and_debug("fn main() do\n  let list = (1, 2, 3)\n  list |> map(fn x -> x * 2 end)\nend"));
+}
+
+#[test]
+fn closure_chained_pipes() {
+    assert_snapshot!(parse_and_debug("list |> map(fn x -> x + 1 end) |> filter(fn x -> x > 3 end)"));
+}
+
+#[test]
+fn closure_nested_do_end_in_body() {
+    assert_snapshot!(parse_and_debug("fn x -> if x > 0 do x else 0 - x end end"));
+}
+
+#[test]
+fn closure_paren_params_still_work() {
+    // Confirms existing parenthesized syntax is unchanged
+    assert_snapshot!(parse_and_debug("fn (x) -> x + 1 end"));
+}
+
+#[test]
+fn closure_constructor_pattern() {
+    assert_snapshot!(parse_and_debug("fn Some(x) -> x | None -> 0 end"));
+}
+
+#[test]
+fn closure_wildcard_param() {
+    assert_snapshot!(parse_and_debug("fn _ -> 42 end"));
+}
+
+#[test]
+fn closure_tuple_pattern_param() {
+    assert_snapshot!(parse_and_debug("fn (a, b) -> a + b end"));
+}
+
+#[test]
+fn closure_pipe_inside_closure_body() {
+    assert_snapshot!(parse_and_debug("fn x -> x |> to_string() end"));
+}
+
+#[test]
+fn closure_missing_end_error() {
+    assert_snapshot!(parse_and_debug("fn x -> x + 1"));
+}
+
 // ── Blocks ────────────────────────────────────────────────────────────
 
 #[test]
