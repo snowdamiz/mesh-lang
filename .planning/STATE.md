@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-02-05)
 
 **Core value:** Expressive, readable concurrency -- writing concurrent programs should feel as natural as sequential code, with supervision and fault tolerance built in.
-**Current focus:** Phase 6 -- Actor Runtime. Plan 05 complete (actor codegen pipeline). Full compiler pipeline for actors: AST -> MIR -> LLVM IR with reduction checks and terminate callbacks.
+**Current focus:** Phase 6 -- Actor Runtime. Plan 06 complete (linking, registry, terminate callbacks). Bidirectional process linking with exit propagation, named process registry, terminate callback invocation.
 
 ## Current Position
 
 Phase: 6 of 10 (Actor Runtime)
-Plan: 5 of 7 in current phase
+Plan: 6 of 7 in current phase
 Status: In progress
-Last activity: 2026-02-07 -- Completed 06-05-PLAN.md (actor codegen pipeline)
+Last activity: 2026-02-07 -- Completed 06-06-PLAN.md (linking, registry, terminate callbacks)
 
-Progress: [████████████████████████████░░] 68% (28 plans of ~41 estimated total)
+Progress: [█████████████████████████████░] 71% (29 plans of ~41 estimated total)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 28
+- Total plans completed: 29
 - Average duration: 9min
-- Total execution time: 253min
+- Total execution time: 259min
 
 **By Phase:**
 
@@ -32,10 +32,10 @@ Progress: [███████████████████████
 | 03-type-system | 5/5 | 83min | 17min |
 | 04-pattern-matching-adts | 5/5 | 42min | 8min |
 | 05-llvm-codegen-native-binaries | 5/5 | 50min | 10min |
-| 06-actor-runtime | 5/7 | 43min | 9min |
+| 06-actor-runtime | 6/7 | 49min | 8min |
 
 **Recent Trend:**
-- Last 5 plans: 06-01 (10min), 06-02 (10min), 06-03 (7min), 06-04 (9min), 06-05 (7min)
+- Last 5 plans: 06-02 (10min), 06-03 (7min), 06-04 (9min), 06-05 (7min), 06-06 (6min)
 
 *Updated after each plan completion*
 
@@ -172,6 +172,11 @@ Recent decisions affecting current work:
 - [06-05]: Reduction checks inserted after user function calls only, not after runtime intrinsic calls
 - [06-05]: Terminate callbacks lower to separate __terminate_<name> MIR functions with (Ptr, Ptr) -> Unit signature
 - [06-05]: snow_actor_link and snow_actor_set_terminate runtime stubs added for link-time resolution
+- [06-06]: EXIT_SIGNAL_TAG = u64::MAX reserved as exit signal sentinel in messages
+- [06-06]: Process.links changed from Vec to HashSet for O(1) bidirectional link operations
+- [06-06]: ProcessRegistry maintains PID-to-names reverse index for efficient cleanup_process on exit
+- [06-06]: Normal exit delivers message to linked processes but does NOT crash them (Erlang semantics)
+- [06-06]: Terminate callback invoked BEFORE exit signal propagation to linked processes
 
 ### Pending Todos
 
@@ -186,5 +191,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-07
-Stopped at: Completed 06-05-PLAN.md
+Stopped at: Completed 06-06-PLAN.md
 Resume file: None
