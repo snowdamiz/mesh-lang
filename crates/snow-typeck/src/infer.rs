@@ -12,12 +12,13 @@
 
 use rowan::TextRange;
 use snow_parser::ast::expr::{
-    BinaryExpr, CallExpr, CaseExpr, ClosureExpr, Expr, FieldAccess, IfExpr, Literal, NameRef,
-    PipeExpr, ReturnExpr, StructLiteral, TupleExpr, UnaryExpr,
+    BinaryExpr, CallExpr, CaseExpr, ClosureExpr, Expr, FieldAccess, IfExpr, LinkExpr, Literal,
+    NameRef, PipeExpr, ReceiveExpr, ReturnExpr, SendExpr, SelfExpr, SpawnExpr, StructLiteral,
+    TupleExpr, UnaryExpr,
 };
 use snow_parser::ast::item::{
-    Block, FnDef, InterfaceDef, ImplDef as AstImplDef, Item, LetBinding, StructDef, SumTypeDef,
-    TypeAliasDef,
+    ActorDef, Block, FnDef, InterfaceDef, ImplDef as AstImplDef, Item, LetBinding, StructDef,
+    SumTypeDef, TypeAliasDef,
 };
 use snow_parser::ast::pat::Pattern;
 use snow_parser::ast::AstNode;
@@ -453,8 +454,9 @@ fn infer_item(
             register_sum_type_def(ctx, env, sum_def, type_registry);
             None
         }
-        // Actor definitions -- type checking will be implemented in Phase 06 Plan 04.
-        Item::ActorDef(_) => None,
+        Item::ActorDef(actor_def) => {
+            infer_actor_def(ctx, env, actor_def, types, type_registry, trait_registry, fn_constraints).ok()
+        }
     }
 }
 
@@ -903,17 +905,24 @@ fn infer_let_binding(
     let init_ty = infer_expr(ctx, env, &init_expr, types, type_registry, trait_registry, fn_constraints)?;
 
     // If there is a type annotation, resolve and unify with the inferred type.
-    if let Some(annotation) = let_.type_annotation() {
+    // When annotation is present and unification succeeds, use the annotation
+    // type for the binding (the annotation declares the variable's type).
+    let binding_ty = if let Some(annotation) = let_.type_annotation() {
         if let Some(ann_ty) = resolve_type_annotation(ctx, &annotation, type_registry) {
             let origin = ConstraintOrigin::Annotation {
                 annotation_span: annotation.syntax().text_range(),
             };
-            ctx.unify(init_ty.clone(), ann_ty, origin)?;
+            ctx.unify(init_ty.clone(), ann_ty.clone(), origin)?;
+            ann_ty
+        } else {
+            init_ty.clone()
         }
-    }
+    } else {
+        init_ty.clone()
+    };
 
     ctx.leave_level();
-    let scheme = ctx.generalize(init_ty.clone());
+    let scheme = ctx.generalize(binding_ty);
 
     if let Some(name) = let_.name() {
         if let Some(name_text) = name.text() {
@@ -1132,9 +1141,22 @@ fn infer_expr(
             infer_struct_literal(ctx, env, sl, types, type_registry, trait_registry, fn_constraints)?
         }
         Expr::IndexExpr(_) => ctx.fresh_var(),
-        // Actor expressions -- type checking will be implemented in Phase 06 Plan 04.
-        Expr::SpawnExpr(_) | Expr::SendExpr(_) | Expr::ReceiveExpr(_)
-        | Expr::SelfExpr(_) | Expr::LinkExpr(_) => ctx.fresh_var(),
+        // Actor expressions.
+        Expr::SpawnExpr(spawn) => {
+            infer_spawn(ctx, env, spawn, types, type_registry, trait_registry, fn_constraints)?
+        }
+        Expr::SendExpr(send) => {
+            infer_send(ctx, env, send, types, type_registry, trait_registry, fn_constraints)?
+        }
+        Expr::ReceiveExpr(recv) => {
+            infer_receive(ctx, env, recv, types, type_registry, trait_registry, fn_constraints)?
+        }
+        Expr::SelfExpr(self_expr) => {
+            infer_self_expr(ctx, env, self_expr)?
+        }
+        Expr::LinkExpr(link) => {
+            infer_link(ctx, env, link, types, type_registry, trait_registry, fn_constraints)?
+        }
     };
 
     let resolved = ctx.resolve(ty.clone());
@@ -2663,6 +2685,356 @@ fn infer_as_pattern(
     Ok(inner_ty)
 }
 
+
+// ── Actor Inference (06-04) ─────────────────────────────────────────────
+
+/// Well-known environment key for tracking the current actor's message type.
+/// When inside an actor block, this is bound to `Scheme::mono(M)` where M is
+/// the actor's message type. Used by `self()` and `receive` to know the
+/// current actor context.
+const ACTOR_MSG_TYPE_KEY: &str = "__actor_msg_type__";
+
+/// Infer an actor definition:
+///
+/// ```snow
+/// actor counter(state :: Int) do
+///   receive do
+///     n :: Int -> counter(state + n)
+///   end
+/// end
+/// ```
+///
+/// The actor's message type M is inferred from the receive block's patterns.
+/// The actor is registered in the environment as a function: `actor_name :: (StateType) -> Pid<M>`.
+fn infer_actor_def(
+    ctx: &mut InferCtx,
+    env: &mut TypeEnv,
+    actor_def: &ActorDef,
+    types: &mut FxHashMap<TextRange, Ty>,
+    type_registry: &TypeRegistry,
+    trait_registry: &TraitRegistry,
+    fn_constraints: &mut FxHashMap<String, FnConstraints>,
+) -> Result<Ty, TypeError> {
+    let actor_name = actor_def
+        .name()
+        .and_then(|n| n.text())
+        .unwrap_or_else(|| "<unnamed_actor>".to_string());
+
+    ctx.enter_level();
+
+    // Create a fresh type variable for the message type M.
+    let msg_ty = ctx.fresh_var();
+
+    // Pre-bind the actor name as a self-recursive function (for tail calls).
+    let self_var = ctx.fresh_var();
+    env.insert(actor_name.clone(), Scheme::mono(self_var.clone()));
+
+    env.push_scope();
+
+    // Bind the actor message type for self() and receive.
+    env.insert(ACTOR_MSG_TYPE_KEY.into(), Scheme::mono(msg_ty.clone()));
+
+    // Infer parameter types.
+    let mut param_types = Vec::new();
+    if let Some(param_list) = actor_def.param_list() {
+        for param in param_list.params() {
+            let param_ty = if let Some(ann) = param.type_annotation() {
+                if let Some(type_name) = resolve_type_name_str(&ann) {
+                    name_to_type(&type_name)
+                } else {
+                    ctx.fresh_var()
+                }
+            } else {
+                ctx.fresh_var()
+            };
+            if let Some(name_tok) = param.name() {
+                let name_text = name_tok.text().to_string();
+                env.insert(name_text, Scheme::mono(param_ty.clone()));
+            }
+            param_types.push(param_ty);
+        }
+    }
+
+    // Infer the actor body.
+    let _body_ty = if let Some(body) = actor_def.body() {
+        infer_block(ctx, env, &body, types, type_registry, trait_registry, fn_constraints)?
+    } else {
+        Ty::Tuple(vec![])
+    };
+
+    env.pop_scope();
+
+    // The actor function type: (StateTypes...) -> Pid<M>
+    let pid_ty = Ty::pid(msg_ty);
+    let fn_ty = Ty::Fun(param_types, Box::new(pid_ty.clone()));
+
+    // Unify with the pre-bound self-recursive variable.
+    ctx.unify(self_var, fn_ty.clone(), ConstraintOrigin::Builtin)?;
+
+    ctx.leave_level();
+    let scheme = ctx.generalize(fn_ty.clone());
+    env.insert(actor_name, scheme);
+
+    let resolved = ctx.resolve(fn_ty);
+    types.insert(actor_def.syntax().text_range(), resolved.clone());
+
+    Ok(resolved)
+}
+
+/// Infer the type of a spawn expression: `spawn(actor_fn, initial_state...)`.
+///
+/// The first argument must be a function. Its return type determines the Pid
+/// type. Returns `Pid<M>` where M is inferred from the actor function.
+fn infer_spawn(
+    ctx: &mut InferCtx,
+    env: &mut TypeEnv,
+    spawn: &SpawnExpr,
+    types: &mut FxHashMap<TextRange, Ty>,
+    type_registry: &TypeRegistry,
+    trait_registry: &TraitRegistry,
+    fn_constraints: &FxHashMap<String, FnConstraints>,
+) -> Result<Ty, TypeError> {
+    let arg_list = spawn.arg_list();
+    let mut args: Vec<Expr> = Vec::new();
+    if let Some(al) = &arg_list {
+        args = al.args().collect();
+    }
+
+    if args.is_empty() {
+        // spawn() with no args -- return fresh Pid.
+        return Ok(Ty::pid(ctx.fresh_var()));
+    }
+
+    // First arg is the actor function reference.
+    let actor_fn_expr = &args[0];
+    let actor_fn_ty = infer_expr(ctx, env, actor_fn_expr, types, type_registry, trait_registry, fn_constraints)?;
+
+    // Remaining args are initial state.
+    let mut state_arg_types = Vec::new();
+    for arg in args.iter().skip(1) {
+        let arg_ty = infer_expr(ctx, env, arg, types, type_registry, trait_registry, fn_constraints)?;
+        state_arg_types.push(arg_ty);
+    }
+
+    // The actor function should be: (StateTypes...) -> Pid<M>
+    // Create the expected function type and unify.
+    let msg_var = ctx.fresh_var();
+    let pid_ret = Ty::pid(msg_var.clone());
+    let expected_fn_ty = Ty::Fun(state_arg_types, Box::new(pid_ret.clone()));
+
+    let resolved_fn = ctx.resolve(actor_fn_ty.clone());
+    match resolved_fn {
+        Ty::Fun(_, _) | Ty::Var(_) => {
+            let origin = ConstraintOrigin::FnArg {
+                call_site: spawn.syntax().text_range(),
+                param_idx: 0,
+            };
+            ctx.unify(actor_fn_ty, expected_fn_ty, origin)?;
+        }
+        _ => {
+            let err = TypeError::SpawnNonFunction {
+                found: resolved_fn,
+                span: spawn.syntax().text_range(),
+            };
+            ctx.errors.push(err.clone());
+            return Err(err);
+        }
+    }
+
+    Ok(pid_ret)
+}
+
+/// Infer the type of a send expression: `send(pid, message)`.
+///
+/// If pid is `Pid<M>`, validates that message has type M.
+/// If pid is untyped `Pid`, accepts any message type.
+/// Returns Unit (fire-and-forget).
+fn infer_send(
+    ctx: &mut InferCtx,
+    env: &mut TypeEnv,
+    send: &SendExpr,
+    types: &mut FxHashMap<TextRange, Ty>,
+    type_registry: &TypeRegistry,
+    trait_registry: &TraitRegistry,
+    fn_constraints: &FxHashMap<String, FnConstraints>,
+) -> Result<Ty, TypeError> {
+    let arg_list = send.arg_list();
+    let mut args: Vec<Expr> = Vec::new();
+    if let Some(al) = &arg_list {
+        args = al.args().collect();
+    }
+
+    if args.len() < 2 {
+        // Not enough arguments -- return Unit, error handled elsewhere.
+        return Ok(Ty::Tuple(vec![]));
+    }
+
+    let pid_expr = &args[0];
+    let msg_expr = &args[1];
+
+    let pid_ty = infer_expr(ctx, env, pid_expr, types, type_registry, trait_registry, fn_constraints)?;
+    let msg_ty = infer_expr(ctx, env, msg_expr, types, type_registry, trait_registry, fn_constraints)?;
+
+    let resolved_pid = ctx.resolve(pid_ty);
+
+    match &resolved_pid {
+        // Typed Pid<M>: validate message type matches M.
+        Ty::App(con, args) if matches!(con.as_ref(), Ty::Con(tc) if tc.name == "Pid") => {
+            if let Some(expected_msg) = args.first() {
+                let result = ctx.unify(
+                    msg_ty.clone(),
+                    expected_msg.clone(),
+                    ConstraintOrigin::Builtin,
+                );
+                if result.is_err() {
+                    let resolved_expected = ctx.resolve(expected_msg.clone());
+                    let resolved_found = ctx.resolve(msg_ty);
+                    let err = TypeError::SendTypeMismatch {
+                        expected: resolved_expected,
+                        found: resolved_found,
+                        span: send.syntax().text_range(),
+                    };
+                    ctx.errors.push(err.clone());
+                    return Err(err);
+                }
+            }
+        }
+        // Untyped Pid: accept any message type (escape hatch).
+        Ty::Con(tc) if tc.name == "Pid" => {
+            // No validation needed.
+        }
+        // Type variable: constrain to Pid<msg_ty>.
+        Ty::Var(_) => {
+            let _ = ctx.unify(
+                resolved_pid,
+                Ty::pid(msg_ty),
+                ConstraintOrigin::Builtin,
+            );
+        }
+        _ => {
+            // Not a Pid at all -- type mismatch will be caught by usage context.
+        }
+    }
+
+    Ok(Ty::Tuple(vec![]))
+}
+
+/// Infer the type of a receive expression.
+///
+/// Each arm pattern contributes to inferring the message type M.
+/// All arms must return the same type. Optional after clause for timeouts.
+fn infer_receive(
+    ctx: &mut InferCtx,
+    env: &mut TypeEnv,
+    recv: &ReceiveExpr,
+    types: &mut FxHashMap<TextRange, Ty>,
+    type_registry: &TypeRegistry,
+    trait_registry: &TraitRegistry,
+    fn_constraints: &FxHashMap<String, FnConstraints>,
+) -> Result<Ty, TypeError> {
+    // Check if we're inside an actor block.
+    let in_actor = env.lookup(ACTOR_MSG_TYPE_KEY).is_some();
+    if !in_actor {
+        let err = TypeError::ReceiveOutsideActor {
+            span: recv.syntax().text_range(),
+        };
+        ctx.errors.push(err.clone());
+        return Err(err);
+    }
+
+    // Get the actor's message type from context.
+    let actor_msg_ty = env
+        .lookup(ACTOR_MSG_TYPE_KEY)
+        .map(|s| ctx.instantiate(s))
+        .unwrap_or_else(|| ctx.fresh_var());
+
+    let mut result_ty: Option<Ty> = None;
+
+    for arm in recv.arms() {
+        env.push_scope();
+
+        if let Some(pat) = arm.pattern() {
+            let pat_ty = infer_pattern(ctx, env, &pat, types, type_registry)?;
+            // Unify pattern type with actor message type.
+            ctx.unify(pat_ty, actor_msg_ty.clone(), ConstraintOrigin::Builtin)?;
+        }
+
+        if let Some(body) = arm.body() {
+            let body_ty = infer_expr(ctx, env, &body, types, type_registry, trait_registry, fn_constraints)?;
+            if let Some(ref prev_ty) = result_ty {
+                ctx.unify(prev_ty.clone(), body_ty.clone(), ConstraintOrigin::Builtin)?;
+            } else {
+                result_ty = Some(body_ty);
+            }
+        }
+
+        env.pop_scope();
+    }
+
+    // Handle after (timeout) clause.
+    if let Some(after) = recv.after_clause() {
+        if let Some(timeout_expr) = after.timeout() {
+            let timeout_ty = infer_expr(ctx, env, &timeout_expr, types, type_registry, trait_registry, fn_constraints)?;
+            let _ = ctx.unify(timeout_ty, Ty::int(), ConstraintOrigin::Builtin);
+        }
+        if let Some(body) = after.body() {
+            let body_ty = infer_expr(ctx, env, &body, types, type_registry, trait_registry, fn_constraints)?;
+            if let Some(ref prev_ty) = result_ty {
+                ctx.unify(prev_ty.clone(), body_ty.clone(), ConstraintOrigin::Builtin)?;
+            } else {
+                result_ty = Some(body_ty);
+            }
+        }
+    }
+
+    Ok(result_ty.unwrap_or_else(|| Ty::Tuple(vec![])))
+}
+
+/// Infer the type of a self() expression.
+///
+/// Returns `Pid<M>` where M is the current actor's message type.
+/// Errors if called outside an actor block.
+fn infer_self_expr(
+    ctx: &mut InferCtx,
+    env: &TypeEnv,
+    self_expr: &SelfExpr,
+) -> Result<Ty, TypeError> {
+    match env.lookup(ACTOR_MSG_TYPE_KEY) {
+        Some(scheme) => {
+            let msg_ty = ctx.instantiate(scheme);
+            Ok(Ty::pid(msg_ty))
+        }
+        None => {
+            let err = TypeError::SelfOutsideActor {
+                span: self_expr.syntax().text_range(),
+            };
+            ctx.errors.push(err.clone());
+            Err(err)
+        }
+    }
+}
+
+/// Infer the type of a link expression: `link(pid)`.
+///
+/// The argument must be a Pid (typed or untyped). Returns Unit.
+fn infer_link(
+    ctx: &mut InferCtx,
+    env: &mut TypeEnv,
+    link: &LinkExpr,
+    types: &mut FxHashMap<TextRange, Ty>,
+    type_registry: &TypeRegistry,
+    trait_registry: &TraitRegistry,
+    fn_constraints: &FxHashMap<String, FnConstraints>,
+) -> Result<Ty, TypeError> {
+    if let Some(arg_list) = link.arg_list() {
+        for arg in arg_list.args() {
+            let _arg_ty = infer_expr(ctx, env, &arg, types, type_registry, trait_registry, fn_constraints)?;
+            // We could validate that arg_ty is a Pid, but for now we just
+            // infer the type. A future refinement could add a type error.
+        }
+    }
+    Ok(Ty::Tuple(vec![]))
+}
 
 // ── Helpers ────────────────────────────────────────────────────────────
 

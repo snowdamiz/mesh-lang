@@ -144,6 +144,25 @@ pub enum TypeError {
         reason: String,
         span: TextRange,
     },
+    /// Sending a message of wrong type to a typed Pid<M>.
+    SendTypeMismatch {
+        expected: Ty,
+        found: Ty,
+        span: TextRange,
+    },
+    /// self() called outside an actor block.
+    SelfOutsideActor {
+        span: TextRange,
+    },
+    /// spawn called with a non-function argument.
+    SpawnNonFunction {
+        found: Ty,
+        span: TextRange,
+    },
+    /// receive used outside an actor block.
+    ReceiveOutsideActor {
+        span: TextRange,
+    },
 }
 
 impl fmt::Display for TypeError {
@@ -267,6 +286,24 @@ impl fmt::Display for TypeError {
             }
             TypeError::InvalidGuardExpression { reason, .. } => {
                 write!(f, "invalid guard expression: {}", reason)
+            }
+            TypeError::SendTypeMismatch {
+                expected, found, ..
+            } => {
+                write!(
+                    f,
+                    "message type mismatch: expected `{}`, found `{}`",
+                    expected, found
+                )
+            }
+            TypeError::SelfOutsideActor { .. } => {
+                write!(f, "self() used outside actor block")
+            }
+            TypeError::SpawnNonFunction { found, .. } => {
+                write!(f, "cannot spawn non-function: found `{}`", found)
+            }
+            TypeError::ReceiveOutsideActor { .. } => {
+                write!(f, "receive used outside actor block")
             }
         }
     }

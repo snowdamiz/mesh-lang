@@ -31,6 +31,10 @@ fn error_code(err: &TypeError) -> &'static str {
         TypeError::NonExhaustiveMatch { .. } => "E0012",
         TypeError::RedundantArm { .. } => "W0001",
         TypeError::InvalidGuardExpression { .. } => "E0013",
+        TypeError::SendTypeMismatch { .. } => "E0014",
+        TypeError::SelfOutsideActor { .. } => "E0015",
+        TypeError::SpawnNonFunction { .. } => "E0016",
+        TypeError::ReceiveOutsideActor { .. } => "E0017",
     }
 }
 
@@ -511,6 +515,76 @@ pub fn render_diagnostic(error: &TypeError, source: &str, _filename: &str) -> St
                         .with_color(Color::Red),
                 )
                 .with_help("guards must be simple boolean expressions")
+                .finish()
+        }
+
+        TypeError::SendTypeMismatch {
+            expected,
+            found,
+            span,
+        } => {
+            let msg = format!("message type mismatch: expected {}, found {}", expected, found);
+            let range = clamp(text_range_to_range(*span));
+
+            Report::build(ReportKind::Error, range.clone())
+                .with_code(code)
+                .with_message(&msg)
+                .with_config(config)
+                .with_label(
+                    Label::new(range)
+                        .with_message(format!("expected {}, found {}", expected, found))
+                        .with_color(Color::Red),
+                )
+                .with_help(format!("this Pid accepts messages of type {}", expected))
+                .finish()
+        }
+
+        TypeError::SelfOutsideActor { span } => {
+            let msg = "self() used outside actor block";
+            let range = clamp(text_range_to_range(*span));
+
+            Report::build(ReportKind::Error, range.clone())
+                .with_code(code)
+                .with_message(msg)
+                .with_config(config)
+                .with_label(
+                    Label::new(range)
+                        .with_message("self() is only available inside an actor block")
+                        .with_color(Color::Red),
+                )
+                .finish()
+        }
+
+        TypeError::SpawnNonFunction { found, span } => {
+            let msg = format!("cannot spawn non-function: found {}", found);
+            let range = clamp(text_range_to_range(*span));
+
+            Report::build(ReportKind::Error, range.clone())
+                .with_code(code)
+                .with_message(&msg)
+                .with_config(config)
+                .with_label(
+                    Label::new(range)
+                        .with_message(format!("expected a function, found {}", found))
+                        .with_color(Color::Red),
+                )
+                .finish()
+        }
+
+        TypeError::ReceiveOutsideActor { span } => {
+            let msg = "receive used outside actor block";
+            let range = clamp(text_range_to_range(*span));
+
+            Report::build(ReportKind::Error, range.clone())
+                .with_code(code)
+                .with_message(msg)
+                .with_config(config)
+                .with_label(
+                    Label::new(range)
+                        .with_message("receive is only available inside an actor block")
+                        .with_color(Color::Red),
+                )
+                .with_help("move this receive expression into an actor block")
                 .finish()
         }
     };

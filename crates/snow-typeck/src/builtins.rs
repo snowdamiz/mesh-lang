@@ -40,6 +40,13 @@ pub fn register_builtins(
     env.insert("String".into(), Scheme::mono(Ty::string()));
     env.insert("Bool".into(), Scheme::mono(Ty::bool()));
 
+    // ── Actor type constructor ────────────────────────────────────
+    //
+    // Pid is a type constructor with arity 1: Pid<M> where M is the
+    // message type. Untyped Pid (arity 0) is also valid as an escape
+    // hatch. We register the bare name so `Pid` resolves in annotations.
+    env.insert("Pid".into(), Scheme::mono(Ty::untyped_pid()));
+
     // ── I/O builtins ──────────────────────────────────────────────
 
     // println(String) -> () -- prints a string with trailing newline

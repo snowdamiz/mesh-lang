@@ -208,6 +208,16 @@ impl InferCtx {
                 }
             }
 
+            // Pid escape hatch: untyped Pid (Con) unifies with typed Pid<M> (App).
+            // This allows: let untyped :: Pid = typed_pid  (typed -> untyped).
+            (Ty::Con(ref c), Ty::App(ref con, _))
+            | (Ty::App(ref con, _), Ty::Con(ref c))
+                if c.name == "Pid"
+                    && matches!(con.as_ref(), Ty::Con(tc) if tc.name == "Pid") =>
+            {
+                Ok(())
+            }
+
             // Type applications -- unify constructor and args.
             (Ty::App(c1, a1), Ty::App(c2, a2)) => {
                 self.unify(*c1, *c2, origin.clone())?;

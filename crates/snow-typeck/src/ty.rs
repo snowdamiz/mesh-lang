@@ -95,6 +95,16 @@ impl Ty {
         Ty::Fun(params, Box::new(ret))
     }
 
+    /// Create a typed `Pid<M>` type (actor identity with message type M).
+    pub fn pid(msg_type: Ty) -> Ty {
+        Ty::App(Box::new(Ty::Con(TyCon::new("Pid"))), vec![msg_type])
+    }
+
+    /// Create an untyped `Pid` (escape hatch -- accepts any message at runtime).
+    pub fn untyped_pid() -> Ty {
+        Ty::Con(TyCon::new("Pid"))
+    }
+
     /// Create a named struct type with optional type arguments.
     /// Non-generic structs: `Ty::struct_ty("Point", vec![])` -> `Point`
     /// Generic structs: `Ty::struct_ty("Pair", vec![Ty::int(), Ty::string()])` -> `Pair<Int, String>`
