@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-02-05)
 
 **Core value:** Expressive, readable concurrency -- writing concurrent programs should feel as natural as sequential code, with supervision and fault tolerance built in.
-**Current focus:** Phase 6 -- Actor Runtime. Plan 04 complete (Pid<M> typed actor identity). Pid<M> in type system with compile-time send validation, spawn/receive/self inference, and untyped Pid escape hatch.
+**Current focus:** Phase 6 -- Actor Runtime. Plan 05 complete (actor codegen pipeline). Full compiler pipeline for actors: AST -> MIR -> LLVM IR with reduction checks and terminate callbacks.
 
 ## Current Position
 
 Phase: 6 of 10 (Actor Runtime)
-Plan: 4 of 7 in current phase
+Plan: 5 of 7 in current phase
 Status: In progress
-Last activity: 2026-02-07 -- Completed 06-04-PLAN.md (Pid<M> typed actor identity)
+Last activity: 2026-02-07 -- Completed 06-05-PLAN.md (actor codegen pipeline)
 
-Progress: [███████████████████████████░░] 66% (27 plans of ~41 estimated total)
+Progress: [████████████████████████████░░] 68% (28 plans of ~41 estimated total)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 27
+- Total plans completed: 28
 - Average duration: 9min
-- Total execution time: 246min
+- Total execution time: 253min
 
 **By Phase:**
 
@@ -32,10 +32,10 @@ Progress: [███████████████████████
 | 03-type-system | 5/5 | 83min | 17min |
 | 04-pattern-matching-adts | 5/5 | 42min | 8min |
 | 05-llvm-codegen-native-binaries | 5/5 | 50min | 10min |
-| 06-actor-runtime | 4/7 | 36min | 9min |
+| 06-actor-runtime | 5/7 | 43min | 9min |
 
 **Recent Trend:**
-- Last 5 plans: 05-05 (15min), 06-01 (10min), 06-02 (10min), 06-03 (7min), 06-04 (9min)
+- Last 5 plans: 06-01 (10min), 06-02 (10min), 06-03 (7min), 06-04 (9min), 06-05 (7min)
 
 *Updated after each plan completion*
 
@@ -168,6 +168,10 @@ Recent decisions affecting current work:
 - [06-04]: Let binding with annotation uses annotation type for scheme (enables Pid escape hatch)
 - [06-04]: Untyped Pid unifies with typed Pid<M> bidirectionally without constraining M
 - [06-04]: Error codes E0014 (SendTypeMismatch), E0015 (SelfOutsideActor), E0016 (SpawnNonFunction), E0017 (ReceiveOutsideActor)
+- [06-05]: Pid maps to i64 at LLVM level (was previously ptr; runtime uses u64 process IDs)
+- [06-05]: Reduction checks inserted after user function calls only, not after runtime intrinsic calls
+- [06-05]: Terminate callbacks lower to separate __terminate_<name> MIR functions with (Ptr, Ptr) -> Unit signature
+- [06-05]: snow_actor_link and snow_actor_set_terminate runtime stubs added for link-time resolution
 
 ### Pending Todos
 
@@ -182,5 +186,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-07
-Stopped at: Completed 06-04-PLAN.md
+Stopped at: Completed 06-05-PLAN.md
 Resume file: None
