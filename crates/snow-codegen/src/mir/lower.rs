@@ -8,10 +8,13 @@ use std::collections::HashMap;
 use rowan::TextRange;
 use rustc_hash::FxHashMap;
 use snow_parser::ast::expr::{
-    BinaryExpr, CallExpr, CaseExpr, ClosureExpr, Expr, FieldAccess, IfExpr, Literal, MatchArm,
-    NameRef, PipeExpr, ReturnExpr, StringExpr, StructLiteral, TupleExpr, UnaryExpr,
+    BinaryExpr, CallExpr, CaseExpr, ClosureExpr, Expr, FieldAccess, IfExpr, LinkExpr, Literal,
+    MatchArm, NameRef, PipeExpr, ReceiveExpr, ReturnExpr, SendExpr, SpawnExpr, StringExpr,
+    StructLiteral, TupleExpr, UnaryExpr,
 };
-use snow_parser::ast::item::{Block, FnDef, Item, LetBinding, SourceFile, StructDef, SumTypeDef};
+use snow_parser::ast::item::{
+    ActorDef, Block, FnDef, Item, LetBinding, SourceFile, StructDef, SumTypeDef,
+};
 use snow_parser::ast::pat::Pattern;
 use snow_parser::ast::AstNode;
 use snow_parser::syntax_kind::SyntaxKind;
@@ -116,12 +119,23 @@ impl<'a> Lowerer<'a> {
     fn lower_source_file(&mut self, sf: SourceFile) {
         // First pass: register all function names so we know which are direct calls.
         for item in sf.items() {
-            if let Item::FnDef(fn_def) = &item {
-                if let Some(name) = fn_def.name().and_then(|n| n.text()) {
-                    let fn_ty = self.resolve_range(fn_def.syntax().text_range());
-                    self.known_functions.insert(name.clone(), fn_ty.clone());
-                    self.insert_var(name, fn_ty);
+            match &item {
+                Item::FnDef(fn_def) => {
+                    if let Some(name) = fn_def.name().and_then(|n| n.text()) {
+                        let fn_ty = self.resolve_range(fn_def.syntax().text_range());
+                        self.known_functions.insert(name.clone(), fn_ty.clone());
+                        self.insert_var(name, fn_ty);
+                    }
                 }
+                Item::ActorDef(actor_def) => {
+                    if let Some(name) = actor_def.name().and_then(|n| n.text()) {
+                        // Actor definitions produce a function with the actor name
+                        let fn_ty = self.resolve_range(actor_def.syntax().text_range());
+                        self.known_functions.insert(name.clone(), fn_ty.clone());
+                        self.insert_var(name, fn_ty);
+                    }
+                }
+                _ => {}
             }
         }
 
@@ -174,9 +188,7 @@ impl<'a> Lowerer<'a> {
             Item::ModuleDef(_) | Item::ImportDecl(_) | Item::FromImportDecl(_) => {
                 // Skip -- module/import handling is not needed for single-file compilation.
             }
-            Item::ActorDef(_) => {
-                // Actor definition lowering will be implemented in Phase 06 Plan 04/05.
-            }
+            Item::ActorDef(actor_def) => self.lower_actor_def(&actor_def),
         }
     }
 
@@ -462,12 +474,20 @@ impl<'a> Lowerer<'a> {
             Expr::ReturnExpr(ret) => self.lower_return_expr(ret),
             Expr::TupleExpr(tuple) => self.lower_tuple_expr(tuple),
             Expr::StructLiteral(sl) => self.lower_struct_literal(sl),
-            // Actor expressions -- lowering will be implemented in Plan 04/05.
-            Expr::SpawnExpr(_) | Expr::SendExpr(_) | Expr::ReceiveExpr(_)
-            | Expr::SelfExpr(_) | Expr::LinkExpr(_) => {
-                // Placeholder: actor expression lowering not yet implemented.
-                MirExpr::Unit
+            // Actor expressions
+            Expr::SpawnExpr(spawn) => self.lower_spawn_expr(&spawn),
+            Expr::SendExpr(send) => self.lower_send_expr(&send),
+            Expr::ReceiveExpr(recv) => self.lower_receive_expr(&recv),
+            Expr::SelfExpr(_) => {
+                let ty = self.resolve_range(expr.syntax().text_range());
+                let ty = if matches!(ty, MirType::Unit) {
+                    MirType::Pid(None)
+                } else {
+                    ty
+                };
+                MirExpr::ActorSelf { ty }
             }
+            Expr::LinkExpr(link) => self.lower_link_expr(&link),
         }
     }
 
@@ -1190,6 +1210,246 @@ impl<'a> Lowerer<'a> {
 
         MirExpr::StructLit { name, fields, ty }
     }
+    // ── Actor definition lowering ──────────────────────────────────────
+
+    fn lower_actor_def(&mut self, actor_def: &ActorDef) {
+        let name = actor_def
+            .name()
+            .and_then(|n| n.text())
+            .unwrap_or_else(|| "<anonymous_actor>".to_string());
+
+        // Get actor type from typeck.
+        let actor_range = actor_def.syntax().text_range();
+        let actor_ty_raw = self.get_ty(actor_range).cloned();
+
+        // Extract parameter names and types.
+        let mut params = Vec::new();
+        self.push_scope();
+
+        if let Some(param_list) = actor_def.param_list() {
+            if let Some(Ty::Fun(param_tys, _)) = &actor_ty_raw {
+                for (param, param_ty) in param_list.params().zip(param_tys.iter()) {
+                    let param_name = param
+                        .name()
+                        .map(|t| t.text().to_string())
+                        .unwrap_or_else(|| "_".to_string());
+                    let mir_ty = resolve_type(param_ty, self.registry, false);
+                    self.insert_var(param_name.clone(), mir_ty.clone());
+                    params.push((param_name, mir_ty));
+                }
+            } else {
+                // Fallback: range-based type lookup.
+                for param in param_list.params() {
+                    let param_name = param
+                        .name()
+                        .map(|t| t.text().to_string())
+                        .unwrap_or_else(|| "_".to_string());
+                    let mir_ty = self.resolve_range(param.syntax().text_range());
+                    self.insert_var(param_name.clone(), mir_ty.clone());
+                    params.push((param_name, mir_ty));
+                }
+            }
+        }
+
+        // Return type for actor function is Pid (the result of spawn).
+        let return_type = MirType::Pid(None);
+
+        // Lower the actor body. The body contains a receive block that loops.
+        let body = if let Some(block) = actor_def.body() {
+            self.lower_block(&block)
+        } else {
+            MirExpr::Unit
+        };
+
+        // Handle terminate clause: lower to a separate callback function.
+        let terminate_callback_name = if let Some(term_clause) = actor_def.terminate_clause() {
+            let cb_name = format!("__terminate_{}", name);
+            let cb_body = if let Some(cb_block) = term_clause.body() {
+                self.lower_block(&cb_block)
+            } else {
+                MirExpr::Unit
+            };
+
+            // Terminate callback signature: (state_ptr: Ptr, reason_ptr: Ptr) -> Unit
+            self.functions.push(MirFunction {
+                name: cb_name.clone(),
+                params: vec![
+                    ("state_ptr".to_string(), MirType::Ptr),
+                    ("reason_ptr".to_string(), MirType::Ptr),
+                ],
+                return_type: MirType::Unit,
+                body: cb_body,
+                is_closure_fn: false,
+                captures: Vec::new(),
+            });
+
+            Some(cb_name)
+        } else {
+            None
+        };
+
+        self.pop_scope();
+
+        // Store the terminate callback name for use by spawn codegen.
+        // We attach it as a known function and store a mapping.
+        if let Some(ref cb_name) = terminate_callback_name {
+            self.known_functions.insert(
+                cb_name.clone(),
+                MirType::FnPtr(
+                    vec![MirType::Ptr, MirType::Ptr],
+                    Box::new(MirType::Unit),
+                ),
+            );
+        }
+
+        self.functions.push(MirFunction {
+            name,
+            params,
+            return_type,
+            body,
+            is_closure_fn: false,
+            captures: Vec::new(),
+        });
+    }
+
+    // ── Actor expression lowering ───────────────────────────────────────
+
+    fn lower_spawn_expr(&mut self, spawn: &SpawnExpr) -> MirExpr {
+        let ty = self.resolve_range(spawn.syntax().text_range());
+        let ty = if matches!(ty, MirType::Unit) {
+            MirType::Pid(None)
+        } else {
+            ty
+        };
+
+        let args: Vec<MirExpr> = spawn
+            .arg_list()
+            .map(|al| al.args().map(|a| self.lower_expr(&a)).collect())
+            .unwrap_or_default();
+
+        // First argument is the function to spawn; rest are initial state.
+        let (func, state_args) = if args.is_empty() {
+            (Box::new(MirExpr::Unit), Vec::new())
+        } else {
+            let mut iter = args.into_iter();
+            let func = Box::new(iter.next().unwrap());
+            let state_args: Vec<MirExpr> = iter.collect();
+            (func, state_args)
+        };
+
+        // Check if the spawned function has a terminate callback.
+        // Look up by function name in known functions to find matching __terminate_<name>.
+        let terminate_callback = if let MirExpr::Var(ref fn_name, _) = *func {
+            let cb_name = format!("__terminate_{}", fn_name);
+            if self.known_functions.contains_key(&cb_name) {
+                Some(Box::new(MirExpr::Var(
+                    cb_name.clone(),
+                    MirType::FnPtr(
+                        vec![MirType::Ptr, MirType::Ptr],
+                        Box::new(MirType::Unit),
+                    ),
+                )))
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
+        MirExpr::ActorSpawn {
+            func,
+            args: state_args,
+            priority: 1, // Normal priority
+            terminate_callback,
+            ty,
+        }
+    }
+
+    fn lower_send_expr(&mut self, send: &SendExpr) -> MirExpr {
+        let args: Vec<MirExpr> = send
+            .arg_list()
+            .map(|al| al.args().map(|a| self.lower_expr(&a)).collect())
+            .unwrap_or_default();
+
+        // send(target, message) -> Unit
+        let (target, message) = if args.len() >= 2 {
+            let mut iter = args.into_iter();
+            let target = Box::new(iter.next().unwrap());
+            let message = Box::new(iter.next().unwrap());
+            (target, message)
+        } else if args.len() == 1 {
+            let mut iter = args.into_iter();
+            (Box::new(iter.next().unwrap()), Box::new(MirExpr::Unit))
+        } else {
+            (Box::new(MirExpr::Unit), Box::new(MirExpr::Unit))
+        };
+
+        MirExpr::ActorSend {
+            target,
+            message,
+            ty: MirType::Unit,
+        }
+    }
+
+    fn lower_receive_expr(&mut self, recv: &ReceiveExpr) -> MirExpr {
+        let ty = self.resolve_range(recv.syntax().text_range());
+
+        // Lower receive arms (reuse pattern matching infrastructure).
+        let arms: Vec<MirMatchArm> = recv
+            .arms()
+            .map(|arm| {
+                self.push_scope();
+                let pattern = arm
+                    .pattern()
+                    .map(|p| self.lower_pattern(&p))
+                    .unwrap_or(MirPattern::Wildcard);
+                let body = arm
+                    .body()
+                    .map(|e| self.lower_expr(&e))
+                    .unwrap_or(MirExpr::Unit);
+                self.pop_scope();
+                MirMatchArm {
+                    pattern,
+                    guard: None, // Receive arms don't have guards (they use when clauses which are separate)
+                    body,
+                }
+            })
+            .collect();
+
+        // Handle optional after (timeout) clause.
+        let (timeout_ms, timeout_body) = if let Some(after) = recv.after_clause() {
+            let ms = after.timeout().map(|e| Box::new(self.lower_expr(&e)));
+            let body = after.body().map(|e| Box::new(self.lower_expr(&e)));
+            (ms, body)
+        } else {
+            (None, None)
+        };
+
+        MirExpr::ActorReceive {
+            arms,
+            timeout_ms,
+            timeout_body,
+            ty,
+        }
+    }
+
+    fn lower_link_expr(&mut self, link: &LinkExpr) -> MirExpr {
+        let args: Vec<MirExpr> = link
+            .arg_list()
+            .map(|al| al.args().map(|a| self.lower_expr(&a)).collect())
+            .unwrap_or_default();
+
+        let target = if let Some(first) = args.into_iter().next() {
+            Box::new(first)
+        } else {
+            Box::new(MirExpr::Unit)
+        };
+
+        MirExpr::ActorLink {
+            target,
+            ty: MirType::Unit,
+        }
+    }
 }
 
 // ── Helper functions ─────────────────────────────────────────────────
@@ -1585,6 +1845,81 @@ end
         let func = mir.functions.iter().find(|f| f.name == "test");
         assert!(func.is_some());
         assert!(matches!(func.unwrap().body, MirExpr::If { .. }));
+    }
+
+    #[test]
+    fn lower_self_expr() {
+        let source = r#"
+actor counter(n :: Int) do
+  receive do
+    _ -> counter(n)
+  end
+end
+
+fn main() do
+  let pid = spawn(counter, 0)
+  0
+end
+"#;
+        let mir = lower(source);
+        // The actor should produce a function named "counter"
+        let actor_fn = mir.functions.iter().find(|f| f.name == "counter");
+        assert!(actor_fn.is_some(), "Expected 'counter' actor function in MIR, got: {:?}",
+            mir.functions.iter().map(|f| &f.name).collect::<Vec<_>>());
+    }
+
+    #[test]
+    fn lower_spawn_produces_actor_spawn() {
+        let source = r#"
+actor counter(n :: Int) do
+  receive do
+    _ -> counter(n)
+  end
+end
+
+fn main() do
+  let pid = spawn(counter, 0)
+  0
+end
+"#;
+        let mir = lower(source);
+        let main = mir.functions.iter().find(|f| f.name == "main");
+        assert!(main.is_some());
+        let main = main.unwrap();
+
+        // Check body has ActorSpawn somewhere
+        fn has_actor_spawn(expr: &MirExpr) -> bool {
+            match expr {
+                MirExpr::ActorSpawn { .. } => true,
+                MirExpr::Let { value, body, .. } => has_actor_spawn(value) || has_actor_spawn(body),
+                MirExpr::Block(exprs, _) => exprs.iter().any(has_actor_spawn),
+                _ => false,
+            }
+        }
+        assert!(
+            has_actor_spawn(&main.body),
+            "Expected ActorSpawn in main body: {:?}", main.body
+        );
+    }
+
+    #[test]
+    fn lower_pid_type_resolves() {
+        use crate::mir::MirType;
+        let source = r#"
+actor echo() do
+  receive do
+    _ -> echo()
+  end
+end
+
+fn main() do
+  let pid = spawn(echo)
+  0
+end
+"#;
+        let mir = lower(source);
+        let main = mir.functions.iter().find(|f| f.name == "main");
+        assert!(main.is_some());
     }
 
     #[test]

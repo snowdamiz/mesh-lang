@@ -71,6 +71,7 @@ fn resolve_con(con: &TyCon, registry: &TypeRegistry) -> MirType {
         "Bool" => MirType::Bool,
         "String" => MirType::String,
         "Unit" | "()" => MirType::Unit,
+        "Pid" => MirType::Pid(None),
         name => {
             // Check registry: struct or sum type?
             if registry.struct_defs.contains_key(name) {
@@ -93,6 +94,16 @@ fn resolve_app(con_ty: &Ty, args: &[Ty], registry: &TypeRegistry) -> MirType {
         Ty::Con(con) => &con.name,
         _ => return MirType::Ptr, // fallback for complex type expressions
     };
+
+    // Handle Pid<M> -> MirType::Pid(Some(M))
+    if base_name == "Pid" {
+        return if args.len() == 1 {
+            let msg_ty = resolve_type(&args[0], registry, false);
+            MirType::Pid(Some(Box::new(msg_ty)))
+        } else {
+            MirType::Pid(None)
+        };
+    }
 
     // For monomorphization: generate a mangled name from base + args
     if args.is_empty() {
@@ -294,6 +305,26 @@ mod tests {
         let reg = empty_registry();
         let name = mangle_type_name("Result", &[Ty::int(), Ty::string()], &reg);
         assert_eq!(name, "Result_Int_String");
+    }
+
+    #[test]
+    fn resolve_untyped_pid() {
+        let reg = empty_registry();
+        // Ty::Con("Pid") -> MirType::Pid(None)
+        assert_eq!(
+            resolve_type(&Ty::untyped_pid(), &reg, false),
+            MirType::Pid(None)
+        );
+    }
+
+    #[test]
+    fn resolve_typed_pid() {
+        let reg = empty_registry();
+        // Ty::App(Con("Pid"), [Int]) -> MirType::Pid(Some(Int))
+        assert_eq!(
+            resolve_type(&Ty::pid(Ty::int()), &reg, false),
+            MirType::Pid(Some(Box::new(MirType::Int)))
+        );
     }
 
     #[test]
