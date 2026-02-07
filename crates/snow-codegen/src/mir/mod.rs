@@ -25,6 +25,13 @@ pub struct MirModule {
     pub sum_types: Vec<MirSumTypeDef>,
     /// Name of main() function if present.
     pub entry_function: Option<String>,
+    /// Service dispatch tables for codegen.
+    /// Maps service loop function name to (call_handlers, cast_handlers).
+    /// Each handler entry: (type_tag, handler_fn_name, num_args).
+    pub service_dispatch: std::collections::HashMap<
+        String,
+        (Vec<(u64, String, usize)>, Vec<(u64, String, usize)>),
+    >,
 }
 
 // ── MirFunction ───────────────────────────────────────────────────────

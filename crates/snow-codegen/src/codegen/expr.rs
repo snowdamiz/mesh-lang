@@ -524,6 +524,23 @@ impl<'ctx> CodeGen<'ctx> {
             }
         }
 
+        // Check if it's a service call helper (snow_service_call with inline args).
+        // Pattern: Call to snow_service_call with [pid, tag, ...extra_args]
+        // We need to pack extra_args into a payload buffer.
+        if let MirExpr::Var(name, _) = func {
+            if name == "snow_service_call" && args.len() >= 2 {
+                return self.codegen_service_call_helper(args);
+            }
+            // Check if it's a service cast helper (snow_actor_send with [pid, tag, ...args]).
+            // Pattern: Call to snow_actor_send from a __service_*_cast_* function.
+            if name == "snow_actor_send" && args.len() >= 2 {
+                // Check if second arg is a literal tag (service cast pattern).
+                if let MirExpr::IntLit(_, _) = &args[1] {
+                    return self.codegen_service_cast_helper(args);
+                }
+            }
+        }
+
         // Check if it's a direct call to a known function
         if let MirExpr::Var(name, _) = func {
             if let Some(fn_val) = self.functions.get(name).copied() {
@@ -1711,5 +1728,474 @@ impl<'ctx> CodeGen<'ctx> {
 
         // Return a dummy value (unreachable)
         Ok(self.context.i8_type().const_int(0, false).into())
+    }
+
+    // ── Service codegen ─────────────────────────────────────────────────
+
+    /// Generate the service loop function body.
+    ///
+    /// The loop:
+    /// 1. Calls snow_actor_receive(-1) to get a raw message pointer
+    /// 2. Extracts type_tag from data offset 0
+    /// 3. Extracts caller_pid from data offset 8
+    /// 4. Extracts handler args from data offset 16+
+    /// 5. Dispatches to the appropriate handler based on type_tag
+    /// 6. For call handlers: replies to caller, then tail-calls loop with new state
+    /// 7. For cast handlers: tail-calls loop with new state
+    pub(crate) fn codegen_service_loop(
+        &mut self,
+        _loop_fn_name: &str,
+        call_handlers: &[(u64, String, usize)],
+        cast_handlers: &[(u64, String, usize)],
+    ) -> Result<(), String> {
+        let i64_ty = self.context.i64_type();
+        let ptr_ty = self.context.ptr_type(inkwell::AddressSpace::default());
+        let i8_ty = self.context.i8_type();
+
+        let fn_val = self.current_function();
+
+        // Create the loop block.
+        let loop_bb = self.context.append_basic_block(fn_val, "loop");
+        self.builder
+            .build_unconditional_branch(loop_bb)
+            .map_err(|e| e.to_string())?;
+        self.builder.position_at_end(loop_bb);
+
+        // Load the current state from the parameter alloca.
+        let state_alloca = *self.locals.get("__state")
+            .ok_or("Missing __state parameter in service loop")?;
+        let state_val = self.builder
+            .build_load(i64_ty, state_alloca, "state")
+            .map_err(|e| e.to_string())?
+            .into_int_value();
+
+        // Call snow_actor_receive(-1) -> ptr (blocks until message arrives).
+        let receive_fn = get_intrinsic(&self.module, "snow_actor_receive");
+        let timeout = i64_ty.const_int(u64::MAX, true); // -1
+        let msg_ptr = self.builder
+            .build_call(receive_fn, &[timeout.into()], "msg_ptr")
+            .map_err(|e| e.to_string())?
+            .try_as_basic_value()
+            .basic()
+            .ok_or("snow_actor_receive returned void")?
+            .into_pointer_value();
+
+        // Message layout after 16-byte header: [u64 type_tag][u64 caller_pid][i64... args]
+        // Skip the 16-byte MessageBuffer header.
+        let data_ptr = unsafe {
+            self.builder
+                .build_gep(i8_ty, msg_ptr, &[i64_ty.const_int(16, false)], "data_ptr")
+                .map_err(|e| e.to_string())?
+        };
+
+        // Extract type_tag (offset 0 from data_ptr).
+        let type_tag = self.builder
+            .build_load(i64_ty, data_ptr, "type_tag")
+            .map_err(|e| e.to_string())?
+            .into_int_value();
+
+        // Extract caller_pid (offset 8 from data_ptr).
+        let caller_ptr = unsafe {
+            self.builder
+                .build_gep(i8_ty, data_ptr, &[i64_ty.const_int(8, false)], "caller_ptr")
+                .map_err(|e| e.to_string())?
+        };
+        let caller_pid = self.builder
+            .build_load(i64_ty, caller_ptr, "caller_pid")
+            .map_err(|e| e.to_string())?
+            .into_int_value();
+
+        // Build dispatch: if/else chain on type_tag.
+        let all_handlers: Vec<(u64, &str, usize, bool)> = call_handlers
+            .iter()
+            .map(|(tag, name, nargs)| (*tag, name.as_str(), *nargs, true))
+            .chain(
+                cast_handlers
+                    .iter()
+                    .map(|(tag, name, nargs)| (*tag, name.as_str(), *nargs, false)),
+            )
+            .collect();
+
+        // Create blocks for each handler + default.
+        let default_bb = self.context.append_basic_block(fn_val, "default");
+
+        // Build the switch instruction.
+        let _switch = self.builder
+            .build_switch(
+                type_tag,
+                default_bb,
+                &all_handlers
+                    .iter()
+                    .map(|(tag, _, _, _)| {
+                        let bb = self.context.append_basic_block(fn_val, &format!("handler_{}", tag));
+                        (i64_ty.const_int(*tag, false), bb)
+                    })
+                    .collect::<Vec<_>>(),
+            )
+            .map_err(|e| e.to_string())?;
+
+        // Re-collect blocks from the switch (they're in the same order).
+        let handler_blocks: Vec<_> = all_handlers
+            .iter()
+            .enumerate()
+            .map(|(i, _)| {
+                // The switch cases are added in order; find the corresponding block.
+                let block_name = format!("handler_{}", all_handlers[i].0);
+                fn_val.get_basic_blocks().into_iter()
+                    .find(|bb| bb.get_name().to_str().unwrap_or("") == block_name)
+                    .unwrap()
+            })
+            .collect();
+
+        // Generate code for each handler.
+        for (i, (_tag, handler_fn_name, num_args, is_call)) in all_handlers.iter().enumerate() {
+            let bb = handler_blocks[i];
+            self.builder.position_at_end(bb);
+
+            // Extract handler arguments from the message (offset 16 from data_ptr).
+            let mut handler_args: Vec<BasicMetadataValueEnum<'ctx>> = vec![state_val.into()];
+            for arg_idx in 0..*num_args {
+                let arg_offset = 16 + (arg_idx * 8);
+                let arg_ptr = unsafe {
+                    self.builder
+                        .build_gep(
+                            i8_ty,
+                            data_ptr,
+                            &[i64_ty.const_int(arg_offset as u64, false)],
+                            &format!("arg_{}_ptr", arg_idx),
+                        )
+                        .map_err(|e| e.to_string())?
+                };
+                let arg_val = self.builder
+                    .build_load(i64_ty, arg_ptr, &format!("arg_{}", arg_idx))
+                    .map_err(|e| e.to_string())?;
+                handler_args.push(arg_val.into());
+            }
+
+            // Call the handler function.
+            let handler_fn = self.functions.get(*handler_fn_name).copied()
+                .ok_or_else(|| format!("Handler function '{}' not found", handler_fn_name))?;
+            let handler_result = self.builder
+                .build_call(
+                    handler_fn,
+                    &handler_args,
+                    "handler_result",
+                )
+                .map_err(|e| e.to_string())?
+                .try_as_basic_value()
+                .basic()
+                .ok_or("Handler returned void")?;
+
+            let new_state = if *is_call {
+                // For call handlers, the result is the body return value.
+                // The call handler body returns a tuple (new_state, reply).
+                // At the MIR level, we lowered the body as-is. The handler returns
+                // the full body result. We need to extract new_state and reply.
+                //
+                // Convention: call handler returns the body value directly.
+                // The body should return a tuple (new_state, reply_value).
+                // Since tuples are lowered to runtime allocations, and our handler
+                // functions return Int (which is how the body evaluates), we need to
+                // handle this carefully.
+                //
+                // SIMPLIFICATION: For scalar state and reply types (Int), the call handler
+                // body returns a Tuple which at the LLVM level is a struct {i64, i64}.
+                // But our handler function has return type Int (i64).
+                //
+                // REALITY CHECK: The handler body returns whatever the Snow code returns.
+                // For a counter service: `(count, count)` returns a tuple.
+                // But MIR lowered the handler with return_type: MirType::Int.
+                //
+                // This means the handler will actually return the tuple evaluation
+                // which in our LLVM codegen produces a struct value, but the function
+                // signature says i64. This mismatch needs to be resolved.
+                //
+                // PRAGMATIC FIX: Since all Snow values can be represented as i64 at
+                // the LLVM level (ints, pointers, bools), and tuples are allocated
+                // as runtime objects that return a pointer, we can treat the handler
+                // return as i64 and interpret it accordingly.
+                //
+                // For now: treat handler_result as i64.
+                // The reply value is the same as handler_result (for simple cases).
+                // The new_state is the first element of the tuple.
+                //
+                // SIMPLEST APPROACH: The handler function returns whatever its body
+                // evaluates to. For call handlers that return (new_state, reply),
+                // we'll treat the result as the reply value, and the new_state
+                // is passed back via a convention (the handler modifies state by
+                // returning a new value).
+                //
+                // ACTUAL DESIGN: In the type checker, call handlers return (state, reply).
+                // The handler body expression evaluates to this tuple. At the LLVM level,
+                // tuples become runtime allocated {i64, i64} structs. The handler function
+                // returns this as a pointer.
+                //
+                // For now let's use a simple convention: the handler result IS the reply,
+                // and the new state is the same as old state (for get_count which is
+                // read-only), or we extract from the result.
+                //
+                // Actually the handler body (as lowered from Snow source) already computes
+                // both new_state and reply. E.g.:
+                //   call get_count() |count| :: Int do
+                //     (count, count)
+                //   end
+                // This returns a tuple. The handler function body IS this expression.
+                // At LLVM level, (count, count) becomes a heap-allocated tuple ptr.
+                //
+                // We need to:
+                //   1. Extract reply from result[1] (second element)
+                //   2. Extract new_state from result[0] (first element)
+                //   3. Call snow_service_reply(caller_pid, &reply, 8)
+                //   4. Recurse with new_state
+                //
+                // Since tuples are represented as runtime pointers, we need to load
+                // from the tuple. Snow tuples use snow_tuple_first/snow_tuple_second.
+                //
+                // HOWEVER: The Snow tuple (count, count) in the handler body will be
+                // lowered by lower_tuple_expr which creates a runtime tuple allocation.
+                // The result is a pointer (MirType::Ptr).
+                //
+                // Our handler function has return_type MirType::Int, but the body
+                // returns a tuple pointer. This is already a type mismatch that
+                // codegen_expr handles by truncating/coercing.
+                //
+                // Let me look at how the tuple works at LLVM level...
+                // Actually, this complexity means I should use a simpler encoding.
+                //
+                // NEW APPROACH: Instead of having the handler return a tuple,
+                // generate TWO separate calls from the loop:
+                //   1. Call a "handler_body" function that takes (state, args) and
+                //      returns the raw body result (a tuple ptr)
+                //   2. Extract reply via snow_tuple_second(result)
+                //   3. Extract new_state via snow_tuple_first(result)
+                //   4. Reply with the reply value
+                //
+                // But this requires the handler function to return Ptr (tuple pointer).
+                // Let me adjust the handler function return type.
+                //
+                // SIMPLEST ACTUAL FIX: Since handler_result is i64 but actually a pointer
+                // to a tuple, interpret it as ptr, call snow_tuple_first/second.
+
+                let result_ptr = self.builder
+                    .build_int_to_ptr(handler_result.into_int_value(), ptr_ty, "result_ptr")
+                    .map_err(|e| e.to_string())?;
+
+                // Extract new_state = tuple_first(result_ptr) -> i64
+                let tuple_first_fn = get_intrinsic(&self.module, "snow_tuple_first");
+                let new_state_val = self.builder
+                    .build_call(tuple_first_fn, &[result_ptr.into()], "new_state")
+                    .map_err(|e| e.to_string())?
+                    .try_as_basic_value()
+                    .basic()
+                    .ok_or("snow_tuple_first returned void")?
+                    .into_int_value();
+
+                // Extract reply = tuple_second(result_ptr) -> i64
+                let tuple_second_fn = get_intrinsic(&self.module, "snow_tuple_second");
+                let reply_val = self.builder
+                    .build_call(tuple_second_fn, &[result_ptr.into()], "reply")
+                    .map_err(|e| e.to_string())?
+                    .try_as_basic_value()
+                    .basic()
+                    .ok_or("snow_tuple_second returned void")?
+                    .into_int_value();
+
+                // Send reply to caller: snow_service_reply(caller_pid, &reply, 8)
+                let reply_alloca = self.builder
+                    .build_alloca(i64_ty, "reply_buf")
+                    .map_err(|e| e.to_string())?;
+                self.builder
+                    .build_store(reply_alloca, reply_val)
+                    .map_err(|e| e.to_string())?;
+                let reply_size = i64_ty.const_int(8, false);
+
+                let service_reply_fn = get_intrinsic(&self.module, "snow_service_reply");
+                self.builder
+                    .build_call(
+                        service_reply_fn,
+                        &[caller_pid.into(), reply_alloca.into(), reply_size.into()],
+                        "",
+                    )
+                    .map_err(|e| e.to_string())?;
+
+                new_state_val
+            } else {
+                // For cast handlers, the result IS the new state (i64).
+                handler_result.into_int_value()
+            };
+
+            // Update the state alloca and branch back to loop.
+            self.builder
+                .build_store(state_alloca, new_state)
+                .map_err(|e| e.to_string())?;
+            self.builder
+                .build_unconditional_branch(loop_bb)
+                .map_err(|e| e.to_string())?;
+        }
+
+        // Default block: just loop again with unchanged state (unknown tag).
+        self.builder.position_at_end(default_bb);
+        self.builder
+            .build_unconditional_branch(loop_bb)
+            .map_err(|e| e.to_string())?;
+
+        // The function never returns normally (it loops forever).
+        // We already have terminators on all blocks.
+        Ok(())
+    }
+
+    /// Generate a service call helper function body.
+    ///
+    /// Takes MIR args: [pid, tag, ...handler_args]
+    /// Packs into a message buffer: [u64 handler_args[0], handler_args[1], ...]
+    /// Calls snow_service_call(pid, tag, payload_ptr, payload_size) -> ptr
+    /// Loads the reply from the returned pointer as i64.
+    fn codegen_service_call_helper(
+        &mut self,
+        args: &[MirExpr],
+    ) -> Result<BasicValueEnum<'ctx>, String> {
+        let i64_ty = self.context.i64_type();
+        let ptr_ty = self.context.ptr_type(inkwell::AddressSpace::default());
+        let i8_ty = self.context.i8_type();
+
+        // First arg is pid, second is tag, rest are handler args.
+        let pid_val = self.codegen_expr(&args[0])?.into_int_value();
+        let tag_val = self.codegen_expr(&args[1])?.into_int_value();
+
+        let handler_args: Vec<_> = args[2..]
+            .iter()
+            .map(|a| self.codegen_expr(a).map(|v| v.into_int_value()))
+            .collect::<Result<Vec<_>, _>>()?;
+
+        // Build payload buffer: [i64 arg0, i64 arg1, ...]
+        let payload_size = handler_args.len() * 8;
+        let (payload_ptr, payload_size_val) = if handler_args.is_empty() {
+            (ptr_ty.const_null(), i64_ty.const_int(0, false))
+        } else {
+            let arr_ty = i64_ty.array_type(handler_args.len() as u32);
+            let buf = self.builder
+                .build_alloca(arr_ty, "call_payload")
+                .map_err(|e| e.to_string())?;
+
+            for (i, arg) in handler_args.iter().enumerate() {
+                let idx = self.context.i32_type().const_int(i as u64, false);
+                let zero = self.context.i32_type().const_int(0, false);
+                let elem_ptr = unsafe {
+                    self.builder
+                        .build_gep(arr_ty, buf, &[zero, idx], "payload_elem")
+                        .map_err(|e| e.to_string())?
+                };
+                self.builder
+                    .build_store(elem_ptr, *arg)
+                    .map_err(|e| e.to_string())?;
+            }
+
+            (buf, i64_ty.const_int(payload_size as u64, false))
+        };
+
+        // Call snow_service_call(pid, tag, payload_ptr, payload_size) -> ptr
+        let service_call_fn = get_intrinsic(&self.module, "snow_service_call");
+        let result_ptr = self.builder
+            .build_call(
+                service_call_fn,
+                &[pid_val.into(), tag_val.into(), payload_ptr.into(), payload_size_val.into()],
+                "call_result",
+            )
+            .map_err(|e| e.to_string())?
+            .try_as_basic_value()
+            .basic()
+            .ok_or("snow_service_call returned void")?
+            .into_pointer_value();
+
+        // The reply is a raw message pointer. The data after the 16-byte header
+        // is the reply value (i64).
+        let reply_data_ptr = unsafe {
+            self.builder
+                .build_gep(i8_ty, result_ptr, &[i64_ty.const_int(16, false)], "reply_data")
+                .map_err(|e| e.to_string())?
+        };
+        let reply_val = self.builder
+            .build_load(i64_ty, reply_data_ptr, "reply_val")
+            .map_err(|e| e.to_string())?;
+
+        Ok(reply_val)
+    }
+
+    /// Generate a service cast helper function body.
+    ///
+    /// Takes MIR args: [pid, tag, ...handler_args]
+    /// Packs into a message buffer: [u64 tag][u64 0 (no caller)][i64 handler_args...]
+    /// Calls snow_actor_send(pid, msg_ptr, msg_size).
+    fn codegen_service_cast_helper(
+        &mut self,
+        args: &[MirExpr],
+    ) -> Result<BasicValueEnum<'ctx>, String> {
+        let i64_ty = self.context.i64_type();
+
+        // First arg is pid, second is tag, rest are handler args.
+        let pid_val = self.codegen_expr(&args[0])?.into_int_value();
+        let tag_val = self.codegen_expr(&args[1])?.into_int_value();
+
+        let handler_args: Vec<_> = args[2..]
+            .iter()
+            .map(|a| self.codegen_expr(a).map(|v| v.into_int_value()))
+            .collect::<Result<Vec<_>, _>>()?;
+
+        // Build message buffer: [u64 type_tag][u64 0 (no caller)][i64 handler_args...]
+        let num_elements = 2 + handler_args.len(); // tag + caller_pid + args
+        let arr_ty = i64_ty.array_type(num_elements as u32);
+        let buf = self.builder
+            .build_alloca(arr_ty, "cast_msg")
+            .map_err(|e| e.to_string())?;
+
+        // Store type_tag.
+        let zero = self.context.i32_type().const_int(0, false);
+        let tag_ptr = unsafe {
+            self.builder
+                .build_gep(arr_ty, buf, &[zero, zero], "tag_slot")
+                .map_err(|e| e.to_string())?
+        };
+        self.builder
+            .build_store(tag_ptr, tag_val)
+            .map_err(|e| e.to_string())?;
+
+        // Store caller_pid = 0 (fire-and-forget, no reply expected).
+        let one = self.context.i32_type().const_int(1, false);
+        let caller_ptr = unsafe {
+            self.builder
+                .build_gep(arr_ty, buf, &[zero, one], "caller_slot")
+                .map_err(|e| e.to_string())?
+        };
+        self.builder
+            .build_store(caller_ptr, i64_ty.const_int(0, false))
+            .map_err(|e| e.to_string())?;
+
+        // Store handler args.
+        for (i, arg) in handler_args.iter().enumerate() {
+            let idx = self.context.i32_type().const_int((i + 2) as u64, false);
+            let elem_ptr = unsafe {
+                self.builder
+                    .build_gep(arr_ty, buf, &[zero, idx], "arg_slot")
+                    .map_err(|e| e.to_string())?
+            };
+            self.builder
+                .build_store(elem_ptr, *arg)
+                .map_err(|e| e.to_string())?;
+        }
+
+        let msg_size = i64_ty.const_int((num_elements * 8) as u64, false);
+
+        // Call snow_actor_send(pid, msg_ptr, msg_size).
+        let send_fn = get_intrinsic(&self.module, "snow_actor_send");
+        self.builder
+            .build_call(
+                send_fn,
+                &[pid_val.into(), buf.into(), msg_size.into()],
+                "",
+            )
+            .map_err(|e| e.to_string())?;
+
+        // Cast returns Unit.
+        Ok(self.context.struct_type(&[], false).const_zero().into())
     }
 }

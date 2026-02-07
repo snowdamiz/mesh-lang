@@ -80,6 +80,14 @@ pub struct CodeGen<'ctx> {
 
     /// MIR struct definitions (for field name -> index lookup).
     pub(crate) mir_struct_defs: FxHashMap<String, Vec<(String, MirType)>>,
+
+    /// Service dispatch tables.
+    /// Maps service loop function name -> (call_handlers, cast_handlers).
+    /// Each entry: (type_tag, handler_fn_name, num_args).
+    pub(crate) service_dispatch: std::collections::HashMap<
+        String,
+        (Vec<(u64, String, usize)>, Vec<(u64, String, usize)>),
+    >,
 }
 
 impl<'ctx> CodeGen<'ctx> {
@@ -149,6 +157,7 @@ impl<'ctx> CodeGen<'ctx> {
             local_types: FxHashMap::default(),
             mir_functions: Vec::new(),
             mir_struct_defs: FxHashMap::default(),
+            service_dispatch: std::collections::HashMap::new(),
         })
     }
 
@@ -164,6 +173,9 @@ impl<'ctx> CodeGen<'ctx> {
     pub fn compile(&mut self, mir: &MirModule) -> Result<(), String> {
         // Store MIR functions for arm body lookup during pattern codegen.
         self.mir_functions = mir.functions.clone();
+
+        // Store service dispatch tables for codegen.
+        self.service_dispatch = mir.service_dispatch.clone();
 
         // Step 1: Declare runtime intrinsics.
         intrinsics::declare_intrinsics(&self.module);
@@ -410,6 +422,13 @@ impl<'ctx> CodeGen<'ctx> {
             }
         }
 
+        // Check if this is a service loop function that needs special codegen.
+        if func.name.starts_with("__service_") && func.name.ends_with("_loop") {
+            if let Some(dispatch_info) = self.service_dispatch.get(&func.name).cloned() {
+                return self.codegen_service_loop(&func.name, &dispatch_info.0, &dispatch_info.1);
+            }
+        }
+
         // Compile the function body.
         let result = self.codegen_expr(&func.body)?;
 
@@ -521,6 +540,7 @@ mod tests {
             structs: vec![],
             sum_types: vec![],
             entry_function: None,
+            service_dispatch: std::collections::HashMap::new(),
         }
     }
 
@@ -537,6 +557,7 @@ mod tests {
             structs: vec![],
             sum_types: vec![],
             entry_function: Some("snow_main".to_string()),
+            service_dispatch: std::collections::HashMap::new(),
         }
     }
 
@@ -625,6 +646,7 @@ mod tests {
             structs: vec![],
             sum_types: vec![],
             entry_function: None,
+            service_dispatch: std::collections::HashMap::new(),
         };
 
         let context = Context::create();
@@ -651,6 +673,7 @@ mod tests {
             structs: vec![],
             sum_types: vec![],
             entry_function: None,
+            service_dispatch: std::collections::HashMap::new(),
         };
 
         let context = Context::create();
@@ -823,6 +846,7 @@ mod tests {
             structs: vec![],
             sum_types: vec![],
             entry_function: Some("snow_main".to_string()),
+            service_dispatch: std::collections::HashMap::new(),
         };
 
         let context = Context::create();
@@ -864,6 +888,7 @@ mod tests {
             structs: vec![],
             sum_types: vec![],
             entry_function: Some("snow_main".to_string()),
+            service_dispatch: std::collections::HashMap::new(),
         };
 
         let context = Context::create();
@@ -909,6 +934,7 @@ mod tests {
                 ],
             }],
             entry_function: None,
+            service_dispatch: std::collections::HashMap::new(),
         };
 
         let context = Context::create();
@@ -980,6 +1006,7 @@ mod tests {
                 ],
             }],
             entry_function: None,
+            service_dispatch: std::collections::HashMap::new(),
         };
 
         let context = Context::create();
@@ -1027,6 +1054,7 @@ mod tests {
             structs: vec![],
             sum_types: vec![],
             entry_function: None,
+            service_dispatch: std::collections::HashMap::new(),
         };
 
         let context = Context::create();
@@ -1118,6 +1146,7 @@ mod tests {
             structs: vec![],
             sum_types: vec![],
             entry_function: None,
+            service_dispatch: std::collections::HashMap::new(),
         };
 
         let context = Context::create();
@@ -1242,6 +1271,7 @@ mod tests {
             structs: vec![],
             sum_types: vec![],
             entry_function: None,
+            service_dispatch: std::collections::HashMap::new(),
         };
 
         let context = Context::create();
@@ -1322,6 +1352,7 @@ mod tests {
             structs: vec![],
             sum_types: vec![],
             entry_function: None,
+            service_dispatch: std::collections::HashMap::new(),
         };
 
         let context = Context::create();

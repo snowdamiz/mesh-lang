@@ -353,6 +353,22 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
     // snow_http_request_query(req: ptr, name: ptr) -> ptr (SnowOption)
     module.add_function("snow_http_request_query", ptr_type.fn_type(&[ptr_type.into(), ptr_type.into()], false), Some(inkwell::module::Linkage::External));
 
+    // ── Service runtime functions (Phase 9 Plan 03) ──────────────────────
+
+    // snow_service_call(target_pid: i64, msg_tag: i64, payload_ptr: ptr, payload_size: i64) -> ptr
+    let service_call_ty = ptr_type.fn_type(
+        &[i64_type.into(), i64_type.into(), ptr_type.into(), i64_type.into()],
+        false,
+    );
+    module.add_function("snow_service_call", service_call_ty, Some(inkwell::module::Linkage::External));
+
+    // snow_service_reply(caller_pid: i64, reply_ptr: ptr, reply_size: i64) -> void
+    let service_reply_ty = void_type.fn_type(
+        &[i64_type.into(), ptr_type.into(), i64_type.into()],
+        false,
+    );
+    module.add_function("snow_service_reply", service_reply_ty, Some(inkwell::module::Linkage::External));
+
     // snow_panic(msg: ptr, msg_len: u64, file: ptr, file_len: u64, line: u32) -> void
     // (noreturn -- marked via attribute)
     let panic_params: Vec<BasicMetadataTypeEnum<'ctx>> = vec![
@@ -502,6 +518,10 @@ mod tests {
         assert!(module.get_function("snow_http_request_body").is_some());
         assert!(module.get_function("snow_http_request_header").is_some());
         assert!(module.get_function("snow_http_request_query").is_some());
+
+        // Service runtime functions (Phase 9 Plan 03)
+        assert!(module.get_function("snow_service_call").is_some());
+        assert!(module.get_function("snow_service_reply").is_some());
 
         // JSON functions (Phase 8 Plan 04)
         assert!(module.get_function("snow_json_parse").is_some());

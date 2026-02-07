@@ -13,7 +13,8 @@ use snow_parser::ast::expr::{
     StructLiteral, TupleExpr, UnaryExpr,
 };
 use snow_parser::ast::item::{
-    ActorDef, Block, FnDef, Item, LetBinding, SourceFile, StructDef, SumTypeDef, SupervisorDef,
+    ActorDef, Block, FnDef, Item, LetBinding, ServiceDef, SourceFile, StructDef, SumTypeDef,
+    SupervisorDef,
 };
 use snow_parser::ast::pat::Pattern;
 use snow_parser::ast::AstNode;
@@ -50,6 +51,9 @@ struct Lowerer<'a> {
     known_functions: HashMap<String, MirType>,
     /// Entry function name, if found.
     entry_function: Option<String>,
+    /// Service module names (for field access resolution).
+    /// Maps service name -> list of (method_name, generated_fn_name) pairs.
+    service_modules: HashMap<String, Vec<(String, String)>>,
 }
 
 impl<'a> Lowerer<'a> {
@@ -64,6 +68,7 @@ impl<'a> Lowerer<'a> {
             closure_counter: 0,
             known_functions: HashMap::new(),
             entry_function: None,
+            service_modules: HashMap::new(),
         }
     }
 
@@ -141,6 +146,16 @@ impl<'a> Lowerer<'a> {
                         let fn_ty = self.resolve_range(sup_def.syntax().text_range());
                         self.known_functions.insert(name.clone(), fn_ty.clone());
                         self.insert_var(name, fn_ty);
+                    }
+                }
+                Item::ServiceDef(service_def) => {
+                    if let Some(name) = service_def.name().and_then(|n| n.text()) {
+                        // Pre-register the service start function.
+                        let start_fn_name = format!("__service_{}_start", name.to_lowercase());
+                        self.known_functions.insert(
+                            start_fn_name.clone(),
+                            MirType::FnPtr(vec![], Box::new(MirType::Pid(None))),
+                        );
                     }
                 }
                 _ => {}
@@ -307,6 +322,15 @@ impl<'a> Lowerer<'a> {
         self.known_functions.insert("snow_http_request_body".to_string(), MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::String)));
         self.known_functions.insert("snow_http_request_header".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::String], Box::new(MirType::Ptr)));
         self.known_functions.insert("snow_http_request_query".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::String], Box::new(MirType::Ptr)));
+        // ── Job functions (Phase 9 Plan 04 prep) ────────────────────────
+        self.known_functions.insert("snow_job_async".to_string(), MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Ptr)));
+        self.known_functions.insert("snow_job_await".to_string(), MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Int)));
+        self.known_functions.insert("snow_job_await_all".to_string(), MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Ptr)));
+        self.known_functions.insert("snow_job_await_any".to_string(), MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Ptr)));
+        // ── Service runtime functions (Phase 9 Plan 03) ─────────────────
+        self.known_functions.insert("snow_service_call".to_string(), MirType::FnPtr(vec![MirType::Int, MirType::Int, MirType::Ptr, MirType::Int], Box::new(MirType::Ptr)));
+        self.known_functions.insert("snow_service_reply".to_string(), MirType::FnPtr(vec![MirType::Int, MirType::Ptr, MirType::Int], Box::new(MirType::Unit)));
+        self.known_functions.insert("snow_actor_send".to_string(), MirType::FnPtr(vec![MirType::Int, MirType::Ptr, MirType::Int], Box::new(MirType::Unit)));
 
         // Also register variant constructors as known functions.
         for (_, sum_info) in &self.registry.sum_type_defs {
@@ -349,6 +373,7 @@ impl<'a> Lowerer<'a> {
                 // Skip -- module/import handling is not needed for single-file compilation.
             }
             Item::ActorDef(actor_def) => self.lower_actor_def(&actor_def),
+            Item::ServiceDef(service_def) => self.lower_service_def(&service_def),
             Item::SupervisorDef(sup_def) => self.lower_supervisor_def(&sup_def),
         }
     }
@@ -919,6 +944,21 @@ impl<'a> Lowerer<'a> {
                         let runtime_name = map_builtin_name(&prefixed);
                         let ty = self.resolve_range(fa.syntax().text_range());
                         return MirExpr::Var(runtime_name, ty);
+                    }
+
+                    // Check if this is a service module method (e.g., Counter.start).
+                    if let Some(methods) = self.service_modules.get(&base_name).cloned() {
+                        let field = fa
+                            .field()
+                            .map(|t| t.text().to_string())
+                            .unwrap_or_default();
+                        for (method_name, generated_fn) in &methods {
+                            if *method_name == field {
+                                let ty = self.resolve_range(fa.syntax().text_range());
+                                // Return the generated function name as a Var reference.
+                                return MirExpr::Var(generated_fn.clone(), ty);
+                            }
+                        }
                     }
                 }
             }
@@ -1675,6 +1715,691 @@ impl<'a> Lowerer<'a> {
         });
     }
 
+    // ── Service lowering ─────────────────────────────────────────────────
+
+    fn lower_service_def(&mut self, service_def: &ServiceDef) {
+        let name = service_def
+            .name()
+            .and_then(|n| n.text())
+            .unwrap_or_else(|| "<anonymous_service>".to_string());
+
+        let name_lower = name.to_lowercase();
+
+        // Collect handler info from the AST.
+        let call_handlers = service_def.call_handlers();
+        let cast_handlers = service_def.cast_handlers();
+
+        // Assign sequential type tags.
+        // Call handlers: tags 0, 1, 2, ...
+        // Cast handlers: tags N, N+1, N+2, ... (where N = call_handlers.len())
+        let num_calls = call_handlers.len();
+
+        // ── Collect handler info ─────────────────────────────────────────
+
+        // For each call handler: (variant_name, snake_name, tag, param_names, state_param)
+        struct CallInfo {
+            variant_name: String,
+            snake_name: String,
+            tag: u64,
+            param_names: Vec<String>,
+            state_param: Option<String>,
+        }
+
+        struct CastInfo {
+            variant_name: String,
+            snake_name: String,
+            tag: u64,
+            param_names: Vec<String>,
+            state_param: Option<String>,
+        }
+
+        let mut call_infos = Vec::new();
+        for (i, handler) in call_handlers.iter().enumerate() {
+            let variant_name = handler
+                .name()
+                .and_then(|n| n.text())
+                .unwrap_or_else(|| format!("call_{}", i));
+            let snake_name = to_snake_case(&variant_name);
+            let param_names: Vec<String> = handler
+                .params()
+                .map(|pl| {
+                    pl.params()
+                        .map(|p| {
+                            p.name()
+                                .map(|t| t.text().to_string())
+                                .unwrap_or_else(|| format!("arg{}", 0))
+                        })
+                        .collect()
+                })
+                .unwrap_or_default();
+            let state_param = handler.state_param_name();
+            call_infos.push(CallInfo {
+                variant_name,
+                snake_name,
+                tag: i as u64,
+                param_names,
+                state_param,
+            });
+        }
+
+        let mut cast_infos = Vec::new();
+        for (i, handler) in cast_handlers.iter().enumerate() {
+            let variant_name = handler
+                .name()
+                .and_then(|n| n.text())
+                .unwrap_or_else(|| format!("cast_{}", i));
+            let snake_name = to_snake_case(&variant_name);
+            let param_names: Vec<String> = handler
+                .params()
+                .map(|pl| {
+                    pl.params()
+                        .map(|p| {
+                            p.name()
+                                .map(|t| t.text().to_string())
+                                .unwrap_or_else(|| format!("arg{}", 0))
+                        })
+                        .collect()
+                })
+                .unwrap_or_default();
+            let state_param = handler.state_param_name();
+            cast_infos.push(CastInfo {
+                variant_name,
+                snake_name,
+                tag: (num_calls + i) as u64,
+                param_names,
+                state_param,
+            });
+        }
+
+        // ── Generate init function ───────────────────────────────────────
+        // Lower the init function body to get initial state.
+        let mut init_params = Vec::new();
+        let init_body = if let Some(init_fn) = service_def.init_fn() {
+            self.push_scope();
+            if let Some(param_list) = init_fn.param_list() {
+                let fn_range = init_fn.syntax().text_range();
+                let fn_ty_raw = self.get_ty(fn_range).cloned();
+                if let Some(snow_typeck::ty::Ty::Fun(param_tys, _)) = &fn_ty_raw {
+                    for (param, param_ty) in param_list.params().zip(param_tys.iter()) {
+                        let param_name = param
+                            .name()
+                            .map(|t| t.text().to_string())
+                            .unwrap_or_else(|| "_".to_string());
+                        let mir_ty = resolve_type(param_ty, self.registry, false);
+                        self.insert_var(param_name.clone(), mir_ty.clone());
+                        init_params.push((param_name, mir_ty));
+                    }
+                } else {
+                    for param in param_list.params() {
+                        let param_name = param
+                            .name()
+                            .map(|t| t.text().to_string())
+                            .unwrap_or_else(|| "_".to_string());
+                        let mir_ty = self.resolve_range(param.syntax().text_range());
+                        self.insert_var(param_name.clone(), mir_ty.clone());
+                        init_params.push((param_name, mir_ty));
+                    }
+                }
+            }
+            let body = if let Some(block) = init_fn.body() {
+                self.lower_block(&block)
+            } else {
+                MirExpr::IntLit(0, MirType::Int)
+            };
+            self.pop_scope();
+            body
+        } else {
+            MirExpr::IntLit(0, MirType::Int)
+        };
+
+        let init_fn_name = format!("__service_{}_init", name_lower);
+        self.functions.push(MirFunction {
+            name: init_fn_name.clone(),
+            params: init_params.clone(),
+            return_type: MirType::Int,
+            body: init_body,
+            is_closure_fn: false,
+            captures: Vec::new(),
+        });
+        self.known_functions.insert(
+            init_fn_name.clone(),
+            MirType::FnPtr(
+                init_params.iter().map(|(_, t)| t.clone()).collect(),
+                Box::new(MirType::Int),
+            ),
+        );
+
+        // ── Generate handler body functions ──────────────────────────────
+        // Each handler becomes a function:
+        //   __service_{name}_handle_call_{snake}(state: i64, args...) -> i64 (for call: returns tuple-encoded {new_state, reply})
+        //   __service_{name}_handle_cast_{snake}(state: i64, args...) -> i64 (for cast: returns new_state)
+
+        for (i, handler) in call_handlers.iter().enumerate() {
+            let info = &call_infos[i];
+            let handler_fn_name = format!(
+                "__service_{}_handle_call_{}",
+                name_lower, info.snake_name
+            );
+
+            self.push_scope();
+
+            // State param.
+            let state_param_name = info.state_param.clone().unwrap_or_else(|| "state".to_string());
+            self.insert_var(state_param_name.clone(), MirType::Int);
+            let mut params = vec![(state_param_name, MirType::Int)];
+
+            // Handler params.
+            if let Some(param_list) = handler.params() {
+                for param in param_list.params() {
+                    let p_name = param
+                        .name()
+                        .map(|t| t.text().to_string())
+                        .unwrap_or_else(|| "_".to_string());
+                    let p_ty = self.resolve_range(param.syntax().text_range());
+                    let mir_ty = if matches!(p_ty, MirType::Unit) { MirType::Int } else { p_ty };
+                    self.insert_var(p_name.clone(), mir_ty.clone());
+                    params.push((p_name, mir_ty));
+                }
+            }
+
+            // Lower handler body. Body returns (new_state, reply).
+            let body = if let Some(block) = handler.body() {
+                self.lower_block(&block)
+            } else {
+                // Default: return (state, 0).
+                MirExpr::Unit
+            };
+
+            self.pop_scope();
+
+            self.functions.push(MirFunction {
+                name: handler_fn_name.clone(),
+                params,
+                return_type: MirType::Int,
+                body,
+                is_closure_fn: false,
+                captures: Vec::new(),
+            });
+            self.known_functions.insert(
+                handler_fn_name,
+                MirType::FnPtr(vec![], Box::new(MirType::Int)),
+            );
+        }
+
+        for (i, handler) in cast_handlers.iter().enumerate() {
+            let info = &cast_infos[i];
+            let handler_fn_name = format!(
+                "__service_{}_handle_cast_{}",
+                name_lower, info.snake_name
+            );
+
+            self.push_scope();
+
+            let state_param_name = info.state_param.clone().unwrap_or_else(|| "state".to_string());
+            self.insert_var(state_param_name.clone(), MirType::Int);
+            let mut params = vec![(state_param_name, MirType::Int)];
+
+            if let Some(param_list) = handler.params() {
+                for param in param_list.params() {
+                    let p_name = param
+                        .name()
+                        .map(|t| t.text().to_string())
+                        .unwrap_or_else(|| "_".to_string());
+                    let p_ty = self.resolve_range(param.syntax().text_range());
+                    let mir_ty = if matches!(p_ty, MirType::Unit) { MirType::Int } else { p_ty };
+                    self.insert_var(p_name.clone(), mir_ty.clone());
+                    params.push((p_name, mir_ty));
+                }
+            }
+
+            // Lower handler body. Body returns new_state.
+            let body = if let Some(block) = handler.body() {
+                self.lower_block(&block)
+            } else {
+                MirExpr::IntLit(0, MirType::Int)
+            };
+
+            self.pop_scope();
+
+            self.functions.push(MirFunction {
+                name: handler_fn_name.clone(),
+                params,
+                return_type: MirType::Int,
+                body,
+                is_closure_fn: false,
+                captures: Vec::new(),
+            });
+            self.known_functions.insert(
+                handler_fn_name,
+                MirType::FnPtr(vec![], Box::new(MirType::Int)),
+            );
+        }
+
+        // ── Generate the service loop function ───────────────────────────
+        // __service_{name}_loop(state: i64) -> Unit
+        //
+        // This is the actor entry function that runs as a process.
+        // It does: receive message -> dispatch on type_tag -> call handler ->
+        //   for call: reply to caller with result, recurse with new_state
+        //   for cast: recurse with new_state
+        //
+        // The loop function uses MIR primitives: ActorReceive, then manual dispatch.
+        // Since MIR receive doesn't directly support type_tag dispatch, we generate
+        // the loop as a receive that gets the raw message, extracts type_tag, and
+        // uses if/else chains to dispatch.
+
+        let loop_fn_name = format!("__service_{}_loop", name_lower);
+
+        // The loop body is:
+        //   let msg_ptr = receive(-1)    -- blocks for incoming message
+        //   let type_tag = load_u64(msg_ptr, 0)
+        //   let caller_pid = load_u64(msg_ptr, 8)
+        //   -- for call tags: extract args from msg_ptr+16, call handler, reply, recurse
+        //   -- for cast tags: extract args from msg_ptr+16, call handler, recurse
+        //
+        // We represent this as a Block of MIR expressions that the codegen will emit.
+        // Since we can't easily express "load bytes from pointer" in MIR, we use
+        // the Call node to call runtime helper functions that we'll add.
+        //
+        // Actually, the simplest approach: generate the loop function with a body
+        // that calls a synthetic dispatch function we also generate. The dispatch
+        // function is generated per-service and uses snow_service_call/reply.
+        //
+        // SIMPLEST APPROACH: Don't generate an explicit loop function with raw pointer
+        // arithmetic. Instead, generate a function with ActorReceive that has a single
+        // wildcard arm. The receive extracts message data as an i64 (which is the
+        // first 8 bytes = type_tag). Then we use if/else dispatch on tag values.
+        //
+        // HOWEVER: the message format for service calls includes [type_tag][caller_pid][args].
+        // The ActorReceive codegen loads data starting at offset 16 (past the 16-byte header).
+        // So the received value will be the type_tag (first i64 of data after header).
+        //
+        // Wait - let me reconsider the message format. snow_service_call builds:
+        //   [u64 type_tag][u64 caller_pid][payload_args]
+        // This entire blob is the data portion. The MessageBuffer wraps it with its own
+        // header [u64 type_tag_in_mb][u64 data_len]. So the full message in the mailbox is:
+        //   [u64 mb_type_tag][u64 data_len][u64 msg_tag][u64 caller_pid][payload_args]
+        // When ActorReceive skips the 16-byte header, it reads [u64 msg_tag] which is correct.
+        //
+        // For the loop function, we need more than just the type_tag. We need the caller_pid
+        // and the args. This requires raw pointer access at codegen level.
+        //
+        // PRAGMATIC APPROACH: Generate the loop as a thin wrapper that the CODEGEN handles
+        // specially. Add a new MirExpr::ServiceLoop variant that the codegen expands.
+        //
+        // EVEN SIMPLER: Generate the entire dispatch as function calls from MIR.
+        // The service loop receives a raw message pointer, and we generate MIR that:
+        //   1. Calls __service_msg_tag(ptr) -> i64 (extracts type_tag from data)
+        //   2. Calls __service_msg_caller(ptr) -> i64 (extracts caller_pid)
+        //   3. Calls __service_msg_arg(ptr, index) -> i64 (extracts arg N)
+        //   4. Dispatches on tag via if/else chain
+        //
+        // These helper functions are runtime functions we can add.
+        //
+        // MOST PRAGMATIC: Since all values are i64, we generate the loop as an actor
+        // that uses raw receive and does all dispatch inline. The code generator
+        // for the service loop is custom in expr.rs -- we add a new MirExpr variant.
+        //
+        // FINAL DECISION: Add MirExpr::ServiceLoop to MIR. Keep it clean.
+
+        // Actually, we can use a simpler representation. The service loop receives
+        // a message as raw pointer, extracts tag/caller/args from known offsets.
+        // We'll generate this in codegen (expr.rs) since it requires pointer arithmetic.
+        // The MIR representation captures: loop function name, handler functions, tags.
+
+        // For now: represent the loop as a single function whose body is a
+        // Call to the loop dispatcher (generated in codegen). We'll use a
+        // special intrinsic pattern.
+
+        // CLEANEST APPROACH: Generate the loop function with a body that is an
+        // ActorReceive with a wildcard arm. The arm body is a Let-chain that:
+        //   1. Uses the received raw msg_ptr value (reinterpreted)
+        //   2. Dispatches on integer comparison
+        //
+        // Since we can't extract sub-fields from a pointer in MIR, let's use
+        // a different approach: The loop function is an actor body that calls
+        // a set of generated runtime-level dispatch functions.
+        //
+        // ACTUALLY THE SIMPLEST WAY: Generate the body of the loop as just
+        // an ActorReceive(-1) that returns Int, then dispatch on the value.
+        // The type_tag IS the received data (first i64 after header).
+        // But we also need caller_pid and args, which are at higher offsets.
+        //
+        // We need to access the raw message pointer. The current ActorReceive
+        // codegen loads the data into a typed value and discards the pointer.
+        // We need the raw pointer for service dispatch.
+        //
+        // TWO OPTIONS:
+        // A) Add a ServiceDispatch MIR node that codegen handles specially
+        // B) Generate multiple runtime helper calls
+        //
+        // Let's go with A. It's the cleanest.
+
+        // Track methods for this service so field access can resolve them.
+        let mut methods = Vec::new();
+
+        // Start function.
+        let start_fn_name = format!("__service_{}_start", name_lower);
+        methods.push(("start".to_string(), start_fn_name.clone()));
+
+        // Call helper functions.
+        for info in &call_infos {
+            let fn_name = format!("__service_{}_call_{}", name_lower, info.snake_name);
+            methods.push((info.snake_name.clone(), fn_name.clone()));
+            self.known_functions.insert(
+                fn_name.clone(),
+                MirType::FnPtr(vec![MirType::Pid(None)], Box::new(MirType::Int)),
+            );
+        }
+
+        // Cast helper functions.
+        for info in &cast_infos {
+            let fn_name = format!("__service_{}_cast_{}", name_lower, info.snake_name);
+            methods.push((info.snake_name.clone(), fn_name.clone()));
+            self.known_functions.insert(
+                fn_name.clone(),
+                MirType::FnPtr(vec![MirType::Pid(None)], Box::new(MirType::Unit)),
+            );
+        }
+
+        // Register the service module for field access resolution.
+        self.service_modules.insert(name.clone(), methods);
+
+        // ── Generate call helper functions ─────────────────────────────────
+        // __service_{name}_call_{snake}(pid: i64, args...) -> Int
+        // Builds message: [u64 type_tag][args as i64s]
+        // Calls snow_service_call(pid, tag, payload_ptr, payload_size)
+        // Returns reply as i64
+
+        for info in &call_infos {
+            let fn_name = format!("__service_{}_call_{}", name_lower, info.snake_name);
+
+            let mut params = vec![("__pid".to_string(), MirType::Int)];
+            for p_name in &info.param_names {
+                params.push((p_name.clone(), MirType::Int));
+            }
+
+            // Body: call snow_service_call(pid, tag, payload, size)
+            // We represent this as a Call to snow_service_call with the right args.
+            // The codegen for Call on "snow_service_call" will handle the details.
+            //
+            // Actually, we need to build the payload buffer. This requires stack allocation
+            // which is done in codegen. So we'll represent the call helper body as a
+            // special ServiceCall MIR node.
+            let body = MirExpr::Call {
+                func: Box::new(MirExpr::Var(
+                    "snow_service_call".to_string(),
+                    MirType::FnPtr(
+                        vec![MirType::Int, MirType::Int, MirType::Ptr, MirType::Int],
+                        Box::new(MirType::Ptr),
+                    ),
+                )),
+                args: {
+                    let mut args = vec![
+                        MirExpr::Var("__pid".to_string(), MirType::Int),
+                        MirExpr::IntLit(info.tag as i64, MirType::Int),
+                    ];
+                    // Pack the call arguments as the payload.
+                    // We'll pass them as individual i64 args; codegen will pack.
+                    for p_name in &info.param_names {
+                        args.push(MirExpr::Var(p_name.clone(), MirType::Int));
+                    }
+                    args
+                },
+                ty: MirType::Int,
+            };
+
+            self.functions.push(MirFunction {
+                name: fn_name.clone(),
+                params,
+                return_type: MirType::Int,
+                body,
+                is_closure_fn: false,
+                captures: Vec::new(),
+            });
+        }
+
+        // ── Generate cast helper functions ─────────────────────────────────
+        // __service_{name}_cast_{snake}(pid: i64, args...) -> Unit
+        // Builds message: [u64 type_tag][args as i64s]
+        // Calls snow_actor_send(pid, msg_ptr, msg_size) (fire-and-forget)
+
+        for info in &cast_infos {
+            let fn_name = format!("__service_{}_cast_{}", name_lower, info.snake_name);
+
+            let mut params = vec![("__pid".to_string(), MirType::Int)];
+            for p_name in &info.param_names {
+                params.push((p_name.clone(), MirType::Int));
+            }
+
+            // Body: build message buffer with [tag][args] and call snow_actor_send.
+            // Represent as an ActorSend with a constructed message.
+            // Actually, we need the message to include the type_tag as part of the data.
+            // For cast, the message is: [u64 type_tag][args as i64s] (no caller_pid).
+            //
+            // Wait - for cast, the service loop still receives via the same dispatch.
+            // The message format should be consistent. Let's use:
+            //   Cast message: [u64 type_tag][u64 0 (no caller)][args as i64s]
+            // This way the loop can always extract tag at offset 0 and caller at offset 8.
+
+            let body = MirExpr::Call {
+                func: Box::new(MirExpr::Var(
+                    "snow_actor_send".to_string(),
+                    MirType::FnPtr(
+                        vec![MirType::Int, MirType::Ptr, MirType::Int],
+                        Box::new(MirType::Unit),
+                    ),
+                )),
+                args: {
+                    let mut args = vec![
+                        MirExpr::Var("__pid".to_string(), MirType::Int),
+                        MirExpr::IntLit(info.tag as i64, MirType::Int),
+                    ];
+                    for p_name in &info.param_names {
+                        args.push(MirExpr::Var(p_name.clone(), MirType::Int));
+                    }
+                    args
+                },
+                ty: MirType::Unit,
+            };
+
+            self.functions.push(MirFunction {
+                name: fn_name.clone(),
+                params,
+                return_type: MirType::Unit,
+                body,
+                is_closure_fn: false,
+                captures: Vec::new(),
+            });
+        }
+
+        // ── Generate start function ──────────────────────────────────────
+        // __service_{name}_start(init_args...) -> Pid(None)
+        // Calls init to get initial state, spawns the loop actor, returns PID.
+
+        {
+            // Body: let state = init(args); spawn(loop, state)
+            let init_call = MirExpr::Call {
+                func: Box::new(MirExpr::Var(
+                    init_fn_name.clone(),
+                    MirType::FnPtr(
+                        init_params.iter().map(|(_, t)| t.clone()).collect(),
+                        Box::new(MirType::Int),
+                    ),
+                )),
+                args: init_params
+                    .iter()
+                    .map(|(n, t)| MirExpr::Var(n.clone(), t.clone()))
+                    .collect(),
+                ty: MirType::Int,
+            };
+
+            let body = MirExpr::Let {
+                name: "__init_state".to_string(),
+                ty: MirType::Int,
+                value: Box::new(init_call),
+                body: Box::new(MirExpr::ActorSpawn {
+                    func: Box::new(MirExpr::Var(
+                        loop_fn_name.clone(),
+                        MirType::FnPtr(vec![MirType::Int], Box::new(MirType::Unit)),
+                    )),
+                    args: vec![MirExpr::Var("__init_state".to_string(), MirType::Int)],
+                    priority: 1,
+                    terminate_callback: None,
+                    ty: MirType::Pid(None),
+                }),
+            };
+
+            self.functions.push(MirFunction {
+                name: start_fn_name.clone(),
+                params: init_params.clone(),
+                return_type: MirType::Pid(None),
+                body,
+                is_closure_fn: false,
+                captures: Vec::new(),
+            });
+            self.known_functions.insert(
+                start_fn_name,
+                MirType::FnPtr(
+                    init_params.iter().map(|(_, t)| t.clone()).collect(),
+                    Box::new(MirType::Pid(None)),
+                ),
+            );
+        }
+
+        // ── Generate the actual loop function (actor body) ───────────────
+        // This is the actor entry function that:
+        //   1. Receives a message (raw pointer)
+        //   2. Extracts type_tag (offset 0 in data after header)
+        //   3. Extracts caller_pid (offset 8)
+        //   4. Extracts args (offset 16+)
+        //   5. Dispatches to handler
+        //   6. For call: replies to caller, recurses with new state
+        //   7. For cast: recurses with new state
+        //
+        // We represent the loop body using ActorReceive + dispatch.
+        // However, since MIR ActorReceive only gives us a single typed value
+        // and we need raw pointer access, we'll use a special approach:
+        //
+        // Generate the loop as a regular function that calls snow_actor_receive(-1)
+        // directly, then does pointer arithmetic for dispatch.
+        //
+        // The MIR body will be a Call to __service_{name}_dispatch(state, msg_ptr)
+        // which returns the new state, then tail-calls the loop.
+
+        // Generate dispatch function:
+        // __service_{name}_dispatch(state: i64, msg_ptr: ptr) -> i64 (new_state)
+        //
+        // This function extracts tag/caller/args from msg_ptr and dispatches.
+        // Since we can't do pointer arithmetic in MIR, this will be handled
+        // specially by codegen when it sees the function name pattern.
+        //
+        // ACTUALLY: Let me take a step back. The CLEANEST approach for the loop
+        // is to not try to express raw pointer ops in MIR at all. Instead:
+        //
+        // Generate the loop function as an actor body, and add a new MirExpr
+        // variant for service dispatch that codegen handles.
+
+        // First, let's add the service dispatch info so codegen can generate it.
+        // We'll store it as metadata and generate the loop body in codegen.
+
+        // Build handler dispatch info for codegen.
+        let mut call_dispatch_info = Vec::new();
+        for info in &call_infos {
+            let handler_fn = format!(
+                "__service_{}_handle_call_{}",
+                name_lower, info.snake_name
+            );
+            call_dispatch_info.push((info.tag, handler_fn, info.param_names.len()));
+        }
+
+        let mut cast_dispatch_info = Vec::new();
+        for info in &cast_infos {
+            let handler_fn = format!(
+                "__service_{}_handle_cast_{}",
+                name_lower, info.snake_name
+            );
+            cast_dispatch_info.push((info.tag, handler_fn, info.param_names.len()));
+        }
+
+        // The loop function body is: receive -> dispatch -> recurse.
+        // We represent this as a Block containing:
+        //   1. Call snow_actor_receive(-1) -> msg_ptr
+        //   2. Service-specific dispatch on msg_ptr
+        //   3. Tail call to loop with new_state
+        //
+        // For (2), we generate inline if/else dispatch in MIR using the type_tag.
+        // Since we can't extract fields from a pointer in MIR, we'll generate the
+        // entire loop body at codegen level.
+        //
+        // DECISION: Use a MIR representation that captures everything codegen needs.
+        // The loop body is an opaque "ServiceDispatchLoop" that codegen expands.
+
+        // For cleanliness, represent the loop body as a MIR Block that contains
+        // only the dispatch metadata encoded as a string pattern.
+        // The codegen recognizes functions named "__service_*_loop" and generates
+        // the dispatch loop specially.
+        //
+        // We store dispatch metadata on the Lowerer to pass to codegen via MirModule.
+        // Actually, we can't easily extend MirModule. Instead, encode the dispatch
+        // info in the function body itself using a convention.
+        //
+        // SIMPLEST: The loop function body is MirExpr::Unit. Codegen recognizes
+        // functions named "__service_*_loop" and generates the appropriate code.
+        // But codegen needs to know the handlers/tags. We can pass this through
+        // function metadata.
+        //
+        // Let's encode the dispatch table as IntLit constants in a Block.
+        // Convention: Block([IntLit(num_call_handlers), IntLit(tag0), ..., IntLit(num_cast_handlers), IntLit(tag0), ...])
+        //
+        // Better: just use the function naming convention. Codegen can discover
+        // __service_{name}_handle_call_* and __service_{name}_handle_cast_* functions
+        // from the MIR module.
+        //
+        // BEST APPROACH: Encode the loop as a series of MirExpr nodes that
+        // codegen CAN handle. The loop body is conceptually:
+        //
+        //   let msg_ptr = receive(-1)  -- raw pointer
+        //   -- dispatch based on msg_ptr[0] (type_tag), msg_ptr[8] (caller_pid), msg_ptr[16+] (args)
+        //
+        // Since receive returns a pointer and codegen can access it, we CAN
+        // generate the loop as:
+        //   ActorReceive(-1) -> msg_ptr
+        //   Then use FieldAccess-like operations on msg_ptr
+        //
+        // BUT MIR doesn't have raw pointer field access.
+        //
+        // FINAL DECISION: The loop body uses ActorReceive to get msg data as Int
+        // (which gives us the type_tag -- the first i64 after the 16-byte header).
+        // We then use if/else dispatch on the tag. For each handler arm:
+        //   - Call handlers need caller_pid and args from the message
+        //   - We can't get those from MIR alone
+        //
+        // So we MUST handle the loop at codegen level. The function
+        // __service_{name}_loop will have a body of MirExpr::Unit, and codegen
+        // will detect this pattern and generate the appropriate assembly.
+        //
+        // To pass dispatch info to codegen, we'll extend MirModule with
+        // service_dispatch_info.
+
+        // PRAGMATIC FINAL: Use the MirExpr::Unit body with function naming convention,
+        // and encode dispatch metadata as comments in the function (using known_functions
+        // registry). The codegen will look up handlers by naming convention.
+
+        self.functions.push(MirFunction {
+            name: loop_fn_name.clone(),
+            params: vec![("__state".to_string(), MirType::Int)],
+            return_type: MirType::Unit,
+            body: MirExpr::Unit, // Codegen generates the actual dispatch loop
+            is_closure_fn: false,
+            captures: Vec::new(),
+        });
+        self.known_functions.insert(
+            loop_fn_name,
+            MirType::FnPtr(vec![MirType::Int], Box::new(MirType::Unit)),
+        );
+    }
+
     // ── Actor expression lowering ───────────────────────────────────────
 
     fn lower_spawn_expr(&mut self, spawn: &SpawnExpr) -> MirExpr {
@@ -1819,7 +2544,7 @@ impl<'a> Lowerer<'a> {
 
 /// Set of known stdlib module names for qualified access lowering.
 const STDLIB_MODULES: &[&str] = &[
-    "String", "IO", "Env", "File", "List", "Map", "Set", "Tuple", "Range", "Queue", "HTTP", "JSON", "Request",
+    "String", "IO", "Env", "File", "List", "Map", "Set", "Tuple", "Range", "Queue", "HTTP", "JSON", "Request", "Job",
 ];
 
 /// Map Snow builtin function names to their runtime equivalents.
@@ -1965,8 +2690,29 @@ fn map_builtin_name(name: &str) -> String {
         // post, method, path, body, etc.) because they collide with common
         // variable names. Use module-qualified access instead:
         //   HTTP.router(), HTTP.route(), Request.method(), etc.
+        // ── Job functions (Phase 9 Plan 04 prep) ────────────────────────
+        "job_async" => "snow_job_async".to_string(),
+        "job_await" => "snow_job_await".to_string(),
+        "job_await_all" => "snow_job_await_all".to_string(),
+        "job_await_any" => "snow_job_await_any".to_string(),
         _ => name.to_string(),
     }
+}
+
+/// Convert a PascalCase name to snake_case.
+fn to_snake_case(name: &str) -> String {
+    let mut result = String::new();
+    for (i, ch) in name.chars().enumerate() {
+        if ch.is_uppercase() {
+            if i > 0 {
+                result.push('_');
+            }
+            result.push(ch.to_lowercase().next().unwrap());
+        } else {
+            result.push(ch);
+        }
+    }
+    result
 }
 
 /// Extract simple string content from a LITERAL or STRING_EXPR syntax node.
@@ -2218,11 +2964,80 @@ pub fn lower_to_mir(parse: &Parse, typeck: &TypeckResult) -> Result<MirModule, S
 
     lowerer.lower_source_file(source_file);
 
+    // Build service dispatch tables from the generated functions.
+    let mut service_dispatch = HashMap::new();
+    for func in &lowerer.functions {
+        if func.name.starts_with("__service_") && func.name.ends_with("_loop") {
+            // Extract service name from __service_{name}_loop
+            let service_name = func.name
+                .strip_prefix("__service_")
+                .and_then(|s| s.strip_suffix("_loop"))
+                .unwrap_or("")
+                .to_string();
+
+            let mut call_handlers = Vec::new();
+            let mut cast_handlers = Vec::new();
+
+            for f in &lowerer.functions {
+                let call_prefix = format!("__service_{}_handle_call_", service_name);
+                let cast_prefix = format!("__service_{}_handle_cast_", service_name);
+
+                if f.name.starts_with(&call_prefix) {
+                    // params: (state, arg0, arg1, ...) -- num_args = params.len() - 1
+                    let num_args = if f.params.len() > 1 { f.params.len() - 1 } else { 0 };
+                    // Find the tag from the matching call helper function.
+                    let method_name = f.name.strip_prefix(&call_prefix).unwrap_or("");
+                    let call_fn = format!("__service_{}_call_{}", service_name, method_name);
+                    // Find the tag by looking at the call helper's IntLit arg.
+                    let tag = lowerer.functions.iter()
+                        .find(|cf| cf.name == call_fn)
+                        .and_then(|cf| {
+                            if let MirExpr::Call { args, .. } = &cf.body {
+                                if args.len() >= 2 {
+                                    if let MirExpr::IntLit(tag, _) = &args[1] {
+                                        return Some(*tag as u64);
+                                    }
+                                }
+                            }
+                            None
+                        })
+                        .unwrap_or(0);
+                    call_handlers.push((tag, f.name.clone(), num_args));
+                } else if f.name.starts_with(&cast_prefix) {
+                    let num_args = if f.params.len() > 1 { f.params.len() - 1 } else { 0 };
+                    let method_name = f.name.strip_prefix(&cast_prefix).unwrap_or("");
+                    let cast_fn = format!("__service_{}_cast_{}", service_name, method_name);
+                    let tag = lowerer.functions.iter()
+                        .find(|cf| cf.name == cast_fn)
+                        .and_then(|cf| {
+                            if let MirExpr::Call { args, .. } = &cf.body {
+                                if args.len() >= 2 {
+                                    if let MirExpr::IntLit(tag, _) = &args[1] {
+                                        return Some(*tag as u64);
+                                    }
+                                }
+                            }
+                            None
+                        })
+                        .unwrap_or(0);
+                    cast_handlers.push((tag, f.name.clone(), num_args));
+                }
+            }
+
+            // Sort by tag so dispatch is deterministic.
+            call_handlers.sort_by_key(|h| h.0);
+            cast_handlers.sort_by_key(|h| h.0);
+
+            service_dispatch.insert(func.name.clone(), (call_handlers, cast_handlers));
+        }
+    }
+
     Ok(MirModule {
         functions: lowerer.functions,
         structs: lowerer.structs,
         sum_types: lowerer.sum_types,
         entry_function: lowerer.entry_function,
+        service_dispatch,
     })
 }
 
@@ -2455,6 +3270,133 @@ end
             matches!(func.body, MirExpr::Match { .. }),
             "Expected Match, got {:?}",
             func.body
+        );
+    }
+
+    #[test]
+    fn lower_service_def_generates_functions() {
+        let mir = lower(
+            r#"
+service Counter do
+  fn init(initial :: Int) -> Int do
+    initial
+  end
+
+  call GetCount() :: Int do |count|
+    (count, count)
+  end
+
+  cast Reset() do |_count|
+    0
+  end
+end
+"#,
+        );
+
+        let fn_names: Vec<&str> = mir.functions.iter().map(|f| f.name.as_str()).collect();
+
+        // Should have generated init, loop, start, call helper, cast helper, and handler functions.
+        assert!(
+            fn_names.iter().any(|n| n.contains("__service_counter_init")),
+            "Missing init function. Functions: {:?}",
+            fn_names
+        );
+        assert!(
+            fn_names.iter().any(|n| n.contains("__service_counter_loop")),
+            "Missing loop function. Functions: {:?}",
+            fn_names
+        );
+        assert!(
+            fn_names.iter().any(|n| n.contains("__service_counter_start")),
+            "Missing start function. Functions: {:?}",
+            fn_names
+        );
+        assert!(
+            fn_names.iter().any(|n| n.contains("__service_counter_call_get_count")),
+            "Missing call helper function. Functions: {:?}",
+            fn_names
+        );
+        assert!(
+            fn_names.iter().any(|n| n.contains("__service_counter_cast_reset")),
+            "Missing cast helper function. Functions: {:?}",
+            fn_names
+        );
+        assert!(
+            fn_names.iter().any(|n| n.contains("__service_counter_handle_call_get_count")),
+            "Missing call handler function. Functions: {:?}",
+            fn_names
+        );
+        assert!(
+            fn_names.iter().any(|n| n.contains("__service_counter_handle_cast_reset")),
+            "Missing cast handler function. Functions: {:?}",
+            fn_names
+        );
+    }
+
+    #[test]
+    fn lower_service_dispatch_table_populated() {
+        let mir = lower(
+            r#"
+service Counter do
+  fn init(initial :: Int) -> Int do
+    initial
+  end
+
+  call GetCount() :: Int do |count|
+    (count, count)
+  end
+
+  cast Reset() do |_count|
+    0
+  end
+end
+"#,
+        );
+
+        // Should have a service_dispatch entry for the loop.
+        assert!(
+            !mir.service_dispatch.is_empty(),
+            "service_dispatch should not be empty"
+        );
+        let loop_key = mir
+            .service_dispatch
+            .keys()
+            .find(|k| k.contains("counter_loop"))
+            .expect("Missing counter_loop dispatch entry");
+        let (calls, casts) = &mir.service_dispatch[loop_key];
+        assert_eq!(calls.len(), 1, "Should have 1 call handler");
+        assert_eq!(casts.len(), 1, "Should have 1 cast handler");
+        assert_eq!(calls[0].0, 0, "Call handler tag should be 0");
+        assert_eq!(casts[0].0, 1, "Cast handler tag should be 1");
+    }
+
+    #[test]
+    fn lower_service_field_access_resolves() {
+        let mir = lower(
+            r#"
+service Counter do
+  fn init(initial :: Int) -> Int do
+    initial
+  end
+
+  call GetCount() :: Int do |count|
+    (count, count)
+  end
+end
+
+fn main() do
+  let pid = Counter.start(0)
+  let count = Counter.get_count(pid)
+  println(int_to_string(count))
+end
+"#,
+        );
+
+        let main_fn = mir.functions.iter().find(|f| f.name == "snow_main");
+        assert!(
+            main_fn.is_some(),
+            "Missing snow_main function. Functions: {:?}",
+            mir.functions.iter().map(|f| &f.name).collect::<Vec<_>>()
         );
     }
 }

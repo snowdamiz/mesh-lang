@@ -243,6 +243,7 @@ mod tests {
             structs: vec![],
             sum_types: vec![],
             entry_function: Some("main".to_string()),
+            service_dispatch: std::collections::HashMap::new(),
         };
 
         monomorphize(&mut module);
@@ -277,6 +278,7 @@ mod tests {
             structs: vec![],
             sum_types: vec![],
             entry_function: None,
+            service_dispatch: std::collections::HashMap::new(),
         };
 
         monomorphize(&mut module);
