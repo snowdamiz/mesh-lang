@@ -167,7 +167,7 @@ Plans:
 - [x] 08-01-PLAN.md -- String operations, console I/O, Env access, and module/import namespace resolution
 - [x] 08-02-PLAN.md -- Collections (List with map/filter/reduce, Map/HashMap, Set)
 - [x] 08-03-PLAN.md -- File I/O with Result types
-- [ ] 08-04-PLAN.md -- JSON encoding/decoding with serde_json
+- [x] 08-04-PLAN.md -- JSON encoding/decoding with serde_json
 - [ ] 08-05-PLAN.md -- HTTP client and server with actor-per-connection model
 
 ### Phase 9: Concurrency Standard Library
