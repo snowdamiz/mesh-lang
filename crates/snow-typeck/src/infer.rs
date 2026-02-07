@@ -190,6 +190,94 @@ struct FnConstraints {
     param_type_param_names: Vec<Option<String>>,
 }
 
+// ── Standard Library Module Resolution (Phase 8) ──────────────────────
+
+use std::collections::HashMap;
+
+/// Build the stdlib module namespace registry.
+///
+/// Maps module names (e.g., "String", "IO", "Env") to their exported
+/// function names and type schemes. This is used by both `from X import y`
+/// and `X.y` resolution paths.
+fn stdlib_modules() -> HashMap<String, HashMap<String, Scheme>> {
+    let mut modules: HashMap<String, HashMap<String, Scheme>> = HashMap::new();
+
+    // ── String module ──────────────────────────────────────────────
+    let mut string_mod = HashMap::new();
+    string_mod.insert(
+        "length".to_string(),
+        Scheme::mono(Ty::fun(vec![Ty::string()], Ty::int())),
+    );
+    string_mod.insert(
+        "slice".to_string(),
+        Scheme::mono(Ty::fun(vec![Ty::string(), Ty::int(), Ty::int()], Ty::string())),
+    );
+    string_mod.insert(
+        "contains".to_string(),
+        Scheme::mono(Ty::fun(vec![Ty::string(), Ty::string()], Ty::bool())),
+    );
+    string_mod.insert(
+        "starts_with".to_string(),
+        Scheme::mono(Ty::fun(vec![Ty::string(), Ty::string()], Ty::bool())),
+    );
+    string_mod.insert(
+        "ends_with".to_string(),
+        Scheme::mono(Ty::fun(vec![Ty::string(), Ty::string()], Ty::bool())),
+    );
+    string_mod.insert(
+        "trim".to_string(),
+        Scheme::mono(Ty::fun(vec![Ty::string()], Ty::string())),
+    );
+    string_mod.insert(
+        "to_upper".to_string(),
+        Scheme::mono(Ty::fun(vec![Ty::string()], Ty::string())),
+    );
+    string_mod.insert(
+        "to_lower".to_string(),
+        Scheme::mono(Ty::fun(vec![Ty::string()], Ty::string())),
+    );
+    string_mod.insert(
+        "replace".to_string(),
+        Scheme::mono(Ty::fun(
+            vec![Ty::string(), Ty::string(), Ty::string()],
+            Ty::string(),
+        )),
+    );
+    modules.insert("String".to_string(), string_mod);
+
+    // ── IO module ──────────────────────────────────────────────────
+    let mut io_mod = HashMap::new();
+    io_mod.insert(
+        "read_line".to_string(),
+        Scheme::mono(Ty::fun(vec![], Ty::result(Ty::string(), Ty::string()))),
+    );
+    io_mod.insert(
+        "eprintln".to_string(),
+        Scheme::mono(Ty::fun(vec![Ty::string()], Ty::Tuple(vec![]))),
+    );
+    modules.insert("IO".to_string(), io_mod);
+
+    // ── Env module ─────────────────────────────────────────────────
+    let mut env_mod = HashMap::new();
+    env_mod.insert(
+        "get".to_string(),
+        Scheme::mono(Ty::fun(vec![Ty::string()], Ty::option(Ty::string()))),
+    );
+    modules.insert("Env".to_string(), env_mod);
+
+    modules
+}
+
+/// Set of module names recognized by the stdlib for qualified access.
+const STDLIB_MODULE_NAMES: &[&str] = &[
+    "String", "IO", "Env", "File", "List", "Map", "Set", "HTTP", "JSON",
+];
+
+/// Check if a name is a known stdlib module.
+fn is_stdlib_module(name: &str) -> bool {
+    STDLIB_MODULE_NAMES.contains(&name)
+}
+
 /// Infer types for a parsed Snow program.
 ///
 /// This is the main entry point. Creates an inference context and type
@@ -448,8 +536,45 @@ fn infer_item(
             infer_impl_def(ctx, env, impl_, types, type_registry, trait_registry, fn_constraints);
             None
         }
-        // Declarations that don't produce a value type:
-        Item::ModuleDef(_) | Item::ImportDecl(_) | Item::FromImportDecl(_) => None,
+        // Module declarations -- skip module def, handle imports.
+        Item::ModuleDef(_) => None,
+        Item::ImportDecl(_) => {
+            // `import String` -- makes String.x qualified access available.
+            // Module-qualified access is handled in infer_field_access via
+            // stdlib_modules(). The import just validates the module name.
+            None
+        }
+        Item::FromImportDecl(ref from_import) => {
+            // `from String import length, trim` -- inject names into local scope.
+            let modules = stdlib_modules();
+            if let Some(path) = from_import.module_path() {
+                let segments = path.segments();
+                if let Some(module_name) = segments.first() {
+                    if let Some(mod_exports) = modules.get(module_name.as_str()) {
+                        if let Some(import_list) = from_import.import_list() {
+                            for name_node in import_list.names() {
+                                if let Some(name) = name_node.text() {
+                                    if let Some(scheme) = mod_exports.get(&name) {
+                                        // Insert into env under the bare name so the
+                                        // user can call `length("hello")` directly.
+                                        env.insert(name.clone(), scheme.clone());
+                                        // Also insert the prefixed form so lowering can
+                                        // resolve it to the runtime function.
+                                        let prefixed = format!(
+                                            "{}_{}",
+                                            module_name.to_lowercase(),
+                                            name
+                                        );
+                                        env.insert(prefixed, scheme.clone());
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            None
+        }
         Item::SumTypeDef(sum_def) => {
             register_sum_type_def(ctx, env, sum_def, type_registry);
             None
@@ -2191,11 +2316,22 @@ fn infer_field_access(
         None => "<unknown>".to_string(),
     };
 
-    // Check if base is a NameRef pointing to a sum type name for variant construction.
-    // e.g. Shape.Circle -- Shape is a sum type, Circle is a variant.
+    // Check if base is a NameRef pointing to a stdlib module name for qualified access.
+    // e.g. String.length, IO.read_line, Env.get -- module-qualified function reference.
     if let Expr::NameRef(ref name_ref) = base_expr {
         if let Some(base_name) = name_ref.text() {
-            // Look up qualified variant: TypeName.VariantName
+            if is_stdlib_module(&base_name) {
+                let modules = stdlib_modules();
+                if let Some(mod_exports) = modules.get(&base_name) {
+                    if let Some(scheme) = mod_exports.get(&field_name) {
+                        let ty = ctx.instantiate(scheme);
+                        return Ok(ty);
+                    }
+                }
+            }
+
+            // Check if base is a sum type name for variant construction.
+            // e.g. Shape.Circle -- Shape is a sum type, Circle is a variant.
             if let Some((_sum_info, _variant_info)) =
                 type_registry.lookup_qualified_variant(&base_name, &field_name)
             {

@@ -156,6 +156,63 @@ impl<'a> Lowerer<'a> {
             "print".to_string(),
             MirType::FnPtr(vec![MirType::String], Box::new(MirType::Unit)),
         );
+
+        // Register stdlib functions as known functions (Phase 8).
+        // String operations
+        self.known_functions.insert(
+            "snow_string_length".to_string(),
+            MirType::FnPtr(vec![MirType::String], Box::new(MirType::Int)),
+        );
+        self.known_functions.insert(
+            "snow_string_slice".to_string(),
+            MirType::FnPtr(vec![MirType::String, MirType::Int, MirType::Int], Box::new(MirType::String)),
+        );
+        self.known_functions.insert(
+            "snow_string_contains".to_string(),
+            MirType::FnPtr(vec![MirType::String, MirType::String], Box::new(MirType::Bool)),
+        );
+        self.known_functions.insert(
+            "snow_string_starts_with".to_string(),
+            MirType::FnPtr(vec![MirType::String, MirType::String], Box::new(MirType::Bool)),
+        );
+        self.known_functions.insert(
+            "snow_string_ends_with".to_string(),
+            MirType::FnPtr(vec![MirType::String, MirType::String], Box::new(MirType::Bool)),
+        );
+        self.known_functions.insert(
+            "snow_string_trim".to_string(),
+            MirType::FnPtr(vec![MirType::String], Box::new(MirType::String)),
+        );
+        self.known_functions.insert(
+            "snow_string_to_upper".to_string(),
+            MirType::FnPtr(vec![MirType::String], Box::new(MirType::String)),
+        );
+        self.known_functions.insert(
+            "snow_string_to_lower".to_string(),
+            MirType::FnPtr(vec![MirType::String], Box::new(MirType::String)),
+        );
+        self.known_functions.insert(
+            "snow_string_replace".to_string(),
+            MirType::FnPtr(vec![MirType::String, MirType::String, MirType::String], Box::new(MirType::String)),
+        );
+        // IO functions
+        self.known_functions.insert(
+            "snow_io_read_line".to_string(),
+            MirType::FnPtr(vec![], Box::new(MirType::Ptr)),
+        );
+        self.known_functions.insert(
+            "snow_io_eprintln".to_string(),
+            MirType::FnPtr(vec![MirType::String], Box::new(MirType::Unit)),
+        );
+        // Env functions
+        self.known_functions.insert(
+            "snow_env_get".to_string(),
+            MirType::FnPtr(vec![MirType::String], Box::new(MirType::Ptr)),
+        );
+        self.known_functions.insert(
+            "snow_env_args".to_string(),
+            MirType::FnPtr(vec![], Box::new(MirType::Ptr)),
+        );
         // Also register variant constructors as known functions.
         for (_, sum_info) in &self.registry.sum_type_defs {
             for variant in &sum_info.variants {
@@ -750,6 +807,28 @@ impl<'a> Lowerer<'a> {
     // ── Field access lowering ────────────────────────────────────────
 
     fn lower_field_access(&mut self, fa: &FieldAccess) -> MirExpr {
+        // Check if this is a module-qualified access (e.g., String.length).
+        // If the base is a NameRef whose text is a known stdlib module,
+        // resolve as a function reference instead of a struct field access.
+        if let Some(base_expr) = fa.base() {
+            if let Expr::NameRef(ref name_ref) = base_expr {
+                if let Some(base_name) = name_ref.text() {
+                    if STDLIB_MODULES.contains(&base_name.as_str()) {
+                        let field = fa
+                            .field()
+                            .map(|t| t.text().to_string())
+                            .unwrap_or_default();
+                        // Convert to prefixed name: String.length -> string_length
+                        let prefixed = format!("{}_{}", base_name.to_lowercase(), field);
+                        // Map to runtime name
+                        let runtime_name = map_builtin_name(&prefixed);
+                        let ty = self.resolve_range(fa.syntax().text_range());
+                        return MirExpr::Var(runtime_name, ty);
+                    }
+                }
+            }
+        }
+
         let object = fa
             .base()
             .map(|e| self.lower_expr(&e))
@@ -1643,15 +1722,50 @@ impl<'a> Lowerer<'a> {
 
 // ── Helper functions ─────────────────────────────────────────────────
 
+/// Set of known stdlib module names for qualified access lowering.
+const STDLIB_MODULES: &[&str] = &[
+    "String", "IO", "Env", "File", "List", "Map", "Set", "HTTP", "JSON",
+];
+
 /// Map Snow builtin function names to their runtime equivalents.
 ///
-/// Snow source uses clean names like `println`, `print`, `to_string`.
+/// Snow source uses clean names like `println`, `print`, `string_length`.
 /// These are mapped to the actual runtime function names like `snow_println`,
-/// `snow_print`, `snow_int_to_string` at the MIR level.
+/// `snow_print`, `snow_string_length` at the MIR level.
 fn map_builtin_name(name: &str) -> String {
     match name {
         "println" => "snow_println".to_string(),
         "print" => "snow_print".to_string(),
+        // String operations
+        "string_length" => "snow_string_length".to_string(),
+        "string_slice" => "snow_string_slice".to_string(),
+        "string_contains" => "snow_string_contains".to_string(),
+        "string_starts_with" => "snow_string_starts_with".to_string(),
+        "string_ends_with" => "snow_string_ends_with".to_string(),
+        "string_trim" => "snow_string_trim".to_string(),
+        "string_to_upper" => "snow_string_to_upper".to_string(),
+        "string_to_lower" => "snow_string_to_lower".to_string(),
+        "string_replace" => "snow_string_replace".to_string(),
+        // IO functions
+        "io_read_line" => "snow_io_read_line".to_string(),
+        "io_eprintln" => "snow_io_eprintln".to_string(),
+        // Env functions
+        "env_get" => "snow_env_get".to_string(),
+        "env_args" => "snow_env_args".to_string(),
+        // Names that have already been resolved via from-import and lowered
+        // with the module prefix (e.g., user wrote `length` after `from String import length`,
+        // but it was registered with both names so it may arrive as bare name here).
+        "length" => "snow_string_length".to_string(),
+        "trim" => "snow_string_trim".to_string(),
+        "contains" => "snow_string_contains".to_string(),
+        "starts_with" => "snow_string_starts_with".to_string(),
+        "ends_with" => "snow_string_ends_with".to_string(),
+        "to_upper" => "snow_string_to_upper".to_string(),
+        "to_lower" => "snow_string_to_lower".to_string(),
+        "replace" => "snow_string_replace".to_string(),
+        "slice" => "snow_string_slice".to_string(),
+        "read_line" => "snow_io_read_line".to_string(),
+        "eprintln" => "snow_io_eprintln".to_string(),
         _ => name.to_string(),
     }
 }

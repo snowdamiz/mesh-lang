@@ -137,6 +137,74 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
     let actor_exit_ty = void_type.fn_type(&[i64_type.into(), i8_type.into()], false);
     module.add_function("snow_actor_exit", actor_exit_ty, Some(inkwell::module::Linkage::External));
 
+    // ── Standard library: String operations (Phase 8) ──────────────────
+
+    // snow_string_length(s: ptr) -> i64
+    let string_length_ty = i64_type.fn_type(&[ptr_type.into()], false);
+    module.add_function("snow_string_length", string_length_ty, Some(inkwell::module::Linkage::External));
+
+    // snow_string_slice(s: ptr, start: i64, end: i64) -> ptr
+    let string_slice_ty = ptr_type.fn_type(
+        &[ptr_type.into(), i64_type.into(), i64_type.into()],
+        false,
+    );
+    module.add_function("snow_string_slice", string_slice_ty, Some(inkwell::module::Linkage::External));
+
+    // snow_string_contains(haystack: ptr, needle: ptr) -> i8
+    let string_contains_ty = i8_type.fn_type(&[ptr_type.into(), ptr_type.into()], false);
+    module.add_function("snow_string_contains", string_contains_ty, Some(inkwell::module::Linkage::External));
+
+    // snow_string_starts_with(s: ptr, prefix: ptr) -> i8
+    let string_starts_with_ty = i8_type.fn_type(&[ptr_type.into(), ptr_type.into()], false);
+    module.add_function("snow_string_starts_with", string_starts_with_ty, Some(inkwell::module::Linkage::External));
+
+    // snow_string_ends_with(s: ptr, suffix: ptr) -> i8
+    let string_ends_with_ty = i8_type.fn_type(&[ptr_type.into(), ptr_type.into()], false);
+    module.add_function("snow_string_ends_with", string_ends_with_ty, Some(inkwell::module::Linkage::External));
+
+    // snow_string_trim(s: ptr) -> ptr
+    let string_trim_ty = ptr_type.fn_type(&[ptr_type.into()], false);
+    module.add_function("snow_string_trim", string_trim_ty, Some(inkwell::module::Linkage::External));
+
+    // snow_string_to_upper(s: ptr) -> ptr
+    let string_to_upper_ty = ptr_type.fn_type(&[ptr_type.into()], false);
+    module.add_function("snow_string_to_upper", string_to_upper_ty, Some(inkwell::module::Linkage::External));
+
+    // snow_string_to_lower(s: ptr) -> ptr
+    let string_to_lower_ty = ptr_type.fn_type(&[ptr_type.into()], false);
+    module.add_function("snow_string_to_lower", string_to_lower_ty, Some(inkwell::module::Linkage::External));
+
+    // snow_string_replace(s: ptr, from: ptr, to: ptr) -> ptr
+    let string_replace_ty = ptr_type.fn_type(
+        &[ptr_type.into(), ptr_type.into(), ptr_type.into()],
+        false,
+    );
+    module.add_function("snow_string_replace", string_replace_ty, Some(inkwell::module::Linkage::External));
+
+    // snow_string_eq(a: ptr, b: ptr) -> i8
+    let string_eq_ty = i8_type.fn_type(&[ptr_type.into(), ptr_type.into()], false);
+    module.add_function("snow_string_eq", string_eq_ty, Some(inkwell::module::Linkage::External));
+
+    // ── Standard library: IO functions (Phase 8) ─────────────────────
+
+    // snow_io_read_line() -> ptr (SnowResult)
+    let io_read_line_ty = ptr_type.fn_type(&[], false);
+    module.add_function("snow_io_read_line", io_read_line_ty, Some(inkwell::module::Linkage::External));
+
+    // snow_io_eprintln(s: ptr) -> void
+    let io_eprintln_ty = void_type.fn_type(&[ptr_type.into()], false);
+    module.add_function("snow_io_eprintln", io_eprintln_ty, Some(inkwell::module::Linkage::External));
+
+    // ── Standard library: Env functions (Phase 8) ────────────────────
+
+    // snow_env_get(key: ptr) -> ptr (SnowOption)
+    let env_get_ty = ptr_type.fn_type(&[ptr_type.into()], false);
+    module.add_function("snow_env_get", env_get_ty, Some(inkwell::module::Linkage::External));
+
+    // snow_env_args() -> ptr (packed array)
+    let env_args_ty = ptr_type.fn_type(&[], false);
+    module.add_function("snow_env_args", env_args_ty, Some(inkwell::module::Linkage::External));
+
     // snow_panic(msg: ptr, msg_len: u64, file: ptr, file_len: u64, line: u32) -> void
     // (noreturn -- marked via attribute)
     let panic_params: Vec<BasicMetadataTypeEnum<'ctx>> = vec![
@@ -208,6 +276,22 @@ mod tests {
         assert!(module.get_function("snow_supervisor_count_children").is_some());
         assert!(module.get_function("snow_actor_trap_exit").is_some());
         assert!(module.get_function("snow_actor_exit").is_some());
+
+        // Standard library functions (Phase 8)
+        assert!(module.get_function("snow_string_length").is_some());
+        assert!(module.get_function("snow_string_slice").is_some());
+        assert!(module.get_function("snow_string_contains").is_some());
+        assert!(module.get_function("snow_string_starts_with").is_some());
+        assert!(module.get_function("snow_string_ends_with").is_some());
+        assert!(module.get_function("snow_string_trim").is_some());
+        assert!(module.get_function("snow_string_to_upper").is_some());
+        assert!(module.get_function("snow_string_to_lower").is_some());
+        assert!(module.get_function("snow_string_replace").is_some());
+        assert!(module.get_function("snow_string_eq").is_some());
+        assert!(module.get_function("snow_io_read_line").is_some());
+        assert!(module.get_function("snow_io_eprintln").is_some());
+        assert!(module.get_function("snow_env_get").is_some());
+        assert!(module.get_function("snow_env_args").is_some());
     }
 
     #[test]

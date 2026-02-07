@@ -112,6 +112,66 @@ pub fn register_builtins(
         "not".into(),
         Scheme::mono(Ty::fun(vec![Ty::bool()], Ty::bool())),
     );
+
+    // ── Standard library: String operations (Phase 8) ────────────────
+
+    env.insert(
+        "string_length".into(),
+        Scheme::mono(Ty::fun(vec![Ty::string()], Ty::int())),
+    );
+    env.insert(
+        "string_slice".into(),
+        Scheme::mono(Ty::fun(vec![Ty::string(), Ty::int(), Ty::int()], Ty::string())),
+    );
+    env.insert(
+        "string_contains".into(),
+        Scheme::mono(Ty::fun(vec![Ty::string(), Ty::string()], Ty::bool())),
+    );
+    env.insert(
+        "string_starts_with".into(),
+        Scheme::mono(Ty::fun(vec![Ty::string(), Ty::string()], Ty::bool())),
+    );
+    env.insert(
+        "string_ends_with".into(),
+        Scheme::mono(Ty::fun(vec![Ty::string(), Ty::string()], Ty::bool())),
+    );
+    env.insert(
+        "string_trim".into(),
+        Scheme::mono(Ty::fun(vec![Ty::string()], Ty::string())),
+    );
+    env.insert(
+        "string_to_upper".into(),
+        Scheme::mono(Ty::fun(vec![Ty::string()], Ty::string())),
+    );
+    env.insert(
+        "string_to_lower".into(),
+        Scheme::mono(Ty::fun(vec![Ty::string()], Ty::string())),
+    );
+    env.insert(
+        "string_replace".into(),
+        Scheme::mono(Ty::fun(
+            vec![Ty::string(), Ty::string(), Ty::string()],
+            Ty::string(),
+        )),
+    );
+
+    // ── Standard library: IO functions (Phase 8) ─────────────────────
+
+    env.insert(
+        "io_read_line".into(),
+        Scheme::mono(Ty::fun(vec![], Ty::result(Ty::string(), Ty::string()))),
+    );
+    env.insert(
+        "io_eprintln".into(),
+        Scheme::mono(Ty::fun(vec![Ty::string()], Ty::Tuple(vec![]))),
+    );
+
+    // ── Standard library: Env functions (Phase 8) ────────────────────
+
+    env.insert(
+        "env_get".into(),
+        Scheme::mono(Ty::fun(vec![Ty::string()], Ty::option(Ty::string()))),
+    );
 }
 
 /// Register compiler-known traits and their built-in implementations.
@@ -304,5 +364,31 @@ mod tests {
         assert!(trait_registry.has_impl("Add", &Ty::float()));
         assert!(!trait_registry.has_impl("Add", &Ty::string()));
         assert!(trait_registry.has_impl("Eq", &Ty::string()));
+    }
+
+    #[test]
+    fn builtins_register_stdlib_functions() {
+        let mut ctx = InferCtx::new();
+        let mut env = TypeEnv::new();
+        let mut trait_registry = TraitRegistry::new();
+        register_builtins(&mut ctx, &mut env, &mut trait_registry);
+
+        // String operations
+        assert!(env.lookup("string_length").is_some());
+        assert!(env.lookup("string_slice").is_some());
+        assert!(env.lookup("string_contains").is_some());
+        assert!(env.lookup("string_starts_with").is_some());
+        assert!(env.lookup("string_ends_with").is_some());
+        assert!(env.lookup("string_trim").is_some());
+        assert!(env.lookup("string_to_upper").is_some());
+        assert!(env.lookup("string_to_lower").is_some());
+        assert!(env.lookup("string_replace").is_some());
+
+        // IO functions
+        assert!(env.lookup("io_read_line").is_some());
+        assert!(env.lookup("io_eprintln").is_some());
+
+        // Env functions
+        assert!(env.lookup("env_get").is_some());
     }
 }
