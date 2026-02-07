@@ -193,6 +193,11 @@ fn type_error_span(error: &TypeError) -> Option<TextRange> {
         TypeError::InvalidStrategy { span, .. } => Some(*span),
         TypeError::InvalidRestartType { span, .. } => Some(*span),
         TypeError::InvalidShutdownValue { span, .. } => Some(*span),
+        TypeError::CatchAllNotLast { span, .. } => Some(*span),
+        TypeError::NonConsecutiveClauses { second_span, .. } => Some(*second_span),
+        TypeError::ClauseArityMismatch { span, .. } => Some(*span),
+        TypeError::NonFirstClauseAnnotation { span, .. } => Some(*span),
+        TypeError::GuardTypeMismatch { span, .. } => Some(*span),
     }
 }
 

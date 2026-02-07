@@ -186,6 +186,38 @@ pub enum TypeError {
         child_name: String,
         span: TextRange,
     },
+    /// A catch-all clause appears before the last position in a multi-clause function.
+    CatchAllNotLast {
+        fn_name: String,
+        arity: usize,
+        span: TextRange,
+    },
+    /// A multi-clause function has non-consecutive clauses (same name appears in separate groups).
+    NonConsecutiveClauses {
+        fn_name: String,
+        arity: usize,
+        first_span: TextRange,
+        second_span: TextRange,
+    },
+    /// Clauses in a multi-clause function have inconsistent arities.
+    ClauseArityMismatch {
+        fn_name: String,
+        expected_arity: usize,
+        found_arity: usize,
+        span: TextRange,
+    },
+    /// Visibility/generics/return type on a non-first clause of a multi-clause function.
+    NonFirstClauseAnnotation {
+        fn_name: String,
+        what: String,
+        span: TextRange,
+    },
+    /// Guard expression type is not Bool.
+    GuardTypeMismatch {
+        expected: Ty,
+        found: Ty,
+        span: TextRange,
+    },
 }
 
 impl fmt::Display for TypeError {
@@ -360,6 +392,54 @@ impl fmt::Display for TypeError {
                     f,
                     "invalid shutdown value `{}` for child `{}`, expected a positive integer or brutal_kill",
                     found, child_name
+                )
+            }
+            TypeError::CatchAllNotLast {
+                fn_name, arity, ..
+            } => {
+                write!(
+                    f,
+                    "catch-all clause must be the last clause of function `{}/{}`; clauses after a catch-all are unreachable",
+                    fn_name, arity
+                )
+            }
+            TypeError::NonConsecutiveClauses {
+                fn_name, arity, ..
+            } => {
+                write!(
+                    f,
+                    "function `{}/{}` already defined; multi-clause functions must have consecutive clauses",
+                    fn_name, arity
+                )
+            }
+            TypeError::ClauseArityMismatch {
+                fn_name,
+                expected_arity,
+                found_arity,
+                ..
+            } => {
+                write!(
+                    f,
+                    "all clauses of `{}` must have the same number of parameters; expected {}, found {}",
+                    fn_name, expected_arity, found_arity
+                )
+            }
+            TypeError::NonFirstClauseAnnotation {
+                fn_name, what, ..
+            } => {
+                write!(
+                    f,
+                    "{} on non-first clause of `{}` will be ignored",
+                    what, fn_name
+                )
+            }
+            TypeError::GuardTypeMismatch {
+                expected, found, ..
+            } => {
+                write!(
+                    f,
+                    "guard expression must return `{}`, found `{}`",
+                    expected, found
                 )
             }
         }

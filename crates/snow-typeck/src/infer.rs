@@ -41,6 +41,14 @@ use crate::TypeckResult;
 
 use rustc_hash::FxHashMap;
 
+/// Helper enum for tracking children in source order during multi-clause grouping.
+enum ChildKind {
+    /// An item, identified by its index in the original items list.
+    ItemIndex(usize),
+    /// A bare expression (not wrapped in an item).
+    Expr(snow_parser::SyntaxNode),
+}
+
 // ── Struct & Type Registry (03-03) ────────────────────────────────────
 
 /// A registered struct definition with its fields and generic parameters.
@@ -488,40 +496,113 @@ pub fn infer(parse: &Parse) -> TypeckResult {
 
     let tree = parse.tree();
 
-    // Walk all children of SourceFile. Items are handled via Item::cast,
-    // bare expressions (top-level expressions not wrapped in items) are
-    // handled via Expr::cast.
+    // Collect all children and separate items from bare expressions.
+    // Items are grouped to detect multi-clause functions before inference.
+    let mut children_ordered: Vec<(TextRange, ChildKind)> = Vec::new();
+    let mut items_for_grouping: Vec<Item> = Vec::new();
+
     for child in tree.syntax().children() {
+        let range = child.text_range();
         if let Some(item) = Item::cast(child.clone()) {
-            let ty = infer_item(
-                &mut ctx,
-                &mut env,
-                &item,
-                &mut types,
-                &mut type_registry,
-                &mut trait_registry,
-                &mut fn_constraints,
-            );
-            if let Some(ty) = ty {
-                result_type = Some(ty);
-            }
-        } else if let Some(expr) = Expr::cast(child.clone()) {
-            match infer_expr(
-                &mut ctx,
-                &mut env,
-                &expr,
-                &mut types,
-                &type_registry,
-                &trait_registry,
-                &fn_constraints,
-            ) {
-                Ok(ty) => {
-                    let resolved = ctx.resolve(ty.clone());
-                    types.insert(expr.syntax().text_range(), resolved.clone());
-                    result_type = Some(resolved);
+            children_ordered.push((range, ChildKind::ItemIndex(items_for_grouping.len())));
+            items_for_grouping.push(item);
+        } else if let Some(_expr) = Expr::cast(child.clone()) {
+            children_ordered.push((range, ChildKind::Expr(child)));
+        }
+    }
+
+    // Group consecutive same-name, same-arity FnDef items.
+    let grouped = group_multi_clause_fns(items_for_grouping);
+
+    // Build a map from original item index to grouped item index.
+    // Each grouped item knows which original item indices it consumed.
+    let mut item_idx_to_grouped: FxHashMap<usize, usize> = FxHashMap::default();
+    {
+        let mut original_idx = 0;
+        for (grouped_idx, gi) in grouped.iter().enumerate() {
+            match gi {
+                GroupedItem::Single(_) => {
+                    item_idx_to_grouped.insert(original_idx, grouped_idx);
+                    original_idx += 1;
                 }
-                Err(_) => {
-                    // Error already recorded in ctx.errors
+                GroupedItem::MultiClause { clauses } => {
+                    for _ in 0..clauses.len() {
+                        item_idx_to_grouped.insert(original_idx, grouped_idx);
+                        original_idx += 1;
+                    }
+                }
+            }
+        }
+    }
+
+    // Process in source order, but skip duplicate grouped item references.
+    let mut processed_grouped: rustc_hash::FxHashSet<usize> = rustc_hash::FxHashSet::default();
+
+    for (_range, child_kind) in &children_ordered {
+        match child_kind {
+            ChildKind::ItemIndex(orig_idx) => {
+                if let Some(&grouped_idx) = item_idx_to_grouped.get(orig_idx) {
+                    if processed_grouped.contains(&grouped_idx) {
+                        continue; // Already processed as part of a multi-clause group.
+                    }
+                    processed_grouped.insert(grouped_idx);
+
+                    match &grouped[grouped_idx] {
+                        GroupedItem::Single(item) => {
+                            let ty = infer_item(
+                                &mut ctx,
+                                &mut env,
+                                item,
+                                &mut types,
+                                &mut type_registry,
+                                &mut trait_registry,
+                                &mut fn_constraints,
+                            );
+                            if let Some(ty) = ty {
+                                result_type = Some(ty);
+                            }
+                        }
+                        GroupedItem::MultiClause { clauses } => {
+                            match infer_multi_clause_fn(
+                                &mut ctx,
+                                &mut env,
+                                clauses,
+                                &mut types,
+                                &type_registry,
+                                &trait_registry,
+                                &mut fn_constraints,
+                            ) {
+                                Ok(ty) => {
+                                    result_type = Some(ty);
+                                }
+                                Err(_) => {
+                                    // Error already recorded in ctx.errors
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            ChildKind::Expr(child_node) => {
+                if let Some(expr) = Expr::cast(child_node.clone()) {
+                    match infer_expr(
+                        &mut ctx,
+                        &mut env,
+                        &expr,
+                        &mut types,
+                        &type_registry,
+                        &trait_registry,
+                        &fn_constraints,
+                    ) {
+                        Ok(ty) => {
+                            let resolved = ctx.resolve(ty.clone());
+                            types.insert(expr.syntax().text_range(), resolved.clone());
+                            result_type = Some(resolved);
+                        }
+                        Err(_) => {
+                            // Error already recorded in ctx.errors
+                        }
+                    }
                 }
             }
         }
@@ -688,6 +769,483 @@ fn register_variant_constructors(
         // Register under unqualified name: Some, None, Ok, Err
         env.insert(variant.name.clone(), scheme);
     }
+}
+
+// ── Multi-Clause Function Grouping (11-02) ────────────────────────────
+
+/// A grouped item: either a single item or a multi-clause function group.
+enum GroupedItem {
+    /// A non-FnDef item, or a standalone single-clause FnDef.
+    Single(Item),
+    /// Consecutive same-name, same-arity FnDef items grouped together.
+    MultiClause {
+        /// All clauses (first clause contains visibility, generics, return type).
+        clauses: Vec<FnDef>,
+    },
+}
+
+/// Group consecutive same-name, same-arity FnDef items from a list of items.
+///
+/// Rules:
+/// - Group by name AND arity (param count). Different arities are separate functions.
+/// - Only group CONSECUTIVE FnDef items. Non-fn items break the grouping.
+/// - A single FnDef with `= expr` body is treated as a 1-clause multi-clause function.
+/// - A single FnDef with `do/end` body remains a Single item (regular function).
+/// - Multiple consecutive FnDef nodes with the same name produce a MultiClause group.
+fn group_multi_clause_fns(items: Vec<Item>) -> Vec<GroupedItem> {
+    let mut result: Vec<GroupedItem> = Vec::new();
+    let mut i = 0;
+
+    while i < items.len() {
+        match &items[i] {
+            Item::FnDef(fn_def) => {
+                let name = fn_def.name().and_then(|n| n.text()).unwrap_or_default();
+                let arity = fn_def
+                    .param_list()
+                    .map(|pl| pl.params().count())
+                    .unwrap_or(0);
+
+                // Collect consecutive FnDef items with the same name and arity.
+                let mut clauses = vec![fn_def.clone()];
+                let mut j = i + 1;
+                while j < items.len() {
+                    if let Item::FnDef(next_fn) = &items[j] {
+                        let next_name =
+                            next_fn.name().and_then(|n| n.text()).unwrap_or_default();
+                        let next_arity = next_fn
+                            .param_list()
+                            .map(|pl| pl.params().count())
+                            .unwrap_or(0);
+                        if next_name == name && next_arity == arity {
+                            clauses.push(next_fn.clone());
+                            j += 1;
+                            continue;
+                        }
+                    }
+                    break;
+                }
+
+                if clauses.len() == 1 {
+                    // Single FnDef -- check if it's an `= expr` form.
+                    if clauses[0].has_eq_body() {
+                        // Single-clause multi-clause function (still valid).
+                        result.push(GroupedItem::MultiClause { clauses });
+                    } else {
+                        // Regular do/end function -- keep as Single.
+                        result.push(GroupedItem::Single(items[i].clone()));
+                    }
+                } else {
+                    // Multiple clauses with same name/arity.
+                    result.push(GroupedItem::MultiClause { clauses });
+                }
+
+                i = j;
+            }
+            _ => {
+                result.push(GroupedItem::Single(items[i].clone()));
+                i += 1;
+            }
+        }
+    }
+
+    result
+}
+
+/// Check if a clause is a "catch-all" -- all parameters are wildcards or simple variable bindings.
+///
+/// A catch-all clause has no literal, constructor, or tuple patterns in any parameter.
+fn is_catch_all_clause(fn_def: &FnDef) -> bool {
+    let param_list = match fn_def.param_list() {
+        Some(pl) => pl,
+        None => return true, // No params = catch-all (vacuously)
+    };
+
+    for param in param_list.params() {
+        if let Some(pat) = param.pattern() {
+            // Has a pattern child -- check if it's just a variable or wildcard.
+            match pat {
+                Pattern::Wildcard(_) | Pattern::Ident(_) => {
+                    // Simple binding or wildcard -- still catch-all for this param.
+                }
+                _ => {
+                    // Literal, constructor, tuple, or, as -- NOT catch-all.
+                    return false;
+                }
+            }
+        }
+        // No pattern child means it's a plain IDENT parameter -- catch-all for this param.
+    }
+
+    // Also check if there's a guard -- a guarded clause is NOT catch-all.
+    if fn_def.guard().is_some() {
+        return false;
+    }
+
+    true
+}
+
+/// Infer a multi-clause function group.
+///
+/// Groups consecutive FnDef nodes with the same name/arity and type-checks them
+/// as a single function with pattern matching on the parameters.
+///
+/// This conceptually desugars:
+/// ```text
+/// fn fib(0) = 0
+/// fn fib(1) = 1
+/// fn fib(n) = fib(n - 1) + fib(n - 2)
+/// ```
+/// into the equivalent of:
+/// ```text
+/// fn fib(__p0) do
+///   case __p0 do
+///     0 -> 0
+///     1 -> 1
+///     n -> fib(n - 1) + fib(n - 2)
+///   end
+/// end
+/// ```
+fn infer_multi_clause_fn(
+    ctx: &mut InferCtx,
+    env: &mut TypeEnv,
+    clauses: &[FnDef],
+    types: &mut FxHashMap<TextRange, Ty>,
+    type_registry: &TypeRegistry,
+    trait_registry: &TraitRegistry,
+    fn_constraints: &mut FxHashMap<String, FnConstraints>,
+) -> Result<Ty, TypeError> {
+    assert!(!clauses.is_empty());
+
+    let first = &clauses[0];
+    let fn_name = first
+        .name()
+        .and_then(|n| n.text())
+        .unwrap_or_else(|| "<anonymous>".to_string());
+    let arity = first
+        .param_list()
+        .map(|pl| pl.params().count())
+        .unwrap_or(0);
+
+    // ── Step 1: Validate clause properties ─────────────────────────────
+
+    // Check that non-first clauses don't have visibility, generics, return type.
+    for (_idx, clause) in clauses.iter().enumerate().skip(1) {
+        if clause.visibility().is_some() {
+            ctx.warnings.push(TypeError::NonFirstClauseAnnotation {
+                fn_name: fn_name.clone(),
+                what: "visibility".to_string(),
+                span: clause.syntax().text_range(),
+            });
+        }
+        // Check for generic params on non-first clause.
+        let has_generics = clause
+            .syntax()
+            .children()
+            .any(|n| n.kind() == SyntaxKind::GENERIC_PARAM_LIST);
+        if has_generics {
+            ctx.warnings.push(TypeError::NonFirstClauseAnnotation {
+                fn_name: fn_name.clone(),
+                what: "generic parameters".to_string(),
+                span: clause.syntax().text_range(),
+            });
+        }
+        if clause.return_type().is_some() {
+            ctx.warnings.push(TypeError::NonFirstClauseAnnotation {
+                fn_name: fn_name.clone(),
+                what: "return type annotation".to_string(),
+                span: clause.syntax().text_range(),
+            });
+        }
+
+        // Verify arity consistency.
+        let clause_arity = clause
+            .param_list()
+            .map(|pl| pl.params().count())
+            .unwrap_or(0);
+        if clause_arity != arity {
+            ctx.errors.push(TypeError::ClauseArityMismatch {
+                fn_name: fn_name.clone(),
+                expected_arity: arity,
+                found_arity: clause_arity,
+                span: clause.syntax().text_range(),
+            });
+        }
+
+        // Check for where clause on non-first clause.
+        let has_where = clause
+            .syntax()
+            .children()
+            .any(|n| n.kind() == SyntaxKind::WHERE_CLAUSE);
+        if has_where {
+            ctx.warnings.push(TypeError::NonFirstClauseAnnotation {
+                fn_name: fn_name.clone(),
+                what: "where clause".to_string(),
+                span: clause.syntax().text_range(),
+            });
+        }
+    }
+
+    // Check catch-all ordering: catch-all must be the last clause.
+    if clauses.len() > 1 {
+        for (idx, clause) in clauses.iter().enumerate() {
+            if idx < clauses.len() - 1 && is_catch_all_clause(clause) {
+                ctx.errors.push(TypeError::CatchAllNotLast {
+                    fn_name: fn_name.clone(),
+                    arity,
+                    span: clause.syntax().text_range(),
+                });
+            }
+        }
+    }
+
+    // ── Step 2: Set up function type infrastructure ────────────────────
+
+    ctx.enter_level();
+
+    // Pre-register the function name with a fresh type variable for recursion.
+    let self_var = ctx.fresh_var();
+    env.insert(fn_name.clone(), Scheme::mono(self_var.clone()));
+
+    // Extract generic type parameters from the FIRST clause only.
+    let mut type_params: FxHashMap<String, Ty> = FxHashMap::default();
+    for child in first.syntax().children() {
+        if child.kind() == SyntaxKind::GENERIC_PARAM_LIST {
+            for tok in child.children_with_tokens() {
+                if let Some(token) = tok.as_token() {
+                    if token.kind() == SyntaxKind::IDENT {
+                        let param_name = token.text().to_string();
+                        let param_ty = ctx.fresh_var();
+                        type_params.insert(param_name, param_ty);
+                    }
+                }
+            }
+        }
+    }
+
+    // Extract where-clause constraints from the first clause.
+    let where_constraints = extract_where_constraints(first);
+
+    // Create fresh type variables for each parameter position.
+    let param_types: Vec<Ty> = (0..arity).map(|_| ctx.fresh_var()).collect();
+
+    // Parse return type annotation from the first clause.
+    let return_type_annotation = first.return_type().and_then(|ann| {
+        let type_name = resolve_type_name_str(&ann)?;
+        if let Some(tp_ty) = type_params.get(&type_name) {
+            Some(tp_ty.clone())
+        } else {
+            Some(name_to_type(&type_name))
+        }
+    });
+
+    // Store fn constraints if any.
+    if !where_constraints.is_empty() || !type_params.is_empty() {
+        let param_type_param_names: Vec<Option<String>> = (0..arity).map(|_| None).collect();
+        fn_constraints.insert(
+            fn_name.clone(),
+            FnConstraints {
+                where_constraints: where_constraints.clone(),
+                type_params: type_params.clone(),
+                param_type_param_names,
+            },
+        );
+    }
+
+    // ── Step 3: Infer each clause (like case arms) ─────────────────────
+
+    let mut result_ty: Option<Ty> = None;
+    let mut arm_patterns: Vec<AbsPat> = Vec::new();
+    let mut arm_has_guard: Vec<bool> = Vec::new();
+    let mut arm_spans: Vec<TextRange> = Vec::new();
+
+    for clause in clauses {
+        env.push_scope();
+
+        // Insert type params into scope.
+        for (name, ty) in &type_params {
+            env.insert(name.clone(), Scheme::mono(ty.clone()));
+        }
+
+        // Process each parameter's pattern and unify with param type.
+        let param_list = clause.param_list();
+        let params: Vec<_> = param_list.iter().flat_map(|pl| pl.params()).collect();
+
+        let mut clause_abs_pats: Vec<AbsPat> = Vec::new();
+
+        for (param_idx, param) in params.iter().enumerate() {
+            if param_idx >= arity {
+                break;
+            }
+
+            if let Some(pat) = param.pattern() {
+                // Pattern parameter -- infer the pattern type and unify.
+                let pat_ty = infer_pattern(ctx, env, &pat, types, type_registry)?;
+                ctx.unify(
+                    pat_ty,
+                    param_types[param_idx].clone(),
+                    ConstraintOrigin::Builtin,
+                )?;
+
+                // Convert to abstract pattern for exhaustiveness.
+                let abs_pat = ast_pattern_to_abstract(&pat, env, type_registry);
+                clause_abs_pats.push(abs_pat);
+            } else if let Some(name_tok) = param.name() {
+                // Regular named parameter -- treat as wildcard pattern, bind the name.
+                let name_text = name_tok.text().to_string();
+                env.insert(name_text, Scheme::mono(param_types[param_idx].clone()));
+                clause_abs_pats.push(AbsPat::Wildcard);
+            } else {
+                clause_abs_pats.push(AbsPat::Wildcard);
+            }
+        }
+
+        // For exhaustiveness: combine param patterns into a single abstract pattern.
+        // For single-param functions, use the pattern directly.
+        // For multi-param functions, combine into a tuple pattern.
+        let combined_pat = if clause_abs_pats.len() == 1 {
+            clause_abs_pats.into_iter().next().unwrap()
+        } else if clause_abs_pats.is_empty() {
+            AbsPat::Wildcard
+        } else {
+            AbsPat::Constructor {
+                name: "Tuple".to_string(),
+                type_name: "Tuple".to_string(),
+                args: clause_abs_pats,
+            }
+        };
+        arm_patterns.push(combined_pat);
+
+        // Process guard expression if present.
+        let has_guard = clause.guard().is_some();
+        arm_has_guard.push(has_guard);
+        arm_spans.push(clause.syntax().text_range());
+
+        if let Some(guard_clause) = clause.guard() {
+            if let Some(guard_expr) = guard_clause.expr() {
+                // For multi-clause function guards: accept arbitrary Bool expressions.
+                // Do NOT call validate_guard_expr -- just type-check and verify Bool.
+                let guard_ty = infer_expr(
+                    ctx,
+                    env,
+                    &guard_expr,
+                    types,
+                    type_registry,
+                    trait_registry,
+                    fn_constraints,
+                )?;
+                let _ = ctx.unify(guard_ty, Ty::bool(), ConstraintOrigin::Builtin);
+            }
+        }
+
+        // Infer the body expression.
+        let body_ty = if let Some(expr_body) = clause.expr_body() {
+            // `= expr` form
+            infer_expr(
+                ctx,
+                env,
+                &expr_body,
+                types,
+                type_registry,
+                trait_registry,
+                fn_constraints,
+            )?
+        } else if let Some(body) = clause.body() {
+            // `do ... end` form (rare for multi-clause but allowed for single clause)
+            infer_block(
+                ctx,
+                env,
+                &body,
+                types,
+                type_registry,
+                trait_registry,
+                fn_constraints,
+            )?
+        } else {
+            Ty::Tuple(vec![])
+        };
+
+        // Unify body type with previous clause body types.
+        if let Some(ref prev_ty) = result_ty {
+            ctx.unify(prev_ty.clone(), body_ty.clone(), ConstraintOrigin::Builtin)?;
+        } else {
+            result_ty = Some(body_ty.clone());
+        }
+
+        // Unify with return type annotation if present.
+        if let Some(ref ret_ann) = return_type_annotation {
+            ctx.unify(body_ty, ret_ann.clone(), ConstraintOrigin::Builtin)?;
+        }
+
+        env.pop_scope();
+    }
+
+    // ── Step 4: Exhaustiveness and redundancy checking ─────────────────
+
+    // Build scrutinee type for exhaustiveness checking.
+    let scrutinee_ty = if param_types.len() == 1 {
+        ctx.resolve(param_types[0].clone())
+    } else if param_types.is_empty() {
+        Ty::Tuple(vec![])
+    } else {
+        Ty::Tuple(param_types.iter().map(|t| ctx.resolve(t.clone())).collect())
+    };
+
+    let scrutinee_type_info = type_to_type_info(&scrutinee_ty, type_registry);
+    let abs_registry = build_abs_type_registry(type_registry);
+
+    // For exhaustiveness: exclude guarded arms.
+    let unguarded_patterns: Vec<AbsPat> = arm_patterns
+        .iter()
+        .zip(arm_has_guard.iter())
+        .filter(|(_, has_guard)| !**has_guard)
+        .map(|(pat, _)| pat.clone())
+        .collect();
+
+    if let Some(witnesses) = exhaustiveness::check_exhaustiveness(
+        &unguarded_patterns,
+        &scrutinee_type_info,
+        &abs_registry,
+    ) {
+        let missing: Vec<String> = witnesses.iter().map(format_abstract_pat).collect();
+        let err = TypeError::NonExhaustiveMatch {
+            scrutinee_type: format!("{}", scrutinee_ty),
+            missing_patterns: missing,
+            span: first.syntax().text_range(),
+        };
+        ctx.warnings.push(err);
+    }
+
+    // Redundancy checking.
+    let redundant_indices =
+        exhaustiveness::check_redundancy(&arm_patterns, &scrutinee_type_info, &abs_registry);
+    for idx in redundant_indices {
+        let warn = TypeError::RedundantArm {
+            arm_index: idx,
+            span: arm_spans
+                .get(idx)
+                .copied()
+                .unwrap_or(first.syntax().text_range()),
+        };
+        ctx.warnings.push(warn);
+    }
+
+    // ── Step 5: Build function type and register ───────────────────────
+
+    let ret_ty = return_type_annotation
+        .or(result_ty)
+        .unwrap_or_else(|| Ty::Tuple(vec![]));
+    let fn_ty = Ty::Fun(param_types, Box::new(ret_ty));
+
+    ctx.unify(self_var, fn_ty.clone(), ConstraintOrigin::Builtin)?;
+
+    ctx.leave_level();
+    let scheme = ctx.generalize(fn_ty.clone());
+    env.insert(fn_name, scheme);
+
+    let resolved = ctx.resolve(fn_ty);
+    types.insert(first.syntax().text_range(), resolved.clone());
+
+    Ok(resolved)
 }
 
 // ── Item Inference ─────────────────────────────────────────────────────
@@ -1934,56 +2492,120 @@ fn infer_block(
     // - Items (let bindings, fn defs) as declarations
     // - Expressions (function calls, etc.) as expression-statements
     // Processing in order ensures let bindings are in scope for subsequent exprs.
+    //
+    // Multi-clause function grouping (11-02): collect items first, group
+    // consecutive same-name FnDef nodes, then process in source order.
     let mut processed_ranges: Vec<TextRange> = Vec::new();
+
+    // Collect children in order, separating items and expressions.
+    let mut block_children: Vec<(TextRange, BlockChildKind)> = Vec::new();
+    let mut block_items: Vec<Item> = Vec::new();
 
     for child in block.syntax().children() {
         let range = child.text_range();
-
-        // Try as Item first (let bindings, fn defs, etc.)
         if let Some(item) = Item::cast(child.clone()) {
-            processed_ranges.push(range);
-            match &item {
-                Item::LetBinding(let_) => {
-                    if let Ok(ty) = infer_let_binding(
-                        ctx,
-                        env,
-                        let_,
-                        types,
-                        type_registry,
-                        trait_registry,
-                        &FxHashMap::default(),
-                    ) {
-                        last_ty = ty;
-                    }
+            block_children.push((range, BlockChildKind::ItemIdx(block_items.len())));
+            block_items.push(item);
+        } else if let Some(_expr) = Expr::cast(child.clone()) {
+            block_children.push((range, BlockChildKind::ExprNode(child)));
+        }
+    }
+
+    // Group multi-clause functions.
+    let grouped = group_multi_clause_fns(block_items);
+
+    // Build original-item-index to grouped-item-index mapping.
+    let mut block_item_to_grouped: FxHashMap<usize, usize> = FxHashMap::default();
+    {
+        let mut orig_idx = 0;
+        for (gi, grouped_item) in grouped.iter().enumerate() {
+            match grouped_item {
+                GroupedItem::Single(_) => {
+                    block_item_to_grouped.insert(orig_idx, gi);
+                    orig_idx += 1;
                 }
-                Item::FnDef(fn_) => {
-                    if let Ok(ty) = infer_fn_def(
-                        ctx,
-                        env,
-                        fn_,
-                        types,
-                        type_registry,
-                        trait_registry,
-                        &mut FxHashMap::default(),
-                    ) {
-                        last_ty = ty;
+                GroupedItem::MultiClause { clauses } => {
+                    for _ in 0..clauses.len() {
+                        block_item_to_grouped.insert(orig_idx, gi);
+                        orig_idx += 1;
                     }
-                }
-                _ => {
-                    // Other items (interface, impl, struct, etc.)
                 }
             }
-            continue;
         }
+    }
 
-        // Try as Expr (expression-statements and tail expression)
-        if let Some(expr) = Expr::cast(child) {
-            processed_ranges.push(range);
-            match infer_expr(ctx, env, &expr, types, type_registry, trait_registry, fn_constraints) {
-                Ok(ty) => {
-                    last_ty = ty;
+    let mut block_processed_grouped: rustc_hash::FxHashSet<usize> = rustc_hash::FxHashSet::default();
+
+    for (range, child_kind) in &block_children {
+        match child_kind {
+            BlockChildKind::ItemIdx(orig_idx) => {
+                if let Some(&gi) = block_item_to_grouped.get(orig_idx) {
+                    if block_processed_grouped.contains(&gi) {
+                        continue;
+                    }
+                    block_processed_grouped.insert(gi);
+                    processed_ranges.push(*range);
+
+                    match &grouped[gi] {
+                        GroupedItem::Single(item) => {
+                            match item {
+                                Item::LetBinding(let_) => {
+                                    if let Ok(ty) = infer_let_binding(
+                                        ctx,
+                                        env,
+                                        let_,
+                                        types,
+                                        type_registry,
+                                        trait_registry,
+                                        &FxHashMap::default(),
+                                    ) {
+                                        last_ty = ty;
+                                    }
+                                }
+                                Item::FnDef(fn_) => {
+                                    if let Ok(ty) = infer_fn_def(
+                                        ctx,
+                                        env,
+                                        fn_,
+                                        types,
+                                        type_registry,
+                                        trait_registry,
+                                        &mut FxHashMap::default(),
+                                    ) {
+                                        last_ty = ty;
+                                    }
+                                }
+                                _ => {
+                                    // Other items (interface, impl, struct, etc.)
+                                }
+                            }
+                        }
+                        GroupedItem::MultiClause { clauses } => {
+                            if let Ok(ty) = infer_multi_clause_fn(
+                                ctx,
+                                env,
+                                clauses,
+                                types,
+                                type_registry,
+                                trait_registry,
+                                &mut FxHashMap::default(),
+                            ) {
+                                last_ty = ty;
+                            }
+                        }
+                    }
                 }
-                Err(_) => {}
+            }
+            BlockChildKind::ExprNode(child_node) => {
+                if let Some(expr) = Expr::cast(child_node.clone()) {
+                    processed_ranges.push(*range);
+                    match infer_expr(ctx, env, &expr, types, type_registry, trait_registry, fn_constraints) {
+                        Ok(ty) => {
+                            last_ty = ty;
+                        }
+                        Err(_) => {}
+                    }
+                }
             }
         }
     }
@@ -2005,6 +2627,12 @@ fn infer_block(
     }
 
     Ok(last_ty)
+}
+
+/// Helper for block child classification.
+enum BlockChildKind {
+    ItemIdx(usize),
+    ExprNode(snow_parser::SyntaxNode),
 }
 
 /// Infer the type of a tuple expression.

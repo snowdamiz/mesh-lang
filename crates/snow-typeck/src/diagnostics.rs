@@ -111,6 +111,11 @@ fn error_code(err: &TypeError) -> &'static str {
         TypeError::InvalidStrategy { .. } => "E0019",
         TypeError::InvalidRestartType { .. } => "E0020",
         TypeError::InvalidShutdownValue { .. } => "E0021",
+        TypeError::CatchAllNotLast { .. } => "E0022",
+        TypeError::NonConsecutiveClauses { .. } => "E0023",
+        TypeError::ClauseArityMismatch { .. } => "E0024",
+        TypeError::NonFirstClauseAnnotation { .. } => "W0002",
+        TypeError::GuardTypeMismatch { .. } => "E0025",
     }
 }
 
@@ -1126,6 +1131,123 @@ pub fn render_diagnostic(
                 .with_label(
                     Label::new(range)
                         .with_message("expected a positive integer or brutal_kill")
+                        .with_color(Color::Red),
+                )
+                .finish()
+        }
+
+        // ── Multi-clause function diagnostics (11-02) ──────────────────
+        TypeError::CatchAllNotLast {
+            fn_name,
+            arity,
+            span,
+        } => {
+            let msg = format!(
+                "catch-all clause must be the last clause of function `{}/{}`",
+                fn_name, arity
+            );
+            let range = clamp(text_range_to_range(*span));
+
+            Report::build(ReportKind::Error, range.clone())
+                .with_code(code)
+                .with_message(&msg)
+                .with_config(config)
+                .with_label(
+                    Label::new(range)
+                        .with_message("clauses after a catch-all are unreachable")
+                        .with_color(Color::Red),
+                )
+                .finish()
+        }
+        TypeError::NonConsecutiveClauses {
+            fn_name,
+            arity,
+            first_span,
+            second_span,
+        } => {
+            let msg = format!(
+                "function `{}/{}` already defined; multi-clause functions must have consecutive clauses",
+                fn_name, arity
+            );
+            let range = clamp(text_range_to_range(*second_span));
+            let first_range = clamp(text_range_to_range(*first_span));
+
+            Report::build(ReportKind::Error, range.clone())
+                .with_code(code)
+                .with_message(&msg)
+                .with_config(config)
+                .with_label(
+                    Label::new(first_range)
+                        .with_message("first definition here")
+                        .with_color(Color::Blue),
+                )
+                .with_label(
+                    Label::new(range)
+                        .with_message("non-consecutive redefinition here")
+                        .with_color(Color::Red),
+                )
+                .finish()
+        }
+        TypeError::ClauseArityMismatch {
+            fn_name,
+            expected_arity,
+            found_arity,
+            span,
+        } => {
+            let msg = format!(
+                "all clauses of `{}` must have the same number of parameters; expected {}, found {}",
+                fn_name, expected_arity, found_arity
+            );
+            let range = clamp(text_range_to_range(*span));
+
+            Report::build(ReportKind::Error, range.clone())
+                .with_code(code)
+                .with_message(&msg)
+                .with_config(config)
+                .with_label(
+                    Label::new(range)
+                        .with_message(format!("expected {} parameters", expected_arity))
+                        .with_color(Color::Red),
+                )
+                .finish()
+        }
+        TypeError::NonFirstClauseAnnotation {
+            fn_name,
+            what,
+            span,
+        } => {
+            let msg = format!(
+                "{} on non-first clause of `{}` will be ignored",
+                what, fn_name
+            );
+            let range = clamp(text_range_to_range(*span));
+
+            Report::build(ReportKind::Warning, range.clone())
+                .with_code(code)
+                .with_message(&msg)
+                .with_config(config)
+                .with_label(
+                    Label::new(range)
+                        .with_message("only the first clause should have this annotation")
+                        .with_color(Color::Yellow),
+                )
+                .finish()
+        }
+        TypeError::GuardTypeMismatch {
+            expected,
+            found,
+            span,
+        } => {
+            let msg = format!("guard expression must return `{}`, found `{}`", expected, found);
+            let range = clamp(text_range_to_range(*span));
+
+            Report::build(ReportKind::Error, range.clone())
+                .with_code(code)
+                .with_message(&msg)
+                .with_config(config)
+                .with_label(
+                    Label::new(range)
+                        .with_message(format!("expected `{}`, found `{}`", expected, found))
                         .with_color(Color::Red),
                 )
                 .finish()
