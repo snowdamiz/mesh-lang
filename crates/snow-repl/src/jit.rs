@@ -82,7 +82,7 @@ fn eval_definition(input: &str, session: &mut ReplSession) -> Result<EvalResult,
     // Type check to validate the definition
     let typeck = snow_typeck::check(&parse);
     if !typeck.errors.is_empty() {
-        let rendered = typeck.render_errors(&full_source, "<repl>");
+        let rendered = typeck.render_errors(&full_source, "<repl>", &snow_typeck::diagnostics::DiagnosticOptions::colorless());
         return Err(rendered.join("\n"));
     }
 
@@ -125,7 +125,7 @@ fn eval_expression(input: &str, session: &mut ReplSession) -> Result<EvalResult,
     // Step 2: Type check
     let typeck = snow_typeck::check(&parse);
     if !typeck.errors.is_empty() {
-        let rendered = typeck.render_errors(&full_source, "<repl>");
+        let rendered = typeck.render_errors(&full_source, "<repl>", &snow_typeck::diagnostics::DiagnosticOptions::colorless());
         return Err(rendered.join("\n"));
     }
 

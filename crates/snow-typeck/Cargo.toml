@@ -10,6 +10,8 @@ ena = { workspace = true }
 rustc-hash = { workspace = true }
 rowan = { workspace = true }
 ariadne = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
 
 [dev-dependencies]
 insta = { workspace = true }

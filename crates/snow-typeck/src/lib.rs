@@ -32,6 +32,7 @@ pub mod unify;
 use rustc_hash::FxHashMap;
 use rowan::TextRange;
 
+use crate::diagnostics::DiagnosticOptions;
 use crate::error::TypeError;
 use crate::ty::Ty;
 
@@ -62,15 +63,15 @@ pub struct TypeckResult {
 }
 
 impl TypeckResult {
-    /// Render all type errors as formatted diagnostic strings using ariadne.
+    /// Render all type errors as formatted diagnostic strings.
     ///
+    /// Accepts `DiagnosticOptions` to control color and output format.
     /// Each error is rendered with labeled source spans, error codes, and
-    /// fix suggestions when applicable. Colors are disabled for consistent
-    /// output.
-    pub fn render_errors(&self, source: &str, filename: &str) -> Vec<String> {
+    /// fix suggestions when applicable.
+    pub fn render_errors(&self, source: &str, filename: &str, options: &DiagnosticOptions) -> Vec<String> {
         self.errors
             .iter()
-            .map(|err| diagnostics::render_diagnostic(err, source, filename))
+            .map(|err| diagnostics::render_diagnostic(err, source, filename, options, None))
             .collect()
     }
 }
