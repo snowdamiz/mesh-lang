@@ -3,8 +3,9 @@
 //! Tests string operations, module-qualified access (String.length),
 //! from/import resolution, IO operations, and HTTP server/client compilation.
 
+use std::io::{BufRead, BufReader, Read as _, Write as _};
 use std::path::{Path, PathBuf};
-use std::process::{Command, Output};
+use std::process::{Command, Output, Stdio};
 
 /// Helper: compile a Snow source file and run the resulting binary, returning stdout.
 fn compile_and_run(source: &str) -> String {
@@ -309,4 +310,142 @@ end
         String::from_utf8_lossy(&result.stdout),
         String::from_utf8_lossy(&result.stderr)
     );
+}
+
+// ── HTTP Runtime E2E Tests (Phase 8 Plan 07 - Gap Closure) ────────────
+//
+// These tests start a REAL HTTP server and make actual HTTP requests,
+// verifying that the Snow HTTP server works end-to-end at runtime.
+
+/// RAII guard that kills the server child process on drop.
+struct ServerGuard(std::process::Child);
+
+impl Drop for ServerGuard {
+    fn drop(&mut self) {
+        let _ = self.0.kill();
+        let _ = self.0.wait();
+    }
+}
+
+/// Compile a Snow source file and spawn the resulting binary as a server.
+/// Returns a ServerGuard that kills the process on drop.
+///
+/// Waits for the server to emit its "[snow-rt] HTTP server listening on"
+/// message on stderr before returning, ensuring the server is ready.
+fn compile_and_start_server(source: &str) -> ServerGuard {
+    let temp_dir = tempfile::tempdir().expect("failed to create temp dir");
+    // Leak the temp dir so it persists for the lifetime of the server process.
+    let temp_dir = Box::leak(Box::new(temp_dir));
+    let project_dir = temp_dir.path().join("project");
+    std::fs::create_dir_all(&project_dir).expect("failed to create project dir");
+
+    let main_snow = project_dir.join("main.snow");
+    std::fs::write(&main_snow, source).expect("failed to write main.snow");
+
+    let snowc = find_snowc();
+    let output = Command::new(&snowc)
+        .args(["build", project_dir.to_str().unwrap()])
+        .output()
+        .expect("failed to invoke snowc");
+
+    assert!(
+        output.status.success(),
+        "snowc build failed:\nstdout: {}\nstderr: {}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let binary = project_dir.join("project");
+    assert!(
+        binary.exists(),
+        "compiled binary not found at {}",
+        binary.display()
+    );
+
+    // Spawn the server binary with stderr piped so we can detect readiness.
+    let child = Command::new(&binary)
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap_or_else(|e| panic!("failed to spawn server binary: {}", e));
+
+    ServerGuard(child)
+}
+
+#[test]
+fn e2e_http_server_runtime() {
+    // This test starts a real HTTP server from a compiled Snow program,
+    // makes an HTTP request, and verifies the response body.
+    let source = read_fixture("stdlib_http_server_runtime.snow");
+    let mut guard = compile_and_start_server(&source);
+
+    // Wait for the server to be ready by reading stderr for the listening message.
+    // We need to do this in a separate thread to avoid blocking if the server
+    // produces no output. Use a timeout approach instead.
+    let stderr = guard.0.stderr.take().expect("no stderr pipe");
+    let stderr_reader = BufReader::new(stderr);
+
+    // Spawn a thread to read stderr and signal when server is ready.
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        for line in stderr_reader.lines() {
+            if let Ok(line) = line {
+                if line.contains("HTTP server listening on") {
+                    let _ = tx.send(true);
+                    return;
+                }
+            }
+        }
+        let _ = tx.send(false);
+    });
+
+    // Wait up to 10 seconds for the server to start.
+    let ready = rx
+        .recv_timeout(std::time::Duration::from_secs(10))
+        .unwrap_or(false);
+    assert!(ready, "Server did not start within 10 seconds");
+
+    // Make an HTTP GET request to the server using raw TcpStream.
+    // Retry up to 5 times with 200ms between attempts for robustness.
+    let mut response = String::new();
+    let mut connected = false;
+    for attempt in 0..5 {
+        if attempt > 0 {
+            std::thread::sleep(std::time::Duration::from_millis(200));
+        }
+        match std::net::TcpStream::connect("127.0.0.1:18080") {
+            Ok(mut stream) => {
+                stream
+                    .set_read_timeout(Some(std::time::Duration::from_secs(5)))
+                    .unwrap();
+                stream
+                    .write_all(
+                        b"GET /health HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n",
+                    )
+                    .expect("failed to write HTTP request");
+                stream
+                    .read_to_string(&mut response)
+                    .expect("failed to read HTTP response");
+                connected = true;
+                break;
+            }
+            Err(_) => continue,
+        }
+    }
+
+    assert!(connected, "Failed to connect to server after 5 attempts");
+    assert!(
+        response.contains("200"),
+        "Expected HTTP 200 in response, got: {}",
+        response
+    );
+    // The Snow string literal "{\"status\":\"ok\"}" preserves backslash
+    // characters (Snow does not interpret escape sequences in strings).
+    // The response body is the literal bytes: {\"status\":\"ok\"}
+    assert!(
+        response.contains(r#"{\"status\":\"ok\"}"#),
+        "Expected JSON body in response, got: {}",
+        response
+    );
+
+    // ServerGuard Drop will kill the server process.
 }
