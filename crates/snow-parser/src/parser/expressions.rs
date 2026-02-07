@@ -671,6 +671,116 @@ fn parse_param(p: &mut Parser) {
     p.close(m, SyntaxKind::PARAM);
 }
 
+// ── Multi-Clause Function Parameter Parsing ──────────────────────────
+
+/// Parse a parameter list for multi-clause function definitions: `(param, param, ...)`
+///
+/// Each parameter may be a pattern (literal, wildcard, constructor, tuple)
+/// or a regular named parameter with optional type annotation.
+pub(crate) fn parse_fn_clause_param_list(p: &mut Parser) {
+    let m = p.open();
+    p.advance(); // L_PAREN
+
+    if !p.at(SyntaxKind::R_PAREN) {
+        parse_fn_clause_param(p);
+        while p.eat(SyntaxKind::COMMA) {
+            if p.at(SyntaxKind::R_PAREN) {
+                break; // trailing comma
+            }
+            parse_fn_clause_param(p);
+        }
+    }
+
+    p.expect(SyntaxKind::R_PAREN);
+    p.close(m, SyntaxKind::PARAM_LIST);
+}
+
+/// Parse a single function parameter that may be a pattern.
+///
+/// Detection logic:
+/// - Literals (int, float, true, false, nil) -> pattern param
+/// - `-` followed by number -> negative literal pattern param
+/// - `_` -> wildcard pattern param
+/// - `(` -> tuple pattern param
+/// - Uppercase IDENT followed by `(` -> constructor pattern param
+/// - Lowercase IDENT (not `_`) -> regular named param with optional `:: Type`
+/// - `self` -> regular param
+pub(crate) fn parse_fn_clause_param(p: &mut Parser) {
+    let m = p.open();
+
+    match p.current() {
+        // Literal patterns: 0, 1, 3.14, true, false, nil
+        SyntaxKind::INT_LITERAL
+        | SyntaxKind::FLOAT_LITERAL
+        | SyntaxKind::TRUE_KW
+        | SyntaxKind::FALSE_KW
+        | SyntaxKind::NIL_KW => {
+            super::patterns::parse_pattern(p);
+        }
+
+        // Negative literal pattern: -1, -3.14
+        SyntaxKind::MINUS
+            if matches!(
+                p.nth(1),
+                SyntaxKind::INT_LITERAL | SyntaxKind::FLOAT_LITERAL
+            ) =>
+        {
+            super::patterns::parse_pattern(p);
+        }
+
+        // String literal pattern
+        SyntaxKind::STRING_START => {
+            super::patterns::parse_pattern(p);
+        }
+
+        // Tuple pattern: (a, b)
+        SyntaxKind::L_PAREN => {
+            super::patterns::parse_pattern(p);
+        }
+
+        SyntaxKind::IDENT => {
+            let text = p.current_text().to_string();
+
+            if text == "_" {
+                // Wildcard pattern
+                super::patterns::parse_pattern(p);
+            } else if text.starts_with(|c: char| c.is_uppercase())
+                && p.nth(1) == SyntaxKind::L_PAREN
+            {
+                // Constructor pattern: Some(x), Ok(val)
+                super::patterns::parse_pattern(p);
+            } else if text.starts_with(|c: char| c.is_uppercase())
+                && p.nth(1) == SyntaxKind::DOT
+            {
+                // Qualified constructor pattern: Shape.Circle(r)
+                super::patterns::parse_pattern(p);
+            } else {
+                // Regular identifier parameter with optional type annotation
+                p.advance(); // ident
+
+                // Optional type annotation: `:: Type`
+                if p.at(SyntaxKind::COLON_COLON) {
+                    let ann = p.open();
+                    p.advance(); // ::
+                    super::items::parse_type(p);
+                    p.close(ann, SyntaxKind::TYPE_ANNOTATION);
+                }
+            }
+        }
+
+        // self keyword as parameter
+        SyntaxKind::SELF_KW => {
+            p.advance();
+        }
+
+        _ => {
+            p.error("expected parameter name or pattern");
+        }
+    }
+
+    p.close(m, SyntaxKind::PARAM);
+}
+
 // ── Trailing Closure ──────────────────────────────────────────────────
 
 /// Parse a trailing closure: `do [|params|] body end`

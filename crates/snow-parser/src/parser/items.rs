@@ -6,7 +6,7 @@
 
 use crate::syntax_kind::SyntaxKind;
 
-use super::expressions::parse_param_list;
+use super::expressions::{parse_fn_clause_param_list, parse_param_list};
 use super::Parser;
 
 // ── Visibility ───────────────────────────────────────────────────────────
@@ -22,7 +22,14 @@ fn parse_optional_visibility(p: &mut Parser) {
 
 // ── Function Definition ──────────────────────────────────────────────────
 
-/// Parse a function definition: `[pub] fn|def name(params) [-> ReturnType] do body end`
+/// Parse a function definition.
+///
+/// Supports two body forms:
+/// - Block body: `[pub] fn|def name(params) [-> ReturnType] [where ...] do body end`
+/// - Expression body: `[pub] fn|def name(pattern_params) [when guard] = expr`
+///
+/// Pattern parameters (literals, wildcards, constructors, tuples) are supported
+/// alongside regular named parameters in both forms.
 pub(crate) fn parse_fn_def(p: &mut Parser) {
     let m = p.open();
 
@@ -48,9 +55,9 @@ pub(crate) fn parse_fn_def(p: &mut Parser) {
         parse_generic_param_list(p);
     }
 
-    // Parameter list.
+    // Parameter list -- use clause-aware parsing to support patterns.
     if p.at(SyntaxKind::L_PAREN) {
-        parse_param_list(p);
+        parse_fn_clause_param_list(p);
     }
 
     // Optional return type: -> Type
@@ -66,24 +73,40 @@ pub(crate) fn parse_fn_def(p: &mut Parser) {
         parse_where_clause(p);
     }
 
-    // Expect `do`.
-    let do_span = p.current_span();
-    p.expect(SyntaxKind::DO_KW);
-
-    // Parse body.
-    if !p.has_error() {
-        parse_item_block_body(p);
+    // Optional guard clause: when <expr>
+    if p.at(SyntaxKind::WHEN_KW) {
+        let guard = p.open();
+        p.advance(); // WHEN_KW
+        super::expressions::expr(p);
+        p.close(guard, SyntaxKind::GUARD_CLAUSE);
     }
 
-    // Expect `end`.
-    if !p.at(SyntaxKind::END_KW) {
-        p.error_with_related(
-            "expected `end` to close function body",
-            do_span,
-            "`do` block started here",
-        );
+    // Determine body form: `= expr` or `do ... end`
+    if p.at(SyntaxKind::EQ) {
+        // Expression body form: fn name(pattern) = expr
+        p.advance(); // EQ
+
+        let body = p.open();
+        super::expressions::expr(p);
+        p.close(body, SyntaxKind::FN_EXPR_BODY);
+    } else if p.at(SyntaxKind::DO_KW) {
+        // Block body form: fn name(params) do ... end
+        let do_span = p.current_span();
+        p.advance(); // DO_KW
+
+        parse_item_block_body(p);
+
+        if !p.at(SyntaxKind::END_KW) {
+            p.error_with_related(
+                "expected `end` to close function body",
+                do_span,
+                "`do` block started here",
+            );
+        } else {
+            p.advance(); // END_KW
+        }
     } else {
-        p.advance(); // END_KW
+        p.error("expected `=` or `do` for function body");
     }
 
     p.close(m, SyntaxKind::FN_DEF);

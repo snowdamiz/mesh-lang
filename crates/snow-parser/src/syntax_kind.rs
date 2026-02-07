@@ -256,8 +256,10 @@ pub enum SyntaxKind {
     OR_PAT,
     /// As-pattern: `Circle(_) as c`
     AS_PAT,
-    /// Guard clause: `when r > 0.0` (for future use)
+    /// Guard clause: `when r > 0.0`
     GUARD_CLAUSE,
+    /// Expression body for `fn name(pattern) = expr` form.
+    FN_EXPR_BODY,
 
     // ── Actor node kinds ──────────────────────────────────────────────
     /// Actor block declaration: `actor Name do ... end`
@@ -626,6 +628,7 @@ mod tests {
             SyntaxKind::OR_PAT,
             SyntaxKind::AS_PAT,
             SyntaxKind::GUARD_CLAUSE,
+            SyntaxKind::FN_EXPR_BODY,
             // Actor node kinds
             SyntaxKind::ACTOR_DEF,
             SyntaxKind::SPAWN_EXPR,
@@ -648,8 +651,8 @@ mod tests {
             SyntaxKind::SECONDS_LIMIT,
         ];
         assert!(
-            node_kinds.len() >= 69,
-            "expected at least 69 composite node kinds, got {}",
+            node_kinds.len() >= 70,
+            "expected at least 70 composite node kinds, got {}",
             node_kinds.len()
         );
     }

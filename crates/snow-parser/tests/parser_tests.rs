@@ -5,7 +5,10 @@
 
 use insta::assert_snapshot;
 use snow_parser::ast::expr::{BinaryExpr, IfExpr, Literal};
-use snow_parser::ast::item::{FnDef, LetBinding, ServiceDef, SourceFile, StructDef, SumTypeDef};
+use snow_parser::ast::item::{
+    FnDef, LetBinding, ServiceDef, SourceFile, StructDef, SumTypeDef,
+};
+use snow_parser::SyntaxKind;
 use snow_parser::ast::pat::{AsPat, ConstructorPat, OrPat, Pattern};
 use snow_parser::{debug_tree, parse, parse_block, parse_expr, AstNode};
 
@@ -1766,4 +1769,242 @@ fn ast_service_in_items() {
         snow_parser::ast::item::Item::FnDef(_) => {}
         other => panic!("expected FnDef, got {:?}", other),
     }
+}
+
+// ── Multi-Clause Function Definitions ────────────────────────────────
+
+#[test]
+fn fn_expr_body_literal_param() {
+    // fn fib(0) = 0
+    let source = "fn fib(0) = 0";
+    assert_snapshot!(source_and_debug(source));
+}
+
+#[test]
+fn fn_expr_body_ident_param() {
+    // fn fib(n) = fib(n - 1) + fib(n - 2)
+    let source = "fn fib(n) = fib(n - 1) + fib(n - 2)";
+    assert_snapshot!(source_and_debug(source));
+}
+
+#[test]
+fn fn_expr_body_with_guard() {
+    // fn abs(n) when n < 0 = -n
+    let source = "fn abs(n) when n < 0 = -n";
+    assert_snapshot!(source_and_debug(source));
+}
+
+#[test]
+fn fn_expr_body_constructor_pattern() {
+    // fn foo(Some(x)) = x
+    let source = "fn foo(Some(x)) = x";
+    assert_snapshot!(source_and_debug(source));
+}
+
+#[test]
+fn fn_expr_body_wildcard() {
+    // fn foo(_) = 0
+    let source = "fn foo(_) = 0";
+    assert_snapshot!(source_and_debug(source));
+}
+
+#[test]
+fn fn_expr_body_multiple_params() {
+    // fn add(0, y) = y
+    let source = "fn add(0, y) = y";
+    assert_snapshot!(source_and_debug(source));
+}
+
+#[test]
+fn fn_expr_body_negative_literal() {
+    // fn neg(-1) = 1
+    let source = "fn neg(-1) = 1";
+    assert_snapshot!(source_and_debug(source));
+}
+
+#[test]
+fn fn_expr_body_bool_pattern() {
+    // fn to_int(true) = 1
+    let source = "fn to_int(true) = 1";
+    assert_snapshot!(source_and_debug(source));
+}
+
+#[test]
+fn fn_existing_do_end_still_works() {
+    // Existing syntax must continue to work
+    let source = "fn foo(x) do\n  x + 1\nend";
+    let p = parse(source);
+    assert!(p.ok(), "parse errors: {:?}", p.errors());
+}
+
+#[test]
+fn fn_existing_typed_params_still_works() {
+    // fn bar(x :: Int) do x end
+    let source = "fn bar(x :: Int) do\n  x\nend";
+    let p = parse(source);
+    assert!(p.ok(), "parse errors: {:?}", p.errors());
+}
+
+#[test]
+fn fn_multi_clause_consecutive() {
+    // Multiple clauses for the same function
+    let source = "fn fib(0) = 0\nfn fib(1) = 1\nfn fib(n) = fib(n - 1) + fib(n - 2)";
+    let p = parse(source);
+    assert!(p.ok(), "parse errors: {:?}", p.errors());
+
+    let tree = p.tree();
+    let fn_defs: Vec<_> = tree.fn_defs().collect();
+    assert_eq!(fn_defs.len(), 3);
+
+    // All three should have the same name
+    for f in &fn_defs {
+        assert_eq!(f.name().unwrap().text().unwrap(), "fib");
+    }
+}
+
+#[test]
+fn fn_guard_clause_produces_guard_node() {
+    // fn abs(n) when n < 0 = -n
+    let source = "fn abs(n) when n < 0 = -n";
+    let p = parse(source);
+    assert!(p.ok(), "parse errors: {:?}", p.errors());
+
+    let tree = p.tree();
+    let fn_def: FnDef = tree.fn_defs().next().unwrap();
+
+    // Check that GUARD_CLAUSE child exists
+    let has_guard = fn_def
+        .syntax()
+        .children()
+        .any(|n| n.kind() == SyntaxKind::GUARD_CLAUSE);
+    assert!(has_guard, "expected GUARD_CLAUSE child in FnDef");
+}
+
+#[test]
+fn fn_expr_body_produces_fn_expr_body_node() {
+    // fn fib(0) = 0
+    let source = "fn fib(0) = 0";
+    let p = parse(source);
+    assert!(p.ok(), "parse errors: {:?}", p.errors());
+
+    let tree = p.tree();
+    let fn_def: FnDef = tree.fn_defs().next().unwrap();
+
+    // Check that FN_EXPR_BODY child exists
+    let has_expr_body = fn_def
+        .syntax()
+        .children()
+        .any(|n| n.kind() == SyntaxKind::FN_EXPR_BODY);
+    assert!(has_expr_body, "expected FN_EXPR_BODY child in FnDef");
+}
+
+#[test]
+fn fn_do_end_has_no_fn_expr_body() {
+    // fn foo(x) do x + 1 end
+    let source = "fn foo(x) do\n  x + 1\nend";
+    let p = parse(source);
+    assert!(p.ok(), "parse errors: {:?}", p.errors());
+
+    let tree = p.tree();
+    let fn_def: FnDef = tree.fn_defs().next().unwrap();
+
+    // No FN_EXPR_BODY node for do/end functions
+    let has_expr_body = fn_def
+        .syntax()
+        .children()
+        .any(|n| n.kind() == SyntaxKind::FN_EXPR_BODY);
+    assert!(!has_expr_body, "do/end function should not have FN_EXPR_BODY");
+}
+
+#[test]
+fn fn_param_literal_has_pattern_child() {
+    // fn fib(0) = 0 -- the param should contain a LITERAL_PAT
+    let source = "fn fib(0) = 0";
+    let p = parse(source);
+    assert!(p.ok(), "parse errors: {:?}", p.errors());
+
+    let tree = p.tree();
+    let fn_def: FnDef = tree.fn_defs().next().unwrap();
+    let param_list = fn_def.param_list().unwrap();
+    let param = param_list.params().next().unwrap();
+
+    // The param should have a LITERAL_PAT child
+    let has_literal_pat = param
+        .syntax()
+        .children()
+        .any(|n| n.kind() == SyntaxKind::LITERAL_PAT);
+    assert!(has_literal_pat, "expected LITERAL_PAT child in param for fn fib(0)");
+}
+
+#[test]
+fn fn_param_wildcard_has_pattern_child() {
+    // fn foo(_) = 0
+    let source = "fn foo(_) = 0";
+    let p = parse(source);
+    assert!(p.ok(), "parse errors: {:?}", p.errors());
+
+    let tree = p.tree();
+    let fn_def: FnDef = tree.fn_defs().next().unwrap();
+    let param_list = fn_def.param_list().unwrap();
+    let param = param_list.params().next().unwrap();
+
+    let has_wildcard_pat = param
+        .syntax()
+        .children()
+        .any(|n| n.kind() == SyntaxKind::WILDCARD_PAT);
+    assert!(has_wildcard_pat, "expected WILDCARD_PAT child in param for fn foo(_)");
+}
+
+#[test]
+fn fn_param_constructor_has_pattern_child() {
+    // fn foo(Some(x)) = x
+    let source = "fn foo(Some(x)) = x";
+    let p = parse(source);
+    assert!(p.ok(), "parse errors: {:?}", p.errors());
+
+    let tree = p.tree();
+    let fn_def: FnDef = tree.fn_defs().next().unwrap();
+    let param_list = fn_def.param_list().unwrap();
+    let param = param_list.params().next().unwrap();
+
+    let has_constructor_pat = param
+        .syntax()
+        .children()
+        .any(|n| n.kind() == SyntaxKind::CONSTRUCTOR_PAT);
+    assert!(has_constructor_pat, "expected CONSTRUCTOR_PAT child in param for fn foo(Some(x))");
+}
+
+#[test]
+fn fn_guard_with_function_call() {
+    // Guards can include function calls (arbitrary Bool expr)
+    let source = "fn process(x) when is_valid(x) = x";
+    let p = parse(source);
+    assert!(p.ok(), "parse errors: {:?}", p.errors());
+}
+
+#[test]
+fn fn_guard_with_complex_expr() {
+    // Guards can be complex boolean expressions
+    let source = "fn check(n) when n > 0 and n < 100 = n";
+    let p = parse(source);
+    assert!(p.ok(), "parse errors: {:?}", p.errors());
+}
+
+#[test]
+fn fn_tuple_pattern_param() {
+    // fn swap((a, b)) = (b, a)
+    let source = "fn swap((a, b)) = (b, a)";
+    let p = parse(source);
+    assert!(p.ok(), "parse errors: {:?}", p.errors());
+
+    let tree = p.tree();
+    let fn_def: FnDef = tree.fn_defs().next().unwrap();
+    let param_list = fn_def.param_list().unwrap();
+    let param = param_list.params().next().unwrap();
+
+    let has_tuple_pat = param
+        .syntax()
+        .children()
+        .any(|n| n.kind() == SyntaxKind::TUPLE_PAT);
+    assert!(has_tuple_pat, "expected TUPLE_PAT child in param for fn swap((a, b))");
 }
