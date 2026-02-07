@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-02-05)
 
 **Core value:** Expressive, readable concurrency -- writing concurrent programs should feel as natural as sequential code, with supervision and fault tolerance built in.
-**Current focus:** Phase 10 IN PROGRESS -- Developer Tooling. Plans 01, 02, 03, 04, 05, 06, 07, 08 complete.
+**Current focus:** Phase 10 IN PROGRESS -- Developer Tooling. Plans 01, 02, 03, 04, 05, 06, 07, 08, 09 complete.
 
 ## Current Position
 
 Phase: 10 of 10 (Developer Tooling)
-Plan: 08 of 10 in current phase (plans 01, 02, 03, 04, 05, 06, 07, 08 complete)
+Plan: 09 of 10 in current phase (plans 01, 02, 03, 04, 05, 06, 07, 08, 09 complete)
 Status: In progress
-Last activity: 2026-02-07 -- Completed 10-03-PLAN.md (Formatter CLI Integration)
+Last activity: 2026-02-07 -- Completed 10-09-PLAN.md (Go-to-Definition)
 
-Progress: [███████████████████████████████████████████████████] 95% (52 plans of 55 total)
+Progress: [████████████████████████████████████████████████████] 96% (53 plans of 55 total)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 52
+- Total plans completed: 53
 - Average duration: 9min
-- Total execution time: 485min
+- Total execution time: 495min
 
 **By Phase:**
 
@@ -36,10 +36,10 @@ Progress: [███████████████████████
 | 07-supervision-fault-tolerance | 3/3 | 27min | 9min |
 | 08-standard-library | 7/7 | 67min | 10min |
 | 09-concurrency-standard-library | 5/5 | 51min | 10min |
-| 10-developer-tooling | 8/10 | 60min | 8min |
+| 10-developer-tooling | 9/10 | 70min | 8min |
 
 **Recent Trend:**
-- Last 5 plans: 10-05 (7min), 10-07 (5min), 10-08 (8min), 10-04 (10min), 10-02 (12min)
+- Last 5 plans: 10-09 (10min), 10-05 (7min), 10-07 (5min), 10-08 (8min), 10-04 (10min)
 
 *Updated after each plan completion*
 
@@ -278,6 +278,9 @@ Recent decisions affecting current work:
 - [10-05]: History persisted to $HOME/.snow_repl_history
 - [10-03]: File not rewritten when already formatted (preserves mtime for build systems and CI)
 - [10-03]: Pipe operator and interface method body formatting are known idempotency limitations (pre-existing parser/walker issues)
+- [10-09]: Source-to-tree offset conversion via re-lexing to handle whitespace-free rowan CST
+- [10-09]: SOURCE_FILE searches all children (forward references) while BLOCK searches only earlier siblings
+- [10-09]: Rowan CST coordinate mismatch (whitespace-free tree) discovered and handled with offset conversion functions
 
 ### Pending Todos
 
@@ -286,16 +289,17 @@ None.
 ### Blockers/Concerns
 
 - Phase 9 COMPLETE -- all 5 plans done, all E2E tests passing
-- Phase 10 IN PROGRESS -- plans 01, 02, 03, 04, 05, 06, 07, 08 complete
+- Phase 10 IN PROGRESS -- plans 01, 02, 03, 04, 05, 06, 07, 08, 09 complete
 - string_split now possible with List type available (can be added in future plan)
 - String-keyed maps use pointer identity (not content comparison) -- documented limitation
 - Multiline pipe operator (`|>` at start of continuation line) fails to parse -- pre-existing parser limitation
 - Pipe operator also fails when used with inline closures (fn(x) -> expr end) on same line -- parser merges with previous expression
 - Closure handlers for HTTP.route not supported in Phase 8 (bare function handlers only)
 - Map.put typed as (Map, Int, Int) -- string-keyed maps need type system refinement for proper E2E testing
+- Rowan CST coordinate mismatch also affects hover accuracy for multi-token expressions (pre-existing, documented)
 
 ## Session Continuity
 
 Last session: 2026-02-07
-Stopped at: Completed 10-03-PLAN.md (Formatter CLI Integration)
+Stopped at: Completed 10-09-PLAN.md (Go-to-Definition)
 Resume file: None
