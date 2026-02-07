@@ -125,14 +125,16 @@ Plans:
   3. An actor running an infinite computation does not prevent other actors from making progress (preemptive scheduling via yield points)
   4. A `receive` block with pattern matching correctly dispatches incoming messages to the matching arm
   5. Process linking works: when a linked actor crashes, the linked partner receives an exit signal
-**Plans**: TBD
+**Plans**: 7 plans
 
 Plans:
-- [ ] 06-01: Standalone actor runtime library (libsnowrt) with scheduler and process model
-- [ ] 06-02: Message passing infrastructure (typed mailboxes, MPSC queues, per-actor heaps)
-- [ ] 06-03: Compiler integration (spawn/send/receive codegen, yield point insertion)
-- [ ] 06-04: Typed actor PIDs (Pid[MessageType]) and compile-time protocol checking
-- [ ] 06-05: Process linking, monitoring, and exit signal propagation
+- [ ] 06-01-PLAN.md -- M:N work-stealing scheduler, Process Control Block, corosensei coroutines, reduction counting
+- [ ] 06-02-PLAN.md -- Compiler frontend: actor keyword, parser for actor/spawn/send/receive/self, MIR extensions
+- [ ] 06-03-PLAN.md -- Per-actor heaps, FIFO mailbox, message deep-copy, send/receive with scheduler blocking
+- [ ] 06-04-PLAN.md -- Typed Pid<M> in type checker, compile-time send validation, actor type errors
+- [ ] 06-05-PLAN.md -- AST-to-MIR lowering for actors, LLVM codegen for actor primitives, reduction check instrumentation
+- [ ] 06-06-PLAN.md -- Process linking, exit signal propagation, named process registry
+- [ ] 06-07-PLAN.md -- E2E integration tests, 100K actor benchmark, success criteria verification
 
 ### Phase 7: Supervision & Fault Tolerance
 **Goal**: OTP-style supervision trees with restart strategies, enabling the let-it-crash philosophy with automatic recovery from actor failures
@@ -213,7 +215,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8 -> 9 -> 10
 | 3. Type System | 5/5 | Complete | 2026-02-06 |
 | 4. Pattern Matching & ADTs | 5/5 | Complete | 2026-02-06 |
 | 5. LLVM Codegen & Native Binaries | 5/5 | Complete | 2026-02-06 |
-| 6. Actor Runtime | 0/5 | Not started | - |
+| 6. Actor Runtime | 0/7 | Not started | - |
 | 7. Supervision & Fault Tolerance | 0/3 | Not started | - |
 | 8. Standard Library | 0/5 | Not started | - |
 | 9. Concurrency Standard Library | 0/2 | Not started | - |
