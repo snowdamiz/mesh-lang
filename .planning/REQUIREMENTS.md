@@ -9,9 +9,9 @@ Requirements for v1.1 release. Each maps to roadmap phases.
 
 ### Syntax & Parsing
 
-- [ ] **SYN-01**: User can define functions with multiple pattern-matched clauses (`fn fib(0) = 0`, `fn fib(1) = 1`, `fn fib(n) = fib(n-1) + fib(n-2)`)
-- [ ] **SYN-02**: Multi-clause functions participate in exhaustiveness checking
-- [ ] **SYN-03**: Type inference unifies across all clauses of a multi-clause function
+- [x] **SYN-01**: User can define functions with multiple pattern-matched clauses (`fn fib(0) = 0`, `fn fib(1) = 1`, `fn fib(n) = fib(n-1) + fib(n-2)`)
+- [x] **SYN-02**: Multi-clause functions participate in exhaustiveness checking
+- [x] **SYN-03**: Type inference unifies across all clauses of a multi-clause function
 - [ ] **SYN-04**: User can pipe into inline closures (`list |> Enum.map(fn x -> x * 2 end)`)
 - [ ] **SYN-05**: Nested `do/end` and `fn/end` blocks parse correctly inside pipe chains
 
@@ -59,9 +59,9 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| SYN-01 | Phase 11 | Pending |
-| SYN-02 | Phase 11 | Pending |
-| SYN-03 | Phase 11 | Pending |
+| SYN-01 | Phase 11 | Complete |
+| SYN-02 | Phase 11 | Complete |
+| SYN-03 | Phase 11 | Complete |
 | SYN-04 | Phase 12 | Pending |
 | SYN-05 | Phase 12 | Pending |
 | PAT-01 | Phase 13 | Pending |

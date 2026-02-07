@@ -19,7 +19,7 @@ standard library, and developer tooling. See milestones/v1.0-ROADMAP.md for deta
 
 **Milestone Goal:** Fix all five documented v1.0 limitations -- multi-clause functions, string pattern matching, pipe operator with closures, actor-per-connection HTTP, and generic map types -- to make the language feel complete and polished.
 
-- [ ] **Phase 11: Multi-Clause Functions** - Define functions with multiple pattern-matched clauses
+- [x] **Phase 11: Multi-Clause Functions** - Define functions with multiple pattern-matched clauses
 - [ ] **Phase 12: Pipe Operator Closures** - Parse inline closures inside pipe chains
 - [ ] **Phase 13: String Pattern Matching** - Compile-time string comparison in case expressions
 - [ ] **Phase 14: Generic Map Types** - Map<K, V> with string keys and generic functions
@@ -39,9 +39,9 @@ standard library, and developer tooling. See milestones/v1.0-ROADMAP.md for deta
 **Plans**: 3 plans
 
 Plans:
-- [ ] 11-01-PLAN.md -- Parser + AST: = expr body form, pattern params, guard clauses
-- [ ] 11-02-PLAN.md -- Type checker: clause grouping, desugaring, validation, guard relaxation
-- [ ] 11-03-PLAN.md -- MIR lowering, formatter, e2e tests
+- [x] 11-01-PLAN.md -- Parser + AST: = expr body form, pattern params, guard clauses
+- [x] 11-02-PLAN.md -- Type checker: clause grouping, desugaring, validation, guard relaxation
+- [x] 11-03-PLAN.md -- MIR lowering, formatter, e2e tests
 
 ### Phase 12: Pipe Operator Closures
 **Goal**: Users can pipe values into expressions containing inline closures without parser errors
@@ -104,7 +104,7 @@ Phases execute in numeric order: 11 -> 12 -> 13 -> 14 -> 15
 
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
-| 11. Multi-Clause Functions | v1.1 | 0/3 | Planned | - |
+| 11. Multi-Clause Functions | v1.1 | 3/3 | ✓ Complete | 2026-02-07 |
 | 12. Pipe Operator Closures | v1.1 | 0/TBD | Not started | - |
 | 13. String Pattern Matching | v1.1 | 0/TBD | Not started | - |
 | 14. Generic Map Types | v1.1 | 0/TBD | Not started | - |
