@@ -148,6 +148,9 @@ Recent decisions affecting current work:
 - [05-05]: System cc as linker driver (handles macOS clang / Linux gcc transparently)
 - [05-05]: snowc build auto-builds snow-rt via cargo before linking
 - [05-05]: Closure parameter type annotations resolved in infer_closure (was missing, caused string interpolation to fail in closures)
+- [06-01]: Coroutines are !Send -- work-stealing operates on SpawnRequest (Send) not Coroutine
+- [06-01]: Thread-local shadow reduction counter avoids locking on every reduction check
+- [06-01]: Yielder re-installation after suspend to handle interleaved coroutines on same thread
 - [06-02]: Actor blocks parsed as top-level items (same level as fn/struct/module)
 - [06-02]: Actor expressions (spawn/send/receive/self/link) dispatch from expression lhs()
 - [06-02]: Receive arms reuse existing pattern matching infrastructure from case/match
@@ -163,7 +166,7 @@ None.
 
 - Phase 6 (Actor Runtime) is highest engineering risk -- preemptive scheduling, per-actor GC, work-stealing
 - Typed actor messaging (TYPE-07) is a research-level problem -- design on paper during early phases
-- 3 pre-existing test failures in snow-rt scheduler tests (test_high_priority, test_reduction_yield, test_reduction_yield_does_not_starve) from Plan 06-01
+- Plan 06-01 test isolation bugs fixed: all 27 snow-rt tests now pass (test counters isolated per-test)
 
 ## Session Continuity
 
