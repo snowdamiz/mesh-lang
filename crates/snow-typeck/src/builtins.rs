@@ -445,6 +445,48 @@ pub fn register_builtins(
         "queue_is_empty".into(),
         Scheme::mono(Ty::fun(vec![queue_t.clone()], Ty::bool())),
     );
+
+    // ── Standard library: JSON functions (Phase 8 Plan 04) ────────────
+
+    // Json type is opaque (Ptr) -- pattern matching on Json sum type deferred
+    let json_t = Ty::Con(TyCon::new("Json"));
+    env.insert("Json".into(), Scheme::mono(json_t.clone()));
+
+    // JSON.parse(string) -> Result<Json, String>
+    env.insert(
+        "json_parse".into(),
+        Scheme::mono(Ty::fun(vec![Ty::string()], Ty::result(json_t.clone(), Ty::string()))),
+    );
+    // JSON.encode(json) -> String
+    env.insert(
+        "json_encode".into(),
+        Scheme::mono(Ty::fun(vec![json_t.clone()], Ty::string())),
+    );
+    // JSON.encode_string(string) -> String
+    env.insert(
+        "json_encode_string".into(),
+        Scheme::mono(Ty::fun(vec![Ty::string()], Ty::string())),
+    );
+    // JSON.encode_int(int) -> String
+    env.insert(
+        "json_encode_int".into(),
+        Scheme::mono(Ty::fun(vec![Ty::int()], Ty::string())),
+    );
+    // JSON.encode_bool(bool) -> String
+    env.insert(
+        "json_encode_bool".into(),
+        Scheme::mono(Ty::fun(vec![Ty::bool()], Ty::string())),
+    );
+    // JSON.encode_map(map) -> String
+    env.insert(
+        "json_encode_map".into(),
+        Scheme::mono(Ty::fun(vec![map_t.clone()], Ty::string())),
+    );
+    // JSON.encode_list(list) -> String
+    env.insert(
+        "json_encode_list".into(),
+        Scheme::mono(Ty::fun(vec![list_t.clone()], Ty::string())),
+    );
 }
 
 /// Register compiler-known traits and their built-in implementations.

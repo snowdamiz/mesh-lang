@@ -368,6 +368,18 @@ fn stdlib_modules() -> HashMap<String, HashMap<String, Scheme>> {
     queue_mod.insert("is_empty".to_string(), Scheme::mono(Ty::fun(vec![queue_t.clone()], Ty::bool())));
     modules.insert("Queue".to_string(), queue_mod);
 
+    // ── JSON module (Phase 8 Plan 04) ─────────────────────────────────
+    let json_t = Ty::Con(TyCon::new("Json"));
+    let mut json_mod = HashMap::new();
+    json_mod.insert("parse".to_string(), Scheme::mono(Ty::fun(vec![Ty::string()], Ty::result(json_t.clone(), Ty::string()))));
+    json_mod.insert("encode".to_string(), Scheme::mono(Ty::fun(vec![json_t.clone()], Ty::string())));
+    json_mod.insert("encode_string".to_string(), Scheme::mono(Ty::fun(vec![Ty::string()], Ty::string())));
+    json_mod.insert("encode_int".to_string(), Scheme::mono(Ty::fun(vec![Ty::int()], Ty::string())));
+    json_mod.insert("encode_bool".to_string(), Scheme::mono(Ty::fun(vec![Ty::bool()], Ty::string())));
+    json_mod.insert("encode_map".to_string(), Scheme::mono(Ty::fun(vec![Ty::map_untyped()], Ty::string())));
+    json_mod.insert("encode_list".to_string(), Scheme::mono(Ty::fun(vec![Ty::list_untyped()], Ty::string())));
+    modules.insert("JSON".to_string(), json_mod);
+
     modules
 }
 

@@ -208,3 +208,41 @@ fn e2e_queue_basic() {
     let output = compile_and_run(&source);
     assert_eq!(output, "2\n10\n");
 }
+
+// ── JSON E2E Tests (Phase 8 Plan 04) ──────────────────────────────────
+
+#[test]
+fn e2e_json_encode_int() {
+    let source = read_fixture("stdlib_json_encode_int.snow");
+    let output = compile_and_run(&source);
+    assert_eq!(output, "42\n");
+}
+
+#[test]
+fn e2e_json_encode_string() {
+    let source = read_fixture("stdlib_json_encode_string.snow");
+    let output = compile_and_run(&source);
+    assert_eq!(output, "\"hello\"\n");
+}
+
+#[test]
+fn e2e_json_encode_bool() {
+    let source = read_fixture("stdlib_json_encode_bool.snow");
+    let output = compile_and_run(&source);
+    assert_eq!(output, "true\nfalse\n");
+}
+
+#[test]
+fn e2e_json_encode_map() {
+    // Tests multiple JSON encode functions together (encode_int, encode_string, encode_bool)
+    let source = read_fixture("stdlib_json_encode_map.snow");
+    let output = compile_and_run(&source);
+    assert_eq!(output, "100\n\"test\"\ntrue\n");
+}
+
+#[test]
+fn e2e_json_parse_roundtrip() {
+    let source = read_fixture("stdlib_json_parse_roundtrip.snow");
+    let output = compile_and_run(&source);
+    assert_eq!(output, "99\n");
+}

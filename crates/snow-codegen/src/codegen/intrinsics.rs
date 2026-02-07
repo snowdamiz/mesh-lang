@@ -283,6 +283,41 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
     module.add_function("snow_queue_size", i64_type.fn_type(&[ptr_type.into()], false), Some(inkwell::module::Linkage::External));
     module.add_function("snow_queue_is_empty", i8_type.fn_type(&[ptr_type.into()], false), Some(inkwell::module::Linkage::External));
 
+    // ── Standard library: JSON functions (Phase 8 Plan 04) ──────────────
+
+    // snow_json_parse(input: ptr) -> ptr (SnowResult)
+    module.add_function("snow_json_parse", ptr_type.fn_type(&[ptr_type.into()], false), Some(inkwell::module::Linkage::External));
+
+    // snow_json_encode(json: ptr) -> ptr (SnowString)
+    module.add_function("snow_json_encode", ptr_type.fn_type(&[ptr_type.into()], false), Some(inkwell::module::Linkage::External));
+
+    // snow_json_encode_string(s: ptr) -> ptr (SnowString)
+    module.add_function("snow_json_encode_string", ptr_type.fn_type(&[ptr_type.into()], false), Some(inkwell::module::Linkage::External));
+
+    // snow_json_encode_int(val: i64) -> ptr (SnowString)
+    module.add_function("snow_json_encode_int", ptr_type.fn_type(&[i64_type.into()], false), Some(inkwell::module::Linkage::External));
+
+    // snow_json_encode_bool(val: i8) -> ptr (SnowString)
+    module.add_function("snow_json_encode_bool", ptr_type.fn_type(&[i8_type.into()], false), Some(inkwell::module::Linkage::External));
+
+    // snow_json_encode_map(map: ptr) -> ptr (SnowString)
+    module.add_function("snow_json_encode_map", ptr_type.fn_type(&[ptr_type.into()], false), Some(inkwell::module::Linkage::External));
+
+    // snow_json_encode_list(list: ptr) -> ptr (SnowString)
+    module.add_function("snow_json_encode_list", ptr_type.fn_type(&[ptr_type.into()], false), Some(inkwell::module::Linkage::External));
+
+    // snow_json_from_int(val: i64) -> ptr
+    module.add_function("snow_json_from_int", ptr_type.fn_type(&[i64_type.into()], false), Some(inkwell::module::Linkage::External));
+
+    // snow_json_from_float(val: f64) -> ptr
+    module.add_function("snow_json_from_float", ptr_type.fn_type(&[f64_type.into()], false), Some(inkwell::module::Linkage::External));
+
+    // snow_json_from_bool(val: i8) -> ptr
+    module.add_function("snow_json_from_bool", ptr_type.fn_type(&[i8_type.into()], false), Some(inkwell::module::Linkage::External));
+
+    // snow_json_from_string(s: ptr) -> ptr
+    module.add_function("snow_json_from_string", ptr_type.fn_type(&[ptr_type.into()], false), Some(inkwell::module::Linkage::External));
+
     // snow_panic(msg: ptr, msg_len: u64, file: ptr, file_len: u64, line: u32) -> void
     // (noreturn -- marked via attribute)
     let panic_params: Vec<BasicMetadataTypeEnum<'ctx>> = vec![
@@ -419,6 +454,19 @@ mod tests {
         assert!(module.get_function("snow_queue_peek").is_some());
         assert!(module.get_function("snow_queue_size").is_some());
         assert!(module.get_function("snow_queue_is_empty").is_some());
+
+        // JSON functions (Phase 8 Plan 04)
+        assert!(module.get_function("snow_json_parse").is_some());
+        assert!(module.get_function("snow_json_encode").is_some());
+        assert!(module.get_function("snow_json_encode_string").is_some());
+        assert!(module.get_function("snow_json_encode_int").is_some());
+        assert!(module.get_function("snow_json_encode_bool").is_some());
+        assert!(module.get_function("snow_json_encode_map").is_some());
+        assert!(module.get_function("snow_json_encode_list").is_some());
+        assert!(module.get_function("snow_json_from_int").is_some());
+        assert!(module.get_function("snow_json_from_float").is_some());
+        assert!(module.get_function("snow_json_from_bool").is_some());
+        assert!(module.get_function("snow_json_from_string").is_some());
     }
 
     #[test]

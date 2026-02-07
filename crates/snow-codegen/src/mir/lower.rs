@@ -283,6 +283,18 @@ impl<'a> Lowerer<'a> {
         self.known_functions.insert("snow_queue_peek".to_string(), MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Int)));
         self.known_functions.insert("snow_queue_size".to_string(), MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Int)));
         self.known_functions.insert("snow_queue_is_empty".to_string(), MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Bool)));
+        // JSON functions (Phase 8 Plan 04)
+        self.known_functions.insert("snow_json_parse".to_string(), MirType::FnPtr(vec![MirType::String], Box::new(MirType::Ptr)));
+        self.known_functions.insert("snow_json_encode".to_string(), MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::String)));
+        self.known_functions.insert("snow_json_encode_string".to_string(), MirType::FnPtr(vec![MirType::String], Box::new(MirType::String)));
+        self.known_functions.insert("snow_json_encode_int".to_string(), MirType::FnPtr(vec![MirType::Int], Box::new(MirType::String)));
+        self.known_functions.insert("snow_json_encode_bool".to_string(), MirType::FnPtr(vec![MirType::Bool], Box::new(MirType::String)));
+        self.known_functions.insert("snow_json_encode_map".to_string(), MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::String)));
+        self.known_functions.insert("snow_json_encode_list".to_string(), MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::String)));
+        self.known_functions.insert("snow_json_from_int".to_string(), MirType::FnPtr(vec![MirType::Int], Box::new(MirType::Ptr)));
+        self.known_functions.insert("snow_json_from_float".to_string(), MirType::FnPtr(vec![MirType::Float], Box::new(MirType::Ptr)));
+        self.known_functions.insert("snow_json_from_bool".to_string(), MirType::FnPtr(vec![MirType::Bool], Box::new(MirType::Ptr)));
+        self.known_functions.insert("snow_json_from_string".to_string(), MirType::FnPtr(vec![MirType::String], Box::new(MirType::Ptr)));
 
         // Also register variant constructors as known functions.
         for (_, sum_info) in &self.registry.sum_type_defs {
@@ -1904,6 +1916,26 @@ fn map_builtin_name(name: &str) -> String {
         "reduce" => "snow_list_reduce".to_string(),
         "head" => "snow_list_head".to_string(),
         "tail" => "snow_list_tail".to_string(),
+        // ── JSON functions (Phase 8 Plan 04) ─────────────────────────
+        "json_parse" => "snow_json_parse".to_string(),
+        "json_encode" => "snow_json_encode".to_string(),
+        "json_encode_string" => "snow_json_encode_string".to_string(),
+        "json_encode_int" => "snow_json_encode_int".to_string(),
+        "json_encode_bool" => "snow_json_encode_bool".to_string(),
+        "json_encode_map" => "snow_json_encode_map".to_string(),
+        "json_encode_list" => "snow_json_encode_list".to_string(),
+        "json_from_int" => "snow_json_from_int".to_string(),
+        "json_from_float" => "snow_json_from_float".to_string(),
+        "json_from_bool" => "snow_json_from_bool".to_string(),
+        "json_from_string" => "snow_json_from_string".to_string(),
+        // JSON bare names for from/import usage
+        "parse" => "snow_json_parse".to_string(),
+        "encode" => "snow_json_encode".to_string(),
+        "encode_string" => "snow_json_encode_string".to_string(),
+        "encode_int" => "snow_json_encode_int".to_string(),
+        "encode_bool" => "snow_json_encode_bool".to_string(),
+        "encode_map" => "snow_json_encode_map".to_string(),
+        "encode_list" => "snow_json_encode_list".to_string(),
         _ => name.to_string(),
     }
 }
