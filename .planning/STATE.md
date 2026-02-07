@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-02-05)
 
 **Core value:** Expressive, readable concurrency -- writing concurrent programs should feel as natural as sequential code, with supervision and fault tolerance built in.
-**Current focus:** Phase 6 -- Actor Runtime. Plan 06 complete (linking, registry, terminate callbacks). Bidirectional process linking with exit propagation, named process registry, terminate callback invocation.
+**Current focus:** Phase 6 complete -- Actor Runtime fully integrated and verified. 7 E2E test programs, 100K actor benchmark (~2.78s), all 6 success criteria met. Ready for Phase 7 (Supervision & Fault Tolerance).
 
 ## Current Position
 
-Phase: 6 of 10 (Actor Runtime)
-Plan: 6 of 7 in current phase
-Status: In progress
-Last activity: 2026-02-07 -- Completed 06-06-PLAN.md (linking, registry, terminate callbacks)
+Phase: 6 of 10 (Actor Runtime) -- COMPLETE
+Plan: 7 of 7 in current phase (all done)
+Status: Phase complete
+Last activity: 2026-02-07 -- Completed 06-07-PLAN.md (E2E integration tests, 100K benchmark)
 
-Progress: [█████████████████████████████░] 71% (29 plans of ~41 estimated total)
+Progress: [██████████████████████████████░░░░░░░░░░░░░░] 67% (30 plans of ~45 estimated total)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 29
+- Total plans completed: 30
 - Average duration: 9min
-- Total execution time: 259min
+- Total execution time: 280min
 
 **By Phase:**
 
@@ -32,10 +32,10 @@ Progress: [███████████████████████
 | 03-type-system | 5/5 | 83min | 17min |
 | 04-pattern-matching-adts | 5/5 | 42min | 8min |
 | 05-llvm-codegen-native-binaries | 5/5 | 50min | 10min |
-| 06-actor-runtime | 6/7 | 49min | 8min |
+| 06-actor-runtime | 7/7 | 70min | 10min |
 
 **Recent Trend:**
-- Last 5 plans: 06-02 (10min), 06-03 (7min), 06-04 (9min), 06-05 (7min), 06-06 (6min)
+- Last 5 plans: 06-03 (7min), 06-04 (9min), 06-05 (7min), 06-06 (6min), 06-07 (21min)
 
 *Updated after each plan completion*
 
@@ -177,6 +177,10 @@ Recent decisions affecting current work:
 - [06-06]: ProcessRegistry maintains PID-to-names reverse index for efficient cleanup_process on exit
 - [06-06]: Normal exit delivers message to linked processes but does NOT crash them (Erlang semantics)
 - [06-06]: Terminate callback invoked BEFORE exit signal propagation to linked processes
+- [06-07]: Scheduler run loop uses interior mutability to avoid deadlock during coroutine resume
+- [06-07]: Compiler emits snow_main (not main) to avoid symbol collision with runtime
+- [06-07]: Actor spawn functions return Unit at MIR/codegen level (runtime allocates Pid externally)
+- [06-07]: Reduction check only yields when inside coroutine context (guards against bare main thread)
 
 ### Pending Todos
 
@@ -184,12 +188,13 @@ None.
 
 ### Blockers/Concerns
 
-- Phase 6 (Actor Runtime) is highest engineering risk -- preemptive scheduling, per-actor GC, work-stealing
+- Phase 6 risk fully mitigated -- all actor features integrated and verified with E2E tests
 - Typed actor messaging (TYPE-07) is a research-level problem -- design on paper during early phases
 - Plan 06-01 test isolation bugs fixed: all 27 snow-rt tests now pass (test counters isolated per-test)
+- Phase 7 (Supervision) depends on trap_exit flag and exit propagation from 06-06 -- both ready
 
 ## Session Continuity
 
 Last session: 2026-02-07
-Stopped at: Completed 06-06-PLAN.md
+Stopped at: Completed 06-07-PLAN.md -- Phase 6 complete
 Resume file: None

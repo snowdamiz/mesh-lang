@@ -17,7 +17,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 3: Type System** - Hindley-Milner type inference with generics, structs, traits, Option/Result types
 - [x] **Phase 4: Pattern Matching & Algebraic Data Types** - Exhaustive pattern matching, sum types, and guards
 - [x] **Phase 5: LLVM Codegen & Native Binaries** - Full compilation pipeline producing native single-binary executables for sequential code
-- [ ] **Phase 6: Actor Runtime** - Lightweight actor processes with typed message passing, standalone runtime library integrated with compiler
+- [x] **Phase 6: Actor Runtime** - Lightweight actor processes with typed message passing, standalone runtime library integrated with compiler
 - [ ] **Phase 7: Supervision & Fault Tolerance** - Supervision trees with restart strategies and let-it-crash semantics
 - [ ] **Phase 8: Standard Library** - Core library for I/O, strings, collections, file operations, HTTP, and JSON
 - [ ] **Phase 9: Concurrency Standard Library** - GenServer, Task, and other OTP-style behavior abstractions
@@ -128,13 +128,13 @@ Plans:
 **Plans**: 7 plans
 
 Plans:
-- [ ] 06-01-PLAN.md -- M:N work-stealing scheduler, Process Control Block, corosensei coroutines, reduction counting
-- [ ] 06-02-PLAN.md -- Compiler frontend: actor keyword, parser for actor/spawn/send/receive/self, MIR extensions
-- [ ] 06-03-PLAN.md -- Per-actor heaps, FIFO mailbox, message deep-copy, send/receive with scheduler blocking
-- [ ] 06-04-PLAN.md -- Typed Pid<M> in type checker, compile-time send validation, actor type errors
-- [ ] 06-05-PLAN.md -- AST-to-MIR lowering for actors, LLVM codegen for actor primitives, reduction check instrumentation
-- [ ] 06-06-PLAN.md -- Process linking, exit signal propagation, named process registry
-- [ ] 06-07-PLAN.md -- E2E integration tests, 100K actor benchmark, success criteria verification
+- [x] 06-01-PLAN.md -- M:N work-stealing scheduler, Process Control Block, corosensei coroutines, reduction counting
+- [x] 06-02-PLAN.md -- Compiler frontend: actor keyword, parser for actor/spawn/send/receive/self, MIR extensions
+- [x] 06-03-PLAN.md -- Per-actor heaps, FIFO mailbox, message deep-copy, send/receive with scheduler blocking
+- [x] 06-04-PLAN.md -- Typed Pid<M> in type checker, compile-time send validation, actor type errors
+- [x] 06-05-PLAN.md -- AST-to-MIR lowering for actors, LLVM codegen for actor primitives, reduction check instrumentation
+- [x] 06-06-PLAN.md -- Process linking, exit signal propagation, named process registry
+- [x] 06-07-PLAN.md -- E2E integration tests, 100K actor benchmark, success criteria verification
 
 ### Phase 7: Supervision & Fault Tolerance
 **Goal**: OTP-style supervision trees with restart strategies, enabling the let-it-crash philosophy with automatic recovery from actor failures
@@ -215,7 +215,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8 -> 9 -> 10
 | 3. Type System | 5/5 | Complete | 2026-02-06 |
 | 4. Pattern Matching & ADTs | 5/5 | Complete | 2026-02-06 |
 | 5. LLVM Codegen & Native Binaries | 5/5 | Complete | 2026-02-06 |
-| 6. Actor Runtime | 0/7 | Not started | - |
+| 6. Actor Runtime | 7/7 | Complete | 2026-02-07 |
 | 7. Supervision & Fault Tolerance | 0/3 | Not started | - |
 | 8. Standard Library | 0/5 | Not started | - |
 | 9. Concurrency Standard Library | 0/2 | Not started | - |
