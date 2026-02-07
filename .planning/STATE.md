@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-02-05)
 
 **Core value:** Expressive, readable concurrency -- writing concurrent programs should feel as natural as sequential code, with supervision and fault tolerance built in.
-**Current focus:** Phase 10 IN PROGRESS -- Developer Tooling. Plan 06 complete (package manager core).
+**Current focus:** Phase 10 IN PROGRESS -- Developer Tooling. Plan 08 complete (LSP server).
 
 ## Current Position
 
 Phase: 10 of 10 (Developer Tooling)
-Plan: 06 of 10 in current phase
+Plan: 08 of 10 in current phase
 Status: In progress
-Last activity: 2026-02-07 -- Completed 10-06-PLAN.md (Package Manager Core)
+Last activity: 2026-02-07 -- Completed 10-08-PLAN.md (LSP Server)
 
-Progress: [██████████████████████████████████████████████░] 97% (46 plans of ~55 estimated total)
+Progress: [███████████████████████████████████████████████░] 85% (47 plans of 55 total)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 46
+- Total plans completed: 47
 - Average duration: 9min
-- Total execution time: 431min
+- Total execution time: 439min
 
 **By Phase:**
 
@@ -36,10 +36,10 @@ Progress: [███████████████████████
 | 07-supervision-fault-tolerance | 3/3 | 27min | 9min |
 | 08-standard-library | 7/7 | 67min | 10min |
 | 09-concurrency-standard-library | 5/5 | 51min | 10min |
-| 10-developer-tooling | 1/10 | 6min | 6min |
+| 10-developer-tooling | 2/10 | 14min | 7min |
 
 **Recent Trend:**
-- Last 5 plans: 09-03 (19min), 09-04 (6min), 09-05 (13min), 10-06 (6min)
+- Last 5 plans: 09-04 (6min), 09-05 (13min), 10-06 (6min), 10-08 (8min)
 
 *Updated after each plan completion*
 
@@ -253,6 +253,10 @@ Recent decisions affecting current work:
 - [10-06]: Git deps cloned to project_dir/.snow/deps/<name>/ (project-local, not global cache)
 - [10-06]: Path dep source keys use canonicalize() for consistent diamond deduplication
 - [10-06]: Lockfile version field (always 1) for future format evolution
+- [10-08]: Mutex<HashMap> document store for LSP (simple, correct for single-client model)
+- [10-08]: UTF-16 position conversion per LSP spec (char.len_utf16() for non-ASCII)
+- [10-08]: Smallest-range lookup for hover type (finds innermost expression at cursor)
+- [10-08]: tokio::runtime::Runtime::new() in snowc main for LSP (avoids async main)
 
 ### Pending Todos
 
@@ -261,7 +265,7 @@ None.
 ### Blockers/Concerns
 
 - Phase 9 COMPLETE -- all 5 plans done, all E2E tests passing
-- Phase 10 IN PROGRESS -- plan 06 (package manager core) complete
+- Phase 10 IN PROGRESS -- plan 08 (LSP server) complete
 - string_split now possible with List type available (can be added in future plan)
 - String-keyed maps use pointer identity (not content comparison) -- documented limitation
 - Multiline pipe operator (`|>` at start of continuation line) fails to parse -- pre-existing parser limitation
@@ -272,5 +276,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-07
-Stopped at: Completed 10-06-PLAN.md (Package Manager Core)
+Stopped at: Completed 10-08-PLAN.md (LSP Server)
 Resume file: None
