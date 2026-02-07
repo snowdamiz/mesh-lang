@@ -13,6 +13,7 @@ snow-codegen = { path = "../snow-codegen" }
 snow-lsp = { path = "../snow-lsp" }
 clap = { workspace = true }
 ariadne = { workspace = true }
+serde_json = { workspace = true }
 tokio = { workspace = true }
 
 [dev-dependencies]
