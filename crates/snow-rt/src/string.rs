@@ -146,6 +146,130 @@ pub extern "C" fn snow_println(s: *const SnowString) {
     }
 }
 
+// ── String operations (Phase 8) ──────────────────────────────────────────
+
+/// Return the number of Unicode codepoints in the string (NOT byte length).
+#[no_mangle]
+pub extern "C" fn snow_string_length(s: *const SnowString) -> i64 {
+    unsafe { (*s).as_str().chars().count() as i64 }
+}
+
+/// Codepoint-based slice (0-indexed, exclusive end). Clamps to bounds.
+#[no_mangle]
+pub extern "C" fn snow_string_slice(
+    s: *const SnowString,
+    start: i64,
+    end: i64,
+) -> *mut SnowString {
+    unsafe {
+        let text = (*s).as_str();
+        let char_count = text.chars().count();
+        let start = (start.max(0) as usize).min(char_count);
+        let end = (end.max(0) as usize).min(char_count).max(start);
+        let sliced: String = text.chars().skip(start).take(end - start).collect();
+        snow_string_new(sliced.as_ptr(), sliced.len() as u64)
+    }
+}
+
+/// Returns 1 if haystack contains needle, 0 otherwise.
+#[no_mangle]
+pub extern "C" fn snow_string_contains(
+    haystack: *const SnowString,
+    needle: *const SnowString,
+) -> i8 {
+    unsafe {
+        if (*haystack).as_str().contains((*needle).as_str()) {
+            1
+        } else {
+            0
+        }
+    }
+}
+
+/// Returns 1 if string starts with prefix, 0 otherwise.
+#[no_mangle]
+pub extern "C" fn snow_string_starts_with(
+    s: *const SnowString,
+    prefix: *const SnowString,
+) -> i8 {
+    unsafe {
+        if (*s).as_str().starts_with((*prefix).as_str()) {
+            1
+        } else {
+            0
+        }
+    }
+}
+
+/// Returns 1 if string ends with suffix, 0 otherwise.
+#[no_mangle]
+pub extern "C" fn snow_string_ends_with(
+    s: *const SnowString,
+    suffix: *const SnowString,
+) -> i8 {
+    unsafe {
+        if (*s).as_str().ends_with((*suffix).as_str()) {
+            1
+        } else {
+            0
+        }
+    }
+}
+
+/// Trim whitespace from both sides.
+#[no_mangle]
+pub extern "C" fn snow_string_trim(s: *const SnowString) -> *mut SnowString {
+    unsafe {
+        let trimmed = (*s).as_str().trim();
+        snow_string_new(trimmed.as_ptr(), trimmed.len() as u64)
+    }
+}
+
+/// Convert to uppercase.
+#[no_mangle]
+pub extern "C" fn snow_string_to_upper(s: *const SnowString) -> *mut SnowString {
+    unsafe {
+        let upper = (*s).as_str().to_uppercase();
+        snow_string_new(upper.as_ptr(), upper.len() as u64)
+    }
+}
+
+/// Convert to lowercase.
+#[no_mangle]
+pub extern "C" fn snow_string_to_lower(s: *const SnowString) -> *mut SnowString {
+    unsafe {
+        let lower = (*s).as_str().to_lowercase();
+        snow_string_new(lower.as_ptr(), lower.len() as u64)
+    }
+}
+
+/// Replace all occurrences of `from` with `to` in the string.
+#[no_mangle]
+pub extern "C" fn snow_string_replace(
+    s: *const SnowString,
+    from: *const SnowString,
+    to: *const SnowString,
+) -> *mut SnowString {
+    unsafe {
+        let result = (*s)
+            .as_str()
+            .replace((*from).as_str(), (*to).as_str());
+        snow_string_new(result.as_ptr(), result.len() as u64)
+    }
+}
+
+/// Compare two Snow strings for equality. Returns 1 if equal, 0 otherwise.
+#[no_mangle]
+pub extern "C" fn snow_string_eq(a: *const SnowString, b: *const SnowString) -> i8 {
+    unsafe {
+        if (*a).as_str() == (*b).as_str() {
+            1
+        } else {
+            0
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -221,5 +345,133 @@ mod tests {
             assert_eq!((*s).len, 0);
             assert_eq!((*s).as_str(), "");
         }
+    }
+
+    // ── Phase 8 string operation tests ─────────────────────────────────
+
+    #[test]
+    fn test_string_length() {
+        snow_rt_init();
+        let s = snow_string_new(b"hello".as_ptr(), 5);
+        assert_eq!(snow_string_length(s), 5);
+    }
+
+    #[test]
+    fn test_string_length_unicode() {
+        snow_rt_init();
+        // "cafe\u{0301}" = "cafe\u{0301}" -- 5 codepoints, but more bytes
+        let text = "caf\u{00e9}"; // 4 codepoints, e-with-accent is 2 bytes
+        let s = snow_string_new(text.as_ptr(), text.len() as u64);
+        assert_eq!(snow_string_length(s), 4);
+    }
+
+    #[test]
+    fn test_string_length_empty() {
+        snow_rt_init();
+        let s = snow_string_new(std::ptr::null(), 0);
+        assert_eq!(snow_string_length(s), 0);
+    }
+
+    #[test]
+    fn test_string_slice() {
+        snow_rt_init();
+        let s = snow_string_new(b"hello world".as_ptr(), 11);
+        let sliced = snow_string_slice(s, 0, 5);
+        unsafe {
+            assert_eq!((*sliced).as_str(), "hello");
+        }
+    }
+
+    #[test]
+    fn test_string_slice_clamp() {
+        snow_rt_init();
+        let s = snow_string_new(b"abc".as_ptr(), 3);
+        // Out of bounds clamps
+        let sliced = snow_string_slice(s, -5, 100);
+        unsafe {
+            assert_eq!((*sliced).as_str(), "abc");
+        }
+    }
+
+    #[test]
+    fn test_string_contains() {
+        snow_rt_init();
+        let hay = snow_string_new(b"hello world".as_ptr(), 11);
+        let needle = snow_string_new(b"world".as_ptr(), 5);
+        let missing = snow_string_new(b"xyz".as_ptr(), 3);
+        assert_eq!(snow_string_contains(hay, needle), 1);
+        assert_eq!(snow_string_contains(hay, missing), 0);
+    }
+
+    #[test]
+    fn test_string_starts_with() {
+        snow_rt_init();
+        let s = snow_string_new(b"hello world".as_ptr(), 11);
+        let prefix = snow_string_new(b"hello".as_ptr(), 5);
+        let wrong = snow_string_new(b"world".as_ptr(), 5);
+        assert_eq!(snow_string_starts_with(s, prefix), 1);
+        assert_eq!(snow_string_starts_with(s, wrong), 0);
+    }
+
+    #[test]
+    fn test_string_ends_with() {
+        snow_rt_init();
+        let s = snow_string_new(b"hello world".as_ptr(), 11);
+        let suffix = snow_string_new(b"world".as_ptr(), 5);
+        let wrong = snow_string_new(b"hello".as_ptr(), 5);
+        assert_eq!(snow_string_ends_with(s, suffix), 1);
+        assert_eq!(snow_string_ends_with(s, wrong), 0);
+    }
+
+    #[test]
+    fn test_string_trim() {
+        snow_rt_init();
+        let s = snow_string_new(b"  hello  ".as_ptr(), 9);
+        let trimmed = snow_string_trim(s);
+        unsafe {
+            assert_eq!((*trimmed).as_str(), "hello");
+        }
+    }
+
+    #[test]
+    fn test_string_to_upper() {
+        snow_rt_init();
+        let s = snow_string_new(b"hello".as_ptr(), 5);
+        let upper = snow_string_to_upper(s);
+        unsafe {
+            assert_eq!((*upper).as_str(), "HELLO");
+        }
+    }
+
+    #[test]
+    fn test_string_to_lower() {
+        snow_rt_init();
+        let s = snow_string_new(b"HELLO".as_ptr(), 5);
+        let lower = snow_string_to_lower(s);
+        unsafe {
+            assert_eq!((*lower).as_str(), "hello");
+        }
+    }
+
+    #[test]
+    fn test_string_replace() {
+        snow_rt_init();
+        let s = snow_string_new(b"hello world".as_ptr(), 11);
+        let from = snow_string_new(b"world".as_ptr(), 5);
+        let to = snow_string_new(b"snow".as_ptr(), 4);
+        let result = snow_string_replace(s, from, to);
+        unsafe {
+            assert_eq!((*result).as_str(), "hello snow");
+        }
+    }
+
+    #[test]
+    fn test_string_eq() {
+        snow_rt_init();
+        let a = snow_string_new(b"hello".as_ptr(), 5);
+        let b = snow_string_new(b"hello".as_ptr(), 5);
+        let c = snow_string_new(b"world".as_ptr(), 5);
+        assert_eq!(snow_string_eq(a, b), 1);
+        assert_eq!(snow_string_eq(a, c), 0);
     }
 }
