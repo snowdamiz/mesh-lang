@@ -1409,9 +1409,22 @@ impl<'a> Lowerer<'a> {
             return MirExpr::Unit;
         }
 
-        // Multi-element tuple: create a block that evaluates to a tuple.
-        let ty = self.resolve_range(tuple.syntax().text_range());
-        MirExpr::Block(elements, ty)
+        // Multi-element tuple: generate a heap-allocated runtime tuple.
+        // Runtime layout: { u64 len, u64[len] elements }
+        // Allocate via snow_gc_alloc, store length + elements, return pointer.
+        let n = elements.len();
+        let total_size = 8 + n * 8; // u64 len + n * u64 elements
+
+        // Generate a synthetic __snow_make_tuple(elem0, elem1, ...) call.
+        // Codegen expands this inline: gc_alloc + store length + store elements.
+        MirExpr::Call {
+            func: Box::new(MirExpr::Var(
+                "__snow_make_tuple".to_string(),
+                MirType::FnPtr(vec![MirType::Int; n], Box::new(MirType::Ptr)),
+            )),
+            args: elements,
+            ty: MirType::Ptr,
+        }
     }
 
     // ── Struct literal lowering ──────────────────────────────────────
@@ -1916,17 +1929,20 @@ impl<'a> Lowerer<'a> {
 
             self.pop_scope();
 
+            // Call handler body returns a heap-allocated tuple (new_state, reply).
+            // The return type is Ptr since __snow_make_tuple returns a pointer.
+            let ret_ty = if matches!(body.ty(), MirType::Ptr) { MirType::Ptr } else { MirType::Int };
             self.functions.push(MirFunction {
                 name: handler_fn_name.clone(),
                 params,
-                return_type: MirType::Int,
+                return_type: ret_ty.clone(),
                 body,
                 is_closure_fn: false,
                 captures: Vec::new(),
             });
             self.known_functions.insert(
                 handler_fn_name,
-                MirType::FnPtr(vec![], Box::new(MirType::Int)),
+                MirType::FnPtr(vec![], Box::new(ret_ty)),
             );
         }
 
@@ -2390,9 +2406,12 @@ impl<'a> Lowerer<'a> {
         // and encode dispatch metadata as comments in the function (using known_functions
         // registry). The codegen will look up handlers by naming convention.
 
+        // The loop function receives a *const u8 (args buffer pointer) from the
+        // actor spawn mechanism. The first i64 in the args buffer is the initial state.
+        // Codegen will dereference the pointer to load the initial state.
         self.functions.push(MirFunction {
             name: loop_fn_name.clone(),
-            params: vec![("__state".to_string(), MirType::Int)],
+            params: vec![("__args_ptr".to_string(), MirType::Ptr)],
             return_type: MirType::Unit,
             body: MirExpr::Unit, // Codegen generates the actual dispatch loop
             is_closure_fn: false,
@@ -2400,7 +2419,7 @@ impl<'a> Lowerer<'a> {
         });
         self.known_functions.insert(
             loop_fn_name,
-            MirType::FnPtr(vec![MirType::Int], Box::new(MirType::Unit)),
+            MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Unit)),
         );
     }
 

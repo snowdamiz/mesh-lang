@@ -539,6 +539,12 @@ impl<'ctx> CodeGen<'ctx> {
                     return self.codegen_service_cast_helper(args);
                 }
             }
+            // Synthetic tuple allocation intrinsic.
+            // __snow_make_tuple(elem0, elem1, ...) -> ptr
+            // Allocates { u64 len, u64[N] elements } on the GC heap.
+            if name == "__snow_make_tuple" {
+                return self.codegen_make_tuple(&arg_vals);
+            }
         }
 
         // Check if it's a direct call to a known function
@@ -1247,12 +1253,21 @@ impl<'ctx> CodeGen<'ctx> {
                 .map(|a| self.codegen_expr(a))
                 .collect::<Result<Vec<_>, _>>()?;
 
-            // Allocate [N x i64] on the stack.
+            // Allocate spawn args on the GC heap (not the stack) because the
+            // actor runs asynchronously after the caller returns. Stack allocas
+            // would be freed before the actor reads the args.
+            let total_size = (arg_vals.len() * 8) as u64;
+            let gc_alloc_fn = get_intrinsic(&self.module, "snow_gc_alloc");
+            let size_val = i64_ty.const_int(total_size, false);
+            let align_val = i64_ty.const_int(8, false);
+            let buf_alloca = self.builder
+                .build_call(gc_alloc_fn, &[size_val.into(), align_val.into()], "spawn_args")
+                .map_err(|e| e.to_string())?
+                .try_as_basic_value()
+                .basic()
+                .ok_or("snow_gc_alloc returned void")?
+                .into_pointer_value();
             let arr_ty = i64_ty.array_type(arg_vals.len() as u32);
-            let buf_alloca = self
-                .builder
-                .build_alloca(arr_ty, "spawn_args")
-                .map_err(|e| e.to_string())?;
 
             // Store each arg as i64 into the array.
             for (i, val) in arg_vals.iter().enumerate() {
@@ -1754,6 +1769,27 @@ impl<'ctx> CodeGen<'ctx> {
 
         let fn_val = self.current_function();
 
+        // The service loop function receives a ptr to the args buffer.
+        // Load the initial state from the args buffer (first i64).
+        let args_ptr_alloca = *self.locals.get("__args_ptr")
+            .ok_or("Missing __args_ptr parameter in service loop")?;
+        let args_ptr_val = self.builder
+            .build_load(ptr_ty, args_ptr_alloca, "args_ptr_val")
+            .map_err(|e| e.to_string())?
+            .into_pointer_value();
+        let init_state = self.builder
+            .build_load(i64_ty, args_ptr_val, "init_state")
+            .map_err(|e| e.to_string())?
+            .into_int_value();
+
+        // Create a state alloca to hold the mutable state across iterations.
+        let state_alloca = self.builder
+            .build_alloca(i64_ty, "__state")
+            .map_err(|e| e.to_string())?;
+        self.builder
+            .build_store(state_alloca, init_state)
+            .map_err(|e| e.to_string())?;
+
         // Create the loop block.
         let loop_bb = self.context.append_basic_block(fn_val, "loop");
         self.builder
@@ -1761,9 +1797,7 @@ impl<'ctx> CodeGen<'ctx> {
             .map_err(|e| e.to_string())?;
         self.builder.position_at_end(loop_bb);
 
-        // Load the current state from the parameter alloca.
-        let state_alloca = *self.locals.get("__state")
-            .ok_or("Missing __state parameter in service loop")?;
+        // Load the current state from the state alloca.
         let state_val = self.builder
             .build_load(i64_ty, state_alloca, "state")
             .map_err(|e| e.to_string())?
@@ -1779,6 +1813,25 @@ impl<'ctx> CodeGen<'ctx> {
             .basic()
             .ok_or("snow_actor_receive returned void")?
             .into_pointer_value();
+
+        // Check for null (shutdown signal). If null, exit the loop.
+        let exit_bb = self.context.append_basic_block(fn_val, "exit_loop");
+        let continue_bb = self.context.append_basic_block(fn_val, "continue_loop");
+        let is_null = self.builder
+            .build_is_null(msg_ptr, "msg_is_null")
+            .map_err(|e| e.to_string())?;
+        self.builder
+            .build_conditional_branch(is_null, exit_bb, continue_bb)
+            .map_err(|e| e.to_string())?;
+
+        // Exit block: return from the service loop function.
+        self.builder.position_at_end(exit_bb);
+        self.builder
+            .build_return(Some(&self.context.struct_type(&[], false).const_zero()))
+            .map_err(|e| e.to_string())?;
+
+        // Continue block: process the message normally.
+        self.builder.position_at_end(continue_bb);
 
         // Message layout after 16-byte header: [u64 type_tag][u64 caller_pid][i64... args]
         // Skip the 16-byte MessageBuffer header.
@@ -1973,12 +2026,15 @@ impl<'ctx> CodeGen<'ctx> {
                 // But this requires the handler function to return Ptr (tuple pointer).
                 // Let me adjust the handler function return type.
                 //
-                // SIMPLEST ACTUAL FIX: Since handler_result is i64 but actually a pointer
-                // to a tuple, interpret it as ptr, call snow_tuple_first/second.
-
-                let result_ptr = self.builder
-                    .build_int_to_ptr(handler_result.into_int_value(), ptr_ty, "result_ptr")
-                    .map_err(|e| e.to_string())?;
+                // The handler returns a heap-allocated tuple pointer.
+                // If it's an IntValue (legacy path), cast to ptr. If it's already a ptr, use directly.
+                let result_ptr = if handler_result.is_pointer_value() {
+                    handler_result.into_pointer_value()
+                } else {
+                    self.builder
+                        .build_int_to_ptr(handler_result.into_int_value(), ptr_ty, "result_ptr")
+                        .map_err(|e| e.to_string())?
+                };
 
                 // Extract new_state = tuple_first(result_ptr) -> i64
                 let tuple_first_fn = get_intrinsic(&self.module, "snow_tuple_first");
@@ -2046,6 +2102,90 @@ impl<'ctx> CodeGen<'ctx> {
 
     /// Generate a service call helper function body.
     ///
+    /// Allocate a runtime tuple on the GC heap.
+    /// Layout: { u64 len, u64[N] elements }
+    /// Args are the pre-compiled element values.
+    fn codegen_make_tuple(
+        &mut self,
+        elements: &[BasicMetadataValueEnum<'ctx>],
+    ) -> Result<BasicValueEnum<'ctx>, String> {
+        let i64_type = self.context.i64_type();
+        let ptr_type = self.context.ptr_type(inkwell::AddressSpace::default());
+        let n = elements.len();
+        let total_size = 8 + n * 8; // u64 len + n * u64 elements
+
+        // Allocate via snow_gc_alloc(size, align)
+        let gc_alloc = get_intrinsic(&self.module, "snow_gc_alloc");
+        let size_val = i64_type.const_int(total_size as u64, false);
+        let align_val = i64_type.const_int(8, false);
+        let tuple_ptr = self.builder
+            .build_call(gc_alloc, &[size_val.into(), align_val.into()], "tuple_ptr")
+            .map_err(|e| e.to_string())?
+            .try_as_basic_value()
+            .basic()
+            .ok_or("snow_gc_alloc returned void")?
+            .into_pointer_value();
+
+        // Store length at offset 0
+        let len_val = i64_type.const_int(n as u64, false);
+        self.builder
+            .build_store(tuple_ptr, len_val)
+            .map_err(|e| e.to_string())?;
+
+        // Store each element at offset 8 + i*8
+        for (i, elem) in elements.iter().enumerate() {
+            let offset = (8 + i * 8) as u64;
+            let base_int = self.builder
+                .build_ptr_to_int(tuple_ptr, i64_type, "tuple_base")
+                .map_err(|e| format!("{}", e))?;
+            let addr_int = self.builder
+                .build_int_add(base_int, i64_type.const_int(offset, false), "elem_addr")
+                .map_err(|e| format!("{}", e))?;
+            let elem_ptr = self.builder
+                .build_int_to_ptr(addr_int, ptr_type, "elem_ptr")
+                .map_err(|e| format!("{}", e))?;
+
+            // Elements may be i64 or ptr. Convert to i64 for storage.
+            let elem_i64 = match *elem {
+                BasicMetadataValueEnum::IntValue(iv) => {
+                    if iv.get_type().get_bit_width() < 64 {
+                        self.builder
+                            .build_int_z_extend(iv, i64_type, "zext_elem")
+                            .map_err(|e| e.to_string())?
+                    } else {
+                        iv
+                    }
+                }
+                BasicMetadataValueEnum::PointerValue(pv) => {
+                    self.builder
+                        .build_ptr_to_int(pv, i64_type, "ptr_to_i64")
+                        .map_err(|e| e.to_string())?
+                }
+                BasicMetadataValueEnum::FloatValue(fv) => {
+                    // Bit-cast float to i64 for tuple storage.
+                    let fv_alloca = self.builder
+                        .build_alloca(self.context.f64_type(), "float_tmp")
+                        .map_err(|e| format!("{}", e))?;
+                    self.builder
+                        .build_store(fv_alloca, fv)
+                        .map_err(|e| format!("{}", e))?;
+                    self.builder
+                        .build_load(i64_type, fv_alloca, "float_to_i64")
+                        .map_err(|e| format!("{}", e))?
+                        .into_int_value()
+                }
+                _ => return Err("Unsupported tuple element type".to_string()),
+            };
+
+            self.builder
+                .build_store(elem_ptr, elem_i64)
+                .map_err(|e| e.to_string())?;
+        }
+
+        // Return the pointer (as ptr type, will be cast to i64 by caller if needed)
+        Ok(tuple_ptr.into())
+    }
+
     /// Takes MIR args: [pid, tag, ...handler_args]
     /// Packs into a message buffer: [u64 handler_args[0], handler_args[1], ...]
     /// Calls snow_service_call(pid, tag, payload_ptr, payload_size) -> ptr

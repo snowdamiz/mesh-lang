@@ -484,7 +484,10 @@ impl<'ctx> CodeGen<'ctx> {
             .build_call(rt_init_actor, &[zero.into()], "")
             .map_err(|e| e.to_string())?;
 
-        // Call the Snow entry function
+        // Call the Snow entry function on the main thread.
+        // snow_main runs synchronously, spawning service/job actors along the way.
+        // The runtime handles service calls from the main thread context by using
+        // a dedicated main process entry in the process table.
         let snow_main = self
             .functions
             .get(entry_name)

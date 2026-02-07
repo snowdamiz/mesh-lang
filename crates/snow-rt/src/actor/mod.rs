@@ -84,14 +84,36 @@ fn global_scheduler() -> &'static Scheduler {
 /// Initialize the actor scheduler.
 ///
 /// Must be called before any `snow_actor_spawn()` calls. Sets up the global
-/// scheduler with the specified number of worker threads.
+/// scheduler with the specified number of worker threads and starts them
+/// in the background.
+///
+/// Also creates a "main thread process" entry in the process table, giving the
+/// main thread a PID and mailbox. This allows `snow_service_call` to work from
+/// the main thread (non-coroutine context) by using spin-wait instead of yield.
+///
+/// Worker threads are started immediately so that actors spawned during
+/// `snow_main()` begin executing right away. This is critical for service
+/// calls which need the service actor to be running to process the request.
 ///
 /// If `num_schedulers` is 0, defaults to the number of available CPU cores.
 ///
 /// This function is idempotent -- subsequent calls are no-ops.
 #[no_mangle]
 pub extern "C" fn snow_rt_init_actor(num_schedulers: u32) {
-    GLOBAL_SCHEDULER.get_or_init(|| Scheduler::new(num_schedulers));
+    GLOBAL_SCHEDULER.get_or_init(|| {
+        let sched = Scheduler::new(num_schedulers);
+
+        // Create a process entry for the main thread so it has a PID and mailbox.
+        // This enables snow_service_call to work from non-coroutine context.
+        let main_pid = sched.create_main_process();
+        stack::set_current_pid(main_pid);
+
+        // Start worker threads in the background immediately so that actors
+        // spawned during snow_main() can begin executing right away.
+        sched.start();
+
+        sched
+    });
 }
 
 /// Spawn a new actor process.
@@ -147,7 +169,9 @@ pub extern "C" fn snow_reduction_check() {
     // Only yield if we're running inside a coroutine context (i.e., inside an actor).
     // The main thread also calls functions that trigger reduction_check, but the
     // main thread is not a coroutine so yield_current would panic.
-    if stack::get_current_pid().is_none() {
+    // Check CURRENT_YIELDER to detect coroutine context (more reliable than PID
+    // since the main thread now also has a PID for service call support).
+    if stack::CURRENT_YIELDER.with(|c| c.get().is_none()) {
         return;
     }
 
@@ -255,7 +279,34 @@ pub extern "C" fn snow_actor_receive(timeout_ms: i64) -> *const u8 {
         return std::ptr::null();
     }
 
-    // Blocking mode: set state to Waiting and yield.
+    // Check if we're in a coroutine context.
+    let in_coroutine = stack::CURRENT_YIELDER.with(|c| c.get().is_some());
+
+    if !in_coroutine {
+        // Main thread path: spin-wait on the mailbox.
+        let deadline = if timeout_ms > 0 {
+            Some(std::time::Instant::now() + std::time::Duration::from_millis(timeout_ms as u64))
+        } else {
+            None
+        };
+        loop {
+            if let Some(proc_arc) = sched.get_process(my_pid) {
+                let proc = proc_arc.lock();
+                if let Some(msg) = proc.mailbox.pop() {
+                    drop(proc);
+                    return copy_msg_to_actor_heap(sched, my_pid, msg);
+                }
+            }
+            if let Some(deadline) = deadline {
+                if std::time::Instant::now() >= deadline {
+                    return std::ptr::null();
+                }
+            }
+            std::thread::sleep(std::time::Duration::from_micros(10));
+        }
+    }
+
+    // Coroutine path: blocking mode with yield.
     let deadline = if timeout_ms > 0 {
         Some(std::time::Instant::now() + std::time::Duration::from_millis(timeout_ms as u64))
     } else {
@@ -291,12 +342,29 @@ pub extern "C" fn snow_actor_receive(timeout_ms: i64) -> *const u8 {
                 return std::ptr::null();
             }
         }
+
+        // Check if the scheduler is shutting down. If so, check if there
+        // are other non-waiting actors. If this is the only remaining actor
+        // (e.g., a service loop with no more callers), return null to
+        // allow the actor's loop to complete.
+        if sched.is_shutdown() {
+            // Count non-waiting, non-exited processes.
+            let has_others = sched.process_table().read().iter().any(|(pid, p)| {
+                *pid != my_pid && !matches!(p.lock().state, ProcessState::Waiting | ProcessState::Exited(_))
+            });
+            if !has_others {
+                if let Some(proc_arc) = sched.get_process(my_pid) {
+                    proc_arc.lock().state = ProcessState::Ready;
+                }
+                return std::ptr::null();
+            }
+        }
     }
 }
 
 /// Deep-copy a message into the actor's heap and return a pointer to the
 /// heap-allocated layout: `[u64 type_tag, u64 data_len, u8... data]`.
-fn copy_msg_to_actor_heap(
+pub(crate) fn copy_msg_to_actor_heap(
     sched: &Scheduler,
     pid: ProcessId,
     msg: Message,
@@ -389,24 +457,40 @@ pub extern "C" fn snow_actor_set_terminate(pid: u64, callback_fn_ptr: *const u8)
     }
 }
 
-/// Run the scheduler to execute all queued actors, then wait for them to finish.
+/// Signal the scheduler to shut down and wait for all workers to finish.
 ///
-/// This function must be called after all initial `snow_actor_spawn()` calls
-/// in the Snow main function. It starts the worker threads, processes queued
-/// spawn requests, and blocks until all actors have exited.
+/// This function must be called after `snow_main()` returns. It signals
+/// shutdown (allowing workers to terminate Waiting actors) and joins the
+/// worker threads that were started by `snow_rt_init_actor()`.
 ///
 /// The scheduler shuts down when the active process count reaches zero
-/// (i.e., all spawned actors have completed).
+/// (i.e., all spawned actors have completed or been force-terminated).
 #[no_mangle]
 pub extern "C" fn snow_rt_run_scheduler() {
+    // Get the main thread's PID before clearing it.
+    let main_pid = stack::get_current_pid();
+
+    // Clear the main thread's PID now that snow_main has returned.
+    stack::clear_current_pid();
+
     let sched = GLOBAL_SCHEDULER
         .get()
         .expect("actor scheduler not initialized -- call snow_rt_init_actor() first");
 
-    // Signal shutdown upfront so the scheduler stops once all actors finish.
-    // Then call run() which blocks until all actors complete.
+    // Mark the main thread process as Exited so the scheduler doesn't
+    // count it as a Ready/Running process during shutdown.
+    if let Some(pid) = main_pid {
+        if let Some(proc_arc) = sched.get_process(pid) {
+            proc_arc.lock().state = ProcessState::Exited(ExitReason::Normal);
+        }
+    }
+
+    // Signal shutdown so workers know to terminate Waiting actors when
+    // no Ready/Running actors remain.
     sched.signal_shutdown();
-    sched.run();
+
+    // Wait for all worker threads to complete.
+    sched.wait();
 }
 
 /// Register the current actor under a name.

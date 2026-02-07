@@ -50,6 +50,23 @@ fn collect_reachable_functions(module: &MirModule) -> HashSet<String> {
         }
         reachable.insert(name.clone());
 
+        // If this is a service loop function, add all handler functions from
+        // the dispatch table as reachable. The loop body is MirExpr::Unit
+        // (codegen generates the dispatch inline), so handler functions are
+        // not referenced from MIR expressions -- only from the dispatch table.
+        if let Some((call_handlers, cast_handlers)) = module.service_dispatch.get(&name) {
+            for (_, handler_fn, _) in call_handlers {
+                if !reachable.contains(handler_fn) {
+                    worklist.push(handler_fn.clone());
+                }
+            }
+            for (_, handler_fn, _) in cast_handlers {
+                if !reachable.contains(handler_fn) {
+                    worklist.push(handler_fn.clone());
+                }
+            }
+        }
+
         // Find the function and scan its body for referenced functions.
         if let Some(func) = module.functions.iter().find(|f| f.name == name) {
             let mut refs = Vec::new();

@@ -86,8 +86,32 @@ pub extern "C" fn snow_service_call(
     }
 
     // Block the caller until a reply arrives.
-    // Use snow_actor_receive(-1) semantics: infinite wait.
-    super::snow_actor_receive(-1)
+    //
+    // If we're inside a coroutine, use the standard snow_actor_receive which
+    // yields to the scheduler. If we're on the main thread (no coroutine),
+    // do a spin-wait on the mailbox instead (the main thread cannot yield).
+    let caller_pid_obj = stack::get_current_pid().unwrap();
+
+    // Check if we're in a coroutine context (CURRENT_YIELDER is set).
+    let in_coroutine = stack::CURRENT_YIELDER.with(|c| c.get().is_some());
+
+    if in_coroutine {
+        // Standard path: yield to scheduler while waiting for reply.
+        super::snow_actor_receive(-1)
+    } else {
+        // Main thread path: spin-wait on the mailbox.
+        loop {
+            if let Some(proc_arc) = sched.get_process(caller_pid_obj) {
+                let proc = proc_arc.lock();
+                if let Some(msg) = proc.mailbox.pop() {
+                    drop(proc);
+                    return super::copy_msg_to_actor_heap(sched, caller_pid_obj, msg);
+                }
+            }
+            // Brief sleep to avoid burning CPU.
+            std::thread::sleep(std::time::Duration::from_micros(10));
+        }
+    }
 }
 
 /// Send a reply from the service actor back to the caller.

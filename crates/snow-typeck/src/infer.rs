@@ -3435,6 +3435,8 @@ fn infer_service_def(
                     let name_text = name_tok.text().to_string();
                     env.insert(name_text, Scheme::mono(param_ty.clone()));
                 }
+                // Record param type in the types map so MIR lowering can resolve it.
+                types.insert(param.syntax().text_range(), param_ty.clone());
                 init_param_types.push(param_ty);
             }
         }
@@ -3452,6 +3454,10 @@ fn infer_service_def(
             state_ty.clone(),
             ConstraintOrigin::Builtin,
         )?;
+
+        // Record the init function's type so MIR lowering can resolve parameter types.
+        let init_fn_ty = Ty::Fun(init_param_types.clone(), Box::new(ctx.resolve(state_ty.clone())));
+        types.insert(init_fn.syntax().text_range(), init_fn_ty);
 
         env.pop_scope();
     }
@@ -3490,6 +3496,8 @@ fn infer_service_def(
                     let name_text = name_tok.text().to_string();
                     env.insert(name_text, Scheme::mono(param_ty.clone()));
                 }
+                // Record param type for MIR lowering.
+                types.insert(param.syntax().text_range(), param_ty.clone());
                 handler_param_types.push(param_ty);
             }
         }
@@ -3561,6 +3569,8 @@ fn infer_service_def(
                     let name_text = name_tok.text().to_string();
                     env.insert(name_text, Scheme::mono(param_ty.clone()));
                 }
+                // Record param type for MIR lowering.
+                types.insert(param.syntax().text_range(), param_ty.clone());
                 handler_param_types.push(param_ty);
             }
         }

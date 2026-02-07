@@ -104,6 +104,9 @@ pub struct Scheduler {
 
     /// Count of active (non-exited) processes.
     active_count: Arc<AtomicU64>,
+
+    /// Handles for background worker threads (populated by `start()`).
+    worker_handles: Mutex<Vec<std::thread::JoinHandle<()>>>,
 }
 
 impl Scheduler {
@@ -141,6 +144,7 @@ impl Scheduler {
             process_table: Arc::new(RwLock::new(FxHashMap::default())),
             shutdown: Arc::new(AtomicBool::new(false)),
             active_count: Arc::new(AtomicU64::new(0)),
+            worker_handles: Mutex::new(Vec::new()),
         }
     }
 
@@ -186,6 +190,62 @@ impl Scheduler {
         }
 
         pid
+    }
+
+    /// Start worker threads in the background.
+    ///
+    /// Workers run in a loop, picking up spawn requests, creating coroutines,
+    /// and executing actors. Unlike `run()`, this returns immediately -- the
+    /// worker threads run in the background. Call `wait()` to join them.
+    ///
+    /// This is used when the main thread needs to call into services (which
+    /// require the scheduler to be running) before `snow_main` returns.
+    pub fn start(&self) {
+        let num_threads = self.num_threads;
+        let mut handles = self.worker_handles.lock();
+
+        for i in 0..num_threads {
+            let worker = self.workers.lock()[i]
+                .take()
+                .expect("worker already consumed");
+
+            let injector = Arc::clone(&self.injector);
+            let high_rx = self.high_priority_rx.clone();
+            let stealers: Vec<_> = self
+                .stealers
+                .iter()
+                .enumerate()
+                .filter(|(idx, _)| *idx != i)
+                .map(|(_, s)| s.clone())
+                .collect();
+            let shutdown = Arc::clone(&self.shutdown);
+            let active_count = Arc::clone(&self.active_count);
+            let process_table = Arc::clone(&self.process_table);
+
+            let handle = std::thread::spawn(move || {
+                worker_loop(
+                    worker,
+                    injector,
+                    high_rx,
+                    stealers,
+                    shutdown,
+                    active_count,
+                    process_table,
+                );
+            });
+            handles.push(handle);
+        }
+    }
+
+    /// Wait for all worker threads to complete.
+    ///
+    /// This blocks until all workers have exited (after shutdown is signaled
+    /// and all active processes complete).
+    pub fn wait(&self) {
+        let handles: Vec<_> = self.worker_handles.lock().drain(..).collect();
+        for handle in handles {
+            let _ = handle.join();
+        }
     }
 
     /// Run the scheduler, spawning worker threads and blocking until shutdown.
@@ -246,9 +306,30 @@ impl Scheduler {
         self.active_count.load(Ordering::SeqCst)
     }
 
+    /// Create a process entry for the main thread.
+    ///
+    /// This gives the main thread a PID and mailbox so that `snow_service_call`
+    /// can work from non-coroutine context. The main thread process is NOT
+    /// counted in active_count because it is not managed by the scheduler --
+    /// its lifetime is controlled by the C main function.
+    pub fn create_main_process(&self) -> ProcessId {
+        let pid = ProcessId::next();
+        let mut process = Process::new(pid, Priority::Normal);
+        process.state = ProcessState::Running;
+        let process = Arc::new(Mutex::new(process));
+        self.process_table.write().insert(pid, process);
+        // Do NOT increment active_count -- main thread is not scheduler-managed.
+        pid
+    }
+
     /// Look up a process by PID.
     pub fn get_process(&self, pid: ProcessId) -> Option<Arc<Mutex<Process>>> {
         self.process_table.read().get(&pid).cloned()
+    }
+
+    /// Get a reference to the process table (for shutdown checks).
+    pub fn process_table(&self) -> &ProcessTable {
+        &self.process_table
     }
 
     /// Wake a process that was in Waiting state.
@@ -404,8 +485,53 @@ fn worker_loop(
         }
 
         // --- Phase 3: Check shutdown ---
-        if shutdown.load(Ordering::SeqCst) && active_count.load(Ordering::SeqCst) == 0 {
-            break;
+        if shutdown.load(Ordering::SeqCst) {
+            if active_count.load(Ordering::SeqCst) == 0 {
+                break;
+            }
+
+            // Check if all locally suspended actors are in Waiting state with
+            // no Ready actors remaining. If so, force-terminate them. This
+            // handles service loops that block forever on receive after the
+            // main actor has exited.
+            let all_waiting = !suspended.is_empty() && suspended.iter().all(|(pid, _)| {
+                process_table.read().get(pid)
+                    .map(|p| matches!(p.lock().state, ProcessState::Waiting))
+                    .unwrap_or(true)
+            });
+
+            if all_waiting {
+                // Check globally: are there any non-waiting active processes?
+                // Count Ready/Running processes in the process table.
+                let has_ready = process_table.read().values().any(|p| {
+                    let state = p.lock().state.clone();
+                    matches!(state, ProcessState::Ready | ProcessState::Running)
+                });
+
+                if !has_ready {
+                    // No Ready/Running processes remain. Wake all Waiting
+                    // actors so they can detect shutdown and exit gracefully.
+                    // The snow_actor_receive function checks is_shutdown()
+                    // and returns null when no other actors are active,
+                    // causing the service loop to exit cleanly.
+                    for (pid, _) in suspended.iter() {
+                        if let Some(proc_arc) = process_table.read().get(pid) {
+                            let mut proc = proc_arc.lock();
+                            if matches!(proc.state, ProcessState::Waiting) {
+                                proc.state = ProcessState::Ready;
+                            }
+                        }
+                    }
+                    // The actors will be resumed in Phase 1 on the next
+                    // iteration, and will exit when receive returns null.
+                }
+            }
+
+            // Also: if this worker has an empty suspended list, no pending
+            // requests, and shutdown is active, exit the worker loop.
+            if suspended.is_empty() && !did_work && active_count.load(Ordering::SeqCst) == 0 {
+                break;
+            }
         }
 
         // Backoff when idle to avoid burning CPU.
