@@ -164,9 +164,9 @@ Plans:
 **Plans**: 5 plans
 
 Plans:
-- [ ] 08-01-PLAN.md -- String operations, console I/O, Env access, and module/import namespace resolution
-- [ ] 08-02-PLAN.md -- Collections (List with map/filter/reduce, Map/HashMap, Set)
-- [ ] 08-03-PLAN.md -- File I/O with Result types
+- [x] 08-01-PLAN.md -- String operations, console I/O, Env access, and module/import namespace resolution
+- [x] 08-02-PLAN.md -- Collections (List with map/filter/reduce, Map/HashMap, Set)
+- [x] 08-03-PLAN.md -- File I/O with Result types
 - [ ] 08-04-PLAN.md -- JSON encoding/decoding with serde_json
 - [ ] 08-05-PLAN.md -- HTTP client and server with actor-per-connection model
 
@@ -217,6 +217,6 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8 -> 9 -> 10
 | 5. LLVM Codegen & Native Binaries | 5/5 | Complete | 2026-02-06 |
 | 6. Actor Runtime | 7/7 | Complete | 2026-02-07 |
 | 7. Supervision & Fault Tolerance | 3/3 | Complete | 2026-02-06 |
-| 8. Standard Library | 0/5 | Not started | - |
+| 8. Standard Library | 3/5 | In progress | - |
 | 9. Concurrency Standard Library | 0/2 | Not started | - |
 | 10. Developer Tooling | 0/5 | Not started | - |

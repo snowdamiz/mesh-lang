@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-02-05)
 
 **Core value:** Expressive, readable concurrency -- writing concurrent programs should feel as natural as sequential code, with supervision and fault tolerance built in.
-**Current focus:** Phase 8 IN PROGRESS -- Standard Library. Plans 01-02 complete. Next: Plan 03.
+**Current focus:** Phase 8 IN PROGRESS -- Standard Library. Plans 01-03 complete. Next: Plan 04.
 
 ## Current Position
 
 Phase: 8 of 10 (Standard Library)
-Plan: 2 of 5 in current phase
+Plan: 3 of 5 in current phase
 Status: In progress
-Last activity: 2026-02-06 -- Completed 08-02-PLAN.md (Collection suite)
+Last activity: 2026-02-07 -- Completed 08-03-PLAN.md (File I/O)
 
-Progress: [█████████████████████████████████████░░░░░░░] 78% (35 plans of ~45 estimated total)
+Progress: [██████████████████████████████████████░░░░░░] 80% (36 plans of ~45 estimated total)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 35
+- Total plans completed: 36
 - Average duration: 9min
-- Total execution time: 328min
+- Total execution time: 343min
 
 **By Phase:**
 
@@ -34,10 +34,10 @@ Progress: [███████████████████████
 | 05-llvm-codegen-native-binaries | 5/5 | 50min | 10min |
 | 06-actor-runtime | 7/7 | 70min | 10min |
 | 07-supervision-fault-tolerance | 3/3 | 27min | 9min |
-| 08-standard-library | 2/5 | 21min | 11min |
+| 08-standard-library | 3/5 | 36min | 12min |
 
 **Recent Trend:**
-- Last 5 plans: 07-02 (12min), 07-03 (7min), 08-01 (9min), 08-02 (12min)
+- Last 5 plans: 07-03 (7min), 08-01 (9min), 08-02 (12min), 08-03 (15min)
 
 *Updated after each plan completion*
 
@@ -203,6 +203,10 @@ Recent decisions affecting current work:
 - [08-02]: Two-list queue without reversal (append-based back list already in chronological order)
 - [08-02]: Prelude names (map, filter, reduce, head, tail) auto-imported, resolve to List operations
 - [08-02]: All collection types resolve to MirType::Ptr (opaque pointers at LLVM level)
+- [08-03]: Aligned sum type layout { i8, ptr } for runtime-returned Result/Option (matches #[repr(C)])
+- [08-03]: Monomorphized generic type lookup fallback (Result_String_String -> Result base name)
+- [08-03]: Generic type params (T, E) replaced with MirType::Ptr in builtin sum type variant fields
+- [08-03]: Runtime-returned ptr-to-sum-type dereferenced at let binding site via LLVM load
 
 ### Pending Todos
 
@@ -210,13 +214,13 @@ None.
 
 ### Blockers/Concerns
 
-- Phase 8 Plans 01-02 complete -- stdlib infrastructure + collections established
+- Phase 8 Plans 01-03 complete -- stdlib infrastructure + collections + file I/O established
 - string_split now possible with List type available (can be added in future plan)
 - String-keyed maps use pointer identity (not content comparison) -- documented limitation
-- Pre-existing e2e_file test failures (4 tests) from File I/O codegen issues -- not blocking
+- File I/O E2E tests all pass -- runtime Result pattern matching fully working
 
 ## Session Continuity
 
-Last session: 2026-02-06
-Stopped at: Completed 08-02-PLAN.md -- Collection suite (List, Map, Set, Tuple, Range, Queue)
+Last session: 2026-02-07
+Stopped at: Completed 08-03-PLAN.md -- File I/O module
 Resume file: None
