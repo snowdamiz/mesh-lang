@@ -17,8 +17,8 @@ use snow_parser::ast::expr::{
     TupleExpr, UnaryExpr,
 };
 use snow_parser::ast::item::{
-    ActorDef, Block, FnDef, InterfaceDef, ImplDef as AstImplDef, Item, LetBinding, StructDef,
-    SumTypeDef, SupervisorDef, TypeAliasDef,
+    ActorDef, Block, FnDef, InterfaceDef, ImplDef as AstImplDef, Item, LetBinding, ServiceDef,
+    StructDef, SumTypeDef, SupervisorDef, TypeAliasDef,
 };
 use snow_parser::ast::pat::Pattern;
 use snow_parser::ast::AstNode;
@@ -731,6 +731,9 @@ fn infer_item(
         }
         Item::ActorDef(actor_def) => {
             infer_actor_def(ctx, env, actor_def, types, type_registry, trait_registry, fn_constraints).ok()
+        }
+        Item::ServiceDef(service_def) => {
+            infer_service_def(ctx, env, &service_def, types, type_registry, trait_registry, fn_constraints).ok()
         }
         Item::SupervisorDef(sup_def) => {
             infer_supervisor_def(ctx, env, sup_def, types, type_registry, trait_registry, fn_constraints).ok()
@@ -2480,6 +2483,22 @@ fn infer_field_access(
                 }
             }
 
+            // Check if base is a user-defined service module (e.g. Counter.get_count).
+            // Service helper functions are registered in env as "ServiceName.method_name".
+            {
+                let qualified = format!("{}.{}", base_name, field_name);
+                if let Some(scheme) = env.lookup(&qualified) {
+                    // Only treat as service module if it's not also a sum type variant.
+                    if type_registry
+                        .lookup_qualified_variant(&base_name, &field_name)
+                        .is_none()
+                    {
+                        let ty = ctx.instantiate(scheme);
+                        return Ok(ty);
+                    }
+                }
+            }
+
             // Check if base is a sum type name for variant construction.
             // e.g. Shape.Circle -- Shape is a sum type, Circle is a variant.
             if let Some((_sum_info, _variant_info)) =
@@ -3291,6 +3310,277 @@ fn infer_supervisor_def(
 
     let resolved = ctx.resolve(fn_ty);
     types.insert(sup_def.syntax().text_range(), resolved.clone());
+
+    Ok(resolved)
+}
+
+/// Convert a PascalCase name to snake_case.
+///
+/// Examples: "GetCount" -> "get_count", "Increment" -> "increment",
+/// "ResetAll" -> "reset_all".
+fn to_snake_case(name: &str) -> String {
+    let mut result = String::new();
+    for (i, ch) in name.chars().enumerate() {
+        if ch.is_uppercase() {
+            if i > 0 {
+                result.push('_');
+            }
+            result.push(ch.to_lowercase().next().unwrap());
+        } else {
+            result.push(ch);
+        }
+    }
+    result
+}
+
+/// Infer the type of a service definition.
+///
+/// Services define a typed client-server abstraction. The type checker:
+/// 1. Infers init function return type and unifies with state type variable.
+/// 2. For each call handler: validates state param, infers reply type from
+///    annotation, ensures body returns (new_state, reply) tuple.
+/// 3. For each cast handler: validates state param, ensures body returns new_state.
+/// 4. Registers module-qualified helper functions (ServiceName.method_name).
+///
+/// The service is registered as a module with:
+/// - start(init_args...) -> Pid<Unit>
+/// - Per call handler: snake_name(pid, args...) -> reply_ty
+/// - Per cast handler: snake_name(pid, args...) -> Unit
+fn infer_service_def(
+    ctx: &mut InferCtx,
+    env: &mut TypeEnv,
+    service_def: &ServiceDef,
+    types: &mut FxHashMap<TextRange, Ty>,
+    type_registry: &TypeRegistry,
+    trait_registry: &TraitRegistry,
+    fn_constraints: &mut FxHashMap<String, FnConstraints>,
+) -> Result<Ty, TypeError> {
+    let service_name = service_def
+        .name()
+        .and_then(|n| n.text())
+        .unwrap_or_else(|| "<unnamed_service>".to_string());
+
+    ctx.enter_level();
+
+    // Create a fresh type variable for the service state.
+    let state_ty = ctx.fresh_var();
+
+    // Pid type for callers: Pid<Unit> (internal message dispatching uses type_tags,
+    // callers don't see message types directly).
+    let pid_ty = Ty::pid(Ty::Tuple(vec![]));
+
+    env.push_scope();
+
+    // ── Infer init function ──────────────────────────────────────────
+    let mut init_param_types: Vec<Ty> = Vec::new();
+
+    if let Some(init_fn) = service_def.init_fn() {
+        env.push_scope();
+
+        // Infer init parameters.
+        if let Some(param_list) = init_fn.param_list() {
+            for param in param_list.params() {
+                let param_ty = if let Some(ann) = param.type_annotation() {
+                    if let Some(type_name) = resolve_type_name_str(&ann) {
+                        name_to_type(&type_name)
+                    } else {
+                        ctx.fresh_var()
+                    }
+                } else {
+                    ctx.fresh_var()
+                };
+                if let Some(name_tok) = param.name() {
+                    let name_text = name_tok.text().to_string();
+                    env.insert(name_text, Scheme::mono(param_ty.clone()));
+                }
+                init_param_types.push(param_ty);
+            }
+        }
+
+        // Infer init body -- its return type is the initial state.
+        let init_body_ty = if let Some(body) = init_fn.body() {
+            infer_block(ctx, env, &body, types, type_registry, trait_registry, fn_constraints)?
+        } else {
+            Ty::Tuple(vec![])
+        };
+
+        // Unify init return type with state_ty.
+        ctx.unify(
+            init_body_ty,
+            state_ty.clone(),
+            ConstraintOrigin::Builtin,
+        )?;
+
+        env.pop_scope();
+    }
+
+    // ── Infer call handlers ──────────────────────────────────────────
+    let call_handlers = service_def.call_handlers();
+    let mut call_handler_info: Vec<(String, Vec<Ty>, Ty)> = Vec::new(); // (variant_name, param_types, reply_ty)
+
+    for handler in &call_handlers {
+        let variant_name = handler
+            .name()
+            .and_then(|n| n.text())
+            .unwrap_or_else(|| "<unnamed_call>".to_string());
+
+        env.push_scope();
+
+        // Bind state parameter.
+        if let Some(state_name) = handler.state_param_name() {
+            env.insert(state_name, Scheme::mono(state_ty.clone()));
+        }
+
+        // Infer call handler parameters (the variant's arguments).
+        let mut handler_param_types = Vec::new();
+        if let Some(param_list) = handler.params() {
+            for param in param_list.params() {
+                let param_ty = if let Some(ann) = param.type_annotation() {
+                    if let Some(type_name) = resolve_type_name_str(&ann) {
+                        name_to_type(&type_name)
+                    } else {
+                        ctx.fresh_var()
+                    }
+                } else {
+                    ctx.fresh_var()
+                };
+                if let Some(name_tok) = param.name() {
+                    let name_text = name_tok.text().to_string();
+                    env.insert(name_text, Scheme::mono(param_ty.clone()));
+                }
+                handler_param_types.push(param_ty);
+            }
+        }
+
+        // Parse return type annotation (:: Type).
+        let reply_ty = if let Some(ann) = handler.return_type() {
+            if let Some(type_name) = resolve_type_name_str(&ann) {
+                name_to_type(&type_name)
+            } else {
+                // Try full type annotation resolution (for generic types).
+                resolve_type_annotation(ctx, &ann, type_registry)
+                    .unwrap_or_else(|| ctx.fresh_var())
+            }
+        } else {
+            ctx.fresh_var()
+        };
+
+        // Infer call handler body -- should return (new_state, reply) tuple.
+        let body_ty = if let Some(body) = handler.body() {
+            infer_block(ctx, env, &body, types, type_registry, trait_registry, fn_constraints)?
+        } else {
+            Ty::Tuple(vec![state_ty.clone(), reply_ty.clone()])
+        };
+
+        // Body should return a tuple of (new_state, reply).
+        let expected_body_ty = Ty::Tuple(vec![state_ty.clone(), reply_ty.clone()]);
+        ctx.unify(
+            body_ty,
+            expected_body_ty,
+            ConstraintOrigin::Builtin,
+        )?;
+
+        env.pop_scope();
+
+        call_handler_info.push((variant_name, handler_param_types, reply_ty));
+    }
+
+    // ── Infer cast handlers ──────────────────────────────────────────
+    let cast_handlers = service_def.cast_handlers();
+    let mut cast_handler_info: Vec<(String, Vec<Ty>)> = Vec::new(); // (variant_name, param_types)
+
+    for handler in &cast_handlers {
+        let variant_name = handler
+            .name()
+            .and_then(|n| n.text())
+            .unwrap_or_else(|| "<unnamed_cast>".to_string());
+
+        env.push_scope();
+
+        // Bind state parameter.
+        if let Some(state_name) = handler.state_param_name() {
+            env.insert(state_name, Scheme::mono(state_ty.clone()));
+        }
+
+        // Infer cast handler parameters.
+        let mut handler_param_types = Vec::new();
+        if let Some(param_list) = handler.params() {
+            for param in param_list.params() {
+                let param_ty = if let Some(ann) = param.type_annotation() {
+                    if let Some(type_name) = resolve_type_name_str(&ann) {
+                        name_to_type(&type_name)
+                    } else {
+                        ctx.fresh_var()
+                    }
+                } else {
+                    ctx.fresh_var()
+                };
+                if let Some(name_tok) = param.name() {
+                    let name_text = name_tok.text().to_string();
+                    env.insert(name_text, Scheme::mono(param_ty.clone()));
+                }
+                handler_param_types.push(param_ty);
+            }
+        }
+
+        // Infer cast handler body -- returns new_state.
+        let body_ty = if let Some(body) = handler.body() {
+            infer_block(ctx, env, &body, types, type_registry, trait_registry, fn_constraints)?
+        } else {
+            state_ty.clone()
+        };
+
+        // Unify body return with state type.
+        ctx.unify(
+            body_ty,
+            state_ty.clone(),
+            ConstraintOrigin::Builtin,
+        )?;
+
+        env.pop_scope();
+
+        cast_handler_info.push((variant_name, handler_param_types));
+    }
+
+    env.pop_scope();
+
+    // ── Register service module helper functions ──────────────────────
+
+    // Register ServiceName.start(init_args...) -> Pid<Unit>
+    let start_fn_ty = Ty::Fun(init_param_types, Box::new(pid_ty.clone()));
+    let start_qualified = format!("{}.start", service_name);
+    env.insert(start_qualified, Scheme::mono(start_fn_ty.clone()));
+
+    // Register call helper functions: ServiceName.snake_name(pid, args...) -> reply_ty
+    for (variant_name, param_types, reply_ty) in &call_handler_info {
+        let snake_name = to_snake_case(variant_name);
+        let mut fn_params = vec![pid_ty.clone()];
+        fn_params.extend(param_types.iter().cloned());
+        let resolved_reply = ctx.resolve(reply_ty.clone());
+        let fn_ty = Ty::Fun(fn_params, Box::new(resolved_reply));
+        let qualified = format!("{}.{}", service_name, snake_name);
+        env.insert(qualified, Scheme::mono(fn_ty));
+    }
+
+    // Register cast helper functions: ServiceName.snake_name(pid, args...) -> Unit
+    for (variant_name, param_types) in &cast_handler_info {
+        let snake_name = to_snake_case(variant_name);
+        let mut fn_params = vec![pid_ty.clone()];
+        fn_params.extend(param_types.iter().cloned());
+        let fn_ty = Ty::Fun(fn_params, Box::new(Ty::Tuple(vec![])));
+        let qualified = format!("{}.{}", service_name, snake_name);
+        env.insert(qualified, Scheme::mono(fn_ty));
+    }
+
+    ctx.leave_level();
+
+    // The service itself is a module-like entity. Register the name so it can be
+    // used as a module qualifier in ServiceName.method() calls.
+    // Register as a simple type constructor for recognition in field access.
+    env.insert(service_name.clone(), Scheme::mono(Ty::Con(TyCon::new(&service_name))));
+
+    let resolved = ctx.resolve(start_fn_ty);
+    types.insert(service_def.syntax().text_range(), resolved.clone());
 
     Ok(resolved)
 }
