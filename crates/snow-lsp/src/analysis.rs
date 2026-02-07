@@ -119,6 +119,13 @@ pub fn type_at_position(
 }
 
 /// Convert an LSP Position back to a byte offset in the source.
+///
+/// Public wrapper for go-to-definition support.
+pub fn position_to_offset_pub(source: &str, position: &Position) -> Option<usize> {
+    position_to_offset(source, position)
+}
+
+/// Convert an LSP Position back to a byte offset in the source.
 fn position_to_offset(source: &str, position: &Position) -> Option<usize> {
     let mut current_line = 0u32;
     let mut line_start = 0usize;

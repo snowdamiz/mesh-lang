@@ -5,11 +5,13 @@
 //!
 //! - **Diagnostics**: Parse errors and type errors displayed inline
 //! - **Hover**: Type information shown on hover
+//! - **Go-to-definition**: Navigate to variable, function, and type definitions
 //!
 //! The server communicates via stdin/stdout using the LSP protocol over
 //! JSON-RPC, powered by the `tower-lsp` framework.
 
 pub mod analysis;
+pub mod definition;
 pub mod server;
 
 use tower_lsp::{LspService, Server};

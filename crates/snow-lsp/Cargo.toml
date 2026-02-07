@@ -5,6 +5,7 @@ edition = "2021"
 description = "LSP server for the Snow language"
 
 [dependencies]
+snow-lexer = { path = "../snow-lexer" }
 snow-parser = { path = "../snow-parser" }
 snow-typeck = { path = "../snow-typeck" }
 snow-common = { path = "../snow-common" }

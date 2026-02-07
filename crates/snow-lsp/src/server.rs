@@ -3,6 +3,7 @@
 //! Implements the LSP `LanguageServer` trait with support for:
 //! - textDocument/didOpen, didChange, didClose (diagnostics)
 //! - textDocument/hover (type information)
+//! - textDocument/definition (go-to-definition)
 //! - Server capabilities advertisement
 
 use std::collections::HashMap;
@@ -150,6 +151,56 @@ impl LanguageServer for SnowBackend {
             })),
             None => Ok(None),
         }
+    }
+
+    async fn goto_definition(
+        &self,
+        params: GotoDefinitionParams,
+    ) -> Result<Option<GotoDefinitionResponse>> {
+        let uri = params
+            .text_document_position_params
+            .text_document
+            .uri
+            .clone();
+        let uri_str = uri.to_string();
+        let position = params.text_document_position_params.position;
+
+        let docs = self.documents.lock().unwrap();
+        let doc = match docs.get(&uri_str) {
+            Some(doc) => doc,
+            None => return Ok(None),
+        };
+
+        // Convert LSP position to byte offset.
+        let offset = match analysis::position_to_offset_pub(&doc.source, &position) {
+            Some(o) => o,
+            None => return Ok(None),
+        };
+
+        // Traverse the CST to find the definition.
+        let root = doc.analysis.parse.syntax();
+        let def_range = match crate::definition::find_definition(&doc.source, &root, offset) {
+            Some(r) => r,
+            None => return Ok(None),
+        };
+
+        // Convert the definition range (in rowan tree coordinates) back to
+        // source byte offsets, then to LSP positions.
+        let start_tree: usize = def_range.start().into();
+        let end_tree: usize = def_range.end().into();
+        let start_source = crate::definition::tree_to_source_offset(&doc.source, start_tree)
+            .unwrap_or(start_tree);
+        let end_source = crate::definition::tree_to_source_offset(&doc.source, end_tree)
+            .unwrap_or(end_tree);
+        let start = analysis::offset_to_position(&doc.source, start_source);
+        let end = analysis::offset_to_position(&doc.source, end_source);
+
+        let location = Location {
+            uri,
+            range: Range::new(start, end),
+        };
+
+        Ok(Some(GotoDefinitionResponse::Scalar(location)))
     }
 }
 
