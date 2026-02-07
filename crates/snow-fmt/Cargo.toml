@@ -1,0 +1,12 @@
+[package]
+name = "snow-fmt"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+snow-parser = { path = "../snow-parser" }
+snow-common = { path = "../snow-common" }
+rowan = { workspace = true }
+
+[dev-dependencies]
+insta = { workspace = true }
