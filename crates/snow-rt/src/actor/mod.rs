@@ -34,12 +34,14 @@ pub mod heap;
 pub mod link;
 pub mod mailbox;
 pub mod process;
+pub mod registry;
 pub mod scheduler;
 pub mod stack;
 
 pub use heap::{ActorHeap, MessageBuffer};
 pub use link::{propagate_exit, EXIT_SIGNAL_TAG};
 pub use mailbox::Mailbox;
+pub use registry::{global_registry, ProcessRegistry};
 pub use process::{
     ExitReason, Message, Priority, Process, ProcessId, ProcessState, TerminateCallback,
     DEFAULT_REDUCTIONS, DEFAULT_STACK_SIZE,
@@ -379,6 +381,65 @@ pub extern "C" fn snow_actor_set_terminate(pid: u64, callback_fn_ptr: *const u8)
         let cb: TerminateCallback =
             unsafe { std::mem::transmute(callback_fn_ptr) };
         proc_arc.lock().terminate_callback = Some(cb);
+    }
+}
+
+/// Register the current actor under a name.
+///
+/// The name is specified as a pointer to UTF-8 bytes and a length.
+/// Returns 0 on success, 1 if the name is already taken.
+///
+/// - `name_ptr`: pointer to UTF-8 name bytes
+/// - `name_len`: length of the name in bytes
+#[no_mangle]
+pub extern "C" fn snow_actor_register(name_ptr: *const u8, name_len: u64) -> u64 {
+    let my_pid = match stack::get_current_pid() {
+        Some(pid) => pid,
+        None => return 1,
+    };
+
+    if name_ptr.is_null() || name_len == 0 {
+        return 1;
+    }
+
+    let name = unsafe {
+        let slice = std::slice::from_raw_parts(name_ptr, name_len as usize);
+        match std::str::from_utf8(slice) {
+            Ok(s) => s.to_string(),
+            Err(_) => return 1,
+        }
+    };
+
+    match registry::global_registry().register(name, my_pid) {
+        Ok(()) => 0,
+        Err(_) => 1,
+    }
+}
+
+/// Look up a registered actor by name.
+///
+/// Returns the PID of the actor registered under the given name, or 0
+/// if no actor is registered with that name.
+///
+/// - `name_ptr`: pointer to UTF-8 name bytes
+/// - `name_len`: length of the name in bytes
+#[no_mangle]
+pub extern "C" fn snow_actor_whereis(name_ptr: *const u8, name_len: u64) -> u64 {
+    if name_ptr.is_null() || name_len == 0 {
+        return 0;
+    }
+
+    let name = unsafe {
+        let slice = std::slice::from_raw_parts(name_ptr, name_len as usize);
+        match std::str::from_utf8(slice) {
+            Ok(s) => s,
+            Err(_) => return 0,
+        }
+    };
+
+    match registry::global_registry().whereis(name) {
+        Some(pid) => pid.as_u64(),
+        None => 0,
     }
 }
 
@@ -759,5 +820,44 @@ mod tests {
         }));
 
         assert_eq!(ORDER_COUNTER.load(Ordering::SeqCst), 1);
+    }
+
+    #[test]
+    fn test_registry_register_and_whereis() {
+        let reg = registry::ProcessRegistry::new();
+        let pid = ProcessId::next();
+
+        reg.register("test_server".to_string(), pid).unwrap();
+        assert_eq!(reg.whereis("test_server"), Some(pid));
+        assert_eq!(reg.whereis("nonexistent"), None);
+    }
+
+    #[test]
+    fn test_registry_cleanup_on_process_exit() {
+        let reg = registry::ProcessRegistry::new();
+        let pid = ProcessId::next();
+
+        reg.register("my_actor".to_string(), pid).unwrap();
+        assert!(reg.whereis("my_actor").is_some());
+
+        // Simulate process exit cleanup.
+        reg.cleanup_process(pid);
+        assert_eq!(reg.whereis("my_actor"), None);
+
+        // Name should now be available for re-registration.
+        let new_pid = ProcessId::next();
+        reg.register("my_actor".to_string(), new_pid).unwrap();
+        assert_eq!(reg.whereis("my_actor"), Some(new_pid));
+    }
+
+    #[test]
+    fn test_registry_duplicate_name_rejected() {
+        let reg = registry::ProcessRegistry::new();
+        let pid1 = ProcessId::next();
+        let pid2 = ProcessId::next();
+
+        reg.register("unique".to_string(), pid1).unwrap();
+        let result = reg.register("unique".to_string(), pid2);
+        assert!(result.is_err());
     }
 }

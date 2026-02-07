@@ -37,6 +37,7 @@ use super::link;
 use super::process::{
     ExitReason, Priority, Process, ProcessId, ProcessState, TerminateCallback, DEFAULT_REDUCTIONS,
 };
+use super::registry;
 use super::stack::{clear_current_pid, set_current_pid, CoroutineHandle, CURRENT_YIELDER};
 
 // ---------------------------------------------------------------------------
@@ -502,7 +503,10 @@ fn handle_process_exit(process_table: &ProcessTable, pid: ProcessId, reason: Exi
     // (The state has already been set to Ready by propagate_exit.)
     let _ = woken;
 
-    // Step 3: Mark the process as Exited.
+    // Step 3: Clean up named registrations.
+    registry::global_registry().cleanup_process(pid);
+
+    // Step 4: Mark the process as Exited.
     if let Some(proc_arc) = process_table.read().get(&pid) {
         proc_arc.lock().state = ProcessState::Exited(reason);
     }
