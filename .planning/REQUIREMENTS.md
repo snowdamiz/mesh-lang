@@ -56,8 +56,8 @@ Requirements for initial release. Each maps to roadmap phases.
 - [x] **STD-04**: Map type (hash map)
 - [x] **STD-05**: File I/O
 - [x] **STD-06**: HTTP client and server
-- [ ] **STD-07**: GenServer behavior
-- [ ] **STD-08**: Task abstraction
+- [x] **STD-07**: GenServer behavior
+- [x] **STD-08**: Task abstraction
 - [x] **STD-09**: JSON encoding/decoding
 
 ### Tooling
@@ -148,8 +148,8 @@ Which phases cover which requirements. Updated during roadmap creation.
 | STD-04 | Phase 8: Standard Library | Complete |
 | STD-05 | Phase 8: Standard Library | Complete |
 | STD-06 | Phase 8: Standard Library | Complete |
-| STD-07 | Phase 9: Concurrency Standard Library | Pending |
-| STD-08 | Phase 9: Concurrency Standard Library | Pending |
+| STD-07 | Phase 9: Concurrency Standard Library | Complete |
+| STD-08 | Phase 9: Concurrency Standard Library | Complete |
 | STD-09 | Phase 8: Standard Library | Complete |
 | TOOL-01 | Phase 5: LLVM Codegen & Native Binaries | Complete |
 | TOOL-02 | Phase 10: Developer Tooling | Pending |
