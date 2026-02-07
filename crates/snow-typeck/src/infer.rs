@@ -514,6 +514,9 @@ pub fn infer(parse: &Parse) -> TypeckResult {
     // Group consecutive same-name, same-arity FnDef items.
     let grouped = group_multi_clause_fns(items_for_grouping);
 
+    // Check for non-consecutive same-name function definitions.
+    check_non_consecutive_clauses(&grouped, &mut ctx);
+
     // Build a map from original item index to grouped item index.
     // Each grouped item knows which original item indices it consumed.
     let mut item_idx_to_grouped: FxHashMap<usize, usize> = FxHashMap::default();
@@ -849,6 +852,53 @@ fn group_multi_clause_fns(items: Vec<Item>) -> Vec<GroupedItem> {
     }
 
     result
+}
+
+/// Check for non-consecutive same-name function definitions after grouping.
+///
+/// If a function name/arity appears in multiple groups, emit a `NonConsecutiveClauses` error.
+fn check_non_consecutive_clauses(grouped: &[GroupedItem], ctx: &mut InferCtx) {
+    // Track seen function name/arity -> span of first group.
+    let mut seen: FxHashMap<(String, usize), TextRange> = FxHashMap::default();
+
+    for gi in grouped {
+        let (name, arity, span) = match gi {
+            GroupedItem::Single(Item::FnDef(fn_def)) => {
+                let name = fn_def.name().and_then(|n| n.text()).unwrap_or_default();
+                let arity = fn_def
+                    .param_list()
+                    .map(|pl| pl.params().count())
+                    .unwrap_or(0);
+                (name, arity, fn_def.syntax().text_range())
+            }
+            GroupedItem::MultiClause { clauses } => {
+                let first = &clauses[0];
+                let name = first.name().and_then(|n| n.text()).unwrap_or_default();
+                let arity = first
+                    .param_list()
+                    .map(|pl| pl.params().count())
+                    .unwrap_or(0);
+                (name, arity, first.syntax().text_range())
+            }
+            _ => continue,
+        };
+
+        if name.is_empty() {
+            continue;
+        }
+
+        let key = (name.clone(), arity);
+        if let Some(first_span) = seen.get(&key) {
+            ctx.errors.push(TypeError::NonConsecutiveClauses {
+                fn_name: name,
+                arity,
+                first_span: *first_span,
+                second_span: span,
+            });
+        } else {
+            seen.insert(key, span);
+        }
+    }
 }
 
 /// Check if a clause is a "catch-all" -- all parameters are wildcards or simple variable bindings.
@@ -2513,6 +2563,9 @@ fn infer_block(
 
     // Group multi-clause functions.
     let grouped = group_multi_clause_fns(block_items);
+
+    // Check for non-consecutive same-name function definitions.
+    check_non_consecutive_clauses(&grouped, ctx);
 
     // Build original-item-index to grouped-item-index mapping.
     let mut block_item_to_grouped: FxHashMap<usize, usize> = FxHashMap::default();
