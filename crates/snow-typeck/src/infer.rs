@@ -2483,6 +2483,11 @@ fn infer_if(
 }
 
 /// Infer the type of a closure expression: `fn (params) -> body end`
+///
+/// Handles three forms:
+/// 1. Single-clause arrow: `fn x -> expr end` or `fn(x) -> expr end`
+/// 2. Single-clause do/end: `fn x do stmts end`
+/// 3. Multi-clause: `fn 0 -> "zero" | n -> to_string(n) end`
 fn infer_closure(
     ctx: &mut InferCtx,
     env: &mut TypeEnv,
@@ -2492,6 +2497,14 @@ fn infer_closure(
     trait_registry: &TraitRegistry,
     fn_constraints: &FxHashMap<String, FnConstraints>,
 ) -> Result<Ty, TypeError> {
+    // Check if this is a multi-clause closure.
+    if closure.is_multi_clause() {
+        return infer_multi_clause_closure(
+            ctx, env, closure, types, type_registry, trait_registry, fn_constraints,
+        );
+    }
+
+    // Single-clause closure: existing path.
     env.push_scope();
 
     let mut param_types = Vec::new();
@@ -2522,6 +2535,124 @@ fn infer_closure(
     };
 
     env.pop_scope();
+
+    Ok(Ty::Fun(param_types, Box::new(body_ty)))
+}
+
+/// Infer the type of a multi-clause closure.
+///
+/// Multi-clause closures like `fn 0 -> "zero" | n -> to_string(n) end` are
+/// desugared during type inference: each clause is treated like a match arm.
+/// The first clause's params/guard/body are direct children of CLOSURE_EXPR,
+/// and subsequent clauses are CLOSURE_CLAUSE children.
+fn infer_multi_clause_closure(
+    ctx: &mut InferCtx,
+    env: &mut TypeEnv,
+    closure: &ClosureExpr,
+    types: &mut FxHashMap<TextRange, Ty>,
+    type_registry: &TypeRegistry,
+    trait_registry: &TraitRegistry,
+    fn_constraints: &FxHashMap<String, FnConstraints>,
+) -> Result<Ty, TypeError> {
+    // Get arity from the first clause's param list.
+    let arity = closure
+        .param_list()
+        .map(|pl| pl.params().count())
+        .unwrap_or(0);
+
+    // Create fresh type variables for each parameter position.
+    let param_types: Vec<Ty> = (0..arity).map(|_| ctx.fresh_var()).collect();
+    let mut result_ty: Option<Ty> = None;
+
+    // ── Process the first clause (inline in CLOSURE_EXPR) ───────────────
+
+    env.push_scope();
+
+    if let Some(param_list) = closure.param_list() {
+        for (param_idx, param) in param_list.params().enumerate() {
+            if param_idx >= arity {
+                break;
+            }
+            if let Some(pat) = param.pattern() {
+                // Pattern parameter: infer type and unify with param position.
+                let pat_ty = infer_pattern(ctx, env, &pat, types, type_registry)?;
+                ctx.unify(pat_ty, param_types[param_idx].clone(), ConstraintOrigin::Builtin)?;
+            } else if let Some(name_tok) = param.name() {
+                // Regular named parameter: bind as wildcard.
+                let name_text = name_tok.text().to_string();
+                env.insert(name_text, Scheme::mono(param_types[param_idx].clone()));
+            }
+        }
+    }
+
+    // Process guard expression if present.
+    if let Some(guard_clause) = closure.guard() {
+        if let Some(guard_expr) = guard_clause.expr() {
+            let guard_ty = infer_expr(
+                ctx, env, &guard_expr, types, type_registry, trait_registry, fn_constraints,
+            )?;
+            let _ = ctx.unify(guard_ty, Ty::bool(), ConstraintOrigin::Builtin);
+        }
+    }
+
+    // Infer the body.
+    let body_ty = if let Some(body) = closure.body() {
+        infer_block(ctx, env, &body, types, type_registry, trait_registry, fn_constraints)?
+    } else {
+        Ty::Tuple(vec![])
+    };
+    result_ty = Some(body_ty);
+
+    env.pop_scope();
+
+    // ── Process subsequent clauses (CLOSURE_CLAUSE children) ────────────
+
+    for clause in closure.clauses() {
+        env.push_scope();
+
+        if let Some(param_list) = clause.param_list() {
+            for (param_idx, param) in param_list.params().enumerate() {
+                if param_idx >= arity {
+                    break;
+                }
+                if let Some(pat) = param.pattern() {
+                    let pat_ty = infer_pattern(ctx, env, &pat, types, type_registry)?;
+                    ctx.unify(pat_ty, param_types[param_idx].clone(), ConstraintOrigin::Builtin)?;
+                } else if let Some(name_tok) = param.name() {
+                    let name_text = name_tok.text().to_string();
+                    env.insert(name_text, Scheme::mono(param_types[param_idx].clone()));
+                }
+            }
+        }
+
+        // Process guard if present.
+        if let Some(guard_clause) = clause.guard() {
+            if let Some(guard_expr) = guard_clause.expr() {
+                let guard_ty = infer_expr(
+                    ctx, env, &guard_expr, types, type_registry, trait_registry, fn_constraints,
+                )?;
+                let _ = ctx.unify(guard_ty, Ty::bool(), ConstraintOrigin::Builtin);
+            }
+        }
+
+        // Infer body.
+        let body_ty = if let Some(body) = clause.body() {
+            infer_block(ctx, env, &body, types, type_registry, trait_registry, fn_constraints)?
+        } else {
+            Ty::Tuple(vec![])
+        };
+
+        // Unify body type with previous clauses.
+        if let Some(ref prev_ty) = result_ty {
+            ctx.unify(prev_ty.clone(), body_ty, ConstraintOrigin::Builtin)?;
+        } else {
+            result_ty = Some(body_ty);
+        }
+
+        env.pop_scope();
+    }
+
+    let body_ty = result_ty.unwrap_or_else(|| Ty::Tuple(vec![]));
 
     Ok(Ty::Fun(param_types, Box::new(body_ty)))
 }

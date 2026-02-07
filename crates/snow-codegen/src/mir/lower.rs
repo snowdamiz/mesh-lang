@@ -1609,6 +1609,11 @@ impl<'a> Lowerer<'a> {
     // ── Closure expression lowering (CLOSURE CONVERSION) ─────────────
 
     fn lower_closure_expr(&mut self, closure: &ClosureExpr) -> MirExpr {
+        // Check for multi-clause closures and dispatch accordingly.
+        if closure.is_multi_clause() {
+            return self.lower_multi_clause_closure(closure);
+        }
+
         self.closure_counter += 1;
         let closure_fn_name = format!("__closure_{}", self.closure_counter);
 
@@ -1702,6 +1707,406 @@ impl<'a> Lowerer<'a> {
             fn_name: closure_fn_name,
             captures: capture_exprs,
             ty: mir_ty,
+        }
+    }
+
+    /// Lower a multi-clause closure expression.
+    ///
+    /// Multi-clause closures like `fn 0 -> "zero" | n -> to_string(n) end` are
+    /// desugared into a single-param closure whose body is a MirExpr::Match.
+    /// For single-param multi-clause, uses Match directly on the param.
+    /// For multi-param multi-clause, uses an if-else chain (same as named fn lowering).
+    fn lower_multi_clause_closure(&mut self, closure: &ClosureExpr) -> MirExpr {
+        self.closure_counter += 1;
+        let closure_fn_name = format!("__closure_{}", self.closure_counter);
+
+        let closure_range = closure.syntax().text_range();
+        let closure_ty = self.get_ty(closure_range).cloned();
+
+        // Extract parameter types and return type from the closure's function type.
+        let (param_types, return_type) = if let Some(Ty::Fun(params, ret)) = &closure_ty {
+            (
+                params
+                    .iter()
+                    .map(|p| resolve_type(p, self.registry, false))
+                    .collect::<Vec<_>>(),
+                resolve_type(ret, self.registry, false),
+            )
+        } else {
+            (Vec::new(), MirType::Unit)
+        };
+
+        let arity = param_types.len();
+
+        // Create synthetic parameter names: __cparam_0, __cparam_1, etc.
+        let params: Vec<(String, MirType)> = param_types
+            .iter()
+            .enumerate()
+            .map(|(i, ty)| (format!("__cparam_{}", i), ty.clone()))
+            .collect();
+
+        // Build fn params: env_ptr first, then user params.
+        let mut fn_params = Vec::new();
+        fn_params.push(("__env".to_string(), MirType::Ptr));
+        fn_params.extend(params.iter().cloned());
+
+        // Collect outer vars for capture analysis.
+        let outer_vars: HashMap<String, MirType> = self
+            .scopes
+            .iter()
+            .flat_map(|s| s.iter())
+            .map(|(k, v)| (k.clone(), v.clone()))
+            .collect();
+
+        let param_names: Vec<String> = params.iter().map(|(n, _)| n.clone()).collect();
+        let param_set: std::collections::HashSet<&str> =
+            param_names.iter().map(|s| s.as_str()).collect();
+
+        // Build the body using match or if-else chain.
+        self.push_scope();
+        for (name, ty) in &fn_params {
+            self.insert_var(name.clone(), ty.clone());
+        }
+
+        let body = if arity == 1 {
+            // Single-parameter: use MirExpr::Match on the param.
+            let scrutinee = MirExpr::Var(params[0].0.clone(), params[0].1.clone());
+            let mut arms = Vec::new();
+
+            // First clause (inline in CLOSURE_EXPR).
+            {
+                self.push_scope();
+                self.insert_var(params[0].0.clone(), params[0].1.clone());
+
+                let pattern = self.lower_closure_clause_param_pattern(
+                    closure.param_list().as_ref(),
+                    0,
+                    &params,
+                );
+                let guard = closure
+                    .guard()
+                    .and_then(|gc| gc.expr())
+                    .map(|e| self.lower_expr(&e));
+                let body = if let Some(block) = closure.body() {
+                    self.lower_block(&block)
+                } else {
+                    MirExpr::Unit
+                };
+                self.pop_scope();
+
+                arms.push(MirMatchArm {
+                    pattern,
+                    guard,
+                    body,
+                });
+            }
+
+            // Subsequent clauses (CLOSURE_CLAUSE children).
+            for clause in closure.clauses() {
+                self.push_scope();
+                self.insert_var(params[0].0.clone(), params[0].1.clone());
+
+                let pattern = self.lower_closure_clause_param_pattern(
+                    clause.param_list().as_ref(),
+                    0,
+                    &params,
+                );
+                let guard = clause
+                    .guard()
+                    .and_then(|gc| gc.expr())
+                    .map(|e| self.lower_expr(&e));
+                let body = if let Some(block) = clause.body() {
+                    self.lower_block(&block)
+                } else {
+                    MirExpr::Unit
+                };
+                self.pop_scope();
+
+                arms.push(MirMatchArm {
+                    pattern,
+                    guard,
+                    body,
+                });
+            }
+
+            MirExpr::Match {
+                scrutinee: Box::new(scrutinee),
+                arms,
+                ty: return_type.clone(),
+            }
+        } else {
+            // Multi-parameter: use if-else chain (same pattern as named multi-clause fns).
+            // Build FnDef-like clause processing using closure clause data.
+            self.lower_multi_clause_closure_if_chain(closure, &params, &return_type)
+        };
+
+        self.pop_scope();
+
+        // Find captured variables.
+        let mut captures: Vec<(String, MirType)> = Vec::new();
+        let mut capture_exprs: Vec<MirExpr> = Vec::new();
+        collect_free_vars(&body, &param_set, &outer_vars, &mut captures);
+        for (name, ty) in &captures {
+            capture_exprs.push(MirExpr::Var(name.clone(), ty.clone()));
+        }
+
+        // Create the lifted function.
+        self.functions.push(MirFunction {
+            name: closure_fn_name.clone(),
+            params: fn_params,
+            return_type: return_type.clone(),
+            body,
+            is_closure_fn: true,
+            captures: captures.clone(),
+        });
+
+        // Create the MakeClosure expression.
+        let mir_ty = MirType::Closure(param_types, Box::new(return_type));
+
+        MirExpr::MakeClosure {
+            fn_name: closure_fn_name,
+            captures: capture_exprs,
+            ty: mir_ty,
+        }
+    }
+
+    /// Lower a closure clause's parameter at `param_idx` to a MirPattern.
+    fn lower_closure_clause_param_pattern(
+        &mut self,
+        param_list: Option<&snow_parser::ast::item::ParamList>,
+        param_idx: usize,
+        mir_params: &[(String, MirType)],
+    ) -> MirPattern {
+        if let Some(pl) = param_list {
+            if let Some(param) = pl.params().nth(param_idx) {
+                if let Some(pat) = param.pattern() {
+                    return self.lower_pattern(&pat);
+                }
+                // Regular named parameter -> variable binding.
+                if let Some(name_tok) = param.name() {
+                    let pname = name_tok.text().to_string();
+                    let pty = mir_params[param_idx].1.clone();
+                    self.insert_var(pname.clone(), pty.clone());
+                    return MirPattern::Var(pname, pty);
+                }
+            }
+        }
+        MirPattern::Wildcard
+    }
+
+    /// Build an if-else chain for multi-param multi-clause closures.
+    fn lower_multi_clause_closure_if_chain(
+        &mut self,
+        closure: &ClosureExpr,
+        mir_params: &[(String, MirType)],
+        return_type: &MirType,
+    ) -> MirExpr {
+        // Collect all clause data: first clause + CLOSURE_CLAUSE children.
+        // For each clause we need: param_list, guard, body.
+        struct ClauseData {
+            param_list: Option<snow_parser::ast::item::ParamList>,
+            guard: Option<snow_parser::ast::item::GuardClause>,
+            body: Option<Block>,
+        }
+
+        let mut all_clauses = Vec::new();
+
+        // First clause.
+        all_clauses.push(ClauseData {
+            param_list: closure.param_list(),
+            guard: closure.guard(),
+            body: closure.body(),
+        });
+
+        // Subsequent clauses.
+        for clause in closure.clauses() {
+            all_clauses.push(ClauseData {
+                param_list: clause.param_list(),
+                guard: clause.guard(),
+                body: clause.body(),
+            });
+        }
+
+        // Build if-else chain from last to first.
+        let mut else_body: Option<MirExpr> = None;
+
+        for clause_data in all_clauses.iter().rev() {
+            self.push_scope();
+            for (pname, pty) in mir_params {
+                self.insert_var(pname.clone(), pty.clone());
+            }
+
+            // Check if this is a catch-all clause (all params are wildcards/variables, no guard).
+            let is_catch_all = self.is_closure_catch_all(&clause_data.param_list, mir_params)
+                && clause_data.guard.is_none();
+
+            if is_catch_all && else_body.is_none() {
+                // Last clause and catch-all: emit body directly.
+                let mut bindings = Vec::new();
+                self.collect_closure_clause_bindings(
+                    &clause_data.param_list,
+                    mir_params,
+                    &mut bindings,
+                );
+                let body = if let Some(ref block) = clause_data.body {
+                    self.lower_block(block)
+                } else {
+                    MirExpr::Unit
+                };
+                self.pop_scope();
+
+                let body = self.wrap_with_bindings(bindings, body);
+                else_body = Some(body);
+            } else {
+                // Build condition: check all param patterns.
+                let cond = self.build_closure_clause_condition(
+                    &clause_data.param_list,
+                    mir_params,
+                );
+                let guard = clause_data
+                    .guard
+                    .as_ref()
+                    .and_then(|gc| gc.expr())
+                    .map(|e| self.lower_expr(&e));
+
+                let full_cond = if let Some(guard_expr) = guard {
+                    if let Some(pattern_cond) = cond {
+                        MirExpr::BinOp {
+                            op: BinOp::And,
+                            lhs: Box::new(pattern_cond),
+                            rhs: Box::new(guard_expr),
+                            ty: MirType::Bool,
+                        }
+                    } else {
+                        guard_expr
+                    }
+                } else {
+                    cond.unwrap_or(MirExpr::BoolLit(true, MirType::Bool))
+                };
+
+                // Bind variables and lower body.
+                let mut bindings = Vec::new();
+                self.collect_closure_clause_bindings(
+                    &clause_data.param_list,
+                    mir_params,
+                    &mut bindings,
+                );
+                let body = if let Some(ref block) = clause_data.body {
+                    self.lower_block(block)
+                } else {
+                    MirExpr::Unit
+                };
+                self.pop_scope();
+
+                let then_body = self.wrap_with_bindings(bindings, body);
+                let else_expr = else_body.unwrap_or(MirExpr::Unit);
+
+                else_body = Some(MirExpr::If {
+                    cond: Box::new(full_cond),
+                    then_body: Box::new(then_body),
+                    else_body: Box::new(else_expr),
+                    ty: return_type.clone(),
+                });
+            }
+        }
+
+        else_body.unwrap_or(MirExpr::Unit)
+    }
+
+    /// Check if a closure clause is a catch-all (all params are variables/wildcards).
+    fn is_closure_catch_all(
+        &self,
+        param_list: &Option<snow_parser::ast::item::ParamList>,
+        _mir_params: &[(String, MirType)],
+    ) -> bool {
+        if let Some(pl) = param_list {
+            for param in pl.params() {
+                if let Some(pat) = param.pattern() {
+                    match pat {
+                        Pattern::Wildcard(_) | Pattern::Ident(_) => {}
+                        _ => return false,
+                    }
+                }
+            }
+        }
+        true
+    }
+
+    /// Collect variable bindings from a closure clause's params.
+    fn collect_closure_clause_bindings(
+        &mut self,
+        param_list: &Option<snow_parser::ast::item::ParamList>,
+        mir_params: &[(String, MirType)],
+        bindings: &mut Vec<(String, MirExpr)>,
+    ) {
+        if let Some(pl) = param_list {
+            for (idx, param) in pl.params().enumerate() {
+                if idx >= mir_params.len() {
+                    break;
+                }
+                let param_var = MirExpr::Var(mir_params[idx].0.clone(), mir_params[idx].1.clone());
+                if let Some(pat) = param.pattern() {
+                    match pat {
+                        Pattern::Ident(ref ident) => {
+                            let name = ident
+                                .name()
+                                .map(|t| t.text().to_string())
+                                .unwrap_or_else(|| "_".to_string());
+                            if name != "_" {
+                                self.insert_var(name.clone(), mir_params[idx].1.clone());
+                                bindings.push((name, param_var));
+                            }
+                        }
+                        Pattern::Wildcard(_) | Pattern::Literal(_) => {
+                            // No binding needed.
+                        }
+                        _ => {} // Skip complex patterns for now.
+                    }
+                } else if let Some(name_tok) = param.name() {
+                    let pname = name_tok.text().to_string();
+                    if pname != "_" {
+                        self.insert_var(pname.clone(), mir_params[idx].1.clone());
+                        bindings.push((pname, param_var));
+                    }
+                }
+            }
+        }
+    }
+
+    /// Build a condition expression that checks if all closure clause params match.
+    fn build_closure_clause_condition(
+        &self,
+        param_list: &Option<snow_parser::ast::item::ParamList>,
+        mir_params: &[(String, MirType)],
+    ) -> Option<MirExpr> {
+        let mut conditions: Vec<MirExpr> = Vec::new();
+
+        if let Some(pl) = param_list {
+            for (idx, param) in pl.params().enumerate() {
+                if idx >= mir_params.len() {
+                    break;
+                }
+                if let Some(pat) = param.pattern() {
+                    if let Some(cond) = self.pattern_to_condition(&pat, &mir_params[idx]) {
+                        conditions.push(cond);
+                    }
+                }
+            }
+        }
+
+        if conditions.is_empty() {
+            None
+        } else {
+            let mut result = conditions.remove(0);
+            for cond in conditions {
+                result = MirExpr::BinOp {
+                    op: BinOp::And,
+                    lhs: Box::new(result),
+                    rhs: Box::new(cond),
+                    ty: MirType::Bool,
+                };
+            }
+            Some(result)
         }
     }
 

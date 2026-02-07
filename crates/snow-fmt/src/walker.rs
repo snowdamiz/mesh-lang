@@ -48,6 +48,7 @@ pub fn walk_node(node: &SyntaxNode) -> FormatIR {
         SyntaxKind::STRUCT_DEF => walk_struct_def(node),
         SyntaxKind::STRUCT_FIELD => walk_struct_field(node),
         SyntaxKind::CLOSURE_EXPR => walk_closure_expr(node),
+        SyntaxKind::CLOSURE_CLAUSE => walk_closure_clause(node),
         SyntaxKind::RETURN_EXPR => walk_return_expr(node),
         SyntaxKind::IMPORT_DECL => walk_import_decl(node),
         SyntaxKind::FROM_IMPORT_DECL => walk_from_import_decl(node),
@@ -864,26 +865,124 @@ fn walk_struct_field(node: &SyntaxNode) -> FormatIR {
 fn walk_closure_expr(node: &SyntaxNode) -> FormatIR {
     let mut parts = Vec::new();
 
+    // Detect whether this closure uses do/end body form.
+    let has_do = node
+        .children_with_tokens()
+        .any(|c| c.kind() == SyntaxKind::DO_KW);
+
+    // Detect whether this is a multi-clause closure (has CLOSURE_CLAUSE children).
+    let has_clauses = node
+        .children()
+        .any(|c| c.kind() == SyntaxKind::CLOSURE_CLAUSE);
+
     for child in node.children_with_tokens() {
         match child {
             NodeOrToken::Token(tok) => {
                 match tok.kind() {
                     SyntaxKind::FN_KW => {
                         parts.push(ir::text("fn"));
+                        // Add space before params (or before do/arrow if no params).
+                        // The space is needed before PARAM_LIST, GUARD_CLAUSE, ARROW, DO_KW, etc.
                         parts.push(sp());
                     }
                     SyntaxKind::ARROW => {
-                        parts.push(sp());
+                        // For multi-clause closures, subsequent clauses have their
+                        // own ARROW inside CLOSURE_CLAUSE -- this is the first clause's arrow.
                         parts.push(ir::text("->"));
                         parts.push(sp());
                     }
                     SyntaxKind::END_KW => {
-                        parts.push(sp());
+                        if has_do {
+                            // do/end closures: end is on its own line for multi-stmt,
+                            // or with a space for single-stmt.
+                            // (Handled by the BLOCK formatting below.)
+                        } else {
+                            parts.push(sp());
+                        }
                         parts.push(ir::text("end"));
                     }
                     SyntaxKind::DO_KW => {
-                        parts.push(sp());
                         parts.push(ir::text("do"));
+                    }
+                    SyntaxKind::NEWLINE => {}
+                    SyntaxKind::BAR => {
+                        // BAR between inline first clause and a CLOSURE_CLAUSE
+                        // is handled by the CLOSURE_CLAUSE formatter; skip here.
+                    }
+                    _ => {
+                        add_token_with_context(&tok, &mut parts);
+                    }
+                }
+            }
+            NodeOrToken::Node(n) => {
+                match n.kind() {
+                    SyntaxKind::PARAM_LIST => {
+                        // Check if this is a bare param list (no parens) or parenthesized.
+                        let has_parens = n
+                            .children_with_tokens()
+                            .any(|c| c.kind() == SyntaxKind::L_PAREN);
+                        if has_parens {
+                            // Parenthesized: use standard paren list formatting.
+                            parts.push(walk_paren_list(&n));
+                            parts.push(sp());
+                        } else {
+                            // Bare params: walk inline (params separated by ", ").
+                            parts.push(walk_bare_param_list(&n));
+                            parts.push(sp());
+                        }
+                    }
+                    SyntaxKind::GUARD_CLAUSE => {
+                        parts.push(walk_node(&n));
+                        parts.push(sp());
+                    }
+                    SyntaxKind::BLOCK if has_do => {
+                        // do/end body: indent multi-statement blocks.
+                        let stmt_count = count_block_stmts(&n);
+                        if stmt_count > 1 {
+                            let body = walk_block_body(&n);
+                            parts.push(ir::indent(ir::concat(vec![ir::hardline(), body])));
+                            parts.push(ir::hardline());
+                        } else {
+                            parts.push(sp());
+                            let body = walk_block_body(&n);
+                            parts.push(body);
+                            parts.push(sp());
+                        }
+                    }
+                    SyntaxKind::BLOCK => {
+                        // Arrow body: single expression inline.
+                        let body = walk_block_body(&n);
+                        parts.push(body);
+                    }
+                    SyntaxKind::CLOSURE_CLAUSE => {
+                        parts.push(walk_closure_clause(&n));
+                    }
+                    _ => {
+                        parts.push(walk_node(&n));
+                    }
+                }
+            }
+        }
+    }
+
+    ir::concat(parts)
+}
+
+/// Walk a CLOSURE_CLAUSE node (2nd+ clause in multi-clause closures).
+fn walk_closure_clause(node: &SyntaxNode) -> FormatIR {
+    let mut parts = Vec::new();
+
+    for child in node.children_with_tokens() {
+        match child {
+            NodeOrToken::Token(tok) => {
+                match tok.kind() {
+                    SyntaxKind::BAR => {
+                        parts.push(ir::text("|"));
+                        parts.push(sp());
+                    }
+                    SyntaxKind::ARROW => {
+                        parts.push(ir::text("->"));
+                        parts.push(sp());
                     }
                     SyntaxKind::NEWLINE => {}
                     _ => {
@@ -893,21 +992,57 @@ fn walk_closure_expr(node: &SyntaxNode) -> FormatIR {
             }
             NodeOrToken::Node(n) => {
                 match n.kind() {
-                    SyntaxKind::BLOCK => {
-                        let stmt_count = count_block_stmts(&n);
-                        if stmt_count > 1 {
-                            let body = walk_block_body(&n);
-                            parts.push(ir::indent(ir::concat(vec![ir::hardline(), body])));
-                            parts.push(ir::hardline());
+                    SyntaxKind::PARAM_LIST => {
+                        let has_parens = n
+                            .children_with_tokens()
+                            .any(|c| c.kind() == SyntaxKind::L_PAREN);
+                        if has_parens {
+                            parts.push(walk_paren_list(&n));
+                            parts.push(sp());
                         } else {
-                            let body = walk_block_body(&n);
-                            parts.push(body);
+                            parts.push(walk_bare_param_list(&n));
+                            parts.push(sp());
                         }
+                    }
+                    SyntaxKind::GUARD_CLAUSE => {
+                        parts.push(walk_node(&n));
+                        parts.push(sp());
+                    }
+                    SyntaxKind::BLOCK => {
+                        let body = walk_block_body(&n);
+                        parts.push(body);
                     }
                     _ => {
                         parts.push(walk_node(&n));
                     }
                 }
+            }
+        }
+    }
+
+    ir::concat(parts)
+}
+
+/// Walk a bare (unparenthesized) PARAM_LIST, formatting params with ", " separators.
+fn walk_bare_param_list(node: &SyntaxNode) -> FormatIR {
+    let mut parts = Vec::new();
+
+    for child in node.children_with_tokens() {
+        match child {
+            NodeOrToken::Token(tok) => {
+                match tok.kind() {
+                    SyntaxKind::COMMA => {
+                        parts.push(ir::text(","));
+                        parts.push(sp());
+                    }
+                    SyntaxKind::NEWLINE => {}
+                    _ => {
+                        add_token_with_context(&tok, &mut parts);
+                    }
+                }
+            }
+            NodeOrToken::Node(n) => {
+                parts.push(walk_node(&n));
             }
         }
     }

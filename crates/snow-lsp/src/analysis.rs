@@ -305,7 +305,9 @@ mod tests {
     #[test]
     fn analyze_parse_error_produces_diagnostic() {
         // A parse error (incomplete expression) should produce a diagnostic.
-        let source = "fn do end";
+        // Note: `fn do end` is now valid syntax (no-params closure, Phase 12-01).
+        // Use a clearly invalid expression instead.
+        let source = "let x = + +";
         let result = analyze_document("file:///test.snow", source);
         assert!(
             !result.diagnostics.is_empty(),
