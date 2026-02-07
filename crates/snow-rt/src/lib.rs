@@ -26,6 +26,7 @@ pub mod env;
 pub mod file;
 pub mod gc;
 pub mod io;
+pub mod json;
 pub mod panic;
 pub mod string;
 
@@ -62,6 +63,11 @@ pub use file::{
 };
 pub use gc::{snow_gc_alloc, snow_gc_alloc_actor, snow_rt_init};
 pub use io::{snow_io_eprintln, snow_io_read_line};
+pub use json::{
+    snow_json_encode, snow_json_encode_bool, snow_json_encode_int, snow_json_encode_list,
+    snow_json_encode_map, snow_json_encode_string, snow_json_from_bool, snow_json_from_float,
+    snow_json_from_int, snow_json_from_string, snow_json_parse,
+};
 pub use panic::snow_panic;
 pub use string::{
     snow_bool_to_string, snow_float_to_string, snow_int_to_string, snow_print, snow_println,
