@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-02-05)
 
 **Core value:** Expressive, readable concurrency -- writing concurrent programs should feel as natural as sequential code, with supervision and fault tolerance built in.
-**Current focus:** Phase 8 gap closure -- Standard Library. Completing verification gap plans.
+**Current focus:** Phase 8 COMPLETE -- Standard Library. All 7 plans complete (including gap closure). Ready for Phase 9.
 
 ## Current Position
 
 Phase: 8 of 10 (Standard Library)
-Plan: 7 of 7 in current phase (gap closure plans 06-07 added)
-Status: In progress (08-06 remaining)
-Last activity: 2026-02-07 -- Completed 08-07-PLAN.md (HTTP Server Runtime Verification)
+Plan: 7 of 7 in current phase
+Status: Phase complete
+Last activity: 2026-02-07 -- Completed 08-06-PLAN.md (Pipe Chain and IO.read_line E2E Gap Closure)
 
-Progress: [█████████████████████████████████████████░░░] 83% (39 plans of ~47 estimated total)
+Progress: [█████████████████████████████████████████░░░] 85% (40 plans of ~47 estimated total)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 39
+- Total plans completed: 40
 - Average duration: 9min
-- Total execution time: 364min
+- Total execution time: 374min
 
 **By Phase:**
 
@@ -34,10 +34,10 @@ Progress: [███████████████████████
 | 05-llvm-codegen-native-binaries | 5/5 | 50min | 10min |
 | 06-actor-runtime | 7/7 | 70min | 10min |
 | 07-supervision-fault-tolerance | 3/3 | 27min | 9min |
-| 08-standard-library | 6/7 | 57min | 10min |
+| 08-standard-library | 7/7 | 67min | 10min |
 
 **Recent Trend:**
-- Last 5 plans: 08-02 (12min), 08-03 (15min), 08-04 (6min), 08-05 (13min), 08-07 (2min)
+- Last 5 plans: 08-03 (15min), 08-04 (6min), 08-05 (13min), 08-07 (2min), 08-06 (10min)
 
 *Updated after each plan completion*
 
@@ -216,6 +216,9 @@ Recent decisions affecting current work:
 - [08-05]: No bare name mappings for HTTP/Request functions to avoid collision with common variable names
 - [08-05]: Router/Request/Response resolve to MirType::Ptr (opaque pointers at LLVM level)
 - [08-05]: Handler calling convention: fn_ptr(request) -> response for bare named functions
+- [08-06]: Closure struct splitting: codegen extracts {fn_ptr, env_ptr} from closure struct for HOF runtime intrinsics
+- [08-06]: Non-null dummy env for zero-capture closures ensures runtime HOFs use closure calling convention
+- [08-06]: Direct function calls for closure HOF chains (pipe operator has parser limitation with inline closures)
 - [08-07]: Fixed port 18080 for HTTP server runtime E2E test (avoids port-0 coordination complexity)
 - [08-07]: Raw TcpStream for HTTP test requests (no additional dependency needed)
 - [08-07]: Snow string literals preserve backslash characters literally (no escape interpretation)
@@ -226,15 +229,16 @@ None.
 
 ### Blockers/Concerns
 
-- Phase 8 gap closure in progress -- 08-06 remaining (actor E2E verification gap)
+- Phase 8 complete -- all 7 plans done (including gap closure plans 06-07), all success criteria met
 - string_split now possible with List type available (can be added in future plan)
 - String-keyed maps use pointer identity (not content comparison) -- documented limitation
 - Multiline pipe operator (`|>` at start of continuation line) fails to parse -- pre-existing parser limitation
+- Pipe operator also fails when used with inline closures (fn(x) -> expr end) on same line -- parser merges with previous expression
 - Closure handlers for HTTP.route not supported in Phase 8 (bare function handlers only)
 - Map.put typed as (Map, Int, Int) -- string-keyed maps need type system refinement for proper E2E testing
 
 ## Session Continuity
 
 Last session: 2026-02-07
-Stopped at: Completed 08-07-PLAN.md -- HTTP Server Runtime Verification (gap closure)
+Stopped at: Completed 08-06-PLAN.md -- Pipe Chain and IO.read_line E2E Gap Closure (Phase 8 fully complete)
 Resume file: None
