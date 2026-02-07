@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-02-05)
 
 **Core value:** Expressive, readable concurrency -- writing concurrent programs should feel as natural as sequential code, with supervision and fault tolerance built in.
-**Current focus:** Phase 8 IN PROGRESS -- Standard Library. Plan 01 complete (core stdlib infrastructure). Next: Plan 02 (Collections).
+**Current focus:** Phase 8 IN PROGRESS -- Standard Library. Plans 01-02 complete. Next: Plan 03.
 
 ## Current Position
 
 Phase: 8 of 10 (Standard Library)
-Plan: 1 of 5 in current phase
+Plan: 2 of 5 in current phase
 Status: In progress
-Last activity: 2026-02-07 -- Completed 08-01-PLAN.md (Core stdlib infrastructure)
+Last activity: 2026-02-06 -- Completed 08-02-PLAN.md (Collection suite)
 
-Progress: [████████████████████████████████████░░░░░░░░] 76% (34 plans of ~45 estimated total)
+Progress: [█████████████████████████████████████░░░░░░░] 78% (35 plans of ~45 estimated total)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 34
+- Total plans completed: 35
 - Average duration: 9min
-- Total execution time: 316min
+- Total execution time: 328min
 
 **By Phase:**
 
@@ -34,10 +34,10 @@ Progress: [███████████████████████
 | 05-llvm-codegen-native-binaries | 5/5 | 50min | 10min |
 | 06-actor-runtime | 7/7 | 70min | 10min |
 | 07-supervision-fault-tolerance | 3/3 | 27min | 9min |
-| 08-standard-library | 1/5 | 9min | 9min |
+| 08-standard-library | 2/5 | 21min | 11min |
 
 **Recent Trend:**
-- Last 5 plans: 07-01 (8min), 07-02 (12min), 07-03 (7min), 08-01 (9min)
+- Last 5 plans: 07-02 (12min), 07-03 (7min), 08-01 (9min), 08-02 (12min)
 
 *Updated after each plan completion*
 
@@ -198,6 +198,11 @@ Recent decisions affecting current work:
 - [08-01]: from/import dual registration: both bare and prefixed names into type env
 - [08-01]: Bool i1/i8 coercion at runtime intrinsic call boundaries (zext args, trunc returns)
 - [08-01]: string_split deferred to Plan 02 when List<T> type exists
+- [08-02]: Uniform u64 representation for all collection elements (type-erased at runtime, typed at compile time)
+- [08-02]: Linear-scan maps/sets backed by Vec-of-pairs (simple, efficient for Phase 8 typical sizes)
+- [08-02]: Two-list queue without reversal (append-based back list already in chronological order)
+- [08-02]: Prelude names (map, filter, reduce, head, tail) auto-imported, resolve to List operations
+- [08-02]: All collection types resolve to MirType::Ptr (opaque pointers at LLVM level)
 
 ### Pending Todos
 
@@ -205,12 +210,13 @@ None.
 
 ### Blockers/Concerns
 
-- Phase 8 Plan 01 complete -- stdlib module infrastructure established
-- All subsequent Phase 8 plans depend on this module resolution mechanism
-- string_split needs List<T> from Plan 02
+- Phase 8 Plans 01-02 complete -- stdlib infrastructure + collections established
+- string_split now possible with List type available (can be added in future plan)
+- String-keyed maps use pointer identity (not content comparison) -- documented limitation
+- Pre-existing e2e_file test failures (4 tests) from File I/O codegen issues -- not blocking
 
 ## Session Continuity
 
-Last session: 2026-02-07
-Stopped at: Completed 08-01-PLAN.md -- Core stdlib infrastructure (string ops, IO, Env, module resolution)
+Last session: 2026-02-06
+Stopped at: Completed 08-02-PLAN.md -- Collection suite (List, Map, Set, Tuple, Range, Queue)
 Resume file: None
