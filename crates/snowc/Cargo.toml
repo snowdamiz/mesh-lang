@@ -10,8 +10,10 @@ snow-lexer = { path = "../snow-lexer" }
 snow-parser = { path = "../snow-parser" }
 snow-typeck = { path = "../snow-typeck" }
 snow-codegen = { path = "../snow-codegen" }
+snow-lsp = { path = "../snow-lsp" }
 clap = { workspace = true }
 ariadne = { workspace = true }
+tokio = { workspace = true }
 
 [dev-dependencies]
 tempfile = "3"

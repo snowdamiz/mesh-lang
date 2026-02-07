@@ -3,6 +3,7 @@
 //! Provides the `snowc` command with the following subcommands:
 //!
 //! - `snowc build <dir>` - Compile a Snow project to a native binary
+//! - `snowc lsp` - Start the LSP server (communicates via stdin/stdout)
 //!
 //! Options:
 //! - `--opt-level` - Optimization level (0 = debug, 2 = release)
@@ -45,6 +46,8 @@ enum Commands {
         #[arg(long)]
         target: Option<String>,
     },
+    /// Start the LSP server (communicates via stdin/stdout)
+    Lsp,
 }
 
 fn main() {
@@ -63,6 +66,10 @@ fn main() {
                 eprintln!("error: {}", e);
                 process::exit(1);
             }
+        }
+        Commands::Lsp => {
+            let rt = tokio::runtime::Runtime::new().expect("Failed to create tokio runtime");
+            rt.block_on(snow_lsp::run_server());
         }
     }
 }
