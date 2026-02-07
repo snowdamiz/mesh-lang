@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-02-05)
 
 **Core value:** Expressive, readable concurrency -- writing concurrent programs should feel as natural as sequential code, with supervision and fault tolerance built in.
-**Current focus:** Phase 10 IN PROGRESS -- Developer Tooling. Plan 02 complete (Code Formatter).
+**Current focus:** Phase 10 IN PROGRESS -- Developer Tooling. Plans 01, 02, 04, 06, 08 complete.
 
 ## Current Position
 
 Phase: 10 of 10 (Developer Tooling)
-Plan: 05 of 10 in current phase
+Plan: 06 of 10 in current phase (plans 01, 02, 04, 06, 08 complete)
 Status: In progress
-Last activity: 2026-02-07 -- Completed 10-02-PLAN.md (Code Formatter)
+Last activity: 2026-02-07 -- Completed 10-01-PLAN.md (Enhanced Diagnostics)
 
-Progress: [████████████████████████████████████████████████░░] 89% (49 plans of 55 total)
+Progress: [█████████████████████████████████████████████████░] 91% (50 plans of 55 total)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 49
+- Total plans completed: 50
 - Average duration: 9min
-- Total execution time: 461min
+- Total execution time: 473min
 
 **By Phase:**
 
@@ -36,10 +36,10 @@ Progress: [███████████████████████
 | 07-supervision-fault-tolerance | 3/3 | 27min | 9min |
 | 08-standard-library | 7/7 | 67min | 10min |
 | 09-concurrency-standard-library | 5/5 | 51min | 10min |
-| 10-developer-tooling | 5/10 | 36min | 7min |
+| 10-developer-tooling | 6/10 | 48min | 8min |
 
 **Recent Trend:**
-- Last 5 plans: 10-06 (6min), 10-08 (8min), 10-04 (10min), 10-02 (12min)
+- Last 5 plans: 10-08 (8min), 10-04 (10min), 10-02 (12min), 10-01 (12min)
 
 *Updated after each plan completion*
 
@@ -266,6 +266,11 @@ Recent decisions affecting current work:
 - [10-02]: sp() literal space helper vs ir::space() break-sensitive -- root context always break mode
 - [10-02]: TYPE_ANNOTATION gets space before it in inline token walker (Snow :: is type annotation, not path separator)
 - [10-02]: Stack-based printer with (indent, mode, ir_node) triples and measure_flat() for Group decisions
+- [10-01]: DiagnosticOptions struct with color/json fields replaces hardcoded colorless config
+- [10-01]: JsonDiagnostic struct with Serialize derive for machine-readable output
+- [10-01]: FnArg multi-span uses call_site + param_idx (no param_span in ConstraintOrigin)
+- [10-01]: Levenshtein distance for "did you mean X?" suggestions (max distance 2)
+- [10-01]: --json and --no-color CLI flags on snowc build subcommand
 
 ### Pending Todos
 
@@ -274,7 +279,7 @@ None.
 ### Blockers/Concerns
 
 - Phase 9 COMPLETE -- all 5 plans done, all E2E tests passing
-- Phase 10 IN PROGRESS -- plan 02 (Code Formatter) complete
+- Phase 10 IN PROGRESS -- plans 01, 02, 04, 06, 08 complete
 - string_split now possible with List type available (can be added in future plan)
 - String-keyed maps use pointer identity (not content comparison) -- documented limitation
 - Multiline pipe operator (`|>` at start of continuation line) fails to parse -- pre-existing parser limitation
@@ -285,5 +290,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-07
-Stopped at: Completed 10-02-PLAN.md (Code Formatter)
+Stopped at: Completed 10-01-PLAN.md (Enhanced Diagnostics)
 Resume file: None
