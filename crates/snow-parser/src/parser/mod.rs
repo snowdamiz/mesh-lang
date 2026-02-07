@@ -605,6 +605,8 @@ pub(crate) fn parse_item_or_stmt(p: &mut Parser) {
 
         SyntaxKind::ACTOR_KW => items::parse_actor_def(p),
 
+        SyntaxKind::SERVICE_KW => items::parse_service_def(p),
+
         SyntaxKind::SUPERVISOR_KW => items::parse_supervisor_def(p),
 
         // type at top level followed by IDENT -> sum type def or type alias

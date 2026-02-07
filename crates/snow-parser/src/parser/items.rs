@@ -1232,3 +1232,237 @@ fn parse_child_spec_body(p: &mut Parser) {
 
     p.close(m, SyntaxKind::BLOCK);
 }
+
+// ── Service Definition ─────────────────────────────────────────────
+
+/// Parse a service block definition: `service Name do ... end`
+///
+/// The service body contains:
+/// - `fn init(params) :: ReturnType do ... end` (initialization function)
+/// - `call Name(params) :: ReturnType do |state| ... end` (synchronous handlers)
+/// - `cast Name(params) do |state| ... end` (asynchronous handlers)
+pub(crate) fn parse_service_def(p: &mut Parser) {
+    let m = p.open();
+
+    p.advance(); // SERVICE_KW
+
+    // Service name.
+    if p.at(SyntaxKind::IDENT) {
+        let name = p.open();
+        p.advance();
+        p.close(name, SyntaxKind::NAME);
+    } else {
+        p.error("expected service name");
+        p.close(m, SyntaxKind::SERVICE_DEF);
+        return;
+    }
+
+    // Expect `do`.
+    let do_span = p.current_span();
+    p.expect(SyntaxKind::DO_KW);
+
+    // Parse service body.
+    if !p.has_error() {
+        parse_service_body(p);
+    }
+
+    // Expect `end`.
+    if !p.at(SyntaxKind::END_KW) {
+        p.error_with_related(
+            "expected `end` to close service body",
+            do_span,
+            "`do` block started here",
+        );
+    } else {
+        p.advance(); // END_KW
+    }
+
+    p.close(m, SyntaxKind::SERVICE_DEF);
+}
+
+/// Parse the body of a service block.
+///
+/// Parses `fn` definitions (init), `call` handlers, and `cast` handlers.
+fn parse_service_body(p: &mut Parser) {
+    let m = p.open();
+
+    loop {
+        p.eat_newlines();
+        while p.eat(SyntaxKind::SEMICOLON) {
+            p.eat_newlines();
+        }
+
+        match p.current() {
+            SyntaxKind::END_KW | SyntaxKind::EOF => break,
+            SyntaxKind::FN_KW | SyntaxKind::DEF_KW => {
+                // Parse fn init(...) as a regular function definition.
+                super::parse_item_or_stmt(p);
+            }
+            SyntaxKind::CALL_KW => {
+                parse_call_handler(p);
+            }
+            SyntaxKind::CAST_KW => {
+                parse_cast_handler(p);
+            }
+            _ => {
+                p.error("expected `fn`, `call`, `cast`, or `end` in service body");
+                break;
+            }
+        }
+
+        if p.has_error() {
+            break;
+        }
+
+        match p.current() {
+            SyntaxKind::NEWLINE => {
+                p.eat_newlines();
+            }
+            SyntaxKind::SEMICOLON => {}
+            SyntaxKind::END_KW | SyntaxKind::EOF => {}
+            _ => {}
+        }
+    }
+
+    p.close(m, SyntaxKind::BLOCK);
+}
+
+/// Parse a call handler: `call Name(params) :: ReturnType do |state| body end`
+///
+/// Call handlers are synchronous request handlers in a service. They receive
+/// the current state and must return a tuple of `{new_state, reply}`.
+fn parse_call_handler(p: &mut Parser) {
+    let m = p.open();
+    p.advance(); // CALL_KW
+
+    // Handler name (variant name, e.g., GetCount).
+    if p.at(SyntaxKind::IDENT) {
+        let name = p.open();
+        p.advance();
+        p.close(name, SyntaxKind::NAME);
+    } else {
+        p.error("expected call handler name");
+        p.close(m, SyntaxKind::CALL_HANDLER);
+        return;
+    }
+
+    // Optional parameter list: (params)
+    if p.at(SyntaxKind::L_PAREN) {
+        parse_param_list(p);
+    }
+
+    // Return type annotation: :: Type
+    if p.at(SyntaxKind::COLON_COLON) {
+        let ann = p.open();
+        p.advance(); // ::
+        parse_type(p);
+        p.close(ann, SyntaxKind::TYPE_ANNOTATION);
+    }
+
+    // Expect `do`.
+    let do_span = p.current_span();
+    p.expect(SyntaxKind::DO_KW);
+
+    if p.has_error() {
+        p.close(m, SyntaxKind::CALL_HANDLER);
+        return;
+    }
+
+    // Parse |state| parameter.
+    if p.at(SyntaxKind::BAR) {
+        p.advance(); // |
+        if p.at(SyntaxKind::IDENT) {
+            let name = p.open();
+            p.advance();
+            p.close(name, SyntaxKind::NAME);
+        } else {
+            p.error("expected state parameter name");
+        }
+        p.expect(SyntaxKind::BAR);
+    }
+
+    // Parse handler body.
+    if !p.has_error() {
+        super::expressions::parse_block_body(p);
+    }
+
+    // Expect `end`.
+    if !p.at(SyntaxKind::END_KW) {
+        p.error_with_related(
+            "expected `end` to close call handler body",
+            do_span,
+            "`do` block started here",
+        );
+    } else {
+        p.advance(); // END_KW
+    }
+
+    p.close(m, SyntaxKind::CALL_HANDLER);
+}
+
+/// Parse a cast handler: `cast Name(params) do |state| body end`
+///
+/// Cast handlers are asynchronous (fire-and-forget) handlers in a service.
+/// They receive the current state and must return the new state.
+fn parse_cast_handler(p: &mut Parser) {
+    let m = p.open();
+    p.advance(); // CAST_KW
+
+    // Handler name (variant name, e.g., Reset).
+    if p.at(SyntaxKind::IDENT) {
+        let name = p.open();
+        p.advance();
+        p.close(name, SyntaxKind::NAME);
+    } else {
+        p.error("expected cast handler name");
+        p.close(m, SyntaxKind::CAST_HANDLER);
+        return;
+    }
+
+    // Optional parameter list: (params)
+    if p.at(SyntaxKind::L_PAREN) {
+        parse_param_list(p);
+    }
+
+    // No return type for cast (fire-and-forget, returns Unit).
+
+    // Expect `do`.
+    let do_span = p.current_span();
+    p.expect(SyntaxKind::DO_KW);
+
+    if p.has_error() {
+        p.close(m, SyntaxKind::CAST_HANDLER);
+        return;
+    }
+
+    // Parse |state| parameter.
+    if p.at(SyntaxKind::BAR) {
+        p.advance(); // |
+        if p.at(SyntaxKind::IDENT) {
+            let name = p.open();
+            p.advance();
+            p.close(name, SyntaxKind::NAME);
+        } else {
+            p.error("expected state parameter name");
+        }
+        p.expect(SyntaxKind::BAR);
+    }
+
+    // Parse handler body.
+    if !p.has_error() {
+        super::expressions::parse_block_body(p);
+    }
+
+    // Expect `end`.
+    if !p.at(SyntaxKind::END_KW) {
+        p.error_with_related(
+            "expected `end` to close cast handler body",
+            do_span,
+            "`do` block started here",
+        );
+    } else {
+        p.advance(); // END_KW
+    }
+
+    p.close(m, SyntaxKind::CAST_HANDLER);
+}

@@ -5,7 +5,7 @@
 
 use insta::assert_snapshot;
 use snow_parser::ast::expr::{BinaryExpr, IfExpr, Literal};
-use snow_parser::ast::item::{FnDef, LetBinding, SourceFile, StructDef, SumTypeDef};
+use snow_parser::ast::item::{FnDef, LetBinding, ServiceDef, SourceFile, StructDef, SumTypeDef};
 use snow_parser::ast::pat::{AsPat, ConstructorPat, OrPat, Pattern};
 use snow_parser::{debug_tree, parse, parse_block, parse_expr, AstNode};
 
@@ -1640,6 +1640,127 @@ fn ast_actor_in_items() {
     match &items[0] {
         snow_parser::ast::item::Item::ActorDef(_) => {}
         other => panic!("expected ActorDef, got {:?}", other),
+    }
+    match &items[1] {
+        snow_parser::ast::item::Item::FnDef(_) => {}
+        other => panic!("expected FnDef, got {:?}", other),
+    }
+}
+
+// ── Service Definition ──────────────────────────────────────────────
+
+#[test]
+fn service_def_simple() {
+    assert_snapshot!(source_and_debug(
+        "service Counter do\n  fn init(start_val :: Int) -> Int do\n    start_val\n  end\nend"
+    ));
+}
+
+#[test]
+fn service_def_with_call_handler() {
+    assert_snapshot!(source_and_debug(
+        "service Counter do\n  call GetCount() :: Int do |state|\n    (state, state)\n  end\nend"
+    ));
+}
+
+#[test]
+fn service_def_with_cast_handler() {
+    assert_snapshot!(source_and_debug(
+        "service Counter do\n  cast Reset() do |state|\n    0\n  end\nend"
+    ));
+}
+
+#[test]
+fn service_def_full() {
+    let source = "\
+service Counter do
+  fn init(start_val :: Int) -> Int do
+    start_val
+  end
+
+  call GetCount() :: Int do |state|
+    (state, state)
+  end
+
+  call Increment(amount :: Int) :: Int do |state|
+    (state + amount, state + amount)
+  end
+
+  cast Reset() do |state|
+    0
+  end
+end";
+    assert_snapshot!(source_and_debug(source));
+}
+
+#[test]
+fn ast_service_def_accessors() {
+    let source = "\
+service Counter do
+  fn init(start_val :: Int) -> Int do
+    start_val
+  end
+
+  call GetCount() :: Int do |state|
+    (state, state)
+  end
+
+  call Increment(amount :: Int) :: Int do |state|
+    (state + amount, state + amount)
+  end
+
+  cast Reset() do |state|
+    0
+  end
+end";
+    let p = parse(source);
+    assert!(p.ok(), "parse errors: {:?}", p.errors());
+    let tree = p.tree();
+
+    let items: Vec<_> = tree.items().collect();
+    assert_eq!(items.len(), 1);
+
+    match &items[0] {
+        snow_parser::ast::item::Item::ServiceDef(svc) => {
+            // Name
+            assert_eq!(svc.name().unwrap().text().unwrap(), "Counter");
+
+            // Init fn
+            let init = svc.init_fn().expect("should have init fn");
+            assert_eq!(init.name().unwrap().text().unwrap(), "init");
+
+            // Call handlers
+            let calls = svc.call_handlers();
+            assert_eq!(calls.len(), 2);
+            assert_eq!(calls[0].name().unwrap().text().unwrap(), "GetCount");
+            assert_eq!(calls[0].state_param_name().unwrap(), "state");
+            assert!(calls[0].return_type().is_some());
+            assert_eq!(calls[1].name().unwrap().text().unwrap(), "Increment");
+            assert_eq!(calls[1].state_param_name().unwrap(), "state");
+            assert!(calls[1].params().is_some());
+
+            // Cast handlers
+            let casts = svc.cast_handlers();
+            assert_eq!(casts.len(), 1);
+            assert_eq!(casts[0].name().unwrap().text().unwrap(), "Reset");
+            assert_eq!(casts[0].state_param_name().unwrap(), "state");
+        }
+        other => panic!("expected ServiceDef, got {:?}", other),
+    }
+}
+
+#[test]
+fn ast_service_in_items() {
+    let source = "service Foo do\n  cast Bar() do |s|\n    s\n  end\nend\n\nfn baz() do 1 end";
+    let p = parse(source);
+    assert!(p.ok(), "parse errors: {:?}", p.errors());
+    let tree = p.tree();
+
+    let items: Vec<_> = tree.items().collect();
+    assert_eq!(items.len(), 2);
+    match &items[0] {
+        snow_parser::ast::item::Item::ServiceDef(_) => {}
+        other => panic!("expected ServiceDef, got {:?}", other),
     }
     match &items[1] {
         snow_parser::ast::item::Item::FnDef(_) => {}

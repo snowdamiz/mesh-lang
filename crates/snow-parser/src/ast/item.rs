@@ -45,6 +45,7 @@ pub enum Item {
     TypeAliasDef(TypeAliasDef),
     SumTypeDef(SumTypeDef),
     ActorDef(ActorDef),
+    ServiceDef(ServiceDef),
     SupervisorDef(SupervisorDef),
 }
 
@@ -70,6 +71,9 @@ impl Item {
                 Some(Item::SumTypeDef(SumTypeDef { syntax: node }))
             }
             SyntaxKind::ACTOR_DEF => Some(Item::ActorDef(ActorDef { syntax: node })),
+            SyntaxKind::SERVICE_DEF => {
+                Some(Item::ServiceDef(ServiceDef { syntax: node }))
+            }
             SyntaxKind::SUPERVISOR_DEF => {
                 Some(Item::SupervisorDef(SupervisorDef { syntax: node }))
             }
@@ -580,5 +584,118 @@ impl SupervisorDef {
             })
             .filter(|c| c.kind() == SyntaxKind::CHILD_SPEC_DEF)
             .collect()
+    }
+}
+
+// ── Service Definition ──────────────────────────────────────────────
+
+ast_node!(ServiceDef, SERVICE_DEF);
+
+impl ServiceDef {
+    /// The service name.
+    pub fn name(&self) -> Option<Name> {
+        child_node(&self.syntax)
+    }
+
+    /// The init function definition (fn init(...) ... end), if present.
+    pub fn init_fn(&self) -> Option<FnDef> {
+        self.syntax
+            .children()
+            .filter(|n| n.kind() == SyntaxKind::BLOCK)
+            .flat_map(|block| block.children())
+            .find_map(FnDef::cast)
+    }
+
+    /// All call handlers in the service body.
+    pub fn call_handlers(&self) -> Vec<CallHandler> {
+        self.syntax
+            .children()
+            .filter(|n| n.kind() == SyntaxKind::BLOCK)
+            .flat_map(|block| block.children())
+            .filter_map(CallHandler::cast)
+            .collect()
+    }
+
+    /// All cast handlers in the service body.
+    pub fn cast_handlers(&self) -> Vec<CastHandler> {
+        self.syntax
+            .children()
+            .filter(|n| n.kind() == SyntaxKind::BLOCK)
+            .flat_map(|block| block.children())
+            .filter_map(CastHandler::cast)
+            .collect()
+    }
+}
+
+// ── Call Handler ─────────────────────────────────────────────────────
+
+ast_node!(CallHandler, CALL_HANDLER);
+
+impl CallHandler {
+    /// The call handler variant name (e.g., "GetCount").
+    pub fn name(&self) -> Option<Name> {
+        child_node(&self.syntax)
+    }
+
+    /// The parameter list, if present.
+    pub fn params(&self) -> Option<ParamList> {
+        child_node(&self.syntax)
+    }
+
+    /// The return type annotation (:: Type), if present.
+    pub fn return_type(&self) -> Option<TypeAnnotation> {
+        child_node(&self.syntax)
+    }
+
+    /// The state parameter name from the |state| pattern.
+    pub fn state_param_name(&self) -> Option<String> {
+        // First NAME is the handler name, second NAME (before BLOCK) is state param.
+        let names: Vec<_> = self.syntax
+            .children()
+            .filter(|n| n.kind() == SyntaxKind::NAME)
+            .collect();
+        if names.len() >= 2 {
+            return Name::cast(names[1].clone()).and_then(|n| n.text());
+        }
+        None
+    }
+
+    /// The body block of the call handler.
+    pub fn body(&self) -> Option<Block> {
+        child_node(&self.syntax)
+    }
+}
+
+// ── Cast Handler ─────────────────────────────────────────────────────
+
+ast_node!(CastHandler, CAST_HANDLER);
+
+impl CastHandler {
+    /// The cast handler variant name (e.g., "Reset").
+    pub fn name(&self) -> Option<Name> {
+        child_node(&self.syntax)
+    }
+
+    /// The parameter list, if present.
+    pub fn params(&self) -> Option<ParamList> {
+        child_node(&self.syntax)
+    }
+
+    /// The state parameter name from the |state| pattern.
+    pub fn state_param_name(&self) -> Option<String> {
+        // First NAME is the handler name, second NAME (before BLOCK) is state param.
+        let names: Vec<_> = self.syntax
+            .children()
+            .filter(|n| n.kind() == SyntaxKind::NAME)
+            .collect();
+        if names.len() >= 2 {
+            return Name::cast(names[1].clone()).and_then(|n| n.text());
+        }
+        None
+    }
+
+    /// The body block of the cast handler.
+    pub fn body(&self) -> Option<Block> {
+        child_node(&self.syntax)
     }
 }
