@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-02-05)
 
 **Core value:** Expressive, readable concurrency -- writing concurrent programs should feel as natural as sequential code, with supervision and fault tolerance built in.
-**Current focus:** Phase 8 IN PROGRESS -- Standard Library. Plans 01-04 complete. Next: Plan 05 (HTTP).
+**Current focus:** Phase 8 COMPLETE -- Standard Library. All 5 plans complete. Ready for Phase 9.
 
 ## Current Position
 
 Phase: 8 of 10 (Standard Library)
-Plan: 4 of 5 in current phase
-Status: In progress
-Last activity: 2026-02-07 -- Completed 08-04-PLAN.md (JSON)
+Plan: 5 of 5 in current phase
+Status: Phase complete
+Last activity: 2026-02-07 -- Completed 08-05-PLAN.md (HTTP Server/Client)
 
-Progress: [███████████████████████████████████████░░░░░] 82% (37 plans of ~45 estimated total)
+Progress: [████████████████████████████████████████░░░░] 84% (38 plans of ~45 estimated total)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 37
-- Average duration: 9min
-- Total execution time: 349min
+- Total plans completed: 38
+- Average duration: 10min
+- Total execution time: 362min
 
 **By Phase:**
 
@@ -34,10 +34,10 @@ Progress: [███████████████████████
 | 05-llvm-codegen-native-binaries | 5/5 | 50min | 10min |
 | 06-actor-runtime | 7/7 | 70min | 10min |
 | 07-supervision-fault-tolerance | 3/3 | 27min | 9min |
-| 08-standard-library | 4/5 | 42min | 11min |
+| 08-standard-library | 5/5 | 55min | 11min |
 
 **Recent Trend:**
-- Last 5 plans: 08-01 (9min), 08-02 (12min), 08-03 (15min), 08-04 (6min)
+- Last 5 plans: 08-01 (9min), 08-02 (12min), 08-03 (15min), 08-04 (6min), 08-05 (13min)
 
 *Updated after each plan completion*
 
@@ -211,6 +211,11 @@ Recent decisions affecting current work:
 - [08-04]: SnowJson uses 16-byte layout {tag: u8, _pad: [u8;7], value: u64} for 8-byte alignment
 - [08-04]: JSON numbers stored as i64 (not f64) since Snow primarily uses integer types
 - [08-04]: serde_json bridge converts between serde_json::Value and GC-allocated SnowJson recursively
+- [08-05]: Thread-per-connection instead of actor-per-connection for HTTP server (tiny_http + std::thread::spawn)
+- [08-05]: 3-arg snow_http_route (router, pattern, handler_fn) with null env -- bare function handlers only
+- [08-05]: No bare name mappings for HTTP/Request functions to avoid collision with common variable names
+- [08-05]: Router/Request/Response resolve to MirType::Ptr (opaque pointers at LLVM level)
+- [08-05]: Handler calling convention: fn_ptr(request) -> response for bare named functions
 
 ### Pending Todos
 
@@ -218,15 +223,15 @@ None.
 
 ### Blockers/Concerns
 
-- Phase 8 Plans 01-04 complete -- stdlib infrastructure + collections + file I/O + JSON established
+- Phase 8 complete -- all 5 plans done, all success criteria met
 - string_split now possible with List type available (can be added in future plan)
 - String-keyed maps use pointer identity (not content comparison) -- documented limitation
-- File I/O E2E tests all pass -- runtime Result pattern matching fully working
-- JSON encode/parse working; full Json sum type pattern matching deferred to future work
+- Multiline pipe operator (`|>` at start of continuation line) fails to parse -- pre-existing parser limitation
+- Closure handlers for HTTP.route not supported in Phase 8 (bare function handlers only)
 - Map.put typed as (Map, Int, Int) -- string-keyed maps need type system refinement for proper E2E testing
 
 ## Session Continuity
 
 Last session: 2026-02-07
-Stopped at: Completed 08-04-PLAN.md -- JSON encoding/decoding
+Stopped at: Completed 08-05-PLAN.md -- HTTP Server/Client (Phase 8 complete)
 Resume file: None

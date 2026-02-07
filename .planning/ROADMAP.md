@@ -168,7 +168,7 @@ Plans:
 - [x] 08-02-PLAN.md -- Collections (List with map/filter/reduce, Map/HashMap, Set)
 - [x] 08-03-PLAN.md -- File I/O with Result types
 - [x] 08-04-PLAN.md -- JSON encoding/decoding with serde_json
-- [ ] 08-05-PLAN.md -- HTTP client and server with actor-per-connection model
+- [x] 08-05-PLAN.md -- HTTP client and server with thread-per-connection model
 
 ### Phase 9: Concurrency Standard Library
 **Goal**: High-level concurrency abstractions (GenServer, Task) built on the actor primitives, providing ergonomic patterns for common concurrent programming needs
