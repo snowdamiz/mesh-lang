@@ -5,16 +5,16 @@
 See: .planning/PROJECT.md (updated 2026-02-07)
 
 **Core value:** Expressive, readable concurrency -- writing concurrent programs should feel as natural as sequential code, with supervision and fault tolerance built in.
-**Current focus:** v1.0 SHIPPED -- Planning next milestone
+**Current focus:** v1.1 Language Polish -- fix all 5 documented v1.0 limitations
 
 ## Current Position
 
-Phase: 10 of 10 (all v1.0 phases complete)
-Plan: N/A -- milestone complete
-Status: v1.0 SHIPPED
-Last activity: 2026-02-07 -- v1.0 milestone archived
+Phase: Not started (defining requirements)
+Plan: —
+Status: Defining requirements
+Last activity: 2026-02-07 -- Milestone v1.1 started
 
-Progress: [████████████████████████████████████████████████████████] 100% (55/55 plans)
+Progress: ░░░░░░░░░░ 0%
 
 ## Performance Metrics
 
@@ -38,11 +38,11 @@ None.
 
 ### Blockers/Concerns
 
-None -- v1.0 shipped. Known limitations documented in PROJECT.md.
+None.
 
 ## Session Continuity
 
 Last session: 2026-02-07
-Stopped at: v1.0 milestone complete
+Stopped at: Milestone v1.1 initialized
 Resume file: None
-Next action: `/gsd:new-milestone` to start v2 planning
+Next action: Define requirements → create roadmap

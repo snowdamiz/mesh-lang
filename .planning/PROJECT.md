@@ -2,7 +2,7 @@
 
 ## What This Is
 
-Snow is a programming language that combines Elixir/Ruby-style expressive syntax with static Hindley-Milner type inference and BEAM-style concurrency (actors, supervision trees, fault tolerance), compiled via LLVM to native single-binary executables. The compiler is written in Rust. v1.0 ships a complete compiler pipeline, actor runtime, standard library, and developer tooling (formatter, REPL, package manager, LSP).
+Snow is a programming language that combines Elixir/Ruby-style expressive syntax with static Hindley-Milner type inference and BEAM-style concurrency (actors, supervision trees, fault tolerance), compiled via LLVM to native single-binary executables. The compiler is written in Rust. v1.0 shipped a complete compiler pipeline, actor runtime, standard library, and developer tooling (formatter, REPL, package manager, LSP). v1.1 polishes the language by fixing known limitations from the initial release.
 
 ## Core Value
 
@@ -25,7 +25,11 @@ Expressive, readable concurrency -- writing concurrent programs should feel as n
 
 ### Active
 
-(None -- v1.0 complete. Define for next milestone via `/gsd:new-milestone`)
+- [ ] Multi-clause function definitions (define functions with multiple pattern-matched clauses instead of requiring case expressions)
+- [ ] String comparison in pattern matching (compile-time string matching instead of runtime fallback)
+- [ ] Pipe operator with inline closures (parse `list |> Enum.map(fn x -> x * 2 end)` correctly)
+- [ ] Actor-per-connection HTTP server (replace thread-per-connection with lightweight actor processes)
+- [ ] Generic map types (Map with string keys, not just integer-keyed `Map.put(Map, Int, Int)`)
 
 ### Out of Scope
 
@@ -47,12 +51,23 @@ Shipped v1.0 with 52,611 lines of Rust across 107 source files.
 Tech stack: Rust compiler, LLVM 21 (Inkwell 0.8), corosensei coroutines, rowan CST, ariadne diagnostics.
 Crates: snow-lexer, snow-parser, snow-typeck, snow-mir, snow-codegen, snow-rt, snow-fmt, snow-repl, snow-pkg, snow-lsp, snowc.
 
-Known limitations for future work:
+Known limitations (being addressed in v1.1):
 - Multi-clause function definitions (workaround: case expressions)
 - String comparison in pattern matching (runtime fallback)
 - Pipe operator with inline closures (parser limitation)
 - HTTP server uses thread-per-connection (not actor-per-connection)
 - Map.put typed as (Map, Int, Int) -- string-keyed maps need refinement
+
+## Current Milestone: v1.1 Language Polish
+
+**Goal:** Fix all five documented v1.0 limitations to make the language feel complete and polished.
+
+**Target features:**
+- Multi-clause function definitions
+- String comparison in pattern matching
+- Pipe operator with inline closures
+- Actor-per-connection HTTP server
+- Generic map types (string keys and beyond)
 
 ## Constraints
 
@@ -78,4 +93,4 @@ Known limitations for future work:
 | Arena/bump allocation for GC | Simple, fast allocation for v1 | ⚠️ Revisit -- true mark-sweep needed for long-running actors |
 
 ---
-*Last updated: 2026-02-07 after v1.0 milestone*
+*Last updated: 2026-02-07 after v1.1 milestone started*
