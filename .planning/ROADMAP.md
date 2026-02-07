@@ -145,12 +145,12 @@ Plans:
   2. A supervisor configured with `one_for_all` restarts all children when any one crashes
   3. Restart limits prevent infinite crash loops (supervisor itself terminates after exceeding max restarts in a time window)
   4. Typed supervision validates child specifications at compile time (the supervisor knows the message types of its children)
-**Plans**: TBD
+**Plans**: 3 plans
 
 Plans:
-- [ ] 07-01: Supervisor actor implementation (strategies, child specs, restart logic)
-- [ ] 07-02: Exit signal propagation, trap exits, and restart policies (permanent/transient/temporary)
-- [ ] 07-03: Typed supervision and compile-time child spec validation
+- [ ] 07-01-PLAN.md -- Supervisor runtime: ExitReason expansion, child spec types, SupervisorState, all four strategies, restart limits, ordered shutdown, extern "C" ABI
+- [ ] 07-02-PLAN.md -- Compiler integration: parser (supervisor blocks), AST, type checker, MIR SupervisorStart, LLVM codegen, intrinsics, E2E smoke test
+- [ ] 07-03-PLAN.md -- Typed supervision: compile-time child spec validation (E0018-E0021), E2E tests for all success criteria
 
 ### Phase 8: Standard Library
 **Goal**: A core standard library providing I/O, string operations, collections, file access, HTTP, and JSON -- enough to build real web backends and CLI tools
@@ -216,7 +216,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8 -> 9 -> 10
 | 4. Pattern Matching & ADTs | 5/5 | Complete | 2026-02-06 |
 | 5. LLVM Codegen & Native Binaries | 5/5 | Complete | 2026-02-06 |
 | 6. Actor Runtime | 7/7 | Complete | 2026-02-07 |
-| 7. Supervision & Fault Tolerance | 0/3 | Not started | - |
+| 7. Supervision & Fault Tolerance | 0/3 | Planned | - |
 | 8. Standard Library | 0/5 | Not started | - |
 | 9. Concurrency Standard Library | 0/2 | Not started | - |
 | 10. Developer Tooling | 0/5 | Not started | - |
