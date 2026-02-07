@@ -241,6 +241,32 @@ impl<'ctx> CodeGen<'ctx> {
         }
     }
 
+    /// Look up a sum type layout by name, falling back to the base name
+    /// for monomorphized types (e.g., `Result_String_String` -> `Result`).
+    pub(crate) fn lookup_sum_type_layout(&self, name: &str) -> Option<&StructType<'ctx>> {
+        if let Some(layout) = self.sum_type_layouts.get(name) {
+            return Some(layout);
+        }
+        if let Some(base) = name.split('_').next() {
+            self.sum_type_layouts.get(base)
+        } else {
+            None
+        }
+    }
+
+    /// Look up a sum type definition by name, falling back to the base name
+    /// for monomorphized types.
+    pub(crate) fn lookup_sum_type_def(&self, name: &str) -> Option<&MirSumTypeDef> {
+        if let Some(def) = self.sum_type_defs.get(name) {
+            return Some(def);
+        }
+        if let Some(base) = name.split('_').next() {
+            self.sum_type_defs.get(base)
+        } else {
+            None
+        }
+    }
+
     fn create_sum_type_layouts(&mut self, sum_types: &[MirSumTypeDef]) {
         for st in sum_types {
             let layout = create_sum_type_layout(

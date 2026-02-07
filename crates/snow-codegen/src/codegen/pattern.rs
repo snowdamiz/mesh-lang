@@ -192,8 +192,7 @@ impl<'ctx> CodeGen<'ctx> {
         let path_ty = self.resolve_path_type(scrutinee_ty, scrutinee_path)?;
         let sum_layout = match &path_ty {
             MirType::SumType(name) => {
-                self.sum_type_layouts
-                    .get(name)
+                self.lookup_sum_type_layout(name)
                     .ok_or_else(|| format!("Unknown sum type layout '{}'", name))?
             }
             _ => return Err(format!("Switch on non-sum type: {:?}", path_ty)),
@@ -476,8 +475,7 @@ impl<'ctx> CodeGen<'ctx> {
                 };
 
                 let sum_def = self
-                    .sum_type_defs
-                    .get(&type_name)
+                    .lookup_sum_type_def(&type_name)
                     .ok_or_else(|| format!("Unknown sum type '{}'", type_name))?
                     .clone();
 
@@ -559,7 +557,7 @@ impl<'ctx> CodeGen<'ctx> {
                 let parent_ty = self.resolve_path_type(scrutinee_ty, parent)?;
                 match &parent_ty {
                     MirType::SumType(type_name) => {
-                        let sum_def = self.sum_type_defs.get(type_name).ok_or_else(|| {
+                        let sum_def = self.lookup_sum_type_def(type_name).ok_or_else(|| {
                             format!("Unknown sum type '{}'", type_name)
                         })?;
                         let variant = sum_def

@@ -146,7 +146,7 @@ fn e2e_file_write_and_read() {
 fn e2e_file_exists() {
     let source = read_fixture("stdlib_file_exists.snow");
     let output = compile_and_run(&source);
-    assert_eq!(output, "false\ntrue\n");
+    assert_eq!(output, "false\ntrue\n\n");
 }
 
 #[test]

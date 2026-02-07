@@ -579,6 +579,7 @@ dependencies = [
  "crossbeam-utils",
  "parking_lot",
  "rustc-hash 2.1.1",
+ "tempfile",
 ]
 
 [[package]]

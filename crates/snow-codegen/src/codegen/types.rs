@@ -61,6 +61,13 @@ pub fn llvm_type<'ctx>(
         MirType::SumType(name) => {
             if let Some(st) = sum_type_layouts.get(name) {
                 (*st).into()
+            } else if let Some(base) = name.split('_').next() {
+                // Monomorphized type (e.g., Result_String_String -> Result)
+                if let Some(st) = sum_type_layouts.get(base) {
+                    (*st).into()
+                } else {
+                    context.struct_type(&[context.i8_type().into()], false).into()
+                }
             } else {
                 // Fallback: just tag byte
                 context.struct_type(&[context.i8_type().into()], false).into()
@@ -120,10 +127,12 @@ pub fn llvm_closure_fn_type<'ctx>(
 
 /// Create the tagged union layout for a sum type.
 ///
-/// Layout: `{ i8 tag, [max_payload_size x i8] payload }`
+/// Layout: `{ i8 tag, payload_type }` where payload_type is sized to fit
+/// the largest variant's fields.
 ///
-/// The tag is a single byte (supports up to 256 variants).
-/// The payload is a byte array sized to the largest variant.
+/// For sum types with pointer-sized payloads (Result, Option from runtime),
+/// the layout uses `{ i8, ptr }` which correctly aligns the pointer field.
+/// For other sum types, uses `{ i8, [N x i8] }` as a byte array.
 pub fn create_sum_type_layout<'ctx>(
     context: &'ctx Context,
     sum_type: &MirSumTypeDef,
@@ -131,6 +140,24 @@ pub fn create_sum_type_layout<'ctx>(
     sum_type_layouts: &FxHashMap<String, StructType<'ctx>>,
 ) -> StructType<'ctx> {
     let tag_type = context.i8_type();
+    let ptr_type = context.ptr_type(inkwell::AddressSpace::default());
+
+    // Check if all non-empty variants have exactly one pointer-sized field.
+    // This is true for runtime sum types like Result and Option.
+    let all_single_ptr = sum_type.variants.iter().all(|v| {
+        v.fields.is_empty()
+            || (v.fields.len() == 1 && matches!(v.fields[0], MirType::Ptr | MirType::String))
+    });
+
+    if all_single_ptr {
+        let has_payload = sum_type.variants.iter().any(|v| !v.fields.is_empty());
+        if has_payload {
+            // Use { i8, ptr } -- matches runtime's #[repr(C)] { u8, *mut u8 } layout
+            return context.struct_type(&[tag_type.into(), ptr_type.into()], false);
+        } else {
+            return context.struct_type(&[tag_type.into()], false);
+        }
+    }
 
     // Calculate max payload size across all variants.
     let target_data = inkwell::targets::TargetData::create(""); // temp for size queries

@@ -752,6 +752,22 @@ impl<'ctx> CodeGen<'ctx> {
             .map_err(|e| e.to_string())?;
 
         let val = self.codegen_expr(value)?;
+
+        // When binding a runtime-returned pointer to a sum type variable,
+        // dereference the pointer to load the actual struct value.
+        // Runtime functions like snow_file_read return *mut SnowResult (ptr)
+        // but the variable type is SumType (a by-value struct).
+        let val = if matches!(ty, MirType::SumType(_))
+            && val.is_pointer_value()
+            && !llvm_ty.is_pointer_type()
+        {
+            self.builder
+                .build_load(llvm_ty, val.into_pointer_value(), "deref_sum")
+                .map_err(|e| e.to_string())?
+        } else {
+            val
+        };
+
         self.builder
             .build_store(alloca, val)
             .map_err(|e| e.to_string())?;
@@ -807,15 +823,27 @@ impl<'ctx> CodeGen<'ctx> {
         let scrutinee_val = self.codegen_expr(scrutinee)?;
         let scrutinee_ty = scrutinee.ty();
 
-        // Alloca for the scrutinee so pattern codegen can GEP into it
+        // Alloca for the scrutinee so pattern codegen can GEP into it.
+        // For runtime-returned sum types (heap pointers), the value was already
+        // dereferenced at the let binding site, so here it's a proper struct value.
         let scrutinee_llvm_ty = self.llvm_type(scrutinee_ty);
-        let scrutinee_alloca = self
-            .builder
-            .build_alloca(scrutinee_llvm_ty, "scrutinee")
-            .map_err(|e| e.to_string())?;
-        self.builder
-            .build_store(scrutinee_alloca, scrutinee_val)
-            .map_err(|e| e.to_string())?;
+        let scrutinee_alloca = if matches!(scrutinee_ty, MirType::SumType(_))
+            && scrutinee_val.is_pointer_value()
+            && !scrutinee_llvm_ty.is_pointer_type()
+        {
+            // Rare case: scrutinee is a direct pointer to a sum type
+            // (e.g., inline case on a function call result). Use it directly.
+            scrutinee_val.into_pointer_value()
+        } else {
+            let alloca = self
+                .builder
+                .build_alloca(scrutinee_llvm_ty, "scrutinee")
+                .map_err(|e| e.to_string())?;
+            self.builder
+                .build_store(alloca, scrutinee_val)
+                .map_err(|e| e.to_string())?;
+            alloca
+        };
 
         // Compile pattern to decision tree
         let tree = compile_match(scrutinee_ty, arms, "<unknown>", 0);
@@ -955,14 +983,12 @@ impl<'ctx> CodeGen<'ctx> {
         fields: &[MirExpr],
     ) -> Result<BasicValueEnum<'ctx>, String> {
         let sum_layout = self
-            .sum_type_layouts
-            .get(type_name)
+            .lookup_sum_type_layout(type_name)
             .ok_or_else(|| format!("Unknown sum type '{}'", type_name))?;
         let sum_layout = *sum_layout;
 
         let sum_def = self
-            .sum_type_defs
-            .get(type_name)
+            .lookup_sum_type_def(type_name)
             .ok_or_else(|| format!("Unknown sum type def '{}'", type_name))?
             .clone();
 
