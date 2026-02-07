@@ -12,7 +12,7 @@ See: .planning/PROJECT.md (updated 2026-02-05)
 Phase: 10 of 10 (Developer Tooling)
 Plan: 08 of 10 in current phase (plans 01, 02, 03, 04, 05, 06, 07, 08 complete)
 Status: In progress
-Last activity: 2026-02-07 -- Completed 10-05-PLAN.md (REPL Integration)
+Last activity: 2026-02-07 -- Completed 10-03-PLAN.md (Formatter CLI Integration)
 
 Progress: [███████████████████████████████████████████████████] 95% (52 plans of 55 total)
 
@@ -276,6 +276,8 @@ Recent decisions affecting current work:
 - [10-05]: snow-rt linked as Rust lib dependency for REPL runtime symbol availability
 - [10-05]: Runtime init (GC + actor scheduler) once at REPL startup via std::sync::Once
 - [10-05]: History persisted to $HOME/.snow_repl_history
+- [10-03]: File not rewritten when already formatted (preserves mtime for build systems and CI)
+- [10-03]: Pipe operator and interface method body formatting are known idempotency limitations (pre-existing parser/walker issues)
 
 ### Pending Todos
 
@@ -295,5 +297,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-07
-Stopped at: Completed 10-05-PLAN.md (REPL Integration)
+Stopped at: Completed 10-03-PLAN.md (Formatter CLI Integration)
 Resume file: None
