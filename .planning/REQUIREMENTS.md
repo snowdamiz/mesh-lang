@@ -17,8 +17,8 @@ Requirements for v1.1 release. Each maps to roadmap phases.
 
 ### Pattern Matching
 
-- [ ] **PAT-01**: User can match on string literals in `case` expressions with compile-time code generation
-- [ ] **PAT-02**: String patterns participate in exhaustiveness checking (wildcard required for non-exhaustive string matches)
+- [x] **PAT-01**: User can match on string literals in `case` expressions with compile-time code generation
+- [x] **PAT-02**: String patterns participate in exhaustiveness checking (wildcard required for non-exhaustive string matches)
 
 ### Standard Library — Maps
 
@@ -64,8 +64,8 @@ Which phases cover which requirements. Updated during roadmap creation.
 | SYN-03 | Phase 11 | Complete |
 | SYN-04 | Phase 12 | Complete |
 | SYN-05 | Phase 12 | Complete |
-| PAT-01 | Phase 13 | Pending |
-| PAT-02 | Phase 13 | Pending |
+| PAT-01 | Phase 13 | Complete |
+| PAT-02 | Phase 13 | Complete |
 | MAP-01 | Phase 14 | Pending |
 | MAP-02 | Phase 14 | Pending |
 | MAP-03 | Phase 14 | Pending |
