@@ -453,6 +453,8 @@ fn infer_item(
             register_sum_type_def(ctx, env, sum_def, type_registry);
             None
         }
+        // Actor definitions -- type checking will be implemented in Phase 06 Plan 04.
+        Item::ActorDef(_) => None,
     }
 }
 
@@ -1130,6 +1132,9 @@ fn infer_expr(
             infer_struct_literal(ctx, env, sl, types, type_registry, trait_registry, fn_constraints)?
         }
         Expr::IndexExpr(_) => ctx.fresh_var(),
+        // Actor expressions -- type checking will be implemented in Phase 06 Plan 04.
+        Expr::SpawnExpr(_) | Expr::SendExpr(_) | Expr::ReceiveExpr(_)
+        | Expr::SelfExpr(_) | Expr::LinkExpr(_) => ctx.fresh_var(),
     };
 
     let resolved = ctx.resolve(ty.clone());

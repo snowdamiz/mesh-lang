@@ -107,6 +107,23 @@ impl<'ctx> CodeGen<'ctx> {
             } => self.codegen_panic(message, file, *line),
 
             MirExpr::Unit => Ok(self.context.struct_type(&[], false).const_zero().into()),
+
+            // Actor primitives -- codegen will be implemented in Phase 06 Plan 05.
+            MirExpr::ActorSpawn { .. } => {
+                Err("actor spawn codegen not yet implemented".to_string())
+            }
+            MirExpr::ActorSend { .. } => {
+                Err("actor send codegen not yet implemented".to_string())
+            }
+            MirExpr::ActorReceive { .. } => {
+                Err("actor receive codegen not yet implemented".to_string())
+            }
+            MirExpr::ActorSelf { .. } => {
+                Err("actor self codegen not yet implemented".to_string())
+            }
+            MirExpr::ActorLink { .. } => {
+                Err("actor link codegen not yet implemented".to_string())
+            }
         }
     }
 

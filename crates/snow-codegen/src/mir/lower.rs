@@ -174,6 +174,9 @@ impl<'a> Lowerer<'a> {
             Item::ModuleDef(_) | Item::ImportDecl(_) | Item::FromImportDecl(_) => {
                 // Skip -- module/import handling is not needed for single-file compilation.
             }
+            Item::ActorDef(_) => {
+                // Actor definition lowering will be implemented in Phase 06 Plan 04/05.
+            }
         }
     }
 
@@ -459,6 +462,12 @@ impl<'a> Lowerer<'a> {
             Expr::ReturnExpr(ret) => self.lower_return_expr(ret),
             Expr::TupleExpr(tuple) => self.lower_tuple_expr(tuple),
             Expr::StructLiteral(sl) => self.lower_struct_literal(sl),
+            // Actor expressions -- lowering will be implemented in Plan 04/05.
+            Expr::SpawnExpr(_) | Expr::SendExpr(_) | Expr::ReceiveExpr(_)
+            | Expr::SelfExpr(_) | Expr::LinkExpr(_) => {
+                // Placeholder: actor expression lowering not yet implemented.
+                MirExpr::Unit
+            }
         }
     }
 
@@ -1348,6 +1357,38 @@ fn collect_free_vars(
         | MirExpr::StringLit(_, _)
         | MirExpr::Panic { .. }
         | MirExpr::Unit => {}
+        // Actor primitives
+        MirExpr::ActorSpawn { func, args, terminate_callback, .. } => {
+            collect_free_vars(func, params, outer_vars, captures);
+            for arg in args {
+                collect_free_vars(arg, params, outer_vars, captures);
+            }
+            if let Some(cb) = terminate_callback {
+                collect_free_vars(cb, params, outer_vars, captures);
+            }
+        }
+        MirExpr::ActorSend { target, message, .. } => {
+            collect_free_vars(target, params, outer_vars, captures);
+            collect_free_vars(message, params, outer_vars, captures);
+        }
+        MirExpr::ActorReceive { arms, timeout_ms, timeout_body, .. } => {
+            for arm in arms {
+                if let Some(guard) = &arm.guard {
+                    collect_free_vars(guard, params, outer_vars, captures);
+                }
+                collect_free_vars(&arm.body, params, outer_vars, captures);
+            }
+            if let Some(tm) = timeout_ms {
+                collect_free_vars(tm, params, outer_vars, captures);
+            }
+            if let Some(tb) = timeout_body {
+                collect_free_vars(tb, params, outer_vars, captures);
+            }
+        }
+        MirExpr::ActorSelf { .. } => {}
+        MirExpr::ActorLink { target, .. } => {
+            collect_free_vars(target, params, outer_vars, captures);
+        }
     }
 }
 

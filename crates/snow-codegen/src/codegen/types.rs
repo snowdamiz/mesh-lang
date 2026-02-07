@@ -70,6 +70,8 @@ pub fn llvm_type<'ctx>(
         MirType::Closure(_, _) => closure_type(context).into(),
         MirType::Ptr => context.ptr_type(inkwell::AddressSpace::default()).into(),
         MirType::Never => context.i8_type().into(),
+        // Actor PID is an opaque pointer to the process struct.
+        MirType::Pid(_) => context.ptr_type(inkwell::AddressSpace::default()).into(),
     }
 }
 

@@ -602,6 +602,8 @@ pub(crate) fn parse_item_or_stmt(p: &mut Parser) {
 
         SyntaxKind::IMPL_KW => items::parse_impl_def(p),
 
+        SyntaxKind::ACTOR_KW => items::parse_actor_def(p),
+
         // type at top level followed by IDENT -> sum type def or type alias
         // Distinguish: type Name do ... end (sum type) vs type Name = ... (alias)
         // Also handles generics: type Name<T> do/= ...

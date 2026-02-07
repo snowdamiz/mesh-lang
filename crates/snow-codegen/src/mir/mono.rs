@@ -156,6 +156,38 @@ fn collect_function_refs(expr: &MirExpr, refs: &mut Vec<String>) {
         | MirExpr::StringLit(_, _)
         | MirExpr::Panic { .. }
         | MirExpr::Unit => {}
+        // Actor primitives
+        MirExpr::ActorSpawn { func, args, terminate_callback, .. } => {
+            collect_function_refs(func, refs);
+            for arg in args {
+                collect_function_refs(arg, refs);
+            }
+            if let Some(cb) = terminate_callback {
+                collect_function_refs(cb, refs);
+            }
+        }
+        MirExpr::ActorSend { target, message, .. } => {
+            collect_function_refs(target, refs);
+            collect_function_refs(message, refs);
+        }
+        MirExpr::ActorReceive { arms, timeout_ms, timeout_body, .. } => {
+            for arm in arms {
+                if let Some(guard) = &arm.guard {
+                    collect_function_refs(guard, refs);
+                }
+                collect_function_refs(&arm.body, refs);
+            }
+            if let Some(tm) = timeout_ms {
+                collect_function_refs(tm, refs);
+            }
+            if let Some(tb) = timeout_body {
+                collect_function_refs(tb, refs);
+            }
+        }
+        MirExpr::ActorSelf { .. } => {}
+        MirExpr::ActorLink { target, .. } => {
+            collect_function_refs(target, refs);
+        }
     }
 }
 

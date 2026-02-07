@@ -829,3 +829,128 @@ fn parse_item_block_body(p: &mut Parser) {
 
     p.close(m, SyntaxKind::BLOCK);
 }
+
+// ── Actor Definition ────────────────────────────────────────────────────
+
+/// Parse an actor block definition: `actor Name(params) do body [terminate do ... end] end`
+///
+/// The actor block is a first-class language construct. Inside the body,
+/// expressions can include receive blocks, send calls, spawn calls, and
+/// a self() expression. An optional `terminate do ... end` clause defines
+/// cleanup logic that runs before the actor fully terminates.
+pub(crate) fn parse_actor_def(p: &mut Parser) {
+    let m = p.open();
+
+    p.advance(); // ACTOR_KW
+
+    // Actor name.
+    if p.at(SyntaxKind::IDENT) {
+        let name = p.open();
+        p.advance();
+        p.close(name, SyntaxKind::NAME);
+    } else {
+        p.error("expected actor name");
+        p.close(m, SyntaxKind::ACTOR_DEF);
+        return;
+    }
+
+    // Optional parameter list (state arguments).
+    if p.at(SyntaxKind::L_PAREN) {
+        parse_param_list(p);
+    }
+
+    // Expect `do`.
+    let do_span = p.current_span();
+    p.expect(SyntaxKind::DO_KW);
+
+    // Parse actor body (statements and expressions).
+    if !p.has_error() {
+        parse_actor_body(p);
+    }
+
+    // Expect `end`.
+    if !p.at(SyntaxKind::END_KW) {
+        p.error_with_related(
+            "expected `end` to close actor body",
+            do_span,
+            "`do` block started here",
+        );
+    } else {
+        p.advance(); // END_KW
+    }
+
+    p.close(m, SyntaxKind::ACTOR_DEF);
+}
+
+/// Parse the body of an actor block.
+///
+/// The body can contain statements/expressions and an optional
+/// `terminate do ... end` clause. Only one terminate clause is allowed.
+fn parse_actor_body(p: &mut Parser) {
+    let m = p.open();
+    let mut seen_terminate = false;
+
+    loop {
+        p.eat_newlines();
+        while p.eat(SyntaxKind::SEMICOLON) {
+            p.eat_newlines();
+        }
+
+        match p.current() {
+            SyntaxKind::END_KW | SyntaxKind::EOF => break,
+            SyntaxKind::TERMINATE_KW => {
+                if seen_terminate {
+                    p.error("only one `terminate` clause is allowed per actor block");
+                    break;
+                }
+                seen_terminate = true;
+                parse_terminate_clause(p);
+            }
+            _ => {
+                super::parse_item_or_stmt(p);
+            }
+        }
+
+        if p.has_error() {
+            break;
+        }
+
+        match p.current() {
+            SyntaxKind::NEWLINE => {
+                p.eat_newlines();
+            }
+            SyntaxKind::SEMICOLON => {}
+            SyntaxKind::END_KW | SyntaxKind::EOF => {}
+            _ => {}
+        }
+    }
+
+    p.close(m, SyntaxKind::BLOCK);
+}
+
+/// Parse a terminate clause: `terminate do body end`
+///
+/// Defines cleanup logic that runs before the actor fully terminates.
+fn parse_terminate_clause(p: &mut Parser) {
+    let m = p.open();
+    p.advance(); // TERMINATE_KW
+
+    let do_span = p.current_span();
+    p.expect(SyntaxKind::DO_KW);
+
+    if !p.has_error() {
+        super::expressions::parse_block_body(p);
+    }
+
+    if !p.at(SyntaxKind::END_KW) {
+        p.error_with_related(
+            "expected `end` to close `terminate` block",
+            do_span,
+            "`do` block started here",
+        );
+    } else {
+        p.advance(); // END_KW
+    }
+
+    p.close(m, SyntaxKind::TERMINATE_CLAUSE);
+}

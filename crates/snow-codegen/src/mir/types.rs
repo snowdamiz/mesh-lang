@@ -153,6 +153,8 @@ fn mir_type_suffix(ty: &MirType) -> String {
         }
         MirType::Ptr => "Ptr".to_string(),
         MirType::Never => "Never".to_string(),
+        MirType::Pid(None) => "Pid".to_string(),
+        MirType::Pid(Some(msg_ty)) => format!("Pid_{}", mir_type_suffix(msg_ty)),
     }
 }
 

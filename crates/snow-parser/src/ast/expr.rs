@@ -30,6 +30,12 @@ pub enum Expr {
     ReturnExpr(ReturnExpr),
     TupleExpr(TupleExpr),
     StructLiteral(StructLiteral),
+    // Actor expression types
+    SpawnExpr(SpawnExpr),
+    SendExpr(SendExpr),
+    ReceiveExpr(ReceiveExpr),
+    SelfExpr(SelfExpr),
+    LinkExpr(LinkExpr),
 }
 
 impl Expr {
@@ -53,6 +59,12 @@ impl Expr {
             SyntaxKind::STRUCT_LITERAL => {
                 Some(Expr::StructLiteral(StructLiteral { syntax: node }))
             }
+            // Actor expressions
+            SyntaxKind::SPAWN_EXPR => Some(Expr::SpawnExpr(SpawnExpr { syntax: node })),
+            SyntaxKind::SEND_EXPR => Some(Expr::SendExpr(SendExpr { syntax: node })),
+            SyntaxKind::RECEIVE_EXPR => Some(Expr::ReceiveExpr(ReceiveExpr { syntax: node })),
+            SyntaxKind::SELF_EXPR => Some(Expr::SelfExpr(SelfExpr { syntax: node })),
+            SyntaxKind::LINK_EXPR => Some(Expr::LinkExpr(LinkExpr { syntax: node })),
             _ => None,
         }
     }
@@ -76,6 +88,11 @@ impl Expr {
             Expr::ReturnExpr(n) => &n.syntax,
             Expr::TupleExpr(n) => &n.syntax,
             Expr::StructLiteral(n) => &n.syntax,
+            Expr::SpawnExpr(n) => &n.syntax,
+            Expr::SendExpr(n) => &n.syntax,
+            Expr::ReceiveExpr(n) => &n.syntax,
+            Expr::SelfExpr(n) => &n.syntax,
+            Expr::LinkExpr(n) => &n.syntax,
         }
     }
 }
@@ -417,5 +434,88 @@ impl StructLiteralField {
     /// The field value expression.
     pub fn value(&self) -> Option<Expr> {
         self.syntax.children().find_map(Expr::cast)
+    }
+}
+
+// ── Actor Expression Types ──────────────────────────────────────────────
+
+ast_node!(SpawnExpr, SPAWN_EXPR);
+
+impl SpawnExpr {
+    /// The argument list (function reference + initial state args).
+    pub fn arg_list(&self) -> Option<ArgList> {
+        child_node(&self.syntax)
+    }
+}
+
+ast_node!(SendExpr, SEND_EXPR);
+
+impl SendExpr {
+    /// The argument list (target pid + message).
+    pub fn arg_list(&self) -> Option<ArgList> {
+        child_node(&self.syntax)
+    }
+}
+
+ast_node!(ReceiveExpr, RECEIVE_EXPR);
+
+impl ReceiveExpr {
+    /// The receive arms.
+    pub fn arms(&self) -> impl Iterator<Item = ReceiveArm> + '_ {
+        child_nodes(&self.syntax)
+    }
+
+    /// The optional after (timeout) clause.
+    pub fn after_clause(&self) -> Option<AfterClause> {
+        child_node(&self.syntax)
+    }
+}
+
+ast_node!(ReceiveArm, RECEIVE_ARM);
+
+impl ReceiveArm {
+    /// The pattern being matched.
+    pub fn pattern(&self) -> Option<super::pat::Pattern> {
+        self.syntax
+            .children()
+            .find_map(super::pat::Pattern::cast)
+    }
+
+    /// The body expression (after `->`).
+    pub fn body(&self) -> Option<Expr> {
+        let has_when = self
+            .syntax
+            .children_with_tokens()
+            .any(|it| it.kind() == SyntaxKind::WHEN_KW);
+        if has_when {
+            self.syntax.children().filter_map(Expr::cast).nth(1)
+        } else {
+            self.syntax.children().filter_map(Expr::cast).next()
+        }
+    }
+}
+
+ast_node!(AfterClause, AFTER_CLAUSE);
+
+impl AfterClause {
+    /// The timeout expression.
+    pub fn timeout(&self) -> Option<Expr> {
+        self.syntax.children().find_map(Expr::cast)
+    }
+
+    /// The timeout body expression.
+    pub fn body(&self) -> Option<Expr> {
+        self.syntax.children().filter_map(Expr::cast).nth(1)
+    }
+}
+
+ast_node!(SelfExpr, SELF_EXPR);
+
+ast_node!(LinkExpr, LINK_EXPR);
+
+impl LinkExpr {
+    /// The argument list (target pid).
+    pub fn arg_list(&self) -> Option<ArgList> {
+        child_node(&self.syntax)
     }
 }

@@ -980,6 +980,38 @@ fn compile_expr_patterns(expr: &mut MirExpr) {
         | MirExpr::Var(..)
         | MirExpr::Panic { .. }
         | MirExpr::Unit => {}
+        // Actor primitives -- recurse into sub-expressions.
+        MirExpr::ActorSpawn { func, args, terminate_callback, .. } => {
+            compile_expr_patterns(func);
+            for arg in args {
+                compile_expr_patterns(arg);
+            }
+            if let Some(cb) = terminate_callback {
+                compile_expr_patterns(cb);
+            }
+        }
+        MirExpr::ActorSend { target, message, .. } => {
+            compile_expr_patterns(target);
+            compile_expr_patterns(message);
+        }
+        MirExpr::ActorReceive { arms, timeout_ms, timeout_body, .. } => {
+            for arm in arms {
+                if let Some(guard) = &mut arm.guard {
+                    compile_expr_patterns(guard);
+                }
+                compile_expr_patterns(&mut arm.body);
+            }
+            if let Some(tm) = timeout_ms {
+                compile_expr_patterns(tm);
+            }
+            if let Some(tb) = timeout_body {
+                compile_expr_patterns(tb);
+            }
+        }
+        MirExpr::ActorSelf { .. } => {}
+        MirExpr::ActorLink { target, .. } => {
+            compile_expr_patterns(target);
+        }
     }
 }
 

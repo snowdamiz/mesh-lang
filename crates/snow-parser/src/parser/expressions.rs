@@ -237,6 +237,13 @@ fn lhs(p: &mut Parser) -> Option<MarkClosed> {
         SyntaxKind::CASE_KW | SyntaxKind::MATCH_KW => Some(parse_case_expr(p)),
         SyntaxKind::FN_KW => Some(parse_closure(p)),
 
+        // Actor expression atoms
+        SyntaxKind::SPAWN_KW => Some(parse_spawn_expr(p)),
+        SyntaxKind::SEND_KW => Some(parse_send_expr(p)),
+        SyntaxKind::RECEIVE_KW => Some(parse_receive_expr(p)),
+        SyntaxKind::SELF_KW => Some(parse_self_expr(p)),
+        SyntaxKind::LINK_KW => Some(parse_link_expr(p)),
+
         _ => {
             p.error("expected expression");
             None
@@ -712,4 +719,148 @@ fn parse_trailing_closure(p: &mut Parser) {
     }
 
     p.close(m, SyntaxKind::TRAILING_CLOSURE);
+}
+
+// ── Actor Expression Parsing ──────────────────────────────────────────
+
+/// Parse a spawn expression: `spawn(func, args...)`
+fn parse_spawn_expr(p: &mut Parser) -> MarkClosed {
+    let m = p.open();
+    p.advance(); // SPAWN_KW
+
+    // Expect argument list.
+    if p.at(SyntaxKind::L_PAREN) {
+        parse_arg_list(p);
+    } else {
+        p.error("expected `(` after `spawn`");
+    }
+
+    p.close(m, SyntaxKind::SPAWN_EXPR)
+}
+
+/// Parse a send expression: `send(target, message)`
+fn parse_send_expr(p: &mut Parser) -> MarkClosed {
+    let m = p.open();
+    p.advance(); // SEND_KW
+
+    // Expect argument list.
+    if p.at(SyntaxKind::L_PAREN) {
+        parse_arg_list(p);
+    } else {
+        p.error("expected `(` after `send`");
+    }
+
+    p.close(m, SyntaxKind::SEND_EXPR)
+}
+
+/// Parse a receive expression: `receive do pattern -> body ... [after timeout -> body] end`
+fn parse_receive_expr(p: &mut Parser) -> MarkClosed {
+    let m = p.open();
+    p.advance(); // RECEIVE_KW
+
+    let do_span = p.current_span();
+    p.expect(SyntaxKind::DO_KW);
+
+    // Parse receive arms until END_KW, AFTER_KW, or EOF.
+    loop {
+        p.eat_newlines();
+
+        if p.at(SyntaxKind::END_KW) || p.at(SyntaxKind::EOF) {
+            break;
+        }
+
+        // Check for `after` clause.
+        if p.at(SyntaxKind::AFTER_KW) {
+            parse_after_clause(p);
+            break;
+        }
+
+        parse_receive_arm(p);
+
+        if p.has_error() {
+            break;
+        }
+    }
+
+    if !p.at(SyntaxKind::END_KW) {
+        p.error_with_related(
+            "expected `end` to close `receive` block",
+            do_span,
+            "`do` block started here",
+        );
+    } else {
+        p.advance(); // END_KW
+    }
+
+    p.close(m, SyntaxKind::RECEIVE_EXPR)
+}
+
+/// Parse a single receive arm: `pattern -> body`
+fn parse_receive_arm(p: &mut Parser) {
+    let m = p.open();
+
+    // Parse pattern.
+    super::patterns::parse_pattern(p);
+
+    // Optional `when` guard.
+    if p.at(SyntaxKind::WHEN_KW) {
+        p.advance(); // WHEN_KW
+        expr(p);
+    }
+
+    // Expect `->`.
+    p.expect(SyntaxKind::ARROW);
+
+    // Parse arm body: a single expression.
+    if !p.has_error() {
+        expr(p);
+    }
+
+    p.close(m, SyntaxKind::RECEIVE_ARM);
+}
+
+/// Parse an after clause in a receive block: `after timeout -> body`
+fn parse_after_clause(p: &mut Parser) {
+    let m = p.open();
+    p.advance(); // AFTER_KW
+
+    // Parse timeout expression.
+    expr(p);
+
+    // Expect `->`.
+    p.expect(SyntaxKind::ARROW);
+
+    // Parse timeout body.
+    if !p.has_error() {
+        expr(p);
+    }
+
+    p.close(m, SyntaxKind::AFTER_CLAUSE);
+}
+
+/// Parse a self expression: `self()`
+fn parse_self_expr(p: &mut Parser) -> MarkClosed {
+    let m = p.open();
+    p.advance(); // SELF_KW
+
+    // Expect `()` for self() call syntax.
+    p.expect(SyntaxKind::L_PAREN);
+    p.expect(SyntaxKind::R_PAREN);
+
+    p.close(m, SyntaxKind::SELF_EXPR)
+}
+
+/// Parse a link expression: `link(pid)`
+fn parse_link_expr(p: &mut Parser) -> MarkClosed {
+    let m = p.open();
+    p.advance(); // LINK_KW
+
+    // Expect argument list.
+    if p.at(SyntaxKind::L_PAREN) {
+        parse_arg_list(p);
+    } else {
+        p.error("expected `(` after `link`");
+    }
+
+    p.close(m, SyntaxKind::LINK_EXPR)
 }

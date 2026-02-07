@@ -44,6 +44,7 @@ pub enum Item {
     ImplDef(ImplDef),
     TypeAliasDef(TypeAliasDef),
     SumTypeDef(SumTypeDef),
+    ActorDef(ActorDef),
 }
 
 impl Item {
@@ -67,6 +68,7 @@ impl Item {
             SyntaxKind::SUM_TYPE_DEF => {
                 Some(Item::SumTypeDef(SumTypeDef { syntax: node }))
             }
+            SyntaxKind::ACTOR_DEF => Some(Item::ActorDef(ActorDef { syntax: node })),
             _ => None,
         }
     }
@@ -463,6 +465,48 @@ impl VariantField {
 
     /// The field type annotation.
     pub fn type_annotation(&self) -> Option<TypeAnnotation> {
+        child_node(&self.syntax)
+    }
+}
+
+// ── Actor Definition ────────────────────────────────────────────────────
+
+ast_node!(ActorDef, ACTOR_DEF);
+
+impl ActorDef {
+    /// The actor name.
+    pub fn name(&self) -> Option<Name> {
+        child_node(&self.syntax)
+    }
+
+    /// The parameter list (state arguments), if present.
+    pub fn param_list(&self) -> Option<ParamList> {
+        child_node(&self.syntax)
+    }
+
+    /// The actor body block.
+    pub fn body(&self) -> Option<Block> {
+        child_node(&self.syntax)
+    }
+
+    /// The optional terminate clause for cleanup logic.
+    pub fn terminate_clause(&self) -> Option<TerminateClause> {
+        // The terminate clause is inside the BLOCK child of the actor body.
+        self.syntax
+            .children()
+            .filter(|n| n.kind() == SyntaxKind::BLOCK)
+            .flat_map(|block| block.children())
+            .find_map(TerminateClause::cast)
+    }
+}
+
+// ── Terminate Clause ─────────────────────────────────────────────────────
+
+ast_node!(TerminateClause, TERMINATE_CLAUSE);
+
+impl TerminateClause {
+    /// The body block of the terminate clause.
+    pub fn body(&self) -> Option<Block> {
         child_node(&self.syntax)
     }
 }

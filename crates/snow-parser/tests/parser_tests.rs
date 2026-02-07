@@ -1496,3 +1496,153 @@ fn ast_sum_type_in_items() {
         other => panic!("expected FnDef, got {:?}", other),
     }
 }
+
+// =======================================================================
+// Plan 06-02: Actor Syntax (actor blocks, spawn/send/receive/self/link, terminate)
+// =======================================================================
+
+// -- Actor Block Definition --
+
+#[test]
+fn actor_def_simple() {
+    assert_snapshot!(source_and_debug("actor Counter do\n  0\nend"));
+}
+
+#[test]
+fn actor_def_with_params() {
+    assert_snapshot!(source_and_debug("actor Counter(state) do\n  state + 1\nend"));
+}
+
+#[test]
+fn actor_def_with_terminate_clause() {
+    let source = "\
+actor Worker(state) do
+  state
+  terminate do
+    state
+  end
+end";
+    assert_snapshot!(source_and_debug(source));
+}
+
+// -- Spawn Expression --
+
+#[test]
+fn spawn_expr_simple() {
+    assert_snapshot!(parse_and_debug("spawn(counter, 0)"));
+}
+
+#[test]
+fn spawn_expr_no_args() {
+    assert_snapshot!(parse_and_debug("spawn(worker)"));
+}
+
+// -- Send Expression --
+
+#[test]
+fn send_expr_simple() {
+    assert_snapshot!(parse_and_debug("send(pid, 42)"));
+}
+
+// -- Receive Expression --
+
+#[test]
+fn receive_expr_single_arm() {
+    assert_snapshot!(parse_and_debug("receive do\n  x -> x\nend"));
+}
+
+#[test]
+fn receive_expr_multiple_arms() {
+    assert_snapshot!(parse_and_debug("receive do\n  1 -> 10\n  2 -> 20\nend"));
+}
+
+#[test]
+fn receive_expr_with_after() {
+    assert_snapshot!(parse_and_debug("receive do\n  x -> x\nafter 5000 -> 0\nend"));
+}
+
+// -- Self Expression --
+
+#[test]
+fn self_expr() {
+    assert_snapshot!(parse_and_debug("self()"));
+}
+
+// -- Link Expression --
+
+#[test]
+fn link_expr_simple() {
+    assert_snapshot!(parse_and_debug("link(other_pid)"));
+}
+
+// -- Actor in Context --
+
+#[test]
+fn actor_with_receive_and_send() {
+    let source = "\
+actor EchoServer do
+  receive do
+    msg -> send(msg, msg)
+  end
+end";
+    assert_snapshot!(source_and_debug(source));
+}
+
+// -- AST Accessor Tests --
+
+#[test]
+fn ast_actor_def_accessors() {
+    use snow_parser::ast::item::ActorDef;
+    let p = parse("actor Counter(state) do\n  state\nend");
+    assert!(p.ok(), "parse errors: {:?}", p.errors());
+    let tree = p.tree();
+
+    let actor: ActorDef = tree
+        .syntax()
+        .children()
+        .find_map(ActorDef::cast)
+        .expect("should have actor def");
+
+    assert_eq!(actor.name().unwrap().text().unwrap(), "Counter");
+    assert!(actor.param_list().is_some(), "should have param list");
+    assert!(actor.body().is_some(), "should have body block");
+    assert!(actor.terminate_clause().is_none(), "no terminate clause");
+}
+
+#[test]
+fn ast_actor_def_with_terminate() {
+    use snow_parser::ast::item::ActorDef;
+    let source = "actor Worker do\n  0\n  terminate do\n    1\n  end\nend";
+    let p = parse(source);
+    assert!(p.ok(), "parse errors: {:?}", p.errors());
+    let tree = p.tree();
+
+    let actor: ActorDef = tree
+        .syntax()
+        .children()
+        .find_map(ActorDef::cast)
+        .expect("should have actor def");
+
+    assert_eq!(actor.name().unwrap().text().unwrap(), "Worker");
+    let tc = actor.terminate_clause().expect("should have terminate clause");
+    assert!(tc.body().is_some(), "terminate clause should have body");
+}
+
+#[test]
+fn ast_actor_in_items() {
+    let source = "actor Foo do 1 end\n\nfn bar() do 2 end";
+    let p = parse(source);
+    assert!(p.ok(), "parse errors: {:?}", p.errors());
+    let tree = p.tree();
+
+    let items: Vec<_> = tree.items().collect();
+    assert_eq!(items.len(), 2);
+    match &items[0] {
+        snow_parser::ast::item::Item::ActorDef(_) => {}
+        other => panic!("expected ActorDef, got {:?}", other),
+    }
+    match &items[1] {
+        snow_parser::ast::item::Item::FnDef(_) => {}
+        other => panic!("expected FnDef, got {:?}", other),
+    }
+}

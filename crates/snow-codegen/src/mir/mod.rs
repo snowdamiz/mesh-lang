@@ -76,6 +76,9 @@ pub enum MirType {
     Ptr,
     /// Bottom type (never returns).
     Never,
+    /// Actor PID, optionally typed with message type.
+    /// Pid(None) = untyped Pid, Pid(Some(T)) = Pid<T>.
+    Pid(Option<Box<MirType>>),
 }
 
 impl fmt::Display for MirType {
@@ -120,6 +123,8 @@ impl fmt::Display for MirType {
             }
             MirType::Ptr => write!(f, "Ptr"),
             MirType::Never => write!(f, "Never"),
+            MirType::Pid(None) => write!(f, "Pid"),
+            MirType::Pid(Some(msg_ty)) => write!(f, "Pid<{}>", msg_ty),
         }
     }
 }
@@ -221,6 +226,52 @@ pub enum MirExpr {
     },
     /// Unit value (empty tuple).
     Unit,
+
+    // ── Actor primitives ──────────────────────────────────────────────
+
+    /// Spawn a new actor process.
+    ActorSpawn {
+        /// The function to run as the actor body.
+        func: Box<MirExpr>,
+        /// Arguments to pass (initial state).
+        args: Vec<MirExpr>,
+        /// Priority level (0=normal, 1=high, 2=low).
+        priority: u8,
+        /// Optional terminate callback function.
+        /// When present, this is a function that takes (state, reason) and runs cleanup.
+        terminate_callback: Option<Box<MirExpr>>,
+        /// Result type (Pid).
+        ty: MirType,
+    },
+    /// Send a message to an actor.
+    ActorSend {
+        /// Target actor PID.
+        target: Box<MirExpr>,
+        /// Message to send.
+        message: Box<MirExpr>,
+        /// Result type (Unit -- fire-and-forget).
+        ty: MirType,
+    },
+    /// Receive a message (blocking). Contains compiled match arms.
+    ActorReceive {
+        /// Match arms for incoming messages.
+        arms: Vec<MirMatchArm>,
+        /// Timeout in milliseconds (None = infinite wait).
+        timeout_ms: Option<Box<MirExpr>>,
+        /// Timeout body (executed if timeout fires).
+        timeout_body: Option<Box<MirExpr>>,
+        /// Result type.
+        ty: MirType,
+    },
+    /// Get own PID.
+    ActorSelf {
+        ty: MirType,
+    },
+    /// Link to another actor for supervision.
+    ActorLink {
+        target: Box<MirExpr>,
+        ty: MirType,
+    },
 }
 
 impl MirExpr {
@@ -247,6 +298,11 @@ impl MirExpr {
             MirExpr::Return(_) => &MirType::Never,
             MirExpr::Panic { .. } => &MirType::Never,
             MirExpr::Unit => &MirType::Unit,
+            MirExpr::ActorSpawn { ty, .. } => ty,
+            MirExpr::ActorSend { ty, .. } => ty,
+            MirExpr::ActorReceive { ty, .. } => ty,
+            MirExpr::ActorSelf { ty } => ty,
+            MirExpr::ActorLink { ty, .. } => ty,
         }
     }
 }
