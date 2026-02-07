@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-02-05)
 
 **Core value:** Expressive, readable concurrency -- writing concurrent programs should feel as natural as sequential code, with supervision and fault tolerance built in.
-**Current focus:** Phase 8 COMPLETE -- Standard Library. All 7 plans complete (including gap closure). Ready for Phase 9.
+**Current focus:** Phase 9 IN PROGRESS -- Concurrency Standard Library. Plan 01 complete (service parsing). Proceeding to Plan 02.
 
 ## Current Position
 
-Phase: 8 of 10 (Standard Library)
-Plan: 7 of 7 in current phase
-Status: Phase complete
-Last activity: 2026-02-07 -- Completed 08-06-PLAN.md (Pipe Chain and IO.read_line E2E Gap Closure)
+Phase: 9 of 10 (Concurrency Standard Library)
+Plan: 1 of 5 in current phase
+Status: In progress
+Last activity: 2026-02-07 -- Completed 09-01-PLAN.md (Service Definition Parsing)
 
-Progress: [█████████████████████████████████████████░░░] 85% (40 plans of ~47 estimated total)
+Progress: [██████████████████████████████████████████░░░] 87% (41 plans of ~47 estimated total)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 40
+- Total plans completed: 41
 - Average duration: 9min
-- Total execution time: 374min
+- Total execution time: 381min
 
 **By Phase:**
 
@@ -35,9 +35,10 @@ Progress: [███████████████████████
 | 06-actor-runtime | 7/7 | 70min | 10min |
 | 07-supervision-fault-tolerance | 3/3 | 27min | 9min |
 | 08-standard-library | 7/7 | 67min | 10min |
+| 09-concurrency-standard-library | 1/5 | 7min | 7min |
 
 **Recent Trend:**
-- Last 5 plans: 08-03 (15min), 08-04 (6min), 08-05 (13min), 08-07 (2min), 08-06 (10min)
+- Last 5 plans: 08-05 (13min), 08-07 (2min), 08-06 (10min), 09-01 (7min)
 
 *Updated after each plan completion*
 
@@ -222,6 +223,11 @@ Recent decisions affecting current work:
 - [08-07]: Fixed port 18080 for HTTP server runtime E2E test (avoids port-0 coordination complexity)
 - [08-07]: Raw TcpStream for HTTP test requests (no additional dependency needed)
 - [08-07]: Snow string literals preserve backslash characters literally (no escape interpretation)
+- [09-01]: Call handler return type uses :: syntax (ColonColon + Type), distinct from fn's -> syntax
+- [09-01]: fn init inside service body dispatched through parse_item_or_stmt as regular FN_DEF
+- [09-01]: State parameter uses simple |ident| bar-delimited parsing (single identifier, not full closure params)
+- [09-01]: Service body tuples use () not {} (Snow tuple syntax is parenthesized)
+- [09-01]: Keyword count increased from 42 to 45 (service, call, cast)
 
 ### Pending Todos
 
@@ -229,7 +235,7 @@ None.
 
 ### Blockers/Concerns
 
-- Phase 8 complete -- all 7 plans done (including gap closure plans 06-07), all success criteria met
+- Phase 9 plan 01 complete -- service parsing infrastructure ready
 - string_split now possible with List type available (can be added in future plan)
 - String-keyed maps use pointer identity (not content comparison) -- documented limitation
 - Multiline pipe operator (`|>` at start of continuation line) fails to parse -- pre-existing parser limitation
@@ -240,5 +246,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-07
-Stopped at: Phase 8 execution complete -- all 7 plans done, verification passed (4/4 success criteria)
+Stopped at: Completed 09-01-PLAN.md (Service Definition Parsing)
 Resume file: None
