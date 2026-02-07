@@ -1,0 +1,143 @@
+//! End-to-end integration tests for Snow standard library functions (Phase 8).
+//!
+//! Tests string operations, module-qualified access (String.length),
+//! from/import resolution, and IO operations.
+
+use std::path::{Path, PathBuf};
+use std::process::Command;
+
+/// Helper: compile a Snow source file and run the resulting binary, returning stdout.
+fn compile_and_run(source: &str) -> String {
+    let temp_dir = tempfile::tempdir().expect("failed to create temp dir");
+    let project_dir = temp_dir.path().join("project");
+    std::fs::create_dir_all(&project_dir).expect("failed to create project dir");
+
+    let main_snow = project_dir.join("main.snow");
+    std::fs::write(&main_snow, source).expect("failed to write main.snow");
+
+    let snowc = find_snowc();
+    let output = Command::new(&snowc)
+        .args(["build", project_dir.to_str().unwrap()])
+        .output()
+        .expect("failed to invoke snowc");
+
+    assert!(
+        output.status.success(),
+        "snowc build failed:\nstdout: {}\nstderr: {}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let binary = project_dir.join("project");
+    let run_output = Command::new(&binary)
+        .output()
+        .unwrap_or_else(|e| panic!("failed to run binary at {}: {}", binary.display(), e));
+
+    assert!(
+        run_output.status.success(),
+        "binary execution failed with exit code {:?}:\nstdout: {}\nstderr: {}",
+        run_output.status.code(),
+        String::from_utf8_lossy(&run_output.stdout),
+        String::from_utf8_lossy(&run_output.stderr)
+    );
+
+    String::from_utf8_lossy(&run_output.stdout).to_string()
+}
+
+/// Find the snowc binary in the target directory.
+fn find_snowc() -> PathBuf {
+    let mut path = std::env::current_exe()
+        .expect("cannot find current exe")
+        .parent()
+        .expect("cannot find parent dir")
+        .to_path_buf();
+
+    if path.file_name().map_or(false, |n| n == "deps") {
+        path = path.parent().unwrap().to_path_buf();
+    }
+
+    let snowc = path.join("snowc");
+    assert!(
+        snowc.exists(),
+        "snowc binary not found at {}. Run `cargo build -p snowc` first.",
+        snowc.display()
+    );
+    snowc
+}
+
+/// Read a test fixture from the tests/e2e/ directory.
+fn read_fixture(name: &str) -> String {
+    let manifest_dir = env!("CARGO_MANIFEST_DIR");
+    let fixture_path = Path::new(manifest_dir)
+        .parent()
+        .unwrap()
+        .parent()
+        .unwrap()
+        .join("tests")
+        .join("e2e")
+        .join(name);
+    std::fs::read_to_string(&fixture_path)
+        .unwrap_or_else(|e| panic!("failed to read fixture {}: {}", fixture_path.display(), e))
+}
+
+// ── String Operation E2E Tests ──────────────────────────────────────────
+
+#[test]
+fn e2e_string_length() {
+    let source = read_fixture("stdlib_string_length.snow");
+    let output = compile_and_run(&source);
+    assert_eq!(output, "5\n");
+}
+
+#[test]
+fn e2e_string_contains() {
+    let source = read_fixture("stdlib_string_contains.snow");
+    let output = compile_and_run(&source);
+    assert_eq!(output, "true\nfalse\n");
+}
+
+#[test]
+fn e2e_string_trim() {
+    let source = read_fixture("stdlib_string_trim.snow");
+    let output = compile_and_run(&source);
+    assert_eq!(output, "hello\n");
+}
+
+#[test]
+fn e2e_string_case_conversion() {
+    let source = read_fixture("stdlib_string_case.snow");
+    let output = compile_and_run(&source);
+    assert_eq!(output, "HELLO\nworld\n");
+}
+
+#[test]
+fn e2e_string_replace() {
+    let source = read_fixture("stdlib_string_replace.snow");
+    let output = compile_and_run(&source);
+    assert_eq!(output, "hello snow\n");
+}
+
+// ── Module Resolution E2E Tests ─────────────────────────────────────────
+
+#[test]
+fn e2e_module_qualified_access() {
+    let source = read_fixture("stdlib_module_qualified.snow");
+    let output = compile_and_run(&source);
+    assert_eq!(output, "4\n");
+}
+
+#[test]
+fn e2e_from_import_resolution() {
+    let source = read_fixture("stdlib_from_import.snow");
+    let output = compile_and_run(&source);
+    assert_eq!(output, "4\n");
+}
+
+// ── IO E2E Tests ────────────────────────────────────────────────────────
+
+#[test]
+fn e2e_io_eprintln_does_not_crash() {
+    let source = read_fixture("stdlib_io_eprintln.snow");
+    let output = compile_and_run(&source);
+    assert_eq!(output, "done\n");
+}

@@ -513,19 +513,55 @@ impl<'ctx> CodeGen<'ctx> {
 
             // Check if it's a runtime intrinsic (don't add reduction check for runtime calls)
             if let Some(fn_val) = self.module.get_function(name) {
+                // Coerce argument types: runtime functions use i8 for booleans
+                // but Snow's Bool is i1. Extend i1 -> i8 where needed.
+                let mut coerced_args = arg_vals.clone();
+                let param_types = fn_val.get_type().get_param_types();
+                for (i, param_ty) in param_types.iter().enumerate() {
+                    if i < coerced_args.len() {
+                        if let BasicMetadataValueEnum::IntValue(arg_iv) = coerced_args[i] {
+                            if let inkwell::types::BasicMetadataTypeEnum::IntType(param_it) = param_ty {
+                                if arg_iv.get_type().get_bit_width() < param_it.get_bit_width() {
+                                    let extended = self
+                                        .builder
+                                        .build_int_z_extend(arg_iv, *param_it, "zext_arg")
+                                        .map_err(|e| e.to_string())?;
+                                    coerced_args[i] = extended.into();
+                                }
+                            }
+                        }
+                    }
+                }
+
                 let call = self
                     .builder
-                    .build_call(fn_val, &arg_vals, "call")
+                    .build_call(fn_val, &coerced_args, "call")
                     .map_err(|e| e.to_string())?;
 
                 if matches!(ty, MirType::Unit) {
                     return Ok(self.context.struct_type(&[], false).const_zero().into());
                 }
 
-                return call
+                let result = call
                     .try_as_basic_value()
                     .basic()
-                    .ok_or_else(|| "Function call returned void".to_string());
+                    .ok_or_else(|| "Function call returned void".to_string())?;
+
+                // Runtime functions returning i8 for Bool values need truncation
+                // to i1 to match Snow's Bool representation.
+                if matches!(ty, MirType::Bool) {
+                    if let BasicValueEnum::IntValue(iv) = result {
+                        if iv.get_type().get_bit_width() == 8 {
+                            let i1_val = self
+                                .builder
+                                .build_int_truncate(iv, self.context.bool_type(), "to_bool")
+                                .map_err(|e| e.to_string())?;
+                            return Ok(i1_val.into());
+                        }
+                    }
+                }
+
+                return Ok(result);
             }
         }
 
