@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-02-05)
 
 **Core value:** Expressive, readable concurrency -- writing concurrent programs should feel as natural as sequential code, with supervision and fault tolerance built in.
-**Current focus:** Phase 7 in progress -- Supervisor runtime complete (07-01). All four OTP strategies implemented, restart limits, ordered shutdown, ExitReason expansion, 6 extern C ABI functions. Ready for compiler integration (07-02).
+**Current focus:** Phase 7 in progress -- Supervisor compiler pipeline complete (07-02). Full parser, type checker, MIR, LLVM codegen for supervisor blocks. E2E test compiles and runs a Snow supervisor program. Ready for supervision tree tests (07-03).
 
 ## Current Position
 
 Phase: 7 of 10 (Supervision & Fault Tolerance)
-Plan: 1 of 3 in current phase
+Plan: 2 of 3 in current phase
 Status: In progress
-Last activity: 2026-02-07 -- Completed 07-01-PLAN.md (Supervisor runtime)
+Last activity: 2026-02-06 -- Completed 07-02-PLAN.md (Supervisor compiler pipeline)
 
-Progress: [████████████████████████████████░░░░░░░░░░░░] 69% (31 plans of ~45 estimated total)
+Progress: [██████████████████████████████████░░░░░░░░░░] 71% (32 plans of ~45 estimated total)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 31
+- Total plans completed: 32
 - Average duration: 9min
-- Total execution time: 288min
+- Total execution time: 300min
 
 **By Phase:**
 
@@ -33,10 +33,10 @@ Progress: [███████████████████████
 | 04-pattern-matching-adts | 5/5 | 42min | 8min |
 | 05-llvm-codegen-native-binaries | 5/5 | 50min | 10min |
 | 06-actor-runtime | 7/7 | 70min | 10min |
-| 07-supervision-fault-tolerance | 1/3 | 8min | 8min |
+| 07-supervision-fault-tolerance | 2/3 | 20min | 10min |
 
 **Recent Trend:**
-- Last 5 plans: 06-05 (7min), 06-06 (6min), 06-07 (21min), 07-01 (8min)
+- Last 5 plans: 06-06 (6min), 06-07 (21min), 07-01 (8min), 07-02 (12min)
 
 *Updated after each plan completion*
 
@@ -187,6 +187,9 @@ Recent decisions affecting current work:
 - [07-01]: Shutdown treated as non-crashing for exit propagation (same as Normal) -- Transient children do NOT restart on Shutdown
 - [07-01]: Custom(String) treated as crashing for exit propagation (same as Error)
 - [07-01]: Binary config format for snow_supervisor_start: strategy(u8) + max_restarts(u32) + max_seconds(u64) + child specs
+- [07-02]: Supervisors registered as zero-arg functions returning Pid<Unit> -- they don't receive user messages
+- [07-02]: Function pointers in supervisor config patched at codegen time via stack-copied buffer with GEP stores
+- [07-02]: Child spec start closures resolved by walking CST tokens to find SPAWN_KW and extracting actor name
 
 ### Pending Todos
 
@@ -197,10 +200,10 @@ None.
 - Phase 6 risk fully mitigated -- all actor features integrated and verified with E2E tests
 - Typed actor messaging (TYPE-07) is a research-level problem -- design on paper during early phases
 - Plan 06-01 test isolation bugs fixed: all 27 snow-rt tests now pass (test counters isolated per-test)
-- Phase 7 supervisor runtime complete (07-01) -- ready for compiler integration (07-02)
+- Phase 7 supervisor compiler pipeline complete (07-02) -- ready for supervision tree tests (07-03)
 
 ## Session Continuity
 
-Last session: 2026-02-07
-Stopped at: Completed 07-01-PLAN.md -- Supervisor runtime
+Last session: 2026-02-06
+Stopped at: Completed 07-02-PLAN.md -- Supervisor compiler pipeline
 Resume file: None
