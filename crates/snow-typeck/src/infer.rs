@@ -35,7 +35,7 @@ use crate::exhaustiveness::{
 use crate::traits::{
     ImplDef as TraitImplDef, ImplMethodSig, TraitDef, TraitMethodSig, TraitRegistry,
 };
-use crate::ty::{Scheme, Ty, TyCon};
+use crate::ty::{Scheme, Ty, TyCon, TyVar};
 use crate::unify::InferCtx;
 use crate::TypeckResult;
 
@@ -415,12 +415,54 @@ fn stdlib_modules() -> HashMap<String, HashMap<String, Scheme>> {
     )));
     modules.insert("Request".to_string(), request_mod);
 
+    // ── Job module (Phase 9 Plan 02) ─────────────────────────────────
+    // Job provides fire-and-forget async computation with Pid-based futures.
+    // Uses synthetic TyVars for polymorphic type schemes -- these are replaced
+    // with fresh vars during instantiation and never enter the unification table.
+    let job_t = TyVar(u32::MAX - 10);  // Synthetic type var T
+    let job_a = TyVar(u32::MAX - 11);  // Synthetic type var A
+    let job_b = TyVar(u32::MAX - 12);  // Synthetic type var B
+    let ty_t = Ty::Var(job_t);
+    let ty_a = Ty::Var(job_a);
+    let ty_b = Ty::Var(job_b);
+
+    let mut job_mod = HashMap::new();
+
+    // Job.async: fn(fn() -> T) -> Pid<T>
+    job_mod.insert("async".to_string(), Scheme {
+        vars: vec![job_t],
+        ty: Ty::fun(vec![Ty::fun(vec![], ty_t.clone())], Ty::pid(ty_t.clone())),
+    });
+
+    // Job.await: fn(Pid<T>) -> Result<T, String>
+    job_mod.insert("await".to_string(), Scheme {
+        vars: vec![job_t],
+        ty: Ty::fun(vec![Ty::pid(ty_t.clone())], Ty::result(ty_t.clone(), Ty::string())),
+    });
+
+    // Job.await_timeout: fn(Pid<T>, Int) -> Result<T, String>
+    job_mod.insert("await_timeout".to_string(), Scheme {
+        vars: vec![job_t],
+        ty: Ty::fun(vec![Ty::pid(ty_t.clone()), Ty::int()], Ty::result(ty_t, Ty::string())),
+    });
+
+    // Job.map: fn(List<A>, fn(A) -> B) -> List<Result<B, String>>
+    job_mod.insert("map".to_string(), Scheme {
+        vars: vec![job_a, job_b],
+        ty: Ty::fun(
+            vec![Ty::list(ty_a.clone()), Ty::fun(vec![ty_a], ty_b.clone())],
+            Ty::list(Ty::result(ty_b, Ty::string())),
+        ),
+    });
+
+    modules.insert("Job".to_string(), job_mod);
+
     modules
 }
 
 /// Set of module names recognized by the stdlib for qualified access.
 const STDLIB_MODULE_NAMES: &[&str] = &[
-    "String", "IO", "Env", "File", "List", "Map", "Set", "Tuple", "Range", "Queue", "HTTP", "JSON", "Request",
+    "String", "IO", "Env", "File", "List", "Map", "Set", "Tuple", "Range", "Queue", "HTTP", "JSON", "Request", "Job",
 ];
 
 /// Check if a name is a known stdlib module.
