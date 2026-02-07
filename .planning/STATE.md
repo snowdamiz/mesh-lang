@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-02-05)
 
 **Core value:** Expressive, readable concurrency -- writing concurrent programs should feel as natural as sequential code, with supervision and fault tolerance built in.
-**Current focus:** Phase 7 COMPLETE -- Full OTP-style supervision with compile-time safety. All four success criteria verified. Ready for Phase 8: Channels & Select.
+**Current focus:** Phase 8 IN PROGRESS -- Standard Library. Plan 01 complete (core stdlib infrastructure). Next: Plan 02 (Collections).
 
 ## Current Position
 
-Phase: 7 of 10 (Supervision & Fault Tolerance)
-Plan: 3 of 3 in current phase
-Status: Phase complete
-Last activity: 2026-02-07 -- Completed 07-03-PLAN.md (Child spec validation and E2E tests)
+Phase: 8 of 10 (Standard Library)
+Plan: 1 of 5 in current phase
+Status: In progress
+Last activity: 2026-02-07 -- Completed 08-01-PLAN.md (Core stdlib infrastructure)
 
-Progress: [███████████████████████████████████░░░░░░░░░] 73% (33 plans of ~45 estimated total)
+Progress: [████████████████████████████████████░░░░░░░░] 76% (34 plans of ~45 estimated total)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 33
+- Total plans completed: 34
 - Average duration: 9min
-- Total execution time: 307min
+- Total execution time: 316min
 
 **By Phase:**
 
@@ -34,9 +34,10 @@ Progress: [███████████████████████
 | 05-llvm-codegen-native-binaries | 5/5 | 50min | 10min |
 | 06-actor-runtime | 7/7 | 70min | 10min |
 | 07-supervision-fault-tolerance | 3/3 | 27min | 9min |
+| 08-standard-library | 1/5 | 9min | 9min |
 
 **Recent Trend:**
-- Last 5 plans: 06-07 (21min), 07-01 (8min), 07-02 (12min), 07-03 (7min)
+- Last 5 plans: 07-01 (8min), 07-02 (12min), 07-03 (7min), 08-01 (9min)
 
 *Updated after each plan completion*
 
@@ -193,6 +194,10 @@ Recent decisions affecting current work:
 - [07-03]: Child start fn validation uses SPAWN_KW token detection (not full type inference of closure body)
 - [07-03]: Error codes E0018 (InvalidChildStart), E0019 (InvalidStrategy), E0020 (InvalidRestartType), E0021 (InvalidShutdownValue)
 - [07-03]: Negative E2E test pattern: compile_only helper returns raw Output, test asserts failure + error code
+- [08-01]: Module-qualified access (String.length) resolved by checking FieldAccess base against known module names
+- [08-01]: from/import dual registration: both bare and prefixed names into type env
+- [08-01]: Bool i1/i8 coercion at runtime intrinsic call boundaries (zext args, trunc returns)
+- [08-01]: string_split deferred to Plan 02 when List<T> type exists
 
 ### Pending Todos
 
@@ -200,12 +205,12 @@ None.
 
 ### Blockers/Concerns
 
-- Phase 7 fully complete -- all three plans executed, all four success criteria verified
-- Phase 6 risk fully mitigated -- all actor features integrated and verified with E2E tests
-- Typed actor messaging (TYPE-07) is a research-level problem -- design on paper during early phases
+- Phase 8 Plan 01 complete -- stdlib module infrastructure established
+- All subsequent Phase 8 plans depend on this module resolution mechanism
+- string_split needs List<T> from Plan 02
 
 ## Session Continuity
 
 Last session: 2026-02-07
-Stopped at: Completed 07-03-PLAN.md -- Child spec validation and E2E tests (Phase 7 complete)
+Stopped at: Completed 08-01-PLAN.md -- Core stdlib infrastructure (string ops, IO, Env, module resolution)
 Resume file: None
