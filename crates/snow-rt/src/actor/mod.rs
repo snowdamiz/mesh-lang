@@ -467,6 +467,413 @@ pub extern "C" fn snow_actor_whereis(name_ptr: *const u8, name_len: u64) -> u64 
 }
 
 // ---------------------------------------------------------------------------
+// Supervisor extern "C" ABI functions
+// ---------------------------------------------------------------------------
+
+/// Start a new supervisor actor.
+///
+/// Deserializes a `SupervisorConfig` from the raw bytes, creates a
+/// `SupervisorState`, registers it in the global supervisor state registry,
+/// spawns the supervisor as a regular actor with `trap_exit = true`, starts
+/// all children sequentially, and returns the supervisor PID.
+///
+/// The config binary format:
+/// - u8: strategy (0=OneForOne, 1=OneForAll, 2=RestForOne, 3=SimpleOneForOne)
+/// - u32 LE: max_restarts
+/// - u64 LE: max_seconds
+/// - u32 LE: num_child_specs
+/// - For each child spec:
+///   - u32 LE: id string length
+///   - [u8]: id string bytes
+///   - u64 LE: start_fn pointer
+///   - u64 LE: start_args pointer
+///   - u64 LE: start_args size
+///   - u8: restart_type (0=Permanent, 1=Transient, 2=Temporary)
+///   - u8: shutdown_type (0=BrutalKill, 1=Timeout)
+///   - u64 LE: shutdown_timeout_ms (only meaningful if shutdown_type=1)
+///   - u8: child_type (0=Worker, 1=Supervisor)
+///
+/// Returns the supervisor PID as `u64`, or `u64::MAX` on error.
+#[no_mangle]
+pub extern "C" fn snow_supervisor_start(
+    config_ptr: *const u8,
+    config_size: u64,
+) -> u64 {
+    if config_ptr.is_null() || config_size == 0 {
+        return u64::MAX;
+    }
+
+    let data = unsafe {
+        std::slice::from_raw_parts(config_ptr, config_size as usize)
+    };
+
+    // Parse the config.
+    let config = match parse_supervisor_config(data) {
+        Some(c) => c,
+        None => return u64::MAX,
+    };
+
+    let sched = global_scheduler();
+
+    // Create the supervisor state.
+    let mut sup_state = supervisor::SupervisorState::new(
+        config.strategy,
+        config.max_restarts,
+        config.max_seconds,
+    );
+    sup_state.children = config
+        .child_specs
+        .into_iter()
+        .map(|spec| child_spec::ChildState {
+            spec,
+            pid: None,
+            running: false,
+        })
+        .collect();
+
+    // Spawn the supervisor as a normal actor (no-op entry -- it doesn't run
+    // a coroutine. The supervisor logic is driven externally by the compiled
+    // Snow program's receive loop or by the runtime's supervisor_entry).
+    extern "C" fn supervisor_noop(_args: *const u8) {}
+    let sup_pid = sched.spawn(supervisor_noop as *const u8, std::ptr::null(), 0, 1);
+
+    // Set trap_exit on the supervisor process.
+    if let Some(proc) = sched.get_process(ProcessId(sup_pid.as_u64())) {
+        proc.lock().trap_exit = true;
+    }
+
+    // Start all children.
+    match supervisor::start_children(&mut sup_state, sched, sup_pid) {
+        Ok(()) => {}
+        Err(_e) => {
+            return u64::MAX;
+        }
+    }
+
+    // Register the supervisor state in the global registry.
+    supervisor::register_supervisor_state(sup_pid, sup_state);
+
+    sup_pid.as_u64()
+}
+
+/// Start a dynamic child under a simple_one_for_one supervisor.
+///
+/// Looks up the supervisor state, clones the template child spec with the
+/// given args, spawns the child, links it to the supervisor, and returns
+/// the child PID.
+///
+/// Returns the child PID as `u64`, or `u64::MAX` on error.
+#[no_mangle]
+pub extern "C" fn snow_supervisor_start_child(
+    sup_pid: u64,
+    args_ptr: *const u8,
+    args_size: u64,
+) -> u64 {
+    let sup_pid = ProcessId(sup_pid);
+    let sched = global_scheduler();
+
+    let state_arc = match supervisor::get_supervisor_state(sup_pid) {
+        Some(s) => s,
+        None => return u64::MAX,
+    };
+
+    let mut state = state_arc.lock();
+
+    // Clone the template spec (for simple_one_for_one).
+    let template = match &state.child_template {
+        Some(t) => t.clone(),
+        None => {
+            // Not a simple_one_for_one supervisor -- create from args directly.
+            // For now, return error.
+            return u64::MAX;
+        }
+    };
+
+    let mut new_spec = template;
+    new_spec.id = format!("dynamic_{}", state.children.len());
+    new_spec.start_args_ptr = args_ptr;
+    new_spec.start_args_size = args_size;
+
+    let mut child_state = child_spec::ChildState {
+        spec: new_spec,
+        pid: None,
+        running: false,
+    };
+
+    match supervisor::start_single_child(&mut child_state, sched, sup_pid) {
+        Ok(pid) => {
+            state.children.push(child_state);
+            pid.as_u64()
+        }
+        Err(_) => u64::MAX,
+    }
+}
+
+/// Terminate a specific child under a supervisor.
+///
+/// Looks up the supervisor state, finds the child by PID, terminates it,
+/// and removes it from the children list.
+///
+/// Returns 0 on success, 1 on failure.
+#[no_mangle]
+pub extern "C" fn snow_supervisor_terminate_child(
+    sup_pid: u64,
+    child_pid: u64,
+) -> u64 {
+    let sup_pid = ProcessId(sup_pid);
+    let child_pid = ProcessId(child_pid);
+    let sched = global_scheduler();
+
+    let state_arc = match supervisor::get_supervisor_state(sup_pid) {
+        Some(s) => s,
+        None => return 1,
+    };
+
+    let mut state = state_arc.lock();
+
+    let child_idx = match state.find_child_index(child_pid) {
+        Some(idx) => idx,
+        None => return 1,
+    };
+
+    supervisor::terminate_single_child(&mut state.children[child_idx], sched, sup_pid);
+    state.children.remove(child_idx);
+
+    0
+}
+
+/// Get the count of running children under a supervisor.
+///
+/// Returns the number of currently running children, or 0 if the
+/// supervisor PID is not found.
+#[no_mangle]
+pub extern "C" fn snow_supervisor_count_children(sup_pid: u64) -> u64 {
+    let sup_pid = ProcessId(sup_pid);
+
+    match supervisor::get_supervisor_state(sup_pid) {
+        Some(state_arc) => state_arc.lock().running_count() as u64,
+        None => 0,
+    }
+}
+
+/// Set `trap_exit = true` on the current process.
+///
+/// When trap_exit is enabled, exit signals from linked processes are
+/// delivered as regular messages (with EXIT_SIGNAL_TAG) instead of
+/// causing this process to crash. Used by supervisors to monitor
+/// children, and by regular actors that want to handle linked exits.
+#[no_mangle]
+pub extern "C" fn snow_actor_trap_exit() {
+    let my_pid = match stack::get_current_pid() {
+        Some(pid) => pid,
+        None => return,
+    };
+
+    let sched = global_scheduler();
+    if let Some(proc_arc) = sched.get_process(my_pid) {
+        proc_arc.lock().trap_exit = true;
+    }
+}
+
+/// Send an exit signal to a target process.
+///
+/// This is used for supervisor shutdown and for explicit `exit(pid, reason)`.
+///
+/// - `target_pid`: the PID of the target process
+/// - `reason_tag`: 0=Normal, 1=Error, 2=Killed, 4=Shutdown
+///
+/// If the reason is Killed (tag 2), the process is immediately terminated
+/// (untrappable -- like Erlang's `exit(Pid, kill)`).
+///
+/// For other reasons: if the target has trap_exit enabled, the signal is
+/// delivered as a message. Otherwise, the target is terminated immediately.
+#[no_mangle]
+pub extern "C" fn snow_actor_exit(target_pid: u64, reason_tag: u8) {
+    let sched = global_scheduler();
+    let pid = ProcessId(target_pid);
+
+    let reason = match reason_tag {
+        0 => ExitReason::Normal,
+        1 => ExitReason::Error("exit signal".to_string()),
+        2 => ExitReason::Killed,
+        4 => ExitReason::Shutdown,
+        5 => ExitReason::Custom("exit signal".to_string()),
+        _ => ExitReason::Error(format!("unknown exit reason tag: {}", reason_tag)),
+    };
+
+    if let Some(proc_arc) = sched.get_process(pid) {
+        let mut proc = proc_arc.lock();
+
+        // Skip already-exited processes.
+        if matches!(proc.state, ProcessState::Exited(_)) {
+            return;
+        }
+
+        // Killed is untrappable.
+        if matches!(reason, ExitReason::Killed) {
+            proc.state = ProcessState::Exited(ExitReason::Killed);
+            return;
+        }
+
+        if proc.trap_exit {
+            // Deliver as a message.
+            let signal_data = link::encode_exit_signal(pid, &reason);
+            let buffer = heap::MessageBuffer::new(signal_data, link::EXIT_SIGNAL_TAG);
+            proc.mailbox.push(Message { buffer });
+
+            // Wake if Waiting.
+            if matches!(proc.state, ProcessState::Waiting) {
+                proc.state = ProcessState::Ready;
+                drop(proc);
+                sched.wake_process(pid);
+            }
+        } else {
+            // Terminate immediately.
+            proc.state = ProcessState::Exited(reason);
+        }
+    }
+}
+
+/// Parse a `SupervisorConfig` from raw bytes.
+fn parse_supervisor_config(data: &[u8]) -> Option<supervisor::SupervisorConfig> {
+    if data.len() < 14 {
+        return None; // Minimum: 1 + 4 + 8 + 4 = 17 bytes... actually 1+4+8+4=17
+    }
+
+    let mut pos = 0;
+
+    // Strategy (1 byte)
+    let strategy = match data[pos] {
+        0 => child_spec::Strategy::OneForOne,
+        1 => child_spec::Strategy::OneForAll,
+        2 => child_spec::Strategy::RestForOne,
+        3 => child_spec::Strategy::SimpleOneForOne,
+        _ => return None,
+    };
+    pos += 1;
+
+    // max_restarts (4 bytes LE)
+    if pos + 4 > data.len() {
+        return None;
+    }
+    let max_restarts = u32::from_le_bytes(data[pos..pos + 4].try_into().ok()?);
+    pos += 4;
+
+    // max_seconds (8 bytes LE)
+    if pos + 8 > data.len() {
+        return None;
+    }
+    let max_seconds = u64::from_le_bytes(data[pos..pos + 8].try_into().ok()?);
+    pos += 8;
+
+    // num_child_specs (4 bytes LE)
+    if pos + 4 > data.len() {
+        return None;
+    }
+    let num_specs = u32::from_le_bytes(data[pos..pos + 4].try_into().ok()?) as usize;
+    pos += 4;
+
+    let mut child_specs = Vec::with_capacity(num_specs);
+
+    for _ in 0..num_specs {
+        // id string length (4 bytes LE)
+        if pos + 4 > data.len() {
+            return None;
+        }
+        let id_len = u32::from_le_bytes(data[pos..pos + 4].try_into().ok()?) as usize;
+        pos += 4;
+
+        // id string bytes
+        if pos + id_len > data.len() {
+            return None;
+        }
+        let id = std::str::from_utf8(&data[pos..pos + id_len]).ok()?.to_string();
+        pos += id_len;
+
+        // start_fn pointer (8 bytes LE)
+        if pos + 8 > data.len() {
+            return None;
+        }
+        let start_fn = u64::from_le_bytes(data[pos..pos + 8].try_into().ok()?) as *const u8;
+        pos += 8;
+
+        // start_args pointer (8 bytes LE)
+        if pos + 8 > data.len() {
+            return None;
+        }
+        let start_args_ptr = u64::from_le_bytes(data[pos..pos + 8].try_into().ok()?) as *const u8;
+        pos += 8;
+
+        // start_args size (8 bytes LE)
+        if pos + 8 > data.len() {
+            return None;
+        }
+        let start_args_size = u64::from_le_bytes(data[pos..pos + 8].try_into().ok()?);
+        pos += 8;
+
+        // restart_type (1 byte)
+        if pos >= data.len() {
+            return None;
+        }
+        let restart_type = match data[pos] {
+            0 => child_spec::RestartType::Permanent,
+            1 => child_spec::RestartType::Transient,
+            2 => child_spec::RestartType::Temporary,
+            _ => return None,
+        };
+        pos += 1;
+
+        // shutdown_type (1 byte)
+        if pos >= data.len() {
+            return None;
+        }
+        let shutdown_type_tag = data[pos];
+        pos += 1;
+
+        // shutdown_timeout_ms (8 bytes LE)
+        if pos + 8 > data.len() {
+            return None;
+        }
+        let shutdown_timeout = u64::from_le_bytes(data[pos..pos + 8].try_into().ok()?);
+        pos += 8;
+
+        let shutdown = match shutdown_type_tag {
+            0 => child_spec::ShutdownType::BrutalKill,
+            1 => child_spec::ShutdownType::Timeout(shutdown_timeout),
+            _ => return None,
+        };
+
+        // child_type (1 byte)
+        if pos >= data.len() {
+            return None;
+        }
+        let child_type = match data[pos] {
+            0 => child_spec::ChildType::Worker,
+            1 => child_spec::ChildType::Supervisor,
+            _ => return None,
+        };
+        pos += 1;
+
+        child_specs.push(child_spec::ChildSpec {
+            id,
+            start_fn,
+            start_args_ptr,
+            start_args_size,
+            restart_type,
+            shutdown,
+            child_type,
+        });
+    }
+
+    Some(supervisor::SupervisorConfig {
+        strategy,
+        max_restarts,
+        max_seconds,
+        child_specs,
+    })
+}
+
+// ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
