@@ -167,9 +167,10 @@ fn report_diagnostics(
     }
 
     // Check for type errors
+    let diag_opts = snow_typeck::diagnostics::DiagnosticOptions::default();
     for error in &typeck.errors {
         has_errors = true;
-        let rendered = snow_typeck::diagnostics::render_diagnostic(error, source, &file_name);
+        let rendered = snow_typeck::diagnostics::render_diagnostic(error, source, &file_name, &diag_opts, None);
         eprint!("{}", rendered);
     }
 

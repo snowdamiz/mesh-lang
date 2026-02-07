@@ -8,5 +8,5 @@ expression: output
  1 │ ╭─▶ let x = 42
  2 │ ├─▶ x(1)
    │ │         
-   │ ╰───────── expected Int, found (Int) -> ?6
+   │ ╰───────── argument 1 has type (Int) -> ?6, expected Int
 ───╯
