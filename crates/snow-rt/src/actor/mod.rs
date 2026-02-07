@@ -37,6 +37,7 @@ pub mod mailbox;
 pub mod process;
 pub mod registry;
 pub mod scheduler;
+pub mod service;
 pub mod stack;
 pub mod supervisor;
 

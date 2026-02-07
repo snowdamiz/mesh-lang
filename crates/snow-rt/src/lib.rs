@@ -37,6 +37,7 @@ pub use actor::{
     snow_actor_set_terminate, snow_actor_spawn, snow_actor_whereis, snow_reduction_check,
     snow_rt_init_actor, snow_rt_run_scheduler,
 };
+pub use actor::service::{snow_service_call, snow_service_reply};
 pub use collections::list::{
     snow_list_append, snow_list_concat, snow_list_filter, snow_list_from_array, snow_list_get,
     snow_list_head, snow_list_length, snow_list_map, snow_list_new, snow_list_reduce,
