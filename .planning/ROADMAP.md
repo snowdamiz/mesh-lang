@@ -18,7 +18,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 4: Pattern Matching & Algebraic Data Types** - Exhaustive pattern matching, sum types, and guards
 - [x] **Phase 5: LLVM Codegen & Native Binaries** - Full compilation pipeline producing native single-binary executables for sequential code
 - [x] **Phase 6: Actor Runtime** - Lightweight actor processes with typed message passing, standalone runtime library integrated with compiler
-- [ ] **Phase 7: Supervision & Fault Tolerance** - Supervision trees with restart strategies and let-it-crash semantics
+- [x] **Phase 7: Supervision & Fault Tolerance** - Supervision trees with restart strategies and let-it-crash semantics
 - [ ] **Phase 8: Standard Library** - Core library for I/O, strings, collections, file operations, HTTP, and JSON
 - [ ] **Phase 9: Concurrency Standard Library** - GenServer, Task, and other OTP-style behavior abstractions
 - [ ] **Phase 10: Developer Tooling** - Error message polish, formatter, REPL, package manager, and LSP server
@@ -148,9 +148,9 @@ Plans:
 **Plans**: 3 plans
 
 Plans:
-- [ ] 07-01-PLAN.md -- Supervisor runtime: ExitReason expansion, child spec types, SupervisorState, all four strategies, restart limits, ordered shutdown, extern "C" ABI
-- [ ] 07-02-PLAN.md -- Compiler integration: parser (supervisor blocks), AST, type checker, MIR SupervisorStart, LLVM codegen, intrinsics, E2E smoke test
-- [ ] 07-03-PLAN.md -- Typed supervision: compile-time child spec validation (E0018-E0021), E2E tests for all success criteria
+- [x] 07-01-PLAN.md -- Supervisor runtime: ExitReason expansion, child spec types, SupervisorState, all four strategies, restart limits, ordered shutdown, extern "C" ABI
+- [x] 07-02-PLAN.md -- Compiler integration: parser (supervisor blocks), AST, type checker, MIR SupervisorStart, LLVM codegen, intrinsics, E2E smoke test
+- [x] 07-03-PLAN.md -- Typed supervision: compile-time child spec validation (E0018-E0021), E2E tests for all success criteria
 
 ### Phase 8: Standard Library
 **Goal**: A core standard library providing I/O, string operations, collections, file access, HTTP, and JSON -- enough to build real web backends and CLI tools
@@ -161,14 +161,14 @@ Plans:
   2. A Snow program can start an HTTP server that accepts requests and returns JSON responses
   3. List operations (map, filter, reduce) and Map (hash map) operations work with full type inference and pipe operator chaining
   4. Standard I/O (print, read from stdin) works for interactive CLI programs
-**Plans**: TBD
+**Plans**: 5 plans
 
 Plans:
-- [ ] 08-01: Core types and I/O (print, read, String operations)
-- [ ] 08-02: Collections (List with map/filter/reduce, Map/HashMap)
-- [ ] 08-03: File I/O
-- [ ] 08-04: HTTP client and server
-- [ ] 08-05: JSON encoding/decoding
+- [ ] 08-01-PLAN.md -- String operations, console I/O, Env access, and module/import namespace resolution
+- [ ] 08-02-PLAN.md -- Collections (List with map/filter/reduce, Map/HashMap, Set)
+- [ ] 08-03-PLAN.md -- File I/O with Result types
+- [ ] 08-04-PLAN.md -- JSON encoding/decoding with serde_json
+- [ ] 08-05-PLAN.md -- HTTP client and server with actor-per-connection model
 
 ### Phase 9: Concurrency Standard Library
 **Goal**: High-level concurrency abstractions (GenServer, Task) built on the actor primitives, providing ergonomic patterns for common concurrent programming needs
@@ -216,7 +216,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8 -> 9 -> 10
 | 4. Pattern Matching & ADTs | 5/5 | Complete | 2026-02-06 |
 | 5. LLVM Codegen & Native Binaries | 5/5 | Complete | 2026-02-06 |
 | 6. Actor Runtime | 7/7 | Complete | 2026-02-07 |
-| 7. Supervision & Fault Tolerance | 0/3 | Planned | - |
+| 7. Supervision & Fault Tolerance | 3/3 | Complete | 2026-02-06 |
 | 8. Standard Library | 0/5 | Not started | - |
 | 9. Concurrency Standard Library | 0/2 | Not started | - |
 | 10. Developer Tooling | 0/5 | Not started | - |
