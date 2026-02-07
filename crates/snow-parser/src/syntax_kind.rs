@@ -20,12 +20,14 @@ pub enum SyntaxKind {
     /// Wrapper for tokens/nodes that couldn't be parsed.
     ERROR_NODE = 1,
 
-    // ── Keywords (42) ──────────────────────────────────────────────────
+    // ── Keywords (45) ──────────────────────────────────────────────────
     ACTOR_KW,
     AFTER_KW,
     ALIAS_KW,
     AND_KW,
+    CALL_KW,
     CASE_KW,
+    CAST_KW,
     COND_KW,
     DEF_KW,
     DO_KW,
@@ -52,6 +54,7 @@ pub enum SyntaxKind {
     RETURN_KW,
     SELF_KW,
     SEND_KW,
+    SERVICE_KW,
     SPAWN_KW,
     STRUCT_KW,
     SUPERVISOR_KW,
@@ -276,6 +279,14 @@ pub enum SyntaxKind {
     /// Terminate callback clause in actor block: `terminate do ... end`
     TERMINATE_CLAUSE,
 
+    // ── Service node kinds ──────────────────────────────────────────
+    /// Service block declaration: `service Name do ... end`
+    SERVICE_DEF,
+    /// Call handler in a service: `call Name(args) :: ReturnType do |state| ... end`
+    CALL_HANDLER,
+    /// Cast handler in a service: `cast Name(args) do |state| ... end`
+    CAST_HANDLER,
+
     // ── Supervisor node kinds ────────────────────────────────────────
     /// Supervisor block declaration: `supervisor Name do ... end`
     SUPERVISOR_DEF,
@@ -314,7 +325,9 @@ impl From<TokenKind> for SyntaxKind {
             TokenKind::After => SyntaxKind::AFTER_KW,
             TokenKind::Alias => SyntaxKind::ALIAS_KW,
             TokenKind::And => SyntaxKind::AND_KW,
+            TokenKind::Call => SyntaxKind::CALL_KW,
             TokenKind::Case => SyntaxKind::CASE_KW,
+            TokenKind::Cast => SyntaxKind::CAST_KW,
             TokenKind::Cond => SyntaxKind::COND_KW,
             TokenKind::Def => SyntaxKind::DEF_KW,
             TokenKind::Do => SyntaxKind::DO_KW,
@@ -341,6 +354,7 @@ impl From<TokenKind> for SyntaxKind {
             TokenKind::Return => SyntaxKind::RETURN_KW,
             TokenKind::SelfKw => SyntaxKind::SELF_KW,
             TokenKind::Send => SyntaxKind::SEND_KW,
+            TokenKind::Service => SyntaxKind::SERVICE_KW,
             TokenKind::Spawn => SyntaxKind::SPAWN_KW,
             TokenKind::Struct => SyntaxKind::STRUCT_KW,
             TokenKind::Supervisor => SyntaxKind::SUPERVISOR_KW,
@@ -418,12 +432,14 @@ mod tests {
     fn all_token_kinds_convert_to_syntax_kind() {
         // Exhaustive test: every TokenKind variant must convert without panic.
         let all_kinds = [
-            // Keywords (42)
+            // Keywords (45)
             TokenKind::Actor,
             TokenKind::After,
             TokenKind::Alias,
             TokenKind::And,
+            TokenKind::Call,
             TokenKind::Case,
+            TokenKind::Cast,
             TokenKind::Cond,
             TokenKind::Def,
             TokenKind::Do,
@@ -450,6 +466,7 @@ mod tests {
             TokenKind::Return,
             TokenKind::SelfKw,
             TokenKind::Send,
+            TokenKind::Service,
             TokenKind::Spawn,
             TokenKind::Struct,
             TokenKind::Supervisor,
@@ -517,7 +534,7 @@ mod tests {
             TokenKind::Error,
         ];
 
-        assert_eq!(all_kinds.len(), 90, "must test all 90 TokenKind variants");
+        assert_eq!(all_kinds.len(), 93, "must test all 93 TokenKind variants");
 
         for kind in all_kinds {
             let _syntax_kind: SyntaxKind = kind.into();
@@ -546,7 +563,7 @@ mod tests {
 
     #[test]
     fn syntax_kind_has_enough_variants() {
-        // 2 sentinels + 87 token kinds + 1 WHITESPACE + 53 node kinds
+        // 2 sentinels + 90 token kinds + 1 WHITESPACE + 56 node kinds
         // Verify we have at least the expected count of composite node kinds.
         let node_kinds = [
             SyntaxKind::SOURCE_FILE,
@@ -619,6 +636,10 @@ mod tests {
             SyntaxKind::LINK_EXPR,
             SyntaxKind::AFTER_CLAUSE,
             SyntaxKind::TERMINATE_CLAUSE,
+            // Service node kinds
+            SyntaxKind::SERVICE_DEF,
+            SyntaxKind::CALL_HANDLER,
+            SyntaxKind::CAST_HANDLER,
             // Supervisor node kinds
             SyntaxKind::SUPERVISOR_DEF,
             SyntaxKind::CHILD_SPEC_DEF,
@@ -627,8 +648,8 @@ mod tests {
             SyntaxKind::SECONDS_LIMIT,
         ];
         assert!(
-            node_kinds.len() >= 66,
-            "expected at least 66 composite node kinds, got {}",
+            node_kinds.len() >= 69,
+            "expected at least 69 composite node kinds, got {}",
             node_kinds.len()
         );
     }

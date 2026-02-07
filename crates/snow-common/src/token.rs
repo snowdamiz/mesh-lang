@@ -26,12 +26,14 @@ impl Token {
 /// identifiers, and special tokens.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub enum TokenKind {
-    // ── Keywords (42) ──────────────────────────────────────────────────
+    // ── Keywords (45) ──────────────────────────────────────────────────
     Actor,
     After,
     Alias,
     And,
+    Call,
     Case,
+    Cast,
     Cond,
     Def,
     Do,
@@ -59,6 +61,7 @@ pub enum TokenKind {
     /// The `self` keyword. Named `SelfKw` to avoid conflict with Rust's `Self`.
     SelfKw,
     Send,
+    Service,
     Spawn,
     Struct,
     Supervisor,
@@ -191,7 +194,9 @@ pub fn keyword_from_str(s: &str) -> Option<TokenKind> {
         "after" => Some(TokenKind::After),
         "alias" => Some(TokenKind::Alias),
         "and" => Some(TokenKind::And),
+        "call" => Some(TokenKind::Call),
         "case" => Some(TokenKind::Case),
+        "cast" => Some(TokenKind::Cast),
         "cond" => Some(TokenKind::Cond),
         "def" => Some(TokenKind::Def),
         "do" => Some(TokenKind::Do),
@@ -218,6 +223,7 @@ pub fn keyword_from_str(s: &str) -> Option<TokenKind> {
         "return" => Some(TokenKind::Return),
         "self" => Some(TokenKind::SelfKw),
         "send" => Some(TokenKind::Send),
+        "service" => Some(TokenKind::Service),
         "spawn" => Some(TokenKind::Spawn),
         "struct" => Some(TokenKind::Struct),
         "supervisor" => Some(TokenKind::Supervisor),
@@ -244,7 +250,9 @@ mod tests {
             ("after", TokenKind::After),
             ("alias", TokenKind::Alias),
             ("and", TokenKind::And),
+            ("call", TokenKind::Call),
             ("case", TokenKind::Case),
+            ("cast", TokenKind::Cast),
             ("cond", TokenKind::Cond),
             ("def", TokenKind::Def),
             ("do", TokenKind::Do),
@@ -271,6 +279,7 @@ mod tests {
             ("return", TokenKind::Return),
             ("self", TokenKind::SelfKw),
             ("send", TokenKind::Send),
+            ("service", TokenKind::Service),
             ("spawn", TokenKind::Spawn),
             ("struct", TokenKind::Struct),
             ("supervisor", TokenKind::Supervisor),
@@ -292,8 +301,8 @@ mod tests {
             );
         }
 
-        // Verify we tested all 42 keywords
-        assert_eq!(keywords.len(), 42, "must test all 42 keywords");
+        // Verify we tested all 45 keywords
+        assert_eq!(keywords.len(), 45, "must test all 45 keywords");
     }
 
     #[test]
@@ -316,10 +325,10 @@ mod tests {
     #[test]
     fn token_kind_variant_count() {
         // Count variants by checking that all categories are covered.
-        // Keywords: 42, Operators: 24, Delimiters: 6, Punctuation: 5,
-        // Literals: 7, Identifiers/comments: 4, Special: 2 = 90 total
+        // Keywords: 45, Operators: 24, Delimiters: 6, Punctuation: 5,
+        // Literals: 7, Identifiers/comments: 4, Special: 2 = 93 total
         // This test documents the expected count.
-        let keywords = 42u32;
+        let keywords = 45u32;
         let operators = 24;
         let delimiters = 6;
         let punctuation = 5;
@@ -327,6 +336,6 @@ mod tests {
         let ident_comments = 4;
         let special = 2;
         let total = keywords + operators + delimiters + punctuation + literals + ident_comments + special;
-        assert_eq!(total, 90, "TokenKind should have 90 variants");
+        assert_eq!(total, 93, "TokenKind should have 93 variants");
     }
 }
