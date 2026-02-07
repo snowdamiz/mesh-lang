@@ -195,6 +195,27 @@ impl<'a> Lowerer<'a> {
             "snow_string_replace".to_string(),
             MirType::FnPtr(vec![MirType::String, MirType::String, MirType::String], Box::new(MirType::String)),
         );
+        // File I/O functions
+        self.known_functions.insert(
+            "snow_file_read".to_string(),
+            MirType::FnPtr(vec![MirType::String], Box::new(MirType::Ptr)),
+        );
+        self.known_functions.insert(
+            "snow_file_write".to_string(),
+            MirType::FnPtr(vec![MirType::String, MirType::String], Box::new(MirType::Ptr)),
+        );
+        self.known_functions.insert(
+            "snow_file_append".to_string(),
+            MirType::FnPtr(vec![MirType::String, MirType::String], Box::new(MirType::Ptr)),
+        );
+        self.known_functions.insert(
+            "snow_file_exists".to_string(),
+            MirType::FnPtr(vec![MirType::String], Box::new(MirType::Bool)),
+        );
+        self.known_functions.insert(
+            "snow_file_delete".to_string(),
+            MirType::FnPtr(vec![MirType::String], Box::new(MirType::Ptr)),
+        );
         // IO functions
         self.known_functions.insert(
             "snow_io_read_line".to_string(),
@@ -213,6 +234,56 @@ impl<'a> Lowerer<'a> {
             "snow_env_args".to_string(),
             MirType::FnPtr(vec![], Box::new(MirType::Ptr)),
         );
+        // ── Collection functions (Phase 8 Plan 02) ─────────────────────
+        // List
+        self.known_functions.insert("snow_list_new".to_string(), MirType::FnPtr(vec![], Box::new(MirType::Ptr)));
+        self.known_functions.insert("snow_list_length".to_string(), MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Int)));
+        self.known_functions.insert("snow_list_append".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Int], Box::new(MirType::Ptr)));
+        self.known_functions.insert("snow_list_head".to_string(), MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Int)));
+        self.known_functions.insert("snow_list_tail".to_string(), MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Ptr)));
+        self.known_functions.insert("snow_list_get".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Int], Box::new(MirType::Int)));
+        self.known_functions.insert("snow_list_concat".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
+        self.known_functions.insert("snow_list_reverse".to_string(), MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Ptr)));
+        self.known_functions.insert("snow_list_map".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
+        self.known_functions.insert("snow_list_filter".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
+        self.known_functions.insert("snow_list_reduce".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Int, MirType::Ptr, MirType::Ptr], Box::new(MirType::Int)));
+        self.known_functions.insert("snow_list_from_array".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Int], Box::new(MirType::Ptr)));
+        // Map
+        self.known_functions.insert("snow_map_new".to_string(), MirType::FnPtr(vec![], Box::new(MirType::Ptr)));
+        self.known_functions.insert("snow_map_put".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Int, MirType::Int], Box::new(MirType::Ptr)));
+        self.known_functions.insert("snow_map_get".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Int], Box::new(MirType::Int)));
+        self.known_functions.insert("snow_map_has_key".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Int], Box::new(MirType::Bool)));
+        self.known_functions.insert("snow_map_delete".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Int], Box::new(MirType::Ptr)));
+        self.known_functions.insert("snow_map_size".to_string(), MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Int)));
+        self.known_functions.insert("snow_map_keys".to_string(), MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Ptr)));
+        self.known_functions.insert("snow_map_values".to_string(), MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Ptr)));
+        // Set
+        self.known_functions.insert("snow_set_new".to_string(), MirType::FnPtr(vec![], Box::new(MirType::Ptr)));
+        self.known_functions.insert("snow_set_add".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Int], Box::new(MirType::Ptr)));
+        self.known_functions.insert("snow_set_remove".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Int], Box::new(MirType::Ptr)));
+        self.known_functions.insert("snow_set_contains".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Int], Box::new(MirType::Bool)));
+        self.known_functions.insert("snow_set_size".to_string(), MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Int)));
+        self.known_functions.insert("snow_set_union".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
+        self.known_functions.insert("snow_set_intersection".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
+        // Tuple
+        self.known_functions.insert("snow_tuple_nth".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Int], Box::new(MirType::Int)));
+        self.known_functions.insert("snow_tuple_first".to_string(), MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Int)));
+        self.known_functions.insert("snow_tuple_second".to_string(), MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Int)));
+        self.known_functions.insert("snow_tuple_size".to_string(), MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Int)));
+        // Range
+        self.known_functions.insert("snow_range_new".to_string(), MirType::FnPtr(vec![MirType::Int, MirType::Int], Box::new(MirType::Ptr)));
+        self.known_functions.insert("snow_range_to_list".to_string(), MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Ptr)));
+        self.known_functions.insert("snow_range_map".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
+        self.known_functions.insert("snow_range_filter".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
+        self.known_functions.insert("snow_range_length".to_string(), MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Int)));
+        // Queue
+        self.known_functions.insert("snow_queue_new".to_string(), MirType::FnPtr(vec![], Box::new(MirType::Ptr)));
+        self.known_functions.insert("snow_queue_push".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Int], Box::new(MirType::Ptr)));
+        self.known_functions.insert("snow_queue_pop".to_string(), MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Ptr)));
+        self.known_functions.insert("snow_queue_peek".to_string(), MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Int)));
+        self.known_functions.insert("snow_queue_size".to_string(), MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Int)));
+        self.known_functions.insert("snow_queue_is_empty".to_string(), MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Bool)));
+
         // Also register variant constructors as known functions.
         for (_, sum_info) in &self.registry.sum_type_defs {
             for variant in &sum_info.variants {
@@ -1724,7 +1795,7 @@ impl<'a> Lowerer<'a> {
 
 /// Set of known stdlib module names for qualified access lowering.
 const STDLIB_MODULES: &[&str] = &[
-    "String", "IO", "Env", "File", "List", "Map", "Set", "HTTP", "JSON",
+    "String", "IO", "Env", "File", "List", "Map", "Set", "Tuple", "Range", "Queue", "HTTP", "JSON",
 ];
 
 /// Map Snow builtin function names to their runtime equivalents.
@@ -1746,6 +1817,12 @@ fn map_builtin_name(name: &str) -> String {
         "string_to_upper" => "snow_string_to_upper".to_string(),
         "string_to_lower" => "snow_string_to_lower".to_string(),
         "string_replace" => "snow_string_replace".to_string(),
+        // File I/O functions
+        "file_read" => "snow_file_read".to_string(),
+        "file_write" => "snow_file_write".to_string(),
+        "file_append" => "snow_file_append".to_string(),
+        "file_exists" => "snow_file_exists".to_string(),
+        "file_delete" => "snow_file_delete".to_string(),
         // IO functions
         "io_read_line" => "snow_io_read_line".to_string(),
         "io_eprintln" => "snow_io_eprintln".to_string(),
@@ -1766,6 +1843,67 @@ fn map_builtin_name(name: &str) -> String {
         "slice" => "snow_string_slice".to_string(),
         "read_line" => "snow_io_read_line".to_string(),
         "eprintln" => "snow_io_eprintln".to_string(),
+        // File bare names (from File import read, etc.)
+        "read" => "snow_file_read".to_string(),
+        "write" => "snow_file_write".to_string(),
+        "append" => "snow_file_append".to_string(),
+        "exists" => "snow_file_exists".to_string(),
+        "delete" => "snow_file_delete".to_string(),
+        // ── Collection functions (Phase 8 Plan 02) ───────────────────
+        // List operations
+        "list_new" => "snow_list_new".to_string(),
+        "list_length" => "snow_list_length".to_string(),
+        "list_append" => "snow_list_append".to_string(),
+        "list_head" => "snow_list_head".to_string(),
+        "list_tail" => "snow_list_tail".to_string(),
+        "list_get" => "snow_list_get".to_string(),
+        "list_concat" => "snow_list_concat".to_string(),
+        "list_reverse" => "snow_list_reverse".to_string(),
+        "list_map" => "snow_list_map".to_string(),
+        "list_filter" => "snow_list_filter".to_string(),
+        "list_reduce" => "snow_list_reduce".to_string(),
+        // Map operations
+        "map_new" => "snow_map_new".to_string(),
+        "map_put" => "snow_map_put".to_string(),
+        "map_get" => "snow_map_get".to_string(),
+        "map_has_key" => "snow_map_has_key".to_string(),
+        "map_delete" => "snow_map_delete".to_string(),
+        "map_size" => "snow_map_size".to_string(),
+        "map_keys" => "snow_map_keys".to_string(),
+        "map_values" => "snow_map_values".to_string(),
+        // Set operations
+        "set_new" => "snow_set_new".to_string(),
+        "set_add" => "snow_set_add".to_string(),
+        "set_remove" => "snow_set_remove".to_string(),
+        "set_contains" => "snow_set_contains".to_string(),
+        "set_size" => "snow_set_size".to_string(),
+        "set_union" => "snow_set_union".to_string(),
+        "set_intersection" => "snow_set_intersection".to_string(),
+        // Tuple operations
+        "tuple_nth" => "snow_tuple_nth".to_string(),
+        "tuple_first" => "snow_tuple_first".to_string(),
+        "tuple_second" => "snow_tuple_second".to_string(),
+        "tuple_size" => "snow_tuple_size".to_string(),
+        // Range operations
+        "range_new" => "snow_range_new".to_string(),
+        "range_to_list" => "snow_range_to_list".to_string(),
+        "range_map" => "snow_range_map".to_string(),
+        "range_filter" => "snow_range_filter".to_string(),
+        "range_length" => "snow_range_length".to_string(),
+        // Queue operations
+        "queue_new" => "snow_queue_new".to_string(),
+        "queue_push" => "snow_queue_push".to_string(),
+        "queue_pop" => "snow_queue_pop".to_string(),
+        "queue_peek" => "snow_queue_peek".to_string(),
+        "queue_size" => "snow_queue_size".to_string(),
+        "queue_is_empty" => "snow_queue_is_empty".to_string(),
+        // Bare names for prelude functions (map, filter, reduce, head, tail)
+        // These are ambiguous -- default to list operations.
+        "map" => "snow_list_map".to_string(),
+        "filter" => "snow_list_filter".to_string(),
+        "reduce" => "snow_list_reduce".to_string(),
+        "head" => "snow_list_head".to_string(),
+        "tail" => "snow_list_tail".to_string(),
         _ => name.to_string(),
     }
 }
@@ -1974,8 +2112,10 @@ pub fn lower_to_mir(parse: &Parse, typeck: &TypeckResult) -> Result<MirModule, S
     let mut lowerer = Lowerer::new(typeck);
 
     // Also register builtin sum types from the registry (Option, Result).
+    // Generic type params (T, E) are resolved to Ptr since all Snow values
+    // are heap-allocated pointers at the LLVM level.
     for (name, info) in &typeck.type_registry.sum_type_defs {
-        // These may not appear as items in the source file but are needed.
+        let generic_params: Vec<String> = info.generic_params.clone();
         let variants = info
             .variants
             .iter()
@@ -1989,6 +2129,15 @@ pub fn lower_to_mir(parse: &Parse, typeck: &TypeckResult) -> Result<MirModule, S
                             snow_typeck::VariantFieldInfo::Positional(ty) => ty,
                             snow_typeck::VariantFieldInfo::Named(_, ty) => ty,
                         };
+                        // Check if this is a generic type parameter.
+                        // Generic params like T, E resolve to MirType::Struct("T")
+                        // because they're not known types. Replace with Ptr since
+                        // all variant payloads are pointer-sized at LLVM level.
+                        if let Ty::Con(con) = ty {
+                            if generic_params.contains(&con.name) {
+                                return MirType::Ptr;
+                            }
+                        }
                         resolve_type(ty, &typeck.type_registry, false)
                     })
                     .collect();

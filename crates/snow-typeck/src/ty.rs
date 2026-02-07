@@ -105,6 +105,46 @@ impl Ty {
         Ty::Con(TyCon::new("Pid"))
     }
 
+    /// Create a `List<T>` type.
+    pub fn list(inner: Ty) -> Ty {
+        Ty::App(Box::new(Ty::Con(TyCon::new("List"))), vec![inner])
+    }
+
+    /// Create an unparameterized `List` type (opaque pointer).
+    pub fn list_untyped() -> Ty {
+        Ty::Con(TyCon::new("List"))
+    }
+
+    /// Create a `Map<K, V>` type.
+    pub fn map(key: Ty, value: Ty) -> Ty {
+        Ty::App(Box::new(Ty::Con(TyCon::new("Map"))), vec![key, value])
+    }
+
+    /// Create an unparameterized `Map` type (opaque pointer).
+    pub fn map_untyped() -> Ty {
+        Ty::Con(TyCon::new("Map"))
+    }
+
+    /// Create a `Set<T>` type.
+    pub fn set(inner: Ty) -> Ty {
+        Ty::App(Box::new(Ty::Con(TyCon::new("Set"))), vec![inner])
+    }
+
+    /// Create an unparameterized `Set` type (opaque pointer).
+    pub fn set_untyped() -> Ty {
+        Ty::Con(TyCon::new("Set"))
+    }
+
+    /// Create a `Range` type.
+    pub fn range() -> Ty {
+        Ty::Con(TyCon::new("Range"))
+    }
+
+    /// Create a `Queue` type.
+    pub fn queue() -> Ty {
+        Ty::Con(TyCon::new("Queue"))
+    }
+
     /// Create a named struct type with optional type arguments.
     /// Non-generic structs: `Ty::struct_ty("Point", vec![])` -> `Point`
     /// Generic structs: `Ty::struct_ty("Pair", vec![Ty::int(), Ty::string()])` -> `Pair<Int, String>`

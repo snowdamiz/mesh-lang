@@ -185,6 +185,28 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
     let string_eq_ty = i8_type.fn_type(&[ptr_type.into(), ptr_type.into()], false);
     module.add_function("snow_string_eq", string_eq_ty, Some(inkwell::module::Linkage::External));
 
+    // ── Standard library: File I/O functions (Phase 8) ────────────────
+
+    // snow_file_read(path: ptr) -> ptr (SnowResult)
+    let file_read_ty = ptr_type.fn_type(&[ptr_type.into()], false);
+    module.add_function("snow_file_read", file_read_ty, Some(inkwell::module::Linkage::External));
+
+    // snow_file_write(path: ptr, content: ptr) -> ptr (SnowResult)
+    let file_write_ty = ptr_type.fn_type(&[ptr_type.into(), ptr_type.into()], false);
+    module.add_function("snow_file_write", file_write_ty, Some(inkwell::module::Linkage::External));
+
+    // snow_file_append(path: ptr, content: ptr) -> ptr (SnowResult)
+    let file_append_ty = ptr_type.fn_type(&[ptr_type.into(), ptr_type.into()], false);
+    module.add_function("snow_file_append", file_append_ty, Some(inkwell::module::Linkage::External));
+
+    // snow_file_exists(path: ptr) -> i8
+    let file_exists_ty = i8_type.fn_type(&[ptr_type.into()], false);
+    module.add_function("snow_file_exists", file_exists_ty, Some(inkwell::module::Linkage::External));
+
+    // snow_file_delete(path: ptr) -> ptr (SnowResult)
+    let file_delete_ty = ptr_type.fn_type(&[ptr_type.into()], false);
+    module.add_function("snow_file_delete", file_delete_ty, Some(inkwell::module::Linkage::External));
+
     // ── Standard library: IO functions (Phase 8) ─────────────────────
 
     // snow_io_read_line() -> ptr (SnowResult)
@@ -204,6 +226,62 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
     // snow_env_args() -> ptr (packed array)
     let env_args_ty = ptr_type.fn_type(&[], false);
     module.add_function("snow_env_args", env_args_ty, Some(inkwell::module::Linkage::External));
+
+    // ── Standard library: Collection functions (Phase 8 Plan 02) ──────────
+
+    // List functions
+    module.add_function("snow_list_new", ptr_type.fn_type(&[], false), Some(inkwell::module::Linkage::External));
+    module.add_function("snow_list_length", i64_type.fn_type(&[ptr_type.into()], false), Some(inkwell::module::Linkage::External));
+    module.add_function("snow_list_append", ptr_type.fn_type(&[ptr_type.into(), i64_type.into()], false), Some(inkwell::module::Linkage::External));
+    module.add_function("snow_list_head", i64_type.fn_type(&[ptr_type.into()], false), Some(inkwell::module::Linkage::External));
+    module.add_function("snow_list_tail", ptr_type.fn_type(&[ptr_type.into()], false), Some(inkwell::module::Linkage::External));
+    module.add_function("snow_list_get", i64_type.fn_type(&[ptr_type.into(), i64_type.into()], false), Some(inkwell::module::Linkage::External));
+    module.add_function("snow_list_concat", ptr_type.fn_type(&[ptr_type.into(), ptr_type.into()], false), Some(inkwell::module::Linkage::External));
+    module.add_function("snow_list_reverse", ptr_type.fn_type(&[ptr_type.into()], false), Some(inkwell::module::Linkage::External));
+    module.add_function("snow_list_map", ptr_type.fn_type(&[ptr_type.into(), ptr_type.into(), ptr_type.into()], false), Some(inkwell::module::Linkage::External));
+    module.add_function("snow_list_filter", ptr_type.fn_type(&[ptr_type.into(), ptr_type.into(), ptr_type.into()], false), Some(inkwell::module::Linkage::External));
+    module.add_function("snow_list_reduce", i64_type.fn_type(&[ptr_type.into(), i64_type.into(), ptr_type.into(), ptr_type.into()], false), Some(inkwell::module::Linkage::External));
+    module.add_function("snow_list_from_array", ptr_type.fn_type(&[ptr_type.into(), i64_type.into()], false), Some(inkwell::module::Linkage::External));
+
+    // Map functions
+    module.add_function("snow_map_new", ptr_type.fn_type(&[], false), Some(inkwell::module::Linkage::External));
+    module.add_function("snow_map_put", ptr_type.fn_type(&[ptr_type.into(), i64_type.into(), i64_type.into()], false), Some(inkwell::module::Linkage::External));
+    module.add_function("snow_map_get", i64_type.fn_type(&[ptr_type.into(), i64_type.into()], false), Some(inkwell::module::Linkage::External));
+    module.add_function("snow_map_has_key", i8_type.fn_type(&[ptr_type.into(), i64_type.into()], false), Some(inkwell::module::Linkage::External));
+    module.add_function("snow_map_delete", ptr_type.fn_type(&[ptr_type.into(), i64_type.into()], false), Some(inkwell::module::Linkage::External));
+    module.add_function("snow_map_size", i64_type.fn_type(&[ptr_type.into()], false), Some(inkwell::module::Linkage::External));
+    module.add_function("snow_map_keys", ptr_type.fn_type(&[ptr_type.into()], false), Some(inkwell::module::Linkage::External));
+    module.add_function("snow_map_values", ptr_type.fn_type(&[ptr_type.into()], false), Some(inkwell::module::Linkage::External));
+
+    // Set functions
+    module.add_function("snow_set_new", ptr_type.fn_type(&[], false), Some(inkwell::module::Linkage::External));
+    module.add_function("snow_set_add", ptr_type.fn_type(&[ptr_type.into(), i64_type.into()], false), Some(inkwell::module::Linkage::External));
+    module.add_function("snow_set_remove", ptr_type.fn_type(&[ptr_type.into(), i64_type.into()], false), Some(inkwell::module::Linkage::External));
+    module.add_function("snow_set_contains", i8_type.fn_type(&[ptr_type.into(), i64_type.into()], false), Some(inkwell::module::Linkage::External));
+    module.add_function("snow_set_size", i64_type.fn_type(&[ptr_type.into()], false), Some(inkwell::module::Linkage::External));
+    module.add_function("snow_set_union", ptr_type.fn_type(&[ptr_type.into(), ptr_type.into()], false), Some(inkwell::module::Linkage::External));
+    module.add_function("snow_set_intersection", ptr_type.fn_type(&[ptr_type.into(), ptr_type.into()], false), Some(inkwell::module::Linkage::External));
+
+    // Tuple functions
+    module.add_function("snow_tuple_nth", i64_type.fn_type(&[ptr_type.into(), i64_type.into()], false), Some(inkwell::module::Linkage::External));
+    module.add_function("snow_tuple_first", i64_type.fn_type(&[ptr_type.into()], false), Some(inkwell::module::Linkage::External));
+    module.add_function("snow_tuple_second", i64_type.fn_type(&[ptr_type.into()], false), Some(inkwell::module::Linkage::External));
+    module.add_function("snow_tuple_size", i64_type.fn_type(&[ptr_type.into()], false), Some(inkwell::module::Linkage::External));
+
+    // Range functions
+    module.add_function("snow_range_new", ptr_type.fn_type(&[i64_type.into(), i64_type.into()], false), Some(inkwell::module::Linkage::External));
+    module.add_function("snow_range_to_list", ptr_type.fn_type(&[ptr_type.into()], false), Some(inkwell::module::Linkage::External));
+    module.add_function("snow_range_map", ptr_type.fn_type(&[ptr_type.into(), ptr_type.into(), ptr_type.into()], false), Some(inkwell::module::Linkage::External));
+    module.add_function("snow_range_filter", ptr_type.fn_type(&[ptr_type.into(), ptr_type.into(), ptr_type.into()], false), Some(inkwell::module::Linkage::External));
+    module.add_function("snow_range_length", i64_type.fn_type(&[ptr_type.into()], false), Some(inkwell::module::Linkage::External));
+
+    // Queue functions
+    module.add_function("snow_queue_new", ptr_type.fn_type(&[], false), Some(inkwell::module::Linkage::External));
+    module.add_function("snow_queue_push", ptr_type.fn_type(&[ptr_type.into(), i64_type.into()], false), Some(inkwell::module::Linkage::External));
+    module.add_function("snow_queue_pop", ptr_type.fn_type(&[ptr_type.into()], false), Some(inkwell::module::Linkage::External));
+    module.add_function("snow_queue_peek", i64_type.fn_type(&[ptr_type.into()], false), Some(inkwell::module::Linkage::External));
+    module.add_function("snow_queue_size", i64_type.fn_type(&[ptr_type.into()], false), Some(inkwell::module::Linkage::External));
+    module.add_function("snow_queue_is_empty", i8_type.fn_type(&[ptr_type.into()], false), Some(inkwell::module::Linkage::External));
 
     // snow_panic(msg: ptr, msg_len: u64, file: ptr, file_len: u64, line: u32) -> void
     // (noreturn -- marked via attribute)
@@ -278,6 +356,11 @@ mod tests {
         assert!(module.get_function("snow_actor_exit").is_some());
 
         // Standard library functions (Phase 8)
+        assert!(module.get_function("snow_file_read").is_some());
+        assert!(module.get_function("snow_file_write").is_some());
+        assert!(module.get_function("snow_file_append").is_some());
+        assert!(module.get_function("snow_file_exists").is_some());
+        assert!(module.get_function("snow_file_delete").is_some());
         assert!(module.get_function("snow_string_length").is_some());
         assert!(module.get_function("snow_string_slice").is_some());
         assert!(module.get_function("snow_string_contains").is_some());
@@ -292,6 +375,50 @@ mod tests {
         assert!(module.get_function("snow_io_eprintln").is_some());
         assert!(module.get_function("snow_env_get").is_some());
         assert!(module.get_function("snow_env_args").is_some());
+
+        // Collection functions (Phase 8 Plan 02)
+        assert!(module.get_function("snow_list_new").is_some());
+        assert!(module.get_function("snow_list_length").is_some());
+        assert!(module.get_function("snow_list_append").is_some());
+        assert!(module.get_function("snow_list_head").is_some());
+        assert!(module.get_function("snow_list_tail").is_some());
+        assert!(module.get_function("snow_list_get").is_some());
+        assert!(module.get_function("snow_list_concat").is_some());
+        assert!(module.get_function("snow_list_reverse").is_some());
+        assert!(module.get_function("snow_list_map").is_some());
+        assert!(module.get_function("snow_list_filter").is_some());
+        assert!(module.get_function("snow_list_reduce").is_some());
+        assert!(module.get_function("snow_list_from_array").is_some());
+        assert!(module.get_function("snow_map_new").is_some());
+        assert!(module.get_function("snow_map_put").is_some());
+        assert!(module.get_function("snow_map_get").is_some());
+        assert!(module.get_function("snow_map_has_key").is_some());
+        assert!(module.get_function("snow_map_delete").is_some());
+        assert!(module.get_function("snow_map_size").is_some());
+        assert!(module.get_function("snow_map_keys").is_some());
+        assert!(module.get_function("snow_map_values").is_some());
+        assert!(module.get_function("snow_set_new").is_some());
+        assert!(module.get_function("snow_set_add").is_some());
+        assert!(module.get_function("snow_set_remove").is_some());
+        assert!(module.get_function("snow_set_contains").is_some());
+        assert!(module.get_function("snow_set_size").is_some());
+        assert!(module.get_function("snow_set_union").is_some());
+        assert!(module.get_function("snow_set_intersection").is_some());
+        assert!(module.get_function("snow_tuple_nth").is_some());
+        assert!(module.get_function("snow_tuple_first").is_some());
+        assert!(module.get_function("snow_tuple_second").is_some());
+        assert!(module.get_function("snow_tuple_size").is_some());
+        assert!(module.get_function("snow_range_new").is_some());
+        assert!(module.get_function("snow_range_to_list").is_some());
+        assert!(module.get_function("snow_range_map").is_some());
+        assert!(module.get_function("snow_range_filter").is_some());
+        assert!(module.get_function("snow_range_length").is_some());
+        assert!(module.get_function("snow_queue_new").is_some());
+        assert!(module.get_function("snow_queue_push").is_some());
+        assert!(module.get_function("snow_queue_pop").is_some());
+        assert!(module.get_function("snow_queue_peek").is_some());
+        assert!(module.get_function("snow_queue_size").is_some());
+        assert!(module.get_function("snow_queue_is_empty").is_some());
     }
 
     #[test]

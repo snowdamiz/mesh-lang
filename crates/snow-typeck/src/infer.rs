@@ -265,12 +265,115 @@ fn stdlib_modules() -> HashMap<String, HashMap<String, Scheme>> {
     );
     modules.insert("Env".to_string(), env_mod);
 
+    // ── File module ─────────────────────────────────────────────────
+    let mut file_mod = HashMap::new();
+    file_mod.insert(
+        "read".to_string(),
+        Scheme::mono(Ty::fun(vec![Ty::string()], Ty::result(Ty::string(), Ty::string()))),
+    );
+    file_mod.insert(
+        "write".to_string(),
+        Scheme::mono(Ty::fun(
+            vec![Ty::string(), Ty::string()],
+            Ty::result(Ty::Tuple(vec![]), Ty::string()),
+        )),
+    );
+    file_mod.insert(
+        "append".to_string(),
+        Scheme::mono(Ty::fun(
+            vec![Ty::string(), Ty::string()],
+            Ty::result(Ty::Tuple(vec![]), Ty::string()),
+        )),
+    );
+    file_mod.insert(
+        "exists".to_string(),
+        Scheme::mono(Ty::fun(vec![Ty::string()], Ty::bool())),
+    );
+    file_mod.insert(
+        "delete".to_string(),
+        Scheme::mono(Ty::fun(
+            vec![Ty::string()],
+            Ty::result(Ty::Tuple(vec![]), Ty::string()),
+        )),
+    );
+    modules.insert("File".to_string(), file_mod);
+
+    // ── Collection modules (Phase 8 Plan 02) ─────────────────────────
+
+    let list_t = Ty::list_untyped();
+    let int_to_int = Ty::fun(vec![Ty::int()], Ty::int());
+    let int_to_bool = Ty::fun(vec![Ty::int()], Ty::bool());
+    let int_int_to_int = Ty::fun(vec![Ty::int(), Ty::int()], Ty::int());
+
+    let mut list_mod = HashMap::new();
+    list_mod.insert("new".to_string(), Scheme::mono(Ty::fun(vec![], list_t.clone())));
+    list_mod.insert("length".to_string(), Scheme::mono(Ty::fun(vec![list_t.clone()], Ty::int())));
+    list_mod.insert("append".to_string(), Scheme::mono(Ty::fun(vec![list_t.clone(), Ty::int()], list_t.clone())));
+    list_mod.insert("head".to_string(), Scheme::mono(Ty::fun(vec![list_t.clone()], Ty::int())));
+    list_mod.insert("tail".to_string(), Scheme::mono(Ty::fun(vec![list_t.clone()], list_t.clone())));
+    list_mod.insert("get".to_string(), Scheme::mono(Ty::fun(vec![list_t.clone(), Ty::int()], Ty::int())));
+    list_mod.insert("concat".to_string(), Scheme::mono(Ty::fun(vec![list_t.clone(), list_t.clone()], list_t.clone())));
+    list_mod.insert("reverse".to_string(), Scheme::mono(Ty::fun(vec![list_t.clone()], list_t.clone())));
+    list_mod.insert("map".to_string(), Scheme::mono(Ty::fun(vec![list_t.clone(), int_to_int.clone()], list_t.clone())));
+    list_mod.insert("filter".to_string(), Scheme::mono(Ty::fun(vec![list_t.clone(), int_to_bool.clone()], list_t.clone())));
+    list_mod.insert("reduce".to_string(), Scheme::mono(Ty::fun(vec![list_t.clone(), Ty::int(), int_int_to_int.clone()], Ty::int())));
+    modules.insert("List".to_string(), list_mod);
+
+    let map_t = Ty::map_untyped();
+    let mut map_mod = HashMap::new();
+    map_mod.insert("new".to_string(), Scheme::mono(Ty::fun(vec![], map_t.clone())));
+    map_mod.insert("put".to_string(), Scheme::mono(Ty::fun(vec![map_t.clone(), Ty::int(), Ty::int()], map_t.clone())));
+    map_mod.insert("get".to_string(), Scheme::mono(Ty::fun(vec![map_t.clone(), Ty::int()], Ty::int())));
+    map_mod.insert("has_key".to_string(), Scheme::mono(Ty::fun(vec![map_t.clone(), Ty::int()], Ty::bool())));
+    map_mod.insert("delete".to_string(), Scheme::mono(Ty::fun(vec![map_t.clone(), Ty::int()], map_t.clone())));
+    map_mod.insert("size".to_string(), Scheme::mono(Ty::fun(vec![map_t.clone()], Ty::int())));
+    map_mod.insert("keys".to_string(), Scheme::mono(Ty::fun(vec![map_t.clone()], list_t.clone())));
+    map_mod.insert("values".to_string(), Scheme::mono(Ty::fun(vec![map_t.clone()], list_t.clone())));
+    modules.insert("Map".to_string(), map_mod);
+
+    let set_t = Ty::set_untyped();
+    let mut set_mod = HashMap::new();
+    set_mod.insert("new".to_string(), Scheme::mono(Ty::fun(vec![], set_t.clone())));
+    set_mod.insert("add".to_string(), Scheme::mono(Ty::fun(vec![set_t.clone(), Ty::int()], set_t.clone())));
+    set_mod.insert("remove".to_string(), Scheme::mono(Ty::fun(vec![set_t.clone(), Ty::int()], set_t.clone())));
+    set_mod.insert("contains".to_string(), Scheme::mono(Ty::fun(vec![set_t.clone(), Ty::int()], Ty::bool())));
+    set_mod.insert("size".to_string(), Scheme::mono(Ty::fun(vec![set_t.clone()], Ty::int())));
+    set_mod.insert("union".to_string(), Scheme::mono(Ty::fun(vec![set_t.clone(), set_t.clone()], set_t.clone())));
+    set_mod.insert("intersection".to_string(), Scheme::mono(Ty::fun(vec![set_t.clone(), set_t.clone()], set_t.clone())));
+    modules.insert("Set".to_string(), set_mod);
+
+    let mut tuple_mod = HashMap::new();
+    tuple_mod.insert("nth".to_string(), Scheme::mono(Ty::fun(vec![Ty::Con(TyCon::new("Tuple")), Ty::int()], Ty::int())));
+    tuple_mod.insert("first".to_string(), Scheme::mono(Ty::fun(vec![Ty::Con(TyCon::new("Tuple"))], Ty::int())));
+    tuple_mod.insert("second".to_string(), Scheme::mono(Ty::fun(vec![Ty::Con(TyCon::new("Tuple"))], Ty::int())));
+    tuple_mod.insert("size".to_string(), Scheme::mono(Ty::fun(vec![Ty::Con(TyCon::new("Tuple"))], Ty::int())));
+    modules.insert("Tuple".to_string(), tuple_mod);
+
+    let range_t = Ty::range();
+    let mut range_mod = HashMap::new();
+    range_mod.insert("new".to_string(), Scheme::mono(Ty::fun(vec![Ty::int(), Ty::int()], range_t.clone())));
+    range_mod.insert("to_list".to_string(), Scheme::mono(Ty::fun(vec![range_t.clone()], list_t.clone())));
+    range_mod.insert("map".to_string(), Scheme::mono(Ty::fun(vec![range_t.clone(), int_to_int], list_t.clone())));
+    range_mod.insert("filter".to_string(), Scheme::mono(Ty::fun(vec![range_t.clone(), int_to_bool], list_t.clone())));
+    range_mod.insert("length".to_string(), Scheme::mono(Ty::fun(vec![range_t.clone()], Ty::int())));
+    modules.insert("Range".to_string(), range_mod);
+
+    let queue_t = Ty::queue();
+    let mut queue_mod = HashMap::new();
+    queue_mod.insert("new".to_string(), Scheme::mono(Ty::fun(vec![], queue_t.clone())));
+    queue_mod.insert("push".to_string(), Scheme::mono(Ty::fun(vec![queue_t.clone(), Ty::int()], queue_t.clone())));
+    queue_mod.insert("pop".to_string(), Scheme::mono(Ty::fun(vec![queue_t.clone()], Ty::Con(TyCon::new("Tuple")))));
+    queue_mod.insert("peek".to_string(), Scheme::mono(Ty::fun(vec![queue_t.clone()], Ty::int())));
+    queue_mod.insert("size".to_string(), Scheme::mono(Ty::fun(vec![queue_t.clone()], Ty::int())));
+    queue_mod.insert("is_empty".to_string(), Scheme::mono(Ty::fun(vec![queue_t.clone()], Ty::bool())));
+    modules.insert("Queue".to_string(), queue_mod);
+
     modules
 }
 
 /// Set of module names recognized by the stdlib for qualified access.
 const STDLIB_MODULE_NAMES: &[&str] = &[
-    "String", "IO", "Env", "File", "List", "Map", "Set", "HTTP", "JSON",
+    "String", "IO", "Env", "File", "List", "Map", "Set", "Tuple", "Range", "Queue", "HTTP", "JSON",
 ];
 
 /// Check if a name is a known stdlib module.

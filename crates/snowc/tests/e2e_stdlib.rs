@@ -133,6 +133,36 @@ fn e2e_from_import_resolution() {
     assert_eq!(output, "4\n");
 }
 
+// ── File I/O E2E Tests ──────────────────────────────────────────────────
+
+#[test]
+fn e2e_file_write_and_read() {
+    let source = read_fixture("stdlib_file_write_read.snow");
+    let output = compile_and_run(&source);
+    assert_eq!(output, "Hello, Snow!\n");
+}
+
+#[test]
+fn e2e_file_exists() {
+    let source = read_fixture("stdlib_file_exists.snow");
+    let output = compile_and_run(&source);
+    assert_eq!(output, "false\ntrue\n");
+}
+
+#[test]
+fn e2e_file_read_process_write() {
+    let source = read_fixture("stdlib_file_process.snow");
+    let output = compile_and_run(&source);
+    assert_eq!(output, "HELLO WORLD\n");
+}
+
+#[test]
+fn e2e_file_error_handling() {
+    let source = read_fixture("stdlib_file_error.snow");
+    let output = compile_and_run(&source);
+    assert_eq!(output, "error\n");
+}
+
 // ── IO E2E Tests ────────────────────────────────────────────────────────
 
 #[test]
@@ -140,4 +170,41 @@ fn e2e_io_eprintln_does_not_crash() {
     let source = read_fixture("stdlib_io_eprintln.snow");
     let output = compile_and_run(&source);
     assert_eq!(output, "done\n");
+}
+
+// ── Collection E2E Tests (Phase 8 Plan 02) ────────────────────────────
+
+#[test]
+fn e2e_list_basic() {
+    let source = read_fixture("stdlib_list_basic.snow");
+    let output = compile_and_run(&source);
+    assert_eq!(output, "3\n1\n");
+}
+
+#[test]
+fn e2e_map_basic() {
+    let source = read_fixture("stdlib_map_basic.snow");
+    let output = compile_and_run(&source);
+    assert_eq!(output, "10\n2\n");
+}
+
+#[test]
+fn e2e_set_basic() {
+    let source = read_fixture("stdlib_set_basic.snow");
+    let output = compile_and_run(&source);
+    assert_eq!(output, "2\n");
+}
+
+#[test]
+fn e2e_range_basic() {
+    let source = read_fixture("stdlib_range_basic.snow");
+    let output = compile_and_run(&source);
+    assert_eq!(output, "3\n3\n1\n");
+}
+
+#[test]
+fn e2e_queue_basic() {
+    let source = read_fixture("stdlib_queue_basic.snow");
+    let output = compile_and_run(&source);
+    assert_eq!(output, "2\n10\n");
 }

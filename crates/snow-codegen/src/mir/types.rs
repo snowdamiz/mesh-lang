@@ -72,6 +72,8 @@ fn resolve_con(con: &TyCon, registry: &TypeRegistry) -> MirType {
         "String" => MirType::String,
         "Unit" | "()" => MirType::Unit,
         "Pid" => MirType::Pid(None),
+        // Collection types are opaque pointers at LLVM level.
+        "List" | "Map" | "Set" | "Range" | "Queue" | "Tuple" => MirType::Ptr,
         name => {
             // Check registry: struct or sum type?
             if registry.struct_defs.contains_key(name) {
@@ -94,6 +96,11 @@ fn resolve_app(con_ty: &Ty, args: &[Ty], registry: &TypeRegistry) -> MirType {
         Ty::Con(con) => &con.name,
         _ => return MirType::Ptr, // fallback for complex type expressions
     };
+
+    // Collection types are opaque pointers regardless of type parameters.
+    if matches!(base_name.as_str(), "List" | "Map" | "Set" | "Range" | "Queue") {
+        return MirType::Ptr;
+    }
 
     // Handle Pid<M> -> MirType::Pid(Some(M))
     if base_name == "Pid" {

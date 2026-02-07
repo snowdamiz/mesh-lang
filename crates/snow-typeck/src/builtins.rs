@@ -9,7 +9,7 @@ use rustc_hash::FxHashMap;
 
 use crate::env::TypeEnv;
 use crate::traits::{ImplDef, ImplMethodSig, TraitDef, TraitMethodSig, TraitRegistry};
-use crate::ty::{Scheme, Ty};
+use crate::ty::{Scheme, Ty, TyCon};
 use crate::unify::InferCtx;
 
 /// Register all built-in types and functions into the environment.
@@ -155,6 +155,38 @@ pub fn register_builtins(
         )),
     );
 
+    // ── Standard library: File I/O functions (Phase 8) ──────────────────
+
+    env.insert(
+        "file_read".into(),
+        Scheme::mono(Ty::fun(vec![Ty::string()], Ty::result(Ty::string(), Ty::string()))),
+    );
+    env.insert(
+        "file_write".into(),
+        Scheme::mono(Ty::fun(
+            vec![Ty::string(), Ty::string()],
+            Ty::result(Ty::Tuple(vec![]), Ty::string()),
+        )),
+    );
+    env.insert(
+        "file_append".into(),
+        Scheme::mono(Ty::fun(
+            vec![Ty::string(), Ty::string()],
+            Ty::result(Ty::Tuple(vec![]), Ty::string()),
+        )),
+    );
+    env.insert(
+        "file_exists".into(),
+        Scheme::mono(Ty::fun(vec![Ty::string()], Ty::bool())),
+    );
+    env.insert(
+        "file_delete".into(),
+        Scheme::mono(Ty::fun(
+            vec![Ty::string()],
+            Ty::result(Ty::Tuple(vec![]), Ty::string()),
+        )),
+    );
+
     // ── Standard library: IO functions (Phase 8) ─────────────────────
 
     env.insert(
@@ -171,6 +203,247 @@ pub fn register_builtins(
     env.insert(
         "env_get".into(),
         Scheme::mono(Ty::fun(vec![Ty::string()], Ty::option(Ty::string()))),
+    );
+
+    // ── Standard library: Collection types (Phase 8) ─────────────────
+
+    // Type constructors for collection types (bare names).
+    env.insert("List".into(), Scheme::mono(Ty::list_untyped()));
+    env.insert("Map".into(), Scheme::mono(Ty::map_untyped()));
+    env.insert("Set".into(), Scheme::mono(Ty::set_untyped()));
+    env.insert("Range".into(), Scheme::mono(Ty::range()));
+    env.insert("Queue".into(), Scheme::mono(Ty::queue()));
+
+    // Use opaque types (untyped) for collection function signatures.
+    // At the LLVM level these are all pointers; type safety is checked by Snow's type system.
+    let list_t = Ty::list_untyped();
+    let map_t = Ty::map_untyped();
+    let set_t = Ty::set_untyped();
+    let range_t = Ty::range();
+    let queue_t = Ty::queue();
+
+    // Closure type for higher-order functions: (Int) -> Int (monomorphic fallback).
+    let int_to_int = Ty::fun(vec![Ty::int()], Ty::int());
+    let int_to_bool = Ty::fun(vec![Ty::int()], Ty::bool());
+    let int_int_to_int = Ty::fun(vec![Ty::int(), Ty::int()], Ty::int());
+
+    // ── Prelude (bare names): map, filter, reduce, head, tail ─────────
+    // These are auto-imported without module qualification.
+
+    // map(list, fn) -> list  (bare prelude name)
+    env.insert(
+        "map".into(),
+        Scheme::mono(Ty::fun(vec![list_t.clone(), int_to_int.clone()], list_t.clone())),
+    );
+    // filter(list, fn) -> list
+    env.insert(
+        "filter".into(),
+        Scheme::mono(Ty::fun(vec![list_t.clone(), int_to_bool.clone()], list_t.clone())),
+    );
+    // reduce(list, init, fn) -> Int
+    env.insert(
+        "reduce".into(),
+        Scheme::mono(Ty::fun(vec![list_t.clone(), Ty::int(), int_int_to_int.clone()], Ty::int())),
+    );
+    // head(list) -> Int
+    env.insert(
+        "head".into(),
+        Scheme::mono(Ty::fun(vec![list_t.clone()], Ty::int())),
+    );
+    // tail(list) -> list
+    env.insert(
+        "tail".into(),
+        Scheme::mono(Ty::fun(vec![list_t.clone()], list_t.clone())),
+    );
+
+    // Also register with list_ prefix for module-qualified lowering.
+    env.insert(
+        "list_map".into(),
+        Scheme::mono(Ty::fun(vec![list_t.clone(), int_to_int.clone()], list_t.clone())),
+    );
+    env.insert(
+        "list_filter".into(),
+        Scheme::mono(Ty::fun(vec![list_t.clone(), int_to_bool.clone()], list_t.clone())),
+    );
+    env.insert(
+        "list_reduce".into(),
+        Scheme::mono(Ty::fun(vec![list_t.clone(), Ty::int(), int_int_to_int.clone()], Ty::int())),
+    );
+    env.insert(
+        "list_head".into(),
+        Scheme::mono(Ty::fun(vec![list_t.clone()], Ty::int())),
+    );
+    env.insert(
+        "list_tail".into(),
+        Scheme::mono(Ty::fun(vec![list_t.clone()], list_t.clone())),
+    );
+
+    // ── List module functions ─────────────────────────────────────────
+
+    // List.new() -> List
+    env.insert(
+        "list_new".into(),
+        Scheme::mono(Ty::fun(vec![], list_t.clone())),
+    );
+    // List.length(list) -> Int
+    env.insert(
+        "list_length".into(),
+        Scheme::mono(Ty::fun(vec![list_t.clone()], Ty::int())),
+    );
+    // List.append(list, element) -> List
+    env.insert(
+        "list_append".into(),
+        Scheme::mono(Ty::fun(vec![list_t.clone(), Ty::int()], list_t.clone())),
+    );
+    // List.get(list, index) -> Int
+    env.insert(
+        "list_get".into(),
+        Scheme::mono(Ty::fun(vec![list_t.clone(), Ty::int()], Ty::int())),
+    );
+    // List.concat(a, b) -> List
+    env.insert(
+        "list_concat".into(),
+        Scheme::mono(Ty::fun(vec![list_t.clone(), list_t.clone()], list_t.clone())),
+    );
+    // List.reverse(list) -> List
+    env.insert(
+        "list_reverse".into(),
+        Scheme::mono(Ty::fun(vec![list_t.clone()], list_t.clone())),
+    );
+
+    // ── Map module functions ──────────────────────────────────────────
+
+    env.insert(
+        "map_new".into(),
+        Scheme::mono(Ty::fun(vec![], map_t.clone())),
+    );
+    env.insert(
+        "map_put".into(),
+        Scheme::mono(Ty::fun(vec![map_t.clone(), Ty::int(), Ty::int()], map_t.clone())),
+    );
+    env.insert(
+        "map_get".into(),
+        Scheme::mono(Ty::fun(vec![map_t.clone(), Ty::int()], Ty::int())),
+    );
+    env.insert(
+        "map_has_key".into(),
+        Scheme::mono(Ty::fun(vec![map_t.clone(), Ty::int()], Ty::bool())),
+    );
+    env.insert(
+        "map_delete".into(),
+        Scheme::mono(Ty::fun(vec![map_t.clone(), Ty::int()], map_t.clone())),
+    );
+    env.insert(
+        "map_size".into(),
+        Scheme::mono(Ty::fun(vec![map_t.clone()], Ty::int())),
+    );
+    env.insert(
+        "map_keys".into(),
+        Scheme::mono(Ty::fun(vec![map_t.clone()], list_t.clone())),
+    );
+    env.insert(
+        "map_values".into(),
+        Scheme::mono(Ty::fun(vec![map_t.clone()], list_t.clone())),
+    );
+
+    // ── Set module functions ──────────────────────────────────────────
+
+    env.insert(
+        "set_new".into(),
+        Scheme::mono(Ty::fun(vec![], set_t.clone())),
+    );
+    env.insert(
+        "set_add".into(),
+        Scheme::mono(Ty::fun(vec![set_t.clone(), Ty::int()], set_t.clone())),
+    );
+    env.insert(
+        "set_remove".into(),
+        Scheme::mono(Ty::fun(vec![set_t.clone(), Ty::int()], set_t.clone())),
+    );
+    env.insert(
+        "set_contains".into(),
+        Scheme::mono(Ty::fun(vec![set_t.clone(), Ty::int()], Ty::bool())),
+    );
+    env.insert(
+        "set_size".into(),
+        Scheme::mono(Ty::fun(vec![set_t.clone()], Ty::int())),
+    );
+    env.insert(
+        "set_union".into(),
+        Scheme::mono(Ty::fun(vec![set_t.clone(), set_t.clone()], set_t.clone())),
+    );
+    env.insert(
+        "set_intersection".into(),
+        Scheme::mono(Ty::fun(vec![set_t.clone(), set_t.clone()], set_t.clone())),
+    );
+
+    // ── Tuple module functions ────────────────────────────────────────
+
+    env.insert(
+        "tuple_nth".into(),
+        Scheme::mono(Ty::fun(vec![Ty::Con(TyCon::new("Tuple")), Ty::int()], Ty::int())),
+    );
+    env.insert(
+        "tuple_first".into(),
+        Scheme::mono(Ty::fun(vec![Ty::Con(TyCon::new("Tuple"))], Ty::int())),
+    );
+    env.insert(
+        "tuple_second".into(),
+        Scheme::mono(Ty::fun(vec![Ty::Con(TyCon::new("Tuple"))], Ty::int())),
+    );
+    env.insert(
+        "tuple_size".into(),
+        Scheme::mono(Ty::fun(vec![Ty::Con(TyCon::new("Tuple"))], Ty::int())),
+    );
+
+    // ── Range module functions ────────────────────────────────────────
+
+    env.insert(
+        "range_new".into(),
+        Scheme::mono(Ty::fun(vec![Ty::int(), Ty::int()], range_t.clone())),
+    );
+    env.insert(
+        "range_to_list".into(),
+        Scheme::mono(Ty::fun(vec![range_t.clone()], list_t.clone())),
+    );
+    env.insert(
+        "range_map".into(),
+        Scheme::mono(Ty::fun(vec![range_t.clone(), int_to_int.clone()], list_t.clone())),
+    );
+    env.insert(
+        "range_filter".into(),
+        Scheme::mono(Ty::fun(vec![range_t.clone(), int_to_bool], list_t.clone())),
+    );
+    env.insert(
+        "range_length".into(),
+        Scheme::mono(Ty::fun(vec![range_t.clone()], Ty::int())),
+    );
+
+    // ── Queue module functions ────────────────────────────────────────
+
+    env.insert(
+        "queue_new".into(),
+        Scheme::mono(Ty::fun(vec![], queue_t.clone())),
+    );
+    env.insert(
+        "queue_push".into(),
+        Scheme::mono(Ty::fun(vec![queue_t.clone(), Ty::int()], queue_t.clone())),
+    );
+    env.insert(
+        "queue_pop".into(),
+        Scheme::mono(Ty::fun(vec![queue_t.clone()], Ty::Con(TyCon::new("Tuple")))),
+    );
+    env.insert(
+        "queue_peek".into(),
+        Scheme::mono(Ty::fun(vec![queue_t.clone()], Ty::int())),
+    );
+    env.insert(
+        "queue_size".into(),
+        Scheme::mono(Ty::fun(vec![queue_t.clone()], Ty::int())),
+    );
+    env.insert(
+        "queue_is_empty".into(),
+        Scheme::mono(Ty::fun(vec![queue_t.clone()], Ty::bool())),
     );
 }
 
@@ -383,6 +656,13 @@ mod tests {
         assert!(env.lookup("string_to_upper").is_some());
         assert!(env.lookup("string_to_lower").is_some());
         assert!(env.lookup("string_replace").is_some());
+
+        // File I/O functions
+        assert!(env.lookup("file_read").is_some());
+        assert!(env.lookup("file_write").is_some());
+        assert!(env.lookup("file_append").is_some());
+        assert!(env.lookup("file_exists").is_some());
+        assert!(env.lookup("file_delete").is_some());
 
         // IO functions
         assert!(env.lookup("io_read_line").is_some());
