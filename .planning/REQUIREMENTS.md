@@ -62,7 +62,7 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### Tooling
 
-- [ ] **TOOL-01**: Compiler CLI (`snowc build`) producing single native binary
+- [x] **TOOL-01**: Compiler CLI (`snowc build`) producing single native binary
 - [ ] **TOOL-02**: Clear, human-readable error messages
 - [ ] **TOOL-03**: Code formatter
 - [ ] **TOOL-04**: REPL
@@ -71,9 +71,9 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### Compilation
 
-- [ ] **COMP-01**: LLVM backend producing native code
-- [ ] **COMP-02**: Single-binary output with bundled runtime
-- [ ] **COMP-03**: Cross-platform support (macOS, Linux)
+- [x] **COMP-01**: LLVM backend producing native code
+- [x] **COMP-02**: Single-binary output with bundled runtime
+- [x] **COMP-03**: Cross-platform support (macOS, Linux)
 
 ## v2 Requirements
 
@@ -151,15 +151,15 @@ Which phases cover which requirements. Updated during roadmap creation.
 | STD-07 | Phase 9: Concurrency Standard Library | Pending |
 | STD-08 | Phase 9: Concurrency Standard Library | Pending |
 | STD-09 | Phase 8: Standard Library | Pending |
-| TOOL-01 | Phase 5: LLVM Codegen & Native Binaries | Pending |
+| TOOL-01 | Phase 5: LLVM Codegen & Native Binaries | Complete |
 | TOOL-02 | Phase 10: Developer Tooling | Pending |
 | TOOL-03 | Phase 10: Developer Tooling | Pending |
 | TOOL-04 | Phase 10: Developer Tooling | Pending |
 | TOOL-05 | Phase 10: Developer Tooling | Pending |
 | TOOL-06 | Phase 10: Developer Tooling | Pending |
-| COMP-01 | Phase 5: LLVM Codegen & Native Binaries | Pending |
-| COMP-02 | Phase 5: LLVM Codegen & Native Binaries | Pending |
-| COMP-03 | Phase 5: LLVM Codegen & Native Binaries | Pending |
+| COMP-01 | Phase 5: LLVM Codegen & Native Binaries | Complete |
+| COMP-02 | Phase 5: LLVM Codegen & Native Binaries | Complete |
+| COMP-03 | Phase 5: LLVM Codegen & Native Binaries | Complete |
 
 **Coverage:**
 - v1 requirements: 47 total

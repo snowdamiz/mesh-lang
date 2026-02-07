@@ -16,7 +16,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 2: Parser & AST** - Recursive descent parser producing a complete abstract syntax tree for all Snow syntax
 - [x] **Phase 3: Type System** - Hindley-Milner type inference with generics, structs, traits, Option/Result types
 - [x] **Phase 4: Pattern Matching & Algebraic Data Types** - Exhaustive pattern matching, sum types, and guards
-- [ ] **Phase 5: LLVM Codegen & Native Binaries** - Full compilation pipeline producing native single-binary executables for sequential code
+- [x] **Phase 5: LLVM Codegen & Native Binaries** - Full compilation pipeline producing native single-binary executables for sequential code
 - [ ] **Phase 6: Actor Runtime** - Lightweight actor processes with typed message passing, standalone runtime library integrated with compiler
 - [ ] **Phase 7: Supervision & Fault Tolerance** - Supervision trees with restart strategies and let-it-crash semantics
 - [ ] **Phase 8: Standard Library** - Core library for I/O, strings, collections, file operations, HTTP, and JSON
@@ -109,11 +109,11 @@ Plans:
 **Plans**: 5 plans
 
 Plans:
-- [ ] 05-01-PLAN.md -- Runtime crate (snow-rt), codegen crate scaffolding, TypeckResult exposure, LLVM build config
-- [ ] 05-02-PLAN.md -- MIR type system, AST-to-MIR lowering, pipe/interpolation desugaring, closure conversion, monomorphization
-- [ ] 05-03-PLAN.md -- Pattern match compilation to decision trees (TDD)
-- [ ] 05-04-PLAN.md -- LLVM codegen via Inkwell (type layouts, expressions, control flow, closures, pattern matches)
-- [ ] 05-05-PLAN.md -- snowc build CLI, linking, end-to-end integration tests
+- [x] 05-01-PLAN.md -- Runtime crate (snow-rt), codegen crate scaffolding, TypeckResult exposure, LLVM build config
+- [x] 05-02-PLAN.md -- MIR type system, AST-to-MIR lowering, pipe/interpolation desugaring, closure conversion, monomorphization
+- [x] 05-03-PLAN.md -- Pattern match compilation to decision trees (TDD)
+- [x] 05-04-PLAN.md -- LLVM codegen via Inkwell (type layouts, expressions, control flow, closures, pattern matches)
+- [x] 05-05-PLAN.md -- snowc build CLI, linking, end-to-end integration tests
 
 ### Phase 6: Actor Runtime
 **Goal**: Lightweight actor processes with typed message passing, a work-stealing scheduler, and per-actor isolation, integrated into compiled Snow programs
@@ -212,7 +212,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8 -> 9 -> 10
 | 2. Parser & AST | 5/5 | Complete | 2026-02-06 |
 | 3. Type System | 5/5 | Complete | 2026-02-06 |
 | 4. Pattern Matching & ADTs | 5/5 | Complete | 2026-02-06 |
-| 5. LLVM Codegen & Native Binaries | 0/5 | Not started | - |
+| 5. LLVM Codegen & Native Binaries | 5/5 | Complete | 2026-02-06 |
 | 6. Actor Runtime | 0/5 | Not started | - |
 | 7. Supervision & Fault Tolerance | 0/3 | Not started | - |
 | 8. Standard Library | 0/5 | Not started | - |
