@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-02-05)
 
 **Core value:** Expressive, readable concurrency -- writing concurrent programs should feel as natural as sequential code, with supervision and fault tolerance built in.
-**Current focus:** Phase 6 -- Actor Runtime. Plan 02 complete (actor syntax frontend). Lexer, parser, AST, and MIR all support actor constructs.
+**Current focus:** Phase 6 -- Actor Runtime. Plan 03 complete (per-actor heaps and FIFO message passing). Each actor has its own heap; messages deep-copied on send; FIFO mailbox with blocking receive.
 
 ## Current Position
 
 Phase: 6 of 10 (Actor Runtime)
-Plan: 2 of 5 in current phase
+Plan: 3 of 7 in current phase
 Status: In progress
-Last activity: 2026-02-07 -- Completed 06-02-PLAN.md (actor syntax frontend)
+Last activity: 2026-02-07 -- Completed 06-03-PLAN.md (per-actor heaps and message passing)
 
-Progress: [█████████████████████████░░] 61% (25 plans of ~41 estimated total)
+Progress: [██████████████████████████░░] 63% (26 plans of ~41 estimated total)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 25
+- Total plans completed: 26
 - Average duration: 9min
-- Total execution time: 230min
+- Total execution time: 237min
 
 **By Phase:**
 
@@ -32,10 +32,10 @@ Progress: [███████████████████████
 | 03-type-system | 5/5 | 83min | 17min |
 | 04-pattern-matching-adts | 5/5 | 42min | 8min |
 | 05-llvm-codegen-native-binaries | 5/5 | 50min | 10min |
-| 06-actor-runtime | 2/5 | 20min | 10min |
+| 06-actor-runtime | 3/7 | 27min | 9min |
 
 **Recent Trend:**
-- Last 5 plans: 05-04 (13min), 05-05 (15min), 06-01 (10min), 06-02 (10min)
+- Last 5 plans: 05-05 (15min), 06-01 (10min), 06-02 (10min), 06-03 (7min)
 
 *Updated after each plan completion*
 
@@ -157,6 +157,12 @@ Recent decisions affecting current work:
 - [06-02]: Terminate clause enforces single-occurrence-per-actor at parse time
 - [06-02]: MirType::Pid uses Option<Box<MirType>> for optional message type parameterization
 - [06-02]: Placeholder stubs in type checker, MIR lowering, and LLVM codegen for actor constructs
+- [06-03]: Per-actor heap reuses Arena bump allocation algorithm from gc.rs
+- [06-03]: MessageBuffer stores raw bytes + u64 type_tag; tags derived from first 8 bytes of data
+- [06-03]: Mailbox uses Mutex<VecDeque<Message>> for thread-safe FIFO
+- [06-03]: Blocking receive yields to scheduler (Waiting state); woken by state transition to Ready
+- [06-03]: Heap message layout: [u64 type_tag, u64 data_len, u8... data] -- 16-byte fixed header
+- [06-03]: snow_gc_alloc_actor falls back to global arena when no actor context
 
 ### Pending Todos
 
@@ -171,5 +177,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-07
-Stopped at: Completed 06-02-PLAN.md
+Stopped at: Completed 06-03-PLAN.md
 Resume file: None
