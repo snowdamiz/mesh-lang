@@ -2125,7 +2125,7 @@ fn infer_let_binding(
     types: &mut FxHashMap<TextRange, Ty>,
     type_registry: &TypeRegistry,
     trait_registry: &TraitRegistry,
-    fn_constraints: &FxHashMap<String, FnConstraints>,
+    fn_constraints: &mut FxHashMap<String, FnConstraints>,
 ) -> Result<Ty, TypeError> {
     ctx.enter_level();
 
@@ -2163,6 +2163,15 @@ fn infer_let_binding(
 
     if let Some(name) = let_.name() {
         if let Some(name_text) = name.text() {
+            // Propagate where-clause constraints if RHS is a NameRef
+            // to a constrained function (fixes TSND-01 soundness bug).
+            if let Expr::NameRef(ref name_ref) = init_expr {
+                if let Some(source_name) = name_ref.text() {
+                    if let Some(source_constraints) = fn_constraints.get(&source_name).cloned() {
+                        fn_constraints.insert(name_text.clone(), source_constraints);
+                    }
+                }
+            }
             env.insert(name_text, scheme);
         }
     } else if let Some(pat) = let_.pattern() {
@@ -3063,6 +3072,7 @@ fn infer_block(
     fn_constraints: &FxHashMap<String, FnConstraints>,
 ) -> Result<Ty, TypeError> {
     let mut last_ty = Ty::Tuple(vec![]);
+    let mut local_fn_constraints = fn_constraints.clone();
 
     // Process ALL children in source order. This handles:
     // - Items (let bindings, fn defs) as declarations
@@ -3136,7 +3146,7 @@ fn infer_block(
                                         types,
                                         type_registry,
                                         trait_registry,
-                                        &FxHashMap::default(),
+                                        &mut local_fn_constraints,
                                     ) {
                                         last_ty = ty;
                                     }
@@ -3149,7 +3159,7 @@ fn infer_block(
                                         types,
                                         type_registry,
                                         trait_registry,
-                                        &mut FxHashMap::default(),
+                                        &mut local_fn_constraints,
                                     ) {
                                         last_ty = ty;
                                     }
@@ -3167,7 +3177,7 @@ fn infer_block(
                                 types,
                                 type_registry,
                                 trait_registry,
-                                &mut FxHashMap::default(),
+                                &mut local_fn_constraints,
                             ) {
                                 last_ty = ty;
                             }
@@ -3178,7 +3188,7 @@ fn infer_block(
             BlockChildKind::ExprNode(child_node) => {
                 if let Some(expr) = Expr::cast(child_node.clone()) {
                     processed_ranges.push(*range);
-                    match infer_expr(ctx, env, &expr, types, type_registry, trait_registry, fn_constraints) {
+                    match infer_expr(ctx, env, &expr, types, type_registry, trait_registry, &local_fn_constraints) {
                         Ok(ty) => {
                             last_ty = ty;
                         }
@@ -3196,7 +3206,7 @@ fn infer_block(
         let already_processed = processed_ranges.iter().any(|r| *r == tail_range);
 
         if !already_processed {
-            match infer_expr(ctx, env, &tail, types, type_registry, trait_registry, fn_constraints) {
+            match infer_expr(ctx, env, &tail, types, type_registry, trait_registry, &local_fn_constraints) {
                 Ok(ty) => {
                     last_ty = ty;
                 }
