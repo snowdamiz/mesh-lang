@@ -2251,3 +2251,99 @@ fn ast_param_ident_no_pattern() {
     assert!(param.name().is_some(), "Param::name() should return Some for ident param");
     assert_eq!(param.name().unwrap().text(), "x");
 }
+
+// ═══════════════════════════════════════════════════════════════════════
+// Phase 22-01: Deriving clause parsing and AST accessors
+// ═══════════════════════════════════════════════════════════════════════
+
+#[test]
+fn struct_deriving_clause_snapshot() {
+    let source = "struct Point do\n  x :: Int\nend deriving(Eq, Display)";
+    assert_snapshot!(source_and_debug(source));
+}
+
+#[test]
+fn struct_no_deriving_clause_snapshot() {
+    // Existing behavior: no deriving clause
+    let source = "struct Point do\n  x :: Int\nend";
+    assert_snapshot!(source_and_debug(source));
+}
+
+#[test]
+fn sum_type_deriving_clause_snapshot() {
+    let source = "type Shape do\n  Circle\nend deriving(Eq)";
+    assert_snapshot!(source_and_debug(source));
+}
+
+#[test]
+fn struct_deriving_empty_clause() {
+    // deriving() with empty parens derives nothing
+    let source = "struct Empty do\n  x :: Int\nend deriving()";
+    assert_snapshot!(source_and_debug(source));
+}
+
+#[test]
+fn ast_struct_deriving_traits_accessor() {
+    let source = "struct Point do\n  x :: Int\nend deriving(Eq, Display)";
+    let p = parse(source);
+    assert!(p.ok(), "parse errors: {:?}", p.errors());
+    let tree = p.tree();
+    let struct_def: StructDef = tree
+        .syntax()
+        .children()
+        .find_map(StructDef::cast)
+        .expect("should have struct def");
+
+    assert!(struct_def.has_deriving_clause());
+    let traits = struct_def.deriving_traits();
+    assert_eq!(traits, vec!["Eq".to_string(), "Display".to_string()]);
+}
+
+#[test]
+fn ast_struct_no_deriving_clause() {
+    let source = "struct Point do\n  x :: Int\nend";
+    let p = parse(source);
+    assert!(p.ok(), "parse errors: {:?}", p.errors());
+    let tree = p.tree();
+    let struct_def: StructDef = tree
+        .syntax()
+        .children()
+        .find_map(StructDef::cast)
+        .expect("should have struct def");
+
+    assert!(!struct_def.has_deriving_clause());
+    assert!(struct_def.deriving_traits().is_empty());
+}
+
+#[test]
+fn ast_sum_type_deriving_traits_accessor() {
+    let source = "type Shape do\n  Circle\n  Square\nend deriving(Eq)";
+    let p = parse(source);
+    assert!(p.ok(), "parse errors: {:?}", p.errors());
+    let tree = p.tree();
+    let sum_def: SumTypeDef = tree
+        .syntax()
+        .children()
+        .find_map(SumTypeDef::cast)
+        .expect("should have sum type def");
+
+    assert!(sum_def.has_deriving_clause());
+    let traits = sum_def.deriving_traits();
+    assert_eq!(traits, vec!["Eq".to_string()]);
+}
+
+#[test]
+fn ast_struct_deriving_empty() {
+    let source = "struct Point do\n  x :: Int\nend deriving()";
+    let p = parse(source);
+    assert!(p.ok(), "parse errors: {:?}", p.errors());
+    let tree = p.tree();
+    let struct_def: StructDef = tree
+        .syntax()
+        .children()
+        .find_map(StructDef::cast)
+        .expect("should have struct def");
+
+    assert!(struct_def.has_deriving_clause());
+    assert!(struct_def.deriving_traits().is_empty());
+}

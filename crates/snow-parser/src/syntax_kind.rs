@@ -260,6 +260,8 @@ pub enum SyntaxKind {
     AS_PAT,
     /// Guard clause: `when r > 0.0`
     GUARD_CLAUSE,
+    /// Deriving clause: `deriving(Eq, Display, ...)`
+    DERIVING_CLAUSE,
     /// Expression body for `fn name(pattern) = expr` form.
     FN_EXPR_BODY,
     /// A single clause in a multi-clause closure: `params [when guard] -> body`
@@ -637,6 +639,7 @@ mod tests {
             SyntaxKind::OR_PAT,
             SyntaxKind::AS_PAT,
             SyntaxKind::GUARD_CLAUSE,
+            SyntaxKind::DERIVING_CLAUSE,
             SyntaxKind::FN_EXPR_BODY,
             SyntaxKind::CLOSURE_CLAUSE,
             SyntaxKind::MAP_LITERAL,
@@ -663,8 +666,8 @@ mod tests {
             SyntaxKind::SECONDS_LIMIT,
         ];
         assert!(
-            node_kinds.len() >= 73,
-            "expected at least 73 composite node kinds, got {}",
+            node_kinds.len() >= 74,
+            "expected at least 74 composite node kinds, got {}",
             node_kinds.len()
         );
     }

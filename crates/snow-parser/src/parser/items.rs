@@ -299,6 +299,11 @@ pub(crate) fn parse_struct_def(p: &mut Parser) {
         p.advance(); // END_KW
     }
 
+    // Optional deriving clause: end deriving(Trait1, Trait2, ...)
+    if p.at(SyntaxKind::IDENT) && p.current_text() == "deriving" {
+        parse_deriving_clause(p);
+    }
+
     p.close(m, SyntaxKind::STRUCT_DEF);
 }
 
@@ -326,6 +331,32 @@ fn parse_struct_field(p: &mut Parser) {
     }
 
     p.close(m, SyntaxKind::STRUCT_FIELD);
+}
+
+/// Parse a deriving clause: `deriving(Trait1, Trait2, ...)`
+///
+/// Called after `end` in struct and sum type definitions. The `deriving` identifier
+/// is parsed as a contextual keyword (regular IDENT whose text is "deriving").
+fn parse_deriving_clause(p: &mut Parser) {
+    let dc = p.open();
+    p.advance(); // "deriving" IDENT
+    p.expect(SyntaxKind::L_PAREN);
+    loop {
+        if p.at(SyntaxKind::R_PAREN) || p.at(SyntaxKind::EOF) {
+            break;
+        }
+        if p.at(SyntaxKind::IDENT) {
+            p.advance(); // trait name
+        } else {
+            p.error("expected trait name in deriving clause");
+            break;
+        }
+        if !p.eat(SyntaxKind::COMMA) {
+            break;
+        }
+    }
+    p.expect(SyntaxKind::R_PAREN);
+    p.close(dc, SyntaxKind::DERIVING_CLAUSE);
 }
 
 /// Parse a generic parameter list: `<A, B, C>`
@@ -705,6 +736,11 @@ pub(crate) fn parse_sum_type_def(p: &mut Parser) {
         );
     } else {
         p.advance(); // END_KW
+    }
+
+    // Optional deriving clause: end deriving(Trait1, Trait2, ...)
+    if p.at(SyntaxKind::IDENT) && p.current_text() == "deriving" {
+        parse_deriving_clause(p);
     }
 
     p.close(m, SyntaxKind::SUM_TYPE_DEF);

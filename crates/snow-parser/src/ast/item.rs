@@ -273,6 +273,36 @@ impl StructDef {
     pub fn fields(&self) -> impl Iterator<Item = StructField> + '_ {
         child_nodes(&self.syntax)
     }
+
+    /// Whether this struct has an explicit `deriving(...)` clause.
+    ///
+    /// When `true`, only the traits listed in the clause are derived.
+    /// When `false`, all default traits (Debug, Eq, Ord, Hash) are derived
+    /// for backward compatibility.
+    pub fn has_deriving_clause(&self) -> bool {
+        self.syntax
+            .children()
+            .any(|n| n.kind() == SyntaxKind::DERIVING_CLAUSE)
+    }
+
+    /// Returns the list of trait names from `deriving(Eq, Display, ...)`.
+    ///
+    /// Returns an empty Vec if no DERIVING_CLAUSE is present.
+    /// A present but empty `deriving()` also returns an empty Vec
+    /// (use `has_deriving_clause()` to distinguish).
+    pub fn deriving_traits(&self) -> Vec<String> {
+        self.syntax
+            .children()
+            .find(|n| n.kind() == SyntaxKind::DERIVING_CLAUSE)
+            .map(|dc| {
+                dc.children_with_tokens()
+                    .filter_map(|it| it.into_token())
+                    .filter(|t| t.kind() == SyntaxKind::IDENT && t.text() != "deriving")
+                    .map(|t| t.text().to_string())
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
 }
 
 ast_node!(StructField, STRUCT_FIELD);
@@ -485,6 +515,36 @@ impl SumTypeDef {
     /// The variant definitions in the sum type.
     pub fn variants(&self) -> impl Iterator<Item = VariantDef> + '_ {
         child_nodes(&self.syntax)
+    }
+
+    /// Whether this sum type has an explicit `deriving(...)` clause.
+    ///
+    /// When `true`, only the traits listed in the clause are derived.
+    /// When `false`, all default traits (Debug, Eq, Ord) are derived
+    /// for backward compatibility.
+    pub fn has_deriving_clause(&self) -> bool {
+        self.syntax
+            .children()
+            .any(|n| n.kind() == SyntaxKind::DERIVING_CLAUSE)
+    }
+
+    /// Returns the list of trait names from `deriving(Eq, Display, ...)`.
+    ///
+    /// Returns an empty Vec if no DERIVING_CLAUSE is present.
+    /// A present but empty `deriving()` also returns an empty Vec
+    /// (use `has_deriving_clause()` to distinguish).
+    pub fn deriving_traits(&self) -> Vec<String> {
+        self.syntax
+            .children()
+            .find(|n| n.kind() == SyntaxKind::DERIVING_CLAUSE)
+            .map(|dc| {
+                dc.children_with_tokens()
+                    .filter_map(|it| it.into_token())
+                    .filter(|t| t.kind() == SyntaxKind::IDENT && t.text() != "deriving")
+                    .map(|t| t.text().to_string())
+                    .collect()
+            })
+            .unwrap_or_default()
     }
 }
 
