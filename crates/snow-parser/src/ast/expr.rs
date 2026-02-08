@@ -30,6 +30,7 @@ pub enum Expr {
     ReturnExpr(ReturnExpr),
     TupleExpr(TupleExpr),
     StructLiteral(StructLiteral),
+    MapLiteral(MapLiteral),
     // Actor expression types
     SpawnExpr(SpawnExpr),
     SendExpr(SendExpr),
@@ -58,6 +59,9 @@ impl Expr {
             SyntaxKind::TUPLE_EXPR => Some(Expr::TupleExpr(TupleExpr { syntax: node })),
             SyntaxKind::STRUCT_LITERAL => {
                 Some(Expr::StructLiteral(StructLiteral { syntax: node }))
+            }
+            SyntaxKind::MAP_LITERAL => {
+                Some(Expr::MapLiteral(MapLiteral { syntax: node }))
             }
             // Actor expressions
             SyntaxKind::SPAWN_EXPR => Some(Expr::SpawnExpr(SpawnExpr { syntax: node })),
@@ -88,6 +92,7 @@ impl Expr {
             Expr::ReturnExpr(n) => &n.syntax,
             Expr::TupleExpr(n) => &n.syntax,
             Expr::StructLiteral(n) => &n.syntax,
+            Expr::MapLiteral(n) => &n.syntax,
             Expr::SpawnExpr(n) => &n.syntax,
             Expr::SendExpr(n) => &n.syntax,
             Expr::ReceiveExpr(n) => &n.syntax,
@@ -489,6 +494,31 @@ impl StructLiteralField {
     /// The field value expression.
     pub fn value(&self) -> Option<Expr> {
         self.syntax.children().find_map(Expr::cast)
+    }
+}
+
+// ── Map Literal Expression ───────────────────────────────────────────────
+
+ast_node!(MapLiteral, MAP_LITERAL);
+
+impl MapLiteral {
+    /// The map entries.
+    pub fn entries(&self) -> impl Iterator<Item = MapEntry> + '_ {
+        child_nodes(&self.syntax)
+    }
+}
+
+ast_node!(MapEntry, MAP_ENTRY);
+
+impl MapEntry {
+    /// The key expression (first child expression).
+    pub fn key(&self) -> Option<Expr> {
+        self.syntax.children().find_map(Expr::cast)
+    }
+
+    /// The value expression (second child expression, after `=>`).
+    pub fn value(&self) -> Option<Expr> {
+        self.syntax.children().filter_map(Expr::cast).nth(1)
     }
 }
 

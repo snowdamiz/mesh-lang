@@ -262,6 +262,10 @@ pub enum SyntaxKind {
     FN_EXPR_BODY,
     /// A single clause in a multi-clause closure: `params [when guard] -> body`
     CLOSURE_CLAUSE,
+    /// Map literal: `%{key => value, ...}`
+    MAP_LITERAL,
+    /// Single entry in a map literal: `key => value`
+    MAP_ENTRY,
 
     // ── Actor node kinds ──────────────────────────────────────────────
     /// Actor block declaration: `actor Name do ... end`
@@ -632,6 +636,8 @@ mod tests {
             SyntaxKind::GUARD_CLAUSE,
             SyntaxKind::FN_EXPR_BODY,
             SyntaxKind::CLOSURE_CLAUSE,
+            SyntaxKind::MAP_LITERAL,
+            SyntaxKind::MAP_ENTRY,
             // Actor node kinds
             SyntaxKind::ACTOR_DEF,
             SyntaxKind::SPAWN_EXPR,
@@ -654,8 +660,8 @@ mod tests {
             SyntaxKind::SECONDS_LIMIT,
         ];
         assert!(
-            node_kinds.len() >= 70,
-            "expected at least 70 composite node kinds, got {}",
+            node_kinds.len() >= 72,
+            "expected at least 72 composite node kinds, got {}",
             node_kinds.len()
         );
     }

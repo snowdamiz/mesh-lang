@@ -239,6 +239,17 @@ fn lhs(p: &mut Parser) -> Option<MarkClosed> {
         SyntaxKind::CASE_KW | SyntaxKind::MATCH_KW => Some(parse_case_expr(p)),
         SyntaxKind::FN_KW => Some(parse_closure(p)),
 
+        // Map literal: %{key => value, ...}
+        SyntaxKind::PERCENT => {
+            if p.nth(1) == SyntaxKind::L_BRACE {
+                Some(parse_map_literal(p))
+            } else {
+                // Bare % is not valid in lhs position (modulo is an infix op)
+                p.error("expected expression");
+                None
+            }
+        }
+
         // Actor expression atoms
         SyntaxKind::SPAWN_KW => Some(parse_spawn_expr(p)),
         SyntaxKind::SEND_KW => Some(parse_send_expr(p)),
@@ -251,6 +262,43 @@ fn lhs(p: &mut Parser) -> Option<MarkClosed> {
             None
         }
     }
+}
+
+// ── Map Literal ───────────────────────────────────────────────────
+
+/// Parse a map literal: `%{key1 => value1, key2 => value2, ...}`
+///
+/// Each entry is `expr => expr`, separated by commas (or newlines inside braces).
+/// Produces MAP_ENTRY children inside the MAP_LITERAL node.
+fn parse_map_literal(p: &mut Parser) -> MarkClosed {
+    let m = p.open();
+    p.advance(); // PERCENT
+    p.expect(SyntaxKind::L_BRACE);
+
+    // Handle empty map literal: %{}
+    while !p.at(SyntaxKind::R_BRACE) && !p.at(SyntaxKind::EOF) {
+        let entry = p.open();
+        expr_bp(p, 0); // key expression
+        p.expect(SyntaxKind::FAT_ARROW); // =>
+        if !p.has_error() {
+            expr_bp(p, 0); // value expression
+        }
+        p.close(entry, SyntaxKind::MAP_ENTRY);
+
+        if p.has_error() {
+            break;
+        }
+
+        // Separator: comma or implicit (newlines inside braces are insignificant).
+        if !p.eat(SyntaxKind::COMMA) {
+            if p.at(SyntaxKind::R_BRACE) || p.at(SyntaxKind::EOF) {
+                break;
+            }
+        }
+    }
+
+    p.expect(SyntaxKind::R_BRACE);
+    p.close(m, SyntaxKind::MAP_LITERAL)
 }
 
 // ── Struct Literal ────────────────────────────────────────────────
