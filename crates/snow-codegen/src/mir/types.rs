@@ -177,6 +177,43 @@ fn mir_type_suffix(ty: &MirType) -> String {
     }
 }
 
+/// Convert a MIR type back to a typeck `Ty` for TraitRegistry lookups.
+///
+/// This is the reverse of `resolve_type`: given a `MirType` produced during
+/// lowering, reconstruct the `Ty` representation needed to query the
+/// `TraitRegistry` (e.g., `has_impl`, `find_method_traits`).
+///
+/// Complex types (tuples, closures, function pointers) map to
+/// `Ty::Con(TyCon::new("Unknown"))` since trait impls for those types
+/// are not expected in v1.3.
+pub fn mir_type_to_ty(mir_type: &MirType) -> Ty {
+    match mir_type {
+        MirType::Int => Ty::int(),
+        MirType::Float => Ty::float(),
+        MirType::String => Ty::string(),
+        MirType::Bool => Ty::bool(),
+        MirType::Struct(name) => Ty::Con(TyCon::new(name)),
+        MirType::SumType(name) => Ty::Con(TyCon::new(name)),
+        _ => Ty::Con(TyCon::new("Unknown")),
+    }
+}
+
+/// Extract the type name string from a `MirType` for use in mangled names.
+///
+/// Used to construct the `Type` segment of `Trait__Method__Type` mangled
+/// names. Returns the human-readable type name (e.g., "Int", "Point").
+pub fn mir_type_to_impl_name(mir_type: &MirType) -> String {
+    match mir_type {
+        MirType::Int => "Int".to_string(),
+        MirType::Float => "Float".to_string(),
+        MirType::String => "String".to_string(),
+        MirType::Bool => "Bool".to_string(),
+        MirType::Struct(name) => name.clone(),
+        MirType::SumType(name) => name.clone(),
+        _ => "Unknown".to_string(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -341,5 +378,88 @@ mod tests {
         let reg = empty_registry();
         // Unresolved type variables fall back to Unit for graceful degradation.
         assert_eq!(resolve_type(&Ty::Var(TyVar(0)), &reg, false), MirType::Unit);
+    }
+
+    // ── mir_type_to_ty tests ─────────────────────────────────────────
+
+    #[test]
+    fn mir_type_to_ty_int() {
+        assert_eq!(mir_type_to_ty(&MirType::Int), Ty::int());
+    }
+
+    #[test]
+    fn mir_type_to_ty_float() {
+        assert_eq!(mir_type_to_ty(&MirType::Float), Ty::float());
+    }
+
+    #[test]
+    fn mir_type_to_ty_string() {
+        assert_eq!(mir_type_to_ty(&MirType::String), Ty::string());
+    }
+
+    #[test]
+    fn mir_type_to_ty_bool() {
+        assert_eq!(mir_type_to_ty(&MirType::Bool), Ty::bool());
+    }
+
+    #[test]
+    fn mir_type_to_ty_struct() {
+        assert_eq!(
+            mir_type_to_ty(&MirType::Struct("Point".to_string())),
+            Ty::Con(TyCon::new("Point"))
+        );
+    }
+
+    #[test]
+    fn mir_type_to_ty_sum_type() {
+        assert_eq!(
+            mir_type_to_ty(&MirType::SumType("Shape".to_string())),
+            Ty::Con(TyCon::new("Shape"))
+        );
+    }
+
+    #[test]
+    fn mir_type_to_ty_unknown_fallback() {
+        // Complex types fall back to Unknown.
+        assert_eq!(
+            mir_type_to_ty(&MirType::Unit),
+            Ty::Con(TyCon::new("Unknown"))
+        );
+        assert_eq!(
+            mir_type_to_ty(&MirType::Ptr),
+            Ty::Con(TyCon::new("Unknown"))
+        );
+    }
+
+    // ── mir_type_to_impl_name tests ──────────────────────────────────
+
+    #[test]
+    fn mir_type_to_impl_name_primitives() {
+        assert_eq!(mir_type_to_impl_name(&MirType::Int), "Int");
+        assert_eq!(mir_type_to_impl_name(&MirType::Float), "Float");
+        assert_eq!(mir_type_to_impl_name(&MirType::String), "String");
+        assert_eq!(mir_type_to_impl_name(&MirType::Bool), "Bool");
+    }
+
+    #[test]
+    fn mir_type_to_impl_name_struct() {
+        assert_eq!(
+            mir_type_to_impl_name(&MirType::Struct("Point".to_string())),
+            "Point"
+        );
+    }
+
+    #[test]
+    fn mir_type_to_impl_name_sum_type() {
+        assert_eq!(
+            mir_type_to_impl_name(&MirType::SumType("Shape".to_string())),
+            "Shape"
+        );
+    }
+
+    #[test]
+    fn mir_type_to_impl_name_unknown_fallback() {
+        assert_eq!(mir_type_to_impl_name(&MirType::Unit), "Unknown");
+        assert_eq!(mir_type_to_impl_name(&MirType::Ptr), "Unknown");
     }
 }
