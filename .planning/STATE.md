@@ -5,16 +5,16 @@
 See: .planning/PROJECT.md (updated 2026-02-07)
 
 **Core value:** Expressive, readable concurrency -- writing concurrent programs should feel as natural as sequential code, with supervision and fault tolerance built in.
-**Current focus:** Milestone v1.3 Traits & Protocols -- Phase 18 (Trait Infrastructure)
+**Current focus:** Milestone v1.3 Traits & Protocols -- Phase 19 (Trait Method Codegen)
 
 ## Current Position
 
-Phase: 18 of 22 (Trait Infrastructure)
-Plan: 3 of 3 in current phase
-Status: Phase complete
-Last activity: 2026-02-08 -- Completed 18-03-PLAN.md (TraitRegistry exposure)
+Phase: 19 of 22 (Trait Method Codegen)
+Plan: 1 of 4 in current phase
+Status: In progress
+Last activity: 2026-02-08 -- Completed 19-01-PLAN.md (ImplDef method lowering with mangled names)
 
-Progress: ██░░░░░░░░ 18% (3/17 plans)
+Progress: ██░░░░░░░░ 24% (4/17 plans)
 
 ## Performance Metrics
 
@@ -59,6 +59,9 @@ Recent decisions for v1.3:
 - (18-02) Push impl even on duplicate (for error recovery in downstream lookups)
 - (18-03) TraitRegistry re-exported at crate root, owned in TypeckResult, borrowed in Lowerer
 - (18-03) Unified dispatch: built-in and user types share identical TraitRegistry resolution path
+- (19-01) extract_impl_names() as free function reused by pre-registration and lowering
+- (19-01) Self parameter detected via SELF_KW, type from Ty::Fun zip (not manual construction)
+- (19-01) typeck stores impl method Ty::Fun in types map for lowerer consumption
 
 ### Pending Todos
 
@@ -72,6 +75,6 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-08
-Stopped at: Completed 18-03-PLAN.md (TraitRegistry exposure) -- Phase 18 complete
+Stopped at: Completed 19-01-PLAN.md (ImplDef method lowering with mangled names)
 Resume file: None
-Next action: Begin Phase 19 (Trait Method Codegen)
+Next action: Execute 19-02-PLAN.md (Call-Site Resolution)
