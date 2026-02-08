@@ -1,11 +1,18 @@
-//! Simple arena/bump allocator for GC-managed memory.
+//! GC allocation entry points for Snow runtime.
 //!
-//! For Phase 5, the GC does NOT collect -- it allocates from a growing arena.
-//! True mark-sweep collection is deferred to Phase 6 (per-actor GC).
+//! Two allocation paths exist:
+//!
+//! - **Global arena** (`snow_gc_alloc`): Simple bump allocator for non-actor
+//!   contexts (main thread, startup). No object headers, no collection.
+//!
+//! - **Per-actor heap** (`snow_gc_alloc_actor`): GcHeader-aware allocator that
+//!   prepends a 16-byte header to every allocation. Supports mark-sweep GC
+//!   with free-list reuse. Falls back to the global arena when no actor
+//!   context is available.
 //!
 //! All GC-managed values (strings, closure environments, ADT payloads) are
-//! allocated via `snow_gc_alloc`. The implementation can change without
-//! changing the ABI, preparing for Phase 6's per-actor GC.
+//! allocated via these entry points. The returned pointer is always the
+//! user-visible data pointer (past any header), keeping the ABI stable.
 
 use std::sync::Mutex;
 
@@ -119,8 +126,11 @@ pub extern "C" fn snow_gc_alloc(size: u64, align: u64) -> *mut u8 {
 /// per-actor heap.
 ///
 /// If called from within an actor context (i.e., a thread running an actor
-/// coroutine), allocates from that actor's heap. Falls back to the global
-/// arena if no actor context is available.
+/// coroutine), allocates from that actor's heap via `ActorHeap::alloc()`,
+/// which prepends a 16-byte `GcHeader`. The returned pointer is past the
+/// header -- callers see only user data.
+///
+/// Falls back to the global arena (no header) if no actor context is available.
 ///
 /// # Safety
 ///
@@ -151,6 +161,23 @@ fn try_alloc_from_actor_heap(size: usize, align: usize) -> Option<*mut u8> {
     let proc_arc = sched.get_process(pid)?;
     let mut proc = proc_arc.lock();
     Some(proc.heap.alloc(size, align))
+}
+
+/// Trigger garbage collection on the current actor's heap.
+///
+/// This is a stub for Phase 17 Plan 01. The full mark-sweep implementation
+/// will be added in Plan 02 (mark phase) and Plan 03 (sweep phase).
+///
+/// When fully implemented, this will:
+/// 1. Conservatively scan the actor's coroutine stack for roots
+/// 2. Mark all reachable objects via the all-objects list
+/// 3. Sweep unmarked objects onto the free list
+///
+/// Currently a no-op.
+#[no_mangle]
+pub extern "C" fn snow_gc_collect() {
+    // Will be implemented in Plan 02: triggers GC on current actor's heap.
+    // For now, no-op.
 }
 
 #[cfg(test)]
@@ -197,5 +224,53 @@ mod tests {
         snow_rt_init();
         let ptr = snow_gc_alloc(64, 8);
         assert!(!ptr.is_null());
+    }
+
+    #[test]
+    fn test_snow_gc_collect_stub() {
+        // The stub should compile and not crash.
+        snow_gc_collect();
+    }
+
+    #[test]
+    fn test_global_arena_no_headers() {
+        // Global arena does NOT prepend GcHeaders -- it returns raw pointers.
+        let mut arena = Arena::new();
+        arena.init();
+
+        // Write a known pattern to the arena allocation.
+        let ptr = arena.alloc(8, 8);
+        unsafe {
+            std::ptr::write(ptr as *mut u64, 0xDEADBEEF_CAFEBABE);
+        }
+
+        // Read it back -- the pointer IS the data, no header to skip.
+        let val = unsafe { *(ptr as *const u64) };
+        assert_eq!(val, 0xDEADBEEF_CAFEBABE);
+    }
+
+    #[test]
+    fn test_actor_heap_has_headers() {
+        use crate::actor::heap::{ActorHeap, GcHeader, GC_HEADER_SIZE};
+
+        // Actor heap DOES prepend GcHeaders to every allocation.
+        let mut heap = ActorHeap::new();
+        let data_ptr = heap.alloc(64, 8);
+
+        // Back up 16 bytes to find the GcHeader.
+        let header_ptr = unsafe { GcHeader::from_data_ptr(data_ptr) };
+        let header = unsafe { &*header_ptr };
+
+        // The header should have the correct size and be alive (not free).
+        assert_eq!(header.size, 64);
+        assert!(!header.is_free());
+        assert!(!header.is_marked());
+
+        // Verify the data pointer is exactly GC_HEADER_SIZE bytes past the header.
+        assert_eq!(
+            data_ptr as usize - header_ptr as usize,
+            GC_HEADER_SIZE,
+            "data pointer should be GC_HEADER_SIZE bytes past the header"
+        );
     }
 }
