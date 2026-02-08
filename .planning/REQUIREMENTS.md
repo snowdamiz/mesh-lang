@@ -19,7 +19,7 @@ Fix all five known limitations carried from v1.3.
 
 ### Type System Soundness
 
-- [ ] **TSND-01**: Higher-order constrained functions preserve trait constraints when captured as values — `let f = show` retains the `T: Display` constraint, preventing calls with non-Display types (compiler error instead of silent unsoundness)
+- [x] **TSND-01**: Higher-order constrained functions preserve trait constraints when captured as values — `let f = show` retains the `T: Display` constraint, preventing calls with non-Display types (compiler error instead of silent unsoundness)
 
 ## Future Requirements
 
@@ -43,7 +43,7 @@ None — v1.4 is a focused bug-fix milestone.
 | PATM-02 | Phase 23 | Complete |
 | TGEN-01 | Phase 24 | Complete |
 | TGEN-02 | Phase 24 | Complete |
-| TSND-01 | Phase 25 | Pending |
+| TSND-01 | Phase 25 | Complete |
 
 **Coverage:**
 - v1.4 requirements: 5 total

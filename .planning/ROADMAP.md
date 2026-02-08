@@ -6,7 +6,7 @@
 - ✅ **v1.1 Language Polish** - Phases 11-15 (shipped 2026-02-08)
 - ✅ **v1.2 Runtime & Type Fixes** - Phases 16-17 (shipped 2026-02-08)
 - ✅ **v1.3 Traits & Protocols** - Phases 18-22 (shipped 2026-02-08)
-- 🚧 **v1.4 Compiler Polish** - Phases 23-25 (in progress)
+- ✅ **v1.4 Compiler Polish** - Phases 23-25 (shipped 2026-02-08)
 
 ## Phases
 
@@ -46,7 +46,12 @@ See milestones/v1.3-ROADMAP.md for details.
 
 </details>
 
-### 🚧 v1.4 Compiler Polish (In Progress)
+<details>
+<summary>✅ v1.4 Compiler Polish (Phases 23-25) - SHIPPED 2026-02-08</summary>
+
+5 plans across 3 phases. Fixed all five v1.3 known limitations: sum type pattern matching
+codegen with field destructuring, recursive nested collection Display, generic type deriving
+with monomorphization, and higher-order constrained function soundness.
 
 **Milestone Goal:** Fix all five known limitations carried from v1.3 -- making the compiler fully correct across pattern matching codegen, trait system generics, and type system soundness.
 
@@ -88,7 +93,9 @@ Plans:
   3. The constraint preservation works for user-defined traits (not just stdlib Display) -- e.g., a function `where T: MyTrait` captured as a value still enforces `MyTrait`
 **Plans:** 1 plan
 Plans:
-- [ ] 25-01-PLAN.md -- Propagate fn_constraints through let bindings + e2e tests
+- [x] 25-01-PLAN.md -- Propagate fn_constraints through let bindings + e2e tests
+
+</details>
 
 ## Progress
 
@@ -118,4 +125,4 @@ Plans:
 | 22. Auto-Derive (Stretch) | v1.3 | 2/2 | Complete | 2026-02-08 |
 | 23. Pattern Matching Codegen | v1.4 | 2/2 | Complete | 2026-02-08 |
 | 24. Trait System Generics | v1.4 | 2/2 | Complete | 2026-02-08 |
-| 25. Type System Soundness | v1.4 | 0/1 | Not started | - |
+| 25. Type System Soundness | v1.4 | 1/1 | Complete | 2026-02-08 |
