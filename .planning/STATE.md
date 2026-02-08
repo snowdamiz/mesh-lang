@@ -10,11 +10,11 @@ See: .planning/PROJECT.md (updated 2026-02-07)
 ## Current Position
 
 Phase: 16 of 17 (Fun() Type Parsing)
-Plan: 1 of 2 in phase 16
-Status: In progress
-Last activity: 2026-02-08 -- Completed 16-01-PLAN.md
+Plan: 2 of 2 in phase 16
+Status: Phase complete
+Last activity: 2026-02-08 -- Completed 16-02-PLAN.md
 
-Progress: █████░░░░░ 50% (1/2 plans in v1.2)
+Progress: ██████████ 100% (2/2 plans in phase 16)
 
 ## Performance Metrics
 
@@ -33,9 +33,9 @@ Progress: █████░░░░░ 50% (1/2 plans in v1.2)
 - Lines of Rust: 56,539 (+3,928)
 
 **v1.2 Progress:**
-- Plans completed: 1
+- Plans completed: 2
 - Phases started: 1 (16)
-- Commits: 2
+- Commits: 4
 
 ## Accumulated Context
 
@@ -48,6 +48,8 @@ Full decision history archived in milestones/v1.0-ROADMAP.md and milestones/v1.1
 |----------|-------|-----------|
 | Fun remains IDENT, not keyword | 16-01 | Type-position disambiguation only; avoid breaking existing code using Fun as variable name |
 | FUN_TYPE placed after RESULT_TYPE | 16-01 | Groups type annotation nodes together in SyntaxKind enum |
+| Fun-typed params as MirType::Closure | 16-02 | LLVM signatures must accept {ptr, ptr} structs for closure parameters |
+| No closure splitting for user functions | 16-02 | Only runtime intrinsics expect split (fn_ptr, env_ptr); user functions take struct |
 
 ### Pending Todos
 
@@ -60,6 +62,6 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-08
-Stopped at: Completed 16-01-PLAN.md
+Stopped at: Completed 16-02-PLAN.md (Phase 16 complete)
 Resume file: None
-Next action: /gsd:execute-phase 16-02
+Next action: Phase 17 or v1.2 completion
