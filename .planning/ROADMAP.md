@@ -73,7 +73,10 @@ Plans:
   2. `to_string([Some(1), None])` produces `[Some(1), None]` (Display dispatches correctly through collection elements that are sum types)
   3. A generic struct `type Box<T> do value :: T end` with `deriving(Display, Eq)` works for `Box<Int>`, `Box<String>`, and other concrete instantiations
   4. Auto-derived trait impls are registered per-monomorphization so `Box<Int>` and `Box<String>` get independent Display/Eq implementations
-**Plans**: TBD
+**Plans:** 2 plans
+Plans:
+- [ ] 24-01-PLAN.md -- Recursive nested collection Display (TGEN-01)
+- [ ] 24-02-PLAN.md -- Generic type deriving with monomorphized trait functions (TGEN-02)
 
 #### Phase 25: Type System Soundness
 **Goal**: Higher-order constrained functions preserve their trait constraints when captured as values -- the type system prevents unsound calls at compile time
