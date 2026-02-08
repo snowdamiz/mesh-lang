@@ -1504,7 +1504,8 @@ fn parse_alias_type(node: &snow_parser::SyntaxNode, _generic_params: &[String]) 
                     match kind {
                         SyntaxKind::IDENT | SyntaxKind::LT | SyntaxKind::GT
                         | SyntaxKind::COMMA | SyntaxKind::QUESTION | SyntaxKind::BANG
-                        | SyntaxKind::L_PAREN | SyntaxKind::R_PAREN => {
+                        | SyntaxKind::L_PAREN | SyntaxKind::R_PAREN
+                        | SyntaxKind::ARROW => {
                             tokens.push((kind, t.text().to_string()));
                         }
                         _ => {}
@@ -4923,7 +4924,8 @@ fn collect_annotation_tokens(
                 match kind {
                     SyntaxKind::IDENT | SyntaxKind::LT | SyntaxKind::GT
                     | SyntaxKind::COMMA | SyntaxKind::QUESTION | SyntaxKind::BANG
-                    | SyntaxKind::L_PAREN | SyntaxKind::R_PAREN => {
+                    | SyntaxKind::L_PAREN | SyntaxKind::R_PAREN
+                    | SyntaxKind::ARROW => {
                         tokens.push((kind, t.text().to_string()));
                     }
                     _ => {}
@@ -4965,6 +4967,27 @@ fn parse_type_tokens(tokens: &[(SyntaxKind, String)], pos: &mut usize) -> Ty {
 
     let name = tokens[*pos].1.clone();
     *pos += 1;
+
+    // Function type: Fun(ParamTypes) -> ReturnType
+    if name == "Fun" && *pos < tokens.len() && tokens[*pos].0 == SyntaxKind::L_PAREN {
+        *pos += 1; // skip (
+        let mut param_tys = Vec::new();
+        while *pos < tokens.len() && tokens[*pos].0 != SyntaxKind::R_PAREN {
+            param_tys.push(parse_type_tokens(tokens, pos));
+            if *pos < tokens.len() && tokens[*pos].0 == SyntaxKind::COMMA {
+                *pos += 1;
+            }
+        }
+        if *pos < tokens.len() && tokens[*pos].0 == SyntaxKind::R_PAREN {
+            *pos += 1; // skip )
+        }
+        // Expect ->
+        if *pos < tokens.len() && tokens[*pos].0 == SyntaxKind::ARROW {
+            *pos += 1; // skip ->
+        }
+        let ret_ty = parse_type_tokens(tokens, pos);
+        return Ty::Fun(param_tys, Box::new(ret_ty));
+    }
 
     // Generic args: Name<A, B>
     let base = if *pos < tokens.len() && tokens[*pos].0 == SyntaxKind::LT {
