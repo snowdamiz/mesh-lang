@@ -633,18 +633,22 @@ fn register_compiler_known_traits(registry: &mut TraitRegistry) {
     registry.register_trait(TraitDef {
         name: "Ord".to_string(),
         methods: vec![TraitMethodSig {
-            name: "cmp".to_string(),
+            name: "lt".to_string(),
             has_self: true,
             param_count: 1,
             return_type: Some(Ty::bool()),
         }],
     });
 
-    // Ord impls for Int, Float.
-    for (ty, ty_name) in &[(Ty::int(), "Int"), (Ty::float(), "Float")] {
+    // Ord impls for Int, Float, String.
+    for (ty, ty_name) in &[
+        (Ty::int(), "Int"),
+        (Ty::float(), "Float"),
+        (Ty::string(), "String"),
+    ] {
         let mut methods = FxHashMap::default();
         methods.insert(
-            "cmp".to_string(),
+            "lt".to_string(),
             ImplMethodSig {
                 has_self: true,
                 param_count: 1,

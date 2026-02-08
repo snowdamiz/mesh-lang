@@ -1581,15 +1581,20 @@ impl<'a> Lowerer<'a> {
         let lhs_ty = lhs.ty().clone();
         let is_user_type = matches!(lhs_ty, MirType::Struct(_) | MirType::SumType(_));
         if is_user_type {
-            let (trait_name, method_name) = match op {
-                BinOp::Add => (Some("Add"), "add"),
-                BinOp::Sub => (Some("Sub"), "sub"),
-                BinOp::Mul => (Some("Mul"), "mul"),
-                BinOp::Eq => (Some("Eq"), "eq"),
-                BinOp::Lt => (Some("Ord"), "lt"),
-                _ => (None, ""),
+            // (trait_name, method_name, negate_result, swap_args)
+            let dispatch = match op {
+                BinOp::Add => Some(("Add", "add", false, false)),
+                BinOp::Sub => Some(("Sub", "sub", false, false)),
+                BinOp::Mul => Some(("Mul", "mul", false, false)),
+                BinOp::Eq => Some(("Eq", "eq", false, false)),
+                BinOp::NotEq => Some(("Eq", "eq", true, false)),      // negate eq
+                BinOp::Lt => Some(("Ord", "lt", false, false)),
+                BinOp::Gt => Some(("Ord", "lt", false, true)),        // swap: b < a
+                BinOp::LtEq => Some(("Ord", "lt", true, true)),       // negate(b < a)
+                BinOp::GtEq => Some(("Ord", "lt", true, false)),      // negate(a < b)
+                _ => None,
             };
-            if let Some(trait_name) = trait_name {
+            if let Some((trait_name, method_name, negate, swap_args)) = dispatch {
                 let ty_for_lookup = mir_type_to_ty(&lhs_ty);
                 if self.trait_registry.has_impl(trait_name, &ty_for_lookup) {
                     let type_name = mir_type_to_impl_name(&lhs_ty);
@@ -1597,14 +1602,29 @@ impl<'a> Lowerer<'a> {
                         format!("{}__{}__{}", trait_name, method_name, type_name);
                     let rhs_ty = rhs.ty().clone();
                     let fn_ty = MirType::FnPtr(
-                        vec![lhs_ty, rhs_ty],
-                        Box::new(ty.clone()),
+                        vec![lhs_ty.clone(), rhs_ty],
+                        Box::new(MirType::Bool),
                     );
-                    return MirExpr::Call {
-                        func: Box::new(MirExpr::Var(mangled, fn_ty)),
-                        args: vec![lhs, rhs],
-                        ty,
+                    let (call_lhs, call_rhs) = if swap_args {
+                        (rhs, lhs)
+                    } else {
+                        (lhs, rhs)
                     };
+                    let call = MirExpr::Call {
+                        func: Box::new(MirExpr::Var(mangled, fn_ty)),
+                        args: vec![call_lhs, call_rhs],
+                        ty: MirType::Bool,
+                    };
+                    if negate {
+                        return MirExpr::BinOp {
+                            op: BinOp::Eq,
+                            lhs: Box::new(call),
+                            rhs: Box::new(MirExpr::BoolLit(false, MirType::Bool)),
+                            ty,
+                        };
+                    } else {
+                        return call;
+                    }
                 }
             }
         }
