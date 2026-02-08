@@ -233,8 +233,11 @@ impl<'ctx> CodeGen<'ctx> {
 
         let lhs_ty = lhs.ty();
 
-        // String concat
+        // Concat operator: list ++ or string ++
         if matches!(op, BinOp::Concat) {
+            if matches!(lhs_ty, MirType::Ptr) {
+                return self.codegen_list_concat(lhs_val, rhs_val);
+            }
             return self.codegen_string_concat(lhs_val, rhs_val);
         }
 
@@ -424,6 +427,22 @@ impl<'ctx> CodeGen<'ctx> {
             .ok_or_else(|| "snow_string_concat returned void".to_string())
     }
 
+    fn codegen_list_concat(
+        &mut self,
+        lhs: BasicValueEnum<'ctx>,
+        rhs: BasicValueEnum<'ctx>,
+    ) -> Result<BasicValueEnum<'ctx>, String> {
+        let concat_fn = get_intrinsic(&self.module, "snow_list_concat");
+        let result = self
+            .builder
+            .build_call(concat_fn, &[lhs.into(), rhs.into()], "list_concat")
+            .map_err(|e| e.to_string())?;
+        result
+            .try_as_basic_value()
+            .basic()
+            .ok_or_else(|| "snow_list_concat returned void".to_string())
+    }
+
     fn codegen_string_compare(
         &mut self,
         op: &BinOp,
@@ -606,8 +625,9 @@ impl<'ctx> CodeGen<'ctx> {
             // Check if it's a runtime intrinsic (don't add reduction check for runtime calls)
             if let Some(fn_val) = self.module.get_function(name) {
                 // Coerce argument types to match runtime function signatures:
-                // - Bool i1 -> i8 (zero-extend)
+                // - Bool i1 -> i8/i64 (zero-extend)
                 // - Ptr -> i64 (ptrtoint, for uniform-value functions like map_put)
+                // - Float f64 -> i64 (bitcast, for uniform-value functions like list_append)
                 let mut coerced_args = arg_vals.clone();
                 let param_types = fn_val.get_type().get_param_types();
                 for (i, param_ty) in param_types.iter().enumerate() {
@@ -637,6 +657,19 @@ impl<'ctx> CodeGen<'ctx> {
                                     }
                                 }
                             }
+                            BasicMetadataValueEnum::FloatValue(arg_fv) => {
+                                // If the runtime function expects i64 but we have a float
+                                // (e.g., Float values passed to snow_list_append), bitcast f64->i64.
+                                if let inkwell::types::BasicMetadataTypeEnum::IntType(param_it) = param_ty {
+                                    if param_it.get_bit_width() == 64 {
+                                        let cast = self
+                                            .builder
+                                            .build_bit_cast(arg_fv, *param_it, "f64_to_i64")
+                                            .map_err(|e| e.to_string())?;
+                                        coerced_args[i] = cast.into();
+                                    }
+                                }
+                            }
                             _ => {}
                         }
                     }
@@ -656,11 +689,14 @@ impl<'ctx> CodeGen<'ctx> {
                     .basic()
                     .ok_or_else(|| "Function call returned void".to_string())?;
 
-                // Runtime functions returning i8 for Bool values need truncation
-                // to i1 to match Snow's Bool representation.
+                // Runtime functions returning i8 or i64 for Bool values need
+                // truncation to i1 to match Snow's Bool representation.
+                // i8: functions like snow_set_contains that return bool as i8.
+                // i64: functions like snow_list_get that return u64 (uniform storage).
                 if matches!(ty, MirType::Bool) {
                     if let BasicValueEnum::IntValue(iv) = result {
-                        if iv.get_type().get_bit_width() == 8 {
+                        let bw = iv.get_type().get_bit_width();
+                        if bw > 1 {
                             let i1_val = self
                                 .builder
                                 .build_int_truncate(iv, self.context.bool_type(), "to_bool")
@@ -670,9 +706,25 @@ impl<'ctx> CodeGen<'ctx> {
                     }
                 }
 
+                // Runtime functions returning i64 for Float values (e.g., list_get
+                // returning a Float stored as bitcast u64) need bitcast conversion.
+                if matches!(ty, MirType::Float) {
+                    if let BasicValueEnum::IntValue(iv) = result {
+                        if iv.get_type().get_bit_width() == 64 {
+                            let f64_val = self
+                                .builder
+                                .build_bit_cast(iv, self.context.f64_type(), "i64_to_f64")
+                                .map_err(|e| e.to_string())?;
+                            return Ok(f64_val.into());
+                        }
+                    }
+                }
+
                 // Runtime functions returning i64 for pointer values (e.g., map_get
                 // returning a string pointer as u64) need inttoptr conversion.
-                if matches!(ty, MirType::String | MirType::Ptr) {
+                if matches!(ty, MirType::String | MirType::Ptr
+                    | MirType::Struct(_) | MirType::SumType(_)
+                    | MirType::Pid(_)) {
                     if let BasicValueEnum::IntValue(iv) = result {
                         if iv.get_type().get_bit_width() == 64 {
                             let ptr_ty = self.context.ptr_type(inkwell::AddressSpace::default());

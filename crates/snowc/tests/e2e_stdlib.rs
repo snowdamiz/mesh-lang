@@ -256,6 +256,50 @@ fn e2e_list_basic() {
     assert_eq!(output, "3\n1\n");
 }
 
+// ── List Literal E2E Tests (Phase 26 Plan 02) ────────────────────────────
+
+#[test]
+fn e2e_list_literal_int() {
+    let source = read_fixture("list_literal_int.snow");
+    let output = compile_and_run(&source);
+    assert_eq!(output, "3\n1\n3\n");
+}
+
+#[test]
+fn e2e_list_literal_string() {
+    let source = read_fixture("list_literal_string.snow");
+    let output = compile_and_run(&source);
+    assert_eq!(output, "2\nhello\nworld\n");
+}
+
+#[test]
+fn e2e_list_literal_bool() {
+    let source = read_fixture("list_literal_bool.snow");
+    let output = compile_and_run(&source);
+    assert_eq!(output, "3\ntrue\nfalse\n");
+}
+
+#[test]
+fn e2e_list_concat() {
+    let source = read_fixture("list_concat.snow");
+    let output = compile_and_run(&source);
+    assert_eq!(output, "4\n1\n4\n");
+}
+
+#[test]
+fn e2e_list_nested() {
+    let source = read_fixture("list_nested.snow");
+    let output = compile_and_run(&source);
+    assert_eq!(output, "2\n2\n2\n");
+}
+
+#[test]
+fn e2e_list_append_string() {
+    let source = read_fixture("list_append_string.snow");
+    let output = compile_and_run(&source);
+    assert_eq!(output, "2\nworld\n");
+}
+
 #[test]
 fn e2e_map_basic() {
     let source = read_fixture("stdlib_map_basic.snow");
