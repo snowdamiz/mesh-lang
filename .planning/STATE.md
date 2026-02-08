@@ -10,11 +10,11 @@ See: .planning/PROJECT.md (updated 2026-02-07)
 ## Current Position
 
 Phase: 19 of 22 (Trait Method Codegen)
-Plan: 2 of 4 in current phase
+Plan: 3 of 4 in current phase
 Status: In progress
-Last activity: 2026-02-08 -- Completed 19-02-PLAN.md (Call-site resolution and operator dispatch)
+Last activity: 2026-02-08 -- Completed 19-03-PLAN.md (Defense-in-depth and mono depth limit)
 
-Progress: ██░░░░░░░░ 29% (5/17 plans)
+Progress: ███░░░░░░░ 35% (6/17 plans)
 
 ## Performance Metrics
 
@@ -65,6 +65,8 @@ Recent decisions for v1.3:
 - (19-02) mir_type_to_ty as separate function in types.rs for MirType-to-Ty reverse mapping
 - (19-02) First-match for ambiguous traits (typeck already reports ambiguity)
 - (19-02) Operator dispatch for Add/Sub/Mul/Eq/Lt only (sufficient for v1.3 Eq/Ord protocols)
+- (19-03) Warning (not panic) for unresolvable trait methods (error recovery via LLVM codegen)
+- (19-03) Mono depth limit of 64, tracked in both lower_fn_def and lower_impl_method
 
 ### Pending Todos
 
@@ -78,6 +80,6 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-08
-Stopped at: Completed 19-02-PLAN.md (Call-site resolution and operator dispatch)
+Stopped at: Completed 19-03-PLAN.md (Defense-in-depth and mono depth limit)
 Resume file: None
-Next action: Execute 19-03-PLAN.md
+Next action: Execute 19-04-PLAN.md
