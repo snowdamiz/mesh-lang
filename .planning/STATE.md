@@ -10,11 +10,11 @@ See: .planning/PROJECT.md (updated 2026-02-07)
 ## Current Position
 
 Phase: 21 of 22 (Extended Protocols)
-Plan: 1 of 4 in current phase
+Plan: 2 of 4 in current phase
 Status: In progress
-Last activity: 2026-02-08 -- Completed 21-01-PLAN.md (Hash protocol end-to-end)
+Last activity: 2026-02-08 -- Completed 21-02-PLAN.md (Default protocol)
 
-Progress: ████████░░ 76% (13/17 plans)
+Progress: █████████░ 82% (14/17 plans)
 
 ## Performance Metrics
 
@@ -84,6 +84,9 @@ Recent decisions for v1.3:
 - (21-01) Hash auto-derived for non-generic structs only (not sum types)
 - (21-01) Hash-as-integer-key approach for Map struct keys (FNV-1a hash used as int key)
 - (21-01) FNV-1a 64-bit as hash algorithm (~35 lines in snow-rt/src/hash.rs)
+- (21-02) Default trait registered with has_self=false (first static trait method in Snow)
+- (21-02) default() registered as polymorphic () -> T in typeck env for call-site type resolution
+- (21-02) Primitive Default short-circuits to MIR literals (no runtime call)
 
 ### Pending Todos
 
@@ -91,13 +94,13 @@ None.
 
 ### Blockers/Concerns
 
-- (Research) Self type representation needed for Default protocol (`default() -> Self`) -- resolve during Phase 21 planning
+- ~~(Research) Self type representation needed for Default protocol~~ -- RESOLVED in 21-02 (polymorphic () -> T with call-site unification)
 - (Research) Higher-order constrained functions drop constraints when captured as values -- document as known limitation for v1.3
 - ~~(19-04) Typeck type identity issue~~ -- RESOLVED in 20-01 (Con vs App(Con, []) unification case added)
 
 ## Session Continuity
 
 Last session: 2026-02-08
-Stopped at: Completed 21-01-PLAN.md (Hash protocol end-to-end)
+Stopped at: Completed 21-02-PLAN.md (Default protocol)
 Resume file: None
-Next action: Execute 21-02-PLAN.md (Default protocol)
+Next action: Execute 21-03-PLAN.md (next protocol in phase 21)
