@@ -1178,6 +1178,12 @@ impl<'a> Lowerer<'a> {
         // Generate Debug__inspect__SumTypeName MIR function.
         self.generate_debug_inspect_sum_type(&name, &variants);
 
+        // Generate Eq__eq__SumTypeName MIR function (variant-aware equality).
+        self.generate_eq_sum(&name, &variants);
+
+        // Generate Ord__lt__SumTypeName MIR function (variant-aware less-than).
+        self.generate_ord_sum(&name, &variants);
+
         self.sum_types.push(MirSumTypeDef { name, variants });
     }
 
@@ -1525,6 +1531,399 @@ impl<'a> Lowerer<'a> {
             // if self.field < other.field then true
             // else if self.field == other.field then <rest>
             // else false
+            MirExpr::If {
+                cond: Box::new(lt_cmp),
+                then_body: Box::new(MirExpr::BoolLit(true, MirType::Bool)),
+                else_body: Box::new(MirExpr::If {
+                    cond: Box::new(eq_cmp),
+                    then_body: Box::new(rest),
+                    else_body: Box::new(MirExpr::BoolLit(false, MirType::Bool)),
+                    ty: MirType::Bool,
+                }),
+                ty: MirType::Bool,
+            }
+        }
+    }
+
+    // ── Eq/Ord generation for sum types ─────────────────────────────
+
+    /// Generate a synthetic `Eq__eq__SumTypeName` MIR function.
+    /// Compares variant tags first; if same variant, compares payload fields.
+    /// Sum types with no variants always return true.
+    fn generate_eq_sum(&mut self, name: &str, variants: &[MirVariantDef]) {
+        let mangled = format!("Eq__eq__{}", name);
+        let sum_ty = MirType::SumType(name.to_string());
+        let self_var = MirExpr::Var("self".to_string(), sum_ty.clone());
+        let other_var = MirExpr::Var("other".to_string(), sum_ty.clone());
+
+        let body = if variants.is_empty() {
+            // No variants: always equal.
+            MirExpr::BoolLit(true, MirType::Bool)
+        } else {
+            // Build outer Match on self, inner Match on other per variant.
+            let outer_arms: Vec<MirMatchArm> = variants
+                .iter()
+                .map(|v| {
+                    // Bindings for self's fields: self_0, self_1, ...
+                    let self_fields: Vec<MirPattern> = v
+                        .fields
+                        .iter()
+                        .enumerate()
+                        .map(|(i, ft)| MirPattern::Var(format!("self_{}", i), ft.clone()))
+                        .collect();
+                    let self_bindings: Vec<(String, MirType)> = v
+                        .fields
+                        .iter()
+                        .enumerate()
+                        .map(|(i, ft)| (format!("self_{}", i), ft.clone()))
+                        .collect();
+
+                    // Inner match on other for same variant
+                    let other_fields: Vec<MirPattern> = v
+                        .fields
+                        .iter()
+                        .enumerate()
+                        .map(|(i, ft)| MirPattern::Var(format!("other_{}", i), ft.clone()))
+                        .collect();
+                    let other_bindings: Vec<(String, MirType)> = v
+                        .fields
+                        .iter()
+                        .enumerate()
+                        .map(|(i, ft)| (format!("other_{}", i), ft.clone()))
+                        .collect();
+
+                    // Build field-by-field equality for this variant's payload
+                    let fields_eq = if v.fields.is_empty() {
+                        // No payload: same variant = equal
+                        MirExpr::BoolLit(true, MirType::Bool)
+                    } else {
+                        let mut comparisons: Vec<MirExpr> = Vec::new();
+                        for (i, ft) in v.fields.iter().enumerate() {
+                            let self_f = MirExpr::Var(format!("self_{}", i), ft.clone());
+                            let other_f = MirExpr::Var(format!("other_{}", i), ft.clone());
+
+                            let cmp = match ft {
+                                MirType::Struct(inner_name) | MirType::SumType(inner_name) => {
+                                    let inner_mangled = format!("Eq__eq__{}", inner_name);
+                                    let fn_ty = MirType::FnPtr(
+                                        vec![ft.clone(), ft.clone()],
+                                        Box::new(MirType::Bool),
+                                    );
+                                    MirExpr::Call {
+                                        func: Box::new(MirExpr::Var(inner_mangled, fn_ty)),
+                                        args: vec![self_f, other_f],
+                                        ty: MirType::Bool,
+                                    }
+                                }
+                                _ => MirExpr::BinOp {
+                                    op: BinOp::Eq,
+                                    lhs: Box::new(self_f),
+                                    rhs: Box::new(other_f),
+                                    ty: MirType::Bool,
+                                },
+                            };
+                            comparisons.push(cmp);
+                        }
+
+                        // Chain with AND
+                        let mut result = comparisons.remove(0);
+                        for cmp in comparisons {
+                            result = MirExpr::BinOp {
+                                op: BinOp::And,
+                                lhs: Box::new(result),
+                                rhs: Box::new(cmp),
+                                ty: MirType::Bool,
+                            };
+                        }
+                        result
+                    };
+
+                    // Inner match: same variant -> compare fields, any other -> false
+                    let inner_match = MirExpr::Match {
+                        scrutinee: Box::new(other_var.clone()),
+                        arms: vec![
+                            MirMatchArm {
+                                pattern: MirPattern::Constructor {
+                                    type_name: name.to_string(),
+                                    variant: v.name.clone(),
+                                    fields: other_fields,
+                                    bindings: other_bindings,
+                                },
+                                body: fields_eq,
+                                guard: None,
+                            },
+                            MirMatchArm {
+                                pattern: MirPattern::Wildcard,
+                                body: MirExpr::BoolLit(false, MirType::Bool),
+                                guard: None,
+                            },
+                        ],
+                        ty: MirType::Bool,
+                    };
+
+                    MirMatchArm {
+                        pattern: MirPattern::Constructor {
+                            type_name: name.to_string(),
+                            variant: v.name.clone(),
+                            fields: self_fields,
+                            bindings: self_bindings,
+                        },
+                        body: inner_match,
+                        guard: None,
+                    }
+                })
+                .collect();
+
+            MirExpr::Match {
+                scrutinee: Box::new(self_var),
+                arms: outer_arms,
+                ty: MirType::Bool,
+            }
+        };
+
+        let func = MirFunction {
+            name: mangled.clone(),
+            params: vec![
+                ("self".to_string(), sum_ty.clone()),
+                ("other".to_string(), sum_ty.clone()),
+            ],
+            return_type: MirType::Bool,
+            body,
+            is_closure_fn: false,
+            captures: vec![],
+        };
+
+        self.functions.push(func);
+        self.known_functions.insert(
+            mangled,
+            MirType::FnPtr(vec![sum_ty.clone(), sum_ty], Box::new(MirType::Bool)),
+        );
+    }
+
+    /// Generate a synthetic `Ord__lt__SumTypeName` MIR function.
+    /// Compares variant tags first (earlier variants are "less than" later ones).
+    /// If same variant, performs lexicographic comparison on payload fields.
+    /// Sum types with no variants always return false.
+    fn generate_ord_sum(&mut self, name: &str, variants: &[MirVariantDef]) {
+        let mangled = format!("Ord__lt__{}", name);
+        let sum_ty = MirType::SumType(name.to_string());
+        let self_var = MirExpr::Var("self".to_string(), sum_ty.clone());
+        let other_var = MirExpr::Var("other".to_string(), sum_ty.clone());
+
+        let body = if variants.is_empty() {
+            // No variants: never less-than.
+            MirExpr::BoolLit(false, MirType::Bool)
+        } else {
+            // Build outer Match on self, inner Match on other.
+            // For each self variant i:
+            //   Match on other:
+            //     variant j < i -> false (other has lower tag)
+            //     variant j == i -> lexicographic compare on payload
+            //     variant j > i -> true (other has higher tag)
+            let outer_arms: Vec<MirMatchArm> = variants
+                .iter()
+                .map(|self_v| {
+                    // Self bindings for payload fields
+                    let self_fields: Vec<MirPattern> = self_v
+                        .fields
+                        .iter()
+                        .enumerate()
+                        .map(|(i, ft)| MirPattern::Var(format!("self_{}", i), ft.clone()))
+                        .collect();
+                    let self_bindings: Vec<(String, MirType)> = self_v
+                        .fields
+                        .iter()
+                        .enumerate()
+                        .map(|(i, ft)| (format!("self_{}", i), ft.clone()))
+                        .collect();
+
+                    // Build inner match arms for other
+                    let mut inner_arms: Vec<MirMatchArm> = Vec::new();
+
+                    for other_v in variants {
+                        if other_v.tag < self_v.tag {
+                            // other has lower tag -> self is NOT less-than other
+                            inner_arms.push(MirMatchArm {
+                                pattern: MirPattern::Constructor {
+                                    type_name: name.to_string(),
+                                    variant: other_v.name.clone(),
+                                    fields: other_v
+                                        .fields
+                                        .iter()
+                                        .map(|_| MirPattern::Wildcard)
+                                        .collect(),
+                                    bindings: vec![],
+                                },
+                                body: MirExpr::BoolLit(false, MirType::Bool),
+                                guard: None,
+                            });
+                        } else if other_v.tag == self_v.tag {
+                            // Same variant: lexicographic compare on payload
+                            let other_fields: Vec<MirPattern> = other_v
+                                .fields
+                                .iter()
+                                .enumerate()
+                                .map(|(i, ft)| {
+                                    MirPattern::Var(format!("other_{}", i), ft.clone())
+                                })
+                                .collect();
+                            let other_bindings: Vec<(String, MirType)> = other_v
+                                .fields
+                                .iter()
+                                .enumerate()
+                                .map(|(i, ft)| (format!("other_{}", i), ft.clone()))
+                                .collect();
+
+                            let payload_lt = if self_v.fields.is_empty() {
+                                // No payload: same variant, not less-than
+                                MirExpr::BoolLit(false, MirType::Bool)
+                            } else {
+                                // Lexicographic comparison on payload fields
+                                self.build_lexicographic_lt_vars(
+                                    &self_v.fields,
+                                    "self_",
+                                    "other_",
+                                    0,
+                                )
+                            };
+
+                            inner_arms.push(MirMatchArm {
+                                pattern: MirPattern::Constructor {
+                                    type_name: name.to_string(),
+                                    variant: other_v.name.clone(),
+                                    fields: other_fields,
+                                    bindings: other_bindings,
+                                },
+                                body: payload_lt,
+                                guard: None,
+                            });
+                        } else {
+                            // other has higher tag -> self IS less-than other
+                            inner_arms.push(MirMatchArm {
+                                pattern: MirPattern::Constructor {
+                                    type_name: name.to_string(),
+                                    variant: other_v.name.clone(),
+                                    fields: other_v
+                                        .fields
+                                        .iter()
+                                        .map(|_| MirPattern::Wildcard)
+                                        .collect(),
+                                    bindings: vec![],
+                                },
+                                body: MirExpr::BoolLit(true, MirType::Bool),
+                                guard: None,
+                            });
+                        }
+                    }
+
+                    let inner_match = MirExpr::Match {
+                        scrutinee: Box::new(other_var.clone()),
+                        arms: inner_arms,
+                        ty: MirType::Bool,
+                    };
+
+                    MirMatchArm {
+                        pattern: MirPattern::Constructor {
+                            type_name: name.to_string(),
+                            variant: self_v.name.clone(),
+                            fields: self_fields,
+                            bindings: self_bindings,
+                        },
+                        body: inner_match,
+                        guard: None,
+                    }
+                })
+                .collect();
+
+            MirExpr::Match {
+                scrutinee: Box::new(self_var),
+                arms: outer_arms,
+                ty: MirType::Bool,
+            }
+        };
+
+        let func = MirFunction {
+            name: mangled.clone(),
+            params: vec![
+                ("self".to_string(), sum_ty.clone()),
+                ("other".to_string(), sum_ty.clone()),
+            ],
+            return_type: MirType::Bool,
+            body,
+            is_closure_fn: false,
+            captures: vec![],
+        };
+
+        self.functions.push(func);
+        self.known_functions.insert(
+            mangled,
+            MirType::FnPtr(vec![sum_ty.clone(), sum_ty], Box::new(MirType::Bool)),
+        );
+    }
+
+    /// Build a lexicographic less-than comparison for sum type payload fields
+    /// using named variables (e.g., self_0, self_1 vs other_0, other_1).
+    fn build_lexicographic_lt_vars(
+        &self,
+        fields: &[MirType],
+        self_prefix: &str,
+        other_prefix: &str,
+        index: usize,
+    ) -> MirExpr {
+        let field_ty = &fields[index];
+        let self_f = MirExpr::Var(format!("{}{}", self_prefix, index), field_ty.clone());
+        let other_f = MirExpr::Var(format!("{}{}", other_prefix, index), field_ty.clone());
+        let is_last = index == fields.len() - 1;
+
+        // Build "self_N < other_N" comparison
+        let lt_cmp = match field_ty {
+            MirType::Struct(inner_name) | MirType::SumType(inner_name) => {
+                let inner_mangled = format!("Ord__lt__{}", inner_name);
+                let fn_ty = MirType::FnPtr(
+                    vec![field_ty.clone(), field_ty.clone()],
+                    Box::new(MirType::Bool),
+                );
+                MirExpr::Call {
+                    func: Box::new(MirExpr::Var(inner_mangled, fn_ty)),
+                    args: vec![self_f.clone(), other_f.clone()],
+                    ty: MirType::Bool,
+                }
+            }
+            _ => MirExpr::BinOp {
+                op: BinOp::Lt,
+                lhs: Box::new(self_f.clone()),
+                rhs: Box::new(other_f.clone()),
+                ty: MirType::Bool,
+            },
+        };
+
+        if is_last {
+            lt_cmp
+        } else {
+            // Build "self_N == other_N" comparison
+            let eq_cmp = match field_ty {
+                MirType::Struct(inner_name) | MirType::SumType(inner_name) => {
+                    let inner_mangled = format!("Eq__eq__{}", inner_name);
+                    let fn_ty = MirType::FnPtr(
+                        vec![field_ty.clone(), field_ty.clone()],
+                        Box::new(MirType::Bool),
+                    );
+                    MirExpr::Call {
+                        func: Box::new(MirExpr::Var(inner_mangled, fn_ty)),
+                        args: vec![self_f, other_f],
+                        ty: MirType::Bool,
+                    }
+                }
+                _ => MirExpr::BinOp {
+                    op: BinOp::Eq,
+                    lhs: Box::new(self_f),
+                    rhs: Box::new(other_f),
+                    ty: MirType::Bool,
+                },
+            };
+
+            let rest = self.build_lexicographic_lt_vars(fields, self_prefix, other_prefix, index + 1);
+
             MirExpr::If {
                 cond: Box::new(lt_cmp),
                 then_body: Box::new(MirExpr::BoolLit(true, MirType::Bool)),
@@ -5934,5 +6333,213 @@ end
             "Expected Ord__lt__Point call in check body for <, got: {}",
             body_str
         );
+    }
+
+    // ── Sum type Eq/Ord tests ────────────────────────────────────────
+
+    #[test]
+    fn eq_sum_generates_mir_function() {
+        let source = r#"
+type Color do
+  Red
+  Green(Int)
+  Blue(Int, Int)
+end
+
+fn main() do
+  println("test")
+end
+"#;
+        let mir = lower(source);
+        let eq_fn = mir.functions.iter().find(|f| f.name == "Eq__eq__Color");
+        assert!(
+            eq_fn.is_some(),
+            "Expected Eq__eq__Color function in MIR. Functions: {:?}",
+            mir.functions.iter().map(|f| &f.name).collect::<Vec<_>>()
+        );
+        let eq_fn = eq_fn.unwrap();
+        assert_eq!(eq_fn.params.len(), 2);
+        assert_eq!(eq_fn.params[0].0, "self");
+        assert_eq!(eq_fn.params[1].0, "other");
+        assert_eq!(eq_fn.params[0].1, MirType::SumType("Color".to_string()));
+        assert_eq!(eq_fn.return_type, MirType::Bool);
+        // Body uses Match for variant dispatch
+        assert!(matches!(eq_fn.body, MirExpr::Match { .. }));
+    }
+
+    #[test]
+    fn ord_sum_generates_mir_function() {
+        let source = r#"
+type Color do
+  Red
+  Green(Int)
+  Blue(Int, Int)
+end
+
+fn main() do
+  println("test")
+end
+"#;
+        let mir = lower(source);
+        let ord_fn = mir.functions.iter().find(|f| f.name == "Ord__lt__Color");
+        assert!(
+            ord_fn.is_some(),
+            "Expected Ord__lt__Color function in MIR. Functions: {:?}",
+            mir.functions.iter().map(|f| &f.name).collect::<Vec<_>>()
+        );
+        let ord_fn = ord_fn.unwrap();
+        assert_eq!(ord_fn.params.len(), 2);
+        assert_eq!(ord_fn.params[0].0, "self");
+        assert_eq!(ord_fn.params[1].0, "other");
+        assert_eq!(ord_fn.params[0].1, MirType::SumType("Color".to_string()));
+        assert_eq!(ord_fn.return_type, MirType::Bool);
+        // Body uses Match for variant-tag-then-payload comparison
+        assert!(matches!(ord_fn.body, MirExpr::Match { .. }));
+    }
+
+    #[test]
+    fn eq_sum_no_variants_returns_true() {
+        let source = r#"
+type Empty do
+end
+
+fn main() do
+  println("test")
+end
+"#;
+        let mir = lower(source);
+        let eq_fn = mir.functions.iter().find(|f| f.name == "Eq__eq__Empty");
+        assert!(eq_fn.is_some());
+        let eq_fn = eq_fn.unwrap();
+        assert!(matches!(eq_fn.body, MirExpr::BoolLit(true, _)));
+    }
+
+    #[test]
+    fn ord_sum_no_variants_returns_false() {
+        let source = r#"
+type Empty do
+end
+
+fn main() do
+  println("test")
+end
+"#;
+        let mir = lower(source);
+        let ord_fn = mir.functions.iter().find(|f| f.name == "Ord__lt__Empty");
+        assert!(ord_fn.is_some());
+        let ord_fn = ord_fn.unwrap();
+        assert!(matches!(ord_fn.body, MirExpr::BoolLit(false, _)));
+    }
+
+    #[test]
+    fn sum_eq_operator_dispatches_to_trait_call() {
+        let source = r#"
+type Color do
+  Red
+  Green(Int)
+end
+
+fn check(a :: Color, b :: Color) -> Bool do
+  a == b
+end
+"#;
+        let mir = lower(source);
+        let check_fn = mir.functions.iter().find(|f| f.name == "check");
+        assert!(
+            check_fn.is_some(),
+            "Expected 'check' function in MIR. Functions: {:?}",
+            mir.functions.iter().map(|f| &f.name).collect::<Vec<_>>()
+        );
+        let check_fn = check_fn.unwrap();
+        let body_str = format!("{:?}", check_fn.body);
+        assert!(
+            body_str.contains("Eq__eq__Color"),
+            "Expected Eq__eq__Color call in check body, got: {}",
+            body_str
+        );
+    }
+
+    #[test]
+    fn sum_neq_operator_negates_eq() {
+        let source = r#"
+type Color do
+  Red
+  Green(Int)
+end
+
+fn check(a :: Color, b :: Color) -> Bool do
+  a != b
+end
+"#;
+        let mir = lower(source);
+        let check_fn = mir.functions.iter().find(|f| f.name == "check");
+        assert!(
+            check_fn.is_some(),
+            "Expected 'check' function in MIR. Functions: {:?}",
+            mir.functions.iter().map(|f| &f.name).collect::<Vec<_>>()
+        );
+        let check_fn = check_fn.unwrap();
+        let body_str = format!("{:?}", check_fn.body);
+        // != dispatches through Eq with negation
+        assert!(
+            body_str.contains("Eq__eq__Color"),
+            "Expected Eq__eq__Color call in check body for !=, got: {}",
+            body_str
+        );
+    }
+
+    #[test]
+    fn sum_lt_operator_dispatches_to_ord() {
+        let source = r#"
+type Color do
+  Red
+  Green(Int)
+end
+
+fn check(a :: Color, b :: Color) -> Bool do
+  a < b
+end
+"#;
+        let mir = lower(source);
+        let check_fn = mir.functions.iter().find(|f| f.name == "check");
+        assert!(
+            check_fn.is_some(),
+            "Expected 'check' function in MIR. Functions: {:?}",
+            mir.functions.iter().map(|f| &f.name).collect::<Vec<_>>()
+        );
+        let check_fn = check_fn.unwrap();
+        let body_str = format!("{:?}", check_fn.body);
+        assert!(
+            body_str.contains("Ord__lt__Color"),
+            "Expected Ord__lt__Color call in check body for <, got: {}",
+            body_str
+        );
+    }
+
+    #[test]
+    fn eq_sum_unit_variants_only() {
+        // Sum type with only unit variants (no payload fields)
+        let source = r#"
+type Direction do
+  North
+  South
+  East
+  West
+end
+
+fn main() do
+  println("test")
+end
+"#;
+        let mir = lower(source);
+        let eq_fn = mir.functions.iter().find(|f| f.name == "Eq__eq__Direction");
+        assert!(eq_fn.is_some());
+        let eq_fn = eq_fn.unwrap();
+        // Body should be a Match with variant-based dispatch
+        assert!(matches!(eq_fn.body, MirExpr::Match { .. }));
+        // Each arm should ultimately yield true (same variant) or false (different variant)
+        if let MirExpr::Match { arms, .. } = &eq_fn.body {
+            assert_eq!(arms.len(), 4, "Should have one arm per variant");
+        }
     }
 }
