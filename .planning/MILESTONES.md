@@ -1,5 +1,32 @@
 # Project Milestones: Snow
 
+## v1.4 Compiler Polish (Shipped: 2026-02-08)
+
+**Delivered:** Fixed all five known limitations from v1.3 -- pattern matching codegen, Ordering type, nested collection Display, generic type deriving, and higher-order constraint soundness -- making the compiler fully correct across its type and trait systems.
+
+**Phases completed:** 23-25 (5 plans total)
+
+**Key accomplishments:**
+- Sum type pattern matching codegen fixed: constructor field extraction via sum_type_defs threading through compile_match pipeline
+- Ordering (Less|Equal|Greater) registered as built-in sum type with compare() dispatching via Ord trait
+- Recursive nested collection Display with synthetic MIR wrapper functions for callback bridging
+- Generic type auto-derive with parametric trait impl registration and lazy monomorphization at struct literal sites
+- Type system soundness: where-clause constraints propagate through let-binding aliases, preventing unsound calls
+
+**Stats:**
+- 28 files modified
+- 64,548 lines of Rust (+1,359 net from v1.3)
+- 3 phases, 5 plans, ~10 tasks
+- 1 day (2026-02-08)
+- 13 commits
+- 1,206 tests passing (+19 new in v1.4)
+
+**Git range:** `feat(23-01)` → `test(25-01)`
+
+**What's next:** TBD -- all v1.x compiler correctness issues resolved. Potential directions include Iterator/From protocols (requires associated types), method dot-syntax, blanket impls, distributed actors, or hot code reloading.
+
+---
+
 ## v1.3 Traits & Protocols (Shipped: 2026-02-08)
 
 **Delivered:** Complete trait/protocol system with user-defined interfaces, impl blocks, static dispatch via monomorphization, and six stdlib protocols (Display, Debug, Eq, Ord, Hash, Default) plus auto-derive support.

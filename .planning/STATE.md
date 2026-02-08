@@ -5,16 +5,16 @@
 See: .planning/PROJECT.md (updated 2026-02-08)
 
 **Core value:** Expressive, readable concurrency -- writing concurrent programs should feel as natural as sequential code, with supervision and fault tolerance built in.
-**Current focus:** v1.4 Compiler Polish -- Phase 25 complete (Type System Soundness)
+**Current focus:** Planning next milestone
 
 ## Current Position
 
-Phase: 25 of 25 (Type System Soundness)
-Plan: 1 of 1 in phase
-Status: Phase complete
-Last activity: 2026-02-08 -- Completed 25-01-PLAN.md (Type System Soundness -- TSND-01)
+Phase: 25 of 25 (all v1.0-v1.4 phases complete)
+Plan: N/A
+Status: Ready to plan next milestone
+Last activity: 2026-02-08 -- v1.4 Compiler Polish milestone complete
 
-Progress: ██████████ 100% (2/2 plans in phase 23 + 2/2 in phase 24 + 1/1 in phase 25)
+Progress: ██████████ 100% (v1.0-v1.4 complete)
 
 ## Performance Metrics
 
@@ -47,8 +47,9 @@ Progress: ██████████ 100% (2/2 plans in phase 23 + 2/2 in ph
 
 **v1.4 Totals:**
 - Plans completed: 5
-- Phases: 3 (23, 24, 25)
+- Phases: 3 (23-25)
 - Commits: 13
+- Lines of Rust: 64,548 (+1,359)
 - Tests: 1,206 passing (+19 new)
 
 ## Accumulated Context
@@ -56,22 +57,7 @@ Progress: ██████████ 100% (2/2 plans in phase 23 + 2/2 in ph
 ### Decisions
 
 Decisions logged in PROJECT.md Key Decisions table.
-Full decision history archived in milestones/v1.0-ROADMAP.md, milestones/v1.1-ROADMAP.md, milestones/v1.2-ROADMAP.md, and milestones/v1.3-ROADMAP.md.
-
-| Decision | Phase | Rationale |
-|----------|-------|-----------|
-| Thread sum_type_defs as parameter, not in PatMatrix | 23-01 | PatMatrix is cloned frequently; reference parameter avoids data duplication |
-| Fallback to appearance-order tags when type not in map | 23-01 | Preserves backward compatibility for tests using ad-hoc type names |
-| Ordering as non-generic built-in sum type | 23-02 | Simpler than Option/Result; no type parameters needed |
-| Primitive compare uses BinOp directly | 23-02 | Int/Float/String don't have generated Ord__lt__ functions; use hardware ops |
-| Synthetic wrapper functions for nested collection Display callbacks | 24-01 | Runtime expects fn(u64)->ptr; wrappers bridge two-arg calls to one-arg callback signature |
-| codegen_var module.get_function() fallback for intrinsic fn ptrs | 24-01 | Intrinsics not in self.functions map; need LLVM module lookup for callback references |
-| Parametric Ty::App registration for generic struct deriving | 24-02 | TraitRegistry structural matching handles concrete instantiation lookup automatically |
-| Lazy monomorphization at struct literal sites | 24-02 | Generate trait functions on demand when generic type is instantiated with concrete args |
-| known_functions fallback for monomorphized type dispatch | 24-02 | Trait registry has parametric impl but dispatch needs mangled name; check known_functions |
-| display_name separation for monomorphized Display/Debug | 24-02 | Show "Box(42)" not "Box_Int(42)" for human-readable output |
-| Clone-locally strategy for fn_constraints in infer_block | 25-01 | Avoids &mut cascade to 10+ callers; cloning small constraints map is cheap |
-| Propagate constraints only for NameRef initializers | 25-01 | Closures already work via inner call; only bare function aliases need propagation |
+Full decision history archived in milestones/v1.0-ROADMAP.md through milestones/v1.4-ROADMAP.md.
 
 ### Pending Todos
 
@@ -79,11 +65,11 @@ None.
 
 ### Blockers/Concerns
 
-v1.4 Compiler Polish milestone is complete. All 5 known limitations addressed. Higher-order function constraint propagation (e.g., `apply(show, value)`) remains a known limitation for future work.
+None -- all v1.x milestones complete.
 
 ## Session Continuity
 
 Last session: 2026-02-08
-Stopped at: Completed 25-01-PLAN.md (Type System Soundness -- TSND-01)
+Stopped at: v1.4 milestone archived
 Resume file: None
-Next action: v1.4 milestone complete. Plan next milestone or release.
+Next action: `/gsd:new-milestone` to start next milestone

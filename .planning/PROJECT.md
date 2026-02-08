@@ -2,7 +2,7 @@
 
 ## What This Is
 
-Snow is a programming language that combines Elixir/Ruby-style expressive syntax with static Hindley-Milner type inference and BEAM-style concurrency (actors, supervision trees, fault tolerance), compiled via LLVM to native single-binary executables. The compiler is written in Rust. v1.0 shipped a complete compiler pipeline, actor runtime, standard library, and developer tooling. v1.1 polished the language by resolving all five documented v1.0 limitations. v1.2 added Fun() type annotations and a mark-sweep garbage collector for per-actor heaps. v1.3 completed the trait/protocol system with user-defined interfaces, impl blocks, static dispatch via monomorphization, and six stdlib protocols (Display, Debug, Eq, Ord, Hash, Default) with auto-derive support.
+Snow is a programming language that combines Elixir/Ruby-style expressive syntax with static Hindley-Milner type inference and BEAM-style concurrency (actors, supervision trees, fault tolerance), compiled via LLVM to native single-binary executables. The compiler is written in Rust. v1.0 shipped a complete compiler pipeline, actor runtime, standard library, and developer tooling. v1.1 polished the language by resolving all five documented v1.0 limitations. v1.2 added Fun() type annotations and a mark-sweep garbage collector for per-actor heaps. v1.3 completed the trait/protocol system with user-defined interfaces, impl blocks, static dispatch via monomorphization, and six stdlib protocols (Display, Debug, Eq, Ord, Hash, Default) with auto-derive support. v1.4 fixed all five compiler correctness issues: pattern matching codegen, Ordering type, nested collection Display, generic type deriving, and type system soundness for constrained function aliases.
 
 ## Core Value
 
@@ -36,18 +36,15 @@ Expressive, readable concurrency -- writing concurrent programs should feel as n
 - ✓ Stdlib protocols: Display, Debug, Eq, Ord, Hash, Default -- v1.3
 - ✓ Auto-derive: deriving(Eq, Ord, Display, Debug, Hash) from struct/sum-type metadata -- v1.3
 - ✓ Collection Display/Debug for List, Map, Set -- v1.3
+- ✓ Sum type constructor pattern matching extracts field values in LLVM codegen -- v1.4
+- ✓ Ordering sum type (Less | Equal | Greater) user-visible with compare() via Ord trait -- v1.4
+- ✓ Nested collection Display renders recursively with synthetic MIR wrapper callbacks -- v1.4
+- ✓ Generic types support auto-derive with monomorphization-aware trait impl registration -- v1.4
+- ✓ Higher-order constrained functions preserve trait constraints when captured as values -- v1.4
 
 ### Active
 
-**Current Milestone: v1.4 Compiler Polish**
-
-**Goal:** Fix all five known limitations carried from v1.3, making the compiler fully correct across pattern matching codegen, trait system generics, and type system soundness.
-
-- [ ] Sum type constructor pattern matching extracts field values in LLVM codegen (not just variant discrimination)
-- [ ] Ordering sum type (Less | Equal | Greater) is user-visible and usable in Snow programs
-- [ ] Nested collection Display renders recursively (e.g., `List<List<Int>>` prints `[[1, 2], [3, 4]]`)
-- [ ] Generic types support auto-derive with monomorphization-aware trait impl registration
-- [ ] Higher-order constrained functions preserve trait constraints when captured as values
+(No active milestone -- planning next)
 
 ### Out of Scope
 
@@ -71,18 +68,16 @@ Expressive, readable concurrency -- writing concurrent programs should feel as n
 
 ## Context
 
-Shipped v1.3 with 63,189 lines of Rust (+5,532 from v1.2).
+Shipped v1.4 with 64,548 lines of Rust (+1,359 from v1.3).
 Tech stack: Rust compiler, LLVM 21 (Inkwell 0.8), corosensei coroutines, rowan CST, ariadne diagnostics.
 Crates: snow-lexer, snow-parser, snow-typeck, snow-mir, snow-codegen, snow-rt, snow-fmt, snow-repl, snow-pkg, snow-lsp, snowc.
 
-1,187 tests passing across all crates. Zero known critical bugs.
+1,206 tests passing across all crates. Zero known critical bugs.
 
-Known limitations carried from v1.3:
-- LLVM Constructor pattern field binding limitation for sum type non-nullary variants (MIR correct, codegen limitation)
-- Ordering sum type (Less | Equal | Greater) not yet user-visible; lt() -> Bool with negate/swap used instead
-- Nested collection Display (List<List<Int>>) falls back to snow_int_to_string
-- Generic type auto-derive not supported (requires monomorphization-aware trait impl registration)
-- Higher-order constrained functions drop constraints when captured as values
+Known limitations:
+- List type is monomorphic (Int only) -- nested collection Display infrastructure exists but List<List<Int>> cannot be created
+- Ord deriving without Eq causes runtime error instead of compile-time error (workaround: derive both)
+- Higher-order function argument constraint propagation not supported (e.g., apply(show, value)) -- requires qualified types
 
 ## Constraints
 
@@ -118,6 +113,11 @@ Known limitations carried from v1.3:
 | FNV-1a for Hash protocol | Deterministic, platform-independent, ~35 lines in snow-rt | ✓ Good -- v1.3, zero new Rust dependencies |
 | Trust typeck for where-clause enforcement | Type checker already comprehensively checks; MIR adds warning-only defense-in-depth | ✓ Good -- v1.3, no duplicate checking logic |
 | deriving as contextual keyword | IDENT text check avoids adding to TokenKind; backward compatible | ✓ Good -- v1.3, no breaking changes |
+| Thread sum_type_defs as parameter | PatMatrix cloned frequently; reference avoids data duplication | ✓ Good -- v1.4, correct tag resolution |
+| Ordering as non-generic built-in | Simpler than Option/Result; no type parameters needed | ✓ Good -- v1.4, clean Ord integration |
+| Synthetic wrapper functions | Runtime expects fn(u64)->ptr; wrappers bridge two-arg calls to one-arg callback | ✓ Good -- v1.4, enables nested Display |
+| Lazy monomorphization at struct literal sites | Generate trait functions on demand when generic type instantiated | ✓ Good -- v1.4, correct field type substitution |
+| Clone-locally fn_constraints | Avoids &mut cascade to 10+ callers; cloning small map is cheap | ✓ Good -- v1.4, contained mutability |
 
 ---
-*Last updated: 2026-02-08 after v1.4 milestone started*
+*Last updated: 2026-02-08 after v1.4 milestone*

@@ -52,48 +52,7 @@ See milestones/v1.3-ROADMAP.md for details.
 5 plans across 3 phases. Fixed all five v1.3 known limitations: sum type pattern matching
 codegen with field destructuring, recursive nested collection Display, generic type deriving
 with monomorphization, and higher-order constrained function soundness.
-
-**Milestone Goal:** Fix all five known limitations carried from v1.3 -- making the compiler fully correct across pattern matching codegen, trait system generics, and type system soundness.
-
-#### Phase 23: Pattern Matching Codegen
-**Goal**: Sum type pattern matching fully works in LLVM codegen -- users can destructure non-nullary variant fields and use the Ordering type directly in Snow programs
-**Depends on**: Phase 22 (v1.3 complete)
-**Requirements**: PATM-01, PATM-02
-**Success Criteria** (what must be TRUE):
-  1. `case opt do Some(x) -> x end` binds `x` to the inner value at runtime (not just discriminates the variant)
-  2. `case compare(a, b) do Less -> ... | Equal -> ... | Greater -> ... end` compiles and runs correctly
-  3. Ordering is importable/usable as a first-class sum type in user Snow code (return values, variable bindings, pattern matches)
-  4. Nested constructor patterns work (e.g., `Some(Some(x))` extracts the doubly-wrapped value)
-**Plans:** 2 plans
-Plans:
-- [x] 23-01-PLAN.md -- Fix pattern compiler tag assignment and field type resolution
-- [x] 23-02-PLAN.md -- Register Ordering type, add compare(), end-to-end tests
-
-#### Phase 24: Trait System Generics
-**Goal**: Display and auto-derive work correctly with generic and nested types -- users see proper string representations and can derive traits on parameterized structs
-**Depends on**: Phase 23
-**Requirements**: TGEN-01, TGEN-02
-**Success Criteria** (what must be TRUE):
-  1. `to_string([[1, 2], [3, 4]])` produces `[[1, 2], [3, 4]]` (recursive Display through nested collections)
-  2. `to_string([Some(1), None])` produces `[Some(1), None]` (Display dispatches correctly through collection elements that are sum types)
-  3. A generic struct `type Box<T> do value :: T end` with `deriving(Display, Eq)` works for `Box<Int>`, `Box<String>`, and other concrete instantiations
-  4. Auto-derived trait impls are registered per-monomorphization so `Box<Int>` and `Box<String>` get independent Display/Eq implementations
-**Plans:** 2 plans
-Plans:
-- [x] 24-01-PLAN.md -- Recursive nested collection Display (TGEN-01)
-- [x] 24-02-PLAN.md -- Generic type deriving with monomorphized trait functions (TGEN-02)
-
-#### Phase 25: Type System Soundness
-**Goal**: Higher-order constrained functions preserve their trait constraints when captured as values -- the type system prevents unsound calls at compile time
-**Depends on**: Phase 23 (independent of Phase 24; numbered last because it is self-contained)
-**Requirements**: TSND-01
-**Success Criteria** (what must be TRUE):
-  1. `let f = show` retains the `T: Display` constraint -- calling `f(some_non_display_value)` produces a compile-time error, not a runtime crash or silent unsoundness
-  2. Constrained functions passed as arguments to higher-order functions propagate their constraints to the call site
-  3. The constraint preservation works for user-defined traits (not just stdlib Display) -- e.g., a function `where T: MyTrait` captured as a value still enforces `MyTrait`
-**Plans:** 1 plan
-Plans:
-- [x] 25-01-PLAN.md -- Propagate fn_constraints through let bindings + e2e tests
+See milestones/v1.4-ROADMAP.md for details.
 
 </details>
 
