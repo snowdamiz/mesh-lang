@@ -5,16 +5,16 @@
 See: .planning/PROJECT.md (updated 2026-02-07)
 
 **Core value:** Expressive, readable concurrency -- writing concurrent programs should feel as natural as sequential code, with supervision and fault tolerance built in.
-**Current focus:** Milestone v1.3 Traits & Protocols -- Phase 22 in progress
+**Current focus:** Milestone v1.3 Traits & Protocols -- Phase 22 complete
 
 ## Current Position
 
 Phase: 22 of 22 (Auto-Derive Stretch)
-Plan: 1 of 2 in current phase
-Status: In progress
-Last activity: 2026-02-08 -- Completed 22-01-PLAN.md (Deriving Clause)
+Plan: 2 of 2 in current phase
+Status: Phase complete
+Last activity: 2026-02-08 -- Completed 22-02-PLAN.md (Display/Hash-sum Generation)
 
-Progress: ██████████ 97% (17/18 plans)
+Progress: ██████████████████ 100% (18/18 plans)
 
 ## Performance Metrics
 
@@ -98,6 +98,9 @@ Recent decisions for v1.3:
 - (22-01) No deriving clause = derive all defaults (backward compatible)
 - (22-01) Display never auto-derived, only via explicit deriving(Display)
 - (22-01) Hash for sum types only via explicit deriving(Hash)
+- (22-02) Display format: positional "Point(1, 2)" distinct from Debug "Point { x: 1, y: 2 }"
+- (22-02) UnsupportedDerive (E0028) and GenericDerive (E0029) TypeError variants for derive validation
+- (22-02) Sum type Hash: tag-first then combine with field hashes via Constructor pattern match
 
 ### Pending Todos
 
@@ -108,10 +111,11 @@ None.
 - ~~(Research) Self type representation needed for Default protocol~~ -- RESOLVED in 21-02 (polymorphic () -> T with call-site unification)
 - (Research) Higher-order constrained functions drop constraints when captured as values -- document as known limitation for v1.3
 - ~~(19-04) Typeck type identity issue~~ -- RESOLVED in 20-01 (Con vs App(Con, []) unification case added)
+- (22-02) Sum type Constructor pattern field bindings have LLVM codegen limitation for non-nullary variants -- known limitation for v1.3
 
 ## Session Continuity
 
 Last session: 2026-02-08
-Stopped at: Completed 22-01-PLAN.md (Deriving Clause) -- Phase 22 plan 1 of 2 done
+Stopped at: Completed 22-02-PLAN.md (Display/Hash-sum Generation) -- Phase 22 complete, v1.3 milestone complete
 Resume file: None
-Next action: Execute 22-02-PLAN.md (Display/Hash-sum generation)
+Next action: v1.3 milestone complete -- all 18 plans across 5 phases executed
