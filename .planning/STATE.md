@@ -10,11 +10,11 @@ See: .planning/PROJECT.md (updated 2026-02-08)
 ## Current Position
 
 Phase: 26 of 29 (Polymorphic List Foundation)
-Plan: 1 of 2 in current phase
-Status: In progress
-Last activity: 2026-02-08 -- Completed 26-01-PLAN.md
+Plan: 2 of 2 in current phase
+Status: Phase complete
+Last activity: 2026-02-08 -- Completed 26-02-PLAN.md
 
-Progress: ##░░░░░░░░ ~12% (v1.5: 1/8 plans)
+Progress: ###░░░░░░░ ~25% (v1.5: 2/8 plans)
 
 ## Performance Metrics
 
@@ -64,6 +64,9 @@ Full decision history archived in milestones/v1.0-ROADMAP.md through milestones/
 | 26-01-D1 | Use ConstraintOrigin::Annotation for list literal unification | Matches map literal pattern |
 | 26-01-D2 | Desugar list literals to list_new + list_append chain | Simplest lowering, matches map literal pattern |
 | 26-01-D3 | Fix Map.keys/values to return List<K>/List<V> | Correct typing now that List is polymorphic |
+| 26-02-D1 | ListLit MIR variant + snow_list_from_array replaces append chain | Single allocation O(n) vs O(n^2) append chain |
+| 26-02-D2 | known_functions return Ptr, actual type from typeck resolve_range | Enables polymorphic return type conversion in codegen |
+| 26-02-D3 | Uniform u64 storage with codegen-level type conversion | No runtime type tags needed, all conversion at compile time |
 
 ### Pending Todos
 
@@ -75,7 +78,7 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-02-08T22:04:49Z
-Stopped at: Completed 26-01-PLAN.md
+Last session: 2026-02-08T22:23:41Z
+Stopped at: Completed 26-02-PLAN.md (Phase 26 complete)
 Resume file: None
-Next action: Execute 26-02-PLAN.md
+Next action: Execute Phase 27
