@@ -5,16 +5,16 @@
 See: .planning/PROJECT.md (updated 2026-02-07)
 
 **Core value:** Expressive, readable concurrency -- writing concurrent programs should feel as natural as sequential code, with supervision and fault tolerance built in.
-**Current focus:** v1.1 Language Polish -- Phase 13 complete (String Pattern Matching)
+**Current focus:** v1.1 Language Polish -- Phase 14 complete (Generic Map Types)
 
 ## Current Position
 
-Phase: 13 of 15 (String Pattern Matching)
-Plan: 1/1 complete (Phase 13 fully done)
+Phase: 14 of 15 (Generic Map Types)
+Plan: 1/1 complete (Phase 14 fully done)
 Status: Phase complete
-Last activity: 2026-02-07 - Completed 13-01-PLAN.md (string pattern matching codegen + exhaustiveness + e2e tests)
+Last activity: 2026-02-08 - Completed 14-01-PLAN.md (generic Map<K,V> with string key support)
 
-Progress: ██████░░░░ 60% (3/5 v1.1 phases)
+Progress: ████████░░ 80% (4/5 v1.1 phases)
 
 ## Performance Metrics
 
@@ -26,9 +26,9 @@ Progress: ██████░░░░ 60% (3/5 v1.1 phases)
 - Lines of Rust: 52,611
 
 **v1.1:**
-- Plans completed: 7
+- Plans completed: 8
 - Phases: 5 (11-15)
-- Average duration: 7min
+- Average duration: 8min
 
 ## Accumulated Context
 
@@ -57,6 +57,8 @@ Full decision history archived in milestones/v1.0-ROADMAP.md.
 | Pipe-aware inference in infer_pipe, not infer_call | 12-03 | CallExpr RHS handled directly: extract callee+args, prepend lhs_ty, unify as full function type |
 | codegen_string_lit made pub(crate) for pattern.rs access | 13-01 | Both pattern.rs and expr.rs implement methods on CodeGen; cross-file visibility needed |
 | DIAMOND (<>) mapped to BinOp::Concat alongside PLUS_PLUS (++) | 13-01 | Pre-existing gap: <> operator was falling through to BinOp::Add in MIR lowering |
+| Lazy key_type tagging at Map.put instead of Map.new | 14-01 | HM let-generalization prevents type resolution at Map.new(); detect string keys at put/get sites |
+| Bidirectional ptr/int coercion in codegen_call | 14-01 | General-purpose: ptr->i64 for args, i64->ptr for returns when runtime uses uniform u64 values |
 
 ### Pending Todos
 
@@ -64,11 +66,11 @@ None.
 
 ### Blockers/Concerns
 
-None. Phase 13 complete with zero regressions across all 24 e2e tests and 60 unit tests.
+None. Phase 14 complete with zero regressions across all 29 e2e tests and full test suite.
 
 ## Session Continuity
 
-Last session: 2026-02-07T23:53:12Z
-Stopped at: Completed 13-01-PLAN.md (Phase 13 complete)
+Last session: 2026-02-08T00:45:00Z
+Stopped at: Completed 14-01-PLAN.md (Phase 14 complete)
 Resume file: None
-Next action: Execute Phase 14 plans
+Next action: Execute Phase 15 plans
