@@ -5,16 +5,16 @@
 See: .planning/PROJECT.md (updated 2026-02-08)
 
 **Core value:** Expressive, readable concurrency -- writing concurrent programs should feel as natural as sequential code, with supervision and fault tolerance built in.
-**Current focus:** v1.4 Compiler Polish -- Phase 23 (Pattern Matching Codegen)
+**Current focus:** v1.4 Compiler Polish -- Phase 23 complete, Phase 24 next
 
 ## Current Position
 
 Phase: 23 of 25 (Pattern Matching Codegen)
-Plan: 1 of 2 in phase
-Status: In progress
-Last activity: 2026-02-08 -- Completed 23-01-PLAN.md (pattern compiler tag/type fix)
+Plan: 2 of 2 in phase
+Status: Phase complete
+Last activity: 2026-02-08 -- Completed 23-02-PLAN.md (Ordering type, compare function, e2e tests)
 
-Progress: █░░░░░░░░░ ~10% (1/2 plans in phase 23; phases 24-25 not yet planned)
+Progress: ██░░░░░░░░ ~20% (2/2 plans in phase 23; phases 24-25 not yet planned)
 
 ## Performance Metrics
 
@@ -45,6 +45,12 @@ Progress: █░░░░░░░░░ ~10% (1/2 plans in phase 23; phases 24-
 - Lines of Rust: 63,189 (+5,532)
 - Tests: 1,187 passing (+130 new)
 
+**v1.4 Totals (in progress):**
+- Plans completed: 2
+- Phases: 1 (23)
+- Commits: 4
+- Tests: 1,196 passing (+9 new)
+
 ## Accumulated Context
 
 ### Decisions
@@ -56,6 +62,8 @@ Full decision history archived in milestones/v1.0-ROADMAP.md, milestones/v1.1-RO
 |----------|-------|-----------|
 | Thread sum_type_defs as parameter, not in PatMatrix | 23-01 | PatMatrix is cloned frequently; reference parameter avoids data duplication |
 | Fallback to appearance-order tags when type not in map | 23-01 | Preserves backward compatibility for tests using ad-hoc type names |
+| Ordering as non-generic built-in sum type | 23-02 | Simpler than Option/Result; no type parameters needed |
+| Primitive compare uses BinOp directly | 23-02 | Int/Float/String don't have generated Ord__lt__ functions; use hardware ops |
 
 ### Pending Todos
 
@@ -63,11 +71,11 @@ None.
 
 ### Blockers/Concerns
 
-None -- all five v1.3 limitations are now tracked as v1.4 requirements (PATM-01, PATM-02, TGEN-01, TGEN-02, TSND-01).
+PATM-01 and PATM-02 are now resolved. Remaining v1.4 items: TGEN-01, TGEN-02, TSND-01.
 
 ## Session Continuity
 
 Last session: 2026-02-08
-Stopped at: Completed 23-01-PLAN.md
+Stopped at: Completed 23-02-PLAN.md (Phase 23 complete)
 Resume file: None
-Next action: Execute 23-02-PLAN.md (Ordering type registration, compare method, e2e tests)
+Next action: Plan and execute Phase 24 (TGEN-01/TGEN-02)
