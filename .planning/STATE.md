@@ -5,16 +5,16 @@
 See: .planning/PROJECT.md (updated 2026-02-08)
 
 **Core value:** Expressive, readable concurrency -- writing concurrent programs should feel as natural as sequential code, with supervision and fault tolerance built in.
-**Current focus:** v1.4 Compiler Polish -- Phase 24 complete (Trait System Generics)
+**Current focus:** v1.4 Compiler Polish -- Phase 25 complete (Type System Soundness)
 
 ## Current Position
 
-Phase: 24 of 25 (Trait System Generics)
-Plan: 2 of 2 in phase
+Phase: 25 of 25 (Type System Soundness)
+Plan: 1 of 1 in phase
 Status: Phase complete
-Last activity: 2026-02-08 -- Completed 24-02-PLAN.md (Generic Type Deriving -- TGEN-02)
+Last activity: 2026-02-08 -- Completed 25-01-PLAN.md (Type System Soundness -- TSND-01)
 
-Progress: ████░░░░░░ ~40% (2/2 plans in phase 23 + 2/2 in phase 24; phase 25 not yet planned)
+Progress: ██████████ 100% (2/2 plans in phase 23 + 2/2 in phase 24 + 1/1 in phase 25)
 
 ## Performance Metrics
 
@@ -45,11 +45,11 @@ Progress: ████░░░░░░ ~40% (2/2 plans in phase 23 + 2/2 in ph
 - Lines of Rust: 63,189 (+5,532)
 - Tests: 1,187 passing (+130 new)
 
-**v1.4 Totals (in progress):**
-- Plans completed: 4
-- Phases: 2 (23, 24)
-- Commits: 11
-- Tests: 1,203 passing (+16 new)
+**v1.4 Totals:**
+- Plans completed: 5
+- Phases: 3 (23, 24, 25)
+- Commits: 13
+- Tests: 1,206 passing (+19 new)
 
 ## Accumulated Context
 
@@ -70,6 +70,8 @@ Full decision history archived in milestones/v1.0-ROADMAP.md, milestones/v1.1-RO
 | Lazy monomorphization at struct literal sites | 24-02 | Generate trait functions on demand when generic type is instantiated with concrete args |
 | known_functions fallback for monomorphized type dispatch | 24-02 | Trait registry has parametric impl but dispatch needs mangled name; check known_functions |
 | display_name separation for monomorphized Display/Debug | 24-02 | Show "Box(42)" not "Box_Int(42)" for human-readable output |
+| Clone-locally strategy for fn_constraints in infer_block | 25-01 | Avoids &mut cascade to 10+ callers; cloning small constraints map is cheap |
+| Propagate constraints only for NameRef initializers | 25-01 | Closures already work via inner call; only bare function aliases need propagation |
 
 ### Pending Todos
 
@@ -77,11 +79,11 @@ None.
 
 ### Blockers/Concerns
 
-Phase 24 complete. Remaining v1.4 item: TSND-01 (Phase 25 - Tooling Stretch Goals, not yet planned).
+v1.4 Compiler Polish milestone is complete. All 5 known limitations addressed. Higher-order function constraint propagation (e.g., `apply(show, value)`) remains a known limitation for future work.
 
 ## Session Continuity
 
 Last session: 2026-02-08
-Stopped at: Completed 24-02-PLAN.md (Generic Type Deriving -- TGEN-02)
+Stopped at: Completed 25-01-PLAN.md (Type System Soundness -- TSND-01)
 Resume file: None
-Next action: Plan and execute Phase 25 (Tooling Stretch Goals -- TSND-01)
+Next action: v1.4 milestone complete. Plan next milestone or release.
