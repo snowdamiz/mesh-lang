@@ -1,506 +1,306 @@
-# Stack Research: Snow Language
+# Stack Research: v1.3 Trait System & Stdlib Protocols
 
-**Project:** Snow Programming Language
-**Researched:** 2026-02-05
-**Mode:** Ecosystem survey -- compiler toolchain, runtime, and testing infrastructure
+**Project:** Snow Programming Language -- v1.3 Milestone
+**Domain:** Compiler trait system completion, monomorphization, stdlib protocol implementation
+**Researched:** 2026-02-07
+**Confidence:** HIGH
 
----
+## Scope
 
-## Compiler Toolchain
-
-### Lexer
-
-**Recommendation: Hand-written lexer (not a generator)**
-
-| Technology | Version | Purpose | Why |
-|------------|---------|---------|-----|
-| Hand-written lexer | N/A | Tokenization | Full control over error recovery, span tracking, whitespace handling; simpler than it sounds for a language with known syntax |
-
-**Rationale:** For a production language compiler, a hand-written lexer gives you complete control over error recovery, Unicode handling, and diagnostics. The Rust compiler itself uses a hand-written lexer (`rustc_lexer`). A lexer is the simplest part of a compiler -- typically 300-800 lines of Rust for a language like Snow. Generators like Logos add a dependency and abstraction layer for a problem that doesn't need one.
-
-**If you want a generator anyway:** Logos v0.16 (released Dec 2025) is the clear choice. It rewrote its engine from scratch for correctness, compiles token definitions into a deterministic state machine at compile time, and is ridiculously fast. However, for a language with `do`/`end` blocks, significant indentation awareness (if desired later), string interpolation, and heredocs, you will outgrow a generator quickly.
-
-| Alternative | Version | Why Not |
-|-------------|---------|---------|
-| Logos | 0.16 | Excellent for simple token sets but becomes limiting for complex lexer needs (string interpolation, context-sensitive tokens). Adds a proc-macro dependency for a problem that's straightforward to solve by hand. |
-| lexgen | N/A | Less popular, fewer users to learn from |
-
-**Confidence: HIGH** -- This is well-established consensus. Every major production compiler (rustc, GCC, Clang, Go, Swift) uses a hand-written lexer.
+This research covers ONLY the stack changes needed for v1.3: completing the trait system (user-defined traits, monomorphization, method dispatch) and adding stdlib protocols (Display, Iterator, From/Into, Serialize/Deserialize, Hash, Default). The existing compiler stack (lexer, parser, type checker, MIR, codegen, runtime) is validated and out of scope.
 
 ---
 
-### Parser
+## Key Finding: No New Dependencies Needed
 
-**Recommendation: Hand-written recursive descent parser**
-
-| Technology | Version | Purpose | Why |
-|------------|---------|---------|-----|
-| Hand-written recursive descent | N/A | Parsing source into AST/CST | Best error recovery, best diagnostics, best LSP support, no black-box dependencies |
-| rowan | latest | CST (Concrete Syntax Tree) representation | Red-green tree pattern used by rust-analyzer; enables lossless syntax trees for IDE support |
-
-**Rationale:** The overwhelming consensus in the language implementation community is that hand-written recursive descent parsers are the right choice for production compilers. Reasons:
-
-1. **Error recovery:** You control exactly how to recover from malformed input, which is critical for IDE integration and helpful diagnostics. Parser combinators and generators make this much harder.
-2. **Diagnostics:** You can emit exactly the error message you want at exactly the right point. "Expected `end` to close `do` block started on line 5" is trivial in a hand-written parser, painful in a combinator.
-3. **Performance:** No abstraction overhead. A recursive descent parser for Snow will be extremely fast.
-4. **IDE support:** If Snow ever gets an LSP server, you need incremental, error-tolerant parsing. Hand-written parsers with rowan-based CSTs are the proven path (this is exactly what rust-analyzer does).
-5. **Simplicity:** A recursive descent parser is ~1500-3000 lines of clear, debuggable Rust code. Parser combinators create opaque type soup.
-
-The Rust compiler, Go compiler, Swift compiler, GCC, and Clang all use hand-written parsers.
-
-**CST vs AST strategy:** Start with a direct AST approach (simpler for v1). Adopt rowan-based CST later when you need LSP/IDE support. The CST-then-lower-to-AST pattern used by rust-analyzer is the gold standard but adds complexity you don't need on day one.
-
-**Pratt parsing for expressions:** Use a Pratt parser (precedence climbing) for expression parsing within the recursive descent framework. This handles operator precedence elegantly and is about 50-100 lines of code.
-
-| Alternative | Version | Why Not |
-|-------------|---------|---------|
-| chumsky | 0.11.1 | Excellent combinator library with error recovery. The best choice IF you go the combinator route. But compile times suffer with complex grammars, and you're fighting Rust's type system instead of writing straightforward parsing code. Good for prototyping, not for a production compiler. |
-| LALRPOP | latest | Grammar-driven, generates Rust code. Nice for simple languages. But the built-in lexer is a "toy" (author's words), writing custom lexers for it is painful, and you lose control over error messages. |
-| winnow | latest | Fast parser combinator (nom fork). Good for binary protocols and data formats. Not designed for programming language parsers with rich error recovery needs. |
-| tree-sitter | latest | Designed for editors, not compilers. Generates C code. Wrong tool for a compiler's parser. |
-
-**Confidence: HIGH** -- This is the strongest consensus in language implementation. The survey "Parser generators vs handwritten parsers" (2021) confirmed that virtually all major language implementations use hand-written parsers.
+The v1.3 trait system and stdlib protocols require **zero new Rust crate dependencies**. Everything needed is already in the workspace or is pure compiler logic that should be implemented directly. This is the correct outcome -- trait systems and protocols are core compiler semantics, not library-shaped problems.
 
 ---
 
-### Type System
+## Current Stack (Validated, No Changes)
 
-**Recommendation: Custom implementation, inspired by existing Rust HM implementations**
+These are already in `Cargo.toml` and require no version changes:
 
-| Technology | Version | Purpose | Why |
-|------------|---------|---------|-----|
-| Custom type checker | N/A | Hindley-Milner type inference with extensions | No off-the-shelf crate provides what Snow needs; type systems are inherently custom |
-| ena | latest | Union-find data structure for type unification | Used by rustc itself for type inference; battle-tested |
+| Technology | Version | Crate | Status |
+|------------|---------|-------|--------|
+| Inkwell | 0.8.0 | `snow-codegen` | Current (supports LLVM 21, latest on GitHub) |
+| LLVM | 21 | via Inkwell `llvm21-1` feature | Current |
+| ena | 0.14 | `snow-typeck` | Current (latest is 0.14.3, semver-compatible) |
+| rustc-hash | 2 | `snow-typeck`, `snow-codegen` | Current (latest is 2.1.1, semver-compatible) |
+| rowan | 0.16 | `snow-parser` | Current (latest is 0.16.1, semver-compatible) |
+| ariadne | 0.6 | `snow-typeck` | Current |
+| serde/serde_json | 1 | `snow-typeck`, `snow-rt` | Current |
+| insta | 1.46 | dev-dependency | Current |
 
-**Rationale:** There is no "type system library" you can drop in. Type inference and checking are deeply intertwined with your language's semantics. However, the implementation approach is well-understood:
-
-1. **Algorithm W / Algorithm J** for core HM inference (constraint generation + unification)
-2. **Union-find** (ena crate) for efficient type variable unification
-3. **Bidirectional type checking** as an extension for better error messages than pure HM
-
-Key references for implementation:
-- `tcr/rust-hindley-milner` -- clean Rust HM implementation
-- `zdimension/hm-infer-rs` -- HM for Scheme in Rust, with currying support
-- `nwoeanhinnogaehr/algorithmw-rust` -- Algorithm W in Rust
-- The Rust compiler's own type inference (based on HM with extensions for subtyping, regions)
-
-**Implementation approach:**
-- Phase 1: Basic HM inference (let-polymorphism, function types, ADTs)
-- Phase 2: Row polymorphism or similar for records/maps
-- Phase 3: Typeclass/trait-like dispatch for ad-hoc polymorphism (if desired)
-
-The `polytype` crate (crates.io) provides HM polymorphic typing primitives, but it's better to understand and implement this yourself since the type system is the heart of the language and you'll need to extend it in ways no library anticipates.
-
-**Confidence: MEDIUM** -- The approach is well-understood (HM is textbook material), but implementation complexity is high. The specific extensions needed for Snow (actor types? message types? supervision types?) are novel and will require design work.
+**Confidence: HIGH** -- Versions verified via crates.io web search on 2026-02-07. All workspace dependencies are at their latest compatible versions.
 
 ---
 
-### LLVM Code Generation
+## What Changes Are Needed (All Internal)
 
-**Recommendation: Inkwell 0.8.0 with LLVM 18 (stable target)**
+### 1. snow-typeck: TraitRegistry Extensions
 
-| Technology | Version | Purpose | Why |
-|------------|---------|---------|-----|
-| inkwell | 0.8.0 | Safe Rust wrapper for LLVM | Type-safe LLVM IR generation; catches many errors at Rust compile time rather than LLVM runtime. Active development, supports LLVM 11-21. |
-| LLVM | 18 (target), 19-21 (future) | Code generation backend | LLVM 18 is the sweet spot: widely available via package managers, well-tested, stable. |
+**No new dependencies.** The existing `TraitRegistry` (traits.rs) needs extension, not replacement.
 
-**Why inkwell over llvm-sys:**
-- `inkwell` wraps `llvm-sys` with Rust's type system, turning many runtime LLVM crashes into compile-time errors
-- Creating basic blocks, building instructions, managing types -- all have safe Rust APIs
-- The Kaleidoscope tutorial is implemented in inkwell, providing a clear learning path
-- Still provides escape hatches to raw llvm-sys when needed
+**Current state:** TraitRegistry stores `TraitDef` and `ImplDef` keyed by `(trait_name, type_key)`. Compiler-known traits (Add, Eq, Ord, etc.) are registered in builtins.rs with built-in impls for primitives. Where clauses validate against registry.
 
-**Why LLVM 18 as the initial target:**
-- Available via `brew install llvm@18` on macOS, apt packages on Linux
-- Well-tested, stable API
-- inkwell 0.8.0 supports it with feature flag `llvm18-0`
-- Can upgrade to LLVM 19/20/21 later by changing one feature flag
-- LLVM 21 is current bleeding edge (Homebrew default), but targeting the latest adds install friction for contributors
+**What needs to change internally:**
 
-**Installation:**
-```toml
-[dependencies]
-inkwell = { version = "0.8.0", features = ["llvm18-0"] }
+| Change | Why | Impact |
+|--------|-----|--------|
+| `TraitDef` gains `default_methods: Vec<(String, ...)>` | Support default method implementations in interfaces | Small struct change in traits.rs |
+| `ImplDef` gains method body references | Codegen needs to find impl method bodies for monomorphization | Link from ImplDef to CST nodes or MIR bodies |
+| `TraitRegistry` gains `impls_for_type(ty) -> Vec<&ImplDef>` | Codegen needs all impls for a given type to generate monomorphized methods | New query method |
+| `TraitRegistry` gains `impls_for_trait(name) -> Vec<&ImplDef>` | Stdlib protocols need to enumerate all implementors | New query method |
+| `type_to_key` handles generic impls | `impl Display for Option<T>` requires matching against parameterized types | Extend existing function |
+
+**Tools used:** Direct Rust code in existing crate. Uses existing `ena` for unification, existing `rustc-hash` for FxHashMap.
+
+### 2. snow-codegen/mir: Monomorphization Pass
+
+**No new dependencies.** The existing `mono.rs` is a reachability-only pass that needs to become a real monomorphization pass.
+
+**Current state:** `monomorphize()` in `mir/mono.rs` only does dead function elimination (reachability analysis). Comment says "In future: creates specialized copies of generic functions for each concrete type instantiation." The MIR lowerer in `lower.rs` currently lowers impl methods as standalone functions (`self.lower_fn_def(&method)`) but does not mangle names by implementing type.
+
+**What needs to change internally:**
+
+| Change | Why | Impact |
+|--------|-----|--------|
+| Name mangling for trait methods | `impl Display for Int` produces `Display_to_string_Int` | Extend existing `mangle_type_name` in mir/types.rs |
+| MIR gains `TraitMethodCall` variant | Distinguish `obj.method()` from `free_fn(obj)` for dispatch | New variant in MirExpr enum |
+| Monomorphization collects trait method instantiations | When `Display.to_string` is called on `Int`, ensure `Display_to_string_Int` exists | Extend mono.rs worklist |
+| MIR lowerer resolves trait methods to concrete impls | At call sites, resolve `self.to_string()` to the mangled concrete function | Extend lower.rs |
+| Codegen emits monomorphized trait method bodies | LLVM functions for each (trait, type) combination | Extend codegen/expr.rs |
+
+**Architecture decision (already validated):** Static dispatch via monomorphization. No vtables. This is correct because:
+1. Snow uses static typing with HM inference -- concrete types are known at compile time
+2. LLVM benefits from direct calls (enables inlining, branch prediction)
+3. Actor system provides dynamic routing where needed (message dispatch is inherently dynamic)
+4. Binary size trade-off is acceptable for a compiled language targeting servers/CLI
+
+**Name mangling scheme:** Use the existing `mangle_type_name` pattern from `mir/types.rs`:
+- `Display_to_string_Int` for `impl Display for Int`
+- `Iterator_next_List_Int` for `impl Iterator for List<Int>`
+- `From_from_String_Int` for `impl From<String> for Int`
+
+### 3. snow-codegen/codegen: LLVM IR for Trait Methods
+
+**No new dependencies.** Trait methods compile to regular LLVM functions with mangled names.
+
+**Current state:** Codegen skips `InterfaceDef` ("interfaces are erased") and lowers `ImplDef` methods as standalone functions. The `CodeGen` struct already has `functions: FxHashMap<String, FunctionValue>` which maps MIR function names to LLVM function values.
+
+**What needs to change internally:**
+
+| Change | Why | Impact |
+|--------|-----|--------|
+| Codegen registers mangled trait method names | `Display_to_string_Int` must be in `functions` map | Extend function registration pass |
+| Call sites resolve to mangled names | `x.to_string()` where `x: Int` becomes call to `Display_to_string_Int` | Extend expr.rs call handling |
+| `self` parameter handling | Trait methods receive `self` as first argument (value, not reference) | Straightforward -- same as existing function params |
+
+### 4. snow-rt: Runtime Support for Stdlib Protocols
+
+**No new dependencies.** Runtime functions for stdlib protocols are implemented as `#[no_mangle] extern "C"` functions in the existing snow-rt crate, same pattern as all other stdlib functions.
+
+**Current approach (validated):** Every stdlib function is a Rust function with C ABI exported from snow-rt, declared as an LLVM extern in codegen/intrinsics.rs, and registered in builtins.rs for type checking. This pattern works and scales.
+
+**New runtime functions needed:**
+
+| Protocol | Runtime Functions | Crate Impact |
+|----------|-------------------|--------------|
+| Display | `snow_display_int`, `snow_display_float`, `snow_display_bool`, `snow_display_string` | Trivial -- format to String |
+| Iterator | `snow_iterator_*` for List, Range, Map | Uses existing collection internals |
+| From/Into | Pure type-level, no runtime support needed | Zero runtime impact |
+| Hash | `snow_hash_int`, `snow_hash_float`, `snow_hash_string`, `snow_hash_bool` | See hash algorithm section below |
+| Default | `snow_default_int` (0), `snow_default_float` (0.0), etc. | Trivial |
+| Serialize | `snow_serialize_*` to JSON string | Uses existing serde_json in snow-rt |
+| Deserialize | `snow_deserialize_*` from JSON string | Uses existing serde_json in snow-rt |
+
+### 5. Hash Algorithm for Snow's Hash Protocol
+
+**No new dependency needed.** Use FNV-1a, implemented directly in snow-rt (~30 lines of Rust).
+
+**Why FNV-1a (not SipHash, not the `rustc-hash` FxHash):**
+
+| Algorithm | Speed (short keys) | Speed (long keys) | HashDoS resistant | Complexity |
+|-----------|--------------------|--------------------|-------------------|------------|
+| FNV-1a | Very fast | Moderate | No | ~30 lines |
+| SipHash | Moderate | Fast | Yes | ~200 lines |
+| FxHash | Fastest | Poor | No | ~50 lines |
+
+- **FNV-1a is the right choice** because Snow's Hash protocol is for user-visible hashing of values (struct fields, map keys), not for the compiler's internal hash maps (which already use FxHash via rustc-hash).
+- Snow is a compiled language where the input domain is controlled (not a web server accepting arbitrary user keys), so HashDoS resistance is unnecessary at the language level.
+- The Hash protocol implementations for Snow value types (Int, Float, String, Bool, structs) hash known-size data. FNV-1a excels at this.
+- FNV-1a is trivial to implement inline -- no crate needed.
+
+**Implementation:** A single `snow_hash` function in snow-rt that takes a pointer and length, returns i64. Protocol implementations for each type call it with appropriate byte representations. Approximately 30 lines of Rust:
+
+```rust
+const FNV_OFFSET: u64 = 14695981039346656037;
+const FNV_PRIME: u64 = 1099511628211;
+
+fn fnv1a(bytes: &[u8]) -> u64 {
+    let mut hash = FNV_OFFSET;
+    for &byte in bytes {
+        hash ^= byte as u64;
+        hash = hash.wrapping_mul(FNV_PRIME);
+    }
+    hash
+}
 ```
 
-**Note:** Inkwell 0.8.0 was released 2026-01-09 on GitHub. The crates.io published version may still be 0.7.1. If 0.8.0 is not yet on crates.io, use a git dependency:
-```toml
-[dependencies]
-inkwell = { git = "https://github.com/TheDan64/inkwell", features = ["llvm18-0"] }
-```
+**Why not add the `fnv` crate:** The fnv crate (crates.io) provides a Hasher implementation, but Snow's runtime doesn't need `std::hash::Hasher` compatibility. A direct FNV-1a implementation is simpler, has zero dependencies, and avoids pulling in a crate for 30 lines of code.
 
-| Alternative | Version | Why Not |
-|-------------|---------|---------|
-| llvm-sys | 211.0.0 | Raw C bindings. No type safety. Every mistake is a segfault or silent corruption. Only use if inkwell can't do something (rare). |
-| Cranelift | latest | Compiles faster than LLVM but generates slower code (~2x slower in some benchmarks). No mature optimization pipeline. Missing many targets. Good for debug builds of Rust itself, but Snow needs LLVM's optimization quality for "compiled to native" to be compelling. |
-| QBE | latest | Minimalist backend. ~10% of LLVM's code. Interesting for a learning project but lacks optimization power and target coverage. |
+**Why not add the `ahash` crate:** ahash is excellent for Rust hash maps but requires hardware AES instructions for its speed advantage, which makes it platform-dependent. Snow's Hash protocol should produce deterministic, platform-independent hashes.
 
-**Confidence: HIGH** -- inkwell is the standard choice for Rust-based LLVM projects. Verified on GitHub that 0.8.0 supports LLVM 18-21.
+### 6. Serialization for Snow's Serialize/Deserialize Protocols
 
----
+**No new dependency needed.** Use existing serde_json (already in snow-rt's Cargo.toml).
 
-### Build and Package Management
+**Design approach:** Snow's Serialize/Deserialize protocols produce/consume JSON strings, not arbitrary formats. This is the right scope for v1.3 because:
+1. JSON is the only serialization format Snow's stdlib currently supports (json.rs in snow-rt)
+2. A Serde-style multi-format data model is premature -- Snow doesn't have derive macros or procedural macros yet
+3. JSON covers the server-oriented use case (HTTP APIs, config files)
 
-| Technology | Version | Purpose | Why |
-|------------|---------|---------|-----|
-| Cargo | (Rust toolchain) | Build system for the compiler itself | Standard Rust build tool. No alternative needed. |
-| Cargo workspace | N/A | Multi-crate project structure | Split compiler into `snow-lexer`, `snow-parser`, `snow-typeck`, `snow-codegen`, `snow-runtime` crates |
+**Runtime implementation:**
+- `snow_serialize_*` functions convert Snow values to JSON strings (uses serde_json::Value internally)
+- `snow_deserialize_*` functions parse JSON strings into Snow values (uses serde_json::from_str internally)
+- Struct serialization: compiler generates a serialize function per struct that walks fields and builds a JSON object
+- This matches the existing pattern in json.rs where `json_encode_map`, `json_encode_list`, etc. already exist
 
-**Recommended workspace structure:**
-```
-snow/
-  Cargo.toml              # workspace root
-  crates/
-    snow-driver/          # CLI entry point, orchestration
-    snow-lexer/           # Tokenization
-    snow-parser/          # Parsing (AST types live here)
-    snow-ast/             # AST type definitions (shared)
-    snow-typeck/          # Type inference and checking
-    snow-hir/             # High-level IR (desugared, typed)
-    snow-codegen/         # LLVM IR generation
-    snow-runtime/         # Rust runtime library that gets compiled and linked into Snow binaries
-  tests/                  # Integration/golden tests
-  stdlib/                 # Snow standard library source files
-```
-
-**Confidence: HIGH** -- Cargo workspaces for multi-crate Rust projects is standard practice.
+**Why not add a separate serialization framework:** Snow is not Rust. It doesn't need a Serde-style visitor pattern because it doesn't have derive macros. The compiler itself generates the serialization code for each type via monomorphization of the Serialize trait. The runtime just needs leaf functions (`serialize_int_to_json`, `serialize_string_to_json`, etc.) that the generated code calls.
 
 ---
 
-### Supporting Libraries
+## Recommended Stack (Complete)
 
-| Library | Version | Purpose | Why |
-|---------|---------|---------|-----|
-| ariadne | 0.6.0 | Error/diagnostic reporting | Beautiful Rust-style compiler error messages. Sister project of chumsky, but works independently. Produces the best-looking diagnostics in the Rust ecosystem. |
-| lasso | 0.7.3 | String interning | Fast, concurrent string interner. Turns repeated string comparisons into integer comparisons. Essential for compiler performance. Used widely in language tooling. |
-| ena | latest | Union-find for type inference | Used by rustc itself. The standard choice for HM unification. |
-| salsa | 0.25.2 | Incremental computation (FUTURE) | Framework used by rust-analyzer for incremental recompilation. Not needed for v1 but is the path to fast IDE support. Defer until LSP work begins. |
+### Core Technologies (No Changes)
 
-**Why ariadne over miette:**
-- ariadne is purpose-built for compiler diagnostics -- multi-line labels, span overlaps, color generation
-- miette is a broader error-handling framework (great for CLI apps, overkill for a compiler)
-- ariadne is made by the same author as chumsky and is designed for language tooling
-- Lighter dependency footprint
+| Technology | Version | Purpose | Status for v1.3 |
+|------------|---------|---------|------------------|
+| Inkwell | 0.8.0 (`llvm21-1`) | LLVM IR generation | No changes needed. Monomorphized trait methods are regular LLVM functions. |
+| ena | 0.14 | Union-find for type unification | No changes needed. Trait method resolution uses TraitRegistry, not unification. |
+| rustc-hash | 2 | FxHashMap for compiler internals | No changes needed. Already used throughout. |
+| rowan | 0.16 | Lossless CST | No changes needed. Parser already handles interface/impl syntax. |
+| ariadne | 0.6 | Diagnostic reporting | No changes needed. New error types use existing error infrastructure. |
+| serde_json | 1 | JSON parsing/generation | Already in snow-rt. Used for Serialize/Deserialize protocol runtime. |
 
-**Why lasso for string interning:**
-- Compilers compare identifiers millions of times; interning makes this O(1)
-- lasso provides both single-threaded (`Rodeo`) and multi-threaded (`ThreadedRodeo`) interners
-- Arena-allocated, minimal memory overhead
-- 6M+ downloads, well-maintained
+### New Internal Components (No External Dependencies)
 
-**Confidence: HIGH** for ariadne and lasso (verified versions, widely used). MEDIUM for salsa (defer to later phase, API still evolving).
-
----
-
-## Actor Runtime
-
-This is the most architecturally significant decision for Snow. The runtime gets compiled as a Rust library and statically linked into every Snow binary.
-
-### Architecture Decision: Custom Runtime on Tokio
-
-**Recommendation: Build a custom actor runtime on top of Tokio's work-stealing scheduler**
-
-| Technology | Version | Purpose | Why |
-|------------|---------|---------|-----|
-| tokio | 1.49.0 (LTS: 1.47.x) | Async runtime foundation | Work-stealing task scheduler, I/O reactor, timers. The foundation upon which Snow's actor runtime is built. |
-| Custom runtime | N/A | Actor semantics, supervision, mailboxes | Neither ractor nor kameo match Snow's exact needs. The runtime IS the language. |
-
-**Why custom over ractor/kameo:**
-1. **The runtime is the language.** Snow's runtime isn't a library users import -- it's the execution model. Every Snow program runs on this runtime. Using someone else's actor framework means your language semantics are constrained by their API decisions.
-2. **BEAM-style semantics require specific guarantees** that existing Rust actor frameworks approximate but don't deliver:
-   - Per-actor mailboxes with selective receive (pattern matching on messages)
-   - Reduction-counting preemption (neither ractor nor kameo do this)
-   - Per-actor garbage collection (Rust doesn't GC, but Snow's runtime may need to manage Snow-level heap objects)
-   - Process linking and monitoring (ractor has this; kameo has a different model)
-   - Process registry (name-based lookup)
-3. **Control over the wire format.** When Snow compiles pattern matching on messages, the codegen needs to know exactly how messages are laid out. With a third-party framework, you're constrained to their message types.
-
-**Why Tokio as the foundation (not from-scratch):**
-- Tokio provides the hard parts: epoll/kqueue integration, work-stealing scheduler, timer wheel, cross-platform I/O
-- Writing a scheduler from scratch is a multi-year effort (Pony's took years)
-- Tokio's scheduler is battle-tested at massive scale (used by AWS, Discord, Cloudflare)
-- `tokio::task::spawn` maps naturally to "spawn actor" -- each actor is a Tokio task
-- `tokio::sync::mpsc` provides the mailbox primitive (bounded channels with backpressure)
-- LTS releases (1.43.x until March 2026, 1.47.x until September 2026) ensure stability
-
-### Scheduler Architecture
-
-**Approach: Tokio work-stealing scheduler + cooperative yielding**
-
-The BEAM uses reduction counting for preemptive scheduling. Snow can approximate this:
-
-1. **Tokio's cooperative task budgeting:** Tokio already has a cooperative scheduling mechanism where tasks yield back to the scheduler after a budget of operations. This is not reduction counting, but it prevents any single actor from monopolizing a thread.
-2. **Yield points in generated code:** The Snow compiler can insert explicit yield points (calls to `tokio::task::yield_now()`) at strategic locations in generated code: loop back-edges, function calls, message receives. This is how Go's goroutine scheduler works and is the pragmatic approach.
-3. **One scheduler thread per core:** Tokio's `Runtime::new()` creates a multi-threaded work-stealing scheduler with one worker thread per CPU core, matching BEAM's architecture.
-
-**What Snow's runtime needs to provide (as a Rust library linked into binaries):**
-- `snow_rt::spawn(actor_fn)` -- spawn a new actor
-- `snow_rt::send(pid, message)` -- send a message to an actor's mailbox
-- `snow_rt::receive(patterns)` -- selective receive with pattern matching
-- `snow_rt::link(pid)` / `snow_rt::monitor(pid)` -- process linking and monitoring
-- `snow_rt::supervisor::start(strategy, children)` -- supervision tree primitives
-- `snow_rt::registry::register(name, pid)` -- process name registry
-
-### Message Passing
-
-| Component | Implementation | Notes |
-|-----------|---------------|-------|
-| Mailbox | `tokio::sync::mpsc::unbounded_channel` | Each actor gets one. Unbounded to match BEAM semantics (BEAM mailboxes are unbounded). |
-| Message type | Enum or tagged union | Snow-level messages are compiled to a Rust enum representing the message variants the actor can receive. |
-| Selective receive | Pattern match on channel | The actor loops over the channel, matching messages against patterns. Non-matching messages are deferred (re-queued). |
-| Send semantics | Async, non-blocking | `send` never blocks the sender. If the mailbox is full (if bounded), messages are queued. |
-| Request-reply | `tokio::sync::oneshot` | For call-style interactions where a response is expected. |
-
-### Supervision Trees
-
-**Model: Erlang OTP-style supervision**
-
-| Component | Implementation |
-|-----------|---------------|
-| Supervisor | A special actor that manages child actors |
-| Restart strategies | `one_for_one`, `one_for_all`, `rest_for_one` |
-| Child specs | Declarative: how to start, max restarts, restart type (permanent/transient/temporary) |
-| Links | Bidirectional: if linked actor dies, linked partner gets exit signal |
-| Monitors | Unidirectional: monitoring actor gets notified of monitored actor's death |
-| Exit signals | Propagated through links; can be trapped by supervisors |
-
-The supervision implementation doesn't need external libraries. It's ~500-1000 lines of Rust code built on the mailbox and linking primitives.
-
-### What NOT to use for the runtime
-
-| Technology | Why Not |
-|------------|---------|
-| ractor 0.15.10 | Closest to BEAM semantics of any Rust actor framework. Has supervision, linking, monitoring, registry. BUT: you'd be coupling your language to a third-party framework's API. If ractor changes its `Actor` trait, your language breaks. The runtime IS the language -- own it. **Study ractor's design** (it's excellent), but implement your own. |
-| kameo 0.19.2 | More Rust-idiomatic than ractor, but further from BEAM semantics. Actor linking model differs from Erlang's. Supervision is lifecycle-hook-based rather than tree-based. |
-| actix | Older framework, pre-async/await design. Not a good foundation for a new project. |
-| bastion | Designed as a fault-tolerant runtime but has seen less maintenance. |
-
-**Confidence: HIGH** for Tokio as foundation. **MEDIUM** for the specific runtime architecture -- this will need iterative refinement as you discover what Snow's semantics actually require.
+| Component | Location | Purpose | Complexity |
+|-----------|----------|---------|------------|
+| TraitRegistry extensions | snow-typeck/traits.rs | Default methods, impl queries, generic impl matching | Medium |
+| MirExpr::TraitMethodCall | snow-codegen/mir/mod.rs | Distinguish trait method calls from free functions | Low |
+| Monomorphization pass | snow-codegen/mir/mono.rs | Generate specialized functions per (trait, concrete_type) | High |
+| Trait method name mangling | snow-codegen/mir/types.rs | Extend existing mangle_type_name | Low |
+| Trait method dispatch in codegen | snow-codegen/codegen/expr.rs | Resolve trait calls to mangled LLVM functions | Medium |
+| FNV-1a hash implementation | snow-rt/src/hash.rs (new file) | Runtime hash function for Hash protocol | Low (~30 lines) |
+| Display runtime functions | snow-rt/src/string.rs (extend) | to_string for primitive types | Low |
+| Iterator runtime support | snow-rt/src/collections/ (extend) | Iterator state management for List, Range | Medium |
+| Serialize/Deserialize runtime | snow-rt/src/json.rs (extend) | JSON serialization for Snow types | Medium |
+| Builtin trait/impl registrations | snow-typeck/builtins.rs | Register Display, Iterator, Hash, etc. as traits with impls | Medium |
+| Builtin type signatures | snow-typeck/builtins.rs | Type signatures for protocol methods in type env | Low |
 
 ---
 
-## Testing Infrastructure
+## What NOT to Add (and Why)
 
-### Compiler Testing
-
-| Tool | Version | Purpose | When |
-|------|---------|---------|------|
-| insta | latest | Snapshot testing | Test lexer output, AST structure, type inference results, generated LLVM IR. THE standard tool for compiler testing in Rust. |
-| cargo-insta | latest | CLI for reviewing/updating snapshots | `cargo insta test` to run, `cargo insta review` to update |
-| goldentests | latest | End-to-end golden tests | Compile Snow source files, run the binary, compare output against expected. Perfect for testing the full pipeline. |
-| datatest-stable | latest | Data-driven tests on stable Rust | Generate test cases from directories of `.snow` files |
-
-**Testing strategy by compiler phase:**
-
-| Phase | Testing Approach |
-|-------|-----------------|
-| Lexer | Snapshot tests: input source -> token stream |
-| Parser | Snapshot tests: input source -> AST (debug-printed) |
-| Type checker | Snapshot tests: input source -> inferred types per expression |
-| Error reporting | Snapshot tests: malformed source -> diagnostic output (stderr) |
-| Code generation | Snapshot tests: input source -> LLVM IR |
-| End-to-end | Golden tests: `.snow` source + expected stdout + expected exit code |
-| Runtime | Unit tests for actor spawn/send/receive/supervision using `#[tokio::test]` |
-
-**Why insta for compiler testing:**
-- The Rust project itself adopted insta for bootstrap snapshot testing (2025)
-- `cargo insta review` provides a TUI for reviewing changes, which is critical when compiler output changes
-- Supports redaction (hide non-deterministic parts like memory addresses)
-- VS Code extension for inline snapshot review
-- Adrian Sampson (Cornell) explicitly recommends snapshot testing for "compilers and compiler-like things"
-
-**Test directory structure:**
-```
-tests/
-  lexer/
-    snapshots/              # insta snapshot files
-    test_lexer.rs
-  parser/
-    snapshots/
-    test_parser.rs
-  typeck/
-    snapshots/
-    test_typeck.rs
-  codegen/
-    snapshots/
-    test_codegen.rs
-  ui/                       # end-to-end golden tests
-    hello_world.snow
-    hello_world.stdout       # expected output
-    pattern_match.snow
-    pattern_match.stdout
-    type_error.snow
-    type_error.stderr        # expected error output
-  runtime/
-    test_actors.rs
-    test_supervision.rs
-```
-
-**Confidence: HIGH** -- insta is the de facto standard for snapshot testing in Rust, verified by its adoption in the Rust compiler's own test infrastructure.
-
-### Runtime Testing
-
-| Tool | Purpose |
-|------|---------|
-| `#[tokio::test]` | Async test harness for actor/supervision tests |
-| `tokio::time::pause()` | Deterministic time control for timeout/timer tests |
-| `tracing` + `tracing-test` | Structured logging assertions for runtime behavior |
+| Avoid | Why | What to Do Instead |
+|-------|-----|-------------------|
+| `fnv` crate | 30 lines of code. Adding a crate for a trivial algorithm adds dependency management overhead for no benefit. | Implement FNV-1a directly in snow-rt (~30 lines). |
+| `ahash` crate | Requires hardware AES for speed. Snow's Hash protocol needs deterministic, platform-independent results. | Use FNV-1a. Platform-independent, deterministic, fast enough. |
+| `siphasher` crate | Overkill for Snow's use case. SipHash protects against HashDoS, which is irrelevant for a compiled language's value hashing. | Use FNV-1a. |
+| `serde` derive macros on Snow types | Snow types are not Rust types. The compiler generates serialization code via monomorphization, not via Rust derive macros. | Compiler generates serialize/deserialize functions per type. Runtime provides leaf serialization functions. |
+| `erased-serde` or trait object serialization | Dynamic dispatch for serialization is unnecessary -- Snow uses static dispatch via monomorphization. | Monomorphize Serialize/Deserialize impls to concrete functions. |
+| vtable/dynamic dispatch infrastructure | Snow's type system resolves all types at compile time. Adding vtables would add runtime cost for no benefit. Actors provide dynamic routing where needed. | Monomorphization only. Static dispatch for all trait method calls. |
+| `petgraph` or graph library for trait resolution | Trait dependency graphs in Snow are simple (no diamond inheritance, no higher-kinded types). A HashMap lookup suffices. | Use existing FxHashMap-based TraitRegistry. |
+| New MIR crate or separate `snow-mir` | MIR is tightly coupled to codegen. Splitting it out adds crate boundary overhead for code that changes together. | Keep MIR in snow-codegen as it is now. |
+| `proc-macro2`/`syn`/`quote` | Snow doesn't have derive macros. Serialization code is generated by the compiler, not by Rust macros. | Compiler generates code directly in MIR lowering. |
+| Generic/polymorphic runtime dispatch | Iterator, Display, etc. are resolved at compile time via monomorphization. No runtime trait dispatch needed. | All protocol methods compile to direct function calls. |
 
 ---
 
-## Recommended Stack Summary
+## Integration Points with Existing Stack
 
-### Core (Day 1)
+### Type Checker -> MIR Lowering
 
-```toml
-[workspace]
-members = ["crates/*"]
+The `TypeckResult` already contains `trait_registry: TraitRegistry`. The MIR lowerer has access to this. The integration point is:
 
-# In crates/snow-driver/Cargo.toml
-[dependencies]
-snow-lexer = { path = "../snow-lexer" }
-snow-parser = { path = "../snow-parser" }
-snow-ast = { path = "../snow-ast" }
-snow-typeck = { path = "../snow-typeck" }
-snow-codegen = { path = "../snow-codegen" }
-snow-runtime = { path = "../snow-runtime" }
-clap = { version = "4", features = ["derive"] }
+1. **Type checker** resolves which concrete impl satisfies a trait method call
+2. **MIR lowerer** reads the resolution and generates `MirExpr::Call` with the mangled function name
+3. **No trait objects, no vtables** -- by the time MIR is generated, all calls are direct
 
-# In crates/snow-lexer/Cargo.toml
-[dependencies]
-lasso = "0.7"
-# (hand-written lexer, minimal dependencies)
+### MIR Lowering -> Codegen
 
-# In crates/snow-parser/Cargo.toml
-[dependencies]
-snow-ast = { path = "../snow-ast" }
-lasso = "0.7"
-# (hand-written parser, minimal dependencies)
+The MIR lowerer already generates `MirExpr::Call` with function names. Trait methods are lowered as regular functions with mangled names. The codegen sees no difference between a trait method call and a regular function call -- they are both `MirExpr::Call { func: Var("Display_to_string_Int"), ... }`.
 
-# In crates/snow-ast/Cargo.toml
-[dependencies]
-lasso = "0.7"
+### Builtins Registration
 
-# In crates/snow-typeck/Cargo.toml
-[dependencies]
-snow-ast = { path = "../snow-ast" }
-ena = "0.14"  # union-find for type unification
+New stdlib protocols follow the exact pattern established by compiler-known traits in builtins.rs:
 
-# In crates/snow-codegen/Cargo.toml
-[dependencies]
-snow-ast = { path = "../snow-ast" }
-inkwell = { version = "0.8.0", features = ["llvm18-0"] }
+1. Register trait definition: `registry.register_trait(TraitDef { name: "Display", methods: [...] })`
+2. Register impls for primitives: `registry.register_impl(ImplDef { trait_name: "Display", impl_type: Ty::int(), ... })`
+3. Register type signatures: `env.insert("display_to_string_int", Scheme::mono(...))`
 
-# In crates/snow-runtime/Cargo.toml
-[dependencies]
-tokio = { version = "1.49", features = ["full"] }
+### Runtime Functions
 
-# In workspace Cargo.toml (shared dev dependencies)
-[workspace.dependencies]
-insta = { version = "1", features = ["yaml"] }
+New runtime functions follow the exact pattern in codegen/intrinsics.rs:
 
-# Dev dependencies in each crate
-[dev-dependencies]
-insta = { workspace = true }
-```
-
-### Diagnostic Reporting
-
-```toml
-# In crates/snow-driver/Cargo.toml (or a shared snow-diagnostics crate)
-[dependencies]
-ariadne = "0.6"
-```
-
-### For Later Phases
-
-| Library | When | Purpose |
-|---------|------|---------|
-| salsa 0.25.2 | LSP/IDE phase | Incremental recompilation for language server |
-| rowan | LSP/IDE phase | Lossless CST for IDE support |
-| tower-lsp | LSP/IDE phase | Language Server Protocol implementation |
-| serde + serde_json | Package manager phase | Config file parsing |
+1. Declare as LLVM extern: `module.add_function("snow_display_int", fn_type, Some(Linkage::External))`
+2. Implement in snow-rt: `#[no_mangle] pub extern "C" fn snow_display_int(val: i64) -> *mut SnowString`
 
 ---
 
-## What NOT to Use (and Why)
+## Alternatives Considered
 
-| Technology | Why Not |
-|------------|---------|
-| **Cranelift** (as primary backend) | Generates code ~2x slower than LLVM in benchmarks. Snow's value prop includes "compiled to native" -- that needs LLVM's optimization quality. Cranelift is great for debug builds of Rust, not for a language whose selling point is fast compiled binaries. |
-| **Any parser generator** (LALRPOP, pest, tree-sitter) | You will fight the generator for error recovery, diagnostics, and incremental parsing. Every major production compiler uses a hand-written parser. The "time savings" of a generator are illusory -- you spend the saved time learning the generator's quirks instead. |
-| **chumsky** (for production parser) | Excellent library, but Rust compile times for complex grammars are painful, and debugging combinator type errors is worse than debugging a hand-written parser. Fine for prototyping. |
-| **miette** (for compiler diagnostics) | It's a general error-handling framework. ariadne is purpose-built for compiler diagnostics with better multi-span label rendering. |
-| **Any ORM/database** | Snow is a compiler, not a web app. No database needed. |
-| **ractor/kameo/actix** (as the runtime) | The runtime IS the language. Using a third-party actor framework means your language semantics are determined by someone else's API. Study them (especially ractor), but build your own on Tokio. |
-| **async-std** | Tokio won. 437M downloads vs. ~30M for async-std. The ecosystem, tooling, and community are all on Tokio. |
-| **Logos** (for production lexer) | Overkill dependency for what should be a simple hand-written component. Logos shines for complex regex-based tokenization, but a language lexer is straightforward state machine code. |
-
----
-
-## Confidence Levels
-
-| Area | Confidence | Rationale |
-|------|------------|-----------|
-| **Lexer approach** (hand-written) | HIGH | Verified: all major compilers (rustc, GCC, Clang, Go, Swift) use hand-written lexers. Multiple authoritative sources agree. |
-| **Parser approach** (hand-written RD) | HIGH | Verified: 2021 survey of major language implementations confirms. rustc, Go, Swift, GCC all hand-written. Community consensus overwhelming. |
-| **LLVM via inkwell** | HIGH | Verified: inkwell 0.8.0 released 2026-01-09, supports LLVM 11-21. Standard choice for Rust LLVM projects. GitHub confirms version and features. |
-| **LLVM version** (target 18) | HIGH | Verified: LLVM 18 available via `brew install llvm@18`. Well-tested. inkwell supports it. |
-| **Type system approach** (custom HM) | MEDIUM | Approach is textbook, but implementation complexity is high. No off-the-shelf solution. Multiple reference implementations exist in Rust but none are production-grade libraries. |
-| **Tokio as runtime foundation** | HIGH | Verified: Tokio 1.49.0 current, LTS 1.47.x until Sept 2026. 437M+ downloads. Work-stealing scheduler confirmed. |
-| **Custom runtime over ractor/kameo** | MEDIUM | Architecturally sound reasoning, but adds significant implementation work. Risk: might underestimate effort and wish you'd used ractor. Mitigation: study ractor's source code closely before implementing. |
-| **ariadne for diagnostics** | HIGH | Verified: v0.6.0. Sister project of chumsky. Purpose-built for compiler diagnostics. |
-| **lasso for string interning** | HIGH | Verified: v0.7.3, 6M+ downloads. Used widely in language tooling. |
-| **insta for testing** | HIGH | Verified: adopted by Rust compiler's own bootstrap. De facto standard for snapshot testing in Rust. |
-| **Workspace structure** | HIGH | Standard Rust practice for multi-crate projects. |
+| Decision | Recommended | Alternative | Why Not Alternative |
+|----------|-------------|-------------|---------------------|
+| Dispatch strategy | Monomorphization (static) | Vtable (dynamic) | Snow resolves all types at compile time via HM inference. Vtables add runtime overhead for zero benefit. Actors handle dynamic routing. |
+| Hash algorithm | FNV-1a (inline) | SipHash via crate | HashDoS irrelevant for compiled language values. FNV-1a is faster for short keys (ints, small strings). 30 lines vs. a dependency. |
+| Serialization | JSON via existing serde_json | Multi-format (Serde data model) | Premature. Snow has no derive macros. JSON covers the server use case. Can extend later if needed. |
+| Name mangling | `Trait_method_Type` | C++ style mangling | C++ mangling is complex and designed for overloading/namespaces Snow doesn't have. Simple underscore joining matches existing `mangle_type_name` pattern. |
+| Iterator protocol | Stateful iterator object | Lazy/stream-based | Stateful iterators are simpler to implement and match the existing collection model (List, Range are already eager). Lazy evaluation is a future enhancement. |
+| Default method bodies | CST reference from TraitDef | Copy body into each ImplDef | CST references avoid code duplication and let the lowerer handle default methods naturally. |
+| Trait method storage | Extend existing TraitRegistry | New TraitMethodTable | TraitRegistry already does everything needed. A new abstraction adds complexity. Extend, don't replace. |
 
 ---
 
-## Open Questions for Later Phases
+## Risk Assessment
 
-1. **Memory management for Snow values:** Snow is functional (immutable by default), so reference counting (like Swift) may work. But actors need isolated heaps (like BEAM). How does the generated code manage Snow-level objects? This needs dedicated research.
-
-2. **Message serialization format:** How are Snow-level values serialized into actor mailbox messages? Zero-copy? Deep copy? This affects both codegen and runtime design.
-
-3. **Preemption granularity:** How aggressively should the compiler insert yield points? Every function call? Every loop iteration? Every N reductions? Needs benchmarking.
-
-4. **Standard library scope:** What ships with Snow? TCP/UDP? HTTP? JSON? File I/O? Timer APIs? Each has implications for the runtime.
-
-5. **FFI story:** How does Snow call C/Rust libraries? This affects the codegen significantly and needs design work.
-
-6. **Distribution/clustering:** ractor_cluster and kameo both support distributed actors. Snow might want this eventually. The runtime architecture should not preclude it.
+| Risk | Likelihood | Impact | Mitigation |
+|------|-----------|--------|------------|
+| Monomorphization code bloat | Low | Medium | Snow programs are small-to-medium scale. Monitor binary sizes. Can add shared-body optimization later. |
+| Name collision in mangled names | Low | Low | Use consistent `Trait_method_Type` scheme. Types are unique in Snow's namespace. |
+| Iterator state management complexity | Medium | Medium | Start with List and Range iterators only. Map/Set iterators can follow the same pattern. |
+| Serialize/Deserialize for nested structs | Medium | Medium | Compiler generates recursive serialize calls. Test with 3+ levels of nesting. |
+| Generic impl matching (e.g., `impl Display for Option<T> where T: Display`) | Medium | High | Defer generic impls to after concrete impls work. Start with `impl Display for Option_Int` etc. |
 
 ---
 
 ## Sources
 
 ### Verified (HIGH confidence)
-- [inkwell GitHub -- v0.8.0, LLVM 11-21 support](https://github.com/TheDan64/inkwell)
-- [llvm-sys crates.io -- v211.0.0](https://crates.io/crates/llvm-sys)
-- [Tokio -- v1.49.0, LTS releases](https://tokio.rs/)
-- [ractor GitHub -- v0.15.10, Erlang gen_server model](https://github.com/slawlor/ractor)
-- [kameo GitHub -- v0.19.2, supervision and distribution](https://github.com/tqwewe/kameo)
-- [Logos -- v0.16, engine rewrite Dec 2025](https://github.com/maciejhirsz/logos)
-- [chumsky -- v0.11.1](https://github.com/zesterer/chumsky)
-- [ariadne -- v0.6.0](https://github.com/zesterer/ariadne)
-- [lasso -- v0.7.3](https://github.com/Kixiron/lasso)
-- [insta -- snapshot testing](https://github.com/mitsuhiko/insta)
-- [salsa -- v0.25.2](https://github.com/salsa-rs/salsa)
-- [LLVM releases -- 21.1.8 latest stable, LLVM 22 in RC](https://github.com/llvm/llvm-project/releases)
-- [Homebrew LLVM -- default is LLVM 21, versioned 18/19/20 available](https://formulae.brew.sh/formula/llvm)
+- [Inkwell 0.8.0 -- GitHub, LLVM 11-21 support](https://github.com/TheDan64/inkwell) -- confirmed latest version
+- [rustc-hash 2.1.1 -- crates.io](https://crates.io/crates/rustc-hash) -- confirmed latest version
+- [ena 0.14.3 -- crates.io](https://crates.io/crates/ena) -- confirmed latest version
+- [rowan 0.16.1 -- crates.io](https://crates.io/crates/rowan) -- confirmed latest version
+- [Rust compiler monomorphization -- rustc-dev-guide](https://rustc-dev-guide.rust-lang.org/backend/monomorph.html) -- reference for monomorphization patterns
+- [FNV hash function -- IETF draft, Wikipedia](https://en.wikipedia.org/wiki/Fowler%E2%80%93Noll%E2%80%93Vo_hash_function) -- algorithm specification
+- [Rust hashing performance -- perf book](https://nnethercote.github.io/perf-book/hashing.html) -- FNV vs SipHash vs FxHash comparison
 
 ### Verified (MEDIUM confidence)
-- [Comparing Rust Actor Libraries -- Actix, Coerce, Kameo, Ractor, Xtra](https://tqwewe.com/blog/comparing-rust-actor-libraries/)
-- [Actors with Tokio -- Alice Ryhl's canonical blog post](https://ryhl.io/blog/actors-with-tokio/)
-- [BEAM architecture -- The BEAM Book](https://blog.stenmans.org/theBeamBook/)
-- [Pony runtime architecture -- lock-free, work-stealing, per-actor GC](https://www.ponylang.io/)
-- [Enigma -- Erlang VM in Rust](https://github.com/archseer/enigma)
-- [Cranelift vs LLVM comparison](https://cranelift.dev/)
-- [Parser generators vs handwritten parsers survey (2021)](https://lobste.rs/s/10pkib/parser_generators_vs_handwritten)
+- [Serde data model -- serde.rs](https://serde.rs/) -- reference for serialization trait design
+- [Swift Codable protocol](https://developer.apple.com/documentation/swift/codable) -- reference for compiler-generated serialization
+- [Static vs dynamic dispatch trade-offs](https://www.slingacademy.com/article/performance-considerations-in-rust-virtual-table-lookups-vs-monomorphization/) -- monomorphization vs vtable analysis
 
-### Reference implementations
-- [tcr/rust-hindley-milner](https://github.com/tcr/rust-hindley-milner)
-- [algorithmw-rust](https://github.com/nwoeanhinnogaehr/algorithmw-rust)
-- [hm-infer-rs](https://github.com/zdimension/hm-infer-rs)
-- [Rust langdev libraries collection](https://github.com/Kixiron/rust-langdev)
-- [Create Your Own Programming Language with Rust](https://createlang.rs/)
+### Codebase Analysis (HIGH confidence)
+- `snow-typeck/src/traits.rs` -- existing TraitRegistry, TraitDef, ImplDef structures
+- `snow-typeck/src/builtins.rs` -- existing compiler-known trait registration pattern
+- `snow-codegen/src/mir/mono.rs` -- existing reachability pass (to be extended)
+- `snow-codegen/src/mir/types.rs` -- existing `mangle_type_name` function
+- `snow-codegen/src/mir/lower.rs` -- existing impl method lowering (`lower_fn_def`)
+- `snow-codegen/src/codegen/intrinsics.rs` -- existing runtime function declaration pattern
+- `snow-rt/Cargo.toml` -- serde_json already present
+
+---
+*Stack research for: Snow v1.3 Trait System & Stdlib Protocols*
+*Researched: 2026-02-07*

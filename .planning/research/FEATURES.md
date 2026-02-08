@@ -1,349 +1,691 @@
-# Features Research: Snow Language
+# Feature Research: Trait System & Stdlib Protocols
 
-**Domain:** Compiled programming language with static types, actor concurrency, expressive syntax
-**Researched:** 2026-02-05
-**Overall confidence:** HIGH (well-established domain with extensive prior art to learn from)
-
----
-
-## Table Stakes (Must Have)
-
-Features users expect from any modern compiled language. Missing any of these and the language is unusable or dismissed immediately.
-
-### Core Language
-
-| Feature | Why Expected | Complexity | Dependencies | Notes |
-|---------|--------------|------------|--------------|-------|
-| Variables and bindings (`let`) | Fundamental to any language | Low | Lexer, Parser, AST | Immutable by default (functional-first). Use `let mut` or similar for mutation if ever needed. |
-| Functions with parameters and return values | Fundamental | Low | Parser, Type checker | First-class functions required for functional paradigm. |
-| `do/end` block syntax | Core identity of Snow (Elixir/Ruby-style) | Medium | Parser | Distinguishes Snow from C-family syntax. This IS the language feel. |
-| Control flow (`if/else`, `case/match`) | Fundamental | Low | Parser, Pattern matching | `if/else` as expressions (return values), not statements. |
-| Pattern matching (exhaustive) | Table stakes for functional languages in 2025. Rust, Gleam, Elixir, OCaml all have it. | High | Type system, ADTs | Must be exhaustive -- compiler warns on missing cases. Core to the language identity, not an afterthought. |
-| Algebraic Data Types (sum + product types) | Foundation for type-safe domain modeling. Every modern functional language has them. | High | Type system | Sum types (`enum`/`union`) + product types (structs/records). Enable "make illegal states unrepresentable." |
-| String interpolation | Every modern language has it. Missing = constant annoyance. | Low | Parser, String type | `"Hello, #{name}"` style (Elixir/Ruby convention). |
-| Closures / anonymous functions | Expected in any functional language | Medium | Parser, Type inference, Scope capture | `fn(x) -> x + 1 end` or similar. Must capture enclosing scope. |
-| Comments (line and block) | Fundamental | Low | Lexer | `# line comment` (Elixir/Ruby style). |
-| Module system | Code organization is table stakes for any real project | Medium | Parser, Name resolution | Modules for namespacing. File-based or explicit `module` declarations. |
-| Imports | Fundamental for code reuse | Medium | Module system | `import ModuleName` or `use ModuleName`. |
-| Integer and Float arithmetic | Fundamental | Low | Codegen | Standard operators: `+`, `-`, `*`, `/`, `%`. Integer division vs float division semantics. |
-| Boolean logic | Fundamental | Low | Codegen | `and`, `or`, `not` (word-based, not `&&`/`||` -- Elixir style). |
-| Comparison operators | Fundamental | Low | Codegen | `==`, `!=`, `<`, `>`, `<=`, `>=`. |
-
-### Type System
-
-| Feature | Why Expected | Complexity | Dependencies | Notes |
-|---------|--------------|------------|--------------|-------|
-| Static type checking | Core design decision. Without it, Snow is just another Elixir. | Very High | Type inference engine | The entire point: catch errors at compile time. |
-| Hindley-Milner type inference | Users rarely write type annotations. Compiler figures it out. | Very High | Unification algorithm | HM is proven, well-understood, used by OCaml, Haskell, Gleam, NVLang. The right choice for Snow. |
-| Parametric polymorphism (generics) | Can't write reusable code without it. `List[T]`, `Option[T]`. | High | Type inference | Inferred generics, not explicit angle-bracket annotation soup. |
-| `Option[T]` / no null | "Billion dollar mistake" avoidance is table stakes in 2025. Rust, Gleam, Kotlin, Swift all enforce this. | Medium | ADTs, Pattern matching | `Option.some(value)` / `Option.none`. No null/nil at the language level. |
-| `Result[T, E]` error type | Modern error handling standard. Rust proved the pattern. | Medium | ADTs, Pattern matching | Explicit error handling, no exceptions. Pairs with `?` operator or similar for ergonomic propagation. |
-| Struct types (product types) | Need to define data shapes | Medium | Type checker | Named fields, type-checked at compile time. |
-| Type aliases | Readability and domain modeling | Low | Type checker | `type UserId = Int` or similar. |
-| Recursive types | Needed for trees, linked lists, ASTs | Medium | Type checker, Occurs check | Must handle occurs check properly in HM inference. |
-
-### Concurrency
-
-| Feature | Why Expected | Complexity | Dependencies | Notes |
-|---------|--------------|------------|--------------|-------|
-| Lightweight actor processes | Core value proposition of Snow. This is why the language exists. | Very High | Runtime scheduler, Codegen | Not OS threads. Must support millions of actors like BEAM. Preemptive scheduling. |
-| Message passing (`send`) | Fundamental to actor model | High | Actor runtime, Type system | Typed messages via ADTs: each actor declares its message vocabulary as a sum type. Compile-time protocol checking (NVLang approach). |
-| Typed process identifiers (`Pid[T]`) | Type safety for actors. Without this, Snow loses its advantage over Elixir. | High | Type system, Actor runtime | `Pid[ChatMessage]` means you can only send `ChatMessage` variants to this actor. Gleam and NVLang both do this. |
-| `receive` blocks with pattern matching | Core actor interaction pattern | High | Pattern matching, Actor runtime | Exhaustive matching on message types. This is where Snow's expressiveness shines. |
-| `spawn` for creating actors | Fundamental actor primitive | Medium | Actor runtime, Codegen | Returns typed `Pid[T]`. |
-| Supervision trees | "Let it crash" is the killer feature of BEAM-style concurrency | Very High | Actor runtime, Process linking | Strategies: `one_for_one`, `one_for_all`, `rest_for_one`. Restart policies: permanent, transient, temporary. |
-| Process isolation (crash isolation) | Without this, supervision trees are meaningless | Very High | Runtime memory management | Each actor has its own heap. Crash in one actor must not corrupt another. This is the hardest runtime engineering challenge. |
-
-### Standard Library (Minimum Viable)
-
-| Feature | Why Expected | Complexity | Dependencies | Notes |
-|---------|--------------|------------|--------------|-------|
-| String manipulation | Fundamental | Medium | UTF-8 support | `String.length`, `String.split`, `String.trim`, `String.contains?`, interpolation. |
-| List/Array operations | Fundamental data structure | Medium | Generics | `map`, `filter`, `reduce`, `head`, `tail`, `append`, `length`. Linked list or array semantics TBD. |
-| Map/Dictionary type | Key-value storage is essential | Medium | Generics, Hashing | `Map[K, V]` with `get`, `put`, `delete`, `keys`, `values`. |
-| File I/O | Can't build CLI tools without it | Medium | OS bindings | `File.read`, `File.write`, `File.exists?`. Returns `Result[T, E]`. |
-| Standard I/O (stdin/stdout/stderr) | Fundamental | Low | OS bindings | `IO.puts`, `IO.gets`, `IO.inspect` (debug printing). |
-| Basic math | Fundamental | Low | Runtime | `Math.abs`, `Math.max`, `Math.min`, `Math.pow`. |
-| Process/system operations | Needed for CLI tools | Low | OS bindings | `System.args` (CLI arguments), `System.env` (environment variables), `System.exit`. |
-
-### Tooling (Day-One Requirements)
-
-| Feature | Why Expected | Complexity | Dependencies | Notes |
-|---------|--------------|------------|--------------|-------|
-| Compiler with clear error messages | Poor errors = dead language. Elm and Rust set the standard. | High | All compiler phases | Invest heavily here. Point to the exact line, suggest fixes. "Did you mean X?" This is a differentiator disguised as table stakes. |
-| Build system (single command compile) | `snow build` must just work | Medium | Compiler, Linker | Produces single binary. No Makefiles, no configuration for simple projects. |
-| REPL | Expected for expressive/scripting-feel languages | Medium | Interpreter mode or JIT | Not strictly needed for v1 but strongly expected given Elixir/Ruby heritage. Could defer to post-v1. |
+**Domain:** Trait/type class system and standard library protocols for a statically-typed functional language
+**Researched:** 2026-02-07
+**Confidence:** HIGH (extremely well-established domain: Rust, Haskell, Scala 3, Swift, Elixir all provide extensive prior art)
 
 ---
 
-## Differentiators (Competitive Advantage)
+## Current State in Snow
 
-Features that make Snow unique. Not expected by default, but these are why someone would choose Snow over Go, Rust, or Elixir.
+Before defining features, here is what already exists in Snow:
 
-### vs Go
+**Working:**
+- `interface` / `impl` parsing (parser emits `InterfaceDef` and `ImplDef` AST nodes)
+- `TraitRegistry` validates trait definitions and impl method signatures (param count, return type matching)
+- Where clauses: `fn show<T>(x :: T) where T: Printable` checked at call sites
+- Compiler-known traits: Add, Sub, Mul, Div, Mod, Eq, Ord, Not with primitive impls
+- Operator overloading dispatches through trait lookup
+- MIR lowering: impl methods are lowered as standalone functions; interface defs are erased
 
-Go's strengths: simplicity, fast compilation, goroutines, massive ecosystem, single binary deployment, comprehensive standard library.
-Go's weaknesses: verbose error handling, no sum types (until very recently), no pattern matching, no generics until 1.18 (and still limited), primitive type system, goroutines lack actor isolation and supervision.
-
-| Feature | Snow's Advantage | Complexity | Notes |
-|---------|------------------|------------|-------|
-| Expressive syntax (`do/end`, pattern matching) | Go is famously verbose. `if err != nil` everywhere. Snow's pattern matching and `Result` type with `?` propagation eliminate this boilerplate. | Already in table stakes | Go developers who want more expressiveness are a target audience. |
-| Algebraic data types + exhaustive matching | Go added generics in 1.18 but still has no sum types or exhaustive pattern matching. Snow has both as core features. | Already in table stakes | This alone is a major draw for developers tired of Go's type system limitations. |
-| Actor isolation with supervision | Goroutines share memory. Data races are possible (and common). Snow's actors are isolated by design -- no shared mutable state, no data races. Supervision trees auto-restart crashed actors. | Already in table stakes | Go has nothing comparable to supervision trees. This is Snow's biggest structural advantage over Go. |
-| Typed message passing | Go channels are typed but channels themselves are a lower-level primitive than actors. Snow's typed `Pid[T]` ensures you can only send valid messages to an actor. | Already in table stakes | Channels can deadlock. Actors with message queues and receive blocks cannot (by design). |
-| Pipe operator (`\|>`) | Chain function calls readably: `data \|> transform \|> validate \|> save`. Go has nothing like this. | Low | A high-value, low-cost differentiator. Directly from Elixir. Makes data transformation pipelines readable. |
-| Immutability by default | Go defaults to mutable everything. Snow defaults to immutable, which prevents entire categories of bugs and aligns with the functional paradigm. | Medium | Functional-first means immutable data structures. Mutable state is the exception, not the rule. |
-
-### vs Rust
-
-Rust's strengths: zero-cost abstractions, memory safety without GC, borrow checker, fearless concurrency, massive ecosystem, incredible tooling.
-Rust's weaknesses: steep learning curve (borrow checker), verbose for simple tasks, no built-in actor model, compile times, not expressive for concurrent workflows.
-
-| Feature | Snow's Advantage | Complexity | Notes |
-|---------|------------------|------------|-------|
-| Dramatically simpler concurrency model | Rust's concurrency requires understanding lifetimes, `Send`/`Sync` traits, `Arc<Mutex<T>>`, async runtimes (Tokio). Snow: `spawn` an actor, `send` it a message. Done. | Already in table stakes | Snow sacrifices Rust's zero-cost abstractions for dramatically better concurrency ergonomics. The right tradeoff for web backends. |
-| No borrow checker / ownership system | Snow uses GC (per-actor garbage collection like BEAM). Developers never fight the borrow checker. | Part of runtime design | The tradeoff: Snow won't match Rust's performance for CPU-bound work. But for I/O-bound web backends, the difference is negligible. |
-| Faster development velocity | Rust's compile times are long. Its learning curve is steep. Snow aims for Go-like simplicity with Elixir-like expressiveness. | Holistic | Target developer: someone who finds Rust too complex for web backends but wants more safety than Go. |
-| Built-in supervision and fault tolerance | Rust has no built-in supervisor trees. Libraries like `ractor` exist but they're not language-level. Snow makes this a core primitive. | Already in table stakes | "Let it crash" philosophy requires language-level support to work well. |
-| Expressive, Ruby-like syntax | Rust's syntax is powerful but dense. Snow's `do/end` blocks, keyword arguments, and minimal punctuation aim for readability. | Already in table stakes | The Elixir community consistently cites syntax as a reason they love the language. |
-
-### vs Elixir
-
-Elixir's strengths: BEAM concurrency, supervision trees, incredible ecosystem (Phoenix, LiveView, Ecto), pipe operator, pattern matching, macros, hot code reloading, distributed systems.
-Elixir's weaknesses: dynamic typing, BEAM VM required, no single binary deployment, runtime errors from type mismatches, slower raw performance than native code.
-
-| Feature | Snow's Advantage | Complexity | Notes |
-|---------|------------------|------------|-------|
-| Static type system with inference | Elixir is dynamically typed. Type errors only surface at runtime. Snow catches them at compile time with HM inference, requiring minimal annotations. | Already in table stakes | This is Snow's #1 advantage over Elixir. Gleam fills this niche on BEAM, but Snow goes further with native compilation. |
-| Native single-binary deployment | Elixir requires the BEAM VM. Snow compiles to a single native binary via LLVM. Deploy like Go: copy binary, run it. No runtime installation needed. | High (LLVM integration) | Massively simplifies deployment, container images, and distribution. The BEAM runtime is powerful but heavy for simple CLI tools. |
-| Compile-time message protocol checking | Elixir sends arbitrary terms as messages. Snow types each actor's message protocol as an ADT and enforces it at compile time (NVLang approach). | Already in table stakes | Eliminates "wrong message sent to wrong process" bugs that only appear at runtime in Elixir. |
-| Native performance | BEAM is optimized for concurrency, not raw computation. Snow compiles to native code via LLVM and will be faster for CPU-bound work. | Part of architecture | For I/O-bound work the difference is smaller, but for JSON parsing, crypto, data processing, native code wins significantly. |
-| No VM dependency | BEAM applications require Erlang/OTP installed (or a release with embedded runtime). Snow binaries run anywhere with no dependencies. | Part of architecture | Critical for CLI tools and edge deployment where you can't install a VM. |
-
-### Unique Snow Differentiators (vs ALL competitors)
-
-| Feature | Value Proposition | Complexity | Notes |
-|---------|-------------------|------------|-------|
-| Concurrency that reads like sequential code | Snow's core promise: `spawn`, `send`, `receive` with do/end blocks should look as clean as a function call. No colored functions, no async/await split. | Very High (language + runtime design) | Go achieves this with goroutines but lacks supervision. Elixir achieves this but lacks static types. Rust fails here (async is complex). Snow is the only language combining ALL: expressive syntax + static types + transparent concurrency + supervision. |
-| Typed supervision trees | Supervisors are typed constructs: the compiler verifies that child specs match actual actor types and message protocols. | Very High | NVLang demonstrated this is feasible. Snow should go further by making supervision a first-class syntax construct, not just a library call. |
-| `?` operator for Result propagation | Rust proved this is essential for ergonomic error handling. `File.read(path)?` returns early on error. Combined with Snow's do/end syntax, this eliminates error-handling boilerplate. | Medium | Already proven in Rust. Low risk to adopt. |
-| Pipe operator (`\|>`) with type inference | `data \|> parse \|> validate \|> save` -- fully type-checked at each step. Elixir has pipes but no type checking. Rust has no pipes. Go has neither. | Low | High-value, low-cost feature. Type inference across pipes is a natural fit for HM. |
-| Guards in pattern matching | `case value do :ok, n when n > 0 -> ... end` -- Elixir-style guards that add runtime conditions to pattern matches. | Medium | Extends pattern matching expressiveness significantly. |
+**Not yet working:**
+- Codegen for trait method dispatch (currently skips InterfaceDef/ImplDef in LLVM codegen)
+- No monomorphization of generic trait-bounded functions
+- No default method implementations
+- No associated types
+- No supertraits (trait inheritance)
+- No deriving mechanism
+- No stdlib protocols (Display, Hash, Default, Iterator, From/Into, etc.)
+- No method call syntax (`value.method()` -- only `method(value)`)
 
 ---
 
-## Anti-Features (Deliberately Excluded)
+## Feature Landscape
 
-Things Snow should explicitly NOT build. Each is a conscious design decision.
+### Table Stakes (Users Expect These)
 
-| Anti-Feature | Why Avoid | What to Do Instead | Confidence |
-|--------------|-----------|-------------------|------------|
-| **Classes and OOP** | Already decided. Functional-first. Classes add complexity (inheritance hierarchies, virtual dispatch, diamond problem) and conflict with actor model philosophy where behavior belongs to actors, not class hierarchies. | Structs for data, traits/protocols for polymorphism, actors for behavior + state. | HIGH -- project decision |
-| **Null/nil values** | The "billion dollar mistake." Every modern language is moving away from null. Kotlin, Rust, Gleam, Swift all eliminate or restrict null. | `Option[T]` as the only way to represent absence. Pattern matching forces handling both cases. | HIGH -- universal consensus |
-| **Exceptions (try/catch/throw)** | Exceptions create invisible control flow, hurt performance at scale, and conflict with actor isolation. The "let it crash" philosophy replaces defensive exception handling. | `Result[T, E]` for expected errors with `?` propagation. Actor crashes handled by supervisors. `panic` for truly unrecoverable programming bugs. | HIGH -- aligned with Rust + Elixir best practices |
-| **Shared mutable state between actors** | Defeats the entire purpose of the actor model. Shared state = data races, locks, deadlocks. | Message passing only. Each actor owns its state. Immutable data can be shared freely (like Pony's `val` capability). | HIGH -- fundamental to actor model |
-| **Inheritance** | Inheritance creates tight coupling, fragile base class problem, and "is-a" relationships that rarely map to reality. | Composition via structs containing other structs. Polymorphism via traits/protocols. | HIGH -- functional paradigm |
-| **Macros (Elixir-style metaprogramming)** | Macros are powerful but create "languages within the language," hurt tooling (hard to analyze), and increase language complexity enormously. Gleam deliberately excluded them. | Generics + traits cover most macro use cases. If Snow needs compile-time code generation later, consider a simpler mechanism than full AST macros. | MEDIUM -- could revisit post-v1 |
-| **Async/await colored functions** | Creates the function coloring problem: splits the ecosystem into sync and async code. Go and Elixir/BEAM prove you don't need it when the runtime handles concurrency transparently. | Actor runtime handles I/O scheduling. All code looks synchronous. The runtime multiplexes actors across OS threads (like BEAM and Go). | HIGH -- core design philosophy |
-| **Manual memory management** | Snow targets web backends and CLI tools, not systems programming. Manual memory management adds complexity without benefiting the target use cases. | Per-actor garbage collection (like BEAM). Each actor has its own heap, collected independently. No stop-the-world GC pauses for the whole program. | HIGH -- aligns with target use cases |
-| **Mutable variables by default** | Conflicts with functional-first paradigm. Mutable-by-default encourages bugs and makes reasoning about concurrent code harder. | Immutable by default. Explicit mutation only within actor state (actors are the place where mutable state lives, mediated by message passing). | HIGH -- functional paradigm |
-| **Operator overloading** | Creates "clever" code that's hard to read. Math-heavy domains (Snow's anti-target) benefit, but web/CLI code suffers from hidden semantics behind `+` or `*`. | Named functions are clearer. Traits can define standard operations if needed (e.g., `Eq`, `Ord`, `Display`). | MEDIUM -- could selectively allow for numeric types |
-| **Hot code reloading** | A powerful BEAM feature but requires the VM infrastructure that Snow deliberately avoids. Extremely complex to implement with native compilation. | Deploy new binaries. Use rolling deploys, blue/green deployment. This is how Go and Rust handle it, and it works fine for the target use cases. | HIGH -- not feasible with native compilation |
-| **Distributed actors across nodes** | BEAM's distributed Erlang is powerful but extremely complex to implement and only useful at massive scale. | Focus on single-node actor concurrency first. Network communication via standard library HTTP/TCP. Distributed actors could be a post-v1 research area. | HIGH -- scope control |
+These features are required for the trait system to be usable. Without them, users cannot write polymorphic code that compiles and runs.
+
+| Feature | Why Expected | Complexity | Dependencies | Notes |
+|---------|--------------|------------|--------------|-------|
+| User-defined traits with codegen | Without codegen, traits are purely decorative. Users define interfaces and expect code using them to compile to native binaries. | High | MIR lowering, LLVM codegen, monomorphization | Currently MIR lowering extracts impl methods as standalone functions but does not wire up trait-bounded dispatch. Needs monomorphization pass that creates specialized copies. |
+| Trait method dispatch (static) | When calling `to_string(42)` where `to_string` comes from a trait impl, the compiler must resolve which impl's method body to call at compile time. | High | TraitRegistry lookup, MIR, codegen | Monomorphization: at each call site, resolve the concrete type, look up the impl, and emit a direct call to the specialized function. No vtables needed for v1.3. |
+| Where clause enforcement in codegen | Where clauses type-check but must also affect monomorphization -- the compiler needs to select the right impl body based on the concrete type substituted for T. | Medium | Existing where-clause checking, monomorphization | The type checker already validates constraints. Codegen needs to thread concrete types through to monomorphized function names. |
+| Display / to_string protocol | Every language needs a way to convert values to string representations. Currently `println` only works with String. Users need `"${my_struct}"` to work for user types. | Medium | Trait system codegen, string interpolation integration | Rust: `Display`, Haskell: `Show`, Elixir: `String.Chars`, Swift: `CustomStringConvertible`. Snow should call it `Display` with a `to_string(self) -> String` method. Auto-impl for primitives (Int, Float, Bool already have runtime support). |
+| Debug / inspect protocol | Programmers need to see the structure of values during development. Distinct from Display (user-facing). | Medium | Trait system codegen | Rust: `Debug`, Haskell: `Show` (serves both purposes), Elixir: `Inspect`. Snow should call it `Debug` with an `inspect(self) -> String` method. Should show structure: `Point { x: 1, y: 2 }`. Consider auto-derive for structs and sum types. |
+| Eq protocol (user types) | Currently Eq only works for primitives. Users need `==` on structs and sum types. | Medium | Existing Eq trait, operator dispatch, struct/sum type codegen | Structural equality for structs (all fields equal). Tag + field equality for sum types. This is the single most requested feature once people start defining types. |
+| Ord protocol (user types) | Users need `<`, `>`, `<=`, `>=` on custom types for sorting, ranges, etc. | Medium | Existing Ord trait, Eq dependency | Requires Eq as semantic prerequisite (same values must not be ordered differently). Lexicographic ordering for structs (field by field). |
+| Default method implementations | Traits should be able to provide default method bodies that implementors can override. Reduces boilerplate massively. | Medium | Trait definition parsing, impl validation | Rust: `fn method(&self) { default_body }`, Haskell: default in class definition, Swift: protocol extensions. Critical for keeping stdlib protocols ergonomic -- e.g., Display could provide a default `inspect` that wraps `to_string`. |
+| Multiple trait bounds | `where T: Display, T: Eq` already parses. Need `where T: Display + Eq` shorthand syntax. | Low | Parser, where-clause checking | Already works with comma-separated constraints. The `+` syntax is syntactic sugar. Low priority but expected. |
+| Impl for user-defined structs | Users need to write `impl Display for Point do ... end` for their own struct types and have it work end-to-end. | High | Full trait dispatch pipeline | This is the core use case. If this doesn't work, nothing else matters. |
+| Impl for user-defined sum types | Same as structs but for sum types (ADTs). `impl Display for Color do ... end`. | High | Full trait dispatch pipeline, pattern matching in impl methods | Sum type impls often need to pattern match on variants inside the method body. |
+
+### Differentiators (Competitive Advantage)
+
+Features that would make Snow's trait system stand out. Not expected, but highly valued.
+
+| Feature | Value Proposition | Complexity | Dependencies | Notes |
+|---------|-------------------|------------|--------------|-------|
+| Auto-derive for common traits | `type Point do x :: Int, y :: Int end deriving(Eq, Ord, Display, Debug)` -- compiler generates implementations automatically. Massive ergonomic win. | High | Compiler codegen for each derivable trait, struct/sum type metadata | Rust: `#[derive(...)]`, Haskell: `deriving (Eq, Show, Ord)`, Swift: auto-synthesis. The single biggest ergonomic improvement for a trait system. Without it, every struct requires ~10 lines of boilerplate per trait. |
+| Coherent auto-impls for primitives | All primitives automatically implement Display, Debug, Eq, Ord, Hash, Default without user action. Users can immediately use `to_string(42)` or `42 == 42`. | Medium | Builtin trait registration (extend existing register_compiler_known_traits) | Already partially done for arithmetic/comparison traits. Extending to Display/Debug/Hash/Default is incremental. |
+| From/Into conversion protocol | Type-safe conversions: `impl From<Int> for MyId`. Implementing `From` auto-provides `Into`. Enables `let id = from(42)` or pipeline `42 |> into`. | Medium | Trait system, blanket impl mechanism | Rust: `From`/`Into`, Haskell: explicit conversion functions. The blanket impl (`From` implies `Into`) requires the concept of blanket/generic impls -- may be complex. Could start with manual both-ways. |
+| Iterator/Iterable protocol | Unified iteration: any type implementing `Iterator` works with `map`, `filter`, `reduce`. Currently these only work with `List`. | Very High | Associated types (for Item type), lazy evaluation infrastructure, collection integration | Rust: `Iterator` with `type Item` + `next()`, Haskell: `Foldable`/`Traversable`, Elixir: `Enumerable`. This is a massive feature. Associated types are a prerequisite. Consider deferring to v1.4+. |
+| Hash protocol | Required for user types as Map keys or Set elements. `impl Hash for Point`. | Medium | Hash function codegen, Map/Set integration | Rust: `Hash`, Haskell: `Hashable`. Structural hashing for structs (hash all fields). Must maintain invariant: `a == b` implies `hash(a) == hash(b)`. |
+| Default protocol | Construct default values: `Default.default()` gives a zero-initialized or sensible default instance. | Low | Trait system codegen | Rust: `Default`, Haskell: `Def`/`Monoid mempty`. Useful for builder patterns, container defaults. Low complexity but moderate value. |
+| Supertraits (trait inheritance) | `interface Ord requires Eq` -- Ord requires Eq to be implemented first. Enables type system to infer that `T: Ord` implies `T: Eq`. | Medium | Trait definition parsing, constraint propagation in type checker | Rust: `trait Ord: Eq`, Haskell: `class Eq a => Ord a`. Essential for a principled trait hierarchy but can be added incrementally. |
+| Trait method dot-syntax | `my_point.to_string()` instead of `to_string(my_point)`. Uniform function call syntax. | High | Parser changes, method resolution, UFCS infrastructure | Elixir uses pipe `value |> to_string`, Rust uses dot syntax. Snow already has pipes, so dot syntax is less critical. But combined with traits, it makes code read naturally: `point.display()`. Could defer to v1.4+. |
+| Negative trait bounds | `where T: not Clone` -- specify that a type must NOT implement a trait. | High | Type checker, constraint resolution | Rust doesn't have stable negative bounds. Haskell doesn't have them. Very niche. Probably never needed. |
+
+### Anti-Features (Commonly Requested, Often Problematic)
+
+Features to deliberately NOT build, or to build with extreme caution.
+
+| Feature | Why Requested | Why Problematic | Alternative |
+|---------|---------------|-----------------|-------------|
+| Dynamic dispatch (vtables, trait objects) | "I want heterogeneous collections: `List<dyn Display>`" | Adds runtime overhead, complicates the type system massively, requires heap allocation for trait objects, and conflicts with HM inference. Rust's `dyn Trait` is widely considered the most confusing part of the language. | Use sum types (ADTs) for heterogeneous collections. `type Printable do StringVal(String), IntVal(Int) end`. This is the functional approach and works perfectly with exhaustive pattern matching. |
+| Orphan impls (impl foreign trait for foreign type) | "I want to impl Display for List" when both Display and List are in stdlib | Breaks coherence: two libraries could both impl the same trait for the same type, causing ambiguity. The orphan rule exists to prevent this. | Use newtype wrappers: `type MyList do items :: List end` then `impl Display for MyList`. Or allow orphan impls only within the same compilation unit (single-file programs). |
+| Implicit trait resolution (Scala 2 implicits) | "Type class instances should be automatically resolved from scope" | Scala 2's implicits were universally criticized as confusing, hard to debug, and a source of mysterious compilation errors. Scala 3 replaced them with explicit `given`/`using`. | Explicit impl blocks. `impl Trait for Type do ... end`. No magic resolution. If a trait is not implemented, the compiler says so clearly. |
+| Operator overloading beyond existing traits | "I want to define `+` for my custom Point type" | Already possible via `impl Add for Point`. The anti-feature is allowing arbitrary operator invention (`+++`, `<=>`, etc.) which makes code unreadable. | Restrict operator overloading to the existing compiler-known trait set (Add, Sub, Mul, Div, Mod, Eq, Ord, Not). Users can add impls for these but cannot invent new operators. |
+| Higher-kinded types (HKT) | "I want Functor, Applicative, Monad as traits" | Massively increases type system complexity. Haskell has them; most other languages deliberately avoid them. HKT requires kind checking, higher-kinded inference, and makes error messages incomprehensible. | Provide specific patterns (map/filter/reduce) as module functions or dedicated protocols without requiring the full Functor/Applicative/Monad hierarchy. Snow's pipe operator handles most composition needs. |
+| Multi-parameter type classes | "I want `interface Convert<A, B> do fn convert(a :: A) -> B end`" | Complex interaction with type inference. Requires functional dependencies or associated types to be usable. Haskell's MPTC + FunDeps is powerful but a well-known source of confusion. | Use single-parameter traits with associated types for conversions: `interface From<T> do fn from(value :: T) -> Self end`. The "Self" type is the implementing type, "T" is the source type. |
+| Specialization | "A more specific impl should override a more general one" | Unsound in general (Rust's specialization has been unstable for years due to soundness issues). Allows overlapping impls which break coherence guarantees. | No overlapping impls. Each (trait, type) pair has exactly one impl. Use newtype wrappers for specialization needs. |
+| Automatic Serialize/Deserialize | "Every type should automatically be serializable to JSON/MessagePack" | Serialization is inherently lossy and format-dependent. Auto-deriving works for simple cases but creates brittle APIs where internal type changes break serialization contracts. | Provide `Serialize` and `Deserialize` as derivable traits with explicit opt-in: `type Config do ... end deriving(Serialize)`. Not automatic, not universal. Defer to v1.4+ or later. |
+
+---
+
+## Stdlib Protocol Specifications
+
+Detailed behavioral specifications for each stdlib protocol, with examples in Snow syntax.
+
+### 1. Display (String Representation)
+
+**Purpose:** Convert a value to a human-readable string. Used by string interpolation (`"${value}"`), `println`, and explicit `to_string()` calls.
+
+**Trait Definition:**
+```snow
+interface Display do
+  fn to_string(self) -> String
+end
+```
+
+**Built-in Impls:**
+```snow
+impl Display for Int do
+  fn to_string(self) -> String do
+    # compiler intrinsic: int_to_string
+  end
+end
+
+impl Display for Float do ... end
+impl Display for Bool do ... end    # "true" / "false"
+impl Display for String do ... end  # identity
+```
+
+**User Impl Example:**
+```snow
+type Point do
+  x :: Int
+  y :: Int
+end
+
+impl Display for Point do
+  fn to_string(self) -> String do
+    "(${self.x}, ${self.y})"
+  end
+end
+
+# Usage:
+let p = Point { x: 1, y: 2 }
+println("Point: ${p}")  # "Point: (1, 2)"
+```
+
+**Design Decisions:**
+- String interpolation `"${expr}"` should call `to_string` on any type implementing Display
+- If a type does not implement Display, string interpolation is a compile error
+- Display for collections (List, Map) should be provided as stdlib impls
+
+**Precedent:** Rust `Display`, Haskell `Show`, Elixir `String.Chars`, Swift `CustomStringConvertible`
+
+**Confidence:** HIGH
+
+### 2. Debug (Developer Inspection)
+
+**Purpose:** Show the internal structure of a value for debugging. More verbose than Display.
+
+**Trait Definition:**
+```snow
+interface Debug do
+  fn inspect(self) -> String
+end
+```
+
+**Built-in Impls:**
+```snow
+impl Debug for Int do
+  fn inspect(self) -> String do to_string(self) end
+end
+
+impl Debug for Point do
+  fn inspect(self) -> String do
+    "Point { x: ${self.x}, y: ${self.y} }"
+  end
+end
+```
+
+**Design Decisions:**
+- Debug should be auto-derivable for structs and sum types
+- Debug output shows type name, field names, and field values
+- For sum types: `"Color::Red"` or `"Shape::Circle(5.0)"`
+- Consider a `dbg()` built-in that prints and returns the value (like Rust's `dbg!`)
+
+**Precedent:** Rust `Debug`, Elixir `Inspect`
+
+**Confidence:** HIGH
+
+### 3. Eq (Equality)
+
+**Purpose:** Test two values of the same type for equality. Backs the `==` and `!=` operators.
+
+**Trait Definition (already exists, extend to user types):**
+```snow
+interface Eq do
+  fn eq(self, other :: Self) -> Bool
+end
+```
+
+**Current State:** Already registered as compiler-known trait with impls for Int, Float, String, Bool.
+
+**Extension Needed:**
+```snow
+# Auto-derive for structs: all fields must be Eq
+type Point do
+  x :: Int
+  y :: Int
+end deriving(Eq)
+
+# Generated impl:
+impl Eq for Point do
+  fn eq(self, other :: Point) -> Bool do
+    self.x == other.x and self.y == other.y
+  end
+end
+
+# For sum types:
+type Color do Red, Green, Blue end deriving(Eq)
+
+# Generated impl:
+impl Eq for Color do
+  fn eq(self, other :: Color) -> Bool do
+    case (self, other) do
+      (Red, Red) -> true
+      (Green, Green) -> true
+      (Blue, Blue) -> true
+      _ -> false
+    end
+  end
+end
+```
+
+**Design Decisions:**
+- Structural equality: two values are equal if all their fields are equal
+- Eq is the foundation -- Ord, Hash depend on it
+- Float equality should use IEEE comparison (NaN != NaN) -- same as Rust's PartialEq, not Eq. Consider whether Snow needs PartialEq vs Eq distinction. **Recommendation: Keep it simple with just `Eq` and document that Float equality follows IEEE rules.** The PartialEq/Eq distinction in Rust confuses beginners and mostly matters for HashMap keys.
+- For sum types with data: tags must match AND fields must be equal
+
+**Precedent:** Rust `PartialEq`/`Eq`, Haskell `Eq`, Swift `Equatable`, Elixir `==` (structural by default)
+
+**Confidence:** HIGH
+
+### 4. Ord (Ordering)
+
+**Purpose:** Define a total ordering on values. Backs `<`, `>`, `<=`, `>=` operators and enables sorting.
+
+**Trait Definition (already exists, extend):**
+```snow
+interface Ord do
+  fn cmp(self, other :: Self) -> Ordering
+end
+```
+
+**Design Note:** This requires an `Ordering` sum type:
+```snow
+type Ordering do
+  Less
+  Equal
+  Greater
+end
+```
+
+**Current State:** Ord exists with impls for Int and Float, but returns Bool (not Ordering). This should be refactored to return an Ordering type, with `<`, `>`, etc. derived from `cmp`.
+
+**Auto-derive:**
+```snow
+type Point do x :: Int, y :: Int end deriving(Eq, Ord)
+
+# Generated: lexicographic comparison (first field, then second, etc.)
+impl Ord for Point do
+  fn cmp(self, other :: Point) -> Ordering do
+    case cmp(self.x, other.x) do
+      Equal -> cmp(self.y, other.y)
+      result -> result
+    end
+  end
+end
+```
+
+**Design Decisions:**
+- Ord should semantically require Eq (supertrait relationship, even if not enforced initially)
+- Lexicographic ordering for derived impls (compare fields in declaration order)
+- For sum types: compare by variant tag first, then by variant fields
+- Operators `<`, `>`, `<=`, `>=` should be defined in terms of `cmp` returning Ordering
+
+**Precedent:** Rust `PartialOrd`/`Ord`, Haskell `Ord`, Swift `Comparable`
+
+**Confidence:** HIGH
+
+### 5. Hash (Hashing)
+
+**Purpose:** Produce a stable hash value for use in Map keys and Set elements.
+
+**Trait Definition:**
+```snow
+interface Hash do
+  fn hash(self) -> Int
+end
+```
+
+**Built-in Impls:**
+```snow
+impl Hash for Int do
+  fn hash(self) -> Int do self end  # identity hash for integers
+end
+
+impl Hash for String do
+  fn hash(self) -> Int do
+    # compiler intrinsic: FNV-1a or similar
+  end
+end
+
+impl Hash for Bool do
+  fn hash(self) -> Int do
+    if self do 1 else 0 end
+  end
+end
+```
+
+**Auto-derive:**
+```snow
+type Point do x :: Int, y :: Int end deriving(Eq, Hash)
+
+# Generated: combine field hashes
+impl Hash for Point do
+  fn hash(self) -> Int do
+    hash(self.x) * 31 + hash(self.y)
+  end
+end
+```
+
+**Critical Invariant:** If `a == b` then `hash(a) == hash(b)`. The compiler should warn (or error) if Hash is derived without Eq, or if Eq is manually implemented but Hash is derived (risking inconsistency).
+
+**Design Decisions:**
+- Return type is Int (64-bit) for simplicity
+- Hash combining uses a simple polynomial hash (multiply by prime, add next field)
+- Float hashing: hash the bit representation, but document that NaN hashes are unpredictable
+- Hash is needed for Map<K, V> keys and Set<T> elements -- without it, only primitive keys work
+
+**Precedent:** Rust `Hash`, Haskell `Hashable`, Swift `Hashable`
+
+**Confidence:** HIGH
+
+### 6. Default (Default Values)
+
+**Purpose:** Construct a "zero" or default instance of a type.
+
+**Trait Definition:**
+```snow
+interface Default do
+  fn default() -> Self
+end
+```
+
+**Note:** This is a static method (no `self` parameter). This has implications for the trait system -- currently all trait methods take `self`. Default is the first trait that requires a static/associated function. This is a design decision point.
+
+**Built-in Impls:**
+```snow
+impl Default for Int do fn default() -> Int do 0 end end
+impl Default for Float do fn default() -> Float do 0.0 end end
+impl Default for String do fn default() -> String do "" end end
+impl Default for Bool do fn default() -> Bool do false end end
+```
+
+**Auto-derive:**
+```snow
+type Config do
+  host :: String
+  port :: Int
+  debug :: Bool
+end deriving(Default)
+
+# Generated:
+impl Default for Config do
+  fn default() -> Config do
+    Config { host: default(), port: default(), debug: default() }
+  end
+end
+```
+
+**Design Decisions:**
+- Requires static method support in traits (no `self` parameter)
+- All fields must implement Default for auto-derive to work
+- Useful for builder patterns and zero-initialization
+- Lower priority than Display/Eq/Ord -- can defer if static methods are complex
+
+**Precedent:** Rust `Default`, Haskell (various, `mempty`), Swift (no direct equivalent)
+
+**Confidence:** MEDIUM (static method support is a design question)
+
+### 7. From / Into (Type Conversions)
+
+**Purpose:** Infallible type conversion. `From<A>` on type B means "B can be constructed from an A."
+
+**Trait Definition:**
+```snow
+interface From<T> do
+  fn from(value :: T) -> Self
+end
+```
+
+**Examples:**
+```snow
+type UserId do value :: Int end
+
+impl From<Int> for UserId do
+  fn from(value :: Int) -> UserId do
+    UserId { value: value }
+  end
+end
+
+# Usage:
+let id = from(42)   # UserId { value: 42 }
+let id2 = 42 |> from  # works with pipes
+```
+
+**Design Decisions:**
+- `From` is a parameterized trait -- requires single-parameter type class support
+- In Rust, implementing `From<A> for B` auto-provides `Into<B> for A`. This requires blanket impl support.
+- **Recommendation for v1.3:** Implement `From` without the automatic `Into` blanket. Users implement `From` and call `from()` explicitly. Add `Into` blanket in v1.4.
+- `TryFrom` / `TryInto` (fallible conversions returning Result) should be deferred to v1.4+
+- From<String> for Int (parsing) is inherently fallible -- use a separate `parse` function, not From
+
+**Precedent:** Rust `From`/`Into`, Haskell (explicit conversion functions), Scala `Conversion`
+
+**Confidence:** MEDIUM (parameterized traits and blanket impls add complexity)
+
+### 8. Iterator / Iterable (Deferred to v1.4+)
+
+**Purpose:** Unified lazy iteration protocol. Any type implementing Iterator works with map/filter/reduce.
+
+**Why Defer:**
+- Requires associated types (`type Item` in the trait)
+- Requires lazy evaluation infrastructure (iterators are lazy in Rust, strict in Elixir)
+- Snow's current List operations (map, filter, reduce) are eager and work fine
+- The monomorphization pass needs significant extension for associated types
+
+**Sketch for future:**
+```snow
+interface Iterator do
+  type Item
+  fn next(self) -> Option<Item>
+end
+
+# Then map, filter, reduce work on any Iterator
+fn map<I, T, U>(iter :: I, f :: Fun(T) -> U) -> List<U>
+  where I: Iterator, I.Item = T
+do
+  # implementation
+end
+```
+
+**Precedent:** Rust `Iterator` with `type Item`, Haskell `Foldable`/`Traversable`, Elixir `Enumerable`
+
+**Confidence:** HIGH (well-understood, but complex to implement; correct to defer)
 
 ---
 
 ## Feature Dependencies
 
-Understanding dependencies is critical for phasing the roadmap. You cannot build feature B without feature A.
-
 ```
-LAYER 1: Foundation (no dependencies)
-  Lexer
-  Parser (depends on: Lexer)
-  AST representation
-
-LAYER 2: Core Language
-  Basic types (Int, Float, Bool, String) -- depends on: Parser, AST
-  Variables and let bindings -- depends on: Parser, AST
-  Functions -- depends on: Parser, AST
-  Control flow (if/else) -- depends on: Parser, AST
-  Operators (arithmetic, comparison, boolean) -- depends on: Basic types
-  Comments -- depends on: Lexer
-  String interpolation -- depends on: Parser, String type
-
-LAYER 3: Type System
-  Type inference engine (HM algorithm W) -- depends on: AST, Basic types
-  Unification -- depends on: Type inference engine
-  Type checking -- depends on: Unification
-  Structs (product types) -- depends on: Type checker
-  Enums/Sum types (ADTs) -- depends on: Type checker
-  Pattern matching (basic) -- depends on: ADTs, Type checker
-  Exhaustiveness checking -- depends on: Pattern matching, ADTs
-  Generics (parametric polymorphism) -- depends on: Type inference, Unification
-  Option[T] -- depends on: Generics, ADTs
-  Result[T, E] -- depends on: Generics, ADTs
-  Type aliases -- depends on: Type checker
-
-LAYER 4: Functions & Composition
-  Closures -- depends on: Functions, Type inference, Scope analysis
-  Pipe operator (|>) -- depends on: Functions, Type inference
-  Guards in pattern matching -- depends on: Pattern matching
-  First-class functions -- depends on: Functions, Closures, Generics
-  ? operator for Result propagation -- depends on: Result[T, E], Functions
-
-LAYER 5: Code Organization
-  Module system -- depends on: Parser, Name resolution
-  Imports -- depends on: Module system
-  Traits/Protocols -- depends on: Type system, Generics, Module system
-  Visibility/access control (pub/private) -- depends on: Module system
-
-LAYER 6: Collections & Standard Library
-  List type -- depends on: Generics, ADTs
-  Map type -- depends on: Generics, Hashing
-  List operations (map, filter, reduce) -- depends on: List type, Closures, Generics
-  String operations -- depends on: String type
-  File I/O -- depends on: Result[T, E], String type
-  Standard I/O -- depends on: String type
-  System operations -- depends on: Module system
-
-LAYER 7: Code Generation
-  LLVM IR generation -- depends on: Type-checked AST
-  Basic codegen (functions, control flow) -- depends on: LLVM IR generation
-  Pattern matching compilation -- depends on: Basic codegen, Pattern matching
-  Closure compilation -- depends on: Basic codegen, Closures
-  Struct/ADT memory layout -- depends on: Basic codegen, Type system
-  Linking to single binary -- depends on: LLVM codegen
-
-LAYER 8: Actor Runtime
-  Lightweight process/actor creation -- depends on: Runtime scheduler, Codegen
-  Actor message queues -- depends on: Actor creation
-  Message sending (typed) -- depends on: Actor creation, ADTs, Pid[T] type
-  Receive blocks with pattern matching -- depends on: Message queues, Pattern matching compilation
-  Actor scheduler (preemptive, work-stealing) -- depends on: Runtime design
-  Per-actor garbage collection -- depends on: Runtime memory management
-  Process isolation (crash containment) -- depends on: Per-actor GC, Error handling
-
-LAYER 9: Fault Tolerance
-  Process linking and monitoring -- depends on: Actor runtime
-  Supervisor actors -- depends on: Process linking, Actor runtime
-  Restart strategies -- depends on: Supervisor actors
-  Supervision trees -- depends on: Supervisor actors, Restart strategies
-  Typed supervision (compile-time child spec validation) -- depends on: Supervisors, Type system
-
-LAYER 10: Tooling
-  Error messages (human-readable) -- depends on: All compiler phases
-  Build system (`snow build`) -- depends on: Compiler, Linker
-  REPL -- depends on: Parser, Type checker (optional: interpreter or JIT)
-  Package manager -- depends on: Module system, Build system
-  Formatter -- depends on: Parser
-  LSP server -- depends on: Parser, Type checker, Module system
+Existing Features (already built)
+    |
+    v
+[1] Trait Method Dispatch (codegen)
+    |   Requires: MIR lowering changes, monomorphization for trait-bounded generics
+    |
+    v
+[2] Display + Debug Protocols
+    |   Requires: [1], built-in impls for primitives
+    |   Enables: string interpolation for user types, debugging
+    |
+    v
+[3] Eq + Ord for User Types
+    |   Requires: [1], struct field comparison codegen
+    |   Enables: == and < on user-defined types
+    |
+    v
+[4] Default Method Implementations
+    |   Requires: [1], trait def parsing changes
+    |   Enables: ergonomic stdlib protocols
+    |
+    v
+[5] Hash Protocol
+    |   Requires: [1], [3] (Eq prerequisite for correctness)
+    |   Enables: user types as Map keys and Set elements
+    |
+    v
+[6] Auto-derive Mechanism
+    |   Requires: [1], [2], [3], struct/sum type metadata
+    |   Enables: `deriving(Eq, Display, Debug, Hash)` syntax
+    |
+    v
+[7] Default Protocol
+    |   Requires: [1], static method support in traits
+    |
+    v
+[8] From/Into Conversions
+    |   Requires: [1], parameterized traits (already parsed)
+    |
+    v
+[9] Supertraits
+    |   Requires: [1], constraint propagation
+    |
+    v
+[10] Associated Types (deferred)
+    |   Enables: Iterator protocol
+    |
+    v
+[11] Iterator Protocol (deferred)
 ```
 
-### Critical Path
+**Critical path:** [1] -> [2] + [3] (parallel) -> [5] -> [6]
 
-The longest dependency chain that determines minimum time to a working language:
-
-```
-Lexer -> Parser -> AST -> Type Inference -> ADTs -> Pattern Matching ->
-LLVM Codegen -> Actor Runtime -> Supervision Trees
-```
-
-Each layer must be solid before the next. Shortcuts in the type system will cause rewrites. Shortcuts in the actor runtime will cause correctness bugs.
+**The single most important feature is [1]: getting trait method dispatch working in codegen.** Everything else depends on it. If trait methods don't generate code, no protocol works.
 
 ---
 
-## Complexity Assessment
+## MVP Definition
 
-Summary of implementation difficulty for major feature groups.
+### Launch With (v1.3 -- Trait System Milestone)
 
-| Feature Group | Complexity | Estimated Effort | Risk Level | Notes |
-|---------------|------------|------------------|------------|-------|
-| Lexer + Parser | Medium | 2-4 weeks | Low | Well-understood. Use Elixir-style grammar. Rust has good parser combinator libraries (nom, pest, lalrpop). |
-| Basic type system (primitives, structs) | Medium | 2-3 weeks | Low | Straightforward type checking. |
-| Hindley-Milner inference | Very High | 4-8 weeks | High | Algorithm W is well-documented but tricky to implement correctly. Occurs check, let-polymorphism, recursive types all have subtle edge cases. Research NVLang's implementation paper. |
-| Algebraic Data Types | High | 2-4 weeks | Medium | Sum types + product types. Must integrate cleanly with HM inference. |
-| Pattern matching + exhaustiveness | High | 3-6 weeks | Medium | Pattern compilation is a research topic in itself. Exhaustiveness checking for nested patterns is non-trivial. Look at Maranget's algorithm. |
-| LLVM codegen (basic) | High | 4-8 weeks | Medium | Rust's `inkwell` crate provides LLVM bindings. Main challenge: mapping Snow's semantics to LLVM IR correctly. Closures and ADTs require careful representation. |
-| Pipe operator | Low | 1-2 days | Low | Syntactic sugar: `a \|> f` desugars to `f(a)`. Type inference handles the rest. |
-| Result/Option + ? operator | Medium | 1-2 weeks | Low | Well-understood pattern from Rust. |
-| Actor runtime (scheduler) | Very High | 8-16 weeks | Very High | The hardest engineering challenge. Work-stealing scheduler, preemptive context switching at safe points, per-actor heaps. Study Tokio, Go's runtime, and BEAM's scheduler. |
-| Message passing (typed) | High | 2-4 weeks | Medium | Integrating typed PIDs with the actor runtime. Type system must track message protocol types. |
-| Process isolation + crash containment | Very High | 4-8 weeks | Very High | Each actor needs its own heap or allocation arena. Crashes must be contained without corrupting other actors' memory. This is where BEAM spends decades of engineering. |
-| Supervision trees | High | 3-6 weeks | Medium | Complex state machine logic but well-documented by Erlang/OTP. Strategies are well-defined. |
-| Per-actor GC | Very High | 4-8 weeks | Very High | Options: per-actor copying GC (like BEAM), reference counting (like Swift), or arena allocation. Each has major tradeoffs. |
-| Standard library (minimal) | Medium | 4-8 weeks | Low | Strings, lists, maps, file I/O, stdio. Straightforward once codegen and types work. |
-| Error messages | High | Ongoing | Medium | Not a single task but an ongoing investment. Budget time in every phase. |
-| Module system | Medium | 2-4 weeks | Medium | Name resolution, imports, visibility. Can be simple initially. |
-| Traits/Protocols | High | 3-6 weeks | Medium | Must integrate with HM inference. Look at Rust traits and Haskell typeclasses for inspiration. |
-| Build system | Medium | 1-2 weeks | Low | Wrapper around compiler + LLVM linker. |
-| REPL | Medium | 2-4 weeks | Medium | Requires either an interpreter mode or incremental compilation. Could defer. |
-| Package manager | High | 4-8 weeks | Medium | Registry, dependency resolution, versioning. Defer to post-v1. |
-| LSP server | High | 4-8 weeks | Medium | Requires incremental parsing and type checking. Defer to post-v1 but plan architecture for it. |
-| Formatter | Medium | 1-2 weeks | Low | Pretty-printer based on AST. Can ship early. |
+**Phase 1: Core Trait Dispatch**
+- Trait method dispatch via monomorphization (static dispatch)
+- User-defined traits compile and run end-to-end
+- Where clause constraints enforced and specialized in codegen
+- Impl methods for structs and sum types generate correct LLVM IR
 
-### Total Rough Estimate
+**Phase 2: Essential Stdlib Protocols**
+- Display trait with built-in impls for Int, Float, Bool, String
+- String interpolation integration (`"${value}"` calls `to_string`)
+- Debug trait with built-in impls for primitives
+- Eq trait extended to structs and sum types
+- Ord trait extended to structs and sum types (with Ordering type)
 
-**Minimum viable language (compile + run basic concurrent programs):** 6-12 months of focused work.
-**Language usable for real web backends with supervision:** 12-24 months.
-**Language with full tooling (LSP, package manager, formatter):** 24-36 months.
+**Phase 3: Ergonomics**
+- Default method implementations in traits
+- Hash trait with built-in impls for primitives
+- Default trait with built-in impls for primitives
+- Display/Debug impls for stdlib collection types (List, Map, Set)
 
-These estimates assume a single developer working full-time. They are intentionally rough -- the point is relative sizing, not scheduling.
+**Phase 4: Auto-derive (stretch goal for v1.3)**
+- `deriving(Eq, Ord, Display, Debug, Hash)` syntax
+- Compiler-generated impl bodies for structs (field-by-field)
+- Compiler-generated impl bodies for sum types (tag + field comparison)
+
+### Add After Validation (v1.4+)
+
+- From/Into conversion protocol (needs parameterized trait maturity)
+- Supertraits (trait inheritance hierarchy)
+- Method dot-syntax (`value.method()` as alternative to `method(value)`)
+- Iterator/Iterable protocol (needs associated types)
+- TryFrom/TryInto (fallible conversions)
+- Blanket impls (`impl<T: Display> Debug for T`)
+- Serialize/Deserialize protocols
+
+### Future Consideration (v2+)
+
+- Associated types in traits
+- Dynamic dispatch (trait objects) -- if ever
+- Higher-kinded types -- probably never
+- Multi-parameter type classes -- probably never
+- Specialization -- probably never
 
 ---
 
-## MVP Feature Recommendation
+## Competitor Feature Analysis
 
-For a first milestone that proves the concept works end-to-end:
+### Trait System Mechanics
 
-### Must Ship (Proves the vision)
-1. Lexer + parser (do/end blocks, function definitions, let bindings)
-2. Basic types (Int, Float, Bool, String) with HM inference
-3. Structs and enums (ADTs)
-4. Pattern matching with exhaustiveness checking
-5. LLVM codegen to single binary
-6. Basic actor spawn + send + receive
-7. Standard I/O (print to stdout)
+| Feature | Rust | Haskell | Elixir | Swift | Scala 3 | Snow Recommendation |
+|---------|------|---------|--------|-------|---------|---------------------|
+| Term | `trait` | `class` (type class) | `defprotocol` | `protocol` | `trait` | `interface` (already chosen) |
+| Impl syntax | `impl Trait for Type` | `instance Class Type` | `defimpl Protocol, for: Type` | `extension Type: Protocol` | `given Instance: Trait` | `impl Trait for Type do ... end` (already chosen) |
+| Static dispatch | Yes (monomorphization) | Yes (dictionary passing) | N/A (dynamic) | Yes (witness tables) | Yes (monomorphization + erasure) | Yes (monomorphization) |
+| Dynamic dispatch | `dyn Trait` (vtable) | Always (dictionary passing) | Always (dispatch table) | Protocol existentials | Subtyping | Not in v1.3. Sum types instead. |
+| Default methods | Yes | Yes | No (protocols are pure interfaces) | Yes (protocol extensions) | Yes | Yes -- v1.3 Phase 3 |
+| Associated types | Yes | Yes (type families) | No | Yes | Yes | Deferred to v1.4+ |
+| Supertraits | Yes (`trait A: B`) | Yes (`class B a => A a`) | No | Yes (`: B`) | Yes (`extends B`) | v1.4+ |
+| Deriving | `#[derive(...)]` | `deriving (...)` | `@derive [...]` | Auto-synthesis | `derives` | `deriving(...)` -- v1.3 Phase 4 |
+| Orphan rule | Yes (strict) | Yes (relaxed with extensions) | No (last impl wins) | No | No | Yes (simplified: impl requires local trait or local type) |
+| Coherence | Yes | Yes | No | No | No | Yes (one impl per trait-type pair) |
 
-### Should Ship (Makes it compelling)
-8. Pipe operator
-9. Option[T] and Result[T, E]
-10. Closures
-11. Clear error messages
-12. String interpolation
+### Stdlib Protocols
 
-### Defer to Post-MVP
-- Supervision trees (complex but not needed to prove the concept)
-- Traits/Protocols (generics are enough initially)
-- Standard library beyond basics
-- Module system (single-file programs first)
-- Package manager, LSP, formatter
-- REPL
-- Per-actor GC (use simpler allocation initially, accept limitations)
+| Protocol | Rust | Haskell | Elixir | Swift | Snow Recommendation |
+|----------|------|---------|--------|-------|---------------------|
+| String display | `Display` | `Show` | `String.Chars` | `CustomStringConvertible` | `Display` with `to_string(self) -> String` |
+| Debug display | `Debug` | `Show` (same) | `Inspect` | `CustomDebugStringConvertible` | `Debug` with `inspect(self) -> String` |
+| Equality | `PartialEq` + `Eq` | `Eq` | `==` (structural) | `Equatable` | `Eq` (single trait, no Partial/Total split) |
+| Ordering | `PartialOrd` + `Ord` | `Ord` | `Comparable` (not a protocol) | `Comparable` | `Ord` (single trait, returns Ordering) |
+| Hashing | `Hash` | `Hashable` | N/A (Erlang terms) | `Hashable` (inherits Equatable) | `Hash` with `hash(self) -> Int` |
+| Default values | `Default` | `def`/`Monoid` | N/A | N/A | `Default` with `default() -> Self` |
+| Conversion | `From`/`Into` | Explicit functions | N/A | N/A | `From<T>` with `from(T) -> Self` |
+| Iteration | `Iterator` | `Foldable`/`Traversable` | `Enumerable` | `Sequence`/`IteratorProtocol` | Deferred to v1.4+ |
+| Serialization | `Serialize`/`Deserialize` (serde) | `aeson`/`binary` | N/A (Erlang terms) | `Codable` | Deferred to v1.4+ |
+| Cloning | `Clone` | N/A (immutable by default) | N/A (immutable) | N/A (value types copy) | Not needed (Snow is functional/immutable) |
+| Copying | `Copy` | N/A | N/A | N/A | Not needed (all values are semantically copies in Snow) |
+
+### Key Insight from Competitor Analysis
+
+**Elixir's protocol system is the closest spiritual ancestor** to what Snow needs, despite Elixir being dynamically typed. Elixir protocols:
+- Are defined separately from types (just like Snow's `interface`)
+- Implementations are separate (`defimpl` = Snow's `impl ... for ... do`)
+- Are consolidated at compile time (Snow does this via monomorphization)
+- Have a small, focused set: `String.Chars`, `Inspect`, `Enumerable`, `Collectable`
+
+**Rust's trait system is the closest mechanical model** for Snow's implementation:
+- Monomorphization for static dispatch
+- Coherence (one impl per type)
+- Derive macros for boilerplate reduction
+
+**Snow should combine Elixir's philosophy (small, focused protocols with clean syntax) with Rust's mechanics (monomorphization, coherence, derive).**
+
+---
+
+## Actor-Specific Protocol Considerations
+
+Snow's actor system creates unique requirements for traits:
+
+### Message Display
+Actors receive messages as sum types. Being able to `inspect` a message for logging/debugging is critical:
+```snow
+type CounterMsg do
+  Increment
+  Decrement
+  GetCount
+end deriving(Debug)
+
+# In actor receive:
+receive do
+  msg -> println("Received: ${inspect(msg)}")
+end
+```
+
+### Message Serialization (v1.4+)
+For distributed actors (if ever), messages need serialization. This is NOT needed for v1.3 (single-process actors).
+
+### Pid Display
+`Pid` should implement Display to show actor identity:
+```snow
+impl Display for Pid do
+  fn to_string(self) -> String do
+    # compiler intrinsic: "#PID<0.42.0>" format
+  end
+end
+```
+
+---
+
+## Implementation Complexity Assessment
+
+| Feature | Estimated Effort | Risk Level | Notes |
+|---------|-----------------|------------|-------|
+| Trait method dispatch (codegen) | 3-5 days | HIGH | Core pipeline change across MIR, mono, codegen. Most complex single feature. |
+| Display for primitives | 1 day | LOW | Runtime functions already exist (int_to_string, etc.) |
+| Display integration with interpolation | 1-2 days | MEDIUM | Need to hook into string interpolation compilation |
+| Eq for structs/sum types | 2-3 days | MEDIUM | Field-by-field comparison codegen |
+| Ord with Ordering type | 2-3 days | MEDIUM | Need new sum type, refactor existing Ord |
+| Default method impls | 2-3 days | MEDIUM | Trait definition changes, impl resolution changes |
+| Hash for primitives | 1 day | LOW | Simple runtime functions |
+| Auto-derive mechanism | 3-5 days | HIGH | Compiler needs struct metadata, generate impl AST/MIR |
+| Default protocol (static methods) | 2-3 days | MEDIUM | Requires trait method without `self` |
+| From/Into protocol | 2-3 days | MEDIUM | Parameterized traits already parsed |
+| Supertraits | 2-3 days | MEDIUM | Constraint propagation in type checker |
+
+**Total estimated effort for v1.3 MVP:** 15-25 days (Phases 1-3)
+**With auto-derive (Phase 4):** 20-30 days
 
 ---
 
 ## Sources
 
-### Official Documentation and Authoritative Sources
-- [Go 1.26 Release Notes](https://go.dev/doc/go1.26) - HIGH confidence
-- [Gleam Programming Language](https://gleam.run/) - HIGH confidence
-- [Gleam FAQ](https://gleam.run/frequently-asked-questions/) - HIGH confidence
-- [Pony Language](https://www.ponylang.io/) - HIGH confidence
-- [Language Server Protocol](https://microsoft.github.io/language-server-protocol/) - HIGH confidence
-- [Rust Project Goals 2025](https://rust-lang.github.io/rust-project-goals/) - HIGH confidence
+### Rust Traits
+- [Effective Rust: Standard Traits](https://effective-rust.com/std-traits.html)
+- [Tour of Rust's Standard Library Traits](https://github.com/pretzelhammer/rust-blog/blob/master/posts/tour-of-rusts-standard-library-traits.md)
+- [Rust By Example: Derive](https://doc.rust-lang.org/rust-by-example/trait/derive.html)
+- [Rust Advanced Traits](https://doc.rust-lang.org/book/ch20-02-advanced-traits.html)
+- [Rust Iterator Trait](https://doc.rust-lang.org/std/iter/trait.Iterator.html)
+- [Rust From/Into and Newtypes](https://www.lurklurk.org/effective-rust/newtype.html)
+- [Rust Coherence and Orphan Rules](https://rust-lang.github.io/rfcs/2451-re-rebalancing-coherence.html)
 
-### Research Papers
-- [NVLang: Unified Static Typing for Actor-Based Concurrency on the BEAM (arXiv:2512.05224, Dec 2025)](https://arxiv.org/abs/2512.05224) - HIGH confidence, directly relevant to Snow's design
-- [Deny Capabilities for Safe, Fast Actors (Pony)](https://www.ponylang.io/media/papers/fast-cheap.pdf) - HIGH confidence
+### Haskell Type Classes
+- [Haskell Report: Predefined Types and Classes](https://www.haskell.org/onlinereport/haskell2010/haskellch6.html)
+- [Typeclassopedia](https://wiki.haskell.org/Typeclassopedia)
 
-### Community and Analysis Sources
-- [Earthly Blog: Slow March of Progress in Programming Language Tooling](https://earthly.dev/blog/programming-language-improvements/) - MEDIUM confidence
-- [Gleam: The Functional BEAM Language to Watch](https://medium.com/@ThinkingLoop/gleam-the-functional-beam-language-to-watch-02a523752048) - MEDIUM confidence
-- [Zig Defeats Function Coloring](https://byteiota.com/zig-defeats-function-coloring-the-async-problem-other-languages-cant-solve/) - MEDIUM confidence
-- [Daniel Tan: Function Colors Represent Different Execution Contexts](https://danieltan.weblog.lol/2025/08/function-colors-represent-different-execution-contexts) - MEDIUM confidence
-- [Result Pattern vs Exceptions Revisited (2025)](https://stevenstuartm.com/blog/2025/10/29/result-pattern-vs-exceptions-revisited.html) - MEDIUM confidence
-- [2025 Stack Overflow Developer Survey](https://survey.stackoverflow.co/2025/technology) - MEDIUM confidence
-- [Hindley-Milner Type System (Wikipedia)](https://en.wikipedia.org/wiki/Hindley%E2%80%93Milner_type_system) - MEDIUM confidence
-- [Pony: Actor-Model Language for High-Safety Concurrency](https://dev.to/viz-x/pony-the-actor-model-language-built-for-high-safety-concurrency-c2a) - MEDIUM confidence
-- [Typeclasses, Traits, and Protocols: Architecture Wars (BugsyBits, 2025)](https://medium.com/@bugsybits/typeclasses-traits-and-protocols-the-architecture-wars-between-haskell-rust-and-python-57a18e4f77fe) - MEDIUM confidence
+### Elixir Protocols
+- [Elixir Protocols Documentation](https://hexdocs.pm/elixir/protocols.html)
+- [Elixir Protocol Module](https://hexdocs.pm/elixir/Protocol.html)
+
+### Swift Protocols
+- [Swift Standard Library Protocols](https://bugfender.com/blog/swift-standard-library-protocols/)
+- [Swift Equatable](https://developer.apple.com/documentation/Swift/Equatable)
+
+### Scala 3
+- [Scala 3 Type Classes](https://docs.scala-lang.org/scala3/book/ca-type-classes.html)
+- [Scala 3 Extension Methods](https://docs.scala-lang.org/scala3/reference/contextual/extension-methods.html)
+
+### Static Dispatch / Monomorphization
+- [Rust Polymorphism Guide](https://www.somethingsblog.com/2024/11/03/rust-polymorphism-a-comprehensive-guide-to-static-dynamic-dispatch-enums/)
+- [Rust Dispatch: When Enums Beat dyn Trait](https://www.somethingsblog.com/2025/04/20/rust-dispatch-explained-when-enums-beat-dyn-trait/)
+
+---
+*Feature research for: Snow Language Trait System & Stdlib Protocols*
+*Researched: 2026-02-07*

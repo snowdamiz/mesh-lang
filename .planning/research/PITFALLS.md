@@ -1,744 +1,549 @@
-# Pitfalls Research: Snow Language
+# Pitfalls Research: Trait System and Stdlib Protocols (v1.3)
 
-**Domain:** Programming language design and implementation (compiler in Rust, HM type inference, actor runtime, LLVM codegen)
-**Researched:** 2026-02-05
-**Overall Confidence:** HIGH (well-established domain with decades of literature and multiple verified sources)
+**Domain:** Adding traits with monomorphization to an existing HM-typed language compiled via LLVM
+**Researched:** 2026-02-07
+**Confidence:** HIGH (based on Snow codebase analysis + established PL research + Rust/Haskell ecosystem experience)
 
----
-
-## Critical Pitfalls (Will Derail Project)
-
-These mistakes cause rewrites, multi-month delays, or fundamental architectural dead-ends.
-
-### C1: Building the Actor Runtime Before the Compiler Works
-
-**What goes wrong:** Attempting to build the preemptive actor runtime and the compiler/type system simultaneously. Both are individually hard; doing both at once means neither stabilizes, bugs in one mask bugs in the other, and you cannot test the runtime without the compiler or vice versa.
-
-**Why it happens:** Excitement about the "full vision" leads to parallel development of interdependent systems that each need focused, sequential attention.
-
-**Consequences:** Nothing works end-to-end for months. Motivation dies. Debugging becomes impossible because you cannot isolate whether a failure is in codegen, type checking, or runtime scheduling.
-
-**Prevention:**
-- Phase the project strictly: Lexer/Parser first, then type checker, then LLVM codegen for sequential code, THEN actor runtime. Each phase must produce a working, testable artifact.
-- The actor runtime should be developed as a standalone Rust library first, tested independently with handwritten Rust actors, before the compiler targets it.
-- Treat the first milestone as "Snow compiles and runs sequential pure functions to native code." Actors come later.
-
-**Detection:** If after 3 months you cannot compile and run `fn add(a, b) = a + b`, you have this problem.
-
-**Phase mapping:** Phase 1 should be purely sequential. Actor runtime should not appear before Phase 3 at the earliest.
-
-**Severity:** CRITICAL
-
-**Confidence:** HIGH -- this is a universal pattern in ambitious language projects. The Erlang VM itself was first a sequential Prolog implementation before actors were added.
+**Scope:** This document covers pitfalls specific to v1.3 milestone -- adding user-defined interfaces, impl blocks, where clauses, monomorphization, and stdlib protocols (Display, Iterator, From/Into, Hash, Default). It supersedes and specializes the general project pitfalls for this milestone.
 
 ---
 
-### C2: Getting the Core Type System Wrong and Having to Rewrite It
+## Critical Pitfalls
 
-**What goes wrong:** Implementing Hindley-Milner type inference without deeply understanding the algorithm leads to subtle bugs that do not surface until the language grows. Classic bugs: forgetting the occurs check (causing infinite types), incorrect substitution composition order, failing to generalize in let-bindings, and not properly instantiating type schemes.
-
-**Why it happens:** HM inference appears deceptively simple in textbooks. The core algorithm is elegant, but a correct implementation requires meticulous attention to: (1) the occurs check in unification, (2) proper composition and application order of substitutions, (3) the distinction between generalization (let-polymorphism) and instantiation, and (4) handling of free variables during substitution into type schemes.
-
-**Consequences:** Subtle type unsoundness. Programs that should fail to type-check are accepted. Programs that should be accepted are rejected. Infinite loops in the type checker. Error messages that point to the wrong location. All of these erode trust in the type system, and once users learn to distrust it, the language is dead.
-
-**Prevention:**
-- Study the canonical references: Damas and Milner's original paper, and the "Write You a Haskell" tutorial by Stephen Diehl.
-- Use the constraint-generation-then-solving approach rather than interleaving constraint generation with unification (Algorithm W style). Separating these concerns makes the system easier to debug and extend, and produces better error messages.
-- Write a comprehensive test suite for the type checker BEFORE implementing it. Cover: polymorphic identity, let-polymorphism (`let id = fn x -> x in (id 1, id true)`), occurs check rejection (`fn x -> x x`), nested let-bindings, higher-order functions.
-- Start with a minimal core (no records, no modules, no type classes) and get it provably correct before extending.
-
-**Detection:** If `let id = fn x -> x in (id 1, id "hello")` does not type-check, or if `fn x -> x x` type-checks without error, your implementation has fundamental bugs.
-
-**Phase mapping:** Phase 2 (type system) is the highest-risk phase. Budget 2x the time you think it needs. Do not move to codegen until the type checker passes a comprehensive test suite.
-
-**Severity:** CRITICAL
-
-**Confidence:** HIGH -- verified across multiple sources including academic literature, implementation tutorials, and post-mortems from language projects.
-
-**Sources:**
-- [Implementing a Hindley-Milner Type System](https://blog.stimsina.com/post/implementing-a-hindley-milner-type-system-part-1)
-- [Write You a Haskell - HM Inference](http://dev.stephendiehl.com/fun/006_hindley_milner.html)
-- [Damas-Hindley-Milner inference two ways](https://bernsteinbear.com/blog/type-inference/)
-- [A reckless introduction to Hindley-Milner](https://reasonableapproximation.net/2019/05/05/hindley-milner.html)
+Mistakes that cause unsound type checking, ICEs (internal compiler errors), or require rewrites. Address in the phase where they first apply.
 
 ---
 
-### C3: Preemptive Scheduling of Native Code Without Reduction Counting
+### Pitfall 1: Premature Constraint Checking -- Checking Trait Bounds Before Types Are Fully Resolved
 
-**What goes wrong:** Attempting to build BEAM-style preemptive scheduling for natively compiled code. The BEAM achieves preemption because it controls the bytecode interpreter -- every function call decrements a reduction counter, and when it hits zero, the process yields. With native code compiled via LLVM, you do not have this luxury. Tight loops with no function calls will never yield.
+**What goes wrong:**
+The current `check_where_constraints` in `TraitRegistry` does a simple `has_impl(trait_name, concrete_ty)` lookup. This only works when the type argument is fully resolved to a concrete type. If `check_where_constraints` is called while type variables are still unbound (before unification completes for the call site), the lookup fails with a false negative: it reports `TraitNotSatisfied` for a type that will eventually resolve to a valid impl. Conversely, checking too late misses real constraint violations.
 
-**Why it happens:** The design says "BEAM-style concurrency" but the execution strategy says "native compilation via LLVM." These two goals are fundamentally in tension. The BEAM's preemption model depends on interpretive control that does not exist in AOT-compiled native code.
+**Why it happens:**
+Algorithm W interleaves constraint generation and solving. When `infer_call` encounters a generic function with `where T: Display`, it must instantiate the scheme (creating fresh type variables), unify argument types, and THEN check the where-clause after the fresh variables have been resolved through unification. The current code does this mostly correctly for direct calls, but the pattern breaks when:
+- The call is inside a pipe chain (`x |> show()`) where the argument type flows in later
+- The type argument is itself a generic that gets resolved deeper in the call graph
+- Multiple constraints reference the same type parameter and resolve at different times
 
-**Consequences:** Either actors can starve each other (a tight compute loop blocks all other actors on that OS thread), or you must add yield points that degrade performance and complicate codegen, or you must use OS-level signal-based preemption (like Go 1.14+) which adds enormous complexity.
+**How to avoid:**
+1. Defer where-clause checking to a post-unification pass. After the entire expression tree is inferred, walk all call sites with where-clauses and resolve type arguments through the unification table before checking.
+2. Alternatively, accumulate where-clause obligations (like Rust's `Obligation` system) and discharge them at generalization boundaries (let-bindings, function bodies).
+3. The current approach of resolving `type_args` from `param_type_param_names` at call sites is fragile -- it only maps type params that appear directly as function parameter types. Type params that appear only in return types, nested positions, or through constraint propagation will be missed.
 
-**Prevention:** Choose ONE of these strategies and commit to it early:
+**Warning signs:**
+- False `TraitNotSatisfied` errors on code that should type-check
+- Errors disappear when explicit type annotations are added
+- Pipe operator chains trigger spurious trait errors that direct calls do not
+- Where-clause errors mention `?0` (unresolved type variable) instead of concrete types
 
-1. **Compiler-inserted yield points (recommended for Snow).** At every function call and loop back-edge, the compiler inserts a check of a per-actor reduction counter. This is what Erlang does conceptually. The cost is a branch instruction per function call and loop iteration -- measurable but acceptable for a language prioritizing concurrency over raw compute speed. This is the simplest approach that preserves the BEAM mental model.
-
-2. **Signal-based preemption (Go's approach).** Use OS signals (SIGURG on Unix) to asynchronously interrupt goroutines/actors. Go 1.14 added this after years of cooperative-only scheduling. It requires the compiler to emit safepoint metadata (PCDATA tables in Go's case) so the runtime knows where it is safe to preempt and where GC roots are. This is extremely complex to implement correctly.
-
-3. **Cooperative scheduling with yield intrinsics.** Require the programmer to explicitly yield in long-running computations. This is the simplest to implement but breaks the "BEAM-style" promise -- BEAM users expect that no single process can starve others.
-
-4. **Hybrid: cooperative with a watchdog.** Cooperative scheduling with a background monitor thread that detects starvation and sends signals to stuck threads. This is a pragmatic middle ground but still requires safepoint metadata.
-
-**Detection:** Write a test: one actor runs `loop(n) = loop(n+1)` (infinite loop with no IO), another actor tries to receive a message. If the second actor never gets scheduled, you have this problem.
-
-**Phase mapping:** This decision must be made in Phase 1 (architecture). The choice affects every subsequent phase: codegen (yield point insertion), runtime (scheduler design), and even the type system (if you need to track "this function may not yield").
-
-**Severity:** CRITICAL
-
-**Confidence:** HIGH -- verified from BEAM internals documentation, Go scheduler source code, and academic literature on actor scheduling.
-
-**Sources:**
-- [BEAM Book: Scheduling](https://github.com/happi/theBeamBook/blob/master/chapters/scheduling.asciidoc)
-- [Erlang Scheduler Details](https://hamidreza-s.github.io/erlang/scheduling/real-time/preemptive/migration/2016/02/09/erlang-scheduler-details.html)
-- [Go Non-cooperative Preemption Proposal](https://go.googlesource.com/proposal/+/master/design/24543-non-cooperative-preemption.md)
-- [Go Preemption in Go](https://hidetatz.github.io/goroutine_preemption/)
-- [Signal-based preemptive scheduling in Go](https://www.sobyte.net/post/2022-01/go-scheduling/)
+**Phase to address:** Phase 1 (inference integration) -- must be correct before codegen can rely on resolved trait bounds.
 
 ---
 
-### C4: Typing Actor Message Passing Incorrectly
+### Pitfall 2: String-Based Impl Lookup Cannot Handle Generic Impls (the type_to_key Problem)
 
-**What goes wrong:** Bolting static types onto actor message passing without a coherent design leads to either an unsound system (messages can crash at runtime despite type-checking), an unusable system (too many type annotations required, defeating the purpose of inference), or a system that cannot express common actor patterns (supervision trees, dynamic actor creation, protocol evolution).
+**What goes wrong:**
+The current `type_to_key` function in `traits.rs` converts types to string keys for HashMap-based impl lookup. This works for concrete types (`Int` -> `"Int"`, `Float` -> `"Float"`) but fundamentally cannot handle:
+- `impl<T> Display for List<T>` -- the impl target is `List<T>`, not a specific instantiation
+- `impl<T: Display> Display for Option<T>` -- conditional impls requiring the inner type to also satisfy a bound
+- `impl Display for (A, B) where A: Display, B: Display` -- structural impls over tuples/composites
 
-**Why it happens:** Actor message passing is inherently dynamic -- the BEAM was designed around dynamically typed messages. Combining static HM inference with actor protocols is a research-level problem. Erlang itself never successfully added static types, and Dialyzer uses "success typing" (a weaker guarantee) precisely because full static typing conflicted with the actor model.
+With string-based keys, looking up `has_impl("Display", List<Int>)` fails because the registered key is `"List<T>"` (or `"List<?0>"`), which does not string-match `"List<Int>"`.
 
-**Consequences:** Users either cannot express the patterns they need, or the type system silently allows invalid messages, or the annotation burden is so high that users rebel against the type system.
+**Why it happens:**
+String keys were a correct simplification for the compiler-known traits phase, where only primitive types (Int, Float, String, Bool) needed impls. User-defined traits break this assumption because users will write generic impls over parameterized types, which is the entire value proposition of a trait system.
 
-**Prevention:**
-- Study NVLang's approach: use algebraic data types (sum types) as actor message protocols. Each actor declares the sum type of messages it accepts. Typed process identifiers `Pid[MessageType]` encode what an actor expects. This is the cleanest known solution as of late 2024.
-- Require each actor to declare its message type explicitly (as a sum type). This is one place where type inference should NOT be attempted -- message protocols should be manifest.
-- Use typed futures `Future[ResponseType]` for request-reply patterns, so the compiler knows what type `await` returns.
-- Accept that some patterns (fully dynamic message routing, protocol evolution at runtime) are outside the scope of the static type system. Provide an escape hatch (e.g., `Any` message type) for advanced users.
-- Design the message typing system on paper, with worked examples, before implementing. Cover: basic send/receive, request-reply, supervision trees, dynamic actor creation, actor discovery.
+**How to avoid:**
+Replace `type_to_key` string matching with structural type matching:
+1. Store impl definitions with their type patterns (including type variables for generic impls)
+2. To check `has_impl("Display", List<Int>)`, iterate registered Display impls, attempt to unify the impl's target type with the query type using a temporary unification context
+3. When an impl has bounds (`where T: Display`), recursively check those bounds after successful matching
+4. Cache resolved results per (trait, concrete_type) pair to avoid re-resolution
 
-**Detection:** Try to type-check a basic supervision tree pattern. If you cannot express "a supervisor that can spawn actors of different message types," your design has a gap.
+This is how Rust's trait resolver works: impl matching is essentially a mini-unification pass.
 
-**Phase mapping:** This must be designed (on paper) during Phase 1 architecture, but implemented during Phase 3 (actor system). The type system (Phase 2) should be designed with awareness that actor typing is coming, but the actual actor typing extensions happen later.
+**Warning signs:**
+- `impl Display for MyStruct` works but `impl Display for List<Int>` does not
+- Generic impls are registered in the trait registry but `has_impl` never finds them
+- All stdlib protocol impls for parameterized types (Iterator for List, From for Option) silently fail to resolve
+- Test `test_where_clause_satisfied` passes only because it uses monomorphic types
 
-**Severity:** CRITICAL
-
-**Confidence:** HIGH -- verified from NVLang paper (arXiv:2512.05224), Erlang community discussions on typing, and session types literature.
-
-**Sources:**
-- [NVLang: Unified Static Typing for Actor-Based Concurrency on the BEAM](https://arxiv.org/abs/2512.05224)
-- [Why isn't Erlang strongly typed? (erlang-questions)](http://erlang.org/pipermail/erlang-questions/2008-October/039261.html)
-- [Types (or lack thereof) - Learn You Some Erlang](https://learnyousomeerlang.com/types-or-lack-thereof)
-
----
-
-## High-Risk Pitfalls (Significant Rework)
-
-These mistakes cost weeks to months and cause significant technical debt, but are recoverable.
-
-### H1: LLVM Version Coupling and Build Complexity
-
-**What goes wrong:** LLVM's C and C++ APIs are unstable across versions. The Rust bindings (inkwell/llvm-sys) require an exact LLVM version match via Cargo feature flags. Binary LLVM packages often lack `llvm-config`. Building LLVM from source takes significant time and disk space (2.5M+ lines of C++). Contributors and CI need matching LLVM installations.
-
-**Why it happens:** LLVM is a living project that regularly breaks API compatibility. Inkwell is pre-1.0 and may make breaking changes. The C API does not cover everything, so you may need custom C++ glue code.
-
-**Consequences:** "Works on my machine" syndrome. CI breaks when LLVM updates. New contributors cannot build the project. Cross-platform builds become a nightmare.
-
-**Prevention:**
-- Pin to a specific LLVM version (e.g., LLVM 18) and do not update until there is a specific reason to.
-- Use inkwell with a locked feature flag (`features = ["llvm18-0"]`). Do not track LLVM HEAD.
-- Document exact build instructions including LLVM installation. Provide a Dockerfile or Nix flake for reproducible builds.
-- Plan for LLVM version bumps as explicit, scheduled maintenance tasks (once or twice per year at most).
-- Consider using the LLVM C API where possible for stability, resorting to C++ glue only when necessary.
-- Set `LLVM_SYS_<version>_PREFIX` environment variables in CI and document them.
-
-**Detection:** If a clean checkout on a new machine takes more than 30 minutes to build, or if it fails on a different LLVM version, you have this problem.
-
-**Phase mapping:** Address in Phase 1 (project setup). The build system and LLVM integration must be rock-solid before any codegen work begins.
-
-**Severity:** HIGH
-
-**Confidence:** HIGH -- verified from inkwell and llvm-sys documentation, LLVM official FAQ, and "LLVM: The bad parts" blog post.
-
-**Sources:**
-- [LLVM: The Bad Parts (nikic)](https://www.npopov.com/2026/01/11/LLVM-The-bad-parts.html)
-- [Inkwell GitHub](https://github.com/TheDan64/inkwell)
-- [llvm-sys crate documentation](https://lib.rs/crates/llvm-sys)
-- [How Bad is LLVM Really? (C3 compiler)](https://c3.handmade.network/blog/p/8852-how_bad_is_llvm_really)
+**Phase to address:** Phase 1 (trait infrastructure) -- this is foundational. Every downstream feature depends on correct impl resolution for generic types.
 
 ---
 
-### H2: Terrible Type Error Messages
+### Pitfall 3: Infinite Monomorphization from Recursive Generic Functions
 
-**What goes wrong:** The standard HM inference algorithm (Algorithm W) has an inherent left-to-right bias. When a type error occurs, the error is reported at the point where unification fails, which is often far from the actual mistake. Users see errors like "expected Int, got String" on line 47, when the real mistake was on line 12. This is the single biggest complaint about ML-family languages.
+**What goes wrong:**
+A generic function that recurses with a growing type parameter causes infinite instantiation. Example:
+```
+fn process<T>(x :: T) -> String where T: Display do
+  process(Wrapper.new(x))  # Wrapper.new :: T -> Wrapper<T>
+end
+```
+Monomorphizing this requires `process<T>`, then `process<Wrapper<T>>`, then `process<Wrapper<Wrapper<T>>>`, and so on without bound. The monomorphization pass enters an infinite loop or crashes with OOM.
 
-**Why it happens:** Algorithm W interleaves constraint generation with solving, so when it encounters a contradiction, it blames the latest constraint. The actual error might be several unification steps back. Studies show that grouping errors (parentheses, brackets) account for 45-60% of type errors in functional programs, and these are the hardest for standard algorithms to localize.
+**Why it happens:**
+The current `mono.rs` is only a reachability pass -- it does not yet create specialized copies of generic functions. When actual monomorphization is implemented, the worklist algorithm that collects `(function_name, concrete_type_args)` pairs must detect cycles where type arguments grow without bound.
 
-**Consequences:** Users blame the type system, not their code. Beginners abandon the language. Even experienced users waste 12+ minutes per error (Google study). The type system becomes the language's reputation.
+This is a known problem in Rust (issue #50043): `print::<Json>` requiring `print::<Wrapper<Json>>` which requires `print::<Wrapper<Wrapper<Json>>>` etc.
 
-**Prevention:**
-- Use constraint generation followed by separate solving (not Algorithm W's interleaved approach). This gives you the full constraint set to reason about when an error occurs.
-- When a type error is detected, compute the minimal set of constraints that are contradictory. Report ALL locations involved, not just the last one.
-- Invest heavily in error message quality from day one. Treat error messages as a first-class product feature, not an afterthought. Study Elm and Rust's approaches.
-- For each error, show: (1) what the compiler expected, (2) what it found, (3) where the expectation came from (the other location that constrained the type), and (4) a suggestion if possible.
-- Use the "data flow" approach to error explanation: describe errors as faulty data flows ("this value flows from line 12 where it's a String, to line 47 where an Int is expected").
-- Build an error message test suite alongside the type checker. For each type error test case, assert not just that an error is produced, but that the error message mentions the correct location and type names.
+**How to avoid:**
+1. Impose a monomorphization depth limit (Rust uses 256 by default). When a function has been instantiated with a type that nests the same constructor more than N levels deep, emit a compiler error with a clear message.
+2. Track the instantiation stack during monomorphization. If the same function appears in the stack with a strictly larger type (measured by constructor nesting depth), halt and report the cycle.
+3. Consider the interaction with Snow's collections: `List<List<Int>>` is fine (bounded depth from source code), but a recursive function creating `List<List<List<...>>>` dynamically is not.
 
-**Detection:** Show your error messages to someone who has never seen the language. If they cannot understand what went wrong within 30 seconds, the message is bad.
+**Warning signs:**
+- Compiler hangs during monomorphization with 100% CPU and growing memory
+- Stack overflow in the compiler itself (recursive monomorphization function)
+- Programs that seem simple take minutes to compile
 
-**Phase mapping:** Must be considered from Phase 2 (type system) but will be iteratively improved throughout. The constraint-solving architecture decision (Phase 2) determines how good errors CAN be.
-
-**Severity:** HIGH
-
-**Confidence:** HIGH -- extensive academic literature and industry evidence.
-
-**Sources:**
-- [Getting into the Flow: Better Type Error Messages](https://doi.org/10.1145/3622812)
-- [Repairing Type Errors in Functional Programs (McAdam thesis)](https://www.lfcs.inf.ed.ac.uk/reports/02/ECS-LFCS-02-427/ECS-LFCS-02-427.pdf)
-- [Type Inference (Brown PAPL)](https://papl.cs.brown.edu/2020/Type_Inference.html)
-- [Writing Good Compiler Error Messages](https://calebmer.com/2019/07/01/writing-good-compiler-error-messages.html)
+**Phase to address:** Phase 2 (monomorphization implementation) -- must be built into the worklist algorithm from day one, not added later.
 
 ---
 
-### H3: AST and IR Representation Fights with Rust's Ownership Model
+### Pitfall 4: Method Name Collision Between Traits -- Nondeterministic Dispatch
 
-**What goes wrong:** Compilers are fundamentally about tree and graph transformations. Rust's ownership model makes mutable tree structures painful. Multiple passes need to read and annotate the same AST. Inherited attributes (types flowing down), synthesized attributes (types flowing up), and cross-references (symbol tables) all fight the borrow checker.
+**What goes wrong:**
+When two traits define methods with the same name and a type implements both, calling the method by name is ambiguous:
+```
+interface Display do
+  fn to_string(self) -> String
+end
 
-**Why it happens:** In Java/Python you would use shared mutable references everywhere. In Rust, you cannot have multiple mutable references. Self-recursive structs (for nested scopes, linked symbol tables) are notoriously difficult. Even `Rc<RefCell<...>>` patterns become unwieldy.
+interface Debug do
+  fn to_string(self) -> String
+end
 
-**Consequences:** Excessive `clone()` calls that hide design problems. `Rc<RefCell>` everywhere, losing Rust's safety guarantees in practice. Massive boilerplate for AST transformations. Slow iteration speed because every small change to the AST type ripples through every pass.
+impl Display for Int do fn to_string(self) do "42" end end
+impl Debug for Int do fn to_string(self) do "Int(42)" end end
 
-**Prevention:**
-- Use an arena allocator for AST nodes. The `bumpalo` or `typed-arena` crates let you allocate nodes in an arena and use references freely within that arena's lifetime. This is the standard approach in production Rust compilers (rustc uses arenas extensively).
-- Represent the AST as a flat vector of nodes with index-based references (the "ECS-style" or "data-oriented" approach). Each node stores indices into the vector rather than Box/Rc pointers. This sidesteps ownership entirely and enables cache-friendly iteration.
-- Use separate annotation maps (`HashMap<NodeId, Type>`) rather than trying to annotate the AST in-place. Each compiler pass reads the AST immutably and writes to its own output map.
-- Do NOT implement linked lists or self-recursive structs for symbol tables. Use a `Vec`-based scope stack or a `HashMap` with scope IDs.
-- Make AST node types generic with an annotation parameter that changes through compilation stages. But use `Option` fields for optional annotations rather than rebuilding the entire AST per pass.
+to_string(42)  # Which one?
+```
+The current `resolve_trait_method` in `TraitRegistry` iterates ALL impls looking for a matching method name + type key, and returns the FIRST match. This means the resolved method depends on HashMap iteration order -- which is nondeterministic (Rust's `FxHashMap` does not guarantee order).
 
-**Detection:** If you find yourself writing `Rc<RefCell<Box<dyn ...>>>`, or if a simple AST change requires modifications in 10+ files, you have this problem.
+**Why it happens:**
+The current design registers impl methods as directly callable functions in the type environment (`env.insert(method_name, Scheme::mono(fn_ty))` at line ~1805 in infer.rs). This flat namespace means the LAST registered impl overwrites earlier ones. There is no qualified dispatch mechanism.
 
-**Phase mapping:** The AST representation must be designed in Phase 1. Changing it later is extremely expensive because every pass depends on it.
+**How to avoid:**
+1. Detect ambiguity at call sites: when a method name resolves to impls from multiple traits for the same type, emit an error: "method `to_string` is defined by traits Display and Debug for type Int; use qualified syntax"
+2. Support qualified dispatch syntax: `Display.to_string(x)` vs `Debug.to_string(x)`
+3. Change internal method registration to use trait-qualified names: `Display::to_string` instead of bare `to_string`
+4. When only one trait provides a method for the receiver type, allow unqualified dispatch (no ambiguity)
+5. This is critical for stdlib: Display and Debug are almost certain to share method names. If they do, every type implementing both will hit this.
 
-**Severity:** HIGH
+**Warning signs:**
+- Changing the order of `impl` blocks in source code changes program behavior
+- User reports "wrong method called" with no compiler error
+- Adding a second trait with a common method name silently breaks existing code
+- Nondeterministic test failures related to method dispatch
 
-**Confidence:** HIGH -- verified from multiple Rust compiler implementation accounts and the Rust compiler development guide.
-
-**Sources:**
-- [Writing a Compiler in Rust (Tristan Hume)](https://thume.ca/2019/04/18/writing-a-compiler-in-rust/)
-- [Writing Interpreters in Rust](https://rust-hosted-langs.github.io/book/chapter-interp-compiler-design.html)
-- [Rust Compiler Development Guide](https://rustc-dev-guide.rust-lang.org/overview.html)
-
----
-
-### H4: Per-Actor Garbage Collection Is a Research Problem
-
-**What goes wrong:** BEAM-style concurrency uses per-process heaps with independent garbage collection -- when an actor is collected, no other actor is affected (no global stop-the-world). Implementing this for native code is a research-level problem. You need either: (1) a per-actor heap with copying GC (like BEAM), which requires deep integration with the memory allocator and codegen, or (2) reference counting with cycle detection across actors (like Pony's ORCA protocol), which requires a data-race-free type system.
-
-**Why it happens:** The "single binary native executable" goal means you cannot use BEAM's existing GC. You must implement your own. Garbage collection for concurrent actor systems is fundamentally harder than sequential GC because of cross-actor references, message passing creating new roots, and the need to avoid global pauses.
-
-**Consequences:** Memory leaks (if GC is too conservative), crashes (if GC is too aggressive), or global pauses that destroy the concurrency benefits (if you fall back to stop-the-world).
-
-**Prevention:**
-- Start with reference counting per actor, not tracing GC. Reference counting is simpler, deterministic, and does not require stop-the-world pauses. Accept that cycles within an actor's heap will leak initially.
-- Enforce that messages between actors are deep-copied or use move semantics (not shared references). This keeps actor heaps isolated, which is the prerequisite for independent GC. Snow's functional-first design helps here -- immutable values can be safely shared.
-- Study Pony's ORCA protocol for the long-term solution: it combines per-actor tracing with inter-actor reference counting, using message-based GC coordination with no locks or barriers.
-- Consider: do you even need GC? If Snow is functional-first with immutable values and linear/affine types for actors, you might be able to use Rust-style ownership for most values and only need GC for actors themselves.
-- Defer cycle detection to a later phase. Ship with reference counting + cycle leaks, then add a cycle detector as a separate background actor (this is what Pony does).
-
-**Detection:** Write a test that creates and destroys 1 million short-lived actors. If memory usage grows without bound, you have a GC problem.
-
-**Phase mapping:** Phase 3 (actor runtime). The GC strategy must be designed alongside the runtime, but a perfect GC is not needed for initial release -- reference counting with known limitations is acceptable for v0.1.
-
-**Severity:** HIGH
-
-**Confidence:** HIGH -- verified from Pony ORCA paper, BEAM documentation, and Crafting Interpreters GC chapter.
-
-**Sources:**
-- [Ownership and Reference Counting based GC in the Actor World (Pony ORCA)](https://www.doc.ic.ac.uk/~scd/icooolps15_GC.pdf)
-- [Fully concurrent garbage collection of actors](https://www.researchgate.net/publication/311472609_Fully_concurrent_garbage_collection_of_actors_on_many-core_machines)
-- [BEAM Book](https://blog.stenmans.org/theBeamBook/)
+**Phase to address:** Phase 1 (trait infrastructure) -- must be resolved before stdlib protocols introduce Display, Debug, etc.
 
 ---
 
-### H5: Slow Unoptimized Compile Times from LLVM
+### Pitfall 5: MIR Has No Representation for Trait Method Calls -- the Codegen Gap
 
-**What goes wrong:** LLVM is optimized for optimization. Even at -O0, LLVM codegen is slow. For the C3 compiler, LLVM codegen and linking takes over 98% of total compilation time when codegen is single-threaded with no optimizations. This means that during development, the edit-compile-run cycle is painfully slow, which destroys developer experience.
+**What goes wrong:**
+MIR currently has `MirExpr::Call { func, args, ty }` which takes a function expression (typically a `Var` with a function name). For monomorphized trait methods, the call target must be resolved to a specific, mangled function name. But:
+1. `interface` and `impl` items are explicitly skipped during MIR lowering (line 431 of lower.rs: "Skip -- interfaces are erased, type aliases are resolved")
+2. Impl method bodies are never lowered to MIR functions
+3. There is no MIR node for "call trait method M on type T"
+4. When a user writes `to_string(42)`, the type checker resolves it to a function call, but lowering sees a call to `to_string` -- which does not exist as a standalone MIR function
 
-**Why it happens:** LLVM's architecture has inherent overhead even when no optimization passes run: IR construction, instruction selection, register allocation, and machine code emission all have baseline costs. The LLVM TPDE (Trivial Program Development Engine) alternative backend demonstrated that it is possible to be an order of magnitude faster for -O0 builds.
+**Why it happens:**
+The lowering was designed before trait codegen existed. The skip is correct for type-level declarations (which are erased at runtime), but impl method BODIES contain executable code that must be lowered.
 
-**Consequences:** Developers waiting 5-10 seconds for a small program to compile during iteration. This compounds into hours of wasted time daily. Users may abandon the language for this reason alone.
+**How to avoid:**
+1. During MIR lowering, process `impl` blocks: lower each method body to a MIR function with a mangled name encoding both the trait, method, and implementing type: e.g., `Display__to_string__Int`
+2. At call sites where the type checker identifies a trait method call, emit `MirExpr::Call` targeting the mangled name
+3. The type checker must communicate which impl is selected to the lowering phase. Options:
+   - Store the resolved impl info in the `types: FxHashMap<TextRange, Ty>` map (e.g., add a parallel `impls: FxHashMap<TextRange, ResolvedImpl>` map)
+   - Annotate the AST call node with the resolved trait+impl
+   - Use a naming convention: the type checker renames `to_string` to `Display__to_string__Int` before lowering sees it
+4. Add impl methods to the `MirModule.functions` list so they are visible to the monomorphization reachability pass
 
-**Prevention:**
-- Build an interpreter or bytecode VM for development mode from the start. Use LLVM only for release builds. This is the approach many modern language implementations take (e.g., Swift has an interpreter mode, Zig uses a separate backend for debug builds).
-- Alternatively, implement a simple, fast code generator for debug builds that emits unoptimized native code directly (like Cranelift, which is designed for fast compilation at the expense of optimization quality).
-- If using LLVM for all builds, parallelize compilation by compiling each function/module independently on separate threads, then linking.
-- Do NOT use the -O2/-O3 pass pipelines as-is. These are tuned for C/C++, not your language. Start with a minimal set of passes and add only the ones that matter for your language's patterns.
-- Measure compile time from day one. Set a budget (e.g., "100-line program compiles in under 1 second at -O0") and track it.
+**Warning signs:**
+- Programs with trait method calls compile without error but produce wrong results or segfault
+- LLVM reports "undefined function" for trait method names
+- Impl method bodies are type-checked but never appear in compiled output
+- The binary is the same size whether or not impl blocks are present
 
-**Detection:** Time how long it takes to compile a trivial "hello world" program. If it exceeds 500ms, investigate where the time goes. Use LLVM's `-time-passes` flag.
-
-**Phase mapping:** The debug-mode compilation strategy should be decided in Phase 1 (architecture). A bytecode interpreter for dev mode could be Phase 4 (tooling), but awareness of the problem must inform Phase 2 (codegen) design.
-
-**Severity:** HIGH
-
-**Confidence:** HIGH -- verified from LLVM documentation, C3 compiler benchmarks, and nikic's "LLVM: The bad parts."
-
-**Sources:**
-- [LLVM: The Bad Parts](https://www.npopov.com/2026/01/11/LLVM-The-bad-parts.html)
-- [How Bad is LLVM Really?](https://c3.handmade.network/blog/p/8852-how_bad_is_llvm_really)
-- [LLVM Performance Tips for Frontend Authors](https://llvm.org/docs/Frontend/PerformanceTips.html)
-
----
-
-## Medium-Risk Pitfalls (Pain but Recoverable)
-
-These cause days to weeks of rework but are fixable without fundamental redesign.
-
-### M1: Extensions Breaking Type Inference
-
-**What goes wrong:** Starting with a clean HM core, then adding features (records, type classes, GADTs, higher-kinded types, subtyping) that destroy the ability to infer principal types. Each extension seems harmless in isolation but the combination quickly makes inference undecidable or requires annotations that defeat the purpose.
-
-**Why it happens:** HM inference lives in a "sweet spot" of the design space. Nearly any major addition either destroys principal types, requires annotations, or severely complicates the algorithm. Record types, ad-hoc polymorphism, and subtyping are the most common culprits.
-
-**Prevention:**
-- Define the language's type system scope BEFORE implementation. Decide which extensions you will and will not support. Write this down and do not deviate.
-- For records: use row polymorphism (integrates cleanly with HM) rather than structural subtyping (destroys principal types). Study Elm's record system as a practical example.
-- For ad-hoc polymorphism: type classes (Haskell-style) preserve inference but add complexity. Consider deferring type classes to a later version and using module-level functions instead.
-- For each proposed extension, ask: "Does this preserve principal types?" If not, it requires annotations. Decide if that trade-off is acceptable.
-- Test inference thoroughly after each extension. Maintain a suite of programs that must infer without annotations.
-
-**Detection:** If users start needing type annotations to make code compile that "should obviously work," an extension has broken inference.
-
-**Phase mapping:** Phase 2 (type system design). The scope of extensions must be locked before implementation begins.
-
-**Severity:** MEDIUM
-
-**Confidence:** HIGH -- well-established in type theory literature.
-
-**Sources:**
-- [Write You a Haskell - HM](http://dev.stephendiehl.com/fun/006_hindley_milner.html)
-- [HM Wikipedia](https://en.wikipedia.org/wiki/Hindley%E2%80%93Milner_type_system)
+**Phase to address:** Phase 2 (codegen integration) -- this is the primary v1.3 deliverable. Without this, traits are type-check-only with no runtime effect.
 
 ---
 
-### M2: Error Handling Design as an Afterthought
+### Pitfall 6: Generalization Loses Trait Constraints -- Schemes Without Bounds
 
-**What goes wrong:** Not designing the error handling model (how Snow programs handle errors -- not compiler errors) upfront. This was the biggest regret reported by the Ink language author. Without a clear distinction between recoverable errors (file not found) and unrecoverable errors (type error at runtime), programs cannot gracefully handle failures.
+**What goes wrong:**
+When a function like `fn show<T>(x :: T) -> String where T: Display` is generalized into a `Scheme`, the scheme becomes `forall T. T -> String`. But the current `Scheme` struct has no field for constraints:
+```rust
+pub struct Scheme {
+    pub vars: Vec<TyVar>,
+    pub ty: Ty,
+}
+```
+The where-clause constraints are stored separately in `FnConstraints` and looked up by function name during call inference. This works for direct calls but fails when:
+- The function is passed as a value: `let f = show` -- `f`'s scheme has no constraints
+- The function is returned from another function
+- The function is used in a higher-order context: `map(list, show)` -- `map` receives a `forall T. T -> String` without knowing about the Display constraint
 
-**Why it happens:** Error handling feels like a "detail" compared to the type system and concurrency model. But it pervades every API and standard library function.
+**Why it happens:**
+The FnConstraints system was designed for where-clause enforcement at known call sites. It uses function names as keys. When a function becomes a value (closure, partial application, argument), the association between the function and its constraints is lost.
 
-**Consequences:** Programs crash irrecoverably on any error. No way to write robust servers or long-running processes. Users invent ad-hoc error conventions that fragment the ecosystem.
+**How to avoid:**
+1. Extend `Scheme` to carry constraints:
+   ```rust
+   pub struct Scheme {
+       pub vars: Vec<TyVar>,
+       pub constraints: Vec<(TyVar, String)>,  // (var, trait_name)
+       pub ty: Ty,
+   }
+   ```
+2. When instantiating a scheme, carry forward the constraints on the fresh type variables
+3. Discharge constraints when the fresh variables are unified with concrete types
+4. This is the standard "qualified types" approach from Haskell (Mark P. Jones, "Qualified Types: Theory and Practice", 1994)
+5. For v1.3, if higher-order constrained functions are out of scope, document this limitation explicitly and add a check that constrained functions cannot be passed as values
 
-**Prevention:**
-- Decide on the error model in Phase 1 language design: Result types (Rust-style `Result<T, E>`), exceptions (with or without checked), or a hybrid (like Elixir's `{:ok, value} | {:error, reason}` tuples encoded as sum types).
-- For a functional-first language with static types, Result types are the natural fit. They compose well with pattern matching and are explicit in function signatures.
-- Design how errors interact with actors: if an actor crashes, what happens? BEAM has "let it crash" with supervision trees. Snow needs an equivalent philosophy backed by the type system.
-- Ensure errors carry source location and stack trace information. This requires the runtime to maintain a call stack or equivalent metadata.
+**Warning signs:**
+- Passing a constrained function as an argument to a higher-order function drops the constraint
+- `let f = show` followed by `f(unconstrained_value)` compiles when it should not
+- `map(list, to_string)` works without checking that list elements implement Display
+- Type errors only appear at the final call site, not when the constrained function is captured
 
-**Detection:** Try to write a program that reads a file and handles "file not found" gracefully. If you cannot, the error model is missing.
-
-**Phase mapping:** Phase 1 (language design). The error model affects the type system (Phase 2), standard library (Phase 4), and actor system (Phase 3).
-
-**Severity:** MEDIUM
-
-**Confidence:** HIGH -- verified from Ink language post-mortem and general language design literature.
-
-**Sources:**
-- [A retrospective on toy programming language design mistakes (Ink)](https://dotink.co/posts/pl-design-mistakes/)
-
----
-
-### M3: Exhaustiveness Checking Gaps in Pattern Matching
-
-**What goes wrong:** Pattern matching is a core feature of functional languages, but exhaustiveness checking (ensuring all cases are handled) is algorithmically complex, especially with nested patterns, guards, GADTs, and or-patterns. Incomplete checking means the compiler either misses non-exhaustive matches (crashes at runtime) or produces false warnings (annoying users).
-
-**Why it happens:** The basic exhaustiveness algorithm is straightforward for flat enums but becomes complex with nested sum types, literal patterns, and guard expressions. Guards in particular make exhaustiveness undecidable in general.
-
-**Prevention:**
-- Start with the algorithm from Maranget's "Warnings for Pattern Matching" paper (2007) -- this is the standard reference, used in OCaml, and adapted for Rust and Haskell.
-- Handle guards conservatively: treat guarded patterns as non-exhaustive (the guard might be false). This is what most production compilers do.
-- Implement exhaustiveness checking as a separate pass, not interleaved with code generation. This makes it testable and replaceable.
-- Write tests for: nested patterns, wildcard patterns, literal patterns (integers -- note you cannot enumerate all integers), or-patterns, and patterns on user-defined sum types.
-
-**Detection:** If `match x { Some(true) -> ..., Some(false) -> ... }` does not warn about the missing `None` case, exhaustiveness checking is broken.
-
-**Phase mapping:** Phase 2 (type system / pattern matching). Should be implemented alongside the pattern matching compiler.
-
-**Severity:** MEDIUM
-
-**Confidence:** HIGH -- well-established algorithms exist.
-
-**Sources:**
-- [Rust Compiler: Pattern and Exhaustiveness Checking](https://rustc-dev-guide.rust-lang.org/pat-exhaustive-checking.html)
-- [Warnings for Pattern Matching (Maranget, 2007)](https://www.cambridge.org/core/journals/journal-of-functional-programming/article/warnings-for-pattern-matching/3165B75113781E2431E3856972940347)
+**Phase to address:** Phase 1 (inference integration). Even if full qualified types are deferred, the limitation must be understood and documented.
 
 ---
 
-### M4: Not Expressing Language Guarantees in LLVM IR
+### Pitfall 7: No Duplicate Impl Detection -- Silent Overwrite
 
-**What goes wrong:** LLVM IR is designed for C/C++. Snow's functional, immutable-by-default semantics provide guarantees that LLVM cannot automatically discover. If you do not encode these guarantees in the IR, LLVM cannot optimize as well as it could.
+**What goes wrong:**
+Without overlap checking, a user can write two conflicting impls:
+```
+impl Display for Int do fn to_string(self) do "number" end end
+impl Display for Int do fn to_string(self) do "integer" end end
+```
+The current `register_impl` in `TraitRegistry` uses `self.impls.insert((trait_name, type_key), impl_def)` -- HashMap insert silently replaces the previous entry. No error is reported. The program compiles and uses whichever impl was registered last.
 
-**Why it happens:** The path of least resistance is to emit "C-like" LLVM IR without leveraging metadata, attributes, or flags that express Snow-specific invariants.
+**Why it happens:**
+The `impls` HashMap is keyed by `(trait_name, type_key)`. Inserting with the same key replaces the old value without warning. There is no overlap check.
 
-**Consequences:** Missed optimizations. Snow programs are slower than equivalent C for no fundamental reason, just because the compiler does not tell LLVM what it knows.
+**How to avoid:**
+1. Before inserting an impl, check if one already exists for the same `(trait_name, type_key)` pair
+2. If a duplicate exists, emit a `DuplicateImpl` error with both locations
+3. For generic impls (once supported), check for overlap: `impl<T> Display for List<T>` overlaps with `impl Display for List<Int>`. Decide whether to allow specialization (complex) or reject overlap (simple, recommended for v1.3)
+4. Plan the coherence story for when Snow gets modules/packages: will Snow have an orphan rule?
 
-**Prevention:**
-- Mark function arguments and return values with `noalias` where Snow's ownership semantics guarantee no aliasing.
-- Use `nsw` (no signed wrap) and `nuw` (no unsigned wrap) flags on arithmetic operations where the type system guarantees no overflow.
-- Mark pure functions with `readnone` or `readonly` attributes. Snow's functional-first design means most functions should be pure.
-- Use `!invariant.load` metadata for immutable data.
-- Do NOT overuse the `assume` intrinsic -- it can hurt both compile time and optimization quality. Express constraints through IR attributes/flags instead.
-- Study the LLVM Performance Tips for Frontend Authors document thoroughly before writing the codegen pass.
+**Warning signs:**
+- Duplicate impls compile without warning
+- Changing the order of impl blocks changes program behavior
+- The stdlib provides `impl Display for Int` and a user also writes one -- no error, unpredictable behavior
+- Tests pass or fail depending on HashMap iteration order
 
-**Detection:** Compare the generated LLVM IR for a simple function against what Clang generates for an equivalent C function. If Snow's IR has fewer annotations, you are leaving performance on the table.
-
-**Phase mapping:** Phase 2 (codegen). This is an optimization concern, not a correctness concern, so it can be iteratively improved.
-
-**Severity:** MEDIUM
-
-**Confidence:** HIGH -- verified from LLVM official documentation.
-
-**Sources:**
-- [LLVM Performance Tips for Frontend Authors](https://llvm.org/docs/Frontend/PerformanceTips.html)
-- [LLVM: The Bad Parts](https://www.npopov.com/2026/01/11/LLVM-The-bad-parts.html)
-
----
-
-### M5: Calling Convention and ABI Mismatches
-
-**What goes wrong:** LLVM's calling convention documentation is incomplete. The contract between frontends and LLVM for calling conventions is largely undocumented -- implementers must "look at what Clang does and copy that (invariably with errors, because the rules can be very subtle)." Target features can alter the ABI (e.g., enabling AVX means additional float/vector registers are used for argument passing), so functions compiled with different feature flags may be ABI-incompatible.
-
-**Why it happens:** LLVM expects you to know C/C++ calling conventions intimately. The rules differ per platform (x86-64 SystemV vs. Windows x64 vs. ARM AAPCS). Snow's data types (tagged unions, closures, actor references) do not map cleanly to C calling conventions.
-
-**Consequences:** Segfaults, data corruption, or silently wrong results when calling between Snow functions and C FFI, or between Snow functions compiled with different settings.
-
-**Prevention:**
-- Define Snow's calling convention explicitly in a design document. Decide how tagged unions, closures, and multi-return values are passed.
-- Start with the C calling convention for FFI compatibility, then consider a custom convention for internal Snow-to-Snow calls if performance demands it.
-- Set the calling convention on both the function definition AND every call site. LLVM silently produces undefined behavior if these do not match.
-- Test FFI calls thoroughly on every target platform. Use a test suite that calls C functions with every Snow type and vice versa.
-- Avoid enabling target features (like AVX) per-function unless you understand the ABI implications.
-
-**Detection:** If calling a C function from Snow (or vice versa) produces wrong results or crashes on one platform but works on another, you have a calling convention mismatch.
-
-**Phase mapping:** Phase 2 (codegen). Must be addressed before FFI support is added.
-
-**Severity:** MEDIUM
-
-**Confidence:** HIGH -- verified from LLVM FAQ, nikic's blog post, and Mono LLVM backend documentation.
-
-**Sources:**
-- [LLVM FAQ](https://llvm.org/docs/FAQ.html)
-- [LLVM: The Bad Parts](https://www.npopov.com/2026/01/11/LLVM-The-bad-parts.html)
+**Phase to address:** Phase 1 (trait infrastructure) -- must detect duplicates before codegen. This is a one-line fix: check before insert.
 
 ---
 
-## Language Design Pitfalls
+## Moderate Pitfalls
 
-### L1: Syntax Decisions That Seem Small but Compound
-
-**What goes wrong:** Individual syntax choices (significant whitespace vs. braces, operator precedence, how to denote type annotations, expression vs. statement distinction) feel like bikeshedding, but they interact combinatorially. A language with 10 "minor" syntax quirks has 100+ quirk interactions.
-
-**Prevention:**
-- Use an LL(1) or LALR parseable grammar. Ambiguous or context-dependent grammars make tooling (IDEs, formatters, linters) much harder to build. C++ is the canonical example of a language whose grammar is so complex that parsing requires type information.
-- Define operator precedence from day one and NEVER change it. C's precedence of `&` and `|` below `==` is a "hundred-year mistake" that cannot be fixed.
-- Use one consistent rule for expression termination (always expressions, like Rust/Elixir, or always statements with explicit return, like Go). Do not mix.
-- Design the grammar formally (BNF/EBNF) before implementing the parser. Use a parser generator or parser combinator library for the first implementation; hand-written recursive descent can come later for better error recovery.
-
-**Severity:** MEDIUM
-
-**Sources:**
-- [5 Mistakes in Programming Language Design (Zwinkau)](https://beza1e1.tuxen.de/articles/proglang_mistakes.html)
-- [Hundred Year Mistakes (Eric Lippert)](https://ericlippert.com/2020/02/27/hundred-year-mistakes/)
+These cause delays, technical debt, or subtle bugs that surface after initial development.
 
 ---
 
-### L2: Null/Nil in Any Form
+### Pitfall 8: Monomorphization Code Bloat with Stdlib Protocols
 
-**What goes wrong:** Introducing any form of null/nil reference. Tony Hoare's "billion-dollar mistake." Even optional types can be misused if the language allows implicit unwrapping.
+**What goes wrong:**
+If Display is implemented for 15 types, and every function taking `T: Display` is monomorphized for each, you get 15 copies per generic function. With Display + Iterator + From/Into + Hash + Default across 15 types, this means up to 75 specialized copies per generic function that uses multiple bounds. For a stdlib with 10 generic utility functions, that is 750 specialized functions before user code even starts.
 
-**Prevention:**
-- Snow should have `Option[T]` (or `Maybe[T]`) as the only way to represent absence. No null pointers, no nil values, no implicit unwrapping.
-- Pattern matching on Option should be the standard way to handle absence. The type system should enforce exhaustive matching.
-- This is already implied by the functional-first, statically-typed design, but it must be an explicit, non-negotiable design principle.
+**Why it happens:**
+Monomorphization is inherently multiplicative. Each generic function is copied for each unique type instantiation. When multiple generic parameters each have multiple concrete types, the count is the product. Rust mitigates this with LLVM's `mergefunc` pass and pre-monomorphization MIR optimizations, but these are complex to implement.
 
-**Severity:** MEDIUM (if Snow avoids it) / CRITICAL (if Snow introduces it)
+**How to avoid:**
+1. Be strategic about which stdlib protocols are truly generic vs. which can use a shared representation. `Display.to_string` always returns `String` -- the method body differs per type but call-site wrappers can share code
+2. Factor non-generic parts out of generic functions. If `fn print_all<T: Display>(list :: List<T>)` has 50 lines of list traversal and 1 line of `to_string` call, factor the traversal into a non-generic helper
+3. Enable LLVM's `mergefunc` pass to deduplicate identical function bodies post-monomorphization
+4. Set compile-time and binary-size budgets. Track metrics as protocols are added
+5. Consider a hybrid approach: monomorphize hot paths, use indirect calls for cold paths
 
----
+**Warning signs:**
+- Binary size jumps 2-5x when stdlib protocols are added
+- Compilation time increases noticeably for small programs using multiple protocols
+- LLVM optimization passes consume >80% of compile time
+- Object file sizes grow linearly with the number of protocol implementations
 
-### L3: Unclear Semantics and Undefined Behavior
-
-**What goes wrong:** Leaving behavior "implementation-defined" or "undefined" creates a language where programmers cannot reason about their code. C's undefined behavior enables powerful optimizations but has caused decades of security vulnerabilities and confusing bugs.
-
-**Prevention:**
-- Every operation in Snow should have defined behavior. Integer overflow: either trap, wrap, or saturate, but PICK ONE and document it.
-- No undefined behavior. If something cannot be given defined behavior, make it a compile-time error.
-- Write a language specification (even informal) that covers every operation's behavior. Test against it.
-
-**Severity:** MEDIUM
-
-**Sources:**
-- [5 Mistakes in Programming Language Design](https://beza1e1.tuxen.de/articles/proglang_mistakes.html)
+**Phase to address:** Phase 2 (monomorphization) and Phase 4 (stdlib protocols) -- monitor continuously.
 
 ---
 
-## Type System Pitfalls
+### Pitfall 9: Self Type Is Not Represented in the Type System
 
-### T1: Monomorphization Explosion
+**What goes wrong:**
+Trait method signatures that return `Self` cannot be expressed with the current type system. The `TraitMethodSig` stores `return_type: Option<Ty>`, but there is no `Ty::SelfType` variant. This means traits like Clone, Default, and From cannot express their return types correctly:
+```
+interface Clone do
+  fn clone(self) -> Self   # Self = the implementing type
+end
 
-**What goes wrong:** If Snow uses monomorphization (like Rust) for generics, each instantiation of a polymorphic function at a different type generates a separate copy. This leads to code bloat and long compile times for heavily generic code.
+interface Default do
+  fn default() -> Self     # Self, no self parameter
+end
+```
+Without Self, these methods' return types must be `None` (unspecified) or hardcoded per impl, losing the generic guarantee that `Clone.clone` returns the same type as its receiver.
 
-**Prevention:**
-- Consider boxed/erased generics (like Java/Haskell) for the initial implementation. This is simpler, avoids code bloat, and is easier to implement. Monomorphization can be added as an optimization later for hot paths.
-- If using monomorphization, implement a deduplication pass that shares identical instantiations.
-- Set limits on instantiation depth to prevent pathological cases.
+**Why it happens:**
+The Ty enum has: `Var`, `Con`, `Fun`, `App`, `Tuple`, `Never`. There is no `Self` variant because the compiler-known traits (Add, Eq, Ord) either use `None` for return type (relying on it being the same as the operand type through other inference) or use concrete types (Bool for Eq/Ord).
 
-**Severity:** MEDIUM
+**How to avoid:**
+1. Add a sentinel type: either `Ty::SelfType` or a well-known type variable (e.g., `TyVar(u32::MAX)`) that gets substituted with the implementing type during impl processing
+2. When registering a trait, methods with `-> Self` return types store the sentinel
+3. When resolving a trait method call on concrete type T, substitute Self with T
+4. When type-checking an impl, verify that the method's actual return type matches Self (the impl type)
+5. For v1.3, if Self is too complex, start with protocols that do not use Self returns: Display (returns String), Iterator (returns Option), Hash (returns Int). Defer Clone and Default to v1.4.
 
----
+**Warning signs:**
+- `Clone.clone(42)` infers `?0` or `Never` instead of `Int`
+- `Default.default()` cannot infer its return type at all
+- Return types of Self-returning methods cause unification failures
+- Method signatures in trait definitions and impl blocks diverge on return type
 
-### T2: Recursive Types Without Explicit Boxing
-
-**What goes wrong:** Allowing types like `type List = Cons(Int, List) | Nil` without requiring explicit indirection (`Box`, `Ref`, etc.) for the recursive case. This type has infinite size and cannot be stack-allocated.
-
-**Prevention:**
-- Either require explicit boxing for recursive types (Rust's approach: `Cons(Int, Box<List>)`), or automatically box recursive positions (Haskell's approach -- everything is heap-allocated by default).
-- For a functional-first language, automatic heap allocation with the compiler optimizing stack allocation where possible is likely the right default.
-
-**Severity:** MEDIUM
-
----
-
-### T3: Forgetting the Value Restriction
-
-**What goes wrong:** In ML-family languages, unrestricted polymorphism for mutable references is unsound. The "value restriction" limits generalization to syntactic values (not arbitrary expressions) to prevent this. If Snow has any mutable state (even for actor-internal state), this applies.
-
-**Prevention:**
-- If Snow is purely immutable within actors, the value restriction may not apply. But if actors have mutable state (mailboxes, internal state), the type system must account for it.
-- Study OCaml's value restriction as the standard approach.
-- Test: `let r = ref [] in r := [1]; hd(!r) + "hello"` should be a type error, not accepted.
-
-**Severity:** MEDIUM (depends on whether Snow has mutable references)
+**Phase to address:** Phase 1 if Clone/Default are in v1.3 scope; Phase 3 (stdlib protocols) if they are deferred.
 
 ---
 
-## Runtime/Concurrency Pitfalls
+### Pitfall 10: Iterator Protocol Requires Lazy Evaluation or Associated Types -- Neither Exists Yet
 
-### R1: Work-Stealing Scheduler Without Understanding Lock-Free Data Structures
+**What goes wrong:**
+A meaningful Iterator protocol requires two features Snow currently lacks:
 
-**What goes wrong:** Building a work-stealing scheduler (like BEAM's or Go's) requires lock-free or fine-grained concurrent data structures for run queues, message queues, and load balancing. Getting lock-free algorithms wrong causes extremely hard-to-debug race conditions, deadlocks, or data corruption.
+1. **Associated types** (or type parameters on traits): `Iterator` must specify what type `next()` returns. In Rust: `type Item; fn next(&mut self) -> Option<Self::Item>`. Without associated types, the Iterator trait cannot express the element type.
 
-**Prevention:**
-- Start with a simple scheduler: one OS thread per core, each with its own run queue, no work stealing. This is correct and simple. Work stealing is an optimization.
-- Use well-tested concurrent queue implementations (crossbeam in Rust) rather than rolling your own.
-- If implementing work stealing, study BEAM's migration logic and Go's scheduler, both of which are well-documented and battle-tested.
-- Use loom or similar tools for testing concurrent data structures under all possible interleavings.
+2. **Lazy evaluation infrastructure**: Iterator implies pull-based, lazy evaluation where `next()` produces one element at a time. Snow's current collections (List, Map, Set) use eager C runtime functions that process entire collections. Making Iterator lazy requires closure-based state machines or coroutines -- significant runtime work.
 
-**Phase mapping:** Phase 3 (actor runtime). Start simple, add work stealing only when benchmarks show it is needed.
+**Why it happens:**
+Iterator is not just a trait -- it is an evaluation strategy combined with a type-level feature (associated types). Languages that have Iterator as a core protocol (Rust, Python, Java) built both associated types and lazy evaluation into their design from the start.
 
-**Severity:** MEDIUM
+**How to avoid:**
+1. For v1.3, consider whether Iterator should be a trait or a convention. If Snow already has `List.map`, `List.filter`, `List.reduce` as stdlib module functions, converting them to trait methods on an Iterator protocol adds complexity without clear user benefit
+2. If Iterator IS in scope, decide between:
+   - **Type parameter on trait:** `interface Iterator<T> do fn next(self) -> Option<T> end` -- works with current infrastructure but means `List implements Iterator<Int>`, `List<String> implements Iterator<String>`, etc.
+   - **Associated type:** `interface Iterator do type Item; fn next(self) -> Option<Item> end` -- cleaner but requires new type system infrastructure
+3. If lazy evaluation is not feasible for v1.3, consider an eager iterator that wraps collections with an index. This is simpler but breaks user expectations about lazy chaining
+4. Defer Iterator to v1.4 and focus v1.3 on simpler protocols: Display, From/Into, Hash, Default, Eq/Ord
 
----
+**Warning signs:**
+- Iterator protocol is designed but cannot express the element type safely
+- Users expect lazy chaining (`list |> iter() |> filter(f) |> map(g) |> collect()`) but get eager full-collection evaluation
+- Performance is worse than existing direct collection functions
+- Iterator state management interacts poorly with the GC
 
-### R2: Message Queue Backpressure and Mailbox Overflow
-
-**What goes wrong:** Unbounded actor mailboxes. A fast producer can fill a slow consumer's mailbox, exhausting memory. BEAM handles this by slowing down the sender (implicit backpressure through scheduling) and by providing process monitoring, but this is emergent behavior, not a designed solution.
-
-**Prevention:**
-- Design mailbox overflow policy from the start: bounded mailboxes with configurable behavior on overflow (block sender, drop oldest, drop newest, crash).
-- Consider typed mailboxes that distinguish between different message priorities.
-- Provide monitoring: allow querying mailbox depth, and provide supervisor-level alerts when mailboxes grow too large.
-
-**Phase mapping:** Phase 3 (actor runtime design).
-
-**Severity:** MEDIUM
+**Phase to address:** Phase 3 (stdlib protocol design) -- decide the evaluation strategy and associated type approach BEFORE designing the Iterator interface.
 
 ---
 
-### R3: Actor Supervision Trees Without Proper Isolation
+### Pitfall 11: From/Into Blanket Impl Requires Infrastructure That Does Not Exist
 
-**What goes wrong:** If one actor crashing can corrupt another actor's state (shared memory, shared file handles, shared network connections), the "let it crash" philosophy becomes "let it corrupt." BEAM's per-process isolation is absolute -- processes share nothing. This is what makes supervision trees safe.
+**What goes wrong:**
+The standard From/Into pattern uses a blanket impl: implement `From<A> for B`, get `Into<B> for A` automatically via:
+```
+impl<A, B> Into<B> for A where B: From<A> do
+  fn into(self) -> B do B.from(self) end
+end
+```
+This is a second-order generic impl (quantifies over two type parameters with a trait bound). The current trait registry cannot:
+- Store impls parameterized over multiple type variables
+- Resolve transitive trait satisfaction (checking Into requires checking From)
+- Handle the direction reversal (Into<B> for A is derived from From<A> for B)
 
-**Prevention:**
-- Enforce strict isolation between actors. No shared mutable state, period. Messages must be copied or moved, not shared.
-- Actor-internal state must be fully encapsulated. No references to one actor's state from another.
-- Design supervision trees as a first-class concept, not a library afterthought.
-- Test: crash one actor, verify that its supervisor can restart it and no other actor is affected.
+**Why it happens:**
+Blanket impls are the most powerful and most complex feature of trait systems. They require the impl resolver to search for transitive satisfaction rather than direct lookup. The current resolver does exact (trait_name, type_key) matching only.
 
-**Phase mapping:** Phase 3 (actor runtime). Isolation must be enforced from the start.
+**How to avoid:**
+1. For v1.3, skip user-defined blanket impls entirely. This is a reasonable scope cut.
+2. For From/Into specifically, hard-code the blanket impl in the compiler: when checking `has_impl("Into", target_ty)`, also check if `has_impl("From", source_ty)` and synthesize the Into impl. This is similar to how compiler-known traits are handled in builtins.rs.
+3. Alternatively, provide only From (no auto-Into). Users write `B.from(a)` instead of `a.into()`. This is less ergonomic but avoids the blanket impl entirely.
+4. Document blanket impls as a v1.4+ feature requiring a more sophisticated trait resolver.
 
-**Severity:** MEDIUM
+**Warning signs:**
+- Attempting to implement blanket impls causes the trait resolver to loop or crash
+- Users expect `From` to auto-provide `Into` (as in Rust) and are confused when it does not
+- The trait resolver grows increasingly complex to handle transitive chains
+- Compile times increase significantly with transitive resolution
 
----
-
-## LLVM/Codegen Pitfalls
-
-### G1: Using LLVM's Optimization Pipelines Without Understanding Them
-
-**What goes wrong:** Passing Snow's IR through LLVM's -O2 pipeline produces worse code than expected, or even incorrect code, because the pipeline assumes C/C++ semantics (e.g., strict aliasing, no-wrap arithmetic, UB exploitation).
-
-**Prevention:**
-- Start with NO optimization passes. Get correct code generation first.
-- Add optimization passes one at a time, testing after each addition.
-- Understand what each pass assumes about the input IR. Some passes (like TBAA-based alias analysis) assume C/C++ type-based aliasing rules that may not apply to Snow.
-- Write a pass pipeline specifically for Snow, starting from LLVM's pipeline and removing/modifying passes that assume C semantics.
-
-**Phase mapping:** Phase 2 (codegen), after correctness is established.
-
-**Severity:** MEDIUM
-
----
-
-### G2: Exception/Panic Handling Model Mismatch
-
-**What goes wrong:** LLVM's exception handling is designed around C++ ABI-based exceptions (Itanium, SEH). Snow's error handling model (likely Result types + actor crash semantics) does not map cleanly to these mechanisms. Trying to use LLVM's EH for Snow's semantics leads to mismatches, especially for nested handlers and cross-actor crashes.
-
-**Prevention:**
-- Do NOT use LLVM's exception handling for Snow's normal error flow. Result types should be compiled as tagged returns (sum types), not exceptions.
-- Reserve LLVM's exception handling only for truly unrecoverable panics (e.g., out-of-memory, stack overflow) that need to unwind the stack for cleanup.
-- If actors need stack unwinding on crash, implement this in the runtime (longjmp-style or manual stack walking) rather than through LLVM EH.
-
-**Phase mapping:** Phase 2 (codegen), but the error model must be decided in Phase 1.
-
-**Severity:** MEDIUM
+**Phase to address:** Phase 3 (stdlib protocol design) -- make the From/Into design decision early.
 
 ---
 
-### G3: `undef` and `poison` Values in Generated IR
+### Pitfall 12: Compiler-Known Traits and User Traits Use Different Dispatch Paths
 
-**What goes wrong:** LLVM's `undef` and `poison` values are the IR equivalent of undefined behavior. If Snow's codegen accidentally produces `undef` values (e.g., uninitialized variables), LLVM can optimize in surprising ways -- including "deleting" code that appears correct.
+**What goes wrong:**
+Compiler-known traits (Add, Eq, Ord, etc.) are registered in `builtins.rs` and used through special-case inference code in `infer_binary`. User-defined traits go through the general TraitRegistry path. These two paths can diverge:
+- User implements `Add` for their custom struct, but binary `+` uses hardcoded logic that only works for Int/Float
+- User defines a trait named `Add` -- what happens? Does it shadow the compiler-known Add?
+- Error messages differ between compiler-known and user-defined trait violations
+- The compiler-known path does not go through TraitRegistry for dispatch at all in some cases
 
-**Prevention:**
-- Snow should not have uninitialized variables (functional-first design helps here). Every variable binding should have an initializer.
-- In the codegen, explicitly initialize all LLVM values. Never rely on `undef` as a default.
-- Use LLVM's verification pass (`llvm::verifyModule`) after generating IR to catch malformed IR early.
-- Understand the difference between `undef` (any value, chosen independently each use) and `poison` (the result of UB, propagates through operations). Avoid both.
+**Why it happens:**
+The compiler-known traits predate the user trait system. Binary operator inference has its own type resolution logic (checking for Int or Float operands directly) alongside the TraitRegistry path. The two paths were never unified.
 
-**Phase mapping:** Phase 2 (codegen).
+**How to avoid:**
+1. Unify the dispatch paths: binary operator inference should use TraitRegistry for ALL trait lookups, including compiler-known ones. The builtins module only registers impls; the inference engine uses one resolution path for both `1 + 2` (Add) and `to_string(42)` (Display)
+2. Prevent user traits from reusing compiler-known trait names (Add, Sub, Mul, Div, Mod, Eq, Ord, Not) -- or explicitly document that these are extensible
+3. Test: `impl Add for MyStruct { fn add(self, other) do ... end }` then `my_a + my_b` should work through TraitRegistry resolution
+4. This also prepares for future operator overloading: if `+` always dispatches through Add trait, user types get operators by implementing traits
 
-**Severity:** MEDIUM
+**Warning signs:**
+- `impl Add for MyType` is registered but `my_value + my_value` still fails with "expected Int"
+- Binary operators work only for Int/Float, never for user-defined types
+- Different error formats for "type doesn't support +" vs. "trait Display not satisfied"
+- Adding a user type to a compiler-known trait changes nothing because the inference code short-circuits
 
----
-
-## Project Management Pitfalls
-
-### P1: Trying to Build Everything at Once
-
-**What goes wrong:** Attempting to build the lexer, parser, type checker, codegen, runtime, standard library, package manager, and LSP server simultaneously. Nothing reaches a usable state.
-
-**Prevention:**
-- Strict phasing: each phase produces a working, testable artifact.
-- Phase 1: Lexer + Parser + AST printer (can parse Snow files and pretty-print them).
-- Phase 2: Type checker + LLVM codegen for sequential code (can compile and run pure functions).
-- Phase 3: Actor runtime + message passing (can run concurrent actors).
-- Phase 4: Standard library + tooling (usable for real programs).
-- Each phase should take 1-3 months. Do not start the next phase until the current one is solid.
-
-**Severity:** HIGH
+**Phase to address:** Phase 1 (trait infrastructure) -- unify before adding more protocols. This also enables user-defined operator overloading as a natural consequence.
 
 ---
 
-### P2: Premature Self-Hosting
+### Pitfall 13: No Trait Method Body Tracking in MIR Lowering Name Mangling
 
-**What goes wrong:** Attempting to rewrite the compiler in Snow before Snow is mature enough. This creates a chicken-and-egg problem and means you are debugging the compiler and the language simultaneously. Rust started in OCaml and only self-hosted after years of development.
+**What goes wrong:**
+When impl methods are lowered to MIR functions, they need unique mangled names that encode the trait, method, and implementing type. The mangling scheme must be:
+- **Deterministic:** Same input always produces the same name
+- **Unique:** No collisions between different trait/method/type combinations
+- **Decodable:** Error messages and debugging can map mangled names back to source
+- **Compatible with LLVM:** Valid LLVM function name (no special characters that LLVM rejects)
 
-**Prevention:**
-- Keep the compiler in Rust indefinitely. Self-hosting is a milestone, not a goal.
-- Self-hosting should only be attempted when: (1) the language is stable enough that the compiler written in Snow would not need constant changes due to language evolution, (2) the standard library is rich enough to support a compiler (file I/O, string manipulation, data structures), and (3) there is a clear bootstrap path documented.
+If the mangling scheme is ad-hoc, collisions or lookup failures occur.
 
-**Phase mapping:** Not before v1.0, if ever.
+**Why it happens:**
+Rust has a well-defined symbol mangling scheme (RFC 2603, "v0 mangling"). Snow does not have one yet. The current MIR function names are just the source-level function names or simple transformations (e.g., `helper`, `main`, `__closure_0`). Trait methods need a systematic scheme.
 
-**Severity:** MEDIUM
+**How to avoid:**
+1. Define a mangling scheme before implementing trait codegen. Suggested format: `{TraitName}__{MethodName}__{TypeName}`, e.g., `Display__to_string__Int`
+2. For generic types, include type arguments: `Display__to_string__List_Int`
+3. Reserve the separator (`__`) to avoid collisions with user-defined function names (which should not contain `__`)
+4. Store a mangled->source mapping for error messages and debugging
+5. Ensure the monomorphization pass uses the same mangling scheme to avoid name drift
 
----
+**Warning signs:**
+- LLVM reports duplicate symbol errors
+- Trait methods from different impls get the same mangled name
+- Debugger shows mangled names with no way to decode them
+- Linking fails with "multiply defined symbol"
 
-### P3: Not Having a Working Test Suite from Day One
-
-**What goes wrong:** Writing the compiler without a comprehensive test suite. Each change introduces regressions that are not caught, leading to a "two steps forward, one step back" development pattern.
-
-**Prevention:**
-- Write snapshot tests (input program -> expected output/error) before implementing features.
-- For the type checker, test both acceptance (programs that should type-check) and rejection (programs that should be errors, with expected error messages).
-- For codegen, test compiled output against expected runtime behavior.
-- Run the full test suite on every commit (CI).
-- Use property-based testing (quickcheck) for the type checker: generate random well-typed programs and verify they type-check, generate random ill-typed programs and verify they are rejected.
-
-**Phase mapping:** Phase 0 (project setup). The test framework should exist before the first line of compiler code.
-
-**Severity:** HIGH
-
----
-
-### P4: Designing in Isolation Without User Feedback
-
-**What goes wrong:** Building the entire language without ever getting feedback from potential users. The language ends up theoretically elegant but practically unusable.
-
-**Prevention:**
-- Share the language design document early. Get feedback on syntax, semantics, and the overall "feel" before implementation is complete.
-- Release a minimal working version (even if it only supports integers and basic functions) and let people try it.
-- Write real programs in Snow as early as possible. "Dogfood" the language for its own build scripts, test harness, or documentation generator.
-
-**Phase mapping:** Ongoing from Phase 2 onwards.
-
-**Severity:** MEDIUM
+**Phase to address:** Phase 2 (codegen integration) -- define the scheme before writing any lowering code for impl methods.
 
 ---
 
-## Phase-Specific Warning Summary
+## Technical Debt Patterns
 
-| Phase | Topic | Likely Pitfall | Mitigation |
-|-------|-------|---------------|------------|
-| Phase 0 | Project Setup | H1: LLVM build complexity | Pin LLVM version, provide Docker/Nix, document everything |
-| Phase 0 | Project Setup | P3: No test suite | Set up test framework before writing compiler code |
-| Phase 1 | Language Design | C3: Preemption strategy | Decide compiler-inserted yield points vs. signals upfront |
-| Phase 1 | Language Design | L1: Syntax compounding | Formal grammar, LL(1) parseable, lock operator precedence |
-| Phase 1 | Language Design | M2: Error handling model | Design Result types + actor crash semantics before coding |
-| Phase 1 | Architecture | H3: AST representation | Choose arena + index-based AST before writing any passes |
-| Phase 2 | Type System | C2: HM implementation bugs | Constraint-gen-then-solve, comprehensive test suite, occurs check |
-| Phase 2 | Type System | H2: Bad error messages | Separate constraint solving, multi-location errors |
-| Phase 2 | Type System | M1: Extensions breaking inference | Lock type system scope, no scope creep |
-| Phase 2 | Type System | M3: Exhaustiveness checking | Maranget's algorithm, handle guards conservatively |
-| Phase 2 | Codegen | H5: Slow -O0 compile times | Consider interpreter/fast backend for dev mode |
-| Phase 2 | Codegen | M4: Missing IR annotations | Study LLVM performance tips, mark purity/aliasing |
-| Phase 2 | Codegen | M5: ABI mismatches | Define Snow calling convention, test FFI on all platforms |
-| Phase 3 | Actor Runtime | C1: Building too much at once | Runtime is standalone Rust library, tested independently |
-| Phase 3 | Actor Runtime | C4: Typed message passing | NVLang approach: ADTs as protocols, Pid[T], Future[T] |
-| Phase 3 | Actor Runtime | H4: Per-actor GC | Start with refcounting, defer cycle detection |
-| Phase 3 | Actor Runtime | R1: Work-stealing complexity | Start simple (no stealing), use crossbeam, add later |
-| Phase 3 | Actor Runtime | R2: Mailbox overflow | Bounded mailboxes, configurable overflow policy |
-| Phase 3 | Actor Runtime | R3: Isolation failures | Strict isolation, copy/move messages, no shared state |
-| Phase 4 | Tooling | P2: Premature self-hosting | Stay in Rust, self-host only after v1.0 if ever |
-| Phase 4 | Tooling | P4: No user feedback | Release early, dogfood, gather feedback from Phase 2 |
+| Shortcut | Immediate Benefit | Long-term Cost | When Acceptable |
+|----------|-------------------|----------------|-----------------|
+| String-based type keys for impl lookup | Simple HashMap lookup, works for all current impls (Int, Float, etc.) | Cannot handle generic impls for parameterized types; must be rewritten before any `impl<T>` works | Only during initial phase where all impls are for monomorphic primitive types |
+| No `constraints` field on Scheme | Simpler scheme representation, less plumbing through instantiate/generalize | Cannot handle constrained functions as values; higher-order generic programming silently drops bounds | Acceptable for v1.3 if constrained functions are never passed as values |
+| Hardcoded compiler-known trait dispatch | Binary operators work immediately without general trait resolution | User-defined operator overloading requires separate code path; dispatch diverges | Only during initial integration; must be unified before v1.3 release |
+| Skipping impl bodies during MIR lowering | Compilation proceeds for programs without trait method calls | All trait method calls produce no code; silent miscompilation at runtime | Never -- must be addressed before any trait method call tests pass |
+| No overlap detection in register_impl | Simpler registration code, one less error to handle | Silent overwrite of impls; nondeterministic behavior in programs with duplicate impls | Only during development/testing with controlled impl sets |
+| Eager where-clause checking at call site | Catches most violations correctly for direct calls | Fails for deferred type resolution, pipe chains, higher-order usage | Acceptable for v1.3 if pipe chains with constrained generics are tested and working |
+| No Self type in Ty enum | Simpler type representation, fewer special cases | Cannot express Clone, Default, or any trait with Self-returning methods | Acceptable if v1.3 protocols avoid Self returns (Display, Hash, Eq are fine) |
+| From without auto-Into | Avoids blanket impl complexity entirely | Users must write `B.from(a)` instead of `a.into()`; less ergonomic than Rust | Acceptable for v1.3; add blanket Into in v1.4 |
+| Eager Iterator (not lazy) | Works with existing collection runtime functions | Breaks user expectations about lazy chaining; defeats Iterator's primary purpose | Only if Iterator is explicitly documented as eager in v1.3 |
+| Single-file coherence only | No need for cross-module orphan rules | Cannot scale to multi-file projects with third-party impls | Acceptable while Snow is single-file; must be revisited for packages |
+
+---
+
+## Performance Traps
+
+| Trap | Symptoms | Prevention | When It Breaks |
+|------|----------|------------|----------------|
+| Monomorphizing every protocol method for every type | Binary size 5-10x larger, compile time 3-5x longer | Factor out non-generic code; use LLVM `mergefunc` pass; limit protocol impl count | When stdlib has >5 protocols and >10 implementing types |
+| Unification table growth with many trait-constrained calls | Type inference slows on programs with >50 generic function calls | Reuse type variables; compact union-find table between top-level items | When programs use protocols heavily in chains or loops |
+| LLVM optimization on duplicated monomorphized IR | LLVM passes take >80% of compile time | Run MIR-level optimizations before LLVM lowering; share identical function bodies | When monomorphized function count exceeds ~500 |
+| Recursive trait resolution for composite types | Trait checker enters deep recursion or loops | Add resolution depth limit; cache (trait, type) results | When composite types implement Display by delegating to field Display impls |
+| GC pressure from iterator state allocations | Programs with many iterators create many small heap allocations | Pool iterator state; use arena allocation for short-lived iterators | When Iterator protocol is used in tight loops |
+| Name mangling string operations | String allocation for mangled names during compilation | Use interned strings or symbol table; avoid repeated allocation | When monomorphization creates thousands of specialized function names |
+
+---
+
+## "Looks Done But Isn't" Checklist
+
+These items commonly pass basic tests but fail in real-world usage. Verify each before declaring a phase complete:
+
+- [ ] **Generic impl lookup works:** `impl Display for List<T>` resolves for `List<Int>`, `List<String>`, etc. -- not just string-key exact match
+- [ ] **Where-clause checking is order-independent:** `f(g(x))` where both f and g have where-clauses works regardless of inference order
+- [ ] **Trait methods appear in compiled output:** After lowering, `to_string(42)` produces a real function call in LLVM IR, not a dangling reference
+- [ ] **Method dispatch is deterministic:** Two traits with same method name on same type produces a compile error, not silent first-match
+- [ ] **Monomorphization terminates:** Recursive generic functions hit a depth limit with a clear error message
+- [ ] **Compiler-known traits are extensible:** `impl Add for MyType` followed by `my_a + my_b` works through TraitRegistry
+- [ ] **Trait method bodies type-check with correct Self:** `self.field` resolves correctly inside impl methods for structs
+- [ ] **Duplicate impls are rejected:** `impl Display for Int` written twice produces a DuplicateImpl error
+- [ ] **Schemes carry constraints (or the limitation is documented):** `let f = show` either preserves the Display constraint or produces a "cannot capture constrained function" error
+- [ ] **Self return type works (if in scope):** `Clone.clone(42)` returns Int, not a type variable
+- [ ] **Pipe chains with trait methods work:** `42 |> to_string()` produces the same result as `to_string(42)`
+- [ ] **Error messages name the trait:** "Int does not implement Display" not just "type mismatch"
+- [ ] **Stdlib protocols don't conflict:** Display and Debug can coexist on the same type without method ambiguity
+- [ ] **Mangled names are unique:** `Display__to_string__Int` and `Display__to_string__Float` are distinct in LLVM module
+- [ ] **Trait methods are reachable in mono pass:** The monomorphization reachability pass includes impl method functions, not just user-defined functions
+
+---
+
+## Pitfall-to-Phase Mapping
+
+| Phase | Pitfall IDs | Summary |
+|-------|-------------|---------|
+| **Phase 1: Trait Infrastructure (type system)** | 1, 2, 4, 6, 7, 9, 12 | Fix type_to_key, add overlap detection, unify dispatch paths, handle method collisions, extend Scheme or document constraint limitation, add Self type if needed |
+| **Phase 2: Monomorphization + Codegen** | 3, 5, 8, 13 | Implement real monomorphization with depth limit, lower impl methods to MIR, define name mangling, handle trait method calls in codegen |
+| **Phase 3: Stdlib Protocol Design** | 10, 11 | Decide Iterator evaluation strategy, decide From/Into blanket impl approach, choose which protocols to include |
+| **Phase 4: Stdlib Protocol Implementation** | 8, 10 | Monitor code bloat, implement chosen protocol strategies, test with real programs |
+
+### Phase 1 Priority Order (Dependency-Driven)
+
+1. **Pitfall 7** (overlap detection) -- one-line fix, prevents silent bugs immediately
+2. **Pitfall 2** (type_to_key rewrite) -- everything downstream depends on correct generic impl lookup
+3. **Pitfall 4** (method name collision) -- must be resolved before stdlib protocols share method names
+4. **Pitfall 12** (unify compiler-known + user traits) -- required for user operator overloading
+5. **Pitfall 9** (Self type) -- needed if Clone/Default are in v1.3 scope
+6. **Pitfall 6** (Scheme constraints) -- needed for higher-order trait usage; can be deferred with documented limitation
+7. **Pitfall 1** (deferred constraint checking) -- refinement for edge cases in pipe chains and nested generics
+
+### Phase 2 Priority Order (Dependency-Driven)
+
+1. **Pitfall 13** (name mangling scheme) -- define before writing any impl lowering code
+2. **Pitfall 5** (MIR gap) -- without this, nothing with traits compiles to working native code
+3. **Pitfall 3** (infinite monomorphization guard) -- must be in the worklist from day one
+4. **Pitfall 8** (code bloat monitoring) -- track metrics, optimize if thresholds are exceeded
 
 ---
 
 ## Sources
 
-### Academic / Authoritative
-- [Hindley-Milner type system (Wikipedia)](https://en.wikipedia.org/wiki/Hindley%E2%80%93Milner_type_system)
-- [NVLang: Unified Static Typing for Actor-Based Concurrency on the BEAM](https://arxiv.org/abs/2512.05224)
-- [Warnings for Pattern Matching (Maranget, 2007)](https://www.cambridge.org/core/journals/journal-of-functional-programming/article/warnings-for-pattern-matching/3165B75113781E2431E3856972940347)
-- [Ownership and Reference Counting based GC in the Actor World (Pony ORCA)](https://www.doc.ic.ac.uk/~scd/icooolps15_GC.pdf)
-- [Getting into the Flow: Better Type Error Messages](https://doi.org/10.1145/3622812)
-- [Repairing Type Errors in Functional Programs (McAdam)](https://www.lfcs.inf.ed.ac.uk/reports/02/ECS-LFCS-02-427/ECS-LFCS-02-427.pdf)
+### Snow Codebase Analysis (HIGH confidence)
+- `crates/snow-typeck/src/traits.rs` -- TraitRegistry, type_to_key, register_impl, has_impl
+- `crates/snow-typeck/src/infer.rs` -- infer_interface_def, infer_impl_def, where-clause checking, FnConstraints
+- `crates/snow-typeck/src/unify.rs` -- InferCtx, unification, generalization, scheme instantiation
+- `crates/snow-typeck/src/ty.rs` -- Ty enum, Scheme struct (no constraints field)
+- `crates/snow-typeck/src/builtins.rs` -- compiler-known trait registration, operator dispatch
+- `crates/snow-typeck/tests/traits.rs` -- existing trait test coverage
+- `crates/snow-codegen/src/mir/mono.rs` -- current monomorphization (reachability only)
+- `crates/snow-codegen/src/mir/mod.rs` -- MIR types, no trait method call node
+- `crates/snow-codegen/src/mir/lower.rs` -- skips interface/impl at line 431
+- `crates/snow-codegen/src/codegen/mod.rs` -- LLVM codegen, function compilation
 
-### Official Documentation
-- [LLVM Performance Tips for Frontend Authors](https://llvm.org/docs/Frontend/PerformanceTips.html)
-- [LLVM FAQ](https://llvm.org/docs/FAQ.html)
-- [Rust Compiler Development Guide](https://rustc-dev-guide.rust-lang.org/overview.html)
-- [Rust Pattern and Exhaustiveness Checking](https://rustc-dev-guide.rust-lang.org/pat-exhaustive-checking.html)
-- [BEAM Book: Scheduling](https://github.com/happi/theBeamBook/blob/master/chapters/scheduling.asciidoc)
-- [Inkwell GitHub](https://github.com/TheDan64/inkwell)
-- [Go Non-cooperative Preemption Proposal](https://go.googlesource.com/proposal/+/master/design/24543-non-cooperative-preemption.md)
+### Established PL Research (HIGH confidence)
+- [Coherence of Type Class Resolution (Bottu et al.)](https://xnning.github.io/papers/coherence-class.pdf) -- formal coherence, ambiguity
+- [Let Should Not Be Generalised (Vytiniotis et al.)](https://www.microsoft.com/en-us/research/wp-content/uploads/2016/02/tldi10-vytiniotis.pdf) -- deferred constraints, ambiguity problem
+- [Demystifying Type Classes (Kiselyov)](https://okmij.org/ftp/Computation/typeclass.html) -- monomorphization vs dictionary passing
+- [Rust RFC 0195: Associated Items](https://rust-lang.github.io/rfcs/0195-associated-items.html) -- input vs output type parameters
+- [Functional Dependencies (GHC)](https://ghc.gitlab.haskell.org/ghc/doc/users_guide/exts/functional_dependencies.html) -- ambiguity in multi-param type classes
 
-### Implementation Accounts / Post-Mortems
-- [LLVM: The Bad Parts (nikic, 2026)](https://www.npopov.com/2026/01/11/LLVM-The-bad-parts.html)
-- [How Bad is LLVM Really? (C3 compiler)](https://c3.handmade.network/blog/p/8852-how_bad_is_llvm_really)
-- [Writing a Compiler in Rust (Tristan Hume)](https://thume.ca/2019/04/18/writing-a-compiler-in-rust/)
-- [A retrospective on toy PL design mistakes (Ink)](https://dotink.co/posts/pl-design-mistakes/)
-- [5 Mistakes in Programming Language Design (Zwinkau)](https://beza1e1.tuxen.de/articles/proglang_mistakes.html)
-- [Hundred Year Mistakes (Eric Lippert)](https://ericlippert.com/2020/02/27/hundred-year-mistakes/)
-- [Write You a Haskell - HM Inference](http://dev.stephendiehl.com/fun/006_hindley_milner.html)
-- [Writing Good Compiler Error Messages](https://calebmer.com/2019/07/01/writing-good-compiler-error-messages.html)
+### Rust/LLVM Ecosystem (HIGH confidence)
+- [Rust compile time analysis (TiDB)](https://www.pingcap.com/blog/reasons-rust-compiles-slowly/) -- monomorphization costs
+- [Rust compiler March 2025 improvements](https://nnethercote.github.io/2025/03/19/how-to-speed-up-the-rust-compiler-in-march-2025.html) -- pre-mono MIR optimizations
+- [LLVM: The bad parts (2026)](https://www.npopov.com/2026/01/11/LLVM-The-bad-parts.html) -- LLVM design issues
+- [The dark side of inlining and monomorphization](https://nickb.dev/blog/the-dark-side-of-inlining-and-monomorphization/) -- code bloat analysis
+- [Monomorphization: Casting out Polymorphism](https://thunderseethe.dev/posts/monomorph-base/) -- implementation patterns
+- [Recursive monomorphization in Rust (issue #50043)](https://github.com/rust-lang/rust/issues/50043) -- infinite instantiation
+- [Rust orphan rules](https://github.com/Ixrec/rust-orphan-rules) -- coherence design space
+- [Rust coherence RFC 2451](https://rust-lang.github.io/rfcs/2451-re-rebalancing-coherence.html) -- re-rebalancing coherence
+- [Tour of Rust's Standard Library Traits](https://github.com/pretzelhammer/rust-blog/blob/master/posts/tour-of-rusts-standard-library-traits.md) -- trait design patterns
 
-### Erlang/Actor Model
-- [Erlang Scheduler Details](https://hamidreza-s.github.io/erlang/scheduling/real-time/preemptive/migration/2016/02/09/erlang-scheduler-details.html)
-- [Deep Diving Into the Erlang Scheduler (AppSignal)](https://blog.appsignal.com/2024/04/23/deep-diving-into-the-erlang-scheduler.html)
-- [Types (or lack thereof) - Learn You Some Erlang](https://learnyousomeerlang.com/types-or-lack-thereof)
-- [Why isn't Erlang strongly typed? (mailing list)](http://erlang.org/pipermail/erlang-questions/2008-October/039261.html)
+---
+*Pitfalls research for: Snow v1.3 trait system and stdlib protocols*
+*Researched: 2026-02-07*
