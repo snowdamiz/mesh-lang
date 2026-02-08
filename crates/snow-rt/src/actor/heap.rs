@@ -358,6 +358,189 @@ impl ActorHeap {
     pub fn subtract_allocated(&mut self, bytes: usize) {
         self.total_allocated = self.total_allocated.saturating_sub(bytes);
     }
+
+    // -----------------------------------------------------------------------
+    // Mark-Sweep Garbage Collection
+    // -----------------------------------------------------------------------
+
+    /// Run a full mark-sweep garbage collection cycle.
+    ///
+    /// Conservatively scans the coroutine stack between `stack_bottom` and
+    /// `stack_top` for roots, marks all transitively reachable objects, then
+    /// sweeps unreachable objects onto the free list.
+    ///
+    /// `stack_top` has the lower address (stack grows downward on x86-64/ARM64).
+    /// `stack_bottom` has the higher address (the base of the coroutine stack).
+    ///
+    /// This method is guarded against re-entrancy: if `gc_in_progress` is
+    /// already set, the call is a no-op.
+    pub fn collect(&mut self, stack_bottom: *const u8, stack_top: *const u8) {
+        if self.gc_in_progress {
+            return;
+        }
+        self.gc_in_progress = true;
+
+        self.mark_from_roots(stack_bottom, stack_top);
+        self.sweep();
+
+        self.gc_in_progress = false;
+    }
+
+    /// Mark phase: conservatively scan the stack and trace all reachable objects.
+    ///
+    /// 1. Walk the stack from `stack_top` (low address) to `stack_bottom`
+    ///    (high address), treating every 8-byte-aligned word as a potential
+    ///    pointer. If it points into a live object in this heap, mark it as
+    ///    a root.
+    ///
+    /// 2. Process a worklist (tricolor marking): for each marked object, scan
+    ///    its body for further heap pointers and mark those transitively.
+    ///
+    /// The worklist is a `Vec` allocated on the system heap (via Rust's
+    /// allocator), NOT on the GC heap, to avoid re-entrancy issues.
+    fn mark_from_roots(&mut self, stack_bottom: *const u8, stack_top: *const u8) {
+        // Worklist lives on the system heap (Rust Vec -> malloc).
+        let mut worklist: Vec<*mut GcHeader> = Vec::new();
+
+        // Ensure stack_top <= stack_bottom (stack_top is lower address).
+        let (lo, hi) = if (stack_top as usize) <= (stack_bottom as usize) {
+            (stack_top as usize, stack_bottom as usize)
+        } else {
+            (stack_bottom as usize, stack_top as usize)
+        };
+
+        // Phase 1: Conservative stack scanning.
+        // Walk every 8-byte-aligned word in the stack range.
+        let aligned_lo = (lo + 7) & !7; // round up to 8-byte alignment
+        let mut addr = aligned_lo;
+        while addr + 8 <= hi {
+            let word = unsafe { *(addr as *const usize) };
+            if let Some(header) = self.find_object_containing(word as *const u8) {
+                let hdr = unsafe { &mut *header };
+                if !hdr.is_marked() {
+                    hdr.set_marked();
+                    worklist.push(header);
+                }
+            }
+            addr += 8;
+        }
+
+        // Phase 2: Worklist-based transitive marking (tricolor).
+        while let Some(header) = worklist.pop() {
+            let hdr = unsafe { &*header };
+            let data_start = unsafe { (header as *mut u8).add(GC_HEADER_SIZE) };
+            let body_size = hdr.size as usize;
+
+            // Scan every 8-byte word in the object body.
+            let mut offset = 0;
+            while offset + 8 <= body_size {
+                let word = unsafe { *(data_start.add(offset) as *const usize) };
+                if let Some(target_header) = self.find_object_containing(word as *const u8) {
+                    let target = unsafe { &mut *target_header };
+                    if !target.is_marked() {
+                        target.set_marked();
+                        worklist.push(target_header);
+                    }
+                }
+                offset += 8;
+            }
+        }
+    }
+
+    /// Check if `ptr` points into a live (non-free) object in this heap.
+    ///
+    /// First does a quick page-range check (is `ptr` within any page's
+    /// address range?). If yes, walks the all-objects list to find an object
+    /// whose data range `[data_ptr, data_ptr + size)` contains `ptr`.
+    ///
+    /// This handles interior pointers: a pointer anywhere within an object's
+    /// body identifies that object as reachable.
+    ///
+    /// Returns `Some(header_ptr)` if found, `None` otherwise.
+    fn find_object_containing(&self, ptr: *const u8) -> Option<*mut GcHeader> {
+        let ptr_addr = ptr as usize;
+
+        // Quick check: is ptr within any page's address range?
+        let in_any_page = self.pages.iter().any(|page| {
+            let page_start = page.as_ptr() as usize;
+            let page_end = page_start + page.len();
+            ptr_addr >= page_start && ptr_addr < page_end
+        });
+
+        if !in_any_page {
+            return None;
+        }
+
+        // Walk the all-objects list to find a live object containing ptr.
+        let mut current = self.all_objects;
+        while !current.is_null() {
+            let header = unsafe { &*current };
+            // Skip free objects -- a pointer to freed memory is not a root.
+            if !header.is_free() {
+                let data_start = unsafe { (current as *const u8).add(GC_HEADER_SIZE) } as usize;
+                let data_end = data_start + header.size as usize;
+                if ptr_addr >= data_start && ptr_addr < data_end {
+                    return Some(current);
+                }
+            }
+            current = header.next;
+        }
+
+        None
+    }
+
+    /// Sweep phase: walk the all-objects list and free unmarked objects.
+    ///
+    /// For each object in the all-objects list:
+    /// - If marked: clear the mark bit, keep in the list.
+    /// - If NOT marked: unlink from the list, set FREE_BIT, add to free_list,
+    ///   and subtract its size from `total_allocated`.
+    ///
+    /// Rebuilds the all-objects list in-place using a prev-pointer technique.
+    fn sweep(&mut self) {
+        let mut current = self.all_objects;
+        let mut prev: *mut GcHeader = ptr::null_mut();
+        let mut new_head = self.all_objects;
+        let mut first = true;
+
+        while !current.is_null() {
+            let header = unsafe { &mut *current };
+            let next = header.next;
+
+            if header.is_marked() {
+                // Reachable: clear mark bit and keep in list.
+                header.clear_marked();
+                if first {
+                    new_head = current;
+                    first = false;
+                }
+                prev = current;
+                current = next;
+            } else {
+                // Unreachable: unlink from all_objects and add to free list.
+                let freed_bytes = GC_HEADER_SIZE + header.size as usize;
+                self.total_allocated = self.total_allocated.saturating_sub(freed_bytes);
+
+                // Unlink from all_objects list.
+                if !prev.is_null() {
+                    unsafe { (*prev).next = next; }
+                } else {
+                    // We're removing the head.
+                    new_head = next;
+                }
+
+                // Add to free list.
+                header.set_free();
+                header.next = self.free_list;
+                self.free_list = current;
+
+                current = next;
+                // prev stays the same -- we removed current.
+            }
+        }
+
+        self.all_objects = if first { ptr::null_mut() } else { new_head };
+    }
 }
 
 impl Default for ActorHeap {
@@ -709,5 +892,194 @@ mod tests {
         // The copied data should be unchanged.
         let copied = unsafe { std::slice::from_raw_parts(ptr, 4) };
         assert_eq!(copied, &[10, 20, 30, 40]);
+    }
+
+    // -----------------------------------------------------------------------
+    // Mark-Sweep GC Tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_collect_frees_unreachable() {
+        // Allocate 5 objects, don't reference them from the stack.
+        // Collect with an empty stack range -- all should be freed.
+        let mut heap = ActorHeap::new();
+        let _p1 = heap.alloc(32, 8);
+        let _p2 = heap.alloc(64, 8);
+        let _p3 = heap.alloc(16, 8);
+        let _p4 = heap.alloc(48, 8);
+        let _p5 = heap.alloc(24, 8);
+
+        assert!(heap.total_bytes() > 0);
+
+        // Use an empty stack range (both pointers equal) so no roots are found.
+        let dummy: u64 = 0;
+        let stack_ptr = &dummy as *const u64 as *const u8;
+        heap.collect(stack_ptr, stack_ptr);
+
+        // All objects should have been swept to the free list.
+        assert!(heap.all_objects_head().is_null(), "all_objects should be empty after collecting unreachable objects");
+        assert!(!heap.free_list_head().is_null(), "free_list should be non-empty after sweep");
+        assert_eq!(heap.total_bytes(), 0, "total_allocated should be 0 after collecting all unreachable objects");
+    }
+
+    #[test]
+    fn test_collect_retains_reachable() {
+        // Allocate an object, create a fake stack frame containing its pointer,
+        // then collect. The object should NOT be freed.
+        let mut heap = ActorHeap::new();
+        let ptr = heap.alloc(64, 8);
+        let original_total = heap.total_bytes();
+
+        // Create a fake stack frame: an array containing the pointer value.
+        // The GC will scan this as the stack and find the pointer.
+        let fake_stack: [usize; 4] = [0, ptr as usize, 0, 0];
+        let stack_bottom = unsafe {
+            (&fake_stack[0] as *const usize as *const u8).add(std::mem::size_of_val(&fake_stack))
+        };
+        let stack_top = &fake_stack[0] as *const usize as *const u8;
+
+        heap.collect(stack_bottom, stack_top);
+
+        // The object should be retained (reachable from the fake stack).
+        assert!(!heap.all_objects_head().is_null(), "reachable object should survive GC");
+        assert_eq!(heap.total_bytes(), original_total, "total_allocated should be unchanged for reachable objects");
+
+        // The mark bit should be cleared after sweep.
+        let header = unsafe { &*GcHeader::from_data_ptr(ptr) };
+        assert!(!header.is_marked(), "mark bit should be cleared after sweep");
+    }
+
+    #[test]
+    fn test_collect_reduces_total_bytes() {
+        // Allocate 10 objects, collect with empty roots. Total bytes should drop to 0.
+        let mut heap = ActorHeap::new();
+        for _ in 0..10 {
+            heap.alloc(100, 8);
+        }
+
+        let before = heap.total_bytes();
+        assert!(before > 0);
+
+        let dummy: u64 = 0;
+        let stack_ptr = &dummy as *const u64 as *const u8;
+        heap.collect(stack_ptr, stack_ptr);
+
+        assert_eq!(heap.total_bytes(), 0);
+        assert!(heap.total_bytes() < before, "total_bytes should decrease after collection");
+    }
+
+    #[test]
+    fn test_gc_in_progress_guard() {
+        // Verify gc_in_progress prevents re-entrant collection.
+        let mut heap = ActorHeap::new();
+        let _p = heap.alloc(64, 8);
+        let before = heap.total_bytes();
+
+        // Manually set gc_in_progress to true.
+        heap.set_gc_in_progress(true);
+
+        // Attempt collect -- should be a no-op due to re-entrancy guard.
+        let dummy: u64 = 0;
+        let stack_ptr = &dummy as *const u64 as *const u8;
+        heap.collect(stack_ptr, stack_ptr);
+
+        // Nothing should have changed.
+        assert_eq!(heap.total_bytes(), before, "collect should be no-op when gc_in_progress is true");
+        assert!(!heap.all_objects_head().is_null(), "all_objects should be unchanged when gc_in_progress");
+
+        // gc_in_progress should still be true (collect was a no-op).
+        assert!(heap.gc_in_progress());
+    }
+
+    #[test]
+    fn test_collect_transitive_reachability() {
+        // Object A (on fake stack) points to Object B. Both should survive.
+        let mut heap = ActorHeap::new();
+
+        // Allocate B first, then A. A's body will contain a pointer to B.
+        let ptr_b = heap.alloc(64, 8);
+        let ptr_a = heap.alloc(64, 8);
+
+        // Write ptr_b into A's body so the mark phase traces A -> B.
+        unsafe {
+            *(ptr_a as *mut usize) = ptr_b as usize;
+        }
+
+        // Allocate a third object C that is NOT referenced.
+        let _ptr_c = heap.alloc(64, 8);
+
+        // Fake stack contains only ptr_a.
+        let fake_stack: [usize; 4] = [0, ptr_a as usize, 0, 0];
+        let stack_top = &fake_stack[0] as *const usize as *const u8;
+        let stack_bottom = unsafe { stack_top.add(std::mem::size_of_val(&fake_stack)) };
+
+        heap.collect(stack_bottom, stack_top);
+
+        // A and B should survive, C should be freed.
+        // Count surviving objects.
+        let mut count = 0;
+        let mut current = heap.all_objects_head();
+        while !current.is_null() {
+            count += 1;
+            current = unsafe { (*current).next };
+        }
+        assert_eq!(count, 2, "A and B should survive (transitive reachability), C should be freed");
+
+        // total_allocated should reflect only A and B.
+        assert_eq!(
+            heap.total_bytes(),
+            2 * (GC_HEADER_SIZE + 64),
+            "total_bytes should reflect only the two surviving objects"
+        );
+    }
+
+    #[test]
+    fn test_find_object_containing_interior_pointer() {
+        // A pointer into the middle of an object's body should identify that object.
+        let mut heap = ActorHeap::new();
+        let ptr = heap.alloc(128, 8);
+
+        // Interior pointer: 64 bytes into the object.
+        let interior = unsafe { ptr.add(64) };
+        let found = heap.find_object_containing(interior);
+        assert!(found.is_some(), "interior pointer should find the containing object");
+
+        let header = found.unwrap();
+        let data_start = unsafe { (*header).data_ptr() };
+        assert_eq!(data_start, ptr, "found object should be the one containing the interior pointer");
+    }
+
+    #[test]
+    fn test_find_object_containing_out_of_range() {
+        let heap = ActorHeap::new();
+
+        // Pointer outside any page should return None.
+        let random_ptr = 0xDEADBEEF_usize as *const u8;
+        assert!(heap.find_object_containing(random_ptr).is_none());
+    }
+
+    #[test]
+    fn test_collect_then_reuse() {
+        // After collection, freed objects should be reusable via the free list.
+        let mut heap = ActorHeap::new();
+        let _p1 = heap.alloc(64, 8);
+        let _p2 = heap.alloc(64, 8);
+
+        // Collect with empty roots to free everything.
+        let dummy: u64 = 0;
+        let stack_ptr = &dummy as *const u64 as *const u8;
+        heap.collect(stack_ptr, stack_ptr);
+
+        assert_eq!(heap.total_bytes(), 0);
+        assert!(!heap.free_list_head().is_null());
+
+        // Allocate again -- should reuse from free list.
+        let p3 = heap.alloc(64, 8);
+        assert!(!p3.is_null());
+        // Should have come from the free list (total_allocated stays the same
+        // because free-list reuse doesn't increment total_allocated in alloc).
+        // Actually, the alloc_from_free_list doesn't add to total_allocated.
+        // But p3 is now in all_objects.
+        assert!(!heap.all_objects_head().is_null());
     }
 }
