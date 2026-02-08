@@ -14,8 +14,8 @@ Fix all five known limitations carried from v1.3.
 
 ### Trait System Generics
 
-- [ ] **TGEN-01**: Nested collection Display renders recursively — `to_string([[1, 2], [3, 4]])` produces `[[1, 2], [3, 4]]` instead of falling back to `snow_int_to_string` for inner elements
-- [ ] **TGEN-02**: `deriving(Eq, Ord, Display, Debug, Hash)` works on generic types (e.g., `type Box<T> do value :: T end`) with monomorphization-aware trait impl registration
+- [x] **TGEN-01**: Nested collection Display renders recursively — `to_string([[1, 2], [3, 4]])` produces `[[1, 2], [3, 4]]` instead of falling back to `snow_int_to_string` for inner elements
+- [x] **TGEN-02**: `deriving(Eq, Ord, Display, Debug, Hash)` works on generic types (e.g., `type Box<T> do value :: T end`) with monomorphization-aware trait impl registration
 
 ### Type System Soundness
 
@@ -41,8 +41,8 @@ None — v1.4 is a focused bug-fix milestone.
 |-------------|-------|--------|
 | PATM-01 | Phase 23 | Complete |
 | PATM-02 | Phase 23 | Complete |
-| TGEN-01 | Phase 24 | Pending |
-| TGEN-02 | Phase 24 | Pending |
+| TGEN-01 | Phase 24 | Complete |
+| TGEN-02 | Phase 24 | Complete |
 | TSND-01 | Phase 25 | Pending |
 
 **Coverage:**

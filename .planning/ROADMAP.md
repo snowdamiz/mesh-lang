@@ -75,8 +75,8 @@ Plans:
   4. Auto-derived trait impls are registered per-monomorphization so `Box<Int>` and `Box<String>` get independent Display/Eq implementations
 **Plans:** 2 plans
 Plans:
-- [ ] 24-01-PLAN.md -- Recursive nested collection Display (TGEN-01)
-- [ ] 24-02-PLAN.md -- Generic type deriving with monomorphized trait functions (TGEN-02)
+- [x] 24-01-PLAN.md -- Recursive nested collection Display (TGEN-01)
+- [x] 24-02-PLAN.md -- Generic type deriving with monomorphized trait functions (TGEN-02)
 
 #### Phase 25: Type System Soundness
 **Goal**: Higher-order constrained functions preserve their trait constraints when captured as values -- the type system prevents unsound calls at compile time
@@ -115,5 +115,5 @@ Plans:
 | 21. Extended Protocols | v1.3 | 4/4 | Complete | 2026-02-08 |
 | 22. Auto-Derive (Stretch) | v1.3 | 2/2 | Complete | 2026-02-08 |
 | 23. Pattern Matching Codegen | v1.4 | 2/2 | Complete | 2026-02-08 |
-| 24. Trait System Generics | v1.4 | 0/TBD | Not started | - |
+| 24. Trait System Generics | v1.4 | 2/2 | Complete | 2026-02-08 |
 | 25. Type System Soundness | v1.4 | 0/TBD | Not started | - |
