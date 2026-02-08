@@ -374,6 +374,30 @@ pub(crate) fn parse_type(p: &mut Parser) {
         return;
     }
 
+    // Function type: Fun(ParamTypes) -> ReturnType
+    if p.at(SyntaxKind::IDENT) && p.current_text() == "Fun" && p.nth(1) == SyntaxKind::L_PAREN {
+        let m = p.open();
+        p.advance(); // Fun
+        p.advance(); // (
+        // Parse comma-separated parameter types (may be empty for Fun() -> T)
+        if !p.at(SyntaxKind::R_PAREN) {
+            parse_type(p);
+            while p.eat(SyntaxKind::COMMA) {
+                if p.at(SyntaxKind::R_PAREN) {
+                    break;
+                }
+                parse_type(p);
+            }
+        }
+        p.expect(SyntaxKind::R_PAREN);
+        p.expect(SyntaxKind::ARROW);
+        if !p.has_error() {
+            parse_type(p); // return type
+        }
+        p.close(m, SyntaxKind::FUN_TYPE);
+        return;
+    }
+
     if !p.at(SyntaxKind::IDENT) {
         p.error("expected type name");
         return;
