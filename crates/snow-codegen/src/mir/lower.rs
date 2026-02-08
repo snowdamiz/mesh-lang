@@ -7579,6 +7579,139 @@ end
         );
     }
 
+    /// TSND-01: Where-clause constraints propagate through direct let aliases.
+    /// `let f = show; f(42)` must produce TraitNotSatisfied.
+    #[test]
+    fn e2e_where_clause_alias_propagation() {
+        let source = r#"
+interface Displayable do
+  fn display(self) -> String
+end
+
+fn show<T>(x :: T) -> String where T: Displayable do
+  display(x)
+end
+
+fn main() do
+  let f = show
+  f(42)
+end
+"#;
+        let parse = snow_parser::parse(source);
+        let typeck = snow_typeck::check(&parse);
+
+        let has_trait_error = typeck.errors.iter().any(|e| {
+            matches!(e, snow_typeck::error::TypeError::TraitNotSatisfied { .. })
+        });
+        assert!(
+            has_trait_error,
+            "Expected TraitNotSatisfied when calling aliased constrained function f(42). Errors: {:?}",
+            typeck.errors
+        );
+    }
+
+    /// TSND-01: Where-clause constraints propagate through chain aliases.
+    /// `let f = show; let g = f; g(42)` must produce TraitNotSatisfied.
+    #[test]
+    fn e2e_where_clause_chain_alias() {
+        let source = r#"
+interface Displayable do
+  fn display(self) -> String
+end
+
+fn show<T>(x :: T) -> String where T: Displayable do
+  display(x)
+end
+
+fn main() do
+  let f = show
+  let g = f
+  g(42)
+end
+"#;
+        let parse = snow_parser::parse(source);
+        let typeck = snow_typeck::check(&parse);
+
+        let has_trait_error = typeck.errors.iter().any(|e| {
+            matches!(e, snow_typeck::error::TypeError::TraitNotSatisfied { .. })
+        });
+        assert!(
+            has_trait_error,
+            "Expected TraitNotSatisfied when calling chain-aliased constrained function g(42). Errors: {:?}",
+            typeck.errors
+        );
+    }
+
+    /// TSND-01: Where-clause constraints work with user-defined traits through aliases,
+    /// and do NOT produce false positives for conforming types.
+    #[test]
+    fn e2e_where_clause_alias_user_trait() {
+        // Part A: Should error -- Int does not implement Greetable
+        let source_bad = r#"
+interface Greetable do
+  fn greet(self) -> String
+end
+
+fn say_hello<T>(x :: T) -> String where T: Greetable do
+  greet(x)
+end
+
+fn main() do
+  let f = say_hello
+  f(42)
+end
+"#;
+        let parse = snow_parser::parse(source_bad);
+        let typeck = snow_typeck::check(&parse);
+
+        let has_trait_error = typeck.errors.iter().any(|e| {
+            matches!(e, snow_typeck::error::TypeError::TraitNotSatisfied { .. })
+        });
+        assert!(
+            has_trait_error,
+            "Expected TraitNotSatisfied for user-defined trait Greetable via alias. Errors: {:?}",
+            typeck.errors
+        );
+
+        // Part B: Should NOT error -- Person implements Greetable
+        let source_good = r#"
+interface Greetable do
+  fn greet(self) -> String
+end
+
+struct Person do
+  name :: String
+end
+
+impl Greetable for Person do
+  fn greet(self) -> String do
+    "hello"
+  end
+end
+
+fn say_hello<T>(x :: T) -> String where T: Greetable do
+  greet(x)
+end
+
+fn main() do
+  let f = say_hello
+  let p = Person { name: "Alice" }
+  f(p)
+end
+"#;
+        let parse_good = snow_parser::parse(source_good);
+        let typeck_good = snow_typeck::check(&parse_good);
+
+        let has_trait_error_good = typeck_good.errors.iter().any(|e| {
+            matches!(e, snow_typeck::error::TypeError::TraitNotSatisfied { .. })
+        });
+        assert!(
+            !has_trait_error_good,
+            "Should NOT get TraitNotSatisfied when calling aliased constrained function with conforming type. Errors: {:?}",
+            typeck_good.errors
+        );
+    }
+
     /// Success Criterion 5: Depth limit machinery is in place.
     /// Normal programs produce no Panic nodes; the depth counter fields exist.
     #[test]
