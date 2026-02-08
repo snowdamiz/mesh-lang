@@ -1328,7 +1328,7 @@ fn infer_item(
             infer_fn_def(ctx, env, fn_, types, type_registry, trait_registry, fn_constraints).ok()
         }
         Item::StructDef(struct_def) => {
-            register_struct_def(ctx, env, struct_def, type_registry);
+            register_struct_def(ctx, env, struct_def, type_registry, trait_registry);
             None
         }
         Item::TypeAliasDef(alias_def) => {
@@ -1383,7 +1383,7 @@ fn infer_item(
             None
         }
         Item::SumTypeDef(sum_def) => {
-            register_sum_type_def(ctx, env, sum_def, type_registry);
+            register_sum_type_def(ctx, env, sum_def, type_registry, trait_registry);
             None
         }
         Item::ActorDef(actor_def) => {
@@ -1406,6 +1406,7 @@ fn register_struct_def(
     env: &mut TypeEnv,
     struct_def: &StructDef,
     type_registry: &mut TypeRegistry,
+    trait_registry: &mut TraitRegistry,
 ) {
     let name = struct_def
         .name()
@@ -1450,6 +1451,27 @@ fn register_struct_def(
     };
 
     env.insert(name.clone(), Scheme::mono(struct_ty));
+
+    // Auto-register Debug impl for this struct type.
+    // Only for non-generic structs (generic structs need monomorphized impls).
+    if generic_params.is_empty() {
+        let debug_ty = Ty::Con(TyCon::new(&name));
+        let mut debug_methods = FxHashMap::default();
+        debug_methods.insert(
+            "inspect".to_string(),
+            ImplMethodSig {
+                has_self: true,
+                param_count: 0,
+                return_type: Some(Ty::string()),
+            },
+        );
+        let _ = trait_registry.register_impl(TraitImplDef {
+            trait_name: "Debug".to_string(),
+            impl_type: debug_ty,
+            impl_type_name: name.clone(),
+            methods: debug_methods,
+        });
+    }
 
     type_registry.register_struct(StructDefInfo {
         name,
@@ -1539,6 +1561,7 @@ fn register_sum_type_def(
     env: &mut TypeEnv,
     sum_def: &SumTypeDef,
     type_registry: &mut TypeRegistry,
+    trait_registry: &mut TraitRegistry,
 ) {
     let name = sum_def
         .name()
@@ -1608,6 +1631,27 @@ fn register_sum_type_def(
 
     // Register each variant constructor using the shared mechanism.
     register_variant_constructors(ctx, env, &name, &generic_params, &variants);
+
+    // Auto-register Debug impl for this sum type.
+    // Only for non-generic sum types (generic types need monomorphized impls).
+    if generic_params.is_empty() {
+        let debug_ty = Ty::Con(TyCon::new(&name));
+        let mut debug_methods = FxHashMap::default();
+        debug_methods.insert(
+            "inspect".to_string(),
+            ImplMethodSig {
+                has_self: true,
+                param_count: 0,
+                return_type: Some(Ty::string()),
+            },
+        );
+        let _ = trait_registry.register_impl(TraitImplDef {
+            trait_name: "Debug".to_string(),
+            impl_type: debug_ty,
+            impl_type_name: name.clone(),
+            methods: debug_methods,
+        });
+    }
 }
 
 // ── Interface/Impl Registration (03-04) ───────────────────────────────

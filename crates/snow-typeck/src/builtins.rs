@@ -720,6 +720,43 @@ fn register_compiler_known_traits(registry: &mut TraitRegistry) {
             methods,
         });
     }
+
+    // ── Debug trait ──────────────────────────────────────────────
+    registry.register_trait(TraitDef {
+        name: "Debug".to_string(),
+        methods: vec![TraitMethodSig {
+            name: "inspect".to_string(),
+            has_self: true,
+            param_count: 0,
+            return_type: Some(Ty::string()),
+        }],
+    });
+
+    // Debug impls for primitives (Int, Float, String, Bool).
+    // For primitives, inspect produces the same output as to_string
+    // (except String wraps in quotes -- handled at codegen).
+    for (ty, ty_name) in &[
+        (Ty::int(), "Int"),
+        (Ty::float(), "Float"),
+        (Ty::string(), "String"),
+        (Ty::bool(), "Bool"),
+    ] {
+        let mut methods = FxHashMap::default();
+        methods.insert(
+            "inspect".to_string(),
+            ImplMethodSig {
+                has_self: true,
+                param_count: 0,
+                return_type: Some(Ty::string()),
+            },
+        );
+        let _ = registry.register_impl(ImplDef {
+            trait_name: "Debug".to_string(),
+            impl_type: ty.clone(),
+            impl_type_name: ty_name.to_string(),
+            methods,
+        });
+    }
 }
 
 #[cfg(test)]
@@ -842,5 +879,23 @@ mod tests {
         // find_method_traits should find Display for to_string
         let traits = trait_registry.find_method_traits("to_string", &Ty::int());
         assert!(traits.contains(&"Display".to_string()));
+    }
+
+    #[test]
+    fn debug_trait_registered_for_primitives() {
+        let mut ctx = InferCtx::new();
+        let mut env = TypeEnv::new();
+        let mut trait_registry = TraitRegistry::new();
+        register_builtins(&mut ctx, &mut env, &mut trait_registry);
+
+        // Debug trait exists for all primitives
+        assert!(trait_registry.has_impl("Debug", &Ty::int()));
+        assert!(trait_registry.has_impl("Debug", &Ty::float()));
+        assert!(trait_registry.has_impl("Debug", &Ty::string()));
+        assert!(trait_registry.has_impl("Debug", &Ty::bool()));
+
+        // find_method_traits should find Debug for inspect
+        let traits = trait_registry.find_method_traits("inspect", &Ty::int());
+        assert!(traits.contains(&"Debug".to_string()));
     }
 }
