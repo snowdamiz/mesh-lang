@@ -47,6 +47,14 @@ See milestones/v1.3-ROADMAP.md for full phase details, success criteria, and pit
 - [ ] **Phase 21: Extended Protocols** - Hash, Default, default method implementations, collection Display/Debug
 - [ ] **Phase 22: Auto-Derive (Stretch)** - `deriving(Eq, Ord, Display, Debug, Hash)` from struct/sum-type metadata
 
+**Phase 21 Plans:** 4 plans
+
+Plans:
+- [ ] 21-01-PLAN.md -- Hash protocol: FNV-1a runtime, trait registration, auto-derive for structs, Map key integration
+- [ ] 21-02-PLAN.md -- Default protocol: static method trait, primitive short-circuits, call-site type resolution
+- [ ] 21-03-PLAN.md -- Default method implementations: parser/AST/typeck/lowering for optional interface method bodies
+- [ ] 21-04-PLAN.md -- Collection Display/Debug: runtime callback helpers for List, Map, Set to_string
+
 ## Progress
 
 | Phase | Milestone | Plans Complete | Status | Completed |
