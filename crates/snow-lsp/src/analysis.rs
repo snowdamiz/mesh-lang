@@ -198,6 +198,8 @@ fn type_error_span(error: &TypeError) -> Option<TextRange> {
         TypeError::ClauseArityMismatch { span, .. } => Some(*span),
         TypeError::NonFirstClauseAnnotation { span, .. } => Some(*span),
         TypeError::GuardTypeMismatch { span, .. } => Some(*span),
+        TypeError::DuplicateImpl { .. } => None,
+        TypeError::AmbiguousMethod { .. } => None,
     }
 }
 

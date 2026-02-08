@@ -21,7 +21,7 @@ use snow_parser::ast::AstNode;
 use snow_parser::syntax_kind::SyntaxKind;
 use snow_parser::Parse;
 use snow_typeck::ty::Ty;
-use snow_typeck::TypeckResult;
+use snow_typeck::{TraitRegistry, TypeckResult};
 
 use super::types::resolve_type;
 use super::{
@@ -37,6 +37,8 @@ struct Lowerer<'a> {
     types: &'a FxHashMap<TextRange, Ty>,
     /// Type registry for struct/sum type lookups.
     registry: &'a snow_typeck::TypeRegistry,
+    /// Trait registry for trait method dispatch resolution.
+    trait_registry: &'a TraitRegistry,
     /// Functions being built.
     functions: Vec<MirFunction>,
     /// Struct definitions.
@@ -61,6 +63,7 @@ impl<'a> Lowerer<'a> {
         Lowerer {
             types: &typeck.types,
             registry: &typeck.type_registry,
+            trait_registry: &typeck.trait_registry,
             functions: Vec::new(),
             structs: Vec::new(),
             sum_types: Vec::new(),

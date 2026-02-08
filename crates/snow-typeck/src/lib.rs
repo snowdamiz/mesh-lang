@@ -40,13 +40,16 @@ use crate::ty::Ty;
 pub use crate::infer::{
     StructDefInfo, SumTypeDefInfo, TypeAliasInfo, TypeRegistry, VariantFieldInfo, VariantInfo,
 };
+// Re-export trait registry for downstream trait resolution (codegen dispatch).
+pub use crate::traits::TraitRegistry;
 
 /// The result of type checking a Snow program.
 ///
 /// Contains a mapping from source ranges to their inferred types, plus
 /// any type errors encountered during checking. Also includes the type
 /// registry with struct/sum type/alias definitions needed by codegen
-/// to determine memory layouts.
+/// to determine memory layouts, and the trait registry for trait method
+/// dispatch resolution during MIR lowering.
 pub struct TypeckResult {
     /// Map from source text ranges to their inferred types.
     pub types: FxHashMap<TextRange, Ty>,
@@ -60,6 +63,9 @@ pub struct TypeckResult {
     /// Registry of all struct, sum type, and type alias definitions.
     /// Used by codegen to determine memory layouts and variant tags.
     pub type_registry: TypeRegistry,
+    /// Registry of all trait definitions and impl registrations.
+    /// Used by codegen for trait method dispatch resolution.
+    pub trait_registry: TraitRegistry,
 }
 
 impl TypeckResult {

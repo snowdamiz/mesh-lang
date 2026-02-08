@@ -632,6 +632,7 @@ pub fn infer(parse: &Parse) -> TypeckResult {
         warnings: ctx.warnings,
         result_type: resolved_result,
         type_registry,
+        trait_registry,
     }
 }
 
