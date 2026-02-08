@@ -39,17 +39,17 @@ None — v1.4 is a focused bug-fix milestone.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| PATM-01 | — | Pending |
-| PATM-02 | — | Pending |
-| TGEN-01 | — | Pending |
-| TGEN-02 | — | Pending |
-| TSND-01 | — | Pending |
+| PATM-01 | Phase 23 | Pending |
+| PATM-02 | Phase 23 | Pending |
+| TGEN-01 | Phase 24 | Pending |
+| TGEN-02 | Phase 24 | Pending |
+| TSND-01 | Phase 25 | Pending |
 
 **Coverage:**
 - v1.4 requirements: 5 total
-- Mapped to phases: 0
-- Unmapped: 5 ⚠️
+- Mapped to phases: 5
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-02-08*
-*Last updated: 2026-02-08 after initial definition*
+*Last updated: 2026-02-08 after roadmap creation*

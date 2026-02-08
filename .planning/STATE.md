@@ -5,14 +5,14 @@
 See: .planning/PROJECT.md (updated 2026-02-08)
 
 **Core value:** Expressive, readable concurrency -- writing concurrent programs should feel as natural as sequential code, with supervision and fault tolerance built in.
-**Current focus:** v1.4 Compiler Polish — fixing all known limitations
+**Current focus:** v1.4 Compiler Polish -- Phase 23 (Pattern Matching Codegen)
 
 ## Current Position
 
-Phase: Not started (defining requirements)
-Plan: —
-Status: Defining requirements
-Last activity: 2026-02-08 — Milestone v1.4 started
+Phase: 23 of 25 (Pattern Matching Codegen)
+Plan: Ready to plan
+Status: Ready to plan
+Last activity: 2026-02-08 -- Roadmap created for v1.4
 
 Progress: ░░░░░░░░░░ 0%
 
@@ -58,16 +58,11 @@ None.
 
 ### Blockers/Concerns
 
-All v1.3 limitations are now active v1.4 requirements:
-- LLVM Constructor pattern field binding limitation for sum type non-nullary variants
-- Ordering sum type (Less | Equal | Greater) not yet user-visible
-- Nested collection Display (List<List<Int>>) falls back to snow_int_to_string
-- Generic type auto-derive not supported
-- Higher-order constrained functions drop constraints when captured as values
+None -- all five v1.3 limitations are now tracked as v1.4 requirements (PATM-01, PATM-02, TGEN-01, TGEN-02, TSND-01).
 
 ## Session Continuity
 
 Last session: 2026-02-08
-Stopped at: v1.4 milestone initialization
+Stopped at: v1.4 roadmap created (3 phases: 23-25)
 Resume file: None
-Next action: Define requirements and create roadmap
+Next action: Plan Phase 23 (Pattern Matching Codegen)
