@@ -264,6 +264,13 @@ fn e2e_map_basic() {
 }
 
 #[test]
+fn e2e_map_string_keys() {
+    let source = read_fixture("stdlib_map_string_keys.snow");
+    let output = compile_and_run(&source);
+    assert_eq!(output, "Alice\n2\ntrue\nBob\n");
+}
+
+#[test]
 fn e2e_set_basic() {
     let source = read_fixture("stdlib_set_basic.snow");
     let output = compile_and_run(&source);
