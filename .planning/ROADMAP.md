@@ -86,7 +86,9 @@ Plans:
   1. `let f = show` retains the `T: Display` constraint -- calling `f(some_non_display_value)` produces a compile-time error, not a runtime crash or silent unsoundness
   2. Constrained functions passed as arguments to higher-order functions propagate their constraints to the call site
   3. The constraint preservation works for user-defined traits (not just stdlib Display) -- e.g., a function `where T: MyTrait` captured as a value still enforces `MyTrait`
-**Plans**: TBD
+**Plans:** 1 plan
+Plans:
+- [ ] 25-01-PLAN.md -- Propagate fn_constraints through let bindings + e2e tests
 
 ## Progress
 
@@ -116,4 +118,4 @@ Plans:
 | 22. Auto-Derive (Stretch) | v1.3 | 2/2 | Complete | 2026-02-08 |
 | 23. Pattern Matching Codegen | v1.4 | 2/2 | Complete | 2026-02-08 |
 | 24. Trait System Generics | v1.4 | 2/2 | Complete | 2026-02-08 |
-| 25. Type System Soundness | v1.4 | 0/TBD | Not started | - |
+| 25. Type System Soundness | v1.4 | 0/1 | Not started | - |
