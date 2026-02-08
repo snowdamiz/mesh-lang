@@ -94,10 +94,10 @@ Plans:
   1. HTTP server spawns a lightweight actor (not OS thread) for each incoming connection
   2. A crash in one connection handler does not affect other active connections (actor isolation)
   3. A Snow HTTP server program that worked under v1.0 thread model continues to work with the actor model (backward-compatible API)
-**Plans**: TBD
+**Plans**: 1 plan
 
 Plans:
-- [ ] 15-01: TBD
+- [ ] 15-01-PLAN.md -- Actor-per-connection HTTP server with catch_unwind crash isolation, e2e tests
 
 ## Progress
 
@@ -110,4 +110,4 @@ Phases execute in numeric order: 11 -> 12 -> 13 -> 14 -> 15
 | 12. Pipe Operator Closures | v1.1 | 3/3 | ✓ Complete | 2026-02-07 |
 | 13. String Pattern Matching | v1.1 | 1/1 | ✓ Complete | 2026-02-07 |
 | 14. Generic Map Types | v1.1 | 2/2 | ✓ Complete | 2026-02-08 |
-| 15. HTTP Actor Model | v1.1 | 0/TBD | Not started | - |
+| 15. HTTP Actor Model | v1.1 | 0/1 | Not started | - |
