@@ -289,6 +289,7 @@ impl<'a> Lowerer<'a> {
         // Map
         self.known_functions.insert("snow_map_new".to_string(), MirType::FnPtr(vec![], Box::new(MirType::Ptr)));
         self.known_functions.insert("snow_map_new_typed".to_string(), MirType::FnPtr(vec![MirType::Int], Box::new(MirType::Ptr)));
+        self.known_functions.insert("snow_map_tag_string".to_string(), MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Ptr)));
         self.known_functions.insert("snow_map_put".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Int, MirType::Int], Box::new(MirType::Ptr)));
         self.known_functions.insert("snow_map_get".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Int], Box::new(MirType::Int)));
         self.known_functions.insert("snow_map_has_key".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Int], Box::new(MirType::Bool)));
@@ -1302,12 +1303,23 @@ impl<'a> Lowerer<'a> {
             }
         }
 
-        // Inject key_type argument for snow_map_new_typed calls.
-        // The call resolves to Map<K, V>; check if K is String to pick key_type=1.
+        // For Map functions that take a key argument (put, get, has_key, delete),
+        // if the key argument has MirType::String, wrap the map argument in
+        // snow_map_tag_string() to ensure string-key comparison is used.
         let args = if let MirExpr::Var(ref name, _) = callee {
-            if name == "snow_map_new_typed" && args.is_empty() {
-                let key_type_tag = self.infer_map_key_type(call.syntax().text_range());
-                vec![MirExpr::IntLit(key_type_tag, MirType::Int)]
+            if matches!(name.as_str(), "snow_map_put" | "snow_map_get" | "snow_map_has_key" | "snow_map_delete")
+                && args.len() >= 2
+                && matches!(args[1].ty(), MirType::String)
+            {
+                let mut new_args = args;
+                let map_arg = new_args.remove(0);
+                let tagged_map = MirExpr::Call {
+                    func: Box::new(MirExpr::Var("snow_map_tag_string".to_string(), MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Ptr)))),
+                    args: vec![map_arg],
+                    ty: MirType::Ptr,
+                };
+                new_args.insert(0, tagged_map);
+                new_args
             } else {
                 args
             }
@@ -3503,7 +3515,7 @@ fn map_builtin_name(name: &str) -> String {
         "list_filter" => "snow_list_filter".to_string(),
         "list_reduce" => "snow_list_reduce".to_string(),
         // Map operations
-        "map_new" => "snow_map_new_typed".to_string(),
+        "map_new" => "snow_map_new".to_string(),
         "map_put" => "snow_map_put".to_string(),
         "map_get" => "snow_map_get".to_string(),
         "map_has_key" => "snow_map_has_key".to_string(),

@@ -103,6 +103,20 @@ pub extern "C" fn snow_map_new_typed(key_type: i64) -> *mut u8 {
     unsafe { alloc_map(0, key_type as u64) }
 }
 
+/// Ensure a map has string key_type. If the map is empty and has integer key_type,
+/// returns a new empty map with string key_type. Otherwise returns the map unchanged.
+/// Used by codegen to tag maps before the first string-key put.
+#[no_mangle]
+pub extern "C" fn snow_map_tag_string(map: *mut u8) -> *mut u8 {
+    unsafe {
+        if map_len(map) == 0 && map_key_type(map) != KEY_TYPE_STR {
+            alloc_map(0, KEY_TYPE_STR)
+        } else {
+            map
+        }
+    }
+}
+
 /// Return a NEW map with the key-value pair added (or updated).
 #[no_mangle]
 pub extern "C" fn snow_map_put(map: *mut u8, key: u64, value: u64) -> *mut u8 {

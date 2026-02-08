@@ -246,6 +246,7 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
     // Map functions
     module.add_function("snow_map_new", ptr_type.fn_type(&[], false), Some(inkwell::module::Linkage::External));
     module.add_function("snow_map_new_typed", ptr_type.fn_type(&[i64_type.into()], false), Some(inkwell::module::Linkage::External));
+    module.add_function("snow_map_tag_string", ptr_type.fn_type(&[ptr_type.into()], false), Some(inkwell::module::Linkage::External));
     module.add_function("snow_map_put", ptr_type.fn_type(&[ptr_type.into(), i64_type.into(), i64_type.into()], false), Some(inkwell::module::Linkage::External));
     module.add_function("snow_map_get", i64_type.fn_type(&[ptr_type.into(), i64_type.into()], false), Some(inkwell::module::Linkage::External));
     module.add_function("snow_map_has_key", i8_type.fn_type(&[ptr_type.into(), i64_type.into()], false), Some(inkwell::module::Linkage::External));
