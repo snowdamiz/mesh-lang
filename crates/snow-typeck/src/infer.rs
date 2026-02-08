@@ -1503,9 +1503,26 @@ fn register_struct_def(
         );
         let _ = trait_registry.register_impl(TraitImplDef {
             trait_name: "Ord".to_string(),
-            impl_type: impl_ty,
+            impl_type: impl_ty.clone(),
             impl_type_name: name.clone(),
             methods: ord_methods,
+        });
+
+        // Hash impl
+        let mut hash_methods = FxHashMap::default();
+        hash_methods.insert(
+            "hash".to_string(),
+            ImplMethodSig {
+                has_self: true,
+                param_count: 0,
+                return_type: Some(Ty::int()),
+            },
+        );
+        let _ = trait_registry.register_impl(TraitImplDef {
+            trait_name: "Hash".to_string(),
+            impl_type: impl_ty,
+            impl_type_name: name.clone(),
+            methods: hash_methods,
         });
     }
 

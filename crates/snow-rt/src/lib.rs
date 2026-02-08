@@ -25,6 +25,7 @@ pub mod collections;
 pub mod env;
 pub mod file;
 pub mod gc;
+pub mod hash;
 pub mod http;
 pub mod io;
 pub mod json;
@@ -64,6 +65,7 @@ pub use file::{
     snow_file_append, snow_file_delete, snow_file_exists, snow_file_read, snow_file_write,
 };
 pub use gc::{snow_gc_alloc, snow_gc_alloc_actor, snow_rt_init};
+pub use hash::{snow_hash_bool, snow_hash_combine, snow_hash_float, snow_hash_int, snow_hash_string};
 pub use http::{
     snow_http_get, snow_http_post, snow_http_request_body, snow_http_request_header,
     snow_http_request_method, snow_http_request_path, snow_http_request_query, snow_http_response_new,

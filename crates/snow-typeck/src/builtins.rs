@@ -761,6 +761,41 @@ fn register_compiler_known_traits(registry: &mut TraitRegistry) {
             methods,
         });
     }
+
+    // ── Hash trait ──────────────────────────────────────────────
+    registry.register_trait(TraitDef {
+        name: "Hash".to_string(),
+        methods: vec![TraitMethodSig {
+            name: "hash".to_string(),
+            has_self: true,
+            param_count: 0,
+            return_type: Some(Ty::int()),
+        }],
+    });
+
+    // Hash impls for primitives (Int, Float, String, Bool).
+    for (ty, ty_name) in &[
+        (Ty::int(), "Int"),
+        (Ty::float(), "Float"),
+        (Ty::string(), "String"),
+        (Ty::bool(), "Bool"),
+    ] {
+        let mut methods = FxHashMap::default();
+        methods.insert(
+            "hash".to_string(),
+            ImplMethodSig {
+                has_self: true,
+                param_count: 0,
+                return_type: Some(Ty::int()),
+            },
+        );
+        let _ = registry.register_impl(ImplDef {
+            trait_name: "Hash".to_string(),
+            impl_type: ty.clone(),
+            impl_type_name: ty_name.to_string(),
+            methods,
+        });
+    }
 }
 
 #[cfg(test)]
@@ -883,6 +918,24 @@ mod tests {
         // find_method_traits should find Display for to_string
         let traits = trait_registry.find_method_traits("to_string", &Ty::int());
         assert!(traits.contains(&"Display".to_string()));
+    }
+
+    #[test]
+    fn hash_trait_registered_for_primitives() {
+        let mut ctx = InferCtx::new();
+        let mut env = TypeEnv::new();
+        let mut trait_registry = TraitRegistry::new();
+        register_builtins(&mut ctx, &mut env, &mut trait_registry);
+
+        // Hash trait exists for all primitives
+        assert!(trait_registry.has_impl("Hash", &Ty::int()));
+        assert!(trait_registry.has_impl("Hash", &Ty::float()));
+        assert!(trait_registry.has_impl("Hash", &Ty::string()));
+        assert!(trait_registry.has_impl("Hash", &Ty::bool()));
+
+        // find_method_traits should find Hash for hash
+        let traits = trait_registry.find_method_traits("hash", &Ty::int());
+        assert!(traits.contains(&"Hash".to_string()));
     }
 
     #[test]
