@@ -509,9 +509,10 @@ pub(crate) fn parse_interface_def(p: &mut Parser) {
     p.close(m, SyntaxKind::INTERFACE_DEF);
 }
 
-/// Parse a method signature inside an interface: `fn name(params) [-> ReturnType]`
+/// Parse a method signature inside an interface: `fn name(params) [-> ReturnType] [do body end]`
 ///
-/// No body (no `do ... end`), just the signature.
+/// The body is optional. Methods without `do ... end` are signature-only.
+/// Methods with `do ... end` provide a default implementation.
 fn parse_interface_method(p: &mut Parser) {
     let m = p.open();
 
@@ -545,6 +546,24 @@ fn parse_interface_method(p: &mut Parser) {
         p.advance(); // ->
         parse_type(p);
         p.close(ann, SyntaxKind::TYPE_ANNOTATION);
+    }
+
+    // Optional default body: do ... end
+    if p.at(SyntaxKind::DO_KW) {
+        let do_span = p.current_span();
+        p.advance(); // DO_KW
+
+        parse_item_block_body(p);
+
+        if !p.at(SyntaxKind::END_KW) {
+            p.error_with_related(
+                "expected `end` to close default method body",
+                do_span,
+                "`do` block started here",
+            );
+        } else {
+            p.advance(); // END_KW
+        }
     }
 
     p.close(m, SyntaxKind::INTERFACE_METHOD);

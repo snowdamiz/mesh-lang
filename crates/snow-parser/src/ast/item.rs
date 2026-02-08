@@ -426,6 +426,14 @@ impl InterfaceMethod {
     pub fn return_type(&self) -> Option<TypeAnnotation> {
         child_node(&self.syntax)
     }
+
+    /// The default method body block (for `do ... end` form), if present.
+    ///
+    /// Returns `None` for signature-only methods, `Some(Block)` for methods
+    /// with a default implementation.
+    pub fn body(&self) -> Option<Block> {
+        child_node(&self.syntax)
+    }
 }
 
 // ── Impl Definition ─────────────────────────────────────────────────────

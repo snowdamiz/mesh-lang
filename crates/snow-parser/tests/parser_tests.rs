@@ -1255,6 +1255,46 @@ fn interface_with_generic() {
     ));
 }
 
+// ── Interface Method with Default Body ──────────────────────────────
+
+#[test]
+fn interface_method_with_default_body() {
+    let source = "interface Describable do\n  fn describe(self) -> String do\n    \"unknown\"\n  end\nend";
+    let parse = parse(source);
+    assert!(parse.errors().is_empty(), "Expected no parse errors, got: {:?}", parse.errors());
+    let root = SourceFile::cast(parse.syntax()).unwrap();
+    let items: Vec<_> = root.items().collect();
+    assert_eq!(items.len(), 1);
+    if let snow_parser::ast::item::Item::InterfaceDef(iface) = &items[0] {
+        let methods: Vec<_> = iface.methods().collect();
+        assert_eq!(methods.len(), 1);
+        let method = &methods[0];
+        assert_eq!(method.name().and_then(|n| n.text()), Some("describe".to_string()));
+        assert!(method.body().is_some(), "Expected default body to be Some");
+    } else {
+        panic!("Expected InterfaceDef");
+    }
+}
+
+#[test]
+fn interface_method_without_body() {
+    let source = "interface Describable do\n  fn describe(self) -> String\nend";
+    let parse = parse(source);
+    assert!(parse.errors().is_empty(), "Expected no parse errors, got: {:?}", parse.errors());
+    let root = SourceFile::cast(parse.syntax()).unwrap();
+    let items: Vec<_> = root.items().collect();
+    assert_eq!(items.len(), 1);
+    if let snow_parser::ast::item::Item::InterfaceDef(iface) = &items[0] {
+        let methods: Vec<_> = iface.methods().collect();
+        assert_eq!(methods.len(), 1);
+        let method = &methods[0];
+        assert_eq!(method.name().and_then(|n| n.text()), Some("describe".to_string()));
+        assert!(method.body().is_none(), "Expected body to be None for signature-only method");
+    } else {
+        panic!("Expected InterfaceDef");
+    }
+}
+
 // ── Impl Block ──────────────────────────────────────────────────────
 
 #[test]
