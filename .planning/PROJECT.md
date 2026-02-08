@@ -2,7 +2,7 @@
 
 ## What This Is
 
-Snow is a programming language that combines Elixir/Ruby-style expressive syntax with static Hindley-Milner type inference and BEAM-style concurrency (actors, supervision trees, fault tolerance), compiled via LLVM to native single-binary executables. The compiler is written in Rust. v1.0 shipped a complete compiler pipeline, actor runtime, standard library, and developer tooling. v1.1 polished the language by resolving all five documented v1.0 limitations. v1.2 added Fun() type annotations and a mark-sweep garbage collector for per-actor heaps.
+Snow is a programming language that combines Elixir/Ruby-style expressive syntax with static Hindley-Milner type inference and BEAM-style concurrency (actors, supervision trees, fault tolerance), compiled via LLVM to native single-binary executables. The compiler is written in Rust. v1.0 shipped a complete compiler pipeline, actor runtime, standard library, and developer tooling. v1.1 polished the language by resolving all five documented v1.0 limitations. v1.2 added Fun() type annotations and a mark-sweep garbage collector for per-actor heaps. v1.3 focuses on completing the trait/protocol system and adding stdlib protocols for server development.
 
 ## Core Value
 
@@ -32,7 +32,17 @@ Expressive, readable concurrency -- writing concurrent programs should feel as n
 
 ### Active
 
-(None -- all known requirements shipped)
+**Current Milestone: v1.3 Traits & Protocols**
+
+**Goal:** Complete the trait system for user-defined interfaces and impls with static dispatch, and ship stdlib protocols that enable server-oriented abstractions (serialization, iteration, conversion, hashing).
+
+**Target features:**
+- User-defined `interface` definitions with method signatures and default implementations
+- `impl` blocks to implement interfaces for concrete types
+- Where clauses working with user-defined traits
+- Trait-based operator overloading for user types (impl Add for MyType)
+- Static dispatch via monomorphization in codegen
+- Stdlib protocols: Display, Iterator, From/Into, Serialize/Deserialize, Hash, Default
 
 ### Out of Scope
 
@@ -40,7 +50,7 @@ Expressive, readable concurrency -- writing concurrent programs should feel as n
 - Systems programming (drivers, embedded, OS-level) -- not targeting bare-metal performance
 - GUI framework -- web and CLI are the primary targets
 - Self-hosting compiler -- Rust is the compiler language, bootstrapping is not a v1 goal
-- Operator overloading -- creates hidden semantics, hurts readability
+- Ad-hoc operator overloading -- trait-based overloading (impl Add for T) is supported; arbitrary symbol overloading is not
 - Shared mutable state between actors -- defeats actor model, causes data races
 - Null/nil values -- Option<T> is the only way to represent absence
 - Exceptions (try/catch/throw) -- Result<T,E> + let-it-crash philosophy replaces them
@@ -63,6 +73,8 @@ All known issues resolved through v1.2:
 - Arena/bump allocation GC -- replaced with mark-sweep in v1.2
 
 1,018 tests passing across all crates. Zero known bugs. Zero tech debt.
+
+v1.3 trait system status: Parser already handles `interface` and `impl` syntax. TraitRegistry in snow-typeck handles trait definitions, impl registration, and method validation. Compiler-known traits (Add, Eq, Ord, etc.) work with built-in impls for primitives. Where clauses parse and validate. Codegen currently skips InterfaceDef/ImplDef ("interfaces are erased"). The gap is user-defined traits and codegen integration (monomorphization).
 
 ## Constraints
 
@@ -93,5 +105,7 @@ All known issues resolved through v1.2:
 | Conservative stack scanning | No type maps yet; every 8-byte word treated as potential pointer | ✓ Good -- safe, may retain some garbage |
 | GC at yield points only | Cooperative; never interrupts other actors | ✓ Good -- per-actor isolation preserved |
 
+| Static dispatch for traits | Monomorphization fits LLVM codegen naturally, no runtime vtable overhead, actor system provides dynamic routing where needed | — Pending |
+
 ---
-*Last updated: 2026-02-08 after v1.2 milestone*
+*Last updated: 2026-02-07 after v1.3 milestone start*
