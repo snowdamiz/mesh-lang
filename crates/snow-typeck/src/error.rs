@@ -218,6 +218,20 @@ pub enum TypeError {
         found: Ty,
         span: TextRange,
     },
+    /// Two impl blocks implement the same trait for the same type (or structurally overlapping types).
+    DuplicateImpl {
+        trait_name: String,
+        impl_type: String,
+        /// Description of the first impl location (e.g. "previously defined here").
+        first_impl: String,
+    },
+    /// Multiple traits provide a method with the same name for a given type, causing ambiguity.
+    AmbiguousMethod {
+        method_name: String,
+        /// The trait names that all provide this method.
+        candidate_traits: Vec<String>,
+        ty: Ty,
+    },
 }
 
 impl fmt::Display for TypeError {
@@ -440,6 +454,30 @@ impl fmt::Display for TypeError {
                     f,
                     "guard expression must return `{}`, found `{}`",
                     expected, found
+                )
+            }
+            TypeError::DuplicateImpl {
+                trait_name,
+                impl_type,
+                first_impl,
+            } => {
+                write!(
+                    f,
+                    "duplicate impl: `{}` is already implemented for `{}` ({})",
+                    trait_name, impl_type, first_impl
+                )
+            }
+            TypeError::AmbiguousMethod {
+                method_name,
+                candidate_traits,
+                ty,
+            } => {
+                write!(
+                    f,
+                    "ambiguous method `{}` for type `{}`: candidates from traits [{}]",
+                    method_name,
+                    ty,
+                    candidate_traits.join(", ")
                 )
             }
         }

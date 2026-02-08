@@ -116,6 +116,8 @@ fn error_code(err: &TypeError) -> &'static str {
         TypeError::ClauseArityMismatch { .. } => "E0024",
         TypeError::NonFirstClauseAnnotation { .. } => "W0002",
         TypeError::GuardTypeMismatch { .. } => "E0025",
+        TypeError::DuplicateImpl { .. } => "E0026",
+        TypeError::AmbiguousMethod { .. } => "E0027",
     }
 }
 
@@ -1250,6 +1252,59 @@ pub fn render_diagnostic(
                         .with_message(format!("expected `{}`, found `{}`", expected, found))
                         .with_color(Color::Red),
                 )
+                .finish()
+        }
+
+        TypeError::DuplicateImpl {
+            trait_name,
+            impl_type,
+            first_impl,
+        } => {
+            let msg = format!(
+                "duplicate impl: `{}` is already implemented for `{}`",
+                trait_name, impl_type
+            );
+            let span = clamp(0..source_len.max(1).min(source_len));
+
+            Report::build(ReportKind::Error, span.clone())
+                .with_code(code)
+                .with_message(&msg)
+                .with_config(config)
+                .with_label(
+                    Label::new(span)
+                        .with_message(format!("{}", first_impl))
+                        .with_color(Color::Red),
+                )
+                .with_help("remove one of the conflicting impl blocks")
+                .finish()
+        }
+
+        TypeError::AmbiguousMethod {
+            method_name,
+            candidate_traits,
+            ty,
+        } => {
+            let msg = format!(
+                "ambiguous method `{}` for type `{}`: candidates from traits [{}]",
+                method_name,
+                ty,
+                candidate_traits.join(", ")
+            );
+            let span = clamp(0..source_len.max(1).min(source_len));
+
+            Report::build(ReportKind::Error, span.clone())
+                .with_code(code)
+                .with_message(&msg)
+                .with_config(config)
+                .with_label(
+                    Label::new(span)
+                        .with_message(format!("multiple traits provide `{}`", method_name))
+                        .with_color(Color::Red),
+                )
+                .with_help(format!(
+                    "use qualified syntax: TraitName.{}(value)",
+                    method_name
+                ))
                 .finish()
         }
     };
