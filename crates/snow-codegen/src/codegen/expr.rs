@@ -190,6 +190,12 @@ impl<'ctx> CodeGen<'ctx> {
             return Ok(fn_val.as_global_value().as_pointer_value().into());
         }
 
+        // Check if it's a runtime intrinsic function (e.g., snow_int_to_string
+        // used as a callback function pointer for collection Display).
+        if let Some(fn_val) = self.module.get_function(name) {
+            return Ok(fn_val.as_global_value().as_pointer_value().into());
+        }
+
         // Load from local variable alloca
         if let Some(alloca) = self.locals.get(name) {
             let alloca = *alloca;

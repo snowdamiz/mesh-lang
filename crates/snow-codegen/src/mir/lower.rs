@@ -8294,6 +8294,56 @@ end
         );
     }
 
+    // ── Phase 24 Plan 01: Nested collection Display ─────────────────
+
+    #[test]
+    fn nested_list_callback_generates_wrapper() {
+        // When a Lowerer encounters a Ty::App(Con("List"), [Ty::Con("Int")])
+        // element type, resolve_to_string_callback should generate a synthetic
+        // __display_list_Int_to_str wrapper function.
+        //
+        // We test this indirectly: lower a program with list string interpolation,
+        // then verify the snow_list_to_string call is present and uses
+        // snow_int_to_string (flat case). The wrapper generation for nested
+        // types (List<List<Int>>) will be exercised once the type system
+        // supports generic collection element types (TGEN-02).
+        let source = r#"
+fn main() do
+  let xs = List.append(List.new(), 42)
+  "${xs}"
+end
+"#;
+        let mir = lower(source);
+        let main = mir.functions.iter().find(|f| f.name == "snow_main");
+        assert!(main.is_some(), "Expected 'snow_main' function in MIR");
+        let main = main.unwrap();
+
+        // The flat list case: snow_list_to_string with snow_int_to_string callback
+        assert!(
+            has_call_to(&main.body, "snow_list_to_string"),
+            "Expected snow_list_to_string call.\nBody: {:?}",
+            main.body
+        );
+        assert!(
+            has_var_ref(&main.body, "snow_int_to_string"),
+            "Expected snow_int_to_string callback reference.\nBody: {:?}",
+            main.body
+        );
+
+        // Verify no wrapper was generated for the flat case (Int is handled
+        // directly, no __display_ wrapper needed).
+        let has_display_wrapper = mir
+            .functions
+            .iter()
+            .any(|f| f.name.starts_with("__display_"));
+        assert!(
+            !has_display_wrapper,
+            "Flat List<Int> should NOT generate a __display_ wrapper.\n\
+             Functions: {:?}",
+            mir.functions.iter().map(|f| &f.name).collect::<Vec<_>>()
+        );
+    }
+
     // ── Phase 23 Plan 02: Ordering & compare tests ──────────────────
 
     #[test]

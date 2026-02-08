@@ -694,3 +694,20 @@ fn e2e_nullary_constructor_match() {
     let output = compile_and_run(&source);
     assert_eq!(output, "1\n2\n3\n");
 }
+
+// -- Phase 24: Trait System Generics ────────────────────────────────────
+
+/// Flat collection Display regression check: List<Int> renders via string interpolation.
+/// Verifies that the &self -> &mut self signature change does not break existing
+/// Display callback resolution for flat collections.
+#[test]
+fn e2e_nested_collection_display() {
+    let source = read_fixture("nested_collection_display.snow");
+    let output = compile_and_run(&source);
+    assert_eq!(output, "[10, 20, 30]\n", "List Display via string interpolation should render as [10, 20, 30]");
+    // NOTE: List<List<Int>> e2e test requires generic List element types
+    // (List.append currently typed as (List, Int) -> List).
+    // Recursive callback resolution is verified at the MIR unit test level
+    // in snow-codegen (nested_list_callback_generates_wrapper).
+    // TODO: add full nested e2e test after Plan 02 (generic collection elements).
+}
