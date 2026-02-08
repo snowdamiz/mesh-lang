@@ -1803,6 +1803,8 @@ fn infer_impl_def(
             let ret = return_type.clone().unwrap_or_else(|| Ty::Tuple(vec![]));
             Ty::Fun(params, Box::new(ret))
         };
+        // Store the function type in the types map so the MIR lowerer can look it up.
+        types.insert(method.syntax().text_range(), fn_ty.clone());
         if env.lookup(&method_name).is_none() {
             env.insert(method_name.clone(), Scheme::mono(fn_ty));
         }

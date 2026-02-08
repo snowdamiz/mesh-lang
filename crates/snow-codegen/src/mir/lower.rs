@@ -471,9 +471,15 @@ impl<'a> Lowerer<'a> {
             Item::SumTypeDef(sum_def) => self.lower_sum_type_def(&sum_def),
             Item::LetBinding(let_) => self.lower_top_level_let(&let_),
             Item::ImplDef(impl_def) => {
-                // Lower impl methods as standalone functions.
+                let (trait_name, type_name) = extract_impl_names(&impl_def);
                 for method in impl_def.methods() {
-                    self.lower_fn_def(&method);
+                    let method_name = method
+                        .name()
+                        .and_then(|n| n.text())
+                        .unwrap_or_else(|| "<unnamed>".to_string());
+                    let mangled =
+                        format!("{}__{}__{}", trait_name, method_name, type_name);
+                    self.lower_impl_method(&method, &mangled, &type_name);
                 }
             }
             Item::InterfaceDef(_) | Item::TypeAliasDef(_) => {
@@ -559,6 +565,115 @@ impl<'a> Lowerer<'a> {
 
         self.functions.push(MirFunction {
             name: fn_name,
+            params,
+            return_type,
+            body,
+            is_closure_fn: false,
+            captures: Vec::new(),
+        });
+    }
+
+    // ── Impl method lowering ───────────────────────────────────────
+
+    /// Lower a single impl method to a MirFunction with a mangled name.
+    /// The `self` parameter is detected via SELF_KW and named "self" with
+    /// the concrete implementing struct type.
+    fn lower_impl_method(&mut self, method: &FnDef, mangled_name: &str, type_name: &str) {
+        // Get function type from typeck.
+        let fn_range = method.syntax().text_range();
+        let fn_ty_raw = self.get_ty(fn_range).cloned();
+
+        // Extract parameter names and types.
+        let mut params = Vec::new();
+        self.push_scope();
+
+        if let Some(param_list) = method.param_list() {
+            if let Some(Ty::Fun(param_tys, _)) = &fn_ty_raw {
+                for (param, param_ty) in param_list.params().zip(param_tys.iter()) {
+                    // Detect self parameter via SELF_KW token.
+                    let is_self = param
+                        .syntax()
+                        .children_with_tokens()
+                        .any(|tok| {
+                            tok.as_token()
+                                .map(|t| t.kind() == SyntaxKind::SELF_KW)
+                                .unwrap_or(false)
+                        });
+
+                    let param_name = if is_self {
+                        "self".to_string()
+                    } else {
+                        param
+                            .name()
+                            .map(|t| t.text().to_string())
+                            .unwrap_or_else(|| "_".to_string())
+                    };
+
+                    // Use the Ty::Fun param type for all params (including self).
+                    // The type checker stores the impl type as the first param type.
+                    let is_closure = matches!(param_ty, Ty::Fun(..));
+                    let mir_ty = resolve_type(param_ty, self.registry, is_closure);
+                    self.insert_var(param_name.clone(), mir_ty.clone());
+                    params.push((param_name, mir_ty));
+                }
+            } else {
+                // Fallback: use range-based type lookup for each param.
+                for param in param_list.params() {
+                    let is_self = param
+                        .syntax()
+                        .children_with_tokens()
+                        .any(|tok| {
+                            tok.as_token()
+                                .map(|t| t.kind() == SyntaxKind::SELF_KW)
+                                .unwrap_or(false)
+                        });
+
+                    let param_name = if is_self {
+                        "self".to_string()
+                    } else {
+                        param
+                            .name()
+                            .map(|t| t.text().to_string())
+                            .unwrap_or_else(|| "_".to_string())
+                    };
+
+                    let mir_ty = if is_self {
+                        // For self, resolve to the concrete struct type.
+                        resolve_type(
+                            &Ty::Con(snow_typeck::ty::TyCon::new(type_name)),
+                            self.registry,
+                            false,
+                        )
+                    } else {
+                        self.resolve_range(param.syntax().text_range())
+                    };
+
+                    self.insert_var(param_name.clone(), mir_ty.clone());
+                    params.push((param_name, mir_ty));
+                }
+            }
+        }
+
+        // Return type.
+        let return_type = if let Some(Ty::Fun(_, ret)) = &fn_ty_raw {
+            resolve_type(ret, self.registry, false)
+        } else {
+            MirType::Unit
+        };
+
+        // Lower body.
+        let body = if let Some(block) = method.body() {
+            self.lower_block(&block)
+        } else if let Some(expr) = method.expr_body() {
+            self.lower_expr(&expr)
+        } else {
+            MirExpr::Unit
+        };
+
+        self.pop_scope();
+
+        self.functions.push(MirFunction {
+            name: mangled_name.to_string(),
             params,
             return_type,
             body,
@@ -4418,6 +4533,63 @@ end
             main_fn.is_some(),
             "Missing snow_main function. Functions: {:?}",
             mir.functions.iter().map(|f| &f.name).collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn impl_method_produces_mangled_mir_function() {
+        let source = r#"
+interface Greetable do
+  fn greet(self) -> String
+end
+
+struct Point do
+  x :: Int
+end
+
+impl Greetable for Point do
+  fn greet(self) -> String do
+    "hello"
+  end
+end
+"#;
+        let mir = lower(source);
+
+        let fn_names: Vec<&str> = mir.functions.iter().map(|f| f.name.as_str()).collect();
+
+        // Assert that a MirFunction with the mangled name exists.
+        let mangled_fn = mir
+            .functions
+            .iter()
+            .find(|f| f.name == "Greetable__greet__Point");
+        assert!(
+            mangled_fn.is_some(),
+            "Expected MirFunction named 'Greetable__greet__Point'. Found: {:?}",
+            fn_names
+        );
+
+        let mangled_fn = mangled_fn.unwrap();
+
+        // Assert the first parameter is named "self" with type MirType::Struct("Point").
+        assert!(
+            !mangled_fn.params.is_empty(),
+            "Expected at least one parameter (self)"
+        );
+        assert_eq!(
+            mangled_fn.params[0].0, "self",
+            "First param should be named 'self'"
+        );
+        assert_eq!(
+            mangled_fn.params[0].1,
+            MirType::Struct("Point".to_string()),
+            "First param type should be MirType::Struct(\"Point\")"
+        );
+
+        // Assert the return type is String.
+        assert_eq!(
+            mangled_fn.return_type,
+            MirType::String,
+            "Return type should be String"
         );
     }
 }
