@@ -9,7 +9,9 @@
 //! 4. Recursing on specialized sub-matrices
 //! 5. Producing Leaf nodes when all patterns are wildcards/variables
 
-use crate::mir::{MirExpr, MirLiteral, MirMatchArm, MirModule, MirPattern, MirType};
+use rustc_hash::FxHashMap;
+
+use crate::mir::{MirExpr, MirLiteral, MirMatchArm, MirModule, MirPattern, MirSumTypeDef, MirType};
 use crate::pattern::{AccessPath, ConstructorTag, DecisionTree};
 
 // ── Pattern Matrix ──────────────────────────────────────────────────
@@ -67,6 +69,7 @@ pub fn compile_match(
     arms: &[MirMatchArm],
     file: &str,
     line: u32,
+    sum_type_defs: &FxHashMap<String, MirSumTypeDef>,
 ) -> DecisionTree {
     // Step 1: Expand or-patterns by duplicating arms for each alternative.
     let expanded = expand_or_patterns(arms);
@@ -89,14 +92,20 @@ pub fn compile_match(
     };
 
     // Step 3: Compile the matrix into a decision tree.
-    compile_matrix(matrix, file, line)
+    compile_matrix(matrix, file, line, sum_type_defs)
 }
 
 /// Walk all `MirExpr::Match` nodes in a module and compile them to
 /// `MirExpr::CompiledMatch` with decision trees.
 pub fn compile_patterns(module: &mut MirModule) {
+    // Build sum_type_defs map from the module's sum type definitions.
+    let sum_type_defs: FxHashMap<String, MirSumTypeDef> = module
+        .sum_types
+        .iter()
+        .map(|st| (st.name.clone(), st.clone()))
+        .collect();
     for func in &mut module.functions {
-        compile_expr_patterns(&mut func.body);
+        compile_expr_patterns(&mut func.body, &sum_type_defs);
     }
 }
 
@@ -136,7 +145,12 @@ fn expand_pattern(
 // ── Core compilation ────────────────────────────────────────────────
 
 /// Compile a pattern matrix into a decision tree (Maranget's algorithm).
-fn compile_matrix(matrix: PatMatrix, file: &str, line: u32) -> DecisionTree {
+fn compile_matrix(
+    matrix: PatMatrix,
+    file: &str,
+    line: u32,
+    sum_type_defs: &FxHashMap<String, MirSumTypeDef>,
+) -> DecisionTree {
     // Base case 1: No rows -- match failure.
     if matrix.rows.is_empty() {
         return DecisionTree::Fail {
@@ -167,26 +181,26 @@ fn compile_matrix(matrix: PatMatrix, file: &str, line: u32) -> DecisionTree {
     // Tuples are structural -- they don't need a switch/test, just decomposition.
     if column_has_tuples(&matrix, col) {
         let expanded = expand_tuple_column(&matrix, col);
-        return compile_matrix(expanded, file, line);
+        return compile_matrix(expanded, file, line, sum_type_defs);
     }
 
     // Step 2: Collect head constructors from the selected column.
-    let head_ctors = collect_head_constructors(&matrix, col);
+    let head_ctors = collect_head_constructors(&matrix, col, sum_type_defs);
 
     if head_ctors.is_empty() {
         // All patterns in this column are wildcards/variables.
         // Collect bindings and remove the column.
         let reduced = remove_wildcard_column(&matrix, col);
-        return compile_matrix(reduced, file, line);
+        return compile_matrix(reduced, file, line, sum_type_defs);
     }
 
     // Step 3: Determine if we need a Switch (constructors) or Tests (literals).
     let has_constructors = head_ctors.iter().any(|c| matches!(c, HeadCtor::Constructor { .. }));
 
     if has_constructors {
-        compile_constructor_switch(&matrix, col, &head_ctors, file, line)
+        compile_constructor_switch(&matrix, col, &head_ctors, file, line, sum_type_defs)
     } else {
-        compile_literal_tests(&matrix, col, &head_ctors, file, line)
+        compile_literal_tests(&matrix, col, &head_ctors, file, line, sum_type_defs)
     }
 }
 
@@ -320,7 +334,13 @@ fn literal_key(lit: &MirLiteral) -> String {
 // ── Head constructor collection ─────────────────────────────────────
 
 /// Collect all distinct head constructors from a column.
-fn collect_head_constructors(matrix: &PatMatrix, col: usize) -> Vec<HeadCtor> {
+/// Uses `sum_type_defs` to look up the correct tag value from the type
+/// definition rather than assigning tags by pattern appearance order.
+fn collect_head_constructors(
+    matrix: &PatMatrix,
+    col: usize,
+    sum_type_defs: &FxHashMap<String, MirSumTypeDef>,
+) -> Vec<HeadCtor> {
     let mut result: Vec<HeadCtor> = Vec::new();
     let mut seen: Vec<String> = Vec::new();
 
@@ -344,11 +364,27 @@ fn collect_head_constructors(matrix: &PatMatrix, col: usize) -> Vec<HeadCtor> {
             } => {
                 let key = format!("ctor:{}", variant);
                 if !seen.contains(&key) {
-                    // Assign tags based on order of first appearance.
-                    let tag = result
-                        .iter()
-                        .filter(|c| matches!(c, HeadCtor::Constructor { .. }))
-                        .count() as u8;
+                    // Look up the actual tag from the sum type definition.
+                    // This ensures tags match the type definition order, not
+                    // the order constructors appear in the user's pattern.
+                    let tag = sum_type_defs
+                        .get(type_name.as_str())
+                        .or_else(|| {
+                            type_name
+                                .split('_')
+                                .next()
+                                .and_then(|base| sum_type_defs.get(base))
+                        })
+                        .and_then(|def| def.variants.iter().find(|v| v.name == *variant))
+                        .map(|v| v.tag)
+                        .unwrap_or_else(|| {
+                            // Fallback: count existing constructors (old behavior)
+                            // if type not found in sum_type_defs map.
+                            result
+                                .iter()
+                                .filter(|c| matches!(c, HeadCtor::Constructor { .. }))
+                                .count() as u8
+                        });
                     seen.push(key);
                     result.push(HeadCtor::Constructor {
                         type_name: type_name.clone(),
@@ -378,6 +414,7 @@ fn compile_constructor_switch(
     head_ctors: &[HeadCtor],
     file: &str,
     line: u32,
+    sum_type_defs: &FxHashMap<String, MirSumTypeDef>,
 ) -> DecisionTree {
     let scrutinee_path = matrix.column_paths[col].clone();
 
@@ -399,8 +436,9 @@ fn compile_constructor_switch(
             };
 
             // Specialize matrix for this constructor.
-            let specialized = specialize_for_constructor(matrix, col, variant, *arity);
-            let subtree = compile_matrix(specialized, file, line);
+            let specialized =
+                specialize_for_constructor(matrix, col, variant, *arity, sum_type_defs);
+            let subtree = compile_matrix(specialized, file, line, sum_type_defs);
             cases.push((ctor_tag, subtree));
         }
     }
@@ -410,7 +448,12 @@ fn compile_constructor_switch(
     let default = if default_matrix.rows.is_empty() {
         None
     } else {
-        Some(Box::new(compile_matrix(default_matrix, file, line)))
+        Some(Box::new(compile_matrix(
+            default_matrix,
+            file,
+            line,
+            sum_type_defs,
+        )))
     };
 
     DecisionTree::Switch {
@@ -428,6 +471,7 @@ fn specialize_for_constructor(
     col: usize,
     target_variant: &str,
     arity: usize,
+    sum_type_defs: &FxHashMap<String, MirSumTypeDef>,
 ) -> PatMatrix {
     let mut new_rows = Vec::new();
     let parent_path = &matrix.column_paths[col];
@@ -508,17 +552,32 @@ fn specialize_for_constructor(
     let mut new_paths = Vec::new();
     let mut new_types = Vec::new();
 
+    // Look up actual field types from the sum type definition.
+    let parent_ty = &matrix.column_types[col];
+    let field_types: Vec<MirType> = if let MirType::SumType(type_name) = parent_ty {
+        sum_type_defs
+            .get(type_name.as_str())
+            .or_else(|| {
+                type_name
+                    .split('_')
+                    .next()
+                    .and_then(|base| sum_type_defs.get(base))
+            })
+            .and_then(|def| def.variants.iter().find(|v| v.name == target_variant))
+            .map(|v| v.fields.clone())
+            .unwrap_or_else(|| vec![MirType::Unit; arity])
+    } else {
+        vec![MirType::Unit; arity]
+    };
+
     // Sub-pattern paths for the constructor fields.
-    // We need to determine variant name for the access path.
     for i in 0..arity {
         new_paths.push(AccessPath::VariantField(
             Box::new(parent_path.clone()),
             target_variant.to_string(),
             i,
         ));
-        // We don't know the exact field type here, use Unit as placeholder.
-        // The actual type is carried by the variable patterns themselves.
-        new_types.push(MirType::Unit);
+        new_types.push(field_types.get(i).cloned().unwrap_or(MirType::Unit));
     }
 
     // Remaining columns.
@@ -545,6 +604,7 @@ fn compile_literal_tests(
     head_ctors: &[HeadCtor],
     file: &str,
     line: u32,
+    sum_type_defs: &FxHashMap<String, MirSumTypeDef>,
 ) -> DecisionTree {
     let scrutinee_path = matrix.column_paths[col].clone();
 
@@ -561,12 +621,12 @@ fn compile_literal_tests(
     // Build the chain from the last literal to the first.
     // The final failure is the default matrix (rows with wildcards).
     let default_mat = default_matrix(matrix, col);
-    let mut failure_tree = compile_matrix(default_mat, file, line);
+    let mut failure_tree = compile_matrix(default_mat, file, line, sum_type_defs);
 
     // Build from last to first to create the chain.
     for lit in literals.iter().rev() {
         let specialized = specialize_for_literal(matrix, col, lit);
-        let success_tree = compile_matrix(specialized, file, line);
+        let success_tree = compile_matrix(specialized, file, line, sum_type_defs);
 
         failure_tree = DecisionTree::Test {
             scrutinee_path: scrutinee_path.clone(),
@@ -888,7 +948,10 @@ fn expand_tuple_column(matrix: &PatMatrix, col: usize) -> PatMatrix {
 // ── Expression tree walking ─────────────────────────────────────────
 
 /// Recursively compile match expressions within an expression tree.
-fn compile_expr_patterns(expr: &mut MirExpr) {
+fn compile_expr_patterns(
+    expr: &mut MirExpr,
+    sum_type_defs: &FxHashMap<String, MirSumTypeDef>,
+) {
     match expr {
         MirExpr::Match {
             scrutinee,
@@ -896,17 +959,17 @@ fn compile_expr_patterns(expr: &mut MirExpr) {
             ty: _,
         } => {
             // First, recursively process sub-expressions.
-            compile_expr_patterns(scrutinee);
+            compile_expr_patterns(scrutinee, sum_type_defs);
             for arm in arms.iter_mut() {
-                compile_expr_patterns(&mut arm.body);
+                compile_expr_patterns(&mut arm.body, sum_type_defs);
                 if let Some(guard) = &mut arm.guard {
-                    compile_expr_patterns(guard);
+                    compile_expr_patterns(guard, sum_type_defs);
                 }
             }
 
             // Compile the match into a decision tree.
             let scrutinee_ty = scrutinee.ty().clone();
-            let _tree = compile_match(&scrutinee_ty, arms, "<unknown>", 0);
+            let _tree = compile_match(&scrutinee_ty, arms, "<unknown>", 0, sum_type_defs);
 
             // Note: In a full implementation, we would replace this MirExpr::Match
             // with a MirExpr::CompiledMatch variant. For now, the decision tree
@@ -914,22 +977,22 @@ fn compile_expr_patterns(expr: &mut MirExpr) {
             // compile_match() calls.
         }
         MirExpr::BinOp { lhs, rhs, .. } => {
-            compile_expr_patterns(lhs);
-            compile_expr_patterns(rhs);
+            compile_expr_patterns(lhs, sum_type_defs);
+            compile_expr_patterns(rhs, sum_type_defs);
         }
         MirExpr::UnaryOp { operand, .. } => {
-            compile_expr_patterns(operand);
+            compile_expr_patterns(operand, sum_type_defs);
         }
         MirExpr::Call { func, args, .. } => {
-            compile_expr_patterns(func);
+            compile_expr_patterns(func, sum_type_defs);
             for arg in args {
-                compile_expr_patterns(arg);
+                compile_expr_patterns(arg, sum_type_defs);
             }
         }
         MirExpr::ClosureCall { closure, args, .. } => {
-            compile_expr_patterns(closure);
+            compile_expr_patterns(closure, sum_type_defs);
             for arg in args {
-                compile_expr_patterns(arg);
+                compile_expr_patterns(arg, sum_type_defs);
             }
         }
         MirExpr::If {
@@ -938,39 +1001,39 @@ fn compile_expr_patterns(expr: &mut MirExpr) {
             else_body,
             ..
         } => {
-            compile_expr_patterns(cond);
-            compile_expr_patterns(then_body);
-            compile_expr_patterns(else_body);
+            compile_expr_patterns(cond, sum_type_defs);
+            compile_expr_patterns(then_body, sum_type_defs);
+            compile_expr_patterns(else_body, sum_type_defs);
         }
         MirExpr::Let { value, body, .. } => {
-            compile_expr_patterns(value);
-            compile_expr_patterns(body);
+            compile_expr_patterns(value, sum_type_defs);
+            compile_expr_patterns(body, sum_type_defs);
         }
         MirExpr::Block(exprs, _) => {
             for e in exprs {
-                compile_expr_patterns(e);
+                compile_expr_patterns(e, sum_type_defs);
             }
         }
         MirExpr::StructLit { fields, .. } => {
             for (_, field_expr) in fields {
-                compile_expr_patterns(field_expr);
+                compile_expr_patterns(field_expr, sum_type_defs);
             }
         }
         MirExpr::FieldAccess { object, .. } => {
-            compile_expr_patterns(object);
+            compile_expr_patterns(object, sum_type_defs);
         }
         MirExpr::ConstructVariant { fields, .. } => {
             for f in fields {
-                compile_expr_patterns(f);
+                compile_expr_patterns(f, sum_type_defs);
             }
         }
         MirExpr::MakeClosure { captures, .. } => {
             for c in captures {
-                compile_expr_patterns(c);
+                compile_expr_patterns(c, sum_type_defs);
             }
         }
         MirExpr::Return(inner) => {
-            compile_expr_patterns(inner);
+            compile_expr_patterns(inner, sum_type_defs);
         }
         // Leaf expressions -- nothing to recurse into.
         MirExpr::IntLit(..)
@@ -982,35 +1045,35 @@ fn compile_expr_patterns(expr: &mut MirExpr) {
         | MirExpr::Unit => {}
         // Actor primitives -- recurse into sub-expressions.
         MirExpr::ActorSpawn { func, args, terminate_callback, .. } => {
-            compile_expr_patterns(func);
+            compile_expr_patterns(func, sum_type_defs);
             for arg in args {
-                compile_expr_patterns(arg);
+                compile_expr_patterns(arg, sum_type_defs);
             }
             if let Some(cb) = terminate_callback {
-                compile_expr_patterns(cb);
+                compile_expr_patterns(cb, sum_type_defs);
             }
         }
         MirExpr::ActorSend { target, message, .. } => {
-            compile_expr_patterns(target);
-            compile_expr_patterns(message);
+            compile_expr_patterns(target, sum_type_defs);
+            compile_expr_patterns(message, sum_type_defs);
         }
         MirExpr::ActorReceive { arms, timeout_ms, timeout_body, .. } => {
             for arm in arms {
                 if let Some(guard) = &mut arm.guard {
-                    compile_expr_patterns(guard);
+                    compile_expr_patterns(guard, sum_type_defs);
                 }
-                compile_expr_patterns(&mut arm.body);
+                compile_expr_patterns(&mut arm.body, sum_type_defs);
             }
             if let Some(tm) = timeout_ms {
-                compile_expr_patterns(tm);
+                compile_expr_patterns(tm, sum_type_defs);
             }
             if let Some(tb) = timeout_body {
-                compile_expr_patterns(tb);
+                compile_expr_patterns(tb, sum_type_defs);
             }
         }
         MirExpr::ActorSelf { .. } => {}
         MirExpr::ActorLink { target, .. } => {
-            compile_expr_patterns(target);
+            compile_expr_patterns(target, sum_type_defs);
         }
         // Supervisor start -- no sub-expressions to recurse into.
         MirExpr::SupervisorStart { .. } => {}
@@ -1020,8 +1083,9 @@ fn compile_expr_patterns(expr: &mut MirExpr) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::mir::{MirLiteral, MirMatchArm, MirPattern, MirType};
+    use crate::mir::{MirLiteral, MirMatchArm, MirPattern, MirSumTypeDef, MirType, MirVariantDef};
     use crate::pattern::{AccessPath, DecisionTree};
+    use rustc_hash::FxHashMap;
 
     // ── Helper functions ─────────────────────────────────────────────
 
@@ -1053,7 +1117,7 @@ mod tests {
         // Expected: Leaf { arm_index: 0, bindings: [] }
         let arms = vec![make_arm(MirPattern::Wildcard, None, int_body(1))];
 
-        let tree = compile_match(&MirType::Int, &arms, "test.snow", 1);
+        let tree = compile_match(&MirType::Int, &arms, "test.snow", 1, &FxHashMap::default());
 
         match tree {
             DecisionTree::Leaf {
@@ -1079,7 +1143,7 @@ mod tests {
             var_expr("y", MirType::Int),
         )];
 
-        let tree = compile_match(&MirType::Int, &arms, "test.snow", 1);
+        let tree = compile_match(&MirType::Int, &arms, "test.snow", 1, &FxHashMap::default());
 
         match tree {
             DecisionTree::Leaf {
@@ -1116,7 +1180,7 @@ mod tests {
             make_arm(MirPattern::Wildcard, None, string_body("other")),
         ];
 
-        let tree = compile_match(&MirType::Int, &arms, "test.snow", 1);
+        let tree = compile_match(&MirType::Int, &arms, "test.snow", 1, &FxHashMap::default());
 
         // Should be Test(Root, 1, Leaf(0), Test(Root, 2, Leaf(1), Leaf(2)))
         match &tree {
@@ -1188,7 +1252,7 @@ mod tests {
             ),
         ];
 
-        let tree = compile_match(&MirType::Bool, &arms, "test.snow", 1);
+        let tree = compile_match(&MirType::Bool, &arms, "test.snow", 1, &FxHashMap::default());
 
         match &tree {
             DecisionTree::Test {
@@ -1265,7 +1329,7 @@ mod tests {
             ),
         ];
 
-        let tree = compile_match(&MirType::SumType("Shape".to_string()), &arms, "test.snow", 1);
+        let tree = compile_match(&MirType::SumType("Shape".to_string()), &arms, "test.snow", 1, &FxHashMap::default());
 
         match &tree {
             DecisionTree::Switch {
@@ -1360,7 +1424,7 @@ mod tests {
             MirType::SumType("Option".to_string()),
             MirType::Int,
         ]);
-        let tree = compile_match(&scrutinee_ty, &arms, "test.snow", 1);
+        let tree = compile_match(&scrutinee_ty, &arms, "test.snow", 1, &FxHashMap::default());
 
         // The tree should switch on TupleField(Root, 0) for constructor tag
         match &tree {
@@ -1433,7 +1497,7 @@ mod tests {
             make_arm(MirPattern::Wildcard, None, string_body("big")),
         ];
 
-        let tree = compile_match(&MirType::Int, &arms, "test.snow", 1);
+        let tree = compile_match(&MirType::Int, &arms, "test.snow", 1, &FxHashMap::default());
 
         // Should be Test(Root, 1, Leaf(0), Test(Root, 2, Leaf(0), Leaf(1)))
         match &tree {
@@ -1495,7 +1559,7 @@ mod tests {
             make_arm(MirPattern::Wildcard, None, string_body("non-positive")),
         ];
 
-        let tree = compile_match(&MirType::Int, &arms, "test.snow", 1);
+        let tree = compile_match(&MirType::Int, &arms, "test.snow", 1, &FxHashMap::default());
 
         match &tree {
             DecisionTree::Guard {
@@ -1543,7 +1607,7 @@ mod tests {
             string_body("positive"),
         )];
 
-        let tree = compile_match(&MirType::Int, &arms, "test.snow", 1);
+        let tree = compile_match(&MirType::Int, &arms, "test.snow", 1, &FxHashMap::default());
 
         match &tree {
             DecisionTree::Guard {
@@ -1592,6 +1656,7 @@ mod tests {
             &arms,
             "test.snow",
             1,
+            &FxHashMap::default(),
         );
 
         match &tree {
@@ -1653,7 +1718,7 @@ mod tests {
         ];
 
         let scrutinee_ty = MirType::Tuple(vec![MirType::Int, MirType::Int]);
-        let tree = compile_match(&scrutinee_ty, &arms, "test.snow", 1);
+        let tree = compile_match(&scrutinee_ty, &arms, "test.snow", 1, &FxHashMap::default());
 
         // Should test tuple fields, not Root
         fn contains_tuple_field_test(tree: &DecisionTree) -> bool {
@@ -1713,7 +1778,7 @@ mod tests {
             make_arm(MirPattern::Wildcard, None, int_body(0)),
         ];
 
-        let tree = compile_match(&MirType::String, &arms, "test.snow", 1);
+        let tree = compile_match(&MirType::String, &arms, "test.snow", 1, &FxHashMap::default());
 
         match &tree {
             DecisionTree::Test {
@@ -1764,7 +1829,7 @@ mod tests {
             make_arm(MirPattern::Wildcard, None, string_body("zero")),
         ];
 
-        let tree = compile_match(&MirType::Int, &arms, "test.snow", 1);
+        let tree = compile_match(&MirType::Int, &arms, "test.snow", 1, &FxHashMap::default());
 
         // Should be Guard(pos_guard, Leaf(0), Guard(neg_guard, Leaf(1), Leaf(2)))
         match &tree {
@@ -1850,6 +1915,7 @@ mod tests {
             &arms,
             "test.snow",
             1,
+            &FxHashMap::default(),
         );
 
         match &tree {
@@ -1880,6 +1946,170 @@ mod tests {
                 match &green_case.1 {
                     DecisionTree::Leaf { arm_index, .. } => assert_eq!(*arm_index, 1),
                     other => panic!("Expected Leaf for Green, got {:?}", other),
+                }
+            }
+            other => panic!("Expected Switch, got {:?}", other),
+        }
+    }
+
+    // ── Test 15: Tag assignment from sum type definition ──────────────
+
+    #[test]
+    fn test_tag_from_sum_type_def() {
+        // Option is defined as: Some(T) = tag 0, None = tag 1.
+        // Pattern order: None first, Some second (reversed from definition).
+        // Tags in the Switch must come from the definition, NOT pattern order.
+        let mut sum_type_defs = FxHashMap::default();
+        sum_type_defs.insert(
+            "Option".to_string(),
+            MirSumTypeDef {
+                name: "Option".to_string(),
+                variants: vec![
+                    MirVariantDef {
+                        name: "Some".to_string(),
+                        fields: vec![MirType::Int],
+                        tag: 0,
+                    },
+                    MirVariantDef {
+                        name: "None".to_string(),
+                        fields: vec![],
+                        tag: 1,
+                    },
+                ],
+            },
+        );
+
+        // Arms: None -> 0, Some(x) -> x  (reversed from definition order)
+        let arms = vec![
+            make_arm(
+                MirPattern::Constructor {
+                    type_name: "Option".to_string(),
+                    variant: "None".to_string(),
+                    fields: vec![],
+                    bindings: vec![],
+                },
+                None,
+                int_body(0),
+            ),
+            make_arm(
+                MirPattern::Constructor {
+                    type_name: "Option".to_string(),
+                    variant: "Some".to_string(),
+                    fields: vec![MirPattern::Var("x".to_string(), MirType::Int)],
+                    bindings: vec![("x".to_string(), MirType::Int)],
+                },
+                None,
+                var_expr("x", MirType::Int),
+            ),
+        ];
+
+        let tree = compile_match(
+            &MirType::SumType("Option".to_string()),
+            &arms,
+            "test.snow",
+            1,
+            &sum_type_defs,
+        );
+
+        match &tree {
+            DecisionTree::Switch { cases, .. } => {
+                assert_eq!(cases.len(), 2);
+
+                // None should have tag 1 (from definition), NOT tag 0 (appearance order)
+                let none_case = cases
+                    .iter()
+                    .find(|(tag, _)| tag.variant_name == "None")
+                    .expect("Should have None case");
+                assert_eq!(
+                    none_case.0.tag, 1,
+                    "None tag should be 1 (from type definition), got {}",
+                    none_case.0.tag
+                );
+
+                // Some should have tag 0 (from definition), NOT tag 1 (appearance order)
+                let some_case = cases
+                    .iter()
+                    .find(|(tag, _)| tag.variant_name == "Some")
+                    .expect("Should have Some case");
+                assert_eq!(
+                    some_case.0.tag, 0,
+                    "Some tag should be 0 (from type definition), got {}",
+                    some_case.0.tag
+                );
+            }
+            other => panic!("Expected Switch, got {:?}", other),
+        }
+    }
+
+    // ── Test 16: Field type resolution from sum type definition ───────
+
+    #[test]
+    fn test_field_type_from_sum_type_def() {
+        // Option is defined as: Some(Int) = tag 0, None = tag 1.
+        // The binding for x in Some(x) should have type Int (from the
+        // sum type definition), not Unit (the old placeholder).
+        let mut sum_type_defs = FxHashMap::default();
+        sum_type_defs.insert(
+            "Option".to_string(),
+            MirSumTypeDef {
+                name: "Option".to_string(),
+                variants: vec![
+                    MirVariantDef {
+                        name: "Some".to_string(),
+                        fields: vec![MirType::Int],
+                        tag: 0,
+                    },
+                    MirVariantDef {
+                        name: "None".to_string(),
+                        fields: vec![],
+                        tag: 1,
+                    },
+                ],
+            },
+        );
+
+        // Arm: Some(x) -> x  with Var type set to Unit (simulating unresolved)
+        let arms = vec![
+            make_arm(
+                MirPattern::Constructor {
+                    type_name: "Option".to_string(),
+                    variant: "Some".to_string(),
+                    fields: vec![MirPattern::Var("x".to_string(), MirType::Unit)],
+                    bindings: vec![("x".to_string(), MirType::Unit)],
+                },
+                None,
+                var_expr("x", MirType::Int),
+            ),
+            make_arm(MirPattern::Wildcard, None, int_body(0)),
+        ];
+
+        let tree = compile_match(
+            &MirType::SumType("Option".to_string()),
+            &arms,
+            "test.snow",
+            1,
+            &sum_type_defs,
+        );
+
+        match &tree {
+            DecisionTree::Switch { cases, .. } => {
+                assert_eq!(cases.len(), 1);
+                assert_eq!(cases[0].0.variant_name, "Some");
+
+                match &cases[0].1 {
+                    DecisionTree::Leaf { bindings, .. } => {
+                        assert_eq!(bindings.len(), 1);
+                        assert_eq!(bindings[0].0, "x");
+                        // The key assertion: x should have type Int (resolved
+                        // from sum type def), NOT Unit (the placeholder).
+                        assert_eq!(
+                            bindings[0].1,
+                            MirType::Int,
+                            "Binding 'x' should have type Int from sum type def, got {:?}",
+                            bindings[0].1
+                        );
+                    }
+                    other => panic!("Expected Leaf for Some, got {:?}", other),
                 }
             }
             other => panic!("Expected Switch, got {:?}", other),

@@ -962,7 +962,7 @@ impl<'ctx> CodeGen<'ctx> {
         };
 
         // Compile pattern to decision tree
-        let tree = compile_match(scrutinee_ty, arms, "<unknown>", 0);
+        let tree = compile_match(scrutinee_ty, arms, "<unknown>", 0, &self.sum_type_defs);
 
         // Alloca for the match result
         let result_ty = self.llvm_type(ty);
