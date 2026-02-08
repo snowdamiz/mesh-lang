@@ -2,19 +2,19 @@
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-02-08)
+See: .planning/PROJECT.md (updated 2026-02-07)
 
 **Core value:** Expressive, readable concurrency -- writing concurrent programs should feel as natural as sequential code, with supervision and fault tolerance built in.
-**Current focus:** Planning next milestone
+**Current focus:** v1.2 Runtime & Type Fixes
 
 ## Current Position
 
-Phase: 15 of 15 (all milestones complete)
-Plan: N/A
-Status: v1.1 shipped -- ready for next milestone
-Last activity: 2026-02-08 - v1.1 Language Polish milestone complete
+Phase: Not started (defining requirements)
+Plan: —
+Status: Defining requirements
+Last activity: 2026-02-07 — Milestone v1.2 started
 
-Progress: ██████████ 100% (v1.0 + v1.1 complete)
+Progress: ░░░░░░░░░░ 0%
 
 ## Performance Metrics
 
@@ -45,11 +45,11 @@ None.
 
 ### Blockers/Concerns
 
-None. v1.1 complete with zero regressions.
+None.
 
 ## Session Continuity
 
-Last session: 2026-02-08
-Stopped at: v1.1 milestone archived
+Last session: 2026-02-07
+Stopped at: Defining requirements for v1.2
 Resume file: None
-Next action: `/gsd:new-milestone` for next version
+Next action: Define requirements and create roadmap

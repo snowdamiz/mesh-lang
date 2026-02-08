@@ -4,6 +4,14 @@
 
 Snow is a programming language that combines Elixir/Ruby-style expressive syntax with static Hindley-Milner type inference and BEAM-style concurrency (actors, supervision trees, fault tolerance), compiled via LLVM to native single-binary executables. The compiler is written in Rust. v1.0 shipped a complete compiler pipeline, actor runtime, standard library, and developer tooling. v1.1 polished the language by resolving all five documented v1.0 limitations: multi-clause functions, string pattern matching, pipe operator with closures, actor-per-connection HTTP, and generic map types.
 
+## Current Milestone: v1.2 Runtime & Type Fixes
+
+**Goal:** Fix the two remaining known issues — function type annotation parsing and mark-sweep GC for long-running actors.
+
+**Target features:**
+- Fun() type annotation parsed as function type (not type constructor)
+- Mark-sweep garbage collector replacing arena/bump allocation for long-running actors
+
 ## Core Value
 
 Expressive, readable concurrency -- writing concurrent programs should feel as natural and clean as writing sequential code, with the safety net of supervision and fault tolerance built into the language.
@@ -30,7 +38,8 @@ Expressive, readable concurrency -- writing concurrent programs should feel as n
 
 ### Active
 
-(None -- planning next milestone)
+- [ ] Fun() type annotation parsed as function type instead of type constructor
+- [ ] Mark-sweep garbage collector for per-actor heaps (replacing arena/bump allocation)
 
 ### Out of Scope
 
@@ -90,4 +99,4 @@ Known remaining items:
 | panic!() instead of abort() | catch_unwind requires catchable panics for crash isolation | ✓ Good -- actors survive peer crashes |
 
 ---
-*Last updated: 2026-02-08 after v1.1 milestone*
+*Last updated: 2026-02-07 after v1.2 milestone start*
