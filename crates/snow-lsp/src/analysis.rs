@@ -201,7 +201,6 @@ fn type_error_span(error: &TypeError) -> Option<TextRange> {
         TypeError::DuplicateImpl { .. } => None,
         TypeError::AmbiguousMethod { .. } => None,
         TypeError::UnsupportedDerive { .. } => None,
-        TypeError::GenericDerive { .. } => None,
     }
 }
 

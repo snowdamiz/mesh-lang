@@ -237,10 +237,6 @@ pub enum TypeError {
         trait_name: String,
         type_name: String,
     },
-    /// A generic type has a deriving clause (not supported).
-    GenericDerive {
-        type_name: String,
-    },
 }
 
 impl fmt::Display for TypeError {
@@ -497,13 +493,6 @@ impl fmt::Display for TypeError {
                     f,
                     "cannot derive `{}` for `{}` -- only Eq, Ord, Display, Debug, and Hash are derivable",
                     trait_name, type_name
-                )
-            }
-            TypeError::GenericDerive { type_name } => {
-                write!(
-                    f,
-                    "deriving is not supported for generic type `{}`",
-                    type_name
                 )
             }
         }

@@ -1507,111 +1507,108 @@ fn register_struct_def(
         }
     }
 
-    // Generic types with deriving clause produce an error.
-    if has_deriving && !generic_params.is_empty() {
-        ctx.errors.push(TypeError::GenericDerive {
-            type_name: name.clone(),
+    // Build the impl type: non-generic uses Ty::Con, generic uses Ty::App.
+    let impl_ty = if generic_params.is_empty() {
+        Ty::Con(TyCon::new(&name))
+    } else {
+        let base_ty = Ty::Con(TyCon::new(&name));
+        let param_tys: Vec<Ty> = generic_params.iter().map(|p| Ty::Con(TyCon::new(p))).collect();
+        Ty::App(Box::new(base_ty), param_tys)
+    };
+
+    // Debug impl
+    if derive_all || derive_list.iter().any(|t| t == "Debug") {
+        let mut debug_methods = FxHashMap::default();
+        debug_methods.insert(
+            "inspect".to_string(),
+            ImplMethodSig {
+                has_self: true,
+                param_count: 0,
+                return_type: Some(Ty::string()),
+            },
+        );
+        let _ = trait_registry.register_impl(TraitImplDef {
+            trait_name: "Debug".to_string(),
+            impl_type: impl_ty.clone(),
+            impl_type_name: name.clone(),
+            methods: debug_methods,
         });
     }
 
-    // Only for non-generic structs (generic structs need monomorphized impls).
-    if generic_params.is_empty() {
-        let impl_ty = Ty::Con(TyCon::new(&name));
+    // Eq impl
+    if derive_all || derive_list.iter().any(|t| t == "Eq") {
+        let mut eq_methods = FxHashMap::default();
+        eq_methods.insert(
+            "eq".to_string(),
+            ImplMethodSig {
+                has_self: true,
+                param_count: 1,
+                return_type: Some(Ty::bool()),
+            },
+        );
+        let _ = trait_registry.register_impl(TraitImplDef {
+            trait_name: "Eq".to_string(),
+            impl_type: impl_ty.clone(),
+            impl_type_name: name.clone(),
+            methods: eq_methods,
+        });
+    }
 
-        // Debug impl
-        if derive_all || derive_list.iter().any(|t| t == "Debug") {
-            let mut debug_methods = FxHashMap::default();
-            debug_methods.insert(
-                "inspect".to_string(),
-                ImplMethodSig {
-                    has_self: true,
-                    param_count: 0,
-                    return_type: Some(Ty::string()),
-                },
-            );
-            let _ = trait_registry.register_impl(TraitImplDef {
-                trait_name: "Debug".to_string(),
-                impl_type: impl_ty.clone(),
-                impl_type_name: name.clone(),
-                methods: debug_methods,
-            });
-        }
+    // Ord impl
+    if derive_all || derive_list.iter().any(|t| t == "Ord") {
+        let mut ord_methods = FxHashMap::default();
+        ord_methods.insert(
+            "lt".to_string(),
+            ImplMethodSig {
+                has_self: true,
+                param_count: 1,
+                return_type: Some(Ty::bool()),
+            },
+        );
+        let _ = trait_registry.register_impl(TraitImplDef {
+            trait_name: "Ord".to_string(),
+            impl_type: impl_ty.clone(),
+            impl_type_name: name.clone(),
+            methods: ord_methods,
+        });
+    }
 
-        // Eq impl
-        if derive_all || derive_list.iter().any(|t| t == "Eq") {
-            let mut eq_methods = FxHashMap::default();
-            eq_methods.insert(
-                "eq".to_string(),
-                ImplMethodSig {
-                    has_self: true,
-                    param_count: 1,
-                    return_type: Some(Ty::bool()),
-                },
-            );
-            let _ = trait_registry.register_impl(TraitImplDef {
-                trait_name: "Eq".to_string(),
-                impl_type: impl_ty.clone(),
-                impl_type_name: name.clone(),
-                methods: eq_methods,
-            });
-        }
+    // Hash impl
+    if derive_all || derive_list.iter().any(|t| t == "Hash") {
+        let mut hash_methods = FxHashMap::default();
+        hash_methods.insert(
+            "hash".to_string(),
+            ImplMethodSig {
+                has_self: true,
+                param_count: 0,
+                return_type: Some(Ty::int()),
+            },
+        );
+        let _ = trait_registry.register_impl(TraitImplDef {
+            trait_name: "Hash".to_string(),
+            impl_type: impl_ty.clone(),
+            impl_type_name: name.clone(),
+            methods: hash_methods,
+        });
+    }
 
-        // Ord impl
-        if derive_all || derive_list.iter().any(|t| t == "Ord") {
-            let mut ord_methods = FxHashMap::default();
-            ord_methods.insert(
-                "lt".to_string(),
-                ImplMethodSig {
-                    has_self: true,
-                    param_count: 1,
-                    return_type: Some(Ty::bool()),
-                },
-            );
-            let _ = trait_registry.register_impl(TraitImplDef {
-                trait_name: "Ord".to_string(),
-                impl_type: impl_ty.clone(),
-                impl_type_name: name.clone(),
-                methods: ord_methods,
-            });
-        }
-
-        // Hash impl
-        if derive_all || derive_list.iter().any(|t| t == "Hash") {
-            let mut hash_methods = FxHashMap::default();
-            hash_methods.insert(
-                "hash".to_string(),
-                ImplMethodSig {
-                    has_self: true,
-                    param_count: 0,
-                    return_type: Some(Ty::int()),
-                },
-            );
-            let _ = trait_registry.register_impl(TraitImplDef {
-                trait_name: "Hash".to_string(),
-                impl_type: impl_ty.clone(),
-                impl_type_name: name.clone(),
-                methods: hash_methods,
-            });
-        }
-
-        // Display impl (only via explicit deriving, never auto-derived)
-        if derive_list.iter().any(|t| t == "Display") {
-            let mut display_methods = FxHashMap::default();
-            display_methods.insert(
-                "to_string".to_string(),
-                ImplMethodSig {
-                    has_self: true,
-                    param_count: 0,
-                    return_type: Some(Ty::string()),
-                },
-            );
-            let _ = trait_registry.register_impl(TraitImplDef {
-                trait_name: "Display".to_string(),
-                impl_type: impl_ty,
-                impl_type_name: name.clone(),
-                methods: display_methods,
-            });
-        }
+    // Display impl (only via explicit deriving, never auto-derived)
+    if derive_list.iter().any(|t| t == "Display") {
+        let mut display_methods = FxHashMap::default();
+        display_methods.insert(
+            "to_string".to_string(),
+            ImplMethodSig {
+                has_self: true,
+                param_count: 0,
+                return_type: Some(Ty::string()),
+            },
+        );
+        let _ = trait_registry.register_impl(TraitImplDef {
+            trait_name: "Display".to_string(),
+            impl_type: impl_ty,
+            impl_type_name: name.clone(),
+            methods: display_methods,
+        });
     }
 
     type_registry.register_struct(StructDefInfo {
@@ -1791,111 +1788,108 @@ fn register_sum_type_def(
         }
     }
 
-    // Generic types with deriving clause produce an error.
-    if has_deriving && !generic_params.is_empty() {
-        ctx.errors.push(TypeError::GenericDerive {
-            type_name: name.clone(),
+    // Build the impl type: non-generic uses Ty::Con, generic uses Ty::App.
+    let impl_ty = if generic_params.is_empty() {
+        Ty::Con(TyCon::new(&name))
+    } else {
+        let base_ty = Ty::Con(TyCon::new(&name));
+        let param_tys: Vec<Ty> = generic_params.iter().map(|p| Ty::Con(TyCon::new(p))).collect();
+        Ty::App(Box::new(base_ty), param_tys)
+    };
+
+    // Debug impl
+    if derive_all || derive_list.iter().any(|t| t == "Debug") {
+        let mut debug_methods = FxHashMap::default();
+        debug_methods.insert(
+            "inspect".to_string(),
+            ImplMethodSig {
+                has_self: true,
+                param_count: 0,
+                return_type: Some(Ty::string()),
+            },
+        );
+        let _ = trait_registry.register_impl(TraitImplDef {
+            trait_name: "Debug".to_string(),
+            impl_type: impl_ty.clone(),
+            impl_type_name: name.clone(),
+            methods: debug_methods,
         });
     }
 
-    // Only for non-generic sum types (generic types need monomorphized impls).
-    if generic_params.is_empty() {
-        let impl_ty = Ty::Con(TyCon::new(&name));
+    // Eq impl
+    if derive_all || derive_list.iter().any(|t| t == "Eq") {
+        let mut eq_methods = FxHashMap::default();
+        eq_methods.insert(
+            "eq".to_string(),
+            ImplMethodSig {
+                has_self: true,
+                param_count: 1,
+                return_type: Some(Ty::bool()),
+            },
+        );
+        let _ = trait_registry.register_impl(TraitImplDef {
+            trait_name: "Eq".to_string(),
+            impl_type: impl_ty.clone(),
+            impl_type_name: name.clone(),
+            methods: eq_methods,
+        });
+    }
 
-        // Debug impl
-        if derive_all || derive_list.iter().any(|t| t == "Debug") {
-            let mut debug_methods = FxHashMap::default();
-            debug_methods.insert(
-                "inspect".to_string(),
-                ImplMethodSig {
-                    has_self: true,
-                    param_count: 0,
-                    return_type: Some(Ty::string()),
-                },
-            );
-            let _ = trait_registry.register_impl(TraitImplDef {
-                trait_name: "Debug".to_string(),
-                impl_type: impl_ty.clone(),
-                impl_type_name: name.clone(),
-                methods: debug_methods,
-            });
-        }
+    // Ord impl
+    if derive_all || derive_list.iter().any(|t| t == "Ord") {
+        let mut ord_methods = FxHashMap::default();
+        ord_methods.insert(
+            "lt".to_string(),
+            ImplMethodSig {
+                has_self: true,
+                param_count: 1,
+                return_type: Some(Ty::bool()),
+            },
+        );
+        let _ = trait_registry.register_impl(TraitImplDef {
+            trait_name: "Ord".to_string(),
+            impl_type: impl_ty.clone(),
+            impl_type_name: name.clone(),
+            methods: ord_methods,
+        });
+    }
 
-        // Eq impl
-        if derive_all || derive_list.iter().any(|t| t == "Eq") {
-            let mut eq_methods = FxHashMap::default();
-            eq_methods.insert(
-                "eq".to_string(),
-                ImplMethodSig {
-                    has_self: true,
-                    param_count: 1,
-                    return_type: Some(Ty::bool()),
-                },
-            );
-            let _ = trait_registry.register_impl(TraitImplDef {
-                trait_name: "Eq".to_string(),
-                impl_type: impl_ty.clone(),
-                impl_type_name: name.clone(),
-                methods: eq_methods,
-            });
-        }
+    // Hash impl (only via explicit deriving for sum types, never auto-derived)
+    if derive_list.iter().any(|t| t == "Hash") {
+        let mut hash_methods = FxHashMap::default();
+        hash_methods.insert(
+            "hash".to_string(),
+            ImplMethodSig {
+                has_self: true,
+                param_count: 0,
+                return_type: Some(Ty::int()),
+            },
+        );
+        let _ = trait_registry.register_impl(TraitImplDef {
+            trait_name: "Hash".to_string(),
+            impl_type: impl_ty.clone(),
+            impl_type_name: name.clone(),
+            methods: hash_methods,
+        });
+    }
 
-        // Ord impl
-        if derive_all || derive_list.iter().any(|t| t == "Ord") {
-            let mut ord_methods = FxHashMap::default();
-            ord_methods.insert(
-                "lt".to_string(),
-                ImplMethodSig {
-                    has_self: true,
-                    param_count: 1,
-                    return_type: Some(Ty::bool()),
-                },
-            );
-            let _ = trait_registry.register_impl(TraitImplDef {
-                trait_name: "Ord".to_string(),
-                impl_type: impl_ty.clone(),
-                impl_type_name: name.clone(),
-                methods: ord_methods,
-            });
-        }
-
-        // Hash impl (only via explicit deriving for sum types, never auto-derived)
-        if derive_list.iter().any(|t| t == "Hash") {
-            let mut hash_methods = FxHashMap::default();
-            hash_methods.insert(
-                "hash".to_string(),
-                ImplMethodSig {
-                    has_self: true,
-                    param_count: 0,
-                    return_type: Some(Ty::int()),
-                },
-            );
-            let _ = trait_registry.register_impl(TraitImplDef {
-                trait_name: "Hash".to_string(),
-                impl_type: impl_ty.clone(),
-                impl_type_name: name.clone(),
-                methods: hash_methods,
-            });
-        }
-
-        // Display impl (only via explicit deriving, never auto-derived)
-        if derive_list.iter().any(|t| t == "Display") {
-            let mut display_methods = FxHashMap::default();
-            display_methods.insert(
-                "to_string".to_string(),
-                ImplMethodSig {
-                    has_self: true,
-                    param_count: 0,
-                    return_type: Some(Ty::string()),
-                },
-            );
-            let _ = trait_registry.register_impl(TraitImplDef {
-                trait_name: "Display".to_string(),
-                impl_type: impl_ty,
-                impl_type_name: name.clone(),
-                methods: display_methods,
-            });
-        }
+    // Display impl (only via explicit deriving, never auto-derived)
+    if derive_list.iter().any(|t| t == "Display") {
+        let mut display_methods = FxHashMap::default();
+        display_methods.insert(
+            "to_string".to_string(),
+            ImplMethodSig {
+                has_self: true,
+                param_count: 0,
+                return_type: Some(Ty::string()),
+            },
+        );
+        let _ = trait_registry.register_impl(TraitImplDef {
+            trait_name: "Display".to_string(),
+            impl_type: impl_ty,
+            impl_type_name: name.clone(),
+            methods: display_methods,
+        });
     }
 }
 
