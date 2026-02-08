@@ -186,11 +186,6 @@ pub extern "C" fn snow_gc_collect() {
         None => return,
     };
 
-    let stack_bottom = stack::get_stack_base();
-    if stack_bottom.is_null() {
-        return;
-    }
-
     let sched = match GLOBAL_SCHEDULER.get() {
         Some(s) => s,
         None => return,
@@ -207,6 +202,16 @@ pub extern "C" fn snow_gc_collect() {
     let stack_top = &stack_anchor as *const u64 as *const u8;
 
     let mut proc = proc_arc.lock();
+
+    // Read stack_base from the process object rather than the STACK_BASE
+    // thread-local. The thread-local may be stale if another coroutine ran
+    // on this thread and overwrote it. The process field is set once at
+    // coroutine startup and never changes.
+    let stack_bottom = proc.stack_base;
+    if stack_bottom.is_null() {
+        return;
+    }
+
     proc.heap.collect(stack_bottom, stack_top);
 }
 

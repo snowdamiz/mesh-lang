@@ -208,11 +208,6 @@ fn try_trigger_gc() {
         None => return,
     };
 
-    let stack_bottom = stack::get_stack_base();
-    if stack_bottom.is_null() {
-        return;
-    }
-
     let sched = match GLOBAL_SCHEDULER.get() {
         Some(s) => s,
         None => return,
@@ -225,6 +220,15 @@ fn try_trigger_gc() {
 
     let mut proc = proc_arc.lock();
     if !proc.heap.should_collect() {
+        return;
+    }
+
+    // Read stack_base from the process object rather than the STACK_BASE
+    // thread-local. The thread-local may be stale if another coroutine ran
+    // on this thread and overwrote it. The process field is set once at
+    // coroutine startup and never changes.
+    let stack_bottom = proc.stack_base;
+    if stack_bottom.is_null() {
         return;
     }
 

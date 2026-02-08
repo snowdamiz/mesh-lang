@@ -267,3 +267,17 @@ fn actors_terminate() {
         output
     );
 }
+
+/// Test 8: GC bounded memory -- a long-running actor allocates and discards
+/// strings in a tight loop. With mark-sweep GC, unreachable allocations are
+/// reclaimed at yield points so memory stays bounded.
+#[test]
+fn gc_bounded_memory() {
+    let source = read_fixture("gc_bounded_memory.snow");
+    let output = compile_and_run_with_timeout(&source, 30);
+    assert!(
+        output.contains("gc bounded memory test done"),
+        "Expected 'gc bounded memory test done' in output, got: {}",
+        output
+    );
+}
