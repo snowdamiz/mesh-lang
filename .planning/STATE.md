@@ -5,16 +5,16 @@
 See: .planning/PROJECT.md (updated 2026-02-07)
 
 **Core value:** Expressive, readable concurrency -- writing concurrent programs should feel as natural as sequential code, with supervision and fault tolerance built in.
-**Current focus:** Milestone v1.3 Traits & Protocols -- Phase 20 complete
+**Current focus:** Milestone v1.3 Traits & Protocols -- Phase 21 in progress
 
 ## Current Position
 
-Phase: 20 of 22 (Essential Stdlib Protocols)
-Plan: 5 of 5 in current phase
-Status: Phase complete
-Last activity: 2026-02-08 -- Completed 20-05-PLAN.md (Eq/Ord for sum types)
+Phase: 21 of 22 (Extended Protocols)
+Plan: 1 of 4 in current phase
+Status: In progress
+Last activity: 2026-02-08 -- Completed 21-01-PLAN.md (Hash protocol end-to-end)
 
-Progress: ███████░░░ 71% (12/17 plans)
+Progress: ████████░░ 76% (13/17 plans)
 
 ## Performance Metrics
 
@@ -81,6 +81,9 @@ Recent decisions for v1.3:
 - (20-04) Negation in operator dispatch uses BinOp::Eq(x, false) not UnaryOp::Not
 - (20-05) Sum type Eq/Ord uses nested Match with Constructor patterns (no direct tag/field access in MIR)
 - (20-05) Ord__lt for sum types generates O(n^2) variant cross-product in inner match arms
+- (21-01) Hash auto-derived for non-generic structs only (not sum types)
+- (21-01) Hash-as-integer-key approach for Map struct keys (FNV-1a hash used as int key)
+- (21-01) FNV-1a 64-bit as hash algorithm (~35 lines in snow-rt/src/hash.rs)
 
 ### Pending Todos
 
@@ -95,6 +98,6 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-08
-Stopped at: Completed 20-05-PLAN.md (Phase 20 complete)
+Stopped at: Completed 21-01-PLAN.md (Hash protocol end-to-end)
 Resume file: None
-Next action: Plan Phase 21
+Next action: Execute 21-02-PLAN.md (Default protocol)
