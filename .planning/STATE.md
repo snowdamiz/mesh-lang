@@ -9,12 +9,12 @@ See: .planning/PROJECT.md (updated 2026-02-07)
 
 ## Current Position
 
-Phase: 16 of 17 (Fun() Type Parsing) -- VERIFIED ✓
-Plan: 2 of 2 in phase 16
-Status: Phase 16 complete, verified
-Last activity: 2026-02-08 -- Phase 16 verified, all 3 must-haves passed
+Phase: 17 of 17 (Mark-Sweep Garbage Collector)
+Plan: 1 of 4 in phase 17
+Status: In progress
+Last activity: 2026-02-08 -- Completed 17-01-PLAN.md
 
-Progress: █████░░░░░ 50% (1/2 phases in v1.2)
+Progress: ██████░░░░ 60% (1/2 phases complete + 1/4 plans in v1.2)
 
 ## Performance Metrics
 
@@ -33,9 +33,9 @@ Progress: █████░░░░░ 50% (1/2 phases in v1.2)
 - Lines of Rust: 56,539 (+3,928)
 
 **v1.2 Progress:**
-- Plans completed: 2
-- Phases started: 1 (16)
-- Commits: 4
+- Plans completed: 3
+- Phases started: 2 (16, 17)
+- Commits: 6
 
 ## Accumulated Context
 
@@ -50,6 +50,9 @@ Full decision history archived in milestones/v1.0-ROADMAP.md and milestones/v1.1
 | FUN_TYPE placed after RESULT_TYPE | 16-01 | Groups type annotation nodes together in SyntaxKind enum |
 | Fun-typed params as MirType::Closure | 16-02 | LLVM signatures must accept {ptr, ptr} structs for closure parameters |
 | No closure splitting for user functions | 16-02 | Only runtime intrinsics expect split (fn_ptr, env_ptr); user functions take struct |
+| GcHeader 16 bytes with dual-purpose next pointer | 17-01 | Keeps header compact; next links all-objects (when live) or free-list (when freed) |
+| Global arena unchanged -- no headers | 17-01 | Per Research Pitfall 1; main thread allocates little, focus GC on actor heaps only |
+| Free-list first-fit without block splitting | 17-01 | KISS for v1.2; optimize to size-segregated if profiling shows need |
 
 ### Pending Todos
 
@@ -62,6 +65,6 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-08
-Stopped at: Phase 16 complete and verified
+Stopped at: Completed 17-01-PLAN.md
 Resume file: None
-Next action: /gsd:plan-phase 17
+Next action: Execute 17-02-PLAN.md (mark phase)
