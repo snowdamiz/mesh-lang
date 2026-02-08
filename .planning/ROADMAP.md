@@ -52,10 +52,13 @@ Plans:
   2. GC triggers automatically when an actor's heap exceeds a pressure threshold without manual invocation
   3. GC pauses are scoped to the individual actor -- other actors continue executing uninterrupted
   4. A long-running actor that allocates and discards data over time maintains bounded memory usage (no unbounded growth)
-**Plans**: TBD
+**Plans**: 4 plans
 
 Plans:
-- [ ] 17-01: TBD
+- [ ] 17-01-PLAN.md -- GcHeader struct + free-list allocator replacing bump allocator in ActorHeap
+- [ ] 17-02-PLAN.md -- Mark-sweep algorithm (conservative stack scanning, mark, sweep) + GC trigger
+- [ ] 17-03-PLAN.md -- Migrate runtime and codegen allocations to snow_gc_alloc_actor
+- [ ] 17-04-PLAN.md -- E2E test for bounded memory + full integration verification
 
 ## Progress
 
@@ -77,4 +80,4 @@ Plans:
 | 14. Generic Map Types | v1.1 | 2/2 | Complete | 2026-02-08 |
 | 15. HTTP Actor Model | v1.1 | 1/1 | Complete | 2026-02-08 |
 | 16. Fun() Type Parsing | v1.2 | 2/2 | Complete | 2026-02-08 |
-| 17. Mark-Sweep GC | v1.2 | 0/? | Not started | - |
+| 17. Mark-Sweep GC | v1.2 | 0/4 | Not started | - |
