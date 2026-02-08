@@ -10,11 +10,11 @@ See: .planning/PROJECT.md (updated 2026-02-07)
 ## Current Position
 
 Phase: 18 of 22 (Trait Infrastructure)
-Plan: 1 of 3 in current phase
+Plan: 2 of 3 in current phase
 Status: In progress
-Last activity: 2026-02-08 -- Completed 18-01-PLAN.md (structural type matching)
+Last activity: 2026-02-08 -- Completed 18-02-PLAN.md (duplicate impl detection)
 
-Progress: █░░░░░░░░░ 6% (1/17 plans)
+Progress: ██░░░░░░░░ 12% (2/17 plans)
 
 ## Performance Metrics
 
@@ -54,6 +54,9 @@ Recent decisions for v1.3:
 - (18-01) TraitRegistry storage: FxHashMap<String, Vec<ImplDef>> keyed by trait name
 - (18-01) Type param freshening: single uppercase ASCII letter heuristic (A-Z)
 - (18-01) Structural matching: throwaway InferCtx per match attempt
+- (18-02) Duplicate detection: structural overlap check in register_impl before insert
+- (18-02) find_method_traits as separate helper (ambiguity check at call site)
+- (18-02) Push impl even on duplicate (for error recovery in downstream lookups)
 
 ### Pending Todos
 
@@ -67,6 +70,6 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-08
-Stopped at: Completed 18-01-PLAN.md (structural type matching)
+Stopped at: Completed 18-02-PLAN.md (duplicate impl detection)
 Resume file: None
-Next action: Execute 18-02-PLAN.md (duplicate impl detection)
+Next action: Execute 18-03-PLAN.md (TraitRegistry exposure)
