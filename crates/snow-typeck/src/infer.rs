@@ -499,6 +499,7 @@ pub fn infer(parse: &Parse) -> TypeckResult {
     let mut types = FxHashMap::default();
     let mut result_type = None;
     let mut fn_constraints: FxHashMap<String, FnConstraints> = FxHashMap::default();
+    let mut default_method_bodies: FxHashMap<(String, String), TextRange> = FxHashMap::default();
 
     let tree = parse.tree();
 
@@ -566,6 +567,7 @@ pub fn infer(parse: &Parse) -> TypeckResult {
                                 &mut type_registry,
                                 &mut trait_registry,
                                 &mut fn_constraints,
+                                &mut default_method_bodies,
                             );
                             if let Some(ty) = ty {
                                 result_type = Some(ty);
@@ -633,6 +635,7 @@ pub fn infer(parse: &Parse) -> TypeckResult {
         result_type: resolved_result,
         type_registry,
         trait_registry,
+        default_method_bodies,
     }
 }
 
@@ -1318,6 +1321,7 @@ fn infer_item(
     type_registry: &mut TypeRegistry,
     trait_registry: &mut TraitRegistry,
     fn_constraints: &mut FxHashMap<String, FnConstraints>,
+    default_method_bodies: &mut FxHashMap<(String, String), TextRange>,
 ) -> Option<Ty> {
     match item {
         Item::LetBinding(let_) => {
@@ -1336,7 +1340,7 @@ fn infer_item(
             None
         }
         Item::InterfaceDef(iface) => {
-            infer_interface_def(ctx, env, iface, trait_registry);
+            infer_interface_def(ctx, env, iface, trait_registry, default_method_bodies);
             None
         }
         Item::ImplDef(impl_) => {
@@ -1746,11 +1750,13 @@ fn register_sum_type_def(
 // ── Interface/Impl Registration (03-04) ───────────────────────────────
 
 /// Process an interface definition: register the trait in the registry.
+/// Also stores default method body syntax nodes for later MIR lowering.
 fn infer_interface_def(
     _ctx: &mut InferCtx,
     _env: &mut TypeEnv,
     iface: &InterfaceDef,
     trait_registry: &mut TraitRegistry,
+    default_method_bodies: &mut FxHashMap<(String, String), TextRange>,
 ) {
     let trait_name = iface
         .name()
@@ -1787,11 +1793,22 @@ fn infer_interface_def(
 
         let return_type = method.return_type().and_then(|ann| resolve_type_name(&ann));
 
+        let has_default_body = method.body().is_some();
+
+        // Store the default method body text range for MIR lowering.
+        if has_default_body {
+            default_method_bodies.insert(
+                (trait_name.clone(), method_name.clone()),
+                method.syntax().text_range(),
+            );
+        }
+
         methods.push(TraitMethodSig {
             name: method_name,
             has_self,
             param_count,
             return_type,
+            has_default_body,
         });
     }
 

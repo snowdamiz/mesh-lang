@@ -22,6 +22,10 @@ pub struct TraitMethodSig {
     pub param_count: usize,
     /// The return type of the method, if annotated.
     pub return_type: Option<Ty>,
+    /// Whether this method has a default body in the interface definition.
+    /// When true, impl blocks may omit this method and the default body
+    /// will be used instead.
+    pub has_default_body: bool,
 }
 
 /// A trait (interface) definition.
@@ -99,11 +103,14 @@ impl TraitRegistry {
             for method in &trait_def.methods {
                 match impl_def.methods.get(&method.name) {
                     None => {
-                        errors.push(TypeError::MissingTraitMethod {
-                            trait_name: impl_def.trait_name.clone(),
-                            method_name: method.name.clone(),
-                            impl_ty: impl_def.impl_type_name.clone(),
-                        });
+                        // Skip error if the method has a default body in the trait.
+                        if !method.has_default_body {
+                            errors.push(TypeError::MissingTraitMethod {
+                                trait_name: impl_def.trait_name.clone(),
+                                method_name: method.name.clone(),
+                                impl_ty: impl_def.impl_type_name.clone(),
+                            });
+                        }
                     }
                     Some(impl_method) => {
                         // Check return type compatibility if both are annotated.
@@ -352,6 +359,7 @@ mod tests {
                 has_self: true,
                 param_count: 0,
                 return_type: Some(Ty::string()),
+                has_default_body: false,
             }],
         }
     }
@@ -364,6 +372,7 @@ mod tests {
                 has_self: true,
                 param_count: 0,
                 return_type: Some(Ty::string()),
+                has_default_body: false,
             }],
         }
     }
@@ -495,6 +504,7 @@ mod tests {
                 has_self: true,
                 param_count: 1,
                 return_type: None,
+                has_default_body: false,
             }],
         });
 
@@ -684,6 +694,7 @@ mod tests {
                 has_self: true,
                 param_count: 0,
                 return_type: Some(Ty::string()),
+                has_default_body: false,
             }],
         });
 
@@ -722,6 +733,7 @@ mod tests {
                 has_self: true,
                 param_count: 1,
                 return_type: None,
+                has_default_body: false,
             }],
         });
 

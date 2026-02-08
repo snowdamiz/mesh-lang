@@ -13,8 +13,8 @@ use snow_parser::ast::expr::{
     StringExpr, StructLiteral, TupleExpr, UnaryExpr,
 };
 use snow_parser::ast::item::{
-    ActorDef, Block, FnDef, ImplDef, Item, LetBinding, ServiceDef, SourceFile, StructDef,
-    SumTypeDef, SupervisorDef,
+    ActorDef, Block, FnDef, ImplDef, InterfaceMethod, Item, LetBinding, ServiceDef, SourceFile,
+    StructDef, SumTypeDef, SupervisorDef,
 };
 use snow_parser::ast::pat::Pattern;
 use snow_parser::ast::AstNode;
@@ -73,6 +73,12 @@ struct Lowerer<'a> {
     registry: &'a snow_typeck::TypeRegistry,
     /// Trait registry for trait method dispatch resolution.
     trait_registry: &'a TraitRegistry,
+    /// Default method body text ranges from interface definitions.
+    /// Keyed by `(trait_name, method_name)`, value is the TextRange of
+    /// the INTERFACE_METHOD node containing the default body.
+    default_method_bodies: &'a FxHashMap<(String, String), TextRange>,
+    /// The parse tree, used for looking up default method body AST nodes.
+    parse: &'a Parse,
     /// Functions being built.
     functions: Vec<MirFunction>,
     /// Struct definitions.
@@ -97,11 +103,13 @@ struct Lowerer<'a> {
 }
 
 impl<'a> Lowerer<'a> {
-    fn new(typeck: &'a TypeckResult) -> Self {
+    fn new(typeck: &'a TypeckResult, parse: &'a Parse) -> Self {
         Lowerer {
             types: &typeck.types,
             registry: &typeck.type_registry,
             trait_registry: &typeck.trait_registry,
+            default_method_bodies: &typeck.default_method_bodies,
+            parse,
             functions: Vec::new(),
             structs: Vec::new(),
             sum_types: Vec::new(),
@@ -226,13 +234,34 @@ impl<'a> Lowerer<'a> {
                 }
                 Item::ImplDef(impl_def) => {
                     let (trait_name, type_name) = extract_impl_names(&impl_def);
+                    let mut provided_methods = std::collections::HashSet::new();
                     for method in impl_def.methods() {
                         if let Some(method_name) = method.name().and_then(|n| n.text()) {
+                            provided_methods.insert(method_name.clone());
                             let mangled =
                                 format!("{}__{}__{}", trait_name, method_name, type_name);
                             let fn_ty =
                                 self.resolve_range(method.syntax().text_range());
                             self.known_functions.insert(mangled.clone(), fn_ty);
+                        }
+                    }
+                    // Pre-register default method bodies for missing methods.
+                    if let Some(trait_def) = self.trait_registry.get_trait(&trait_name) {
+                        for trait_method in &trait_def.methods {
+                            if trait_method.has_default_body
+                                && !provided_methods.contains(&trait_method.name)
+                            {
+                                let mangled = format!(
+                                    "{}__{}__{}", trait_name, trait_method.name, type_name
+                                );
+                                // Use the return type from the trait method sig, fallback to Unit.
+                                let fn_ty = if let Some(ret_ty) = &trait_method.return_type {
+                                    resolve_type(ret_ty, self.registry, false)
+                                } else {
+                                    MirType::Unit
+                                };
+                                self.known_functions.insert(mangled, fn_ty);
+                            }
                         }
                     }
                 }
@@ -478,14 +507,37 @@ impl<'a> Lowerer<'a> {
             Item::LetBinding(let_) => self.lower_top_level_let(&let_),
             Item::ImplDef(impl_def) => {
                 let (trait_name, type_name) = extract_impl_names(&impl_def);
+
+                // Collect names of methods explicitly provided in this impl.
+                let mut provided_methods = std::collections::HashSet::new();
                 for method in impl_def.methods() {
                     let method_name = method
                         .name()
                         .and_then(|n| n.text())
                         .unwrap_or_else(|| "<unnamed>".to_string());
+                    provided_methods.insert(method_name.clone());
                     let mangled =
                         format!("{}__{}__{}", trait_name, method_name, type_name);
                     self.lower_impl_method(&method, &mangled, &type_name);
+                }
+
+                // Lower default method bodies for methods not provided by the impl.
+                if let Some(trait_def) = self.trait_registry.get_trait(&trait_name) {
+                    for trait_method in &trait_def.methods {
+                        if trait_method.has_default_body
+                            && !provided_methods.contains(&trait_method.name)
+                        {
+                            let key = (trait_name.clone(), trait_method.name.clone());
+                            if let Some(&range) = self.default_method_bodies.get(&key) {
+                                self.lower_default_method(
+                                    range,
+                                    &trait_name,
+                                    &trait_method.name,
+                                    &type_name,
+                                );
+                            }
+                        }
+                    }
                 }
             }
             Item::InterfaceDef(_) | Item::TypeAliasDef(_) => {
@@ -702,6 +754,118 @@ impl<'a> Lowerer<'a> {
 
         self.functions.push(MirFunction {
             name: mangled_name.to_string(),
+            params,
+            return_type,
+            body,
+            is_closure_fn: false,
+            captures: Vec::new(),
+        });
+    }
+
+    // ── Default method body lowering ─────────────────────────────────
+
+    /// Lower a default method body from an interface definition for a concrete type.
+    ///
+    /// The default body is re-lowered per concrete type (monomorphization model).
+    /// The `self` parameter is bound to the concrete impl type.
+    fn lower_default_method(
+        &mut self,
+        method_range: TextRange,
+        trait_name: &str,
+        method_name: &str,
+        type_name: &str,
+    ) {
+        // Find the InterfaceMethod AST node by its text range.
+        let tree = self.parse.syntax();
+        let method_node = tree
+            .descendants()
+            .find(|n| {
+                n.kind() == SyntaxKind::INTERFACE_METHOD && n.text_range() == method_range
+            });
+
+        let method_node = match method_node {
+            Some(n) => n,
+            None => return, // Could not find the interface method node
+        };
+
+        let interface_method = match InterfaceMethod::cast(method_node) {
+            Some(m) => m,
+            None => return,
+        };
+
+        let body_block = match interface_method.body() {
+            Some(b) => b,
+            None => return, // No default body (should not happen since has_default_body is true)
+        };
+
+        let mangled = format!("{}__{}__{}", trait_name, method_name, type_name);
+
+        // Build parameters: detect self via SELF_KW, bind to concrete type.
+        let mut params = Vec::new();
+        self.push_scope();
+
+        if let Some(param_list) = interface_method.param_list() {
+            for param in param_list.params() {
+                let is_self = param
+                    .syntax()
+                    .children_with_tokens()
+                    .any(|tok| {
+                        tok.as_token()
+                            .map(|t| t.kind() == SyntaxKind::SELF_KW)
+                            .unwrap_or(false)
+                    });
+
+                let param_name = if is_self {
+                    "self".to_string()
+                } else {
+                    param
+                        .name()
+                        .map(|t| t.text().to_string())
+                        .unwrap_or_else(|| "_".to_string())
+                };
+
+                let mir_ty = if is_self {
+                    resolve_type(
+                        &Ty::Con(snow_typeck::ty::TyCon::new(type_name)),
+                        self.registry,
+                        false,
+                    )
+                } else {
+                    self.resolve_range(param.syntax().text_range())
+                };
+
+                self.insert_var(param_name.clone(), mir_ty.clone());
+                params.push((param_name, mir_ty));
+            }
+        }
+
+        // Return type: use range-based lookup or fall back to Unit.
+        let return_type = if let Some(ann) = interface_method.return_type() {
+            self.resolve_range(ann.syntax().text_range())
+        } else {
+            MirType::Unit
+        };
+
+        // Lower the default body.
+        self.mono_depth += 1;
+        let body = if self.mono_depth > self.max_mono_depth {
+            MirExpr::Panic {
+                message: format!(
+                    "monomorphization depth limit ({}) exceeded",
+                    self.max_mono_depth
+                ),
+                file: "<compiler>".to_string(),
+                line: 0,
+            }
+        } else {
+            self.lower_block(&body_block)
+        };
+        self.mono_depth -= 1;
+
+        self.pop_scope();
+
+        self.functions.push(MirFunction {
+            name: mangled,
             params,
             return_type,
             body,
@@ -5207,7 +5371,7 @@ pub fn lower_to_mir(parse: &Parse, typeck: &TypeckResult) -> Result<MirModule, S
         None => return Err("Failed to cast root node to SourceFile".to_string()),
     };
 
-    let mut lowerer = Lowerer::new(typeck);
+    let mut lowerer = Lowerer::new(typeck, parse);
 
     // Also register builtin sum types from the registry (Option, Result).
     // Generic type params (T, E) are resolved to Ptr since all Snow values
@@ -6935,5 +7099,114 @@ end
             }
         }
         assert!(has_bool_false(&main_fn.unwrap().body), "default() for Bool should produce BoolLit(false)");
+    }
+
+    // ── Default method body tests (21-03) ────────────────────────────
+
+    #[test]
+    fn default_method_skips_missing_error() {
+        // An impl that omits a method with has_default_body=true should compile without error.
+        let source = r#"
+struct Point do
+  x :: Int
+  y :: Int
+end
+
+interface Describable do
+  fn describe(self) -> String do
+    "unknown"
+  end
+end
+
+impl Describable for Point do
+end
+"#;
+        let parse = snow_parser::parse(source);
+        let typeck = snow_typeck::check(&parse);
+        // Check that there are no MissingTraitMethod errors.
+        let missing_errors: Vec<_> = typeck.errors.iter().filter(|e| {
+            matches!(e, snow_typeck::error::TypeError::MissingTraitMethod { .. })
+        }).collect();
+        assert!(missing_errors.is_empty(),
+            "Expected no MissingTraitMethod errors, got: {:?}", missing_errors);
+        // Should also lower to MIR without failure.
+        let mir = lower_to_mir(&parse, &typeck).expect("MIR lowering failed");
+        assert!(mir.functions.iter().any(|f| f.name == "Describable__describe__Point"),
+            "Expected default method function Describable__describe__Point in MIR, got: {:?}",
+            mir.functions.iter().map(|f| &f.name).collect::<Vec<_>>());
+    }
+
+    #[test]
+    fn default_method_body_lowered_for_concrete_type() {
+        // Verify that when impl Describable for Point omits `describe`,
+        // the MIR contains a Describable__describe__Point function generated from the default body.
+        let source = r#"
+struct Point do
+  x :: Int
+  y :: Int
+end
+
+interface Describable do
+  fn describe(self) -> String do
+    "unknown"
+  end
+end
+
+impl Describable for Point do
+end
+"#;
+        let mir = lower(source);
+        let func = mir.functions.iter().find(|f| f.name == "Describable__describe__Point");
+        assert!(func.is_some(),
+            "Expected Describable__describe__Point function in MIR, got: {:?}",
+            mir.functions.iter().map(|f| &f.name).collect::<Vec<_>>());
+        let func = func.unwrap();
+        // The self parameter should be present and typed to the concrete type.
+        assert!(!func.params.is_empty(), "Expected at least self parameter");
+        assert_eq!(func.params[0].0, "self");
+    }
+
+    #[test]
+    fn override_replaces_default() {
+        // When impl provides the method, the default is NOT used.
+        let source = r#"
+struct Point do
+  x :: Int
+  y :: Int
+end
+
+interface Describable do
+  fn describe(self) -> String do
+    "unknown"
+  end
+end
+
+impl Describable for Point do
+  fn describe(self) -> String do
+    "point"
+  end
+end
+"#;
+        let mir = lower(source);
+        // There should be exactly one Describable__describe__Point function (the override).
+        let funcs: Vec<_> = mir.functions.iter()
+            .filter(|f| f.name == "Describable__describe__Point")
+            .collect();
+        assert_eq!(funcs.len(), 1,
+            "Expected exactly 1 Describable__describe__Point, got {}",
+            funcs.len());
+        // The body should contain the override string "point", not "unknown".
+        fn has_string(expr: &MirExpr, s: &str) -> bool {
+            match expr {
+                MirExpr::StringLit(val, _) => val == s,
+                MirExpr::Block(exprs, _) => exprs.iter().any(|e| has_string(e, s)),
+                MirExpr::Let { value, body, .. } => has_string(value, s) || has_string(body, s),
+                _ => false,
+            }
+        }
+        assert!(has_string(&funcs[0].body, "point"),
+            "Override body should contain 'point', got: {:?}", funcs[0].body);
+        assert!(!has_string(&funcs[0].body, "unknown"),
+            "Override body should NOT contain 'unknown'");
     }
 }

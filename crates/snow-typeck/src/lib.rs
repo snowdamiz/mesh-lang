@@ -66,6 +66,11 @@ pub struct TypeckResult {
     /// Registry of all trait definitions and impl registrations.
     /// Used by codegen for trait method dispatch resolution.
     pub trait_registry: TraitRegistry,
+    /// Default method bodies from interface definitions.
+    /// Keyed by `(trait_name, method_name)`, value is the text range of the
+    /// INTERFACE_METHOD node that contains the default body. The lowerer
+    /// uses this range to find the method's AST node from the parse tree.
+    pub default_method_bodies: FxHashMap<(String, String), TextRange>,
 }
 
 impl TypeckResult {

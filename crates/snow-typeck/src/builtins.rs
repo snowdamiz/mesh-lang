@@ -584,6 +584,7 @@ fn register_compiler_known_traits(registry: &mut TraitRegistry) {
                 has_self: true,
                 param_count: 1,
                 return_type: None, // return type is Self (the implementing type)
+                has_default_body: false,
             }],
         });
 
@@ -616,6 +617,7 @@ fn register_compiler_known_traits(registry: &mut TraitRegistry) {
             has_self: true,
             param_count: 1,
             return_type: Some(Ty::bool()),
+            has_default_body: false,
         }],
     });
 
@@ -652,6 +654,7 @@ fn register_compiler_known_traits(registry: &mut TraitRegistry) {
             has_self: true,
             param_count: 1,
             return_type: Some(Ty::bool()),
+            has_default_body: false,
         }],
     });
 
@@ -687,6 +690,7 @@ fn register_compiler_known_traits(registry: &mut TraitRegistry) {
             has_self: true,
             param_count: 0,
             return_type: Some(Ty::bool()),
+            has_default_body: false,
         }],
     });
 
@@ -714,6 +718,7 @@ fn register_compiler_known_traits(registry: &mut TraitRegistry) {
             has_self: true,
             param_count: 0, // no params besides self
             return_type: Some(Ty::string()),
+            has_default_body: false,
         }],
     });
 
@@ -748,6 +753,7 @@ fn register_compiler_known_traits(registry: &mut TraitRegistry) {
             has_self: true,
             param_count: 0,
             return_type: Some(Ty::string()),
+            has_default_body: false,
         }],
     });
 
@@ -785,6 +791,7 @@ fn register_compiler_known_traits(registry: &mut TraitRegistry) {
             has_self: true,
             param_count: 0,
             return_type: Some(Ty::int()),
+            has_default_body: false,
         }],
     });
 
@@ -822,6 +829,7 @@ fn register_compiler_known_traits(registry: &mut TraitRegistry) {
             has_self: false,
             param_count: 0,
             return_type: None, // Self -- resolved per concrete type at call site
+            has_default_body: false,
         }],
     });
 
