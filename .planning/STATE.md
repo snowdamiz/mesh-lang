@@ -10,11 +10,11 @@ See: .planning/PROJECT.md (updated 2026-02-07)
 ## Current Position
 
 Phase: 20 of 22 (Essential Stdlib Protocols)
-Plan: 1 of 5 in current phase
+Plan: 2 of 5 in current phase
 Status: In progress
-Last activity: 2026-02-08 -- Completed 20-01-PLAN.md (Typeck identity fix + Display trait)
+Last activity: 2026-02-08 -- Completed 20-02-PLAN.md (Display string interpolation dispatch)
 
-Progress: ████░░░░░░ 47% (8/17 plans)
+Progress: █████░░░░░ 53% (9/17 plans)
 
 ## Performance Metrics
 
@@ -70,6 +70,8 @@ Recent decisions for v1.3:
 - (19-04) Smoke test reveals typeck gap: "expected Point, found Point" on self parameter in trait method calls (MIR lowering correct, typeck type identity issue)
 - (20-01) Con(c) unifies with App(Con(c), []) bidirectionally for non-generic struct types
 - (20-01) Display trait registered as compiler-known with to_string(self) -> String signature
+- (20-02) Primitive Display mangled names redirected to runtime functions at MIR lowering (not codegen)
+- (20-02) Display__to_string__String handled as identity via short-circuit in lower_call_expr
 
 ### Pending Todos
 
@@ -84,6 +86,6 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-08
-Stopped at: Completed 20-01-PLAN.md
+Stopped at: Completed 20-02-PLAN.md
 Resume file: None
-Next action: Execute 20-02-PLAN.md (Display string interpolation dispatch)
+Next action: Execute 20-03-PLAN.md (Debug trait + inspect dispatch)
