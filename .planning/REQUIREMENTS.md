@@ -32,19 +32,19 @@
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| TYPE-01 | — | Pending |
-| TYPE-02 | — | Pending |
-| TYPE-03 | — | Pending |
-| RT-01 | — | Pending |
-| RT-02 | — | Pending |
-| RT-03 | — | Pending |
-| RT-04 | — | Pending |
+| TYPE-01 | Phase 16 | Pending |
+| TYPE-02 | Phase 16 | Pending |
+| TYPE-03 | Phase 16 | Pending |
+| RT-01 | Phase 17 | Pending |
+| RT-02 | Phase 17 | Pending |
+| RT-03 | Phase 17 | Pending |
+| RT-04 | Phase 17 | Pending |
 
 **Coverage:**
 - v1.2 requirements: 7 total
-- Mapped to phases: 0
-- Unmapped: 7
+- Mapped to phases: 7
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-02-07*
-*Last updated: 2026-02-07 after initial definition*
+*Last updated: 2026-02-07 after roadmap creation*

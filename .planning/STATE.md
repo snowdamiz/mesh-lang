@@ -9,10 +9,10 @@ See: .planning/PROJECT.md (updated 2026-02-07)
 
 ## Current Position
 
-Phase: Not started (defining requirements)
-Plan: —
-Status: Defining requirements
-Last activity: 2026-02-07 — Milestone v1.2 started
+Phase: 16 of 17 (Fun() Type Parsing) -- ready to plan
+Plan: --
+Status: Ready to plan
+Last activity: 2026-02-07 -- Roadmap created for v1.2
 
 Progress: ░░░░░░░░░░ 0%
 
@@ -50,6 +50,6 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-07
-Stopped at: Defining requirements for v1.2
+Stopped at: Roadmap created for v1.2 milestone
 Resume file: None
-Next action: Define requirements and create roadmap
+Next action: /gsd:plan-phase 16
