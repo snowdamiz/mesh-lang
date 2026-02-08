@@ -13,8 +13,8 @@ use snow_parser::ast::expr::{
     StringExpr, StructLiteral, TupleExpr, UnaryExpr,
 };
 use snow_parser::ast::item::{
-    ActorDef, Block, FnDef, Item, LetBinding, ServiceDef, SourceFile, StructDef, SumTypeDef,
-    SupervisorDef,
+    ActorDef, Block, FnDef, ImplDef, Item, LetBinding, ServiceDef, SourceFile, StructDef,
+    SumTypeDef, SupervisorDef,
 };
 use snow_parser::ast::pat::Pattern;
 use snow_parser::ast::AstNode;
@@ -28,6 +28,40 @@ use super::{
     BinOp, MirChildSpec, MirExpr, MirFunction, MirLiteral, MirMatchArm, MirModule, MirPattern,
     MirStructDef, MirSumTypeDef, MirType, MirVariantDef, UnaryOp,
 };
+
+// ── Helpers ──────────────────────────────────────────────────────────
+
+/// Extract the trait name and type name from an ImplDef's PATH children.
+/// Returns `(trait_name, type_name)`, e.g. `("Greetable", "Point")`.
+fn extract_impl_names(impl_def: &ImplDef) -> (String, String) {
+    let paths: Vec<_> = impl_def
+        .syntax()
+        .children()
+        .filter(|n| n.kind() == SyntaxKind::PATH)
+        .collect();
+
+    let trait_name = paths
+        .first()
+        .and_then(|path| {
+            path.children_with_tokens()
+                .filter_map(|t| t.into_token())
+                .find(|t| t.kind() == SyntaxKind::IDENT)
+                .map(|t| t.text().to_string())
+        })
+        .unwrap_or_else(|| "<unknown>".to_string());
+
+    let type_name = paths
+        .get(1)
+        .and_then(|path| {
+            path.children_with_tokens()
+                .filter_map(|t| t.into_token())
+                .find(|t| t.kind() == SyntaxKind::IDENT)
+                .map(|t| t.text().to_string())
+        })
+        .unwrap_or_else(|| "<unknown>".to_string());
+
+    (trait_name, type_name)
+}
 
 // ── Lowerer ──────────────────────────────────────────────────────────
 
@@ -182,6 +216,18 @@ impl<'a> Lowerer<'a> {
                             start_fn_name.clone(),
                             MirType::FnPtr(vec![], Box::new(MirType::Pid(None))),
                         );
+                    }
+                }
+                Item::ImplDef(impl_def) => {
+                    let (trait_name, type_name) = extract_impl_names(&impl_def);
+                    for method in impl_def.methods() {
+                        if let Some(method_name) = method.name().and_then(|n| n.text()) {
+                            let mangled =
+                                format!("{}__{}__{}", trait_name, method_name, type_name);
+                            let fn_ty =
+                                self.resolve_range(method.syntax().text_range());
+                            self.known_functions.insert(mangled.clone(), fn_ty);
+                        }
                     }
                 }
                 _ => {}
