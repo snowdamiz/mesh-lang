@@ -183,6 +183,46 @@ pub extern "C" fn snow_set_intersection(a: *mut u8, b: *mut u8) -> *mut u8 {
     }
 }
 
+/// Convert a set to a human-readable SnowString: `#{elem1, elem2, ...}`.
+///
+/// `elem_to_str` is a bare function pointer `fn(u64) -> *mut u8` that converts
+/// each element to a SnowString pointer.
+#[no_mangle]
+pub extern "C" fn snow_set_to_string(
+    set: *mut u8,
+    elem_to_str: *mut u8,
+) -> *mut u8 {
+    type ElemToStr = unsafe extern "C" fn(u64) -> *mut u8;
+
+    unsafe {
+        let len = set_len(set) as usize;
+        let data = set_data(set);
+        let f: ElemToStr = std::mem::transmute(elem_to_str);
+
+        let mut result = crate::string::snow_string_new(b"#{".as_ptr(), 2) as *mut u8;
+        for i in 0..len {
+            if i > 0 {
+                let sep = crate::string::snow_string_new(b", ".as_ptr(), 2) as *mut u8;
+                result = crate::string::snow_string_concat(
+                    result as *const crate::string::SnowString,
+                    sep as *const crate::string::SnowString,
+                ) as *mut u8;
+            }
+            let elem_str = f(*data.add(i));
+            result = crate::string::snow_string_concat(
+                result as *const crate::string::SnowString,
+                elem_str as *const crate::string::SnowString,
+            ) as *mut u8;
+        }
+        let close = crate::string::snow_string_new(b"}".as_ptr(), 1) as *mut u8;
+        result = crate::string::snow_string_concat(
+            result as *const crate::string::SnowString,
+            close as *const crate::string::SnowString,
+        ) as *mut u8;
+        result
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -271,5 +311,36 @@ mod tests {
         let s2 = snow_set_add(s1, 1);
         assert_eq!(snow_set_size(s1), 0);
         assert_eq!(snow_set_size(s2), 1);
+    }
+
+    #[test]
+    fn test_set_to_string() {
+        snow_rt_init();
+        let set = snow_set_new();
+        let set = snow_set_add(set, 10);
+        let set = snow_set_add(set, 20);
+        let set = snow_set_add(set, 30);
+
+        let result = snow_set_to_string(
+            set,
+            crate::string::snow_int_to_string as *mut u8,
+        );
+        let s = unsafe { &*(result as *const crate::string::SnowString) };
+        let text = unsafe { s.as_str() };
+        assert_eq!(text, "#{10, 20, 30}");
+    }
+
+    #[test]
+    fn test_set_to_string_empty() {
+        snow_rt_init();
+        let set = snow_set_new();
+
+        let result = snow_set_to_string(
+            set,
+            crate::string::snow_int_to_string as *mut u8,
+        );
+        let s = unsafe { &*(result as *const crate::string::SnowString) };
+        let text = unsafe { s.as_str() };
+        assert_eq!(text, "#{}");
     }
 }

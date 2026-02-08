@@ -129,6 +129,17 @@ pub extern "C" fn snow_bool_to_string(val: i8) -> *mut SnowString {
     snow_string_new(s.as_ptr(), s.len() as u64)
 }
 
+/// Identity function for string-to-string conversion.
+///
+/// Used as a callback for collection Display when elements are strings.
+/// Takes a u64 (which is a SnowString pointer cast to u64) and returns
+/// it as a `*mut SnowString`. This allows collection to_string helpers
+/// to use a uniform callback signature `fn(u64) -> *mut u8`.
+#[no_mangle]
+pub extern "C" fn snow_string_to_string(val: u64) -> *mut SnowString {
+    val as *mut SnowString
+}
+
 /// Print a Snow string to stdout (no trailing newline).
 #[no_mangle]
 pub extern "C" fn snow_print(s: *const SnowString) {

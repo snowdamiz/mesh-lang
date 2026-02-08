@@ -252,6 +252,60 @@ pub extern "C" fn snow_map_values(map: *mut u8) -> *mut u8 {
     }
 }
 
+/// Convert a map to a human-readable SnowString: `%{k1 => v1, k2 => v2, ...}`.
+///
+/// `key_to_str` and `val_to_str` are bare function pointers `fn(u64) -> *mut u8`
+/// that convert keys and values to SnowString pointers respectively.
+#[no_mangle]
+pub extern "C" fn snow_map_to_string(
+    map: *mut u8,
+    key_to_str: *mut u8,
+    val_to_str: *mut u8,
+) -> *mut u8 {
+    type ElemToStr = unsafe extern "C" fn(u64) -> *mut u8;
+
+    unsafe {
+        let len = map_len(map) as usize;
+        let entries = map_entries(map);
+        let kf: ElemToStr = std::mem::transmute(key_to_str);
+        let vf: ElemToStr = std::mem::transmute(val_to_str);
+
+        let mut result = crate::string::snow_string_new(b"%{".as_ptr(), 2) as *mut u8;
+        for i in 0..len {
+            if i > 0 {
+                let sep = crate::string::snow_string_new(b", ".as_ptr(), 2) as *mut u8;
+                result = crate::string::snow_string_concat(
+                    result as *const crate::string::SnowString,
+                    sep as *const crate::string::SnowString,
+                ) as *mut u8;
+            }
+            let key = (*entries.add(i))[0];
+            let val = (*entries.add(i))[1];
+            let key_str = kf(key);
+            result = crate::string::snow_string_concat(
+                result as *const crate::string::SnowString,
+                key_str as *const crate::string::SnowString,
+            ) as *mut u8;
+            let arrow = crate::string::snow_string_new(b" => ".as_ptr(), 4) as *mut u8;
+            result = crate::string::snow_string_concat(
+                result as *const crate::string::SnowString,
+                arrow as *const crate::string::SnowString,
+            ) as *mut u8;
+            let val_str = vf(val);
+            result = crate::string::snow_string_concat(
+                result as *const crate::string::SnowString,
+                val_str as *const crate::string::SnowString,
+            ) as *mut u8;
+        }
+        let close = crate::string::snow_string_new(b"}".as_ptr(), 1) as *mut u8;
+        result = crate::string::snow_string_concat(
+            result as *const crate::string::SnowString,
+            close as *const crate::string::SnowString,
+        ) as *mut u8;
+        result
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -368,5 +422,37 @@ mod tests {
         let lookup = crate::string::snow_string_new(b"name".as_ptr(), 4) as u64;
         let got = snow_map_get(map, lookup);
         assert_eq!(got, val2);
+    }
+
+    #[test]
+    fn test_map_to_string() {
+        snow_rt_init();
+        let map = snow_map_new();
+        let map = snow_map_put(map, 1, 10);
+        let map = snow_map_put(map, 2, 20);
+
+        let result = snow_map_to_string(
+            map,
+            crate::string::snow_int_to_string as *mut u8,
+            crate::string::snow_int_to_string as *mut u8,
+        );
+        let s = unsafe { &*(result as *const crate::string::SnowString) };
+        let text = unsafe { s.as_str() };
+        assert_eq!(text, "%{1 => 10, 2 => 20}");
+    }
+
+    #[test]
+    fn test_map_to_string_empty() {
+        snow_rt_init();
+        let map = snow_map_new();
+
+        let result = snow_map_to_string(
+            map,
+            crate::string::snow_int_to_string as *mut u8,
+            crate::string::snow_int_to_string as *mut u8,
+        );
+        let s = unsafe { &*(result as *const crate::string::SnowString) };
+        let text = unsafe { s.as_str() };
+        assert_eq!(text, "%{}");
     }
 }

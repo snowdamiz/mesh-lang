@@ -288,6 +288,49 @@ pub extern "C" fn snow_list_from_array(data: *const u64, count: i64) -> *mut u8 
     }
 }
 
+/// Convert a list to a human-readable SnowString: `[elem1, elem2, ...]`.
+///
+/// `elem_to_str` is a bare function pointer `fn(u64) -> *mut u8` that converts
+/// each element (stored as a uniform u64) to a SnowString pointer. The MIR
+/// lowerer passes the appropriate runtime to_string function (e.g.,
+/// `snow_int_to_string` for `List<Int>`).
+#[no_mangle]
+pub extern "C" fn snow_list_to_string(
+    list: *mut u8,
+    elem_to_str: *mut u8,
+) -> *mut u8 {
+    type ElemToStr = unsafe extern "C" fn(u64) -> *mut u8;
+
+    unsafe {
+        let len = list_len(list) as usize;
+        let data = list_data(list);
+        let f: ElemToStr = std::mem::transmute(elem_to_str);
+
+        // Build the result string piece by piece using snow_string_concat.
+        let mut result = crate::string::snow_string_new(b"[".as_ptr(), 1) as *mut u8;
+        for i in 0..len {
+            if i > 0 {
+                let sep = crate::string::snow_string_new(b", ".as_ptr(), 2) as *mut u8;
+                result = crate::string::snow_string_concat(
+                    result as *const crate::string::SnowString,
+                    sep as *const crate::string::SnowString,
+                ) as *mut u8;
+            }
+            let elem_str = f(*data.add(i));
+            result = crate::string::snow_string_concat(
+                result as *const crate::string::SnowString,
+                elem_str as *const crate::string::SnowString,
+            ) as *mut u8;
+        }
+        let close = crate::string::snow_string_new(b"]".as_ptr(), 1) as *mut u8;
+        result = crate::string::snow_string_concat(
+            result as *const crate::string::SnowString,
+            close as *const crate::string::SnowString,
+        ) as *mut u8;
+        result
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -469,5 +512,36 @@ mod tests {
 
         let result = snow_list_reduce(list, 42, add as *mut u8, std::ptr::null_mut());
         assert_eq!(result, 42); // Initial value returned unchanged.
+    }
+
+    #[test]
+    fn test_list_to_string() {
+        snow_rt_init();
+        let list = snow_list_new();
+        let list = snow_list_append(list, 1);
+        let list = snow_list_append(list, 2);
+        let list = snow_list_append(list, 3);
+
+        let result = snow_list_to_string(
+            list,
+            crate::string::snow_int_to_string as *mut u8,
+        );
+        let s = unsafe { &*(result as *const crate::string::SnowString) };
+        let text = unsafe { s.as_str() };
+        assert_eq!(text, "[1, 2, 3]");
+    }
+
+    #[test]
+    fn test_list_to_string_empty() {
+        snow_rt_init();
+        let list = snow_list_new();
+
+        let result = snow_list_to_string(
+            list,
+            crate::string::snow_int_to_string as *mut u8,
+        );
+        let s = unsafe { &*(result as *const crate::string::SnowString) };
+        let text = unsafe { s.as_str() };
+        assert_eq!(text, "[]");
     }
 }
