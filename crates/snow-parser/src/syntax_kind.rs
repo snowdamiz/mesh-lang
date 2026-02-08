@@ -242,6 +242,8 @@ pub enum SyntaxKind {
     OPTION_TYPE,
     /// Result type sugar: `T!E` => `Result<T, E>`
     RESULT_TYPE,
+    /// Function type annotation: `Fun(Int, String) -> Bool`
+    FUN_TYPE,
 
     // ── Sum type / ADT node kinds ────────────────────────────────────────
     /// Sum type definition: `type Shape do ... end`
@@ -627,6 +629,7 @@ mod tests {
             SyntaxKind::GENERIC_ARG_LIST,
             SyntaxKind::OPTION_TYPE,
             SyntaxKind::RESULT_TYPE,
+            SyntaxKind::FUN_TYPE,
             SyntaxKind::SUM_TYPE_DEF,
             SyntaxKind::VARIANT_DEF,
             SyntaxKind::VARIANT_FIELD,
@@ -660,8 +663,8 @@ mod tests {
             SyntaxKind::SECONDS_LIMIT,
         ];
         assert!(
-            node_kinds.len() >= 72,
-            "expected at least 72 composite node kinds, got {}",
+            node_kinds.len() >= 73,
+            "expected at least 73 composite node kinds, got {}",
             node_kinds.len()
         );
     }
