@@ -2,7 +2,7 @@
 
 ## What This Is
 
-Snow is a programming language that combines Elixir/Ruby-style expressive syntax with static Hindley-Milner type inference and BEAM-style concurrency (actors, supervision trees, fault tolerance), compiled via LLVM to native single-binary executables. The compiler is written in Rust. v1.0 shipped a complete compiler pipeline, actor runtime, standard library, and developer tooling (formatter, REPL, package manager, LSP). v1.1 polishes the language by fixing known limitations from the initial release.
+Snow is a programming language that combines Elixir/Ruby-style expressive syntax with static Hindley-Milner type inference and BEAM-style concurrency (actors, supervision trees, fault tolerance), compiled via LLVM to native single-binary executables. The compiler is written in Rust. v1.0 shipped a complete compiler pipeline, actor runtime, standard library, and developer tooling. v1.1 polished the language by resolving all five documented v1.0 limitations: multi-clause functions, string pattern matching, pipe operator with closures, actor-per-connection HTTP, and generic map types.
 
 ## Core Value
 
@@ -22,14 +22,15 @@ Expressive, readable concurrency -- writing concurrent programs should feel as n
 - ✓ Pattern matching as a core language feature with exhaustiveness checking -- v1.0
 - ✓ Standard library sufficient for HTTP servers and file I/O -- v1.0
 - ✓ Developer tooling: formatter, REPL, package manager, LSP server -- v1.0
+- ✓ Multi-clause function definitions with guard clauses and exhaustiveness warnings -- v1.1
+- ✓ String comparison in pattern matching (compile-time string matching via snow_string_eq) -- v1.1
+- ✓ Pipe operator with inline closures (full closure rewrite + pipe-aware type inference) -- v1.1
+- ✓ Actor-per-connection HTTP server with catch_unwind crash isolation -- v1.1
+- ✓ Generic map types Map<K, V> with string keys and map literal syntax -- v1.1
 
 ### Active
 
-- [ ] Multi-clause function definitions (define functions with multiple pattern-matched clauses instead of requiring case expressions)
-- [ ] String comparison in pattern matching (compile-time string matching instead of runtime fallback)
-- [ ] Pipe operator with inline closures (parse `list |> Enum.map(fn x -> x * 2 end)` correctly)
-- [ ] Actor-per-connection HTTP server (replace thread-per-connection with lightweight actor processes)
-- [ ] Generic map types (Map with string keys, not just integer-keyed `Map.put(Map, Int, Int)`)
+(None -- planning next milestone)
 
 ### Out of Scope
 
@@ -47,27 +48,20 @@ Expressive, readable concurrency -- writing concurrent programs should feel as n
 
 ## Context
 
-Shipped v1.0 with 52,611 lines of Rust across 107 source files.
+Shipped v1.1 with 56,539 lines of Rust (+3,928 from v1.0).
 Tech stack: Rust compiler, LLVM 21 (Inkwell 0.8), corosensei coroutines, rowan CST, ariadne diagnostics.
 Crates: snow-lexer, snow-parser, snow-typeck, snow-mir, snow-codegen, snow-rt, snow-fmt, snow-repl, snow-pkg, snow-lsp, snowc.
 
-Known limitations (being addressed in v1.1):
-- Multi-clause function definitions (workaround: case expressions)
-- String comparison in pattern matching (runtime fallback)
-- Pipe operator with inline closures (parser limitation)
-- HTTP server uses thread-per-connection (not actor-per-connection)
-- Map.put typed as (Map, Int, Int) -- string-keyed maps need refinement
+All v1.0 limitations resolved in v1.1:
+- Multi-clause functions: `fn fib(0) = 0; fn fib(n) = fib(n-1) + fib(n-2)` with guards
+- String pattern matching: compile-time snow_string_eq in case expressions
+- Pipe + closures: `list |> map(fn x -> x * 2 end)` with pipe-aware type inference
+- HTTP: actor-per-connection with catch_unwind crash isolation
+- Maps: polymorphic Map<K, V> with string keys and `%{"name" => "Alice"}` literal syntax
 
-## Current Milestone: v1.1 Language Polish
-
-**Goal:** Fix all five documented v1.0 limitations to make the language feel complete and polished.
-
-**Target features:**
-- Multi-clause function definitions
-- String comparison in pattern matching
-- Pipe operator with inline closures
-- Actor-per-connection HTTP server
-- Generic map types (string keys and beyond)
+Known remaining items:
+- Fun() type annotation not parsed as function type (Fun treated as type constructor)
+- Arena/bump allocation GC -- mark-sweep needed for long-running actors
 
 ## Constraints
 
@@ -80,7 +74,7 @@ Known limitations (being addressed in v1.1):
 
 | Decision | Rationale | Outcome |
 |----------|-----------|---------|
-| Rust for compiler | Strong LLVM bindings, memory safe, good for complex software | ✓ Good -- 52K LOC Rust, stable compiler |
+| Rust for compiler | Strong LLVM bindings, memory safe, good for complex software | ✓ Good -- 56K LOC Rust, stable compiler |
 | LLVM as backend | Proven codegen, multi-platform, avoids writing own backend | ✓ Good -- native binaries on macOS/Linux |
 | Elixir/Ruby syntax style | Expressive, readable, pattern matching native | ✓ Good -- clean do/end blocks, pipe operator |
 | Static types with HM inference | Safety without verbosity | ✓ Good -- rarely need annotations |
@@ -89,8 +83,11 @@ Known limitations (being addressed in v1.1):
 | Angle brackets <T> for generics | Disambiguates from list syntax | ✓ Good -- migrated from [T] in Phase 3 |
 | corosensei for coroutines | M:N scheduling without OS threads per actor | ✓ Good -- 100K actors in ~2.78s |
 | Rowan for CST | Lossless syntax tree, editor tooling support | ✓ Good -- powers formatter and LSP |
-| Thread-per-connection HTTP | Simpler than actor-per-connection for v1 | ⚠️ Revisit -- may want actor-based in v2 |
+| Actor-per-connection HTTP | Crash isolation, lightweight, uses existing actor runtime | ✓ Good -- v1.1, replaced threads with actors |
 | Arena/bump allocation for GC | Simple, fast allocation for v1 | ⚠️ Revisit -- true mark-sweep needed for long-running actors |
+| Lazy key_type tagging for Maps | HM let-generalization prevents type resolution at Map.new() | ✓ Good -- runtime dispatch at put/get sites |
+| Pipe-aware type inference | infer_pipe handles CallExpr RHS, prepends lhs_ty before arity check | ✓ Good -- enables pipe+closure chains |
+| panic!() instead of abort() | catch_unwind requires catchable panics for crash isolation | ✓ Good -- actors survive peer crashes |
 
 ---
-*Last updated: 2026-02-07 after v1.1 milestone started*
+*Last updated: 2026-02-08 after v1.1 milestone*
