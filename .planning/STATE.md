@@ -5,16 +5,16 @@
 See: .planning/PROJECT.md (updated 2026-02-07)
 
 **Core value:** Expressive, readable concurrency -- writing concurrent programs should feel as natural as sequential code, with supervision and fault tolerance built in.
-**Current focus:** Milestone v1.3 Traits & Protocols -- Phase 20 in progress
+**Current focus:** Milestone v1.3 Traits & Protocols -- Phase 20 complete
 
 ## Current Position
 
 Phase: 20 of 22 (Essential Stdlib Protocols)
-Plan: 4 of 5 in current phase
-Status: In progress
-Last activity: 2026-02-08 -- Completed 20-04-PLAN.md (Eq/Ord for structs)
+Plan: 5 of 5 in current phase
+Status: Phase complete
+Last activity: 2026-02-08 -- Completed 20-05-PLAN.md (Eq/Ord for sum types)
 
-Progress: ██████░░░░ 65% (11/17 plans)
+Progress: ███████░░░ 71% (12/17 plans)
 
 ## Performance Metrics
 
@@ -79,6 +79,8 @@ Recent decisions for v1.3:
 - (20-04) String Ord impl registered (runtime lt helper not yet implemented)
 - (20-04) NotEq/Gt/LtEq/GtEq expressed as negate/swap transformations of eq/lt
 - (20-04) Negation in operator dispatch uses BinOp::Eq(x, false) not UnaryOp::Not
+- (20-05) Sum type Eq/Ord uses nested Match with Constructor patterns (no direct tag/field access in MIR)
+- (20-05) Ord__lt for sum types generates O(n^2) variant cross-product in inner match arms
 
 ### Pending Todos
 
@@ -93,6 +95,6 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-08
-Stopped at: Completed 20-04-PLAN.md
+Stopped at: Completed 20-05-PLAN.md (Phase 20 complete)
 Resume file: None
-Next action: Execute 20-05-PLAN.md (Eq/Ord for sum types)
+Next action: Plan Phase 21
