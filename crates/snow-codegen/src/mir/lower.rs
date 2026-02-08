@@ -3274,9 +3274,9 @@ impl<'a> Lowerer<'a> {
                 // Look up the typeck Ty for the first argument from the call's AST
                 if let Some(arg_list) = call.arg_list() {
                     if let Some(first_arg_ast) = arg_list.args().next() {
-                        if let Some(typeck_ty) = self.get_ty(first_arg_ast.syntax().text_range()) {
+                        if let Some(typeck_ty) = self.get_ty(first_arg_ast.syntax().text_range()).cloned() {
                             if let Some(collection_call) =
-                                self.wrap_collection_to_string(&args[0], typeck_ty)
+                                self.wrap_collection_to_string(&args[0], &typeck_ty)
                             {
                                 return collection_call;
                             }
@@ -4294,7 +4294,7 @@ impl<'a> Lowerer<'a> {
     ///
     /// `typeck_ty` is the optional original typeck `Ty` for the expression,
     /// used to resolve collection element types for Display dispatch.
-    fn wrap_to_string(&self, expr: MirExpr, typeck_ty: Option<&Ty>) -> MirExpr {
+    fn wrap_to_string(&mut self, expr: MirExpr, typeck_ty: Option<&Ty>) -> MirExpr {
         match expr.ty() {
             MirType::String => expr, // already a string
             MirType::Int => MirExpr::Call {
@@ -4391,7 +4391,7 @@ impl<'a> Lowerer<'a> {
     ///
     /// Returns `Some(MirExpr)` if the `Ty` is a List, Map, or Set with known
     /// element types; `None` otherwise (fallback to generic to_string).
-    fn wrap_collection_to_string(&self, expr: &MirExpr, ty: &Ty) -> Option<MirExpr> {
+    fn wrap_collection_to_string(&mut self, expr: &MirExpr, ty: &Ty) -> Option<MirExpr> {
         // Match Ty::App(Con("List"|"Map"|"Set"), args).
         // Also handle Ty::Con("List"|"Map"|"Set") without type args (empty collections).
         let (base_name, args) = match ty {
@@ -4481,16 +4481,19 @@ impl<'a> Lowerer<'a> {
     ///
     /// For primitive types, returns the runtime to_string function name.
     /// For user-defined types with Display impl, returns the mangled name.
-    /// For nested collections, falls back to snow_int_to_string (v1.3 limitation).
-    fn resolve_to_string_callback(&self, elem_ty: &Ty) -> String {
+    /// For nested collections/sum types, generates synthetic MIR wrapper
+    /// functions and returns the wrapper name. Recurses for arbitrary depth.
+    fn resolve_to_string_callback(&mut self, elem_ty: &Ty) -> String {
         match elem_ty {
             Ty::Con(con) => match con.name.as_str() {
                 "Int" => "snow_int_to_string".to_string(),
                 "Float" => "snow_float_to_string".to_string(),
                 "Bool" => "snow_bool_to_string".to_string(),
                 "String" => "snow_string_to_string".to_string(),
-                // Collection types nested inside collections -- v1.3 limitation
-                "List" | "Map" | "Set" => "snow_int_to_string".to_string(),
+                // Bare collection type without type args -- default to Int callback
+                "List" => self.generate_display_collection_wrapper("list", "snow_list_to_string", &Ty::int(), None),
+                "Set" => self.generate_display_collection_wrapper("set", "snow_set_to_string", &Ty::int(), None),
+                "Map" => self.generate_display_map_wrapper(&Ty::int(), &Ty::int()),
                 name => {
                     // Check if this user type has a Display impl
                     let ty_for_lookup = Ty::Con(snow_typeck::ty::TyCon::new(name));
@@ -4500,24 +4503,218 @@ impl<'a> Lowerer<'a> {
                     if !matching.is_empty() {
                         format!("{}__to_string__{}", matching[0], name)
                     } else {
-                        // No Display impl -- fallback to int_to_string
-                        // (will produce nonsensical output, but won't crash)
-                        "snow_int_to_string".to_string()
+                        // Check for Debug inspect as fallback
+                        let inspect_name = format!("Debug__inspect__{}", name);
+                        if self.known_functions.contains_key(&inspect_name) {
+                            inspect_name
+                        } else {
+                            // No Display or Debug impl -- fallback
+                            "snow_int_to_string".to_string()
+                        }
                     }
                 }
             },
-            Ty::App(con_ty, _) => {
-                // Nested generic type (e.g., List<Int> inside a Set)
-                // v1.3 limitation: fall back
+            Ty::App(con_ty, args) => {
                 if let Ty::Con(con) = con_ty.as_ref() {
-                    if matches!(con.name.as_str(), "List" | "Map" | "Set") {
-                        return "snow_int_to_string".to_string();
+                    match con.name.as_str() {
+                        "List" => {
+                            let inner_ty = args.first().cloned().unwrap_or_else(Ty::int);
+                            self.generate_display_collection_wrapper("list", "snow_list_to_string", &inner_ty, None)
+                        }
+                        "Set" => {
+                            let inner_ty = args.first().cloned().unwrap_or_else(Ty::int);
+                            self.generate_display_collection_wrapper("set", "snow_set_to_string", &inner_ty, None)
+                        }
+                        "Map" => {
+                            let key_ty = args.first().cloned().unwrap_or_else(Ty::int);
+                            let val_ty = args.get(1).cloned().unwrap_or_else(Ty::int);
+                            self.generate_display_map_wrapper(&key_ty, &val_ty)
+                        }
+                        name => {
+                            // Monomorphized sum type or struct: e.g., Option<Int> -> Option_Int
+                            let mangled = self.mangle_ty_for_display(elem_ty);
+                            // Check Display__to_string__{mangled}
+                            let display_name = format!("Display__to_string__{}", mangled);
+                            if self.known_functions.contains_key(&display_name) {
+                                return display_name;
+                            }
+                            // Check Debug__inspect__{mangled}
+                            let inspect_name = format!("Debug__inspect__{}", mangled);
+                            if self.known_functions.contains_key(&inspect_name) {
+                                return inspect_name;
+                            }
+                            // Check trait registry for Display impl
+                            let ty_for_lookup = Ty::Con(snow_typeck::ty::TyCon::new(name));
+                            let matching = self
+                                .trait_registry
+                                .find_method_traits("to_string", &ty_for_lookup);
+                            if !matching.is_empty() {
+                                format!("{}__to_string__{}", matching[0], mangled)
+                            } else {
+                                "snow_int_to_string".to_string()
+                            }
+                        }
                     }
+                } else {
+                    "snow_int_to_string".to_string()
                 }
-                "snow_int_to_string".to_string()
             }
             _ => "snow_int_to_string".to_string(),
         }
+    }
+
+    /// Mangle a `Ty` into a display-friendly name for synthetic wrapper functions.
+    ///
+    /// Examples:
+    /// - `Ty::Con("Int")` -> `"Int"`
+    /// - `Ty::App(Con("List"), [Con("Int")])` -> `"list_Int"`
+    /// - `Ty::App(Con("Option"), [Con("Int")])` -> `"Option_Int"`
+    /// - `Ty::App(Con("List"), [App(Con("List"), [Con("Int")])])` -> `"list_list_Int"`
+    fn mangle_ty_for_display(&self, ty: &Ty) -> String {
+        match ty {
+            Ty::Con(con) => con.name.clone(),
+            Ty::App(con_ty, args) => {
+                if let Ty::Con(con) = con_ty.as_ref() {
+                    let base = match con.name.as_str() {
+                        "List" => "list",
+                        "Set" => "set",
+                        "Map" => "map",
+                        other => other,
+                    };
+                    let mut name = base.to_string();
+                    for arg in args {
+                        name.push('_');
+                        name.push_str(&self.mangle_ty_for_display(arg));
+                    }
+                    name
+                } else {
+                    "Unknown".to_string()
+                }
+            }
+            _ => "Unknown".to_string(),
+        }
+    }
+
+    /// Generate a synthetic MIR wrapper function for displaying a List or Set
+    /// element that is itself a collection or complex type.
+    ///
+    /// The wrapper bridges the `fn(u64) -> *mut u8` callback signature expected
+    /// by the runtime. It takes a single Ptr parameter and calls the appropriate
+    /// runtime to_string function with the recursively resolved inner callback.
+    ///
+    /// Returns the name of the wrapper function.
+    fn generate_display_collection_wrapper(
+        &mut self,
+        collection_kind: &str,   // "list" or "set"
+        runtime_fn: &str,        // "snow_list_to_string" or "snow_set_to_string"
+        inner_ty: &Ty,
+        _extra: Option<&str>,
+    ) -> String {
+        let inner_mangled = self.mangle_ty_for_display(inner_ty);
+        let wrapper_name = format!("__display_{}_{}_to_str", collection_kind, inner_mangled);
+
+        // Dedup: if already generated, return existing name
+        if self.known_functions.contains_key(&wrapper_name) {
+            return wrapper_name;
+        }
+
+        // Recursively resolve the inner element's callback
+        let inner_callback = self.resolve_to_string_callback(inner_ty);
+
+        // Register the wrapper before generating body (prevents infinite recursion)
+        let wrapper_ty = MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Ptr));
+        self.known_functions.insert(wrapper_name.clone(), wrapper_ty);
+
+        // Build the wrapper function MIR:
+        //   fn __display_list_Int_to_str(__elem: Ptr) -> Ptr {
+        //       snow_list_to_string(__elem, snow_int_to_string)
+        //   }
+        let param_name = "__elem".to_string();
+        let fn_ptr_ty = MirType::FnPtr(
+            vec![MirType::Ptr, MirType::Ptr],
+            Box::new(MirType::Ptr),
+        );
+        let body = MirExpr::Call {
+            func: Box::new(MirExpr::Var(runtime_fn.to_string(), fn_ptr_ty)),
+            args: vec![
+                MirExpr::Var(param_name.clone(), MirType::Ptr),
+                MirExpr::Var(
+                    inner_callback,
+                    MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Ptr)),
+                ),
+            ],
+            ty: MirType::Ptr,
+        };
+
+        self.functions.push(MirFunction {
+            name: wrapper_name.clone(),
+            params: vec![(param_name, MirType::Ptr)],
+            return_type: MirType::Ptr,
+            body,
+            is_closure_fn: false,
+            captures: vec![],
+        });
+
+        wrapper_name
+    }
+
+    /// Generate a synthetic MIR wrapper function for displaying a Map element.
+    ///
+    /// The wrapper calls `snow_map_to_string` with recursively resolved key and
+    /// value callbacks.
+    fn generate_display_map_wrapper(&mut self, key_ty: &Ty, val_ty: &Ty) -> String {
+        let key_mangled = self.mangle_ty_for_display(key_ty);
+        let val_mangled = self.mangle_ty_for_display(val_ty);
+        let wrapper_name = format!("__display_map_{}_{}_to_str", key_mangled, val_mangled);
+
+        // Dedup check
+        if self.known_functions.contains_key(&wrapper_name) {
+            return wrapper_name;
+        }
+
+        // Recursively resolve key and value callbacks
+        let key_callback = self.resolve_to_string_callback(key_ty);
+        let val_callback = self.resolve_to_string_callback(val_ty);
+
+        // Register the wrapper
+        let wrapper_ty = MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Ptr));
+        self.known_functions.insert(wrapper_name.clone(), wrapper_ty);
+
+        // Build the wrapper function MIR:
+        //   fn __display_map_Int_String_to_str(__elem: Ptr) -> Ptr {
+        //       snow_map_to_string(__elem, snow_int_to_string, snow_string_to_string)
+        //   }
+        let param_name = "__elem".to_string();
+        let fn_ptr_ty = MirType::FnPtr(
+            vec![MirType::Ptr, MirType::Ptr, MirType::Ptr],
+            Box::new(MirType::Ptr),
+        );
+        let body = MirExpr::Call {
+            func: Box::new(MirExpr::Var("snow_map_to_string".to_string(), fn_ptr_ty)),
+            args: vec![
+                MirExpr::Var(param_name.clone(), MirType::Ptr),
+                MirExpr::Var(
+                    key_callback,
+                    MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Ptr)),
+                ),
+                MirExpr::Var(
+                    val_callback,
+                    MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Ptr)),
+                ),
+            ],
+            ty: MirType::Ptr,
+        };
+
+        self.functions.push(MirFunction {
+            name: wrapper_name.clone(),
+            params: vec![(param_name, MirType::Ptr)],
+            return_type: MirType::Ptr,
+            body,
+            is_closure_fn: false,
+            captures: vec![],
+        });
+
+        wrapper_name
     }
 
     // ── Return expression lowering ───────────────────────────────────
