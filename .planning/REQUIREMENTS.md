@@ -22,9 +22,9 @@ Requirements for v1.1 release. Each maps to roadmap phases.
 
 ### Standard Library — Maps
 
-- [ ] **MAP-01**: Map type supports generic key and value types (`Map<K, V>`)
-- [ ] **MAP-02**: `Map.put`, `Map.get`, and other Map functions work with string keys
-- [ ] **MAP-03**: Map literal syntax works with string keys (`%{"name" => "Alice"}`)
+- [x] **MAP-01**: Map type supports generic key and value types (`Map<K, V>`)
+- [x] **MAP-02**: `Map.put`, `Map.get`, and other Map functions work with string keys
+- [x] **MAP-03**: Map literal syntax works with string keys (`%{"name" => "Alice"}`)
 
 ### Standard Library — HTTP
 
@@ -66,9 +66,9 @@ Which phases cover which requirements. Updated during roadmap creation.
 | SYN-05 | Phase 12 | Complete |
 | PAT-01 | Phase 13 | Complete |
 | PAT-02 | Phase 13 | Complete |
-| MAP-01 | Phase 14 | Pending |
-| MAP-02 | Phase 14 | Pending |
-| MAP-03 | Phase 14 | Pending |
+| MAP-01 | Phase 14 | Complete |
+| MAP-02 | Phase 14 | Complete |
+| MAP-03 | Phase 14 | Complete |
 | HTTP-01 | Phase 15 | Pending |
 | HTTP-02 | Phase 15 | Pending |
 
@@ -79,4 +79,4 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 ---
 *Requirements defined: 2026-02-07*
-*Last updated: 2026-02-07 after Phase 12 completion*
+*Last updated: 2026-02-08 after Phase 14 completion*

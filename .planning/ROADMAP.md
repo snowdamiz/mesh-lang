@@ -22,7 +22,7 @@ standard library, and developer tooling. See milestones/v1.0-ROADMAP.md for deta
 - [x] **Phase 11: Multi-Clause Functions** - Define functions with multiple pattern-matched clauses
 - [x] **Phase 12: Pipe Operator Closures** - Parse inline closures inside pipe chains
 - [x] **Phase 13: String Pattern Matching** - Compile-time string comparison in case expressions
-- [ ] **Phase 14: Generic Map Types** - Map<K, V> with string keys and generic functions
+- [x] **Phase 14: Generic Map Types** - Map<K, V> with string keys and generic functions
 - [ ] **Phase 15: HTTP Actor Model** - Actor-per-connection HTTP server with supervision
 
 ## Phase Details
@@ -83,8 +83,8 @@ Plans:
 **Plans**: 2 plans
 
 Plans:
-- [ ] 14-01-PLAN.md -- Runtime key_type tag, polymorphic typeck signatures, MIR/codegen dispatch, string-key e2e test
-- [ ] 14-02-PLAN.md -- Map literal syntax: parser, AST, type inference, MIR desugaring, e2e tests
+- [x] 14-01-PLAN.md -- Runtime key_type tag, polymorphic typeck signatures, MIR/codegen dispatch, string-key e2e test
+- [x] 14-02-PLAN.md -- Map literal syntax: parser, AST, type inference, MIR desugaring, e2e tests
 
 ### Phase 15: HTTP Actor Model
 **Goal**: HTTP server uses lightweight actor processes per connection instead of OS threads, with crash isolation per connection
@@ -109,5 +109,5 @@ Phases execute in numeric order: 11 -> 12 -> 13 -> 14 -> 15
 | 11. Multi-Clause Functions | v1.1 | 3/3 | ✓ Complete | 2026-02-07 |
 | 12. Pipe Operator Closures | v1.1 | 3/3 | ✓ Complete | 2026-02-07 |
 | 13. String Pattern Matching | v1.1 | 1/1 | ✓ Complete | 2026-02-07 |
-| 14. Generic Map Types | v1.1 | 0/2 | Not started | - |
+| 14. Generic Map Types | v1.1 | 2/2 | ✓ Complete | 2026-02-08 |
 | 15. HTTP Actor Model | v1.1 | 0/TBD | Not started | - |
