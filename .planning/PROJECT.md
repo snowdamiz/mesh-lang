@@ -2,7 +2,7 @@
 
 ## What This Is
 
-Snow is a programming language that combines Elixir/Ruby-style expressive syntax with static Hindley-Milner type inference and BEAM-style concurrency (actors, supervision trees, fault tolerance), compiled via LLVM to native single-binary executables. The compiler is written in Rust. v1.0 shipped a complete compiler pipeline, actor runtime, standard library, and developer tooling. v1.1 polished the language by resolving all five documented v1.0 limitations. v1.2 added Fun() type annotations and a mark-sweep garbage collector for per-actor heaps. v1.3 focuses on completing the trait/protocol system and adding stdlib protocols for server development.
+Snow is a programming language that combines Elixir/Ruby-style expressive syntax with static Hindley-Milner type inference and BEAM-style concurrency (actors, supervision trees, fault tolerance), compiled via LLVM to native single-binary executables. The compiler is written in Rust. v1.0 shipped a complete compiler pipeline, actor runtime, standard library, and developer tooling. v1.1 polished the language by resolving all five documented v1.0 limitations. v1.2 added Fun() type annotations and a mark-sweep garbage collector for per-actor heaps. v1.3 completed the trait/protocol system with user-defined interfaces, impl blocks, static dispatch via monomorphization, and six stdlib protocols (Display, Debug, Eq, Ord, Hash, Default) with auto-derive support.
 
 ## Core Value
 
@@ -29,20 +29,17 @@ Expressive, readable concurrency -- writing concurrent programs should feel as n
 - ✓ Generic map types Map<K, V> with string keys and map literal syntax -- v1.1
 - ✓ Fun() type annotation parsed as function type instead of type constructor -- v1.2
 - ✓ Mark-sweep garbage collector for per-actor heaps (replacing arena/bump allocation) -- v1.2
+- ✓ User-defined interface definitions with method signatures and default implementations -- v1.3
+- ✓ impl blocks to implement interfaces for concrete types with static dispatch via monomorphization -- v1.3
+- ✓ Where clauses working with user-defined traits (TraitNotSatisfied enforcement) -- v1.3
+- ✓ Trait-based operator overloading for user types (all 6 comparison operators via Eq/Ord) -- v1.3
+- ✓ Stdlib protocols: Display, Debug, Eq, Ord, Hash, Default -- v1.3
+- ✓ Auto-derive: deriving(Eq, Ord, Display, Debug, Hash) from struct/sum-type metadata -- v1.3
+- ✓ Collection Display/Debug for List, Map, Set -- v1.3
 
 ### Active
 
-**Current Milestone: v1.3 Traits & Protocols**
-
-**Goal:** Complete the trait system for user-defined interfaces and impls with static dispatch, and ship stdlib protocols that enable server-oriented abstractions (serialization, iteration, conversion, hashing).
-
-**Target features:**
-- User-defined `interface` definitions with method signatures and default implementations
-- `impl` blocks to implement interfaces for concrete types
-- Where clauses working with user-defined traits
-- Trait-based operator overloading for user types (impl Add for MyType)
-- Static dispatch via monomorphization in codegen
-- Stdlib protocols: Display, Iterator, From/Into, Serialize/Deserialize, Hash, Default
+No active requirements -- planning next milestone.
 
 ### Out of Scope
 
@@ -60,21 +57,24 @@ Expressive, readable concurrency -- writing concurrent programs should feel as n
 - Generational GC -- mark-sweep sufficient for now; generational optimization is future work
 - Concurrent/incremental GC -- per-actor isolation means pauses only affect one actor
 - Compacting GC -- mark-sweep with free-list is sufficient
+- Dynamic dispatch / vtables / trait objects -- use sum types instead; static dispatch via monomorphization
+- Higher-kinded types (Functor/Monad) -- out of language philosophy
+- Specialization (overlapping impls) -- unsound without careful design; not planned
 
 ## Context
 
-Shipped v1.2 with 57,657 lines of Rust (+1,118 from v1.1).
+Shipped v1.3 with 63,189 lines of Rust (+5,532 from v1.2).
 Tech stack: Rust compiler, LLVM 21 (Inkwell 0.8), corosensei coroutines, rowan CST, ariadne diagnostics.
 Crates: snow-lexer, snow-parser, snow-typeck, snow-mir, snow-codegen, snow-rt, snow-fmt, snow-repl, snow-pkg, snow-lsp, snowc.
 
-All known issues resolved through v1.2:
-- v1.0 limitations (multi-clause functions, string matching, pipe+closures, HTTP actors, maps) -- fixed in v1.1
-- Fun() type annotation parsing -- fixed in v1.2
-- Arena/bump allocation GC -- replaced with mark-sweep in v1.2
+1,187 tests passing across all crates. Zero known critical bugs.
 
-1,018 tests passing across all crates. Zero known bugs. Zero tech debt.
-
-v1.3 trait system status: Parser already handles `interface` and `impl` syntax. TraitRegistry in snow-typeck handles trait definitions, impl registration, and method validation. Compiler-known traits (Add, Eq, Ord, etc.) work with built-in impls for primitives. Where clauses parse and validate. Codegen currently skips InterfaceDef/ImplDef ("interfaces are erased"). The gap is user-defined traits and codegen integration (monomorphization).
+Known limitations carried from v1.3:
+- LLVM Constructor pattern field binding limitation for sum type non-nullary variants (MIR correct, codegen limitation)
+- Ordering sum type (Less | Equal | Greater) not yet user-visible; lt() -> Bool with negate/swap used instead
+- Nested collection Display (List<List<Int>>) falls back to snow_int_to_string
+- Generic type auto-derive not supported (requires monomorphization-aware trait impl registration)
+- Higher-order constrained functions drop constraints when captured as values
 
 ## Constraints
 
@@ -87,7 +87,7 @@ v1.3 trait system status: Parser already handles `interface` and `impl` syntax. 
 
 | Decision | Rationale | Outcome |
 |----------|-----------|---------|
-| Rust for compiler | Strong LLVM bindings, memory safe, good for complex software | ✓ Good -- 57K LOC Rust, stable compiler |
+| Rust for compiler | Strong LLVM bindings, memory safe, good for complex software | ✓ Good -- 63K LOC Rust, stable compiler |
 | LLVM as backend | Proven codegen, multi-platform, avoids writing own backend | ✓ Good -- native binaries on macOS/Linux |
 | Elixir/Ruby syntax style | Expressive, readable, pattern matching native | ✓ Good -- clean do/end blocks, pipe operator |
 | Static types with HM inference | Safety without verbosity | ✓ Good -- rarely need annotations |
@@ -104,8 +104,12 @@ v1.3 trait system status: Parser already handles `interface` and `impl` syntax. 
 | Fun() as text-comparison, not keyword | Type-position disambiguation only; avoids breaking existing code | ✓ Good -- v1.2, clean integration with HM |
 | Conservative stack scanning | No type maps yet; every 8-byte word treated as potential pointer | ✓ Good -- safe, may retain some garbage |
 | GC at yield points only | Cooperative; never interrupts other actors | ✓ Good -- per-actor isolation preserved |
-
-| Static dispatch for traits | Monomorphization fits LLVM codegen naturally, no runtime vtable overhead, actor system provides dynamic routing where needed | — Pending |
+| Static dispatch for traits | Monomorphization fits LLVM codegen naturally, no runtime vtable overhead | ✓ Good -- v1.3, zero-overhead trait calls |
+| MIR lowering as trait integration point | Type checker resolves concrete types; MIR mangles names and emits direct calls | ✓ Good -- v1.3, clean separation of concerns |
+| Trait__Method__Type name mangling | Double-underscore separators extend existing mangle_type_name infrastructure | ✓ Good -- v1.3, consistent naming scheme |
+| FNV-1a for Hash protocol | Deterministic, platform-independent, ~35 lines in snow-rt | ✓ Good -- v1.3, zero new Rust dependencies |
+| Trust typeck for where-clause enforcement | Type checker already comprehensively checks; MIR adds warning-only defense-in-depth | ✓ Good -- v1.3, no duplicate checking logic |
+| deriving as contextual keyword | IDENT text check avoids adding to TokenKind; backward compatible | ✓ Good -- v1.3, no breaking changes |
 
 ---
-*Last updated: 2026-02-07 after v1.3 milestone start*
+*Last updated: 2026-02-08 after v1.3 milestone*

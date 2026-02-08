@@ -35,23 +35,15 @@ See milestones/v1.2-ROADMAP.md for details.
 
 </details>
 
-### ✅ v1.3 Traits & Protocols (SHIPPED 2026-02-08)
+<details>
+<summary>✅ v1.3 Traits & Protocols (Phases 18-22) - SHIPPED 2026-02-08</summary>
 
-**Milestone Goal:** Complete the trait/protocol system for user-defined interfaces and impls with static dispatch via monomorphization, and ship stdlib protocols (Display, Debug, Eq, Ord, Hash, Default) that enable server-oriented abstractions.
+18 plans across 5 phases. Complete trait/protocol system with structural type matching,
+static dispatch via monomorphization, six stdlib protocols (Display, Debug, Eq, Ord, Hash, Default),
+default method implementations, collection Display/Debug, and auto-derive system.
+See milestones/v1.3-ROADMAP.md for details.
 
-See milestones/v1.3-ROADMAP.md for full phase details, success criteria, and pitfall tracking.
-
-- [x] **Phase 18: Trait Infrastructure** - Fix type resolution foundation (structural matching, duplicate detection, dispatch unification)
-- [x] **Phase 19: Trait Method Codegen** - Lower impl method bodies to MIR, resolve trait calls to mangled names, where clause enforcement
-- [x] **Phase 20: Essential Stdlib Protocols** - Display, Debug, Eq, Ord with string interpolation integration and struct/sum-type support
-- [x] **Phase 21: Extended Protocols** - Hash, Default, default method implementations, collection Display/Debug
-- [x] **Phase 22: Auto-Derive (Stretch)** - `deriving(Eq, Ord, Display, Debug, Hash)` from struct/sum-type metadata
-
-**Phase 22 Plans:** 2 plans (complete)
-
-Plans:
-- [x] 22-01-PLAN.md -- Derive syntax + compiler infrastructure: parser, AST accessors, conditional gating in typeck/MIR, formatter
-- [x] 22-02-PLAN.md -- Derive implementations + e2e tests: Display/Hash-sum generation, validation, comprehensive testing
+</details>
 
 ## Progress
 

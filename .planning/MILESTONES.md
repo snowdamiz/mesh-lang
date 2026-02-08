@@ -1,5 +1,32 @@
 # Project Milestones: Snow
 
+## v1.3 Traits & Protocols (Shipped: 2026-02-08)
+
+**Delivered:** Complete trait/protocol system with user-defined interfaces, impl blocks, static dispatch via monomorphization, and six stdlib protocols (Display, Debug, Eq, Ord, Hash, Default) plus auto-derive support.
+
+**Phases completed:** 18-22 (18 plans total)
+
+**Key accomplishments:**
+- Trait infrastructure: structural type matching via temporary unification, replacing string-based type_to_key
+- Trait method codegen: ImplDef lowering to MIR with Trait__Method__Type mangled names and static dispatch
+- Essential stdlib protocols: Display, Debug, Eq, Ord with string interpolation integration and auto-derived for all non-generic types
+- Extended protocols: Hash (FNV-1a), Default (static methods), default method implementations, collection Display/Debug
+- Auto-derive system: `deriving(Eq, Ord, Display, Debug, Hash)` with conditional gating and backward compatibility
+
+**Stats:**
+- 77 files modified
+- 63,189 lines of Rust (+5,532 net from v1.2)
+- 5 phases, 18 plans
+- 1 day (2026-02-07 → 2026-02-08)
+- 65 commits
+- 1,187 tests passing (+130 new in v1.3)
+
+**Git range:** `feat(18-01)` → `feat(22-02)`
+
+**What's next:** TBD -- trait system complete. Potential directions include Iterator/From protocols, method dot-syntax, blanket impls, distributed actors, or hot code reloading.
+
+---
+
 ## v1.2 Runtime & Type Fixes (Shipped: 2026-02-08)
 
 **Delivered:** Fun() type annotation parsing and mark-sweep garbage collector for per-actor heaps, fixing the two remaining known issues from v1.1.
