@@ -686,6 +686,40 @@ fn register_compiler_known_traits(registry: &mut TraitRegistry) {
         impl_type_name: "Bool".to_string(),
         methods: not_methods,
     });
+
+    // ── Display trait ──────────────────────────────────────────────
+    registry.register_trait(TraitDef {
+        name: "Display".to_string(),
+        methods: vec![TraitMethodSig {
+            name: "to_string".to_string(),
+            has_self: true,
+            param_count: 0, // no params besides self
+            return_type: Some(Ty::string()),
+        }],
+    });
+
+    for (ty, ty_name) in &[
+        (Ty::int(), "Int"),
+        (Ty::float(), "Float"),
+        (Ty::string(), "String"),
+        (Ty::bool(), "Bool"),
+    ] {
+        let mut methods = FxHashMap::default();
+        methods.insert(
+            "to_string".to_string(),
+            ImplMethodSig {
+                has_self: true,
+                param_count: 0,
+                return_type: Some(Ty::string()),
+            },
+        );
+        let _ = registry.register_impl(ImplDef {
+            trait_name: "Display".to_string(),
+            impl_type: ty.clone(),
+            impl_type_name: ty_name.to_string(),
+            methods,
+        });
+    }
 }
 
 #[cfg(test)]
@@ -790,5 +824,23 @@ mod tests {
         assert!(env.lookup("request_body").is_some());
         assert!(env.lookup("request_header").is_some());
         assert!(env.lookup("request_query").is_some());
+    }
+
+    #[test]
+    fn display_trait_registered_for_primitives() {
+        let mut ctx = InferCtx::new();
+        let mut env = TypeEnv::new();
+        let mut trait_registry = TraitRegistry::new();
+        register_builtins(&mut ctx, &mut env, &mut trait_registry);
+
+        // Display trait exists
+        assert!(trait_registry.has_impl("Display", &Ty::int()));
+        assert!(trait_registry.has_impl("Display", &Ty::float()));
+        assert!(trait_registry.has_impl("Display", &Ty::string()));
+        assert!(trait_registry.has_impl("Display", &Ty::bool()));
+
+        // find_method_traits should find Display for to_string
+        let traits = trait_registry.find_method_traits("to_string", &Ty::int());
+        assert!(traits.contains(&"Display".to_string()));
     }
 }
