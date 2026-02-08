@@ -10,11 +10,11 @@ See: .planning/PROJECT.md (updated 2026-02-08)
 ## Current Position
 
 Phase: 23 of 25 (Pattern Matching Codegen)
-Plan: Ready to plan
-Status: Ready to plan
-Last activity: 2026-02-08 -- Roadmap created for v1.4
+Plan: 1 of 2 in phase
+Status: In progress
+Last activity: 2026-02-08 -- Completed 23-01-PLAN.md (pattern compiler tag/type fix)
 
-Progress: ░░░░░░░░░░ 0%
+Progress: █░░░░░░░░░ ~10% (1/2 plans in phase 23; phases 24-25 not yet planned)
 
 ## Performance Metrics
 
@@ -52,6 +52,11 @@ Progress: ░░░░░░░░░░ 0%
 Decisions logged in PROJECT.md Key Decisions table.
 Full decision history archived in milestones/v1.0-ROADMAP.md, milestones/v1.1-ROADMAP.md, milestones/v1.2-ROADMAP.md, and milestones/v1.3-ROADMAP.md.
 
+| Decision | Phase | Rationale |
+|----------|-------|-----------|
+| Thread sum_type_defs as parameter, not in PatMatrix | 23-01 | PatMatrix is cloned frequently; reference parameter avoids data duplication |
+| Fallback to appearance-order tags when type not in map | 23-01 | Preserves backward compatibility for tests using ad-hoc type names |
+
 ### Pending Todos
 
 None.
@@ -63,6 +68,6 @@ None -- all five v1.3 limitations are now tracked as v1.4 requirements (PATM-01,
 ## Session Continuity
 
 Last session: 2026-02-08
-Stopped at: v1.4 roadmap created (3 phases: 23-25)
+Stopped at: Completed 23-01-PLAN.md
 Resume file: None
-Next action: Plan Phase 23 (Pattern Matching Codegen)
+Next action: Execute 23-02-PLAN.md (Ordering type registration, compare method, e2e tests)
