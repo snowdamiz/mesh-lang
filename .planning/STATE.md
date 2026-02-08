@@ -5,16 +5,16 @@
 See: .planning/PROJECT.md (updated 2026-02-08)
 
 **Core value:** Expressive, readable concurrency -- writing concurrent programs should feel as natural as sequential code, with supervision and fault tolerance built in.
-**Current focus:** v1.4 Compiler Polish -- Phase 23 complete, Phase 24 next
+**Current focus:** v1.4 Compiler Polish -- Phase 24 in progress (Trait System Generics)
 
 ## Current Position
 
-Phase: 23 of 25 (Pattern Matching Codegen)
-Plan: 2 of 2 in phase
-Status: Phase complete
-Last activity: 2026-02-08 -- Completed 23-02-PLAN.md (Ordering type, compare function, e2e tests)
+Phase: 24 of 25 (Trait System Generics)
+Plan: 1 of 2 in phase
+Status: In progress
+Last activity: 2026-02-08 -- Completed 24-01-PLAN.md (Recursive nested collection Display callbacks)
 
-Progress: ██░░░░░░░░ ~20% (2/2 plans in phase 23; phases 24-25 not yet planned)
+Progress: ███░░░░░░░ ~30% (2/2 plans in phase 23 + 1/2 in phase 24; phase 25 not yet planned)
 
 ## Performance Metrics
 
@@ -46,10 +46,10 @@ Progress: ██░░░░░░░░ ~20% (2/2 plans in phase 23; phases 24-
 - Tests: 1,187 passing (+130 new)
 
 **v1.4 Totals (in progress):**
-- Plans completed: 2
-- Phases: 1 (23)
-- Commits: 6
-- Tests: 1,200 passing (+13 new)
+- Plans completed: 3
+- Phases: 2 (23, 24)
+- Commits: 8
+- Tests: 1,202 passing (+15 new)
 
 ## Accumulated Context
 
@@ -64,6 +64,8 @@ Full decision history archived in milestones/v1.0-ROADMAP.md, milestones/v1.1-RO
 | Fallback to appearance-order tags when type not in map | 23-01 | Preserves backward compatibility for tests using ad-hoc type names |
 | Ordering as non-generic built-in sum type | 23-02 | Simpler than Option/Result; no type parameters needed |
 | Primitive compare uses BinOp directly | 23-02 | Int/Float/String don't have generated Ord__lt__ functions; use hardware ops |
+| Synthetic wrapper functions for nested collection Display callbacks | 24-01 | Runtime expects fn(u64)->ptr; wrappers bridge two-arg calls to one-arg callback signature |
+| codegen_var module.get_function() fallback for intrinsic fn ptrs | 24-01 | Intrinsics not in self.functions map; need LLVM module lookup for callback references |
 
 ### Pending Todos
 
@@ -71,11 +73,11 @@ None.
 
 ### Blockers/Concerns
 
-PATM-01 and PATM-02 verified with e2e runtime tests. Remaining v1.4 items: TGEN-01, TGEN-02, TSND-01.
+TGEN-01 MIR infrastructure complete but full e2e test for List<List<Int>> requires generic collection element types (TGEN-02). Remaining v1.4 items: TGEN-02, TSND-01.
 
 ## Session Continuity
 
 Last session: 2026-02-08
-Stopped at: Phase 23 complete and verified (e2e runtime tests added)
+Stopped at: Completed 24-01-PLAN.md (recursive nested collection Display callbacks)
 Resume file: None
-Next action: Plan Phase 24 (Trait System Generics — TGEN-01/TGEN-02)
+Next action: Execute 24-02-PLAN.md (Generic Type Deriving -- TGEN-02)
