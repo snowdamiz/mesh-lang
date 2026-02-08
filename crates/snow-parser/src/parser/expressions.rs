@@ -232,7 +232,23 @@ fn lhs(p: &mut Parser) -> Option<MarkClosed> {
             }
         }
 
-        // L_BRACKET for list literals could go here in the future.
+        // List literal: [expr, expr, ...]
+        SyntaxKind::L_BRACKET => {
+            let m = p.open();
+            p.advance(); // consume [
+            if p.current() != SyntaxKind::R_BRACKET {
+                expr_bp(p, 0);
+                while p.current() == SyntaxKind::COMMA {
+                    p.advance(); // consume ,
+                    if p.current() == SyntaxKind::R_BRACKET {
+                        break; // trailing comma
+                    }
+                    expr_bp(p, 0);
+                }
+            }
+            p.expect(SyntaxKind::R_BRACKET);
+            Some(p.close(m, SyntaxKind::LIST_LITERAL))
+        }
 
         // Compound expression atoms
         SyntaxKind::IF_KW => Some(parse_if_expr(p)),

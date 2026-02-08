@@ -270,6 +270,8 @@ pub enum SyntaxKind {
     MAP_LITERAL,
     /// Single entry in a map literal: `key => value`
     MAP_ENTRY,
+    /// List literal: `[expr, expr, ...]`
+    LIST_LITERAL,
 
     // ── Actor node kinds ──────────────────────────────────────────────
     /// Actor block declaration: `actor Name do ... end`
@@ -644,6 +646,7 @@ mod tests {
             SyntaxKind::CLOSURE_CLAUSE,
             SyntaxKind::MAP_LITERAL,
             SyntaxKind::MAP_ENTRY,
+            SyntaxKind::LIST_LITERAL,
             // Actor node kinds
             SyntaxKind::ACTOR_DEF,
             SyntaxKind::SPAWN_EXPR,
@@ -666,8 +669,8 @@ mod tests {
             SyntaxKind::SECONDS_LIMIT,
         ];
         assert!(
-            node_kinds.len() >= 74,
-            "expected at least 74 composite node kinds, got {}",
+            node_kinds.len() >= 75,
+            "expected at least 75 composite node kinds, got {}",
             node_kinds.len()
         );
     }

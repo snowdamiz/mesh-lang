@@ -31,6 +31,7 @@ pub enum Expr {
     TupleExpr(TupleExpr),
     StructLiteral(StructLiteral),
     MapLiteral(MapLiteral),
+    ListLiteral(ListLiteral),
     // Actor expression types
     SpawnExpr(SpawnExpr),
     SendExpr(SendExpr),
@@ -63,6 +64,9 @@ impl Expr {
             SyntaxKind::MAP_LITERAL => {
                 Some(Expr::MapLiteral(MapLiteral { syntax: node }))
             }
+            SyntaxKind::LIST_LITERAL => {
+                Some(Expr::ListLiteral(ListLiteral { syntax: node }))
+            }
             // Actor expressions
             SyntaxKind::SPAWN_EXPR => Some(Expr::SpawnExpr(SpawnExpr { syntax: node })),
             SyntaxKind::SEND_EXPR => Some(Expr::SendExpr(SendExpr { syntax: node })),
@@ -93,6 +97,7 @@ impl Expr {
             Expr::TupleExpr(n) => &n.syntax,
             Expr::StructLiteral(n) => &n.syntax,
             Expr::MapLiteral(n) => &n.syntax,
+            Expr::ListLiteral(n) => &n.syntax,
             Expr::SpawnExpr(n) => &n.syntax,
             Expr::SendExpr(n) => &n.syntax,
             Expr::ReceiveExpr(n) => &n.syntax,
@@ -519,6 +524,17 @@ impl MapEntry {
     /// The value expression (second child expression, after `=>`).
     pub fn value(&self) -> Option<Expr> {
         self.syntax.children().filter_map(Expr::cast).nth(1)
+    }
+}
+
+// ── List Literal Expression ──────────────────────────────────────────────
+
+ast_node!(ListLiteral, LIST_LITERAL);
+
+impl ListLiteral {
+    /// The element expressions in the list literal.
+    pub fn elements(&self) -> impl Iterator<Item = Expr> + '_ {
+        self.syntax.children().filter_map(Expr::cast)
     }
 }
 
