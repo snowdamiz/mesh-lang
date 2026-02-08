@@ -48,7 +48,8 @@ See milestones/v1.3-ROADMAP.md for full phase details, success criteria, and pit
   - [ ] 20-01-PLAN.md -- Typeck identity fix + Display protocol registration
   - [ ] 20-02-PLAN.md -- String interpolation Display dispatch wiring
   - [ ] 20-03-PLAN.md -- Debug protocol with auto-generated struct/sum inspect
-  - [ ] 20-04-PLAN.md -- Eq/Ord extension for struct and sum types
+  - [ ] 20-04-PLAN.md -- Eq/Ord for struct types with operator dispatch
+  - [ ] 20-05-PLAN.md -- Eq/Ord for sum types with variant-aware comparison
 - [ ] **Phase 21: Extended Protocols** - Hash, Default, default method implementations, collection Display/Debug
 - [ ] **Phase 22: Auto-Derive (Stretch)** - `deriving(Eq, Ord, Display, Debug, Hash)` from struct/sum-type metadata
 
@@ -75,6 +76,6 @@ See milestones/v1.3-ROADMAP.md for full phase details, success criteria, and pit
 | 17. Mark-Sweep GC | v1.2 | 4/4 | Complete | 2026-02-08 |
 | 18. Trait Infrastructure | v1.3 | 3/3 | Complete | 2026-02-08 |
 | 19. Trait Method Codegen | v1.3 | 4/4 | Complete | 2026-02-08 |
-| 20. Essential Stdlib Protocols | v1.3 | 0/4 | Not started | - |
+| 20. Essential Stdlib Protocols | v1.3 | 0/5 | Not started | - |
 | 21. Extended Protocols | v1.3 | 0/4 | Not started | - |
 | 22. Auto-Derive (Stretch) | v1.3 | 0/2 | Not started | - |
