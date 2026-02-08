@@ -9,12 +9,12 @@ See: .planning/PROJECT.md (updated 2026-02-07)
 
 ## Current Position
 
-Phase: 16 of 17 (Fun() Type Parsing) -- ready to plan
-Plan: --
-Status: Ready to plan
-Last activity: 2026-02-07 -- Roadmap created for v1.2
+Phase: 16 of 17 (Fun() Type Parsing)
+Plan: 1 of 2 in phase 16
+Status: In progress
+Last activity: 2026-02-08 -- Completed 16-01-PLAN.md
 
-Progress: ░░░░░░░░░░ 0%
+Progress: █████░░░░░ 50% (1/2 plans in v1.2)
 
 ## Performance Metrics
 
@@ -32,12 +32,22 @@ Progress: ░░░░░░░░░░ 0%
 - Commits: 45
 - Lines of Rust: 56,539 (+3,928)
 
+**v1.2 Progress:**
+- Plans completed: 1
+- Phases started: 1 (16)
+- Commits: 2
+
 ## Accumulated Context
 
 ### Decisions
 
 Decisions logged in PROJECT.md Key Decisions table.
 Full decision history archived in milestones/v1.0-ROADMAP.md and milestones/v1.1-ROADMAP.md.
+
+| Decision | Phase | Rationale |
+|----------|-------|-----------|
+| Fun remains IDENT, not keyword | 16-01 | Type-position disambiguation only; avoid breaking existing code using Fun as variable name |
+| FUN_TYPE placed after RESULT_TYPE | 16-01 | Groups type annotation nodes together in SyntaxKind enum |
 
 ### Pending Todos
 
@@ -49,7 +59,7 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-02-07
-Stopped at: Roadmap created for v1.2 milestone
+Last session: 2026-02-08
+Stopped at: Completed 16-01-PLAN.md
 Resume file: None
-Next action: /gsd:plan-phase 16
+Next action: /gsd:execute-phase 16-02
