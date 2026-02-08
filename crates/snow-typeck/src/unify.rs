@@ -218,6 +218,18 @@ impl InferCtx {
                 Ok(())
             }
 
+            // Non-generic type identity: Con("Point") == App(Con("Point"), [])
+            // This arises because infer_struct_literal returns App(Con(name), []) for
+            // non-generic structs, while name_to_type returns Con(name). Both represent
+            // the same type.
+            (Ty::Con(ref c), Ty::App(ref con, ref args))
+            | (Ty::App(ref con, ref args), Ty::Con(ref c))
+                if args.is_empty()
+                    && matches!(con.as_ref(), Ty::Con(ref ac) if ac.name == c.name) =>
+            {
+                Ok(())
+            }
+
             // Type applications -- unify constructor and args.
             (Ty::App(c1, a1), Ty::App(c2, a2)) => {
                 self.unify(*c1, *c2, origin.clone())?;
@@ -428,6 +440,7 @@ impl Default for InferCtx {
 mod tests {
     use super::*;
     use crate::error::ConstraintOrigin;
+    use crate::ty::TyCon;
 
     fn builtin_origin() -> ConstraintOrigin {
         ConstraintOrigin::Builtin
@@ -602,6 +615,32 @@ mod tests {
 
         let result = ctx.unify(opt_int, opt_str, builtin_origin());
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn con_unifies_with_app_con_empty_args() {
+        let mut ctx = InferCtx::new();
+        let con = Ty::Con(TyCon::new("Point"));
+        let app = Ty::App(Box::new(Ty::Con(TyCon::new("Point"))), vec![]);
+        // Con("Point") should unify with App(Con("Point"), [])
+        assert!(ctx
+            .unify(con.clone(), app.clone(), builtin_origin())
+            .is_ok());
+        // Symmetric: App should also unify with Con
+        assert!(ctx
+            .unify(app, con, builtin_origin())
+            .is_ok());
+    }
+
+    #[test]
+    fn con_does_not_unify_with_app_con_nonempty_args() {
+        let mut ctx = InferCtx::new();
+        let con = Ty::Con(TyCon::new("List"));
+        let app = Ty::App(Box::new(Ty::Con(TyCon::new("List"))), vec![Ty::int()]);
+        // Con("List") should NOT unify with App(Con("List"), [Int]) -- different arities
+        assert!(ctx
+            .unify(con, app, builtin_origin())
+            .is_err());
     }
 
     #[test]
