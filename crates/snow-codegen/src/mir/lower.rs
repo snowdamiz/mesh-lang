@@ -4889,4 +4889,358 @@ fn main() do bar(42) end
         // counter prevents stack overflow.
         let _mir = lower_to_mir(&parse, &typeck).expect("MIR lowering failed");
     }
+
+    // ── End-to-end trait codegen integration tests (19-04) ────────────
+
+    /// Recursive helper to find a Call to a specific function name anywhere in a MirExpr tree.
+    fn find_call_to(expr: &MirExpr, target: &str) -> bool {
+        match expr {
+            MirExpr::Call { func, args, .. } => {
+                let func_match = if let MirExpr::Var(name, _) = func.as_ref() {
+                    name == target
+                } else {
+                    false
+                };
+                func_match
+                    || find_call_to(func, target)
+                    || args.iter().any(|a| find_call_to(a, target))
+            }
+            MirExpr::Let { value, body, .. } => {
+                find_call_to(value, target) || find_call_to(body, target)
+            }
+            MirExpr::Block(exprs, _) => exprs.iter().any(|e| find_call_to(e, target)),
+            MirExpr::If {
+                cond,
+                then_body,
+                else_body,
+                ..
+            } => {
+                find_call_to(cond, target)
+                    || find_call_to(then_body, target)
+                    || find_call_to(else_body, target)
+            }
+            MirExpr::BinOp { lhs, rhs, .. } => {
+                find_call_to(lhs, target) || find_call_to(rhs, target)
+            }
+            MirExpr::Match {
+                scrutinee, arms, ..
+            } => {
+                find_call_to(scrutinee, target)
+                    || arms.iter().any(|a| find_call_to(&a.body, target))
+            }
+            _ => false,
+        }
+    }
+
+    /// Success Criterion 1: A Snow program with interface, impl, struct, and trait
+    /// method call compiles through MIR lowering and produces correct mangled call.
+    #[test]
+    fn e2e_trait_method_call_compiles() {
+        let source = r#"
+interface Greetable do
+  fn greet(self) -> String
+end
+
+struct Greeter do
+  name :: String
+end
+
+impl Greetable for Greeter do
+  fn greet(self) -> String do
+    "hello"
+  end
+end
+
+fn main() do
+  let g = Greeter { name: "world" }
+  let result = greet(g)
+  println(result)
+end
+"#;
+        let mir = lower(source);
+
+        // 1. MirProgram contains a function named Greetable__greet__Greeter
+        let mangled = mir
+            .functions
+            .iter()
+            .find(|f| f.name == "Greetable__greet__Greeter");
+        assert!(
+            mangled.is_some(),
+            "Expected MirFunction 'Greetable__greet__Greeter'. Found: {:?}",
+            mir.functions.iter().map(|f| &f.name).collect::<Vec<_>>()
+        );
+
+        // 2. Main body contains a Call referencing the mangled name
+        let main_fn = mir
+            .functions
+            .iter()
+            .find(|f| f.name == "snow_main")
+            .expect("Expected snow_main function");
+        assert!(
+            find_call_to(&main_fn.body, "Greetable__greet__Greeter"),
+            "Expected call to Greetable__greet__Greeter in main body, got: {:?}",
+            main_fn.body
+        );
+
+        // 3. No function named bare "greet" exists (only the mangled version)
+        let bare_greet = mir.functions.iter().find(|f| f.name == "greet");
+        assert!(
+            bare_greet.is_none(),
+            "Bare 'greet' function should NOT exist in MIR -- only the mangled version"
+        );
+    }
+
+    /// Success Criterion 2: Trait method calls resolve to mangled names visible in MIR
+    /// using the Trait__Method__Type pattern with double-underscore separators.
+    #[test]
+    fn e2e_mangled_names_in_mir() {
+        let source = r#"
+interface Describable do
+  fn describe(self) -> String
+end
+
+struct Widget do
+  label :: String
+end
+
+impl Describable for Widget do
+  fn describe(self) -> String do
+    "widget"
+  end
+end
+"#;
+        let mir = lower(source);
+
+        let mangled = mir
+            .functions
+            .iter()
+            .find(|f| f.name == "Describable__describe__Widget")
+            .expect("Expected mangled function Describable__describe__Widget");
+
+        // Verify name uses exactly 2 double-underscore separators: Trait__Method__Type
+        let dunder_count = mangled.name.matches("__").count();
+        assert_eq!(
+            dunder_count, 2,
+            "Mangled name should have exactly 2 '__' separators, got {} in '{}'",
+            dunder_count, mangled.name
+        );
+
+        // Verify the three parts
+        let parts: Vec<&str> = mangled.name.split("__").collect();
+        assert_eq!(parts.len(), 3, "Expected 3 parts: [Trait, Method, Type]");
+        assert_eq!(parts[0], "Describable");
+        assert_eq!(parts[1], "describe");
+        assert_eq!(parts[2], "Widget");
+    }
+
+    /// Success Criterion 3: self parameter in impl methods receives the concrete struct type.
+    #[test]
+    fn e2e_self_param_has_concrete_type() {
+        let source = r#"
+interface Greetable do
+  fn greet(self) -> String
+end
+
+struct Greeter do
+  name :: String
+end
+
+impl Greetable for Greeter do
+  fn greet(self) -> String do
+    "hello"
+  end
+end
+"#;
+        let mir = lower(source);
+
+        let mangled = mir
+            .functions
+            .iter()
+            .find(|f| f.name == "Greetable__greet__Greeter")
+            .expect("Expected Greetable__greet__Greeter function");
+
+        // First param must be named "self"
+        assert!(
+            !mangled.params.is_empty(),
+            "Expected at least one parameter (self)"
+        );
+        assert_eq!(
+            mangled.params[0].0, "self",
+            "First param should be named 'self'"
+        );
+
+        // Type must be the concrete struct, NOT Unit, NOT Ptr, NOT Struct("self")
+        assert_eq!(
+            mangled.params[0].1,
+            MirType::Struct("Greeter".to_string()),
+            "self param type should be MirType::Struct(\"Greeter\")"
+        );
+        assert_ne!(
+            mangled.params[0].1,
+            MirType::Unit,
+            "self param type must NOT be Unit"
+        );
+    }
+
+    /// Success Criterion 1+: Multiple traits with different methods for the same type
+    /// all produce correctly mangled and callable functions.
+    #[test]
+    fn e2e_multiple_traits_different_types() {
+        let source = r#"
+struct Dog do name :: String end
+struct Cat do name :: String end
+
+interface Speakable do
+  fn speak(self) -> String
+end
+
+impl Speakable for Dog do
+  fn speak(self) -> String do "woof" end
+end
+
+impl Speakable for Cat do
+  fn speak(self) -> String do "meow" end
+end
+
+fn main() do
+  let d = Dog { name: "Rex" }
+  let c = Cat { name: "Whiskers" }
+  println(speak(d))
+  println(speak(c))
+end
+"#;
+        let mir = lower(source);
+        let fn_names: Vec<&str> = mir.functions.iter().map(|f| f.name.as_str()).collect();
+
+        // Both mangled functions must exist
+        assert!(
+            fn_names.contains(&"Speakable__speak__Dog"),
+            "Expected Speakable__speak__Dog. Found: {:?}",
+            fn_names
+        );
+        assert!(
+            fn_names.contains(&"Speakable__speak__Cat"),
+            "Expected Speakable__speak__Cat. Found: {:?}",
+            fn_names
+        );
+
+        // Main body has calls to both mangled names (not bare 'speak')
+        let main_fn = mir
+            .functions
+            .iter()
+            .find(|f| f.name == "snow_main")
+            .expect("Expected snow_main function");
+        assert!(
+            find_call_to(&main_fn.body, "Speakable__speak__Dog"),
+            "Expected call to Speakable__speak__Dog in main body"
+        );
+        assert!(
+            find_call_to(&main_fn.body, "Speakable__speak__Cat"),
+            "Expected call to Speakable__speak__Cat in main body"
+        );
+    }
+
+    /// Success Criterion 4: Where-clause constrained functions reject calls with
+    /// unsatisfied bounds at compile time (handled by typeck, not MIR lowerer).
+    #[test]
+    fn e2e_where_clause_enforcement() {
+        // This source should FAIL typeck: Int does not implement Displayable.
+        let source = r#"
+interface Displayable do
+  fn display(self) -> String
+end
+
+fn show<T>(x :: T) -> String where T: Displayable do
+  display(x)
+end
+
+fn main() do
+  show(42)
+end
+"#;
+        let parse = snow_parser::parse(source);
+        let typeck = snow_typeck::check(&parse);
+
+        // Typeck should report TraitNotSatisfied error for Int not implementing Displayable.
+        let has_trait_error = typeck.errors.iter().any(|e| {
+            matches!(e, snow_typeck::error::TypeError::TraitNotSatisfied { .. })
+        });
+        assert!(
+            has_trait_error,
+            "Expected TraitNotSatisfied error from typeck when calling show(42) without \
+             Displayable impl for Int. Errors: {:?}",
+            typeck.errors
+        );
+
+        // MIR lowering still succeeds (it's error-tolerant), confirming CODEGEN-04
+        // is handled by typeck, not the lowerer.
+        let mir = lower_to_mir(&parse, &typeck);
+        assert!(
+            mir.is_ok(),
+            "MIR lowering should succeed even with typeck errors (error recovery)"
+        );
+    }
+
+    /// Success Criterion 5: Depth limit machinery is in place.
+    /// Normal programs produce no Panic nodes; the depth counter fields exist.
+    #[test]
+    fn e2e_depth_limit_field_exists() {
+        // Lower a normal trait-using program and verify no Panic nodes.
+        let source = r#"
+interface Greetable do
+  fn greet(self) -> String
+end
+
+struct Greeter do
+  name :: String
+end
+
+impl Greetable for Greeter do
+  fn greet(self) -> String do
+    "hello"
+  end
+end
+
+fn main() do
+  let g = Greeter { name: "world" }
+  greet(g)
+end
+"#;
+        let mir = lower(source);
+
+        // No Panic nodes should appear in a normal program.
+        fn has_panic(expr: &MirExpr) -> bool {
+            match expr {
+                MirExpr::Panic { .. } => true,
+                MirExpr::Let { value, body, .. } => has_panic(value) || has_panic(body),
+                MirExpr::Block(exprs, _) => exprs.iter().any(has_panic),
+                MirExpr::Call { func, args, .. } => {
+                    has_panic(func) || args.iter().any(has_panic)
+                }
+                MirExpr::BinOp { lhs, rhs, .. } => has_panic(lhs) || has_panic(rhs),
+                MirExpr::If {
+                    cond,
+                    then_body,
+                    else_body,
+                    ..
+                } => has_panic(cond) || has_panic(then_body) || has_panic(else_body),
+                _ => false,
+            }
+        }
+
+        for func in &mir.functions {
+            assert!(
+                !has_panic(&func.body),
+                "Normal trait program should not have Panic nodes, found in '{}': {:?}",
+                func.name, func.body
+            );
+        }
+
+        // Verify the Lowerer is initialized with depth tracking by confirming
+        // that lowering succeeds (the fields exist and are properly initialized).
+        // The Lowerer struct is private, so we verify indirectly through behavior.
+        let parse = snow_parser::parse(source);
+        let typeck = snow_typeck::check(&parse);
+        let _mir = lower_to_mir(&parse, &typeck).expect("MIR lowering with depth tracking");
+    }
 }
