@@ -3,7 +3,7 @@
 //! Converts the typed Rowan CST (Parse + TypeckResult) to the MIR representation.
 //! Handles desugaring of pipe operators, string interpolation, and closure conversion.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use rowan::TextRange;
 use rustc_hash::FxHashMap;
@@ -23,7 +23,7 @@ use snow_parser::Parse;
 use snow_typeck::ty::Ty;
 use snow_typeck::{TraitRegistry, TypeckResult};
 
-use super::types::{mir_type_to_impl_name, mir_type_to_ty, resolve_type};
+use super::types::{mangle_type_name, mir_type_to_impl_name, mir_type_to_ty, resolve_type};
 use super::{
     BinOp, MirChildSpec, MirExpr, MirFunction, MirLiteral, MirMatchArm, MirModule, MirPattern,
     MirStructDef, MirSumTypeDef, MirType, MirVariantDef, UnaryOp,
@@ -63,6 +63,37 @@ fn extract_impl_names(impl_def: &ImplDef) -> (String, String) {
     (trait_name, type_name)
 }
 
+/// Substitute type parameters in a `Ty` using a substitution map.
+///
+/// Replaces `Ty::Con("T")` with the corresponding concrete type from the map.
+/// Recursively handles `Ty::App`, `Ty::Fun`, and `Ty::Tuple`.
+fn substitute_type_params(ty: &Ty, subst: &HashMap<String, &Ty>) -> Ty {
+    match ty {
+        Ty::Con(con) => {
+            if let Some(replacement) = subst.get(&con.name) {
+                (*replacement).clone()
+            } else {
+                ty.clone()
+            }
+        }
+        Ty::App(con, args) => {
+            let con_sub = substitute_type_params(con, subst);
+            let args_sub: Vec<Ty> = args.iter().map(|a| substitute_type_params(a, subst)).collect();
+            Ty::App(Box::new(con_sub), args_sub)
+        }
+        Ty::Fun(params, ret) => {
+            let params_sub: Vec<Ty> = params.iter().map(|p| substitute_type_params(p, subst)).collect();
+            let ret_sub = substitute_type_params(ret, subst);
+            Ty::Fun(params_sub, Box::new(ret_sub))
+        }
+        Ty::Tuple(elems) => {
+            let elems_sub: Vec<Ty> = elems.iter().map(|e| substitute_type_params(e, subst)).collect();
+            Ty::Tuple(elems_sub)
+        }
+        _ => ty.clone(),
+    }
+}
+
 // ── Lowerer ──────────────────────────────────────────────────────────
 
 /// The AST-to-MIR lowering context.
@@ -100,6 +131,10 @@ struct Lowerer<'a> {
     mono_depth: u32,
     /// Maximum allowed monomorphization depth before emitting a Panic node.
     max_mono_depth: u32,
+    /// Tracks which monomorphized trait functions have been generated for generic types.
+    /// Prevents duplicate generation when the same generic struct is instantiated
+    /// multiple times (e.g., Box<Int> used in multiple places).
+    monomorphized_trait_fns: HashSet<String>,
 }
 
 impl<'a> Lowerer<'a> {
@@ -120,6 +155,7 @@ impl<'a> Lowerer<'a> {
             service_modules: HashMap::new(),
             mono_depth: 0,
             max_mono_depth: 64,
+            monomorphized_trait_fns: HashSet::new(),
         }
     }
 
@@ -1296,31 +1332,119 @@ impl<'a> Lowerer<'a> {
             Vec::new()
         };
 
-        // Conditional MIR generation based on deriving clause.
-        // No deriving clause = backward compat (generate all default trait functions).
-        let has_deriving = struct_def.has_deriving_clause();
-        let derive_list = struct_def.deriving_traits();
-        let derive_all = !has_deriving;
+        // Check if this is a generic struct (trait functions generated lazily at instantiation).
+        let has_generic_params = self.registry.struct_defs.get(&name)
+            .map_or(false, |info| !info.generic_params.is_empty());
 
-        if derive_all || derive_list.iter().any(|t| t == "Debug") {
-            self.generate_debug_inspect_struct(&name, &fields);
+        if !has_generic_params {
+            // Conditional MIR generation based on deriving clause.
+            // No deriving clause = backward compat (generate all default trait functions).
+            let has_deriving = struct_def.has_deriving_clause();
+            let derive_list = struct_def.deriving_traits();
+            let derive_all = !has_deriving;
+
+            if derive_all || derive_list.iter().any(|t| t == "Debug") {
+                self.generate_debug_inspect_struct(&name, &fields);
+            }
+            if derive_all || derive_list.iter().any(|t| t == "Eq") {
+                self.generate_eq_struct(&name, &fields);
+            }
+            if derive_all || derive_list.iter().any(|t| t == "Ord") {
+                self.generate_ord_struct(&name, &fields);
+                self.generate_compare_struct(&name, &fields);
+            }
+            if derive_all || derive_list.iter().any(|t| t == "Hash") {
+                self.generate_hash_struct(&name, &fields);
+            }
+            // Display: only via explicit deriving(Display), never auto-derived
+            if derive_list.iter().any(|t| t == "Display") {
+                self.generate_display_struct(&name, &fields);
+            }
+
+            self.structs.push(MirStructDef { name, fields });
         }
-        if derive_all || derive_list.iter().any(|t| t == "Eq") {
-            self.generate_eq_struct(&name, &fields);
+        // For generic structs: trait functions generated lazily at instantiation
+        // via ensure_monomorphized_struct_trait_fns. The MirStructDef is also
+        // generated lazily with the mangled name and concrete field types.
+    }
+
+    /// Lazily generate monomorphized trait functions for a generic struct instantiation.
+    ///
+    /// When a generic struct like `Box<T>` is instantiated as `Box<Int>`, this method:
+    /// 1. Computes the mangled name (e.g., "Box_Int")
+    /// 2. Substitutes generic params with concrete types in the field list
+    /// 3. Generates Display, Eq, Debug, etc. MIR functions with the mangled name
+    /// 4. Pushes a MirStructDef with the mangled name and concrete fields
+    ///
+    /// Called from `lower_struct_literal` when a generic struct instantiation is detected.
+    fn ensure_monomorphized_struct_trait_fns(&mut self, base_name: &str, typeck_ty: &Ty) {
+        // Extract type args from Ty::App(Con("Box"), [Con("Int")])
+        let type_args = match typeck_ty {
+            Ty::App(_, args) => args,
+            _ => return, // Not a generic instantiation
+        };
+
+        let mangled = mangle_type_name(base_name, type_args, self.registry);
+
+        // Already generated?
+        if self.monomorphized_trait_fns.contains(&mangled) {
+            return;
         }
-        if derive_all || derive_list.iter().any(|t| t == "Ord") {
-            self.generate_ord_struct(&name, &fields);
-            self.generate_compare_struct(&name, &fields);
+        self.monomorphized_trait_fns.insert(mangled.clone());
+
+        // Look up the generic struct definition to get field info and generic params.
+        let struct_info = match self.registry.struct_defs.get(base_name) {
+            Some(info) => info.clone(),
+            None => return,
+        };
+
+        // Build a substitution map: generic param name -> concrete Ty.
+        let subst: HashMap<String, &Ty> = struct_info.generic_params
+            .iter()
+            .zip(type_args.iter())
+            .map(|(param, arg)| (param.clone(), arg))
+            .collect();
+
+        // Substitute generic params with concrete types in the field list.
+        let fields: Vec<(String, MirType)> = struct_info.fields
+            .iter()
+            .map(|(fname, fty)| {
+                let concrete_ty = substitute_type_params(fty, &subst);
+                (fname.clone(), resolve_type(&concrete_ty, self.registry, false))
+            })
+            .collect();
+
+        // Check which traits are registered via the trait registry.
+        // Use the parametric typeck type for lookup (e.g., Ty::App(Con("Box"), [Con("Int")])).
+        let has_display = self.trait_registry.has_impl("Display", typeck_ty);
+        let has_eq = self.trait_registry.has_impl("Eq", typeck_ty);
+        let has_debug = self.trait_registry.has_impl("Debug", typeck_ty);
+        let has_ord = self.trait_registry.has_impl("Ord", typeck_ty);
+        let has_hash = self.trait_registry.has_impl("Hash", typeck_ty);
+
+        // Generate trait functions for the monomorphized name.
+        if has_debug {
+            self.generate_debug_inspect_struct(&mangled, &fields);
         }
-        if derive_all || derive_list.iter().any(|t| t == "Hash") {
-            self.generate_hash_struct(&name, &fields);
+        if has_eq {
+            self.generate_eq_struct(&mangled, &fields);
         }
-        // Display: only via explicit deriving(Display), never auto-derived
-        if derive_list.iter().any(|t| t == "Display") {
-            self.generate_display_struct(&name, &fields);
+        if has_ord {
+            self.generate_ord_struct(&mangled, &fields);
+            self.generate_compare_struct(&mangled, &fields);
+        }
+        if has_hash {
+            self.generate_hash_struct(&mangled, &fields);
+        }
+        if has_display {
+            self.generate_display_struct(&mangled, &fields);
         }
 
-        self.structs.push(MirStructDef { name, fields });
+        // Push the monomorphized struct definition.
+        self.structs.push(MirStructDef {
+            name: mangled,
+            fields,
+        });
     }
 
     // ── Sum type lowering ────────────────────────────────────────────
@@ -3056,10 +3180,15 @@ impl<'a> Lowerer<'a> {
             };
             if let Some((trait_name, method_name, negate, swap_args)) = dispatch {
                 let ty_for_lookup = mir_type_to_ty(&lhs_ty);
-                if self.trait_registry.has_impl(trait_name, &ty_for_lookup) {
-                    let type_name = mir_type_to_impl_name(&lhs_ty);
-                    let mangled =
-                        format!("{}__{}__{}", trait_name, method_name, type_name);
+                let type_name = mir_type_to_impl_name(&lhs_ty);
+                let mangled = format!("{}__{}__{}", trait_name, method_name, type_name);
+
+                // Check trait registry first, then fall back to known_functions
+                // (for monomorphized generic struct trait functions like Eq__eq__Box_Int).
+                let has_impl = self.trait_registry.has_impl(trait_name, &ty_for_lookup)
+                    || self.known_functions.contains_key(&mangled);
+
+                if has_impl {
                     let rhs_ty = rhs.ty().clone();
                     let fn_ty = MirType::FnPtr(
                         vec![lhs_ty.clone(), rhs_ty],
@@ -3323,19 +3452,36 @@ impl<'a> Lowerer<'a> {
                     };
                     MirExpr::Var(resolved, var_ty.clone())
                 } else {
-                    // Defense-in-depth: if the callee is not a known function,
-                    // not a local variable, and find_method_traits returned empty,
-                    // this could indicate a where-clause violation that bypassed
-                    // typeck. Emit a warning (non-fatal) for debugging.
-                    if self.lookup_var(name).is_none() {
-                        let type_name = mir_type_to_impl_name(&first_arg_ty);
-                        eprintln!(
-                            "[snow-codegen] warning: call to '{}' could not be resolved \
-                             as a trait method for type '{}'. This may indicate a type checker bug.",
-                            name, type_name
-                        );
+                    // Fallback for monomorphized generic types: the trait registry
+                    // has parametric impls (e.g., Display for Box<T>) that don't match
+                    // mangled concrete types (Box_Int). Check known_functions directly.
+                    let type_name = mir_type_to_impl_name(&first_arg_ty);
+                    let known_traits = ["Display", "Debug", "Eq", "Ord", "Hash"];
+                    let mut resolved_name = None;
+                    for trait_name in &known_traits {
+                        let candidate = format!("{}__{}__{}", trait_name, name, type_name);
+                        if self.known_functions.contains_key(&candidate) {
+                            resolved_name = Some(candidate);
+                            break;
+                        }
                     }
-                    callee
+                    if let Some(resolved) = resolved_name {
+                        MirExpr::Var(resolved, var_ty.clone())
+                    } else {
+                        // Defense-in-depth: if the callee is not a known function,
+                        // not a local variable, and find_method_traits returned empty,
+                        // this could indicate a where-clause violation that bypassed
+                        // typeck. Emit a warning (non-fatal) for debugging.
+                        if self.lookup_var(name).is_none() {
+                            let type_name = mir_type_to_impl_name(&first_arg_ty);
+                            eprintln!(
+                                "[snow-codegen] warning: call to '{}' could not be resolved \
+                                 as a trait method for type '{}'. This may indicate a type checker bug.",
+                                name, type_name
+                            );
+                        }
+                        callee
+                    }
                 }
             } else {
                 callee
@@ -4343,14 +4489,48 @@ impl<'a> Lowerer<'a> {
                         ty: MirType::String,
                     }
                 } else {
-                    // No Display impl found -- fall through to generic to_string
-                    MirExpr::Call {
-                        func: Box::new(MirExpr::Var(
-                            "to_string".to_string(),
-                            MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::String)),
-                        )),
-                        args: vec![expr],
-                        ty: MirType::String,
+                    // Check if a monomorphized Display function was generated
+                    // (for generic struct instantiations like Box_Int).
+                    let type_name = mir_type_to_impl_name(expr.ty());
+                    let mono_mangled = format!("Display__to_string__{}", type_name);
+                    if self.known_functions.contains_key(&mono_mangled) {
+                        MirExpr::Call {
+                            func: Box::new(MirExpr::Var(
+                                mono_mangled,
+                                MirType::FnPtr(
+                                    vec![expr.ty().clone()],
+                                    Box::new(MirType::String),
+                                ),
+                            )),
+                            args: vec![expr],
+                            ty: MirType::String,
+                        }
+                    } else {
+                        // Check for Debug fallback (inspect).
+                        let debug_mangled = format!("Debug__inspect__{}", type_name);
+                        if self.known_functions.contains_key(&debug_mangled) {
+                            MirExpr::Call {
+                                func: Box::new(MirExpr::Var(
+                                    debug_mangled,
+                                    MirType::FnPtr(
+                                        vec![expr.ty().clone()],
+                                        Box::new(MirType::String),
+                                    ),
+                                )),
+                                args: vec![expr],
+                                ty: MirType::String,
+                            }
+                        } else {
+                            // No Display or Debug impl found -- fall through to generic to_string
+                            MirExpr::Call {
+                                func: Box::new(MirExpr::Var(
+                                    "to_string".to_string(),
+                                    MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::String)),
+                                )),
+                                args: vec![expr],
+                                ty: MirType::String,
+                            }
+                        }
                     }
                 }
             }
@@ -4808,7 +4988,7 @@ impl<'a> Lowerer<'a> {
     // ── Struct literal lowering ──────────────────────────────────────
 
     fn lower_struct_literal(&mut self, sl: &StructLiteral) -> MirExpr {
-        let name = sl
+        let base_name = sl
             .name_ref()
             .and_then(|nr| nr.text())
             .unwrap_or_else(|| "<unnamed>".to_string());
@@ -4829,6 +5009,23 @@ impl<'a> Lowerer<'a> {
             .collect();
 
         let ty = self.resolve_range(sl.syntax().text_range());
+
+        // For generic structs, the resolved type is MirType::Struct("Box_Int") (mangled).
+        // Use the mangled name for the struct literal so codegen finds the right LLVM type.
+        // Also trigger monomorphized trait function generation.
+        let name = if let MirType::Struct(ref mangled) = ty {
+            if mangled != &base_name {
+                // This is a monomorphized generic struct -- generate trait functions.
+                if let Some(typeck_ty) = self.get_ty(sl.syntax().text_range()).cloned() {
+                    self.ensure_monomorphized_struct_trait_fns(&base_name, &typeck_ty);
+                }
+                mangled.clone()
+            } else {
+                base_name
+            }
+        } else {
+            base_name
+        };
 
         MirExpr::StructLit { name, fields, ty }
     }
