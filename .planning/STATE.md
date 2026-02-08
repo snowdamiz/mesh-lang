@@ -5,16 +5,16 @@
 See: .planning/PROJECT.md (updated 2026-02-08)
 
 **Core value:** Expressive, readable concurrency -- writing concurrent programs should feel as natural as sequential code, with supervision and fault tolerance built in.
-**Current focus:** v1.4 Compiler Polish -- Phase 24 in progress (Trait System Generics)
+**Current focus:** v1.4 Compiler Polish -- Phase 24 complete (Trait System Generics)
 
 ## Current Position
 
 Phase: 24 of 25 (Trait System Generics)
-Plan: 1 of 2 in phase
-Status: In progress
-Last activity: 2026-02-08 -- Completed 24-01-PLAN.md (Recursive nested collection Display callbacks)
+Plan: 2 of 2 in phase
+Status: Phase complete
+Last activity: 2026-02-08 -- Completed 24-02-PLAN.md (Generic Type Deriving -- TGEN-02)
 
-Progress: ███░░░░░░░ ~30% (2/2 plans in phase 23 + 1/2 in phase 24; phase 25 not yet planned)
+Progress: ████░░░░░░ ~40% (2/2 plans in phase 23 + 2/2 in phase 24; phase 25 not yet planned)
 
 ## Performance Metrics
 
@@ -46,10 +46,10 @@ Progress: ███░░░░░░░ ~30% (2/2 plans in phase 23 + 1/2 in ph
 - Tests: 1,187 passing (+130 new)
 
 **v1.4 Totals (in progress):**
-- Plans completed: 3
+- Plans completed: 4
 - Phases: 2 (23, 24)
-- Commits: 8
-- Tests: 1,202 passing (+15 new)
+- Commits: 11
+- Tests: 1,203 passing (+16 new)
 
 ## Accumulated Context
 
@@ -66,6 +66,10 @@ Full decision history archived in milestones/v1.0-ROADMAP.md, milestones/v1.1-RO
 | Primitive compare uses BinOp directly | 23-02 | Int/Float/String don't have generated Ord__lt__ functions; use hardware ops |
 | Synthetic wrapper functions for nested collection Display callbacks | 24-01 | Runtime expects fn(u64)->ptr; wrappers bridge two-arg calls to one-arg callback signature |
 | codegen_var module.get_function() fallback for intrinsic fn ptrs | 24-01 | Intrinsics not in self.functions map; need LLVM module lookup for callback references |
+| Parametric Ty::App registration for generic struct deriving | 24-02 | TraitRegistry structural matching handles concrete instantiation lookup automatically |
+| Lazy monomorphization at struct literal sites | 24-02 | Generate trait functions on demand when generic type is instantiated with concrete args |
+| known_functions fallback for monomorphized type dispatch | 24-02 | Trait registry has parametric impl but dispatch needs mangled name; check known_functions |
+| display_name separation for monomorphized Display/Debug | 24-02 | Show "Box(42)" not "Box_Int(42)" for human-readable output |
 
 ### Pending Todos
 
@@ -73,11 +77,11 @@ None.
 
 ### Blockers/Concerns
 
-TGEN-01 MIR infrastructure complete but full e2e test for List<List<Int>> requires generic collection element types (TGEN-02). Remaining v1.4 items: TGEN-02, TSND-01.
+Phase 24 complete. Remaining v1.4 item: TSND-01 (Phase 25 - Tooling Stretch Goals, not yet planned).
 
 ## Session Continuity
 
 Last session: 2026-02-08
-Stopped at: Completed 24-01-PLAN.md (recursive nested collection Display callbacks)
+Stopped at: Completed 24-02-PLAN.md (Generic Type Deriving -- TGEN-02)
 Resume file: None
-Next action: Execute 24-02-PLAN.md (Generic Type Deriving -- TGEN-02)
+Next action: Plan and execute Phase 25 (Tooling Stretch Goals -- TSND-01)
