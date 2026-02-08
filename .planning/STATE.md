@@ -10,11 +10,11 @@ See: .planning/PROJECT.md (updated 2026-02-07)
 ## Current Position
 
 Phase: 17 of 17 (Mark-Sweep Garbage Collector)
-Plan: 3 of 4 in phase 17
-Status: In progress
-Last activity: 2026-02-08 -- Completed 17-03-PLAN.md
+Plan: 4 of 4 in phase 17
+Status: Phase complete
+Last activity: 2026-02-08 -- Completed 17-04-PLAN.md
 
-Progress: ████████░░ 80% (1/2 phases complete + 3/4 plans in v1.2)
+Progress: ██████████ 100% (2/2 phases complete in v1.2)
 
 ## Performance Metrics
 
@@ -33,9 +33,9 @@ Progress: ████████░░ 80% (1/2 phases complete + 3/4 plans in
 - Lines of Rust: 56,539 (+3,928)
 
 **v1.2 Progress:**
-- Plans completed: 5
-- Phases started: 2 (16, 17)
-- Commits: 10
+- Plans completed: 6
+- Phases: 2 (16, 17) -- both complete
+- Commits: 11
 
 ## Accumulated Context
 
@@ -57,6 +57,8 @@ Full decision history archived in milestones/v1.0-ROADMAP.md and milestones/v1.1
 | Worklist on system heap (Rust Vec) | 17-02 | Avoids re-entrancy: GC heap allocation during GC would be circular |
 | GC at yield points only (cooperative) | 17-02 | Runs when actor yields, never interrupts other actors |
 | Test code retains snow_gc_alloc | 17-03 | Tests run outside actor context; explicit global arena usage is clearer |
+| Read stack_base from Process, not thread-local | 17-04 | STACK_BASE thread-local is stale when coroutines share a worker thread |
+| Multi-message GC test pattern | 17-04 | 64 KiB coroutine stack limits recursion depth; use many shallow rounds instead |
 
 ### Pending Todos
 
@@ -69,6 +71,6 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-08
-Stopped at: Completed 17-03-PLAN.md
+Stopped at: Completed 17-04-PLAN.md -- Phase 17 complete, v1.2 complete
 Resume file: None
-Next action: Execute 17-04-PLAN.md (sweep integration / GC trigger)
+Next action: v1.2 is complete. All phases (16, 17) delivered.
