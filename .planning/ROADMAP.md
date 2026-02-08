@@ -40,8 +40,8 @@ See milestones/v1.1-ROADMAP.md for details.
 **Plans**: 2 plans
 
 Plans:
-- [ ] 16-01-PLAN.md -- Parser infrastructure: FUN_TYPE CST node + parse_type() Fun() handling
-- [ ] 16-02-PLAN.md -- Type checker: ARROW token collection, parse_type_tokens Fun() handling, e2e tests
+- [x] 16-01-PLAN.md -- Parser infrastructure: FUN_TYPE CST node + parse_type() Fun() handling
+- [x] 16-02-PLAN.md -- Type checker: ARROW token collection, parse_type_tokens Fun() handling, e2e tests
 
 #### Phase 17: Mark-Sweep Garbage Collector
 **Goal**: Long-running actors reclaim unused memory automatically without affecting other actors
@@ -76,5 +76,5 @@ Plans:
 | 13. String Pattern Matching | v1.1 | 1/1 | Complete | 2026-02-07 |
 | 14. Generic Map Types | v1.1 | 2/2 | Complete | 2026-02-08 |
 | 15. HTTP Actor Model | v1.1 | 1/1 | Complete | 2026-02-08 |
-| 16. Fun() Type Parsing | v1.2 | 0/2 | Not started | - |
+| 16. Fun() Type Parsing | v1.2 | 2/2 | Complete | 2026-02-08 |
 | 17. Mark-Sweep GC | v1.2 | 0/? | Not started | - |

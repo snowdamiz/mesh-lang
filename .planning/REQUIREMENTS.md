@@ -7,9 +7,9 @@
 
 ### Type System
 
-- [ ] **TYPE-01**: Fun() parsed as function type annotation (e.g., `Fun(Int) -> String`)
-- [ ] **TYPE-02**: Function type annotations work in function signatures, struct fields, and type aliases
-- [ ] **TYPE-03**: Function type annotations integrate with HM type inference (unify with inferred function types)
+- [x] **TYPE-01**: Fun() parsed as function type annotation (e.g., `Fun(Int) -> String`)
+- [x] **TYPE-02**: Function type annotations work in function signatures, struct fields, and type aliases
+- [x] **TYPE-03**: Function type annotations integrate with HM type inference (unify with inferred function types)
 
 ### Runtime
 
@@ -32,9 +32,9 @@
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| TYPE-01 | Phase 16 | Pending |
-| TYPE-02 | Phase 16 | Pending |
-| TYPE-03 | Phase 16 | Pending |
+| TYPE-01 | Phase 16 | Complete |
+| TYPE-02 | Phase 16 | Complete |
+| TYPE-03 | Phase 16 | Complete |
 | RT-01 | Phase 17 | Pending |
 | RT-02 | Phase 17 | Pending |
 | RT-03 | Phase 17 | Pending |
@@ -47,4 +47,4 @@
 
 ---
 *Requirements defined: 2026-02-07*
-*Last updated: 2026-02-07 after roadmap creation*
+*Last updated: 2026-02-08 after Phase 16 completion*

@@ -9,12 +9,12 @@ See: .planning/PROJECT.md (updated 2026-02-07)
 
 ## Current Position
 
-Phase: 16 of 17 (Fun() Type Parsing)
+Phase: 16 of 17 (Fun() Type Parsing) -- VERIFIED ✓
 Plan: 2 of 2 in phase 16
-Status: Phase complete
-Last activity: 2026-02-08 -- Completed 16-02-PLAN.md
+Status: Phase 16 complete, verified
+Last activity: 2026-02-08 -- Phase 16 verified, all 3 must-haves passed
 
-Progress: ██████████ 100% (2/2 plans in phase 16)
+Progress: █████░░░░░ 50% (1/2 phases in v1.2)
 
 ## Performance Metrics
 
@@ -62,6 +62,6 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-08
-Stopped at: Completed 16-02-PLAN.md (Phase 16 complete)
+Stopped at: Phase 16 complete and verified
 Resume file: None
-Next action: Phase 17 or v1.2 completion
+Next action: /gsd:plan-phase 17
