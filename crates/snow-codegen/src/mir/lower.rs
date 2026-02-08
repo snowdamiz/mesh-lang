@@ -9,8 +9,8 @@ use rowan::TextRange;
 use rustc_hash::FxHashMap;
 use snow_parser::ast::expr::{
     BinaryExpr, CallExpr, CaseExpr, ClosureExpr, Expr, FieldAccess, IfExpr, LinkExpr, Literal,
-    MatchArm, NameRef, PipeExpr, ReceiveExpr, ReturnExpr, SendExpr, SpawnExpr, StringExpr,
-    StructLiteral, TupleExpr, UnaryExpr,
+    MapLiteral, MatchArm, NameRef, PipeExpr, ReceiveExpr, ReturnExpr, SendExpr, SpawnExpr,
+    StringExpr, StructLiteral, TupleExpr, UnaryExpr,
 };
 use snow_parser::ast::item::{
     ActorDef, Block, FnDef, Item, LetBinding, ServiceDef, SourceFile, StructDef, SumTypeDef,
@@ -1119,6 +1119,7 @@ impl<'a> Lowerer<'a> {
             Expr::ReturnExpr(ret) => self.lower_return_expr(ret),
             Expr::TupleExpr(tuple) => self.lower_tuple_expr(tuple),
             Expr::StructLiteral(sl) => self.lower_struct_literal(sl),
+            Expr::MapLiteral(map_lit) => self.lower_map_literal(map_lit),
             // Actor expressions
             Expr::SpawnExpr(spawn) => self.lower_spawn_expr(&spawn),
             Expr::SendExpr(send) => self.lower_send_expr(&send),
@@ -2305,6 +2306,51 @@ impl<'a> Lowerer<'a> {
             args: elements,
             ty: MirType::Ptr,
         }
+    }
+
+    // ── Map literal lowering ────────────────────────────────────────
+
+    /// Desugar `%{k1 => v1, k2 => v2}` to:
+    ///   snow_map_new_typed(key_type_tag)
+    ///   |> snow_map_put(_, k1, v1)
+    ///   |> snow_map_put(_, k2, v2)
+    fn lower_map_literal(&mut self, map_lit: &MapLiteral) -> MirExpr {
+        let key_type_tag = self.infer_map_key_type(map_lit.syntax().text_range());
+
+        let new_typed_fn = MirExpr::Var(
+            "snow_map_new_typed".to_string(),
+            MirType::FnPtr(vec![MirType::Int], Box::new(MirType::Ptr)),
+        );
+        let mut result = MirExpr::Call {
+            func: Box::new(new_typed_fn),
+            args: vec![MirExpr::IntLit(key_type_tag, MirType::Int)],
+            ty: MirType::Ptr,
+        };
+
+        let put_fn_ty = MirType::FnPtr(
+            vec![MirType::Ptr, MirType::Int, MirType::Int],
+            Box::new(MirType::Ptr),
+        );
+
+        for entry in map_lit.entries() {
+            let key = entry
+                .key()
+                .map(|e| self.lower_expr(&e))
+                .unwrap_or(MirExpr::Unit);
+            let val = entry
+                .value()
+                .map(|e| self.lower_expr(&e))
+                .unwrap_or(MirExpr::Unit);
+
+            let put_fn = MirExpr::Var("snow_map_put".to_string(), put_fn_ty.clone());
+            result = MirExpr::Call {
+                func: Box::new(put_fn),
+                args: vec![result, key, val],
+                ty: MirType::Ptr,
+            };
+        }
+
+        result
     }
 
     // ── Struct literal lowering ──────────────────────────────────────

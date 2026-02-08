@@ -13,8 +13,8 @@
 use rowan::TextRange;
 use snow_parser::ast::expr::{
     BinaryExpr, CallExpr, CaseExpr, ClosureExpr, Expr, FieldAccess, IfExpr, LinkExpr, Literal,
-    NameRef, PipeExpr, ReceiveExpr, ReturnExpr, SendExpr, SelfExpr, SpawnExpr, StructLiteral,
-    TupleExpr, UnaryExpr,
+    MapLiteral, NameRef, PipeExpr, ReceiveExpr, ReturnExpr, SendExpr, SelfExpr, SpawnExpr,
+    StructLiteral, TupleExpr, UnaryExpr,
 };
 use snow_parser::ast::item::{
     ActorDef, Block, FnDef, InterfaceDef, ImplDef as AstImplDef, Item, LetBinding, ServiceDef,
@@ -2077,6 +2077,9 @@ fn infer_expr(
         Expr::StructLiteral(sl) => {
             infer_struct_literal(ctx, env, sl, types, type_registry, trait_registry, fn_constraints)?
         }
+        Expr::MapLiteral(map_lit) => {
+            infer_map_literal(ctx, env, map_lit, types, type_registry, trait_registry, fn_constraints)?
+        }
         Expr::IndexExpr(_) => ctx.fresh_var(),
         // Actor expressions.
         Expr::SpawnExpr(spawn) => {
@@ -3622,6 +3625,50 @@ fn infer_struct_literal(
         Box::new(Ty::Con(TyCon::new(&struct_name))),
         generic_vars,
     ))
+}
+
+// ── Map Literal Inference ──────────────────────────────────────────────
+
+/// Infer the type of a map literal: `%{k1 => v1, k2 => v2, ...}`
+///
+/// Creates fresh type variables for K and V, then unifies each entry's key
+/// and value types against them. Returns `Map<K, V>`.
+fn infer_map_literal(
+    ctx: &mut InferCtx,
+    env: &mut TypeEnv,
+    map_lit: &MapLiteral,
+    types: &mut FxHashMap<TextRange, Ty>,
+    type_registry: &TypeRegistry,
+    trait_registry: &TraitRegistry,
+    fn_constraints: &FxHashMap<String, FnConstraints>,
+) -> Result<Ty, TypeError> {
+    let k_ty = ctx.fresh_var();
+    let v_ty = ctx.fresh_var();
+
+    for entry in map_lit.entries() {
+        if let Some(key_expr) = entry.key() {
+            let key_inferred = infer_expr(ctx, env, &key_expr, types, type_registry, trait_registry, fn_constraints)?;
+            ctx.unify(
+                key_inferred,
+                k_ty.clone(),
+                ConstraintOrigin::Annotation {
+                    annotation_span: entry.syntax().text_range(),
+                },
+            )?;
+        }
+        if let Some(val_expr) = entry.value() {
+            let val_inferred = infer_expr(ctx, env, &val_expr, types, type_registry, trait_registry, fn_constraints)?;
+            ctx.unify(
+                val_inferred,
+                v_ty.clone(),
+                ConstraintOrigin::Annotation {
+                    annotation_span: entry.syntax().text_range(),
+                },
+            )?;
+        }
+    }
+
+    Ok(Ty::map(k_ty, v_ty))
 }
 
 // ── Pattern Inference ──────────────────────────────────────────────────
