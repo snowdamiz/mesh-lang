@@ -1113,7 +1113,7 @@ impl<'a> Lowerer<'a> {
             .unwrap_or_else(|| "<unnamed>".to_string());
 
         // Look up from type registry for accurate types.
-        let fields = if let Some(info) = self.registry.struct_defs.get(&name) {
+        let fields: Vec<(String, MirType)> = if let Some(info) = self.registry.struct_defs.get(&name) {
             info.fields
                 .iter()
                 .map(|(fname, fty)| {
@@ -1127,6 +1127,9 @@ impl<'a> Lowerer<'a> {
             Vec::new()
         };
 
+        // Generate Debug__inspect__StructName MIR function.
+        self.generate_debug_inspect_struct(&name, &fields);
+
         self.structs.push(MirStructDef { name, fields });
     }
 
@@ -1139,7 +1142,7 @@ impl<'a> Lowerer<'a> {
             .unwrap_or_else(|| "<unnamed>".to_string());
 
         // Look up from type registry for accurate variant info.
-        let variants = if let Some(info) = self.registry.sum_type_defs.get(&name) {
+        let variants: Vec<MirVariantDef> = if let Some(info) = self.registry.sum_type_defs.get(&name) {
             info.variants
                 .iter()
                 .enumerate()
@@ -1166,7 +1169,147 @@ impl<'a> Lowerer<'a> {
             Vec::new()
         };
 
+        // Generate Debug__inspect__SumTypeName MIR function.
+        self.generate_debug_inspect_sum_type(&name, &variants);
+
         self.sum_types.push(MirSumTypeDef { name, variants });
+    }
+
+    // ── Debug inspect generation ────────────────────────────────────
+
+    /// Generate a synthetic `Debug__inspect__StructName` MIR function that
+    /// produces a developer-readable string like `"Point { x: 1, y: 2 }"`.
+    fn generate_debug_inspect_struct(&mut self, name: &str, fields: &[(String, MirType)]) {
+        let mangled = format!("Debug__inspect__{}", name);
+        let struct_ty = MirType::Struct(name.to_string());
+        let concat_ty = MirType::FnPtr(
+            vec![MirType::String, MirType::String],
+            Box::new(MirType::String),
+        );
+        let self_var = MirExpr::Var("self".to_string(), struct_ty.clone());
+
+        // Build: "StructName { field1: <val1>, field2: <val2> }"
+        let mut result: MirExpr = if fields.is_empty() {
+            MirExpr::StringLit(format!("{} {{}}", name), MirType::String)
+        } else {
+            MirExpr::StringLit(format!("{} {{ ", name), MirType::String)
+        };
+
+        for (i, (field_name, field_ty)) in fields.iter().enumerate() {
+            let is_last = i == fields.len() - 1;
+
+            // Append "field_name: "
+            let label = format!("{}: ", field_name);
+            result = MirExpr::Call {
+                func: Box::new(MirExpr::Var("snow_string_concat".to_string(), concat_ty.clone())),
+                args: vec![result, MirExpr::StringLit(label, MirType::String)],
+                ty: MirType::String,
+            };
+
+            // Access self.field
+            let field_access = MirExpr::FieldAccess {
+                object: Box::new(self_var.clone()),
+                field: field_name.clone(),
+                ty: field_ty.clone(),
+            };
+
+            // Convert field value to string using wrap_to_string
+            let field_str = self.wrap_to_string(field_access);
+
+            // Append field value string
+            result = MirExpr::Call {
+                func: Box::new(MirExpr::Var("snow_string_concat".to_string(), concat_ty.clone())),
+                args: vec![result, field_str],
+                ty: MirType::String,
+            };
+
+            // Append separator: ", " for non-last fields
+            if !is_last {
+                result = MirExpr::Call {
+                    func: Box::new(MirExpr::Var("snow_string_concat".to_string(), concat_ty.clone())),
+                    args: vec![result, MirExpr::StringLit(", ".to_string(), MirType::String)],
+                    ty: MirType::String,
+                };
+            }
+        }
+
+        // Append closing " }" for non-empty structs
+        if !fields.is_empty() {
+            result = MirExpr::Call {
+                func: Box::new(MirExpr::Var("snow_string_concat".to_string(), concat_ty.clone())),
+                args: vec![result, MirExpr::StringLit(" }".to_string(), MirType::String)],
+                ty: MirType::String,
+            };
+        }
+
+        let func = MirFunction {
+            name: mangled.clone(),
+            params: vec![("self".to_string(), struct_ty.clone())],
+            return_type: MirType::String,
+            body: result,
+            is_closure_fn: false,
+            captures: vec![],
+        };
+
+        self.functions.push(func);
+        self.known_functions.insert(
+            mangled,
+            MirType::FnPtr(vec![struct_ty], Box::new(MirType::String)),
+        );
+    }
+
+    /// Generate a synthetic `Debug__inspect__SumTypeName` MIR function.
+    /// For simplicity, returns just the variant name (e.g., "Some", "None").
+    /// Payload fields are represented as "VariantName(...)" for variants with fields.
+    fn generate_debug_inspect_sum_type(&mut self, name: &str, variants: &[MirVariantDef]) {
+        let mangled = format!("Debug__inspect__{}", name);
+        let sum_ty = MirType::SumType(name.to_string());
+
+        // For sum types, generate a match on the tag to return the variant name.
+        // This produces a MIR Match expression over integer tag values.
+        let self_var = MirExpr::Var("self".to_string(), sum_ty.clone());
+
+        // Build match arms: each variant tag -> string with variant name.
+        let arms: Vec<MirMatchArm> = variants
+            .iter()
+            .map(|v| {
+                let label = if v.fields.is_empty() {
+                    v.name.clone()
+                } else {
+                    format!("{}(...)", v.name)
+                };
+                MirMatchArm {
+                    pattern: MirPattern::Literal(MirLiteral::Int(v.tag as i64)),
+                    body: MirExpr::StringLit(label, MirType::String),
+                    guard: None,
+                }
+            })
+            .collect();
+
+        let body = if arms.is_empty() {
+            MirExpr::StringLit(format!("<{}>", name), MirType::String)
+        } else {
+            MirExpr::Match {
+                scrutinee: Box::new(self_var),
+                arms,
+                ty: MirType::String,
+            }
+        };
+
+        let func = MirFunction {
+            name: mangled.clone(),
+            params: vec![("self".to_string(), sum_ty.clone())],
+            return_type: MirType::String,
+            body,
+            is_closure_fn: false,
+            captures: vec![],
+        };
+
+        self.functions.push(func);
+        self.known_functions.insert(
+            mangled,
+            MirType::FnPtr(vec![sum_ty], Box::new(MirType::String)),
+        );
     }
 
     // ── Top-level let ────────────────────────────────────────────────
@@ -1573,14 +1716,20 @@ impl<'a> Lowerer<'a> {
                     let type_name = mir_type_to_impl_name(&first_arg_ty);
                     let mangled = format!("{}__{}__{}", trait_name, name, type_name);
 
-                    // For primitive Display impls, redirect to runtime functions
+                    // For primitive Display/Debug impls, redirect to runtime functions
                     // since there are no MIR function bodies for these builtins.
                     let resolved = match mangled.as_str() {
-                        "Display__to_string__Int" => "snow_int_to_string".to_string(),
-                        "Display__to_string__Float" => "snow_float_to_string".to_string(),
-                        "Display__to_string__Bool" => "snow_bool_to_string".to_string(),
-                        // Display__to_string__String is identity; handled below
-                        // by short-circuiting the entire call.
+                        "Display__to_string__Int" | "Debug__inspect__Int" => {
+                            "snow_int_to_string".to_string()
+                        }
+                        "Display__to_string__Float" | "Debug__inspect__Float" => {
+                            "snow_float_to_string".to_string()
+                        }
+                        "Display__to_string__Bool" | "Debug__inspect__Bool" => {
+                            "snow_bool_to_string".to_string()
+                        }
+                        // Display__to_string__String is identity; handled below.
+                        // Debug__inspect__String wraps in quotes; handled below.
                         _ => mangled,
                     };
                     MirExpr::Var(resolved, var_ty.clone())
@@ -1611,6 +1760,23 @@ impl<'a> Lowerer<'a> {
         if let MirExpr::Var(ref name, _) = callee {
             if name == "Display__to_string__String" && !args.is_empty() {
                 return args.into_iter().next().unwrap();
+            }
+            // Debug__inspect__String wraps the value in quotes: "\"" <> value <> "\""
+            if name == "Debug__inspect__String" && !args.is_empty() {
+                let val = args.into_iter().next().unwrap();
+                let quote = MirExpr::StringLit("\"".to_string(), MirType::String);
+                let concat_ty =
+                    MirType::FnPtr(vec![MirType::String, MirType::String], Box::new(MirType::String));
+                let left = MirExpr::Call {
+                    func: Box::new(MirExpr::Var("snow_string_concat".to_string(), concat_ty.clone())),
+                    args: vec![quote.clone(), val],
+                    ty: MirType::String,
+                };
+                return MirExpr::Call {
+                    func: Box::new(MirExpr::Var("snow_string_concat".to_string(), concat_ty)),
+                    args: vec![left, quote],
+                    ty: MirType::String,
+                };
             }
         }
 
@@ -5294,5 +5460,57 @@ end
         let parse = snow_parser::parse(source);
         let typeck = snow_typeck::check(&parse);
         let _mir = lower_to_mir(&parse, &typeck).expect("MIR lowering with depth tracking");
+    }
+
+    #[test]
+    fn debug_inspect_struct_generates_mir_function() {
+        let source = r#"
+struct Point do
+  x :: Int
+  y :: Int
+end
+
+fn main() do
+  let p = Point { x: 1, y: 2 }
+  println("test")
+end
+"#;
+        let mir = lower(source);
+        let inspect_fn = mir.functions.iter().find(|f| f.name == "Debug__inspect__Point");
+        assert!(
+            inspect_fn.is_some(),
+            "Expected Debug__inspect__Point function in MIR. Functions: {:?}",
+            mir.functions.iter().map(|f| &f.name).collect::<Vec<_>>()
+        );
+        let inspect_fn = inspect_fn.unwrap();
+        assert_eq!(inspect_fn.params.len(), 1);
+        assert_eq!(inspect_fn.params[0].0, "self");
+        assert_eq!(inspect_fn.return_type, MirType::String);
+    }
+
+    #[test]
+    fn debug_inspect_sum_type_generates_mir_function() {
+        let source = r#"
+type Color do
+  Red
+  Green
+  Blue
+end
+
+fn main() do
+  println("test")
+end
+"#;
+        let mir = lower(source);
+        let inspect_fn = mir.functions.iter().find(|f| f.name == "Debug__inspect__Color");
+        assert!(
+            inspect_fn.is_some(),
+            "Expected Debug__inspect__Color function in MIR. Functions: {:?}",
+            mir.functions.iter().map(|f| &f.name).collect::<Vec<_>>()
+        );
+        let inspect_fn = inspect_fn.unwrap();
+        assert_eq!(inspect_fn.params.len(), 1);
+        assert_eq!(inspect_fn.params[0].0, "self");
+        assert_eq!(inspect_fn.return_type, MirType::String);
     }
 }
