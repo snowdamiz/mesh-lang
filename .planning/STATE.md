@@ -10,11 +10,11 @@ See: .planning/PROJECT.md (updated 2026-02-07)
 ## Current Position
 
 Phase: 18 of 22 (Trait Infrastructure)
-Plan: 2 of 3 in current phase
-Status: In progress
-Last activity: 2026-02-08 -- Completed 18-02-PLAN.md (duplicate impl detection)
+Plan: 3 of 3 in current phase
+Status: Phase complete
+Last activity: 2026-02-08 -- Completed 18-03-PLAN.md (TraitRegistry exposure)
 
-Progress: ██░░░░░░░░ 12% (2/17 plans)
+Progress: ██░░░░░░░░ 18% (3/17 plans)
 
 ## Performance Metrics
 
@@ -57,6 +57,8 @@ Recent decisions for v1.3:
 - (18-02) Duplicate detection: structural overlap check in register_impl before insert
 - (18-02) find_method_traits as separate helper (ambiguity check at call site)
 - (18-02) Push impl even on duplicate (for error recovery in downstream lookups)
+- (18-03) TraitRegistry re-exported at crate root, owned in TypeckResult, borrowed in Lowerer
+- (18-03) Unified dispatch: built-in and user types share identical TraitRegistry resolution path
 
 ### Pending Todos
 
@@ -70,6 +72,6 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-08
-Stopped at: Completed 18-02-PLAN.md (duplicate impl detection)
+Stopped at: Completed 18-03-PLAN.md (TraitRegistry exposure) -- Phase 18 complete
 Resume file: None
-Next action: Execute 18-03-PLAN.md (TraitRegistry exposure)
+Next action: Begin Phase 19 (Trait Method Codegen)
