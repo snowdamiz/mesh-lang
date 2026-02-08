@@ -71,11 +71,11 @@ See milestones/v1.4-ROADMAP.md for details.
   3. User can create `[true, false]` as List<Bool> and iterate over elements
   4. User can create a list of user-defined struct instances and manipulate them
   5. User can create `[[1, 2], [3, 4]]` as List<List<Int>> and access nested elements
-**Plans**: TBD
+**Plans**: 2 plans
 
 Plans:
-- [ ] 26-01: TBD
-- [ ] 26-02: TBD
+- [ ] 26-01-PLAN.md -- Parser list literal syntax + polymorphic type signatures
+- [ ] 26-02-PLAN.md -- MIR lowering + LLVM codegen + list concatenation
 
 #### Phase 27: List Trait & Pattern Integration
 **Goal**: Trait protocols and pattern matching work correctly with polymorphic List<T>
