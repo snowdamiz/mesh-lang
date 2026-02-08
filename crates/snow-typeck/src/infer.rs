@@ -1668,10 +1668,12 @@ fn register_sum_type_def(
     // Register each variant constructor using the shared mechanism.
     register_variant_constructors(ctx, env, &name, &generic_params, &variants);
 
-    // Auto-register Debug impl for this sum type.
+    // Auto-register Debug, Eq, Ord impls for this sum type.
     // Only for non-generic sum types (generic types need monomorphized impls).
     if generic_params.is_empty() {
-        let debug_ty = Ty::Con(TyCon::new(&name));
+        let impl_ty = Ty::Con(TyCon::new(&name));
+
+        // Debug impl
         let mut debug_methods = FxHashMap::default();
         debug_methods.insert(
             "inspect".to_string(),
@@ -1683,9 +1685,43 @@ fn register_sum_type_def(
         );
         let _ = trait_registry.register_impl(TraitImplDef {
             trait_name: "Debug".to_string(),
-            impl_type: debug_ty,
+            impl_type: impl_ty.clone(),
             impl_type_name: name.clone(),
             methods: debug_methods,
+        });
+
+        // Eq impl
+        let mut eq_methods = FxHashMap::default();
+        eq_methods.insert(
+            "eq".to_string(),
+            ImplMethodSig {
+                has_self: true,
+                param_count: 1,
+                return_type: Some(Ty::bool()),
+            },
+        );
+        let _ = trait_registry.register_impl(TraitImplDef {
+            trait_name: "Eq".to_string(),
+            impl_type: impl_ty.clone(),
+            impl_type_name: name.clone(),
+            methods: eq_methods,
+        });
+
+        // Ord impl
+        let mut ord_methods = FxHashMap::default();
+        ord_methods.insert(
+            "lt".to_string(),
+            ImplMethodSig {
+                has_self: true,
+                param_count: 1,
+                return_type: Some(Ty::bool()),
+            },
+        );
+        let _ = trait_registry.register_impl(TraitImplDef {
+            trait_name: "Ord".to_string(),
+            impl_type: impl_ty,
+            impl_type_name: name.clone(),
+            methods: ord_methods,
         });
     }
 }
