@@ -5,7 +5,7 @@
 - ✅ **v1.0 MVP** - Phases 1-10 (shipped 2026-02-07)
 - ✅ **v1.1 Language Polish** - Phases 11-15 (shipped 2026-02-08)
 - ✅ **v1.2 Runtime & Type Fixes** - Phases 16-17 (shipped 2026-02-08)
-- 🚧 **v1.3 Traits & Protocols** - Phases 18-22 (in progress)
+- ✅ **v1.3 Traits & Protocols** - Phases 18-22 (shipped 2026-02-08)
 
 ## Phases
 
@@ -35,7 +35,7 @@ See milestones/v1.2-ROADMAP.md for details.
 
 </details>
 
-### 🚧 v1.3 Traits & Protocols (In Progress)
+### ✅ v1.3 Traits & Protocols (SHIPPED 2026-02-08)
 
 **Milestone Goal:** Complete the trait/protocol system for user-defined interfaces and impls with static dispatch via monomorphization, and ship stdlib protocols (Display, Debug, Eq, Ord, Hash, Default) that enable server-oriented abstractions.
 
@@ -45,21 +45,13 @@ See milestones/v1.3-ROADMAP.md for full phase details, success criteria, and pit
 - [x] **Phase 19: Trait Method Codegen** - Lower impl method bodies to MIR, resolve trait calls to mangled names, where clause enforcement
 - [x] **Phase 20: Essential Stdlib Protocols** - Display, Debug, Eq, Ord with string interpolation integration and struct/sum-type support
 - [x] **Phase 21: Extended Protocols** - Hash, Default, default method implementations, collection Display/Debug
-- [ ] **Phase 22: Auto-Derive (Stretch)** - `deriving(Eq, Ord, Display, Debug, Hash)` from struct/sum-type metadata
+- [x] **Phase 22: Auto-Derive (Stretch)** - `deriving(Eq, Ord, Display, Debug, Hash)` from struct/sum-type metadata
 
-**Phase 21 Plans:** 4 plans (complete)
-
-Plans:
-- [x] 21-01-PLAN.md -- Hash protocol: FNV-1a runtime, trait registration, auto-derive for structs, Map key integration
-- [x] 21-02-PLAN.md -- Default protocol: static method trait, primitive short-circuits, call-site type resolution
-- [x] 21-03-PLAN.md -- Default method implementations: parser/AST/typeck/lowering for optional interface method bodies
-- [x] 21-04-PLAN.md -- Collection Display/Debug: runtime callback helpers for List, Map, Set to_string
-
-**Phase 22 Plans:** 2 plans
+**Phase 22 Plans:** 2 plans (complete)
 
 Plans:
-- [ ] 22-01-PLAN.md -- Derive syntax + compiler infrastructure: parser, AST accessors, conditional gating in typeck/MIR, formatter
-- [ ] 22-02-PLAN.md -- Derive implementations + e2e tests: Display/Hash-sum generation, validation, comprehensive testing
+- [x] 22-01-PLAN.md -- Derive syntax + compiler infrastructure: parser, AST accessors, conditional gating in typeck/MIR, formatter
+- [x] 22-02-PLAN.md -- Derive implementations + e2e tests: Display/Hash-sum generation, validation, comprehensive testing
 
 ## Progress
 
@@ -86,4 +78,4 @@ Plans:
 | 19. Trait Method Codegen | v1.3 | 4/4 | Complete | 2026-02-08 |
 | 20. Essential Stdlib Protocols | v1.3 | 5/5 | Complete | 2026-02-08 |
 | 21. Extended Protocols | v1.3 | 4/4 | Complete | 2026-02-08 |
-| 22. Auto-Derive (Stretch) | v1.3 | 0/2 | Not started | - |
+| 22. Auto-Derive (Stretch) | v1.3 | 2/2 | Complete | 2026-02-08 |
