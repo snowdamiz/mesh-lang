@@ -5,16 +5,16 @@
 See: .planning/PROJECT.md (updated 2026-02-07)
 
 **Core value:** Expressive, readable concurrency -- writing concurrent programs should feel as natural as sequential code, with supervision and fault tolerance built in.
-**Current focus:** Milestone v1.3 Traits & Protocols -- Phase 21 in progress
+**Current focus:** Milestone v1.3 Traits & Protocols -- Phase 21 complete
 
 ## Current Position
 
 Phase: 21 of 22 (Extended Protocols)
-Plan: 3 of 4 in current phase
-Status: In progress
-Last activity: 2026-02-08 -- Completed 21-03-PLAN.md (Default method implementations)
+Plan: 4 of 4 in current phase
+Status: Phase complete
+Last activity: 2026-02-08 -- Completed 21-04-PLAN.md (Collection Display)
 
-Progress: █████████░ 88% (15/17 plans)
+Progress: ██████████ 94% (16/17 plans)
 
 ## Performance Metrics
 
@@ -90,6 +90,10 @@ Recent decisions for v1.3:
 - (21-03) Default method body stored as TextRange (not SyntaxNode) for Send+Sync compatibility
 - (21-03) Default body re-lowered per concrete type via TextRange lookup in parse tree
 - (21-03) Pre-register default method functions in known_functions during pre-registration phase
+- (21-04) Callback fn(u64)->*mut u8 signature for uniform element-to-string conversion
+- (21-04) snow_string_to_string identity function for string elements in collections
+- (21-04) wrap_to_string accepts Option<&Ty> for collection type resolution from typeck
+- (21-04) Nested collections (List<List<Int>>) fall back to snow_int_to_string (v1.3 limitation)
 
 ### Pending Todos
 
@@ -104,6 +108,6 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-08
-Stopped at: Completed 21-03-PLAN.md (Default method implementations)
+Stopped at: Completed 21-04-PLAN.md (Collection Display) -- Phase 21 complete
 Resume file: None
-Next action: Execute 21-04-PLAN.md (next protocol in phase 21)
+Next action: Execute Phase 22 (final milestone phase)
