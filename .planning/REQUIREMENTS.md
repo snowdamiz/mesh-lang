@@ -9,11 +9,11 @@ Requirements for resolving all three remaining known limitations.
 
 ### Polymorphic Collections
 
-- [ ] **LIST-01**: List literal `[1, 2, 3]` continues to work as List<Int> (backward compatibility)
-- [ ] **LIST-02**: User can create and manipulate List<String> (append, access, iterate)
-- [ ] **LIST-03**: User can create and manipulate List<Bool>
-- [ ] **LIST-04**: User can create and manipulate List<MyStruct> for user-defined struct types
-- [ ] **LIST-05**: User can create and manipulate nested lists (List<List<Int>>)
+- [x] **LIST-01**: List literal `[1, 2, 3]` continues to work as List<Int> (backward compatibility)
+- [x] **LIST-02**: User can create and manipulate List<String> (append, access, iterate)
+- [x] **LIST-03**: User can create and manipulate List<Bool>
+- [x] **LIST-04**: User can create and manipulate List<MyStruct> for user-defined struct types
+- [x] **LIST-05**: User can create and manipulate nested lists (List<List<Int>>)
 - [ ] **LIST-06**: Display/Debug works for List<T> where T implements Display/Debug
 - [ ] **LIST-07**: Eq/Ord works for List<T> where T implements Eq/Ord
 - [ ] **LIST-08**: Pattern matching on List<T> works for all element types (head :: tail destructuring)
@@ -49,11 +49,11 @@ None -- this is a focused correctness milestone.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| LIST-01 | Phase 26 | Pending |
-| LIST-02 | Phase 26 | Pending |
-| LIST-03 | Phase 26 | Pending |
-| LIST-04 | Phase 26 | Pending |
-| LIST-05 | Phase 26 | Pending |
+| LIST-01 | Phase 26 | Complete |
+| LIST-02 | Phase 26 | Complete |
+| LIST-03 | Phase 26 | Complete |
+| LIST-04 | Phase 26 | Complete |
+| LIST-05 | Phase 26 | Complete |
 | LIST-06 | Phase 27 | Pending |
 | LIST-07 | Phase 27 | Pending |
 | LIST-08 | Phase 27 | Pending |

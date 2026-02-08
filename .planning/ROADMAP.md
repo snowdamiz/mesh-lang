@@ -61,21 +61,22 @@ See milestones/v1.4-ROADMAP.md for details.
 
 **Milestone Goal:** Resolve all three remaining known limitations -- polymorphic List<T>, Ord-requires-Eq compile-time enforcement, and higher-order constraint propagation (qualified types).
 
-#### Phase 26: Polymorphic List Foundation
+#### Phase 26: Polymorphic List Foundation ✓
 **Goal**: Users can create and use List<T> with any element type, not just Int
 **Depends on**: Phase 25 (v1.4 complete)
 **Requirements**: LIST-01, LIST-02, LIST-03, LIST-04, LIST-05
 **Success Criteria** (what must be TRUE):
-  1. `[1, 2, 3]` continues to compile and work as List<Int> with no changes to existing code
-  2. User can create `["hello", "world"]` as List<String> and access/append elements
-  3. User can create `[true, false]` as List<Bool> and iterate over elements
-  4. User can create a list of user-defined struct instances and manipulate them
-  5. User can create `[[1, 2], [3, 4]]` as List<List<Int>> and access nested elements
+  1. ✓ `[1, 2, 3]` continues to compile and work as List<Int> with no changes to existing code
+  2. ✓ User can create `["hello", "world"]` as List<String> and access/append elements
+  3. ✓ User can create `[true, false]` as List<Bool> and iterate over elements
+  4. ✓ User can create a list of user-defined struct instances and manipulate them
+  5. ✓ User can create `[[1, 2], [3, 4]]` as List<List<Int>> and access nested elements
 **Plans**: 2 plans
+**Completed**: 2026-02-08
 
 Plans:
-- [ ] 26-01-PLAN.md -- Parser list literal syntax + polymorphic type signatures
-- [ ] 26-02-PLAN.md -- MIR lowering + LLVM codegen + list concatenation
+- [x] 26-01-PLAN.md -- Parser list literal syntax + polymorphic type signatures
+- [x] 26-02-PLAN.md -- MIR lowering + LLVM codegen + list concatenation
 
 #### Phase 27: List Trait & Pattern Integration
 **Goal**: Trait protocols and pattern matching work correctly with polymorphic List<T>
@@ -148,7 +149,7 @@ Plans:
 | 23. Pattern Matching Codegen | v1.4 | 2/2 | Complete | 2026-02-08 |
 | 24. Trait System Generics | v1.4 | 2/2 | Complete | 2026-02-08 |
 | 25. Type System Soundness | v1.4 | 1/1 | Complete | 2026-02-08 |
-| 26. Polymorphic List Foundation | v1.5 | 0/TBD | Not started | - |
+| 26. Polymorphic List Foundation | v1.5 | 2/2 | Complete | 2026-02-08 |
 | 27. List Trait & Pattern Integration | v1.5 | 0/TBD | Not started | - |
 | 28. Trait Deriving Safety | v1.5 | 0/TBD | Not started | - |
 | 29. Qualified Types | v1.5 | 0/TBD | Not started | - |
