@@ -10,11 +10,11 @@ See: .planning/PROJECT.md (updated 2026-02-07)
 ## Current Position
 
 Phase: 21 of 22 (Extended Protocols)
-Plan: 2 of 4 in current phase
+Plan: 3 of 4 in current phase
 Status: In progress
-Last activity: 2026-02-08 -- Completed 21-02-PLAN.md (Default protocol)
+Last activity: 2026-02-08 -- Completed 21-03-PLAN.md (Default method implementations)
 
-Progress: █████████░ 82% (14/17 plans)
+Progress: █████████░ 88% (15/17 plans)
 
 ## Performance Metrics
 
@@ -87,6 +87,9 @@ Recent decisions for v1.3:
 - (21-02) Default trait registered with has_self=false (first static trait method in Snow)
 - (21-02) default() registered as polymorphic () -> T in typeck env for call-site type resolution
 - (21-02) Primitive Default short-circuits to MIR literals (no runtime call)
+- (21-03) Default method body stored as TextRange (not SyntaxNode) for Send+Sync compatibility
+- (21-03) Default body re-lowered per concrete type via TextRange lookup in parse tree
+- (21-03) Pre-register default method functions in known_functions during pre-registration phase
 
 ### Pending Todos
 
@@ -101,6 +104,6 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-08
-Stopped at: Completed 21-02-PLAN.md (Default protocol)
+Stopped at: Completed 21-03-PLAN.md (Default method implementations)
 Resume file: None
-Next action: Execute 21-03-PLAN.md (next protocol in phase 21)
+Next action: Execute 21-04-PLAN.md (next protocol in phase 21)
