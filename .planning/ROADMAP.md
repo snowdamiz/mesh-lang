@@ -7,6 +7,7 @@
 - ✅ **v1.2 Runtime & Type Fixes** - Phases 16-17 (shipped 2026-02-08)
 - ✅ **v1.3 Traits & Protocols** - Phases 18-22 (shipped 2026-02-08)
 - ✅ **v1.4 Compiler Polish** - Phases 23-25 (shipped 2026-02-08)
+- 🚧 **v1.5 Compiler Correctness** - Phases 26-29 (in progress)
 
 ## Phases
 
@@ -56,6 +57,68 @@ See milestones/v1.4-ROADMAP.md for details.
 
 </details>
 
+### 🚧 v1.5 Compiler Correctness (In Progress)
+
+**Milestone Goal:** Resolve all three remaining known limitations -- polymorphic List<T>, Ord-requires-Eq compile-time enforcement, and higher-order constraint propagation (qualified types).
+
+#### Phase 26: Polymorphic List Foundation
+**Goal**: Users can create and use List<T> with any element type, not just Int
+**Depends on**: Phase 25 (v1.4 complete)
+**Requirements**: LIST-01, LIST-02, LIST-03, LIST-04, LIST-05
+**Success Criteria** (what must be TRUE):
+  1. `[1, 2, 3]` continues to compile and work as List<Int> with no changes to existing code
+  2. User can create `["hello", "world"]` as List<String> and access/append elements
+  3. User can create `[true, false]` as List<Bool> and iterate over elements
+  4. User can create a list of user-defined struct instances and manipulate them
+  5. User can create `[[1, 2], [3, 4]]` as List<List<Int>> and access nested elements
+**Plans**: TBD
+
+Plans:
+- [ ] 26-01: TBD
+- [ ] 26-02: TBD
+
+#### Phase 27: List Trait & Pattern Integration
+**Goal**: Trait protocols and pattern matching work correctly with polymorphic List<T>
+**Depends on**: Phase 26
+**Requirements**: LIST-06, LIST-07, LIST-08
+**Success Criteria** (what must be TRUE):
+  1. `to_string([1, 2, 3])` and `to_string(["a", "b"])` both produce correct Display output
+  2. `debug(my_struct_list)` renders each element using its Debug implementation
+  3. `[1, 2] == [1, 2]` returns true and `[1, 3] > [1, 2]` returns true via Eq/Ord
+  4. `case my_list do head :: tail -> ... end` destructures List<String>, List<Bool>, and List<MyStruct>
+**Plans**: TBD
+
+Plans:
+- [ ] 27-01: TBD
+- [ ] 27-02: TBD
+
+#### Phase 28: Trait Deriving Safety
+**Goal**: Compiler enforces trait dependency rules at compile time instead of failing at runtime
+**Depends on**: Phase 25 (v1.4 complete, independent of Phases 26-27)
+**Requirements**: DERIVE-01, DERIVE-02, DERIVE-03
+**Success Criteria** (what must be TRUE):
+  1. `deriving(Ord)` without `Eq` on a struct emits a compile-time error (not a runtime crash)
+  2. The error message explicitly suggests adding `Eq` to the deriving list
+  3. `deriving(Eq, Ord)` compiles and works correctly with no regression from v1.4 behavior
+**Plans**: TBD
+
+Plans:
+- [ ] 28-01: TBD
+
+#### Phase 29: Qualified Types
+**Goal**: Trait constraints propagate correctly when constrained functions are passed as higher-order arguments
+**Depends on**: Phase 25 (v1.4 complete, independent of Phases 26-28)
+**Requirements**: QUAL-01, QUAL-02, QUAL-03
+**Success Criteria** (what must be TRUE):
+  1. `apply(show, 42)` works where `show` requires Display and `42` satisfies it
+  2. Constraints propagate through nested higher-order calls (e.g., `wrap(apply, show, value)`)
+  3. Passing a constrained function to a context that violates the constraint produces a clear type error
+**Plans**: TBD
+
+Plans:
+- [ ] 29-01: TBD
+- [ ] 29-02: TBD
+
 ## Progress
 
 | Phase | Milestone | Plans Complete | Status | Completed |
@@ -85,3 +148,7 @@ See milestones/v1.4-ROADMAP.md for details.
 | 23. Pattern Matching Codegen | v1.4 | 2/2 | Complete | 2026-02-08 |
 | 24. Trait System Generics | v1.4 | 2/2 | Complete | 2026-02-08 |
 | 25. Type System Soundness | v1.4 | 1/1 | Complete | 2026-02-08 |
+| 26. Polymorphic List Foundation | v1.5 | 0/TBD | Not started | - |
+| 27. List Trait & Pattern Integration | v1.5 | 0/TBD | Not started | - |
+| 28. Trait Deriving Safety | v1.5 | 0/TBD | Not started | - |
+| 29. Qualified Types | v1.5 | 0/TBD | Not started | - |

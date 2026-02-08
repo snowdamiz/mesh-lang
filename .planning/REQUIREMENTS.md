@@ -49,26 +49,26 @@ None -- this is a focused correctness milestone.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| LIST-01 | — | Pending |
-| LIST-02 | — | Pending |
-| LIST-03 | — | Pending |
-| LIST-04 | — | Pending |
-| LIST-05 | — | Pending |
-| LIST-06 | — | Pending |
-| LIST-07 | — | Pending |
-| LIST-08 | — | Pending |
-| DERIVE-01 | — | Pending |
-| DERIVE-02 | — | Pending |
-| DERIVE-03 | — | Pending |
-| QUAL-01 | — | Pending |
-| QUAL-02 | — | Pending |
-| QUAL-03 | — | Pending |
+| LIST-01 | Phase 26 | Pending |
+| LIST-02 | Phase 26 | Pending |
+| LIST-03 | Phase 26 | Pending |
+| LIST-04 | Phase 26 | Pending |
+| LIST-05 | Phase 26 | Pending |
+| LIST-06 | Phase 27 | Pending |
+| LIST-07 | Phase 27 | Pending |
+| LIST-08 | Phase 27 | Pending |
+| DERIVE-01 | Phase 28 | Pending |
+| DERIVE-02 | Phase 28 | Pending |
+| DERIVE-03 | Phase 28 | Pending |
+| QUAL-01 | Phase 29 | Pending |
+| QUAL-02 | Phase 29 | Pending |
+| QUAL-03 | Phase 29 | Pending |
 
 **Coverage:**
 - v1.5 requirements: 14 total
-- Mapped to phases: 0
-- Unmapped: 14
+- Mapped to phases: 14
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-02-08*
-*Last updated: 2026-02-08 after initial definition*
+*Last updated: 2026-02-08 after roadmap creation*
