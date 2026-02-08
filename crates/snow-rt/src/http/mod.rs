@@ -2,17 +2,18 @@
 //!
 //! Provides:
 //! - **Router**: URL pattern matching with exact and wildcard routes
-//! - **Server**: Blocking HTTP server using tiny_http with thread-per-connection
+//! - **Server**: Blocking HTTP server using tiny_http with actor-per-connection
 //! - **Client**: HTTP GET/POST requests using ureq
 //! - **Request/Response**: Typed structs for request data and response construction
 //!
 //! ## Architecture
 //!
-//! The server uses `std::thread::spawn` for per-connection handling rather
-//! than the actor runtime. This is a pragmatic choice: the actor runtime
-//! uses corosensei coroutines with a work-stealing scheduler, and integrating
-//! tiny-http's blocking I/O with cooperative scheduling introduces unnecessary
-//! complexity. Thread-per-connection is simple and correct for HTTP serving.
+//! The server uses the Snow actor system (corosensei coroutines on M:N
+//! scheduler) for per-connection handling. Each incoming request is dispatched
+//! to a lightweight actor with a 64 KiB stack, wrapped in `catch_unwind` for
+//! crash isolation. Blocking I/O in tiny-http is accepted within the actor
+//! context (similar to BEAM NIFs) since each actor runs on a scheduler worker
+//! thread.
 
 pub mod client;
 pub mod router;

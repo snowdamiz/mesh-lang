@@ -1,20 +1,22 @@
 //! HTTP server runtime for the Snow language.
 //!
-//! Uses `tiny_http` for the HTTP server and `std::thread::spawn` for
-//! per-connection handling. The server blocks the calling thread in a
-//! loop, dispatching requests to Snow handler functions via function
-//! pointers.
+//! Uses `tiny_http` for the HTTP server and the Snow actor system for
+//! per-connection handling. Each incoming connection is dispatched to a
+//! lightweight actor (corosensei coroutine on the M:N scheduler) rather
+//! than an OS thread, benefiting from 64 KiB stacks and crash isolation
+//! via `catch_unwind`.
 //!
-//! ## Deviation from plan
+//! ## History
 //!
-//! Uses `std::thread::spawn` for per-connection handling rather than
-//! `snow_actor_spawn`. The actor runtime uses corosensei coroutines
-//! with a work-stealing scheduler, and integrating tiny-http with it
-//! introduces complex FFI concerns. Thread-per-connection with tiny-http
-//! is simple and correct for Phase 8.
+//! Phase 8 used `std::thread::spawn` for per-connection handling. Phase 15
+//! replaced this with actor-per-connection using the existing lightweight
+//! actor system, unifying the runtime model. Blocking I/O in tiny-http is
+//! accepted (similar to BEAM NIFs) since each actor runs on a scheduler
+//! worker thread.
 
+use crate::actor;
 use crate::collections::map;
-use crate::gc::snow_gc_alloc;
+use crate::gc::{snow_gc_alloc, snow_gc_alloc_actor};
 use crate::string::{snow_string_new, SnowString};
 
 use super::router::SnowRouter;
@@ -141,19 +143,58 @@ fn alloc_option(tag: u8, value: *mut u8) -> *mut u8 {
     }
 }
 
+// ── Actor-per-connection infrastructure ────────────────────────────────
+
+/// Arguments passed to the connection handler actor via raw pointer.
+#[repr(C)]
+struct ConnectionArgs {
+    /// Router address as usize (for Send safety across thread boundaries).
+    router_addr: usize,
+    /// Raw pointer to a boxed tiny_http::Request, transferred as usize.
+    request_ptr: usize,
+}
+
+/// Actor entry function for handling a single HTTP connection.
+///
+/// Receives a raw pointer to `ConnectionArgs` containing the router
+/// address and a boxed `tiny_http::Request`. Wraps the handler call
+/// in `catch_unwind` for crash isolation -- a panic in one handler
+/// does not affect other connections.
+extern "C" fn connection_handler_entry(args: *const u8) {
+    if args.is_null() {
+        return;
+    }
+
+    let args = unsafe { Box::from_raw(args as *mut ConnectionArgs) };
+    let router_ptr = args.router_addr as *mut u8;
+    let request = unsafe { *Box::from_raw(args.request_ptr as *mut tiny_http::Request) };
+
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        handle_request(router_ptr, request);
+    }));
+
+    if let Err(panic_info) = result {
+        eprintln!("[snow-rt] HTTP handler panicked: {:?}", panic_info);
+    }
+}
+
 // ── Server ─────────────────────────────────────────────────────────────
 
 /// Start an HTTP server on the given port, blocking the calling thread.
 ///
 /// The server listens for incoming connections and dispatches each
-/// request to the matching route handler. If no route matches, a 404
-/// response is returned.
+/// request to a lightweight actor via the Snow actor scheduler. Each
+/// connection handler runs as a coroutine (64 KiB stack) with crash
+/// isolation via `catch_unwind` in `connection_handler_entry`.
 ///
 /// Handler calling convention (same as closures in collections):
 /// - If handler_env is null: `fn(request_ptr) -> response_ptr`
 /// - If handler_env is non-null: `fn(handler_env, request_ptr) -> response_ptr`
 #[no_mangle]
 pub extern "C" fn snow_http_serve(router: *mut u8, port: i64) {
+    // Ensure the actor scheduler is initialized (idempotent).
+    crate::actor::snow_rt_init_actor(0);
+
     let addr = format!("0.0.0.0:{}", port);
     let server = match tiny_http::Server::http(&addr) {
         Ok(s) => s,
@@ -165,21 +206,24 @@ pub extern "C" fn snow_http_serve(router: *mut u8, port: i64) {
 
     eprintln!("[snow-rt] HTTP server listening on {}", addr);
 
-    // Clone the router pointer for use across threads.
-    // Safety: The router is read-only after creation and lives for the
-    // duration of the program.
-    let router_ptr = router;
-
-    // Safety: The router is read-only after creation and lives for
-    // program duration. We cast to usize (which is Send) to avoid
-    // the raw pointer !Send restriction.
-    let router_addr = router_ptr as usize;
+    let router_addr = router as usize;
 
     for request in server.incoming_requests() {
-        let addr = router_addr;
-        std::thread::spawn(move || {
-            handle_request(addr as *mut u8, request);
-        });
+        let request_ptr = Box::into_raw(Box::new(request)) as usize;
+        let args = ConnectionArgs {
+            router_addr,
+            request_ptr,
+        };
+        let args_ptr = Box::into_raw(Box::new(args)) as *const u8;
+        let args_size = std::mem::size_of::<ConnectionArgs>() as u64;
+
+        let sched = actor::global_scheduler();
+        sched.spawn(
+            connection_handler_entry as *const u8,
+            args_ptr,
+            args_size,
+            1, // Normal priority
+        );
     }
 }
 
@@ -228,8 +272,9 @@ fn handle_request(router_ptr: *mut u8, mut request: tiny_http::Request) {
             headers_map = map::snow_map_put(headers_map, key as u64, val as u64);
         }
 
-        // Build the request struct.
-        let snow_req = snow_gc_alloc(
+        // Build the request struct (allocated on the actor's per-actor heap
+        // when running inside an actor context, falling back to global arena).
+        let snow_req = snow_gc_alloc_actor(
             std::mem::size_of::<SnowHttpRequest>() as u64,
             std::mem::align_of::<SnowHttpRequest>() as u64,
         ) as *mut SnowHttpRequest;

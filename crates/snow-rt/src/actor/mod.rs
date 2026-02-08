@@ -71,7 +71,7 @@ pub(crate) static GLOBAL_SCHEDULER: OnceLock<Scheduler> = OnceLock::new();
 /// Get a reference to the global scheduler.
 ///
 /// Panics if the scheduler has not been initialized via `snow_rt_init_actor()`.
-fn global_scheduler() -> &'static Scheduler {
+pub(crate) fn global_scheduler() -> &'static Scheduler {
     GLOBAL_SCHEDULER
         .get()
         .expect("actor scheduler not initialized -- call snow_rt_init_actor() first")
