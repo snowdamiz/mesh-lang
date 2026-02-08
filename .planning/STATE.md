@@ -10,11 +10,11 @@ See: .planning/PROJECT.md (updated 2026-02-07)
 ## Current Position
 
 Phase: 20 of 22 (Essential Stdlib Protocols)
-Plan: 3 of 5 in current phase
+Plan: 4 of 5 in current phase
 Status: In progress
-Last activity: 2026-02-08 -- Completed 20-03-PLAN.md (Debug trait + inspect dispatch)
+Last activity: 2026-02-08 -- Completed 20-04-PLAN.md (Eq/Ord for structs)
 
-Progress: ██████░░░░ 59% (10/17 plans)
+Progress: ██████░░░░ 65% (11/17 plans)
 
 ## Performance Metrics
 
@@ -64,7 +64,7 @@ Recent decisions for v1.3:
 - (19-01) typeck stores impl method Ty::Fun in types map for lowerer consumption
 - (19-02) mir_type_to_ty as separate function in types.rs for MirType-to-Ty reverse mapping
 - (19-02) First-match for ambiguous traits (typeck already reports ambiguity)
-- (19-02) Operator dispatch for Add/Sub/Mul/Eq/Lt only (sufficient for v1.3 Eq/Ord protocols)
+- ~~(19-02) Operator dispatch for Add/Sub/Mul/Eq/Lt only~~ -- EXTENDED in 20-04 (all 6 comparison operators)
 - (19-03) Warning (not panic) for unresolvable trait methods (error recovery via LLVM codegen)
 - (19-03) Mono depth limit of 64, tracked in both lower_fn_def and lower_impl_method
 - (19-04) Smoke test reveals typeck gap: "expected Point, found Point" on self parameter in trait method calls (MIR lowering correct, typeck type identity issue)
@@ -75,6 +75,10 @@ Recent decisions for v1.3:
 - (20-03) Debug impls auto-registered only for non-generic struct/sum types
 - (20-03) Primitive Debug inspect reuses Display runtime functions (Int/Float/Bool); String wraps in quotes
 - (20-03) Sum type Debug inspect returns variant name only (no payload details for v1.3)
+- (20-04) Ord trait method renamed from "cmp" to "lt" for consistency with operator dispatch
+- (20-04) String Ord impl registered (runtime lt helper not yet implemented)
+- (20-04) NotEq/Gt/LtEq/GtEq expressed as negate/swap transformations of eq/lt
+- (20-04) Negation in operator dispatch uses BinOp::Eq(x, false) not UnaryOp::Not
 
 ### Pending Todos
 
@@ -89,6 +93,6 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-08
-Stopped at: Completed 20-03-PLAN.md
+Stopped at: Completed 20-04-PLAN.md
 Resume file: None
-Next action: Execute 20-04-PLAN.md (Eq/Ord for structs)
+Next action: Execute 20-05-PLAN.md (Eq/Ord for sum types)
