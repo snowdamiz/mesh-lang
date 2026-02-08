@@ -44,7 +44,13 @@ Expressive, readable concurrency -- writing concurrent programs should feel as n
 
 ### Active
 
-(No active milestone -- planning next)
+**Current Milestone: v1.5 Compiler Correctness**
+
+**Goal:** Resolve all three remaining known limitations — polymorphic List<T>, Ord-requires-Eq compile-time enforcement, and higher-order constraint propagation (qualified types).
+
+- [ ] Polymorphic List<T> — List works with any element type (String, Bool, structs, nested lists), not just Int
+- [ ] Ord deriving requires Eq at compile time — compiler emits error if Ord derived without Eq
+- [ ] Higher-order function argument constraint propagation — trait constraints preserved when constrained functions passed as arguments (e.g., apply(show, value))
 
 ### Out of Scope
 
@@ -120,4 +126,4 @@ Known limitations:
 | Clone-locally fn_constraints | Avoids &mut cascade to 10+ callers; cloning small map is cheap | ✓ Good -- v1.4, contained mutability |
 
 ---
-*Last updated: 2026-02-08 after v1.4 milestone*
+*Last updated: 2026-02-08 after v1.5 milestone start*
