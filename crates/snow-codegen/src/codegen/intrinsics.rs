@@ -355,6 +355,23 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
     // snow_http_request_query(req: ptr, name: ptr) -> ptr (SnowOption)
     module.add_function("snow_http_request_query", ptr_type.fn_type(&[ptr_type.into(), ptr_type.into()], false), Some(inkwell::module::Linkage::External));
 
+    // ── Hash runtime functions (Phase 21 Plan 01) ──────────────────────
+
+    // snow_hash_int(value: i64) -> i64
+    module.add_function("snow_hash_int", i64_type.fn_type(&[i64_type.into()], false), Some(inkwell::module::Linkage::External));
+
+    // snow_hash_float(value: f64) -> i64
+    module.add_function("snow_hash_float", i64_type.fn_type(&[f64_type.into()], false), Some(inkwell::module::Linkage::External));
+
+    // snow_hash_bool(value: i8) -> i64
+    module.add_function("snow_hash_bool", i64_type.fn_type(&[i8_type.into()], false), Some(inkwell::module::Linkage::External));
+
+    // snow_hash_string(s: ptr) -> i64
+    module.add_function("snow_hash_string", i64_type.fn_type(&[ptr_type.into()], false), Some(inkwell::module::Linkage::External));
+
+    // snow_hash_combine(hash_a: i64, hash_b: i64) -> i64
+    module.add_function("snow_hash_combine", i64_type.fn_type(&[i64_type.into(), i64_type.into()], false), Some(inkwell::module::Linkage::External));
+
     // ── Service runtime functions (Phase 9 Plan 03) ──────────────────────
 
     // snow_service_call(target_pid: i64, msg_tag: i64, payload_ptr: ptr, payload_size: i64) -> ptr
@@ -562,6 +579,13 @@ mod tests {
         assert!(module.get_function("snow_json_from_float").is_some());
         assert!(module.get_function("snow_json_from_bool").is_some());
         assert!(module.get_function("snow_json_from_string").is_some());
+
+        // Hash runtime functions (Phase 21 Plan 01)
+        assert!(module.get_function("snow_hash_int").is_some());
+        assert!(module.get_function("snow_hash_float").is_some());
+        assert!(module.get_function("snow_hash_bool").is_some());
+        assert!(module.get_function("snow_hash_string").is_some());
+        assert!(module.get_function("snow_hash_combine").is_some());
     }
 
     #[test]

@@ -1136,6 +1136,9 @@ impl<'a> Lowerer<'a> {
         // Generate Ord__lt__StructName MIR function (lexicographic less-than).
         self.generate_ord_struct(&name, &fields);
 
+        // Generate Hash__hash__StructName MIR function (field-by-field FNV-1a hash).
+        self.generate_hash_struct(&name, &fields);
+
         self.structs.push(MirStructDef { name, fields });
     }
 
@@ -1861,6 +1864,125 @@ impl<'a> Lowerer<'a> {
         );
     }
 
+    // ── Hash generation ─────────────────────────────────────────────
+
+    /// Generate a synthetic `Hash__hash__StructName` MIR function that
+    /// hashes each field via the appropriate `snow_hash_*` runtime function
+    /// and chains results with `snow_hash_combine`.
+    fn generate_hash_struct(&mut self, name: &str, fields: &[(String, MirType)]) {
+        let mangled = format!("Hash__hash__{}", name);
+        let struct_ty = MirType::Struct(name.to_string());
+        let self_var = MirExpr::Var("self".to_string(), struct_ty.clone());
+
+        let combine_ty = MirType::FnPtr(
+            vec![MirType::Int, MirType::Int],
+            Box::new(MirType::Int),
+        );
+
+        let body = if fields.is_empty() {
+            // Empty struct: return a constant hash (the FNV offset basis).
+            MirExpr::IntLit(0xcbf29ce484222325_u64 as i64, MirType::Int)
+        } else {
+            // For each field, compute hash, then chain with snow_hash_combine.
+            let mut result: Option<MirExpr> = None;
+            for (field_name, field_ty) in fields {
+                let field_access = MirExpr::FieldAccess {
+                    object: Box::new(self_var.clone()),
+                    field: field_name.clone(),
+                    ty: field_ty.clone(),
+                };
+
+                let field_hash = self.emit_hash_for_type(field_access, field_ty);
+
+                result = Some(match result {
+                    None => field_hash,
+                    Some(prev) => MirExpr::Call {
+                        func: Box::new(MirExpr::Var(
+                            "snow_hash_combine".to_string(),
+                            combine_ty.clone(),
+                        )),
+                        args: vec![prev, field_hash],
+                        ty: MirType::Int,
+                    },
+                });
+            }
+            result.unwrap()
+        };
+
+        let func = MirFunction {
+            name: mangled.clone(),
+            params: vec![("self".to_string(), struct_ty.clone())],
+            return_type: MirType::Int,
+            body,
+            is_closure_fn: false,
+            captures: vec![],
+        };
+
+        self.functions.push(func);
+        self.known_functions.insert(
+            mangled,
+            MirType::FnPtr(vec![struct_ty], Box::new(MirType::Int)),
+        );
+    }
+
+    /// Emit a hash call for a value of the given MIR type.
+    /// Returns a MirExpr that evaluates to i64 hash.
+    fn emit_hash_for_type(&self, expr: MirExpr, ty: &MirType) -> MirExpr {
+        match ty {
+            MirType::Int => {
+                let fn_ty = MirType::FnPtr(vec![MirType::Int], Box::new(MirType::Int));
+                MirExpr::Call {
+                    func: Box::new(MirExpr::Var("snow_hash_int".to_string(), fn_ty)),
+                    args: vec![expr],
+                    ty: MirType::Int,
+                }
+            }
+            MirType::Float => {
+                let fn_ty = MirType::FnPtr(vec![MirType::Float], Box::new(MirType::Int));
+                MirExpr::Call {
+                    func: Box::new(MirExpr::Var("snow_hash_float".to_string(), fn_ty)),
+                    args: vec![expr],
+                    ty: MirType::Int,
+                }
+            }
+            MirType::Bool => {
+                let fn_ty = MirType::FnPtr(vec![MirType::Bool], Box::new(MirType::Int));
+                MirExpr::Call {
+                    func: Box::new(MirExpr::Var("snow_hash_bool".to_string(), fn_ty)),
+                    args: vec![expr],
+                    ty: MirType::Int,
+                }
+            }
+            MirType::String => {
+                let fn_ty = MirType::FnPtr(vec![MirType::String], Box::new(MirType::Int));
+                MirExpr::Call {
+                    func: Box::new(MirExpr::Var("snow_hash_string".to_string(), fn_ty)),
+                    args: vec![expr],
+                    ty: MirType::Int,
+                }
+            }
+            MirType::Struct(inner_name) => {
+                // Recursive: call Hash__hash__InnerStruct
+                let inner_mangled = format!("Hash__hash__{}", inner_name);
+                let fn_ty = MirType::FnPtr(vec![ty.clone()], Box::new(MirType::Int));
+                MirExpr::Call {
+                    func: Box::new(MirExpr::Var(inner_mangled, fn_ty)),
+                    args: vec![expr],
+                    ty: MirType::Int,
+                }
+            }
+            _ => {
+                // Fallback: hash as int (cast to i64)
+                let fn_ty = MirType::FnPtr(vec![MirType::Int], Box::new(MirType::Int));
+                MirExpr::Call {
+                    func: Box::new(MirExpr::Var("snow_hash_int".to_string(), fn_ty)),
+                    args: vec![expr],
+                    ty: MirType::Int,
+                }
+            }
+        }
+    }
+
     /// Build a lexicographic less-than comparison for sum type payload fields
     /// using named variables (e.g., self_0, self_1 vs other_0, other_1).
     fn build_lexicographic_lt_vars(
@@ -2324,22 +2446,51 @@ impl<'a> Lowerer<'a> {
         }
 
         // For Map functions that take a key argument (put, get, has_key, delete),
-        // if the key argument has MirType::String, wrap the map argument in
-        // snow_map_tag_string() to ensure string-key comparison is used.
+        // handle key type dispatch:
+        // - String keys: wrap the map argument in snow_map_tag_string()
+        // - Struct keys with Hash impl: hash the key via Hash__hash__TypeName,
+        //   use the hash as an integer key (hash-as-key approach for v1.3)
         let args = if let MirExpr::Var(ref name, _) = callee {
             if matches!(name.as_str(), "snow_map_put" | "snow_map_get" | "snow_map_has_key" | "snow_map_delete")
                 && args.len() >= 2
-                && matches!(args[1].ty(), MirType::String)
             {
-                let mut new_args = args;
-                let map_arg = new_args.remove(0);
-                let tagged_map = MirExpr::Call {
-                    func: Box::new(MirExpr::Var("snow_map_tag_string".to_string(), MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Ptr)))),
-                    args: vec![map_arg],
-                    ty: MirType::Ptr,
-                };
-                new_args.insert(0, tagged_map);
-                new_args
+                let key_ty = args[1].ty().clone();
+                if matches!(key_ty, MirType::String) {
+                    // String key: tag the map for string comparison
+                    let mut new_args = args;
+                    let map_arg = new_args.remove(0);
+                    let tagged_map = MirExpr::Call {
+                        func: Box::new(MirExpr::Var("snow_map_tag_string".to_string(), MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Ptr)))),
+                        args: vec![map_arg],
+                        ty: MirType::Ptr,
+                    };
+                    new_args.insert(0, tagged_map);
+                    new_args
+                } else if matches!(key_ty, MirType::Struct(_)) {
+                    // Struct key with Hash impl: hash the key, use hash as int key.
+                    let ty_for_lookup = mir_type_to_ty(&key_ty);
+                    if self.trait_registry.has_impl("Hash", &ty_for_lookup) {
+                        let type_name = mir_type_to_impl_name(&key_ty);
+                        let hash_fn_name = format!("Hash__hash__{}", type_name);
+                        let hash_fn_ty = MirType::FnPtr(
+                            vec![key_ty.clone()],
+                            Box::new(MirType::Int),
+                        );
+                        let mut new_args = args;
+                        let key_arg = new_args.remove(1);
+                        let hashed_key = MirExpr::Call {
+                            func: Box::new(MirExpr::Var(hash_fn_name, hash_fn_ty)),
+                            args: vec![key_arg],
+                            ty: MirType::Int,
+                        };
+                        new_args.insert(1, hashed_key);
+                        new_args
+                    } else {
+                        args
+                    }
+                } else {
+                    args
+                }
             } else {
                 args
             }
@@ -2362,7 +2513,7 @@ impl<'a> Lowerer<'a> {
                     let type_name = mir_type_to_impl_name(&first_arg_ty);
                     let mangled = format!("{}__{}__{}", trait_name, name, type_name);
 
-                    // For primitive Display/Debug impls, redirect to runtime functions
+                    // For primitive Display/Debug/Hash impls, redirect to runtime functions
                     // since there are no MIR function bodies for these builtins.
                     let resolved = match mangled.as_str() {
                         "Display__to_string__Int" | "Debug__inspect__Int" => {
@@ -2376,6 +2527,10 @@ impl<'a> Lowerer<'a> {
                         }
                         // Display__to_string__String is identity; handled below.
                         // Debug__inspect__String wraps in quotes; handled below.
+                        "Hash__hash__Int" => "snow_hash_int".to_string(),
+                        "Hash__hash__Float" => "snow_hash_float".to_string(),
+                        "Hash__hash__Bool" => "snow_hash_bool".to_string(),
+                        "Hash__hash__String" => "snow_hash_string".to_string(),
                         _ => mangled,
                     };
                     MirExpr::Var(resolved, var_ty.clone())
@@ -6541,5 +6696,116 @@ end
         if let MirExpr::Match { arms, .. } = &eq_fn.body {
             assert_eq!(arms.len(), 4, "Should have one arm per variant");
         }
+    }
+
+    // ── Hash MIR generation tests ───────────────────────────────────
+
+    #[test]
+    fn hash_struct_generates_mir_function() {
+        let source = r#"
+struct Point do
+  x :: Int
+  y :: Int
+end
+
+fn main() do
+  println("test")
+end
+"#;
+        let mir = lower(source);
+        let hash_fn = mir.functions.iter().find(|f| f.name == "Hash__hash__Point");
+        assert!(hash_fn.is_some(), "Expected Hash__hash__Point function in MIR");
+        let hash_fn = hash_fn.unwrap();
+        assert_eq!(hash_fn.params.len(), 1);
+        assert_eq!(hash_fn.params[0].0, "self");
+        assert_eq!(hash_fn.return_type, MirType::Int);
+    }
+
+    #[test]
+    fn hash_struct_field_chaining() {
+        let source = r#"
+struct Point do
+  x :: Int
+  y :: Int
+end
+
+fn main() do
+  println("test")
+end
+"#;
+        let mir = lower(source);
+        let hash_fn = mir.functions.iter().find(|f| f.name == "Hash__hash__Point").unwrap();
+        // Body should contain a snow_hash_combine call (chaining two field hashes).
+        fn has_combine(expr: &MirExpr) -> bool {
+            match expr {
+                MirExpr::Call { func, args, .. } => {
+                    if let MirExpr::Var(name, _) = func.as_ref() {
+                        if name == "snow_hash_combine" {
+                            return true;
+                        }
+                    }
+                    args.iter().any(has_combine) || has_combine(func)
+                }
+                _ => false,
+            }
+        }
+        assert!(has_combine(&hash_fn.body), "Hash body should contain snow_hash_combine for multi-field struct");
+    }
+
+    #[test]
+    fn hash_empty_struct_returns_constant() {
+        let source = r#"
+struct Empty do
+end
+
+fn main() do
+  println("test")
+end
+"#;
+        let mir = lower(source);
+        let hash_fn = mir.functions.iter().find(|f| f.name == "Hash__hash__Empty");
+        assert!(hash_fn.is_some(), "Expected Hash__hash__Empty function in MIR");
+        let hash_fn = hash_fn.unwrap();
+        // Empty struct hash should be a constant (FNV offset basis)
+        assert!(matches!(hash_fn.body, MirExpr::IntLit(_, MirType::Int)));
+    }
+
+    #[test]
+    fn map_put_with_struct_key_hashes() {
+        let source = r#"
+struct Point do
+  x :: Int
+  y :: Int
+end
+
+fn main() do
+  let p = Point { x: 1, y: 2 }
+  let m = Map.new()
+  let m2 = Map.put(m, p, 42)
+  m2
+end
+"#;
+        let mir = lower(source);
+        let main_fn = mir.functions.iter().find(|f| f.name == "snow_main");
+        assert!(main_fn.is_some(), "Expected snow_main function in MIR");
+        // The MIR should contain a Hash__hash__Point call somewhere in the body
+        // (emitted as part of the map_put key hashing).
+        fn has_hash_call(expr: &MirExpr) -> bool {
+            match expr {
+                MirExpr::Call { func, args, .. } => {
+                    if let MirExpr::Var(name, _) = func.as_ref() {
+                        if name == "Hash__hash__Point" {
+                            return true;
+                        }
+                    }
+                    args.iter().any(has_hash_call) || has_hash_call(func)
+                }
+                MirExpr::Let { value, body, .. } => {
+                    has_hash_call(value) || has_hash_call(body)
+                }
+                _ => false,
+            }
+        }
+        assert!(has_hash_call(&main_fn.unwrap().body), "Map.put with struct key should emit Hash__hash__Point call");
     }
 }
