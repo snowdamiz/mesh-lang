@@ -12,9 +12,9 @@
 
 use rowan::TextRange;
 use snow_parser::ast::expr::{
-    BinaryExpr, CallExpr, CaseExpr, ClosureExpr, Expr, FieldAccess, IfExpr, LinkExpr, Literal,
-    MapLiteral, NameRef, PipeExpr, ReceiveExpr, ReturnExpr, SendExpr, SelfExpr, SpawnExpr,
-    StructLiteral, TupleExpr, UnaryExpr,
+    BinaryExpr, CallExpr, CaseExpr, ClosureExpr, Expr, FieldAccess, IfExpr, LinkExpr, ListLiteral,
+    Literal, MapLiteral, NameRef, PipeExpr, ReceiveExpr, ReturnExpr, SendExpr, SelfExpr,
+    SpawnExpr, StructLiteral, TupleExpr, UnaryExpr,
 };
 use snow_parser::ast::item::{
     ActorDef, Block, FnDef, InterfaceDef, ImplDef as AstImplDef, Item, LetBinding, ServiceDef,
@@ -308,23 +308,29 @@ fn stdlib_modules() -> HashMap<String, HashMap<String, Scheme>> {
 
     // ── Collection modules (Phase 8 Plan 02) ─────────────────────────
 
-    let list_t = Ty::list_untyped();
-    let int_to_int = Ty::fun(vec![Ty::int()], Ty::int());
-    let int_to_bool = Ty::fun(vec![Ty::int()], Ty::bool());
-    let int_int_to_int = Ty::fun(vec![Ty::int(), Ty::int()], Ty::int());
+    // List module -- polymorphic: List<T> with type variables for element type.
+    let t_var = TyVar(91000);
+    let u_var = TyVar(91001);
+    let t = Ty::Var(t_var);
+    let u = Ty::Var(u_var);
+    let list_t = Ty::list(t.clone());
+    let list_u = Ty::list(u.clone());
+    let t_to_u = Ty::fun(vec![t.clone()], u.clone());
+    let t_to_bool = Ty::fun(vec![t.clone()], Ty::bool());
+    let u_t_to_u = Ty::fun(vec![u.clone(), t.clone()], u.clone());
 
     let mut list_mod = HashMap::new();
-    list_mod.insert("new".to_string(), Scheme::mono(Ty::fun(vec![], list_t.clone())));
-    list_mod.insert("length".to_string(), Scheme::mono(Ty::fun(vec![list_t.clone()], Ty::int())));
-    list_mod.insert("append".to_string(), Scheme::mono(Ty::fun(vec![list_t.clone(), Ty::int()], list_t.clone())));
-    list_mod.insert("head".to_string(), Scheme::mono(Ty::fun(vec![list_t.clone()], Ty::int())));
-    list_mod.insert("tail".to_string(), Scheme::mono(Ty::fun(vec![list_t.clone()], list_t.clone())));
-    list_mod.insert("get".to_string(), Scheme::mono(Ty::fun(vec![list_t.clone(), Ty::int()], Ty::int())));
-    list_mod.insert("concat".to_string(), Scheme::mono(Ty::fun(vec![list_t.clone(), list_t.clone()], list_t.clone())));
-    list_mod.insert("reverse".to_string(), Scheme::mono(Ty::fun(vec![list_t.clone()], list_t.clone())));
-    list_mod.insert("map".to_string(), Scheme::mono(Ty::fun(vec![list_t.clone(), int_to_int.clone()], list_t.clone())));
-    list_mod.insert("filter".to_string(), Scheme::mono(Ty::fun(vec![list_t.clone(), int_to_bool.clone()], list_t.clone())));
-    list_mod.insert("reduce".to_string(), Scheme::mono(Ty::fun(vec![list_t.clone(), Ty::int(), int_int_to_int.clone()], Ty::int())));
+    list_mod.insert("new".to_string(), Scheme { vars: vec![t_var], ty: Ty::fun(vec![], list_t.clone()) });
+    list_mod.insert("length".to_string(), Scheme { vars: vec![t_var], ty: Ty::fun(vec![list_t.clone()], Ty::int()) });
+    list_mod.insert("append".to_string(), Scheme { vars: vec![t_var], ty: Ty::fun(vec![list_t.clone(), t.clone()], list_t.clone()) });
+    list_mod.insert("head".to_string(), Scheme { vars: vec![t_var], ty: Ty::fun(vec![list_t.clone()], t.clone()) });
+    list_mod.insert("tail".to_string(), Scheme { vars: vec![t_var], ty: Ty::fun(vec![list_t.clone()], list_t.clone()) });
+    list_mod.insert("get".to_string(), Scheme { vars: vec![t_var], ty: Ty::fun(vec![list_t.clone(), Ty::int()], t.clone()) });
+    list_mod.insert("concat".to_string(), Scheme { vars: vec![t_var], ty: Ty::fun(vec![list_t.clone(), list_t.clone()], list_t.clone()) });
+    list_mod.insert("reverse".to_string(), Scheme { vars: vec![t_var], ty: Ty::fun(vec![list_t.clone()], list_t.clone()) });
+    list_mod.insert("map".to_string(), Scheme { vars: vec![t_var, u_var], ty: Ty::fun(vec![list_t.clone(), t_to_u], list_u) });
+    list_mod.insert("filter".to_string(), Scheme { vars: vec![t_var], ty: Ty::fun(vec![list_t.clone(), t_to_bool], list_t.clone()) });
+    list_mod.insert("reduce".to_string(), Scheme { vars: vec![t_var, u_var], ty: Ty::fun(vec![list_t.clone(), u.clone(), u_t_to_u], u) });
     modules.insert("List".to_string(), list_mod);
 
     // Map module -- polymorphic: Map<K, V> with type variables for key/value.
@@ -341,8 +347,8 @@ fn stdlib_modules() -> HashMap<String, HashMap<String, Scheme>> {
     map_mod.insert("has_key".to_string(), Scheme { vars: vec![k_var, v_var], ty: Ty::fun(vec![map_kv.clone(), k.clone()], Ty::bool()) });
     map_mod.insert("delete".to_string(), Scheme { vars: vec![k_var, v_var], ty: Ty::fun(vec![map_kv.clone(), k.clone()], map_kv.clone()) });
     map_mod.insert("size".to_string(), Scheme { vars: vec![k_var, v_var], ty: Ty::fun(vec![map_kv.clone()], Ty::int()) });
-    map_mod.insert("keys".to_string(), Scheme { vars: vec![k_var, v_var], ty: Ty::fun(vec![map_kv.clone()], list_t.clone()) });
-    map_mod.insert("values".to_string(), Scheme { vars: vec![k_var, v_var], ty: Ty::fun(vec![map_kv.clone()], list_t.clone()) });
+    map_mod.insert("keys".to_string(), Scheme { vars: vec![k_var, v_var], ty: Ty::fun(vec![map_kv.clone()], Ty::list(k.clone())) });
+    map_mod.insert("values".to_string(), Scheme { vars: vec![k_var, v_var], ty: Ty::fun(vec![map_kv.clone()], Ty::list(v.clone())) });
     modules.insert("Map".to_string(), map_mod);
 
     let set_t = Ty::set_untyped();
@@ -366,9 +372,9 @@ fn stdlib_modules() -> HashMap<String, HashMap<String, Scheme>> {
     let range_t = Ty::range();
     let mut range_mod = HashMap::new();
     range_mod.insert("new".to_string(), Scheme::mono(Ty::fun(vec![Ty::int(), Ty::int()], range_t.clone())));
-    range_mod.insert("to_list".to_string(), Scheme::mono(Ty::fun(vec![range_t.clone()], list_t.clone())));
-    range_mod.insert("map".to_string(), Scheme::mono(Ty::fun(vec![range_t.clone(), int_to_int], list_t.clone())));
-    range_mod.insert("filter".to_string(), Scheme::mono(Ty::fun(vec![range_t.clone(), int_to_bool], list_t.clone())));
+    range_mod.insert("to_list".to_string(), Scheme::mono(Ty::fun(vec![range_t.clone()], Ty::list(Ty::int()))));
+    range_mod.insert("map".to_string(), Scheme::mono(Ty::fun(vec![range_t.clone(), Ty::fun(vec![Ty::int()], Ty::int())], Ty::list(Ty::int()))));
+    range_mod.insert("filter".to_string(), Scheme::mono(Ty::fun(vec![range_t.clone(), Ty::fun(vec![Ty::int()], Ty::bool())], Ty::list(Ty::int()))));
     range_mod.insert("length".to_string(), Scheme::mono(Ty::fun(vec![range_t.clone()], Ty::int())));
     modules.insert("Range".to_string(), range_mod);
 
@@ -2389,6 +2395,9 @@ fn infer_expr(
         Expr::MapLiteral(map_lit) => {
             infer_map_literal(ctx, env, map_lit, types, type_registry, trait_registry, fn_constraints)?
         }
+        Expr::ListLiteral(lit) => {
+            infer_list_literal(ctx, env, &lit, types, type_registry, trait_registry, fn_constraints)?
+        }
         Expr::IndexExpr(_) => ctx.fresh_var(),
         // Actor expressions.
         Expr::SpawnExpr(spawn) => {
@@ -3979,6 +3988,38 @@ fn infer_map_literal(
     }
 
     Ok(Ty::map(k_ty, v_ty))
+}
+
+// ── List Literal Inference ──────────────────────────────────────────────
+
+/// Infer the type of a list literal: `[e1, e2, ...]`
+///
+/// Creates a fresh type variable for the element type, then unifies each
+/// element's inferred type against it. Returns `List<T>`.
+fn infer_list_literal(
+    ctx: &mut InferCtx,
+    env: &mut TypeEnv,
+    lit: &ListLiteral,
+    types: &mut FxHashMap<TextRange, Ty>,
+    type_registry: &TypeRegistry,
+    trait_registry: &TraitRegistry,
+    fn_constraints: &FxHashMap<String, FnConstraints>,
+) -> Result<Ty, TypeError> {
+    let elem_ty = ctx.fresh_var();
+    for elem in lit.elements() {
+        let t = infer_expr(ctx, env, &elem, types, type_registry, trait_registry, fn_constraints)?;
+        ctx.unify(
+            t,
+            elem_ty.clone(),
+            ConstraintOrigin::Annotation {
+                annotation_span: elem.syntax().text_range(),
+            },
+        )?;
+    }
+    let resolved = ctx.resolve(elem_ty);
+    let result_ty = Ty::list(resolved);
+    types.insert(lit.syntax().text_range(), result_ty.clone());
+    Ok(result_ty)
 }
 
 // ── Pattern Inference ──────────────────────────────────────────────────

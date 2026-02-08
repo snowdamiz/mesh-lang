@@ -245,102 +245,63 @@ pub fn register_builtins(
     env.insert("Range".into(), Scheme::mono(Ty::range()));
     env.insert("Queue".into(), Scheme::mono(Ty::queue()));
 
-    // Use opaque types (untyped) for collection function signatures.
+    // Use opaque types (untyped) for non-list collection function signatures.
     // At the LLVM level these are all pointers; type safety is checked by Snow's type system.
-    let list_t = Ty::list_untyped();
     let map_t = Ty::map_untyped();
     let set_t = Ty::set_untyped();
     let range_t = Ty::range();
     let queue_t = Ty::queue();
 
-    // Closure type for higher-order functions: (Int) -> Int (monomorphic fallback).
-    let int_to_int = Ty::fun(vec![Ty::int()], Ty::int());
-    let int_to_bool = Ty::fun(vec![Ty::int()], Ty::bool());
-    let int_int_to_int = Ty::fun(vec![Ty::int(), Ty::int()], Ty::int());
+    // ── Polymorphic List functions ──────────────────────────────────────
+    // List functions use TyVar(91000) for T and TyVar(91001) for U
+    // (avoids collision with Map's 90000/90001 and Default's 99000).
+    {
+        let t_var = TyVar(91000);
+        let u_var = TyVar(91001);
+        let t = Ty::Var(t_var);
+        let u = Ty::Var(u_var);
+        let list_t = Ty::list(t.clone());
+        let list_u = Ty::list(u.clone());
+        let t_to_u = Ty::fun(vec![t.clone()], u.clone());
+        let t_to_bool = Ty::fun(vec![t.clone()], Ty::bool());
+        let u_t_to_u = Ty::fun(vec![u.clone(), t.clone()], u.clone());
 
-    // ── Prelude (bare names): map, filter, reduce, head, tail ─────────
-    // These are auto-imported without module qualification.
+        // ── Prelude (bare names): map, filter, reduce, head, tail ─────────
+        // These are auto-imported without module qualification.
 
-    // map(list, fn) -> list  (bare prelude name)
-    env.insert(
-        "map".into(),
-        Scheme::mono(Ty::fun(vec![list_t.clone(), int_to_int.clone()], list_t.clone())),
-    );
-    // filter(list, fn) -> list
-    env.insert(
-        "filter".into(),
-        Scheme::mono(Ty::fun(vec![list_t.clone(), int_to_bool.clone()], list_t.clone())),
-    );
-    // reduce(list, init, fn) -> Int
-    env.insert(
-        "reduce".into(),
-        Scheme::mono(Ty::fun(vec![list_t.clone(), Ty::int(), int_int_to_int.clone()], Ty::int())),
-    );
-    // head(list) -> Int
-    env.insert(
-        "head".into(),
-        Scheme::mono(Ty::fun(vec![list_t.clone()], Ty::int())),
-    );
-    // tail(list) -> list
-    env.insert(
-        "tail".into(),
-        Scheme::mono(Ty::fun(vec![list_t.clone()], list_t.clone())),
-    );
+        // map(list, fn) -> list  (bare prelude name)
+        env.insert("map".into(), Scheme { vars: vec![t_var, u_var], ty: Ty::fun(vec![list_t.clone(), t_to_u.clone()], list_u.clone()) });
+        // filter(list, fn) -> list
+        env.insert("filter".into(), Scheme { vars: vec![t_var], ty: Ty::fun(vec![list_t.clone(), t_to_bool.clone()], list_t.clone()) });
+        // reduce(list, init, fn) -> U
+        env.insert("reduce".into(), Scheme { vars: vec![t_var, u_var], ty: Ty::fun(vec![list_t.clone(), u.clone(), u_t_to_u.clone()], u.clone()) });
+        // head(list) -> T
+        env.insert("head".into(), Scheme { vars: vec![t_var], ty: Ty::fun(vec![list_t.clone()], t.clone()) });
+        // tail(list) -> List<T>
+        env.insert("tail".into(), Scheme { vars: vec![t_var], ty: Ty::fun(vec![list_t.clone()], list_t.clone()) });
 
-    // Also register with list_ prefix for module-qualified lowering.
-    env.insert(
-        "list_map".into(),
-        Scheme::mono(Ty::fun(vec![list_t.clone(), int_to_int.clone()], list_t.clone())),
-    );
-    env.insert(
-        "list_filter".into(),
-        Scheme::mono(Ty::fun(vec![list_t.clone(), int_to_bool.clone()], list_t.clone())),
-    );
-    env.insert(
-        "list_reduce".into(),
-        Scheme::mono(Ty::fun(vec![list_t.clone(), Ty::int(), int_int_to_int.clone()], Ty::int())),
-    );
-    env.insert(
-        "list_head".into(),
-        Scheme::mono(Ty::fun(vec![list_t.clone()], Ty::int())),
-    );
-    env.insert(
-        "list_tail".into(),
-        Scheme::mono(Ty::fun(vec![list_t.clone()], list_t.clone())),
-    );
+        // Also register with list_ prefix for module-qualified lowering.
+        env.insert("list_map".into(), Scheme { vars: vec![t_var, u_var], ty: Ty::fun(vec![list_t.clone(), t_to_u.clone()], list_u.clone()) });
+        env.insert("list_filter".into(), Scheme { vars: vec![t_var], ty: Ty::fun(vec![list_t.clone(), t_to_bool.clone()], list_t.clone()) });
+        env.insert("list_reduce".into(), Scheme { vars: vec![t_var, u_var], ty: Ty::fun(vec![list_t.clone(), u.clone(), u_t_to_u.clone()], u.clone()) });
+        env.insert("list_head".into(), Scheme { vars: vec![t_var], ty: Ty::fun(vec![list_t.clone()], t.clone()) });
+        env.insert("list_tail".into(), Scheme { vars: vec![t_var], ty: Ty::fun(vec![list_t.clone()], list_t.clone()) });
 
-    // ── List module functions ─────────────────────────────────────────
+        // ── List module functions ─────────────────────────────────────────
 
-    // List.new() -> List
-    env.insert(
-        "list_new".into(),
-        Scheme::mono(Ty::fun(vec![], list_t.clone())),
-    );
-    // List.length(list) -> Int
-    env.insert(
-        "list_length".into(),
-        Scheme::mono(Ty::fun(vec![list_t.clone()], Ty::int())),
-    );
-    // List.append(list, element) -> List
-    env.insert(
-        "list_append".into(),
-        Scheme::mono(Ty::fun(vec![list_t.clone(), Ty::int()], list_t.clone())),
-    );
-    // List.get(list, index) -> Int
-    env.insert(
-        "list_get".into(),
-        Scheme::mono(Ty::fun(vec![list_t.clone(), Ty::int()], Ty::int())),
-    );
-    // List.concat(a, b) -> List
-    env.insert(
-        "list_concat".into(),
-        Scheme::mono(Ty::fun(vec![list_t.clone(), list_t.clone()], list_t.clone())),
-    );
-    // List.reverse(list) -> List
-    env.insert(
-        "list_reverse".into(),
-        Scheme::mono(Ty::fun(vec![list_t.clone()], list_t.clone())),
-    );
+        // List.new() -> List<T>
+        env.insert("list_new".into(), Scheme { vars: vec![t_var], ty: Ty::fun(vec![], list_t.clone()) });
+        // List.length(List<T>) -> Int
+        env.insert("list_length".into(), Scheme { vars: vec![t_var], ty: Ty::fun(vec![list_t.clone()], Ty::int()) });
+        // List.append(List<T>, T) -> List<T>
+        env.insert("list_append".into(), Scheme { vars: vec![t_var], ty: Ty::fun(vec![list_t.clone(), t.clone()], list_t.clone()) });
+        // List.get(List<T>, Int) -> T
+        env.insert("list_get".into(), Scheme { vars: vec![t_var], ty: Ty::fun(vec![list_t.clone(), Ty::int()], t.clone()) });
+        // List.concat(List<T>, List<T>) -> List<T>
+        env.insert("list_concat".into(), Scheme { vars: vec![t_var], ty: Ty::fun(vec![list_t.clone(), list_t.clone()], list_t.clone()) });
+        // List.reverse(List<T>) -> List<T>
+        env.insert("list_reverse".into(), Scheme { vars: vec![t_var], ty: Ty::fun(vec![list_t.clone()], list_t.clone()) });
+    }
 
     // ── Map module functions (polymorphic) ──────────────────────────────
     {
@@ -356,8 +317,8 @@ pub fn register_builtins(
         env.insert("map_has_key".into(), Scheme { vars: vec![k_var, v_var], ty: Ty::fun(vec![map_kv.clone(), k.clone()], Ty::bool()) });
         env.insert("map_delete".into(), Scheme { vars: vec![k_var, v_var], ty: Ty::fun(vec![map_kv.clone(), k.clone()], map_kv.clone()) });
         env.insert("map_size".into(), Scheme { vars: vec![k_var, v_var], ty: Ty::fun(vec![map_kv.clone()], Ty::int()) });
-        env.insert("map_keys".into(), Scheme { vars: vec![k_var, v_var], ty: Ty::fun(vec![map_kv.clone()], list_t.clone()) });
-        env.insert("map_values".into(), Scheme { vars: vec![k_var, v_var], ty: Ty::fun(vec![map_kv.clone()], list_t.clone()) });
+        env.insert("map_keys".into(), Scheme { vars: vec![k_var, v_var], ty: Ty::fun(vec![map_kv.clone()], Ty::list(k.clone())) });
+        env.insert("map_values".into(), Scheme { vars: vec![k_var, v_var], ty: Ty::fun(vec![map_kv.clone()], Ty::list(v.clone())) });
     }
 
     // ── Set module functions ──────────────────────────────────────────
@@ -411,6 +372,10 @@ pub fn register_builtins(
     );
 
     // ── Range module functions ────────────────────────────────────────
+    // Re-declare opaque list and closure types for range/JSON functions.
+    let list_t = Ty::list_untyped();
+    let int_to_int = Ty::fun(vec![Ty::int()], Ty::int());
+    let int_to_bool = Ty::fun(vec![Ty::int()], Ty::bool());
 
     env.insert(
         "range_new".into(),

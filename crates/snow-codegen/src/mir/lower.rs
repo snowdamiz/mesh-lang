@@ -8,9 +8,9 @@ use std::collections::{HashMap, HashSet};
 use rowan::TextRange;
 use rustc_hash::FxHashMap;
 use snow_parser::ast::expr::{
-    BinaryExpr, CallExpr, CaseExpr, ClosureExpr, Expr, FieldAccess, IfExpr, LinkExpr, Literal,
-    MapLiteral, MatchArm, NameRef, PipeExpr, ReceiveExpr, ReturnExpr, SendExpr, SpawnExpr,
-    StringExpr, StructLiteral, TupleExpr, UnaryExpr,
+    BinaryExpr, CallExpr, CaseExpr, ClosureExpr, Expr, FieldAccess, IfExpr, LinkExpr, ListLiteral,
+    Literal, MapLiteral, MatchArm, NameRef, PipeExpr, ReceiveExpr, ReturnExpr, SendExpr,
+    SpawnExpr, StringExpr, StructLiteral, TupleExpr, UnaryExpr,
 };
 use snow_parser::ast::item::{
     ActorDef, Block, FnDef, ImplDef, InterfaceMethod, Item, LetBinding, ServiceDef, SourceFile,
@@ -3052,6 +3052,7 @@ impl<'a> Lowerer<'a> {
             Expr::TupleExpr(tuple) => self.lower_tuple_expr(tuple),
             Expr::StructLiteral(sl) => self.lower_struct_literal(sl),
             Expr::MapLiteral(map_lit) => self.lower_map_literal(map_lit),
+            Expr::ListLiteral(list_lit) => self.lower_list_literal(list_lit),
             // Actor expressions
             Expr::SpawnExpr(spawn) => self.lower_spawn_expr(&spawn),
             Expr::SendExpr(send) => self.lower_send_expr(&send),
@@ -4987,6 +4988,42 @@ impl<'a> Lowerer<'a> {
             result = MirExpr::Call {
                 func: Box::new(put_fn),
                 args: vec![result, key, val],
+                ty: MirType::Ptr,
+            };
+        }
+
+        result
+    }
+
+    // ── List literal lowering ────────────────────────────────────────
+
+    /// Desugar `[e1, e2, e3]` to:
+    ///   snow_list_new()
+    ///   |> snow_list_append(_, e1)
+    ///   |> snow_list_append(_, e2)
+    ///   |> snow_list_append(_, e3)
+    fn lower_list_literal(&mut self, list_lit: &ListLiteral) -> MirExpr {
+        let new_fn = MirExpr::Var(
+            "snow_list_new".to_string(),
+            MirType::FnPtr(vec![], Box::new(MirType::Ptr)),
+        );
+        let mut result = MirExpr::Call {
+            func: Box::new(new_fn),
+            args: vec![],
+            ty: MirType::Ptr,
+        };
+
+        let append_fn_ty = MirType::FnPtr(
+            vec![MirType::Ptr, MirType::Int],
+            Box::new(MirType::Ptr),
+        );
+
+        for elem in list_lit.elements() {
+            let val = self.lower_expr(&elem);
+            let append_fn = MirExpr::Var("snow_list_append".to_string(), append_fn_ty.clone());
+            result = MirExpr::Call {
+                func: Box::new(append_fn),
+                args: vec![result, val],
                 ty: MirType::Ptr,
             };
         }
