@@ -397,14 +397,14 @@ impl<'a> Lowerer<'a> {
         self.known_functions.insert("snow_list_new".to_string(), MirType::FnPtr(vec![], Box::new(MirType::Ptr)));
         self.known_functions.insert("snow_list_length".to_string(), MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Int)));
         self.known_functions.insert("snow_list_append".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Int], Box::new(MirType::Ptr)));
-        self.known_functions.insert("snow_list_head".to_string(), MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Int)));
+        self.known_functions.insert("snow_list_head".to_string(), MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Ptr)));
         self.known_functions.insert("snow_list_tail".to_string(), MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Ptr)));
-        self.known_functions.insert("snow_list_get".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Int], Box::new(MirType::Int)));
+        self.known_functions.insert("snow_list_get".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Int], Box::new(MirType::Ptr)));
         self.known_functions.insert("snow_list_concat".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
         self.known_functions.insert("snow_list_reverse".to_string(), MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Ptr)));
         self.known_functions.insert("snow_list_map".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
         self.known_functions.insert("snow_list_filter".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
-        self.known_functions.insert("snow_list_reduce".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Int, MirType::Ptr, MirType::Ptr], Box::new(MirType::Int)));
+        self.known_functions.insert("snow_list_reduce".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Int, MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
         self.known_functions.insert("snow_list_from_array".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Int], Box::new(MirType::Ptr)));
         // Map
         self.known_functions.insert("snow_map_new".to_string(), MirType::FnPtr(vec![], Box::new(MirType::Ptr)));
@@ -4997,38 +4997,31 @@ impl<'a> Lowerer<'a> {
 
     // ── List literal lowering ────────────────────────────────────────
 
-    /// Desugar `[e1, e2, e3]` to:
-    ///   snow_list_new()
-    ///   |> snow_list_append(_, e1)
-    ///   |> snow_list_append(_, e2)
-    ///   |> snow_list_append(_, e3)
+    /// Lower a list literal `[e1, e2, ...]` to MIR.
+    ///
+    /// For empty lists: calls snow_list_new().
+    /// For non-empty lists: creates a MirExpr::ListLit with lowered elements.
+    /// The codegen will stack-allocate an array, store elements, and call
+    /// snow_list_from_array(arr_ptr, count).
     fn lower_list_literal(&mut self, list_lit: &ListLiteral) -> MirExpr {
-        let new_fn = MirExpr::Var(
-            "snow_list_new".to_string(),
-            MirType::FnPtr(vec![], Box::new(MirType::Ptr)),
-        );
-        let mut result = MirExpr::Call {
-            func: Box::new(new_fn),
-            args: vec![],
-            ty: MirType::Ptr,
-        };
+        let elements: Vec<MirExpr> = list_lit.elements()
+            .map(|e| self.lower_expr(&e))
+            .collect();
 
-        let append_fn_ty = MirType::FnPtr(
-            vec![MirType::Ptr, MirType::Int],
-            Box::new(MirType::Ptr),
-        );
-
-        for elem in list_lit.elements() {
-            let val = self.lower_expr(&elem);
-            let append_fn = MirExpr::Var("snow_list_append".to_string(), append_fn_ty.clone());
-            result = MirExpr::Call {
-                func: Box::new(append_fn),
-                args: vec![result, val],
+        if elements.is_empty() {
+            // Empty list: call snow_list_new()
+            let fn_ty = MirType::FnPtr(vec![], Box::new(MirType::Ptr));
+            return MirExpr::Call {
+                func: Box::new(MirExpr::Var("snow_list_new".to_string(), fn_ty)),
+                args: vec![],
                 ty: MirType::Ptr,
             };
         }
 
-        result
+        MirExpr::ListLit {
+            elements,
+            ty: MirType::Ptr,
+        }
     }
 
     // ── Struct literal lowering ──────────────────────────────────────
@@ -6559,6 +6552,11 @@ fn collect_free_vars(
         MirExpr::ActorSelf { .. } => {}
         MirExpr::ActorLink { target, .. } => {
             collect_free_vars(target, params, outer_vars, captures);
+        }
+        MirExpr::ListLit { elements, .. } => {
+            for elem in elements {
+                collect_free_vars(elem, params, outer_vars, captures);
+            }
         }
         // Supervisor start has no free variable captures (all config is static).
         MirExpr::SupervisorStart { .. } => {}

@@ -1075,6 +1075,11 @@ fn compile_expr_patterns(
         MirExpr::ActorLink { target, .. } => {
             compile_expr_patterns(target, sum_type_defs);
         }
+        MirExpr::ListLit { elements, .. } => {
+            for elem in elements {
+                compile_expr_patterns(elem, sum_type_defs);
+            }
+        }
         // Supervisor start -- no sub-expressions to recurse into.
         MirExpr::SupervisorStart { .. } => {}
     }

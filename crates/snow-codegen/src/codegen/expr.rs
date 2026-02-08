@@ -134,6 +134,8 @@ impl<'ctx> CodeGen<'ctx> {
 
             MirExpr::ActorLink { target, ty: _ } => self.codegen_actor_link(target),
 
+            MirExpr::ListLit { elements, .. } => self.codegen_list_lit(elements),
+
             MirExpr::SupervisorStart {
                 name,
                 strategy,
@@ -2402,5 +2404,87 @@ impl<'ctx> CodeGen<'ctx> {
 
         // Cast returns Unit.
         Ok(self.context.struct_type(&[], false).const_zero().into())
+    }
+
+    // ── List literal codegen ─────────────────────────────────────────
+
+    fn codegen_list_lit(
+        &mut self,
+        elements: &[MirExpr],
+    ) -> Result<BasicValueEnum<'ctx>, String> {
+        // Placeholder: will be fully implemented in Task 2.
+        // For now, stack-allocate an i64 array and call snow_list_from_array.
+        let i64_type = self.context.i64_type();
+        let ptr_type = self.context.ptr_type(inkwell::AddressSpace::default());
+        let count = elements.len();
+        let array_type = i64_type.array_type(count as u32);
+        let array_alloca = self.builder.build_alloca(array_type, "list_arr")
+            .map_err(|e| e.to_string())?;
+
+        for (i, elem) in elements.iter().enumerate() {
+            let val = self.codegen_expr(elem)?;
+            // Convert value to i64 for uniform list storage.
+            let val_as_i64 = self.convert_to_list_element(val, elem.ty())?;
+            let idx = self.context.i32_type().const_int(i as u64, false);
+            let zero = self.context.i32_type().const_int(0, false);
+            let gep = unsafe {
+                self.builder.build_gep(array_type, array_alloca, &[zero, idx], "elem_ptr")
+                    .map_err(|e| e.to_string())?
+            };
+            self.builder.build_store(gep, val_as_i64)
+                .map_err(|e| e.to_string())?;
+        }
+
+        let array_ptr = self.builder.build_pointer_cast(
+            array_alloca, ptr_type, "arr_ptr"
+        ).map_err(|e| e.to_string())?;
+        let count_val = i64_type.const_int(count as u64, false);
+
+        let from_array_fn = get_intrinsic(&self.module, "snow_list_from_array");
+        let result = self.builder
+            .build_call(from_array_fn, &[array_ptr.into(), count_val.into()], "list")
+            .map_err(|e| e.to_string())?;
+
+        result.try_as_basic_value().basic()
+            .ok_or_else(|| "snow_list_from_array returned void".to_string())
+    }
+
+    /// Convert a value to i64 for uniform list element storage.
+    /// Bool (i1) -> zero-extend to i64
+    /// Float (f64) -> bitcast to i64
+    /// Ptr -> ptrtoint to i64
+    /// Int (i64) -> use directly
+    fn convert_to_list_element(
+        &mut self,
+        val: BasicValueEnum<'ctx>,
+        mir_ty: &MirType,
+    ) -> Result<inkwell::values::IntValue<'ctx>, String> {
+        let i64_type = self.context.i64_type();
+        match mir_ty {
+            MirType::Bool => {
+                let bool_val = val.into_int_value();
+                self.builder.build_int_z_extend(bool_val, i64_type, "bool_to_i64")
+                    .map_err(|e| e.to_string())
+            }
+            MirType::Float => {
+                let float_val = val.into_float_value();
+                let cast_result = self.builder.build_bit_cast(float_val, i64_type, "float_to_i64")
+                    .map_err(|e| e.to_string())?;
+                Ok(cast_result.into_int_value())
+            }
+            MirType::String | MirType::Ptr | MirType::Struct(_) | MirType::SumType(_)
+            | MirType::Pid(_) | MirType::Closure(_, _) | MirType::FnPtr(_, _) => {
+                let ptr_val = val.into_pointer_value();
+                self.builder.build_ptr_to_int(ptr_val, i64_type, "ptr_to_i64")
+                    .map_err(|e| e.to_string())
+            }
+            MirType::Int => {
+                Ok(val.into_int_value())
+            }
+            _ => {
+                // For any other type, try as int value (best effort).
+                Ok(val.into_int_value())
+            }
+        }
     }
 }

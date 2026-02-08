@@ -282,6 +282,12 @@ pub enum MirExpr {
 
     // ── Supervisor primitives ──────────────────────────────────────
 
+    /// List literal: [e1, e2, ...]
+    ListLit {
+        elements: Vec<MirExpr>,
+        ty: MirType,
+    },
+
     /// Start a supervisor with configured strategy, limits, and child specs.
     SupervisorStart {
         /// Supervisor name (for registration and debugging).
@@ -328,6 +334,7 @@ impl MirExpr {
             MirExpr::ActorReceive { ty, .. } => ty,
             MirExpr::ActorSelf { ty } => ty,
             MirExpr::ActorLink { ty, .. } => ty,
+            MirExpr::ListLit { ty, .. } => ty,
             MirExpr::SupervisorStart { ty, .. } => ty,
         }
     }
