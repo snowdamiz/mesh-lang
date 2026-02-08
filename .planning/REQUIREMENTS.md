@@ -9,8 +9,8 @@ Fix all five known limitations carried from v1.3.
 
 ### Pattern Matching Codegen
 
-- [ ] **PATM-01**: Sum type pattern matching extracts field values from non-nullary variants in LLVM codegen (e.g., `case opt do Some(x) -> x end` binds `x` to the inner value)
-- [ ] **PATM-02**: Ordering sum type (Less | Equal | Greater) is user-visible and can be used in pattern matching and return values from Ord trait methods
+- [x] **PATM-01**: Sum type pattern matching extracts field values from non-nullary variants in LLVM codegen (e.g., `case opt do Some(x) -> x end` binds `x` to the inner value)
+- [x] **PATM-02**: Ordering sum type (Less | Equal | Greater) is user-visible and can be used in pattern matching and return values from Ord trait methods
 
 ### Trait System Generics
 
@@ -39,8 +39,8 @@ None — v1.4 is a focused bug-fix milestone.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| PATM-01 | Phase 23 | Pending |
-| PATM-02 | Phase 23 | Pending |
+| PATM-01 | Phase 23 | Complete |
+| PATM-02 | Phase 23 | Complete |
 | TGEN-01 | Phase 24 | Pending |
 | TGEN-02 | Phase 24 | Pending |
 | TSND-01 | Phase 25 | Pending |
