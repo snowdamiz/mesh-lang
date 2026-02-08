@@ -59,7 +59,10 @@ See milestones/v1.3-ROADMAP.md for details.
   2. `case compare(a, b) do Less -> ... | Equal -> ... | Greater -> ... end` compiles and runs correctly
   3. Ordering is importable/usable as a first-class sum type in user Snow code (return values, variable bindings, pattern matches)
   4. Nested constructor patterns work (e.g., `Some(Some(x))` extracts the doubly-wrapped value)
-**Plans**: TBD
+**Plans:** 2 plans
+Plans:
+- [ ] 23-01-PLAN.md -- Fix pattern compiler tag assignment and field type resolution
+- [ ] 23-02-PLAN.md -- Register Ordering type, add compare(), end-to-end tests
 
 #### Phase 24: Trait System Generics
 **Goal**: Display and auto-derive work correctly with generic and nested types -- users see proper string representations and can derive traits on parameterized structs
@@ -108,6 +111,6 @@ See milestones/v1.3-ROADMAP.md for details.
 | 20. Essential Stdlib Protocols | v1.3 | 5/5 | Complete | 2026-02-08 |
 | 21. Extended Protocols | v1.3 | 4/4 | Complete | 2026-02-08 |
 | 22. Auto-Derive (Stretch) | v1.3 | 2/2 | Complete | 2026-02-08 |
-| 23. Pattern Matching Codegen | v1.4 | 0/TBD | Not started | - |
+| 23. Pattern Matching Codegen | v1.4 | 0/2 | Not started | - |
 | 24. Trait System Generics | v1.4 | 0/TBD | Not started | - |
 | 25. Type System Soundness | v1.4 | 0/TBD | Not started | - |
