@@ -1130,6 +1130,12 @@ impl<'a> Lowerer<'a> {
         // Generate Debug__inspect__StructName MIR function.
         self.generate_debug_inspect_struct(&name, &fields);
 
+        // Generate Eq__eq__StructName MIR function (field-by-field equality).
+        self.generate_eq_struct(&name, &fields);
+
+        // Generate Ord__lt__StructName MIR function (lexicographic less-than).
+        self.generate_ord_struct(&name, &fields);
+
         self.structs.push(MirStructDef { name, fields });
     }
 
@@ -1310,6 +1316,227 @@ impl<'a> Lowerer<'a> {
             mangled,
             MirType::FnPtr(vec![sum_ty], Box::new(MirType::String)),
         );
+    }
+
+    // ── Eq/Ord generation for structs ────────────────────────────────
+
+    /// Generate a synthetic `Eq__eq__StructName` MIR function.
+    /// Performs field-by-field equality: all fields must be equal.
+    /// Empty structs always return true.
+    fn generate_eq_struct(&mut self, name: &str, fields: &[(String, MirType)]) {
+        let mangled = format!("Eq__eq__{}", name);
+        let struct_ty = MirType::Struct(name.to_string());
+        let self_var = MirExpr::Var("self".to_string(), struct_ty.clone());
+        let other_var = MirExpr::Var("other".to_string(), struct_ty.clone());
+
+        let body = if fields.is_empty() {
+            // Empty structs are always equal.
+            MirExpr::BoolLit(true, MirType::Bool)
+        } else {
+            // Build: self.f1 == other.f1 && self.f2 == other.f2 && ...
+            let mut comparisons: Vec<MirExpr> = Vec::new();
+            for (field_name, field_ty) in fields {
+                let self_field = MirExpr::FieldAccess {
+                    object: Box::new(self_var.clone()),
+                    field: field_name.clone(),
+                    ty: field_ty.clone(),
+                };
+                let other_field = MirExpr::FieldAccess {
+                    object: Box::new(other_var.clone()),
+                    field: field_name.clone(),
+                    ty: field_ty.clone(),
+                };
+
+                let cmp = match field_ty {
+                    MirType::Struct(inner_name) => {
+                        // Recursive: call Eq__eq__InnerStruct
+                        let inner_mangled = format!("Eq__eq__{}", inner_name);
+                        let fn_ty = MirType::FnPtr(
+                            vec![field_ty.clone(), field_ty.clone()],
+                            Box::new(MirType::Bool),
+                        );
+                        MirExpr::Call {
+                            func: Box::new(MirExpr::Var(inner_mangled, fn_ty)),
+                            args: vec![self_field, other_field],
+                            ty: MirType::Bool,
+                        }
+                    }
+                    _ => {
+                        // Primitive/string: use BinOp::Eq directly
+                        MirExpr::BinOp {
+                            op: BinOp::Eq,
+                            lhs: Box::new(self_field),
+                            rhs: Box::new(other_field),
+                            ty: MirType::Bool,
+                        }
+                    }
+                };
+                comparisons.push(cmp);
+            }
+
+            // Chain with AND: c1 && c2 && c3 ...
+            let mut result = comparisons.remove(0);
+            for cmp in comparisons {
+                result = MirExpr::BinOp {
+                    op: BinOp::And,
+                    lhs: Box::new(result),
+                    rhs: Box::new(cmp),
+                    ty: MirType::Bool,
+                };
+            }
+            result
+        };
+
+        let func = MirFunction {
+            name: mangled.clone(),
+            params: vec![
+                ("self".to_string(), struct_ty.clone()),
+                ("other".to_string(), struct_ty.clone()),
+            ],
+            return_type: MirType::Bool,
+            body,
+            is_closure_fn: false,
+            captures: vec![],
+        };
+
+        self.functions.push(func);
+        self.known_functions.insert(
+            mangled,
+            MirType::FnPtr(vec![struct_ty.clone(), struct_ty], Box::new(MirType::Bool)),
+        );
+    }
+
+    /// Generate a synthetic `Ord__lt__StructName` MIR function.
+    /// Performs lexicographic less-than comparison over fields.
+    /// Empty structs always return false (never less-than).
+    fn generate_ord_struct(&mut self, name: &str, fields: &[(String, MirType)]) {
+        let mangled = format!("Ord__lt__{}", name);
+        let struct_ty = MirType::Struct(name.to_string());
+        let self_var = MirExpr::Var("self".to_string(), struct_ty.clone());
+        let other_var = MirExpr::Var("other".to_string(), struct_ty.clone());
+
+        let body = if fields.is_empty() {
+            // Empty structs are never less-than.
+            MirExpr::BoolLit(false, MirType::Bool)
+        } else {
+            // Build lexicographic comparison:
+            //   if self.f1 < other.f1 then true
+            //   else if self.f1 == other.f1 then
+            //     if self.f2 < other.f2 then true
+            //     else if self.f2 == other.f2 then
+            //       ...last field: self.fN < other.fN
+            //     else false
+            //   else false
+            self.build_lexicographic_lt(&self_var, &other_var, fields, 0)
+        };
+
+        let func = MirFunction {
+            name: mangled.clone(),
+            params: vec![
+                ("self".to_string(), struct_ty.clone()),
+                ("other".to_string(), struct_ty.clone()),
+            ],
+            return_type: MirType::Bool,
+            body,
+            is_closure_fn: false,
+            captures: vec![],
+        };
+
+        self.functions.push(func);
+        self.known_functions.insert(
+            mangled,
+            MirType::FnPtr(vec![struct_ty.clone(), struct_ty], Box::new(MirType::Bool)),
+        );
+    }
+
+    /// Build a lexicographic less-than comparison chain for field at `index` and beyond.
+    fn build_lexicographic_lt(
+        &self,
+        self_var: &MirExpr,
+        other_var: &MirExpr,
+        fields: &[(String, MirType)],
+        index: usize,
+    ) -> MirExpr {
+        let (field_name, field_ty) = &fields[index];
+        let self_field = MirExpr::FieldAccess {
+            object: Box::new(self_var.clone()),
+            field: field_name.clone(),
+            ty: field_ty.clone(),
+        };
+        let other_field = MirExpr::FieldAccess {
+            object: Box::new(other_var.clone()),
+            field: field_name.clone(),
+            ty: field_ty.clone(),
+        };
+
+        let is_last = index == fields.len() - 1;
+
+        // Build "self.field < other.field" comparison
+        let lt_cmp = match field_ty {
+            MirType::Struct(inner_name) => {
+                let inner_mangled = format!("Ord__lt__{}", inner_name);
+                let fn_ty = MirType::FnPtr(
+                    vec![field_ty.clone(), field_ty.clone()],
+                    Box::new(MirType::Bool),
+                );
+                MirExpr::Call {
+                    func: Box::new(MirExpr::Var(inner_mangled, fn_ty)),
+                    args: vec![self_field.clone(), other_field.clone()],
+                    ty: MirType::Bool,
+                }
+            }
+            _ => MirExpr::BinOp {
+                op: BinOp::Lt,
+                lhs: Box::new(self_field.clone()),
+                rhs: Box::new(other_field.clone()),
+                ty: MirType::Bool,
+            },
+        };
+
+        if is_last {
+            // Last field: just return the < comparison
+            lt_cmp
+        } else {
+            // Build "self.field == other.field" comparison
+            let eq_cmp = match field_ty {
+                MirType::Struct(inner_name) => {
+                    let inner_mangled = format!("Eq__eq__{}", inner_name);
+                    let fn_ty = MirType::FnPtr(
+                        vec![field_ty.clone(), field_ty.clone()],
+                        Box::new(MirType::Bool),
+                    );
+                    MirExpr::Call {
+                        func: Box::new(MirExpr::Var(inner_mangled, fn_ty)),
+                        args: vec![self_field, other_field],
+                        ty: MirType::Bool,
+                    }
+                }
+                _ => MirExpr::BinOp {
+                    op: BinOp::Eq,
+                    lhs: Box::new(self_field),
+                    rhs: Box::new(other_field),
+                    ty: MirType::Bool,
+                },
+            };
+
+            // Recurse for remaining fields
+            let rest = self.build_lexicographic_lt(self_var, other_var, fields, index + 1);
+
+            // if self.field < other.field then true
+            // else if self.field == other.field then <rest>
+            // else false
+            MirExpr::If {
+                cond: Box::new(lt_cmp),
+                then_body: Box::new(MirExpr::BoolLit(true, MirType::Bool)),
+                else_body: Box::new(MirExpr::If {
+                    cond: Box::new(eq_cmp),
+                    then_body: Box::new(rest),
+                    else_body: Box::new(MirExpr::BoolLit(false, MirType::Bool)),
+                    ty: MirType::Bool,
+                }),
+                ty: MirType::Bool,
+            }
+        }
     }
 
     // ── Top-level let ────────────────────────────────────────────────
@@ -5532,5 +5759,180 @@ end
         assert_eq!(inspect_fn.params.len(), 1);
         assert_eq!(inspect_fn.params[0].0, "self");
         assert_eq!(inspect_fn.return_type, MirType::String);
+    }
+
+    #[test]
+    fn eq_struct_generates_mir_function() {
+        let source = r#"
+struct Point do
+  x :: Int
+  y :: Int
+end
+
+fn main() do
+  let p = Point { x: 1, y: 2 }
+  println("test")
+end
+"#;
+        let mir = lower(source);
+        let eq_fn = mir.functions.iter().find(|f| f.name == "Eq__eq__Point");
+        assert!(
+            eq_fn.is_some(),
+            "Expected Eq__eq__Point function in MIR. Functions: {:?}",
+            mir.functions.iter().map(|f| &f.name).collect::<Vec<_>>()
+        );
+        let eq_fn = eq_fn.unwrap();
+        assert_eq!(eq_fn.params.len(), 2);
+        assert_eq!(eq_fn.params[0].0, "self");
+        assert_eq!(eq_fn.params[1].0, "other");
+        assert_eq!(eq_fn.return_type, MirType::Bool);
+    }
+
+    #[test]
+    fn ord_struct_generates_mir_function() {
+        let source = r#"
+struct Point do
+  x :: Int
+  y :: Int
+end
+
+fn main() do
+  let p = Point { x: 1, y: 2 }
+  println("test")
+end
+"#;
+        let mir = lower(source);
+        let ord_fn = mir.functions.iter().find(|f| f.name == "Ord__lt__Point");
+        assert!(
+            ord_fn.is_some(),
+            "Expected Ord__lt__Point function in MIR. Functions: {:?}",
+            mir.functions.iter().map(|f| &f.name).collect::<Vec<_>>()
+        );
+        let ord_fn = ord_fn.unwrap();
+        assert_eq!(ord_fn.params.len(), 2);
+        assert_eq!(ord_fn.params[0].0, "self");
+        assert_eq!(ord_fn.params[1].0, "other");
+        assert_eq!(ord_fn.return_type, MirType::Bool);
+        // Ord body uses If for lexicographic comparison (non-trivial body)
+        assert!(matches!(ord_fn.body, MirExpr::If { .. }));
+    }
+
+    #[test]
+    fn eq_empty_struct_returns_true() {
+        let source = r#"
+struct Empty do
+end
+
+fn main() do
+  println("test")
+end
+"#;
+        let mir = lower(source);
+        let eq_fn = mir.functions.iter().find(|f| f.name == "Eq__eq__Empty");
+        assert!(eq_fn.is_some());
+        let eq_fn = eq_fn.unwrap();
+        assert!(matches!(eq_fn.body, MirExpr::BoolLit(true, _)));
+    }
+
+    #[test]
+    fn ord_empty_struct_returns_false() {
+        let source = r#"
+struct Empty do
+end
+
+fn main() do
+  println("test")
+end
+"#;
+        let mir = lower(source);
+        let ord_fn = mir.functions.iter().find(|f| f.name == "Ord__lt__Empty");
+        assert!(ord_fn.is_some());
+        let ord_fn = ord_fn.unwrap();
+        assert!(matches!(ord_fn.body, MirExpr::BoolLit(false, _)));
+    }
+
+    #[test]
+    fn struct_eq_operator_dispatches_to_trait_call() {
+        let source = r#"
+struct Point do
+  x :: Int
+  y :: Int
+end
+
+fn check(a :: Point, b :: Point) -> Bool do
+  a == b
+end
+"#;
+        let mir = lower(source);
+        let check_fn = mir.functions.iter().find(|f| f.name == "check");
+        assert!(
+            check_fn.is_some(),
+            "Expected 'check' function in MIR. Functions: {:?}",
+            mir.functions.iter().map(|f| &f.name).collect::<Vec<_>>()
+        );
+        let check_fn = check_fn.unwrap();
+        let body_str = format!("{:?}", check_fn.body);
+        assert!(
+            body_str.contains("Eq__eq__Point"),
+            "Expected Eq__eq__Point call in check body, got: {}",
+            body_str
+        );
+    }
+
+    #[test]
+    fn struct_neq_operator_negates_eq() {
+        let source = r#"
+struct Point do
+  x :: Int
+  y :: Int
+end
+
+fn check(a :: Point, b :: Point) -> Bool do
+  a != b
+end
+"#;
+        let mir = lower(source);
+        let check_fn = mir.functions.iter().find(|f| f.name == "check");
+        assert!(
+            check_fn.is_some(),
+            "Expected 'check' function in MIR. Functions: {:?}",
+            mir.functions.iter().map(|f| &f.name).collect::<Vec<_>>()
+        );
+        let check_fn = check_fn.unwrap();
+        let body_str = format!("{:?}", check_fn.body);
+        // Should contain Eq__eq__Point (since != dispatches through Eq with negation)
+        assert!(
+            body_str.contains("Eq__eq__Point"),
+            "Expected Eq__eq__Point call in check body for !=, got: {}",
+            body_str
+        );
+    }
+
+    #[test]
+    fn struct_lt_operator_dispatches_to_ord() {
+        let source = r#"
+struct Point do
+  x :: Int
+  y :: Int
+end
+
+fn check(a :: Point, b :: Point) -> Bool do
+  a < b
+end
+"#;
+        let mir = lower(source);
+        let check_fn = mir.functions.iter().find(|f| f.name == "check");
+        assert!(
+            check_fn.is_some(),
+            "Expected 'check' function in MIR. Functions: {:?}",
+            mir.functions.iter().map(|f| &f.name).collect::<Vec<_>>()
+        );
+        let check_fn = check_fn.unwrap();
+        let body_str = format!("{:?}", check_fn.body);
+        assert!(
+            body_str.contains("Ord__lt__Point"),
+            "Expected Ord__lt__Point call in check body for <, got: {}",
+            body_str
+        );
     }
 }
