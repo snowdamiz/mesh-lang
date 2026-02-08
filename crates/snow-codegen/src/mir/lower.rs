@@ -1314,7 +1314,10 @@ impl<'a> Lowerer<'a> {
         if derive_all || derive_list.iter().any(|t| t == "Hash") {
             self.generate_hash_struct(&name, &fields);
         }
-        // Display generation is added in Plan 02 (generate_display_struct does not exist yet)
+        // Display: only via explicit deriving(Display), never auto-derived
+        if derive_list.iter().any(|t| t == "Display") {
+            self.generate_display_struct(&name, &fields);
+        }
 
         self.structs.push(MirStructDef { name, fields });
     }
@@ -1370,7 +1373,14 @@ impl<'a> Lowerer<'a> {
         if derive_all || derive_list.iter().any(|t| t == "Ord") {
             self.generate_ord_sum(&name, &variants);
         }
-        // Hash-sum and Display-sum generation are added in Plan 02
+        // Display: only via explicit deriving(Display), never auto-derived
+        if derive_list.iter().any(|t| t == "Display") {
+            self.generate_display_sum_type(&name, &variants);
+        }
+        // Hash: only via explicit deriving(Hash) for sum types
+        if has_deriving && derive_list.iter().any(|t| t == "Hash") {
+            self.generate_hash_sum_type(&name, &variants);
+        }
 
         self.sum_types.push(MirSumTypeDef { name, variants });
     }
@@ -2107,6 +2117,309 @@ impl<'a> Lowerer<'a> {
         self.known_functions.insert(
             mangled,
             MirType::FnPtr(vec![struct_ty], Box::new(MirType::Int)),
+        );
+    }
+
+    /// Generate a synthetic `Hash__hash__SumTypeName` MIR function.
+    /// Uses Match on self with Constructor patterns to hash tag + fields.
+    fn generate_hash_sum_type(&mut self, name: &str, variants: &[MirVariantDef]) {
+        let mangled = format!("Hash__hash__{}", name);
+        let sum_ty = MirType::SumType(name.to_string());
+        let self_var = MirExpr::Var("self".to_string(), sum_ty.clone());
+
+        let combine_ty = MirType::FnPtr(
+            vec![MirType::Int, MirType::Int],
+            Box::new(MirType::Int),
+        );
+        let hash_int_ty = MirType::FnPtr(vec![MirType::Int], Box::new(MirType::Int));
+
+        let body = if variants.is_empty() {
+            // No variants: return FNV offset basis.
+            MirExpr::IntLit(0xcbf29ce484222325_u64 as i64, MirType::Int)
+        } else {
+            // Build match arms: for each variant, hash tag + fields.
+            let arms: Vec<MirMatchArm> = variants
+                .iter()
+                .map(|v| {
+                    // Bind fields as field_0, field_1, ...
+                    let field_pats: Vec<MirPattern> = v
+                        .fields
+                        .iter()
+                        .enumerate()
+                        .map(|(i, ft)| MirPattern::Var(format!("field_{}", i), ft.clone()))
+                        .collect();
+                    let bindings: Vec<(String, MirType)> = v
+                        .fields
+                        .iter()
+                        .enumerate()
+                        .map(|(i, ft)| (format!("field_{}", i), ft.clone()))
+                        .collect();
+
+                    // Start with hashing the tag
+                    let tag_hash = MirExpr::Call {
+                        func: Box::new(MirExpr::Var("snow_hash_int".to_string(), hash_int_ty.clone())),
+                        args: vec![MirExpr::IntLit(v.tag as i64, MirType::Int)],
+                        ty: MirType::Int,
+                    };
+
+                    // Combine with each field's hash
+                    let mut result = tag_hash;
+                    for (i, ft) in v.fields.iter().enumerate() {
+                        let field_var = MirExpr::Var(format!("field_{}", i), ft.clone());
+                        let field_hash = self.emit_hash_for_type(field_var, ft);
+                        result = MirExpr::Call {
+                            func: Box::new(MirExpr::Var(
+                                "snow_hash_combine".to_string(),
+                                combine_ty.clone(),
+                            )),
+                            args: vec![result, field_hash],
+                            ty: MirType::Int,
+                        };
+                    }
+
+                    MirMatchArm {
+                        pattern: MirPattern::Constructor {
+                            type_name: name.to_string(),
+                            variant: v.name.clone(),
+                            fields: field_pats,
+                            bindings,
+                        },
+                        body: result,
+                        guard: None,
+                    }
+                })
+                .collect();
+
+            MirExpr::Match {
+                scrutinee: Box::new(self_var),
+                arms,
+                ty: MirType::Int,
+            }
+        };
+
+        let func = MirFunction {
+            name: mangled.clone(),
+            params: vec![("self".to_string(), sum_ty.clone())],
+            return_type: MirType::Int,
+            body,
+            is_closure_fn: false,
+            captures: vec![],
+        };
+
+        self.functions.push(func);
+        self.known_functions.insert(
+            mangled,
+            MirType::FnPtr(vec![sum_ty], Box::new(MirType::Int)),
+        );
+    }
+
+    // ── Display generation ──────────────────────────────────────────
+
+    /// Generate a synthetic `Display__to_string__StructName` MIR function that
+    /// produces a constructor-style string like `"Point(1, 2)"`.
+    /// Unlike Debug (which uses `"Point { x: 1, y: 2 }"`), Display uses positional
+    /// values without field names.
+    fn generate_display_struct(&mut self, name: &str, fields: &[(String, MirType)]) {
+        let mangled = format!("Display__to_string__{}", name);
+        let struct_ty = MirType::Struct(name.to_string());
+        let concat_ty = MirType::FnPtr(
+            vec![MirType::String, MirType::String],
+            Box::new(MirType::String),
+        );
+        let self_var = MirExpr::Var("self".to_string(), struct_ty.clone());
+
+        // Build: "StructName(val1, val2)"
+        let mut result: MirExpr = if fields.is_empty() {
+            MirExpr::StringLit(format!("{}()", name), MirType::String)
+        } else {
+            MirExpr::StringLit(format!("{}(", name), MirType::String)
+        };
+
+        if !fields.is_empty() {
+            for (i, (field_name, field_ty)) in fields.iter().enumerate() {
+                let is_last = i == fields.len() - 1;
+
+                // Access self.field (use field name for struct field access)
+                let field_access = MirExpr::FieldAccess {
+                    object: Box::new(self_var.clone()),
+                    field: field_name.clone(),
+                    ty: field_ty.clone(),
+                };
+
+                // Convert field value to string (no label prefix -- Display is positional)
+                let field_str = self.wrap_to_string(field_access, None);
+
+                // Append field value string
+                result = MirExpr::Call {
+                    func: Box::new(MirExpr::Var("snow_string_concat".to_string(), concat_ty.clone())),
+                    args: vec![result, field_str],
+                    ty: MirType::String,
+                };
+
+                // Append separator: ", " for non-last fields
+                if !is_last {
+                    result = MirExpr::Call {
+                        func: Box::new(MirExpr::Var("snow_string_concat".to_string(), concat_ty.clone())),
+                        args: vec![result, MirExpr::StringLit(", ".to_string(), MirType::String)],
+                        ty: MirType::String,
+                    };
+                }
+            }
+
+            // Append closing ")"
+            result = MirExpr::Call {
+                func: Box::new(MirExpr::Var("snow_string_concat".to_string(), concat_ty.clone())),
+                args: vec![result, MirExpr::StringLit(")".to_string(), MirType::String)],
+                ty: MirType::String,
+            };
+        }
+
+        let func = MirFunction {
+            name: mangled.clone(),
+            params: vec![("self".to_string(), struct_ty.clone())],
+            return_type: MirType::String,
+            body: result,
+            is_closure_fn: false,
+            captures: vec![],
+        };
+
+        self.functions.push(func);
+        self.known_functions.insert(
+            mangled,
+            MirType::FnPtr(vec![struct_ty], Box::new(MirType::String)),
+        );
+    }
+
+    /// Generate a synthetic `Display__to_string__SumTypeName` MIR function.
+    /// Uses Match on self with Constructor patterns to produce variant-aware output.
+    /// Nullary variants: just the variant name (e.g. "Dot").
+    /// Variants with fields: "VariantName(val0, val1)" style.
+    fn generate_display_sum_type(&mut self, name: &str, variants: &[MirVariantDef]) {
+        let mangled = format!("Display__to_string__{}", name);
+        let sum_ty = MirType::SumType(name.to_string());
+        let self_var = MirExpr::Var("self".to_string(), sum_ty.clone());
+        let concat_ty = MirType::FnPtr(
+            vec![MirType::String, MirType::String],
+            Box::new(MirType::String),
+        );
+
+        let body = if variants.is_empty() {
+            MirExpr::StringLit(format!("<{}>", name), MirType::String)
+        } else {
+            let arms: Vec<MirMatchArm> = variants
+                .iter()
+                .map(|v| {
+                    if v.fields.is_empty() {
+                        // Nullary variant: just return variant name
+                        MirMatchArm {
+                            pattern: MirPattern::Constructor {
+                                type_name: name.to_string(),
+                                variant: v.name.clone(),
+                                fields: vec![],
+                                bindings: vec![],
+                            },
+                            body: MirExpr::StringLit(v.name.clone(), MirType::String),
+                            guard: None,
+                        }
+                    } else {
+                        // Variant with fields: bind as field_0, field_1, ...
+                        let field_pats: Vec<MirPattern> = v
+                            .fields
+                            .iter()
+                            .enumerate()
+                            .map(|(i, ft)| MirPattern::Var(format!("field_{}", i), ft.clone()))
+                            .collect();
+                        let bindings: Vec<(String, MirType)> = v
+                            .fields
+                            .iter()
+                            .enumerate()
+                            .map(|(i, ft)| (format!("field_{}", i), ft.clone()))
+                            .collect();
+
+                        // Build "VariantName(val0, val1)"
+                        let mut result = MirExpr::StringLit(
+                            format!("{}(", v.name),
+                            MirType::String,
+                        );
+
+                        for (i, ft) in v.fields.iter().enumerate() {
+                            let is_last = i == v.fields.len() - 1;
+                            let field_var = MirExpr::Var(format!("field_{}", i), ft.clone());
+                            let field_str = self.wrap_to_string(field_var, None);
+
+                            // Append field value
+                            result = MirExpr::Call {
+                                func: Box::new(MirExpr::Var(
+                                    "snow_string_concat".to_string(),
+                                    concat_ty.clone(),
+                                )),
+                                args: vec![result, field_str],
+                                ty: MirType::String,
+                            };
+
+                            // Append separator for non-last fields
+                            if !is_last {
+                                result = MirExpr::Call {
+                                    func: Box::new(MirExpr::Var(
+                                        "snow_string_concat".to_string(),
+                                        concat_ty.clone(),
+                                    )),
+                                    args: vec![
+                                        result,
+                                        MirExpr::StringLit(", ".to_string(), MirType::String),
+                                    ],
+                                    ty: MirType::String,
+                                };
+                            }
+                        }
+
+                        // Append closing ")"
+                        result = MirExpr::Call {
+                            func: Box::new(MirExpr::Var(
+                                "snow_string_concat".to_string(),
+                                concat_ty.clone(),
+                            )),
+                            args: vec![
+                                result,
+                                MirExpr::StringLit(")".to_string(), MirType::String),
+                            ],
+                            ty: MirType::String,
+                        };
+
+                        MirMatchArm {
+                            pattern: MirPattern::Constructor {
+                                type_name: name.to_string(),
+                                variant: v.name.clone(),
+                                fields: field_pats,
+                                bindings,
+                            },
+                            body: result,
+                            guard: None,
+                        }
+                    }
+                })
+                .collect();
+
+            MirExpr::Match {
+                scrutinee: Box::new(self_var),
+                arms,
+                ty: MirType::String,
+            }
+        };
+
+        let func = MirFunction {
+            name: mangled.clone(),
+            params: vec![("self".to_string(), sum_ty.clone())],
+            return_type: MirType::String,
+            body,
+            is_closure_fn: false,
+            captures: vec![],
+        };
+
+        self.functions.push(func);
+        self.known_functions.insert(
+            mangled,
+            MirType::FnPtr(vec![sum_ty], Box::new(MirType::String)),
         );
     }
 
