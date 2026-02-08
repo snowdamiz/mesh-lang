@@ -10,11 +10,11 @@ See: .planning/PROJECT.md (updated 2026-02-07)
 ## Current Position
 
 Phase: 17 of 17 (Mark-Sweep Garbage Collector)
-Plan: 1 of 4 in phase 17
+Plan: 2 of 4 in phase 17
 Status: In progress
-Last activity: 2026-02-08 -- Completed 17-01-PLAN.md
+Last activity: 2026-02-08 -- Completed 17-02-PLAN.md
 
-Progress: ██████░░░░ 60% (1/2 phases complete + 1/4 plans in v1.2)
+Progress: ███████░░░ 70% (1/2 phases complete + 2/4 plans in v1.2)
 
 ## Performance Metrics
 
@@ -33,9 +33,9 @@ Progress: ██████░░░░ 60% (1/2 phases complete + 1/4 plans in
 - Lines of Rust: 56,539 (+3,928)
 
 **v1.2 Progress:**
-- Plans completed: 3
+- Plans completed: 4
 - Phases started: 2 (16, 17)
-- Commits: 6
+- Commits: 8
 
 ## Accumulated Context
 
@@ -53,6 +53,9 @@ Full decision history archived in milestones/v1.0-ROADMAP.md and milestones/v1.1
 | GcHeader 16 bytes with dual-purpose next pointer | 17-01 | Keeps header compact; next links all-objects (when live) or free-list (when freed) |
 | Global arena unchanged -- no headers | 17-01 | Per Research Pitfall 1; main thread allocates little, focus GC on actor heaps only |
 | Free-list first-fit without block splitting | 17-01 | KISS for v1.2; optimize to size-segregated if profiling shows need |
+| Conservative stack scanning (no type info) | 17-02 | No type maps yet; every 8-byte word treated as potential pointer -- safe but may retain some garbage |
+| Worklist on system heap (Rust Vec) | 17-02 | Avoids re-entrancy: GC heap allocation during GC would be circular |
+| GC at yield points only (cooperative) | 17-02 | Runs when actor yields, never interrupts other actors |
 
 ### Pending Todos
 
@@ -65,6 +68,6 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-08
-Stopped at: Completed 17-01-PLAN.md
+Stopped at: Completed 17-02-PLAN.md
 Resume file: None
-Next action: Execute 17-02-PLAN.md (mark phase)
+Next action: Execute 17-03-PLAN.md (write barrier / growth policy)
