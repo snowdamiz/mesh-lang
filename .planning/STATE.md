@@ -10,11 +10,11 @@ See: .planning/PROJECT.md (updated 2026-02-07)
 ## Current Position
 
 Phase: 18 of 22 (Trait Infrastructure)
-Plan: 0 of 3 in current phase
-Status: Ready to plan
-Last activity: 2026-02-07 -- Roadmap created for v1.3 (Phases 18-22, 17 plans estimated)
+Plan: 1 of 3 in current phase
+Status: In progress
+Last activity: 2026-02-08 -- Completed 18-01-PLAN.md (structural type matching)
 
-Progress: ░░░░░░░░░░ 0% (0/17 plans)
+Progress: █░░░░░░░░░ 6% (1/17 plans)
 
 ## Performance Metrics
 
@@ -51,6 +51,9 @@ Recent decisions for v1.3:
 - Name mangling: Trait__Method__Type with double-underscore separators
 - Zero new Rust crate dependencies
 - FNV-1a for Hash protocol (~30 lines in snow-rt)
+- (18-01) TraitRegistry storage: FxHashMap<String, Vec<ImplDef>> keyed by trait name
+- (18-01) Type param freshening: single uppercase ASCII letter heuristic (A-Z)
+- (18-01) Structural matching: throwaway InferCtx per match attempt
 
 ### Pending Todos
 
@@ -63,7 +66,7 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-02-07
-Stopped at: v1.3 roadmap created, ready to plan Phase 18
+Last session: 2026-02-08
+Stopped at: Completed 18-01-PLAN.md (structural type matching)
 Resume file: None
-Next action: `/gsd:plan-phase 18`
+Next action: Execute 18-02-PLAN.md (duplicate impl detection)
