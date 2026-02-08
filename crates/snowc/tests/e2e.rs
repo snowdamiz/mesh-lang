@@ -659,3 +659,38 @@ fn e2e_fun_type_annotations() {
         "Expected: apply(int_to_str, 42)='42', run_thunk(->99)=99, apply2(add, 10, 20)=30"
     );
 }
+
+// ── Phase 23: Pattern Matching Codegen & Ordering ─────────────────────
+
+/// Option field extraction: Some(42) pattern match extracts the inner value.
+#[test]
+fn e2e_option_field_extraction() {
+    let source = read_fixture("option_field_extraction.snow");
+    let output = compile_and_run(&source);
+    assert_eq!(output, "42\n");
+}
+
+/// Ordering pattern match: compare(3, 5) returns Less, matched to 1.
+#[test]
+fn e2e_ordering_pattern_match() {
+    let source = read_fixture("ordering_pattern_match.snow");
+    let output = compile_and_run(&source);
+    assert_eq!(output, "1\n");
+}
+
+/// Ordering as variable: compare result stored in variable, then matched.
+#[test]
+fn e2e_ordering_as_variable() {
+    let source = read_fixture("ordering_as_variable.snow");
+    let output = compile_and_run(&source);
+    assert_eq!(output, "2\n");
+}
+
+/// Nullary constructor pattern match: user-defined sum type with all-nullary variants.
+/// Validates that Red/Green/Blue are recognized as constructors, not variables.
+#[test]
+fn e2e_nullary_constructor_match() {
+    let source = read_fixture("nullary_constructor_match.snow");
+    let output = compile_and_run(&source);
+    assert_eq!(output, "1\n2\n3\n");
+}

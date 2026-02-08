@@ -3594,6 +3594,31 @@ impl<'a> Lowerer<'a> {
                     .name()
                     .map(|t| t.text().to_string())
                     .unwrap_or_else(|| "_".to_string());
+
+                // Check if this identifier is a known nullary constructor
+                // (e.g., None, Less, Equal, Greater). The parser produces
+                // IDENT_PAT for these because they lack parentheses, but
+                // they must be lowered as Constructor patterns for correct
+                // pattern matching codegen (switch on tag).
+                if name.starts_with(|c: char| c.is_uppercase()) {
+                    if let Some(type_name) = find_type_for_variant(&name, self.registry) {
+                        // Verify it's actually a nullary constructor (no fields).
+                        let is_nullary = self.registry.sum_type_defs
+                            .get(&type_name)
+                            .and_then(|info| info.variants.iter().find(|v| v.name == name))
+                            .map(|v| v.fields.is_empty())
+                            .unwrap_or(false);
+                        if is_nullary {
+                            return MirPattern::Constructor {
+                                type_name,
+                                variant: name,
+                                fields: vec![],
+                                bindings: vec![],
+                            };
+                        }
+                    }
+                }
+
                 let ty = self.resolve_range(ident.syntax().text_range());
                 self.insert_var(name.clone(), ty.clone());
                 MirPattern::Var(name, ty)
