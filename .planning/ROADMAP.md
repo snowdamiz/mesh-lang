@@ -55,6 +55,12 @@ Plans:
 - [x] 21-03-PLAN.md -- Default method implementations: parser/AST/typeck/lowering for optional interface method bodies
 - [x] 21-04-PLAN.md -- Collection Display/Debug: runtime callback helpers for List, Map, Set to_string
 
+**Phase 22 Plans:** 2 plans
+
+Plans:
+- [ ] 22-01-PLAN.md -- Derive syntax + compiler infrastructure: parser, AST accessors, conditional gating in typeck/MIR, formatter
+- [ ] 22-02-PLAN.md -- Derive implementations + e2e tests: Display/Hash-sum generation, validation, comprehensive testing
+
 ## Progress
 
 | Phase | Milestone | Plans Complete | Status | Completed |
