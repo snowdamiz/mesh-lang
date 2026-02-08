@@ -1572,7 +1572,18 @@ impl<'a> Lowerer<'a> {
                     let trait_name = &matching_traits[0];
                     let type_name = mir_type_to_impl_name(&first_arg_ty);
                     let mangled = format!("{}__{}__{}", trait_name, name, type_name);
-                    MirExpr::Var(mangled, var_ty.clone())
+
+                    // For primitive Display impls, redirect to runtime functions
+                    // since there are no MIR function bodies for these builtins.
+                    let resolved = match mangled.as_str() {
+                        "Display__to_string__Int" => "snow_int_to_string".to_string(),
+                        "Display__to_string__Float" => "snow_float_to_string".to_string(),
+                        "Display__to_string__Bool" => "snow_bool_to_string".to_string(),
+                        // Display__to_string__String is identity; handled below
+                        // by short-circuiting the entire call.
+                        _ => mangled,
+                    };
+                    MirExpr::Var(resolved, var_ty.clone())
                 } else {
                     // Defense-in-depth: if the callee is not a known function,
                     // not a local variable, and find_method_traits returned empty,
@@ -1594,6 +1605,14 @@ impl<'a> Lowerer<'a> {
         } else {
             callee
         };
+
+        // Short-circuit: Display__to_string__String is identity -- return the
+        // first argument directly without emitting a function call.
+        if let MirExpr::Var(ref name, _) = callee {
+            if name == "Display__to_string__String" && !args.is_empty() {
+                return args.into_iter().next().unwrap();
+            }
+        }
 
         // Determine if this is a direct function call or a closure call.
         let is_known_fn = match &callee {
