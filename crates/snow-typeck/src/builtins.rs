@@ -26,6 +26,7 @@ use crate::unify::InferCtx;
 /// - Eq (equality comparison)
 /// - Ord (ordering comparison)
 /// - Not (logical negation)
+/// - Default (zero-initialization, static method -- no self parameter)
 pub fn register_builtins(
     _ctx: &mut InferCtx,
     env: &mut TypeEnv,
@@ -796,6 +797,44 @@ fn register_compiler_known_traits(registry: &mut TraitRegistry) {
             methods,
         });
     }
+
+    // ── Default trait ──────────────────────────────────────────────
+    // Default is the first STATIC trait method in Snow: no self parameter.
+    // default() -> Self, where the return type is resolved per-impl.
+    registry.register_trait(TraitDef {
+        name: "Default".to_string(),
+        methods: vec![TraitMethodSig {
+            name: "default".to_string(),
+            has_self: false,
+            param_count: 0,
+            return_type: None, // Self -- resolved per concrete type at call site
+        }],
+    });
+
+    // Default impls for primitives (Int, Float, String, Bool).
+    // Each impl specifies the concrete return type.
+    for (ty, ty_name) in &[
+        (Ty::int(), "Int"),
+        (Ty::float(), "Float"),
+        (Ty::string(), "String"),
+        (Ty::bool(), "Bool"),
+    ] {
+        let mut methods = FxHashMap::default();
+        methods.insert(
+            "default".to_string(),
+            ImplMethodSig {
+                has_self: false,
+                param_count: 0,
+                return_type: Some(ty.clone()),
+            },
+        );
+        let _ = registry.register_impl(ImplDef {
+            trait_name: "Default".to_string(),
+            impl_type: ty.clone(),
+            impl_type_name: ty_name.to_string(),
+            methods,
+        });
+    }
 }
 
 #[cfg(test)]
@@ -954,5 +993,23 @@ mod tests {
         // find_method_traits should find Debug for inspect
         let traits = trait_registry.find_method_traits("inspect", &Ty::int());
         assert!(traits.contains(&"Debug".to_string()));
+    }
+
+    #[test]
+    fn default_trait_registered_for_primitives() {
+        let mut ctx = InferCtx::new();
+        let mut env = TypeEnv::new();
+        let mut trait_registry = TraitRegistry::new();
+        register_builtins(&mut ctx, &mut env, &mut trait_registry);
+
+        // Default trait exists for all primitives
+        assert!(trait_registry.has_impl("Default", &Ty::int()));
+        assert!(trait_registry.has_impl("Default", &Ty::float()));
+        assert!(trait_registry.has_impl("Default", &Ty::string()));
+        assert!(trait_registry.has_impl("Default", &Ty::bool()));
+
+        // find_method_traits should find Default for "default"
+        let traits = trait_registry.find_method_traits("default", &Ty::int());
+        assert!(traits.contains(&"Default".to_string()));
     }
 }
