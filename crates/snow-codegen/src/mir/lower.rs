@@ -1310,6 +1310,7 @@ impl<'a> Lowerer<'a> {
         }
         if derive_all || derive_list.iter().any(|t| t == "Ord") {
             self.generate_ord_struct(&name, &fields);
+            self.generate_compare_struct(&name, &fields);
         }
         if derive_all || derive_list.iter().any(|t| t == "Hash") {
             self.generate_hash_struct(&name, &fields);
@@ -1372,6 +1373,7 @@ impl<'a> Lowerer<'a> {
         }
         if derive_all || derive_list.iter().any(|t| t == "Ord") {
             self.generate_ord_sum(&name, &variants);
+            self.generate_compare_sum(&name, &variants);
         }
         // Display: only via explicit deriving(Display), never auto-derived
         if derive_list.iter().any(|t| t == "Display") {
@@ -2056,6 +2058,218 @@ impl<'a> Lowerer<'a> {
         self.known_functions.insert(
             mangled,
             MirType::FnPtr(vec![sum_ty.clone(), sum_ty], Box::new(MirType::Bool)),
+        );
+    }
+
+    // ── Compare generation ──────────────────────────────────────────
+
+    /// Generate a synthetic `Ord__compare__StructName` MIR function.
+    /// Returns Ordering (Less | Equal | Greater) by delegating to lt and eq.
+    fn generate_compare_struct(&mut self, name: &str, fields: &[(String, MirType)]) {
+        let mangled = format!("Ord__compare__{}", name);
+        let struct_ty = MirType::Struct(name.to_string());
+        let ordering_ty = MirType::SumType("Ordering".to_string());
+        let self_var = MirExpr::Var("self".to_string(), struct_ty.clone());
+        let other_var = MirExpr::Var("other".to_string(), struct_ty.clone());
+
+        let lt_fn = format!("Ord__lt__{}", name);
+        let eq_fn = format!("Eq__eq__{}", name);
+        let fn_ty = MirType::FnPtr(
+            vec![struct_ty.clone(), struct_ty.clone()],
+            Box::new(MirType::Bool),
+        );
+
+        // if Ord__lt__Name(self, other) then Less
+        // else if Eq__eq__Name(self, other) then Equal
+        // else Greater
+        let body = MirExpr::If {
+            cond: Box::new(MirExpr::Call {
+                func: Box::new(MirExpr::Var(lt_fn, fn_ty.clone())),
+                args: vec![self_var.clone(), other_var.clone()],
+                ty: MirType::Bool,
+            }),
+            then_body: Box::new(MirExpr::ConstructVariant {
+                type_name: "Ordering".to_string(),
+                variant: "Less".to_string(),
+                fields: vec![],
+                ty: ordering_ty.clone(),
+            }),
+            else_body: Box::new(MirExpr::If {
+                cond: Box::new(MirExpr::Call {
+                    func: Box::new(MirExpr::Var(eq_fn, fn_ty)),
+                    args: vec![self_var, other_var],
+                    ty: MirType::Bool,
+                }),
+                then_body: Box::new(MirExpr::ConstructVariant {
+                    type_name: "Ordering".to_string(),
+                    variant: "Equal".to_string(),
+                    fields: vec![],
+                    ty: ordering_ty.clone(),
+                }),
+                else_body: Box::new(MirExpr::ConstructVariant {
+                    type_name: "Ordering".to_string(),
+                    variant: "Greater".to_string(),
+                    fields: vec![],
+                    ty: ordering_ty.clone(),
+                }),
+                ty: ordering_ty.clone(),
+            }),
+            ty: ordering_ty.clone(),
+        };
+
+        let func = MirFunction {
+            name: mangled.clone(),
+            params: vec![
+                ("self".to_string(), struct_ty.clone()),
+                ("other".to_string(), struct_ty.clone()),
+            ],
+            return_type: ordering_ty.clone(),
+            body,
+            is_closure_fn: false,
+            captures: vec![],
+        };
+
+        self.functions.push(func);
+        self.known_functions.insert(
+            mangled,
+            MirType::FnPtr(vec![struct_ty.clone(), struct_ty], Box::new(ordering_ty)),
+        );
+    }
+
+    /// Generate a synthetic `Ord__compare__SumTypeName` MIR function.
+    /// Returns Ordering (Less | Equal | Greater) by delegating to lt and eq.
+    fn generate_compare_sum(&mut self, name: &str, _variants: &[MirVariantDef]) {
+        let mangled = format!("Ord__compare__{}", name);
+        let sum_ty = MirType::SumType(name.to_string());
+        let ordering_ty = MirType::SumType("Ordering".to_string());
+        let self_var = MirExpr::Var("self".to_string(), sum_ty.clone());
+        let other_var = MirExpr::Var("other".to_string(), sum_ty.clone());
+
+        let lt_fn = format!("Ord__lt__{}", name);
+        let eq_fn = format!("Eq__eq__{}", name);
+        let fn_ty = MirType::FnPtr(
+            vec![sum_ty.clone(), sum_ty.clone()],
+            Box::new(MirType::Bool),
+        );
+
+        let body = MirExpr::If {
+            cond: Box::new(MirExpr::Call {
+                func: Box::new(MirExpr::Var(lt_fn, fn_ty.clone())),
+                args: vec![self_var.clone(), other_var.clone()],
+                ty: MirType::Bool,
+            }),
+            then_body: Box::new(MirExpr::ConstructVariant {
+                type_name: "Ordering".to_string(),
+                variant: "Less".to_string(),
+                fields: vec![],
+                ty: ordering_ty.clone(),
+            }),
+            else_body: Box::new(MirExpr::If {
+                cond: Box::new(MirExpr::Call {
+                    func: Box::new(MirExpr::Var(eq_fn, fn_ty)),
+                    args: vec![self_var, other_var],
+                    ty: MirType::Bool,
+                }),
+                then_body: Box::new(MirExpr::ConstructVariant {
+                    type_name: "Ordering".to_string(),
+                    variant: "Equal".to_string(),
+                    fields: vec![],
+                    ty: ordering_ty.clone(),
+                }),
+                else_body: Box::new(MirExpr::ConstructVariant {
+                    type_name: "Ordering".to_string(),
+                    variant: "Greater".to_string(),
+                    fields: vec![],
+                    ty: ordering_ty.clone(),
+                }),
+                ty: ordering_ty.clone(),
+            }),
+            ty: ordering_ty.clone(),
+        };
+
+        let func = MirFunction {
+            name: mangled.clone(),
+            params: vec![
+                ("self".to_string(), sum_ty.clone()),
+                ("other".to_string(), sum_ty.clone()),
+            ],
+            return_type: ordering_ty.clone(),
+            body,
+            is_closure_fn: false,
+            captures: vec![],
+        };
+
+        self.functions.push(func);
+        self.known_functions.insert(
+            mangled,
+            MirType::FnPtr(vec![sum_ty.clone(), sum_ty], Box::new(ordering_ty)),
+        );
+    }
+
+    /// Generate a synthetic `Ord__compare__PrimitiveName` MIR function for primitives.
+    /// Uses BinOp::Lt and BinOp::Eq directly instead of calling trait functions.
+    fn generate_compare_primitive(&mut self, type_name: &str, mir_type: MirType) {
+        let mangled = format!("Ord__compare__{}", type_name);
+        let ordering_ty = MirType::SumType("Ordering".to_string());
+        let self_var = MirExpr::Var("self".to_string(), mir_type.clone());
+        let other_var = MirExpr::Var("other".to_string(), mir_type.clone());
+
+        // if self < other then Less
+        // else if self == other then Equal
+        // else Greater
+        let body = MirExpr::If {
+            cond: Box::new(MirExpr::BinOp {
+                op: BinOp::Lt,
+                lhs: Box::new(self_var.clone()),
+                rhs: Box::new(other_var.clone()),
+                ty: MirType::Bool,
+            }),
+            then_body: Box::new(MirExpr::ConstructVariant {
+                type_name: "Ordering".to_string(),
+                variant: "Less".to_string(),
+                fields: vec![],
+                ty: ordering_ty.clone(),
+            }),
+            else_body: Box::new(MirExpr::If {
+                cond: Box::new(MirExpr::BinOp {
+                    op: BinOp::Eq,
+                    lhs: Box::new(self_var),
+                    rhs: Box::new(other_var),
+                    ty: MirType::Bool,
+                }),
+                then_body: Box::new(MirExpr::ConstructVariant {
+                    type_name: "Ordering".to_string(),
+                    variant: "Equal".to_string(),
+                    fields: vec![],
+                    ty: ordering_ty.clone(),
+                }),
+                else_body: Box::new(MirExpr::ConstructVariant {
+                    type_name: "Ordering".to_string(),
+                    variant: "Greater".to_string(),
+                    fields: vec![],
+                    ty: ordering_ty.clone(),
+                }),
+                ty: ordering_ty.clone(),
+            }),
+            ty: ordering_ty.clone(),
+        };
+
+        let func = MirFunction {
+            name: mangled.clone(),
+            params: vec![
+                ("self".to_string(), mir_type.clone()),
+                ("other".to_string(), mir_type.clone()),
+            ],
+            return_type: ordering_ty.clone(),
+            body,
+            is_closure_fn: false,
+            captures: vec![],
+        };
+
+        self.functions.push(func);
+        self.known_functions.insert(
+            mangled,
+            MirType::FnPtr(vec![mir_type.clone(), mir_type], Box::new(ordering_ty)),
         );
     }
 
@@ -3030,6 +3244,25 @@ impl<'a> Lowerer<'a> {
                         );
                     }
                 }
+            }
+        }
+
+        // compare(a, b) dispatch: rewrite to Ord__compare__TypeName.
+        if let MirExpr::Var(ref name, _) = callee {
+            if name == "compare" && args.len() == 2 {
+                let arg_ty = args[0].ty().clone();
+                let type_name = mir_type_to_impl_name(&arg_ty);
+                let mangled = format!("Ord__compare__{}", type_name);
+                let ordering_ty = MirType::SumType("Ordering".to_string());
+                let fn_ty = MirType::FnPtr(
+                    vec![arg_ty.clone(), arg_ty],
+                    Box::new(ordering_ty.clone()),
+                );
+                return MirExpr::Call {
+                    func: Box::new(MirExpr::Var(mangled, fn_ty)),
+                    args,
+                    ty: ordering_ty,
+                };
             }
         }
 
@@ -5927,6 +6160,13 @@ pub fn lower_to_mir(parse: &Parse, typeck: &TypeckResult) -> Result<MirModule, S
         });
     }
 
+    // Generate Ord__compare__ for built-in primitive types (Int, Float, String).
+    // These use BinOp::Lt and BinOp::Eq directly since primitives don't have
+    // generated Ord__lt__ / Eq__eq__ functions.
+    lowerer.generate_compare_primitive("Int", MirType::Int);
+    lowerer.generate_compare_primitive("Float", MirType::Float);
+    lowerer.generate_compare_primitive("String", MirType::String);
+
     lowerer.lower_source_file(source_file);
 
     // Build service dispatch tables from the generated functions.
@@ -7828,6 +8068,180 @@ end
             has_call_to(&main.body, "snow_set_to_string"),
             "Expected snow_set_to_string call in interpolated string body.\n\
              Body: {:?}",
+            main.body
+        );
+    }
+
+    // ── Phase 23 Plan 02: Ordering & compare tests ──────────────────
+
+    #[test]
+    fn ordering_sum_type_registered_in_mir() {
+        // Ordering should be registered as a built-in sum type in every MIR module.
+        let mir = lower("fn main() do 1 end");
+        let ordering = mir.sum_types.iter().find(|s| s.name == "Ordering");
+        assert!(
+            ordering.is_some(),
+            "Expected Ordering sum type in MIR. Sum types: {:?}",
+            mir.sum_types.iter().map(|s| &s.name).collect::<Vec<_>>()
+        );
+        let ordering = ordering.unwrap();
+        assert_eq!(ordering.variants.len(), 3);
+        assert_eq!(ordering.variants[0].name, "Less");
+        assert_eq!(ordering.variants[0].tag, 0);
+        assert_eq!(ordering.variants[1].name, "Equal");
+        assert_eq!(ordering.variants[1].tag, 1);
+        assert_eq!(ordering.variants[2].name, "Greater");
+        assert_eq!(ordering.variants[2].tag, 2);
+    }
+
+    #[test]
+    fn compare_primitive_functions_generated() {
+        // Ord__compare__Int, Ord__compare__Float, Ord__compare__String should exist.
+        let mir = lower("fn main() do 1 end");
+        let fns: Vec<&str> = mir.functions.iter().map(|f| f.name.as_str()).collect();
+        assert!(fns.contains(&"Ord__compare__Int"), "Missing Ord__compare__Int. Fns: {:?}", fns);
+        assert!(fns.contains(&"Ord__compare__Float"), "Missing Ord__compare__Float. Fns: {:?}", fns);
+        assert!(fns.contains(&"Ord__compare__String"), "Missing Ord__compare__String. Fns: {:?}", fns);
+
+        // Check Ord__compare__Int signature
+        let compare_int = mir.functions.iter().find(|f| f.name == "Ord__compare__Int").unwrap();
+        assert_eq!(compare_int.params.len(), 2);
+        assert_eq!(compare_int.params[0].1, MirType::Int);
+        assert_eq!(compare_int.params[1].1, MirType::Int);
+        assert_eq!(compare_int.return_type, MirType::SumType("Ordering".to_string()));
+    }
+
+    #[test]
+    fn compare_call_dispatches_to_mangled() {
+        // compare(3, 5) should lower to Ord__compare__Int(3, 5)
+        let source = r#"
+fn main() -> Ordering do
+  compare(3, 5)
+end
+"#;
+        let mir = lower(source);
+        let main = mir.functions.iter().find(|f| f.name == "snow_main");
+        assert!(main.is_some(), "Expected 'snow_main' function in MIR");
+        let main = main.unwrap();
+        assert!(
+            has_call_to(&main.body, "Ord__compare__Int"),
+            "Expected Ord__compare__Int call in main body.\nBody: {:?}",
+            main.body
+        );
+    }
+
+    #[test]
+    fn compare_struct_generated_for_user_types() {
+        // User structs with Ord derive should get Ord__compare__StructName.
+        let source = r#"
+struct Point do
+  x :: Int
+  y :: Int
+end
+
+fn main() do
+  let p = Point { x: 1, y: 2 }
+  println("test")
+end
+"#;
+        let mir = lower(source);
+        let compare_fn = mir.functions.iter().find(|f| f.name == "Ord__compare__Point");
+        assert!(
+            compare_fn.is_some(),
+            "Expected Ord__compare__Point function in MIR. Functions: {:?}",
+            mir.functions.iter().map(|f| &f.name).collect::<Vec<_>>()
+        );
+        let compare_fn = compare_fn.unwrap();
+        assert_eq!(compare_fn.params.len(), 2);
+        assert_eq!(compare_fn.return_type, MirType::SumType("Ordering".to_string()));
+    }
+
+    #[test]
+    fn compare_sum_generated_for_user_sum_types() {
+        // User sum types with Ord derive should get Ord__compare__SumTypeName.
+        let source = r#"
+type Color do
+  Red
+  Green
+  Blue
+end
+
+fn main() do
+  println("test")
+end
+"#;
+        let mir = lower(source);
+        let compare_fn = mir.functions.iter().find(|f| f.name == "Ord__compare__Color");
+        assert!(
+            compare_fn.is_some(),
+            "Expected Ord__compare__Color function in MIR. Functions: {:?}",
+            mir.functions.iter().map(|f| &f.name).collect::<Vec<_>>()
+        );
+        let compare_fn = compare_fn.unwrap();
+        assert_eq!(compare_fn.params.len(), 2);
+        assert_eq!(compare_fn.return_type, MirType::SumType("Ordering".to_string()));
+    }
+
+    #[test]
+    fn pattern_match_some_extracts_field() {
+        // case Some(42) do Some(x) -> x | None -> 0 end
+        // The match should produce MirExpr::Match with Constructor patterns.
+        let source = r#"
+fn main() -> Int do
+  let opt = Some(42)
+  case opt do
+    Some(x) -> x
+    None -> 0
+  end
+end
+"#;
+        let mir = lower(source);
+        let main = mir.functions.iter().find(|f| f.name == "snow_main");
+        assert!(main.is_some(), "Expected 'snow_main' function in MIR");
+        let main = main.unwrap();
+
+        // The body should contain a Match expression with Constructor patterns
+        fn has_match_with_some(expr: &MirExpr) -> bool {
+            match expr {
+                MirExpr::Match { arms, .. } => {
+                    arms.iter().any(|arm| matches!(&arm.pattern, MirPattern::Constructor { variant, .. } if variant == "Some"))
+                }
+                MirExpr::Let { value, body, .. } => {
+                    has_match_with_some(value) || has_match_with_some(body)
+                }
+                MirExpr::Block(exprs, _) => exprs.iter().any(has_match_with_some),
+                _ => false,
+            }
+        }
+        assert!(
+            has_match_with_some(&main.body),
+            "Expected Match with Some constructor pattern in main body.\nBody: {:?}",
+            main.body
+        );
+    }
+
+    #[test]
+    fn pattern_match_ordering_variants() {
+        // Pattern matching on Ordering should produce Constructor patterns.
+        let source = r#"
+fn main() -> Int do
+  let ord = compare(3, 5)
+  case ord do
+    Less -> 1
+    Equal -> 2
+    Greater -> 3
+  end
+end
+"#;
+        let mir = lower(source);
+        let main = mir.functions.iter().find(|f| f.name == "snow_main");
+        assert!(main.is_some(), "Expected 'snow_main' function in MIR");
+        let main = main.unwrap();
+
+        // Should dispatch compare call
+        assert!(
+            has_call_to(&main.body, "Ord__compare__Int"),
+            "Expected Ord__compare__Int call in main body.\nBody: {:?}",
             main.body
         );
     }
