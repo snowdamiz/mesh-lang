@@ -28,8 +28,8 @@ Requirements for v1.1 release. Each maps to roadmap phases.
 
 ### Standard Library — HTTP
 
-- [ ] **HTTP-01**: HTTP server spawns a lightweight actor per incoming connection instead of an OS thread
-- [ ] **HTTP-02**: HTTP connections benefit from actor supervision (crash isolation per connection)
+- [x] **HTTP-01**: HTTP server spawns a lightweight actor per incoming connection instead of an OS thread
+- [x] **HTTP-02**: HTTP connections benefit from actor supervision (crash isolation per connection)
 
 ## Future Requirements
 
@@ -69,8 +69,8 @@ Which phases cover which requirements. Updated during roadmap creation.
 | MAP-01 | Phase 14 | Complete |
 | MAP-02 | Phase 14 | Complete |
 | MAP-03 | Phase 14 | Complete |
-| HTTP-01 | Phase 15 | Pending |
-| HTTP-02 | Phase 15 | Pending |
+| HTTP-01 | Phase 15 | Complete |
+| HTTP-02 | Phase 15 | Complete |
 
 **Coverage:**
 - v1.1 requirements: 12 total
@@ -79,4 +79,4 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 ---
 *Requirements defined: 2026-02-07*
-*Last updated: 2026-02-08 after Phase 14 completion*
+*Last updated: 2026-02-08 after Phase 15 completion (v1.1 complete)*

@@ -3,7 +3,7 @@
 ## Milestones
 
 - ✅ **v1.0 MVP** - Phases 1-10 (shipped 2026-02-07)
-- 🚧 **v1.1 Language Polish** - Phases 11-15 (in progress)
+- ✅ **v1.1 Language Polish** - Phases 11-15 (shipped 2026-02-08)
 
 ## Phases
 
@@ -15,7 +15,7 @@ standard library, and developer tooling. See milestones/v1.0-ROADMAP.md for deta
 
 </details>
 
-### 🚧 v1.1 Language Polish (In Progress)
+### ✅ v1.1 Language Polish (Shipped 2026-02-08)
 
 **Milestone Goal:** Fix all five documented v1.0 limitations -- multi-clause functions, string pattern matching, pipe operator with closures, actor-per-connection HTTP, and generic map types -- to make the language feel complete and polished.
 
@@ -23,7 +23,7 @@ standard library, and developer tooling. See milestones/v1.0-ROADMAP.md for deta
 - [x] **Phase 12: Pipe Operator Closures** - Parse inline closures inside pipe chains
 - [x] **Phase 13: String Pattern Matching** - Compile-time string comparison in case expressions
 - [x] **Phase 14: Generic Map Types** - Map<K, V> with string keys and generic functions
-- [ ] **Phase 15: HTTP Actor Model** - Actor-per-connection HTTP server with supervision
+- [x] **Phase 15: HTTP Actor Model** - Actor-per-connection HTTP server with crash isolation
 
 ## Phase Details
 
@@ -97,7 +97,7 @@ Plans:
 **Plans**: 1 plan
 
 Plans:
-- [ ] 15-01-PLAN.md -- Actor-per-connection HTTP server with catch_unwind crash isolation, e2e tests
+- [x] 15-01-PLAN.md -- Actor-per-connection HTTP server with catch_unwind crash isolation, e2e tests
 
 ## Progress
 
@@ -110,4 +110,4 @@ Phases execute in numeric order: 11 -> 12 -> 13 -> 14 -> 15
 | 12. Pipe Operator Closures | v1.1 | 3/3 | ✓ Complete | 2026-02-07 |
 | 13. String Pattern Matching | v1.1 | 1/1 | ✓ Complete | 2026-02-07 |
 | 14. Generic Map Types | v1.1 | 2/2 | ✓ Complete | 2026-02-08 |
-| 15. HTTP Actor Model | v1.1 | 0/1 | Not started | - |
+| 15. HTTP Actor Model | v1.1 | 1/1 | ✓ Complete | 2026-02-08 |
