@@ -44,6 +44,11 @@ See milestones/v1.3-ROADMAP.md for full phase details, success criteria, and pit
 - [x] **Phase 18: Trait Infrastructure** - Fix type resolution foundation (structural matching, duplicate detection, dispatch unification)
 - [x] **Phase 19: Trait Method Codegen** - Lower impl method bodies to MIR, resolve trait calls to mangled names, where clause enforcement
 - [ ] **Phase 20: Essential Stdlib Protocols** - Display, Debug, Eq, Ord with string interpolation integration and struct/sum-type support
+  Plans:
+  - [ ] 20-01-PLAN.md -- Typeck identity fix + Display protocol registration
+  - [ ] 20-02-PLAN.md -- String interpolation Display dispatch wiring
+  - [ ] 20-03-PLAN.md -- Debug protocol with auto-generated struct/sum inspect
+  - [ ] 20-04-PLAN.md -- Eq/Ord extension for struct and sum types
 - [ ] **Phase 21: Extended Protocols** - Hash, Default, default method implementations, collection Display/Debug
 - [ ] **Phase 22: Auto-Derive (Stretch)** - `deriving(Eq, Ord, Display, Debug, Hash)` from struct/sum-type metadata
 
