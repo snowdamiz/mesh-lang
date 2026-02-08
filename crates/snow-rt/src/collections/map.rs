@@ -5,6 +5,10 @@
 //! with linear scan -- efficient for the small maps typical in Phase 8.
 //!
 //! All mutation operations return a NEW map (immutable semantics).
+//!
+//! The upper 8 bits of the capacity field store a key_type tag:
+//! - 0 = integer keys (compared by value)
+//! - 1 = string keys (compared by content via snow_string_eq)
 
 use crate::gc::snow_gc_alloc;
 use std::ptr;
@@ -14,14 +18,34 @@ const HEADER_SIZE: usize = 16;
 /// Each entry is a (key, value) pair = 16 bytes.
 const ENTRY_SIZE: usize = 16;
 
+/// Key type tag: integer keys (compared by value equality).
+const KEY_TYPE_INT: u64 = 0;
+/// Key type tag: string keys (compared by content via snow_string_eq).
+const KEY_TYPE_STR: u64 = 1;
+/// Number of bits to shift for the key_type tag in the cap field.
+const TAG_SHIFT: u64 = 56;
+/// Mask for extracting the raw capacity (lower 56 bits).
+const CAP_MASK: u64 = (1u64 << 56) - 1;
+
 // ── Internal helpers ──────────────────────────────────────────────────
 
 unsafe fn map_len(m: *const u8) -> u64 {
     *(m as *const u64)
 }
 
+/// Extract the key_type tag from the upper 8 bits of the cap field.
+unsafe fn map_key_type(m: *const u8) -> u64 {
+    (*((m as *const u64).add(1))) >> TAG_SHIFT
+}
+
+/// Extract the raw capacity (lower 56 bits of the cap field).
+unsafe fn map_cap_raw(m: *const u8) -> u64 {
+    (*((m as *const u64).add(1))) & CAP_MASK
+}
+
+#[allow(dead_code)]
 unsafe fn map_cap(m: *const u8) -> u64 {
-    *((m as *const u64).add(1))
+    map_cap_raw(m)
 }
 
 unsafe fn map_entries(m: *const u8) -> *const [u64; 2] {
@@ -32,11 +56,23 @@ unsafe fn map_entries_mut(m: *mut u8) -> *mut [u64; 2] {
     m.add(HEADER_SIZE) as *mut [u64; 2]
 }
 
-unsafe fn alloc_map(cap: u64) -> *mut u8 {
+/// Check if two keys are equal, dispatching based on the map's key_type.
+unsafe fn keys_equal(m: *const u8, a: u64, b: u64) -> bool {
+    if map_key_type(m) == KEY_TYPE_STR {
+        crate::string::snow_string_eq(
+            a as *const crate::string::SnowString,
+            b as *const crate::string::SnowString,
+        ) != 0
+    } else {
+        a == b
+    }
+}
+
+unsafe fn alloc_map(cap: u64, key_type: u64) -> *mut u8 {
     let total = HEADER_SIZE + (cap as usize) * ENTRY_SIZE;
     let p = snow_gc_alloc(total as u64, 8);
     *(p as *mut u64) = 0; // len
-    *((p as *mut u64).add(1)) = cap; // cap
+    *((p as *mut u64).add(1)) = (key_type << TAG_SHIFT) | cap; // key_type tag + cap
     p
 }
 
@@ -45,7 +81,7 @@ unsafe fn find_key(m: *const u8, key: u64) -> Option<usize> {
     let len = map_len(m) as usize;
     let entries = map_entries(m);
     for i in 0..len {
-        if (*entries.add(i))[0] == key {
+        if keys_equal(m, (*entries.add(i))[0], key) {
             return Some(i);
         }
     }
@@ -54,10 +90,17 @@ unsafe fn find_key(m: *const u8, key: u64) -> Option<usize> {
 
 // ── Public API ────────────────────────────────────────────────────────
 
-/// Create an empty map.
+/// Create an empty map (integer keys, backward compatible).
 #[no_mangle]
 pub extern "C" fn snow_map_new() -> *mut u8 {
-    unsafe { alloc_map(0) }
+    unsafe { alloc_map(0, KEY_TYPE_INT) }
+}
+
+/// Create an empty map with a specific key_type tag.
+/// key_type: 0 = Int, 1 = String.
+#[no_mangle]
+pub extern "C" fn snow_map_new_typed(key_type: i64) -> *mut u8 {
+    unsafe { alloc_map(0, key_type as u64) }
 }
 
 /// Return a NEW map with the key-value pair added (or updated).
@@ -65,10 +108,11 @@ pub extern "C" fn snow_map_new() -> *mut u8 {
 pub extern "C" fn snow_map_put(map: *mut u8, key: u64, value: u64) -> *mut u8 {
     unsafe {
         let len = map_len(map) as usize;
+        let kt = map_key_type(map);
 
         // Check if key already exists -- replace.
         if let Some(idx) = find_key(map, key) {
-            let new_map = alloc_map(len as u64);
+            let new_map = alloc_map(len as u64, kt);
             *(new_map as *mut u64) = len as u64;
             ptr::copy_nonoverlapping(
                 map_entries(map) as *const u8,
@@ -81,7 +125,7 @@ pub extern "C" fn snow_map_put(map: *mut u8, key: u64, value: u64) -> *mut u8 {
 
         // Add new entry.
         let new_len = len + 1;
-        let new_map = alloc_map(new_len as u64);
+        let new_map = alloc_map(new_len as u64, kt);
         *(new_map as *mut u64) = new_len as u64;
         if len > 0 {
             ptr::copy_nonoverlapping(
@@ -125,10 +169,11 @@ pub extern "C" fn snow_map_has_key(map: *mut u8, key: u64) -> i8 {
 pub extern "C" fn snow_map_delete(map: *mut u8, key: u64) -> *mut u8 {
     unsafe {
         let len = map_len(map) as usize;
+        let kt = map_key_type(map);
         match find_key(map, key) {
             Some(idx) => {
                 let new_len = len - 1;
-                let new_map = alloc_map(new_len as u64);
+                let new_map = alloc_map(new_len as u64, kt);
                 *(new_map as *mut u64) = new_len as u64;
                 let src = map_entries(map);
                 let dst = map_entries_mut(new_map);
@@ -144,7 +189,7 @@ pub extern "C" fn snow_map_delete(map: *mut u8, key: u64) -> *mut u8 {
             }
             None => {
                 // Key not found -- return a copy.
-                let new_map = alloc_map(len as u64);
+                let new_map = alloc_map(len as u64, kt);
                 *(new_map as *mut u64) = len as u64;
                 if len > 0 {
                     ptr::copy_nonoverlapping(
@@ -258,5 +303,56 @@ mod tests {
         // Original map unchanged.
         assert_eq!(snow_map_size(map1), 0);
         assert_eq!(snow_map_size(map2), 1);
+    }
+
+    #[test]
+    fn test_map_string_keys() {
+        snow_rt_init();
+        // Create a string-key map (key_type = 1).
+        let map = snow_map_new_typed(1);
+
+        // Create string keys and values.
+        let key1 = crate::string::snow_string_new(b"name".as_ptr(), 4) as u64;
+        let val1 = crate::string::snow_string_new(b"Alice".as_ptr(), 5) as u64;
+        let key2 = crate::string::snow_string_new(b"city".as_ptr(), 4) as u64;
+        let val2 = crate::string::snow_string_new(b"Portland".as_ptr(), 8) as u64;
+
+        let map = snow_map_put(map, key1, val1);
+        let map = snow_map_put(map, key2, val2);
+
+        assert_eq!(snow_map_size(map), 2);
+
+        // Look up with a DIFFERENT string pointer but same content.
+        let lookup_key = crate::string::snow_string_new(b"name".as_ptr(), 4) as u64;
+        let got = snow_map_get(map, lookup_key);
+        assert_eq!(got, val1);
+
+        let lookup_key2 = crate::string::snow_string_new(b"city".as_ptr(), 4) as u64;
+        assert_eq!(snow_map_has_key(map, lookup_key2), 1);
+
+        // Non-existent key.
+        let missing = crate::string::snow_string_new(b"missing".as_ptr(), 7) as u64;
+        assert_eq!(snow_map_has_key(map, missing), 0);
+    }
+
+    #[test]
+    fn test_map_string_key_overwrite() {
+        snow_rt_init();
+        let map = snow_map_new_typed(1);
+
+        let key = crate::string::snow_string_new(b"name".as_ptr(), 4) as u64;
+        let val1 = crate::string::snow_string_new(b"Alice".as_ptr(), 5) as u64;
+        let val2 = crate::string::snow_string_new(b"Bob".as_ptr(), 3) as u64;
+
+        let map = snow_map_put(map, key, val1);
+        // Use a different pointer for the same key content.
+        let key2 = crate::string::snow_string_new(b"name".as_ptr(), 4) as u64;
+        let map = snow_map_put(map, key2, val2);
+
+        assert_eq!(snow_map_size(map), 1);
+
+        let lookup = crate::string::snow_string_new(b"name".as_ptr(), 4) as u64;
+        let got = snow_map_get(map, lookup);
+        assert_eq!(got, val2);
     }
 }
