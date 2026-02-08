@@ -5,16 +5,16 @@
 See: .planning/PROJECT.md (updated 2026-02-08)
 
 **Core value:** Expressive, readable concurrency -- writing concurrent programs should feel as natural as sequential code, with supervision and fault tolerance built in.
-**Current focus:** Planning next milestone
+**Current focus:** v1.4 Compiler Polish — fixing all known limitations
 
 ## Current Position
 
-Phase: 22 of 22 (all milestones complete through v1.3)
-Plan: N/A
-Status: Ready to plan next milestone
-Last activity: 2026-02-08 -- v1.3 Traits & Protocols milestone complete
+Phase: Not started (defining requirements)
+Plan: —
+Status: Defining requirements
+Last activity: 2026-02-08 — Milestone v1.4 started
 
-Progress: ████████████████████ 100% (all milestones shipped)
+Progress: ░░░░░░░░░░ 0%
 
 ## Performance Metrics
 
@@ -58,8 +58,9 @@ None.
 
 ### Blockers/Concerns
 
-Open (carry to next milestone if relevant):
+All v1.3 limitations are now active v1.4 requirements:
 - LLVM Constructor pattern field binding limitation for sum type non-nullary variants
+- Ordering sum type (Less | Equal | Greater) not yet user-visible
 - Nested collection Display (List<List<Int>>) falls back to snow_int_to_string
 - Generic type auto-derive not supported
 - Higher-order constrained functions drop constraints when captured as values
@@ -67,6 +68,6 @@ Open (carry to next milestone if relevant):
 ## Session Continuity
 
 Last session: 2026-02-08
-Stopped at: v1.3 milestone archived and tagged
+Stopped at: v1.4 milestone initialization
 Resume file: None
-Next action: /gsd:new-milestone to start next milestone cycle
+Next action: Define requirements and create roadmap

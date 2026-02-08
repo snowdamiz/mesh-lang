@@ -39,7 +39,15 @@ Expressive, readable concurrency -- writing concurrent programs should feel as n
 
 ### Active
 
-No active requirements -- planning next milestone.
+**Current Milestone: v1.4 Compiler Polish**
+
+**Goal:** Fix all five known limitations carried from v1.3, making the compiler fully correct across pattern matching codegen, trait system generics, and type system soundness.
+
+- [ ] Sum type constructor pattern matching extracts field values in LLVM codegen (not just variant discrimination)
+- [ ] Ordering sum type (Less | Equal | Greater) is user-visible and usable in Snow programs
+- [ ] Nested collection Display renders recursively (e.g., `List<List<Int>>` prints `[[1, 2], [3, 4]]`)
+- [ ] Generic types support auto-derive with monomorphization-aware trait impl registration
+- [ ] Higher-order constrained functions preserve trait constraints when captured as values
 
 ### Out of Scope
 
@@ -112,4 +120,4 @@ Known limitations carried from v1.3:
 | deriving as contextual keyword | IDENT text check avoids adding to TokenKind; backward compatible | ✓ Good -- v1.3, no breaking changes |
 
 ---
-*Last updated: 2026-02-08 after v1.3 milestone*
+*Last updated: 2026-02-08 after v1.4 milestone started*
