@@ -23,7 +23,7 @@ use snow_parser::Parse;
 use snow_typeck::ty::Ty;
 use snow_typeck::{TraitRegistry, TypeckResult};
 
-use super::types::resolve_type;
+use super::types::{mir_type_to_impl_name, mir_type_to_ty, resolve_type};
 use super::{
     BinOp, MirChildSpec, MirExpr, MirFunction, MirLiteral, MirMatchArm, MirModule, MirPattern,
     MirStructDef, MirSumTypeDef, MirType, MirVariantDef, UnaryOp,
@@ -1404,6 +1404,40 @@ impl<'a> Lowerer<'a> {
 
         let ty = self.resolve_range(bin.syntax().text_range());
 
+        // Operator dispatch for user types: if the lhs is a struct or sum type
+        // with a trait impl for this operator, emit a trait method call instead
+        // of a hardware BinOp.
+        let lhs_ty = lhs.ty().clone();
+        let is_user_type = matches!(lhs_ty, MirType::Struct(_) | MirType::SumType(_));
+        if is_user_type {
+            let (trait_name, method_name) = match op {
+                BinOp::Add => (Some("Add"), "add"),
+                BinOp::Sub => (Some("Sub"), "sub"),
+                BinOp::Mul => (Some("Mul"), "mul"),
+                BinOp::Eq => (Some("Eq"), "eq"),
+                BinOp::Lt => (Some("Ord"), "lt"),
+                _ => (None, ""),
+            };
+            if let Some(trait_name) = trait_name {
+                let ty_for_lookup = mir_type_to_ty(&lhs_ty);
+                if self.trait_registry.has_impl(trait_name, &ty_for_lookup) {
+                    let type_name = mir_type_to_impl_name(&lhs_ty);
+                    let mangled =
+                        format!("{}__{}__{}", trait_name, method_name, type_name);
+                    let rhs_ty = rhs.ty().clone();
+                    let fn_ty = MirType::FnPtr(
+                        vec![lhs_ty, rhs_ty],
+                        Box::new(ty.clone()),
+                    );
+                    return MirExpr::Call {
+                        func: Box::new(MirExpr::Var(mangled, fn_ty)),
+                        args: vec![lhs, rhs],
+                        ty,
+                    };
+                }
+            }
+        }
+
         MirExpr::BinOp {
             op,
             lhs: Box::new(lhs),
@@ -1494,6 +1528,31 @@ impl<'a> Lowerer<'a> {
             }
         } else {
             args
+        };
+
+        // Trait method call rewriting: if the callee is a bare method name
+        // (not in known_functions), check if it's a trait method for the first
+        // arg's type. If so, rewrite to the mangled name (Trait__Method__Type).
+        let callee = if let MirExpr::Var(ref name, ref var_ty) = callee {
+            if !self.known_functions.contains_key(name) && !args.is_empty() {
+                let first_arg_ty = args[0].ty().clone();
+                let ty_for_lookup = mir_type_to_ty(&first_arg_ty);
+                let matching_traits =
+                    self.trait_registry.find_method_traits(name, &ty_for_lookup);
+                if !matching_traits.is_empty() {
+                    // Use first trait (if multiple, typeck already reported ambiguity).
+                    let trait_name = &matching_traits[0];
+                    let type_name = mir_type_to_impl_name(&first_arg_ty);
+                    let mangled = format!("{}__{}__{}", trait_name, name, type_name);
+                    MirExpr::Var(mangled, var_ty.clone())
+                } else {
+                    callee
+                }
+            } else {
+                callee
+            }
+        } else {
+            callee
         };
 
         // Determine if this is a direct function call or a closure call.
@@ -4590,6 +4649,151 @@ end
             mangled_fn.return_type,
             MirType::String,
             "Return type should be String"
+        );
+    }
+
+    #[test]
+    fn call_site_rewrites_to_mangled_name() {
+        let source = r#"
+interface Greetable do
+  fn greet(self) -> String
+end
+
+struct Point do
+  x :: Int
+end
+
+impl Greetable for Point do
+  fn greet(self) -> String do
+    "hello"
+  end
+end
+
+fn main() do
+  let p = Point { x: 1 }
+  greet(p)
+end
+"#;
+        let mir = lower(source);
+
+        // The main function body should contain a Call to "Greetable__greet__Point".
+        let main_fn = mir.functions.iter().find(|f| f.name == "snow_main");
+        assert!(main_fn.is_some(), "Expected snow_main function");
+        let main_fn = main_fn.unwrap();
+
+        fn find_mangled_call(expr: &MirExpr, target: &str) -> bool {
+            match expr {
+                MirExpr::Call { func, .. } => {
+                    if let MirExpr::Var(name, _) = func.as_ref() {
+                        if name == target {
+                            return true;
+                        }
+                    }
+                    false
+                }
+                MirExpr::Let { value, body, .. } => {
+                    find_mangled_call(value, target) || find_mangled_call(body, target)
+                }
+                MirExpr::Block(exprs, _) => exprs.iter().any(|e| find_mangled_call(e, target)),
+                _ => false,
+            }
+        }
+
+        assert!(
+            find_mangled_call(&main_fn.body, "Greetable__greet__Point"),
+            "Expected call to Greetable__greet__Point in main body, got: {:?}",
+            main_fn.body
+        );
+    }
+
+    #[test]
+    fn binop_on_user_type_emits_trait_call() {
+        let source = r#"
+interface Add do
+  fn add(self, other) -> Int
+end
+
+struct Vec2 do
+  x :: Int
+end
+
+impl Add for Vec2 do
+  fn add(self, other) -> Int do
+    0
+  end
+end
+
+fn main() do
+  let a = Vec2 { x: 1 }
+  let b = Vec2 { x: 2 }
+  a + b
+end
+"#;
+        let mir = lower(source);
+
+        let main_fn = mir.functions.iter().find(|f| f.name == "snow_main");
+        assert!(main_fn.is_some(), "Expected snow_main function");
+        let main_fn = main_fn.unwrap();
+
+        fn find_mangled_call(expr: &MirExpr, target: &str) -> bool {
+            match expr {
+                MirExpr::Call { func, .. } => {
+                    if let MirExpr::Var(name, _) = func.as_ref() {
+                        if name == target {
+                            return true;
+                        }
+                    }
+                    false
+                }
+                MirExpr::Let { value, body, .. } => {
+                    find_mangled_call(value, target) || find_mangled_call(body, target)
+                }
+                MirExpr::Block(exprs, _) => exprs.iter().any(|e| find_mangled_call(e, target)),
+                _ => false,
+            }
+        }
+
+        // a + b with impl Add for Vec2 should become Call to Add__add__Vec2.
+        assert!(
+            find_mangled_call(&main_fn.body, "Add__add__Vec2"),
+            "Expected call to Add__add__Vec2 in main body, got: {:?}",
+            main_fn.body
+        );
+    }
+
+    #[test]
+    fn primitive_binop_unchanged() {
+        // Regression test: Int + Int should still produce BinOp, not a trait call.
+        let source = r#"
+fn main() do
+  let a = 1
+  let b = 2
+  a + b
+end
+"#;
+        let mir = lower(source);
+
+        let main_fn = mir.functions.iter().find(|f| f.name == "snow_main");
+        assert!(main_fn.is_some());
+        let main_fn = main_fn.unwrap();
+
+        fn has_binop_add(expr: &MirExpr) -> bool {
+            match expr {
+                MirExpr::BinOp {
+                    op: BinOp::Add, ..
+                } => true,
+                MirExpr::Let { value, body, .. } => {
+                    has_binop_add(value) || has_binop_add(body)
+                }
+                MirExpr::Block(exprs, _) => exprs.iter().any(has_binop_add),
+                _ => false,
+            }
+        }
+
+        assert!(
+            has_binop_add(&main_fn.body),
+            "Expected BinOp::Add for Int + Int, got: {:?}",
+            main_fn.body
         );
     }
 }
