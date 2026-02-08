@@ -2,11 +2,17 @@
 //!
 //! Called when a Snow program encounters an unrecoverable error at runtime,
 //! such as a non-exhaustive match failure (guarded arms edge case).
+//!
+//! Uses `panic!()` rather than `abort()` so that actor crash isolation
+//! via `catch_unwind` can intercept handler failures without bringing
+//! down the entire process.
 
 /// Panic with a source-located error message.
 ///
-/// Prints `"Snow panic at {file}:{line}: {msg}"` to stderr and aborts
-/// the process.
+/// Triggers a Rust `panic!()` with a formatted source-located error
+/// message. In actor contexts, this is caught by `catch_unwind` for
+/// crash isolation. Outside actors, the panic unwinds and terminates
+/// the process as usual.
 ///
 /// # Safety
 ///
@@ -24,15 +30,6 @@ pub extern "C" fn snow_panic(
         let msg = std::str::from_utf8_unchecked(std::slice::from_raw_parts(msg, msg_len as usize));
         let file =
             std::str::from_utf8_unchecked(std::slice::from_raw_parts(file, file_len as usize));
-        eprintln!("Snow panic at {}:{}: {}", file, line, msg);
-        std::process::abort();
+        panic!("Snow panic at {}:{}: {}", file, line, msg);
     }
-}
-
-#[cfg(test)]
-mod tests {
-    // Note: snow_panic aborts the process, so we cannot meaningfully test it
-    // in a unit test without spawning a subprocess. The function is simple
-    // enough (format + abort) that visual inspection suffices. Integration
-    // tests in later phases will verify it via compiled Snow programs.
 }

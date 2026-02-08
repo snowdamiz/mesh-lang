@@ -343,14 +343,11 @@ fn e2e_json_parse_roundtrip() {
     assert_eq!(output, "99\n");
 }
 
-// ── HTTP E2E Tests (Phase 8 Plan 05) ──────────────────────────────────
+// ── HTTP E2E Tests (Phase 8 Plan 05, updated Phase 15) ────────────────
 //
-// Note: The HTTP server uses thread-per-connection (std::thread::spawn)
-// rather than actor-per-connection (snow_actor_spawn). This was a deliberate
-// implementation decision [STATE.md 08-05] because the actor runtime uses
-// corosensei coroutines with cooperative scheduling, and integrating
-// tiny-http's blocking I/O model with it introduces unnecessary complexity.
-// Thread-per-connection is simple and correct for Phase 8.
+// The HTTP server uses actor-per-connection (Phase 15) with crash isolation
+// via catch_unwind. Each incoming connection is handled by a lightweight
+// actor on the M:N scheduler.
 
 #[test]
 fn e2e_http_server_compiles() {
@@ -545,4 +542,87 @@ fn e2e_http_server_runtime() {
     );
 
     // ServerGuard Drop will kill the server process.
+}
+
+// ── HTTP Crash Isolation E2E Tests (Phase 15) ─────────────────────────
+//
+// Verifies that a panic in one HTTP connection handler does not affect
+// other connections, thanks to catch_unwind in connection_handler_entry.
+
+#[test]
+fn e2e_http_crash_isolation() {
+    let source = read_fixture("stdlib_http_crash_isolation.snow");
+    let mut guard = compile_and_start_server(&source);
+
+    let stderr = guard.0.stderr.take().expect("no stderr pipe");
+    let stderr_reader = BufReader::new(stderr);
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        for line in stderr_reader.lines() {
+            if let Ok(line) = line {
+                if line.contains("HTTP server listening on") {
+                    let _ = tx.send(true);
+                    return;
+                }
+            }
+        }
+        let _ = tx.send(false);
+    });
+    let ready = rx
+        .recv_timeout(std::time::Duration::from_secs(10))
+        .unwrap_or(false);
+    assert!(ready, "Server did not start within 10 seconds");
+
+    // Step 1: Hit the /crash endpoint to trigger a panic in the handler actor.
+    let _ = std::net::TcpStream::connect("127.0.0.1:18081").map(|mut stream| {
+        stream
+            .set_read_timeout(Some(std::time::Duration::from_secs(2)))
+            .ok();
+        stream
+            .write_all(b"GET /crash HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n")
+            .ok();
+        let mut buf = String::new();
+        let _ = stream.read_to_string(&mut buf);
+    });
+
+    std::thread::sleep(std::time::Duration::from_millis(500));
+
+    // Step 2: Hit the /health endpoint -- must still work after the crash.
+    let mut response = String::new();
+    let mut connected = false;
+    for attempt in 0..5 {
+        if attempt > 0 {
+            std::thread::sleep(std::time::Duration::from_millis(200));
+        }
+        match std::net::TcpStream::connect("127.0.0.1:18081") {
+            Ok(mut stream) => {
+                stream
+                    .set_read_timeout(Some(std::time::Duration::from_secs(5)))
+                    .unwrap();
+                stream
+                    .write_all(
+                        b"GET /health HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n",
+                    )
+                    .expect("failed to write HTTP request");
+                stream
+                    .read_to_string(&mut response)
+                    .expect("failed to read HTTP response");
+                connected = true;
+                break;
+            }
+            Err(_) => continue,
+        }
+    }
+
+    assert!(connected, "Failed to connect to server after crash");
+    assert!(
+        response.contains("200"),
+        "Expected HTTP 200 after crash isolation, got: {}",
+        response
+    );
+    assert!(
+        response.contains(r#"{\"status\":\"ok\"}"#),
+        "Expected JSON body after crash isolation, got: {}",
+        response
+    );
 }
