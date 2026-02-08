@@ -42,7 +42,7 @@ See milestones/v1.2-ROADMAP.md for details.
 See milestones/v1.3-ROADMAP.md for full phase details, success criteria, and pitfall tracking.
 
 - [x] **Phase 18: Trait Infrastructure** - Fix type resolution foundation (structural matching, duplicate detection, dispatch unification)
-- [ ] **Phase 19: Trait Method Codegen** - Lower impl method bodies to MIR, resolve trait calls to mangled names, where clause enforcement
+- [x] **Phase 19: Trait Method Codegen** - Lower impl method bodies to MIR, resolve trait calls to mangled names, where clause enforcement
 - [ ] **Phase 20: Essential Stdlib Protocols** - Display, Debug, Eq, Ord with string interpolation integration and struct/sum-type support
 - [ ] **Phase 21: Extended Protocols** - Hash, Default, default method implementations, collection Display/Debug
 - [ ] **Phase 22: Auto-Derive (Stretch)** - `deriving(Eq, Ord, Display, Debug, Hash)` from struct/sum-type metadata
@@ -69,7 +69,7 @@ See milestones/v1.3-ROADMAP.md for full phase details, success criteria, and pit
 | 16. Fun() Type Parsing | v1.2 | 2/2 | Complete | 2026-02-08 |
 | 17. Mark-Sweep GC | v1.2 | 4/4 | Complete | 2026-02-08 |
 | 18. Trait Infrastructure | v1.3 | 3/3 | Complete | 2026-02-08 |
-| 19. Trait Method Codegen | v1.3 | 0/4 | Not started | - |
+| 19. Trait Method Codegen | v1.3 | 4/4 | Complete | 2026-02-08 |
 | 20. Essential Stdlib Protocols | v1.3 | 0/4 | Not started | - |
 | 21. Extended Protocols | v1.3 | 0/4 | Not started | - |
 | 22. Auto-Derive (Stretch) | v1.3 | 0/2 | Not started | - |
