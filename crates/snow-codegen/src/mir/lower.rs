@@ -1546,6 +1546,18 @@ impl<'a> Lowerer<'a> {
                     let mangled = format!("{}__{}__{}", trait_name, name, type_name);
                     MirExpr::Var(mangled, var_ty.clone())
                 } else {
+                    // Defense-in-depth: if the callee is not a known function,
+                    // not a local variable, and find_method_traits returned empty,
+                    // this could indicate a where-clause violation that bypassed
+                    // typeck. Emit a warning (non-fatal) for debugging.
+                    if self.lookup_var(name).is_none() {
+                        let type_name = mir_type_to_impl_name(&first_arg_ty);
+                        eprintln!(
+                            "[snow-codegen] warning: call to '{}' could not be resolved \
+                             as a trait method for type '{}'. This may indicate a type checker bug.",
+                            name, type_name
+                        );
+                    }
                     callee
                 }
             } else {
