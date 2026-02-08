@@ -1,5 +1,31 @@
 # Project Milestones: Snow
 
+## v1.2 Runtime & Type Fixes (Shipped: 2026-02-08)
+
+**Delivered:** Fun() type annotation parsing and mark-sweep garbage collector for per-actor heaps, fixing the two remaining known issues from v1.1.
+
+**Phases completed:** 16-17 (6 plans total)
+
+**Key accomplishments:**
+- Fun() type annotations fully integrated: parser (FUN_TYPE CST node) through type checker (Ty::Fun) to codegen (MirType::Closure)
+- Mark-sweep GC with 16-byte GcHeader, conservative stack scanning, and worklist-based tricolor marking
+- Per-actor cooperative GC at yield points -- no stop-the-world pauses across actors
+- All runtime allocations migrated to GC-managed per-actor heaps (snow_gc_alloc_actor)
+- Bounded memory validated: long-running actors reclaim memory across 50 message cycles
+
+**Stats:**
+- 44 files modified (26 Rust source files)
+- 57,657 lines of Rust (+1,118 net from v1.1)
+- 2 phases, 6 plans
+- 1 day (2026-02-07 → 2026-02-08)
+- 22 commits
+
+**Git range:** `feat(16-01)` → `feat(17-04)`
+
+**What's next:** TBD -- all known issues resolved. Potential directions include distributed actors, hot code reloading, macros, generational GC, and precise stack scanning.
+
+---
+
 ## v1.1 Language Polish (Shipped: 2026-02-08)
 
 **Delivered:** Fixed all five documented v1.0 limitations -- multi-clause functions, string pattern matching, pipe operator with closures, actor-per-connection HTTP, and generic map types -- making the language feel complete and polished.

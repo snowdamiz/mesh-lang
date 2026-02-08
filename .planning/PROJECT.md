@@ -2,15 +2,7 @@
 
 ## What This Is
 
-Snow is a programming language that combines Elixir/Ruby-style expressive syntax with static Hindley-Milner type inference and BEAM-style concurrency (actors, supervision trees, fault tolerance), compiled via LLVM to native single-binary executables. The compiler is written in Rust. v1.0 shipped a complete compiler pipeline, actor runtime, standard library, and developer tooling. v1.1 polished the language by resolving all five documented v1.0 limitations: multi-clause functions, string pattern matching, pipe operator with closures, actor-per-connection HTTP, and generic map types.
-
-## Current Milestone: v1.2 Runtime & Type Fixes
-
-**Goal:** Fix the two remaining known issues — function type annotation parsing and mark-sweep GC for long-running actors.
-
-**Target features:**
-- Fun() type annotation parsed as function type (not type constructor)
-- Mark-sweep garbage collector replacing arena/bump allocation for long-running actors
+Snow is a programming language that combines Elixir/Ruby-style expressive syntax with static Hindley-Milner type inference and BEAM-style concurrency (actors, supervision trees, fault tolerance), compiled via LLVM to native single-binary executables. The compiler is written in Rust. v1.0 shipped a complete compiler pipeline, actor runtime, standard library, and developer tooling. v1.1 polished the language by resolving all five documented v1.0 limitations. v1.2 added Fun() type annotations and a mark-sweep garbage collector for per-actor heaps.
 
 ## Core Value
 
@@ -35,11 +27,12 @@ Expressive, readable concurrency -- writing concurrent programs should feel as n
 - ✓ Pipe operator with inline closures (full closure rewrite + pipe-aware type inference) -- v1.1
 - ✓ Actor-per-connection HTTP server with catch_unwind crash isolation -- v1.1
 - ✓ Generic map types Map<K, V> with string keys and map literal syntax -- v1.1
+- ✓ Fun() type annotation parsed as function type instead of type constructor -- v1.2
+- ✓ Mark-sweep garbage collector for per-actor heaps (replacing arena/bump allocation) -- v1.2
 
 ### Active
 
-- [ ] Fun() type annotation parsed as function type instead of type constructor
-- [ ] Mark-sweep garbage collector for per-actor heaps (replacing arena/bump allocation)
+(None -- all known requirements shipped)
 
 ### Out of Scope
 
@@ -54,23 +47,22 @@ Expressive, readable concurrency -- writing concurrent programs should feel as n
 - Async/await colored functions -- runtime handles concurrency transparently
 - Inheritance -- functional paradigm uses composition + traits instead
 - Manual memory management -- per-actor GC handles this
+- Generational GC -- mark-sweep sufficient for now; generational optimization is future work
+- Concurrent/incremental GC -- per-actor isolation means pauses only affect one actor
+- Compacting GC -- mark-sweep with free-list is sufficient
 
 ## Context
 
-Shipped v1.1 with 56,539 lines of Rust (+3,928 from v1.0).
+Shipped v1.2 with 57,657 lines of Rust (+1,118 from v1.1).
 Tech stack: Rust compiler, LLVM 21 (Inkwell 0.8), corosensei coroutines, rowan CST, ariadne diagnostics.
 Crates: snow-lexer, snow-parser, snow-typeck, snow-mir, snow-codegen, snow-rt, snow-fmt, snow-repl, snow-pkg, snow-lsp, snowc.
 
-All v1.0 limitations resolved in v1.1:
-- Multi-clause functions: `fn fib(0) = 0; fn fib(n) = fib(n-1) + fib(n-2)` with guards
-- String pattern matching: compile-time snow_string_eq in case expressions
-- Pipe + closures: `list |> map(fn x -> x * 2 end)` with pipe-aware type inference
-- HTTP: actor-per-connection with catch_unwind crash isolation
-- Maps: polymorphic Map<K, V> with string keys and `%{"name" => "Alice"}` literal syntax
+All known issues resolved through v1.2:
+- v1.0 limitations (multi-clause functions, string matching, pipe+closures, HTTP actors, maps) -- fixed in v1.1
+- Fun() type annotation parsing -- fixed in v1.2
+- Arena/bump allocation GC -- replaced with mark-sweep in v1.2
 
-Known remaining items:
-- Fun() type annotation not parsed as function type (Fun treated as type constructor)
-- Arena/bump allocation GC -- mark-sweep needed for long-running actors
+1,018 tests passing across all crates. Zero known bugs. Zero tech debt.
 
 ## Constraints
 
@@ -83,7 +75,7 @@ Known remaining items:
 
 | Decision | Rationale | Outcome |
 |----------|-----------|---------|
-| Rust for compiler | Strong LLVM bindings, memory safe, good for complex software | ✓ Good -- 56K LOC Rust, stable compiler |
+| Rust for compiler | Strong LLVM bindings, memory safe, good for complex software | ✓ Good -- 57K LOC Rust, stable compiler |
 | LLVM as backend | Proven codegen, multi-platform, avoids writing own backend | ✓ Good -- native binaries on macOS/Linux |
 | Elixir/Ruby syntax style | Expressive, readable, pattern matching native | ✓ Good -- clean do/end blocks, pipe operator |
 | Static types with HM inference | Safety without verbosity | ✓ Good -- rarely need annotations |
@@ -93,10 +85,13 @@ Known remaining items:
 | corosensei for coroutines | M:N scheduling without OS threads per actor | ✓ Good -- 100K actors in ~2.78s |
 | Rowan for CST | Lossless syntax tree, editor tooling support | ✓ Good -- powers formatter and LSP |
 | Actor-per-connection HTTP | Crash isolation, lightweight, uses existing actor runtime | ✓ Good -- v1.1, replaced threads with actors |
-| Arena/bump allocation for GC | Simple, fast allocation for v1 | ⚠️ Revisit -- true mark-sweep needed for long-running actors |
+| Mark-sweep GC for actor heaps | Arena/bump allocation caused unbounded growth in long-running actors | ✓ Good -- v1.2, bounded memory validated |
 | Lazy key_type tagging for Maps | HM let-generalization prevents type resolution at Map.new() | ✓ Good -- runtime dispatch at put/get sites |
 | Pipe-aware type inference | infer_pipe handles CallExpr RHS, prepends lhs_ty before arity check | ✓ Good -- enables pipe+closure chains |
 | panic!() instead of abort() | catch_unwind requires catchable panics for crash isolation | ✓ Good -- actors survive peer crashes |
+| Fun() as text-comparison, not keyword | Type-position disambiguation only; avoids breaking existing code | ✓ Good -- v1.2, clean integration with HM |
+| Conservative stack scanning | No type maps yet; every 8-byte word treated as potential pointer | ✓ Good -- safe, may retain some garbage |
+| GC at yield points only | Cooperative; never interrupts other actors | ✓ Good -- per-actor isolation preserved |
 
 ---
-*Last updated: 2026-02-07 after v1.2 milestone start*
+*Last updated: 2026-02-08 after v1.2 milestone*

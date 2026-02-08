@@ -25,40 +25,14 @@ See milestones/v1.1-ROADMAP.md for details.
 
 </details>
 
-### ✅ v1.2 Runtime & Type Fixes (Shipped 2026-02-08)
+<details>
+<summary>✅ v1.2 Runtime & Type Fixes (Phases 16-17) - SHIPPED 2026-02-08</summary>
 
-**Milestone Goal:** Fix the two remaining known issues -- Fun() type annotation parsing and mark-sweep GC for long-running actors.
+6 plans across 2 phases. Fun() type annotation parsing (full pipeline from parser through codegen)
+and mark-sweep garbage collector for per-actor heaps (conservative stack scanning, cooperative collection).
+See milestones/v1.2-ROADMAP.md for details.
 
-#### Phase 16: Fun() Type Parsing
-**Goal**: Users can annotate function types in Snow code and the compiler parses and type-checks them correctly
-**Depends on**: Nothing (independent workstream)
-**Requirements**: TYPE-01, TYPE-02, TYPE-03
-**Success Criteria** (what must be TRUE):
-  1. User can write `Fun(Int, String) -> Bool` as a type annotation and the compiler parses it as a function type, not a type constructor
-  2. User can use function type annotations in function parameters, return types, struct fields, and type aliases
-  3. The compiler unifies explicit function type annotations with inferred function types during type checking (e.g., passing a closure where `Fun(Int) -> String` is expected works without extra annotation)
-**Plans**: 2 plans
-
-Plans:
-- [x] 16-01-PLAN.md -- Parser infrastructure: FUN_TYPE CST node + parse_type() Fun() handling
-- [x] 16-02-PLAN.md -- Type checker: ARROW token collection, parse_type_tokens Fun() handling, e2e tests
-
-#### Phase 17: Mark-Sweep Garbage Collector
-**Goal**: Long-running actors reclaim unused memory automatically without affecting other actors
-**Depends on**: Nothing (independent workstream, can run in parallel with Phase 16)
-**Requirements**: RT-01, RT-02, RT-03, RT-04
-**Success Criteria** (what must be TRUE):
-  1. Per-actor heap uses mark-sweep collection instead of arena/bump allocation
-  2. GC triggers automatically when an actor's heap exceeds a pressure threshold without manual invocation
-  3. GC pauses are scoped to the individual actor -- other actors continue executing uninterrupted
-  4. A long-running actor that allocates and discards data over time maintains bounded memory usage (no unbounded growth)
-**Plans**: 4 plans
-
-Plans:
-- [x] 17-01-PLAN.md -- GcHeader struct + free-list allocator replacing bump allocator in ActorHeap
-- [x] 17-02-PLAN.md -- Mark-sweep algorithm (conservative stack scanning, mark, sweep) + GC trigger
-- [x] 17-03-PLAN.md -- Migrate runtime and codegen allocations to snow_gc_alloc_actor
-- [x] 17-04-PLAN.md -- E2E test for bounded memory + full integration verification
+</details>
 
 ## Progress
 
