@@ -118,6 +118,8 @@ fn error_code(err: &TypeError) -> &'static str {
         TypeError::GuardTypeMismatch { .. } => "E0025",
         TypeError::DuplicateImpl { .. } => "E0026",
         TypeError::AmbiguousMethod { .. } => "E0027",
+        TypeError::UnsupportedDerive { .. } => "E0028",
+        TypeError::GenericDerive { .. } => "E0029",
     }
 }
 
@@ -1305,6 +1307,49 @@ pub fn render_diagnostic(
                     "use qualified syntax: TraitName.{}(value)",
                     method_name
                 ))
+                .finish()
+        }
+
+        TypeError::UnsupportedDerive {
+            trait_name,
+            type_name,
+        } => {
+            let msg = format!(
+                "cannot derive `{}` for `{}`",
+                trait_name, type_name
+            );
+            let span = clamp(0..source_len.max(1).min(source_len));
+
+            Report::build(ReportKind::Error, span.clone())
+                .with_code(code)
+                .with_message(&msg)
+                .with_config(config)
+                .with_label(
+                    Label::new(span)
+                        .with_message(format!("`{}` is not a derivable trait", trait_name))
+                        .with_color(Color::Red),
+                )
+                .with_help("only Eq, Ord, Display, Debug, and Hash are derivable")
+                .finish()
+        }
+
+        TypeError::GenericDerive { type_name } => {
+            let msg = format!(
+                "deriving is not supported for generic type `{}`",
+                type_name
+            );
+            let span = clamp(0..source_len.max(1).min(source_len));
+
+            Report::build(ReportKind::Error, span.clone())
+                .with_code(code)
+                .with_message(&msg)
+                .with_config(config)
+                .with_label(
+                    Label::new(span)
+                        .with_message("generic types cannot use deriving")
+                        .with_color(Color::Red),
+                )
+                .with_help("write manual impl blocks for generic types")
                 .finish()
         }
     };

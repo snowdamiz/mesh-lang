@@ -581,6 +581,72 @@ end
     assert_eq!(output, "Hello, world!\nHi, Snow!\n");
 }
 
+// ── Phase 22: Deriving Clause ─────────────────────────────────────────
+
+/// Struct with all five derivable protocols: Eq, Ord, Display, Debug, Hash.
+/// Display produces positional "Point(1, 2)" format.
+#[test]
+fn e2e_deriving_struct() {
+    let source = read_fixture("deriving_struct.snow");
+    let output = compile_and_run(&source);
+    assert_eq!(output, "Point(1, 2)\ntrue\nfalse\n");
+}
+
+/// Sum type with deriving: variant-aware Display and Eq (nullary variants).
+/// Note: sum type Constructor pattern field bindings have a pre-existing LLVM
+/// codegen limitation for non-nullary variants; tested with nullary only here.
+#[test]
+fn e2e_deriving_sum_type() {
+    let source = read_fixture("deriving_sum_type.snow");
+    let output = compile_and_run(&source);
+    assert_eq!(output, "Red\nGreen\nBlue\ntrue\nfalse\n");
+}
+
+/// Backward compatibility: no deriving clause = derive all defaults.
+#[test]
+fn e2e_deriving_backward_compat() {
+    let source = read_fixture("deriving_backward_compat.snow");
+    let output = compile_and_run(&source);
+    assert_eq!(output, "true\n");
+}
+
+/// Selective deriving: only Eq, no other protocols.
+#[test]
+fn e2e_deriving_selective() {
+    let source = read_fixture("deriving_selective.snow");
+    let output = compile_and_run(&source);
+    assert_eq!(output, "true\n");
+}
+
+/// Empty deriving clause: opt-out of all auto-derived protocols.
+#[test]
+fn e2e_deriving_empty() {
+    let source = read_fixture("deriving_empty.snow");
+    let output = compile_and_run(&source);
+    assert_eq!(output, "42\n");
+}
+
+/// Unsupported trait in deriving clause produces a clear compiler error.
+#[test]
+fn e2e_deriving_unsupported_trait() {
+    let source = r#"
+struct Foo do
+  x :: Int
+end deriving(Clone)
+
+fn main() do
+  let f = Foo { x: 1 }
+  println("nope")
+end
+"#;
+    let error = compile_expect_error(source);
+    assert!(
+        error.contains("cannot derive"),
+        "Expected 'cannot derive' error, got: {}",
+        error
+    );
+}
+
 // ── Phase 16: Fun() Type Annotations ─────────────────────────────────
 
 /// Fun() type annotations: parsing, positions, and unification with closures.

@@ -232,6 +232,15 @@ pub enum TypeError {
         candidate_traits: Vec<String>,
         ty: Ty,
     },
+    /// An unsupported trait name appears in a deriving clause.
+    UnsupportedDerive {
+        trait_name: String,
+        type_name: String,
+    },
+    /// A generic type has a deriving clause (not supported).
+    GenericDerive {
+        type_name: String,
+    },
 }
 
 impl fmt::Display for TypeError {
@@ -478,6 +487,23 @@ impl fmt::Display for TypeError {
                     method_name,
                     ty,
                     candidate_traits.join(", ")
+                )
+            }
+            TypeError::UnsupportedDerive {
+                trait_name,
+                type_name,
+            } => {
+                write!(
+                    f,
+                    "cannot derive `{}` for `{}` -- only Eq, Ord, Display, Debug, and Hash are derivable",
+                    trait_name, type_name
+                )
+            }
+            TypeError::GenericDerive { type_name } => {
+                write!(
+                    f,
+                    "deriving is not supported for generic type `{}`",
+                    type_name
                 )
             }
         }

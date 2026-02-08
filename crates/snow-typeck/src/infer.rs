@@ -1463,6 +1463,24 @@ fn register_struct_def(
     let derive_list = struct_def.deriving_traits();
     let derive_all = !has_deriving; // no clause = derive all defaults
 
+    // Validate derive trait names.
+    let valid_derives = ["Eq", "Ord", "Display", "Debug", "Hash"];
+    for trait_name in &derive_list {
+        if !valid_derives.contains(&trait_name.as_str()) {
+            ctx.errors.push(TypeError::UnsupportedDerive {
+                trait_name: trait_name.clone(),
+                type_name: name.clone(),
+            });
+        }
+    }
+
+    // Generic types with deriving clause produce an error.
+    if has_deriving && !generic_params.is_empty() {
+        ctx.errors.push(TypeError::GenericDerive {
+            type_name: name.clone(),
+        });
+    }
+
     // Only for non-generic structs (generic structs need monomorphized impls).
     if generic_params.is_empty() {
         let impl_ty = Ty::Con(TyCon::new(&name));
@@ -1728,6 +1746,24 @@ fn register_sum_type_def(
     let has_deriving = sum_def.has_deriving_clause();
     let derive_list = sum_def.deriving_traits();
     let derive_all = !has_deriving; // no clause = derive all defaults
+
+    // Validate derive trait names.
+    let valid_derives = ["Eq", "Ord", "Display", "Debug", "Hash"];
+    for trait_name in &derive_list {
+        if !valid_derives.contains(&trait_name.as_str()) {
+            ctx.errors.push(TypeError::UnsupportedDerive {
+                trait_name: trait_name.clone(),
+                type_name: name.clone(),
+            });
+        }
+    }
+
+    // Generic types with deriving clause produce an error.
+    if has_deriving && !generic_params.is_empty() {
+        ctx.errors.push(TypeError::GenericDerive {
+            type_name: name.clone(),
+        });
+    }
 
     // Only for non-generic sum types (generic types need monomorphized impls).
     if generic_params.is_empty() {
