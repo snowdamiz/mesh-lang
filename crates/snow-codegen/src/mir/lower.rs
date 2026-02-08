@@ -2518,6 +2518,39 @@ impl<'a> Lowerer<'a> {
                 args: vec![expr],
                 ty: MirType::String,
             },
+            MirType::Struct(_) | MirType::SumType(_) => {
+                // Display trait dispatch: check if the type has a Display impl
+                // and emit a mangled Display__to_string__TypeName call.
+                let ty_for_lookup = mir_type_to_ty(expr.ty());
+                let matching =
+                    self.trait_registry.find_method_traits("to_string", &ty_for_lookup);
+                if !matching.is_empty() {
+                    let trait_name = &matching[0];
+                    let type_name = mir_type_to_impl_name(expr.ty());
+                    let mangled = format!("{}__{}__{}", trait_name, "to_string", type_name);
+                    MirExpr::Call {
+                        func: Box::new(MirExpr::Var(
+                            mangled,
+                            MirType::FnPtr(
+                                vec![expr.ty().clone()],
+                                Box::new(MirType::String),
+                            ),
+                        )),
+                        args: vec![expr],
+                        ty: MirType::String,
+                    }
+                } else {
+                    // No Display impl found -- fall through to generic to_string
+                    MirExpr::Call {
+                        func: Box::new(MirExpr::Var(
+                            "to_string".to_string(),
+                            MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::String)),
+                        )),
+                        args: vec![expr],
+                        ty: MirType::String,
+                    }
+                }
+            }
             _ => {
                 // For other types, attempt a generic to_string call.
                 MirExpr::Call {
