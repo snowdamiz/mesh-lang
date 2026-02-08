@@ -737,7 +737,9 @@ fn walk_block_def(node: &SyntaxNode) -> FormatIR {
                 }
             }
             NodeOrToken::Node(n) => {
-                if !past_do {
+                if n.kind() == SyntaxKind::DERIVING_CLAUSE {
+                    // Handled after "end" is emitted
+                } else if !past_do {
                     match n.kind() {
                         SyntaxKind::NAME | SyntaxKind::GENERIC_PARAM_LIST => {
                             parts.push(walk_node(&n));
@@ -784,6 +786,20 @@ fn walk_block_def(node: &SyntaxNode) -> FormatIR {
     parts.push(ir::hardline());
     parts.push(ir::text("end"));
 
+    // Emit deriving clause after "end" if present
+    if let Some(dc) = node.children().find(|n| n.kind() == SyntaxKind::DERIVING_CLAUSE) {
+        parts.push(sp());
+        parts.push(ir::text("deriving("));
+        let traits: Vec<String> = dc
+            .children_with_tokens()
+            .filter_map(|it| it.into_token())
+            .filter(|t| t.kind() == SyntaxKind::IDENT && t.text() != "deriving")
+            .map(|t| t.text().to_string())
+            .collect();
+        parts.push(ir::text(&traits.join(", ")));
+        parts.push(ir::text(")"));
+    }
+
     ir::concat(parts)
 }
 
@@ -822,7 +838,9 @@ fn walk_struct_def(node: &SyntaxNode) -> FormatIR {
                 }
             }
             NodeOrToken::Node(n) => {
-                if in_body || n.kind() == SyntaxKind::STRUCT_FIELD {
+                if n.kind() == SyntaxKind::DERIVING_CLAUSE {
+                    // Handled after "end" is emitted
+                } else if in_body || n.kind() == SyntaxKind::STRUCT_FIELD {
                     fields.push(walk_node(&n));
                 } else {
                     match n.kind() {
@@ -852,6 +870,20 @@ fn walk_struct_def(node: &SyntaxNode) -> FormatIR {
     }
     parts.push(ir::hardline());
     parts.push(ir::text("end"));
+
+    // Emit deriving clause after "end" if present
+    if let Some(dc) = node.children().find(|n| n.kind() == SyntaxKind::DERIVING_CLAUSE) {
+        parts.push(sp());
+        parts.push(ir::text("deriving("));
+        let traits: Vec<String> = dc
+            .children_with_tokens()
+            .filter_map(|it| it.into_token())
+            .filter(|t| t.kind() == SyntaxKind::IDENT && t.text() != "deriving")
+            .map(|t| t.text().to_string())
+            .collect();
+        parts.push(ir::text(&traits.join(", ")));
+        parts.push(ir::text(")"));
+    }
 
     ir::concat(parts)
 }

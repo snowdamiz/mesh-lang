@@ -1296,17 +1296,25 @@ impl<'a> Lowerer<'a> {
             Vec::new()
         };
 
-        // Generate Debug__inspect__StructName MIR function.
-        self.generate_debug_inspect_struct(&name, &fields);
+        // Conditional MIR generation based on deriving clause.
+        // No deriving clause = backward compat (generate all default trait functions).
+        let has_deriving = struct_def.has_deriving_clause();
+        let derive_list = struct_def.deriving_traits();
+        let derive_all = !has_deriving;
 
-        // Generate Eq__eq__StructName MIR function (field-by-field equality).
-        self.generate_eq_struct(&name, &fields);
-
-        // Generate Ord__lt__StructName MIR function (lexicographic less-than).
-        self.generate_ord_struct(&name, &fields);
-
-        // Generate Hash__hash__StructName MIR function (field-by-field FNV-1a hash).
-        self.generate_hash_struct(&name, &fields);
+        if derive_all || derive_list.iter().any(|t| t == "Debug") {
+            self.generate_debug_inspect_struct(&name, &fields);
+        }
+        if derive_all || derive_list.iter().any(|t| t == "Eq") {
+            self.generate_eq_struct(&name, &fields);
+        }
+        if derive_all || derive_list.iter().any(|t| t == "Ord") {
+            self.generate_ord_struct(&name, &fields);
+        }
+        if derive_all || derive_list.iter().any(|t| t == "Hash") {
+            self.generate_hash_struct(&name, &fields);
+        }
+        // Display generation is added in Plan 02 (generate_display_struct does not exist yet)
 
         self.structs.push(MirStructDef { name, fields });
     }
@@ -1347,14 +1355,22 @@ impl<'a> Lowerer<'a> {
             Vec::new()
         };
 
-        // Generate Debug__inspect__SumTypeName MIR function.
-        self.generate_debug_inspect_sum_type(&name, &variants);
+        // Conditional MIR generation based on deriving clause.
+        // No deriving clause = backward compat (generate all default trait functions).
+        let has_deriving = sum_def.has_deriving_clause();
+        let derive_list = sum_def.deriving_traits();
+        let derive_all = !has_deriving;
 
-        // Generate Eq__eq__SumTypeName MIR function (variant-aware equality).
-        self.generate_eq_sum(&name, &variants);
-
-        // Generate Ord__lt__SumTypeName MIR function (variant-aware less-than).
-        self.generate_ord_sum(&name, &variants);
+        if derive_all || derive_list.iter().any(|t| t == "Debug") {
+            self.generate_debug_inspect_sum_type(&name, &variants);
+        }
+        if derive_all || derive_list.iter().any(|t| t == "Eq") {
+            self.generate_eq_sum(&name, &variants);
+        }
+        if derive_all || derive_list.iter().any(|t| t == "Ord") {
+            self.generate_ord_sum(&name, &variants);
+        }
+        // Hash-sum and Display-sum generation are added in Plan 02
 
         self.sum_types.push(MirSumTypeDef { name, variants });
     }
