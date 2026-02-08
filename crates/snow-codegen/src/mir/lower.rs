@@ -1423,8 +1423,9 @@ impl<'a> Lowerer<'a> {
         let has_hash = self.trait_registry.has_impl("Hash", typeck_ty);
 
         // Generate trait functions for the monomorphized name.
+        // Display and Debug use base_name for human-readable output (e.g., "Box(42)" not "Box_Int(42)").
         if has_debug {
-            self.generate_debug_inspect_struct(&mangled, &fields);
+            self.generate_debug_inspect_struct_with_display_name(&mangled, base_name, &fields);
         }
         if has_eq {
             self.generate_eq_struct(&mangled, &fields);
@@ -1437,7 +1438,7 @@ impl<'a> Lowerer<'a> {
             self.generate_hash_struct(&mangled, &fields);
         }
         if has_display {
-            self.generate_display_struct(&mangled, &fields);
+            self.generate_display_struct_with_display_name(&mangled, base_name, &fields);
         }
 
         // Push the monomorphized struct definition.
@@ -1516,6 +1517,10 @@ impl<'a> Lowerer<'a> {
     /// Generate a synthetic `Debug__inspect__StructName` MIR function that
     /// produces a developer-readable string like `"Point { x: 1, y: 2 }"`.
     fn generate_debug_inspect_struct(&mut self, name: &str, fields: &[(String, MirType)]) {
+        self.generate_debug_inspect_struct_with_display_name(name, name, fields);
+    }
+
+    fn generate_debug_inspect_struct_with_display_name(&mut self, name: &str, display_name: &str, fields: &[(String, MirType)]) {
         let mangled = format!("Debug__inspect__{}", name);
         let struct_ty = MirType::Struct(name.to_string());
         let concat_ty = MirType::FnPtr(
@@ -1526,9 +1531,9 @@ impl<'a> Lowerer<'a> {
 
         // Build: "StructName { field1: <val1>, field2: <val2> }"
         let mut result: MirExpr = if fields.is_empty() {
-            MirExpr::StringLit(format!("{} {{}}", name), MirType::String)
+            MirExpr::StringLit(format!("{} {{}}", display_name), MirType::String)
         } else {
-            MirExpr::StringLit(format!("{} {{ ", name), MirType::String)
+            MirExpr::StringLit(format!("{} {{ ", display_name), MirType::String)
         };
 
         for (i, (field_name, field_ty)) in fields.iter().enumerate() {
@@ -2558,6 +2563,10 @@ impl<'a> Lowerer<'a> {
     /// Unlike Debug (which uses `"Point { x: 1, y: 2 }"`), Display uses positional
     /// values without field names.
     fn generate_display_struct(&mut self, name: &str, fields: &[(String, MirType)]) {
+        self.generate_display_struct_with_display_name(name, name, fields);
+    }
+
+    fn generate_display_struct_with_display_name(&mut self, name: &str, display_name: &str, fields: &[(String, MirType)]) {
         let mangled = format!("Display__to_string__{}", name);
         let struct_ty = MirType::Struct(name.to_string());
         let concat_ty = MirType::FnPtr(
@@ -2568,9 +2577,9 @@ impl<'a> Lowerer<'a> {
 
         // Build: "StructName(val1, val2)"
         let mut result: MirExpr = if fields.is_empty() {
-            MirExpr::StringLit(format!("{}()", name), MirType::String)
+            MirExpr::StringLit(format!("{}()", display_name), MirType::String)
         } else {
-            MirExpr::StringLit(format!("{}(", name), MirType::String)
+            MirExpr::StringLit(format!("{}(", display_name), MirType::String)
         };
 
         if !fields.is_empty() {

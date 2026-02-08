@@ -711,3 +711,12 @@ fn e2e_nested_collection_display() {
     // in snow-codegen (nested_list_callback_generates_wrapper).
     // TODO: add full nested e2e test after Plan 02 (generic collection elements).
 }
+
+/// Generic type deriving: Box<T> with deriving(Display, Eq) works for Box<Int> and Box<String>.
+/// Verifies monomorphized trait function generation at struct literal lowering sites.
+#[test]
+fn e2e_generic_deriving() {
+    let source = read_fixture("generic_deriving.snow");
+    let output = compile_and_run(&source);
+    assert_eq!(output, "Box(42)\nBox(hello)\ntrue\nfalse\n");
+}
