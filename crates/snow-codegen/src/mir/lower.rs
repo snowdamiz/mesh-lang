@@ -389,6 +389,11 @@ impl<'a> Lowerer<'a> {
         self.known_functions.insert("snow_set_size".to_string(), MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Int)));
         self.known_functions.insert("snow_set_union".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
         self.known_functions.insert("snow_set_intersection".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
+        // Collection Display (Phase 21 Plan 04)
+        self.known_functions.insert("snow_list_to_string".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
+        self.known_functions.insert("snow_map_to_string".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
+        self.known_functions.insert("snow_set_to_string".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
+        self.known_functions.insert("snow_string_to_string".to_string(), MirType::FnPtr(vec![MirType::Int], Box::new(MirType::Ptr)));
         // Tuple
         self.known_functions.insert("snow_tuple_nth".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Int], Box::new(MirType::Int)));
         self.known_functions.insert("snow_tuple_first".to_string(), MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Int)));
@@ -1393,7 +1398,7 @@ impl<'a> Lowerer<'a> {
             };
 
             // Convert field value to string using wrap_to_string
-            let field_str = self.wrap_to_string(field_access);
+            let field_str = self.wrap_to_string(field_access, None);
 
             // Append field value string
             result = MirExpr::Call {
@@ -2699,6 +2704,26 @@ impl<'a> Lowerer<'a> {
             }
         }
 
+        // Collection Display dispatch: if the callee is "to_string" and
+        // the first arg is a collection (MirType::Ptr), resolve the typeck
+        // type from the AST to emit the correct collection-to-string call.
+        if let MirExpr::Var(ref name, _) = callee {
+            if name == "to_string" && args.len() == 1 && matches!(args[0].ty(), MirType::Ptr) {
+                // Look up the typeck Ty for the first argument from the call's AST
+                if let Some(arg_list) = call.arg_list() {
+                    if let Some(first_arg_ast) = arg_list.args().next() {
+                        if let Some(typeck_ty) = self.get_ty(first_arg_ast.syntax().text_range()) {
+                            if let Some(collection_call) =
+                                self.wrap_collection_to_string(&args[0], typeck_ty)
+                            {
+                                return collection_call;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         // Trait method call rewriting: if the callee is a bare method name
         // (not in known_functions), check if it's a trait method for the first
         // arg's type. If so, rewrite to the mangled name (Trait__Method__Type).
@@ -3633,9 +3658,10 @@ impl<'a> Lowerer<'a> {
                     if let Some(node) = child.as_node() {
                         for inner in node.children() {
                             if let Some(expr) = Expr::cast(inner) {
+                                let typeck_ty = self.get_ty(expr.syntax().text_range()).cloned();
                                 let lowered = self.lower_expr(&expr);
                                 // Wrap in a to_string call based on the expression's type.
-                                let converted = self.wrap_to_string(lowered);
+                                let converted = self.wrap_to_string(lowered, typeck_ty.as_ref());
                                 segments.push(converted);
                             }
                         }
@@ -3678,7 +3704,10 @@ impl<'a> Lowerer<'a> {
     }
 
     /// Wrap an expression in a to_string runtime call based on its type.
-    fn wrap_to_string(&self, expr: MirExpr) -> MirExpr {
+    ///
+    /// `typeck_ty` is the optional original typeck `Ty` for the expression,
+    /// used to resolve collection element types for Display dispatch.
+    fn wrap_to_string(&self, expr: MirExpr, typeck_ty: Option<&Ty>) -> MirExpr {
         match expr.ty() {
             MirType::String => expr, // already a string
             MirType::Int => MirExpr::Call {
@@ -3738,6 +3767,25 @@ impl<'a> Lowerer<'a> {
                     }
                 }
             }
+            MirType::Ptr => {
+                // Check if the typeck type is a collection (List, Map, Set).
+                // If so, emit a runtime collection-to-string call with element
+                // conversion callback function pointers.
+                if let Some(ty) = typeck_ty {
+                    if let Some(collection_call) = self.wrap_collection_to_string(&expr, ty) {
+                        return collection_call;
+                    }
+                }
+                // Fallback: generic to_string call.
+                MirExpr::Call {
+                    func: Box::new(MirExpr::Var(
+                        "to_string".to_string(),
+                        MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::String)),
+                    )),
+                    args: vec![expr],
+                    ty: MirType::String,
+                }
+            }
             _ => {
                 // For other types, attempt a generic to_string call.
                 MirExpr::Call {
@@ -3749,6 +3797,139 @@ impl<'a> Lowerer<'a> {
                     ty: MirType::String,
                 }
             }
+        }
+    }
+
+    /// Attempt to wrap a collection expression in its Display runtime call.
+    ///
+    /// Returns `Some(MirExpr)` if the `Ty` is a List, Map, or Set with known
+    /// element types; `None` otherwise (fallback to generic to_string).
+    fn wrap_collection_to_string(&self, expr: &MirExpr, ty: &Ty) -> Option<MirExpr> {
+        // Match Ty::App(Con("List"|"Map"|"Set"), args).
+        // Also handle Ty::Con("List"|"Map"|"Set") without type args (empty collections).
+        let (base_name, args) = match ty {
+            Ty::App(con_ty, args) => {
+                if let Ty::Con(con) = con_ty.as_ref() {
+                    (con.name.as_str(), args.as_slice())
+                } else {
+                    return None;
+                }
+            }
+            Ty::Con(con) => (con.name.as_str(), &[] as &[Ty]),
+            _ => return None,
+        };
+
+        let fn_ptr_ty = MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr));
+
+        match base_name {
+            "List" => {
+                let elem_fn = if args.is_empty() {
+                    // Unparameterized List -- use int as default fallback
+                    self.resolve_to_string_callback(&Ty::int())
+                } else {
+                    self.resolve_to_string_callback(&args[0])
+                };
+                let fn_ptr_expr = MirExpr::Var(elem_fn, fn_ptr_ty.clone());
+                Some(MirExpr::Call {
+                    func: Box::new(MirExpr::Var(
+                        "snow_list_to_string".to_string(),
+                        MirType::FnPtr(
+                            vec![MirType::Ptr, MirType::Ptr],
+                            Box::new(MirType::String),
+                        ),
+                    )),
+                    args: vec![expr.clone(), fn_ptr_expr],
+                    ty: MirType::String,
+                })
+            }
+            "Map" => {
+                let key_fn = if args.len() >= 1 {
+                    self.resolve_to_string_callback(&args[0])
+                } else {
+                    self.resolve_to_string_callback(&Ty::int())
+                };
+                let val_fn = if args.len() >= 2 {
+                    self.resolve_to_string_callback(&args[1])
+                } else {
+                    self.resolve_to_string_callback(&Ty::int())
+                };
+                let key_ptr_expr = MirExpr::Var(key_fn, fn_ptr_ty.clone());
+                let val_ptr_expr = MirExpr::Var(val_fn, fn_ptr_ty.clone());
+                Some(MirExpr::Call {
+                    func: Box::new(MirExpr::Var(
+                        "snow_map_to_string".to_string(),
+                        MirType::FnPtr(
+                            vec![MirType::Ptr, MirType::Ptr, MirType::Ptr],
+                            Box::new(MirType::String),
+                        ),
+                    )),
+                    args: vec![expr.clone(), key_ptr_expr, val_ptr_expr],
+                    ty: MirType::String,
+                })
+            }
+            "Set" => {
+                let elem_fn = if args.is_empty() {
+                    self.resolve_to_string_callback(&Ty::int())
+                } else {
+                    self.resolve_to_string_callback(&args[0])
+                };
+                let fn_ptr_expr = MirExpr::Var(elem_fn, fn_ptr_ty.clone());
+                Some(MirExpr::Call {
+                    func: Box::new(MirExpr::Var(
+                        "snow_set_to_string".to_string(),
+                        MirType::FnPtr(
+                            vec![MirType::Ptr, MirType::Ptr],
+                            Box::new(MirType::String),
+                        ),
+                    )),
+                    args: vec![expr.clone(), fn_ptr_expr],
+                    ty: MirType::String,
+                })
+            }
+            _ => None,
+        }
+    }
+
+    /// Resolve the to_string callback function name for an element type.
+    ///
+    /// For primitive types, returns the runtime to_string function name.
+    /// For user-defined types with Display impl, returns the mangled name.
+    /// For nested collections, falls back to snow_int_to_string (v1.3 limitation).
+    fn resolve_to_string_callback(&self, elem_ty: &Ty) -> String {
+        match elem_ty {
+            Ty::Con(con) => match con.name.as_str() {
+                "Int" => "snow_int_to_string".to_string(),
+                "Float" => "snow_float_to_string".to_string(),
+                "Bool" => "snow_bool_to_string".to_string(),
+                "String" => "snow_string_to_string".to_string(),
+                // Collection types nested inside collections -- v1.3 limitation
+                "List" | "Map" | "Set" => "snow_int_to_string".to_string(),
+                name => {
+                    // Check if this user type has a Display impl
+                    let ty_for_lookup = Ty::Con(snow_typeck::ty::TyCon::new(name));
+                    let matching = self
+                        .trait_registry
+                        .find_method_traits("to_string", &ty_for_lookup);
+                    if !matching.is_empty() {
+                        format!("{}__to_string__{}", matching[0], name)
+                    } else {
+                        // No Display impl -- fallback to int_to_string
+                        // (will produce nonsensical output, but won't crash)
+                        "snow_int_to_string".to_string()
+                    }
+                }
+            },
+            Ty::App(con_ty, _) => {
+                // Nested generic type (e.g., List<Int> inside a Set)
+                // v1.3 limitation: fall back
+                if let Ty::Con(con) = con_ty.as_ref() {
+                    if matches!(con.name.as_str(), "List" | "Map" | "Set") {
+                        return "snow_int_to_string".to_string();
+                    }
+                }
+                "snow_int_to_string".to_string()
+            }
+            _ => "snow_int_to_string".to_string(),
         }
     }
 
@@ -7208,5 +7389,117 @@ end
             "Override body should contain 'point', got: {:?}", funcs[0].body);
         assert!(!has_string(&funcs[0].body, "unknown"),
             "Override body should NOT contain 'unknown'");
+    }
+
+    // ── Collection Display tests (Phase 21 Plan 04) ─────────────────
+
+    /// Helper: recursively check if a MirExpr tree contains a Call to a
+    /// function with the given name.
+    fn has_call_to(expr: &MirExpr, fn_name: &str) -> bool {
+        match expr {
+            MirExpr::Call { func, args, .. } => {
+                if let MirExpr::Var(name, _) = func.as_ref() {
+                    if name == fn_name {
+                        return true;
+                    }
+                }
+                args.iter().any(|a| has_call_to(a, fn_name))
+                    || has_call_to(func, fn_name)
+            }
+            MirExpr::Block(exprs, _) => exprs.iter().any(|e| has_call_to(e, fn_name)),
+            MirExpr::Let { value, body, .. } => {
+                has_call_to(value, fn_name) || has_call_to(body, fn_name)
+            }
+            _ => false,
+        }
+    }
+
+    /// Helper: check if a MirExpr tree contains a Var reference to the given name.
+    fn has_var_ref(expr: &MirExpr, var_name: &str) -> bool {
+        match expr {
+            MirExpr::Var(name, _) => name == var_name,
+            MirExpr::Call { func, args, .. } => {
+                has_var_ref(func, var_name) || args.iter().any(|a| has_var_ref(a, var_name))
+            }
+            MirExpr::Block(exprs, _) => exprs.iter().any(|e| has_var_ref(e, var_name)),
+            MirExpr::Let { value, body, .. } => {
+                has_var_ref(value, var_name) || has_var_ref(body, var_name)
+            }
+            _ => false,
+        }
+    }
+
+    #[test]
+    fn list_display_emits_runtime_call() {
+        // String interpolation with a List should emit snow_list_to_string
+        // with snow_int_to_string as the element callback.
+        let source = r#"
+fn main() do
+  let xs = List.append(List.new(), 1)
+  "items: ${xs}"
+end
+"#;
+        let mir = lower(source);
+        let main = mir.functions.iter().find(|f| f.name == "snow_main");
+        assert!(main.is_some(), "Expected 'snow_main' function in MIR");
+        let main = main.unwrap();
+
+        assert!(
+            has_call_to(&main.body, "snow_list_to_string"),
+            "Expected snow_list_to_string call in interpolated string body.\n\
+             Body: {:?}",
+            main.body
+        );
+        assert!(
+            has_var_ref(&main.body, "snow_int_to_string"),
+            "Expected snow_int_to_string callback reference in interpolated string body.\n\
+             Body: {:?}",
+            main.body
+        );
+    }
+
+    #[test]
+    fn map_display_emits_runtime_call() {
+        // String interpolation with a Map<String, Int> should emit snow_map_to_string
+        // with snow_string_to_string and snow_int_to_string as callbacks.
+        let source = r#"
+fn main() do
+  let m = %{"a" => 1}
+  "map: ${m}"
+end
+"#;
+        let mir = lower(source);
+        let main = mir.functions.iter().find(|f| f.name == "snow_main");
+        assert!(main.is_some(), "Expected 'snow_main' function in MIR");
+        let main = main.unwrap();
+
+        assert!(
+            has_call_to(&main.body, "snow_map_to_string"),
+            "Expected snow_map_to_string call in interpolated string body.\n\
+             Body: {:?}",
+            main.body
+        );
+    }
+
+    #[test]
+    fn set_display_emits_runtime_call() {
+        // String interpolation with a Set should emit snow_set_to_string.
+        let source = r#"
+fn main() do
+  let s = Set.add(Set.new(), 1)
+  "set: ${s}"
+end
+"#;
+        let mir = lower(source);
+        let main = mir.functions.iter().find(|f| f.name == "snow_main");
+        assert!(main.is_some(), "Expected 'snow_main' function in MIR");
+        let main = main.unwrap();
+
+        assert!(
+            has_call_to(&main.body, "snow_set_to_string"),
+            "Expected snow_set_to_string call in interpolated string body.\n\
+             Body: {:?}",
+            main.body
+        );
     }
 }

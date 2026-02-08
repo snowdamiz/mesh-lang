@@ -372,6 +372,20 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
     // snow_hash_combine(hash_a: i64, hash_b: i64) -> i64
     module.add_function("snow_hash_combine", i64_type.fn_type(&[i64_type.into(), i64_type.into()], false), Some(inkwell::module::Linkage::External));
 
+    // ── Collection Display runtime functions (Phase 21 Plan 04) ──────────
+
+    // snow_list_to_string(list: ptr, elem_to_str: ptr) -> ptr
+    module.add_function("snow_list_to_string", ptr_type.fn_type(&[ptr_type.into(), ptr_type.into()], false), Some(inkwell::module::Linkage::External));
+
+    // snow_map_to_string(map: ptr, key_to_str: ptr, val_to_str: ptr) -> ptr
+    module.add_function("snow_map_to_string", ptr_type.fn_type(&[ptr_type.into(), ptr_type.into(), ptr_type.into()], false), Some(inkwell::module::Linkage::External));
+
+    // snow_set_to_string(set: ptr, elem_to_str: ptr) -> ptr
+    module.add_function("snow_set_to_string", ptr_type.fn_type(&[ptr_type.into(), ptr_type.into()], false), Some(inkwell::module::Linkage::External));
+
+    // snow_string_to_string(val: u64) -> ptr (identity for string elements in collections)
+    module.add_function("snow_string_to_string", ptr_type.fn_type(&[i64_type.into()], false), Some(inkwell::module::Linkage::External));
+
     // ── Service runtime functions (Phase 9 Plan 03) ──────────────────────
 
     // snow_service_call(target_pid: i64, msg_tag: i64, payload_ptr: ptr, payload_size: i64) -> ptr
@@ -586,6 +600,12 @@ mod tests {
         assert!(module.get_function("snow_hash_bool").is_some());
         assert!(module.get_function("snow_hash_string").is_some());
         assert!(module.get_function("snow_hash_combine").is_some());
+
+        // Collection Display runtime functions (Phase 21 Plan 04)
+        assert!(module.get_function("snow_list_to_string").is_some());
+        assert!(module.get_function("snow_map_to_string").is_some());
+        assert!(module.get_function("snow_set_to_string").is_some());
+        assert!(module.get_function("snow_string_to_string").is_some());
     }
 
     #[test]
