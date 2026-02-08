@@ -5,16 +5,16 @@
 See: .planning/PROJECT.md (updated 2026-02-07)
 
 **Core value:** Expressive, readable concurrency -- writing concurrent programs should feel as natural as sequential code, with supervision and fault tolerance built in.
-**Current focus:** Milestone v1.3 Traits & Protocols -- Phase 19 complete, ready for Phase 20
+**Current focus:** Milestone v1.3 Traits & Protocols -- Phase 20 in progress
 
 ## Current Position
 
-Phase: 19 of 22 (Trait Method Codegen)
-Plan: 4 of 4 in current phase
-Status: Phase complete
-Last activity: 2026-02-08 -- Completed 19-04-PLAN.md (End-to-end integration tests)
+Phase: 20 of 22 (Essential Stdlib Protocols)
+Plan: 1 of 5 in current phase
+Status: In progress
+Last activity: 2026-02-08 -- Completed 20-01-PLAN.md (Typeck identity fix + Display trait)
 
-Progress: ████░░░░░░ 41% (7/17 plans)
+Progress: ████░░░░░░ 47% (8/17 plans)
 
 ## Performance Metrics
 
@@ -68,6 +68,8 @@ Recent decisions for v1.3:
 - (19-03) Warning (not panic) for unresolvable trait methods (error recovery via LLVM codegen)
 - (19-03) Mono depth limit of 64, tracked in both lower_fn_def and lower_impl_method
 - (19-04) Smoke test reveals typeck gap: "expected Point, found Point" on self parameter in trait method calls (MIR lowering correct, typeck type identity issue)
+- (20-01) Con(c) unifies with App(Con(c), []) bidirectionally for non-generic struct types
+- (20-01) Display trait registered as compiler-known with to_string(self) -> String signature
 
 ### Pending Todos
 
@@ -77,11 +79,11 @@ None.
 
 - (Research) Self type representation needed for Default protocol (`default() -> Self`) -- resolve during Phase 21 planning
 - (Research) Higher-order constrained functions drop constraints when captured as values -- document as known limitation for v1.3
-- (19-04) Typeck type identity issue: impl method self parameter type not unifying with struct literal type ("expected Point, found Point") -- blocks full end-to-end compilation of trait-using programs; MIR lowering works correctly
+- ~~(19-04) Typeck type identity issue~~ -- RESOLVED in 20-01 (Con vs App(Con, []) unification case added)
 
 ## Session Continuity
 
 Last session: 2026-02-08
-Stopped at: Completed 19-04-PLAN.md (Phase 19 complete)
+Stopped at: Completed 20-01-PLAN.md
 Resume file: None
-Next action: Begin Phase 20 (Eq/Ord Protocols)
+Next action: Execute 20-02-PLAN.md (Display string interpolation dispatch)
