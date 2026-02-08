@@ -26,12 +26,12 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
     let init_ty = void_type.fn_type(&[], false);
     module.add_function("snow_rt_init", init_ty, Some(inkwell::module::Linkage::External));
 
-    // snow_gc_alloc(size: u64, align: u64) -> ptr
+    // snow_gc_alloc_actor(size: u64, align: u64) -> ptr
     let gc_alloc_ty = ptr_type.fn_type(
         &[i64_type.into(), i64_type.into()],
         false,
     );
-    module.add_function("snow_gc_alloc", gc_alloc_ty, Some(inkwell::module::Linkage::External));
+    module.add_function("snow_gc_alloc_actor", gc_alloc_ty, Some(inkwell::module::Linkage::External));
 
     // snow_string_new(data: ptr, len: u64) -> ptr
     let string_new_ty = ptr_type.fn_type(
@@ -432,7 +432,7 @@ mod tests {
 
         // Verify all expected functions exist
         assert!(module.get_function("snow_rt_init").is_some());
-        assert!(module.get_function("snow_gc_alloc").is_some());
+        assert!(module.get_function("snow_gc_alloc_actor").is_some());
         assert!(module.get_function("snow_string_new").is_some());
         assert!(module.get_function("snow_string_concat").is_some());
         assert!(module.get_function("snow_int_to_string").is_some());

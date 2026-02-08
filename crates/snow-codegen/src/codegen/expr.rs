@@ -1182,7 +1182,7 @@ impl<'ctx> CodeGen<'ctx> {
         // (map, filter, reduce) use the closure calling convention fn(env, ...).
         let env_ptr = if captures.is_empty() {
             // No captures -> allocate a minimal 8-byte env (non-null sentinel).
-            let gc_alloc = get_intrinsic(&self.module, "snow_gc_alloc");
+            let gc_alloc = get_intrinsic(&self.module, "snow_gc_alloc_actor");
             let size_val = self.context.i64_type().const_int(8, false);
             let align_val = self.context.i64_type().const_int(8, false);
             let env_raw = self
@@ -1191,7 +1191,7 @@ impl<'ctx> CodeGen<'ctx> {
                 .map_err(|e| e.to_string())?
                 .try_as_basic_value()
                 .basic()
-                .ok_or("snow_gc_alloc returned void")?;
+                .ok_or("snow_gc_alloc_actor returned void")?;
             env_raw.into_pointer_value()
         } else {
             // Build an env struct type from capture types
@@ -1205,8 +1205,8 @@ impl<'ctx> CodeGen<'ctx> {
             let target_data = inkwell::targets::TargetData::create("");
             let env_size = target_data.get_store_size(&env_struct_ty);
 
-            // Allocate via snow_gc_alloc(size, align=8)
-            let gc_alloc = get_intrinsic(&self.module, "snow_gc_alloc");
+            // Allocate via snow_gc_alloc_actor(size, align=8)
+            let gc_alloc = get_intrinsic(&self.module, "snow_gc_alloc_actor");
             let size_val = self.context.i64_type().const_int(env_size, false);
             let align_val = self.context.i64_type().const_int(8, false);
             let env_raw = self
@@ -1215,7 +1215,7 @@ impl<'ctx> CodeGen<'ctx> {
                 .map_err(|e| e.to_string())?
                 .try_as_basic_value()
                 .basic()
-                .ok_or("snow_gc_alloc returned void")?;
+                .ok_or("snow_gc_alloc_actor returned void")?;
 
             let env_ptr_val = env_raw.into_pointer_value();
 
@@ -1316,7 +1316,7 @@ impl<'ctx> CodeGen<'ctx> {
             // actor runs asynchronously after the caller returns. Stack allocas
             // would be freed before the actor reads the args.
             let total_size = (arg_vals.len() * 8) as u64;
-            let gc_alloc_fn = get_intrinsic(&self.module, "snow_gc_alloc");
+            let gc_alloc_fn = get_intrinsic(&self.module, "snow_gc_alloc_actor");
             let size_val = i64_ty.const_int(total_size, false);
             let align_val = i64_ty.const_int(8, false);
             let buf_alloca = self.builder
@@ -1324,7 +1324,7 @@ impl<'ctx> CodeGen<'ctx> {
                 .map_err(|e| e.to_string())?
                 .try_as_basic_value()
                 .basic()
-                .ok_or("snow_gc_alloc returned void")?
+                .ok_or("snow_gc_alloc_actor returned void")?
                 .into_pointer_value();
             let arr_ty = i64_ty.array_type(arg_vals.len() as u32);
 
@@ -2173,8 +2173,8 @@ impl<'ctx> CodeGen<'ctx> {
         let n = elements.len();
         let total_size = 8 + n * 8; // u64 len + n * u64 elements
 
-        // Allocate via snow_gc_alloc(size, align)
-        let gc_alloc = get_intrinsic(&self.module, "snow_gc_alloc");
+        // Allocate via snow_gc_alloc_actor(size, align)
+        let gc_alloc = get_intrinsic(&self.module, "snow_gc_alloc_actor");
         let size_val = i64_type.const_int(total_size as u64, false);
         let align_val = i64_type.const_int(8, false);
         let tuple_ptr = self.builder
@@ -2182,7 +2182,7 @@ impl<'ctx> CodeGen<'ctx> {
             .map_err(|e| e.to_string())?
             .try_as_basic_value()
             .basic()
-            .ok_or("snow_gc_alloc returned void")?
+            .ok_or("snow_gc_alloc_actor returned void")?
             .into_pointer_value();
 
         // Store length at offset 0

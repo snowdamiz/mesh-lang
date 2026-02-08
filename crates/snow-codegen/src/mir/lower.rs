@@ -2296,7 +2296,7 @@ impl<'a> Lowerer<'a> {
 
         // Multi-element tuple: generate a heap-allocated runtime tuple.
         // Runtime layout: { u64 len, u64[len] elements }
-        // Allocate via snow_gc_alloc, store length + elements, return pointer.
+        // Allocate via snow_gc_alloc_actor, store length + elements, return pointer.
         let n = elements.len();
         let total_size = 8 + n * 8; // u64 len + n * u64 elements
 
