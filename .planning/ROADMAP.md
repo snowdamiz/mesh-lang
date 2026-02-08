@@ -44,16 +44,16 @@ See milestones/v1.3-ROADMAP.md for full phase details, success criteria, and pit
 - [x] **Phase 18: Trait Infrastructure** - Fix type resolution foundation (structural matching, duplicate detection, dispatch unification)
 - [x] **Phase 19: Trait Method Codegen** - Lower impl method bodies to MIR, resolve trait calls to mangled names, where clause enforcement
 - [x] **Phase 20: Essential Stdlib Protocols** - Display, Debug, Eq, Ord with string interpolation integration and struct/sum-type support
-- [ ] **Phase 21: Extended Protocols** - Hash, Default, default method implementations, collection Display/Debug
+- [x] **Phase 21: Extended Protocols** - Hash, Default, default method implementations, collection Display/Debug
 - [ ] **Phase 22: Auto-Derive (Stretch)** - `deriving(Eq, Ord, Display, Debug, Hash)` from struct/sum-type metadata
 
-**Phase 21 Plans:** 4 plans
+**Phase 21 Plans:** 4 plans (complete)
 
 Plans:
-- [ ] 21-01-PLAN.md -- Hash protocol: FNV-1a runtime, trait registration, auto-derive for structs, Map key integration
-- [ ] 21-02-PLAN.md -- Default protocol: static method trait, primitive short-circuits, call-site type resolution
-- [ ] 21-03-PLAN.md -- Default method implementations: parser/AST/typeck/lowering for optional interface method bodies
-- [ ] 21-04-PLAN.md -- Collection Display/Debug: runtime callback helpers for List, Map, Set to_string
+- [x] 21-01-PLAN.md -- Hash protocol: FNV-1a runtime, trait registration, auto-derive for structs, Map key integration
+- [x] 21-02-PLAN.md -- Default protocol: static method trait, primitive short-circuits, call-site type resolution
+- [x] 21-03-PLAN.md -- Default method implementations: parser/AST/typeck/lowering for optional interface method bodies
+- [x] 21-04-PLAN.md -- Collection Display/Debug: runtime callback helpers for List, Map, Set to_string
 
 ## Progress
 
@@ -79,5 +79,5 @@ Plans:
 | 18. Trait Infrastructure | v1.3 | 3/3 | Complete | 2026-02-08 |
 | 19. Trait Method Codegen | v1.3 | 4/4 | Complete | 2026-02-08 |
 | 20. Essential Stdlib Protocols | v1.3 | 5/5 | Complete | 2026-02-08 |
-| 21. Extended Protocols | v1.3 | 0/4 | Not started | - |
+| 21. Extended Protocols | v1.3 | 4/4 | Complete | 2026-02-08 |
 | 22. Auto-Derive (Stretch) | v1.3 | 0/2 | Not started | - |
