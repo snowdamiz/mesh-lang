@@ -2498,6 +2498,43 @@ impl<'a> Lowerer<'a> {
             args
         };
 
+        // Static trait method dispatch: bare `default()` with zero arguments.
+        // The type is resolved from the call-site context (type annotation / inference),
+        // NOT from a first argument (since Default::default has no self parameter).
+        if let MirExpr::Var(ref name, _) = callee {
+            if name == "default" && args.is_empty() {
+                let type_name = mir_type_to_impl_name(&ty);
+                let mangled = format!("Default__default__{}", type_name);
+                // Primitive Default short-circuits: return MIR literals directly.
+                match mangled.as_str() {
+                    "Default__default__Int" => return MirExpr::IntLit(0, MirType::Int),
+                    "Default__default__Float" => return MirExpr::FloatLit(0.0, MirType::Float),
+                    "Default__default__Bool" => return MirExpr::BoolLit(false, MirType::Bool),
+                    "Default__default__String" => {
+                        return MirExpr::StringLit("".to_string(), MirType::String)
+                    }
+                    _ => {
+                        // Non-primitive type with user-defined Default impl:
+                        // emit a call to the mangled function (already lowered by impl pipeline).
+                        if type_name != "Unknown" {
+                            let fn_ty = MirType::FnPtr(vec![], Box::new(ty.clone()));
+                            return MirExpr::Call {
+                                func: Box::new(MirExpr::Var(mangled, fn_ty)),
+                                args: vec![],
+                                ty: ty.clone(),
+                            };
+                        }
+                        // Unknown type: fall through to normal call handling.
+                        // This follows the error recovery pattern from 19-03.
+                        eprintln!(
+                            "[snow-codegen] warning: default() call could not resolve \
+                             concrete type from context. This may indicate a missing type annotation."
+                        );
+                    }
+                }
+            }
+        }
+
         // Trait method call rewriting: if the callee is a bare method name
         // (not in known_functions), check if it's a trait method for the first
         // arg's type. If so, rewrite to the mangled name (Trait__Method__Type).
@@ -6807,5 +6844,96 @@ end
             }
         }
         assert!(has_hash_call(&main_fn.unwrap().body), "Map.put with struct key should emit Hash__hash__Point call");
+    }
+
+    // ── Default MIR lowering tests ──────────────────────────────────
+
+    #[test]
+    fn default_int_short_circuits_to_literal() {
+        let source = r#"
+fn main() do
+  let x :: Int = default()
+  x
+end
+"#;
+        let mir = lower(source);
+        let main_fn = mir.functions.iter().find(|f| f.name == "snow_main");
+        assert!(main_fn.is_some(), "Expected snow_main function in MIR");
+        // The body should contain an IntLit(0) somewhere (from default() -> 0).
+        fn has_int_zero(expr: &MirExpr) -> bool {
+            match expr {
+                MirExpr::IntLit(0, MirType::Int) => true,
+                MirExpr::Let { value, body, .. } => has_int_zero(value) || has_int_zero(body),
+                MirExpr::Call { args, .. } => args.iter().any(has_int_zero),
+                _ => false,
+            }
+        }
+        assert!(has_int_zero(&main_fn.unwrap().body), "default() for Int should produce IntLit(0)");
+    }
+
+    #[test]
+    fn default_float_short_circuits_to_literal() {
+        let source = r#"
+fn main() do
+  let x :: Float = default()
+  x
+end
+"#;
+        let mir = lower(source);
+        let main_fn = mir.functions.iter().find(|f| f.name == "snow_main");
+        assert!(main_fn.is_some(), "Expected snow_main function in MIR");
+        fn has_float_zero(expr: &MirExpr) -> bool {
+            match expr {
+                MirExpr::FloatLit(val, MirType::Float) if *val == 0.0 => true,
+                MirExpr::Let { value, body, .. } => has_float_zero(value) || has_float_zero(body),
+                MirExpr::Call { args, .. } => args.iter().any(has_float_zero),
+                _ => false,
+            }
+        }
+        assert!(has_float_zero(&main_fn.unwrap().body), "default() for Float should produce FloatLit(0.0)");
+    }
+
+    #[test]
+    fn default_string_short_circuits_to_literal() {
+        let source = r#"
+fn main() do
+  let x :: String = default()
+  x
+end
+"#;
+        let mir = lower(source);
+        let main_fn = mir.functions.iter().find(|f| f.name == "snow_main");
+        assert!(main_fn.is_some(), "Expected snow_main function in MIR");
+        fn has_empty_string(expr: &MirExpr) -> bool {
+            match expr {
+                MirExpr::StringLit(s, MirType::String) if s.is_empty() => true,
+                MirExpr::Let { value, body, .. } => has_empty_string(value) || has_empty_string(body),
+                MirExpr::Call { args, .. } => args.iter().any(has_empty_string),
+                _ => false,
+            }
+        }
+        assert!(has_empty_string(&main_fn.unwrap().body), "default() for String should produce StringLit(\"\")");
+    }
+
+    #[test]
+    fn default_bool_short_circuits_to_literal() {
+        let source = r#"
+fn main() do
+  let x :: Bool = default()
+  x
+end
+"#;
+        let mir = lower(source);
+        let main_fn = mir.functions.iter().find(|f| f.name == "snow_main");
+        assert!(main_fn.is_some(), "Expected snow_main function in MIR");
+        fn has_bool_false(expr: &MirExpr) -> bool {
+            match expr {
+                MirExpr::BoolLit(false, MirType::Bool) => true,
+                MirExpr::Let { value, body, .. } => has_bool_false(value) || has_bool_false(body),
+                MirExpr::Call { args, .. } => args.iter().any(has_bool_false),
+                _ => false,
+            }
+        }
+        assert!(has_bool_false(&main_fn.unwrap().body), "default() for Bool should produce BoolLit(false)");
     }
 }

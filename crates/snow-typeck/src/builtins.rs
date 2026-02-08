@@ -62,6 +62,20 @@ pub fn register_builtins(
         Scheme::mono(Ty::fun(vec![Ty::string()], Ty::Tuple(vec![]))),
     );
 
+    // ── Default protocol: static trait method ──────────────────────
+    //
+    // default() -> T -- polymorphic, type resolved from call-site context.
+    // Registered as a polymorphic function so typeck can unify T with the
+    // target type annotation (e.g., `let x: Int = default()` -> T = Int).
+    {
+        let t_var = TyVar(99000);
+        let t = Ty::Var(t_var);
+        env.insert(
+            "default".into(),
+            Scheme { vars: vec![t_var], ty: Ty::fun(vec![], t) },
+        );
+    }
+
     // ── Compiler-known traits ──────────────────────────────────────
 
     register_compiler_known_traits(trait_registry);
