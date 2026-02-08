@@ -205,7 +205,16 @@ pub struct Process {
     /// Optional cleanup callback invoked before termination.
     /// Set when the actor defines a `terminate do ... end` block.
     pub terminate_callback: Option<TerminateCallback>,
+
+    /// Base address of this actor's coroutine stack (highest address).
+    /// Set when the coroutine body starts executing. Used by the GC to
+    /// determine stack scanning bounds.
+    pub stack_base: *const u8,
 }
+
+// Process contains raw pointer (stack_base) but it is only used from the
+// owning actor's thread context.
+unsafe impl Send for Process {}
 
 impl Process {
     /// Create a new process with the given PID and priority.
@@ -220,6 +229,7 @@ impl Process {
             mailbox: Arc::new(Mailbox::new()),
             heap: ActorHeap::new(),
             terminate_callback: None,
+            stack_base: std::ptr::null(),
         }
     }
 }

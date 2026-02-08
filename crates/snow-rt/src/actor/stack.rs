@@ -6,9 +6,10 @@
 //!
 //! ## Thread-local State
 //!
-//! Two thread-locals track the current execution context:
+//! Three thread-locals track the current execution context:
 //! - `CURRENT_YIELDER`: pointer to the active coroutine's Yielder (for yield on reduction exhaustion)
 //! - `CURRENT_PID`: the PID of the currently running actor (for `snow_actor_self()`)
+//! - `STACK_BASE`: base address of the coroutine stack (for GC stack scanning bounds)
 
 use corosensei::stack::DefaultStack;
 use corosensei::{Coroutine, CoroutineResult, Yielder};
@@ -35,6 +36,13 @@ thread_local! {
 
     /// PID of the currently executing actor on this thread.
     pub static CURRENT_PID: Cell<Option<ProcessId>> = const { Cell::new(None) };
+
+    /// Base address of the current coroutine's stack (highest address).
+    ///
+    /// Captured at the very start of the coroutine body. The GC uses this
+    /// as `stack_bottom` when scanning for roots (stack grows downward, so
+    /// the base is the highest address).
+    pub static STACK_BASE: Cell<*const u8> = const { Cell::new(std::ptr::null()) };
 }
 
 /// Set the current actor PID on this thread.
@@ -50,6 +58,18 @@ pub fn get_current_pid() -> Option<ProcessId> {
 /// Clear the current actor PID on this thread.
 pub fn clear_current_pid() {
     CURRENT_PID.with(|c| c.set(None));
+}
+
+/// Get the base address of the current coroutine's stack.
+///
+/// Returns null if not running inside a coroutine.
+pub fn get_stack_base() -> *const u8 {
+    STACK_BASE.with(|c| c.get())
+}
+
+/// Set the base address of the current coroutine's stack.
+pub fn set_stack_base(base: *const u8) {
+    STACK_BASE.with(|c| c.set(base));
 }
 
 // ---------------------------------------------------------------------------
@@ -112,6 +132,24 @@ impl CoroutineHandle {
         let args = args_ptr as usize;
 
         let coro = Coroutine::with_stack(stack, move |yielder: &Yielder<(), ()>, _input: ()| {
+            // Capture the stack base at the very start of the coroutine body.
+            // This local variable is near the base of the coroutine stack, so
+            // its address serves as the upper bound for GC stack scanning.
+            let stack_anchor: u64 = 0;
+            let _ = std::hint::black_box(&stack_anchor);
+            STACK_BASE.with(|c| {
+                c.set(&stack_anchor as *const u64 as *const u8);
+            });
+
+            // Also store the stack base on the process for cross-context access.
+            if let Some(pid) = CURRENT_PID.with(|c| c.get()) {
+                if let Some(sched) = crate::actor::GLOBAL_SCHEDULER.get() {
+                    if let Some(proc_arc) = sched.get_process(pid) {
+                        proc_arc.lock().stack_base = &stack_anchor as *const u64 as *const u8;
+                    }
+                }
+            }
+
             // Install yielder in thread-local so snow_reduction_check can access it.
             CURRENT_YIELDER.with(|c| {
                 c.set(Some(yielder as *const Yielder<(), ()> as *const ()));

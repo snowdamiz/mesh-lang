@@ -179,11 +179,63 @@ pub extern "C" fn snow_reduction_check() {
         let remaining = cell.get();
         if remaining == 0 {
             cell.set(DEFAULT_REDUCTIONS);
+            // Check GC pressure before yielding. Running GC at yield points
+            // ensures collection happens cooperatively without affecting other
+            // actors (per-actor GC only).
+            try_trigger_gc();
             stack::yield_current();
         } else {
             cell.set(remaining - 1);
         }
     });
+}
+
+/// Attempt to trigger garbage collection on the current actor's heap.
+///
+/// Checks if the current actor's heap exceeds its GC pressure threshold
+/// and, if so, runs a mark-sweep collection cycle. The stack scanning
+/// bounds are derived from:
+/// - `stack_top`: the address of a local variable (current stack position)
+/// - `stack_bottom`: the stack base captured at coroutine startup
+///
+/// This function is a no-op if:
+/// - No actor context is available (not in a coroutine)
+/// - The heap is below the pressure threshold
+/// - GC is already in progress
+fn try_trigger_gc() {
+    let pid = match stack::get_current_pid() {
+        Some(pid) => pid,
+        None => return,
+    };
+
+    let stack_bottom = stack::get_stack_base();
+    if stack_bottom.is_null() {
+        return;
+    }
+
+    let sched = match GLOBAL_SCHEDULER.get() {
+        Some(s) => s,
+        None => return,
+    };
+
+    let proc_arc = match sched.get_process(pid) {
+        Some(p) => p,
+        None => return,
+    };
+
+    let mut proc = proc_arc.lock();
+    if !proc.heap.should_collect() {
+        return;
+    }
+
+    // Capture current stack position as stack_top.
+    // On x86-64 and ARM64, the stack grows downward, so stack_top (current
+    // position) has a lower address than stack_bottom (base).
+    let stack_anchor: u64 = 0;
+    let _ = std::hint::black_box(&stack_anchor);
+    let stack_top = &stack_anchor as *const u64 as *const u8;
+
+    proc.heap.collect(stack_bottom, stack_top);
 }
 
 /// Send a message to the target actor.

@@ -165,19 +165,49 @@ fn try_alloc_from_actor_heap(size: usize, align: usize) -> Option<*mut u8> {
 
 /// Trigger garbage collection on the current actor's heap.
 ///
-/// This is a stub for Phase 17 Plan 01. The full mark-sweep implementation
-/// will be added in Plan 02 (mark phase) and Plan 03 (sweep phase).
+/// Explicitly forces a mark-sweep GC cycle on the calling actor's heap,
+/// regardless of heap pressure. This can be called from Snow code via
+/// `System.gc()` or similar intrinsic.
 ///
-/// When fully implemented, this will:
-/// 1. Conservatively scan the actor's coroutine stack for roots
-/// 2. Mark all reachable objects via the all-objects list
-/// 3. Sweep unmarked objects onto the free list
+/// The function:
+/// 1. Conservatively scans the actor's coroutine stack for roots
+/// 2. Marks all transitively reachable objects
+/// 3. Sweeps unmarked objects onto the free list for reuse
 ///
-/// Currently a no-op.
+/// No-op if called outside of an actor context or if GC is already in
+/// progress (re-entrancy guard).
 #[no_mangle]
 pub extern "C" fn snow_gc_collect() {
-    // Will be implemented in Plan 02: triggers GC on current actor's heap.
-    // For now, no-op.
+    use crate::actor::stack;
+    use crate::actor::GLOBAL_SCHEDULER;
+
+    let pid = match stack::get_current_pid() {
+        Some(pid) => pid,
+        None => return,
+    };
+
+    let stack_bottom = stack::get_stack_base();
+    if stack_bottom.is_null() {
+        return;
+    }
+
+    let sched = match GLOBAL_SCHEDULER.get() {
+        Some(s) => s,
+        None => return,
+    };
+
+    let proc_arc = match sched.get_process(pid) {
+        Some(p) => p,
+        None => return,
+    };
+
+    // Capture current stack position as stack_top.
+    let stack_anchor: u64 = 0;
+    let _ = std::hint::black_box(&stack_anchor);
+    let stack_top = &stack_anchor as *const u64 as *const u8;
+
+    let mut proc = proc_arc.lock();
+    proc.heap.collect(stack_bottom, stack_top);
 }
 
 #[cfg(test)]
@@ -227,8 +257,9 @@ mod tests {
     }
 
     #[test]
-    fn test_snow_gc_collect_stub() {
-        // The stub should compile and not crash.
+    fn test_snow_gc_collect_no_crash_outside_actor() {
+        // When called outside an actor context (no current PID), should be a
+        // no-op without crashing.
         snow_gc_collect();
     }
 
