@@ -76,6 +76,22 @@ pub fn register_builtins(
         );
     }
 
+    // ── compare(a, b) -> Ordering ───────────────────────────────────
+    //
+    // Polymorphic built-in function: compare(T, T) -> Ordering.
+    // At MIR level, dispatches to Ord__compare__TypeName.
+    {
+        let t_var = TyVar(99002);
+        let t = Ty::Var(t_var);
+        env.insert(
+            "compare".into(),
+            Scheme {
+                vars: vec![t_var],
+                ty: Ty::fun(vec![t.clone(), t], Ty::Con(TyCon::new("Ordering"))),
+            },
+        );
+    }
+
     // ── Compiler-known traits ──────────────────────────────────────
 
     register_compiler_known_traits(trait_registry);
@@ -649,13 +665,22 @@ fn register_compiler_known_traits(registry: &mut TraitRegistry) {
 
     registry.register_trait(TraitDef {
         name: "Ord".to_string(),
-        methods: vec![TraitMethodSig {
-            name: "lt".to_string(),
-            has_self: true,
-            param_count: 1,
-            return_type: Some(Ty::bool()),
-            has_default_body: false,
-        }],
+        methods: vec![
+            TraitMethodSig {
+                name: "lt".to_string(),
+                has_self: true,
+                param_count: 1,
+                return_type: Some(Ty::bool()),
+                has_default_body: false,
+            },
+            TraitMethodSig {
+                name: "compare".to_string(),
+                has_self: true,
+                param_count: 1,
+                return_type: Some(Ty::Con(TyCon::new("Ordering"))),
+                has_default_body: true,
+            },
+        ],
     });
 
     // Ord impls for Int, Float, String.
@@ -671,6 +696,14 @@ fn register_compiler_known_traits(registry: &mut TraitRegistry) {
                 has_self: true,
                 param_count: 1,
                 return_type: Some(Ty::bool()),
+            },
+        );
+        methods.insert(
+            "compare".to_string(),
+            ImplMethodSig {
+                has_self: true,
+                param_count: 1,
+                return_type: Some(Ty::Con(TyCon::new("Ordering"))),
             },
         );
         let _ = registry.register_impl(ImplDef {

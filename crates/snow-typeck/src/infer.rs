@@ -719,6 +719,39 @@ fn register_builtin_sum_types(
         &result_generic_params,
         &result_variants,
     );
+
+    // ── Ordering (Less | Equal | Greater) ────────────────────────────────
+    //
+    // type Ordering do
+    //   Less
+    //   Equal
+    //   Greater
+    // end
+    //
+    // Non-generic sum type used as the return type for compare().
+
+    let ordering_variants = vec![
+        VariantInfo {
+            name: "Less".to_string(),
+            fields: vec![],
+        },
+        VariantInfo {
+            name: "Equal".to_string(),
+            fields: vec![],
+        },
+        VariantInfo {
+            name: "Greater".to_string(),
+            fields: vec![],
+        },
+    ];
+
+    type_registry.register_sum_type(SumTypeDefInfo {
+        name: "Ordering".to_string(),
+        generic_params: vec![],
+        variants: ordering_variants.clone(),
+    });
+
+    register_variant_constructors(ctx, env, "Ordering", &[], &ordering_variants);
 }
 
 /// Register variant constructors for a sum type as polymorphic functions in env.
