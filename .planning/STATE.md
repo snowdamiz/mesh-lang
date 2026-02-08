@@ -10,9 +10,9 @@ See: .planning/PROJECT.md (updated 2026-02-07)
 ## Current Position
 
 Phase: 14 of 15 (Generic Map Types)
-Plan: 1/1 complete (Phase 14 fully done)
+Plan: 2/2 complete (Phase 14 fully done)
 Status: Phase complete
-Last activity: 2026-02-08 - Completed 14-01-PLAN.md (generic Map<K,V> with string key support)
+Last activity: 2026-02-08 - Completed 14-02-PLAN.md (map literal syntax)
 
 Progress: ████████░░ 80% (4/5 v1.1 phases)
 
@@ -26,7 +26,7 @@ Progress: ████████░░ 80% (4/5 v1.1 phases)
 - Lines of Rust: 52,611
 
 **v1.1:**
-- Plans completed: 8
+- Plans completed: 9
 - Phases: 5 (11-15)
 - Average duration: 8min
 
@@ -59,6 +59,8 @@ Full decision history archived in milestones/v1.0-ROADMAP.md.
 | DIAMOND (<>) mapped to BinOp::Concat alongside PLUS_PLUS (++) | 13-01 | Pre-existing gap: <> operator was falling through to BinOp::Add in MIR lowering |
 | Lazy key_type tagging at Map.put instead of Map.new | 14-01 | HM let-generalization prevents type resolution at Map.new(); detect string keys at put/get sites |
 | Bidirectional ptr/int coercion in codegen_call | 14-01 | General-purpose: ptr->i64 for args, i64->ptr for returns when runtime uses uniform u64 values |
+| Map literal parsed in lhs() on PERCENT + L_BRACE | 14-02 | No lexer changes needed; modulo is infix op handled separately |
+| MIR desugaring reuses infer_map_key_type for key_type_tag | 14-02 | Consistent with Map.new() path; resolves Ty::App(Map, [K,V]) for tag |
 
 ### Pending Todos
 
@@ -66,11 +68,11 @@ None.
 
 ### Blockers/Concerns
 
-None. Phase 14 complete with zero regressions across all 29 e2e tests and full test suite.
+None. Phase 14 complete with zero regressions across all 31 e2e tests and full test suite.
 
 ## Session Continuity
 
-Last session: 2026-02-08T00:45:00Z
-Stopped at: Completed 14-01-PLAN.md (Phase 14 complete)
+Last session: 2026-02-08T00:58:46Z
+Stopped at: Completed 14-02-PLAN.md (Phase 14 fully complete: generic Map<K,V> + map literal syntax)
 Resume file: None
 Next action: Execute Phase 15 plans
