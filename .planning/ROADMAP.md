@@ -37,10 +37,11 @@ See milestones/v1.1-ROADMAP.md for details.
   1. User can write `Fun(Int, String) -> Bool` as a type annotation and the compiler parses it as a function type, not a type constructor
   2. User can use function type annotations in function parameters, return types, struct fields, and type aliases
   3. The compiler unifies explicit function type annotations with inferred function types during type checking (e.g., passing a closure where `Fun(Int) -> String` is expected works without extra annotation)
-**Plans**: TBD
+**Plans**: 2 plans
 
 Plans:
-- [ ] 16-01: TBD
+- [ ] 16-01-PLAN.md -- Parser infrastructure: FUN_TYPE CST node + parse_type() Fun() handling
+- [ ] 16-02-PLAN.md -- Type checker: ARROW token collection, parse_type_tokens Fun() handling, e2e tests
 
 #### Phase 17: Mark-Sweep Garbage Collector
 **Goal**: Long-running actors reclaim unused memory automatically without affecting other actors
@@ -75,5 +76,5 @@ Plans:
 | 13. String Pattern Matching | v1.1 | 1/1 | Complete | 2026-02-07 |
 | 14. Generic Map Types | v1.1 | 2/2 | Complete | 2026-02-08 |
 | 15. HTTP Actor Model | v1.1 | 1/1 | Complete | 2026-02-08 |
-| 16. Fun() Type Parsing | v1.2 | 0/? | Not started | - |
+| 16. Fun() Type Parsing | v1.2 | 0/2 | Not started | - |
 | 17. Mark-Sweep GC | v1.2 | 0/? | Not started | - |
