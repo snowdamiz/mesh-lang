@@ -245,6 +245,7 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
 
     // Map functions
     module.add_function("snow_map_new", ptr_type.fn_type(&[], false), Some(inkwell::module::Linkage::External));
+    module.add_function("snow_map_new_typed", ptr_type.fn_type(&[i64_type.into()], false), Some(inkwell::module::Linkage::External));
     module.add_function("snow_map_put", ptr_type.fn_type(&[ptr_type.into(), i64_type.into(), i64_type.into()], false), Some(inkwell::module::Linkage::External));
     module.add_function("snow_map_get", i64_type.fn_type(&[ptr_type.into(), i64_type.into()], false), Some(inkwell::module::Linkage::External));
     module.add_function("snow_map_has_key", i8_type.fn_type(&[ptr_type.into(), i64_type.into()], false), Some(inkwell::module::Linkage::External));
@@ -494,6 +495,7 @@ mod tests {
         assert!(module.get_function("snow_list_reduce").is_some());
         assert!(module.get_function("snow_list_from_array").is_some());
         assert!(module.get_function("snow_map_new").is_some());
+        assert!(module.get_function("snow_map_new_typed").is_some());
         assert!(module.get_function("snow_map_put").is_some());
         assert!(module.get_function("snow_map_get").is_some());
         assert!(module.get_function("snow_map_has_key").is_some());

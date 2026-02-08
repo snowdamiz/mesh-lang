@@ -9,7 +9,7 @@ use rustc_hash::FxHashMap;
 
 use crate::env::TypeEnv;
 use crate::traits::{ImplDef, ImplMethodSig, TraitDef, TraitMethodSig, TraitRegistry};
-use crate::ty::{Scheme, Ty, TyCon};
+use crate::ty::{Scheme, Ty, TyCon, TyVar};
 use crate::unify::InferCtx;
 
 /// Register all built-in types and functions into the environment.
@@ -311,40 +311,23 @@ pub fn register_builtins(
         Scheme::mono(Ty::fun(vec![list_t.clone()], list_t.clone())),
     );
 
-    // ── Map module functions ──────────────────────────────────────────
+    // ── Map module functions (polymorphic) ──────────────────────────────
+    {
+        let k_var = TyVar(90000);
+        let v_var = TyVar(90001);
+        let k = Ty::Var(k_var);
+        let v = Ty::Var(v_var);
+        let map_kv = Ty::map(k.clone(), v.clone());
 
-    env.insert(
-        "map_new".into(),
-        Scheme::mono(Ty::fun(vec![], map_t.clone())),
-    );
-    env.insert(
-        "map_put".into(),
-        Scheme::mono(Ty::fun(vec![map_t.clone(), Ty::int(), Ty::int()], map_t.clone())),
-    );
-    env.insert(
-        "map_get".into(),
-        Scheme::mono(Ty::fun(vec![map_t.clone(), Ty::int()], Ty::int())),
-    );
-    env.insert(
-        "map_has_key".into(),
-        Scheme::mono(Ty::fun(vec![map_t.clone(), Ty::int()], Ty::bool())),
-    );
-    env.insert(
-        "map_delete".into(),
-        Scheme::mono(Ty::fun(vec![map_t.clone(), Ty::int()], map_t.clone())),
-    );
-    env.insert(
-        "map_size".into(),
-        Scheme::mono(Ty::fun(vec![map_t.clone()], Ty::int())),
-    );
-    env.insert(
-        "map_keys".into(),
-        Scheme::mono(Ty::fun(vec![map_t.clone()], list_t.clone())),
-    );
-    env.insert(
-        "map_values".into(),
-        Scheme::mono(Ty::fun(vec![map_t.clone()], list_t.clone())),
-    );
+        env.insert("map_new".into(), Scheme { vars: vec![k_var, v_var], ty: Ty::fun(vec![], map_kv.clone()) });
+        env.insert("map_put".into(), Scheme { vars: vec![k_var, v_var], ty: Ty::fun(vec![map_kv.clone(), k.clone(), v.clone()], map_kv.clone()) });
+        env.insert("map_get".into(), Scheme { vars: vec![k_var, v_var], ty: Ty::fun(vec![map_kv.clone(), k.clone()], v.clone()) });
+        env.insert("map_has_key".into(), Scheme { vars: vec![k_var, v_var], ty: Ty::fun(vec![map_kv.clone(), k.clone()], Ty::bool()) });
+        env.insert("map_delete".into(), Scheme { vars: vec![k_var, v_var], ty: Ty::fun(vec![map_kv.clone(), k.clone()], map_kv.clone()) });
+        env.insert("map_size".into(), Scheme { vars: vec![k_var, v_var], ty: Ty::fun(vec![map_kv.clone()], Ty::int()) });
+        env.insert("map_keys".into(), Scheme { vars: vec![k_var, v_var], ty: Ty::fun(vec![map_kv.clone()], list_t.clone()) });
+        env.insert("map_values".into(), Scheme { vars: vec![k_var, v_var], ty: Ty::fun(vec![map_kv.clone()], list_t.clone()) });
+    }
 
     // ── Set module functions ──────────────────────────────────────────
 

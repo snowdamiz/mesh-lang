@@ -327,16 +327,22 @@ fn stdlib_modules() -> HashMap<String, HashMap<String, Scheme>> {
     list_mod.insert("reduce".to_string(), Scheme::mono(Ty::fun(vec![list_t.clone(), Ty::int(), int_int_to_int.clone()], Ty::int())));
     modules.insert("List".to_string(), list_mod);
 
-    let map_t = Ty::map_untyped();
+    // Map module -- polymorphic: Map<K, V> with type variables for key/value.
+    let k_var = TyVar(90000);
+    let v_var = TyVar(90001);
+    let k = Ty::Var(k_var);
+    let v = Ty::Var(v_var);
+    let map_kv = Ty::map(k.clone(), v.clone());
+
     let mut map_mod = HashMap::new();
-    map_mod.insert("new".to_string(), Scheme::mono(Ty::fun(vec![], map_t.clone())));
-    map_mod.insert("put".to_string(), Scheme::mono(Ty::fun(vec![map_t.clone(), Ty::int(), Ty::int()], map_t.clone())));
-    map_mod.insert("get".to_string(), Scheme::mono(Ty::fun(vec![map_t.clone(), Ty::int()], Ty::int())));
-    map_mod.insert("has_key".to_string(), Scheme::mono(Ty::fun(vec![map_t.clone(), Ty::int()], Ty::bool())));
-    map_mod.insert("delete".to_string(), Scheme::mono(Ty::fun(vec![map_t.clone(), Ty::int()], map_t.clone())));
-    map_mod.insert("size".to_string(), Scheme::mono(Ty::fun(vec![map_t.clone()], Ty::int())));
-    map_mod.insert("keys".to_string(), Scheme::mono(Ty::fun(vec![map_t.clone()], list_t.clone())));
-    map_mod.insert("values".to_string(), Scheme::mono(Ty::fun(vec![map_t.clone()], list_t.clone())));
+    map_mod.insert("new".to_string(), Scheme { vars: vec![k_var, v_var], ty: Ty::fun(vec![], map_kv.clone()) });
+    map_mod.insert("put".to_string(), Scheme { vars: vec![k_var, v_var], ty: Ty::fun(vec![map_kv.clone(), k.clone(), v.clone()], map_kv.clone()) });
+    map_mod.insert("get".to_string(), Scheme { vars: vec![k_var, v_var], ty: Ty::fun(vec![map_kv.clone(), k.clone()], v.clone()) });
+    map_mod.insert("has_key".to_string(), Scheme { vars: vec![k_var, v_var], ty: Ty::fun(vec![map_kv.clone(), k.clone()], Ty::bool()) });
+    map_mod.insert("delete".to_string(), Scheme { vars: vec![k_var, v_var], ty: Ty::fun(vec![map_kv.clone(), k.clone()], map_kv.clone()) });
+    map_mod.insert("size".to_string(), Scheme { vars: vec![k_var, v_var], ty: Ty::fun(vec![map_kv.clone()], Ty::int()) });
+    map_mod.insert("keys".to_string(), Scheme { vars: vec![k_var, v_var], ty: Ty::fun(vec![map_kv.clone()], list_t.clone()) });
+    map_mod.insert("values".to_string(), Scheme { vars: vec![k_var, v_var], ty: Ty::fun(vec![map_kv.clone()], list_t.clone()) });
     modules.insert("Map".to_string(), map_mod);
 
     let set_t = Ty::set_untyped();

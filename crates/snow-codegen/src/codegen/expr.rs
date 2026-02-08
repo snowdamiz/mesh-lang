@@ -588,22 +588,39 @@ impl<'ctx> CodeGen<'ctx> {
 
             // Check if it's a runtime intrinsic (don't add reduction check for runtime calls)
             if let Some(fn_val) = self.module.get_function(name) {
-                // Coerce argument types: runtime functions use i8 for booleans
-                // but Snow's Bool is i1. Extend i1 -> i8 where needed.
+                // Coerce argument types to match runtime function signatures:
+                // - Bool i1 -> i8 (zero-extend)
+                // - Ptr -> i64 (ptrtoint, for uniform-value functions like map_put)
                 let mut coerced_args = arg_vals.clone();
                 let param_types = fn_val.get_type().get_param_types();
                 for (i, param_ty) in param_types.iter().enumerate() {
                     if i < coerced_args.len() {
-                        if let BasicMetadataValueEnum::IntValue(arg_iv) = coerced_args[i] {
-                            if let inkwell::types::BasicMetadataTypeEnum::IntType(param_it) = param_ty {
-                                if arg_iv.get_type().get_bit_width() < param_it.get_bit_width() {
-                                    let extended = self
-                                        .builder
-                                        .build_int_z_extend(arg_iv, *param_it, "zext_arg")
-                                        .map_err(|e| e.to_string())?;
-                                    coerced_args[i] = extended.into();
+                        match coerced_args[i] {
+                            BasicMetadataValueEnum::IntValue(arg_iv) => {
+                                if let inkwell::types::BasicMetadataTypeEnum::IntType(param_it) = param_ty {
+                                    if arg_iv.get_type().get_bit_width() < param_it.get_bit_width() {
+                                        let extended = self
+                                            .builder
+                                            .build_int_z_extend(arg_iv, *param_it, "zext_arg")
+                                            .map_err(|e| e.to_string())?;
+                                        coerced_args[i] = extended.into();
+                                    }
                                 }
                             }
+                            BasicMetadataValueEnum::PointerValue(arg_pv) => {
+                                // If the runtime function expects i64 but we have a pointer
+                                // (e.g., string values passed to snow_map_put), cast ptr->i64.
+                                if let inkwell::types::BasicMetadataTypeEnum::IntType(param_it) = param_ty {
+                                    if param_it.get_bit_width() == 64 {
+                                        let cast = self
+                                            .builder
+                                            .build_ptr_to_int(arg_pv, *param_it, "ptr_to_i64")
+                                            .map_err(|e| e.to_string())?;
+                                        coerced_args[i] = cast.into();
+                                    }
+                                }
+                            }
+                            _ => {}
                         }
                     }
                 }
@@ -632,6 +649,21 @@ impl<'ctx> CodeGen<'ctx> {
                                 .build_int_truncate(iv, self.context.bool_type(), "to_bool")
                                 .map_err(|e| e.to_string())?;
                             return Ok(i1_val.into());
+                        }
+                    }
+                }
+
+                // Runtime functions returning i64 for pointer values (e.g., map_get
+                // returning a string pointer as u64) need inttoptr conversion.
+                if matches!(ty, MirType::String | MirType::Ptr) {
+                    if let BasicValueEnum::IntValue(iv) = result {
+                        if iv.get_type().get_bit_width() == 64 {
+                            let ptr_ty = self.context.ptr_type(inkwell::AddressSpace::default());
+                            let ptr_val = self
+                                .builder
+                                .build_int_to_ptr(iv, ptr_ty, "i64_to_ptr")
+                                .map_err(|e| e.to_string())?;
+                            return Ok(ptr_val.into());
                         }
                     }
                 }

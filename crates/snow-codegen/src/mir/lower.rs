@@ -119,6 +119,25 @@ impl<'a> Lowerer<'a> {
         self.types.get(&range)
     }
 
+    /// Determine the key_type tag for a Map.new() call based on the resolved type.
+    /// Returns 1 for String keys, 0 for everything else (Int or unresolved).
+    fn infer_map_key_type(&self, call_range: TextRange) -> i64 {
+        if let Some(ty) = self.types.get(&call_range) {
+            // The resolved type should be Map<K, V> i.e. Ty::App(Con("Map"), [K, V]).
+            if let Ty::App(con, args) = ty {
+                if let Ty::Con(ref tc) = **con {
+                    if tc.name == "Map" && !args.is_empty() {
+                        // Check if the first type argument (key type) is String.
+                        if args[0] == Ty::string() {
+                            return 1; // KEY_TYPE_STR
+                        }
+                    }
+                }
+            }
+        }
+        0 // KEY_TYPE_INT (default)
+    }
+
     // ── Top-level lowering ───────────────────────────────────────────
 
     fn lower_source_file(&mut self, sf: SourceFile) {
@@ -269,6 +288,7 @@ impl<'a> Lowerer<'a> {
         self.known_functions.insert("snow_list_from_array".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Int], Box::new(MirType::Ptr)));
         // Map
         self.known_functions.insert("snow_map_new".to_string(), MirType::FnPtr(vec![], Box::new(MirType::Ptr)));
+        self.known_functions.insert("snow_map_new_typed".to_string(), MirType::FnPtr(vec![MirType::Int], Box::new(MirType::Ptr)));
         self.known_functions.insert("snow_map_put".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Int, MirType::Int], Box::new(MirType::Ptr)));
         self.known_functions.insert("snow_map_get".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Int], Box::new(MirType::Int)));
         self.known_functions.insert("snow_map_has_key".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Int], Box::new(MirType::Bool)));
@@ -1281,6 +1301,19 @@ impl<'a> Lowerer<'a> {
                 }
             }
         }
+
+        // Inject key_type argument for snow_map_new_typed calls.
+        // The call resolves to Map<K, V>; check if K is String to pick key_type=1.
+        let args = if let MirExpr::Var(ref name, _) = callee {
+            if name == "snow_map_new_typed" && args.is_empty() {
+                let key_type_tag = self.infer_map_key_type(call.syntax().text_range());
+                vec![MirExpr::IntLit(key_type_tag, MirType::Int)]
+            } else {
+                args
+            }
+        } else {
+            args
+        };
 
         // Determine if this is a direct function call or a closure call.
         let is_known_fn = match &callee {
@@ -3470,7 +3503,7 @@ fn map_builtin_name(name: &str) -> String {
         "list_filter" => "snow_list_filter".to_string(),
         "list_reduce" => "snow_list_reduce".to_string(),
         // Map operations
-        "map_new" => "snow_map_new".to_string(),
+        "map_new" => "snow_map_new_typed".to_string(),
         "map_put" => "snow_map_put".to_string(),
         "map_get" => "snow_map_get".to_string(),
         "map_has_key" => "snow_map_has_key".to_string(),
