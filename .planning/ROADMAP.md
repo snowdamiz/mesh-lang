@@ -80,11 +80,11 @@ Plans:
   2. `Map.put(m, "name", "Alice")` and `Map.get(m, "name")` compile and work correctly with string keys
   3. Map literal syntax `%{"name" => "Alice", "age" => 30}` parses and type-checks correctly
   4. Type inference correctly infers Map generic parameters from usage (user rarely needs to annotate Map types)
-**Plans**: TBD
+**Plans**: 2 plans
 
 Plans:
-- [ ] 14-01: TBD
-- [ ] 14-02: TBD
+- [ ] 14-01-PLAN.md -- Runtime key_type tag, polymorphic typeck signatures, MIR/codegen dispatch, string-key e2e test
+- [ ] 14-02-PLAN.md -- Map literal syntax: parser, AST, type inference, MIR desugaring, e2e tests
 
 ### Phase 15: HTTP Actor Model
 **Goal**: HTTP server uses lightweight actor processes per connection instead of OS threads, with crash isolation per connection
@@ -109,5 +109,5 @@ Phases execute in numeric order: 11 -> 12 -> 13 -> 14 -> 15
 | 11. Multi-Clause Functions | v1.1 | 3/3 | ✓ Complete | 2026-02-07 |
 | 12. Pipe Operator Closures | v1.1 | 3/3 | ✓ Complete | 2026-02-07 |
 | 13. String Pattern Matching | v1.1 | 1/1 | ✓ Complete | 2026-02-07 |
-| 14. Generic Map Types | v1.1 | 0/TBD | Not started | - |
+| 14. Generic Map Types | v1.1 | 0/2 | Not started | - |
 | 15. HTTP Actor Model | v1.1 | 0/TBD | Not started | - |
