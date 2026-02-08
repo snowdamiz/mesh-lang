@@ -13,10 +13,10 @@
 
 ### Runtime
 
-- [ ] **RT-01**: Mark-sweep garbage collector for per-actor heaps replacing arena/bump allocation
-- [ ] **RT-02**: GC triggers automatically based on heap pressure threshold
-- [ ] **RT-03**: GC runs per-actor (no stop-the-world pauses across actors)
-- [ ] **RT-04**: Long-running actors reclaim unreachable memory (no unbounded growth)
+- [x] **RT-01**: Mark-sweep garbage collector for per-actor heaps replacing arena/bump allocation
+- [x] **RT-02**: GC triggers automatically based on heap pressure threshold
+- [x] **RT-03**: GC runs per-actor (no stop-the-world pauses across actors)
+- [x] **RT-04**: Long-running actors reclaim unreachable memory (no unbounded growth)
 
 ## Out of Scope
 
@@ -35,10 +35,10 @@
 | TYPE-01 | Phase 16 | Complete |
 | TYPE-02 | Phase 16 | Complete |
 | TYPE-03 | Phase 16 | Complete |
-| RT-01 | Phase 17 | Pending |
-| RT-02 | Phase 17 | Pending |
-| RT-03 | Phase 17 | Pending |
-| RT-04 | Phase 17 | Pending |
+| RT-01 | Phase 17 | Complete |
+| RT-02 | Phase 17 | Complete |
+| RT-03 | Phase 17 | Complete |
+| RT-04 | Phase 17 | Complete |
 
 **Coverage:**
 - v1.2 requirements: 7 total
@@ -47,4 +47,4 @@
 
 ---
 *Requirements defined: 2026-02-07*
-*Last updated: 2026-02-08 after Phase 16 completion*
+*Last updated: 2026-02-08 after Phase 17 completion -- all v1.2 requirements complete*

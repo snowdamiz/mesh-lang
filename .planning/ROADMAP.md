@@ -4,7 +4,7 @@
 
 - ✅ **v1.0 MVP** - Phases 1-10 (shipped 2026-02-07)
 - ✅ **v1.1 Language Polish** - Phases 11-15 (shipped 2026-02-08)
-- 🚧 **v1.2 Runtime & Type Fixes** - Phases 16-17 (in progress)
+- ✅ **v1.2 Runtime & Type Fixes** - Phases 16-17 (shipped 2026-02-08)
 
 ## Phases
 
@@ -25,7 +25,7 @@ See milestones/v1.1-ROADMAP.md for details.
 
 </details>
 
-### 🚧 v1.2 Runtime & Type Fixes (In Progress)
+### ✅ v1.2 Runtime & Type Fixes (Shipped 2026-02-08)
 
 **Milestone Goal:** Fix the two remaining known issues -- Fun() type annotation parsing and mark-sweep GC for long-running actors.
 
@@ -55,10 +55,10 @@ Plans:
 **Plans**: 4 plans
 
 Plans:
-- [ ] 17-01-PLAN.md -- GcHeader struct + free-list allocator replacing bump allocator in ActorHeap
-- [ ] 17-02-PLAN.md -- Mark-sweep algorithm (conservative stack scanning, mark, sweep) + GC trigger
-- [ ] 17-03-PLAN.md -- Migrate runtime and codegen allocations to snow_gc_alloc_actor
-- [ ] 17-04-PLAN.md -- E2E test for bounded memory + full integration verification
+- [x] 17-01-PLAN.md -- GcHeader struct + free-list allocator replacing bump allocator in ActorHeap
+- [x] 17-02-PLAN.md -- Mark-sweep algorithm (conservative stack scanning, mark, sweep) + GC trigger
+- [x] 17-03-PLAN.md -- Migrate runtime and codegen allocations to snow_gc_alloc_actor
+- [x] 17-04-PLAN.md -- E2E test for bounded memory + full integration verification
 
 ## Progress
 
@@ -80,4 +80,4 @@ Plans:
 | 14. Generic Map Types | v1.1 | 2/2 | Complete | 2026-02-08 |
 | 15. HTTP Actor Model | v1.1 | 1/1 | Complete | 2026-02-08 |
 | 16. Fun() Type Parsing | v1.2 | 2/2 | Complete | 2026-02-08 |
-| 17. Mark-Sweep GC | v1.2 | 0/4 | Not started | - |
+| 17. Mark-Sweep GC | v1.2 | 4/4 | Complete | 2026-02-08 |
