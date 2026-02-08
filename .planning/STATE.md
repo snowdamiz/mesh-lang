@@ -5,16 +5,16 @@
 See: .planning/PROJECT.md (updated 2026-02-07)
 
 **Core value:** Expressive, readable concurrency -- writing concurrent programs should feel as natural as sequential code, with supervision and fault tolerance built in.
-**Current focus:** Milestone v1.3 Traits & Protocols -- Phase 21 complete
+**Current focus:** Milestone v1.3 Traits & Protocols -- Phase 22 in progress
 
 ## Current Position
 
-Phase: 21 of 22 (Extended Protocols)
-Plan: 4 of 4 in current phase
-Status: Phase complete
-Last activity: 2026-02-08 -- Completed 21-04-PLAN.md (Collection Display)
+Phase: 22 of 22 (Auto-Derive Stretch)
+Plan: 1 of 2 in current phase
+Status: In progress
+Last activity: 2026-02-08 -- Completed 22-01-PLAN.md (Deriving Clause)
 
-Progress: ██████████ 94% (16/17 plans)
+Progress: ██████████ 97% (17/18 plans)
 
 ## Performance Metrics
 
@@ -94,6 +94,10 @@ Recent decisions for v1.3:
 - (21-04) snow_string_to_string identity function for string elements in collections
 - (21-04) wrap_to_string accepts Option<&Ty> for collection type resolution from typeck
 - (21-04) Nested collections (List<List<Int>>) fall back to snow_int_to_string (v1.3 limitation)
+- (22-01) deriving parsed as contextual keyword (IDENT text check), not added to TokenKind
+- (22-01) No deriving clause = derive all defaults (backward compatible)
+- (22-01) Display never auto-derived, only via explicit deriving(Display)
+- (22-01) Hash for sum types only via explicit deriving(Hash)
 
 ### Pending Todos
 
@@ -108,6 +112,6 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-08
-Stopped at: Completed 21-04-PLAN.md (Collection Display) -- Phase 21 complete
+Stopped at: Completed 22-01-PLAN.md (Deriving Clause) -- Phase 22 plan 1 of 2 done
 Resume file: None
-Next action: Execute Phase 22 (final milestone phase)
+Next action: Execute 22-02-PLAN.md (Display/Hash-sum generation)
