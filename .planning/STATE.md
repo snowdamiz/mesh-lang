@@ -10,11 +10,11 @@ See: .planning/PROJECT.md (updated 2026-02-07)
 ## Current Position
 
 Phase: 19 of 22 (Trait Method Codegen)
-Plan: 1 of 4 in current phase
+Plan: 2 of 4 in current phase
 Status: In progress
-Last activity: 2026-02-08 -- Completed 19-01-PLAN.md (ImplDef method lowering with mangled names)
+Last activity: 2026-02-08 -- Completed 19-02-PLAN.md (Call-site resolution and operator dispatch)
 
-Progress: ██░░░░░░░░ 24% (4/17 plans)
+Progress: ██░░░░░░░░ 29% (5/17 plans)
 
 ## Performance Metrics
 
@@ -62,6 +62,9 @@ Recent decisions for v1.3:
 - (19-01) extract_impl_names() as free function reused by pre-registration and lowering
 - (19-01) Self parameter detected via SELF_KW, type from Ty::Fun zip (not manual construction)
 - (19-01) typeck stores impl method Ty::Fun in types map for lowerer consumption
+- (19-02) mir_type_to_ty as separate function in types.rs for MirType-to-Ty reverse mapping
+- (19-02) First-match for ambiguous traits (typeck already reports ambiguity)
+- (19-02) Operator dispatch for Add/Sub/Mul/Eq/Lt only (sufficient for v1.3 Eq/Ord protocols)
 
 ### Pending Todos
 
@@ -75,6 +78,6 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-08
-Stopped at: Completed 19-01-PLAN.md (ImplDef method lowering with mangled names)
+Stopped at: Completed 19-02-PLAN.md (Call-site resolution and operator dispatch)
 Resume file: None
-Next action: Execute 19-02-PLAN.md (Call-Site Resolution)
+Next action: Execute 19-03-PLAN.md
