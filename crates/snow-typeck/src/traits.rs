@@ -124,9 +124,27 @@ impl TraitRegistry {
             }
         }
 
+        // Check for duplicate (structurally overlapping) impls before inserting.
+        let existing_impls = self.impls.entry(impl_def.trait_name.clone()).or_default();
+        for existing in existing_impls.iter() {
+            let mut ctx = InferCtx::new();
+            let freshened_existing = freshen_type_params(&existing.impl_type, &mut ctx);
+            let freshened_new = freshen_type_params(&impl_def.impl_type, &mut ctx);
+            if ctx
+                .unify(freshened_existing, freshened_new, ConstraintOrigin::Builtin)
+                .is_ok()
+            {
+                errors.push(TypeError::DuplicateImpl {
+                    trait_name: impl_def.trait_name.clone(),
+                    impl_type: impl_def.impl_type_name.clone(),
+                    first_impl: format!("previously defined for `{}`", existing.impl_type_name),
+                });
+                break; // Report only first duplicate
+            }
+        }
+
         // Store the impl (even if it has errors, for method lookup).
-        let trait_name = impl_def.trait_name.clone();
-        self.impls.entry(trait_name).or_default().push(impl_def);
+        existing_impls.push(impl_def);
 
         errors
     }
@@ -210,6 +228,32 @@ impl TraitRegistry {
             }
         }
         None
+    }
+
+    /// Find all trait names that provide a given method for a given type.
+    ///
+    /// Iterates all registered impls across all traits, collecting the trait
+    /// name for each impl that (a) provides the named method and (b)
+    /// structurally matches the given type. Useful for ambiguity diagnostics:
+    /// if the returned list has more than one element, the call is ambiguous.
+    pub fn find_method_traits(&self, method_name: &str, ty: &Ty) -> Vec<String> {
+        let mut trait_names = Vec::new();
+        for (trait_name, impl_list) in &self.impls {
+            for impl_def in impl_list {
+                if impl_def.methods.contains_key(method_name) {
+                    let mut ctx = InferCtx::new();
+                    let freshened = freshen_type_params(&impl_def.impl_type, &mut ctx);
+                    if ctx
+                        .unify(freshened, ty.clone(), ConstraintOrigin::Builtin)
+                        .is_ok()
+                    {
+                        trait_names.push(trait_name.clone());
+                        break; // One match per trait is enough
+                    }
+                }
+            }
+        }
+        trait_names
     }
 
     /// Check where-clause constraints: verify that a concrete type satisfies
@@ -549,5 +593,190 @@ mod tests {
 
         // find_impl should return None for non-matching types.
         assert!(registry.find_impl("Display", &Ty::int()).is_none());
+    }
+
+    // ── Tests for duplicate impl detection (18-02) ───────────────────
+
+    #[test]
+    fn duplicate_impl_detected() {
+        let mut registry = TraitRegistry::new();
+        registry.register_trait(make_printable_trait());
+
+        // First impl: Printable for Int -- should succeed.
+        let errors = registry.register_impl(ImplDef {
+            trait_name: "Printable".to_string(),
+            impl_type: Ty::int(),
+            impl_type_name: "Int".to_string(),
+            methods: display_method_sig(),
+        });
+        assert!(errors.is_empty());
+
+        // Second impl: Printable for Int -- should produce DuplicateImpl error.
+        let errors = registry.register_impl(ImplDef {
+            trait_name: "Printable".to_string(),
+            impl_type: Ty::int(),
+            impl_type_name: "Int".to_string(),
+            methods: display_method_sig(),
+        });
+        assert_eq!(errors.len(), 1);
+        match &errors[0] {
+            TypeError::DuplicateImpl {
+                trait_name,
+                impl_type,
+                first_impl,
+            } => {
+                assert_eq!(trait_name, "Printable");
+                assert_eq!(impl_type, "Int");
+                assert!(first_impl.contains("Int"));
+            }
+            other => panic!("expected DuplicateImpl, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn no_false_duplicate_for_different_types() {
+        let mut registry = TraitRegistry::new();
+        registry.register_trait(make_printable_trait());
+
+        // impl Printable for Int.
+        let errors = registry.register_impl(ImplDef {
+            trait_name: "Printable".to_string(),
+            impl_type: Ty::int(),
+            impl_type_name: "Int".to_string(),
+            methods: display_method_sig(),
+        });
+        assert!(errors.is_empty());
+
+        // impl Printable for String -- different type, no duplicate.
+        let errors = registry.register_impl(ImplDef {
+            trait_name: "Printable".to_string(),
+            impl_type: Ty::string(),
+            impl_type_name: "String".to_string(),
+            methods: display_method_sig(),
+        });
+        assert!(errors.is_empty());
+    }
+
+    #[test]
+    fn find_method_traits_single() {
+        let mut registry = TraitRegistry::new();
+        registry.register_trait(make_printable_trait());
+
+        let _ = registry.register_impl(ImplDef {
+            trait_name: "Printable".to_string(),
+            impl_type: Ty::int(),
+            impl_type_name: "Int".to_string(),
+            methods: display_method_sig(),
+        });
+
+        let traits = registry.find_method_traits("to_string", &Ty::int());
+        assert_eq!(traits, vec!["Printable".to_string()]);
+    }
+
+    #[test]
+    fn find_method_traits_multiple() {
+        let mut registry = TraitRegistry::new();
+        registry.register_trait(make_printable_trait());
+        registry.register_trait(TraitDef {
+            name: "Displayable".to_string(),
+            methods: vec![TraitMethodSig {
+                name: "to_string".to_string(),
+                has_self: true,
+                param_count: 0,
+                return_type: Some(Ty::string()),
+            }],
+        });
+
+        let _ = registry.register_impl(ImplDef {
+            trait_name: "Printable".to_string(),
+            impl_type: Ty::int(),
+            impl_type_name: "Int".to_string(),
+            methods: display_method_sig(),
+        });
+        let _ = registry.register_impl(ImplDef {
+            trait_name: "Displayable".to_string(),
+            impl_type: Ty::int(),
+            impl_type_name: "Int".to_string(),
+            methods: display_method_sig(),
+        });
+
+        let mut traits = registry.find_method_traits("to_string", &Ty::int());
+        traits.sort(); // HashMap iteration order is nondeterministic
+        assert_eq!(traits.len(), 2);
+        assert!(traits.contains(&"Printable".to_string()));
+        assert!(traits.contains(&"Displayable".to_string()));
+    }
+
+    // ── Unified dispatch path test (18-03) ──────────────────────────
+
+    #[test]
+    fn unified_dispatch_builtin_and_user_types() {
+        // Proves that built-in types (Int) and user-defined types (MyStruct)
+        // both resolve through the exact same TraitRegistry API path.
+        // No special-case dispatch for built-in vs. user types.
+        let mut registry = TraitRegistry::new();
+        registry.register_trait(TraitDef {
+            name: "Add".to_string(),
+            methods: vec![TraitMethodSig {
+                name: "add".to_string(),
+                has_self: true,
+                param_count: 1,
+                return_type: None,
+            }],
+        });
+
+        // Built-in impl: Add for Int (same path as builtins.rs registration).
+        let mut int_methods = FxHashMap::default();
+        int_methods.insert(
+            "add".to_string(),
+            ImplMethodSig {
+                has_self: true,
+                param_count: 1,
+                return_type: Some(Ty::int()),
+            },
+        );
+        let errors = registry.register_impl(ImplDef {
+            trait_name: "Add".to_string(),
+            impl_type: Ty::int(),
+            impl_type_name: "Int".to_string(),
+            methods: int_methods,
+        });
+        assert!(errors.is_empty());
+
+        // User-defined impl: Add for MyStruct (simulated as Ty::Con("MyStruct")).
+        let my_struct = Ty::Con(TyCon::new("MyStruct"));
+        let mut struct_methods = FxHashMap::default();
+        struct_methods.insert(
+            "add".to_string(),
+            ImplMethodSig {
+                has_self: true,
+                param_count: 1,
+                return_type: Some(my_struct.clone()),
+            },
+        );
+        let errors = registry.register_impl(ImplDef {
+            trait_name: "Add".to_string(),
+            impl_type: my_struct.clone(),
+            impl_type_name: "MyStruct".to_string(),
+            methods: struct_methods,
+        });
+        assert!(errors.is_empty());
+
+        // Both resolve through the same has_impl path.
+        assert!(registry.has_impl("Add", &Ty::int()));
+        assert!(registry.has_impl("Add", &my_struct));
+
+        // Both resolve through the same find_impl path.
+        let int_impl = registry.find_impl("Add", &Ty::int()).unwrap();
+        assert_eq!(int_impl.impl_type_name, "Int");
+        let struct_impl = registry.find_impl("Add", &my_struct).unwrap();
+        assert_eq!(struct_impl.impl_type_name, "MyStruct");
+
+        // Method resolution works for both through the same resolve_trait_method path.
+        let int_ret = registry.resolve_trait_method("add", &Ty::int());
+        assert_eq!(int_ret, Some(Ty::int()));
+
+        let struct_ret = registry.resolve_trait_method("add", &my_struct);
+        assert_eq!(struct_ret, Some(my_struct));
     }
 }
