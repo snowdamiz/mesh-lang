@@ -2,7 +2,7 @@
 //!
 //! Provides `Env.get(key)` and `Env.args()` for Snow programs.
 
-use crate::gc::snow_gc_alloc;
+use crate::gc::snow_gc_alloc_actor;
 use crate::string::{snow_string_new, SnowString};
 
 /// Tagged option value for Snow's Option<T> representation.
@@ -22,7 +22,7 @@ pub struct SnowOption {
 /// Allocate a SnowOption on the GC heap.
 fn alloc_option(tag: u8, value: *mut u8) -> *mut SnowOption {
     unsafe {
-        let ptr = snow_gc_alloc(
+        let ptr = snow_gc_alloc_actor(
             std::mem::size_of::<SnowOption>() as u64,
             std::mem::align_of::<SnowOption>() as u64,
         ) as *mut SnowOption;
@@ -64,7 +64,7 @@ pub extern "C" fn snow_env_args() -> *mut u8 {
     let total_size = std::mem::size_of::<u64>() + count * ptr_size;
 
     unsafe {
-        let buf = snow_gc_alloc(total_size as u64, 8);
+        let buf = snow_gc_alloc_actor(total_size as u64, 8);
         // Write count
         *(buf as *mut u64) = count as u64;
         // Write string pointers

@@ -6,7 +6,7 @@
 //!
 //! All operations return NEW queues (immutable semantics).
 
-use crate::gc::snow_gc_alloc;
+use crate::gc::snow_gc_alloc_actor;
 
 // ── Internal helpers ──────────────────────────────────────────────────
 
@@ -22,7 +22,7 @@ unsafe fn queue_back(q: *const u8) -> *mut u8 {
 }
 
 unsafe fn alloc_queue(front: *mut u8, back: *mut u8) -> *mut u8 {
-    let p = snow_gc_alloc(QUEUE_SIZE as u64, 8);
+    let p = snow_gc_alloc_actor(QUEUE_SIZE as u64, 8);
     *(p as *mut u64) = front as u64;
     *((p as *mut u64).add(1)) = back as u64;
     p
@@ -87,7 +87,7 @@ pub extern "C" fn snow_queue_pop(queue: *mut u8) -> *mut u8 {
         let new_queue = alloc_queue(nf, nb);
 
         // Return a pair: { element, new_queue_ptr }.
-        let result = snow_gc_alloc(16, 8);
+        let result = snow_gc_alloc_actor(16, 8);
         *(result as *mut u64) = element;
         *((result as *mut u64).add(1)) = new_queue as u64;
         result

@@ -5,7 +5,7 @@
 //!
 //! Ranges support conversion to List and higher-order operations (map, filter).
 
-use crate::gc::snow_gc_alloc;
+use crate::gc::snow_gc_alloc_actor;
 
 // ── Internal helpers ──────────────────────────────────────────────────
 
@@ -23,7 +23,7 @@ unsafe fn range_end(r: *const u8) -> i64 {
 #[no_mangle]
 pub extern "C" fn snow_range_new(start: i64, end: i64) -> *mut u8 {
     unsafe {
-        let p = snow_gc_alloc(16, 8);
+        let p = snow_gc_alloc_actor(16, 8);
         *(p as *mut i64) = start;
         *((p as *mut i64).add(1)) = end;
         p

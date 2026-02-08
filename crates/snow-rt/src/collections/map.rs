@@ -10,7 +10,7 @@
 //! - 0 = integer keys (compared by value)
 //! - 1 = string keys (compared by content via snow_string_eq)
 
-use crate::gc::snow_gc_alloc;
+use crate::gc::snow_gc_alloc_actor;
 use std::ptr;
 
 /// Map header: len (u64), cap (u64).
@@ -70,7 +70,7 @@ unsafe fn keys_equal(m: *const u8, a: u64, b: u64) -> bool {
 
 unsafe fn alloc_map(cap: u64, key_type: u64) -> *mut u8 {
     let total = HEADER_SIZE + (cap as usize) * ENTRY_SIZE;
-    let p = snow_gc_alloc(total as u64, 8);
+    let p = snow_gc_alloc_actor(total as u64, 8);
     *(p as *mut u64) = 0; // len
     *((p as *mut u64).add(1)) = (key_type << TAG_SHIFT) | cap; // key_type tag + cap
     p

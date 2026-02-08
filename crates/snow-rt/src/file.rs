@@ -6,14 +6,14 @@
 use std::fs::{self, OpenOptions};
 use std::io::Write;
 
-use crate::gc::snow_gc_alloc;
+use crate::gc::snow_gc_alloc_actor;
 use crate::io::SnowResult;
 use crate::string::{snow_string_new, SnowString};
 
 /// Allocate a SnowResult on the GC heap.
 fn alloc_result(tag: u8, value: *mut u8) -> *mut SnowResult {
     unsafe {
-        let ptr = snow_gc_alloc(
+        let ptr = snow_gc_alloc_actor(
             std::mem::size_of::<SnowResult>() as u64,
             std::mem::align_of::<SnowResult>() as u64,
         ) as *mut SnowResult;

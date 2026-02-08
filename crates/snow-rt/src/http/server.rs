@@ -16,7 +16,7 @@
 
 use crate::actor;
 use crate::collections::map;
-use crate::gc::{snow_gc_alloc, snow_gc_alloc_actor};
+use crate::gc::snow_gc_alloc_actor;
 use crate::string::{snow_string_new, SnowString};
 
 use super::router::SnowRouter;
@@ -56,7 +56,7 @@ pub struct SnowHttpResponse {
 #[no_mangle]
 pub extern "C" fn snow_http_response_new(status: i64, body: *const SnowString) -> *mut u8 {
     unsafe {
-        let ptr = snow_gc_alloc(
+        let ptr = snow_gc_alloc_actor(
             std::mem::size_of::<SnowHttpResponse>() as u64,
             std::mem::align_of::<SnowHttpResponse>() as u64,
         ) as *mut SnowHttpResponse;
@@ -133,7 +133,7 @@ struct SnowOption {
 
 fn alloc_option(tag: u8, value: *mut u8) -> *mut u8 {
     unsafe {
-        let ptr = snow_gc_alloc(
+        let ptr = snow_gc_alloc_actor(
             std::mem::size_of::<SnowOption>() as u64,
             std::mem::align_of::<SnowOption>() as u64,
         ) as *mut SnowOption;
@@ -357,7 +357,7 @@ mod tests {
         let headers = map::snow_map_new();
 
         unsafe {
-            let req_ptr = snow_gc_alloc(
+            let req_ptr = snow_gc_alloc_actor(
                 std::mem::size_of::<SnowHttpRequest>() as u64,
                 std::mem::align_of::<SnowHttpRequest>() as u64,
             ) as *mut SnowHttpRequest;

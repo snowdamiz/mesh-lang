@@ -3,7 +3,7 @@
 //! Provides stdin reading and stderr output. Functions match the Snow
 //! module `IO` with `read_line` and `eprintln`.
 
-use crate::gc::snow_gc_alloc;
+use crate::gc::snow_gc_alloc_actor;
 use crate::string::{snow_string_new, SnowString};
 
 /// Tagged result value for Snow's Result<T, E> representation.
@@ -22,7 +22,7 @@ pub struct SnowResult {
 /// Allocate a SnowResult on the GC heap.
 fn alloc_result(tag: u8, value: *mut u8) -> *mut SnowResult {
     unsafe {
-        let ptr = snow_gc_alloc(
+        let ptr = snow_gc_alloc_actor(
             std::mem::size_of::<SnowResult>() as u64,
             std::mem::align_of::<SnowResult>() as u64,
         ) as *mut SnowResult;

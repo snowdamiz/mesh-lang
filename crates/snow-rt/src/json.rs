@@ -16,7 +16,7 @@
 
 use crate::collections::list;
 use crate::collections::map;
-use crate::gc::snow_gc_alloc;
+use crate::gc::snow_gc_alloc_actor;
 use crate::io::SnowResult;
 use crate::string::{snow_string_new, SnowString};
 
@@ -43,7 +43,7 @@ pub struct SnowJson {
 
 fn alloc_json(tag: u8, value: u64) -> *mut SnowJson {
     unsafe {
-        let ptr = snow_gc_alloc(
+        let ptr = snow_gc_alloc_actor(
             std::mem::size_of::<SnowJson>() as u64,
             std::mem::align_of::<SnowJson>() as u64,
         ) as *mut SnowJson;
@@ -56,7 +56,7 @@ fn alloc_json(tag: u8, value: u64) -> *mut SnowJson {
 
 fn alloc_result(tag: u8, value: *mut u8) -> *mut SnowResult {
     unsafe {
-        let ptr = snow_gc_alloc(
+        let ptr = snow_gc_alloc_actor(
             std::mem::size_of::<SnowResult>() as u64,
             std::mem::align_of::<SnowResult>() as u64,
         ) as *mut SnowResult;

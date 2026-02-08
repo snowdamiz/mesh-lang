@@ -6,7 +6,7 @@
 //! All mutation operations (append, tail, concat, etc.) return a NEW list,
 //! preserving immutability semantics.
 
-use crate::gc::snow_gc_alloc;
+use crate::gc::snow_gc_alloc_actor;
 use std::ptr;
 
 /// Header size: len (8 bytes) + cap (8 bytes) = 16 bytes.
@@ -40,7 +40,7 @@ unsafe fn list_data_mut(list: *mut u8) -> *mut u64 {
 /// Allocate a new list with the given capacity, length set to 0.
 unsafe fn alloc_list(cap: u64) -> *mut u8 {
     let total = HEADER_SIZE + (cap as usize) * ELEM_SIZE;
-    let p = snow_gc_alloc(total as u64, 8);
+    let p = snow_gc_alloc_actor(total as u64, 8);
     // len = 0, cap = cap
     *(p as *mut u64) = 0;
     *((p as *mut u64).add(1)) = cap;

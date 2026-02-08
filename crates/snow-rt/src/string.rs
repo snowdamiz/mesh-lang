@@ -4,12 +4,13 @@
 //! is `{ len: u64, data: [u8; len] }` -- the data bytes immediately follow
 //! the length field in memory.
 //!
-//! All string functions allocate via `snow_gc_alloc` so they are managed by
-//! the GC arena.
+//! All string functions allocate via `snow_gc_alloc_actor` so they are managed
+//! by the per-actor GC heap (falling back to the global arena outside actor
+//! context).
 
 use std::ptr;
 
-use crate::gc::snow_gc_alloc;
+use crate::gc::snow_gc_alloc_actor;
 
 /// A GC-managed Snow string.
 ///
@@ -79,7 +80,7 @@ impl SnowString {
 pub extern "C" fn snow_string_new(data: *const u8, len: u64) -> *mut SnowString {
     unsafe {
         let total = SnowString::HEADER_SIZE + len as usize;
-        let ptr = snow_gc_alloc(total as u64, 8) as *mut SnowString;
+        let ptr = snow_gc_alloc_actor(total as u64, 8) as *mut SnowString;
         (*ptr).len = len;
         if !data.is_null() && len > 0 {
             let dst = (*ptr).data_ptr_mut();

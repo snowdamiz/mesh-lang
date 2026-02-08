@@ -6,7 +6,7 @@
 //!
 //! All mutation operations return a NEW set (immutable semantics).
 
-use crate::gc::snow_gc_alloc;
+use crate::gc::snow_gc_alloc_actor;
 use std::ptr;
 
 /// Header: len (u64), cap (u64).
@@ -29,7 +29,7 @@ unsafe fn set_data_mut(s: *mut u8) -> *mut u64 {
 
 unsafe fn alloc_set(cap: u64) -> *mut u8 {
     let total = HEADER_SIZE + (cap as usize) * ELEM_SIZE;
-    let p = snow_gc_alloc(total as u64, 8);
+    let p = snow_gc_alloc_actor(total as u64, 8);
     *(p as *mut u64) = 0;
     *((p as *mut u64).add(1)) = cap;
     p

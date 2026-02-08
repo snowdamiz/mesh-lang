@@ -22,7 +22,7 @@
 //! - tag 0 = Ok (value is the job's return value)
 //! - tag 1 = Err (value is a string describing the crash reason)
 
-use crate::gc::snow_gc_alloc;
+use crate::gc::snow_gc_alloc_actor;
 use crate::io::SnowResult;
 use crate::string::snow_string_new;
 
@@ -41,7 +41,7 @@ pub const JOB_RESULT_TAG: u64 = u64::MAX - 1;
 /// Allocate a SnowResult on the GC heap.
 fn alloc_result(tag: u8, value: *mut u8) -> *mut SnowResult {
     unsafe {
-        let ptr = snow_gc_alloc(
+        let ptr = snow_gc_alloc_actor(
             std::mem::size_of::<SnowResult>() as u64,
             std::mem::align_of::<SnowResult>() as u64,
         ) as *mut SnowResult;
@@ -102,7 +102,7 @@ fn spawn_job_actor(fn_ptr: *const u8, env_ptr: *const u8, caller_pid: u64) -> u6
 
     // Allocate args on the GC heap so they survive past this function.
     let args_heap = unsafe {
-        let ptr = snow_gc_alloc(args.len() as u64, 8);
+        let ptr = snow_gc_alloc_actor(args.len() as u64, 8);
         std::ptr::copy_nonoverlapping(args.as_ptr(), ptr, args.len());
         ptr
     };
@@ -362,7 +362,7 @@ pub extern "C" fn snow_job_map(
         full_args.extend_from_slice(&caller_pid.to_le_bytes());
 
         let full_args_heap = unsafe {
-            let ptr = snow_gc_alloc(full_args.len() as u64, 8);
+            let ptr = snow_gc_alloc_actor(full_args.len() as u64, 8);
             std::ptr::copy_nonoverlapping(full_args.as_ptr(), ptr, full_args.len());
             ptr
         };
