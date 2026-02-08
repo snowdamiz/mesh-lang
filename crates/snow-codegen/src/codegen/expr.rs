@@ -501,13 +501,22 @@ impl<'ctx> CodeGen<'ctx> {
         args: &[MirExpr],
         ty: &MirType,
     ) -> Result<BasicValueEnum<'ctx>, String> {
+        // Check if this is a user-defined function (declared via MirFunction).
+        // User functions accept closure params as {ptr, ptr} structs directly.
+        // Runtime intrinsics expect closures split into separate (fn_ptr, env_ptr) args.
+        let is_user_fn = if let MirExpr::Var(name, _) = func {
+            self.functions.contains_key(name)
+        } else {
+            false
+        };
+
         // Compile arguments, splitting closure structs into (fn_ptr, env_ptr) pairs
-        // when calling runtime intrinsics that expect separate pointer arguments.
+        // only for runtime intrinsics that expect separate pointer arguments.
         let mut arg_vals: Vec<BasicMetadataValueEnum<'ctx>> = Vec::new();
         let mut _has_closure_args = false;
         for arg in args {
             let val = self.codegen_expr(arg)?;
-            if matches!(arg.ty(), MirType::Closure(_, _)) {
+            if matches!(arg.ty(), MirType::Closure(_, _)) && !is_user_fn {
                 // Extract fn_ptr and env_ptr from the closure struct { ptr, ptr }.
                 let cls_ty = closure_type(self.context);
                 let ptr_ty = self.context.ptr_type(inkwell::AddressSpace::default());

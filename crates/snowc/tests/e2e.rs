@@ -580,3 +580,16 @@ end
     let output = compile_and_run(source);
     assert_eq!(output, "Hello, world!\nHi, Snow!\n");
 }
+
+// ── Phase 16: Fun() Type Annotations ─────────────────────────────────
+
+/// Fun() type annotations: parsing, positions, and unification with closures.
+#[test]
+fn e2e_fun_type_annotations() {
+    let source = read_fixture("fun_type.snow");
+    let output = compile_and_run(&source);
+    assert_eq!(
+        output, "42\n99\n30\n",
+        "Expected: apply(int_to_str, 42)='42', run_thunk(->99)=99, apply2(add, 10, 20)=30"
+    );
+}

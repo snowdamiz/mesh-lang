@@ -462,7 +462,8 @@ impl<'a> Lowerer<'a> {
                         .name()
                         .map(|t| t.text().to_string())
                         .unwrap_or_else(|| "_".to_string());
-                    let mir_ty = resolve_type(param_ty, self.registry, false);
+                    let is_closure = matches!(param_ty, Ty::Fun(..));
+                    let mir_ty = resolve_type(param_ty, self.registry, is_closure);
                     self.insert_var(param_name.clone(), mir_ty.clone());
                     params.push((param_name, mir_ty));
                 }
@@ -536,7 +537,10 @@ impl<'a> Lowerer<'a> {
         let (param_tys, return_type) = if let Some(Ty::Fun(pts, ret)) = &fn_ty_raw {
             (
                 pts.iter()
-                    .map(|t| resolve_type(t, self.registry, false))
+                    .map(|t| {
+                        let is_closure = matches!(t, Ty::Fun(..));
+                        resolve_type(t, self.registry, is_closure)
+                    })
                     .collect::<Vec<_>>(),
                 resolve_type(ret, self.registry, false),
             )
@@ -2403,7 +2407,8 @@ impl<'a> Lowerer<'a> {
                         .name()
                         .map(|t| t.text().to_string())
                         .unwrap_or_else(|| "_".to_string());
-                    let mir_ty = resolve_type(param_ty, self.registry, false);
+                    let is_closure = matches!(param_ty, Ty::Fun(..));
+                    let mir_ty = resolve_type(param_ty, self.registry, is_closure);
                     self.insert_var(param_name.clone(), mir_ty.clone());
                     params.push((param_name, mir_ty));
                 }
@@ -2768,7 +2773,8 @@ impl<'a> Lowerer<'a> {
                             .name()
                             .map(|t| t.text().to_string())
                             .unwrap_or_else(|| "_".to_string());
-                        let mir_ty = resolve_type(param_ty, self.registry, false);
+                        let is_closure = matches!(param_ty, Ty::Fun(..));
+                        let mir_ty = resolve_type(param_ty, self.registry, is_closure);
                         self.insert_var(param_name.clone(), mir_ty.clone());
                         init_params.push((param_name, mir_ty));
                     }
