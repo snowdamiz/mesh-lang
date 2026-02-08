@@ -5,6 +5,7 @@
 - ✅ **v1.0 MVP** - Phases 1-10 (shipped 2026-02-07)
 - ✅ **v1.1 Language Polish** - Phases 11-15 (shipped 2026-02-08)
 - ✅ **v1.2 Runtime & Type Fixes** - Phases 16-17 (shipped 2026-02-08)
+- 🚧 **v1.3 Traits & Protocols** - Phases 18-22 (in progress)
 
 ## Phases
 
@@ -34,6 +35,18 @@ See milestones/v1.2-ROADMAP.md for details.
 
 </details>
 
+### 🚧 v1.3 Traits & Protocols (In Progress)
+
+**Milestone Goal:** Complete the trait/protocol system for user-defined interfaces and impls with static dispatch via monomorphization, and ship stdlib protocols (Display, Debug, Eq, Ord, Hash, Default) that enable server-oriented abstractions.
+
+See milestones/v1.3-ROADMAP.md for full phase details, success criteria, and pitfall tracking.
+
+- [ ] **Phase 18: Trait Infrastructure** - Fix type resolution foundation (structural matching, duplicate detection, dispatch unification)
+- [ ] **Phase 19: Trait Method Codegen** - Lower impl method bodies to MIR, resolve trait calls to mangled names, where clause enforcement
+- [ ] **Phase 20: Essential Stdlib Protocols** - Display, Debug, Eq, Ord with string interpolation integration and struct/sum-type support
+- [ ] **Phase 21: Extended Protocols** - Hash, Default, default method implementations, collection Display/Debug
+- [ ] **Phase 22: Auto-Derive (Stretch)** - `deriving(Eq, Ord, Display, Debug, Hash)` from struct/sum-type metadata
+
 ## Progress
 
 | Phase | Milestone | Plans Complete | Status | Completed |
@@ -55,3 +68,8 @@ See milestones/v1.2-ROADMAP.md for details.
 | 15. HTTP Actor Model | v1.1 | 1/1 | Complete | 2026-02-08 |
 | 16. Fun() Type Parsing | v1.2 | 2/2 | Complete | 2026-02-08 |
 | 17. Mark-Sweep GC | v1.2 | 4/4 | Complete | 2026-02-08 |
+| 18. Trait Infrastructure | v1.3 | 0/3 | Not started | - |
+| 19. Trait Method Codegen | v1.3 | 0/4 | Not started | - |
+| 20. Essential Stdlib Protocols | v1.3 | 0/4 | Not started | - |
+| 21. Extended Protocols | v1.3 | 0/4 | Not started | - |
+| 22. Auto-Derive (Stretch) | v1.3 | 0/2 | Not started | - |
