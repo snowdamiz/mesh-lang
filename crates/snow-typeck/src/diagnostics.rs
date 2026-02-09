@@ -98,6 +98,7 @@ fn error_code(err: &TypeError) -> &'static str {
         TypeError::MissingField { .. }
         | TypeError::UnknownField { .. }
         | TypeError::NoSuchField { .. } => "E0009",
+        TypeError::NoSuchMethod { .. } => "E0030",
         TypeError::UnknownVariant { .. } => "E0010",
         TypeError::OrPatternBindingMismatch { .. } => "E0011",
         TypeError::NonExhaustiveMatch { .. } => "E0012",
@@ -463,6 +464,7 @@ pub fn render_json_diagnostic(
                 TypeError::MissingField { span, .. }
                 | TypeError::UnknownField { span, .. }
                 | TypeError::NoSuchField { span, .. }
+                | TypeError::NoSuchMethod { span, .. }
                 | TypeError::OrPatternBindingMismatch { span, .. }
                 | TypeError::InvalidGuardExpression { span, .. }
                 | TypeError::SendTypeMismatch { span, .. }
@@ -871,6 +873,30 @@ pub fn render_diagnostic(
                         .with_message(format!("no field `{}`", field_name))
                         .with_color(Color::Red),
                 )
+                .finish()
+        }
+
+        TypeError::NoSuchMethod {
+            ty,
+            method_name,
+            span,
+        } => {
+            let msg = format!("no method `{}` on type `{}`", method_name, ty);
+            let range = clamp(text_range_to_range(*span));
+
+            Report::build(ReportKind::Error, range.clone())
+                .with_code(code)
+                .with_message(&msg)
+                .with_config(config)
+                .with_label(
+                    Label::new(range)
+                        .with_message(format!("method `{}` not found", method_name))
+                        .with_color(Color::Red),
+                )
+                .with_help(format!(
+                    "type `{}` has no trait impl providing `{}`",
+                    ty, method_name
+                ))
                 .finish()
         }
 

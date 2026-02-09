@@ -117,6 +117,12 @@ pub enum TypeError {
         field_name: String,
         span: TextRange,
     },
+    /// A method call on a type with no such method.
+    NoSuchMethod {
+        ty: Ty,
+        method_name: String,
+        span: TextRange,
+    },
     /// A variant name was used in a pattern but does not exist.
     UnknownVariant {
         name: String,
@@ -333,6 +339,11 @@ impl fmt::Display for TypeError {
                 ty, field_name, ..
             } => {
                 write!(f, "type `{}` has no field `{}`", ty, field_name)
+            }
+            TypeError::NoSuchMethod {
+                ty, method_name, ..
+            } => {
+                write!(f, "no method `{}` on type `{}`", method_name, ty)
             }
             TypeError::UnknownVariant { name, .. } => {
                 write!(f, "unknown variant `{}`", name)
