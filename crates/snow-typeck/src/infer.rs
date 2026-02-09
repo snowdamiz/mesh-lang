@@ -12,9 +12,9 @@
 
 use rowan::TextRange;
 use snow_parser::ast::expr::{
-    BinaryExpr, CallExpr, CaseExpr, ClosureExpr, Expr, FieldAccess, IfExpr, LinkExpr, ListLiteral,
-    Literal, MapLiteral, NameRef, PipeExpr, ReceiveExpr, ReturnExpr, SendExpr, SelfExpr,
-    SpawnExpr, StructLiteral, TupleExpr, UnaryExpr,
+    BinaryExpr, BreakExpr, CallExpr, CaseExpr, ClosureExpr, ContinueExpr, Expr, FieldAccess,
+    IfExpr, LinkExpr, ListLiteral, Literal, MapLiteral, NameRef, PipeExpr, ReceiveExpr,
+    ReturnExpr, SendExpr, SelfExpr, SpawnExpr, StructLiteral, TupleExpr, UnaryExpr, WhileExpr,
 };
 use snow_parser::ast::item::{
     ActorDef, Block, FnDef, InterfaceDef, ImplDef as AstImplDef, Item, LetBinding, ServiceDef,
@@ -2428,6 +2428,16 @@ fn infer_expr(
             infer_list_literal(ctx, env, &lit, types, type_registry, trait_registry, fn_constraints)?
         }
         Expr::IndexExpr(_) => ctx.fresh_var(),
+        // Loop expressions.
+        Expr::WhileExpr(w) => {
+            infer_while(ctx, env, w, types, type_registry, trait_registry, fn_constraints)?
+        }
+        Expr::BreakExpr(b) => {
+            infer_break(ctx, b)?
+        }
+        Expr::ContinueExpr(c) => {
+            infer_continue(ctx, c)?
+        }
         // Actor expressions.
         Expr::SpawnExpr(spawn) => {
             infer_spawn(ctx, env, spawn, types, type_registry, trait_registry, fn_constraints)?
@@ -3095,6 +3105,66 @@ fn infer_if(
     }
 }
 
+/// Infer the type of a while expression: `while cond do body end`
+///
+/// The condition must be Bool. The body is inferred with loop_depth incremented.
+/// While expressions always return Unit (WHILE-03).
+fn infer_while(
+    ctx: &mut InferCtx,
+    env: &mut TypeEnv,
+    w: &WhileExpr,
+    types: &mut FxHashMap<TextRange, Ty>,
+    type_registry: &TypeRegistry,
+    trait_registry: &TraitRegistry,
+    fn_constraints: &FxHashMap<String, FnConstraints>,
+) -> Result<Ty, TypeError> {
+    // Infer and unify condition with Bool.
+    if let Some(cond) = w.condition() {
+        let cond_ty = infer_expr(ctx, env, &cond, types, type_registry, trait_registry, fn_constraints)?;
+        ctx.unify(cond_ty, Ty::bool(), ConstraintOrigin::Builtin)?;
+    }
+
+    // Infer body with incremented loop_depth.
+    ctx.enter_loop();
+    if let Some(body) = w.body() {
+        let _ = infer_block(ctx, env, &body, types, type_registry, trait_registry, fn_constraints)?;
+    }
+    ctx.exit_loop();
+
+    // While always returns Unit regardless of body type (WHILE-03).
+    Ok(Ty::Tuple(vec![]))
+}
+
+/// Infer the type of a break expression.
+///
+/// Break is a control flow transfer -- type is Never.
+/// Produces BreakOutsideLoop error if not inside a loop (BRKC-04).
+fn infer_break(
+    ctx: &mut InferCtx,
+    b: &BreakExpr,
+) -> Result<Ty, TypeError> {
+    if !ctx.in_loop() {
+        let span = b.syntax().text_range();
+        ctx.errors.push(TypeError::BreakOutsideLoop { span });
+    }
+    Ok(Ty::Never)
+}
+
+/// Infer the type of a continue expression.
+///
+/// Continue is a control flow transfer -- type is Never.
+/// Produces ContinueOutsideLoop error if not inside a loop (BRKC-04).
+fn infer_continue(
+    ctx: &mut InferCtx,
+    c: &ContinueExpr,
+) -> Result<Ty, TypeError> {
+    if !ctx.in_loop() {
+        let span = c.syntax().text_range();
+        ctx.errors.push(TypeError::ContinueOutsideLoop { span });
+    }
+    Ok(Ty::Never)
+}
+
 /// Infer the type of a closure expression: `fn (params) -> body end`
 ///
 /// Handles three forms:
@@ -3141,11 +3211,14 @@ fn infer_closure(
         }
     }
 
+    // Reset loop_depth inside closure body (BRKC-05: break/continue cannot cross closure boundary).
+    let saved_loop_depth = ctx.enter_closure();
     let body_ty = if let Some(body) = closure.body() {
         infer_block(ctx, env, &body, types, type_registry, trait_registry, fn_constraints)?
     } else {
         Ty::Tuple(vec![])
     };
+    ctx.exit_closure(saved_loop_depth);
 
     env.pop_scope();
 
@@ -3207,12 +3280,14 @@ fn infer_multi_clause_closure(
         }
     }
 
-    // Infer the body.
+    // Infer the body (reset loop_depth inside closure -- BRKC-05).
+    let saved_loop_depth = ctx.enter_closure();
     let first_body_ty = if let Some(body) = closure.body() {
         infer_block(ctx, env, &body, types, type_registry, trait_registry, fn_constraints)?
     } else {
         Ty::Tuple(vec![])
     };
+    ctx.exit_closure(saved_loop_depth);
     let mut result_ty: Option<Ty> = Some(first_body_ty);
 
     env.pop_scope();
@@ -3247,12 +3322,14 @@ fn infer_multi_clause_closure(
             }
         }
 
-        // Infer body.
+        // Infer body (reset loop_depth inside closure -- BRKC-05).
+        let saved_loop_depth = ctx.enter_closure();
         let body_ty = if let Some(body) = clause.body() {
             infer_block(ctx, env, &body, types, type_registry, trait_registry, fn_constraints)?
         } else {
             Ty::Tuple(vec![])
         };
+        ctx.exit_closure(saved_loop_depth);
 
         // Unify body type with previous clauses.
         if let Some(ref prev_ty) = result_ty {

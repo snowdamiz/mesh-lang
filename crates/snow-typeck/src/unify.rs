@@ -27,6 +27,9 @@ pub struct InferCtx {
     pub errors: Vec<TypeError>,
     /// Warnings accumulated during inference (e.g. redundant match arms).
     pub warnings: Vec<TypeError>,
+    /// Current loop nesting depth (0 = not inside any loop).
+    /// Incremented when entering a while body, reset to 0 when entering a closure body.
+    pub loop_depth: u32,
 }
 
 impl InferCtx {
@@ -38,7 +41,36 @@ impl InferCtx {
             var_levels: Vec::new(),
             errors: Vec::new(),
             warnings: Vec::new(),
+            loop_depth: 0,
         }
+    }
+
+    /// Enter a loop body -- increments loop_depth.
+    pub fn enter_loop(&mut self) {
+        self.loop_depth += 1;
+    }
+
+    /// Exit a loop body -- decrements loop_depth.
+    pub fn exit_loop(&mut self) {
+        self.loop_depth = self.loop_depth.saturating_sub(1);
+    }
+
+    /// Enter a closure body -- saves and resets loop_depth to 0.
+    /// Returns the saved loop_depth to restore later.
+    pub fn enter_closure(&mut self) -> u32 {
+        let saved = self.loop_depth;
+        self.loop_depth = 0;
+        saved
+    }
+
+    /// Exit a closure body -- restores loop_depth from saved value.
+    pub fn exit_closure(&mut self, saved_depth: u32) {
+        self.loop_depth = saved_depth;
+    }
+
+    /// Whether we are currently inside a loop.
+    pub fn in_loop(&self) -> bool {
+        self.loop_depth > 0
     }
 
     // ── Type Variable Creation ──────────────────────────────────────────

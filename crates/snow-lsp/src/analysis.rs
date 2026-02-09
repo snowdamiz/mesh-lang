@@ -203,6 +203,8 @@ fn type_error_span(error: &TypeError) -> Option<TextRange> {
         TypeError::UnsupportedDerive { .. } => None,
         TypeError::MissingDerivePrerequisite { .. } => None,
         TypeError::NoSuchMethod { span, .. } => Some(*span),
+        TypeError::BreakOutsideLoop { span, .. } => Some(*span),
+        TypeError::ContinueOutsideLoop { span, .. } => Some(*span),
     }
 }
 

@@ -3090,6 +3090,8 @@ impl<'a> Lowerer<'a> {
                 MirExpr::ActorSelf { ty }
             }
             Expr::LinkExpr(link) => self.lower_link_expr(&link),
+            // Loop expressions -- codegen support added in Plan 02.
+            Expr::WhileExpr(_) | Expr::BreakExpr(_) | Expr::ContinueExpr(_) => MirExpr::Unit,
         }
     }
 

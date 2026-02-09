@@ -250,6 +250,14 @@ pub enum TypeError {
         requires: String,
         type_name: String,
     },
+    /// `break` used outside of a loop.
+    BreakOutsideLoop {
+        span: TextRange,
+    },
+    /// `continue` used outside of a loop.
+    ContinueOutsideLoop {
+        span: TextRange,
+    },
 }
 
 impl fmt::Display for TypeError {
@@ -524,6 +532,12 @@ impl fmt::Display for TypeError {
                     "deriving `{}` for `{}` requires `{}` to also be derived",
                     trait_name, type_name, requires
                 )
+            }
+            TypeError::BreakOutsideLoop { .. } => {
+                write!(f, "`break` outside of loop")
+            }
+            TypeError::ContinueOutsideLoop { .. } => {
+                write!(f, "`continue` outside of loop")
             }
         }
     }

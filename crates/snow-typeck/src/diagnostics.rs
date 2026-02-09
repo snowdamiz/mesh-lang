@@ -121,6 +121,8 @@ fn error_code(err: &TypeError) -> &'static str {
         TypeError::AmbiguousMethod { .. } => "E0027",
         TypeError::UnsupportedDerive { .. } => "E0028",
         TypeError::MissingDerivePrerequisite { .. } => "E0029",
+        TypeError::BreakOutsideLoop { .. } => "E0032",
+        TypeError::ContinueOutsideLoop { .. } => "E0033",
     }
 }
 
@@ -475,7 +477,9 @@ pub fn render_json_diagnostic(
                 | TypeError::InvalidChildStart { span, .. }
                 | TypeError::InvalidStrategy { span, .. }
                 | TypeError::InvalidRestartType { span, .. }
-                | TypeError::InvalidShutdownValue { span, .. } => {
+                | TypeError::InvalidShutdownValue { span, .. }
+                | TypeError::BreakOutsideLoop { span }
+                | TypeError::ContinueOutsideLoop { span } => {
                     let range = text_range_to_range(*span);
                     spans.push(JsonSpan {
                         start: range.start,
@@ -1391,6 +1395,40 @@ pub fn render_diagnostic(
                     "add `{}` to the deriving list: deriving({}, {})",
                     requires, requires, trait_name
                 ))
+                .finish()
+        }
+
+        TypeError::BreakOutsideLoop { span } => {
+            let msg = "`break` outside of loop";
+            let range = clamp(text_range_to_range(*span));
+
+            Report::build(ReportKind::Error, range.clone())
+                .with_code(code)
+                .with_message(msg)
+                .with_config(config)
+                .with_label(
+                    Label::new(range)
+                        .with_message("`break` can only be used inside a `while` loop")
+                        .with_color(Color::Red),
+                )
+                .with_help("move this `break` inside a loop body")
+                .finish()
+        }
+
+        TypeError::ContinueOutsideLoop { span } => {
+            let msg = "`continue` outside of loop";
+            let range = clamp(text_range_to_range(*span));
+
+            Report::build(ReportKind::Error, range.clone())
+                .with_code(code)
+                .with_message(msg)
+                .with_config(config)
+                .with_label(
+                    Label::new(range)
+                        .with_message("`continue` can only be used inside a `while` loop")
+                        .with_color(Color::Red),
+                )
+                .with_help("move this `continue` inside a loop body")
                 .finish()
         }
     };
