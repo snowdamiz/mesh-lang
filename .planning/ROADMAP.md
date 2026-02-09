@@ -90,7 +90,10 @@ See milestones/v1.6-ROADMAP.md for full phase details.
   3. User can write `break` inside a while loop to exit early, and `continue` to skip to the next iteration
   4. Writing `break` or `continue` outside any loop produces a compile-time error; writing them inside a closure within a loop also produces a compile-time error
   5. A tight while loop (e.g., 1 million iterations with no function calls) does not starve other actors in the runtime
-**Plans**: TBD
+**Plans:** 2 plans
+Plans:
+- [ ] 33-01-PLAN.md -- Keywords, parser, AST, and type checker for while/break/continue
+- [ ] 33-02-PLAN.md -- MIR lowering, LLVM codegen, formatter, and e2e tests
 
 ### Phase 34: For-In over Range
 **Goal**: Users can iterate over integer ranges with for-in syntax, producing collected results, with zero heap allocation for the range itself
@@ -139,7 +142,7 @@ Phases execute in numeric order: 33 -> 34 -> 35 -> 36
 | 23-25 | v1.4 | 5/5 | Complete | 2026-02-08 |
 | 26-29 | v1.5 | 6/6 | Complete | 2026-02-09 |
 | 30-32 | v1.6 | 6/6 | Complete | 2026-02-09 |
-| 33. While Loop + Loop Control Flow | v1.7 | 0/TBD | Not started | - |
+| 33. While Loop + Loop Control Flow | v1.7 | 0/2 | Planning complete | - |
 | 34. For-In over Range | v1.7 | 0/TBD | Not started | - |
 | 35. For-In over Collections | v1.7 | 0/TBD | Not started | - |
 | 36. Filter Clause + Integration | v1.7 | 0/TBD | Not started | - |
