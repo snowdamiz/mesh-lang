@@ -1562,3 +1562,321 @@ fn e2e_multi_file_nested_modules() {
         "nested ok"
     );
 }
+
+// ── Phase 39: Cross-Module Type Checking ──────────────────────────────
+
+/// Helper: compile a multi-file Snow project (Vec of (relative_path, source)) and run
+/// the resulting binary, returning stdout.
+fn compile_multifile_and_run(files: &[(&str, &str)]) -> String {
+    let temp_dir = tempfile::tempdir().expect("failed to create temp dir");
+    let project_dir = temp_dir.path().join("project");
+
+    for (path, source) in files {
+        let full_path = project_dir.join(path);
+        if let Some(parent) = full_path.parent() {
+            std::fs::create_dir_all(parent).expect("failed to create dirs");
+        }
+        std::fs::write(&full_path, source).expect("failed to write file");
+    }
+
+    let snowc = find_snowc();
+    let output = Command::new(&snowc)
+        .args(["build", project_dir.to_str().unwrap()])
+        .output()
+        .expect("failed to invoke snowc");
+
+    assert!(
+        output.status.success(),
+        "snowc build failed:\nstdout: {}\nstderr: {}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let binary = project_dir.join("project");
+    let run_output = Command::new(&binary)
+        .output()
+        .unwrap_or_else(|e| panic!("failed to run binary at {}: {}", binary.display(), e));
+
+    assert!(
+        run_output.status.success(),
+        "binary execution failed with exit code {:?}:\nstdout: {}\nstderr: {}",
+        run_output.status.code(),
+        String::from_utf8_lossy(&run_output.stdout),
+        String::from_utf8_lossy(&run_output.stderr)
+    );
+
+    String::from_utf8_lossy(&run_output.stdout).to_string()
+}
+
+/// Helper: compile a multi-file Snow project, expecting build failure.
+/// Returns stderr.
+fn compile_multifile_expect_error(files: &[(&str, &str)]) -> String {
+    let temp_dir = tempfile::tempdir().expect("failed to create temp dir");
+    let project_dir = temp_dir.path().join("project");
+
+    for (path, source) in files {
+        let full_path = project_dir.join(path);
+        if let Some(parent) = full_path.parent() {
+            std::fs::create_dir_all(parent).expect("failed to create dirs");
+        }
+        std::fs::write(&full_path, source).expect("failed to write file");
+    }
+
+    let snowc = find_snowc();
+    let output = Command::new(&snowc)
+        .args(["build", project_dir.to_str().unwrap()])
+        .output()
+        .expect("failed to invoke snowc");
+
+    assert!(
+        !output.status.success(),
+        "expected compilation to fail but it succeeded"
+    );
+
+    String::from_utf8_lossy(&output.stderr).to_string()
+}
+
+/// Phase 39 XMOD-01, IMPORT-01: Qualified function call across modules.
+/// import Math brings Math into scope; Math.add(2, 3) calls the function.
+#[test]
+fn e2e_cross_module_qualified_function_call() {
+    let output = compile_multifile_and_run(&[
+        ("math.snow", r#"
+fn add(a :: Int, b :: Int) -> Int do
+  a + b
+end
+
+fn mul(a :: Int, b :: Int) -> Int do
+  a * b
+end
+"#),
+        ("main.snow", r#"
+import Math
+
+fn main() do
+  let result = Math.add(2, 3)
+  println("${result}")
+end
+"#),
+    ]);
+    assert_eq!(output, "5\n");
+}
+
+/// Phase 39 XMOD-02, IMPORT-02: Selective import with unqualified access.
+/// from Math import add makes add(10, 20) callable without qualification.
+#[test]
+fn e2e_cross_module_selective_import() {
+    let output = compile_multifile_and_run(&[
+        ("math.snow", r#"
+fn add(a :: Int, b :: Int) -> Int do
+  a + b
+end
+
+fn mul(a :: Int, b :: Int) -> Int do
+  a * b
+end
+"#),
+        ("main.snow", r#"
+from Math import add
+
+fn main() do
+  let result = add(10, 20)
+  println("${result}")
+end
+"#),
+    ]);
+    assert_eq!(output, "30\n");
+}
+
+/// Phase 39 XMOD-03: Cross-module struct construction and field access.
+/// Struct defined in one module, function called via qualified access.
+#[test]
+fn e2e_cross_module_struct() {
+    let output = compile_multifile_and_run(&[
+        ("point.snow", r#"
+struct Point do
+  x :: Int
+  y :: Int
+end
+
+fn origin() -> Point do
+  Point { x: 0, y: 0 }
+end
+"#),
+        ("main.snow", r#"
+import Point
+
+fn main() do
+  let p = Point.origin()
+  println("${p.x}")
+end
+"#),
+    ]);
+    assert_eq!(output, "0\n");
+}
+
+/// Phase 39 XMOD-04: Cross-module sum type with selective import.
+/// Sum type defined in one module, imported and used (variant construction) in another.
+#[test]
+fn e2e_cross_module_sum_type() {
+    let output = compile_multifile_and_run(&[
+        ("shapes.snow", r#"
+type Shape do
+  Circle(Int)
+  Rectangle(Int, Int)
+end
+
+fn area(s :: Shape) -> Int do
+  case s do
+    Circle(r) -> r * r
+    Rectangle(w, h) -> w * h
+  end
+end
+"#),
+        ("main.snow", r#"
+from Shapes import Shape, area
+
+fn main() do
+  let c = Circle(5)
+  let a = area(c)
+  println("${a}")
+end
+"#),
+    ]);
+    assert_eq!(output, "25\n");
+}
+
+/// Phase 39 IMPORT-06: Import of non-existent module produces error.
+#[test]
+fn e2e_import_nonexistent_module_error() {
+    let error = compile_multifile_expect_error(&[
+        ("main.snow", r#"
+import NonExistent
+
+fn main() do
+  42
+end
+"#),
+    ]);
+    assert!(
+        error.contains("not found") || error.contains("NonExistent"),
+        "Expected error about NonExistent module not found, got: {}",
+        error
+    );
+}
+
+/// Phase 39 IMPORT-07: Import of non-existent name from valid module produces error.
+#[test]
+fn e2e_import_nonexistent_name_error() {
+    let error = compile_multifile_expect_error(&[
+        ("math.snow", r#"
+fn add(a :: Int, b :: Int) -> Int do
+  a + b
+end
+"#),
+        ("main.snow", r#"
+from Math import subtract
+
+fn main() do
+  42
+end
+"#),
+    ]);
+    assert!(
+        error.contains("subtract") || error.contains("not found") || error.contains("not exported"),
+        "Expected error about subtract not found in Math, got: {}",
+        error
+    );
+}
+
+/// Phase 39: Nested module qualified access (Math.Vector -> Vector.dot).
+#[test]
+fn e2e_nested_module_qualified_access() {
+    let output = compile_multifile_and_run(&[
+        ("math/vector.snow", r#"
+fn dot(a :: Int, b :: Int) -> Int do
+  a * b
+end
+"#),
+        ("main.snow", r#"
+import Math.Vector
+
+fn main() do
+  let result = Vector.dot(3, 4)
+  println("${result}")
+end
+"#),
+    ]);
+    assert_eq!(output, "12\n");
+}
+
+/// Phase 39 XMOD-05: Cross-module function that returns a struct, accessed via qualified call.
+/// Verifies struct definitions from imported modules work correctly through codegen.
+#[test]
+fn e2e_cross_module_struct_via_function() {
+    let output = compile_multifile_and_run(&[
+        ("geometry.snow", r#"
+struct Point do
+  x :: Int
+  y :: Int
+end
+
+fn make_point(a :: Int, b :: Int) -> Point do
+  Point { x: a, y: b }
+end
+"#),
+        ("main.snow", r#"
+import Geometry
+
+fn main() do
+  let p = Geometry.make_point(10, 20)
+  println("${p.x}")
+  println("${p.y}")
+end
+"#),
+    ]);
+    assert_eq!(output, "10\n20\n");
+}
+
+/// Phase 39: Multiple imports from different modules in the same file.
+#[test]
+fn e2e_cross_module_multiple_imports() {
+    let output = compile_multifile_and_run(&[
+        ("math.snow", r#"
+fn add(a :: Int, b :: Int) -> Int do
+  a + b
+end
+"#),
+        ("utils.snow", r#"
+fn double(x :: Int) -> Int do
+  x * 2
+end
+"#),
+        ("main.snow", r#"
+from Math import add
+from Utils import double
+
+fn main() do
+  let result = double(add(3, 4))
+  println("${result}")
+end
+"#),
+    ]);
+    assert_eq!(output, "14\n");
+}
+
+/// Phase 39: Single-file program still compiles identically (regression check).
+#[test]
+fn e2e_single_file_regression() {
+    let output = compile_and_run(r#"
+fn double(x :: Int) -> Int do
+  x * 2
+end
+
+fn main() do
+  let result = double(21)
+  println("${result}")
+end
+"#);
+    assert_eq!(output, "42\n");
+}
