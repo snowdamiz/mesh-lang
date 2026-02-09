@@ -4718,8 +4718,28 @@ fn infer_struct_literal(
         }
     }
 
+    // Build the struct type with display_prefix if applicable.
+    // Look up the env entry for this struct to preserve its display_prefix
+    // (set during import resolution or local struct registration).
+    let tycon = match env.lookup(&struct_name) {
+        Some(scheme) => {
+            match &scheme.ty {
+                Ty::App(inner, _) => {
+                    if let Ty::Con(tc) = inner.as_ref() {
+                        tc.clone()
+                    } else {
+                        TyCon::new(&struct_name)
+                    }
+                }
+                Ty::Con(tc) => tc.clone(),
+                _ => TyCon::new(&struct_name),
+            }
+        }
+        None => TyCon::new(&struct_name),
+    };
+
     Ok(Ty::App(
-        Box::new(Ty::Con(TyCon::new(&struct_name))),
+        Box::new(Ty::Con(tycon)),
         generic_vars,
     ))
 }

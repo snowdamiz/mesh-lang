@@ -2297,3 +2297,112 @@ end
     ]);
     assert_eq!(output, "10\n");
 }
+
+// ── Phase 42: Diagnostics & Integration ───────────────────────────────
+
+/// Phase 42 DIAG-02, Success Criterion 3: Comprehensive multi-module integration.
+/// A realistic project with 3+ modules covering structs, cross-module function calls,
+/// nested module paths, and qualified access. Validates the complete module system.
+#[test]
+fn e2e_comprehensive_multi_module_integration() {
+    let output = compile_multifile_and_run(&[
+        ("geometry.snow", r#"
+pub struct Point do
+  x :: Int
+  y :: Int
+end
+
+pub fn make_point(x :: Int, y :: Int) -> Point do
+  Point { x: x, y: y }
+end
+
+pub fn point_sum(p :: Point) -> Int do
+  p.x + p.y
+end
+"#),
+        ("math/vector.snow", r#"
+from Geometry import Point, make_point, point_sum
+
+pub fn scaled_sum(p :: Point, factor :: Int) -> Int do
+  point_sum(p) * factor
+end
+"#),
+        ("utils.snow", r#"
+pub fn double(n :: Int) -> Int do
+  n * 2
+end
+"#),
+        ("main.snow", r#"
+from Geometry import make_point
+from Utils import double
+import Math.Vector
+
+fn main() do
+  let p = make_point(3, 4)
+  let sum = Vector.scaled_sum(p, 2)
+  let result = double(sum)
+  println("${result}")
+end
+"#),
+    ]);
+    assert_eq!(output, "28\n"); // (3+4)*2 = 14, double(14) = 28
+}
+
+/// Phase 42 DIAG-02: Cross-module type error shows module-qualified names.
+/// When a type mismatch involves an imported type, the error message should
+/// display the module prefix (e.g., "Geometry.Point") instead of bare "Point".
+#[test]
+fn e2e_module_qualified_type_in_error() {
+    let error = compile_multifile_expect_error(&[
+        ("geometry.snow", r#"
+pub struct Point do
+  x :: Int
+  y :: Int
+end
+"#),
+        ("main.snow", r#"
+from Geometry import Point
+
+fn takes_string(s :: String) -> String do
+  s
+end
+
+fn main() do
+  let p = Point { x: 1, y: 2 }
+  takes_string(p)
+end
+"#),
+    ]);
+    // The error output should contain module-qualified type name
+    assert!(
+        error.contains("Geometry.Point"),
+        "expected error to contain 'Geometry.Point', got:\n{}",
+        error
+    );
+}
+
+/// Phase 42 DIAG-01: File path appears in error output for multi-module errors.
+/// Validates that diagnostics show actual file paths instead of `<unknown>`.
+#[test]
+fn e2e_file_path_in_multi_module_error() {
+    let error = compile_multifile_expect_error(&[
+        ("geometry.snow", r#"
+pub fn bad_fn(x :: Int) -> String do
+  x
+end
+"#),
+        ("main.snow", r#"
+import Geometry
+
+fn main() do
+  Geometry.bad_fn(42)
+end
+"#),
+    ]);
+    // The error output should contain the actual file path, not <unknown>
+    assert!(
+        error.contains("geometry.snow"),
+        "expected error to contain 'geometry.snow', got:\n{}",
+        error
+    );
+}
