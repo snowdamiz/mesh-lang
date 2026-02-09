@@ -148,7 +148,11 @@ Plans:
   3. Attempting to import a private item produces a compile error with a suggestion to add `pub`
   4. All fields of a `pub struct` are accessible to importers (no per-field visibility)
   5. All variants of a `pub type` (sum type) are accessible for construction and pattern matching by importers
-**Plans**: TBD
+**Plans:** 2 plans
+
+Plans:
+- [ ] 40-01-PLAN.md -- Export filtering by pub, PrivateItem error type, import resolution update
+- [ ] 40-02-PLAN.md -- Comprehensive E2E tests for visibility enforcement (VIS-01 through VIS-05)
 
 ### Phase 41: MIR Merge & Codegen
 **Goal**: Multi-module projects compile to a single native binary with correct name mangling and cross-module monomorphization
@@ -188,7 +192,7 @@ Phases execute in numeric order: 37 -> 38 -> 39 -> 40 -> 41 -> 42
 | 37. Module Graph Foundation | v1.8 | 2/2 | Complete | 2026-02-09 |
 | 38. Multi-File Build Pipeline | v1.8 | 2/2 | Complete | 2026-02-09 |
 | 39. Cross-Module Type Checking | v1.8 | 3/3 | Complete | 2026-02-09 |
-| 40. Visibility Enforcement | v1.8 | 0/TBD | Not started | - |
+| 40. Visibility Enforcement | v1.8 | 0/2 | Not started | - |
 | 41. MIR Merge & Codegen | v1.8 | 0/TBD | Not started | - |
 | 42. Diagnostics & Integration | v1.8 | 0/TBD | Not started | - |
 
