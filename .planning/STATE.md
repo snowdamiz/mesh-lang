@@ -5,16 +5,16 @@
 See: .planning/PROJECT.md (updated 2026-02-08)
 
 **Core value:** Expressive, readable concurrency -- writing concurrent programs should feel as natural as sequential code, with supervision and fault tolerance built in.
-**Current focus:** v1.5 Compiler Correctness -- Phase 28 complete (Trait Deriving Safety)
+**Current focus:** v1.5 Compiler Correctness -- Phase 29 complete (Qualified Types)
 
 ## Current Position
 
-Phase: 28 of 29 (Trait Deriving Safety)
+Phase: 29 of 29 (Qualified Types)
 Plan: 1 of 1 in current phase
 Status: Phase complete
-Last activity: 2026-02-09 -- Completed 28-01-PLAN.md
+Last activity: 2026-02-09 -- Completed 29-01-PLAN.md
 
-Progress: ######░░░░ ~63% (v1.5: 5/8 plans)
+Progress: ######## ~100% (v1.5: 6/6 plans)
 
 ## Performance Metrics
 
@@ -52,6 +52,12 @@ Progress: ######░░░░ ~63% (v1.5: 5/8 plans)
 - Lines of Rust: 64,548 (+1,359)
 - Tests: 1,206 passing (+19 new)
 
+**v1.5 Totals:**
+- Plans completed: 6
+- Phases: 4 (26-29)
+- Commits: 17
+- Tests: 1,232 passing (+26 new)
+
 ## Accumulated Context
 
 ### Decisions
@@ -75,6 +81,9 @@ Full decision history archived in milestones/v1.0-ROADMAP.md through milestones/
 | 27-02-D3 | Local variable bindings take precedence over builtin name mappings | Pattern binding `head` was incorrectly mapped to snow_list_head |
 | 27-02-D4 | Conservative exhaustiveness for cons patterns (treated as wildcards) | Lists are infinite types; cons alone is never exhaustive |
 | 28-01-D1 | Emit error and early-return instead of silently adding Eq | User opted into selective deriving; respect that with a clear error and suggestion |
+| 29-01-D1 | Soft error collection for argument constraint violations | Callee check returns Err; argument check uses extend to avoid aborting inference early |
+| 29-01-D2 | Only check NameRef arguments for constraints | Covers direct names and let aliases; complex expressions out of scope |
+| 29-01-D3 | Filter to concrete types only (skip Ty::Var) | Prevents false positives on unresolved type variables |
 
 ### Pending Todos
 
@@ -86,7 +95,7 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-02-09T01:30:27Z
-Stopped at: Completed 28-01-PLAN.md (Phase 28 complete)
+Last session: 2026-02-09T02:05:00Z
+Stopped at: Completed 29-01-PLAN.md (Phase 29 complete, v1.5 complete)
 Resume file: None
-Next action: Execute Phase 29
+Next action: None (v1.5 Compiler Correctness milestone complete)
