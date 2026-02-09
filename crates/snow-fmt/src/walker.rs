@@ -74,6 +74,7 @@ pub fn walk_node(node: &SyntaxNode) -> FormatIR {
         SyntaxKind::FOR_IN_EXPR => walk_for_in_expr(node),
         SyntaxKind::BREAK_EXPR => walk_break_expr(node),
         SyntaxKind::CONTINUE_EXPR => walk_continue_expr(node),
+        SyntaxKind::DESTRUCTURE_BINDING => walk_destructure_binding(node),
         SyntaxKind::SELF_EXPR => walk_self_expr(node),
         SyntaxKind::CALL_HANDLER => walk_call_handler(node),
         SyntaxKind::CAST_HANDLER => walk_cast_handler(node),
@@ -486,6 +487,9 @@ fn walk_for_in_expr(node: &SyntaxNode) -> FormatIR {
                     SyntaxKind::NAME => {
                         parts.push(walk_node(&n));
                     }
+                    SyntaxKind::DESTRUCTURE_BINDING => {
+                        parts.push(walk_destructure_binding(&n));
+                    }
                     _ => {
                         // Iterable expression (e.g., binary expr for 0..10).
                         parts.push(walk_node(&n));
@@ -495,6 +499,40 @@ fn walk_for_in_expr(node: &SyntaxNode) -> FormatIR {
         }
     }
 
+    ir::concat(parts)
+}
+
+/// Walk a destructure binding node: `{k, v}`.
+fn walk_destructure_binding(node: &SyntaxNode) -> FormatIR {
+    let mut parts = Vec::new();
+    parts.push(ir::text("{"));
+    let mut first = true;
+    for child in node.children_with_tokens() {
+        match child {
+            NodeOrToken::Token(tok) => {
+                match tok.kind() {
+                    SyntaxKind::L_BRACE | SyntaxKind::R_BRACE => {
+                        // Handled by the explicit { and } text nodes above/below.
+                    }
+                    SyntaxKind::COMMA => {
+                        parts.push(ir::text(","));
+                        parts.push(sp());
+                    }
+                    _ => {}
+                }
+            }
+            NodeOrToken::Node(n) => {
+                if n.kind() == SyntaxKind::NAME {
+                    if !first {
+                        // Comma already added above for non-first names.
+                    }
+                    parts.push(walk_node(&n));
+                    first = false;
+                }
+            }
+        }
+    }
+    parts.push(ir::text("}"));
     ir::concat(parts)
 }
 
@@ -2153,5 +2191,20 @@ mod tests {
         // Extra spaces should be normalized
         let result = fmt("for  i  in  0..10  do\nprintln(i)\nend");
         assert_eq!(result, "for i in 0..10 do\n  println(i)\nend\n");
+    }
+
+    #[test]
+    fn for_in_destructure_binding() {
+        // Map destructuring: for {k, v} in m do body end
+        let result = fmt("for {k, v} in m do\nprintln(v)\nend");
+        assert_eq!(result, "for {k, v} in m do\n  println(v)\nend\n");
+    }
+
+    #[test]
+    fn for_in_destructure_binding_idempotent() {
+        let src = "for {k, v} in m do\nprintln(v)\nend";
+        let first = fmt(src);
+        let second = fmt(&first);
+        assert_eq!(first, second, "Idempotency failed.\nFirst: {:?}\nSecond: {:?}", first, second);
     }
 }

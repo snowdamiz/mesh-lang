@@ -1229,3 +1229,81 @@ end
     let output = compile_and_run(source);
     assert_eq!(output, "0\n1\n3\n5\n");
 }
+
+// ── For-in over collections (Phase 35 Plan 02) ────────────────────────
+
+/// For-in over List: comprehension, continue, break.
+#[test]
+fn e2e_for_in_list() {
+    let source = read_fixture("for_in_list.snow");
+    let output = compile_and_run(&source);
+    assert_eq!(output, "2\n4\n6\n---\n10\n20\n40\n50\n---\n2\ndone\n");
+}
+
+/// For-in over Map: {k, v} destructuring collects values into a list.
+#[test]
+fn e2e_for_in_map() {
+    let source = read_fixture("for_in_map.snow");
+    let output = compile_and_run(&source);
+    assert_eq!(output, "3\ndone\n");
+}
+
+/// For-in over Set: element iteration collects into a list.
+#[test]
+fn e2e_for_in_set() {
+    let source = read_fixture("for_in_set.snow");
+    let output = compile_and_run(&source);
+    assert_eq!(output, "3\ndone\n");
+}
+
+/// For-in range comprehension: collecting body results into a list.
+#[test]
+fn e2e_for_in_range_comprehension() {
+    let source = r#"
+fn main() do
+  let squares = for i in 0..4 do
+    i * i
+  end
+  for s in squares do
+    println("${s}")
+  end
+  println("done")
+end
+"#;
+    let output = compile_and_run(source);
+    assert_eq!(output, "0\n1\n4\n9\ndone\n");
+}
+
+/// Empty map iteration produces empty list (no error).
+#[test]
+fn e2e_for_in_map_empty() {
+    let source = r#"
+fn main() do
+  let m = Map.new()
+  let result = for {k, v} in m do
+    v
+  end
+  let len = List.length(result)
+  println("${len}")
+end
+"#;
+    let output = compile_and_run(source);
+    assert_eq!(output, "0\n");
+}
+
+/// Empty set iteration produces empty list (no error).
+#[test]
+fn e2e_for_in_set_empty() {
+    let source = r#"
+fn main() do
+  let s = Set.new()
+  let result = for x in s do
+    x
+  end
+  let len = List.length(result)
+  println("${len}")
+end
+"#;
+    let output = compile_and_run(source);
+    assert_eq!(output, "0\n");
+}
