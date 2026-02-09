@@ -10,11 +10,11 @@ See: .planning/PROJECT.md (updated 2026-02-08)
 ## Current Position
 
 Phase: 35 of 36 (For-In over Collections)
-Plan: 1 of 3 in current phase
-Status: Plan 01 complete
-Last activity: 2026-02-09 -- Plan 01 complete (runtime, parser, typeck, MIR infrastructure)
+Plan: 2 of 2 in current phase
+Status: Plan 02 complete -- phase complete
+Last activity: 2026-02-09 -- Plan 02 complete (codegen for collection for-in, e2e tests, formatter)
 
-Progress: [█████░░░░░] 50% (2/4 phases)
+Progress: [███████░░░] 75% (3/4 phases)
 
 ## Performance Metrics
 
@@ -22,11 +22,11 @@ Progress: [█████░░░░░] 50% (2/4 phases)
 - Plans completed: 106
 - Phases completed: 32
 - Lines of Rust: 67,546
-- Tests: 1,273 passing
+- Tests: 1,300 passing
 
 **v1.7 Velocity:**
-- Plans completed: 5
-- Phases completed: 2/4
+- Plans completed: 6
+- Phases completed: 3/4
 
 | Phase | Plan | Duration | Tasks | Files |
 |-------|------|----------|-------|-------|
@@ -35,6 +35,7 @@ Progress: [█████░░░░░] 50% (2/4 phases)
 | 34    | 01   | 8min     | 2     | 5     |
 | 34    | 02   | 11min    | 2     | 9     |
 | 35    | 01   | 12min    | 2     | 13    |
+| 35    | 02   | 17min    | 2     | 8     |
 
 ## Accumulated Context
 
@@ -58,6 +59,9 @@ Full decision history archived in milestones/v1.0-ROADMAP.md through milestones/
 - [35-01] List builder pattern: pre-allocated capacity with in-place push for O(N) comprehension
 - [35-01] Comprehension semantics: for-in returns List<body_ty> instead of Unit
 - [35-01] ForInRange ty changed from Unit to Ptr to match comprehension return semantics
+- [35-02] Result alloca pattern: list builder pointer in alloca for break returning partial list
+- [35-02] convert_from_list_element as inverse of convert_to_list_element for typed extraction
+- [35-02] Unit values stored as i64(0) in list elements for correct comprehension over Unit-returning bodies
 
 ### Research Notes
 
@@ -79,6 +83,6 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-09
-Stopped at: Completed 35-01-PLAN.md
+Stopped at: Completed 35-02-PLAN.md -- Phase 35 complete
 Resume file: None
-Next action: Execute 35-02-PLAN.md (codegen for collection for-in)
+Next action: Execute phase 36 (next in v1.7 milestone)
