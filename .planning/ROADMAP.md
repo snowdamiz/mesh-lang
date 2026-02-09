@@ -9,7 +9,7 @@
 - [x] **v1.4 Compiler Polish** - Phases 23-25 (shipped 2026-02-08)
 - [x] **v1.5 Compiler Correctness** - Phases 26-29 (shipped 2026-02-09)
 - [x] **v1.6 Method Dot-Syntax** - Phases 30-32 (shipped 2026-02-09)
-- [ ] **v1.7 Loops & Iteration** - Phases 33-36 (in progress)
+- [x] **v1.7 Loops & Iteration** - Phases 33-36 (shipped 2026-02-09)
 
 ## Phases
 
@@ -76,7 +76,7 @@ See milestones/v1.6-ROADMAP.md for full phase details.
 - [x] **Phase 33: While Loop + Loop Control Flow** - Establish loop infrastructure with while loops, break/continue, and reduction checks
 - [x] **Phase 34: For-In over Range** - Range iteration with zero-allocation integer arithmetic
 - [x] **Phase 35: For-In over Collections** - List/Map/Set iteration with list builder, expression semantics, and destructuring
-- [ ] **Phase 36: Filter Clause + Integration** - Filter clause (`when`) and comprehensive integration validation
+- [x] **Phase 36: Filter Clause + Integration** - Filter clause (`when`) and comprehensive integration validation
 
 ## Phase Details
 
@@ -134,8 +134,8 @@ Plans:
   4. The formatter and LSP handle all loop syntax forms without errors
 **Plans:** 2 plans
 Plans:
-- [ ] 36-01-PLAN.md -- Filter clause pipeline: parser, AST, typeck, MIR, lowering, codegen, formatter
-- [ ] 36-02-PLAN.md -- E2E tests, parser tests, formatter tests for filter and integration
+- [x] 36-01-PLAN.md -- Filter clause pipeline: parser, AST, typeck, MIR, lowering, codegen, formatter
+- [x] 36-02-PLAN.md -- E2E tests, parser tests, formatter tests for filter and integration
 
 ## Progress
 
@@ -154,6 +154,6 @@ Phases execute in numeric order: 33 -> 34 -> 35 -> 36
 | 33. While Loop + Loop Control Flow | v1.7 | 2/2 | Complete | 2026-02-08 |
 | 34. For-In over Range | v1.7 | 2/2 | Complete | 2026-02-09 |
 | 35. For-In over Collections | v1.7 | 2/2 | Complete | 2026-02-09 |
-| 36. Filter Clause + Integration | v1.7 | 0/TBD | Not started | - |
+| 36. Filter Clause + Integration | v1.7 | 2/2 | Complete | 2026-02-09 |
 
-**Total: 35 phases shipped, 1 phase remaining (v1.7).**
+**Total: 36 phases shipped. v1.7 milestone complete.**
