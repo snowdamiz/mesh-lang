@@ -84,7 +84,7 @@ See milestones/v1.7-ROADMAP.md for full phase details.
 
 - [x] **Phase 37: Module Graph Foundation** - File discovery, module naming, dependency graph with topological sort and cycle detection (completed 2026-02-09)
 - [x] **Phase 38: Multi-File Build Pipeline** - Per-file parsing, snowc build orchestration, backward compatibility (completed 2026-02-09)
-- [ ] **Phase 39: Cross-Module Type Checking** - Import resolution, qualified/selective access, cross-module functions/structs/sum types/traits
+- [x] **Phase 39: Cross-Module Type Checking** - Import resolution, qualified/selective access, cross-module functions/structs/sum types/traits (completed 2026-02-09)
 - [ ] **Phase 40: Visibility Enforcement** - Private-by-default semantics, pub modifier, access control errors
 - [ ] **Phase 41: MIR Merge & Codegen** - Module-qualified name mangling, MIR merge, cross-module generics via monomorphization
 - [ ] **Phase 42: Diagnostics & Integration** - Module-aware error messages, qualified type names in diagnostics, end-to-end validation
@@ -134,9 +134,9 @@ Plans:
 **Plans:** 3 plans
 
 Plans:
-- [ ] 39-01-PLAN.md -- ImportContext/ExportedSymbols types, check_with_imports/collect_exports, error variants, pub accessors
-- [ ] 39-02-PLAN.md -- Import resolution in infer_item, qualified access in infer_field_access, stdlib fallback
-- [ ] 39-03-PLAN.md -- Accumulator-pattern build pipeline, build_import_context, cross-module E2E tests
+- [x] 39-01-PLAN.md -- ImportContext/ExportedSymbols types, check_with_imports/collect_exports, error variants, pub accessors
+- [x] 39-02-PLAN.md -- Import resolution in infer_item, qualified access in infer_field_access, stdlib fallback
+- [x] 39-03-PLAN.md -- Accumulator-pattern build pipeline, build_import_context, cross-module E2E tests
 
 ### Phase 40: Visibility Enforcement
 **Goal**: Items are private by default and only accessible to other modules when marked `pub`
@@ -187,9 +187,9 @@ Phases execute in numeric order: 37 -> 38 -> 39 -> 40 -> 41 -> 42
 | 33-36 | v1.7 | 8/8 | Complete | 2026-02-09 |
 | 37. Module Graph Foundation | v1.8 | 2/2 | Complete | 2026-02-09 |
 | 38. Multi-File Build Pipeline | v1.8 | 2/2 | Complete | 2026-02-09 |
-| 39. Cross-Module Type Checking | v1.8 | 0/3 | Not started | - |
+| 39. Cross-Module Type Checking | v1.8 | 3/3 | Complete | 2026-02-09 |
 | 40. Visibility Enforcement | v1.8 | 0/TBD | Not started | - |
 | 41. MIR Merge & Codegen | v1.8 | 0/TBD | Not started | - |
 | 42. Diagnostics & Integration | v1.8 | 0/TBD | Not started | - |
 
-**Total: 38 phases shipped across 8 milestones. 120 plans completed. 4 phases remaining for v1.8.**
+**Total: 39 phases shipped across 8 milestones. 123 plans completed. 3 phases remaining for v1.8.**
