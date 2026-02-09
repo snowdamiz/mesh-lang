@@ -44,35 +44,35 @@
 
 ## Traceability
 
-| REQ-ID | Phase |
-|--------|-------|
-| INFRA-01 | |
-| INFRA-02 | |
-| INFRA-03 | |
-| INFRA-04 | |
-| INFRA-05 | |
-| IMPORT-01 | |
-| IMPORT-02 | |
-| IMPORT-03 | |
-| IMPORT-04 | |
-| IMPORT-05 | |
-| IMPORT-06 | |
-| IMPORT-07 | |
-| XMOD-01 | |
-| XMOD-02 | |
-| XMOD-03 | |
-| XMOD-04 | |
-| XMOD-05 | |
-| XMOD-06 | |
-| XMOD-07 | |
-| VIS-01 | |
-| VIS-02 | |
-| VIS-03 | |
-| VIS-04 | |
-| VIS-05 | |
-| DIAG-01 | |
-| DIAG-02 | |
-| DIAG-03 | |
+| REQ-ID | Phase | Status |
+|--------|-------|--------|
+| INFRA-01 | Phase 37 | Pending |
+| INFRA-02 | Phase 37 | Pending |
+| INFRA-03 | Phase 38 | Pending |
+| INFRA-04 | Phase 38 | Pending |
+| INFRA-05 | Phase 37 | Pending |
+| IMPORT-01 | Phase 39 | Pending |
+| IMPORT-02 | Phase 39 | Pending |
+| IMPORT-03 | Phase 37 | Pending |
+| IMPORT-04 | Phase 37 | Pending |
+| IMPORT-05 | Phase 37 | Pending |
+| IMPORT-06 | Phase 39 | Pending |
+| IMPORT-07 | Phase 39 | Pending |
+| XMOD-01 | Phase 39 | Pending |
+| XMOD-02 | Phase 39 | Pending |
+| XMOD-03 | Phase 39 | Pending |
+| XMOD-04 | Phase 39 | Pending |
+| XMOD-05 | Phase 39 | Pending |
+| XMOD-06 | Phase 41 | Pending |
+| XMOD-07 | Phase 41 | Pending |
+| VIS-01 | Phase 40 | Pending |
+| VIS-02 | Phase 40 | Pending |
+| VIS-03 | Phase 40 | Pending |
+| VIS-04 | Phase 40 | Pending |
+| VIS-05 | Phase 40 | Pending |
+| DIAG-01 | Phase 42 | Pending |
+| DIAG-02 | Phase 42 | Pending |
+| DIAG-03 | Phase 38 | Pending |
 
 ## Future Requirements (Deferred)
 
