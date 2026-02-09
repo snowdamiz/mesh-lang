@@ -1248,6 +1248,11 @@ fn compile_expr_patterns(
             compile_expr_patterns(body, sum_type_defs);
         }
         MirExpr::Break | MirExpr::Continue => {}
+        MirExpr::ForInRange { start, end, body, .. } => {
+            compile_expr_patterns(start, sum_type_defs);
+            compile_expr_patterns(end, sum_type_defs);
+            compile_expr_patterns(body, sum_type_defs);
+        }
     }
 }
 

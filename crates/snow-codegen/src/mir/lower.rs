@@ -8,9 +8,9 @@ use std::collections::{HashMap, HashSet};
 use rowan::TextRange;
 use rustc_hash::FxHashMap;
 use snow_parser::ast::expr::{
-    BinaryExpr, CallExpr, CaseExpr, ClosureExpr, Expr, FieldAccess, IfExpr, LinkExpr, ListLiteral,
-    Literal, MapLiteral, MatchArm, NameRef, PipeExpr, ReceiveExpr, ReturnExpr, SendExpr,
-    SpawnExpr, StringExpr, StructLiteral, TupleExpr, UnaryExpr, WhileExpr,
+    BinaryExpr, CallExpr, CaseExpr, ClosureExpr, Expr, FieldAccess, ForInExpr, IfExpr, LinkExpr,
+    ListLiteral, Literal, MapLiteral, MatchArm, NameRef, PipeExpr, ReceiveExpr, ReturnExpr,
+    SendExpr, SpawnExpr, StringExpr, StructLiteral, TupleExpr, UnaryExpr, WhileExpr,
 };
 use snow_parser::ast::item::{
     ActorDef, Block, FnDef, ImplDef, InterfaceMethod, Item, LetBinding, ServiceDef, SourceFile,
@@ -3094,7 +3094,7 @@ impl<'a> Lowerer<'a> {
             Expr::WhileExpr(w) => self.lower_while_expr(w),
             Expr::BreakExpr(_) => MirExpr::Break,
             Expr::ContinueExpr(_) => MirExpr::Continue,
-            Expr::ForInExpr(_for_in) => MirExpr::Unit,
+            Expr::ForInExpr(for_in) => self.lower_for_in_expr(&for_in),
         }
     }
 
@@ -3967,6 +3967,52 @@ impl<'a> Lowerer<'a> {
 
         MirExpr::While {
             cond: Box::new(cond),
+            body: Box::new(body),
+            ty: MirType::Unit,
+        }
+    }
+
+    // ── For-in expression lowering ──────────────────────────────────
+
+    fn lower_for_in_expr(&mut self, for_in: &ForInExpr) -> MirExpr {
+        // Extract binding name.
+        let var_name = for_in
+            .binding_name()
+            .and_then(|n| n.text())
+            .unwrap_or_else(|| "_".to_string());
+
+        // Extract start and end from the iterable (expected: BinaryExpr with DotDot).
+        let (start, end) = if let Some(iterable) = for_in.iterable() {
+            if let Expr::BinaryExpr(bin) = &iterable {
+                let s = bin
+                    .lhs()
+                    .map(|e| self.lower_expr(&e))
+                    .unwrap_or(MirExpr::IntLit(0, MirType::Int));
+                let e = bin
+                    .rhs()
+                    .map(|e| self.lower_expr(&e))
+                    .unwrap_or(MirExpr::IntLit(0, MirType::Int));
+                (s, e)
+            } else {
+                (MirExpr::IntLit(0, MirType::Int), MirExpr::IntLit(0, MirType::Int))
+            }
+        } else {
+            (MirExpr::IntLit(0, MirType::Int), MirExpr::IntLit(0, MirType::Int))
+        };
+
+        // Lower body with loop variable in scope.
+        self.push_scope();
+        self.insert_var(var_name.clone(), MirType::Int);
+        let body = for_in
+            .body()
+            .map(|b| self.lower_block(&b))
+            .unwrap_or(MirExpr::Unit);
+        self.pop_scope();
+
+        MirExpr::ForInRange {
+            var: var_name,
+            start: Box::new(start),
+            end: Box::new(end),
             body: Box::new(body),
             ty: MirType::Unit,
         }
@@ -7223,6 +7269,14 @@ fn collect_free_vars(
             collect_free_vars(body, params, outer_vars, captures);
         }
         MirExpr::Break | MirExpr::Continue => {}
+        MirExpr::ForInRange { var, start, end, body, .. } => {
+            collect_free_vars(start, params, outer_vars, captures);
+            collect_free_vars(end, params, outer_vars, captures);
+            // The loop variable is locally bound -- exclude it from free vars.
+            let mut inner_params = params.clone();
+            inner_params.insert(var.as_str());
+            collect_free_vars(body, &inner_params, outer_vars, captures);
+        }
     }
 }
 

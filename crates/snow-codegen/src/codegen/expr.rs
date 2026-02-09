@@ -142,6 +142,10 @@ impl<'ctx> CodeGen<'ctx> {
 
             MirExpr::Continue => self.codegen_continue(),
 
+            MirExpr::ForInRange { var, start, end, body, ty } => {
+                self.codegen_for_in_range(var, start, end, body, ty)
+            }
+
             MirExpr::SupervisorStart {
                 name,
                 strategy,
@@ -1714,6 +1718,107 @@ impl<'ctx> CodeGen<'ctx> {
         self.builder.position_at_end(merge_bb);
 
         // While returns Unit
+        Ok(self.context.struct_type(&[], false).const_zero().into())
+    }
+
+    // ── For-in range loop ──────────────────────────────────────────────
+
+    fn codegen_for_in_range(
+        &mut self,
+        var: &str,
+        start_expr: &MirExpr,
+        end_expr: &MirExpr,
+        body_expr: &MirExpr,
+        _ty: &MirType,
+    ) -> Result<BasicValueEnum<'ctx>, String> {
+        let fn_val = self.current_function();
+        let i64_ty = self.context.i64_type();
+
+        // Codegen start and end values.
+        let start_val = self.codegen_expr(start_expr)?.into_int_value();
+        let end_val = self.codegen_expr(end_expr)?.into_int_value();
+
+        // Create alloca for the loop counter.
+        let counter = self.builder.build_alloca(i64_ty, var)
+            .map_err(|e| e.to_string())?;
+        self.builder.build_store(counter, start_val)
+            .map_err(|e| e.to_string())?;
+
+        // Create four basic blocks: header, body, latch, merge.
+        let header_bb = self.context.append_basic_block(fn_val, "forin_header");
+        let body_bb = self.context.append_basic_block(fn_val, "forin_body");
+        let latch_bb = self.context.append_basic_block(fn_val, "forin_latch");
+        let merge_bb = self.context.append_basic_block(fn_val, "forin_merge");
+
+        // Push loop context: continue -> latch, break -> merge.
+        self.loop_stack.push((latch_bb, merge_bb));
+
+        // Branch from current block to header.
+        self.builder.build_unconditional_branch(header_bb)
+            .map_err(|e| e.to_string())?;
+
+        // -- Header block: load counter, compare < end, branch --
+        self.builder.position_at_end(header_bb);
+        let counter_val = self.builder.build_load(i64_ty, counter, "i")
+            .map_err(|e| e.to_string())?
+            .into_int_value();
+        let cmp = self.builder.build_int_compare(
+            IntPredicate::SLT, counter_val, end_val, "forin_cmp",
+        ).map_err(|e| e.to_string())?;
+        self.builder.build_conditional_branch(cmp, body_bb, merge_bb)
+            .map_err(|e| e.to_string())?;
+
+        // -- Body block: bind loop variable, codegen body --
+        self.builder.position_at_end(body_bb);
+
+        // Save previous local binding for the variable name (if any).
+        let old_alloca = self.locals.insert(var.to_string(), counter);
+        let old_type = self.local_types.insert(var.to_string(), MirType::Int);
+
+        // Codegen the body expression.
+        let _body_val = self.codegen_expr(body_expr)?;
+
+        // After body, if block is not terminated, branch to latch.
+        if let Some(bb) = self.builder.get_insert_block() {
+            if bb.get_terminator().is_none() {
+                self.builder.build_unconditional_branch(latch_bb)
+                    .map_err(|e| e.to_string())?;
+            }
+        }
+
+        // -- Latch block: increment counter, reduction check, branch to header --
+        self.builder.position_at_end(latch_bb);
+        let latch_counter = self.builder.build_load(i64_ty, counter, "i_latch")
+            .map_err(|e| e.to_string())?
+            .into_int_value();
+        let incremented = self.builder.build_int_add(
+            latch_counter, i64_ty.const_int(1, false), "i_next",
+        ).map_err(|e| e.to_string())?;
+        self.builder.build_store(counter, incremented)
+            .map_err(|e| e.to_string())?;
+        self.emit_reduction_check();
+        self.builder.build_unconditional_branch(header_bb)
+            .map_err(|e| e.to_string())?;
+
+        // -- Cleanup --
+        self.loop_stack.pop();
+
+        // Restore previous local binding.
+        if let Some(prev) = old_alloca {
+            self.locals.insert(var.to_string(), prev);
+        } else {
+            self.locals.remove(var);
+        }
+        if let Some(prev) = old_type {
+            self.local_types.insert(var.to_string(), prev);
+        } else {
+            self.local_types.remove(var);
+        }
+
+        // Position at merge block.
+        self.builder.position_at_end(merge_bb);
+
+        // For-in returns Unit.
         Ok(self.context.struct_type(&[], false).const_zero().into())
     }
 

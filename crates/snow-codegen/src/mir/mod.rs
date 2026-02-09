@@ -301,6 +301,21 @@ pub enum MirExpr {
     /// Continue: skip to the next iteration of the innermost enclosing loop.
     Continue,
 
+    /// For-in loop over an integer range: `for var in start..end do body end`.
+    /// Desugared to integer counter iteration with no heap allocation.
+    ForInRange {
+        /// Loop variable name.
+        var: String,
+        /// Start value (inclusive).
+        start: Box<MirExpr>,
+        /// End value (exclusive).
+        end: Box<MirExpr>,
+        /// Loop body.
+        body: Box<MirExpr>,
+        /// Result type (Unit for Phase 34).
+        ty: MirType,
+    },
+
     /// Start a supervisor with configured strategy, limits, and child specs.
     SupervisorStart {
         /// Supervisor name (for registration and debugging).
@@ -351,6 +366,7 @@ impl MirExpr {
             MirExpr::While { ty, .. } => ty,
             MirExpr::Break => &MirType::Never,
             MirExpr::Continue => &MirType::Never,
+            MirExpr::ForInRange { ty, .. } => ty,
             MirExpr::SupervisorStart { ty, .. } => ty,
         }
     }

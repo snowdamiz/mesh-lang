@@ -224,6 +224,11 @@ fn collect_function_refs(expr: &MirExpr, refs: &mut Vec<String>) {
             collect_function_refs(body, refs);
         }
         MirExpr::Break | MirExpr::Continue => {}
+        MirExpr::ForInRange { start, end, body, .. } => {
+            collect_function_refs(start, refs);
+            collect_function_refs(end, refs);
+            collect_function_refs(body, refs);
+        }
     }
 }
 
