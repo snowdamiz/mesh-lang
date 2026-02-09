@@ -237,6 +237,7 @@ pub enum TypeError {
         /// The trait names that all provide this method.
         candidate_traits: Vec<String>,
         ty: Ty,
+        span: TextRange,
     },
     /// An unsupported trait name appears in a deriving clause.
     UnsupportedDerive {
@@ -493,6 +494,7 @@ impl fmt::Display for TypeError {
                 method_name,
                 candidate_traits,
                 ty,
+                span: _,
             } => {
                 write!(
                     f,

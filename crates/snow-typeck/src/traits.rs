@@ -283,6 +283,7 @@ impl TraitRegistry {
                 }
             }
         }
+        trait_names.sort();
         trait_names
     }
 
@@ -734,11 +735,9 @@ mod tests {
             methods: display_method_sig(),
         });
 
-        let mut traits = registry.find_method_traits("to_string", &Ty::int());
-        traits.sort(); // HashMap iteration order is nondeterministic
-        assert_eq!(traits.len(), 2);
-        assert!(traits.contains(&"Printable".to_string()));
-        assert!(traits.contains(&"Displayable".to_string()));
+        let traits = registry.find_method_traits("to_string", &Ty::int());
+        // find_method_traits now returns sorted results (deterministic)
+        assert_eq!(traits, vec!["Displayable".to_string(), "Printable".to_string()]);
     }
 
     // ── Unified dispatch path test (18-03) ──────────────────────────

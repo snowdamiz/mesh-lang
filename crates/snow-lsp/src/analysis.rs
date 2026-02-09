@@ -199,7 +199,7 @@ fn type_error_span(error: &TypeError) -> Option<TextRange> {
         TypeError::NonFirstClauseAnnotation { span, .. } => Some(*span),
         TypeError::GuardTypeMismatch { span, .. } => Some(*span),
         TypeError::DuplicateImpl { .. } => None,
-        TypeError::AmbiguousMethod { .. } => None,
+        TypeError::AmbiguousMethod { span, .. } => Some(*span),
         TypeError::UnsupportedDerive { .. } => None,
         TypeError::MissingDerivePrerequisite { .. } => None,
         TypeError::NoSuchMethod { span, .. } => Some(*span),

@@ -4070,6 +4070,7 @@ fn infer_field_access(
                         method_name: field_name.clone(),
                         candidate_traits: matching_traits,
                         ty: resolved_base.clone(),
+                        span: fa.syntax().text_range(),
                     };
                     ctx.errors.push(err.clone());
                     return Err(err);
@@ -4106,6 +4107,7 @@ fn infer_field_access(
                 method_name: field_name.clone(),
                 candidate_traits: matching_traits,
                 ty: resolved_base.clone(),
+                span: fa.syntax().text_range(),
             };
             ctx.errors.push(err.clone());
             return Err(err);

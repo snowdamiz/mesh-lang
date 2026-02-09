@@ -465,6 +465,7 @@ pub fn render_json_diagnostic(
                 | TypeError::UnknownField { span, .. }
                 | TypeError::NoSuchField { span, .. }
                 | TypeError::NoSuchMethod { span, .. }
+                | TypeError::AmbiguousMethod { span, .. }
                 | TypeError::OrPatternBindingMismatch { span, .. }
                 | TypeError::InvalidGuardExpression { span, .. }
                 | TypeError::SendTypeMismatch { span, .. }
@@ -1311,6 +1312,7 @@ pub fn render_diagnostic(
             method_name,
             candidate_traits,
             ty,
+            span,
         } => {
             let msg = format!(
                 "ambiguous method `{}` for type `{}`: candidates from traits [{}]",
@@ -1318,21 +1320,24 @@ pub fn render_diagnostic(
                 ty,
                 candidate_traits.join(", ")
             );
-            let span = clamp(0..source_len.max(1).min(source_len));
+            let range = clamp(text_range_to_range(*span));
 
-            Report::build(ReportKind::Error, span.clone())
+            let suggestions: Vec<String> = candidate_traits
+                .iter()
+                .map(|t| format!("{}.{}(value)", t, method_name))
+                .collect();
+            let help = format!("use qualified syntax: {}", suggestions.join(" or "));
+
+            Report::build(ReportKind::Error, range.clone())
                 .with_code(code)
                 .with_message(&msg)
                 .with_config(config)
                 .with_label(
-                    Label::new(span)
+                    Label::new(range)
                         .with_message(format!("multiple traits provide `{}`", method_name))
                         .with_color(Color::Red),
                 )
-                .with_help(format!(
-                    "use qualified syntax: TraitName.{}(value)",
-                    method_name
-                ))
+                .with_help(help)
                 .finish()
         }
 
