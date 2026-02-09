@@ -59,27 +59,27 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| METH-01 | — | Pending |
-| METH-02 | — | Pending |
-| METH-03 | — | Pending |
-| METH-04 | — | Pending |
-| METH-05 | — | Pending |
-| CHAIN-01 | — | Pending |
-| CHAIN-02 | — | Pending |
-| DIAG-01 | — | Pending |
-| DIAG-02 | — | Pending |
-| DIAG-03 | — | Pending |
-| INTG-01 | — | Pending |
-| INTG-02 | — | Pending |
-| INTG-03 | — | Pending |
-| INTG-04 | — | Pending |
-| INTG-05 | — | Pending |
+| METH-01 | Phase 30 | Pending |
+| METH-02 | Phase 30 | Pending |
+| METH-03 | Phase 30 | Pending |
+| METH-04 | Phase 31 | Pending |
+| METH-05 | Phase 31 | Pending |
+| CHAIN-01 | Phase 31 | Pending |
+| CHAIN-02 | Phase 31 | Pending |
+| DIAG-01 | Phase 30 | Pending |
+| DIAG-02 | Phase 32 | Pending |
+| DIAG-03 | Phase 32 | Pending |
+| INTG-01 | Phase 32 | Pending |
+| INTG-02 | Phase 32 | Pending |
+| INTG-03 | Phase 32 | Pending |
+| INTG-04 | Phase 32 | Pending |
+| INTG-05 | Phase 32 | Pending |
 
 **Coverage:**
 - v1.6 requirements: 15 total
-- Mapped to phases: 0
-- Unmapped: 15 ⚠️
+- Mapped to phases: 15
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-02-08*
-*Last updated: 2026-02-08 after initial definition*
+*Last updated: 2026-02-08 after roadmap creation*
