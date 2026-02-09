@@ -70,6 +70,9 @@ pub fn walk_node(node: &SyntaxNode) -> FormatIR {
         SyntaxKind::SPAWN_EXPR => walk_spawn_send_link(node),
         SyntaxKind::SEND_EXPR => walk_spawn_send_link(node),
         SyntaxKind::LINK_EXPR => walk_spawn_send_link(node),
+        SyntaxKind::WHILE_EXPR => walk_while_expr(node),
+        SyntaxKind::BREAK_EXPR => walk_break_expr(node),
+        SyntaxKind::CONTINUE_EXPR => walk_continue_expr(node),
         SyntaxKind::SELF_EXPR => walk_self_expr(node),
         SyntaxKind::CALL_HANDLER => walk_call_handler(node),
         SyntaxKind::CAST_HANDLER => walk_cast_handler(node),
@@ -394,6 +397,59 @@ fn walk_else_branch(node: &SyntaxNode) -> FormatIR {
     }
 
     ir::concat(parts)
+}
+
+// ── While expression ──────────────────────────────────────────────────
+
+fn walk_while_expr(node: &SyntaxNode) -> FormatIR {
+    let mut parts = Vec::new();
+
+    for child in node.children_with_tokens() {
+        match child {
+            NodeOrToken::Token(tok) => {
+                match tok.kind() {
+                    SyntaxKind::WHILE_KW => {
+                        parts.push(ir::text("while"));
+                        parts.push(sp());
+                    }
+                    SyntaxKind::DO_KW => {
+                        parts.push(sp());
+                        parts.push(ir::text("do"));
+                    }
+                    SyntaxKind::END_KW => {
+                        parts.push(ir::hardline());
+                        parts.push(ir::text("end"));
+                    }
+                    SyntaxKind::NEWLINE => {}
+                    _ => {
+                        add_token_with_context(&tok, &mut parts);
+                    }
+                }
+            }
+            NodeOrToken::Node(n) => {
+                match n.kind() {
+                    SyntaxKind::BLOCK => {
+                        let body = walk_block_body(&n);
+                        parts.push(ir::indent(ir::concat(vec![ir::hardline(), body])));
+                    }
+                    _ => {
+                        // Condition expression.
+                        parts.push(walk_node(&n));
+                    }
+                }
+            }
+        }
+    }
+
+    ir::concat(parts)
+}
+
+fn walk_break_expr(_node: &SyntaxNode) -> FormatIR {
+    ir::text("break")
+}
+
+fn walk_continue_expr(_node: &SyntaxNode) -> FormatIR {
+    ir::text("continue")
 }
 
 // ── Case/match expression ────────────────────────────────────────────

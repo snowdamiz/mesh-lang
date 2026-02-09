@@ -136,6 +136,12 @@ impl<'ctx> CodeGen<'ctx> {
 
             MirExpr::ListLit { elements, .. } => self.codegen_list_lit(elements),
 
+            MirExpr::While { cond, body, ty } => self.codegen_while(cond, body, ty),
+
+            MirExpr::Break => self.codegen_break(),
+
+            MirExpr::Continue => self.codegen_continue(),
+
             MirExpr::SupervisorStart {
                 name,
                 strategy,
@@ -982,6 +988,13 @@ impl<'ctx> CodeGen<'ctx> {
 
         let mut result = self.context.struct_type(&[], false).const_zero().into();
         for expr in exprs {
+            // If the current block is already terminated (e.g., by break/continue/return),
+            // skip remaining expressions -- they are unreachable.
+            if let Some(bb) = self.builder.get_insert_block() {
+                if bb.get_terminator().is_some() {
+                    break;
+                }
+            }
             result = self.codegen_expr(expr)?;
         }
         Ok(result)
@@ -1645,6 +1658,94 @@ impl<'ctx> CodeGen<'ctx> {
             .map_err(|e| e.to_string())?;
 
         // Link returns Unit.
+        Ok(self.context.struct_type(&[], false).const_zero().into())
+    }
+
+    // ── While loop ────────────────────────────────────────────────────
+
+    fn codegen_while(
+        &mut self,
+        cond: &MirExpr,
+        body: &MirExpr,
+        _ty: &MirType,
+    ) -> Result<BasicValueEnum<'ctx>, String> {
+        let fn_val = self.current_function();
+
+        // Create basic blocks: cond_check, body, merge
+        let cond_bb = self.context.append_basic_block(fn_val, "while_cond");
+        let body_bb = self.context.append_basic_block(fn_val, "while_body");
+        let merge_bb = self.context.append_basic_block(fn_val, "while_merge");
+
+        // Push loop context for break/continue
+        self.loop_stack.push((cond_bb, merge_bb));
+
+        // Branch from current block to cond_check
+        self.builder
+            .build_unconditional_branch(cond_bb)
+            .map_err(|e| e.to_string())?;
+
+        // -- Condition check block --
+        self.builder.position_at_end(cond_bb);
+        let cond_val = self.codegen_expr(cond)?.into_int_value();
+        self.builder
+            .build_conditional_branch(cond_val, body_bb, merge_bb)
+            .map_err(|e| e.to_string())?;
+
+        // -- Body block --
+        self.builder.position_at_end(body_bb);
+        let _body_val = self.codegen_expr(body)?;
+
+        // After body codegen, if block is NOT terminated (break/continue may have terminated it),
+        // emit reduction check and branch back to cond_check (the back-edge).
+        if let Some(bb) = self.builder.get_insert_block() {
+            if bb.get_terminator().is_none() {
+                self.emit_reduction_check();
+                self.builder
+                    .build_unconditional_branch(cond_bb)
+                    .map_err(|e| e.to_string())?;
+            }
+        }
+
+        // Pop loop context
+        self.loop_stack.pop();
+
+        // Position at merge block
+        self.builder.position_at_end(merge_bb);
+
+        // While returns Unit
+        Ok(self.context.struct_type(&[], false).const_zero().into())
+    }
+
+    fn codegen_break(&mut self) -> Result<BasicValueEnum<'ctx>, String> {
+        let (_, merge_bb) = self
+            .loop_stack
+            .last()
+            .copied()
+            .ok_or_else(|| "break outside loop".to_string())?;
+
+        self.builder
+            .build_unconditional_branch(merge_bb)
+            .map_err(|e| e.to_string())?;
+
+        // Return a dummy Unit value (unreachable code after break)
+        Ok(self.context.struct_type(&[], false).const_zero().into())
+    }
+
+    fn codegen_continue(&mut self) -> Result<BasicValueEnum<'ctx>, String> {
+        let (cond_bb, _) = self
+            .loop_stack
+            .last()
+            .copied()
+            .ok_or_else(|| "continue outside loop".to_string())?;
+
+        // Continue is also a back-edge -- emit reduction check
+        self.emit_reduction_check();
+
+        self.builder
+            .build_unconditional_branch(cond_bb)
+            .map_err(|e| e.to_string())?;
+
+        // Return a dummy Unit value (unreachable code after continue)
         Ok(self.context.struct_type(&[], false).const_zero().into())
     }
 

@@ -1242,6 +1242,12 @@ fn compile_expr_patterns(
         }
         // Supervisor start -- no sub-expressions to recurse into.
         MirExpr::SupervisorStart { .. } => {}
+        // Loop primitives
+        MirExpr::While { cond, body, .. } => {
+            compile_expr_patterns(cond, sum_type_defs);
+            compile_expr_patterns(body, sum_type_defs);
+        }
+        MirExpr::Break | MirExpr::Continue => {}
     }
 }
 

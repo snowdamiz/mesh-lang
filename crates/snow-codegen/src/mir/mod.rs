@@ -288,6 +288,19 @@ pub enum MirExpr {
         ty: MirType,
     },
 
+    // ── Loop primitives ──────────────────────────────────────────────
+
+    /// While loop: evaluates condition, if true executes body and repeats. Returns Unit.
+    While {
+        cond: Box<MirExpr>,
+        body: Box<MirExpr>,
+        ty: MirType, // Always MirType::Unit
+    },
+    /// Break: exit the innermost enclosing loop.
+    Break,
+    /// Continue: skip to the next iteration of the innermost enclosing loop.
+    Continue,
+
     /// Start a supervisor with configured strategy, limits, and child specs.
     SupervisorStart {
         /// Supervisor name (for registration and debugging).
@@ -335,6 +348,9 @@ impl MirExpr {
             MirExpr::ActorSelf { ty } => ty,
             MirExpr::ActorLink { ty, .. } => ty,
             MirExpr::ListLit { ty, .. } => ty,
+            MirExpr::While { ty, .. } => ty,
+            MirExpr::Break => &MirType::Never,
+            MirExpr::Continue => &MirType::Never,
             MirExpr::SupervisorStart { ty, .. } => ty,
         }
     }

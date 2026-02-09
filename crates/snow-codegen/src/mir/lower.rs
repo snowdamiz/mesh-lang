@@ -10,7 +10,7 @@ use rustc_hash::FxHashMap;
 use snow_parser::ast::expr::{
     BinaryExpr, CallExpr, CaseExpr, ClosureExpr, Expr, FieldAccess, IfExpr, LinkExpr, ListLiteral,
     Literal, MapLiteral, MatchArm, NameRef, PipeExpr, ReceiveExpr, ReturnExpr, SendExpr,
-    SpawnExpr, StringExpr, StructLiteral, TupleExpr, UnaryExpr,
+    SpawnExpr, StringExpr, StructLiteral, TupleExpr, UnaryExpr, WhileExpr,
 };
 use snow_parser::ast::item::{
     ActorDef, Block, FnDef, ImplDef, InterfaceMethod, Item, LetBinding, ServiceDef, SourceFile,
@@ -3090,8 +3090,10 @@ impl<'a> Lowerer<'a> {
                 MirExpr::ActorSelf { ty }
             }
             Expr::LinkExpr(link) => self.lower_link_expr(&link),
-            // Loop expressions -- codegen support added in Plan 02.
-            Expr::WhileExpr(_) | Expr::BreakExpr(_) | Expr::ContinueExpr(_) => MirExpr::Unit,
+            // Loop expressions
+            Expr::WhileExpr(w) => self.lower_while_expr(w),
+            Expr::BreakExpr(_) => MirExpr::Break,
+            Expr::ContinueExpr(_) => MirExpr::Continue,
         }
     }
 
@@ -3946,6 +3948,26 @@ impl<'a> Lowerer<'a> {
             then_body: Box::new(then_body),
             else_body: Box::new(else_body),
             ty,
+        }
+    }
+
+    // ── While expression lowering ───────────────────────────────────
+
+    fn lower_while_expr(&mut self, w: &WhileExpr) -> MirExpr {
+        let cond = w
+            .condition()
+            .map(|e| self.lower_expr(&e))
+            .unwrap_or(MirExpr::BoolLit(true, MirType::Bool));
+
+        let body = w
+            .body()
+            .map(|b| self.lower_block(&b))
+            .unwrap_or(MirExpr::Unit);
+
+        MirExpr::While {
+            cond: Box::new(cond),
+            body: Box::new(body),
+            ty: MirType::Unit,
         }
     }
 
@@ -7194,6 +7216,12 @@ fn collect_free_vars(
         }
         // Supervisor start has no free variable captures (all config is static).
         MirExpr::SupervisorStart { .. } => {}
+        // Loop primitives
+        MirExpr::While { cond, body, .. } => {
+            collect_free_vars(cond, params, outer_vars, captures);
+            collect_free_vars(body, params, outer_vars, captures);
+        }
+        MirExpr::Break | MirExpr::Continue => {}
     }
 }
 
@@ -9937,6 +9965,57 @@ end
             find_call_to(&main_fn.body, "snow_string_length"),
             "Expected call to snow_string_length in main body (module-qualified preserved), got: {:?}",
             main_fn.body
+        );
+    }
+
+    #[test]
+    fn lower_while_expr() {
+        let mir = lower("fn test() do while true do 1 end end");
+        let func = mir.functions.iter().find(|f| f.name == "test");
+        assert!(func.is_some(), "Expected 'test' function in MIR");
+        assert!(
+            matches!(func.unwrap().body, MirExpr::While { .. }),
+            "Expected MirExpr::While, got: {:?}",
+            func.unwrap().body
+        );
+    }
+
+    #[test]
+    fn lower_break_expr() {
+        let mir = lower("fn test() do while true do break end end");
+        let func = mir.functions.iter().find(|f| f.name == "test");
+        assert!(func.is_some());
+        // The while body should contain a Break
+        fn has_break(expr: &MirExpr) -> bool {
+            match expr {
+                MirExpr::Break => true,
+                MirExpr::While { body, .. } => has_break(body),
+                MirExpr::Block(exprs, _) => exprs.iter().any(has_break),
+                _ => false,
+            }
+        }
+        assert!(
+            has_break(&func.unwrap().body),
+            "Expected MirExpr::Break in while body"
+        );
+    }
+
+    #[test]
+    fn lower_continue_expr() {
+        let mir = lower("fn test() do while true do continue end end");
+        let func = mir.functions.iter().find(|f| f.name == "test");
+        assert!(func.is_some());
+        fn has_continue(expr: &MirExpr) -> bool {
+            match expr {
+                MirExpr::Continue => true,
+                MirExpr::While { body, .. } => has_continue(body),
+                MirExpr::Block(exprs, _) => exprs.iter().any(has_continue),
+                _ => false,
+            }
+        }
+        assert!(
+            has_continue(&func.unwrap().body),
+            "Expected MirExpr::Continue in while body"
         );
     }
 }

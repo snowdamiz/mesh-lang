@@ -81,6 +81,10 @@ pub struct CodeGen<'ctx> {
     /// MIR struct definitions (for field name -> index lookup).
     pub(crate) mir_struct_defs: FxHashMap<String, Vec<(String, MirType)>>,
 
+    /// Loop context stack for break/continue targets.
+    /// Each entry is (cond_bb, merge_bb) for the innermost enclosing while loop.
+    pub(crate) loop_stack: Vec<(inkwell::basic_block::BasicBlock<'ctx>, inkwell::basic_block::BasicBlock<'ctx>)>,
+
     /// Service dispatch tables.
     /// Maps service loop function name -> (call_handlers, cast_handlers).
     /// Each entry: (type_tag, handler_fn_name, num_args).
@@ -157,6 +161,7 @@ impl<'ctx> CodeGen<'ctx> {
             local_types: FxHashMap::default(),
             mir_functions: Vec::new(),
             mir_struct_defs: FxHashMap::default(),
+            loop_stack: Vec::new(),
             service_dispatch: std::collections::HashMap::new(),
         })
     }

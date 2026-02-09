@@ -218,6 +218,12 @@ fn collect_function_refs(expr: &MirExpr, refs: &mut Vec<String>) {
                 }
             }
         }
+        // Loop primitives
+        MirExpr::While { cond, body, .. } => {
+            collect_function_refs(cond, refs);
+            collect_function_refs(body, refs);
+        }
+        MirExpr::Break | MirExpr::Continue => {}
     }
 }
 
