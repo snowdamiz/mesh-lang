@@ -102,10 +102,10 @@ Plans:
   1. `deriving(Ord)` without `Eq` on a struct emits a compile-time error (not a runtime crash)
   2. The error message explicitly suggests adding `Eq` to the deriving list
   3. `deriving(Eq, Ord)` compiles and works correctly with no regression from v1.4 behavior
-**Plans**: TBD
+**Plans**: 1 plan
 
 Plans:
-- [ ] 28-01: TBD
+- [ ] 28-01-PLAN.md -- MissingDerivePrerequisite error variant + validation checks + e2e tests
 
 #### Phase 29: Qualified Types
 **Goal**: Trait constraints propagate correctly when constrained functions are passed as higher-order arguments
@@ -152,5 +152,5 @@ Plans:
 | 25. Type System Soundness | v1.4 | 1/1 | Complete | 2026-02-08 |
 | 26. Polymorphic List Foundation | v1.5 | 2/2 | Complete | 2026-02-08 |
 | 27. List Trait & Pattern Integration | v1.5 | 2/2 | Complete | 2026-02-09 |
-| 28. Trait Deriving Safety | v1.5 | 0/TBD | Not started | - |
+| 28. Trait Deriving Safety | v1.5 | 0/1 | Not started | - |
 | 29. Qualified Types | v1.5 | 0/TBD | Not started | - |
