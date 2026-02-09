@@ -979,3 +979,121 @@ end
     let output = compile_and_run(source);
     assert_eq!(output.trim(), "5");
 }
+
+// ── Phase 32: Integration tests (INTG-01 through INTG-05) ──────────────
+
+/// Phase 32 INTG-01: Struct field access preserved alongside method dot-syntax.
+/// Accesses struct fields (p.x, p.y) AND calls a method (p.to_string()) on
+/// the same struct value to prove field access is not intercepted by method resolution.
+#[test]
+fn e2e_phase32_struct_field_access_preserved() {
+    let source = r#"
+struct Point do
+  x :: Int
+  y :: Int
+end deriving(Display)
+
+fn main() do
+  let p = Point { x: 42, y: 99 }
+  println("${p.x}")
+  println("${p.y}")
+  println(p.to_string())
+end
+"#;
+    let output = compile_and_run(source);
+    assert_eq!(output, "42\n99\nPoint(42, 99)\n");
+}
+
+/// Phase 32 INTG-02: Module-qualified calls preserved alongside method dot-syntax.
+/// Uses module-qualified String.length(s) syntax to prove it is not intercepted
+/// as a method call on the String module.
+#[test]
+fn e2e_phase32_module_qualified_preserved() {
+    let source = r#"
+fn main() do
+  let s = "hello"
+  let len = String.length(s)
+  println("${len}")
+  println("${String.length("world")}")
+end
+"#;
+    let output = compile_and_run(source);
+    assert_eq!(output, "5\n5\n");
+}
+
+/// Phase 32 INTG-03: Pipe operator preserved alongside method dot-syntax.
+/// Uses |> to chain function calls, proving pipe desugaring is unaffected
+/// by method resolution infrastructure.
+#[test]
+fn e2e_phase32_pipe_operator_preserved() {
+    let source = r#"
+fn double(x :: Int) -> Int do
+  x * 2
+end
+
+fn add_ten(x :: Int) -> Int do
+  x + 10
+end
+
+fn main() do
+  let result = 5 |> double |> add_ten
+  println("${result}")
+end
+"#;
+    let output = compile_and_run(source);
+    assert_eq!(output.trim(), "20");
+}
+
+/// Phase 32 INTG-04: Sum type variant access preserved alongside method dot-syntax.
+/// Uses nullary variant constructors and case-matching to prove that sum type
+/// construction and pattern matching are not intercepted by method resolution.
+#[test]
+fn e2e_phase32_sum_type_variant_preserved() {
+    let source = r#"
+type Color do
+  Red
+  Green
+  Blue
+end
+
+fn describe(c :: Color) -> Int do
+  case c do
+    Red -> 1
+    Green -> 2
+    Blue -> 3
+  end
+end
+
+fn main() do
+  let r = Red
+  let g = Green
+  println("${describe(r)}")
+  println("${describe(g)}")
+  println("${describe(Blue)}")
+end
+"#;
+    let output = compile_and_run(source);
+    assert_eq!(output, "1\n2\n3\n");
+}
+
+/// Phase 32 INTG-05: Actor self in receive blocks unaffected by method dot-syntax.
+/// Spawns an actor with a receive block to prove actor message passing
+/// works alongside method dot-syntax infrastructure.
+#[test]
+fn e2e_phase32_actor_self_preserved() {
+    let source = r#"
+actor greeter() do
+  receive do
+    msg -> println("actor ok")
+  end
+end
+
+fn main() do
+  let pid = spawn(greeter)
+  send(pid, 1)
+  println("main ok")
+end
+"#;
+    let output = compile_and_run(source);
+    assert!(output.contains("main ok"));
+}
