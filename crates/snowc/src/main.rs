@@ -17,6 +17,8 @@
 //! - `--json` - Output diagnostics as JSON (one object per line)
 //! - `--no-color` - Disable colorized output
 
+mod discovery;
+
 use std::path::{Path, PathBuf};
 use std::process;
 
