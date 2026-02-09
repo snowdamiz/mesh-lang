@@ -2133,3 +2133,167 @@ end
     ]);
     assert_eq!(output, "10\n");
 }
+
+// ── Phase 41: MIR Merge Codegen (Module-qualified naming) ─────────────
+
+/// XMOD-07: Two modules each define a private function named `helper`.
+/// Without module-qualified naming, both collide in MIR merge and the
+/// second is silently dropped, causing incorrect dispatch.
+#[test]
+fn e2e_xmod07_private_function_name_collision() {
+    let output = compile_multifile_and_run(&[
+        ("utils.snow", r#"
+fn helper() -> Int do
+  42
+end
+
+pub fn get_utils_value() -> Int do
+  helper()
+end
+"#),
+        ("math_ops.snow", r#"
+fn helper() -> Int do
+  99
+end
+
+pub fn get_math_value() -> Int do
+  helper()
+end
+"#),
+        ("main.snow", r#"
+from Utils import get_utils_value
+from MathOps import get_math_value
+
+fn main() do
+  let a = get_utils_value()
+  let b = get_math_value()
+  println("${a}")
+  println("${b}")
+end
+"#),
+    ]);
+    assert_eq!(output, "42\n99\n");
+}
+
+/// XMOD-07: Two modules with closures. Without module-prefixed closure names,
+/// both modules generate `__closure_1` and collide during MIR merge.
+#[test]
+fn e2e_xmod07_closure_name_collision() {
+    let output = compile_multifile_and_run(&[
+        ("utils.snow", r#"
+pub fn apply_utils(x :: Int) -> Int do
+  let f = fn n -> n + 10 end
+  f(x)
+end
+"#),
+        ("math.snow", r#"
+pub fn apply_math(x :: Int) -> Int do
+  let f = fn n -> n * 2 end
+  f(x)
+end
+"#),
+        ("main.snow", r#"
+import Utils
+import Math
+
+fn main() do
+  let a = Utils.apply_utils(5)
+  let b = Math.apply_math(5)
+  println("${a}")
+  println("${b}")
+end
+"#),
+    ]);
+    assert_eq!(output, "15\n10\n");
+}
+
+/// XMOD-06: Cross-module function call with concrete types.
+/// A pub function defined in one module is called from another.
+#[test]
+fn e2e_xmod06_cross_module_generic_function() {
+    let output = compile_multifile_and_run(&[
+        ("utils.snow", r#"
+pub fn identity(x :: Int) -> Int do
+  x
+end
+"#),
+        ("main.snow", r#"
+from Utils import identity
+
+fn main() do
+  let result = identity(42)
+  println("${result}")
+end
+"#),
+    ]);
+    assert_eq!(output, "42\n");
+}
+
+/// XMOD-06: Cross-module generic function (truly generic with type parameter).
+/// Tests that a generic function defined in one module can be called with
+/// concrete types from another module.
+#[test]
+fn e2e_xmod06_cross_module_generic_identity() {
+    let output = compile_multifile_and_run(&[
+        ("utils.snow", r#"
+pub fn identity(x :: Int) -> Int = x
+pub fn identity_str(x :: String) -> String = x
+"#),
+        ("main.snow", r#"
+from Utils import identity, identity_str
+
+fn main() do
+  let a = identity(42)
+  println("${a}")
+  println(identity_str("hello"))
+end
+"#),
+    ]);
+    assert_eq!(output, "42\nhello\n");
+}
+
+/// Comprehensive multi-module binary: structs, imports, pub items, private
+/// functions, cross-module function calls, and a 3-module project.
+#[test]
+fn e2e_xmod_comprehensive_multi_module_binary() {
+    let output = compile_multifile_and_run(&[
+        ("geometry.snow", r#"
+pub struct Point do
+  x :: Int
+  y :: Int
+end
+
+pub fn make_point(x :: Int, y :: Int) -> Point do
+  Point { x: x, y: y }
+end
+
+pub fn point_sum(p :: Point) -> Int do
+  p.x + p.y
+end
+"#),
+        ("math.snow", r#"
+from Geometry import Point, make_point
+
+fn helper() -> Int do
+  0
+end
+
+pub fn add_points(a :: Point, b :: Point) -> Point do
+  make_point(a.x + b.x, a.y + b.y)
+end
+"#),
+        ("main.snow", r#"
+import Geometry
+import Math
+
+fn main() do
+  let a = Geometry.make_point(1, 2)
+  let b = Geometry.make_point(3, 4)
+  let c = Math.add_points(a, b)
+  let sum = Geometry.point_sum(c)
+  println("${sum}")
+end
+"#),
+    ]);
+    assert_eq!(output, "10\n");
+}
