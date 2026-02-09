@@ -79,7 +79,10 @@ See milestones/v1.5-ROADMAP.md for full phase details.
   2. The receiver (`point`) is automatically passed as the first argument -- `point.to_string()` produces identical results to `to_string(point)`
   3. Method resolution searches all trait impl blocks for the receiver's concrete type and finds the correct method
   4. Calling a nonexistent method on a type produces a clear "no method `x` on type `Y`" error, not a confusing "no field" error
-**Plans**: TBD
+**Plans:** 2 plans
+Plans:
+- [ ] 30-01-PLAN.md -- Type checker method resolution (NoSuchMethod error + infer_field_access fallback + infer_call detection)
+- [ ] 30-02-PLAN.md -- MIR lowering method call interception + shared dispatch helper + e2e tests
 
 ### Phase 31: Extended Method Support
 **Goal**: Method dot-syntax works with primitive types, generic types, and supports chaining and mixed field/method access
@@ -109,6 +112,6 @@ See milestones/v1.5-ROADMAP.md for full phase details.
 
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
-| 30. Core Method Resolution | v1.6 | 0/TBD | Not started | - |
+| 30. Core Method Resolution | v1.6 | 0/2 | Not started | - |
 | 31. Extended Method Support | v1.6 | 0/TBD | Not started | - |
 | 32. Diagnostics and Integration | v1.6 | 0/TBD | Not started | - |
