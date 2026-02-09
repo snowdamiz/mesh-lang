@@ -116,11 +116,10 @@ Plans:
   1. `apply(show, 42)` works where `show` requires Display and `42` satisfies it
   2. Constraints propagate through nested higher-order calls (e.g., `wrap(apply, show, value)`)
   3. Passing a constrained function to a context that violates the constraint produces a clear type error
-**Plans**: TBD
+**Plans**: 1 plan
 
 Plans:
-- [ ] 29-01: TBD
-- [ ] 29-02: TBD
+- [ ] 29-01-PLAN.md -- Argument-level constraint check in infer_call/infer_pipe + e2e tests
 
 ## Progress
 
@@ -154,4 +153,4 @@ Plans:
 | 26. Polymorphic List Foundation | v1.5 | 2/2 | Complete | 2026-02-08 |
 | 27. List Trait & Pattern Integration | v1.5 | 2/2 | Complete | 2026-02-09 |
 | 28. Trait Deriving Safety | v1.5 | 1/1 | Complete | 2026-02-09 |
-| 29. Qualified Types | v1.5 | 0/TBD | Not started | - |
+| 29. Qualified Types | v1.5 | 0/1 | Not started | - |
