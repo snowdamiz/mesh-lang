@@ -258,6 +258,21 @@ pub enum TypeError {
     ContinueOutsideLoop {
         span: TextRange,
     },
+    /// Module not found during import resolution (IMPORT-06).
+    ImportModuleNotFound {
+        module_name: String,
+        span: TextRange,
+        /// Optional suggestion (closest module name match).
+        suggestion: Option<String>,
+    },
+    /// Name not found in imported module (IMPORT-07).
+    ImportNameNotFound {
+        module_name: String,
+        name: String,
+        span: TextRange,
+        /// Available names in the module (for "did you mean?" suggestions).
+        available: Vec<String>,
+    },
 }
 
 impl fmt::Display for TypeError {
@@ -538,6 +553,20 @@ impl fmt::Display for TypeError {
             }
             TypeError::ContinueOutsideLoop { .. } => {
                 write!(f, "`continue` outside of loop")
+            }
+            TypeError::ImportModuleNotFound { module_name, suggestion, .. } => {
+                if let Some(sug) = suggestion {
+                    write!(f, "module `{}` not found; did you mean `{}`?", module_name, sug)
+                } else {
+                    write!(f, "module `{}` not found", module_name)
+                }
+            }
+            TypeError::ImportNameNotFound { module_name, name, available, .. } => {
+                if available.is_empty() {
+                    write!(f, "`{}` is not exported by module `{}`", name, module_name)
+                } else {
+                    write!(f, "`{}` is not exported by module `{}`; available: {}", name, module_name, available.join(", "))
+                }
             }
         }
     }

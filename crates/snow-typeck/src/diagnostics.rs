@@ -123,6 +123,8 @@ fn error_code(err: &TypeError) -> &'static str {
         TypeError::MissingDerivePrerequisite { .. } => "E0029",
         TypeError::BreakOutsideLoop { .. } => "E0032",
         TypeError::ContinueOutsideLoop { .. } => "E0033",
+        TypeError::ImportModuleNotFound { .. } => "E0031",
+        TypeError::ImportNameNotFound { .. } => "E0034",
     }
 }
 
@@ -479,7 +481,9 @@ pub fn render_json_diagnostic(
                 | TypeError::InvalidRestartType { span, .. }
                 | TypeError::InvalidShutdownValue { span, .. }
                 | TypeError::BreakOutsideLoop { span }
-                | TypeError::ContinueOutsideLoop { span } => {
+                | TypeError::ContinueOutsideLoop { span }
+                | TypeError::ImportModuleNotFound { span, .. }
+                | TypeError::ImportNameNotFound { span, .. } => {
                     let range = text_range_to_range(*span);
                     spans.push(JsonSpan {
                         start: range.start,
@@ -1430,6 +1434,48 @@ pub fn render_diagnostic(
                 )
                 .with_help("move this `continue` inside a loop body")
                 .finish()
+        }
+
+        TypeError::ImportModuleNotFound { module_name, span, suggestion } => {
+            let msg = "module not found";
+            let range = clamp(text_range_to_range(*span));
+
+            let mut builder = Report::build(ReportKind::Error, range.clone())
+                .with_code(code)
+                .with_message(msg)
+                .with_config(config)
+                .with_label(
+                    Label::new(range)
+                        .with_message(format!("module `{}` not found", module_name))
+                        .with_color(Color::Red),
+                );
+
+            if let Some(sug) = suggestion {
+                builder.set_note(format!("did you mean `{}`?", sug));
+            }
+
+            builder.finish()
+        }
+
+        TypeError::ImportNameNotFound { module_name, name, span, available } => {
+            let msg = "name not found in module";
+            let range = clamp(text_range_to_range(*span));
+
+            let mut builder = Report::build(ReportKind::Error, range.clone())
+                .with_code(code)
+                .with_message(msg)
+                .with_config(config)
+                .with_label(
+                    Label::new(range)
+                        .with_message(format!("`{}` is not exported by module `{}`", name, module_name))
+                        .with_color(Color::Red),
+                );
+
+            if !available.is_empty() {
+                builder.set_note(format!("available exports: {}", available.join(", ")));
+            }
+
+            builder.finish()
         }
     };
 
