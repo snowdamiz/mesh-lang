@@ -5,22 +5,22 @@
 See: .planning/PROJECT.md (updated 2026-02-09)
 
 **Core value:** Expressive, readable concurrency -- writing concurrent programs should feel as natural as sequential code, with supervision and fault tolerance built in.
-**Current focus:** v1.8 Module System -- Phase 40 (Visibility Enforcement)
+**Current focus:** v1.8 Module System -- Phase 41 (MIR Merge Codegen) -- COMPLETE
 
 ## Current Position
 
-Phase: 40 of 42 (Visibility Enforcement) -- COMPLETE
-Plan: 2 of 2 in current phase (40-02 complete)
-Status: Phase 40 Complete
-Last activity: 2026-02-09 -- Completed 40-02 (visibility enforcement E2E tests)
+Phase: 41 of 42 (MIR Merge Codegen) -- COMPLETE
+Plan: 1 of 1 in current phase (41-01 complete)
+Status: Phase 41 Complete
+Last activity: 2026-02-09 -- Completed 41-01 (module-qualified name mangling + E2E tests)
 
-Progress: [|||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||] 99% (126/~127 plans est.)
+Progress: [||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||] 100% (127/~127 plans est.)
 
 ## Performance Metrics
 
 **All-time Totals:**
-- Plans completed: 126
-- Phases completed: 40
+- Plans completed: 127
+- Phases completed: 41
 - Milestones shipped: 8 (v1.0-v1.7)
 - Lines of Rust: 70,501
 - Timeline: 5 days (2026-02-05 -> 2026-02-09)
@@ -55,6 +55,9 @@ Recent for v1.8:
 - User modules checked before stdlib in both import handling and field access resolution
 - Trait impls remain unconditionally exported (XMOD-05) while trait defs are gated by pub visibility
 - PrivateItem error only for selective imports (from-import) -- qualified access to private items produces natural unbound/no-such-field errors
+- qualify_name method with prefix checks for builtins, trait impls, pub fns, and main -- prevents incorrect prefixing
+- user_fn_defs set tracks FnDef items separately from variant constructors for call-site qualification
+- Module-qualified naming: ModuleName__private_fn using double-underscore separator at MIR level
 
 ### Research Notes
 
@@ -75,6 +78,6 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-09
-Stopped at: Completed 40-02-PLAN.md (Phase 40 complete)
+Stopped at: Completed 41-01-PLAN.md (Phase 41 complete)
 Resume file: None
-Next action: Begin Phase 41
+Next action: Phase 41 complete -- v1.8 Module System milestone complete
