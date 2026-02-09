@@ -131,7 +131,12 @@ Plans:
   3. A struct defined in module A can be constructed and field-accessed in module B after import
   4. A sum type defined in module A can be pattern-matched with exhaustiveness checking in module B after import
   5. Trait impls defined in any module are visible across all modules without explicit import
-**Plans**: TBD
+**Plans:** 3 plans
+
+Plans:
+- [ ] 39-01-PLAN.md -- ImportContext/ExportedSymbols types, check_with_imports/collect_exports, error variants, pub accessors
+- [ ] 39-02-PLAN.md -- Import resolution in infer_item, qualified access in infer_field_access, stdlib fallback
+- [ ] 39-03-PLAN.md -- Accumulator-pattern build pipeline, build_import_context, cross-module E2E tests
 
 ### Phase 40: Visibility Enforcement
 **Goal**: Items are private by default and only accessible to other modules when marked `pub`
@@ -182,7 +187,7 @@ Phases execute in numeric order: 37 -> 38 -> 39 -> 40 -> 41 -> 42
 | 33-36 | v1.7 | 8/8 | Complete | 2026-02-09 |
 | 37. Module Graph Foundation | v1.8 | 2/2 | Complete | 2026-02-09 |
 | 38. Multi-File Build Pipeline | v1.8 | 2/2 | Complete | 2026-02-09 |
-| 39. Cross-Module Type Checking | v1.8 | 0/TBD | Not started | - |
+| 39. Cross-Module Type Checking | v1.8 | 0/3 | Not started | - |
 | 40. Visibility Enforcement | v1.8 | 0/TBD | Not started | - |
 | 41. MIR Merge & Codegen | v1.8 | 0/TBD | Not started | - |
 | 42. Diagnostics & Integration | v1.8 | 0/TBD | Not started | - |
