@@ -10,16 +10,16 @@ See: .planning/PROJECT.md (updated 2026-02-09)
 ## Current Position
 
 Phase: 39 of 42 (Cross-Module Type Checking)
-Plan: 1 of 3 in current phase (39-01 complete)
+Plan: 2 of 3 in current phase (39-02 complete)
 Status: In Progress
-Last activity: 2026-02-09 -- Completed 39-01 (cross-module type checking foundation types and entry points)
+Last activity: 2026-02-09 -- Completed 39-02 (cross-module import resolution in inference engine)
 
-Progress: [||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||      ] 95% (121/~127 plans est.)
+Progress: [||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||      ] 96% (122/~127 plans est.)
 
 ## Performance Metrics
 
 **All-time Totals:**
-- Plans completed: 121
+- Plans completed: 122
 - Phases completed: 38
 - Milestones shipped: 8 (v1.0-v1.7)
 - Lines of Rust: 70,501
@@ -49,6 +49,8 @@ Recent for v1.8:
 - infer() delegates to infer_with_imports(empty) for backward-compatible code reuse
 - ImportContext pre-seeds TraitRegistry, TypeRegistry, TypeEnv before inference
 - collect_exports extracts impl names from AST PATH nodes matching infer_impl_def pattern
+- qualified_modules stored on InferCtx to avoid parameter threading cascade across 6000+ line file
+- User modules checked before stdlib in both import handling and field access resolution
 
 ### Research Notes
 
@@ -69,6 +71,6 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-09
-Stopped at: Completed 39-01-PLAN.md
+Stopped at: Completed 39-02-PLAN.md
 Resume file: None
-Next action: Execute 39-02-PLAN.md (cross-module import resolution)
+Next action: Execute 39-03-PLAN.md (cross-module type checking E2E integration tests)
