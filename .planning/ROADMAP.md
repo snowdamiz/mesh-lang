@@ -162,7 +162,10 @@ Plans:
   1. Generic functions and types used across module boundaries are monomorphized correctly (e.g., module A defines `identity<T>`, module B calls `identity(42)`)
   2. Two modules each defining a private function named `helper` compile without name collision
   3. A multi-module project with imports, pub items, generics, and traits produces a working native binary
-**Plans**: TBD
+**Plans:** 1 plan
+
+Plans:
+- [ ] 41-01-PLAN.md -- Module-qualified private name mangling, cross-module generics E2E tests
 
 ### Phase 42: Diagnostics & Integration
 **Goal**: Error messages for multi-module projects include module context, and the full module system is validated end-to-end
@@ -193,7 +196,7 @@ Phases execute in numeric order: 37 -> 38 -> 39 -> 40 -> 41 -> 42
 | 38. Multi-File Build Pipeline | v1.8 | 2/2 | Complete | 2026-02-09 |
 | 39. Cross-Module Type Checking | v1.8 | 3/3 | Complete | 2026-02-09 |
 | 40. Visibility Enforcement | v1.8 | 2/2 | Complete | 2026-02-09 |
-| 41. MIR Merge & Codegen | v1.8 | 0/TBD | Not started | - |
+| 41. MIR Merge & Codegen | v1.8 | 0/1 | Not started | - |
 | 42. Diagnostics & Integration | v1.8 | 0/TBD | Not started | - |
 
-**Total: 40 phases shipped across 8 milestones. 125 plans completed. 2 phases remaining for v1.8.**
+**Total: 40 phases shipped across 8 milestones. 126 plans completed. 2 phases remaining for v1.8.**
