@@ -2,12 +2,13 @@
 //!
 //! Parses patterns used in match arms, let bindings, and destructuring.
 //! Patterns include: wildcard (`_`), identifier, literal, tuple, struct,
-//! constructor, or-pattern, and as-pattern.
+//! constructor, or-pattern, as-pattern, and cons-pattern.
 //!
 //! Pattern grammar (precedence, lowest to highest):
 //! ```text
 //! pattern       = as_pattern
-//! as_pattern    = or_pattern ["as" IDENT]
+//! as_pattern    = cons_pattern ["as" IDENT]
+//! cons_pattern  = or_pattern ("::" cons_pattern)?
 //! or_pattern    = primary_pattern ("|" primary_pattern)*
 //! primary_pattern = wildcard | literal | tuple | constructor | ident
 //! ```
@@ -28,7 +29,7 @@ pub(crate) fn parse_pattern(p: &mut Parser) -> Option<MarkClosed> {
 /// If the inner pattern is followed by an IDENT with text "as", wraps
 /// the pattern in an AS_PAT node.
 fn parse_as_pattern(p: &mut Parser) -> Option<MarkClosed> {
-    let inner = parse_or_pattern(p)?;
+    let inner = parse_cons_pattern(p)?;
 
     // Check for `as` binding (contextual keyword -- "as" is just an IDENT)
     if p.at(SyntaxKind::IDENT) && p.current_text() == "as" {
@@ -47,6 +48,24 @@ fn parse_as_pattern(p: &mut Parser) -> Option<MarkClosed> {
         Some(p.close(m, SyntaxKind::AS_PAT))
     } else {
         Some(inner)
+    }
+}
+
+/// Parse a cons pattern: `head :: tail`
+///
+/// Cons patterns destructure lists into head element and tail list.
+/// Right-associative: `a :: b :: c` parses as `a :: (b :: c)`.
+/// Only valid in pattern position -- `::` is not used as an expression operator.
+fn parse_cons_pattern(p: &mut Parser) -> Option<MarkClosed> {
+    let head = parse_or_pattern(p)?;
+
+    if p.at(SyntaxKind::COLON_COLON) {
+        let m = p.open_before(head);
+        p.advance(); // ::
+        parse_cons_pattern(p); // right-associative: tail can be another cons
+        Some(p.close(m, SyntaxKind::CONS_PAT))
+    } else {
+        Some(head)
     }
 }
 

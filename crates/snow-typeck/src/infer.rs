@@ -3385,6 +3385,12 @@ fn ast_pattern_to_abstract(
                 AbsPat::Wildcard
             }
         }
+        Pattern::Cons(_) => {
+            // Cons patterns match non-empty lists. For exhaustiveness checking,
+            // treat as a wildcard (conservative: won't incorrectly claim exhaustive).
+            // Lists are infinite types so cons alone is never exhaustive anyway.
+            AbsPat::Wildcard
+        }
     }
 }
 
@@ -4102,6 +4108,9 @@ fn infer_pattern(
         Pattern::As(as_pat) => {
             infer_as_pattern(ctx, env, as_pat, pat, types, type_registry)
         }
+        Pattern::Cons(cons_pat) => {
+            infer_cons_pattern(ctx, env, cons_pat, pat, types, type_registry)
+        }
     }
 }
 
@@ -4316,6 +4325,14 @@ fn collect_binding_names_recursive(pat: &Pattern, names: &mut Vec<String>, env: 
                 names.push(binding.text().to_string());
             }
         }
+        Pattern::Cons(cons_pat) => {
+            if let Some(head) = cons_pat.head() {
+                collect_binding_names_recursive(&head, names, env);
+            }
+            if let Some(tail) = cons_pat.tail() {
+                collect_binding_names_recursive(&tail, names, env);
+            }
+        }
     }
 }
 
@@ -4346,6 +4363,39 @@ fn infer_as_pattern(
 
     types.insert(pat.syntax().text_range(), inner_ty.clone());
     Ok(inner_ty)
+}
+
+/// Infer a cons pattern: `head :: tail`.
+///
+/// The cons pattern destructures a List<T> into:
+/// - head: T (the first element)
+/// - tail: List<T> (the remaining list)
+fn infer_cons_pattern(
+    ctx: &mut InferCtx,
+    env: &mut TypeEnv,
+    cons_pat: &snow_parser::ast::pat::ConsPat,
+    pat: &Pattern,
+    types: &mut FxHashMap<TextRange, Ty>,
+    type_registry: &TypeRegistry,
+) -> Result<Ty, TypeError> {
+    // The overall type is List<T> where T is a fresh variable.
+    let elem_ty = ctx.fresh_var();
+    let list_ty = Ty::list(elem_ty.clone());
+
+    // Infer head pattern and unify with element type T.
+    if let Some(head_pat) = cons_pat.head() {
+        let head_ty = infer_pattern(ctx, env, &head_pat, types, type_registry)?;
+        ctx.unify(head_ty, elem_ty.clone(), ConstraintOrigin::Builtin)?;
+    }
+
+    // Infer tail pattern and unify with List<T>.
+    if let Some(tail_pat) = cons_pat.tail() {
+        let tail_ty = infer_pattern(ctx, env, &tail_pat, types, type_registry)?;
+        ctx.unify(tail_ty, list_ty.clone(), ConstraintOrigin::Builtin)?;
+    }
+
+    types.insert(pat.syntax().text_range(), list_ty.clone());
+    Ok(list_ty)
 }
 
 

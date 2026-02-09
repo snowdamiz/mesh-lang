@@ -258,6 +258,8 @@ pub enum SyntaxKind {
     OR_PAT,
     /// As-pattern: `Circle(_) as c`
     AS_PAT,
+    /// Cons pattern: `head :: tail` for list destructuring
+    CONS_PAT,
     /// Guard clause: `when r > 0.0`
     GUARD_CLAUSE,
     /// Deriving clause: `deriving(Eq, Display, ...)`
@@ -640,6 +642,7 @@ mod tests {
             SyntaxKind::CONSTRUCTOR_PAT,
             SyntaxKind::OR_PAT,
             SyntaxKind::AS_PAT,
+            SyntaxKind::CONS_PAT,
             SyntaxKind::GUARD_CLAUSE,
             SyntaxKind::DERIVING_CLAUSE,
             SyntaxKind::FN_EXPR_BODY,
@@ -669,8 +672,8 @@ mod tests {
             SyntaxKind::SECONDS_LIMIT,
         ];
         assert!(
-            node_kinds.len() >= 75,
-            "expected at least 75 composite node kinds, got {}",
+            node_kinds.len() >= 76,
+            "expected at least 76 composite node kinds, got {}",
             node_kinds.len()
         );
     }

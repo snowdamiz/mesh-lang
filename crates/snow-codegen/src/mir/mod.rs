@@ -390,6 +390,12 @@ pub enum MirPattern {
     Tuple(Vec<MirPattern>),
     /// Or-pattern: matches if any alternative matches.
     Or(Vec<MirPattern>),
+    /// List cons pattern: matches non-empty list, binding head element and tail list.
+    ListCons {
+        head: Box<MirPattern>,
+        tail: Box<MirPattern>,
+        elem_ty: MirType,
+    },
 }
 
 // ── MirLiteral ────────────────────────────────────────────────────────

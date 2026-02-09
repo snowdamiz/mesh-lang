@@ -113,6 +113,24 @@ impl<'ctx> CodeGen<'ctx> {
                     merge_bb,
                 )
             }
+            DecisionTree::ListDecons {
+                scrutinee_path,
+                elem_ty,
+                non_empty,
+                empty,
+            } => {
+                self.codegen_list_decons(
+                    scrutinee_path,
+                    elem_ty,
+                    non_empty,
+                    empty,
+                    scrutinee_alloca,
+                    scrutinee_ty,
+                    arms,
+                    result_alloca,
+                    merge_bb,
+                )
+            }
             DecisionTree::Fail {
                 message,
                 file,
@@ -460,6 +478,77 @@ impl<'ctx> CodeGen<'ctx> {
         Ok(())
     }
 
+    // ── ListDecons node ──────────────────────────────────────────────
+
+    fn codegen_list_decons(
+        &mut self,
+        scrutinee_path: &AccessPath,
+        _elem_ty: &MirType,
+        non_empty: &DecisionTree,
+        empty: &DecisionTree,
+        scrutinee_alloca: PointerValue<'ctx>,
+        scrutinee_ty: &MirType,
+        arms: &[MirMatchArm],
+        result_alloca: PointerValue<'ctx>,
+        merge_bb: BasicBlock<'ctx>,
+    ) -> Result<(), String> {
+        let fn_val = self.current_function();
+
+        // Load the list pointer at the access path.
+        let list_val = self.navigate_access_path(scrutinee_alloca, scrutinee_ty, scrutinee_path)?;
+        let list_ptr = list_val.into_pointer_value();
+
+        // Call snow_list_length(list) to check if non-empty.
+        let length_fn = get_intrinsic(&self.module, "snow_list_length");
+        let length_result = self
+            .builder
+            .build_call(length_fn, &[list_ptr.into()], "list_len")
+            .map_err(|e| e.to_string())?;
+        let length_val = length_result
+            .try_as_basic_value()
+            .basic()
+            .ok_or("snow_list_length returned void")?
+            .into_int_value();
+
+        // Compare length > 0.
+        let zero = self.context.i64_type().const_int(0, false);
+        let is_non_empty = self
+            .builder
+            .build_int_compare(IntPredicate::SGT, length_val, zero, "is_non_empty")
+            .map_err(|e| e.to_string())?;
+
+        let non_empty_bb = self.context.append_basic_block(fn_val, "list_non_empty");
+        let empty_bb = self.context.append_basic_block(fn_val, "list_empty");
+
+        self.builder
+            .build_conditional_branch(is_non_empty, non_empty_bb, empty_bb)
+            .map_err(|e| e.to_string())?;
+
+        // Non-empty branch: compile the non_empty decision tree.
+        self.builder.position_at_end(non_empty_bb);
+        self.codegen_decision_tree(
+            non_empty,
+            scrutinee_alloca,
+            scrutinee_ty,
+            arms,
+            result_alloca,
+            merge_bb,
+        )?;
+
+        // Empty branch: compile the empty decision tree.
+        self.builder.position_at_end(empty_bb);
+        self.codegen_decision_tree(
+            empty,
+            scrutinee_alloca,
+            scrutinee_ty,
+            arms,
+            result_alloca,
+            merge_bb,
+        )?;
+
+        Ok(())
+    }
+
     // ── Fail node ────────────────────────────────────────────────────
 
     fn codegen_fail(
@@ -589,6 +678,109 @@ impl<'ctx> CodeGen<'ctx> {
                     .map_err(|e| e.to_string())?;
                 Ok(field_ptr)
             }
+
+            AccessPath::ListHead(parent) => {
+                // Load the list pointer, call snow_list_head, store result in an alloca.
+                let parent_val = self.navigate_access_path(scrutinee_alloca, scrutinee_ty, parent)?;
+                let list_ptr = parent_val.into_pointer_value();
+
+                let head_fn = get_intrinsic(&self.module, "snow_list_head");
+                let head_result = self
+                    .builder
+                    .build_call(head_fn, &[list_ptr.into()], "list_head")
+                    .map_err(|e| e.to_string())?;
+                let head_i64 = head_result
+                    .try_as_basic_value()
+                    .basic()
+                    .ok_or("snow_list_head returned void")?
+                    .into_int_value();
+
+                // Convert u64 -> actual element type based on resolve_path_type.
+                let path_ty = self.resolve_path_type(scrutinee_ty, &AccessPath::ListHead(parent.clone()))?;
+                let converted = self.convert_list_elem_from_u64(head_i64, &path_ty)?;
+
+                // Store in an alloca so we can return a pointer.
+                let llvm_ty = self.llvm_type(&path_ty);
+                let alloca = self
+                    .builder
+                    .build_alloca(llvm_ty, "list_head_alloca")
+                    .map_err(|e| e.to_string())?;
+                self.builder
+                    .build_store(alloca, converted)
+                    .map_err(|e| e.to_string())?;
+                Ok(alloca)
+            }
+
+            AccessPath::ListTail(parent) => {
+                // Load the list pointer, call snow_list_tail, store result in an alloca.
+                let parent_val = self.navigate_access_path(scrutinee_alloca, scrutinee_ty, parent)?;
+                let list_ptr = parent_val.into_pointer_value();
+
+                let tail_fn = get_intrinsic(&self.module, "snow_list_tail");
+                let tail_result = self
+                    .builder
+                    .build_call(tail_fn, &[list_ptr.into()], "list_tail")
+                    .map_err(|e| e.to_string())?;
+                let tail_ptr = tail_result
+                    .try_as_basic_value()
+                    .basic()
+                    .ok_or("snow_list_tail returned void")?
+                    .into_pointer_value();
+
+                // Store in an alloca so we can return a pointer.
+                let ptr_ty = self.context.ptr_type(inkwell::AddressSpace::default());
+                let alloca = self
+                    .builder
+                    .build_alloca(ptr_ty, "list_tail_alloca")
+                    .map_err(|e| e.to_string())?;
+                self.builder
+                    .build_store(alloca, tail_ptr)
+                    .map_err(|e| e.to_string())?;
+                Ok(alloca)
+            }
+        }
+    }
+
+    /// Convert a u64 value from snow_list_head to the actual element type.
+    ///
+    /// `snow_list_head` returns u64 (uniform storage). Based on the element type:
+    /// - Int: keep as i64
+    /// - Bool: truncate to i1
+    /// - Float: bitcast to f64
+    /// - String/Ptr: inttoptr
+    fn convert_list_elem_from_u64(
+        &self,
+        val: inkwell::values::IntValue<'ctx>,
+        elem_ty: &MirType,
+    ) -> Result<BasicValueEnum<'ctx>, String> {
+        match elem_ty {
+            MirType::Int => Ok(val.into()),
+            MirType::Bool => {
+                let i1_val = self
+                    .builder
+                    .build_int_truncate(val, self.context.bool_type(), "head_to_bool")
+                    .map_err(|e| e.to_string())?;
+                Ok(i1_val.into())
+            }
+            MirType::Float => {
+                let f64_val = self
+                    .builder
+                    .build_bit_cast(val, self.context.f64_type(), "head_to_f64")
+                    .map_err(|e| e.to_string())?;
+                Ok(f64_val)
+            }
+            MirType::String | MirType::Ptr | MirType::Struct(_) | MirType::SumType(_) | MirType::Pid(_) => {
+                let ptr_ty = self.context.ptr_type(inkwell::AddressSpace::default());
+                let ptr_val = self
+                    .builder
+                    .build_int_to_ptr(val, ptr_ty, "head_to_ptr")
+                    .map_err(|e| e.to_string())?;
+                Ok(ptr_val.into())
+            }
+            _ => {
+                // Fallback: keep as i64
+                Ok(val.into())
+            }
         }
     }
 
@@ -651,6 +843,26 @@ impl<'ctx> CodeGen<'ctx> {
                     }
                     _ => Err(format!("StructField on non-struct type: {:?}", parent_ty)),
                 }
+            }
+
+            AccessPath::ListHead(_parent) => {
+                // The type of list head is determined by the column_types
+                // propagated through the pattern compiler. It's the element type.
+                // Since we can't derive it from scrutinee_ty alone (MirType::Ptr),
+                // we return the column type that was set during specialization.
+                // This is handled by the leaf binding's type, so returning Ptr
+                // is fine as a fallback -- the real type comes from the binding.
+                // For the navigate_access_path_ptr path, we use the elem_ty from
+                // the ListDecons node.
+                //
+                // The actual type will be resolved from the binding's MirType.
+                // For navigate purposes, the alloca is created with the right type.
+                Ok(MirType::Int) // Fallback; real type from column_types in compile.rs
+            }
+
+            AccessPath::ListTail(_parent) => {
+                // Tail of a list is always a list (Ptr at MIR level).
+                Ok(MirType::Ptr)
             }
         }
     }

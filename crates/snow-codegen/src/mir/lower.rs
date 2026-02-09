@@ -3970,6 +3970,36 @@ impl<'a> Lowerer<'a> {
                     MirPattern::Var(binding_name, ty)
                 }
             }
+
+            Pattern::Cons(cons_pat) => {
+                // List cons pattern: head :: tail
+                // Extract the element type from the typeck List<T> type.
+                let _list_ty = self.resolve_range(cons_pat.syntax().text_range());
+                let elem_mir_ty = if let Some(typeck_ty) = self.get_ty(cons_pat.syntax().text_range()).cloned() {
+                    if let Some(elem_ty) = extract_list_elem_type(&typeck_ty) {
+                        resolve_type(&elem_ty, self.registry, false)
+                    } else {
+                        // Fallback: if the list type is not properly resolved,
+                        // use Int as a default element type.
+                        MirType::Int
+                    }
+                } else {
+                    MirType::Int
+                };
+
+                let head_pat = cons_pat.head()
+                    .map(|p| self.lower_pattern(&p))
+                    .unwrap_or(MirPattern::Wildcard);
+                let tail_pat = cons_pat.tail()
+                    .map(|p| self.lower_pattern(&p))
+                    .unwrap_or(MirPattern::Wildcard);
+
+                MirPattern::ListCons {
+                    head: Box::new(head_pat),
+                    tail: Box::new(tail_pat),
+                    elem_ty: elem_mir_ty,
+                }
+            }
         }
     }
 
@@ -6872,6 +6902,10 @@ fn collect_bindings_recursive(pat: &MirPattern, bindings: &mut Vec<(String, MirT
             if let Some(first) = alts.first() {
                 collect_bindings_recursive(first, bindings);
             }
+        }
+        MirPattern::ListCons { head, tail, .. } => {
+            collect_bindings_recursive(head, bindings);
+            collect_bindings_recursive(tail, bindings);
         }
         MirPattern::Wildcard | MirPattern::Literal(_) => {}
     }

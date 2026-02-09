@@ -18,6 +18,7 @@ pub enum Pattern {
     Constructor(ConstructorPat),
     Or(OrPat),
     As(AsPat),
+    Cons(ConsPat),
 }
 
 impl Pattern {
@@ -32,6 +33,7 @@ impl Pattern {
             }
             SyntaxKind::OR_PAT => Some(Pattern::Or(OrPat { syntax: node })),
             SyntaxKind::AS_PAT => Some(Pattern::As(AsPat { syntax: node })),
+            SyntaxKind::CONS_PAT => Some(Pattern::Cons(ConsPat { syntax: node })),
             _ => None,
         }
     }
@@ -46,6 +48,7 @@ impl Pattern {
             Pattern::Constructor(n) => &n.syntax,
             Pattern::Or(n) => &n.syntax,
             Pattern::As(n) => &n.syntax,
+            Pattern::Cons(n) => &n.syntax,
         }
     }
 }
@@ -170,6 +173,26 @@ impl OrPat {
     /// For `Circle(_) | Point` this yields both `Circle(_)` and `Point`.
     pub fn alternatives(&self) -> impl Iterator<Item = Pattern> + '_ {
         self.syntax.children().filter_map(Pattern::cast)
+    }
+}
+
+// ── Cons Pattern ────────────────────────────────────────────────────────
+
+ast_node!(ConsPat, CONS_PAT);
+
+impl ConsPat {
+    /// The head pattern (first element).
+    ///
+    /// For `h :: t`, this is `h`.
+    pub fn head(&self) -> Option<Pattern> {
+        self.syntax.children().find_map(Pattern::cast)
+    }
+
+    /// The tail pattern (remaining list).
+    ///
+    /// For `h :: t`, this is `t`.
+    pub fn tail(&self) -> Option<Pattern> {
+        self.syntax.children().filter_map(Pattern::cast).nth(1)
     }
 }
 

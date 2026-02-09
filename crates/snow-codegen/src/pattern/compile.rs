@@ -56,6 +56,10 @@ enum HeadCtor {
         tag: u8,
         arity: usize,
     },
+    /// A list cons pattern (head :: tail).
+    ListCons {
+        elem_ty: MirType,
+    },
 }
 
 // ── Public API ──────────────────────────────────────────────────────
@@ -194,10 +198,13 @@ fn compile_matrix(
         return compile_matrix(reduced, file, line, sum_type_defs);
     }
 
-    // Step 3: Determine if we need a Switch (constructors) or Tests (literals).
+    // Step 3: Determine if we need a Switch (constructors), ListDecons, or Tests (literals).
+    let has_list_cons = head_ctors.iter().any(|c| matches!(c, HeadCtor::ListCons { .. }));
     let has_constructors = head_ctors.iter().any(|c| matches!(c, HeadCtor::Constructor { .. }));
 
-    if has_constructors {
+    if has_list_cons {
+        compile_list_cons(&matrix, col, &head_ctors, file, line, sum_type_defs)
+    } else if has_constructors {
         compile_constructor_switch(&matrix, col, &head_ctors, file, line, sum_type_defs)
     } else {
         compile_literal_tests(&matrix, col, &head_ctors, file, line, sum_type_defs)
@@ -317,6 +324,7 @@ fn head_ctor_key(p: &MirPattern) -> Option<String> {
         MirPattern::Literal(lit) => Some(format!("lit:{}", literal_key(lit))),
         MirPattern::Constructor { variant, .. } => Some(format!("ctor:{}", variant)),
         MirPattern::Tuple(elems) => Some(format!("tuple:{}", elems.len())),
+        MirPattern::ListCons { .. } => Some("list_cons".to_string()),
         MirPattern::Or(_) => None, // Should be expanded already
         MirPattern::Wildcard | MirPattern::Var(..) => None,
     }
@@ -397,6 +405,15 @@ fn collect_head_constructors(
             MirPattern::Tuple(_) => {
                 // Tuples are deconstructed (expanded) rather than switched on.
                 // We don't add them as head constructors; instead we expand the column.
+            }
+            MirPattern::ListCons { elem_ty, .. } => {
+                let key = "list_cons".to_string();
+                if !seen.contains(&key) {
+                    seen.push(key);
+                    result.push(HeadCtor::ListCons {
+                        elem_ty: elem_ty.clone(),
+                    });
+                }
             }
             _ => {} // Wildcards/variables don't contribute head constructors.
         }
@@ -579,6 +596,149 @@ fn specialize_for_constructor(
         ));
         new_types.push(field_types.get(i).cloned().unwrap_or(MirType::Unit));
     }
+
+    // Remaining columns.
+    for (i, path) in matrix.column_paths.iter().enumerate() {
+        if i != col {
+            new_paths.push(path.clone());
+            new_types.push(matrix.column_types[i].clone());
+        }
+    }
+
+    PatMatrix {
+        rows: new_rows,
+        column_paths: new_paths,
+        column_types: new_types,
+    }
+}
+
+// ── List cons compilation ────────────────────────────────────────────
+
+/// Compile a ListDecons node for list cons patterns.
+///
+/// A `head :: tail` pattern tests if the list is non-empty, then extracts
+/// the head element and tail list as two new columns for further matching.
+fn compile_list_cons(
+    matrix: &PatMatrix,
+    col: usize,
+    head_ctors: &[HeadCtor],
+    file: &str,
+    line: u32,
+    sum_type_defs: &FxHashMap<String, MirSumTypeDef>,
+) -> DecisionTree {
+    let scrutinee_path = matrix.column_paths[col].clone();
+
+    // Extract element type from the ListCons head constructor.
+    let elem_ty = head_ctors
+        .iter()
+        .find_map(|hc| {
+            if let HeadCtor::ListCons { elem_ty } = hc {
+                Some(elem_ty.clone())
+            } else {
+                None
+            }
+        })
+        .unwrap_or(MirType::Int);
+
+    // Specialize: rows with ListCons get head/tail expanded as new columns.
+    let specialized = specialize_for_list_cons(matrix, col, &elem_ty);
+    let non_empty = compile_matrix(specialized, file, line, sum_type_defs);
+
+    // Default: rows with wildcard/variable (matches empty list too).
+    let default_mat = default_matrix(matrix, col);
+    let empty = compile_matrix(default_mat, file, line, sum_type_defs);
+
+    DecisionTree::ListDecons {
+        scrutinee_path,
+        elem_ty,
+        non_empty: Box::new(non_empty),
+        empty: Box::new(empty),
+    }
+}
+
+/// Specialize the matrix for list cons patterns.
+///
+/// Rows with ListCons patterns have head/tail expanded as two new columns.
+/// Rows with wildcards/variables are kept with wildcard sub-patterns for head/tail.
+fn specialize_for_list_cons(
+    matrix: &PatMatrix,
+    col: usize,
+    elem_ty: &MirType,
+) -> PatMatrix {
+    let mut new_rows = Vec::new();
+    let parent_path = &matrix.column_paths[col];
+
+    for row in &matrix.rows {
+        let pat = &row.patterns[col];
+        match pat {
+            MirPattern::ListCons { head, tail, .. } => {
+                // This row has a cons pattern -- expand head and tail as new columns.
+                let mut new_pats = Vec::new();
+                new_pats.push((**head).clone());
+                new_pats.push((**tail).clone());
+
+                // Add remaining columns (before and after the selected one).
+                for (i, p) in row.patterns.iter().enumerate() {
+                    if i != col {
+                        new_pats.push(p.clone());
+                    }
+                }
+
+                new_rows.push(PatRow {
+                    patterns: new_pats,
+                    arm_index: row.arm_index,
+                    guard: row.guard.clone(),
+                    bindings: row.bindings.clone(),
+                });
+            }
+            MirPattern::Wildcard | MirPattern::Var(..) => {
+                // Wildcard/variable rows match any list (including non-empty).
+                let mut new_pats = Vec::new();
+                let mut new_bindings = row.bindings.clone();
+
+                if let MirPattern::Var(name, ty) = pat {
+                    new_bindings.push((
+                        name.clone(),
+                        ty.clone(),
+                        matrix.column_paths[col].clone(),
+                    ));
+                }
+
+                // Add wildcard sub-patterns for head and tail.
+                new_pats.push(MirPattern::Wildcard);
+                new_pats.push(MirPattern::Wildcard);
+
+                // Add remaining columns.
+                for (i, p) in row.patterns.iter().enumerate() {
+                    if i != col {
+                        new_pats.push(p.clone());
+                    }
+                }
+
+                new_rows.push(PatRow {
+                    patterns: new_pats,
+                    arm_index: row.arm_index,
+                    guard: row.guard.clone(),
+                    bindings: new_bindings,
+                });
+            }
+            _ => {
+                // Different pattern kind -- skip.
+            }
+        }
+    }
+
+    // Build new column paths: head path, tail path, then remaining columns.
+    let mut new_paths = Vec::new();
+    let mut new_types = Vec::new();
+
+    // Head element path: special ListHead access from parent.
+    new_paths.push(AccessPath::ListHead(Box::new(parent_path.clone())));
+    new_types.push(elem_ty.clone());
+
+    // Tail list path: special ListTail access from parent.
+    new_paths.push(AccessPath::ListTail(Box::new(parent_path.clone())));
+    new_types.push(MirType::Ptr); // Tail is always a list (Ptr).
 
     // Remaining columns.
     for (i, path) in matrix.column_paths.iter().enumerate() {

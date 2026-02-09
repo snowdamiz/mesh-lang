@@ -29,6 +29,10 @@ pub enum AccessPath {
     VariantField(Box<AccessPath>, String, usize),
     /// Named field of a struct.
     StructField(Box<AccessPath>, String),
+    /// Head element of a list (first element).
+    ListHead(Box<AccessPath>),
+    /// Tail of a list (remaining elements after head).
+    ListTail(Box<AccessPath>),
 }
 
 // ── ConstructorTag ──────────────────────────────────────────────────
@@ -77,6 +81,16 @@ pub enum DecisionTree {
         guard_expr: MirExpr,
         success: Box<DecisionTree>,
         failure: Box<DecisionTree>,
+    },
+    /// List deconstruction: test if list is non-empty, then bind head/tail.
+    ListDecons {
+        scrutinee_path: AccessPath,
+        /// Element type for head value conversion (u64 -> actual type).
+        elem_ty: MirType,
+        /// Tree when list is non-empty (head/tail columns added).
+        non_empty: Box<DecisionTree>,
+        /// Tree when list is empty (fallthrough to next arm).
+        empty: Box<DecisionTree>,
     },
     /// Runtime panic for non-exhaustive match (possible with guards).
     Fail {
