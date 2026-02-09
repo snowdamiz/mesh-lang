@@ -788,6 +788,68 @@ fn register_compiler_known_traits(registry: &mut TraitRegistry) {
         });
     }
 
+    // ── Display/Debug for collection types (Phase 31) ──────────
+    // Register Display for List<T>, Map<K,V>, Set so method dot-syntax
+    // works for to_string() on collections. The actual runtime Display
+    // is handled by wrap_collection_to_string in MIR lowering.
+    {
+        let list_t = Ty::App(Box::new(Ty::Con(TyCon::new("List"))), vec![Ty::Con(TyCon::new("T"))]);
+        let mut methods = FxHashMap::default();
+        methods.insert(
+            "to_string".to_string(),
+            ImplMethodSig {
+                has_self: true,
+                param_count: 0,
+                return_type: Some(Ty::string()),
+            },
+        );
+        let _ = registry.register_impl(ImplDef {
+            trait_name: "Display".to_string(),
+            impl_type: list_t,
+            impl_type_name: "List".to_string(),
+            methods,
+        });
+    }
+    {
+        let map_kv = Ty::App(
+            Box::new(Ty::Con(TyCon::new("Map"))),
+            vec![Ty::Con(TyCon::new("K")), Ty::Con(TyCon::new("V"))],
+        );
+        let mut methods = FxHashMap::default();
+        methods.insert(
+            "to_string".to_string(),
+            ImplMethodSig {
+                has_self: true,
+                param_count: 0,
+                return_type: Some(Ty::string()),
+            },
+        );
+        let _ = registry.register_impl(ImplDef {
+            trait_name: "Display".to_string(),
+            impl_type: map_kv,
+            impl_type_name: "Map".to_string(),
+            methods,
+        });
+    }
+    {
+        let set_t = Ty::Con(TyCon::new("Set"));
+        let mut methods = FxHashMap::default();
+        methods.insert(
+            "to_string".to_string(),
+            ImplMethodSig {
+                has_self: true,
+                param_count: 0,
+                return_type: Some(Ty::string()),
+            },
+        );
+        let _ = registry.register_impl(ImplDef {
+            trait_name: "Display".to_string(),
+            impl_type: set_t,
+            impl_type_name: "Set".to_string(),
+            methods,
+        });
+    }
+
     // ── Debug trait ──────────────────────────────────────────────
     registry.register_trait(TraitDef {
         name: "Debug".to_string(),
