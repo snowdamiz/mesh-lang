@@ -20,9 +20,9 @@ Requirements for resolving all three remaining known limitations.
 
 ### Trait Deriving Safety
 
-- [ ] **DERIVE-01**: deriving(Ord) without Eq emits compile-time error with clear diagnostic
-- [ ] **DERIVE-02**: deriving(Eq, Ord) continues to work correctly (no regression)
-- [ ] **DERIVE-03**: Error message suggests adding Eq to the deriving list
+- [x] **DERIVE-01**: deriving(Ord) without Eq emits compile-time error with clear diagnostic
+- [x] **DERIVE-02**: deriving(Eq, Ord) continues to work correctly (no regression)
+- [x] **DERIVE-03**: Error message suggests adding Eq to the deriving list
 
 ### Qualified Types
 
@@ -57,9 +57,9 @@ None -- this is a focused correctness milestone.
 | LIST-06 | Phase 27 | Complete |
 | LIST-07 | Phase 27 | Complete |
 | LIST-08 | Phase 27 | Complete |
-| DERIVE-01 | Phase 28 | Pending |
-| DERIVE-02 | Phase 28 | Pending |
-| DERIVE-03 | Phase 28 | Pending |
+| DERIVE-01 | Phase 28 | Complete |
+| DERIVE-02 | Phase 28 | Complete |
+| DERIVE-03 | Phase 28 | Complete |
 | QUAL-01 | Phase 29 | Pending |
 | QUAL-02 | Phase 29 | Pending |
 | QUAL-03 | Phase 29 | Pending |
@@ -71,4 +71,4 @@ None -- this is a focused correctness milestone.
 
 ---
 *Requirements defined: 2026-02-08*
-*Last updated: 2026-02-09 after Phase 27 completion*
+*Last updated: 2026-02-09 after Phase 28 completion*
