@@ -3094,6 +3094,7 @@ impl<'a> Lowerer<'a> {
             Expr::WhileExpr(w) => self.lower_while_expr(w),
             Expr::BreakExpr(_) => MirExpr::Break,
             Expr::ContinueExpr(_) => MirExpr::Continue,
+            Expr::ForInExpr(_for_in) => MirExpr::Unit,
         }
     }
 

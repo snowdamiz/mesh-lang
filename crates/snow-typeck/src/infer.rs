@@ -13,7 +13,7 @@
 use rowan::TextRange;
 use snow_parser::ast::expr::{
     BinaryExpr, BreakExpr, CallExpr, CaseExpr, ClosureExpr, ContinueExpr, Expr, FieldAccess,
-    IfExpr, LinkExpr, ListLiteral, Literal, MapLiteral, NameRef, PipeExpr, ReceiveExpr,
+    ForInExpr, IfExpr, LinkExpr, ListLiteral, Literal, MapLiteral, NameRef, PipeExpr, ReceiveExpr,
     ReturnExpr, SendExpr, SelfExpr, SpawnExpr, StructLiteral, TupleExpr, UnaryExpr, WhileExpr,
 };
 use snow_parser::ast::item::{
@@ -2438,6 +2438,9 @@ fn infer_expr(
         Expr::ContinueExpr(c) => {
             infer_continue(ctx, c)?
         }
+        Expr::ForInExpr(for_in) => {
+            infer_for_in(ctx, env, &for_in, types, type_registry, trait_registry, fn_constraints)?
+        }
         // Actor expressions.
         Expr::SpawnExpr(spawn) => {
             infer_spawn(ctx, env, spawn, types, type_registry, trait_registry, fn_constraints)?
@@ -3163,6 +3166,74 @@ fn infer_continue(
         ctx.errors.push(TypeError::ContinueOutsideLoop { span });
     }
     Ok(Ty::Never)
+}
+
+/// Infer the type of a for-in expression: `for i in 0..10 do body end`
+///
+/// For Phase 34, the iterable must be a range (DotDot binary expr) with Int operands.
+/// The loop variable is bound as Int and scoped to the body.
+/// For-in expressions always return Unit.
+fn infer_for_in(
+    ctx: &mut InferCtx,
+    env: &mut TypeEnv,
+    for_in: &ForInExpr,
+    types: &mut FxHashMap<TextRange, Ty>,
+    type_registry: &TypeRegistry,
+    trait_registry: &TraitRegistry,
+    fn_constraints: &FxHashMap<String, FnConstraints>,
+) -> Result<Ty, TypeError> {
+    // Infer the iterable expression.
+    if let Some(iterable) = for_in.iterable() {
+        let _iter_ty = infer_expr(ctx, env, &iterable, types, type_registry, trait_registry, fn_constraints)?;
+
+        // If the iterable is a BinaryExpr with DotDot, unify both operands with Int.
+        if let Expr::BinaryExpr(ref bin) = iterable {
+            let is_dot_dot = bin.op().map(|t| t.kind()) == Some(SyntaxKind::DOT_DOT);
+            if is_dot_dot {
+                let origin = ConstraintOrigin::BinOp {
+                    op_span: bin.syntax().text_range(),
+                };
+                if let Some(lhs) = bin.lhs() {
+                    if let Some(lhs_ty) = types.get(&lhs.syntax().text_range()) {
+                        ctx.unify(lhs_ty.clone(), Ty::int(), origin.clone())?;
+                    }
+                }
+                if let Some(rhs) = bin.rhs() {
+                    if let Some(rhs_ty) = types.get(&rhs.syntax().text_range()) {
+                        ctx.unify(rhs_ty.clone(), Ty::int(), origin)?;
+                    }
+                }
+            }
+        }
+    }
+
+    // Extract binding name.
+    let var_name = for_in
+        .binding_name()
+        .and_then(|n| n.text())
+        .unwrap_or_else(|| "_".to_string());
+
+    // Push a new scope for the loop variable.
+    env.push_scope();
+
+    // Bind loop variable as Int (for range iteration).
+    env.insert(var_name, Scheme::mono(Ty::int()));
+
+    // Enter loop context (enables break/continue validation).
+    ctx.enter_loop();
+
+    // Infer body, discarding result (for-in returns Unit).
+    if let Some(body) = for_in.body() {
+        let _ = infer_block(ctx, env, &body, types, type_registry, trait_registry, fn_constraints)?;
+    }
+
+    ctx.exit_loop();
+
+    // Pop the loop variable scope.
+    env.pop_scope();
+
+    // For-in always returns Unit.
+    Ok(Ty::Tuple(vec![]))
 }
 
 /// Infer the type of a closure expression: `fn (params) -> body end`
