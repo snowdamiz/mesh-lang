@@ -1,157 +1,380 @@
-# Domain Pitfalls: Adding Method Dot-Syntax to Snow
+# Pitfalls Research: Adding Loops & Iteration to Snow
 
-**Domain:** Compiler extension -- method dot-syntax for an existing HM-inferred language
+**Domain:** Compiler feature addition -- for..in loops, while loops, break/continue for a statically-typed, functional-first, LLVM-compiled language with actor concurrency and per-actor GC
 **Researched:** 2026-02-08
-**Confidence:** HIGH (based on direct codebase analysis + established compiler engineering knowledge)
+**Confidence:** HIGH (based on direct Snow codebase analysis, LLVM documentation, Rust RFC precedent, and established compiler engineering knowledge)
 
-**Scope:** This document covers pitfalls specific to adding `expr.method(args)` dot-syntax to the Snow compiler, which already has field access (`point.x`), module-qualified calls (`String.length(s)`), pipe operator (`|>`), sum type variant constructors (`Shape.Circle`), HM type inference, and monomorphization-based static dispatch.
+**Scope:** This document covers pitfalls specific to adding loop constructs (`for..in`, `while`, `break`, `continue`) to the Snow compiler (v1.7). Snow is functional-first with HM type inference, alloca+mem2reg codegen pattern, cooperative scheduling via reduction counting, and mark-sweep GC per actor heap. The existing compiler has 67,546 lines of Rust across 11 crates, 1,255 tests, and zero known correctness issues.
 
 ---
 
 ## Critical Pitfalls
 
-Mistakes that cause rewrites, soundness holes, or regressions in existing features.
+Mistakes that cause rewrites, soundness holes, or silent codegen bugs.
 
 ---
 
-### Pitfall 1: Resolution Order Determines Semantics -- And You Will Get It Wrong First
+### Pitfall 1: Expression-Returning Loops Break HM Unification When `break(value)` Types Disagree
 
-**What goes wrong:** The `infer_field_access` function (infer.rs:3879) currently resolves `expr.ident` in this order:
+**What goes wrong:**
+Snow is expression-based: every construct returns a value. A `for..in` loop that collects results returns `List<T>`. A `while` loop returns the last expression value or Unit. But `break(value)` introduces an ADDITIONAL return path -- the loop's type is now the UNIFICATION of the natural-termination type AND every `break(value)` type. If these disagree, the type checker must either reject the program or pick a common type.
 
-1. Stdlib module lookup (`String.length`)
-2. Service module method (`Counter.get_count`)
-3. Sum type variant constructor (`Shape.Circle`)
-4. Struct field access (`point.x`)
-5. Fallback: fresh type variable (silently succeed with unknown type)
+Concrete example of the failure:
+```
+# What type does this loop have?
+let result = for x in [1, 2, 3] do
+  if x == 2 do
+    break("found")    # break type: String
+  end
+  x * 10              # body type: Int (collected into List<Int>)
+end
+```
 
-Adding method resolution means inserting a new step into this chain. **Every ordering choice creates a different class of bugs:**
+The natural result is `List<Int>` (collected body values), but `break("found")` produces `String`. These are incompatible. Without careful design, the type checker will either: (a) unify `List<Int>` with `String` and produce an inscrutable error like `"cannot unify List<?0> with String"`, or (b) silently pick one and produce incorrect codegen.
 
-- **Methods before fields:** A struct with a field `x` and an impl method `x()` becomes ambiguous. `point.x` could mean field access (no parens) or a method reference (if Snow supports first-class method references). The parser currently produces the same `FIELD_ACCESS` node for both `point.x` and the base of `point.x()`.
+**Why it happens:**
+In classic HM inference, the type of an expression is determined by a single unification. But loops with `break(value)` have two distinct return paths -- the "completed" path and the "early exit" path. Rust solved this for `loop {}` by requiring all `break` expressions to agree, and the loop type IS the break type (natural termination is impossible in `loop {}`). But for `for` and `while`, natural termination is the common case, making the design much harder.
 
-- **Methods after fields:** A struct field named `length` on a type with `impl Display` providing `length()` shadows the method. Users write `s.length` expecting the method but get the field.
+Rust explicitly punted on this: RFC 1624 addresses only `loop {}` break-with-value, and the discussion at rust-lang/rfcs#1767 ("Allow for and while loop to return value") remains unresolved after 8+ years precisely because of this type-unification problem.
 
-- **Methods before variant constructors:** `Shape.Circle` could resolve as a method on the `Shape` type if someone adds an impl method named `Circle`. This would silently change the meaning of existing code.
+**How to avoid:**
+Define clear semantics BEFORE implementing. The recommended design for Snow:
 
-**Why it happens:** The parser produces `FIELD_ACCESS` for `point.x` regardless of whether `x` is a field, a method, a variant, or a module member. All disambiguation is deferred to the type checker, which runs a linear if/else chain. Adding method resolution means choosing where in this chain it goes.
+1. **`for..in` returns `List<T>`** where `T` is the body expression type. This is the "collect" semantic, matching Scala's `for/yield` and Elixir's `for/do` comprehension.
+2. **`break` without a value** exits the loop early. The collected list so far is the result.
+3. **`break(value)` is NOT supported in `for..in`** -- it would require the loop to have EITHER `List<T>` or `value_type` as its type, which breaks simple HM unification. Instead, use `Enum.reduce_while` or pattern-match results.
+4. **`while` returns `Unit`** -- it is inherently side-effecting. `break` without value exits early.
+5. **`while` with `break(value)` is NOT supported in v1.7** -- defer to a future version if needed. OCaml's for/while loops also always return unit.
 
-**Consequences:** Silent semantic changes to existing programs. A program that compiled and did one thing will now do a different thing with no error message.
+This avoids the unification problem entirely. The loop type is always deterministic from the loop form alone.
 
-**Prevention:**
-- The parser already handles `expr.ident` as `FIELD_ACCESS` and `expr.ident(args)` as `CallExpr(FieldAccess, ArgList)`. Method resolution should ONLY trigger on the latter pattern -- when `FieldAccess` is the callee of a `CallExpr`. Pure `FieldAccess` without trailing parens should NEVER resolve to a method. This matches the "impl-method-only" constraint.
-- Within `infer_field_access`, method resolution must come AFTER struct field lookup, not before. Fields are lexically visible; methods require type-directed lookup. Fields win.
-- Within `infer_field_access`, method resolution must come AFTER sum type variant lookup and service module lookup. These are name-based lookups on the base expression's text; methods are type-directed lookups on the base expression's inferred type.
-- Write explicit tests for every ordering conflict: struct field vs method with same name, module member vs method with same name, sum variant vs method with same name.
+**Warning signs:**
+- Type checker tests where a loop with `break(value)` produces a type variable instead of a concrete type.
+- Error messages mentioning `"cannot unify List<T> with U"` where U is the break value type.
+- Any test requiring the user to annotate the loop's result type.
 
-**Detection:** Any test where `point.x` changes meaning after adding an impl method named `x` to the type of `point`.
-
----
-
-### Pitfall 2: Type Variable Leak from Premature Method Resolution
-
-**What goes wrong:** In Snow's HM inference, `infer_field_access` infers the base expression type, then resolves the type to determine what `.ident` means. But if the base type is still a type variable (`Ty::Var`) at resolution time, method lookup cannot proceed because we do not know which type's impl to search.
-
-The current code (infer.rs:3947-3993) calls `ctx.resolve(base_ty)` and then checks if it is `Ty::App` or `Ty::Con` to determine the struct name. If the type is still `Ty::Var`, it falls through to the fallback `Ok(ctx.fresh_var())` at line 3992 -- silently returning a fresh variable instead of reporting an error.
-
-With method resolution added, this fallback becomes dangerous: `x.method()` where `x` has an unresolved type variable will silently produce a fresh variable for the entire call, causing downstream type errors that are impossible to diagnose.
-
-**Why it happens:** HM inference processes expressions left-to-right within the AST. When a method call `x.foo()` appears before `x`'s type is constrained, the base expression type is still `?N`. The `TraitRegistry::resolve_trait_method` requires a concrete type to search impls. Passing `Ty::Var` to it produces no results, even if later unification would have revealed `x : Point`.
-
-**Consequences:**
-- Method calls on variables whose type is inferred later in the expression/block produce incorrect fresh-var types instead of the method's return type.
-- Downstream unification errors blame the wrong expression.
-- The error messages say things like "expected Int, found ?47" which are meaningless to users.
-
-**Prevention:**
-- When the resolved base type is `Ty::Var` and we are attempting method resolution, do NOT fall through to fresh_var. Instead, defer method resolution: create a fresh return-type variable, record a "pending method resolution" constraint, and revisit after more unification has occurred. Alternatively, emit a specific error: "cannot call method `foo` on a value of unknown type -- add a type annotation."
-- In practice, the simpler approach for Snow (which does not have full constraint solving) is: resolve the base type, and if it is still a variable, check if unification has bound it. If not, emit a clear error directing the user to annotate the type.
-- Test: `let x = some_function(); x.method()` where `some_function` returns a generic/polymorphic type.
-
-**Detection:** Any test where method call returns `?N` type variable instead of the method's declared return type.
+**Phase to address:**
+Syntax/AST design and type inference phase. Must be decided during AST design and enforced in `infer_for_expr` / `infer_while_expr`.
 
 ---
 
-### Pitfall 3: Method Call vs. Pipe Operator Semantic Divergence
+### Pitfall 2: LLVM `alloca` Placed Inside Loop Body Instead of Entry Block
 
-**What goes wrong:** Snow already has `|>` (pipe operator). `x |> foo` desugars to `foo(x)`. Method dot-syntax `x.foo()` also desugars to `foo(x)` at the call level. These two features have ALMOST the same semantics but DIFFERENT resolution paths, leading to cases where one works and the other does not, or where they produce different types.
+**What goes wrong:**
+Snow's codegen uses the alloca+mem2reg pattern (visible in `codegen_if` at expr.rs:867-869 and `codegen_let` at expr.rs:925). LLVM's `mem2reg` pass ONLY promotes allocas in the function's entry block. If loop codegen creates allocas inside the loop body (e.g., for the loop variable, the accumulator, or temporary results), these allocas will:
 
-The pipe operator (infer.rs:2817) infers the LHS, infers the RHS callee, prepends LHS type to the arg list, and unifies with a function type. It goes through `infer_expr` for the callee, which resolves names through the normal scope chain.
+1. **Not be promoted to SSA registers** -- every iteration reads/writes through memory instead of registers, severely degrading performance.
+2. **Accumulate stack space** -- each iteration allocates a new stack frame slot that is NOT freed until the function returns. A loop iterating 1 million times will allocate 1 million stack slots, causing stack overflow.
 
-Method dot-syntax, by contrast, must resolve through the `TraitRegistry`, searching impl blocks for the method name on the base type. These are fundamentally different resolution paths.
+This is a well-documented LLVM pitfall. The LLVM Frontend Performance Tips explicitly state: "placing alloca instructions at the beginning of the entry block should be preferred." The MLIR project encountered this exact bug (tensorflow/mlir#210) when lowering memref descriptors inside loops.
 
-**Specific divergence scenarios:**
+**Why it happens:**
+The natural codegen pattern for Snow's `codegen_expr` dispatches recursively. When generating the loop body, the builder is positioned inside the loop's basic block. Any `build_alloca` call within that context places the alloca in the loop body, not the entry block. The existing `codegen_let` and `codegen_if` work correctly because they are not inside loops -- each alloca executes exactly once per function call.
 
-1. **`x |> to_string` works but `x.to_string()` does not:** The pipe version finds `to_string` as a regular function in the env (registered at infer.rs:2139-2141). The method version searches impl blocks. If the method is registered in the env but not properly in the trait registry, pipe works and dot does not.
+**How to avoid:**
+All allocas for loop-related storage must be emitted in the function's entry block BEFORE the loop header. Implement a helper:
 
-2. **`x.length()` works but `x |> length` does not:** The method version finds `length` in the impl block for `x`'s type. The pipe version tries to find a standalone function `length` in scope, which may not exist (methods are not standalone functions).
+```rust
+/// Emit an alloca in the function's entry block (for mem2reg eligibility).
+fn emit_entry_block_alloca(&self, ty: BasicTypeEnum<'ctx>, name: &str) -> PointerValue<'ctx> {
+    let entry_bb = self.current_function().get_first_basic_block().unwrap();
+    let saved_bb = self.builder.get_insert_block();
+    // Position at start of entry block
+    match entry_bb.get_first_instruction() {
+        Some(instr) => self.builder.position_before(&instr),
+        None => self.builder.position_at_end(entry_bb),
+    }
+    let alloca = self.builder.build_alloca(ty, name).unwrap();
+    // Restore builder position
+    if let Some(bb) = saved_bb {
+        self.builder.position_at_end(bb);
+    }
+    alloca
+}
+```
 
-3. **Different type inference behavior:** The pipe infers callee type independently and then unifies. Method resolution resolves the return type by looking up the impl's return type annotation. If the impl's return type uses a type variable while the standalone function uses a concrete type, the results differ.
+The target IR structure:
+```
+entry_bb:
+  %loop_var = alloca i64          ; loop variable
+  %result_list = alloca ptr       ; accumulated result
+  %loop_idx = alloca i64          ; iteration index
+  br label %loop_header
 
-**Why it happens:** The pipe operator was designed for free-standing functions. Methods live in impl blocks. These are separate namespaces with separate resolution rules.
+loop_header:
+  ; condition check
+  br i1 %cond, label %loop_body, label %loop_exit
 
-**Consequences:** Users expect `x.foo(a)` and `x |> foo(a)` to be interchangeable. When they are not, the resulting confusion erodes trust in the type system.
+loop_body:
+  ; use %loop_var, %result_list via load/store ONLY
+  br label %loop_header
 
-**Prevention:**
-- Design decision: are methods also callable via pipe? If `impl Display for Point` defines `to_string(self)`, does `point |> to_string` work? If yes, method registration must also insert the method as a callable function in the env (which is already happening at infer.rs:2139-2141). Verify this path is not broken.
-- Design decision: are free-standing functions also callable via dot? If `fn length(s: String) -> Int` is defined, does `s.length()` work? For "impl-method-only" dot syntax, the answer is NO -- only methods defined in `impl` blocks are callable via dot.
-- Test: for every method callable via dot, verify it is also callable via pipe, and vice versa (or explicitly document the asymmetry).
-- The MIR lowerer already handles pipe desugaring in `lower_pipe_expr` (lower.rs:3658). Method call lowering must produce the same MIR structure (a `MirExpr::Call` with self prepended to args) to ensure codegen consistency.
+loop_exit:
+  %result = load ptr, ptr %result_list
+```
 
-**Detection:** Any test where `x.method()` and `x |> method` produce different types or one errors while the other succeeds.
+**Warning signs:**
+- LLVM IR output shows `alloca` instructions between `br` and `br` inside a loop body block.
+- Programs with large loops crash with stack overflow.
+- Performance regression: loops run 10-100x slower than expected.
+- `opt -mem2reg` does not eliminate loop allocas (verify with `opt -S -mem2reg` on output IR).
+
+**Phase to address:**
+LLVM codegen phase. Must be correct from the first implementation of `codegen_for` and `codegen_while`.
 
 ---
 
-### Pitfall 4: Breaking Codegen -- FieldAccess MIR Node vs. Method Call MIR Node
+### Pitfall 3: Actor Starvation from Tight Loops Without Reduction Checks
 
-**What goes wrong:** The MIR has a `FieldAccess` variant (mir/mod.rs:208) that takes `{ object, field, ty }` and generates LLVM struct GEP instructions (codegen/expr.rs:1096). It also has a `Call` variant for function calls. Currently, `lower_field_access` (lower.rs:3705) always produces `MirExpr::FieldAccess`.
+**What goes wrong:**
+Snow's actor scheduler uses cooperative preemption via `snow_reduction_check()`, which decrements a thread-local counter and yields when it reaches zero (actor/mod.rs:160-191). Currently, reduction checks are inserted AFTER function calls and closure calls (codegen/expr.rs:613, 759, 843). This works because recursive algorithms naturally contain function calls.
 
-When adding method dot-syntax, `expr.method(args)` must NOT lower to `MirExpr::FieldAccess` -- it must lower to `MirExpr::Call` with the method's mangled name and `expr` prepended to the arg list. But the parser produces `CallExpr(FieldAccess(expr, method), ArgList(args))`. The MIR lowerer's `lower_call_expr` calls `self.lower_expr(&callee)` on the callee, which dispatches to `lower_field_access`, which produces a `MirExpr::FieldAccess`. This `FieldAccess` MIR node then appears as the callee of a `Call`, which codegen does not know how to handle -- it tries to do a struct GEP on the "callee" and crashes.
+Loops change this calculus. A tight loop like:
+```
+while x < 1_000_000 do
+  x = x + 1
+end
+```
+contains NO function calls -- only integer comparison and addition. Without a reduction check inside the loop, this actor will monopolize its OS worker thread for the entire loop duration. Other actors on the same thread will be starved. If the loop is infinite (`while true do ... end`), the actor never yields, and the scheduler deadlocks.
 
-**Why it happens:** The existing MIR lowerer was designed when `FieldAccess` always meant struct field access. It does not have a `MethodCall` MIR variant. The call lowering code (lower.rs:3362-3654) does trait method rewriting based on the callee being a `MirExpr::Var` -- but a method call from dot-syntax arrives as `MirExpr::FieldAccess`, not `MirExpr::Var`.
+The BEAM VM (Erlang/Elixir's runtime) solves this by counting "reductions" per opcode. Go solved it in 1.14 by adding compiler-inserted preemption checks in loop back-edges. Snow's `snow_reduction_check()` comment at actor/mod.rs:155 already states it should be inserted "at loop back-edges and function call sites", but back-edge insertion is not yet implemented because loops did not exist until v1.7.
 
-**Consequences:** Compiler crash (LLVM codegen panic) or incorrect code generation. The codegen at expr.rs:1107 explicitly errors on non-struct types: `"Field access on non-struct type"`. A method call on `Int` or `String` would hit this path and crash.
+**Why it happens:**
+The current `emit_reduction_check()` is called explicitly after specific MIR expression forms (Call, ClosureCall). Loop codegen is new code -- if the developer forgets to insert a reduction check on the loop's back-edge (the branch from loop body back to loop header), the loop will never yield.
 
-**Prevention:**
-- The MIR lowerer must intercept the `CallExpr(FieldAccess(...), ArgList(...))` pattern BEFORE calling `lower_field_access` on the callee. In `lower_call_expr`, check if the callee is an `Expr::FieldAccess`. If so, extract the base and method name, resolve the method through the trait registry, produce a `MirExpr::Call` with the mangled function name and self-prepended args. Do NOT call `lower_field_access` for method calls.
-- Alternatively, add a new MIR variant `MirExpr::MethodCall { receiver, method, trait_name, args, ty }` that codegen translates to the mangled call. This is cleaner but requires changes to mir/mod.rs, mono.rs, and codegen/expr.rs.
-- The simpler approach: rewrite to `MirExpr::Call { func: MirExpr::Var(mangled_name, fn_ty), args: [self, ...args], ty }` in the lowerer, reusing the existing trait method dispatch path that already exists for `to_string(42)` style calls (lower.rs:3527-3600).
+**How to avoid:**
+Insert `self.emit_reduction_check()` in the loop codegen at the back-edge -- the point where the loop body branches back to the loop header:
 
-**Detection:** Any test where `expr.method()` compiles to MIR and passes through codegen without crashing.
+```
+loop_body:
+  ; ... body codegen ...
+  call void @snow_reduction_check()   ; <-- HERE, before back-edge
+  br label %loop_header
+```
+
+This matches the BEAM's approach: every loop iteration costs one reduction. A loop iterating 4000 times will cause one yield, which is the correct granularity (DEFAULT_REDUCTIONS = 4000).
+
+The `snow_reduction_check` function also triggers GC via `try_trigger_gc()` (actor/mod.rs:182-186), which means putting it at the back-edge also handles GC pressure from loop allocations.
+
+**Warning signs:**
+- An actor running a loop blocks all other actors on the same worker thread.
+- `test_reduction_yield_does_not_starve` (scheduler.rs:797) fails when a loop-based actor is added.
+- A `while true` loop causes the entire runtime to hang.
+
+**Phase to address:**
+LLVM codegen phase. Must be part of `codegen_for` and `codegen_while` from day one -- not a follow-up.
 
 ---
 
-### Pitfall 5: Monomorphization Does Not Know About Method Calls
+### Pitfall 4: O(N^2) List Collection via Immutable Append Chains
 
-**What goes wrong:** The monomorphization pass (mono.rs) collects reachable functions by walking MIR expressions and collecting function names from `MirExpr::Var` and `MirExpr::MakeClosure`. If method calls are lowered to `MirExpr::Call { func: MirExpr::Var(mangled_name, ...) }`, this works automatically. But if they are lowered to a new `MethodCall` MIR variant, the monomorphization pass will not see them, and the method function will be pruned as unreachable.
+**What goes wrong:**
+Snow lists are immutable -- `snow_list_append` (list.rs:76-87) allocates a NEW list and copies ALL existing elements plus the new one. For a `for..in` loop that collects N results, the total work is: copy 0 + copy 1 + copy 2 + ... + copy (N-1) = O(N^2) copies and O(N^2) total bytes allocated.
 
-**Why it happens:** `collect_function_refs` (mono.rs:86) has explicit match arms for every MIR variant. A new variant without a corresponding match arm will be silently ignored, causing the method's impl function to be dropped.
+For N=100,000, this means ~5 billion element copies and ~5 billion bytes of intermediate garbage. The intermediate lists are dead immediately after the next append, but GC only triggers every ~4000 iterations (DEFAULT_REDUCTIONS), allowing garbage to pile up.
 
-**Consequences:** Linker errors ("undefined symbol") or runtime crashes from calling pruned functions.
+**Why it happens:**
+Two compounding issues:
+1. Immutable list append is O(N) per operation (full copy), making accumulated append O(N^2).
+2. GC only runs at yield points (every ~4000 iterations), allowing garbage to accumulate.
 
-**Prevention:**
-- If adding a new MIR variant, add a corresponding arm to `collect_function_refs` immediately.
-- Prefer the simpler approach of rewriting method calls to standard `MirExpr::Call` with mangled names, so the existing `collect_function_refs` arm for `Call` handles them automatically.
-- Test: verify that a method called only via dot-syntax is present in the final binary.
+This is NOT a problem for the existing `snow_list_map` (list.rs:174) because that function pre-allocates a new list of the correct size and fills it in-place. But for-loop collection cannot pre-allocate because the final size is unknown (continue/break may skip elements).
 
-**Detection:** Linker error on a program that uses method dot-syntax.
+**How to avoid:**
+Implement a `snow_list_builder` API for `for..in` loops that accumulates into a MUTABLE buffer and produces an immutable list at the end. This is the standard pattern (Rust's `Vec` -> immutable slice, Scala's `ListBuffer` -> `List`).
+
+```rust
+// New runtime functions
+snow_list_builder_new(estimated_cap: u64) -> *mut u8     // O(1)
+snow_list_builder_push(builder: *mut u8, elem: u64)       // O(1) amortized
+snow_list_builder_finish(builder: *mut u8) -> *mut u8     // O(1), returns SnowList
+```
+
+The builder uses doubling growth (like Vec), giving O(N) total allocation and O(N) total copies. This changes the for-loop from O(N^2) to O(N).
+
+**Critical GC consideration:** The builder's internal buffer must be GC-visible. Since Snow uses conservative stack scanning, the builder pointer on the stack will keep the buffer alive. But the builder must be allocated on the actor heap (via `snow_gc_alloc_actor`) so the GC can scan it.
+
+**Warning signs:**
+- `for x in (1..10000) do x end` takes noticeably longer than `List.map(range, fn(x) -> x end)`.
+- Actor heap size grows quadratically with loop iteration count.
+- Benchmarks show O(N^2) time for `for..in` loops.
+
+**Phase to address:**
+Runtime phase (snow-rt). Must be implemented alongside loop codegen -- `for..in` codegen should emit `snow_list_builder_*` calls, not `snow_list_append` chains. This is a prerequisite for correct loop implementation, not a future optimization.
 
 ---
 
-### Pitfall 6: The `self` Binding Escapes Its Scope
+### Pitfall 5: `break`/`continue` Codegen Creates Orphaned Basic Blocks and Terminated-Block Writes
 
-**What goes wrong:** In `infer_impl_def` (infer.rs:2084-2129), the type checker pushes a new scope, inserts `self` bound to the impl type, type-checks the method body, then pops the scope. This works for the body of the method definition.
+**What goes wrong:**
+`break` compiles to `br label %loop_exit` and `continue` compiles to `br label %loop_increment`. These are unconditional branches that terminate the current basic block. Any code AFTER the break/continue in the loop body is unreachable. Two failure modes:
 
-But when type-checking a method CALL (`x.method()`), the type checker must NOT insert `self` into the caller's scope. If the method call resolution naively reuses the impl's type signature (which has a `self` parameter), and the resolution code accidentally inserts `self` into the calling scope, it will shadow any existing `self` binding (e.g., inside another method body or an actor's `receive` block where `self` means the actor's PID).
+1. **Terminated block writes:** The parent expression's codegen (e.g., `codegen_if`, `codegen_block`) tries to emit instructions after the break/continue, producing "Terminator found in the middle of a basic block" LLVM verification errors.
 
-**Why it happens:** The method's type in the env is stored as `Ty::Fun([impl_type, ...params], ret)` (infer.rs:2132-2136). The first parameter corresponds to `self` but is stored as the impl type, not as a named binding. If the call-site resolution code instantiates the method scheme and then tries to create a `self` binding for type-checking, it leaks into the calling scope.
+2. **Missing phi inputs:** If break/continue is inside one branch of an if-expression, the merge block's alloca-load pattern (used by `codegen_if` at expr.rs:906-910) expects both branches to store a value. The break branch never stores to the result alloca, so the load reads an uninitialized value.
 
-**Consequences:** Silent semantic change: `self` in the calling context (e.g., an actor method) gets shadowed. The caller's `self` reference now has the wrong type. Actor self-references break.
+The LLVM Kaleidoscope tutorial explicitly warns: "calling `codegen()` recursively could arbitrarily change the notion of the current block." The existing Snow codegen handles this for `Return` and `Panic` (both `MirType::Never`) by checking `get_terminator().is_none()` before emitting branches (expr.rs:887, 899).
 
-**Prevention:**
-- Method call resolution must NEVER push `self` into the calling scope. It should only unify the first argument type with the receiver's type.
-- The call-site pattern for `x.method(a, b)` should be: infer type of `x`, look up `method` in impls for that type, get the method's function type `(Self, A, B) -> R`, unify `x`'s type with `Self`, unify `a` with `A`, unify `b` with `B`, return `R`. No scope manipulation needed.
-- Test: `x.method()` inside an actor `receive` block where `self` is the actor PID. Verify `self` still refers to the PID after the method call.
+**Why it happens:**
+Break and continue are non-local control flow -- they jump out of the current expression evaluation context to the loop header or exit. But Snow's `codegen_expr` returns a `BasicValueEnum`, meaning every expression is expected to produce a value. A `break` does not produce a value in the current context. This is analogous to `MirExpr::Return` and `MirExpr::Panic`, which return `MirType::Never`.
 
-**Detection:** `self` reference after a method call resolves to the wrong type.
+**How to avoid:**
+Model `break` and `continue` as diverging expressions (type `Never`):
+
+1. **MIR representation:** Add `MirExpr::Break` and `MirExpr::Continue` with type `MirType::Never`.
+
+2. **Codegen:** Emit the branch and then create a new "dead" basic block, positioning the builder there. Return a dummy `undef` value. The parent codegen's terminator check will prevent any branch from the dead block.
+
+```
+then_bb:
+  br label %loop_exit          ; break
+  ; Fall through to dead_bb (LLVM builder positioned here)
+dead_bb:
+  ; Any subsequent codegen goes here; block has no predecessors
+  ; DCE will remove it
+```
+
+3. **Critical:** Ensure `codegen_if` and `codegen_block` check for terminated blocks before storing to the result alloca. The existing pattern at expr.rs:887 already does this for branches but not for stores. After generating the then-body, check if the block is terminated before `build_store(result_alloca, then_val)`.
+
+4. **Loop context stack:** The codegen must maintain a stack of loop contexts so break/continue knows where to branch:
+```rust
+struct LoopContext<'ctx> {
+    header_bb: BasicBlock<'ctx>,
+    exit_bb: BasicBlock<'ctx>,
+    increment_bb: BasicBlock<'ctx>,  // for continue in for-loops
+    result_alloca: Option<PointerValue<'ctx>>,
+}
+// In CodeGen struct:
+loop_stack: Vec<LoopContext<'ctx>>,
+```
+
+**Warning signs:**
+- LLVM verification errors mentioning "terminator" or "successor".
+- Compiler crashes after break/continue because `codegen_expr` tries to use the `undef` return value.
+- Nested `if/break` patterns causing "basic block does not have terminator" on the merge block.
+- Uninitialized alloca reads producing nondeterministic values.
+
+**Phase to address:**
+LLVM codegen phase. Must be designed into the codegen from the start -- break/continue require a loop context stack and careful basic block management.
+
+---
+
+### Pitfall 6: `for..in` Pattern Destructuring Conflicts with Existing Pattern System
+
+**What goes wrong:**
+`for {key, value} in my_map do ... end` requires pattern matching on the iteration variable. Snow already has a sophisticated pattern matching system (v1.4-v1.5) with decision tree compilation, exhaustiveness checking, and cons destructuring. But for-loop patterns are subtly DIFFERENT from case/match patterns:
+
+1. **No exhaustiveness checking needed:** The loop pattern applies to EVERY element. If the pattern does not match, is it a runtime error or a silent skip? This must be decided explicitly.
+
+2. **Binding scope:** In `case`, each arm has its own scope. In `for`, the pattern binding exists for the entire loop body and is RE-BOUND on each iteration. The binding must be stored to the same alloca (entry-block, per Pitfall 2) on each iteration.
+
+3. **Tuple destructuring for maps:** `Map<K, V>` iteration produces `{K, V}` tuples. The pattern `{key, value}` must destructure this. Using the full pattern decision tree compiler for what is always a single irrefutable pattern is overkill and may produce incorrect codegen if the decision tree assumes multiple branches.
+
+4. **Variable binding name resolution:** The v1.5 pitfall where pattern bindings like `head` were incorrectly mapped to the builtin function `snow_list_head` (PROJECT.md line 149) could recur. If someone writes `for list in lists do ... end`, the binding `list` must shadow any existing `list` variable.
+
+**Why it happens:**
+For-loop patterns have different requirements than match patterns. Reusing the match pattern infrastructure without adaptation leads to semantic mismatches.
+
+**How to avoid:**
+Implement for-loop patterns as a SIMPLIFIED subset of match patterns:
+
+1. **Allowed patterns:** Variable binding (`x`), tuple destructuring (`{a, b}`), wildcard (`_`). No literal patterns, no constructor patterns, no nested matching.
+2. **Codegen:** Do NOT use the decision tree compiler for for-loop patterns. Instead, emit direct load/GEP instructions.
+3. **Name resolution:** Process loop variable bindings through the same scope push/pop mechanism used by `codegen_let` (expr.rs:952-968).
+4. **Irrefutable only:** For v1.7, require irrefutable patterns. `for Some(x) in list do ... end` should be a compile error: "for-loop patterns must be irrefutable. Use `for item in list do case item do Some(x) -> ... end end` instead."
+
+**Warning signs:**
+- For-loop patterns producing decision trees with "unreachable" or "match failure" branches.
+- Loop variable names resolving to existing functions/modules instead of fresh bindings.
+- Tuple destructuring in for-loops producing incorrect field ordering.
+
+**Phase to address:**
+Parser and type inference phase. Pattern restrictions must be enforced in the parser or type checker before MIR lowering.
+
+---
+
+### Pitfall 7: GC Roots Lost During Loop -- Pointers Lifted to Registers Become Invisible
+
+**What goes wrong:**
+Collections (List, Map, Set) are GC-managed pointers. During a for-loop, the iterable collection pointer AND the accumulator (list builder) pointer must remain GC-reachable. Snow's mark-sweep GC per actor scans the stack conservatively (every 8-byte word treated as potential pointer, per PROJECT.md line 132). But LLVM's `mem2reg` pass promotes allocas to SSA registers. If the collection pointer is promoted to a register, it may not be on the stack when GC runs, and the collection could be freed mid-loop.
+
+This is especially dangerous with `snow_list_builder_push` (or `snow_list_append`), which allocates and may trigger GC. The GC runs at yield points within `snow_reduction_check()` (actor/mod.rs:182-186). If the iterable's pointer is in a register when GC fires, the iterable may be collected.
+
+**Why it happens:**
+The alloca+mem2reg pattern is designed to produce efficient register-based code. But conservative GC requires root pointers to be on the stack. These goals conflict: mem2reg removes the stack slot, making the pointer invisible to the stack scanner.
+
+**How to avoid:**
+This is actually handled correctly by Snow's existing design, but requires careful attention:
+
+1. **Allocas for GC pointers should NOT be promoted** by mem2reg. However, mem2reg promotes ALL eligible entry-block allocas. The solution: ensure that GC-managed pointers stored in allocas are loaded and stored frequently enough that LLVM keeps them on the stack, OR accept that conservative scanning of registers may miss them.
+
+2. **Practical mitigation:** The `snow_reduction_check()` call at the loop back-edge creates a function call, which forces LLVM to spill live values to the stack (callee-saved registers). This means at the point where GC actually runs, the values ARE on the stack. This is the same reason why GC-at-yield-points works for the current actor code.
+
+3. **Critical invariant:** The reduction check (and thus GC) only fires at the back-edge call. Between iterations, there is no GC. Within an iteration, allocations may grow the heap but will not trigger collection (collection only happens at `snow_reduction_check`). So the only point where roots matter is the back-edge, and at that point, the function call forces a spill.
+
+4. **Still verify:** Add stress tests that force GC on every iteration (set DEFAULT_REDUCTIONS to 1 in test mode) and verify that loop collections are not collected prematurely.
+
+**Warning signs:**
+- Sporadic crashes or corrupted data in loops under memory pressure.
+- Valgrind/ASAN reporting use-after-free in loop iterations.
+- Test failures that only reproduce with specific GC timing.
+
+**Phase to address:**
+Codegen and runtime testing phase. Verify with GC stress tests, but the existing architecture should handle this correctly as long as `snow_reduction_check()` is called at the back-edge (Pitfall 3).
+
+---
+
+### Pitfall 8: Continue in For-Loop Skips Index Increment -- Infinite Loop
+
+**What goes wrong:**
+In a for-loop, `continue` must skip the rest of the body but ADVANCE to the next element. If `continue` branches directly to the loop header (condition check), and the loop header re-checks the SAME index (because the increment was in the body, which was skipped), the loop repeats the same element forever.
+
+```
+for_header:
+  %idx = load %idx_alloca
+  %cond = icmp slt %idx, %len
+  br i1 %cond, %for_body, %for_exit
+
+for_body:
+  ; ... user code ...
+  continue  ->  br label %for_header   ; BUG: idx not incremented!
+  ; ... index increment below was skipped ...
+  %next = add %idx, 1
+  store %next, %idx_alloca
+  br label %for_header
+```
+
+**Why it happens:**
+The natural codegen structure puts the body expression and the index increment in the same block. `continue` jumps past the increment. This is the most common loop codegen bug in any compiler.
+
+**How to avoid:**
+Use a THREE-block structure separating the body from the latch (increment):
+
+```
+for_body:
+  %elem = get_element(iterable, %idx)
+  ; bind to loop var
+  <body codegen>               ; continue branches to for_latch
+  ; append body result to accumulator
+  br label %for_latch
+
+for_latch:                      ; continue targets HERE, not for_header
+  %next = add %idx, 1
+  store %next, %idx_alloca
+  call void @snow_reduction_check()
+  br label %for_header
+```
+
+`continue` branches to `for_latch`, ensuring the index always advances. The body result append is bypassed (continue means skip this element), but the index increment is not.
+
+For `while` loops, `continue` branches directly to the header (condition re-evaluation), which is correct because while loops have no index.
+
+**Warning signs:**
+- `for x in list do if cond do continue end; x end` hangs (infinite loop).
+- Condition true on first element + continue = repeat first element forever.
+
+**Phase to address:**
+LLVM codegen phase. The for-loop basic block structure must be designed with this three-block pattern from the start.
 
 ---
 
@@ -161,181 +384,226 @@ Mistakes that cause technical debt, confusing errors, or delayed regressions.
 
 ---
 
-### Pitfall 7: Ambiguous Method Resolution Across Multiple Traits
+### Pitfall 9: Nested Loops Break/Continue Target Wrong Loop
 
-**What goes wrong:** The `TraitRegistry::find_method_traits` (traits.rs:246) already handles the case where multiple traits provide the same method name for the same type. The MIR lowerer (lower.rs:3537) takes the FIRST match: `matching_traits[0]`. This is nondeterministic because `self.impls` is a `FxHashMap` (which does not guarantee iteration order).
+**What goes wrong:**
+Without labeled breaks, `break` and `continue` always target the innermost loop. If the codegen stores only one loop context (overwriting the outer loop's context when entering the inner loop), `break` in the inner loop will incorrectly jump to the outer loop's exit.
 
-With method dot-syntax, this ambiguity becomes user-facing. When writing `x.to_string()`, if both `Display` and `Debug` provide a `to_string` method for `x`'s type, the result depends on HashMap iteration order. This is a correctness bug that manifests as nondeterministic behavior across compilations.
+**How to avoid:**
+Maintain a `Vec<LoopContext>` stack in the `CodeGen` struct. On loop entry: push a new context. On `break`: branch to `loop_stack.last().exit_bb`. On `continue`: branch to `loop_stack.last().latch_bb`. On loop exit: pop. Document that labeled breaks are a future feature.
 
-**Why it happens:** `FxHashMap` iteration order is not stable. The existing code at lower.rs:3537 silently picks whichever trait comes first in the hash map's iterator.
+**Warning signs:**
+- Nested loops where `break` exits the wrong loop.
+- LLVM verification errors about branches to blocks in the wrong scope.
 
-**Prevention:**
-- In the type checker: when resolving `x.method()`, call `find_method_traits` and if it returns more than one trait, emit an ambiguity error: "method `method` is provided by multiple traits for type `T`: Trait1, Trait2. Use explicit qualified syntax: `Trait1.method(x)`."
-- In the MIR lowerer: sort `matching_traits` alphabetically before picking the first one, to ensure deterministic behavior even without the type checker's ambiguity check.
-- Test: define two traits with the same method name, impl both for the same type, call via dot-syntax, assert ambiguity error.
-
-**Detection:** A program that compiles differently on different runs.
-
----
-
-### Pitfall 8: Generic Type Parameter Confusion in Method Return Types
-
-**What goes wrong:** When a method is defined in an `impl` block for a generic type (e.g., `impl Display for List<T>`), the method's return type may reference `T`. The current `resolve_trait_method` (traits.rs:212-238) freshens type parameters and resolves through a temporary `InferCtx`. But this temporary context is discarded after the lookup -- the resolved return type's variables are from the temporary context, not the caller's `InferCtx`.
-
-If a method call `my_list.first()` returns `T`, and `my_list` is `List<Int>`, the temporary context correctly resolves `T` to `Int`. But if the return type contains multiple type parameters or nested generics, the freshening and resolution may not correctly propagate all bindings.
-
-**Why it happens:** The `freshen_type_params` function (traits.rs:299) only freshens single-uppercase-letter type constructors (`A`-`Z`). Type parameters named with multiple characters (e.g., `Key`, `Value`) are not freshened, causing them to be treated as concrete types.
-
-**Consequences:** Methods on types with multi-character type parameters return incorrect types. The return type contains unresolved type parameter names as if they were concrete types.
-
-**Prevention:**
-- Audit `freshen_type_params` to ensure it handles ALL type parameters from the impl, not just single-letter ones.
-- Store type parameter names in the `ImplDef` structure and use them for freshening, rather than relying on the naming convention.
-- Test: define a generic struct with multi-character type params, impl a method, call via dot-syntax, verify the return type is correctly instantiated.
-
-**Detection:** Method on `Map<Key, Value>` returns `Key` as a concrete type name instead of the actual key type.
+**Phase to address:** LLVM codegen phase -- must be designed from the start.
 
 ---
 
-### Pitfall 9: Method Calls in Chained Expressions
+### Pitfall 10: Closure Capture in Loop Body Captures Wrong Iteration's Value
 
-**What goes wrong:** The parser handles `a.b.c.d` as nested `FIELD_ACCESS` nodes: `FieldAccess(FieldAccess(FieldAccess(a, b), c), d)`. When method calls are mixed in, `a.b().c.d()` becomes `CallExpr(FieldAccess(CallExpr(FieldAccess(a, b), ArgList()), d), ArgList())` with `FieldAccess(CallExpr(...), c)` in the middle.
+**What goes wrong:**
+If a closure is created inside a for-loop body, it captures the loop variable. Snow captures by value (no references -- PROJECT.md line 92). But if the closure captures the alloca pointer (implementation detail) rather than the current value, all closures see the final iteration's value.
 
-The type checker must resolve each step left-to-right: infer `a`, resolve `b` as a method call, get the return type, use that as the base for field access `c`, then resolve `d` as another method call. If any step in the chain fails to produce a concrete type (see Pitfall 2 about type variables), the entire chain breaks with an inscrutable error.
+**How to avoid:**
+Snow's `MirExpr::MakeClosure` captures values by copying them into a GC-allocated environment struct at closure creation time. The MIR lowerer emits the capture list with the current iteration's variable reference, and codegen reads from the alloca at that point. This SHOULD work correctly because each closure creation reads the current alloca value.
 
-**Why it happens:** Chained expressions are deeply nested in the CST. Each `infer_field_access` call must fully resolve its base before proceeding. If method resolution returns a fresh variable instead of the concrete return type, the next step in the chain sees an unresolved type and cannot proceed.
+Verify with an explicit test:
+```
+let fns = for x in [1, 2, 3] do fn() -> x end
+# Assert: fns[0]() == 1, fns[1]() == 2, fns[2]() == 3
+```
 
-**Prevention:**
-- Ensure method resolution ALWAYS returns the method's declared return type (instantiated with the receiver's type parameters), never a fresh variable.
-- Error messages for chained expressions should identify WHICH step in the chain failed: "in expression `a.b().c`, could not resolve method `b` on type `A`."
-- Test: `point.to_string().length()` -- method call on `Point` returning `String`, then field access or method call on `String`.
-
-**Detection:** Chained method calls producing cascading type errors that blame the wrong subexpression.
-
----
-
-### Pitfall 10: The MIR Lowerer's Trait Dispatch Duplicates Type Checker Logic
-
-**What goes wrong:** The MIR lowerer (lower.rs:3527-3600) already has its own trait method dispatch: it checks if a callee name is a known function, and if not, searches the trait registry for matching traits and rewrites to mangled names. Adding method dot-syntax introduces a SECOND dispatch path: the lowerer must also handle `CallExpr(FieldAccess(...))` by looking up methods.
-
-If these two paths use slightly different logic (e.g., different mangling schemes, different trait lookup order, different handling of builtin vs. user-defined types), the same method call will produce different MIR depending on how it is written.
-
-**Why it happens:** The existing `lower_call_expr` was designed for `to_string(42)` style calls (function-name-first). Method dot-syntax introduces `42.to_string()` style calls (receiver-first). The lowerer must handle both and produce identical MIR.
-
-**Prevention:**
-- Both call paths should converge to a single helper function: `resolve_method_call(receiver_type, method_name, args) -> MirExpr::Call`. This helper handles trait lookup, mangling, and builtin short-circuits (like `Display__to_string__String` -> identity) in one place.
-- Test: verify that `to_string(42)` and `42.to_string()` produce identical MIR.
-
-**Detection:** Two syntactically equivalent method calls produce different runtime behavior.
+**Phase to address:** MIR lowering + codegen testing phase. Should work correctly but must be tested explicitly.
 
 ---
 
-### Pitfall 11: LSP Go-to-Definition Does Not Know About Methods
+### Pitfall 11: Map/Set Iteration Requires New Runtime Functions
 
-**What goes wrong:** The LSP server's definition handler (snow-lsp/src/definition.rs) currently does not handle `FieldAccess` at all (confirmed by grep -- no matches for FieldAccess in definition.rs). When method dot-syntax is added, clicking "go to definition" on `.method()` will do nothing or jump to the wrong location.
+**What goes wrong:**
+The runtime has `snow_map_keys()` and `snow_map_values()` (map.rs:229, 243) that return lists, but no function to iterate entries as `{key, value}` tuples. `for {k, v} in map do ... end` needs a way to get the i-th entry as a tuple. The current Map uses a vector of `(u64, u64)` pairs internally, but there is no `snow_map_get_entry(map, index)` function.
 
-**Why it happens:** The LSP was built when `FieldAccess` only meant struct fields and module members, which are resolved by name, not by type. Method resolution requires type information that the LSP may not have readily available for the cursor position.
+**How to avoid:**
+Add runtime functions:
+- `snow_map_entry_count(map) -> i64` (alias for `snow_map_size`)
+- `snow_map_entry_key(map, index) -> u64`
+- `snow_map_entry_value(map, index) -> u64`
 
-**Prevention:**
-- This is a follow-up feature, not a blocker. But plan for it: the type checker should record method resolution results (which trait, which impl, which method) in the `TypeckResult` so the LSP can query them.
-- Add a `method_resolutions: FxHashMap<TextRange, MethodResolution>` to `TypeckResult` where `MethodResolution` contains the trait name, impl type, and source range of the method body.
+Or, for the simpler approach: convert to a list of tuples before iteration. This doubles memory but is simple. For v1.7, the simple approach is acceptable; optimize later if maps are commonly iterated.
 
-**Detection:** Clicking "go to definition" on a method call in the LSP does nothing.
+Similarly for Sets: add `snow_set_get(set, index) -> u64` for index-based iteration.
 
----
-
-## Minor Pitfalls
-
-Mistakes that cause annoyance but are fixable without major rework.
-
----
-
-### Pitfall 12: Error Messages Reference "Field" When User Wrote a Method Call
-
-**What goes wrong:** The `TypeError::NoSuchField` error (error.rs:115) says `"type 'X' has no field 'y'"`. When the user writes `x.y()` intending a method call, the error message talks about "field" instead of "method", which is confusing.
-
-**Prevention:**
-- When method resolution fails and the expression is the callee of a `CallExpr`, use a different error: `"type 'X' has no method 'y'"`. Provide a suggestion: "did you mean to define a method `y` in an impl block for `X`?"
-- Add a new `TypeError::NoSuchMethod` variant that includes the type, method name, span, and optionally a list of available methods for that type.
+**Phase to address:** Runtime phase (snow-rt). Must be available before for-loop codegen can target maps/sets.
 
 ---
 
-### Pitfall 13: Method Name Collides with Builtin Runtime Function
+### Pitfall 12: MirExpr Match Exhaustiveness -- Adding New Variants Without Updating All Match Sites
 
-**What goes wrong:** The MIR lowerer maps method names to mangled names like `Display__to_string__Int`, and some of these are further mapped to runtime names like `snow_int_to_string` (lower.rs:3544-3560). If a user defines an impl method whose mangled name collides with a runtime function name, the lowerer silently redirects to the runtime function.
+**What goes wrong:**
+The `MirExpr::ty()` method (mod.rs:308-340), `codegen_expr` (expr.rs:25-148), and `collect_function_refs` (mono.rs:86) all match on every MirExpr variant. Adding `ForLoop`, `WhileLoop`, `Break`, `Continue` requires updating ALL these matches. Rust's exhaustiveness checker will catch missing arms, but developers may be tempted to add a `_ => unreachable!()` wildcard that silently passes.
 
-**Prevention:**
-- The mangling scheme (`Trait__Method__Type`) should be designed to never collide with the `snow_*` runtime prefix. This is already the case. But verify that user-defined trait names cannot start with `snow_`.
-- Test: define a trait named `snow_internal` and verify it does not cause name collisions.
+**How to avoid:**
+Do NOT add wildcard catch-all arms. Let Rust's exhaustiveness checker force updates. Grep for `match.*MirExpr` across the codebase before claiming the new variants are integrated. Key match sites to update:
+- `MirExpr::ty()` in mir/mod.rs
+- `codegen_expr` in codegen/expr.rs
+- `collect_function_refs` in mir/mono.rs
+- Any Display/Debug impls for MirExpr
 
----
-
-### Pitfall 14: Formatter Does Not Preserve Method Call Syntax
-
-**What goes wrong:** The Snow formatter (snow-fmt) uses a CST walker to pretty-print code. If it does not have specific handling for `CallExpr(FieldAccess(...), ArgList(...))`, it may format `x.method(a, b)` with unexpected whitespace or line breaking.
-
-**Prevention:**
-- The formatter handles `FIELD_ACCESS` and `CALL_EXPR` separately. Since method calls are syntactically just `CallExpr` wrapping `FieldAccess`, the existing formatting should mostly work. But test edge cases: `very_long_expression.method(very_long_arg1, very_long_arg2)` should break sensibly.
+**Phase to address:** MIR definition phase. Audit all match sites when adding new variants.
 
 ---
 
-## The Central Integration Challenge
+### Pitfall 13: Range Operator Precedence with `in` Keyword
 
-**The single most likely thing to go wrong is the resolution order in `infer_field_access` (Pitfall 1).** This is the integration point where all existing features collide with the new feature. The current function is a carefully ordered chain of if/else blocks handling five different meanings of `expr.ident`. Adding a sixth meaning (method call) requires getting the ordering exactly right, AND requires distinguishing "bare field access" from "method call" (which depends on whether the FieldAccess is the callee of a CallExpr).
+**What goes wrong:**
+`for i in 0..10 do` must parse as `for i in (0..10) do`, not `for (i in 0) .. (10 do)`. The `..` operator already exists as `DOT_DOT` in the lexer. But its precedence relative to the new `in` keyword must be correct.
 
-The type checker currently processes `FieldAccess` in isolation -- it does not know whether the FieldAccess is being used as a callee. The fix requires either:
+**How to avoid:**
+The `for_expr` parser rule should parse the iterable as a regular expression (which handles `..` as a binary operator with its existing precedence). The parser structure is:
+```
+for_expr := "for" pattern "in" expr "do" block "end"
+```
+Where `expr` is parsed with normal expression rules, naturally handling `0..10` as `BinOp(0, .., 10)`.
 
-(a) Passing context from the parent `CallExpr` inference down to `infer_field_access` (e.g., a flag `is_callee: bool`), or
-
-(b) Handling method calls at the `CallExpr` level BEFORE dispatching to `infer_field_access` -- detect when the callee is a `FieldAccess`, extract the base and method name, and handle method resolution in `infer_call` rather than `infer_field_access`.
-
-Option (b) is cleaner because it keeps `infer_field_access` focused on field access and avoids threading flags through the call chain.
-
----
-
-## Phase-Specific Warnings
-
-| Phase Topic | Likely Pitfall | Mitigation |
-|-------------|---------------|------------|
-| Parser changes (if any needed) | No parser changes needed -- `expr.ident(args)` already parses as `CallExpr(FieldAccess(...), ArgList(...))` | Verify with parser tests that this CST structure is correct |
-| Type checker: method resolution in `infer_field_access` | Pitfalls 1, 2, 6: resolution order, type variables, self-binding leak | Add method resolution AFTER all existing checks; only trigger when FieldAccess is callee of CallExpr; or handle at CallExpr level instead |
-| Type checker: return type inference | Pitfall 8: generic type params in return types | Audit `freshen_type_params` for multi-character params |
-| Type checker: ambiguity detection | Pitfall 7: multiple traits providing same method | Check `find_method_traits` result count and emit error if > 1 |
-| MIR lowering | Pitfalls 4, 10: FieldAccess vs Call MIR node, duplicated dispatch logic | Intercept method calls in `lower_call_expr` before `lower_field_access`; converge dispatch paths |
-| Monomorphization | Pitfall 5: method functions pruned as unreachable | Use standard `MirExpr::Call` with mangled names, or add match arm in `collect_function_refs` |
-| Codegen | Pitfall 4 continued: codegen crashes on non-struct FieldAccess | Method calls must never reach `codegen_field_access` |
-| Error reporting | Pitfalls 12, 9: confusing error messages, chain failures | Add `NoSuchMethod` error variant; improve chain error provenance |
-| Pipe operator interaction | Pitfall 3: semantic divergence between `.method()` and `\|> method` | Decide on asymmetry; test both paths |
-| LSP | Pitfall 11: go-to-definition broken for methods | Plan `method_resolutions` map in TypeckResult |
+**Phase to address:** Parser phase. Verify with parser tests for `for i in 0..10`, `for i in list`, `for {k,v} in map`.
 
 ---
+
+## Technical Debt Patterns
+
+Shortcuts that seem reasonable but create long-term problems.
+
+| Shortcut | Immediate Benefit | Long-term Cost | When Acceptable |
+|----------|-------------------|----------------|-----------------|
+| `for..in` collects via `snow_list_append` chain | Reuses existing API, no new runtime code | O(N^2) time and memory; creates N garbage lists per loop | NEVER -- use list builder from day one |
+| `while` loop returns `Unit` always | Simpler type inference; avoids break-with-value complexity | Cannot use `while` as expression to compute values | Acceptable for v1.7 -- even Rust punted on this |
+| Single loop context instead of stack | Simpler codegen, fewer fields in CodeGen struct | Nested loops silently break | NEVER -- nested loops are table-stakes |
+| Reuse full pattern compiler for for-loop patterns | Less new code; pattern infrastructure already robust | Overkill decision trees; confusing errors for non-exhaustive patterns | Only if restricted to irrefutable patterns with clear validation |
+| Skip reduction check in loops | Slightly faster tight loops | Actor starvation, scheduler deadlock | NEVER -- breaks core actor model guarantee |
+| `break(value)` support in for/while | More expressive loops | Complex type unification, two return types per loop | Defer to future version -- implement without break-with-value first |
+| Convert map/set to list before iterating | No new runtime functions needed | Doubles memory usage; O(N) conversion overhead | Acceptable for v1.7 if maps/sets are small; optimize later |
+
+## Integration Gotchas
+
+Common mistakes when connecting loop constructs to existing Snow systems.
+
+| Integration | Common Mistake | Correct Approach |
+|-------------|----------------|------------------|
+| Type inference + for..in | Inferring body type from first element; failing on empty collections | Infer body type from the body expression using element type as input; empty collection returns `List<T>` where T comes from the collection's type parameter |
+| MIR lowering + break/continue | Lowering break/continue as expressions that return values | Lower as `MirExpr::Break` / `MirExpr::Continue` with type `Never`; MirExpr::ty() returns `MirType::Never` |
+| Codegen + existing if/match | Placing loop result alloca inside loop body because codegen_if pattern "works" | Entry-block alloca for ALL loop-related storage; use `emit_entry_block_alloca` helper |
+| GC + for..in collection | List builder's buffer not GC-visible because it is stack-only | Allocate builder on actor heap via `snow_gc_alloc_actor`; conservative scanning finds stack pointer to it |
+| Monomorphization + for..in | New MirExpr variants not handled by `collect_function_refs` | Add explicit match arms; or lower loops to Call expressions that existing infrastructure handles |
+| Pipe operator + for..in | Users try `list \|> for x do ... end` | `for..in` is a statement-level construct, not a function; clear parse error, not confusing type error |
+| Formatter + new keywords | Formatter does not recognize `for`/`while`/`break`/`continue` | Add keyword handling to snow-fmt walker; test multi-line loop formatting |
+| LSP + loop variables | LSP hover/completion does not show loop variable bindings | Add loop variable bindings to scope map in TypeckResult |
+| Existing recursion patterns | Loops discourage idiomatic recursion; tail-call optimization may be neglected | Document that loops are syntactic sugar, not replacement for recursion; both patterns valid |
+
+## Performance Traps
+
+Patterns that work at small scale but fail as usage grows.
+
+| Trap | Symptoms | Prevention | When It Breaks |
+|------|----------|------------|----------------|
+| O(N^2) list collection via append | Small loops fine; N=10K takes seconds | Use list builder with amortized O(1) push | N > ~1000 elements |
+| No GC between iterations | Small loops fit in heap; large loops cause unbounded growth | Reduction check triggers GC; builder eliminates intermediate garbage | Loop allocation > 64KB (actor page size) before yield |
+| Map/Set to-list conversion | Small maps fine; large maps double memory | Index-based iteration without intermediate list | Maps/Sets > ~1000 entries |
+| String concatenation in loops | `result = result <> str` creates N intermediates | Accumulate in list and join, or provide String.Builder | N > ~100 string concatenations |
+| Nested loops with collection | `for x in xs do for y in ys do {x,y} end end` creates N outer lists | Use `List.flatten` or flat_map pattern | N*M > ~10K |
+
+## "Looks Done But Isn't" Checklist
+
+Things that appear complete but are missing critical pieces.
+
+- [ ] **for..in over empty List:** Returns empty list `[]`, not crash or Unit
+- [ ] **for..in over empty Range:** `for x in 5..5 do x end` returns `[]`; inverted range `5..3` also returns `[]`
+- [ ] **for..in over Map:** Iteration order is deterministic (insertion order); test with multiple entries
+- [ ] **break in nested if:** `for x in list do if cond do break end; x end` -- break does not prevent collection of prior iterations
+- [ ] **continue in for-loop:** Continued elements excluded from result; index still advances (no infinite loop)
+- [ ] **Loop variable shadowing:** `let x = 10; for x in [1,2,3] do x end` -- loop x shadows outer; outer restored after
+- [ ] **Closure capture in loop:** Closures in loop capture per-iteration value, not final value
+- [ ] **Nested loops:** `for x in xs do for y in ys do {x, y} end end` produces correct `List<List<{Int, Int}>>`
+- [ ] **Reduction check present:** `while true do 1 end` in an actor eventually yields (does not starve scheduler)
+- [ ] **GC under pressure:** for..in over 100K elements does not OOM; GC collects between iterations
+- [ ] **LLVM IR verified:** `opt -verify` passes for every loop test case
+- [ ] **Pattern destructuring:** `for {k, v} in map do k end` correctly extracts tuple fields
+- [ ] **Formatter:** `snow fmt` preserves loop syntax with correct indentation
+- [ ] **Error messages:** break/continue outside loop gives specific error, not generic parse failure
+- [ ] **Non-iterable error:** `for x in 5 do x end` gives "Int is not iterable", not generic type error
+- [ ] **No alloca in loop body:** IR dump shows all loop-related allocas in entry block only
+- [ ] **while returns Unit:** `let x: Int = while true do break end` is a type error (Unit != Int)
+
+## Recovery Strategies
+
+When pitfalls occur despite prevention, how to recover.
+
+| Pitfall | Recovery Cost | Recovery Steps |
+|---------|---------------|----------------|
+| O(N^2) list collection (no builder) | MEDIUM | Add list builder runtime API; change codegen to use it; no source-level changes |
+| Alloca inside loop body | LOW | Move alloca to entry block; add helper function; single codegen refactor |
+| Missing reduction check | LOW | Add `emit_reduction_check()` call at back-edge; one-line codegen change |
+| Break/continue orphaned blocks | MEDIUM | Add dead-block creation; may require refactoring codegen_expr Never handling |
+| Wrong loop context in nested loops | LOW-MEDIUM | Replace single context with stack; straightforward if LoopContext struct is well-defined |
+| Pattern system conflict | HIGH | Separating for-loop patterns from match patterns requires decision tree compiler refactor; prevent by keeping them separate from start |
+| break(value) type unification | HIGH | Redesigning loop type system after implementation; prevent by deferring break(value) |
+| Continue skips increment | LOW | Fix continue target to latch block; straightforward once identified |
+
+## Pitfall-to-Phase Mapping
+
+How roadmap phases should address these pitfalls.
+
+| Pitfall | Prevention Phase | Verification |
+|---------|------------------|--------------|
+| P1: break(value) type unification | Syntax/AST design | Decision documented: break-with-value deferred; type rules specified |
+| P2: alloca inside loop body | LLVM codegen | `opt -mem2reg` eliminates ALL loop allocas; verify with IR dump |
+| P3: actor starvation | LLVM codegen | `snow_reduction_check` in IR at every back-edge; scheduler starvation test passes |
+| P4: O(N^2) collection | Runtime (snow-rt) | List builder API; for..in codegen uses builder; benchmark shows O(N) |
+| P5: orphaned basic blocks | LLVM codegen | `opt -verify` passes for all break/continue cases |
+| P6: for pattern conflicts | Parser / typeck | Only irrefutable patterns accepted; refutable patterns produce clear error |
+| P7: GC roots in loops | Codegen + runtime testing | GC stress tests pass with DEFAULT_REDUCTIONS=1 |
+| P8: continue skips increment | LLVM codegen | Three-block structure: body / latch / header; continue targets latch |
+| P9: nested loop context | LLVM codegen | Nested loop tests pass; break/continue target correct level |
+| P10: closure capture | MIR + codegen testing | Explicit test: closures in loop capture per-iteration values |
+| P11: map/set iteration | Runtime (snow-rt) | Entry-access functions or list conversion available |
+| P12: MirExpr match exhaustiveness | MIR definition | No wildcard arms; all match sites updated |
+| P13: range precedence | Parser | `for i in 0..10` parses correctly |
 
 ## Sources
 
 ### Snow Codebase Analysis (HIGH confidence -- direct code reading)
-- `crates/snow-typeck/src/infer.rs` -- `infer_field_access` (line 3879), `infer_pipe` (line 2817), `infer_impl_def` (line 2003), `infer_call` resolution chain
-- `crates/snow-typeck/src/traits.rs` -- `TraitRegistry`, `resolve_trait_method` (line 212), `find_method_traits` (line 246), `freshen_type_params` (line 299)
-- `crates/snow-typeck/src/unify.rs` -- `InferCtx`, `resolve`, `unify`, `generalize`, `instantiate`
-- `crates/snow-typeck/src/ty.rs` -- `Ty` enum, `Scheme` struct
-- `crates/snow-typeck/src/env.rs` -- `TypeEnv` scope stack
-- `crates/snow-parser/src/parser/expressions.rs` -- postfix `FIELD_ACCESS` parsing (line 117), `CALL_EXPR` (line 105)
-- `crates/snow-parser/src/ast/expr.rs` -- `FieldAccess`, `CallExpr` AST nodes
-- `crates/snow-codegen/src/mir/lower.rs` -- `lower_field_access` (line 3705), `lower_call_expr` (line 3362), trait method dispatch (line 3527)
-- `crates/snow-codegen/src/mir/mod.rs` -- `MirExpr::FieldAccess` (line 208), `MirExpr::Call` (line 168)
-- `crates/snow-codegen/src/mir/mono.rs` -- `collect_function_refs` (line 86), `MirExpr::FieldAccess` arm (line 155)
-- `crates/snow-codegen/src/codegen/expr.rs` -- `codegen_field_access` (line 1096), struct GEP (line 1128)
-- `crates/snow-lsp/src/definition.rs` -- no FieldAccess handling
+- `crates/snow-codegen/src/codegen/expr.rs` -- `codegen_if` alloca+mem2reg pattern (line 856-913), `codegen_let` variable scoping (line 917-971), `emit_reduction_check` (line 1653-1666), terminator checks (line 887, 899)
+- `crates/snow-codegen/src/codegen/mod.rs` -- CodeGen struct, reduction check test (line 1254)
+- `crates/snow-codegen/src/mir/mod.rs` -- MirExpr enum (no loop variants yet), MirType::Never (line 85), MirExpr::ty() exhaustive match (line 308-340)
+- `crates/snow-codegen/src/mir/mono.rs` -- `collect_function_refs` reachability (line 86)
+- `crates/snow-codegen/src/mir/lower.rs` -- MIR lowering, no loop lowering yet
+- `crates/snow-codegen/src/pattern/compile.rs` -- Decision tree compiler for match patterns
+- `crates/snow-rt/src/actor/mod.rs` -- `snow_reduction_check` with GC trigger (line 160-191), "loop back-edges" documented (line 155)
+- `crates/snow-rt/src/actor/process.rs` -- DEFAULT_REDUCTIONS = 4000 (line 157)
+- `crates/snow-rt/src/actor/heap.rs` -- Per-actor GC heap, conservative stack scanning, ACTOR_PAGE_SIZE = 64KB
+- `crates/snow-rt/src/collections/list.rs` -- `snow_list_append` O(N) copy (line 76), `snow_list_map` pre-allocated (line 174)
+- `crates/snow-rt/src/collections/range.rs` -- `snow_range_map` iteration pattern (line 51), empty/inverted range handling
+- `crates/snow-rt/src/collections/map.rs` -- `snow_map_keys` / `snow_map_values` (line 229, 243), no entry-based iteration
+- `crates/snow-rt/src/gc.rs` -- Global arena, `snow_gc_alloc_actor` per-actor allocation
+- `crates/snow-typeck/src/infer.rs` -- Algorithm J inference, `infer_expr` dispatch
+- `crates/snow-typeck/src/unify.rs` -- InferCtx, ena-based union-find unification
 
-### Compiler Engineering Domain Knowledge (HIGH confidence)
-- [Rust method resolution: inherent vs trait methods (issue #51402)](https://github.com/rust-lang/rust/issues/51402) -- method resolution does not check parameter types in probe phase; inherent methods priority breaks for trait objects
-- [Rust RFC 0048 on traits](https://rust-lang.github.io/rfcs/0048-traits.html) -- UFCS and inherent vs trait method precedence design
-- [Deref confusion and method resolution](https://www.fuzzypixelz.com/blog/deref-confusion/) -- method resolution ambiguity with smart pointer types
-- [OCaml record field disambiguation](https://www.lexifi.com/blog/ocaml/type-based-selection-label-and-constructors/) -- type-based selection of labels and constructors; "last record in scope" pitfall
-- [OCaml record field ambiguity](https://dev.realworldocaml.org/records.html) -- reusing field names leads to ambiguity; ordering determines resolution
-- [Hindley-Milner and overloading](https://en.wikipedia.org/wiki/Hindley%E2%80%93Milner_type_system) -- overloading complications with HM inference
-- [Type inference for overloading](https://link.springer.com/chapter/10.1007/10705424_3) -- challenges of overloading without restrictions in HM systems
-- [C# Overload Resolution Priority (C# 13)](https://learn.microsoft.com/en-us/dotnet/csharp/language-reference/proposals/csharp-13.0/overload-resolution-priority) -- API evolution pitfalls with method overloading
+### LLVM Documentation (HIGH confidence)
+- [LLVM Kaleidoscope Tutorial Ch. 5: Control Flow](https://llvm.org/docs/tutorial/MyFirstLanguageFrontend/LangImpl05.html) -- Loop codegen with phi nodes; "codegen() recursively could change the current block" warning; variable scope save/restore
+- [LLVM Loop Terminology](https://llvm.org/docs/LoopTerminology.html) -- LCSSA form, loop-closing phi nodes for values live across loop boundaries
+- [LLVM Frontend Performance Tips](https://llvm.org/docs/Frontend/PerformanceTips.html) -- "alloca in entry block" requirement; mem2reg only promotes entry-block allocas; SSA as canonical form
+- [MLIR alloca-in-loop stack overflow](https://github.com/tensorflow/mlir/issues/210) -- Real-world example of stack overflow from loop-body allocas
+- [LLVM Discourse: alloca in a loop](https://discourse.llvm.org/t/how-to-do-a-short-lived-alloca-in-a-loop/63248) -- Confirming cumulative stack growth from loop allocas
+
+### Rust Language Design (HIGH confidence)
+- [RFC 1624: Loop Break Value](https://rust-lang.github.io/rfcs/1624-loop-break-value.html) -- Type rules for break-with-value in `loop {}`; all breaks must agree; Never coerces to any type; natural termination unresolved for for/while
+- [RFC Issue #1767: Allow for/while to return value](https://github.com/rust-lang/rfcs/issues/1767) -- Unresolved after 8+ years; five proposed approaches for natural-termination semantics; no consensus
+- [Rust Loop Expressions Reference](https://doc.rust-lang.org/reference/expressions/loop-expr.html) -- Break-with-value only in `loop {}`; for/while always return `()`
+
+### Runtime Scheduling & GC (MEDIUM confidence -- cross-language patterns)
+- [Go Goroutine Preemption (1.14+)](https://dzone.com/articles/go-runtime-goroutine-preemption) -- Compiler-inserted preemption checks in loop back-edges; tight loops without calls starve peers
+- [Nature Language Cooperative Scheduling](https://nature-lang.org/news/20260115) -- Safepoint instruction preemption as cooperative scheduling mechanism
+- [OCaml Imperative Programming](https://dev.realworldocaml.org/imperative-programming.html) -- OCaml for/while loops always return unit; explicit loops complement recursion
 
 ---
-*Pitfalls research for: Snow method dot-syntax milestone*
+*Pitfalls research for: Snow v1.7 Loops & Iteration milestone*
 *Researched: 2026-02-08*

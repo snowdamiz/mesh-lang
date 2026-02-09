@@ -1,248 +1,218 @@
 # Project Research Summary
 
-**Project:** Method Dot-Syntax for Snow Language (v1.6)
-**Domain:** Compiler feature addition — method call syntax for existing typed language
+**Project:** Snow Compiler - Loops & Iteration (v1.7)
+**Domain:** Compiler feature addition for statically-typed, functional-first language with LLVM codegen
 **Researched:** 2026-02-08
 **Confidence:** HIGH
 
 ## Executive Summary
 
-Method dot-syntax (`value.method(args)`) for the Snow compiler is a **wiring exercise**, not a new-capability exercise. The entire feature builds on existing infrastructure: the parser already handles `expr.method(args)` as `CALL_EXPR(FIELD_ACCESS(...), ARG_LIST)`, the type checker has `TraitRegistry` with `find_method_traits()` for impl lookup, MIR lowering already rewrites trait method calls to mangled names (`Trait__Method__Type`), and codegen handles function calls. No new dependencies, no new MIR nodes, no new runtime mechanisms.
+Snow's loops and iteration feature (v1.7) requires NO new external dependencies. The entire feature is implemented through changes across all six compiler layers (lexer, parser, typeck, MIR, codegen, runtime) plus two small runtime additions. Research confirms that Snow should implement for-in loops as expression-returning list comprehensions (matching Elixir/Scala semantics), while loops as Unit-returning constructs, and break/continue as non-local control flow via LLVM basic block branches.
 
-The recommended approach is pure desugaring at two integration points: (1) type checker adds method resolution as a fallback in `infer_field_access` when struct field lookup fails, and (2) MIR lowering detects `CallExpr(FieldAccess(...))` pattern and rewrites to `method(receiver, args)` before trait dispatch. This produces identical MIR as bare-name calls (`to_string(point)` vs `point.to_string()`), ensuring consistency with the existing pipe operator and trait system. The implementation is ~150 lines in type checker, ~100 lines in MIR lowering, plus tests.
+The critical architectural decision is using the alloca+mem2reg pattern for loop state management (matching Snow's existing if-expression pattern) rather than explicit phi nodes. For-in loops desugar to index-based iteration at the MIR level, avoiding the complexity of iterator protocols entirely. Range iteration compiles to pure integer arithmetic with zero heap allocation, making `for i in 0..n` as fast as a C for-loop. The actor scheduler's cooperative preemption requires reduction checks at loop back-edges to prevent starvation.
 
-The critical risk is **resolution priority ordering** in `infer_field_access`. This function currently resolves `expr.ident` through a priority chain: module lookup → service lookup → variant constructor → struct field. Method resolution must come AFTER struct fields (fields win over methods) but handle the case where the base type has no struct definition (primitives like `Int`). Getting this ordering wrong breaks existing code — `self.x` in impl bodies must remain struct field access, and `String.length` must remain module-qualified calls. The mitigation is clear: method resolution only triggers when (a) struct field lookup fails, and (b) the FieldAccess is the callee of a CallExpr (has trailing parentheses).
+Key risks are well-understood and preventable: (1) alloca placement inside loop bodies breaks mem2reg optimization and causes stack overflow, (2) for-in collection via immutable append chains creates O(N²) performance, requiring a list builder API, (3) continue in for-loops must target a separate latch block (not the header) to avoid infinite loops. All three have clear mitigation strategies grounded in LLVM best practices and existing Snow patterns.
 
 ## Key Findings
 
 ### Recommended Stack
 
-**Summary from STACK.md:** No new dependencies required. Method dot-syntax is implemented entirely through changes to existing compiler passes. The parser handles the syntax, the type checker resolves methods via `TraitRegistry`, MIR lowering desugars to mangled function calls, and codegen remains unchanged.
+**No new dependencies.** Loops are implemented entirely within the existing compiler architecture using Inkwell 0.8.0 (llvm21-1), Rowan 0.16, and Snow's HM type inference. Three new keywords (`while`, `break`, `continue`) join the existing `for` and `in` keywords.
 
-**Core technologies (all existing):**
-- **rowan CST library** — parser already produces correct tree structure for `expr.method(args)`
-- **TraitRegistry (snow-typeck)** — `find_method_traits(name, ty)` performs impl lookup with structural unification for generics
-- **MIR mangling (snow-codegen)** — `Trait__Method__Type` mangling already used for bare-name calls like `to_string(42)`
-- **Monomorphization (snow-codegen)** — static dispatch via name mangling, no vtables, no runtime method resolution
+**Core technologies:**
+- **Inkwell LLVM bindings** — Loop codegen uses `build_alloca`, `append_basic_block`, `build_conditional_branch` (all available in current version)
+- **Snow's alloca+mem2reg pattern** — Established in `codegen_if` (expr.rs:856-913), reused for loop result values and state
+- **Conservative GC stack scanning** — Works correctly with loop allocas; reduction checks force register spills at GC points
+- **MIR desugaring** — For-in becomes explicit indexed iteration; codegen never sees high-level loop syntax
 
-**What NOT to add:**
-- No new CST node (reuse `CALL_EXPR(FIELD_ACCESS(...), ARG_LIST)`)
-- No new MIR node (method calls become `MirExpr::Call`)
-- No new dependencies (rowan, inkwell, ariadne versions unchanged)
+**Version impact:** None. Internal crate changes only, no dependency updates.
 
 ### Expected Features
 
-**Summary from FEATURES.md:** The MVP focuses on trait method dispatch via dot-syntax, matching Rust's approach but simpler due to Snow's lack of references and autoderef. Method chaining falls out naturally from postfix parsing. Inherent methods (impl without trait) are explicitly deferred to post-MVP.
-
 **Must have (table stakes):**
-- Basic method call: `value.method(args)` resolves to trait impl method with receiver as first arg
-- Field vs. method disambiguation: `point.x` (field) vs `point.x()` (method) — parentheses decide
-- Method chaining: `list.filter(pred).map(f).length()` — left-to-right resolution
-- Trait method resolution: given receiver type, search all impls for method name
-- Self-parameter passing: `value.method(a, b)` desugars to `method(value, a, b)`
-- Generic type support: methods on `List<Int>` resolve through existing unification
-- Clear error messages: "type X has no method `foo`" with ambiguity detection
+- `for x in collection do body end` — Universal iteration pattern expected by users from every language
+- `for i in range do body end` — Counted iteration via Range type (1..10)
+- `while condition do body end` — Conditional repetition for event loops and retry logic
+- `break` / `continue` — Early exit and skip-to-next-iteration, standard in all loop implementations
+- `for {k, v} in map do ... end` — Destructuring iteration with pattern matching
+- Correct scoping (loop variable fresh per iteration) and zero-iteration semantics (empty collection)
 
-**Should have (competitive):**
-- Ambiguity resolution: multiple traits with same method name produce clear error with disambiguation guidance
-- Fully qualified syntax: `Display.to_string(point)` as explicit fallback (already works via module-qualified calls)
-- Pipe operator coexistence: both `value.method(args)` and `value |> method(args)` work, user chooses
+**Should have (differentiators):**
+- **for-in as expression returning List<T>** — `let doubled = for x in list do x * 2 end` collects body results (killer feature for functional-first language)
+- **Range iteration without allocation** — `for i in 0..n` compiles to pure integer arithmetic, zero heap allocation
+- **for-in with filter clause (when)** — `for x in list when x > 0 do ... end` reuses existing guard syntax
+- **break without value** — Exits early from for-in, returns partial collected list
 
 **Defer (v2+):**
-- Inherent methods (`impl Type do ... end` without trait) — requires separate registry, new mangling, priority rules
-- Method references / partial application (`let f = point.method`) — requires closure generation
-- IDE autocomplete for methods — LSP enhancement, separate from core language
+- `break(value)` from while loops — Type unification problem (loop has two return types), punted by Rust RFC 1767
+- Iterator protocol / Iterable trait — Requires state machines, lazy evaluation, trait dispatch (full milestone)
+- Labeled breaks — Requires label scoping, rare use case
+- String character iteration — Requires Unicode handling (grapheme clusters, UTF-8 decoding)
 
 ### Architecture Approach
 
-**Summary from ARCHITECTURE.md:** Method dot-syntax is implemented as syntactic sugar via desugaring at two integration points. Type checker adds method resolution fallback in `infer_field_access` (after struct field lookup fails), returning the method's function type. MIR lowering detects `CallExpr(FieldAccess(...))` pattern in `lower_call_expr`, extracts receiver and method name, prepends receiver to args, and feeds into existing trait dispatch logic. Both paths converge to `MirExpr::Call { func: Var("Trait__Method__Type"), args: [receiver, ...] }` — identical to bare-name calls.
+Loops desugar at the MIR level to avoid adding general mutation to Snow's functional core. For-in becomes MirExpr::ForIn with an IterKind enum (List/Map/Set/Range) that codegen translates to indexed iteration. While becomes MirExpr::While with straightforward header/body/exit block structure. Break and continue are MirExpr::Break / MirExpr::Continue with type Never (diverging), matching return and panic semantics.
 
 **Major components:**
-
-1. **Type Checker (snow-typeck/infer.rs)** — `infer_field_access` gains method resolution fallback after struct field lookup fails; `infer_call` detects FieldAccess callee and prepends receiver type to arg list for unification.
-
-2. **MIR Lowering (snow-codegen/mir/lower.rs)** — `lower_call_expr` intercepts `CallExpr(FieldAccess(...))` pattern at AST level, extracts receiver and method name, calls extracted `resolve_trait_method_callee` helper (shared with bare-name dispatch path).
-
-3. **Trait Registry (snow-typeck/traits.rs)** — `find_method_traits(method_name, ty)` already exists; structural type matching via temporary unification handles generics; returns list of matching trait names for ambiguity detection.
-
-**Resolution priority (critical invariant):**
-1. Module-qualified (`String.length`) — existing
-2. Service module (`Counter.get`) — existing
-3. Sum type variant (`Shape.Circle`) — existing
-4. Struct field (`point.x`) — existing
-5. Method via trait impl (`point.to_string()`) — **NEW**, only when steps 1-4 fail
-6. Error: NoSuchField/NoSuchMethod
-
-**Build order:** (1) Extract trait dispatch helper in MIR lowering (refactor), (2) Add method resolution fallback in type checker, (3) Add receiver-type prepending in `infer_call`, (4) Add method call desugaring in MIR lowering, (5) End-to-end tests.
+1. **Lexer/Parser** — Add 3 keywords, 4 SyntaxKind variants, 4 AST nodes; mechanical changes to token.rs and expressions.rs
+2. **Type Checker** — Element type extraction from collections (List<T> -> T, Range -> Int), loop context tracking for break/continue validation, for-in result type as List<body_type>
+3. **MIR Lowering** — For-in desugars to indexed iteration with collection-specific access patterns; while lowers directly; loop context not needed (break/continue are primitives)
+4. **LLVM Codegen** — Three-block structure (header/body/latch) for for-in, two-block (header/body) for while; loop context stack for break/continue targeting; entry-block allocas for all loop state
+5. **Runtime** — List builder API (snow_list_builder_new/push/finish) for O(N) collection, snow_set_to_list for Set iteration
 
 ### Critical Pitfalls
 
-From PITFALLS.md, top 5 that require explicit mitigation:
+1. **LLVM alloca inside loop body breaks mem2reg** — Allocas must be placed in function entry block before loop header, or mem2reg won't promote to registers. Loop-body allocas cause stack overflow (1M iterations = 1M stack slots) and 10-100x performance regression. Prevention: Use `emit_entry_block_alloca` helper that temporarily repositions builder.
 
-1. **Resolution Order Determines Semantics** — The priority chain in `infer_field_access` is fragile. Method resolution MUST come after struct fields, service modules, and variant constructors. Otherwise `self.x` in impl bodies breaks (fields shadow methods), or `String.length` breaks (module calls shadow methods). **Mitigation:** Method resolution only activates when (a) struct field lookup fails, AND (b) the FieldAccess is the callee of a CallExpr (has trailing parens). Test every ordering conflict explicitly.
+2. **O(N²) list collection via immutable append** — `snow_list_append` copies all N elements per append, causing O(N²) work and O(N²) garbage. For N=100K, this is 5 billion copies and bytes. Prevention: Implement list builder with doubling growth (like Rust Vec), giving O(N) amortized. This is not an optimization, it's required for correctness.
 
-2. **Type Variable Leak from Premature Method Resolution** — If the receiver type is still a type variable (`Ty::Var`) when method resolution runs, `find_method_traits` returns no results. The current code falls back to `fresh_var()`, causing cascading type errors. **Mitigation:** When receiver type resolves to `Ty::Var` and method lookup fails, emit clear error: "cannot call method on value of unknown type — add type annotation." Do NOT return fresh_var for method calls.
+3. **Actor starvation from tight loops without reduction checks** — A loop with no function calls never yields to the scheduler. `for i in 0..1_000_000 do i+1 end` monopolizes the worker thread, starving other actors. Prevention: Insert `snow_reduction_check()` at loop back-edge (before branching to header). This matches BEAM VM and Go 1.14+ preemption.
 
-3. **Method Call vs. Pipe Operator Semantic Divergence** — Pipe works with any function (`x |> free_fn`), method dot-syntax only works with impl methods (`x.impl_method()`). These use different resolution paths (env lookup vs TraitRegistry). **Mitigation:** Decide on asymmetry and document it. Test that methods callable via dot are also callable via pipe (trait methods are registered in env at infer.rs:2139). Do NOT attempt UFCS (universal function call syntax).
+4. **Continue in for-loop skips index increment causing infinite loop** — If continue branches to loop header instead of latch block, the index never advances. Prevention: Use three-block structure (body -> latch -> header) where continue targets latch (increment), not header.
 
-4. **Breaking Codegen — FieldAccess MIR Node vs. Method Call** — The MIR lowerer's `lower_call_expr` calls `lower_expr` on the callee, which dispatches to `lower_field_access`, producing `MirExpr::FieldAccess`. This becomes the callee of a Call, and codegen crashes (tries to do struct GEP on a callee). **Mitigation:** Intercept the `CallExpr(FieldAccess(...))` pattern in `lower_call_expr` BEFORE calling `lower_field_access`. Extract receiver and method name from AST directly, desugar to `method(receiver, args)`, feed into trait dispatch. Method calls NEVER reach `lower_field_access`.
-
-5. **Ambiguous Method Resolution Across Multiple Traits** — `find_method_traits` returns a `Vec<String>` of matching trait names. The current MIR lowerer takes `matching_traits[0]` — the first match from a HashMap iterator, which is nondeterministic. **Mitigation:** Type checker must detect `find_method_traits.len() > 1` and emit ambiguity error with all matching trait names. MIR lowering should sort `matching_traits` alphabetically as fallback for determinism.
+5. **Expression-returning loops with break(value) breaks HM unification** — For-in returns List<T>, but break(value) returns value_type. These can't unify (List<Int> vs String). Rust punted on this for 8+ years. Prevention: Defer break(value) to future version; for-in break without value returns partial list; while always returns Unit.
 
 ## Implications for Roadmap
 
-Based on research, suggested phase structure for method dot-syntax milestone:
+Based on research, loops require strictly sequential implementation through the compiler pipeline. Each layer depends on the previous one completing.
 
-### Phase 1: Core Type Checker Method Resolution
-**Rationale:** Type checking is the semantic correctness layer. Getting method resolution right in the type checker ensures that `point.to_string()` is correctly typed before any code generation. This phase has no MIR/codegen changes, so failures are caught early with clear type errors.
+### Phase 1: Foundation - Keywords + While Loop
+**Rationale:** While loops are simpler than for-in (no collection iteration, no destructuring, no result accumulation). Establishing the basic loop infrastructure (keywords, parser, MIR nodes, codegen block structure) on the simpler construct reduces risk.
 
-**Delivers:**
-- Method resolution fallback in `infer_field_access` (after struct field lookup fails)
-- `find_method_traits` integration with proper priority ordering
-- Clear error messages: "type X has no method `foo`"
-- Ambiguity detection: multiple traits with same method name produce error
-- Receiver-type prepending in `infer_call` for correct arity checking
+**Delivers:** Working while loops, break, and continue. Demonstrates LLVM loop codegen pattern and reduction check integration.
 
-**Addresses (from FEATURES.md):**
-- Basic method call type checking
-- Generic type support (via existing unification in TraitRegistry)
-- Error messages for "no such method"
+**Addresses:**
+- STACK.md: New keywords (`while`, `break`, `continue`), WHILE_EXPR/BREAK_EXPR/CONTINUE_EXPR SyntaxKind, MirExpr::While/Break/Continue
+- FEATURES.md: while loop, break, continue (table stakes)
+- PITFALLS.md: Establishes alloca placement pattern (P2), reduction check integration (P3), loop context stack for nested loops (P9)
 
-**Avoids (from PITFALLS.md):**
-- Pitfall 1: Resolution order — method resolution comes AFTER struct fields
-- Pitfall 2: Type variable leak — emit clear error when receiver type is unresolved
-- Pitfall 5: Ambiguity detection — check `find_method_traits` result count
+**Avoids:**
+- P2 (alloca in loop body) by implementing `emit_entry_block_alloca` helper upfront
+- P3 (actor starvation) by adding reduction check to initial while implementation
+- P5 (terminated block writes) by modeling break/continue as Never-typed from the start
 
-**Research flag:** Standard patterns. HM type inference + trait resolution is well-understood. No deep research needed.
+**Estimated effort:** 5-7 days
 
-### Phase 2: MIR Lowering Desugaring
-**Rationale:** Depends on Phase 1 type checking being correct. MIR lowering trusts the types map from type checker. This phase reuses existing trait dispatch infrastructure (mangled names, builtin short-circuits, monomorphization).
+### Phase 2: For-In Over Range (Zero-Allocation Fast Path)
+**Rationale:** Range iteration is the simplest for-in case — no runtime function calls in the loop body, just direct arithmetic. This validates the for-in desugaring pattern before adding collection-specific complexities.
 
-**Delivers:**
-- Intercept `CallExpr(FieldAccess(...))` in `lower_call_expr`
-- Extract receiver and method name from AST
-- Prepend receiver to arg list
-- Feed into extracted `resolve_trait_method_callee` helper (shared with bare-name calls)
-- Produce `MirExpr::Call { func: Var(mangled_name), args: [receiver, ...], ty }`
+**Delivers:** `for i in 1..10 do ... end` working with Range type, demonstrating optimized integer counter loop.
 
-**Uses (from STACK.md):**
-- Existing MIR Call node (no new variants)
-- Trait__Method__Type mangling (already implemented)
-- Builtin dispatch (Display__to_string__Int -> snow_int_to_string)
+**Addresses:**
+- STACK.md: FOR_EXPR parser production, MirExpr::ForIn with IterKind::Range, for-in as expression semantics
+- FEATURES.md: Range iteration (table stakes), range iteration without allocation (differentiator)
+- ARCHITECTURE.md: For-in MIR lowering pattern, three-block loop structure (header/body/latch)
+- PITFALLS.md: Continue targeting latch block (P8), for-in result type as List<T> (P1 partial)
 
-**Implements (from ARCHITECTURE.md):**
-- Desugaring at MIR boundary (method calls become regular calls)
-- Shared dispatch helper (bare-name and dot-syntax converge)
+**Uses:** While loop infrastructure from Phase 1 (loop context stack, reduction checks)
 
-**Avoids (from PITFALLS.md):**
-- Pitfall 4: Breaking codegen — intercept before `lower_field_access`, never produce FieldAccess MIR for method calls
-- Pitfall 10: Duplicated dispatch logic — extract helper, call from both paths
-- Pitfall 5: Monomorphization — method calls use standard Call nodes, automatically tracked
+**Estimated effort:** 3-4 days
 
-**Research flag:** Standard patterns. Trait dispatch via mangling matches Rust's monomorphized calls.
+### Phase 3: List Builder Runtime + For-In Collection Semantics
+**Rationale:** Before adding List/Map/Set iteration, implement the list builder to avoid O(N²) collection. This is not an optimization — it's required for correctness with realistic data sizes.
 
-### Phase 3: Integration Testing and Edge Cases
-**Rationale:** Validates interaction with existing features (field access, pipe operator, module-qualified calls, chaining). Tests priority rules and error handling comprehensively.
+**Delivers:** List builder API (snow_list_builder_new/push/finish), for-in returning List<T> with collected body results, GC-safe builder allocation.
 
-**Delivers:**
-- End-to-end tests: `point.to_string()` compiles and runs
-- Primitive receiver: `42.to_string()` returns "42"
-- Chaining: `point.to_string().length()` works
-- Generic receiver: `Box<Int>.to_string()` resolves through unification
-- Pipe equivalence: `point.to_string()` == `point |> to_string()` (same result)
-- Priority rules: struct field access still works when method has same name
-- Error messages: clear diagnostics for no-such-method, ambiguity
+**Addresses:**
+- STACK.md: snow_list_builder runtime functions, GC-safe builder on actor heap
+- PITFALLS.md: O(N²) list collection (P4), GC roots in loops (P7)
+- FEATURES.md: for-in as expression returning List<T> (differentiator)
 
-**Addresses (from FEATURES.md):**
-- Method chaining (falls out naturally from postfix parsing)
-- Pipe operator coexistence (both syntaxes work)
-- Fully qualified disambiguation (`Display.to_string(point)`)
+**Uses:** MirExpr::ForIn from Phase 2, codegen loop structure
 
-**Avoids (from PITFALLS.md):**
-- Pitfall 3: Pipe divergence — test both paths produce same results
-- Pitfall 6: Self-binding leak — test method calls inside other method bodies
-- Pitfall 9: Chained expressions — test nested method calls with clear error messages
+**Estimated effort:** 2-3 days
 
-**Research flag:** Standard testing patterns. No deep research needed.
+### Phase 4: For-In Over List/Map/Set + Destructuring
+**Rationale:** With list builder and Range working, add collection iteration. Map/Set require minimal runtime additions (snow_set_to_list, Map already has snow_map_keys). Pattern destructuring reuses existing pattern infrastructure limited to irrefutable patterns.
+
+**Delivers:** Full for-in support across all collection types, tuple destructuring for Map entries.
+
+**Addresses:**
+- STACK.md: IterKind::List/Map/Set, collection-specific runtime functions (snow_set_to_list)
+- FEATURES.md: for {k,v} in map (table stakes), destructuring (table stakes)
+- ARCHITECTURE.md: Collection iteration strategy, pattern binding in for-loops
+- PITFALLS.md: Pattern conflicts (P6) by restricting to irrefutable patterns, Map/Set runtime functions (P11)
+
+**Uses:** List builder from Phase 3, pattern matching infrastructure (restricted subset)
+
+**Estimated effort:** 4-5 days
+
+### Phase 5: Filter Clause (when) + Integration Testing
+**Rationale:** With core loop functionality complete, add filter clause as ergonomic enhancement. Integration testing covers closures in loops, nested loops, pipe interaction, tooling (formatter, LSP).
+
+**Delivers:** `for x in list when x > 0 do ... end` syntax, comprehensive e2e tests, formatter/LSP updates.
+
+**Addresses:**
+- FEATURES.md: for-in with filter clause (differentiator), break in for-in returns partial list
+- PITFALLS.md: Closure capture in loops (P10), nested loops (P9), tooling integration
+- ARCHITECTURE.md: Break/continue in nested contexts (if/case/loops)
+
+**Uses:** All prior phases
+
+**Estimated effort:** 3-4 days
 
 ### Phase Ordering Rationale
 
-- **Phase 1 before Phase 2:** Type checking must be correct before MIR lowering can trust the types map. If typeck produces wrong types, MIR lowering propagates the error into codegen.
-- **Phase 2 before Phase 3:** MIR lowering must produce valid Call nodes before integration tests can exercise the full pipeline.
-- **No separate parser phase:** Parser already handles `expr.method(args)` correctly — verified via existing snapshot tests.
-- **No codegen phase:** Codegen remains unchanged — method calls desugar to regular Call nodes at MIR level.
-
-**Dependency structure:**
-```
-Existing Infrastructure (parser, TraitRegistry, MIR Call nodes)
-    |
-    v
-Phase 1: Type Checker (method resolution + ambiguity detection)
-    |
-    v
-Phase 2: MIR Lowering (desugaring to mangled calls)
-    |
-    v
-Phase 3: Integration Tests (validate full pipeline)
-```
+- **Sequential through compiler layers** — Each phase builds on the previous one. Cannot implement for-in without while's loop infrastructure. Cannot implement collection without list builder. This is dictated by architecture, not preference.
+- **Simple before complex** — While before for-in, Range before List/Map/Set, basic functionality before filter clauses. Validates patterns on simpler cases.
+- **Performance-critical upfront** — List builder in Phase 3 (not deferred) because O(N²) collection breaks realistic workloads. Alloca placement and reduction checks in Phase 1 because fixing later requires full codegen refactor.
+- **Pitfall prevention integrated** — Each phase explicitly addresses specific pitfalls from research. Not a separate "fix bugs" phase.
 
 ### Research Flags
 
-**Phases with standard patterns (skip `/gsd:research-phase`):**
-- All three phases use well-established patterns from Rust compiler design
-- HM type inference + trait resolution is textbook material
-- Method desugaring to first-argument passing is standard UFCS implementation
-- Mangling schemes for static dispatch are well-understood
+**Phases with standard patterns (no additional research needed):**
+- **Phase 1-5:** All loop patterns are well-documented in LLVM codegen literature, Rust RFC discussions, and existing Snow patterns (if/match codegen). The research files provide comprehensive implementation guidance.
 
-**No phases require deep research.** The domain (compiler method resolution) is extremely well-documented, and Snow's existing infrastructure closely matches Rust's design.
+**Validation during implementation:**
+- LLVM IR verification (`opt -verify`) must pass for every test case
+- GC stress tests (DEFAULT_REDUCTIONS=1) to verify root scanning
+- Benchmark for-in collection to confirm O(N) not O(N²)
 
 ## Confidence Assessment
 
 | Area | Confidence | Notes |
 |------|------------|-------|
-| Stack | HIGH | Direct codebase analysis of 66,521 lines. All infrastructure exists. No new dependencies. |
-| Features | HIGH | Extensive prior art from Rust, Swift, Kotlin. Method dot-syntax is well-established with clear expectations. |
-| Architecture | HIGH | Two integration points identified with exact line numbers in codebase. Desugaring approach validated by existing pipe operator. |
-| Pitfalls | HIGH | Codebase analysis reveals exact conflict points (infer_field_access resolution chain, lower_call_expr callee handling). Resolution order pitfall has explicit test plan. |
+| Stack | HIGH | Based on direct codebase analysis (67,546 lines across 11 crates), Inkwell API verification, LLVM IR patterns established in existing codegen |
+| Features | HIGH | Loops are the most-studied area of language design with extensive prior art (Rust, Elixir, Scala, Kotlin, Swift, Zig) |
+| Architecture | HIGH | MIR desugaring pattern established by pipe operator, alloca+mem2reg pattern established by if-expression, reduction checks established by actor scheduler |
+| Pitfalls | HIGH | LLVM alloca issues documented in LLVM Frontend Performance Tips and MLIR bug reports; Rust RFC 1624/1767 for break-value type unification; O(N²) collection is algorithmic fact |
 
 **Overall confidence:** HIGH
 
 ### Gaps to Address
 
-**Gap 1: Single-letter vs multi-character type parameters**
-- `freshen_type_params` (traits.rs:299) only freshens single-uppercase-letter constructors (`A`-`Z`)
-- Multi-character type params (e.g., `Key`, `Value`) may not be freshened correctly
-- **Handling:** Test with multi-character params during Phase 1 implementation. If broken, audit `freshen_type_params` to use impl's declared type param list instead of naming convention.
+- **String iteration deferred** — Research confirms this requires Unicode handling (grapheme clusters, UTF-8). Not a gap, but an explicit defer-to-v2 decision.
+- **Break-with-value semantics unresolved** — Rust hasn't solved this after 8+ years (RFC 1767 unmerged). Not attempting for v1.7. For-in break returns partial list; while break returns Unit.
+- **Iterator protocol design** — Research confirms this is a full milestone (state machines, lazy evaluation, trait dispatch). Not in scope for v1.7. Index-based iteration sufficient.
 
-**Gap 2: Where-clause constraint checking for dot-syntax calls**
-- `infer_call` (infer.rs:2713-2749) only checks constraints when callee is `NameRef`
-- Method calls have `FieldAccess` callee
-- **Handling:** Extract method name from FieldAccess, look up constraints, apply existing checking logic. Should be straightforward extension.
-
-**Gap 3: LSP go-to-definition for methods**
-- snow-lsp/src/definition.rs does not handle FieldAccess
-- Clicking "go to definition" on method calls will not work initially
-- **Handling:** Defer to post-MVP. Add `method_resolutions` map to TypeckResult for LSP queries. Not a blocker for language feature.
+No unresolved technical gaps. All implementation details grounded in verified patterns.
 
 ## Sources
 
 ### Primary (HIGH confidence)
-- Direct codebase analysis: 66,521 lines of Snow compiler (parser, typeck, codegen, MIR, LSP)
-- `snow-typeck/src/infer.rs` — infer_field_access (line 3879), resolution priority chain
-- `snow-typeck/src/traits.rs` — TraitRegistry, find_method_traits (line 246), structural unification
-- `snow-codegen/src/mir/lower.rs` — trait dispatch (lines 3527-3599), lower_call_expr (line 3362)
-- `snow-parser/tests/snapshots/parser_tests__mixed_postfix.snap` — confirms `a.b(c)` parse tree structure
+- Snow codebase direct analysis: 67,546 lines across 11 crates, 1,255 tests
+- snow-codegen/src/codegen/expr.rs lines 856-913 (codegen_if alloca+mem2reg pattern)
+- snow-codegen/src/mir/mod.rs (MirExpr enum, current 30+ variants)
+- snow-common/src/token.rs (45 existing keywords, `for`/`in` present, `while`/`break`/`continue` absent)
+- snow-rt/src/collections/list.rs (snow_list_append O(N) copy at line 76)
+- snow-rt/src/actor/mod.rs lines 160-191 (snow_reduction_check with GC trigger, "loop back-edges" comment at line 155)
+- Inkwell GitHub Repository — API for build_alloca, build_conditional_branch, append_basic_block (verified against 0.8.0)
+- LLVM Language Reference: Loop Terminology — LLVM loop detection via back-edges
+- LLVM Frontend Performance Tips — "alloca in entry block" requirement for mem2reg
 
 ### Secondary (MEDIUM-HIGH confidence)
-- [Rust Method Call Expressions Reference](https://doc.rust-lang.org/reference/expressions/method-call-expr.html) — official method resolution rules
-- [Rust Compiler Dev Guide: Method Lookup](https://rustc-dev-guide.rust-lang.org/method-lookup.html) — probe phase internals
-- [Swift Method Dispatch Mechanisms](https://nilcoalescing.com/blog/MethodDispatchMechanismsInSwift/) — static dispatch for structs
-- [UFCS in Rust](https://doc.rust-lang.org/book/first-edition/ufcs.html) — fully qualified syntax
-- [Uniform Function Call Syntax (Wikipedia)](https://en.wikipedia.org/wiki/Uniform_Function_Call_Syntax) — UFCS concept overview
+- Rust RFC 1624: Loop Break Value — Design discussion on break-with-value, type unification challenges
+- Rust RFC Issue 1767: Allow for/while to return value — Unresolved after 8+ years, documents the type unification problem
+- Elixir Comprehensions documentation — for/do returns collected list by default
+- Scala for-comprehension documentation — for/yield desugars to map, returns collection
+- Zig Loops as Expressions documentation — while-else pattern for break-with-value
+- LLVM Kaleidoscope Tutorial Ch. 5 — Loop codegen with basic blocks, "codegen recursively could change current block" warning
+- MLIR alloca-in-loop stack overflow (tensorflow/mlir#210) — Real-world example of loop-body alloca causing stack overflow
 
 ### Tertiary (MEDIUM confidence)
-- [C++ P3021 UFCS Proposal](https://open-std.org/JTC1/SC22/WG21/docs/papers/2023/p3021r0.pdf) — ambiguity problems with UFCS (why NOT to build it)
-- [Swift Compiler Cocaine: Method Dispatch Deep Dive](https://blog.jacobstechtavern.com/p/compiler-cocaine-the-swift-method) — compiler-level dispatch analysis
+- Go Goroutine Preemption (1.14+) — Compiler-inserted preemption checks at loop back-edges for cooperative scheduling
+- BEAM VM reduction counting — Per-opcode reduction counting for fair scheduling
+- OCaml Imperative Programming — OCaml for/while loops always return unit, similar to proposed while semantics
 
 ---
 *Research completed: 2026-02-08*

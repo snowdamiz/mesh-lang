@@ -1,418 +1,537 @@
-# Feature Landscape: Method Dot-Syntax
+# Feature Landscape: Loops & Iteration
 
-**Domain:** Method call syntax (`value.method(args)`) for a statically-typed language with existing pipe operator, field access, and trait/impl dispatch
+**Domain:** Loop constructs (`for..in`, `while`, `break`, `continue`) for a statically-typed, expression-oriented language with existing functional iteration (map/filter/reduce), closures, pattern matching, and do/end block syntax
 **Researched:** 2026-02-08
-**Confidence:** HIGH (extremely well-established domain with extensive prior art from Rust, Swift, and others)
+**Confidence:** HIGH (loops are the most-studied area of language design, with extensive prior art across dozens of languages)
 
 ---
 
 ## Current State in Snow
 
-Before defining features for method dot-syntax, here is what already exists:
+Before defining loop features, here is what already exists and directly affects loop design:
 
-**Working (infrastructure this feature depends on):**
-- `FIELD_ACCESS` CST node: `expr.field` parsed as postfix at BP 25 (highest)
-- Module-qualified calls: `String.length(s)`, `IO.println(msg)` -- parsed as `FIELD_ACCESS` then resolved in type checker
-- Pipe operator: `items |> List.filter(pred) |> List.map(f)` -- parsed as `PIPE_EXPR` at BP 3/4 (lowest)
-- Trait impl blocks with `TraitRegistry`: stores `ImplDef` with methods keyed by name, supports `find_method_traits()`, `resolve_trait_method()`, structural type matching via unification
-- Auto-derive for Display, Debug, Eq, Ord, Hash, Default -- generates impl methods
-- MIR lowering: impl methods mangled as `TraitName__method_name__TypeName`, call sites resolved via `find_method_traits` + `mir_type_to_impl_name`
-- Monomorphization for generics with trait bounds
-- CallExpr callee resolution: already checks `find_method_traits()` when callee is not a known function and first arg matches an impl type
-- `self` parameter detection via `SELF_KW` in impl method lowering, bound to concrete implementing type
+**Working (infrastructure loops interact with):**
+- `for` and `in` are reserved keywords (TokenKind::For, TokenKind::In, SyntaxKind::FOR_KW, SyntaxKind::IN_KW) -- already lexed and mapped, but not yet parsed
+- `while`, `break`, `continue` are NOT reserved keywords -- must be added to lexer/token/syntax_kind
+- do/end block syntax for all compound expressions (if, case, fn closures, receive)
+- Pattern matching with destructuring: IdentPat, TuplePat, ConstructorPat, ConsPat, WildcardPat, OrPat, AsPat
+- Closures: `fn x -> body end` and `fn(x) do body end` with environment capture
+- Higher-order functions: `map(list, fn)`, `filter(list, fn)`, `reduce(list, init, fn)` as prelude builtins
+- Method dot-syntax: `list.map(fn x -> x * 2 end)` (being added in prior milestone)
+- Pipe operator: `list |> map(fn x -> x * 2 end) |> filter(fn x -> x > 3 end)`
+- Collections: List<T> (GC-managed, immutable semantics), Map<K,V>, Set<T>, Range (half-open [start, end))
+- Range type: `Range.new(1, 10)` and range operator `1..10`, supports `to_list`, `map`, `filter`, `length`
+- All expressions return values (if/else, case/match, closures, blocks -- last expression is the value)
+- MIR: desugared representation with `MirExpr::If`, `MirExpr::Block`, `MirExpr::Match`, etc. -- all expression-based
+- LLVM codegen: alloca+mem2reg pattern for control flow merges (if/else phi nodes)
+- Immutable bindings: `let x = ...` with rebinding via `let x = ...` shadowing (no mutation)
+- HM type inference with Algorithm J
 
 **Not yet working (what this milestone adds):**
-- `value.method(args)` syntax that resolves to an impl method with `value` as first argument
-- Parser disambiguation between `expr.field` (field access) and `expr.method(args)` (method call)
-- Type checker method resolution: given a receiver type, find the matching impl method
-- Method chaining: `value.method1().method2().method3()`
+- `for item in collection do ... end` syntax
+- `while condition do ... end` syntax
+- `break` and `continue` statements/expressions
+- Destructuring in for loops: `for {k, v} in map do ... end`
+- Loop expressions returning values (what type does a for-loop evaluate to?)
+- New keywords: `while`, `break`, `continue` must be added to token vocabulary
 
-**Key parser observation:** The current parser already handles `expr.ident` as `FIELD_ACCESS` and `expr(args)` as `CALL_EXPR`. When the user writes `value.method(args)`, the Pratt parser will produce a `CALL_EXPR` whose callee is a `FIELD_ACCESS`. This is exactly how Rust's parser works -- the disambiguation happens in the type checker, not the parser.
+**Key design constraint:** Snow is expression-oriented and immutable-first. Loops must produce values and work without mutation. This fundamentally shapes what loops look like -- they are closer to Elixir comprehensions or Scala for/yield than to C-style imperative loops.
 
 ---
 
 ## Table Stakes
 
-Features users expect from method dot-syntax. Missing any of these and the feature feels broken or incomplete.
+Features users expect from loops and iteration. Missing any of these and the feature feels incomplete.
 
 | Feature | Why Expected | Complexity | Dependencies | Notes |
 |---------|--------------|------------|--------------|-------|
-| Basic method call: `value.method(args)` | The core feature. Users write `point.to_string()` and it resolves to the Display impl's `to_string` method with `point` as `self`. | Medium | Parser (may already work), type checker method resolution, MIR lowering | Parser likely produces `CALL_EXPR(FIELD_ACCESS(value, method), args)` already. Type checker needs to detect this pattern, look up receiver type, find matching impl method, and rewrite to `TraitName__method__TypeName(value, args)`. |
-| Field vs. method disambiguation via parentheses | `point.x` is field access; `point.x()` is method call. Parentheses are the disambiguator. | Low | Type checker | Follows Rust's approach exactly. The parser already distinguishes: no parens = `FIELD_ACCESS`, parens = `CALL_EXPR(FIELD_ACCESS(...), ...)`. The type checker resolves based on whether `x` is a struct field (no parens) or a method (with parens). No ambiguity in the grammar. |
-| Method chaining | `list.filter(pred).map(f).length()` -- each method call returns a value that the next dot-call operates on. | Low | Basic method call working | Falls out naturally from left-to-right parsing at BP 25. The Pratt parser already chains postfix operations. If `filter` returns a `List<T>`, the type checker resolves `.map(f)` on that `List<T>`. No additional work needed once basic method calls work. |
-| Trait method resolution by receiver type | Given `value.method()`, look up the concrete type of `value`, search all trait impls for that type, and find one that provides `method`. | Medium | `TraitRegistry.find_method_traits()` (exists), type checker | Already have `find_method_traits(method_name, ty)` which does exactly this. The current code path in MIR lowering already uses this for bare function calls when the callee is unknown. Need to wire the same logic into type-checker-level method resolution. |
-| Self-parameter passing | `value.method(a, b)` becomes `method(value, a, b)` -- receiver is prepended as first argument, matching the `self` parameter in the impl method definition. | Low | Method resolution, MIR lowering | MIR lowering already handles `self` parameters in impl methods. The desugaring `value.method(a, b)` -> `TraitName__method__TypeName(value, a, b)` is structurally identical to how pipe expressions desugar: `value |> method(a, b)` -> `method(value, a, b)`. |
-| Methods on generic types | `let items: List<Int> = ...; items.length()` -- method resolution works when the receiver has generic type parameters. | Medium | Generic type unification in `find_method_traits` (exists) | `TraitRegistry` already uses structural type matching via `freshen_type_params` + unification to match generic impls. `impl Iterable for List<T>` will match against `List<Int>` through the existing unification machinery. |
-| Error messages for "no such method" | When `value.nonexistent()` is called, the compiler says "type X has no method `nonexistent`" rather than a confusing generic error. | Medium | Type checker diagnostics | Important for usability. Should list available methods on the type, similar to "no such field" errors already produced by `infer_field_access`. |
-| Interaction with existing module-qualified calls | `String.length(s)` continues to work as a module-qualified function call. `s.length()` also works as a method call. Both resolve to the same underlying function. | Medium | Type checker precedence rules | The type checker's `infer_field_access` already checks for module-qualified access first (lines 3903-3944 in infer.rs). Method resolution is a fallback when the base expression is not a module name. This priority order must be preserved. |
-| Interaction with existing pipe operator | Both `items |> List.filter(pred)` and `items.filter(pred)` work. They are different syntax for the same underlying operation. | Low | Both features independently working | No interaction issues. Pipe uses `PIPE_EXPR` node, method call uses `CALL_EXPR(FIELD_ACCESS(...), ...)`. Different parse trees, same semantic result. Users choose whichever reads better. |
+| `for x in collection do body end` | The fundamental iteration form. Every language with loops has this. Users from Ruby, Python, Kotlin, Swift, Rust all expect it. | Medium | New FOR_EXPR AST/CST node, MIR loop lowering, type checker iterable inference, codegen loop emission | Core feature. Must work with List<T>, Range, Map<K,V>, Set<T>. |
+| `for i in range do body end` | Range iteration is the most common counted loop pattern. `for i in 1..10 do println("${i}") end` is universal. | Low | For-in implementation + existing Range type and `..` operator | Range already exists. `1..10` produces a Range. Lower to a counter-based while loop in MIR for efficiency (avoid materializing a list). |
+| `while condition do body end` | Needed for event loops, polling, retry logic, and general conditional repetition. Expected by users from every imperative or multi-paradigm language. | Medium | New WHILE_EXPR AST/CST node, MIR while lowering, codegen while loop emission | Simpler than for-in because there is no iterator protocol. Condition is re-evaluated each iteration. |
+| `break` to exit loops early | Every language with loops supports early exit. Without break, users must contort control flow with boolean flags. | Medium | New BREAK_EXPR AST node, loop context tracking in parser/typechecker, codegen branch to loop exit block | Must only be valid inside loop bodies. Nested loops: break exits innermost loop. |
+| `continue` to skip iteration | Expected companion to break. Skips the rest of the current iteration body and moves to next iteration. | Medium | New CONTINUE_EXPR AST node, codegen branch to loop header/increment block | Slightly simpler than break because it does not affect the loop's return value. |
+| `for {k, v} in map do ... end` | Destructuring iteration over Map entries. Expected by users from Kotlin (`for ((k,v) in map)`), Elixir (`for {k, v} <- map`), Python, Swift. | Medium | Pattern matching in for-loop binding position, Map iteration protocol producing tuples | Snow already has TuplePat. Map entries naturally destructure as `{key, value}` tuples. The for-loop binding should accept any irrefutable pattern, not just simple identifiers. |
+| Loop body executes zero times if collection is empty / condition is false | Standard semantics in every language. | Low | Header check before first body entry | Non-negotiable. An empty list produces zero iterations. A false while-condition produces zero iterations. |
+| Correct scoping of loop variable | Loop variable visible only inside body, freshly bound each iteration. | Low | Let binding in body scope | Consistent with Snow's `let` immutability. Each iteration gets a fresh binding. |
+| Nested loops with correct break/continue targeting | `for x in xs do for y in ys do break end end` -- break exits inner loop only. | Low | Loop context stack for break/continue tracking | Falls out naturally from recursive expression parsing. Break/continue apply to innermost loop. |
 
 ---
 
 ## Differentiators
 
-Features that would make Snow's method dot-syntax stand out. Not strictly expected, but valued.
+Features that would make Snow's loops stand out. Not strictly expected, but high value.
 
 | Feature | Value Proposition | Complexity | Dependencies | Notes |
 |---------|-------------------|------------|--------------|-------|
-| Inherent methods (impl without trait) | `impl Point do fn distance(self, other: Point) -> Float do ... end end` -- methods directly on a type without a trait. Avoids needing a trait for every method. | High | New `impl Type do ... end` syntax (no trait name), separate method registry | Rust allows `impl Type { ... }` for inherent methods. This is a major ergonomic win for type-specific helpers that don't belong to any trait. **Recommendation: Defer to post-MVP.** Snow's trait-only approach works for v1, and adding inherent methods later is backward-compatible. The MVP should focus on trait method dispatch. |
-| Ambiguity resolution for multiple traits | When two traits provide the same method name for the same type, `value.method()` should produce a clear error with disambiguation guidance: "method `to_string` is ambiguous between traits Display and Printable; use `Display.to_string(value)` for explicit dispatch." | Medium | `find_method_traits()` returning multiple results (already supported), diagnostic formatting | `find_method_traits` already returns a `Vec<String>` of matching trait names. The check for `len() > 1` is the ambiguity case. Already implemented in MIR lowering (uses first match). Should become a type-checker error instead. |
-| Fully qualified disambiguation syntax | `Display.to_string(point)` as explicit syntax when dot-call is ambiguous. Already works as module-qualified call pattern. | Low | Existing module-qualified call infrastructure | This already works because `Display.to_string(point)` parses as `FIELD_ACCESS(Display, to_string)` then `CALL_EXPR` with `point` as arg. The existing call resolution in MIR lowering handles this via `find_method_traits`. Just need to ensure it continues working alongside dot-syntax. |
-| Methods in let-binding position | `let f = point.to_string` -- treating a method as a partially-applied function (capturing the receiver). | Very High | Partial application, closure generation | This is how Rust's method references work but requires generating a closure that captures `point`. **Recommendation: Do not build.** This is complex and Snow's closure syntax handles the use case: `let f = fn() do point.to_string() end`. |
-| Method call in pattern-adjacent positions | Support method calls in guard clauses: `case x do n when n.is_positive() -> ...` | Medium | Guard clause evaluation | Already possible if guard clauses evaluate arbitrary expressions. Worth verifying but likely falls out naturally. |
-| IDE autocomplete for methods | After typing `value.`, IDE shows available methods based on the value's type and its trait impls. | Medium | LSP server type-at-cursor, trait registry queries | Significant usability win. The `find_method_traits` infrastructure provides the data needed. The LSP server would query the trait registry for all methods available on the resolved type. **Recommendation: Important but separate from core language work.** |
+| **for-in as expression returning List<T>** | `let doubled = for x in list do x * 2 end` collects body results into a new list, like Elixir comprehensions or Scala for/yield. This is THE killer feature for an expression-oriented functional-first language. | High | Type inference for collected list type, codegen list accumulation, interaction with break | **Strongly recommended.** Elixir's `for n <- list, do: n * 2` returns `[2, 4, 6, ...]`. Snow should do the same. See detailed design below. |
+| **for-in with filter clause (when)** | `for x in list when x > 0 do x * 2 end` -- filter elements inline, like Elixir's comprehension guards. Avoids a separate filter step. | Medium | Parser extension for optional `when` guard after the `in` clause | Highly ergonomic. Reuses Snow's existing `when` keyword from case-match guards and multi-clause function guards. |
+| **break with value (while loops)** | `let found = while has_more do if match do break item end end` -- break returns a value from the while loop. Like Rust's `loop { break value; }` and Zig's break-from-for. | High | Break value type unification, while-else for default value | Zig solves this elegantly with for/while-else. **Recommend for while-loops only.** For for-in (which collects), break stops collection and returns the partial list. |
+| **while-else clause** | `while cond do body else default end` -- else runs when condition becomes false without break. Provides the "not found" default value, making while an expression. | Medium | Parser extension, codegen else-branch | Zig has this. Elegantly solves the search pattern. **Recommend Zig semantics:** else runs when loop completes WITHOUT break. |
+| **Range iteration without allocation** | `for i in 0..n do body end` compiles to pure integer arithmetic with zero heap allocation in the loop itself. | Low | Detect Range literal in type checker, lower to integer counter loop | Critical optimization. Most for-in loops iterate ranges. This should be as fast as a C for-loop. |
+| **for-in with index via enumerate** | `for {i, x} in list.enumerate() do ... end` -- access both index and element. | Low | `.enumerate()` method returning List<{Int, T}>, tuple destructuring handles the rest | Kotlin has `forEachIndexed`, Python has `enumerate()`, Rust has `.enumerate()`. Method-based approach (no special syntax). |
 
 ---
 
 ## Anti-Features
 
-Features to explicitly NOT build. Common requests that create problems in this domain.
+Features to explicitly NOT build. Common requests that would create problems.
 
 | Anti-Feature | Why Requested | Why Problematic | Alternative |
 |--------------|---------------|-----------------|-------------|
-| UFCS (Universal Function Call Syntax) | "Any function `f(x, y)` should be callable as `x.f(y)`" | Blurs the distinction between methods and free functions. Makes code harder to read because `x.f()` could be any function with `x` as first arg, not just impl methods. Creates namespace pollution (every function becomes a potential method). Adds massive complexity to method resolution. C++ rejected UFCS after years of proposals. | Snow has pipes for function chaining (`x |> f(y)`) and dot-syntax for impl methods (`x.f(y)` when `f` is in an impl block). These serve different purposes clearly. |
-| Auto-ref / auto-deref on method receiver | "The compiler should automatically add `&` or `*` to make the receiver type match" | Snow does not have references or pointer types. All values are passed by value (with compiler-managed copy/move semantics). Auto-ref/deref is a Rust-specific concern driven by its ownership system. Adding this would be solving a problem Snow does not have. | Not needed. Snow's value semantics mean the receiver is always the value itself. No `&self` vs `&mut self` vs `self` distinction. |
-| Method overloading by parameter count | "Allow `point.distance()` and `point.distance(other)` to be different methods" | Snow does not support function overloading. Adding it for methods only would be inconsistent. Overloading complicates type inference (which overload did you mean?) and error messages. | Use different method names: `point.distance_to(other)` vs `point.distance_from_origin()`. Or use optional parameters if Snow adds them. |
-| Implicit self in method bodies | "Inside an impl method, `x` should resolve to `self.x` automatically (like Ruby/Python)" | Creates ambiguity between local variables and fields. Harder to read: is `x` a local or a field? Rust requires explicit `self.x` and this is widely considered a good design decision for readability. | Always require `self.x` for field access within method bodies. Snow already has this pattern working in impl methods. |
-| Extension methods (impl for foreign types without traits) | "I want to add methods to String without defining a trait" | Breaks encapsulation and coherence. Two modules could add conflicting extension methods. Makes it unclear where a method comes from. Swift and C# have this and it causes confusion about method provenance. | Use the pipe operator with module-qualified functions: `s |> MyUtils.enhanced_length()`. Or define a trait: `impl MyStringOps for String do ... end`. |
-| Cascading method syntax (Dart's `..`) | "I want `builder..setX(1)..setY(2)..build()` where `..` returns the receiver, not the method result" | Adds a new operator with subtle semantics. Snow's value semantics and functional style mean builders are rare. The use case is niche. | Use explicit chaining with methods that return `self`: `builder.set_x(1).set_y(2).build()`. Or use struct literal syntax: `Config { x: 1, y: 2 }`. |
-| Dynamic method dispatch (vtable-based) | "I want `dyn Trait` or `protocol existentials`" | Snow uses monomorphization (static dispatch). Adding dynamic dispatch requires vtables, heap allocation for trait objects, and massively complicates the type system. This was explicitly deferred. | Use sum types for heterogeneous collections: `type Displayable do S(String), I(Int) end`. Pattern match to dispatch. |
+| **C-style for(init; cond; step)** | Familiarity from C/Java/JS | Snow is functional-first with immutable bindings. C-style for requires mutable loop variables (`i++`). It doesn't fit Snow's `let` semantics. Every reference language Snow draws from (Elixir, Ruby, Rust, Kotlin, Swift) has moved away from this form. | `for i in 0..10 do ... end` covers counting. `while` covers the general conditional case. |
+| **Mutable loop accumulators** | "I need `let mut sum = 0; for x in list do sum = sum + x end`" | Snow has immutable bindings. Adding `mut` for loops would require mutable bindings throughout the language -- a massive scope expansion undermining the functional-first design. | Use `reduce`: `reduce(list, 0, fn acc, x -> acc + x end)`. Or use for-in as expression and then reduce the resulting list. |
+| **do-while / repeat-until** | "I need the body to execute at least once" | Low usage frequency. Adds a new keyword and syntax form for minimal benefit. Every language that has it (C, Java) treats it as a rarely-used construct. | `while true do body; if not cond do break end end`. |
+| **Infinite `loop` keyword** | "Rust and other languages have a dedicated `loop` keyword" | Snow already has recursion with tail-call optimization for infinite loops (actor receive loops). Adding `loop` creates confusion about when to use `loop` vs `while true`. | `while true do ... end` is clear and universal. Actor receive loops use recursion. |
+| **Loop variable mutation** | "`for x in list do x = transform(x); use(x) end`" | Mutation inside loop bodies would require mutable bindings. Snow's `let` rebinding (shadowing) already covers this: `let x = transform(x)` inside the body creates a new binding. | Use `let` shadowing: `for x in list do let x = transform(x); use(x) end`. The inner `x` shadows the loop variable. |
+| **Generator/yield (lazy iteration)** | "I want to define custom iterators with yield" | Generators require stackful coroutines or state machine transformation, adding massive runtime complexity. The existing `map`/`filter`/`reduce` HOFs and for-in-as-expression cover most use cases. | Provide an `Iterable` interface with a `next()` method for custom iterators (future milestone). For now, convert to List first. |
+| **Parallel for-each** | "I want `for x in list do ... end` to run iterations in parallel" | Requires a concurrency runtime, work stealing, and careful semantics around shared state. Snow has actors for concurrency. | Use actors: spawn a worker per item, collect results. Or use `Job.map(list, fn x -> ... end)` which already exists. |
+| **Iterator protocol / Iterable trait** | Full-blown lazy iterator protocol with `next()` | Full milestone on its own: requires Option/Iterator state machines, trait dispatch in loops, lazy evaluation semantics. | Use compiler-known collection desugaring for List/Map/Set/Range. Add Iterable trait in a future milestone. |
+| **Labeled breaks** | `break :outer` to exit specific nested loops | Requires label scoping infrastructure, block naming, and complicates the parser. Rare use case. | Refactor nested loops into helper functions, or use boolean flags. Add later if demand is high. |
+| **Comprehension guards with commas** | `for x in list, x > 0 do ...` (Elixir-style comma guards) | Ambiguous with tuple syntax in Snow's grammar. Snow uses commas for argument separation. | Use `when` keyword: `for x in list when x > 0 do ... end`. Consistent with existing guard syntax. |
+| **String character iteration** | `for c in "hello" do ... end` | String is opaque GC-managed `{len, data}`; exposing characters requires Unicode handling (grapheme clusters, UTF-8 decoding). | Defer to a string iteration milestone. Use `String.split("", s)` or `String.chars(s)` when available. |
+| **for-else (Python-style)** | Python's `for...else` where else runs if no break | Widely considered confusing even by Python developers. The semantics ("else means no break") are counterintuitive. | Avoid. While-else (Zig semantics) is clearer and covers the search pattern. |
+| **Mutable accumulator pattern (for..reduce)** | Elixir's `for x <- list, reduce: acc do acc -> acc + x end` | Adds significant parser complexity for a pattern that `reduce()` already handles well. | Use `reduce(list, 0, fn acc, x -> acc + x end)` or pipe: `list |> reduce(0, fn acc, x -> acc + x end)`. |
 
 ---
 
 ## Feature Dependencies
 
 ```
-Existing Infrastructure
-    |
-    +-- FIELD_ACCESS parser node (exists, BP 25)
-    |       Produces: CALL_EXPR(FIELD_ACCESS(base, method), ARG_LIST(...))
-    |       when followed by parentheses
-    |
-    +-- TraitRegistry (exists)
-    |       Has: find_method_traits(), resolve_trait_method()
-    |       Needs: infer_method_call() in type checker
-    |
-    +-- MIR lowering trait dispatch (exists)
-    |       Has: find_method_traits() -> mangled name resolution
-    |       Needs: handle METHOD_CALL desugaring from type checker
+New Keywords (prerequisite)
+    |   Add `while`, `break`, `continue` to TokenKind, keyword_from_str,
+    |   SyntaxKind (3 new keywords). `for` and `in` already exist.
     |
     v
-[1] Type Checker Method Resolution
-    |   Detect CALL_EXPR with FIELD_ACCESS callee
-    |   Resolve receiver type -> find matching impl method
-    |   Validate argument types against method signature
-    |   Record resolved method info for MIR lowering
-    |   CRITICAL: Must not break existing module-qualified calls
+[1] while Loop (simplest loop form)
+    |   Parse: WHILE_KW expr DO_KW block END_KW
+    |   Type check: condition must be Bool, body returns Unit
+    |   MIR: new WhileLoop variant
+    |   Codegen: header/body/exit basic blocks, back-edge
+    |   Returns: Unit
+    |
+    +----> [2] break and continue
+    |       |   Parse: BREAK_KW [expr], CONTINUE_KW
+    |       |   Valid only inside for/while bodies (loop context stack)
+    |       |   Codegen: branch to exit/header blocks
+    |       |   Type: Never (diverging, coerces to any type)
+    |       |
+    |       v
+    |   [5] while-else (optional differentiator)
+    |       while cond do body else default end
+    |       break value returns from while; else provides default
+    |       Both branches must have same type
     |
     v
-[2] MIR Lowering for Method Calls
-    |   Desugar value.method(args) -> TraitName__method__TypeName(value, args)
-    |   Reuse existing mangled name generation
-    |   Handle generic receivers (substitute type params)
+[3] for..in over Range (simplest for-in)
+    |   Parse: FOR_KW pattern IN_KW expr DO_KW block END_KW
+    |   Type check: Range -> element type Int
+    |   MIR: lower to integer counter loop (no allocation)
+    |   Returns: List<T> where T is body expression type
+    |
+    +----> [4] for..in over List/Map/Set
+    |       |   List<T> -> iterate via index, element type T
+    |       |   Map<K,V> -> iterate entries, element type {K, V}
+    |       |   Set<T> -> iterate elements, element type T
+    |       |   Requires runtime: snow_list_get, snow_map_entry_at, snow_set_to_list
+    |       |
+    |       v
+    |   [6] Destructuring in for-in
+    |       |   for {k, v} in map do ... end
+    |       |   for (a, b) in pairs do ... end
+    |       |   Reuse existing Pattern matching infrastructure
+    |       |
+    |       v
+    |   [7] for-in with filter (when clause)
+    |       for x in list when x > 0 do x * 2 end
+    |       Filters before body evaluation, reduces collected list
     |
     v
-[3] Method Chaining
-    |   Falls out from [1] + [2] naturally
-    |   Each call's return type becomes next call's receiver type
-    |   Already works at parser level
+[8] for-in as expression returning List<T>
+    |   Body expression type T -> loop returns List<T>
+    |   Codegen: accumulate results into new list via snow_list_append
+    |   Side-effect optimization: if body type is Unit, skip accumulation
+    |   break in for-in: returns partial collected list
     |
     v
-[4] Error Diagnostics
-    |   "No method `foo` on type `Bar`"
-    |   "Method `foo` is ambiguous between traits X and Y"
-    |   Suggest available methods on the type
-    |
-    v
-[5] Interaction with Pipe Operator (verify)
-        value.method(args) and value |> method(args)
-        should produce equivalent results
-        Both paths already converge at MIR level
+[9] Integration & Edge Cases
+        Interaction with closures, pattern matching, pipe, dot-syntax
+        Nested loops, break/continue in nested contexts
+        Type inference chains (body type depends on element type)
 ```
 
-**Critical path:** [1] -> [2] -> [3] (trivial) -> [4]
-
-The parser likely needs zero changes. The core work is in the type checker ([1]) and MIR lowering ([2]).
+**Critical path for MVP:** Keywords -> [1] while -> [2] break/continue -> [3] for-in Range -> [4] for-in List
+**Expression semantics path:** [3] -> [8] for-in as expression (what makes Snow special)
+**Polish path:** [6] destructuring -> [7] when filter -> [5] while-else
 
 ---
 
 ## Detailed Design Decisions
 
-### Decision 1: Parser Strategy
+### Decision 1: for-in Syntax
 
-**Question:** Should the parser produce a new `METHOD_CALL` CST node, or reuse the existing `CALL_EXPR(FIELD_ACCESS(...), ...)` tree shape?
+**Question:** What does `for..in` look like in Snow's do/end syntax?
 
-**Recommendation: Reuse existing tree shape.** No new CST node needed.
+**Recommendation:**
 
-**Rationale:**
-- The Pratt parser already produces `CALL_EXPR(FIELD_ACCESS(base, method), ARG_LIST(...))` for `value.method(args)` because field access (BP 25) is parsed before call (BP 25), and the call wraps around the field access result.
-- Rust's parser works the same way -- method calls and field accesses share the same dot-expression grammar; disambiguation happens during name resolution.
-- Adding a new CST node would require parser changes to distinguish "FIELD_ACCESS followed by ARG_LIST" from "standalone FIELD_ACCESS", which would complicate the Pratt loop unnecessarily.
-- The type checker already receives both node types and can inspect the callee of a `CALL_EXPR` to detect the `FIELD_ACCESS` pattern.
-
-**Confidence:** HIGH
-
-### Decision 2: Method Resolution Priority
-
-**Question:** When `value.name(args)` is called, what is the resolution order?
-
-**Recommendation: Field access first, then method lookup. Parentheses disambiguate.**
-
-**Priority order (matching Rust):**
-1. If `base` is a module name (String, IO, List, etc.) -> module-qualified function call (existing behavior)
-2. If `base` is a sum type name -> variant constructor (existing behavior)
-3. If no parentheses (`value.name`) -> struct field access only
-4. If parentheses (`value.name(args)`) -> first check if `name` is a callable field (function-typed field), then search impl methods via trait registry
-
-**Why this order:**
-- Modules and variants must keep working unchanged (backward compatibility)
-- Struct field access without parens must keep working unchanged
-- Method lookup only activates when there are parentheses, preventing accidental method resolution when the user wants a field
-
-**Confidence:** HIGH
-
-### Decision 3: Trait Method Only (No Inherent Methods for MVP)
-
-**Question:** Should `value.method()` resolve only methods defined in trait impl blocks, or also "inherent" methods (impl blocks without a trait)?
-
-**Recommendation: Trait methods only for MVP.**
-
-**Rationale:**
-- Snow's entire method infrastructure is built around `interface` + `impl Trait for Type`. The `TraitRegistry`, `find_method_traits`, mangled name generation -- all assume a trait name.
-- Inherent methods would need a separate registry, different name mangling (no trait prefix), and priority rules (inherent before trait, matching Rust).
-- The vast majority of use cases are covered by trait methods: `to_string()`, `inspect()`, `eq()`, `hash()`, etc.
-- Adding inherent methods later is fully backward-compatible -- existing trait method calls continue to work.
-
-**Confidence:** HIGH
-
-### Decision 4: Ambiguity Handling
-
-**Question:** What happens when two traits provide the same method name for the same type?
-
-**Recommendation: Compile-time error with disambiguation guidance.**
-
-```
-error: method `to_string` is ambiguous for type `Point`
-  --> src/main.snow:15:5
-   |
-15 | point.to_string()
-   |       ^^^^^^^^^ method found in both `Display` and `Printable`
-   |
-help: use fully-qualified syntax to disambiguate
-   |
-15 | Display.to_string(point)
-   |
-15 | Printable.to_string(point)
-```
-
-**Rationale:**
-- The current MIR lowering silently uses the first matching trait, which is fragile and order-dependent.
-- The type checker should detect ambiguity earlier and produce a clear error.
-- Fully-qualified syntax (`TraitName.method(value)`) already works via existing module-qualified call paths.
-
-**Confidence:** HIGH
-
-### Decision 5: Pipe Operator Coexistence
-
-**Question:** How do `value.method(args)` and `value |> method(args)` interact?
-
-**Recommendation: Both work. They are different syntax for the same semantics. No preference enforced.**
-
-**Semantic equivalence:**
 ```snow
-# These should produce identical results:
-items.filter(pred).map(f)
-items |> filter(pred) |> map(f)
-
-# Mixed usage is fine:
-items.filter(pred) |> map(f)
+for pattern in iterable do
+  body
+end
 ```
 
-**Note:** Pipe works with ANY function (the piped value becomes the first argument). Method dot-syntax only works with impl methods. This is an important distinction:
-- `items |> List.filter(pred)` -- works because `List.filter` is a module function
-- `items.filter(pred)` -- works only if there's a trait impl for the items' type that provides `filter`
-
-**Confidence:** HIGH
-
-### Decision 6: Self Return for Chaining
-
-**Question:** Should there be special support for methods that return `Self` to enable chaining?
-
-**Recommendation: No special support needed. Snow's existing type inference handles this.**
-
-**How it works naturally:**
+**Examples:**
 ```snow
-interface Builder do
-  fn set_name(self, name: String) -> Self
-  fn set_age(self, age: Int) -> Self
-  fn build(self) -> Person
+# Simple iteration
+for x in [1, 2, 3] do
+  println("${x}")
 end
 
-# Chaining works because each method's return type (Self = PersonBuilder)
-# becomes the receiver for the next call:
-builder.set_name("Alice").set_age(30).build()
+# Range iteration
+for i in 1..10 do
+  println("${i}")
+end
+
+# Destructuring map entries
+for {k, v} in my_map do
+  println("${k}: ${v}")
+end
+
+# Tuple destructuring
+for (name, age) in people do
+  println("${name} is ${age}")
+end
 ```
 
-The type checker resolves `Self` to the concrete implementing type during method resolution. Each chained call's return type feeds into the next call's receiver type inference. No special mechanism required.
+**Rationale:**
+- Follows Snow's existing do/end block pattern (consistent with `if`, `case`, `fn`, `receive`)
+- `for` and `in` keywords already reserved
+- Pattern position reuses existing pattern infrastructure (IdentPat, TuplePat, etc.)
+- Matches Elixir (`for x <- list, do: ...`), Ruby (`for x in list do ... end`), Kotlin (`for (x in list) { ... }`), Swift (`for x in list { ... }`)
 
-**Confidence:** HIGH -- this is how Rust handles it too.
+**Confidence:** HIGH
+
+### Decision 2: for-in Expression Semantics (The Critical Decision)
+
+**Question:** What does a for-in loop evaluate to? This is THE fundamental design question for Snow.
+
+**Recommendation: for-in returns List<T> where T is the body expression type.** This makes for-in a comprehension, not just a statement.
+
+```snow
+# Returns List<Int>: [2, 4, 6]
+let doubled = for x in [1, 2, 3] do
+  x * 2
+end
+
+# Returns List<String>: ["1", "2", "3"]
+let strings = for i in 1..4 do
+  "${i}"
+end
+
+# Side-effect only (result discarded, body returns Unit -> List<Unit>)
+for x in list do
+  println("${x}")
+end
+```
+
+**Why this is the right design for Snow:**
+
+1. **Consistency with expression-oriented design.** Everything in Snow is an expression that returns a value. `if/else` returns a value. `case/match` returns a value. Closures return values. Blocks return the last expression. For-loops should follow the same rule.
+
+2. **Elixir precedent (Snow's primary inspiration).** Elixir's `for n <- list, do: n * n` returns a list. This is the most natural model for a functional-first language.
+
+3. **Replaces verbose map patterns.** Currently Snow users write `map(list, fn x -> x * 2 end)` or `list |> map(fn x -> x * 2 end)`. With for-in as expression: `for x in list do x * 2 end`. Shorter, more readable, identical semantics.
+
+4. **Type inference is straightforward.** If the body type is `T` and the iterable has element type `E`, the loop returns `List<T>`. The type checker infers `T` from the body expression.
+
+5. **Scala for/yield desugars the same way.** `for (x <- list) yield x * 2` desugars to `list.map(x => x * 2)`. Snow's for-in-as-expression is syntactic sugar for map.
+
+**Alternative considered and rejected -- returning Unit like Rust/Kotlin.** Rust's `for` returns `()`. But Rust has a clear separation: `for` is for side effects, `.map().collect()` is for transformation. Snow's functional-first design means the for-loop IS the comprehension. Returning Unit would make loops second-class citizens compared to map/filter/reduce, undermining the ergonomic purpose of adding them.
+
+**Side-effect optimization.** When the body type is `Unit`, the for-loop returns `List<Unit>`. This is technically correct but wastes allocation. **The compiler should detect `body_type == Unit` and skip list accumulation**, emitting a simple loop with no collection. The expression type remains `List<Unit>` for type checking purposes, but no list is actually allocated. This is the same optimization Scala applies for `for` without `yield`.
+
+**Confidence:** HIGH -- this directly follows from Snow being expression-oriented and Elixir-inspired.
+
+### Decision 3: while Loop Expression Semantics
+
+**Question:** What does a while loop evaluate to?
+
+**Recommendation: while returns Unit by default. With break-value + else-clause, it returns the break/else value.**
+
+```snow
+# Returns Unit -- side-effect loop
+while condition do
+  do_something()
+end
+
+# With while-else: returns T (both branches must agree)
+let result = while has_next() do
+  let item = next()
+  if item == target do
+    break item         # Found it
+  end
+else
+  default_value        # Not found
+end
+# result :: T
+```
+
+**The break-value problem.** If `break value` can return a value from a while loop, what happens when the loop exits normally (condition becomes false)? The loop needs a default value for the non-break case.
+
+**Solution: while-else (Zig-style semantics).**
+- `while cond do body end` -- returns `Unit`. Cannot use `break value`.
+- `while cond do body else default end` -- returns `T` where both `break value` and `else default` must be type `T`. The else runs when condition becomes false without break.
+- `break` (no value) is always allowed in any loop, exits with Unit.
+- `break value` is only allowed in while-else loops.
+
+**Why Zig-style over Python-style.** Python's `for/while-else` is widely considered confusing ("else means if-no-break" is counterintuitive). Zig's design is clearer: the else provides the default value when the loop does not break, making the loop a proper expression. This maps cleanly to the search pattern (break = found, else = not found).
+
+**Why not Option<T> wrapping (Rust RFC approach).** Rust considered making `for`/`while` return `Option<T>` (Some from break, None from normal exit). This was rejected because it changes the type of all existing loop expressions and forces unwrapping at every use site.
+
+**Confidence:** HIGH for basic while returning Unit. MEDIUM for while-else (adds parser complexity; consider as Phase 2).
+
+### Decision 4: break and continue Semantics
+
+**Question:** How do break and continue work, especially in expression context?
+
+**Recommendation:**
+
+```snow
+# break -- exits innermost loop
+for x in list do
+  if x < 0 do break end
+  println("${x}")
+end
+
+# continue -- skips to next iteration
+for x in list do
+  if x < 0 do continue end
+  println("${x}")
+end
+
+# break in for-in-as-expression: returns partial collected list
+let positives = for x in list do
+  if x < 0 do break end  # Stop collecting, return what we have so far
+  x
+end
+# positives contains elements up to (not including) the first negative
+```
+
+**Key rules:**
+1. `break` and `continue` are only valid inside `for` or `while` loop bodies. Using them outside a loop is a compile error.
+2. `break` exits the innermost enclosing loop.
+3. `continue` skips to the next iteration of the innermost enclosing loop.
+4. In for-in-as-expression, `break` stops collection and returns the partially-accumulated `List<T>`.
+5. `break value` is only valid in `while ... else` loops (not in for-in).
+6. `break` and `continue` have type `Never` (diverging) because they transfer control flow. This is the same semantics as Rust: they can appear in any expression position because `Never` coerces to any type.
+
+**Expression type of break/continue:**
+```snow
+# break has type Never, which coerces to Int in the if-branch:
+let x = if condition do break else 42 end
+```
+
+**Confidence:** HIGH for basic break/continue. MEDIUM for break-with-value (while-else integration).
+
+### Decision 5: for-in with Filter (when clause)
+
+**Question:** Should for-in support inline filtering?
+
+**Recommendation: Yes, using the existing `when` keyword.**
+
+```snow
+# Filter with when (reuses existing guard keyword)
+let evens = for x in 1..20 when x % 2 == 0 do
+  x
+end
+# evens :: List<Int> = [2, 4, 6, 8, 10, 12, 14, 16, 18, 20]
+
+# Multiple conditions with `and`
+for x in list when x > 0 and x < 100 do
+  transform(x)
+end
+```
+
+**Why `when` rather than comma-separated guards:**
+- Snow already uses `when` for guard clauses in case/match arms and multi-clause functions
+- Comma-separated guards (Elixir-style `for x <- list, x > 0`) would be ambiguous since Snow uses commas for argument separation
+- `when` is visually clear: `for x in list when condition do body end`
+
+**Parse structure:** `FOR_KW pattern IN_KW expr [WHEN_KW guard_expr] DO_KW block END_KW`
+
+**Confidence:** HIGH -- natural extension of existing guard syntax.
+
+### Decision 6: Iterable Types (What Can Follow `in`)
+
+**Question:** What types can appear after `in` in a for-in loop?
+
+**Recommendation: Start with hardcoded support for List<T>, Range, Map<K,V>, Set<T>. Add an Iterable interface in a future milestone.**
+
+**Phase 1 (MVP):** The type checker recognizes these types in the `in` position:
+- `List<T>` -- element type `T`, iterate via index (`snow_list_get`)
+- `Range` -- element type `Int`, iterate via counter (most efficient, zero allocation)
+- `Map<K,V>` -- element type `{K, V}` (tuple of key and value), iterate via index over entries
+- `Set<T>` -- element type `T`, iterate via conversion to list (`snow_set_to_list`)
+
+**Phase 2 (future milestone):** Define an `Iterable` interface:
+```snow
+interface Iterable<T> do
+  fn to_list(self) -> List<T>
+end
+```
+For-in desugars to calling `to_list()` then iterating. Or a more efficient `Iterator` protocol with `next() -> Option<T>` if Snow adds Option.
+
+**Why hardcode first:** Snow doesn't yet have the full Option<T> machinery needed for a proper iterator protocol (Option exists as a sum type but iterator state machines need more infrastructure). Hardcoding the four collection types is simple, covers 99% of use cases, and is forward-compatible with an Iterable interface later.
+
+**Confidence:** HIGH for Phase 1. MEDIUM for Phase 2.
+
+### Decision 7: Immutability and Loop Variables
+
+**Question:** Can loop variables be reassigned inside the body?
+
+**Recommendation: No. Loop variables are immutable bindings, consistent with `let`.**
+
+```snow
+for x in list do
+  # x is immutable here -- cannot reassign x
+  let x = transform(x)  # Shadowing creates a NEW binding, fine
+  use(x)
+end
+```
+
+**For while loops -- the counter problem:** Without mutable variables, while loops cannot have incrementing counters:
+```snow
+let i = 0
+while i < 10 do
+  println("${i}")
+  # let i = i + 1  -- this shadows i, but the OUTER i is still 0 next iteration!
+end
+```
+
+**This is intentional.** For counted iteration, use `for i in 0..10 do ... end`. While loops are for condition-based loops (event loops, polling, `while not done`) where the condition depends on external state (I/O, actor messages). In Snow's functional model, counted iteration is for-in's job, not while's.
+
+**Confidence:** HIGH -- follows directly from Snow's immutability model.
 
 ---
 
-## Edge Cases and Their Resolutions
+## Codegen Strategy
 
-### Edge Case 1: Field and Method with Same Name
+### for-in Loop Lowering to MIR/LLVM
 
-**Scenario:** A struct has a field `width` and an impl provides a method `width()`.
+The for-in loop desugars to a counted loop:
 
-```snow
-struct Rectangle do
-  width :: Int
-  height :: Int
-end
-
-impl Measurable for Rectangle do
-  fn width(self) -> Int do self.width end  # getter pattern
-end
+**Range (zero-allocation fast path):**
 ```
-
-**Resolution:** Parentheses disambiguate.
-- `rect.width` -> field access (returns `Int`)
-- `rect.width()` -> method call (calls `Measurable__width__Rectangle`)
-
-This matches Rust's behavior exactly. The parser produces different CST trees for each case, so the type checker handles them in different code paths.
-
-**Confidence:** HIGH
-
-### Edge Case 2: Method on Generic Type with Unresolved Type Variable
-
-**Scenario:** The receiver's type is not yet fully resolved during inference.
-
-```snow
-fn process(items) do
-  items.length()  # type of `items` is still a type variable
-end
-```
-
-**Resolution:** Defer method resolution until the receiver type is resolved. If the type remains unresolved at the end of inference, emit an error: "cannot determine type of `items`; consider adding a type annotation."
-
-This is similar to how Rust handles turbofish scenarios. Snow's HM inference should resolve most cases; the edge case arises only with insufficient context.
-
-**Confidence:** MEDIUM -- implementation details depend on how Snow's inference engine handles deferred constraints.
-
-### Edge Case 3: Method on Sum Type
-
-**Scenario:** Calling a method on a sum type value.
-
-```snow
-type Shape do
-  Circle(Float)
-  Rectangle(Float, Float)
-end
-
-impl Display for Shape do
-  fn to_string(self) -> String do
-    case self do
-      Circle(r) -> "Circle(${r})"
-      Rectangle(w, h) -> "Rectangle(${w}, ${h})"
-    end
+for i in start..end do body end
+  -->
+  let __i = start
+  while __i < end do
+    let i = __i
+    [body -- with accumulation if expression-position]
+    __i = __i + 1
   end
-end
-
-let s: Shape = Circle(5.0)
-s.to_string()  # should work
 ```
 
-**Resolution:** This works naturally. The receiver type is `Shape`, `find_method_traits("to_string", Shape)` finds `Display`, and the mangled name is `Display__to_string__Shape`. The method body handles dispatch via pattern matching internally.
-
-**Confidence:** HIGH
-
-### Edge Case 4: Method on Result of Another Method (Chaining)
-
-**Scenario:** Chaining methods where intermediate types differ.
-
-```snow
-let result = items.filter(is_positive).map(to_string).length()
-# filter returns List<Int>, map returns List<String>, length returns Int
+**List<T> (indexed iteration):**
+```
+for x in list do body end
+  -->
+  let __list = list
+  let __len = snow_list_length(__list)
+  let __result = snow_list_new()    // Only for expression-position
+  let __i = 0
+  while __i < __len do
+    let x = snow_list_get(__list, __i)
+    [if filter: if !guard_expr then continue]
+    let __val = body
+    __result = snow_list_append(__result, __val)  // expression-position only
+    __i = __i + 1
+  end
+  __result  // List<T> (or Unit for side-effect)
 ```
 
-**Resolution:** Each method call is independently resolved:
-1. `items.filter(is_positive)` -- receiver is `List<Int>`, returns `List<Int>`
-2. `(result_of_filter).map(to_string)` -- receiver is `List<Int>`, returns `List<String>`
-3. `(result_of_map).length()` -- receiver is `List<String>`, returns `Int`
-
-The Pratt parser's left-to-right evaluation handles the CST nesting. The type checker processes each `CALL_EXPR` from innermost to outermost.
-
-**Confidence:** HIGH
-
-### Edge Case 5: Method Call in Pipe Chain
-
-**Scenario:** Mixing dot-syntax and pipe operator.
-
-```snow
-items.filter(pred) |> List.map(f)
-items |> filter(pred) |> map(f)  # pipe-style
+**Map<K,V> (entry iteration):**
+```
+for {k, v} in map do body end
+  -->
+  let __keys = snow_map_keys(map)
+  let __len = snow_list_length(__keys)
+  let __i = 0
+  while __i < __len do
+    let k = snow_list_get(__keys, __i)
+    let v = snow_map_get(map, k)
+    body
+    __i = __i + 1
+  end
 ```
 
-**Resolution:** Both work independently. The pipe operator desugars `a |> f(b)` to `f(a, b)`. The dot-syntax desugars `a.f(b)` to `TraitName__f__TypeName(a, b)`. The results should be semantically equivalent when `f` is a trait method.
+### LLVM Basic Block Pattern
 
-**Note:** There is a subtle difference: pipe works with any function, dot-syntax only with impl methods. `items |> some_free_function()` works; `items.some_free_function()` does not (unless there's a matching impl method).
+```
+loop_header:
+  %cond = <evaluate condition or index < length>
+  br i1 %cond, label %loop_body, label %loop_exit
 
-**Confidence:** HIGH
+loop_body:
+  <get element, bind pattern>
+  <guard check -> br to loop_continue if false>
+  <body instructions>
+  <append to result list if expression-position>
+  br label %loop_continue
 
-### Edge Case 6: Nested Field Access then Method Call
+loop_continue:
+  <increment index>
+  br label %loop_header
 
-**Scenario:** Accessing a field, then calling a method on the field's value.
-
-```snow
-struct Person do
-  name :: String
-  address :: Address
-end
-
-person.address.to_string()
-# parses as: CALL_EXPR(FIELD_ACCESS(FIELD_ACCESS(person, address), to_string), ())
+loop_exit:
+  <phi node for result value if expression>
 ```
 
-**Resolution:** The type checker processes:
-1. `person.address` -> field access on `Person`, returns `Address`
-2. `(address_value).to_string()` -> method call on `Address`
-
-The nested `FIELD_ACCESS` is the callee's callee. The type checker needs to check: is the outer `FIELD_ACCESS`'s base a struct type with a field matching the name, OR is it a method call? The answer depends on whether parentheses follow.
-
-In the CST, the structure is: `CALL_EXPR(callee=FIELD_ACCESS(base=FIELD_ACCESS(person, address), field=to_string), args=())`. The inner `FIELD_ACCESS` is a pure field access (no parens). The outer `FIELD_ACCESS` is part of a method call (has parens via the wrapping `CALL_EXPR`).
-
-**Confidence:** HIGH
+**break:** emits `br label %loop_exit`
+**continue:** emits `br label %loop_continue`
 
 ---
 
 ## MVP Recommendation
 
-### Build (method dot-syntax milestone)
+### Build (loops milestone)
 
-**Phase 1: Core Method Resolution**
-- Type checker detects `CALL_EXPR` with `FIELD_ACCESS` callee pattern
-- Resolve receiver type, search trait impls for matching method
-- Validate argument count and types
-- Record resolved method info (trait name, method name, type name) for MIR
+**Phase 1: Keywords + while Loop (Foundation)**
+1. Add `while`, `break`, `continue` keywords to TokenKind, keyword_from_str, SyntaxKind
+2. Parse `while expr do block end` as WHILE_EXPR
+3. Type check: condition must be Bool, body evaluates to Unit
+4. MIR: new MirExpr::While variant
+5. Codegen: header/body/exit basic blocks with back-edge
+6. Parse `break` and `continue` as expressions (diverging Never type)
+7. Track loop context in parser/typechecker (error if used outside loop)
+8. Codegen break/continue: branch to exit/continue labels
 
-**Phase 2: MIR Lowering**
-- Desugar method call to mangled trait function call
-- Receiver prepended as first argument
-- Reuse existing `TraitName__method__TypeName` mangling
+**Phase 2: for-in over Range**
+9. Parse `for pattern in expr do block end` as FOR_EXPR
+10. Type check: detect Range type, element type is Int, bind pattern
+11. MIR: lower to integer counter loop (zero allocation)
+12. Return type: List<Int> (expression semantics)
+13. Side-effect optimization: skip accumulation when body type is Unit
 
-**Phase 3: Diagnostics and Edge Cases**
-- "No such method" error with type information
-- Ambiguity error when multiple traits match
-- Method chaining verification (should work from Phase 1 naturally)
-- Verify interaction with existing module-qualified calls, pipe operator, field access
+**Phase 3: for-in over List/Map/Set + Destructuring**
+14. List<T> iteration via indexed loop
+15. Map<K,V> iteration with tuple element type {K, V}
+16. Set<T> iteration (via snow_set_to_list conversion)
+17. Pattern matching in for-loop binding position (TuplePat, IdentPat, WildcardPat)
+
+**Phase 4: Filter Clause + Integration**
+18. Optional `when` guard in for-in: `for x in list when x > 0 do ... end`
+19. break in for-in-as-expression: returns partial collected list
+20. Integration tests: closures in loop bodies, nested loops, pipe interaction, dot-syntax interaction
 
 ### Defer to Post-MVP
 
-- Inherent methods (`impl Type do ... end` without trait)
-- Method references / partial application (`let f = value.method`)
-- IDE autocomplete for methods
-- Method visibility (public/private methods in impl blocks)
+- while-else with break-value (elegant but adds parser/type complexity)
+- Labeled loops (break/continue specific outer loops)
+- Multiple generators (cartesian product: `for x in xs, y in ys do ...`)
+- `:into` collector (collect into Map/Set instead of List)
+- Lazy/streaming Iterable interface with `next()`
+- Comprehension reduce pattern (Elixir-style)
+- String character iteration (requires Unicode infrastructure)
 
 ---
 
@@ -420,47 +539,65 @@ In the CST, the structure is: `CALL_EXPR(callee=FIELD_ACCESS(base=FIELD_ACCESS(p
 
 | Feature | Estimated Effort | Risk | Notes |
 |---------|-----------------|------|-------|
-| Parser changes | 0-1 days | LOW | Likely zero changes needed; verify existing CST shape |
-| Type checker method resolution | 2-3 days | MEDIUM | Core new logic: detect pattern, look up receiver type, search impls. Must not break existing field access or module-qualified calls. |
-| MIR lowering for method calls | 1-2 days | LOW | Mostly reusing existing trait dispatch infrastructure |
-| Method chaining | 0 days | NONE | Falls out from above naturally |
-| Error diagnostics | 1 day | LOW | "No such method", ambiguity errors |
-| Edge case handling | 1-2 days | MEDIUM | Nested field+method, generic receivers, sum types |
-| Testing | 1-2 days | LOW | Unit tests for resolution, integration tests for chaining |
+| New keywords (while, break, continue) | 0.5 days | LOW | Mechanical additions to token.rs, syntax_kind.rs, keyword_from_str |
+| while parser + type checker | 1 day | LOW | Follows existing if-expr pattern closely |
+| while MIR + codegen | 1-2 days | MEDIUM | First loop in codegen; header/body/exit blocks, back-edge |
+| break/continue parser | 0.5 days | LOW | New expression nodes with loop context validation |
+| break/continue codegen | 1-2 days | MEDIUM | Branch targets, loop context stack for nested loops |
+| FOR_EXPR parser | 1 day | LOW | FOR_KW pattern IN_KW expr DO_KW block END_KW |
+| for-in type checker | 2-3 days | MEDIUM | Iterable type inference, element type extraction, pattern binding |
+| for-in MIR lowering (Range) | 1 day | LOW | Integer counter desugaring |
+| for-in MIR lowering (List/Map/Set) | 2 days | MEDIUM | Collection-specific accessor calls, tuple construction for Map |
+| for-in as expression (List<T> return) | 2 days | MEDIUM | List accumulation in codegen, side-effect optimization |
+| Destructuring in for-in | 1 day | LOW | Reuse existing pattern infrastructure |
+| when filter clause | 1 day | LOW | Conditional skip in loop body |
+| Testing (unit + e2e) | 2-3 days | LOW | Many combinations: Range/List/Map/Set x break/continue x expression/statement |
 
-**Total estimated effort:** 5-10 days
+**Total estimated effort:** 15-22 days
 
-**Key risk:** The type checker's `infer_field_access` function currently handles module-qualified calls, sum type variants, service module access, and struct field access in a specific priority order. Method resolution must be inserted at the correct point in this priority chain without breaking any existing behavior. This is the most delicate part of the implementation.
+**Key risks:**
+1. **for-in as expression + break interaction.** When break exits a for-in-as-expression, the partial list must be correctly returned. This requires careful codegen with phi nodes at the loop exit.
+2. **Immutability + while loops.** Users may expect mutable counters. Good error messages are critical: "cannot mutate loop variable; use `for i in 0..n` for counted iteration."
+3. **Type inference chains.** The body type `T` determines the return type `List<T>`. If the body type depends on the loop variable type (which depends on the iterable element type), there is an inference chain that must resolve correctly through HM unification.
+4. **First loop in LLVM codegen.** Snow has never emitted loop basic blocks before. The alloca+mem2reg pattern for phi nodes at loop exits needs careful implementation. However, the existing if/else codegen provides a good template.
 
 ---
 
 ## Sources
 
-### Rust Method Resolution
-- [The Dot Operator - The Rustonomicon](https://doc.rust-lang.org/nomicon/dot-operator.html) -- autoref/autoderef algorithm
-- [Method Call Expressions - The Rust Reference](https://doc.rust-lang.org/reference/expressions/method-call-expr.html) -- formal method resolution rules
-- [Inherent vs Trait Method Priority - rust-lang/rust#26007](https://github.com/rust-lang/rust/issues/26007) -- inherent methods take priority over trait methods at same deref level
-- [Methods - The Rust Programming Language](https://doc.rust-lang.org/book/ch05-03-method-syntax.html) -- field vs method disambiguation via parentheses
+### Rust Loop Semantics
+- [Loop expressions - The Rust Reference](https://doc.rust-lang.org/reference/expressions/loop-expr.html) -- for/while return `()`, only `loop` returns via `break value`; break/continue semantics; loop labels
+- [RFC 1624: loop-break-value](https://rust-lang.github.io/rfcs/1624-loop-break-value.html) -- design discussion on why for/while don't return values; backward compatibility; Option<T> alternative rejected
+- [Returning from loops - Rust By Example](https://doc.rust-lang.org/rust-by-example/flow_control/loop/return.html) -- break with value in `loop`
 
-### Rust Field vs Method Disambiguation
-- [Trying to access public function with same name as private field - rust-lang/rust#26472](https://github.com/rust-lang/rust/issues/26472) -- real-world ambiguity case
-- [Disambiguating overlapping traits - Rust By Example](https://doc.rust-lang.org/rust-by-example/trait/disambiguating.html) -- fully qualified syntax
+### Elixir Comprehensions
+- [Comprehensions - Elixir v1.19.5](https://hexdocs.pm/elixir/comprehensions.html) -- for comprehension returns list by default, `:into` collects to other types, pattern-matching generators
+- [Mitchell Hanberg's Comprehensive Guide to Elixir's List Comprehension](https://www.mitchellhanberg.com/the-comprehensive-guide-to-elixirs-for-comprehension/) -- `:reduce` option, filter semantics, practical examples
 
-### Swift Static Dispatch
-- [Method Dispatch Mechanisms in Swift](https://nilcoalescing.com/blog/MethodDispatchMechanismsInSwift/) -- static dispatch for value types (structs/enums), relevant to Snow's design
+### Kotlin Loops and Destructuring
+- [Conditions and loops - Kotlin Documentation](https://kotlinlang.org/docs/control-flow.html) -- for/while are statements (not expressions), `for ((k,v) in map)` destructuring
+- [Returns and jumps - Kotlin Documentation](https://kotlinlang.org/docs/returns.html) -- break, continue, labeled returns with `@`
 
-### UFCS Design Debate (why NOT to build it)
-- [Uniform Function Call Syntax - Wikipedia](https://en.wikipedia.org/wiki/Uniform_function_call_syntax) -- overview of UFCS in D, Nim
-- [What is unified function call syntax anyway? - Barry's C++ Blog](https://brevzin.github.io/c++/2019/04/13/ufcs-history/) -- C++ UFCS history and why it was rejected
-- [UFCS C++ Proposal P3021](https://open-std.org/JTC1/SC22/WG21/docs/papers/2023/p3021r0.pdf) -- problems with ambiguity and overload resolution
+### Scala for-comprehensions
+- [For Comprehensions - Tour of Scala](https://docs.scala-lang.org/tour/for-comprehensions.html) -- for/yield desugars to map/flatMap, returns collection type
+- [Comprehensive Guide to For-Comprehension in Scala - Baeldung](https://www.baeldung.com/scala/for-comprehension) -- without yield returns Unit, custom types with map/flatMap
 
-### Pipe Operator vs Method Chaining
-- [Piping is Method Chaining - Win Vector](https://win-vector.com/2019/04/14/piping-is-method-chaining/) -- semantic equivalence, design tradeoffs
-- [The Right Way To Pipe](https://yangdanny97.github.io/blog/2023/12/28/pipes) -- pipe-first vs pipe-last, interaction with method syntax
+### Zig Loops as Expressions
+- [Loops as Expressions - zig.guide](https://zig.guide/language-basics/loops-as-expressions/) -- break with value, else clause on for/while, blocks as expressions
+- [Zig Multi-Sequence For Loops](https://kristoff.it/blog/zig-multi-sequence-for-loops/) -- for-else pattern for search
 
-### Elixir's Design Choice (why dot means something different there)
-- [Why the dot (when calling anonymous functions)? - Dashbit Blog](https://dashbit.co/blog/why-the-dot) -- Elixir's Lisp-2 design, dot for anonymous functions
+### Python while-else
+- [Python While Else - GeeksforGeeks](https://www.geeksforgeeks.org/python/python-while-else/) -- else runs when no break; widely considered confusing
+
+### Ruby for vs each
+- [Understanding Ruby - For vs Each](https://dev.to/baweaver/understanding-ruby-for-vs-each-47ae) -- scoping differences, both return the collection, `each` preferred idiomatically
+
+### Swift for-in
+- [Swift break Statement - Programiz](https://www.programiz.com/swift-programming/break-statement) -- break exits innermost loop, labeled break for nested, where clause for filtering
+
+### Cross-language Loop Comparison
+- [Comparison of programming languages (list comprehension) - Wikipedia](https://en.wikipedia.org/wiki/Comparison_of_programming_languages_(list_comprehension)) -- comprehension syntax across 20+ languages
 
 ---
-*Feature research for: Snow Language Method Dot-Syntax*
+*Feature research for: Snow Language Loops & Iteration*
 *Researched: 2026-02-08*

@@ -1,830 +1,1006 @@
-# Architecture: Method Dot-Syntax Integration
+# Architecture: Loops & Iteration Integration
 
-**Domain:** Adding `expr.method(args)` resolution to an existing compiler with field access, module lookups, and trait dispatch
+**Domain:** Adding `for..in` loops, `while` loops, and `break`/`continue` to an existing compiler with expression-oriented semantics, immutable data, and GC-managed collections
 **Researched:** 2026-02-08
-**Confidence:** HIGH (based on direct codebase analysis of 66,521-line compiler + established UFCS patterns)
+**Confidence:** HIGH (based on direct analysis of all six compiler stages + established LLVM loop patterns)
 
 ---
 
 ## Current Pipeline (Relevant Stages)
 
 ```
-Source: "point.to_string()"
+Source: "for x in items do println(x) end"
   |
   v
-[snow-lexer]     NAME "point" DOT "." NAME "to_string" L_PAREN "(" R_PAREN ")"
+[snow-lexer]     FOR_KW  IDENT("x")  IN_KW  IDENT("items")  DO_KW  ...  END_KW
+  Tokens exist: FOR_KW, IN_KW, DO_KW, END_KW already in TokenKind/SyntaxKind.
+  Missing: WHILE_KW, BREAK_KW, CONTINUE_KW not yet reserved.
   |
   v
-[snow-parser]    CALL_EXPR                    <-- binding power 25
-                   FIELD_ACCESS               <-- binding power 25
-                     NAME_REF "point"
-                     DOT "."
-                     IDENT "to_string"
-                   ARG_LIST
-                     L_PAREN R_PAREN
+[snow-parser]    No CST node for loops.
+  Missing: FOR_EXPR, WHILE_EXPR SyntaxKind variants.
+  Missing: parse_for_expr(), parse_while_expr() parser productions.
+  Missing: break/continue as expression atoms in lhs().
   |
   v
-[snow-typeck]    infer_call -> infer_expr(callee) -> infer_field_access
-                   Tries: stdlib module? service? sum type variant? struct field?
-                   Currently: fails with NoSuchField or returns fresh_var
-                   Needed: try method resolution via TraitRegistry
+[snow-typeck]    No type inference for loops.
+  Missing: infer_for(), infer_while() functions + Expr enum variants.
+  Missing: loop context tracking for break/continue validation.
+  Key decision: loops are expressions that return Unit (or break-value).
   |
   v
-[snow-codegen/mir/lower.rs]    lower_call_expr -> lower_expr(callee) -> lower_field_access
-                   Currently: produces MirExpr::FieldAccess (struct GEP)
-                   Needed: detect method call pattern, desugar to trait-dispatched Call
+[snow-codegen/mir]  No MIR loop nodes.
+  Missing: MirExpr::ForIn, MirExpr::While, MirExpr::Break, MirExpr::Continue.
+  Missing: lower_for_expr(), lower_while_expr() in lower.rs.
   |
   v
-[snow-codegen/codegen/expr.rs]  codegen_call -> emit LLVM direct call
-                   No changes needed -- receives desugared MirExpr::Call
+[snow-codegen/codegen]  No LLVM loop block patterns.
+  Missing: codegen_for_in(), codegen_while(), codegen_break(), codegen_continue().
+  Pattern needed: loop_header -> loop_body -> loop_latch -> loop_exit basic blocks.
+  |
+  v
+[snow-rt]  Runtime iteration support.
+  Exists: snow_list_length(), snow_list_get() -- sufficient for indexed iteration.
+  Exists: snow_range_new(), snow_range_length() -- range iteration.
+  Missing: snow_map_entries() / snow_set_to_list() for map/set iteration.
+  Missing: Generic iterator protocol (not needed for v1; index-based is sufficient).
 ```
 
-### What Already Works (Foundation)
+### What Already Exists (Foundation)
 
-1. **Parser:** `expr.method(args)` ALREADY parses correctly. The Pratt parser at binding power 25 produces `CALL_EXPR { FIELD_ACCESS { base, DOT, IDENT }, ARG_LIST { args } }`. The snapshot test `parser_tests__mixed_postfix` confirms `a.b(c)` produces exactly this structure. **No parser changes needed.**
+1. **Lexer:** `FOR_KW` and `IN_KW` tokens are already defined in `TokenKind` (snow-common/src/token.rs line 44, 50) and mapped to `SyntaxKind::FOR_KW` / `SyntaxKind::IN_KW` (syntax_kind.rs line 38, 43). These are recognized by `keyword_from_str` (line 207, 212). They are simply unused in the parser today.
 
-2. **Lexer:** `DOT` token (kind 108) exists. `SELF_KW` (kind 55) exists. **No lexer changes needed.**
+2. **Parser infrastructure:** The `do...end` block pattern used by `if`, `case`, closures, and actors is exactly the pattern loops need. `parse_block_body()` already handles block termination at `END_KW`. The `lhs()` function in `expressions.rs` dispatches on `SyntaxKind` atoms -- adding `FOR_KW` and `WHILE_KW` is mechanical.
 
-3. **AST:** `CallExpr.callee()` returns the first child expression, which will be a `FieldAccess`. `FieldAccess.base()` returns the receiver expression. `FieldAccess.field()` returns the method name IDENT token. **All AST accessors already work.**
+3. **Runtime collections:** `snow_list_length(list) -> i64` and `snow_list_get(list, index) -> u64` (list.rs lines 70, 117) provide indexed access for list iteration. `snow_range_new(start, end) -> ptr` creates ranges. No iterator protocol needed -- for..in desugars to indexed loops.
 
-4. **MIR:** `MirExpr::Call { func, args, ty }` handles direct function calls with mangled names. Trait method dispatch already works for `to_string(42)` -- MIR lowering rewrites to `Trait__Method__Type` mangled name. **No new MIR node types needed.**
+4. **LLVM block patterns:** `codegen_if()` (expr.rs line 856) demonstrates the alloca+basic-block+merge pattern: create result alloca, branch to then/else blocks, store result in alloca, branch to merge, load from alloca. Loops follow the same pattern with a back-edge.
 
-5. **Codegen:** `codegen_call` handles `MirExpr::Call` by looking up the function in `self.functions` or `self.module.get_function()`. **No codegen changes needed** -- the desugared call is indistinguishable from a regular call.
-
-6. **Trait infrastructure:** `TraitRegistry.find_method_traits(method_name, ty)` uses structural type matching via temporary unification to find all traits providing a method for a given type. Already used in `lower_call_expr` for bare `to_string(42)` dispatch. **Directly reusable for dot-syntax.**
+5. **Return/early exit:** `codegen_return()` (expr.rs line 1329) demonstrates emitting a terminator mid-expression and returning a dummy value. Break/continue follow this exact pattern (emit branch, return dummy).
 
 ### What Is Missing (The Gap)
 
-1. **Type checker does not recognize `expr.method(args)` as a method call.** When `infer_call` receives a `CallExpr` whose callee is a `FieldAccess`, it calls `infer_field_access` on the callee. `infer_field_access` tries module lookup, service lookup, sum type variant, then struct field lookup. If the field name is not a struct field, it returns `NoSuchField` error. There is no fallback to "try resolving as a trait method."
-
-2. **MIR lowering does not detect the method call pattern.** `lower_call_expr` calls `lower_expr` on the callee, which dispatches to `lower_field_access`. This produces `MirExpr::FieldAccess { object, field, ty }` -- a struct GEP -- not a method call. The trait method rewriting logic in `lower_call_expr` (lines 3527-3599) only fires when the callee is `MirExpr::Var(name, _)`, not when it is `MirExpr::FieldAccess`.
-
-3. **No self-parameter prepending.** When `point.to_string()` is written, the receiver `point` should be prepended as the first argument to `to_string`. Currently, the args from the parser's `ARG_LIST` do not include the receiver. The desugaring `point.to_string()` -> `to_string(point)` must happen explicitly.
-
-4. **Priority / ambiguity rules.** When `expr.name` could be either a struct field access OR a method call followed by `(args)`, the compiler must decide which takes priority. The correct rule: **struct fields take priority over methods** (same as Rust's inherent-over-trait rule). This prevents breakage of existing `self.x` field access inside impl bodies.
+| Layer | What | Effort |
+|-------|------|--------|
+| snow-common/token.rs | `While`, `Break`, `Continue` keywords + `keyword_from_str` entries | Trivial |
+| snow-parser/syntax_kind.rs | `WHILE_KW`, `BREAK_KW`, `CONTINUE_KW` token kinds + `FOR_EXPR`, `WHILE_EXPR`, `BREAK_EXPR`, `CONTINUE_EXPR` composite nodes | Small |
+| snow-parser/expressions.rs | `parse_for_expr()`, `parse_while_expr()`, break/continue atoms in `lhs()` | Medium |
+| snow-parser/ast/expr.rs | `ForExpr`, `WhileExpr`, `BreakExpr`, `ContinueExpr` AST node types + Expr enum variants | Small |
+| snow-typeck/infer.rs | `infer_for()`, `infer_while()`, break/continue tracking, loop context | Medium |
+| snow-codegen/mir/mod.rs | `MirExpr::ForIn`, `MirExpr::While`, `MirExpr::Break`, `MirExpr::Continue` + `MirType` additions if needed | Small |
+| snow-codegen/mir/lower.rs | `lower_for_expr()`, `lower_while_expr()` | Medium |
+| snow-codegen/codegen/expr.rs | `codegen_for_in()`, `codegen_while()`, `codegen_break()`, `codegen_continue()` | Medium-Large |
+| snow-rt | `snow_map_entries()`, `snow_set_to_list()` for collection iteration | Small |
 
 ---
 
 ## Recommended Architecture
 
-### Design Principle: Desugaring, Not a New Path
+### Design Principle: Loops as Imperative Sugar, Not New Control Flow Primitives
 
-Method dot-syntax is NOT a new dispatch mechanism. It is **syntactic sugar** that desugars into the existing bare-name call path:
+Snow is expression-oriented. `if/else` returns a value. `case` returns a value. Loops break this pattern because they are inherently imperative -- they produce side effects via their body, not a meaningful return value.
 
-```
-point.to_string()  -->  to_string(point)
-a.compare(b)       -->  compare(a, b)
-x.method1().method2() --> method2(method1(x))
-```
+**Design decisions:**
 
-The existing trait method dispatch infrastructure (TraitRegistry lookup, Trait__Method__Type mangling, static dispatch) handles everything after desugaring. This means:
+1. **Loops return Unit.** `for x in items do body end` has type `Unit`. This is consistent with functional languages (Elixir's `Enum.each`, Haskell's `mapM_`). The loop's purpose is side effects.
 
-- **No new MIR nodes.** Method calls become `MirExpr::Call` with the receiver prepended to args.
-- **No codegen changes.** The desugared call is a regular function call.
-- **No runtime changes.** Static dispatch via monomorphization, same as bare-name calls.
-- **Two integration points only:** typeck and MIR lowering.
+2. **`break` with optional value is deferred.** Languages like Rust allow `break value` from loops. This adds significant complexity (break-value type must unify across all break sites + the loop's natural exit). For v1, `break` exits with no value (Unit). `break value` can be added later.
+
+3. **`for..in` desugars to indexed iteration at MIR level.** No iterator protocol. `for x in list do body end` becomes a while loop over index 0..length with `list_get(list, i)` calls. This avoids inventing an iterator trait/protocol. Works for List, Range, Map (via keys), Set (via to_list).
+
+4. **`while` is the primitive loop form in MIR.** `for..in` desugars to `while` during MIR lowering. Codegen only handles `while`, `break`, and `continue`. This keeps codegen simple.
+
+5. **Break/continue are non-local branches.** At the LLVM level, `break` is an unconditional branch to the loop's exit block. `continue` is an unconditional branch to the loop's header. These require tracking the current loop's blocks during codegen.
 
 ### Component Boundaries
 
 | Component | Responsibility | What Changes |
 |-----------|---------------|--------------|
-| snow-lexer | Tokenization | **Nothing** -- DOT and IDENT tokens already exist |
-| snow-parser | CST construction | **Nothing** -- `expr.method(args)` already parses as CALL_EXPR(FIELD_ACCESS(...), args) |
-| snow-typeck/infer.rs | Type inference | **Moderate** -- `infer_field_access` gains method resolution fallback; `infer_call` gains dot-call detection |
-| snow-codegen/mir/lower.rs | AST -> MIR | **Moderate** -- `lower_call_expr` detects `FieldAccess` callee pattern and desugars |
-| snow-codegen/mir/mod.rs | MIR types | **Nothing** -- existing Call node is sufficient |
-| snow-codegen/codegen/ | MIR -> LLVM IR | **Nothing** -- desugared calls are regular MirExpr::Call |
-| snow-rt | Runtime | **Nothing** -- static dispatch, no runtime method tables |
+| snow-common | Token definitions | **Small** -- add 3 new keywords (`while`, `break`, `continue`) |
+| snow-lexer | Tokenization | **Nothing** -- keyword_from_str handles new keywords automatically |
+| snow-parser | CST construction | **Medium** -- new parser productions, new SyntaxKind variants, new AST nodes |
+| snow-typeck | Type inference | **Medium** -- new infer functions, loop context for break/continue validation |
+| snow-codegen/mir | MIR definitions | **Small** -- new MirExpr variants |
+| snow-codegen/mir/lower.rs | AST -> MIR | **Medium** -- for..in desugaring to while, break/continue lowering |
+| snow-codegen/codegen | MIR -> LLVM IR | **Medium** -- loop basic block structure, loop context for break/continue |
+| snow-rt | Runtime | **Small** -- map/set iteration helpers |
 
-### Data Flow: Method Call Resolution
+### Data Flow: `for x in items do body end`
 
 ```
-Source: point.to_string()
+Source: for x in [1, 2, 3] do println(x) end
 
 Parser Output:
-  CALL_EXPR
-    FIELD_ACCESS
-      NAME_REF "point"     --> base expression (receiver)
-      DOT "."
-      IDENT "to_string"    --> method name
-    ARG_LIST (empty)        --> explicit args
+  FOR_EXPR
+    NAME "x"              --> loop variable
+    IN_KW
+    LIST_LITERAL [1,2,3]  --> iterable expression
+    DO_KW
+    BLOCK                 --> loop body
+      CALL_EXPR println(x)
+    END_KW
 
-Type Checker (infer_call):
-  1. Detect callee is FieldAccess
-  2. Infer base type: point :: Point (struct)
-  3. Try struct field lookup: Point has no field "to_string"
-  4. NEW: Try method resolution via TraitRegistry
-     - find_method_traits("to_string", Point) -> ["Display"]
-     - Get method signature: (self) -> String
-     - Build function type with receiver prepended: Fun([Point], String)
-     - Unify with args: args = [] -> full_args = [Point] (receiver prepended)
-     - Return type: String
-  5. Record in types map: CALL_EXPR range -> String, FIELD_ACCESS range -> Fun([Point], String)
+Type Checker (infer_for):
+  1. Infer iterable: [1,2,3] :: List<Int>
+  2. Extract element type: Int (from List<Int>)
+  3. Bind loop variable: x :: Int in body scope
+  4. Infer body in extended scope: println(x) :: Unit
+  5. Loop result type: Unit
+  6. Record: FOR_EXPR range -> Unit
 
-MIR Lowering (lower_call_expr):
-  1. callee = lower_expr(FIELD_ACCESS) -> detect method call pattern
-  2. Extract: receiver_expr = lower_expr(base = "point"), method_name = "to_string"
-  3. Lower explicit args from ARG_LIST: [] (empty)
-  4. Prepend receiver to args: [lower("point")]
-  5. Apply existing trait dispatch logic:
-     - first_arg_ty = MirType::Struct("Point")
-     - find_method_traits("to_string", Point) -> ["Display"]
-     - Mangle: "Display__to_string__Point"
-  6. Emit: MirExpr::Call {
-       func: Var("Display__to_string__Point"),
-       args: [Var("point", Struct("Point"))],
-       ty: MirType::String
-     }
+MIR Lowering (lower_for_expr):
+  DESUGARS for..in to while-based indexed iteration:
 
-Codegen: Regular function call -- no special handling.
+  MirExpr::Block([
+    Let { name: "__iter_list", value: <iterable>, ... },
+    Let { name: "__iter_len", value: Call("snow_list_length", [Var("__iter_list")]), ... },
+    Let { name: "__iter_idx", value: IntLit(0), ... },
+    While {
+      cond: BinOp(Lt, Var("__iter_idx"), Var("__iter_len")),
+      body: Block([
+        Let { name: "x", value: Call("snow_list_get", [Var("__iter_list"), Var("__iter_idx")]), ... },
+        <body>,
+        // increment: __iter_idx = __iter_idx + 1  (mutation! -- see note below)
+      ]),
+      ty: Unit,
+    }
+  ], Unit)
+
+  NOTE: The index variable __iter_idx requires mutation. MIR currently uses
+  Let-with-continuation (functional style). Two options:
+    (a) Add MirExpr::Assign for loop counter mutation (simpler codegen)
+    (b) Emit the while loop as a single MIR node with implicit counter
+
+  RECOMMENDATION: Option (b) -- MirExpr::ForIn as a first-class MIR node that
+  codegen translates directly. This avoids adding general mutation to MIR.
+
+LLVM Codegen (codegen_for_in):
+  ; Entry: evaluate iterable, get length
+  %list = call @snow_list_length(%iterable)
+  %len = ...
+  %idx_alloca = alloca i64
+  store i64 0, %idx_alloca
+  br label %loop_header
+
+  loop_header:
+    %idx = load i64, %idx_alloca
+    %cond = icmp slt i64 %idx, %len
+    br i1 %cond, label %loop_body, label %loop_exit
+
+  loop_body:
+    %elem = call @snow_list_get(%list, %idx)
+    ; bind "x" to %elem
+    <body codegen>
+    ; increment
+    %next_idx = add i64 %idx, 1
+    store i64 %next_idx, %idx_alloca
+    br label %loop_header
+
+  loop_exit:
+    ; result = Unit
+```
+
+### Data Flow: `while cond do body end`
+
+```
+Source: while x > 0 do x = x - 1 end
+
+  NOTE: Snow has no mutable variables, so a pure while loop with decreasing
+  counter is not directly expressible. while is primarily useful for:
+  - Infinite loops with break: while true do ... break ... end
+  - Loops over mutable state (if added later)
+  - Internal use by for..in desugaring
+
+Parser Output:
+  WHILE_EXPR
+    BINARY_EXPR (x > 0)   --> condition
+    DO_KW
+    BLOCK                  --> body
+    END_KW
+
+Type Checker (infer_while):
+  1. Infer condition: x > 0 :: Bool
+  2. Infer body: <body> :: T (any type, discarded)
+  3. Loop result type: Unit
+
+MIR:
+  MirExpr::While {
+    cond: BinOp(Gt, Var("x"), IntLit(0)),
+    body: <body_mir>,
+    ty: Unit,
+  }
+
+LLVM Codegen (codegen_while):
+  br label %loop_header
+
+  loop_header:
+    %cond = <codegen condition>
+    br i1 %cond, label %loop_body, label %loop_exit
+
+  loop_body:
+    <body codegen>
+    br label %loop_header    ; back-edge
+
+  loop_exit:
+    ; result = Unit
+```
+
+### Data Flow: `break` and `continue`
+
+```
+Break:
+  Parser: BREAK_EXPR atom (no arguments for v1)
+  Typeck: Must be inside a loop. Type is Never (control flow leaves).
+  MIR:    MirExpr::Break
+  LLVM:   br label %loop_exit  (of enclosing loop)
+
+Continue:
+  Parser: CONTINUE_EXPR atom (no arguments)
+  Typeck: Must be inside a loop. Type is Never (control flow leaves).
+  MIR:    MirExpr::Continue
+  LLVM:   br label %loop_header  (of enclosing loop)
+          For for..in: br label %loop_latch (increment before re-test)
 ```
 
 ---
 
-## Changes Per Compiler Stage
+## New Components Per Compiler Stage
 
-### Stage 1: Type Checker (snow-typeck/infer.rs) -- Two Changes
+### Stage 1: Lexer / Tokens (snow-common + snow-lexer)
 
-#### Change 1: Method Resolution Fallback in `infer_field_access`
-
-**Location:** `infer_field_access()` at line ~3879 in `infer.rs`
-
-**Current behavior (lines 3903-3993):**
-1. Check if base is stdlib module name -> module-qualified lookup
-2. Check if base is service module -> service method
-3. Check if base is sum type name -> variant constructor
-4. Infer base expression type, look up struct field
-5. If field not found -> `NoSuchField` error
-
-**New behavior -- add step 4.5 before the error:**
-```
-4.5. If field not found in struct AND we are inside a CALL_EXPR parent:
-     - Query TraitRegistry: find_method_traits(field_name, resolved_base_ty)
-     - If method found:
-       - Get method signature from trait impl
-       - Return the function type Fun([self_type, ...params], ret_type)
-       - (The method is callable; infer_call will handle argument checking)
-     - If no method found:
-       - Fall through to existing NoSuchField error
-```
-
-**Critical detail: How to detect "inside a CALL_EXPR parent."** The type checker can check the parent node of the FieldAccess. In rowan, `fa.syntax().parent()` returns the parent CST node. If its kind is `CALL_EXPR`, the field access is a method call callee. If not (e.g., `point.x` as a standalone expression), it is a regular field access.
-
-**Alternative (simpler, recommended):** Do NOT check the parent node. Instead, always try method resolution as a fallback after struct field lookup fails. If the field is not a struct field but IS a trait method, return the method's function type. `infer_call` will then unify this function type against the argument list. If `point.to_string` appears without `()`, it becomes a function value reference -- which is correct behavior (method reference).
-
-**What this returns for `point.to_string`:**
-- `Ty::Fun(vec![Ty::Con("Point")], Box::new(Ty::Con("String")))` -- a function value
-
-Then `infer_call` unifies this against the argument list. For `point.to_string()`, the arg list is empty, but the function expects 1 param (self). This mismatch happens because the receiver is NOT in the arg list.
-
-**Complication:** `infer_call` currently builds `expected_fn_ty = Ty::Fun(arg_types, ret_var)` from the explicit args. For `point.to_string()`, `arg_types = []`. But the method type is `Fun([Point], String)`. Unification fails: arity mismatch.
-
-**Resolution:** `infer_call` must detect the dot-call pattern and prepend the receiver type to `arg_types`.
-
-#### Change 2: Dot-Call Detection in `infer_call`
-
-**Location:** `infer_call()` at line ~2671 in `infer.rs`
-
-**Current behavior:**
-1. Infer callee expression type
-2. Collect argument types from ARG_LIST
-3. Build expected function type from arg types
-4. Unify callee type with expected type
-5. Check where-clause constraints
-
-**New behavior -- after step 2, before step 3:**
-```
-2.5. If callee_expr is FieldAccess:
-     a. Extract base expression and field name
-     b. Get the inferred base type from the types map (already inferred in step 1)
-     c. Prepend base type to arg_types: arg_types = [base_ty, ...arg_types]
-     d. The callee_ty from step 1 already has the correct function type
-        (from the modified infer_field_access which returns the method fn type)
-     e. Continue to step 3 with the augmented arg_types
-```
-
-This is minimal: `infer_call` detects `Expr::FieldAccess` as the callee, prepends the receiver type, and the rest of the existing unification and constraint-checking machinery works unchanged.
-
-**Where-clause checking:** The existing code at lines 2713-2749 checks where-clause constraints only when `callee_expr` is a `NameRef`. For dot-syntax calls, the callee is a `FieldAccess`, not a `NameRef`. Two options:
-- (a) Extract the method name from the FieldAccess and use it for constraint lookup
-- (b) Let MIR lowering handle constraint enforcement (already the pattern for trait dispatch)
-
-**Recommendation:** Option (a) for correctness -- extract `field_name` from the FieldAccess and use it as the function name for `fn_constraints.get(&field_name)`. This ensures where-clause errors are reported at the call site.
-
-### Stage 2: MIR Lowering (snow-codegen/mir/lower.rs) -- One Change
-
-#### Change: Detect FieldAccess Callee in `lower_call_expr`
-
-**Location:** `lower_call_expr()` at line ~3362 in `lower.rs`
-
-**Current behavior:**
-1. `callee = lower_expr(call.callee())` -- this calls `lower_field_access` which produces `MirExpr::FieldAccess`
-2. Collect args from ARG_LIST
-3. Check if callee is `MirExpr::Var(name, _)` for trait dispatch rewriting
-4. Emit `MirExpr::Call { func: callee, args, ty }`
-
-**Problem:** Step 3 only fires for `MirExpr::Var`, not `MirExpr::FieldAccess`. The trait dispatch logic at lines 3527-3599 never triggers for dot-syntax calls.
-
-**New behavior -- BEFORE step 1, intercept the FieldAccess pattern at the AST level:**
-
+**New `TokenKind` variants (snow-common/src/token.rs):**
 ```rust
-fn lower_call_expr(&mut self, call: &CallExpr) -> MirExpr {
-    // ── NEW: Detect method dot-syntax ──
-    // If callee is a FieldAccess (expr.method), desugar to a bare call
-    // with the receiver prepended as first argument.
-    if let Some(Expr::FieldAccess(ref fa)) = call.callee() {
-        // Check if this is NOT a module-qualified call (already handled by lower_field_access)
-        if let Some(base_expr) = fa.base() {
-            let is_module = if let Expr::NameRef(ref nr) = base_expr {
-                nr.text().map(|t| STDLIB_MODULES.contains(&t.as_str())
-                    || self.service_modules.contains_key(&t)).unwrap_or(false)
-            } else {
-                false
-            };
+// Add to enum TokenKind:
+While,     // "while"
+Break,     // "break"
+Continue,  // "continue"
+```
 
-            if !is_module {
-                let method_name = fa.field().map(|t| t.text().to_string())
-                    .unwrap_or_default();
-                let receiver = self.lower_expr(&base_expr);
-                let mut args: Vec<MirExpr> = vec![receiver]; // prepend receiver
-                if let Some(al) = call.arg_list() {
-                    args.extend(al.args().map(|a| self.lower_expr(&a)));
-                }
-                let ty = self.resolve_range(call.syntax().text_range());
+**New `keyword_from_str` entries (snow-common/src/token.rs):**
+```rust
+"while" => Some(TokenKind::While),
+"break" => Some(TokenKind::Break),
+"continue" => Some(TokenKind::Continue),
+```
 
-                // Now apply the existing trait method dispatch logic:
-                // Rewrite bare method name to Trait__Method__Type mangled name.
-                let first_arg_ty = args[0].ty().clone();
-                let callee = /* ... same logic as lines 3527-3599 ... */;
+**No changes to snow-lexer/src/lib.rs.** The `lex_ident` function calls `keyword_from_str` which handles the new keywords automatically.
 
-                return MirExpr::Call { func: Box::new(callee), args, ty };
-            }
-        }
-    }
+**Impact:** TokenKind variant count goes from 93 to 96. The test `token_kind_variant_count` must be updated.
 
-    // ... existing lower_call_expr code continues unchanged ...
+### Stage 2: Parser (snow-parser)
+
+**New `SyntaxKind` variants (syntax_kind.rs):**
+```rust
+// Token kinds (add after existing keywords):
+WHILE_KW,
+BREAK_KW,
+CONTINUE_KW,
+
+// Composite node kinds (add after existing expression nodes):
+FOR_EXPR,      // for x in iterable do body end
+WHILE_EXPR,    // while cond do body end
+BREAK_EXPR,    // break
+CONTINUE_EXPR, // continue
+```
+
+**New `SyntaxKind::from(TokenKind)` arms:**
+```rust
+TokenKind::While => SyntaxKind::WHILE_KW,
+TokenKind::Break => SyntaxKind::BREAK_KW,
+TokenKind::Continue => SyntaxKind::CONTINUE_KW,
+```
+
+**New parser productions (expressions.rs):**
+
+```
+parse_for_expr:
+  FOR_EXPR
+    FOR_KW
+    pattern        (NAME or destructuring pattern)
+    IN_KW
+    expr           (iterable expression)
+    DO_KW
+    BLOCK          (loop body via parse_block_body)
+    END_KW
+
+parse_while_expr:
+  WHILE_EXPR
+    WHILE_KW
+    expr           (condition)
+    DO_KW
+    BLOCK          (loop body via parse_block_body)
+    END_KW
+```
+
+**Integration into `lhs()` (expressions.rs):**
+```rust
+// Add to the match in lhs():
+SyntaxKind::FOR_KW => Some(parse_for_expr(p)),
+SyntaxKind::WHILE_KW => Some(parse_while_expr(p)),
+SyntaxKind::BREAK_KW => {
+    let m = p.open();
+    p.advance(); // BREAK_KW
+    Some(p.close(m, SyntaxKind::BREAK_EXPR))
+}
+SyntaxKind::CONTINUE_KW => {
+    let m = p.open();
+    p.advance(); // CONTINUE_KW
+    Some(p.close(m, SyntaxKind::CONTINUE_EXPR))
 }
 ```
 
-**Key insight:** The interception happens at the AST level (before `lower_expr` is called on the callee), NOT at the MIR level. This avoids producing an intermediate `MirExpr::FieldAccess` that would need to be "un-done." Instead, we directly extract the receiver expression and method name from the AST, lower the receiver, prepend it to args, and feed into the existing trait dispatch logic.
+**Integration into `parse_block_body()` -- block terminators:**
+`parse_block_body()` checks for `END_KW | ELSE_KW | EOF` as block terminators (line 457). No change needed: loops use `do...end`, and the existing `END_KW` termination handles them.
 
-**Reuse of existing dispatch logic:** The trait method rewriting code at lines 3527-3599 already handles:
-- Looking up `find_method_traits(method_name, first_arg_ty)` via TraitRegistry
-- Generating mangled name `Trait__Method__Type`
-- Mapping primitive builtins to runtime functions (`Display__to_string__Int` -> `snow_int_to_string`)
-- Fallback for monomorphized generic types
-- Warning for unresolved methods
+**New AST node types (ast/expr.rs):**
+```rust
+// Add to Expr enum:
+ForExpr(ForExpr),
+WhileExpr(WhileExpr),
+BreakExpr(BreakExpr),
+ContinueExpr(ContinueExpr),
 
-This code should be **extracted into a helper function** (e.g., `resolve_trait_method_callee`) and called from both the existing bare-name path AND the new dot-syntax path. This avoids duplicating the 70+ lines of dispatch logic.
+// New AST nodes:
+ast_node!(ForExpr, FOR_EXPR);
+impl ForExpr {
+    pub fn pattern(&self) -> Option<Pattern> { ... }  // loop variable pattern
+    pub fn iterable(&self) -> Option<Expr> { ... }    // the collection expression
+    pub fn body(&self) -> Option<Block> { ... }       // loop body block
+}
 
-### Stage 3: Remaining Stages -- No Changes
+ast_node!(WhileExpr, WHILE_EXPR);
+impl WhileExpr {
+    pub fn condition(&self) -> Option<Expr> { ... }
+    pub fn body(&self) -> Option<Block> { ... }
+}
 
-| Stage | Why No Changes |
-|-------|----------------|
-| Monomorphization (mono.rs) | Reachability analysis discovers mangled names through normal call graph. Dot-syntax calls produce the same `MirExpr::Call` nodes as bare calls. |
-| Codegen (codegen/expr.rs) | Receives `MirExpr::Call { func: Var("Display__to_string__Point"), ... }` -- indistinguishable from a bare call. |
-| Runtime (snow-rt) | Static dispatch. No vtables, no method tables, no runtime resolution. |
-| Formatter (snow-fmt) | Already handles FIELD_ACCESS and CALL_EXPR nodes. Dot-syntax calls parse into existing node types. |
-| LSP (snow-lsp) | May benefit from method completion in the future, but not required for v1.6. |
-
----
-
-## Resolution Priority Rules
-
-When `expr.name` is encountered, the compiler must decide what it means. The resolution order, from highest to lowest priority:
-
-```
-1. Module-qualified access (existing)
-   - base is a stdlib module name: String.length -> string_length
-   - base is a service module: Counter.start -> __service_Counter_start
-
-2. Sum type variant constructor (existing)
-   - base is a sum type name: Shape.Circle -> Shape.Circle constructor
-
-3. Struct field access (existing)
-   - base has a struct type with a field named "name"
-   - Returns the field value
-
-4. Method call via trait impl (NEW)
-   - base type has a trait impl that provides method "name"
-   - Returns the method as a callable function type
-   - When followed by (args), desugars to method(base, args)
-
-5. Error: NoSuchField
-   - None of the above matched
+ast_node!(BreakExpr, BREAK_EXPR);
+ast_node!(ContinueExpr, CONTINUE_EXPR);
 ```
 
-**Critical invariant: Steps 1-3 do NOT change.** Method resolution is a NEW fallback that fires only when the existing resolution paths all fail. This guarantees backward compatibility:
-- `self.x` inside an impl body resolves to struct field (step 3) -- method resolution never fires
-- `String.length` resolves to module-qualified (step 1) -- method resolution never fires
-- `Shape.Circle` resolves to variant constructor (step 2) -- method resolution never fires
-- `point.to_string()` fails steps 1-3, succeeds at step 4 -- NEW behavior
+### Stage 3: Type Checker (snow-typeck/infer.rs)
 
-### Ambiguity: Struct Field vs Method
-
-If a struct has a field named `to_string` AND the type implements Display, the field access wins (step 3 > step 4). This matches Rust's behavior where inherent members shadow trait methods.
-
-If ambiguity is truly desired, the user can use the bare-name syntax: `to_string(point)` calls the trait method directly, bypassing field access entirely.
-
-### Interaction with Pipe Operator
-
-```
-point |> to_string()     -- already works (bare name, pipe desugaring)
-point.to_string()        -- NEW (dot-syntax, method resolution)
+**New `infer_expr` arms:**
+```rust
+// Add to infer_expr match:
+Expr::ForExpr(for_) => infer_for(ctx, env, for_, types, ...),
+Expr::WhileExpr(while_) => infer_while(ctx, env, while_, types, ...),
+Expr::BreakExpr(_) => infer_break(ctx, env, ...),
+Expr::ContinueExpr(_) => infer_continue(ctx, env, ...),
 ```
 
-Both produce the same MIR: `Call { func: "Display__to_string__Point", args: [point] }`.
+**Loop context tracking:** The type checker needs to know whether we are inside a loop to validate break/continue. Add a loop depth counter to the inference context:
 
-The pipe operator is NOT affected by this change. Pipe desugaring in `lower_pipe_expr` and `infer_pipe` works at the AST level and prepends the LHS as the first argument to the RHS call. This is independent of method dot-syntax.
-
-**Chaining works naturally:**
-```
-point.to_string().length()
-```
-Parser produces:
-```
-CALL_EXPR                    -- outer: .length()
-  CALL_EXPR                  -- inner: .to_string()
-    FIELD_ACCESS              -- point.to_string
-      NAME_REF "point"
-      DOT "."
-      IDENT "to_string"
-    ARG_LIST ()
-  DOT "."
-  IDENT "length"
-  ARG_LIST ()
+```rust
+// In the inference state (passed through or stored):
+loop_depth: u32,   // 0 = not in loop, >0 = inside loop(s)
 ```
 
-Wait -- this is WRONG. The parser produces:
+Increment when entering a for/while body, decrement when leaving. `break` and `continue` at loop_depth 0 produce a type error: "break/continue outside of loop".
+
+**`infer_for` logic:**
+1. Infer iterable expression type.
+2. Extract element type from iterable:
+   - `List<T>` -> element type is `T`
+   - `Range` -> element type is `Int`
+   - `Map<K, V>` -> element type is `Tuple(K, V)` (or just K for key iteration -- design choice)
+   - `Set<T>` -> element type is `T`
+   - `String` -> element type is `String` (char iteration -- or defer)
+3. Bind loop variable pattern with element type in a new scope.
+4. Infer body in extended scope.
+5. Return `Ty::unit()` (loops produce Unit).
+
+**`infer_while` logic:**
+1. Infer condition -- must unify with `Bool`.
+2. Infer body (result discarded).
+3. Return `Ty::unit()`.
+
+**`infer_break` / `infer_continue` logic:**
+1. Check `loop_depth > 0`. If not, emit error.
+2. Return `Ty::Never` (like `return`, these expressions never produce a value at their call site).
+
+### Stage 4: MIR (snow-codegen/mir/mod.rs)
+
+**New `MirExpr` variants:**
+
+```rust
+/// For-in loop: iterates over a collection.
+/// Desugared from `for pattern in iterable do body end`.
+/// Codegen handles the indexed iteration directly.
+ForIn {
+    /// The loop variable name.
+    var_name: String,
+    /// The loop variable's type (element type of the collection).
+    var_ty: MirType,
+    /// The iterable expression (List, Range, Map, Set).
+    iterable: Box<MirExpr>,
+    /// What kind of collection is being iterated.
+    iter_kind: IterKind,
+    /// The loop body.
+    body: Box<MirExpr>,
+    /// Always Unit.
+    ty: MirType,
+},
+
+/// While loop.
+While {
+    /// Loop condition (must be Bool).
+    cond: Box<MirExpr>,
+    /// Loop body.
+    body: Box<MirExpr>,
+    /// Always Unit.
+    ty: MirType,
+},
+
+/// Break from the enclosing loop.
+Break,
+
+/// Continue to the next iteration of the enclosing loop.
+Continue,
 ```
-CALL_EXPR                    -- .length()
-  FIELD_ACCESS               -- result_of_to_string.length
-    CALL_EXPR                -- .to_string()
-      FIELD_ACCESS           -- point.to_string
-        NAME_REF "point"
-        IDENT "to_string"
-      ARG_LIST ()
-    IDENT "length"
-  ARG_LIST ()
+
+**New `IterKind` enum (describes how to iterate):**
+```rust
+#[derive(Debug, Clone)]
+pub enum IterKind {
+    /// List iteration: snow_list_length + snow_list_get
+    List,
+    /// Range iteration: range start/end direct access
+    Range,
+    /// Map iteration: snow_map_keys then iterate keys
+    Map,
+    /// Set iteration: snow_set_to_list then iterate
+    Set,
+}
 ```
 
-Actually, let me trace through the Pratt parser more carefully. The loop processes left-to-right:
-
-1. Parse atom: `NAME_REF "point"`
-2. See DOT at bp 25 >= min_bp 0: open FIELD_ACCESS, advance DOT, expect IDENT "to_string", close -> lhs = `FIELD_ACCESS(point, to_string)`
-3. See L_PAREN at bp 25 >= min_bp 0: open CALL_EXPR before lhs, parse arg_list `()`, close -> lhs = `CALL_EXPR(FIELD_ACCESS(point, to_string), ())`
-4. See DOT at bp 25 >= min_bp 0: open FIELD_ACCESS before lhs, advance DOT, expect IDENT "length", close -> lhs = `FIELD_ACCESS(CALL_EXPR(...), length)`
-5. See L_PAREN at bp 25 >= min_bp 0: open CALL_EXPR before lhs, parse arg_list `()`, close -> lhs = `CALL_EXPR(FIELD_ACCESS(CALL_EXPR(...), length), ())`
-
-So the final tree is:
-```
-CALL_EXPR                           -- .length()
-  FIELD_ACCESS                      -- [result].length
-    CALL_EXPR                       -- .to_string()
-      FIELD_ACCESS                  -- point.to_string
-        NAME_REF "point"
-        IDENT "to_string"
-      ARG_LIST ()
-    IDENT "length"
-  ARG_LIST ()
+**Update `MirExpr::ty()`:**
+```rust
+MirExpr::ForIn { ty, .. } => ty,
+MirExpr::While { ty, .. } => ty,
+MirExpr::Break => &MirType::Never,
+MirExpr::Continue => &MirType::Never,
 ```
 
-This is correct. Each method call is `CALL_EXPR(FIELD_ACCESS(base, method), args)`. The base of the outer call is the result of the inner call. The desugaring applies recursively:
+### Stage 5: MIR Lowering (snow-codegen/mir/lower.rs)
 
-- Inner: `point.to_string()` -> detect FieldAccess callee, desugar to `to_string(point)` -> resolves to `Display__to_string__Point(point)` -> returns String
-- Outer: `[string_result].length()` -> detect FieldAccess callee, receiver is String result, method is "length" -> desugar to `length(string_result)` -> resolves to `string_length(string_result)` -> returns Int
+**New `lower_expr` arms:**
+```rust
+Expr::ForExpr(for_) => self.lower_for_expr(for_),
+Expr::WhileExpr(while_) => self.lower_while_expr(while_),
+Expr::BreakExpr(_) => MirExpr::Break,
+Expr::ContinueExpr(_) => MirExpr::Continue,
+```
 
-**Chaining works naturally because each dot-call desugaring is independent.**
+**`lower_for_expr` -- for..in to MirExpr::ForIn:**
+```rust
+fn lower_for_expr(&mut self, for_: &ForExpr) -> MirExpr {
+    let iterable = self.lower_expr(&for_.iterable().unwrap());
+    let iter_ty = iterable.ty().clone();
+
+    // Determine iteration kind and element type from iterable type
+    let (iter_kind, elem_ty) = match &iter_ty {
+        MirType::Struct(name) if name == "List" => (IterKind::List, /* extract elem */),
+        // ... Range, Map, Set cases ...
+        _ => panic!("cannot iterate over {:?}", iter_ty),
+    };
+
+    // Extract loop variable name from pattern
+    let var_name = extract_pattern_name(&for_.pattern().unwrap());
+
+    // Lower body with loop variable in scope
+    self.push_scope();
+    self.insert_var(var_name.clone(), elem_ty.clone());
+    let body = self.lower_block(&for_.body().unwrap());
+    self.pop_scope();
+
+    MirExpr::ForIn {
+        var_name,
+        var_ty: elem_ty,
+        iterable: Box::new(iterable),
+        iter_kind,
+        body: Box::new(body),
+        ty: MirType::Unit,
+    }
+}
+```
+
+**`lower_while_expr` -- straightforward:**
+```rust
+fn lower_while_expr(&mut self, while_: &WhileExpr) -> MirExpr {
+    let cond = self.lower_expr(&while_.condition().unwrap());
+    self.push_scope();
+    let body = self.lower_block(&while_.body().unwrap());
+    self.pop_scope();
+
+    MirExpr::While {
+        cond: Box::new(cond),
+        body: Box::new(body),
+        ty: MirType::Unit,
+    }
+}
+```
+
+### Stage 6: LLVM Codegen (snow-codegen/codegen/expr.rs)
+
+**Loop context for break/continue:** Codegen needs to know which basic blocks to branch to for `break` and `continue`. Add a stack to `CodeGen`:
+
+```rust
+// In CodeGen struct:
+/// Stack of loop contexts for break/continue target resolution.
+/// Each entry: (loop_header_bb, loop_exit_bb, loop_latch_bb_option)
+loop_stack: Vec<LoopContext<'ctx>>,
+
+struct LoopContext<'ctx> {
+    header: BasicBlock<'ctx>,   // continue target (re-test condition)
+    exit: BasicBlock<'ctx>,     // break target
+    latch: Option<BasicBlock<'ctx>>,  // for..in: increment before header
+}
+```
+
+**`codegen_while`:**
+```rust
+fn codegen_while(
+    &mut self,
+    cond: &MirExpr,
+    body: &MirExpr,
+) -> Result<BasicValueEnum<'ctx>, String> {
+    let fn_val = self.current_function();
+
+    let loop_header = self.context.append_basic_block(fn_val, "while_header");
+    let loop_body = self.context.append_basic_block(fn_val, "while_body");
+    let loop_exit = self.context.append_basic_block(fn_val, "while_exit");
+
+    // Branch to header
+    self.builder.build_unconditional_branch(loop_header)?;
+
+    // Header: evaluate condition
+    self.builder.position_at_end(loop_header);
+    let cond_val = self.codegen_expr(cond)?.into_int_value();
+    self.builder.build_conditional_branch(cond_val, loop_body, loop_exit)?;
+
+    // Body
+    self.builder.position_at_end(loop_body);
+    self.loop_stack.push(LoopContext {
+        header: loop_header,
+        exit: loop_exit,
+        latch: None,
+    });
+    let _ = self.codegen_expr(body)?;
+    self.loop_stack.pop();
+
+    // Back-edge (only if body didn't already terminate via break/return)
+    if self.builder.get_insert_block().unwrap().get_terminator().is_none() {
+        self.builder.build_unconditional_branch(loop_header)?;
+    }
+
+    // Exit
+    self.builder.position_at_end(loop_exit);
+    Ok(self.context.struct_type(&[], false).const_zero().into())
+}
+```
+
+**`codegen_for_in` (for List iteration):**
+```rust
+fn codegen_for_in(
+    &mut self,
+    var_name: &str,
+    var_ty: &MirType,
+    iterable: &MirExpr,
+    iter_kind: &IterKind,
+    body: &MirExpr,
+) -> Result<BasicValueEnum<'ctx>, String> {
+    let fn_val = self.current_function();
+    let i64_ty = self.context.i64_type();
+
+    // Evaluate iterable
+    let iter_val = self.codegen_expr(iterable)?;
+
+    // Get length
+    let len = match iter_kind {
+        IterKind::List => {
+            let len_fn = get_intrinsic(self.module, "snow_list_length");
+            self.builder.build_call(len_fn, &[iter_val.into()], "len")?
+                .try_as_basic_value().left().unwrap().into_int_value()
+        }
+        IterKind::Range => {
+            let len_fn = get_intrinsic(self.module, "snow_range_length");
+            self.builder.build_call(len_fn, &[iter_val.into()], "len")?
+                .try_as_basic_value().left().unwrap().into_int_value()
+        }
+        // ... other kinds
+    };
+
+    // Index alloca
+    let idx_alloca = self.builder.build_alloca(i64_ty, "__iter_idx")?;
+    self.builder.build_store(idx_alloca, i64_ty.const_zero())?;
+
+    let loop_header = self.context.append_basic_block(fn_val, "for_header");
+    let loop_body = self.context.append_basic_block(fn_val, "for_body");
+    let loop_latch = self.context.append_basic_block(fn_val, "for_latch");
+    let loop_exit = self.context.append_basic_block(fn_val, "for_exit");
+
+    self.builder.build_unconditional_branch(loop_header)?;
+
+    // Header: idx < len?
+    self.builder.position_at_end(loop_header);
+    let idx = self.builder.build_load(i64_ty, idx_alloca, "idx")?.into_int_value();
+    let cond = self.builder.build_int_compare(IntPredicate::SLT, idx, len, "cond")?;
+    self.builder.build_conditional_branch(cond, loop_body, loop_exit)?;
+
+    // Body: bind loop variable, execute body
+    self.builder.position_at_end(loop_body);
+    let elem = match iter_kind {
+        IterKind::List => {
+            let get_fn = get_intrinsic(self.module, "snow_list_get");
+            self.builder.build_call(get_fn, &[iter_val.into(), idx.into()], "elem")?
+                .try_as_basic_value().left().unwrap()
+        }
+        // Range: start + idx
+        IterKind::Range => { /* load range start, add idx */ }
+        // ...
+    };
+
+    // Bind loop variable
+    let var_llvm_ty = self.llvm_type(var_ty);
+    let var_alloca = self.builder.build_alloca(var_llvm_ty, var_name)?;
+    self.builder.build_store(var_alloca, elem)?;
+    let old = self.locals.insert(var_name.to_string(), var_alloca);
+    let old_ty = self.local_types.insert(var_name.to_string(), var_ty.clone());
+
+    // Push loop context (continue goes to latch, not header)
+    self.loop_stack.push(LoopContext {
+        header: loop_header,
+        exit: loop_exit,
+        latch: Some(loop_latch),
+    });
+    let _ = self.codegen_expr(body)?;
+    self.loop_stack.pop();
+
+    // Restore variable binding
+    // ... restore old/old_ty ...
+
+    // Fall through to latch (if not already terminated)
+    if self.builder.get_insert_block().unwrap().get_terminator().is_none() {
+        self.builder.build_unconditional_branch(loop_latch)?;
+    }
+
+    // Latch: increment index
+    self.builder.position_at_end(loop_latch);
+    let idx = self.builder.build_load(i64_ty, idx_alloca, "idx")?;
+    let next_idx = self.builder.build_int_add(idx.into_int_value(),
+        i64_ty.const_int(1, false), "next_idx")?;
+    self.builder.build_store(idx_alloca, next_idx)?;
+    self.builder.build_unconditional_branch(loop_header)?;
+
+    // Exit
+    self.builder.position_at_end(loop_exit);
+    Ok(self.context.struct_type(&[], false).const_zero().into())
+}
+```
+
+**`codegen_break` and `codegen_continue`:**
+```rust
+fn codegen_break(&mut self) -> Result<BasicValueEnum<'ctx>, String> {
+    let loop_ctx = self.loop_stack.last()
+        .ok_or("break outside of loop")?;
+    self.builder.build_unconditional_branch(loop_ctx.exit)?;
+    // Return dummy (same pattern as codegen_return)
+    Ok(self.context.struct_type(&[], false).const_zero().into())
+}
+
+fn codegen_continue(&mut self) -> Result<BasicValueEnum<'ctx>, String> {
+    let loop_ctx = self.loop_stack.last()
+        .ok_or("continue outside of loop")?;
+    // For for..in, continue goes to latch (increment before re-testing)
+    let target = loop_ctx.latch.unwrap_or(loop_ctx.header);
+    self.builder.build_unconditional_branch(target)?;
+    Ok(self.context.struct_type(&[], false).const_zero().into())
+}
+```
+
+### Stage 7: Runtime (snow-rt)
+
+**New runtime functions for collection iteration:**
+
+```rust
+// Map iteration support: return keys as a List for indexed access
+#[no_mangle]
+pub extern "C" fn snow_map_entries(map: *mut u8) -> *mut u8
+// Already exists: snow_map_keys() returns a List of keys
+
+// Set iteration: convert to List
+#[no_mangle]
+pub extern "C" fn snow_set_to_list(set: *mut u8) -> *mut u8
+```
+
+For Range iteration, no new runtime function is needed. Ranges have `start` and `end` fields accessible at known offsets. Codegen can emit direct GEP to read the start value and compute `start + idx` for each iteration.
 
 ---
 
 ## Patterns to Follow
 
-### Pattern 1: Fallback Resolution (Priority Chain)
+### Pattern 1: alloca + branch + merge (Established in codegen_if)
 
-**What:** Try each resolution strategy in priority order. Only attempt the next strategy when the current one definitively fails (returns None, not an error).
+**What:** Use stack allocas for mutable loop state (index counter), basic block structure for control flow, and check for existing terminators before emitting branches.
 
-**When:** Resolving `expr.name` in `infer_field_access`.
+**When:** All loop codegen.
 
-**Existing example in codebase:**
-```
-// Already in infer_field_access:
-1. Try stdlib module -> Some(scheme) => return Ok(ty)
-2. Try service module -> Some(scheme) => return Ok(ty)
-3. Try sum type variant -> Some(scheme) => return Ok(ty)
-4. Try struct field -> found => return Ok(field_ty)
-// NEW:
-5. Try method via TraitRegistry -> found => return Ok(method_fn_ty)
-6. Error: NoSuchField
-```
-
-**Why this pattern:** Each step is independent. The priority order is deterministic. New resolution strategies are added at the end without affecting existing ones.
-
-### Pattern 2: AST-Level Desugaring (Before MIR)
-
-**What:** Detect the syntactic pattern at the AST level and rewrite to the desugared form before producing MIR.
-
-**When:** Converting `expr.method(args)` to `method(expr, args)` in `lower_call_expr`.
-
-**Existing example in codebase:**
+**Existing example (codegen_if, line 856):**
 ```rust
-// In lower_pipe_expr:
-// `x |> f(a, b)` is desugared to `f(x, a, b)` at the AST level.
-let lhs = self.lower_expr(&lhs_expr);
-let callee = self.lower_expr(&rhs_callee);
-let mut args = vec![lhs]; // prepend pipe LHS
-args.extend(explicit_args);
-MirExpr::Call { func: callee, args, ty }
-```
-
-**Why this pattern:** The pipe operator desugaring is the exact same transformation -- prepend a value as the first argument. Method dot-syntax uses the identical pattern. The MIR layer never knows the call originated from dot-syntax.
-
-### Pattern 3: Extract-Then-Dispatch (Helper Function)
-
-**What:** Extract the trait method resolution logic into a reusable helper, called from both bare-name calls and dot-syntax calls.
-
-**When:** The trait dispatch code at lines 3527-3599 of `lower_call_expr` is needed for both `to_string(point)` and `point.to_string()`.
-
-**Proposed:**
-```rust
-/// Resolve a bare method name to a trait-mangled name given the first argument's type.
-/// Returns the resolved MirExpr::Var if a trait method is found, None otherwise.
-fn resolve_trait_method(
-    &self,
-    method_name: &str,
-    first_arg_ty: &MirType,
-    var_ty: &MirType,
-) -> Option<MirExpr> {
-    // ... extracted from lines 3527-3599 ...
+let result_alloca = self.builder.build_alloca(result_ty, "if_result")?;
+// ... build_conditional_branch to then/else ...
+// In each block: store result, check terminator, build_unconditional_branch to merge
+if self.builder.get_insert_block().unwrap().get_terminator().is_none() {
+    self.builder.build_unconditional_branch(merge_bb)?;
 }
 ```
 
-**Why this pattern:** Avoids duplicating 70+ lines of dispatch logic. Single source of truth for how trait methods are resolved from method names.
+**Why:** The terminator check is critical. If a branch contains `return` or `break`, it already has a terminator. Emitting a second unconditional branch on a terminated block is an LLVM error.
+
+### Pattern 2: Loop Stack for Nested Contexts
+
+**What:** Maintain a stack of loop contexts during codegen. Push when entering a loop, pop when leaving. Break/continue reference the top of the stack.
+
+**When:** Nested loops like `for x in xs do for y in ys do ... break ... end end`.
+
+**Why:** Break must branch to the innermost loop's exit, not the outer loop's exit. A stack makes this automatic.
+
+### Pattern 3: Desugaring at MIR Level (Established by pipe desugaring)
+
+**What:** Complex source syntax desugars to simpler MIR forms. `for..in` becomes indexed iteration. The parser/typeck see the high-level form; MIR and codegen see the low-level form.
+
+**Existing example:** `x |> f(a)` desugars to `f(x, a)` during MIR lowering. The parser produces PIPE_EXPR, but MIR only has MirExpr::Call.
+
+**Applied here:** `for x in list do body end` retains its high-level structure through parsing and typechecking (where element type extraction needs the `for` semantics), then desugars to MirExpr::ForIn which codegen translates to indexed iteration.
 
 ---
 
 ## Anti-Patterns to Avoid
 
-### Anti-Pattern 1: New AST Node for Method Calls
+### Anti-Pattern 1: General Mutable Variables in MIR
 
-**What:** Adding a `METHOD_CALL` syntax kind distinct from `CALL_EXPR`.
+**What:** Adding `MirExpr::Assign { target, value }` to support the loop counter.
 
-**Why bad:** The parser ALREADY produces the correct structure (`CALL_EXPR` with `FIELD_ACCESS` callee). A new node type would require changes to every consumer of the AST: type checker, MIR lowering, formatter, LSP. It would also break the Pratt parser's elegant handling of postfix operations.
+**Why bad:** Snow is an immutable language. Adding general mutation to MIR opens the door to mutable variables everywhere. The loop counter is an internal implementation detail that users never see.
 
-**Instead:** Detect the `FieldAccess` callee pattern within existing `CALL_EXPR` handling. The method call is syntactically a call expression with a particular callee shape.
+**Instead:** Keep mutation internal to codegen. The `ForIn` MIR node encapsulates the counter; codegen uses an alloca for the index. The MIR level remains purely functional except for the loop construct itself.
 
-### Anti-Pattern 2: New MIR Node for Method Calls
+### Anti-Pattern 2: Iterator Protocol at This Stage
 
-**What:** Adding `MirExpr::MethodCall { receiver, method, args, ty }` to the MIR.
+**What:** Defining an `Iterable` trait/interface with `next()`, `has_next()` methods, and implementing it for each collection.
 
-**Why bad:** Method calls should be completely erased by MIR lowering. Adding a MIR node pushes trait resolution complexity into codegen, which should only see concrete function calls. Every downstream consumer (mono pass, codegen, debugging) would need to handle the new node.
+**Why bad:** Massively complex. Requires: trait definition, impl for each collection, stateful iterator objects (mutable state), allocation of iterator state, Option return type for `next()`. This is a v2+ feature.
 
-**Instead:** Desugar at the MIR lowering boundary. `point.to_string()` becomes `MirExpr::Call { func: Var("Display__to_string__Point"), args: [point] }`. Codegen sees a regular call.
+**Instead:** Index-based iteration for v1. `snow_list_length` + `snow_list_get` is simple, efficient, and works. Range iteration is even simpler (just arithmetic). Map/Set iteration converts to List first.
 
-### Anti-Pattern 3: Resolving Methods in the Parser
+### Anti-Pattern 3: Break-with-Value in v1
 
-**What:** Having the parser distinguish between field access and method calls based on whether `(` follows.
+**What:** Supporting `break expr` where the loop evaluates to the break value.
 
-**Why bad:** The parser has no type information. It cannot know whether `point.x` is a field access or a method reference. Resolution requires type information available only in typeck. Also, the parser already handles this correctly: DOT + IDENT produces FIELD_ACCESS, and if L_PAREN follows, the CALL_EXPR wraps it.
+**Why bad:** Requires every break site to produce the same type. The loop's "natural exit" (condition becomes false) must also produce a value of that type. Type inference must unify break values across all sites. Significant complexity for a rarely-used feature.
 
-**Instead:** Let the parser produce the same structure for both cases. Let typeck resolve the semantics based on type information.
+**Instead:** `break` exits with Unit. Loops always return Unit. If users need to compute a value from a loop, use a let binding before the loop and set it from within (or use functional combinators like `map`/`reduce`).
 
-### Anti-Pattern 4: Modifying `infer_call` to Re-Infer the Base Expression
+### Anti-Pattern 4: Separate Loop Latch Block Omission for While
 
-**What:** When detecting a dot-call in `infer_call`, calling `infer_expr` again on the base expression to get its type.
+**What:** Having `continue` in a `while` loop branch directly to the header, but in a `for..in` loop branch to the latch (increment). Sharing the same codegen path and hoping it works.
 
-**Why bad:** `infer_expr` has already been called on the callee (including the base via `infer_field_access`). Re-inferring wastes work and can cause unification issues (fresh type variables created twice).
+**Why bad:** If `continue` in a `for..in` loop branches directly to the header (skipping the latch), the index is never incremented, causing an infinite loop.
 
-**Instead:** After `infer_field_access` runs (step 1 of `infer_call`), the base type is already in the `types` map. Use `types.get(base_expr.syntax().text_range())` to retrieve it.
-
-### Anti-Pattern 5: Method Resolution in Codegen
-
-**What:** Having `codegen_field_access` check if the field is a method and emit a call.
-
-**Why bad:** Codegen should never make semantic decisions. It translates MIR to LLVM IR mechanically. If codegen needs type system knowledge, the architecture has a leak.
-
-**Instead:** All method resolution happens in typeck (semantic correctness) and MIR lowering (desugaring to concrete calls). By the time codegen sees it, it is a regular `MirExpr::Call`.
+**Instead:** Use the `LoopContext.latch` field. For `while` loops, `latch` is `None` and `continue` targets the header. For `for..in` loops, `latch` is `Some(latch_bb)` and `continue` targets the latch. The `codegen_continue` function uses `latch.unwrap_or(header)`.
 
 ---
 
-## Integration Points (Detailed)
+## Collection Iteration Strategy
 
-### Integration Point 1: `infer_field_access` (typeck)
+| Collection | Iterable? | Element Type | Iteration Method | Runtime Functions |
+|-----------|-----------|--------------|-----------------|-------------------|
+| `List<T>` | Yes | `T` | Indexed: `length` + `get(i)` | `snow_list_length`, `snow_list_get` |
+| `Range` (Int..Int) | Yes | `Int` | Direct arithmetic: `start + i` for `i in 0..length` | `snow_range_length` (or inline) |
+| `Map<K, V>` | Yes (over keys) | `K` | Convert keys to List, then indexed | `snow_map_keys` (returns List) |
+| `Set<T>` | Yes | `T` | Convert to List, then indexed | `snow_set_to_list` (new) |
+| `String` | Deferred | `String` (single char) | Not in v1 | -- |
+| `Int`, `Float`, `Bool` | No | -- | Type error | -- |
 
-**File:** `snow-typeck/src/infer.rs`, line ~3879
-**Function:** `infer_field_access(ctx, env, fa, types, type_registry, trait_registry, fn_constraints)`
+**Type extraction in typeck:**
 
-**Current exit points:**
-- Line 3911: stdlib module resolved -> `return Ok(ty)`
-- Line 3927: service module resolved -> `return Ok(ty)`
-- Line 3941: sum type variant resolved -> `return Ok(ty)`
-- Line 3978: struct field found -> `return Ok(resolved_field)`
-- Line 3988: struct field NOT found -> `return Err(NoSuchField)`
-- Line 3992: base is not a struct -> `return Ok(fresh_var())` (fallback)
-
-**Where to insert method resolution:** Between the struct field "not found" error (line 3982-3988) and the error return. Specifically, REPLACE the `NoSuchField` error return with a method resolution attempt:
+The type checker must extract element types from collection types. The `Ty` representation uses `Ty::App(Ty::Con("List"), [T])` for `List<T>`, and `Ty::Con("Range")` for ranges.
 
 ```
-if no struct field found:
-    // NEW: Try method resolution
-    let method_traits = trait_registry.find_method_traits(&field_name, &resolved_base);
-    if !method_traits.is_empty():
-        // Resolve method type -- get signature from first matching trait
-        let trait_name = &method_traits[0];
-        if let Some(impl_def) = trait_registry.find_impl(trait_name, &resolved_base):
-            if let Some(method_sig) = impl_def.methods.get(&field_name):
-                // Build function type: Fun([self_type, ...other_params], ret_type)
-                let fn_ty = build_method_fn_type(&resolved_base, method_sig);
-                return Ok(fn_ty);
-    // Fall through to existing NoSuchField error
-```
-
-**Also insert at line 3992** (the "base is not a struct" fallback). Currently this returns `fresh_var()`, which is incorrect for method calls on primitive types like `42.to_string()`:
-
-```
-// Instead of Ok(ctx.fresh_var()), try method resolution first:
-let method_traits = trait_registry.find_method_traits(&field_name, &resolved_base);
-if !method_traits.is_empty():
-    // ... same method resolution as above ...
-Ok(ctx.fresh_var())  // final fallback if no method found
-```
-
-### Integration Point 2: `infer_call` (typeck)
-
-**File:** `snow-typeck/src/infer.rs`, line ~2671
-**Function:** `infer_call(ctx, env, call, types, type_registry, trait_registry, fn_constraints)`
-
-**Change:** After collecting `arg_types` (line 2697), check if callee is FieldAccess and prepend receiver type:
-
-```rust
-// After line 2698:
-let (arg_types, is_dot_call) = if let Expr::FieldAccess(ref fa) = callee_expr {
-    if let Some(base) = fa.base() {
-        if let Some(base_ty) = types.get(&base.syntax().text_range()) {
-            let mut full_args = vec![base_ty.clone()];
-            full_args.extend(arg_types);
-            (full_args, true)
-        } else {
-            (arg_types, false)
-        }
-    } else {
-        (arg_types, false)
-    }
-} else {
-    (arg_types, false)
-};
-```
-
-**Where-clause checking (line 2713-2749):** Currently only handles `NameRef` callee. For dot-syntax calls, extract the method name from the FieldAccess:
-
-```rust
-// After line 2713, add:
-} else if let Expr::FieldAccess(ref fa) = callee_expr {
-    if let Some(field_tok) = fa.field() {
-        let fn_name = field_tok.text().to_string();
-        if let Some(constraints) = fn_constraints.get(&fn_name) {
-            // ... same constraint checking logic ...
-        }
-    }
-}
-```
-
-### Integration Point 3: `lower_call_expr` (MIR lowering)
-
-**File:** `snow-codegen/src/mir/lower.rs`, line ~3362
-**Function:** `lower_call_expr(&mut self, call: &CallExpr) -> MirExpr`
-
-**Change:** At the BEGINNING of the function (before line 3363), add the method call desugaring:
-
-```rust
-fn lower_call_expr(&mut self, call: &CallExpr) -> MirExpr {
-    // ── Method dot-syntax desugaring ──
-    // expr.method(args) -> method(expr, args)
-    if let Some(Expr::FieldAccess(ref fa)) = call.callee() {
-        if let Some(base_expr) = fa.base() {
-            // Skip module-qualified and service-qualified access
-            // (these are handled by lower_field_access as function references)
-            let is_qualified = if let Expr::NameRef(ref nr) = base_expr {
-                nr.text().map(|t| {
-                    STDLIB_MODULES.contains(&t.as_str())
-                        || self.service_modules.contains_key(&t)
-                }).unwrap_or(false)
-            } else {
-                false
-            };
-
-            if !is_qualified {
-                let method_name = fa.field()
-                    .map(|t| t.text().to_string())
-                    .unwrap_or_default();
-
-                // Check: is this a struct field access? If the FieldAccess's
-                // base has a struct type with a field matching method_name,
-                // this is NOT a method call -- let the existing path handle it.
-                let base_ty = self.resolve_range(base_expr.syntax().text_range());
-                let is_field = self.is_struct_field(&base_ty, &method_name);
-
-                if !is_field {
-                    let receiver = self.lower_expr(&base_expr);
-                    let mut args = vec![receiver];
-                    if let Some(al) = call.arg_list() {
-                        args.extend(al.args().map(|a| self.lower_expr(&a)));
-                    }
-                    let ty = self.resolve_range(call.syntax().text_range());
-
-                    // Apply trait method dispatch (reuse existing logic)
-                    let callee = self.resolve_trait_method_callee(
-                        &method_name, &args, &ty
-                    );
-
-                    return MirExpr::Call {
-                        func: Box::new(callee),
-                        args,
-                        ty,
-                    };
-                }
-            }
-        }
-    }
-
-    // ... existing lower_call_expr code continues unchanged ...
-}
-```
-
-**Helper functions needed:**
-
-```rust
-/// Check if a MIR type is a struct type with a field of the given name.
-fn is_struct_field(&self, ty: &MirType, field_name: &str) -> bool {
-    if let MirType::Struct(name) = ty {
-        if let Some(fields) = self.mir_struct_defs.get(name) {
-            return fields.iter().any(|(f, _)| f == field_name);
-        }
-    }
-    false
-}
-
-/// Resolve a bare method name to a mangled trait method callee,
-/// given the first argument's type. Extracted from the existing
-/// trait dispatch logic at lines 3527-3599.
-fn resolve_trait_method_callee(
-    &self,
-    method_name: &str,
-    args: &[MirExpr],
-    call_ty: &MirType,
-) -> MirExpr {
-    let first_arg_ty = args[0].ty().clone();
-    let ty_for_lookup = mir_type_to_ty(&first_arg_ty);
-    let matching_traits = self.trait_registry.find_method_traits(method_name, &ty_for_lookup);
-
-    if !matching_traits.is_empty() {
-        let trait_name = &matching_traits[0];
-        let type_name = mir_type_to_impl_name(&first_arg_ty);
-        let mangled = format!("{}__{}__{}", trait_name, method_name, type_name);
-
-        // Map builtin impls to runtime functions
-        let resolved = self.resolve_builtin_impl(&mangled);
-        let var_ty = MirType::FnPtr(
-            args.iter().map(|a| a.ty().clone()).collect(),
-            Box::new(call_ty.clone()),
-        );
-        MirExpr::Var(resolved, var_ty)
-    } else {
-        // Fallback: try known_functions for monomorphized generics
-        // ... same logic as existing lines 3564-3594 ...
-        let var_ty = MirType::FnPtr(
-            args.iter().map(|a| a.ty().clone()).collect(),
-            Box::new(call_ty.clone()),
-        );
-        MirExpr::Var(method_name.to_string(), var_ty)
-    }
-}
+Ty::App(Con("List"), [T])    -> element type: T
+Ty::Con("Range")             -> element type: Int
+Ty::App(Con("Map"), [K, V])  -> element type: K (iterate keys)
+Ty::App(Con("Set"), [T])     -> element type: T
 ```
 
 ---
 
-## Scalability Considerations
+## Break/Continue: Interaction with Nested Constructs
 
-| Concern | At Current Scale | At 100 Types | At 1000 Types |
-|---------|-----------------|--------------|---------------|
-| Method resolution speed | O(n) where n = number of impls. Currently ~30 impls. Negligible. | ~100 impls, still fast (<1ms). | May need indexing by method name. HashMap from method_name to Vec<(trait, type)>. |
-| Name mangling collisions | Zero risk with `Trait__Method__Type` and double-underscore separator. | Still zero risk. User identifiers cannot contain `__`. | Still zero risk. |
-| Interaction with future features | Method dot-syntax is pure desugaring. Adding associated types, blanket impls, or supertraits does not affect the desugaring. | Same. | Same. |
+### Break/Continue Inside If-Else
+
+```snow
+for x in items do
+  if x > 10 do
+    break       # valid: branches to loop exit
+  end
+end
+```
+
+This works because `break` emits `br label %loop_exit` regardless of which basic block it appears in. The LLVM verifier ensures the branch target is valid within the function.
+
+**Caveat:** After `break` or `continue`, the current basic block has a terminator. Any code after them in the same block is unreachable. The existing pattern of checking `get_terminator().is_none()` before emitting the back-edge handles this.
+
+### Break/Continue Inside Case/Match
+
+```snow
+for x in items do
+  case x do
+    0 -> continue
+    42 -> break
+    n -> println(n)
+  end
+end
+```
+
+This works because case arms are generated as separate basic blocks. Each arm that contains break/continue will have its branch to the loop's exit/header instead of branching to the case merge block.
+
+**Important:** The case merge block may become unreachable if ALL arms break/continue. The LLVM verifier tolerates unreachable blocks, but they should ideally be cleaned up by the optimizer.
+
+### Break/Continue Inside Closures -- PROHIBITED
+
+```snow
+for x in items do
+  items.map(fn y ->
+    break  # ERROR: break is not inside a loop in this scope
+  end)
+end
+```
+
+Break/continue must not escape closure boundaries. The loop context stack is scoped to the current function being compiled. When codegen enters a closure body (a separate `MirFunction`), the loop stack is empty. The typeck loop_depth counter should similarly reset to 0 when entering a closure body.
 
 ---
 
 ## Suggested Build Order
 
-Based on dependency analysis and risk assessment:
+Based on dependency analysis:
 
-### Step 1: Extract Trait Dispatch Helper (MIR Lowering)
+### Phase 1: Tokens + Parser (foundation, no behavioral change)
+1. Add `While`, `Break`, `Continue` to `TokenKind` and `keyword_from_str`
+2. Add `WHILE_KW`, `BREAK_KW`, `CONTINUE_KW`, `FOR_EXPR`, `WHILE_EXPR`, `BREAK_EXPR`, `CONTINUE_EXPR` to `SyntaxKind`
+3. Implement `parse_for_expr()`, `parse_while_expr()`, break/continue atoms in `lhs()`
+4. Add `ForExpr`, `WhileExpr`, `BreakExpr`, `ContinueExpr` AST nodes to Expr enum
+5. Parser snapshot tests for all four forms
 
-**File:** `snow-codegen/src/mir/lower.rs`
-**What:** Extract the trait method resolution logic from lines 3527-3599 into a `resolve_trait_method_callee` helper function. Call it from the existing code path. Verify all 1,232 tests still pass.
+### Phase 2: Type Checker (semantic correctness)
+1. Add loop_depth tracking to inference state
+2. Implement `infer_for()` with element type extraction
+3. Implement `infer_while()` with Bool condition check
+4. Implement `infer_break()` and `infer_continue()` with loop context validation
+5. Ensure closures reset loop_depth to 0
+6. Type error tests: break outside loop, non-bool while condition, non-iterable for
 
-**Why first:** This is a pure refactor with zero behavioral change. It creates the reusable infrastructure needed by both bare-name calls and dot-syntax calls. If this breaks anything, the issue is in the extraction, not in the new feature.
+### Phase 3: MIR + Lowering (desugaring)
+1. Add `ForIn`, `While`, `Break`, `Continue` to `MirExpr`
+2. Add `IterKind` enum
+3. Implement `lower_for_expr()` and `lower_while_expr()`
+4. Update `lower_expr` dispatch
+5. MIR snapshot tests
 
-**Risk:** LOW. Pure refactoring.
-
-### Step 2: Method Resolution Fallback (Type Checker)
-
-**File:** `snow-typeck/src/infer.rs`
-**What:** Add method resolution fallback in `infer_field_access` after struct field lookup fails. When `TraitRegistry.find_method_traits` returns a match, return the method's function type instead of `NoSuchField`.
-
-**Why second:** Type checking is the semantic correctness layer. Getting method resolution right here ensures that `point.to_string()` is correctly typed as `String`, and that `point.nonexistent()` still produces an error.
-
-**Risk:** MEDIUM. Must not break existing field access (`self.x` in impl bodies must still resolve to struct fields). Must handle edge case where base type is a primitive (not a struct).
-
-**Test plan:**
-- `point.to_string()` returns String (**new**)
-- `42.to_string()` returns String (**new** -- primitive receiver)
-- `point.x` still returns Int (**existing** -- field access preserved)
-- `self.x` inside impl body still returns Int (**existing**)
-- `String.length` still resolves as module-qualified (**existing**)
-- `point.nonexistent()` still errors (**existing**)
-
-### Step 3: Dot-Call Detection in `infer_call` (Type Checker)
-
-**File:** `snow-typeck/src/infer.rs`
-**What:** In `infer_call`, detect when callee is a `FieldAccess` and prepend the receiver type to `arg_types`. This ensures arity checking works correctly for method calls.
-
-**Why after step 2:** Depends on `infer_field_access` returning a function type for methods. Without step 2, the callee type would be wrong and unification would fail.
-
-**Risk:** MEDIUM. Must correctly prepend receiver type without double-counting. Must handle the case where `infer_field_access` already resolved to a module-qualified function (in which case, do NOT prepend receiver -- the FieldAccess already resolved to a function value, not a method).
-
-### Step 4: MIR Lowering Desugaring (MIR)
-
-**File:** `snow-codegen/src/mir/lower.rs`
-**What:** In `lower_call_expr`, detect `FieldAccess` callee, desugar to `method(receiver, args)`, and call `resolve_trait_method_callee` from Step 1.
-
-**Why after step 3:** Type checking must be correct before MIR lowering can rely on the types map. If typeck marks a dot-call as an error, MIR lowering never sees it.
-
-**Risk:** LOW. The desugaring is mechanically simple (same pattern as pipe desugaring). The trait dispatch logic is already tested via bare-name calls.
-
-### Step 5: End-to-End Integration Testing
-
-**What:** Write comprehensive tests covering:
-- Basic: `point.to_string()` compiles and runs
-- Primitive: `42.to_string()` returns "42"
-- Chained: `point.to_string().length()` returns correct Int
-- With args: `a.compare(b)` returns Ordering
-- Generic: `box.to_string()` where Box<Int> implements Display
-- Pipe equivalence: `point.to_string()` and `point |> to_string()` produce same result
-- Error: `point.nonexistent()` produces clear error message
-- Priority: struct field access still works when a method of the same name exists
-
-**Risk:** LOW. Tests validate the integration.
+### Phase 4: Codegen + Integration (LLVM IR generation)
+1. Add `LoopContext` and `loop_stack` to `CodeGen`
+2. Implement `codegen_while()` with basic block structure
+3. Implement `codegen_for_in()` for List iteration
+4. Implement `codegen_break()` and `codegen_continue()`
+5. Add `for_exit` handling for codegen dispatch
+6. Extend for Range, Map, Set iteration
+7. Add runtime functions if needed (`snow_set_to_list`)
+8. End-to-end tests: compile and run loop programs
 
 ### Build Order Rationale
 
 ```
-Step 1 (refactor) ─────> Step 4 (MIR desugaring)
-                              |
-Step 2 (typeck fallback) ──> Step 3 (typeck prepend) ──> Step 5 (e2e tests)
+Phase 1 (Parser) --> Phase 2 (Typeck) --> Phase 3 (MIR) --> Phase 4 (Codegen)
+    |                    |                    |                    |
+    No deps              Needs AST nodes     Needs typed AST     Needs MIR nodes
 ```
 
-Steps 1 and 2 are independent and can be done in parallel. Step 3 depends on Step 2. Step 4 depends on Steps 1 and 3. Step 5 depends on everything.
-
-**Estimated total effort:** 2-3 phases, each with 1-2 plans. The core changes are ~100-150 lines in typeck and ~80-100 lines in MIR lowering, plus tests.
+Strictly sequential because each stage consumes the output of the previous one. Within each phase, the order is: while (simpler) before for..in (complex desugaring), break/continue last (needs loop context).
 
 ---
 
-## Risk Assessment
+## LLVM IR Structure Reference
 
-| Risk | Severity | Likelihood | Mitigation |
-|------|----------|------------|------------|
-| Breaking existing field access (`self.x` in impl bodies) | Critical | Low | Priority rule: struct fields always win over methods. Test extensively with existing impl bodies. |
-| Breaking module-qualified calls (`String.length`) | Critical | Low | Module/service check runs first in resolution priority chain. Guard in MIR desugaring skips qualified access. |
-| Breaking pipe operator (`x \|> to_string()`) | High | Very Low | Pipe desugaring is completely independent. Different AST node (PIPE_EXPR vs CALL_EXPR). No interaction. |
-| Incorrect arity for method calls | Medium | Medium | `infer_call` must prepend receiver to arg_types. If missed, unification fails with arity mismatch. Clear test plan catches this. |
-| Double-counting receiver | Medium | Medium | MIR lowering must NOT call `lower_field_access` on the callee (which would produce a FieldAccess MIR node AND the receiver). Instead, extract receiver from AST directly. |
-| Where-clause constraints not checked for dot-calls | Medium | Medium | Must extend constraint checking in `infer_call` to handle FieldAccess callee (extract method name for fn_constraints lookup). |
-| Method resolution on generic types | Medium | Low | `find_method_traits` already uses structural type matching via temporary unification. Works for `Box<Int>` matching `impl Display for Box<T>`. |
+### While Loop
+
+```llvm
+entry:
+  br label %while_header
+
+while_header:                      ; loop condition
+  %cond = ...                      ; evaluate condition
+  br i1 %cond, label %while_body, label %while_exit
+
+while_body:                        ; loop body
+  ...                              ; body code
+  br label %while_header           ; back-edge
+
+while_exit:                        ; after loop
+  ; result = {} (unit)
+```
+
+### For-In Loop (List)
+
+```llvm
+entry:
+  %list = ...                      ; evaluate iterable
+  %len = call i64 @snow_list_length(ptr %list)
+  %idx = alloca i64
+  store i64 0, ptr %idx
+  br label %for_header
+
+for_header:                        ; index check
+  %i = load i64, ptr %idx
+  %cond = icmp slt i64 %i, %len
+  br i1 %cond, label %for_body, label %for_exit
+
+for_body:                          ; element access + body
+  %elem = call i64 @snow_list_get(ptr %list, i64 %i)
+  %x = alloca i64                  ; loop variable
+  store i64 %elem, ptr %x
+  ...                              ; body code
+  br label %for_latch
+
+for_latch:                         ; increment
+  %i2 = load i64, ptr %idx
+  %i3 = add i64 %i2, 1
+  store i64 %i3, ptr %idx
+  br label %for_header             ; back-edge
+
+for_exit:                          ; after loop
+  ; result = {} (unit)
+```
+
+### Break Inside Conditional
+
+```llvm
+for_body:
+  %x_val = load i64, ptr %x
+  %test = icmp sgt i64 %x_val, 10
+  br i1 %test, label %break_bb, label %no_break
+
+break_bb:
+  br label %for_exit               ; break -> loop exit
+
+no_break:
+  ...                              ; rest of body
+  br label %for_latch
+```
 
 ---
 
 ## Sources
 
 ### Codebase Analysis (HIGH confidence)
-- `crates/snow-parser/src/parser/expressions.rs` -- Pratt parser, FIELD_ACCESS at bp 25, CALL_EXPR wrapping
-- `crates/snow-parser/src/ast/expr.rs` -- FieldAccess.base(), FieldAccess.field(), CallExpr.callee()
-- `crates/snow-parser/tests/snapshots/parser_tests__mixed_postfix.snap` -- confirms `a.b(c)` parse tree
-- `crates/snow-typeck/src/infer.rs` -- infer_field_access (line 3879), infer_call (line 2671), resolution priority chain
-- `crates/snow-typeck/src/traits.rs` -- TraitRegistry.find_method_traits (line 246), structural type matching
-- `crates/snow-codegen/src/mir/lower.rs` -- lower_call_expr (line 3362), lower_field_access (line 3705), trait dispatch (lines 3527-3599)
-- `crates/snow-codegen/src/mir/mod.rs` -- MirExpr::Call, MirExpr::FieldAccess definitions
-- `crates/snow-codegen/src/codegen/expr.rs` -- codegen_call (line 525), codegen_field_access (line 1096)
+- `crates/snow-common/src/token.rs` -- TokenKind enum (93 variants), `keyword_from_str` (line 191), `For` (line 44), `In` (line 50) already defined
+- `crates/snow-parser/src/syntax_kind.rs` -- SyntaxKind enum, `FOR_KW` (line 38), `IN_KW` (line 43) already defined but unused in parser
+- `crates/snow-parser/src/parser/expressions.rs` -- Pratt parser `lhs()` (line 165), `parse_block_body()` (line 445), `parse_if_expr()` (line 557) as pattern
+- `crates/snow-parser/src/ast/expr.rs` -- Expr enum (line 16), AST node definitions pattern
+- `crates/snow-typeck/src/infer.rs` -- `infer_expr` dispatch (line 2355), `infer_if` pattern (line 2380)
+- `crates/snow-typeck/src/ty.rs` -- Ty enum, `Ty::App` for parameterized types (line 55)
+- `crates/snow-codegen/src/mir/mod.rs` -- MirExpr enum (line 143), MirType (line 61)
+- `crates/snow-codegen/src/mir/lower.rs` -- Lowerer struct (line 120), `lower_expr` dispatch (line 3056), scope management (line 182)
+- `crates/snow-codegen/src/codegen/expr.rs` -- `codegen_if` with alloca+branch pattern (line 856), `codegen_return` with dummy value (line 1329), `codegen_block` (line 975)
+- `crates/snow-codegen/src/codegen/mod.rs` -- CodeGen struct with locals/local_types (line 43)
+- `crates/snow-codegen/src/codegen/intrinsics.rs` -- `snow_list_length`, `snow_list_get`, `snow_range_length` declarations (lines 233-278)
+- `crates/snow-rt/src/collections/list.rs` -- List layout: `{len: u64, cap: u64, data: [u64]}`, `snow_list_get` (line 117)
+- `crates/snow-rt/src/collections/range.rs` -- Range layout: `{start: i64, end: i64}`, `snow_range_new` (line 24), `snow_range_length` (line 125)
 
-### UFCS / Method Resolution Design (MEDIUM confidence)
-- [UFCS -- Wikipedia](https://en.wikipedia.org/wiki/Uniform_function_call_syntax)
-- [Rust Compiler Dev Guide -- Trait Resolution](https://rustc-dev-guide.rust-lang.org/traits/resolution.html)
-- [Implementing UFCS for C++ in Clang](https://dancrn.com/2020/08/02/ufcs-in-clang.html)
-- [C++ P3021 -- Unified Function Call Syntax](https://www.open-std.org/jtc1/sc22/wg21/docs/papers/2023/p3021r0.pdf)
-- [D Language -- UFCS](https://dlang.org/book/ufcs.html)
-- [Rust Method Call Expressions -- Reference](https://web.mit.edu/rust-lang_v1.25/arch/amd64_ubuntu1404/share/doc/rust/html/reference/expressions/method-call-expr.html)
-- [rust-lang/rust#51402 -- Method resolution inherent vs trait](https://github.com/rust-lang/rust/issues/51402)
-- [Better Trait Resolution in Rust -- mcyoung](https://mcyoung.xyz/2023/04/04/trait-rez-wishlist/)
+### LLVM Loop Patterns (HIGH confidence -- well-established)
+- LLVM Language Reference: Loop structure with header/body/latch/exit blocks
+- Standard indexed loop pattern with alloca counter and icmp+br termination
 
 ---
-*Architecture research for: Snow v1.6 Method Dot-Syntax*
+*Architecture research for: Snow Loops & Iteration Milestone*
 *Researched: 2026-02-08*
