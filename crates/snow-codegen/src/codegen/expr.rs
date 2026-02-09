@@ -886,11 +886,12 @@ impl<'ctx> CodeGen<'ctx> {
         // Then branch
         self.builder.position_at_end(then_bb);
         let then_val = self.codegen_expr(then_body)?;
-        self.builder
-            .build_store(result_alloca, then_val)
-            .map_err(|e| e.to_string())?;
-        // Only branch to merge if current block is not already terminated
+        // Only store result and branch if block is not already terminated
+        // (break/continue/return may have terminated the block)
         if self.builder.get_insert_block().unwrap().get_terminator().is_none() {
+            self.builder
+                .build_store(result_alloca, then_val)
+                .map_err(|e| e.to_string())?;
             self.builder
                 .build_unconditional_branch(merge_bb)
                 .map_err(|e| e.to_string())?;
@@ -899,10 +900,10 @@ impl<'ctx> CodeGen<'ctx> {
         // Else branch
         self.builder.position_at_end(else_bb);
         let else_val = self.codegen_expr(else_body)?;
-        self.builder
-            .build_store(result_alloca, else_val)
-            .map_err(|e| e.to_string())?;
         if self.builder.get_insert_block().unwrap().get_terminator().is_none() {
+            self.builder
+                .build_store(result_alloca, else_val)
+                .map_err(|e| e.to_string())?;
             self.builder
                 .build_unconditional_branch(merge_bb)
                 .map_err(|e| e.to_string())?;

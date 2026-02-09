@@ -2041,4 +2041,36 @@ mod tests {
         assert!(result.contains("fn fib(1) = 1"), "Result: {:?}", result);
         assert!(result.contains("fn fib(n) = fib(n - 1) + fib(n - 2)"), "Result: {:?}", result);
     }
+
+    #[test]
+    fn while_loop() {
+        let result = fmt("while true do\nbreak\nend");
+        assert_eq!(result, "while true do\n  break\nend\n");
+    }
+
+    #[test]
+    fn while_loop_with_body() {
+        let result = fmt("while x > 0 do\nprintln(x)\nend");
+        assert_eq!(result, "while x > 0 do\n  println(x)\nend\n");
+    }
+
+    #[test]
+    fn while_loop_idempotent() {
+        let src = "while true do\nbreak\nend";
+        let first = fmt(src);
+        let second = fmt(&first);
+        assert_eq!(first, second, "Idempotency failed.\nFirst: {:?}\nSecond: {:?}", first, second);
+    }
+
+    #[test]
+    fn break_in_while() {
+        let result = fmt("while true do\nbreak\nend");
+        assert!(result.contains("break"), "Result should contain break: {:?}", result);
+    }
+
+    #[test]
+    fn continue_in_while() {
+        let result = fmt("while true do\ncontinue\nend");
+        assert!(result.contains("continue"), "Result should contain continue: {:?}", result);
+    }
 }

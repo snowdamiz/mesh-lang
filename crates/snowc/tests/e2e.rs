@@ -1097,3 +1097,56 @@ end
     let output = compile_and_run(source);
     assert!(output.contains("main ok"));
 }
+
+// ── Phase 33: While Loop + Loop Control Flow ─────────────────────────
+
+/// WHILE-01: While loop body executes while condition is true.
+/// WHILE-02: Body executes zero times if condition is initially false.
+/// WHILE-03: While returns Unit (usable as expression).
+#[test]
+fn e2e_while_loop() {
+    let source = read_fixture("while_loop.snow");
+    let output = compile_and_run(&source);
+    assert_eq!(output, "loop ran\nskipped\ndone\n");
+}
+
+/// BRKC-01: Break exits the innermost loop.
+/// Verifies code after break in same block is unreachable.
+#[test]
+fn e2e_break_continue() {
+    let source = read_fixture("break_continue.snow");
+    let output = compile_and_run(&source);
+    assert_eq!(output, "before break\nafter loop\niteration\nnested break works\n");
+}
+
+/// BRKC-04: break outside any loop produces compile error.
+#[test]
+fn e2e_break_outside_loop_error() {
+    let source = "fn main() do\n  break\nend";
+    let error = compile_expect_error(source);
+    assert!(error.contains("break"), "Expected break error, got: {}", error);
+}
+
+/// BRKC-04: continue outside any loop produces compile error.
+#[test]
+fn e2e_continue_outside_loop_error() {
+    let source = "fn main() do\n  continue\nend";
+    let error = compile_expect_error(source);
+    assert!(error.contains("continue"), "Expected continue error, got: {}", error);
+}
+
+/// BRKC-05: break inside closure within loop produces compile error.
+#[test]
+fn e2e_break_in_closure_error() {
+    let source = "fn main() do\n  while true do\n    let f = fn -> break end\n  end\nend";
+    let error = compile_expect_error(source);
+    assert!(error.contains("break"), "Expected break error, got: {}", error);
+}
+
+/// BRKC-05: continue inside closure within loop produces compile error.
+#[test]
+fn e2e_continue_in_closure_error() {
+    let source = "fn main() do\n  while true do\n    let f = fn -> continue end\n  end\nend";
+    let error = compile_expect_error(source);
+    assert!(error.contains("continue"), "Expected continue error, got: {}", error);
+}

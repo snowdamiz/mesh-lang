@@ -1413,4 +1413,65 @@ mod tests {
             ir
         );
     }
+
+    #[test]
+    fn test_while_loop_basic_blocks() {
+        // While loop should produce cond/body/merge basic blocks
+        let body = MirExpr::While {
+            cond: Box::new(MirExpr::BoolLit(false, MirType::Bool)),
+            body: Box::new(MirExpr::IntLit(42, MirType::Int)),
+            ty: MirType::Unit,
+        };
+        let ir = compile_expr_to_ir(body, MirType::Unit);
+        assert!(ir.contains("while_cond"), "Should have while_cond block: {}", ir);
+        assert!(ir.contains("while_body"), "Should have while_body block: {}", ir);
+        assert!(ir.contains("while_merge"), "Should have while_merge block: {}", ir);
+    }
+
+    #[test]
+    fn test_while_loop_reduction_check() {
+        // While loop body should emit snow_reduction_check at back-edge
+        let body = MirExpr::While {
+            cond: Box::new(MirExpr::BoolLit(false, MirType::Bool)),
+            body: Box::new(MirExpr::IntLit(42, MirType::Int)),
+            ty: MirType::Unit,
+        };
+        let ir = compile_expr_to_ir(body, MirType::Unit);
+        assert!(
+            ir.contains("snow_reduction_check"),
+            "Should emit snow_reduction_check at loop back-edge: {}",
+            ir
+        );
+    }
+
+    #[test]
+    fn test_while_with_break() {
+        // While with break should compile and have merge block reachable
+        let body = MirExpr::While {
+            cond: Box::new(MirExpr::BoolLit(true, MirType::Bool)),
+            body: Box::new(MirExpr::Break),
+            ty: MirType::Unit,
+        };
+        let ir = compile_expr_to_ir(body, MirType::Unit);
+        assert!(ir.contains("while_merge"), "Should have while_merge block: {}", ir);
+        // Break should branch to while_merge
+        assert!(ir.contains("br label %while_merge"), "Break should branch to while_merge: {}", ir);
+    }
+
+    #[test]
+    fn test_while_with_continue() {
+        // While with continue should emit reduction check and branch to cond
+        let body = MirExpr::While {
+            cond: Box::new(MirExpr::BoolLit(false, MirType::Bool)),
+            body: Box::new(MirExpr::Continue),
+            ty: MirType::Unit,
+        };
+        let ir = compile_expr_to_ir(body, MirType::Unit);
+        // Continue should emit reduction check before branching to cond
+        assert!(
+            ir.contains("snow_reduction_check"),
+            "Continue should emit snow_reduction_check: {}",
+            ir
+        );
+    }
 }
