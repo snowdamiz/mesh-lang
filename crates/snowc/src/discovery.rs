@@ -415,4 +415,94 @@ from Baz.Qux import { name1, name2 }
         let err = result.unwrap_err();
         assert!(err.contains("cannot import itself"), "Expected self-import error, got: {}", err);
     }
+
+    // ── build_project tests ──────────────────────────────────────────────
+
+    #[test]
+    fn test_build_project_simple() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+
+        fs::write(root.join("main.snow"), "import Utils\nfn main() do\n  1\nend\n").unwrap();
+        fs::write(root.join("utils.snow"), "fn helper() do\n  1\nend\n").unwrap();
+
+        let project = build_project(root).unwrap();
+
+        // Graph has 2 modules
+        assert_eq!(project.graph.module_count(), 2);
+
+        // Sources and parses are indexed in parallel
+        assert_eq!(project.module_sources.len(), 2);
+        assert_eq!(project.module_parses.len(), 2);
+
+        // Compilation order: Utils before Main (Main imports Utils)
+        let names: Vec<&str> = project
+            .compilation_order
+            .iter()
+            .map(|id| project.graph.get(*id).name.as_str())
+            .collect();
+        assert_eq!(names, vec!["Utils", "Main"]);
+
+        // Parse results have no errors
+        for parse in &project.module_parses {
+            assert!(parse.errors().is_empty(), "Expected no parse errors");
+        }
+
+        // Sources contain expected text
+        let main_id = project.graph.resolve("Main").unwrap();
+        let utils_id = project.graph.resolve("Utils").unwrap();
+        assert!(project.module_sources[main_id.0 as usize].contains("import Utils"));
+        assert!(project.module_sources[utils_id.0 as usize].contains("fn helper()"));
+    }
+
+    #[test]
+    fn test_build_project_single_file() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+
+        fs::write(root.join("main.snow"), "fn main() do\n  42\nend\n").unwrap();
+
+        let project = build_project(root).unwrap();
+
+        assert_eq!(project.graph.module_count(), 1);
+        assert_eq!(project.module_sources.len(), 1);
+        assert_eq!(project.module_parses.len(), 1);
+
+        // Single entry in compilation order, marked as entry
+        assert_eq!(project.compilation_order.len(), 1);
+        let entry_id = project.compilation_order[0];
+        assert!(project.graph.get(entry_id).is_entry);
+
+        // Parse has no errors
+        assert!(project.module_parses[0].errors().is_empty());
+    }
+
+    #[test]
+    fn test_build_project_parse_error_retained() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+
+        fs::write(root.join("main.snow"), "fn main() do\n  1\nend\n").unwrap();
+        fs::write(root.join("broken.snow"), "fn incomplete(\n").unwrap();
+
+        let project = build_project(root).unwrap();
+
+        // build_project succeeds even with parse errors (that is build()'s job to check)
+        assert_eq!(project.graph.module_count(), 2);
+
+        let main_id = project.graph.resolve("Main").unwrap();
+        let broken_id = project.graph.resolve("Broken").unwrap();
+
+        // Broken module has parse errors
+        assert!(
+            !project.module_parses[broken_id.0 as usize].errors().is_empty(),
+            "Expected parse errors in broken module"
+        );
+
+        // Main module has no parse errors
+        assert!(
+            project.module_parses[main_id.0 as usize].errors().is_empty(),
+            "Expected no parse errors in main module"
+        );
+    }
 }
