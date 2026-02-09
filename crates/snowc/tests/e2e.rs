@@ -1642,11 +1642,11 @@ fn compile_multifile_expect_error(files: &[(&str, &str)]) -> String {
 fn e2e_cross_module_qualified_function_call() {
     let output = compile_multifile_and_run(&[
         ("math.snow", r#"
-fn add(a :: Int, b :: Int) -> Int do
+pub fn add(a :: Int, b :: Int) -> Int do
   a + b
 end
 
-fn mul(a :: Int, b :: Int) -> Int do
+pub fn mul(a :: Int, b :: Int) -> Int do
   a * b
 end
 "#),
@@ -1668,11 +1668,11 @@ end
 fn e2e_cross_module_selective_import() {
     let output = compile_multifile_and_run(&[
         ("math.snow", r#"
-fn add(a :: Int, b :: Int) -> Int do
+pub fn add(a :: Int, b :: Int) -> Int do
   a + b
 end
 
-fn mul(a :: Int, b :: Int) -> Int do
+pub fn mul(a :: Int, b :: Int) -> Int do
   a * b
 end
 "#),
@@ -1694,12 +1694,12 @@ end
 fn e2e_cross_module_struct() {
     let output = compile_multifile_and_run(&[
         ("point.snow", r#"
-struct Point do
+pub struct Point do
   x :: Int
   y :: Int
 end
 
-fn origin() -> Point do
+pub fn origin() -> Point do
   Point { x: 0, y: 0 }
 end
 "#),
@@ -1721,12 +1721,12 @@ end
 fn e2e_cross_module_sum_type() {
     let output = compile_multifile_and_run(&[
         ("shapes.snow", r#"
-type Shape do
+pub type Shape do
   Circle(Int)
   Rectangle(Int, Int)
 end
 
-fn area(s :: Shape) -> Int do
+pub fn area(s :: Shape) -> Int do
   case s do
     Circle(r) -> r * r
     Rectangle(w, h) -> w * h
@@ -1770,7 +1770,7 @@ end
 fn e2e_import_nonexistent_name_error() {
     let error = compile_multifile_expect_error(&[
         ("math.snow", r#"
-fn add(a :: Int, b :: Int) -> Int do
+pub fn add(a :: Int, b :: Int) -> Int do
   a + b
 end
 "#),
@@ -1794,7 +1794,7 @@ end
 fn e2e_nested_module_qualified_access() {
     let output = compile_multifile_and_run(&[
         ("math/vector.snow", r#"
-fn dot(a :: Int, b :: Int) -> Int do
+pub fn dot(a :: Int, b :: Int) -> Int do
   a * b
 end
 "#),
@@ -1816,12 +1816,12 @@ end
 fn e2e_cross_module_struct_via_function() {
     let output = compile_multifile_and_run(&[
         ("geometry.snow", r#"
-struct Point do
+pub struct Point do
   x :: Int
   y :: Int
 end
 
-fn make_point(a :: Int, b :: Int) -> Point do
+pub fn make_point(a :: Int, b :: Int) -> Point do
   Point { x: a, y: b }
 end
 "#),
@@ -1843,12 +1843,12 @@ end
 fn e2e_cross_module_multiple_imports() {
     let output = compile_multifile_and_run(&[
         ("math.snow", r#"
-fn add(a :: Int, b :: Int) -> Int do
+pub fn add(a :: Int, b :: Int) -> Int do
   a + b
 end
 "#),
         ("utils.snow", r#"
-fn double(x :: Int) -> Int do
+pub fn double(x :: Int) -> Int do
   x * 2
 end
 "#),

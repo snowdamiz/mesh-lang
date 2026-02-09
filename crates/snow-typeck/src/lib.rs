@@ -29,7 +29,7 @@ pub mod traits;
 pub mod ty;
 pub mod unify;
 
-use rustc_hash::FxHashMap;
+use rustc_hash::{FxHashMap, FxHashSet};
 use rowan::TextRange;
 
 use crate::diagnostics::DiagnosticOptions;
@@ -84,6 +84,9 @@ pub struct ModuleExports {
 
     /// Sum type definitions exported by this module.
     pub sum_type_defs: FxHashMap<String, SumTypeDefInfo>,
+
+    /// Names of private (non-pub) items, for distinguishing "private" from "nonexistent" in errors.
+    pub private_names: FxHashSet<String>,
 }
 
 /// Symbols exported by a module after type checking.
@@ -99,6 +102,8 @@ pub struct ExportedSymbols {
     pub trait_defs: Vec<TraitDef>,
     /// Trait impls declared in this module.
     pub trait_impls: Vec<TraitImplDef>,
+    /// Names of private (non-pub) items, for distinguishing "private" from "nonexistent" in errors.
+    pub private_names: FxHashSet<String>,
 }
 
 // ── TypeckResult ────────────────────────────────────────────────────────
@@ -196,10 +201,14 @@ pub fn collect_exports(
                     // Look up the function's inferred type from the typeck result
                     let range = fn_def.syntax().text_range();
                     if let Some(ty) = typeck.types.get(&range) {
-                        exports.functions.insert(
-                            name,
-                            Scheme::mono(ty.clone()),
-                        );
+                        if fn_def.visibility().is_some() {
+                            exports.functions.insert(
+                                name,
+                                Scheme::mono(ty.clone()),
+                            );
+                        } else {
+                            exports.private_names.insert(name);
+                        }
                     }
                 }
             }
@@ -207,24 +216,50 @@ pub fn collect_exports(
         }
     }
 
-    // Copy struct and sum type defs from type_registry
-    // (filter out builtins: Option, Result, Ordering are built-in)
-    let builtin_sum_types = ["Option", "Result", "Ordering"];
-    for (name, def) in &typeck.type_registry.struct_defs {
-        exports.struct_defs.insert(name.clone(), def.clone());
-    }
-    for (name, def) in &typeck.type_registry.sum_type_defs {
-        if !builtin_sum_types.contains(&name.as_str()) {
-            exports.sum_type_defs.insert(name.clone(), def.clone());
+    // Copy struct defs from type_registry, filtered by AST visibility
+    for item in tree.items() {
+        if let Item::StructDef(struct_def) = &item {
+            if let Some(name) = struct_def.name().and_then(|n| n.text()) {
+                if struct_def.visibility().is_some() {
+                    if let Some(def) = typeck.type_registry.struct_defs.get(&name) {
+                        exports.struct_defs.insert(name, def.clone());
+                    }
+                } else {
+                    exports.private_names.insert(name);
+                }
+            }
         }
     }
 
-    // Extract trait defs from AST InterfaceDef items, then look up in registry.
+    // Copy sum type defs from type_registry, filtered by AST visibility
+    // (filter out builtins: Option, Result, Ordering are built-in)
+    let builtin_sum_types = ["Option", "Result", "Ordering"];
+    for item in tree.items() {
+        if let Item::SumTypeDef(sum_def) = &item {
+            if let Some(name) = sum_def.name().and_then(|n| n.text()) {
+                if !builtin_sum_types.contains(&name.as_str()) {
+                    if sum_def.visibility().is_some() {
+                        if let Some(def) = typeck.type_registry.sum_type_defs.get(&name) {
+                            exports.sum_type_defs.insert(name, def.clone());
+                        }
+                    } else {
+                        exports.private_names.insert(name);
+                    }
+                }
+            }
+        }
+    }
+
+    // Extract trait defs from AST InterfaceDef items, filtered by visibility.
     for item in tree.items() {
         if let Item::InterfaceDef(iface) = item {
             if let Some(name) = iface.name().and_then(|n| n.text()) {
-                if let Some(trait_def) = typeck.trait_registry.get_trait(&name) {
-                    exports.trait_defs.push(trait_def.clone());
+                if iface.visibility().is_some() {
+                    if let Some(trait_def) = typeck.trait_registry.get_trait(&name) {
+                        exports.trait_defs.push(trait_def.clone());
+                    }
+                } else {
+                    exports.private_names.insert(name);
                 }
             }
         }

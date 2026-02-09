@@ -572,8 +572,29 @@ pub(crate) fn parse_item_or_stmt(p: &mut Parser) {
             SyntaxKind::STRUCT_KW => items::parse_struct_def(p),
             SyntaxKind::INTERFACE_KW => items::parse_interface_def(p),
             SyntaxKind::SUPERVISOR_KW => items::parse_supervisor_def(p),
+            SyntaxKind::TYPE_KW if p.nth(2) == SyntaxKind::IDENT => {
+                // pub type Name ... -- disambiguate sum type vs type alias
+                let mut lookahead = 3; // past PUB, TYPE_KW, IDENT
+                if p.nth(lookahead) == SyntaxKind::LT {
+                    lookahead += 1; // past <
+                    let mut depth = 1u32;
+                    while depth > 0 {
+                        match p.nth(lookahead) {
+                            SyntaxKind::LT => { depth += 1; lookahead += 1; }
+                            SyntaxKind::GT => { depth -= 1; lookahead += 1; }
+                            SyntaxKind::EOF => break,
+                            _ => { lookahead += 1; }
+                        }
+                    }
+                }
+                if p.nth(lookahead) == SyntaxKind::DO_KW {
+                    items::parse_sum_type_def(p);
+                } else {
+                    items::parse_type_alias(p);
+                }
+            }
             _ => {
-                p.error("expected `fn`, `module`, `struct`, `interface`, or `supervisor` after `pub`");
+                p.error("expected `fn`, `module`, `struct`, `interface`, `type`, or `supervisor` after `pub`");
             }
         },
 
