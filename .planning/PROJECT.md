@@ -61,7 +61,18 @@ Expressive, readable concurrency -- writing concurrent programs should feel as n
 
 ### Active
 
-(None -- planning next milestone)
+## Current Milestone: v1.8 Module System
+
+**Goal:** Add a module system enabling multi-file projects with file-based modules, pub visibility, qualified and selective imports, and dependency graph resolution.
+
+**Target features:**
+- File-based modules (file path = module name, e.g. `math/vector.snow` → `Math.Vector`)
+- `pub` visibility modifier (private by default)
+- Qualified imports (`import Math.Vector` → `Vector.add(a, b)`)
+- Selective imports (`from Math.Vector import { add, scale }`)
+- Project compilation mode (directory of `.snow` files)
+- Module dependency graph with cycle detection and topological sort
+- Cross-module name resolution for functions, types, structs, traits
 
 ### Out of Scope
 
@@ -160,4 +171,4 @@ Known limitations: None.
 | ForInRange returns List<T> not Unit | Comprehension semantics apply uniformly to all for-in variants | ✓ Good -- v1.7, consistent behavior |
 
 ---
-*Last updated: 2026-02-09 after v1.7 milestone*
+*Last updated: 2026-02-09 after v1.8 milestone started*

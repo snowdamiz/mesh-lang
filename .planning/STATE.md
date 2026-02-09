@@ -5,16 +5,14 @@
 See: .planning/PROJECT.md (updated 2026-02-09)
 
 **Core value:** Expressive, readable concurrency -- writing concurrent programs should feel as natural as sequential code, with supervision and fault tolerance built in.
-**Current focus:** Planning next milestone
+**Current focus:** v1.8 Module System
 
 ## Current Position
 
-Phase: 36 of 36 (all milestones through v1.7 complete)
-Plan: N/A
-Status: v1.7 Loops & Iteration shipped
-Last activity: 2026-02-09 -- v1.7 milestone archived
-
-Progress: [██████████] 100% (8 milestones shipped)
+Phase: Not started (defining requirements)
+Plan: —
+Status: Defining requirements
+Last activity: 2026-02-09 — Milestone v1.8 started
 
 ## Performance Metrics
 
@@ -34,7 +32,7 @@ Full decision history archived in milestones/v1.0-ROADMAP.md through milestones/
 
 ### Research Notes
 
-None for current milestone (no active milestone).
+None for current milestone (pending research phase).
 
 ### Pending Todos
 
@@ -47,6 +45,6 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-09
-Stopped at: v1.7 milestone archived
+Stopped at: v1.8 milestone initialization
 Resume file: None
-Next action: /gsd:new-milestone to start next milestone
+Next action: Research → Requirements → Roadmap
