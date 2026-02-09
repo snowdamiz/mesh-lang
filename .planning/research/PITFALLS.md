@@ -1,10 +1,10 @@
-# Pitfalls Research: Adding Loops & Iteration to Snow
+# Pitfalls Research: Adding Module System to Snow
 
-**Domain:** Compiler feature addition -- for..in loops, while loops, break/continue for a statically-typed, functional-first, LLVM-compiled language with actor concurrency and per-actor GC
-**Researched:** 2026-02-08
-**Confidence:** HIGH (based on direct Snow codebase analysis, LLVM documentation, Rust RFC precedent, and established compiler engineering knowledge)
+**Domain:** Compiler feature addition -- file-based module system for a statically-typed, functional-first, LLVM-compiled language with HM inference, monomorphization, and actor concurrency
+**Researched:** 2026-02-09
+**Confidence:** HIGH (based on direct Snow codebase analysis, OCaml module system precedent, Rust symbol mangling RFC, LLVM multi-module documentation, and established compiler engineering knowledge)
 
-**Scope:** This document covers pitfalls specific to adding loop constructs (`for..in`, `while`, `break`, `continue`) to the Snow compiler (v1.7). Snow is functional-first with HM type inference, alloca+mem2reg codegen pattern, cooperative scheduling via reduction counting, and mark-sweep GC per actor heap. The existing compiler has 67,546 lines of Rust across 11 crates, 1,255 tests, and zero known correctness issues.
+**Scope:** This document covers pitfalls specific to adding a module system (v1.8) to the Snow compiler. Snow currently compiles a single `main.snow` file per project. The compiler has 70,501 lines of Rust across 11 crates, 1,278+ tests, and zero known correctness issues. The module system introduces multi-file compilation with file-based modules, `pub` visibility, qualified/selective imports, dependency graph resolution, and cross-module name resolution.
 
 ---
 
@@ -14,367 +14,421 @@ Mistakes that cause rewrites, soundness holes, or silent codegen bugs.
 
 ---
 
-### Pitfall 1: Expression-Returning Loops Break HM Unification When `break(value)` Types Disagree
+### Pitfall 1: Type Identity Breaks Across Module Boundaries -- Same Struct Name, Different Types
 
 **What goes wrong:**
-Snow is expression-based: every construct returns a value. A `for..in` loop that collects results returns `List<T>`. A `while` loop returns the last expression value or Unit. But `break(value)` introduces an ADDITIONAL return path -- the loop's type is now the UNIFICATION of the natural-termination type AND every `break(value)` type. If these disagree, the type checker must either reject the program or pick a common type.
+Snow's type system identifies types by name. `TypeRegistry` (infer.rs:115-122) stores struct and sum type definitions in `FxHashMap<String, StructDefInfo>` keyed by bare name (e.g., `"Point"`, `"Option"`). When two modules define a struct with the same name, they collide in the registry:
 
-Concrete example of the failure:
 ```
-# What type does this loop have?
-let result = for x in [1, 2, 3] do
-  if x == 2 do
-    break("found")    # break type: String
-  end
-  x * 10              # body type: Int (collected into List<Int>)
+# math/vector.snow
+struct Point do
+  x :: Float
+  y :: Float
+end
+
+# graphics/pixel.snow
+struct Point do
+  x :: Int
+  y :: Int
 end
 ```
 
-The natural result is `List<Int>` (collected body values), but `break("found")` produces `String`. These are incompatible. Without careful design, the type checker will either: (a) unify `List<Int>` with `String` and produce an inscrutable error like `"cannot unify List<?0> with String"`, or (b) silently pick one and produce incorrect codegen.
+If both modules are loaded into the same `TypeRegistry`, the second `Point` overwrites the first. Code importing from `math.vector` silently gets the `graphics.pixel` `Point` definition. Field access compiles against the wrong layout, producing memory corruption at runtime.
 
-**Why it happens:**
-In classic HM inference, the type of an expression is determined by a single unification. But loops with `break(value)` have two distinct return paths -- the "completed" path and the "early exit" path. Rust solved this for `loop {}` by requiring all `break` expressions to agree, and the loop type IS the break type (natural termination is impossible in `loop {}`). But for `for` and `while`, natural termination is the common case, making the design much harder.
-
-Rust explicitly punted on this: RFC 1624 addresses only `loop {}` break-with-value, and the discussion at rust-lang/rfcs#1767 ("Allow for and while loop to return value") remains unresolved after 8+ years precisely because of this type-unification problem.
-
-**How to avoid:**
-Define clear semantics BEFORE implementing. The recommended design for Snow:
-
-1. **`for..in` returns `List<T>`** where `T` is the body expression type. This is the "collect" semantic, matching Scala's `for/yield` and Elixir's `for/do` comprehension.
-2. **`break` without a value** exits the loop early. The collected list so far is the result.
-3. **`break(value)` is NOT supported in `for..in`** -- it would require the loop to have EITHER `List<T>` or `value_type` as its type, which breaks simple HM unification. Instead, use `Enum.reduce_while` or pattern-match results.
-4. **`while` returns `Unit`** -- it is inherently side-effecting. `break` without value exits early.
-5. **`while` with `break(value)` is NOT supported in v1.7** -- defer to a future version if needed. OCaml's for/while loops also always return unit.
-
-This avoids the unification problem entirely. The loop type is always deterministic from the loop form alone.
-
-**Warning signs:**
-- Type checker tests where a loop with `break(value)` produces a type variable instead of a concrete type.
-- Error messages mentioning `"cannot unify List<T> with U"` where U is the break value type.
-- Any test requiring the user to annotate the loop's result type.
-
-**Phase to address:**
-Syntax/AST design and type inference phase. Must be decided during AST design and enforced in `infer_for_expr` / `infer_while_expr`.
-
----
-
-### Pitfall 2: LLVM `alloca` Placed Inside Loop Body Instead of Entry Block
-
-**What goes wrong:**
-Snow's codegen uses the alloca+mem2reg pattern (visible in `codegen_if` at expr.rs:867-869 and `codegen_let` at expr.rs:925). LLVM's `mem2reg` pass ONLY promotes allocas in the function's entry block. If loop codegen creates allocas inside the loop body (e.g., for the loop variable, the accumulator, or temporary results), these allocas will:
-
-1. **Not be promoted to SSA registers** -- every iteration reads/writes through memory instead of registers, severely degrading performance.
-2. **Accumulate stack space** -- each iteration allocates a new stack frame slot that is NOT freed until the function returns. A loop iterating 1 million times will allocate 1 million stack slots, causing stack overflow.
-
-This is a well-documented LLVM pitfall. The LLVM Frontend Performance Tips explicitly state: "placing alloca instructions at the beginning of the entry block should be preferred." The MLIR project encountered this exact bug (tensorflow/mlir#210) when lowering memref descriptors inside loops.
-
-**Why it happens:**
-The natural codegen pattern for Snow's `codegen_expr` dispatches recursively. When generating the loop body, the builder is positioned inside the loop's basic block. Any `build_alloca` call within that context places the alloca in the loop body, not the entry block. The existing `codegen_let` and `codegen_if` work correctly because they are not inside loops -- each alloca executes exactly once per function call.
-
-**How to avoid:**
-All allocas for loop-related storage must be emitted in the function's entry block BEFORE the loop header. Implement a helper:
-
+This is not hypothetical. The current `TypeRegistry.register_struct` (infer.rs:129-131) does an unconditional `insert` -- no collision detection:
 ```rust
-/// Emit an alloca in the function's entry block (for mem2reg eligibility).
-fn emit_entry_block_alloca(&self, ty: BasicTypeEnum<'ctx>, name: &str) -> PointerValue<'ctx> {
-    let entry_bb = self.current_function().get_first_basic_block().unwrap();
-    let saved_bb = self.builder.get_insert_block();
-    // Position at start of entry block
-    match entry_bb.get_first_instruction() {
-        Some(instr) => self.builder.position_before(&instr),
-        None => self.builder.position_at_end(entry_bb),
-    }
-    let alloca = self.builder.build_alloca(ty, name).unwrap();
-    // Restore builder position
-    if let Some(bb) = saved_bb {
-        self.builder.position_at_end(bb);
-    }
-    alloca
+fn register_struct(&mut self, info: StructDefInfo) {
+    self.struct_defs.insert(info.name.clone(), info);
 }
 ```
 
-The target IR structure:
-```
-entry_bb:
-  %loop_var = alloca i64          ; loop variable
-  %result_list = alloca ptr       ; accumulated result
-  %loop_idx = alloca i64          ; iteration index
-  br label %loop_header
+**Why it happens:**
+The entire compiler assumes a single flat namespace. Every data structure from `TypeEnv` (env.rs) to `TraitRegistry` (traits.rs) to `MirModule` (mir/mod.rs) uses bare string names as keys. This assumption pervades: `MirType::Struct(String)` carries just the name, `mangle_type_name` (mir/types.rs:143) builds mangled names from bare type names, and codegen's `struct_types` cache (codegen/mod.rs:56) maps bare names to LLVM struct types.
 
-loop_header:
-  ; condition check
-  br i1 %cond, label %loop_body, label %loop_exit
+**Consequences:**
+- Silent memory corruption when two modules define structs with the same name but different layouts
+- Type checker accepts code that accesses nonexistent fields
+- LLVM GEP instructions access wrong offsets, producing garbage values or segfaults
+- Actor message passing between modules using "same-name" structs silently corrupts data
 
-loop_body:
-  ; use %loop_var, %result_list via load/store ONLY
-  br label %loop_header
+**Prevention:**
+All type names must become module-qualified throughout the entire pipeline. The canonical form should be `ModulePath.TypeName` (e.g., `Math.Vector.Point`):
 
-loop_exit:
-  %result = load ptr, ptr %result_list
-```
+1. **TypeRegistry keys:** Change from `"Point"` to `"Math.Vector.Point"`. Every `register_struct`, `register_sum_type`, `register_alias` call must prefix the module path.
+
+2. **MirType names:** `MirType::Struct("Math.Vector.Point")` and `MirType::SumType("Math.Vector.Option_Int")`. This flows through to `mangle_type_name`, codegen `struct_types`, and LLVM struct type names.
+
+3. **TraitRegistry:** Impls must be qualified: `impl Display for Math.Vector.Point`. The `ImplDef.impl_type_name` field must carry the qualified name.
+
+4. **Backward compatibility:** For single-file programs (no imports), the module path is empty, so type names remain bare. The qualification only adds a prefix for multi-file programs.
+
+5. **Import aliasing:** `import Math.Vector` means `Vector.Point` in user code resolves to `Math.Vector.Point` internally. The name resolution layer translates user-visible names to qualified names before they reach `TypeRegistry`.
 
 **Warning signs:**
-- LLVM IR output shows `alloca` instructions between `br` and `br` inside a loop body block.
-- Programs with large loops crash with stack overflow.
-- Performance regression: loops run 10-100x slower than expected.
-- `opt -mem2reg` does not eliminate loop allocas (verify with `opt -S -mem2reg` on output IR).
+- Tests with two modules defining same-named types pass (they should fail or produce distinct types)
+- `TypeRegistry.struct_defs.len()` is less than expected after loading multiple modules
+- LLVM verification errors about struct field count mismatches
+
+**Detection:**
+Add an assertion in `register_struct` that panics if a name collision occurs from different modules. In debug builds, verify that every `MirType::Struct` name contains a module qualifier when compiling multi-file projects.
 
 **Phase to address:**
-LLVM codegen phase. Must be correct from the first implementation of `codegen_for` and `codegen_while`.
+Name resolution phase. This is the FIRST thing to get right -- every subsequent phase depends on qualified names being correct. Retrofitting qualification after building on bare names requires touching every pipeline stage.
 
 ---
 
-### Pitfall 3: Actor Starvation from Tight Loops Without Reduction Checks
+### Pitfall 2: Name Mangling Collisions Produce Duplicate LLVM Symbols
 
 **What goes wrong:**
-Snow's actor scheduler uses cooperative preemption via `snow_reduction_check()`, which decrements a thread-local counter and yields when it reaches zero (actor/mod.rs:160-191). Currently, reduction checks are inserted AFTER function calls and closure calls (codegen/expr.rs:613, 759, 843). This works because recursive algorithms naturally contain function calls.
+Snow's current name mangling uses patterns like `Trait__Method__Type` (e.g., `Display__to_string__Point`) and `identity_Int` for monomorphized generics. These names become LLVM function names and ultimately linker symbols. When two modules define functions with the same name, or implement the same trait for same-named types, the LLVM symbols collide:
 
-Loops change this calculus. A tight loop like:
 ```
-while x < 1_000_000 do
-  x = x + 1
+# module_a.snow
+def helper(x :: Int) -> Int do x + 1 end
+
+# module_b.snow
+def helper(x :: Int) -> Int do x * 2 end
+```
+
+Both lower to MIR function `helper`, both become LLVM function `@helper`. The LLVM module will reject the duplicate definition, or the linker will silently pick one.
+
+The same problem occurs with trait implementations:
+```
+# module_a.snow: impl Display for Point
+# module_b.snow: impl Display for Point  (different Point)
+# Both produce: Display__to_string__Point
+```
+
+**Why it happens:**
+`MirFunction.name` (mir/mod.rs:44) is a bare string. The MIR lowerer (lower.rs) uses function names directly from the AST without any module prefix. The codegen `declare_functions` (codegen/mod.rs:197) forward-declares all functions by their MIR name, and `functions` cache (codegen/mod.rs:65) maps MIR names to LLVM `FunctionValue`. No module qualification exists at any level.
+
+**Consequences:**
+- LLVM module verification fails with "redefinition of symbol"
+- If using separate LLVM modules per Snow module and linking, the linker produces "duplicate symbol" errors
+- If symbols are made weak/COMDAT, the linker silently picks one, producing wrong behavior
+
+**Prevention:**
+Every function name in MIR must be module-qualified. The mangling scheme should be:
+
+```
+<module_path>__<function_name>           # regular functions
+<module_path>__<Trait>__<Method>__<Type> # trait impls
+<module_path>__<function>__<TypeArgs>    # monomorphized generics
+<module_path>__closure_<N>              # lifted closures
+```
+
+For example:
+- `math.vector__add` instead of `add`
+- `math.vector__Display__to_string__Point` instead of `Display__to_string__Point`
+- `math.vector__identity__Int` instead of `identity_Int`
+
+The module path uses dots or double underscores as separators. Using dots in LLVM symbol names is valid (LLVM allows any character in symbol names when quoted).
+
+**Critical:** The `main` function in the entry module must remain `main` (or `snow_main`) without module qualification, because `generate_main_wrapper` (codegen/mod.rs:205) emits a C `main` that calls it.
+
+**Warning signs:**
+- "Redefinition of symbol" errors when compiling multi-module programs
+- Linker errors about duplicate symbols
+- Wrong function called at runtime (function from module B called instead of module A)
+
+**Phase to address:**
+MIR lowering phase. The lowerer must prepend module paths when creating `MirFunction.name`. This cascades through monomorphization and codegen automatically since they use the MIR name.
+
+---
+
+### Pitfall 3: HM Type Inference Context Not Propagated Across Module Boundaries
+
+**What goes wrong:**
+Snow's type inference (infer.rs) runs Algorithm J on the AST, building a `TypeEnv` (env.rs) with scope stacks and a `TypeRegistry` for struct/sum type definitions. Currently, `check(parse)` (lib.rs:96) takes a single `Parse` and returns a single `TypeckResult`. There is no mechanism to feed type information from one module into another's inference context.
+
+When module A imports module B, the type checker for module A needs to know:
+- What functions B exports, and their type schemes (polymorphic signatures)
+- What types B exports (struct defs, sum type defs, type aliases)
+- What trait impls B provides
+- What trait definitions B provides
+
+Without this information, any reference to `B.some_function()` will produce `NoSuchFunction` errors. The type checker literally cannot see across module boundaries.
+
+**Why it happens:**
+The `infer` function (infer.rs) is monolithic -- it processes one `Parse` tree and builds all registries from scratch. There is no "import" step that loads pre-computed type information from another module. The `TypeEnv`, `TypeRegistry`, and `TraitRegistry` are all created fresh for each `check()` call.
+
+OCaml solves this with `.cmi` (compiled module interface) files -- binary files containing the type signature of a module. When compiling module A that imports B, the compiler loads `B.cmi` to get B's type context. Haskell uses `.hi` (interface) files similarly.
+
+**Consequences:**
+- Cross-module function calls fail type checking
+- Cross-module type references are unknown
+- Cross-module trait usage is invisible
+- The entire module system is non-functional without solving this
+
+**Prevention:**
+After type-checking a module, export its public interface as a data structure that other modules can consume. Two approaches:
+
+**Approach A: Merged context (recommended for Snow's architecture)**
+Compile modules in dependency order (topological sort of the import graph). Before type-checking module A, pre-populate A's `TypeEnv`, `TypeRegistry`, and `TraitRegistry` with the exported definitions from all of A's dependencies. This is the simplest approach and matches Snow's single-pass compilation model.
+
+```rust
+// Pseudocode
+fn check_module(parse: &Parse, imports: &[ModuleInterface]) -> TypeckResult {
+    let mut env = TypeEnv::new();
+    let mut type_reg = TypeRegistry::new();
+    let mut trait_reg = TraitRegistry::new();
+
+    // Pre-populate from imports
+    for import in imports {
+        for (name, scheme) in &import.exported_functions {
+            env.insert(qualified_name(import.path, name), scheme.clone());
+        }
+        for (name, def) in &import.exported_structs {
+            type_reg.register_struct(qualify(import.path, def));
+        }
+        // ... traits, sum types, etc.
+    }
+
+    // Then run normal inference with pre-populated context
+    infer_with_context(parse, env, type_reg, trait_reg)
+}
+```
+
+**Approach B: Interface files (more complex, better for incremental compilation)**
+After type-checking a module, serialize its public interface to a file (e.g., `.snowi`). When compiling a dependent module, load the interface file. This enables incremental compilation but adds serialization complexity. Defer to a later milestone.
+
+**Key insight:** The `TypeckResult` already contains everything needed for a module interface -- `type_registry`, `trait_registry`, and the `types` map. The missing piece is extracting the exported subset and making it available to dependents.
+
+**Warning signs:**
+- "Unknown function" errors when calling imported functions
+- "Unknown type" errors when using imported types
+- Type inference producing `Var` (unresolved) for cross-module expressions
+
+**Phase to address:**
+Type inference phase. This must be designed before implementing any cross-module feature. The module compilation order and interface propagation strategy determine the architecture of the entire module system.
+
+---
+
+### Pitfall 4: Monomorphization Explosion from Cross-Module Generic Instantiation
+
+**What goes wrong:**
+Snow monomorphizes all generic functions -- each concrete type instantiation produces a separate function copy. Currently, monomorphization happens per-file (mono.rs), and the reachability pass starts from `main` to find all needed instantiations. With modules, a generic function defined in module A may be instantiated with different types in modules B, C, D, etc.
+
+Consider:
+```
+# collections/utils.snow
+pub def map_all(list :: List<T>, f :: Fun(T) -> U) -> List<U> do ... end
+
+# module_b.snow: map_all([1,2,3], fn(x) -> x.to_string() end)  # map_all_Int_String
+# module_c.snow: map_all(["a","b"], fn(x) -> x.length() end)    # map_all_String_Int
+# module_d.snow: map_all([1.0, 2.0], fn(x) -> x > 0.0 end)     # map_all_Float_Bool
+```
+
+Each call site generates a unique monomorphized copy. The monomorphization pass must now consider ALL modules' call sites when generating instantiations for a generic function, not just the current file.
+
+**Why it happens:**
+The current `monomorphize()` (mono.rs:24-30) operates on a single `MirModule`. It collects reachable functions from one entry point. With multiple modules, several problems arise:
+
+1. **Instantiation discovery:** Module A defines `map_all<T,U>`. Module B calls `map_all_Int_String`. The instantiation must be generated in the context of A's code but with B's concrete types.
+
+2. **Duplicate instantiations:** If modules B and C both call `map_all_Int_String`, two copies exist. The linker needs COMDAT/weak linkage to deduplicate, or the compiler must ensure only one copy is generated.
+
+3. **Code size explosion:** If 20 modules each use a utility generic with different types, 20 copies exist. For deeply generic code (generic functions calling other generic functions), this compounds exponentially.
+
+**Consequences:**
+- Binary size grows rapidly with number of modules using generics
+- Compilation slows due to redundant monomorphization
+- Linker symbol conflicts from duplicate instantiations
+- Build times degrade non-linearly
+
+**Prevention:**
+
+1. **Single-module compilation (recommended for v1.8):** Lower all Snow modules into a single `MirModule` before monomorphization. This is the simplest approach -- the existing monomorphization pass works unchanged. The MirModule simply contains functions from all modules with qualified names. Reachability from `main` prunes unused instantiations naturally.
+
+2. **Deduplication by name:** Since monomorphized names include type arguments (e.g., `collections.utils__map_all__Int__String`), identical instantiations from different call sites produce the same name. The MIR-to-LLVM pass should detect duplicates and emit only one copy.
+
+3. **Defer separate compilation:** Do NOT attempt per-module object files in v1.8. The cross-module monomorphization problem is complex (Rust dedicates significant infrastructure to it with CGU partitioning). Compile all modules as one LLVM module first; add separate compilation in a future milestone.
+
+**Warning signs:**
+- Binary size doubles when splitting a single file into two modules with no other changes
+- "Redefinition of function" errors for monomorphized generics called from multiple modules
+- Compilation time grows super-linearly with number of modules
+
+**Phase to address:**
+MIR lowering and monomorphization phase. The decision to use single-module compilation vs. per-module compilation must be made early, as it affects every subsequent phase.
+
+---
+
+### Pitfall 5: Import Cycle Detection Misses Indirect Cycles or Fails on Diamond Dependencies
+
+**What goes wrong:**
+Snow's design forbids circular imports. The module dependency graph must be a DAG. Cycle detection must catch ALL cycles, including indirect ones:
+
+```
+# Direct cycle (easy to detect):
+# a.snow imports b.snow, b.snow imports a.snow
+
+# Indirect cycle (harder):
+# a.snow imports b.snow
+# b.snow imports c.snow
+# c.snow imports a.snow
+
+# Diamond (NOT a cycle -- must be allowed):
+# a.snow imports b.snow and c.snow
+# b.snow imports d.snow
+# c.snow imports d.snow
+```
+
+If diamond dependencies are incorrectly flagged as cycles, common patterns like "two modules sharing a utility module" become impossible.
+
+**Why it happens:**
+Naive cycle detection using a simple "visited" set (without distinguishing "in current DFS path" from "fully processed") will flag diamonds as cycles. When visiting `d.snow` from the `b` path, `d` is already in the visited set from the `c` path. Without three-state coloring (WHITE/GRAY/BLACK), this looks like a back-edge.
+
+**Consequences:**
+- False positive: diamond dependencies rejected, forcing users to restructure valid code
+- False negative: indirect cycles not detected, causing infinite loops or stack overflow during compilation
+- Incorrect compilation order: modules compiled before their dependencies, producing "unknown type" errors
+
+**Prevention:**
+Use Kahn's algorithm (BFS-based topological sort) for both cycle detection and compilation order:
+
+1. Build the dependency graph from all import declarations
+2. Compute in-degrees for all modules
+3. Process modules with in-degree 0 (no dependencies) first
+4. Decrement in-degrees of dependents; add newly zero-degree modules to the queue
+5. If any modules remain unprocessed, they form a cycle -- report the cycle with the exact module chain
+
+Kahn's algorithm is preferred over DFS-based topological sort because:
+- It naturally handles diamonds (a module is processed only after ALL dependencies are processed)
+- Cycle detection is a simple check: `processed_count < total_modules`
+- The processing order IS the compilation order
+- It produces a deterministic order (if ties are broken alphabetically)
+
+**Critical edge case:** Self-imports (`a.snow` imports `a.snow`) must be detected as a special case before graph construction.
+
+**Warning signs:**
+- Diamond dependency patterns produce "circular import" errors
+- Three-module indirect cycles compile without error
+- Compilation order is non-deterministic (HashMap iteration order)
+- Adding a new import to an unrelated module changes compilation order of other modules
+
+**Phase to address:**
+Dependency graph phase (before type checking). This must be the very first step after parsing all files -- before any type checking occurs.
+
+---
+
+### Pitfall 6: Visibility System Leaks Private Definitions Through Re-exports and Type Inference
+
+**What goes wrong:**
+"Private by default, `pub` to export" seems simple, but visibility has subtle leak paths:
+
+**Leak 1: Public function returns private type**
+```
+# module_a.snow
+struct InternalConfig do ... end  # private
+
+pub def get_config() -> InternalConfig do  # public function, private return type
+  InternalConfig { ... }
 end
 ```
-contains NO function calls -- only integer comparison and addition. Without a reduction check inside the loop, this actor will monopolize its OS worker thread for the entire loop duration. Other actors on the same thread will be starved. If the loop is infinite (`while true do ... end`), the actor never yields, and the scheduler deadlocks.
 
-The BEAM VM (Erlang/Elixir's runtime) solves this by counting "reductions" per opcode. Go solved it in 1.14 by adding compiler-inserted preemption checks in loop back-edges. Snow's `snow_reduction_check()` comment at actor/mod.rs:155 already states it should be inserted "at loop back-edges and function call sites", but back-edge insertion is not yet implemented because loops did not exist until v1.7.
+Module B calls `get_config()` and gets a value of type `InternalConfig`. Can B access its fields? Can B store it? Can B pass it to other functions? The type is private, but the value exists in B's scope.
+
+**Leak 2: Public trait exposes private method signature**
+```
+# module_a.snow
+struct Secret do ... end  # private
+
+pub interface Processor do
+  def process(s :: Secret) -> Int  # public trait method uses private type
+end
+```
+
+Any module implementing `Processor` must mention `Secret`, but `Secret` is private.
+
+**Leak 3: Type inference propagates private types**
+```
+# module_a.snow
+struct Internal do value :: Int end  # private
+pub def make() -> Internal do Internal { value: 42 } end
+
+# module_b.snow
+let x = A.make()    # type of x is A.Internal -- private type visible through inference
+let y = x.value     # field access on private type -- should this work?
+```
 
 **Why it happens:**
-The current `emit_reduction_check()` is called explicitly after specific MIR expression forms (Call, ClosureCall). Loop codegen is new code -- if the developer forgets to insert a reduction check on the loop's back-edge (the branch from loop body back to loop header), the loop will never yield.
+HM type inference does not inherently respect visibility boundaries. The type checker infers the most general type, which may include private types from imported modules. Without explicit visibility checks on type propagation, private types leak through public interfaces.
 
-**How to avoid:**
-Insert `self.emit_reduction_check()` in the loop codegen at the back-edge -- the point where the loop body branches back to the loop header:
+**Consequences:**
+- Users depend on internal types, creating hidden coupling between modules
+- Refactoring internal types breaks downstream modules even though the API did not change
+- Confusing errors when private types appear in error messages for code in other modules
 
-```
-loop_body:
-  ; ... body codegen ...
-  call void @snow_reduction_check()   ; <-- HERE, before back-edge
-  br label %loop_header
-```
+**Prevention:**
 
-This matches the BEAM's approach: every loop iteration costs one reduction. A loop iterating 4000 times will cause one yield, which is the correct granularity (DEFAULT_REDUCTIONS = 4000).
+1. **Public interface validation:** After type-checking a module, validate that every `pub` function's signature only references `pub` types from the same module or imported types. Emit an error like: `"public function 'get_config' has private return type 'InternalConfig'"`. OCaml enforces this through `.mli` interface files; Rust enforces it with the `E0446` error.
 
-The `snow_reduction_check` function also triggers GC via `try_trigger_gc()` (actor/mod.rs:182-186), which means putting it at the back-edge also handles GC pressure from loop allocations.
+2. **Opaque types for advanced use:** For now, simply reject public functions that expose private types. In a future version, add opaque type exports (the type name is visible but the definition is hidden -- consumers can pass it around but not inspect its fields).
+
+3. **Trait method validation:** Trait method signatures in `pub interface` blocks must only reference `pub` types.
+
+4. **Warning, not error (pragmatic option for v1.8):** Since Snow does not have opaque types yet, making this an error may be too restrictive. A warning with a clear message is acceptable for v1.8, with enforcement deferred.
 
 **Warning signs:**
-- An actor running a loop blocks all other actors on the same worker thread.
-- `test_reduction_yield_does_not_starve` (scheduler.rs:797) fails when a loop-based actor is added.
-- A `while true` loop causes the entire runtime to hang.
+- Private struct names appearing in error messages when compiling a different module
+- Users able to construct/destructure private types from other modules
+- Adding `pub` to a struct definition changes the behavior of code in other modules
 
 **Phase to address:**
-LLVM codegen phase. Must be part of `codegen_for` and `codegen_while` from day one -- not a follow-up.
+Name resolution and type checking phase. Visibility checking should run as a validation pass after type inference, before MIR lowering.
 
 ---
 
-### Pitfall 4: O(N^2) List Collection via Immutable Append Chains
+### Pitfall 7: Existing Single-File Programs Break When Module System Is Added
 
 **What goes wrong:**
-Snow lists are immutable -- `snow_list_append` (list.rs:76-87) allocates a NEW list and copies ALL existing elements plus the new one. For a `for..in` loop that collects N results, the total work is: copy 0 + copy 1 + copy 2 + ... + copy (N-1) = O(N^2) copies and O(N^2) total bytes allocated.
+All existing Snow programs are single-file. The module system must not change the behavior of any existing program. Specific breakage vectors:
 
-For N=100,000, this means ~5 billion element copies and ~5 billion bytes of intermediate garbage. The intermediate lists are dead immediately after the next append, but GC only triggers every ~4000 iterations (DEFAULT_REDUCTIONS), allowing garbage to pile up.
+**Break 1: New keywords conflict with existing identifiers**
+If `import`, `from`, `pub`, or `module` become keywords, existing programs using these as variable or function names will fail to parse:
+```
+# Existing valid Snow code:
+let import = "data.csv"          # breaks if 'import' is a keyword
+def pub(x) -> x end             # breaks if 'pub' is a keyword
+```
+
+**Break 2: Name resolution order changes**
+If the module system changes how names are resolved (e.g., checking module scope before local scope), existing programs may resolve names differently. The current resolution priority (per PROJECT.md line 159) is: module > service > variant > struct field > method. If "module" here means Snow module (not Elixir-style namespaced module), existing code using module-qualified syntax like `String.length(s)` must continue to work.
+
+**Break 3: Compilation entry point changes**
+Currently `snowc build <dir>` finds `main.snow` and compiles it as a standalone file (main.rs:222-224). If the build command changes to treat the directory as a project with module discovery, the single-file compilation path must still work identically.
+
+**Break 4: Builtins no longer accessible**
+If module system changes how builtins are registered (e.g., builtins are now in an implicit `Snow.Prelude` module), and the import mechanism is incorrect, builtins like `IO.puts`, `List.map`, etc., may become inaccessible.
 
 **Why it happens:**
-Two compounding issues:
-1. Immutable list append is O(N) per operation (full copy), making accumulated append O(N^2).
-2. GC only runs at yield points (every ~4000 iterations), allowing garbage to accumulate.
+Module system changes touch the parser (new keywords), name resolution (new scope rules), compilation pipeline (multi-file orchestration), and builtins registration. Each change has the potential to break existing behavior.
 
-This is NOT a problem for the existing `snow_list_map` (list.rs:174) because that function pre-allocates a new list of the correct size and fills it in-place. But for-loop collection cannot pre-allocate because the final size is unknown (continue/break may skip elements).
+**Consequences:**
+- All 1,278+ existing tests fail after module system changes
+- Users must modify working programs to compile under the new version
+- Regression bugs in seemingly unrelated areas
 
-**How to avoid:**
-Implement a `snow_list_builder` API for `for..in` loops that accumulates into a MUTABLE buffer and produces an immutable list at the end. This is the standard pattern (Rust's `Vec` -> immutable slice, Scala's `ListBuffer` -> `List`).
+**Prevention:**
 
-```rust
-// New runtime functions
-snow_list_builder_new(estimated_cap: u64) -> *mut u8     // O(1)
-snow_list_builder_push(builder: *mut u8, elem: u64)       // O(1) amortized
-snow_list_builder_finish(builder: *mut u8) -> *mut u8     // O(1), returns SnowList
-```
+1. **Contextual keywords:** Make `import`, `from`, and `pub` contextual keywords -- they are keywords only in specific syntactic positions (beginning of line, before `def`/`struct`/etc.). As variable names, they remain valid identifiers. Snow already uses this pattern for `deriving` (PROJECT.md line 144).
 
-The builder uses doubling growth (like Vec), giving O(N) total allocation and O(N) total copies. This changes the for-loop from O(N^2) to O(N).
+2. **Single-file mode preserved:** When compiling a directory with only `main.snow` and no imports, the compilation path should be functionally identical to the current pipeline. The module system is opt-in (only activated when imports are present or multiple `.snow` files exist).
 
-**Critical GC consideration:** The builder's internal buffer must be GC-visible. Since Snow uses conservative stack scanning, the builder pointer on the stack will keep the buffer alive. But the builder must be allocated on the actor heap (via `snow_gc_alloc_actor`) so the GC can scan it.
+3. **All existing tests pass before any new feature tests:** Make "existing tests green" the very first gate for every module system phase.
 
-**Warning signs:**
-- `for x in (1..10000) do x end` takes noticeably longer than `List.map(range, fn(x) -> x end)`.
-- Actor heap size grows quadratically with loop iteration count.
-- Benchmarks show O(N^2) time for `for..in` loops.
+4. **Builtins are implicitly available:** Every module automatically has access to builtins without explicit imports. The implicit prelude is injected into every module's `TypeEnv` and `TypeRegistry` before type checking.
 
-**Phase to address:**
-Runtime phase (snow-rt). Must be implemented alongside loop codegen -- `for..in` codegen should emit `snow_list_builder_*` calls, not `snow_list_append` chains. This is a prerequisite for correct loop implementation, not a future optimization.
-
----
-
-### Pitfall 5: `break`/`continue` Codegen Creates Orphaned Basic Blocks and Terminated-Block Writes
-
-**What goes wrong:**
-`break` compiles to `br label %loop_exit` and `continue` compiles to `br label %loop_increment`. These are unconditional branches that terminate the current basic block. Any code AFTER the break/continue in the loop body is unreachable. Two failure modes:
-
-1. **Terminated block writes:** The parent expression's codegen (e.g., `codegen_if`, `codegen_block`) tries to emit instructions after the break/continue, producing "Terminator found in the middle of a basic block" LLVM verification errors.
-
-2. **Missing phi inputs:** If break/continue is inside one branch of an if-expression, the merge block's alloca-load pattern (used by `codegen_if` at expr.rs:906-910) expects both branches to store a value. The break branch never stores to the result alloca, so the load reads an uninitialized value.
-
-The LLVM Kaleidoscope tutorial explicitly warns: "calling `codegen()` recursively could arbitrarily change the notion of the current block." The existing Snow codegen handles this for `Return` and `Panic` (both `MirType::Never`) by checking `get_terminator().is_none()` before emitting branches (expr.rs:887, 899).
-
-**Why it happens:**
-Break and continue are non-local control flow -- they jump out of the current expression evaluation context to the loop header or exit. But Snow's `codegen_expr` returns a `BasicValueEnum`, meaning every expression is expected to produce a value. A `break` does not produce a value in the current context. This is analogous to `MirExpr::Return` and `MirExpr::Panic`, which return `MirType::Never`.
-
-**How to avoid:**
-Model `break` and `continue` as diverging expressions (type `Never`):
-
-1. **MIR representation:** Add `MirExpr::Break` and `MirExpr::Continue` with type `MirType::Never`.
-
-2. **Codegen:** Emit the branch and then create a new "dead" basic block, positioning the builder there. Return a dummy `undef` value. The parent codegen's terminator check will prevent any branch from the dead block.
-
-```
-then_bb:
-  br label %loop_exit          ; break
-  ; Fall through to dead_bb (LLVM builder positioned here)
-dead_bb:
-  ; Any subsequent codegen goes here; block has no predecessors
-  ; DCE will remove it
-```
-
-3. **Critical:** Ensure `codegen_if` and `codegen_block` check for terminated blocks before storing to the result alloca. The existing pattern at expr.rs:887 already does this for branches but not for stores. After generating the then-body, check if the block is terminated before `build_store(result_alloca, then_val)`.
-
-4. **Loop context stack:** The codegen must maintain a stack of loop contexts so break/continue knows where to branch:
-```rust
-struct LoopContext<'ctx> {
-    header_bb: BasicBlock<'ctx>,
-    exit_bb: BasicBlock<'ctx>,
-    increment_bb: BasicBlock<'ctx>,  // for continue in for-loops
-    result_alloca: Option<PointerValue<'ctx>>,
-}
-// In CodeGen struct:
-loop_stack: Vec<LoopContext<'ctx>>,
-```
+5. **Resolution order unchanged:** The current resolution order is preserved. Module-qualified names (e.g., `Math.Vector.add(a, b)`) use a new syntactic form that does not conflict with existing dot-syntax (which is method calls on values, not module access).
 
 **Warning signs:**
-- LLVM verification errors mentioning "terminator" or "successor".
-- Compiler crashes after break/continue because `codegen_expr` tries to use the `undef` return value.
-- Nested `if/break` patterns causing "basic block does not have terminator" on the merge block.
-- Uninitialized alloca reads producing nondeterministic values.
+- Any existing test failing after module system changes
+- Parse errors in existing programs when building with the new compiler
+- `snowc build` producing different output for single-file projects
 
 **Phase to address:**
-LLVM codegen phase. Must be designed into the codegen from the start -- break/continue require a loop context stack and careful basic block management.
-
----
-
-### Pitfall 6: `for..in` Pattern Destructuring Conflicts with Existing Pattern System
-
-**What goes wrong:**
-`for {key, value} in my_map do ... end` requires pattern matching on the iteration variable. Snow already has a sophisticated pattern matching system (v1.4-v1.5) with decision tree compilation, exhaustiveness checking, and cons destructuring. But for-loop patterns are subtly DIFFERENT from case/match patterns:
-
-1. **No exhaustiveness checking needed:** The loop pattern applies to EVERY element. If the pattern does not match, is it a runtime error or a silent skip? This must be decided explicitly.
-
-2. **Binding scope:** In `case`, each arm has its own scope. In `for`, the pattern binding exists for the entire loop body and is RE-BOUND on each iteration. The binding must be stored to the same alloca (entry-block, per Pitfall 2) on each iteration.
-
-3. **Tuple destructuring for maps:** `Map<K, V>` iteration produces `{K, V}` tuples. The pattern `{key, value}` must destructure this. Using the full pattern decision tree compiler for what is always a single irrefutable pattern is overkill and may produce incorrect codegen if the decision tree assumes multiple branches.
-
-4. **Variable binding name resolution:** The v1.5 pitfall where pattern bindings like `head` were incorrectly mapped to the builtin function `snow_list_head` (PROJECT.md line 149) could recur. If someone writes `for list in lists do ... end`, the binding `list` must shadow any existing `list` variable.
-
-**Why it happens:**
-For-loop patterns have different requirements than match patterns. Reusing the match pattern infrastructure without adaptation leads to semantic mismatches.
-
-**How to avoid:**
-Implement for-loop patterns as a SIMPLIFIED subset of match patterns:
-
-1. **Allowed patterns:** Variable binding (`x`), tuple destructuring (`{a, b}`), wildcard (`_`). No literal patterns, no constructor patterns, no nested matching.
-2. **Codegen:** Do NOT use the decision tree compiler for for-loop patterns. Instead, emit direct load/GEP instructions.
-3. **Name resolution:** Process loop variable bindings through the same scope push/pop mechanism used by `codegen_let` (expr.rs:952-968).
-4. **Irrefutable only:** For v1.7, require irrefutable patterns. `for Some(x) in list do ... end` should be a compile error: "for-loop patterns must be irrefutable. Use `for item in list do case item do Some(x) -> ... end end` instead."
-
-**Warning signs:**
-- For-loop patterns producing decision trees with "unreachable" or "match failure" branches.
-- Loop variable names resolving to existing functions/modules instead of fresh bindings.
-- Tuple destructuring in for-loops producing incorrect field ordering.
-
-**Phase to address:**
-Parser and type inference phase. Pattern restrictions must be enforced in the parser or type checker before MIR lowering.
-
----
-
-### Pitfall 7: GC Roots Lost During Loop -- Pointers Lifted to Registers Become Invisible
-
-**What goes wrong:**
-Collections (List, Map, Set) are GC-managed pointers. During a for-loop, the iterable collection pointer AND the accumulator (list builder) pointer must remain GC-reachable. Snow's mark-sweep GC per actor scans the stack conservatively (every 8-byte word treated as potential pointer, per PROJECT.md line 132). But LLVM's `mem2reg` pass promotes allocas to SSA registers. If the collection pointer is promoted to a register, it may not be on the stack when GC runs, and the collection could be freed mid-loop.
-
-This is especially dangerous with `snow_list_builder_push` (or `snow_list_append`), which allocates and may trigger GC. The GC runs at yield points within `snow_reduction_check()` (actor/mod.rs:182-186). If the iterable's pointer is in a register when GC fires, the iterable may be collected.
-
-**Why it happens:**
-The alloca+mem2reg pattern is designed to produce efficient register-based code. But conservative GC requires root pointers to be on the stack. These goals conflict: mem2reg removes the stack slot, making the pointer invisible to the stack scanner.
-
-**How to avoid:**
-This is actually handled correctly by Snow's existing design, but requires careful attention:
-
-1. **Allocas for GC pointers should NOT be promoted** by mem2reg. However, mem2reg promotes ALL eligible entry-block allocas. The solution: ensure that GC-managed pointers stored in allocas are loaded and stored frequently enough that LLVM keeps them on the stack, OR accept that conservative scanning of registers may miss them.
-
-2. **Practical mitigation:** The `snow_reduction_check()` call at the loop back-edge creates a function call, which forces LLVM to spill live values to the stack (callee-saved registers). This means at the point where GC actually runs, the values ARE on the stack. This is the same reason why GC-at-yield-points works for the current actor code.
-
-3. **Critical invariant:** The reduction check (and thus GC) only fires at the back-edge call. Between iterations, there is no GC. Within an iteration, allocations may grow the heap but will not trigger collection (collection only happens at `snow_reduction_check`). So the only point where roots matter is the back-edge, and at that point, the function call forces a spill.
-
-4. **Still verify:** Add stress tests that force GC on every iteration (set DEFAULT_REDUCTIONS to 1 in test mode) and verify that loop collections are not collected prematurely.
-
-**Warning signs:**
-- Sporadic crashes or corrupted data in loops under memory pressure.
-- Valgrind/ASAN reporting use-after-free in loop iterations.
-- Test failures that only reproduce with specific GC timing.
-
-**Phase to address:**
-Codegen and runtime testing phase. Verify with GC stress tests, but the existing architecture should handle this correctly as long as `snow_reduction_check()` is called at the back-edge (Pitfall 3).
-
----
-
-### Pitfall 8: Continue in For-Loop Skips Index Increment -- Infinite Loop
-
-**What goes wrong:**
-In a for-loop, `continue` must skip the rest of the body but ADVANCE to the next element. If `continue` branches directly to the loop header (condition check), and the loop header re-checks the SAME index (because the increment was in the body, which was skipped), the loop repeats the same element forever.
-
-```
-for_header:
-  %idx = load %idx_alloca
-  %cond = icmp slt %idx, %len
-  br i1 %cond, %for_body, %for_exit
-
-for_body:
-  ; ... user code ...
-  continue  ->  br label %for_header   ; BUG: idx not incremented!
-  ; ... index increment below was skipped ...
-  %next = add %idx, 1
-  store %next, %idx_alloca
-  br label %for_header
-```
-
-**Why it happens:**
-The natural codegen structure puts the body expression and the index increment in the same block. `continue` jumps past the increment. This is the most common loop codegen bug in any compiler.
-
-**How to avoid:**
-Use a THREE-block structure separating the body from the latch (increment):
-
-```
-for_body:
-  %elem = get_element(iterable, %idx)
-  ; bind to loop var
-  <body codegen>               ; continue branches to for_latch
-  ; append body result to accumulator
-  br label %for_latch
-
-for_latch:                      ; continue targets HERE, not for_header
-  %next = add %idx, 1
-  store %next, %idx_alloca
-  call void @snow_reduction_check()
-  br label %for_header
-```
-
-`continue` branches to `for_latch`, ensuring the index always advances. The body result append is bypassed (continue means skip this element), but the index increment is not.
-
-For `while` loops, `continue` branches directly to the header (condition re-evaluation), which is correct because while loops have no index.
-
-**Warning signs:**
-- `for x in list do if cond do continue end; x end` hangs (infinite loop).
-- Condition true on first element + continue = repeat first element forever.
-
-**Phase to address:**
-LLVM codegen phase. The for-loop basic block structure must be designed with this three-block pattern from the start.
+EVERY phase. Backward compatibility must be a gate for every PR. Run the full test suite after every change.
 
 ---
 
@@ -384,226 +438,342 @@ Mistakes that cause technical debt, confusing errors, or delayed regressions.
 
 ---
 
-### Pitfall 9: Nested Loops Break/Continue Target Wrong Loop
+### Pitfall 8: Single LLVM Module Becomes Bottleneck -- But Separate Modules Are Premature
 
 **What goes wrong:**
-Without labeled breaks, `break` and `continue` always target the innermost loop. If the codegen stores only one loop context (overwriting the outer loop's context when entering the inner loop), `break` in the inner loop will incorrectly jump to the outer loop's exit.
+The current codegen creates one LLVM module per compilation (lib.rs:80, `CodeGen::new(&context, "snow_module", ...)`). For multi-module Snow programs, the simplest approach is to lower everything into one big LLVM module. This works but has scaling consequences:
 
-**How to avoid:**
-Maintain a `Vec<LoopContext>` stack in the `CodeGen` struct. On loop entry: push a new context. On `break`: branch to `loop_stack.last().exit_bb`. On `continue`: branch to `loop_stack.last().latch_bb`. On loop exit: pop. Document that labeled breaks are a future feature.
+- LLVM optimization passes run on the entire module (not per-function), so compile times grow super-linearly
+- The entire program must be recompiled for any change in any module
+- No parallel compilation is possible
+
+However, splitting into separate LLVM modules per Snow module introduces all the monomorphization, symbol, and type identity problems described above (Pitfalls 1, 2, 4). Attempting separate LLVM modules in v1.8 is a trap.
+
+**Prevention:**
+Start with a single LLVM module. Accept the compilation time tradeoff for v1.8. Add a comment/TODO for future separate compilation. The Rust compiler team invested years in the CGU partitioning scheme -- Snow should not attempt this in the first module system milestone.
 
 **Warning signs:**
-- Nested loops where `break` exits the wrong loop.
-- LLVM verification errors about branches to blocks in the wrong scope.
+- Attempting to create multiple LLVM modules and link them
+- Investigating LLVM module linking or LTO as part of v1.8
+- Compilation time exceeding 10 seconds for modest multi-module programs
 
-**Phase to address:** LLVM codegen phase -- must be designed from the start.
+**Phase to address:** Codegen phase. Decision should be documented as "single LLVM module for v1.8" in the architecture doc.
 
 ---
 
-### Pitfall 10: Closure Capture in Loop Body Captures Wrong Iteration's Value
+### Pitfall 9: Module Path Ambiguity -- Dots in Module Names vs. Dots in Method Calls
 
 **What goes wrong:**
-If a closure is created inside a for-loop body, it captures the loop variable. Snow captures by value (no references -- PROJECT.md line 92). But if the closure captures the alloca pointer (implementation detail) rather than the current value, all closures see the final iteration's value.
+Snow v1.6 added method dot-syntax: `value.method(args)`. The module system uses dots for module paths: `Math.Vector.add(a, b)`. These are syntactically ambiguous:
 
-**How to avoid:**
-Snow's `MirExpr::MakeClosure` captures values by copying them into a GC-allocated environment struct at closure creation time. The MIR lowerer emits the capture list with the current iteration's variable reference, and codegen reads from the alloca at that point. This SHOULD work correctly because each closure creation reads the current alloca value.
-
-Verify with an explicit test:
 ```
-let fns = for x in [1, 2, 3] do fn() -> x end
-# Assert: fns[0]() == 1, fns[1]() == 2, fns[2]() == 3
+# Is this a module-qualified function call, or a method chain?
+Vector.add(a, b)
+
+# If Vector is a local variable holding a struct:
+#   -> method call: Vector.add(a, b) means add(Vector, a, b)
+# If Vector is a module name:
+#   -> qualified call: calls Math.Vector.add with args (a, b)
 ```
 
-**Phase to address:** MIR lowering + codegen testing phase. Should work correctly but must be tested explicitly.
+The v1.6 resolution order (PROJECT.md line 159) puts module-qualified calls first: `module > service > variant > struct field > method`. But this means importing a module named `Vector` would shadow a local variable named `Vector` for dot-syntax purposes.
+
+**Prevention:**
+Module-qualified access should use a DISTINCT syntactic form from method calls. Options:
+
+- **Option A (recommended):** Module paths use `::` separator: `Math::Vector::add(a, b)`. This is unambiguous -- `::` is never used for method calls. Familiar from Rust and C++.
+
+- **Option B:** Module paths only valid at the beginning of a name, before any value-level operations. `Vector.add(a, b)` is a module call only if `Vector` is a known module name (not a local variable). This is the approach used by Elixir and works because module names are capitalized and rarely shadow locals.
+
+- **Option C:** Use the current dot syntax but resolve based on what `Vector` is. If it is a module, it is a module call. If it is a variable, it is a method call. This requires name resolution to be context-aware and may produce confusing errors.
+
+The PROJECT.md indicates `import Math.Vector` with dot syntax for module paths. Since Snow already uses `.` for method calls, the parser must distinguish `ModuleName.function()` from `variable.method()`. The simplest disambiguation: module names are resolved FIRST during name resolution. If a name resolves to a module, it is a module-qualified call. Otherwise, it falls through to method resolution.
+
+**Warning signs:**
+- Importing a module with the same name as a local variable causes unexpected behavior
+- Method chains on variables fail when a module with that name exists
+- Parse ambiguity between `IO.puts("hello")` (module call) and `my_io.puts("hello")` (method call)
+
+**Phase to address:** Parser and name resolution phase. The syntactic disambiguation must be designed before implementation.
 
 ---
 
-### Pitfall 11: Map/Set Iteration Requires New Runtime Functions
+### Pitfall 10: Trait Coherence Breaks with Cross-Module Impls
 
 **What goes wrong:**
-The runtime has `snow_map_keys()` and `snow_map_values()` (map.rs:229, 243) that return lists, but no function to iterate entries as `{key, value}` tuples. `for {k, v} in map do ... end` needs a way to get the i-th entry as a tuple. The current Map uses a vector of `(u64, u64)` pairs internally, but there is no `snow_map_get_entry(map, index)` function.
+Rust's "orphan rule" exists for a reason: without it, two different modules could implement the same trait for the same type, and the compiler would not know which implementation to use. Snow currently has no orphan rule because all code is in one file. With modules:
 
-**How to avoid:**
-Add runtime functions:
-- `snow_map_entry_count(map) -> i64` (alias for `snow_map_size`)
-- `snow_map_entry_key(map, index) -> u64`
-- `snow_map_entry_value(map, index) -> u64`
+```
+# module_a.snow
+struct Point do x :: Int, y :: Int end
 
-Or, for the simpler approach: convert to a list of tuples before iteration. This doubles memory but is simple. For v1.7, the simple approach is acceptable; optimize later if maps are commonly iterated.
+# module_b.snow
+impl Display for Point do
+  def to_string(self) -> String do "from B" end
+end
 
-Similarly for Sets: add `snow_set_get(set, index) -> u64` for index-based iteration.
+# module_c.snow
+impl Display for Point do
+  def to_string(self) -> String do "from C" end
+end
+```
 
-**Phase to address:** Runtime phase (snow-rt). Must be available before for-loop codegen can target maps/sets.
+When module D imports both B and C, which `Display` impl for `Point` does it get?
+
+**Why it happens:**
+The `TraitRegistry` (traits.rs:73-80) stores impls keyed by trait name, with a Vec of impls. The `has_impl` lookup uses structural type matching. If two impls for the same trait+type exist, the first one wins (or the lookup is ambiguous). The v1.6 AmbiguousMethod diagnostic (PROJECT.md line 163) handles this for method calls, but not for arbitrary trait dispatch.
+
+**Prevention:**
+For v1.8, implement a simple coherence rule:
+
+1. **A trait can only be implemented for a type in the module that defines the type OR the module that defines the trait.** This is the Rust orphan rule simplified.
+
+2. **At module loading time, check for duplicate impls.** When merging TraitRegistries from imported modules, detect if the same `(trait, type)` pair has multiple impls. Emit a clear error: `"conflicting implementations of trait 'Display' for type 'Point' found in modules B and C"`.
+
+3. **Defer blanket impls and specialization.** These are explicitly out of scope (PROJECT.md line 95).
+
+**Warning signs:**
+- Different behavior depending on import order
+- Trait method calls producing different results depending on which module was compiled first
+- `HashMap::insert` in `TraitRegistry` silently overwriting existing impls
+
+**Phase to address:** Type checking phase, after cross-module trait registration is implemented.
 
 ---
 
-### Pitfall 12: MirExpr Match Exhaustiveness -- Adding New Variants Without Updating All Match Sites
+### Pitfall 11: Module Discovery Races with File System Layout
 
 **What goes wrong:**
-The `MirExpr::ty()` method (mod.rs:308-340), `codegen_expr` (expr.rs:25-148), and `collect_function_refs` (mono.rs:86) all match on every MirExpr variant. Adding `ForLoop`, `WhileLoop`, `Break`, `Continue` requires updating ALL these matches. Rust's exhaustiveness checker will catch missing arms, but developers may be tempted to add a `_ => unreachable!()` wildcard that silently passes.
+Snow's design maps file paths to module names: `math/vector.snow` becomes `Math.Vector`. Several edge cases:
 
-**How to avoid:**
-Do NOT add wildcard catch-all arms. Let Rust's exhaustiveness checker force updates. Grep for `match.*MirExpr` across the codebase before claiming the new variants are integrated. Key match sites to update:
-- `MirExpr::ty()` in mir/mod.rs
-- `codegen_expr` in codegen/expr.rs
-- `collect_function_refs` in mir/mono.rs
-- Any Display/Debug impls for MirExpr
+1. **Case sensitivity:** On macOS (case-insensitive FS), `Math/Vector.snow` and `math/vector.snow` are the same file. On Linux (case-sensitive), they are different. If Snow treats module names case-sensitively (as it should), macOS users can create ambiguous situations.
 
-**Phase to address:** MIR definition phase. Audit all match sites when adding new variants.
+2. **Non-UTF8 paths:** Directory names with special characters produce unparseable module names.
+
+3. **Symlinks:** Symlinked files could create the appearance of two different modules that are actually the same file.
+
+4. **Nested `main.snow`:** If `math/main.snow` exists, is its module name `Math.Main` or `Math`?
+
+5. **Hidden files:** `.gitkeep`, `.DS_Store`, etc., should not be treated as modules.
+
+**Prevention:**
+
+1. **Module names must be valid Snow identifiers:** Enforce that directory and file names (without `.snow` extension) match `[a-z][a-z0-9_]*` (lowercase, alphanumeric, underscores). Reject files that do not match with a clear error.
+
+2. **Canonical paths:** Use `std::fs::canonicalize` to resolve symlinks before building the module graph. Two paths that canonicalize to the same file are the same module.
+
+3. **`main.snow` is special:** The entry-point file is always `main.snow` in the project root. It is not a module -- it is the entry point. Nested `main.snow` files should be treated as regular modules named `<Parent>.Main` or rejected with an error.
+
+4. **Filter non-Snow files:** Only files ending in `.snow` are considered. The existing `collect_snow_files` (main.rs:424-449) already does this.
+
+**Warning signs:**
+- Same module compiled twice from symlinked paths
+- Module names containing hyphens or dots (from directory names) causing parse errors
+- Different behavior on macOS vs. Linux
+
+**Phase to address:** Module discovery phase (before parsing). File system traversal and module name derivation should be a separate, well-tested function.
 
 ---
 
-### Pitfall 13: Range Operator Precedence with `in` Keyword
+### Pitfall 12: Error Messages Become Useless Across Module Boundaries
 
 **What goes wrong:**
-`for i in 0..10 do` must parse as `for i in (0..10) do`, not `for (i in 0) .. (10 do)`. The `..` operator already exists as `DOT_DOT` in the lexer. But its precedence relative to the new `in` keyword must be correct.
+Snow uses ariadne for diagnostics (main.rs:300-314), with source text and filename for error rendering. Currently, there is one source file and one filename. With modules, errors may reference types or functions defined in other files:
 
-**How to avoid:**
-The `for_expr` parser rule should parse the iterable as a regular expression (which handles `..` as a binary operator with its existing precedence). The parser structure is:
 ```
-for_expr := "for" pattern "in" expr "do" block "end"
-```
-Where `expr` is parsed with normal expression rules, naturally handling `0..10` as `BinOp(0, .., 10)`.
+# Error in module_b.snow, caused by type mismatch with module_a's export:
+error[E0003]: Type mismatch
+  --> module_b.snow:5:15
+  |
+5 | let x: Int = A.get_config()
+  |              ^^^^^^^^^^^^^^ expected Int, got InternalConfig
 
-**Phase to address:** Parser phase. Verify with parser tests for `for i in 0..10`, `for i in list`, `for {k,v} in map`.
+# Where is InternalConfig defined? What does it look like?
+# The user has no context.
+```
+
+**Prevention:**
+
+1. **Multi-file diagnostics:** Ariadne supports multi-file error reporting. When a type mismatch involves a type from another module, include a secondary label pointing to the type's definition:
+
+```
+error[E0003]: Type mismatch
+  --> module_b.snow:5:15
+  |
+5 | let x: Int = A.get_config()
+  |              ^^^^^^^^^^^^^^ expected Int, got A.InternalConfig
+  |
+  --> module_a.snow:3:1
+  |
+3 | struct InternalConfig do
+  | ^^^^^^^^^^^^^^^^^^^^^^^ InternalConfig defined here
+```
+
+2. **Qualified type names in errors:** Always show the module-qualified name in error messages (`A.InternalConfig`, not `InternalConfig`). This helps users understand where the type comes from.
+
+3. **Source map:** Maintain a mapping from module name to source text and file path. Pass this to the diagnostic renderer.
+
+**Warning signs:**
+- Error messages showing bare type names that the user cannot find in their current file
+- Type mismatch errors with no indication of which module defined the expected type
+- Stack traces or panic messages with module-qualified mangled names that are unreadable
+
+**Phase to address:** Diagnostics phase. Can be deferred slightly (working but ugly errors are acceptable initially), but must be addressed before the milestone is complete.
 
 ---
 
-## Technical Debt Patterns
+## Minor Pitfalls
 
-Shortcuts that seem reasonable but create long-term problems.
+### Pitfall 13: Topological Sort Produces Non-Deterministic Order
 
-| Shortcut | Immediate Benefit | Long-term Cost | When Acceptable |
-|----------|-------------------|----------------|-----------------|
-| `for..in` collects via `snow_list_append` chain | Reuses existing API, no new runtime code | O(N^2) time and memory; creates N garbage lists per loop | NEVER -- use list builder from day one |
-| `while` loop returns `Unit` always | Simpler type inference; avoids break-with-value complexity | Cannot use `while` as expression to compute values | Acceptable for v1.7 -- even Rust punted on this |
-| Single loop context instead of stack | Simpler codegen, fewer fields in CodeGen struct | Nested loops silently break | NEVER -- nested loops are table-stakes |
-| Reuse full pattern compiler for for-loop patterns | Less new code; pattern infrastructure already robust | Overkill decision trees; confusing errors for non-exhaustive patterns | Only if restricted to irrefutable patterns with clear validation |
-| Skip reduction check in loops | Slightly faster tight loops | Actor starvation, scheduler deadlock | NEVER -- breaks core actor model guarantee |
-| `break(value)` support in for/while | More expressive loops | Complex type unification, two return types per loop | Defer to future version -- implement without break-with-value first |
-| Convert map/set to list before iterating | No new runtime functions needed | Doubles memory usage; O(N) conversion overhead | Acceptable for v1.7 if maps/sets are small; optimize later |
+**What goes wrong:**
+If the dependency graph has multiple valid topological orderings, the compilation order may vary between runs (due to HashMap iteration order). This causes non-deterministic compiler output: different mangled names, different LLVM IR layout, different binary hashes. Makes debugging and reproducible builds difficult.
+
+**Prevention:** Break ties in topological sort alphabetically by module name. Use `BTreeMap` or sort the adjacency lists before processing.
+
+**Phase to address:** Dependency graph phase.
+
+---
+
+### Pitfall 14: Recompiling Entire Project on Any Change
+
+**What goes wrong:**
+Without incremental compilation, changing one module recompiles everything. For small projects (< 50 modules), this is acceptable. For larger projects, compilation times become frustrating.
+
+**Prevention:** For v1.8, accept full recompilation. Document that incremental compilation is a future optimization. The single-LLVM-module approach (Pitfall 8) makes incremental compilation impossible anyway, so this is a consistent design decision.
+
+**Phase to address:** Not in v1.8 scope. Document as future work.
+
+---
+
+### Pitfall 15: Service/Actor Definitions Across Modules
+
+**What goes wrong:**
+Snow's `ServiceDef` and `ActorDef` use dispatch tables (`service_dispatch` in MirModule) with string function names. If a service in module A handles messages that call handler functions in module B, the dispatch table must use module-qualified function names. Existing service dispatch (codegen/mod.rs:91-94) uses bare function names.
+
+**Prevention:** When building service dispatch tables, use the same module-qualified function names used in MIR. Since services are typically defined in a single module, this may not be an immediate issue, but the infrastructure must handle qualified names.
+
+**Phase to address:** MIR lowering phase, when processing service/actor definitions.
+
+---
+
+## Phase-Specific Warnings
+
+| Phase Topic | Likely Pitfall | Mitigation | Severity |
+|---|---|---|---|
+| Module discovery (file system) | Case sensitivity, symlinks, non-ASCII paths | Canonical paths, naming constraints, filter non-`.snow` files | Medium |
+| Dependency graph | Diamond flagged as cycle, indirect cycles missed | Kahn's algorithm with proper in-degree tracking | Critical |
+| Parser (import/pub syntax) | New keywords break existing programs | Contextual keywords, single-file mode unchanged | Critical |
+| Name resolution | Bare names collide across modules | Module-qualified names throughout pipeline | Critical |
+| Type checking | No cross-module type context | Merged TypeEnv/TypeRegistry from dependencies | Critical |
+| Visibility checking | Private types leak through public interfaces | Public interface validation pass | Moderate |
+| Trait coherence | Duplicate impls from different modules | Orphan rule, duplicate detection at merge | Moderate |
+| MIR lowering | Function name collisions, wrong mangling | Module-qualified MIR function names | Critical |
+| Monomorphization | Cross-module generic instantiation conflicts | Single MirModule, deduplicate by mangled name | Critical |
+| LLVM codegen | Struct type name collisions in LLVM cache | Module-qualified LLVM type names | Critical |
+| Linking | Duplicate symbol errors | Module-qualified symbol names, single object file | Critical |
+| Diagnostics | Error messages reference unknown types | Multi-file diagnostics, qualified type names | Minor |
+| Backward compat | Existing tests break | Run full suite after every change | Critical |
 
 ## Integration Gotchas
 
-Common mistakes when connecting loop constructs to existing Snow systems.
+Common mistakes when connecting module system to existing Snow systems.
 
 | Integration | Common Mistake | Correct Approach |
-|-------------|----------------|------------------|
-| Type inference + for..in | Inferring body type from first element; failing on empty collections | Infer body type from the body expression using element type as input; empty collection returns `List<T>` where T comes from the collection's type parameter |
-| MIR lowering + break/continue | Lowering break/continue as expressions that return values | Lower as `MirExpr::Break` / `MirExpr::Continue` with type `Never`; MirExpr::ty() returns `MirType::Never` |
-| Codegen + existing if/match | Placing loop result alloca inside loop body because codegen_if pattern "works" | Entry-block alloca for ALL loop-related storage; use `emit_entry_block_alloca` helper |
-| GC + for..in collection | List builder's buffer not GC-visible because it is stack-only | Allocate builder on actor heap via `snow_gc_alloc_actor`; conservative scanning finds stack pointer to it |
-| Monomorphization + for..in | New MirExpr variants not handled by `collect_function_refs` | Add explicit match arms; or lower loops to Call expressions that existing infrastructure handles |
-| Pipe operator + for..in | Users try `list \|> for x do ... end` | `for..in` is a statement-level construct, not a function; clear parse error, not confusing type error |
-| Formatter + new keywords | Formatter does not recognize `for`/`while`/`break`/`continue` | Add keyword handling to snow-fmt walker; test multi-line loop formatting |
-| LSP + loop variables | LSP hover/completion does not show loop variable bindings | Add loop variable bindings to scope map in TypeckResult |
-| Existing recursion patterns | Loops discourage idiomatic recursion; tail-call optimization may be neglected | Document that loops are syntactic sugar, not replacement for recursion; both patterns valid |
-
-## Performance Traps
-
-Patterns that work at small scale but fail as usage grows.
-
-| Trap | Symptoms | Prevention | When It Breaks |
-|------|----------|------------|----------------|
-| O(N^2) list collection via append | Small loops fine; N=10K takes seconds | Use list builder with amortized O(1) push | N > ~1000 elements |
-| No GC between iterations | Small loops fit in heap; large loops cause unbounded growth | Reduction check triggers GC; builder eliminates intermediate garbage | Loop allocation > 64KB (actor page size) before yield |
-| Map/Set to-list conversion | Small maps fine; large maps double memory | Index-based iteration without intermediate list | Maps/Sets > ~1000 entries |
-| String concatenation in loops | `result = result <> str` creates N intermediates | Accumulate in list and join, or provide String.Builder | N > ~100 string concatenations |
-| Nested loops with collection | `for x in xs do for y in ys do {x,y} end end` creates N outer lists | Use `List.flatten` or flat_map pattern | N*M > ~10K |
+|---|---|---|
+| TypeEnv + imports | Adding imported names to global scope, shadowing builtins | Add imported names to a module-specific scope level, below builtins |
+| TypeRegistry + multi-module | Using bare type names as keys | Module-qualified keys: `"Math.Vector.Point"` not `"Point"` |
+| TraitRegistry + cross-module | Merging impls without coherence check | Check for duplicate `(trait, type)` pairs during merge |
+| MirModule + multi-module | Creating separate MirModules per file | Merge all modules into one MirModule with qualified names |
+| Monomorphization + generics | Running mono per-module | Run mono once on merged MirModule; reachability from main handles dedup |
+| Codegen + LLVM types | Bare struct names in LLVM | `context.opaque_struct_type("Math.Vector.Point")` not `"Point"` |
+| Link + symbols | Bare function names as LLVM symbols | Module-qualified: `"math.vector__add"` not `"add"` |
+| Service dispatch + modules | Bare handler function names in dispatch table | Qualified handler names match MIR function names |
+| LSP + modules | Ignoring module scope in hover/completion | Include imported names in scope; show module path in hover |
+| Formatter + imports | Not formatting import statements | Add import/from/pub to formatter AST walker |
+| REPL + modules | Cannot import modules in REPL | Either defer module support in REPL, or add `import` to REPL context |
+| Error messages + modules | Type names unqualified in errors | Always show `Module.TypeName` in diagnostics |
 
 ## "Looks Done But Isn't" Checklist
 
-Things that appear complete but are missing critical pieces.
-
-- [ ] **for..in over empty List:** Returns empty list `[]`, not crash or Unit
-- [ ] **for..in over empty Range:** `for x in 5..5 do x end` returns `[]`; inverted range `5..3` also returns `[]`
-- [ ] **for..in over Map:** Iteration order is deterministic (insertion order); test with multiple entries
-- [ ] **break in nested if:** `for x in list do if cond do break end; x end` -- break does not prevent collection of prior iterations
-- [ ] **continue in for-loop:** Continued elements excluded from result; index still advances (no infinite loop)
-- [ ] **Loop variable shadowing:** `let x = 10; for x in [1,2,3] do x end` -- loop x shadows outer; outer restored after
-- [ ] **Closure capture in loop:** Closures in loop capture per-iteration value, not final value
-- [ ] **Nested loops:** `for x in xs do for y in ys do {x, y} end end` produces correct `List<List<{Int, Int}>>`
-- [ ] **Reduction check present:** `while true do 1 end` in an actor eventually yields (does not starve scheduler)
-- [ ] **GC under pressure:** for..in over 100K elements does not OOM; GC collects between iterations
-- [ ] **LLVM IR verified:** `opt -verify` passes for every loop test case
-- [ ] **Pattern destructuring:** `for {k, v} in map do k end` correctly extracts tuple fields
-- [ ] **Formatter:** `snow fmt` preserves loop syntax with correct indentation
-- [ ] **Error messages:** break/continue outside loop gives specific error, not generic parse failure
-- [ ] **Non-iterable error:** `for x in 5 do x end` gives "Int is not iterable", not generic type error
-- [ ] **No alloca in loop body:** IR dump shows all loop-related allocas in entry block only
-- [ ] **while returns Unit:** `let x: Int = while true do break end` is a type error (Unit != Int)
+- [ ] **Two modules with same-named struct:** Types are distinct; field access uses correct layout
+- [ ] **Two modules with same-named function:** Both callable via qualified names; no symbol collision
+- [ ] **Diamond dependency:** Module D used by B and C, both used by A -- compiles correctly, D compiled once
+- [ ] **Indirect cycle:** A -> B -> C -> A detected and reported with full cycle chain
+- [ ] **Self-import:** Module importing itself produces clear error
+- [ ] **Private function not accessible:** Calling a non-pub function from another module produces E-code error
+- [ ] **Private struct not constructible:** Using a non-pub struct from another module produces error
+- [ ] **Public function with private return type:** Warning or error issued
+- [ ] **Trait impl from other module:** `Display` impl for imported struct works correctly
+- [ ] **Generic function across modules:** `identity<T>(x)` defined in A, called in B with concrete type, monomorphized correctly
+- [ ] **Single-file program unchanged:** ALL existing tests pass with zero modifications
+- [ ] **Builtins accessible:** `IO.puts`, `List.map`, etc., work without explicit import
+- [ ] **Empty module:** A module with no definitions compiles without error
+- [ ] **Module with only types:** A module exporting only struct/sum type definitions works
+- [ ] **Selective import:** `from Math.Vector import { add, scale }` makes only `add` and `scale` available
+- [ ] **Qualified call:** `Math.Vector.add(a, b)` works
+- [ ] **Import aliasing:** If supported, `import Math.Vector as V; V.add(a, b)` works
+- [ ] **Re-export chain:** A exports from B which exports from C -- C's types visible through A
+- [ ] **Module-qualified error messages:** Type errors show `Math.Vector.Point`, not `Point`
+- [ ] **Deterministic build:** Same source always produces same binary (byte-identical)
 
 ## Recovery Strategies
 
 When pitfalls occur despite prevention, how to recover.
 
 | Pitfall | Recovery Cost | Recovery Steps |
-|---------|---------------|----------------|
-| O(N^2) list collection (no builder) | MEDIUM | Add list builder runtime API; change codegen to use it; no source-level changes |
-| Alloca inside loop body | LOW | Move alloca to entry block; add helper function; single codegen refactor |
-| Missing reduction check | LOW | Add `emit_reduction_check()` call at back-edge; one-line codegen change |
-| Break/continue orphaned blocks | MEDIUM | Add dead-block creation; may require refactoring codegen_expr Never handling |
-| Wrong loop context in nested loops | LOW-MEDIUM | Replace single context with stack; straightforward if LoopContext struct is well-defined |
-| Pattern system conflict | HIGH | Separating for-loop patterns from match patterns requires decision tree compiler refactor; prevent by keeping them separate from start |
-| break(value) type unification | HIGH | Redesigning loop type system after implementation; prevent by deferring break(value) |
-| Continue skips increment | LOW | Fix continue target to latch block; straightforward once identified |
-
-## Pitfall-to-Phase Mapping
-
-How roadmap phases should address these pitfalls.
-
-| Pitfall | Prevention Phase | Verification |
-|---------|------------------|--------------|
-| P1: break(value) type unification | Syntax/AST design | Decision documented: break-with-value deferred; type rules specified |
-| P2: alloca inside loop body | LLVM codegen | `opt -mem2reg` eliminates ALL loop allocas; verify with IR dump |
-| P3: actor starvation | LLVM codegen | `snow_reduction_check` in IR at every back-edge; scheduler starvation test passes |
-| P4: O(N^2) collection | Runtime (snow-rt) | List builder API; for..in codegen uses builder; benchmark shows O(N) |
-| P5: orphaned basic blocks | LLVM codegen | `opt -verify` passes for all break/continue cases |
-| P6: for pattern conflicts | Parser / typeck | Only irrefutable patterns accepted; refutable patterns produce clear error |
-| P7: GC roots in loops | Codegen + runtime testing | GC stress tests pass with DEFAULT_REDUCTIONS=1 |
-| P8: continue skips increment | LLVM codegen | Three-block structure: body / latch / header; continue targets latch |
-| P9: nested loop context | LLVM codegen | Nested loop tests pass; break/continue target correct level |
-| P10: closure capture | MIR + codegen testing | Explicit test: closures in loop capture per-iteration values |
-| P11: map/set iteration | Runtime (snow-rt) | Entry-access functions or list conversion available |
-| P12: MirExpr match exhaustiveness | MIR definition | No wildcard arms; all match sites updated |
-| P13: range precedence | Parser | `for i in 0..10` parses correctly |
+|---|---|---|
+| P1: Type identity collision | HIGH | Retrofit module-qualified names through entire pipeline; every FxHashMap key changes |
+| P2: Symbol name collision | MEDIUM | Add module prefix to MIR function names; cascades through codegen automatically |
+| P3: No cross-module type context | HIGH | Redesign type checking to accept pre-populated context; affects infer.rs entry point |
+| P4: Monomorphization explosion | MEDIUM | Switch to merged MirModule approach; rewrite compile_to_binary to merge before mono |
+| P5: Cycle detection bugs | LOW | Replace cycle detection algorithm; dependency graph is isolated from rest of pipeline |
+| P6: Visibility leaking | MEDIUM | Add validation pass; does not require changing existing pipeline, only adding a check |
+| P7: Backward compatibility break | VARIES | Depends on what broke; keyword conflicts are LOW (contextual keywords); resolution order changes are HIGH |
+| P8: LLVM module scaling | LOW | Already using single module; future optimization, not a fix |
+| P9: Module path ambiguity | MEDIUM | Change syntax (e.g., `::` separator); requires parser changes but not pipeline changes |
+| P10: Trait coherence | MEDIUM | Add duplicate detection at TraitRegistry merge; localized change |
+| P11: File system issues | LOW | Add validation in module discovery; isolated from compilation pipeline |
+| P12: Bad error messages | LOW | Improve diagnostic rendering; does not affect correctness |
 
 ## Sources
 
 ### Snow Codebase Analysis (HIGH confidence -- direct code reading)
-- `crates/snow-codegen/src/codegen/expr.rs` -- `codegen_if` alloca+mem2reg pattern (line 856-913), `codegen_let` variable scoping (line 917-971), `emit_reduction_check` (line 1653-1666), terminator checks (line 887, 899)
-- `crates/snow-codegen/src/codegen/mod.rs` -- CodeGen struct, reduction check test (line 1254)
-- `crates/snow-codegen/src/mir/mod.rs` -- MirExpr enum (no loop variants yet), MirType::Never (line 85), MirExpr::ty() exhaustive match (line 308-340)
-- `crates/snow-codegen/src/mir/mono.rs` -- `collect_function_refs` reachability (line 86)
-- `crates/snow-codegen/src/mir/lower.rs` -- MIR lowering, no loop lowering yet
-- `crates/snow-codegen/src/pattern/compile.rs` -- Decision tree compiler for match patterns
-- `crates/snow-rt/src/actor/mod.rs` -- `snow_reduction_check` with GC trigger (line 160-191), "loop back-edges" documented (line 155)
-- `crates/snow-rt/src/actor/process.rs` -- DEFAULT_REDUCTIONS = 4000 (line 157)
-- `crates/snow-rt/src/actor/heap.rs` -- Per-actor GC heap, conservative stack scanning, ACTOR_PAGE_SIZE = 64KB
-- `crates/snow-rt/src/collections/list.rs` -- `snow_list_append` O(N) copy (line 76), `snow_list_map` pre-allocated (line 174)
-- `crates/snow-rt/src/collections/range.rs` -- `snow_range_map` iteration pattern (line 51), empty/inverted range handling
-- `crates/snow-rt/src/collections/map.rs` -- `snow_map_keys` / `snow_map_values` (line 229, 243), no entry-based iteration
-- `crates/snow-rt/src/gc.rs` -- Global arena, `snow_gc_alloc_actor` per-actor allocation
-- `crates/snow-typeck/src/infer.rs` -- Algorithm J inference, `infer_expr` dispatch
-- `crates/snow-typeck/src/unify.rs` -- InferCtx, ena-based union-find unification
+- `crates/snow-typeck/src/infer.rs` -- `TypeRegistry` (line 115-170), struct/sum type registration with bare name keys, Algorithm J inference entry point
+- `crates/snow-typeck/src/env.rs` -- `TypeEnv` scope stack with `FxHashMap<String, Scheme>`, no module awareness
+- `crates/snow-typeck/src/traits.rs` -- `TraitRegistry` with `FxHashMap<String, Vec<ImplDef>>`, structural type matching, no coherence checking
+- `crates/snow-typeck/src/lib.rs` -- `TypeckResult` containing `type_registry`, `trait_registry`, `default_method_bodies`
+- `crates/snow-codegen/src/mir/mod.rs` -- `MirModule`, `MirFunction.name` as bare string, `MirType::Struct(String)` with bare name
+- `crates/snow-codegen/src/mir/types.rs` -- `mangle_type_name` (line 143), `mir_type_suffix`, `mir_type_to_impl_name` -- all using bare type names
+- `crates/snow-codegen/src/mir/lower.rs` -- MIR lowering from AST, no module path context
+- `crates/snow-codegen/src/mir/mono.rs` -- `monomorphize` reachability pass on single `MirModule`
+- `crates/snow-codegen/src/codegen/mod.rs` -- `CodeGen` struct with `struct_types`, `functions` caches keyed by bare name, `compile()` processing single `MirModule`
+- `crates/snow-codegen/src/link.rs` -- Linking single object file with `libsnow_rt.a`
+- `crates/snow-codegen/src/lib.rs` -- `compile_to_binary` pipeline: lower_to_mir -> mono -> codegen -> link, single Parse input
+- `crates/snowc/src/main.rs` -- Build pipeline reading single `main.snow`, `report_diagnostics` with single source/filename
 
-### LLVM Documentation (HIGH confidence)
-- [LLVM Kaleidoscope Tutorial Ch. 5: Control Flow](https://llvm.org/docs/tutorial/MyFirstLanguageFrontend/LangImpl05.html) -- Loop codegen with phi nodes; "codegen() recursively could change the current block" warning; variable scope save/restore
-- [LLVM Loop Terminology](https://llvm.org/docs/LoopTerminology.html) -- LCSSA form, loop-closing phi nodes for values live across loop boundaries
-- [LLVM Frontend Performance Tips](https://llvm.org/docs/Frontend/PerformanceTips.html) -- "alloca in entry block" requirement; mem2reg only promotes entry-block allocas; SSA as canonical form
-- [MLIR alloca-in-loop stack overflow](https://github.com/tensorflow/mlir/issues/210) -- Real-world example of stack overflow from loop-body allocas
-- [LLVM Discourse: alloca in a loop](https://discourse.llvm.org/t/how-to-do-a-short-lived-alloca-in-a-loop/63248) -- Confirming cumulative stack growth from loop allocas
+### OCaml Module System Precedent (HIGH confidence -- mature language with HM inference)
+- [OCaml Compilation Units](https://cs3110.github.io/textbook/chapters/modules/compilation_units.html) -- `.ml`/`.mli` pairs, `.cmi` compiled interface files, hash-based consistency checking, compilation order requirements
+- [Real World OCaml: Compiler Frontend](https://dev.realworldocaml.org/compiler-frontend.html) -- Type identity via `.cmi` hashes, soundness of separate compilation, `-opaque` flag for cross-module optimization control
+- [OCaml Batch Compilation](https://ocaml.org/manual/5.0/comp.html) -- Dependency-order linking, free module identifier resolution via `.cmi` search path
 
-### Rust Language Design (HIGH confidence)
-- [RFC 1624: Loop Break Value](https://rust-lang.github.io/rfcs/1624-loop-break-value.html) -- Type rules for break-with-value in `loop {}`; all breaks must agree; Never coerces to any type; natural termination unresolved for for/while
-- [RFC Issue #1767: Allow for/while to return value](https://github.com/rust-lang/rfcs/issues/1767) -- Unresolved after 8+ years; five proposed approaches for natural-termination semantics; no consensus
-- [Rust Loop Expressions Reference](https://doc.rust-lang.org/reference/expressions/loop-expr.html) -- Break-with-value only in `loop {}`; for/while always return `()`
+### Rust Symbol Mangling & Monomorphization (HIGH confidence -- well-documented)
+- [Rust RFC 2603: Symbol Name Mangling v0](https://rust-lang.github.io/rfcs/2603-rust-symbol-name-mangling-v0.html) -- Crate-id in symbol names for cross-crate deduplication, monomorphization disambiguation by concrete type arguments
+- [Rust Compiler Dev Guide: Monomorphization](https://rustc-dev-guide.rust-lang.org/backend/monomorph.html) -- CGU partitioning (stable vs. volatile), `collect_and_partition_mono_items`, polymorphization for unused generic params
+- [Monomorphization Code Bloat](https://nickb.dev/blog/the-dark-side-of-inlining-and-monomorphization/) -- Binary size explosion, cache effects, factor-out-inner-function pattern, dynamic dispatch alternative
 
-### Runtime Scheduling & GC (MEDIUM confidence -- cross-language patterns)
-- [Go Goroutine Preemption (1.14+)](https://dzone.com/articles/go-runtime-goroutine-preemption) -- Compiler-inserted preemption checks in loop back-edges; tight loops without calls starve peers
-- [Nature Language Cooperative Scheduling](https://nature-lang.org/news/20260115) -- Safepoint instruction preemption as cooperative scheduling mechanism
-- [OCaml Imperative Programming](https://dev.realworldocaml.org/imperative-programming.html) -- OCaml for/while loops always return unit; explicit loops complement recursion
+### Visibility & Coherence (MEDIUM confidence -- cross-language patterns)
+- [Rust: Leaking Private Types](https://users.rust-lang.org/t/leaking-traits-or-types-from-private-modules/67678) -- E0446 error for private types in public interfaces, workarounds with pub(crate)
+- [C++ Modules Misconceptions](https://build2.org/article/cxx-modules-misconceptions.xhtml) -- Module linkage vs. external linkage, non-exported names get module linkage preventing collision, backward compatibility with headers
+
+### Cycle Detection & Dependency Graphs (HIGH confidence -- well-established algorithms)
+- [Kahn's Algorithm for Topological Sort](https://www.geeksforgeeks.org/dsa/detect-cycle-in-directed-graph-using-topological-sort/) -- BFS-based, natural cycle detection via unprocessed vertex count, handles diamonds correctly
+- [Topological Sort Applications](https://www.numberanalytics.com/blog/mastering-topological-sort-algorithms) -- Compiler module ordering, deterministic output, edge cases with diamond patterns
+
+### Backward Compatibility Patterns (MEDIUM confidence -- cross-domain)
+- [Expand-Migrate-Contract Pattern](https://docs.gitlab.com/development/multi_version_compatibility/) -- Additive changes first, migrate consumers, then remove old behavior
+- [C++ Modules Backward Compatibility](https://build2.org/article/cxx-modules-misconceptions.xhtml) -- Dual header/module support, ODR preservation across module boundaries
 
 ---
-*Pitfalls research for: Snow v1.7 Loops & Iteration milestone*
-*Researched: 2026-02-08*
+*Pitfalls research for: Snow v1.8 Module System milestone*
+*Researched: 2026-02-09*

@@ -1,375 +1,400 @@
-# Stack Research: Loops & Iteration
+# Stack Research: Module System
 
-**Domain:** Compiler feature addition -- for..in loops, while loops, break/continue, Range iteration
-**Researched:** 2026-02-08
-**Confidence:** HIGH (based on direct codebase analysis + LLVM IR patterns + Inkwell API verification)
+**Domain:** Multi-file module system for Snow compiler -- dependency graph resolution, module name resolution, cross-file symbol tables, visibility enforcement
+**Researched:** 2026-02-09
+**Confidence:** HIGH (based on direct codebase analysis of all 11 crates, ecosystem research, and established compiler patterns)
 
 ## Executive Summary
 
-Loops and iteration require NO new external dependencies. The feature is implemented entirely through changes across all compiler layers (lexer, parser, typeck, MIR, codegen) plus two small runtime additions. The critical design decisions are: (1) use the alloca+branch pattern for loop result values (matching the existing `codegen_if` pattern, NOT phi nodes), (2) implement `for..in` as a compiler-generated index loop over collections (NOT an iterator protocol), and (3) implement `break`/`continue` via alloca+conditional-branch to loop exit/header blocks (NOT exception-style unwinding or setjmp/longjmp).
+The module system requires **ZERO new external dependencies**. Everything needed is available through Rust's standard library and the existing crate dependencies (rustc-hash, rowan, ariadne, inkwell). The work is entirely internal to the Snow compiler's architecture -- extending the existing pipeline from single-file to multi-file compilation.
 
-The existing codebase already has `for`, `in`, and `do`/`end` as keywords. `while`, `break`, and `continue` must be added as new keywords. The Range runtime already has `snow_range_new` and `snow_range_length`; Set needs a new `snow_set_to_list` runtime function for iteration. All other collections (List, Map, Range) already expose the necessary runtime primitives for index-based iteration (`snow_list_length`/`snow_list_get`, `snow_map_keys`/`snow_map_values`, `snow_range_length`/direct start+end access).
+The key decisions are: (1) implement topological sort by hand (~40 lines) rather than pulling in petgraph, because the module dependency graph is small and the algorithm is trivial; (2) extend `TypeEnv` to support module-scoped symbol tables rather than introducing a separate symbol table crate; (3) build `ModuleGraph` as a new data structure in `snow-common` that all downstream crates can reference; and (4) extend the existing `TypeckResult` and `MirModule` to carry per-module data rather than replacing them with entirely new abstractions.
 
-## What Exists Today (DO NOT CHANGE)
+## What Exists Today (DO NOT CHANGE -- Build Atop These)
 
-These are existing capabilities that loops build on, not replaces.
+### Parser Infrastructure Already Present
 
-### Keywords Already Reserved
+The parser already handles all module-related syntax. This is the foundation to build on, not replace.
 
-| Keyword | Status | Relevance |
-|---------|--------|-----------|
-| `for` | Already lexed as `TokenKind::For`, mapped to `SyntaxKind::FOR_KW` | Used for `for..in` syntax |
-| `in` | Already lexed as `TokenKind::In`, mapped to `SyntaxKind::IN_KW` | Used for `for x in collection` |
-| `do` | Already lexed as `TokenKind::Do` | Block delimiter: `for x in coll do ... end` |
-| `end` | Already lexed as `TokenKind::End` | Block terminator |
+| CST Node | Status | Current Handling |
+|----------|--------|-----------------|
+| `MODULE_DEF` | Parsed correctly | Typeck skips it (`Item::ModuleDef(_) => None`) |
+| `IMPORT_DECL` | Parsed correctly | Typeck validates stdlib module names only |
+| `FROM_IMPORT_DECL` | Parsed correctly | Typeck injects stdlib function schemes into env |
+| `IMPORT_LIST` | Parsed correctly | Used by `FromImportDecl` |
+| `PATH` (qualified) | Parsed correctly | `Foo.Bar.Baz` dot-separated paths |
+| `VISIBILITY` (`pub`) | Parsed correctly | Not enforced -- everything is currently public |
+| `MODULE_KW` | Lexed and mapped | `TokenKind::Module -> SyntaxKind::MODULE_KW` |
+| `IMPORT_KW` | Lexed and mapped | `TokenKind::Import -> SyntaxKind::IMPORT_KW` |
+| `PUB_KW` | Lexed and mapped | `TokenKind::Pub -> SyntaxKind::PUB_KW` |
 
-### Runtime Primitives Already Available
+### AST Accessors Already Present
 
-| Function | Signature | Purpose |
-|----------|-----------|---------|
-| `snow_list_length(list) -> i64` | `(ptr) -> i64` | Get list element count |
-| `snow_list_get(list, index) -> u64` | `(ptr, i64) -> i64` | Get element at index |
-| `snow_map_keys(map) -> ptr` | `(ptr) -> ptr` | Get List of keys |
-| `snow_map_values(map) -> ptr` | `(ptr) -> ptr` | Get List of values |
-| `snow_map_size(map) -> i64` | `(ptr) -> i64` | Get entry count |
-| `snow_set_size(set) -> i64` | `(ptr) -> i64` | Get element count |
-| `snow_range_new(start, end) -> ptr` | `(i64, i64) -> ptr` | Create Range [start, end) |
-| `snow_range_length(range) -> i64` | `(ptr) -> i64` | Get Range element count |
+From `snow-parser/src/ast/item.rs`:
 
-### LLVM Codegen Patterns Already Established
+```
+SourceFile::modules()   -> Iterator<Item = ModuleDef>
+ModuleDef::name()       -> Option<Name>
+ModuleDef::items()      -> Iterator<Item = Item>
+ImportDecl::module_path() -> Option<Path>
+FromImportDecl::module_path() -> Option<Path>
+FromImportDecl::import_list() -> Option<ImportList>
+ImportList::names()     -> Iterator<Item = NameRef>
+Path::segments()        -> Vec<String>  (dot-separated)
+```
 
-| Pattern | Where Used | Relevance |
-|---------|-----------|-----------|
-| Alloca + store + load for control flow merges | `codegen_if` (expr.rs:856-913) | Loop result values use same pattern |
-| `append_basic_block` + `build_conditional_branch` | `codegen_if`, `codegen_match` | Loop header/body/exit blocks |
-| `build_unconditional_branch` with terminator check | `codegen_if` then/else branches | Loop back-edge and break/continue |
-| `build_phi` for short-circuit booleans | `codegen_binop` AND/OR (expr.rs:334-410) | Available but NOT recommended for loops (alloca pattern is simpler) |
+### Current Module Resolution (Stdlib Only)
 
-### Type System
+In `snow-typeck/src/infer.rs` (6,104 lines):
+- `stdlib_modules()` builds `HashMap<String, HashMap<String, Scheme>>` with 14 hardcoded modules (String, IO, Env, File, List, Map, Set, Tuple, Range, Queue, HTTP, JSON, Request, Job)
+- `from X import y` injects the bare name AND a prefixed form (`string_length`) into the type env
+- `import X` is effectively a no-op (qualified access via `X.y` is handled in field_access inference)
+- `Item::ModuleDef(_) => None` -- user-defined modules are completely ignored
 
-| Type | Representation | Iteration Behavior |
-|------|---------------|-------------------|
-| `List<T>` | `Ty::App(Con("List"), [T])` | Yields `T` elements by index |
-| `Map<K, V>` | `Ty::App(Con("Map"), [K, V])` | Yields `(K, V)` tuple pairs via keys+values lists |
-| `Set<T>` | `Ty::App(Con("Set"), [T])` | Yields `T` elements (needs `snow_set_to_list`) |
-| `Range` | `Ty::Con(TyCon::new("Range"))` | Yields `Int` values from start to end-1 |
-| `String` | `Ty::Con(TyCon::new("String"))` | Defer string iteration to future milestone |
+### Current Compiler Pipeline (Single File)
+
+```
+snowc build <dir>
+  -> find main.snow
+  -> read source string
+  -> snow_parser::parse(&source) -> Parse
+  -> snow_typeck::check(&parse) -> TypeckResult
+  -> snow_codegen::compile_to_binary(&parse, &typeck, ...) -> binary
+```
+
+Everything operates on a single `Parse` + single `TypeckResult`. The module system must extend this to handle N files.
+
+### MIR Module Structure
+
+`MirModule` already has the concept of a module -- it just holds everything from one file:
+
+```rust
+pub struct MirModule {
+    pub functions: Vec<MirFunction>,
+    pub structs: Vec<MirStructDef>,
+    pub sum_types: Vec<MirSumTypeDef>,
+    pub entry_function: Option<String>,
+    pub service_dispatch: HashMap<String, (Vec<...>, Vec<...>)>,
+}
+```
+
+### Existing Dependency Infrastructure
+
+`snow-pkg` already handles **package-level** dependency resolution (external packages via git2, semver, TOML manifests). The module system is **within** a single package -- it resolves `.snow` files relative to the project root, not external packages.
 
 ## Recommended Stack Changes
 
-### Change 1: New Keywords -- `while`, `break`, `continue` (Lexer Layer)
+### Change 1: ModuleGraph Data Structure (snow-common)
 
-**What:** Add three new keywords to `TokenKind` and `SyntaxKind`.
+**What:** Add a `ModuleGraph` struct to `snow-common` that represents the dependency DAG of `.snow` files in a project.
 
-**Why:** `for` and `in` are already keywords. `while`, `break`, and `continue` are not. These are needed for while-loop syntax and non-local loop control flow.
+**Why:** Every crate in the pipeline (parser, typeck, codegen) needs to know which modules exist and their dependency order. Putting this in `snow-common` makes it accessible everywhere.
 
-| File | Change | Details |
-|------|--------|---------|
-| `snow-common/src/token.rs` | Add `While`, `Break`, `Continue` to `TokenKind` | 3 new keyword variants |
-| `snow-common/src/token.rs` | Add to `keyword_from_str()` match | `"while" => Some(TokenKind::While)`, etc. |
-| `snow-parser/src/syntax_kind.rs` | Add `WHILE_KW`, `BREAK_KW`, `CONTINUE_KW` | 3 new SyntaxKind variants |
-| `snow-parser/src/syntax_kind.rs` | Add `From<TokenKind>` conversions | `TokenKind::While => SyntaxKind::WHILE_KW`, etc. |
-
-**Keyword count:** Goes from 45 to 48. Tests that assert `keywords.len() == 45` must be updated.
-
-**Why not reuse existing keywords:** `while` has no existing keyword equivalent. `break` and `continue` could theoretically be functions, but they need special control-flow semantics (jump to loop header/exit) that cannot be expressed as function calls.
-
-### Change 2: New CST Nodes -- FOR_EXPR, WHILE_EXPR, BREAK_EXPR, CONTINUE_EXPR (Parser Layer)
-
-**What:** Add four new `SyntaxKind` variants and corresponding AST wrapper types.
-
-**Why:** The parser must produce distinct CST nodes for each loop construct so that later passes (typeck, MIR) can handle them with the correct semantics.
-
-| SyntaxKind | Syntax | AST Type | Children |
-|------------|--------|----------|----------|
-| `FOR_EXPR` | `for x in coll do body end` | `ForExpr` | binding pattern, iterable expr, body block |
-| `WHILE_EXPR` | `while cond do body end` | `WhileExpr` | condition expr, body block |
-| `BREAK_EXPR` | `break` or `break value` | `BreakExpr` | optional value expr |
-| `CONTINUE_EXPR` | `continue` | `ContinueExpr` | (none) |
-
-**Parser grammar (Elixir-style):**
-
-```
-for_expr   := FOR pattern IN expr DO block END
-while_expr := WHILE expr DO block END
-break_expr := BREAK [expr]
-continue_expr := CONTINUE
-```
-
-**Why `for..in..do..end` (not `for..in..{}`)**:  Snow uses `do..end` blocks everywhere (if, case, fn, actor, service, supervisor). Consistency with existing syntax is non-negotiable.
-
-**Why `break value` (not just `break`):** Both `for` and `while` are expressions that return values. `break value` provides the return value when breaking early, matching Rust's `break 'label value` semantics. Without a value, `break` returns `Unit`.
-
-### Change 3: New MIR Nodes -- WhileLoop, ForLoop, Break, Continue (MIR Layer)
-
-**What:** Add four new `MirExpr` variants.
-
-**Why:** MIR must represent loops explicitly so that codegen can emit the correct basic block structure. Desugaring loops entirely at the typeck/AST level would be possible but fragile -- the MIR is the right level for explicit control flow.
-
-| MirExpr Variant | Fields | Type |
-|-----------------|--------|------|
-| `WhileLoop { cond, body, ty }` | condition: `Box<MirExpr>`, body: `Box<MirExpr>`, ty: `MirType` | Result type of the loop (from `break value` or `Unit`) |
-| `ForLoop { var, iterable, body, ty, collection_kind }` | var: `String`, iterable: `Box<MirExpr>`, body: `Box<MirExpr>`, ty: `MirType`, collection_kind: `CollectionKind` | Loop result type |
-| `Break { value, ty }` | value: `Option<Box<MirExpr>>`, ty: `MirType::Never` | Never type (break transfers control) |
-| `Continue` | (none) | `MirType::Never` |
-
-**`CollectionKind` enum:**
+**Key types:**
 
 ```rust
-enum CollectionKind {
-    List,        // index loop: snow_list_length + snow_list_get
-    Map,         // key-value pairs: snow_map_keys + snow_map_values + indexed access
-    Set,         // convert to list: snow_set_to_list + indexed access
-    Range,       // integer range: direct start/end arithmetic, no runtime calls in loop body
+/// Unique identifier for a module within a compilation unit.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct ModuleId(pub u32);
+
+/// Metadata about a single module (source file).
+pub struct ModuleInfo {
+    /// Unique ID.
+    pub id: ModuleId,
+    /// Fully qualified module name (e.g., "Math.Vector").
+    pub name: String,
+    /// Filesystem path relative to project root.
+    pub path: PathBuf,
+    /// Module IDs this module depends on (via import/from-import).
+    pub dependencies: Vec<ModuleId>,
+    /// Whether this module contains the entry point (main function).
+    pub is_entry: bool,
+}
+
+/// The dependency graph of all modules in a project.
+pub struct ModuleGraph {
+    /// All modules, indexed by ModuleId.
+    pub modules: Vec<ModuleInfo>,
+    /// Name-to-ID lookup.
+    name_to_id: FxHashMap<String, ModuleId>,
+    /// Topologically sorted module IDs (dependencies before dependents).
+    pub topo_order: Vec<ModuleId>,
 }
 ```
 
-**Why `CollectionKind` in MIR (not generic iteration):** Snow does not have an Iterator trait or protocol. For v1.7, loop iteration is a compiler-known desugaring for each collection type. This avoids the complexity of iterator state machines, lazy evaluation, and trait resolution. Adding a generic `Iterable` trait is a future milestone.
+**Why in `snow-common`:** The `snow-common` crate already holds `TokenKind`, `Span`, error types -- shared primitives. `ModuleGraph` is a shared primitive that the driver, typeck, and codegen all need.
 
-**Why NOT desugar `for` into `while` in MIR:** While it is possible to desugar `for x in list do ... end` into a `while` loop with explicit index management, keeping `ForLoop` as a distinct MIR node has advantages: (1) codegen can emit optimized IR per collection type (Range uses pure integer arithmetic without runtime calls in the loop body), (2) future iterator protocol can be grafted onto the `ForLoop` node without changing the while-loop implementation, (3) debug info and error messages can reference the original `for` construct.
+**Why `FxHashMap` (already available):** `rustc-hash = "2"` is already in workspace dependencies. No new crate needed for the name lookup table.
 
-### Change 4: Type Checking Rules (Typeck Layer)
+### Change 2: Topological Sort (Hand-Written, NOT petgraph)
 
-**What:** Add inference rules for all four new expression types.
+**What:** Implement Kahn's algorithm (~40 lines of Rust) directly in `snow-common` or the compiler driver.
 
-**Why:** The type checker must determine: (1) what type the loop variable binds to (element type from collection type), (2) what type the loop expression evaluates to (from `break value` or body type for `for`, `Unit` for `while` by default), (3) that `break`/`continue` only appear inside loops.
+**Why NOT petgraph:** petgraph is a 10K+ line library optimized for complex graph algorithms (shortest paths, max flow, isomorphism). Snow's module graph is a simple DAG with typically 5-50 nodes. A hand-written toposort is:
+- Simpler to understand (40 lines vs. learning petgraph's type system)
+- Zero dependency cost
+- Exactly the algorithm needed (Kahn's with cycle detection), nothing more
+- Matches how rustc, Go, and most compilers implement this internally
 
-**Key type rules:**
-
-| Expression | Inferred Type | Rule |
-|------------|--------------|------|
-| `for x in list do body end` | `List<T>` where `T` = body's return type | Collects body results into a new list (map-like semantics) |
-| `for x in range do body end` | `List<T>` where `T` = body's return type | Same map-like semantics |
-| `while cond do body end` | `Unit` (or type of `break value` if used) | Loops are Unit by default; `break value` overrides |
-| `break` | `Never` | Transfers control; does not produce a value at the break site |
-| `break value` | `Never` | The value's type must unify with the loop's result type |
-| `continue` | `Never` | Transfers control |
-
-**For-loop element type extraction:**
-
-| Collection Type | Element Type | How Extracted |
-|----------------|--------------|---------------|
-| `List<T>` | `T` | `extract_list_elem_type` (already exists in lower.rs) |
-| `Map<K, V>` | `(K, V)` tuple | New extraction from `Ty::App(Con("Map"), [K, V])` |
-| `Set<T>` | `T` | New extraction from `Ty::App(Con("Set"), [T])` |
-| `Range` | `Int` | Hardcoded (Range always yields Int) |
-
-**For-loop return semantics (critical design decision):**
-
-Two plausible designs exist:
-
-- **Option A: for-loop as map (returns `List<T>`)** -- `for x in [1,2,3] do x * 2 end` returns `[2,4,6]`
-- **Option B: for-loop as statement (returns `Unit`)** -- `for x in [1,2,3] do x * 2 end` returns `()`
-
-**Recommendation: Option A (map semantics).** This follows Elixir's `for` comprehension and makes `for..in` immediately useful as an expression. The `while` loop serves the "statement-like, repeat until done" use case. This differentiation makes both constructs feel purposeful rather than redundant.
-
-**Context validation for break/continue:**
-
-The type checker must track whether it is inside a loop. A boolean `in_loop` flag or a loop-context stack is sufficient. `break`/`continue` outside a loop produces a diagnostic error. Break's value type must unify with the for-loop's element type or the while-loop's result type.
-
-### Change 5: LLVM Codegen -- Loop Basic Block Structure (Codegen Layer)
-
-**What:** Implement `codegen_while_loop`, `codegen_for_loop`, `codegen_break`, `codegen_continue`.
-
-**Why:** This is where loops become actual machine code. The LLVM IR structure follows well-established patterns used by every LLVM-based compiler.
-
-#### While-loop IR pattern (alloca+branch, NOT phi):
-
-```
-entry:
-  %result = alloca T                  ; result slot (for break value)
-  store unit, %result                 ; default: Unit
-  br label %loop_header
-
-loop_header:
-  %cond = <codegen condition>
-  br i1 %cond, label %loop_body, label %loop_exit
-
-loop_body:
-  <codegen body>
-  br label %loop_header               ; back-edge
-
-loop_exit:
-  %val = load T, %result              ; load result (unit or break value)
-  ; continues to next instruction
-```
-
-**Why alloca+branch, NOT phi nodes:** The existing Snow codegen uses alloca+store+load for `if` expressions (expr.rs:866-912). The alloca pattern is simpler to implement, easier to reason about for `break` from nested contexts, and LLVM's `mem2reg` pass promotes these allocas to SSA registers anyway. Phi nodes require tracking which basic block each incoming value came from, which gets complex with nested loops, break, and continue. The alloca pattern sidesteps this entirely.
-
-#### For-loop over List IR pattern:
-
-```
-entry:
-  %result_list = call @snow_list_new()    ; accumulator for map semantics
-  %len = call @snow_list_length(%iterable)
-  %idx = alloca i64
-  store i64 0, %idx
-  br label %for_header
-
-for_header:
-  %i = load i64, %idx
-  %done = icmp sge i64 %i, %len
-  br i1 %done, label %for_exit, label %for_body
-
-for_body:
-  %elem = call @snow_list_get(%iterable, %i)
-  ; bind elem to loop variable
-  <codegen body>
-  %result_list = call @snow_list_append(%result_list, %body_val)
-  %next = add i64 %i, 1
-  store i64 %next, %idx
-  br label %for_header
-
-for_exit:
-  ; %result_list is the loop's value
-```
-
-#### For-loop over Range IR pattern (optimized -- no runtime calls in body):
-
-```
-entry:
-  %start_ptr = bitcast %range to i64*
-  %start = load i64, %start_ptr           ; direct memory access, no fn call
-  %end_ptr = getelementptr i64, %start_ptr, 1
-  %end = load i64, %end_ptr
-  %result_list = call @snow_list_new()
-  %idx = alloca i64
-  store i64 %start, %idx
-  br label %range_header
-
-range_header:
-  %i = load i64, %idx
-  %done = icmp sge i64 %i, %end
-  br i1 %done, label %range_exit, label %range_body
-
-range_body:
-  ; %i IS the element (no snow_list_get needed)
-  <codegen body with %i as loop variable>
-  %result_list = call @snow_list_append(%result_list, %body_val)
-  %next = add i64 %i, 1
-  store i64 %next, %idx
-  br label %range_header
-
-range_exit:
-  ; %result_list is the loop's value
-```
-
-**Why Range is optimized:** Range has a known layout `{i64 start, i64 end}`. The loop counter IS the element value. No runtime function calls inside the loop body (unlike List which needs `snow_list_get` per iteration). The start and end values are loaded once before the loop. This makes `for i in 0..1000000 do ... end` as fast as a C for-loop.
-
-#### Break/Continue codegen:
-
-```
-; break (no value):
-  store unit, %loop_result_alloca
-  br label %loop_exit
-
-; break value:
-  %v = <codegen value>
-  store %v, %loop_result_alloca
-  br label %loop_exit
-
-; continue:
-  br label %loop_header
-```
-
-**Implementation mechanism:** The `CodeGen` struct needs a **loop context stack** to track the current loop's header block, exit block, and result alloca:
+**Implementation sketch:**
 
 ```rust
-struct LoopContext<'ctx> {
-    header_bb: BasicBlock<'ctx>,
-    exit_bb: BasicBlock<'ctx>,
-    result_alloca: Option<PointerValue<'ctx>>,  // None for for-loops (result is the list)
-}
+/// Topological sort using Kahn's algorithm.
+/// Returns Err with cycle participants if the graph has cycles.
+pub fn topological_sort(graph: &ModuleGraph) -> Result<Vec<ModuleId>, Vec<ModuleId>> {
+    let n = graph.modules.len();
+    let mut in_degree = vec![0u32; n];
+    for module in &graph.modules {
+        for &dep in &module.dependencies {
+            in_degree[dep.0 as usize] += 1;
+        }
+    }
 
-// Added to CodeGen struct:
-loop_stack: Vec<LoopContext<'ctx>>,
+    let mut queue: VecDeque<ModuleId> = in_degree.iter()
+        .enumerate()
+        .filter(|(_, &d)| d == 0)
+        .map(|(i, _)| ModuleId(i as u32))
+        .collect();
+
+    let mut order = Vec::with_capacity(n);
+    while let Some(id) = queue.pop_front() {
+        order.push(id);
+        for &dep in &graph.modules[id.0 as usize].dependencies {
+            in_degree[dep.0 as usize] -= 1;
+            if in_degree[dep.0 as usize] == 0 {
+                queue.push_back(dep);
+            }
+        }
+    }
+
+    if order.len() == n {
+        Ok(order)
+    } else {
+        // Remaining nodes form cycles
+        let in_cycle: Vec<ModuleId> = (0..n)
+            .filter(|&i| in_degree[i] > 0)
+            .map(|i| ModuleId(i as u32))
+            .collect();
+        Err(in_cycle)
+    }
+}
 ```
 
-`break` and `continue` pop from this stack to find their target blocks. Nested loops work naturally -- inner break/continue target the innermost loop's blocks.
+**Cycle detection produces actionable errors:** When `Err(cycle_nodes)` is returned, the driver can report which modules form cycles, which files are involved, and which import statements create the cycle -- using the existing ariadne diagnostic infrastructure.
 
-### Change 6: New Runtime Functions (Runtime Layer)
+### Change 3: File Discovery and Module Name Convention (Driver Layer)
 
-**What:** Add `snow_set_to_list` and `snow_range_start`/`snow_range_end` helper functions.
+**What:** Extend `snowc build` to discover all `.snow` files in the project directory and map them to module names.
 
-| Function | Signature | Purpose | Why Needed |
-|----------|-----------|---------|------------|
-| `snow_set_to_list(set) -> ptr` | `(ptr) -> ptr` | Convert Set elements to a List for indexed iteration | Set has no `get(index)` -- must convert to List first |
-| `snow_range_start(range) -> i64` | `(ptr) -> i64` | Get start value of Range | Codegen can GEP directly, but this is cleaner for the initial impl |
-| `snow_range_end(range) -> i64` | `(ptr) -> i64` | Get end value of Range | Same rationale |
+**Why:** Currently `build()` reads only `main.snow`. Multi-file compilation requires discovering and ordering all source files.
 
-**Note on Range codegen:** For the optimized Range path, codegen could directly emit GEP instructions to read the `{i64, i64}` struct fields (since Range layout is `{start: i64, end: i64}` at offset 0 and 8). The `snow_range_start`/`snow_range_end` functions are an optional convenience. The recommendation is to use direct GEP for Range (matching how struct field access already works in codegen) and add the runtime functions only if needed for other purposes.
+**Module name convention (file-system based):**
 
-**Set iteration strategy:** Convert Set to List upfront (`snow_set_to_list`), then iterate the List. This is simpler than adding `snow_set_get(set, index)` (which would require the Set to maintain a stable index, conflicting with its unordered semantics). The conversion cost is O(n) and happens once before the loop, which is acceptable for the typical set sizes in Snow programs.
+```
+project/
+  main.snow          -> (entry point, no module name)
+  math.snow          -> module "Math"
+  math/
+    vector.snow      -> module "Math.Vector"
+    matrix.snow      -> module "Math.Matrix"
+  utils.snow         -> module "Utils"
+```
 
-**Map iteration strategy:** Use existing `snow_map_keys()` to get a List of keys, then iterate that List. For each key, call `snow_map_get(map, key)` to get the value. Alternatively, iterate both `snow_map_keys()` and `snow_map_values()` in parallel by index (both return Lists of the same length). The parallel-list approach avoids redundant hash lookups.
+- File name -> module name: capitalize first letter, strip `.snow`
+- Subdirectory -> dotted prefix: `math/vector.snow` -> `Math.Vector`
+- `main.snow` is special: entry point, not importable as a module
 
-### Change 7: Intrinsic Declarations (Codegen Layer)
+**What already exists:** `collect_snow_files_recursive()` in `snowc/src/main.rs` already walks directories to find `.snow` files (used by the `fmt` command). This can be reused/adapted for module discovery.
 
-**What:** Declare new runtime functions in `intrinsics.rs`.
+**No new dependencies needed.** `std::fs::read_dir` and `PathBuf` manipulation are sufficient.
 
-| Declaration | Purpose |
-|-------------|---------|
-| `snow_set_to_list(ptr) -> ptr` | Set-to-List conversion for for..in iteration |
+### Change 4: Per-Module Parse + Typecheck (Pipeline Extension)
 
-**Why minimal:** Most iteration is done via existing intrinsics (`snow_list_length`, `snow_list_get`, `snow_range_length`). Only Set lacks the necessary primitives.
+**What:** Parse each `.snow` file independently into its own `Parse`, then typecheck in topological order with cross-module symbol visibility.
 
-### Change 8: Formatter Support (Tooling Layer)
+**Why:** Rowan parse trees are naturally per-file (each `GreenNode` is self-contained). The type checker operates on one `Parse` at a time. Multi-file compilation means running the pipeline N times in dependency order, accumulating exported symbols.
 
-**What:** Handle new SyntaxKind variants in `snow-fmt`.
+**New data structures:**
 
-| File | Change |
-|------|--------|
-| `snow-fmt/src/walker.rs` | Walk `FOR_EXPR`, `WHILE_EXPR`, `BREAK_EXPR`, `CONTINUE_EXPR` |
-| `snow-fmt/src/printer.rs` | Format with correct indentation and newlines |
-| `snow-fmt/src/ir.rs` | IR nodes for new constructs |
+```rust
+/// All parse results for a compilation unit.
+pub struct CompilationUnit {
+    pub graph: ModuleGraph,
+    pub parses: Vec<(ModuleId, Parse)>,  // indexed by module
+}
 
-### Change 9: LSP Support (Tooling Layer)
+/// Cross-module symbol exports accumulated during type checking.
+pub struct ModuleExports {
+    /// Exported type schemes per module.
+    pub symbols: FxHashMap<ModuleId, FxHashMap<String, Scheme>>,
+    /// Exported type definitions per module.
+    pub types: FxHashMap<ModuleId, TypeRegistry>,
+    /// Exported trait registries per module.
+    pub traits: FxHashMap<ModuleId, TraitRegistry>,
+}
+```
 
-**What:** Handle new expression types in `snow-lsp` for syntax highlighting and analysis.
+**Why `FxHashMap` (not a new interning library):**
+- The existing TypeEnv uses `String` keys in `FxHashMap<String, Scheme>`
+- Module names and symbol names are short strings (typically 3-30 chars)
+- At 5-50 modules with 10-100 exports each, interning provides negligible benefit
+- String interning (lasso, string-interner) adds complexity for managing interner lifetimes across parse/typeck/codegen phases
+- If profiling later shows string comparison is a bottleneck (unlikely at this scale), interning can be added as an optimization without changing the architecture
 
-| File | Change |
-|------|--------|
-| `snow-lsp/src/analysis.rs` | Recognize loop constructs |
-| `snow-lsp/src/server.rs` | Semantic tokens for new keywords |
+### Change 5: Extended TypeEnv for Cross-Module Resolution (Typeck)
+
+**What:** Extend `TypeEnv` to support loading exported symbols from dependency modules before type-checking a module.
+
+**Why:** When type-checking module B that imports from module A, B's type environment needs A's exported symbols. Currently, only stdlib modules are loaded.
+
+**Approach:** Before type-checking module B:
+1. Look up B's dependencies from the `ModuleGraph`
+2. For each dependency module A, load A's exported public symbols into a "module scope" in B's environment
+3. Process `import` and `from...import` declarations to bring specific symbols into local scope
+
+**Key extension to `TypeEnv`:**
+
+```rust
+pub struct TypeEnv {
+    scopes: Vec<FxHashMap<String, Scheme>>,
+    /// Module-scoped exports: qualified name -> scheme.
+    /// E.g., "Math.Vector.add" -> Scheme { ... }
+    module_exports: FxHashMap<String, FxHashMap<String, Scheme>>,
+}
+```
+
+This keeps the existing scope-stack mechanism intact. Module imports add to `module_exports`, and qualified name resolution (`Math.Vector.add`) checks there. Unqualified access via `from Math.Vector import add` inserts directly into the scope stack (same as current stdlib behavior).
+
+### Change 6: Visibility Enforcement (Typeck)
+
+**What:** Enforce `pub` visibility modifiers during cross-module type checking.
+
+**Why:** The `VISIBILITY` node is already parsed and present in the CST. Currently, everything is public by default. With modules, non-`pub` items should only be visible within their defining module.
+
+**Rule:** When collecting exports from a module, only include items with a `VISIBILITY` child node (i.e., `pub fn`, `pub struct`, `pub type`). Items without `pub` are module-private.
+
+**Decision on default visibility:** Module-private by default (items without `pub` are not exported). This matches Rust, Elixir, and most modern languages. It is the safer default -- accidental exposure is worse than accidental hiding.
+
+**No new syntax needed.** `pub` is already a keyword, already parsed, and `VISIBILITY` nodes are already in the CST.
+
+### Change 7: Multi-Module MIR Merging (Codegen)
+
+**What:** After type-checking all modules, merge their MIR into a single `MirModule` for LLVM codegen.
+
+**Why:** LLVM compiles one module at a time. Rather than implementing separate compilation + linking of multiple LLVM modules (which would require a linker-level symbol resolution pass), merge all MIR functions/structs/sum_types into one `MirModule` and compile to a single LLVM module.
+
+**Why single-module compilation (not separate compilation + linking):**
+- Snow projects are small-to-medium (the compiler itself is 70K lines)
+- Single-module compilation avoids: cross-module LLVM symbol resolution, separate object file linking, duplicate definition conflicts
+- LLVM's optimization passes work better on a single module (inlining, LTO-like optimization by default)
+- If compilation time becomes an issue at scale, separate compilation can be added as an optimization later
+
+**Approach:** After type-checking all modules in topo order:
+
+```rust
+fn merge_mir_modules(modules: Vec<(ModuleId, MirModule)>) -> MirModule {
+    let mut merged = MirModule::new();
+    for (id, module) in modules {
+        // Prefix function names with module path to avoid collisions
+        for mut func in module.functions {
+            func.name = mangle_module_name(&module_name, &func.name);
+            merged.functions.push(func);
+        }
+        // Same for structs, sum types
+        merged.structs.extend(module.structs);
+        merged.sum_types.extend(module.sum_types);
+    }
+    merged.entry_function = find_main(&merged);
+    merged
+}
+```
+
+**Name mangling:** Module-qualified names use double-underscore separator: `Math__Vector__add`. This avoids conflicts with dot (used in qualified access syntax) and single underscore (used in snake_case names).
+
+### Change 8: Import Statement Resolution (Driver + Typeck)
+
+**What:** Resolve `import Math.Vector` and `from Math.Vector import add` to actual module files and their exported symbols.
+
+**Why:** Currently, import resolution is hardcoded to stdlib modules. User-defined modules need filesystem-based resolution.
+
+**Resolution algorithm:**
+
+```
+import Math.Vector
+  1. Convert path to filesystem: "math/vector.snow" or "math_vector.snow"
+  2. Look up in ModuleGraph by module name "Math.Vector"
+  3. If found, record dependency edge: current_module -> Math.Vector
+  4. Make Math.Vector's exports available for qualified access (Math.Vector.add)
+
+from Math.Vector import add, cross
+  1. Same resolution as above
+  2. Additionally: inject "add" and "cross" into current module's local scope
+  3. Verify each imported name exists in Math.Vector's public exports
+  4. Error if name not found or not public
+```
+
+**Error cases (all reportable via existing ariadne diagnostics):**
+- Module not found: "cannot find module 'Math.Vector' -- no file at math/vector.snow"
+- Name not exported: "'add' is not a public export of module 'Math.Vector'"
+- Circular import: "circular dependency detected: A imports B imports A"
+
+### Change 9: Diagnostic Enhancement (Typeck + Driver)
+
+**What:** Add new error codes for module-related diagnostics.
+
+**Why:** Module errors need clear, actionable messages. The existing ariadne-based diagnostic system handles this -- just add new `TypeError` variants.
+
+| Error Code | Message Pattern | When |
+|-----------|----------------|------|
+| `M0001` | Module not found | `import NonExistent` |
+| `M0002` | Circular dependency | Import cycle detected |
+| `M0003` | Name not exported | `from X import private_fn` |
+| `M0004` | Visibility violation | Accessing non-pub item from another module |
+| `M0005` | Duplicate module | Two files map to same module name |
+| `M0006` | Self-import | Module imports itself |
+
+**No new diagnostic library needed.** Ariadne 0.6 already supports multi-span labels, error codes, and fix suggestions.
 
 ## Alternatives Considered
 
 | Decision | Recommended | Alternative | Why Not |
 |----------|-------------|-------------|---------|
-| Loop result pattern | Alloca + branch | Phi nodes | Alloca is simpler, matches existing `if` pattern, LLVM `mem2reg` optimizes to SSA anyway |
-| For-loop iteration | Compiler-generated index loop | Iterator trait/protocol | Too complex for v1.7; iterator state machines, lazy evaluation, and trait resolution are a full milestone |
-| Break/continue mechanism | Branch to loop header/exit blocks | Exception-style unwinding (longjmp) | Unwinding is expensive, fragile with GC, and unnecessary for structured loops |
-| For-loop return type | `List<T>` (map semantics) | `Unit` (statement semantics) | Map semantics makes `for` immediately useful as an expression; `while` handles the statement case |
-| Set iteration | Convert to List upfront | Add `snow_set_get(index)` | Set is unordered; index-based access is semantically misleading |
-| Range iteration | Direct GEP on range struct | Call `snow_range_to_list` then iterate list | Direct GEP avoids O(n) allocation; Range loop is as fast as C for-loop |
-| MIR representation | Explicit `WhileLoop`/`ForLoop` nodes | Desugar to basic blocks in MIR | Explicit nodes preserve source-level semantics for diagnostics and future optimization |
+| Dependency graph | Hand-written Kahn's (~40 LOC) | petgraph 0.8.2 | Overkill for 5-50 node DAG; adds 10K+ lines of dependency for one function call |
+| Symbol storage | `FxHashMap<String, Scheme>` | String interning (lasso 0.7) | Negligible perf gain at this scale; adds lifetime complexity across compiler phases |
+| Module identity | `ModuleId(u32)` newtype | String-based module names everywhere | IDs are O(1) comparison, smaller in memory, prevent typo bugs |
+| Multi-file codegen | Merge MIR into single LLVM module | Separate compilation + LLVM linking | Single module gets better optimization; separate compilation adds linker complexity |
+| Visibility default | Private (require `pub` to export) | Public by default | Private-by-default is safer; matches Rust/Elixir conventions |
+| Module naming | File-system based (math/vector.snow -> Math.Vector) | Explicit `module Math.Vector` declarations in each file | FS-based is simpler, less boilerplate, matches Go and many modern languages |
+| Topological sort | Kahn's algorithm (BFS-based) | DFS-based toposort | Kahn's naturally detects cycles (remaining nodes after sort); DFS needs separate cycle detection |
+| Cross-module types | Extend existing TypeRegistry | New shared type database | TypeRegistry already holds struct/sum/alias defs; extending it is simpler than replacing it |
 
 ## What NOT to Add
 
-| Feature | Why Not |
-|---------|---------|
-| Iterator trait/protocol | Too complex for v1.7. Requires trait method dispatch for `next()`, state machine generation, lazy evaluation semantics. Separate milestone. |
-| `loop` (infinite loop keyword) | `while true do ... end` is clear enough. Can add later. |
-| Labeled breaks (`break :outer`) | Nested loop break-to-label requires label scoping, block naming. Defer to future. |
-| `for..in` over String (character iteration) | Requires exposing String as a sequence of characters. String is currently opaque `{len, data}`. Defer. |
-| Parallel/async iteration | Actor-based parallelism exists via `Job.map`. Loop-level parallelism is a separate concern. |
-| Generator/yield | Coroutine-based generators require stack management. The actor system uses corosensei but loops should not. |
-| Comprehension guards (`for x in list, x > 0`) | Elixir supports this, but it adds parser complexity. Use `for x in list.filter(fn x -> x > 0 end)` instead. |
-| `else` clause on loops | Python's `for...else` is widely considered confusing. Do not add. |
+| Dependency / Feature | Why Not |
+|---------------------|---------|
+| `petgraph` crate | Module graph is a simple DAG with <100 nodes. Kahn's algorithm is 40 lines. petgraph's type system complexity (generics over graph type, edge type, direction) is not worth it for one toposort call. |
+| `lasso` or `string-interner` | String interning optimizes repeated string comparisons. Snow modules have ~50-500 unique symbol names. FxHashMap already provides O(1) lookup. Interning adds lifetime management complexity that propagates through the entire compiler. Profile first, optimize later. |
+| `salsa` (incremental computation) | Incremental compilation is a separate concern. The initial module system should work correctly in batch mode. Salsa can be evaluated for the LSP/IDE experience in a future milestone. |
+| `dashmap` (concurrent HashMap) | Module type-checking is sequential (topological order). No parallelism needed at this stage. |
+| Separate LLVM modules per source file | Would require: LLVM module linking, cross-module symbol resolution, handling of duplicate type definitions. All for negligible compilation time benefit at Snow's scale. |
+| Generic module/package system | The module system handles files within one project. Cross-project dependencies are already handled by `snow-pkg`. Do not conflate the two. |
+| Module-level type parameters | `module Math<T>` is not a common pattern and adds enormous complexity. Modules are namespaces, not generic types. |
 
-## Technology Versions
+## Technology Versions (No Changes)
 
 | Technology | Current Version | Required Changes | Version Impact |
 |------------|----------------|-----------------|----------------|
-| Inkwell | 0.8.0 (llvm21-1) | None -- `build_alloca`, `build_conditional_branch`, `append_basic_block`, `build_phi` all available | No version change |
-| Rowan | 0.16 | None -- add SyntaxKind variants (no API change) | No version change |
-| Ariadne | 0.6 | None -- new diagnostic messages use existing API | No version change |
-| snow-common | - | Add 3 keywords to `TokenKind` | Internal change only |
-| snow-parser | - | Add 4 SyntaxKind variants, 4 AST types, parser rules | Internal change only |
-| snow-typeck | - | Add loop/break/continue inference rules, loop context tracking | Internal change only |
-| snow-codegen (MIR) | - | Add 4 MirExpr variants, `CollectionKind` enum, lowering logic | Internal change only |
-| snow-codegen (LLVM) | - | Add loop codegen functions, `LoopContext` struct, break/continue codegen | Internal change only |
-| snow-rt | - | Add `snow_set_to_list` function | Internal change only |
+| Rust std | stable 2024 edition | `std::fs`, `std::path`, `std::collections::VecDeque` for toposort | None |
+| rustc-hash | 2 | `FxHashMap` for module name lookup, symbol tables | Already in workspace deps, no change |
+| Rowan | 0.16 | Per-file `Parse` instances (already supported) | No change |
+| Ariadne | 0.6 | New diagnostic messages with existing API | No change |
+| Inkwell | 0.8.0 (llvm21-1) | Name-mangled functions in single LLVM module | No change |
+| serde | 1 (workspace) | Potentially serialize ModuleGraph for caching | Already in workspace deps, no change |
+| snow-common | internal | Add `ModuleId`, `ModuleInfo`, `ModuleGraph`, `topological_sort` | Internal additions |
+| snow-parser | internal | No parser changes -- all syntax already supported | No change |
+| snow-typeck | internal | Extend `TypeEnv`, add visibility enforcement, cross-module symbol loading | Internal extensions |
+| snow-codegen | internal | MIR merging, module-qualified name mangling | Internal extensions |
+| snowc | internal | Multi-file build pipeline, file discovery, module graph construction | Internal extensions |
 
 **No dependency additions. No version bumps. No new crates.**
 
@@ -377,74 +402,68 @@ loop_stack: Vec<LoopContext<'ctx>>,
 
 | Crate | Changes | Estimated Lines |
 |-------|---------|----------------|
-| `snow-common` | 3 keywords in `TokenKind`, update `keyword_from_str` | ~15 |
-| `snow-lexer` | Update tests for keyword count (45 -> 48) | ~10 |
-| `snow-parser` | 4 SyntaxKind variants, 4 AST types, parser rules for for/while/break/continue | ~200 |
-| `snow-typeck` | Inference rules for 4 new expressions, loop context tracking, element type extraction | ~150 |
-| `snow-codegen` (MIR) | 4 MirExpr variants, CollectionKind enum, lowering for for/while/break/continue | ~250 |
-| `snow-codegen` (codegen) | `codegen_while_loop`, `codegen_for_loop`, `codegen_break`, `codegen_continue`, `LoopContext` | ~300 |
-| `snow-codegen` (intrinsics) | Declare `snow_set_to_list` | ~5 |
-| `snow-rt` | `snow_set_to_list` implementation | ~20 |
-| `snow-fmt` | Handle 4 new SyntaxKind variants | ~40 |
-| `snow-lsp` | Recognize new constructs | ~20 |
-| Tests | Parser, typeck, MIR, codegen, e2e tests | ~400 |
+| `snow-common` | `ModuleId`, `ModuleInfo`, `ModuleGraph`, `topological_sort()` | ~150 |
+| `snow-parser` | No changes needed (all syntax already parsed) | 0 |
+| `snow-typeck` | Extend `TypeEnv` with module exports, visibility enforcement, cross-module symbol loading, new `TypeError` variants | ~400 |
+| `snow-codegen` (MIR) | Module-qualified name mangling in lowering | ~100 |
+| `snow-codegen` (codegen) | Handle mangled names, merge MIR modules | ~100 |
+| `snowc` (driver) | File discovery, module graph construction, multi-file build pipeline, import resolution | ~300 |
+| `snow-fmt` | No changes (module/import formatting already works) | 0 |
+| `snow-lsp` | Multi-file project awareness (module-aware diagnostics) | ~100 |
+| Tests | Module resolution, visibility, circular deps, cross-module typeck, e2e multi-file | ~500 |
+| **Total** | | **~1,650** |
 
-**Total estimated:** ~1,400 lines of new/modified code.
+## Integration Points with Existing Architecture
 
-## Critical LLVM IR Patterns Reference
+### Parser -> ModuleGraph (no coupling needed)
 
-### 1. The Alloca+Branch Pattern (established in Snow codebase)
+Each `.snow` file is parsed independently. The `ModuleGraph` is built by the driver by scanning import declarations in each `Parse` result. The parser does not need to know about the module graph.
 
-From `codegen_if` (expr.rs:856-913), the pattern Snow uses for control-flow merges:
+### ModuleGraph -> Typeck (dependency ordering)
 
-```
-%result = alloca T
-; ... branches that store to %result ...
-%val = load T, %result
-```
-
-LLVM's `mem2reg` pass (part of the standard optimization pipeline) converts these allocas to phi nodes automatically. This means the generated IR is semantically equivalent to hand-written phi nodes but much easier to produce programmatically.
-
-### 2. Loop Back-Edge Detection
-
-LLVM identifies loops via back-edges in the CFG. The `loop_body -> loop_header` branch is a back-edge because `loop_header` dominates `loop_body`. LLVM's loop optimization passes (LICM, loop unrolling, induction variable simplification) automatically detect this structure. No special annotations needed.
-
-### 3. Terminator Checking
-
-From `codegen_if` (expr.rs:887, 899): before emitting a branch, check if the current block already has a terminator. This is critical for `break`/`continue` -- after emitting a branch to the loop exit/header, the current block IS terminated, so subsequent code in the loop body must not emit another terminator. The pattern:
+The typeck phase processes modules in topological order. Before type-checking module B, all of B's dependencies have been type-checked, and their exports are available. This is a simple loop:
 
 ```rust
-if self.builder.get_insert_block().unwrap().get_terminator().is_none() {
-    self.builder.build_unconditional_branch(target_bb)?;
+for &module_id in &graph.topo_order {
+    let parse = &parses[module_id];
+    let imports = resolve_imports(module_id, &graph, &exports);
+    let typeck = check_with_imports(parse, &imports);
+    exports.insert(module_id, collect_public_exports(&typeck));
 }
 ```
 
-This is essential for correctness when `break`/`continue` appear in the middle of a block (before other expressions).
+### Typeck -> MIR -> Codegen (merge and mangle)
+
+After all modules are type-checked, MIR lowering happens per-module, then MIR modules are merged. Name mangling prevents collisions. The single merged `MirModule` feeds into the existing codegen pipeline unchanged.
+
+### Stdlib Modules (backward compatible)
+
+The existing `stdlib_modules()` hardcoded map continues to work. It provides built-in modules (String, IO, List, etc.) that are always available. User-defined modules are resolved through the `ModuleGraph`. Resolution order: user modules first, then stdlib fallback. This means a user module named "String" would shadow the stdlib String module -- which is acceptable and expected behavior.
 
 ## Sources
 
 ### Primary (HIGH confidence)
-- Direct codebase analysis: 67,546 lines of Snow compiler across 11 crates
-- `snow-codegen/src/codegen/expr.rs` lines 856-913: existing alloca+branch pattern for `if`
-- `snow-codegen/src/codegen/expr.rs` lines 334-410: existing phi node pattern for short-circuit AND/OR
-- `snow-codegen/src/mir/mod.rs`: full MirExpr enum (current 30+ variants)
-- `snow-common/src/token.rs`: keyword list (45 keywords, `for`/`in` present, `while`/`break`/`continue` absent)
-- `snow-rt/src/collections/range.rs`: Range layout `{i64 start, i64 end}`, existing API
-- `snow-rt/src/collections/list.rs`: List layout `{u64 len, u64 cap, data[]}`, `snow_list_get`/`snow_list_length`
-- `snow-rt/src/collections/set.rs`: Set API (NO `to_list` or index-get function)
-- `snow-rt/src/collections/map.rs`: `snow_map_keys`/`snow_map_values` return Lists
-- `snow-codegen/src/codegen/intrinsics.rs`: all declared runtime functions
+- Direct codebase analysis: `snowc/src/main.rs` build pipeline (lines 194-262)
+- `snow-typeck/src/infer.rs` stdlib module resolution (lines 205-491)
+- `snow-typeck/src/env.rs` TypeEnv scope stack (full file, 141 lines)
+- `snow-parser/src/syntax_kind.rs` existing MODULE_DEF, IMPORT_DECL, FROM_IMPORT_DECL, VISIBILITY nodes
+- `snow-parser/src/ast/item.rs` ModuleDef, ImportDecl, FromImportDecl AST accessors
+- `snow-codegen/src/mir/lower.rs` line 648: modules/imports explicitly skipped
+- `snow-codegen/src/mir/mod.rs` MirModule struct definition
+- `snow-common/Cargo.toml` existing dependencies (serde only)
 
 ### Secondary (MEDIUM-HIGH confidence)
-- [Inkwell GitHub Repository](https://github.com/TheDan64/inkwell) -- API for `build_phi`, `build_alloca`, `build_conditional_branch`
-- [Inkwell BasicBlock Documentation](https://thedan64.github.io/inkwell/inkwell/basic_block/struct.BasicBlock.html) -- BasicBlock API
-- [LLVM Language Reference: Loop Terminology](https://llvm.org/docs/LoopTerminology.html) -- LLVM's loop detection via back-edges
-- [LLVM mem2reg pass](https://llvm.org/docs/Passes.html#mem2reg-promote-memory-to-register) -- alloca promotion to SSA
+- [petgraph toposort API](https://docs.rs/petgraph/latest/petgraph/algo/fn.toposort.html) -- evaluated and rejected for this use case
+- [petgraph crate](https://crates.io/crates/petgraph) -- version 0.8.2, evaluated
+- [rustc Name Resolution](https://rustc-dev-guide.rust-lang.org/name-resolution.html) -- rib-based scope resolution pattern
+- [Rust Compiler Overview](https://rustc-dev-guide.rust-lang.org/overview.html) -- compilation pipeline architecture
+- [Rowan GitHub](https://github.com/rust-analyzer/rowan) -- per-file GreenNode independence confirmed
 
 ### Tertiary (MEDIUM confidence)
-- [Create Your Own Programming Language with Rust](https://createlang.rs/01_calculator/basic_llvm.html) -- Inkwell tutorial with basic block patterns
-- Elixir for-comprehension semantics -- `for x <- list, do: expr` returns collected results
+- [String interners in Rust](https://dev.to/cad97/string-interners-in-rust-797) -- evaluated lasso, string-interner, internment; rejected for this scale
+- [topo_sort crate](https://docs.rs/topo_sort) -- evaluated, hand-written preferred for simplicity
+- [Build a Compiler Symbol Table](https://marcauberer.medium.com/build-a-compiler-symbol-table-2d4582234112) -- general symbol table patterns
 
 ---
-*Stack research for: Snow compiler loops & iteration features (v1.7)*
-*Researched: 2026-02-08*
+*Stack research for: Snow compiler module system features*
+*Researched: 2026-02-09*
