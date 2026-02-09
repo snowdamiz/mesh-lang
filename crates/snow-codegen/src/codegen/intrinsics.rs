@@ -386,6 +386,14 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
     // snow_string_to_string(val: u64) -> ptr (identity for string elements in collections)
     module.add_function("snow_string_to_string", ptr_type.fn_type(&[i64_type.into()], false), Some(inkwell::module::Linkage::External));
 
+    // ── List Eq/Ord runtime functions (Phase 27 Plan 01) ──────────────
+
+    // snow_list_eq(list_a: ptr, list_b: ptr, elem_eq: ptr) -> i8
+    module.add_function("snow_list_eq", i8_type.fn_type(&[ptr_type.into(), ptr_type.into(), ptr_type.into()], false), Some(inkwell::module::Linkage::External));
+
+    // snow_list_compare(list_a: ptr, list_b: ptr, elem_cmp: ptr) -> i64
+    module.add_function("snow_list_compare", i64_type.fn_type(&[ptr_type.into(), ptr_type.into(), ptr_type.into()], false), Some(inkwell::module::Linkage::External));
+
     // ── Service runtime functions (Phase 9 Plan 03) ──────────────────────
 
     // snow_service_call(target_pid: i64, msg_tag: i64, payload_ptr: ptr, payload_size: i64) -> ptr
@@ -606,6 +614,10 @@ mod tests {
         assert!(module.get_function("snow_map_to_string").is_some());
         assert!(module.get_function("snow_set_to_string").is_some());
         assert!(module.get_function("snow_string_to_string").is_some());
+
+        // List Eq/Ord runtime functions (Phase 27 Plan 01)
+        assert!(module.get_function("snow_list_eq").is_some());
+        assert!(module.get_function("snow_list_compare").is_some());
     }
 
     #[test]

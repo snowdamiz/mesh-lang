@@ -288,6 +288,72 @@ pub extern "C" fn snow_list_from_array(data: *const u64, count: i64) -> *mut u8 
     }
 }
 
+/// Compare two lists for equality using an element-comparison callback.
+///
+/// `elem_eq` is a bare function pointer `fn(u64, u64) -> i8` that returns 1
+/// if two elements are equal, 0 otherwise. Returns 1 if lists are equal, 0 if not.
+#[no_mangle]
+pub extern "C" fn snow_list_eq(
+    list_a: *mut u8,
+    list_b: *mut u8,
+    elem_eq: *mut u8,
+) -> i8 {
+    type ElemEq = unsafe extern "C" fn(u64, u64) -> i8;
+
+    unsafe {
+        let len_a = list_len(list_a);
+        let len_b = list_len(list_b);
+        if len_a != len_b {
+            return 0;
+        }
+        let data_a = list_data(list_a);
+        let data_b = list_data(list_b);
+        let f: ElemEq = std::mem::transmute(elem_eq);
+        for i in 0..len_a as usize {
+            if f(*data_a.add(i), *data_b.add(i)) == 0 {
+                return 0;
+            }
+        }
+        1
+    }
+}
+
+/// Compare two lists lexicographically using an element-comparison callback.
+///
+/// `elem_cmp` is a bare function pointer `fn(u64, u64) -> i64` that returns
+/// negative if a < b, 0 if equal, positive if a > b. Returns negative/0/positive
+/// for the lexicographic ordering of the two lists.
+#[no_mangle]
+pub extern "C" fn snow_list_compare(
+    list_a: *mut u8,
+    list_b: *mut u8,
+    elem_cmp: *mut u8,
+) -> i64 {
+    type ElemCmp = unsafe extern "C" fn(u64, u64) -> i64;
+
+    unsafe {
+        let len_a = list_len(list_a) as usize;
+        let len_b = list_len(list_b) as usize;
+        let data_a = list_data(list_a);
+        let data_b = list_data(list_b);
+        let f: ElemCmp = std::mem::transmute(elem_cmp);
+        let min_len = len_a.min(len_b);
+        for i in 0..min_len {
+            let cmp = f(*data_a.add(i), *data_b.add(i));
+            if cmp != 0 {
+                return cmp;
+            }
+        }
+        if len_a < len_b {
+            -1
+        } else if len_a > len_b {
+            1
+        } else {
+            0
+        }
+    }
+}
+
 /// Convert a list to a human-readable SnowString: `[elem1, elem2, ...]`.
 ///
 /// `elem_to_str` is a bare function pointer `fn(u64) -> *mut u8` that converts
@@ -529,6 +595,110 @@ mod tests {
         let s = unsafe { &*(result as *const crate::string::SnowString) };
         let text = unsafe { s.as_str() };
         assert_eq!(text, "[1, 2, 3]");
+    }
+
+    #[test]
+    fn test_list_eq_same() {
+        snow_rt_init();
+        let a = snow_list_new();
+        let a = snow_list_append(a, 1);
+        let a = snow_list_append(a, 2);
+        let a = snow_list_append(a, 3);
+        let b = snow_list_new();
+        let b = snow_list_append(b, 1);
+        let b = snow_list_append(b, 2);
+        let b = snow_list_append(b, 3);
+
+        unsafe extern "C" fn int_eq(a: u64, b: u64) -> i8 {
+            if a == b { 1 } else { 0 }
+        }
+
+        assert_eq!(snow_list_eq(a, b, int_eq as *mut u8), 1);
+    }
+
+    #[test]
+    fn test_list_eq_different() {
+        snow_rt_init();
+        let a = snow_list_new();
+        let a = snow_list_append(a, 1);
+        let a = snow_list_append(a, 2);
+        let b = snow_list_new();
+        let b = snow_list_append(b, 1);
+        let b = snow_list_append(b, 3);
+
+        unsafe extern "C" fn int_eq(a: u64, b: u64) -> i8 {
+            if a == b { 1 } else { 0 }
+        }
+
+        assert_eq!(snow_list_eq(a, b, int_eq as *mut u8), 0);
+    }
+
+    #[test]
+    fn test_list_eq_different_length() {
+        snow_rt_init();
+        let a = snow_list_new();
+        let a = snow_list_append(a, 1);
+        let a = snow_list_append(a, 2);
+        let b = snow_list_new();
+        let b = snow_list_append(b, 1);
+
+        unsafe extern "C" fn int_eq(a: u64, b: u64) -> i8 {
+            if a == b { 1 } else { 0 }
+        }
+
+        assert_eq!(snow_list_eq(a, b, int_eq as *mut u8), 0);
+    }
+
+    #[test]
+    fn test_list_compare_less() {
+        snow_rt_init();
+        let a = snow_list_new();
+        let a = snow_list_append(a, 1);
+        let a = snow_list_append(a, 2);
+        let b = snow_list_new();
+        let b = snow_list_append(b, 1);
+        let b = snow_list_append(b, 3);
+
+        unsafe extern "C" fn int_cmp(a: u64, b: u64) -> i64 {
+            (a as i64) - (b as i64)
+        }
+
+        assert!(snow_list_compare(a, b, int_cmp as *mut u8) < 0);
+    }
+
+    #[test]
+    fn test_list_compare_equal() {
+        snow_rt_init();
+        let a = snow_list_new();
+        let a = snow_list_append(a, 1);
+        let a = snow_list_append(a, 2);
+        let b = snow_list_new();
+        let b = snow_list_append(b, 1);
+        let b = snow_list_append(b, 2);
+
+        unsafe extern "C" fn int_cmp(a: u64, b: u64) -> i64 {
+            (a as i64) - (b as i64)
+        }
+
+        assert_eq!(snow_list_compare(a, b, int_cmp as *mut u8), 0);
+    }
+
+    #[test]
+    fn test_list_compare_length() {
+        snow_rt_init();
+        let a = snow_list_new();
+        let a = snow_list_append(a, 1);
+        let a = snow_list_append(a, 2);
+        let b = snow_list_new();
+        let b = snow_list_append(b, 1);
+        let b = snow_list_append(b, 2);
+        let b = snow_list_append(b, 3);
+
+        unsafe extern "C" fn int_cmp(a: u64, b: u64) -> i64 {
+            (a as i64) - (b as i64)
+        }
+
+        assert!(snow_list_compare(a, b, int_cmp as *mut u8) < 0);
     }
 
     #[test]
