@@ -3,3 +3,5 @@
 
 # Insta snapshot review files
 *.snap.new
+
+editors/vscode-snow/node_modules/
