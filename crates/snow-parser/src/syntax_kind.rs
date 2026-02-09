@@ -20,7 +20,7 @@ pub enum SyntaxKind {
     /// Wrapper for tokens/nodes that couldn't be parsed.
     ERROR_NODE = 1,
 
-    // ── Keywords (45) ──────────────────────────────────────────────────
+    // ── Keywords (48) ──────────────────────────────────────────────────
     ACTOR_KW,
     AFTER_KW,
     ALIAS_KW,
@@ -65,7 +65,10 @@ pub enum SyntaxKind {
     TYPE_KW,
     WHEN_KW,
     WHERE_KW,
+    WHILE_KW,
     WITH_KW,
+    BREAK_KW,
+    CONTINUE_KW,
 
     // ── Operators (24) ─────────────────────────────────────────────────
     PLUS,
@@ -275,6 +278,14 @@ pub enum SyntaxKind {
     /// List literal: `[expr, expr, ...]`
     LIST_LITERAL,
 
+    // ── Loop node kinds ───────────────────────────────────────────────
+    /// While expression: `while cond do body end`
+    WHILE_EXPR,
+    /// Break expression: `break`
+    BREAK_EXPR,
+    /// Continue expression: `continue`
+    CONTINUE_EXPR,
+
     // ── Actor node kinds ──────────────────────────────────────────────
     /// Actor block declaration: `actor Name do ... end`
     ACTOR_DEF,
@@ -381,7 +392,10 @@ impl From<TokenKind> for SyntaxKind {
             TokenKind::Type => SyntaxKind::TYPE_KW,
             TokenKind::When => SyntaxKind::WHEN_KW,
             TokenKind::Where => SyntaxKind::WHERE_KW,
+            TokenKind::While => SyntaxKind::WHILE_KW,
             TokenKind::With => SyntaxKind::WITH_KW,
+            TokenKind::Break => SyntaxKind::BREAK_KW,
+            TokenKind::Continue => SyntaxKind::CONTINUE_KW,
             // Operators
             TokenKind::Plus => SyntaxKind::PLUS,
             TokenKind::Minus => SyntaxKind::MINUS,
@@ -448,7 +462,7 @@ mod tests {
     fn all_token_kinds_convert_to_syntax_kind() {
         // Exhaustive test: every TokenKind variant must convert without panic.
         let all_kinds = [
-            // Keywords (45)
+            // Keywords (48)
             TokenKind::Actor,
             TokenKind::After,
             TokenKind::Alias,
@@ -493,7 +507,10 @@ mod tests {
             TokenKind::Type,
             TokenKind::When,
             TokenKind::Where,
+            TokenKind::While,
             TokenKind::With,
+            TokenKind::Break,
+            TokenKind::Continue,
             // Operators (24)
             TokenKind::Plus,
             TokenKind::Minus,
@@ -550,7 +567,7 @@ mod tests {
             TokenKind::Error,
         ];
 
-        assert_eq!(all_kinds.len(), 93, "must test all 93 TokenKind variants");
+        assert_eq!(all_kinds.len(), 96, "must test all 96 TokenKind variants");
 
         for kind in all_kinds {
             let _syntax_kind: SyntaxKind = kind.into();
@@ -650,6 +667,10 @@ mod tests {
             SyntaxKind::MAP_LITERAL,
             SyntaxKind::MAP_ENTRY,
             SyntaxKind::LIST_LITERAL,
+            // Loop node kinds
+            SyntaxKind::WHILE_EXPR,
+            SyntaxKind::BREAK_EXPR,
+            SyntaxKind::CONTINUE_EXPR,
             // Actor node kinds
             SyntaxKind::ACTOR_DEF,
             SyntaxKind::SPAWN_EXPR,
@@ -672,8 +693,8 @@ mod tests {
             SyntaxKind::SECONDS_LIMIT,
         ];
         assert!(
-            node_kinds.len() >= 76,
-            "expected at least 76 composite node kinds, got {}",
+            node_kinds.len() >= 79,
+            "expected at least 79 composite node kinds, got {}",
             node_kinds.len()
         );
     }

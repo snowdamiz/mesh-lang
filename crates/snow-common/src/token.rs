@@ -26,7 +26,7 @@ impl Token {
 /// identifiers, and special tokens.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub enum TokenKind {
-    // ── Keywords (45) ──────────────────────────────────────────────────
+    // ── Keywords (48) ──────────────────────────────────────────────────
     Actor,
     After,
     Alias,
@@ -72,7 +72,10 @@ pub enum TokenKind {
     Type,
     When,
     Where,
+    While,
     With,
+    Break,
+    Continue,
 
     // ── Operators (24) ─────────────────────────────────────────────────
     /// `+`
@@ -234,7 +237,10 @@ pub fn keyword_from_str(s: &str) -> Option<TokenKind> {
         "type" => Some(TokenKind::Type),
         "when" => Some(TokenKind::When),
         "where" => Some(TokenKind::Where),
+        "while" => Some(TokenKind::While),
         "with" => Some(TokenKind::With),
+        "break" => Some(TokenKind::Break),
+        "continue" => Some(TokenKind::Continue),
         _ => None,
     }
 }
@@ -290,7 +296,10 @@ mod tests {
             ("type", TokenKind::Type),
             ("when", TokenKind::When),
             ("where", TokenKind::Where),
+            ("while", TokenKind::While),
             ("with", TokenKind::With),
+            ("break", TokenKind::Break),
+            ("continue", TokenKind::Continue),
         ];
 
         for (s, expected) in &keywords {
@@ -301,8 +310,8 @@ mod tests {
             );
         }
 
-        // Verify we tested all 45 keywords
-        assert_eq!(keywords.len(), 45, "must test all 45 keywords");
+        // Verify we tested all 48 keywords
+        assert_eq!(keywords.len(), 48, "must test all 48 keywords");
     }
 
     #[test]
@@ -328,7 +337,7 @@ mod tests {
         // Keywords: 45, Operators: 24, Delimiters: 6, Punctuation: 5,
         // Literals: 7, Identifiers/comments: 4, Special: 2 = 93 total
         // This test documents the expected count.
-        let keywords = 45u32;
+        let keywords = 48u32;
         let operators = 24;
         let delimiters = 6;
         let punctuation = 5;
@@ -336,6 +345,6 @@ mod tests {
         let ident_comments = 4;
         let special = 2;
         let total = keywords + operators + delimiters + punctuation + literals + ident_comments + special;
-        assert_eq!(total, 93, "TokenKind should have 93 variants");
+        assert_eq!(total, 96, "TokenKind should have 96 variants");
     }
 }

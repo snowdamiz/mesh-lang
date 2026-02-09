@@ -32,6 +32,10 @@ pub enum Expr {
     StructLiteral(StructLiteral),
     MapLiteral(MapLiteral),
     ListLiteral(ListLiteral),
+    // Loop expression types
+    WhileExpr(WhileExpr),
+    BreakExpr(BreakExpr),
+    ContinueExpr(ContinueExpr),
     // Actor expression types
     SpawnExpr(SpawnExpr),
     SendExpr(SendExpr),
@@ -67,6 +71,12 @@ impl Expr {
             SyntaxKind::LIST_LITERAL => {
                 Some(Expr::ListLiteral(ListLiteral { syntax: node }))
             }
+            // Loop expressions
+            SyntaxKind::WHILE_EXPR => Some(Expr::WhileExpr(WhileExpr { syntax: node })),
+            SyntaxKind::BREAK_EXPR => Some(Expr::BreakExpr(BreakExpr { syntax: node })),
+            SyntaxKind::CONTINUE_EXPR => {
+                Some(Expr::ContinueExpr(ContinueExpr { syntax: node }))
+            }
             // Actor expressions
             SyntaxKind::SPAWN_EXPR => Some(Expr::SpawnExpr(SpawnExpr { syntax: node })),
             SyntaxKind::SEND_EXPR => Some(Expr::SendExpr(SendExpr { syntax: node })),
@@ -98,6 +108,9 @@ impl Expr {
             Expr::StructLiteral(n) => &n.syntax,
             Expr::MapLiteral(n) => &n.syntax,
             Expr::ListLiteral(n) => &n.syntax,
+            Expr::WhileExpr(n) => &n.syntax,
+            Expr::BreakExpr(n) => &n.syntax,
+            Expr::ContinueExpr(n) => &n.syntax,
             Expr::SpawnExpr(n) => &n.syntax,
             Expr::SendExpr(n) => &n.syntax,
             Expr::ReceiveExpr(n) => &n.syntax,
@@ -537,6 +550,30 @@ impl ListLiteral {
         self.syntax.children().filter_map(Expr::cast)
     }
 }
+
+// ── While Expression ─────────────────────────────────────────────────
+
+ast_node!(WhileExpr, WHILE_EXPR);
+
+impl WhileExpr {
+    /// The condition expression.
+    pub fn condition(&self) -> Option<Expr> {
+        self.syntax.children().find_map(Expr::cast)
+    }
+
+    /// The loop body block.
+    pub fn body(&self) -> Option<Block> {
+        child_node(&self.syntax)
+    }
+}
+
+// ── Break Expression ─────────────────────────────────────────────────
+
+ast_node!(BreakExpr, BREAK_EXPR);
+
+// ── Continue Expression ──────────────────────────────────────────────
+
+ast_node!(ContinueExpr, CONTINUE_EXPR);
 
 // ── Actor Expression Types ──────────────────────────────────────────────
 

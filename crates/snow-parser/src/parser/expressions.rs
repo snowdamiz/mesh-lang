@@ -266,6 +266,11 @@ fn lhs(p: &mut Parser) -> Option<MarkClosed> {
             }
         }
 
+        // Loop expression atoms
+        SyntaxKind::WHILE_KW => Some(parse_while_expr(p)),
+        SyntaxKind::BREAK_KW => Some(parse_break_expr(p)),
+        SyntaxKind::CONTINUE_KW => Some(parse_continue_expr(p)),
+
         // Actor expression atoms
         SyntaxKind::SPAWN_KW => Some(parse_spawn_expr(p)),
         SyntaxKind::SEND_KW => Some(parse_send_expr(p)),
@@ -1132,6 +1137,51 @@ fn parse_trailing_closure(p: &mut Parser) {
     }
 
     p.close(m, SyntaxKind::TRAILING_CLOSURE);
+}
+
+// ── While/Break/Continue Expression Parsing ──────────────────────────
+
+/// Parse a while expression: `while cond do body end`
+fn parse_while_expr(p: &mut Parser) -> MarkClosed {
+    let m = p.open();
+    p.advance(); // WHILE_KW
+
+    // Parse condition.
+    expr(p);
+
+    // Expect `do`.
+    let do_span = p.current_span();
+    p.expect(SyntaxKind::DO_KW);
+
+    // Parse body.
+    parse_block_body(p);
+
+    // Expect `end`.
+    if !p.at(SyntaxKind::END_KW) {
+        p.error_with_related(
+            "expected `end` to close `do` block",
+            do_span,
+            "`do` block started here",
+        );
+    } else {
+        p.advance(); // END_KW
+    }
+
+    p.close(m, SyntaxKind::WHILE_EXPR)
+}
+
+/// Parse a break expression: `break`
+fn parse_break_expr(p: &mut Parser) -> MarkClosed {
+    let m = p.open();
+    p.advance(); // BREAK_KW
+    p.close(m, SyntaxKind::BREAK_EXPR)
+}
+
+/// Parse a continue expression: `continue`
+fn parse_continue_expr(p: &mut Parser) -> MarkClosed {
+    let m = p.open();
+    p.advance(); // CONTINUE_KW
+    p.close(m, SyntaxKind::CONTINUE_EXPR)
 }
 
 // ── Actor Expression Parsing ──────────────────────────────────────────
