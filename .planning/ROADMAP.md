@@ -175,7 +175,11 @@ Plans:
   1. Compile errors involving cross-module issues include the source module name and file path in the diagnostic
   2. Type errors involving imported types display the module origin (e.g., "expected Math.Vector.Point, got Main.Point")
   3. A realistic multi-module project (3+ modules with structs, traits, generics, and imports) compiles and runs correctly end-to-end
-**Plans**: TBD
+**Plans:** 2 plans
+
+Plans:
+- [ ] 42-01-PLAN.md -- Ariadne named-source spans for file paths in diagnostics (DIAG-01)
+- [ ] 42-02-PLAN.md -- Module-qualified type display, comprehensive E2E integration tests (DIAG-02)
 
 ## Progress
 
@@ -197,6 +201,6 @@ Phases execute in numeric order: 37 -> 38 -> 39 -> 40 -> 41 -> 42
 | 39. Cross-Module Type Checking | v1.8 | 3/3 | Complete | 2026-02-09 |
 | 40. Visibility Enforcement | v1.8 | 2/2 | Complete | 2026-02-09 |
 | 41. MIR Merge & Codegen | v1.8 | 1/1 | Complete | 2026-02-09 |
-| 42. Diagnostics & Integration | v1.8 | 0/TBD | Not started | - |
+| 42. Diagnostics & Integration | v1.8 | 0/2 | Not started | - |
 
 **Total: 41 phases shipped across 8 milestones. 127 plans completed. 1 phase remaining for v1.8.**
