@@ -9,6 +9,7 @@
 - [x] **v1.4 Compiler Polish** - Phases 23-25 (shipped 2026-02-08)
 - [x] **v1.5 Compiler Correctness** - Phases 26-29 (shipped 2026-02-09)
 - [x] **v1.6 Method Dot-Syntax** - Phases 30-32 (shipped 2026-02-09)
+- [ ] **v1.7 Loops & Iteration** - Phases 33-36 (in progress)
 
 ## Phases
 
@@ -68,7 +69,66 @@ See milestones/v1.6-ROADMAP.md for full phase details.
 
 </details>
 
+### v1.7 Loops & Iteration (In Progress)
+
+**Milestone Goal:** Add for..in loops, while loops, and break/continue as expression-level constructs, enabling natural iteration over Lists, Maps, Sets, and Ranges.
+
+- [ ] **Phase 33: While Loop + Loop Control Flow** - Establish loop infrastructure with while loops, break/continue, and reduction checks
+- [ ] **Phase 34: For-In over Range** - Range iteration with zero-allocation integer arithmetic
+- [ ] **Phase 35: For-In over Collections** - List/Map/Set iteration with list builder, expression semantics, and destructuring
+- [ ] **Phase 36: Filter Clause + Integration** - Filter clause (`when`) and comprehensive integration validation
+
+## Phase Details
+
+### Phase 33: While Loop + Loop Control Flow
+**Goal**: Users can write conditional loops with early exit and skip, and the actor scheduler remains responsive during long-running loops
+**Depends on**: Phase 32 (v1.6 complete)
+**Requirements**: WHILE-01, WHILE-02, WHILE-03, BRKC-01, BRKC-02, BRKC-04, BRKC-05, RTIM-01
+**Success Criteria** (what must be TRUE):
+  1. User can write `while condition do body end` and the body executes repeatedly while the condition is true
+  2. A while loop whose condition is initially false executes zero times and the program continues normally
+  3. User can write `break` inside a while loop to exit early, and `continue` to skip to the next iteration
+  4. Writing `break` or `continue` outside any loop produces a compile-time error; writing them inside a closure within a loop also produces a compile-time error
+  5. A tight while loop (e.g., 1 million iterations with no function calls) does not starve other actors in the runtime
+**Plans**: TBD
+
+### Phase 34: For-In over Range
+**Goal**: Users can iterate over integer ranges with for-in syntax, producing collected results, with zero heap allocation for the range itself
+**Depends on**: Phase 33
+**Requirements**: FORIN-02, FORIN-07, FORIN-08
+**Success Criteria** (what must be TRUE):
+  1. User can write `for i in 0..10 do body end` and the body executes once for each integer in the range
+  2. Range iteration compiles to pure integer arithmetic with no heap allocation for the range counter
+  3. The loop variable is scoped to the loop body and does not leak into the surrounding scope; each iteration gets a fresh binding
+**Plans**: TBD
+
+### Phase 35: For-In over Collections
+**Goal**: Users can iterate over Lists, Maps, and Sets with for-in syntax, with expression semantics that return a collected List of body results
+**Depends on**: Phase 34
+**Requirements**: FORIN-01, FORIN-03, FORIN-04, FORIN-05, FORIN-06, RTIM-02, BRKC-03
+**Success Criteria** (what must be TRUE):
+  1. User can write `for x in list do body end`, `for {k, v} in map do body end`, and `for x in set do body end` to iterate each collection type
+  2. For-in loop returns `List<T>` containing the evaluated body expression for each element (comprehension semantics)
+  3. For-in over an empty collection returns an empty list without error
+  4. `break` inside a for-in loop returns the partially collected list of results gathered so far
+  5. For-in collection uses O(N) list builder allocation, not O(N^2) append chains
+**Plans**: TBD
+
+### Phase 36: Filter Clause + Integration
+**Goal**: Users can filter elements during for-in iteration, and all loop forms work correctly with closures, nesting, pipes, and tooling
+**Depends on**: Phase 35
+**Requirements**: FILT-01, FILT-02
+**Success Criteria** (what must be TRUE):
+  1. User can write `for x in list when condition do body end` and only elements satisfying the condition are processed
+  2. Filtered elements are excluded from the collected result list (the returned List contains only results from iterations where the condition was true)
+  3. Nested loops, loops containing closures, and loops inside pipe chains all work correctly
+  4. The formatter and LSP handle all loop syntax forms without errors
+**Plans**: TBD
+
 ## Progress
+
+**Execution Order:**
+Phases execute in numeric order: 33 -> 34 -> 35 -> 36
 
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
@@ -79,5 +139,9 @@ See milestones/v1.6-ROADMAP.md for full phase details.
 | 23-25 | v1.4 | 5/5 | Complete | 2026-02-08 |
 | 26-29 | v1.5 | 6/6 | Complete | 2026-02-09 |
 | 30-32 | v1.6 | 6/6 | Complete | 2026-02-09 |
+| 33. While Loop + Loop Control Flow | v1.7 | 0/TBD | Not started | - |
+| 34. For-In over Range | v1.7 | 0/TBD | Not started | - |
+| 35. For-In over Collections | v1.7 | 0/TBD | Not started | - |
+| 36. Filter Clause + Integration | v1.7 | 0/TBD | Not started | - |
 
-**Total: 32 phases, 106 plans, all shipped.**
+**Total: 32 phases shipped, 4 phases planned (v1.7).**

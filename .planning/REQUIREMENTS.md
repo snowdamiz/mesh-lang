@@ -75,32 +75,32 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| WHILE-01 | — | Pending |
-| WHILE-02 | — | Pending |
-| WHILE-03 | — | Pending |
-| FORIN-01 | — | Pending |
-| FORIN-02 | — | Pending |
-| FORIN-03 | — | Pending |
-| FORIN-04 | — | Pending |
-| FORIN-05 | — | Pending |
-| FORIN-06 | — | Pending |
-| FORIN-07 | — | Pending |
-| FORIN-08 | — | Pending |
-| BRKC-01 | — | Pending |
-| BRKC-02 | — | Pending |
-| BRKC-03 | — | Pending |
-| BRKC-04 | — | Pending |
-| BRKC-05 | — | Pending |
-| FILT-01 | — | Pending |
-| FILT-02 | — | Pending |
-| RTIM-01 | — | Pending |
-| RTIM-02 | — | Pending |
+| WHILE-01 | Phase 33 | Pending |
+| WHILE-02 | Phase 33 | Pending |
+| WHILE-03 | Phase 33 | Pending |
+| FORIN-01 | Phase 35 | Pending |
+| FORIN-02 | Phase 34 | Pending |
+| FORIN-03 | Phase 35 | Pending |
+| FORIN-04 | Phase 35 | Pending |
+| FORIN-05 | Phase 35 | Pending |
+| FORIN-06 | Phase 35 | Pending |
+| FORIN-07 | Phase 34 | Pending |
+| FORIN-08 | Phase 34 | Pending |
+| BRKC-01 | Phase 33 | Pending |
+| BRKC-02 | Phase 33 | Pending |
+| BRKC-03 | Phase 35 | Pending |
+| BRKC-04 | Phase 33 | Pending |
+| BRKC-05 | Phase 33 | Pending |
+| FILT-01 | Phase 36 | Pending |
+| FILT-02 | Phase 36 | Pending |
+| RTIM-01 | Phase 33 | Pending |
+| RTIM-02 | Phase 35 | Pending |
 
 **Coverage:**
 - v1.7 requirements: 20 total
-- Mapped to phases: 0
-- Unmapped: 20 ⚠️
+- Mapped to phases: 20
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-02-08*
-*Last updated: 2026-02-08 after initial definition*
+*Last updated: 2026-02-08 after roadmap creation*
