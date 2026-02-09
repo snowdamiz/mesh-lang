@@ -3418,6 +3418,38 @@ impl<'a> Lowerer<'a> {
                 }
             }
 
+            // Stdlib module method fallback: check if this is a module function
+            // callable as a method on the receiver's type (e.g., "hello".length() -> snow_string_length).
+            let module_method = match first_arg_ty {
+                MirType::String => {
+                    let prefixed = format!("string_{}", name);
+                    let runtime = map_builtin_name(&prefixed);
+                    if self.known_functions.contains_key(&runtime)
+                        || runtime.starts_with("snow_string_")
+                    {
+                        Some(runtime)
+                    } else {
+                        None
+                    }
+                }
+                MirType::Ptr => {
+                    // List/Map/Set methods -- try list_ prefix first (most common collection).
+                    let prefixed = format!("list_{}", name);
+                    let runtime = map_builtin_name(&prefixed);
+                    if self.known_functions.contains_key(&runtime)
+                        || runtime.starts_with("snow_list_")
+                    {
+                        Some(runtime)
+                    } else {
+                        None
+                    }
+                }
+                _ => None,
+            };
+            if let Some(runtime_name) = module_method {
+                return MirExpr::Var(runtime_name, var_ty.clone());
+            }
+
             // Defense-in-depth warning
             if self.lookup_var(name).is_none() {
                 let type_name = mir_type_to_impl_name(first_arg_ty);
