@@ -1,9 +1,13 @@
-//! File discovery and path-to-module-name mapping for Snow projects.
+//! File discovery, import extraction, and module graph construction for Snow projects.
 //!
 //! Provides utilities to recursively discover `.snow` files in a project
-//! directory and convert file paths to PascalCase module names.
+//! directory, convert file paths to PascalCase module names, extract import
+//! declarations from parsed ASTs, and build a complete module dependency graph.
 
 use std::path::{Component, Path, PathBuf};
+
+use snow_common::module_graph::{self, CycleError, ModuleGraph, ModuleId};
+use snow_parser::ast::item::{Item, SourceFile};
 
 /// Convert a snake_case string to PascalCase.
 ///
@@ -118,6 +122,103 @@ fn discover_recursive(
     Ok(())
 }
 
+/// Extract import module paths from a parsed source file.
+///
+/// Walks the top-level items and collects module paths from both
+/// `import Foo.Bar` and `from Foo.Bar import { ... }` declarations.
+/// Returns PascalCase dot-separated module names.
+pub fn extract_imports(source_file: &SourceFile) -> Vec<String> {
+    let mut imports = Vec::new();
+    for item in source_file.items() {
+        match item {
+            Item::ImportDecl(decl) => {
+                if let Some(path) = decl.module_path() {
+                    let segments = path.segments();
+                    if !segments.is_empty() {
+                        imports.push(segments.join("."));
+                    }
+                }
+            }
+            Item::FromImportDecl(decl) => {
+                if let Some(path) = decl.module_path() {
+                    let segments = path.segments();
+                    if !segments.is_empty() {
+                        imports.push(segments.join("."));
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    imports
+}
+
+/// Build a complete module dependency graph from a Snow project directory.
+///
+/// Pipeline:
+/// 1. Discover all `.snow` files in the project.
+/// 2. Register each file as a module in the graph.
+/// 3. Parse each file and extract imports to build dependency edges.
+/// 4. Run topological sort to get compilation order.
+///
+/// Unknown imports (stdlib, typos) are silently skipped.
+/// Self-imports produce a specific error.
+/// Circular dependencies produce an error with the cycle path.
+pub fn build_module_graph(project_root: &Path) -> Result<(ModuleGraph, Vec<ModuleId>), String> {
+    // Phase 1: Discover files and register modules.
+    let files = discover_snow_files(project_root)?;
+    let mut graph = ModuleGraph::new();
+
+    let mut module_sources: Vec<(ModuleId, String)> = Vec::new();
+
+    for relative_path in &files {
+        let full_path = project_root.join(relative_path);
+        let source = std::fs::read_to_string(&full_path)
+            .map_err(|e| format!("Failed to read '{}': {}", full_path.display(), e))?;
+
+        let is_entry = relative_path == Path::new("main.snow");
+        let name = if is_entry {
+            "Main".to_string()
+        } else {
+            path_to_module_name(relative_path)
+                .ok_or_else(|| format!("Cannot determine module name for '{}'", relative_path.display()))?
+        };
+
+        let id = graph.add_module(name, relative_path.clone(), is_entry);
+        module_sources.push((id, source));
+    }
+
+    // Phase 2: Parse files and build dependency edges.
+    for (id, source) in &module_sources {
+        let parse = snow_parser::parse(source);
+        let tree = parse.tree();
+        let imports = extract_imports(&tree);
+
+        let module_name = graph.get(*id).name.clone();
+
+        for import_name in imports {
+            match graph.resolve(&import_name) {
+                None => {
+                    // Unknown import (stdlib or typo) -- skip silently.
+                }
+                Some(dep_id) if dep_id == *id => {
+                    return Err(format!("Module '{}' cannot import itself", module_name));
+                }
+                Some(dep_id) => {
+                    graph.add_dependency(*id, dep_id);
+                }
+            }
+        }
+    }
+
+    // Phase 3: Topological sort.
+    let compilation_order = module_graph::topological_sort(&graph).map_err(|e: CycleError| {
+        format!("Circular dependency: {}", e)
+    })?;
+
+    Ok((graph, compilation_order))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -181,5 +282,96 @@ mod tests {
         let file_strs: Vec<&str> = files.iter().map(|p| p.to_str().unwrap()).collect();
 
         assert_eq!(file_strs, vec!["main.snow", "math/vector.snow", "utils.snow"]);
+    }
+
+    // ── Import extraction tests ─────────────────────────────────────────
+
+    #[test]
+    fn test_extract_imports_both_forms() {
+        let source = r#"
+import Foo.Bar
+from Baz.Qux import { name1, name2 }
+"#;
+        let parse = snow_parser::parse(source);
+        let tree = parse.tree();
+        let imports = extract_imports(&tree);
+        assert_eq!(imports, vec!["Foo.Bar".to_string(), "Baz.Qux".to_string()]);
+    }
+
+    // ── build_module_graph integration tests ────────────────────────────
+
+    #[test]
+    fn test_build_module_graph_simple() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+
+        fs::write(root.join("main.snow"), "import Utils\n").unwrap();
+        fs::write(root.join("utils.snow"), "fn helper() do\n  1\nend\n").unwrap();
+
+        let (graph, order) = build_module_graph(root).unwrap();
+        assert_eq!(graph.module_count(), 2);
+
+        let names: Vec<&str> = order.iter().map(|id| graph.get(*id).name.as_str()).collect();
+        assert_eq!(names, vec!["Utils", "Main"]);
+    }
+
+    #[test]
+    fn test_build_module_graph_cycle() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+
+        fs::write(root.join("main.snow"), "fn main() do\n  1\nend\n").unwrap();
+        fs::write(root.join("a.snow"), "import B\n").unwrap();
+        fs::write(root.join("b.snow"), "import A\n").unwrap();
+
+        let result = build_module_graph(root);
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.contains("Circular dependency"), "Expected cycle error, got: {}", err);
+    }
+
+    #[test]
+    fn test_build_module_graph_diamond() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+
+        fs::write(root.join("main.snow"), "import A\nimport B\n").unwrap();
+        fs::write(root.join("a.snow"), "import C\n").unwrap();
+        fs::write(root.join("b.snow"), "import C\n").unwrap();
+        fs::write(root.join("c.snow"), "fn base() do\n  1\nend\n").unwrap();
+
+        let (graph, order) = build_module_graph(root).unwrap();
+        let names: Vec<&str> = order.iter().map(|id| graph.get(*id).name.as_str()).collect();
+
+        // C first (no deps), then A and B (alphabetical), then Main last.
+        assert_eq!(names, vec!["C", "A", "B", "Main"]);
+    }
+
+    #[test]
+    fn test_build_module_graph_unknown_import_skipped() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+
+        fs::write(root.join("main.snow"), "import NonExistent\nimport IO\n").unwrap();
+
+        let (graph, order) = build_module_graph(root).unwrap();
+        assert_eq!(graph.module_count(), 1);
+
+        let names: Vec<&str> = order.iter().map(|id| graph.get(*id).name.as_str()).collect();
+        assert_eq!(names, vec!["Main"]);
+    }
+
+    #[test]
+    fn test_build_module_graph_self_import() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+
+        fs::write(root.join("main.snow"), "fn main() do\n  1\nend\n").unwrap();
+        fs::write(root.join("utils.snow"), "import Utils\n").unwrap();
+
+        let result = build_module_graph(root);
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.contains("cannot import itself"), "Expected self-import error, got: {}", err);
     }
 }

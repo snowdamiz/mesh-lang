@@ -45,6 +45,7 @@ impl fmt::Display for CycleError {
 ///
 /// Modules are stored in insertion order and identified by [`ModuleId`].
 /// Name-based lookup is provided via an internal hash map.
+#[derive(Debug)]
 pub struct ModuleGraph {
     /// All modules in the graph, indexed by `ModuleId.0`.
     pub modules: Vec<ModuleInfo>,
