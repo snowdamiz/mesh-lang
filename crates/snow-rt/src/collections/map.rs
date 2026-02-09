@@ -252,6 +252,40 @@ pub extern "C" fn snow_map_values(map: *mut u8) -> *mut u8 {
     }
 }
 
+/// Get the key at index i (insertion order). Panics if out of bounds.
+/// Used by for-in codegen for indexed map iteration.
+#[no_mangle]
+pub extern "C" fn snow_map_entry_key(map: *mut u8, index: i64) -> u64 {
+    unsafe {
+        let len = map_len(map);
+        if index < 0 || index as u64 >= len {
+            panic!(
+                "snow_map_entry_key: index {} out of bounds (len {})",
+                index, len
+            );
+        }
+        let entries = map_entries(map);
+        (*entries.add(index as usize))[0]
+    }
+}
+
+/// Get the value at index i (insertion order). Panics if out of bounds.
+/// Used by for-in codegen for indexed map iteration.
+#[no_mangle]
+pub extern "C" fn snow_map_entry_value(map: *mut u8, index: i64) -> u64 {
+    unsafe {
+        let len = map_len(map);
+        if index < 0 || index as u64 >= len {
+            panic!(
+                "snow_map_entry_value: index {} out of bounds (len {})",
+                index, len
+            );
+        }
+        let entries = map_entries(map);
+        (*entries.add(index as usize))[1]
+    }
+}
+
 /// Convert a map to a human-readable SnowString: `%{k1 => v1, k2 => v2, ...}`.
 ///
 /// `key_to_str` and `val_to_str` are bare function pointers `fn(u64) -> *mut u8`
@@ -454,5 +488,21 @@ mod tests {
         let s = unsafe { &*(result as *const crate::string::SnowString) };
         let text = unsafe { s.as_str() };
         assert_eq!(text, "%{}");
+    }
+
+    #[test]
+    fn test_map_entry_key_value() {
+        snow_rt_init();
+        let map = snow_map_new();
+        let map = snow_map_put(map, 10, 100);
+        let map = snow_map_put(map, 20, 200);
+        let map = snow_map_put(map, 30, 300);
+
+        assert_eq!(snow_map_entry_key(map, 0), 10);
+        assert_eq!(snow_map_entry_value(map, 0), 100);
+        assert_eq!(snow_map_entry_key(map, 1), 20);
+        assert_eq!(snow_map_entry_value(map, 1), 200);
+        assert_eq!(snow_map_entry_key(map, 2), 30);
+        assert_eq!(snow_map_entry_value(map, 2), 300);
     }
 }

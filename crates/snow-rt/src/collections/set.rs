@@ -183,6 +183,23 @@ pub extern "C" fn snow_set_intersection(a: *mut u8, b: *mut u8) -> *mut u8 {
     }
 }
 
+/// Get the element at index i. Panics if out of bounds.
+/// Used by for-in codegen for indexed set iteration.
+#[no_mangle]
+pub extern "C" fn snow_set_element_at(set: *mut u8, index: i64) -> u64 {
+    unsafe {
+        let len = set_len(set);
+        if index < 0 || index as u64 >= len {
+            panic!(
+                "snow_set_element_at: index {} out of bounds (len {})",
+                index, len
+            );
+        }
+        let data = set_data(set);
+        *data.add(index as usize)
+    }
+}
+
 /// Convert a set to a human-readable SnowString: `#{elem1, elem2, ...}`.
 ///
 /// `elem_to_str` is a bare function pointer `fn(u64) -> *mut u8` that converts
@@ -342,5 +359,18 @@ mod tests {
         let s = unsafe { &*(result as *const crate::string::SnowString) };
         let text = unsafe { s.as_str() };
         assert_eq!(text, "#{}");
+    }
+
+    #[test]
+    fn test_set_element_at() {
+        snow_rt_init();
+        let set = snow_set_new();
+        let set = snow_set_add(set, 10);
+        let set = snow_set_add(set, 20);
+        let set = snow_set_add(set, 30);
+
+        assert_eq!(snow_set_element_at(set, 0), 10);
+        assert_eq!(snow_set_element_at(set, 1), 20);
+        assert_eq!(snow_set_element_at(set, 2), 30);
     }
 }

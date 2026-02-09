@@ -279,6 +279,26 @@ pub extern "C" fn snow_list_reduce(
     }
 }
 
+/// Create a list with pre-allocated capacity for N elements.
+/// Length starts at 0. Used by for-in codegen for O(N) result building.
+#[no_mangle]
+pub extern "C" fn snow_list_builder_new(capacity: i64) -> *mut u8 {
+    unsafe { alloc_list(capacity.max(0) as u64) }
+}
+
+/// Push an element to a list builder (in-place mutation, O(1)).
+/// SAFETY: Only valid during construction before the list is shared.
+/// Increments len and writes element at data[len].
+#[no_mangle]
+pub extern "C" fn snow_list_builder_push(list: *mut u8, element: u64) {
+    unsafe {
+        let len = list_len(list) as usize;
+        let data = list_data_mut(list);
+        *data.add(len) = element;
+        *(list as *mut u64) = (len + 1) as u64;
+    }
+}
+
 /// Create a list from an array of u64 elements.
 #[no_mangle]
 pub extern "C" fn snow_list_from_array(data: *const u64, count: i64) -> *mut u8 {
@@ -713,5 +733,32 @@ mod tests {
         let s = unsafe { &*(result as *const crate::string::SnowString) };
         let text = unsafe { s.as_str() };
         assert_eq!(text, "[]");
+    }
+
+    #[test]
+    fn test_list_builder_new_empty() {
+        snow_rt_init();
+        let list = snow_list_builder_new(0);
+        assert_eq!(snow_list_length(list), 0);
+    }
+
+    #[test]
+    fn test_list_builder_new_has_zero_length() {
+        snow_rt_init();
+        let list = snow_list_builder_new(3);
+        assert_eq!(snow_list_length(list), 0);
+    }
+
+    #[test]
+    fn test_list_builder_push_three_elements() {
+        snow_rt_init();
+        let list = snow_list_builder_new(3);
+        snow_list_builder_push(list, 10);
+        snow_list_builder_push(list, 20);
+        snow_list_builder_push(list, 30);
+        assert_eq!(snow_list_length(list), 3);
+        assert_eq!(snow_list_get(list, 0), 10);
+        assert_eq!(snow_list_get(list, 1), 20);
+        assert_eq!(snow_list_get(list, 2), 30);
     }
 }
