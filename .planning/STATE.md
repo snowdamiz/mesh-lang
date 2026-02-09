@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-02-09)
 
 **Core value:** Expressive, readable concurrency -- writing concurrent programs should feel as natural as sequential code, with supervision and fault tolerance built in.
-**Current focus:** v1.8 Module System -- Phase 42 (Diagnostics & Integration) -- IN PROGRESS
+**Current focus:** v1.8 Module System -- Phase 42 (Diagnostics & Integration) -- COMPLETE
 
 ## Current Position
 
 Phase: 42 of 42 (Diagnostics & Integration)
-Plan: 1 of 2 in current phase (42-01 complete)
-Status: Executing Phase 42
-Last activity: 2026-02-09 -- Completed 42-01 (named-source ariadne diagnostics)
+Plan: 2 of 2 in current phase (42-02 complete)
+Status: Phase 42 Complete -- v1.8 Module System Milestone Complete
+Last activity: 2026-02-09 -- Completed 42-02 (module-qualified type display)
 
-Progress: [||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||] 100% (128/~129 plans est.)
+Progress: [||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||] 100% (129/129 plans)
 
 ## Performance Metrics
 
 **All-time Totals:**
-- Plans completed: 128
-- Phases completed: 41
-- Milestones shipped: 8 (v1.0-v1.7)
+- Plans completed: 129
+- Phases completed: 42
+- Milestones shipped: 9 (v1.0-v1.8)
 - Lines of Rust: 70,501
 - Timeline: 5 days (2026-02-05 -> 2026-02-09)
 
@@ -59,6 +59,8 @@ Recent for v1.8:
 - user_fn_defs set tracks FnDef items separately from variant constructors for call-site qualification
 - Module-qualified naming: ModuleName__private_fn using double-underscore separator at MIR level
 - ariadne::sources() named cache with (String, Range<usize>) spans replaces anonymous Source::from() for file-aware diagnostics
+- TyCon::display_prefix for module-qualified type names in errors -- excluded from PartialEq/Hash to preserve type identity
+- current_module threaded via ImportContext and InferCtx for local type qualification in multi-module mode
 
 ### Research Notes
 
@@ -79,6 +81,6 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-09
-Stopped at: Completed 42-01-PLAN.md
+Stopped at: Completed 42-02-PLAN.md -- Phase 42 complete, v1.8 Module System complete
 Resume file: None
-Next action: Execute 42-02-PLAN.md
+Next action: None -- all milestones complete
