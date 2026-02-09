@@ -131,6 +131,14 @@ pub struct TypeckResult {
     /// INTERFACE_METHOD node that contains the default body. The lowerer
     /// uses this range to find the method's AST node from the parse tree.
     pub default_method_bodies: FxHashMap<(String, String), TextRange>,
+    /// Qualified module names used by this module via `import` declarations.
+    /// Maps namespace name (e.g., "Math") to the list of exported function names.
+    /// Used by the MIR lowerer to resolve qualified access (e.g., Math.add).
+    pub qualified_modules: FxHashMap<String, Vec<String>>,
+    /// Function names imported via `from Module import name1, name2` (selective imports).
+    /// These names are directly callable without qualification.
+    /// Used by the MIR lowerer to skip trait dispatch for imported functions.
+    pub imported_functions: Vec<String>,
 }
 
 impl TypeckResult {

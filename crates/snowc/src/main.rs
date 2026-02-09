@@ -334,10 +334,21 @@ fn build(
         return Err("Compilation failed due to errors above.".to_string());
     }
 
-    // Find entry module for codegen
-    let entry_parse = &project.module_parses[entry_idx];
-    let entry_typeck = all_typeck[entry_idx].as_ref()
-        .ok_or("Entry module was not type-checked")?;
+    // Lower ALL modules to MIR and merge into a single module for codegen
+    let mut mir_modules = Vec::new();
+    let mut entry_mir_idx = 0;
+    for (i, &id) in project.compilation_order.iter().enumerate() {
+        let idx = id.0 as usize;
+        let parse = &project.module_parses[idx];
+        let typeck = all_typeck[idx].as_ref()
+            .ok_or("Module was not type-checked")?;
+        let mir = snow_codegen::lower_to_mir_raw(parse, typeck)?;
+        if id == entry_id {
+            entry_mir_idx = i;
+        }
+        mir_modules.push(mir);
+    }
+    let merged_mir = snow_codegen::merge_mir_modules(mir_modules, entry_mir_idx);
 
     // Determine output path
     let project_name = dir
@@ -352,12 +363,12 @@ fn build(
     // Emit LLVM IR if requested
     if emit_llvm {
         let ll_path = output_path.with_extension("ll");
-        snow_codegen::compile_to_llvm_ir(entry_parse, entry_typeck, &ll_path, target)?;
+        snow_codegen::compile_mir_to_llvm_ir(&merged_mir, &ll_path, target)?;
         eprintln!("  LLVM IR: {}", ll_path.display());
     }
 
     // Compile to native binary
-    snow_codegen::compile_to_binary(entry_parse, entry_typeck, &output_path, opt_level, target, None)?;
+    snow_codegen::compile_mir_to_binary(&merged_mir, &output_path, opt_level, target, None)?;
 
     eprintln!("  Compiled: {}", output_path.display());
 

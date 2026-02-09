@@ -193,6 +193,13 @@ struct Lowerer<'a> {
     /// Prevents duplicate generation when the same generic struct is instantiated
     /// multiple times (e.g., Box<Int> used in multiple places).
     monomorphized_trait_fns: HashSet<String>,
+    /// User-defined module namespaces for qualified access (Phase 39).
+    /// Maps module namespace name (e.g., "Math") to list of exported function names.
+    user_modules: HashMap<String, Vec<String>>,
+    /// Function names imported via `from Module import name1, name2` (Phase 39).
+    /// These are directly callable without qualification and must not go through
+    /// trait dispatch.
+    imported_functions: HashSet<String>,
 }
 
 impl<'a> Lowerer<'a> {
@@ -214,6 +221,10 @@ impl<'a> Lowerer<'a> {
             mono_depth: 0,
             max_mono_depth: 64,
             monomorphized_trait_fns: HashSet::new(),
+            user_modules: typeck.qualified_modules.iter()
+                .map(|(k, v)| (k.clone(), v.clone()))
+                .collect(),
+            imported_functions: typeck.imported_functions.iter().cloned().collect(),
         }
     }
 
@@ -3525,6 +3536,7 @@ impl<'a> Lowerer<'a> {
                     if let Expr::NameRef(ref name_ref) = base {
                         if let Some(base_name) = name_ref.text() {
                             STDLIB_MODULES.contains(&base_name.as_str())
+                                || self.user_modules.contains_key(&base_name)
                                 || self.service_modules.contains_key(&base_name)
                                 || self.is_sum_type_name(&base_name)
                                 || self.is_struct_type_name(&base_name)
@@ -3783,8 +3795,15 @@ impl<'a> Lowerer<'a> {
         // If the callee is a bare method name (not in known_functions), check if
         // it's a trait method for the first arg's type. If so, rewrite to the
         // mangled name (Trait__Method__Type).
+        // Skip trait dispatch for functions from user-defined modules (Phase 39).
+        let is_user_module_fn = if let MirExpr::Var(ref name, _) = callee {
+            self.user_modules.values().any(|fns| fns.contains(name))
+                || self.imported_functions.contains(name)
+        } else {
+            false
+        };
         let callee = if let MirExpr::Var(ref name, ref var_ty) = callee {
-            if !args.is_empty() {
+            if !args.is_empty() && !is_user_module_fn {
                 let first_arg_ty = args[0].ty().clone();
                 self.resolve_trait_callee(name, var_ty, &first_arg_ty)
             } else {
@@ -3915,6 +3934,18 @@ impl<'a> Lowerer<'a> {
                         let runtime_name = map_builtin_name(&prefixed);
                         let ty = self.resolve_range(fa.syntax().text_range());
                         return MirExpr::Var(runtime_name, ty);
+                    }
+
+                    // Check if this is a user-defined module (Phase 39).
+                    if let Some(func_names) = self.user_modules.get(&base_name) {
+                        let field = fa
+                            .field()
+                            .map(|t| t.text().to_string())
+                            .unwrap_or_default();
+                        if func_names.contains(&field) {
+                            let ty = self.resolve_range(fa.syntax().text_range());
+                            return MirExpr::Var(field, ty);
+                        }
                     }
 
                     // Check if this is a service module method (e.g., Counter.start).

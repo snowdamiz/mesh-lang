@@ -47,6 +47,22 @@ pub fn lower_to_mir_module(
     Ok(module)
 }
 
+/// Lower a parsed and type-checked Snow program to MIR without monomorphization.
+///
+/// Use this when lowering multiple modules that will be merged before
+/// monomorphization (which requires reachability analysis from the entry point).
+///
+/// # Errors
+///
+/// Returns an error string if MIR lowering fails.
+pub fn lower_to_mir_raw(
+    parse: &snow_parser::Parse,
+    typeck: &snow_typeck::TypeckResult,
+) -> Result<mir::MirModule, String> {
+    let module = lower_to_mir(parse, typeck)?;
+    Ok(module)
+}
+
 /// Compile a parsed and type-checked Snow program to an object file.
 ///
 /// This is the main entry point for code generation. It:
@@ -174,4 +190,108 @@ pub fn compile(
     codegen.compile(&mir)?;
 
     Ok(())
+}
+
+// ── Multi-Module Compilation (Phase 39) ────────────────────────────────
+
+/// Compile a pre-built MIR module to a native binary.
+///
+/// This accepts a MIR module directly (already lowered and optionally merged
+/// from multiple source modules) and produces a native executable.
+pub fn compile_mir_to_binary(
+    mir: &mir::MirModule,
+    output: &Path,
+    opt_level: u8,
+    target_triple: Option<&str>,
+    rt_lib_path: Option<&Path>,
+) -> Result<(), String> {
+    let obj_path = output.with_extension("o");
+
+    let context = Context::create();
+    let mut codegen = CodeGen::new(&context, "snow_module", opt_level, target_triple)?;
+    codegen.compile(mir)?;
+
+    if opt_level > 0 {
+        codegen.run_optimization_passes(opt_level)?;
+    }
+
+    codegen.emit_object(&obj_path)?;
+    link::link(&obj_path, output, rt_lib_path)?;
+
+    Ok(())
+}
+
+/// Compile a pre-built MIR module to LLVM IR text.
+pub fn compile_mir_to_llvm_ir(
+    mir: &mir::MirModule,
+    output: &Path,
+    target_triple: Option<&str>,
+) -> Result<(), String> {
+    let context = Context::create();
+    let mut codegen = CodeGen::new(&context, "snow_module", 0, target_triple)?;
+    codegen.compile(mir)?;
+
+    codegen.emit_llvm_ir(output)?;
+    Ok(())
+}
+
+/// Merge multiple MIR modules into a single module.
+///
+/// Functions, struct definitions, and sum type definitions from all modules
+/// are combined. The entry function is taken from the designated entry module.
+/// Duplicate struct/sum type definitions (e.g., builtins registered in every
+/// module) are deduplicated by name.
+///
+/// After merging, runs the monomorphization pass to eliminate unreachable
+/// functions (which requires the entry point from the merged module).
+pub fn merge_mir_modules(
+    modules: Vec<mir::MirModule>,
+    entry_module_idx: usize,
+) -> mir::MirModule {
+    use std::collections::HashSet;
+
+    let mut merged = mir::MirModule {
+        functions: Vec::new(),
+        structs: Vec::new(),
+        sum_types: Vec::new(),
+        entry_function: None,
+        service_dispatch: std::collections::HashMap::new(),
+    };
+
+    let mut seen_functions: HashSet<String> = HashSet::new();
+    let mut seen_structs: HashSet<String> = HashSet::new();
+    let mut seen_sum_types: HashSet<String> = HashSet::new();
+
+    // Process entry module first (its main() takes priority)
+    if let Some(entry) = modules.get(entry_module_idx) {
+        merged.entry_function = entry.entry_function.clone();
+    }
+
+    for module in &modules {
+        for func in &module.functions {
+            if seen_functions.insert(func.name.clone()) {
+                merged.functions.push(func.clone());
+            }
+        }
+        for s in &module.structs {
+            if seen_structs.insert(s.name.clone()) {
+                merged.structs.push(s.clone());
+            }
+        }
+        for st in &module.sum_types {
+            if seen_sum_types.insert(st.name.clone()) {
+                merged.sum_types.push(st.clone());
+            }
+        }
+        for (key, value) in &module.service_dispatch {
+            merged.service_dispatch.entry(key.clone()).or_insert_with(|| value.clone());
+        }
+    }
+
+    // Run monomorphization on the merged module to eliminate unreachable
+    // functions (builtins like Ord__compare__String that are generated in
+    // every module but only used if referenced from main).
+    monomorphize(&mut merged);
+
+    merged
 }

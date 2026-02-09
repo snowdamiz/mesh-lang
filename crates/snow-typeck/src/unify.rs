@@ -34,6 +34,9 @@ pub struct InferCtx {
     /// Populated during ImportDecl processing, read during field access resolution.
     /// Key is the module namespace name, value maps function/type name to its scheme.
     pub qualified_modules: FxHashMap<String, FxHashMap<String, Scheme>>,
+    /// Function names imported via `from Module import name1, name2`.
+    /// Tracked so the MIR lowerer can skip trait dispatch for these.
+    pub imported_functions: Vec<String>,
 }
 
 impl InferCtx {
@@ -47,6 +50,7 @@ impl InferCtx {
             warnings: Vec::new(),
             loop_depth: 0,
             qualified_modules: FxHashMap::default(),
+            imported_functions: Vec::new(),
         }
     }
 

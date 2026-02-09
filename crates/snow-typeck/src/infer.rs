@@ -682,6 +682,14 @@ pub fn infer_with_imports(parse: &Parse, import_ctx: &ImportContext) -> TypeckRe
     // Resolve the result type as well.
     let resolved_result = result_type.map(|ty| ctx.resolve(ty));
 
+    // Extract qualified module function names for the MIR lowerer.
+    let qualified_modules_for_codegen: FxHashMap<String, Vec<String>> = ctx.qualified_modules
+        .iter()
+        .map(|(mod_name, functions)| {
+            (mod_name.clone(), functions.keys().cloned().collect())
+        })
+        .collect();
+
     TypeckResult {
         types: resolved_types,
         errors: ctx.errors,
@@ -690,6 +698,8 @@ pub fn infer_with_imports(parse: &Parse, import_ctx: &ImportContext) -> TypeckRe
         type_registry,
         trait_registry,
         default_method_bodies,
+        qualified_modules: qualified_modules_for_codegen,
+        imported_functions: ctx.imported_functions,
     }
 }
 
@@ -1492,6 +1502,7 @@ fn infer_item(
                                 // Check functions
                                 if let Some(scheme) = mod_exports.functions.get(&name) {
                                     env.insert(name.clone(), scheme.clone());
+                                    ctx.imported_functions.push(name.clone());
                                 }
                                 // Check struct constructors
                                 else if let Some(struct_def) = mod_exports.struct_defs.get(&name) {
