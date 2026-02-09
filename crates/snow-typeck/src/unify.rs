@@ -30,6 +30,10 @@ pub struct InferCtx {
     /// Current loop nesting depth (0 = not inside any loop).
     /// Incremented when entering a while body, reset to 0 when entering a closure body.
     pub loop_depth: u32,
+    /// User-defined module namespaces for qualified access (e.g., Vector.add()).
+    /// Populated during ImportDecl processing, read during field access resolution.
+    /// Key is the module namespace name, value maps function/type name to its scheme.
+    pub qualified_modules: FxHashMap<String, FxHashMap<String, Scheme>>,
 }
 
 impl InferCtx {
@@ -42,6 +46,7 @@ impl InferCtx {
             errors: Vec::new(),
             warnings: Vec::new(),
             loop_depth: 0,
+            qualified_modules: FxHashMap::default(),
         }
     }
 

@@ -37,7 +37,7 @@ use crate::traits::{
 };
 use crate::ty::{Scheme, Ty, TyCon, TyVar};
 use crate::unify::InferCtx;
-use crate::{ImportContext, ModuleExports, TypeckResult};
+use crate::{ImportContext, TypeckResult};
 
 use rustc_hash::FxHashMap;
 
@@ -547,9 +547,6 @@ pub fn infer_with_imports(parse: &Parse, import_ctx: &ImportContext) -> TypeckRe
             );
         }
     }
-
-    // Build qualified_modules map for future import resolution (Plan 02).
-    let _qualified_modules: FxHashMap<String, &ModuleExports> = FxHashMap::default();
 
     let mut types = FxHashMap::default();
     let mut result_type = None;
@@ -1413,7 +1410,7 @@ fn infer_item(
     trait_registry: &mut TraitRegistry,
     fn_constraints: &mut FxHashMap<String, FnConstraints>,
     default_method_bodies: &mut FxHashMap<(String, String), TextRange>,
-    _import_ctx: &ImportContext,
+    import_ctx: &ImportContext,
 ) -> Option<Ty> {
     match item {
         Item::LetBinding(let_) => {
@@ -1441,37 +1438,128 @@ fn infer_item(
         }
         // Module declarations -- skip module def, handle imports.
         Item::ModuleDef(_) => None,
-        Item::ImportDecl(_) => {
-            // `import String` -- makes String.x qualified access available.
-            // Module-qualified access is handled in infer_field_access via
-            // stdlib_modules(). The import just validates the module name.
+        Item::ImportDecl(ref import_decl) => {
+            // Resolve import: check user modules first, then stdlib.
+            if let Some(path) = import_decl.module_path() {
+                let segments = path.segments();
+                let full_name = segments.join(".");
+                let last_segment = segments.last().cloned().unwrap_or_default();
+
+                // Check user-defined modules via ImportContext
+                if let Some(mod_exports) = import_ctx.module_exports.get(&last_segment) {
+                    // Register the module namespace for qualified access
+                    ctx.qualified_modules.insert(last_segment.clone(), mod_exports.functions.clone());
+                    // Also register struct constructor types for qualified access
+                    for (name, struct_def) in &mod_exports.struct_defs {
+                        let struct_ty = if struct_def.generic_params.is_empty() {
+                            Ty::struct_ty(name, vec![])
+                        } else {
+                            let type_args: Vec<Ty> = struct_def.generic_params.iter()
+                                .map(|_| ctx.fresh_var()).collect();
+                            Ty::struct_ty(name, type_args)
+                        };
+                        ctx.qualified_modules.entry(last_segment.clone())
+                            .or_default()
+                            .insert(name.clone(), Scheme::mono(struct_ty));
+                    }
+                    // Sum type variant constructors are already in mod_exports.functions
+                    // (registered during the exporting module's type check).
+                } else if is_stdlib_module(&last_segment) {
+                    // Stdlib module -- already handled in infer_field_access.
+                    // No action needed (backward compat).
+                } else {
+                    // IMPORT-06: Module not found
+                    ctx.errors.push(TypeError::ImportModuleNotFound {
+                        module_name: full_name,
+                        span: import_decl.syntax().text_range(),
+                        suggestion: None,
+                    });
+                }
+            }
             None
         }
         Item::FromImportDecl(ref from_import) => {
-            // `from String import length, trim` -- inject names into local scope.
-            let modules = stdlib_modules();
             if let Some(path) = from_import.module_path() {
                 let segments = path.segments();
-                if let Some(module_name) = segments.first() {
-                    if let Some(mod_exports) = modules.get(module_name.as_str()) {
-                        if let Some(import_list) = from_import.import_list() {
-                            for name_node in import_list.names() {
-                                if let Some(name) = name_node.text() {
-                                    if let Some(scheme) = mod_exports.get(&name) {
-                                        // Insert into env under the bare name so the
-                                        // user can call `length("hello")` directly.
-                                        env.insert(name.clone(), scheme.clone());
-                                        // Also insert the prefixed form so lowering can
-                                        // resolve it to the runtime function.
-                                        let prefixed = format!(
-                                            "{}_{}",
-                                            module_name.to_lowercase(),
-                                            name
-                                        );
-                                        env.insert(prefixed, scheme.clone());
+                let full_name = segments.join(".");
+                let last_segment = segments.last().cloned().unwrap_or_default();
+
+                // Check user-defined modules first
+                if let Some(mod_exports) = import_ctx.module_exports.get(&last_segment) {
+                    if let Some(import_list) = from_import.import_list() {
+                        for name_node in import_list.names() {
+                            if let Some(name) = name_node.text() {
+                                // Check functions
+                                if let Some(scheme) = mod_exports.functions.get(&name) {
+                                    env.insert(name.clone(), scheme.clone());
+                                }
+                                // Check struct constructors
+                                else if let Some(struct_def) = mod_exports.struct_defs.get(&name) {
+                                    let struct_ty = if struct_def.generic_params.is_empty() {
+                                        Ty::struct_ty(&name, vec![])
+                                    } else {
+                                        let type_args: Vec<Ty> = struct_def.generic_params.iter()
+                                            .map(|_| ctx.fresh_var()).collect();
+                                        Ty::struct_ty(&name, type_args)
+                                    };
+                                    env.insert(name.clone(), Scheme::mono(struct_ty));
+                                    // Also register the struct in type_registry
+                                    type_registry.register_struct(struct_def.clone());
+                                }
+                                // Check sum type names (importing sum type brings constructors)
+                                else if let Some(sum_def) = mod_exports.sum_type_defs.get(&name) {
+                                    type_registry.register_sum_type(sum_def.clone());
+                                    register_variant_constructors(
+                                        ctx, env,
+                                        &sum_def.name,
+                                        &sum_def.generic_params,
+                                        &sum_def.variants,
+                                    );
+                                }
+                                else {
+                                    // IMPORT-07: Name not found in module
+                                    let available: Vec<String> = mod_exports.functions.keys()
+                                        .chain(mod_exports.struct_defs.keys())
+                                        .chain(mod_exports.sum_type_defs.keys())
+                                        .cloned()
+                                        .collect();
+                                    ctx.errors.push(TypeError::ImportNameNotFound {
+                                        module_name: full_name.clone(),
+                                        name: name.clone(),
+                                        span: name_node.syntax().text_range(),
+                                        available,
+                                    });
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    // Fall back to stdlib modules (backward compat)
+                    let modules = stdlib_modules();
+                    if let Some(first_segment) = segments.first() {
+                        if let Some(mod_fns) = modules.get(first_segment.as_str()) {
+                            if let Some(import_list) = from_import.import_list() {
+                                for name_node in import_list.names() {
+                                    if let Some(name) = name_node.text() {
+                                        if let Some(scheme) = mod_fns.get(&name) {
+                                            env.insert(name.clone(), scheme.clone());
+                                            let prefixed = format!(
+                                                "{}_{}",
+                                                first_segment.to_lowercase(),
+                                                name
+                                            );
+                                            env.insert(prefixed, scheme.clone());
+                                        }
                                     }
                                 }
                             }
+                        } else {
+                            // Not a user module, not a stdlib module -> error
+                            ctx.errors.push(TypeError::ImportModuleNotFound {
+                                module_name: full_name,
+                                span: from_import.syntax().text_range(),
+                                suggestion: None,
+                            });
                         }
                     }
                 }

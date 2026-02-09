@@ -205,6 +205,8 @@ fn type_error_span(error: &TypeError) -> Option<TextRange> {
         TypeError::NoSuchMethod { span, .. } => Some(*span),
         TypeError::BreakOutsideLoop { span, .. } => Some(*span),
         TypeError::ContinueOutsideLoop { span, .. } => Some(*span),
+        TypeError::ImportModuleNotFound { span, .. } => Some(*span),
+        TypeError::ImportNameNotFound { span, .. } => Some(*span),
     }
 }
 
