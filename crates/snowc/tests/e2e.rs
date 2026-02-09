@@ -1880,3 +1880,256 @@ end
 "#);
     assert_eq!(output, "42\n");
 }
+
+// ── Phase 40: Visibility Enforcement ──────────────────────────────────
+
+/// Phase 40 VIS-01: Private function blocked via selective import.
+/// A function without `pub` cannot be imported from another module.
+#[test]
+fn e2e_visibility_private_fn_blocked() {
+    let error = compile_multifile_expect_error(&[
+        ("math.snow", r#"
+fn secret(a :: Int) -> Int do
+  a + 1
+end
+"#),
+        ("main.snow", r#"
+from Math import secret
+
+fn main() do
+  println("${secret(5)}")
+end
+"#),
+    ]);
+    assert!(
+        error.contains("private") || error.contains("pub"),
+        "Expected error about private item or pub suggestion, got: {}",
+        error
+    );
+}
+
+/// Phase 40 VIS-02: Pub function importable via selective import.
+/// Adding `pub` to a function makes it accessible from another module.
+#[test]
+fn e2e_visibility_pub_fn_works() {
+    let output = compile_multifile_and_run(&[
+        ("math.snow", r#"
+pub fn add(a :: Int, b :: Int) -> Int do
+  a + b
+end
+"#),
+        ("main.snow", r#"
+from Math import add
+
+fn main() do
+  println("${add(2, 3)}")
+end
+"#),
+    ]);
+    assert_eq!(output, "5\n");
+}
+
+/// Phase 40 VIS-01/VIS-03: Private struct blocked via selective import.
+/// A struct without `pub` cannot be imported from another module.
+#[test]
+fn e2e_visibility_private_struct_blocked() {
+    let error = compile_multifile_expect_error(&[
+        ("shapes.snow", r#"
+struct Point do
+  x :: Int
+  y :: Int
+end
+
+pub fn dummy() -> Int do
+  0
+end
+"#),
+        ("main.snow", r#"
+from Shapes import Point
+
+fn main() do
+  println("nope")
+end
+"#),
+    ]);
+    assert!(
+        error.contains("private") || error.contains("pub"),
+        "Expected error about private struct or pub suggestion, got: {}",
+        error
+    );
+}
+
+/// Phase 40 VIS-02/VIS-04: Pub struct fully accessible with all fields.
+/// A pub struct's fields are all accessible to importers.
+#[test]
+fn e2e_visibility_pub_struct_accessible() {
+    let output = compile_multifile_and_run(&[
+        ("geometry.snow", r#"
+pub struct Point do
+  x :: Int
+  y :: Int
+end
+
+pub fn make(a :: Int, b :: Int) -> Point do
+  Point { x: a, y: b }
+end
+"#),
+        ("main.snow", r#"
+from Geometry import Point, make
+
+fn main() do
+  let p = make(10, 20)
+  println("${p.x},${p.y}")
+end
+"#),
+    ]);
+    assert_eq!(output, "10,20\n");
+}
+
+/// Phase 40 VIS-01: Private sum type blocked via selective import.
+/// A sum type without `pub` cannot be imported from another module.
+#[test]
+fn e2e_visibility_private_sum_type_blocked() {
+    let error = compile_multifile_expect_error(&[
+        ("colors.snow", r#"
+type Color do
+  Red
+  Blue
+  Green
+end
+
+pub fn dummy() -> Int do
+  0
+end
+"#),
+        ("main.snow", r#"
+from Colors import Color
+
+fn main() do
+  println("nope")
+end
+"#),
+    ]);
+    assert!(
+        error.contains("private") || error.contains("pub"),
+        "Expected error about private sum type or pub suggestion, got: {}",
+        error
+    );
+}
+
+/// Phase 40 VIS-02/VIS-05: Pub sum type with all variants accessible.
+/// A pub sum type's variants are accessible for construction and pattern matching.
+#[test]
+fn e2e_visibility_pub_sum_type_accessible() {
+    let output = compile_multifile_and_run(&[
+        ("colors.snow", r#"
+pub type Color do
+  Red
+  Blue
+  Green
+end
+"#),
+        ("main.snow", r#"
+from Colors import Color
+
+fn main() do
+  let c = Red
+  case c do
+    Red -> println("red")
+    Blue -> println("blue")
+    Green -> println("green")
+  end
+end
+"#),
+    ]);
+    assert_eq!(output, "red\n");
+}
+
+/// Phase 40 VIS-03: Error message suggests adding pub.
+/// When importing a private item, the error mentions both "private" and "pub".
+#[test]
+fn e2e_visibility_error_suggests_pub() {
+    let error = compile_multifile_expect_error(&[
+        ("helpers.snow", r#"
+fn internal() -> Int do
+  42
+end
+"#),
+        ("main.snow", r#"
+from Helpers import internal
+
+fn main() do
+  println("nope")
+end
+"#),
+    ]);
+    assert!(
+        !error.is_empty(),
+        "Expected compilation to fail with error"
+    );
+    assert!(
+        error.contains("private"),
+        "Expected error to mention 'private', got: {}",
+        error
+    );
+    assert!(
+        error.contains("pub"),
+        "Expected error to suggest adding 'pub', got: {}",
+        error
+    );
+}
+
+/// Phase 40 VIS-01: Qualified access to private function blocked.
+/// `import Module` then `Module.private_fn()` should fail because private
+/// functions are not included in qualified module exports.
+#[test]
+fn e2e_visibility_qualified_private_blocked() {
+    let error = compile_multifile_expect_error(&[
+        ("helpers.snow", r#"
+fn secret() -> Int do
+  42
+end
+
+pub fn public_fn() -> Int do
+  1
+end
+"#),
+        ("main.snow", r#"
+import Helpers
+
+fn main() do
+  let x = Helpers.secret()
+  println("${x}")
+end
+"#),
+    ]);
+    assert!(
+        !error.is_empty(),
+        "Expected compilation to fail when accessing private function via qualified syntax"
+    );
+}
+
+/// Phase 40: Mixed pub and private in same module.
+/// Pub items work while private items in the same module don't leak.
+#[test]
+fn e2e_visibility_mixed_pub_private() {
+    let output = compile_multifile_and_run(&[
+        ("utils.snow", r#"
+pub fn visible(x :: Int) -> Int do
+  x * 2
+end
+
+fn hidden(x :: Int) -> Int do
+  x * 3
+end
+"#),
+        ("main.snow", r#"
+from Utils import visible
+
+fn main() do
+  println("${visible(5)}")
+end
+"#),
+    ]);
+    assert_eq!(output, "10\n");
+}
