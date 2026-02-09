@@ -10073,4 +10073,21 @@ end
             "Expected MirExpr::Continue in while body"
         );
     }
+
+    #[test]
+    fn lower_for_in_range_expr() {
+        let mir = lower("fn test() do for i in 0..10 do println(i) end end");
+        let func = mir.functions.iter().find(|f| f.name == "test");
+        assert!(func.is_some(), "Expected 'test' function in MIR");
+        let func = func.unwrap();
+        match &func.body {
+            MirExpr::ForInRange { var, start, end, ty, .. } => {
+                assert_eq!(var, "i");
+                assert!(matches!(start.as_ref(), MirExpr::IntLit(0, _)), "Expected start=0, got {:?}", start);
+                assert!(matches!(end.as_ref(), MirExpr::IntLit(10, _)), "Expected end=10, got {:?}", end);
+                assert_eq!(*ty, MirType::Unit);
+            }
+            other => panic!("Expected MirExpr::ForInRange, got {:?}", other),
+        }
+    }
 }

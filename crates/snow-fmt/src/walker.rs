@@ -619,6 +619,10 @@ fn walk_binary_expr(node: &SyntaxNode) -> FormatIR {
             NodeOrToken::Token(tok) => {
                 match tok.kind() {
                     SyntaxKind::NEWLINE => {}
+                    // Range operator `..` has no surrounding spaces.
+                    SyntaxKind::DOT_DOT => {
+                        parts.push(ir::text(".."));
+                    }
                     _ if is_operator(tok.kind()) => {
                         parts.push(sp());
                         parts.push(ir::text(tok.text()));
@@ -2126,5 +2130,28 @@ mod tests {
     fn continue_in_while() {
         let result = fmt("while true do\ncontinue\nend");
         assert!(result.contains("continue"), "Result should contain continue: {:?}", result);
+    }
+
+    // ── For-in expression tests ─────────────────────────────────────
+
+    #[test]
+    fn for_in_range_basic() {
+        let result = fmt("for i in 0..10 do\nprintln(i)\nend");
+        assert_eq!(result, "for i in 0..10 do\n  println(i)\nend\n");
+    }
+
+    #[test]
+    fn for_in_range_idempotent() {
+        let src = "for i in 0..10 do\nprintln(i)\nend";
+        let first = fmt(src);
+        let second = fmt(&first);
+        assert_eq!(first, second, "Idempotency failed.\nFirst: {:?}\nSecond: {:?}", first, second);
+    }
+
+    #[test]
+    fn for_in_range_normalize_whitespace() {
+        // Extra spaces should be normalized
+        let result = fmt("for  i  in  0..10  do\nprintln(i)\nend");
+        assert_eq!(result, "for i in 0..10 do\n  println(i)\nend\n");
     }
 }

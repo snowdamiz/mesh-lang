@@ -1474,4 +1474,59 @@ mod tests {
             ir
         );
     }
+
+    // ── For-in range codegen tests ──────────────────────────────────
+
+    #[test]
+    fn test_for_in_range_basic_blocks() {
+        // For-in range should produce header/body/latch/merge basic blocks
+        let body = MirExpr::ForInRange {
+            var: "i".to_string(),
+            start: Box::new(MirExpr::IntLit(0, MirType::Int)),
+            end: Box::new(MirExpr::IntLit(10, MirType::Int)),
+            body: Box::new(MirExpr::Unit),
+            ty: MirType::Unit,
+        };
+        let ir = compile_expr_to_ir(body, MirType::Unit);
+        assert!(ir.contains("forin_header"), "Should have forin_header block: {}", ir);
+        assert!(ir.contains("forin_body"), "Should have forin_body block: {}", ir);
+        assert!(ir.contains("forin_latch"), "Should have forin_latch block: {}", ir);
+        assert!(ir.contains("forin_merge"), "Should have forin_merge block: {}", ir);
+    }
+
+    #[test]
+    fn test_for_in_range_slt_comparison() {
+        // For-in range should use icmp slt (NOT sle) for half-open range
+        let body = MirExpr::ForInRange {
+            var: "i".to_string(),
+            start: Box::new(MirExpr::IntLit(0, MirType::Int)),
+            end: Box::new(MirExpr::IntLit(5, MirType::Int)),
+            body: Box::new(MirExpr::Unit),
+            ty: MirType::Unit,
+        };
+        let ir = compile_expr_to_ir(body, MirType::Unit);
+        assert!(
+            ir.contains("icmp slt"),
+            "Should use icmp slt for half-open range: {}",
+            ir
+        );
+    }
+
+    #[test]
+    fn test_for_in_range_reduction_check_in_latch() {
+        // Latch block should contain snow_reduction_check
+        let body = MirExpr::ForInRange {
+            var: "i".to_string(),
+            start: Box::new(MirExpr::IntLit(0, MirType::Int)),
+            end: Box::new(MirExpr::IntLit(10, MirType::Int)),
+            body: Box::new(MirExpr::Unit),
+            ty: MirType::Unit,
+        };
+        let ir = compile_expr_to_ir(body, MirType::Unit);
+        assert!(
+            ir.contains("snow_reduction_check"),
+            "Should emit snow_reduction_check in latch block: {}",
+            ir
+        );
+    }
 }

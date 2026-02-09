@@ -1150,3 +1150,82 @@ fn e2e_continue_in_closure_error() {
     let error = compile_expect_error(source);
     assert!(error.contains("continue"), "Expected continue error, got: {}", error);
 }
+
+// ── Phase 34: For-In over Range ─────────────────────────────────────
+
+/// FORIN-02: Basic range iteration prints 0..5 then 10..13.
+/// FORIN-08: Loop variable scoped to body (reuse i).
+#[test]
+fn e2e_for_in_range_basic() {
+    let source = read_fixture("for_in_range.snow");
+    let output = compile_and_run(&source);
+    assert_eq!(output, "0\n1\n2\n3\n4\n---\n10\n11\n12\ndone\n");
+}
+
+/// Empty range (5..5) produces zero iterations.
+#[test]
+fn e2e_for_in_range_empty() {
+    let source = r#"
+fn main() do
+  for i in 5..5 do
+    println("${i}")
+  end
+  println("empty")
+end
+"#;
+    let output = compile_and_run(source);
+    assert_eq!(output, "empty\n");
+}
+
+/// Reverse range (10..0) produces zero iterations (SLT fails immediately).
+#[test]
+fn e2e_for_in_range_reverse() {
+    let source = r#"
+fn main() do
+  for i in 10..0 do
+    println("${i}")
+  end
+  println("reverse")
+end
+"#;
+    let output = compile_and_run(source);
+    assert_eq!(output, "reverse\n");
+}
+
+/// Break inside for-in exits the loop early.
+#[test]
+fn e2e_for_in_range_break() {
+    let source = r#"
+fn main() do
+  for i in 0..100 do
+    if i == 3 do
+      break
+    end
+    println("${i}")
+  end
+  println("after")
+end
+"#;
+    let output = compile_and_run(source);
+    assert_eq!(output, "0\n1\n2\nafter\n");
+}
+
+/// Continue inside for-in skips to next iteration via latch.
+#[test]
+fn e2e_for_in_range_continue() {
+    let source = r#"
+fn main() do
+  for i in 0..6 do
+    if i == 2 do
+      continue
+    end
+    if i == 4 do
+      continue
+    end
+    println("${i}")
+  end
+end
+"#;
+    let output = compile_and_run(source);
+    assert_eq!(output, "0\n1\n3\n5\n");
+}
