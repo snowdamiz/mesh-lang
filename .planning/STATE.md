@@ -5,16 +5,16 @@
 See: .planning/PROJECT.md (updated 2026-02-08)
 
 **Core value:** Expressive, readable concurrency -- writing concurrent programs should feel as natural as sequential code, with supervision and fault tolerance built in.
-**Current focus:** v1.5 Compiler Correctness -- Phase 27 complete (List Trait Pattern Integration)
+**Current focus:** v1.5 Compiler Correctness -- Phase 28 complete (Trait Deriving Safety)
 
 ## Current Position
 
-Phase: 27 of 29 (List Trait Pattern Integration)
-Plan: 2 of 2 in current phase
+Phase: 28 of 29 (Trait Deriving Safety)
+Plan: 1 of 1 in current phase
 Status: Phase complete
-Last activity: 2026-02-09 -- Completed 27-02-PLAN.md
+Last activity: 2026-02-09 -- Completed 28-01-PLAN.md
 
-Progress: #####░░░░░ ~50% (v1.5: 4/8 plans)
+Progress: ######░░░░ ~63% (v1.5: 5/8 plans)
 
 ## Performance Metrics
 
@@ -74,6 +74,7 @@ Full decision history archived in milestones/v1.0-ROADMAP.md through milestones/
 | 27-02-D2 | AccessPath::ListHead/ListTail for list sub-value navigation | Enables pattern compiler to express list element/tail access paths |
 | 27-02-D3 | Local variable bindings take precedence over builtin name mappings | Pattern binding `head` was incorrectly mapped to snow_list_head |
 | 27-02-D4 | Conservative exhaustiveness for cons patterns (treated as wildcards) | Lists are infinite types; cons alone is never exhaustive |
+| 28-01-D1 | Emit error and early-return instead of silently adding Eq | User opted into selective deriving; respect that with a clear error and suggestion |
 
 ### Pending Todos
 
@@ -85,7 +86,7 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-02-09T01:00:31Z
-Stopped at: Completed 27-02-PLAN.md (Phase 27 complete)
+Last session: 2026-02-09T01:30:27Z
+Stopped at: Completed 28-01-PLAN.md (Phase 28 complete)
 Resume file: None
-Next action: Execute Phase 28
+Next action: Execute Phase 29

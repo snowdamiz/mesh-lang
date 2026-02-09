@@ -94,18 +94,19 @@ Plans:
 - [x] 27-01-PLAN.md -- Display/Debug and Eq/Ord trait dispatch for List<T>
 - [x] 27-02-PLAN.md -- Cons pattern (head :: tail) destructuring for List<T>
 
-#### Phase 28: Trait Deriving Safety
+#### Phase 28: Trait Deriving Safety ✓
 **Goal**: Compiler enforces trait dependency rules at compile time instead of failing at runtime
 **Depends on**: Phase 25 (v1.4 complete, independent of Phases 26-27)
 **Requirements**: DERIVE-01, DERIVE-02, DERIVE-03
 **Success Criteria** (what must be TRUE):
-  1. `deriving(Ord)` without `Eq` on a struct emits a compile-time error (not a runtime crash)
-  2. The error message explicitly suggests adding `Eq` to the deriving list
-  3. `deriving(Eq, Ord)` compiles and works correctly with no regression from v1.4 behavior
+  1. ✓ `deriving(Ord)` without `Eq` on a struct emits a compile-time error (not a runtime crash)
+  2. ✓ The error message explicitly suggests adding `Eq` to the deriving list
+  3. ✓ `deriving(Eq, Ord)` compiles and works correctly with no regression from v1.4 behavior
 **Plans**: 1 plan
+**Completed**: 2026-02-09
 
 Plans:
-- [ ] 28-01-PLAN.md -- MissingDerivePrerequisite error variant + validation checks + e2e tests
+- [x] 28-01-PLAN.md -- MissingDerivePrerequisite error variant + validation checks + e2e tests
 
 #### Phase 29: Qualified Types
 **Goal**: Trait constraints propagate correctly when constrained functions are passed as higher-order arguments
@@ -152,5 +153,5 @@ Plans:
 | 25. Type System Soundness | v1.4 | 1/1 | Complete | 2026-02-08 |
 | 26. Polymorphic List Foundation | v1.5 | 2/2 | Complete | 2026-02-08 |
 | 27. List Trait & Pattern Integration | v1.5 | 2/2 | Complete | 2026-02-09 |
-| 28. Trait Deriving Safety | v1.5 | 0/1 | Not started | - |
+| 28. Trait Deriving Safety | v1.5 | 1/1 | Complete | 2026-02-09 |
 | 29. Qualified Types | v1.5 | 0/TBD | Not started | - |
