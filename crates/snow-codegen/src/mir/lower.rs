@@ -8227,6 +8227,206 @@ end
         );
     }
 
+    /// QUAL-01: Higher-order apply with conforming type should NOT produce
+    /// TraitNotSatisfied. apply(show, 42) where Int implements Displayable.
+    #[test]
+    fn e2e_qualified_type_higher_order_apply() {
+        let source = r#"
+interface Displayable do
+  fn display(self) -> String
+end
+
+impl Displayable for Int do
+  fn display(self) -> String do
+    "int"
+  end
+end
+
+fn show<T>(x :: T) -> String where T: Displayable do
+  display(x)
+end
+
+fn apply(f, x) do
+  f(x)
+end
+
+fn main() do
+  apply(show, 42)
+end
+"#;
+        let parse = snow_parser::parse(source);
+        let typeck = snow_typeck::check(&parse);
+
+        let has_trait_error = typeck.errors.iter().any(|e| {
+            matches!(e, snow_typeck::error::TypeError::TraitNotSatisfied { .. })
+        });
+        assert!(
+            !has_trait_error,
+            "Should NOT get TraitNotSatisfied when passing show to apply with conforming type. Errors: {:?}",
+            typeck.errors
+        );
+    }
+
+    /// QUAL-03: Higher-order apply with non-conforming type MUST produce
+    /// TraitNotSatisfied. apply(say_hello, 42) where Int does NOT implement Greetable.
+    #[test]
+    fn e2e_qualified_type_higher_order_violation() {
+        let source = r#"
+interface Greetable do
+  fn greet(self) -> String
+end
+
+fn say_hello<T>(x :: T) -> String where T: Greetable do
+  greet(x)
+end
+
+fn apply(f, x) do
+  f(x)
+end
+
+fn main() do
+  apply(say_hello, 42)
+end
+"#;
+        let parse = snow_parser::parse(source);
+        let typeck = snow_typeck::check(&parse);
+
+        let has_trait_error = typeck.errors.iter().any(|e| {
+            matches!(e, snow_typeck::error::TypeError::TraitNotSatisfied { .. })
+        });
+        assert!(
+            has_trait_error,
+            "Expected TraitNotSatisfied when passing constrained function to apply with non-conforming type. Errors: {:?}",
+            typeck.errors
+        );
+    }
+
+    /// QUAL-02: Nested higher-order constraint propagation.
+    /// wrap(apply, show, 42) should NOT produce TraitNotSatisfied when Int implements Displayable.
+    #[test]
+    fn e2e_qualified_type_nested_higher_order() {
+        let source = r#"
+interface Displayable do
+  fn display(self) -> String
+end
+
+impl Displayable for Int do
+  fn display(self) -> String do
+    "int"
+  end
+end
+
+fn show<T>(x :: T) -> String where T: Displayable do
+  display(x)
+end
+
+fn apply(f, x) do
+  f(x)
+end
+
+fn wrap(f, g, x) do
+  f(g, x)
+end
+
+fn main() do
+  wrap(apply, show, 42)
+end
+"#;
+        let parse = snow_parser::parse(source);
+        let typeck = snow_typeck::check(&parse);
+
+        let has_trait_error = typeck.errors.iter().any(|e| {
+            matches!(e, snow_typeck::error::TypeError::TraitNotSatisfied { .. })
+        });
+        assert!(
+            !has_trait_error,
+            "Should NOT get TraitNotSatisfied for nested higher-order constraint propagation. Errors: {:?}",
+            typeck.errors
+        );
+    }
+
+    /// QUAL-01 positive: Conforming type with full impl body.
+    /// apply(show, 42) where Int implements Displayable with actual method.
+    #[test]
+    fn e2e_qualified_type_higher_order_conforming() {
+        let source = r#"
+interface Displayable do
+  fn display(self) -> String
+end
+
+impl Displayable for Int do
+  fn display(self) -> String do
+    "${self}"
+  end
+end
+
+fn show<T>(x :: T) -> String where T: Displayable do
+  display(x)
+end
+
+fn apply(f, x) do
+  f(x)
+end
+
+fn main() do
+  let result = apply(show, 42)
+  result
+end
+"#;
+        let parse = snow_parser::parse(source);
+        let typeck = snow_typeck::check(&parse);
+
+        let has_trait_error = typeck.errors.iter().any(|e| {
+            matches!(e, snow_typeck::error::TypeError::TraitNotSatisfied { .. })
+        });
+        assert!(
+            !has_trait_error,
+            "Should NOT get TraitNotSatisfied with conforming type in higher-order apply. Errors: {:?}",
+            typeck.errors
+        );
+    }
+
+    /// QUAL-01 + Phase 25 interaction: let alias of constrained function passed as
+    /// higher-order argument. let f = show; apply(f, 42) should NOT produce TraitNotSatisfied.
+    #[test]
+    fn e2e_qualified_type_higher_order_let_alias() {
+        let source = r#"
+interface Displayable do
+  fn display(self) -> String
+end
+
+impl Displayable for Int do
+  fn display(self) -> String do
+    "int"
+  end
+end
+
+fn show<T>(x :: T) -> String where T: Displayable do
+  display(x)
+end
+
+fn apply(f, x) do
+  f(x)
+end
+
+fn main() do
+  let f = show
+  apply(f, 42)
+end
+"#;
+        let parse = snow_parser::parse(source);
+        let typeck = snow_typeck::check(&parse);
+
+        let has_trait_error = typeck.errors.iter().any(|e| {
+            matches!(e, snow_typeck::error::TypeError::TraitNotSatisfied { .. })
+        });
+        assert!(
+            !has_trait_error,
+            "Should NOT get TraitNotSatisfied when passing let-aliased constrained function to apply. Errors: {:?}",
+            typeck.errors
+        );
+    }
+
     /// Success Criterion 5: Depth limit machinery is in place.
     /// Normal programs produce no Panic nodes; the depth counter fields exist.
     #[test]
