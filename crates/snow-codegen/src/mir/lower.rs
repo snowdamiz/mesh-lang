@@ -3382,7 +3382,8 @@ impl<'a> Lowerer<'a> {
     ) -> MirExpr {
         if !self.known_functions.contains_key(name) {
             let ty_for_lookup = mir_type_to_ty(first_arg_ty);
-            let matching_traits = self.trait_registry.find_method_traits(name, &ty_for_lookup);
+            let mut matching_traits = self.trait_registry.find_method_traits(name, &ty_for_lookup);
+            matching_traits.sort(); // Defense-in-depth: deterministic trait selection
             if !matching_traits.is_empty() {
                 let trait_name = &matching_traits[0];
                 let type_name = mir_type_to_impl_name(first_arg_ty);
