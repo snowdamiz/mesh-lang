@@ -273,6 +273,12 @@ pub enum TypeError {
         /// Available names in the module (for "did you mean?" suggestions).
         available: Vec<String>,
     },
+    /// Attempted to import a private (non-pub) item from a module (VIS-03).
+    PrivateItem {
+        module_name: String,
+        name: String,
+        span: TextRange,
+    },
 }
 
 impl fmt::Display for TypeError {
@@ -567,6 +573,9 @@ impl fmt::Display for TypeError {
                 } else {
                     write!(f, "`{}` is not exported by module `{}`; available: {}", name, module_name, available.join(", "))
                 }
+            }
+            TypeError::PrivateItem { module_name, name, .. } => {
+                write!(f, "`{}` is private in module `{}`; add `pub` to make it accessible", name, module_name)
             }
         }
     }

@@ -125,6 +125,7 @@ fn error_code(err: &TypeError) -> &'static str {
         TypeError::ContinueOutsideLoop { .. } => "E0033",
         TypeError::ImportModuleNotFound { .. } => "E0031",
         TypeError::ImportNameNotFound { .. } => "E0034",
+        TypeError::PrivateItem { .. } => "E0035",
     }
 }
 
@@ -483,7 +484,8 @@ pub fn render_json_diagnostic(
                 | TypeError::BreakOutsideLoop { span }
                 | TypeError::ContinueOutsideLoop { span }
                 | TypeError::ImportModuleNotFound { span, .. }
-                | TypeError::ImportNameNotFound { span, .. } => {
+                | TypeError::ImportNameNotFound { span, .. }
+                | TypeError::PrivateItem { span, .. } => {
                     let range = text_range_to_range(*span);
                     spans.push(JsonSpan {
                         start: range.start,
@@ -1476,6 +1478,23 @@ pub fn render_diagnostic(
             }
 
             builder.finish()
+        }
+
+        TypeError::PrivateItem { module_name, name, span } => {
+            let msg = "private item cannot be imported";
+            let range = clamp(text_range_to_range(*span));
+
+            Report::build(ReportKind::Error, range.clone())
+                .with_code(code)
+                .with_message(msg)
+                .with_config(config)
+                .with_label(
+                    Label::new(range)
+                        .with_message(format!("`{}` is private in module `{}`", name, module_name))
+                        .with_color(Color::Red),
+                )
+                .with_help(format!("add `pub` to `{}` in module `{}` to make it accessible", name, module_name))
+                .finish()
         }
     };
 

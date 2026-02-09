@@ -1528,18 +1528,27 @@ fn infer_item(
                                     );
                                 }
                                 else {
-                                    // IMPORT-07: Name not found in module
-                                    let available: Vec<String> = mod_exports.functions.keys()
-                                        .chain(mod_exports.struct_defs.keys())
-                                        .chain(mod_exports.sum_type_defs.keys())
-                                        .cloned()
-                                        .collect();
-                                    ctx.errors.push(TypeError::ImportNameNotFound {
-                                        module_name: full_name.clone(),
-                                        name: name.clone(),
-                                        span: name_node.syntax().text_range(),
-                                        available,
-                                    });
+                                    // Check if item exists but is private (VIS-03)
+                                    if mod_exports.private_names.contains(&name) {
+                                        ctx.errors.push(TypeError::PrivateItem {
+                                            module_name: full_name.clone(),
+                                            name: name.clone(),
+                                            span: name_node.syntax().text_range(),
+                                        });
+                                    } else {
+                                        // IMPORT-07: Name not found in module
+                                        let available: Vec<String> = mod_exports.functions.keys()
+                                            .chain(mod_exports.struct_defs.keys())
+                                            .chain(mod_exports.sum_type_defs.keys())
+                                            .cloned()
+                                            .collect();
+                                        ctx.errors.push(TypeError::ImportNameNotFound {
+                                            module_name: full_name.clone(),
+                                            name: name.clone(),
+                                            span: name_node.syntax().text_range(),
+                                            available,
+                                        });
+                                    }
                                 }
                             }
                         }

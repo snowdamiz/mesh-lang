@@ -207,6 +207,7 @@ fn type_error_span(error: &TypeError) -> Option<TextRange> {
         TypeError::ContinueOutsideLoop { span, .. } => Some(*span),
         TypeError::ImportModuleNotFound { span, .. } => Some(*span),
         TypeError::ImportNameNotFound { span, .. } => Some(*span),
+        TypeError::PrivateItem { span, .. } => Some(*span),
     }
 }
 
