@@ -285,6 +285,8 @@ pub enum SyntaxKind {
     BREAK_EXPR,
     /// Continue expression: `continue`
     CONTINUE_EXPR,
+    /// For-in expression: for binding in iterable do body end
+    FOR_IN_EXPR,
 
     // ── Actor node kinds ──────────────────────────────────────────────
     /// Actor block declaration: `actor Name do ... end`
@@ -671,6 +673,7 @@ mod tests {
             SyntaxKind::WHILE_EXPR,
             SyntaxKind::BREAK_EXPR,
             SyntaxKind::CONTINUE_EXPR,
+            SyntaxKind::FOR_IN_EXPR,
             // Actor node kinds
             SyntaxKind::ACTOR_DEF,
             SyntaxKind::SPAWN_EXPR,
@@ -693,8 +696,8 @@ mod tests {
             SyntaxKind::SECONDS_LIMIT,
         ];
         assert!(
-            node_kinds.len() >= 79,
-            "expected at least 79 composite node kinds, got {}",
+            node_kinds.len() >= 80,
+            "expected at least 80 composite node kinds, got {}",
             node_kinds.len()
         );
     }

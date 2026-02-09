@@ -268,6 +268,7 @@ fn lhs(p: &mut Parser) -> Option<MarkClosed> {
 
         // Loop expression atoms
         SyntaxKind::WHILE_KW => Some(parse_while_expr(p)),
+        SyntaxKind::FOR_KW => Some(parse_for_in_expr(p)),
         SyntaxKind::BREAK_KW => Some(parse_break_expr(p)),
         SyntaxKind::CONTINUE_KW => Some(parse_continue_expr(p)),
 
@@ -1182,6 +1183,51 @@ fn parse_continue_expr(p: &mut Parser) -> MarkClosed {
     let m = p.open();
     p.advance(); // CONTINUE_KW
     p.close(m, SyntaxKind::CONTINUE_EXPR)
+}
+
+// ── For-In Expression Parsing ─────────────────────────────────────────
+
+/// Parse a for-in expression: `for binding in iterable do body end`
+fn parse_for_in_expr(p: &mut Parser) -> MarkClosed {
+    let m = p.open();
+    p.advance(); // FOR_KW
+
+    // Parse binding name.
+    if p.at(SyntaxKind::IDENT) {
+        let name = p.open();
+        p.advance(); // identifier
+        p.close(name, SyntaxKind::NAME);
+    } else {
+        p.error("expected loop variable name after `for`");
+    }
+
+    // Expect `in`.
+    p.expect(SyntaxKind::IN_KW);
+
+    // Parse iterable expression (e.g., 0..10 parses as BINARY_EXPR with DOT_DOT).
+    if !p.has_error() {
+        expr(p);
+    }
+
+    // Expect `do`.
+    let do_span = p.current_span();
+    p.expect(SyntaxKind::DO_KW);
+
+    // Parse body.
+    parse_block_body(p);
+
+    // Expect `end`.
+    if !p.at(SyntaxKind::END_KW) {
+        p.error_with_related(
+            "expected `end` to close `for` block",
+            do_span,
+            "`do` block started here",
+        );
+    } else {
+        p.advance(); // END_KW
+    }
+
+    p.close(m, SyntaxKind::FOR_IN_EXPR)
 }
 
 // ── Actor Expression Parsing ──────────────────────────────────────────

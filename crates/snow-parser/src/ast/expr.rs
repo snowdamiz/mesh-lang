@@ -36,6 +36,7 @@ pub enum Expr {
     WhileExpr(WhileExpr),
     BreakExpr(BreakExpr),
     ContinueExpr(ContinueExpr),
+    ForInExpr(ForInExpr),
     // Actor expression types
     SpawnExpr(SpawnExpr),
     SendExpr(SendExpr),
@@ -77,6 +78,7 @@ impl Expr {
             SyntaxKind::CONTINUE_EXPR => {
                 Some(Expr::ContinueExpr(ContinueExpr { syntax: node }))
             }
+            SyntaxKind::FOR_IN_EXPR => Some(Expr::ForInExpr(ForInExpr { syntax: node })),
             // Actor expressions
             SyntaxKind::SPAWN_EXPR => Some(Expr::SpawnExpr(SpawnExpr { syntax: node })),
             SyntaxKind::SEND_EXPR => Some(Expr::SendExpr(SendExpr { syntax: node })),
@@ -111,6 +113,7 @@ impl Expr {
             Expr::WhileExpr(n) => &n.syntax,
             Expr::BreakExpr(n) => &n.syntax,
             Expr::ContinueExpr(n) => &n.syntax,
+            Expr::ForInExpr(n) => &n.syntax,
             Expr::SpawnExpr(n) => &n.syntax,
             Expr::SendExpr(n) => &n.syntax,
             Expr::ReceiveExpr(n) => &n.syntax,
@@ -574,6 +577,27 @@ ast_node!(BreakExpr, BREAK_EXPR);
 // ── Continue Expression ──────────────────────────────────────────────
 
 ast_node!(ContinueExpr, CONTINUE_EXPR);
+
+// ── For-In Expression ───────────────────────────────────────────────
+
+ast_node!(ForInExpr, FOR_IN_EXPR);
+
+impl ForInExpr {
+    /// The loop variable name (NAME child).
+    pub fn binding_name(&self) -> Option<super::item::Name> {
+        child_node(&self.syntax)
+    }
+
+    /// The iterable expression (e.g., 0..10).
+    pub fn iterable(&self) -> Option<Expr> {
+        self.syntax.children().find_map(Expr::cast)
+    }
+
+    /// The loop body block.
+    pub fn body(&self) -> Option<Block> {
+        child_node(&self.syntax)
+    }
+}
 
 // ── Actor Expression Types ──────────────────────────────────────────────
 
