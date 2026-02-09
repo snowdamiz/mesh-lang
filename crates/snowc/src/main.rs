@@ -193,7 +193,7 @@ fn main() {
     }
 }
 
-/// Execute the build pipeline: find main.snow -> parse -> typecheck -> codegen -> link.
+/// Execute the build pipeline: discover all .snow files -> parse -> typecheck entry -> codegen -> link.
 fn build(
     dir: &Path,
     opt_level: u8,
@@ -222,19 +222,75 @@ fn build(
         ));
     }
 
-    // Read the source
-    let source = std::fs::read_to_string(&main_snow)
-        .map_err(|e| format!("Failed to read '{}': {}", main_snow.display(), e))?;
+    // Build the project: discover all files, parse, build module graph
+    let project = discovery::build_project(dir)?;
 
-    // Parse
-    let parse = snow_parser::parse(&source);
+    // Find the entry module
+    let entry_id = project.compilation_order.iter()
+        .copied()
+        .find(|id| project.graph.get(*id).is_entry)
+        .ok_or("No entry module found in module graph")?;
+    let entry_idx = entry_id.0 as usize;
 
-    // Type check
-    let typeck = snow_typeck::check(&parse);
+    // Check parse errors in ALL modules (not just entry)
+    let mut has_errors = false;
+    for id in &project.compilation_order {
+        let idx = id.0 as usize;
+        let parse = &project.module_parses[idx];
+        let source = &project.module_sources[idx];
+        let module_path = dir.join(&project.graph.get(*id).path);
 
-    // Report any errors from parsing or type checking
-    let has_errors = report_diagnostics(&source, &main_snow, &parse, &typeck, diag_opts);
+        for error in parse.errors() {
+            has_errors = true;
+            let file_name = module_path.display().to_string();
+            if diag_opts.json {
+                let start = error.span.start as usize;
+                let end = (error.span.end as usize).max(start + 1);
+                let json_diag = serde_json::json!({
+                    "code": "P0001",
+                    "severity": "error",
+                    "message": format!("Parse error: {}", error.message),
+                    "file": file_name,
+                    "spans": [{
+                        "start": start,
+                        "end": end,
+                        "label": error.message
+                    }],
+                    "fix": null
+                });
+                eprintln!("{}", json_diag);
+            } else {
+                use ariadne::{Config, Label, Report, ReportKind, Source};
+                let config = if diag_opts.color {
+                    Config::default()
+                } else {
+                    Config::default().with_color(false)
+                };
+                let start = error.span.start as usize;
+                let end = (error.span.end as usize).max(start + 1);
+                let _ = Report::<std::ops::Range<usize>>::build(ReportKind::Error, start..end)
+                    .with_message("Parse error")
+                    .with_config(config)
+                    .with_label(Label::new(start..end).with_message(&error.message))
+                    .finish()
+                    .eprint(Source::from(source.as_str()));
+            }
+        }
+    }
+
+    // If any parse errors exist, skip type checking entirely
     if has_errors {
+        return Err("Compilation failed due to errors above.".to_string());
+    }
+
+    // Type-check the entry module only
+    let entry_parse = &project.module_parses[entry_idx];
+    let entry_source = &project.module_sources[entry_idx];
+    let typeck = snow_typeck::check(entry_parse);
+
+    // Report type-check diagnostics for entry module
+    let has_type_errors = report_diagnostics(entry_source, &main_snow, entry_parse, &typeck, diag_opts);
+    if has_type_errors {
         return Err("Compilation failed due to errors above.".to_string());
     }
 
@@ -251,12 +307,12 @@ fn build(
     // Emit LLVM IR if requested
     if emit_llvm {
         let ll_path = output_path.with_extension("ll");
-        snow_codegen::compile_to_llvm_ir(&parse, &typeck, &ll_path, target)?;
+        snow_codegen::compile_to_llvm_ir(entry_parse, &typeck, &ll_path, target)?;
         eprintln!("  LLVM IR: {}", ll_path.display());
     }
 
     // Compile to native binary
-    snow_codegen::compile_to_binary(&parse, &typeck, &output_path, opt_level, target, None)?;
+    snow_codegen::compile_to_binary(entry_parse, &typeck, &output_path, opt_level, target, None)?;
 
     eprintln!("  Compiled: {}", output_path.display());
 
