@@ -9,12 +9,12 @@ See: .planning/PROJECT.md (updated 2026-02-08)
 
 ## Current Position
 
-Phase: 30 of 32 (Core Method Resolution) -- COMPLETE
-Plan: 2 of 2 in current phase
-Status: Phase Complete
-Last activity: 2026-02-09 -- Completed 30-02 (MIR method lowering + e2e tests)
+Phase: 31 of 32 (Extended Method Support)
+Plan: 1 of 2 in current phase
+Status: Executing
+Last activity: 2026-02-09 -- Completed 31-01 (type checker non-struct method resolution + stdlib fallback)
 
-Progress: [===.......] 33%
+Progress: [=====.....] 50%
 
 ## Performance Metrics
 
@@ -25,13 +25,14 @@ Progress: [===.......] 33%
 - Tests: 1,242 passing
 
 **v1.6 Progress:**
-- Plans completed: 2
+- Plans completed: 3
 - Phases: 3 (30-32)
 
 | Phase | Plan | Duration | Tasks | Files |
 |-------|------|----------|-------|-------|
 | 30-01 | Core Method Resolution | 6min | 2 | 4 |
 | 30-02 | MIR Method Lowering | 23min | 2 | 3 |
+| 31-01 | Extended Method Support (typeck) | 3min | 2 | 2 |
 
 ## Accumulated Context
 
@@ -50,6 +51,9 @@ v1.6 decisions:
 - Shared resolve_trait_callee helper eliminates duplication between bare-name and dot-syntax dispatch
 - Guard chain in method interception: STDLIB_MODULES > services > sum types > struct types > method call
 - E2e tests use deriving() for trait impl registration (user-defined interface+impl has typeck pipeline limitation)
+- Non-struct concrete types (Ty::Con, Ty::App) return Err(NoSuchField) to trigger method retry
+- Stdlib module method fallback maps receiver type to module name generically (String, List, Map, Set, Range)
+- Display registered for List<T>, Map<K,V>, Set in builtins for collection to_string via dot-syntax
 
 ### Pending Todos
 
@@ -62,6 +66,6 @@ None. Research confidence HIGH across all areas.
 ## Session Continuity
 
 Last session: 2026-02-09
-Stopped at: Completed 30-02-PLAN.md (Phase 30 complete)
+Stopped at: Completed 31-01-PLAN.md
 Resume file: None
-Next action: Plan Phase 31 (Extended Method Support)
+Next action: Execute 31-02-PLAN.md (MIR lowering stdlib module method fallback + e2e tests)
