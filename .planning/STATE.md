@@ -5,16 +5,16 @@
 See: .planning/PROJECT.md (updated 2026-02-08)
 
 **Core value:** Expressive, readable concurrency -- writing concurrent programs should feel as natural as sequential code, with supervision and fault tolerance built in.
-**Current focus:** v1.7 Loops & Iteration -- Phase 35 (For-In over Collections)
+**Current focus:** v1.7 Loops & Iteration -- Phase 36 (Filter Clause Integration)
 
 ## Current Position
 
-Phase: 35 of 36 (For-In over Collections)
-Plan: 2 of 2 in current phase
-Status: Plan 02 complete -- phase complete
-Last activity: 2026-02-09 -- Plan 02 complete (codegen for collection for-in, e2e tests, formatter)
+Phase: 36 of 36 (Filter Clause Integration)
+Plan: 1 of 2 in current phase
+Status: Plan 01 complete
+Last activity: 2026-02-09 -- Plan 01 complete (filter clause pipeline support)
 
-Progress: [███████░░░] 75% (3/4 phases)
+Progress: [████████░░] 87% (3.5/4 phases)
 
 ## Performance Metrics
 
@@ -25,7 +25,7 @@ Progress: [███████░░░] 75% (3/4 phases)
 - Tests: 1,300 passing
 
 **v1.7 Velocity:**
-- Plans completed: 6
+- Plans completed: 7
 - Phases completed: 3/4
 
 | Phase | Plan | Duration | Tasks | Files |
@@ -36,6 +36,7 @@ Progress: [███████░░░] 75% (3/4 phases)
 | 34    | 02   | 11min    | 2     | 9     |
 | 35    | 01   | 12min    | 2     | 13    |
 | 35    | 02   | 17min    | 2     | 8     |
+| 36    | 01   | 10min    | 2     | 10    |
 
 ## Accumulated Context
 
@@ -62,6 +63,9 @@ Full decision history archived in milestones/v1.0-ROADMAP.md through milestones/
 - [35-02] Result alloca pattern: list builder pointer in alloca for break returning partial list
 - [35-02] convert_from_list_element as inverse of convert_to_list_element for typed extraction
 - [35-02] Unit values stored as i64(0) in list elements for correct comprehension over Unit-returning bodies
+- [36-01] Filter parsed as direct child of FOR_IN_EXPR (no separate CST node), matching MatchArm guard pattern
+- [36-01] Filter field between iterable/collection and body in MIR; conditional branch creates forin_do_body block
+- [36-01] Five-block pattern: filter false skips to latch_bb directly, bypassing body + push
 
 ### Research Notes
 
@@ -83,6 +87,6 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-09
-Stopped at: Completed 35-02-PLAN.md -- Phase 35 complete
+Stopped at: Completed 36-01-PLAN.md
 Resume file: None
-Next action: Execute phase 36 (next in v1.7 milestone)
+Next action: Execute 36-02-PLAN.md (integration testing)
