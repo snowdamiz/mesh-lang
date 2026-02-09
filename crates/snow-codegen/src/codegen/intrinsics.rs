@@ -539,6 +539,8 @@ mod tests {
         assert!(module.get_function("snow_list_filter").is_some());
         assert!(module.get_function("snow_list_reduce").is_some());
         assert!(module.get_function("snow_list_from_array").is_some());
+        assert!(module.get_function("snow_list_builder_new").is_some());
+        assert!(module.get_function("snow_list_builder_push").is_some());
         assert!(module.get_function("snow_map_new").is_some());
         assert!(module.get_function("snow_map_new_typed").is_some());
         assert!(module.get_function("snow_map_put").is_some());
@@ -548,6 +550,8 @@ mod tests {
         assert!(module.get_function("snow_map_size").is_some());
         assert!(module.get_function("snow_map_keys").is_some());
         assert!(module.get_function("snow_map_values").is_some());
+        assert!(module.get_function("snow_map_entry_key").is_some());
+        assert!(module.get_function("snow_map_entry_value").is_some());
         assert!(module.get_function("snow_set_new").is_some());
         assert!(module.get_function("snow_set_add").is_some());
         assert!(module.get_function("snow_set_remove").is_some());
@@ -555,6 +559,7 @@ mod tests {
         assert!(module.get_function("snow_set_size").is_some());
         assert!(module.get_function("snow_set_union").is_some());
         assert!(module.get_function("snow_set_intersection").is_some());
+        assert!(module.get_function("snow_set_element_at").is_some());
         assert!(module.get_function("snow_tuple_nth").is_some());
         assert!(module.get_function("snow_tuple_first").is_some());
         assert!(module.get_function("snow_tuple_second").is_some());

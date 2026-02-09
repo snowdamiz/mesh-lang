@@ -1484,10 +1484,10 @@ mod tests {
             var: "i".to_string(),
             start: Box::new(MirExpr::IntLit(0, MirType::Int)),
             end: Box::new(MirExpr::IntLit(10, MirType::Int)),
-            body: Box::new(MirExpr::Unit),
-            ty: MirType::Unit,
+            body: Box::new(MirExpr::IntLit(1, MirType::Int)),
+            ty: MirType::Ptr,
         };
-        let ir = compile_expr_to_ir(body, MirType::Unit);
+        let ir = compile_expr_to_ir(body, MirType::Ptr);
         assert!(ir.contains("forin_header"), "Should have forin_header block: {}", ir);
         assert!(ir.contains("forin_body"), "Should have forin_body block: {}", ir);
         assert!(ir.contains("forin_latch"), "Should have forin_latch block: {}", ir);
@@ -1501,10 +1501,10 @@ mod tests {
             var: "i".to_string(),
             start: Box::new(MirExpr::IntLit(0, MirType::Int)),
             end: Box::new(MirExpr::IntLit(5, MirType::Int)),
-            body: Box::new(MirExpr::Unit),
-            ty: MirType::Unit,
+            body: Box::new(MirExpr::IntLit(1, MirType::Int)),
+            ty: MirType::Ptr,
         };
-        let ir = compile_expr_to_ir(body, MirType::Unit);
+        let ir = compile_expr_to_ir(body, MirType::Ptr);
         assert!(
             ir.contains("icmp slt"),
             "Should use icmp slt for half-open range: {}",
@@ -1519,13 +1519,77 @@ mod tests {
             var: "i".to_string(),
             start: Box::new(MirExpr::IntLit(0, MirType::Int)),
             end: Box::new(MirExpr::IntLit(10, MirType::Int)),
-            body: Box::new(MirExpr::Unit),
-            ty: MirType::Unit,
+            body: Box::new(MirExpr::IntLit(1, MirType::Int)),
+            ty: MirType::Ptr,
         };
-        let ir = compile_expr_to_ir(body, MirType::Unit);
+        let ir = compile_expr_to_ir(body, MirType::Ptr);
         assert!(
             ir.contains("snow_reduction_check"),
             "Should emit snow_reduction_check in latch block: {}",
+            ir
+        );
+    }
+
+    #[test]
+    fn test_for_in_range_returns_list() {
+        // ForInRange now returns a list (Ptr), not Unit
+        let body = MirExpr::ForInRange {
+            var: "i".to_string(),
+            start: Box::new(MirExpr::IntLit(0, MirType::Int)),
+            end: Box::new(MirExpr::IntLit(3, MirType::Int)),
+            body: Box::new(MirExpr::Var("i".to_string(), MirType::Int)),
+            ty: MirType::Ptr,
+        };
+        let ir = compile_expr_to_ir(body, MirType::Ptr);
+        assert!(
+            ir.contains("snow_list_builder_new"),
+            "ForInRange should use list builder: {}",
+            ir
+        );
+        assert!(
+            ir.contains("snow_list_builder_push"),
+            "ForInRange should push body results to list: {}",
+            ir
+        );
+        assert!(
+            ir.contains("ret ptr"),
+            "ForInRange should return ptr (list): {}",
+            ir
+        );
+    }
+
+    #[test]
+    fn test_for_in_list_basic_blocks() {
+        // ForInList should produce four basic blocks and use list builder
+        let body = MirExpr::ForInList {
+            var: "x".to_string(),
+            collection: Box::new(MirExpr::ListLit {
+                elements: vec![],
+                ty: MirType::Ptr,
+            }),
+            body: Box::new(MirExpr::Var("x".to_string(), MirType::Int)),
+            elem_ty: MirType::Int,
+            body_ty: MirType::Int,
+            ty: MirType::Ptr,
+        };
+        let ir = compile_expr_to_ir(body, MirType::Ptr);
+        assert!(ir.contains("forin_header"), "Should have forin_header block: {}", ir);
+        assert!(ir.contains("forin_body"), "Should have forin_body block: {}", ir);
+        assert!(ir.contains("forin_latch"), "Should have forin_latch block: {}", ir);
+        assert!(ir.contains("forin_merge"), "Should have forin_merge block: {}", ir);
+        assert!(
+            ir.contains("snow_list_length"),
+            "Should call snow_list_length: {}",
+            ir
+        );
+        assert!(
+            ir.contains("snow_list_builder_new"),
+            "Should use list builder: {}",
+            ir
+        );
+        assert!(
+            ir.contains("snow_list_get"),
+            "Should call snow_list_get: {}",
             ir
         );
     }

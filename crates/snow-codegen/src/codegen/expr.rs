@@ -146,15 +146,16 @@ impl<'ctx> CodeGen<'ctx> {
                 self.codegen_for_in_range(var, start, end, body, ty)
             }
 
-            MirExpr::ForInList { .. } | MirExpr::ForInMap { .. } | MirExpr::ForInSet { .. } => {
-                // Placeholder: return empty list. Plan 02 implements real codegen.
-                let list_new = get_intrinsic(&self.module, "snow_list_new");
-                let result = self.builder.build_call(list_new, &[], "empty_list")
-                    .map_err(|e| e.to_string())?;
-                result
-                    .try_as_basic_value()
-                    .basic()
-                    .ok_or_else(|| "snow_list_new returned void".to_string())
+            MirExpr::ForInList { var, collection, body, elem_ty, body_ty, ty } => {
+                self.codegen_for_in_list(var, collection, body, elem_ty, body_ty, ty)
+            }
+
+            MirExpr::ForInMap { key_var, val_var, collection, body, key_ty, val_ty, body_ty, ty } => {
+                self.codegen_for_in_map(key_var, val_var, collection, body, key_ty, val_ty, body_ty, ty)
+            }
+
+            MirExpr::ForInSet { var, collection, body, elem_ty, body_ty, ty } => {
+                self.codegen_for_in_set(var, collection, body, elem_ty, body_ty, ty)
             }
 
             MirExpr::SupervisorStart {
@@ -1744,10 +1745,37 @@ impl<'ctx> CodeGen<'ctx> {
     ) -> Result<BasicValueEnum<'ctx>, String> {
         let fn_val = self.current_function();
         let i64_ty = self.context.i64_type();
+        let ptr_ty = self.context.ptr_type(inkwell::AddressSpace::default());
 
         // Codegen start and end values.
         let start_val = self.codegen_expr(start_expr)?.into_int_value();
         let end_val = self.codegen_expr(end_expr)?.into_int_value();
+
+        // Compute range length: max(0, end - start).
+        let diff = self.builder.build_int_sub(end_val, start_val, "range_diff")
+            .map_err(|e| e.to_string())?;
+        let zero = i64_ty.const_int(0, false);
+        let is_positive = self.builder.build_int_compare(
+            IntPredicate::SGT, diff, zero, "is_positive",
+        ).map_err(|e| e.to_string())?;
+        let range_len = self.builder.build_select(is_positive, diff, zero, "range_len")
+            .map_err(|e| e.to_string())?
+            .into_int_value();
+
+        // Pre-allocate result list builder.
+        let list_builder_new = get_intrinsic(&self.module, "snow_list_builder_new");
+        let result_list = self.builder.build_call(list_builder_new, &[range_len.into()], "result_list")
+            .map_err(|e| e.to_string())?
+            .try_as_basic_value()
+            .basic()
+            .ok_or_else(|| "snow_list_builder_new returned void".to_string())?
+            .into_pointer_value();
+
+        // Alloca to hold the result list pointer (for break to return partial list).
+        let result_alloca = self.builder.build_alloca(ptr_ty, "result_alloca")
+            .map_err(|e| e.to_string())?;
+        self.builder.build_store(result_alloca, result_list)
+            .map_err(|e| e.to_string())?;
 
         // Create alloca for the loop counter.
         let counter = self.builder.build_alloca(i64_ty, var)
@@ -1787,11 +1815,19 @@ impl<'ctx> CodeGen<'ctx> {
         let old_type = self.local_types.insert(var.to_string(), MirType::Int);
 
         // Codegen the body expression.
-        let _body_val = self.codegen_expr(body_expr)?;
+        let body_val = self.codegen_expr(body_expr)?;
 
-        // After body, if block is not terminated, branch to latch.
+        // After body, if block is not terminated, push body result to result list.
         if let Some(bb) = self.builder.get_insert_block() {
             if bb.get_terminator().is_none() {
+                let body_ty = body_expr.ty();
+                let body_as_i64 = self.convert_to_list_element(body_val, body_ty)?;
+                let list_builder_push = get_intrinsic(&self.module, "snow_list_builder_push");
+                let result_loaded = self.builder.build_load(ptr_ty, result_alloca, "res_list")
+                    .map_err(|e| e.to_string())?
+                    .into_pointer_value();
+                self.builder.build_call(list_builder_push, &[result_loaded.into(), body_as_i64.into()], "")
+                    .map_err(|e| e.to_string())?;
                 self.builder.build_unconditional_branch(latch_bb)
                     .map_err(|e| e.to_string())?;
             }
@@ -1829,15 +1865,10 @@ impl<'ctx> CodeGen<'ctx> {
         // Position at merge block.
         self.builder.position_at_end(merge_bb);
 
-        // For-in returns List (comprehension semantics). Placeholder: return empty list.
-        // Plan 02 implements the full list builder codegen.
-        let list_new = get_intrinsic(&self.module, "snow_list_new");
-        let result = self.builder.build_call(list_new, &[], "forin_result")
+        // Return the result list (comprehension semantics).
+        let final_result = self.builder.build_load(ptr_ty, result_alloca, "forin_result")
             .map_err(|e| e.to_string())?;
-        result
-            .try_as_basic_value()
-            .basic()
-            .ok_or_else(|| "snow_list_new returned void".to_string())
+        Ok(final_result)
     }
 
     fn codegen_break(&mut self) -> Result<BasicValueEnum<'ctx>, String> {
@@ -2758,10 +2789,540 @@ impl<'ctx> CodeGen<'ctx> {
             MirType::Int => {
                 Ok(val.into_int_value())
             }
+            MirType::Unit => {
+                // Unit values are stored as 0 in lists.
+                Ok(self.context.i64_type().const_int(0, false))
+            }
             _ => {
                 // For any other type, try as int value (best effort).
                 Ok(val.into_int_value())
             }
         }
+    }
+
+    /// Convert an i64 value from the runtime back to a typed BasicValueEnum.
+    /// This is the inverse of `convert_to_list_element`.
+    fn convert_from_list_element(
+        &mut self,
+        val: inkwell::values::IntValue<'ctx>,
+        target_ty: &MirType,
+    ) -> Result<BasicValueEnum<'ctx>, String> {
+        let ptr_type = self.context.ptr_type(inkwell::AddressSpace::default());
+        match target_ty {
+            MirType::Int => Ok(val.into()),
+            MirType::Bool => {
+                let truncated = self.builder.build_int_truncate(val, self.context.bool_type(), "i64_to_bool")
+                    .map_err(|e| e.to_string())?;
+                Ok(truncated.into())
+            }
+            MirType::Float => {
+                let f64_type = self.context.f64_type();
+                let cast_result = self.builder.build_bit_cast(val, f64_type, "i64_to_float")
+                    .map_err(|e| e.to_string())?;
+                Ok(cast_result)
+            }
+            MirType::String | MirType::Ptr | MirType::Struct(_) | MirType::SumType(_)
+            | MirType::Pid(_) | MirType::Closure(_, _) | MirType::FnPtr(_, _) => {
+                let ptr_val = self.builder.build_int_to_ptr(val, ptr_type, "i64_to_ptr")
+                    .map_err(|e| e.to_string())?;
+                Ok(ptr_val.into())
+            }
+            MirType::Unit => {
+                Ok(self.context.struct_type(&[], false).const_zero().into())
+            }
+            _ => {
+                // Best effort: return as i64.
+                Ok(val.into())
+            }
+        }
+    }
+
+    // ── For-in over List ─────────────────────────────────────────────────
+
+    fn codegen_for_in_list(
+        &mut self,
+        var: &str,
+        collection_expr: &MirExpr,
+        body_expr: &MirExpr,
+        elem_ty: &MirType,
+        body_ty: &MirType,
+        _ty: &MirType,
+    ) -> Result<BasicValueEnum<'ctx>, String> {
+        let fn_val = self.current_function();
+        let i64_ty = self.context.i64_type();
+        let ptr_ty = self.context.ptr_type(inkwell::AddressSpace::default());
+
+        // Codegen collection expression.
+        let collection = self.codegen_expr(collection_expr)?.into_pointer_value();
+
+        // Get length of the list.
+        let list_length = get_intrinsic(&self.module, "snow_list_length");
+        let len = self.builder.build_call(list_length, &[collection.into()], "len")
+            .map_err(|e| e.to_string())?
+            .try_as_basic_value()
+            .basic()
+            .ok_or_else(|| "snow_list_length returned void".to_string())?
+            .into_int_value();
+
+        // Pre-allocate result list builder.
+        let list_builder_new = get_intrinsic(&self.module, "snow_list_builder_new");
+        let result_list = self.builder.build_call(list_builder_new, &[len.into()], "result_list")
+            .map_err(|e| e.to_string())?
+            .try_as_basic_value()
+            .basic()
+            .ok_or_else(|| "snow_list_builder_new returned void".to_string())?
+            .into_pointer_value();
+
+        // Alloca for result list pointer (break returns partial list).
+        let result_alloca = self.builder.build_alloca(ptr_ty, "result_alloca")
+            .map_err(|e| e.to_string())?;
+        self.builder.build_store(result_alloca, result_list)
+            .map_err(|e| e.to_string())?;
+
+        // Create counter alloca, store 0.
+        let counter = self.builder.build_alloca(i64_ty, "forin_counter")
+            .map_err(|e| e.to_string())?;
+        self.builder.build_store(counter, i64_ty.const_int(0, false))
+            .map_err(|e| e.to_string())?;
+
+        // Four basic blocks.
+        let header_bb = self.context.append_basic_block(fn_val, "forin_header");
+        let body_bb = self.context.append_basic_block(fn_val, "forin_body");
+        let latch_bb = self.context.append_basic_block(fn_val, "forin_latch");
+        let merge_bb = self.context.append_basic_block(fn_val, "forin_merge");
+
+        // Push loop context: continue -> latch, break -> merge.
+        self.loop_stack.push((latch_bb, merge_bb));
+
+        self.builder.build_unconditional_branch(header_bb)
+            .map_err(|e| e.to_string())?;
+
+        // -- Header: load counter, compare < len, branch --
+        self.builder.position_at_end(header_bb);
+        let counter_val = self.builder.build_load(i64_ty, counter, "idx")
+            .map_err(|e| e.to_string())?
+            .into_int_value();
+        let cmp = self.builder.build_int_compare(
+            IntPredicate::SLT, counter_val, len, "forin_cmp",
+        ).map_err(|e| e.to_string())?;
+        self.builder.build_conditional_branch(cmp, body_bb, merge_bb)
+            .map_err(|e| e.to_string())?;
+
+        // -- Body: get element, bind loop variable, codegen body, push result --
+        self.builder.position_at_end(body_bb);
+        let counter_in_body = self.builder.build_load(i64_ty, counter, "idx_body")
+            .map_err(|e| e.to_string())?
+            .into_int_value();
+
+        // Call snow_list_get(collection, counter) -> u64.
+        let list_get = get_intrinsic(&self.module, "snow_list_get");
+        let raw_elem = self.builder.build_call(list_get, &[collection.into(), counter_in_body.into()], "raw_elem")
+            .map_err(|e| e.to_string())?
+            .try_as_basic_value()
+            .basic()
+            .ok_or_else(|| "snow_list_get returned void".to_string())?
+            .into_int_value();
+
+        // Convert from i64 to typed value.
+        let typed_elem = self.convert_from_list_element(raw_elem, elem_ty)?;
+
+        // Create alloca for loop variable.
+        let elem_llvm_ty = self.llvm_type(elem_ty);
+        let var_alloca = self.builder.build_alloca(elem_llvm_ty, var)
+            .map_err(|e| e.to_string())?;
+        self.builder.build_store(var_alloca, typed_elem)
+            .map_err(|e| e.to_string())?;
+
+        // Save old locals for restoration.
+        let old_alloca = self.locals.insert(var.to_string(), var_alloca);
+        let old_type = self.local_types.insert(var.to_string(), elem_ty.clone());
+
+        // Codegen body.
+        let body_val = self.codegen_expr(body_expr)?;
+
+        // If not terminated, push body result to result list and branch to latch.
+        if let Some(bb) = self.builder.get_insert_block() {
+            if bb.get_terminator().is_none() {
+                let body_as_i64 = self.convert_to_list_element(body_val, body_ty)?;
+                let list_builder_push = get_intrinsic(&self.module, "snow_list_builder_push");
+                let result_loaded = self.builder.build_load(ptr_ty, result_alloca, "res_list")
+                    .map_err(|e| e.to_string())?
+                    .into_pointer_value();
+                self.builder.build_call(list_builder_push, &[result_loaded.into(), body_as_i64.into()], "")
+                    .map_err(|e| e.to_string())?;
+                self.builder.build_unconditional_branch(latch_bb)
+                    .map_err(|e| e.to_string())?;
+            }
+        }
+
+        // -- Latch: increment counter, reduction check, branch to header --
+        self.builder.position_at_end(latch_bb);
+        let latch_counter = self.builder.build_load(i64_ty, counter, "idx_latch")
+            .map_err(|e| e.to_string())?
+            .into_int_value();
+        let incremented = self.builder.build_int_add(
+            latch_counter, i64_ty.const_int(1, false), "idx_next",
+        ).map_err(|e| e.to_string())?;
+        self.builder.build_store(counter, incremented)
+            .map_err(|e| e.to_string())?;
+        self.emit_reduction_check();
+        self.builder.build_unconditional_branch(header_bb)
+            .map_err(|e| e.to_string())?;
+
+        // -- Cleanup --
+        self.loop_stack.pop();
+
+        // Restore old locals.
+        if let Some(prev) = old_alloca {
+            self.locals.insert(var.to_string(), prev);
+        } else {
+            self.locals.remove(var);
+        }
+        if let Some(prev) = old_type {
+            self.local_types.insert(var.to_string(), prev);
+        } else {
+            self.local_types.remove(var);
+        }
+
+        // Position at merge, return result list.
+        self.builder.position_at_end(merge_bb);
+        let final_result = self.builder.build_load(ptr_ty, result_alloca, "forin_result")
+            .map_err(|e| e.to_string())?;
+        Ok(final_result)
+    }
+
+    // ── For-in over Map ──────────────────────────────────────────────────
+
+    fn codegen_for_in_map(
+        &mut self,
+        key_var: &str,
+        val_var: &str,
+        collection_expr: &MirExpr,
+        body_expr: &MirExpr,
+        key_ty: &MirType,
+        val_ty: &MirType,
+        body_ty: &MirType,
+        _ty: &MirType,
+    ) -> Result<BasicValueEnum<'ctx>, String> {
+        let fn_val = self.current_function();
+        let i64_ty = self.context.i64_type();
+        let ptr_ty = self.context.ptr_type(inkwell::AddressSpace::default());
+
+        // Codegen collection expression.
+        let collection = self.codegen_expr(collection_expr)?.into_pointer_value();
+
+        // Get size of the map.
+        let map_size = get_intrinsic(&self.module, "snow_map_size");
+        let len = self.builder.build_call(map_size, &[collection.into()], "map_len")
+            .map_err(|e| e.to_string())?
+            .try_as_basic_value()
+            .basic()
+            .ok_or_else(|| "snow_map_size returned void".to_string())?
+            .into_int_value();
+
+        // Pre-allocate result list builder.
+        let list_builder_new = get_intrinsic(&self.module, "snow_list_builder_new");
+        let result_list = self.builder.build_call(list_builder_new, &[len.into()], "result_list")
+            .map_err(|e| e.to_string())?
+            .try_as_basic_value()
+            .basic()
+            .ok_or_else(|| "snow_list_builder_new returned void".to_string())?
+            .into_pointer_value();
+
+        // Alloca for result list pointer.
+        let result_alloca = self.builder.build_alloca(ptr_ty, "result_alloca")
+            .map_err(|e| e.to_string())?;
+        self.builder.build_store(result_alloca, result_list)
+            .map_err(|e| e.to_string())?;
+
+        // Create counter alloca, store 0.
+        let counter = self.builder.build_alloca(i64_ty, "forin_counter")
+            .map_err(|e| e.to_string())?;
+        self.builder.build_store(counter, i64_ty.const_int(0, false))
+            .map_err(|e| e.to_string())?;
+
+        // Four basic blocks.
+        let header_bb = self.context.append_basic_block(fn_val, "forin_header");
+        let body_bb = self.context.append_basic_block(fn_val, "forin_body");
+        let latch_bb = self.context.append_basic_block(fn_val, "forin_latch");
+        let merge_bb = self.context.append_basic_block(fn_val, "forin_merge");
+
+        self.loop_stack.push((latch_bb, merge_bb));
+
+        self.builder.build_unconditional_branch(header_bb)
+            .map_err(|e| e.to_string())?;
+
+        // -- Header --
+        self.builder.position_at_end(header_bb);
+        let counter_val = self.builder.build_load(i64_ty, counter, "idx")
+            .map_err(|e| e.to_string())?
+            .into_int_value();
+        let cmp = self.builder.build_int_compare(
+            IntPredicate::SLT, counter_val, len, "forin_cmp",
+        ).map_err(|e| e.to_string())?;
+        self.builder.build_conditional_branch(cmp, body_bb, merge_bb)
+            .map_err(|e| e.to_string())?;
+
+        // -- Body --
+        self.builder.position_at_end(body_bb);
+        let counter_in_body = self.builder.build_load(i64_ty, counter, "idx_body")
+            .map_err(|e| e.to_string())?
+            .into_int_value();
+
+        // Get key and value for this entry.
+        let map_entry_key = get_intrinsic(&self.module, "snow_map_entry_key");
+        let raw_key = self.builder.build_call(map_entry_key, &[collection.into(), counter_in_body.into()], "raw_key")
+            .map_err(|e| e.to_string())?
+            .try_as_basic_value()
+            .basic()
+            .ok_or_else(|| "snow_map_entry_key returned void".to_string())?
+            .into_int_value();
+
+        let map_entry_value = get_intrinsic(&self.module, "snow_map_entry_value");
+        let raw_val = self.builder.build_call(map_entry_value, &[collection.into(), counter_in_body.into()], "raw_val")
+            .map_err(|e| e.to_string())?
+            .try_as_basic_value()
+            .basic()
+            .ok_or_else(|| "snow_map_entry_value returned void".to_string())?
+            .into_int_value();
+
+        // Convert from i64 to typed values.
+        let typed_key = self.convert_from_list_element(raw_key, key_ty)?;
+        let typed_val = self.convert_from_list_element(raw_val, val_ty)?;
+
+        // Create allocas for key and value variables.
+        let key_llvm_ty = self.llvm_type(key_ty);
+        let key_alloca = self.builder.build_alloca(key_llvm_ty, key_var)
+            .map_err(|e| e.to_string())?;
+        self.builder.build_store(key_alloca, typed_key)
+            .map_err(|e| e.to_string())?;
+
+        let val_llvm_ty = self.llvm_type(val_ty);
+        let val_alloca = self.builder.build_alloca(val_llvm_ty, val_var)
+            .map_err(|e| e.to_string())?;
+        self.builder.build_store(val_alloca, typed_val)
+            .map_err(|e| e.to_string())?;
+
+        // Save old locals.
+        let old_key_alloca = self.locals.insert(key_var.to_string(), key_alloca);
+        let old_key_type = self.local_types.insert(key_var.to_string(), key_ty.clone());
+        let old_val_alloca = self.locals.insert(val_var.to_string(), val_alloca);
+        let old_val_type = self.local_types.insert(val_var.to_string(), val_ty.clone());
+
+        // Codegen body.
+        let body_val = self.codegen_expr(body_expr)?;
+
+        // Push body result to result list.
+        if let Some(bb) = self.builder.get_insert_block() {
+            if bb.get_terminator().is_none() {
+                let body_as_i64 = self.convert_to_list_element(body_val, body_ty)?;
+                let list_builder_push = get_intrinsic(&self.module, "snow_list_builder_push");
+                let result_loaded = self.builder.build_load(ptr_ty, result_alloca, "res_list")
+                    .map_err(|e| e.to_string())?
+                    .into_pointer_value();
+                self.builder.build_call(list_builder_push, &[result_loaded.into(), body_as_i64.into()], "")
+                    .map_err(|e| e.to_string())?;
+                self.builder.build_unconditional_branch(latch_bb)
+                    .map_err(|e| e.to_string())?;
+            }
+        }
+
+        // -- Latch --
+        self.builder.position_at_end(latch_bb);
+        let latch_counter = self.builder.build_load(i64_ty, counter, "idx_latch")
+            .map_err(|e| e.to_string())?
+            .into_int_value();
+        let incremented = self.builder.build_int_add(
+            latch_counter, i64_ty.const_int(1, false), "idx_next",
+        ).map_err(|e| e.to_string())?;
+        self.builder.build_store(counter, incremented)
+            .map_err(|e| e.to_string())?;
+        self.emit_reduction_check();
+        self.builder.build_unconditional_branch(header_bb)
+            .map_err(|e| e.to_string())?;
+
+        // -- Cleanup --
+        self.loop_stack.pop();
+
+        // Restore old locals for both key and value.
+        if let Some(prev) = old_key_alloca {
+            self.locals.insert(key_var.to_string(), prev);
+        } else {
+            self.locals.remove(key_var);
+        }
+        if let Some(prev) = old_key_type {
+            self.local_types.insert(key_var.to_string(), prev);
+        } else {
+            self.local_types.remove(key_var);
+        }
+        if let Some(prev) = old_val_alloca {
+            self.locals.insert(val_var.to_string(), prev);
+        } else {
+            self.locals.remove(val_var);
+        }
+        if let Some(prev) = old_val_type {
+            self.local_types.insert(val_var.to_string(), prev);
+        } else {
+            self.local_types.remove(val_var);
+        }
+
+        // Position at merge, return result list.
+        self.builder.position_at_end(merge_bb);
+        let final_result = self.builder.build_load(ptr_ty, result_alloca, "forin_result")
+            .map_err(|e| e.to_string())?;
+        Ok(final_result)
+    }
+
+    // ── For-in over Set ──────────────────────────────────────────────────
+
+    fn codegen_for_in_set(
+        &mut self,
+        var: &str,
+        collection_expr: &MirExpr,
+        body_expr: &MirExpr,
+        elem_ty: &MirType,
+        body_ty: &MirType,
+        _ty: &MirType,
+    ) -> Result<BasicValueEnum<'ctx>, String> {
+        let fn_val = self.current_function();
+        let i64_ty = self.context.i64_type();
+        let ptr_ty = self.context.ptr_type(inkwell::AddressSpace::default());
+
+        // Codegen collection expression.
+        let collection = self.codegen_expr(collection_expr)?.into_pointer_value();
+
+        // Get size of the set.
+        let set_size = get_intrinsic(&self.module, "snow_set_size");
+        let len = self.builder.build_call(set_size, &[collection.into()], "set_len")
+            .map_err(|e| e.to_string())?
+            .try_as_basic_value()
+            .basic()
+            .ok_or_else(|| "snow_set_size returned void".to_string())?
+            .into_int_value();
+
+        // Pre-allocate result list builder.
+        let list_builder_new = get_intrinsic(&self.module, "snow_list_builder_new");
+        let result_list = self.builder.build_call(list_builder_new, &[len.into()], "result_list")
+            .map_err(|e| e.to_string())?
+            .try_as_basic_value()
+            .basic()
+            .ok_or_else(|| "snow_list_builder_new returned void".to_string())?
+            .into_pointer_value();
+
+        // Alloca for result list pointer.
+        let result_alloca = self.builder.build_alloca(ptr_ty, "result_alloca")
+            .map_err(|e| e.to_string())?;
+        self.builder.build_store(result_alloca, result_list)
+            .map_err(|e| e.to_string())?;
+
+        // Create counter alloca, store 0.
+        let counter = self.builder.build_alloca(i64_ty, "forin_counter")
+            .map_err(|e| e.to_string())?;
+        self.builder.build_store(counter, i64_ty.const_int(0, false))
+            .map_err(|e| e.to_string())?;
+
+        // Four basic blocks.
+        let header_bb = self.context.append_basic_block(fn_val, "forin_header");
+        let body_bb = self.context.append_basic_block(fn_val, "forin_body");
+        let latch_bb = self.context.append_basic_block(fn_val, "forin_latch");
+        let merge_bb = self.context.append_basic_block(fn_val, "forin_merge");
+
+        self.loop_stack.push((latch_bb, merge_bb));
+
+        self.builder.build_unconditional_branch(header_bb)
+            .map_err(|e| e.to_string())?;
+
+        // -- Header --
+        self.builder.position_at_end(header_bb);
+        let counter_val = self.builder.build_load(i64_ty, counter, "idx")
+            .map_err(|e| e.to_string())?
+            .into_int_value();
+        let cmp = self.builder.build_int_compare(
+            IntPredicate::SLT, counter_val, len, "forin_cmp",
+        ).map_err(|e| e.to_string())?;
+        self.builder.build_conditional_branch(cmp, body_bb, merge_bb)
+            .map_err(|e| e.to_string())?;
+
+        // -- Body --
+        self.builder.position_at_end(body_bb);
+        let counter_in_body = self.builder.build_load(i64_ty, counter, "idx_body")
+            .map_err(|e| e.to_string())?
+            .into_int_value();
+
+        // Call snow_set_element_at(collection, counter) -> u64.
+        let set_element_at = get_intrinsic(&self.module, "snow_set_element_at");
+        let raw_elem = self.builder.build_call(set_element_at, &[collection.into(), counter_in_body.into()], "raw_elem")
+            .map_err(|e| e.to_string())?
+            .try_as_basic_value()
+            .basic()
+            .ok_or_else(|| "snow_set_element_at returned void".to_string())?
+            .into_int_value();
+
+        // Convert from i64 to typed value.
+        let typed_elem = self.convert_from_list_element(raw_elem, elem_ty)?;
+
+        // Create alloca for loop variable.
+        let elem_llvm_ty = self.llvm_type(elem_ty);
+        let var_alloca = self.builder.build_alloca(elem_llvm_ty, var)
+            .map_err(|e| e.to_string())?;
+        self.builder.build_store(var_alloca, typed_elem)
+            .map_err(|e| e.to_string())?;
+
+        // Save old locals.
+        let old_alloca = self.locals.insert(var.to_string(), var_alloca);
+        let old_type = self.local_types.insert(var.to_string(), elem_ty.clone());
+
+        // Codegen body.
+        let body_val = self.codegen_expr(body_expr)?;
+
+        // Push body result to result list.
+        if let Some(bb) = self.builder.get_insert_block() {
+            if bb.get_terminator().is_none() {
+                let body_as_i64 = self.convert_to_list_element(body_val, body_ty)?;
+                let list_builder_push = get_intrinsic(&self.module, "snow_list_builder_push");
+                let result_loaded = self.builder.build_load(ptr_ty, result_alloca, "res_list")
+                    .map_err(|e| e.to_string())?
+                    .into_pointer_value();
+                self.builder.build_call(list_builder_push, &[result_loaded.into(), body_as_i64.into()], "")
+                    .map_err(|e| e.to_string())?;
+                self.builder.build_unconditional_branch(latch_bb)
+                    .map_err(|e| e.to_string())?;
+            }
+        }
+
+        // -- Latch --
+        self.builder.position_at_end(latch_bb);
+        let latch_counter = self.builder.build_load(i64_ty, counter, "idx_latch")
+            .map_err(|e| e.to_string())?
+            .into_int_value();
+        let incremented = self.builder.build_int_add(
+            latch_counter, i64_ty.const_int(1, false), "idx_next",
+        ).map_err(|e| e.to_string())?;
+        self.builder.build_store(counter, incremented)
+            .map_err(|e| e.to_string())?;
+        self.emit_reduction_check();
+        self.builder.build_unconditional_branch(header_bb)
+            .map_err(|e| e.to_string())?;
+
+        // -- Cleanup --
+        self.loop_stack.pop();
+
+        // Restore old locals.
+        if let Some(prev) = old_alloca {
+            self.locals.insert(var.to_string(), prev);
+        } else {
+            self.locals.remove(var);
+        }
+        if let Some(prev) = old_type {
+            self.local_types.insert(var.to_string(), prev);
+        } else {
+            self.local_types.remove(var);
+        }
+
+        // Position at merge, return result list.
+        self.builder.position_at_end(merge_bb);
+        let final_result = self.builder.build_load(ptr_ty, result_alloca, "forin_result")
+            .map_err(|e| e.to_string())?;
+        Ok(final_result)
     }
 }
