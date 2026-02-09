@@ -64,7 +64,7 @@ See milestones/v1.5-ROADMAP.md for full phase details.
 
 **Milestone Goal:** Add method call syntax so values can call their impl/trait methods via dot notation (`value.method(args)`), with self-parameter desugaring, chaining, and clear diagnostics.
 
-- [ ] **Phase 30: Core Method Resolution** - Basic `value.method(args)` works end-to-end through type checker and MIR lowering
+- [x] **Phase 30: Core Method Resolution** - Basic `value.method(args)` works end-to-end through type checker and MIR lowering
 - [ ] **Phase 31: Extended Method Support** - Primitives, generics, chaining, and mixed field/method access
 - [ ] **Phase 32: Diagnostics and Integration** - Ambiguity errors, deterministic ordering, and non-regression for existing syntax
 
@@ -112,6 +112,6 @@ Plans:
 
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
-| 30. Core Method Resolution | v1.6 | 0/2 | Not started | - |
+| 30. Core Method Resolution | v1.6 | 2/2 | ✓ Complete | 2026-02-08 |
 | 31. Extended Method Support | v1.6 | 0/TBD | Not started | - |
 | 32. Diagnostics and Integration | v1.6 | 0/TBD | Not started | - |

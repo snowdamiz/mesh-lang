@@ -5,7 +5,7 @@
 See: .planning/PROJECT.md (updated 2026-02-08)
 
 **Core value:** Expressive, readable concurrency -- writing concurrent programs should feel as natural as sequential code, with supervision and fault tolerance built in.
-**Current focus:** v1.6 Method Dot-Syntax -- Phase 30 (Core Method Resolution)
+**Current focus:** v1.6 Method Dot-Syntax -- Phase 31 (Extended Method Support)
 
 ## Current Position
 
@@ -64,4 +64,4 @@ None. Research confidence HIGH across all areas.
 Last session: 2026-02-09
 Stopped at: Completed 30-02-PLAN.md (Phase 30 complete)
 Resume file: None
-Next action: Execute Phase 31 (if exists) or next milestone phase
+Next action: Plan Phase 31 (Extended Method Support)
