@@ -3149,17 +3149,17 @@ impl<'a> Lowerer<'a> {
             }
         }
 
+        // Check scope first for local variables. This ensures pattern bindings
+        // (e.g., `head` from `head :: tail`) take precedence over builtin function
+        // name mappings (e.g., `head` -> `snow_list_head`).
+        if let Some(scope_ty) = self.lookup_var(&name) {
+            return MirExpr::Var(name, scope_ty);
+        }
+
         // Map builtin function names to their runtime equivalents.
         let name = map_builtin_name(&name);
 
-        // Check scope first for the type. This preserves MirType::Closure
-        // for variables bound to closures, which is needed for correct
-        // ClosureCall dispatch.
-        let ty = if let Some(scope_ty) = self.lookup_var(&name) {
-            scope_ty
-        } else {
-            self.resolve_range(name_ref.syntax().text_range())
-        };
+        let ty = self.resolve_range(name_ref.syntax().text_range());
         MirExpr::Var(name, ty)
     }
 

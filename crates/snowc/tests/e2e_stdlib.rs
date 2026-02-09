@@ -330,6 +330,22 @@ fn e2e_list_ord() {
     assert_eq!(output, "less\ngreater\n");
 }
 
+// ── List Cons Pattern E2E Tests (Phase 27 Plan 02) ────────────────────
+
+#[test]
+fn e2e_list_cons_int() {
+    let source = read_fixture("list_cons_int.snow");
+    let output = compile_and_run(&source);
+    assert_eq!(output, "15\n");
+}
+
+#[test]
+fn e2e_list_cons_string() {
+    let source = read_fixture("list_cons_string.snow");
+    let output = compile_and_run(&source);
+    assert_eq!(output, "hello\nempty\n");
+}
+
 #[test]
 fn e2e_map_basic() {
     let source = read_fixture("stdlib_map_basic.snow");
