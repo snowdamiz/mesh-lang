@@ -10,9 +10,9 @@ See: .planning/PROJECT.md (updated 2026-02-08)
 ## Current Position
 
 Phase: 34 of 36 (For-In over Range)
-Plan: 0 of TBD in current phase
-Status: Ready to plan
-Last activity: 2026-02-08 -- Phase 33 complete (while/break/continue verified)
+Plan: 1 of 2 in current phase
+Status: Executing
+Last activity: 2026-02-09 -- Plan 34-01 complete (parser + typeck for for-in)
 
 Progress: [██░░░░░░░░] 25% (1/4 phases)
 
@@ -25,13 +25,14 @@ Progress: [██░░░░░░░░] 25% (1/4 phases)
 - Tests: 1,273 passing
 
 **v1.7 Velocity:**
-- Plans completed: 2
+- Plans completed: 3
 - Phases completed: 1/4
 
 | Phase | Plan | Duration | Tasks | Files |
 |-------|------|----------|-------|-------|
 | 33    | 01   | 10min    | 2     | 10    |
 | 33    | 02   | 12min    | 3     | 10    |
+| 34    | 01   | 8min     | 2     | 5     |
 
 ## Accumulated Context
 
@@ -46,6 +47,8 @@ Full decision history archived in milestones/v1.0-ROADMAP.md through milestones/
 - [33-02] While loops use alloca-free Unit return (no result merge needed)
 - [33-02] loop_stack Vec<(cond_bb, merge_bb)> on CodeGen for break/continue target tracking
 - [33-02] Reduction check at both while back-edge AND continue back-edge
+- [34-01] Used push_scope/pop_scope on TypeEnv for loop variable scoping
+- [34-01] DotDot range operand validation via types map lookup after infer_expr
 
 ### Research Notes
 
@@ -66,7 +69,7 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-02-08
-Stopped at: Phase 33 complete and verified
+Last session: 2026-02-09
+Stopped at: Completed 34-01-PLAN.md (parser + typeck for for-in)
 Resume file: None
-Next action: Plan Phase 34
+Next action: Execute 34-02-PLAN.md (MIR lowering + codegen for for-in)
