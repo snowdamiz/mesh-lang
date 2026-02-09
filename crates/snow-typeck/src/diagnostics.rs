@@ -11,7 +11,7 @@
 
 use std::ops::Range;
 
-use ariadne::{Color, Config, Label, Report, ReportKind, Source};
+use ariadne::{Color, Config, Label, Report, ReportKind};
 use serde::Serialize;
 
 use crate::error::{ConstraintOrigin, TypeError};
@@ -557,6 +557,8 @@ pub fn render_diagnostic(
 
     let code = error_code(error);
 
+    let fname = filename.to_string();
+
     let report = match error {
         TypeError::Mismatch {
             expected,
@@ -567,7 +569,7 @@ pub fn render_diagnostic(
             let span = origin_span(origin).unwrap_or(0..source_len.max(1).min(source_len));
             let span = clamp(span);
 
-            let mut builder = Report::build(ReportKind::Error, span.clone())
+            let mut builder = Report::build(ReportKind::Error, (fname.clone(), span.clone()))
                 .with_code(code)
                 .with_message(&msg)
                 .with_config(config);
@@ -581,12 +583,12 @@ pub fn render_diagnostic(
                     let then_range = clamp(text_range_to_range(*then_span));
                     let else_range = clamp(text_range_to_range(*else_span));
                     builder.add_label(
-                        Label::new(then_range)
+                        Label::new((fname.clone(), then_range))
                             .with_message(format!("expected {}", expected))
                             .with_color(Color::Red),
                     );
                     builder.add_label(
-                        Label::new(else_range)
+                        Label::new((fname.clone(), else_range))
                             .with_message(format!("found {}", found))
                             .with_color(Color::Blue),
                     );
@@ -594,7 +596,7 @@ pub fn render_diagnostic(
                 ConstraintOrigin::Annotation { annotation_span } => {
                     let ann_range = clamp(text_range_to_range(*annotation_span));
                     builder.add_label(
-                        Label::new(ann_range)
+                        Label::new((fname.clone(), ann_range))
                             .with_message(format!("expected {} from annotation", expected))
                             .with_color(Color::Red),
                     );
@@ -605,7 +607,7 @@ pub fn render_diagnostic(
                 } => {
                     let call_range = clamp(text_range_to_range(*call_site));
                     builder.add_label(
-                        Label::new(call_range)
+                        Label::new((fname.clone(), call_range))
                             .with_message(format!(
                                 "argument {} has type {}, expected {}",
                                 param_idx + 1,
@@ -622,12 +624,12 @@ pub fn render_diagnostic(
                     let ret_range = clamp(text_range_to_range(*return_span));
                     let fn_range = clamp(text_range_to_range(*fn_span));
                     builder.add_label(
-                        Label::new(ret_range)
+                        Label::new((fname.clone(), ret_range))
                             .with_message(format!("returns {}", found))
                             .with_color(Color::Red),
                     );
                     builder.add_label(
-                        Label::new(fn_range)
+                        Label::new((fname.clone(), fn_range))
                             .with_message(format!("return type declared as {}", expected))
                             .with_color(Color::Blue),
                     );
@@ -636,19 +638,19 @@ pub fn render_diagnostic(
                     let lhs_range = clamp(text_range_to_range(*lhs_span));
                     let rhs_range = clamp(text_range_to_range(*rhs_span));
                     builder.add_label(
-                        Label::new(lhs_range)
+                        Label::new((fname.clone(), lhs_range))
                             .with_message(format!("expected {}", expected))
                             .with_color(Color::Red),
                     );
                     builder.add_label(
-                        Label::new(rhs_range)
+                        Label::new((fname.clone(), rhs_range))
                             .with_message(format!("found {}", found))
                             .with_color(Color::Blue),
                     );
                 }
                 _ => {
                     builder.add_label(
-                        Label::new(span.clone())
+                        Label::new((fname.clone(), span.clone()))
                             .with_message(format!("expected {}, found {}", expected, found))
                             .with_color(Color::Red),
                     );
@@ -667,12 +669,12 @@ pub fn render_diagnostic(
             let span = origin_span(origin).unwrap_or(0..source_len.max(1).min(source_len));
             let span = clamp(span);
 
-            Report::build(ReportKind::Error, span.clone())
+            Report::build(ReportKind::Error, (fname.clone(), span.clone()))
                 .with_code(code)
                 .with_message(&msg)
                 .with_config(config)
                 .with_label(
-                    Label::new(span)
+                    Label::new((fname.clone(), span))
                         .with_message("recursive type here")
                         .with_color(Color::Red),
                 )
@@ -689,12 +691,12 @@ pub fn render_diagnostic(
             let span = origin_span(origin).unwrap_or(0..source_len.max(1).min(source_len));
             let span = clamp(span);
 
-            let mut builder = Report::build(ReportKind::Error, span.clone())
+            let mut builder = Report::build(ReportKind::Error, (fname.clone(), span.clone()))
                 .with_code(code)
                 .with_message(&msg)
                 .with_config(config)
                 .with_label(
-                    Label::new(span)
+                    Label::new((fname.clone(), span))
                         .with_message(format!("expected {} argument(s)", expected))
                         .with_color(Color::Red),
                 );
@@ -712,12 +714,12 @@ pub fn render_diagnostic(
             let msg = format!("undefined variable: {}", name);
             let range = clamp(text_range_to_range(*span));
 
-            let mut builder = Report::build(ReportKind::Error, range.clone())
+            let mut builder = Report::build(ReportKind::Error, (fname.clone(), range.clone()))
                 .with_code(code)
                 .with_message(&msg)
                 .with_config(config)
                 .with_label(
-                    Label::new(range)
+                    Label::new((fname.clone(), range))
                         .with_message("not found in this scope")
                         .with_color(Color::Red),
                 );
@@ -733,12 +735,12 @@ pub fn render_diagnostic(
             let msg = format!("type {} is not callable", ty);
             let range = clamp(text_range_to_range(*span));
 
-            let mut builder = Report::build(ReportKind::Error, range.clone())
+            let mut builder = Report::build(ReportKind::Error, (fname.clone(), range.clone()))
                 .with_code(code)
                 .with_message(&msg)
                 .with_config(config)
                 .with_label(
-                    Label::new(range)
+                    Label::new((fname.clone(), range))
                         .with_message(format!("{} is not a function", ty))
                         .with_color(Color::Red),
                 );
@@ -759,12 +761,12 @@ pub fn render_diagnostic(
             let span = origin_span(origin).unwrap_or(0..source_len.max(1).min(source_len));
             let span = clamp(span);
 
-            Report::build(ReportKind::Error, span.clone())
+            Report::build(ReportKind::Error, (fname.clone(), span.clone()))
                 .with_code(code)
                 .with_message(&msg)
                 .with_config(config)
                 .with_label(
-                    Label::new(span)
+                    Label::new((fname.clone(), span))
                         .with_message(format!("{} does not satisfy {}", ty, trait_name))
                         .with_color(Color::Red),
                 )
@@ -783,12 +785,12 @@ pub fn render_diagnostic(
             );
             let span = clamp(0..source_len.max(1).min(source_len));
 
-            Report::build(ReportKind::Error, span.clone())
+            Report::build(ReportKind::Error, (fname.clone(), span.clone()))
                 .with_code(code)
                 .with_message(&msg)
                 .with_config(config)
                 .with_label(
-                    Label::new(span)
+                    Label::new((fname.clone(), span))
                         .with_message(format!("missing `{}`", method_name))
                         .with_color(Color::Red),
                 )
@@ -811,12 +813,12 @@ pub fn render_diagnostic(
             );
             let span = clamp(0..source_len.max(1).min(source_len));
 
-            Report::build(ReportKind::Error, span.clone())
+            Report::build(ReportKind::Error, (fname.clone(), span.clone()))
                 .with_code(code)
                 .with_message(&msg)
                 .with_config(config)
                 .with_label(
-                    Label::new(span)
+                    Label::new((fname.clone(), span))
                         .with_message(format!(
                             "expected return type {}, found {}",
                             expected, found
@@ -834,12 +836,12 @@ pub fn render_diagnostic(
             let msg = format!("missing field {} in struct {}", field_name, struct_name);
             let range = clamp(text_range_to_range(*span));
 
-            Report::build(ReportKind::Error, range.clone())
+            Report::build(ReportKind::Error, (fname.clone(), range.clone()))
                 .with_code(code)
                 .with_message(&msg)
                 .with_config(config)
                 .with_label(
-                    Label::new(range)
+                    Label::new((fname.clone(), range))
                         .with_message(format!("field `{}` is required", field_name))
                         .with_color(Color::Red),
                 )
@@ -855,12 +857,12 @@ pub fn render_diagnostic(
             let msg = format!("unknown field {} in struct {}", field_name, struct_name);
             let range = clamp(text_range_to_range(*span));
 
-            Report::build(ReportKind::Error, range.clone())
+            Report::build(ReportKind::Error, (fname.clone(), range.clone()))
                 .with_code(code)
                 .with_message(&msg)
                 .with_config(config)
                 .with_label(
-                    Label::new(range)
+                    Label::new((fname.clone(), range))
                         .with_message(format!("`{}` has no field `{}`", struct_name, field_name))
                         .with_color(Color::Red),
                 )
@@ -875,12 +877,12 @@ pub fn render_diagnostic(
             let msg = format!("type {} has no field {}", ty, field_name);
             let range = clamp(text_range_to_range(*span));
 
-            Report::build(ReportKind::Error, range.clone())
+            Report::build(ReportKind::Error, (fname.clone(), range.clone()))
                 .with_code(code)
                 .with_message(&msg)
                 .with_config(config)
                 .with_label(
-                    Label::new(range)
+                    Label::new((fname.clone(), range))
                         .with_message(format!("no field `{}`", field_name))
                         .with_color(Color::Red),
                 )
@@ -895,12 +897,12 @@ pub fn render_diagnostic(
             let msg = format!("no method `{}` on type `{}`", method_name, ty);
             let range = clamp(text_range_to_range(*span));
 
-            Report::build(ReportKind::Error, range.clone())
+            Report::build(ReportKind::Error, (fname.clone(), range.clone()))
                 .with_code(code)
                 .with_message(&msg)
                 .with_config(config)
                 .with_label(
-                    Label::new(range)
+                    Label::new((fname.clone(), range))
                         .with_message(format!("method `{}` not found", method_name))
                         .with_color(Color::Red),
                 )
@@ -915,12 +917,12 @@ pub fn render_diagnostic(
             let msg = format!("unknown variant: {}", name);
             let range = clamp(text_range_to_range(*span));
 
-            let mut builder = Report::build(ReportKind::Error, range.clone())
+            let mut builder = Report::build(ReportKind::Error, (fname.clone(), range.clone()))
                 .with_code(code)
                 .with_message(&msg)
                 .with_config(config)
                 .with_label(
-                    Label::new(range)
+                    Label::new((fname.clone(), range))
                         .with_message("not a known variant")
                         .with_color(Color::Red),
                 );
@@ -944,12 +946,12 @@ pub fn render_diagnostic(
             );
             let range = clamp(text_range_to_range(*span));
 
-            Report::build(ReportKind::Error, range.clone())
+            Report::build(ReportKind::Error, (fname.clone(), range.clone()))
                 .with_code(code)
                 .with_message(&msg)
                 .with_config(config)
                 .with_label(
-                    Label::new(range)
+                    Label::new((fname.clone(), range))
                         .with_message("alternatives must bind the same variables")
                         .with_color(Color::Red),
                 )
@@ -967,12 +969,12 @@ pub fn render_diagnostic(
             let msg = format!("non-exhaustive match on `{}`", scrutinee_type);
             let range = clamp(text_range_to_range(*span));
 
-            Report::build(ReportKind::Error, range.clone())
+            Report::build(ReportKind::Error, (fname.clone(), range.clone()))
                 .with_code(code)
                 .with_message(&msg)
                 .with_config(config)
                 .with_label(
-                    Label::new(range)
+                    Label::new((fname.clone(), range))
                         .with_message(format!("missing: {}", missing_patterns.join(", ")))
                         .with_color(Color::Red),
                 )
@@ -984,12 +986,12 @@ pub fn render_diagnostic(
             let msg = format!("redundant match arm (arm {})", arm_index + 1);
             let range = clamp(text_range_to_range(*span));
 
-            Report::build(ReportKind::Warning, range.clone())
+            Report::build(ReportKind::Warning, (fname.clone(), range.clone()))
                 .with_code(code)
                 .with_message(&msg)
                 .with_config(config)
                 .with_label(
-                    Label::new(range)
+                    Label::new((fname.clone(), range))
                         .with_message("this arm is unreachable")
                         .with_color(Color::Yellow),
                 )
@@ -1001,12 +1003,12 @@ pub fn render_diagnostic(
             let msg = format!("invalid guard: {}", reason);
             let range = clamp(text_range_to_range(*span));
 
-            Report::build(ReportKind::Error, range.clone())
+            Report::build(ReportKind::Error, (fname.clone(), range.clone()))
                 .with_code(code)
                 .with_message(&msg)
                 .with_config(config)
                 .with_label(
-                    Label::new(range)
+                    Label::new((fname.clone(), range))
                         .with_message(
                             "only comparisons, boolean ops, literals, and names allowed",
                         )
@@ -1027,12 +1029,12 @@ pub fn render_diagnostic(
             );
             let range = clamp(text_range_to_range(*span));
 
-            Report::build(ReportKind::Error, range.clone())
+            Report::build(ReportKind::Error, (fname.clone(), range.clone()))
                 .with_code(code)
                 .with_message(&msg)
                 .with_config(config)
                 .with_label(
-                    Label::new(range)
+                    Label::new((fname.clone(), range))
                         .with_message(format!("expected {}, found {}", expected, found))
                         .with_color(Color::Red),
                 )
@@ -1044,12 +1046,12 @@ pub fn render_diagnostic(
             let msg = "self() used outside actor block";
             let range = clamp(text_range_to_range(*span));
 
-            Report::build(ReportKind::Error, range.clone())
+            Report::build(ReportKind::Error, (fname.clone(), range.clone()))
                 .with_code(code)
                 .with_message(msg)
                 .with_config(config)
                 .with_label(
-                    Label::new(range)
+                    Label::new((fname.clone(), range))
                         .with_message("self() is only available inside an actor block")
                         .with_color(Color::Red),
                 )
@@ -1060,12 +1062,12 @@ pub fn render_diagnostic(
             let msg = format!("cannot spawn non-function: found {}", found);
             let range = clamp(text_range_to_range(*span));
 
-            Report::build(ReportKind::Error, range.clone())
+            Report::build(ReportKind::Error, (fname.clone(), range.clone()))
                 .with_code(code)
                 .with_message(&msg)
                 .with_config(config)
                 .with_label(
-                    Label::new(range)
+                    Label::new((fname.clone(), range))
                         .with_message(format!("expected a function, found {}", found))
                         .with_color(Color::Red),
                 )
@@ -1076,12 +1078,12 @@ pub fn render_diagnostic(
             let msg = "receive used outside actor block";
             let range = clamp(text_range_to_range(*span));
 
-            Report::build(ReportKind::Error, range.clone())
+            Report::build(ReportKind::Error, (fname.clone(), range.clone()))
                 .with_code(code)
                 .with_message(msg)
                 .with_config(config)
                 .with_label(
-                    Label::new(range)
+                    Label::new((fname.clone(), range))
                         .with_message("receive is only available inside an actor block")
                         .with_color(Color::Red),
                 )
@@ -1100,12 +1102,12 @@ pub fn render_diagnostic(
             );
             let range = clamp(text_range_to_range(*span));
 
-            Report::build(ReportKind::Error, range.clone())
+            Report::build(ReportKind::Error, (fname.clone(), range.clone()))
                 .with_code(code)
                 .with_message(&msg)
                 .with_config(config)
                 .with_label(
-                    Label::new(range)
+                    Label::new((fname.clone(), range))
                         .with_message(format!("expected Pid<M>, found {}", found))
                         .with_color(Color::Red),
                 )
@@ -1117,12 +1119,12 @@ pub fn render_diagnostic(
             let msg = format!("unknown supervision strategy `{}`", found);
             let range = clamp(text_range_to_range(*span));
 
-            Report::build(ReportKind::Error, range.clone())
+            Report::build(ReportKind::Error, (fname.clone(), range.clone()))
                 .with_code(code)
                 .with_message(&msg)
                 .with_config(config)
                 .with_label(
-                    Label::new(range)
+                    Label::new((fname.clone(), range))
                         .with_message(
                             "expected one_for_one, one_for_all, rest_for_one, or simple_one_for_one",
                         )
@@ -1142,12 +1144,12 @@ pub fn render_diagnostic(
             );
             let range = clamp(text_range_to_range(*span));
 
-            Report::build(ReportKind::Error, range.clone())
+            Report::build(ReportKind::Error, (fname.clone(), range.clone()))
                 .with_code(code)
                 .with_message(&msg)
                 .with_config(config)
                 .with_label(
-                    Label::new(range)
+                    Label::new((fname.clone(), range))
                         .with_message("expected permanent, transient, or temporary")
                         .with_color(Color::Red),
                 )
@@ -1165,12 +1167,12 @@ pub fn render_diagnostic(
             );
             let range = clamp(text_range_to_range(*span));
 
-            Report::build(ReportKind::Error, range.clone())
+            Report::build(ReportKind::Error, (fname.clone(), range.clone()))
                 .with_code(code)
                 .with_message(&msg)
                 .with_config(config)
                 .with_label(
-                    Label::new(range)
+                    Label::new((fname.clone(), range))
                         .with_message("expected a positive integer or brutal_kill")
                         .with_color(Color::Red),
                 )
@@ -1189,12 +1191,12 @@ pub fn render_diagnostic(
             );
             let range = clamp(text_range_to_range(*span));
 
-            Report::build(ReportKind::Error, range.clone())
+            Report::build(ReportKind::Error, (fname.clone(), range.clone()))
                 .with_code(code)
                 .with_message(&msg)
                 .with_config(config)
                 .with_label(
-                    Label::new(range)
+                    Label::new((fname.clone(), range))
                         .with_message("clauses after a catch-all are unreachable")
                         .with_color(Color::Red),
                 )
@@ -1213,17 +1215,17 @@ pub fn render_diagnostic(
             let range = clamp(text_range_to_range(*second_span));
             let first_range = clamp(text_range_to_range(*first_span));
 
-            Report::build(ReportKind::Error, range.clone())
+            Report::build(ReportKind::Error, (fname.clone(), range.clone()))
                 .with_code(code)
                 .with_message(&msg)
                 .with_config(config)
                 .with_label(
-                    Label::new(first_range)
+                    Label::new((fname.clone(), first_range))
                         .with_message("first definition here")
                         .with_color(Color::Blue),
                 )
                 .with_label(
-                    Label::new(range)
+                    Label::new((fname.clone(), range))
                         .with_message("non-consecutive redefinition here")
                         .with_color(Color::Red),
                 )
@@ -1241,12 +1243,12 @@ pub fn render_diagnostic(
             );
             let range = clamp(text_range_to_range(*span));
 
-            Report::build(ReportKind::Error, range.clone())
+            Report::build(ReportKind::Error, (fname.clone(), range.clone()))
                 .with_code(code)
                 .with_message(&msg)
                 .with_config(config)
                 .with_label(
-                    Label::new(range)
+                    Label::new((fname.clone(), range))
                         .with_message(format!("expected {} parameters", expected_arity))
                         .with_color(Color::Red),
                 )
@@ -1263,12 +1265,12 @@ pub fn render_diagnostic(
             );
             let range = clamp(text_range_to_range(*span));
 
-            Report::build(ReportKind::Warning, range.clone())
+            Report::build(ReportKind::Warning, (fname.clone(), range.clone()))
                 .with_code(code)
                 .with_message(&msg)
                 .with_config(config)
                 .with_label(
-                    Label::new(range)
+                    Label::new((fname.clone(), range))
                         .with_message("only the first clause should have this annotation")
                         .with_color(Color::Yellow),
                 )
@@ -1282,12 +1284,12 @@ pub fn render_diagnostic(
             let msg = format!("guard expression must return `{}`, found `{}`", expected, found);
             let range = clamp(text_range_to_range(*span));
 
-            Report::build(ReportKind::Error, range.clone())
+            Report::build(ReportKind::Error, (fname.clone(), range.clone()))
                 .with_code(code)
                 .with_message(&msg)
                 .with_config(config)
                 .with_label(
-                    Label::new(range)
+                    Label::new((fname.clone(), range))
                         .with_message(format!("expected `{}`, found `{}`", expected, found))
                         .with_color(Color::Red),
                 )
@@ -1305,12 +1307,12 @@ pub fn render_diagnostic(
             );
             let span = clamp(0..source_len.max(1).min(source_len));
 
-            Report::build(ReportKind::Error, span.clone())
+            Report::build(ReportKind::Error, (fname.clone(), span.clone()))
                 .with_code(code)
                 .with_message(&msg)
                 .with_config(config)
                 .with_label(
-                    Label::new(span)
+                    Label::new((fname.clone(), span))
                         .with_message(format!("{}", first_impl))
                         .with_color(Color::Red),
                 )
@@ -1338,12 +1340,12 @@ pub fn render_diagnostic(
                 .collect();
             let help = format!("use qualified syntax: {}", suggestions.join(" or "));
 
-            Report::build(ReportKind::Error, range.clone())
+            Report::build(ReportKind::Error, (fname.clone(), range.clone()))
                 .with_code(code)
                 .with_message(&msg)
                 .with_config(config)
                 .with_label(
-                    Label::new(range)
+                    Label::new((fname.clone(), range))
                         .with_message(format!("multiple traits provide `{}`", method_name))
                         .with_color(Color::Red),
                 )
@@ -1361,12 +1363,12 @@ pub fn render_diagnostic(
             );
             let span = clamp(0..source_len.max(1).min(source_len));
 
-            Report::build(ReportKind::Error, span.clone())
+            Report::build(ReportKind::Error, (fname.clone(), span.clone()))
                 .with_code(code)
                 .with_message(&msg)
                 .with_config(config)
                 .with_label(
-                    Label::new(span)
+                    Label::new((fname.clone(), span))
                         .with_message(format!("`{}` is not a derivable trait", trait_name))
                         .with_color(Color::Red),
                 )
@@ -1385,12 +1387,12 @@ pub fn render_diagnostic(
             );
             let span = clamp(0..source_len.max(1).min(source_len));
 
-            Report::build(ReportKind::Error, span.clone())
+            Report::build(ReportKind::Error, (fname.clone(), span.clone()))
                 .with_code(code)
                 .with_message(&msg)
                 .with_config(config)
                 .with_label(
-                    Label::new(span)
+                    Label::new((fname.clone(), span))
                         .with_message(format!(
                             "`{}` requires `{}` for its implementation",
                             trait_name, requires
@@ -1408,12 +1410,12 @@ pub fn render_diagnostic(
             let msg = "`break` outside of loop";
             let range = clamp(text_range_to_range(*span));
 
-            Report::build(ReportKind::Error, range.clone())
+            Report::build(ReportKind::Error, (fname.clone(), range.clone()))
                 .with_code(code)
                 .with_message(msg)
                 .with_config(config)
                 .with_label(
-                    Label::new(range)
+                    Label::new((fname.clone(), range))
                         .with_message("`break` can only be used inside a `while` loop")
                         .with_color(Color::Red),
                 )
@@ -1425,12 +1427,12 @@ pub fn render_diagnostic(
             let msg = "`continue` outside of loop";
             let range = clamp(text_range_to_range(*span));
 
-            Report::build(ReportKind::Error, range.clone())
+            Report::build(ReportKind::Error, (fname.clone(), range.clone()))
                 .with_code(code)
                 .with_message(msg)
                 .with_config(config)
                 .with_label(
-                    Label::new(range)
+                    Label::new((fname.clone(), range))
                         .with_message("`continue` can only be used inside a `while` loop")
                         .with_color(Color::Red),
                 )
@@ -1442,12 +1444,12 @@ pub fn render_diagnostic(
             let msg = "module not found";
             let range = clamp(text_range_to_range(*span));
 
-            let mut builder = Report::build(ReportKind::Error, range.clone())
+            let mut builder = Report::build(ReportKind::Error, (fname.clone(), range.clone()))
                 .with_code(code)
                 .with_message(msg)
                 .with_config(config)
                 .with_label(
-                    Label::new(range)
+                    Label::new((fname.clone(), range))
                         .with_message(format!("module `{}` not found", module_name))
                         .with_color(Color::Red),
                 );
@@ -1463,12 +1465,12 @@ pub fn render_diagnostic(
             let msg = "name not found in module";
             let range = clamp(text_range_to_range(*span));
 
-            let mut builder = Report::build(ReportKind::Error, range.clone())
+            let mut builder = Report::build(ReportKind::Error, (fname.clone(), range.clone()))
                 .with_code(code)
                 .with_message(msg)
                 .with_config(config)
                 .with_label(
-                    Label::new(range)
+                    Label::new((fname.clone(), range))
                         .with_message(format!("`{}` is not exported by module `{}`", name, module_name))
                         .with_color(Color::Red),
                 );
@@ -1484,12 +1486,12 @@ pub fn render_diagnostic(
             let msg = "private item cannot be imported";
             let range = clamp(text_range_to_range(*span));
 
-            Report::build(ReportKind::Error, range.clone())
+            Report::build(ReportKind::Error, (fname.clone(), range.clone()))
                 .with_code(code)
                 .with_message(msg)
                 .with_config(config)
                 .with_label(
-                    Label::new(range)
+                    Label::new((fname.clone(), range))
                         .with_message(format!("`{}` is private in module `{}`", name, module_name))
                         .with_color(Color::Red),
                 )
@@ -1499,7 +1501,7 @@ pub fn render_diagnostic(
     };
 
     let mut buf = Vec::new();
-    let cache = Source::from(source);
+    let cache = ariadne::sources([(fname, source.to_string())]);
     report
         .write(cache, &mut buf)
         .expect("failed to write diagnostic");
