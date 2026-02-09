@@ -337,3 +337,35 @@ fn test_not_a_function_fix_suggestion() {
         output
     );
 }
+
+// ── Phase 32 AmbiguousMethod Diagnostic Tests ──────────────────────
+
+#[test]
+fn test_diag_ambiguous_method_deterministic_order() {
+    use snow_typeck::ty::Ty;
+
+    let src = "x.to_string()";
+    let err = TypeError::AmbiguousMethod {
+        method_name: "to_string".to_string(),
+        candidate_traits: vec!["Displayable".to_string(), "Printable".to_string()],
+        ty: Ty::int(),
+        span: rowan::TextRange::new(0.into(), 13.into()),
+    };
+    let output = render_diagnostic(&err, src, "test.snow", &opts(), None);
+    insta::assert_snapshot!(output);
+}
+
+#[test]
+fn test_diag_ambiguous_method_help_text() {
+    use snow_typeck::ty::Ty;
+
+    let src = "point.to_string()";
+    let err = TypeError::AmbiguousMethod {
+        method_name: "to_string".to_string(),
+        candidate_traits: vec!["Display".to_string(), "Printable".to_string()],
+        ty: Ty::Con(snow_typeck::ty::TyCon::new("Point")),
+        span: rowan::TextRange::new(0.into(), 17.into()),
+    };
+    let output = render_diagnostic(&err, src, "test.snow", &opts(), None);
+    insta::assert_snapshot!(output);
+}

@@ -1,0 +1,13 @@
+---
+source: crates/snow-typeck/tests/diagnostics.rs
+expression: output
+---
+[E0027] Error: ambiguous method `to_string` for type `Int`: candidates from traits [Displayable, Printable]
+   ╭─[ <unknown>:1:1 ]
+   │
+ 1 │ x.to_string()
+   │ ──────┬──────  
+   │       ╰──────── multiple traits provide `to_string`
+   │ 
+   │ Help: use qualified syntax: Displayable.to_string(value) or Printable.to_string(value)
+───╯
