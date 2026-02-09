@@ -283,16 +283,61 @@ fn build(
         return Err("Compilation failed due to errors above.".to_string());
     }
 
-    // Type-check the entry module only
-    let entry_parse = &project.module_parses[entry_idx];
-    let entry_source = &project.module_sources[entry_idx];
-    let typeck = snow_typeck::check(entry_parse);
+    // Type-check ALL modules in topological order (Phase 39)
+    let module_count = project.graph.module_count();
+    let mut all_exports: Vec<Option<snow_typeck::ExportedSymbols>> = (0..module_count).map(|_| None).collect();
+    let mut all_typeck: Vec<Option<snow_typeck::TypeckResult>> = (0..module_count).map(|_| None).collect();
+    let mut has_type_errors = false;
 
-    // Report type-check diagnostics for entry module
-    let has_type_errors = report_diagnostics(entry_source, &main_snow, entry_parse, &typeck, diag_opts);
+    for &id in &project.compilation_order {
+        let idx = id.0 as usize;
+        let parse = &project.module_parses[idx];
+        let source = &project.module_sources[idx];
+        let module_path = dir.join(&project.graph.get(id).path);
+
+        // Build ImportContext from already-checked dependencies
+        let import_ctx = build_import_context(
+            &project.graph,
+            &all_exports,
+            parse,
+            id,
+        );
+
+        // Type-check this module with imports
+        let typeck = snow_typeck::check_with_imports(parse, &import_ctx);
+
+        // Report type-check diagnostics for this module
+        let file_name = module_path.display().to_string();
+        for error in &typeck.errors {
+            has_type_errors = true;
+            let rendered = snow_typeck::diagnostics::render_diagnostic(
+                error, source, &file_name, diag_opts, None,
+            );
+            eprint!("{}", rendered);
+        }
+
+        // Report warnings
+        for warning in &typeck.warnings {
+            let rendered = snow_typeck::diagnostics::render_diagnostic(
+                warning, source, &file_name, diag_opts, None,
+            );
+            eprint!("{}", rendered);
+        }
+
+        // Collect exports for downstream modules
+        let exports = snow_typeck::collect_exports(parse, &typeck);
+        all_exports[idx] = Some(exports);
+        all_typeck[idx] = Some(typeck);
+    }
+
     if has_type_errors {
         return Err("Compilation failed due to errors above.".to_string());
     }
+
+    // Find entry module for codegen
+    let entry_parse = &project.module_parses[entry_idx];
+    let entry_typeck = all_typeck[entry_idx].as_ref()
+        .ok_or("Entry module was not type-checked")?;
 
     // Determine output path
     let project_name = dir
@@ -307,16 +352,80 @@ fn build(
     // Emit LLVM IR if requested
     if emit_llvm {
         let ll_path = output_path.with_extension("ll");
-        snow_codegen::compile_to_llvm_ir(entry_parse, &typeck, &ll_path, target)?;
+        snow_codegen::compile_to_llvm_ir(entry_parse, entry_typeck, &ll_path, target)?;
         eprintln!("  LLVM IR: {}", ll_path.display());
     }
 
     // Compile to native binary
-    snow_codegen::compile_to_binary(entry_parse, &typeck, &output_path, opt_level, target, None)?;
+    snow_codegen::compile_to_binary(entry_parse, entry_typeck, &output_path, opt_level, target, None)?;
 
     eprintln!("  Compiled: {}", output_path.display());
 
     Ok(())
+}
+
+/// Build an ImportContext for a module from already-checked dependency exports.
+///
+/// Reads the module's import declarations to determine which modules are imported,
+/// then constructs an ImportContext with the exports of those modules. Trait defs
+/// and impls from ALL already-checked modules are included (XMOD-05: globally visible).
+fn build_import_context(
+    graph: &snow_common::module_graph::ModuleGraph,
+    all_exports: &[Option<snow_typeck::ExportedSymbols>],
+    parse: &snow_parser::Parse,
+    _module_id: snow_common::module_graph::ModuleId,
+) -> snow_typeck::ImportContext {
+    use snow_parser::ast::item::Item;
+    use snow_typeck::{ImportContext, ModuleExports};
+
+    let mut ctx = ImportContext::empty();
+
+    // Collect ALL trait defs and impls from ALL already-checked modules (XMOD-05)
+    for exports_opt in all_exports.iter() {
+        if let Some(exports) = exports_opt {
+            ctx.all_trait_defs.extend(exports.trait_defs.iter().cloned());
+            ctx.all_trait_impls.extend(exports.trait_impls.iter().cloned());
+        }
+    }
+
+    // For each import declaration in this module, find the corresponding
+    // module's exports and add them to the ImportContext.
+    let tree = parse.tree();
+    for item in tree.items() {
+        let segments = match &item {
+            Item::ImportDecl(import_decl) => {
+                import_decl.module_path().map(|p| p.segments())
+            }
+            Item::FromImportDecl(from_import) => {
+                from_import.module_path().map(|p| p.segments())
+            }
+            _ => None,
+        };
+
+        if let Some(segments) = segments {
+            let full_name = segments.join(".");
+            let last_segment = segments.last().cloned().unwrap_or_default();
+
+            // Look up the module in the graph
+            if let Some(dep_id) = graph.resolve(&full_name) {
+                let idx = dep_id.0 as usize;
+                if let Some(Some(exports)) = all_exports.get(idx) {
+                    // Build ModuleExports from ExportedSymbols
+                    let mod_exports = ModuleExports {
+                        module_name: full_name.clone(),
+                        functions: exports.functions.clone(),
+                        struct_defs: exports.struct_defs.clone(),
+                        sum_type_defs: exports.sum_type_defs.clone(),
+                    };
+                    ctx.module_exports.insert(last_segment, mod_exports);
+                }
+            }
+            // If module not found in graph, that's fine -- the type checker
+            // will emit ImportModuleNotFound when it processes the import.
+        }
+    }
+
+    ctx
 }
 
 /// Report parse and type-check diagnostics.
