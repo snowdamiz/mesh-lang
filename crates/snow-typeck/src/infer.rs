@@ -3279,6 +3279,23 @@ fn infer_for_in(
     // Enter loop context (enables break/continue validation).
     ctx.enter_loop();
 
+    // Infer filter condition if present (FILT-01).
+    if let Some(filter_expr) = for_in.filter() {
+        let filter_ty = infer_expr(
+            ctx,
+            env,
+            &filter_expr,
+            types,
+            type_registry,
+            trait_registry,
+            fn_constraints,
+        )?;
+        let origin = ConstraintOrigin::BinOp {
+            op_span: filter_expr.syntax().text_range(),
+        };
+        ctx.unify(filter_ty, Ty::bool(), origin)?;
+    }
+
     // Infer body -- its type becomes the List element type.
     let body_ty = if let Some(body) = for_in.body() {
         infer_block(ctx, env, &body, types, type_registry, trait_registry, fn_constraints)?

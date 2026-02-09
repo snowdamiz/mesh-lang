@@ -464,6 +464,11 @@ fn walk_for_in_expr(node: &SyntaxNode) -> FormatIR {
                         parts.push(ir::text("in"));
                         parts.push(sp());
                     }
+                    SyntaxKind::WHEN_KW => {
+                        parts.push(sp());
+                        parts.push(ir::text("when"));
+                        parts.push(sp());
+                    }
                     SyntaxKind::DO_KW => {
                         parts.push(sp());
                         parts.push(ir::text("do"));
@@ -491,7 +496,7 @@ fn walk_for_in_expr(node: &SyntaxNode) -> FormatIR {
                         parts.push(walk_destructure_binding(&n));
                     }
                     _ => {
-                        // Iterable expression (e.g., binary expr for 0..10).
+                        // Iterable expression and filter expression.
                         parts.push(walk_node(&n));
                     }
                 }

@@ -598,6 +598,20 @@ impl ForInExpr {
         self.syntax.children().find_map(Expr::cast)
     }
 
+    /// The filter expression (after `when`), if present.
+    pub fn filter(&self) -> Option<Expr> {
+        let has_when = self
+            .syntax
+            .children_with_tokens()
+            .any(|it| it.kind() == SyntaxKind::WHEN_KW);
+        if has_when {
+            // With `when`: first expr = iterable, second expr = filter
+            self.syntax.children().filter_map(Expr::cast).nth(1)
+        } else {
+            None
+        }
+    }
+
     /// The loop body block.
     pub fn body(&self) -> Option<Block> {
         child_node(&self.syntax)

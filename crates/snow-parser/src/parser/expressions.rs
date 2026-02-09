@@ -1234,6 +1234,12 @@ fn parse_for_in_expr(p: &mut Parser) -> MarkClosed {
         expr(p);
     }
 
+    // Optional filter clause: `when condition`
+    if p.at(SyntaxKind::WHEN_KW) {
+        p.advance(); // WHEN_KW
+        expr(p); // filter expression
+    }
+
     // Expect `do`.
     let do_span = p.current_span();
     p.expect(SyntaxKind::DO_KW);
