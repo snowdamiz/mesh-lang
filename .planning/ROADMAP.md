@@ -118,7 +118,10 @@ Plans:
   3. For-in over an empty collection returns an empty list without error
   4. `break` inside a for-in loop returns the partially collected list of results gathered so far
   5. For-in collection uses O(N) list builder allocation, not O(N^2) append chains
-**Plans**: TBD
+**Plans:** 2 plans
+Plans:
+- [ ] 35-01-PLAN.md -- Runtime list builder + indexed access, parser destructuring, typeck collection detection, MIR variants
+- [ ] 35-02-PLAN.md -- LLVM codegen for collection iteration, range comprehension update, e2e tests
 
 ### Phase 36: Filter Clause + Integration
 **Goal**: Users can filter elements during for-in iteration, and all loop forms work correctly with closures, nesting, pipes, and tooling
@@ -147,7 +150,7 @@ Phases execute in numeric order: 33 -> 34 -> 35 -> 36
 | 30-32 | v1.6 | 6/6 | Complete | 2026-02-09 |
 | 33. While Loop + Loop Control Flow | v1.7 | 2/2 | Complete | 2026-02-08 |
 | 34. For-In over Range | v1.7 | 2/2 | Complete | 2026-02-09 |
-| 35. For-In over Collections | v1.7 | 0/TBD | Not started | - |
+| 35. For-In over Collections | v1.7 | 0/2 | Not started | - |
 | 36. Filter Clause + Integration | v1.7 | 0/TBD | Not started | - |
 
 **Total: 34 phases shipped, 2 phases remaining (v1.7).**
