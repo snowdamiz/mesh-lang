@@ -132,7 +132,10 @@ Plans:
   2. Filtered elements are excluded from the collected result list (the returned List contains only results from iterations where the condition was true)
   3. Nested loops, loops containing closures, and loops inside pipe chains all work correctly
   4. The formatter and LSP handle all loop syntax forms without errors
-**Plans**: TBD
+**Plans:** 2 plans
+Plans:
+- [ ] 36-01-PLAN.md -- Filter clause pipeline: parser, AST, typeck, MIR, lowering, codegen, formatter
+- [ ] 36-02-PLAN.md -- E2E tests, parser tests, formatter tests for filter and integration
 
 ## Progress
 
