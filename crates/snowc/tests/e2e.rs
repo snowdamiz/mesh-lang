@@ -720,3 +720,68 @@ fn e2e_generic_deriving() {
     let output = compile_and_run(&source);
     assert_eq!(output, "Box(42)\nBox(hello)\ntrue\nfalse\n");
 }
+
+// ── Phase 28: Trait Deriving Safety ───────────────────────────────────
+
+/// Phase 28: deriving(Ord) without Eq on a struct produces a compile-time error
+/// that suggests adding Eq.
+#[test]
+fn e2e_deriving_ord_without_eq_struct() {
+    let source = r#"
+struct Foo do
+  x :: Int
+end deriving(Ord)
+
+fn main() do
+  let f = Foo { x: 1 }
+  println("nope")
+end
+"#;
+    let error = compile_expect_error(source);
+    assert!(
+        error.contains("Eq") && (error.contains("requires") || error.contains("without")),
+        "Expected error about Ord requiring Eq, got: {}",
+        error
+    );
+}
+
+/// Phase 28: deriving(Ord) without Eq on a sum type produces a compile-time error.
+#[test]
+fn e2e_deriving_ord_without_eq_sum() {
+    let source = r#"
+type Direction do
+  North
+  South
+end deriving(Ord)
+
+fn main() do
+  println("nope")
+end
+"#;
+    let error = compile_expect_error(source);
+    assert!(
+        error.contains("Eq") && (error.contains("requires") || error.contains("without")),
+        "Expected error about Ord requiring Eq, got: {}",
+        error
+    );
+}
+
+/// Phase 28: deriving(Eq, Ord) together compiles and works correctly.
+#[test]
+fn e2e_deriving_eq_ord_together() {
+    let source = r#"
+struct Point do
+  x :: Int
+  y :: Int
+end deriving(Eq, Ord)
+
+fn main() do
+  let a = Point { x: 1, y: 2 }
+  let b = Point { x: 1, y: 3 }
+  println("${a == b}")
+  println("${a < b}")
+end
+"#;
+    let output = compile_and_run(source);
+    assert_eq!(output, "false\ntrue\n");
+}
