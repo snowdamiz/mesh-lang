@@ -785,3 +785,98 @@ end
     let output = compile_and_run(source);
     assert_eq!(output, "false\ntrue\n");
 }
+
+// ── Phase 30: Method dot-syntax ──────────────────────────────────────────
+
+/// Phase 30: basic method dot-syntax compiles and runs end-to-end.
+/// Uses deriving(Display) which is the standard way to get trait impls on structs.
+#[test]
+fn e2e_method_dot_syntax_basic() {
+    let source = r#"
+struct Point do
+  x :: Int
+  y :: Int
+end deriving(Display)
+
+fn main() do
+  let p = Point { x: 10, y: 20 }
+  println(p.to_string())
+end
+"#;
+    let output = compile_and_run(source);
+    assert_eq!(output.trim(), "Point(10, 20)");
+}
+
+/// Phase 30: method dot-syntax and string interpolation produce identical output.
+/// Both p.to_string() and "${p}" should call the same Display impl.
+#[test]
+fn e2e_method_dot_syntax_equivalence() {
+    let source = r#"
+struct Point do
+  x :: Int
+  y :: Int
+end deriving(Display)
+
+fn main() do
+  let p = Point { x: 1, y: 2 }
+  let a = "${p}"
+  let b = p.to_string()
+  println(a)
+  println(b)
+end
+"#;
+    let output = compile_and_run(source);
+    assert_eq!(output, "Point(1, 2)\nPoint(1, 2)\n");
+}
+
+/// Phase 30: field access still works alongside method dot-syntax (regression test).
+#[test]
+fn e2e_method_dot_syntax_field_access_preserved() {
+    let source = r#"
+struct Point do
+  x :: Int
+  y :: Int
+end deriving(Display)
+
+fn main() do
+  let p = Point { x: 42, y: 99 }
+  println("${p.x}")
+  println("${p.y}")
+end
+"#;
+    let output = compile_and_run(source);
+    assert_eq!(output, "42\n99\n");
+}
+
+/// Phase 30: module-qualified calls still work (regression test).
+#[test]
+fn e2e_method_dot_syntax_module_qualified_preserved() {
+    let source = r#"
+fn main() do
+  let s = "hello world"
+  println("${String.length(s)}")
+end
+"#;
+    let output = compile_and_run(source);
+    assert_eq!(output.trim(), "11");
+}
+
+/// Phase 30: method dot-syntax on derived Display alongside Eq.
+#[test]
+fn e2e_method_dot_syntax_multiple_traits() {
+    let source = r#"
+struct Point do
+  x :: Int
+  y :: Int
+end deriving(Display, Eq)
+
+fn main() do
+  let a = Point { x: 1, y: 2 }
+  let b = Point { x: 1, y: 2 }
+  println(a.to_string())
+  println("${a == b}")
+end
+"#;
+    let output = compile_and_run(source);
+    assert_eq!(output, "Point(1, 2)\ntrue\n");
+}

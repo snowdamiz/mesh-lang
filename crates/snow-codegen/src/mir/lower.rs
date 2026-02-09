@@ -9690,4 +9690,218 @@ end
             main.body
         );
     }
+
+    // ── Method dot-syntax MIR tests (Phase 30-02) ─────────────────────
+
+    #[test]
+    fn e2e_method_dot_syntax_basic() {
+        // METH-01 + METH-02: p.to_string() should produce same mangled call as to_string(p)
+        let source = r#"
+struct Point do
+  x :: Int
+  y :: Int
+end
+
+interface Display do
+  fn to_string(self) -> String
+end
+
+impl Display for Point do
+  fn to_string(p) do
+    "Point"
+  end
+end
+
+fn main() do
+  let p = Point { x: 10, y: 20 }
+  let result = p.to_string()
+  println(result)
+end
+"#;
+        let mir = lower(source);
+        let main_fn = mir
+            .functions
+            .iter()
+            .find(|f| f.name == "snow_main")
+            .expect("Expected snow_main function");
+        assert!(
+            find_call_to(&main_fn.body, "Display__to_string__Point"),
+            "Expected call to Display__to_string__Point in main body (method dot-syntax), got: {:?}",
+            main_fn.body
+        );
+    }
+
+    #[test]
+    fn e2e_method_dot_syntax_equivalence() {
+        // METH-02: p.to_string() and to_string(p) should resolve to same mangled name
+        let source = r#"
+struct Point do
+  x :: Int
+  y :: Int
+end
+
+interface Display do
+  fn to_string(self) -> String
+end
+
+impl Display for Point do
+  fn to_string(p) do
+    "Point"
+  end
+end
+
+fn main() do
+  let p = Point { x: 1, y: 2 }
+  let a = to_string(p)
+  let b = p.to_string()
+  println(a)
+  println(b)
+end
+"#;
+        let mir = lower(source);
+        let main_fn = mir
+            .functions
+            .iter()
+            .find(|f| f.name == "snow_main")
+            .expect("Expected snow_main function");
+
+        // Count calls to the mangled name -- should be 2 (one bare, one dot-syntax)
+        fn count_calls(expr: &MirExpr, target: &str) -> usize {
+            match expr {
+                MirExpr::Call { func, args, .. } => {
+                    let mut n = if let MirExpr::Var(name, _) = func.as_ref() {
+                        if name == target { 1 } else { 0 }
+                    } else {
+                        0
+                    };
+                    n += count_calls(func, target);
+                    for arg in args {
+                        n += count_calls(arg, target);
+                    }
+                    n
+                }
+                MirExpr::Let { value, body, .. } => {
+                    count_calls(value, target) + count_calls(body, target)
+                }
+                MirExpr::Block(exprs, _) => exprs.iter().map(|e| count_calls(e, target)).sum(),
+                MirExpr::If { cond, then_body, else_body, .. } => {
+                    count_calls(cond, target) + count_calls(then_body, target) + count_calls(else_body, target)
+                }
+                _ => 0,
+            }
+        }
+
+        let call_count = count_calls(&main_fn.body, "Display__to_string__Point");
+        assert_eq!(
+            call_count, 2,
+            "Expected exactly 2 calls to Display__to_string__Point (bare + dot), got {}.\nBody: {:?}",
+            call_count, main_fn.body
+        );
+    }
+
+    #[test]
+    fn e2e_method_dot_syntax_with_args() {
+        // METH-02: receiver + additional args
+        let source = r#"
+interface Greeter do
+  fn greet(self, greeting :: String) -> String
+end
+
+struct Person do
+  name :: String
+end
+
+impl Greeter for Person do
+  fn greet(p, greeting) do
+    greeting
+  end
+end
+
+fn main() do
+  let bob = Person { name: "Bob" }
+  let result = bob.greet("Hello")
+  println(result)
+end
+"#;
+        let mir = lower(source);
+        let main_fn = mir
+            .functions
+            .iter()
+            .find(|f| f.name == "snow_main")
+            .expect("Expected snow_main function");
+        assert!(
+            find_call_to(&main_fn.body, "Greeter__greet__Person"),
+            "Expected call to Greeter__greet__Person in main body (dot-syntax with args), got: {:?}",
+            main_fn.body
+        );
+    }
+
+    #[test]
+    fn e2e_method_dot_syntax_field_access_preserved() {
+        // INTG-01: p.x should still produce FieldAccess, not a method call
+        let source = r#"
+struct Point do
+  x :: Int
+  y :: Int
+end
+
+fn main() do
+  let p = Point { x: 42, y: 99 }
+  let val = p.x
+  println(Int.to_string(val))
+end
+"#;
+        let mir = lower(source);
+        let main_fn = mir
+            .functions
+            .iter()
+            .find(|f| f.name == "snow_main")
+            .expect("Expected snow_main function");
+
+        // Check that a FieldAccess for "x" exists in the body
+        fn has_field_access(expr: &MirExpr, field_name: &str) -> bool {
+            match expr {
+                MirExpr::FieldAccess { field, object, .. } => {
+                    field == field_name || has_field_access(object, field_name)
+                }
+                MirExpr::Let { value, body, .. } => {
+                    has_field_access(value, field_name) || has_field_access(body, field_name)
+                }
+                MirExpr::Block(exprs, _) => exprs.iter().any(|e| has_field_access(e, field_name)),
+                MirExpr::Call { func, args, .. } => {
+                    has_field_access(func, field_name) || args.iter().any(|a| has_field_access(a, field_name))
+                }
+                _ => false,
+            }
+        }
+
+        assert!(
+            has_field_access(&main_fn.body, "x"),
+            "Expected FieldAccess for 'x' in main body (field access must be preserved), got: {:?}",
+            main_fn.body
+        );
+    }
+
+    #[test]
+    fn e2e_method_dot_syntax_module_qualified_preserved() {
+        // INTG-02: String.length(s) should still work as module-qualified call
+        let source = r#"
+fn main() do
+  let s = "hello world"
+  let len = String.length(s)
+  println(Int.to_string(len))
+end
+"#;
+        let mir = lower(source);
+        let main_fn = mir
+            .functions
+            .iter()
+            .find(|f| f.name == "snow_main")
+            .expect("Expected snow_main function");
+        assert!(
+            find_call_to(&main_fn.body, "snow_string_length"),
+            "Expected call to snow_string_length in main body (module-qualified preserved), got: {:?}",
+            main_fn.body
+        );
+    }
 }
