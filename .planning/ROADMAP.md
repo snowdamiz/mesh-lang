@@ -83,7 +83,7 @@ See milestones/v1.7-ROADMAP.md for full phase details.
 **Milestone Goal:** Add a module system enabling multi-file projects with file-based modules, pub visibility, qualified and selective imports, and dependency graph resolution -- compiled into a single LLVM module via MIR merge.
 
 - [x] **Phase 37: Module Graph Foundation** - File discovery, module naming, dependency graph with topological sort and cycle detection (completed 2026-02-09)
-- [ ] **Phase 38: Multi-File Build Pipeline** - Per-file parsing, snowc build orchestration, backward compatibility
+- [x] **Phase 38: Multi-File Build Pipeline** - Per-file parsing, snowc build orchestration, backward compatibility (completed 2026-02-09)
 - [ ] **Phase 39: Cross-Module Type Checking** - Import resolution, qualified/selective access, cross-module functions/structs/sum types/traits
 - [ ] **Phase 40: Visibility Enforcement** - Private-by-default semantics, pub modifier, access control errors
 - [ ] **Phase 41: MIR Merge & Codegen** - Module-qualified name mangling, MIR merge, cross-module generics via monomorphization
@@ -118,8 +118,8 @@ Plans:
 **Plans:** 2 plans
 
 Plans:
-- [ ] 38-01-PLAN.md -- ProjectData struct, build_project pipeline, backward-compatible build_module_graph wrapper
-- [ ] 38-02-PLAN.md -- Multi-file-aware build() function, parse error reporting for all modules, E2E tests
+- [x] 38-01-PLAN.md -- ProjectData struct, build_project pipeline, backward-compatible build_module_graph wrapper
+- [x] 38-02-PLAN.md -- Multi-file-aware build() function, parse error reporting for all modules, E2E tests
 
 ### Phase 39: Cross-Module Type Checking
 **Goal**: Functions, structs, sum types, and traits defined in one module are usable from another module via imports
@@ -181,10 +181,10 @@ Phases execute in numeric order: 37 -> 38 -> 39 -> 40 -> 41 -> 42
 | 30-32 | v1.6 | 6/6 | Complete | 2026-02-09 |
 | 33-36 | v1.7 | 8/8 | Complete | 2026-02-09 |
 | 37. Module Graph Foundation | v1.8 | 2/2 | Complete | 2026-02-09 |
-| 38. Multi-File Build Pipeline | v1.8 | 0/TBD | Not started | - |
+| 38. Multi-File Build Pipeline | v1.8 | 2/2 | Complete | 2026-02-09 |
 | 39. Cross-Module Type Checking | v1.8 | 0/TBD | Not started | - |
 | 40. Visibility Enforcement | v1.8 | 0/TBD | Not started | - |
 | 41. MIR Merge & Codegen | v1.8 | 0/TBD | Not started | - |
 | 42. Diagnostics & Integration | v1.8 | 0/TBD | Not started | - |
 
-**Total: 37 phases shipped across 8 milestones. 116 plans completed. 5 phases remaining for v1.8.**
+**Total: 38 phases shipped across 8 milestones. 120 plans completed. 4 phases remaining for v1.8.**
