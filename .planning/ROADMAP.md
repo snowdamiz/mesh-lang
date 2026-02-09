@@ -107,7 +107,10 @@ Plans:
   2. Ambiguity errors use deterministic ordering (alphabetical by trait name), not random HashMap iteration order
   3. Struct field access (`point.x`), module-qualified calls (`String.length(s)`), pipe operator (`value |> method(args)`), sum type variant access (`Shape.Circle`), and actor `self` in receive blocks all continue to work exactly as before
   4. Existing test suite passes with zero regressions
-**Plans**: TBD
+**Plans:** 2 plans
+Plans:
+- [ ] 32-01-PLAN.md -- Ambiguous method diagnostics (deterministic ordering, span, qualified syntax help text)
+- [ ] 32-02-PLAN.md -- Integration e2e tests (INTG-01 through INTG-05) + MIR defense-in-depth sort
 
 ## Progress
 
@@ -117,4 +120,4 @@ Plans:
 |-------|-----------|----------------|--------|-----------|
 | 30. Core Method Resolution | v1.6 | 2/2 | ✓ Complete | 2026-02-08 |
 | 31. Extended Method Support | v1.6 | 2/2 | ✓ Complete | 2026-02-08 |
-| 32. Diagnostics and Integration | v1.6 | 0/TBD | Not started | - |
+| 32. Diagnostics and Integration | v1.6 | 0/2 | Not started | - |
