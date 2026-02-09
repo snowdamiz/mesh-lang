@@ -5,21 +5,21 @@
 See: .planning/PROJECT.md (updated 2026-02-09)
 
 **Core value:** Expressive, readable concurrency -- writing concurrent programs should feel as natural as sequential code, with supervision and fault tolerance built in.
-**Current focus:** v1.8 Module System -- Phase 38 (Multi-File Build Pipeline)
+**Current focus:** v1.8 Module System -- Phase 39 (Cross-Module Type Checking)
 
 ## Current Position
 
-Phase: 38 of 42 (Multi-File Build Pipeline) -- COMPLETE
-Plan: 2 of 2 in current phase (all complete)
-Status: Phase Complete
-Last activity: 2026-02-09 -- Completed 38-02 (build_project integration into build() + multi-file E2E tests)
+Phase: 39 of 42 (Cross-Module Type Checking)
+Plan: 1 of 3 in current phase (39-01 complete)
+Status: In Progress
+Last activity: 2026-02-09 -- Completed 39-01 (cross-module type checking foundation types and entry points)
 
-Progress: [||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||      ] 94% (120/~127 plans est.)
+Progress: [||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||      ] 95% (121/~127 plans est.)
 
 ## Performance Metrics
 
 **All-time Totals:**
-- Plans completed: 120
+- Plans completed: 121
 - Phases completed: 38
 - Milestones shipped: 8 (v1.0-v1.7)
 - Lines of Rust: 70,501
@@ -46,6 +46,9 @@ Recent for v1.8:
 - Parse errors retained in ProjectData without failing build_project -- caller handles error reporting
 - Parse errors checked for ALL modules before type checking; type checking skipped if any parse errors
 - Entry module found via is_entry flag in compilation_order, not hardcoded index
+- infer() delegates to infer_with_imports(empty) for backward-compatible code reuse
+- ImportContext pre-seeds TraitRegistry, TypeRegistry, TypeEnv before inference
+- collect_exports extracts impl names from AST PATH nodes matching infer_impl_def pattern
 
 ### Research Notes
 
@@ -66,6 +69,6 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-09
-Stopped at: Completed Phase 38 (38-02-PLAN.md)
+Stopped at: Completed 39-01-PLAN.md
 Resume file: None
-Next action: Begin Phase 39 (cross-module type checking)
+Next action: Execute 39-02-PLAN.md (cross-module import resolution)
