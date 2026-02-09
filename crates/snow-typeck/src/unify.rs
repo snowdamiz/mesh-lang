@@ -37,6 +37,9 @@ pub struct InferCtx {
     /// Function names imported via `from Module import name1, name2`.
     /// Tracked so the MIR lowerer can skip trait dispatch for these.
     pub imported_functions: Vec<String>,
+    /// The name of the current module being type-checked (e.g., "Geometry").
+    /// None for single-file mode. Used to set display_prefix on locally-defined types.
+    pub current_module: Option<String>,
 }
 
 impl InferCtx {
@@ -51,6 +54,7 @@ impl InferCtx {
             loop_depth: 0,
             qualified_modules: FxHashMap::default(),
             imported_functions: Vec::new(),
+            current_module: None,
         }
     }
 

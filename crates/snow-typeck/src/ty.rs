@@ -17,20 +17,49 @@ pub struct TyVar(pub u32);
 ///
 /// Type constructors are identified by name. They can be nullary (e.g. `Int`)
 /// or parameterized (e.g. `Option` with arity 1, `Result` with arity 2).
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+///
+/// The `display_prefix` field is used ONLY for display in error messages
+/// (e.g., "Geometry.Point"). It is intentionally excluded from `PartialEq`
+/// and `Hash` to preserve type identity semantics.
+#[derive(Clone, Debug)]
 pub struct TyCon {
     pub name: String,
+    /// Module origin for display in error messages (e.g., "Geometry").
+    /// NOT used for type identity or codegen. Only affects Display output.
+    pub display_prefix: Option<String>,
+}
+
+impl PartialEq for TyCon {
+    fn eq(&self, other: &Self) -> bool {
+        self.name == other.name // display_prefix intentionally excluded
+    }
+}
+
+impl Eq for TyCon {}
+
+impl std::hash::Hash for TyCon {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.name.hash(state); // display_prefix intentionally excluded
+    }
 }
 
 impl TyCon {
     pub fn new(name: impl Into<String>) -> Self {
-        TyCon { name: name.into() }
+        TyCon { name: name.into(), display_prefix: None }
+    }
+
+    pub fn with_module(name: impl Into<String>, module: impl Into<String>) -> Self {
+        TyCon { name: name.into(), display_prefix: Some(module.into()) }
     }
 }
 
 impl fmt::Display for TyCon {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.name)
+        if let Some(prefix) = &self.display_prefix {
+            write!(f, "{}.{}", prefix, self.name)
+        } else {
+            write!(f, "{}", self.name)
+        }
     }
 }
 

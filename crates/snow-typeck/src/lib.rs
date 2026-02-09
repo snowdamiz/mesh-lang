@@ -61,6 +61,11 @@ pub struct ImportContext {
 
     /// Trait impls from ALL processed modules (globally visible, XMOD-05).
     pub all_trait_impls: Vec<TraitImplDef>,
+
+    /// The name of the current module being type-checked (e.g., "Geometry").
+    /// None for single-file mode (backward compat). Used to set display_prefix
+    /// on locally-defined types in error messages.
+    pub current_module: Option<String>,
 }
 
 impl ImportContext {

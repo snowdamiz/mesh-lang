@@ -117,9 +117,7 @@ fn resolve_app(con_ty: &Ty, args: &[Ty], registry: &TypeRegistry) -> MirType {
     if args.is_empty() {
         // No-arg application, e.g., Ty::App(Con("Point"), [])
         return resolve_con(
-            &TyCon {
-                name: base_name.to_string(),
-            },
+            &TyCon::new(base_name),
             registry,
         );
     }

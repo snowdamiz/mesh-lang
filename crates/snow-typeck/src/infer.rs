@@ -505,6 +505,7 @@ pub fn infer(parse: &Parse) -> TypeckResult {
 /// pre-seeded into the type environments before inference begins.
 pub fn infer_with_imports(parse: &Parse, import_ctx: &ImportContext) -> TypeckResult {
     let mut ctx = InferCtx::new();
+    ctx.current_module = import_ctx.current_module.clone();
     let mut env = TypeEnv::new();
     let mut trait_registry = TraitRegistry::new();
     let mut type_registry = TypeRegistry::new();
@@ -520,16 +521,17 @@ pub fn infer_with_imports(parse: &Parse, import_ctx: &ImportContext) -> TypeckRe
     }
 
     // Pre-seed TypeRegistry and TypeEnv with imported struct definitions
-    for mod_exports in import_ctx.module_exports.values() {
+    for (mod_namespace, mod_exports) in &import_ctx.module_exports {
         for (name, struct_def) in &mod_exports.struct_defs {
             type_registry.register_struct(struct_def.clone());
-            // Register struct constructor in env
+            // Register struct constructor in env with display_prefix set to source module
+            let tycon = TyCon::with_module(name, mod_namespace.as_str());
             let struct_ty = if struct_def.generic_params.is_empty() {
-                Ty::struct_ty(name, vec![])
+                Ty::App(Box::new(Ty::Con(tycon)), vec![])
             } else {
                 let type_args: Vec<Ty> = struct_def.generic_params.iter()
                     .map(|_| ctx.fresh_var()).collect();
-                Ty::struct_ty(name, type_args)
+                Ty::App(Box::new(Ty::Con(tycon)), type_args)
             };
             env.insert(name.clone(), Scheme::mono(struct_ty));
         }
@@ -1461,12 +1463,13 @@ fn infer_item(
                     ctx.qualified_modules.insert(last_segment.clone(), mod_exports.functions.clone());
                     // Also register struct constructor types for qualified access
                     for (name, struct_def) in &mod_exports.struct_defs {
+                        let tycon = TyCon::with_module(name, last_segment.as_str());
                         let struct_ty = if struct_def.generic_params.is_empty() {
-                            Ty::struct_ty(name, vec![])
+                            Ty::App(Box::new(Ty::Con(tycon)), vec![])
                         } else {
                             let type_args: Vec<Ty> = struct_def.generic_params.iter()
                                 .map(|_| ctx.fresh_var()).collect();
-                            Ty::struct_ty(name, type_args)
+                            Ty::App(Box::new(Ty::Con(tycon)), type_args)
                         };
                         ctx.qualified_modules.entry(last_segment.clone())
                             .or_default()
@@ -1506,12 +1509,13 @@ fn infer_item(
                                 }
                                 // Check struct constructors
                                 else if let Some(struct_def) = mod_exports.struct_defs.get(&name) {
+                                    let tycon = TyCon::with_module(&name, last_segment.as_str());
                                     let struct_ty = if struct_def.generic_params.is_empty() {
-                                        Ty::struct_ty(&name, vec![])
+                                        Ty::App(Box::new(Ty::Con(tycon)), vec![])
                                     } else {
                                         let type_args: Vec<Ty> = struct_def.generic_params.iter()
                                             .map(|_| ctx.fresh_var()).collect();
-                                        Ty::struct_ty(&name, type_args)
+                                        Ty::App(Box::new(Ty::Con(tycon)), type_args)
                                     };
                                     env.insert(name.clone(), Scheme::mono(struct_ty));
                                     // Also register the struct in type_registry
@@ -1647,11 +1651,17 @@ fn register_struct_def(
     }
 
     // Register a constructor function: StructName(field1, field2, ...) -> StructName
+    // If in multi-module mode, set display_prefix on the TyCon for error messages.
+    let tycon = if let Some(ref module) = ctx.current_module {
+        TyCon::with_module(&name, module.as_str())
+    } else {
+        TyCon::new(&name)
+    };
     let struct_ty = if generic_params.is_empty() {
-        Ty::struct_ty(&name, vec![])
+        Ty::App(Box::new(Ty::Con(tycon)), vec![])
     } else {
         let type_args: Vec<Ty> = generic_params.iter().map(|_| ctx.fresh_var()).collect();
-        Ty::struct_ty(&name, type_args)
+        Ty::App(Box::new(Ty::Con(tycon)), type_args)
     };
 
     env.insert(name.clone(), Scheme::mono(struct_ty));

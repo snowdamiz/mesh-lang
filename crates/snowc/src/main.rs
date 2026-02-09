@@ -296,12 +296,18 @@ fn build(
         let module_path = dir.join(&project.graph.get(id).path);
 
         // Build ImportContext from already-checked dependencies
-        let import_ctx = build_import_context(
+        let mut import_ctx = build_import_context(
             &project.graph,
             &all_exports,
             parse,
             id,
         );
+
+        // Thread current module name for display_prefix on locally-defined types.
+        // Multi-module builds set this so type errors show module-qualified names
+        // (e.g., "expected Geometry.Point, got Main.Point").
+        let module_name = &project.graph.get(id).name;
+        import_ctx.current_module = Some(module_name.clone());
 
         // Type-check this module with imports
         let typeck = snow_typeck::check_with_imports(parse, &import_ctx);
