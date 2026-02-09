@@ -26,9 +26,9 @@ Requirements for resolving all three remaining known limitations.
 
 ### Qualified Types
 
-- [ ] **QUAL-01**: Constrained function passed as argument works (e.g., apply(show, 42) where show requires Display)
-- [ ] **QUAL-02**: Constraints propagate through multiple levels of higher-order passing
-- [ ] **QUAL-03**: Type error emitted when constrained function passed to context that doesn't satisfy the constraint
+- [x] **QUAL-01**: Constrained function passed as argument works (e.g., apply(show, 42) where show requires Display)
+- [x] **QUAL-02**: Constraints propagate through multiple levels of higher-order passing
+- [x] **QUAL-03**: Type error emitted when constrained function passed to context that doesn't satisfy the constraint
 
 ## Future Requirements
 
@@ -60,9 +60,9 @@ None -- this is a focused correctness milestone.
 | DERIVE-01 | Phase 28 | Complete |
 | DERIVE-02 | Phase 28 | Complete |
 | DERIVE-03 | Phase 28 | Complete |
-| QUAL-01 | Phase 29 | Pending |
-| QUAL-02 | Phase 29 | Pending |
-| QUAL-03 | Phase 29 | Pending |
+| QUAL-01 | Phase 29 | Complete |
+| QUAL-02 | Phase 29 | Complete |
+| QUAL-03 | Phase 29 | Complete |
 
 **Coverage:**
 - v1.5 requirements: 14 total
@@ -71,4 +71,4 @@ None -- this is a focused correctness milestone.
 
 ---
 *Requirements defined: 2026-02-08*
-*Last updated: 2026-02-09 after Phase 28 completion*
+*Last updated: 2026-02-09 after Phase 29 completion (v1.5 complete)*

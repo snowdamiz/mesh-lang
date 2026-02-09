@@ -7,7 +7,7 @@
 - ✅ **v1.2 Runtime & Type Fixes** - Phases 16-17 (shipped 2026-02-08)
 - ✅ **v1.3 Traits & Protocols** - Phases 18-22 (shipped 2026-02-08)
 - ✅ **v1.4 Compiler Polish** - Phases 23-25 (shipped 2026-02-08)
-- 🚧 **v1.5 Compiler Correctness** - Phases 26-29 (in progress)
+- ✅ **v1.5 Compiler Correctness** - Phases 26-29 (shipped 2026-02-09)
 
 ## Phases
 
@@ -57,7 +57,7 @@ See milestones/v1.4-ROADMAP.md for details.
 
 </details>
 
-### 🚧 v1.5 Compiler Correctness (In Progress)
+### ✅ v1.5 Compiler Correctness (SHIPPED 2026-02-09)
 
 **Milestone Goal:** Resolve all three remaining known limitations -- polymorphic List<T>, Ord-requires-Eq compile-time enforcement, and higher-order constraint propagation (qualified types).
 
@@ -108,18 +108,19 @@ Plans:
 Plans:
 - [x] 28-01-PLAN.md -- MissingDerivePrerequisite error variant + validation checks + e2e tests
 
-#### Phase 29: Qualified Types
+#### Phase 29: Qualified Types ✓
 **Goal**: Trait constraints propagate correctly when constrained functions are passed as higher-order arguments
 **Depends on**: Phase 25 (v1.4 complete, independent of Phases 26-28)
 **Requirements**: QUAL-01, QUAL-02, QUAL-03
 **Success Criteria** (what must be TRUE):
-  1. `apply(show, 42)` works where `show` requires Display and `42` satisfies it
-  2. Constraints propagate through nested higher-order calls (e.g., `wrap(apply, show, value)`)
-  3. Passing a constrained function to a context that violates the constraint produces a clear type error
+  1. ✓ `apply(show, 42)` works where `show` requires Display and `42` satisfies it
+  2. ✓ Constraints propagate through nested higher-order calls (e.g., `wrap(apply, show, value)`)
+  3. ✓ Passing a constrained function to a context that violates the constraint produces a clear type error
 **Plans**: 1 plan
+**Completed**: 2026-02-09
 
 Plans:
-- [ ] 29-01-PLAN.md -- Argument-level constraint check in infer_call/infer_pipe + e2e tests
+- [x] 29-01-PLAN.md -- Argument-level constraint check in infer_call/infer_pipe + e2e tests
 
 ## Progress
 
@@ -153,4 +154,4 @@ Plans:
 | 26. Polymorphic List Foundation | v1.5 | 2/2 | Complete | 2026-02-08 |
 | 27. List Trait & Pattern Integration | v1.5 | 2/2 | Complete | 2026-02-09 |
 | 28. Trait Deriving Safety | v1.5 | 1/1 | Complete | 2026-02-09 |
-| 29. Qualified Types | v1.5 | 0/1 | Not started | - |
+| 29. Qualified Types | v1.5 | 1/1 | Complete | 2026-02-09 |
