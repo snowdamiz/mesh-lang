@@ -4059,6 +4059,9 @@ impl<'a> Lowerer<'a> {
 
         self.push_scope();
         self.insert_var(var_name.clone(), MirType::Int);
+        let filter = for_in
+            .filter()
+            .map(|f| Box::new(self.lower_expr(&f)));
         let body = for_in
             .body()
             .map(|b| self.lower_block(&b))
@@ -4069,6 +4072,7 @@ impl<'a> Lowerer<'a> {
             var: var_name,
             start: Box::new(start),
             end: Box::new(end),
+            filter,
             body: Box::new(body),
             ty: MirType::Ptr,
         }
@@ -4089,6 +4093,9 @@ impl<'a> Lowerer<'a> {
 
         self.push_scope();
         self.insert_var(var_name.clone(), elem_mir_ty.clone());
+        let filter = for_in
+            .filter()
+            .map(|f| Box::new(self.lower_expr(&f)));
         let body = for_in
             .body()
             .map(|b| self.lower_block(&b))
@@ -4099,6 +4106,7 @@ impl<'a> Lowerer<'a> {
         MirExpr::ForInList {
             var: var_name,
             collection: Box::new(collection),
+            filter,
             body: Box::new(body),
             elem_ty: elem_mir_ty,
             body_ty,
@@ -4131,6 +4139,9 @@ impl<'a> Lowerer<'a> {
         self.push_scope();
         self.insert_var(key_var.clone(), key_mir_ty.clone());
         self.insert_var(val_var.clone(), val_mir_ty.clone());
+        let filter = for_in
+            .filter()
+            .map(|f| Box::new(self.lower_expr(&f)));
         let body = for_in
             .body()
             .map(|b| self.lower_block(&b))
@@ -4142,6 +4153,7 @@ impl<'a> Lowerer<'a> {
             key_var,
             val_var,
             collection: Box::new(collection),
+            filter,
             body: Box::new(body),
             key_ty: key_mir_ty,
             val_ty: val_mir_ty,
@@ -4165,6 +4177,9 @@ impl<'a> Lowerer<'a> {
 
         self.push_scope();
         self.insert_var(var_name.clone(), elem_mir_ty.clone());
+        let filter = for_in
+            .filter()
+            .map(|f| Box::new(self.lower_expr(&f)));
         let body = for_in
             .body()
             .map(|b| self.lower_block(&b))
@@ -4175,6 +4190,7 @@ impl<'a> Lowerer<'a> {
         MirExpr::ForInSet {
             var: var_name,
             collection: Box::new(collection),
+            filter,
             body: Box::new(body),
             elem_ty: elem_mir_ty,
             body_ty,
@@ -7433,31 +7449,43 @@ fn collect_free_vars(
             collect_free_vars(body, params, outer_vars, captures);
         }
         MirExpr::Break | MirExpr::Continue => {}
-        MirExpr::ForInRange { var, start, end, body, .. } => {
+        MirExpr::ForInRange { var, start, end, filter, body, .. } => {
             collect_free_vars(start, params, outer_vars, captures);
             collect_free_vars(end, params, outer_vars, captures);
             // The loop variable is locally bound -- exclude it from free vars.
             let mut inner_params = params.clone();
             inner_params.insert(var.as_str());
+            if let Some(f) = filter {
+                collect_free_vars(f, &inner_params, outer_vars, captures);
+            }
             collect_free_vars(body, &inner_params, outer_vars, captures);
         }
-        MirExpr::ForInList { var, collection, body, .. } => {
+        MirExpr::ForInList { var, collection, filter, body, .. } => {
             collect_free_vars(collection, params, outer_vars, captures);
             let mut inner_params = params.clone();
             inner_params.insert(var.as_str());
+            if let Some(f) = filter {
+                collect_free_vars(f, &inner_params, outer_vars, captures);
+            }
             collect_free_vars(body, &inner_params, outer_vars, captures);
         }
-        MirExpr::ForInMap { key_var, val_var, collection, body, .. } => {
+        MirExpr::ForInMap { key_var, val_var, collection, filter, body, .. } => {
             collect_free_vars(collection, params, outer_vars, captures);
             let mut inner_params = params.clone();
             inner_params.insert(key_var.as_str());
             inner_params.insert(val_var.as_str());
+            if let Some(f) = filter {
+                collect_free_vars(f, &inner_params, outer_vars, captures);
+            }
             collect_free_vars(body, &inner_params, outer_vars, captures);
         }
-        MirExpr::ForInSet { var, collection, body, .. } => {
+        MirExpr::ForInSet { var, collection, filter, body, .. } => {
             collect_free_vars(collection, params, outer_vars, captures);
             let mut inner_params = params.clone();
             inner_params.insert(var.as_str());
+            if let Some(f) = filter {
+                collect_free_vars(f, &inner_params, outer_vars, captures);
+            }
             collect_free_vars(body, &inner_params, outer_vars, captures);
         }
     }

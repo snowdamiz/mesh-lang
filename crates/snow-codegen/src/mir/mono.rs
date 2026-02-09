@@ -224,21 +224,33 @@ fn collect_function_refs(expr: &MirExpr, refs: &mut Vec<String>) {
             collect_function_refs(body, refs);
         }
         MirExpr::Break | MirExpr::Continue => {}
-        MirExpr::ForInRange { start, end, body, .. } => {
+        MirExpr::ForInRange { start, end, filter, body, .. } => {
             collect_function_refs(start, refs);
             collect_function_refs(end, refs);
+            if let Some(f) = filter {
+                collect_function_refs(f, refs);
+            }
             collect_function_refs(body, refs);
         }
-        MirExpr::ForInList { collection, body, .. } => {
+        MirExpr::ForInList { collection, filter, body, .. } => {
             collect_function_refs(collection, refs);
+            if let Some(f) = filter {
+                collect_function_refs(f, refs);
+            }
             collect_function_refs(body, refs);
         }
-        MirExpr::ForInMap { collection, body, .. } => {
+        MirExpr::ForInMap { collection, filter, body, .. } => {
             collect_function_refs(collection, refs);
+            if let Some(f) = filter {
+                collect_function_refs(f, refs);
+            }
             collect_function_refs(body, refs);
         }
-        MirExpr::ForInSet { collection, body, .. } => {
+        MirExpr::ForInSet { collection, filter, body, .. } => {
             collect_function_refs(collection, refs);
+            if let Some(f) = filter {
+                collect_function_refs(f, refs);
+            }
             collect_function_refs(body, refs);
         }
     }

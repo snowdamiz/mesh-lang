@@ -1248,21 +1248,33 @@ fn compile_expr_patterns(
             compile_expr_patterns(body, sum_type_defs);
         }
         MirExpr::Break | MirExpr::Continue => {}
-        MirExpr::ForInRange { start, end, body, .. } => {
+        MirExpr::ForInRange { start, end, filter, body, .. } => {
             compile_expr_patterns(start, sum_type_defs);
             compile_expr_patterns(end, sum_type_defs);
+            if let Some(f) = filter {
+                compile_expr_patterns(f, sum_type_defs);
+            }
             compile_expr_patterns(body, sum_type_defs);
         }
-        MirExpr::ForInList { collection, body, .. } => {
+        MirExpr::ForInList { collection, filter, body, .. } => {
             compile_expr_patterns(collection, sum_type_defs);
+            if let Some(f) = filter {
+                compile_expr_patterns(f, sum_type_defs);
+            }
             compile_expr_patterns(body, sum_type_defs);
         }
-        MirExpr::ForInMap { collection, body, .. } => {
+        MirExpr::ForInMap { collection, filter, body, .. } => {
             compile_expr_patterns(collection, sum_type_defs);
+            if let Some(f) = filter {
+                compile_expr_patterns(f, sum_type_defs);
+            }
             compile_expr_patterns(body, sum_type_defs);
         }
-        MirExpr::ForInSet { collection, body, .. } => {
+        MirExpr::ForInSet { collection, filter, body, .. } => {
             compile_expr_patterns(collection, sum_type_defs);
+            if let Some(f) = filter {
+                compile_expr_patterns(f, sum_type_defs);
+            }
             compile_expr_patterns(body, sum_type_defs);
         }
     }

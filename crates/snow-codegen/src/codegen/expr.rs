@@ -142,20 +142,20 @@ impl<'ctx> CodeGen<'ctx> {
 
             MirExpr::Continue => self.codegen_continue(),
 
-            MirExpr::ForInRange { var, start, end, body, ty } => {
-                self.codegen_for_in_range(var, start, end, body, ty)
+            MirExpr::ForInRange { var, start, end, filter, body, ty } => {
+                self.codegen_for_in_range(var, start, end, filter.as_deref(), body, ty)
             }
 
-            MirExpr::ForInList { var, collection, body, elem_ty, body_ty, ty } => {
-                self.codegen_for_in_list(var, collection, body, elem_ty, body_ty, ty)
+            MirExpr::ForInList { var, collection, filter, body, elem_ty, body_ty, ty } => {
+                self.codegen_for_in_list(var, collection, filter.as_deref(), body, elem_ty, body_ty, ty)
             }
 
-            MirExpr::ForInMap { key_var, val_var, collection, body, key_ty, val_ty, body_ty, ty } => {
-                self.codegen_for_in_map(key_var, val_var, collection, body, key_ty, val_ty, body_ty, ty)
+            MirExpr::ForInMap { key_var, val_var, collection, filter, body, key_ty, val_ty, body_ty, ty } => {
+                self.codegen_for_in_map(key_var, val_var, collection, filter.as_deref(), body, key_ty, val_ty, body_ty, ty)
             }
 
-            MirExpr::ForInSet { var, collection, body, elem_ty, body_ty, ty } => {
-                self.codegen_for_in_set(var, collection, body, elem_ty, body_ty, ty)
+            MirExpr::ForInSet { var, collection, filter, body, elem_ty, body_ty, ty } => {
+                self.codegen_for_in_set(var, collection, filter.as_deref(), body, elem_ty, body_ty, ty)
             }
 
             MirExpr::SupervisorStart {
@@ -1740,6 +1740,7 @@ impl<'ctx> CodeGen<'ctx> {
         var: &str,
         start_expr: &MirExpr,
         end_expr: &MirExpr,
+        filter: Option<&MirExpr>,
         body_expr: &MirExpr,
         _ty: &MirType,
     ) -> Result<BasicValueEnum<'ctx>, String> {
@@ -1813,6 +1814,16 @@ impl<'ctx> CodeGen<'ctx> {
         // Save previous local binding for the variable name (if any).
         let old_alloca = self.locals.insert(var.to_string(), counter);
         let old_type = self.local_types.insert(var.to_string(), MirType::Int);
+
+        // If filter present, add conditional branch to skip body+push.
+        if let Some(filter_expr) = filter {
+            let filter_val = self.codegen_expr(filter_expr)?
+                .into_int_value();
+            let do_body_bb = self.context.append_basic_block(fn_val, "forin_do_body");
+            self.builder.build_conditional_branch(filter_val, do_body_bb, latch_bb)
+                .map_err(|e| e.to_string())?;
+            self.builder.position_at_end(do_body_bb);
+        }
 
         // Codegen the body expression.
         let body_val = self.codegen_expr(body_expr)?;
@@ -2843,6 +2854,7 @@ impl<'ctx> CodeGen<'ctx> {
         &mut self,
         var: &str,
         collection_expr: &MirExpr,
+        filter: Option<&MirExpr>,
         body_expr: &MirExpr,
         elem_ty: &MirType,
         body_ty: &MirType,
@@ -2937,6 +2949,16 @@ impl<'ctx> CodeGen<'ctx> {
         let old_alloca = self.locals.insert(var.to_string(), var_alloca);
         let old_type = self.local_types.insert(var.to_string(), elem_ty.clone());
 
+        // If filter present, add conditional branch to skip body+push.
+        if let Some(filter_expr) = filter {
+            let filter_val = self.codegen_expr(filter_expr)?
+                .into_int_value();
+            let do_body_bb = self.context.append_basic_block(fn_val, "forin_do_body");
+            self.builder.build_conditional_branch(filter_val, do_body_bb, latch_bb)
+                .map_err(|e| e.to_string())?;
+            self.builder.position_at_end(do_body_bb);
+        }
+
         // Codegen body.
         let body_val = self.codegen_expr(body_expr)?;
 
@@ -2998,6 +3020,7 @@ impl<'ctx> CodeGen<'ctx> {
         key_var: &str,
         val_var: &str,
         collection_expr: &MirExpr,
+        filter: Option<&MirExpr>,
         body_expr: &MirExpr,
         key_ty: &MirType,
         val_ty: &MirType,
@@ -3109,6 +3132,16 @@ impl<'ctx> CodeGen<'ctx> {
         let old_val_alloca = self.locals.insert(val_var.to_string(), val_alloca);
         let old_val_type = self.local_types.insert(val_var.to_string(), val_ty.clone());
 
+        // If filter present, add conditional branch to skip body+push.
+        if let Some(filter_expr) = filter {
+            let filter_val = self.codegen_expr(filter_expr)?
+                .into_int_value();
+            let do_body_bb = self.context.append_basic_block(fn_val, "forin_do_body");
+            self.builder.build_conditional_branch(filter_val, do_body_bb, latch_bb)
+                .map_err(|e| e.to_string())?;
+            self.builder.position_at_end(do_body_bb);
+        }
+
         // Codegen body.
         let body_val = self.codegen_expr(body_expr)?;
 
@@ -3179,6 +3212,7 @@ impl<'ctx> CodeGen<'ctx> {
         &mut self,
         var: &str,
         collection_expr: &MirExpr,
+        filter: Option<&MirExpr>,
         body_expr: &MirExpr,
         elem_ty: &MirType,
         body_ty: &MirType,
@@ -3271,6 +3305,16 @@ impl<'ctx> CodeGen<'ctx> {
         // Save old locals.
         let old_alloca = self.locals.insert(var.to_string(), var_alloca);
         let old_type = self.local_types.insert(var.to_string(), elem_ty.clone());
+
+        // If filter present, add conditional branch to skip body+push.
+        if let Some(filter_expr) = filter {
+            let filter_val = self.codegen_expr(filter_expr)?
+                .into_int_value();
+            let do_body_bb = self.context.append_basic_block(fn_val, "forin_do_body");
+            self.builder.build_conditional_branch(filter_val, do_body_bb, latch_bb)
+                .map_err(|e| e.to_string())?;
+            self.builder.position_at_end(do_body_bb);
+        }
 
         // Codegen body.
         let body_val = self.codegen_expr(body_expr)?;

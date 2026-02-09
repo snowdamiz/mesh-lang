@@ -1484,6 +1484,7 @@ mod tests {
             var: "i".to_string(),
             start: Box::new(MirExpr::IntLit(0, MirType::Int)),
             end: Box::new(MirExpr::IntLit(10, MirType::Int)),
+            filter: None,
             body: Box::new(MirExpr::IntLit(1, MirType::Int)),
             ty: MirType::Ptr,
         };
@@ -1501,6 +1502,7 @@ mod tests {
             var: "i".to_string(),
             start: Box::new(MirExpr::IntLit(0, MirType::Int)),
             end: Box::new(MirExpr::IntLit(5, MirType::Int)),
+            filter: None,
             body: Box::new(MirExpr::IntLit(1, MirType::Int)),
             ty: MirType::Ptr,
         };
@@ -1519,6 +1521,7 @@ mod tests {
             var: "i".to_string(),
             start: Box::new(MirExpr::IntLit(0, MirType::Int)),
             end: Box::new(MirExpr::IntLit(10, MirType::Int)),
+            filter: None,
             body: Box::new(MirExpr::IntLit(1, MirType::Int)),
             ty: MirType::Ptr,
         };
@@ -1537,6 +1540,7 @@ mod tests {
             var: "i".to_string(),
             start: Box::new(MirExpr::IntLit(0, MirType::Int)),
             end: Box::new(MirExpr::IntLit(3, MirType::Int)),
+            filter: None,
             body: Box::new(MirExpr::Var("i".to_string(), MirType::Int)),
             ty: MirType::Ptr,
         };
@@ -1567,6 +1571,7 @@ mod tests {
                 elements: vec![],
                 ty: MirType::Ptr,
             }),
+            filter: None,
             body: Box::new(MirExpr::Var("x".to_string(), MirType::Int)),
             elem_ty: MirType::Int,
             body_ty: MirType::Int,

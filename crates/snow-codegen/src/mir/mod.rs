@@ -310,6 +310,8 @@ pub enum MirExpr {
         start: Box<MirExpr>,
         /// End value (exclusive).
         end: Box<MirExpr>,
+        /// Optional filter expression (`when condition`).
+        filter: Option<Box<MirExpr>>,
         /// Loop body.
         body: Box<MirExpr>,
         /// Result type (Ptr for comprehension semantics).
@@ -321,6 +323,8 @@ pub enum MirExpr {
     ForInList {
         var: String,
         collection: Box<MirExpr>,
+        /// Optional filter expression (`when condition`).
+        filter: Option<Box<MirExpr>>,
         body: Box<MirExpr>,
         elem_ty: MirType,
         body_ty: MirType,
@@ -333,6 +337,8 @@ pub enum MirExpr {
         key_var: String,
         val_var: String,
         collection: Box<MirExpr>,
+        /// Optional filter expression (`when condition`).
+        filter: Option<Box<MirExpr>>,
         body: Box<MirExpr>,
         key_ty: MirType,
         val_ty: MirType,
@@ -345,6 +351,8 @@ pub enum MirExpr {
     ForInSet {
         var: String,
         collection: Box<MirExpr>,
+        /// Optional filter expression (`when condition`).
+        filter: Option<Box<MirExpr>>,
         body: Box<MirExpr>,
         elem_ty: MirType,
         body_ty: MirType,
