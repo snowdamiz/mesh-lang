@@ -203,6 +203,16 @@ impl TraitRegistry {
         self.traits.get(name)
     }
 
+    /// Return all registered trait definitions.
+    pub fn trait_defs(&self) -> impl Iterator<Item = &TraitDef> {
+        self.traits.values()
+    }
+
+    /// Return all registered trait impls (flattened across all traits).
+    pub fn all_impls(&self) -> impl Iterator<Item = &ImplDef> {
+        self.impls.values().flat_map(|v| v.iter())
+    }
+
     /// Look up a trait method's return type, given a concrete type.
     ///
     /// Searches all registered impls across all traits for one that provides

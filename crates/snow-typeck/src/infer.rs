@@ -37,7 +37,7 @@ use crate::traits::{
 };
 use crate::ty::{Scheme, Ty, TyCon, TyVar};
 use crate::unify::InferCtx;
-use crate::TypeckResult;
+use crate::{ImportContext, ModuleExports, TypeckResult};
 
 use rustc_hash::FxHashMap;
 
@@ -122,11 +122,11 @@ pub struct TypeRegistry {
 }
 
 impl TypeRegistry {
-    fn new() -> Self {
+    pub fn new() -> Self {
         Self::default()
     }
 
-    fn register_struct(&mut self, info: StructDefInfo) {
+    pub fn register_struct(&mut self, info: StructDefInfo) {
         self.struct_defs.insert(info.name.clone(), info);
     }
 
@@ -134,7 +134,7 @@ impl TypeRegistry {
         self.type_aliases.insert(info.name.clone(), info);
     }
 
-    fn register_sum_type(&mut self, info: SumTypeDefInfo) {
+    pub fn register_sum_type(&mut self, info: SumTypeDefInfo) {
         self.sum_type_defs.insert(info.name.clone(), info);
     }
 
@@ -492,15 +492,64 @@ fn is_stdlib_module(name: &str) -> bool {
 
 /// Infer types for a parsed Snow program.
 ///
-/// This is the main entry point. Creates an inference context and type
-/// environment, registers builtins, then walks the AST inferring types.
+/// This is the main entry point for single-module type checking.
+/// Delegates to `infer_with_imports` with an empty ImportContext.
 pub fn infer(parse: &Parse) -> TypeckResult {
+    infer_with_imports(parse, &ImportContext::empty())
+}
+
+/// Infer types for a parsed Snow program with pre-resolved imports.
+///
+/// This is the multi-module entry point. The ImportContext contains
+/// symbols from already-type-checked dependency modules, which are
+/// pre-seeded into the type environments before inference begins.
+pub fn infer_with_imports(parse: &Parse, import_ctx: &ImportContext) -> TypeckResult {
     let mut ctx = InferCtx::new();
     let mut env = TypeEnv::new();
     let mut trait_registry = TraitRegistry::new();
     let mut type_registry = TypeRegistry::new();
     builtins::register_builtins(&mut ctx, &mut env, &mut trait_registry);
     register_builtin_sum_types(&mut ctx, &mut env, &mut type_registry);
+
+    // Pre-seed with imported trait defs (XMOD-05: globally visible)
+    for trait_def in &import_ctx.all_trait_defs {
+        trait_registry.register_trait(trait_def.clone());
+    }
+    for impl_def in &import_ctx.all_trait_impls {
+        let _ = trait_registry.register_impl(impl_def.clone());
+    }
+
+    // Pre-seed TypeRegistry and TypeEnv with imported struct definitions
+    for mod_exports in import_ctx.module_exports.values() {
+        for (name, struct_def) in &mod_exports.struct_defs {
+            type_registry.register_struct(struct_def.clone());
+            // Register struct constructor in env
+            let struct_ty = if struct_def.generic_params.is_empty() {
+                Ty::struct_ty(name, vec![])
+            } else {
+                let type_args: Vec<Ty> = struct_def.generic_params.iter()
+                    .map(|_| ctx.fresh_var()).collect();
+                Ty::struct_ty(name, type_args)
+            };
+            env.insert(name.clone(), Scheme::mono(struct_ty));
+        }
+    }
+
+    // Pre-seed with imported sum type definitions
+    for mod_exports in import_ctx.module_exports.values() {
+        for (_name, sum_type_def) in &mod_exports.sum_type_defs {
+            type_registry.register_sum_type(sum_type_def.clone());
+            register_variant_constructors(
+                &mut ctx, &mut env,
+                &sum_type_def.name,
+                &sum_type_def.generic_params,
+                &sum_type_def.variants,
+            );
+        }
+    }
+
+    // Build qualified_modules map for future import resolution (Plan 02).
+    let _qualified_modules: FxHashMap<String, &ModuleExports> = FxHashMap::default();
 
     let mut types = FxHashMap::default();
     let mut result_type = None;
@@ -574,6 +623,7 @@ pub fn infer(parse: &Parse) -> TypeckResult {
                                 &mut trait_registry,
                                 &mut fn_constraints,
                                 &mut default_method_bodies,
+                                import_ctx,
                             );
                             if let Some(ty) = ty {
                                 result_type = Some(ty);
@@ -588,6 +638,7 @@ pub fn infer(parse: &Parse) -> TypeckResult {
                                 &type_registry,
                                 &trait_registry,
                                 &mut fn_constraints,
+                                import_ctx,
                             ) {
                                 Ok(ty) => {
                                     result_type = Some(ty);
@@ -765,7 +816,7 @@ fn register_builtin_sum_types(
 /// This is the shared logic extracted from `register_sum_type_def` so that both
 /// user-defined sum types (parsed from source) and built-in sum types (Option,
 /// Result) use the same variant registration mechanism.
-fn register_variant_constructors(
+pub fn register_variant_constructors(
     ctx: &mut InferCtx,
     env: &mut TypeEnv,
     type_name: &str,
@@ -1012,6 +1063,7 @@ fn infer_multi_clause_fn(
     type_registry: &TypeRegistry,
     trait_registry: &TraitRegistry,
     fn_constraints: &mut FxHashMap<String, FnConstraints>,
+    _import_ctx: &ImportContext,
 ) -> Result<Ty, TypeError> {
     assert!(!clauses.is_empty());
 
@@ -1361,6 +1413,7 @@ fn infer_item(
     trait_registry: &mut TraitRegistry,
     fn_constraints: &mut FxHashMap<String, FnConstraints>,
     default_method_bodies: &mut FxHashMap<(String, String), TextRange>,
+    _import_ctx: &ImportContext,
 ) -> Option<Ty> {
     match item {
         Item::LetBinding(let_) => {
@@ -3643,6 +3696,7 @@ fn infer_block(
                                 type_registry,
                                 trait_registry,
                                 &mut local_fn_constraints,
+                                &ImportContext::empty(),
                             ) {
                                 last_ty = ty;
                             }

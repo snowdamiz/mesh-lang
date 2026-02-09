@@ -34,14 +34,74 @@ use rowan::TextRange;
 
 use crate::diagnostics::DiagnosticOptions;
 use crate::error::TypeError;
-use crate::ty::Ty;
+use crate::traits::{TraitDef, ImplDef as TraitImplDef};
+use crate::ty::{Scheme, Ty};
 
 // Re-export type registry types for downstream crate consumption (codegen).
 pub use crate::infer::{
     StructDefInfo, SumTypeDefInfo, TypeAliasInfo, TypeRegistry, VariantFieldInfo, VariantInfo,
+    register_variant_constructors,
 };
 // Re-export trait registry for downstream trait resolution (codegen dispatch).
 pub use crate::traits::TraitRegistry;
+
+// ── Cross-Module Type Checking Types ────────────────────────────────────
+
+/// Context built by the driver from already-checked dependency modules.
+/// Pre-seeds the type checker's environments before inference begins.
+#[derive(Debug, Default)]
+pub struct ImportContext {
+    /// Module namespace -> exported symbols.
+    /// Key is the namespace name used for qualified access (last path segment
+    /// for `import Math.Vector` -> key is "Vector").
+    pub module_exports: FxHashMap<String, ModuleExports>,
+
+    /// Trait definitions from ALL processed modules (globally visible).
+    pub all_trait_defs: Vec<TraitDef>,
+
+    /// Trait impls from ALL processed modules (globally visible, XMOD-05).
+    pub all_trait_impls: Vec<TraitImplDef>,
+}
+
+impl ImportContext {
+    /// Create an empty import context (for single-file / backward compat).
+    pub fn empty() -> Self {
+        Self::default()
+    }
+}
+
+/// Exports from a single module.
+#[derive(Debug, Default, Clone)]
+pub struct ModuleExports {
+    /// The full module name (e.g., "Math.Vector").
+    pub module_name: String,
+
+    /// Function/value type schemes, keyed by unqualified name.
+    pub functions: FxHashMap<String, Scheme>,
+
+    /// Struct definitions exported by this module.
+    pub struct_defs: FxHashMap<String, StructDefInfo>,
+
+    /// Sum type definitions exported by this module.
+    pub sum_type_defs: FxHashMap<String, SumTypeDefInfo>,
+}
+
+/// Symbols exported by a module after type checking.
+#[derive(Debug, Default, Clone)]
+pub struct ExportedSymbols {
+    /// Function type schemes (name -> scheme).
+    pub functions: FxHashMap<String, Scheme>,
+    /// Struct definitions.
+    pub struct_defs: FxHashMap<String, StructDefInfo>,
+    /// Sum type definitions.
+    pub sum_type_defs: FxHashMap<String, SumTypeDefInfo>,
+    /// Trait definitions declared in this module.
+    pub trait_defs: Vec<TraitDef>,
+    /// Trait impls declared in this module.
+    pub trait_impls: Vec<TraitImplDef>,
+}
+
+// ── TypeckResult ────────────────────────────────────────────────────────
 
 /// The result of type checking a Snow program.
 ///
@@ -94,4 +154,117 @@ impl TypeckResult {
 /// errors.
 pub fn check(parse: &snow_parser::Parse) -> TypeckResult {
     infer::infer(parse)
+}
+
+/// Type-check a parsed Snow program with pre-resolved imports.
+///
+/// This is the multi-module entry point. The ImportContext contains
+/// symbols from already-type-checked dependency modules.
+pub fn check_with_imports(parse: &snow_parser::Parse, import_ctx: &ImportContext) -> TypeckResult {
+    infer::infer_with_imports(parse, import_ctx)
+}
+
+/// Collect exported symbols from a type-checked module.
+///
+/// Currently exports ALL top-level definitions (Phase 40 adds pub filtering).
+/// Extracts function schemes from the typeck types map by scanning the parse
+/// tree for FnDef items, struct/sum type defs from TypeRegistry, and
+/// trait defs/impls from TraitRegistry.
+pub fn collect_exports(
+    parse: &snow_parser::Parse,
+    typeck: &TypeckResult,
+) -> ExportedSymbols {
+    use snow_parser::ast::item::Item;
+    use snow_parser::ast::AstNode;
+    use snow_parser::syntax_kind::SyntaxKind;
+
+    let tree = parse.tree();
+    let mut exports = ExportedSymbols::default();
+
+    for item in tree.items() {
+        match item {
+            Item::FnDef(fn_def) => {
+                if let Some(name) = fn_def.name().and_then(|n| n.text()) {
+                    // Look up the function's inferred type from the typeck result
+                    let range = fn_def.syntax().text_range();
+                    if let Some(ty) = typeck.types.get(&range) {
+                        exports.functions.insert(
+                            name,
+                            Scheme::mono(ty.clone()),
+                        );
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
+    // Copy struct and sum type defs from type_registry
+    // (filter out builtins: Option, Result, Ordering are built-in)
+    let builtin_sum_types = ["Option", "Result", "Ordering"];
+    for (name, def) in &typeck.type_registry.struct_defs {
+        exports.struct_defs.insert(name.clone(), def.clone());
+    }
+    for (name, def) in &typeck.type_registry.sum_type_defs {
+        if !builtin_sum_types.contains(&name.as_str()) {
+            exports.sum_type_defs.insert(name.clone(), def.clone());
+        }
+    }
+
+    // Extract trait defs from AST InterfaceDef items, then look up in registry.
+    for item in tree.items() {
+        if let Item::InterfaceDef(iface) = item {
+            if let Some(name) = iface.name().and_then(|n| n.text()) {
+                if let Some(trait_def) = typeck.trait_registry.get_trait(&name) {
+                    exports.trait_defs.push(trait_def.clone());
+                }
+            }
+        }
+    }
+
+    // For trait impls: scan AST ImplDef items for trait names,
+    // then collect matching impls from the registry.
+    let mut local_impl_traits: Vec<(String, String)> = Vec::new(); // (trait_name, type_name)
+    for item in tree.items() {
+        if let Item::ImplDef(ref impl_def) = item {
+            // Extract trait name from the first PATH child.
+            let paths: Vec<_> = impl_def
+                .syntax()
+                .children()
+                .filter(|n| n.kind() == SyntaxKind::PATH)
+                .collect();
+
+            let trait_name = paths
+                .first()
+                .and_then(|path| {
+                    path.children_with_tokens()
+                        .filter_map(|t| t.into_token())
+                        .find(|t| t.kind() == SyntaxKind::IDENT)
+                        .map(|t| t.text().to_string())
+                });
+
+            // Extract type name from the second PATH child (after `for`).
+            let type_name = paths
+                .get(1)
+                .and_then(|path| {
+                    path.children_with_tokens()
+                        .filter_map(|t| t.into_token())
+                        .find(|t| t.kind() == SyntaxKind::IDENT)
+                        .map(|t| t.text().to_string())
+                });
+
+            if let (Some(tn), Some(ty)) = (trait_name, type_name) {
+                local_impl_traits.push((tn, ty));
+            }
+        }
+    }
+    for impl_def in typeck.trait_registry.all_impls() {
+        for (tn, ty) in &local_impl_traits {
+            if impl_def.trait_name == *tn && impl_def.impl_type_name == *ty {
+                exports.trait_impls.push(impl_def.clone());
+            }
+        }
+    }
+
+    exports
 }
