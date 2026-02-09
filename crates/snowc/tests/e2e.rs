@@ -880,3 +880,102 @@ end
     let output = compile_and_run(source);
     assert_eq!(output, "Point(1, 2)\ntrue\n");
 }
+
+/// Phase 31: primitive Int method call via dot-syntax (METH-04).
+/// 42.to_string() resolves through Display trait -> snow_int_to_string.
+#[test]
+fn e2e_method_dot_syntax_primitive_int() {
+    let source = r#"
+fn main() do
+  let x = 42
+  let s = x.to_string()
+  println(s)
+end
+"#;
+    let output = compile_and_run(source);
+    assert_eq!(output.trim(), "42");
+}
+
+/// Phase 31: primitive Bool method call via dot-syntax (METH-04).
+/// true.to_string() resolves through Display trait -> snow_bool_to_string.
+#[test]
+fn e2e_method_dot_syntax_primitive_bool() {
+    let source = r#"
+fn main() do
+  let b = true
+  println(b.to_string())
+end
+"#;
+    let output = compile_and_run(source);
+    assert_eq!(output.trim(), "true");
+}
+
+/// Phase 31: primitive Float method call via dot-syntax.
+/// 3.14.to_string() resolves through Display trait -> snow_float_to_string.
+#[test]
+fn e2e_method_dot_syntax_primitive_float() {
+    let source = r#"
+fn main() do
+  let f = 3.14
+  println(f.to_string())
+end
+"#;
+    let output = compile_and_run(source);
+    assert_eq!(output.trim(), "3.14");
+}
+
+/// Phase 31: generic type (List) method call via dot-syntax (METH-05).
+/// [1, 2, 3].to_string() resolves through collection Display dispatch.
+#[test]
+fn e2e_method_dot_syntax_generic_list() {
+    let source = r#"
+fn main() do
+  let xs = [1, 2, 3]
+  let s = xs.to_string()
+  println(s)
+end
+"#;
+    let output = compile_and_run(source);
+    assert_eq!(output.trim(), "[1, 2, 3]");
+}
+
+/// Phase 31: chained method calls via true dot-syntax chaining (CHAIN-01).
+/// p.to_string().length() chains Display::to_string with String.length.
+#[test]
+fn e2e_method_dot_syntax_chain_to_string_length() {
+    let source = r#"
+struct Point do
+  x :: Int
+  y :: Int
+end deriving(Display)
+
+fn main() do
+  let p = Point { x: 1, y: 2 }
+  let len = p.to_string().length()
+  println("${len}")
+end
+"#;
+    let output = compile_and_run(source);
+    // "Point(1, 2)" is 11 characters
+    assert_eq!(output.trim(), "11");
+}
+
+/// Phase 31: mixed field access and method call via dot-syntax (CHAIN-02).
+/// p.name.length() chains struct field access with String.length method.
+#[test]
+fn e2e_method_dot_syntax_mixed_field_method() {
+    let source = r#"
+struct Person do
+  name :: String
+  age :: Int
+end
+
+fn main() do
+  let p = Person { name: "Alice", age: 30 }
+  let len = p.name.length()
+  println("${len}")
+end
+"#;
+    let output = compile_and_run(source);
+    assert_eq!(output.trim(), "5");
+}
