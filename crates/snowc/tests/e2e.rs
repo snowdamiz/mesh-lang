@@ -1449,3 +1449,116 @@ fn e2e_for_in_filter_comprehensive() {
         "0\n2\n4\n6\n8\n---\n30\n40\n50\n---\n2\n---\n2\n---\n0\n---\n1\n---\n2\n4\n5\ndone\n"
     );
 }
+
+// ── Phase 38: Multi-File Build Pipeline ───────────────────────────────
+
+/// Phase 38: Multi-file build -- directory with multiple .snow files discovers,
+/// parses all, and produces a working binary from main.snow entry point.
+#[test]
+fn e2e_multi_file_basic() {
+    let temp_dir = tempfile::tempdir().expect("failed to create temp dir");
+    let project_dir = temp_dir.path().join("project");
+    std::fs::create_dir_all(&project_dir).expect("failed to create project dir");
+
+    // main.snow does not import utils, but both files exist
+    std::fs::write(
+        project_dir.join("main.snow"),
+        "fn main() do\n  println(\"hello multi\")\nend\n",
+    ).unwrap();
+    std::fs::write(
+        project_dir.join("utils.snow"),
+        "fn helper() do\n  42\nend\n",
+    ).unwrap();
+
+    let snowc = find_snowc();
+    let output = Command::new(&snowc)
+        .args(["build", project_dir.to_str().unwrap()])
+        .output()
+        .expect("failed to invoke snowc");
+
+    assert!(
+        output.status.success(),
+        "snowc build failed on multi-file project:\nstderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let binary = project_dir.join("project");
+    let run_output = Command::new(&binary).output().expect("failed to run binary");
+    assert!(run_output.status.success());
+    assert_eq!(
+        String::from_utf8_lossy(&run_output.stdout).trim(),
+        "hello multi"
+    );
+}
+
+/// Phase 38: Parse error in a non-entry module causes the build to fail with diagnostics.
+#[test]
+fn e2e_multi_file_parse_error_in_non_entry() {
+    let temp_dir = tempfile::tempdir().expect("failed to create temp dir");
+    let project_dir = temp_dir.path().join("project");
+    std::fs::create_dir_all(&project_dir).expect("failed to create project dir");
+
+    std::fs::write(
+        project_dir.join("main.snow"),
+        "fn main() do\n  println(\"hello\")\nend\n",
+    ).unwrap();
+    // broken.snow has a syntax error
+    std::fs::write(
+        project_dir.join("broken.snow"),
+        "fn incomplete(\n",
+    ).unwrap();
+
+    let snowc = find_snowc();
+    let output = Command::new(&snowc)
+        .args(["build", project_dir.to_str().unwrap()])
+        .output()
+        .expect("failed to invoke snowc");
+
+    assert!(
+        !output.status.success(),
+        "expected build to fail due to parse error in broken.snow"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("Parse error") || stderr.contains("error"),
+        "expected parse error diagnostic, got: {}",
+        stderr
+    );
+}
+
+/// Phase 38: Nested directory modules are discovered and do not break the build.
+#[test]
+fn e2e_multi_file_nested_modules() {
+    let temp_dir = tempfile::tempdir().expect("failed to create temp dir");
+    let project_dir = temp_dir.path().join("project");
+    std::fs::create_dir_all(project_dir.join("math")).expect("failed to create dirs");
+
+    std::fs::write(
+        project_dir.join("main.snow"),
+        "fn main() do\n  println(\"nested ok\")\nend\n",
+    ).unwrap();
+    std::fs::write(
+        project_dir.join("math/vector.snow"),
+        "fn add(a :: Int, b :: Int) -> Int do\n  a + b\nend\n",
+    ).unwrap();
+
+    let snowc = find_snowc();
+    let output = Command::new(&snowc)
+        .args(["build", project_dir.to_str().unwrap()])
+        .output()
+        .expect("failed to invoke snowc");
+
+    assert!(
+        output.status.success(),
+        "snowc build failed with nested modules:\nstderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let binary = project_dir.join("project");
+    let run_output = Command::new(&binary).output().expect("failed to run binary");
+    assert!(run_output.status.success());
+    assert_eq!(
+        String::from_utf8_lossy(&run_output.stdout).trim(),
+        "nested ok"
+    );
+}
