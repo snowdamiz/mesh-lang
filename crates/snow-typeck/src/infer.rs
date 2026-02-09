@@ -4383,10 +4383,21 @@ fn infer_field_access(
         None => "<unknown>".to_string(),
     };
 
-    // Check if base is a NameRef pointing to a stdlib module name for qualified access.
-    // e.g. String.length, IO.read_line, Env.get -- module-qualified function reference.
+    // Check if base is a NameRef pointing to a module name for qualified access.
+    // e.g. Vector.add (user module), String.length (stdlib) -- module-qualified function reference.
     if let Expr::NameRef(ref name_ref) = base_expr {
         if let Some(base_name) = name_ref.text() {
+            // Check user-defined modules first (from import context via ctx.qualified_modules)
+            if let Some(mod_fns) = ctx.qualified_modules.get(&base_name) {
+                if let Some(scheme) = mod_fns.get(&field_name) {
+                    let scheme = scheme.clone();
+                    let ty = ctx.instantiate(&scheme);
+                    return Ok(ty);
+                }
+                // Module exists but field not found -- fall through to other checks
+            }
+
+            // Then check stdlib modules (existing behavior)
             if is_stdlib_module(&base_name) {
                 let modules = stdlib_modules();
                 if let Some(mod_exports) = modules.get(&base_name) {
