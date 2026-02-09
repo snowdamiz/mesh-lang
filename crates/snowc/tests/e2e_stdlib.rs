@@ -300,6 +300,36 @@ fn e2e_list_append_string() {
     assert_eq!(output, "2\nworld\n");
 }
 
+// ── List Trait Integration E2E Tests (Phase 27 Plan 01) ───────────────
+
+#[test]
+fn e2e_list_display_string() {
+    let source = read_fixture("list_display_string.snow");
+    let output = compile_and_run(&source);
+    assert_eq!(output, "[hello, world]\n");
+}
+
+#[test]
+fn e2e_list_debug() {
+    let source = read_fixture("list_debug.snow");
+    let output = compile_and_run(&source);
+    assert_eq!(output, "[1, 2, 3]\n");
+}
+
+#[test]
+fn e2e_list_eq() {
+    let source = read_fixture("list_eq.snow");
+    let output = compile_and_run(&source);
+    assert_eq!(output, "equal\nnot equal\n");
+}
+
+#[test]
+fn e2e_list_ord() {
+    let source = read_fixture("list_ord.snow");
+    let output = compile_and_run(&source);
+    assert_eq!(output, "less\ngreater\n");
+}
+
 #[test]
 fn e2e_map_basic() {
     let source = read_fixture("stdlib_map_basic.snow");

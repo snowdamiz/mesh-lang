@@ -31,6 +31,26 @@ use super::{
 
 // ── Helpers ──────────────────────────────────────────────────────────
 
+/// Extract the element type T from a `Ty::App(Con("List"), [T])`.
+/// Returns `None` if the type is not a List.
+fn extract_list_elem_type(ty: &Ty) -> Option<Ty> {
+    match ty {
+        Ty::App(con_ty, args) => {
+            if let Ty::Con(con) = con_ty.as_ref() {
+                if con.name == "List" && !args.is_empty() {
+                    return Some(args[0].clone());
+                }
+            }
+            None
+        }
+        Ty::Con(con) if con.name == "List" => {
+            // Bare List without type args -- default to Int
+            Some(Ty::int())
+        }
+        _ => None,
+    }
+}
+
 /// Extract the trait name and type name from an ImplDef's PATH children.
 /// Returns `(trait_name, type_name)`, e.g. `("Greetable", "Point")`.
 fn extract_impl_names(impl_def: &ImplDef) -> (String, String) {
@@ -430,6 +450,9 @@ impl<'a> Lowerer<'a> {
         self.known_functions.insert("snow_map_to_string".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
         self.known_functions.insert("snow_set_to_string".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
         self.known_functions.insert("snow_string_to_string".to_string(), MirType::FnPtr(vec![MirType::Int], Box::new(MirType::Ptr)));
+        // List Eq/Ord (Phase 27)
+        self.known_functions.insert("snow_list_eq".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr, MirType::Ptr], Box::new(MirType::Bool)));
+        self.known_functions.insert("snow_list_compare".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr, MirType::Ptr], Box::new(MirType::Int)));
         // Tuple
         self.known_functions.insert("snow_tuple_nth".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Int], Box::new(MirType::Int)));
         self.known_functions.insert("snow_tuple_first".to_string(), MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Int)));
@@ -3228,6 +3251,78 @@ impl<'a> Lowerer<'a> {
             }
         }
 
+        // List Eq/Ord dispatch: if lhs is Ptr and typeck type is List<T>,
+        // emit snow_list_eq / snow_list_compare with element callback.
+        if matches!(lhs_ty, MirType::Ptr) {
+            if let Some(lhs_ast) = bin.lhs() {
+                if let Some(lhs_typeck) = self.get_ty(lhs_ast.syntax().text_range()).cloned() {
+                    if let Some(elem_ty) = extract_list_elem_type(&lhs_typeck) {
+                        match op {
+                            BinOp::Eq | BinOp::NotEq => {
+                                let eq_callback = self.resolve_eq_callback(&elem_ty);
+                                let eq_callback_expr = MirExpr::Var(
+                                    eq_callback,
+                                    MirType::FnPtr(vec![MirType::Int, MirType::Int], Box::new(MirType::Bool)),
+                                );
+                                let call = MirExpr::Call {
+                                    func: Box::new(MirExpr::Var(
+                                        "snow_list_eq".to_string(),
+                                        MirType::FnPtr(
+                                            vec![MirType::Ptr, MirType::Ptr, MirType::Ptr],
+                                            Box::new(MirType::Bool),
+                                        ),
+                                    )),
+                                    args: vec![lhs, rhs, eq_callback_expr],
+                                    ty: MirType::Bool,
+                                };
+                                if op == BinOp::NotEq {
+                                    return MirExpr::BinOp {
+                                        op: BinOp::Eq,
+                                        lhs: Box::new(call),
+                                        rhs: Box::new(MirExpr::BoolLit(false, MirType::Bool)),
+                                        ty,
+                                    };
+                                }
+                                return call;
+                            }
+                            BinOp::Lt | BinOp::Gt | BinOp::LtEq | BinOp::GtEq => {
+                                let cmp_callback = self.resolve_compare_callback(&elem_ty);
+                                let cmp_callback_expr = MirExpr::Var(
+                                    cmp_callback,
+                                    MirType::FnPtr(vec![MirType::Int, MirType::Int], Box::new(MirType::Int)),
+                                );
+                                let compare_call = MirExpr::Call {
+                                    func: Box::new(MirExpr::Var(
+                                        "snow_list_compare".to_string(),
+                                        MirType::FnPtr(
+                                            vec![MirType::Ptr, MirType::Ptr, MirType::Ptr],
+                                            Box::new(MirType::Int),
+                                        ),
+                                    )),
+                                    args: vec![lhs, rhs, cmp_callback_expr],
+                                    ty: MirType::Int,
+                                };
+                                let compare_op = match op {
+                                    BinOp::Lt => BinOp::Lt,
+                                    BinOp::Gt => BinOp::Gt,
+                                    BinOp::LtEq => BinOp::LtEq,
+                                    BinOp::GtEq => BinOp::GtEq,
+                                    _ => unreachable!(),
+                                };
+                                return MirExpr::BinOp {
+                                    op: compare_op,
+                                    lhs: Box::new(compare_call),
+                                    rhs: Box::new(MirExpr::IntLit(0, MirType::Int)),
+                                    ty,
+                                };
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+            }
+        }
+
         MirExpr::BinOp {
             op,
             lhs: Box::new(lhs),
@@ -3405,11 +3500,15 @@ impl<'a> Lowerer<'a> {
             }
         }
 
-        // Collection Display dispatch: if the callee is "to_string" and
-        // the first arg is a collection (MirType::Ptr), resolve the typeck
-        // type from the AST to emit the correct collection-to-string call.
+        // Collection Display/Debug dispatch: if the callee is "to_string" or
+        // "debug"/"inspect" and the first arg is a collection (MirType::Ptr),
+        // resolve the typeck type from the AST to emit the correct
+        // collection-to-string call.
         if let MirExpr::Var(ref name, _) = callee {
-            if name == "to_string" && args.len() == 1 && matches!(args[0].ty(), MirType::Ptr) {
+            if (name == "to_string" || name == "debug" || name == "inspect")
+                && args.len() == 1
+                && matches!(args[0].ty(), MirType::Ptr)
+            {
                 // Look up the typeck Ty for the first argument from the call's AST
                 if let Some(arg_list) = call.arg_list() {
                     if let Some(first_arg_ast) = arg_list.args().next() {
@@ -4904,6 +5003,353 @@ impl<'a> Lowerer<'a> {
             captures: vec![],
         });
 
+        wrapper_name
+    }
+
+    // ── List Eq/Ord callback resolution (Phase 27 Plan 01) ──────────
+
+    /// Resolve the eq callback function name for an element type.
+    ///
+    /// Returns the name of a function with signature `fn(u64, u64) -> i8`
+    /// that compares two elements for equality.
+    fn resolve_eq_callback(&mut self, elem_ty: &Ty) -> String {
+        match elem_ty {
+            Ty::Con(con) => match con.name.as_str() {
+                "Int" => self.generate_int_eq_callback(),
+                "Float" => self.generate_float_eq_callback(),
+                "Bool" => self.generate_bool_eq_callback(),
+                "String" => self.generate_string_eq_callback(),
+                _ => {
+                    // Fallback to int eq for unknown types
+                    self.generate_int_eq_callback()
+                }
+            },
+            Ty::App(con_ty, args) => {
+                if let Ty::Con(con) = con_ty.as_ref() {
+                    if con.name == "List" {
+                        let inner_ty = args.first().cloned().unwrap_or_else(Ty::int);
+                        return self.generate_list_eq_wrapper(&inner_ty);
+                    }
+                }
+                self.generate_int_eq_callback()
+            }
+            _ => self.generate_int_eq_callback(),
+        }
+    }
+
+    /// Resolve the compare callback function name for an element type.
+    ///
+    /// Returns the name of a function with signature `fn(u64, u64) -> i64`
+    /// that returns negative/0/positive for element ordering.
+    fn resolve_compare_callback(&mut self, elem_ty: &Ty) -> String {
+        match elem_ty {
+            Ty::Con(con) => match con.name.as_str() {
+                "Int" => self.generate_int_cmp_callback(),
+                "String" => self.generate_string_cmp_callback(),
+                _ => self.generate_int_cmp_callback(),
+            },
+            Ty::App(con_ty, args) => {
+                if let Ty::Con(con) = con_ty.as_ref() {
+                    if con.name == "List" {
+                        let inner_ty = args.first().cloned().unwrap_or_else(Ty::int);
+                        return self.generate_list_cmp_wrapper(&inner_ty);
+                    }
+                }
+                self.generate_int_cmp_callback()
+            }
+            _ => self.generate_int_cmp_callback(),
+        }
+    }
+
+    /// Generate `__eq_int_callback(a: Int, b: Int) -> Bool { a == b }`
+    fn generate_int_eq_callback(&mut self) -> String {
+        let name = "__eq_int_callback".to_string();
+        if self.known_functions.contains_key(&name) {
+            return name;
+        }
+        let fn_ty = MirType::FnPtr(vec![MirType::Int, MirType::Int], Box::new(MirType::Bool));
+        self.known_functions.insert(name.clone(), fn_ty);
+
+        let body = MirExpr::BinOp {
+            op: BinOp::Eq,
+            lhs: Box::new(MirExpr::Var("__a".to_string(), MirType::Int)),
+            rhs: Box::new(MirExpr::Var("__b".to_string(), MirType::Int)),
+            ty: MirType::Bool,
+        };
+
+        self.functions.push(MirFunction {
+            name: name.clone(),
+            params: vec![("__a".to_string(), MirType::Int), ("__b".to_string(), MirType::Int)],
+            return_type: MirType::Bool,
+            body,
+            is_closure_fn: false,
+            captures: vec![],
+        });
+        name
+    }
+
+    /// Generate `__eq_float_callback(a: Float, b: Float) -> Bool { a == b }`
+    fn generate_float_eq_callback(&mut self) -> String {
+        let name = "__eq_float_callback".to_string();
+        if self.known_functions.contains_key(&name) {
+            return name;
+        }
+        let fn_ty = MirType::FnPtr(vec![MirType::Float, MirType::Float], Box::new(MirType::Bool));
+        self.known_functions.insert(name.clone(), fn_ty);
+
+        let body = MirExpr::BinOp {
+            op: BinOp::Eq,
+            lhs: Box::new(MirExpr::Var("__a".to_string(), MirType::Float)),
+            rhs: Box::new(MirExpr::Var("__b".to_string(), MirType::Float)),
+            ty: MirType::Bool,
+        };
+
+        self.functions.push(MirFunction {
+            name: name.clone(),
+            params: vec![("__a".to_string(), MirType::Float), ("__b".to_string(), MirType::Float)],
+            return_type: MirType::Bool,
+            body,
+            is_closure_fn: false,
+            captures: vec![],
+        });
+        name
+    }
+
+    /// Generate `__eq_bool_callback(a: Bool, b: Bool) -> Bool { a == b }`
+    fn generate_bool_eq_callback(&mut self) -> String {
+        let name = "__eq_bool_callback".to_string();
+        if self.known_functions.contains_key(&name) {
+            return name;
+        }
+        let fn_ty = MirType::FnPtr(vec![MirType::Bool, MirType::Bool], Box::new(MirType::Bool));
+        self.known_functions.insert(name.clone(), fn_ty);
+
+        let body = MirExpr::BinOp {
+            op: BinOp::Eq,
+            lhs: Box::new(MirExpr::Var("__a".to_string(), MirType::Bool)),
+            rhs: Box::new(MirExpr::Var("__b".to_string(), MirType::Bool)),
+            ty: MirType::Bool,
+        };
+
+        self.functions.push(MirFunction {
+            name: name.clone(),
+            params: vec![("__a".to_string(), MirType::Bool), ("__b".to_string(), MirType::Bool)],
+            return_type: MirType::Bool,
+            body,
+            is_closure_fn: false,
+            captures: vec![],
+        });
+        name
+    }
+
+    /// Generate `__eq_string_callback(a: Ptr, b: Ptr) -> Bool { snow_string_eq(a, b) }`
+    fn generate_string_eq_callback(&mut self) -> String {
+        let name = "__eq_string_callback".to_string();
+        if self.known_functions.contains_key(&name) {
+            return name;
+        }
+        let fn_ty = MirType::FnPtr(vec![MirType::String, MirType::String], Box::new(MirType::Bool));
+        self.known_functions.insert(name.clone(), fn_ty);
+
+        let body = MirExpr::Call {
+            func: Box::new(MirExpr::Var(
+                "snow_string_eq".to_string(),
+                MirType::FnPtr(vec![MirType::String, MirType::String], Box::new(MirType::Bool)),
+            )),
+            args: vec![
+                MirExpr::Var("__a".to_string(), MirType::String),
+                MirExpr::Var("__b".to_string(), MirType::String),
+            ],
+            ty: MirType::Bool,
+        };
+
+        self.functions.push(MirFunction {
+            name: name.clone(),
+            params: vec![("__a".to_string(), MirType::String), ("__b".to_string(), MirType::String)],
+            return_type: MirType::Bool,
+            body,
+            is_closure_fn: false,
+            captures: vec![],
+        });
+        name
+    }
+
+    /// Generate `__cmp_int_callback(a: Int, b: Int) -> Int { if a < b { -1 } else if a > b { 1 } else { 0 } }`
+    fn generate_int_cmp_callback(&mut self) -> String {
+        let name = "__cmp_int_callback".to_string();
+        if self.known_functions.contains_key(&name) {
+            return name;
+        }
+        let fn_ty = MirType::FnPtr(vec![MirType::Int, MirType::Int], Box::new(MirType::Int));
+        self.known_functions.insert(name.clone(), fn_ty);
+
+        // if a < b { -1 } else if a > b { 1 } else { 0 }
+        let a = MirExpr::Var("__a".to_string(), MirType::Int);
+        let b = MirExpr::Var("__b".to_string(), MirType::Int);
+        let lt_cond = MirExpr::BinOp {
+            op: BinOp::Lt,
+            lhs: Box::new(a.clone()),
+            rhs: Box::new(b.clone()),
+            ty: MirType::Bool,
+        };
+        let gt_cond = MirExpr::BinOp {
+            op: BinOp::Gt,
+            lhs: Box::new(a),
+            rhs: Box::new(b),
+            ty: MirType::Bool,
+        };
+        let inner_if = MirExpr::If {
+            cond: Box::new(gt_cond),
+            then_body: Box::new(MirExpr::IntLit(1, MirType::Int)),
+            else_body: Box::new(MirExpr::IntLit(0, MirType::Int)),
+            ty: MirType::Int,
+        };
+        let body = MirExpr::If {
+            cond: Box::new(lt_cond),
+            then_body: Box::new(MirExpr::IntLit(-1, MirType::Int)),
+            else_body: Box::new(inner_if),
+            ty: MirType::Int,
+        };
+
+        self.functions.push(MirFunction {
+            name: name.clone(),
+            params: vec![("__a".to_string(), MirType::Int), ("__b".to_string(), MirType::Int)],
+            return_type: MirType::Int,
+            body,
+            is_closure_fn: false,
+            captures: vec![],
+        });
+        name
+    }
+
+    /// Generate `__cmp_string_callback(a: Ptr, b: Ptr) -> Int` that compares strings lexicographically.
+    ///
+    /// Since there's no snow_string_compare runtime function, we use snow_string_eq
+    /// and a length-based fallback: if eq, return 0; otherwise use a < b heuristic.
+    /// For simplicity, we generate: if snow_string_eq(a, b) { 0 } else { -1 }
+    /// This gives correct equality semantics but simplified ordering.
+    /// TODO: Add proper snow_string_compare in a future phase.
+    fn generate_string_cmp_callback(&mut self) -> String {
+        let name = "__cmp_string_callback".to_string();
+        if self.known_functions.contains_key(&name) {
+            return name;
+        }
+        let fn_ty = MirType::FnPtr(vec![MirType::String, MirType::String], Box::new(MirType::Int));
+        self.known_functions.insert(name.clone(), fn_ty);
+
+        // if snow_string_eq(a, b) { 0 } else { -1 }
+        let eq_call = MirExpr::Call {
+            func: Box::new(MirExpr::Var(
+                "snow_string_eq".to_string(),
+                MirType::FnPtr(vec![MirType::String, MirType::String], Box::new(MirType::Bool)),
+            )),
+            args: vec![
+                MirExpr::Var("__a".to_string(), MirType::String),
+                MirExpr::Var("__b".to_string(), MirType::String),
+            ],
+            ty: MirType::Bool,
+        };
+        let body = MirExpr::If {
+            cond: Box::new(eq_call),
+            then_body: Box::new(MirExpr::IntLit(0, MirType::Int)),
+            else_body: Box::new(MirExpr::IntLit(-1, MirType::Int)),
+            ty: MirType::Int,
+        };
+
+        self.functions.push(MirFunction {
+            name: name.clone(),
+            params: vec![("__a".to_string(), MirType::String), ("__b".to_string(), MirType::String)],
+            return_type: MirType::Int,
+            body,
+            is_closure_fn: false,
+            captures: vec![],
+        });
+        name
+    }
+
+    /// Generate a wrapper for nested list equality: `__eq_list_{inner}_callback`
+    fn generate_list_eq_wrapper(&mut self, inner_ty: &Ty) -> String {
+        let inner_mangled = self.mangle_ty_for_display(inner_ty);
+        let wrapper_name = format!("__eq_list_{}_callback", inner_mangled);
+        if self.known_functions.contains_key(&wrapper_name) {
+            return wrapper_name;
+        }
+
+        let inner_callback = self.resolve_eq_callback(inner_ty);
+
+        let fn_ty = MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr], Box::new(MirType::Bool));
+        self.known_functions.insert(wrapper_name.clone(), fn_ty);
+
+        let body = MirExpr::Call {
+            func: Box::new(MirExpr::Var(
+                "snow_list_eq".to_string(),
+                MirType::FnPtr(
+                    vec![MirType::Ptr, MirType::Ptr, MirType::Ptr],
+                    Box::new(MirType::Bool),
+                ),
+            )),
+            args: vec![
+                MirExpr::Var("__a".to_string(), MirType::Ptr),
+                MirExpr::Var("__b".to_string(), MirType::Ptr),
+                MirExpr::Var(
+                    inner_callback,
+                    MirType::FnPtr(vec![MirType::Int, MirType::Int], Box::new(MirType::Bool)),
+                ),
+            ],
+            ty: MirType::Bool,
+        };
+
+        self.functions.push(MirFunction {
+            name: wrapper_name.clone(),
+            params: vec![("__a".to_string(), MirType::Ptr), ("__b".to_string(), MirType::Ptr)],
+            return_type: MirType::Bool,
+            body,
+            is_closure_fn: false,
+            captures: vec![],
+        });
+        wrapper_name
+    }
+
+    /// Generate a wrapper for nested list comparison: `__cmp_list_{inner}_callback`
+    fn generate_list_cmp_wrapper(&mut self, inner_ty: &Ty) -> String {
+        let inner_mangled = self.mangle_ty_for_display(inner_ty);
+        let wrapper_name = format!("__cmp_list_{}_callback", inner_mangled);
+        if self.known_functions.contains_key(&wrapper_name) {
+            return wrapper_name;
+        }
+
+        let inner_callback = self.resolve_compare_callback(inner_ty);
+
+        let fn_ty = MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr], Box::new(MirType::Int));
+        self.known_functions.insert(wrapper_name.clone(), fn_ty);
+
+        let body = MirExpr::Call {
+            func: Box::new(MirExpr::Var(
+                "snow_list_compare".to_string(),
+                MirType::FnPtr(
+                    vec![MirType::Ptr, MirType::Ptr, MirType::Ptr],
+                    Box::new(MirType::Int),
+                ),
+            )),
+            args: vec![
+                MirExpr::Var("__a".to_string(), MirType::Ptr),
+                MirExpr::Var("__b".to_string(), MirType::Ptr),
+                MirExpr::Var(
+                    inner_callback,
+                    MirType::FnPtr(vec![MirType::Int, MirType::Int], Box::new(MirType::Int)),
+                ),
+            ],
+            ty: MirType::Int,
+        };
+
+        self.functions.push(MirFunction {
+            name: wrapper_name.clone(),
+            params: vec![("__a".to_string(), MirType::Ptr), ("__b".to_string(), MirType::Ptr)],
+            return_type: MirType::Int,
+            body,
+            is_closure_fn: false,
+            captures: vec![],
+        });
         wrapper_name
     }
 

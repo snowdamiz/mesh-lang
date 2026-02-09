@@ -679,6 +679,51 @@ fn register_compiler_known_traits(registry: &mut TraitRegistry) {
         });
     }
 
+    // ── List Eq/Ord impls (Phase 27 Plan 01) ──────────────────────
+    // Register Eq for List<T> -- parametric impl via single-letter type param "T".
+    {
+        let list_t = Ty::App(Box::new(Ty::Con(TyCon::new("List"))), vec![Ty::Con(TyCon::new("T"))]);
+        let mut eq_methods = FxHashMap::default();
+        eq_methods.insert(
+            "eq".to_string(),
+            ImplMethodSig {
+                has_self: true,
+                param_count: 1,
+                return_type: Some(Ty::bool()),
+            },
+        );
+        let _ = registry.register_impl(ImplDef {
+            trait_name: "Eq".to_string(),
+            impl_type: list_t.clone(),
+            impl_type_name: "List".to_string(),
+            methods: eq_methods,
+        });
+
+        let mut ord_methods = FxHashMap::default();
+        ord_methods.insert(
+            "lt".to_string(),
+            ImplMethodSig {
+                has_self: true,
+                param_count: 1,
+                return_type: Some(Ty::bool()),
+            },
+        );
+        ord_methods.insert(
+            "compare".to_string(),
+            ImplMethodSig {
+                has_self: true,
+                param_count: 1,
+                return_type: Some(Ty::Con(TyCon::new("Ordering"))),
+            },
+        );
+        let _ = registry.register_impl(ImplDef {
+            trait_name: "Ord".to_string(),
+            impl_type: list_t,
+            impl_type_name: "List".to_string(),
+            methods: ord_methods,
+        });
+    }
+
     // ── Not trait ───────────────────────────────────────────────────
 
     registry.register_trait(TraitDef {
