@@ -85,7 +85,7 @@ See milestones/v1.7-ROADMAP.md for full phase details.
 - [x] **Phase 37: Module Graph Foundation** - File discovery, module naming, dependency graph with topological sort and cycle detection (completed 2026-02-09)
 - [x] **Phase 38: Multi-File Build Pipeline** - Per-file parsing, snowc build orchestration, backward compatibility (completed 2026-02-09)
 - [x] **Phase 39: Cross-Module Type Checking** - Import resolution, qualified/selective access, cross-module functions/structs/sum types/traits (completed 2026-02-09)
-- [ ] **Phase 40: Visibility Enforcement** - Private-by-default semantics, pub modifier, access control errors
+- [x] **Phase 40: Visibility Enforcement** - Private-by-default semantics, pub modifier, access control errors (completed 2026-02-09)
 - [ ] **Phase 41: MIR Merge & Codegen** - Module-qualified name mangling, MIR merge, cross-module generics via monomorphization
 - [ ] **Phase 42: Diagnostics & Integration** - Module-aware error messages, qualified type names in diagnostics, end-to-end validation
 
@@ -151,8 +151,8 @@ Plans:
 **Plans:** 2 plans
 
 Plans:
-- [ ] 40-01-PLAN.md -- Export filtering by pub, PrivateItem error type, import resolution update
-- [ ] 40-02-PLAN.md -- Comprehensive E2E tests for visibility enforcement (VIS-01 through VIS-05)
+- [x] 40-01-PLAN.md -- Export filtering by pub, PrivateItem error type, import resolution update
+- [x] 40-02-PLAN.md -- Comprehensive E2E tests for visibility enforcement (VIS-01 through VIS-05)
 
 ### Phase 41: MIR Merge & Codegen
 **Goal**: Multi-module projects compile to a single native binary with correct name mangling and cross-module monomorphization
@@ -192,8 +192,8 @@ Phases execute in numeric order: 37 -> 38 -> 39 -> 40 -> 41 -> 42
 | 37. Module Graph Foundation | v1.8 | 2/2 | Complete | 2026-02-09 |
 | 38. Multi-File Build Pipeline | v1.8 | 2/2 | Complete | 2026-02-09 |
 | 39. Cross-Module Type Checking | v1.8 | 3/3 | Complete | 2026-02-09 |
-| 40. Visibility Enforcement | v1.8 | 0/2 | Not started | - |
+| 40. Visibility Enforcement | v1.8 | 2/2 | Complete | 2026-02-09 |
 | 41. MIR Merge & Codegen | v1.8 | 0/TBD | Not started | - |
 | 42. Diagnostics & Integration | v1.8 | 0/TBD | Not started | - |
 
-**Total: 39 phases shipped across 8 milestones. 123 plans completed. 3 phases remaining for v1.8.**
+**Total: 40 phases shipped across 8 milestones. 125 plans completed. 2 phases remaining for v1.8.**
