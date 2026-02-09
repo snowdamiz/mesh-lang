@@ -5,14 +5,14 @@
 See: .planning/PROJECT.md (updated 2026-02-08)
 
 **Core value:** Expressive, readable concurrency -- writing concurrent programs should feel as natural as sequential code, with supervision and fault tolerance built in.
-**Current focus:** v1.6 Method Dot-Syntax -- Phase 32 (Diagnostics & Integration)
+**Current focus:** v1.6 Method Dot-Syntax -- Phase 32 (Diagnostics & Integration) -- COMPLETE
 
 ## Current Position
 
-Phase: 32 of 32 (Diagnostics & Integration)
-Plan: 1 of 2 in current phase
-Status: In Progress
-Last activity: 2026-02-09 -- Completed 32-01 (Ambiguous method diagnostics)
+Phase: 32 of 32 (Diagnostics & Integration) -- COMPLETE
+Plan: 2 of 2 in current phase
+Status: Phase Complete (v1.6 Milestone Complete)
+Last activity: 2026-02-09 -- Completed 32-02 (Integration e2e tests + MIR defense-in-depth)
 
 Progress: [==========] 100%
 
@@ -25,8 +25,8 @@ Progress: [==========] 100%
 - Tests: 1,248 passing
 
 **v1.6 Progress:**
-- Plans completed: 5
-- Phases: 3 (30-32)
+- Plans completed: 6
+- Phases: 3 (30-32) -- ALL COMPLETE
 
 | Phase | Plan | Duration | Tasks | Files |
 |-------|------|----------|-------|-------|
@@ -35,6 +35,7 @@ Progress: [==========] 100%
 | 31-01 | Extended Method Support (typeck) | 3min | 2 | 2 |
 | 31-02 | MIR Stdlib Fallback + E2E Tests | 5min | 2 | 2 |
 | 32-01 | Ambiguous Method Diagnostics | 6min | 2 | 6 |
+| 32-02 | Integration E2E Tests + MIR Defense | 15min | 2 | 2 |
 
 ## Accumulated Context
 
@@ -61,6 +62,8 @@ v1.6 decisions:
 - AmbiguousMethod span field uses TextRange, consistent with other span-bearing error variants
 - Help text lists per-trait qualified syntax joined by "or" separator
 - Display impl ignores span (span: _) following existing conventions
+- Defense-in-depth sort in MIR resolve_trait_callee ensures deterministic output regardless of HashMap iteration order
+- 5 INTG integration tests prove all syntax forms (struct fields, module-qualified, pipes, sum types, actors) work alongside method dot-syntax
 
 ### Pending Todos
 
@@ -73,6 +76,6 @@ None. Research confidence HIGH across all areas.
 ## Session Continuity
 
 Last session: 2026-02-09
-Stopped at: Completed 32-01-PLAN.md
+Stopped at: Completed 32-02-PLAN.md (Phase 32 complete, v1.6 milestone complete)
 Resume file: None
-Next action: Execute 32-02-PLAN.md (remaining diagnostics polish)
+Next action: v1.6 Method Dot-Syntax milestone is complete. All 6 plans across 3 phases delivered.
