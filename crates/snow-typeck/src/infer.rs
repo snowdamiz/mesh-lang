@@ -4114,6 +4114,39 @@ fn infer_field_access(
             let method_fn_ty = build_method_fn_type(trait_registry, &field_name, &resolved_base, &ret_ty, ctx);
             return Ok(method_fn_ty);
         }
+
+        // ── Stdlib module method fallback (Phase 31) ──────────────────
+        // After trait method resolution fails, check if the method name
+        // matches a stdlib module function for the receiver type.
+        // e.g. "hello".length() -> String.length(str), my_list.length() -> List.length(list)
+        let module_name = match &resolved_base {
+            t if *t == Ty::string() => Some("String"),
+            t if *t == Ty::range() => Some("Range"),
+            t if *t == Ty::set_untyped() => Some("Set"),
+            Ty::App(con, _) => {
+                if let Ty::Con(c) = con.as_ref() {
+                    match c.name.as_str() {
+                        "List" => Some("List"),
+                        "Map" => Some("Map"),
+                        "Set" => Some("Set"),
+                        _ => None,
+                    }
+                } else {
+                    None
+                }
+            }
+            _ => None,
+        };
+        if let Some(mod_name) = module_name {
+            let modules = stdlib_modules();
+            if let Some(mod_fns) = modules.get(mod_name) {
+                if let Some(scheme) = mod_fns.get(&field_name) {
+                    let fn_ty = ctx.instantiate(scheme);
+                    return Ok(fn_ty);
+                }
+            }
+        }
+
         let err = TypeError::NoSuchMethod {
             ty: resolved_base,
             method_name: field_name,
@@ -4121,6 +4154,23 @@ fn infer_field_access(
         };
         ctx.errors.push(err.clone());
         return Err(err);
+    }
+
+    // ── Non-struct concrete type NoSuchField (Phase 31) ──────────────
+    // For known concrete non-struct types (Ty::Con, Ty::App), return
+    // Err(NoSuchField) to trigger the retry mechanism in infer_call.
+    // Only return Ok(fresh_var) for truly unresolved types (Ty::Var).
+    match &resolved_base {
+        Ty::Con(_) | Ty::App(_, _) => {
+            let err = TypeError::NoSuchField {
+                ty: resolved_base,
+                field_name,
+                span: fa.syntax().text_range(),
+            };
+            ctx.errors.push(err.clone());
+            return Err(err);
+        }
+        _ => {} // Ty::Var, Ty::Fun, etc. -- leave as fresh_var for unresolved types
     }
 
     Ok(ctx.fresh_var())
