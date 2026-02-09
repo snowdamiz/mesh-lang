@@ -188,3 +188,31 @@
 **What's next:** TBD -- language is feature-complete for v1. Potential v2 directions include distributed actors, hot code reloading, and macros.
 
 ---
+
+## v1.7 Loops & Iteration (Shipped: 2026-02-09)
+
+**Delivered:** Complete loop and iteration system with while loops, for-in over ranges and collections (List, Map, Set), break/continue control flow, comprehension semantics returning collected lists, filter clause (`when`), and actor-safe reduction checks at loop back-edges.
+
+**Phases completed:** 33-36 (8 plans total)
+
+**Key accomplishments:**
+- While loops (`while condition do body end`) with break/continue, loop-depth tracking, closure boundary enforcement (E0032/E0033)
+- For-in over integer ranges (`for i in 0..10 do body end`) with zero-allocation counter and half-open range semantics
+- For-in over collections (List, Map with `{k,v}` destructuring, Set) with indexed iteration and O(N) list builder
+- Comprehension semantics: all for-in loops return `List<T>` of collected body results; break returns partial list
+- Filter clause (`for x in list when condition do body end`) with five-block codegen pattern across all collection types
+- Reduction checks at loop back-edges for actor scheduler fairness; runtime list builder for O(N) allocation
+
+**Stats:**
+- 53 files modified
+- 70,501 lines of Rust (+2,955 net from v1.6)
+- 4 phases, 8 plans
+- 2 days (2026-02-08 → 2026-02-09)
+- 34 commits
+
+**Git range:** `feat(33-01)` → `docs(phase-36)`
+
+**What's next:** TBD -- loop system complete. Potential directions include iterator protocol/Iterable trait, `break value`, labeled breaks, string character iteration, distributed actors, or hot code reloading.
+
+---
+

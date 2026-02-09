@@ -2,7 +2,7 @@
 
 ## What This Is
 
-Snow is a programming language that combines Elixir/Ruby-style expressive syntax with static Hindley-Milner type inference and BEAM-style concurrency (actors, supervision trees, fault tolerance), compiled via LLVM to native single-binary executables. The compiler is written in Rust. v1.0 shipped a complete compiler pipeline, actor runtime, standard library, and developer tooling. v1.1 polished the language by resolving all five documented v1.0 limitations. v1.2 added Fun() type annotations and a mark-sweep garbage collector for per-actor heaps. v1.3 completed the trait/protocol system with user-defined interfaces, impl blocks, static dispatch via monomorphization, and six stdlib protocols (Display, Debug, Eq, Ord, Hash, Default) with auto-derive support. v1.4 fixed all five compiler correctness issues: pattern matching codegen, Ordering type, nested collection Display, generic type deriving, and type system soundness for constrained function aliases. v1.5 resolved the final three known limitations: polymorphic List<T>, compile-time Ord-requires-Eq enforcement, and qualified types for higher-order constraint propagation. v1.6 added method dot-syntax (`value.method(args)`) with automatic self-parameter desugaring, working across struct, primitive, generic, and collection types, with true chaining, mixed field/method access, and deterministic ambiguity diagnostics. Zero known compiler correctness issues remain.
+Snow is a programming language that combines Elixir/Ruby-style expressive syntax with static Hindley-Milner type inference and BEAM-style concurrency (actors, supervision trees, fault tolerance), compiled via LLVM to native single-binary executables. The compiler is written in Rust. v1.0 shipped a complete compiler pipeline, actor runtime, standard library, and developer tooling. v1.1 polished the language by resolving all five documented v1.0 limitations. v1.2 added Fun() type annotations and a mark-sweep garbage collector for per-actor heaps. v1.3 completed the trait/protocol system with user-defined interfaces, impl blocks, static dispatch via monomorphization, and six stdlib protocols (Display, Debug, Eq, Ord, Hash, Default) with auto-derive support. v1.4 fixed all five compiler correctness issues: pattern matching codegen, Ordering type, nested collection Display, generic type deriving, and type system soundness for constrained function aliases. v1.5 resolved the final three known limitations: polymorphic List<T>, compile-time Ord-requires-Eq enforcement, and qualified types for higher-order constraint propagation. v1.6 added method dot-syntax (`value.method(args)`) with automatic self-parameter desugaring, working across struct, primitive, generic, and collection types, with true chaining, mixed field/method access, and deterministic ambiguity diagnostics. v1.7 added complete loop and iteration support: while loops with break/continue, for-in over ranges and collections (List, Map, Set) with comprehension semantics returning collected lists, filter clause (`when`), and actor-safe reduction checks. Zero known compiler correctness issues remain.
 
 ## Core Value
 
@@ -51,23 +51,17 @@ Expressive, readable concurrency -- writing concurrent programs should feel as n
 - ✓ Chained method calls: `expr.method1().method2()` -- v1.6
 - ✓ Trait method dot-syntax: trait methods callable via dot on implementing types -- v1.6
 - ✓ Generic method resolution: dot syntax works with monomorphized generic types -- v1.6
-
-## Current Milestone: v1.7 Loops & Iteration
-
-**Goal:** Add for..in loops, while loops, and break/continue as expression-level constructs, enabling natural iteration over Lists, Maps, Sets, and Ranges.
-
-**Target features:**
-- for..in loops over List, Map, Set, and Range with expression semantics (returns collected list)
-- while loops with expression semantics (returns last value)
-- break/continue for early exit and skip within both loop forms
-- Range literal integration in for..in context (1..10)
+- ✓ While loops (`while condition do body end`) with break/continue and loop-depth tracking -- v1.7
+- ✓ For-in over ranges (`for i in 0..10 do body end`) with zero-allocation integer arithmetic -- v1.7
+- ✓ For-in over collections (List, Map with destructuring, Set) with indexed iteration -- v1.7
+- ✓ Comprehension semantics: for-in returns `List<T>` of collected body results -- v1.7
+- ✓ Filter clause (`for x in list when cond do body end`) across all collection types -- v1.7
+- ✓ Break/continue: early exit returns partial list, closure boundary enforcement (E0032/E0033) -- v1.7
+- ✓ Reduction checks at loop back-edges for actor scheduler fairness -- v1.7
 
 ### Active
 
-- [ ] for..in loop syntax and semantics (iterate collections and ranges, return collected results)
-- [ ] while loop syntax and semantics (conditional loop, return last expression value)
-- [ ] break and continue keywords for loop flow control
-- [ ] Loop expression type inference integration with Hindley-Milner
+(None -- planning next milestone)
 
 ### Out of Scope
 
@@ -95,11 +89,11 @@ Expressive, readable concurrency -- writing concurrent programs should feel as n
 
 ## Context
 
-Shipped v1.6 with 67,546 lines of Rust (+1,025 from v1.5).
+Shipped v1.7 with 70,501 lines of Rust (+2,955 from v1.6).
 Tech stack: Rust compiler, LLVM 21 (Inkwell 0.8), corosensei coroutines, rowan CST, ariadne diagnostics.
 Crates: snow-lexer, snow-parser, snow-typeck, snow-mir, snow-codegen, snow-rt, snow-fmt, snow-repl, snow-pkg, snow-lsp, snowc.
 
-1,255 tests passing across all crates. Zero known critical bugs. Zero known compiler correctness issues.
+Tests passing across all crates. Zero known critical bugs. Zero known compiler correctness issues.
 
 Known limitations: None.
 
@@ -156,6 +150,14 @@ Known limitations: None.
 | Stdlib module method fallback | Maps receiver type to module name (String, List, Map, Set, Range) | ✓ Good -- v1.6, dot-syntax for stdlib functions |
 | Defense-in-depth sort in MIR | Sort matching_traits before selection, independent of typeck ambiguity check | ✓ Good -- v1.6, deterministic regardless of HashMap order |
 | AmbiguousMethod with TextRange span | Consistent with other span-bearing error variants | ✓ Good -- v1.6, precise error locations |
+| InferCtx.loop_depth for break/continue | Threading through 55+ signatures too invasive; field on context is clean | ✓ Good -- v1.7, simple loop validation |
+| Reset loop_depth in closures | BRKC-05 requires boundary enforcement; reset to 0 in closure bodies | ✓ Good -- v1.7, correct closure semantics |
+| alloca counter for loop state | mem2reg promotes to register; matches existing if-expression pattern | ✓ Good -- v1.7, zero-overhead loops |
+| Indexed iteration for collections | Counter 0..len avoids Rust iterator complexity; works for List/Map/Set | ✓ Good -- v1.7, uniform codegen |
+| List builder for comprehensions | Pre-allocated O(N) vs O(N^2) append chains for for-in results | ✓ Good -- v1.7, efficient collection |
+| Half-open range [start, end) | Consistent with Rust/Python; SLT comparison for termination | ✓ Good -- v1.7, familiar semantics |
+| Five-block codegen for filter | Filter false skips to latch directly; clean separation from body | ✓ Good -- v1.7, minimal overhead |
+| ForInRange returns List<T> not Unit | Comprehension semantics apply uniformly to all for-in variants | ✓ Good -- v1.7, consistent behavior |
 
 ---
-*Last updated: 2026-02-08 after v1.7 milestone started*
+*Last updated: 2026-02-09 after v1.7 milestone*
