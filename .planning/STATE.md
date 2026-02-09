@@ -10,17 +10,17 @@ See: .planning/PROJECT.md (updated 2026-02-09)
 ## Current Position
 
 Phase: 39 of 42 (Cross-Module Type Checking)
-Plan: 2 of 3 in current phase (39-02 complete)
-Status: In Progress
-Last activity: 2026-02-09 -- Completed 39-02 (cross-module import resolution in inference engine)
+Plan: 3 of 3 in current phase (39-03 complete -- PHASE COMPLETE)
+Status: Phase 39 Complete
+Last activity: 2026-02-09 -- Completed 39-03 (build pipeline integration and E2E tests)
 
-Progress: [||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||      ] 96% (122/~127 plans est.)
+Progress: [|||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||     ] 97% (123/~127 plans est.)
 
 ## Performance Metrics
 
 **All-time Totals:**
-- Plans completed: 122
-- Phases completed: 38
+- Plans completed: 123
+- Phases completed: 39
 - Milestones shipped: 8 (v1.0-v1.7)
 - Lines of Rust: 70,501
 - Timeline: 5 days (2026-02-05 -> 2026-02-09)
@@ -32,6 +32,8 @@ Progress: [|||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||
 Decisions logged in PROJECT.md Key Decisions table.
 
 Recent for v1.8:
+- lower_to_mir_raw per module then merge_mir_modules with post-merge monomorphization -- prevents unreachable builtin codegen failures
+- Track qualified_modules and imported_functions in TypeckResult -- MIR lowerer needs module awareness for qualified access and trait dispatch skip
 - Single LLVM module approach (merge MIR, not separate compilation) -- avoids cross-module linking complexity
 - Module-qualified type names from day one -- prevents type identity issues across module boundaries
 - Hand-written Kahn's algorithm for toposort -- avoids petgraph dependency for simple DAG
@@ -71,6 +73,6 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-09
-Stopped at: Completed 39-02-PLAN.md
+Stopped at: Completed 39-03-PLAN.md (Phase 39 complete)
 Resume file: None
-Next action: Execute 39-03-PLAN.md (cross-module type checking E2E integration tests)
+Next action: Plan Phase 40 or execute next planned phase
