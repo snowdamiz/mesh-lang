@@ -5,14 +5,14 @@
 See: .planning/PROJECT.md (updated 2026-02-08)
 
 **Core value:** Expressive, readable concurrency -- writing concurrent programs should feel as natural as sequential code, with supervision and fault tolerance built in.
-**Current focus:** v1.6 Method Dot-Syntax -- Phase 31 (Extended Method Support)
+**Current focus:** v1.6 Method Dot-Syntax -- Phase 32 (Diagnostics & Integration)
 
 ## Current Position
 
-Phase: 31 of 32 (Extended Method Support) -- COMPLETE
-Plan: 2 of 2 in current phase
-Status: Phase Complete
-Last activity: 2026-02-09 -- Completed 31-02 (MIR stdlib module method fallback + e2e tests)
+Phase: 32 of 32 (Diagnostics & Integration)
+Plan: 1 of 2 in current phase
+Status: In Progress
+Last activity: 2026-02-09 -- Completed 32-01 (Ambiguous method diagnostics)
 
 Progress: [==========] 100%
 
@@ -25,7 +25,7 @@ Progress: [==========] 100%
 - Tests: 1,248 passing
 
 **v1.6 Progress:**
-- Plans completed: 4
+- Plans completed: 5
 - Phases: 3 (30-32)
 
 | Phase | Plan | Duration | Tasks | Files |
@@ -34,6 +34,7 @@ Progress: [==========] 100%
 | 30-02 | MIR Method Lowering | 23min | 2 | 3 |
 | 31-01 | Extended Method Support (typeck) | 3min | 2 | 2 |
 | 31-02 | MIR Stdlib Fallback + E2E Tests | 5min | 2 | 2 |
+| 32-01 | Ambiguous Method Diagnostics | 6min | 2 | 6 |
 
 ## Accumulated Context
 
@@ -57,6 +58,9 @@ v1.6 decisions:
 - Display registered for List<T>, Map<K,V>, Set in builtins for collection to_string via dot-syntax
 - MIR stdlib module fallback maps MirType::String to string_ prefix, MirType::Ptr to list_ prefix
 - True chaining (p.to_string().length()) and mixed field+method (p.name.length()) work end-to-end
+- AmbiguousMethod span field uses TextRange, consistent with other span-bearing error variants
+- Help text lists per-trait qualified syntax joined by "or" separator
+- Display impl ignores span (span: _) following existing conventions
 
 ### Pending Todos
 
@@ -69,6 +73,6 @@ None. Research confidence HIGH across all areas.
 ## Session Continuity
 
 Last session: 2026-02-09
-Stopped at: Completed 31-02-PLAN.md (Phase 31 complete)
+Stopped at: Completed 32-01-PLAN.md
 Resume file: None
-Next action: Execute Phase 32 (method polish/cleanup) or proceed to next milestone
+Next action: Execute 32-02-PLAN.md (remaining diagnostics polish)
