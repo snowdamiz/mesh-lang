@@ -153,23 +153,42 @@ pub fn extract_imports(source_file: &SourceFile) -> Vec<String> {
     imports
 }
 
-/// Build a complete module dependency graph from a Snow project directory.
+/// Complete project data after discovery, parsing, and graph construction.
+///
+/// All Vecs are indexed by ModuleId.0 -- the i-th entry corresponds to
+/// the module with ModuleId(i).
+pub struct ProjectData {
+    /// The module dependency graph.
+    pub graph: ModuleGraph,
+    /// Modules in compilation order (dependencies before dependents).
+    pub compilation_order: Vec<ModuleId>,
+    /// Source code for each module (indexed by ModuleId.0).
+    pub module_sources: Vec<String>,
+    /// Parsed AST for each module (indexed by ModuleId.0).
+    pub module_parses: Vec<snow_parser::Parse>,
+}
+
+/// Build a complete project: discover files, parse all, build dependency graph.
+///
+/// This is the main entry point for the multi-file build pipeline.
+/// Unlike [`build_module_graph`], this function retains the per-file
+/// Parse results and source strings for downstream compilation phases.
 ///
 /// Pipeline:
 /// 1. Discover all `.snow` files in the project.
-/// 2. Register each file as a module in the graph.
-/// 3. Parse each file and extract imports to build dependency edges.
+/// 2. Register each file as a module, read and parse source.
+/// 3. Extract imports from parsed ASTs to build dependency edges.
 /// 4. Run topological sort to get compilation order.
 ///
 /// Unknown imports (stdlib, typos) are silently skipped.
 /// Self-imports produce a specific error.
 /// Circular dependencies produce an error with the cycle path.
-pub fn build_module_graph(project_root: &Path) -> Result<(ModuleGraph, Vec<ModuleId>), String> {
-    // Phase 1: Discover files and register modules.
+pub fn build_project(project_root: &Path) -> Result<ProjectData, String> {
+    // Phase 1: Discover files, register modules, read and parse source.
     let files = discover_snow_files(project_root)?;
     let mut graph = ModuleGraph::new();
-
-    let mut module_sources: Vec<(ModuleId, String)> = Vec::new();
+    let mut module_sources = Vec::new();
+    let mut module_parses = Vec::new();
 
     for relative_path in &files {
         let full_path = project_root.join(relative_path);
@@ -181,31 +200,38 @@ pub fn build_module_graph(project_root: &Path) -> Result<(ModuleGraph, Vec<Modul
             "Main".to_string()
         } else {
             path_to_module_name(relative_path)
-                .ok_or_else(|| format!("Cannot determine module name for '{}'", relative_path.display()))?
+                .ok_or_else(|| {
+                    format!(
+                        "Cannot determine module name for '{}'",
+                        relative_path.display()
+                    )
+                })?
         };
 
-        let id = graph.add_module(name, relative_path.clone(), is_entry);
-        module_sources.push((id, source));
+        let parse = snow_parser::parse(&source);
+        let _id = graph.add_module(name, relative_path.clone(), is_entry);
+
+        module_sources.push(source);
+        module_parses.push(parse);
     }
 
-    // Phase 2: Parse files and build dependency edges.
-    for (id, source) in &module_sources {
-        let parse = snow_parser::parse(source);
-        let tree = parse.tree();
+    // Phase 2: Build dependency edges from import declarations.
+    for id_val in 0..graph.module_count() {
+        let id = ModuleId(id_val as u32);
+        let tree = module_parses[id_val].tree();
         let imports = extract_imports(&tree);
-
-        let module_name = graph.get(*id).name.clone();
+        let module_name = graph.get(id).name.clone();
 
         for import_name in imports {
             match graph.resolve(&import_name) {
                 None => {
                     // Unknown import (stdlib or typo) -- skip silently.
                 }
-                Some(dep_id) if dep_id == *id => {
+                Some(dep_id) if dep_id == id => {
                     return Err(format!("Module '{}' cannot import itself", module_name));
                 }
                 Some(dep_id) => {
-                    graph.add_dependency(*id, dep_id);
+                    graph.add_dependency(id, dep_id);
                 }
             }
         }
@@ -216,7 +242,22 @@ pub fn build_module_graph(project_root: &Path) -> Result<(ModuleGraph, Vec<Modul
         format!("Circular dependency: {}", e)
     })?;
 
-    Ok((graph, compilation_order))
+    Ok(ProjectData {
+        graph,
+        compilation_order,
+        module_sources,
+        module_parses,
+    })
+}
+
+/// Build a complete module dependency graph from a Snow project directory.
+///
+/// Convenience wrapper around [`build_project`] that returns only the graph
+/// and compilation order (no parse data). Preserves the Phase 37 API for
+/// existing tests and callers that don't need per-file parse results.
+pub fn build_module_graph(project_root: &Path) -> Result<(ModuleGraph, Vec<ModuleId>), String> {
+    let project = build_project(project_root)?;
+    Ok((project.graph, project.compilation_order))
 }
 
 #[cfg(test)]
