@@ -14,9 +14,9 @@ Requirements for resolving all three remaining known limitations.
 - [x] **LIST-03**: User can create and manipulate List<Bool>
 - [x] **LIST-04**: User can create and manipulate List<MyStruct> for user-defined struct types
 - [x] **LIST-05**: User can create and manipulate nested lists (List<List<Int>>)
-- [ ] **LIST-06**: Display/Debug works for List<T> where T implements Display/Debug
-- [ ] **LIST-07**: Eq/Ord works for List<T> where T implements Eq/Ord
-- [ ] **LIST-08**: Pattern matching on List<T> works for all element types (head :: tail destructuring)
+- [x] **LIST-06**: Display/Debug works for List<T> where T implements Display/Debug
+- [x] **LIST-07**: Eq/Ord works for List<T> where T implements Eq/Ord
+- [x] **LIST-08**: Pattern matching on List<T> works for all element types (head :: tail destructuring)
 
 ### Trait Deriving Safety
 
@@ -54,9 +54,9 @@ None -- this is a focused correctness milestone.
 | LIST-03 | Phase 26 | Complete |
 | LIST-04 | Phase 26 | Complete |
 | LIST-05 | Phase 26 | Complete |
-| LIST-06 | Phase 27 | Pending |
-| LIST-07 | Phase 27 | Pending |
-| LIST-08 | Phase 27 | Pending |
+| LIST-06 | Phase 27 | Complete |
+| LIST-07 | Phase 27 | Complete |
+| LIST-08 | Phase 27 | Complete |
 | DERIVE-01 | Phase 28 | Pending |
 | DERIVE-02 | Phase 28 | Pending |
 | DERIVE-03 | Phase 28 | Pending |
@@ -71,4 +71,4 @@ None -- this is a focused correctness milestone.
 
 ---
 *Requirements defined: 2026-02-08*
-*Last updated: 2026-02-08 after roadmap creation*
+*Last updated: 2026-02-09 after Phase 27 completion*
