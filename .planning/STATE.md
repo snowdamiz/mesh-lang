@@ -2,17 +2,17 @@
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-02-09)
+See: .planning/PROJECT.md (updated 2026-02-08)
 
 **Core value:** Expressive, readable concurrency -- writing concurrent programs should feel as natural as sequential code, with supervision and fault tolerance built in.
-**Current focus:** Planning next milestone
+**Current focus:** v1.7 Loops & Iteration
 
 ## Current Position
 
-Phase: -- (between milestones)
-Plan: --
-Status: v1.6 Method Dot-Syntax shipped 2026-02-09
-Last activity: 2026-02-09 -- Completed v1.6 milestone archival
+Phase: Not started (defining requirements)
+Plan: —
+Status: Defining requirements
+Last activity: 2026-02-08 — Milestone v1.7 started
 
 Progress: All milestones through v1.6 shipped.
 
@@ -41,7 +41,7 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-02-09
-Stopped at: v1.6 milestone archived
+Last session: 2026-02-08
+Stopped at: Defining v1.7 requirements
 Resume file: None
-Next action: Start next milestone with /gsd:new-milestone
+Next action: Complete requirements and roadmap for v1.7

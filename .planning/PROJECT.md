@@ -52,9 +52,22 @@ Expressive, readable concurrency -- writing concurrent programs should feel as n
 - ✓ Trait method dot-syntax: trait methods callable via dot on implementing types -- v1.6
 - ✓ Generic method resolution: dot syntax works with monomorphized generic types -- v1.6
 
+## Current Milestone: v1.7 Loops & Iteration
+
+**Goal:** Add for..in loops, while loops, and break/continue as expression-level constructs, enabling natural iteration over Lists, Maps, Sets, and Ranges.
+
+**Target features:**
+- for..in loops over List, Map, Set, and Range with expression semantics (returns collected list)
+- while loops with expression semantics (returns last value)
+- break/continue for early exit and skip within both loop forms
+- Range literal integration in for..in context (1..10)
+
 ### Active
 
-(None -- planning next milestone)
+- [ ] for..in loop syntax and semantics (iterate collections and ranges, return collected results)
+- [ ] while loop syntax and semantics (conditional loop, return last expression value)
+- [ ] break and continue keywords for loop flow control
+- [ ] Loop expression type inference integration with Hindley-Milner
 
 ### Out of Scope
 
@@ -145,4 +158,4 @@ Known limitations: None.
 | AmbiguousMethod with TextRange span | Consistent with other span-bearing error variants | ✓ Good -- v1.6, precise error locations |
 
 ---
-*Last updated: 2026-02-09 after v1.6 milestone*
+*Last updated: 2026-02-08 after v1.7 milestone started*
