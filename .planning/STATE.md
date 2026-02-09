@@ -5,21 +5,21 @@
 See: .planning/PROJECT.md (updated 2026-02-09)
 
 **Core value:** Expressive, readable concurrency -- writing concurrent programs should feel as natural as sequential code, with supervision and fault tolerance built in.
-**Current focus:** v1.8 Module System -- Phase 41 (MIR Merge Codegen) -- COMPLETE
+**Current focus:** v1.8 Module System -- Phase 42 (Diagnostics & Integration) -- IN PROGRESS
 
 ## Current Position
 
-Phase: 41 of 42 (MIR Merge Codegen) -- COMPLETE
-Plan: 1 of 1 in current phase (41-01 complete)
-Status: Phase 41 Complete
-Last activity: 2026-02-09 -- Completed 41-01 (module-qualified name mangling + E2E tests)
+Phase: 42 of 42 (Diagnostics & Integration)
+Plan: 1 of 2 in current phase (42-01 complete)
+Status: Executing Phase 42
+Last activity: 2026-02-09 -- Completed 42-01 (named-source ariadne diagnostics)
 
-Progress: [||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||] 100% (127/~127 plans est.)
+Progress: [||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||] 100% (128/~129 plans est.)
 
 ## Performance Metrics
 
 **All-time Totals:**
-- Plans completed: 127
+- Plans completed: 128
 - Phases completed: 41
 - Milestones shipped: 8 (v1.0-v1.7)
 - Lines of Rust: 70,501
@@ -58,6 +58,7 @@ Recent for v1.8:
 - qualify_name method with prefix checks for builtins, trait impls, pub fns, and main -- prevents incorrect prefixing
 - user_fn_defs set tracks FnDef items separately from variant constructors for call-site qualification
 - Module-qualified naming: ModuleName__private_fn using double-underscore separator at MIR level
+- ariadne::sources() named cache with (String, Range<usize>) spans replaces anonymous Source::from() for file-aware diagnostics
 
 ### Research Notes
 
@@ -78,6 +79,6 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-09
-Stopped at: Completed 41-01-PLAN.md (Phase 41 complete)
+Stopped at: Completed 42-01-PLAN.md
 Resume file: None
-Next action: Begin Phase 42 (Diagnostics & Integration)
+Next action: Execute 42-02-PLAN.md
