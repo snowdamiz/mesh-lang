@@ -4,6 +4,17 @@
 
 Snow is a programming language that combines Elixir/Ruby-style expressive syntax with static Hindley-Milner type inference and BEAM-style concurrency (actors, supervision trees, fault tolerance), compiled via LLVM to native single-binary executables. The compiler is written in Rust. v1.0 shipped a complete compiler pipeline, actor runtime, standard library, and developer tooling. v1.1 polished the language by resolving all five documented v1.0 limitations. v1.2 added Fun() type annotations and a mark-sweep garbage collector for per-actor heaps. v1.3 completed the trait/protocol system with user-defined interfaces, impl blocks, static dispatch via monomorphization, and six stdlib protocols (Display, Debug, Eq, Ord, Hash, Default) with auto-derive support. v1.4 fixed all five compiler correctness issues: pattern matching codegen, Ordering type, nested collection Display, generic type deriving, and type system soundness for constrained function aliases. v1.5 resolved the final three known limitations: polymorphic List<T>, compile-time Ord-requires-Eq enforcement, and qualified types for higher-order constraint propagation. Zero known compiler correctness issues remain.
 
+## Current Milestone: v1.6 Method Dot-Syntax
+
+**Goal:** Add method call syntax so values can call their impl/trait methods via dot notation (e.g., `my_struct.to_string()`, `a.compare(b)`), resolving through impl blocks with static dispatch.
+
+**Target features:**
+- Method call resolution: `expr.method(args)` resolves to impl block methods for the receiver's type
+- Self-parameter desugaring: dot calls pass the receiver as the first argument to the resolved function
+- Chained method calls: `expr.method1().method2()` works naturally
+- Integration with existing trait system: trait methods callable via dot syntax on implementing types
+- Generic method resolution: dot syntax works with monomorphized generic types
+
 ## Core Value
 
 Expressive, readable concurrency -- writing concurrent programs should feel as natural and clean as writing sequential code, with the safety net of supervision and fault tolerance built into the language.
@@ -49,7 +60,11 @@ Expressive, readable concurrency -- writing concurrent programs should feel as n
 
 ### Active
 
-None -- all v1.x requirements validated. Next milestone TBD.
+- [ ] Method dot-syntax: `expr.method(args)` resolves impl block methods for receiver type
+- [ ] Self-parameter desugaring: receiver passed as first argument automatically
+- [ ] Chained method calls: `expr.method1().method2()`
+- [ ] Trait method dot-syntax: trait methods callable via dot on implementing types
+- [ ] Generic method resolution: dot syntax works with monomorphized generic types
 
 ### Out of Scope
 
@@ -130,4 +145,4 @@ Known limitations: None.
 | NameRef-only argument constraint checking | Covers direct names and let aliases; complex expressions out of scope | ✓ Good -- v1.5, practical coverage |
 
 ---
-*Last updated: 2026-02-09 after v1.5 milestone completion*
+*Last updated: 2026-02-08 after v1.6 milestone start*
