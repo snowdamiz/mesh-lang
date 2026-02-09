@@ -1,5 +1,33 @@
 # Project Milestones: Snow
 
+## v1.6 Method Dot-Syntax (Shipped: 2026-02-09)
+
+**Delivered:** Method dot-syntax (`value.method(args)`) with automatic self-parameter desugaring, working across struct, primitive, generic, and collection types, with true chaining, mixed field/method access, deterministic ambiguity diagnostics, and zero regressions across all existing syntax forms.
+
+**Phases completed:** 30-32 (6 plans total)
+
+**Key accomplishments:**
+- Method dot-syntax (`value.method(args)`) with automatic self-parameter desugaring via retry-based resolution in type checker and shared resolve_trait_callee in MIR
+- Primitive, generic, and collection types all callable via dot syntax (`42.to_string()`, `my_list.to_string()`)
+- True method chaining (`p.to_string().length()`) and mixed field/method access (`p.name.length()`)
+- Deterministic alphabetical ambiguity diagnostics with per-trait qualified syntax suggestions
+- Stdlib module method fallback enabling dot-syntax for String, List, Map, Set, Range module functions
+- Zero regressions across all 5 existing syntax forms (struct fields, module-qualified, pipes, sum types, actors)
+
+**Stats:**
+- 28 files modified
+- 67,546 lines of Rust (+1,025 net from v1.5)
+- 3 phases, 6 plans, 12 tasks
+- 1 day (2026-02-08 → 2026-02-09)
+- 24 commits
+- 1,255 tests passing (+23 new in v1.6)
+
+**Git range:** `feat(30-01)` → `feat(32-01)`
+
+**What's next:** TBD -- method dot-syntax complete. Potential directions include inherent methods (impl without trait), method references, associated types, Iterator/From protocols, distributed actors, or hot code reloading.
+
+---
+
 ## v1.5 Compiler Correctness (Shipped: 2026-02-09)
 
 **Delivered:** Resolved all three remaining known limitations -- polymorphic List<T>, Ord-requires-Eq compile-time enforcement, and higher-order constraint propagation -- making the Snow type and trait systems fully correct with zero known compiler correctness issues.

@@ -60,64 +60,24 @@ See milestones/v1.5-ROADMAP.md for full phase details.
 
 </details>
 
-### v1.6 Method Dot-Syntax (In Progress)
+<details>
+<summary>v1.6 Method Dot-Syntax (Phases 30-32) - SHIPPED 2026-02-09</summary>
 
-**Milestone Goal:** Add method call syntax so values can call their impl/trait methods via dot notation (`value.method(args)`), with self-parameter desugaring, chaining, and clear diagnostics.
+See milestones/v1.6-ROADMAP.md for full phase details.
+6 plans across 3 phases. 67,546 lines of Rust (+1,025). 24 commits.
 
-- [x] **Phase 30: Core Method Resolution** - Basic `value.method(args)` works end-to-end through type checker and MIR lowering
-- [x] **Phase 31: Extended Method Support** - Primitives, generics, chaining, and mixed field/method access
-- [x] **Phase 32: Diagnostics and Integration** - Ambiguity errors, deterministic ordering, and non-regression for existing syntax
-
-## Phase Details
-
-### Phase 30: Core Method Resolution
-**Goal**: Users can call trait impl methods on struct values using dot syntax, with the receiver automatically passed as the first argument
-**Depends on**: Phase 29 (v1.5 complete)
-**Requirements**: METH-01, METH-02, METH-03, DIAG-01
-**Success Criteria** (what must be TRUE):
-  1. User can write `point.to_string()` and it resolves to the Display impl's `to_string` method for the Point type
-  2. The receiver (`point`) is automatically passed as the first argument -- `point.to_string()` produces identical results to `to_string(point)`
-  3. Method resolution searches all trait impl blocks for the receiver's concrete type and finds the correct method
-  4. Calling a nonexistent method on a type produces a clear "no method `x` on type `Y`" error, not a confusing "no field" error
-**Plans:** 2 plans
-Plans:
-- [ ] 30-01-PLAN.md -- Type checker method resolution (NoSuchMethod error + infer_field_access fallback + infer_call detection)
-- [ ] 30-02-PLAN.md -- MIR lowering method call interception + shared dispatch helper + e2e tests
-
-### Phase 31: Extended Method Support
-**Goal**: Method dot-syntax works with primitive types, generic types, and supports chaining and mixed field/method access
-**Depends on**: Phase 30
-**Requirements**: METH-04, METH-05, CHAIN-01, CHAIN-02
-**Success Criteria** (what must be TRUE):
-  1. User can call methods on primitive types -- `42.to_string()` returns `"42"`, `true.to_string()` returns `"true"`
-  2. User can call methods on generic types -- `my_list.to_string()` works where `List<T>` implements Display
-  3. User can chain method calls -- `point.to_string().length()` compiles and returns the length of the string representation
-  4. User can mix field access and method calls -- `person.name.length()` accesses the `name` field then calls `length()` on the result
-**Plans:** 2 plans
-Plans:
-- [ ] 31-01-PLAN.md -- Type checker non-struct method resolution fix + Display for List<T> + stdlib module method fallback
-- [ ] 31-02-PLAN.md -- MIR stdlib module method fallback + e2e tests for primitives, generics, chaining, mixed access
-
-### Phase 32: Diagnostics and Integration
-**Goal**: Method dot-syntax has polished diagnostics for edge cases and all existing syntax forms continue to work unchanged
-**Depends on**: Phase 31
-**Requirements**: DIAG-02, DIAG-03, INTG-01, INTG-02, INTG-03, INTG-04, INTG-05
-**Success Criteria** (what must be TRUE):
-  1. When multiple traits provide the same method for a type, the compiler produces an error listing the conflicting traits and suggests qualified syntax (e.g., `Display.to_string(point)`)
-  2. Ambiguity errors use deterministic ordering (alphabetical by trait name), not random HashMap iteration order
-  3. Struct field access (`point.x`), module-qualified calls (`String.length(s)`), pipe operator (`value |> method(args)`), sum type variant access (`Shape.Circle`), and actor `self` in receive blocks all continue to work exactly as before
-  4. Existing test suite passes with zero regressions
-**Plans:** 2 plans
-Plans:
-- [ ] 32-01-PLAN.md -- Ambiguous method diagnostics (deterministic ordering, span, qualified syntax help text)
-- [ ] 32-02-PLAN.md -- Integration e2e tests (INTG-01 through INTG-05) + MIR defense-in-depth sort
+</details>
 
 ## Progress
 
-**Execution Order:** 30 -> 31 -> 32
-
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
-| 30. Core Method Resolution | v1.6 | 2/2 | ✓ Complete | 2026-02-08 |
-| 31. Extended Method Support | v1.6 | 2/2 | ✓ Complete | 2026-02-08 |
-| 32. Diagnostics and Integration | v1.6 | 2/2 | ✓ Complete | 2026-02-09 |
+| 1-10 | v1.0 | 55/55 | Complete | 2026-02-07 |
+| 11-15 | v1.1 | 10/10 | Complete | 2026-02-08 |
+| 16-17 | v1.2 | 6/6 | Complete | 2026-02-08 |
+| 18-22 | v1.3 | 18/18 | Complete | 2026-02-08 |
+| 23-25 | v1.4 | 5/5 | Complete | 2026-02-08 |
+| 26-29 | v1.5 | 6/6 | Complete | 2026-02-09 |
+| 30-32 | v1.6 | 6/6 | Complete | 2026-02-09 |
+
+**Total: 32 phases, 106 plans, all shipped.**

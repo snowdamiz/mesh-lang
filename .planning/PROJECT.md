@@ -2,18 +2,7 @@
 
 ## What This Is
 
-Snow is a programming language that combines Elixir/Ruby-style expressive syntax with static Hindley-Milner type inference and BEAM-style concurrency (actors, supervision trees, fault tolerance), compiled via LLVM to native single-binary executables. The compiler is written in Rust. v1.0 shipped a complete compiler pipeline, actor runtime, standard library, and developer tooling. v1.1 polished the language by resolving all five documented v1.0 limitations. v1.2 added Fun() type annotations and a mark-sweep garbage collector for per-actor heaps. v1.3 completed the trait/protocol system with user-defined interfaces, impl blocks, static dispatch via monomorphization, and six stdlib protocols (Display, Debug, Eq, Ord, Hash, Default) with auto-derive support. v1.4 fixed all five compiler correctness issues: pattern matching codegen, Ordering type, nested collection Display, generic type deriving, and type system soundness for constrained function aliases. v1.5 resolved the final three known limitations: polymorphic List<T>, compile-time Ord-requires-Eq enforcement, and qualified types for higher-order constraint propagation. Zero known compiler correctness issues remain.
-
-## Current Milestone: v1.6 Method Dot-Syntax
-
-**Goal:** Add method call syntax so values can call their impl/trait methods via dot notation (e.g., `my_struct.to_string()`, `a.compare(b)`), resolving through impl blocks with static dispatch.
-
-**Target features:**
-- Method call resolution: `expr.method(args)` resolves to impl block methods for the receiver's type
-- Self-parameter desugaring: dot calls pass the receiver as the first argument to the resolved function
-- Chained method calls: `expr.method1().method2()` works naturally
-- Integration with existing trait system: trait methods callable via dot syntax on implementing types
-- Generic method resolution: dot syntax works with monomorphized generic types
+Snow is a programming language that combines Elixir/Ruby-style expressive syntax with static Hindley-Milner type inference and BEAM-style concurrency (actors, supervision trees, fault tolerance), compiled via LLVM to native single-binary executables. The compiler is written in Rust. v1.0 shipped a complete compiler pipeline, actor runtime, standard library, and developer tooling. v1.1 polished the language by resolving all five documented v1.0 limitations. v1.2 added Fun() type annotations and a mark-sweep garbage collector for per-actor heaps. v1.3 completed the trait/protocol system with user-defined interfaces, impl blocks, static dispatch via monomorphization, and six stdlib protocols (Display, Debug, Eq, Ord, Hash, Default) with auto-derive support. v1.4 fixed all five compiler correctness issues: pattern matching codegen, Ordering type, nested collection Display, generic type deriving, and type system soundness for constrained function aliases. v1.5 resolved the final three known limitations: polymorphic List<T>, compile-time Ord-requires-Eq enforcement, and qualified types for higher-order constraint propagation. v1.6 added method dot-syntax (`value.method(args)`) with automatic self-parameter desugaring, working across struct, primitive, generic, and collection types, with true chaining, mixed field/method access, and deterministic ambiguity diagnostics. Zero known compiler correctness issues remain.
 
 ## Core Value
 
@@ -52,19 +41,20 @@ Expressive, readable concurrency -- writing concurrent programs should feel as n
 - ✓ Nested collection Display renders recursively with synthetic MIR wrapper callbacks -- v1.4
 - ✓ Generic types support auto-derive with monomorphization-aware trait impl registration -- v1.4
 - ✓ Higher-order constrained functions preserve trait constraints when captured as values -- v1.4
-- ✓ Polymorphic List<T> — lists work with any element type (String, Bool, structs, nested lists) -- v1.5
-- ✓ List trait integration — Display/Debug/Eq/Ord work for List<T> via callback dispatch -- v1.5
-- ✓ Cons pattern destructuring — head :: tail pattern matching for all list element types -- v1.5
-- ✓ Compile-time trait deriving safety — Ord without Eq emits E0029 error with suggestion -- v1.5
-- ✓ Qualified types — trait constraints propagate through higher-order function arguments -- v1.5
+- ✓ Polymorphic List<T> -- lists work with any element type (String, Bool, structs, nested lists) -- v1.5
+- ✓ List trait integration -- Display/Debug/Eq/Ord work for List<T> via callback dispatch -- v1.5
+- ✓ Cons pattern destructuring -- head :: tail pattern matching for all list element types -- v1.5
+- ✓ Compile-time trait deriving safety -- Ord without Eq emits E0029 error with suggestion -- v1.5
+- ✓ Qualified types -- trait constraints propagate through higher-order function arguments -- v1.5
+- ✓ Method dot-syntax: `expr.method(args)` resolves impl block methods for receiver type -- v1.6
+- ✓ Self-parameter desugaring: receiver passed as first argument automatically -- v1.6
+- ✓ Chained method calls: `expr.method1().method2()` -- v1.6
+- ✓ Trait method dot-syntax: trait methods callable via dot on implementing types -- v1.6
+- ✓ Generic method resolution: dot syntax works with monomorphized generic types -- v1.6
 
 ### Active
 
-- [ ] Method dot-syntax: `expr.method(args)` resolves impl block methods for receiver type
-- [ ] Self-parameter desugaring: receiver passed as first argument automatically
-- [ ] Chained method calls: `expr.method1().method2()`
-- [ ] Trait method dot-syntax: trait methods callable via dot on implementing types
-- [ ] Generic method resolution: dot syntax works with monomorphized generic types
+(None -- planning next milestone)
 
 ### Out of Scope
 
@@ -85,14 +75,18 @@ Expressive, readable concurrency -- writing concurrent programs should feel as n
 - Dynamic dispatch / vtables / trait objects -- use sum types instead; static dispatch via monomorphization
 - Higher-kinded types (Functor/Monad) -- out of language philosophy
 - Specialization (overlapping impls) -- unsound without careful design; not planned
+- UFCS (any function callable via dot) -- pipe operator covers this use case; UFCS blurs method/function distinction
+- Auto-ref/auto-deref on receiver -- Snow has no references; all values are value-typed
+- Method overloading by parameter count -- Snow does not support function overloading
+- Extension methods without traits -- breaks coherence; use pipe + module functions instead
 
 ## Context
 
-Shipped v1.5 with 66,521 lines of Rust (+1,973 from v1.4).
+Shipped v1.6 with 67,546 lines of Rust (+1,025 from v1.5).
 Tech stack: Rust compiler, LLVM 21 (Inkwell 0.8), corosensei coroutines, rowan CST, ariadne diagnostics.
 Crates: snow-lexer, snow-parser, snow-typeck, snow-mir, snow-codegen, snow-rt, snow-fmt, snow-repl, snow-pkg, snow-lsp, snowc.
 
-1,232 tests passing across all crates. Zero known critical bugs. Zero known compiler correctness issues.
+1,255 tests passing across all crates. Zero known critical bugs. Zero known compiler correctness issues.
 
 Known limitations: None.
 
@@ -107,7 +101,7 @@ Known limitations: None.
 
 | Decision | Rationale | Outcome |
 |----------|-----------|---------|
-| Rust for compiler | Strong LLVM bindings, memory safe, good for complex software | ✓ Good -- 63K LOC Rust, stable compiler |
+| Rust for compiler | Strong LLVM bindings, memory safe, good for complex software | ✓ Good -- 67K LOC Rust, stable compiler |
 | LLVM as backend | Proven codegen, multi-platform, avoids writing own backend | ✓ Good -- native binaries on macOS/Linux |
 | Elixir/Ruby syntax style | Expressive, readable, pattern matching native | ✓ Good -- clean do/end blocks, pipe operator |
 | Static types with HM inference | Safety without verbosity | ✓ Good -- rarely need annotations |
@@ -143,6 +137,12 @@ Known limitations: None.
 | E0029 error + early-return for Ord without Eq | User opted into selective deriving; respect with clear error and suggestion | ✓ Good -- v1.5, user-friendly diagnostics |
 | Soft error collection for argument constraints | Callee check returns Err; argument check uses extend to avoid aborting inference early | ✓ Good -- v1.5, non-disruptive constraint checking |
 | NameRef-only argument constraint checking | Covers direct names and let aliases; complex expressions out of scope | ✓ Good -- v1.5, practical coverage |
+| Retry-based method resolution | Normal inference first, method-call fallback on NoSuchField; preserves backward compat | ✓ Good -- v1.6, zero regressions |
+| Method as last in resolution priority | module > service > variant > struct field > method; method is fallback | ✓ Good -- v1.6, no existing syntax affected |
+| Shared resolve_trait_callee helper | Eliminates duplication between bare-name and dot-syntax dispatch | ✓ Good -- v1.6, single maintenance point |
+| Stdlib module method fallback | Maps receiver type to module name (String, List, Map, Set, Range) | ✓ Good -- v1.6, dot-syntax for stdlib functions |
+| Defense-in-depth sort in MIR | Sort matching_traits before selection, independent of typeck ambiguity check | ✓ Good -- v1.6, deterministic regardless of HashMap order |
+| AmbiguousMethod with TextRange span | Consistent with other span-bearing error variants | ✓ Good -- v1.6, precise error locations |
 
 ---
-*Last updated: 2026-02-08 after v1.6 milestone start*
+*Last updated: 2026-02-09 after v1.6 milestone*
