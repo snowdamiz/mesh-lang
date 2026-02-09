@@ -3,7 +3,7 @@ source: crates/snow-typeck/tests/diagnostics.rs
 expression: output
 ---
 [E0017] Error: receive used outside actor block
-   ╭─[ <unknown>:1:1 ]
+   ╭─[ test.snow:1:1 ]
    │
  1 │ ╭─▶ receive do
  2 │ ├─▶ n -> n

@@ -3,7 +3,7 @@ source: crates/snow-typeck/tests/diagnostics.rs
 expression: output
 ---
 [E0001] Error: expected String, found Int
-   ╭─[ <unknown>:1:5 ]
+   ╭─[ test.snow:1:5 ]
    │
  1 │ let x :: Int = "hello"
    │     ──┬──  

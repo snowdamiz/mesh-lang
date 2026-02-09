@@ -3,7 +3,7 @@ source: crates/snow-typeck/tests/diagnostics.rs
 expression: output
 ---
 [E0009] Error: unknown field z in struct Point
-   ╭─[ <unknown>:5:1 ]
+   ╭─[ test.snow:5:1 ]
    │
  5 │ Point { x: 1, z: 2 }
    │ ─┬─  

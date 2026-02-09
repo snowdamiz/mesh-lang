@@ -3,7 +3,7 @@ source: crates/snow-typeck/tests/diagnostics.rs
 expression: output
 ---
 [W0001] Warning: redundant match arm (arm 2)
-   ╭─[ <unknown>:2:2 ]
+   ╭─[ test.snow:2:2 ]
    │
  2 │   _ -> 2 end
    │  ───┬──  

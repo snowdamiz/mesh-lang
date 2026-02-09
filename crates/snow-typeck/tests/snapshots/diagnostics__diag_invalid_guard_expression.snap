@@ -3,7 +3,7 @@ source: crates/snow-typeck/tests/diagnostics.rs
 expression: output
 ---
 [E0013] Error: invalid guard: function calls not allowed in guards
-   ╭─[ <unknown>:1:17 ]
+   ╭─[ test.snow:1:17 ]
    │
  1 │ case x do n when f(n) -> n end
    │                 ──┬─  

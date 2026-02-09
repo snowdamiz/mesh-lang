@@ -3,7 +3,7 @@ source: crates/snow-typeck/tests/diagnostics.rs
 expression: output
 ---
 [E0016] Error: cannot spawn non-function: found Int
-   ╭─[ <unknown>:1:1 ]
+   ╭─[ test.snow:1:1 ]
    │
  1 │ spawn(42)
    │ ────┬────  
