@@ -5,21 +5,21 @@
 See: .planning/PROJECT.md (updated 2026-02-09)
 
 **Core value:** Expressive, readable concurrency -- writing concurrent programs should feel as natural as sequential code, with supervision and fault tolerance built in.
-**Current focus:** v1.8 Module System -- Phase 39 (Cross-Module Type Checking)
+**Current focus:** v1.8 Module System -- Phase 40 (Visibility Enforcement)
 
 ## Current Position
 
-Phase: 39 of 42 (Cross-Module Type Checking)
-Plan: 3 of 3 in current phase (39-03 complete -- PHASE COMPLETE)
-Status: Phase 39 Complete
-Last activity: 2026-02-09 -- Completed 39-03 (build pipeline integration and E2E tests)
+Phase: 40 of 42 (Visibility Enforcement)
+Plan: 1 of 2 in current phase (40-01 complete)
+Status: Executing Phase 40
+Last activity: 2026-02-09 -- Completed 40-01 (visibility filtering and PrivateItem error)
 
-Progress: [|||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||     ] 97% (123/~127 plans est.)
+Progress: [||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||   ] 98% (124/~127 plans est.)
 
 ## Performance Metrics
 
 **All-time Totals:**
-- Plans completed: 123
+- Plans completed: 124
 - Phases completed: 39
 - Milestones shipped: 8 (v1.0-v1.7)
 - Lines of Rust: 70,501
@@ -53,6 +53,8 @@ Recent for v1.8:
 - collect_exports extracts impl names from AST PATH nodes matching infer_impl_def pattern
 - qualified_modules stored on InferCtx to avoid parameter threading cascade across 6000+ line file
 - User modules checked before stdlib in both import handling and field access resolution
+- Trait impls remain unconditionally exported (XMOD-05) while trait defs are gated by pub visibility
+- PrivateItem error only for selective imports (from-import) -- qualified access to private items produces natural unbound/no-such-field errors
 
 ### Research Notes
 
@@ -73,6 +75,6 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-09
-Stopped at: Completed 39-03-PLAN.md (Phase 39 complete)
+Stopped at: Completed 40-01-PLAN.md
 Resume file: None
-Next action: Plan Phase 40 or execute next planned phase
+Next action: Execute 40-02-PLAN.md (visibility enforcement e2e tests)
