@@ -101,7 +101,11 @@ See milestones/v1.7-ROADMAP.md for full phase details.
   3. `main.snow` in the project root is recognized as the entry point, not as a module
   4. Import declarations in parsed files produce a dependency graph with deterministic topological ordering
   5. A circular import chain (A imports B, B imports C, C imports A) produces a compile error naming the cycle path
-**Plans**: TBD
+**Plans:** 2 plans
+
+Plans:
+- [ ] 37-01-PLAN.md -- ModuleGraph types in snow-common, file discovery and path-to-name mapping in snowc
+- [ ] 37-02-PLAN.md -- Kahn's topological sort, import extraction, build_module_graph pipeline
 
 ### Phase 38: Multi-File Build Pipeline
 **Goal**: Compiler parses all project files and orchestrates multi-file compilation while preserving single-file behavior
@@ -172,7 +176,7 @@ Phases execute in numeric order: 37 -> 38 -> 39 -> 40 -> 41 -> 42
 | 26-29 | v1.5 | 6/6 | Complete | 2026-02-09 |
 | 30-32 | v1.6 | 6/6 | Complete | 2026-02-09 |
 | 33-36 | v1.7 | 8/8 | Complete | 2026-02-09 |
-| 37. Module Graph Foundation | v1.8 | 0/TBD | Not started | - |
+| 37. Module Graph Foundation | v1.8 | 0/2 | Not started | - |
 | 38. Multi-File Build Pipeline | v1.8 | 0/TBD | Not started | - |
 | 39. Cross-Module Type Checking | v1.8 | 0/TBD | Not started | - |
 | 40. Visibility Enforcement | v1.8 | 0/TBD | Not started | - |
