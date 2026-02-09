@@ -74,7 +74,7 @@ See milestones/v1.6-ROADMAP.md for full phase details.
 **Milestone Goal:** Add for..in loops, while loops, and break/continue as expression-level constructs, enabling natural iteration over Lists, Maps, Sets, and Ranges.
 
 - [x] **Phase 33: While Loop + Loop Control Flow** - Establish loop infrastructure with while loops, break/continue, and reduction checks
-- [ ] **Phase 34: For-In over Range** - Range iteration with zero-allocation integer arithmetic
+- [x] **Phase 34: For-In over Range** - Range iteration with zero-allocation integer arithmetic
 - [ ] **Phase 35: For-In over Collections** - List/Map/Set iteration with list builder, expression semantics, and destructuring
 - [ ] **Phase 36: Filter Clause + Integration** - Filter clause (`when`) and comprehensive integration validation
 
@@ -105,8 +105,8 @@ Plans:
   3. The loop variable is scoped to the loop body and does not leak into the surrounding scope; each iteration gets a fresh binding
 **Plans:** 2 plans
 Plans:
-- [ ] 34-01-PLAN.md -- Parser, AST, and type checker for for-in over range
-- [ ] 34-02-PLAN.md -- MIR lowering, LLVM codegen, formatter, and e2e tests
+- [x] 34-01-PLAN.md -- Parser, AST, and type checker for for-in over range
+- [x] 34-02-PLAN.md -- MIR lowering, LLVM codegen, formatter, and e2e tests
 
 ### Phase 35: For-In over Collections
 **Goal**: Users can iterate over Lists, Maps, and Sets with for-in syntax, with expression semantics that return a collected List of body results
@@ -146,8 +146,8 @@ Phases execute in numeric order: 33 -> 34 -> 35 -> 36
 | 26-29 | v1.5 | 6/6 | Complete | 2026-02-09 |
 | 30-32 | v1.6 | 6/6 | Complete | 2026-02-09 |
 | 33. While Loop + Loop Control Flow | v1.7 | 2/2 | Complete | 2026-02-08 |
-| 34. For-In over Range | v1.7 | 0/2 | Planning complete | - |
+| 34. For-In over Range | v1.7 | 2/2 | Complete | 2026-02-09 |
 | 35. For-In over Collections | v1.7 | 0/TBD | Not started | - |
 | 36. Filter Clause + Integration | v1.7 | 0/TBD | Not started | - |
 
-**Total: 33 phases shipped, 3 phases remaining (v1.7).**
+**Total: 34 phases shipped, 2 phases remaining (v1.7).**

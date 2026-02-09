@@ -5,14 +5,14 @@
 See: .planning/PROJECT.md (updated 2026-02-08)
 
 **Core value:** Expressive, readable concurrency -- writing concurrent programs should feel as natural as sequential code, with supervision and fault tolerance built in.
-**Current focus:** v1.7 Loops & Iteration -- Phase 34 (For-In over Range)
+**Current focus:** v1.7 Loops & Iteration -- Phase 35 (For-In over Collections)
 
 ## Current Position
 
-Phase: 34 of 36 (For-In over Range)
-Plan: 2 of 2 in current phase (COMPLETE)
-Status: Phase Complete
-Last activity: 2026-02-09 -- Plan 34-02 complete (MIR + codegen + tests for for-in)
+Phase: 35 of 36 (For-In over Collections)
+Plan: 0 of TBD in current phase
+Status: Ready to plan
+Last activity: 2026-02-09 -- Phase 34 complete (for-in over range verified)
 
 Progress: [█████░░░░░] 50% (2/4 phases)
 
@@ -74,6 +74,6 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-09
-Stopped at: Completed 34-02-PLAN.md (MIR + codegen + tests for for-in)
+Stopped at: Phase 34 complete and verified
 Resume file: None
-Next action: Execute Phase 35 (next phase in v1.7 roadmap)
+Next action: Plan Phase 35
