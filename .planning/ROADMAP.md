@@ -115,7 +115,11 @@ Plans:
   1. Each `.snow` file in the project is parsed into its own independent AST
   2. `snowc build <dir>` compiles all discovered files as a unified project, producing a single binary
   3. Existing single-file programs (`snowc build foo.snow`) compile and run identically to before -- zero regressions
-**Plans**: TBD
+**Plans:** 2 plans
+
+Plans:
+- [ ] 38-01-PLAN.md -- ProjectData struct, build_project pipeline, backward-compatible build_module_graph wrapper
+- [ ] 38-02-PLAN.md -- Multi-file-aware build() function, parse error reporting for all modules, E2E tests
 
 ### Phase 39: Cross-Module Type Checking
 **Goal**: Functions, structs, sum types, and traits defined in one module are usable from another module via imports
