@@ -8,7 +8,7 @@
 - [x] **v1.3 Traits & Protocols** - Phases 18-22 (shipped 2026-02-08)
 - [x] **v1.4 Compiler Polish** - Phases 23-25 (shipped 2026-02-08)
 - [x] **v1.5 Compiler Correctness** - Phases 26-29 (shipped 2026-02-09)
-- [ ] **v1.6 Method Dot-Syntax** - Phases 30-32 (in progress)
+- [x] **v1.6 Method Dot-Syntax** - Phases 30-32 (shipped 2026-02-09)
 
 ## Phases
 
@@ -66,7 +66,7 @@ See milestones/v1.5-ROADMAP.md for full phase details.
 
 - [x] **Phase 30: Core Method Resolution** - Basic `value.method(args)` works end-to-end through type checker and MIR lowering
 - [x] **Phase 31: Extended Method Support** - Primitives, generics, chaining, and mixed field/method access
-- [ ] **Phase 32: Diagnostics and Integration** - Ambiguity errors, deterministic ordering, and non-regression for existing syntax
+- [x] **Phase 32: Diagnostics and Integration** - Ambiguity errors, deterministic ordering, and non-regression for existing syntax
 
 ## Phase Details
 
@@ -120,4 +120,4 @@ Plans:
 |-------|-----------|----------------|--------|-----------|
 | 30. Core Method Resolution | v1.6 | 2/2 | ✓ Complete | 2026-02-08 |
 | 31. Extended Method Support | v1.6 | 2/2 | ✓ Complete | 2026-02-08 |
-| 32. Diagnostics and Integration | v1.6 | 0/2 | Not started | - |
+| 32. Diagnostics and Integration | v1.6 | 2/2 | ✓ Complete | 2026-02-09 |
