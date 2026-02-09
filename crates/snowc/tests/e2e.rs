@@ -1307,3 +1307,145 @@ end
     let output = compile_and_run(source);
     assert_eq!(output, "0\n");
 }
+
+// ── Phase 36: For-in with filter (when) clause ────────────────────────
+
+/// FILT-01/FILT-02: Range filter -- even numbers from 0..10.
+#[test]
+fn e2e_for_in_filter_range() {
+    let source = r#"
+fn main() do
+  let evens = for i in 0..10 when i % 2 == 0 do
+    i
+  end
+  for e in evens do
+    println("${e}")
+  end
+end
+"#;
+    let output = compile_and_run(source);
+    assert_eq!(output, "0\n2\n4\n6\n8\n");
+}
+
+/// FILT-01/FILT-02: List filter -- elements > 2, multiplied by 10.
+#[test]
+fn e2e_for_in_filter_list() {
+    let source = r#"
+fn main() do
+  let filtered = for x in [1, 2, 3, 4, 5] when x > 2 do
+    x * 10
+  end
+  for f in filtered do
+    println("${f}")
+  end
+end
+"#;
+    let output = compile_and_run(source);
+    assert_eq!(output, "30\n40\n50\n");
+}
+
+/// FILT-01/FILT-02: Map filter with destructuring -- keep entries with value > 10.
+#[test]
+fn e2e_for_in_filter_map() {
+    let source = r#"
+fn main() do
+  let m = Map.new()
+  let m = Map.put(m, 1, 5)
+  let m = Map.put(m, 2, 15)
+  let m = Map.put(m, 3, 25)
+  let keys = for {k, v} in m when v > 10 do
+    k
+  end
+  let klen = List.length(keys)
+  println("${klen}")
+end
+"#;
+    let output = compile_and_run(source);
+    assert_eq!(output, "2\n");
+}
+
+/// FILT-01/FILT-02: Set filter -- keep elements > 15.
+#[test]
+fn e2e_for_in_filter_set() {
+    let source = r#"
+fn main() do
+  let s = Set.new()
+  let s = Set.add(s, 10)
+  let s = Set.add(s, 20)
+  let s = Set.add(s, 30)
+  let big = for x in s when x > 15 do
+    x
+  end
+  let slen = List.length(big)
+  println("${slen}")
+end
+"#;
+    let output = compile_and_run(source);
+    assert_eq!(output, "2\n");
+}
+
+/// FILT-01/FILT-02: All-false filter produces empty list.
+#[test]
+fn e2e_for_in_filter_empty_result() {
+    let source = r#"
+fn main() do
+  let empty = for x in [1, 2, 3] when x > 100 do
+    x
+  end
+  let elen = List.length(empty)
+  println("${elen}")
+end
+"#;
+    let output = compile_and_run(source);
+    assert_eq!(output, "0\n");
+}
+
+/// FILT-01/FILT-02: Break inside filtered loop returns partial result.
+#[test]
+fn e2e_for_in_filter_break() {
+    let source = r#"
+fn main() do
+  let partial = for x in [1, 2, 3, 4, 5] when x % 2 == 1 do
+    if x == 3 do
+      break
+    end
+    x
+  end
+  let plen = List.length(partial)
+  println("${plen}")
+end
+"#;
+    let output = compile_and_run(source);
+    assert_eq!(output, "1\n");
+}
+
+/// FILT-01/FILT-02: Continue inside filtered loop skips element.
+#[test]
+fn e2e_for_in_filter_continue() {
+    let source = r#"
+fn main() do
+  let skipped = for x in [1, 2, 3, 4, 5] when x > 1 do
+    if x == 3 do
+      continue
+    end
+    x
+  end
+  for sk in skipped do
+    println("${sk}")
+  end
+end
+"#;
+    let output = compile_and_run(source);
+    assert_eq!(output, "2\n4\n5\n");
+}
+
+/// FILT-01/FILT-02: Full integration fixture covering all filter scenarios.
+#[test]
+fn e2e_for_in_filter_comprehensive() {
+    let source = read_fixture("for_in_filter.snow");
+    let output = compile_and_run(&source);
+    assert_eq!(
+        output,
+        "0\n2\n4\n6\n8\n---\n30\n40\n50\n---\n2\n---\n2\n---\n0\n---\n1\n---\n2\n4\n5\ndone\n"
+    );
+}
