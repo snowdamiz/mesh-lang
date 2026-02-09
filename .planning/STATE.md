@@ -10,9 +10,9 @@ See: .planning/PROJECT.md (updated 2026-02-08)
 ## Current Position
 
 Phase: 35 of 36 (For-In over Collections)
-Plan: 0 of TBD in current phase
-Status: Ready to plan
-Last activity: 2026-02-09 -- Phase 34 complete (for-in over range verified)
+Plan: 1 of 3 in current phase
+Status: Plan 01 complete
+Last activity: 2026-02-09 -- Plan 01 complete (runtime, parser, typeck, MIR infrastructure)
 
 Progress: [█████░░░░░] 50% (2/4 phases)
 
@@ -25,7 +25,7 @@ Progress: [█████░░░░░] 50% (2/4 phases)
 - Tests: 1,273 passing
 
 **v1.7 Velocity:**
-- Plans completed: 4
+- Plans completed: 5
 - Phases completed: 2/4
 
 | Phase | Plan | Duration | Tasks | Files |
@@ -34,6 +34,7 @@ Progress: [█████░░░░░] 50% (2/4 phases)
 | 33    | 02   | 12min    | 3     | 10    |
 | 34    | 01   | 8min     | 2     | 5     |
 | 34    | 02   | 11min    | 2     | 9     |
+| 35    | 01   | 12min    | 2     | 13    |
 
 ## Accumulated Context
 
@@ -53,6 +54,10 @@ Full decision history archived in milestones/v1.0-ROADMAP.md through milestones/
 - [34-02] Continue target is latch_bb (not header) so counter always increments and reduction check fires
 - [34-02] Half-open range [start, end) via SLT comparison (consistent with Rust/Python)
 - [34-02] DOT_DOT formatted without spaces (0..10 not 0 .. 10)
+- [35-01] Indexed iteration model: all collections use counter 0..len, not Rust iterators
+- [35-01] List builder pattern: pre-allocated capacity with in-place push for O(N) comprehension
+- [35-01] Comprehension semantics: for-in returns List<body_ty> instead of Unit
+- [35-01] ForInRange ty changed from Unit to Ptr to match comprehension return semantics
 
 ### Research Notes
 
@@ -74,6 +79,6 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-09
-Stopped at: Phase 34 complete and verified
+Stopped at: Completed 35-01-PLAN.md
 Resume file: None
-Next action: Plan Phase 35
+Next action: Execute 35-02-PLAN.md (codegen for collection for-in)
