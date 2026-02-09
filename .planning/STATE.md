@@ -5,21 +5,21 @@
 See: .planning/PROJECT.md (updated 2026-02-09)
 
 **Core value:** Expressive, readable concurrency -- writing concurrent programs should feel as natural as sequential code, with supervision and fault tolerance built in.
-**Current focus:** v1.8 Module System -- Phase 37 (Module Graph Foundation)
+**Current focus:** v1.8 Module System -- Phase 38 (Multi-File Build Pipeline)
 
 ## Current Position
 
-Phase: 37 of 42 (Module Graph Foundation) -- COMPLETE
-Plan: 2 of 2 in current phase
-Status: Phase Complete
-Last activity: 2026-02-09 -- Completed 37-02 (topological sort + build_module_graph pipeline)
+Phase: 38 of 42 (Multi-File Build Pipeline)
+Plan: 1 of 2 in current phase
+Status: In Progress
+Last activity: 2026-02-09 -- Completed 38-01 (ProjectData struct and build_project pipeline)
 
-Progress: [||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||        ] 92% (117/~127 plans est.)
+Progress: [|||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||       ] 93% (118/~127 plans est.)
 
 ## Performance Metrics
 
 **All-time Totals:**
-- Plans completed: 117
+- Plans completed: 118
 - Phases completed: 37
 - Milestones shipped: 8 (v1.0-v1.7)
 - Lines of Rust: 70,501
@@ -41,6 +41,9 @@ Recent for v1.8:
 - Alphabetical tie-breaking in toposort for deterministic compilation order across platforms
 - Silent skip for unknown imports during graph construction -- Phase 39 handles error reporting
 - Two-phase graph construction: register all modules first, then parse and build edges
+- ProjectData struct retains parse results for downstream compilation -- eliminates double-parsing
+- build_module_graph preserved as thin wrapper for backward compatibility with Phase 37 tests
+- Parse errors retained in ProjectData without failing build_project -- caller handles error reporting
 
 ### Research Notes
 
@@ -61,6 +64,6 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-09
-Stopped at: Completed 37-02-PLAN.md (Phase 37 complete)
+Stopped at: Completed 38-01-PLAN.md
 Resume file: None
-Next action: Begin Phase 38 (import resolution integration into build pipeline)
+Next action: Execute 38-02-PLAN.md (integrate build_project into build() function)
