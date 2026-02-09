@@ -242,6 +242,8 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
     module.add_function("snow_list_filter", ptr_type.fn_type(&[ptr_type.into(), ptr_type.into(), ptr_type.into()], false), Some(inkwell::module::Linkage::External));
     module.add_function("snow_list_reduce", i64_type.fn_type(&[ptr_type.into(), i64_type.into(), ptr_type.into(), ptr_type.into()], false), Some(inkwell::module::Linkage::External));
     module.add_function("snow_list_from_array", ptr_type.fn_type(&[ptr_type.into(), i64_type.into()], false), Some(inkwell::module::Linkage::External));
+    module.add_function("snow_list_builder_new", ptr_type.fn_type(&[i64_type.into()], false), Some(inkwell::module::Linkage::External));
+    module.add_function("snow_list_builder_push", void_type.fn_type(&[ptr_type.into(), i64_type.into()], false), Some(inkwell::module::Linkage::External));
 
     // Map functions
     module.add_function("snow_map_new", ptr_type.fn_type(&[], false), Some(inkwell::module::Linkage::External));
@@ -254,6 +256,8 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
     module.add_function("snow_map_size", i64_type.fn_type(&[ptr_type.into()], false), Some(inkwell::module::Linkage::External));
     module.add_function("snow_map_keys", ptr_type.fn_type(&[ptr_type.into()], false), Some(inkwell::module::Linkage::External));
     module.add_function("snow_map_values", ptr_type.fn_type(&[ptr_type.into()], false), Some(inkwell::module::Linkage::External));
+    module.add_function("snow_map_entry_key", i64_type.fn_type(&[ptr_type.into(), i64_type.into()], false), Some(inkwell::module::Linkage::External));
+    module.add_function("snow_map_entry_value", i64_type.fn_type(&[ptr_type.into(), i64_type.into()], false), Some(inkwell::module::Linkage::External));
 
     // Set functions
     module.add_function("snow_set_new", ptr_type.fn_type(&[], false), Some(inkwell::module::Linkage::External));
@@ -263,6 +267,7 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
     module.add_function("snow_set_size", i64_type.fn_type(&[ptr_type.into()], false), Some(inkwell::module::Linkage::External));
     module.add_function("snow_set_union", ptr_type.fn_type(&[ptr_type.into(), ptr_type.into()], false), Some(inkwell::module::Linkage::External));
     module.add_function("snow_set_intersection", ptr_type.fn_type(&[ptr_type.into(), ptr_type.into()], false), Some(inkwell::module::Linkage::External));
+    module.add_function("snow_set_element_at", i64_type.fn_type(&[ptr_type.into(), i64_type.into()], false), Some(inkwell::module::Linkage::External));
 
     // Tuple functions
     module.add_function("snow_tuple_nth", i64_type.fn_type(&[ptr_type.into(), i64_type.into()], false), Some(inkwell::module::Linkage::External));

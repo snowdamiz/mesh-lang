@@ -146,6 +146,17 @@ impl<'ctx> CodeGen<'ctx> {
                 self.codegen_for_in_range(var, start, end, body, ty)
             }
 
+            MirExpr::ForInList { .. } | MirExpr::ForInMap { .. } | MirExpr::ForInSet { .. } => {
+                // Placeholder: return empty list. Plan 02 implements real codegen.
+                let list_new = get_intrinsic(&self.module, "snow_list_new");
+                let result = self.builder.build_call(list_new, &[], "empty_list")
+                    .map_err(|e| e.to_string())?;
+                result
+                    .try_as_basic_value()
+                    .basic()
+                    .ok_or_else(|| "snow_list_new returned void".to_string())
+            }
+
             MirExpr::SupervisorStart {
                 name,
                 strategy,
@@ -1818,8 +1829,15 @@ impl<'ctx> CodeGen<'ctx> {
         // Position at merge block.
         self.builder.position_at_end(merge_bb);
 
-        // For-in returns Unit.
-        Ok(self.context.struct_type(&[], false).const_zero().into())
+        // For-in returns List (comprehension semantics). Placeholder: return empty list.
+        // Plan 02 implements the full list builder codegen.
+        let list_new = get_intrinsic(&self.module, "snow_list_new");
+        let result = self.builder.build_call(list_new, &[], "forin_result")
+            .map_err(|e| e.to_string())?;
+        result
+            .try_as_basic_value()
+            .basic()
+            .ok_or_else(|| "snow_list_new returned void".to_string())
     }
 
     fn codegen_break(&mut self) -> Result<BasicValueEnum<'ctx>, String> {

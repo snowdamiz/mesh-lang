@@ -229,6 +229,18 @@ fn collect_function_refs(expr: &MirExpr, refs: &mut Vec<String>) {
             collect_function_refs(end, refs);
             collect_function_refs(body, refs);
         }
+        MirExpr::ForInList { collection, body, .. } => {
+            collect_function_refs(collection, refs);
+            collect_function_refs(body, refs);
+        }
+        MirExpr::ForInMap { collection, body, .. } => {
+            collect_function_refs(collection, refs);
+            collect_function_refs(body, refs);
+        }
+        MirExpr::ForInSet { collection, body, .. } => {
+            collect_function_refs(collection, refs);
+            collect_function_refs(body, refs);
+        }
     }
 }
 

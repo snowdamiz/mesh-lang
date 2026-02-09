@@ -312,7 +312,42 @@ pub enum MirExpr {
         end: Box<MirExpr>,
         /// Loop body.
         body: Box<MirExpr>,
-        /// Result type (Unit for Phase 34).
+        /// Result type (Ptr for comprehension semantics).
+        ty: MirType,
+    },
+
+    /// For-in loop over a List: `for var in list do body end`.
+    /// Desugared to indexed iteration with list builder.
+    ForInList {
+        var: String,
+        collection: Box<MirExpr>,
+        body: Box<MirExpr>,
+        elem_ty: MirType,
+        body_ty: MirType,
+        ty: MirType,
+    },
+
+    /// For-in loop over a Map: `for {k, v} in map do body end`.
+    /// Desugared to indexed iteration over map entries.
+    ForInMap {
+        key_var: String,
+        val_var: String,
+        collection: Box<MirExpr>,
+        body: Box<MirExpr>,
+        key_ty: MirType,
+        val_ty: MirType,
+        body_ty: MirType,
+        ty: MirType,
+    },
+
+    /// For-in loop over a Set: `for var in set do body end`.
+    /// Desugared to indexed iteration over set elements.
+    ForInSet {
+        var: String,
+        collection: Box<MirExpr>,
+        body: Box<MirExpr>,
+        elem_ty: MirType,
+        body_ty: MirType,
         ty: MirType,
     },
 
@@ -367,6 +402,9 @@ impl MirExpr {
             MirExpr::Break => &MirType::Never,
             MirExpr::Continue => &MirType::Never,
             MirExpr::ForInRange { ty, .. } => ty,
+            MirExpr::ForInList { ty, .. } => ty,
+            MirExpr::ForInMap { ty, .. } => ty,
+            MirExpr::ForInSet { ty, .. } => ty,
             MirExpr::SupervisorStart { ty, .. } => ty,
         }
     }

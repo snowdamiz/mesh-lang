@@ -51,6 +51,44 @@ fn extract_list_elem_type(ty: &Ty) -> Option<Ty> {
     }
 }
 
+/// Extract key and value types from a `Ty::App(Con("Map"), [K, V])`.
+/// Returns `None` if the type is not a Map.
+fn extract_map_types(ty: &Ty) -> Option<(Ty, Ty)> {
+    match ty {
+        Ty::App(con_ty, args) => {
+            if let Ty::Con(con) = con_ty.as_ref() {
+                if con.name == "Map" && args.len() >= 2 {
+                    return Some((args[0].clone(), args[1].clone()));
+                }
+            }
+            None
+        }
+        Ty::Con(con) if con.name == "Map" => {
+            Some((Ty::int(), Ty::int()))
+        }
+        _ => None,
+    }
+}
+
+/// Extract the element type T from a `Ty::App(Con("Set"), [T])`.
+/// Returns `None` if the type is not a Set.
+fn extract_set_elem_type(ty: &Ty) -> Option<Ty> {
+    match ty {
+        Ty::App(con_ty, args) => {
+            if let Ty::Con(con) = con_ty.as_ref() {
+                if con.name == "Set" && !args.is_empty() {
+                    return Some(args[0].clone());
+                }
+            }
+            None
+        }
+        Ty::Con(con) if con.name == "Set" => {
+            Some(Ty::int())
+        }
+        _ => None,
+    }
+}
+
 /// Extract the trait name and type name from an ImplDef's PATH children.
 /// Returns `(trait_name, type_name)`, e.g. `("Greetable", "Point")`.
 fn extract_impl_names(impl_def: &ImplDef) -> (String, String) {
@@ -3975,32 +4013,50 @@ impl<'a> Lowerer<'a> {
     // ── For-in expression lowering ──────────────────────────────────
 
     fn lower_for_in_expr(&mut self, for_in: &ForInExpr) -> MirExpr {
-        // Extract binding name.
+        // Check if iterable is a DotDot range (keep existing ForInRange behavior).
+        if let Some(Expr::BinaryExpr(ref bin)) = for_in.iterable() {
+            if bin.op().map(|t| t.kind()) == Some(SyntaxKind::DOT_DOT) {
+                return self.lower_for_in_range(for_in, bin);
+            }
+        }
+
+        // Non-range: detect collection type from typeck results.
+        let iterable_ty = for_in
+            .iterable()
+            .and_then(|e| self.get_ty(e.syntax().text_range()))
+            .cloned();
+
+        if let Some(ref ty) = iterable_ty {
+            if let Some((key_ty, val_ty)) = extract_map_types(ty) {
+                return self.lower_for_in_map(for_in, &key_ty, &val_ty);
+            }
+            if let Some(elem_ty) = extract_set_elem_type(ty) {
+                return self.lower_for_in_set(for_in, &elem_ty);
+            }
+            if let Some(elem_ty) = extract_list_elem_type(ty) {
+                return self.lower_for_in_list(for_in, &elem_ty);
+            }
+        }
+
+        // Fallback: treat as list iteration with Int elements.
+        self.lower_for_in_list(for_in, &Ty::int())
+    }
+
+    fn lower_for_in_range(&mut self, for_in: &ForInExpr, bin: &BinaryExpr) -> MirExpr {
         let var_name = for_in
             .binding_name()
             .and_then(|n| n.text())
             .unwrap_or_else(|| "_".to_string());
 
-        // Extract start and end from the iterable (expected: BinaryExpr with DotDot).
-        let (start, end) = if let Some(iterable) = for_in.iterable() {
-            if let Expr::BinaryExpr(bin) = &iterable {
-                let s = bin
-                    .lhs()
-                    .map(|e| self.lower_expr(&e))
-                    .unwrap_or(MirExpr::IntLit(0, MirType::Int));
-                let e = bin
-                    .rhs()
-                    .map(|e| self.lower_expr(&e))
-                    .unwrap_or(MirExpr::IntLit(0, MirType::Int));
-                (s, e)
-            } else {
-                (MirExpr::IntLit(0, MirType::Int), MirExpr::IntLit(0, MirType::Int))
-            }
-        } else {
-            (MirExpr::IntLit(0, MirType::Int), MirExpr::IntLit(0, MirType::Int))
-        };
+        let start = bin
+            .lhs()
+            .map(|e| self.lower_expr(&e))
+            .unwrap_or(MirExpr::IntLit(0, MirType::Int));
+        let end = bin
+            .rhs()
+            .map(|e| self.lower_expr(&e))
+            .unwrap_or(MirExpr::IntLit(0, MirType::Int));
 
-        // Lower body with loop variable in scope.
         self.push_scope();
         self.insert_var(var_name.clone(), MirType::Int);
         let body = for_in
@@ -4014,7 +4070,115 @@ impl<'a> Lowerer<'a> {
             start: Box::new(start),
             end: Box::new(end),
             body: Box::new(body),
-            ty: MirType::Unit,
+            ty: MirType::Ptr,
+        }
+    }
+
+    fn lower_for_in_list(&mut self, for_in: &ForInExpr, elem_ty_src: &Ty) -> MirExpr {
+        let var_name = for_in
+            .binding_name()
+            .and_then(|n| n.text())
+            .unwrap_or_else(|| "_".to_string());
+
+        let collection = for_in
+            .iterable()
+            .map(|e| self.lower_expr(&e))
+            .unwrap_or(MirExpr::Unit);
+
+        let elem_mir_ty = resolve_type(elem_ty_src, self.registry, false);
+
+        self.push_scope();
+        self.insert_var(var_name.clone(), elem_mir_ty.clone());
+        let body = for_in
+            .body()
+            .map(|b| self.lower_block(&b))
+            .unwrap_or(MirExpr::Unit);
+        let body_ty = body.ty().clone();
+        self.pop_scope();
+
+        MirExpr::ForInList {
+            var: var_name,
+            collection: Box::new(collection),
+            body: Box::new(body),
+            elem_ty: elem_mir_ty,
+            body_ty,
+            ty: MirType::Ptr,
+        }
+    }
+
+    fn lower_for_in_map(&mut self, for_in: &ForInExpr, key_ty_src: &Ty, val_ty_src: &Ty) -> MirExpr {
+        let (key_var, val_var) = if let Some(destr) = for_in.destructure_binding() {
+            let names = destr.names();
+            let k = names.first().and_then(|n| n.text()).unwrap_or_else(|| "_".to_string());
+            let v = names.get(1).and_then(|n| n.text()).unwrap_or_else(|| "_".to_string());
+            (k, v)
+        } else {
+            let var_name = for_in
+                .binding_name()
+                .and_then(|n| n.text())
+                .unwrap_or_else(|| "_".to_string());
+            (var_name, "_".to_string())
+        };
+
+        let collection = for_in
+            .iterable()
+            .map(|e| self.lower_expr(&e))
+            .unwrap_or(MirExpr::Unit);
+
+        let key_mir_ty = resolve_type(key_ty_src, self.registry, false);
+        let val_mir_ty = resolve_type(val_ty_src, self.registry, false);
+
+        self.push_scope();
+        self.insert_var(key_var.clone(), key_mir_ty.clone());
+        self.insert_var(val_var.clone(), val_mir_ty.clone());
+        let body = for_in
+            .body()
+            .map(|b| self.lower_block(&b))
+            .unwrap_or(MirExpr::Unit);
+        let body_ty = body.ty().clone();
+        self.pop_scope();
+
+        MirExpr::ForInMap {
+            key_var,
+            val_var,
+            collection: Box::new(collection),
+            body: Box::new(body),
+            key_ty: key_mir_ty,
+            val_ty: val_mir_ty,
+            body_ty,
+            ty: MirType::Ptr,
+        }
+    }
+
+    fn lower_for_in_set(&mut self, for_in: &ForInExpr, elem_ty_src: &Ty) -> MirExpr {
+        let var_name = for_in
+            .binding_name()
+            .and_then(|n| n.text())
+            .unwrap_or_else(|| "_".to_string());
+
+        let collection = for_in
+            .iterable()
+            .map(|e| self.lower_expr(&e))
+            .unwrap_or(MirExpr::Unit);
+
+        let elem_mir_ty = resolve_type(elem_ty_src, self.registry, false);
+
+        self.push_scope();
+        self.insert_var(var_name.clone(), elem_mir_ty.clone());
+        let body = for_in
+            .body()
+            .map(|b| self.lower_block(&b))
+            .unwrap_or(MirExpr::Unit);
+        let body_ty = body.ty().clone();
+        self.pop_scope();
+
+        MirExpr::ForInSet {
+            var: var_name,
+            collection: Box::new(collection),
+            body: Box::new(body),
+            elem_ty: elem_mir_ty,
+            body_ty,
+            ty: MirType::Ptr,
         }
     }
 
@@ -7277,6 +7441,25 @@ fn collect_free_vars(
             inner_params.insert(var.as_str());
             collect_free_vars(body, &inner_params, outer_vars, captures);
         }
+        MirExpr::ForInList { var, collection, body, .. } => {
+            collect_free_vars(collection, params, outer_vars, captures);
+            let mut inner_params = params.clone();
+            inner_params.insert(var.as_str());
+            collect_free_vars(body, &inner_params, outer_vars, captures);
+        }
+        MirExpr::ForInMap { key_var, val_var, collection, body, .. } => {
+            collect_free_vars(collection, params, outer_vars, captures);
+            let mut inner_params = params.clone();
+            inner_params.insert(key_var.as_str());
+            inner_params.insert(val_var.as_str());
+            collect_free_vars(body, &inner_params, outer_vars, captures);
+        }
+        MirExpr::ForInSet { var, collection, body, .. } => {
+            collect_free_vars(collection, params, outer_vars, captures);
+            let mut inner_params = params.clone();
+            inner_params.insert(var.as_str());
+            collect_free_vars(body, &inner_params, outer_vars, captures);
+        }
     }
 }
 
@@ -10085,7 +10268,7 @@ end
                 assert_eq!(var, "i");
                 assert!(matches!(start.as_ref(), MirExpr::IntLit(0, _)), "Expected start=0, got {:?}", start);
                 assert!(matches!(end.as_ref(), MirExpr::IntLit(10, _)), "Expected end=10, got {:?}", end);
-                assert_eq!(*ty, MirType::Unit);
+                assert_eq!(*ty, MirType::Ptr);
             }
             other => panic!("Expected MirExpr::ForInRange, got {:?}", other),
         }

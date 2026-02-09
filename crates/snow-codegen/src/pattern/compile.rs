@@ -1253,6 +1253,18 @@ fn compile_expr_patterns(
             compile_expr_patterns(end, sum_type_defs);
             compile_expr_patterns(body, sum_type_defs);
         }
+        MirExpr::ForInList { collection, body, .. } => {
+            compile_expr_patterns(collection, sum_type_defs);
+            compile_expr_patterns(body, sum_type_defs);
+        }
+        MirExpr::ForInMap { collection, body, .. } => {
+            compile_expr_patterns(collection, sum_type_defs);
+            compile_expr_patterns(body, sum_type_defs);
+        }
+        MirExpr::ForInSet { collection, body, .. } => {
+            compile_expr_patterns(collection, sum_type_defs);
+            compile_expr_patterns(body, sum_type_defs);
+        }
     }
 }
 

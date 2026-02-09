@@ -1188,17 +1188,42 @@ fn parse_continue_expr(p: &mut Parser) -> MarkClosed {
 // ── For-In Expression Parsing ─────────────────────────────────────────
 
 /// Parse a for-in expression: `for binding in iterable do body end`
+///
+/// Supports two binding forms:
+/// - Simple: `for x in iterable do body end`
+/// - Destructuring: `for {k, v} in map do body end`
 fn parse_for_in_expr(p: &mut Parser) -> MarkClosed {
     let m = p.open();
     p.advance(); // FOR_KW
 
-    // Parse binding name.
-    if p.at(SyntaxKind::IDENT) {
+    // Parse binding: either a single IDENT (NAME) or {k, v} (DESTRUCTURE_BINDING).
+    if p.at(SyntaxKind::L_BRACE) {
+        // Destructuring binding: {k, v}
+        let dm = p.open();
+        p.advance(); // {
+        if p.at(SyntaxKind::IDENT) {
+            let n = p.open();
+            p.advance();
+            p.close(n, SyntaxKind::NAME);
+        }
+        while p.eat(SyntaxKind::COMMA) {
+            if p.at(SyntaxKind::R_BRACE) {
+                break;
+            }
+            if p.at(SyntaxKind::IDENT) {
+                let n = p.open();
+                p.advance();
+                p.close(n, SyntaxKind::NAME);
+            }
+        }
+        p.expect(SyntaxKind::R_BRACE);
+        p.close(dm, SyntaxKind::DESTRUCTURE_BINDING);
+    } else if p.at(SyntaxKind::IDENT) {
         let name = p.open();
         p.advance(); // identifier
         p.close(name, SyntaxKind::NAME);
     } else {
-        p.error("expected loop variable name after `for`");
+        p.error("expected loop variable name or {key, value} destructuring after `for`");
     }
 
     // Expect `in`.

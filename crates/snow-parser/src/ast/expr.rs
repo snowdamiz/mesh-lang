@@ -583,8 +583,13 @@ ast_node!(ContinueExpr, CONTINUE_EXPR);
 ast_node!(ForInExpr, FOR_IN_EXPR);
 
 impl ForInExpr {
-    /// The loop variable name (NAME child).
+    /// The loop variable name (NAME child) for simple bindings.
     pub fn binding_name(&self) -> Option<super::item::Name> {
+        child_node(&self.syntax)
+    }
+
+    /// The destructuring binding ({k, v}) for map iteration.
+    pub fn destructure_binding(&self) -> Option<DestructureBinding> {
         child_node(&self.syntax)
     }
 
@@ -596,6 +601,17 @@ impl ForInExpr {
     /// The loop body block.
     pub fn body(&self) -> Option<Block> {
         child_node(&self.syntax)
+    }
+}
+
+// ── Destructure Binding ─────────────────────────────────────────────
+
+ast_node!(DestructureBinding, DESTRUCTURE_BINDING);
+
+impl DestructureBinding {
+    /// The variable names inside the destructuring: `{k, v}` -> [k, v].
+    pub fn names(&self) -> Vec<super::item::Name> {
+        child_nodes(&self.syntax).collect()
     }
 }
 

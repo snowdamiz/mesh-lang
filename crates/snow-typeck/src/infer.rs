@@ -3170,9 +3170,9 @@ fn infer_continue(
 
 /// Infer the type of a for-in expression: `for i in 0..10 do body end`
 ///
-/// For Phase 34, the iterable must be a range (DotDot binary expr) with Int operands.
-/// The loop variable is bound as Int and scoped to the body.
-/// For-in expressions always return Unit.
+/// Handles range (DotDot), List<T>, Map<K,V>, and Set<T> iterables.
+/// Binds loop variable(s) to the element type(s).
+/// Returns List<body_ty> (comprehension semantics).
 fn infer_for_in(
     ctx: &mut InferCtx,
     env: &mut TypeEnv,
@@ -3183,10 +3183,15 @@ fn infer_for_in(
     fn_constraints: &FxHashMap<String, FnConstraints>,
 ) -> Result<Ty, TypeError> {
     // Infer the iterable expression.
-    if let Some(iterable) = for_in.iterable() {
-        let _iter_ty = infer_expr(ctx, env, &iterable, types, type_registry, trait_registry, fn_constraints)?;
+    let iter_ty = if let Some(iterable) = for_in.iterable() {
+        let ty = infer_expr(ctx, env, &iterable, types, type_registry, trait_registry, fn_constraints)?;
+        ctx.resolve(ty)
+    } else {
+        return Ok(Ty::Tuple(vec![]));
+    };
 
-        // If the iterable is a BinaryExpr with DotDot, unify both operands with Int.
+    // Check if iterable is a DotDot range.
+    let is_range = if let Some(iterable) = for_in.iterable() {
         if let Expr::BinaryExpr(ref bin) = iterable {
             let is_dot_dot = bin.op().map(|t| t.kind()) == Some(SyntaxKind::DOT_DOT);
             if is_dot_dot {
@@ -3204,36 +3209,123 @@ fn infer_for_in(
                     }
                 }
             }
+            is_dot_dot
+        } else {
+            false
         }
-    }
+    } else {
+        false
+    };
 
-    // Extract binding name.
-    let var_name = for_in
-        .binding_name()
-        .and_then(|n| n.text())
-        .unwrap_or_else(|| "_".to_string());
-
-    // Push a new scope for the loop variable.
+    // Push a new scope for the loop variable(s).
     env.push_scope();
 
-    // Bind loop variable as Int (for range iteration).
-    env.insert(var_name, Scheme::mono(Ty::int()));
+    if is_range {
+        // Range iteration: bind loop variable as Int.
+        let var_name = for_in
+            .binding_name()
+            .and_then(|n| n.text())
+            .unwrap_or_else(|| "_".to_string());
+        env.insert(var_name, Scheme::mono(Ty::int()));
+    } else {
+        // Collection iteration: detect type and bind accordingly.
+        match extract_collection_elem_type(&iter_ty) {
+            CollectionType::List(elem_ty) => {
+                let var_name = for_in
+                    .binding_name()
+                    .and_then(|n| n.text())
+                    .unwrap_or_else(|| "_".to_string());
+                env.insert(var_name, Scheme::mono(elem_ty));
+            }
+            CollectionType::Map(key_ty, val_ty) => {
+                // Expect destructuring binding {k, v}.
+                if let Some(destr) = for_in.destructure_binding() {
+                    let names = destr.names();
+                    if names.len() >= 1 {
+                        let k_name = names[0].text().unwrap_or_else(|| "_".to_string());
+                        env.insert(k_name, Scheme::mono(key_ty));
+                    }
+                    if names.len() >= 2 {
+                        let v_name = names[1].text().unwrap_or_else(|| "_".to_string());
+                        env.insert(v_name, Scheme::mono(val_ty));
+                    }
+                } else {
+                    // Single binding over map: bind as Int (key) as fallback.
+                    let var_name = for_in
+                        .binding_name()
+                        .and_then(|n| n.text())
+                        .unwrap_or_else(|| "_".to_string());
+                    env.insert(var_name, Scheme::mono(key_ty));
+                }
+            }
+            CollectionType::Set(elem_ty) => {
+                let var_name = for_in
+                    .binding_name()
+                    .and_then(|n| n.text())
+                    .unwrap_or_else(|| "_".to_string());
+                env.insert(var_name, Scheme::mono(elem_ty));
+            }
+            CollectionType::Unknown => {
+                // Fallback: bind as the iterable type itself.
+                let var_name = for_in
+                    .binding_name()
+                    .and_then(|n| n.text())
+                    .unwrap_or_else(|| "_".to_string());
+                env.insert(var_name, Scheme::mono(Ty::int()));
+            }
+        }
+    }
 
     // Enter loop context (enables break/continue validation).
     ctx.enter_loop();
 
-    // Infer body, discarding result (for-in returns Unit).
-    if let Some(body) = for_in.body() {
-        let _ = infer_block(ctx, env, &body, types, type_registry, trait_registry, fn_constraints)?;
-    }
+    // Infer body -- its type becomes the List element type.
+    let body_ty = if let Some(body) = for_in.body() {
+        infer_block(ctx, env, &body, types, type_registry, trait_registry, fn_constraints)?
+    } else {
+        Ty::Tuple(vec![])
+    };
 
     ctx.exit_loop();
 
     // Pop the loop variable scope.
     env.pop_scope();
 
-    // For-in always returns Unit.
-    Ok(Ty::Tuple(vec![]))
+    // For-in returns List<body_ty> (comprehension semantics).
+    Ok(Ty::list(body_ty))
+}
+
+/// Helper enum for classifying collection iterable types.
+enum CollectionType {
+    List(Ty),
+    Map(Ty, Ty),
+    Set(Ty),
+    Unknown,
+}
+
+/// Extract the element type from a collection type (List<T>, Map<K,V>, Set<T>).
+fn extract_collection_elem_type(ty: &Ty) -> CollectionType {
+    match ty {
+        Ty::App(con, args) => {
+            if let Ty::Con(ref tc) = **con {
+                match tc.name.as_str() {
+                    "List" if !args.is_empty() => CollectionType::List(args[0].clone()),
+                    "Map" if args.len() >= 2 => CollectionType::Map(args[0].clone(), args[1].clone()),
+                    "Set" if !args.is_empty() => CollectionType::Set(args[0].clone()),
+                    _ => CollectionType::Unknown,
+                }
+            } else {
+                CollectionType::Unknown
+            }
+        }
+        Ty::Con(tc) => match tc.name.as_str() {
+            "List" => CollectionType::List(Ty::int()),
+            "Map" => CollectionType::Map(Ty::int(), Ty::int()),
+            "Set" => CollectionType::Set(Ty::int()),
+            _ => CollectionType::Unknown,
+        },
+        _ => CollectionType::Unknown,
+    }
 }
 
 /// Infer the type of a closure expression: `fn (params) -> body end`
