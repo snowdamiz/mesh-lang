@@ -21,6 +21,7 @@ pub mod link;
 pub mod mir;
 pub mod pattern;
 
+use std::collections::HashSet;
 use std::path::Path;
 
 use inkwell::context::Context;
@@ -42,7 +43,8 @@ pub fn lower_to_mir_module(
     parse: &snow_parser::Parse,
     typeck: &snow_typeck::TypeckResult,
 ) -> Result<mir::MirModule, String> {
-    let mut module = lower_to_mir(parse, typeck)?;
+    let empty_pub_fns = HashSet::new();
+    let mut module = lower_to_mir(parse, typeck, "", &empty_pub_fns)?;
     monomorphize(&mut module);
     Ok(module)
 }
@@ -58,8 +60,10 @@ pub fn lower_to_mir_module(
 pub fn lower_to_mir_raw(
     parse: &snow_parser::Parse,
     typeck: &snow_typeck::TypeckResult,
+    module_name: &str,
+    pub_fns: &HashSet<String>,
 ) -> Result<mir::MirModule, String> {
-    let module = lower_to_mir(parse, typeck)?;
+    let module = lower_to_mir(parse, typeck, module_name, pub_fns)?;
     Ok(module)
 }
 

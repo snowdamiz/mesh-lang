@@ -200,10 +200,19 @@ struct Lowerer<'a> {
     /// These are directly callable without qualification and must not go through
     /// trait dispatch.
     imported_functions: HashSet<String>,
+    /// Module name for name-mangling private functions (Phase 41).
+    /// Empty string means single-file mode (no prefix applied).
+    module_name: String,
+    /// Set of pub function names that should NOT be module-prefixed (Phase 41).
+    pub_functions: HashSet<String>,
+    /// Names of user-defined functions from FnDef items (Phase 41).
+    /// Used to distinguish actual function definitions from variant constructors,
+    /// actors, etc. when applying module-qualified naming at call sites.
+    user_fn_defs: HashSet<String>,
 }
 
 impl<'a> Lowerer<'a> {
-    fn new(typeck: &'a TypeckResult, parse: &'a Parse) -> Self {
+    fn new(typeck: &'a TypeckResult, parse: &'a Parse, module_name: &str, pub_fns: &HashSet<String>) -> Self {
         Lowerer {
             types: &typeck.types,
             registry: &typeck.type_registry,
@@ -225,6 +234,9 @@ impl<'a> Lowerer<'a> {
                 .map(|(k, v)| (k.clone(), v.clone()))
                 .collect(),
             imported_functions: typeck.imported_functions.iter().cloned().collect(),
+            module_name: module_name.to_string(),
+            pub_functions: pub_fns.clone(),
+            user_fn_defs: HashSet::new(),
         }
     }
 
@@ -251,6 +263,43 @@ impl<'a> Lowerer<'a> {
             }
         }
         None
+    }
+
+    // ── Module-qualified naming (Phase 41) ──────────────────────────
+
+    /// Apply module prefix to a private function name.
+    ///
+    /// Rules:
+    /// - Empty module_name (single-file mode): return name unchanged
+    /// - "main": unchanged (handled separately as snow_main)
+    /// - Pub functions: unchanged (cross-module references use unqualified name)
+    /// - Builtin/runtime prefixes (snow_, trait impls): unchanged
+    /// - Otherwise: `ModuleName__name` (dots replaced with underscores)
+    fn qualify_name(&self, name: &str) -> String {
+        // Single-file mode: no prefix
+        if self.module_name.is_empty() {
+            return name.to_string();
+        }
+        // main is handled separately (renamed to snow_main)
+        if name == "main" {
+            return name.to_string();
+        }
+        // Pub functions keep unqualified names for cross-module references
+        if self.pub_functions.contains(name) {
+            return name.to_string();
+        }
+        // Builtin/runtime prefixes: do not prefix
+        const BUILTIN_PREFIXES: &[&str] = &[
+            "snow_", "Ord__", "Eq__", "Display__", "Debug__", "Hash__",
+            "Default__", "Add__", "Sub__", "Mul__", "Div__", "Rem__", "Neg__",
+        ];
+        for prefix in BUILTIN_PREFIXES {
+            if name.starts_with(prefix) {
+                return name.to_string();
+            }
+        }
+        // Apply module prefix: ModuleName__function_name
+        format!("{}__{}",  self.module_name.replace('.', "_"), name)
     }
 
     // ── Type resolution helper ───────────────────────────────────────
@@ -307,6 +356,7 @@ impl<'a> Lowerer<'a> {
                         if !self.known_functions.contains_key(&name) {
                             let fn_ty = self.resolve_range(fn_def.syntax().text_range());
                             self.known_functions.insert(name.clone(), fn_ty.clone());
+                            self.user_fn_defs.insert(name.clone());
                             self.insert_var(name, fn_ty);
                         }
                     }
@@ -738,12 +788,23 @@ impl<'a> Lowerer<'a> {
         self.pop_scope();
 
         // Rename "main" to "snow_main" to avoid collision with C main() entry point.
+        // Then apply module-qualified naming for private functions.
         let fn_name = if name == "main" {
             self.entry_function = Some("snow_main".to_string());
             "snow_main".to_string()
         } else {
-            name
+            self.qualify_name(&name)
         };
+
+        // Register both original and qualified name in known_functions for
+        // intra-module call resolution (callers use unqualified name from AST).
+        if fn_name != name {
+            let fn_ty = MirType::FnPtr(
+                params.iter().map(|(_, t)| t.clone()).collect(),
+                Box::new(return_type.clone()),
+            );
+            self.known_functions.insert(name, fn_ty);
+        }
 
         self.functions.push(MirFunction {
             name: fn_name,
@@ -1068,8 +1129,17 @@ impl<'a> Lowerer<'a> {
                 self.entry_function = Some("snow_main".to_string());
                 "snow_main".to_string()
             } else {
-                name
+                self.qualify_name(&name)
             };
+
+            // Register original name for intra-module call resolution
+            if fn_name != name {
+                let fn_ty = MirType::FnPtr(
+                    params.iter().map(|(_, t)| t.clone()).collect(),
+                    Box::new(return_type.clone()),
+                );
+                self.known_functions.insert(name, fn_ty);
+            }
 
             self.functions.push(MirFunction {
                 name: fn_name,
@@ -1089,8 +1159,17 @@ impl<'a> Lowerer<'a> {
                 self.entry_function = Some("snow_main".to_string());
                 "snow_main".to_string()
             } else {
-                name
+                self.qualify_name(&name)
             };
+
+            // Register original name for intra-module call resolution
+            if fn_name != name {
+                let fn_ty = MirType::FnPtr(
+                    params.iter().map(|(_, t)| t.clone()).collect(),
+                    Box::new(return_type.clone()),
+                );
+                self.known_functions.insert(name, fn_ty);
+            }
 
             self.functions.push(MirFunction {
                 name: fn_name,
@@ -3207,11 +3286,28 @@ impl<'a> Lowerer<'a> {
         // (e.g., `head` from `head :: tail`) take precedence over builtin function
         // name mappings (e.g., `head` -> `snow_list_head`).
         if let Some(scope_ty) = self.lookup_var(&name) {
+            // Apply module-qualified naming to user-defined functions (Phase 41).
+            // Function names in scope still need qualification to match their
+            // renamed definitions. Local variables, variant constructors, actors
+            // etc. (not in user_fn_defs) are unchanged.
+            let name = if self.user_fn_defs.contains(&name) {
+                self.qualify_name(&name)
+            } else {
+                name
+            };
             return MirExpr::Var(name, scope_ty);
         }
 
         // Map builtin function names to their runtime equivalents.
         let name = map_builtin_name(&name);
+
+        // Apply module-qualified naming to user-defined functions (Phase 41).
+        // This ensures call sites match the qualified definition names.
+        let name = if self.user_fn_defs.contains(&name) {
+            self.qualify_name(&name)
+        } else {
+            name
+        };
 
         let ty = self.resolve_range(name_ref.syntax().text_range());
         MirExpr::Var(name, ty)
@@ -4446,7 +4542,11 @@ impl<'a> Lowerer<'a> {
         }
 
         self.closure_counter += 1;
-        let closure_fn_name = format!("__closure_{}", self.closure_counter);
+        let closure_fn_name = if self.module_name.is_empty() {
+            format!("__closure_{}", self.closure_counter)
+        } else {
+            format!("{}__closure_{}", self.module_name.replace('.', "_"), self.closure_counter)
+        };
 
         let closure_range = closure.syntax().text_range();
         let closure_ty = self.get_ty(closure_range).cloned();
@@ -4549,7 +4649,11 @@ impl<'a> Lowerer<'a> {
     /// For multi-param multi-clause, uses an if-else chain (same as named fn lowering).
     fn lower_multi_clause_closure(&mut self, closure: &ClosureExpr) -> MirExpr {
         self.closure_counter += 1;
-        let closure_fn_name = format!("__closure_{}", self.closure_counter);
+        let closure_fn_name = if self.module_name.is_empty() {
+            format!("__closure_{}", self.closure_counter)
+        } else {
+            format!("{}__closure_{}", self.module_name.replace('.', "_"), self.closure_counter)
+        };
 
         let closure_range = closure.syntax().text_range();
         let closure_ty = self.get_ty(closure_range).cloned();
@@ -7529,14 +7633,14 @@ fn collect_free_vars(
 /// This is the main entry point for AST-to-MIR conversion. It walks the
 /// typed AST, desugars pipe operators and string interpolation, lifts closures,
 /// and produces a flat MIR module.
-pub fn lower_to_mir(parse: &Parse, typeck: &TypeckResult) -> Result<MirModule, String> {
+pub fn lower_to_mir(parse: &Parse, typeck: &TypeckResult, module_name: &str, pub_fns: &HashSet<String>) -> Result<MirModule, String> {
     let tree = parse.syntax();
     let source_file = match SourceFile::cast(tree.clone()) {
         Some(sf) => sf,
         None => return Err("Failed to cast root node to SourceFile".to_string()),
     };
 
-    let mut lowerer = Lowerer::new(typeck, parse);
+    let mut lowerer = Lowerer::new(typeck, parse, module_name, pub_fns);
 
     // Also register builtin sum types from the registry (Option, Result).
     // Generic type params (T, E) are resolved to Ptr since all Snow values
@@ -7676,8 +7780,9 @@ mod tests {
     fn lower(source: &str) -> MirModule {
         let parse = snow_parser::parse(source);
         let typeck = snow_typeck::check(&parse);
+        let empty_pub_fns = HashSet::new();
         // Ignore type errors for MIR lowering tests -- we test lowering, not typeck.
-        lower_to_mir(&parse, &typeck).expect("MIR lowering failed")
+        lower_to_mir(&parse, &typeck, "", &empty_pub_fns).expect("MIR lowering failed")
     }
 
     #[test]
@@ -8279,7 +8384,8 @@ fn main() do bar(42) end
         // We can't access Lowerer directly (it's private), but we can verify
         // that lowering a deeply nested call chain doesn't crash -- the depth
         // counter prevents stack overflow.
-        let _mir = lower_to_mir(&parse, &typeck).expect("MIR lowering failed");
+        let empty_pub_fns = HashSet::new();
+        let _mir = lower_to_mir(&parse, &typeck, "", &empty_pub_fns).expect("MIR lowering failed");
     }
 
     // ── End-to-end trait codegen integration tests (19-04) ────────────
@@ -8566,7 +8672,8 @@ end
 
         // MIR lowering still succeeds (it's error-tolerant), confirming CODEGEN-04
         // is handled by typeck, not the lowerer.
-        let mir = lower_to_mir(&parse, &typeck);
+        let empty_pub_fns = HashSet::new();
+        let mir = lower_to_mir(&parse, &typeck, "", &empty_pub_fns);
         assert!(
             mir.is_ok(),
             "MIR lowering should succeed even with typeck errors (error recovery)"
@@ -8966,7 +9073,8 @@ end
         // The Lowerer struct is private, so we verify indirectly through behavior.
         let parse = snow_parser::parse(source);
         let typeck = snow_typeck::check(&parse);
-        let _mir = lower_to_mir(&parse, &typeck).expect("MIR lowering with depth tracking");
+        let empty_pub_fns = HashSet::new();
+        let _mir = lower_to_mir(&parse, &typeck, "", &empty_pub_fns).expect("MIR lowering with depth tracking");
     }
 
     #[test]
@@ -9635,7 +9743,8 @@ end
         assert!(missing_errors.is_empty(),
             "Expected no MissingTraitMethod errors, got: {:?}", missing_errors);
         // Should also lower to MIR without failure.
-        let mir = lower_to_mir(&parse, &typeck).expect("MIR lowering failed");
+        let empty_pub_fns = HashSet::new();
+        let mir = lower_to_mir(&parse, &typeck, "", &empty_pub_fns).expect("MIR lowering failed");
         assert!(mir.functions.iter().any(|f| f.name == "Describable__describe__Point"),
             "Expected default method function Describable__describe__Point in MIR, got: {:?}",
             mir.functions.iter().map(|f| &f.name).collect::<Vec<_>>());

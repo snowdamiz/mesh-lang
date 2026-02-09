@@ -342,7 +342,15 @@ fn build(
         let parse = &project.module_parses[idx];
         let typeck = all_typeck[idx].as_ref()
             .ok_or("Module was not type-checked")?;
-        let mir = snow_codegen::lower_to_mir_raw(parse, typeck)?;
+
+        // Build set of pub function names for module-qualified naming (Phase 41)
+        let module_name = &project.graph.get(id).name;
+        let pub_fns: std::collections::HashSet<String> = all_exports[idx]
+            .as_ref()
+            .map(|e| e.functions.keys().cloned().collect())
+            .unwrap_or_default();
+
+        let mir = snow_codegen::lower_to_mir_raw(parse, typeck, module_name, &pub_fns)?;
         if id == entry_id {
             entry_mir_idx = i;
         }
