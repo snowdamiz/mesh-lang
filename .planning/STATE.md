@@ -10,16 +10,16 @@ See: .planning/PROJECT.md (updated 2026-02-09)
 ## Current Position
 
 Phase: 37 of 42 (Module Graph Foundation)
-Plan: 0 of TBD in current phase
-Status: Ready to plan
-Last activity: 2026-02-09 -- Roadmap created for v1.8 Module System (6 phases, 27 requirements)
+Plan: 1 of 2 in current phase
+Status: Executing
+Last activity: 2026-02-09 -- Completed 37-01 (ModuleGraph types + file discovery)
 
-Progress: [||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||          ] 90% (114/~127 plans est.)
+Progress: [|||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||         ] 91% (115/~127 plans est.)
 
 ## Performance Metrics
 
 **All-time Totals:**
-- Plans completed: 114
+- Plans completed: 115
 - Phases completed: 36
 - Milestones shipped: 8 (v1.0-v1.7)
 - Lines of Rust: 70,501
@@ -35,6 +35,9 @@ Recent for v1.8:
 - Single LLVM module approach (merge MIR, not separate compilation) -- avoids cross-module linking complexity
 - Module-qualified type names from day one -- prevents type identity issues across module boundaries
 - Hand-written Kahn's algorithm for toposort -- avoids petgraph dependency for simple DAG
+- Sequential u32 IDs for ModuleId -- simple, zero-allocation, direct Vec indexing
+- FxHashMap for module name-to-id lookup -- low overhead for small module counts
+- Hidden directory skipping in file discovery -- prevents .git/.hidden from being treated as modules
 
 ### Research Notes
 
@@ -55,6 +58,6 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-09
-Stopped at: Roadmap created for v1.8 Module System
+Stopped at: Completed 37-01-PLAN.md
 Resume file: None
-Next action: `/gsd:plan-phase 37`
+Next action: Execute 37-02-PLAN.md (topological sort and cycle detection)
