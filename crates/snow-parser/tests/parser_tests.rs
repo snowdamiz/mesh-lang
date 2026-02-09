@@ -4,7 +4,7 @@
 //! and snapshots the debug tree output to verify correct structure.
 
 use insta::assert_snapshot;
-use snow_parser::ast::expr::{BinaryExpr, IfExpr, Literal};
+use snow_parser::ast::expr::{BinaryExpr, ForInExpr, IfExpr, Literal};
 use snow_parser::ast::item::{
     FnDef, LetBinding, ServiceDef, SourceFile, StructDef, SumTypeDef,
 };
@@ -2346,4 +2346,70 @@ fn ast_struct_deriving_empty() {
 
     assert!(struct_def.has_deriving_clause());
     assert!(struct_def.deriving_traits().is_empty());
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// Phase 36-02: For-in with when filter clause
+// ═══════════════════════════════════════════════════════════════════════
+
+#[test]
+fn for_in_when_filter_snapshot() {
+    assert_snapshot!(parse_and_debug("for x in list when x > 0 do\n  x\nend"));
+}
+
+#[test]
+fn for_in_when_filter_ast_accessors() {
+    let p = parse_expr("for x in list when x > 0 do\n  x\nend");
+    assert!(p.ok(), "parse errors: {:?}", p.errors());
+    let root = p.syntax();
+
+    let for_in: ForInExpr = root
+        .children()
+        .find_map(ForInExpr::cast)
+        .expect("should have ForInExpr");
+
+    // WHEN_KW token is present as a direct child
+    let has_when = for_in
+        .syntax()
+        .children_with_tokens()
+        .any(|it| it.kind() == SyntaxKind::WHEN_KW);
+    assert!(has_when, "ForInExpr should have WHEN_KW token");
+
+    // filter() returns Some(expr)
+    let filter = for_in.filter();
+    assert!(filter.is_some(), "ForInExpr::filter() should return Some");
+
+    // iterable() still returns the correct expression
+    let iterable = for_in.iterable();
+    assert!(iterable.is_some(), "ForInExpr::iterable() should return Some");
+
+    // body() returns the block
+    let body = for_in.body();
+    assert!(body.is_some(), "ForInExpr::body() should return Some");
+}
+
+#[test]
+fn for_in_without_when_filter_returns_none() {
+    let p = parse_expr("for x in list do\n  x\nend");
+    assert!(p.ok(), "parse errors: {:?}", p.errors());
+    let root = p.syntax();
+
+    let for_in: ForInExpr = root
+        .children()
+        .find_map(ForInExpr::cast)
+        .expect("should have ForInExpr");
+
+    // No WHEN_KW token
+    let has_when = for_in
+        .syntax()
+        .children_with_tokens()
+        .any(|it| it.kind() == SyntaxKind::WHEN_KW);
+    assert!(!has_when, "ForInExpr without when should not have WHEN_KW token");
+
+    // filter() returns None
+    assert!(for_in.filter().is_none(), "ForInExpr::filter() should return None without when clause");
+
+    // iterable() and body() still work
+    assert!(for_in.iterable().is_some(), "iterable() should still work");
+    assert!(for_in.body().is_some(), "body() should still work");
 }

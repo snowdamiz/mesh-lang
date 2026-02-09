@@ -2212,4 +2212,48 @@ mod tests {
         let second = fmt(&first);
         assert_eq!(first, second, "Idempotency failed.\nFirst: {:?}\nSecond: {:?}", first, second);
     }
+
+    // ── For-in with when filter clause tests ──────────────────────────
+
+    #[test]
+    fn for_in_filter_basic() {
+        let result = fmt("for x in list when x > 0 do\nx\nend");
+        assert_eq!(result, "for x in list when x > 0 do\n  x\nend\n");
+    }
+
+    #[test]
+    fn for_in_filter_basic_idempotent() {
+        let src = "for x in list when x > 0 do\nx\nend";
+        let first = fmt(src);
+        let second = fmt(&first);
+        assert_eq!(first, second, "Idempotency failed.\nFirst: {:?}\nSecond: {:?}", first, second);
+    }
+
+    #[test]
+    fn for_in_filter_range() {
+        let result = fmt("for i in 0..10 when i % 2 == 0 do\ni\nend");
+        assert_eq!(result, "for i in 0..10 when i % 2 == 0 do\n  i\nend\n");
+    }
+
+    #[test]
+    fn for_in_filter_range_idempotent() {
+        let src = "for i in 0..10 when i % 2 == 0 do\ni\nend";
+        let first = fmt(src);
+        let second = fmt(&first);
+        assert_eq!(first, second, "Idempotency failed.\nFirst: {:?}\nSecond: {:?}", first, second);
+    }
+
+    #[test]
+    fn for_in_filter_destructure() {
+        let result = fmt("for {k, v} in map when v > 0 do\nk\nend");
+        assert_eq!(result, "for {k, v} in map when v > 0 do\n  k\nend\n");
+    }
+
+    #[test]
+    fn for_in_filter_destructure_idempotent() {
+        let src = "for {k, v} in map when v > 0 do\nk\nend";
+        let first = fmt(src);
+        let second = fmt(&first);
+        assert_eq!(first, second, "Idempotency failed.\nFirst: {:?}\nSecond: {:?}", first, second);
+    }
 }
