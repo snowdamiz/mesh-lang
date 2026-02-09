@@ -237,6 +237,12 @@ pub enum TypeError {
         trait_name: String,
         type_name: String,
     },
+    /// A derived trait requires another trait that is not in the deriving list.
+    MissingDerivePrerequisite {
+        trait_name: String,
+        requires: String,
+        type_name: String,
+    },
 }
 
 impl fmt::Display for TypeError {
@@ -493,6 +499,17 @@ impl fmt::Display for TypeError {
                     f,
                     "cannot derive `{}` for `{}` -- only Eq, Ord, Display, Debug, and Hash are derivable",
                     trait_name, type_name
+                )
+            }
+            TypeError::MissingDerivePrerequisite {
+                trait_name,
+                requires,
+                type_name,
+            } => {
+                write!(
+                    f,
+                    "deriving `{}` for `{}` requires `{}` to also be derived",
+                    trait_name, type_name, requires
                 )
             }
         }

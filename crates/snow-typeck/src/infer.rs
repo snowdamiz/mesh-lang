@@ -1513,6 +1513,23 @@ fn register_struct_def(
         }
     }
 
+    // Check trait dependencies: Ord requires Eq.
+    if has_deriving && derive_list.iter().any(|t| t == "Ord") && !derive_list.iter().any(|t| t == "Eq") {
+        ctx.errors.push(TypeError::MissingDerivePrerequisite {
+            trait_name: "Ord".to_string(),
+            requires: "Eq".to_string(),
+            type_name: name.clone(),
+        });
+        // Register the struct type info so the rest of compilation doesn't crash,
+        // but skip trait impl registration to avoid generating broken MIR.
+        type_registry.register_struct(StructDefInfo {
+            name,
+            generic_params,
+            fields,
+        });
+        return;
+    }
+
     // Build the impl type: non-generic uses Ty::Con, generic uses Ty::App.
     let impl_ty = if generic_params.is_empty() {
         Ty::Con(TyCon::new(&name))
@@ -1792,6 +1809,18 @@ fn register_sum_type_def(
                 type_name: name.clone(),
             });
         }
+    }
+
+    // Check trait dependencies: Ord requires Eq.
+    if has_deriving && derive_list.iter().any(|t| t == "Ord") && !derive_list.iter().any(|t| t == "Eq") {
+        ctx.errors.push(TypeError::MissingDerivePrerequisite {
+            trait_name: "Ord".to_string(),
+            requires: "Eq".to_string(),
+            type_name: name.clone(),
+        });
+        // Sum type and variant constructors are already registered above.
+        // Skip trait impl registration to avoid generating broken MIR.
+        return;
     }
 
     // Build the impl type: non-generic uses Ty::Con, generic uses Ty::App.

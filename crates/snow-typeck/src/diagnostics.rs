@@ -119,6 +119,7 @@ fn error_code(err: &TypeError) -> &'static str {
         TypeError::DuplicateImpl { .. } => "E0026",
         TypeError::AmbiguousMethod { .. } => "E0027",
         TypeError::UnsupportedDerive { .. } => "E0028",
+        TypeError::MissingDerivePrerequisite { .. } => "E0029",
     }
 }
 
@@ -1329,6 +1330,36 @@ pub fn render_diagnostic(
                         .with_color(Color::Red),
                 )
                 .with_help("only Eq, Ord, Display, Debug, and Hash are derivable")
+                .finish()
+        }
+
+        TypeError::MissingDerivePrerequisite {
+            trait_name,
+            requires,
+            type_name,
+        } => {
+            let msg = format!(
+                "cannot derive `{}` for `{}` without `{}`",
+                trait_name, type_name, requires
+            );
+            let span = clamp(0..source_len.max(1).min(source_len));
+
+            Report::build(ReportKind::Error, span.clone())
+                .with_code(code)
+                .with_message(&msg)
+                .with_config(config)
+                .with_label(
+                    Label::new(span)
+                        .with_message(format!(
+                            "`{}` requires `{}` for its implementation",
+                            trait_name, requires
+                        ))
+                        .with_color(Color::Red),
+                )
+                .with_help(format!(
+                    "add `{}` to the deriving list: deriving({}, {})",
+                    requires, requires, trait_name
+                ))
                 .finish()
         }
     };
