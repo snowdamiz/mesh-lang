@@ -1,306 +1,276 @@
-# Stack Research: v1.3 Trait System & Stdlib Protocols
+# Stack Research: Method Dot-Syntax
 
-**Project:** Snow Programming Language -- v1.3 Milestone
-**Domain:** Compiler trait system completion, monomorphization, stdlib protocol implementation
-**Researched:** 2026-02-07
-**Confidence:** HIGH
+**Domain:** Compiler feature addition -- method call resolution via dot syntax
+**Researched:** 2026-02-08
+**Confidence:** HIGH (based on direct codebase analysis + compiler design literature)
 
-## Scope
+## Executive Summary
 
-This research covers ONLY the stack changes needed for v1.3: completing the trait system (user-defined traits, monomorphization, method dispatch) and adding stdlib protocols (Display, Iterator, From/Into, Serialize/Deserialize, Hash, Default). The existing compiler stack (lexer, parser, type checker, MIR, codegen, runtime) is validated and out of scope.
+Method dot-syntax (`value.method(args)`) requires NO new external dependencies. The entire feature is implemented through changes to existing compiler passes. Snow already has all the infrastructure needed: the parser handles `expr.ident` (FIELD_ACCESS at binding power 25), the type checker has `TraitRegistry` with `resolve_trait_method` and `find_method_traits`, the MIR lowerer already rewrites bare `method(receiver, args)` calls to `Trait__Method__Type(receiver, args)`, and codegen handles `MirExpr::Call` with mangled names. The work is a **wiring exercise**, not a new-capability exercise.
 
----
+## What Exists Today (DO NOT CHANGE)
 
-## Key Finding: No New Dependencies Needed
+These are existing capabilities that method dot-syntax builds on, not replaces.
 
-The v1.3 trait system and stdlib protocols require **zero new Rust crate dependencies**. Everything needed is already in the workspace or is pure compiler logic that should be implemented directly. This is the correct outcome -- trait systems and protocols are core compiler semantics, not library-shaped problems.
+### Parser (snow-parser)
 
----
+| Component | Current State | Relevance |
+|-----------|--------------|-----------|
+| `FIELD_ACCESS` CST node | `expr.ident` parsed at postfix BP 25 | Reuse this parse; the disambiguation happens later |
+| `CALL_EXPR` CST node | `expr(args)` parsed at postfix BP 25 | `expr.method(args)` currently parses as `CALL_EXPR(FIELD_ACCESS(expr, method), args)` |
+| `PIPE_EXPR` CST node | `expr \|> func` at BP 3/4 | Do NOT change; pipe remains a separate mechanism |
+| `PARAM` with `SELF_KW` | `self` keyword accepted in param lists | Already parsed for impl methods |
 
-## Current Stack (Validated, No Changes)
+### Type Checker (snow-typeck)
 
-These are already in `Cargo.toml` and require no version changes:
+| Component | Current State | Relevance |
+|-----------|--------------|-----------|
+| `TraitRegistry.resolve_trait_method(name, ty)` | Searches all impls for method matching type | Core lookup for method resolution |
+| `TraitRegistry.find_method_traits(name, ty)` | Returns all traits providing method for type | Ambiguity detection |
+| `TraitRegistry.find_impl(trait, ty)` | Structural unification-based impl lookup | Already handles generics via freshening |
+| `infer_field_access()` | Resolves struct fields, stdlib modules, service modules | Must be extended to try method resolution |
+| `infer_call()` | Resolves function calls with where-clause checking | Will receive method calls after desugaring |
+| `ImplMethodSig.has_self` | Tracks whether method takes self | Used to distinguish methods from static functions |
 
-| Technology | Version | Crate | Status |
-|------------|---------|-------|--------|
-| Inkwell | 0.8.0 | `snow-codegen` | Current (supports LLVM 21, latest on GitHub) |
-| LLVM | 21 | via Inkwell `llvm21-1` feature | Current |
-| ena | 0.14 | `snow-typeck` | Current (latest is 0.14.3, semver-compatible) |
-| rustc-hash | 2 | `snow-typeck`, `snow-codegen` | Current (latest is 2.1.1, semver-compatible) |
-| rowan | 0.16 | `snow-parser` | Current (latest is 0.16.1, semver-compatible) |
-| ariadne | 0.6 | `snow-typeck` | Current |
-| serde/serde_json | 1 | `snow-typeck`, `snow-rt` | Current |
-| insta | 1.46 | dev-dependency | Current |
+### MIR Lowerer (snow-codegen/mir)
 
-**Confidence: HIGH** -- Versions verified via crates.io web search on 2026-02-07. All workspace dependencies are at their latest compatible versions.
+| Component | Current State | Relevance |
+|-----------|--------------|-----------|
+| `lower_call_expr()` | Rewrites bare `method(receiver)` to `Trait__Method__Type(receiver)` | Already does trait method dispatch |
+| `lower_field_access()` | Handles struct fields, stdlib modules, service modules | Must be extended or a new path added |
+| `mir_type_to_ty()` | Converts MirType back to Ty for TraitRegistry lookups | Already exists for dispatch |
+| `mir_type_to_impl_name()` | Extracts type name for mangled names | Already exists |
 
----
+### Codegen (snow-codegen/codegen)
 
-## What Changes Are Needed (All Internal)
+| Component | Current State | Relevance |
+|-----------|--------------|-----------|
+| `codegen_expr()` for `MirExpr::Call` | Emits LLVM call instruction | No change needed -- method calls lower to regular `MirExpr::Call` |
+| `codegen_field_access()` | Emits GEP for struct fields | No change needed -- field access remains unchanged |
 
-### 1. snow-typeck: TraitRegistry Extensions
+## Recommended Stack Changes
 
-**No new dependencies.** The existing `TraitRegistry` (traits.rs) needs extension, not replacement.
+### Change 1: New AST Node -- METHOD_CALL (Parser Layer)
 
-**Current state:** TraitRegistry stores `TraitDef` and `ImplDef` keyed by `(trait_name, type_key)`. Compiler-known traits (Add, Eq, Ord, etc.) are registered in builtins.rs with built-in impls for primitives. Where clauses validate against registry.
+**What:** Add `METHOD_CALL` SyntaxKind and `MethodCallExpr` AST node.
+**Why:** The parser currently produces `CALL_EXPR(FIELD_ACCESS(base, method), args)` for `value.method(args)`. However, this structure is ambiguous -- the type checker cannot distinguish "call a function returned by field access" from "call a method on the receiver." A dedicated CST node eliminates this ambiguity at parse time.
 
-**What needs to change internally:**
+| Technology | Change | Purpose | Why |
+|------------|--------|---------|-----|
+| `SyntaxKind` enum | Add `METHOD_CALL` variant | Distinct CST node for `expr.method(args)` | Disambiguates from `(expr.field)(args)` at parse time |
+| `expressions.rs` postfix loop | Detect `DOT IDENT L_PAREN` sequence | Emit `METHOD_CALL` instead of `CALL_EXPR(FIELD_ACCESS(...))` | Parser is the cheapest place to detect this pattern |
+| `ast/expr.rs` | Add `MethodCallExpr` typed AST wrapper | Clean API: `.receiver()`, `.method_name()`, `.arg_list()` | Follows existing pattern (CallExpr, FieldAccess) |
 
-| Change | Why | Impact |
-|--------|-----|--------|
-| `TraitDef` gains `default_methods: Vec<(String, ...)>` | Support default method implementations in interfaces | Small struct change in traits.rs |
-| `ImplDef` gains method body references | Codegen needs to find impl method bodies for monomorphization | Link from ImplDef to CST nodes or MIR bodies |
-| `TraitRegistry` gains `impls_for_type(ty) -> Vec<&ImplDef>` | Codegen needs all impls for a given type to generate monomorphized methods | New query method |
-| `TraitRegistry` gains `impls_for_trait(name) -> Vec<&ImplDef>` | Stdlib protocols need to enumerate all implementors | New query method |
-| `type_to_key` handles generic impls | `impl Display for Option<T>` requires matching against parameterized types | Extend existing function |
+**Parser detection logic:** In the postfix loop of `expr_bp`, after matching `DOT`:
+1. Check if `DOT IDENT L_PAREN` (method call with args)
+2. If yes: open before lhs, advance DOT, advance IDENT, parse arg list, close as `METHOD_CALL`
+3. If no: fall through to existing FIELD_ACCESS handling
 
-**Tools used:** Direct Rust code in existing crate. Uses existing `ena` for unification, existing `rustc-hash` for FxHashMap.
+This is a 2-token lookahead (DOT + peek at IDENT then L_PAREN), which is trivial in the existing Pratt parser.
 
-### 2. snow-codegen/mir: Monomorphization Pass
+### Alternative Considered: No New CST Node (Desugar Later)
 
-**No new dependencies.** The existing `mono.rs` is a reachability-only pass that needs to become a real monomorphization pass.
+**Approach:** Keep `CALL_EXPR(FIELD_ACCESS(...))` and detect the pattern in the type checker.
+**Why rejected:** The type checker would need to speculatively try "is this a field access returning a callable?" AND "is this a method call?" for every `CALL_EXPR` whose callee is a `FIELD_ACCESS`. This creates fragile disambiguation logic in the wrong layer. The parser already sees the syntactic structure and should encode it.
 
-**Current state:** `monomorphize()` in `mir/mono.rs` only does dead function elimination (reachability analysis). Comment says "In future: creates specialized copies of generic functions for each concrete type instantiation." The MIR lowerer in `lower.rs` currently lowers impl methods as standalone functions (`self.lower_fn_def(&method)`) but does not mangle names by implementing type.
+### Change 2: Type Checker Method Resolution (Type Checker Layer)
 
-**What needs to change internally:**
+**What:** Add `infer_method_call()` function in `snow-typeck/src/infer.rs`.
+**Why:** This is the core semantic logic. Given `receiver.method(args)`, resolve the receiver type, look up the method in the TraitRegistry, and type-check the call.
 
-| Change | Why | Impact |
-|--------|-----|--------|
-| Name mangling for trait methods | `impl Display for Int` produces `Display_to_string_Int` | Extend existing `mangle_type_name` in mir/types.rs |
-| MIR gains `TraitMethodCall` variant | Distinguish `obj.method()` from `free_fn(obj)` for dispatch | New variant in MirExpr enum |
-| Monomorphization collects trait method instantiations | When `Display.to_string` is called on `Int`, ensure `Display_to_string_Int` exists | Extend mono.rs worklist |
-| MIR lowerer resolves trait methods to concrete impls | At call sites, resolve `self.to_string()` to the mangled concrete function | Extend lower.rs |
-| Codegen emits monomorphized trait method bodies | LLVM functions for each (trait, type) combination | Extend codegen/expr.rs |
+| Component | Change | Purpose | Why |
+|-----------|--------|---------|-----|
+| `infer.rs` match on `Expr` | Add `Expr::MethodCallExpr(mc)` arm | Route to new inference function | Follows existing pattern |
+| `infer_method_call()` | New function (~50 lines) | Core method resolution algorithm | Heart of the feature |
+| Error types | Add `NoSuchMethod { ty, method_name, span }` | Good diagnostics for failed resolution | Users need clear errors |
+| Error types | Add `AmbiguousMethod { ty, method_name, candidates, span }` | Ambiguity detection | Multiple traits with same method name |
 
-**Architecture decision (already validated):** Static dispatch via monomorphization. No vtables. This is correct because:
-1. Snow uses static typing with HM inference -- concrete types are known at compile time
-2. LLVM benefits from direct calls (enables inlining, branch prediction)
-3. Actor system provides dynamic routing where needed (message dispatch is inherently dynamic)
-4. Binary size trade-off is acceptable for a compiled language targeting servers/CLI
+**Method resolution algorithm (simplified vs Rust):**
 
-**Name mangling scheme:** Use the existing `mangle_type_name` pattern from `mir/types.rs`:
-- `Display_to_string_Int` for `impl Display for Int`
-- `Iterator_next_List_Int` for `impl Iterator for List<Int>`
-- `From_from_String_Int` for `impl From<String> for Int`
+Snow does NOT need Rust's autoderef chain because Snow has no references, no `Deref` trait, and no auto-borrowing. The algorithm is:
 
-### 3. snow-codegen/codegen: LLVM IR for Trait Methods
-
-**No new dependencies.** Trait methods compile to regular LLVM functions with mangled names.
-
-**Current state:** Codegen skips `InterfaceDef` ("interfaces are erased") and lowers `ImplDef` methods as standalone functions. The `CodeGen` struct already has `functions: FxHashMap<String, FunctionValue>` which maps MIR function names to LLVM function values.
-
-**What needs to change internally:**
-
-| Change | Why | Impact |
-|--------|-----|--------|
-| Codegen registers mangled trait method names | `Display_to_string_Int` must be in `functions` map | Extend function registration pass |
-| Call sites resolve to mangled names | `x.to_string()` where `x: Int` becomes call to `Display_to_string_Int` | Extend expr.rs call handling |
-| `self` parameter handling | Trait methods receive `self` as first argument (value, not reference) | Straightforward -- same as existing function params |
-
-### 4. snow-rt: Runtime Support for Stdlib Protocols
-
-**No new dependencies.** Runtime functions for stdlib protocols are implemented as `#[no_mangle] extern "C"` functions in the existing snow-rt crate, same pattern as all other stdlib functions.
-
-**Current approach (validated):** Every stdlib function is a Rust function with C ABI exported from snow-rt, declared as an LLVM extern in codegen/intrinsics.rs, and registered in builtins.rs for type checking. This pattern works and scales.
-
-**New runtime functions needed:**
-
-| Protocol | Runtime Functions | Crate Impact |
-|----------|-------------------|--------------|
-| Display | `snow_display_int`, `snow_display_float`, `snow_display_bool`, `snow_display_string` | Trivial -- format to String |
-| Iterator | `snow_iterator_*` for List, Range, Map | Uses existing collection internals |
-| From/Into | Pure type-level, no runtime support needed | Zero runtime impact |
-| Hash | `snow_hash_int`, `snow_hash_float`, `snow_hash_string`, `snow_hash_bool` | See hash algorithm section below |
-| Default | `snow_default_int` (0), `snow_default_float` (0.0), etc. | Trivial |
-| Serialize | `snow_serialize_*` to JSON string | Uses existing serde_json in snow-rt |
-| Deserialize | `snow_deserialize_*` from JSON string | Uses existing serde_json in snow-rt |
-
-### 5. Hash Algorithm for Snow's Hash Protocol
-
-**No new dependency needed.** Use FNV-1a, implemented directly in snow-rt (~30 lines of Rust).
-
-**Why FNV-1a (not SipHash, not the `rustc-hash` FxHash):**
-
-| Algorithm | Speed (short keys) | Speed (long keys) | HashDoS resistant | Complexity |
-|-----------|--------------------|--------------------|-------------------|------------|
-| FNV-1a | Very fast | Moderate | No | ~30 lines |
-| SipHash | Moderate | Fast | Yes | ~200 lines |
-| FxHash | Fastest | Poor | No | ~50 lines |
-
-- **FNV-1a is the right choice** because Snow's Hash protocol is for user-visible hashing of values (struct fields, map keys), not for the compiler's internal hash maps (which already use FxHash via rustc-hash).
-- Snow is a compiled language where the input domain is controlled (not a web server accepting arbitrary user keys), so HashDoS resistance is unnecessary at the language level.
-- The Hash protocol implementations for Snow value types (Int, Float, String, Bool, structs) hash known-size data. FNV-1a excels at this.
-- FNV-1a is trivial to implement inline -- no crate needed.
-
-**Implementation:** A single `snow_hash` function in snow-rt that takes a pointer and length, returns i64. Protocol implementations for each type call it with appropriate byte representations. Approximately 30 lines of Rust:
-
-```rust
-const FNV_OFFSET: u64 = 14695981039346656037;
-const FNV_PRIME: u64 = 1099511628211;
-
-fn fnv1a(bytes: &[u8]) -> u64 {
-    let mut hash = FNV_OFFSET;
-    for &byte in bytes {
-        hash ^= byte as u64;
-        hash = hash.wrapping_mul(FNV_PRIME);
-    }
-    hash
-}
+```
+infer_method_call(receiver_expr, method_name, args):
+  1. receiver_ty = infer_expr(receiver_expr)
+  2. resolved_ty = resolve(receiver_ty)  // follow unification links
+  3. matching_traits = trait_registry.find_method_traits(method_name, resolved_ty)
+  4. if matching_traits.is_empty():
+       emit NoSuchMethod error
+  5. if matching_traits.len() > 1:
+       emit AmbiguousMethod error (list trait names)
+  6. trait_name = matching_traits[0]
+  7. impl_def = trait_registry.find_impl(trait_name, resolved_ty)
+  8. method_sig = impl_def.methods[method_name]
+  9. // Type check: unify (receiver_ty, arg_types...) against method signature
+  10. // Return the method's return type
 ```
 
-**Why not add the `fnv` crate:** The fnv crate (crates.io) provides a Hasher implementation, but Snow's runtime doesn't need `std::hash::Hasher` compatibility. A direct FNV-1a implementation is simpler, has zero dependencies, and avoids pulling in a crate for 30 lines of code.
+This is dramatically simpler than Rust's method resolution because:
+- No autoderef chain (no `&T`, `&mut T`, `**T` candidates)
+- No inherent methods (Snow uses trait impls for everything)
+- No auto-borrowing (Snow is value-typed / GC-managed)
+- Static dispatch only (no vtables)
 
-**Why not add the `ahash` crate:** ahash is excellent for Rust hash maps but requires hardware AES instructions for its speed advantage, which makes it platform-dependent. Snow's Hash protocol should produce deterministic, platform-independent hashes.
+### Change 3: MIR Lowering (MIR Layer)
 
-### 6. Serialization for Snow's Serialize/Deserialize Protocols
+**What:** Add `lower_method_call()` in `snow-codegen/src/mir/lower.rs`.
+**Why:** Desugar `receiver.method(args)` into `Trait__Method__Type(receiver, args)` -- a regular `MirExpr::Call`.
 
-**No new dependency needed.** Use existing serde_json (already in snow-rt's Cargo.toml).
+| Component | Change | Purpose | Why |
+|-----------|--------|---------|-----|
+| `lower_expr()` match | Add `Expr::MethodCallExpr(mc)` arm | Route to new lowering function | Follows existing pattern |
+| `lower_method_call()` | New function (~30 lines) | Desugar to mangled call | Reuse existing mangling logic |
 
-**Design approach:** Snow's Serialize/Deserialize protocols produce/consume JSON strings, not arbitrary formats. This is the right scope for v1.3 because:
-1. JSON is the only serialization format Snow's stdlib currently supports (json.rs in snow-rt)
-2. A Serde-style multi-format data model is premature -- Snow doesn't have derive macros or procedural macros yet
-3. JSON covers the server-oriented use case (HTTP APIs, config files)
+**The desugaring is:**
 
-**Runtime implementation:**
-- `snow_serialize_*` functions convert Snow values to JSON strings (uses serde_json::Value internally)
-- `snow_deserialize_*` functions parse JSON strings into Snow values (uses serde_json::from_str internally)
-- Struct serialization: compiler generates a serialize function per struct that walks fields and builds a JSON object
-- This matches the existing pattern in json.rs where `json_encode_map`, `json_encode_list`, etc. already exist
+```
+lower_method_call(receiver, method_name, args):
+  1. lower_receiver = lower_expr(receiver)
+  2. lower_args = [lower_receiver] ++ map(lower_expr, args)
+  3. receiver_mir_ty = lower_receiver.ty()
+  4. ty_for_lookup = mir_type_to_ty(receiver_mir_ty)
+  5. matching_traits = trait_registry.find_method_traits(method_name, ty_for_lookup)
+  6. trait_name = matching_traits[0]  // already validated by typeck
+  7. type_name = mir_type_to_impl_name(receiver_mir_ty)
+  8. mangled = format!("{}__{}__{}", trait_name, method_name, type_name)
+  9. // Handle primitive builtins (same as existing logic in lower_call_expr)
+  10. return MirExpr::Call { func: Var(mangled), args: lower_args, ty: result_ty }
+```
 
-**Why not add a separate serialization framework:** Snow is not Rust. It doesn't need a Serde-style visitor pattern because it doesn't have derive macros. The compiler itself generates the serialization code for each type via monomorphization of the Serialize trait. The runtime just needs leaf functions (`serialize_int_to_json`, `serialize_string_to_json`, etc.) that the generated code calls.
+This reuses the EXACT same mangling and dispatch logic already in `lower_call_expr()` for bare `method(receiver)` calls. The key insight: **both calling conventions produce identical MIR**. The only difference is where the receiver comes from (first arg vs dot-syntax receiver).
 
----
+### Change 4: No Codegen Changes Required
 
-## Recommended Stack (Complete)
+**Why:** Method calls desugar to `MirExpr::Call` in MIR, which codegen already handles. The mangled function names (`Trait__Method__Type`) are already emitted as LLVM functions. No new LLVM instructions, no new calling convention, no new MirExpr variant needed.
 
-### Core Technologies (No Changes)
+### Change 5: Formatter and LSP Updates
 
-| Technology | Version | Purpose | Status for v1.3 |
-|------------|---------|---------|------------------|
-| Inkwell | 0.8.0 (`llvm21-1`) | LLVM IR generation | No changes needed. Monomorphized trait methods are regular LLVM functions. |
-| ena | 0.14 | Union-find for type unification | No changes needed. Trait method resolution uses TraitRegistry, not unification. |
-| rustc-hash | 2 | FxHashMap for compiler internals | No changes needed. Already used throughout. |
-| rowan | 0.16 | Lossless CST | No changes needed. Parser already handles interface/impl syntax. |
-| ariadne | 0.6 | Diagnostic reporting | No changes needed. New error types use existing error infrastructure. |
-| serde_json | 1 | JSON parsing/generation | Already in snow-rt. Used for Serialize/Deserialize protocol runtime. |
+| Component | Change | Purpose | Why |
+|-----------|--------|---------|-----|
+| `snow-fmt` walker/ir | Handle `METHOD_CALL` SyntaxKind | Format `value.method(args)` correctly | Formatter must know about new node |
+| `snow-lsp` definition.rs | Handle `METHOD_CALL` for go-to-definition | Navigate to impl method from call site | LSP should resolve method calls |
 
-### New Internal Components (No External Dependencies)
+## What NOT to Change
 
-| Component | Location | Purpose | Complexity |
-|-----------|----------|---------|------------|
-| TraitRegistry extensions | snow-typeck/traits.rs | Default methods, impl queries, generic impl matching | Medium |
-| MirExpr::TraitMethodCall | snow-codegen/mir/mod.rs | Distinguish trait method calls from free functions | Low |
-| Monomorphization pass | snow-codegen/mir/mono.rs | Generate specialized functions per (trait, concrete_type) | High |
-| Trait method name mangling | snow-codegen/mir/types.rs | Extend existing mangle_type_name | Low |
-| Trait method dispatch in codegen | snow-codegen/codegen/expr.rs | Resolve trait calls to mangled LLVM functions | Medium |
-| FNV-1a hash implementation | snow-rt/src/hash.rs (new file) | Runtime hash function for Hash protocol | Low (~30 lines) |
-| Display runtime functions | snow-rt/src/string.rs (extend) | to_string for primitive types | Low |
-| Iterator runtime support | snow-rt/src/collections/ (extend) | Iterator state management for List, Range | Medium |
-| Serialize/Deserialize runtime | snow-rt/src/json.rs (extend) | JSON serialization for Snow types | Medium |
-| Builtin trait/impl registrations | snow-typeck/builtins.rs | Register Display, Iterator, Hash, etc. as traits with impls | Medium |
-| Builtin type signatures | snow-typeck/builtins.rs | Type signatures for protocol methods in type env | Low |
+| Component | Why Leave Alone |
+|-----------|----------------|
+| `FIELD_ACCESS` parsing/inference | Field access (`value.field`) remains exactly as-is. Only `value.field(args)` gets the new treatment. |
+| `PIPE_EXPR` | Pipe (`\|>`) is a separate mechanism. Method syntax complements, does not replace, pipes. |
+| `MirExpr` enum | No new variant needed. Method calls desugar to existing `MirExpr::Call`. |
+| `codegen_expr()` | No changes. MIR already produces `Call` nodes that codegen handles. |
+| `monomorphize()` | No changes. Monomorphization already handles `Call` nodes with mangled names. |
+| Existing `lower_call_expr()` trait dispatch | Keep the existing bare `method(receiver)` calling convention working. Both styles should work. |
+| `TraitRegistry` | No structural changes. Existing `find_method_traits` and `resolve_trait_method` are sufficient. |
 
----
+## Stack Patterns by Feature Variant
 
-## What NOT to Add (and Why)
+### If only supporting trait methods via dot syntax (RECOMMENDED):
 
-| Avoid | Why | What to Do Instead |
-|-------|-----|-------------------|
-| `fnv` crate | 30 lines of code. Adding a crate for a trivial algorithm adds dependency management overhead for no benefit. | Implement FNV-1a directly in snow-rt (~30 lines). |
-| `ahash` crate | Requires hardware AES for speed. Snow's Hash protocol needs deterministic, platform-independent results. | Use FNV-1a. Platform-independent, deterministic, fast enough. |
-| `siphasher` crate | Overkill for Snow's use case. SipHash protects against HashDoS, which is irrelevant for a compiled language's value hashing. | Use FNV-1a. |
-| `serde` derive macros on Snow types | Snow types are not Rust types. The compiler generates serialization code via monomorphization, not via Rust derive macros. | Compiler generates serialize/deserialize functions per type. Runtime provides leaf serialization functions. |
-| `erased-serde` or trait object serialization | Dynamic dispatch for serialization is unnecessary -- Snow uses static dispatch via monomorphization. | Monomorphize Serialize/Deserialize impls to concrete functions. |
-| vtable/dynamic dispatch infrastructure | Snow's type system resolves all types at compile time. Adding vtables would add runtime cost for no benefit. Actors provide dynamic routing where needed. | Monomorphization only. Static dispatch for all trait method calls. |
-| `petgraph` or graph library for trait resolution | Trait dependency graphs in Snow are simple (no diamond inheritance, no higher-kinded types). A HashMap lookup suffices. | Use existing FxHashMap-based TraitRegistry. |
-| New MIR crate or separate `snow-mir` | MIR is tightly coupled to codegen. Splitting it out adds crate boundary overhead for code that changes together. | Keep MIR in snow-codegen as it is now. |
-| `proc-macro2`/`syn`/`quote` | Snow doesn't have derive macros. Serialization code is generated by the compiler, not by Rust macros. | Compiler generates code directly in MIR lowering. |
-| Generic/polymorphic runtime dispatch | Iterator, Display, etc. are resolved at compile time via monomorphization. No runtime trait dispatch needed. | All protocol methods compile to direct function calls. |
+The minimal change set above is sufficient. `value.method(args)` resolves through TraitRegistry.
 
----
+### If also supporting inherent methods (methods without a trait):
 
-## Integration Points with Existing Stack
+Would require a new registry for inherent impls (methods defined in `impl Type do ... end` without a trait). This is a future extension, NOT needed for the initial milestone. Snow currently requires all methods to belong to a trait. Inherent methods would add:
+- `InherentImplRegistry` in typeck
+- Priority ordering: inherent methods checked before trait methods (like Rust)
+- Additional MIR lowering path
 
-### Type Checker -> MIR Lowering
+**Recommendation: Do NOT add inherent methods in this milestone.** Keep the scope to trait-dispatched method dot-syntax. Inherent methods can be added later without breaking changes.
 
-The `TypeckResult` already contains `trait_registry: TraitRegistry`. The MIR lowerer has access to this. The integration point is:
+### If also supporting UFCS (Uniform Function Call Syntax):
 
-1. **Type checker** resolves which concrete impl satisfies a trait method call
-2. **MIR lowerer** reads the resolution and generates `MirExpr::Call` with the mangled function name
-3. **No trait objects, no vtables** -- by the time MIR is generated, all calls are direct
+Would allow `free_function(receiver, args)` to also be called as `receiver.free_function(args)`. This is a separate, larger feature. Snow's pipe operator (`|>`) already provides this ergonomic. Do NOT conflate with method dot-syntax.
 
-### MIR Lowering -> Codegen
+## Architecture of Method Resolution in Other Languages
 
-The MIR lowerer already generates `MirExpr::Call` with function names. Trait methods are lowered as regular functions with mangled names. The codegen sees no difference between a trait method call and a regular function call -- they are both `MirExpr::Call { func: Var("Display_to_string_Int"), ... }`.
+### Rust (most complex)
 
-### Builtins Registration
+Rust's method resolution involves autoderef chains, auto-borrowing (`&T`, `&mut T`), unsized coercion, inherent methods before trait methods, and probe phases. This complexity exists because Rust has references, ownership, and the `Deref` trait. Snow needs none of this.
 
-New stdlib protocols follow the exact pattern established by compiler-known traits in builtins.rs:
+**What to take from Rust:** The priority ordering concept (inherent before extension) is good design for future extensibility. The "first match wins" approach is simple and predictable.
 
-1. Register trait definition: `registry.register_trait(TraitDef { name: "Display", methods: [...] })`
-2. Register impls for primitives: `registry.register_impl(ImplDef { trait_name: "Display", impl_type: Ty::int(), ... })`
-3. Register type signatures: `env.insert("display_to_string_int", Scheme::mono(...))`
+### Swift (medium complexity)
 
-### Runtime Functions
+Swift uses static dispatch for struct methods (direct function call), v-table dispatch for class methods, and witness tables for protocol methods. Swift's struct methods are essentially what Snow's trait methods would look like: the compiler embeds the function address directly.
 
-New runtime functions follow the exact pattern in codegen/intrinsics.rs:
+**What to take from Swift:** Static dispatch via direct call is exactly what Snow already does with `Trait__Method__Type` mangling. Swift validates that this approach scales to real-world usage.
 
-1. Declare as LLVM extern: `module.add_function("snow_display_int", fn_type, Some(Linkage::External))`
-2. Implement in snow-rt: `#[no_mangle] pub extern "C" fn snow_display_int(val: i64) -> *mut SnowString`
+### Kotlin (medium complexity)
 
----
+Kotlin resolves method calls on the declared type. Extension functions (which are syntactic sugar, not true methods) are resolved statically based on the declared type, not the runtime type.
 
-## Alternatives Considered
+**What to take from Kotlin:** Snow's approach of desugaring `value.method()` to `Trait__Method__Type(value)` is equivalent to Kotlin's extension function dispatch. It is predictable, fast, and well-understood.
 
-| Decision | Recommended | Alternative | Why Not Alternative |
-|----------|-------------|-------------|---------------------|
-| Dispatch strategy | Monomorphization (static) | Vtable (dynamic) | Snow resolves all types at compile time via HM inference. Vtables add runtime overhead for zero benefit. Actors handle dynamic routing. |
-| Hash algorithm | FNV-1a (inline) | SipHash via crate | HashDoS irrelevant for compiled language values. FNV-1a is faster for short keys (ints, small strings). 30 lines vs. a dependency. |
-| Serialization | JSON via existing serde_json | Multi-format (Serde data model) | Premature. Snow has no derive macros. JSON covers the server use case. Can extend later if needed. |
-| Name mangling | `Trait_method_Type` | C++ style mangling | C++ mangling is complex and designed for overloading/namespaces Snow doesn't have. Simple underscore joining matches existing `mangle_type_name` pattern. |
-| Iterator protocol | Stateful iterator object | Lazy/stream-based | Stateful iterators are simpler to implement and match the existing collection model (List, Range are already eager). Lazy evaluation is a future enhancement. |
-| Default method bodies | CST reference from TraitDef | Copy body into each ImplDef | CST references avoid code duplication and let the lowerer handle default methods naturally. |
-| Trait method storage | Extend existing TraitRegistry | New TraitMethodTable | TraitRegistry already does everything needed. A new abstraction adds complexity. Extend, don't replace. |
+### Summary: Snow's Approach is Correct
 
----
+Snow's approach -- static dispatch via name mangling (`Trait__Method__Type`) with the receiver as the first argument -- is the standard approach for statically-typed languages without inheritance. It is used by Rust (for monomorphized calls), Swift (for struct methods), and Kotlin (for extension functions). No novel research is needed.
 
-## Risk Assessment
+## Critical Integration Points
 
-| Risk | Likelihood | Impact | Mitigation |
-|------|-----------|--------|------------|
-| Monomorphization code bloat | Low | Medium | Snow programs are small-to-medium scale. Monitor binary sizes. Can add shared-body optimization later. |
-| Name collision in mangled names | Low | Low | Use consistent `Trait_method_Type` scheme. Types are unique in Snow's namespace. |
-| Iterator state management complexity | Medium | Medium | Start with List and Range iterators only. Map/Set iterators can follow the same pattern. |
-| Serialize/Deserialize for nested structs | Medium | Medium | Compiler generates recursive serialize calls. Test with 3+ levels of nesting. |
-| Generic impl matching (e.g., `impl Display for Option<T> where T: Display`) | Medium | High | Defer generic impls to after concrete impls work. Start with `impl Display for Option_Int` etc. |
+### 1. Parser: FIELD_ACCESS vs METHOD_CALL Disambiguation
 
----
+The parser must distinguish `value.field` from `value.method(args)`. The key is the `L_PAREN` after the identifier:
+
+```
+value.field       -> FIELD_ACCESS(value, "field")
+value.method()    -> METHOD_CALL(value, "method", ARG_LIST())
+value.method(a)   -> METHOD_CALL(value, "method", ARG_LIST(a))
+```
+
+The postfix loop in `expr_bp` already handles this pattern -- it checks for `DOT` then `L_PAREN` in sequence. The modification is to check for `DOT IDENT L_PAREN` and emit METHOD_CALL instead of letting it fall through to `FIELD_ACCESS` followed by `CALL_EXPR`.
+
+### 2. Type Checker: Separate Paths for Fields vs Methods
+
+With the new `METHOD_CALL` CST node, field access and method calls are distinguished at parse time. `infer_field_access` does NOT need modification. The new `infer_method_call` handles method resolution independently.
+
+### 3. MIR Lowerer: Reuse Existing Dispatch Logic
+
+The `lower_call_expr()` function (lines 3527-3600) already contains the full trait method dispatch logic:
+- Look up `find_method_traits(name, ty)`
+- Mangle to `Trait__Method__Type`
+- Handle primitive builtin short-circuits
+- Fallback for monomorphized generic types
+
+`lower_method_call()` should extract this logic into a shared helper function, then call it from both `lower_call_expr()` and `lower_method_call()`. This avoids duplicating the ~70 lines of dispatch logic.
+
+### 4. Monomorphization: Already Handled
+
+The `collect_function_refs()` function in `mono.rs` walks `MirExpr::Call` nodes and adds referenced function names to the reachable set. Since method calls produce `MirExpr::Call`, monomorphization works automatically.
+
+## Version Compatibility
+
+| Package | Version | Compatibility Notes |
+|---------|---------|---------------------|
+| rowan | Current | No changes to CST infrastructure needed; just add new SyntaxKind variant |
+| inkwell | 0.8 | No changes; method calls produce same LLVM IR as regular calls |
+| ariadne | Current | New error types need new diagnostic renderings |
+
+No dependency additions, no version bumps, no new crates.
+
+## Complexity Assessment
+
+| Layer | Estimated Complexity | Lines of Code | Risk |
+|-------|---------------------|---------------|------|
+| Parser | Low | ~20 lines | Mechanical; well-understood pattern |
+| AST | Low | ~30 lines | Add MethodCallExpr following existing patterns |
+| Type Checker | Medium | ~60 lines | Method resolution logic; error handling |
+| MIR Lowering | Low | ~40 lines | Reuse existing dispatch; extract helper |
+| Codegen | None | 0 lines | No changes needed |
+| Formatter | Low | ~10 lines | Handle new SyntaxKind |
+| Tests | Medium | ~200 lines | Parser, typeck, MIR, e2e tests |
+
+**Total estimated effort:** ~360 lines of new/modified code + ~200 lines of tests.
 
 ## Sources
 
-### Verified (HIGH confidence)
-- [Inkwell 0.8.0 -- GitHub, LLVM 11-21 support](https://github.com/TheDan64/inkwell) -- confirmed latest version
-- [rustc-hash 2.1.1 -- crates.io](https://crates.io/crates/rustc-hash) -- confirmed latest version
-- [ena 0.14.3 -- crates.io](https://crates.io/crates/ena) -- confirmed latest version
-- [rowan 0.16.1 -- crates.io](https://crates.io/crates/rowan) -- confirmed latest version
-- [Rust compiler monomorphization -- rustc-dev-guide](https://rustc-dev-guide.rust-lang.org/backend/monomorph.html) -- reference for monomorphization patterns
-- [FNV hash function -- IETF draft, Wikipedia](https://en.wikipedia.org/wiki/Fowler%E2%80%93Noll%E2%80%93Vo_hash_function) -- algorithm specification
-- [Rust hashing performance -- perf book](https://nnethercote.github.io/perf-book/hashing.html) -- FNV vs SipHash vs FxHash comparison
-
-### Verified (MEDIUM confidence)
-- [Serde data model -- serde.rs](https://serde.rs/) -- reference for serialization trait design
-- [Swift Codable protocol](https://developer.apple.com/documentation/swift/codable) -- reference for compiler-generated serialization
-- [Static vs dynamic dispatch trade-offs](https://www.slingacademy.com/article/performance-considerations-in-rust-virtual-table-lookups-vs-monomorphization/) -- monomorphization vs vtable analysis
-
-### Codebase Analysis (HIGH confidence)
-- `snow-typeck/src/traits.rs` -- existing TraitRegistry, TraitDef, ImplDef structures
-- `snow-typeck/src/builtins.rs` -- existing compiler-known trait registration pattern
-- `snow-codegen/src/mir/mono.rs` -- existing reachability pass (to be extended)
-- `snow-codegen/src/mir/types.rs` -- existing `mangle_type_name` function
-- `snow-codegen/src/mir/lower.rs` -- existing impl method lowering (`lower_fn_def`)
-- `snow-codegen/src/codegen/intrinsics.rs` -- existing runtime function declaration pattern
-- `snow-rt/Cargo.toml` -- serde_json already present
+- [Rust Method Call Expressions](https://doc.rust-lang.org/reference/expressions/method-call-expr.html) -- Official Rust Reference on method resolution algorithm (HIGH confidence)
+- [Rust Method Lookup Internals](https://rustc-dev-guide.rust-lang.org/method-lookup.html) -- rustc-dev-guide probe phase documentation (HIGH confidence)
+- [Swift Method Dispatch Mechanisms](https://nilcoalescing.com/blog/MethodDispatchMechanismsInSwift/) -- static vs dynamic dispatch in Swift (MEDIUM confidence)
+- [Swift Method Dispatch Deep Dive](https://blog.jacobstechtavern.com/p/compiler-cocaine-the-swift-method) -- compiler-level dispatch analysis (MEDIUM confidence)
+- [UFCS in Rust](https://doc.rust-lang.org/book/first-edition/ufcs.html) -- Rust's fully qualified syntax (HIGH confidence)
+- [Uniform Function Call Syntax](https://en.wikipedia.org/wiki/Uniform_Function_Call_Syntax) -- UFCS concept overview (MEDIUM confidence)
+- Direct codebase analysis of Snow compiler (66,521 lines) -- `snow-parser`, `snow-typeck`, `snow-codegen` (HIGH confidence)
 
 ---
-*Stack research for: Snow v1.3 Trait System & Stdlib Protocols*
-*Researched: 2026-02-07*
+*Stack research for: Snow compiler method dot-syntax feature*
+*Researched: 2026-02-08*

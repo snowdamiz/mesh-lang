@@ -1,691 +1,466 @@
-# Feature Research: Trait System & Stdlib Protocols
+# Feature Landscape: Method Dot-Syntax
 
-**Domain:** Trait/type class system and standard library protocols for a statically-typed functional language
-**Researched:** 2026-02-07
-**Confidence:** HIGH (extremely well-established domain: Rust, Haskell, Scala 3, Swift, Elixir all provide extensive prior art)
+**Domain:** Method call syntax (`value.method(args)`) for a statically-typed language with existing pipe operator, field access, and trait/impl dispatch
+**Researched:** 2026-02-08
+**Confidence:** HIGH (extremely well-established domain with extensive prior art from Rust, Swift, and others)
 
 ---
 
 ## Current State in Snow
 
-Before defining features, here is what already exists in Snow:
+Before defining features for method dot-syntax, here is what already exists:
 
-**Working:**
-- `interface` / `impl` parsing (parser emits `InterfaceDef` and `ImplDef` AST nodes)
-- `TraitRegistry` validates trait definitions and impl method signatures (param count, return type matching)
-- Where clauses: `fn show<T>(x :: T) where T: Printable` checked at call sites
-- Compiler-known traits: Add, Sub, Mul, Div, Mod, Eq, Ord, Not with primitive impls
-- Operator overloading dispatches through trait lookup
-- MIR lowering: impl methods are lowered as standalone functions; interface defs are erased
+**Working (infrastructure this feature depends on):**
+- `FIELD_ACCESS` CST node: `expr.field` parsed as postfix at BP 25 (highest)
+- Module-qualified calls: `String.length(s)`, `IO.println(msg)` -- parsed as `FIELD_ACCESS` then resolved in type checker
+- Pipe operator: `items |> List.filter(pred) |> List.map(f)` -- parsed as `PIPE_EXPR` at BP 3/4 (lowest)
+- Trait impl blocks with `TraitRegistry`: stores `ImplDef` with methods keyed by name, supports `find_method_traits()`, `resolve_trait_method()`, structural type matching via unification
+- Auto-derive for Display, Debug, Eq, Ord, Hash, Default -- generates impl methods
+- MIR lowering: impl methods mangled as `TraitName__method_name__TypeName`, call sites resolved via `find_method_traits` + `mir_type_to_impl_name`
+- Monomorphization for generics with trait bounds
+- CallExpr callee resolution: already checks `find_method_traits()` when callee is not a known function and first arg matches an impl type
+- `self` parameter detection via `SELF_KW` in impl method lowering, bound to concrete implementing type
 
-**Not yet working:**
-- Codegen for trait method dispatch (currently skips InterfaceDef/ImplDef in LLVM codegen)
-- No monomorphization of generic trait-bounded functions
-- No default method implementations
-- No associated types
-- No supertraits (trait inheritance)
-- No deriving mechanism
-- No stdlib protocols (Display, Hash, Default, Iterator, From/Into, etc.)
-- No method call syntax (`value.method()` -- only `method(value)`)
+**Not yet working (what this milestone adds):**
+- `value.method(args)` syntax that resolves to an impl method with `value` as first argument
+- Parser disambiguation between `expr.field` (field access) and `expr.method(args)` (method call)
+- Type checker method resolution: given a receiver type, find the matching impl method
+- Method chaining: `value.method1().method2().method3()`
+
+**Key parser observation:** The current parser already handles `expr.ident` as `FIELD_ACCESS` and `expr(args)` as `CALL_EXPR`. When the user writes `value.method(args)`, the Pratt parser will produce a `CALL_EXPR` whose callee is a `FIELD_ACCESS`. This is exactly how Rust's parser works -- the disambiguation happens in the type checker, not the parser.
 
 ---
 
-## Feature Landscape
+## Table Stakes
 
-### Table Stakes (Users Expect These)
-
-These features are required for the trait system to be usable. Without them, users cannot write polymorphic code that compiles and runs.
+Features users expect from method dot-syntax. Missing any of these and the feature feels broken or incomplete.
 
 | Feature | Why Expected | Complexity | Dependencies | Notes |
 |---------|--------------|------------|--------------|-------|
-| User-defined traits with codegen | Without codegen, traits are purely decorative. Users define interfaces and expect code using them to compile to native binaries. | High | MIR lowering, LLVM codegen, monomorphization | Currently MIR lowering extracts impl methods as standalone functions but does not wire up trait-bounded dispatch. Needs monomorphization pass that creates specialized copies. |
-| Trait method dispatch (static) | When calling `to_string(42)` where `to_string` comes from a trait impl, the compiler must resolve which impl's method body to call at compile time. | High | TraitRegistry lookup, MIR, codegen | Monomorphization: at each call site, resolve the concrete type, look up the impl, and emit a direct call to the specialized function. No vtables needed for v1.3. |
-| Where clause enforcement in codegen | Where clauses type-check but must also affect monomorphization -- the compiler needs to select the right impl body based on the concrete type substituted for T. | Medium | Existing where-clause checking, monomorphization | The type checker already validates constraints. Codegen needs to thread concrete types through to monomorphized function names. |
-| Display / to_string protocol | Every language needs a way to convert values to string representations. Currently `println` only works with String. Users need `"${my_struct}"` to work for user types. | Medium | Trait system codegen, string interpolation integration | Rust: `Display`, Haskell: `Show`, Elixir: `String.Chars`, Swift: `CustomStringConvertible`. Snow should call it `Display` with a `to_string(self) -> String` method. Auto-impl for primitives (Int, Float, Bool already have runtime support). |
-| Debug / inspect protocol | Programmers need to see the structure of values during development. Distinct from Display (user-facing). | Medium | Trait system codegen | Rust: `Debug`, Haskell: `Show` (serves both purposes), Elixir: `Inspect`. Snow should call it `Debug` with an `inspect(self) -> String` method. Should show structure: `Point { x: 1, y: 2 }`. Consider auto-derive for structs and sum types. |
-| Eq protocol (user types) | Currently Eq only works for primitives. Users need `==` on structs and sum types. | Medium | Existing Eq trait, operator dispatch, struct/sum type codegen | Structural equality for structs (all fields equal). Tag + field equality for sum types. This is the single most requested feature once people start defining types. |
-| Ord protocol (user types) | Users need `<`, `>`, `<=`, `>=` on custom types for sorting, ranges, etc. | Medium | Existing Ord trait, Eq dependency | Requires Eq as semantic prerequisite (same values must not be ordered differently). Lexicographic ordering for structs (field by field). |
-| Default method implementations | Traits should be able to provide default method bodies that implementors can override. Reduces boilerplate massively. | Medium | Trait definition parsing, impl validation | Rust: `fn method(&self) { default_body }`, Haskell: default in class definition, Swift: protocol extensions. Critical for keeping stdlib protocols ergonomic -- e.g., Display could provide a default `inspect` that wraps `to_string`. |
-| Multiple trait bounds | `where T: Display, T: Eq` already parses. Need `where T: Display + Eq` shorthand syntax. | Low | Parser, where-clause checking | Already works with comma-separated constraints. The `+` syntax is syntactic sugar. Low priority but expected. |
-| Impl for user-defined structs | Users need to write `impl Display for Point do ... end` for their own struct types and have it work end-to-end. | High | Full trait dispatch pipeline | This is the core use case. If this doesn't work, nothing else matters. |
-| Impl for user-defined sum types | Same as structs but for sum types (ADTs). `impl Display for Color do ... end`. | High | Full trait dispatch pipeline, pattern matching in impl methods | Sum type impls often need to pattern match on variants inside the method body. |
-
-### Differentiators (Competitive Advantage)
-
-Features that would make Snow's trait system stand out. Not expected, but highly valued.
-
-| Feature | Value Proposition | Complexity | Dependencies | Notes |
-|---------|-------------------|------------|--------------|-------|
-| Auto-derive for common traits | `type Point do x :: Int, y :: Int end deriving(Eq, Ord, Display, Debug)` -- compiler generates implementations automatically. Massive ergonomic win. | High | Compiler codegen for each derivable trait, struct/sum type metadata | Rust: `#[derive(...)]`, Haskell: `deriving (Eq, Show, Ord)`, Swift: auto-synthesis. The single biggest ergonomic improvement for a trait system. Without it, every struct requires ~10 lines of boilerplate per trait. |
-| Coherent auto-impls for primitives | All primitives automatically implement Display, Debug, Eq, Ord, Hash, Default without user action. Users can immediately use `to_string(42)` or `42 == 42`. | Medium | Builtin trait registration (extend existing register_compiler_known_traits) | Already partially done for arithmetic/comparison traits. Extending to Display/Debug/Hash/Default is incremental. |
-| From/Into conversion protocol | Type-safe conversions: `impl From<Int> for MyId`. Implementing `From` auto-provides `Into`. Enables `let id = from(42)` or pipeline `42 |> into`. | Medium | Trait system, blanket impl mechanism | Rust: `From`/`Into`, Haskell: explicit conversion functions. The blanket impl (`From` implies `Into`) requires the concept of blanket/generic impls -- may be complex. Could start with manual both-ways. |
-| Iterator/Iterable protocol | Unified iteration: any type implementing `Iterator` works with `map`, `filter`, `reduce`. Currently these only work with `List`. | Very High | Associated types (for Item type), lazy evaluation infrastructure, collection integration | Rust: `Iterator` with `type Item` + `next()`, Haskell: `Foldable`/`Traversable`, Elixir: `Enumerable`. This is a massive feature. Associated types are a prerequisite. Consider deferring to v1.4+. |
-| Hash protocol | Required for user types as Map keys or Set elements. `impl Hash for Point`. | Medium | Hash function codegen, Map/Set integration | Rust: `Hash`, Haskell: `Hashable`. Structural hashing for structs (hash all fields). Must maintain invariant: `a == b` implies `hash(a) == hash(b)`. |
-| Default protocol | Construct default values: `Default.default()` gives a zero-initialized or sensible default instance. | Low | Trait system codegen | Rust: `Default`, Haskell: `Def`/`Monoid mempty`. Useful for builder patterns, container defaults. Low complexity but moderate value. |
-| Supertraits (trait inheritance) | `interface Ord requires Eq` -- Ord requires Eq to be implemented first. Enables type system to infer that `T: Ord` implies `T: Eq`. | Medium | Trait definition parsing, constraint propagation in type checker | Rust: `trait Ord: Eq`, Haskell: `class Eq a => Ord a`. Essential for a principled trait hierarchy but can be added incrementally. |
-| Trait method dot-syntax | `my_point.to_string()` instead of `to_string(my_point)`. Uniform function call syntax. | High | Parser changes, method resolution, UFCS infrastructure | Elixir uses pipe `value |> to_string`, Rust uses dot syntax. Snow already has pipes, so dot syntax is less critical. But combined with traits, it makes code read naturally: `point.display()`. Could defer to v1.4+. |
-| Negative trait bounds | `where T: not Clone` -- specify that a type must NOT implement a trait. | High | Type checker, constraint resolution | Rust doesn't have stable negative bounds. Haskell doesn't have them. Very niche. Probably never needed. |
-
-### Anti-Features (Commonly Requested, Often Problematic)
-
-Features to deliberately NOT build, or to build with extreme caution.
-
-| Feature | Why Requested | Why Problematic | Alternative |
-|---------|---------------|-----------------|-------------|
-| Dynamic dispatch (vtables, trait objects) | "I want heterogeneous collections: `List<dyn Display>`" | Adds runtime overhead, complicates the type system massively, requires heap allocation for trait objects, and conflicts with HM inference. Rust's `dyn Trait` is widely considered the most confusing part of the language. | Use sum types (ADTs) for heterogeneous collections. `type Printable do StringVal(String), IntVal(Int) end`. This is the functional approach and works perfectly with exhaustive pattern matching. |
-| Orphan impls (impl foreign trait for foreign type) | "I want to impl Display for List" when both Display and List are in stdlib | Breaks coherence: two libraries could both impl the same trait for the same type, causing ambiguity. The orphan rule exists to prevent this. | Use newtype wrappers: `type MyList do items :: List end` then `impl Display for MyList`. Or allow orphan impls only within the same compilation unit (single-file programs). |
-| Implicit trait resolution (Scala 2 implicits) | "Type class instances should be automatically resolved from scope" | Scala 2's implicits were universally criticized as confusing, hard to debug, and a source of mysterious compilation errors. Scala 3 replaced them with explicit `given`/`using`. | Explicit impl blocks. `impl Trait for Type do ... end`. No magic resolution. If a trait is not implemented, the compiler says so clearly. |
-| Operator overloading beyond existing traits | "I want to define `+` for my custom Point type" | Already possible via `impl Add for Point`. The anti-feature is allowing arbitrary operator invention (`+++`, `<=>`, etc.) which makes code unreadable. | Restrict operator overloading to the existing compiler-known trait set (Add, Sub, Mul, Div, Mod, Eq, Ord, Not). Users can add impls for these but cannot invent new operators. |
-| Higher-kinded types (HKT) | "I want Functor, Applicative, Monad as traits" | Massively increases type system complexity. Haskell has them; most other languages deliberately avoid them. HKT requires kind checking, higher-kinded inference, and makes error messages incomprehensible. | Provide specific patterns (map/filter/reduce) as module functions or dedicated protocols without requiring the full Functor/Applicative/Monad hierarchy. Snow's pipe operator handles most composition needs. |
-| Multi-parameter type classes | "I want `interface Convert<A, B> do fn convert(a :: A) -> B end`" | Complex interaction with type inference. Requires functional dependencies or associated types to be usable. Haskell's MPTC + FunDeps is powerful but a well-known source of confusion. | Use single-parameter traits with associated types for conversions: `interface From<T> do fn from(value :: T) -> Self end`. The "Self" type is the implementing type, "T" is the source type. |
-| Specialization | "A more specific impl should override a more general one" | Unsound in general (Rust's specialization has been unstable for years due to soundness issues). Allows overlapping impls which break coherence guarantees. | No overlapping impls. Each (trait, type) pair has exactly one impl. Use newtype wrappers for specialization needs. |
-| Automatic Serialize/Deserialize | "Every type should automatically be serializable to JSON/MessagePack" | Serialization is inherently lossy and format-dependent. Auto-deriving works for simple cases but creates brittle APIs where internal type changes break serialization contracts. | Provide `Serialize` and `Deserialize` as derivable traits with explicit opt-in: `type Config do ... end deriving(Serialize)`. Not automatic, not universal. Defer to v1.4+ or later. |
+| Basic method call: `value.method(args)` | The core feature. Users write `point.to_string()` and it resolves to the Display impl's `to_string` method with `point` as `self`. | Medium | Parser (may already work), type checker method resolution, MIR lowering | Parser likely produces `CALL_EXPR(FIELD_ACCESS(value, method), args)` already. Type checker needs to detect this pattern, look up receiver type, find matching impl method, and rewrite to `TraitName__method__TypeName(value, args)`. |
+| Field vs. method disambiguation via parentheses | `point.x` is field access; `point.x()` is method call. Parentheses are the disambiguator. | Low | Type checker | Follows Rust's approach exactly. The parser already distinguishes: no parens = `FIELD_ACCESS`, parens = `CALL_EXPR(FIELD_ACCESS(...), ...)`. The type checker resolves based on whether `x` is a struct field (no parens) or a method (with parens). No ambiguity in the grammar. |
+| Method chaining | `list.filter(pred).map(f).length()` -- each method call returns a value that the next dot-call operates on. | Low | Basic method call working | Falls out naturally from left-to-right parsing at BP 25. The Pratt parser already chains postfix operations. If `filter` returns a `List<T>`, the type checker resolves `.map(f)` on that `List<T>`. No additional work needed once basic method calls work. |
+| Trait method resolution by receiver type | Given `value.method()`, look up the concrete type of `value`, search all trait impls for that type, and find one that provides `method`. | Medium | `TraitRegistry.find_method_traits()` (exists), type checker | Already have `find_method_traits(method_name, ty)` which does exactly this. The current code path in MIR lowering already uses this for bare function calls when the callee is unknown. Need to wire the same logic into type-checker-level method resolution. |
+| Self-parameter passing | `value.method(a, b)` becomes `method(value, a, b)` -- receiver is prepended as first argument, matching the `self` parameter in the impl method definition. | Low | Method resolution, MIR lowering | MIR lowering already handles `self` parameters in impl methods. The desugaring `value.method(a, b)` -> `TraitName__method__TypeName(value, a, b)` is structurally identical to how pipe expressions desugar: `value |> method(a, b)` -> `method(value, a, b)`. |
+| Methods on generic types | `let items: List<Int> = ...; items.length()` -- method resolution works when the receiver has generic type parameters. | Medium | Generic type unification in `find_method_traits` (exists) | `TraitRegistry` already uses structural type matching via `freshen_type_params` + unification to match generic impls. `impl Iterable for List<T>` will match against `List<Int>` through the existing unification machinery. |
+| Error messages for "no such method" | When `value.nonexistent()` is called, the compiler says "type X has no method `nonexistent`" rather than a confusing generic error. | Medium | Type checker diagnostics | Important for usability. Should list available methods on the type, similar to "no such field" errors already produced by `infer_field_access`. |
+| Interaction with existing module-qualified calls | `String.length(s)` continues to work as a module-qualified function call. `s.length()` also works as a method call. Both resolve to the same underlying function. | Medium | Type checker precedence rules | The type checker's `infer_field_access` already checks for module-qualified access first (lines 3903-3944 in infer.rs). Method resolution is a fallback when the base expression is not a module name. This priority order must be preserved. |
+| Interaction with existing pipe operator | Both `items |> List.filter(pred)` and `items.filter(pred)` work. They are different syntax for the same underlying operation. | Low | Both features independently working | No interaction issues. Pipe uses `PIPE_EXPR` node, method call uses `CALL_EXPR(FIELD_ACCESS(...), ...)`. Different parse trees, same semantic result. Users choose whichever reads better. |
 
 ---
 
-## Stdlib Protocol Specifications
-
-Detailed behavioral specifications for each stdlib protocol, with examples in Snow syntax.
-
-### 1. Display (String Representation)
-
-**Purpose:** Convert a value to a human-readable string. Used by string interpolation (`"${value}"`), `println`, and explicit `to_string()` calls.
-
-**Trait Definition:**
-```snow
-interface Display do
-  fn to_string(self) -> String
-end
-```
-
-**Built-in Impls:**
-```snow
-impl Display for Int do
-  fn to_string(self) -> String do
-    # compiler intrinsic: int_to_string
-  end
-end
-
-impl Display for Float do ... end
-impl Display for Bool do ... end    # "true" / "false"
-impl Display for String do ... end  # identity
-```
-
-**User Impl Example:**
-```snow
-type Point do
-  x :: Int
-  y :: Int
-end
-
-impl Display for Point do
-  fn to_string(self) -> String do
-    "(${self.x}, ${self.y})"
-  end
-end
-
-# Usage:
-let p = Point { x: 1, y: 2 }
-println("Point: ${p}")  # "Point: (1, 2)"
-```
-
-**Design Decisions:**
-- String interpolation `"${expr}"` should call `to_string` on any type implementing Display
-- If a type does not implement Display, string interpolation is a compile error
-- Display for collections (List, Map) should be provided as stdlib impls
-
-**Precedent:** Rust `Display`, Haskell `Show`, Elixir `String.Chars`, Swift `CustomStringConvertible`
-
-**Confidence:** HIGH
-
-### 2. Debug (Developer Inspection)
-
-**Purpose:** Show the internal structure of a value for debugging. More verbose than Display.
-
-**Trait Definition:**
-```snow
-interface Debug do
-  fn inspect(self) -> String
-end
-```
-
-**Built-in Impls:**
-```snow
-impl Debug for Int do
-  fn inspect(self) -> String do to_string(self) end
-end
-
-impl Debug for Point do
-  fn inspect(self) -> String do
-    "Point { x: ${self.x}, y: ${self.y} }"
-  end
-end
-```
-
-**Design Decisions:**
-- Debug should be auto-derivable for structs and sum types
-- Debug output shows type name, field names, and field values
-- For sum types: `"Color::Red"` or `"Shape::Circle(5.0)"`
-- Consider a `dbg()` built-in that prints and returns the value (like Rust's `dbg!`)
-
-**Precedent:** Rust `Debug`, Elixir `Inspect`
-
-**Confidence:** HIGH
-
-### 3. Eq (Equality)
-
-**Purpose:** Test two values of the same type for equality. Backs the `==` and `!=` operators.
-
-**Trait Definition (already exists, extend to user types):**
-```snow
-interface Eq do
-  fn eq(self, other :: Self) -> Bool
-end
-```
-
-**Current State:** Already registered as compiler-known trait with impls for Int, Float, String, Bool.
-
-**Extension Needed:**
-```snow
-# Auto-derive for structs: all fields must be Eq
-type Point do
-  x :: Int
-  y :: Int
-end deriving(Eq)
-
-# Generated impl:
-impl Eq for Point do
-  fn eq(self, other :: Point) -> Bool do
-    self.x == other.x and self.y == other.y
-  end
-end
-
-# For sum types:
-type Color do Red, Green, Blue end deriving(Eq)
-
-# Generated impl:
-impl Eq for Color do
-  fn eq(self, other :: Color) -> Bool do
-    case (self, other) do
-      (Red, Red) -> true
-      (Green, Green) -> true
-      (Blue, Blue) -> true
-      _ -> false
-    end
-  end
-end
-```
-
-**Design Decisions:**
-- Structural equality: two values are equal if all their fields are equal
-- Eq is the foundation -- Ord, Hash depend on it
-- Float equality should use IEEE comparison (NaN != NaN) -- same as Rust's PartialEq, not Eq. Consider whether Snow needs PartialEq vs Eq distinction. **Recommendation: Keep it simple with just `Eq` and document that Float equality follows IEEE rules.** The PartialEq/Eq distinction in Rust confuses beginners and mostly matters for HashMap keys.
-- For sum types with data: tags must match AND fields must be equal
-
-**Precedent:** Rust `PartialEq`/`Eq`, Haskell `Eq`, Swift `Equatable`, Elixir `==` (structural by default)
-
-**Confidence:** HIGH
-
-### 4. Ord (Ordering)
-
-**Purpose:** Define a total ordering on values. Backs `<`, `>`, `<=`, `>=` operators and enables sorting.
-
-**Trait Definition (already exists, extend):**
-```snow
-interface Ord do
-  fn cmp(self, other :: Self) -> Ordering
-end
-```
-
-**Design Note:** This requires an `Ordering` sum type:
-```snow
-type Ordering do
-  Less
-  Equal
-  Greater
-end
-```
-
-**Current State:** Ord exists with impls for Int and Float, but returns Bool (not Ordering). This should be refactored to return an Ordering type, with `<`, `>`, etc. derived from `cmp`.
-
-**Auto-derive:**
-```snow
-type Point do x :: Int, y :: Int end deriving(Eq, Ord)
-
-# Generated: lexicographic comparison (first field, then second, etc.)
-impl Ord for Point do
-  fn cmp(self, other :: Point) -> Ordering do
-    case cmp(self.x, other.x) do
-      Equal -> cmp(self.y, other.y)
-      result -> result
-    end
-  end
-end
-```
-
-**Design Decisions:**
-- Ord should semantically require Eq (supertrait relationship, even if not enforced initially)
-- Lexicographic ordering for derived impls (compare fields in declaration order)
-- For sum types: compare by variant tag first, then by variant fields
-- Operators `<`, `>`, `<=`, `>=` should be defined in terms of `cmp` returning Ordering
-
-**Precedent:** Rust `PartialOrd`/`Ord`, Haskell `Ord`, Swift `Comparable`
-
-**Confidence:** HIGH
-
-### 5. Hash (Hashing)
-
-**Purpose:** Produce a stable hash value for use in Map keys and Set elements.
-
-**Trait Definition:**
-```snow
-interface Hash do
-  fn hash(self) -> Int
-end
-```
-
-**Built-in Impls:**
-```snow
-impl Hash for Int do
-  fn hash(self) -> Int do self end  # identity hash for integers
-end
-
-impl Hash for String do
-  fn hash(self) -> Int do
-    # compiler intrinsic: FNV-1a or similar
-  end
-end
-
-impl Hash for Bool do
-  fn hash(self) -> Int do
-    if self do 1 else 0 end
-  end
-end
-```
-
-**Auto-derive:**
-```snow
-type Point do x :: Int, y :: Int end deriving(Eq, Hash)
-
-# Generated: combine field hashes
-impl Hash for Point do
-  fn hash(self) -> Int do
-    hash(self.x) * 31 + hash(self.y)
-  end
-end
-```
-
-**Critical Invariant:** If `a == b` then `hash(a) == hash(b)`. The compiler should warn (or error) if Hash is derived without Eq, or if Eq is manually implemented but Hash is derived (risking inconsistency).
-
-**Design Decisions:**
-- Return type is Int (64-bit) for simplicity
-- Hash combining uses a simple polynomial hash (multiply by prime, add next field)
-- Float hashing: hash the bit representation, but document that NaN hashes are unpredictable
-- Hash is needed for Map<K, V> keys and Set<T> elements -- without it, only primitive keys work
-
-**Precedent:** Rust `Hash`, Haskell `Hashable`, Swift `Hashable`
-
-**Confidence:** HIGH
-
-### 6. Default (Default Values)
-
-**Purpose:** Construct a "zero" or default instance of a type.
-
-**Trait Definition:**
-```snow
-interface Default do
-  fn default() -> Self
-end
-```
-
-**Note:** This is a static method (no `self` parameter). This has implications for the trait system -- currently all trait methods take `self`. Default is the first trait that requires a static/associated function. This is a design decision point.
-
-**Built-in Impls:**
-```snow
-impl Default for Int do fn default() -> Int do 0 end end
-impl Default for Float do fn default() -> Float do 0.0 end end
-impl Default for String do fn default() -> String do "" end end
-impl Default for Bool do fn default() -> Bool do false end end
-```
-
-**Auto-derive:**
-```snow
-type Config do
-  host :: String
-  port :: Int
-  debug :: Bool
-end deriving(Default)
-
-# Generated:
-impl Default for Config do
-  fn default() -> Config do
-    Config { host: default(), port: default(), debug: default() }
-  end
-end
-```
-
-**Design Decisions:**
-- Requires static method support in traits (no `self` parameter)
-- All fields must implement Default for auto-derive to work
-- Useful for builder patterns and zero-initialization
-- Lower priority than Display/Eq/Ord -- can defer if static methods are complex
-
-**Precedent:** Rust `Default`, Haskell (various, `mempty`), Swift (no direct equivalent)
-
-**Confidence:** MEDIUM (static method support is a design question)
-
-### 7. From / Into (Type Conversions)
-
-**Purpose:** Infallible type conversion. `From<A>` on type B means "B can be constructed from an A."
-
-**Trait Definition:**
-```snow
-interface From<T> do
-  fn from(value :: T) -> Self
-end
-```
-
-**Examples:**
-```snow
-type UserId do value :: Int end
-
-impl From<Int> for UserId do
-  fn from(value :: Int) -> UserId do
-    UserId { value: value }
-  end
-end
-
-# Usage:
-let id = from(42)   # UserId { value: 42 }
-let id2 = 42 |> from  # works with pipes
-```
-
-**Design Decisions:**
-- `From` is a parameterized trait -- requires single-parameter type class support
-- In Rust, implementing `From<A> for B` auto-provides `Into<B> for A`. This requires blanket impl support.
-- **Recommendation for v1.3:** Implement `From` without the automatic `Into` blanket. Users implement `From` and call `from()` explicitly. Add `Into` blanket in v1.4.
-- `TryFrom` / `TryInto` (fallible conversions returning Result) should be deferred to v1.4+
-- From<String> for Int (parsing) is inherently fallible -- use a separate `parse` function, not From
-
-**Precedent:** Rust `From`/`Into`, Haskell (explicit conversion functions), Scala `Conversion`
-
-**Confidence:** MEDIUM (parameterized traits and blanket impls add complexity)
-
-### 8. Iterator / Iterable (Deferred to v1.4+)
-
-**Purpose:** Unified lazy iteration protocol. Any type implementing Iterator works with map/filter/reduce.
-
-**Why Defer:**
-- Requires associated types (`type Item` in the trait)
-- Requires lazy evaluation infrastructure (iterators are lazy in Rust, strict in Elixir)
-- Snow's current List operations (map, filter, reduce) are eager and work fine
-- The monomorphization pass needs significant extension for associated types
-
-**Sketch for future:**
-```snow
-interface Iterator do
-  type Item
-  fn next(self) -> Option<Item>
-end
-
-# Then map, filter, reduce work on any Iterator
-fn map<I, T, U>(iter :: I, f :: Fun(T) -> U) -> List<U>
-  where I: Iterator, I.Item = T
-do
-  # implementation
-end
-```
-
-**Precedent:** Rust `Iterator` with `type Item`, Haskell `Foldable`/`Traversable`, Elixir `Enumerable`
-
-**Confidence:** HIGH (well-understood, but complex to implement; correct to defer)
+## Differentiators
+
+Features that would make Snow's method dot-syntax stand out. Not strictly expected, but valued.
+
+| Feature | Value Proposition | Complexity | Dependencies | Notes |
+|---------|-------------------|------------|--------------|-------|
+| Inherent methods (impl without trait) | `impl Point do fn distance(self, other: Point) -> Float do ... end end` -- methods directly on a type without a trait. Avoids needing a trait for every method. | High | New `impl Type do ... end` syntax (no trait name), separate method registry | Rust allows `impl Type { ... }` for inherent methods. This is a major ergonomic win for type-specific helpers that don't belong to any trait. **Recommendation: Defer to post-MVP.** Snow's trait-only approach works for v1, and adding inherent methods later is backward-compatible. The MVP should focus on trait method dispatch. |
+| Ambiguity resolution for multiple traits | When two traits provide the same method name for the same type, `value.method()` should produce a clear error with disambiguation guidance: "method `to_string` is ambiguous between traits Display and Printable; use `Display.to_string(value)` for explicit dispatch." | Medium | `find_method_traits()` returning multiple results (already supported), diagnostic formatting | `find_method_traits` already returns a `Vec<String>` of matching trait names. The check for `len() > 1` is the ambiguity case. Already implemented in MIR lowering (uses first match). Should become a type-checker error instead. |
+| Fully qualified disambiguation syntax | `Display.to_string(point)` as explicit syntax when dot-call is ambiguous. Already works as module-qualified call pattern. | Low | Existing module-qualified call infrastructure | This already works because `Display.to_string(point)` parses as `FIELD_ACCESS(Display, to_string)` then `CALL_EXPR` with `point` as arg. The existing call resolution in MIR lowering handles this via `find_method_traits`. Just need to ensure it continues working alongside dot-syntax. |
+| Methods in let-binding position | `let f = point.to_string` -- treating a method as a partially-applied function (capturing the receiver). | Very High | Partial application, closure generation | This is how Rust's method references work but requires generating a closure that captures `point`. **Recommendation: Do not build.** This is complex and Snow's closure syntax handles the use case: `let f = fn() do point.to_string() end`. |
+| Method call in pattern-adjacent positions | Support method calls in guard clauses: `case x do n when n.is_positive() -> ...` | Medium | Guard clause evaluation | Already possible if guard clauses evaluate arbitrary expressions. Worth verifying but likely falls out naturally. |
+| IDE autocomplete for methods | After typing `value.`, IDE shows available methods based on the value's type and its trait impls. | Medium | LSP server type-at-cursor, trait registry queries | Significant usability win. The `find_method_traits` infrastructure provides the data needed. The LSP server would query the trait registry for all methods available on the resolved type. **Recommendation: Important but separate from core language work.** |
+
+---
+
+## Anti-Features
+
+Features to explicitly NOT build. Common requests that create problems in this domain.
+
+| Anti-Feature | Why Requested | Why Problematic | Alternative |
+|--------------|---------------|-----------------|-------------|
+| UFCS (Universal Function Call Syntax) | "Any function `f(x, y)` should be callable as `x.f(y)`" | Blurs the distinction between methods and free functions. Makes code harder to read because `x.f()` could be any function with `x` as first arg, not just impl methods. Creates namespace pollution (every function becomes a potential method). Adds massive complexity to method resolution. C++ rejected UFCS after years of proposals. | Snow has pipes for function chaining (`x |> f(y)`) and dot-syntax for impl methods (`x.f(y)` when `f` is in an impl block). These serve different purposes clearly. |
+| Auto-ref / auto-deref on method receiver | "The compiler should automatically add `&` or `*` to make the receiver type match" | Snow does not have references or pointer types. All values are passed by value (with compiler-managed copy/move semantics). Auto-ref/deref is a Rust-specific concern driven by its ownership system. Adding this would be solving a problem Snow does not have. | Not needed. Snow's value semantics mean the receiver is always the value itself. No `&self` vs `&mut self` vs `self` distinction. |
+| Method overloading by parameter count | "Allow `point.distance()` and `point.distance(other)` to be different methods" | Snow does not support function overloading. Adding it for methods only would be inconsistent. Overloading complicates type inference (which overload did you mean?) and error messages. | Use different method names: `point.distance_to(other)` vs `point.distance_from_origin()`. Or use optional parameters if Snow adds them. |
+| Implicit self in method bodies | "Inside an impl method, `x` should resolve to `self.x` automatically (like Ruby/Python)" | Creates ambiguity between local variables and fields. Harder to read: is `x` a local or a field? Rust requires explicit `self.x` and this is widely considered a good design decision for readability. | Always require `self.x` for field access within method bodies. Snow already has this pattern working in impl methods. |
+| Extension methods (impl for foreign types without traits) | "I want to add methods to String without defining a trait" | Breaks encapsulation and coherence. Two modules could add conflicting extension methods. Makes it unclear where a method comes from. Swift and C# have this and it causes confusion about method provenance. | Use the pipe operator with module-qualified functions: `s |> MyUtils.enhanced_length()`. Or define a trait: `impl MyStringOps for String do ... end`. |
+| Cascading method syntax (Dart's `..`) | "I want `builder..setX(1)..setY(2)..build()` where `..` returns the receiver, not the method result" | Adds a new operator with subtle semantics. Snow's value semantics and functional style mean builders are rare. The use case is niche. | Use explicit chaining with methods that return `self`: `builder.set_x(1).set_y(2).build()`. Or use struct literal syntax: `Config { x: 1, y: 2 }`. |
+| Dynamic method dispatch (vtable-based) | "I want `dyn Trait` or `protocol existentials`" | Snow uses monomorphization (static dispatch). Adding dynamic dispatch requires vtables, heap allocation for trait objects, and massively complicates the type system. This was explicitly deferred. | Use sum types for heterogeneous collections: `type Displayable do S(String), I(Int) end`. Pattern match to dispatch. |
 
 ---
 
 ## Feature Dependencies
 
 ```
-Existing Features (already built)
+Existing Infrastructure
+    |
+    +-- FIELD_ACCESS parser node (exists, BP 25)
+    |       Produces: CALL_EXPR(FIELD_ACCESS(base, method), ARG_LIST(...))
+    |       when followed by parentheses
+    |
+    +-- TraitRegistry (exists)
+    |       Has: find_method_traits(), resolve_trait_method()
+    |       Needs: infer_method_call() in type checker
+    |
+    +-- MIR lowering trait dispatch (exists)
+    |       Has: find_method_traits() -> mangled name resolution
+    |       Needs: handle METHOD_CALL desugaring from type checker
     |
     v
-[1] Trait Method Dispatch (codegen)
-    |   Requires: MIR lowering changes, monomorphization for trait-bounded generics
+[1] Type Checker Method Resolution
+    |   Detect CALL_EXPR with FIELD_ACCESS callee
+    |   Resolve receiver type -> find matching impl method
+    |   Validate argument types against method signature
+    |   Record resolved method info for MIR lowering
+    |   CRITICAL: Must not break existing module-qualified calls
     |
     v
-[2] Display + Debug Protocols
-    |   Requires: [1], built-in impls for primitives
-    |   Enables: string interpolation for user types, debugging
+[2] MIR Lowering for Method Calls
+    |   Desugar value.method(args) -> TraitName__method__TypeName(value, args)
+    |   Reuse existing mangled name generation
+    |   Handle generic receivers (substitute type params)
     |
     v
-[3] Eq + Ord for User Types
-    |   Requires: [1], struct field comparison codegen
-    |   Enables: == and < on user-defined types
+[3] Method Chaining
+    |   Falls out from [1] + [2] naturally
+    |   Each call's return type becomes next call's receiver type
+    |   Already works at parser level
     |
     v
-[4] Default Method Implementations
-    |   Requires: [1], trait def parsing changes
-    |   Enables: ergonomic stdlib protocols
+[4] Error Diagnostics
+    |   "No method `foo` on type `Bar`"
+    |   "Method `foo` is ambiguous between traits X and Y"
+    |   Suggest available methods on the type
     |
     v
-[5] Hash Protocol
-    |   Requires: [1], [3] (Eq prerequisite for correctness)
-    |   Enables: user types as Map keys and Set elements
-    |
-    v
-[6] Auto-derive Mechanism
-    |   Requires: [1], [2], [3], struct/sum type metadata
-    |   Enables: `deriving(Eq, Display, Debug, Hash)` syntax
-    |
-    v
-[7] Default Protocol
-    |   Requires: [1], static method support in traits
-    |
-    v
-[8] From/Into Conversions
-    |   Requires: [1], parameterized traits (already parsed)
-    |
-    v
-[9] Supertraits
-    |   Requires: [1], constraint propagation
-    |
-    v
-[10] Associated Types (deferred)
-    |   Enables: Iterator protocol
-    |
-    v
-[11] Iterator Protocol (deferred)
+[5] Interaction with Pipe Operator (verify)
+        value.method(args) and value |> method(args)
+        should produce equivalent results
+        Both paths already converge at MIR level
 ```
 
-**Critical path:** [1] -> [2] + [3] (parallel) -> [5] -> [6]
+**Critical path:** [1] -> [2] -> [3] (trivial) -> [4]
 
-**The single most important feature is [1]: getting trait method dispatch working in codegen.** Everything else depends on it. If trait methods don't generate code, no protocol works.
-
----
-
-## MVP Definition
-
-### Launch With (v1.3 -- Trait System Milestone)
-
-**Phase 1: Core Trait Dispatch**
-- Trait method dispatch via monomorphization (static dispatch)
-- User-defined traits compile and run end-to-end
-- Where clause constraints enforced and specialized in codegen
-- Impl methods for structs and sum types generate correct LLVM IR
-
-**Phase 2: Essential Stdlib Protocols**
-- Display trait with built-in impls for Int, Float, Bool, String
-- String interpolation integration (`"${value}"` calls `to_string`)
-- Debug trait with built-in impls for primitives
-- Eq trait extended to structs and sum types
-- Ord trait extended to structs and sum types (with Ordering type)
-
-**Phase 3: Ergonomics**
-- Default method implementations in traits
-- Hash trait with built-in impls for primitives
-- Default trait with built-in impls for primitives
-- Display/Debug impls for stdlib collection types (List, Map, Set)
-
-**Phase 4: Auto-derive (stretch goal for v1.3)**
-- `deriving(Eq, Ord, Display, Debug, Hash)` syntax
-- Compiler-generated impl bodies for structs (field-by-field)
-- Compiler-generated impl bodies for sum types (tag + field comparison)
-
-### Add After Validation (v1.4+)
-
-- From/Into conversion protocol (needs parameterized trait maturity)
-- Supertraits (trait inheritance hierarchy)
-- Method dot-syntax (`value.method()` as alternative to `method(value)`)
-- Iterator/Iterable protocol (needs associated types)
-- TryFrom/TryInto (fallible conversions)
-- Blanket impls (`impl<T: Display> Debug for T`)
-- Serialize/Deserialize protocols
-
-### Future Consideration (v2+)
-
-- Associated types in traits
-- Dynamic dispatch (trait objects) -- if ever
-- Higher-kinded types -- probably never
-- Multi-parameter type classes -- probably never
-- Specialization -- probably never
+The parser likely needs zero changes. The core work is in the type checker ([1]) and MIR lowering ([2]).
 
 ---
 
-## Competitor Feature Analysis
+## Detailed Design Decisions
 
-### Trait System Mechanics
+### Decision 1: Parser Strategy
 
-| Feature | Rust | Haskell | Elixir | Swift | Scala 3 | Snow Recommendation |
-|---------|------|---------|--------|-------|---------|---------------------|
-| Term | `trait` | `class` (type class) | `defprotocol` | `protocol` | `trait` | `interface` (already chosen) |
-| Impl syntax | `impl Trait for Type` | `instance Class Type` | `defimpl Protocol, for: Type` | `extension Type: Protocol` | `given Instance: Trait` | `impl Trait for Type do ... end` (already chosen) |
-| Static dispatch | Yes (monomorphization) | Yes (dictionary passing) | N/A (dynamic) | Yes (witness tables) | Yes (monomorphization + erasure) | Yes (monomorphization) |
-| Dynamic dispatch | `dyn Trait` (vtable) | Always (dictionary passing) | Always (dispatch table) | Protocol existentials | Subtyping | Not in v1.3. Sum types instead. |
-| Default methods | Yes | Yes | No (protocols are pure interfaces) | Yes (protocol extensions) | Yes | Yes -- v1.3 Phase 3 |
-| Associated types | Yes | Yes (type families) | No | Yes | Yes | Deferred to v1.4+ |
-| Supertraits | Yes (`trait A: B`) | Yes (`class B a => A a`) | No | Yes (`: B`) | Yes (`extends B`) | v1.4+ |
-| Deriving | `#[derive(...)]` | `deriving (...)` | `@derive [...]` | Auto-synthesis | `derives` | `deriving(...)` -- v1.3 Phase 4 |
-| Orphan rule | Yes (strict) | Yes (relaxed with extensions) | No (last impl wins) | No | No | Yes (simplified: impl requires local trait or local type) |
-| Coherence | Yes | Yes | No | No | No | Yes (one impl per trait-type pair) |
+**Question:** Should the parser produce a new `METHOD_CALL` CST node, or reuse the existing `CALL_EXPR(FIELD_ACCESS(...), ...)` tree shape?
 
-### Stdlib Protocols
+**Recommendation: Reuse existing tree shape.** No new CST node needed.
 
-| Protocol | Rust | Haskell | Elixir | Swift | Snow Recommendation |
-|----------|------|---------|--------|-------|---------------------|
-| String display | `Display` | `Show` | `String.Chars` | `CustomStringConvertible` | `Display` with `to_string(self) -> String` |
-| Debug display | `Debug` | `Show` (same) | `Inspect` | `CustomDebugStringConvertible` | `Debug` with `inspect(self) -> String` |
-| Equality | `PartialEq` + `Eq` | `Eq` | `==` (structural) | `Equatable` | `Eq` (single trait, no Partial/Total split) |
-| Ordering | `PartialOrd` + `Ord` | `Ord` | `Comparable` (not a protocol) | `Comparable` | `Ord` (single trait, returns Ordering) |
-| Hashing | `Hash` | `Hashable` | N/A (Erlang terms) | `Hashable` (inherits Equatable) | `Hash` with `hash(self) -> Int` |
-| Default values | `Default` | `def`/`Monoid` | N/A | N/A | `Default` with `default() -> Self` |
-| Conversion | `From`/`Into` | Explicit functions | N/A | N/A | `From<T>` with `from(T) -> Self` |
-| Iteration | `Iterator` | `Foldable`/`Traversable` | `Enumerable` | `Sequence`/`IteratorProtocol` | Deferred to v1.4+ |
-| Serialization | `Serialize`/`Deserialize` (serde) | `aeson`/`binary` | N/A (Erlang terms) | `Codable` | Deferred to v1.4+ |
-| Cloning | `Clone` | N/A (immutable by default) | N/A (immutable) | N/A (value types copy) | Not needed (Snow is functional/immutable) |
-| Copying | `Copy` | N/A | N/A | N/A | Not needed (all values are semantically copies in Snow) |
+**Rationale:**
+- The Pratt parser already produces `CALL_EXPR(FIELD_ACCESS(base, method), ARG_LIST(...))` for `value.method(args)` because field access (BP 25) is parsed before call (BP 25), and the call wraps around the field access result.
+- Rust's parser works the same way -- method calls and field accesses share the same dot-expression grammar; disambiguation happens during name resolution.
+- Adding a new CST node would require parser changes to distinguish "FIELD_ACCESS followed by ARG_LIST" from "standalone FIELD_ACCESS", which would complicate the Pratt loop unnecessarily.
+- The type checker already receives both node types and can inspect the callee of a `CALL_EXPR` to detect the `FIELD_ACCESS` pattern.
 
-### Key Insight from Competitor Analysis
+**Confidence:** HIGH
 
-**Elixir's protocol system is the closest spiritual ancestor** to what Snow needs, despite Elixir being dynamically typed. Elixir protocols:
-- Are defined separately from types (just like Snow's `interface`)
-- Implementations are separate (`defimpl` = Snow's `impl ... for ... do`)
-- Are consolidated at compile time (Snow does this via monomorphization)
-- Have a small, focused set: `String.Chars`, `Inspect`, `Enumerable`, `Collectable`
+### Decision 2: Method Resolution Priority
 
-**Rust's trait system is the closest mechanical model** for Snow's implementation:
-- Monomorphization for static dispatch
-- Coherence (one impl per type)
-- Derive macros for boilerplate reduction
+**Question:** When `value.name(args)` is called, what is the resolution order?
 
-**Snow should combine Elixir's philosophy (small, focused protocols with clean syntax) with Rust's mechanics (monomorphization, coherence, derive).**
+**Recommendation: Field access first, then method lookup. Parentheses disambiguate.**
 
----
+**Priority order (matching Rust):**
+1. If `base` is a module name (String, IO, List, etc.) -> module-qualified function call (existing behavior)
+2. If `base` is a sum type name -> variant constructor (existing behavior)
+3. If no parentheses (`value.name`) -> struct field access only
+4. If parentheses (`value.name(args)`) -> first check if `name` is a callable field (function-typed field), then search impl methods via trait registry
 
-## Actor-Specific Protocol Considerations
+**Why this order:**
+- Modules and variants must keep working unchanged (backward compatibility)
+- Struct field access without parens must keep working unchanged
+- Method lookup only activates when there are parentheses, preventing accidental method resolution when the user wants a field
 
-Snow's actor system creates unique requirements for traits:
+**Confidence:** HIGH
 
-### Message Display
-Actors receive messages as sum types. Being able to `inspect` a message for logging/debugging is critical:
+### Decision 3: Trait Method Only (No Inherent Methods for MVP)
+
+**Question:** Should `value.method()` resolve only methods defined in trait impl blocks, or also "inherent" methods (impl blocks without a trait)?
+
+**Recommendation: Trait methods only for MVP.**
+
+**Rationale:**
+- Snow's entire method infrastructure is built around `interface` + `impl Trait for Type`. The `TraitRegistry`, `find_method_traits`, mangled name generation -- all assume a trait name.
+- Inherent methods would need a separate registry, different name mangling (no trait prefix), and priority rules (inherent before trait, matching Rust).
+- The vast majority of use cases are covered by trait methods: `to_string()`, `inspect()`, `eq()`, `hash()`, etc.
+- Adding inherent methods later is fully backward-compatible -- existing trait method calls continue to work.
+
+**Confidence:** HIGH
+
+### Decision 4: Ambiguity Handling
+
+**Question:** What happens when two traits provide the same method name for the same type?
+
+**Recommendation: Compile-time error with disambiguation guidance.**
+
+```
+error: method `to_string` is ambiguous for type `Point`
+  --> src/main.snow:15:5
+   |
+15 | point.to_string()
+   |       ^^^^^^^^^ method found in both `Display` and `Printable`
+   |
+help: use fully-qualified syntax to disambiguate
+   |
+15 | Display.to_string(point)
+   |
+15 | Printable.to_string(point)
+```
+
+**Rationale:**
+- The current MIR lowering silently uses the first matching trait, which is fragile and order-dependent.
+- The type checker should detect ambiguity earlier and produce a clear error.
+- Fully-qualified syntax (`TraitName.method(value)`) already works via existing module-qualified call paths.
+
+**Confidence:** HIGH
+
+### Decision 5: Pipe Operator Coexistence
+
+**Question:** How do `value.method(args)` and `value |> method(args)` interact?
+
+**Recommendation: Both work. They are different syntax for the same semantics. No preference enforced.**
+
+**Semantic equivalence:**
 ```snow
-type CounterMsg do
-  Increment
-  Decrement
-  GetCount
-end deriving(Debug)
+# These should produce identical results:
+items.filter(pred).map(f)
+items |> filter(pred) |> map(f)
 
-# In actor receive:
-receive do
-  msg -> println("Received: ${inspect(msg)}")
+# Mixed usage is fine:
+items.filter(pred) |> map(f)
+```
+
+**Note:** Pipe works with ANY function (the piped value becomes the first argument). Method dot-syntax only works with impl methods. This is an important distinction:
+- `items |> List.filter(pred)` -- works because `List.filter` is a module function
+- `items.filter(pred)` -- works only if there's a trait impl for the items' type that provides `filter`
+
+**Confidence:** HIGH
+
+### Decision 6: Self Return for Chaining
+
+**Question:** Should there be special support for methods that return `Self` to enable chaining?
+
+**Recommendation: No special support needed. Snow's existing type inference handles this.**
+
+**How it works naturally:**
+```snow
+interface Builder do
+  fn set_name(self, name: String) -> Self
+  fn set_age(self, age: Int) -> Self
+  fn build(self) -> Person
+end
+
+# Chaining works because each method's return type (Self = PersonBuilder)
+# becomes the receiver for the next call:
+builder.set_name("Alice").set_age(30).build()
+```
+
+The type checker resolves `Self` to the concrete implementing type during method resolution. Each chained call's return type feeds into the next call's receiver type inference. No special mechanism required.
+
+**Confidence:** HIGH -- this is how Rust handles it too.
+
+---
+
+## Edge Cases and Their Resolutions
+
+### Edge Case 1: Field and Method with Same Name
+
+**Scenario:** A struct has a field `width` and an impl provides a method `width()`.
+
+```snow
+struct Rectangle do
+  width :: Int
+  height :: Int
+end
+
+impl Measurable for Rectangle do
+  fn width(self) -> Int do self.width end  # getter pattern
 end
 ```
 
-### Message Serialization (v1.4+)
-For distributed actors (if ever), messages need serialization. This is NOT needed for v1.3 (single-process actors).
+**Resolution:** Parentheses disambiguate.
+- `rect.width` -> field access (returns `Int`)
+- `rect.width()` -> method call (calls `Measurable__width__Rectangle`)
 
-### Pid Display
-`Pid` should implement Display to show actor identity:
+This matches Rust's behavior exactly. The parser produces different CST trees for each case, so the type checker handles them in different code paths.
+
+**Confidence:** HIGH
+
+### Edge Case 2: Method on Generic Type with Unresolved Type Variable
+
+**Scenario:** The receiver's type is not yet fully resolved during inference.
+
 ```snow
-impl Display for Pid do
+fn process(items) do
+  items.length()  # type of `items` is still a type variable
+end
+```
+
+**Resolution:** Defer method resolution until the receiver type is resolved. If the type remains unresolved at the end of inference, emit an error: "cannot determine type of `items`; consider adding a type annotation."
+
+This is similar to how Rust handles turbofish scenarios. Snow's HM inference should resolve most cases; the edge case arises only with insufficient context.
+
+**Confidence:** MEDIUM -- implementation details depend on how Snow's inference engine handles deferred constraints.
+
+### Edge Case 3: Method on Sum Type
+
+**Scenario:** Calling a method on a sum type value.
+
+```snow
+type Shape do
+  Circle(Float)
+  Rectangle(Float, Float)
+end
+
+impl Display for Shape do
   fn to_string(self) -> String do
-    # compiler intrinsic: "#PID<0.42.0>" format
+    case self do
+      Circle(r) -> "Circle(${r})"
+      Rectangle(w, h) -> "Rectangle(${w}, ${h})"
+    end
   end
 end
+
+let s: Shape = Circle(5.0)
+s.to_string()  # should work
 ```
+
+**Resolution:** This works naturally. The receiver type is `Shape`, `find_method_traits("to_string", Shape)` finds `Display`, and the mangled name is `Display__to_string__Shape`. The method body handles dispatch via pattern matching internally.
+
+**Confidence:** HIGH
+
+### Edge Case 4: Method on Result of Another Method (Chaining)
+
+**Scenario:** Chaining methods where intermediate types differ.
+
+```snow
+let result = items.filter(is_positive).map(to_string).length()
+# filter returns List<Int>, map returns List<String>, length returns Int
+```
+
+**Resolution:** Each method call is independently resolved:
+1. `items.filter(is_positive)` -- receiver is `List<Int>`, returns `List<Int>`
+2. `(result_of_filter).map(to_string)` -- receiver is `List<Int>`, returns `List<String>`
+3. `(result_of_map).length()` -- receiver is `List<String>`, returns `Int`
+
+The Pratt parser's left-to-right evaluation handles the CST nesting. The type checker processes each `CALL_EXPR` from innermost to outermost.
+
+**Confidence:** HIGH
+
+### Edge Case 5: Method Call in Pipe Chain
+
+**Scenario:** Mixing dot-syntax and pipe operator.
+
+```snow
+items.filter(pred) |> List.map(f)
+items |> filter(pred) |> map(f)  # pipe-style
+```
+
+**Resolution:** Both work independently. The pipe operator desugars `a |> f(b)` to `f(a, b)`. The dot-syntax desugars `a.f(b)` to `TraitName__f__TypeName(a, b)`. The results should be semantically equivalent when `f` is a trait method.
+
+**Note:** There is a subtle difference: pipe works with any function, dot-syntax only with impl methods. `items |> some_free_function()` works; `items.some_free_function()` does not (unless there's a matching impl method).
+
+**Confidence:** HIGH
+
+### Edge Case 6: Nested Field Access then Method Call
+
+**Scenario:** Accessing a field, then calling a method on the field's value.
+
+```snow
+struct Person do
+  name :: String
+  address :: Address
+end
+
+person.address.to_string()
+# parses as: CALL_EXPR(FIELD_ACCESS(FIELD_ACCESS(person, address), to_string), ())
+```
+
+**Resolution:** The type checker processes:
+1. `person.address` -> field access on `Person`, returns `Address`
+2. `(address_value).to_string()` -> method call on `Address`
+
+The nested `FIELD_ACCESS` is the callee's callee. The type checker needs to check: is the outer `FIELD_ACCESS`'s base a struct type with a field matching the name, OR is it a method call? The answer depends on whether parentheses follow.
+
+In the CST, the structure is: `CALL_EXPR(callee=FIELD_ACCESS(base=FIELD_ACCESS(person, address), field=to_string), args=())`. The inner `FIELD_ACCESS` is a pure field access (no parens). The outer `FIELD_ACCESS` is part of a method call (has parens via the wrapping `CALL_EXPR`).
+
+**Confidence:** HIGH
 
 ---
 
-## Implementation Complexity Assessment
+## MVP Recommendation
 
-| Feature | Estimated Effort | Risk Level | Notes |
-|---------|-----------------|------------|-------|
-| Trait method dispatch (codegen) | 3-5 days | HIGH | Core pipeline change across MIR, mono, codegen. Most complex single feature. |
-| Display for primitives | 1 day | LOW | Runtime functions already exist (int_to_string, etc.) |
-| Display integration with interpolation | 1-2 days | MEDIUM | Need to hook into string interpolation compilation |
-| Eq for structs/sum types | 2-3 days | MEDIUM | Field-by-field comparison codegen |
-| Ord with Ordering type | 2-3 days | MEDIUM | Need new sum type, refactor existing Ord |
-| Default method impls | 2-3 days | MEDIUM | Trait definition changes, impl resolution changes |
-| Hash for primitives | 1 day | LOW | Simple runtime functions |
-| Auto-derive mechanism | 3-5 days | HIGH | Compiler needs struct metadata, generate impl AST/MIR |
-| Default protocol (static methods) | 2-3 days | MEDIUM | Requires trait method without `self` |
-| From/Into protocol | 2-3 days | MEDIUM | Parameterized traits already parsed |
-| Supertraits | 2-3 days | MEDIUM | Constraint propagation in type checker |
+### Build (method dot-syntax milestone)
 
-**Total estimated effort for v1.3 MVP:** 15-25 days (Phases 1-3)
-**With auto-derive (Phase 4):** 20-30 days
+**Phase 1: Core Method Resolution**
+- Type checker detects `CALL_EXPR` with `FIELD_ACCESS` callee pattern
+- Resolve receiver type, search trait impls for matching method
+- Validate argument count and types
+- Record resolved method info (trait name, method name, type name) for MIR
+
+**Phase 2: MIR Lowering**
+- Desugar method call to mangled trait function call
+- Receiver prepended as first argument
+- Reuse existing `TraitName__method__TypeName` mangling
+
+**Phase 3: Diagnostics and Edge Cases**
+- "No such method" error with type information
+- Ambiguity error when multiple traits match
+- Method chaining verification (should work from Phase 1 naturally)
+- Verify interaction with existing module-qualified calls, pipe operator, field access
+
+### Defer to Post-MVP
+
+- Inherent methods (`impl Type do ... end` without trait)
+- Method references / partial application (`let f = value.method`)
+- IDE autocomplete for methods
+- Method visibility (public/private methods in impl blocks)
+
+---
+
+## Complexity Assessment
+
+| Feature | Estimated Effort | Risk | Notes |
+|---------|-----------------|------|-------|
+| Parser changes | 0-1 days | LOW | Likely zero changes needed; verify existing CST shape |
+| Type checker method resolution | 2-3 days | MEDIUM | Core new logic: detect pattern, look up receiver type, search impls. Must not break existing field access or module-qualified calls. |
+| MIR lowering for method calls | 1-2 days | LOW | Mostly reusing existing trait dispatch infrastructure |
+| Method chaining | 0 days | NONE | Falls out from above naturally |
+| Error diagnostics | 1 day | LOW | "No such method", ambiguity errors |
+| Edge case handling | 1-2 days | MEDIUM | Nested field+method, generic receivers, sum types |
+| Testing | 1-2 days | LOW | Unit tests for resolution, integration tests for chaining |
+
+**Total estimated effort:** 5-10 days
+
+**Key risk:** The type checker's `infer_field_access` function currently handles module-qualified calls, sum type variants, service module access, and struct field access in a specific priority order. Method resolution must be inserted at the correct point in this priority chain without breaking any existing behavior. This is the most delicate part of the implementation.
 
 ---
 
 ## Sources
 
-### Rust Traits
-- [Effective Rust: Standard Traits](https://effective-rust.com/std-traits.html)
-- [Tour of Rust's Standard Library Traits](https://github.com/pretzelhammer/rust-blog/blob/master/posts/tour-of-rusts-standard-library-traits.md)
-- [Rust By Example: Derive](https://doc.rust-lang.org/rust-by-example/trait/derive.html)
-- [Rust Advanced Traits](https://doc.rust-lang.org/book/ch20-02-advanced-traits.html)
-- [Rust Iterator Trait](https://doc.rust-lang.org/std/iter/trait.Iterator.html)
-- [Rust From/Into and Newtypes](https://www.lurklurk.org/effective-rust/newtype.html)
-- [Rust Coherence and Orphan Rules](https://rust-lang.github.io/rfcs/2451-re-rebalancing-coherence.html)
+### Rust Method Resolution
+- [The Dot Operator - The Rustonomicon](https://doc.rust-lang.org/nomicon/dot-operator.html) -- autoref/autoderef algorithm
+- [Method Call Expressions - The Rust Reference](https://doc.rust-lang.org/reference/expressions/method-call-expr.html) -- formal method resolution rules
+- [Inherent vs Trait Method Priority - rust-lang/rust#26007](https://github.com/rust-lang/rust/issues/26007) -- inherent methods take priority over trait methods at same deref level
+- [Methods - The Rust Programming Language](https://doc.rust-lang.org/book/ch05-03-method-syntax.html) -- field vs method disambiguation via parentheses
 
-### Haskell Type Classes
-- [Haskell Report: Predefined Types and Classes](https://www.haskell.org/onlinereport/haskell2010/haskellch6.html)
-- [Typeclassopedia](https://wiki.haskell.org/Typeclassopedia)
+### Rust Field vs Method Disambiguation
+- [Trying to access public function with same name as private field - rust-lang/rust#26472](https://github.com/rust-lang/rust/issues/26472) -- real-world ambiguity case
+- [Disambiguating overlapping traits - Rust By Example](https://doc.rust-lang.org/rust-by-example/trait/disambiguating.html) -- fully qualified syntax
 
-### Elixir Protocols
-- [Elixir Protocols Documentation](https://hexdocs.pm/elixir/protocols.html)
-- [Elixir Protocol Module](https://hexdocs.pm/elixir/Protocol.html)
+### Swift Static Dispatch
+- [Method Dispatch Mechanisms in Swift](https://nilcoalescing.com/blog/MethodDispatchMechanismsInSwift/) -- static dispatch for value types (structs/enums), relevant to Snow's design
 
-### Swift Protocols
-- [Swift Standard Library Protocols](https://bugfender.com/blog/swift-standard-library-protocols/)
-- [Swift Equatable](https://developer.apple.com/documentation/Swift/Equatable)
+### UFCS Design Debate (why NOT to build it)
+- [Uniform Function Call Syntax - Wikipedia](https://en.wikipedia.org/wiki/Uniform_function_call_syntax) -- overview of UFCS in D, Nim
+- [What is unified function call syntax anyway? - Barry's C++ Blog](https://brevzin.github.io/c++/2019/04/13/ufcs-history/) -- C++ UFCS history and why it was rejected
+- [UFCS C++ Proposal P3021](https://open-std.org/JTC1/SC22/WG21/docs/papers/2023/p3021r0.pdf) -- problems with ambiguity and overload resolution
 
-### Scala 3
-- [Scala 3 Type Classes](https://docs.scala-lang.org/scala3/book/ca-type-classes.html)
-- [Scala 3 Extension Methods](https://docs.scala-lang.org/scala3/reference/contextual/extension-methods.html)
+### Pipe Operator vs Method Chaining
+- [Piping is Method Chaining - Win Vector](https://win-vector.com/2019/04/14/piping-is-method-chaining/) -- semantic equivalence, design tradeoffs
+- [The Right Way To Pipe](https://yangdanny97.github.io/blog/2023/12/28/pipes) -- pipe-first vs pipe-last, interaction with method syntax
 
-### Static Dispatch / Monomorphization
-- [Rust Polymorphism Guide](https://www.somethingsblog.com/2024/11/03/rust-polymorphism-a-comprehensive-guide-to-static-dynamic-dispatch-enums/)
-- [Rust Dispatch: When Enums Beat dyn Trait](https://www.somethingsblog.com/2025/04/20/rust-dispatch-explained-when-enums-beat-dyn-trait/)
+### Elixir's Design Choice (why dot means something different there)
+- [Why the dot (when calling anonymous functions)? - Dashbit Blog](https://dashbit.co/blog/why-the-dot) -- Elixir's Lisp-2 design, dot for anonymous functions
 
 ---
-*Feature research for: Snow Language Trait System & Stdlib Protocols*
-*Researched: 2026-02-07*
+*Feature research for: Snow Language Method Dot-Syntax*
+*Researched: 2026-02-08*
