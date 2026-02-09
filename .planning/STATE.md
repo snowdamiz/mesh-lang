@@ -5,16 +5,16 @@
 See: .planning/PROJECT.md (updated 2026-02-08)
 
 **Core value:** Expressive, readable concurrency -- writing concurrent programs should feel as natural as sequential code, with supervision and fault tolerance built in.
-**Current focus:** v1.5 Compiler Correctness -- Phase 27 (List Trait Pattern Integration)
+**Current focus:** v1.5 Compiler Correctness -- Phase 27 complete (List Trait Pattern Integration)
 
 ## Current Position
 
 Phase: 27 of 29 (List Trait Pattern Integration)
-Plan: 1 of 2 in current phase
-Status: In progress
-Last activity: 2026-02-09 -- Completed 27-01-PLAN.md
+Plan: 2 of 2 in current phase
+Status: Phase complete
+Last activity: 2026-02-09 -- Completed 27-02-PLAN.md
 
-Progress: ####░░░░░░ ~37% (v1.5: 3/8 plans)
+Progress: #####░░░░░ ~50% (v1.5: 4/8 plans)
 
 ## Performance Metrics
 
@@ -70,6 +70,10 @@ Full decision history archived in milestones/v1.0-ROADMAP.md through milestones/
 | 27-01-D1 | Callback-based element comparison for snow_list_eq/snow_list_compare | Matches snow_list_to_string callback pattern |
 | 27-01-D2 | Parametric Eq/Ord impls for List<T> via single-letter type param | freshen_type_params unification enables matching any List<Concrete> |
 | 27-01-D3 | Reuse wrap_collection_to_string for debug/inspect on collections | Same [elem1, elem2, ...] format for both Display and Debug on lists |
+| 27-02-D1 | ListDecons decision tree node for cons patterns | Runtime length check + head/tail extraction doesn't fit Switch or Test nodes |
+| 27-02-D2 | AccessPath::ListHead/ListTail for list sub-value navigation | Enables pattern compiler to express list element/tail access paths |
+| 27-02-D3 | Local variable bindings take precedence over builtin name mappings | Pattern binding `head` was incorrectly mapped to snow_list_head |
+| 27-02-D4 | Conservative exhaustiveness for cons patterns (treated as wildcards) | Lists are infinite types; cons alone is never exhaustive |
 
 ### Pending Todos
 
@@ -81,7 +85,7 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-02-09T00:33:00Z
-Stopped at: Completed 27-01-PLAN.md
+Last session: 2026-02-09T01:00:31Z
+Stopped at: Completed 27-02-PLAN.md (Phase 27 complete)
 Resume file: None
-Next action: Execute 27-02-PLAN.md
+Next action: Execute Phase 28
