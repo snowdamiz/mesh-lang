@@ -93,7 +93,10 @@ Plans:
   2. User can call methods on generic types -- `my_list.to_string()` works where `List<T>` implements Display
   3. User can chain method calls -- `point.to_string().length()` compiles and returns the length of the string representation
   4. User can mix field access and method calls -- `person.name.length()` accesses the `name` field then calls `length()` on the result
-**Plans**: TBD
+**Plans:** 2 plans
+Plans:
+- [ ] 31-01-PLAN.md -- Type checker non-struct method resolution fix + Display for List<T> + stdlib module method fallback
+- [ ] 31-02-PLAN.md -- MIR stdlib module method fallback + e2e tests for primitives, generics, chaining, mixed access
 
 ### Phase 32: Diagnostics and Integration
 **Goal**: Method dot-syntax has polished diagnostics for edge cases and all existing syntax forms continue to work unchanged
@@ -113,5 +116,5 @@ Plans:
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
 | 30. Core Method Resolution | v1.6 | 2/2 | ✓ Complete | 2026-02-08 |
-| 31. Extended Method Support | v1.6 | 0/TBD | Not started | - |
+| 31. Extended Method Support | v1.6 | 0/2 | Not started | - |
 | 32. Diagnostics and Integration | v1.6 | 0/TBD | Not started | - |
