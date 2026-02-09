@@ -1,5 +1,32 @@
 # Project Milestones: Snow
 
+## v1.5 Compiler Correctness (Shipped: 2026-02-09)
+
+**Delivered:** Resolved all three remaining known limitations -- polymorphic List<T>, Ord-requires-Eq compile-time enforcement, and higher-order constraint propagation -- making the Snow type and trait systems fully correct with zero known compiler correctness issues.
+
+**Phases completed:** 26-29 (6 plans total)
+
+**Key accomplishments:**
+- Polymorphic List<T> with any element type (String, Bool, structs, nested lists) via ListLit MIR + snow_list_from_array codegen
+- List trait integration: callback-based Display/Debug/Eq/Ord dispatch for List<T>
+- Cons pattern destructuring (head :: tail) for all list element types with ListDecons decision tree
+- Compile-time trait deriving safety: E0029 error when deriving Ord without Eq, with suggestion
+- Qualified types: trait constraints propagate through higher-order function arguments (apply(show, 42))
+
+**Stats:**
+- 54 files modified
+- 66,521 lines of Rust (+1,973 net from v1.4)
+- 4 phases, 6 plans
+- 1 day (2026-02-08 → 2026-02-09)
+- 29 commits
+- 1,232 tests passing (+26 new in v1.5)
+
+**Git range:** `feat(26-01)` → `test(29-01)`
+
+**What's next:** TBD -- all compiler correctness issues resolved. Zero known limitations. Potential directions include Iterator/From protocols (associated types), method dot-syntax, blanket impls, distributed actors, or hot code reloading.
+
+---
+
 ## v1.4 Compiler Polish (Shipped: 2026-02-08)
 
 **Delivered:** Fixed all five known limitations from v1.3 -- pattern matching codegen, Ordering type, nested collection Display, generic type deriving, and higher-order constraint soundness -- making the compiler fully correct across its type and trait systems.

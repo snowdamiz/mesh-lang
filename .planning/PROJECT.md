@@ -2,7 +2,7 @@
 
 ## What This Is
 
-Snow is a programming language that combines Elixir/Ruby-style expressive syntax with static Hindley-Milner type inference and BEAM-style concurrency (actors, supervision trees, fault tolerance), compiled via LLVM to native single-binary executables. The compiler is written in Rust. v1.0 shipped a complete compiler pipeline, actor runtime, standard library, and developer tooling. v1.1 polished the language by resolving all five documented v1.0 limitations. v1.2 added Fun() type annotations and a mark-sweep garbage collector for per-actor heaps. v1.3 completed the trait/protocol system with user-defined interfaces, impl blocks, static dispatch via monomorphization, and six stdlib protocols (Display, Debug, Eq, Ord, Hash, Default) with auto-derive support. v1.4 fixed all five compiler correctness issues: pattern matching codegen, Ordering type, nested collection Display, generic type deriving, and type system soundness for constrained function aliases.
+Snow is a programming language that combines Elixir/Ruby-style expressive syntax with static Hindley-Milner type inference and BEAM-style concurrency (actors, supervision trees, fault tolerance), compiled via LLVM to native single-binary executables. The compiler is written in Rust. v1.0 shipped a complete compiler pipeline, actor runtime, standard library, and developer tooling. v1.1 polished the language by resolving all five documented v1.0 limitations. v1.2 added Fun() type annotations and a mark-sweep garbage collector for per-actor heaps. v1.3 completed the trait/protocol system with user-defined interfaces, impl blocks, static dispatch via monomorphization, and six stdlib protocols (Display, Debug, Eq, Ord, Hash, Default) with auto-derive support. v1.4 fixed all five compiler correctness issues: pattern matching codegen, Ordering type, nested collection Display, generic type deriving, and type system soundness for constrained function aliases. v1.5 resolved the final three known limitations: polymorphic List<T>, compile-time Ord-requires-Eq enforcement, and qualified types for higher-order constraint propagation. Zero known compiler correctness issues remain.
 
 ## Core Value
 
@@ -41,16 +41,15 @@ Expressive, readable concurrency -- writing concurrent programs should feel as n
 - ✓ Nested collection Display renders recursively with synthetic MIR wrapper callbacks -- v1.4
 - ✓ Generic types support auto-derive with monomorphization-aware trait impl registration -- v1.4
 - ✓ Higher-order constrained functions preserve trait constraints when captured as values -- v1.4
+- ✓ Polymorphic List<T> — lists work with any element type (String, Bool, structs, nested lists) -- v1.5
+- ✓ List trait integration — Display/Debug/Eq/Ord work for List<T> via callback dispatch -- v1.5
+- ✓ Cons pattern destructuring — head :: tail pattern matching for all list element types -- v1.5
+- ✓ Compile-time trait deriving safety — Ord without Eq emits E0029 error with suggestion -- v1.5
+- ✓ Qualified types — trait constraints propagate through higher-order function arguments -- v1.5
 
 ### Active
 
-**Current Milestone: v1.5 Compiler Correctness**
-
-**Goal:** Resolve all three remaining known limitations — polymorphic List<T>, Ord-requires-Eq compile-time enforcement, and higher-order constraint propagation (qualified types).
-
-- [ ] Polymorphic List<T> — List works with any element type (String, Bool, structs, nested lists), not just Int
-- [ ] Ord deriving requires Eq at compile time — compiler emits error if Ord derived without Eq
-- [ ] Higher-order function argument constraint propagation — trait constraints preserved when constrained functions passed as arguments (e.g., apply(show, value))
+None -- all v1.x requirements validated. Next milestone TBD.
 
 ### Out of Scope
 
@@ -74,16 +73,13 @@ Expressive, readable concurrency -- writing concurrent programs should feel as n
 
 ## Context
 
-Shipped v1.4 with 64,548 lines of Rust (+1,359 from v1.3).
+Shipped v1.5 with 66,521 lines of Rust (+1,973 from v1.4).
 Tech stack: Rust compiler, LLVM 21 (Inkwell 0.8), corosensei coroutines, rowan CST, ariadne diagnostics.
 Crates: snow-lexer, snow-parser, snow-typeck, snow-mir, snow-codegen, snow-rt, snow-fmt, snow-repl, snow-pkg, snow-lsp, snowc.
 
-1,206 tests passing across all crates. Zero known critical bugs.
+1,232 tests passing across all crates. Zero known critical bugs. Zero known compiler correctness issues.
 
-Known limitations:
-- List type is monomorphic (Int only) -- nested collection Display infrastructure exists but List<List<Int>> cannot be created
-- Ord deriving without Eq causes runtime error instead of compile-time error (workaround: derive both)
-- Higher-order function argument constraint propagation not supported (e.g., apply(show, value)) -- requires qualified types
+Known limitations: None.
 
 ## Constraints
 
@@ -124,6 +120,14 @@ Known limitations:
 | Synthetic wrapper functions | Runtime expects fn(u64)->ptr; wrappers bridge two-arg calls to one-arg callback | ✓ Good -- v1.4, enables nested Display |
 | Lazy monomorphization at struct literal sites | Generate trait functions on demand when generic type instantiated | ✓ Good -- v1.4, correct field type substitution |
 | Clone-locally fn_constraints | Avoids &mut cascade to 10+ callers; cloning small map is cheap | ✓ Good -- v1.4, contained mutability |
+| ListLit MIR + snow_list_from_array | Single allocation O(n) vs O(n^2) append chain for list literals | ✓ Good -- v1.5, efficient list creation |
+| Uniform u64 storage with codegen conversion | No runtime type tags; all conversion at compile time | ✓ Good -- v1.5, zero-overhead polymorphism |
+| Callback-based list Eq/Ord | Matches snow_list_to_string pattern; runtime receives fn ptr | ✓ Good -- v1.5, consistent callback architecture |
+| ListDecons decision tree node | Cons patterns need runtime length check + extraction; doesn't fit Switch/Test | ✓ Good -- v1.5, clean pattern compilation |
+| Local var precedence over builtin names | Pattern binding `head` was incorrectly mapped to snow_list_head | ✓ Good -- v1.5, correct name resolution |
+| E0029 error + early-return for Ord without Eq | User opted into selective deriving; respect with clear error and suggestion | ✓ Good -- v1.5, user-friendly diagnostics |
+| Soft error collection for argument constraints | Callee check returns Err; argument check uses extend to avoid aborting inference early | ✓ Good -- v1.5, non-disruptive constraint checking |
+| NameRef-only argument constraint checking | Covers direct names and let aliases; complex expressions out of scope | ✓ Good -- v1.5, practical coverage |
 
 ---
-*Last updated: 2026-02-08 after v1.5 milestone start*
+*Last updated: 2026-02-09 after v1.5 milestone completion*

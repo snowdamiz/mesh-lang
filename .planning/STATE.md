@@ -2,19 +2,19 @@
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-02-08)
+See: .planning/PROJECT.md (updated 2026-02-09)
 
 **Core value:** Expressive, readable concurrency -- writing concurrent programs should feel as natural as sequential code, with supervision and fault tolerance built in.
-**Current focus:** v1.5 Compiler Correctness -- Phase 29 complete (Qualified Types)
+**Current focus:** Planning next milestone
 
 ## Current Position
 
-Phase: 29 of 29 (Qualified Types)
-Plan: 1 of 1 in current phase
-Status: Phase complete
-Last activity: 2026-02-09 -- Completed 29-01-PLAN.md
+Phase: 29 of 29 (all milestones v1.0-v1.5 complete)
+Plan: N/A
+Status: Milestone v1.5 shipped
+Last activity: 2026-02-09 -- v1.5 Compiler Correctness milestone complete
 
-Progress: ######## ~100% (v1.5: 6/6 plans)
+Progress: ########## 100% (v1.0-v1.5: 100/100 plans)
 
 ## Performance Metrics
 
@@ -55,7 +55,8 @@ Progress: ######## ~100% (v1.5: 6/6 plans)
 **v1.5 Totals:**
 - Plans completed: 6
 - Phases: 4 (26-29)
-- Commits: 17
+- Commits: 29
+- Lines of Rust: 66,521 (+1,973)
 - Tests: 1,232 passing (+26 new)
 
 ## Accumulated Context
@@ -63,27 +64,7 @@ Progress: ######## ~100% (v1.5: 6/6 plans)
 ### Decisions
 
 Decisions logged in PROJECT.md Key Decisions table.
-Full decision history archived in milestones/v1.0-ROADMAP.md through milestones/v1.4-ROADMAP.md.
-
-| ID | Decision | Rationale |
-|----|----------|-----------|
-| 26-01-D1 | Use ConstraintOrigin::Annotation for list literal unification | Matches map literal pattern |
-| 26-01-D2 | Desugar list literals to list_new + list_append chain | Simplest lowering, matches map literal pattern |
-| 26-01-D3 | Fix Map.keys/values to return List<K>/List<V> | Correct typing now that List is polymorphic |
-| 26-02-D1 | ListLit MIR variant + snow_list_from_array replaces append chain | Single allocation O(n) vs O(n^2) append chain |
-| 26-02-D2 | known_functions return Ptr, actual type from typeck resolve_range | Enables polymorphic return type conversion in codegen |
-| 26-02-D3 | Uniform u64 storage with codegen-level type conversion | No runtime type tags needed, all conversion at compile time |
-| 27-01-D1 | Callback-based element comparison for snow_list_eq/snow_list_compare | Matches snow_list_to_string callback pattern |
-| 27-01-D2 | Parametric Eq/Ord impls for List<T> via single-letter type param | freshen_type_params unification enables matching any List<Concrete> |
-| 27-01-D3 | Reuse wrap_collection_to_string for debug/inspect on collections | Same [elem1, elem2, ...] format for both Display and Debug on lists |
-| 27-02-D1 | ListDecons decision tree node for cons patterns | Runtime length check + head/tail extraction doesn't fit Switch or Test nodes |
-| 27-02-D2 | AccessPath::ListHead/ListTail for list sub-value navigation | Enables pattern compiler to express list element/tail access paths |
-| 27-02-D3 | Local variable bindings take precedence over builtin name mappings | Pattern binding `head` was incorrectly mapped to snow_list_head |
-| 27-02-D4 | Conservative exhaustiveness for cons patterns (treated as wildcards) | Lists are infinite types; cons alone is never exhaustive |
-| 28-01-D1 | Emit error and early-return instead of silently adding Eq | User opted into selective deriving; respect that with a clear error and suggestion |
-| 29-01-D1 | Soft error collection for argument constraint violations | Callee check returns Err; argument check uses extend to avoid aborting inference early |
-| 29-01-D2 | Only check NameRef arguments for constraints | Covers direct names and let aliases; complex expressions out of scope |
-| 29-01-D3 | Filter to concrete types only (skip Ty::Var) | Prevents false positives on unresolved type variables |
+Full decision history archived in milestones/v1.0-ROADMAP.md through milestones/v1.5-ROADMAP.md.
 
 ### Pending Todos
 
@@ -95,7 +76,7 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-02-09T02:05:00Z
-Stopped at: Completed 29-01-PLAN.md (Phase 29 complete, v1.5 complete)
+Last session: 2026-02-09
+Stopped at: v1.5 milestone archived
 Resume file: None
-Next action: None (v1.5 Compiler Correctness milestone complete)
+Next action: /gsd:new-milestone to plan next version
