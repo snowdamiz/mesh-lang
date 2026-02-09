@@ -2737,12 +2737,73 @@ fn infer_call(
                     let errors = trait_registry.check_where_constraints(
                         &constraints.where_constraints,
                         &resolved_type_args,
-                        origin,
+                        origin.clone(),
                     );
                     ctx.errors.extend(errors.clone());
 
                     if let Some(first_err) = errors.into_iter().next() {
                         return Err(first_err);
+                    }
+                }
+            }
+        }
+    }
+
+    // Check constraints on function-typed ARGUMENTS (higher-order case).
+    // When apply(show, 42) is called, show has fn_constraints but f inside
+    // apply's body does not. Check show's constraints HERE at the outer call site
+    // where unification has connected type variables to concrete argument types.
+    if let Some(arg_list) = call.arg_list() {
+        for (arg_idx, arg) in arg_list.args().enumerate() {
+            if let Expr::NameRef(ref name_ref) = arg {
+                if let Some(arg_fn_name) = name_ref.text() {
+                    if let Some(arg_constraints) = fn_constraints.get(&arg_fn_name) {
+                        if !arg_constraints.where_constraints.is_empty() && arg_idx < arg_types.len() {
+                            // Resolve the argument's type (a function type after unification)
+                            let resolved_arg_ty = ctx.resolve(arg_types[arg_idx].clone());
+
+                            if let Ty::Fun(ref param_tys, _) = resolved_arg_ty {
+                                let mut resolved_type_args: FxHashMap<String, Ty> = FxHashMap::default();
+
+                                // Map parameter positions to type param names, resolve types
+                                for (j, tp_name_opt) in arg_constraints.param_type_param_names.iter().enumerate() {
+                                    if let Some(tp_name) = tp_name_opt {
+                                        if j < param_tys.len() {
+                                            let resolved = ctx.resolve(param_tys[j].clone());
+                                            resolved_type_args.insert(tp_name.clone(), resolved);
+                                        }
+                                    }
+                                }
+
+                                // Fallback: definition-time vars (may be connected via unification)
+                                for (param_name, param_ty) in &arg_constraints.type_params {
+                                    if !resolved_type_args.contains_key(param_name) {
+                                        let resolved = ctx.resolve(param_ty.clone());
+                                        resolved_type_args.insert(param_name.clone(), resolved);
+                                    }
+                                }
+
+                                // Only check constraints where type resolved to concrete (not Ty::Var)
+                                let checkable: Vec<(String, String)> = arg_constraints.where_constraints
+                                    .iter()
+                                    .filter(|(pn, _)| {
+                                        resolved_type_args.get(pn)
+                                            .map(|ty| !matches!(ty, Ty::Var(_)))
+                                            .unwrap_or(false)
+                                    })
+                                    .cloned()
+                                    .collect();
+
+                                if !checkable.is_empty() {
+                                    let errors = trait_registry.check_where_constraints(
+                                        &checkable,
+                                        &resolved_type_args,
+                                        origin.clone(),
+                                    );
+                                    ctx.errors.extend(errors);
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -2856,12 +2917,68 @@ fn infer_pipe(
                             let errors = trait_registry.check_where_constraints(
                                 &constraints.where_constraints,
                                 &resolved_type_args,
-                                origin,
+                                origin.clone(),
                             );
                             ctx.errors.extend(errors.clone());
 
                             if let Some(first_err) = errors.into_iter().next() {
                                 return Err(first_err);
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Check constraints on function-typed ARGUMENTS (higher-order case, pipe variant).
+            // For `value |> apply(show)`, the explicit args are [show] in arg_types.
+            // The piped lhs is NOT in arg_list.args(), so we iterate only explicit args.
+            if let Some(arg_list) = call.arg_list() {
+                for (arg_idx, arg) in arg_list.args().enumerate() {
+                    if let Expr::NameRef(ref name_ref) = arg {
+                        if let Some(arg_fn_name) = name_ref.text() {
+                            if let Some(arg_constraints) = fn_constraints.get(&arg_fn_name) {
+                                if !arg_constraints.where_constraints.is_empty() && arg_idx < arg_types.len() {
+                                    let resolved_arg_ty = ctx.resolve(arg_types[arg_idx].clone());
+
+                                    if let Ty::Fun(ref param_tys, _) = resolved_arg_ty {
+                                        let mut resolved_type_args: FxHashMap<String, Ty> = FxHashMap::default();
+
+                                        for (j, tp_name_opt) in arg_constraints.param_type_param_names.iter().enumerate() {
+                                            if let Some(tp_name) = tp_name_opt {
+                                                if j < param_tys.len() {
+                                                    let resolved = ctx.resolve(param_tys[j].clone());
+                                                    resolved_type_args.insert(tp_name.clone(), resolved);
+                                                }
+                                            }
+                                        }
+
+                                        for (param_name, param_ty) in &arg_constraints.type_params {
+                                            if !resolved_type_args.contains_key(param_name) {
+                                                let resolved = ctx.resolve(param_ty.clone());
+                                                resolved_type_args.insert(param_name.clone(), resolved);
+                                            }
+                                        }
+
+                                        let checkable: Vec<(String, String)> = arg_constraints.where_constraints
+                                            .iter()
+                                            .filter(|(pn, _)| {
+                                                resolved_type_args.get(pn)
+                                                    .map(|ty| !matches!(ty, Ty::Var(_)))
+                                                    .unwrap_or(false)
+                                            })
+                                            .cloned()
+                                            .collect();
+
+                                        if !checkable.is_empty() {
+                                            let errors = trait_registry.check_where_constraints(
+                                                &checkable,
+                                                &resolved_type_args,
+                                                origin.clone(),
+                                            );
+                                            ctx.errors.extend(errors);
+                                        }
+                                    }
+                                }
                             }
                         }
                     }
