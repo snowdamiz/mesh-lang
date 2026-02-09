@@ -10,7 +10,7 @@
 - [x] **v1.5 Compiler Correctness** - Phases 26-29 (shipped 2026-02-09)
 - [x] **v1.6 Method Dot-Syntax** - Phases 30-32 (shipped 2026-02-09)
 - [x] **v1.7 Loops & Iteration** - Phases 33-36 (shipped 2026-02-09)
-- [ ] **v1.8 Module System** - Phases 37-42 (in progress)
+- [x] **v1.8 Module System** - Phases 37-42 (shipped 2026-02-09)
 
 ## Phases
 
@@ -87,7 +87,7 @@ See milestones/v1.7-ROADMAP.md for full phase details.
 - [x] **Phase 39: Cross-Module Type Checking** - Import resolution, qualified/selective access, cross-module functions/structs/sum types/traits (completed 2026-02-09)
 - [x] **Phase 40: Visibility Enforcement** - Private-by-default semantics, pub modifier, access control errors (completed 2026-02-09)
 - [x] **Phase 41: MIR Merge & Codegen** - Module-qualified name mangling, MIR merge, cross-module generics via monomorphization (completed 2026-02-09)
-- [ ] **Phase 42: Diagnostics & Integration** - Module-aware error messages, qualified type names in diagnostics, end-to-end validation
+- [x] **Phase 42: Diagnostics & Integration** - Module-aware error messages, qualified type names in diagnostics, end-to-end validation (completed 2026-02-09)
 
 ## Phase Details
 
@@ -178,8 +178,8 @@ Plans:
 **Plans:** 2 plans
 
 Plans:
-- [ ] 42-01-PLAN.md -- Ariadne named-source spans for file paths in diagnostics (DIAG-01)
-- [ ] 42-02-PLAN.md -- Module-qualified type display, comprehensive E2E integration tests (DIAG-02)
+- [x] 42-01-PLAN.md -- Ariadne named-source spans for file paths in diagnostics (DIAG-01)
+- [x] 42-02-PLAN.md -- Module-qualified type display, comprehensive E2E integration tests (DIAG-02)
 
 ## Progress
 
@@ -201,6 +201,6 @@ Phases execute in numeric order: 37 -> 38 -> 39 -> 40 -> 41 -> 42
 | 39. Cross-Module Type Checking | v1.8 | 3/3 | Complete | 2026-02-09 |
 | 40. Visibility Enforcement | v1.8 | 2/2 | Complete | 2026-02-09 |
 | 41. MIR Merge & Codegen | v1.8 | 1/1 | Complete | 2026-02-09 |
-| 42. Diagnostics & Integration | v1.8 | 0/2 | Not started | - |
+| 42. Diagnostics & Integration | v1.8 | 2/2 | Complete | 2026-02-09 |
 
-**Total: 41 phases shipped across 8 milestones. 127 plans completed. 1 phase remaining for v1.8.**
+**Total: 42 phases shipped across 9 milestones. 129 plans completed. v1.8 Module System complete.**
