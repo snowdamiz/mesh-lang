@@ -2416,7 +2416,7 @@ fn infer_expr(
             Ty::string()
         }
         Expr::FieldAccess(fa) => {
-            infer_field_access(ctx, env, fa, types, type_registry, trait_registry, fn_constraints)?
+            infer_field_access(ctx, env, fa, types, type_registry, trait_registry, fn_constraints, false)?
         }
         Expr::StructLiteral(sl) => {
             infer_struct_literal(ctx, env, sl, types, type_registry, trait_registry, fn_constraints)?
@@ -2687,7 +2687,60 @@ fn infer_call(
         err
     })?;
 
-    let callee_ty = infer_expr(ctx, env, &callee_expr, types, type_registry, trait_registry, fn_constraints)?;
+    // Try normal callee inference first. For FieldAccess callees, this goes through
+    // the standard infer_field_access path (modules, services, variants, struct fields).
+    // If that fails AND the callee is a FieldAccess, retry in method-call context.
+    let callee_ty = match infer_expr(ctx, env, &callee_expr, types, type_registry, trait_registry, fn_constraints) {
+        Ok(ty) => ty,
+        Err(first_err) => {
+            // If callee is a FieldAccess and normal inference failed, try method resolution.
+            if let Expr::FieldAccess(ref fa) = callee_expr {
+                // Remove the error that was pushed during the failed attempt.
+                // The failed infer_field_access(false) pushed a NoSuchField error.
+                if let Some(pos) = ctx.errors.iter().rposition(|e| {
+                    matches!(e, TypeError::NoSuchField { .. })
+                }) {
+                    ctx.errors.remove(pos);
+                }
+
+                // Try method-call context.
+                match infer_field_access(ctx, env, fa, types, type_registry, trait_registry, fn_constraints, true) {
+                    Ok(callee_ty) => {
+                        // Method resolved! Build expected function type with receiver.
+                        let mut arg_types = Vec::new();
+                        // Infer the receiver type (base expression of the FieldAccess).
+                        if let Some(base) = fa.base() {
+                            let receiver_ty = infer_expr(ctx, env, &base, types, type_registry, trait_registry, fn_constraints)?;
+                            arg_types.push(receiver_ty);
+                        }
+                        // Infer explicit argument types.
+                        if let Some(arg_list) = call.arg_list() {
+                            for arg in arg_list.args() {
+                                let arg_ty = infer_expr(ctx, env, &arg, types, type_registry, trait_registry, fn_constraints)?;
+                                arg_types.push(arg_ty);
+                            }
+                        }
+
+                        let ret_var = ctx.fresh_var();
+                        let expected_fn_ty = Ty::Fun(arg_types, Box::new(ret_var.clone()));
+
+                        let origin = ConstraintOrigin::FnArg {
+                            call_site: call.syntax().text_range(),
+                            param_idx: 0,
+                        };
+                        ctx.unify(callee_ty, expected_fn_ty, origin)?;
+
+                        let result = ctx.resolve(ret_var);
+                        types.insert(call.syntax().text_range(), result.clone());
+                        return Ok(result);
+                    }
+                    Err(method_err) => return Err(method_err),
+                }
+            } else {
+                return Err(first_err);
+            }
+        }
+    };
 
     let mut arg_types = Vec::new();
     if let Some(arg_list) = call.arg_list() {
@@ -3873,6 +3926,36 @@ fn infer_return(
     Ok(Ty::Never)
 }
 
+// ── Method Resolution (30-01) ──────────────────────────────────────────
+
+/// Build the full function type for a trait method, including the self parameter.
+/// Returns `Ty::Fun([self_type, ...param_types], return_type)`.
+///
+/// Searches the trait registry's impl blocks to find the matching method
+/// signature for the given self type. Uses `param_count` to create fresh
+/// type variables for non-self parameters (since `ImplMethodSig` does not
+/// store individual parameter types).
+fn build_method_fn_type(
+    trait_registry: &TraitRegistry,
+    method_name: &str,
+    self_ty: &Ty,
+    ret_ty: &Ty,
+    ctx: &mut InferCtx,
+) -> Ty {
+    // Look up the method signature to determine parameter count.
+    if let Some(method_sig) = trait_registry.find_method_sig(method_name, self_ty) {
+        let mut param_types = vec![self_ty.clone()]; // self parameter
+        // Add fresh type vars for remaining params (we only know the count).
+        for _ in 0..method_sig.param_count {
+            param_types.push(ctx.fresh_var());
+        }
+        return Ty::Fun(param_types, Box::new(ret_ty.clone()));
+    }
+    // Fallback: if we can't find the full signature, construct a unary function
+    // (self -> return_type). infer_call's unification will catch arity mismatches.
+    Ty::Fun(vec![self_ty.clone()], Box::new(ret_ty.clone()))
+}
+
 // ── Struct/Field Inference (03-03) ─────────────────────────────────────
 
 /// Infer the type of a field access expression: `expr.field_name`
@@ -3884,6 +3967,7 @@ fn infer_field_access(
     type_registry: &TypeRegistry,
     trait_registry: &TraitRegistry,
     fn_constraints: &FxHashMap<String, FnConstraints>,
+    is_method_call: bool,
 ) -> Result<Ty, TypeError> {
     let base_expr = fa.base().ok_or_else(|| {
         let err = TypeError::Mismatch {
@@ -3978,7 +4062,32 @@ fn infer_field_access(
                     return Ok(resolved_field);
                 }
             }
-            // Field not found in struct.
+            // Field not found in struct -- try method resolution if in method call context.
+            if is_method_call {
+                let matching_traits = trait_registry.find_method_traits(&field_name, &resolved_base);
+                if matching_traits.len() > 1 {
+                    let err = TypeError::AmbiguousMethod {
+                        method_name: field_name.clone(),
+                        candidate_traits: matching_traits,
+                        ty: resolved_base.clone(),
+                    };
+                    ctx.errors.push(err.clone());
+                    return Err(err);
+                }
+                if let Some(ret_ty) = trait_registry.resolve_trait_method(&field_name, &resolved_base) {
+                    let method_fn_ty = build_method_fn_type(trait_registry, &field_name, &resolved_base, &ret_ty, ctx);
+                    return Ok(method_fn_ty);
+                }
+                // Method not found -- emit NoSuchMethod (not NoSuchField).
+                let err = TypeError::NoSuchMethod {
+                    ty: resolved_base,
+                    method_name: field_name,
+                    span: fa.syntax().text_range(),
+                };
+                ctx.errors.push(err.clone());
+                return Err(err);
+            }
+            // Not a method call -- emit NoSuchField.
             let err = TypeError::NoSuchField {
                 ty: resolved_base,
                 field_name,
@@ -3987,6 +4096,31 @@ fn infer_field_access(
             ctx.errors.push(err.clone());
             return Err(err);
         }
+    }
+
+    // Base type is not a struct (or no struct def found).
+    if is_method_call {
+        let matching_traits = trait_registry.find_method_traits(&field_name, &resolved_base);
+        if matching_traits.len() > 1 {
+            let err = TypeError::AmbiguousMethod {
+                method_name: field_name.clone(),
+                candidate_traits: matching_traits,
+                ty: resolved_base.clone(),
+            };
+            ctx.errors.push(err.clone());
+            return Err(err);
+        }
+        if let Some(ret_ty) = trait_registry.resolve_trait_method(&field_name, &resolved_base) {
+            let method_fn_ty = build_method_fn_type(trait_registry, &field_name, &resolved_base, &ret_ty, ctx);
+            return Ok(method_fn_ty);
+        }
+        let err = TypeError::NoSuchMethod {
+            ty: resolved_base,
+            method_name: field_name,
+            span: fa.syntax().text_range(),
+        };
+        ctx.errors.push(err.clone());
+        return Err(err);
     }
 
     Ok(ctx.fresh_var())

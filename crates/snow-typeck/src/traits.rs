@@ -237,6 +237,29 @@ impl TraitRegistry {
         None
     }
 
+    /// Find the impl method signature for a given method name and self type.
+    ///
+    /// Searches all registered impls across all traits for one that provides
+    /// the named method and structurally matches the argument type. Returns
+    /// a clone of the `ImplMethodSig` if found.
+    pub fn find_method_sig(&self, method_name: &str, ty: &Ty) -> Option<ImplMethodSig> {
+        for impl_list in self.impls.values() {
+            for impl_def in impl_list {
+                if let Some(method_sig) = impl_def.methods.get(method_name) {
+                    let mut ctx = InferCtx::new();
+                    let freshened = freshen_type_params(&impl_def.impl_type, &mut ctx);
+                    if ctx
+                        .unify(freshened, ty.clone(), ConstraintOrigin::Builtin)
+                        .is_ok()
+                    {
+                        return Some(method_sig.clone());
+                    }
+                }
+            }
+        }
+        None
+    }
+
     /// Find all trait names that provide a given method for a given type.
     ///
     /// Iterates all registered impls across all traits, collecting the trait
