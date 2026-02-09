@@ -10,11 +10,11 @@ See: .planning/PROJECT.md (updated 2026-02-08)
 ## Current Position
 
 Phase: 36 of 36 (Filter Clause Integration)
-Plan: 1 of 2 in current phase
-Status: Plan 01 complete
-Last activity: 2026-02-09 -- Plan 01 complete (filter clause pipeline support)
+Plan: 2 of 2 in current phase
+Status: Phase 36 complete -- v1.7 milestone complete
+Last activity: 2026-02-09 -- Plan 02 complete (filter clause integration tests)
 
-Progress: [████████░░] 87% (3.5/4 phases)
+Progress: [██████████] 100% (4/4 phases)
 
 ## Performance Metrics
 
@@ -25,8 +25,8 @@ Progress: [████████░░] 87% (3.5/4 phases)
 - Tests: 1,300 passing
 
 **v1.7 Velocity:**
-- Plans completed: 7
-- Phases completed: 3/4
+- Plans completed: 8
+- Phases completed: 4/4
 
 | Phase | Plan | Duration | Tasks | Files |
 |-------|------|----------|-------|-------|
@@ -37,6 +37,7 @@ Progress: [████████░░] 87% (3.5/4 phases)
 | 35    | 01   | 12min    | 2     | 13    |
 | 35    | 02   | 17min    | 2     | 8     |
 | 36    | 01   | 10min    | 2     | 10    |
+| 36    | 02   | 5min     | 2     | 5     |
 
 ## Accumulated Context
 
@@ -66,6 +67,8 @@ Full decision history archived in milestones/v1.0-ROADMAP.md through milestones/
 - [36-01] Filter parsed as direct child of FOR_IN_EXPR (no separate CST node), matching MatchArm guard pattern
 - [36-01] Filter field between iterable/collection and body in MIR; conditional branch creates forin_do_body block
 - [36-01] Five-block pattern: filter false skips to latch_bb directly, bypassing body + push
+- [36-02] Isolated per-scenario e2e tests + comprehensive fixture for granular failure diagnosis
+- [36-02] Map/set filter tests use List.length for deterministic output (iteration order not guaranteed)
 
 ### Research Notes
 
@@ -87,6 +90,6 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-09
-Stopped at: Completed 36-01-PLAN.md
+Stopped at: Completed 36-02-PLAN.md -- Phase 36 complete, v1.7 milestone complete
 Resume file: None
-Next action: Execute 36-02-PLAN.md (integration testing)
+Next action: v1.7 Loops & Iteration milestone complete (phases 33-36)
