@@ -10,11 +10,11 @@ See: .planning/PROJECT.md (updated 2026-02-08)
 ## Current Position
 
 Phase: 30 of 32 (Core Method Resolution)
-Plan: 0 of TBD in current phase
-Status: Ready to plan
-Last activity: 2026-02-08 -- Roadmap created for v1.6
+Plan: 1 of 2 in current phase
+Status: Executing
+Last activity: 2026-02-09 -- Completed 30-01 (method resolution in type checker)
 
-Progress: [..........] 0%
+Progress: [=.........] 17%
 
 ## Performance Metrics
 
@@ -25,8 +25,12 @@ Progress: [..........] 0%
 - Tests: 1,232 passing
 
 **v1.6 Progress:**
-- Plans completed: 0
+- Plans completed: 1
 - Phases: 3 (30-32)
+
+| Phase | Plan | Duration | Tasks | Files |
+|-------|------|----------|-------|-------|
+| 30-01 | Core Method Resolution | 6min | 2 | 4 |
 
 ## Accumulated Context
 
@@ -39,6 +43,9 @@ v1.6 decisions:
 - Method dot-syntax is pure desugaring at two integration points (type checker + MIR lowering)
 - No new CST nodes, MIR nodes, or runtime mechanisms needed
 - Resolution priority: module > service > variant > struct field > method (method is last)
+- Retry-based method resolution in infer_call: normal inference first, method-call fallback on NoSuchField
+- build_method_fn_type uses fresh type vars for non-self params (ImplMethodSig has param_count only)
+- find_method_sig added as public accessor on TraitRegistry (maintains encapsulation)
 
 ### Pending Todos
 
@@ -50,7 +57,7 @@ None. Research confidence HIGH across all areas.
 
 ## Session Continuity
 
-Last session: 2026-02-08
-Stopped at: Roadmap created for v1.6 Method Dot-Syntax
+Last session: 2026-02-09
+Stopped at: Completed 30-01-PLAN.md
 Resume file: None
-Next action: Plan Phase 30 (Core Method Resolution)
+Next action: Execute 30-02-PLAN.md (end-to-end integration tests)
