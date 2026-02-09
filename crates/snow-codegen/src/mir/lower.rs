@@ -3357,9 +3357,188 @@ impl<'a> Lowerer<'a> {
         }
     }
 
+    // ── Trait dispatch helpers ────────────────────────────────────────
+
+    /// Check if a name refers to a sum type (e.g., Shape, Option).
+    /// Used to prevent intercepting variant constructor calls like Shape.Circle(5.0).
+    fn is_sum_type_name(&self, name: &str) -> bool {
+        self.registry.sum_type_defs.contains_key(name)
+    }
+
+    /// Check if a name refers to a struct type (e.g., Point).
+    /// Used to prevent intercepting module-style qualified calls on struct names.
+    fn is_struct_type_name(&self, name: &str) -> bool {
+        self.registry.struct_defs.contains_key(name)
+    }
+
+    /// Resolve a trait method callee: given a method name and the first argument's type,
+    /// check if it's a trait method and rewrite to the mangled name (Trait__Method__Type).
+    /// Returns the resolved callee (either mangled or original).
+    fn resolve_trait_callee(
+        &self,
+        name: &str,
+        var_ty: &MirType,
+        first_arg_ty: &MirType,
+    ) -> MirExpr {
+        if !self.known_functions.contains_key(name) {
+            let ty_for_lookup = mir_type_to_ty(first_arg_ty);
+            let matching_traits = self.trait_registry.find_method_traits(name, &ty_for_lookup);
+            if !matching_traits.is_empty() {
+                let trait_name = &matching_traits[0];
+                let type_name = mir_type_to_impl_name(first_arg_ty);
+                let mangled = format!("{}__{}__{}", trait_name, name, type_name);
+
+                // Primitive Display/Debug/Hash builtin redirects
+                let resolved = match mangled.as_str() {
+                    "Display__to_string__Int" | "Debug__inspect__Int" => {
+                        "snow_int_to_string".to_string()
+                    }
+                    "Display__to_string__Float" | "Debug__inspect__Float" => {
+                        "snow_float_to_string".to_string()
+                    }
+                    "Display__to_string__Bool" | "Debug__inspect__Bool" => {
+                        "snow_bool_to_string".to_string()
+                    }
+                    "Hash__hash__Int" => "snow_hash_int".to_string(),
+                    "Hash__hash__Float" => "snow_hash_float".to_string(),
+                    "Hash__hash__Bool" => "snow_hash_bool".to_string(),
+                    "Hash__hash__String" => "snow_hash_string".to_string(),
+                    _ => mangled,
+                };
+                return MirExpr::Var(resolved, var_ty.clone());
+            }
+
+            // Fallback for monomorphized generic types
+            let type_name = mir_type_to_impl_name(first_arg_ty);
+            let known_traits = ["Display", "Debug", "Eq", "Ord", "Hash"];
+            for trait_name in &known_traits {
+                let candidate = format!("{}__{}__{}", trait_name, name, type_name);
+                if self.known_functions.contains_key(&candidate) {
+                    return MirExpr::Var(candidate, var_ty.clone());
+                }
+            }
+
+            // Defense-in-depth warning
+            if self.lookup_var(name).is_none() {
+                let type_name = mir_type_to_impl_name(first_arg_ty);
+                eprintln!(
+                    "[snow-codegen] warning: call to '{}' could not be resolved \
+                     as a trait method for type '{}'. This may indicate a type checker bug.",
+                    name, type_name
+                );
+            }
+        }
+        MirExpr::Var(name.to_string(), var_ty.clone())
+    }
+
     // ── Call expression lowering ─────────────────────────────────────
 
     fn lower_call_expr(&mut self, call: &CallExpr) -> MirExpr {
+        // Method call interception: if callee is a FieldAccess (expr.method(...)),
+        // extract receiver + method name, prepend receiver to args, and route
+        // through trait dispatch. This MUST happen BEFORE lower_expr on the callee,
+        // because lower_expr would route to lower_field_access which produces a
+        // struct GEP (MirExpr::FieldAccess), not a callable.
+        if let Some(callee_expr) = call.callee() {
+            if let Expr::FieldAccess(ref fa) = callee_expr {
+                // Check if this is a module/service/variant/struct access (NOT a method call).
+                // Module-qualified calls (String.length), service methods (Counter.start),
+                // variant constructors (Shape.Circle), and struct-qualified calls are
+                // handled by lower_field_access.
+                let is_module_or_special = if let Some(base) = fa.base() {
+                    if let Expr::NameRef(ref name_ref) = base {
+                        if let Some(base_name) = name_ref.text() {
+                            STDLIB_MODULES.contains(&base_name.as_str())
+                                || self.service_modules.contains_key(&base_name)
+                                || self.is_sum_type_name(&base_name)
+                                || self.is_struct_type_name(&base_name)
+                        } else {
+                            false
+                        }
+                    } else {
+                        false
+                    }
+                } else {
+                    false
+                };
+
+                if !is_module_or_special {
+                    let method_name = fa.field().map(|t| t.text().to_string()).unwrap_or_default();
+
+                    // Lower the receiver expression
+                    let receiver = fa.base().map(|e| self.lower_expr(&e)).unwrap_or(MirExpr::Unit);
+
+                    // Lower explicit arguments
+                    let mut args = vec![receiver];
+                    if let Some(arg_list) = call.arg_list() {
+                        for arg in arg_list.args() {
+                            args.push(self.lower_expr(&arg));
+                        }
+                    }
+
+                    let ty = self.resolve_range(call.syntax().text_range());
+
+                    // Route through the shared trait dispatch helper
+                    let first_arg_ty = args[0].ty().clone();
+                    let callee_var_ty = MirType::FnPtr(
+                        args.iter().map(|a| a.ty().clone()).collect(),
+                        Box::new(ty.clone()),
+                    );
+                    let callee = self.resolve_trait_callee(&method_name, &callee_var_ty, &first_arg_ty);
+
+                    // Apply the same post-dispatch optimizations as bare-name calls:
+                    // Display__to_string__String identity short-circuit
+                    if let MirExpr::Var(ref name, _) = callee {
+                        if name == "Display__to_string__String" && !args.is_empty() {
+                            return args.into_iter().next().unwrap();
+                        }
+                        // Debug__inspect__String wraps in quotes
+                        if name == "Debug__inspect__String" && !args.is_empty() {
+                            let val = args.into_iter().next().unwrap();
+                            let quote = MirExpr::StringLit("\"".to_string(), MirType::String);
+                            let concat_ty = MirType::FnPtr(
+                                vec![MirType::String, MirType::String],
+                                Box::new(MirType::String),
+                            );
+                            let left = MirExpr::Call {
+                                func: Box::new(MirExpr::Var("snow_string_concat".to_string(), concat_ty.clone())),
+                                args: vec![quote.clone(), val],
+                                ty: MirType::String,
+                            };
+                            return MirExpr::Call {
+                                func: Box::new(MirExpr::Var("snow_string_concat".to_string(), concat_ty)),
+                                args: vec![left, quote],
+                                ty: MirType::String,
+                            };
+                        }
+                    }
+
+                    // Collection Display dispatch for method calls
+                    if let MirExpr::Var(ref name, _) = callee {
+                        if (name == "to_string" || name == "debug" || name == "inspect")
+                            && args.len() == 1
+                            && matches!(args[0].ty(), MirType::Ptr)
+                        {
+                            if let Some(base_expr) = fa.base() {
+                                if let Some(typeck_ty) = self.get_ty(base_expr.syntax().text_range()).cloned() {
+                                    if let Some(collection_call) = self.wrap_collection_to_string(&args[0], &typeck_ty) {
+                                        return collection_call;
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    return MirExpr::Call {
+                        func: Box::new(callee),
+                        args,
+                        ty,
+                    };
+                }
+            }
+        }
+
+        // Non-method-call path: normal function calls (unchanged from before).
         let callee = call.callee().map(|e| self.lower_expr(&e));
         let args: Vec<MirExpr> = call
             .arg_list()
@@ -3524,74 +3703,14 @@ impl<'a> Lowerer<'a> {
             }
         }
 
-        // Trait method call rewriting: if the callee is a bare method name
-        // (not in known_functions), check if it's a trait method for the first
-        // arg's type. If so, rewrite to the mangled name (Trait__Method__Type).
+        // Trait method call rewriting: use shared resolve_trait_callee helper.
+        // If the callee is a bare method name (not in known_functions), check if
+        // it's a trait method for the first arg's type. If so, rewrite to the
+        // mangled name (Trait__Method__Type).
         let callee = if let MirExpr::Var(ref name, ref var_ty) = callee {
-            if !self.known_functions.contains_key(name) && !args.is_empty() {
+            if !args.is_empty() {
                 let first_arg_ty = args[0].ty().clone();
-                let ty_for_lookup = mir_type_to_ty(&first_arg_ty);
-                let matching_traits =
-                    self.trait_registry.find_method_traits(name, &ty_for_lookup);
-                if !matching_traits.is_empty() {
-                    // Use first trait (if multiple, typeck already reported ambiguity).
-                    let trait_name = &matching_traits[0];
-                    let type_name = mir_type_to_impl_name(&first_arg_ty);
-                    let mangled = format!("{}__{}__{}", trait_name, name, type_name);
-
-                    // For primitive Display/Debug/Hash impls, redirect to runtime functions
-                    // since there are no MIR function bodies for these builtins.
-                    let resolved = match mangled.as_str() {
-                        "Display__to_string__Int" | "Debug__inspect__Int" => {
-                            "snow_int_to_string".to_string()
-                        }
-                        "Display__to_string__Float" | "Debug__inspect__Float" => {
-                            "snow_float_to_string".to_string()
-                        }
-                        "Display__to_string__Bool" | "Debug__inspect__Bool" => {
-                            "snow_bool_to_string".to_string()
-                        }
-                        // Display__to_string__String is identity; handled below.
-                        // Debug__inspect__String wraps in quotes; handled below.
-                        "Hash__hash__Int" => "snow_hash_int".to_string(),
-                        "Hash__hash__Float" => "snow_hash_float".to_string(),
-                        "Hash__hash__Bool" => "snow_hash_bool".to_string(),
-                        "Hash__hash__String" => "snow_hash_string".to_string(),
-                        _ => mangled,
-                    };
-                    MirExpr::Var(resolved, var_ty.clone())
-                } else {
-                    // Fallback for monomorphized generic types: the trait registry
-                    // has parametric impls (e.g., Display for Box<T>) that don't match
-                    // mangled concrete types (Box_Int). Check known_functions directly.
-                    let type_name = mir_type_to_impl_name(&first_arg_ty);
-                    let known_traits = ["Display", "Debug", "Eq", "Ord", "Hash"];
-                    let mut resolved_name = None;
-                    for trait_name in &known_traits {
-                        let candidate = format!("{}__{}__{}", trait_name, name, type_name);
-                        if self.known_functions.contains_key(&candidate) {
-                            resolved_name = Some(candidate);
-                            break;
-                        }
-                    }
-                    if let Some(resolved) = resolved_name {
-                        MirExpr::Var(resolved, var_ty.clone())
-                    } else {
-                        // Defense-in-depth: if the callee is not a known function,
-                        // not a local variable, and find_method_traits returned empty,
-                        // this could indicate a where-clause violation that bypassed
-                        // typeck. Emit a warning (non-fatal) for debugging.
-                        if self.lookup_var(name).is_none() {
-                            let type_name = mir_type_to_impl_name(&first_arg_ty);
-                            eprintln!(
-                                "[snow-codegen] warning: call to '{}' could not be resolved \
-                                 as a trait method for type '{}'. This may indicate a type checker bug.",
-                                name, type_name
-                            );
-                        }
-                        callee
-                    }
-                }
+                self.resolve_trait_callee(name, var_ty, &first_arg_ty)
             } else {
                 callee
             }

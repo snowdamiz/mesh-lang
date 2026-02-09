@@ -202,6 +202,7 @@ fn type_error_span(error: &TypeError) -> Option<TextRange> {
         TypeError::AmbiguousMethod { .. } => None,
         TypeError::UnsupportedDerive { .. } => None,
         TypeError::MissingDerivePrerequisite { .. } => None,
+        TypeError::NoSuchMethod { span, .. } => Some(*span),
     }
 }
 
