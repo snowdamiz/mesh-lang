@@ -9,18 +9,18 @@ See: .planning/PROJECT.md (updated 2026-02-09)
 
 ## Current Position
 
-Phase: 37 of 42 (Module Graph Foundation)
-Plan: 1 of 2 in current phase
-Status: Executing
-Last activity: 2026-02-09 -- Completed 37-01 (ModuleGraph types + file discovery)
+Phase: 37 of 42 (Module Graph Foundation) -- COMPLETE
+Plan: 2 of 2 in current phase
+Status: Phase Complete
+Last activity: 2026-02-09 -- Completed 37-02 (topological sort + build_module_graph pipeline)
 
-Progress: [|||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||         ] 91% (115/~127 plans est.)
+Progress: [||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||        ] 92% (117/~127 plans est.)
 
 ## Performance Metrics
 
 **All-time Totals:**
-- Plans completed: 115
-- Phases completed: 36
+- Plans completed: 117
+- Phases completed: 37
 - Milestones shipped: 8 (v1.0-v1.7)
 - Lines of Rust: 70,501
 - Timeline: 5 days (2026-02-05 -> 2026-02-09)
@@ -38,6 +38,9 @@ Recent for v1.8:
 - Sequential u32 IDs for ModuleId -- simple, zero-allocation, direct Vec indexing
 - FxHashMap for module name-to-id lookup -- low overhead for small module counts
 - Hidden directory skipping in file discovery -- prevents .git/.hidden from being treated as modules
+- Alphabetical tie-breaking in toposort for deterministic compilation order across platforms
+- Silent skip for unknown imports during graph construction -- Phase 39 handles error reporting
+- Two-phase graph construction: register all modules first, then parse and build edges
 
 ### Research Notes
 
@@ -58,6 +61,6 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-09
-Stopped at: Completed 37-01-PLAN.md
+Stopped at: Completed 37-02-PLAN.md (Phase 37 complete)
 Resume file: None
-Next action: Execute 37-02-PLAN.md (topological sort and cycle detection)
+Next action: Begin Phase 38 (import resolution integration into build pipeline)
