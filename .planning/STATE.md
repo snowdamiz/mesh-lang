@@ -9,12 +9,12 @@ See: .planning/PROJECT.md (updated 2026-02-08)
 
 ## Current Position
 
-Phase: 31 of 32 (Extended Method Support)
-Plan: 1 of 2 in current phase
-Status: Executing
-Last activity: 2026-02-09 -- Completed 31-01 (type checker non-struct method resolution + stdlib fallback)
+Phase: 31 of 32 (Extended Method Support) -- COMPLETE
+Plan: 2 of 2 in current phase
+Status: Phase Complete
+Last activity: 2026-02-09 -- Completed 31-02 (MIR stdlib module method fallback + e2e tests)
 
-Progress: [=====.....] 50%
+Progress: [==========] 100%
 
 ## Performance Metrics
 
@@ -22,10 +22,10 @@ Progress: [=====.....] 50%
 - Plans completed: 100
 - Phases completed: 29
 - Lines of Rust: 66,521
-- Tests: 1,242 passing
+- Tests: 1,248 passing
 
 **v1.6 Progress:**
-- Plans completed: 3
+- Plans completed: 4
 - Phases: 3 (30-32)
 
 | Phase | Plan | Duration | Tasks | Files |
@@ -33,6 +33,7 @@ Progress: [=====.....] 50%
 | 30-01 | Core Method Resolution | 6min | 2 | 4 |
 | 30-02 | MIR Method Lowering | 23min | 2 | 3 |
 | 31-01 | Extended Method Support (typeck) | 3min | 2 | 2 |
+| 31-02 | MIR Stdlib Fallback + E2E Tests | 5min | 2 | 2 |
 
 ## Accumulated Context
 
@@ -54,6 +55,8 @@ v1.6 decisions:
 - Non-struct concrete types (Ty::Con, Ty::App) return Err(NoSuchField) to trigger method retry
 - Stdlib module method fallback maps receiver type to module name generically (String, List, Map, Set, Range)
 - Display registered for List<T>, Map<K,V>, Set in builtins for collection to_string via dot-syntax
+- MIR stdlib module fallback maps MirType::String to string_ prefix, MirType::Ptr to list_ prefix
+- True chaining (p.to_string().length()) and mixed field+method (p.name.length()) work end-to-end
 
 ### Pending Todos
 
@@ -66,6 +69,6 @@ None. Research confidence HIGH across all areas.
 ## Session Continuity
 
 Last session: 2026-02-09
-Stopped at: Completed 31-01-PLAN.md
+Stopped at: Completed 31-02-PLAN.md (Phase 31 complete)
 Resume file: None
-Next action: Execute 31-02-PLAN.md (MIR lowering stdlib module method fallback + e2e tests)
+Next action: Execute Phase 32 (method polish/cleanup) or proceed to next milestone
