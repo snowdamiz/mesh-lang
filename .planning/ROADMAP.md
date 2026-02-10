@@ -11,7 +11,7 @@
 - [x] **v1.6 Method Dot-Syntax** - Phases 30-32 (shipped 2026-02-09)
 - [x] **v1.7 Loops & Iteration** - Phases 33-36 (shipped 2026-02-09)
 - [x] **v1.8 Module System** - Phases 37-42 (shipped 2026-02-09)
-- [ ] **v1.9 Stdlib & Ergonomics** - Phases 43-48 (in progress)
+- [x] **v1.9 Stdlib & Ergonomics** - Phases 43-48 (shipped 2026-02-10)
 
 ## Phases
 
@@ -96,7 +96,7 @@ See milestones/v1.8-ROADMAP.md for full phase details.
 - [x] **Phase 45: Error Propagation** - ? operator for Result/Option early return (completed 2026-02-10)
 - [x] **Phase 46: Core Collection Operations** - Sort, find, contains, String split/join/parse (completed 2026-02-10)
 - [x] **Phase 47: Extended Collection Operations** - Zip, flat_map, enumerate, take/drop, Map/Set conversions (completed 2026-02-10)
-- [ ] **Phase 48: Tail-Call Elimination** - Self-recursive tail calls transformed to loops
+- [x] **Phase 48: Tail-Call Elimination** - Self-recursive tail calls transformed to loops (completed 2026-02-10)
 
 ## Phase Details
 
@@ -181,8 +181,8 @@ Plans:
   3. Actor receive loops using self-recursive tail calls run indefinitely without growing the stack
 **Plans:** 2 plans
 Plans:
-- [ ] 48-01-PLAN.md -- MIR TailCall variant, has_tail_calls flag, and rewrite_tail_calls pass
-- [ ] 48-02-PLAN.md -- Codegen loop wrapping, TailCall codegen, and e2e tests
+- [x] 48-01-PLAN.md -- MIR TailCall variant, has_tail_calls flag, and rewrite_tail_calls pass
+- [x] 48-02-PLAN.md -- Codegen loop wrapping, TailCall codegen, and e2e tests
 
 ## Progress
 
@@ -205,6 +205,6 @@ Phases execute in numeric order: 43 -> 44 -> 45 -> 46 -> 47 -> 48
 | 45 | v1.9 | 3/3 | Complete | 2026-02-10 |
 | 46 | v1.9 | 2/2 | Complete | 2026-02-10 |
 | 47 | v1.9 | 2/2 | Complete | 2026-02-10 |
-| 48 | v1.9 | 0/TBD | Not started | - |
+| 48 | v1.9 | 2/2 | Complete | 2026-02-10 |
 
-**Total: 47 phases shipped across 9 milestones. 139 plans completed. 1 phase remaining.**
+**Total: 48 phases shipped across 10 milestones. 141 plans completed. All phases complete.**
