@@ -122,7 +122,7 @@ See milestones/v1.9-ROADMAP.md for full phase details.
 **Plans:** 3 plans
 
 Plans:
-- [ ] 49-01-PLAN.md -- Runtime foundation: JSON INT/FLOAT tag split + 9 structured JSON functions with three-point registration
+- [ ] 49-01-PLAN.md -- Runtime foundation: JSON INT/FLOAT tag split + 14 runtime functions with three-point registration
 - [ ] 49-02-PLAN.md -- Compiler pipeline: typeck deriving(Json) validation + MIR to_json/from_json generation + call dispatch wiring
 - [ ] 49-03-PLAN.md -- E2E test suite: 7 tests + 1 compile-fail covering all 9 requirements
 
