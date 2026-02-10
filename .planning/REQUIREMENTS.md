@@ -69,31 +69,31 @@
 
 | REQ-ID | Phase | Status |
 |--------|-------|--------|
-| MATH-01 | — | Pending |
-| MATH-02 | — | Pending |
-| MATH-03 | — | Pending |
-| MATH-04 | — | Pending |
-| MATH-05 | — | Pending |
-| MATH-06 | — | Pending |
-| MATH-07 | — | Pending |
-| ERR-01 | — | Pending |
-| ERR-02 | — | Pending |
-| ERR-03 | — | Pending |
-| RECV-01 | — | Pending |
-| RECV-02 | — | Pending |
-| TIMER-01 | — | Pending |
-| TIMER-02 | — | Pending |
-| COLL-01 | — | Pending |
-| COLL-02 | — | Pending |
-| COLL-03 | — | Pending |
-| COLL-04 | — | Pending |
-| COLL-05 | — | Pending |
-| COLL-06 | — | Pending |
-| COLL-07 | — | Pending |
-| COLL-08 | — | Pending |
-| COLL-09 | — | Pending |
-| COLL-10 | — | Pending |
-| COLL-11 | — | Pending |
-| COLL-12 | — | Pending |
-| TCE-01 | — | Pending |
-| TCE-02 | — | Pending |
+| MATH-01 | Phase 43 | Pending |
+| MATH-02 | Phase 43 | Pending |
+| MATH-03 | Phase 43 | Pending |
+| MATH-04 | Phase 43 | Pending |
+| MATH-05 | Phase 43 | Pending |
+| MATH-06 | Phase 43 | Pending |
+| MATH-07 | Phase 43 | Pending |
+| ERR-01 | Phase 45 | Pending |
+| ERR-02 | Phase 45 | Pending |
+| ERR-03 | Phase 45 | Pending |
+| RECV-01 | Phase 44 | Pending |
+| RECV-02 | Phase 44 | Pending |
+| TIMER-01 | Phase 44 | Pending |
+| TIMER-02 | Phase 44 | Pending |
+| COLL-01 | Phase 46 | Pending |
+| COLL-02 | Phase 46 | Pending |
+| COLL-03 | Phase 46 | Pending |
+| COLL-04 | Phase 46 | Pending |
+| COLL-05 | Phase 47 | Pending |
+| COLL-06 | Phase 47 | Pending |
+| COLL-07 | Phase 47 | Pending |
+| COLL-08 | Phase 47 | Pending |
+| COLL-09 | Phase 46 | Pending |
+| COLL-10 | Phase 46 | Pending |
+| COLL-11 | Phase 47 | Pending |
+| COLL-12 | Phase 47 | Pending |
+| TCE-01 | Phase 48 | Pending |
+| TCE-02 | Phase 48 | Pending |

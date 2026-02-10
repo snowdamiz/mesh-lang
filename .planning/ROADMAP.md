@@ -11,6 +11,7 @@
 - [x] **v1.6 Method Dot-Syntax** - Phases 30-32 (shipped 2026-02-09)
 - [x] **v1.7 Loops & Iteration** - Phases 33-36 (shipped 2026-02-09)
 - [x] **v1.8 Module System** - Phases 37-42 (shipped 2026-02-09)
+- [ ] **v1.9 Stdlib & Ergonomics** - Phases 43-48 (in progress)
 
 ## Phases
 
@@ -86,7 +87,88 @@ See milestones/v1.8-ROADMAP.md for full phase details.
 
 </details>
 
+### v1.9 Stdlib & Ergonomics (In Progress)
+
+**Milestone Goal:** Make Snow practical for real programs by adding math stdlib, error propagation sugar, receive timeouts, timer primitives, collection operations, and tail-call optimization.
+
+- [ ] **Phase 43: Math Stdlib** - Numeric functions and type conversions via libm FFI
+- [ ] **Phase 44: Receive Timeouts & Timers** - Actor timeout codegen completion and timer primitives
+- [ ] **Phase 45: Error Propagation** - ? operator for Result/Option early return
+- [ ] **Phase 46: Core Collection Operations** - Sort, find, contains, String split/join/parse
+- [ ] **Phase 47: Extended Collection Operations** - Zip, flat_map, enumerate, take/drop, Map/Set conversions
+- [ ] **Phase 48: Tail-Call Elimination** - Self-recursive tail calls transformed to loops
+
+## Phase Details
+
+### Phase 43: Math Stdlib
+**Goal**: Users can perform standard math operations on Int and Float values
+**Depends on**: Nothing (first phase of v1.9)
+**Requirements**: MATH-01, MATH-02, MATH-03, MATH-04, MATH-05, MATH-06, MATH-07
+**Success Criteria** (what must be TRUE):
+  1. User can call Math.abs, Math.min, Math.max on both Int and Float and get correct results
+  2. User can call Math.pow, Math.sqrt and get correct numeric results (sqrt returns Float)
+  3. User can call Math.floor, Math.ceil, Math.round to convert Float to Int
+  4. User can reference Math.pi as a Float constant in expressions
+  5. User can convert between Int and Float with Int.to_float(x) and Float.to_int(x)
+**Plans**: TBD
+
+### Phase 44: Receive Timeouts & Timers
+**Goal**: Actors can time out on message receives and use timer primitives for delayed operations
+**Depends on**: Nothing (independent of Phase 43)
+**Requirements**: RECV-01, RECV-02, TIMER-01, TIMER-02
+**Success Criteria** (what must be TRUE):
+  1. User can write `receive { ... } after ms -> body` and the timeout body executes when no message arrives within ms (no segfault)
+  2. Compiler type-checks timeout body against receive arm types, rejecting type mismatches
+  3. User can call Timer.sleep(ms) to suspend the current actor for the specified duration without blocking other actors
+  4. User can call Timer.send_after(pid, ms, msg) and the target actor receives msg after ms milliseconds
+**Plans**: TBD
+
+### Phase 45: Error Propagation
+**Goal**: Users can propagate errors concisely using the ? operator instead of explicit pattern matching
+**Depends on**: Nothing (independent of Phases 43-44)
+**Requirements**: ERR-01, ERR-02, ERR-03
+**Success Criteria** (what must be TRUE):
+  1. User can write `expr?` on a Result<T,E> value: unwraps Ok(v) to v, early-returns Err(e) on error
+  2. User can write `expr?` on an Option<T> value: unwraps Some(v) to v, early-returns None on absence
+  3. Compiler emits a clear error when ? is used in a function whose return type is not Result or Option
+**Plans**: TBD
+
+### Phase 46: Core Collection Operations
+**Goal**: Users have essential collection manipulation functions for lists and strings
+**Depends on**: Nothing (independent, but benefits from existing Ord infrastructure)
+**Requirements**: COLL-01, COLL-02, COLL-03, COLL-04, COLL-09, COLL-10
+**Success Criteria** (what must be TRUE):
+  1. User can sort a list with List.sort(list, cmp_fn) using an explicit comparator function
+  2. User can search lists with List.find (returns Option), List.any/List.all (returns Bool), and List.contains (returns Bool)
+  3. User can split strings with String.split(s, delim) and join lists of strings with String.join(list, sep)
+  4. User can parse strings to numbers with String.to_int(s) and String.to_float(s) returning Option
+**Plans**: TBD
+
+### Phase 47: Extended Collection Operations
+**Goal**: Users have the full complement of functional collection transformations across List, Map, and Set
+**Depends on**: Phase 46 (builds on collection operation patterns established there)
+**Requirements**: COLL-05, COLL-06, COLL-07, COLL-08, COLL-11, COLL-12
+**Success Criteria** (what must be TRUE):
+  1. User can zip two lists with List.zip(a, b) returning List<(A, B)> truncated to shorter length
+  2. User can call List.flat_map(list, fn) and List.flatten(list) for nested list processing
+  3. User can call List.enumerate(list) returning List<(Int, T)> and List.take/List.drop for subsequences
+  4. User can convert between Map and List with Map.merge, Map.to_list, Map.from_list, and between Set and List with Set.difference, Set.to_list, Set.from_list
+**Plans**: TBD
+
+### Phase 48: Tail-Call Elimination
+**Goal**: Self-recursive functions execute in constant stack space, making actor receive loops safe from stack overflow
+**Depends on**: Nothing (independent, but scheduled last due to highest complexity)
+**Requirements**: TCE-01, TCE-02
+**Success Criteria** (what must be TRUE):
+  1. A self-recursive function in tail position runs for 1,000,000+ iterations without stack overflow
+  2. Tail position is correctly detected through if/else branches, case arms, receive arms, blocks, and let-chains
+  3. Actor receive loops using self-recursive tail calls run indefinitely without growing the stack
+**Plans**: TBD
+
 ## Progress
+
+**Execution Order:**
+Phases execute in numeric order: 43 -> 44 -> 45 -> 46 -> 47 -> 48
 
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
@@ -99,5 +181,11 @@ See milestones/v1.8-ROADMAP.md for full phase details.
 | 30-32 | v1.6 | 6/6 | Complete | 2026-02-09 |
 | 33-36 | v1.7 | 8/8 | Complete | 2026-02-09 |
 | 37-42 | v1.8 | 12/12 | Complete | 2026-02-09 |
+| 43 | v1.9 | 0/TBD | Not started | - |
+| 44 | v1.9 | 0/TBD | Not started | - |
+| 45 | v1.9 | 0/TBD | Not started | - |
+| 46 | v1.9 | 0/TBD | Not started | - |
+| 47 | v1.9 | 0/TBD | Not started | - |
+| 48 | v1.9 | 0/TBD | Not started | - |
 
-**Total: 42 phases shipped across 9 milestones. 129 plans completed.**
+**Total: 42 phases shipped across 9 milestones. 129 plans completed. 6 new phases planned.**

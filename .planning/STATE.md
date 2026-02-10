@@ -5,14 +5,16 @@
 See: .planning/PROJECT.md (updated 2026-02-09)
 
 **Core value:** Expressive, readable concurrency -- writing concurrent programs should feel as natural as sequential code, with supervision and fault tolerance built in.
-**Current focus:** v1.9 Stdlib & Ergonomics
+**Current focus:** v1.9 Stdlib & Ergonomics -- Phase 43 (Math Stdlib)
 
 ## Current Position
 
-Phase: Not started (defining requirements)
-Plan: —
-Status: Defining requirements
-Last activity: 2026-02-09 — Milestone v1.9 started
+Phase: 43 of 48 (Math Stdlib)
+Plan: --
+Status: Ready to plan
+Last activity: 2026-02-09 -- Roadmap created for v1.9 (6 phases, 27 requirements)
+
+Progress: [░░░░░░░░░░] 0% (0/6 v1.9 phases)
 
 ## Performance Metrics
 
@@ -31,10 +33,13 @@ Decisions logged in PROJECT.md Key Decisions table.
 
 ### Research Notes
 
-- Result<T,E> already fully implemented (Ok/Err constructors, pattern matching, exhaustiveness)
-- Receive `after` clause already parsed, type-checked, and lowered to MIR; runtime supports timeouts; codegen gap: timeout_body not executed on null return
-- Collections missing: sort, split, join, find, zip, flatten, List.contains
-- String missing: split, join
+- All 6 features require ZERO new Rust crate dependencies
+- Receive `after` clause already parsed, type-checked, and MIR-lowered; codegen gap only (~20 lines)
+- Result<T,E> and Option<T> fully implemented; ? operator desugars to match+return in MIR
+- RECV must complete before TIMER (Timer.sleep uses receive-with-timeout internally)
+- TCE uses MIR loop transformation (not LLVM musttail) for reliability
+- Collection sort needs comparator callback synthesis; reuse existing Ord dispatch
+- Missing snow_string_compare (tech debt at lower.rs:5799) needed for sort
 
 ### Pending Todos
 
@@ -47,6 +52,6 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-09
-Stopped at: Milestone v1.9 initialization
+Stopped at: Roadmap created for v1.9 milestone
 Resume file: None
-Next action: Define requirements → create roadmap
+Next action: /gsd:plan-phase 43
