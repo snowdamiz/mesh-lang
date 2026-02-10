@@ -477,12 +477,35 @@ fn stdlib_modules() -> HashMap<String, HashMap<String, Scheme>> {
 
     modules.insert("Job".to_string(), job_mod);
 
+    // ── Math module (Phase 43 Plan 01) ─────────────────────────────────
+    // Polymorphic abs/min/max using TyVar(92000) for type variable t.
+    let math_t_var = TyVar(92000);
+    let math_t = Ty::Var(math_t_var);
+
+    let mut math_mod = HashMap::new();
+    math_mod.insert("abs".to_string(), Scheme { vars: vec![math_t_var], ty: Ty::fun(vec![math_t.clone()], math_t.clone()) });
+    math_mod.insert("min".to_string(), Scheme { vars: vec![math_t_var], ty: Ty::fun(vec![math_t.clone(), math_t.clone()], math_t.clone()) });
+    math_mod.insert("max".to_string(), Scheme { vars: vec![math_t_var], ty: Ty::fun(vec![math_t.clone(), math_t.clone()], math_t.clone()) });
+    math_mod.insert("pi".to_string(), Scheme::mono(Ty::float()));
+    modules.insert("Math".to_string(), math_mod);
+
+    // ── Int module (Phase 43 Plan 01) ──────────────────────────────────
+    let mut int_mod = HashMap::new();
+    int_mod.insert("to_float".to_string(), Scheme::mono(Ty::fun(vec![Ty::int()], Ty::float())));
+    modules.insert("Int".to_string(), int_mod);
+
+    // ── Float module (Phase 43 Plan 01) ────────────────────────────────
+    let mut float_mod = HashMap::new();
+    float_mod.insert("to_int".to_string(), Scheme::mono(Ty::fun(vec![Ty::float()], Ty::int())));
+    modules.insert("Float".to_string(), float_mod);
+
     modules
 }
 
 /// Set of module names recognized by the stdlib for qualified access.
 const STDLIB_MODULE_NAMES: &[&str] = &[
     "String", "IO", "Env", "File", "List", "Map", "Set", "Tuple", "Range", "Queue", "HTTP", "JSON", "Request", "Job",
+    "Math", "Int", "Float",
 ];
 
 /// Check if a name is a known stdlib module.

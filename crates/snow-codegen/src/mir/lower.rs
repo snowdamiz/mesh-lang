@@ -7198,6 +7198,7 @@ impl<'a> Lowerer<'a> {
 /// Set of known stdlib module names for qualified access lowering.
 const STDLIB_MODULES: &[&str] = &[
     "String", "IO", "Env", "File", "List", "Map", "Set", "Tuple", "Range", "Queue", "HTTP", "JSON", "Request", "Job",
+    "Math", "Int", "Float",
 ];
 
 /// Map Snow builtin function names to their runtime equivalents.
@@ -7348,6 +7349,13 @@ fn map_builtin_name(name: &str) -> String {
         "job_await" => "snow_job_await".to_string(),
         "job_await_timeout" => "snow_job_await_timeout".to_string(),
         "job_map" => "snow_job_map".to_string(),
+        // ── Math/Int/Float functions (Phase 43 Plan 01) ─────────────────
+        "math_abs" => "snow_math_abs".to_string(),
+        "math_min" => "snow_math_min".to_string(),
+        "math_max" => "snow_math_max".to_string(),
+        "math_pi" => "snow_math_pi".to_string(),
+        "int_to_float" => "snow_int_to_float".to_string(),
+        "float_to_int" => "snow_float_to_int".to_string(),
         _ => name.to_string(),
     }
 }
