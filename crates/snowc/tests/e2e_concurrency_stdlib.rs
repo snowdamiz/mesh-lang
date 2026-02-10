@@ -239,3 +239,89 @@ end
     let output = compile_and_run_with_timeout(source, 5);
     assert_eq!(output.trim(), "timeout");
 }
+
+// ── Timer E2E Tests (Phase 44 Plan 02) ──────────────────────────────
+
+/// Test: Timer.sleep(ms) suspends the actor and resumes after the delay.
+/// Verifies sleep returns without hanging and doesn't crash.
+#[test]
+fn test_timer_sleep_basic() {
+    let source = r#"
+fn main() do
+  Timer.sleep(100)
+  println("awake")
+end
+"#;
+    let output = compile_and_run_with_timeout(source, 5);
+    assert_eq!(output.trim(), "awake");
+}
+
+/// Test: Timer.sleep doesn't block other actors. Spawns two actors: one sleeps
+/// 200ms then prints "slow", the other prints "fast" immediately. Both should complete.
+#[test]
+fn test_timer_sleep_does_not_block_other_actors() {
+    let source = r#"
+actor slow() do
+  Timer.sleep(200)
+  println("slow")
+end
+
+actor fast() do
+  println("fast")
+end
+
+fn main() do
+  spawn(slow)
+  spawn(fast)
+  Timer.sleep(500)
+end
+"#;
+    let output = compile_and_run_with_timeout(source, 5);
+    assert!(output.contains("fast"), "Expected 'fast' in output: {}", output);
+    assert!(output.contains("slow"), "Expected 'slow' in output: {}", output);
+}
+
+/// Test: Timer.send_after delivers a delayed message to the target actor.
+/// The worker receives the message (99) before the 5000ms timeout.
+#[test]
+fn test_timer_send_after_delivers_message() {
+    let source = r#"
+actor worker() do
+  let result = receive do
+    msg -> msg
+  after 5000 -> 0 end
+  println("${result}")
+end
+
+fn main() do
+  let pid = spawn(worker)
+  Timer.send_after(pid, 100, 99)
+  Timer.sleep(500)
+end
+"#;
+    let output = compile_and_run_with_timeout(source, 5);
+    assert_eq!(output.trim(), "99");
+}
+
+/// Test: Timer.send_after respects delay timing. The message is scheduled for 200ms
+/// but the receive has a 5000ms timeout. The message should arrive and be received
+/// rather than the timeout firing. This proves the delay is finite (not infinite).
+#[test]
+fn test_timer_send_after_arrives_after_delay() {
+    let source = r#"
+actor worker() do
+  let result = receive do
+    msg -> msg
+  after 5000 -> 0 end
+  println("${result}")
+end
+
+fn main() do
+  let pid = spawn(worker)
+  Timer.send_after(pid, 200, 77)
+  Timer.sleep(1000)
+end
+"#;
+    let output = compile_and_run_with_timeout(source, 5);
+    assert_eq!(output.trim(), "77");
+}

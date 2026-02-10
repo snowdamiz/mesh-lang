@@ -506,12 +506,17 @@ fn stdlib_modules() -> HashMap<String, HashMap<String, Scheme>> {
     modules.insert("Float".to_string(), float_mod);
 
     // ── Timer module (Phase 44 Plan 02) ───────────────────────────────
+    let timer_t_var = TyVar(u32::MAX - 20);  // Synthetic type var T for Timer
+    let timer_t = Ty::Var(timer_t_var);
+
     let mut timer_mod = HashMap::new();
     // Timer.sleep: fn(Int) -> Unit
     timer_mod.insert("sleep".to_string(), Scheme::mono(Ty::fun(vec![Ty::int()], Ty::Tuple(vec![]))));
-    // Timer.send_after: fn(Int, Int, Int) -> Unit
-    // Args: (pid, ms, msg_as_int). Pid is i64, ms is Int, msg is Int.
-    timer_mod.insert("send_after".to_string(), Scheme::mono(Ty::fun(vec![Ty::int(), Ty::int(), Ty::int()], Ty::Tuple(vec![]))));
+    // Timer.send_after: fn(Pid<T>, Int, T) -> Unit
+    timer_mod.insert("send_after".to_string(), Scheme {
+        vars: vec![timer_t_var],
+        ty: Ty::fun(vec![Ty::pid(timer_t.clone()), Ty::int(), timer_t], Ty::Tuple(vec![])),
+    });
     modules.insert("Timer".to_string(), timer_mod);
 
     modules
