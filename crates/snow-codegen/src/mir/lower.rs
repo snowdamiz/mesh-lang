@@ -10,7 +10,7 @@ use rustc_hash::FxHashMap;
 use snow_parser::ast::expr::{
     BinaryExpr, CallExpr, CaseExpr, ClosureExpr, Expr, FieldAccess, ForInExpr, IfExpr, LinkExpr,
     ListLiteral, Literal, MapLiteral, MatchArm, NameRef, PipeExpr, ReceiveExpr, ReturnExpr,
-    SendExpr, SpawnExpr, StringExpr, StructLiteral, TupleExpr, UnaryExpr, WhileExpr,
+    SendExpr, SpawnExpr, StringExpr, StructLiteral, TryExpr, TupleExpr, UnaryExpr, WhileExpr,
 };
 use snow_parser::ast::item::{
     ActorDef, Block, FnDef, ImplDef, InterfaceMethod, Item, LetBinding, ServiceDef, SourceFile,
@@ -209,6 +209,13 @@ struct Lowerer<'a> {
     /// Used to distinguish actual function definitions from variant constructors,
     /// actors, etc. when applying module-qualified naming at call sites.
     user_fn_defs: HashSet<String>,
+    /// Current enclosing function's return type (Phase 45).
+    /// Set when entering a function body, used by lower_try_expr for early-return
+    /// variant construction. Save/restore pattern for nested functions and closures.
+    current_fn_return_type: Option<MirType>,
+    /// Counter for generating unique try binding names (Phase 45).
+    /// Incremented per `?` usage to avoid shadowing in nested `?` expressions.
+    try_counter: u32,
 }
 
 impl<'a> Lowerer<'a> {
@@ -237,6 +244,8 @@ impl<'a> Lowerer<'a> {
             module_name: module_name.to_string(),
             pub_functions: pub_fns.clone(),
             user_fn_defs: HashSet::new(),
+            current_fn_return_type: None,
+            try_counter: 0,
         }
     }
 
@@ -769,6 +778,10 @@ impl<'a> Lowerer<'a> {
             MirType::Unit
         };
 
+        // Track current function return type for ? operator desugaring (Phase 45).
+        let prev_fn_return_type = self.current_fn_return_type.take();
+        self.current_fn_return_type = Some(return_type.clone());
+
         // Monomorphization depth tracking.
         self.mono_depth += 1;
         let body = if self.mono_depth > self.max_mono_depth {
@@ -789,6 +802,9 @@ impl<'a> Lowerer<'a> {
             MirExpr::Unit
         };
         self.mono_depth -= 1;
+
+        // Restore previous function return type.
+        self.current_fn_return_type = prev_fn_return_type;
 
         self.pop_scope();
 
@@ -909,6 +925,10 @@ impl<'a> Lowerer<'a> {
             MirType::Unit
         };
 
+        // Track current function return type for ? operator desugaring (Phase 45).
+        let prev_fn_return_type = self.current_fn_return_type.take();
+        self.current_fn_return_type = Some(return_type.clone());
+
         // Monomorphization depth tracking.
         self.mono_depth += 1;
         let body = if self.mono_depth > self.max_mono_depth {
@@ -928,6 +948,9 @@ impl<'a> Lowerer<'a> {
             MirExpr::Unit
         };
         self.mono_depth -= 1;
+
+        // Restore previous function return type.
+        self.current_fn_return_type = prev_fn_return_type;
 
         self.pop_scope();
 
@@ -3228,8 +3251,8 @@ impl<'a> Lowerer<'a> {
             Expr::BreakExpr(_) => MirExpr::Break,
             Expr::ContinueExpr(_) => MirExpr::Continue,
             Expr::ForInExpr(for_in) => self.lower_for_in_expr(&for_in),
-            // Try expression -- codegen will be implemented in a later plan
-            Expr::TryExpr(_) => MirExpr::Unit,
+            // Try expression -- desugar to Match + Return (Phase 45)
+            Expr::TryExpr(try_expr) => self.lower_try_expr(&try_expr),
         }
     }
 
@@ -4609,6 +4632,10 @@ impl<'a> Lowerer<'a> {
             param_names.iter().map(|s| s.as_str()).collect();
 
         // Lower the body in a new scope with params.
+        // Track closure's return type for ? operator desugaring (Phase 45).
+        let prev_fn_return_type = self.current_fn_return_type.take();
+        self.current_fn_return_type = Some(return_type.clone());
+
         self.push_scope();
         for (name, ty) in &fn_params {
             self.insert_var(name.clone(), ty.clone());
@@ -4621,6 +4648,9 @@ impl<'a> Lowerer<'a> {
         };
 
         self.pop_scope();
+
+        // Restore previous function return type.
+        self.current_fn_return_type = prev_fn_return_type;
 
         // Find captured variables by scanning the lowered body for Var references
         // that match outer scope names and are not parameters.
@@ -4707,6 +4737,10 @@ impl<'a> Lowerer<'a> {
         let param_set: std::collections::HashSet<&str> =
             param_names.iter().map(|s| s.as_str()).collect();
 
+        // Track closure's return type for ? operator desugaring (Phase 45).
+        let prev_fn_return_type = self.current_fn_return_type.take();
+        self.current_fn_return_type = Some(return_type.clone());
+
         // Build the body using match or if-else chain.
         self.push_scope();
         for (name, ty) in &fn_params {
@@ -4786,6 +4820,9 @@ impl<'a> Lowerer<'a> {
         };
 
         self.pop_scope();
+
+        // Restore previous function return type.
+        self.current_fn_return_type = prev_fn_return_type;
 
         // Find captured variables.
         let mut captures: Vec<(String, MirType)> = Vec::new();
@@ -5940,6 +5977,225 @@ impl<'a> Lowerer<'a> {
             .unwrap_or(MirExpr::Unit);
 
         MirExpr::Return(Box::new(value))
+    }
+
+    // ── Try expression lowering (Phase 45) ─────────────────────────
+
+    /// Desugar `expr?` to a match expression with early return.
+    ///
+    /// For `Result<T, E>`:
+    /// ```text
+    /// case expr do
+    ///   Ok(__try_val_N) -> __try_val_N
+    ///   Err(__try_err_N) -> return Err(__try_err_N)
+    /// end
+    /// ```
+    ///
+    /// For `Option<T>`:
+    /// ```text
+    /// case expr do
+    ///   Some(__try_val_N) -> __try_val_N
+    ///   None -> return None
+    /// end
+    /// ```
+    fn lower_try_expr(&mut self, try_expr: &TryExpr) -> MirExpr {
+        let operand = match try_expr.operand() {
+            Some(e) => self.lower_expr(&e),
+            None => return MirExpr::Unit,
+        };
+
+        let operand_ty = operand.ty().clone();
+        let fn_ret_ty = self.current_fn_return_type.clone().unwrap_or(MirType::Unit);
+
+        // The expression type of `expr?` is the unwrapped success type T,
+        // as determined by the type checker.
+        let success_ty = self.resolve_range(try_expr.syntax().text_range());
+
+        // Determine if operand is Result or Option by examining the MirType.
+        match &operand_ty {
+            MirType::SumType(name) if self.is_result_type(name) => {
+                self.lower_try_result(operand, name, &fn_ret_ty, &success_ty)
+            }
+            MirType::SumType(name) if self.is_option_type(name) => {
+                self.lower_try_option(operand, name, &fn_ret_ty, &success_ty)
+            }
+            _ => {
+                // Should not happen if typeck validated correctly; fallback to Unit.
+                MirExpr::Unit
+            }
+        }
+    }
+
+    /// Check if a sum type name corresponds to a Result type.
+    /// Matches both the generic "Result" and monomorphized forms like "Result_Int_String".
+    fn is_result_type(&self, name: &str) -> bool {
+        name == "Result" || name.starts_with("Result_")
+    }
+
+    /// Check if a sum type name corresponds to an Option type.
+    /// Matches both the generic "Option" and monomorphized forms like "Option_Int".
+    fn is_option_type(&self, name: &str) -> bool {
+        name == "Option" || name.starts_with("Option_")
+    }
+
+    /// Find the sum type base name for a type -- either "Result", "Option", or the generic name.
+    /// Used to look up variant definitions.
+    fn sum_type_base_name<'b>(&self, name: &'b str) -> &'b str {
+        if self.is_result_type(name) {
+            // Look up the actual sum type def -- try the full name first, then "Result"
+            if self.sum_types.iter().any(|s| s.name == name) {
+                name
+            } else {
+                "Result"
+            }
+        } else if self.is_option_type(name) {
+            if self.sum_types.iter().any(|s| s.name == name) {
+                name
+            } else {
+                "Option"
+            }
+        } else {
+            name
+        }
+    }
+
+    /// Find the base type name to use for the function return's early-return construction.
+    fn fn_return_sum_type_name(&self, fn_ret_ty: &MirType) -> String {
+        match fn_ret_ty {
+            MirType::SumType(name) => {
+                self.sum_type_base_name(name).to_string()
+            }
+            _ => "Result".to_string(),
+        }
+    }
+
+    /// Desugar `result_expr?` into Match + Return for Result<T, E>.
+    fn lower_try_result(
+        &mut self,
+        operand: MirExpr,
+        operand_type_name: &str,
+        fn_ret_ty: &MirType,
+        success_ty: &MirType,
+    ) -> MirExpr {
+        self.try_counter += 1;
+        let counter = self.try_counter;
+        let val_name = format!("__try_val_{}", counter);
+        let err_name = format!("__try_err_{}", counter);
+
+        // Determine the operand's sum type def name for pattern matching.
+        let pattern_type_name = self.sum_type_base_name(operand_type_name).to_string();
+
+        // Determine the function return type's sum type name for the Err early-return.
+        let fn_return_type_name = self.fn_return_sum_type_name(fn_ret_ty);
+
+        // Find the error type from the sum type definition.
+        // The Err variant's field type gives us the error type E.
+        let error_ty = self.find_variant_field_type(&pattern_type_name, "Err")
+            .unwrap_or(MirType::Ptr);
+
+        // Build the desugared match expression.
+        MirExpr::Match {
+            scrutinee: Box::new(operand),
+            arms: vec![
+                // Ok(__try_val_N) -> __try_val_N
+                MirMatchArm {
+                    pattern: MirPattern::Constructor {
+                        type_name: pattern_type_name.clone(),
+                        variant: "Ok".to_string(),
+                        fields: vec![MirPattern::Var(val_name.clone(), success_ty.clone())],
+                        bindings: vec![(val_name.clone(), success_ty.clone())],
+                    },
+                    guard: None,
+                    body: MirExpr::Var(val_name, success_ty.clone()),
+                },
+                // Err(__try_err_N) -> return Err(__try_err_N)
+                MirMatchArm {
+                    pattern: MirPattern::Constructor {
+                        type_name: pattern_type_name,
+                        variant: "Err".to_string(),
+                        fields: vec![MirPattern::Var(err_name.clone(), error_ty.clone())],
+                        bindings: vec![(err_name.clone(), error_ty.clone())],
+                    },
+                    guard: None,
+                    body: MirExpr::Return(Box::new(MirExpr::ConstructVariant {
+                        type_name: fn_return_type_name,
+                        variant: "Err".to_string(),
+                        fields: vec![MirExpr::Var(err_name, error_ty)],
+                        ty: fn_ret_ty.clone(),
+                    })),
+                },
+            ],
+            ty: success_ty.clone(),
+        }
+    }
+
+    /// Desugar `option_expr?` into Match + Return for Option<T>.
+    fn lower_try_option(
+        &mut self,
+        operand: MirExpr,
+        operand_type_name: &str,
+        fn_ret_ty: &MirType,
+        success_ty: &MirType,
+    ) -> MirExpr {
+        self.try_counter += 1;
+        let counter = self.try_counter;
+        let val_name = format!("__try_val_{}", counter);
+
+        // Determine the operand's sum type def name for pattern matching.
+        let pattern_type_name = self.sum_type_base_name(operand_type_name).to_string();
+
+        // Determine the function return type's sum type name for the None early-return.
+        let fn_return_type_name = self.fn_return_sum_type_name(fn_ret_ty);
+
+        // Build the desugared match expression.
+        MirExpr::Match {
+            scrutinee: Box::new(operand),
+            arms: vec![
+                // Some(__try_val_N) -> __try_val_N
+                MirMatchArm {
+                    pattern: MirPattern::Constructor {
+                        type_name: pattern_type_name.clone(),
+                        variant: "Some".to_string(),
+                        fields: vec![MirPattern::Var(val_name.clone(), success_ty.clone())],
+                        bindings: vec![(val_name.clone(), success_ty.clone())],
+                    },
+                    guard: None,
+                    body: MirExpr::Var(val_name, success_ty.clone()),
+                },
+                // None -> return None
+                MirMatchArm {
+                    pattern: MirPattern::Constructor {
+                        type_name: pattern_type_name,
+                        variant: "None".to_string(),
+                        fields: vec![],
+                        bindings: vec![],
+                    },
+                    guard: None,
+                    body: MirExpr::Return(Box::new(MirExpr::ConstructVariant {
+                        type_name: fn_return_type_name,
+                        variant: "None".to_string(),
+                        fields: vec![],
+                        ty: fn_ret_ty.clone(),
+                    })),
+                },
+            ],
+            ty: success_ty.clone(),
+        }
+    }
+
+    /// Look up the field type for a specific variant in a sum type definition.
+    /// Returns the first field's MIR type, or None if the variant has no fields.
+    fn find_variant_field_type(&self, type_name: &str, variant_name: &str) -> Option<MirType> {
+        for sum_type in &self.sum_types {
+            if sum_type.name == type_name {
+                for variant in &sum_type.variants {
+                    if variant.name == variant_name {
+                        return variant.fields.first().cloned();
+                    }
+                }
+            }
+        }
+        None
     }
 
     // ── Tuple expression lowering ────────────────────────────────────
