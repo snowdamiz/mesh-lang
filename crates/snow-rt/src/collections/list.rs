@@ -7,6 +7,7 @@
 //! preserving immutability semantics.
 
 use crate::gc::snow_gc_alloc_actor;
+use crate::option::alloc_option;
 use std::ptr;
 
 /// Header size: len (8 bytes) + cap (8 bytes) = 16 bytes.
@@ -414,6 +415,198 @@ pub extern "C" fn snow_list_to_string(
             close as *const crate::string::SnowString,
         ) as *mut u8;
         result
+    }
+}
+
+/// Sort a list using a user-provided comparator function.
+///
+/// The comparator returns an i64: negative = less, 0 = equal, positive = greater.
+/// Returns a NEW sorted list (immutability preserved).
+///
+/// If `env_ptr` is null, `fn_ptr` is called as `fn(a, b) -> i64`.
+/// If `env_ptr` is non-null, `fn_ptr` is called as `fn(env_ptr, a, b) -> i64`.
+#[no_mangle]
+pub extern "C" fn snow_list_sort(
+    list: *mut u8,
+    fn_ptr: *mut u8,
+    env_ptr: *mut u8,
+) -> *mut u8 {
+    type BareFn = unsafe extern "C" fn(u64, u64) -> i64;
+    type ClosureFn = unsafe extern "C" fn(*mut u8, u64, u64) -> i64;
+
+    unsafe {
+        let len = list_len(list);
+        if len <= 1 {
+            // Return a copy to preserve immutability semantics.
+            return alloc_list_from(list_data(list), len, len);
+        }
+        // Copy elements into a mutable Vec for sorting.
+        let src = list_data(list);
+        let mut elements: Vec<u64> = Vec::with_capacity(len as usize);
+        for i in 0..len as usize {
+            elements.push(*src.add(i));
+        }
+        // Sort using the comparator.
+        if env_ptr.is_null() {
+            let f: BareFn = std::mem::transmute(fn_ptr);
+            elements.sort_by(|a, b| {
+                let cmp = f(*a, *b);
+                if cmp < 0 {
+                    std::cmp::Ordering::Less
+                } else if cmp > 0 {
+                    std::cmp::Ordering::Greater
+                } else {
+                    std::cmp::Ordering::Equal
+                }
+            });
+        } else {
+            let f: ClosureFn = std::mem::transmute(fn_ptr);
+            elements.sort_by(|a, b| {
+                let cmp = f(env_ptr, *a, *b);
+                if cmp < 0 {
+                    std::cmp::Ordering::Less
+                } else if cmp > 0 {
+                    std::cmp::Ordering::Greater
+                } else {
+                    std::cmp::Ordering::Equal
+                }
+            });
+        }
+        // Allocate new list with sorted elements.
+        let new_list = alloc_list(len);
+        *(new_list as *mut u64) = len;
+        let dst = list_data_mut(new_list);
+        for (i, elem) in elements.iter().enumerate() {
+            *dst.add(i) = *elem;
+        }
+        new_list
+    }
+}
+
+/// Find the first element matching a predicate. Returns SnowOption
+/// (tag 0 = Some with element, tag 1 = None).
+///
+/// If `env_ptr` is null, `fn_ptr` is called as `fn(elem) -> u64` (nonzero = true).
+/// If `env_ptr` is non-null, `fn_ptr` is called as `fn(env_ptr, elem) -> u64`.
+#[no_mangle]
+pub extern "C" fn snow_list_find(
+    list: *mut u8,
+    fn_ptr: *mut u8,
+    env_ptr: *mut u8,
+) -> *mut u8 {
+    type BareFn = unsafe extern "C" fn(u64) -> u64;
+    type ClosureFn = unsafe extern "C" fn(*mut u8, u64) -> u64;
+
+    unsafe {
+        let len = list_len(list);
+        let src = list_data(list);
+        if env_ptr.is_null() {
+            let f: BareFn = std::mem::transmute(fn_ptr);
+            for i in 0..len as usize {
+                let elem = *src.add(i);
+                if f(elem) != 0 {
+                    return alloc_option(0, elem as *mut u8) as *mut u8; // Some(elem)
+                }
+            }
+        } else {
+            let f: ClosureFn = std::mem::transmute(fn_ptr);
+            for i in 0..len as usize {
+                let elem = *src.add(i);
+                if f(env_ptr, elem) != 0 {
+                    return alloc_option(0, elem as *mut u8) as *mut u8; // Some(elem)
+                }
+            }
+        }
+        alloc_option(1, std::ptr::null_mut()) as *mut u8 // None
+    }
+}
+
+/// Test if any element matches a predicate.
+///
+/// Returns 1 (true) if at least one element matches, 0 (false) otherwise.
+/// Short-circuits on first match.
+#[no_mangle]
+pub extern "C" fn snow_list_any(
+    list: *mut u8,
+    fn_ptr: *mut u8,
+    env_ptr: *mut u8,
+) -> i8 {
+    type BareFn = unsafe extern "C" fn(u64) -> u64;
+    type ClosureFn = unsafe extern "C" fn(*mut u8, u64) -> u64;
+
+    unsafe {
+        let len = list_len(list);
+        let src = list_data(list);
+        if env_ptr.is_null() {
+            let f: BareFn = std::mem::transmute(fn_ptr);
+            for i in 0..len as usize {
+                if f(*src.add(i)) != 0 {
+                    return 1;
+                }
+            }
+        } else {
+            let f: ClosureFn = std::mem::transmute(fn_ptr);
+            for i in 0..len as usize {
+                if f(env_ptr, *src.add(i)) != 0 {
+                    return 1;
+                }
+            }
+        }
+        0
+    }
+}
+
+/// Test if all elements match a predicate.
+///
+/// Returns 1 (true) if every element matches, 0 (false) otherwise.
+/// Short-circuits on first non-match.
+#[no_mangle]
+pub extern "C" fn snow_list_all(
+    list: *mut u8,
+    fn_ptr: *mut u8,
+    env_ptr: *mut u8,
+) -> i8 {
+    type BareFn = unsafe extern "C" fn(u64) -> u64;
+    type ClosureFn = unsafe extern "C" fn(*mut u8, u64) -> u64;
+
+    unsafe {
+        let len = list_len(list);
+        let src = list_data(list);
+        if env_ptr.is_null() {
+            let f: BareFn = std::mem::transmute(fn_ptr);
+            for i in 0..len as usize {
+                if f(*src.add(i)) == 0 {
+                    return 0;
+                }
+            }
+        } else {
+            let f: ClosureFn = std::mem::transmute(fn_ptr);
+            for i in 0..len as usize {
+                if f(env_ptr, *src.add(i)) == 0 {
+                    return 0;
+                }
+            }
+        }
+        1
+    }
+}
+
+/// Test if a list contains an element using raw u64 equality.
+///
+/// Returns 1 if found, 0 if not. No closure parameter -- simple value comparison.
+/// Works correctly for Int, Bool, and pointer identity. For String content
+/// equality, users should use `List.any(list, fn(x) -> x == elem end)`.
+#[no_mangle]
+pub extern "C" fn snow_list_contains(list: *mut u8, elem: u64) -> i8 {
+    unsafe {
+        let len = list_len(list);
+        let src = list_data(list);
+        for i in 0..len as usize {
+            if *src.add(i) == elem {
+                return 1;
+            }
+        }
+        0
     }
 }
 

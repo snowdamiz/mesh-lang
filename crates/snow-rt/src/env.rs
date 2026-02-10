@@ -3,34 +3,8 @@
 //! Provides `Env.get(key)` and `Env.args()` for Snow programs.
 
 use crate::gc::snow_gc_alloc_actor;
+use crate::option::{SnowOption, alloc_option};
 use crate::string::{snow_string_new, SnowString};
-
-/// Tagged option value for Snow's Option<T> representation.
-///
-/// Layout matches the codegen layout for sum types:
-/// - tag 0 = Some (first variant)
-/// - tag 1 = None (second variant)
-///
-/// The value pointer points to the payload (a SnowString for Some,
-/// null for None).
-#[repr(C)]
-pub struct SnowOption {
-    pub tag: u8,
-    pub value: *mut u8,
-}
-
-/// Allocate a SnowOption on the GC heap.
-fn alloc_option(tag: u8, value: *mut u8) -> *mut SnowOption {
-    unsafe {
-        let ptr = snow_gc_alloc_actor(
-            std::mem::size_of::<SnowOption>() as u64,
-            std::mem::align_of::<SnowOption>() as u64,
-        ) as *mut SnowOption;
-        (*ptr).tag = tag;
-        (*ptr).value = value;
-        ptr
-    }
-}
 
 /// Get an environment variable by key. Returns SnowOption:
 /// - tag 0, value = SnowString if the variable exists (Some)

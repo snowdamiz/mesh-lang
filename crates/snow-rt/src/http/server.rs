@@ -123,24 +123,10 @@ pub extern "C" fn snow_http_request_query(req: *mut u8, name: *const SnowString)
     }
 }
 
-// ── Option allocation helper ───────────────────────────────────────────
-
-#[repr(C)]
-struct SnowOption {
-    tag: u8,
-    value: *mut u8,
-}
+// ── Option allocation helper (shared from crate::option) ────────────────
 
 fn alloc_option(tag: u8, value: *mut u8) -> *mut u8 {
-    unsafe {
-        let ptr = snow_gc_alloc_actor(
-            std::mem::size_of::<SnowOption>() as u64,
-            std::mem::align_of::<SnowOption>() as u64,
-        ) as *mut SnowOption;
-        (*ptr).tag = tag;
-        (*ptr).value = value;
-        ptr as *mut u8
-    }
+    crate::option::alloc_option(tag, value) as *mut u8
 }
 
 // ── Actor-per-connection infrastructure ────────────────────────────────
