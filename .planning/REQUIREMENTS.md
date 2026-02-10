@@ -1,0 +1,99 @@
+# Requirements: v1.9 Stdlib & Ergonomics
+
+## Math Stdlib
+
+- [ ] **MATH-01**: User can call Math.abs(x) to get absolute value for Int and Float
+- [ ] **MATH-02**: User can call Math.min(a, b) and Math.max(a, b) for Int and Float
+- [ ] **MATH-03**: User can call Math.pow(base, exp) for numeric exponentiation
+- [ ] **MATH-04**: User can call Math.sqrt(x) to compute square root
+- [ ] **MATH-05**: User can call Math.floor(x), Math.ceil(x), Math.round(x) to convert Float to Int
+- [ ] **MATH-06**: User can access Math.pi as a constant
+- [ ] **MATH-07**: User can call Int.to_float(x) and Float.to_int(x) for type conversion
+
+## Error Handling (? Operator)
+
+- [ ] **ERR-01**: User can write expr? to unwrap Result<T,E>, early-returning Err(e) from enclosing function
+- [ ] **ERR-02**: User can write expr? to unwrap Option<T>, early-returning None from enclosing function
+- [ ] **ERR-03**: Compiler emits error when ? used in function not returning Result/Option
+
+## Receive Timeouts
+
+- [ ] **RECV-01**: User can write `receive { ... } after ms -> body` and timeout body executes when no message arrives within ms
+- [ ] **RECV-02**: Compiler type-checks timeout body type against receive arm types
+
+## Timer Primitives
+
+- [ ] **TIMER-01**: User can call Timer.sleep(ms) to suspend current actor for ms milliseconds
+- [ ] **TIMER-02**: User can call Timer.send_after(pid, ms, msg) to schedule delayed message delivery
+
+## Collection Operations
+
+- [ ] **COLL-01**: User can call List.sort(list, cmp_fn) to sort with explicit comparator
+- [ ] **COLL-02**: User can call List.find(list, pred) returning Option<T>
+- [ ] **COLL-03**: User can call List.any(list, pred) and List.all(list, pred) returning Bool
+- [ ] **COLL-04**: User can call List.contains(list, elem) returning Bool
+- [ ] **COLL-05**: User can call List.zip(a, b) returning List<(A, B)>
+- [ ] **COLL-06**: User can call List.flat_map(list, fn) and List.flatten(list)
+- [ ] **COLL-07**: User can call List.enumerate(list) returning List<(Int, T)>
+- [ ] **COLL-08**: User can call List.take(list, n) and List.drop(list, n)
+- [ ] **COLL-09**: User can call String.split(s, delim) and String.join(list, sep)
+- [ ] **COLL-10**: User can call String.to_int(s) and String.to_float(s) returning Option
+- [ ] **COLL-11**: User can call Map.merge(a, b), Map.to_list(map), Map.from_list(list)
+- [ ] **COLL-12**: User can call Set.difference(a, b), Set.to_list(set), Set.from_list(list)
+
+## Tail-Call Elimination
+
+- [ ] **TCE-01**: Self-recursive tail calls are transformed to loops, preventing stack overflow in actor loops
+- [ ] **TCE-02**: Tail position correctly detected through if/else, case, receive, blocks, let-chains
+
+## Future Requirements (Deferred)
+
+- Mutual tail-call elimination via LLVM musttail
+- From trait for ? operator error type conversion
+- @tailrec compile-time annotation
+- Timer.cancel / Timer.read / Timer.send_interval
+- Trigonometric/logarithmic math functions (sin, cos, tan, log, etc.)
+- Lazy iterators / Iterator protocol
+- List.sort without explicit comparator (via Ord trait default)
+- List.sum, String.chars, String.index_of, Map.map_values, Map.filter, Set.map, Set.filter, Set.is_subset
+
+## Out of Scope
+
+- try/catch exception handling — Snow uses Result<T,E> + ? operator
+- Implicit error type conversion in ? — requires From trait (future milestone)
+- Generic timer wheel / scheduling framework — simple Timer.sleep + Timer.send_after sufficient
+- Lazy evaluation for collections — eager evaluation model, no thunks
+- Mutable/in-place sort — Snow collections are immutable
+
+## Traceability
+
+| REQ-ID | Phase | Status |
+|--------|-------|--------|
+| MATH-01 | — | Pending |
+| MATH-02 | — | Pending |
+| MATH-03 | — | Pending |
+| MATH-04 | — | Pending |
+| MATH-05 | — | Pending |
+| MATH-06 | — | Pending |
+| MATH-07 | — | Pending |
+| ERR-01 | — | Pending |
+| ERR-02 | — | Pending |
+| ERR-03 | — | Pending |
+| RECV-01 | — | Pending |
+| RECV-02 | — | Pending |
+| TIMER-01 | — | Pending |
+| TIMER-02 | — | Pending |
+| COLL-01 | — | Pending |
+| COLL-02 | — | Pending |
+| COLL-03 | — | Pending |
+| COLL-04 | — | Pending |
+| COLL-05 | — | Pending |
+| COLL-06 | — | Pending |
+| COLL-07 | — | Pending |
+| COLL-08 | — | Pending |
+| COLL-09 | — | Pending |
+| COLL-10 | — | Pending |
+| COLL-11 | — | Pending |
+| COLL-12 | — | Pending |
+| TCE-01 | — | Pending |
+| TCE-02 | — | Pending |
