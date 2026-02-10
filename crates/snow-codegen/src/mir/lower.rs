@@ -824,7 +824,7 @@ impl<'a> Lowerer<'a> {
 
         // Monomorphization depth tracking.
         self.mono_depth += 1;
-        let body = if self.mono_depth > self.max_mono_depth {
+        let mut body = if self.mono_depth > self.max_mono_depth {
             MirExpr::Panic {
                 message: format!(
                     "monomorphization depth limit ({}) exceeded",
@@ -867,6 +867,9 @@ impl<'a> Lowerer<'a> {
             self.known_functions.insert(name, fn_ty);
         }
 
+        // TCE: Rewrite self-recursive tail calls to TailCall nodes (Phase 48).
+        let has_tail_calls = rewrite_tail_calls(&mut body, &fn_name);
+
         self.functions.push(MirFunction {
             name: fn_name,
             params,
@@ -874,7 +877,7 @@ impl<'a> Lowerer<'a> {
             body,
             is_closure_fn: false,
             captures: Vec::new(),
-            has_tail_calls: false,
+            has_tail_calls,
         });
     }
 
@@ -972,7 +975,7 @@ impl<'a> Lowerer<'a> {
 
         // Monomorphization depth tracking.
         self.mono_depth += 1;
-        let body = if self.mono_depth > self.max_mono_depth {
+        let mut body = if self.mono_depth > self.max_mono_depth {
             MirExpr::Panic {
                 message: format!(
                     "monomorphization depth limit ({}) exceeded",
@@ -995,6 +998,9 @@ impl<'a> Lowerer<'a> {
 
         self.pop_scope();
 
+        // TCE: Rewrite self-recursive tail calls to TailCall nodes (Phase 48).
+        let has_tail_calls = rewrite_tail_calls(&mut body, mangled_name);
+
         self.functions.push(MirFunction {
             name: mangled_name.to_string(),
             params,
@@ -1002,7 +1008,7 @@ impl<'a> Lowerer<'a> {
             body,
             is_closure_fn: false,
             captures: Vec::new(),
-            has_tail_calls: false,
+            has_tail_calls,
         });
     }
 
@@ -1092,7 +1098,7 @@ impl<'a> Lowerer<'a> {
 
         // Lower the default body.
         self.mono_depth += 1;
-        let body = if self.mono_depth > self.max_mono_depth {
+        let mut body = if self.mono_depth > self.max_mono_depth {
             MirExpr::Panic {
                 message: format!(
                     "monomorphization depth limit ({}) exceeded",
@@ -1108,6 +1114,9 @@ impl<'a> Lowerer<'a> {
 
         self.pop_scope();
 
+        // TCE: Rewrite self-recursive tail calls to TailCall nodes (Phase 48).
+        let has_tail_calls = rewrite_tail_calls(&mut body, &mangled);
+
         self.functions.push(MirFunction {
             name: mangled,
             params,
@@ -1115,7 +1124,7 @@ impl<'a> Lowerer<'a> {
             body,
             is_closure_fn: false,
             captures: Vec::new(),
-            has_tail_calls: false,
+            has_tail_calls,
         });
     }
 
@@ -1188,7 +1197,7 @@ impl<'a> Lowerer<'a> {
                 });
             }
 
-            let body = MirExpr::Match {
+            let mut body = MirExpr::Match {
                 scrutinee: Box::new(scrutinee),
                 arms,
                 ty: return_type.clone(),
@@ -1212,6 +1221,9 @@ impl<'a> Lowerer<'a> {
                 self.known_functions.insert(name, fn_ty);
             }
 
+            // TCE: Rewrite self-recursive tail calls to TailCall nodes (Phase 48).
+            let has_tail_calls = rewrite_tail_calls(&mut body, &fn_name);
+
             self.functions.push(MirFunction {
                 name: fn_name,
                 params,
@@ -1219,12 +1231,12 @@ impl<'a> Lowerer<'a> {
                 body,
                 is_closure_fn: false,
                 captures: Vec::new(),
-                has_tail_calls: false,
+                has_tail_calls,
             });
         } else {
             // Multi-parameter: use an if-else chain.
             // Each clause becomes: if (param_checks && guard) { bind_vars; body } else { next }
-            let body = self.lower_multi_clause_if_chain(clauses, &params, &return_type);
+            let mut body = self.lower_multi_clause_if_chain(clauses, &params, &return_type);
             self.pop_scope();
 
             let fn_name = if name == "main" {
@@ -1243,6 +1255,9 @@ impl<'a> Lowerer<'a> {
                 self.known_functions.insert(name, fn_ty);
             }
 
+            // TCE: Rewrite self-recursive tail calls to TailCall nodes (Phase 48).
+            let has_tail_calls = rewrite_tail_calls(&mut body, &fn_name);
+
             self.functions.push(MirFunction {
                 name: fn_name,
                 params,
@@ -1250,7 +1265,7 @@ impl<'a> Lowerer<'a> {
                 body,
                 is_closure_fn: false,
                 captures: Vec::new(),
-                has_tail_calls: false,
+                has_tail_calls,
             });
         }
     }
@@ -6484,7 +6499,7 @@ impl<'a> Lowerer<'a> {
         let return_type = MirType::Unit;
 
         // Lower the actor body. The body contains a receive block that loops.
-        let body = if let Some(block) = actor_def.body() {
+        let mut body = if let Some(block) = actor_def.body() {
             self.lower_block(&block)
         } else {
             MirExpr::Unit
@@ -6532,6 +6547,9 @@ impl<'a> Lowerer<'a> {
             );
         }
 
+        // TCE: Rewrite self-recursive tail calls to TailCall nodes (Phase 48).
+        let has_tail_calls = rewrite_tail_calls(&mut body, &name);
+
         self.functions.push(MirFunction {
             name,
             params,
@@ -6539,7 +6557,7 @@ impl<'a> Lowerer<'a> {
             body,
             is_closure_fn: false,
             captures: Vec::new(),
-            has_tail_calls: false,
+            has_tail_calls,
         });
     }
 
@@ -8047,6 +8065,79 @@ fn collect_free_vars(
                 collect_free_vars(arg, params, outer_vars, captures);
             }
         }
+    }
+}
+
+// ── TCE rewrite pass ─────────────────────────────────────────────────
+
+/// Post-lowering rewrite pass: detect self-recursive calls in tail position
+/// and rewrite them to TailCall nodes. Returns true if any rewrites were made.
+fn rewrite_tail_calls(expr: &mut MirExpr, current_fn_name: &str) -> bool {
+    match expr {
+        MirExpr::Call { func, args, ty } => {
+            // Check if this is a self-recursive call by name
+            if let MirExpr::Var(name, _) = func.as_ref() {
+                if name == current_fn_name {
+                    let taken_args = std::mem::take(args);
+                    let taken_ty = ty.clone();
+                    *expr = MirExpr::TailCall { args: taken_args, ty: taken_ty };
+                    return true;
+                }
+            }
+            false
+        }
+        MirExpr::Block(exprs, _) => {
+            // Only the LAST expression in a block is in tail position
+            if let Some(last) = exprs.last_mut() {
+                rewrite_tail_calls(last, current_fn_name)
+            } else {
+                false
+            }
+        }
+        MirExpr::Let { body, .. } => {
+            // The body (continuation) of a let is in tail position; the value is NOT
+            rewrite_tail_calls(body, current_fn_name)
+        }
+        MirExpr::If { then_body, else_body, .. } => {
+            // BOTH branches are in tail position; the condition is NOT
+            let a = rewrite_tail_calls(then_body, current_fn_name);
+            let b = rewrite_tail_calls(else_body, current_fn_name);
+            a || b
+        }
+        MirExpr::Match { arms, .. } => {
+            // All arm bodies are in tail position; the scrutinee is NOT
+            let mut any = false;
+            for arm in arms.iter_mut() {
+                if rewrite_tail_calls(&mut arm.body, current_fn_name) {
+                    any = true;
+                }
+            }
+            any
+        }
+        MirExpr::ActorReceive { arms, timeout_body, .. } => {
+            // All receive arm bodies and timeout body are in tail position
+            let mut any = false;
+            for arm in arms.iter_mut() {
+                if rewrite_tail_calls(&mut arm.body, current_fn_name) {
+                    any = true;
+                }
+            }
+            if let Some(tb) = timeout_body.as_deref_mut() {
+                if rewrite_tail_calls(tb, current_fn_name) {
+                    any = true;
+                }
+            }
+            any
+        }
+        MirExpr::Return(inner) => {
+            // The inner expression of Return IS in tail position
+            // (if inner is a self-call, the return just passes through the value)
+            rewrite_tail_calls(inner, current_fn_name)
+        }
+        // Everything else is NOT a tail context -- do NOT recurse.
+        // This includes: BinOp, UnaryOp, Call (non-self), ClosureCall, StructLit,
+        // FieldAccess, ConstructVariant, MakeClosure, ListLit, While, ForIn*, etc.
+        _ => false,
     }
 }
 
