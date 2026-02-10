@@ -1,544 +1,563 @@
-# Pitfalls Research: v1.9 Stdlib & Ergonomics Features
+# Domain Pitfalls: Database, Serialization & HTTP Enhancements
 
-**Domain:** Compiler feature addition -- math stdlib, error propagation operator, receive timeouts, timer primitives, collection operations, and tail-call elimination for a statically-typed, functional-first, LLVM-compiled language with actor concurrency
-**Researched:** 2026-02-09
-**Confidence:** HIGH (based on direct Snow codebase analysis of 73,384 lines across 11 crates, LLVM 21 + Inkwell 0.8 documentation, LLVM Language Reference for musttail semantics, and established compiler engineering knowledge)
+**Domain:** Adding JSON serde (deriving(Json)), SQLite driver (C FFI), PostgreSQL driver (pure wire protocol), parameterized queries, HTTP path parameters, and HTTP middleware to an actor-based compiled language with per-actor GC
+**Researched:** 2026-02-10
+**Confidence:** HIGH (based on direct Snow codebase analysis of gc.rs, heap.rs, scheduler.rs, json.rs, server.rs, router.rs, codegen/types.rs, mir/types.rs; SQLite official C/C++ interface docs; PostgreSQL wire protocol v3.2 documentation; OWASP SQL injection prevention guides; conservative GC literature; cooperative scheduling research)
 
-**Scope:** This document covers pitfalls specific to adding 6 features to the Snow compiler for v1.9. Each feature is analyzed against Snow's existing architecture: extern "C" runtime ABI, uniform u64 storage, per-actor GC with conservative stack scanning, callback-based dispatch for generic operations, single LLVM module via MIR merge, and immutable collection semantics.
+**Scope:** This document covers pitfalls specific to adding 6 feature areas to the Snow compiler and runtime for the next milestone. Each pitfall is analyzed against Snow's existing architecture: corosensei coroutines on M:N scheduler, per-actor mark-sweep GC with conservative stack scanning, uniform u64 value representation, extern "C" runtime ABI, LLVM codegen with no runtime reflection, and the existing opaque JSON/HTTP subsystems.
 
 ---
 
 ## Critical Pitfalls
 
-Mistakes that cause rewrites, soundness holes, or silent codegen bugs.
+Mistakes that cause crashes, security vulnerabilities, data corruption, or require architectural rewrites.
 
 ---
 
-### Pitfall 1: Math FFI Via libm Breaks Cross-Platform Linking
+### Pitfall 1: Conservative GC Follows sqlite3* Pointers Into C Heap, Corrupting SQLite State
 
 **What goes wrong:**
-The natural approach is to call C libm functions (`sqrt`, `pow`, `sin`, etc.) directly from LLVM IR using `declare double @sqrt(double)`. On macOS, these functions are available in `libSystem` (automatically linked). On Linux, they require explicit `-lm` linkage. The current linker driver in `link.rs` (line 46-52) invokes `cc` with only `-lsnow_rt` -- it does NOT pass `-lm`. Math functions will link fine on macOS but produce "undefined symbol" errors on Linux.
+Snow's conservative GC (heap.rs lines 390-448) scans every 8-byte-aligned word on the actor's coroutine stack and in GC-managed object bodies, treating any value that falls within a page range as a potential pointer. SQLite C FFI returns opaque pointers (`sqlite3*`, `sqlite3_stmt*`) that the Snow program stores in variables. These pointers point into C-heap memory (malloc'd by SQLite), NOT into the actor's GC-managed pages.
 
-A subtler issue: some libm functions have different precision guarantees across platforms. `pow(2.0, 0.5)` may return slightly different results on glibc vs musl vs macOS's libm.
+The GC's `find_object_containing()` (heap.rs lines 460-490) only checks against the actor's own pages, so SQLite pointers will NOT be mistakenly traced -- they fall outside page ranges. This is safe. However, the real danger is the inverse: if a GC-managed Snow value (e.g., a SnowString containing a SQL query) is passed to SQLite via FFI, and the only remaining reference to that string is held inside SQLite's internal structures (not on the Snow stack or in a GC-managed object), the GC will collect it. SQLite then reads freed memory.
+
+Concretely: you call `sqlite3_prepare_v2(db, sql_string_ptr, ...)`. The Snow GC may run between prepare and step. If `sql_string_ptr` was a temporary SnowString that's no longer on the stack, the GC frees it. SQLite's prepared statement holds a dangling pointer to the SQL text.
 
 **Why it happens:**
-macOS bundles libm into libSystem, masking the missing `-lm` flag. Developers on macOS never see the failure until someone tries Linux.
+Snow's GC is conservative and scans only the coroutine stack and GC heap objects. It has no knowledge of references held by C libraries. The `find_object_containing` check in heap.rs only scans the actor's own page list, so it correctly ignores C-heap pointers -- but it also means C-held references to GC objects are invisible roots.
 
 **Consequences:**
-- All Snow programs using math functions fail to compile on Linux
-- Users discover this post-deployment, not during development
-- If using the Rust `libm` crate instead of system libm, the ABI boundary is different -- Rust functions are not `extern "C"` by default
+- Use-after-free crashes deep in SQLite (SIGSEGV in `sqlite3_step`)
+- Intermittent failures that only occur under GC pressure (hard to reproduce)
+- Data corruption if SQLite reads partially-overwritten GC-freed memory
 
 **Prevention:**
-1. Add `-lm` to the linker invocation in `link.rs` unconditionally (it's harmless on macOS)
-2. Use LLVM intrinsics where available (`llvm.sqrt`, `llvm.pow`, `llvm.fabs`, `llvm.floor`, `llvm.ceil`, `llvm.round`) -- these are lowered by LLVM to optimal platform code and require NO library linking for the subset LLVM supports natively
-3. For functions LLVM does not have intrinsics for (e.g., `atan2`, trigonometric functions), declare them as external in `intrinsics.rs` and ensure `-lm` in `link.rs`
-4. Add a Linux CI check that exercises math functions
+1. **Copy SQL strings to C heap before FFI calls.** When calling `sqlite3_prepare_v2`, copy the SnowString bytes into a Rust `Vec<u8>` or `CString` (system-heap allocated), pass that to SQLite, then free the C copy after SQLite no longer needs it (after `sqlite3_finalize`). This is the pattern used by Erlang NIFs.
+2. **Pin GC objects during FFI calls.** Add a root-pinning mechanism: before a blocking C call, register the Snow value as an explicit GC root in a side table on the Process struct. The GC mark phase checks this table in addition to the stack. Unpin after the C call returns.
+3. **Never store SnowString pointers in SQLite bind parameters.** For `sqlite3_bind_text`, always pass `SQLITE_TRANSIENT` so SQLite makes its own copy of the string data immediately.
+4. **Wrap sqlite3* and sqlite3_stmt* as opaque u64 values.** Store them as immediate integers (cast pointer-to-u64), not as GC-allocated objects. Since they don't fall within GC page ranges, the GC ignores them entirely. This is the simplest approach and matches how Snow already handles Router (Box::into_raw as *mut u8 in router.rs line 59).
 
 **Detection:**
-- Linking errors on Linux with "undefined reference to `sqrt`"
-- E2E tests pass on macOS but fail on Linux
+- ASAN/MSAN builds catching use-after-free in SQLite calls
+- Failures only under high allocation pressure (allocate many objects between prepare and step)
+- Intermittent SIGSEGV with stack traces inside `sqlite3_step` or `sqlite3_column_text`
 
-**Confidence:** HIGH -- verified by reading `link.rs` directly; the `-lm` flag is absent.
+**Phase:** SQLite driver implementation. Must be addressed in the foundational design, not retrofitted.
 
 ---
 
-### Pitfall 2: ? Operator Requires Early Return, Which Snow's Expression-Oriented Codegen Does Not Naturally Support
+### Pitfall 2: Blocking SQLite/PostgreSQL Calls Starve the Actor Scheduler
 
 **What goes wrong:**
-The `?` operator on `expr?` must: (1) evaluate `expr`, (2) check if it's `Ok(v)` or `Err(e)`, (3) if `Ok`, unwrap to `v` and continue, (4) if `Err`, return `Err(e)` from the enclosing function immediately. Step 4 is the problem.
+Snow uses cooperative scheduling with corosensei coroutines on an M:N thread pool (scheduler.rs). Actors yield at explicit yield points: `snow_reduction_check()` calls inserted by the compiler, and `snow_actor_receive()` which sets the process to Waiting state. SQLite's `sqlite3_step()` and `sqlite3_exec()` are blocking C calls that can take milliseconds to seconds. PostgreSQL network I/O (connect, send query, read response) blocks on TCP sockets.
 
-Snow's codegen (`compile_function` in mod.rs:345-472) compiles the body as a single expression and emits the return at the end. `MirExpr::Return` exists (codegen/expr.rs:1359-1369) and correctly emits `build_return`, but it leaves the builder in a terminated block. If `?` appears in the middle of an expression chain (e.g., `let x = foo()? + bar()?`), the second `?` will try to emit code after a return instruction -- LLVM will reject this with a verification error ("Terminator found in the middle of a basic block").
+When an actor calls `sqlite3_step()`, the entire OS worker thread blocks. Since coroutines are `!Send` and thread-pinned (scheduler.rs line 2: "yielded coroutines stay in the worker's local suspended list"), ALL other actors suspended on that same worker thread are starved. With the default thread pool size (one per CPU core), a handful of concurrent database queries can block the entire scheduler.
 
-The existing `Return` codegen returns a dummy value after emitting the return instruction (line 1368), but this only works if it's the last thing evaluated. In a `?` expression, control flow must branch: one path returns early, one path continues.
+The existing HTTP server already has this problem (server.rs line 15: "Blocking I/O in tiny-http is accepted (similar to BEAM NIFs)"), but database queries are typically much longer-running than HTTP request/response cycles.
 
 **Why it happens:**
-The `?` operator is syntactically an expression but semantically introduces control flow (branching + potential early return). This is fundamentally different from Snow's current expressions, all of which produce values without returning from the function.
+Snow's scheduler has no mechanism to detect that an actor is about to make a blocking syscall and preemptively move it or its siblings. There is no `spawn_link` to a separate OS thread for blocking work. The existing pattern (HTTP server) accepts blocking because each HTTP handler is short-lived. Database queries are not.
 
 **Consequences:**
-- Naive implementation (lowering `?` to `match` + `Return`) produces invalid LLVM IR when `?` is nested or appears mid-expression
-- LLVM module verification fails with "Terminator found in the middle of a basic block"
-- If worked around by splitting into multiple basic blocks, every `?` usage creates 3 blocks (check, early-return, continue), significantly complicating codegen for common patterns like `let x = foo()? + bar()?`
+- A single slow SQL query (table scan, complex join) blocks an entire worker thread
+- With N worker threads and N concurrent queries, the entire scheduler deadlocks
+- Service actors (registered processes doing `receive` loops) become unresponsive
+- No timeout mechanism to cancel stuck queries
 
 **Prevention:**
-Lower `?` in MIR as a `Match` with two arms, where the `Err` arm contains a `Return`. The codegen for `Match` already handles branching to separate basic blocks with a merge block. The key insight: the `Err` arm's block will be terminated by the return, so the merge block's phi node should only have the `Ok` arm as a predecessor. This matches how the existing pattern match codegen handles `Never`-typed arms.
+1. **Dedicate a separate OS thread (or thread pool) for database operations.** The SQLite driver should spawn a dedicated Rust `std::thread` that owns the `sqlite3*` connection. Snow actors communicate with it via message passing (actor send/receive). The database thread runs queries synchronously and sends results back. This is exactly the BEAM NIF pattern for "dirty schedulers."
+2. **For PostgreSQL, use non-blocking socket I/O.** Since the PG wire protocol is pure Snow-managed TCP (no C FFI), implement it with non-blocking sockets. Register the socket FD with the scheduler and yield the actor while waiting for socket readability/writability. Resume when data arrives. This avoids blocking entirely.
+3. **SQLite WAL mode + busy timeout.** Configure SQLite with `PRAGMA journal_mode=WAL` and `sqlite3_busy_timeout()` to reduce contention. Even with a dedicated thread, concurrent writers need WAL to avoid "database is locked" errors.
+4. **Limit concurrent database actors.** Use a connection pool pattern: a single actor owns the database connection and serializes queries. Other actors send query requests and receive results asynchronously. This is the "gen_server" pattern from Erlang/OTP.
 
-Concretely, `expr?` should lower to:
+**Detection:**
+- Application becomes unresponsive under load (actors stop processing messages)
+- `Timer.sleep` in other actors takes much longer than expected
+- Worker threads show 100% CPU in blocking syscalls (strace shows futex/read)
+
+**Phase:** Must be designed at the architecture level before implementing either driver. The blocking strategy decision affects the entire API surface.
+
+---
+
+### Pitfall 3: SQL Injection Through String Interpolation in Query Construction
+
+**What goes wrong:**
+Snow has string interpolation and concatenation. Without parameterized queries as the default and ONLY path, users will construct SQL like:
 ```
-match expr do
-  Ok(v) -> v
-  Err(e) -> return Err(e)
-end
+let query = "SELECT * FROM users WHERE name = '" ++ user_input ++ "'"
+Db.exec(conn, query)
 ```
+This is textbook SQL injection. Even WITH parameterized queries available, if the API also exposes raw `exec(conn, sql_string)` without parameters, users will take the path of least resistance and concatenate.
 
-This reuses the existing pattern compilation infrastructure (pattern/compile.rs) and the existing `ConstructVariant` + `Return` MIR nodes. No new codegen primitives needed.
+The deeper language-level issue: Snow has no way to distinguish a "SQL query string" from a regular string at the type level. Both are `String`. There's no `SqlQuery` newtype that enforces parameterization.
+
+**Why it happens:**
+- Raw query execution is simpler to implement than parameterized queries
+- String concatenation is the first thing every programmer reaches for
+- Without a distinct type, the compiler cannot enforce safe query construction
+- SQLite's `sqlite3_exec()` (one-shot convenience function) encourages raw strings
+
+**Consequences:**
+- SQL injection vulnerabilities in every Snow application using the database
+- Data exfiltration, data destruction, authentication bypass
+- Snow gets a reputation as an insecure language for web development
+
+**Prevention:**
+1. **Make parameterized queries the primary API.** The user-facing API should be `Db.query(conn, "SELECT * FROM users WHERE name = ?", [name])`. The raw `Db.exec(conn, sql)` function should exist only for DDL (CREATE TABLE, etc.) where parameters are not applicable.
+2. **Use sqlite3_prepare_v2 + sqlite3_bind_* for all queries with parameters.** Never pass user data through `sqlite3_exec()`.
+3. **For PostgreSQL extended protocol, always use parameterized queries.** The PG wire protocol's Parse/Bind/Execute flow naturally separates query text from parameters. Simple protocol (`Query` message) should only be used for DDL or administrative commands.
+4. **Consider a `Query` type at the type system level** (future enhancement). A `Query` type that can only be constructed from string literals (not runtime strings) would provide compile-time SQL injection prevention. This is aspirational but worth noting in the design.
+5. **Document prominently** that string concatenation for SQL is a security vulnerability. Make the safe path the easy path.
 
 **Detection:**
-- LLVM verification failure: "Terminator found in the middle of a basic block"
-- Crash when `?` appears anywhere other than the final expression in a function
+- Code review for string concatenation with SQL keywords
+- SQL injection in applications built with Snow
+- No automated detection possible without a Query type -- this is a design decision, not a bug
 
-**Confidence:** HIGH -- verified by reading codegen_return (expr.rs:1359-1369) and compile_function (mod.rs:345-472); the control flow issue is structural.
+**Phase:** Parameterized query API design. Must be decided before exposing any database API to users.
 
 ---
 
-### Pitfall 3: Tail-Call Elimination With musttail Requires Matching Caller/Callee Signatures
+### Pitfall 4: deriving(Json) Codegen Emits Wrong Field Order or Misses Nested Types
 
 **What goes wrong:**
-LLVM's `musttail` marker (required for guaranteed TCE, available via Inkwell 0.8's `set_tail_call_kind` on LLVM 21) enforces strict rules: the caller and callee must have identical calling conventions, matching parameter types, matching return types, and the call must immediately precede a `ret` instruction. Snow functions use the default C calling convention and pass all values as `i64`/`ptr`/`f64`. For self-recursion (`fn factorial(n) = if n <= 1 then 1 else n * factorial(n - 1)`), the signatures match trivially.
+Snow's existing JSON is opaque (json.rs: `SnowJson { tag: u8, value: u64 }` with tags for Null/Bool/Number/Str/Array/Object). The new `deriving(Json)` must generate `to_json()` and `from_json()` methods that convert between typed Snow structs and this SnowJson representation. The codegen runs at MIR/LLVM level where struct field metadata is available.
 
-For mutual recursion (`fn even(n) = if n == 0 then true else odd(n - 1)` / `fn odd(n) = if n == 0 then false else even(n - 1)`), signatures must also match. If `even` returns `Bool` (i8) and `odd` returns `Bool` (i8), the LLVM types match. But if one function returns `Int` (i64) and the other returns `Bool` (i8), `musttail` will fail with a fatal backend error: "failed to perform tail call elimination on a call site marked musttail."
+The pitfall: struct field iteration order in the compiler must match the runtime's SnowMap key order. Snow structs are defined with named fields, and `to_json()` must emit a JSON object where keys match field names and values are recursively serialized. If the codegen iterates fields in a different order than the parser/typechecker stored them (e.g., HashMap iteration order vs. definition order), the JSON output has scrambled keys.
 
-More critically: any operation between the tail call and the return invalidates `musttail`. Snow's codegen inserts `snow_reduction_check()` after every function call (expr.rs:634-635). A tail call followed by a reduction check followed by a return is NOT a valid musttail position.
+For `from_json()`, the inverse is worse: the codegen must look up each struct field by name in the JSON object. If a field is missing, it must produce a type error (Result::Err), not silently default to zero. If a JSON field has the wrong type (expecting Int but got String), the generated code must handle this at runtime since JSON is dynamically typed.
+
+Nested types compound the problem: `deriving(Json)` on a struct `User { name: String, address: Address }` requires that `Address` also derives `Json`. If it doesn't, the codegen must either emit a compile error or fall back to opaque JSON representation. The compiler needs to track which types have `Json` implementations.
 
 **Why it happens:**
-1. LLVM `musttail` is a hard contract -- if it cannot be honored, compilation fails (not silently dropped)
-2. Reduction checks are inserted unconditionally after all calls for actor scheduler fairness
-3. Snow's uniform u64 storage helps (most things are i64), but Bool (i8) and Float (f64) break type matching
+- Struct field order is an implementation detail that varies between HashMaps and Vecs in different compiler phases
+- The typechecker uses `StructDefInfo` with `fields: Vec<...>` which preserves definition order, but downstream code might re-sort or lose ordering
+- Recursive type traversal for nested `deriving(Json)` requires the trait resolution system to verify Json impl existence at compile time
+- Snow's HM type inference means the concrete type might not be known until after inference -- `deriving(Json)` on generic types requires monomorphization
 
 **Consequences:**
-- If musttail is applied to calls with mismatched return types: fatal LLVM backend error, compiler crash
-- If musttail is applied to calls followed by reduction checks: LLVM verification error
-- If using `tail` (soft hint) instead of `musttail`: LLVM may or may not optimize it, no guarantee, stack overflow on deep mutual recursion
+- JSON output has wrong field names or wrong field order (breaks API contracts)
+- `from_json()` silently produces zero-valued fields for missing data (logic bugs)
+- Nested structs without `deriving(Json)` cause runtime crashes instead of compile errors
+- Generic structs like `Wrapper<T>` fail to derive Json because T's Json impl isn't resolved
 
 **Prevention:**
-1. Use the loop-transformation approach for self-recursion (rewrite `f(args) { ... f(new_args) }` to `loop { args = new_args }`). This is guaranteed, platform-independent, and does not require musttail. LLVM's own TailRecursionElimination pass does this, but only at `-O2+` -- Snow needs it at `-O0` too.
-2. For mutual recursion, either:
-   a. Normalize all function return types to i64 (the uniform storage already does this for most types), or
-   b. Use a trampoline: rewrite mutually recursive functions into a single dispatcher function with a loop, converting tail calls into `continue` with updated arguments
-3. Skip `snow_reduction_check()` insertion for calls in tail position -- the callee will do its own reduction check
-4. If using `musttail`, verify at MIR level that caller/callee signatures match before emitting the marker
+1. **Use definition order (Vec, not HashMap) for struct fields throughout the pipeline.** Verify that AST, typechecker StructDefInfo, MIR StructDef, and codegen all preserve insertion order. Snow's `StructDefInfo` already uses `Vec<FieldInfo>`, so this should be maintained through MIR lowering.
+2. **Generate from_json() with explicit field-by-field lookup.** For each field, generate: (a) look up key in JSON object, (b) if missing, return Err("missing field: name"), (c) if wrong type, return Err("expected Int for field: name, got String"), (d) recursively deserialize nested types.
+3. **Require explicit deriving(Json) on all nested types.** At compile time (during trait resolution), check that every field type of a `deriving(Json)` struct has a ToJson/FromJson implementation. Emit a compile error otherwise: "type Address does not implement Json, required by deriving(Json) on User."
+4. **Handle primitive types built-in.** Int, Float, Bool, String, List<T>, Map<String, T>, and Option<T> should have built-in Json implementations. Only user-defined structs/enums need explicit deriving.
+5. **Add round-trip tests.** For every struct with deriving(Json), test that `from_json(to_json(value)) == value`. Field order, nesting, and missing-field errors must all be covered.
 
 **Detection:**
-- LLVM fatal error: "failed to perform tail call elimination on a call site marked musttail"
-- Stack overflow in programs with mutual recursion that "should" be TCE'd
-- Missing reduction checks causing actor starvation (if checks are skipped too aggressively)
+- JSON output with wrong field names in integration tests
+- `from_json()` returning unexpected Ok values for malformed input
+- Compile errors about missing trait impls when using nested types
 
-**Confidence:** HIGH -- verified Inkwell 0.8 has `set_tail_call_kind` on LLVM 21; verified reduction check insertion in expr.rs:634; LLVM musttail restrictions verified via LLVM Language Reference.
+**Phase:** deriving(Json) codegen implementation. The trait resolution check is the critical gate.
 
 ---
 
-### Pitfall 4: Receive Timeout After Clause -- Codegen Ignores timeout_body
+### Pitfall 5: PostgreSQL Wire Protocol State Machine Mishandles Async Messages
 
 **What goes wrong:**
-The receive timeout infrastructure is almost complete. The parser handles `after` clauses (lower.rs:7160-7168). MIR has `ActorReceive { arms, timeout_ms, timeout_body }` (mir/mod.rs:263-269). The runtime's `snow_actor_receive(timeout_ms)` correctly returns null on timeout (actor/mod.rs:315-399). BUT: the codegen explicitly discards `timeout_body` with `timeout_body: _` (codegen/expr.rs:129) and never generates code for what should happen when the timeout fires.
+The PostgreSQL wire protocol is stateful. The server can send asynchronous messages (NoticeResponse, ParameterStatus, NotificationResponse) at ANY time, even in the middle of processing query results. A naive implementation that expects a fixed message sequence (e.g., "after sending Query, expect RowDescription then DataRow then CommandComplete then ReadyForQuery") will crash or hang when it receives an unexpected NoticeResponse between DataRow messages.
 
-Currently, when `snow_actor_receive` returns null (timeout), the codegen proceeds to load from the null pointer (data_ptr = msg_ptr + 16 where msg_ptr is null), causing a segfault.
+Additionally, the very first message (StartupMessage) has no message-type byte, unlike all subsequent messages. Many implementations get the initial handshake wrong because they apply the "read type byte, read length, read payload" pattern universally.
+
+The ErrorResponse handling in the extended protocol is another trap: after an error, the server discards ALL subsequent messages until it receives a Sync. If the client has pipelined multiple commands, it must be prepared for the server to skip them all and respond with ReadyForQuery after the Sync.
 
 **Why it happens:**
-The receive codegen (expr.rs:1540-1648) was written for infinite-wait receives. It unconditionally loads message data from the returned pointer without checking for null. The timeout path was explicitly deferred: `timeout_body: _` on line 129.
+- The PostgreSQL protocol documentation is thorough but dense; implementers often read only the "happy path"
+- Testing with `psql` (which uses simple protocol) masks extended protocol bugs
+- Async messages like ParameterStatus are sent when server config changes, which is rare in development but common in production (e.g., after SET commands, or when a DBA changes settings)
+- The startup message format exception is easy to miss
 
 **Consequences:**
-- Any program using `receive ... after 1000 -> :timeout end` will segfault when the timeout fires
-- The null pointer dereference occurs in LLVM-generated code, producing an opaque signal 11 crash
-- Users cannot write timeout-based patterns (heartbeat checks, retry loops, supervision timeouts)
+- Client hangs waiting for a message type that never arrives (desync)
+- Connection becomes unusable after any error (failed error recovery)
+- Production failures when server sends NoticeResponse or ParameterStatus at unexpected times
+- Authentication failures because the startup handshake is wrong
 
 **Prevention:**
-After calling `snow_actor_receive(timeout_val)`, check if the returned pointer is null:
-1. `icmp eq msg_ptr, null` -- branch to timeout block if null, normal block if non-null
-2. Normal block: existing message extraction + arm matching code
-3. Timeout block: codegen the `timeout_body` expression
-4. Both blocks branch to a merge block with a phi node for the result value
-5. The result type of the timeout_body must match the result type of the receive arms -- enforce this in typeck
-
-This is structurally similar to if/else codegen, which Snow already handles correctly.
+1. **Implement the client as a state machine with a message dispatch loop.** Every state must handle NoticeResponse, ParameterStatus, and ErrorResponse in addition to expected messages. Use a `match` on message type, not a sequential read sequence.
+2. **Special-case the startup sequence.** The initial exchange (StartupMessage -> AuthenticationXxx -> ParameterStatus* -> BackendKeyData -> ReadyForQuery) should be handled as a distinct phase with its own message reading logic that doesn't expect a type byte on the first response.
+3. **Always check the ReadyForQuery transaction status byte.** The byte is 'I' (idle), 'T' (in transaction), or 'E' (failed transaction requiring ROLLBACK). Ignoring this leads to silent transaction state corruption.
+4. **Buffer extended protocol messages until Sync.** When pipelining, buffer all outgoing messages (Parse, Bind, Describe, Execute) and only send them as a batch terminated by Sync. This makes error recovery predictable: on error, the server discards everything up to the Sync.
+5. **Test with pgbouncer and connection pooling.** Connection poolers add their own ParameterStatus and NoticeResponse messages, exposing async message handling bugs.
 
 **Detection:**
-- Segfault (signal 11) when receive timeout fires
-- E2E test: `receive do msg -> msg after 100 -> "timeout" end` -- crashes instead of returning "timeout"
+- Connection hangs after certain query patterns
+- "unexpected message type" errors in logs
+- Works fine with simple queries but breaks with prepared statements
+- Works in development but fails in production (where async messages are more common)
 
-**Confidence:** HIGH -- verified by reading codegen/expr.rs:126-131 where `timeout_body: _` explicitly discards the body, and expr.rs:1557-1566 where null is never checked.
+**Phase:** PostgreSQL wire protocol implementation. The state machine design must be correct from the start; retrofitting is essentially a rewrite.
 
 ---
 
-### Pitfall 5: Collection sort() Requires Comparator Callback But Comparator Type Depends on Element Type
+### Pitfall 6: sqlite3_stmt* Lifetime Leaks When Actor Crashes
 
 **What goes wrong:**
-Adding `snow_list_sort(list, elem_cmp)` follows the existing callback pattern (like `snow_list_compare`, `snow_list_eq`). The runtime function receives a `*mut u8` function pointer that compares two `u64` elements. The problem: the MIR lowerer must synthesize the correct comparator function pointer for the concrete element type at each call site.
+SQLite requires that `sqlite3_finalize()` is called on every `sqlite3_stmt*` before `sqlite3_close()` is called on the connection. Snow actors can crash (panic in handler, supervisor kills them, linked actor dies). If an actor holding a prepared statement crashes, the `sqlite3_stmt*` is leaked -- `sqlite3_finalize()` is never called. Subsequently, `sqlite3_close()` on the connection returns `SQLITE_BUSY` because unfinalized statements remain.
 
-For `List<Int>.sort()`, the comparator is `snow_int_compare`. For `List<String>.sort()`, it's `snow_string_compare` (which does not yet exist -- noted as tech debt at lower.rs:5799). For `List<Point>.sort()` where Point implements Ord, it needs the monomorphized `Ord__compare__Point` function. For `List<List<Int>>.sort()`, it needs a synthetic wrapper function (like the v1.4 nested Display wrappers).
-
-If the MIR lowerer fails to synthesize the correct comparator for any element type, the sort will either: (a) compare raw u64 bit patterns (wrong for strings, floats, structs), (b) call the wrong function (memory corruption), or (c) fail to compile.
+Snow's actor termination path (scheduler.rs `handle_process_exit`, line 607) invokes an optional `terminate_callback` and then marks the process as Exited. The actor's heap is eventually reclaimed. But SQLite's C-allocated `sqlite3_stmt*` is on the system heap, not the GC heap -- heap reset does not free it. And even if it did, freeing the raw memory without calling `sqlite3_finalize` corrupts SQLite's internal state.
 
 **Why it happens:**
-The callback dispatch pattern works well but requires per-call-site specialization in MIR. Each new callback-taking operation multiplies the MIR lowerer's complexity. The existing `snow_list_to_string`, `snow_list_eq`, and `snow_list_compare` already demonstrate the pattern, but sort adds the constraint that the comparator must provide a total ordering -- partial orderings cause undefined behavior in sorting algorithms.
+- C resource cleanup is not automatic -- there is no RAII in the Snow runtime
+- Snow actors are designed to crash and restart (Erlang "let it crash" philosophy), but C resources are not crash-safe
+- The terminate_callback mechanism exists but is optional and must be explicitly set
 
 **Consequences:**
-- Silent data corruption if wrong comparator used (e.g., comparing string pointers as integers)
-- Compilation failure for nested generic types (List<List<T>>) if synthetic wrapper not generated
-- Panic or infinite loop if comparator doesn't provide total ordering (NaN floats, custom Ord impls with bugs)
+- SQLite connections become permanently unusable after actor crashes
+- Memory leaks from unfinalized prepared statements accumulate
+- `sqlite3_close` fails silently or returns SQLITE_BUSY, leaving file locks held
+- Database file remains locked, blocking other processes
 
 **Prevention:**
-1. Require the `Ord` trait constraint on the element type for `sort()` -- this is already enforced at the typeck level for `compare()`
-2. Reuse the existing comparator synthesis from `snow_list_compare` codegen -- the MIR lowerer already resolves the correct callback for Ord-constrained operations
-3. For Float sorting, handle NaN explicitly: either error at compile time ("Float does not implement Ord") or use a total ordering that puts NaN last
-4. Add the missing `snow_string_compare` to the runtime (it's already flagged as tech debt)
-5. Test with every element type that has Ord: Int, Float, String, Bool, user structs, nested collections
+1. **Wrap the sqlite3* connection in a "resource" abstraction that registers a terminate callback.** When an actor opens a database, the runtime should automatically register a cleanup function that calls `sqlite3_finalize` on all open statements and `sqlite3_close_v2` on the connection. `sqlite3_close_v2` is specifically designed for this: it defers closing until all statements are finalized, and it marks the connection as unusable immediately.
+2. **Use `sqlite3_close_v2()` instead of `sqlite3_close()`.** The v2 variant is "zombie-safe" -- it marks the connection as unusable and defers actual resource cleanup until all prepared statements are finalized. This prevents SQLITE_BUSY errors.
+3. **Track all sqlite3_stmt* per connection.** Maintain a list of active prepared statements in the connection wrapper. On cleanup (normal or crash), iterate and finalize all of them before closing the connection.
+4. **Connection-per-actor model.** Each actor that uses the database should own its own connection. When the actor exits (normally or via crash), its terminate callback handles cleanup. This avoids shared-connection lifetime issues.
 
 **Detection:**
-- Sort produces wrong order for string lists (comparing pointer values instead of string content)
-- ICE (internal compiler error) when sorting List<List<Int>> -- missing synthetic wrapper
+- Database file locks not released after actor crash
+- "database is locked" errors from other actors/processes after a crash
+- Growing memory usage from leaked prepared statements
+- `sqlite3_close` returning SQLITE_BUSY in terminate callbacks
 
-**Confidence:** HIGH -- verified callback pattern in list.rs:316-374 and the tech debt note at lower.rs:5799.
+**Phase:** SQLite driver architecture. The resource cleanup pattern must be established before any statement caching or connection pooling.
 
 ---
 
 ## Moderate Pitfalls
 
-Mistakes that cause significant rework or user-facing bugs, but are contained to a single feature.
+Mistakes that cause incorrect behavior, performance problems, or developer confusion, but are fixable without architectural changes.
 
 ---
 
-### Pitfall 6: Timer Primitives (sleep, send_after) Must Yield to Scheduler, Not Block OS Thread
+### Pitfall 7: HTTP Path Parameter Routing Ambiguity With Existing Exact/Wildcard Matcher
 
 **What goes wrong:**
-The natural implementation of `sleep(ms)` is `std::thread::sleep(Duration::from_millis(ms))`. But Snow actors run as coroutines multiplexed across a fixed pool of OS worker threads (scheduler.rs:1-27). If an actor calls `std::thread::sleep`, it blocks the entire OS thread, starving all other actors pinned to that thread (since coroutines are `!Send` and stay on their creation thread).
+Snow's current router (router.rs) supports exact match (`/api/health`) and wildcard (`/api/*`). Adding path parameters (`/users/:id`) introduces ambiguity: does `/users/profile` match the static route `/users/profile` or the parameterized route `/users/:id`? The current `matches_pattern` function (router.rs lines 42-49) uses a simple linear scan with first-match-wins semantics. Adding `:param` patterns to this system without a clear priority order creates unpredictable routing.
 
-Similarly, `send_after(pid, msg, delay_ms)` cannot simply spawn a Rust thread that sleeps -- it must integrate with the actor scheduler to avoid thread exhaustion.
+The existing wildcard semantics add further confusion: `/api/*` matches `/api/users/123` (multi-segment). Should `/api/:resource` match only `/api/users` (single segment) or also `/api/users/123` (multi-segment)?
 
 **Why it happens:**
-Coroutine-based schedulers require all blocking operations to yield to the scheduler rather than blocking the OS thread. This is a fundamental property of M:N scheduling that every new blocking primitive must respect.
-
-**Consequences:**
-- `sleep(5000)` in one actor freezes all other actors on the same OS thread for 5 seconds
-- With N worker threads and N sleeping actors, the entire runtime deadlocks
-- `send_after` that spawns OS threads creates threads unbounded -- 10,000 `send_after` calls create 10,000 threads
+- The current router was designed for exact + wildcard only; path parameters were not part of the initial design
+- First-match-wins ordering means route registration order determines behavior, which is fragile
+- No compile-time or startup-time check for conflicting routes
 
 **Prevention:**
-1. Implement `snow_sleep(ms)` as a yield loop: set actor state to Waiting, record a deadline (`Instant::now() + duration`), yield to scheduler. On resume, check if deadline passed; if not, yield again. This mirrors the pattern already used in `snow_actor_receive` for timeout (actor/mod.rs:365-399).
-2. Implement `send_after(pid, msg, delay_ms)` as a lightweight actor spawn: spawn a new actor that runs `sleep(delay_ms); send(pid, msg)`. Since actors are lightweight (~2KB stack), this is cheap. Alternatively, add a timer wheel to the scheduler for O(1) timer management.
-3. Do NOT use `std::thread::sleep` or `std::thread::spawn` anywhere in timer primitives.
+1. **Define a clear priority order: exact > parameterized > wildcard.** When multiple routes match, always prefer the most specific one. This matches the behavior of Express.js, Actix-web, and most mature web frameworks.
+2. **Path parameters match exactly one segment.** `/users/:id` matches `/users/123` but NOT `/users/123/posts`. Multi-segment capture requires explicit wildcard (`/api/*path`).
+3. **Detect conflicting routes at registration time.** When adding a route, check if an existing route would create ambiguity. Emit a warning or error: "route /users/:id conflicts with /users/profile -- static route takes priority."
+4. **Store routes in a trie/radix tree instead of a linear list.** This makes lookup O(path length) instead of O(routes), and naturally handles priority (static children checked before parameterized children).
 
 **Detection:**
-- Actor throughput drops to zero when any actor calls sleep
-- Benchmark: spawn 100 actors that each sleep(10), measure total time. Should be ~10ms, not ~1000ms.
+- Routes that work in isolation but break when other routes are added
+- 404 errors for paths that should match a parameterized route
+- Wrong handler called for a path that matches both static and parameterized routes
 
-**Confidence:** HIGH -- verified scheduler architecture in scheduler.rs:1-27 and coroutine constraints (corosensei `!Send`) in stack.rs.
+**Phase:** HTTP path parameter implementation. Design the router upgrade before implementing parameter extraction.
 
 ---
 
-### Pitfall 7: ? Operator Type Inference -- Enclosing Function Must Return Result<T, E>
+### Pitfall 8: HTTP Middleware Execution Order and Short-Circuit Semantics
 
 **What goes wrong:**
-The `?` operator is only valid inside a function that returns `Result<T, E>`. If used in a function returning `Int`, the `Err` arm tries to `return Err(e)` where the function expects `Int` -- type mismatch. This constraint must be checked during type inference, not during codegen.
+Middleware chains have two phases: the "inbound" phase (before the handler) and the "outbound" phase (after the handler). A logging middleware should wrap the entire request lifecycle; an authentication middleware should short-circuit before the handler if the request is unauthorized. If middleware is modeled as a simple list of functions that run sequentially before the handler, there's no way to implement "after handler" behavior (e.g., response logging, timing, CORS header injection).
 
-Snow's type checker (infer.rs) tracks the return type of the current function being inferred. But there's a subtlety: in multi-clause functions (`fn foo(0) = ...; fn foo(n) = ...`), all clauses share the return type. And in closures, the `?` operator must propagate to the closure's return type, not the enclosing function's return type.
-
-A deeper issue: `?` on `Result<T, E1>` inside a function returning `Result<T, E2>` where `E1 != E2` would require error type conversion (Rust uses `From` trait for this). Snow does not have a `From` trait. If E1 and E2 differ, the types don't unify.
+The existing `handle_request` function (server.rs lines 218-313) directly calls the handler and then writes the response. There's no hook point for post-handler processing.
 
 **Why it happens:**
-The `?` operator implicitly constrains both the expression's type (must be `Result<T, E>`) and the enclosing function's return type (must be `Result<_, E>`). These bidirectional constraints are unusual in Snow's HM inference.
-
-**Consequences:**
-- Without proper validation: type error at codegen time (too late), or unsound code that returns Err where Int is expected
-- Confusing error messages: "cannot unify Result<String, String> with Int" when user just wanted `?` on a file read
+- The simplest middleware model is "list of functions that run before the handler," which misses outbound processing
+- Snow's function-pointer-based handler dispatch (transmute to fn(*mut u8) -> *mut u8) doesn't naturally compose with middleware wrapping
+- Without closures that capture middleware state, middleware can't maintain per-request context (e.g., request start time for logging)
 
 **Prevention:**
-1. During inference of `expr?`, unify `expr`'s type with `Result<T_fresh, E_fresh>` and unify the enclosing function's return type with `Result<_, E_fresh>`
-2. If the function's return type cannot unify with `Result<_, _>`, emit a dedicated error: "the `?` operator can only be used in functions that return Result<T, E>"
-3. For closures, check the closure's return type, not the outer function
-4. Do NOT implement error conversion (From trait) in v1.9 -- require exact E type match. Document this limitation.
+1. **Model middleware as `fn(Request, Next) -> Response` where `Next` is a closure/function that calls the next middleware or handler.** This "onion" model (used by Express, Koa, Tower, Plug) naturally supports both pre-handler and post-handler logic. The middleware calls `Next(request)` to continue the chain and can modify the response afterward.
+2. **For Snow's runtime, implement middleware as a chain of function pointers.** Each middleware receives the request and a "next" function pointer. It can: (a) modify the request and pass to next, (b) short-circuit by returning a response directly, or (c) call next, then modify the response before returning.
+3. **Define middleware ordering at the router level, not per-route.** Global middleware (logging, CORS) applies to all routes. Route-specific middleware (auth) applies to individual routes. The router stores both lists and chains them appropriately.
+4. **Handle short-circuiting explicitly.** Authentication middleware returns a 401 response without calling next. Error-handling middleware wraps next in a try/catch equivalent (Result handling in Snow).
 
 **Detection:**
-- Type error when `?` is used in a non-Result function
-- ICE if typeck doesn't catch this and codegen tries to return Err from an Int function
+- CORS headers missing from error responses (middleware didn't run on the outbound path)
+- Logging middleware doesn't log response times (no outbound hook)
+- Authentication middleware runs but handler is still called (short-circuit not working)
 
-**Confidence:** HIGH -- verified Result is a builtin sum type (infer.rs:756-787) with generic params T, E; verified HM inference flow.
+**Phase:** HTTP middleware implementation. The middleware model choice affects the entire API.
 
 ---
 
-### Pitfall 8: Collection Operations on Immutable Data -- O(n) Copy Cost Compounds to O(n^2) in Chains
+### Pitfall 9: JSON Number Precision Loss Between Snow's Int/Float and JSON
 
 **What goes wrong:**
-Snow's collections use immutable semantics: every operation returns a new collection (list.rs:76-88 shows `snow_list_append` allocating a new list). Adding operations like `sort`, `zip`, `split`, and `join` that each return new collections means a chain like `list.sort().filter(f).zip(other)` creates 3 intermediate copies. For a list of N elements, sort is O(N log N) but also allocates a new N-element list, filter allocates up to N elements, and zip allocates up to N elements.
+Snow's existing JSON representation (json.rs lines 82-91) stores numbers as `u64` in the SnowJson value field. For integers, the raw i64 is stored as-is. For floats, `f64::to_bits()` stores the IEEE 754 bit pattern. The problem: there's no tag to distinguish integer-stored-as-u64 from float-stored-as-u64. Both use tag `JSON_NUMBER` (tag 2). The `snow_json_to_serde_value` function (json.rs lines 129-135) always interprets the value as i64, losing all float information.
 
-This is inherent to immutable semantics and usually acceptable, but the pitfall is in the runtime implementation: if `snow_list_sort` is implemented by copying to a Rust Vec, sorting, then copying back to a Snow list, there are 3 copies instead of 1. Similarly, if sort allocates via `snow_gc_alloc_actor` for each comparison (which it won't, but other operations might), GC pressure compounds.
+When `deriving(Json)` generates `to_json()` for a Float field, it calls `snow_json_from_float` (json.rs line 288) which stores `f64::to_bits()`. When `from_json()` reads it back, the current code interprets it as i64, producing a garbage integer instead of the original float.
+
+More subtly: JSON numbers have no integer/float distinction. The number `1.0` and `1` are the same in JSON. But Snow has distinct Int and Float types. `from_json()` must decide: is the JSON number `42` an Int or a Float? The answer depends on the target type, which is known at compile time (from the struct field type) but NOT available at the runtime JSON parsing level.
 
 **Why it happens:**
-Immutable semantics require allocation per operation. This is a known tradeoff, not a bug. The pitfall is implementing operations with unnecessary extra copies or allocations beyond the inherent minimum.
-
-**Consequences:**
-- 2-3x slower than necessary if implementations do redundant copies
-- GC pressure causes more frequent collections in actor heaps
-- Users complain about performance on large collections
+- The original JSON implementation was opaque (parse JSON, access by key, get values) -- there was no need to distinguish number types because users would explicitly call get_int/get_float
+- `deriving(Json)` requires automatic type-directed deserialization, which the existing representation doesn't support
+- The SnowJson tagged union has one NUMBER tag, not separate INT and FLOAT tags
 
 **Prevention:**
-1. Sort in-place on the NEW copy: allocate the new list, copy elements into it, sort the copy in-place using a Rust sort (which operates on the raw `u64` array via the callback). One allocation, one sort.
-2. For `zip`: allocate the result list once at `min(len_a, len_b)` capacity
-3. For `split`: allocate the result list of lists, each sublist allocated once
-4. For `join`: calculate total length first, allocate once
-5. Use `snow_list_builder_new(capacity)` + `snow_list_builder_push` pattern (already exists, list.rs:285-304) for operations that build lists incrementally
+1. **Add separate NUMBER_INT (tag 2) and NUMBER_FLOAT (tag 6) tags.** This is a breaking change to the SnowJson representation but is necessary for round-trip fidelity. The existing tag numbering (0-5) leaves room for tag 6.
+2. **In deriving(Json) from_json(), use the target type to coerce.** When deserializing into an Int field, accept both integer and float JSON numbers (truncating the float). When deserializing into a Float field, accept both (promoting the integer). This type-directed approach works because `from_json` is generated per-struct.
+3. **In the runtime JSON parser (serde_value_to_snow_json), use `as_i64()` vs `as_f64()` to choose the tag.** If `serde_json::Number::as_i64()` succeeds, store as NUMBER_INT. Otherwise use `as_f64()` and store as NUMBER_FLOAT.
+4. **Update `snow_json_to_serde_value` to check the new tags** and produce the correct serde_json::Number variant.
 
 **Detection:**
-- Benchmark: sort a 10,000-element list. Should be ~1ms, not ~10ms.
-- Heap size after sort should be ~2x the original list (old + new), not more.
+- Float fields deserialize as garbage integers
+- Round-trip test: `from_json(to_json({ x: 3.14 }))` produces `{ x: some_large_integer }`
+- JSON encoding of floats produces integer strings
 
-**Confidence:** HIGH -- verified immutable copy pattern in list.rs:76-88 and list builder pattern in list.rs:285-304.
+**Phase:** JSON serde implementation. The SnowJson tag split should happen before deriving(Json) codegen.
 
 ---
 
-### Pitfall 9: send_after Creates Actor But Doesn't Link -- Crash Goes Unnoticed
+### Pitfall 10: PostgreSQL Connection Lifecycle in Actor-Per-Connection HTTP Model
 
 **What goes wrong:**
-If `send_after(pid, msg, delay_ms)` is implemented by spawning a temporary actor that sleeps then sends, that actor is not linked to anything. If the target actor dies before the timer fires, the send goes to a dead mailbox (silently dropped -- or the temporary actor crashes). If the temporary actor itself crashes (e.g., OOM during sleep), nobody is notified.
+Snow's HTTP server creates one actor per HTTP connection (server.rs lines 197-213). Each actor handles a single request and exits. If each HTTP handler actor opens a PostgreSQL connection, the overhead is enormous: the PostgreSQL wire protocol startup sequence involves 18+ message exchanges including authentication, parameter status exchange, and potentially TLS negotiation. At 100 requests/second, that's 100 TCP connections opened and closed per second, each with full handshake overhead.
 
-In Erlang/OTP, `erlang:send_after/3` returns a timer reference that can be cancelled. Snow would need a similar mechanism, or at minimum, the temporary actor should be linked to the caller.
+Even with SQLite (in-process), opening the database file on every request means repeated file I/O and page cache cold starts.
 
 **Why it happens:**
-Timer primitives feel simple but interact with the actor lifecycle (links, monitors, supervision). A fire-and-forget timer that outlives its creator is a resource leak.
-
-**Consequences:**
-- Timer fires but message goes to dead process (silent failure)
-- Timer actors accumulate if created faster than they expire (memory leak)
-- No way to cancel a pending timer (architectural limitation if not designed in)
+- The actor-per-connection model is natural for HTTP but terrible for database connections
+- Without connection pooling, every request pays full connection setup cost
+- Snow has no built-in connection pool primitive
 
 **Prevention:**
-1. Return a timer reference (PID of the timer actor) from `send_after` so it can be cancelled
-2. Link the timer actor to the calling actor so it dies if the caller dies
-3. Alternatively, implement timers in the scheduler itself (timer wheel) rather than as actors -- more efficient but more complex
-4. For v1.9, the actor-based approach is simpler and sufficient. Add cancellation support in a future version.
+1. **Implement a database connection pool as a long-lived service actor.** The pool actor owns N connections and distributes them to requesting actors. HTTP handler actors send a "checkout" message, receive a connection handle, execute queries, and send a "checkin" message to return the connection.
+2. **For SQLite, use a single connection actor.** SQLite performs best with a single writer. A single actor owning the connection serializes all writes naturally. Read-only queries can use WAL mode with a separate read connection.
+3. **For PostgreSQL, maintain a small pool of persistent connections.** Pool size should be configurable (default: 5-10). Connections are validated with a simple query before checkout (to detect stale/broken connections).
+4. **The pool actor should handle connection recovery.** If a connection is broken (network error, server restart), the pool should detect it, discard the bad connection, and create a new one.
 
 **Detection:**
-- Timer fires after target actor has exited -- message silently lost
-- Long-running server slowly accumulates timer actor corpses
+- Extremely slow database operations in HTTP handlers
+- "too many connections" errors from PostgreSQL
+- High CPU/memory from connection churn
+- Latency spikes on first request after idle (connection not cached)
 
-**Confidence:** MEDIUM -- based on established actor model patterns; Snow's specific actor lifecycle behavior verified in scheduler.rs and link.rs.
+**Phase:** Database driver architecture. Pool design should happen before HTTP+database integration.
 
 ---
 
-### Pitfall 10: TCE Analysis Must Handle Let Bindings and Match Arms in Tail Position
+### Pitfall 11: Type System Integration for Database Row Types
 
 **What goes wrong:**
-Detecting whether a call is in tail position is straightforward for `return f(x)` but subtle for Snow's expression-oriented design. In Snow, the last expression in a function body is the return value. Consider:
+Snow uses Hindley-Milner type inference (snow-typeck). Database queries return rows with typed columns, but the column types are known at the database level, not at the Snow type level. A query like `Db.query(conn, "SELECT id, name FROM users", [])` returns... what type? Options include:
 
+1. `List<Map<String, Json>>` -- fully dynamic, loses type safety
+2. `List<(Int, String)>` -- correct but how does the compiler know the column types?
+3. `List<User>` -- requires mapping column names to struct fields
+
+Option 1 is what most dynamic languages do but defeats Snow's static typing. Option 2 requires the programmer to specify the return type, and the compiler trusts them (unsafe). Option 3 requires a derive mechanism similar to `deriving(Json)`.
+
+The current type system resolves collection types as `MirType::Ptr` (mir/types.rs line 77), which is correct for runtime but means the type checker cannot verify column type mismatches at compile time.
+
+**Why it happens:**
+- SQL query results have schema-dependent types that are not known at compile time
+- Snow has no dependent types or type-level strings to express "this query returns these columns"
+- The gap between SQL's type system and Snow's type system is fundamental
+
+**Prevention:**
+1. **Start with explicit type annotation: `Db.query<User>(conn, sql, params)`.** The programmer specifies the expected result type. The runtime checks at runtime that column count and types match the struct fields (using the same metadata from `deriving(Json)`). This is the approach used by Diesel (Rust), sqlx (Rust, with compile-time verification), and most typed database libraries.
+2. **Reuse the deriving(Json) infrastructure for row mapping.** A struct with `deriving(Json)` already has field-name-to-type metadata. Extend this to support `deriving(Row)` or reuse the same serialization infrastructure. Column names map to field names; column types are coerced to Snow types (INTEGER -> Int, TEXT -> String, REAL -> Float, NULL -> Option<T>).
+3. **For the initial implementation, return `List<Map<String, String>>` (all text).** SQLite returns all values as text by default. PostgreSQL returns text in simple protocol mode. This is safe, correct, and type-system-compatible, but forces users to manually convert types. It's a good MVP that can be improved later.
+4. **Do NOT try to make the compiler verify SQL queries at compile time.** This is extremely complex (requires an SQL parser, schema awareness, and type-level computation). Save it for a much later milestone if ever.
+
+**Detection:**
+- Runtime type mismatch errors when query returns unexpected column types
+- Boilerplate type conversion code in every database handler
+- Users requesting compile-time SQL checking (feature request, not a bug)
+
+**Phase:** Database query result API design. The return type decision affects the entire user experience.
+
+---
+
+### Pitfall 12: Existing Opaque JSON to Struct-Aware JSON Migration
+
+**What goes wrong:**
+Snow currently has `Json` as an opaque type (MirType::Ptr, resolved in mir/types.rs line 77). Users write:
 ```
-fn factorial(n, acc) do
-  let result = if n <= 1 do
-    acc
-  else
-    factorial(n - 1, n * acc)
-  end
-  result
-end
+let json = Json.parse(text)?
+let name = Json.get(json, "name")
 ```
+The new `deriving(Json)` provides:
+```
+let user = User.from_json(text)?
+let name = user.name
+```
+Both systems must coexist. If `deriving(Json)` replaces the opaque `Json` type entirely, existing code breaks. If both exist but with confusing overlap, users don't know which to use.
 
-Here, `factorial(n - 1, n * acc)` is in tail position because: it's the else branch of an if, which is bound to `result` via let, which is the last expression (and thus returned). Detecting this requires traversing through Let, If, Match, and Block expressions.
-
-Even harder: `fn foo(x) = match x do 1 -> bar(x); _ -> baz(x) end` -- both `bar(x)` and `baz(x)` are in tail position, but only if the match is itself in tail position.
-
-If TCE analysis is too conservative (only handling direct `f(x)` at function body level), most real-world tail calls are missed. If too aggressive (marking calls as tail that aren't), stack cleanup is wrong.
+The deeper issue: `Json.parse` returns a `Json` value (opaque), while `User.from_json` returns a `Result<User, String>`. These are different types. The opaque `Json` type is still useful for dynamic JSON (unknown schema, configuration files, API responses with varying structure). The struct-aware path is for known schemas.
 
 **Why it happens:**
-Expression-oriented languages make tail position identification recursive. The tail position propagates inward through if/else, match, let, and block expressions.
-
-**Consequences:**
-- Too conservative: most recursive functions still overflow the stack
-- Too aggressive: incorrect code (return value not preserved, stack corruption)
+- Two JSON systems serving different purposes but with overlapping names and use cases
+- Users expect `from_json` to work on a `Json` value, not a `String` -- but the impl takes a String because it parses from text
 
 **Prevention:**
-1. Implement tail position analysis as a recursive MIR pass that propagates a `is_tail_position` flag:
-   - Function body: is_tail_position = true
-   - Let binding body: propagate tail status to the body (last expr after the let)
-   - If/else: propagate to both branches IF the if/else is in tail position
-   - Match: propagate to all arm bodies IF the match is in tail position
-   - Block: propagate to the last expression in the block
-   - Call: if in tail position AND callee matches, mark as tail call
-2. Start with self-recursion only (safer, simpler, covers 80% of use cases)
-3. Add mutual recursion support separately after self-recursion is validated
+1. **Keep both systems.** The opaque `Json` type (parse, get, encode) serves dynamic JSON. The `deriving(Json)` system (to_json, from_json) serves typed JSON. Make the naming clear: `Json.parse` returns `Json`, `User.from_json` returns `Result<User, String>`.
+2. **Add a bridge: `User.from_json_value(json: Json) -> Result<User, String>`.** This allows parsing JSON once with `Json.parse` and then converting to a typed struct. Useful when the top-level structure is dynamic but inner values are typed.
+3. **Document clearly** when to use each system: opaque for unknown/dynamic JSON, deriving for known schemas.
+4. **Consider naming the derive `deriving(Serialize)` or `deriving(Encode)` instead of `deriving(Json)`.** This avoids name collision with the `Json` type. However, `deriving(Json)` is more discoverable. The milestone context says `deriving(Json)`, so use that, but be prepared for naming confusion.
 
 **Detection:**
-- Stack overflow on `factorial(1000000, 1)` when TCE should prevent it
-- Wrong return value when a non-tail call is incorrectly marked as tail
+- User confusion about which JSON system to use
+- Type errors when trying to pass opaque Json to a typed from_json
+- Existing code using Json.parse breaks (should not happen if both coexist)
 
-**Confidence:** HIGH -- verified by reading Snow's MIR structure (mir/mod.rs) where Let, If, Match, and Block are all expression-valued.
+**Phase:** deriving(Json) design phase. The migration/coexistence strategy should be documented before implementation.
 
 ---
 
 ## Minor Pitfalls
 
-Issues that cause friction or minor bugs but are straightforward to fix.
+Issues that cause developer friction or minor bugs, but have straightforward fixes.
 
 ---
 
-### Pitfall 11: Intrinsic Declarations for Math Functions Must Match libm's Exact Signatures
+### Pitfall 13: SQLite C Library Linking Across Platforms
 
 **What goes wrong:**
-LLVM intrinsics for math (`llvm.sqrt.f64`, `llvm.pow.f64`, `llvm.fabs.f64`, etc.) take and return `f64`. Snow stores floats as f64 internally but passes them through the uniform u64 storage layer via bit-casting (f64 bits stored in i64). If the intrinsic declaration in `intrinsics.rs` uses `i64` parameters (matching Snow's storage convention) instead of `f64`, LLVM will either fail verification or produce incorrect results from bit reinterpretation.
+Snow compiles to native binaries via LLVM and links against the Rust runtime (`-lsnow_rt`). Adding SQLite requires linking against `libsqlite3`. On macOS, SQLite is bundled in `/usr/lib/libsqlite3.dylib`. On Linux, it may or may not be installed (`apt install libsqlite3-dev`). On Windows, there's no system SQLite at all.
 
-For non-intrinsic libm functions (declared as `extern double sqrt(double)`), the same issue applies: the LLVM function declaration must use `f64`, and the caller must bitcast from i64 to f64 before the call and f64 to i64 after.
-
-**Why it happens:**
-Snow's uniform u64 storage means float values are stored as `i64` at the LLVM level. Every float operation already does bitcast(i64 -> f64) before the operation and bitcast(f64 -> i64) after. Math functions must follow the same pattern, but it's easy to forget when adding new declarations.
+The alternative is to bundle SQLite source code (the "amalgamation" -- a single `sqlite3.c` file) and compile it into the runtime. This is the approach used by rusqlite's `bundled` feature. But this means the Snow runtime crate needs a `build.rs` that compiles C code, adding complexity.
 
 **Prevention:**
-1. Declare math intrinsics with `f64` parameter and return types in `intrinsics.rs`
-2. In codegen, bitcast arguments from i64 to f64 before calling, and bitcast result from f64 to i64 after
-3. Follow the exact same pattern used for existing float operations (arithmetic, comparison)
-4. Test with `Math.sqrt(2.0)` -- should return ~1.414, not garbage from bit reinterpretation
+1. **Bundle the SQLite amalgamation in the Snow runtime.** Compile `sqlite3.c` via a `cc::Build` in the snow-rt build script. This eliminates the system dependency entirely. The amalgamation is ~240KB of C code and compiles in seconds.
+2. **Link statically.** The bundled SQLite is compiled into `libsnow_rt.a`, so Snow programs don't need SQLite installed at runtime.
+3. **Set appropriate compile flags:** `SQLITE_THREADSAFE=1` (serialized mode for safety), `SQLITE_ENABLE_FTS5` (full-text search), `SQLITE_ENABLE_JSON1` (JSON functions).
 
 **Detection:**
-- Math functions return NaN or wildly wrong values
-- LLVM verification error about type mismatch on intrinsic call
+- "undefined symbol: sqlite3_open" at link time
+- Snow programs fail to run on systems without SQLite installed
+- Different SQLite versions causing behavioral differences
 
-**Confidence:** HIGH -- verified uniform u64 storage design (PROJECT.md line 165) and float handling pattern in codegen.
+**Phase:** SQLite driver build system setup. Do this first, before any runtime code.
 
 ---
 
-### Pitfall 12: String split() and join() -- Inconsistent Return Types Across Collections
+### Pitfall 14: PostgreSQL Password Authentication Hash Mismatch
 
 **What goes wrong:**
-`String.split(delimiter)` returns a `List<String>`. `List<String>.join(delimiter)` returns a `String`. These cross collection boundaries -- a String operation produces a List, and a List operation produces a String. The type checker and MIR lowerer must handle these cross-type returns.
+PostgreSQL supports multiple authentication methods: trust, password (cleartext), md5, and scram-sha-256. Most production setups use scram-sha-256 (the default since PostgreSQL 14). A wire protocol client that only implements cleartext password authentication will fail to connect to most PostgreSQL servers.
 
-The current stdlib method dispatch (lower.rs line 7234-7245) maps bare names to runtime functions based on context. If `split` is registered as both a String method and (in the future) a List method, name resolution becomes ambiguous. The v1.6 method resolution priority (module > service > variant > struct field > method, from PROJECT.md) handles this, but the MIR builtin name mapping is a flat table.
+The md5 authentication requires computing `md5(md5(password + username) + salt)` -- getting this wrong produces "password authentication failed" errors that look like wrong credentials, not wrong implementation.
 
-**Why it happens:**
-Operations like split/join bridge between String and List<String>. The type system handles this fine (different operations on different types), but the builtin name mapping and method dispatch must route correctly.
-
-**Consequences:**
-- `"a,b,c".split(",")` could resolve to the wrong function if `split` is ambiguous
-- Type checker infers wrong return type if method not properly registered
+scram-sha-256 is a multi-step challenge-response protocol (SASLInitialResponse, SASLContinue, SASLFinal) that requires HMAC-SHA-256 and PBKDF2. It's significantly more complex than md5.
 
 **Prevention:**
-1. Register `split` under the String module: `"string_split" => "snow_string_split"` in the builtin map
-2. Register `join` under the List module: `"list_join" => "snow_list_join"` in the builtin map
-3. The dot-syntax method dispatch (v1.6) already resolves based on receiver type, so `"hello".split(",")` routes to String and `["a", "b"].join(",")` routes to List
-4. For `find`, which exists on multiple collection types, ensure each variant is registered with its type-prefixed name
+1. **Implement scram-sha-256 from the start.** It's the default auth method and will be required for nearly all connections. Use a well-tested HMAC-SHA-256 library (ring, sha2) rather than implementing crypto from scratch.
+2. **Support md5 as a fallback.** Some older PostgreSQL installations still use md5. The implementation is simple: `md5(concat(md5(concat(password, username)), salt))`.
+3. **Support trust for development.** Trust authentication requires no password exchange -- the server just sends AuthenticationOk after the startup message.
+4. **Test against a real PostgreSQL instance.** A local Docker container with different auth configurations exercises the entire authentication flow.
 
 **Detection:**
-- Method resolution error or wrong method called when using split/join
-- Type inference produces wrong type for split result
+- "password authentication failed for user" errors that are actually auth protocol bugs
+- Connection works with `trust` but fails with `md5` or `scram-sha-256`
+- Hanging during SASL exchange (wrong message sequence)
 
-**Confidence:** HIGH -- verified builtin name mapping in lower.rs:7208-7340 and method dispatch in PROJECT.md.
+**Phase:** PostgreSQL driver authentication implementation. Must be complete before any query functionality.
 
 ---
 
-### Pitfall 13: GC Safety During Long-Running Sort Operations
+### Pitfall 15: Path Parameter Extraction From URL Needs Percent-Decoding
 
 **What goes wrong:**
-A sort operation on a large list (e.g., 100,000 elements) runs the comparator callback N*log(N) times. During this time, the actor is inside `snow_list_sort` (a Rust runtime function), not yielding to the scheduler. GC cannot run because GC only triggers at yield points (PROJECT.md line 152: "GC at yield points only"). Other actors on the same worker thread are starved.
+HTTP URLs can contain percent-encoded characters: `/users/John%20Doe` should extract the parameter `id = "John Doe"`. If the router extracts path parameters by simple string splitting without percent-decoding, the parameter value will be `"John%20Doe"` (with literal percent signs).
 
-More subtly: if the comparator callback is a closure that captures GC-managed values, and a GC happens to trigger inside the callback (hypothetically), the closure's captured values could be moved. But since GC only runs at yield points and sort doesn't yield, this specific scenario cannot happen in the current design. The real risk is scheduler starvation, not GC corruption.
-
-**Why it happens:**
-Runtime functions written in Rust (extern "C") are opaque to the scheduler. The reduction counter (`snow_reduction_check`) is not called during runtime operations, only between Snow-level function calls.
-
-**Consequences:**
-- Sorting a large list (>10K elements) causes visible latency spikes in other actors on the same thread
-- Reduction count not decremented during sort -- actor gets "free" CPU time proportional to list size
-- In extreme cases, supervisor timeouts fire because supervised actors can't respond while sort is running on their thread
+Similarly, path segments can contain characters that look like delimiters: `/files/a%2Fb` should be a single segment with value `a/b`, not two segments `a` and `b`.
 
 **Prevention:**
-1. For v1.9, accept this limitation. Sort operations are typically fast (< 1ms for 10K elements), and the same issue exists for all runtime functions (map, filter, reduce, etc.)
-2. If performance becomes an issue: insert periodic `snow_reduction_check()` calls inside the sort loop (every N comparisons). This requires the Rust sort implementation to call back into the runtime, which is architecturally complex.
-3. Document that large collection operations may cause brief scheduler pauses
+1. **Percent-decode path parameters after extraction.** Use a standard URL decoding function (or implement the trivial `%XX` -> byte mapping).
+2. **Decode AFTER splitting on `/`.** The URL should be split into segments first (on literal `/`), then each segment should be percent-decoded. This ensures that `%2F` within a segment doesn't create a false segment boundary.
+3. **Handle invalid percent-encoding gracefully.** `%ZZ` is not valid. Return a 400 Bad Request or pass the literal string through.
 
 **Detection:**
-- Actor response latency spikes correlating with large sort operations
-- Benchmark: sort 100K elements while measuring other actors' response time
+- Path parameters with spaces, unicode characters, or special characters are mangled
+- Routes with `/` in parameter values match wrong handlers
+- Tests using only ASCII alphanumeric paths pass but real-world URLs fail
 
-**Confidence:** MEDIUM -- this is a known architectural property of cooperative scheduling, not specific to sort.
+**Phase:** HTTP path parameter extraction. Simple to implement correctly, easy to get wrong if not considered.
 
 ---
 
-### Pitfall 14: zip() Must Handle Different-Length Lists Gracefully
+### Pitfall 16: SnowString Lifetime During PostgreSQL Wire Protocol Send
 
 **What goes wrong:**
-`List.zip(other)` should combine two lists into a list of tuples. If the lists have different lengths, the behavior must be well-defined. Three options: (a) truncate to shorter length (Erlang/Elixir, Python), (b) error on mismatch, (c) pad shorter with a default value. If not explicitly decided, different implementations may assume different semantics.
+The PostgreSQL wire protocol client needs to serialize query strings and parameter values into TCP messages. If the query string is a SnowString (GC-managed on the actor heap), and the TCP send involves a blocking syscall or an async yield point, the GC might run between constructing the message and completing the send. If the SnowString is the only reference and it's not on the stack during the GC scan, it gets collected and the TCP send reads freed memory.
 
-Snow's tuples already exist in the runtime (tuple.rs), stored as `{ u64 len, u64[] elements }`. The result `List<(A, B)>` requires creating tuple values for each pair. The GC must be able to trace through these tuples -- since tuples are heap-allocated and use conservative stack scanning, this should work automatically.
-
-**Why it happens:**
-zip semantics vary across languages. Without an explicit decision, the implementation might change between versions or behave inconsistently.
-
-**Consequences:**
-- User surprise when `[1,2,3].zip([4,5])` returns `[(1,4), (2,5)]` instead of an error
-- If tuples are not properly GC-traced, memory leak or use-after-free
+This is the same class of problem as Pitfall 1 (GC + C FFI) but for network I/O instead of SQLite. The difference is that PostgreSQL uses no C FFI -- the wire protocol is pure Rust/Snow. But the data still crosses a boundary (user space -> kernel space via TCP send).
 
 **Prevention:**
-1. Choose truncate-to-shorter semantics (matches Elixir and most functional languages)
-2. Document the choice explicitly
-3. Ensure tuple allocation uses `snow_gc_alloc_actor` (it already does per tuple.rs patterns)
+1. **Copy SnowString data into a Rust Vec<u8> (system-heap) message buffer before sending.** The wire protocol serializer should build the complete message in a system-heap buffer, copy all SnowString data into it, and then send the buffer. The SnowString can be collected after the copy without affecting the send.
+2. **This is the natural implementation anyway.** Building a wire protocol message means concatenating bytes into a buffer, which inherently copies the data. Just make sure the intermediate SnowString reference isn't the only one at any yield point.
 
 **Detection:**
-- Incorrect zip result when lists have different lengths
-- Memory leak in long-running actor that frequently zips lists
+- Corrupted query text in PostgreSQL server logs
+- "invalid message format" errors from PostgreSQL
+- Intermittent under high GC pressure; hard to reproduce
 
-**Confidence:** HIGH -- straightforward design decision; GC safety verified via existing tuple allocation pattern.
-
----
-
-### Pitfall 15: TCE Must Not Break Stack Traces for Debugging
-
-**What goes wrong:**
-Tail-call elimination replaces call frames with jumps. When an error occurs in a tail-called function, the stack trace only shows the final function in the chain, not the sequence of tail calls that led to it. For debugging, this can be confusing: `factorial(5, 1)` crashes and the stack trace shows only `factorial` at some intermediate value, not the original call site.
-
-**Why it happens:**
-TCE fundamentally trades debugging information for stack space. This is an inherent tradeoff, not a bug.
-
-**Consequences:**
-- Stack traces are less useful for debugging recursive functions
-- Users unfamiliar with TCE are confused by "missing" stack frames
-
-**Prevention:**
-1. Only apply TCE at optimization level >= 1. At -O0 (debug), preserve full call stacks.
-2. Alternatively, always apply TCE (since it's correctness-critical for deep recursion) but add a diagnostic note to error messages: "Note: some stack frames elided due to tail-call optimization"
-3. For v1.9, apply TCE unconditionally (it's needed for correctness in functional style) but document the stack trace impact
-
-**Detection:**
-- Users report "impossible" stack traces where function A calls B but only B appears in the trace
-
-**Confidence:** HIGH -- inherent property of TCE; well-documented in language implementation literature.
+**Phase:** PostgreSQL wire protocol serializer. Follow the copy-to-buffer pattern from the start.
 
 ---
 
 ## Phase-Specific Warnings
 
-| Phase Topic | Likely Pitfall | Mitigation |
-|---|---|---|
-| Math stdlib via libm | Missing `-lm` on Linux; wrong types for LLVM intrinsics | Use LLVM intrinsics where possible; add `-lm` to linker; bitcast i64<->f64 |
-| ? operator | Early return control flow breaks expression codegen; type inference for enclosing function return type | Lower to match+return in MIR; validate enclosing fn returns Result |
-| Receive timeout after clause | Null pointer dereference on timeout; timeout_body ignored | Add null check after snow_actor_receive; branch to timeout block |
-| Timer primitives | OS thread blocking instead of coroutine yield; unlinked timer actors | Yield-loop for sleep; return timer ref from send_after; link to caller |
-| Collection operations | Wrong comparator for generic sort; O(n) copy chains; name collision in builtin map | Reuse Ord callback synthesis; sort new copy in-place; type-prefix all names |
-| Tail-call elimination | reduction_check after tail call invalidates musttail; signature mismatch; tail position detection through expressions | Loop transform for self-recursion; skip reduction check for tail calls; recursive is_tail_position analysis |
-
----
-
-## Integration Pitfalls -- Features That Interact
-
-### ? Operator + Receive Timeout
-
-If a receive with timeout returns `Result<T, E>` (e.g., `Ok(msg)` on success, `Err("timeout")` on timeout), and the user writes `let msg = receive ... after 1000 -> Err("timeout") end?`, the `?` operator must work on the receive expression's result. This requires the receive codegen to produce a proper Result value (ConstructVariant), not a raw message pointer.
-
-**Prevention:** Design receive-with-timeout to return the message type directly (not Result), with the after clause being a separate expression that produces the same type. This matches Erlang semantics. If Result wrapping is desired, make it explicit in user code.
-
-### Collection sort() + Tail-Call Elimination
-
-A recursive mergesort implementation in Snow would benefit from TCE. But if sort is implemented in the Rust runtime (the recommended approach), TCE doesn't apply -- Rust's own TCE is not guaranteed. If sort is implemented in Snow itself, TCE matters but the callback overhead for comparisons makes the pure-Snow approach slower.
-
-**Prevention:** Implement sort in the Rust runtime for performance. TCE is irrelevant for runtime functions.
-
-### Timer Primitives + GC
-
-A sleeping actor (yielded, waiting for timer) still has a live heap. If many actors are sleeping (e.g., 10,000 `send_after` timer actors), they each hold a small heap that cannot be collected until they wake and exit. This is a minor memory concern but worth noting.
-
-**Prevention:** Keep timer actors minimal (no captured closures, no heap allocations beyond the message to send).
-
-### Math Stdlib + Collection Operations
-
-Users will want `list.map(fn (x) -> Math.sqrt(x) end)`. This requires Math functions to be callable from closures, which means they must be declared as known functions in the MIR lowerer. LLVM math intrinsics cannot be called indirectly (they must be direct calls). If `Math.sqrt` is lowered to `llvm.sqrt.f64`, it cannot be passed as a function pointer.
-
-**Prevention:** Implement math functions as runtime extern "C" functions (e.g., `snow_math_sqrt`) that internally call the LLVM intrinsic or libm. This way they can be referenced as function pointers for higher-order use. The indirection cost is negligible.
+| Phase Topic | Likely Pitfall | Severity | Mitigation |
+|-------------|---------------|----------|------------|
+| SQLite C FFI foundation | GC follows C pointers (Pitfall 1) | CRITICAL | Store sqlite3* as opaque u64, use SQLITE_TRANSIENT for binds |
+| SQLite C FFI foundation | Blocking calls starve scheduler (Pitfall 2) | CRITICAL | Dedicated DB thread or actor, never block worker threads |
+| SQLite C FFI foundation | Statement leak on crash (Pitfall 6) | CRITICAL | sqlite3_close_v2, terminate callback, per-connection stmt tracking |
+| SQLite C FFI foundation | Cross-platform linking (Pitfall 13) | MODERATE | Bundle amalgamation, static link via cc::Build |
+| PostgreSQL wire protocol | State machine async messages (Pitfall 5) | CRITICAL | Flexible message dispatch, handle async messages everywhere |
+| PostgreSQL wire protocol | Auth hash mismatch (Pitfall 14) | MODERATE | Implement scram-sha-256 from day one |
+| PostgreSQL wire protocol | SnowString lifetime in send (Pitfall 16) | MODERATE | Copy to system-heap buffer before TCP send |
+| PostgreSQL wire protocol | Connection lifecycle (Pitfall 10) | MODERATE | Connection pool actor, not per-request connections |
+| Parameterized queries | SQL injection (Pitfall 3) | CRITICAL | Params-first API, sqlite3_bind_*/PG extended protocol |
+| Parameterized queries | Row type integration (Pitfall 11) | MODERATE | Start with Map<String,String>, add typed results later |
+| deriving(Json) | Field order / nested types (Pitfall 4) | CRITICAL | Definition-order iteration, compile-time trait check for nested types |
+| deriving(Json) | Number precision (Pitfall 9) | MODERATE | Separate INT/FLOAT tags in SnowJson representation |
+| deriving(Json) | Migration from opaque Json (Pitfall 12) | LOW | Keep both systems, add bridge function |
+| HTTP path parameters | Routing ambiguity (Pitfall 7) | MODERATE | Priority order: exact > param > wildcard; trie-based router |
+| HTTP path parameters | Percent-decoding (Pitfall 15) | LOW | Decode after split on /, handle invalid encoding |
+| HTTP middleware | Ordering / short-circuit (Pitfall 8) | MODERATE | Onion model: fn(Request, Next) -> Response |
 
 ---
 
 ## Sources
 
-- Snow codebase analysis: codegen/expr.rs, codegen/mod.rs, mir/mod.rs, mir/lower.rs, snow-rt/src/actor/mod.rs, snow-rt/src/collections/list.rs, snow-rt/src/io.rs, link.rs
-- [LLVM Language Reference - musttail](https://llvm.org/docs/LangRef.html) -- caller/callee signature matching requirements
-- [Inkwell CallSiteValue documentation](https://thedan64.github.io/inkwell/inkwell/values/struct.CallSiteValue.html) -- set_tail_call_kind available on LLVM 18+
-- [LLVM musttail implementation review](https://reviews.llvm.org/D99517) -- original musttail implementation with constraints
-- [LLVM musttail backend failures](https://github.com/llvm/llvm-project/issues/54964) -- platform-specific musttail issues
-- [Tail call elimination approaches](https://notes.eatonphil.com/tail-call-elimination.html) -- loop transformation vs trampoline
-- [Rust libm crate](https://github.com/rust-lang/libm) -- pure Rust math functions for portability
-- [LLVM Tail Recursion Elimination pass](https://llvm.org/doxygen/TailRecursionElimination_8cpp_source.html) -- self-recursion to loop transformation
-- Snow PROJECT.md -- architectural decisions and constraints documentation
+### Official Documentation
+- [SQLite C/C++ Interface Introduction](https://sqlite.org/cintro.html) -- lifecycle rules for sqlite3/sqlite3_stmt objects
+- [SQLite Quirks, Caveats, and Gotchas](https://sqlite.org/quirks.html) -- SQLite-specific behavioral surprises
+- [SQLite Threading Modes](https://www.sqlite.org/threadsafe.html) -- multi-threaded SQLite configuration
+- [PostgreSQL Wire Protocol v3.2 (Frontend/Backend Protocol)](https://www.postgresql.org/docs/current/protocol.html) -- complete protocol specification
+- [PostgreSQL Message Flow](https://www.postgresql.org/docs/current/protocol-flow.html) -- detailed message exchange sequences
+- [OWASP SQL Injection Prevention Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/SQL_Injection_Prevention_Cheat_Sheet.html) -- parameterized query best practices
+- [OWASP Query Parameterization Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/Query_Parameterization_Cheat_Sheet.html) -- language-specific parameterization patterns
+
+### Domain Research
+- [Haskell FFI Safety and Garbage Collection](https://frasertweedale.github.io/blog-fp/posts/2022-09-23-ffi-safety-and-gc.html) -- GC + FFI interaction analysis (HIGH confidence)
+- [Boehm Conservative GC](https://www.hboehm.info/gc/conservative.html) -- why conservative GC requires pointer discipline (HIGH confidence)
+- [Hacking the Postgres Wire Protocol (PgDog)](https://pgdog.dev/blog/hacking-postgres-wire-protocol) -- practical protocol implementation experience (MEDIUM confidence)
+- [pgwire Rust Library](https://github.com/sunng87/pgwire) -- reference implementation of PG wire protocol in Rust (MEDIUM confidence)
+- [Threading Models in Coroutines and Android SQLite API](https://medium.com/androiddevelopers/threading-models-in-coroutines-and-android-sqlite-api-6cab11f7eb90) -- SQLite + coroutine interaction (MEDIUM confidence)
+- [SQLite Concurrent Writes](https://tenthousandmeters.com/blog/sqlite-concurrent-writes-and-database-is-locked-errors/) -- concurrency pitfalls analysis (MEDIUM confidence)
+- [Middleware Order in ASP.NET Core](https://bytecrafted.dev/posts/aspnet-core/middleware-order-best-practices/) -- middleware ordering patterns (MEDIUM confidence)
+- [Managing Path Parameters in Express.js](https://medium.com/@gilbertandanje/managing-path-parameters-in-express-js-avoiding-route-conflicts-d9f5eefe8e68) -- route conflict analysis (MEDIUM confidence)
+
+### Codebase Analysis (PRIMARY SOURCE)
+- `/Users/sn0w/Documents/dev/snow/crates/snow-rt/src/gc.rs` -- GC allocation entry points, conservative scanning model
+- `/Users/sn0w/Documents/dev/snow/crates/snow-rt/src/actor/heap.rs` -- per-actor heap, mark-sweep GC, free list, find_object_containing
+- `/Users/sn0w/Documents/dev/snow/crates/snow-rt/src/actor/scheduler.rs` -- M:N work-stealing scheduler, coroutine lifecycle
+- `/Users/sn0w/Documents/dev/snow/crates/snow-rt/src/actor/stack.rs` -- corosensei coroutine management, thread-local context
+- `/Users/sn0w/Documents/dev/snow/crates/snow-rt/src/json.rs` -- existing opaque SnowJson representation
+- `/Users/sn0w/Documents/dev/snow/crates/snow-rt/src/http/server.rs` -- actor-per-connection HTTP server
+- `/Users/sn0w/Documents/dev/snow/crates/snow-rt/src/http/router.rs` -- exact + wildcard router
+- `/Users/sn0w/Documents/dev/snow/crates/snow-codegen/src/codegen/types.rs` -- MirType to LLVM type mapping
+- `/Users/sn0w/Documents/dev/snow/crates/snow-codegen/src/mir/types.rs` -- Ty to MirType resolution, type registry

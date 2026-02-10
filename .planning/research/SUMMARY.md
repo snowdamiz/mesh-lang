@@ -1,259 +1,184 @@
 # Project Research Summary
 
-**Project:** Snow v1.9 Stdlib & Ergonomics
-**Domain:** Programming language compiler -- stdlib expansion (math, collections), error handling ergonomics (? operator), actor concurrency primitives (timers, receive timeouts), and compiler optimization (tail-call elimination)
-**Researched:** 2026-02-09
+**Project:** Snow v2.0 Database & Serialization
+**Domain:** Compiler infrastructure for database drivers, JSON serde, and HTTP enhancements
+**Researched:** 2026-02-10
 **Confidence:** HIGH
 
 ## Executive Summary
 
-Snow v1.9 adds six feature categories that transform the language from "compiler demo" to "production-ready functional language with actor concurrency." Research reveals that **all six features require ZERO new Rust crate dependencies** and build entirely on existing infrastructure. The recommended approach is a two-tier implementation strategy: (1) LLVM math intrinsics plus Rust f64 wrappers for math stdlib, (2) MIR-level desugaring for the ? operator to reuse existing pattern matching codegen, (3) codegen null-check branch to complete the already-parsed receive timeout infrastructure, (4) runtime timer thread with priority queue for timer primitives, (5) runtime functions following existing callback patterns for collection operations, and (6) MIR loop transformation for self-recursive tail-call elimination.
+This milestone adds database access (SQLite, PostgreSQL), JSON serialization (via `deriving(Json)`), and HTTP enhancements (path parameters, middleware) to the Snow compiled language. The recommended approach follows established patterns: compile-time code generation for JSON serde (following the existing `deriving(Eq/Hash/Debug)` infrastructure), C FFI for SQLite with bundled amalgamation, and pure Rust implementation of PostgreSQL wire protocol v3. HTTP enhancements are runtime-only changes requiring no compiler modifications.
 
-The key risk is tail-call elimination correctness. TCE is architecturally critical -- without it, every actor receive loop eventually stack overflows. The loop transformation approach (converting self-recursive tail calls to while loops at the MIR level) is more reliable than LLVM's musttail marker, which has strict ABI constraints incompatible with Snow's reduction checks. Self-recursive TCE covers 95%+ of real use cases including all actor loops. Mutual recursion can be deferred to a future milestone. Secondary risks include cross-platform linking (missing -lm on Linux), comparator callback synthesis for generic sort (must reuse existing Ord trait dispatch), and timer primitives blocking OS threads instead of yielding to the coroutine scheduler.
+The critical architectural decision is blocking I/O handling: SQLite/PostgreSQL operations block OS threads in Snow's M:N actor scheduler. Following the existing HTTP server pattern (server.rs: "Blocking I/O accepted, similar to BEAM NIFs"), database operations will use dedicated worker threads or accept blocking with explicit documentation. SQLite should use `libsqlite3-sys` with `bundled` feature (compiles from source, zero system dependencies). PostgreSQL should be pure Rust TCP to avoid async runtime conflicts with corosensei coroutines.
 
-The research is HIGH confidence across all areas: Stack recommendations are based on direct codebase analysis of all 12 crates plus LLVM/Inkwell API verification; Features are drawn from established patterns in Rust, Erlang, Elixir, Haskell; Architecture leverages Snow's existing extern "C" runtime ABI, uniform u64 storage, and MIR lowering patterns; Pitfalls are derived from 73,384 lines of codebase analysis and known compiler engineering challenges.
+The main risks are GC safety (conservative GC + C FFI requires careful pointer discipline), SQL injection (parameterized queries must be the primary API), and JSON number representation (Int/Float distinction requires splitting the existing JSON_NUMBER tag). All three are addressable through established patterns documented in PITFALLS.md.
 
 ## Key Findings
 
 ### Recommended Stack
 
-**ZERO new dependencies required.** Every feature is implemented through LLVM math intrinsics, Rust standard library (f64 methods link to system libm automatically), existing Inkwell 0.8 APIs for tail-call support, and internal compiler/runtime extensions. The only infrastructure change is adding `-lm` to the linker invocation on Linux (macOS links libm automatically via libSystem).
+The work requires 3-5 new Rust crate dependencies in `snow-rt` (SQLite C bindings, MD5/SHA-256/HMAC/PBKDF2 for PostgreSQL auth) and zero changes to compiler toolchain dependencies (Inkwell, LLVM). The division is clean: compiler-side work is 100% compile-time code generation following existing deriving patterns; runtime-side work is new extern "C" functions in `snow-rt`.
 
-**Core technologies (unchanged):**
-- Rust stable 2021 edition -- compiler implementation, no changes
-- Inkwell 0.8.0 with llvm21-1 feature -- LLVM IR generation, adds math intrinsics via add_function("llvm.sqrt.f64", ...)
-- LLVM 21.1 -- backend codegen + optimization, supports set_tail_call_kind API
-- Rowan 0.16 -- CST for parser, add TRY_EXPR syntax kind for ? operator
-- ena 0.14 -- HM type inference, validate ? operator return type constraints
-- ariadne 0.6 -- diagnostic error reporting
-- corosensei 0.3 -- stackful coroutines for actors, timer primitives must yield not block
+**Core technologies:**
+- `libsqlite3-sys` 0.36 with `bundled` feature: Compiles SQLite 3.51.1 from source, zero system dependencies, cross-platform, used by rusqlite (15K+ stars)
+- PostgreSQL wire protocol v3 (pure Rust): No libpq dependency, full control, avoids Tokio runtime conflicts with corosensei M:N scheduler
+- `md5` 0.8 + `sha2` 0.10 + `hmac` 0.12 + `pbkdf2` 0.12: PostgreSQL authentication (SCRAM-SHA-256 is default since PG 10, mandatory on cloud providers)
+- Existing deriving infrastructure: JSON serde follows identical pattern to existing `deriving(Debug)`, `deriving(Eq)`, `deriving(Hash)` in mir/lower.rs
 
-**Runtime (snow-rt) -- NO NEW DEPENDENCIES:**
-- Math functions use Rust's f64 methods (sin(), cos(), sqrt(), etc.) which link to system libm
-- Timer primitives use std::thread for dedicated timer thread, std::collections::BinaryHeap for priority queue
-- Collection operations use Rust's slice::sort_by with callback pattern already established for list_map/list_filter
-- All new functions follow existing extern "C" ABI patterns
-
-**What NOT to add:**
-- libm Rust crate (unnecessary -- Rust std f64 methods already use system libm)
-- num-traits (unnecessary -- Snow only needs concrete f64 operations)
-- Any sort crate (Rust's TimSort is optimal for this scale)
-- timer/tokio-timer crates (actor scheduler integration requires custom implementation)
-- regex (string split/join use exact matching, not patterns)
+**Critical version requirements:**
+- None. All new dependencies are stable. SQLite bundled version is 3.51.1. PostgreSQL wire protocol is stable since 2003 (v3).
 
 ### Expected Features
 
 **Must have (table stakes):**
-- Math stdlib (abs, min, max, pow, sqrt, floor, ceil, round, pi, type conversions) -- universal across all languages, needed immediately
-- ? operator for Result/Option propagation -- Rust proved this is the gold standard for error ergonomics
-- Receive timeout completion -- 80% implemented, currently segfaults on timeout instead of executing after clause body
-- Timer primitives (sleep, send_after) -- Erlang/Elixir foundational pattern, required for actor timeouts/heartbeats/retries
-- Core collection operations (List.sort, find, any, all, contains, String.split/join/to_int/to_float) -- table stakes for functional language
-- Self-recursive tail-call elimination -- hard requirement for actor-based language; without TCE, every actor receive loop stack overflows
+- `deriving(Json)` for structs: Automatic JSON encode/decode from struct metadata, universal across Go/Rust/Elixir
+- SQLite driver with parameterized queries: `Sqlite.open`, `Sqlite.query`, `Sqlite.execute`, `Sqlite.close` — matches Go database/sql, Rust rusqlite patterns
+- PostgreSQL driver with parameterized queries: Same API surface as SQLite (connect/execute/query/close) using PG native `$1, $2` syntax
+- HTTP path parameters: `/users/:id` captures `id` param, universal across Express, Phoenix, Go 1.22, Axum
+- HTTP middleware: `fn(Request, Next) -> Response` pattern, enables logging, auth, CORS — universal across all web frameworks
 
 **Should have (competitive):**
-- Extended collection operations (zip, flat_map, enumerate, take, drop, Map.merge/to_list/from_list, Set.difference/to_list/from_list)
-- Type-safe receive timeouts (timeout body type checked against receive arm types at compile time, unlike Erlang's runtime typing)
-- Timer.send_after with typed Pid (ensures delayed message matches target actor's expected type)
-- @tailrec annotation (compile error if function NOT tail-recursive, like Scala)
+- Consistent database API: Both drivers return `Result<List<Map<String, String>>, String>` for queries — switching databases is straightforward
+- JSON pretty-print: `JSON.encode_pretty(value)` for debugging
+- Typed parameter binding: Runtime inspects Snow value type tag and calls `sqlite3_bind_int64` for Int, `sqlite3_bind_text` for String — more ergonomic than all-text
 
 **Defer (v2+):**
-- Mutual tail-call elimination via LLVM musttail (complex ABI constraints, 5% edge case)
-- From trait for ? error type conversion (large type system feature)
-- Timer.cancel/read/send_interval (infrastructure complexity)
-- Trigonometric/logarithmic math functions beyond basics (defer to second batch)
-- Lazy iterators (adds complexity, eager evaluation sufficient for v1.9)
+- ORM/query builder: Massive scope, controversial in Go/Rust communities, Snow's type system not ready
+- Connection pooling: Single connection is fine for v2.0, pool is a future enhancement
+- Struct-to-row mapping: Return `List<Map<String, String>>`, users extract fields manually
+- SCRAM-SHA-256 (initially): MD5 auth covers 90% of local/dev use; SCRAM adds crypto complexity but is needed for production
 
 ### Architecture Approach
 
-Snow's linear pipeline (lexer -> parser -> typeck -> MIR -> codegen -> linker) enables a surgical integration strategy where each feature targets specific layers without cross-cutting changes. Math stdlib adds runtime functions + builtin registrations (3 files). The ? operator adds parser postfix recognition, typeck validation, and MIR desugaring to existing match+return nodes (NO new codegen). Receive timeout completion fixes codegen null-check gap in expr.rs (1 function change). Timer primitives add dedicated runtime thread + scheduler integration via existing send-wake path. Collection operations follow established callback pattern (function pointer + environment pointer for closures). Tail-call elimination adds first post-lowering MIR transformation pass, converting self-recursive tail calls to while loops with mutable loop variables.
+The architecture follows Snow's established patterns: compiler generates MIR functions that call runtime intrinsics, runtime exposes `extern "C"` functions, no runtime reflection. JSON serde is 100% compile-time — the compiler emits LLVM IR that calls `snow_json_from_*` field-by-field when `deriving(Json)` is present. Database drivers are runtime-only modules with no compiler changes beyond typeck (adding module types) and intrinsics (declaring extern functions).
 
-**Major components (integration points):**
-1. snow-typeck/builtins.rs -- register ~35 new function type signatures (math, timer, collection ops)
-2. snow-codegen/intrinsics.rs -- declare ~30 new extern "C" runtime functions in LLVM module
-3. snow-codegen/mir/lower.rs -- desugar ? operator to match+return, resolve Ord callbacks for sort
-4. snow-codegen/codegen/expr.rs -- add null-check branch for receive timeout, bitcast i64<->f64 for math calls
-5. snow-codegen/mir/tce.rs (NEW) -- tail position analysis + loop transformation pass
-6. snow-rt/math.rs (NEW) -- f64 wrappers around Rust math methods
-7. snow-rt/timer.rs (NEW) -- dedicated timer thread with priority queue, send integration
-8. snow-rt/collections/list.rs -- add sort/find/zip/etc following existing map/filter/reduce pattern
-9. snow-rt/collections/string.rs -- add split/join/to_int/to_float functions
-10. snow-codegen/link.rs -- add -lm flag for Linux libm linking (1 line change)
+**Major components:**
+1. **MIR lowering (mir/lower.rs)**: Generate `ToJson__to_json__Type` and `FromJson__from_json__Type` functions from struct field metadata — follows existing `generate_hash_struct` pattern at lines 2658-2713
+2. **Runtime JSON (json.rs)**: Add structured JSON construction/extraction functions (`snow_json_object_new/put/get`, `snow_json_array_new/push`) — existing `snow_json_from_*` functions provide primitives
+3. **Runtime SQLite (db/sqlite.rs)**: Wrap SQLite C API via libsqlite3-sys — opaque handle pattern matching router.rs line 59 (`Box::into_raw`)
+4. **Runtime PostgreSQL (db/postgres.rs)**: Pure Rust TCP implementation of Parse/Bind/Execute/Sync extended query protocol — 500-800 lines total based on rust-postgres `postgres_protocol` subcrate
+5. **Runtime HTTP (router.rs, server.rs)**: Extend path matching with `:param` segment extraction, add middleware chain execution before handler dispatch
 
 ### Critical Pitfalls
 
-1. **Math FFI breaks cross-platform linking** -- macOS bundles libm in libSystem (automatic), Linux requires explicit -lm flag. Current link.rs lacks -lm, causing "undefined symbol" errors on Linux. Fix: add -lm unconditionally in link.rs; use LLVM intrinsics (llvm.sqrt.f64, llvm.floor.f64, etc.) where available to avoid library dependency.
+1. **Conservative GC + SQLite pointers**: Snow's GC (heap.rs) scans coroutine stacks and GC-managed objects. SQLite pointers (`sqlite3*`, `sqlite3_stmt*`) point to C heap. If a GC-managed SnowString is passed to SQLite and the only reference is held by SQLite (not on Snow stack), the GC will collect it and SQLite reads freed memory. **Mitigation**: Store sqlite3 pointers as opaque u64 (not GC-allocated), always use `SQLITE_TRANSIENT` for text binds so SQLite copies immediately, copy SQL strings to C heap before FFI calls.
 
-2. **? operator requires early return in expression-oriented codegen** -- expr? must (1) unwrap Ok(v) to v, (2) early-return Err(e) from enclosing function. Naive Return emission leaves builder in terminated block, breaking mid-expression usage. Fix: lower ? to match { Ok(v) -> v, Err(e) -> return Err(e) } in MIR, reusing existing pattern match codegen that handles Never-typed arms.
+2. **Blocking I/O starves M:N scheduler**: SQLite `sqlite3_step()` and PostgreSQL TCP I/O are blocking C/syscalls. When an actor blocks, the entire OS worker thread blocks. Since corosensei coroutines are `!Send` and thread-pinned (scheduler.rs line 2), all actors on that worker are starved. With N workers and N concurrent queries, the entire scheduler deadlocks. **Mitigation**: Follow existing HTTP server pattern (server.rs: "Blocking I/O accepted"), dedicate worker threads for database operations, or implement connection pool as a single actor (gen_server pattern).
 
-3. **Tail-call elimination with musttail has strict signature matching** -- LLVM's musttail requires identical caller/callee types, immediate ret, no intervening operations. Snow's reduction checks (snow_reduction_check() after every call) invalidate tail position. Fix: use MIR loop transformation for self-recursion (rewrite to while loop), which is 100% reliable and covers all actor loops. Defer mutual recursion to future.
+3. **SQL injection through string interpolation**: Snow has string concatenation. Without parameterized queries as the primary API, users will construct SQL via `"SELECT * WHERE name = '" ++ input ++ "'"` leading to SQL injection. **Mitigation**: Make parameterized queries the primary API (`Db.query(conn, "SELECT * WHERE name = ?", [name])`), use `sqlite3_prepare_v2` + `sqlite3_bind_*` for all queries with params, PostgreSQL extended protocol (Parse/Bind/Execute) naturally separates query from params, document prominently that string concatenation is insecure.
 
-4. **Receive timeout codegen ignores timeout_body** -- parser/typeck/MIR all support after clause, but codegen explicitly discards timeout_body with "timeout_body: _" (expr.rs:129). When snow_actor_receive returns null (timeout), codegen loads from null pointer, segfault. Fix: add icmp eq msg_ptr, null branch to timeout block, codegen timeout_body, merge with phi node.
+4. **deriving(Json) field order and nested types**: Struct field iteration order must be stable (definition order, not HashMap order). Nested types require compile-time trait resolution: if `User { addr: Address }` derives Json, Address must also have Json impl or compile error. **Mitigation**: Use `Vec<FieldInfo>` (already in StructDefInfo), maintain definition order through AST -> typeck -> MIR -> codegen, add compile-time check that all field types have ToJson/FromJson implementations.
 
-5. **Collection sort requires comparator callback synthesis per element type** -- sort(list) needs correct Ord callback: snow_int_compare for List<Int>, snow_string_compare for List<String> (doesn't exist yet, tech debt at lower.rs:5799), Ord__compare__Point for List<Point>. Wrong comparator causes silent data corruption (comparing string pointers as integers). Fix: reuse existing comparator synthesis from snow_list_compare codegen, add missing snow_string_compare to runtime.
+5. **PostgreSQL wire protocol state machine**: Server can send asynchronous messages (NoticeResponse, ParameterStatus) at ANY time, even mid-query. Naive sequential reading (expect RowDescription -> DataRow -> CommandComplete) hangs on unexpected NoticeResponse. **Mitigation**: Implement as state machine with message dispatch loop, every state handles async messages, buffer extended protocol messages until Sync, test with pgbouncer/connection poolers.
 
 ## Implications for Roadmap
 
-Based on research, suggested phase structure follows dependency chains and risk isolation:
+Based on research, suggested phase structure follows dependency chains and risk management:
 
-### Phase 1: Math Stdlib
-**Rationale:** Zero dependencies on other v1.9 features. Follows exact same pattern as existing string/file/JSON stdlib. Lowest risk, highest confidence. Provides immediate user value. Can be parallelized with all other phases.
+### Phase 1: JSON Serde Runtime Helpers + deriving(Json) for Structs
+**Rationale:** Self-contained, touches all compiler layers but uses established patterns (existing deriving for Eq/Debug/Hash), no external dependencies, prerequisite for database result handling (typed parameters use JSON-like value representation)
+**Delivers:** `deriving(Json)` on structs with primitives, nested structs, Option, List fields — full struct-aware JSON roundtrip
+**Addresses:** Table stakes feature from FEATURES.md (automatic JSON serialization is universal)
+**Avoids:** Pitfall 4 (field order) through definition-order iteration, Pitfall 9 (number precision) through separate INT/FLOAT tags
+**Stack:** Existing deriving infrastructure, existing SnowJson runtime (json.rs), new `snow_json_object_*` and `snow_json_array_*` functions
 
-**Delivers:** 19 math functions (sin, cos, tan, sqrt, pow, floor, ceil, round, abs, min, max, etc.) + 3 constants (pi, e, inf) + type conversions (Int.to_float, Float.to_int)
+### Phase 2: deriving(Json) for Sum Types + Generics
+**Rationale:** Extends Phase 1 to full language coverage, sum types use Constructor patterns already established, completes JSON serde before database work begins
+**Delivers:** Sum types encode as `{"tag":"Variant","fields":[...]}`, generic structs like `Wrapper<T>` derive Json via monomorphization
+**Addresses:** Differentiator from FEATURES.md (few languages handle sum type JSON elegantly)
+**Stack:** MIR `ensure_monomorphized_struct_trait_fns` (lines 1656-1681 in lower.rs) for generics, sum type pattern matching for variant encoding
 
-**Addresses:** Table stakes math feature set from FEATURES.md
+### Phase 3: HTTP Path Parameters
+**Rationale:** Small runtime-only change, no compiler modifications, enables REST APIs, needed before middleware (middleware should see path params)
+**Delivers:** `/users/:id` pattern matching, `Request.param(req, "id")` accessor, method-specific routes (`HTTP.get`, `HTTP.post`)
+**Addresses:** Table stakes from FEATURES.md (path parameters universal in web frameworks)
+**Avoids:** Pitfall 7 (routing ambiguity) through explicit priority: exact > parameterized > wildcard
+**Stack:** Existing router.rs (segment matching), existing server.rs (request struct), new `snow_http_request_param` function
 
-**Avoids:** Cross-platform linking pitfall via -lm flag + LLVM intrinsics
+### Phase 4: HTTP Middleware
+**Rationale:** Builds on closures (working) and path params (Phase 3), runtime-only using existing closure calling convention
+**Delivers:** `HTTP.use(router, middleware_fn)` global middleware, `fn(Request, Next) -> Response` onion model
+**Addresses:** Table stakes from FEATURES.md (middleware for logging, auth, CORS is universal)
+**Avoids:** Pitfall 8 (execution order) through Next-style chaining, supports both pre-handler and post-handler logic
+**Stack:** Existing closure system (fn_ptr + env_ptr), router middleware storage, server chain execution
 
-**Estimated effort:** 2-3 days
+### Phase 5: SQLite Driver
+**Rationale:** C FFI well-understood, single-file database with no network complexity, establishes parameterized query patterns reused by PostgreSQL
+**Delivers:** `Sqlite.open`, `Sqlite.query`, `Sqlite.execute`, `Sqlite.close` with `?` placeholders
+**Addresses:** Table stakes from FEATURES.md (SQLite is most common embedded database)
+**Avoids:** Pitfall 1 (GC + C pointers) via opaque u64 handles and SQLITE_TRANSIENT, Pitfall 2 (blocking) explicitly documented, Pitfall 3 (SQL injection) via params-first API, Pitfall 6 (statement leaks) via `sqlite3_close_v2` and terminate callbacks
+**Stack:** `libsqlite3-sys` 0.36 bundled feature, new db/sqlite.rs module (~300 lines)
 
-**Research flag:** No research needed -- standard patterns, well-documented
-
-### Phase 2: Receive Timeout Codegen Completion
-**Rationale:** Fills gap in existing infrastructure (parser/typeck/MIR already support it). Small, well-scoped change (1 function in expr.rs). Unblocks Phase 4 (timer primitives depend on receive timeouts working). Second-lowest risk.
-
-**Delivers:** Working receive...after clause that executes timeout_body when timeout fires instead of segfaulting
-
-**Addresses:** Table stakes actor concurrency feature
-
-**Avoids:** Null pointer dereference pitfall via null-check branch before message load
-
-**Estimated effort:** 0.5-1 day
-
-**Research flag:** No research needed -- simple null-check branch pattern
-
-### Phase 3: ? Operator for Result/Option
-**Rationale:** Parser + typechecker + MIR lowering changes, but desugars to existing Match + Return codegen. No runtime changes. Medium complexity but well-understood semantics. Independent of other v1.9 features. High ergonomic value.
-
-**Delivers:** expr? syntax for unwrapping Result<T,E> and Option<T> with early return on Err/None
-
-**Addresses:** Error handling ergonomics, differentiator with type-safe propagation
-
-**Avoids:** Early return control flow pitfall via MIR desugaring to match+return
-
-**Estimated effort:** 3-5 days
-
-**Research flag:** No research needed -- Rust ? operator desugaring thoroughly documented
-
-### Phase 4: Timer Primitives
-**Rationale:** Depends on Phase 2 (receive timeouts) because timers typically used with receive...after patterns. Runtime timer thread is self-contained. Medium complexity in timer wheel + send integration.
-
-**Delivers:** Timer.sleep(ms) and Timer.send_after(pid, ms, msg) with timer reference return for future cancellation
-
-**Addresses:** Table stakes actor patterns (heartbeat, retry, delayed processing)
-
-**Avoids:** OS thread blocking pitfall via yield-loop for sleep + dedicated timer thread for send_after
-
-**Estimated effort:** 2-3 days
-
-**Research flag:** No research needed -- Erlang/OTP timer patterns well-established
-
-### Phase 5: Collection Operations
-**Rationale:** Depends on existing Ord trait infrastructure. Follows callback pattern of list_eq/list_compare. Medium complexity in both runtime (merge sort) and MIR lowering (Ord callback resolution). Can be split into 5A (core: sort/find/any/all/contains/split/join) and 5B (extended: zip/flat_map/enumerate/take/drop/etc.).
-
-**Delivers:**
-- 5A: List.sort, List.find, List.any, List.all, List.contains, String.split, String.join, String.to_int, String.to_float
-- 5B: List.zip, List.flat_map, List.enumerate, List.take, List.drop, Map.merge/to_list/from_list, Set.difference/to_list/from_list
-
-**Addresses:** Table stakes collection operations for functional language
-
-**Avoids:** Comparator synthesis pitfall via reusing Ord callback pattern; O(n^2) copy chains via sort-in-place on new copy
-
-**Estimated effort:** 5A: 3-4 days, 5B: 2-3 days
-
-**Research flag:** No research needed -- standard collection operations across all functional languages
-
-### Phase 6: Tail-Call Elimination (Self-Recursive)
-**Rationale:** Most complex feature. Independent of other features but highest risk. The MIR transformation pass is a new compiler pass pattern (first post-lowering pass). Should be built last to avoid blocking other features if it encounters difficulties. CRITICAL for correctness (every actor loop requires this).
-
-**Delivers:** Self-recursive tail calls converted to loops at MIR level, preventing stack overflow in actor receive loops and recursive list processing
-
-**Addresses:** Hard requirement for actor-based language -- without TCE, actors crash on deep recursion
-
-**Avoids:** musttail signature matching pitfall via MIR loop transformation; tail position detection pitfall via recursive is_tail_position analysis through Let/If/Match/Block expressions
-
-**Estimated effort:** 4-6 days
-
-**Research flag:** Standard TCE patterns well-documented, but MIR pass integration needs careful design
+### Phase 6: PostgreSQL Driver
+**Rationale:** Most complex — pure Rust TCP + binary wire protocol, depends on patterns established by SQLite (parameterized query API), risk contained to runtime only
+**Delivers:** `Pg.connect`, `Pg.query`, `Pg.execute`, `Pg.close` with `$1, $2` placeholders, MD5 and SCRAM-SHA-256 auth
+**Addresses:** Table stakes from FEATURES.md (PostgreSQL is most common production database)
+**Avoids:** Pitfall 5 (state machine) through flexible message dispatch, Pitfall 2 (blocking) same as SQLite, Pitfall 14 (auth) via scram-sha-256 from day one
+**Stack:** `md5` 0.8, `sha2` 0.10, `hmac` 0.12, `pbkdf2` 0.12, std::net::TcpStream, new db/postgres module (~800 lines)
 
 ### Phase Ordering Rationale
 
-1. **Parallel Phase 1-3:** Math stdlib, receive timeouts, and ? operator are fully independent and can be implemented in parallel by different engineers or sequentially in any order.
-
-2. **Phase 4 depends on Phase 2:** Timer primitives need receive timeouts working because sleep() is implemented as receive with timeout, and timer patterns typically use receive...after.
-
-3. **Phase 5 is independent:** Collection operations can proceed in parallel with Phases 1-4, or after Phase 3 if wanting to test ? operator with collection operations that return Option.
-
-4. **Phase 6 last:** TCE is highest complexity and most architecturally significant (first MIR transformation pass). Building it last avoids blocking other features and allows testing TCE against code using new stdlib functions.
-
-**Critical path:** Phase 2 -> Phase 4 (receive timeouts enable timer primitives)
-
-**Parallelizable:** Phases 1, 3, 5 can all proceed independently
-
-**Risky:** Phase 6 should be isolated and well-tested
+- **JSON serde before databases**: Typed parameters for database queries use the JSON value representation (SnowJson tagged union) to determine bind types (Int -> `sqlite3_bind_int64`, String -> `sqlite3_bind_text`)
+- **HTTP before databases**: Path parameters and middleware are simpler, give confidence in runtime changes before tackling C FFI and wire protocols
+- **SQLite before PostgreSQL**: SQLite is simpler (no network, no auth), establishes the database API pattern (open/query/execute/close, parameterized queries, Result-based errors), PostgreSQL follows the same user-facing API
+- **Phases 1-4 are compiler/HTTP foundation, Phases 5-6 are database drivers**: Clean separation allows parallel work (compiler team on JSON serde, runtime team on HTTP) before converging on databases
 
 ### Research Flags
 
-**Phases needing deeper research during planning:** NONE -- all six features have well-documented patterns
+Phases likely needing deeper research during planning:
+- **Phase 6 (PostgreSQL)**: SCRAM-SHA-256 crypto implementation details, wire protocol edge cases (async messages, error recovery), testing with connection poolers — ARCHITECTURE.md covers basics but production hardening needs validation
 
-**Phases with standard patterns (skip research-phase):**
-- Phase 1 (Math Stdlib): Established stdlib pattern, LLVM intrinsics documented
-- Phase 2 (Receive Timeout): Codegen null-check branch, straightforward
-- Phase 3 (? Operator): Rust desugaring pattern thoroughly documented
-- Phase 4 (Timer Primitives): Erlang/OTP timer patterns well-established
-- Phase 5 (Collection Operations): Universal functional language collection APIs
-- Phase 6 (TCE): Textbook compiler optimization, loop transformation pattern
+Phases with standard patterns (skip research-phase):
+- **Phase 1-2 (JSON serde)**: Deriving infrastructure proven (5 traits), MIR lowering pattern established (lines 1574-1688 lower.rs), high confidence
+- **Phase 3-4 (HTTP)**: Router/middleware patterns universal (Express, Axum, Plug), closure calling convention established, straightforward implementation
+- **Phase 5 (SQLite)**: C FFI well-documented, `libsqlite3-sys` + rusqlite are reference implementations (15K+ stars), bundled feature solves cross-platform linking
 
 ## Confidence Assessment
 
 | Area | Confidence | Notes |
 |------|------------|-------|
-| Stack | HIGH | Based on direct codebase analysis of all 12 crates, LLVM/Inkwell API verification, platform linking research. Zero new dependencies verified. |
-| Features | HIGH | All features drawn from Rust, Erlang/Elixir, Haskell established patterns with official documentation. Table stakes vs. differentiators validated across multiple languages. |
-| Architecture | HIGH | Direct inspection of 73,384 lines of Snow codebase. Integration points verified in builtins.rs, intrinsics.rs, lower.rs, expr.rs. Existing patterns (callback dispatch, MIR lowering, extern "C" ABI) confirmed. |
-| Pitfalls | HIGH | Derived from codebase analysis (receive timeout gap verified at expr.rs:129, reduction check insertion verified at expr.rs:634, tech debt note verified at lower.rs:5799) plus LLVM musttail constraints from Language Reference. |
+| Stack | HIGH | All technologies verified: libsqlite3-sys bundled feature is standard (used by rusqlite), PostgreSQL wire protocol v3 is stable and well-documented, MD5/SHA-256 crates are RustCrypto (battle-tested), deriving infrastructure exists and is proven |
+| Features | HIGH | All features are table stakes in respective domains: JSON serde is universal (Rust serde, Go struct tags, Elixir Jason), SQLite/PostgreSQL are standard databases, HTTP path params/middleware are in every web framework |
+| Architecture | HIGH | All patterns verified through direct codebase analysis: deriving generation pattern at lines 2658-2713, opaque handle pattern at router.rs line 59, extern "C" pattern in 512 lines of intrinsics.rs, blocking I/O pattern explicitly documented in server.rs |
+| Pitfalls | HIGH | All pitfalls based on direct source analysis (GC from heap.rs, scheduler from scheduler.rs, existing JSON from json.rs) + official protocol docs (SQLite C API, PostgreSQL wire protocol v3) + OWASP security guides |
 
 **Overall confidence:** HIGH
 
 ### Gaps to Address
 
-**Minor gaps (handle during implementation):**
-- Float sorting with NaN handling: Either error at compile time ("Float does not implement Ord") or use total ordering that puts NaN last. Decision needed during Phase 5 planning.
-- Timer cancellation API design: send_after returns timer reference (PID of timer actor) but Timer.cancel not in v1.9 scope. Document that timer references are opaque for future use.
-- Error type conversion in ? operator: Rust uses From trait; Snow requires exact E type match in v1.9. Document limitation, defer From trait to future milestone.
-- @tailrec annotation: Differentiator feature that enforces TCE at compile time. Can be added any time after Phase 6 completes, but not blocking for v1.9.
+**PostgreSQL SCRAM-SHA-256 complexity**: Research covers the protocol flow but crypto implementation (HMAC-SHA-256, PBKDF2, base64 encoding, nonce generation) needs careful testing. The `sha2`, `hmac`, `pbkdf2` crates provide building blocks but the SCRAM message exchange is stateful and failure-prone. Mitigation: implement MD5 auth first (simple), validate with local PostgreSQL instances, add SCRAM in a sub-phase with thorough integration tests against real PG 14+ servers.
 
-**No blocking gaps.** All six features have clear implementation paths with HIGH confidence.
+**Database connection lifecycle in actor model**: Research identifies blocking I/O as a risk but the solution (dedicated worker threads vs connection pool actor vs accept blocking) is a design choice requiring benchmarking. Mitigation: start with explicit blocking (document that database operations block the actor), measure performance under load, add connection pooling in Phase 7 if needed.
+
+**JSON number type ambiguity**: Current SnowJson uses one NUMBER tag for both Int and Float. Splitting to separate INT/FLOAT tags is necessary for round-trip fidelity but affects existing opaque JSON code. Mitigation: the split is backward-compatible at the runtime level (existing JSON parser can produce both tags), update `snow_json_parse` in Phase 1 to distinguish types, verify existing HTTP/JSON tests still pass.
 
 ## Sources
 
 ### Primary (HIGH confidence)
-- Direct codebase analysis: all 12 crates in workspace (snow-common, snow-lexer, snow-parser, snow-typeck, snow-codegen, snow-rt)
-- snow-codegen/src/codegen/expr.rs line 129 -- timeout_body explicitly ignored
-- snow-codegen/src/mir/lower.rs lines 7160-7172 -- timeout_ms and timeout_body already lowered
-- snow-typeck/src/infer.rs lines 5985-5991 -- after clause already type-checked
-- snow-common/src/token.rs line 126 -- Question token exists
-- snow-codegen/src/link.rs -- linker invocation, missing -lm flag
-- snow-rt/src/actor/mod.rs lines 314-419 -- receive timeout returns null
-- snow-rt/src/collections/list.rs -- existing list operation patterns (map, filter, reduce)
-- Inkwell CallSiteValue docs -- set_tail_call_kind available on llvm21-1
-- LLVM Language Reference -- math intrinsics (llvm.sqrt.f64, llvm.sin.f64, etc.) stable built-in
-- LLVM musttail semantics -- caller/callee signature requirements
+- Snow codebase direct analysis:
+  - `crates/snow-codegen/src/mir/lower.rs` lines 1574-1688 (deriving infrastructure), lines 2658-2713 (hash generation pattern), lines 7583-7787 (module registration)
+  - `crates/snow-rt/src/json.rs` lines 82-91 (SnowJson representation), lines 288-292 (snow_json_from_float)
+  - `crates/snow-rt/src/actor/heap.rs` lines 390-448 (conservative GC scanning), lines 460-490 (find_object_containing)
+  - `crates/snow-rt/src/actor/scheduler.rs` line 2 (coroutine threading model), line 607 (process exit)
+  - `crates/snow-rt/src/http/router.rs` lines 42-59 (exact/wildcard matching, opaque handle)
+  - `crates/snow-rt/src/http/server.rs` lines 197-313 (actor-per-connection, blocking I/O comment)
+- PostgreSQL Wire Protocol v3: https://www.postgresql.org/docs/current/protocol.html (message formats, startup flow, extended query)
+- PostgreSQL Authentication: https://www.postgresql.org/docs/current/sasl-authentication.html (SCRAM-SHA-256), https://www.postgresql.org/docs/current/auth-password.html (MD5 method)
+- SQLite C/C++ Interface: https://sqlite.org/cintro.html (API functions), https://sqlite.org/threadsafe.html (threading modes)
+- libsqlite3-sys crate: https://crates.io/crates/libsqlite3-sys (bundled feature), https://docs.rs/libsqlite3-sys (FFI signatures)
 
-### Secondary (HIGH confidence -- official docs)
-- Rust Reference: Operator Expressions (? operator desugaring)
-- Erlang System Documentation: Expressions (receive...after semantics)
-- Erlang timer module stdlib v7.2
-- Erlang math module stdlib v7.2
-- LLVM Tail Recursion Elimination pass (loop transformation approach)
-- Inkwell 0.8 documentation
+### Secondary (MEDIUM confidence)
+- rust-postgres: https://github.com/sfackler/rust-postgres (wire protocol reference implementation, 2K+ stars)
+- rusqlite: https://docs.rs/rusqlite/ (SQLite wrapper patterns, 15K+ stars)
+- RustCrypto hashes: https://github.com/RustCrypto/hashes (sha2, hmac, pbkdf2 ecosystem)
+- OWASP SQL Injection Prevention: https://cheatsheetseries.owasp.org/cheatsheets/SQL_Injection_Prevention_Cheat_Sheet.html (parameterized query best practices)
+- Go 1.22 routing: https://go.dev/blog/routing-enhancements (path parameter patterns)
+- Axum Path extractor: https://docs.rs/axum/latest/axum/extract/struct.Path.html (type-safe path parameters)
 
-### Tertiary (MEDIUM confidence -- community/platform knowledge)
-- macOS libm linked automatically via libSystem (GCC mailing list discussion)
-- Linux libm requires -lm at link time (GCC/linker documentation)
-- LLVM musttail backend issues (GitHub issue #54964 -- platform-specific failures)
-- Tail call elimination blog posts (loop transformation vs trampoline approaches)
+### Tertiary (LOW confidence)
+- PgDog wire protocol blog: https://pgdog.dev/blog/hacking-postgres-wire-protocol (practical implementation experience)
+- Threading Models in Coroutines and SQLite: https://medium.com/androiddevelopers/threading-models-in-coroutines-and-android-sqlite-api (concurrency patterns)
 
 ---
-*Research completed: 2026-02-09*
+*Research completed: 2026-02-10*
 *Ready for roadmap: yes*
