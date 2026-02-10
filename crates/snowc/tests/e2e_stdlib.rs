@@ -828,3 +828,104 @@ end
 "#);
     assert_eq!(out.trim(), "42\n42");
 }
+
+// ── Math pow/sqrt/floor/ceil/round E2E Tests (Phase 43 Plan 02) ───────
+
+#[test]
+fn math_pow() {
+    let out = compile_and_run(r#"
+fn main() do
+  println("${Math.pow(2.0, 10.0)}")
+  println("${Math.pow(3.0, 2.0)}")
+  println("${Math.pow(10.0, 0.0)}")
+end
+"#);
+    assert!(out.contains("1024"));
+    assert!(out.contains("9"));
+    // 10^0 = 1
+    assert!(out.lines().nth(2).unwrap().contains("1"));
+}
+
+#[test]
+fn math_sqrt() {
+    let out = compile_and_run(r#"
+fn main() do
+  println("${Math.sqrt(144.0)}")
+  println("${Math.sqrt(2.0)}")
+  println("${Math.sqrt(0.0)}")
+end
+"#);
+    assert!(out.contains("12"));
+    assert!(out.contains("1.41421"));
+    assert!(out.contains("0"));
+}
+
+#[test]
+fn math_floor() {
+    let out = compile_and_run(r#"
+fn main() do
+  println("${Math.floor(3.7)}")
+  println("${Math.floor(3.0)}")
+  println("${Math.floor(-2.3)}")
+end
+"#);
+    assert_eq!(out.trim(), "3\n3\n-3");
+}
+
+#[test]
+fn math_ceil() {
+    let out = compile_and_run(r#"
+fn main() do
+  println("${Math.ceil(3.2)}")
+  println("${Math.ceil(3.0)}")
+  println("${Math.ceil(-2.7)}")
+end
+"#);
+    assert_eq!(out.trim(), "4\n3\n-2");
+}
+
+#[test]
+fn math_round() {
+    let out = compile_and_run(r#"
+fn main() do
+  println("${Math.round(3.5)}")
+  println("${Math.round(3.4)}")
+  println("${Math.round(-2.5)}")
+  println("${Math.round(0.5)}")
+end
+"#);
+    // llvm.round uses "round half away from zero"
+    assert_eq!(out.trim(), "4\n3\n-3\n1");
+}
+
+#[test]
+fn math_combined_usage() {
+    let out = compile_and_run(r#"
+fn main() do
+  let radius = 5.0
+  let area = Math.pow(radius, 2.0)
+  println("${area}")
+  let side = Math.sqrt(area)
+  println("${side}")
+  let pi_approx = Math.round(Math.pi)
+  println("${pi_approx}")
+  let converted = Float.to_int(Math.sqrt(Int.to_float(16)))
+  println("${converted}")
+end
+"#);
+    assert!(out.contains("25"));
+    assert!(out.contains("5"));
+    assert!(out.contains("3"));  // round(pi) = 3
+    assert!(out.contains("4"));  // sqrt(16) = 4
+}
+
+#[test]
+fn math_pow_with_conversion() {
+    let out = compile_and_run(r#"
+fn main() do
+  let result = Math.pow(Int.to_float(2), Int.to_float(8))
+  println("${Float.to_int(result)}")
+end
+"#);
+    assert_eq!(out.trim(), "256");
+}
