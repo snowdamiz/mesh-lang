@@ -179,7 +179,10 @@ Plans:
   1. A self-recursive function in tail position runs for 1,000,000+ iterations without stack overflow
   2. Tail position is correctly detected through if/else branches, case arms, receive arms, blocks, and let-chains
   3. Actor receive loops using self-recursive tail calls run indefinitely without growing the stack
-**Plans**: TBD
+**Plans:** 2 plans
+Plans:
+- [ ] 48-01-PLAN.md -- MIR TailCall variant, has_tail_calls flag, and rewrite_tail_calls pass
+- [ ] 48-02-PLAN.md -- Codegen loop wrapping, TailCall codegen, and e2e tests
 
 ## Progress
 
