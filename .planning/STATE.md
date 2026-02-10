@@ -5,14 +5,14 @@
 See: .planning/PROJECT.md (updated 2026-02-09)
 
 **Core value:** Expressive, readable concurrency -- writing concurrent programs should feel as natural as sequential code, with supervision and fault tolerance built in.
-**Current focus:** v1.8 Module System -- Phase 42 (Diagnostics & Integration) -- COMPLETE
+**Current focus:** Planning next milestone
 
 ## Current Position
 
-Phase: 42 of 42 (Diagnostics & Integration)
-Plan: 2 of 2 in current phase (42-02 complete)
-Status: Phase 42 Complete -- v1.8 Module System Milestone Complete
-Last activity: 2026-02-09 -- Completed 42-02 (module-qualified type display)
+Phase: 42 of 42 (all phases complete)
+Plan: N/A -- between milestones
+Status: v1.8 Module System shipped. 9 milestones complete.
+Last activity: 2026-02-09 -- Completed v1.8 milestone archival
 
 Progress: [||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||] 100% (129/129 plans)
 
@@ -22,7 +22,7 @@ Progress: [|||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||
 - Plans completed: 129
 - Phases completed: 42
 - Milestones shipped: 9 (v1.0-v1.8)
-- Lines of Rust: 70,501
+- Lines of Rust: 73,384
 - Timeline: 5 days (2026-02-05 -> 2026-02-09)
 
 ## Accumulated Context
@@ -31,44 +31,9 @@ Progress: [|||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||
 
 Decisions logged in PROJECT.md Key Decisions table.
 
-Recent for v1.8:
-- lower_to_mir_raw per module then merge_mir_modules with post-merge monomorphization -- prevents unreachable builtin codegen failures
-- Track qualified_modules and imported_functions in TypeckResult -- MIR lowerer needs module awareness for qualified access and trait dispatch skip
-- Single LLVM module approach (merge MIR, not separate compilation) -- avoids cross-module linking complexity
-- Module-qualified type names from day one -- prevents type identity issues across module boundaries
-- Hand-written Kahn's algorithm for toposort -- avoids petgraph dependency for simple DAG
-- Sequential u32 IDs for ModuleId -- simple, zero-allocation, direct Vec indexing
-- FxHashMap for module name-to-id lookup -- low overhead for small module counts
-- Hidden directory skipping in file discovery -- prevents .git/.hidden from being treated as modules
-- Alphabetical tie-breaking in toposort for deterministic compilation order across platforms
-- Silent skip for unknown imports during graph construction -- Phase 39 handles error reporting
-- Two-phase graph construction: register all modules first, then parse and build edges
-- ProjectData struct retains parse results for downstream compilation -- eliminates double-parsing
-- build_module_graph preserved as thin wrapper for backward compatibility with Phase 37 tests
-- Parse errors retained in ProjectData without failing build_project -- caller handles error reporting
-- Parse errors checked for ALL modules before type checking; type checking skipped if any parse errors
-- Entry module found via is_entry flag in compilation_order, not hardcoded index
-- infer() delegates to infer_with_imports(empty) for backward-compatible code reuse
-- ImportContext pre-seeds TraitRegistry, TypeRegistry, TypeEnv before inference
-- collect_exports extracts impl names from AST PATH nodes matching infer_impl_def pattern
-- qualified_modules stored on InferCtx to avoid parameter threading cascade across 6000+ line file
-- User modules checked before stdlib in both import handling and field access resolution
-- Trait impls remain unconditionally exported (XMOD-05) while trait defs are gated by pub visibility
-- PrivateItem error only for selective imports (from-import) -- qualified access to private items produces natural unbound/no-such-field errors
-- qualify_name method with prefix checks for builtins, trait impls, pub fns, and main -- prevents incorrect prefixing
-- user_fn_defs set tracks FnDef items separately from variant constructors for call-site qualification
-- Module-qualified naming: ModuleName__private_fn using double-underscore separator at MIR level
-- ariadne::sources() named cache with (String, Range<usize>) spans replaces anonymous Source::from() for file-aware diagnostics
-- TyCon::display_prefix for module-qualified type names in errors -- excluded from PartialEq/Hash to preserve type identity
-- current_module threaded via ImportContext and InferCtx for local type qualification in multi-module mode
-
 ### Research Notes
 
-Research complete (see .planning/research/SUMMARY.md):
-- All import/module/pub syntax already parsed by existing parser
-- Phase 39 (cross-module type checking) is the critical complexity center
-- Type identity across module boundaries is the primary risk
-- No new dependencies needed
+None -- between milestones.
 
 ### Pending Todos
 
@@ -81,6 +46,6 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-09
-Stopped at: Completed 42-02-PLAN.md -- Phase 42 complete, v1.8 Module System complete
+Stopped at: Completed v1.8 milestone archival
 Resume file: None
-Next action: None -- all milestones complete
+Next action: /gsd:new-milestone to start next milestone

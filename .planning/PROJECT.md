@@ -2,7 +2,7 @@
 
 ## What This Is
 
-Snow is a programming language that combines Elixir/Ruby-style expressive syntax with static Hindley-Milner type inference and BEAM-style concurrency (actors, supervision trees, fault tolerance), compiled via LLVM to native single-binary executables. The compiler is written in Rust. v1.0 shipped a complete compiler pipeline, actor runtime, standard library, and developer tooling. v1.1 polished the language by resolving all five documented v1.0 limitations. v1.2 added Fun() type annotations and a mark-sweep garbage collector for per-actor heaps. v1.3 completed the trait/protocol system with user-defined interfaces, impl blocks, static dispatch via monomorphization, and six stdlib protocols (Display, Debug, Eq, Ord, Hash, Default) with auto-derive support. v1.4 fixed all five compiler correctness issues: pattern matching codegen, Ordering type, nested collection Display, generic type deriving, and type system soundness for constrained function aliases. v1.5 resolved the final three known limitations: polymorphic List<T>, compile-time Ord-requires-Eq enforcement, and qualified types for higher-order constraint propagation. v1.6 added method dot-syntax (`value.method(args)`) with automatic self-parameter desugaring, working across struct, primitive, generic, and collection types, with true chaining, mixed field/method access, and deterministic ambiguity diagnostics. v1.7 added complete loop and iteration support: while loops with break/continue, for-in over ranges and collections (List, Map, Set) with comprehension semantics returning collected lists, filter clause (`when`), and actor-safe reduction checks. Zero known compiler correctness issues remain.
+Snow is a programming language that combines Elixir/Ruby-style expressive syntax with static Hindley-Milner type inference and BEAM-style concurrency (actors, supervision trees, fault tolerance), compiled via LLVM to native single-binary executables. The compiler is written in Rust. v1.0 shipped a complete compiler pipeline, actor runtime, standard library, and developer tooling. v1.1 polished the language by resolving all five documented v1.0 limitations. v1.2 added Fun() type annotations and a mark-sweep garbage collector for per-actor heaps. v1.3 completed the trait/protocol system with user-defined interfaces, impl blocks, static dispatch via monomorphization, and six stdlib protocols (Display, Debug, Eq, Ord, Hash, Default) with auto-derive support. v1.4 fixed all five compiler correctness issues: pattern matching codegen, Ordering type, nested collection Display, generic type deriving, and type system soundness for constrained function aliases. v1.5 resolved the final three known limitations: polymorphic List<T>, compile-time Ord-requires-Eq enforcement, and qualified types for higher-order constraint propagation. v1.6 added method dot-syntax (`value.method(args)`) with automatic self-parameter desugaring, working across struct, primitive, generic, and collection types, with true chaining, mixed field/method access, and deterministic ambiguity diagnostics. v1.7 added complete loop and iteration support: while loops with break/continue, for-in over ranges and collections (List, Map, Set) with comprehension semantics returning collected lists, filter clause (`when`), and actor-safe reduction checks. v1.8 added a complete module system: file-based modules with path-to-name convention, `pub` visibility (private by default), qualified and selective imports, dependency graph with toposort and cycle detection, cross-module type checking for functions/structs/sum types/traits, MIR merge codegen with module-qualified name mangling, and module-aware diagnostics. Zero known compiler correctness issues remain.
 
 ## Core Value
 
@@ -58,21 +58,20 @@ Expressive, readable concurrency -- writing concurrent programs should feel as n
 - ✓ Filter clause (`for x in list when cond do body end`) across all collection types -- v1.7
 - ✓ Break/continue: early exit returns partial list, closure boundary enforcement (E0032/E0033) -- v1.7
 - ✓ Reduction checks at loop back-edges for actor scheduler fairness -- v1.7
+- ✓ File-based modules with recursive discovery and path-to-name convention (math/vector.snow -> Math.Vector) -- v1.8
+- ✓ Module dependency graph with Kahn's toposort and circular import detection -- v1.8
+- ✓ Multi-file build pipeline (`snowc build <dir>`) with per-module parsing and zero regressions -- v1.8
+- ✓ Qualified imports (`import M` -> `M.fn()`) and selective imports (`from M import { fn }`) -- v1.8
+- ✓ Cross-module type checking for functions, structs, sum types, and traits -- v1.8
+- ✓ Private-by-default visibility with `pub` modifier and PrivateItem error with suggestion -- v1.8
+- ✓ Global trait impl visibility across all modules without explicit import -- v1.8
+- ✓ Cross-module generic monomorphization and module-qualified name mangling -- v1.8
+- ✓ Module-aware diagnostics: file paths in errors and module-qualified type names -- v1.8
+- ✓ Full backward compatibility: single-file programs compile identically -- v1.8
 
 ### Active
 
-## Current Milestone: v1.8 Module System
-
-**Goal:** Add a module system enabling multi-file projects with file-based modules, pub visibility, qualified and selective imports, and dependency graph resolution.
-
-**Target features:**
-- File-based modules (file path = module name, e.g. `math/vector.snow` → `Math.Vector`)
-- `pub` visibility modifier (private by default)
-- Qualified imports (`import Math.Vector` → `Vector.add(a, b)`)
-- Selective imports (`from Math.Vector import { add, scale }`)
-- Project compilation mode (directory of `.snow` files)
-- Module dependency graph with cycle detection and topological sort
-- Cross-module name resolution for functions, types, structs, traits
+(No active milestone -- planning next)
 
 ### Out of Scope
 
@@ -100,13 +99,18 @@ Expressive, readable concurrency -- writing concurrent programs should feel as n
 
 ## Context
 
-Shipped v1.7 with 70,501 lines of Rust (+2,955 from v1.6).
+Shipped v1.8 with 73,384 lines of Rust (+2,883 from v1.7).
 Tech stack: Rust compiler, LLVM 21 (Inkwell 0.8), corosensei coroutines, rowan CST, ariadne diagnostics.
 Crates: snow-lexer, snow-parser, snow-typeck, snow-mir, snow-codegen, snow-rt, snow-fmt, snow-repl, snow-pkg, snow-lsp, snowc.
 
-Tests passing across all crates. Zero known critical bugs. Zero known compiler correctness issues.
+111 E2E tests passing, 235+ unit tests across workspace. Zero known critical bugs. Zero known compiler correctness issues.
 
 Known limitations: None.
+
+Tech debt (minor):
+- Pre-existing TODO in lower.rs:5799 ("Add proper snow_string_compare") -- unrelated to module system
+- build_module_graph wrapper in discovery.rs used only in Phase 37 tests -- consider deprecation
+- report_diagnostics function in main.rs appears to be dead code
 
 ## Constraints
 
@@ -119,7 +123,7 @@ Known limitations: None.
 
 | Decision | Rationale | Outcome |
 |----------|-----------|---------|
-| Rust for compiler | Strong LLVM bindings, memory safe, good for complex software | ✓ Good -- 67K LOC Rust, stable compiler |
+| Rust for compiler | Strong LLVM bindings, memory safe, good for complex software | ✓ Good -- 73K LOC Rust, stable compiler |
 | LLVM as backend | Proven codegen, multi-platform, avoids writing own backend | ✓ Good -- native binaries on macOS/Linux |
 | Elixir/Ruby syntax style | Expressive, readable, pattern matching native | ✓ Good -- clean do/end blocks, pipe operator |
 | Static types with HM inference | Safety without verbosity | ✓ Good -- rarely need annotations |
@@ -169,6 +173,16 @@ Known limitations: None.
 | Half-open range [start, end) | Consistent with Rust/Python; SLT comparison for termination | ✓ Good -- v1.7, familiar semantics |
 | Five-block codegen for filter | Filter false skips to latch directly; clean separation from body | ✓ Good -- v1.7, minimal overhead |
 | ForInRange returns List<T> not Unit | Comprehension semantics apply uniformly to all for-in variants | ✓ Good -- v1.7, consistent behavior |
+| Hand-written Kahn's algorithm for toposort | Avoids petgraph dependency for simple DAG | ✓ Good -- v1.8, zero new dependencies |
+| Sequential u32 ModuleId | Simple, zero-allocation, direct Vec indexing | ✓ Good -- v1.8, efficient module lookup |
+| Two-phase graph construction | Register all modules first, then parse and build edges | ✓ Good -- v1.8, correct forward references |
+| Single LLVM module via MIR merge | Avoids cross-module linking complexity | ✓ Good -- v1.8, single binary output |
+| Accumulator-pattern type checking | Each module's exports feed into next module's ImportContext | ✓ Good -- v1.8, correct dependency ordering |
+| Module-qualified name mangling (ModuleName__fn) | Double-underscore separators prevent private name collisions | ✓ Good -- v1.8, safe multi-module codegen |
+| TyCon::display_prefix for module-qualified types | Excluded from PartialEq/Hash to preserve type identity | ✓ Good -- v1.8, display-only qualification |
+| ariadne named-source spans | (String, Range) spans replace anonymous Source::from() for file-aware diagnostics | ✓ Good -- v1.8, file paths in errors |
+| Trait impls unconditionally exported | XMOD-05: global visibility without explicit import | ✓ Good -- v1.8, coherent trait dispatch |
+| PrivateItem error with pub suggestion | Clear diagnostic when accessing non-pub items across modules | ✓ Good -- v1.8, user-friendly errors |
 
 ---
-*Last updated: 2026-02-09 after v1.8 milestone started*
+*Last updated: 2026-02-09 after v1.8 milestone*

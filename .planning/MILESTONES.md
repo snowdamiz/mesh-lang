@@ -216,3 +216,32 @@
 
 ---
 
+
+## v1.8 Module System (Shipped: 2026-02-09)
+
+**Delivered:** Complete module system enabling multi-file projects with file-based modules, pub visibility, qualified and selective imports, dependency graph resolution with cycle detection, cross-module type checking for functions/structs/sum types/traits, module-qualified name mangling, and module-aware diagnostics -- compiled into a single LLVM binary via MIR merge.
+
+**Phases completed:** 37-42 (12 plans total)
+
+**Key accomplishments:**
+- File-based module graph with recursive `.snow` discovery, path-to-name convention (`math/vector.snow` -> `Math.Vector`), Kahn's toposort, and cycle detection
+- Multi-file build pipeline (`snowc build <dir>`) with ProjectData, per-module parsing, and zero single-file regressions across 84 pre-existing E2E tests
+- Cross-module type checking with qualified imports (`import M` -> `M.fn()`), selective imports (`from M import { fn }`), accumulator-pattern inference, and MIR merge codegen
+- Private-by-default visibility with `pub` modifier, PrivateItem E0035 error with "add pub" suggestion
+- Module-qualified name mangling (`ModuleName__fn`) preventing private name collisions, cross-module generic monomorphization
+- Module-aware diagnostics: file paths in errors via ariadne named-sources, module-qualified type names in type errors (`Geometry.Point`)
+
+**Stats:**
+- 70 files modified
+- 73,384 lines of Rust (+2,883 net from v1.7)
+- 6 phases, 12 plans
+- 4 days (2026-02-05 -> 2026-02-09)
+- 52 commits
+- 27/27 requirements satisfied, 111 E2E tests passing (+31 new in v1.8)
+
+**Git range:** `feat(37-01)` -> `docs(phase-42)`
+
+**What's next:** TBD -- module system complete. Potential directions include import aliasing, unused import warnings, re-exports, incremental compilation, iterator protocol, distributed actors, or hot code reloading.
+
+---
+
