@@ -1,469 +1,661 @@
-# Stack Research: Module System
+# Technology Stack: v1.9 Stdlib & Ergonomics
 
-**Domain:** Multi-file module system for Snow compiler -- dependency graph resolution, module name resolution, cross-file symbol tables, visibility enforcement
+**Project:** Snow compiler -- stdlib math, ? operator, receive timeout completion, timer primitives, collection operations, tail-call elimination
 **Researched:** 2026-02-09
-**Confidence:** HIGH (based on direct codebase analysis of all 11 crates, ecosystem research, and established compiler patterns)
+**Confidence:** HIGH (based on direct codebase analysis of all 12 crates, LLVM/Inkwell API verification, and platform linking research)
 
 ## Executive Summary
 
-The module system requires **ZERO new external dependencies**. Everything needed is available through Rust's standard library and the existing crate dependencies (rustc-hash, rowan, ariadne, inkwell). The work is entirely internal to the Snow compiler's architecture -- extending the existing pipeline from single-file to multi-file compilation.
+v1.9 requires **ZERO new Rust crate dependencies**. Every feature is implemented through:
+1. **LLVM math intrinsics** (declared via Inkwell's `module.add_function("llvm.sqrt.f64", ...)` -- no libm crate needed)
+2. **Rust standard library** math via `f64::sin()` etc. in `snow-rt` runtime functions (links against system libm automatically)
+3. **Existing Inkwell 0.8 APIs** for tail-call elimination (`set_tail_call_kind` with `LLVMTailCallKindMustTail`, available on `llvm21-1` feature)
+4. **Internal compiler changes** to parser, typeck, MIR, and codegen (no external dependencies)
+5. **Internal runtime additions** to `snow-rt` (no external dependencies)
 
-The key decisions are: (1) implement topological sort by hand (~40 lines) rather than pulling in petgraph, because the module dependency graph is small and the algorithm is trivial; (2) extend `TypeEnv` to support module-scoped symbol tables rather than introducing a separate symbol table crate; (3) build `ModuleGraph` as a new data structure in `snow-common` that all downstream crates can reference; and (4) extend the existing `TypeckResult` and `MirModule` to carry per-module data rather than replacing them with entirely new abstractions.
+The only infrastructure change is adding `-lm` to the linker invocation on Linux in `snow-codegen/src/link.rs` (macOS links libm automatically via libSystem). This is a one-line change.
 
-## What Exists Today (DO NOT CHANGE -- Build Atop These)
+## Recommended Stack
 
-### Parser Infrastructure Already Present
+### Core Framework (NO CHANGES)
 
-The parser already handles all module-related syntax. This is the foundation to build on, not replace.
+| Technology | Version | Purpose | Status |
+|------------|---------|---------|--------|
+| Rust | stable 2021 edition | Compiler implementation | No change |
+| Inkwell | 0.8.0 (`llvm21-1`) | LLVM IR generation | No change |
+| LLVM | 21.1 | Backend codegen + optimization | No change |
+| Rowan | 0.16 | CST for parser | No change |
+| ena | 0.14 | Union-find for HM type inference | No change |
+| ariadne | 0.6 | Diagnostic error reporting | No change |
+| corosensei | 0.3 | Stackful coroutines for actors | No change |
 
-| CST Node | Status | Current Handling |
-|----------|--------|-----------------|
-| `MODULE_DEF` | Parsed correctly | Typeck skips it (`Item::ModuleDef(_) => None`) |
-| `IMPORT_DECL` | Parsed correctly | Typeck validates stdlib module names only |
-| `FROM_IMPORT_DECL` | Parsed correctly | Typeck injects stdlib function schemes into env |
-| `IMPORT_LIST` | Parsed correctly | Used by `FromImportDecl` |
-| `PATH` (qualified) | Parsed correctly | `Foo.Bar.Baz` dot-separated paths |
-| `VISIBILITY` (`pub`) | Parsed correctly | Not enforced -- everything is currently public |
-| `MODULE_KW` | Lexed and mapped | `TokenKind::Module -> SyntaxKind::MODULE_KW` |
-| `IMPORT_KW` | Lexed and mapped | `TokenKind::Import -> SyntaxKind::IMPORT_KW` |
-| `PUB_KW` | Lexed and mapped | `TokenKind::Pub -> SyntaxKind::PUB_KW` |
+### Runtime (snow-rt) -- NO NEW DEPENDENCIES
 
-### AST Accessors Already Present
+| Technology | Version | Purpose | Status |
+|------------|---------|---------|--------|
+| crossbeam-deque | 0.8 | Work-stealing scheduler | No change |
+| crossbeam-utils | 0.8 | Concurrent utilities | No change |
+| crossbeam-channel | 0.5 | MPMC channels | No change |
+| parking_lot | 0.12 | Efficient mutexes | No change |
+| rustc-hash | 2 | Fast hashing | No change |
 
-From `snow-parser/src/ast/item.rs`:
+### What NOT to Add
 
-```
-SourceFile::modules()   -> Iterator<Item = ModuleDef>
-ModuleDef::name()       -> Option<Name>
-ModuleDef::items()      -> Iterator<Item = Item>
-ImportDecl::module_path() -> Option<Path>
-FromImportDecl::module_path() -> Option<Path>
-FromImportDecl::import_list() -> Option<ImportList>
-ImportList::names()     -> Iterator<Item = NameRef>
-Path::segments()        -> Vec<String>  (dot-separated)
-```
+| Crate | Why NOT |
+|-------|---------|
+| `libm` (Rust crate) | Unnecessary -- Rust's `f64` methods (`sin()`, `cos()`, `sqrt()`, etc.) use LLVM intrinsics when compiled with optimizations, and link against system libm in debug. The `libm` crate is only needed for `no_std` environments, which Snow is not. |
+| `num-traits` | Unnecessary -- Snow's math stdlib only needs concrete `f64` operations, not generic numeric traits. Direct `f64` method calls are simpler and faster. |
+| Any sort crate | Unnecessary -- `snow_list_sort` can use Rust's `slice::sort_by` on the list's `[u64]` data region with a comparator callback. This is a ~30-line runtime function, not worth a dependency. |
+| `timer`/`tokio-timer` | Unnecessary -- timer primitives (`sleep`, `send_after`) are implemented as dedicated runtime functions using `std::thread::sleep` and scheduler integration. The actor scheduler already has deadline-based wakeup. |
+| `regex` | Not needed for v1.9. String `split` and `join` use exact string matching, not patterns. |
 
-### Current Module Resolution (Stdlib Only)
+## Feature-by-Feature Stack Analysis
 
-In `snow-typeck/src/infer.rs` (6,104 lines):
-- `stdlib_modules()` builds `HashMap<String, HashMap<String, Scheme>>` with 14 hardcoded modules (String, IO, Env, File, List, Map, Set, Tuple, Range, Queue, HTTP, JSON, Request, Job)
-- `from X import y` injects the bare name AND a prefixed form (`string_length`) into the type env
-- `import X` is effectively a no-op (qualified access via `X.y` is handled in field_access inference)
-- `Item::ModuleDef(_) => None` -- user-defined modules are completely ignored
+### 1. Math Stdlib (libm FFI)
 
-### Current Compiler Pipeline (Single File)
+**Approach:** Two-layer strategy -- LLVM intrinsics for hot-path math, runtime functions for the rest.
 
-```
-snowc build <dir>
-  -> find main.snow
-  -> read source string
-  -> snow_parser::parse(&source) -> Parse
-  -> snow_typeck::check(&parse) -> TypeckResult
-  -> snow_codegen::compile_to_binary(&parse, &typeck, ...) -> binary
-```
+**Layer 1: LLVM Built-in Math Intrinsics (codegen layer)**
 
-Everything operates on a single `Parse` + single `TypeckResult`. The module system must extend this to handle N files.
-
-### MIR Module Structure
-
-`MirModule` already has the concept of a module -- it just holds everything from one file:
+LLVM provides built-in intrinsics for common math functions that map directly to hardware instructions where available. Declare them in `snow-codegen/src/codegen/intrinsics.rs` using the same pattern as existing runtime function declarations:
 
 ```rust
-pub struct MirModule {
-    pub functions: Vec<MirFunction>,
-    pub structs: Vec<MirStructDef>,
-    pub sum_types: Vec<MirSumTypeDef>,
-    pub entry_function: Option<String>,
-    pub service_dispatch: HashMap<String, (Vec<...>, Vec<...>)>,
+// In declare_intrinsics():
+let f64_to_f64 = f64_type.fn_type(&[f64_type.into()], false);
+let f64_f64_to_f64 = f64_type.fn_type(&[f64_type.into(), f64_type.into()], false);
+
+// LLVM recognizes the "llvm." prefix as built-in intrinsics
+module.add_function("llvm.sqrt.f64", f64_to_f64, None);
+module.add_function("llvm.sin.f64", f64_to_f64, None);
+module.add_function("llvm.cos.f64", f64_to_f64, None);
+module.add_function("llvm.pow.f64", f64_f64_to_f64, None);
+module.add_function("llvm.exp.f64", f64_to_f64, None);
+module.add_function("llvm.exp2.f64", f64_to_f64, None);
+module.add_function("llvm.log.f64", f64_to_f64, None);
+module.add_function("llvm.log2.f64", f64_to_f64, None);
+module.add_function("llvm.log10.f64", f64_to_f64, None);
+module.add_function("llvm.fabs.f64", f64_to_f64, None);
+module.add_function("llvm.floor.f64", f64_to_f64, None);
+module.add_function("llvm.ceil.f64", f64_to_f64, None);
+module.add_function("llvm.round.f64", f64_to_f64, None);
+module.add_function("llvm.trunc.f64", f64_to_f64, None);
+module.add_function("llvm.copysign.f64", f64_f64_to_f64, None);
+module.add_function("llvm.minnum.f64", f64_f64_to_f64, None);
+module.add_function("llvm.maxnum.f64", f64_f64_to_f64, None);
+```
+
+These are NOT external function calls -- LLVM compiles them to native instructions (e.g., `vsqrtsd` on x86-64, `fsqrt` on ARM64) or inlines platform-optimized libm implementations.
+
+**Why LLVM intrinsics over runtime FFI:** LLVM intrinsics enable constant folding (`sqrt(4.0)` -> `2.0` at compile time), vectorization, and platform-optimal instruction selection. Runtime functions cannot be optimized by LLVM.
+
+**Layer 2: Runtime Functions for Non-Intrinsic Math (snow-rt)**
+
+Functions without LLVM intrinsics are implemented in `snow-rt` using Rust's `f64` methods:
+
+```rust
+// In snow-rt/src/math.rs (new file)
+#[no_mangle]
+pub extern "C" fn snow_math_atan2(y: f64, x: f64) -> f64 { y.atan2(x) }
+
+#[no_mangle]
+pub extern "C" fn snow_math_tan(x: f64) -> f64 { x.tan() }
+
+#[no_mangle]
+pub extern "C" fn snow_math_asin(x: f64) -> f64 { x.asin() }
+
+#[no_mangle]
+pub extern "C" fn snow_math_acos(x: f64) -> f64 { x.acos() }
+
+#[no_mangle]
+pub extern "C" fn snow_math_atan(x: f64) -> f64 { x.atan() }
+
+#[no_mangle]
+pub extern "C" fn snow_math_sinh(x: f64) -> f64 { x.sinh() }
+
+#[no_mangle]
+pub extern "C" fn snow_math_cosh(x: f64) -> f64 { x.cosh() }
+
+#[no_mangle]
+pub extern "C" fn snow_math_tanh(x: f64) -> f64 { x.tanh() }
+```
+
+Rust's `f64` methods call into the platform's libm. On macOS, libm is part of libSystem (linked automatically). On Linux, `-lm` is needed at link time.
+
+**Linker change for Linux (snow-codegen/src/link.rs):**
+
+Currently line 52 adds the object file and library path. Add `-lm` on non-macOS:
+
+```rust
+// After existing linker args
+#[cfg(not(target_os = "macos"))]
+{
+    cmd.arg("-lm");
 }
 ```
 
-### Existing Dependency Infrastructure
+This is the ONLY infrastructure change needed for math stdlib.
 
-`snow-pkg` already handles **package-level** dependency resolution (external packages via git2, semver, TOML manifests). The module system is **within** a single package -- it resolves `.snow` files relative to the project root, not external packages.
+**Math module in typeck (snow-typeck/src/infer.rs and builtins.rs):**
 
-## Recommended Stack Changes
-
-### Change 1: ModuleGraph Data Structure (snow-common)
-
-**What:** Add a `ModuleGraph` struct to `snow-common` that represents the dependency DAG of `.snow` files in a project.
-
-**Why:** Every crate in the pipeline (parser, typeck, codegen) needs to know which modules exist and their dependency order. Putting this in `snow-common` makes it accessible everywhere.
-
-**Key types:**
+Register a `Math` module in `stdlib_modules()` following the existing pattern (String, IO, etc.):
 
 ```rust
-/// Unique identifier for a module within a compilation unit.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct ModuleId(pub u32);
+let mut math_mod = FxHashMap::default();
+math_mod.insert("sqrt".into(), Scheme::mono(Ty::fun(vec![Ty::float()], Ty::float())));
+math_mod.insert("sin".into(), Scheme::mono(Ty::fun(vec![Ty::float()], Ty::float())));
+math_mod.insert("cos".into(), Scheme::mono(Ty::fun(vec![Ty::float()], Ty::float())));
+// ... etc for all math functions
+math_mod.insert("pi".into(), Scheme::mono(Ty::float()));  // constant
+math_mod.insert("e".into(), Scheme::mono(Ty::float()));   // constant
+modules.insert("Math".into(), math_mod);
+```
 
-/// Metadata about a single module (source file).
-pub struct ModuleInfo {
-    /// Unique ID.
-    pub id: ModuleId,
-    /// Fully qualified module name (e.g., "Math.Vector").
-    pub name: String,
-    /// Filesystem path relative to project root.
-    pub path: PathBuf,
-    /// Module IDs this module depends on (via import/from-import).
-    pub dependencies: Vec<ModuleId>,
-    /// Whether this module contains the entry point (main function).
-    pub is_entry: bool,
-}
+**MIR lowering (snow-codegen/src/mir/lower.rs):**
 
-/// The dependency graph of all modules in a project.
-pub struct ModuleGraph {
-    /// All modules, indexed by ModuleId.
-    pub modules: Vec<ModuleInfo>,
-    /// Name-to-ID lookup.
-    name_to_id: FxHashMap<String, ModuleId>,
-    /// Topologically sorted module IDs (dependencies before dependents).
-    pub topo_order: Vec<ModuleId>,
+Map `Math.sqrt(x)` calls to `llvm.sqrt.f64` intrinsic calls. Map `Math.atan2(y, x)` calls to `snow_math_atan2` runtime calls. The existing `known_functions` map handles this -- add entries:
+
+```rust
+self.known_functions.insert("Math.sqrt".into(), ...);
+// which lowers to a Call on the "llvm.sqrt.f64" function
+```
+
+**Constants:** `Math.pi` and `Math.e` lower to `MirExpr::FloatLit(std::f64::consts::PI, MirType::Float)` during MIR lowering.
+
+**Confidence:** HIGH -- LLVM math intrinsics are decades-old stable APIs. Inkwell's `add_function("llvm.sqrt.f64", ...)` works identically to how existing runtime functions are declared. Verified that macOS includes libm in libSystem; Linux needs `-lm`.
+
+---
+
+### 2. ? Operator (Error Propagation)
+
+**Approach:** Parser postfix operator -> typeck validation -> MIR desugaring -> codegen as match on Result tag.
+
+**Lexer:** The `Question` token (`?`) already exists in `snow-common/src/token.rs` (line 126) and is already mapped to `SyntaxKind::QUESTION` in `snow-parser/src/syntax_kind.rs` (line 97, 426). No lexer changes needed.
+
+**Parser (snow-parser):**
+
+Add `?` as a postfix operator in expression parsing. When the parser sees `?` after an expression, wrap it in a `TRY_EXPR` CST node:
+
+```
+expr?  =>  TRY_EXPR { inner: expr, QUESTION }
+```
+
+Add a new `SyntaxKind::TRY_EXPR` variant and an AST accessor `TryExpr` with method `inner() -> Option<Expr>`.
+
+**Typeck (snow-typeck/src/infer.rs):**
+
+When inferring a `TryExpr`:
+1. Infer the inner expression's type
+2. Verify it is `Result<T, E>` -- error if not
+3. Verify the enclosing function's return type is also `Result<_, E>` with compatible error type -- error if not
+4. The `TryExpr` itself has type `T` (the Ok payload)
+
+This is a ~30-line addition to `infer_expr`.
+
+**MIR Lowering (snow-codegen/src/mir/lower.rs):**
+
+Desugar `expr?` into:
+
+```
+match expr {
+  Ok(val) => val,
+  Err(e) => return Err(e)
 }
 ```
 
-**Why in `snow-common`:** The `snow-common` crate already holds `TokenKind`, `Span`, error types -- shared primitives. `ModuleGraph` is a shared primitive that the driver, typeck, and codegen all need.
+Since `Result` is already a sum type in Snow with `Ok` and `Err` variants, this desugars to the existing `MirExpr::Match` + `MirExpr::Return` + `MirExpr::ConstructVariant` nodes. No new MIR nodes needed.
 
-**Why `FxHashMap` (already available):** `rustc-hash = "2"` is already in workspace dependencies. No new crate needed for the name lookup table.
+**Codegen:** No codegen changes needed -- the desugared match/return uses existing codegen paths for sum type pattern matching.
 
-### Change 2: Topological Sort (Hand-Written, NOT petgraph)
+**What already exists:**
+- `Result<T, E>` as `Ty::result(ok, err)` -- typeck line 119
+- `Ok(val)` and `Err(e)` constructors -- working sum type codegen
+- Pattern matching on Result arms -- working
+- Return from function -- working
 
-**What:** Implement Kahn's algorithm (~40 lines of Rust) directly in `snow-common` or the compiler driver.
+**Confidence:** HIGH -- the `?` operator desugars entirely to existing constructs (match + return). The only new work is parser recognition and typeck validation.
 
-**Why NOT petgraph:** petgraph is a 10K+ line library optimized for complex graph algorithms (shortest paths, max flow, isomorphism). Snow's module graph is a simple DAG with typically 5-50 nodes. A hand-written toposort is:
-- Simpler to understand (40 lines vs. learning petgraph's type system)
-- Zero dependency cost
-- Exactly the algorithm needed (Kahn's with cycle detection), nothing more
-- Matches how rustc, Go, and most compilers implement this internally
+---
 
-**Implementation sketch:**
+### 3. Receive Timeout Completion
+
+**Approach:** Wire the already-parsed `timeout_body` through to codegen.
+
+**Current state:**
+- Parser: `after` clause is already parsed (verified: `recv.after_clause()` exists in AST)
+- Typeck: `after` clause timeout and body are already type-checked (lines 5985-5991 of infer.rs)
+- MIR: `timeout_ms` and `timeout_body` are already lowered to `MirExpr::ActorReceive` fields (lines 7160-7172 of lower.rs)
+- Codegen: `timeout_body` is explicitly **ignored** -- `timeout_body: _` on line 129 of expr.rs
+
+**What needs to change (codegen only):**
+
+In `codegen_actor_receive` (expr.rs, line 1540), after the `snow_actor_receive()` call returns a pointer:
+1. Check if the pointer is null (timeout occurred)
+2. If null AND timeout_body is `Some(body)`: codegen the timeout body expression
+3. If null AND no timeout_body: return a default/unit value
+4. If non-null: proceed with existing message pattern matching
+
+This is a ~20-line change to add a null-check branch:
 
 ```rust
-/// Topological sort using Kahn's algorithm.
-/// Returns Err with cycle participants if the graph has cycles.
-pub fn topological_sort(graph: &ModuleGraph) -> Result<Vec<ModuleId>, Vec<ModuleId>> {
-    let n = graph.modules.len();
-    let mut in_degree = vec![0u32; n];
-    for module in &graph.modules {
-        for &dep in &module.dependencies {
-            in_degree[dep.0 as usize] += 1;
+// After receiving msg_ptr:
+if let Some(timeout_body) = timeout_body {
+    // Create basic blocks for null check
+    let timeout_bb = self.context.append_basic_block(current_fn, "timeout");
+    let message_bb = self.context.append_basic_block(current_fn, "message");
+    let merge_bb = self.context.append_basic_block(current_fn, "merge");
+
+    let is_null = self.builder.build_is_null(msg_ptr, "is_timeout")?;
+    self.builder.build_conditional_branch(is_null, timeout_bb, message_bb)?;
+
+    // Timeout path: codegen the timeout body
+    self.builder.position_at_end(timeout_bb);
+    let timeout_val = self.codegen_expr(timeout_body)?;
+    self.builder.build_unconditional_branch(merge_bb)?;
+
+    // Message path: existing pattern matching
+    self.builder.position_at_end(message_bb);
+    let msg_val = /* existing message loading code */;
+    self.builder.build_unconditional_branch(merge_bb)?;
+
+    // Merge with phi node
+    self.builder.position_at_end(merge_bb);
+    let phi = self.builder.build_phi(result_llvm_type, "recv_result")?;
+    phi.add_incoming(&[(&timeout_val, timeout_bb), (&msg_val, message_bb)]);
+}
+```
+
+**Runtime:** No changes -- `snow_actor_receive` already returns null on timeout (lines 334, 396 of actor/mod.rs). The timeout_ms parameter is already passed through.
+
+**Confidence:** HIGH -- all layers except final codegen emission are already implemented. This is purely wiring the existing `timeout_body` field through to LLVM IR.
+
+---
+
+### 4. Timer Primitives (sleep, send_after)
+
+**Approach:** Runtime functions in `snow-rt`, declared as intrinsics, exposed as `Timer` stdlib module.
+
+**`Timer.sleep(ms)`** -- Pause the current actor for `ms` milliseconds:
+
+```rust
+// In snow-rt/src/timer.rs (new file)
+#[no_mangle]
+pub extern "C" fn snow_timer_sleep(ms: i64) {
+    if ms <= 0 { return; }
+
+    let my_pid = match stack::get_current_pid() {
+        Some(pid) => pid,
+        None => {
+            // Main thread: just sleep the OS thread
+            std::thread::sleep(std::time::Duration::from_millis(ms as u64));
+            return;
         }
+    };
+
+    // Actor context: set deadline and yield repeatedly until it passes
+    let deadline = std::time::Instant::now()
+        + std::time::Duration::from_millis(ms as u64);
+
+    let sched = global_scheduler();
+    loop {
+        if std::time::Instant::now() >= deadline {
+            return;
+        }
+        // Set Waiting state and yield
+        if let Some(proc) = sched.get_process(my_pid) {
+            proc.lock().state = ProcessState::Waiting;
+        }
+        stack::yield_current();
+    }
+}
+```
+
+This integrates with the existing scheduler -- the actor yields cooperatively and is periodically resumed by the scheduler's sweep loop, checking if its deadline has passed. No new scheduler infrastructure needed.
+
+**`Timer.send_after(pid, ms, message)`** -- Send a message to `pid` after `ms` milliseconds:
+
+```rust
+#[no_mangle]
+pub extern "C" fn snow_timer_send_after(
+    target_pid: u64,
+    delay_ms: i64,
+    msg_ptr: *const u8,
+    msg_size: u64,
+) {
+    // Deep-copy the message data before spawning the timer actor
+    let data = if msg_ptr.is_null() || msg_size == 0 {
+        Vec::new()
+    } else {
+        unsafe { std::slice::from_raw_parts(msg_ptr, msg_size as usize).to_vec() }
+    };
+
+    let sched = global_scheduler();
+
+    // Spawn a lightweight timer actor that sleeps then sends
+    extern "C" fn timer_entry(args: *const u8) {
+        // Decode: [u64 target_pid, u64 delay_ms, u64 data_len, u8... data]
+        // ... sleep, then call snow_actor_send
     }
 
-    let mut queue: VecDeque<ModuleId> = in_degree.iter()
-        .enumerate()
-        .filter(|(_, &d)| d == 0)
-        .map(|(i, _)| ModuleId(i as u32))
-        .collect();
+    // Encode args and spawn
+    // ...
+}
+```
 
-    let mut order = Vec::with_capacity(n);
-    while let Some(id) = queue.pop_front() {
-        order.push(id);
-        for &dep in &graph.modules[id.0 as usize].dependencies {
-            in_degree[dep.0 as usize] -= 1;
-            if in_degree[dep.0 as usize] == 0 {
-                queue.push_back(dep);
+**Alternative (simpler):** Implement `send_after` as a spawn of a minimal actor that calls `snow_timer_sleep` then `snow_actor_send`. This reuses existing primitives entirely. The timer actor approach is exactly how Erlang/OTP implements `send_after` internally.
+
+**Typeck:** Add `Timer` module to `stdlib_modules()`:
+
+```rust
+let mut timer_mod = FxHashMap::default();
+timer_mod.insert("sleep".into(), Scheme::mono(Ty::fun(vec![Ty::int()], Ty::unit())));
+timer_mod.insert("send_after".into(), Scheme::mono(
+    Ty::fun(vec![Ty::pid_untyped(), Ty::int(), Ty::Var(...)], Ty::unit())
+));
+modules.insert("Timer".into(), timer_mod);
+```
+
+**Confidence:** HIGH -- `sleep` is trivial using existing scheduler yield mechanics. `send_after` is a composition of existing spawn + sleep + send primitives. No new infrastructure.
+
+---
+
+### 5. Collection Operations (sort, split, join, find, zip)
+
+**Approach:** All implemented as `extern "C"` functions in `snow-rt` using existing list/string infrastructure. No external crates.
+
+**List operations (snow-rt/src/collections/list.rs):**
+
+| Function | Signature | Implementation |
+|----------|-----------|----------------|
+| `snow_list_sort` | `(list: *mut u8, cmp_fn: *mut u8, env: *mut u8) -> *mut u8` | Copy list data to temp `Vec<u64>`, call `sort_by` with cmp callback, allocate new list |
+| `snow_list_find` | `(list: *mut u8, pred_fn: *mut u8, env: *mut u8) -> u64` | Linear scan, return first matching element as Option-encoded u64 |
+| `snow_list_zip` | `(list_a: *mut u8, list_b: *mut u8) -> *mut u8` | Allocate tuple list of `min(len_a, len_b)` pairs |
+| `snow_list_any` | `(list: *mut u8, pred_fn: *mut u8, env: *mut u8) -> i8` | Short-circuit linear scan returning boolean |
+| `snow_list_all` | `(list: *mut u8, pred_fn: *mut u8, env: *mut u8) -> i8` | Short-circuit linear scan returning boolean |
+| `snow_list_flat_map` | `(list: *mut u8, fn_ptr: *mut u8, env: *mut u8) -> *mut u8` | Map producing lists, then concat all |
+| `snow_list_take` | `(list: *mut u8, n: i64) -> *mut u8` | Copy first n elements to new list |
+| `snow_list_drop` | `(list: *mut u8, n: i64) -> *mut u8` | Copy elements after n to new list |
+| `snow_list_contains` | `(list: *mut u8, elem: u64, eq_fn: *mut u8) -> i8` | Linear scan with equality callback |
+| `snow_list_chunk` | `(list: *mut u8, size: i64) -> *mut u8` | Partition into sublists of given size |
+
+**`snow_list_sort` implementation detail:**
+
+```rust
+#[no_mangle]
+pub extern "C" fn snow_list_sort(
+    list: *mut u8,
+    cmp_fn: *mut u8,
+    env_ptr: *mut u8,
+) -> *mut u8 {
+    type BareCmp = unsafe extern "C" fn(u64, u64) -> i64;
+    type ClosureCmp = unsafe extern "C" fn(*mut u8, u64, u64) -> i64;
+
+    unsafe {
+        let len = list_len(list) as usize;
+        if len <= 1 { return list; }
+
+        // Copy data to a mutable Vec for sorting
+        let src = list_data(list);
+        let mut data: Vec<u64> = Vec::with_capacity(len);
+        for i in 0..len {
+            data.push(*src.add(i));
+        }
+
+        // Sort using Rust's stable sort (TimSort)
+        if env_ptr.is_null() {
+            let f: BareCmp = std::mem::transmute(cmp_fn);
+            data.sort_by(|a, b| {
+                let cmp = f(*a, *b);
+                if cmp < 0 { std::cmp::Ordering::Less }
+                else if cmp > 0 { std::cmp::Ordering::Greater }
+                else { std::cmp::Ordering::Equal }
+            });
+        } else {
+            let f: ClosureCmp = std::mem::transmute(cmp_fn);
+            data.sort_by(|a, b| {
+                let cmp = f(env_ptr, *a, *b);
+                if cmp < 0 { std::cmp::Ordering::Less }
+                else if cmp > 0 { std::cmp::Ordering::Greater }
+                else { std::cmp::Ordering::Equal }
+            });
+        }
+
+        // Allocate new list from sorted data
+        alloc_list_from(data.as_ptr(), len as u64, len as u64)
+    }
+}
+```
+
+**Why Rust's `sort_by` and not an external sort crate:** Rust's standard library sort is a well-optimized TimSort implementation. At the scale Snow lists operate (hundreds to low thousands of elements), it is optimal. No crate adds value here.
+
+**String operations (snow-rt/src/string.rs):**
+
+| Function | Signature | Implementation |
+|----------|-----------|----------------|
+| `snow_string_split` | `(s: *const SnowString, delim: *const SnowString) -> *mut u8` | Rust `str::split()`, collect into Snow List of SnowStrings |
+| `snow_string_join` | `(list: *mut u8, sep: *const SnowString) -> *mut SnowString` | Iterate list elements (SnowString ptrs), join with separator |
+
+**`snow_string_split` returns a `List<String>`**, using the same GC-allocated list format as existing lists. Each element is a `u64` that is actually a pointer to a `SnowString`.
+
+**`snow_string_join` takes a `List<String>` and a separator**, iterating the list and concatenating with the separator between elements.
+
+**Typeck:** Extend `String` and `List` module entries:
+
+```rust
+string_mod.insert("split".into(), Scheme::mono(
+    Ty::fun(vec![Ty::string(), Ty::string()], Ty::list(Ty::string()))
+));
+string_mod.insert("join".into(), Scheme::mono(
+    Ty::fun(vec![Ty::list(Ty::string()), Ty::string()], Ty::string())
+));
+list_mod.insert("sort".into(), /* generic sort type */);
+list_mod.insert("find".into(), /* generic find type */);
+// etc.
+```
+
+**Generic collection operations (sort, find, zip, etc.):** These need generic type signatures in the type checker. The existing generic infrastructure (HM type inference with `Ty::Var`) handles this -- sort takes `(List<A>, fn(A, A) -> Int) -> List<A>`.
+
+**Confidence:** HIGH -- follows exact same pattern as existing `snow_list_map`, `snow_list_filter`, `snow_list_reduce` which use the same callback function pointer convention (bare fn vs closure with env_ptr).
+
+---
+
+### 6. Tail-Call Elimination (TCE)
+
+**Approach:** Detect tail calls during MIR lowering, mark them with `musttail` via Inkwell's `set_tail_call_kind` API, falling back to a loop-rewrite optimization for self-recursive tail calls.
+
+**Inkwell API (verified for llvm21-1):**
+
+Inkwell's `CallSiteValue` provides `set_tail_call_kind(kind: LLVMTailCallKind)` which is available on the `llvm21-1` feature (confirmed in Inkwell docs). The `LLVMTailCallKind` enum includes:
+- `LLVMTailCallKindNone` -- no tail call
+- `LLVMTailCallKindTail` -- hint (optimizer may eliminate)
+- `LLVMTailCallKindMustTail` -- guaranteed elimination (fatal error if backend cannot)
+
+**Strategy: Two-Tier TCE**
+
+**Tier 1: Self-Recursive Tail Call -> Loop Rewrite (MIR level)**
+
+The most common case in Snow is self-recursive functions (actor loops, list processing). These can be reliably eliminated at the MIR level by rewriting them as loops:
+
+```
+def factorial(n, acc) =
+  if n <= 1 do acc
+  else factorial(n - 1, n * acc) end
+
+# Rewrites to:
+def factorial(n, acc) =
+  loop:
+    if n <= 1 do return acc end
+    (n, acc) = (n - 1, n * acc)
+    goto loop
+```
+
+This is implemented in MIR lowering by:
+1. Detecting that the function body's tail expression is a self-call
+2. Replacing the self-call with parameter reassignment + continue in a synthetic loop
+3. This produces `MirExpr::While` + `MirExpr::Let` (parameter rebinding) -- existing codegen handles these
+
+**Why MIR-level rewrite over LLVM `musttail`:** LLVM's `musttail` has strict requirements -- the caller and callee must have identical signatures, the call must immediately precede a `ret`, and some backends (PowerPC, some ARM variants) cannot guarantee elimination. The MIR loop rewrite is 100% reliable across all targets.
+
+**Tier 2: General Tail Calls -> LLVM `tail` Hint (Codegen level)**
+
+For non-self tail calls (e.g., mutual recursion), annotate with `set_tail_call_kind(LLVMTailCallKindTail)` as a hint:
+
+```rust
+// In codegen_call or codegen_closure_call:
+if is_tail_position {
+    call_site.set_tail_call_kind(
+        inkwell::LLVMTailCallKind::LLVMTailCallKindTail
+    );
+}
+```
+
+The `tail` hint allows LLVM's optimizer to eliminate the call if possible. It does not guarantee elimination but does not produce fatal errors on any backend.
+
+**Tail Position Detection (MIR lowering):**
+
+A call is in tail position if it is the last expression in a function body, the last expression of a branch in an if/match that is itself in tail position, or the last expression of a let-body chain.
+
+Add a boolean `is_tail` parameter to `lower_expr` that tracks whether the current expression is in tail position:
+
+```rust
+fn lower_expr(&mut self, expr: &Expr, is_tail: bool) -> MirExpr {
+    match ... {
+        // The last expression in a function body is tail
+        If { then, else_, .. } => {
+            MirExpr::If {
+                then_body: self.lower_expr(then, is_tail),
+                else_body: self.lower_expr(else_, is_tail),
+                ...
             }
         }
-    }
-
-    if order.len() == n {
-        Ok(order)
-    } else {
-        // Remaining nodes form cycles
-        let in_cycle: Vec<ModuleId> = (0..n)
-            .filter(|&i| in_degree[i] > 0)
-            .map(|i| ModuleId(i as u32))
-            .collect();
-        Err(in_cycle)
-    }
-}
-```
-
-**Cycle detection produces actionable errors:** When `Err(cycle_nodes)` is returned, the driver can report which modules form cycles, which files are involved, and which import statements create the cycle -- using the existing ariadne diagnostic infrastructure.
-
-### Change 3: File Discovery and Module Name Convention (Driver Layer)
-
-**What:** Extend `snowc build` to discover all `.snow` files in the project directory and map them to module names.
-
-**Why:** Currently `build()` reads only `main.snow`. Multi-file compilation requires discovering and ordering all source files.
-
-**Module name convention (file-system based):**
-
-```
-project/
-  main.snow          -> (entry point, no module name)
-  math.snow          -> module "Math"
-  math/
-    vector.snow      -> module "Math.Vector"
-    matrix.snow      -> module "Math.Matrix"
-  utils.snow         -> module "Utils"
-```
-
-- File name -> module name: capitalize first letter, strip `.snow`
-- Subdirectory -> dotted prefix: `math/vector.snow` -> `Math.Vector`
-- `main.snow` is special: entry point, not importable as a module
-
-**What already exists:** `collect_snow_files_recursive()` in `snowc/src/main.rs` already walks directories to find `.snow` files (used by the `fmt` command). This can be reused/adapted for module discovery.
-
-**No new dependencies needed.** `std::fs::read_dir` and `PathBuf` manipulation are sufficient.
-
-### Change 4: Per-Module Parse + Typecheck (Pipeline Extension)
-
-**What:** Parse each `.snow` file independently into its own `Parse`, then typecheck in topological order with cross-module symbol visibility.
-
-**Why:** Rowan parse trees are naturally per-file (each `GreenNode` is self-contained). The type checker operates on one `Parse` at a time. Multi-file compilation means running the pipeline N times in dependency order, accumulating exported symbols.
-
-**New data structures:**
-
-```rust
-/// All parse results for a compilation unit.
-pub struct CompilationUnit {
-    pub graph: ModuleGraph,
-    pub parses: Vec<(ModuleId, Parse)>,  // indexed by module
-}
-
-/// Cross-module symbol exports accumulated during type checking.
-pub struct ModuleExports {
-    /// Exported type schemes per module.
-    pub symbols: FxHashMap<ModuleId, FxHashMap<String, Scheme>>,
-    /// Exported type definitions per module.
-    pub types: FxHashMap<ModuleId, TypeRegistry>,
-    /// Exported trait registries per module.
-    pub traits: FxHashMap<ModuleId, TraitRegistry>,
-}
-```
-
-**Why `FxHashMap` (not a new interning library):**
-- The existing TypeEnv uses `String` keys in `FxHashMap<String, Scheme>`
-- Module names and symbol names are short strings (typically 3-30 chars)
-- At 5-50 modules with 10-100 exports each, interning provides negligible benefit
-- String interning (lasso, string-interner) adds complexity for managing interner lifetimes across parse/typeck/codegen phases
-- If profiling later shows string comparison is a bottleneck (unlikely at this scale), interning can be added as an optimization without changing the architecture
-
-### Change 5: Extended TypeEnv for Cross-Module Resolution (Typeck)
-
-**What:** Extend `TypeEnv` to support loading exported symbols from dependency modules before type-checking a module.
-
-**Why:** When type-checking module B that imports from module A, B's type environment needs A's exported symbols. Currently, only stdlib modules are loaded.
-
-**Approach:** Before type-checking module B:
-1. Look up B's dependencies from the `ModuleGraph`
-2. For each dependency module A, load A's exported public symbols into a "module scope" in B's environment
-3. Process `import` and `from...import` declarations to bring specific symbols into local scope
-
-**Key extension to `TypeEnv`:**
-
-```rust
-pub struct TypeEnv {
-    scopes: Vec<FxHashMap<String, Scheme>>,
-    /// Module-scoped exports: qualified name -> scheme.
-    /// E.g., "Math.Vector.add" -> Scheme { ... }
-    module_exports: FxHashMap<String, FxHashMap<String, Scheme>>,
-}
-```
-
-This keeps the existing scope-stack mechanism intact. Module imports add to `module_exports`, and qualified name resolution (`Math.Vector.add`) checks there. Unqualified access via `from Math.Vector import add` inserts directly into the scope stack (same as current stdlib behavior).
-
-### Change 6: Visibility Enforcement (Typeck)
-
-**What:** Enforce `pub` visibility modifiers during cross-module type checking.
-
-**Why:** The `VISIBILITY` node is already parsed and present in the CST. Currently, everything is public by default. With modules, non-`pub` items should only be visible within their defining module.
-
-**Rule:** When collecting exports from a module, only include items with a `VISIBILITY` child node (i.e., `pub fn`, `pub struct`, `pub type`). Items without `pub` are module-private.
-
-**Decision on default visibility:** Module-private by default (items without `pub` are not exported). This matches Rust, Elixir, and most modern languages. It is the safer default -- accidental exposure is worse than accidental hiding.
-
-**No new syntax needed.** `pub` is already a keyword, already parsed, and `VISIBILITY` nodes are already in the CST.
-
-### Change 7: Multi-Module MIR Merging (Codegen)
-
-**What:** After type-checking all modules, merge their MIR into a single `MirModule` for LLVM codegen.
-
-**Why:** LLVM compiles one module at a time. Rather than implementing separate compilation + linking of multiple LLVM modules (which would require a linker-level symbol resolution pass), merge all MIR functions/structs/sum_types into one `MirModule` and compile to a single LLVM module.
-
-**Why single-module compilation (not separate compilation + linking):**
-- Snow projects are small-to-medium (the compiler itself is 70K lines)
-- Single-module compilation avoids: cross-module LLVM symbol resolution, separate object file linking, duplicate definition conflicts
-- LLVM's optimization passes work better on a single module (inlining, LTO-like optimization by default)
-- If compilation time becomes an issue at scale, separate compilation can be added as an optimization later
-
-**Approach:** After type-checking all modules in topo order:
-
-```rust
-fn merge_mir_modules(modules: Vec<(ModuleId, MirModule)>) -> MirModule {
-    let mut merged = MirModule::new();
-    for (id, module) in modules {
-        // Prefix function names with module path to avoid collisions
-        for mut func in module.functions {
-            func.name = mangle_module_name(&module_name, &func.name);
-            merged.functions.push(func);
+        Call { .. } if is_tail => {
+            // Check if self-recursive -> loop rewrite
+            // Otherwise mark for tail hint
+            ...
         }
-        // Same for structs, sum types
-        merged.structs.extend(module.structs);
-        merged.sum_types.extend(module.sum_types);
     }
-    merged.entry_function = find_main(&merged);
-    merged
 }
 ```
 
-**Name mangling:** Module-qualified names use double-underscore separator: `Math__Vector__add`. This avoids conflicts with dot (used in qualified access syntax) and single underscore (used in snake_case names).
+**What NOT to do:** Do NOT use `LLVMTailCallKindMustTail` for general tail calls. It will produce fatal backend errors on some architectures. Reserve `musttail` only for cases where we can guarantee the call meets LLVM's strict requirements (same return type, same calling convention, immediately followed by ret).
 
-### Change 8: Import Statement Resolution (Driver + Typeck)
+**Confidence:** HIGH for Tier 1 (self-recursive loop rewrite -- well-understood transformation). MEDIUM for Tier 2 (LLVM `tail` hint -- behavior depends on optimizer and target, but never causes errors).
 
-**What:** Resolve `import Math.Vector` and `from Math.Vector import add` to actual module files and their exported symbols.
+---
 
-**Why:** Currently, import resolution is hardcoded to stdlib modules. User-defined modules need filesystem-based resolution.
+## Integration Points with Existing Crates
 
-**Resolution algorithm:**
+### snow-common (no changes)
 
-```
-import Math.Vector
-  1. Convert path to filesystem: "math/vector.snow" or "math_vector.snow"
-  2. Look up in ModuleGraph by module name "Math.Vector"
-  3. If found, record dependency edge: current_module -> Math.Vector
-  4. Make Math.Vector's exports available for qualified access (Math.Vector.add)
+No new types or utilities needed. The `Question` token already exists.
 
-from Math.Vector import add, cross
-  1. Same resolution as above
-  2. Additionally: inject "add" and "cross" into current module's local scope
-  3. Verify each imported name exists in Math.Vector's public exports
-  4. Error if name not found or not public
-```
+### snow-lexer (no changes)
 
-**Error cases (all reportable via existing ariadne diagnostics):**
-- Module not found: "cannot find module 'Math.Vector' -- no file at math/vector.snow"
-- Name not exported: "'add' is not a public export of module 'Math.Vector'"
-- Circular import: "circular dependency detected: A imports B imports A"
+`?` is already lexed as `TokenKind::Question`.
 
-### Change 9: Diagnostic Enhancement (Typeck + Driver)
+### snow-parser (additions)
 
-**What:** Add new error codes for module-related diagnostics.
+| Addition | Purpose | Estimated Lines |
+|----------|---------|----------------|
+| `TRY_EXPR` syntax kind | CST node for `expr?` | ~5 |
+| Parse `?` as postfix | In expression parser after primary | ~15 |
+| `TryExpr` AST accessor | `inner() -> Option<Expr>` | ~10 |
 
-**Why:** Module errors need clear, actionable messages. The existing ariadne-based diagnostic system handles this -- just add new `TypeError` variants.
+### snow-typeck (additions)
 
-| Error Code | Message Pattern | When |
-|-----------|----------------|------|
-| `M0001` | Module not found | `import NonExistent` |
-| `M0002` | Circular dependency | Import cycle detected |
-| `M0003` | Name not exported | `from X import private_fn` |
-| `M0004` | Visibility violation | Accessing non-pub item from another module |
-| `M0005` | Duplicate module | Two files map to same module name |
-| `M0006` | Self-import | Module imports itself |
+| Addition | Purpose | Estimated Lines |
+|----------|---------|----------------|
+| `Math` stdlib module | Type signatures for math functions + constants | ~60 |
+| `Timer` stdlib module | Type signatures for sleep, send_after | ~15 |
+| `TryExpr` inference | Validate Result type, check function return | ~30 |
+| Collection operation types | sort, find, zip, etc. in List/String modules | ~40 |
+| String.split/join types | New entries in String module | ~10 |
 
-**No new diagnostic library needed.** Ariadne 0.6 already supports multi-span labels, error codes, and fix suggestions.
+### snow-codegen / MIR (additions)
+
+| Addition | Purpose | Estimated Lines |
+|----------|---------|----------------|
+| `TryExpr` desugaring | `expr?` -> match Ok/Err with early return | ~40 |
+| Math call routing | `Math.sqrt` -> `llvm.sqrt.f64` intrinsic | ~80 |
+| Tail position tracking | `is_tail` parameter through `lower_expr` | ~50 |
+| Self-recursive loop rewrite | Tail self-calls -> while loop | ~80 |
+
+### snow-codegen / codegen (additions)
+
+| Addition | Purpose | Estimated Lines |
+|----------|---------|----------------|
+| LLVM math intrinsic declarations | `llvm.sqrt.f64`, `llvm.sin.f64`, etc. | ~30 |
+| Runtime math function declarations | `snow_math_atan2`, etc. | ~20 |
+| Receive timeout_body codegen | Null-check branch + timeout body | ~30 |
+| Timer function declarations | `snow_timer_sleep`, `snow_timer_send_after` | ~10 |
+| Collection function declarations | `snow_list_sort`, `snow_string_split`, etc. | ~30 |
+| Tail call annotation | `set_tail_call_kind` on calls in tail position | ~15 |
+
+### snow-codegen / link (one-line change)
+
+| Change | Purpose |
+|--------|---------|
+| Add `-lm` on Linux | Link libm for math runtime functions |
+
+### snow-rt (additions)
+
+| Addition | Purpose | Estimated Lines |
+|----------|---------|----------------|
+| `math.rs` (new module) | atan2, tan, asin, acos, atan, sinh, cosh, tanh | ~60 |
+| `timer.rs` (new module) | sleep, send_after | ~80 |
+| List sort, find, zip, etc. | New functions in `collections/list.rs` | ~200 |
+| String split, join | New functions in `string.rs` | ~60 |
+
+### Total Estimated Lines: ~960
 
 ## Alternatives Considered
 
-| Decision | Recommended | Alternative | Why Not |
+| Category | Recommended | Alternative | Why Not |
 |----------|-------------|-------------|---------|
-| Dependency graph | Hand-written Kahn's (~40 LOC) | petgraph 0.8.2 | Overkill for 5-50 node DAG; adds 10K+ lines of dependency for one function call |
-| Symbol storage | `FxHashMap<String, Scheme>` | String interning (lasso 0.7) | Negligible perf gain at this scale; adds lifetime complexity across compiler phases |
-| Module identity | `ModuleId(u32)` newtype | String-based module names everywhere | IDs are O(1) comparison, smaller in memory, prevent typo bugs |
-| Multi-file codegen | Merge MIR into single LLVM module | Separate compilation + LLVM linking | Single module gets better optimization; separate compilation adds linker complexity |
-| Visibility default | Private (require `pub` to export) | Public by default | Private-by-default is safer; matches Rust/Elixir conventions |
-| Module naming | File-system based (math/vector.snow -> Math.Vector) | Explicit `module Math.Vector` declarations in each file | FS-based is simpler, less boilerplate, matches Go and many modern languages |
-| Topological sort | Kahn's algorithm (BFS-based) | DFS-based toposort | Kahn's naturally detects cycles (remaining nodes after sort); DFS needs separate cycle detection |
-| Cross-module types | Extend existing TypeRegistry | New shared type database | TypeRegistry already holds struct/sum/alias defs; extending it is simpler than replacing it |
+| Math functions | LLVM intrinsics + Rust f64 methods | `libm` Rust crate | libm crate is for `no_std`; Rust std already provides f64 methods that link to system libm |
+| Math functions | LLVM intrinsics for hot path | All via runtime FFI | LLVM intrinsics enable constant folding, vectorization, and platform-optimal codegen |
+| ? operator | MIR desugaring to match/return | New MIR node `TryExpr` | Desugaring reuses existing codegen; new node requires new codegen path for same result |
+| Timer sleep | Yield-loop with deadline | `std::thread::sleep` in actor | Thread sleep blocks the worker thread, preventing other actors from running on it |
+| Timer send_after | Spawn timer actor | Scheduler timer wheel | Timer wheel adds complexity to scheduler for minimal benefit; timer actors are idiomatic Erlang/BEAM approach |
+| List sort | Rust `slice::sort_by` | External sort crate | std sort is TimSort, optimal for this scale; no crate adds value |
+| String split | Rust `str::split` in runtime | Regex-based split | Regex is massive dependency for exact-match splitting |
+| Tail call elim | MIR loop rewrite (self-recursive) | LLVM `musttail` only | `musttail` fails on some backends (PowerPC, some ARM); loop rewrite is 100% reliable |
+| Tail call elim | Two-tier (loop + hint) | Only loop rewrite | Loses opportunity for LLVM to optimize mutual recursion |
 
-## What NOT to Add
+## Installation
 
-| Dependency / Feature | Why Not |
-|---------------------|---------|
-| `petgraph` crate | Module graph is a simple DAG with <100 nodes. Kahn's algorithm is 40 lines. petgraph's type system complexity (generics over graph type, edge type, direction) is not worth it for one toposort call. |
-| `lasso` or `string-interner` | String interning optimizes repeated string comparisons. Snow modules have ~50-500 unique symbol names. FxHashMap already provides O(1) lookup. Interning adds lifetime management complexity that propagates through the entire compiler. Profile first, optimize later. |
-| `salsa` (incremental computation) | Incremental compilation is a separate concern. The initial module system should work correctly in batch mode. Salsa can be evaluated for the LSP/IDE experience in a future milestone. |
-| `dashmap` (concurrent HashMap) | Module type-checking is sequential (topological order). No parallelism needed at this stage. |
-| Separate LLVM modules per source file | Would require: LLVM module linking, cross-module symbol resolution, handling of duplicate type definitions. All for negligible compilation time benefit at Snow's scale. |
-| Generic module/package system | The module system handles files within one project. Cross-project dependencies are already handled by `snow-pkg`. Do not conflate the two. |
-| Module-level type parameters | `module Math<T>` is not a common pattern and adds enormous complexity. Modules are namespaces, not generic types. |
+No new dependencies to install:
 
-## Technology Versions (No Changes)
-
-| Technology | Current Version | Required Changes | Version Impact |
-|------------|----------------|-----------------|----------------|
-| Rust std | stable 2024 edition | `std::fs`, `std::path`, `std::collections::VecDeque` for toposort | None |
-| rustc-hash | 2 | `FxHashMap` for module name lookup, symbol tables | Already in workspace deps, no change |
-| Rowan | 0.16 | Per-file `Parse` instances (already supported) | No change |
-| Ariadne | 0.6 | New diagnostic messages with existing API | No change |
-| Inkwell | 0.8.0 (llvm21-1) | Name-mangled functions in single LLVM module | No change |
-| serde | 1 (workspace) | Potentially serialize ModuleGraph for caching | Already in workspace deps, no change |
-| snow-common | internal | Add `ModuleId`, `ModuleInfo`, `ModuleGraph`, `topological_sort` | Internal additions |
-| snow-parser | internal | No parser changes -- all syntax already supported | No change |
-| snow-typeck | internal | Extend `TypeEnv`, add visibility enforcement, cross-module symbol loading | Internal extensions |
-| snow-codegen | internal | MIR merging, module-qualified name mangling | Internal extensions |
-| snowc | internal | Multi-file build pipeline, file discovery, module graph construction | Internal extensions |
-
-**No dependency additions. No version bumps. No new crates.**
-
-## Crate-by-Crate Change Summary
-
-| Crate | Changes | Estimated Lines |
-|-------|---------|----------------|
-| `snow-common` | `ModuleId`, `ModuleInfo`, `ModuleGraph`, `topological_sort()` | ~150 |
-| `snow-parser` | No changes needed (all syntax already parsed) | 0 |
-| `snow-typeck` | Extend `TypeEnv` with module exports, visibility enforcement, cross-module symbol loading, new `TypeError` variants | ~400 |
-| `snow-codegen` (MIR) | Module-qualified name mangling in lowering | ~100 |
-| `snow-codegen` (codegen) | Handle mangled names, merge MIR modules | ~100 |
-| `snowc` (driver) | File discovery, module graph construction, multi-file build pipeline, import resolution | ~300 |
-| `snow-fmt` | No changes (module/import formatting already works) | 0 |
-| `snow-lsp` | Multi-file project awareness (module-aware diagnostics) | ~100 |
-| Tests | Module resolution, visibility, circular deps, cross-module typeck, e2e multi-file | ~500 |
-| **Total** | | **~1,650** |
-
-## Integration Points with Existing Architecture
-
-### Parser -> ModuleGraph (no coupling needed)
-
-Each `.snow` file is parsed independently. The `ModuleGraph` is built by the driver by scanning import declarations in each `Parse` result. The parser does not need to know about the module graph.
-
-### ModuleGraph -> Typeck (dependency ordering)
-
-The typeck phase processes modules in topological order. Before type-checking module B, all of B's dependencies have been type-checked, and their exports are available. This is a simple loop:
-
-```rust
-for &module_id in &graph.topo_order {
-    let parse = &parses[module_id];
-    let imports = resolve_imports(module_id, &graph, &exports);
-    let typeck = check_with_imports(parse, &imports);
-    exports.insert(module_id, collect_public_exports(&typeck));
-}
+```bash
+# Existing build command works unchanged
+cargo build -p snow-rt && cargo build -p snowc
 ```
 
-### Typeck -> MIR -> Codegen (merge and mangle)
-
-After all modules are type-checked, MIR lowering happens per-module, then MIR modules are merged. Name mangling prevents collisions. The single merged `MirModule` feeds into the existing codegen pipeline unchanged.
-
-### Stdlib Modules (backward compatible)
-
-The existing `stdlib_modules()` hardcoded map continues to work. It provides built-in modules (String, IO, List, etc.) that are always available. User-defined modules are resolved through the `ModuleGraph`. Resolution order: user modules first, then stdlib fallback. This means a user module named "String" would shadow the stdlib String module -- which is acceptable and expected behavior.
+The only system-level dependency is that Linux systems need libm installed (it is present on virtually all Linux installations as part of glibc/musl).
 
 ## Sources
 
 ### Primary (HIGH confidence)
-- Direct codebase analysis: `snowc/src/main.rs` build pipeline (lines 194-262)
-- `snow-typeck/src/infer.rs` stdlib module resolution (lines 205-491)
-- `snow-typeck/src/env.rs` TypeEnv scope stack (full file, 141 lines)
-- `snow-parser/src/syntax_kind.rs` existing MODULE_DEF, IMPORT_DECL, FROM_IMPORT_DECL, VISIBILITY nodes
-- `snow-parser/src/ast/item.rs` ModuleDef, ImportDecl, FromImportDecl AST accessors
-- `snow-codegen/src/mir/lower.rs` line 648: modules/imports explicitly skipped
-- `snow-codegen/src/mir/mod.rs` MirModule struct definition
-- `snow-common/Cargo.toml` existing dependencies (serde only)
+- Direct codebase analysis: all 12 crates in workspace
+- `snow-codegen/src/codegen/expr.rs` line 129: `timeout_body: _` explicitly ignored
+- `snow-codegen/src/mir/lower.rs` lines 7160-7172: timeout_ms and timeout_body already lowered
+- `snow-typeck/src/infer.rs` lines 5985-5991: after clause already type-checked
+- `snow-common/src/token.rs` line 126: `Question` token exists
+- `snow-parser/src/syntax_kind.rs` line 97: `QUESTION` syntax kind exists
+- `snow-codegen/src/codegen/intrinsics.rs`: existing pattern for runtime function declarations
+- `snow-codegen/src/link.rs`: existing linker invocation
+- `snow-rt/src/collections/list.rs`: existing list operation patterns (map, filter, reduce)
+- `snow-rt/src/actor/mod.rs` lines 314-419: receive timeout already returns null on timeout
 
-### Secondary (MEDIUM-HIGH confidence)
-- [petgraph toposort API](https://docs.rs/petgraph/latest/petgraph/algo/fn.toposort.html) -- evaluated and rejected for this use case
-- [petgraph crate](https://crates.io/crates/petgraph) -- version 0.8.2, evaluated
-- [rustc Name Resolution](https://rustc-dev-guide.rust-lang.org/name-resolution.html) -- rib-based scope resolution pattern
-- [Rust Compiler Overview](https://rustc-dev-guide.rust-lang.org/overview.html) -- compilation pipeline architecture
-- [Rowan GitHub](https://github.com/rust-analyzer/rowan) -- per-file GreenNode independence confirmed
+### Secondary (HIGH confidence -- verified with official docs)
+- [Inkwell CallSiteValue docs](https://thedan64.github.io/inkwell/inkwell/values/struct.CallSiteValue.html) -- `set_tail_call_kind` available on `llvm21-1`
+- [LLVM Language Reference](https://llvm.org/docs/LangRef.html) -- `llvm.sqrt.f64`, `llvm.sin.f64`, etc. are stable built-in intrinsics
+- [LLVM Math Intrinsics RFC](https://discourse.llvm.org/t/rfc-all-the-math-intrinsics/78294) -- confirms existing intrinsics and expansion plans
 
-### Tertiary (MEDIUM confidence)
-- [String interners in Rust](https://dev.to/cad97/string-interners-in-rust-797) -- evaluated lasso, string-interner, internment; rejected for this scale
-- [topo_sort crate](https://docs.rs/topo_sort) -- evaluated, hand-written preferred for simplicity
-- [Build a Compiler Symbol Table](https://marcauberer.medium.com/build-a-compiler-symbol-table-2d4582234112) -- general symbol table patterns
+### Tertiary (MEDIUM confidence -- community/platform knowledge)
+- macOS libm: [Linked automatically via libSystem](https://gcc-bugs.gcc.gnu.narkive.com/RDyEiHMr/gcc-lm-and-libm-a-for-mac-os-x) -- no `-lm` flag needed
+- Linux libm: `-lm` required at link time, confirmed by multiple GCC/linker documentation sources
+- [LLVM musttail issues](https://github.com/llvm/llvm-project/issues/108014) -- `musttail` can fail on certain backends, motivating Tier 1 loop rewrite approach
 
 ---
-*Stack research for: Snow compiler module system features*
+*Stack research for: Snow v1.9 Stdlib & Ergonomics features*
 *Researched: 2026-02-09*

@@ -1,10 +1,10 @@
-# Pitfalls Research: Adding Module System to Snow
+# Pitfalls Research: v1.9 Stdlib & Ergonomics Features
 
-**Domain:** Compiler feature addition -- file-based module system for a statically-typed, functional-first, LLVM-compiled language with HM inference, monomorphization, and actor concurrency
+**Domain:** Compiler feature addition -- math stdlib, error propagation operator, receive timeouts, timer primitives, collection operations, and tail-call elimination for a statically-typed, functional-first, LLVM-compiled language with actor concurrency
 **Researched:** 2026-02-09
-**Confidence:** HIGH (based on direct Snow codebase analysis, OCaml module system precedent, Rust symbol mangling RFC, LLVM multi-module documentation, and established compiler engineering knowledge)
+**Confidence:** HIGH (based on direct Snow codebase analysis of 73,384 lines across 11 crates, LLVM 21 + Inkwell 0.8 documentation, LLVM Language Reference for musttail semantics, and established compiler engineering knowledge)
 
-**Scope:** This document covers pitfalls specific to adding a module system (v1.8) to the Snow compiler. Snow currently compiles a single `main.snow` file per project. The compiler has 70,501 lines of Rust across 11 crates, 1,278+ tests, and zero known correctness issues. The module system introduces multi-file compilation with file-based modules, `pub` visibility, qualified/selective imports, dependency graph resolution, and cross-module name resolution.
+**Scope:** This document covers pitfalls specific to adding 6 features to the Snow compiler for v1.9. Each feature is analyzed against Snow's existing architecture: extern "C" runtime ABI, uniform u64 storage, per-actor GC with conservative stack scanning, callback-based dispatch for generic operations, single LLVM module via MIR merge, and immutable collection semantics.
 
 ---
 
@@ -14,766 +14,531 @@ Mistakes that cause rewrites, soundness holes, or silent codegen bugs.
 
 ---
 
-### Pitfall 1: Type Identity Breaks Across Module Boundaries -- Same Struct Name, Different Types
+### Pitfall 1: Math FFI Via libm Breaks Cross-Platform Linking
 
 **What goes wrong:**
-Snow's type system identifies types by name. `TypeRegistry` (infer.rs:115-122) stores struct and sum type definitions in `FxHashMap<String, StructDefInfo>` keyed by bare name (e.g., `"Point"`, `"Option"`). When two modules define a struct with the same name, they collide in the registry:
+The natural approach is to call C libm functions (`sqrt`, `pow`, `sin`, etc.) directly from LLVM IR using `declare double @sqrt(double)`. On macOS, these functions are available in `libSystem` (automatically linked). On Linux, they require explicit `-lm` linkage. The current linker driver in `link.rs` (line 46-52) invokes `cc` with only `-lsnow_rt` -- it does NOT pass `-lm`. Math functions will link fine on macOS but produce "undefined symbol" errors on Linux.
 
-```
-# math/vector.snow
-struct Point do
-  x :: Float
-  y :: Float
-end
-
-# graphics/pixel.snow
-struct Point do
-  x :: Int
-  y :: Int
-end
-```
-
-If both modules are loaded into the same `TypeRegistry`, the second `Point` overwrites the first. Code importing from `math.vector` silently gets the `graphics.pixel` `Point` definition. Field access compiles against the wrong layout, producing memory corruption at runtime.
-
-This is not hypothetical. The current `TypeRegistry.register_struct` (infer.rs:129-131) does an unconditional `insert` -- no collision detection:
-```rust
-fn register_struct(&mut self, info: StructDefInfo) {
-    self.struct_defs.insert(info.name.clone(), info);
-}
-```
+A subtler issue: some libm functions have different precision guarantees across platforms. `pow(2.0, 0.5)` may return slightly different results on glibc vs musl vs macOS's libm.
 
 **Why it happens:**
-The entire compiler assumes a single flat namespace. Every data structure from `TypeEnv` (env.rs) to `TraitRegistry` (traits.rs) to `MirModule` (mir/mod.rs) uses bare string names as keys. This assumption pervades: `MirType::Struct(String)` carries just the name, `mangle_type_name` (mir/types.rs:143) builds mangled names from bare type names, and codegen's `struct_types` cache (codegen/mod.rs:56) maps bare names to LLVM struct types.
+macOS bundles libm into libSystem, masking the missing `-lm` flag. Developers on macOS never see the failure until someone tries Linux.
 
 **Consequences:**
-- Silent memory corruption when two modules define structs with the same name but different layouts
-- Type checker accepts code that accesses nonexistent fields
-- LLVM GEP instructions access wrong offsets, producing garbage values or segfaults
-- Actor message passing between modules using "same-name" structs silently corrupts data
+- All Snow programs using math functions fail to compile on Linux
+- Users discover this post-deployment, not during development
+- If using the Rust `libm` crate instead of system libm, the ABI boundary is different -- Rust functions are not `extern "C"` by default
 
 **Prevention:**
-All type names must become module-qualified throughout the entire pipeline. The canonical form should be `ModulePath.TypeName` (e.g., `Math.Vector.Point`):
-
-1. **TypeRegistry keys:** Change from `"Point"` to `"Math.Vector.Point"`. Every `register_struct`, `register_sum_type`, `register_alias` call must prefix the module path.
-
-2. **MirType names:** `MirType::Struct("Math.Vector.Point")` and `MirType::SumType("Math.Vector.Option_Int")`. This flows through to `mangle_type_name`, codegen `struct_types`, and LLVM struct type names.
-
-3. **TraitRegistry:** Impls must be qualified: `impl Display for Math.Vector.Point`. The `ImplDef.impl_type_name` field must carry the qualified name.
-
-4. **Backward compatibility:** For single-file programs (no imports), the module path is empty, so type names remain bare. The qualification only adds a prefix for multi-file programs.
-
-5. **Import aliasing:** `import Math.Vector` means `Vector.Point` in user code resolves to `Math.Vector.Point` internally. The name resolution layer translates user-visible names to qualified names before they reach `TypeRegistry`.
-
-**Warning signs:**
-- Tests with two modules defining same-named types pass (they should fail or produce distinct types)
-- `TypeRegistry.struct_defs.len()` is less than expected after loading multiple modules
-- LLVM verification errors about struct field count mismatches
+1. Add `-lm` to the linker invocation in `link.rs` unconditionally (it's harmless on macOS)
+2. Use LLVM intrinsics where available (`llvm.sqrt`, `llvm.pow`, `llvm.fabs`, `llvm.floor`, `llvm.ceil`, `llvm.round`) -- these are lowered by LLVM to optimal platform code and require NO library linking for the subset LLVM supports natively
+3. For functions LLVM does not have intrinsics for (e.g., `atan2`, trigonometric functions), declare them as external in `intrinsics.rs` and ensure `-lm` in `link.rs`
+4. Add a Linux CI check that exercises math functions
 
 **Detection:**
-Add an assertion in `register_struct` that panics if a name collision occurs from different modules. In debug builds, verify that every `MirType::Struct` name contains a module qualifier when compiling multi-file projects.
+- Linking errors on Linux with "undefined reference to `sqrt`"
+- E2E tests pass on macOS but fail on Linux
 
-**Phase to address:**
-Name resolution phase. This is the FIRST thing to get right -- every subsequent phase depends on qualified names being correct. Retrofitting qualification after building on bare names requires touching every pipeline stage.
+**Confidence:** HIGH -- verified by reading `link.rs` directly; the `-lm` flag is absent.
 
 ---
 
-### Pitfall 2: Name Mangling Collisions Produce Duplicate LLVM Symbols
+### Pitfall 2: ? Operator Requires Early Return, Which Snow's Expression-Oriented Codegen Does Not Naturally Support
 
 **What goes wrong:**
-Snow's current name mangling uses patterns like `Trait__Method__Type` (e.g., `Display__to_string__Point`) and `identity_Int` for monomorphized generics. These names become LLVM function names and ultimately linker symbols. When two modules define functions with the same name, or implement the same trait for same-named types, the LLVM symbols collide:
+The `?` operator on `expr?` must: (1) evaluate `expr`, (2) check if it's `Ok(v)` or `Err(e)`, (3) if `Ok`, unwrap to `v` and continue, (4) if `Err`, return `Err(e)` from the enclosing function immediately. Step 4 is the problem.
 
-```
-# module_a.snow
-def helper(x :: Int) -> Int do x + 1 end
+Snow's codegen (`compile_function` in mod.rs:345-472) compiles the body as a single expression and emits the return at the end. `MirExpr::Return` exists (codegen/expr.rs:1359-1369) and correctly emits `build_return`, but it leaves the builder in a terminated block. If `?` appears in the middle of an expression chain (e.g., `let x = foo()? + bar()?`), the second `?` will try to emit code after a return instruction -- LLVM will reject this with a verification error ("Terminator found in the middle of a basic block").
 
-# module_b.snow
-def helper(x :: Int) -> Int do x * 2 end
-```
-
-Both lower to MIR function `helper`, both become LLVM function `@helper`. The LLVM module will reject the duplicate definition, or the linker will silently pick one.
-
-The same problem occurs with trait implementations:
-```
-# module_a.snow: impl Display for Point
-# module_b.snow: impl Display for Point  (different Point)
-# Both produce: Display__to_string__Point
-```
+The existing `Return` codegen returns a dummy value after emitting the return instruction (line 1368), but this only works if it's the last thing evaluated. In a `?` expression, control flow must branch: one path returns early, one path continues.
 
 **Why it happens:**
-`MirFunction.name` (mir/mod.rs:44) is a bare string. The MIR lowerer (lower.rs) uses function names directly from the AST without any module prefix. The codegen `declare_functions` (codegen/mod.rs:197) forward-declares all functions by their MIR name, and `functions` cache (codegen/mod.rs:65) maps MIR names to LLVM `FunctionValue`. No module qualification exists at any level.
+The `?` operator is syntactically an expression but semantically introduces control flow (branching + potential early return). This is fundamentally different from Snow's current expressions, all of which produce values without returning from the function.
 
 **Consequences:**
-- LLVM module verification fails with "redefinition of symbol"
-- If using separate LLVM modules per Snow module and linking, the linker produces "duplicate symbol" errors
-- If symbols are made weak/COMDAT, the linker silently picks one, producing wrong behavior
+- Naive implementation (lowering `?` to `match` + `Return`) produces invalid LLVM IR when `?` is nested or appears mid-expression
+- LLVM module verification fails with "Terminator found in the middle of a basic block"
+- If worked around by splitting into multiple basic blocks, every `?` usage creates 3 blocks (check, early-return, continue), significantly complicating codegen for common patterns like `let x = foo()? + bar()?`
 
 **Prevention:**
-Every function name in MIR must be module-qualified. The mangling scheme should be:
+Lower `?` in MIR as a `Match` with two arms, where the `Err` arm contains a `Return`. The codegen for `Match` already handles branching to separate basic blocks with a merge block. The key insight: the `Err` arm's block will be terminated by the return, so the merge block's phi node should only have the `Ok` arm as a predecessor. This matches how the existing pattern match codegen handles `Never`-typed arms.
 
+Concretely, `expr?` should lower to:
 ```
-<module_path>__<function_name>           # regular functions
-<module_path>__<Trait>__<Method>__<Type> # trait impls
-<module_path>__<function>__<TypeArgs>    # monomorphized generics
-<module_path>__closure_<N>              # lifted closures
-```
-
-For example:
-- `math.vector__add` instead of `add`
-- `math.vector__Display__to_string__Point` instead of `Display__to_string__Point`
-- `math.vector__identity__Int` instead of `identity_Int`
-
-The module path uses dots or double underscores as separators. Using dots in LLVM symbol names is valid (LLVM allows any character in symbol names when quoted).
-
-**Critical:** The `main` function in the entry module must remain `main` (or `snow_main`) without module qualification, because `generate_main_wrapper` (codegen/mod.rs:205) emits a C `main` that calls it.
-
-**Warning signs:**
-- "Redefinition of symbol" errors when compiling multi-module programs
-- Linker errors about duplicate symbols
-- Wrong function called at runtime (function from module B called instead of module A)
-
-**Phase to address:**
-MIR lowering phase. The lowerer must prepend module paths when creating `MirFunction.name`. This cascades through monomorphization and codegen automatically since they use the MIR name.
-
----
-
-### Pitfall 3: HM Type Inference Context Not Propagated Across Module Boundaries
-
-**What goes wrong:**
-Snow's type inference (infer.rs) runs Algorithm J on the AST, building a `TypeEnv` (env.rs) with scope stacks and a `TypeRegistry` for struct/sum type definitions. Currently, `check(parse)` (lib.rs:96) takes a single `Parse` and returns a single `TypeckResult`. There is no mechanism to feed type information from one module into another's inference context.
-
-When module A imports module B, the type checker for module A needs to know:
-- What functions B exports, and their type schemes (polymorphic signatures)
-- What types B exports (struct defs, sum type defs, type aliases)
-- What trait impls B provides
-- What trait definitions B provides
-
-Without this information, any reference to `B.some_function()` will produce `NoSuchFunction` errors. The type checker literally cannot see across module boundaries.
-
-**Why it happens:**
-The `infer` function (infer.rs) is monolithic -- it processes one `Parse` tree and builds all registries from scratch. There is no "import" step that loads pre-computed type information from another module. The `TypeEnv`, `TypeRegistry`, and `TraitRegistry` are all created fresh for each `check()` call.
-
-OCaml solves this with `.cmi` (compiled module interface) files -- binary files containing the type signature of a module. When compiling module A that imports B, the compiler loads `B.cmi` to get B's type context. Haskell uses `.hi` (interface) files similarly.
-
-**Consequences:**
-- Cross-module function calls fail type checking
-- Cross-module type references are unknown
-- Cross-module trait usage is invisible
-- The entire module system is non-functional without solving this
-
-**Prevention:**
-After type-checking a module, export its public interface as a data structure that other modules can consume. Two approaches:
-
-**Approach A: Merged context (recommended for Snow's architecture)**
-Compile modules in dependency order (topological sort of the import graph). Before type-checking module A, pre-populate A's `TypeEnv`, `TypeRegistry`, and `TraitRegistry` with the exported definitions from all of A's dependencies. This is the simplest approach and matches Snow's single-pass compilation model.
-
-```rust
-// Pseudocode
-fn check_module(parse: &Parse, imports: &[ModuleInterface]) -> TypeckResult {
-    let mut env = TypeEnv::new();
-    let mut type_reg = TypeRegistry::new();
-    let mut trait_reg = TraitRegistry::new();
-
-    // Pre-populate from imports
-    for import in imports {
-        for (name, scheme) in &import.exported_functions {
-            env.insert(qualified_name(import.path, name), scheme.clone());
-        }
-        for (name, def) in &import.exported_structs {
-            type_reg.register_struct(qualify(import.path, def));
-        }
-        // ... traits, sum types, etc.
-    }
-
-    // Then run normal inference with pre-populated context
-    infer_with_context(parse, env, type_reg, trait_reg)
-}
-```
-
-**Approach B: Interface files (more complex, better for incremental compilation)**
-After type-checking a module, serialize its public interface to a file (e.g., `.snowi`). When compiling a dependent module, load the interface file. This enables incremental compilation but adds serialization complexity. Defer to a later milestone.
-
-**Key insight:** The `TypeckResult` already contains everything needed for a module interface -- `type_registry`, `trait_registry`, and the `types` map. The missing piece is extracting the exported subset and making it available to dependents.
-
-**Warning signs:**
-- "Unknown function" errors when calling imported functions
-- "Unknown type" errors when using imported types
-- Type inference producing `Var` (unresolved) for cross-module expressions
-
-**Phase to address:**
-Type inference phase. This must be designed before implementing any cross-module feature. The module compilation order and interface propagation strategy determine the architecture of the entire module system.
-
----
-
-### Pitfall 4: Monomorphization Explosion from Cross-Module Generic Instantiation
-
-**What goes wrong:**
-Snow monomorphizes all generic functions -- each concrete type instantiation produces a separate function copy. Currently, monomorphization happens per-file (mono.rs), and the reachability pass starts from `main` to find all needed instantiations. With modules, a generic function defined in module A may be instantiated with different types in modules B, C, D, etc.
-
-Consider:
-```
-# collections/utils.snow
-pub def map_all(list :: List<T>, f :: Fun(T) -> U) -> List<U> do ... end
-
-# module_b.snow: map_all([1,2,3], fn(x) -> x.to_string() end)  # map_all_Int_String
-# module_c.snow: map_all(["a","b"], fn(x) -> x.length() end)    # map_all_String_Int
-# module_d.snow: map_all([1.0, 2.0], fn(x) -> x > 0.0 end)     # map_all_Float_Bool
-```
-
-Each call site generates a unique monomorphized copy. The monomorphization pass must now consider ALL modules' call sites when generating instantiations for a generic function, not just the current file.
-
-**Why it happens:**
-The current `monomorphize()` (mono.rs:24-30) operates on a single `MirModule`. It collects reachable functions from one entry point. With multiple modules, several problems arise:
-
-1. **Instantiation discovery:** Module A defines `map_all<T,U>`. Module B calls `map_all_Int_String`. The instantiation must be generated in the context of A's code but with B's concrete types.
-
-2. **Duplicate instantiations:** If modules B and C both call `map_all_Int_String`, two copies exist. The linker needs COMDAT/weak linkage to deduplicate, or the compiler must ensure only one copy is generated.
-
-3. **Code size explosion:** If 20 modules each use a utility generic with different types, 20 copies exist. For deeply generic code (generic functions calling other generic functions), this compounds exponentially.
-
-**Consequences:**
-- Binary size grows rapidly with number of modules using generics
-- Compilation slows due to redundant monomorphization
-- Linker symbol conflicts from duplicate instantiations
-- Build times degrade non-linearly
-
-**Prevention:**
-
-1. **Single-module compilation (recommended for v1.8):** Lower all Snow modules into a single `MirModule` before monomorphization. This is the simplest approach -- the existing monomorphization pass works unchanged. The MirModule simply contains functions from all modules with qualified names. Reachability from `main` prunes unused instantiations naturally.
-
-2. **Deduplication by name:** Since monomorphized names include type arguments (e.g., `collections.utils__map_all__Int__String`), identical instantiations from different call sites produce the same name. The MIR-to-LLVM pass should detect duplicates and emit only one copy.
-
-3. **Defer separate compilation:** Do NOT attempt per-module object files in v1.8. The cross-module monomorphization problem is complex (Rust dedicates significant infrastructure to it with CGU partitioning). Compile all modules as one LLVM module first; add separate compilation in a future milestone.
-
-**Warning signs:**
-- Binary size doubles when splitting a single file into two modules with no other changes
-- "Redefinition of function" errors for monomorphized generics called from multiple modules
-- Compilation time grows super-linearly with number of modules
-
-**Phase to address:**
-MIR lowering and monomorphization phase. The decision to use single-module compilation vs. per-module compilation must be made early, as it affects every subsequent phase.
-
----
-
-### Pitfall 5: Import Cycle Detection Misses Indirect Cycles or Fails on Diamond Dependencies
-
-**What goes wrong:**
-Snow's design forbids circular imports. The module dependency graph must be a DAG. Cycle detection must catch ALL cycles, including indirect ones:
-
-```
-# Direct cycle (easy to detect):
-# a.snow imports b.snow, b.snow imports a.snow
-
-# Indirect cycle (harder):
-# a.snow imports b.snow
-# b.snow imports c.snow
-# c.snow imports a.snow
-
-# Diamond (NOT a cycle -- must be allowed):
-# a.snow imports b.snow and c.snow
-# b.snow imports d.snow
-# c.snow imports d.snow
-```
-
-If diamond dependencies are incorrectly flagged as cycles, common patterns like "two modules sharing a utility module" become impossible.
-
-**Why it happens:**
-Naive cycle detection using a simple "visited" set (without distinguishing "in current DFS path" from "fully processed") will flag diamonds as cycles. When visiting `d.snow` from the `b` path, `d` is already in the visited set from the `c` path. Without three-state coloring (WHITE/GRAY/BLACK), this looks like a back-edge.
-
-**Consequences:**
-- False positive: diamond dependencies rejected, forcing users to restructure valid code
-- False negative: indirect cycles not detected, causing infinite loops or stack overflow during compilation
-- Incorrect compilation order: modules compiled before their dependencies, producing "unknown type" errors
-
-**Prevention:**
-Use Kahn's algorithm (BFS-based topological sort) for both cycle detection and compilation order:
-
-1. Build the dependency graph from all import declarations
-2. Compute in-degrees for all modules
-3. Process modules with in-degree 0 (no dependencies) first
-4. Decrement in-degrees of dependents; add newly zero-degree modules to the queue
-5. If any modules remain unprocessed, they form a cycle -- report the cycle with the exact module chain
-
-Kahn's algorithm is preferred over DFS-based topological sort because:
-- It naturally handles diamonds (a module is processed only after ALL dependencies are processed)
-- Cycle detection is a simple check: `processed_count < total_modules`
-- The processing order IS the compilation order
-- It produces a deterministic order (if ties are broken alphabetically)
-
-**Critical edge case:** Self-imports (`a.snow` imports `a.snow`) must be detected as a special case before graph construction.
-
-**Warning signs:**
-- Diamond dependency patterns produce "circular import" errors
-- Three-module indirect cycles compile without error
-- Compilation order is non-deterministic (HashMap iteration order)
-- Adding a new import to an unrelated module changes compilation order of other modules
-
-**Phase to address:**
-Dependency graph phase (before type checking). This must be the very first step after parsing all files -- before any type checking occurs.
-
----
-
-### Pitfall 6: Visibility System Leaks Private Definitions Through Re-exports and Type Inference
-
-**What goes wrong:**
-"Private by default, `pub` to export" seems simple, but visibility has subtle leak paths:
-
-**Leak 1: Public function returns private type**
-```
-# module_a.snow
-struct InternalConfig do ... end  # private
-
-pub def get_config() -> InternalConfig do  # public function, private return type
-  InternalConfig { ... }
+match expr do
+  Ok(v) -> v
+  Err(e) -> return Err(e)
 end
 ```
 
-Module B calls `get_config()` and gets a value of type `InternalConfig`. Can B access its fields? Can B store it? Can B pass it to other functions? The type is private, but the value exists in B's scope.
+This reuses the existing pattern compilation infrastructure (pattern/compile.rs) and the existing `ConstructVariant` + `Return` MIR nodes. No new codegen primitives needed.
 
-**Leak 2: Public trait exposes private method signature**
-```
-# module_a.snow
-struct Secret do ... end  # private
+**Detection:**
+- LLVM verification failure: "Terminator found in the middle of a basic block"
+- Crash when `?` appears anywhere other than the final expression in a function
 
-pub interface Processor do
-  def process(s :: Secret) -> Int  # public trait method uses private type
-end
-```
-
-Any module implementing `Processor` must mention `Secret`, but `Secret` is private.
-
-**Leak 3: Type inference propagates private types**
-```
-# module_a.snow
-struct Internal do value :: Int end  # private
-pub def make() -> Internal do Internal { value: 42 } end
-
-# module_b.snow
-let x = A.make()    # type of x is A.Internal -- private type visible through inference
-let y = x.value     # field access on private type -- should this work?
-```
-
-**Why it happens:**
-HM type inference does not inherently respect visibility boundaries. The type checker infers the most general type, which may include private types from imported modules. Without explicit visibility checks on type propagation, private types leak through public interfaces.
-
-**Consequences:**
-- Users depend on internal types, creating hidden coupling between modules
-- Refactoring internal types breaks downstream modules even though the API did not change
-- Confusing errors when private types appear in error messages for code in other modules
-
-**Prevention:**
-
-1. **Public interface validation:** After type-checking a module, validate that every `pub` function's signature only references `pub` types from the same module or imported types. Emit an error like: `"public function 'get_config' has private return type 'InternalConfig'"`. OCaml enforces this through `.mli` interface files; Rust enforces it with the `E0446` error.
-
-2. **Opaque types for advanced use:** For now, simply reject public functions that expose private types. In a future version, add opaque type exports (the type name is visible but the definition is hidden -- consumers can pass it around but not inspect its fields).
-
-3. **Trait method validation:** Trait method signatures in `pub interface` blocks must only reference `pub` types.
-
-4. **Warning, not error (pragmatic option for v1.8):** Since Snow does not have opaque types yet, making this an error may be too restrictive. A warning with a clear message is acceptable for v1.8, with enforcement deferred.
-
-**Warning signs:**
-- Private struct names appearing in error messages when compiling a different module
-- Users able to construct/destructure private types from other modules
-- Adding `pub` to a struct definition changes the behavior of code in other modules
-
-**Phase to address:**
-Name resolution and type checking phase. Visibility checking should run as a validation pass after type inference, before MIR lowering.
+**Confidence:** HIGH -- verified by reading codegen_return (expr.rs:1359-1369) and compile_function (mod.rs:345-472); the control flow issue is structural.
 
 ---
 
-### Pitfall 7: Existing Single-File Programs Break When Module System Is Added
+### Pitfall 3: Tail-Call Elimination With musttail Requires Matching Caller/Callee Signatures
 
 **What goes wrong:**
-All existing Snow programs are single-file. The module system must not change the behavior of any existing program. Specific breakage vectors:
+LLVM's `musttail` marker (required for guaranteed TCE, available via Inkwell 0.8's `set_tail_call_kind` on LLVM 21) enforces strict rules: the caller and callee must have identical calling conventions, matching parameter types, matching return types, and the call must immediately precede a `ret` instruction. Snow functions use the default C calling convention and pass all values as `i64`/`ptr`/`f64`. For self-recursion (`fn factorial(n) = if n <= 1 then 1 else n * factorial(n - 1)`), the signatures match trivially.
 
-**Break 1: New keywords conflict with existing identifiers**
-If `import`, `from`, `pub`, or `module` become keywords, existing programs using these as variable or function names will fail to parse:
-```
-# Existing valid Snow code:
-let import = "data.csv"          # breaks if 'import' is a keyword
-def pub(x) -> x end             # breaks if 'pub' is a keyword
-```
+For mutual recursion (`fn even(n) = if n == 0 then true else odd(n - 1)` / `fn odd(n) = if n == 0 then false else even(n - 1)`), signatures must also match. If `even` returns `Bool` (i8) and `odd` returns `Bool` (i8), the LLVM types match. But if one function returns `Int` (i64) and the other returns `Bool` (i8), `musttail` will fail with a fatal backend error: "failed to perform tail call elimination on a call site marked musttail."
 
-**Break 2: Name resolution order changes**
-If the module system changes how names are resolved (e.g., checking module scope before local scope), existing programs may resolve names differently. The current resolution priority (per PROJECT.md line 159) is: module > service > variant > struct field > method. If "module" here means Snow module (not Elixir-style namespaced module), existing code using module-qualified syntax like `String.length(s)` must continue to work.
-
-**Break 3: Compilation entry point changes**
-Currently `snowc build <dir>` finds `main.snow` and compiles it as a standalone file (main.rs:222-224). If the build command changes to treat the directory as a project with module discovery, the single-file compilation path must still work identically.
-
-**Break 4: Builtins no longer accessible**
-If module system changes how builtins are registered (e.g., builtins are now in an implicit `Snow.Prelude` module), and the import mechanism is incorrect, builtins like `IO.puts`, `List.map`, etc., may become inaccessible.
+More critically: any operation between the tail call and the return invalidates `musttail`. Snow's codegen inserts `snow_reduction_check()` after every function call (expr.rs:634-635). A tail call followed by a reduction check followed by a return is NOT a valid musttail position.
 
 **Why it happens:**
-Module system changes touch the parser (new keywords), name resolution (new scope rules), compilation pipeline (multi-file orchestration), and builtins registration. Each change has the potential to break existing behavior.
+1. LLVM `musttail` is a hard contract -- if it cannot be honored, compilation fails (not silently dropped)
+2. Reduction checks are inserted unconditionally after all calls for actor scheduler fairness
+3. Snow's uniform u64 storage helps (most things are i64), but Bool (i8) and Float (f64) break type matching
 
 **Consequences:**
-- All 1,278+ existing tests fail after module system changes
-- Users must modify working programs to compile under the new version
-- Regression bugs in seemingly unrelated areas
+- If musttail is applied to calls with mismatched return types: fatal LLVM backend error, compiler crash
+- If musttail is applied to calls followed by reduction checks: LLVM verification error
+- If using `tail` (soft hint) instead of `musttail`: LLVM may or may not optimize it, no guarantee, stack overflow on deep mutual recursion
 
 **Prevention:**
+1. Use the loop-transformation approach for self-recursion (rewrite `f(args) { ... f(new_args) }` to `loop { args = new_args }`). This is guaranteed, platform-independent, and does not require musttail. LLVM's own TailRecursionElimination pass does this, but only at `-O2+` -- Snow needs it at `-O0` too.
+2. For mutual recursion, either:
+   a. Normalize all function return types to i64 (the uniform storage already does this for most types), or
+   b. Use a trampoline: rewrite mutually recursive functions into a single dispatcher function with a loop, converting tail calls into `continue` with updated arguments
+3. Skip `snow_reduction_check()` insertion for calls in tail position -- the callee will do its own reduction check
+4. If using `musttail`, verify at MIR level that caller/callee signatures match before emitting the marker
 
-1. **Contextual keywords:** Make `import`, `from`, and `pub` contextual keywords -- they are keywords only in specific syntactic positions (beginning of line, before `def`/`struct`/etc.). As variable names, they remain valid identifiers. Snow already uses this pattern for `deriving` (PROJECT.md line 144).
+**Detection:**
+- LLVM fatal error: "failed to perform tail call elimination on a call site marked musttail"
+- Stack overflow in programs with mutual recursion that "should" be TCE'd
+- Missing reduction checks causing actor starvation (if checks are skipped too aggressively)
 
-2. **Single-file mode preserved:** When compiling a directory with only `main.snow` and no imports, the compilation path should be functionally identical to the current pipeline. The module system is opt-in (only activated when imports are present or multiple `.snow` files exist).
+**Confidence:** HIGH -- verified Inkwell 0.8 has `set_tail_call_kind` on LLVM 21; verified reduction check insertion in expr.rs:634; LLVM musttail restrictions verified via LLVM Language Reference.
 
-3. **All existing tests pass before any new feature tests:** Make "existing tests green" the very first gate for every module system phase.
+---
 
-4. **Builtins are implicitly available:** Every module automatically has access to builtins without explicit imports. The implicit prelude is injected into every module's `TypeEnv` and `TypeRegistry` before type checking.
+### Pitfall 4: Receive Timeout After Clause -- Codegen Ignores timeout_body
 
-5. **Resolution order unchanged:** The current resolution order is preserved. Module-qualified names (e.g., `Math.Vector.add(a, b)`) use a new syntactic form that does not conflict with existing dot-syntax (which is method calls on values, not module access).
+**What goes wrong:**
+The receive timeout infrastructure is almost complete. The parser handles `after` clauses (lower.rs:7160-7168). MIR has `ActorReceive { arms, timeout_ms, timeout_body }` (mir/mod.rs:263-269). The runtime's `snow_actor_receive(timeout_ms)` correctly returns null on timeout (actor/mod.rs:315-399). BUT: the codegen explicitly discards `timeout_body` with `timeout_body: _` (codegen/expr.rs:129) and never generates code for what should happen when the timeout fires.
 
-**Warning signs:**
-- Any existing test failing after module system changes
-- Parse errors in existing programs when building with the new compiler
-- `snowc build` producing different output for single-file projects
+Currently, when `snow_actor_receive` returns null (timeout), the codegen proceeds to load from the null pointer (data_ptr = msg_ptr + 16 where msg_ptr is null), causing a segfault.
 
-**Phase to address:**
-EVERY phase. Backward compatibility must be a gate for every PR. Run the full test suite after every change.
+**Why it happens:**
+The receive codegen (expr.rs:1540-1648) was written for infinite-wait receives. It unconditionally loads message data from the returned pointer without checking for null. The timeout path was explicitly deferred: `timeout_body: _` on line 129.
+
+**Consequences:**
+- Any program using `receive ... after 1000 -> :timeout end` will segfault when the timeout fires
+- The null pointer dereference occurs in LLVM-generated code, producing an opaque signal 11 crash
+- Users cannot write timeout-based patterns (heartbeat checks, retry loops, supervision timeouts)
+
+**Prevention:**
+After calling `snow_actor_receive(timeout_val)`, check if the returned pointer is null:
+1. `icmp eq msg_ptr, null` -- branch to timeout block if null, normal block if non-null
+2. Normal block: existing message extraction + arm matching code
+3. Timeout block: codegen the `timeout_body` expression
+4. Both blocks branch to a merge block with a phi node for the result value
+5. The result type of the timeout_body must match the result type of the receive arms -- enforce this in typeck
+
+This is structurally similar to if/else codegen, which Snow already handles correctly.
+
+**Detection:**
+- Segfault (signal 11) when receive timeout fires
+- E2E test: `receive do msg -> msg after 100 -> "timeout" end` -- crashes instead of returning "timeout"
+
+**Confidence:** HIGH -- verified by reading codegen/expr.rs:126-131 where `timeout_body: _` explicitly discards the body, and expr.rs:1557-1566 where null is never checked.
+
+---
+
+### Pitfall 5: Collection sort() Requires Comparator Callback But Comparator Type Depends on Element Type
+
+**What goes wrong:**
+Adding `snow_list_sort(list, elem_cmp)` follows the existing callback pattern (like `snow_list_compare`, `snow_list_eq`). The runtime function receives a `*mut u8` function pointer that compares two `u64` elements. The problem: the MIR lowerer must synthesize the correct comparator function pointer for the concrete element type at each call site.
+
+For `List<Int>.sort()`, the comparator is `snow_int_compare`. For `List<String>.sort()`, it's `snow_string_compare` (which does not yet exist -- noted as tech debt at lower.rs:5799). For `List<Point>.sort()` where Point implements Ord, it needs the monomorphized `Ord__compare__Point` function. For `List<List<Int>>.sort()`, it needs a synthetic wrapper function (like the v1.4 nested Display wrappers).
+
+If the MIR lowerer fails to synthesize the correct comparator for any element type, the sort will either: (a) compare raw u64 bit patterns (wrong for strings, floats, structs), (b) call the wrong function (memory corruption), or (c) fail to compile.
+
+**Why it happens:**
+The callback dispatch pattern works well but requires per-call-site specialization in MIR. Each new callback-taking operation multiplies the MIR lowerer's complexity. The existing `snow_list_to_string`, `snow_list_eq`, and `snow_list_compare` already demonstrate the pattern, but sort adds the constraint that the comparator must provide a total ordering -- partial orderings cause undefined behavior in sorting algorithms.
+
+**Consequences:**
+- Silent data corruption if wrong comparator used (e.g., comparing string pointers as integers)
+- Compilation failure for nested generic types (List<List<T>>) if synthetic wrapper not generated
+- Panic or infinite loop if comparator doesn't provide total ordering (NaN floats, custom Ord impls with bugs)
+
+**Prevention:**
+1. Require the `Ord` trait constraint on the element type for `sort()` -- this is already enforced at the typeck level for `compare()`
+2. Reuse the existing comparator synthesis from `snow_list_compare` codegen -- the MIR lowerer already resolves the correct callback for Ord-constrained operations
+3. For Float sorting, handle NaN explicitly: either error at compile time ("Float does not implement Ord") or use a total ordering that puts NaN last
+4. Add the missing `snow_string_compare` to the runtime (it's already flagged as tech debt)
+5. Test with every element type that has Ord: Int, Float, String, Bool, user structs, nested collections
+
+**Detection:**
+- Sort produces wrong order for string lists (comparing pointer values instead of string content)
+- ICE (internal compiler error) when sorting List<List<Int>> -- missing synthetic wrapper
+
+**Confidence:** HIGH -- verified callback pattern in list.rs:316-374 and the tech debt note at lower.rs:5799.
 
 ---
 
 ## Moderate Pitfalls
 
-Mistakes that cause technical debt, confusing errors, or delayed regressions.
+Mistakes that cause significant rework or user-facing bugs, but are contained to a single feature.
 
 ---
 
-### Pitfall 8: Single LLVM Module Becomes Bottleneck -- But Separate Modules Are Premature
+### Pitfall 6: Timer Primitives (sleep, send_after) Must Yield to Scheduler, Not Block OS Thread
 
 **What goes wrong:**
-The current codegen creates one LLVM module per compilation (lib.rs:80, `CodeGen::new(&context, "snow_module", ...)`). For multi-module Snow programs, the simplest approach is to lower everything into one big LLVM module. This works but has scaling consequences:
+The natural implementation of `sleep(ms)` is `std::thread::sleep(Duration::from_millis(ms))`. But Snow actors run as coroutines multiplexed across a fixed pool of OS worker threads (scheduler.rs:1-27). If an actor calls `std::thread::sleep`, it blocks the entire OS thread, starving all other actors pinned to that thread (since coroutines are `!Send` and stay on their creation thread).
 
-- LLVM optimization passes run on the entire module (not per-function), so compile times grow super-linearly
-- The entire program must be recompiled for any change in any module
-- No parallel compilation is possible
-
-However, splitting into separate LLVM modules per Snow module introduces all the monomorphization, symbol, and type identity problems described above (Pitfalls 1, 2, 4). Attempting separate LLVM modules in v1.8 is a trap.
-
-**Prevention:**
-Start with a single LLVM module. Accept the compilation time tradeoff for v1.8. Add a comment/TODO for future separate compilation. The Rust compiler team invested years in the CGU partitioning scheme -- Snow should not attempt this in the first module system milestone.
-
-**Warning signs:**
-- Attempting to create multiple LLVM modules and link them
-- Investigating LLVM module linking or LTO as part of v1.8
-- Compilation time exceeding 10 seconds for modest multi-module programs
-
-**Phase to address:** Codegen phase. Decision should be documented as "single LLVM module for v1.8" in the architecture doc.
-
----
-
-### Pitfall 9: Module Path Ambiguity -- Dots in Module Names vs. Dots in Method Calls
-
-**What goes wrong:**
-Snow v1.6 added method dot-syntax: `value.method(args)`. The module system uses dots for module paths: `Math.Vector.add(a, b)`. These are syntactically ambiguous:
-
-```
-# Is this a module-qualified function call, or a method chain?
-Vector.add(a, b)
-
-# If Vector is a local variable holding a struct:
-#   -> method call: Vector.add(a, b) means add(Vector, a, b)
-# If Vector is a module name:
-#   -> qualified call: calls Math.Vector.add with args (a, b)
-```
-
-The v1.6 resolution order (PROJECT.md line 159) puts module-qualified calls first: `module > service > variant > struct field > method`. But this means importing a module named `Vector` would shadow a local variable named `Vector` for dot-syntax purposes.
-
-**Prevention:**
-Module-qualified access should use a DISTINCT syntactic form from method calls. Options:
-
-- **Option A (recommended):** Module paths use `::` separator: `Math::Vector::add(a, b)`. This is unambiguous -- `::` is never used for method calls. Familiar from Rust and C++.
-
-- **Option B:** Module paths only valid at the beginning of a name, before any value-level operations. `Vector.add(a, b)` is a module call only if `Vector` is a known module name (not a local variable). This is the approach used by Elixir and works because module names are capitalized and rarely shadow locals.
-
-- **Option C:** Use the current dot syntax but resolve based on what `Vector` is. If it is a module, it is a module call. If it is a variable, it is a method call. This requires name resolution to be context-aware and may produce confusing errors.
-
-The PROJECT.md indicates `import Math.Vector` with dot syntax for module paths. Since Snow already uses `.` for method calls, the parser must distinguish `ModuleName.function()` from `variable.method()`. The simplest disambiguation: module names are resolved FIRST during name resolution. If a name resolves to a module, it is a module-qualified call. Otherwise, it falls through to method resolution.
-
-**Warning signs:**
-- Importing a module with the same name as a local variable causes unexpected behavior
-- Method chains on variables fail when a module with that name exists
-- Parse ambiguity between `IO.puts("hello")` (module call) and `my_io.puts("hello")` (method call)
-
-**Phase to address:** Parser and name resolution phase. The syntactic disambiguation must be designed before implementation.
-
----
-
-### Pitfall 10: Trait Coherence Breaks with Cross-Module Impls
-
-**What goes wrong:**
-Rust's "orphan rule" exists for a reason: without it, two different modules could implement the same trait for the same type, and the compiler would not know which implementation to use. Snow currently has no orphan rule because all code is in one file. With modules:
-
-```
-# module_a.snow
-struct Point do x :: Int, y :: Int end
-
-# module_b.snow
-impl Display for Point do
-  def to_string(self) -> String do "from B" end
-end
-
-# module_c.snow
-impl Display for Point do
-  def to_string(self) -> String do "from C" end
-end
-```
-
-When module D imports both B and C, which `Display` impl for `Point` does it get?
+Similarly, `send_after(pid, msg, delay_ms)` cannot simply spawn a Rust thread that sleeps -- it must integrate with the actor scheduler to avoid thread exhaustion.
 
 **Why it happens:**
-The `TraitRegistry` (traits.rs:73-80) stores impls keyed by trait name, with a Vec of impls. The `has_impl` lookup uses structural type matching. If two impls for the same trait+type exist, the first one wins (or the lookup is ambiguous). The v1.6 AmbiguousMethod diagnostic (PROJECT.md line 163) handles this for method calls, but not for arbitrary trait dispatch.
+Coroutine-based schedulers require all blocking operations to yield to the scheduler rather than blocking the OS thread. This is a fundamental property of M:N scheduling that every new blocking primitive must respect.
+
+**Consequences:**
+- `sleep(5000)` in one actor freezes all other actors on the same OS thread for 5 seconds
+- With N worker threads and N sleeping actors, the entire runtime deadlocks
+- `send_after` that spawns OS threads creates threads unbounded -- 10,000 `send_after` calls create 10,000 threads
 
 **Prevention:**
-For v1.8, implement a simple coherence rule:
+1. Implement `snow_sleep(ms)` as a yield loop: set actor state to Waiting, record a deadline (`Instant::now() + duration`), yield to scheduler. On resume, check if deadline passed; if not, yield again. This mirrors the pattern already used in `snow_actor_receive` for timeout (actor/mod.rs:365-399).
+2. Implement `send_after(pid, msg, delay_ms)` as a lightweight actor spawn: spawn a new actor that runs `sleep(delay_ms); send(pid, msg)`. Since actors are lightweight (~2KB stack), this is cheap. Alternatively, add a timer wheel to the scheduler for O(1) timer management.
+3. Do NOT use `std::thread::sleep` or `std::thread::spawn` anywhere in timer primitives.
 
-1. **A trait can only be implemented for a type in the module that defines the type OR the module that defines the trait.** This is the Rust orphan rule simplified.
+**Detection:**
+- Actor throughput drops to zero when any actor calls sleep
+- Benchmark: spawn 100 actors that each sleep(10), measure total time. Should be ~10ms, not ~1000ms.
 
-2. **At module loading time, check for duplicate impls.** When merging TraitRegistries from imported modules, detect if the same `(trait, type)` pair has multiple impls. Emit a clear error: `"conflicting implementations of trait 'Display' for type 'Point' found in modules B and C"`.
-
-3. **Defer blanket impls and specialization.** These are explicitly out of scope (PROJECT.md line 95).
-
-**Warning signs:**
-- Different behavior depending on import order
-- Trait method calls producing different results depending on which module was compiled first
-- `HashMap::insert` in `TraitRegistry` silently overwriting existing impls
-
-**Phase to address:** Type checking phase, after cross-module trait registration is implemented.
+**Confidence:** HIGH -- verified scheduler architecture in scheduler.rs:1-27 and coroutine constraints (corosensei `!Send`) in stack.rs.
 
 ---
 
-### Pitfall 11: Module Discovery Races with File System Layout
+### Pitfall 7: ? Operator Type Inference -- Enclosing Function Must Return Result<T, E>
 
 **What goes wrong:**
-Snow's design maps file paths to module names: `math/vector.snow` becomes `Math.Vector`. Several edge cases:
+The `?` operator is only valid inside a function that returns `Result<T, E>`. If used in a function returning `Int`, the `Err` arm tries to `return Err(e)` where the function expects `Int` -- type mismatch. This constraint must be checked during type inference, not during codegen.
 
-1. **Case sensitivity:** On macOS (case-insensitive FS), `Math/Vector.snow` and `math/vector.snow` are the same file. On Linux (case-sensitive), they are different. If Snow treats module names case-sensitively (as it should), macOS users can create ambiguous situations.
+Snow's type checker (infer.rs) tracks the return type of the current function being inferred. But there's a subtlety: in multi-clause functions (`fn foo(0) = ...; fn foo(n) = ...`), all clauses share the return type. And in closures, the `?` operator must propagate to the closure's return type, not the enclosing function's return type.
 
-2. **Non-UTF8 paths:** Directory names with special characters produce unparseable module names.
+A deeper issue: `?` on `Result<T, E1>` inside a function returning `Result<T, E2>` where `E1 != E2` would require error type conversion (Rust uses `From` trait for this). Snow does not have a `From` trait. If E1 and E2 differ, the types don't unify.
 
-3. **Symlinks:** Symlinked files could create the appearance of two different modules that are actually the same file.
+**Why it happens:**
+The `?` operator implicitly constrains both the expression's type (must be `Result<T, E>`) and the enclosing function's return type (must be `Result<_, E>`). These bidirectional constraints are unusual in Snow's HM inference.
 
-4. **Nested `main.snow`:** If `math/main.snow` exists, is its module name `Math.Main` or `Math`?
-
-5. **Hidden files:** `.gitkeep`, `.DS_Store`, etc., should not be treated as modules.
+**Consequences:**
+- Without proper validation: type error at codegen time (too late), or unsound code that returns Err where Int is expected
+- Confusing error messages: "cannot unify Result<String, String> with Int" when user just wanted `?` on a file read
 
 **Prevention:**
+1. During inference of `expr?`, unify `expr`'s type with `Result<T_fresh, E_fresh>` and unify the enclosing function's return type with `Result<_, E_fresh>`
+2. If the function's return type cannot unify with `Result<_, _>`, emit a dedicated error: "the `?` operator can only be used in functions that return Result<T, E>"
+3. For closures, check the closure's return type, not the outer function
+4. Do NOT implement error conversion (From trait) in v1.9 -- require exact E type match. Document this limitation.
 
-1. **Module names must be valid Snow identifiers:** Enforce that directory and file names (without `.snow` extension) match `[a-z][a-z0-9_]*` (lowercase, alphanumeric, underscores). Reject files that do not match with a clear error.
+**Detection:**
+- Type error when `?` is used in a non-Result function
+- ICE if typeck doesn't catch this and codegen tries to return Err from an Int function
 
-2. **Canonical paths:** Use `std::fs::canonicalize` to resolve symlinks before building the module graph. Two paths that canonicalize to the same file are the same module.
-
-3. **`main.snow` is special:** The entry-point file is always `main.snow` in the project root. It is not a module -- it is the entry point. Nested `main.snow` files should be treated as regular modules named `<Parent>.Main` or rejected with an error.
-
-4. **Filter non-Snow files:** Only files ending in `.snow` are considered. The existing `collect_snow_files` (main.rs:424-449) already does this.
-
-**Warning signs:**
-- Same module compiled twice from symlinked paths
-- Module names containing hyphens or dots (from directory names) causing parse errors
-- Different behavior on macOS vs. Linux
-
-**Phase to address:** Module discovery phase (before parsing). File system traversal and module name derivation should be a separate, well-tested function.
+**Confidence:** HIGH -- verified Result is a builtin sum type (infer.rs:756-787) with generic params T, E; verified HM inference flow.
 
 ---
 
-### Pitfall 12: Error Messages Become Useless Across Module Boundaries
+### Pitfall 8: Collection Operations on Immutable Data -- O(n) Copy Cost Compounds to O(n^2) in Chains
 
 **What goes wrong:**
-Snow uses ariadne for diagnostics (main.rs:300-314), with source text and filename for error rendering. Currently, there is one source file and one filename. With modules, errors may reference types or functions defined in other files:
+Snow's collections use immutable semantics: every operation returns a new collection (list.rs:76-88 shows `snow_list_append` allocating a new list). Adding operations like `sort`, `zip`, `split`, and `join` that each return new collections means a chain like `list.sort().filter(f).zip(other)` creates 3 intermediate copies. For a list of N elements, sort is O(N log N) but also allocates a new N-element list, filter allocates up to N elements, and zip allocates up to N elements.
 
-```
-# Error in module_b.snow, caused by type mismatch with module_a's export:
-error[E0003]: Type mismatch
-  --> module_b.snow:5:15
-  |
-5 | let x: Int = A.get_config()
-  |              ^^^^^^^^^^^^^^ expected Int, got InternalConfig
+This is inherent to immutable semantics and usually acceptable, but the pitfall is in the runtime implementation: if `snow_list_sort` is implemented by copying to a Rust Vec, sorting, then copying back to a Snow list, there are 3 copies instead of 1. Similarly, if sort allocates via `snow_gc_alloc_actor` for each comparison (which it won't, but other operations might), GC pressure compounds.
 
-# Where is InternalConfig defined? What does it look like?
-# The user has no context.
-```
+**Why it happens:**
+Immutable semantics require allocation per operation. This is a known tradeoff, not a bug. The pitfall is implementing operations with unnecessary extra copies or allocations beyond the inherent minimum.
+
+**Consequences:**
+- 2-3x slower than necessary if implementations do redundant copies
+- GC pressure causes more frequent collections in actor heaps
+- Users complain about performance on large collections
 
 **Prevention:**
+1. Sort in-place on the NEW copy: allocate the new list, copy elements into it, sort the copy in-place using a Rust sort (which operates on the raw `u64` array via the callback). One allocation, one sort.
+2. For `zip`: allocate the result list once at `min(len_a, len_b)` capacity
+3. For `split`: allocate the result list of lists, each sublist allocated once
+4. For `join`: calculate total length first, allocate once
+5. Use `snow_list_builder_new(capacity)` + `snow_list_builder_push` pattern (already exists, list.rs:285-304) for operations that build lists incrementally
 
-1. **Multi-file diagnostics:** Ariadne supports multi-file error reporting. When a type mismatch involves a type from another module, include a secondary label pointing to the type's definition:
+**Detection:**
+- Benchmark: sort a 10,000-element list. Should be ~1ms, not ~10ms.
+- Heap size after sort should be ~2x the original list (old + new), not more.
+
+**Confidence:** HIGH -- verified immutable copy pattern in list.rs:76-88 and list builder pattern in list.rs:285-304.
+
+---
+
+### Pitfall 9: send_after Creates Actor But Doesn't Link -- Crash Goes Unnoticed
+
+**What goes wrong:**
+If `send_after(pid, msg, delay_ms)` is implemented by spawning a temporary actor that sleeps then sends, that actor is not linked to anything. If the target actor dies before the timer fires, the send goes to a dead mailbox (silently dropped -- or the temporary actor crashes). If the temporary actor itself crashes (e.g., OOM during sleep), nobody is notified.
+
+In Erlang/OTP, `erlang:send_after/3` returns a timer reference that can be cancelled. Snow would need a similar mechanism, or at minimum, the temporary actor should be linked to the caller.
+
+**Why it happens:**
+Timer primitives feel simple but interact with the actor lifecycle (links, monitors, supervision). A fire-and-forget timer that outlives its creator is a resource leak.
+
+**Consequences:**
+- Timer fires but message goes to dead process (silent failure)
+- Timer actors accumulate if created faster than they expire (memory leak)
+- No way to cancel a pending timer (architectural limitation if not designed in)
+
+**Prevention:**
+1. Return a timer reference (PID of the timer actor) from `send_after` so it can be cancelled
+2. Link the timer actor to the calling actor so it dies if the caller dies
+3. Alternatively, implement timers in the scheduler itself (timer wheel) rather than as actors -- more efficient but more complex
+4. For v1.9, the actor-based approach is simpler and sufficient. Add cancellation support in a future version.
+
+**Detection:**
+- Timer fires after target actor has exited -- message silently lost
+- Long-running server slowly accumulates timer actor corpses
+
+**Confidence:** MEDIUM -- based on established actor model patterns; Snow's specific actor lifecycle behavior verified in scheduler.rs and link.rs.
+
+---
+
+### Pitfall 10: TCE Analysis Must Handle Let Bindings and Match Arms in Tail Position
+
+**What goes wrong:**
+Detecting whether a call is in tail position is straightforward for `return f(x)` but subtle for Snow's expression-oriented design. In Snow, the last expression in a function body is the return value. Consider:
 
 ```
-error[E0003]: Type mismatch
-  --> module_b.snow:5:15
-  |
-5 | let x: Int = A.get_config()
-  |              ^^^^^^^^^^^^^^ expected Int, got A.InternalConfig
-  |
-  --> module_a.snow:3:1
-  |
-3 | struct InternalConfig do
-  | ^^^^^^^^^^^^^^^^^^^^^^^ InternalConfig defined here
+fn factorial(n, acc) do
+  let result = if n <= 1 do
+    acc
+  else
+    factorial(n - 1, n * acc)
+  end
+  result
+end
 ```
 
-2. **Qualified type names in errors:** Always show the module-qualified name in error messages (`A.InternalConfig`, not `InternalConfig`). This helps users understand where the type comes from.
+Here, `factorial(n - 1, n * acc)` is in tail position because: it's the else branch of an if, which is bound to `result` via let, which is the last expression (and thus returned). Detecting this requires traversing through Let, If, Match, and Block expressions.
 
-3. **Source map:** Maintain a mapping from module name to source text and file path. Pass this to the diagnostic renderer.
+Even harder: `fn foo(x) = match x do 1 -> bar(x); _ -> baz(x) end` -- both `bar(x)` and `baz(x)` are in tail position, but only if the match is itself in tail position.
 
-**Warning signs:**
-- Error messages showing bare type names that the user cannot find in their current file
-- Type mismatch errors with no indication of which module defined the expected type
-- Stack traces or panic messages with module-qualified mangled names that are unreadable
+If TCE analysis is too conservative (only handling direct `f(x)` at function body level), most real-world tail calls are missed. If too aggressive (marking calls as tail that aren't), stack cleanup is wrong.
 
-**Phase to address:** Diagnostics phase. Can be deferred slightly (working but ugly errors are acceptable initially), but must be addressed before the milestone is complete.
+**Why it happens:**
+Expression-oriented languages make tail position identification recursive. The tail position propagates inward through if/else, match, let, and block expressions.
+
+**Consequences:**
+- Too conservative: most recursive functions still overflow the stack
+- Too aggressive: incorrect code (return value not preserved, stack corruption)
+
+**Prevention:**
+1. Implement tail position analysis as a recursive MIR pass that propagates a `is_tail_position` flag:
+   - Function body: is_tail_position = true
+   - Let binding body: propagate tail status to the body (last expr after the let)
+   - If/else: propagate to both branches IF the if/else is in tail position
+   - Match: propagate to all arm bodies IF the match is in tail position
+   - Block: propagate to the last expression in the block
+   - Call: if in tail position AND callee matches, mark as tail call
+2. Start with self-recursion only (safer, simpler, covers 80% of use cases)
+3. Add mutual recursion support separately after self-recursion is validated
+
+**Detection:**
+- Stack overflow on `factorial(1000000, 1)` when TCE should prevent it
+- Wrong return value when a non-tail call is incorrectly marked as tail
+
+**Confidence:** HIGH -- verified by reading Snow's MIR structure (mir/mod.rs) where Let, If, Match, and Block are all expression-valued.
 
 ---
 
 ## Minor Pitfalls
 
-### Pitfall 13: Topological Sort Produces Non-Deterministic Order
-
-**What goes wrong:**
-If the dependency graph has multiple valid topological orderings, the compilation order may vary between runs (due to HashMap iteration order). This causes non-deterministic compiler output: different mangled names, different LLVM IR layout, different binary hashes. Makes debugging and reproducible builds difficult.
-
-**Prevention:** Break ties in topological sort alphabetically by module name. Use `BTreeMap` or sort the adjacency lists before processing.
-
-**Phase to address:** Dependency graph phase.
+Issues that cause friction or minor bugs but are straightforward to fix.
 
 ---
 
-### Pitfall 14: Recompiling Entire Project on Any Change
+### Pitfall 11: Intrinsic Declarations for Math Functions Must Match libm's Exact Signatures
 
 **What goes wrong:**
-Without incremental compilation, changing one module recompiles everything. For small projects (< 50 modules), this is acceptable. For larger projects, compilation times become frustrating.
+LLVM intrinsics for math (`llvm.sqrt.f64`, `llvm.pow.f64`, `llvm.fabs.f64`, etc.) take and return `f64`. Snow stores floats as f64 internally but passes them through the uniform u64 storage layer via bit-casting (f64 bits stored in i64). If the intrinsic declaration in `intrinsics.rs` uses `i64` parameters (matching Snow's storage convention) instead of `f64`, LLVM will either fail verification or produce incorrect results from bit reinterpretation.
 
-**Prevention:** For v1.8, accept full recompilation. Document that incremental compilation is a future optimization. The single-LLVM-module approach (Pitfall 8) makes incremental compilation impossible anyway, so this is a consistent design decision.
+For non-intrinsic libm functions (declared as `extern double sqrt(double)`), the same issue applies: the LLVM function declaration must use `f64`, and the caller must bitcast from i64 to f64 before the call and f64 to i64 after.
 
-**Phase to address:** Not in v1.8 scope. Document as future work.
+**Why it happens:**
+Snow's uniform u64 storage means float values are stored as `i64` at the LLVM level. Every float operation already does bitcast(i64 -> f64) before the operation and bitcast(f64 -> i64) after. Math functions must follow the same pattern, but it's easy to forget when adding new declarations.
+
+**Prevention:**
+1. Declare math intrinsics with `f64` parameter and return types in `intrinsics.rs`
+2. In codegen, bitcast arguments from i64 to f64 before calling, and bitcast result from f64 to i64 after
+3. Follow the exact same pattern used for existing float operations (arithmetic, comparison)
+4. Test with `Math.sqrt(2.0)` -- should return ~1.414, not garbage from bit reinterpretation
+
+**Detection:**
+- Math functions return NaN or wildly wrong values
+- LLVM verification error about type mismatch on intrinsic call
+
+**Confidence:** HIGH -- verified uniform u64 storage design (PROJECT.md line 165) and float handling pattern in codegen.
 
 ---
 
-### Pitfall 15: Service/Actor Definitions Across Modules
+### Pitfall 12: String split() and join() -- Inconsistent Return Types Across Collections
 
 **What goes wrong:**
-Snow's `ServiceDef` and `ActorDef` use dispatch tables (`service_dispatch` in MirModule) with string function names. If a service in module A handles messages that call handler functions in module B, the dispatch table must use module-qualified function names. Existing service dispatch (codegen/mod.rs:91-94) uses bare function names.
+`String.split(delimiter)` returns a `List<String>`. `List<String>.join(delimiter)` returns a `String`. These cross collection boundaries -- a String operation produces a List, and a List operation produces a String. The type checker and MIR lowerer must handle these cross-type returns.
 
-**Prevention:** When building service dispatch tables, use the same module-qualified function names used in MIR. Since services are typically defined in a single module, this may not be an immediate issue, but the infrastructure must handle qualified names.
+The current stdlib method dispatch (lower.rs line 7234-7245) maps bare names to runtime functions based on context. If `split` is registered as both a String method and (in the future) a List method, name resolution becomes ambiguous. The v1.6 method resolution priority (module > service > variant > struct field > method, from PROJECT.md) handles this, but the MIR builtin name mapping is a flat table.
 
-**Phase to address:** MIR lowering phase, when processing service/actor definitions.
+**Why it happens:**
+Operations like split/join bridge between String and List<String>. The type system handles this fine (different operations on different types), but the builtin name mapping and method dispatch must route correctly.
+
+**Consequences:**
+- `"a,b,c".split(",")` could resolve to the wrong function if `split` is ambiguous
+- Type checker infers wrong return type if method not properly registered
+
+**Prevention:**
+1. Register `split` under the String module: `"string_split" => "snow_string_split"` in the builtin map
+2. Register `join` under the List module: `"list_join" => "snow_list_join"` in the builtin map
+3. The dot-syntax method dispatch (v1.6) already resolves based on receiver type, so `"hello".split(",")` routes to String and `["a", "b"].join(",")` routes to List
+4. For `find`, which exists on multiple collection types, ensure each variant is registered with its type-prefixed name
+
+**Detection:**
+- Method resolution error or wrong method called when using split/join
+- Type inference produces wrong type for split result
+
+**Confidence:** HIGH -- verified builtin name mapping in lower.rs:7208-7340 and method dispatch in PROJECT.md.
+
+---
+
+### Pitfall 13: GC Safety During Long-Running Sort Operations
+
+**What goes wrong:**
+A sort operation on a large list (e.g., 100,000 elements) runs the comparator callback N*log(N) times. During this time, the actor is inside `snow_list_sort` (a Rust runtime function), not yielding to the scheduler. GC cannot run because GC only triggers at yield points (PROJECT.md line 152: "GC at yield points only"). Other actors on the same worker thread are starved.
+
+More subtly: if the comparator callback is a closure that captures GC-managed values, and a GC happens to trigger inside the callback (hypothetically), the closure's captured values could be moved. But since GC only runs at yield points and sort doesn't yield, this specific scenario cannot happen in the current design. The real risk is scheduler starvation, not GC corruption.
+
+**Why it happens:**
+Runtime functions written in Rust (extern "C") are opaque to the scheduler. The reduction counter (`snow_reduction_check`) is not called during runtime operations, only between Snow-level function calls.
+
+**Consequences:**
+- Sorting a large list (>10K elements) causes visible latency spikes in other actors on the same thread
+- Reduction count not decremented during sort -- actor gets "free" CPU time proportional to list size
+- In extreme cases, supervisor timeouts fire because supervised actors can't respond while sort is running on their thread
+
+**Prevention:**
+1. For v1.9, accept this limitation. Sort operations are typically fast (< 1ms for 10K elements), and the same issue exists for all runtime functions (map, filter, reduce, etc.)
+2. If performance becomes an issue: insert periodic `snow_reduction_check()` calls inside the sort loop (every N comparisons). This requires the Rust sort implementation to call back into the runtime, which is architecturally complex.
+3. Document that large collection operations may cause brief scheduler pauses
+
+**Detection:**
+- Actor response latency spikes correlating with large sort operations
+- Benchmark: sort 100K elements while measuring other actors' response time
+
+**Confidence:** MEDIUM -- this is a known architectural property of cooperative scheduling, not specific to sort.
+
+---
+
+### Pitfall 14: zip() Must Handle Different-Length Lists Gracefully
+
+**What goes wrong:**
+`List.zip(other)` should combine two lists into a list of tuples. If the lists have different lengths, the behavior must be well-defined. Three options: (a) truncate to shorter length (Erlang/Elixir, Python), (b) error on mismatch, (c) pad shorter with a default value. If not explicitly decided, different implementations may assume different semantics.
+
+Snow's tuples already exist in the runtime (tuple.rs), stored as `{ u64 len, u64[] elements }`. The result `List<(A, B)>` requires creating tuple values for each pair. The GC must be able to trace through these tuples -- since tuples are heap-allocated and use conservative stack scanning, this should work automatically.
+
+**Why it happens:**
+zip semantics vary across languages. Without an explicit decision, the implementation might change between versions or behave inconsistently.
+
+**Consequences:**
+- User surprise when `[1,2,3].zip([4,5])` returns `[(1,4), (2,5)]` instead of an error
+- If tuples are not properly GC-traced, memory leak or use-after-free
+
+**Prevention:**
+1. Choose truncate-to-shorter semantics (matches Elixir and most functional languages)
+2. Document the choice explicitly
+3. Ensure tuple allocation uses `snow_gc_alloc_actor` (it already does per tuple.rs patterns)
+
+**Detection:**
+- Incorrect zip result when lists have different lengths
+- Memory leak in long-running actor that frequently zips lists
+
+**Confidence:** HIGH -- straightforward design decision; GC safety verified via existing tuple allocation pattern.
+
+---
+
+### Pitfall 15: TCE Must Not Break Stack Traces for Debugging
+
+**What goes wrong:**
+Tail-call elimination replaces call frames with jumps. When an error occurs in a tail-called function, the stack trace only shows the final function in the chain, not the sequence of tail calls that led to it. For debugging, this can be confusing: `factorial(5, 1)` crashes and the stack trace shows only `factorial` at some intermediate value, not the original call site.
+
+**Why it happens:**
+TCE fundamentally trades debugging information for stack space. This is an inherent tradeoff, not a bug.
+
+**Consequences:**
+- Stack traces are less useful for debugging recursive functions
+- Users unfamiliar with TCE are confused by "missing" stack frames
+
+**Prevention:**
+1. Only apply TCE at optimization level >= 1. At -O0 (debug), preserve full call stacks.
+2. Alternatively, always apply TCE (since it's correctness-critical for deep recursion) but add a diagnostic note to error messages: "Note: some stack frames elided due to tail-call optimization"
+3. For v1.9, apply TCE unconditionally (it's needed for correctness in functional style) but document the stack trace impact
+
+**Detection:**
+- Users report "impossible" stack traces where function A calls B but only B appears in the trace
+
+**Confidence:** HIGH -- inherent property of TCE; well-documented in language implementation literature.
 
 ---
 
 ## Phase-Specific Warnings
 
-| Phase Topic | Likely Pitfall | Mitigation | Severity |
-|---|---|---|---|
-| Module discovery (file system) | Case sensitivity, symlinks, non-ASCII paths | Canonical paths, naming constraints, filter non-`.snow` files | Medium |
-| Dependency graph | Diamond flagged as cycle, indirect cycles missed | Kahn's algorithm with proper in-degree tracking | Critical |
-| Parser (import/pub syntax) | New keywords break existing programs | Contextual keywords, single-file mode unchanged | Critical |
-| Name resolution | Bare names collide across modules | Module-qualified names throughout pipeline | Critical |
-| Type checking | No cross-module type context | Merged TypeEnv/TypeRegistry from dependencies | Critical |
-| Visibility checking | Private types leak through public interfaces | Public interface validation pass | Moderate |
-| Trait coherence | Duplicate impls from different modules | Orphan rule, duplicate detection at merge | Moderate |
-| MIR lowering | Function name collisions, wrong mangling | Module-qualified MIR function names | Critical |
-| Monomorphization | Cross-module generic instantiation conflicts | Single MirModule, deduplicate by mangled name | Critical |
-| LLVM codegen | Struct type name collisions in LLVM cache | Module-qualified LLVM type names | Critical |
-| Linking | Duplicate symbol errors | Module-qualified symbol names, single object file | Critical |
-| Diagnostics | Error messages reference unknown types | Multi-file diagnostics, qualified type names | Minor |
-| Backward compat | Existing tests break | Run full suite after every change | Critical |
-
-## Integration Gotchas
-
-Common mistakes when connecting module system to existing Snow systems.
-
-| Integration | Common Mistake | Correct Approach |
+| Phase Topic | Likely Pitfall | Mitigation |
 |---|---|---|
-| TypeEnv + imports | Adding imported names to global scope, shadowing builtins | Add imported names to a module-specific scope level, below builtins |
-| TypeRegistry + multi-module | Using bare type names as keys | Module-qualified keys: `"Math.Vector.Point"` not `"Point"` |
-| TraitRegistry + cross-module | Merging impls without coherence check | Check for duplicate `(trait, type)` pairs during merge |
-| MirModule + multi-module | Creating separate MirModules per file | Merge all modules into one MirModule with qualified names |
-| Monomorphization + generics | Running mono per-module | Run mono once on merged MirModule; reachability from main handles dedup |
-| Codegen + LLVM types | Bare struct names in LLVM | `context.opaque_struct_type("Math.Vector.Point")` not `"Point"` |
-| Link + symbols | Bare function names as LLVM symbols | Module-qualified: `"math.vector__add"` not `"add"` |
-| Service dispatch + modules | Bare handler function names in dispatch table | Qualified handler names match MIR function names |
-| LSP + modules | Ignoring module scope in hover/completion | Include imported names in scope; show module path in hover |
-| Formatter + imports | Not formatting import statements | Add import/from/pub to formatter AST walker |
-| REPL + modules | Cannot import modules in REPL | Either defer module support in REPL, or add `import` to REPL context |
-| Error messages + modules | Type names unqualified in errors | Always show `Module.TypeName` in diagnostics |
+| Math stdlib via libm | Missing `-lm` on Linux; wrong types for LLVM intrinsics | Use LLVM intrinsics where possible; add `-lm` to linker; bitcast i64<->f64 |
+| ? operator | Early return control flow breaks expression codegen; type inference for enclosing function return type | Lower to match+return in MIR; validate enclosing fn returns Result |
+| Receive timeout after clause | Null pointer dereference on timeout; timeout_body ignored | Add null check after snow_actor_receive; branch to timeout block |
+| Timer primitives | OS thread blocking instead of coroutine yield; unlinked timer actors | Yield-loop for sleep; return timer ref from send_after; link to caller |
+| Collection operations | Wrong comparator for generic sort; O(n) copy chains; name collision in builtin map | Reuse Ord callback synthesis; sort new copy in-place; type-prefix all names |
+| Tail-call elimination | reduction_check after tail call invalidates musttail; signature mismatch; tail position detection through expressions | Loop transform for self-recursion; skip reduction check for tail calls; recursive is_tail_position analysis |
 
-## "Looks Done But Isn't" Checklist
+---
 
-- [ ] **Two modules with same-named struct:** Types are distinct; field access uses correct layout
-- [ ] **Two modules with same-named function:** Both callable via qualified names; no symbol collision
-- [ ] **Diamond dependency:** Module D used by B and C, both used by A -- compiles correctly, D compiled once
-- [ ] **Indirect cycle:** A -> B -> C -> A detected and reported with full cycle chain
-- [ ] **Self-import:** Module importing itself produces clear error
-- [ ] **Private function not accessible:** Calling a non-pub function from another module produces E-code error
-- [ ] **Private struct not constructible:** Using a non-pub struct from another module produces error
-- [ ] **Public function with private return type:** Warning or error issued
-- [ ] **Trait impl from other module:** `Display` impl for imported struct works correctly
-- [ ] **Generic function across modules:** `identity<T>(x)` defined in A, called in B with concrete type, monomorphized correctly
-- [ ] **Single-file program unchanged:** ALL existing tests pass with zero modifications
-- [ ] **Builtins accessible:** `IO.puts`, `List.map`, etc., work without explicit import
-- [ ] **Empty module:** A module with no definitions compiles without error
-- [ ] **Module with only types:** A module exporting only struct/sum type definitions works
-- [ ] **Selective import:** `from Math.Vector import { add, scale }` makes only `add` and `scale` available
-- [ ] **Qualified call:** `Math.Vector.add(a, b)` works
-- [ ] **Import aliasing:** If supported, `import Math.Vector as V; V.add(a, b)` works
-- [ ] **Re-export chain:** A exports from B which exports from C -- C's types visible through A
-- [ ] **Module-qualified error messages:** Type errors show `Math.Vector.Point`, not `Point`
-- [ ] **Deterministic build:** Same source always produces same binary (byte-identical)
+## Integration Pitfalls -- Features That Interact
 
-## Recovery Strategies
+### ? Operator + Receive Timeout
 
-When pitfalls occur despite prevention, how to recover.
+If a receive with timeout returns `Result<T, E>` (e.g., `Ok(msg)` on success, `Err("timeout")` on timeout), and the user writes `let msg = receive ... after 1000 -> Err("timeout") end?`, the `?` operator must work on the receive expression's result. This requires the receive codegen to produce a proper Result value (ConstructVariant), not a raw message pointer.
 
-| Pitfall | Recovery Cost | Recovery Steps |
-|---|---|---|
-| P1: Type identity collision | HIGH | Retrofit module-qualified names through entire pipeline; every FxHashMap key changes |
-| P2: Symbol name collision | MEDIUM | Add module prefix to MIR function names; cascades through codegen automatically |
-| P3: No cross-module type context | HIGH | Redesign type checking to accept pre-populated context; affects infer.rs entry point |
-| P4: Monomorphization explosion | MEDIUM | Switch to merged MirModule approach; rewrite compile_to_binary to merge before mono |
-| P5: Cycle detection bugs | LOW | Replace cycle detection algorithm; dependency graph is isolated from rest of pipeline |
-| P6: Visibility leaking | MEDIUM | Add validation pass; does not require changing existing pipeline, only adding a check |
-| P7: Backward compatibility break | VARIES | Depends on what broke; keyword conflicts are LOW (contextual keywords); resolution order changes are HIGH |
-| P8: LLVM module scaling | LOW | Already using single module; future optimization, not a fix |
-| P9: Module path ambiguity | MEDIUM | Change syntax (e.g., `::` separator); requires parser changes but not pipeline changes |
-| P10: Trait coherence | MEDIUM | Add duplicate detection at TraitRegistry merge; localized change |
-| P11: File system issues | LOW | Add validation in module discovery; isolated from compilation pipeline |
-| P12: Bad error messages | LOW | Improve diagnostic rendering; does not affect correctness |
+**Prevention:** Design receive-with-timeout to return the message type directly (not Result), with the after clause being a separate expression that produces the same type. This matches Erlang semantics. If Result wrapping is desired, make it explicit in user code.
+
+### Collection sort() + Tail-Call Elimination
+
+A recursive mergesort implementation in Snow would benefit from TCE. But if sort is implemented in the Rust runtime (the recommended approach), TCE doesn't apply -- Rust's own TCE is not guaranteed. If sort is implemented in Snow itself, TCE matters but the callback overhead for comparisons makes the pure-Snow approach slower.
+
+**Prevention:** Implement sort in the Rust runtime for performance. TCE is irrelevant for runtime functions.
+
+### Timer Primitives + GC
+
+A sleeping actor (yielded, waiting for timer) still has a live heap. If many actors are sleeping (e.g., 10,000 `send_after` timer actors), they each hold a small heap that cannot be collected until they wake and exit. This is a minor memory concern but worth noting.
+
+**Prevention:** Keep timer actors minimal (no captured closures, no heap allocations beyond the message to send).
+
+### Math Stdlib + Collection Operations
+
+Users will want `list.map(fn (x) -> Math.sqrt(x) end)`. This requires Math functions to be callable from closures, which means they must be declared as known functions in the MIR lowerer. LLVM math intrinsics cannot be called indirectly (they must be direct calls). If `Math.sqrt` is lowered to `llvm.sqrt.f64`, it cannot be passed as a function pointer.
+
+**Prevention:** Implement math functions as runtime extern "C" functions (e.g., `snow_math_sqrt`) that internally call the LLVM intrinsic or libm. This way they can be referenced as function pointers for higher-order use. The indirection cost is negligible.
+
+---
 
 ## Sources
 
-### Snow Codebase Analysis (HIGH confidence -- direct code reading)
-- `crates/snow-typeck/src/infer.rs` -- `TypeRegistry` (line 115-170), struct/sum type registration with bare name keys, Algorithm J inference entry point
-- `crates/snow-typeck/src/env.rs` -- `TypeEnv` scope stack with `FxHashMap<String, Scheme>`, no module awareness
-- `crates/snow-typeck/src/traits.rs` -- `TraitRegistry` with `FxHashMap<String, Vec<ImplDef>>`, structural type matching, no coherence checking
-- `crates/snow-typeck/src/lib.rs` -- `TypeckResult` containing `type_registry`, `trait_registry`, `default_method_bodies`
-- `crates/snow-codegen/src/mir/mod.rs` -- `MirModule`, `MirFunction.name` as bare string, `MirType::Struct(String)` with bare name
-- `crates/snow-codegen/src/mir/types.rs` -- `mangle_type_name` (line 143), `mir_type_suffix`, `mir_type_to_impl_name` -- all using bare type names
-- `crates/snow-codegen/src/mir/lower.rs` -- MIR lowering from AST, no module path context
-- `crates/snow-codegen/src/mir/mono.rs` -- `monomorphize` reachability pass on single `MirModule`
-- `crates/snow-codegen/src/codegen/mod.rs` -- `CodeGen` struct with `struct_types`, `functions` caches keyed by bare name, `compile()` processing single `MirModule`
-- `crates/snow-codegen/src/link.rs` -- Linking single object file with `libsnow_rt.a`
-- `crates/snow-codegen/src/lib.rs` -- `compile_to_binary` pipeline: lower_to_mir -> mono -> codegen -> link, single Parse input
-- `crates/snowc/src/main.rs` -- Build pipeline reading single `main.snow`, `report_diagnostics` with single source/filename
-
-### OCaml Module System Precedent (HIGH confidence -- mature language with HM inference)
-- [OCaml Compilation Units](https://cs3110.github.io/textbook/chapters/modules/compilation_units.html) -- `.ml`/`.mli` pairs, `.cmi` compiled interface files, hash-based consistency checking, compilation order requirements
-- [Real World OCaml: Compiler Frontend](https://dev.realworldocaml.org/compiler-frontend.html) -- Type identity via `.cmi` hashes, soundness of separate compilation, `-opaque` flag for cross-module optimization control
-- [OCaml Batch Compilation](https://ocaml.org/manual/5.0/comp.html) -- Dependency-order linking, free module identifier resolution via `.cmi` search path
-
-### Rust Symbol Mangling & Monomorphization (HIGH confidence -- well-documented)
-- [Rust RFC 2603: Symbol Name Mangling v0](https://rust-lang.github.io/rfcs/2603-rust-symbol-name-mangling-v0.html) -- Crate-id in symbol names for cross-crate deduplication, monomorphization disambiguation by concrete type arguments
-- [Rust Compiler Dev Guide: Monomorphization](https://rustc-dev-guide.rust-lang.org/backend/monomorph.html) -- CGU partitioning (stable vs. volatile), `collect_and_partition_mono_items`, polymorphization for unused generic params
-- [Monomorphization Code Bloat](https://nickb.dev/blog/the-dark-side-of-inlining-and-monomorphization/) -- Binary size explosion, cache effects, factor-out-inner-function pattern, dynamic dispatch alternative
-
-### Visibility & Coherence (MEDIUM confidence -- cross-language patterns)
-- [Rust: Leaking Private Types](https://users.rust-lang.org/t/leaking-traits-or-types-from-private-modules/67678) -- E0446 error for private types in public interfaces, workarounds with pub(crate)
-- [C++ Modules Misconceptions](https://build2.org/article/cxx-modules-misconceptions.xhtml) -- Module linkage vs. external linkage, non-exported names get module linkage preventing collision, backward compatibility with headers
-
-### Cycle Detection & Dependency Graphs (HIGH confidence -- well-established algorithms)
-- [Kahn's Algorithm for Topological Sort](https://www.geeksforgeeks.org/dsa/detect-cycle-in-directed-graph-using-topological-sort/) -- BFS-based, natural cycle detection via unprocessed vertex count, handles diamonds correctly
-- [Topological Sort Applications](https://www.numberanalytics.com/blog/mastering-topological-sort-algorithms) -- Compiler module ordering, deterministic output, edge cases with diamond patterns
-
-### Backward Compatibility Patterns (MEDIUM confidence -- cross-domain)
-- [Expand-Migrate-Contract Pattern](https://docs.gitlab.com/development/multi_version_compatibility/) -- Additive changes first, migrate consumers, then remove old behavior
-- [C++ Modules Backward Compatibility](https://build2.org/article/cxx-modules-misconceptions.xhtml) -- Dual header/module support, ODR preservation across module boundaries
-
----
-*Pitfalls research for: Snow v1.8 Module System milestone*
-*Researched: 2026-02-09*
+- Snow codebase analysis: codegen/expr.rs, codegen/mod.rs, mir/mod.rs, mir/lower.rs, snow-rt/src/actor/mod.rs, snow-rt/src/collections/list.rs, snow-rt/src/io.rs, link.rs
+- [LLVM Language Reference - musttail](https://llvm.org/docs/LangRef.html) -- caller/callee signature matching requirements
+- [Inkwell CallSiteValue documentation](https://thedan64.github.io/inkwell/inkwell/values/struct.CallSiteValue.html) -- set_tail_call_kind available on LLVM 18+
+- [LLVM musttail implementation review](https://reviews.llvm.org/D99517) -- original musttail implementation with constraints
+- [LLVM musttail backend failures](https://github.com/llvm/llvm-project/issues/54964) -- platform-specific musttail issues
+- [Tail call elimination approaches](https://notes.eatonphil.com/tail-call-elimination.html) -- loop transformation vs trampoline
+- [Rust libm crate](https://github.com/rust-lang/libm) -- pure Rust math functions for portability
+- [LLVM Tail Recursion Elimination pass](https://llvm.org/doxygen/TailRecursionElimination_8cpp_source.html) -- self-recursion to loop transformation
+- Snow PROJECT.md -- architectural decisions and constraints documentation

@@ -1,857 +1,638 @@
-# Architecture: Module System Integration
+# Architecture Patterns: v1.9 Stdlib & Ergonomics
 
-**Domain:** Extending the Snow compiler from single-file to multi-file compilation with module resolution, cross-file type checking, and unified code generation
+**Domain:** Compiler feature integration -- 6 new features into existing Snow compiler/runtime
 **Researched:** 2026-02-09
-**Confidence:** HIGH (based on direct analysis of all 11 compiler crates, every public API surface, and data structure)
+**Confidence:** HIGH (all analysis based on direct codebase inspection)
+
+## Existing Architecture Summary
+
+The Snow compiler follows a linear pipeline with clear component boundaries:
+
+```
+Source -> snow-lexer -> snow-parser (Rowan CST)
+      -> snow-typeck (HM inference, trait registry)
+      -> snow-codegen (MIR lowering -> LLVM IR via inkwell 0.8.0 + llvm21-1)
+      -> cc linker (object + libsnow_rt.a -> executable)
+```
+
+**Key architectural patterns already established:**
+
+1. **Builtin registration:** `snow-typeck/src/builtins.rs` registers type signatures as `Scheme` entries in `TypeEnv`, using `TyVar(N)` for polymorphic functions (N ranges from 90000-99999 to avoid collisions).
+
+2. **Intrinsic declaration:** `snow-codegen/src/codegen/intrinsics.rs` declares all `extern "C"` functions from `snow-rt` in the LLVM module with exact C ABI signatures.
+
+3. **MIR as IR:** `snow-codegen/src/mir/mod.rs` defines `MirExpr` variants for each language feature. New features need new MirExpr variants or reuse existing ones.
+
+4. **Closure callback pattern:** Higher-order runtime functions (list_map, list_filter, list_eq, list_compare) accept `fn_ptr: *mut u8, env_ptr: *mut u8` pairs, dispatching to bare fn or closure based on null-check of env_ptr.
+
+5. **Uniform u64 storage:** All collection elements are stored as `u64`. Ints are direct, floats are bitcast, pointers are ptrtoint. MIR type information drives load/store conversions in codegen.
+
+6. **Pratt parser:** `snow-parser/src/parser/expressions.rs` uses binding power tables for infix/prefix, with postfix operations (call, field access, index) at BP=25.
 
 ---
 
-## Current Pipeline (Single-File)
+## Feature 1: Math Stdlib
+
+### Integration Points
+
+This feature requires changes in exactly 3 files, following the established pattern used by string/file/JSON stdlib functions.
+
+**No parser changes needed.** Math functions are called as normal functions (`Math.sin(x)` or `math_sin(x)`) through the existing module-qualified call path.
+
+### Architecture
 
 ```
-snowc build <dir>
-  |
-  v
-[1] Find main.snow (single file)
-  |
-  v
-[2] Read source string
-  |
-  v
-[3] snow_parser::parse(&source) -> Parse { green: GreenNode, errors: Vec<ParseError> }
-  |
-  v
-[4] snow_typeck::check(&parse) -> TypeckResult {
-      types: FxHashMap<TextRange, Ty>,
-      errors: Vec<TypeError>,
-      type_registry: TypeRegistry { struct_defs, sum_type_defs, type_aliases },
-      trait_registry: TraitRegistry,
-      default_method_bodies: FxHashMap<(String,String), TextRange>,
+builtins.rs: Register math_sin, math_cos, etc. as Scheme::mono(Ty::fun(vec![Ty::float()], Ty::float()))
+intrinsics.rs: Declare snow_math_sin, snow_math_cos, etc. as extern "C" fn(f64) -> f64
+snow-rt: New file crates/snow-rt/src/math.rs with #[no_mangle] pub extern "C" wrappers around libm
+```
+
+### Component Changes
+
+| Component | File | Change | Complexity |
+|-----------|------|--------|------------|
+| snow-typeck | `builtins.rs` | Add ~15 math function type signatures | Low |
+| snow-codegen | `intrinsics.rs` | Declare ~15 LLVM function signatures | Low |
+| snow-codegen | `mir/lower.rs` | Map `Math.func` module calls to `math_func` (same as existing module pattern) | Low |
+| snow-rt | `math.rs` (NEW) | Wrapper functions calling libm via Rust's `f64` methods | Low |
+| snow-rt | `Cargo.toml` | No new deps -- Rust's std `f64` methods link to platform libm | None |
+| snow-rt | `lib.rs` | Add `pub mod math;` | Trivial |
+
+### Data Flow
+
+```
+Snow source: Math.sin(3.14)
+-> Parser: CALL_EXPR with PATH "Math.sin" and ARG_LIST
+-> Typeck: Resolves "math_sin" from builtins, unifies arg with Float, result with Float
+-> MIR lowering: MirExpr::Call { func: Var("math_sin"), args: [...], ty: Float }
+-> Codegen: Calls snow_math_sin(f64) -> f64 (direct intrinsic call, no conversion needed)
+-> Runtime: snow_math_sin wraps f64::sin()
+```
+
+### Function List
+
+Monomorphic, all `Float -> Float` unless noted:
+
+| Function | Signature | Rust impl |
+|----------|-----------|-----------|
+| `math_sin` | `(Float) -> Float` | `f64::sin()` |
+| `math_cos` | `(Float) -> Float` | `f64::cos()` |
+| `math_tan` | `(Float) -> Float` | `f64::tan()` |
+| `math_asin` | `(Float) -> Float` | `f64::asin()` |
+| `math_acos` | `(Float) -> Float` | `f64::acos()` |
+| `math_atan` | `(Float) -> Float` | `f64::atan()` |
+| `math_atan2` | `(Float, Float) -> Float` | `f64::atan2()` |
+| `math_sqrt` | `(Float) -> Float` | `f64::sqrt()` |
+| `math_pow` | `(Float, Float) -> Float` | `f64::powf()` |
+| `math_exp` | `(Float) -> Float` | `f64::exp()` |
+| `math_log` | `(Float) -> Float` | `f64::ln()` |
+| `math_log2` | `(Float) -> Float` | `f64::log2()` |
+| `math_log10` | `(Float) -> Float` | `f64::log10()` |
+| `math_floor` | `(Float) -> Float` | `f64::floor()` |
+| `math_ceil` | `(Float) -> Float` | `f64::ceil()` |
+| `math_round` | `(Float) -> Float` | `f64::round()` |
+| `math_abs` | `(Float) -> Float` | `f64::abs()` |
+| `math_min` | `(Float, Float) -> Float` | `f64::min()` |
+| `math_max` | `(Float, Float) -> Float` | `f64::max()` |
+
+Plus constants registered as `Scheme::mono(Ty::float())` in the env:
+
+| Constant | Value |
+|----------|-------|
+| `math_pi` | `std::f64::consts::PI` |
+| `math_e` | `std::f64::consts::E` |
+| `math_inf` | `f64::INFINITY` |
+
+**Note on constants:** These need special handling. They cannot be runtime function calls. Two options:
+- **Option A (recommended):** Register as known constants in the MIR lowerer, emitting `MirExpr::FloatLit(PI, MirType::Float)` directly when `Math.pi` is referenced. This avoids a runtime call entirely.
+- **Option B:** Runtime functions `snow_math_pi() -> f64` etc. Works but wasteful for constants.
+
+### Recommended approach for constants
+
+Handle in `mir/lower.rs` where module-qualified names are resolved. When lowering a `FieldAccess` or `NameRef` for `Math.pi`, `Math.e`, `Math.inf`, emit a float literal directly. This is consistent with how a constant-folding pass would work.
+
+---
+
+## Feature 2: ? Operator (Try/Early Return)
+
+### Integration Points
+
+This is the most cross-cutting feature. It touches the parser, typechecker, MIR, and codegen.
+
+### Architecture
+
+The `?` operator on `expr?` should:
+1. Evaluate `expr` (which must be `Result<T, E>`)
+2. If `Ok(val)`, unwrap to `val` (the expression result is `T`)
+3. If `Err(e)`, early-return `Err(e)` from the enclosing function
+
+This is semantically equivalent to:
+```
+case expr do
+  Ok(val) -> val
+  Err(e) -> return Err(e)
+end
+```
+
+### Parser Changes
+
+The `?` token (`SyntaxKind::QUESTION`) already exists in the lexer and parser. It is currently used only in type annotations (`Int?` -> `Option<Int>`). For expression context, it needs to be a postfix operator.
+
+**Add to the postfix loop in `expr_bp` in `snow-parser/src/parser/expressions.rs`:**
+
+```
+// Postfix: try operator (?)
+if current == SyntaxKind::QUESTION && POSTFIX_BP >= min_bp {
+    let m = p.open_before(lhs);
+    p.advance(); // ?
+    lhs = p.close(m, SyntaxKind::TRY_EXPR);
+    continue;
+}
+```
+
+**New SyntaxKind variant needed:** `TRY_EXPR` in `syntax_kind.rs`.
+
+**New AST node needed:** `TryExpr` in `snow-parser/src/ast/expr.rs`.
+
+**Ambiguity with type annotations:** The `?` is already used as a type postfix (`Int?` = `Option<Int>`). There is no ambiguity because type annotations are parsed in a separate grammar rule (`items.rs` type parsing), not in expression context. The `?` in expression context is always the try operator.
+
+### Typechecker Changes
+
+In `snow-typeck/src/infer.rs`, when encountering a `TRY_EXPR` node:
+
+1. Infer the inner expression type as `Result<T, E>`.
+2. The result type of `expr?` is `T`.
+3. The enclosing function's return type must unify with `Result<_, E>` (the error type must match).
+4. If the inner expression is not a `Result`, emit a type error.
+
+**Key constraint:** The `?` operator requires that the enclosing function returns `Result<_, E>` where `E` matches the error type of the expression. The typechecker needs to track the current function's return type (which it already does via `result_type` in `infer_with_imports`).
+
+### MIR Representation
+
+**Recommended: Desugaring in MIR lowering.** Lower `TryExpr` to:
+
+```
+MirExpr::Match {
+    scrutinee: <inner_expr>,
+    arms: [
+        MirMatchArm {
+            pattern: Constructor("Result_T_E", "Ok", [Var("__try_val", T)]),
+            body: Var("__try_val", T),
+        },
+        MirMatchArm {
+            pattern: Constructor("Result_T_E", "Err", [Var("__try_err", E)]),
+            body: Return(ConstructVariant("Result_T_E", "Err", [Var("__try_err", E)])),
+        },
+    ],
+    ty: T,
+}
+```
+
+This reuses the existing pattern match and return infrastructure. **No new MirExpr variant needed.** No changes to codegen -- it uses existing `Match`, `Constructor`, `Return`, and `ConstructVariant` codegen. The pattern compile module (`pattern/compile.rs`) already handles `Constructor` patterns for sum types including `Result`.
+
+### Component Changes
+
+| Component | File | Change | Complexity |
+|-----------|------|--------|------------|
+| snow-parser | `syntax_kind.rs` | Add `TRY_EXPR` variant | Trivial |
+| snow-parser | `parser/expressions.rs` | Add `?` postfix in `expr_bp` loop | Low |
+| snow-parser | `ast/expr.rs` | Add `TryExpr` AST node | Low |
+| snow-typeck | `infer.rs` | Handle `TRY_EXPR` node: check Result type, unify return type | Medium |
+| snow-codegen | `mir/lower.rs` | Desugar `TryExpr` to Match+Return | Medium |
+| snow-codegen | codegen/* | **None** -- reuses existing infrastructure | None |
+
+### Data Flow
+
+```
+Snow source: let val = risky_fn()?
+-> Parser: TRY_EXPR wrapping CALL_EXPR
+-> Typeck: Inner type = Result<Int, String>, expression type = Int, function return = Result<_, String>
+-> MIR: Match { scrutinee: Call("risky_fn"), arms: [Ok->unwrap, Err->Return(Err(e))] }
+-> Codegen: Decision tree for Ok/Err tag check, branch to unwrap or return
+-> LLVM: icmp tag==0 (Ok), br to ok_bb or err_bb, ok_bb extracts field, err_bb returns
+```
+
+---
+
+## Feature 3: Receive Timeout Codegen
+
+### Current State and Gap Analysis
+
+The MIR has `ActorReceive { timeout_ms, timeout_body, arms, ty }` and MIR lowering (lower.rs `lower_receive_expr`) correctly populates `timeout_ms` and `timeout_body` from the `AFTER_CLAUSE` in the parser.
+
+The runtime `snow_actor_receive(timeout_ms: i64) -> *const u8` (actor/mod.rs line 315) correctly returns `null` when the timeout expires (line 394-398 in coroutine path, line 358 in main thread path).
+
+**The gap is in `codegen_actor_receive` (expr.rs line 1540).** Currently it:
+1. Evaluates timeout value (or defaults to -1 for infinite)
+2. Calls `snow_actor_receive(timeout_ms)` -- returns `ptr`
+3. Performs GEP to skip 16-byte message header
+4. Loads message data from data_ptr
+5. Executes the first match arm body
+
+**What is missing:** No null check on the returned `msg_ptr`. When timeout expires, `snow_actor_receive` returns null, but codegen proceeds to GEP and load, causing a segfault.
+
+Additionally, the `timeout_body` parameter is received by `codegen_actor_receive` (as `timeout_body: _`, explicitly ignored at line 129) but never used.
+
+### Architecture
+
+The fix requires adding a null-check branch between the `snow_actor_receive` call and the message loading:
+
+```
+msg_ptr = call snow_actor_receive(timeout_ms)
+is_null = icmp eq msg_ptr, null
+br is_null, timeout_bb, message_bb
+
+timeout_bb:
+  <codegen timeout_body>   // or unit if no timeout body
+  br merge_bb
+
+message_bb:
+  <existing message loading + arm dispatch>
+  br merge_bb
+
+merge_bb:
+  phi [timeout_result, message_result]
+```
+
+### Component Changes
+
+| Component | File | Change | Complexity |
+|-----------|------|--------|------------|
+| snow-codegen | `codegen/expr.rs` | Modify `codegen_actor_receive` to add null check + timeout branch | Medium |
+
+**No other components need changes.** The parser already parses `after`, the typechecker already type-checks it, and the MIR lowerer already produces the timeout fields. This is purely a codegen gap.
+
+### Detailed Codegen Change
+
+In `codegen_actor_receive` (line 1540), after the call to `snow_actor_receive`:
+
+1. Build `icmp eq msg_ptr, null` to check for timeout.
+2. Create three basic blocks: `timeout_bb`, `message_bb`, `merge_bb`.
+3. `br is_null, timeout_bb, message_bb`.
+4. In `timeout_bb`: codegen the `timeout_body` expression from the MIR, then `br merge_bb`.
+5. In `message_bb`: the existing message load + arm dispatch logic (lines 1568-1647), then `br merge_bb`.
+6. In `merge_bb`: phi node merging the two results using an alloca+store+load pattern (consistent with `codegen_if`).
+
+**When `timeout_ms` is `None` (infinite wait):** Skip the null check. `snow_actor_receive(-1)` never returns null. The existing code path is correct.
+
+**When `timeout_ms` is `Some` but `timeout_body` is `None`:** This should not happen in practice. The MIR lowerer pairs them. If it does, produce unit value in timeout_bb.
+
+---
+
+## Feature 4: Timer Primitives
+
+### Integration Points
+
+Timer primitives (`send_after`, `send_interval`, `cancel_timer`) are runtime-level features that schedule delayed message sends.
+
+### Architecture
+
+```
+Snow source: let timer_ref = Timer.send_after(pid, msg, 1000)
+-> builtins.rs: Register timer_send_after :: (Pid, T, Int) -> Int (timer ref)
+-> intrinsics.rs: Declare snow_timer_send_after(pid: i64, msg_ptr: ptr, msg_size: i64, delay_ms: i64) -> i64
+-> snow-rt/timer.rs: Dedicated timer thread with priority queue
+```
+
+### Runtime Design
+
+**Recommended: Dedicated timer thread.** A single background thread manages a priority queue (BinaryHeap ordered by deadline). `send_after` inserts into the queue, the thread sleeps until the next deadline, then calls `snow_actor_send`.
+
+**Alternative considered but rejected: Scheduler integration.** Adding timer checks to each worker thread's inner loop would add latency to every actor yield/resume on the scheduler's hot path. The scheduler already handles `!Send` coroutines and work-stealing; adding timer checks complicates the critical section.
+
+### Runtime Implementation Sketch
+
+```rust
+// snow-rt/src/timer.rs
+
+use std::collections::BinaryHeap;
+use std::sync::{Arc, Mutex, Condvar};
+use std::cmp::Reverse;
+use std::time::{Instant, Duration};
+
+struct TimerEntry {
+    deadline: Instant,
+    target_pid: u64,
+    msg_data: Vec<u8>,         // Deep-copied message bytes
+    interval_ms: Option<u64>,  // Some = repeating, None = one-shot
+    timer_id: u64,
+    cancelled: bool,
+}
+
+// Global timer state protected by mutex + condvar
+// Timer thread: sleep until next deadline via condvar.wait_timeout, fire expired timers
+```
+
+### Interaction with Scheduler
+
+The timer thread calls `snow_actor_send` to deliver the delayed message. `snow_actor_send` pushes to the target actor's mailbox and sets the actor to `Ready` if it was `Waiting`. This is already thread-safe because `snow_actor_send` acquires the process table lock internally.
+
+**No scheduler changes needed.** The timer fires a send, which wakes the waiting actor through the existing send-wake path.
+
+### Component Changes
+
+| Component | File | Change | Complexity |
+|-----------|------|--------|------------|
+| snow-typeck | `builtins.rs` | Register `timer_send_after`, `timer_send_interval`, `timer_cancel` | Low |
+| snow-codegen | `intrinsics.rs` | Declare 3 timer intrinsics | Low |
+| snow-codegen | `mir/lower.rs` | Map `Timer.send_after` etc. to `timer_send_after` | Low |
+| snow-rt | `timer.rs` (NEW) | Timer thread + priority queue + send integration | Medium |
+| snow-rt | `lib.rs` | Add `pub mod timer;` and init timer thread in `snow_rt_init` | Low |
+
+### Type Signatures
+
+| Function | Snow Type | C ABI |
+|----------|-----------|-------|
+| `timer_send_after` | `(Pid, T, Int) -> Int` | `snow_timer_send_after(pid: i64, msg_ptr: ptr, msg_size: i64, delay_ms: i64) -> i64` |
+| `timer_send_interval` | `(Pid, T, Int) -> Int` | `snow_timer_send_interval(pid: i64, msg_ptr: ptr, msg_size: i64, interval_ms: i64) -> i64` |
+| `timer_cancel` | `(Int) -> Bool` | `snow_timer_cancel(timer_ref: i64) -> i8` |
+
+**Critical note on message serialization:** `send_after` must deep-copy the message data at call time, not at fire time. The message bytes might reference stack-allocated data in the calling actor that gets freed before the timer fires. The runtime implementation must `memcpy` the msg_ptr data into a heap-allocated `Vec<u8>`.
+
+---
+
+## Feature 5: Collection Sort
+
+### Integration Points
+
+Adding `List.sort(list)` and `List.sort_by(list, compare_fn)` requires a sort implementation in the runtime that accepts comparison callbacks.
+
+### Sort Algorithm: Merge Sort
+
+Reasons for merge sort over quicksort:
+
+1. **Immutable semantics:** Snow lists are immutable. Sort must return a NEW list. Merge sort naturally produces new arrays during merge steps. Quicksort requires in-place mutation (partitioning), which conflicts with immutability unless you copy first then sort in-place -- but that is merge sort with extra copying.
+
+2. **Stability:** Merge sort is stable. For a functional language, users expect `sort` to preserve relative order of equal elements.
+
+3. **Predictable performance:** O(n log n) worst case, unlike quicksort's O(n^2) worst case.
+
+4. **Existing callback pattern:** The runtime already passes `fn_ptr: *mut u8` for comparisons (`snow_list_compare` at intrinsics.rs line 400). Merge sort's comparison-driven nature maps directly to this callback pattern.
+
+### Callback Design
+
+Two API shapes:
+
+```
+// Ord-based: uses the Ord trait's compare method, dispatched by element type
+List.sort(list)  ->  snow_list_sort(list: ptr, cmp_fn: ptr) -> ptr
+
+// Custom comparator: user provides comparison closure
+List.sort_by(list, fn)  ->  snow_list_sort_by(list: ptr, cmp_fn: ptr, cmp_env: ptr) -> ptr
+```
+
+For `List.sort(list)`, the MIR lowerer resolves the element type and passes the appropriate `Ord__compare__TypeName` function pointer. This is the same pattern used for `snow_list_compare` and `snow_list_eq` (see `wrap_collection_compare` pattern in the codebase).
+
+For `List.sort_by(list, fn)`, the user passes a closure `(T, T) -> Ordering`, and the runtime dispatches via the bare fn / closure fn pattern (null-check on env_ptr).
+
+### Component Changes
+
+| Component | File | Change | Complexity |
+|-----------|------|--------|------------|
+| snow-typeck | `builtins.rs` | Register `list_sort` and `list_sort_by` type signatures | Low |
+| snow-codegen | `intrinsics.rs` | Declare `snow_list_sort` and `snow_list_sort_by` | Low |
+| snow-codegen | `mir/lower.rs` | Resolve Ord callback for element type (reuse existing trait dispatch pattern) | Medium |
+| snow-rt | `collections/list.rs` | Implement merge sort with comparison callback | Medium |
+
+### Type Signatures
+
+| Function | Snow Type | Notes |
+|----------|-----------|-------|
+| `list_sort` | `(List<T>) -> List<T>` | Requires `T: Ord` |
+| `list_sort_by` | `(List<T>, (T, T) -> Ordering) -> List<T>` | Custom comparator |
+
+### Runtime Implementation Pattern
+
+The implementation in `collections/list.rs` follows the same layout conventions: read `len` and `data` from the list header, allocate a new list with `alloc_list(len)`, perform merge sort using a temporary buffer (also GC-allocated), and return the sorted list.
+
+```rust
+#[no_mangle]
+pub extern "C" fn snow_list_sort(list: *mut u8, cmp_fn: *mut u8) -> *mut u8 {
+    type CmpFn = unsafe extern "C" fn(u64, u64) -> i64;
+    unsafe {
+        let len = list_len(list) as usize;
+        if len <= 1 { return /* copy or return as-is */ }
+        let f: CmpFn = std::mem::transmute(cmp_fn);
+        // Bottom-up merge sort into new buffer
+        // Return new list with sorted data
     }
-  |
-  v
-[5] snow_codegen::lower_to_mir_module(&parse, &typeck) -> MirModule {
-      functions: Vec<MirFunction>,
-      structs: Vec<MirStructDef>,
-      sum_types: Vec<MirSumTypeDef>,
-      entry_function: Option<String>,
-      service_dispatch: HashMap<...>,
-    }
-    + monomorphize(&mut module)
-  |
-  v
-[6] CodeGen::new(&context, "snow_module", opt_level, target)
-    CodeGen::compile(&mir)
-    CodeGen::emit_object(output)
-  |
-  v
-[7] link::link(&obj_path, output, rt_lib_path)   // cc -o output obj.o -lsnow_rt
-```
-
-Each stage operates on data from exactly one file. No cross-file awareness.
-
-### Key Data Structures and Their Scope
-
-| Structure | Crate | Current Scope | Module System Impact |
-|-----------|-------|---------------|---------------------|
-| `Parse` | snow-parser | Single file | Need one per `.snow` file |
-| `TypeckResult` | snow-typeck | Single file | Must be composed across files |
-| `TypeEnv` | snow-typeck | Single file scope stack | Must be pre-seeded with imported symbols |
-| `TypeRegistry` | snow-typeck | Single file | Must accept imported type definitions |
-| `TraitRegistry` | snow-typeck | Single file | Must accept imported trait defs + impls |
-| `MirModule` | snow-codegen | Single compilation unit | Must be merged across files |
-| `Lowerer` | snow-codegen | Single `(Parse, TypeckResult)` | Gets name-remap table for imports |
-| `CodeGen` | snow-codegen | Single LLVM module | Receives merged `MirModule` (unchanged) |
-
-### Existing Module Syntax Support (Already Implemented)
-
-The parser already handles all needed syntax, producing correct CST nodes:
-
-```
-SyntaxKind::IMPORT_DECL       -> ImportDecl { module_path: Path }
-SyntaxKind::FROM_IMPORT_DECL  -> FromImportDecl { module_path: Path, import_list: ImportList }
-SyntaxKind::MODULE_DEF        -> ModuleDef { name: Name, items: impl Iterator<Item> }
-SyntaxKind::PATH              -> dot-separated segments (Foo.Bar.Baz)
-SyntaxKind::VISIBILITY        -> pub keyword
-SyntaxKind::PUB_KW            -> pub token
-```
-
-The type checker has hardcoded stdlib modules (infer.rs lines 210-490):
-
-```rust
-// Currently: ImportDecl is skipped, FromImportDecl checks stdlib_modules() only
-Item::ImportDecl(_) => None,
-Item::FromImportDecl(ref from_import) => {
-    let modules = stdlib_modules();  // Hardcoded HashMap<String, HashMap<String, Scheme>>
-    // Looks up module, injects imported names into TypeEnv
 }
-```
-
-The MIR lowerer explicitly skips all module/import items:
-
-```rust
-Item::ModuleDef(_) | Item::ImportDecl(_) | Item::FromImportDecl(_) => {
-    // Skip -- module/import handling is not needed for single-file compilation.
-}
-```
-
-**Bottom line:** The parser is ready. The type checker and MIR lowerer need extension, not rewriting.
-
----
-
-## Target Pipeline (Multi-File)
-
-```
-snowc build <dir>
-  |
-  v
-[1] snow-resolve: discover all .snow files under project_root
-  |
-  v
-[2] Map file paths to module names (math/vector.snow -> Math.Vector)
-  |
-  v
-[3] Parse ALL files independently: Vec<(ModulePath, Parse, source)>
-  |
-  v
-[4] Scan import declarations in each Parse -> dependency edges
-  |
-  v
-[5] Build module graph + topological sort (Kahn's algorithm)
-  |   |
-  |   +-> Error: circular dependency detected (with cycle path)
-  |
-  v
-[6] Type-check in topological order:
-     for each module in topo_order:
-       a. Build ImportContext from already-checked dependencies
-       b. snow_typeck::check_with_imports(&parse, &import_ctx) -> TypeckResult
-       c. Collect public exports (pub fn, pub struct, pub type, pub interface)
-       d. Store exports for downstream modules
-  |
-  v
-[7] Lower each module to MIR with name mangling: Vec<MirModule>
-  |
-  v
-[8] Merge MIR modules into single MirModule + monomorphize
-  |
-  v
-[9] Compile merged MirModule -> single .o file -> link -> binary
-```
-
-### Key Architectural Decisions
-
-**Decision 1: Single LLVM module, not separate compilation.**
-
-Use a single LLVM module for the merged MIR. Do not compile each .snow file to a separate .o file.
-
-Rationale:
-- Monomorphization is whole-program. The existing `monomorphize()` pass needs to see all generic instantiation sites across all files. Separate compilation would require a fundamentally different monomorphization strategy.
-- The `CodeGen` struct maintains caches (`struct_types`, `sum_type_layouts`, `functions`) that assume a single module. Making it work across multiple modules would require significant refactoring for no immediate benefit.
-- Single LLVM module enables cross-module inlining, dead code elimination, and full optimization without LTO.
-- Snow projects are small enough that compilation time is not a concern at this scale.
-
-**Decision 2: New `snow-resolve` crate for module resolution.**
-
-Module resolution cannot live in any existing crate:
-- `snow-parser` is file-local
-- `snow-typeck` operates on single `Parse`
-- `snow-codegen` operates on single `MirModule`
-- `snowc` is the CLI driver -- LSP also needs module resolution
-
-A dedicated `snow-resolve` crate provides clean separation and is usable by both `snowc` and `snow-lsp`.
-
-**Decision 3: Pre-seeded TypeEnv, not demand-driven resolution.**
-
-Type-check files in dependency order. Before checking file B (which imports A), extract A's public symbols and inject them into B's TypeEnv before inference begins. The existing HM inference logic works unchanged -- it just finds more names in scope.
-
-**Decision 4: Parse phase is embarrassingly parallel.** Each file is parsed independently. Rowan's `GreenNode` per file is self-contained. Future optimization: parse in parallel with rayon.
-
-**Decision 5: Type-check phase is inherently sequential** within a dependency chain, but independent modules at the same topo level could theoretically be parallelized. Not needed initially.
-
----
-
-## Component Boundaries
-
-```
-                          +---------------+
-                          |    snowc      |  CLI driver: orchestrates phases
-                          +-------+-------+
-                                  |
-                    +-------------+-------------+
-                    |                           |
-            +-------v-------+           +-------v-------+
-            | snow-resolve  |           | snow-lsp      |
-            | (NEW)         |           | (uses resolve)|
-            +-------+-------+           +---------------+
-                    |
-         +----------+----------+
-         |                     |
-  +------v------+       +------v------+
-  | snow-parser |       | snow-typeck |
-  | (per-file)  |       | (per-file   |
-  |             |       |  + imports) |
-  +------+------+       +------+------+
-         |                     |
-         +----------+----------+
-                    |
-            +-------v-------+
-            | snow-codegen  |
-            | (merged MIR   |
-            |  single LLVM) |
-            +-------+-------+
-                    |
-            +-------v-------+
-            |   link.rs     |
-            | (cc linker)   |
-            +---------------+
-```
-
-| Component | Responsibility | Communicates With |
-|-----------|---------------|-------------------|
-| `snowc` (driver) | Orchestrates multi-file pipeline, CLI interface | snow-resolve, snow-parser, snow-typeck, snow-codegen |
-| `snow-resolve` (NEW) | File discovery, module path mapping, dependency graph, topological sort, cycle detection | snow-parser (Parse), snow-common (shared types) |
-| `snow-parser` | Per-file parsing (unchanged) | snow-lexer, snow-common |
-| `snow-typeck` | Per-module type checking with imported symbols, visibility enforcement, export collection | snow-parser (Parse), snow-common |
-| `snow-codegen` (MIR) | Per-module MIR lowering with name mangling + MIR merge | snow-typeck (TypeckResult), snow-parser (Parse) |
-| `snow-codegen` (LLVM) | Single merged MirModule -> LLVM IR -> .o file (unchanged) | MirModule |
-
----
-
-## Data Flow
-
-### Phase 1: Discovery and Graph Building
-
-```
-Filesystem                 snow-resolve                 Output
------------                ------------                 ------
-project/                   resolve_project(dir)
-  main.snow       ------>  1. Discover .snow files       ModuleGraph {
-  math/                    2. Map to module paths          modules: [
-    vector.snow            3. Parse all files                ResolvedModule { path: "Math.Vector", ... },
-  utils.snow               4. Extract import edges           ResolvedModule { path: "Utils", ... },
-                           5. Topological sort               ResolvedModule { path: "main", ... },
-                           6. Detect cycles                ],
-                                                          topo_order: [0, 1, 2],  // leaves first
-                                                          entry: 2,
-                                                        }
-```
-
-### Phase 2: Sequential Type Checking
-
-```
-topo_order = [Math.Vector, Utils, main]
-
-Step 1: Check Math.Vector -- no dependencies
-  TypeEnv = builtins + stdlib_modules
-  -> TypeckResult for Math.Vector
-  -> Exports = { pub fn add: Fun(Int, Int) -> Int, pub struct Vec3: ... }
-
-Step 2: Check Utils -- no dependencies on user modules
-  TypeEnv = builtins + stdlib_modules
-  -> TypeckResult for Utils
-  -> Exports = { pub fn clamp: Fun(Int, Int, Int) -> Int }
-
-Step 3: Check main -- depends on Math.Vector, Utils
-  TypeEnv = builtins + stdlib_modules
-           + Math.Vector exports (for qualified Math.Vector.add or selective import)
-           + Utils exports (for qualified Utils.clamp or selective import)
-  -> TypeckResult for main
-  -> No exports (entry point)
-```
-
-### Phase 3: MIR Merge and Codegen
-
-```
-MIR lowering per module (with name mangling):
-  MirModule for Math.Vector:
-    functions: [Math__Vector__add(...)]
-    structs: [Math__Vector__Vec3(...)]
-
-  MirModule for Utils:
-    functions: [Utils__clamp(...)]
-
-  MirModule for main:
-    functions: [main(...)]
-    // References to add() are remapped to Math__Vector__add
-
-Merge into single MirModule:
-  functions: [Math__Vector__add, Utils__clamp, main]
-  structs: [Math__Vector__Vec3]
-  entry_function: Some("main")
-
-monomorphize(&mut merged)
-CodeGen::compile(&merged)  // single LLVM module -> single .o -> link -> binary
 ```
 
 ---
 
-## Detailed Integration Points Per Crate
+## Feature 6: Tail Call Elimination (TCE)
 
-### snow-common: No Changes
+### Integration Points
 
-No modifications needed. The shared types (`Token`, `Span`, `Error`) are already file-agnostic. Module-specific types go in `snow-resolve`, not `snow-common`, to keep the leaf crate minimal.
+This is the most architecturally complex feature. It interacts with LLVM's tail call semantics and corosensei's stack model.
 
-### snow-lexer: No Changes
+### Available LLVM Support
 
-Tokenization is inherently file-local. No module awareness needed.
+The project uses Inkwell 0.8.0 with feature `llvm21-1`. The `CallSiteValue::set_tail_call_kind(LLVMTailCallKind)` API is available, supporting `Tail`, `MustTail`, and `NoTail` kinds.
 
-### snow-parser: Minimal Changes (0-2 small items)
+### Approach Analysis
 
-The parser is already ready. All needed syntax nodes exist.
+**Option A: LLVM `musttail` annotation.**
 
-**Verify:** The `from ... import` syntax currently parses `from` as an IDENT (not a keyword), matching via `p.at(SyntaxKind::IDENT) && p.current_text() == "from"` in `parse_item_or_stmt`. This works but should be verified for deeply nested paths like `from Foo.Bar.Baz import x, y, z`.
+Mark self-recursive tail calls with `musttail` and let LLVM handle the transformation.
 
-**Verify:** The `pub` keyword in `parse_optional_visibility` works for `fn`, `struct`, `type`, `interface`, `supervisor`. Confirm it is called in all definition parse functions where visibility applies.
+Requirements for `musttail`:
+- Caller and callee must have identical signatures (same number/type of params, same return type, same calling convention).
+- The call must be immediately followed by a `ret` instruction.
+- No alloca'd variables can be live at the call site.
 
-**Estimated scope:** 0-2 small verifications/fixes. ~0-20 lines changed.
+Problems:
+- Snow functions may have captured variables via closures, causing signature mismatches.
+- `snow_reduction_check()` calls (yield points inserted before function calls by codegen) would break the tail position requirement. The reduction check must be moved BEFORE the tail call setup, not between the call and the return.
+- `musttail` is fragile: if any constraint is violated, LLVM silently falls back to a normal call (no stack reuse), making it an unreliable guarantee.
 
-### snow-resolve: New Crate (~400-600 lines)
+**Option B: MIR-level loop transformation (recommended).**
 
-```toml
-[package]
-name = "snow-resolve"
-version = "0.1.0"
-edition = "2021"
+Transform self-recursive tail calls into loops at the MIR level. This produces a `While` loop that existing codegen already handles.
 
-[dependencies]
-snow-common = { path = "../snow-common" }
-snow-parser = { path = "../snow-parser" }
-rustc-hash = { workspace = true }
-```
+Advantages:
+1. No ABI constraints -- works with any function signature.
+2. No interaction with corosensei yield points.
+3. No dependency on LLVM optimization levels.
+4. `snow_reduction_check()` can be placed in the loop body naturally.
+5. Deterministic -- transformation either succeeds or reports that the call is not in tail position.
 
-**Core types:**
+Disadvantages:
+1. Only handles self-recursion (not mutual recursion -- future work).
+2. Requires detecting tail position in MIR.
 
-```rust
-/// A dot-separated module path: ["Math", "Vector"] represents Math.Vector
-#[derive(Debug, Clone, Hash, Eq, PartialEq)]
-pub struct ModulePath(pub Vec<String>);
+### Recommended Architecture: MIR Loop Transformation
 
-/// A resolved module graph for a Snow project.
-pub struct ModuleGraph {
-    /// All modules, indexed by position.
-    pub modules: Vec<ResolvedModule>,
-    /// Map from module path to index in `modules`.
-    pub path_to_index: FxHashMap<ModulePath, usize>,
-    /// Topological order (dependency-first).
-    pub topo_order: Vec<usize>,
-    /// The entry module index (main.snow).
-    pub entry: usize,
-}
+#### New Pass: `mir/tce.rs`
 
-/// A single resolved module.
-pub struct ResolvedModule {
-    /// Canonical module path (e.g., Math.Vector).
-    pub path: ModulePath,
-    /// File system path to the .snow file.
-    pub file_path: PathBuf,
-    /// Parsed CST.
-    pub parse: Parse,
-    /// Source code (for diagnostics).
-    pub source: String,
-    /// Indices of modules this one imports.
-    pub dependencies: Vec<usize>,
-    /// Import declarations (for type checker to process).
-    pub imports: Vec<ImportInfo>,
-}
+A post-lowering MIR transformation pass that runs after `lower_to_mir_module` and before codegen.
 
-/// Information about a single import statement.
-pub enum ImportInfo {
-    /// `import Math.Vector` -- qualified access only
-    Qualified(ModulePath),
-    /// `from Math.Vector import add, scale` -- selective import
-    Selective { module: ModulePath, names: Vec<String> },
-}
-```
+#### Detection Phase
 
-**Core functions:**
+Scan each `MirFunction` for self-recursive tail calls:
+
+1. Walk the function body to find `MirExpr::Call` where `func` is `Var(fn_name)` and `fn_name == current_function.name`.
+2. Verify the call is in tail position using these rules:
+
+A `MirExpr::Call` is in tail position if:
+- It is the last expression in the function body.
+- It is the last expression in `then_body` or `else_body` of an `If` that is itself in tail position.
+- It is the last expression in a `Match` arm body where the `Match` is in tail position.
+- It is the last expression in a `Block` that is in tail position.
+- It is the body of a `Let` binding where the `Let` is in tail position.
+- **NOT** in tail position if the call result is used (bound by Let with non-tail body, passed to BinOp, etc.).
+
+#### Transformation Phase
+
+For each function with detected self-recursive tail calls:
+
+1. Replace the function body with a `While { cond: BoolLit(true), body: transformed_body }`.
+2. Introduce mutable loop variables for each function parameter.
+3. Replace tail-recursive calls with: assign new arg values to the loop variables, then `Continue`.
+4. Wrap non-recursive return paths with explicit `Return`.
+
+#### Mutable Loop Variables
+
+MIR uses immutable `Let` bindings. The loop transformation needs mutable variables. Two new MirExpr variants:
 
 ```rust
-/// Discover all .snow files, parse them, build dependency graph, topological sort.
-pub fn resolve_project(project_root: &Path) -> Result<ModuleGraph, Vec<ResolveError>>;
+/// Assign to a mutable variable (for TCE loop variables only).
+MutAssign {
+    name: String,
+    value: Box<MirExpr>,
+    ty: MirType,
+},
 
-/// Map file path to module path.
-/// math/vector.snow -> ModulePath(["Math", "Vector"])
-/// main.snow -> ModulePath(["main"])
-fn file_to_module_path(root: &Path, file: &Path) -> ModulePath;
-
-/// Extract import paths from a parsed file.
-fn extract_imports(parse: &Parse) -> Vec<ImportInfo>;
-
-/// Topological sort with cycle detection (Kahn's algorithm).
-fn topological_sort(modules: &[ResolvedModule]) -> Result<Vec<usize>, Vec<ModulePath>>;
+/// Declare a mutable variable with initial value, body uses it.
+MutLet {
+    name: String,
+    ty: MirType,
+    value: Box<MirExpr>,
+    body: Box<MirExpr>,
+},
 ```
 
-**Module path mapping rules:**
-- `main.snow` -> `ModulePath(["main"])` (special: entry point, not importable)
-- `math.snow` -> `ModulePath(["Math"])` (file name capitalized)
-- `math/vector.snow` -> `ModulePath(["Math", "Vector"])` (directory = parent module)
-- `utils/string_helpers.snow` -> `ModulePath(["Utils", "StringHelpers"])` (snake_case to PascalCase)
+Codegen translates these to alloca + store/load. LLVM's mem2reg pass optimizes them into SSA registers.
 
-### snow-typeck: Moderate Changes (~200-300 lines)
+#### Example Transformation
 
-**Change 1: New `check_with_imports` entry point (~60-80 lines).**
-
-```rust
-/// Type-check with pre-resolved imports from other modules.
-pub fn check_with_imports(
-    parse: &Parse,
-    import_ctx: &ImportContext,
-) -> TypeckResult;
-
-/// Context built by the driver from already-checked modules.
-pub struct ImportContext {
-    /// Module name -> exported symbols (for qualified and selective access)
-    pub module_symbols: FxHashMap<String, FxHashMap<String, Scheme>>,
-    /// Imported struct definitions
-    pub struct_defs: FxHashMap<String, StructDefInfo>,
-    /// Imported sum type definitions
-    pub sum_type_defs: FxHashMap<String, SumTypeDefInfo>,
-    /// Imported type aliases
-    pub type_aliases: FxHashMap<String, TypeAliasInfo>,
-    /// Imported trait definitions
-    pub trait_defs: Vec<TraitDef>,
-    /// Imported trait implementations
-    pub trait_impls: Vec<TraitImplDef>,
-}
 ```
+// Before TCE pass:
+fn factorial(n: Int, acc: Int) -> Int =
+  If { cond: n <= 0, then: acc, else: Call("factorial", [n-1, n*acc]) }
 
-This wraps the existing `infer()` function, pre-seeding `TypeEnv`, `TypeRegistry`, and `TraitRegistry` with imported data before inference begins.
-
-**Change 2: Modify `infer_item` for import handling (~30-50 lines).**
-
-```rust
-// ImportDecl: register module for qualified access
-Item::ImportDecl(ref import) => {
-    if let Some(path) = import.module_path() {
-        let module_key = path.segments().join(".");
-        // Check user modules first, then stdlib_modules() fallback
-        if let Some(mod_exports) = self.import_ctx.module_symbols.get(&module_key) {
-            self.qualified_modules.insert(module_key, mod_exports.clone());
-        } else {
-            let stdlib = stdlib_modules();
-            if let Some(mod_exports) = stdlib.get(&module_key) {
-                self.qualified_modules.insert(module_key, mod_exports.clone());
-            }
+// After TCE pass:
+fn factorial(n: Int, acc: Int) -> Int =
+  MutLet { name: "__tce_n", value: Var("n"),
+    MutLet { name: "__tce_acc", value: Var("acc"),
+      While { cond: true,
+        If { cond: Var("__tce_n") <= 0,
+          then: Return(Var("__tce_acc")),
+          else: Block [
+            MutAssign { "__tce_acc", Var("__tce_n") * Var("__tce_acc") },
+            MutAssign { "__tce_n", Var("__tce_n") - 1 },
+            Continue,
+          ]
         }
+      }
     }
-    None
-}
-
-// FromImportDecl: inject specific names into TypeEnv
-Item::FromImportDecl(ref from_import) => {
-    // Same logic but check import_ctx first, then stdlib_modules()
-    // For each imported name, insert into env
-}
+  }
 ```
 
-**Change 3: Extend qualified name resolution (~20-30 lines).**
+#### Interaction with Corosensei
 
-`infer_field_access` already handles `Module.function` via `stdlib_modules()`. Extend it to also check the `qualified_modules` map populated from import declarations.
+**No interaction.** The MIR loop transformation produces a `While` loop, which codegen already handles. Reduction checks are inserted at loop back-edges by existing codegen infrastructure. The corosensei coroutine can yield at any reduction check point without interfering with the loop.
 
-**Change 4: Export collection function (~60-80 lines).**
+### Component Changes
 
-New function to extract public symbols from a `TypeckResult`:
-
-```rust
-pub fn collect_exports(
-    parse: &Parse,
-    typeck: &TypeckResult,
-) -> ExportedSymbols;
-
-pub struct ExportedSymbols {
-    pub functions: FxHashMap<String, Scheme>,
-    pub struct_defs: FxHashMap<String, StructDefInfo>,
-    pub sum_type_defs: FxHashMap<String, SumTypeDefInfo>,
-    pub type_aliases: FxHashMap<String, TypeAliasInfo>,
-    pub trait_defs: Vec<TraitDef>,
-    pub trait_impls: Vec<TraitImplDef>,
-}
-```
-
-Scans top-level items, checks for `pub` visibility (via `fn_def.visibility().is_some()`), and extracts type information from the `TypeckResult`.
-
-**Change 5: Visibility enforcement (~10 lines).**
-
-Only items with `pub` keyword are exported. The AST already provides `visibility() -> Option<Visibility>` on `FnDef`, `StructDef`, `SumTypeDef`, `InterfaceDef`, `SupervisorDef`, `ModuleDef`.
-
-**Backward compatibility:** The existing `check(&parse) -> TypeckResult` continues to work unchanged. It is equivalent to `check_with_imports(&parse, &ImportContext::empty())`. Single-file compilation is unaffected.
-
-**No changes to:** Core unification engine, occurs check, level-based generalization, Algorithm J inference, `InferCtx`, `Ty`, `Scheme`, `TyCon`, `TyVar`.
-
-### snow-codegen: Moderate Changes (~200-300 lines)
-
-**Change 1: New `lower_project_to_mir` function (~100-150 lines).**
-
-```rust
-/// Lower all modules to MIR and merge into a single MirModule.
-pub fn lower_project_to_mir(
-    modules: &[(ModulePath, &Parse, &TypeckResult)],
-    entry_module: usize,
-) -> Result<MirModule, String> {
-    let mut all_functions = Vec::new();
-    let mut all_structs = Vec::new();
-    let mut all_sum_types = Vec::new();
-    let mut entry_function = None;
-
-    for (i, (path, parse, typeck)) in modules.iter().enumerate() {
-        let name_prefix = module_prefix(path);
-        let name_remap = build_name_remap(parse, &name_prefix, ...);
-
-        let per_file_mir = lower_module(parse, typeck, &name_prefix, &name_remap)?;
-
-        all_functions.extend(per_file_mir.functions);
-        all_structs.extend(per_file_mir.structs);
-        all_sum_types.extend(per_file_mir.sum_types);
-
-        if i == entry_module {
-            entry_function = per_file_mir.entry_function;
-        }
-    }
-
-    // Deduplicate structs/sum types (imported types may be registered in multiple files)
-    dedup_structs(&mut all_structs);
-    dedup_sum_types(&mut all_sum_types);
-
-    let mut merged = MirModule {
-        functions: all_functions,
-        structs: all_structs,
-        sum_types: all_sum_types,
-        entry_function,
-        service_dispatch: HashMap::new(),
-    };
-    monomorphize(&mut merged);
-    Ok(merged)
-}
-```
-
-**Change 2: Name mangling with module prefix (~40-60 lines).**
-
-```
-Module Math.Vector, function add     -> MIR name: "Math__Vector__add"
-Module Utils, function clamp         -> MIR name: "Utils__clamp"
-Module main, function main           -> MIR name: "main" (no prefix for entry module)
-Module main, function helper         -> MIR name: "helper" (no prefix for entry module)
-
-Cross-module call from main:
-  from Math.Vector import add
-  add(1, 2)
-  -> MirExpr::Call { func: Var("Math__Vector__add"), ... }
-```
-
-The double underscore convention is consistent with existing trait mangling: `Trait__Method__Type`.
-
-**Change 3: Name remap table in Lowerer (~20-30 lines).**
-
-```rust
-struct Lowerer<'a> {
-    // ... existing fields ...
-    /// Maps local names to mangled MIR names (from imports).
-    name_remap: HashMap<String, String>,
-    /// This module's name prefix for its own definitions.
-    module_prefix: String,
-}
-```
-
-When lowering a `NameRef`, check `name_remap` first. If found, use the mangled name. Otherwise, use the local name (possibly with module prefix).
-
-**Change 4: Entry function detection (~5-10 lines).**
-
-Only `main()` from the entry module (main.snow) sets `entry_function`. If another module defines `main`, it gets module-prefixed and is not the entry point.
-
-**Change 5: Struct/sum type deduplication (~20-30 lines).**
-
-When merging MirModules, struct/sum types imported across multiple files may appear multiple times. Deduplicate by name.
-
-**No changes to:** `CodeGen`, LLVM IR generation, optimization passes, `link.rs`, `pattern/` decision tree compilation, `codegen/expr.rs`, `codegen/intrinsics.rs`, `codegen/types.rs`.
-
-### snowc: Moderate Changes (~100-130 lines)
-
-Replace the `build()` function body with the multi-file pipeline:
-
-```rust
-fn build(dir: &Path, ...) -> Result<(), String> {
-    // Phase 1: Resolve module graph
-    let graph = snow_resolve::resolve_project(dir)
-        .map_err(|errors| format_resolve_errors(&errors))?;
-
-    // Phase 2: Type-check in dependency order
-    let mut checked: Vec<(&Parse, TypeckResult, ExportedSymbols)> = Vec::new();
-    let mut has_errors = false;
-
-    for &idx in &graph.topo_order {
-        let module = &graph.modules[idx];
-        let import_ctx = build_import_context(&graph, &checked, &module.dependencies);
-        let typeck = snow_typeck::check_with_imports(&module.parse, &import_ctx);
-
-        // Report diagnostics for this file
-        has_errors |= report_diagnostics(
-            &module.source, &module.file_path, &module.parse, &typeck, diag_opts
-        );
-
-        let exports = snow_typeck::collect_exports(&module.parse, &typeck);
-        checked.push((&module.parse, typeck, exports));
-    }
-
-    if has_errors {
-        return Err("Compilation failed due to errors above.".to_string());
-    }
-
-    // Phase 3: Lower all modules to merged MIR
-    let module_data: Vec<_> = graph.topo_order.iter().map(|&idx| {
-        let module = &graph.modules[idx];
-        let (parse, typeck, _) = &checked[idx];
-        (module.path.clone(), *parse, typeck)
-    }).collect();
-
-    let mir = snow_codegen::lower_project_to_mir(&module_data, graph.entry)?;
-
-    // Phase 4: Codegen + link (unchanged)
-    let context = Context::create();
-    let mut codegen = CodeGen::new(&context, "snow_module", opt_level, target)?;
-    codegen.compile(&mir)?;
-    // ... emit object, link
-}
-```
-
-**Backward compatibility:** A project with only `main.snow` produces a ModuleGraph with one node, zero imports. The pipeline reduces to the existing single-file path.
-
-### Unchanged Components
-
-| Component | Why Unchanged |
-|-----------|--------------|
-| `snow-lexer` | Tokenization is file-local |
-| `snow-common` | Shared types are module-agnostic |
-| `snow-rt` | Runtime has no module boundaries |
-| `snow-fmt` | Formatting is file-local |
-| `snow-pkg` | Package management is orthogonal |
-| `snow-repl` | Operates in single-file mode |
-
-### Deferred: snow-lsp
-
-The LSP currently analyzes single files. Multi-file support needs:
-- Use `snow-resolve` to build module graph from workspace
-- Cache per-file parse and typeck results
-- On file change, re-check changed file and dependents
-- Go-to-definition across files
-
-**Defer to a follow-up milestone.** The module system should work in the CLI first.
+| Component | File | Change | Complexity |
+|-----------|------|--------|------------|
+| snow-codegen | `mir/tce.rs` (NEW) | Tail call detection + loop transformation pass | High |
+| snow-codegen | `mir/mod.rs` | Add `MutAssign` and `MutLet` MirExpr variants, call TCE pass | Medium |
+| snow-codegen | `codegen/expr.rs` | Handle `MutAssign` and `MutLet` codegen (alloca + store) | Medium |
+| snow-codegen | `lib.rs` | Insert TCE pass into compilation pipeline | Low |
+| snow-parser | -- | No changes | None |
+| snow-typeck | -- | No changes | None |
+| snow-rt | -- | No changes | None |
 
 ---
 
-## Patterns to Follow
+## Suggested Build Order
 
-### Pattern 1: Accumulator Pattern for Cross-Module Exports
+Based on dependency analysis between features:
 
-**What:** Process modules in topo order, accumulating exports into a shared map. Each module reads from already-processed modules and writes its own exports after type checking.
+### Phase 1: Math Stdlib
+**Rationale:** Zero dependencies on other features. Follows the exact same pattern as existing string/file/JSON stdlib. Lowest risk, highest confidence. Provides immediate user value.
 
-**When:** During the sequential type-check phase.
+### Phase 2: Receive Timeout Codegen
+**Rationale:** Fills a gap in existing infrastructure. The MIR and runtime already support it -- only codegen needs a null-check branch. Small, well-scoped change. Enables Phase 4 (timer primitives depend on receive timeouts working).
 
-**Why:** Simple, deterministic, and guaranteed to process dependencies before dependents (by construction from topo sort). This is how every batch-mode compiler handles cross-module dependencies.
+### Phase 3: ? Operator
+**Rationale:** Parser + typechecker + MIR lowering changes, but desugars to existing Match + Return codegen. No runtime changes. Medium complexity but well-understood semantics.
 
-```rust
-let mut all_exports: Vec<ExportedSymbols> = Vec::new();
+### Phase 4: Timer Primitives
+**Rationale:** Depends on Phase 2 (receive timeouts) because timers are typically used with `receive ... after ... end`. The runtime timer thread is self-contained but needs the receive timeout path to be solid.
 
-for &idx in &graph.topo_order {
-    let module = &graph.modules[idx];
+### Phase 5: Collection Sort
+**Rationale:** Depends on the existing Ord trait infrastructure. Follows the callback pattern of list_eq/list_compare. Medium complexity in both runtime (merge sort) and MIR lowering (Ord callback resolution).
 
-    // Build import context from already-checked dependencies
-    let mut import_ctx = ImportContext::new();
-    for &dep_idx in &module.dependencies {
-        import_ctx.add_module(&graph.modules[dep_idx].path, &all_exports[dep_idx]);
-    }
-    import_ctx.add_stdlib();  // Always include stdlib
+### Phase 6: Tail Call Elimination
+**Rationale:** Most complex feature. Independent of other features but highest risk. The MIR transformation pass is a new compiler pass pattern (first post-lowering pass). Should be built last to avoid blocking other features if it encounters difficulties.
 
-    let typeck = snow_typeck::check_with_imports(&module.parse, &import_ctx);
-    let exports = snow_typeck::collect_exports(&module.parse, &typeck);
-    all_exports.push(exports);
-}
 ```
-
-### Pattern 2: Name Mangling with Module Prefix
-
-**What:** Prefix all MIR function/type names with their module path using double underscores.
-
-**When:** During MIR lowering.
-
-**Example:**
-```
-Source: Math.Vector.add     -> MIR: Math__Vector__add
-Source: Math.solve          -> MIR: Math__solve
-Source: main                -> MIR: main (no prefix for entry module)
-Trait:  Display__show__Int  -> MIR: Display__show__Int (existing convention preserved)
-```
-
-**Why:** Avoids name collisions between modules. Double underscore chosen because:
-- Single underscore is used in snake_case (`my_function`)
-- Dot is used in qualified access syntax (`Math.add`)
-- Double underscore is unambiguous and already the convention for trait mangling
-
-### Pattern 3: Extend Existing Structures, Don't Replace
-
-**What:** Add fields/parameters to existing types rather than creating parallel data structures.
-
-**When:** Throughout the architecture.
-
-**Why:** The existing structures are deeply integrated across 70K+ lines. Replacing them would require touching every call site. Adding optional parameters (e.g., `ImportContext` for `check_with_imports`) is backward-compatible.
-
-```rust
-// GOOD: New entry point, existing one unchanged
-pub fn check(parse: &Parse) -> TypeckResult { ... }  // existing
-pub fn check_with_imports(parse: &Parse, ctx: &ImportContext) -> TypeckResult { ... }  // new
-
-// BAD: Changing existing signature
-pub fn check(parse: &Parse, ctx: Option<&ImportContext>) -> TypeckResult { ... }  // breaks all callers
+Phase 1: Math Stdlib ------> (standalone, immediate value)
+Phase 2: Receive Timeout --> Phase 4: Timer Primitives
+Phase 3: ? Operator -------> (standalone, ergonomic value)
+Phase 5: Collection Sort --> (standalone, uses existing patterns)
+Phase 6: TCE -------------> (standalone but highest complexity)
 ```
 
 ---
 
 ## Anti-Patterns to Avoid
 
-### Anti-Pattern 1: Global Mutable Symbol Table
+### Anti-Pattern 1: New MirExpr Variants for Simple Features
+**What:** Adding new MirExpr variants when existing ones suffice (e.g., adding `MirExpr::TryOp` for the `?` operator).
+**Why bad:** Every new MirExpr variant requires handling in `codegen_expr`, `ty()`, `collect_free_vars`, and every MirExpr match (30+ existing variants). This is O(variants) maintenance cost.
+**Instead:** Desugar to existing MirExpr variants in MIR lowering (as recommended for `?` operator).
 
-**What:** A single global `HashMap<String, Symbol>` shared across all modules during type checking.
+### Anti-Pattern 2: Blocking Timer Operations in Scheduler Hot Path
+**What:** Adding timer checks inside the scheduler's worker loop.
+**Why bad:** The scheduler loop runs for every actor yield/resume. Timer checks add latency to the critical path. The scheduler already handles `!Send` coroutines and work-stealing -- adding more logic to the inner loop increases the chance of correctness bugs.
+**Instead:** Use a dedicated timer thread that calls `snow_actor_send` externally.
 
-**Why bad:** Race conditions if ever parallelized; unclear ownership; mutations from one module's type checking can corrupt another's; impossible to test modules in isolation.
+### Anti-Pattern 3: In-Place Mutation in Sort Runtime
+**What:** Sorting a list's buffer in-place.
+**Why bad:** Snow lists have immutable semantics. All mutation operations (append, tail, concat, reverse) return NEW lists. Other references to the list would see the mutation, violating the language's guarantees.
+**Instead:** Always copy the data buffer before sorting. Return a new list pointer.
 
-**Instead:** Per-module TypeEnv populated from read-only exports of already-checked modules.
-
-### Anti-Pattern 2: Separate LLVM Modules Per File
-
-**What:** Compile each .snow file to a separate .o object file, then link them.
-
-**Why bad for Snow:** Requires solving cross-module symbol resolution, extern declarations, duplicate type definition handling, and loses cross-module optimization. Monomorphization needs whole-program visibility. All this complexity for zero practical benefit at Snow's project scale.
-
-**Instead:** Merge MIR into single module. One LLVM compilation. Maximum optimization.
-
-### Anti-Pattern 3: Implicit Transitive Imports
-
-**What:** If A imports B and B imports C, A can use C's exports without importing C directly.
-
-**Why bad:** Creates hidden dependencies. Removing B's import of C breaks A in a non-obvious way. Makes the dependency graph opaque. Difficult to reason about.
-
-**Instead:** Explicit imports only. If A needs C, A must `import C`. The module graph reflects actual usage, not transitive closure.
-
-### Anti-Pattern 4: Demand-Driven Module Loading in Type Checker
-
-**What:** Type checker reads and parses imported files on demand when it encounters an import statement.
-
-**Why bad:** Mixes file I/O with type inference. Makes error reporting confusing. Prevents caching. Creates circular dependency issues. Couples type checker to file system.
-
-**Instead:** Resolve entire module graph upfront. Parse all files. Type-check in topological order. The type checker never touches the file system.
-
-### Anti-Pattern 5: Flattening Modules Into One Parse Tree
-
-**What:** Concatenate all .snow files into a single string, parse once.
-
-**Why bad:** Destroys file-level error reporting. Makes TextRange offsets wrong for all files except the first. Breaks the LSP (which operates per-file). Cannot report "error in math/vector.snow line 5".
-
-**Instead:** Each file has its own `Parse` with its own `GreenNode` and `TextRange` space.
+### Anti-Pattern 4: Using `musttail` for TCE
+**What:** Relying on LLVM `musttail` for guaranteed tail calls.
+**Why bad:** `musttail` has strict ABI requirements (identical caller/callee signatures, no live allocas, must precede `ret`). Snow's reduction checks (`snow_reduction_check()`) are inserted before calls and would need to be moved. Closure captures change effective signatures. If any constraint is violated, LLVM silently degrades to a normal call, making stack overflow possible with no warning.
+**Instead:** MIR-level loop transformation, which is robust regardless of LLVM version or optimization level.
 
 ---
 
 ## Scalability Considerations
 
-| Concern | At 5 modules | At 50 modules | At 500 modules |
-|---------|-------------|---------------|----------------|
-| File discovery | Instant | < 10ms | < 100ms |
-| Parse (serial) | < 25ms | < 250ms | ~2.5 sec (parallelize) |
-| Topo sort | Trivial | Trivial | Trivial O(V+E) |
-| Type check | < 50ms | < 500ms | ~5 sec (parallelize levels) |
-| MIR lower + merge | < 25ms | < 250ms | ~1 sec |
-| LLVM compile | < 200ms | < 2 sec | ~20 sec (single module) |
-| Linking | < 100ms | < 100ms | < 100ms (single .o) |
-| Memory | ~10 MB | ~50 MB | ~500 MB |
+| Concern | Current (v1.8) | After v1.9 |
+|---------|----------------|------------|
+| Builtin count in builtins.rs | ~100 entries | ~120 entries (math adds ~20) |
+| Intrinsic count in intrinsics.rs | ~80 declarations | ~85 declarations |
+| MirExpr variants | 30 variants | 32 variants (MutAssign + MutLet for TCE) |
+| Compiler passes | 1 (MIR lowering) | 2 (MIR lowering + TCE pass) |
+| Runtime threads | N workers + 1 main | N workers + 1 main + 1 timer |
+| snow-rt modules | 12 source files | 14 source files (math.rs + timer.rs) |
 
-**The bottleneck at scale is LLVM single-module compilation.** If Snow ever reaches 500+ modules, consider separate LLVM compilation + LTO. But that is a performance optimization for a future milestone.
-
----
-
-## Suggested Build Order for Implementation
-
-### Phase 1: Module Resolution Infrastructure
-
-**Goal:** Given a project directory, produce a `ModuleGraph` in topological order.
-
-**Work:**
-1. Create `snow-resolve` crate with `ModulePath`, `ModuleGraph`, `ResolvedModule` types
-2. Implement `file_to_module_path` (directory structure to module path mapping)
-3. Implement import extraction from `Parse` (walk CST for `IMPORT_DECL` and `FROM_IMPORT_DECL`)
-4. Implement `resolve_project` (discover files, parse, build dependency edges, topological sort)
-5. Implement cycle detection with error messages showing the cycle path
-6. Test with fixture projects
-
-**Blocked by:** Nothing
-**Estimated new code:** ~400-600 lines
-
-### Phase 2: Cross-Module Type Checking
-
-**Goal:** Type-check files in dependency order with imported symbols.
-
-**Work:**
-1. Add `check_with_imports` and `ImportContext` to `snow-typeck`
-2. Add `collect_exports` function (extract pub symbols from TypeckResult)
-3. Modify `infer_item` for `ImportDecl`/`FromImportDecl` to use ImportContext, falling back to stdlib_modules
-4. Extend qualified name resolution in `infer_field_access`
-5. Wire up in `snowc build` to type-check in topological order
-6. Test cross-module function calls, struct usage, trait impls
-
-**Blocked by:** Phase 1
-**Estimated new/modified code:** ~200-300 lines in snow-typeck, ~50 lines in snowc
-
-### Phase 3: Cross-Module MIR Lowering and Codegen
-
-**Goal:** Merge multi-file MIR into single module, produce working binary.
-
-**Work:**
-1. Add `lower_project_to_mir` to `snow-codegen`
-2. Implement name mangling (module prefix for function/type names)
-3. Implement name remapping in `Lowerer` (import names -> mangled names)
-4. Handle struct/sum type deduplication during merge
-5. Entry function detection: only main.snow's main()
-6. Update `snowc build` to use merged MIR pipeline
-7. End-to-end tests with multi-file projects
-
-**Blocked by:** Phase 2
-**Estimated new/modified code:** ~200-300 lines in snow-codegen, ~80 lines in snowc
-
-### Phase 4: Polish and Edge Cases
-
-**Goal:** Production-quality diagnostics and edge case handling.
-
-**Work:**
-1. Circular import detection with cycle path in error message
-2. "Module not found" errors with suggestions (did you mean?)
-3. "Symbol not exported" errors (private symbol imported)
-4. Unused import warnings
-5. Cross-module type annotations in error messages
-6. Integration test suite for multi-file projects
-7. Update existing e2e tests to continue working
-
-**Blocked by:** Phase 3
-**Estimated code:** ~100-200 lines
+The builtin/intrinsic registration pattern scales linearly and is maintainable. The TCE pass introduces a second MIR pass, which is architecturally significant -- it establishes the pattern for future optimization passes (constant folding, dead code elimination, inlining, etc.).
 
 ---
 
 ## Sources
 
-### Primary (HIGH confidence)
-- Direct codebase analysis: `snowc/src/main.rs` build pipeline (lines 194-262)
-- `snow-typeck/src/env.rs` TypeEnv scope-stack implementation
-- `snow-typeck/src/infer.rs` stdlib_modules() resolution pattern (lines 210-490)
-- `snow-typeck/src/infer.rs` infer_item import handling (lines 1389-1427)
-- `snow-typeck/src/lib.rs` TypeckResult structure and check() entry point
-- `snow-codegen/src/mir/mod.rs` MirModule and MirFunction structure
-- `snow-codegen/src/mir/lower.rs` Lowerer struct and lower_item (lines 158-655)
-- `snow-codegen/src/lib.rs` compile_to_binary and lower_to_mir_module entry points
-- `snow-codegen/src/codegen/mod.rs` CodeGen struct and compile() method
-- `snow-codegen/src/link.rs` system linker invocation
-- `snow-parser/src/syntax_kind.rs` all CST node kinds including module/import
-- `snow-parser/src/parser/items.rs` import and module parse functions
-- `snow-parser/src/ast/item.rs` ImportDecl, FromImportDecl, ModuleDef AST nodes
-
-### Secondary (MEDIUM confidence)
-- [JS++ Compiler Module Resolution Architecture](https://www.onux.com/jspp/blog/under-the-hood-the-jspp-import-system/)
-- [LLVM Link Time Optimization](https://llvm.org/docs/LinkTimeOptimization.html)
-- [Clang Standard C++ Modules](https://clang.llvm.org/docs/StandardCPlusPlusModules.html)
-- [Stanford Compiler Modules](https://crypto.stanford.edu/~blynn/compiler/module.html)
+- Direct codebase inspection of all files referenced in the Component Changes tables above
+- [Inkwell CallSiteValue API](https://thedan64.github.io/inkwell/inkwell/values/struct.CallSiteValue.html) -- confirms `set_tail_call_kind` available with `llvm21-1` feature
+- [Corosensei GitHub](https://github.com/Amanieu/corosensei) -- stackful coroutine design, `!Send` coroutines, stack switching semantics
+- [LLVM musttail semantics (D99517)](https://reviews.llvm.org/D99517) -- ABI requirements for musttail guarantees
+- [Rust become keyword](https://doc.rust-lang.org/std/keyword.become.html) -- nightly-only explicit tail calls, incomplete as of 2026
