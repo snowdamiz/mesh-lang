@@ -85,7 +85,17 @@ Expressive, readable concurrency -- writing concurrent programs should feel as n
 
 ### Active
 
-(No active milestone -- planning next)
+## Current Milestone: v2.0 Database & Serialization
+
+**Goal:** Make Snow viable for real backend applications with JSON serde, database drivers, and HTTP routing improvements.
+
+**Target features:**
+- Struct ↔ JSON serde with `deriving(Json)` (full depth: nested structs, sum types, collections, Option)
+- SQLite driver (C FFI via LLVM)
+- PostgreSQL driver (pure wire protocol, zero external C dependencies)
+- Parameterized queries for SQL injection prevention
+- HTTP path parameters (`/users/:id`)
+- HTTP middleware (function pipeline)
 
 ### Out of Scope
 
@@ -213,4 +223,4 @@ Tech debt (minor):
 | Entry-block alloca hoisting for TCE | build_entry_alloca when tce_loop_header set; prevents stack growth in tail-call loops | ✓ Good -- v1.9, constant stack space |
 
 ---
-*Last updated: 2026-02-10 after v1.9 milestone*
+*Last updated: 2026-02-10 after v2.0 milestone started*
