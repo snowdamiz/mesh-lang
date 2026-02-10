@@ -178,13 +178,14 @@ impl<'ctx> CodeGen<'ctx> {
             .ok_or_else(|| format!("Invalid arm index {}", arm_index))?;
         let body_val = self.codegen_expr(&arm.body)?;
 
-        // Store result
-        self.builder
-            .build_store(result_alloca, body_val)
-            .map_err(|e| e.to_string())?;
-
-        // Branch to merge (only if not already terminated by return/panic)
+        // Store result and branch to merge (only if not already terminated by
+        // return/panic). The ? operator desugaring generates match arms with
+        // MirExpr::Return for early-return paths -- these emit a `ret`
+        // instruction that terminates the block, so we must skip the store.
         if self.builder.get_insert_block().unwrap().get_terminator().is_none() {
+            self.builder
+                .build_store(result_alloca, body_val)
+                .map_err(|e| e.to_string())?;
             self.builder
                 .build_unconditional_branch(merge_bb)
                 .map_err(|e| e.to_string())?;

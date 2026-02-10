@@ -1233,13 +1233,20 @@ fn infer_multi_clause_fn(
     let param_types: Vec<Ty> = (0..arity).map(|_| ctx.fresh_var()).collect();
 
     // Parse return type annotation from the first clause.
+    // Use resolve_type_annotation which handles generic args and sugar types
+    // (e.g., Result<Int, String>, Int!String, Int?) correctly.
     let return_type_annotation = first.return_type().and_then(|ann| {
-        let type_name = resolve_type_name_str(&ann)?;
-        if let Some(tp_ty) = type_params.get(&type_name) {
-            Some(tp_ty.clone())
-        } else {
-            Some(name_to_type(&type_name))
+        // First check if it's a type parameter name.
+        if let Some(type_name) = resolve_type_name_str(&ann) {
+            if let Some(tp_ty) = type_params.get(&type_name) {
+                return Some(tp_ty.clone());
+            }
         }
+        // Use full annotation resolution for generic/sugar types.
+        resolve_type_annotation(ctx, &ann, type_registry)
+            .or_else(|| {
+                resolve_type_name_str(&ann).map(|name| name_to_type(&name))
+            })
     });
 
     // Store fn constraints if any.
@@ -2531,13 +2538,20 @@ fn infer_fn_def(
     }
 
     // Parse return type annotation.
+    // Use resolve_type_annotation which handles generic args and sugar types
+    // (e.g., Result<Int, String>, Int!String, Int?) correctly.
     let return_type_annotation = fn_.return_type().and_then(|ann| {
-        let type_name = resolve_type_name_str(&ann)?;
-        if let Some(tp_ty) = type_params.get(&type_name) {
-            Some(tp_ty.clone())
-        } else {
-            Some(name_to_type(&type_name))
+        // First check if it's a type parameter name.
+        if let Some(type_name) = resolve_type_name_str(&ann) {
+            if let Some(tp_ty) = type_params.get(&type_name) {
+                return Some(tp_ty.clone());
+            }
         }
+        // Use full annotation resolution for generic/sugar types.
+        resolve_type_annotation(ctx, &ann, type_registry)
+            .or_else(|| {
+                resolve_type_name_str(&ann).map(|name| name_to_type(&name))
+            })
     });
 
     ctx.push_fn_return_type(return_type_annotation.clone());
@@ -6310,7 +6324,16 @@ fn resolve_type_annotation(
     if tokens.is_empty() {
         return None;
     }
-    let ty = parse_type_tokens(&tokens, &mut 0);
+    // Skip leading ARROW (`->`) or COLON_COLON (`::`) prefix tokens that are
+    // part of the TYPE_ANNOTATION node but not part of the type itself.
+    let mut start = 0;
+    if start < tokens.len() && matches!(tokens[start].0, SyntaxKind::ARROW) {
+        start += 1;
+    }
+    if start >= tokens.len() {
+        return None;
+    }
+    let ty = parse_type_tokens(&tokens, &mut start);
     Some(resolve_alias(ty, type_registry))
 }
 
