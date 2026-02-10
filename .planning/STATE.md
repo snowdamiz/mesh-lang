@@ -5,21 +5,21 @@
 See: .planning/PROJECT.md (updated 2026-02-09)
 
 **Core value:** Expressive, readable concurrency -- writing concurrent programs should feel as natural as sequential code, with supervision and fault tolerance built in.
-**Current focus:** v1.9 Stdlib & Ergonomics -- Phase 47 (Extended Collection Operations) COMPLETE
+**Current focus:** v1.9 Stdlib & Ergonomics -- Phase 48 (Tail-Call Elimination) IN PROGRESS
 
 ## Current Position
 
-Phase: 47 of 48 (Extended Collection Operations) -- COMPLETE
-Plan: 2 of 2 complete
-Status: Phase 47 Complete
-Last activity: 2026-02-10 -- Phase 47 complete (zip, flat_map, flatten, enumerate, take, drop, Map/Set conversions)
+Phase: 48 of 48 (Tail-Call Elimination) -- IN PROGRESS
+Plan: 1 of 2 complete
+Status: Executing Phase 48
+Last activity: 2026-02-10 -- Plan 01 complete (MIR TCE infrastructure: TailCall variant, rewrite pass)
 
-Progress: [█████████░] 92% (6/7 v1.9 phases -- Phase 48 remaining)
+Progress: [█████████░] 96% (6/7 v1.9 phases -- Phase 48 Plan 02 remaining)
 
 ## Performance Metrics
 
 **All-time Totals:**
-- Plans completed: 139
+- Plans completed: 140
 - Phases completed: 47
 - Milestones shipped: 9 (v1.0-v1.8)
 - Lines of Rust: 73,384+
@@ -57,6 +57,9 @@ Progress: [█████████░] 92% (6/7 v1.9 phases -- Phase 48 rema
 - [47-01] known_functions type priority over typeck-resolved type for stdlib module Var nodes in lower_field_access
 - [47-02] Map.from_list defaults to KEY_TYPE_INT since runtime cannot detect key type from list of tuples
 - [47-02] No bare name mappings for to_list/from_list to avoid Map/Set ambiguity; merge and difference get bare mappings
+- [48-01] TailCall ty() returns MirType::Never (branches, never produces a value -- consistent with Break/Continue/Return)
+- [48-01] Post-lowering rewrite pass over MIR tree (not threading is_tail_position through every lower_* method)
+- [48-01] TCE integrated into 6 lowering paths: fn_def, impl_method, default_method, multi_clause_fn(x2), actor_def
 
 ### Research Notes
 
@@ -79,6 +82,6 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-10
-Stopped at: Phase 47 complete (verified 12/12 must-haves)
+Stopped at: Completed 48-01-PLAN.md (MIR TCE infrastructure)
 Resume file: None
-Next action: Begin Phase 48 (Tail-Call Elimination)
+Next action: Execute Phase 48 Plan 02 (Codegen loop wrapping and e2e tests)
