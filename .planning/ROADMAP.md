@@ -12,6 +12,7 @@
 - [x] **v1.7 Loops & Iteration** - Phases 33-36 (shipped 2026-02-09)
 - [x] **v1.8 Module System** - Phases 37-42 (shipped 2026-02-09)
 - [x] **v1.9 Stdlib & Ergonomics** - Phases 43-48 (shipped 2026-02-10)
+- [ ] **v2.0 Database & Serialization** - Phases 49-54 (in progress)
 
 ## Phases
 
@@ -95,7 +96,111 @@ See milestones/v1.9-ROADMAP.md for full phase details.
 
 </details>
 
+### v2.0 Database & Serialization (In Progress)
+
+**Milestone Goal:** Make Snow viable for real backend applications with JSON serde, database drivers (SQLite + PostgreSQL), and HTTP routing improvements.
+
+- [ ] **Phase 49: JSON Serde -- Structs** - Struct-aware JSON encode/decode via `deriving(Json)`
+- [ ] **Phase 50: JSON Serde -- Sum Types & Generics** - Complete JSON coverage for all Snow types
+- [ ] **Phase 51: HTTP Path Parameters** - Dynamic route segments and method-specific routing
+- [ ] **Phase 52: HTTP Middleware** - Function pipeline for request/response processing
+- [ ] **Phase 53: SQLite Driver** - Embedded database access with parameterized queries
+- [ ] **Phase 54: PostgreSQL Driver** - Production database access with wire protocol and auth
+
+## Phase Details
+
+### Phase 49: JSON Serde -- Structs
+**Goal**: Users can serialize and deserialize Snow structs to/from JSON strings with full type safety
+**Depends on**: Nothing (first phase of v2.0)
+**Requirements**: JSON-01, JSON-02, JSON-03, JSON-04, JSON-05, JSON-06, JSON-07, JSON-10, JSON-11
+**Success Criteria** (what must be TRUE):
+  1. User writes `deriving(Json)` on a struct and can call `Json.encode(value)` to get a JSON string
+  2. User calls `Json.decode(json_string)` and gets back `Result<T, String>` with the original struct values
+  3. Structs with nested `deriving(Json)` structs, `Option<T>` fields, `List<T>` fields, and `Map<String, V>` fields all round-trip correctly through JSON
+  4. Compiler emits a clear error when `deriving(Json)` is used on a struct with a non-serializable field type
+  5. Int and Float values survive JSON round-trip without type confusion (42 stays Int, 3.14 stays Float)
+**Plans**: TBD
+
+Plans:
+- [ ] 49-01: TBD
+- [ ] 49-02: TBD
+
+### Phase 50: JSON Serde -- Sum Types & Generics
+**Goal**: Users can serialize any Snow data type to JSON, including sum types and generic structs
+**Depends on**: Phase 49
+**Requirements**: JSON-08, JSON-09
+**Success Criteria** (what must be TRUE):
+  1. Sum type values encode as tagged JSON objects (`{"tag":"Variant","fields":[...]}`) and decode back to the correct variant
+  2. Generic structs like `Wrapper<Int>` and `Wrapper<String>` both derive Json correctly via monomorphization
+  3. Nested combinations (sum type containing a generic struct containing a list) round-trip through JSON
+**Plans**: TBD
+
+Plans:
+- [ ] 50-01: TBD
+
+### Phase 51: HTTP Path Parameters
+**Goal**: Users can define REST-style routes with dynamic segments and extract parameters from requests
+**Depends on**: Nothing (independent of JSON phases)
+**Requirements**: HTTP-01, HTTP-02, HTTP-03
+**Success Criteria** (what must be TRUE):
+  1. User defines a route like `/users/:id` and the router matches requests to `/users/42`
+  2. User calls `Request.param(req, "id")` inside a handler and gets `Some("42")`
+  3. User registers routes with `HTTP.get`, `HTTP.post`, `HTTP.put`, `HTTP.delete` and only matching HTTP methods dispatch to the handler
+  4. Exact routes take priority over parameterized routes (`/users/me` matches before `/users/:id`)
+**Plans**: TBD
+
+Plans:
+- [ ] 51-01: TBD
+
+### Phase 52: HTTP Middleware
+**Goal**: Users can wrap request handling with composable middleware functions for logging, auth, and cross-cutting concerns
+**Depends on**: Phase 51
+**Requirements**: HTTP-04, HTTP-05, HTTP-06
+**Success Criteria** (what must be TRUE):
+  1. User adds middleware via `HTTP.use(router, middleware_fn)` and it runs on every request
+  2. Middleware function receives the request and a `next` function, can inspect/modify the request before calling next, and can inspect/modify the response after
+  3. Multiple middleware functions execute in registration order (first added = outermost), forming a composable pipeline
+**Plans**: TBD
+
+Plans:
+- [ ] 52-01: TBD
+
+### Phase 53: SQLite Driver
+**Goal**: Users can store and retrieve data from SQLite databases with safe parameterized queries
+**Depends on**: Nothing (independent of JSON/HTTP phases)
+**Requirements**: SQLT-01, SQLT-02, SQLT-03, SQLT-04, SQLT-05, SQLT-06, SQLT-07
+**Success Criteria** (what must be TRUE):
+  1. User opens a SQLite database with `Sqlite.open("path.db")` and gets `Result<SqliteConn, String>`
+  2. User executes `Sqlite.query(conn, "SELECT * FROM users WHERE age > ?", [18])` and gets `Result<List<Map<String, String>>, String>` with rows
+  3. User executes `Sqlite.execute(conn, "INSERT INTO users (name) VALUES (?)", ["Alice"])` and gets `Result<Int, String>` with rows affected
+  4. SQLite is bundled into the compiled binary with zero system dependencies (no `apt install libsqlite3-dev` needed)
+  5. Database handles survive garbage collection (opaque u64, not GC-managed pointers)
+**Plans**: TBD
+
+Plans:
+- [ ] 53-01: TBD
+- [ ] 53-02: TBD
+
+### Phase 54: PostgreSQL Driver
+**Goal**: Users can connect to PostgreSQL for production database workloads with secure authentication
+**Depends on**: Nothing (independent, but benefits from SQLite API patterns)
+**Requirements**: PG-01, PG-02, PG-03, PG-04, PG-05, PG-06, PG-07, PG-08
+**Success Criteria** (what must be TRUE):
+  1. User connects to PostgreSQL with `Pg.connect("postgres://user:pass@host/db")` and gets `Result<PgConn, String>`
+  2. User executes `Pg.query(conn, "SELECT * FROM users WHERE id = $1", [42])` and gets `Result<List<Map<String, String>>, String>` with rows
+  3. User executes `Pg.execute(conn, "INSERT INTO users (name) VALUES ($1)", ["Alice"])` and gets `Result<Int, String>` with rows affected
+  4. Connection works with SCRAM-SHA-256 authentication (production PostgreSQL, cloud providers)
+  5. Connection works with MD5 authentication (local development PostgreSQL)
+**Plans**: TBD
+
+Plans:
+- [ ] 54-01: TBD
+- [ ] 54-02: TBD
+
 ## Progress
+
+**Execution Order:**
+Phases execute in numeric order: 49 -> 50 -> 51 -> 52 -> 53 -> 54
 
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
@@ -109,5 +214,11 @@ See milestones/v1.9-ROADMAP.md for full phase details.
 | 33-36 | v1.7 | 8/8 | Complete | 2026-02-09 |
 | 37-42 | v1.8 | 12/12 | Complete | 2026-02-09 |
 | 43-48 | v1.9 | 13/13 | Complete | 2026-02-10 |
+| 49. JSON Serde -- Structs | v2.0 | 0/TBD | Not started | - |
+| 50. JSON Serde -- Sum Types & Generics | v2.0 | 0/TBD | Not started | - |
+| 51. HTTP Path Parameters | v2.0 | 0/TBD | Not started | - |
+| 52. HTTP Middleware | v2.0 | 0/TBD | Not started | - |
+| 53. SQLite Driver | v2.0 | 0/TBD | Not started | - |
+| 54. PostgreSQL Driver | v2.0 | 0/TBD | Not started | - |
 
-**Total: 48 phases shipped across 10 milestones. 141 plans completed. All phases complete.**
+**Total: 48 phases shipped across 10 milestones. 141 plans completed. 6 new phases planned for v2.0.**

@@ -13,7 +13,7 @@ Requirements for Database & Serialization milestone. Each maps to roadmap phases
 - [ ] **JSON-02**: User can encode a struct to JSON string via `Json.encode(value)`
 - [ ] **JSON-03**: User can decode a JSON string to a typed struct via `Json.decode(str)` returning `Result<T, String>`
 - [ ] **JSON-04**: JSON serde handles nested structs (struct field with another `deriving(Json)` struct)
-- [ ] **JSON-05**: JSON serde handles `Option<T>` fields (`Some` → value, `None` → JSON null)
+- [ ] **JSON-05**: JSON serde handles `Option<T>` fields (`Some` -> value, `None` -> JSON null)
 - [ ] **JSON-06**: JSON serde handles `List<T>` fields (serialized as JSON arrays)
 - [ ] **JSON-07**: JSON serde handles `Map<String, V>` fields (serialized as JSON objects)
 - [ ] **JSON-08**: JSON serde handles sum types as tagged unions (`{"tag":"Variant","fields":[...]}`)
@@ -23,20 +23,20 @@ Requirements for Database & Serialization milestone. Each maps to roadmap phases
 
 ### SQLite
 
-- [ ] **SQLT-01**: User can open a SQLite database with `Sqlite.open(path)` → `Result<SqliteConn, String>`
+- [ ] **SQLT-01**: User can open a SQLite database with `Sqlite.open(path)` -> `Result<SqliteConn, String>`
 - [ ] **SQLT-02**: User can close a connection with `Sqlite.close(conn)`
-- [ ] **SQLT-03**: User can query with `Sqlite.query(conn, sql, params)` → `Result<List<Map<String, String>>, String>`
-- [ ] **SQLT-04**: User can execute mutations with `Sqlite.execute(conn, sql, params)` → `Result<Int, String>`
+- [ ] **SQLT-03**: User can query with `Sqlite.query(conn, sql, params)` -> `Result<List<Map<String, String>>, String>`
+- [ ] **SQLT-04**: User can execute mutations with `Sqlite.execute(conn, sql, params)` -> `Result<Int, String>`
 - [ ] **SQLT-05**: Query parameters use `?` placeholders with List of typed values for SQL injection prevention
 - [ ] **SQLT-06**: SQLite is bundled (compiled from source via `libsqlite3-sys`, zero system dependencies)
 - [ ] **SQLT-07**: Database handles are opaque u64 values safe from GC collection
 
 ### PostgreSQL
 
-- [ ] **PG-01**: User can connect with `Pg.connect(url)` → `Result<PgConn, String>`
+- [ ] **PG-01**: User can connect with `Pg.connect(url)` -> `Result<PgConn, String>`
 - [ ] **PG-02**: User can close a connection with `Pg.close(conn)`
-- [ ] **PG-03**: User can query with `Pg.query(conn, sql, params)` → `Result<List<Map<String, String>>, String>`
-- [ ] **PG-04**: User can execute mutations with `Pg.execute(conn, sql, params)` → `Result<Int, String>`
+- [ ] **PG-03**: User can query with `Pg.query(conn, sql, params)` -> `Result<List<Map<String, String>>, String>`
+- [ ] **PG-04**: User can execute mutations with `Pg.execute(conn, sql, params)` -> `Result<Int, String>`
 - [ ] **PG-05**: Query parameters use `$1, $2` placeholders with List of typed values
 - [ ] **PG-06**: Pure wire protocol implementation (zero C dependencies beyond crypto crates)
 - [ ] **PG-07**: SCRAM-SHA-256 authentication supported for production/cloud PostgreSQL
@@ -45,7 +45,7 @@ Requirements for Database & Serialization milestone. Each maps to roadmap phases
 ### HTTP Enhancements
 
 - [ ] **HTTP-01**: Router supports path parameters (`/users/:id`) with segment-based matching
-- [ ] **HTTP-02**: User can extract path parameters via `Request.param(req, "id")` → `Option<String>`
+- [ ] **HTTP-02**: User can extract path parameters via `Request.param(req, "id")` -> `Option<String>`
 - [ ] **HTTP-03**: Router supports method-specific routes (`HTTP.get`, `HTTP.post`, `HTTP.put`, `HTTP.delete`)
 - [ ] **HTTP-04**: User can add global middleware via `HTTP.use(router, middleware_fn)`
 - [ ] **HTTP-05**: Middleware receives request and next function, can modify request/response
@@ -87,44 +87,44 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| JSON-01 | — | Pending |
-| JSON-02 | — | Pending |
-| JSON-03 | — | Pending |
-| JSON-04 | — | Pending |
-| JSON-05 | — | Pending |
-| JSON-06 | — | Pending |
-| JSON-07 | — | Pending |
-| JSON-08 | — | Pending |
-| JSON-09 | — | Pending |
-| JSON-10 | — | Pending |
-| JSON-11 | — | Pending |
-| SQLT-01 | — | Pending |
-| SQLT-02 | — | Pending |
-| SQLT-03 | — | Pending |
-| SQLT-04 | — | Pending |
-| SQLT-05 | — | Pending |
-| SQLT-06 | — | Pending |
-| SQLT-07 | — | Pending |
-| PG-01 | — | Pending |
-| PG-02 | — | Pending |
-| PG-03 | — | Pending |
-| PG-04 | — | Pending |
-| PG-05 | — | Pending |
-| PG-06 | — | Pending |
-| PG-07 | — | Pending |
-| PG-08 | — | Pending |
-| HTTP-01 | — | Pending |
-| HTTP-02 | — | Pending |
-| HTTP-03 | — | Pending |
-| HTTP-04 | — | Pending |
-| HTTP-05 | — | Pending |
-| HTTP-06 | — | Pending |
+| JSON-01 | Phase 49 | Pending |
+| JSON-02 | Phase 49 | Pending |
+| JSON-03 | Phase 49 | Pending |
+| JSON-04 | Phase 49 | Pending |
+| JSON-05 | Phase 49 | Pending |
+| JSON-06 | Phase 49 | Pending |
+| JSON-07 | Phase 49 | Pending |
+| JSON-08 | Phase 50 | Pending |
+| JSON-09 | Phase 50 | Pending |
+| JSON-10 | Phase 49 | Pending |
+| JSON-11 | Phase 49 | Pending |
+| SQLT-01 | Phase 53 | Pending |
+| SQLT-02 | Phase 53 | Pending |
+| SQLT-03 | Phase 53 | Pending |
+| SQLT-04 | Phase 53 | Pending |
+| SQLT-05 | Phase 53 | Pending |
+| SQLT-06 | Phase 53 | Pending |
+| SQLT-07 | Phase 53 | Pending |
+| PG-01 | Phase 54 | Pending |
+| PG-02 | Phase 54 | Pending |
+| PG-03 | Phase 54 | Pending |
+| PG-04 | Phase 54 | Pending |
+| PG-05 | Phase 54 | Pending |
+| PG-06 | Phase 54 | Pending |
+| PG-07 | Phase 54 | Pending |
+| PG-08 | Phase 54 | Pending |
+| HTTP-01 | Phase 51 | Pending |
+| HTTP-02 | Phase 51 | Pending |
+| HTTP-03 | Phase 51 | Pending |
+| HTTP-04 | Phase 52 | Pending |
+| HTTP-05 | Phase 52 | Pending |
+| HTTP-06 | Phase 52 | Pending |
 
 **Coverage:**
 - v2.0 requirements: 32 total
-- Mapped to phases: 0
-- Unmapped: 32 ⚠️
+- Mapped to phases: 32
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-02-10*
-*Last updated: 2026-02-10 after initial definition*
+*Last updated: 2026-02-10 after roadmap creation*
