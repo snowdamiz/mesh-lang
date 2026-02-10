@@ -11,6 +11,7 @@
 //! - 1 = string keys (compared by content via snow_string_eq)
 
 use crate::gc::snow_gc_alloc_actor;
+use super::list::alloc_pair;
 use std::ptr;
 
 /// Map header: len (u64), cap (u64).
@@ -337,6 +338,73 @@ pub extern "C" fn snow_map_to_string(
             close as *const crate::string::SnowString,
         ) as *mut u8;
         result
+    }
+}
+
+/// Merge two maps. All entries from `a` are included; entries from `b`
+/// overwrite duplicates from `a`. Returns a NEW merged map.
+#[no_mangle]
+pub extern "C" fn snow_map_merge(a: *mut u8, b: *mut u8) -> *mut u8 {
+    unsafe {
+        let a_len = map_len(a) as usize;
+        let b_len = map_len(b) as usize;
+        let kt = map_key_type(a);
+
+        // Start with a copy of `a`.
+        let mut result = alloc_map((a_len + b_len) as u64, kt);
+        *(result as *mut u64) = a_len as u64;
+        if a_len > 0 {
+            ptr::copy_nonoverlapping(
+                map_entries(a) as *const u8,
+                map_entries_mut(result) as *mut u8,
+                a_len * ENTRY_SIZE,
+            );
+        }
+
+        // Add/overwrite entries from `b`.
+        let b_entries = map_entries(b);
+        for i in 0..b_len {
+            let key = (*b_entries.add(i))[0];
+            let val = (*b_entries.add(i))[1];
+            result = snow_map_put(result, key, val);
+        }
+
+        result
+    }
+}
+
+/// Convert a map to a list of (key, value) 2-tuples.
+#[no_mangle]
+pub extern "C" fn snow_map_to_list(map: *mut u8) -> *mut u8 {
+    unsafe {
+        let len = map_len(map) as usize;
+        let entries = map_entries(map);
+        let list = super::list::snow_list_builder_new(len as i64);
+        for i in 0..len {
+            let key = (*entries.add(i))[0];
+            let val = (*entries.add(i))[1];
+            let pair = alloc_pair(key, val);
+            super::list::snow_list_builder_push(list, pair as u64);
+        }
+        list
+    }
+}
+
+/// Build a map from a list of (key, value) 2-tuples.
+/// Defaults to KEY_TYPE_INT since runtime cannot detect key type.
+#[no_mangle]
+pub extern "C" fn snow_map_from_list(list: *mut u8) -> *mut u8 {
+    unsafe {
+        let len = super::list::snow_list_length(list);
+        let mut map = snow_map_new();
+        let data = (list as *const u64).add(2); // skip len + cap header
+        for i in 0..len as usize {
+            let tuple_ptr = *data.add(i) as *mut u8;
+            let key = *((tuple_ptr as *const u64).add(1)); // offset 1 = first tuple element
+            let val = *((tuple_ptr as *const u64).add(2)); // offset 2 = second tuple element
+            map = snow_map_put(map, key, val);
+        }
+        map
     }
 }
 

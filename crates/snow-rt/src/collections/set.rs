@@ -240,6 +240,57 @@ pub extern "C" fn snow_set_to_string(
     }
 }
 
+/// Return a NEW set containing elements in `a` that are NOT in `b`.
+#[no_mangle]
+pub extern "C" fn snow_set_difference(a: *mut u8, b: *mut u8) -> *mut u8 {
+    unsafe {
+        let a_len = set_len(a) as usize;
+        let a_data = set_data(a);
+        let result = alloc_set(a_len as u64);
+        let dst = set_data_mut(result);
+        let mut count = 0;
+
+        for i in 0..a_len {
+            let elem = *a_data.add(i);
+            if !contains_elem(b, elem) {
+                *dst.add(count) = elem;
+                count += 1;
+            }
+        }
+
+        *(result as *mut u64) = count as u64;
+        result
+    }
+}
+
+/// Convert a set to a list of its elements.
+#[no_mangle]
+pub extern "C" fn snow_set_to_list(set: *mut u8) -> *mut u8 {
+    unsafe {
+        let len = set_len(set) as usize;
+        let src = set_data(set);
+        let list = super::list::snow_list_builder_new(len as i64);
+        for i in 0..len {
+            super::list::snow_list_builder_push(list, *src.add(i));
+        }
+        list
+    }
+}
+
+/// Build a set from a list. Duplicates are removed via snow_set_add.
+#[no_mangle]
+pub extern "C" fn snow_set_from_list(list: *mut u8) -> *mut u8 {
+    unsafe {
+        let len = super::list::snow_list_length(list);
+        let data = (list as *const u64).add(2); // skip len + cap header
+        let mut set = snow_set_new();
+        for i in 0..len as usize {
+            set = snow_set_add(set, *data.add(i));
+        }
+        set
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

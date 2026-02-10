@@ -49,8 +49,8 @@ pub use collections::list::{
     snow_list_reverse, snow_list_sort, snow_list_tail, snow_list_take, snow_list_zip,
 };
 pub use collections::map::{
-    snow_map_delete, snow_map_get, snow_map_has_key, snow_map_keys, snow_map_new, snow_map_put,
-    snow_map_size, snow_map_values,
+    snow_map_delete, snow_map_from_list, snow_map_get, snow_map_has_key, snow_map_keys,
+    snow_map_merge, snow_map_new, snow_map_put, snow_map_size, snow_map_to_list, snow_map_values,
 };
 pub use collections::queue::{
     snow_queue_is_empty, snow_queue_new, snow_queue_peek, snow_queue_pop, snow_queue_push,
@@ -60,8 +60,9 @@ pub use collections::range::{
     snow_range_filter, snow_range_length, snow_range_map, snow_range_new, snow_range_to_list,
 };
 pub use collections::set::{
-    snow_set_add, snow_set_contains, snow_set_intersection, snow_set_new, snow_set_remove,
-    snow_set_size, snow_set_union,
+    snow_set_add, snow_set_contains, snow_set_difference, snow_set_from_list,
+    snow_set_intersection, snow_set_new, snow_set_remove, snow_set_size, snow_set_to_list,
+    snow_set_union,
 };
 pub use collections::tuple::{snow_tuple_first, snow_tuple_nth, snow_tuple_second, snow_tuple_size};
 pub use env::{snow_env_args, snow_env_get};
