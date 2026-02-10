@@ -92,7 +92,7 @@ See milestones/v1.8-ROADMAP.md for full phase details.
 **Milestone Goal:** Make Snow practical for real programs by adding math stdlib, error propagation sugar, receive timeouts, timer primitives, collection operations, and tail-call optimization.
 
 - [x] **Phase 43: Math Stdlib** - Numeric functions and type conversions via LLVM intrinsics (completed 2026-02-09)
-- [ ] **Phase 44: Receive Timeouts & Timers** - Actor timeout codegen completion and timer primitives
+- [x] **Phase 44: Receive Timeouts & Timers** - Actor timeout codegen completion and timer primitives (completed 2026-02-09)
 - [ ] **Phase 45: Error Propagation** - ? operator for Result/Option early return
 - [ ] **Phase 46: Core Collection Operations** - Sort, find, contains, String split/join/parse
 - [ ] **Phase 47: Extended Collection Operations** - Zip, flat_map, enumerate, take/drop, Map/Set conversions
@@ -188,10 +188,10 @@ Phases execute in numeric order: 43 -> 44 -> 45 -> 46 -> 47 -> 48
 | 33-36 | v1.7 | 8/8 | Complete | 2026-02-09 |
 | 37-42 | v1.8 | 12/12 | Complete | 2026-02-09 |
 | 43 | v1.9 | 2/2 | Complete | 2026-02-09 |
-| 44 | v1.9 | 0/TBD | Not started | - |
+| 44 | v1.9 | 2/2 | Complete | 2026-02-09 |
 | 45 | v1.9 | 0/TBD | Not started | - |
 | 46 | v1.9 | 0/TBD | Not started | - |
 | 47 | v1.9 | 0/TBD | Not started | - |
 | 48 | v1.9 | 0/TBD | Not started | - |
 
-**Total: 43 phases shipped across 9 milestones. 131 plans completed. 5 phases remaining.**
+**Total: 44 phases shipped across 9 milestones. 133 plans completed. 4 phases remaining.**
