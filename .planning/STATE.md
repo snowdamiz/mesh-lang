@@ -10,17 +10,17 @@ See: .planning/PROJECT.md (updated 2026-02-09)
 ## Current Position
 
 Phase: 44 of 48 (Receive Timeouts & Timers)
-Plan: 1 of 2 complete
-Status: In Progress
-Last activity: 2026-02-10 -- Completed 44-01 (receive-with-timeout codegen + e2e tests)
+Plan: 2 of 2 complete
+Status: Phase Complete
+Last activity: 2026-02-10 -- Completed 44-02 (Timer.sleep + Timer.send_after)
 
-Progress: [██░░░░░░░░] 25% (1.5/6 v1.9 phases)
+Progress: [███░░░░░░░] 33% (2/6 v1.9 phases)
 
 ## Performance Metrics
 
 **All-time Totals:**
-- Plans completed: 132
-- Phases completed: 43
+- Plans completed: 133
+- Phases completed: 44
 - Milestones shipped: 9 (v1.0-v1.8)
 - Lines of Rust: 73,384
 - Timeline: 5 days (2026-02-05 -> 2026-02-09)
@@ -36,6 +36,9 @@ Progress: [██░░░░░░░░] 25% (1.5/6 v1.9 phases)
 - [43-02] floor/ceil/round return Int via fptosi after LLVM intrinsic -- matches "Float to Int" requirement purpose
 - [44-01] Extracted codegen_recv_load_message/codegen_recv_process_arms helpers to share code between timeout and no-timeout paths
 - [44-01] Used result_alloca + merge block pattern (same as codegen_if) for receive timeout branching
+- [44-02] Timer.sleep uses yield loop with deadline (state stays Ready, not Waiting) to avoid scheduler skip
+- [44-02] Timer.send_after spawns background OS thread with deep-copied message bytes
+- [44-02] Timer.send_after typed as fn(Pid<T>, Int, T) -> Unit (polymorphic with TyVar(MAX-20))
 
 ### Research Notes
 
@@ -58,6 +61,6 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-10
-Stopped at: Completed 44-01-PLAN.md
+Stopped at: Completed 44-02-PLAN.md (phase 44 complete)
 Resume file: None
-Next action: Execute 44-02-PLAN.md
+Next action: Begin phase 45
