@@ -124,7 +124,10 @@ Plans:
   2. Compiler type-checks timeout body against receive arm types, rejecting type mismatches
   3. User can call Timer.sleep(ms) to suspend the current actor for the specified duration without blocking other actors
   4. User can call Timer.send_after(pid, ms, msg) and the target actor receives msg after ms milliseconds
-**Plans**: TBD
+**Plans:** 2 plans
+Plans:
+- [ ] 44-01-PLAN.md -- Receive-with-timeout codegen (null-check branching + e2e tests)
+- [ ] 44-02-PLAN.md -- Timer.sleep and Timer.send_after stdlib module
 
 ### Phase 45: Error Propagation
 **Goal**: Users can propagate errors concisely using the ? operator instead of explicit pattern matching
