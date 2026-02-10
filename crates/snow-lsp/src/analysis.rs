@@ -208,6 +208,8 @@ fn type_error_span(error: &TypeError) -> Option<TextRange> {
         TypeError::ImportModuleNotFound { span, .. } => Some(*span),
         TypeError::ImportNameNotFound { span, .. } => Some(*span),
         TypeError::PrivateItem { span, .. } => Some(*span),
+        TypeError::TryIncompatibleReturn { span, .. } => Some(*span),
+        TypeError::TryOnNonResultOption { span, .. } => Some(*span),
     }
 }
 

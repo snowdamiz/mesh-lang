@@ -3228,6 +3228,8 @@ impl<'a> Lowerer<'a> {
             Expr::BreakExpr(_) => MirExpr::Break,
             Expr::ContinueExpr(_) => MirExpr::Continue,
             Expr::ForInExpr(for_in) => self.lower_for_in_expr(&for_in),
+            // Try expression -- codegen will be implemented in a later plan
+            Expr::TryExpr(_) => MirExpr::Unit,
         }
     }
 

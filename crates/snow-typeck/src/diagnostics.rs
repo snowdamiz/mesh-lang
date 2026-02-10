@@ -126,6 +126,8 @@ fn error_code(err: &TypeError) -> &'static str {
         TypeError::ImportModuleNotFound { .. } => "E0031",
         TypeError::ImportNameNotFound { .. } => "E0034",
         TypeError::PrivateItem { .. } => "E0035",
+        TypeError::TryIncompatibleReturn { .. } => "E0036",
+        TypeError::TryOnNonResultOption { .. } => "E0037",
     }
 }
 
@@ -485,7 +487,9 @@ pub fn render_json_diagnostic(
                 | TypeError::ContinueOutsideLoop { span }
                 | TypeError::ImportModuleNotFound { span, .. }
                 | TypeError::ImportNameNotFound { span, .. }
-                | TypeError::PrivateItem { span, .. } => {
+                | TypeError::PrivateItem { span, .. }
+                | TypeError::TryIncompatibleReturn { span, .. }
+                | TypeError::TryOnNonResultOption { span, .. } => {
                     let range = text_range_to_range(*span);
                     spans.push(JsonSpan {
                         start: range.start,
@@ -1496,6 +1500,43 @@ pub fn render_diagnostic(
                         .with_color(Color::Red),
                 )
                 .with_help(format!("add `pub` to `{}` in module `{}` to make it accessible", name, module_name))
+                .finish()
+        }
+
+        TypeError::TryIncompatibleReturn { fn_return_ty, span, .. } => {
+            let msg = "`?` operator requires function to return `Result` or `Option`";
+            let range = clamp(text_range_to_range(*span));
+
+            Report::build(ReportKind::Error, (fname.clone(), range.clone()))
+                .with_code(code)
+                .with_message(msg)
+                .with_config(config)
+                .with_label(
+                    Label::new((fname.clone(), range))
+                        .with_message("cannot use `?` here")
+                        .with_color(Color::Red),
+                )
+                .with_note(format!(
+                    "the enclosing function returns `{}`, but `?` requires `Result<_, _>` or `Option<_>`",
+                    fn_return_ty
+                ))
+                .finish()
+        }
+
+        TypeError::TryOnNonResultOption { operand_ty, span } => {
+            let msg = "`?` requires `Result` or `Option`";
+            let range = clamp(text_range_to_range(*span));
+
+            Report::build(ReportKind::Error, (fname.clone(), range.clone()))
+                .with_code(code)
+                .with_message(msg)
+                .with_config(config)
+                .with_label(
+                    Label::new((fname.clone(), range))
+                        .with_message(format!("type `{}` is not `Result` or `Option`", operand_ty))
+                        .with_color(Color::Red),
+                )
+                .with_help("the `?` operator can only be used on `Result<T, E>` or `Option<T>` values")
                 .finish()
         }
     };

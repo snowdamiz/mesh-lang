@@ -279,6 +279,20 @@ pub enum TypeError {
         name: String,
         span: TextRange,
     },
+    /// `?` operator used in function that doesn't return Result or Option.
+    TryIncompatibleReturn {
+        /// The type of the operand (e.g., Result<Int, String>).
+        operand_ty: Ty,
+        /// The enclosing function's return type (e.g., Int).
+        fn_return_ty: Ty,
+        span: TextRange,
+    },
+    /// `?` operator used on a value that is not Result or Option.
+    TryOnNonResultOption {
+        /// The actual type of the operand.
+        operand_ty: Ty,
+        span: TextRange,
+    },
 }
 
 impl fmt::Display for TypeError {
@@ -576,6 +590,12 @@ impl fmt::Display for TypeError {
             }
             TypeError::PrivateItem { module_name, name, .. } => {
                 write!(f, "`{}` is private in module `{}`; add `pub` to make it accessible", name, module_name)
+            }
+            TypeError::TryIncompatibleReturn { fn_return_ty, .. } => {
+                write!(f, "`?` operator requires function to return `Result` or `Option`, found `{}`", fn_return_ty)
+            }
+            TypeError::TryOnNonResultOption { operand_ty, .. } => {
+                write!(f, "`?` operator requires `Result` or `Option`, found `{}`", operand_ty)
             }
         }
     }

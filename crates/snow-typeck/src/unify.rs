@@ -40,6 +40,10 @@ pub struct InferCtx {
     /// The name of the current module being type-checked (e.g., "Geometry").
     /// None for single-file mode. Used to set display_prefix on locally-defined types.
     pub current_module: Option<String>,
+    /// Stack of enclosing function/closure return types.
+    /// Pushed when entering a function/closure body, popped when leaving.
+    /// `None` means the return type is not yet known (will be inferred).
+    pub fn_return_type_stack: Vec<Option<Ty>>,
 }
 
 impl InferCtx {
@@ -55,6 +59,7 @@ impl InferCtx {
             qualified_modules: FxHashMap::default(),
             imported_functions: Vec::new(),
             current_module: None,
+            fn_return_type_stack: Vec::new(),
         }
     }
 
@@ -84,6 +89,21 @@ impl InferCtx {
     /// Whether we are currently inside a loop.
     pub fn in_loop(&self) -> bool {
         self.loop_depth > 0
+    }
+
+    /// Push a function return type onto the stack (call when entering a function body).
+    pub fn push_fn_return_type(&mut self, ty: Option<Ty>) {
+        self.fn_return_type_stack.push(ty);
+    }
+
+    /// Pop a function return type from the stack (call when leaving a function body).
+    pub fn pop_fn_return_type(&mut self) {
+        self.fn_return_type_stack.pop();
+    }
+
+    /// Get the current enclosing function's return type (top of stack).
+    pub fn current_fn_return_type(&self) -> Option<&Ty> {
+        self.fn_return_type_stack.last().and_then(|t| t.as_ref())
     }
 
     // ── Type Variable Creation ──────────────────────────────────────────

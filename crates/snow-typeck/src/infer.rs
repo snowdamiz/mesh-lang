@@ -14,7 +14,8 @@ use rowan::TextRange;
 use snow_parser::ast::expr::{
     BinaryExpr, BreakExpr, CallExpr, CaseExpr, ClosureExpr, ContinueExpr, Expr, FieldAccess,
     ForInExpr, IfExpr, LinkExpr, ListLiteral, Literal, MapLiteral, NameRef, PipeExpr, ReceiveExpr,
-    ReturnExpr, SendExpr, SelfExpr, SpawnExpr, StructLiteral, TupleExpr, UnaryExpr, WhileExpr,
+    ReturnExpr, SendExpr, SelfExpr, SpawnExpr, StructLiteral, TryExpr, TupleExpr, UnaryExpr,
+    WhileExpr,
 };
 use snow_parser::ast::item::{
     ActorDef, Block, FnDef, InterfaceDef, ImplDef as AstImplDef, Item, LetBinding, ServiceDef,
@@ -1256,6 +1257,8 @@ fn infer_multi_clause_fn(
 
     // ── Step 3: Infer each clause (like case arms) ─────────────────────
 
+    ctx.push_fn_return_type(return_type_annotation.clone());
+
     let mut result_ty: Option<Ty> = None;
     let mut arm_patterns: Vec<AbsPat> = Vec::new();
     let mut arm_has_guard: Vec<bool> = Vec::new();
@@ -1381,6 +1384,8 @@ fn infer_multi_clause_fn(
 
         env.pop_scope();
     }
+
+    ctx.pop_fn_return_type();
 
     // ── Step 4: Exhaustiveness and redundancy checking ─────────────────
 
@@ -2535,11 +2540,13 @@ fn infer_fn_def(
         }
     });
 
+    ctx.push_fn_return_type(return_type_annotation.clone());
     let body_ty = if let Some(body) = fn_.body() {
         infer_block(ctx, env, &body, types, type_registry, trait_registry, fn_constraints)?
     } else {
         Ty::Tuple(vec![])
     };
+    ctx.pop_fn_return_type();
 
     if let Some(ref ret_ann) = return_type_annotation {
         ctx.unify(body_ty.clone(), ret_ann.clone(), ConstraintOrigin::Builtin)?;
@@ -2670,6 +2677,9 @@ fn infer_expr(
         }
         Expr::LinkExpr(link) => {
             infer_link(ctx, env, link, types, type_registry, trait_registry, fn_constraints)?
+        }
+        Expr::TryExpr(try_expr) => {
+            infer_try_expr(ctx, env, try_expr, types, type_registry, trait_registry, fn_constraints)?
         }
     };
 
@@ -3607,11 +3617,13 @@ fn infer_closure(
 
     // Reset loop_depth inside closure body (BRKC-05: break/continue cannot cross closure boundary).
     let saved_loop_depth = ctx.enter_closure();
+    ctx.push_fn_return_type(None); // Closure return type is inferred
     let body_ty = if let Some(body) = closure.body() {
         infer_block(ctx, env, &body, types, type_registry, trait_registry, fn_constraints)?
     } else {
         Ty::Tuple(vec![])
     };
+    ctx.pop_fn_return_type();
     ctx.exit_closure(saved_loop_depth);
 
     env.pop_scope();
@@ -3676,11 +3688,13 @@ fn infer_multi_clause_closure(
 
     // Infer the body (reset loop_depth inside closure -- BRKC-05).
     let saved_loop_depth = ctx.enter_closure();
+    ctx.push_fn_return_type(None); // Multi-clause closure return type is inferred
     let first_body_ty = if let Some(body) = closure.body() {
         infer_block(ctx, env, &body, types, type_registry, trait_registry, fn_constraints)?
     } else {
         Ty::Tuple(vec![])
     };
+    ctx.pop_fn_return_type();
     ctx.exit_closure(saved_loop_depth);
     let mut result_ty: Option<Ty> = Some(first_body_ty);
 
@@ -3718,11 +3732,13 @@ fn infer_multi_clause_closure(
 
         // Infer body (reset loop_depth inside closure -- BRKC-05).
         let saved_loop_depth = ctx.enter_closure();
+        ctx.push_fn_return_type(None); // Multi-clause closure return type is inferred
         let body_ty = if let Some(body) = clause.body() {
             infer_block(ctx, env, &body, types, type_registry, trait_registry, fn_constraints)?
         } else {
             Ty::Tuple(vec![])
         };
+        ctx.pop_fn_return_type();
         ctx.exit_closure(saved_loop_depth);
 
         // Unify body type with previous clauses.
@@ -6088,6 +6104,158 @@ fn infer_link(
         }
     }
     Ok(Ty::Tuple(vec![]))
+}
+
+// ── Try (?) expression inference ───────────────────────────────────────
+
+/// Infer the type of a try expression (`expr?`).
+///
+/// The `?` operator works on `Result<T, E>` and `Option<T>` values:
+/// - For `Result<T, E>`: extracts `T` on success, propagates `E` to enclosing function
+/// - For `Option<T>`: extracts `T` on Some, propagates None to enclosing function
+///
+/// Validates that the enclosing function returns a compatible `Result` or `Option` type.
+fn infer_try_expr(
+    ctx: &mut InferCtx,
+    env: &mut TypeEnv,
+    try_expr: &TryExpr,
+    types: &mut FxHashMap<TextRange, Ty>,
+    type_registry: &TypeRegistry,
+    trait_registry: &TraitRegistry,
+    fn_constraints: &FxHashMap<String, FnConstraints>,
+) -> Result<Ty, TypeError> {
+    let span = try_expr.syntax().text_range();
+
+    // 1. Get and infer the operand expression.
+    let operand = match try_expr.operand() {
+        Some(op) => op,
+        None => return Ok(ctx.fresh_var()),
+    };
+    let operand_ty = infer_expr(ctx, env, &operand, types, type_registry, trait_registry, fn_constraints)?;
+    let resolved = ctx.resolve(operand_ty.clone());
+
+    // 2. Determine whether operand is Result<T, E> or Option<T>.
+    enum TryKind {
+        Result { ok_ty: Ty, err_ty: Ty },
+        Option { inner_ty: Ty },
+    }
+
+    let try_kind = match &resolved {
+        Ty::App(con, args) => {
+            match con.as_ref() {
+                Ty::Con(tc) if tc.name == "Result" && args.len() == 2 => {
+                    Some(TryKind::Result {
+                        ok_ty: args[0].clone(),
+                        err_ty: args[1].clone(),
+                    })
+                }
+                Ty::Con(tc) if tc.name == "Option" && args.len() == 1 => {
+                    Some(TryKind::Option {
+                        inner_ty: args[0].clone(),
+                    })
+                }
+                _ => None,
+            }
+        }
+        // Handle the case where operand is an unresolved type variable --
+        // try unifying with Result<T, E> first (most common usage).
+        Ty::Var(_) => {
+            let fresh_t = ctx.fresh_var();
+            let fresh_e = ctx.fresh_var();
+            let result_ty = Ty::result(fresh_t.clone(), fresh_e.clone());
+            if ctx.unify(resolved.clone(), result_ty, ConstraintOrigin::Builtin).is_ok() {
+                Some(TryKind::Result {
+                    ok_ty: fresh_t,
+                    err_ty: fresh_e,
+                })
+            } else {
+                // Fall back to Option<T>.
+                let fresh_t2 = ctx.fresh_var();
+                let option_ty = Ty::option(fresh_t2.clone());
+                if ctx.unify(resolved.clone(), option_ty, ConstraintOrigin::Builtin).is_ok() {
+                    Some(TryKind::Option { inner_ty: fresh_t2 })
+                } else {
+                    None
+                }
+            }
+        }
+        _ => None,
+    };
+
+    let try_kind = match try_kind {
+        Some(k) => k,
+        None => {
+            // Operand is not Result or Option.
+            ctx.errors.push(TypeError::TryOnNonResultOption {
+                operand_ty: resolved.clone(),
+                span,
+            });
+            return Ok(ctx.fresh_var());
+        }
+    };
+
+    // 3. Check the enclosing function's return type.
+    let fn_ret = ctx.current_fn_return_type().cloned();
+
+    match &try_kind {
+        TryKind::Result { ok_ty, err_ty } => {
+            // Validate fn return type is Result<_, E> with compatible error type.
+            if let Some(ref fn_ret_ty) = fn_ret {
+                let fn_ret_resolved = ctx.resolve(fn_ret_ty.clone());
+                match &fn_ret_resolved {
+                    Ty::App(con, args) if matches!(con.as_ref(), Ty::Con(tc) if tc.name == "Result") && args.len() == 2 => {
+                        // Unify the error types.
+                        let _ = ctx.unify(err_ty.clone(), args[1].clone(), ConstraintOrigin::Builtin);
+                    }
+                    Ty::Var(_) => {
+                        // fn return type is not yet resolved -- unify it with Result<fresh, E>.
+                        let fresh_ok = ctx.fresh_var();
+                        let result_ret = Ty::result(fresh_ok, err_ty.clone());
+                        let _ = ctx.unify(fn_ret_resolved, result_ret, ConstraintOrigin::Builtin);
+                    }
+                    _ => {
+                        // fn return type is incompatible with ?.
+                        ctx.errors.push(TypeError::TryIncompatibleReturn {
+                            operand_ty: resolved.clone(),
+                            fn_return_ty: fn_ret_resolved,
+                            span,
+                        });
+                    }
+                }
+            }
+            // else: no fn return type on stack (top-level expression) -- allow for now,
+            // future plan can enforce ? only inside functions.
+
+            Ok(ok_ty.clone())
+        }
+        TryKind::Option { inner_ty } => {
+            // Validate fn return type is Option<_>.
+            if let Some(ref fn_ret_ty) = fn_ret {
+                let fn_ret_resolved = ctx.resolve(fn_ret_ty.clone());
+                match &fn_ret_resolved {
+                    Ty::App(con, _args) if matches!(con.as_ref(), Ty::Con(tc) if tc.name == "Option") => {
+                        // Compatible -- Option fn return type.
+                    }
+                    Ty::Var(_) => {
+                        // fn return type is not yet resolved -- unify with Option<fresh>.
+                        let fresh_inner = ctx.fresh_var();
+                        let option_ret = Ty::option(fresh_inner);
+                        let _ = ctx.unify(fn_ret_resolved, option_ret, ConstraintOrigin::Builtin);
+                    }
+                    _ => {
+                        // fn return type is incompatible with ?.
+                        ctx.errors.push(TypeError::TryIncompatibleReturn {
+                            operand_ty: resolved.clone(),
+                            fn_return_ty: fn_ret_resolved,
+                            span,
+                        });
+                    }
+                }
+            }
+
+            Ok(inner_ty.clone())
+        }
+    }
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────
