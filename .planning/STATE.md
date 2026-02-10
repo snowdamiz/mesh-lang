@@ -5,22 +5,22 @@
 See: .planning/PROJECT.md (updated 2026-02-09)
 
 **Core value:** Expressive, readable concurrency -- writing concurrent programs should feel as natural as sequential code, with supervision and fault tolerance built in.
-**Current focus:** v1.9 Stdlib & Ergonomics -- Phase 45 (Error Propagation)
+**Current focus:** v1.9 Stdlib & Ergonomics -- Phase 46 (Core Collection Operations)
 
 ## Current Position
 
-Phase: 45 of 48 (Error Propagation)
+Phase: 45 of 48 (Error Propagation) -- COMPLETE
 Plan: 3 of 3 complete
-Status: Phase Complete
-Last activity: 2026-02-10 -- Completed 45-03 (ERR-03 gap closure e2e tests)
+Status: Phase Verified & Complete
+Last activity: 2026-02-10 -- Phase 45 verified (5/5 must-haves passed)
 
-Progress: [████░░░░░░] 33% (2/6 v1.9 phases)
+Progress: [█████░░░░░] 50% (3/6 v1.9 phases)
 
 ## Performance Metrics
 
 **All-time Totals:**
 - Plans completed: 135
-- Phases completed: 44
+- Phases completed: 45
 - Milestones shipped: 9 (v1.0-v1.8)
 - Lines of Rust: 73,384
 - Timeline: 5 days (2026-02-05 -> 2026-02-09)
@@ -68,6 +68,6 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-10
-Stopped at: Completed 45-03-PLAN.md (ERR-03 gap closure)
+Stopped at: Phase 45 verified & complete
 Resume file: None
 Next action: /gsd:plan-phase 46

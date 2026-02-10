@@ -93,7 +93,7 @@ See milestones/v1.8-ROADMAP.md for full phase details.
 
 - [x] **Phase 43: Math Stdlib** - Numeric functions and type conversions via LLVM intrinsics (completed 2026-02-09)
 - [x] **Phase 44: Receive Timeouts & Timers** - Actor timeout codegen completion and timer primitives (completed 2026-02-09)
-- [ ] **Phase 45: Error Propagation** - ? operator for Result/Option early return
+- [x] **Phase 45: Error Propagation** - ? operator for Result/Option early return (completed 2026-02-10)
 - [ ] **Phase 46: Core Collection Operations** - Sort, find, contains, String split/join/parse
 - [ ] **Phase 47: Extended Collection Operations** - Zip, flat_map, enumerate, take/drop, Map/Set conversions
 - [ ] **Phase 48: Tail-Call Elimination** - Self-recursive tail calls transformed to loops
@@ -141,7 +141,7 @@ Plans:
 Plans:
 - [x] 45-01-PLAN.md -- Parser + typeck: TRY_EXPR parsing, fn_return_type_stack, E0036 diagnostic
 - [x] 45-02-PLAN.md -- MIR lowering: ? desugaring to Match+Return + comprehensive e2e tests
-- [ ] 45-03-PLAN.md -- Gap closure: compile_expect_error e2e tests for ERR-03 (E0036/E0037)
+- [x] 45-03-PLAN.md -- Gap closure: compile_expect_error e2e tests for ERR-03 (E0036/E0037)
 
 ### Phase 46: Core Collection Operations
 **Goal**: Users have essential collection manipulation functions for lists and strings
@@ -193,9 +193,9 @@ Phases execute in numeric order: 43 -> 44 -> 45 -> 46 -> 47 -> 48
 | 37-42 | v1.8 | 12/12 | Complete | 2026-02-09 |
 | 43 | v1.9 | 2/2 | Complete | 2026-02-09 |
 | 44 | v1.9 | 2/2 | Complete | 2026-02-09 |
-| 45 | v1.9 | 2/3 | In Progress | - |
+| 45 | v1.9 | 3/3 | Complete | 2026-02-10 |
 | 46 | v1.9 | 0/TBD | Not started | - |
 | 47 | v1.9 | 0/TBD | Not started | - |
 | 48 | v1.9 | 0/TBD | Not started | - |
 
-**Total: 44 phases shipped across 9 milestones. 134 plans completed. 4 phases remaining.**
+**Total: 45 phases shipped across 9 milestones. 135 plans completed. 3 phases remaining.**
