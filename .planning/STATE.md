@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-02-09)
 
 **Core value:** Expressive, readable concurrency -- writing concurrent programs should feel as natural as sequential code, with supervision and fault tolerance built in.
-**Current focus:** v1.9 Stdlib & Ergonomics -- Phase 48 (Tail-Call Elimination) IN PROGRESS
+**Current focus:** v1.9 Stdlib & Ergonomics -- Phase 48 (Tail-Call Elimination) COMPLETE
 
 ## Current Position
 
-Phase: 48 of 48 (Tail-Call Elimination) -- IN PROGRESS
-Plan: 1 of 2 complete
-Status: Executing Phase 48
-Last activity: 2026-02-10 -- Plan 01 complete (MIR TCE infrastructure: TailCall variant, rewrite pass)
+Phase: 48 of 48 (Tail-Call Elimination) -- COMPLETE
+Plan: 2 of 2 complete
+Status: Phase 48 complete -- v1.9 Stdlib & Ergonomics milestone complete
+Last activity: 2026-02-10 -- Plan 02 complete (TCE codegen: loop wrapping, alloca hoisting, 4 e2e tests)
 
-Progress: [█████████░] 96% (6/7 v1.9 phases -- Phase 48 Plan 02 remaining)
+Progress: [██████████] 100% (7/7 v1.9 phases complete)
 
 ## Performance Metrics
 
 **All-time Totals:**
-- Plans completed: 140
-- Phases completed: 47
-- Milestones shipped: 9 (v1.0-v1.8)
+- Plans completed: 141
+- Phases completed: 48
+- Milestones shipped: 9 (v1.0-v1.8) + v1.9 complete
 - Lines of Rust: 73,384+
 - Timeline: 6 days (2026-02-05 -> 2026-02-10)
 
@@ -60,6 +60,9 @@ Progress: [█████████░] 96% (6/7 v1.9 phases -- Phase 48 Plan
 - [48-01] TailCall ty() returns MirType::Never (branches, never produces a value -- consistent with Break/Continue/Return)
 - [48-01] Post-lowering rewrite pass over MIR tree (not threading is_tail_position through every lower_* method)
 - [48-01] TCE integrated into 6 lowering paths: fn_def, impl_method, default_method, multi_clause_fn(x2), actor_def
+- [48-02] Two-phase arg evaluation for TailCall: evaluate all args THEN store (critical for parameter swap correctness)
+- [48-02] Entry-block alloca hoisting via build_entry_alloca when tce_loop_header is set (prevents stack growth in TCE loops)
+- [48-02] Actor test uses recursive fn inside actor context (Snow type system treats actor names as returning Pid, preventing self-recursive actor calls)
 
 ### Research Notes
 
@@ -82,6 +85,6 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-10
-Stopped at: Completed 48-01-PLAN.md (MIR TCE infrastructure)
+Stopped at: Completed 48-02-PLAN.md (TCE codegen loop wrapping and e2e tests)
 Resume file: None
-Next action: Execute Phase 48 Plan 02 (Codegen loop wrapping and e2e tests)
+Next action: Phase 48 complete. v1.9 milestone complete. All 48 phases done.
