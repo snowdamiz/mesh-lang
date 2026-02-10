@@ -310,6 +310,10 @@ pub enum SyntaxKind {
     /// Terminate callback clause in actor block: `terminate do ... end`
     TERMINATE_CLAUSE,
 
+    // ── Error propagation node kinds ────────────────────────────────
+    /// Try expression: `expr?` for Result/Option propagation
+    TRY_EXPR,
+
     // ── Service node kinds ──────────────────────────────────────────
     /// Service block declaration: `service Name do ... end`
     SERVICE_DEF,
@@ -687,6 +691,8 @@ mod tests {
             SyntaxKind::LINK_EXPR,
             SyntaxKind::AFTER_CLAUSE,
             SyntaxKind::TERMINATE_CLAUSE,
+            // Error propagation node kinds
+            SyntaxKind::TRY_EXPR,
             // Service node kinds
             SyntaxKind::SERVICE_DEF,
             SyntaxKind::CALL_HANDLER,
@@ -699,8 +705,8 @@ mod tests {
             SyntaxKind::SECONDS_LIMIT,
         ];
         assert!(
-            node_kinds.len() >= 81,
-            "expected at least 81 composite node kinds, got {}",
+            node_kinds.len() >= 82,
+            "expected at least 82 composite node kinds, got {}",
             node_kinds.len()
         );
     }

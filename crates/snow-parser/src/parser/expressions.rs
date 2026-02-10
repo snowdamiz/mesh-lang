@@ -132,6 +132,14 @@ fn expr_bp(p: &mut Parser, min_bp: u8) -> Option<MarkClosed> {
             continue;
         }
 
+        // ── Postfix: try operator ──
+        if current == SyntaxKind::QUESTION && POSTFIX_BP >= min_bp {
+            let m = p.open_before(lhs);
+            p.advance(); // ?
+            lhs = p.close(m, SyntaxKind::TRY_EXPR);
+            continue;
+        }
+
         // ── Infix operators ──
         if let Some((l_bp, r_bp)) = infix_binding_power(current) {
             if l_bp < min_bp {

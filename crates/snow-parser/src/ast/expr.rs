@@ -43,6 +43,8 @@ pub enum Expr {
     ReceiveExpr(ReceiveExpr),
     SelfExpr(SelfExpr),
     LinkExpr(LinkExpr),
+    // Error propagation
+    TryExpr(TryExpr),
 }
 
 impl Expr {
@@ -85,6 +87,7 @@ impl Expr {
             SyntaxKind::RECEIVE_EXPR => Some(Expr::ReceiveExpr(ReceiveExpr { syntax: node })),
             SyntaxKind::SELF_EXPR => Some(Expr::SelfExpr(SelfExpr { syntax: node })),
             SyntaxKind::LINK_EXPR => Some(Expr::LinkExpr(LinkExpr { syntax: node })),
+            SyntaxKind::TRY_EXPR => Some(Expr::TryExpr(TryExpr { syntax: node })),
             _ => None,
         }
     }
@@ -119,6 +122,7 @@ impl Expr {
             Expr::ReceiveExpr(n) => &n.syntax,
             Expr::SelfExpr(n) => &n.syntax,
             Expr::LinkExpr(n) => &n.syntax,
+            Expr::TryExpr(n) => &n.syntax,
         }
     }
 }
@@ -709,5 +713,16 @@ impl LinkExpr {
     /// The argument list (target pid).
     pub fn arg_list(&self) -> Option<ArgList> {
         child_node(&self.syntax)
+    }
+}
+
+// ── Try Expression ──────────────────────────────────────────────────────
+
+ast_node!(TryExpr, TRY_EXPR);
+
+impl TryExpr {
+    /// The operand expression (the expression before `?`).
+    pub fn operand(&self) -> Option<Expr> {
+        self.syntax.children().find_map(Expr::cast)
     }
 }

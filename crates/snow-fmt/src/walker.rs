@@ -81,6 +81,7 @@ pub fn walk_node(node: &SyntaxNode) -> FormatIR {
         SyntaxKind::TERMINATE_CLAUSE => walk_terminate_clause(node),
         SyntaxKind::CHILD_SPEC_DEF => walk_block_def(node),
         SyntaxKind::STRUCT_LITERAL => walk_struct_literal(node),
+        SyntaxKind::TRY_EXPR => walk_tokens_inline(node),
         // Simple leaf-like nodes: just emit their tokens inline.
         SyntaxKind::LITERAL
         | SyntaxKind::NAME
