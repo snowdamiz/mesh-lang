@@ -534,6 +534,12 @@ impl<'a> Lowerer<'a> {
         self.known_functions.insert("snow_list_filter".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
         self.known_functions.insert("snow_list_reduce".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Int, MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
         self.known_functions.insert("snow_list_from_array".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Int], Box::new(MirType::Ptr)));
+        // Phase 46: sort, find, any, all, contains
+        self.known_functions.insert("snow_list_sort".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
+        self.known_functions.insert("snow_list_find".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
+        self.known_functions.insert("snow_list_any".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr, MirType::Ptr], Box::new(MirType::Bool)));
+        self.known_functions.insert("snow_list_all".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr, MirType::Ptr], Box::new(MirType::Bool)));
+        self.known_functions.insert("snow_list_contains".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Int], Box::new(MirType::Bool)));
         // Map
         self.known_functions.insert("snow_map_new".to_string(), MirType::FnPtr(vec![], Box::new(MirType::Ptr)));
         self.known_functions.insert("snow_map_new_typed".to_string(), MirType::FnPtr(vec![MirType::Int], Box::new(MirType::Ptr)));
@@ -7531,6 +7537,12 @@ fn map_builtin_name(name: &str) -> String {
         "list_map" => "snow_list_map".to_string(),
         "list_filter" => "snow_list_filter".to_string(),
         "list_reduce" => "snow_list_reduce".to_string(),
+        // Phase 46: sort, find, any, all, contains
+        "list_sort" => "snow_list_sort".to_string(),
+        "list_find" => "snow_list_find".to_string(),
+        "list_any" => "snow_list_any".to_string(),
+        "list_all" => "snow_list_all".to_string(),
+        "list_contains" => "snow_list_contains".to_string(),
         // Map operations
         "map_new" => "snow_map_new".to_string(),
         "map_put" => "snow_map_put".to_string(),

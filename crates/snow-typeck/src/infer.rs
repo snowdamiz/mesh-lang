@@ -330,8 +330,15 @@ fn stdlib_modules() -> HashMap<String, HashMap<String, Scheme>> {
     list_mod.insert("concat".to_string(), Scheme { vars: vec![t_var], ty: Ty::fun(vec![list_t.clone(), list_t.clone()], list_t.clone()) });
     list_mod.insert("reverse".to_string(), Scheme { vars: vec![t_var], ty: Ty::fun(vec![list_t.clone()], list_t.clone()) });
     list_mod.insert("map".to_string(), Scheme { vars: vec![t_var, u_var], ty: Ty::fun(vec![list_t.clone(), t_to_u], list_u) });
-    list_mod.insert("filter".to_string(), Scheme { vars: vec![t_var], ty: Ty::fun(vec![list_t.clone(), t_to_bool], list_t.clone()) });
+    list_mod.insert("filter".to_string(), Scheme { vars: vec![t_var], ty: Ty::fun(vec![list_t.clone(), t_to_bool.clone()], list_t.clone()) });
     list_mod.insert("reduce".to_string(), Scheme { vars: vec![t_var, u_var], ty: Ty::fun(vec![list_t.clone(), u.clone(), u_t_to_u], u) });
+    // Phase 46: sort, find, any, all, contains
+    let t_t_to_int = Ty::fun(vec![t.clone(), t.clone()], Ty::int());
+    list_mod.insert("sort".to_string(), Scheme { vars: vec![t_var], ty: Ty::fun(vec![list_t.clone(), t_t_to_int], list_t.clone()) });
+    list_mod.insert("find".to_string(), Scheme { vars: vec![t_var], ty: Ty::fun(vec![list_t.clone(), t_to_bool.clone()], Ty::option(t.clone())) });
+    list_mod.insert("any".to_string(), Scheme { vars: vec![t_var], ty: Ty::fun(vec![list_t.clone(), t_to_bool.clone()], Ty::bool()) });
+    list_mod.insert("all".to_string(), Scheme { vars: vec![t_var], ty: Ty::fun(vec![list_t.clone(), t_to_bool.clone()], Ty::bool()) });
+    list_mod.insert("contains".to_string(), Scheme { vars: vec![t_var], ty: Ty::fun(vec![list_t.clone(), t.clone()], Ty::bool()) });
     modules.insert("List".to_string(), list_mod);
 
     // Map module -- polymorphic: Map<K, V> with type variables for key/value.

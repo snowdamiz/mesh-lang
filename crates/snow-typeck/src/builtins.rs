@@ -301,6 +301,14 @@ pub fn register_builtins(
         env.insert("list_concat".into(), Scheme { vars: vec![t_var], ty: Ty::fun(vec![list_t.clone(), list_t.clone()], list_t.clone()) });
         // List.reverse(List<T>) -> List<T>
         env.insert("list_reverse".into(), Scheme { vars: vec![t_var], ty: Ty::fun(vec![list_t.clone()], list_t.clone()) });
+
+        // Phase 46: sort, find, any, all, contains
+        let t_t_to_int = Ty::fun(vec![t.clone(), t.clone()], Ty::int());
+        env.insert("list_sort".into(), Scheme { vars: vec![t_var], ty: Ty::fun(vec![list_t.clone(), t_t_to_int], list_t.clone()) });
+        env.insert("list_find".into(), Scheme { vars: vec![t_var], ty: Ty::fun(vec![list_t.clone(), t_to_bool.clone()], Ty::option(t.clone())) });
+        env.insert("list_any".into(), Scheme { vars: vec![t_var], ty: Ty::fun(vec![list_t.clone(), t_to_bool.clone()], Ty::bool()) });
+        env.insert("list_all".into(), Scheme { vars: vec![t_var], ty: Ty::fun(vec![list_t.clone(), t_to_bool.clone()], Ty::bool()) });
+        env.insert("list_contains".into(), Scheme { vars: vec![t_var], ty: Ty::fun(vec![list_t.clone(), t.clone()], Ty::bool()) });
     }
 
     // ── Map module functions (polymorphic) ──────────────────────────────

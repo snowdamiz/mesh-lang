@@ -245,6 +245,18 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
     module.add_function("snow_list_builder_new", ptr_type.fn_type(&[i64_type.into()], false), Some(inkwell::module::Linkage::External));
     module.add_function("snow_list_builder_push", void_type.fn_type(&[ptr_type.into(), i64_type.into()], false), Some(inkwell::module::Linkage::External));
 
+    // Phase 46: List sort, find, any, all, contains
+    // snow_list_sort(list: ptr, fn_ptr: ptr, env_ptr: ptr) -> ptr
+    module.add_function("snow_list_sort", ptr_type.fn_type(&[ptr_type.into(), ptr_type.into(), ptr_type.into()], false), Some(inkwell::module::Linkage::External));
+    // snow_list_find(list: ptr, fn_ptr: ptr, env_ptr: ptr) -> ptr (SnowOption)
+    module.add_function("snow_list_find", ptr_type.fn_type(&[ptr_type.into(), ptr_type.into(), ptr_type.into()], false), Some(inkwell::module::Linkage::External));
+    // snow_list_any(list: ptr, fn_ptr: ptr, env_ptr: ptr) -> i8 (Bool)
+    module.add_function("snow_list_any", i8_type.fn_type(&[ptr_type.into(), ptr_type.into(), ptr_type.into()], false), Some(inkwell::module::Linkage::External));
+    // snow_list_all(list: ptr, fn_ptr: ptr, env_ptr: ptr) -> i8 (Bool)
+    module.add_function("snow_list_all", i8_type.fn_type(&[ptr_type.into(), ptr_type.into(), ptr_type.into()], false), Some(inkwell::module::Linkage::External));
+    // snow_list_contains(list: ptr, elem: i64) -> i8 (Bool)
+    module.add_function("snow_list_contains", i8_type.fn_type(&[ptr_type.into(), i64_type.into()], false), Some(inkwell::module::Linkage::External));
+
     // Map functions
     module.add_function("snow_map_new", ptr_type.fn_type(&[], false), Some(inkwell::module::Linkage::External));
     module.add_function("snow_map_new_typed", ptr_type.fn_type(&[i64_type.into()], false), Some(inkwell::module::Linkage::External));
@@ -551,6 +563,12 @@ mod tests {
         assert!(module.get_function("snow_list_from_array").is_some());
         assert!(module.get_function("snow_list_builder_new").is_some());
         assert!(module.get_function("snow_list_builder_push").is_some());
+        // Phase 46: List sort, find, any, all, contains
+        assert!(module.get_function("snow_list_sort").is_some());
+        assert!(module.get_function("snow_list_find").is_some());
+        assert!(module.get_function("snow_list_any").is_some());
+        assert!(module.get_function("snow_list_all").is_some());
+        assert!(module.get_function("snow_list_contains").is_some());
         assert!(module.get_function("snow_map_new").is_some());
         assert!(module.get_function("snow_map_new_typed").is_some());
         assert!(module.get_function("snow_map_put").is_some());
