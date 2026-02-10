@@ -94,7 +94,7 @@ See milestones/v1.8-ROADMAP.md for full phase details.
 - [x] **Phase 43: Math Stdlib** - Numeric functions and type conversions via LLVM intrinsics (completed 2026-02-09)
 - [x] **Phase 44: Receive Timeouts & Timers** - Actor timeout codegen completion and timer primitives (completed 2026-02-09)
 - [x] **Phase 45: Error Propagation** - ? operator for Result/Option early return (completed 2026-02-10)
-- [ ] **Phase 46: Core Collection Operations** - Sort, find, contains, String split/join/parse
+- [x] **Phase 46: Core Collection Operations** - Sort, find, contains, String split/join/parse (completed 2026-02-10)
 - [ ] **Phase 47: Extended Collection Operations** - Zip, flat_map, enumerate, take/drop, Map/Set conversions
 - [ ] **Phase 48: Tail-Call Elimination** - Self-recursive tail calls transformed to loops
 
@@ -154,8 +154,8 @@ Plans:
   4. User can parse strings to numbers with String.to_int(s) and String.to_float(s) returning Option
 **Plans:** 2 plans
 Plans:
-- [ ] 46-01-PLAN.md -- List operations (sort, find, any/all, contains) + SnowOption shared module
-- [ ] 46-02-PLAN.md -- String operations (split, join, to_int, to_float)
+- [x] 46-01-PLAN.md -- List operations (sort, find, any/all, contains) + SnowOption shared module
+- [x] 46-02-PLAN.md -- String operations (split, join, to_int, to_float)
 
 ### Phase 47: Extended Collection Operations
 **Goal**: Users have the full complement of functional collection transformations across List, Map, and Set
@@ -197,8 +197,8 @@ Phases execute in numeric order: 43 -> 44 -> 45 -> 46 -> 47 -> 48
 | 43 | v1.9 | 2/2 | Complete | 2026-02-09 |
 | 44 | v1.9 | 2/2 | Complete | 2026-02-09 |
 | 45 | v1.9 | 3/3 | Complete | 2026-02-10 |
-| 46 | v1.9 | 0/2 | Not started | - |
+| 46 | v1.9 | 2/2 | Complete | 2026-02-10 |
 | 47 | v1.9 | 0/TBD | Not started | - |
 | 48 | v1.9 | 0/TBD | Not started | - |
 
-**Total: 45 phases shipped across 9 milestones. 135 plans completed. 3 phases remaining.**
+**Total: 46 phases shipped across 9 milestones. 137 plans completed. 2 phases remaining.**
