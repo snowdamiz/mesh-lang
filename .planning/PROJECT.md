@@ -71,7 +71,17 @@ Expressive, readable concurrency -- writing concurrent programs should feel as n
 
 ### Active
 
-(No active milestone -- planning next)
+## Current Milestone: v1.9 Stdlib & Ergonomics
+
+**Goal:** Make Snow practical for real programs by adding math stdlib, error propagation sugar, receive timeouts, timer primitives, collection operations, and tail-call optimization.
+
+**Target features:**
+- Math stdlib (abs, min, max, pow, sqrt, floor, ceil) via libm FFI
+- `?` operator for Result<T,E> propagation
+- Receive timeout `after` clause (finish codegen for existing parser/runtime support)
+- Timer primitives (sleep, send_after)
+- Collection operations (sort, split, join, find, zip for List/Map/Set/String)
+- Tail-call elimination (full TCE including mutual recursion)
 
 ### Out of Scope
 
@@ -185,4 +195,4 @@ Tech debt (minor):
 | PrivateItem error with pub suggestion | Clear diagnostic when accessing non-pub items across modules | ✓ Good -- v1.8, user-friendly errors |
 
 ---
-*Last updated: 2026-02-09 after v1.8 milestone*
+*Last updated: 2026-02-09 after v1.9 milestone started*

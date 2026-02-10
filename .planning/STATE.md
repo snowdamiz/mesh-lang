@@ -5,16 +5,14 @@
 See: .planning/PROJECT.md (updated 2026-02-09)
 
 **Core value:** Expressive, readable concurrency -- writing concurrent programs should feel as natural as sequential code, with supervision and fault tolerance built in.
-**Current focus:** Planning next milestone
+**Current focus:** v1.9 Stdlib & Ergonomics
 
 ## Current Position
 
-Phase: 42 of 42 (all phases complete)
-Plan: N/A -- between milestones
-Status: v1.8 Module System shipped. 9 milestones complete.
-Last activity: 2026-02-09 -- Completed v1.8 milestone archival
-
-Progress: [||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||] 100% (129/129 plans)
+Phase: Not started (defining requirements)
+Plan: —
+Status: Defining requirements
+Last activity: 2026-02-09 — Milestone v1.9 started
 
 ## Performance Metrics
 
@@ -33,7 +31,10 @@ Decisions logged in PROJECT.md Key Decisions table.
 
 ### Research Notes
 
-None -- between milestones.
+- Result<T,E> already fully implemented (Ok/Err constructors, pattern matching, exhaustiveness)
+- Receive `after` clause already parsed, type-checked, and lowered to MIR; runtime supports timeouts; codegen gap: timeout_body not executed on null return
+- Collections missing: sort, split, join, find, zip, flatten, List.contains
+- String missing: split, join
 
 ### Pending Todos
 
@@ -46,6 +47,6 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-09
-Stopped at: Completed v1.8 milestone archival
+Stopped at: Milestone v1.9 initialization
 Resume file: None
-Next action: /gsd:new-milestone to start next milestone
+Next action: Define requirements → create roadmap
