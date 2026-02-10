@@ -5,14 +5,14 @@
 See: .planning/PROJECT.md (updated 2026-02-09)
 
 **Core value:** Expressive, readable concurrency -- writing concurrent programs should feel as natural as sequential code, with supervision and fault tolerance built in.
-**Current focus:** v1.9 Stdlib & Ergonomics -- Phase 46 (Core Collection Operations)
+**Current focus:** v1.9 Stdlib & Ergonomics -- Phase 47 (Extended Collection Operations)
 
 ## Current Position
 
-Phase: 46 of 48 (Core Collection Operations) -- COMPLETE
-Plan: 2 of 2 complete
-Status: Phase 46 Complete
-Last activity: 2026-02-10 -- Phase 46 Plan 02 complete (String split/join/to_int/to_float)
+Phase: 47 of 48 (Extended Collection Operations)
+Plan: 1 of 3 complete
+Status: Executing Phase 47
+Last activity: 2026-02-10 -- Phase 47 Plan 01 complete (List extended operations)
 
 Progress: [████████░░] 83% (5/6 v1.9 phases)
 
@@ -51,6 +51,10 @@ Progress: [████████░░] 83% (5/6 v1.9 phases)
 - [46-01] List.find returns Option but pattern matching on FFI Option has pre-existing codegen gap (documented for future phase)
 - [46-02] Used Ptr MIR types (not String) for split/join/to_int/to_float since they interact with List/Option opaque pointers
 - [46-02] Unique variable names required in case arms to avoid pre-existing LLVM alloca naming collision
+- [47-01] alloc_pair helper uses GC heap layout {len=2, elem0, elem1} matching Snow tuple convention
+- [47-01] Tuple Con unification escape hatch: Ty::Con("Tuple") unifies with any Ty::Tuple(...) for Tuple.first/second compat
+- [47-01] MIR call type fix: use Ptr when typeck resolves Tuple but known_functions returns Ptr
+- [47-01] known_functions type priority over typeck-resolved type for stdlib module Var nodes in lower_field_access
 
 ### Research Notes
 
@@ -73,6 +77,6 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-10
-Stopped at: Completed 46-02-PLAN.md (Phase 46 complete)
+Stopped at: Completed 47-01-PLAN.md
 Resume file: None
-Next action: Begin Phase 47
+Next action: Execute 47-02-PLAN.md (Map extended operations)
