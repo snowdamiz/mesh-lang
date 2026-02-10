@@ -176,3 +176,66 @@ fn e2e_job_async_await() {
     let output = compile_and_run_with_timeout(&source, 10);
     assert_eq!(output, "42\n");
 }
+
+// ── Receive-with-timeout E2E Tests ──────────────────────────────────
+
+/// Test: receive timeout fires when no message arrives within the deadline.
+/// Exercises: receive do msg -> msg after 50 -> 99 end returns 99 on timeout.
+#[test]
+fn test_receive_after_timeout_fires() {
+    let source = r#"
+actor worker() do
+  let result = receive do
+    msg -> msg
+  after 50 -> 99 end
+  println("${result}")
+end
+
+fn main() do
+  spawn(worker)
+end
+"#;
+    let output = compile_and_run_with_timeout(source, 5);
+    assert_eq!(output.trim(), "99");
+}
+
+/// Test: message arrives before timeout, so the arm body runs (not timeout body).
+/// Exercises: receive do msg -> msg after 5000 -> 99 end with immediate send returns 42.
+#[test]
+fn test_receive_after_message_arrives_before_timeout() {
+    let source = r#"
+actor worker() do
+  let result = receive do
+    msg -> msg
+  after 5000 -> 99 end
+  println("${result}")
+end
+
+fn main() do
+  let pid = spawn(worker)
+  send(pid, 42)
+end
+"#;
+    let output = compile_and_run_with_timeout(source, 5);
+    assert_eq!(output.trim(), "42");
+}
+
+/// Test: timeout body returns String type (verifies type unification end-to-end).
+/// Exercises: receive do msg -> msg after 50 -> "timeout" end returns the string.
+#[test]
+fn test_receive_after_timeout_returns_string() {
+    let source = r#"
+actor worker() do
+  let result = receive do
+    msg -> msg
+  after 50 -> "timeout" end
+  println(result)
+end
+
+fn main() do
+  spawn(worker)
+end
+"#;
+    let output = compile_and_run_with_timeout(source, 5);
+    assert_eq!(output.trim(), "timeout");
+}
