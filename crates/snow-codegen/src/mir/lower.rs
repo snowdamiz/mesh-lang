@@ -603,6 +603,11 @@ impl<'a> Lowerer<'a> {
         // snow_job_map takes (list_ptr, fn_ptr, env_ptr) -> ptr
         // Closure splitting expands the closure arg into (fn_ptr, env_ptr)
         self.known_functions.insert("snow_job_map".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
+        // ── Timer functions (Phase 44 Plan 02) ──────────────────────────────
+        // snow_timer_sleep(ms: i64) -> void (Unit)
+        self.known_functions.insert("snow_timer_sleep".to_string(), MirType::FnPtr(vec![MirType::Int], Box::new(MirType::Unit)));
+        // snow_timer_send_after(pid: i64, ms: i64, msg_ptr: ptr, msg_size: i64) -> void (Unit)
+        self.known_functions.insert("snow_timer_send_after".to_string(), MirType::FnPtr(vec![MirType::Int, MirType::Int, MirType::Ptr, MirType::Int], Box::new(MirType::Unit)));
         // ── Service runtime functions (Phase 9 Plan 03) ─────────────────
         self.known_functions.insert("snow_service_call".to_string(), MirType::FnPtr(vec![MirType::Int, MirType::Int, MirType::Ptr, MirType::Int], Box::new(MirType::Ptr)));
         self.known_functions.insert("snow_service_reply".to_string(), MirType::FnPtr(vec![MirType::Int, MirType::Ptr, MirType::Int], Box::new(MirType::Unit)));
@@ -7201,7 +7206,7 @@ impl<'a> Lowerer<'a> {
 /// Set of known stdlib module names for qualified access lowering.
 const STDLIB_MODULES: &[&str] = &[
     "String", "IO", "Env", "File", "List", "Map", "Set", "Tuple", "Range", "Queue", "HTTP", "JSON", "Request", "Job",
-    "Math", "Int", "Float",
+    "Math", "Int", "Float", "Timer",
 ];
 
 /// Map Snow builtin function names to their runtime equivalents.
@@ -7364,6 +7369,9 @@ fn map_builtin_name(name: &str) -> String {
         "math_round" => "snow_math_round".to_string(),
         "int_to_float" => "snow_int_to_float".to_string(),
         "float_to_int" => "snow_float_to_int".to_string(),
+        // ── Timer functions (Phase 44 Plan 02) ──────────────────────────
+        "timer_sleep" => "snow_timer_sleep".to_string(),
+        "timer_send_after" => "snow_timer_send_after".to_string(),
         _ => name.to_string(),
     }
 }

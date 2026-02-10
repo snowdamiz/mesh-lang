@@ -505,13 +505,22 @@ fn stdlib_modules() -> HashMap<String, HashMap<String, Scheme>> {
     float_mod.insert("to_int".to_string(), Scheme::mono(Ty::fun(vec![Ty::float()], Ty::int())));
     modules.insert("Float".to_string(), float_mod);
 
+    // ── Timer module (Phase 44 Plan 02) ───────────────────────────────
+    let mut timer_mod = HashMap::new();
+    // Timer.sleep: fn(Int) -> Unit
+    timer_mod.insert("sleep".to_string(), Scheme::mono(Ty::fun(vec![Ty::int()], Ty::Tuple(vec![]))));
+    // Timer.send_after: fn(Int, Int, Int) -> Unit
+    // Args: (pid, ms, msg_as_int). Pid is i64, ms is Int, msg is Int.
+    timer_mod.insert("send_after".to_string(), Scheme::mono(Ty::fun(vec![Ty::int(), Ty::int(), Ty::int()], Ty::Tuple(vec![]))));
+    modules.insert("Timer".to_string(), timer_mod);
+
     modules
 }
 
 /// Set of module names recognized by the stdlib for qualified access.
 const STDLIB_MODULE_NAMES: &[&str] = &[
     "String", "IO", "Env", "File", "List", "Map", "Set", "Tuple", "Range", "Queue", "HTTP", "JSON", "Request", "Job",
-    "Math", "Int", "Float",
+    "Math", "Int", "Float", "Timer",
 ];
 
 /// Check if a name is a known stdlib module.
