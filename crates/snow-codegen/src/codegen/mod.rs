@@ -92,6 +92,15 @@ pub struct CodeGen<'ctx> {
         String,
         (Vec<(u64, String, usize)>, Vec<(u64, String, usize)>),
     >,
+
+    /// TCE loop header block for the current tail-recursive function.
+    /// Set during compile_function when has_tail_calls is true. NOT on loop_stack
+    /// (separate from user while/for loops so break/continue don't interfere).
+    pub(crate) tce_loop_header: Option<inkwell::basic_block::BasicBlock<'ctx>>,
+
+    /// Parameter names for the current tail-recursive function, in order.
+    /// Used by TailCall codegen to know which allocas to store into.
+    pub(crate) tce_param_names: Vec<String>,
 }
 
 impl<'ctx> CodeGen<'ctx> {
@@ -163,6 +172,8 @@ impl<'ctx> CodeGen<'ctx> {
             mir_struct_defs: FxHashMap::default(),
             loop_stack: Vec::new(),
             service_dispatch: std::collections::HashMap::new(),
+            tce_loop_header: None,
+            tce_param_names: Vec::new(),
         })
     }
 
@@ -435,6 +446,16 @@ impl<'ctx> CodeGen<'ctx> {
             }
         }
 
+        // TCE: If this function has tail calls, wrap body in a loop.
+        // Create a loop header block that the TailCall codegen will branch back to.
+        if func.has_tail_calls {
+            let tce_loop_bb = self.context.append_basic_block(fn_val, "tce_loop");
+            self.builder.build_unconditional_branch(tce_loop_bb).map_err(|e| e.to_string())?;
+            self.builder.position_at_end(tce_loop_bb);
+            self.tce_loop_header = Some(tce_loop_bb);
+            self.tce_param_names = func.params.iter().map(|(name, _)| name.clone()).collect();
+        }
+
         // Check if this is a service loop function that needs special codegen.
         if func.name.starts_with("__service_") && func.name.ends_with("_loop") {
             if let Some(dispatch_info) = self.service_dispatch.get(&func.name).cloned() {
@@ -467,6 +488,10 @@ impl<'ctx> CodeGen<'ctx> {
                 }
             }
         }
+
+        // Clear TCE state after function compilation.
+        self.tce_loop_header = None;
+        self.tce_param_names.clear();
 
         Ok(())
     }

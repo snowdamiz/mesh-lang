@@ -168,9 +168,39 @@ impl<'ctx> CodeGen<'ctx> {
                 ty: _,
             } => self.codegen_supervisor_start(name, *strategy, *max_restarts, *max_seconds, children),
 
-            // TailCall codegen will be implemented in Phase 48 Plan 02.
-            MirExpr::TailCall { .. } => {
-                Err("TailCall codegen not yet implemented (Phase 48 Plan 02)".to_string())
+            MirExpr::TailCall { args, .. } => {
+                let tce_loop_bb = self.tce_loop_header
+                    .ok_or("TailCall encountered but no TCE loop header set")?;
+
+                // Step 1: Evaluate ALL arguments to temporary values FIRST.
+                // This is critical: if args reference current params (e.g., swap(b, a)),
+                // we must read all param values before overwriting any of them.
+                let mut new_vals = Vec::with_capacity(args.len());
+                for arg in args.iter() {
+                    new_vals.push(self.codegen_expr(arg)?);
+                }
+
+                // Step 2: Store all evaluated values into parameter allocas.
+                for (i, param_name) in self.tce_param_names.clone().iter().enumerate() {
+                    if let Some(&alloca) = self.locals.get(param_name) {
+                        self.builder
+                            .build_store(alloca, new_vals[i])
+                            .map_err(|e| e.to_string())?;
+                    }
+                }
+
+                // Step 3: Emit reduction check for preemptive scheduling.
+                // Without this, tight tail-recursive loops would starve other actors.
+                self.emit_reduction_check();
+
+                // Step 4: Branch to loop header.
+                self.builder
+                    .build_unconditional_branch(tce_loop_bb)
+                    .map_err(|e| e.to_string())?;
+
+                // Return a dummy value -- this block is terminated, the value is never used.
+                // Use i64 zero as the dummy (same pattern as Break/Continue).
+                Ok(self.context.i64_type().const_zero().into())
             }
         }
     }
