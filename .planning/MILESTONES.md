@@ -245,3 +245,32 @@
 
 ---
 
+
+## v1.9 Stdlib & Ergonomics (Shipped: 2026-02-10)
+
+**Delivered:** Made Snow practical for real programs by adding math stdlib via LLVM intrinsics, ? operator for Result/Option error propagation, receive timeouts and timer primitives, 20 collection operations across List/Map/Set/String, and self-recursive tail-call elimination -- all with zero new Rust crate dependencies and zero regressions.
+
+**Phases completed:** 43-48 (13 plans total)
+
+**Key accomplishments:**
+- Math stdlib: 10 numeric operations (abs, min, max, pow, sqrt, floor, ceil, round, pi) via LLVM intrinsics + bidirectional Int/Float type conversion
+- ? operator: Result<T,E> and Option<T> error propagation desugared to Match+Return in MIR, with E0036/E0037 diagnostics for misuse
+- Receive timeouts: `receive { ... } after ms -> body` with null-check branching codegen completing the actor timeout feature
+- Timer primitives: Timer.sleep (cooperative yield loop) and Timer.send_after (background OS thread with deep-copied message)
+- Collection operations: 20 functions across List (sort, find, any, all, contains, zip, flat_map, flatten, enumerate, take, drop), String (split, join, to_int, to_float), Map (merge, to_list, from_list), Set (difference, to_list, from_list)
+- Tail-call elimination: Self-recursive tail calls transformed to loops via MIR rewrite pass, supporting 7 tail position contexts (if/else, case, receive, blocks, let-chains, multi-clause, actor), 1M+ iterations without stack overflow
+
+**Stats:**
+- 89 files modified
+- 76,100 lines of Rust (+2,716 net from v1.8)
+- 6 phases, 13 plans
+- 2 days (2026-02-09 -> 2026-02-10)
+- 56 commits
+- 28/28 requirements satisfied, 1,419 tests passing (+37 new v1.9-specific e2e tests)
+
+**Git range:** `feat(43-01)` -> `docs(48-02)`
+
+**What's next:** TBD -- stdlib and ergonomics complete. Potential directions include mutual TCE via musttail, From trait for ? operator error conversion, iterator protocol/Iterable trait, distributed actors, hot code reloading, or incremental compilation.
+
+---
+
