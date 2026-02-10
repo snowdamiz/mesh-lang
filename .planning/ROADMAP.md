@@ -91,7 +91,7 @@ See milestones/v1.8-ROADMAP.md for full phase details.
 
 **Milestone Goal:** Make Snow practical for real programs by adding math stdlib, error propagation sugar, receive timeouts, timer primitives, collection operations, and tail-call optimization.
 
-- [ ] **Phase 43: Math Stdlib** - Numeric functions and type conversions via libm FFI
+- [ ] **Phase 43: Math Stdlib** - Numeric functions and type conversions via LLVM intrinsics
 - [ ] **Phase 44: Receive Timeouts & Timers** - Actor timeout codegen completion and timer primitives
 - [ ] **Phase 45: Error Propagation** - ? operator for Result/Option early return
 - [ ] **Phase 46: Core Collection Operations** - Sort, find, contains, String split/join/parse
@@ -110,7 +110,10 @@ See milestones/v1.8-ROADMAP.md for full phase details.
   3. User can call Math.floor, Math.ceil, Math.round to convert Float to Int
   4. User can reference Math.pi as a Float constant in expressions
   5. User can convert between Int and Float with Int.to_float(x) and Float.to_int(x)
-**Plans**: TBD
+**Plans:** 2 plans
+Plans:
+- [ ] 43-01-PLAN.md -- Core math ops (abs, min, max, pi) + Int/Float type conversions
+- [ ] 43-02-PLAN.md -- Advanced math ops (pow, sqrt, floor, ceil, round) + integration tests
 
 ### Phase 44: Receive Timeouts & Timers
 **Goal**: Actors can time out on message receives and use timer primitives for delayed operations
@@ -181,7 +184,7 @@ Phases execute in numeric order: 43 -> 44 -> 45 -> 46 -> 47 -> 48
 | 30-32 | v1.6 | 6/6 | Complete | 2026-02-09 |
 | 33-36 | v1.7 | 8/8 | Complete | 2026-02-09 |
 | 37-42 | v1.8 | 12/12 | Complete | 2026-02-09 |
-| 43 | v1.9 | 0/TBD | Not started | - |
+| 43 | v1.9 | 0/2 | Not started | - |
 | 44 | v1.9 | 0/TBD | Not started | - |
 | 45 | v1.9 | 0/TBD | Not started | - |
 | 46 | v1.9 | 0/TBD | Not started | - |
