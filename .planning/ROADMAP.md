@@ -137,10 +137,11 @@ Plans:
   1. User can write `expr?` on a Result<T,E> value: unwraps Ok(v) to v, early-returns Err(e) on error
   2. User can write `expr?` on an Option<T> value: unwraps Some(v) to v, early-returns None on absence
   3. Compiler emits a clear error when ? is used in a function whose return type is not Result or Option
-**Plans:** 2 plans
+**Plans:** 3 plans
 Plans:
-- [ ] 45-01-PLAN.md -- Parser + typeck: TRY_EXPR parsing, fn_return_type_stack, E0036 diagnostic
-- [ ] 45-02-PLAN.md -- MIR lowering: ? desugaring to Match+Return + comprehensive e2e tests
+- [x] 45-01-PLAN.md -- Parser + typeck: TRY_EXPR parsing, fn_return_type_stack, E0036 diagnostic
+- [x] 45-02-PLAN.md -- MIR lowering: ? desugaring to Match+Return + comprehensive e2e tests
+- [ ] 45-03-PLAN.md -- Gap closure: compile_expect_error e2e tests for ERR-03 (E0036/E0037)
 
 ### Phase 46: Core Collection Operations
 **Goal**: Users have essential collection manipulation functions for lists and strings
@@ -192,9 +193,9 @@ Phases execute in numeric order: 43 -> 44 -> 45 -> 46 -> 47 -> 48
 | 37-42 | v1.8 | 12/12 | Complete | 2026-02-09 |
 | 43 | v1.9 | 2/2 | Complete | 2026-02-09 |
 | 44 | v1.9 | 2/2 | Complete | 2026-02-09 |
-| 45 | v1.9 | 0/2 | Not started | - |
+| 45 | v1.9 | 2/3 | In Progress | - |
 | 46 | v1.9 | 0/TBD | Not started | - |
 | 47 | v1.9 | 0/TBD | Not started | - |
 | 48 | v1.9 | 0/TBD | Not started | - |
 
-**Total: 44 phases shipped across 9 milestones. 133 plans completed. 4 phases remaining.**
+**Total: 44 phases shipped across 9 milestones. 134 plans completed. 4 phases remaining.**
