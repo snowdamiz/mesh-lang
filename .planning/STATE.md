@@ -10,16 +10,16 @@ See: .planning/PROJECT.md (updated 2026-02-09)
 ## Current Position
 
 Phase: 45 of 48 (Error Propagation)
-Plan: 1 of 2 complete
-Status: In Progress
-Last activity: 2026-02-10 -- Completed 45-01 (Parser + typeck for ? operator)
+Plan: 2 of 2 complete
+Status: Phase Complete
+Last activity: 2026-02-10 -- Completed 45-02 (MIR lowering & codegen for ? operator)
 
-Progress: [███░░░░░░░] 33% (2/6 v1.9 phases)
+Progress: [████░░░░░░] 33% (2/6 v1.9 phases)
 
 ## Performance Metrics
 
 **All-time Totals:**
-- Plans completed: 133
+- Plans completed: 134
 - Phases completed: 44
 - Milestones shipped: 9 (v1.0-v1.8)
 - Lines of Rust: 73,384
@@ -42,6 +42,9 @@ Progress: [███░░░░░░░] 33% (2/6 v1.9 phases)
 - [45-01] fn_return_type_stack as Vec<Option<Ty>> following loop_depth push/pop pattern; closures always push None
 - [45-01] Separate error variants: E0036 TryIncompatibleReturn (wrong fn return type) and E0037 TryOnNonResultOption (wrong operand type)
 - [45-01] For unresolved type vars as ? operand: attempt Result<T,E> unification first, then Option<T> fallback
+- [45-02] Desugar expr? entirely to Match + Return + ConstructVariant with zero new MIR nodes or codegen paths
+- [45-02] Use generic sum type base names (Result, Option) not monomorphized names for ConstructVariant type_name
+- [45-02] Fixed return type annotation parsing to use resolve_type_annotation for proper generic/sugar type support
 
 ### Research Notes
 
@@ -64,6 +67,6 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-10
-Stopped at: Completed 45-01-PLAN.md
+Stopped at: Completed 45-02-PLAN.md (Phase 45 complete)
 Resume file: None
-Next action: /gsd:execute-plan 45-02
+Next action: /gsd:plan-phase 46
