@@ -2454,3 +2454,29 @@ fn e2e_try_chained_result() {
     let output = compile_and_run(&source);
     assert_eq!(output, "21\nnegative input\ntoo large\n");
 }
+
+/// Phase 45: ? in a function that doesn't return Result or Option (E0036).
+/// bad_caller returns Int but uses ? -- compiler must reject with E0036.
+#[test]
+fn e2e_try_incompatible_return_type() {
+    let source = read_fixture("try_error_incompatible_return.snow");
+    let error = compile_expect_error(&source);
+    assert!(
+        error.contains("E0036") || error.contains("requires function to return"),
+        "Expected E0036 TryIncompatibleReturn error, got:\n{}",
+        error
+    );
+}
+
+/// Phase 45: ? on a value that is not Result or Option (E0037).
+/// Using ? on a plain Int -- compiler must reject with E0037.
+#[test]
+fn e2e_try_on_non_result_option() {
+    let source = read_fixture("try_error_non_result_option.snow");
+    let error = compile_expect_error(&source);
+    assert!(
+        error.contains("E0037") || error.contains("requires `Result` or `Option`"),
+        "Expected E0037 TryOnNonResultOption error, got:\n{}",
+        error
+    );
+}
