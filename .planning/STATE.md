@@ -10,16 +10,16 @@ See: .planning/PROJECT.md (updated 2026-02-09)
 ## Current Position
 
 Phase: 47 of 48 (Extended Collection Operations)
-Plan: 1 of 3 complete
+Plan: 2 of 3 complete
 Status: Executing Phase 47
-Last activity: 2026-02-10 -- Phase 47 Plan 01 complete (List extended operations)
+Last activity: 2026-02-10 -- Phase 47 Plan 02 complete (Map/Set conversion operations)
 
 Progress: [████████░░] 83% (5/6 v1.9 phases)
 
 ## Performance Metrics
 
 **All-time Totals:**
-- Plans completed: 137
+- Plans completed: 138
 - Phases completed: 46
 - Milestones shipped: 9 (v1.0-v1.8)
 - Lines of Rust: 73,384
@@ -55,6 +55,8 @@ Progress: [████████░░] 83% (5/6 v1.9 phases)
 - [47-01] Tuple Con unification escape hatch: Ty::Con("Tuple") unifies with any Ty::Tuple(...) for Tuple.first/second compat
 - [47-01] MIR call type fix: use Ptr when typeck resolves Tuple but known_functions returns Ptr
 - [47-01] known_functions type priority over typeck-resolved type for stdlib module Var nodes in lower_field_access
+- [47-02] Map.from_list defaults to KEY_TYPE_INT since runtime cannot detect key type from list of tuples
+- [47-02] No bare name mappings for to_list/from_list to avoid Map/Set ambiguity; merge and difference get bare mappings
 
 ### Research Notes
 
@@ -77,6 +79,6 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-10
-Stopped at: Completed 47-01-PLAN.md
+Stopped at: Completed 47-02-PLAN.md
 Resume file: None
-Next action: Execute 47-02-PLAN.md (Map extended operations)
+Next action: Execute 47-03-PLAN.md or complete Phase 47
