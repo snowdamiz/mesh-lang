@@ -716,3 +716,115 @@ fn e2e_http_crash_isolation() {
         response
     );
 }
+
+// ── Math/Int/Float E2E Tests (Phase 43 Plan 01) ───────────────────────
+
+#[test]
+fn math_abs_int() {
+    let out = compile_and_run(r#"
+fn main() do
+  println("${Math.abs(-42)}")
+  println("${Math.abs(42)}")
+  println("${Math.abs(0)}")
+end
+"#);
+    assert_eq!(out.trim(), "42\n42\n0");
+}
+
+#[test]
+fn math_abs_float() {
+    let out = compile_and_run(r#"
+fn main() do
+  println("${Math.abs(-3.14)}")
+  println("${Math.abs(3.14)}")
+end
+"#);
+    assert!(out.contains("3.14"));
+}
+
+#[test]
+fn math_min_max_int() {
+    let out = compile_and_run(r#"
+fn main() do
+  println("${Math.min(10, 20)}")
+  println("${Math.max(10, 20)}")
+  println("${Math.min(-5, 3)}")
+  println("${Math.max(-5, 3)}")
+end
+"#);
+    assert_eq!(out.trim(), "10\n20\n-5\n3");
+}
+
+#[test]
+fn math_min_max_float() {
+    let out = compile_and_run(r#"
+fn main() do
+  println("${Math.min(1.5, 2.5)}")
+  println("${Math.max(1.5, 2.5)}")
+end
+"#);
+    assert!(out.contains("1.5"));
+    assert!(out.contains("2.5"));
+}
+
+#[test]
+fn math_pi_constant() {
+    let out = compile_and_run(r#"
+fn main() do
+  let pi = Math.pi
+  println("${pi}")
+end
+"#);
+    assert!(out.contains("3.14159"));
+}
+
+#[test]
+fn int_to_float_conversion() {
+    let out = compile_and_run(r#"
+fn main() do
+  let f = Int.to_float(42)
+  println("${f}")
+end
+"#);
+    assert!(out.contains("42"));
+}
+
+#[test]
+fn float_to_int_conversion() {
+    let out = compile_and_run(r#"
+fn main() do
+  println("${Float.to_int(3.14)}")
+  println("${Float.to_int(3.99)}")
+  println("${Float.to_int(-2.7)}")
+end
+"#);
+    // fptosi truncates toward zero
+    assert_eq!(out.trim(), "3\n3\n-2");
+}
+
+#[test]
+fn math_abs_with_variable() {
+    let out = compile_and_run(r#"
+fn main() do
+  let x = -99
+  println("${Math.abs(x)}")
+end
+"#);
+    assert_eq!(out.trim(), "99");
+}
+
+#[test]
+fn int_float_module_no_conflict_with_types() {
+    // Verify Int/Float work as modules (Int.to_float, Float.to_int) while
+    // Int and Float literals still work correctly (Pitfall 7: no name collision).
+    let out = compile_and_run(r#"
+fn main() do
+  let x = 42
+  let f = Int.to_float(x)
+  let i = Float.to_int(f)
+  println("${x}")
+  println("${i}")
+end
+"#);
+    assert_eq!(out.trim(), "42\n42");
+}

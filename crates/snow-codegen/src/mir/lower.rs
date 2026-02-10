@@ -4016,9 +4016,24 @@ impl<'a> Lowerer<'a> {
         // Check if this is a module-qualified access (e.g., String.length).
         // If the base is a NameRef whose text is a known stdlib module,
         // resolve as a function reference instead of a struct field access.
+        // User-defined modules take precedence over stdlib modules to allow
+        // user code with modules named "Math", "Int", "Float", etc.
         if let Some(base_expr) = fa.base() {
             if let Expr::NameRef(ref name_ref) = base_expr {
                 if let Some(base_name) = name_ref.text() {
+                    // Check user-defined modules FIRST (Phase 39) -- they shadow stdlib.
+                    if let Some(func_names) = self.user_modules.get(&base_name) {
+                        let field = fa
+                            .field()
+                            .map(|t| t.text().to_string())
+                            .unwrap_or_default();
+                        if func_names.contains(&field) {
+                            let ty = self.resolve_range(fa.syntax().text_range());
+                            return MirExpr::Var(field, ty);
+                        }
+                    }
+
+                    // Check stdlib modules (after user modules so user code can shadow).
                     if STDLIB_MODULES.contains(&base_name.as_str()) {
                         let field = fa
                             .field()
@@ -4030,18 +4045,6 @@ impl<'a> Lowerer<'a> {
                         let runtime_name = map_builtin_name(&prefixed);
                         let ty = self.resolve_range(fa.syntax().text_range());
                         return MirExpr::Var(runtime_name, ty);
-                    }
-
-                    // Check if this is a user-defined module (Phase 39).
-                    if let Some(func_names) = self.user_modules.get(&base_name) {
-                        let field = fa
-                            .field()
-                            .map(|t| t.text().to_string())
-                            .unwrap_or_default();
-                        if func_names.contains(&field) {
-                            let ty = self.resolve_range(fa.syntax().text_range());
-                            return MirExpr::Var(field, ty);
-                        }
                     }
 
                     // Check if this is a service module method (e.g., Counter.start).
