@@ -4,6 +4,7 @@
 //! into corresponding LLVM IR instructions using the alloca+mem2reg pattern
 //! for control flow merges.
 
+use inkwell::intrinsics::Intrinsic;
 use inkwell::types::BasicType;
 use inkwell::values::{BasicMetadataValueEnum, BasicValueEnum};
 use inkwell::IntPredicate;
@@ -209,6 +210,11 @@ impl<'ctx> CodeGen<'ctx> {
         name: &str,
         ty: &MirType,
     ) -> Result<BasicValueEnum<'ctx>, String> {
+        // Math.pi constant (Phase 43) -- accessed without parentheses as a variable
+        if name == "snow_math_pi" {
+            return Ok(self.context.f64_type().const_float(std::f64::consts::PI).into());
+        }
+
         // Check if it's a known function reference (for passing as fn ptr)
         if let Some(fn_val) = self.functions.get(name) {
             return Ok(fn_val.as_global_value().as_pointer_value().into());
@@ -620,6 +626,106 @@ impl<'ctx> CodeGen<'ctx> {
             // Allocates { u64 len, u64[N] elements } on the GC heap.
             if name == "__snow_make_tuple" {
                 return self.codegen_make_tuple(&arg_vals);
+            }
+        }
+
+        // Math/Int/Float stdlib intrinsics (Phase 43)
+        if let MirExpr::Var(name, _) = func {
+            match name.as_str() {
+                "snow_math_abs" => {
+                    let arg_val = self.codegen_expr(&args[0])?;
+                    return match args[0].ty() {
+                        MirType::Int => {
+                            // llvm.abs.i64(val, is_int_min_poison=false)
+                            let intrinsic = Intrinsic::find("llvm.abs").ok_or("llvm.abs not found")?;
+                            let i64_ty = self.context.i64_type();
+                            let decl = intrinsic.get_declaration(&self.module, &[i64_ty.into()])
+                                .ok_or("Failed to get llvm.abs declaration")?;
+                            let is_poison = self.context.bool_type().const_int(0, false);
+                            let result = self.builder.build_call(decl, &[arg_val.into(), is_poison.into()], "abs")
+                                .map_err(|e| e.to_string())?;
+                            result.try_as_basic_value().basic().ok_or("abs returned void".into())
+                        }
+                        MirType::Float => {
+                            // llvm.fabs.f64(val)
+                            let intrinsic = Intrinsic::find("llvm.fabs").ok_or("llvm.fabs not found")?;
+                            let f64_ty = self.context.f64_type();
+                            let decl = intrinsic.get_declaration(&self.module, &[f64_ty.into()])
+                                .ok_or("Failed to get llvm.fabs declaration")?;
+                            let result = self.builder.build_call(decl, &[arg_val.into()], "fabs")
+                                .map_err(|e| e.to_string())?;
+                            result.try_as_basic_value().basic().ok_or("fabs returned void".into())
+                        }
+                        other => Err(format!("Math.abs: unsupported type {:?}", other)),
+                    };
+                }
+                "snow_math_min" => {
+                    let lhs = self.codegen_expr(&args[0])?;
+                    let rhs = self.codegen_expr(&args[1])?;
+                    return match args[0].ty() {
+                        MirType::Int => {
+                            let intrinsic = Intrinsic::find("llvm.smin").ok_or("llvm.smin not found")?;
+                            let i64_ty = self.context.i64_type();
+                            let decl = intrinsic.get_declaration(&self.module, &[i64_ty.into()])
+                                .ok_or("Failed to get llvm.smin declaration")?;
+                            let result = self.builder.build_call(decl, &[lhs.into(), rhs.into()], "smin")
+                                .map_err(|e| e.to_string())?;
+                            result.try_as_basic_value().basic().ok_or("smin returned void".into())
+                        }
+                        MirType::Float => {
+                            let intrinsic = Intrinsic::find("llvm.minnum").ok_or("llvm.minnum not found")?;
+                            let f64_ty = self.context.f64_type();
+                            let decl = intrinsic.get_declaration(&self.module, &[f64_ty.into()])
+                                .ok_or("Failed to get llvm.minnum declaration")?;
+                            let result = self.builder.build_call(decl, &[lhs.into(), rhs.into()], "minnum")
+                                .map_err(|e| e.to_string())?;
+                            result.try_as_basic_value().basic().ok_or("minnum returned void".into())
+                        }
+                        other => Err(format!("Math.min: unsupported type {:?}", other)),
+                    };
+                }
+                "snow_math_max" => {
+                    let lhs = self.codegen_expr(&args[0])?;
+                    let rhs = self.codegen_expr(&args[1])?;
+                    return match args[0].ty() {
+                        MirType::Int => {
+                            let intrinsic = Intrinsic::find("llvm.smax").ok_or("llvm.smax not found")?;
+                            let i64_ty = self.context.i64_type();
+                            let decl = intrinsic.get_declaration(&self.module, &[i64_ty.into()])
+                                .ok_or("Failed to get llvm.smax declaration")?;
+                            let result = self.builder.build_call(decl, &[lhs.into(), rhs.into()], "smax")
+                                .map_err(|e| e.to_string())?;
+                            result.try_as_basic_value().basic().ok_or("smax returned void".into())
+                        }
+                        MirType::Float => {
+                            let intrinsic = Intrinsic::find("llvm.maxnum").ok_or("llvm.maxnum not found")?;
+                            let f64_ty = self.context.f64_type();
+                            let decl = intrinsic.get_declaration(&self.module, &[f64_ty.into()])
+                                .ok_or("Failed to get llvm.maxnum declaration")?;
+                            let result = self.builder.build_call(decl, &[lhs.into(), rhs.into()], "maxnum")
+                                .map_err(|e| e.to_string())?;
+                            result.try_as_basic_value().basic().ok_or("maxnum returned void".into())
+                        }
+                        other => Err(format!("Math.max: unsupported type {:?}", other)),
+                    };
+                }
+                "snow_int_to_float" => {
+                    let arg_val = self.codegen_expr(&args[0])?;
+                    let int_val = arg_val.into_int_value();
+                    let float_val = self.builder
+                        .build_signed_int_to_float(int_val, self.context.f64_type(), "int_to_float")
+                        .map_err(|e| e.to_string())?;
+                    return Ok(float_val.into());
+                }
+                "snow_float_to_int" => {
+                    let arg_val = self.codegen_expr(&args[0])?;
+                    let float_val = arg_val.into_float_value();
+                    let int_val = self.builder
+                        .build_float_to_signed_int(float_val, self.context.i64_type(), "float_to_int")
+                        .map_err(|e| e.to_string())?;
+                    return Ok(int_val.into());
+                }
+                _ => {} // Fall through to normal call handling
             }
         }
 
