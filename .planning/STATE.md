@@ -9,18 +9,18 @@ See: .planning/PROJECT.md (updated 2026-02-09)
 
 ## Current Position
 
-Phase: 46 of 48 (Core Collection Operations) -- IN PROGRESS
-Plan: 1 of 1 complete
-Status: Plan 01 Complete
-Last activity: 2026-02-10 -- Phase 46 Plan 01 complete (sort/find/any/all/contains)
+Phase: 46 of 48 (Core Collection Operations) -- COMPLETE
+Plan: 2 of 2 complete
+Status: Phase 46 Complete
+Last activity: 2026-02-10 -- Phase 46 Plan 02 complete (String split/join/to_int/to_float)
 
-Progress: [██████░░░░] 67% (4/6 v1.9 phases)
+Progress: [████████░░] 83% (5/6 v1.9 phases)
 
 ## Performance Metrics
 
 **All-time Totals:**
-- Plans completed: 136
-- Phases completed: 45
+- Plans completed: 137
+- Phases completed: 46
 - Milestones shipped: 9 (v1.0-v1.8)
 - Lines of Rust: 73,384
 - Timeline: 5 days (2026-02-05 -> 2026-02-09)
@@ -49,6 +49,8 @@ Progress: [██████░░░░] 67% (4/6 v1.9 phases)
 - [46-01] Extracted SnowOption to shared crate::option module (used by env.rs, http/server.rs, collections/list.rs)
 - [46-01] List.contains uses raw u64 equality -- String content equality requires List.any with == predicate
 - [46-01] List.find returns Option but pattern matching on FFI Option has pre-existing codegen gap (documented for future phase)
+- [46-02] Used Ptr MIR types (not String) for split/join/to_int/to_float since they interact with List/Option opaque pointers
+- [46-02] Unique variable names required in case arms to avoid pre-existing LLVM alloca naming collision
 
 ### Research Notes
 
@@ -71,6 +73,6 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-10
-Stopped at: Completed 46-01-PLAN.md
+Stopped at: Completed 46-02-PLAN.md (Phase 46 complete)
 Resume file: None
-Next action: Verify Phase 46 complete (single-plan phase)
+Next action: Begin Phase 47
