@@ -166,7 +166,10 @@ Plans:
   2. User can call List.flat_map(list, fn) and List.flatten(list) for nested list processing
   3. User can call List.enumerate(list) returning List<(Int, T)> and List.take/List.drop for subsequences
   4. User can convert between Map and List with Map.merge, Map.to_list, Map.from_list, and between Set and List with Set.difference, Set.to_list, Set.from_list
-**Plans**: TBD
+**Plans:** 2 plans
+Plans:
+- [ ] 47-01-PLAN.md -- List operations (zip, flat_map, flatten, enumerate, take, drop)
+- [ ] 47-02-PLAN.md -- Map/Set conversions (merge, to_list, from_list, difference)
 
 ### Phase 48: Tail-Call Elimination
 **Goal**: Self-recursive functions execute in constant stack space, making actor receive loops safe from stack overflow
@@ -198,7 +201,7 @@ Phases execute in numeric order: 43 -> 44 -> 45 -> 46 -> 47 -> 48
 | 44 | v1.9 | 2/2 | Complete | 2026-02-09 |
 | 45 | v1.9 | 3/3 | Complete | 2026-02-10 |
 | 46 | v1.9 | 2/2 | Complete | 2026-02-10 |
-| 47 | v1.9 | 0/TBD | Not started | - |
+| 47 | v1.9 | 0/2 | Not started | - |
 | 48 | v1.9 | 0/TBD | Not started | - |
 
 **Total: 46 phases shipped across 9 milestones. 137 plans completed. 2 phases remaining.**
