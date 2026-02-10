@@ -152,7 +152,10 @@ Plans:
   2. User can search lists with List.find (returns Option), List.any/List.all (returns Bool), and List.contains (returns Bool)
   3. User can split strings with String.split(s, delim) and join lists of strings with String.join(list, sep)
   4. User can parse strings to numbers with String.to_int(s) and String.to_float(s) returning Option
-**Plans**: TBD
+**Plans:** 2 plans
+Plans:
+- [ ] 46-01-PLAN.md -- List operations (sort, find, any/all, contains) + SnowOption shared module
+- [ ] 46-02-PLAN.md -- String operations (split, join, to_int, to_float)
 
 ### Phase 47: Extended Collection Operations
 **Goal**: Users have the full complement of functional collection transformations across List, Map, and Set
@@ -194,7 +197,7 @@ Phases execute in numeric order: 43 -> 44 -> 45 -> 46 -> 47 -> 48
 | 43 | v1.9 | 2/2 | Complete | 2026-02-09 |
 | 44 | v1.9 | 2/2 | Complete | 2026-02-09 |
 | 45 | v1.9 | 3/3 | Complete | 2026-02-10 |
-| 46 | v1.9 | 0/TBD | Not started | - |
+| 46 | v1.9 | 0/2 | Not started | - |
 | 47 | v1.9 | 0/TBD | Not started | - |
 | 48 | v1.9 | 0/TBD | Not started | - |
 
