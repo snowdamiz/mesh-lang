@@ -295,6 +295,10 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
     module.add_function("snow_map_size", i64_type.fn_type(&[ptr_type.into()], false), Some(inkwell::module::Linkage::External));
     module.add_function("snow_map_keys", ptr_type.fn_type(&[ptr_type.into()], false), Some(inkwell::module::Linkage::External));
     module.add_function("snow_map_values", ptr_type.fn_type(&[ptr_type.into()], false), Some(inkwell::module::Linkage::External));
+    // Phase 47: Map merge/to_list/from_list
+    module.add_function("snow_map_merge", ptr_type.fn_type(&[ptr_type.into(), ptr_type.into()], false), Some(inkwell::module::Linkage::External));
+    module.add_function("snow_map_to_list", ptr_type.fn_type(&[ptr_type.into()], false), Some(inkwell::module::Linkage::External));
+    module.add_function("snow_map_from_list", ptr_type.fn_type(&[ptr_type.into()], false), Some(inkwell::module::Linkage::External));
     module.add_function("snow_map_entry_key", i64_type.fn_type(&[ptr_type.into(), i64_type.into()], false), Some(inkwell::module::Linkage::External));
     module.add_function("snow_map_entry_value", i64_type.fn_type(&[ptr_type.into(), i64_type.into()], false), Some(inkwell::module::Linkage::External));
 
@@ -307,6 +311,10 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
     module.add_function("snow_set_union", ptr_type.fn_type(&[ptr_type.into(), ptr_type.into()], false), Some(inkwell::module::Linkage::External));
     module.add_function("snow_set_intersection", ptr_type.fn_type(&[ptr_type.into(), ptr_type.into()], false), Some(inkwell::module::Linkage::External));
     module.add_function("snow_set_element_at", i64_type.fn_type(&[ptr_type.into(), i64_type.into()], false), Some(inkwell::module::Linkage::External));
+    // Phase 47: Set difference/to_list/from_list
+    module.add_function("snow_set_difference", ptr_type.fn_type(&[ptr_type.into(), ptr_type.into()], false), Some(inkwell::module::Linkage::External));
+    module.add_function("snow_set_to_list", ptr_type.fn_type(&[ptr_type.into()], false), Some(inkwell::module::Linkage::External));
+    module.add_function("snow_set_from_list", ptr_type.fn_type(&[ptr_type.into()], false), Some(inkwell::module::Linkage::External));
 
     // Tuple functions
     module.add_function("snow_tuple_nth", i64_type.fn_type(&[ptr_type.into(), i64_type.into()], false), Some(inkwell::module::Linkage::External));
@@ -618,6 +626,9 @@ mod tests {
         assert!(module.get_function("snow_map_size").is_some());
         assert!(module.get_function("snow_map_keys").is_some());
         assert!(module.get_function("snow_map_values").is_some());
+        assert!(module.get_function("snow_map_merge").is_some());
+        assert!(module.get_function("snow_map_to_list").is_some());
+        assert!(module.get_function("snow_map_from_list").is_some());
         assert!(module.get_function("snow_map_entry_key").is_some());
         assert!(module.get_function("snow_map_entry_value").is_some());
         assert!(module.get_function("snow_set_new").is_some());
@@ -628,6 +639,9 @@ mod tests {
         assert!(module.get_function("snow_set_union").is_some());
         assert!(module.get_function("snow_set_intersection").is_some());
         assert!(module.get_function("snow_set_element_at").is_some());
+        assert!(module.get_function("snow_set_difference").is_some());
+        assert!(module.get_function("snow_set_to_list").is_some());
+        assert!(module.get_function("snow_set_from_list").is_some());
         assert!(module.get_function("snow_tuple_nth").is_some());
         assert!(module.get_function("snow_tuple_first").is_some());
         assert!(module.get_function("snow_tuple_second").is_some());

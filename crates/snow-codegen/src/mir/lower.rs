@@ -577,6 +577,10 @@ impl<'a> Lowerer<'a> {
         self.known_functions.insert("snow_map_size".to_string(), MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Int)));
         self.known_functions.insert("snow_map_keys".to_string(), MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Ptr)));
         self.known_functions.insert("snow_map_values".to_string(), MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Ptr)));
+        // Phase 47: Map merge/to_list/from_list
+        self.known_functions.insert("snow_map_merge".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
+        self.known_functions.insert("snow_map_to_list".to_string(), MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Ptr)));
+        self.known_functions.insert("snow_map_from_list".to_string(), MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Ptr)));
         // Set
         self.known_functions.insert("snow_set_new".to_string(), MirType::FnPtr(vec![], Box::new(MirType::Ptr)));
         self.known_functions.insert("snow_set_add".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Int], Box::new(MirType::Ptr)));
@@ -585,6 +589,10 @@ impl<'a> Lowerer<'a> {
         self.known_functions.insert("snow_set_size".to_string(), MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Int)));
         self.known_functions.insert("snow_set_union".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
         self.known_functions.insert("snow_set_intersection".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
+        // Phase 47: Set difference/to_list/from_list
+        self.known_functions.insert("snow_set_difference".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
+        self.known_functions.insert("snow_set_to_list".to_string(), MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Ptr)));
+        self.known_functions.insert("snow_set_from_list".to_string(), MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Ptr)));
         // Collection Display (Phase 21 Plan 04)
         self.known_functions.insert("snow_list_to_string".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
         self.known_functions.insert("snow_map_to_string".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
@@ -7612,6 +7620,10 @@ fn map_builtin_name(name: &str) -> String {
         "map_size" => "snow_map_size".to_string(),
         "map_keys" => "snow_map_keys".to_string(),
         "map_values" => "snow_map_values".to_string(),
+        // Phase 47: Map merge/to_list/from_list
+        "map_merge" => "snow_map_merge".to_string(),
+        "map_to_list" => "snow_map_to_list".to_string(),
+        "map_from_list" => "snow_map_from_list".to_string(),
         // Set operations
         "set_new" => "snow_set_new".to_string(),
         "set_add" => "snow_set_add".to_string(),
@@ -7620,6 +7632,10 @@ fn map_builtin_name(name: &str) -> String {
         "set_size" => "snow_set_size".to_string(),
         "set_union" => "snow_set_union".to_string(),
         "set_intersection" => "snow_set_intersection".to_string(),
+        // Phase 47: Set difference/to_list/from_list
+        "set_difference" => "snow_set_difference".to_string(),
+        "set_to_list" => "snow_set_to_list".to_string(),
+        "set_from_list" => "snow_set_from_list".to_string(),
         // Tuple operations
         "tuple_nth" => "snow_tuple_nth".to_string(),
         "tuple_first" => "snow_tuple_first".to_string(),
@@ -7651,6 +7667,8 @@ fn map_builtin_name(name: &str) -> String {
         "enumerate" => "snow_list_enumerate".to_string(),
         "last" => "snow_list_last".to_string(),
         "nth" => "snow_list_nth".to_string(),
+        "merge" => "snow_map_merge".to_string(),
+        "difference" => "snow_set_difference".to_string(),
         // ── JSON functions (Phase 8 Plan 04) ─────────────────────────
         "json_parse" => "snow_json_parse".to_string(),
         "json_encode" => "snow_json_encode".to_string(),

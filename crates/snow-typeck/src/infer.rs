@@ -385,6 +385,10 @@ fn stdlib_modules() -> HashMap<String, HashMap<String, Scheme>> {
     map_mod.insert("size".to_string(), Scheme { vars: vec![k_var, v_var], ty: Ty::fun(vec![map_kv.clone()], Ty::int()) });
     map_mod.insert("keys".to_string(), Scheme { vars: vec![k_var, v_var], ty: Ty::fun(vec![map_kv.clone()], Ty::list(k.clone())) });
     map_mod.insert("values".to_string(), Scheme { vars: vec![k_var, v_var], ty: Ty::fun(vec![map_kv.clone()], Ty::list(v.clone())) });
+    // Phase 47: merge, to_list, from_list
+    map_mod.insert("merge".to_string(), Scheme { vars: vec![k_var, v_var], ty: Ty::fun(vec![map_kv.clone(), map_kv.clone()], map_kv.clone()) });
+    map_mod.insert("to_list".to_string(), Scheme { vars: vec![k_var, v_var], ty: Ty::fun(vec![map_kv.clone()], Ty::list(Ty::Tuple(vec![k.clone(), v.clone()]))) });
+    map_mod.insert("from_list".to_string(), Scheme { vars: vec![k_var, v_var], ty: Ty::fun(vec![Ty::list(Ty::Tuple(vec![k.clone(), v.clone()]))], map_kv.clone()) });
     modules.insert("Map".to_string(), map_mod);
 
     let set_t = Ty::set_untyped();
@@ -396,6 +400,10 @@ fn stdlib_modules() -> HashMap<String, HashMap<String, Scheme>> {
     set_mod.insert("size".to_string(), Scheme::mono(Ty::fun(vec![set_t.clone()], Ty::int())));
     set_mod.insert("union".to_string(), Scheme::mono(Ty::fun(vec![set_t.clone(), set_t.clone()], set_t.clone())));
     set_mod.insert("intersection".to_string(), Scheme::mono(Ty::fun(vec![set_t.clone(), set_t.clone()], set_t.clone())));
+    // Phase 47: difference, to_list, from_list
+    set_mod.insert("difference".to_string(), Scheme::mono(Ty::fun(vec![set_t.clone(), set_t.clone()], set_t.clone())));
+    set_mod.insert("to_list".to_string(), Scheme::mono(Ty::fun(vec![set_t.clone()], Ty::list(Ty::int()))));
+    set_mod.insert("from_list".to_string(), Scheme::mono(Ty::fun(vec![Ty::list(Ty::int())], set_t.clone())));
     modules.insert("Set".to_string(), set_mod);
 
     let mut tuple_mod = HashMap::new();

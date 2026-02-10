@@ -354,6 +354,10 @@ pub fn register_builtins(
         env.insert("map_size".into(), Scheme { vars: vec![k_var, v_var], ty: Ty::fun(vec![map_kv.clone()], Ty::int()) });
         env.insert("map_keys".into(), Scheme { vars: vec![k_var, v_var], ty: Ty::fun(vec![map_kv.clone()], Ty::list(k.clone())) });
         env.insert("map_values".into(), Scheme { vars: vec![k_var, v_var], ty: Ty::fun(vec![map_kv.clone()], Ty::list(v.clone())) });
+        // Phase 47: merge, to_list, from_list
+        env.insert("map_merge".into(), Scheme { vars: vec![k_var, v_var], ty: Ty::fun(vec![map_kv.clone(), map_kv.clone()], map_kv.clone()) });
+        env.insert("map_to_list".into(), Scheme { vars: vec![k_var, v_var], ty: Ty::fun(vec![map_kv.clone()], Ty::list(Ty::Tuple(vec![k.clone(), v.clone()]))) });
+        env.insert("map_from_list".into(), Scheme { vars: vec![k_var, v_var], ty: Ty::fun(vec![Ty::list(Ty::Tuple(vec![k.clone(), v.clone()]))], map_kv.clone()) });
     }
 
     // ── Set module functions ──────────────────────────────────────────
@@ -385,6 +389,19 @@ pub fn register_builtins(
     env.insert(
         "set_intersection".into(),
         Scheme::mono(Ty::fun(vec![set_t.clone(), set_t.clone()], set_t.clone())),
+    );
+    // Phase 47: difference, to_list, from_list
+    env.insert(
+        "set_difference".into(),
+        Scheme::mono(Ty::fun(vec![set_t.clone(), set_t.clone()], set_t.clone())),
+    );
+    env.insert(
+        "set_to_list".into(),
+        Scheme::mono(Ty::fun(vec![set_t.clone()], Ty::list(Ty::int()))),
+    );
+    env.insert(
+        "set_from_list".into(),
+        Scheme::mono(Ty::fun(vec![Ty::list(Ty::int())], set_t.clone())),
     );
 
     // ── Tuple module functions ────────────────────────────────────────

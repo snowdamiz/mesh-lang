@@ -1009,3 +1009,19 @@ fn e2e_stdlib_list_take_drop() {
     let output = compile_and_run(&source);
     assert_eq!(output, "3\n10\n30\n2\n40\n5\n0\n");
 }
+
+// ── Phase 47 Plan 02: Map/Set Conversion E2E Tests ────────────────────
+
+#[test]
+fn e2e_stdlib_map_conversions() {
+    let map_conv_source = read_fixture("stdlib_map_conversions.snow");
+    let map_conv_output = compile_and_run(&map_conv_source);
+    assert_eq!(map_conv_output, "3\n10\n200\n30\n2\n2\n10\n20\n");
+}
+
+#[test]
+fn e2e_stdlib_set_conversions() {
+    let set_conv_source = read_fixture("stdlib_set_conversions.snow");
+    let set_conv_output = compile_and_run(&set_conv_source);
+    assert_eq!(set_conv_output, "1\ntrue\nfalse\n3\n3\ntrue\ntrue\n");
+}
