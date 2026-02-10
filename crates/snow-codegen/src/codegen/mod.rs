@@ -565,6 +565,44 @@ impl<'ctx> CodeGen<'ctx> {
     pub(crate) fn current_function(&self) -> FunctionValue<'ctx> {
         self.current_fn.expect("No current function during codegen")
     }
+
+    /// Build an alloca in the function's entry block.
+    ///
+    /// In TCE functions, allocas inside the loop body would grow the stack
+    /// on each iteration (since LLVM treats alloca in a loop as dynamic
+    /// stack allocation). This helper always places allocas in the entry
+    /// block so they are allocated once regardless of how many loop
+    /// iterations occur.
+    pub(crate) fn build_entry_alloca(
+        &self,
+        ty: inkwell::types::BasicTypeEnum<'ctx>,
+        name: &str,
+    ) -> Result<PointerValue<'ctx>, String> {
+        let fn_val = self.current_function();
+        let entry_bb = fn_val.get_first_basic_block()
+            .ok_or("Function has no entry block")?;
+
+        // Save the current insertion point.
+        let current_bb = self.builder.get_insert_block();
+
+        // Position at the start of the entry block (before any existing instructions).
+        // If the entry block has instructions, position before the first one.
+        // Otherwise position at the end.
+        if let Some(first_inst) = entry_bb.get_first_instruction() {
+            self.builder.position_before(&first_inst);
+        } else {
+            self.builder.position_at_end(entry_bb);
+        }
+
+        let alloca = self.builder.build_alloca(ty, name).map_err(|e| e.to_string())?;
+
+        // Restore the original insertion point.
+        if let Some(bb) = current_bb {
+            self.builder.position_at_end(bb);
+        }
+
+        Ok(alloca)
+    }
 }
 
 #[cfg(test)]

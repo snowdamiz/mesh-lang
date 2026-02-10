@@ -2480,3 +2480,41 @@ fn e2e_try_on_non_result_option() {
         error
     );
 }
+
+// TCE tests (Phase 48 Plan 02)
+
+/// Phase 48: Self-recursive countdown from 1,000,000 completes without stack overflow.
+/// Proves TCE loop wrapping prevents stack overflow for deep recursion.
+#[test]
+fn tce_countdown() {
+    let source = read_fixture("tce_countdown.snow");
+    let output = compile_and_run(&source);
+    assert_eq!(output.trim(), "done");
+}
+
+/// Phase 48: Parameter swap correctness with two-phase argument evaluation.
+/// After 100,001 swaps (odd count), a=1,b=2 becomes a=2,b=1.
+#[test]
+fn tce_param_swap() {
+    let source = read_fixture("tce_param_swap.snow");
+    let output = compile_and_run(&source);
+    assert_eq!(output.trim(), "2\n1");
+}
+
+/// Phase 48: Tail calls in case/match arms are correctly eliminated.
+/// Chain: process(2,0) -> process(1,20) -> process(0,30) -> prints 30.
+#[test]
+fn tce_case_arms() {
+    let source = read_fixture("tce_case_arms.snow");
+    let output = compile_and_run(&source);
+    assert_eq!(output.trim(), "30");
+}
+
+/// Phase 48: Tail-recursive function called from actor context.
+/// count_loop(0, 1000000) runs 1M iterations inside an actor without stack overflow.
+#[test]
+fn tce_actor_loop() {
+    let source = read_fixture("tce_actor_loop.snow");
+    let output = compile_and_run(&source);
+    assert_eq!(output.trim(), "1000000");
+}
