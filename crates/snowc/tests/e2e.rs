@@ -2406,3 +2406,51 @@ end
         error
     );
 }
+
+// ── Phase 45: Error Propagation (? operator) ─────────────────────────
+
+/// Phase 45: Result ? operator - Ok path unwraps the value.
+/// safe_divide(20, 2)? in a function returning Result<Int, String> unwraps Ok(10).
+#[test]
+fn e2e_try_result_ok_path() {
+    let source = read_fixture("try_result_ok_path.snow");
+    let output = compile_and_run(&source);
+    assert_eq!(output, "20\n");
+}
+
+/// Phase 45: Result ? operator - Err path propagates the error.
+/// safe_divide(20, 0)? early-returns Err("division by zero").
+#[test]
+fn e2e_try_result_err_path() {
+    let source = read_fixture("try_result_err_path.snow");
+    let output = compile_and_run(&source);
+    assert_eq!(output, "division by zero\n");
+}
+
+/// Phase 45: Option ? operator - Some path unwraps the value.
+/// find_positive(5, 10)? unwraps Some(5), result is Some(105).
+#[test]
+fn e2e_try_option_some_path() {
+    let source = read_fixture("try_option_some_path.snow");
+    let output = compile_and_run(&source);
+    assert_eq!(output, "105\n");
+}
+
+/// Phase 45: Option ? operator - None path propagates None.
+/// find_positive(-1, -2)? early-returns None.
+#[test]
+fn e2e_try_option_none_path() {
+    let source = read_fixture("try_option_none_path.snow");
+    let output = compile_and_run(&source);
+    assert_eq!(output, "none\n");
+}
+
+/// Phase 45: Chained ? operators in a pipeline.
+/// Multiple ? calls in sequence: step1(x)? then step2(a)?.
+/// Tests: success path, first-step error, second-step error.
+#[test]
+fn e2e_try_chained_result() {
+    let source = read_fixture("try_chained_result.snow");
+    let output = compile_and_run(&source);
+    assert_eq!(output, "21\nnegative input\ntoo large\n");
+}
