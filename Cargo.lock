@@ -1274,6 +1274,7 @@ dependencies = [
 name = "snow-common"
 version = "0.1.0"
 dependencies = [
+ "rustc-hash 2.1.1",
  "serde",
 ]
 

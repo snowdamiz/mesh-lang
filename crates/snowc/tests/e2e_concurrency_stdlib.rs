@@ -3,7 +3,12 @@
 //! Tests Service and Job constructs through the full compiler pipeline:
 //! Snow source -> parse -> typecheck -> MIR -> LLVM codegen -> native binary -> run.
 //!
-//! Service tests use generous timeouts since they involve actor concurrency.
+//! Tests use generous timeouts (30s) because:
+//! - Each test compiles a fresh binary to a temp directory
+//! - macOS Gatekeeper/XProtect adds ~1s first-run delay per unique binary
+//! - When tests run in parallel, Gatekeeper checks serialize, so the Nth
+//!   binary may wait up to N seconds before it even starts executing
+//! - With 11 tests, worst-case startup delay is ~11s plus execution time
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -144,7 +149,7 @@ fn find_snowc() -> PathBuf {
 #[test]
 fn e2e_service_counter() {
     let source = read_fixture("service_counter.snow");
-    let output = compile_and_run_with_timeout(&source, 10);
+    let output = compile_and_run_with_timeout(&source, 30);
     assert_eq!(output, "10\n15\n0\n");
 }
 
@@ -153,7 +158,7 @@ fn e2e_service_counter() {
 #[test]
 fn e2e_service_call_cast() {
     let source = read_fixture("service_call_cast.snow");
-    let output = compile_and_run_with_timeout(&source, 10);
+    let output = compile_and_run_with_timeout(&source, 30);
     assert_eq!(output, "100\n200\n0\n");
 }
 
@@ -162,7 +167,7 @@ fn e2e_service_call_cast() {
 #[test]
 fn e2e_service_state_management() {
     let source = read_fixture("service_state_management.snow");
-    let output = compile_and_run_with_timeout(&source, 10);
+    let output = compile_and_run_with_timeout(&source, 30);
     assert_eq!(output, "6\n");
 }
 
@@ -173,7 +178,7 @@ fn e2e_service_state_management() {
 #[test]
 fn e2e_job_async_await() {
     let source = read_fixture("job_async_await.snow");
-    let output = compile_and_run_with_timeout(&source, 10);
+    let output = compile_and_run_with_timeout(&source, 30);
     assert_eq!(output, "42\n");
 }
 
@@ -195,7 +200,7 @@ fn main() do
   spawn(worker)
 end
 "#;
-    let output = compile_and_run_with_timeout(source, 5);
+    let output = compile_and_run_with_timeout(source, 30);
     assert_eq!(output.trim(), "99");
 }
 
@@ -216,7 +221,7 @@ fn main() do
   send(pid, 42)
 end
 "#;
-    let output = compile_and_run_with_timeout(source, 5);
+    let output = compile_and_run_with_timeout(source, 30);
     assert_eq!(output.trim(), "42");
 }
 
@@ -236,7 +241,7 @@ fn main() do
   spawn(worker)
 end
 "#;
-    let output = compile_and_run_with_timeout(source, 5);
+    let output = compile_and_run_with_timeout(source, 30);
     assert_eq!(output.trim(), "timeout");
 }
 
@@ -248,21 +253,21 @@ end
 fn test_timer_sleep_basic() {
     let source = r#"
 fn main() do
-  Timer.sleep(100)
+  Timer.sleep(50)
   println("awake")
 end
 "#;
-    let output = compile_and_run_with_timeout(source, 5);
+    let output = compile_and_run_with_timeout(source, 30);
     assert_eq!(output.trim(), "awake");
 }
 
 /// Test: Timer.sleep doesn't block other actors. Spawns two actors: one sleeps
-/// 200ms then prints "slow", the other prints "fast" immediately. Both should complete.
+/// 50ms then prints "slow", the other prints "fast" immediately. Both should complete.
 #[test]
 fn test_timer_sleep_does_not_block_other_actors() {
     let source = r#"
 actor slow() do
-  Timer.sleep(200)
+  Timer.sleep(50)
   println("slow")
 end
 
@@ -273,10 +278,10 @@ end
 fn main() do
   spawn(slow)
   spawn(fast)
-  Timer.sleep(500)
+  Timer.sleep(150)
 end
 "#;
-    let output = compile_and_run_with_timeout(source, 5);
+    let output = compile_and_run_with_timeout(source, 30);
     assert!(output.contains("fast"), "Expected 'fast' in output: {}", output);
     assert!(output.contains("slow"), "Expected 'slow' in output: {}", output);
 }
@@ -295,11 +300,11 @@ end
 
 fn main() do
   let pid = spawn(worker)
-  Timer.send_after(pid, 100, 99)
-  Timer.sleep(500)
+  Timer.send_after(pid, 50, 99)
+  Timer.sleep(200)
 end
 "#;
-    let output = compile_and_run_with_timeout(source, 5);
+    let output = compile_and_run_with_timeout(source, 30);
     assert_eq!(output.trim(), "99");
 }
 
@@ -318,10 +323,10 @@ end
 
 fn main() do
   let pid = spawn(worker)
-  Timer.send_after(pid, 200, 77)
-  Timer.sleep(1000)
+  Timer.send_after(pid, 100, 77)
+  Timer.sleep(500)
 end
 "#;
-    let output = compile_and_run_with_timeout(source, 5);
+    let output = compile_and_run_with_timeout(source, 30);
     assert_eq!(output.trim(), "77");
 }
