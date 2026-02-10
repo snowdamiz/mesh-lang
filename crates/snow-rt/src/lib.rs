@@ -43,9 +43,10 @@ pub use actor::{
 pub use actor::service::{snow_service_call, snow_service_reply};
 pub use collections::list::{
     snow_list_all, snow_list_any, snow_list_append, snow_list_concat, snow_list_contains,
-    snow_list_filter, snow_list_find, snow_list_from_array, snow_list_get, snow_list_head,
-    snow_list_length, snow_list_map, snow_list_new, snow_list_reduce, snow_list_reverse,
-    snow_list_sort, snow_list_tail,
+    snow_list_drop, snow_list_enumerate, snow_list_filter, snow_list_find, snow_list_flat_map,
+    snow_list_flatten, snow_list_from_array, snow_list_get, snow_list_head, snow_list_last,
+    snow_list_length, snow_list_map, snow_list_new, snow_list_nth, snow_list_reduce,
+    snow_list_reverse, snow_list_sort, snow_list_tail, snow_list_take, snow_list_zip,
 };
 pub use collections::map::{
     snow_map_delete, snow_map_get, snow_map_has_key, snow_map_keys, snow_map_new, snow_map_put,

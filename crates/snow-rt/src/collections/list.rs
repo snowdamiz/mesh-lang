@@ -58,6 +58,17 @@ unsafe fn alloc_list_from(src: *const u64, len: u64, cap: u64) -> *mut u8 {
     p
 }
 
+/// Allocate a 2-element tuple on the GC heap matching Snow's tuple layout.
+/// Layout: { u64 len=2, u64 elem0, u64 elem1 }
+pub(crate) unsafe fn alloc_pair(a: u64, b: u64) -> *mut u8 {
+    let total = 8 + 2 * 8; // len field + 2 elements
+    let p = snow_gc_alloc_actor(total as u64, 8);
+    *(p as *mut u64) = 2;           // len = 2
+    *((p as *mut u64).add(1)) = a;  // first element
+    *((p as *mut u64).add(2)) = b;  // second element
+    p
+}
+
 // ── Public API ────────────────────────────────────────────────────────
 
 /// Create an empty list.
@@ -608,6 +619,169 @@ pub extern "C" fn snow_list_contains(list: *mut u8, elem: u64) -> i8 {
         }
         0
     }
+}
+
+/// Zip two lists into a list of 2-tuples, truncated to the shorter length.
+#[no_mangle]
+pub extern "C" fn snow_list_zip(a: *mut u8, b: *mut u8) -> *mut u8 {
+    unsafe {
+        let len_a = list_len(a);
+        let len_b = list_len(b);
+        let len = len_a.min(len_b);
+
+        let result = alloc_list(len);
+        *(result as *mut u64) = len;
+        let src_a = list_data(a);
+        let src_b = list_data(b);
+        let dst = list_data_mut(result);
+
+        for i in 0..len as usize {
+            let pair = alloc_pair(*src_a.add(i), *src_b.add(i));
+            *dst.add(i) = pair as u64;
+        }
+        result
+    }
+}
+
+/// Apply a closure to each element that returns a list, then flatten all results.
+///
+/// If `env_ptr` is null, `fn_ptr` is called as `fn(element) -> list_ptr_as_u64`.
+/// If `env_ptr` is non-null, `fn_ptr` is called as `fn(env_ptr, element) -> list_ptr_as_u64`.
+#[no_mangle]
+pub extern "C" fn snow_list_flat_map(
+    list: *mut u8,
+    fn_ptr: *mut u8,
+    env_ptr: *mut u8,
+) -> *mut u8 {
+    type BareFn = unsafe extern "C" fn(u64) -> u64;
+    type ClosureFn = unsafe extern "C" fn(*mut u8, u64) -> u64;
+
+    unsafe {
+        let len = list_len(list);
+        let src = list_data(list);
+        let mut all_elems: Vec<u64> = Vec::new();
+
+        if env_ptr.is_null() {
+            let f: BareFn = std::mem::transmute(fn_ptr);
+            for i in 0..len as usize {
+                let sub_list = f(*src.add(i)) as *mut u8;
+                let sub_len = list_len(sub_list) as usize;
+                let sub_data = list_data(sub_list);
+                for j in 0..sub_len {
+                    all_elems.push(*sub_data.add(j));
+                }
+            }
+        } else {
+            let f: ClosureFn = std::mem::transmute(fn_ptr);
+            for i in 0..len as usize {
+                let sub_list = f(env_ptr, *src.add(i)) as *mut u8;
+                let sub_len = list_len(sub_list) as usize;
+                let sub_data = list_data(sub_list);
+                for j in 0..sub_len {
+                    all_elems.push(*sub_data.add(j));
+                }
+            }
+        }
+
+        let result_len = all_elems.len() as u64;
+        let result = alloc_list(result_len);
+        *(result as *mut u64) = result_len;
+        let dst = list_data_mut(result);
+        for (i, elem) in all_elems.iter().enumerate() {
+            *dst.add(i) = *elem;
+        }
+        result
+    }
+}
+
+/// Flatten a list of lists into a single list.
+///
+/// Each element of the outer list is treated as a list pointer (stored as u64).
+#[no_mangle]
+pub extern "C" fn snow_list_flatten(list: *mut u8) -> *mut u8 {
+    unsafe {
+        let outer_len = list_len(list) as usize;
+        let outer_data = list_data(list);
+        let mut all_elems: Vec<u64> = Vec::new();
+
+        for i in 0..outer_len {
+            let sub_list = *outer_data.add(i) as *mut u8;
+            let sub_len = list_len(sub_list) as usize;
+            let sub_data = list_data(sub_list);
+            for j in 0..sub_len {
+                all_elems.push(*sub_data.add(j));
+            }
+        }
+
+        let result_len = all_elems.len() as u64;
+        let result = alloc_list(result_len);
+        *(result as *mut u64) = result_len;
+        let dst = list_data_mut(result);
+        for (i, elem) in all_elems.iter().enumerate() {
+            *dst.add(i) = *elem;
+        }
+        result
+    }
+}
+
+/// Create a list of (index, element) tuples from a list.
+#[no_mangle]
+pub extern "C" fn snow_list_enumerate(list: *mut u8) -> *mut u8 {
+    unsafe {
+        let len = list_len(list);
+        let src = list_data(list);
+        let result = alloc_list(len);
+        *(result as *mut u64) = len;
+        let dst = list_data_mut(result);
+
+        for i in 0..len as usize {
+            let pair = alloc_pair(i as u64, *src.add(i));
+            *dst.add(i) = pair as u64;
+        }
+        result
+    }
+}
+
+/// Return a new list with the first `n` elements.
+/// Clamps `n` to [0, len].
+#[no_mangle]
+pub extern "C" fn snow_list_take(list: *mut u8, n: i64) -> *mut u8 {
+    unsafe {
+        let len = list_len(list);
+        let actual_n = (n.max(0) as u64).min(len);
+        alloc_list_from(list_data(list), actual_n, actual_n)
+    }
+}
+
+/// Return a new list with the first `n` elements removed.
+/// Clamps `n` to [0, len].
+#[no_mangle]
+pub extern "C" fn snow_list_drop(list: *mut u8, n: i64) -> *mut u8 {
+    unsafe {
+        let len = list_len(list);
+        let actual_n = (n.max(0) as u64).min(len);
+        let remaining = len - actual_n;
+        alloc_list_from(list_data(list).add(actual_n as usize), remaining, remaining)
+    }
+}
+
+/// Return the last element of the list. Panics if empty.
+#[no_mangle]
+pub extern "C" fn snow_list_last(list: *mut u8) -> u64 {
+    unsafe {
+        let len = list_len(list);
+        if len == 0 {
+            panic!("snow_list_last: empty list");
+        }
+        *list_data(list).add(len as usize - 1)
+    }
+}
+
+/// Return the element at index `n`. Panics if out of bounds.
+/// (Alias for get, used by List.nth module-qualified access.)
+#[no_mangle]
+pub extern "C" fn snow_list_nth(list: *mut u8, index: i64) -> u64 {
+    snow_list_get(list, index)
 }
 
 #[cfg(test)]
