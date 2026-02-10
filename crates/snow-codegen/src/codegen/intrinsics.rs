@@ -274,6 +274,16 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
     // snow_list_contains(list: ptr, elem: i64) -> i8 (Bool)
     module.add_function("snow_list_contains", i8_type.fn_type(&[ptr_type.into(), i64_type.into()], false), Some(inkwell::module::Linkage::External));
 
+    // Phase 47: List zip, flat_map, flatten, enumerate, take, drop, last, nth
+    module.add_function("snow_list_zip", ptr_type.fn_type(&[ptr_type.into(), ptr_type.into()], false), Some(inkwell::module::Linkage::External));
+    module.add_function("snow_list_flat_map", ptr_type.fn_type(&[ptr_type.into(), ptr_type.into(), ptr_type.into()], false), Some(inkwell::module::Linkage::External));
+    module.add_function("snow_list_flatten", ptr_type.fn_type(&[ptr_type.into()], false), Some(inkwell::module::Linkage::External));
+    module.add_function("snow_list_enumerate", ptr_type.fn_type(&[ptr_type.into()], false), Some(inkwell::module::Linkage::External));
+    module.add_function("snow_list_take", ptr_type.fn_type(&[ptr_type.into(), i64_type.into()], false), Some(inkwell::module::Linkage::External));
+    module.add_function("snow_list_drop", ptr_type.fn_type(&[ptr_type.into(), i64_type.into()], false), Some(inkwell::module::Linkage::External));
+    module.add_function("snow_list_last", i64_type.fn_type(&[ptr_type.into()], false), Some(inkwell::module::Linkage::External));
+    module.add_function("snow_list_nth", i64_type.fn_type(&[ptr_type.into(), i64_type.into()], false), Some(inkwell::module::Linkage::External));
+
     // Map functions
     module.add_function("snow_map_new", ptr_type.fn_type(&[], false), Some(inkwell::module::Linkage::External));
     module.add_function("snow_map_new_typed", ptr_type.fn_type(&[i64_type.into()], false), Some(inkwell::module::Linkage::External));
@@ -590,6 +600,15 @@ mod tests {
         assert!(module.get_function("snow_list_any").is_some());
         assert!(module.get_function("snow_list_all").is_some());
         assert!(module.get_function("snow_list_contains").is_some());
+        // Phase 47: List zip, flat_map, flatten, enumerate, take, drop, last, nth
+        assert!(module.get_function("snow_list_zip").is_some());
+        assert!(module.get_function("snow_list_flat_map").is_some());
+        assert!(module.get_function("snow_list_flatten").is_some());
+        assert!(module.get_function("snow_list_enumerate").is_some());
+        assert!(module.get_function("snow_list_take").is_some());
+        assert!(module.get_function("snow_list_drop").is_some());
+        assert!(module.get_function("snow_list_last").is_some());
+        assert!(module.get_function("snow_list_nth").is_some());
         assert!(module.get_function("snow_map_new").is_some());
         assert!(module.get_function("snow_map_new_typed").is_some());
         assert!(module.get_function("snow_map_put").is_some());

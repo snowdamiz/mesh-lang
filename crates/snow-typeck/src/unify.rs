@@ -314,6 +314,15 @@ impl InferCtx {
                 }
             }
 
+            // Tuple escape hatch: untyped Tuple (Con) unifies with any typed tuple (Ty::Tuple).
+            // This allows Tuple.first/Tuple.second to accept concrete tuple types like (Int, String).
+            (Ty::Con(ref c), Ty::Tuple(_))
+            | (Ty::Tuple(_), Ty::Con(ref c))
+                if c.name == "Tuple" =>
+            {
+                Ok(())
+            }
+
             // Tuple types -- unify element-wise.
             (Ty::Tuple(e1), Ty::Tuple(e2)) => {
                 if e1.len() != e2.len() {

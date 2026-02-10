@@ -979,3 +979,33 @@ fn e2e_string_parse() {
     let output = compile_and_run(&source);
     assert_eq!(output, "42\nnone\n3.14\nnone\n-100\n");
 }
+
+// ── Extended List Collection Operations E2E Tests (Phase 47 Plan 01) ────
+
+#[test]
+fn e2e_stdlib_list_zip() {
+    let source = read_fixture("stdlib_list_zip.snow");
+    let output = compile_and_run(&source);
+    assert_eq!(output, "1\n10\n3\n2\n");
+}
+
+#[test]
+fn e2e_stdlib_list_flat_map() {
+    let source = read_fixture("stdlib_list_flat_map.snow");
+    let output = compile_and_run(&source);
+    assert_eq!(output, "6\n1\n10\n2\n5\n1\n5\n");
+}
+
+#[test]
+fn e2e_stdlib_list_enumerate() {
+    let source = read_fixture("stdlib_list_enumerate.snow");
+    let output = compile_and_run(&source);
+    assert_eq!(output, "3\n0\n10\n");
+}
+
+#[test]
+fn e2e_stdlib_list_take_drop() {
+    let source = read_fixture("stdlib_list_take_drop.snow");
+    let output = compile_and_run(&source);
+    assert_eq!(output, "3\n10\n30\n2\n40\n5\n0\n");
+}

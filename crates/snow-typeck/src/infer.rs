@@ -355,6 +355,18 @@ fn stdlib_modules() -> HashMap<String, HashMap<String, Scheme>> {
     list_mod.insert("any".to_string(), Scheme { vars: vec![t_var], ty: Ty::fun(vec![list_t.clone(), t_to_bool.clone()], Ty::bool()) });
     list_mod.insert("all".to_string(), Scheme { vars: vec![t_var], ty: Ty::fun(vec![list_t.clone(), t_to_bool.clone()], Ty::bool()) });
     list_mod.insert("contains".to_string(), Scheme { vars: vec![t_var], ty: Ty::fun(vec![list_t.clone(), t.clone()], Ty::bool()) });
+    // Phase 47: zip, flat_map, flatten, enumerate, take, drop, last, nth
+    let u = Ty::Var(u_var);
+    let list_u2 = Ty::list(u.clone());
+    list_mod.insert("zip".to_string(), Scheme { vars: vec![t_var, u_var], ty: Ty::fun(vec![list_t.clone(), list_u2.clone()], Ty::list(Ty::Tuple(vec![t.clone(), u.clone()]))) });
+    let t_to_list_u = Ty::fun(vec![t.clone()], list_u2.clone());
+    list_mod.insert("flat_map".to_string(), Scheme { vars: vec![t_var, u_var], ty: Ty::fun(vec![list_t.clone(), t_to_list_u], list_u2.clone()) });
+    list_mod.insert("flatten".to_string(), Scheme { vars: vec![t_var], ty: Ty::fun(vec![Ty::list(list_t.clone())], list_t.clone()) });
+    list_mod.insert("enumerate".to_string(), Scheme { vars: vec![t_var], ty: Ty::fun(vec![list_t.clone()], Ty::list(Ty::Tuple(vec![Ty::int(), t.clone()]))) });
+    list_mod.insert("take".to_string(), Scheme { vars: vec![t_var], ty: Ty::fun(vec![list_t.clone(), Ty::int()], list_t.clone()) });
+    list_mod.insert("drop".to_string(), Scheme { vars: vec![t_var], ty: Ty::fun(vec![list_t.clone(), Ty::int()], list_t.clone()) });
+    list_mod.insert("last".to_string(), Scheme { vars: vec![t_var], ty: Ty::fun(vec![list_t.clone()], t.clone()) });
+    list_mod.insert("nth".to_string(), Scheme { vars: vec![t_var], ty: Ty::fun(vec![list_t.clone(), Ty::int()], t.clone()) });
     modules.insert("List".to_string(), list_mod);
 
     // Map module -- polymorphic: Map<K, V> with type variables for key/value.

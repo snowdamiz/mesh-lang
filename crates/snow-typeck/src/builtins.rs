@@ -325,6 +325,17 @@ pub fn register_builtins(
         env.insert("list_any".into(), Scheme { vars: vec![t_var], ty: Ty::fun(vec![list_t.clone(), t_to_bool.clone()], Ty::bool()) });
         env.insert("list_all".into(), Scheme { vars: vec![t_var], ty: Ty::fun(vec![list_t.clone(), t_to_bool.clone()], Ty::bool()) });
         env.insert("list_contains".into(), Scheme { vars: vec![t_var], ty: Ty::fun(vec![list_t.clone(), t.clone()], Ty::bool()) });
+
+        // Phase 47: zip, flat_map, flatten, enumerate, take, drop, last, nth
+        env.insert("list_zip".into(), Scheme { vars: vec![t_var, u_var], ty: Ty::fun(vec![list_t.clone(), list_u.clone()], Ty::list(Ty::Tuple(vec![t.clone(), u.clone()]))) });
+        let t_to_list_u = Ty::fun(vec![t.clone()], list_u.clone());
+        env.insert("list_flat_map".into(), Scheme { vars: vec![t_var, u_var], ty: Ty::fun(vec![list_t.clone(), t_to_list_u], list_u.clone()) });
+        env.insert("list_flatten".into(), Scheme { vars: vec![t_var], ty: Ty::fun(vec![Ty::list(list_t.clone())], list_t.clone()) });
+        env.insert("list_enumerate".into(), Scheme { vars: vec![t_var], ty: Ty::fun(vec![list_t.clone()], Ty::list(Ty::Tuple(vec![Ty::int(), t.clone()]))) });
+        env.insert("list_take".into(), Scheme { vars: vec![t_var], ty: Ty::fun(vec![list_t.clone(), Ty::int()], list_t.clone()) });
+        env.insert("list_drop".into(), Scheme { vars: vec![t_var], ty: Ty::fun(vec![list_t.clone(), Ty::int()], list_t.clone()) });
+        env.insert("list_last".into(), Scheme { vars: vec![t_var], ty: Ty::fun(vec![list_t.clone()], t.clone()) });
+        env.insert("list_nth".into(), Scheme { vars: vec![t_var], ty: Ty::fun(vec![list_t.clone(), Ty::int()], t.clone()) });
     }
 
     // ── Map module functions (polymorphic) ──────────────────────────────

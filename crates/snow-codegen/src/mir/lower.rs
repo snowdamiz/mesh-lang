@@ -557,6 +557,15 @@ impl<'a> Lowerer<'a> {
         self.known_functions.insert("snow_list_any".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr, MirType::Ptr], Box::new(MirType::Bool)));
         self.known_functions.insert("snow_list_all".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr, MirType::Ptr], Box::new(MirType::Bool)));
         self.known_functions.insert("snow_list_contains".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Int], Box::new(MirType::Bool)));
+        // Phase 47: zip, flat_map, flatten, enumerate, take, drop, last, nth
+        self.known_functions.insert("snow_list_zip".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
+        self.known_functions.insert("snow_list_flat_map".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
+        self.known_functions.insert("snow_list_flatten".to_string(), MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Ptr)));
+        self.known_functions.insert("snow_list_enumerate".to_string(), MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Ptr)));
+        self.known_functions.insert("snow_list_take".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Int], Box::new(MirType::Ptr)));
+        self.known_functions.insert("snow_list_drop".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Int], Box::new(MirType::Ptr)));
+        self.known_functions.insert("snow_list_last".to_string(), MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Ptr)));
+        self.known_functions.insert("snow_list_nth".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Int], Box::new(MirType::Ptr)));
         // Map
         self.known_functions.insert("snow_map_new".to_string(), MirType::FnPtr(vec![], Box::new(MirType::Ptr)));
         self.known_functions.insert("snow_map_new_typed".to_string(), MirType::FnPtr(vec![MirType::Int], Box::new(MirType::Ptr)));
@@ -3782,12 +3791,24 @@ impl<'a> Lowerer<'a> {
             .map(|al| al.args().map(|a| self.lower_expr(&a)).collect())
             .unwrap_or_default();
 
-        let ty = self.resolve_range(call.syntax().text_range());
+        let mut ty = self.resolve_range(call.syntax().text_range());
 
         let callee = match callee {
             Some(c) => c,
             None => return MirExpr::Unit,
         };
+
+        // When calling a known stdlib function whose return type is Ptr but
+        // the typeck resolved to a Tuple type, use Ptr. This prevents LLVM
+        // struct/pointer mismatches where typeck resolves e.g. List.head on
+        // List<(A,B)> as Tuple([A,B]) but the runtime returns an opaque Ptr.
+        if let MirExpr::Var(ref name, ref callee_ty) = callee {
+            if let MirType::FnPtr(_, ref ret_ty) = callee_ty {
+                if matches!(ty, MirType::Tuple(_)) && matches!(**ret_ty, MirType::Ptr) {
+                    ty = MirType::Ptr;
+                }
+            }
+        }
 
         // Check if this is a variant constructor call (e.g., Circle(5.0)).
         if let MirExpr::Var(ref name, _) = callee {
@@ -4096,7 +4117,14 @@ impl<'a> Lowerer<'a> {
                         let prefixed = format!("{}_{}", base_name.to_lowercase(), field);
                         // Map to runtime name
                         let runtime_name = map_builtin_name(&prefixed);
-                        let ty = self.resolve_range(fa.syntax().text_range());
+                        // Use known_functions type if available (more accurate for
+                        // opaque Ptr returns like List.head on List<(A,B)>), otherwise
+                        // fall back to typeck-resolved type.
+                        let ty = if let Some(known_ty) = self.known_functions.get(&runtime_name) {
+                            known_ty.clone()
+                        } else {
+                            self.resolve_range(fa.syntax().text_range())
+                        };
                         return MirExpr::Var(runtime_name, ty);
                     }
 
@@ -7566,6 +7594,15 @@ fn map_builtin_name(name: &str) -> String {
         "list_any" => "snow_list_any".to_string(),
         "list_all" => "snow_list_all".to_string(),
         "list_contains" => "snow_list_contains".to_string(),
+        // Phase 47: zip, flat_map, flatten, enumerate, take, drop, last, nth
+        "list_zip" => "snow_list_zip".to_string(),
+        "list_flat_map" => "snow_list_flat_map".to_string(),
+        "list_flatten" => "snow_list_flatten".to_string(),
+        "list_enumerate" => "snow_list_enumerate".to_string(),
+        "list_take" => "snow_list_take".to_string(),
+        "list_drop" => "snow_list_drop".to_string(),
+        "list_last" => "snow_list_last".to_string(),
+        "list_nth" => "snow_list_nth".to_string(),
         // Map operations
         "map_new" => "snow_map_new".to_string(),
         "map_put" => "snow_map_put".to_string(),
@@ -7608,6 +7645,12 @@ fn map_builtin_name(name: &str) -> String {
         "reduce" => "snow_list_reduce".to_string(),
         "head" => "snow_list_head".to_string(),
         "tail" => "snow_list_tail".to_string(),
+        "zip" => "snow_list_zip".to_string(),
+        "flat_map" => "snow_list_flat_map".to_string(),
+        "flatten" => "snow_list_flatten".to_string(),
+        "enumerate" => "snow_list_enumerate".to_string(),
+        "last" => "snow_list_last".to_string(),
+        "nth" => "snow_list_nth".to_string(),
         // ── JSON functions (Phase 8 Plan 04) ─────────────────────────
         "json_parse" => "snow_json_parse".to_string(),
         "json_encode" => "snow_json_encode".to_string(),
