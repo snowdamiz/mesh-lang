@@ -11,6 +11,8 @@
 use std::ptr;
 
 use crate::gc::snow_gc_alloc_actor;
+use crate::option::alloc_option;
+use crate::collections::list::{snow_list_builder_new, snow_list_builder_push};
 
 /// A GC-managed Snow string.
 ///
@@ -278,6 +280,84 @@ pub extern "C" fn snow_string_eq(a: *const SnowString, b: *const SnowString) -> 
             1
         } else {
             0
+        }
+    }
+}
+
+// ── String split/join/parse operations (Phase 46 Plan 02) ────────────
+
+/// Split a string by a delimiter, returning a List<String>.
+///
+/// Uses the list builder API to construct the result list efficiently.
+#[no_mangle]
+pub extern "C" fn snow_string_split(
+    s: *const SnowString,
+    delim: *const SnowString,
+) -> *mut u8 {
+    unsafe {
+        let text = (*s).as_str();
+        let delimiter = (*delim).as_str();
+        let parts: Vec<&str> = text.split(delimiter).collect();
+        let list = snow_list_builder_new(parts.len() as i64);
+        for part in &parts {
+            let snow_str = snow_string_new(part.as_ptr(), part.len() as u64);
+            snow_list_builder_push(list, snow_str as u64);
+        }
+        list
+    }
+}
+
+/// Join a list of strings with a separator, returning a new String.
+///
+/// Reads list elements as SnowString pointers (stored as u64 in the list).
+/// List layout: u64 length at offset 0, u64 elements starting at offset 16
+/// (after length + capacity header).
+#[no_mangle]
+pub extern "C" fn snow_string_join(
+    list: *mut u8,
+    sep: *const SnowString,
+) -> *mut u8 {
+    unsafe {
+        let separator = (*sep).as_str();
+        let len = *(list as *const u64) as usize;
+        let data = (list as *const u64).add(2); // skip length + capacity header
+        let mut parts: Vec<&str> = Vec::with_capacity(len);
+        for i in 0..len {
+            let elem = *data.add(i);
+            let snow_str = elem as *const SnowString;
+            parts.push((*snow_str).as_str());
+        }
+        let result = parts.join(separator);
+        snow_string_new(result.as_ptr(), result.len() as u64) as *mut u8
+    }
+}
+
+/// Parse a string to an integer, returning Option<Int>.
+///
+/// Returns Some(n) on success (tag 0), None on failure (tag 1).
+#[no_mangle]
+pub extern "C" fn snow_string_to_int(s: *const SnowString) -> *mut u8 {
+    unsafe {
+        let text = (*s).as_str().trim();
+        match text.parse::<i64>() {
+            Ok(val) => alloc_option(0, val as u64 as *mut u8) as *mut u8,
+            Err(_) => alloc_option(1, std::ptr::null_mut()) as *mut u8,
+        }
+    }
+}
+
+/// Parse a string to a float, returning Option<Float>.
+///
+/// Returns Some(f) on success (tag 0), None on failure (tag 1).
+/// CRITICAL: Uses f64::to_bits() to store the float as its bit pattern
+/// in the u64 value field of SnowOption.
+#[no_mangle]
+pub extern "C" fn snow_string_to_float(s: *const SnowString) -> *mut u8 {
+    unsafe {
+        let text = (*s).as_str().trim();
+        match text.parse::<f64>() {
+            Ok(val) => alloc_option(0, f64::to_bits(val) as *mut u8) as *mut u8,
+            Err(_) => alloc_option(1, std::ptr::null_mut()) as *mut u8,
         }
     }
 }

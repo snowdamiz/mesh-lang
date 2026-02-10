@@ -85,7 +85,8 @@ pub use panic::snow_panic;
 pub use string::{
     snow_bool_to_string, snow_float_to_string, snow_int_to_string, snow_print, snow_println,
     snow_string_concat, snow_string_contains, snow_string_ends_with, snow_string_eq,
-    snow_string_length, snow_string_new, snow_string_replace, snow_string_slice,
-    snow_string_starts_with, snow_string_to_lower, snow_string_to_upper, snow_string_trim,
+    snow_string_join, snow_string_length, snow_string_new, snow_string_replace, snow_string_slice,
+    snow_string_split, snow_string_starts_with, snow_string_to_float, snow_string_to_int,
+    snow_string_to_lower, snow_string_to_upper, snow_string_trim,
     SnowString,
 };
