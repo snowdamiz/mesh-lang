@@ -725,6 +725,70 @@ impl<'ctx> CodeGen<'ctx> {
                         .map_err(|e| e.to_string())?;
                     return Ok(int_val.into());
                 }
+                // ── pow/sqrt/floor/ceil/round (Phase 43 Plan 02) ──────────
+                "snow_math_pow" => {
+                    let base_val = self.codegen_expr(&args[0])?;
+                    let exp_val = self.codegen_expr(&args[1])?;
+                    let intrinsic = Intrinsic::find("llvm.pow").ok_or("llvm.pow not found")?;
+                    let f64_ty = self.context.f64_type();
+                    let decl = intrinsic.get_declaration(&self.module, &[f64_ty.into()])
+                        .ok_or("Failed to get llvm.pow declaration")?;
+                    let result = self.builder.build_call(decl, &[base_val.into(), exp_val.into()], "pow")
+                        .map_err(|e| e.to_string())?;
+                    return result.try_as_basic_value().basic().ok_or("pow returned void".into());
+                }
+                "snow_math_sqrt" => {
+                    let arg_val = self.codegen_expr(&args[0])?;
+                    let intrinsic = Intrinsic::find("llvm.sqrt").ok_or("llvm.sqrt not found")?;
+                    let f64_ty = self.context.f64_type();
+                    let decl = intrinsic.get_declaration(&self.module, &[f64_ty.into()])
+                        .ok_or("Failed to get llvm.sqrt declaration")?;
+                    let result = self.builder.build_call(decl, &[arg_val.into()], "sqrt")
+                        .map_err(|e| e.to_string())?;
+                    return result.try_as_basic_value().basic().ok_or("sqrt returned void".into());
+                }
+                "snow_math_floor" => {
+                    let arg_val = self.codegen_expr(&args[0])?;
+                    let intrinsic = Intrinsic::find("llvm.floor").ok_or("llvm.floor not found")?;
+                    let f64_ty = self.context.f64_type();
+                    let decl = intrinsic.get_declaration(&self.module, &[f64_ty.into()])
+                        .ok_or("Failed to get llvm.floor declaration")?;
+                    let float_result = self.builder.build_call(decl, &[arg_val.into()], "floor")
+                        .map_err(|e| e.to_string())?
+                        .try_as_basic_value().basic().ok_or("floor returned void")?;
+                    let int_result = self.builder
+                        .build_float_to_signed_int(float_result.into_float_value(), self.context.i64_type(), "floor_to_int")
+                        .map_err(|e| e.to_string())?;
+                    return Ok(int_result.into());
+                }
+                "snow_math_ceil" => {
+                    let arg_val = self.codegen_expr(&args[0])?;
+                    let intrinsic = Intrinsic::find("llvm.ceil").ok_or("llvm.ceil not found")?;
+                    let f64_ty = self.context.f64_type();
+                    let decl = intrinsic.get_declaration(&self.module, &[f64_ty.into()])
+                        .ok_or("Failed to get llvm.ceil declaration")?;
+                    let float_result = self.builder.build_call(decl, &[arg_val.into()], "ceil")
+                        .map_err(|e| e.to_string())?
+                        .try_as_basic_value().basic().ok_or("ceil returned void")?;
+                    let int_result = self.builder
+                        .build_float_to_signed_int(float_result.into_float_value(), self.context.i64_type(), "ceil_to_int")
+                        .map_err(|e| e.to_string())?;
+                    return Ok(int_result.into());
+                }
+                "snow_math_round" => {
+                    let arg_val = self.codegen_expr(&args[0])?;
+                    let intrinsic = Intrinsic::find("llvm.round").ok_or("llvm.round not found")?;
+                    let f64_ty = self.context.f64_type();
+                    let decl = intrinsic.get_declaration(&self.module, &[f64_ty.into()])
+                        .ok_or("Failed to get llvm.round declaration")?;
+                    let float_result = self.builder.build_call(decl, &[arg_val.into()], "round")
+                        .map_err(|e| e.to_string())?
+                        .try_as_basic_value().basic().ok_or("round returned void")?;
+                    let int_result = self.builder
+                        .build_float_to_signed_int(float_result.into_float_value(), self.context.i64_type(), "round_to_int")
+                        .map_err(|e| e.to_string())?;
+                    return Ok(int_result.into());
+                }
                 _ => {} // Fall through to normal call handling
             }
         }
