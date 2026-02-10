@@ -487,6 +487,12 @@ fn stdlib_modules() -> HashMap<String, HashMap<String, Scheme>> {
     math_mod.insert("min".to_string(), Scheme { vars: vec![math_t_var], ty: Ty::fun(vec![math_t.clone(), math_t.clone()], math_t.clone()) });
     math_mod.insert("max".to_string(), Scheme { vars: vec![math_t_var], ty: Ty::fun(vec![math_t.clone(), math_t.clone()], math_t.clone()) });
     math_mod.insert("pi".to_string(), Scheme::mono(Ty::float()));
+    // ── pow/sqrt/floor/ceil/round (Phase 43 Plan 02) ──────────────────
+    math_mod.insert("pow".to_string(), Scheme::mono(Ty::fun(vec![Ty::float(), Ty::float()], Ty::float())));
+    math_mod.insert("sqrt".to_string(), Scheme::mono(Ty::fun(vec![Ty::float()], Ty::float())));
+    math_mod.insert("floor".to_string(), Scheme::mono(Ty::fun(vec![Ty::float()], Ty::int())));
+    math_mod.insert("ceil".to_string(), Scheme::mono(Ty::fun(vec![Ty::float()], Ty::int())));
+    math_mod.insert("round".to_string(), Scheme::mono(Ty::fun(vec![Ty::float()], Ty::int())));
     modules.insert("Math".to_string(), math_mod);
 
     // ── Int module (Phase 43 Plan 01) ──────────────────────────────────
