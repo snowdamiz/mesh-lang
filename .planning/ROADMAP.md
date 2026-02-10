@@ -119,11 +119,12 @@ See milestones/v1.9-ROADMAP.md for full phase details.
   3. Structs with nested `deriving(Json)` structs, `Option<T>` fields, `List<T>` fields, and `Map<String, V>` fields all round-trip correctly through JSON
   4. Compiler emits a clear error when `deriving(Json)` is used on a struct with a non-serializable field type
   5. Int and Float values survive JSON round-trip without type confusion (42 stays Int, 3.14 stays Float)
-**Plans**: TBD
+**Plans:** 3 plans
 
 Plans:
-- [ ] 49-01: TBD
-- [ ] 49-02: TBD
+- [ ] 49-01-PLAN.md -- Runtime foundation: JSON INT/FLOAT tag split + 9 structured JSON functions with three-point registration
+- [ ] 49-02-PLAN.md -- Compiler pipeline: typeck deriving(Json) validation + MIR to_json/from_json generation + call dispatch wiring
+- [ ] 49-03-PLAN.md -- E2E test suite: 7 tests + 1 compile-fail covering all 9 requirements
 
 ### Phase 50: JSON Serde -- Sum Types & Generics
 **Goal**: Users can serialize any Snow data type to JSON, including sum types and generic structs
@@ -214,7 +215,7 @@ Phases execute in numeric order: 49 -> 50 -> 51 -> 52 -> 53 -> 54
 | 33-36 | v1.7 | 8/8 | Complete | 2026-02-09 |
 | 37-42 | v1.8 | 12/12 | Complete | 2026-02-09 |
 | 43-48 | v1.9 | 13/13 | Complete | 2026-02-10 |
-| 49. JSON Serde -- Structs | v2.0 | 0/TBD | Not started | - |
+| 49. JSON Serde -- Structs | v2.0 | 0/3 | Not started | - |
 | 50. JSON Serde -- Sum Types & Generics | v2.0 | 0/TBD | Not started | - |
 | 51. HTTP Path Parameters | v2.0 | 0/TBD | Not started | - |
 | 52. HTTP Middleware | v2.0 | 0/TBD | Not started | - |
