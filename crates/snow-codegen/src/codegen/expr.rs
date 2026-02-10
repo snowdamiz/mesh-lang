@@ -127,9 +127,9 @@ impl<'ctx> CodeGen<'ctx> {
             MirExpr::ActorReceive {
                 arms,
                 timeout_ms,
-                timeout_body: _,
+                timeout_body,
                 ty,
-            } => self.codegen_actor_receive(arms, timeout_ms.as_deref(), ty),
+            } => self.codegen_actor_receive(arms, timeout_ms.as_deref(), timeout_body.as_deref(), ty),
 
             MirExpr::ActorSelf { ty: _ } => self.codegen_actor_self(),
 
@@ -1711,10 +1711,10 @@ impl<'ctx> CodeGen<'ctx> {
         &mut self,
         arms: &[MirMatchArm],
         timeout_ms: Option<&MirExpr>,
+        timeout_body: Option<&MirExpr>,
         result_ty: &MirType,
     ) -> Result<BasicValueEnum<'ctx>, String> {
         let i64_ty = self.context.i64_type();
-        let ptr_ty = self.context.ptr_type(inkwell::AddressSpace::default());
 
         // Evaluate timeout: -1 for infinite wait, or the specified value.
         let timeout_val = if let Some(timeout_expr) = timeout_ms {
@@ -1724,7 +1724,7 @@ impl<'ctx> CodeGen<'ctx> {
             i64_ty.const_int(u64::MAX, true) // -1 as i64
         };
 
-        // Call snow_actor_receive(timeout_ms) -> ptr
+        // Call snow_actor_receive(timeout_ms) -> ptr (null when timeout fires)
         let receive_fn = get_intrinsic(&self.module, "snow_actor_receive");
         let msg_ptr = self
             .builder
@@ -1735,7 +1735,79 @@ impl<'ctx> CodeGen<'ctx> {
             .ok_or("snow_actor_receive returned void")?
             .into_pointer_value();
 
-        // Message layout: [u64 type_tag (8 bytes), u64 data_len (8 bytes), u8... data]
+        // When timeout_body is present, we need null-check branching:
+        //   [snow_actor_receive] -> [is_null?] -> timeout_bb (null) / msg_bb (non-null) -> recv_merge_bb
+        // When timeout_body is None, the runtime waits indefinitely (no null possible).
+        if let Some(timeout_expr) = timeout_body {
+            let fn_val = self.current_function();
+            let result_llvm_ty = self.llvm_type(result_ty);
+            let result_alloca = self
+                .builder
+                .build_alloca(result_llvm_ty, "recv_result")
+                .map_err(|e| e.to_string())?;
+
+            let timeout_bb = self.context.append_basic_block(fn_val, "timeout_bb");
+            let msg_bb = self.context.append_basic_block(fn_val, "msg_bb");
+            let recv_merge_bb = self.context.append_basic_block(fn_val, "recv_merge_bb");
+
+            // Null check: timeout fires when snow_actor_receive returns null.
+            let is_null = self
+                .builder
+                .build_is_null(msg_ptr, "msg_is_null")
+                .map_err(|e| e.to_string())?;
+            self.builder
+                .build_conditional_branch(is_null, timeout_bb, msg_bb)
+                .map_err(|e| e.to_string())?;
+
+            // timeout_bb: execute the timeout body expression.
+            self.builder.position_at_end(timeout_bb);
+            let timeout_val = self.codegen_expr(timeout_expr)?;
+            if self.builder.get_insert_block().unwrap().get_terminator().is_none() {
+                self.builder
+                    .build_store(result_alloca, timeout_val)
+                    .map_err(|e| e.to_string())?;
+                self.builder
+                    .build_unconditional_branch(recv_merge_bb)
+                    .map_err(|e| e.to_string())?;
+            }
+
+            // msg_bb: process the received message (existing logic).
+            self.builder.position_at_end(msg_bb);
+            let msg_val = self.codegen_recv_load_message(msg_ptr, result_ty)?;
+            let msg_result = self.codegen_recv_process_arms(arms, msg_val)?;
+            if self.builder.get_insert_block().unwrap().get_terminator().is_none() {
+                self.builder
+                    .build_store(result_alloca, msg_result)
+                    .map_err(|e| e.to_string())?;
+                self.builder
+                    .build_unconditional_branch(recv_merge_bb)
+                    .map_err(|e| e.to_string())?;
+            }
+
+            // recv_merge_bb: load and return the result.
+            self.builder.position_at_end(recv_merge_bb);
+            let result = self
+                .builder
+                .build_load(result_llvm_ty, result_alloca, "recv_val")
+                .map_err(|e| e.to_string())?;
+            Ok(result)
+        } else {
+            // No timeout body: infinite wait path (existing behavior, no null possible).
+            let msg_val = self.codegen_recv_load_message(msg_ptr, result_ty)?;
+            self.codegen_recv_process_arms(arms, msg_val)
+        }
+    }
+
+    /// Load the message data from the received message pointer.
+    /// Message layout: [u64 type_tag (8 bytes), u64 data_len (8 bytes), u8... data]
+    fn codegen_recv_load_message(
+        &mut self,
+        msg_ptr: inkwell::values::PointerValue<'ctx>,
+        result_ty: &MirType,
+    ) -> Result<BasicValueEnum<'ctx>, String> {
+        let i64_ty = self.context.i64_type();
+        let ptr_ty = self.context.ptr_type(inkwell::AddressSpace::default());
+
         // Skip the 16-byte header to get to the data.
         let data_ptr = unsafe {
             self.builder
@@ -1749,8 +1821,6 @@ impl<'ctx> CodeGen<'ctx> {
         };
 
         // Load the message data as the expected type.
-        // For simple types (Int, Float, Bool), load directly from data_ptr.
-        // For String (ptr), load a pointer.
         let msg_val: BasicValueEnum<'ctx> = match result_ty {
             MirType::Int => {
                 self.builder
@@ -1773,16 +1843,21 @@ impl<'ctx> CodeGen<'ctx> {
                     .map_err(|e| e.to_string())?
             }
             _ => {
-                // For other types, load as i64 (best effort).
                 self.builder
                     .build_load(i64_ty, data_ptr, "msg_data")
                     .map_err(|e| e.to_string())?
             }
         };
 
-        // Execute the first matching arm.
-        // For now, we support single-arm receive (wildcard/variable binding).
-        // More complex multi-arm pattern matching on messages is future work.
+        Ok(msg_val)
+    }
+
+    /// Process receive arms: bind pattern variable and execute arm body.
+    fn codegen_recv_process_arms(
+        &mut self,
+        arms: &[MirMatchArm],
+        msg_val: BasicValueEnum<'ctx>,
+    ) -> Result<BasicValueEnum<'ctx>, String> {
         if let Some(arm) = arms.first() {
             // Bind the pattern variable if it's a simple variable pattern.
             match &arm.pattern {
@@ -1801,7 +1876,6 @@ impl<'ctx> CodeGen<'ctx> {
                 }
                 MirPattern::Literal(_) => {
                     // Literal patterns in receive: just fall through to body.
-                    // Full pattern matching support is future work.
                 }
                 _ => {
                     // For other pattern types (constructor, tuple, etc.), skip binding.
