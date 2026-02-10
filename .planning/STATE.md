@@ -5,7 +5,7 @@
 See: .planning/PROJECT.md (updated 2026-02-09)
 
 **Core value:** Expressive, readable concurrency -- writing concurrent programs should feel as natural as sequential code, with supervision and fault tolerance built in.
-**Current focus:** v1.9 Stdlib & Ergonomics -- Phase 43 (Math Stdlib)
+**Current focus:** v1.9 Stdlib & Ergonomics -- Phase 44 (Receive Timeouts & Timers)
 
 ## Current Position
 
@@ -58,4 +58,4 @@ None.
 Last session: 2026-02-10
 Stopped at: Completed 43-02-PLAN.md (Phase 43 complete)
 Resume file: None
-Next action: Begin next v1.9 phase (44)
+Next action: /gsd:plan-phase 44
