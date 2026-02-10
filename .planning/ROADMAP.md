@@ -95,7 +95,7 @@ See milestones/v1.8-ROADMAP.md for full phase details.
 - [x] **Phase 44: Receive Timeouts & Timers** - Actor timeout codegen completion and timer primitives (completed 2026-02-09)
 - [x] **Phase 45: Error Propagation** - ? operator for Result/Option early return (completed 2026-02-10)
 - [x] **Phase 46: Core Collection Operations** - Sort, find, contains, String split/join/parse (completed 2026-02-10)
-- [ ] **Phase 47: Extended Collection Operations** - Zip, flat_map, enumerate, take/drop, Map/Set conversions
+- [x] **Phase 47: Extended Collection Operations** - Zip, flat_map, enumerate, take/drop, Map/Set conversions (completed 2026-02-10)
 - [ ] **Phase 48: Tail-Call Elimination** - Self-recursive tail calls transformed to loops
 
 ## Phase Details
@@ -168,8 +168,8 @@ Plans:
   4. User can convert between Map and List with Map.merge, Map.to_list, Map.from_list, and between Set and List with Set.difference, Set.to_list, Set.from_list
 **Plans:** 2 plans
 Plans:
-- [ ] 47-01-PLAN.md -- List operations (zip, flat_map, flatten, enumerate, take, drop)
-- [ ] 47-02-PLAN.md -- Map/Set conversions (merge, to_list, from_list, difference)
+- [x] 47-01-PLAN.md -- List operations (zip, flat_map, flatten, enumerate, take, drop)
+- [x] 47-02-PLAN.md -- Map/Set conversions (merge, to_list, from_list, difference)
 
 ### Phase 48: Tail-Call Elimination
 **Goal**: Self-recursive functions execute in constant stack space, making actor receive loops safe from stack overflow
@@ -201,7 +201,7 @@ Phases execute in numeric order: 43 -> 44 -> 45 -> 46 -> 47 -> 48
 | 44 | v1.9 | 2/2 | Complete | 2026-02-09 |
 | 45 | v1.9 | 3/3 | Complete | 2026-02-10 |
 | 46 | v1.9 | 2/2 | Complete | 2026-02-10 |
-| 47 | v1.9 | 0/2 | Not started | - |
+| 47 | v1.9 | 2/2 | Complete | 2026-02-10 |
 | 48 | v1.9 | 0/TBD | Not started | - |
 
-**Total: 46 phases shipped across 9 milestones. 137 plans completed. 2 phases remaining.**
+**Total: 47 phases shipped across 9 milestones. 139 plans completed. 1 phase remaining.**
