@@ -481,6 +481,23 @@ impl<'a> Lowerer<'a> {
             "snow_string_replace".to_string(),
             MirType::FnPtr(vec![MirType::String, MirType::String, MirType::String], Box::new(MirType::String)),
         );
+        // Phase 46: String split/join/to_int/to_float
+        self.known_functions.insert(
+            "snow_string_split".to_string(),
+            MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)),
+        );
+        self.known_functions.insert(
+            "snow_string_join".to_string(),
+            MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)),
+        );
+        self.known_functions.insert(
+            "snow_string_to_int".to_string(),
+            MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Ptr)),
+        );
+        self.known_functions.insert(
+            "snow_string_to_float".to_string(),
+            MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Ptr)),
+        );
         // File I/O functions
         self.known_functions.insert(
             "snow_file_read".to_string(),
@@ -7492,6 +7509,10 @@ fn map_builtin_name(name: &str) -> String {
         "string_to_upper" => "snow_string_to_upper".to_string(),
         "string_to_lower" => "snow_string_to_lower".to_string(),
         "string_replace" => "snow_string_replace".to_string(),
+        "string_split" => "snow_string_split".to_string(),
+        "string_join" => "snow_string_join".to_string(),
+        "string_to_int" => "snow_string_to_int".to_string(),
+        "string_to_float" => "snow_string_to_float".to_string(),
         // File I/O functions
         "file_read" => "snow_file_read".to_string(),
         "file_write" => "snow_file_write".to_string(),
@@ -7516,6 +7537,8 @@ fn map_builtin_name(name: &str) -> String {
         "to_lower" => "snow_string_to_lower".to_string(),
         "replace" => "snow_string_replace".to_string(),
         "slice" => "snow_string_slice".to_string(),
+        "split" => "snow_string_split".to_string(),
+        "join" => "snow_string_join".to_string(),
         "read_line" => "snow_io_read_line".to_string(),
         "eprintln" => "snow_io_eprintln".to_string(),
         // File bare names (from File import read, etc.)

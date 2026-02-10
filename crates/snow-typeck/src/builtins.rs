@@ -185,6 +185,22 @@ pub fn register_builtins(
             Ty::string(),
         )),
     );
+    env.insert(
+        "string_split".into(),
+        Scheme::mono(Ty::fun(vec![Ty::string(), Ty::string()], Ty::list(Ty::string()))),
+    );
+    env.insert(
+        "string_join".into(),
+        Scheme::mono(Ty::fun(vec![Ty::list(Ty::string()), Ty::string()], Ty::string())),
+    );
+    env.insert(
+        "string_to_int".into(),
+        Scheme::mono(Ty::fun(vec![Ty::string()], Ty::option(Ty::int()))),
+    );
+    env.insert(
+        "string_to_float".into(),
+        Scheme::mono(Ty::fun(vec![Ty::string()], Ty::option(Ty::float()))),
+    );
 
     // ── Standard library: File I/O functions (Phase 8) ──────────────────
 
@@ -1045,6 +1061,10 @@ mod tests {
         assert!(env.lookup("string_to_upper").is_some());
         assert!(env.lookup("string_to_lower").is_some());
         assert!(env.lookup("string_replace").is_some());
+        assert!(env.lookup("string_split").is_some());
+        assert!(env.lookup("string_join").is_some());
+        assert!(env.lookup("string_to_int").is_some());
+        assert!(env.lookup("string_to_float").is_some());
 
         // File I/O functions
         assert!(env.lookup("file_read").is_some());

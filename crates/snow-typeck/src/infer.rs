@@ -252,6 +252,22 @@ fn stdlib_modules() -> HashMap<String, HashMap<String, Scheme>> {
             Ty::string(),
         )),
     );
+    string_mod.insert(
+        "split".to_string(),
+        Scheme::mono(Ty::fun(vec![Ty::string(), Ty::string()], Ty::list(Ty::string()))),
+    );
+    string_mod.insert(
+        "join".to_string(),
+        Scheme::mono(Ty::fun(vec![Ty::list(Ty::string()), Ty::string()], Ty::string())),
+    );
+    string_mod.insert(
+        "to_int".to_string(),
+        Scheme::mono(Ty::fun(vec![Ty::string()], Ty::option(Ty::int()))),
+    );
+    string_mod.insert(
+        "to_float".to_string(),
+        Scheme::mono(Ty::fun(vec![Ty::string()], Ty::option(Ty::float()))),
+    );
     modules.insert("String".to_string(), string_mod);
 
     // ── IO module ──────────────────────────────────────────────────

@@ -185,6 +185,23 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
     let string_eq_ty = i8_type.fn_type(&[ptr_type.into(), ptr_type.into()], false);
     module.add_function("snow_string_eq", string_eq_ty, Some(inkwell::module::Linkage::External));
 
+    // Phase 46: String split/join/to_int/to_float
+    // snow_string_split(s: ptr, delim: ptr) -> ptr
+    let string_split_ty = ptr_type.fn_type(&[ptr_type.into(), ptr_type.into()], false);
+    module.add_function("snow_string_split", string_split_ty, Some(inkwell::module::Linkage::External));
+
+    // snow_string_join(list: ptr, sep: ptr) -> ptr
+    let string_join_ty = ptr_type.fn_type(&[ptr_type.into(), ptr_type.into()], false);
+    module.add_function("snow_string_join", string_join_ty, Some(inkwell::module::Linkage::External));
+
+    // snow_string_to_int(s: ptr) -> ptr (SnowOption)
+    let string_to_int_ty = ptr_type.fn_type(&[ptr_type.into()], false);
+    module.add_function("snow_string_to_int", string_to_int_ty, Some(inkwell::module::Linkage::External));
+
+    // snow_string_to_float(s: ptr) -> ptr (SnowOption)
+    let string_to_float_ty = ptr_type.fn_type(&[ptr_type.into()], false);
+    module.add_function("snow_string_to_float", string_to_float_ty, Some(inkwell::module::Linkage::External));
+
     // ── Standard library: File I/O functions (Phase 8) ────────────────
 
     // snow_file_read(path: ptr) -> ptr (SnowResult)
@@ -543,6 +560,10 @@ mod tests {
         assert!(module.get_function("snow_string_to_lower").is_some());
         assert!(module.get_function("snow_string_replace").is_some());
         assert!(module.get_function("snow_string_eq").is_some());
+        assert!(module.get_function("snow_string_split").is_some());
+        assert!(module.get_function("snow_string_join").is_some());
+        assert!(module.get_function("snow_string_to_int").is_some());
+        assert!(module.get_function("snow_string_to_float").is_some());
         assert!(module.get_function("snow_io_read_line").is_some());
         assert!(module.get_function("snow_io_eprintln").is_some());
         assert!(module.get_function("snow_env_get").is_some());
