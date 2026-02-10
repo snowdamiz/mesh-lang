@@ -418,6 +418,67 @@ pub extern "C" fn snow_actor_receive(timeout_ms: i64) -> *const u8 {
     }
 }
 
+// ── Timer functions (Phase 44 Plan 02) ──────────────────────────────
+
+/// Sleep the current actor for `ms` milliseconds without blocking other actors.
+///
+/// Uses a yield loop with deadline checking. The actor stays Ready (not Waiting)
+/// so the scheduler continues to resume it. On each resume, checks if the
+/// deadline has passed. Does NOT consume messages from the mailbox.
+#[no_mangle]
+pub extern "C" fn snow_timer_sleep(ms: i64) {
+    if ms <= 0 {
+        return;
+    }
+
+    let in_coroutine = stack::CURRENT_YIELDER.with(|c| c.get().is_some());
+
+    if !in_coroutine {
+        // Main thread: just use thread::sleep
+        std::thread::sleep(std::time::Duration::from_millis(ms as u64));
+        return;
+    }
+
+    // Coroutine path: yield loop with deadline
+    let deadline = std::time::Instant::now() + std::time::Duration::from_millis(ms as u64);
+
+    loop {
+        // Yield to scheduler (state stays Ready/Running -- NOT Waiting).
+        // If we set state to Waiting, the scheduler would skip this process
+        // and it would never be resumed (unless a message arrives).
+        stack::yield_current();
+
+        if std::time::Instant::now() >= deadline {
+            return;
+        }
+    }
+}
+
+/// Schedule a message to be sent to `target_pid` after `ms` milliseconds.
+///
+/// Spawns a background OS thread that sleeps for `ms` then sends the message.
+/// The message bytes are deep-copied at call time so the caller's stack frame
+/// can be freed safely.
+#[no_mangle]
+pub extern "C" fn snow_timer_send_after(target_pid: i64, ms: i64, msg_ptr: *const u8, msg_size: i64) {
+    // Deep-copy message bytes before spawning thread
+    let data = if msg_ptr.is_null() || msg_size <= 0 {
+        Vec::new()
+    } else {
+        let slice = unsafe { std::slice::from_raw_parts(msg_ptr, msg_size as usize) };
+        slice.to_vec()
+    };
+
+    let pid = target_pid as u64;
+    let delay = std::time::Duration::from_millis(if ms > 0 { ms as u64 } else { 0 });
+
+    std::thread::spawn(move || {
+        std::thread::sleep(delay);
+        // Reuse snow_actor_send: construct message and deliver
+        snow_actor_send(pid, data.as_ptr(), data.len() as u64);
+    });
+}
+
 /// Deep-copy a message into the actor's heap and return a pointer to the
 /// heap-allocated layout: `[u64 type_tag, u64 data_len, u8... data]`.
 pub(crate) fn copy_msg_to_actor_heap(

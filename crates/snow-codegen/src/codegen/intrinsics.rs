@@ -433,6 +433,16 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
     let job_map_ty = ptr_type.fn_type(&[ptr_type.into(), ptr_type.into(), ptr_type.into()], false);
     module.add_function("snow_job_map", job_map_ty, Some(inkwell::module::Linkage::External));
 
+    // ── Timer functions (Phase 44 Plan 02) ──────────────────────────────
+
+    // snow_timer_sleep(ms: i64) -> void
+    let timer_sleep_ty = void_type.fn_type(&[i64_type.into()], false);
+    module.add_function("snow_timer_sleep", timer_sleep_ty, Some(inkwell::module::Linkage::External));
+
+    // snow_timer_send_after(pid: i64, ms: i64, msg_ptr: ptr, msg_size: i64) -> void
+    let timer_send_after_ty = void_type.fn_type(&[i64_type.into(), i64_type.into(), ptr_type.into(), i64_type.into()], false);
+    module.add_function("snow_timer_send_after", timer_send_after_ty, Some(inkwell::module::Linkage::External));
+
     // snow_panic(msg: ptr, msg_len: u64, file: ptr, file_len: u64, line: u32) -> void
     // (noreturn -- marked via attribute)
     let panic_params: Vec<BasicMetadataTypeEnum<'ctx>> = vec![
@@ -628,6 +638,10 @@ mod tests {
         // List Eq/Ord runtime functions (Phase 27 Plan 01)
         assert!(module.get_function("snow_list_eq").is_some());
         assert!(module.get_function("snow_list_compare").is_some());
+
+        // Timer functions (Phase 44 Plan 02)
+        assert!(module.get_function("snow_timer_sleep").is_some());
+        assert!(module.get_function("snow_timer_send_after").is_some());
     }
 
     #[test]

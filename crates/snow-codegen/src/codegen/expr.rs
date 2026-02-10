@@ -627,6 +627,11 @@ impl<'ctx> CodeGen<'ctx> {
             if name == "__snow_make_tuple" {
                 return self.codegen_make_tuple(&arg_vals);
             }
+            // Timer.send_after(pid, ms, msg) -> snow_timer_send_after(pid, ms, msg_ptr, msg_size)
+            // The 3rd arg (msg) needs message serialization like codegen_actor_send.
+            if name == "snow_timer_send_after" && args.len() == 3 {
+                return self.codegen_timer_send_after(args);
+            }
         }
 
         // Math/Int/Float stdlib intrinsics (Phase 43)
@@ -1704,6 +1709,52 @@ impl<'ctx> CodeGen<'ctx> {
             .map_err(|e| e.to_string())?;
 
         // Send returns Unit.
+        Ok(self.context.struct_type(&[], false).const_zero().into())
+    }
+
+    /// Codegen for Timer.send_after(pid, ms, msg).
+    ///
+    /// Serializes the message (3rd arg) to (ptr, size) like codegen_actor_send,
+    /// then calls snow_timer_send_after(pid, ms, msg_ptr, msg_size).
+    fn codegen_timer_send_after(
+        &mut self,
+        args: &[MirExpr],
+    ) -> Result<BasicValueEnum<'ctx>, String> {
+        let i64_ty = self.context.i64_type();
+
+        // Evaluate pid (i64) and ms (i64).
+        let pid_val = self.codegen_expr(&args[0])?.into_int_value();
+        let ms_val = self.codegen_expr(&args[1])?.into_int_value();
+
+        // Serialize the message (3rd arg) to (ptr, size) -- same pattern as codegen_actor_send.
+        let msg_val = self.codegen_expr(&args[2])?;
+        let (msg_ptr, msg_size) = {
+            let msg_ty = self.llvm_type(args[2].ty());
+            let msg_alloca = self
+                .builder
+                .build_alloca(msg_ty, "timer_msg_buf")
+                .map_err(|e| e.to_string())?;
+            self.builder
+                .build_store(msg_alloca, msg_val)
+                .map_err(|e| e.to_string())?;
+
+            let target_data = inkwell::targets::TargetData::create("");
+            let size = target_data.get_store_size(&msg_ty);
+
+            (msg_alloca, i64_ty.const_int(size, false))
+        };
+
+        // Call snow_timer_send_after(pid, ms, msg_ptr, msg_size)
+        let send_after_fn = get_intrinsic(&self.module, "snow_timer_send_after");
+        self.builder
+            .build_call(
+                send_after_fn,
+                &[pid_val.into(), ms_val.into(), msg_ptr.into(), msg_size.into()],
+                "",
+            )
+            .map_err(|e| e.to_string())?;
+
+        // Returns Unit.
         Ok(self.context.struct_type(&[], false).const_zero().into())
     }
 
