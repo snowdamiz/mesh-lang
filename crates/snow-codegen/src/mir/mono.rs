@@ -253,6 +253,12 @@ fn collect_function_refs(expr: &MirExpr, refs: &mut Vec<String>) {
             }
             collect_function_refs(body, refs);
         }
+        // TCE: TailCall args may reference functions.
+        MirExpr::TailCall { args, .. } => {
+            for arg in args {
+                collect_function_refs(arg, refs);
+            }
+        }
     }
 }
 
@@ -279,6 +285,7 @@ mod tests {
                     },
                     is_closure_fn: false,
                     captures: vec![],
+                    has_tail_calls: false,
                 },
                 MirFunction {
                     name: "helper".to_string(),
@@ -287,6 +294,7 @@ mod tests {
                     body: MirExpr::IntLit(42, MirType::Int),
                     is_closure_fn: false,
                     captures: vec![],
+                    has_tail_calls: false,
                 },
                 MirFunction {
                     name: "unused".to_string(),
@@ -295,6 +303,7 @@ mod tests {
                     body: MirExpr::IntLit(0, MirType::Int),
                     is_closure_fn: false,
                     captures: vec![],
+                    has_tail_calls: false,
                 },
             ],
             structs: vec![],
@@ -322,6 +331,7 @@ mod tests {
                     body: MirExpr::Unit,
                     is_closure_fn: false,
                     captures: vec![],
+                    has_tail_calls: false,
                 },
                 MirFunction {
                     name: "bar".to_string(),
@@ -330,6 +340,7 @@ mod tests {
                     body: MirExpr::Unit,
                     is_closure_fn: false,
                     captures: vec![],
+                    has_tail_calls: false,
                 },
             ],
             structs: vec![],

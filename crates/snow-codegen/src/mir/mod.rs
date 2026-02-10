@@ -52,6 +52,9 @@ pub struct MirFunction {
     pub is_closure_fn: bool,
     /// Captured variables (for closure functions only).
     pub captures: Vec<(String, MirType)>,
+    /// Whether the function body contains TailCall nodes (set by TCE rewrite pass).
+    /// When true, codegen wraps the function body in a loop.
+    pub has_tail_calls: bool,
 }
 
 // ── MirType ───────────────────────────────────────────────────────────
@@ -301,6 +304,17 @@ pub enum MirExpr {
     /// Continue: skip to the next iteration of the innermost enclosing loop.
     Continue,
 
+    // ── TCE primitives ──────────────────────────────────────────────
+
+    /// Self-recursive tail call (rewritten from Call during TCE pass).
+    /// Codegen compiles this as parameter reassignment + branch to loop header.
+    TailCall {
+        /// Arguments for the recursive call (assigned to function parameters).
+        args: Vec<MirExpr>,
+        /// Result type (function return type, but ty() returns Never since it branches).
+        ty: MirType,
+    },
+
     /// For-in loop over an integer range: `for var in start..end do body end`.
     /// Desugared to integer counter iteration with no heap allocation.
     ForInRange {
@@ -409,6 +423,7 @@ impl MirExpr {
             MirExpr::While { ty, .. } => ty,
             MirExpr::Break => &MirType::Never,
             MirExpr::Continue => &MirType::Never,
+            MirExpr::TailCall { .. } => &MirType::Never,
             MirExpr::ForInRange { ty, .. } => ty,
             MirExpr::ForInList { ty, .. } => ty,
             MirExpr::ForInMap { ty, .. } => ty,

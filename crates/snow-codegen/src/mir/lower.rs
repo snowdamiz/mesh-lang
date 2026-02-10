@@ -874,6 +874,7 @@ impl<'a> Lowerer<'a> {
             body,
             is_closure_fn: false,
             captures: Vec::new(),
+            has_tail_calls: false,
         });
     }
 
@@ -1001,6 +1002,7 @@ impl<'a> Lowerer<'a> {
             body,
             is_closure_fn: false,
             captures: Vec::new(),
+            has_tail_calls: false,
         });
     }
 
@@ -1113,6 +1115,7 @@ impl<'a> Lowerer<'a> {
             body,
             is_closure_fn: false,
             captures: Vec::new(),
+            has_tail_calls: false,
         });
     }
 
@@ -1216,6 +1219,7 @@ impl<'a> Lowerer<'a> {
                 body,
                 is_closure_fn: false,
                 captures: Vec::new(),
+                has_tail_calls: false,
             });
         } else {
             // Multi-parameter: use an if-else chain.
@@ -1246,6 +1250,7 @@ impl<'a> Lowerer<'a> {
                 body,
                 is_closure_fn: false,
                 captures: Vec::new(),
+                has_tail_calls: false,
             });
         }
     }
@@ -1809,6 +1814,7 @@ impl<'a> Lowerer<'a> {
             body: result,
             is_closure_fn: false,
             captures: vec![],
+            has_tail_calls: false,
         };
 
         self.functions.push(func);
@@ -1863,6 +1869,7 @@ impl<'a> Lowerer<'a> {
             body,
             is_closure_fn: false,
             captures: vec![],
+            has_tail_calls: false,
         };
 
         self.functions.push(func);
@@ -1951,6 +1958,7 @@ impl<'a> Lowerer<'a> {
             body,
             is_closure_fn: false,
             captures: vec![],
+            has_tail_calls: false,
         };
 
         self.functions.push(func);
@@ -1994,6 +2002,7 @@ impl<'a> Lowerer<'a> {
             body,
             is_closure_fn: false,
             captures: vec![],
+            has_tail_calls: false,
         };
 
         self.functions.push(func);
@@ -2239,6 +2248,7 @@ impl<'a> Lowerer<'a> {
             body,
             is_closure_fn: false,
             captures: vec![],
+            has_tail_calls: false,
         };
 
         self.functions.push(func);
@@ -2400,6 +2410,7 @@ impl<'a> Lowerer<'a> {
             body,
             is_closure_fn: false,
             captures: vec![],
+            has_tail_calls: false,
         };
 
         self.functions.push(func);
@@ -2475,6 +2486,7 @@ impl<'a> Lowerer<'a> {
             body,
             is_closure_fn: false,
             captures: vec![],
+            has_tail_calls: false,
         };
 
         self.functions.push(func);
@@ -2545,6 +2557,7 @@ impl<'a> Lowerer<'a> {
             body,
             is_closure_fn: false,
             captures: vec![],
+            has_tail_calls: false,
         };
 
         self.functions.push(func);
@@ -2612,6 +2625,7 @@ impl<'a> Lowerer<'a> {
             body,
             is_closure_fn: false,
             captures: vec![],
+            has_tail_calls: false,
         };
 
         self.functions.push(func);
@@ -2673,6 +2687,7 @@ impl<'a> Lowerer<'a> {
             body,
             is_closure_fn: false,
             captures: vec![],
+            has_tail_calls: false,
         };
 
         self.functions.push(func);
@@ -2766,6 +2781,7 @@ impl<'a> Lowerer<'a> {
             body,
             is_closure_fn: false,
             captures: vec![],
+            has_tail_calls: false,
         };
 
         self.functions.push(func);
@@ -2847,6 +2863,7 @@ impl<'a> Lowerer<'a> {
             body: result,
             is_closure_fn: false,
             captures: vec![],
+            has_tail_calls: false,
         };
 
         self.functions.push(func);
@@ -2980,6 +2997,7 @@ impl<'a> Lowerer<'a> {
             body,
             is_closure_fn: false,
             captures: vec![],
+            has_tail_calls: false,
         };
 
         self.functions.push(func);
@@ -4728,6 +4746,7 @@ impl<'a> Lowerer<'a> {
             body,
             is_closure_fn: true,
             captures: captures.clone(),
+            has_tail_calls: false,
         });
 
         // Create the MakeClosure expression.
@@ -4899,6 +4918,7 @@ impl<'a> Lowerer<'a> {
             body,
             is_closure_fn: true,
             captures: captures.clone(),
+            has_tail_calls: false,
         });
 
         // Create the MakeClosure expression.
@@ -5616,6 +5636,7 @@ impl<'a> Lowerer<'a> {
             body,
             is_closure_fn: false,
             captures: vec![],
+            has_tail_calls: false,
         });
 
         wrapper_name
@@ -5675,6 +5696,7 @@ impl<'a> Lowerer<'a> {
             body,
             is_closure_fn: false,
             captures: vec![],
+            has_tail_calls: false,
         });
 
         wrapper_name
@@ -5758,6 +5780,7 @@ impl<'a> Lowerer<'a> {
             body,
             is_closure_fn: false,
             captures: vec![],
+            has_tail_calls: false,
         });
         name
     }
@@ -5785,6 +5808,7 @@ impl<'a> Lowerer<'a> {
             body,
             is_closure_fn: false,
             captures: vec![],
+            has_tail_calls: false,
         });
         name
     }
@@ -5812,6 +5836,7 @@ impl<'a> Lowerer<'a> {
             body,
             is_closure_fn: false,
             captures: vec![],
+            has_tail_calls: false,
         });
         name
     }
@@ -5844,6 +5869,7 @@ impl<'a> Lowerer<'a> {
             body,
             is_closure_fn: false,
             captures: vec![],
+            has_tail_calls: false,
         });
         name
     }
@@ -5892,6 +5918,7 @@ impl<'a> Lowerer<'a> {
             body,
             is_closure_fn: false,
             captures: vec![],
+            has_tail_calls: false,
         });
         name
     }
@@ -5937,6 +5964,7 @@ impl<'a> Lowerer<'a> {
             body,
             is_closure_fn: false,
             captures: vec![],
+            has_tail_calls: false,
         });
         name
     }
@@ -5980,6 +6008,7 @@ impl<'a> Lowerer<'a> {
             body,
             is_closure_fn: false,
             captures: vec![],
+            has_tail_calls: false,
         });
         wrapper_name
     }
@@ -6023,6 +6052,7 @@ impl<'a> Lowerer<'a> {
             body,
             is_closure_fn: false,
             captures: vec![],
+            has_tail_calls: false,
         });
         wrapper_name
     }
@@ -6480,6 +6510,7 @@ impl<'a> Lowerer<'a> {
                 body: cb_body,
                 is_closure_fn: false,
                 captures: Vec::new(),
+                has_tail_calls: false,
             });
 
             Some(cb_name)
@@ -6508,6 +6539,7 @@ impl<'a> Lowerer<'a> {
             body,
             is_closure_fn: false,
             captures: Vec::new(),
+            has_tail_calls: false,
         });
     }
 
@@ -6683,6 +6715,7 @@ impl<'a> Lowerer<'a> {
             body,
             is_closure_fn: false,
             captures: Vec::new(),
+            has_tail_calls: false,
         });
     }
 
@@ -6832,6 +6865,7 @@ impl<'a> Lowerer<'a> {
             body: init_body,
             is_closure_fn: false,
             captures: Vec::new(),
+            has_tail_calls: false,
         });
         self.known_functions.insert(
             init_fn_name.clone(),
@@ -6894,6 +6928,7 @@ impl<'a> Lowerer<'a> {
                 body,
                 is_closure_fn: false,
                 captures: Vec::new(),
+                has_tail_calls: false,
             });
             self.known_functions.insert(
                 handler_fn_name,
@@ -6943,6 +6978,7 @@ impl<'a> Lowerer<'a> {
                 body,
                 is_closure_fn: false,
                 captures: Vec::new(),
+                has_tail_calls: false,
             });
             self.known_functions.insert(
                 handler_fn_name,
@@ -7131,6 +7167,7 @@ impl<'a> Lowerer<'a> {
                 body,
                 is_closure_fn: false,
                 captures: Vec::new(),
+                has_tail_calls: false,
             });
         }
 
@@ -7185,6 +7222,7 @@ impl<'a> Lowerer<'a> {
                 body,
                 is_closure_fn: false,
                 captures: Vec::new(),
+                has_tail_calls: false,
             });
         }
 
@@ -7232,6 +7270,7 @@ impl<'a> Lowerer<'a> {
                 body,
                 is_closure_fn: false,
                 captures: Vec::new(),
+                has_tail_calls: false,
             });
             self.known_functions.insert(
                 start_fn_name,
@@ -7371,6 +7410,7 @@ impl<'a> Lowerer<'a> {
             body: MirExpr::Unit, // Codegen generates the actual dispatch loop
             is_closure_fn: false,
             captures: Vec::new(),
+            has_tail_calls: false,
         });
         self.known_functions.insert(
             loop_fn_name,
@@ -8000,6 +8040,12 @@ fn collect_free_vars(
                 collect_free_vars(f, &inner_params, outer_vars, captures);
             }
             collect_free_vars(body, &inner_params, outer_vars, captures);
+        }
+        // TCE: TailCall args may reference captured variables.
+        MirExpr::TailCall { args, .. } => {
+            for arg in args {
+                collect_free_vars(arg, params, outer_vars, captures);
+            }
         }
     }
 }

@@ -1277,6 +1277,12 @@ fn compile_expr_patterns(
             }
             compile_expr_patterns(body, sum_type_defs);
         }
+        // TCE: TailCall args may contain match expressions.
+        MirExpr::TailCall { args, .. } => {
+            for arg in args {
+                compile_expr_patterns(arg, sum_type_defs);
+            }
+        }
     }
 }
 

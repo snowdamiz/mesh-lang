@@ -167,6 +167,11 @@ impl<'ctx> CodeGen<'ctx> {
                 children,
                 ty: _,
             } => self.codegen_supervisor_start(name, *strategy, *max_restarts, *max_seconds, children),
+
+            // TailCall codegen will be implemented in Phase 48 Plan 02.
+            MirExpr::TailCall { .. } => {
+                Err("TailCall codegen not yet implemented (Phase 48 Plan 02)".to_string())
+            }
         }
     }
 
