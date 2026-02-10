@@ -963,3 +963,19 @@ fn e2e_list_contains() {
     let output = compile_and_run(&source);
     assert_eq!(output, "true\nfalse\nfalse\n");
 }
+
+// ── String Split/Join/Parse E2E Tests (Phase 46 Plan 02) ───────────────
+
+#[test]
+fn e2e_string_split_join() {
+    let source = read_fixture("stdlib_string_split_join.snow");
+    let output = compile_and_run(&source);
+    assert_eq!(output, "3\nhello\nhello - world - foo\none,two,three\n");
+}
+
+#[test]
+fn e2e_string_parse() {
+    let source = read_fixture("stdlib_string_parse.snow");
+    let output = compile_and_run(&source);
+    assert_eq!(output, "42\nnone\n3.14\nnone\n-100\n");
+}
