@@ -312,16 +312,26 @@ fn call_handler(fn_ptr: *mut u8, env_ptr: *mut u8, request: *mut u8) -> *mut u8 
 
 /// Call a middleware function.
 ///
-/// If env_ptr is null: bare function `fn(request, next_closure) -> response`.
-/// If non-null: closure `fn(env, request, next_closure) -> response`.
+/// Snow compiles middleware with signature `fn(request: ptr, next: {ptr, ptr}) -> ptr`.
+/// The `next` parameter is a closure struct `{fn_ptr, env_ptr}` which LLVM's calling
+/// convention decomposes into two separate register-passed arguments. So the actual
+/// ABI signature is `fn(request, next_fn_ptr, next_env_ptr) -> response`.
+///
+/// If env_ptr (middleware's own env) is non-null, it's a closure middleware:
+/// `fn(env, request, next_fn_ptr, next_env_ptr) -> response`.
 fn call_middleware(fn_ptr: *mut u8, env_ptr: *mut u8, request: *mut u8, next_closure: *mut u8) -> *mut u8 {
     unsafe {
+        // Dereference the next_closure pointer to extract fn_ptr and env_ptr fields.
+        // The closure struct layout is { fn_ptr: *mut u8, env_ptr: *mut u8 } -- 16 bytes.
+        let next_fn_ptr = *(next_closure as *const *mut u8);
+        let next_env_ptr = *(next_closure as *const *mut u8).add(1);
+
         if env_ptr.is_null() {
-            let f: fn(*mut u8, *mut u8) -> *mut u8 = std::mem::transmute(fn_ptr);
-            f(request, next_closure)
-        } else {
             let f: fn(*mut u8, *mut u8, *mut u8) -> *mut u8 = std::mem::transmute(fn_ptr);
-            f(env_ptr, request, next_closure)
+            f(request, next_fn_ptr, next_env_ptr)
+        } else {
+            let f: fn(*mut u8, *mut u8, *mut u8, *mut u8) -> *mut u8 = std::mem::transmute(fn_ptr);
+            f(env_ptr, request, next_fn_ptr, next_env_ptr)
         }
     }
 }

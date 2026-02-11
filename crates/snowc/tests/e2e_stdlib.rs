@@ -1401,3 +1401,89 @@ fn e2e_http_path_params() {
 
     // ServerGuard Drop will kill the server process.
 }
+
+// ── HTTP Middleware E2E Tests (Phase 52 Plan 02) ────────────────────────
+//
+// Verifies the full Phase 52 middleware stack: Snow source -> typeck -> MIR ->
+// LLVM -> runtime HTTP server with middleware interception. Tests passthrough
+// middleware, short-circuit (auth), and middleware on unmatched routes (404).
+
+#[test]
+fn e2e_http_middleware() {
+    let source = read_fixture("stdlib_http_middleware.snow");
+    let mut guard = compile_and_start_server(&source);
+
+    // Wait for server to be ready.
+    let stderr = guard.0.stderr.take().expect("no stderr pipe");
+    let stderr_reader = BufReader::new(stderr);
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        for line in stderr_reader.lines() {
+            if let Ok(line) = line {
+                if line.contains("HTTP server listening on") {
+                    let _ = tx.send(true);
+                    return;
+                }
+            }
+        }
+        let _ = tx.send(false);
+    });
+    let ready = rx
+        .recv_timeout(std::time::Duration::from_secs(10))
+        .unwrap_or(false);
+    assert!(ready, "Server did not start within 10 seconds");
+
+    // Test A: Normal request passes through middleware chain.
+    // logger passes through, auth_check allows (path doesn't start with /secret),
+    // handler returns "hello-world".
+    let resp_a = send_request(
+        18083,
+        "GET /hello HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n",
+    );
+    assert!(
+        resp_a.contains("200"),
+        "Test A: Expected 200, got: {}",
+        resp_a
+    );
+    assert!(
+        resp_a.contains("hello-world"),
+        "Test A: Expected body 'hello-world', got: {}",
+        resp_a
+    );
+
+    std::thread::sleep(std::time::Duration::from_millis(50));
+
+    // Test B: Auth middleware short-circuits for /secret path.
+    // logger passes through, auth_check sees /secret and returns 401 without calling next.
+    let resp_b = send_request(
+        18083,
+        "GET /secret HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n",
+    );
+    assert!(
+        resp_b.contains("401"),
+        "Test B: Expected 401, got: {}",
+        resp_b
+    );
+    assert!(
+        resp_b.contains("Unauthorized"),
+        "Test B: Expected body 'Unauthorized', got: {}",
+        resp_b
+    );
+
+    std::thread::sleep(std::time::Duration::from_millis(50));
+
+    // Test C: Middleware runs on requests with no matching route (404).
+    // Middleware chain executes (logger, auth_check), auth_check passes through
+    // (path doesn't start with /secret), synthetic 404 handler returns 404.
+    let resp_c = send_request(
+        18083,
+        "GET /nonexistent HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n",
+    );
+    assert!(
+        resp_c.contains("404"),
+        "Test C: Expected 404, got: {}",
+        resp_c
+    );
+
+    // ServerGuard Drop will kill the server process.
+}

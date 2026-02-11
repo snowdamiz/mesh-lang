@@ -1,21 +1,22 @@
-fn logger(request, next) do
-  let response = next(request)
-  response
+fn logger(request :: Request, next) -> Response do
+  next(request)
 end
 
-fn auth_check(request, next) do
+fn auth_check(request :: Request, next) do
   let path = Request.path(request)
-  case String.starts_with(path, "/secret") do
-    true -> HTTP.response(401, "Unauthorized")
-    false -> next(request)
+  let is_secret = String.starts_with(path, "/secret")
+  if is_secret do
+    HTTP.response(401, "Unauthorized")
+  else
+    next(request)
   end
 end
 
-fn handler(request) do
+fn handler(request :: Request) do
   HTTP.response(200, "hello-world")
 end
 
-fn secret_handler(request) do
+fn secret_handler(request :: Request) do
   HTTP.response(200, "secret-data")
 end
 
