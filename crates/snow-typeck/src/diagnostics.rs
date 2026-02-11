@@ -128,6 +128,7 @@ fn error_code(err: &TypeError) -> &'static str {
         TypeError::PrivateItem { .. } => "E0035",
         TypeError::TryIncompatibleReturn { .. } => "E0036",
         TypeError::TryOnNonResultOption { .. } => "E0037",
+        TypeError::NonSerializableField { .. } => "E0038",
     }
 }
 
@@ -1376,7 +1377,7 @@ pub fn render_diagnostic(
                         .with_message(format!("`{}` is not a derivable trait", trait_name))
                         .with_color(Color::Red),
                 )
-                .with_help("only Eq, Ord, Display, Debug, and Hash are derivable")
+                .with_help("only Eq, Ord, Display, Debug, Hash, and Json are derivable")
                 .finish()
         }
 
@@ -1537,6 +1538,33 @@ pub fn render_diagnostic(
                         .with_color(Color::Red),
                 )
                 .with_help("the `?` operator can only be used on `Result<T, E>` or `Option<T>` values")
+                .finish()
+        }
+
+        TypeError::NonSerializableField {
+            struct_name: _,
+            field_name,
+            field_type,
+        } => {
+            let msg = format!(
+                "field `{}` of type `{}` is not JSON-serializable",
+                field_name, field_type
+            );
+            let span = clamp(0..source_len.max(1).min(source_len));
+
+            Report::build(ReportKind::Error, (fname.clone(), span.clone()))
+                .with_code(code)
+                .with_message(&msg)
+                .with_config(config)
+                .with_label(
+                    Label::new((fname.clone(), span))
+                        .with_message(format!("`{}` is not serializable", field_type))
+                        .with_color(Color::Red),
+                )
+                .with_help(format!(
+                    "type `{}` does not derive Json; add `deriving(Json)` to its definition, or use a serializable type (Int, Float, Bool, String, Option<T>, List<T>, Map<String, V>)",
+                    field_type
+                ))
                 .finish()
         }
     };

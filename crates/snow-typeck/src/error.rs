@@ -293,6 +293,12 @@ pub enum TypeError {
         operand_ty: Ty,
         span: TextRange,
     },
+    /// A field type in a `deriving(Json)` struct is not JSON-serializable.
+    NonSerializableField {
+        struct_name: String,
+        field_name: String,
+        field_type: String,
+    },
 }
 
 impl fmt::Display for TypeError {
@@ -553,7 +559,7 @@ impl fmt::Display for TypeError {
             } => {
                 write!(
                     f,
-                    "cannot derive `{}` for `{}` -- only Eq, Ord, Display, Debug, and Hash are derivable",
+                    "cannot derive `{}` for `{}` -- only Eq, Ord, Display, Debug, Hash, and Json are derivable",
                     trait_name, type_name
                 )
             }
@@ -596,6 +602,17 @@ impl fmt::Display for TypeError {
             }
             TypeError::TryOnNonResultOption { operand_ty, .. } => {
                 write!(f, "`?` operator requires `Result` or `Option`, found `{}`", operand_ty)
+            }
+            TypeError::NonSerializableField {
+                field_name,
+                field_type,
+                ..
+            } => {
+                write!(
+                    f,
+                    "field `{}` of type `{}` is not JSON-serializable",
+                    field_name, field_type
+                )
             }
         }
     }

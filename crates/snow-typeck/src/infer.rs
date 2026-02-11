@@ -1772,7 +1772,7 @@ fn register_struct_def(
     let derive_all = !has_deriving; // no clause = derive all defaults
 
     // Validate derive trait names.
-    let valid_derives = ["Eq", "Ord", "Display", "Debug", "Hash"];
+    let valid_derives = ["Eq", "Ord", "Display", "Debug", "Hash", "Json"];
     for trait_name in &derive_list {
         if !valid_derives.contains(&trait_name.as_str()) {
             ctx.errors.push(TypeError::UnsupportedDerive {
@@ -1897,10 +1897,63 @@ fn register_struct_def(
         );
         let _ = trait_registry.register_impl(TraitImplDef {
             trait_name: "Display".to_string(),
-            impl_type: impl_ty,
+            impl_type: impl_ty.clone(),
             impl_type_name: name.clone(),
             methods: display_methods,
         });
+    }
+
+    // Json impl (ToJson + FromJson) -- only via explicit deriving(Json)
+    if derive_list.iter().any(|t| t == "Json") {
+        // Validate all fields are JSON-serializable BEFORE registering impls.
+        let mut json_valid = true;
+        for (field_name, field_ty) in &fields {
+            if !is_json_serializable(field_ty, type_registry, trait_registry) {
+                ctx.errors.push(TypeError::NonSerializableField {
+                    struct_name: name.clone(),
+                    field_name: field_name.clone(),
+                    field_type: format!("{}", field_ty),
+                });
+                json_valid = false;
+            }
+        }
+
+        if json_valid {
+            let mut to_json_methods = FxHashMap::default();
+            to_json_methods.insert(
+                "to_json".to_string(),
+                ImplMethodSig {
+                    has_self: true,
+                    param_count: 0,
+                    return_type: Some(Ty::Con(TyCon::new("Json"))),
+                },
+            );
+            let _ = trait_registry.register_impl(TraitImplDef {
+                trait_name: "ToJson".to_string(),
+                impl_type: impl_ty.clone(),
+                impl_type_name: name.clone(),
+                methods: to_json_methods,
+            });
+
+            let mut from_json_methods = FxHashMap::default();
+            from_json_methods.insert(
+                "from_json".to_string(),
+                ImplMethodSig {
+                    has_self: false,
+                    param_count: 1,
+                    return_type: Some(Ty::result(
+                        Ty::Con(TyCon::new(&name)),
+                        Ty::string(),
+                    )),
+                },
+            );
+            let _ = trait_registry.register_impl(TraitImplDef {
+                trait_name: "FromJson".to_string(),
+                impl_type: impl_ty,
+                impl_type_name: name.clone(),
+                methods: from_json_methods,
+            });
+        }
     }
 
     type_registry.register_struct(StructDefInfo {
@@ -1908,6 +1961,43 @@ fn register_struct_def(
         generic_params,
         fields,
     });
+}
+
+/// Check if a type is JSON-serializable for deriving(Json) validation.
+/// Serializable types: Int, Float, Bool, String, structs with ToJson impl,
+/// Option<T> where T is serializable, List<T> where T is serializable,
+/// Map<String, V> where V is serializable.
+fn is_json_serializable(ty: &Ty, _type_registry: &TypeRegistry, trait_registry: &TraitRegistry) -> bool {
+    match ty {
+        Ty::Con(con) => match con.name.as_str() {
+            "Int" | "Float" | "Bool" | "String" => true,
+            name => {
+                // Check if this type has a ToJson impl registered
+                let ty_for_lookup = Ty::Con(TyCon::new(name));
+                trait_registry.has_impl("ToJson", &ty_for_lookup)
+            }
+        },
+        Ty::App(base, args) => {
+            if let Ty::Con(con) = base.as_ref() {
+                match con.name.as_str() {
+                    "Option" => args.first().map_or(false, |t| is_json_serializable(t, _type_registry, trait_registry)),
+                    "List" => args.first().map_or(false, |t| is_json_serializable(t, _type_registry, trait_registry)),
+                    "Map" => {
+                        // Map key must be String for JSON objects
+                        let key_ok = args.first().map_or(false, |t| {
+                            matches!(t, Ty::Con(c) if c.name == "String")
+                        });
+                        let val_ok = args.get(1).map_or(false, |t| is_json_serializable(t, _type_registry, trait_registry));
+                        key_ok && val_ok
+                    }
+                    _ => false,
+                }
+            } else {
+                false
+            }
+        },
+        _ => false, // Type variables, functions, etc. are not serializable
+    }
 }
 
 /// Register a type alias.
@@ -2070,7 +2160,7 @@ fn register_sum_type_def(
     let derive_all = !has_deriving; // no clause = derive all defaults
 
     // Validate derive trait names.
-    let valid_derives = ["Eq", "Ord", "Display", "Debug", "Hash"];
+    let valid_derives = ["Eq", "Ord", "Display", "Debug", "Hash", "Json"];
     for trait_name in &derive_list {
         if !valid_derives.contains(&trait_name.as_str()) {
             ctx.errors.push(TypeError::UnsupportedDerive {
