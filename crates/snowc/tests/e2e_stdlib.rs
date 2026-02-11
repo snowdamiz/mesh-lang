@@ -433,6 +433,22 @@ fn e2e_json_parse_roundtrip() {
     assert_eq!(output, "99\n");
 }
 
+// ── JSON Struct Serde E2E Tests (Phase 49 Plan 02) ──────────────────────
+
+#[test]
+fn e2e_deriving_json_basic() {
+    let source = read_fixture("deriving_json_basic.snow");
+    let output = compile_and_run(&source);
+    // JSON object field order depends on internal map iteration.
+    // Both orderings are valid since JSON objects are unordered.
+    assert!(
+        output == "{\"name\":\"Alice\",\"age\":30}\n"
+            || output == "{\"age\":30,\"name\":\"Alice\"}\n",
+        "unexpected output: {}",
+        output
+    );
+}
+
 // ── HTTP E2E Tests (Phase 8 Plan 05, updated Phase 15) ────────────────
 //
 // The HTTP server uses actor-per-connection (Phase 15) with crash isolation

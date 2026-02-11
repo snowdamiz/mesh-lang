@@ -1,0 +1,10 @@
+struct User do
+  name :: String
+  age :: Int
+end deriving(Json)
+
+fn main() do
+  let u = User { name: "Alice", age: 30 }
+  let json = Json.encode(u)
+  println(json)
+end

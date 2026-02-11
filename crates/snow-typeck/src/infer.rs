@@ -442,7 +442,19 @@ fn stdlib_modules() -> HashMap<String, HashMap<String, Scheme>> {
     json_mod.insert("encode_bool".to_string(), Scheme::mono(Ty::fun(vec![Ty::bool()], Ty::string())));
     json_mod.insert("encode_map".to_string(), Scheme::mono(Ty::fun(vec![Ty::map_untyped()], Ty::string())));
     json_mod.insert("encode_list".to_string(), Scheme::mono(Ty::fun(vec![Ty::list_untyped()], Ty::string())));
-    modules.insert("JSON".to_string(), json_mod);
+    modules.insert("JSON".to_string(), json_mod.clone());
+
+    // Also register "Json" as an alias for the JSON module.
+    // Snow users write Json.encode(...) for struct serde (Phase 49).
+    // Override `encode` to accept any type (struct with ToJson impl will be
+    // dispatched at codegen time via ToJson__to_json__StructName).
+    let json_encode_tv = TyVar(9999);
+    let mut json_mod_alias = json_mod;
+    json_mod_alias.insert("encode".to_string(), Scheme {
+        vars: vec![json_encode_tv],
+        ty: Ty::fun(vec![Ty::Var(json_encode_tv)], Ty::string()),
+    });
+    modules.insert("Json".to_string(), json_mod_alias);
 
     // ── HTTP module (Phase 8 Plan 05) ────────────────────────────────
     let request_t = Ty::Con(TyCon::new("Request"));
@@ -568,7 +580,7 @@ fn stdlib_modules() -> HashMap<String, HashMap<String, Scheme>> {
 
 /// Set of module names recognized by the stdlib for qualified access.
 const STDLIB_MODULE_NAMES: &[&str] = &[
-    "String", "IO", "Env", "File", "List", "Map", "Set", "Tuple", "Range", "Queue", "HTTP", "JSON", "Request", "Job",
+    "String", "IO", "Env", "File", "List", "Map", "Set", "Tuple", "Range", "Queue", "HTTP", "JSON", "Json", "Request", "Job",
     "Math", "Int", "Float", "Timer",
 ];
 
@@ -4669,6 +4681,20 @@ fn infer_field_access(
                 if let Some(scheme) = env.lookup(&qualified) {
                     let ty = ctx.instantiate(scheme);
                     return Ok(ty);
+                }
+            }
+
+            // Check if base is a struct type name with a static trait method.
+            // e.g. User.from_json -- User is a struct type, from_json is a FromJson method.
+            if field_name == "from_json" {
+                if let Some(_struct_info) = type_registry.lookup_struct(&base_name) {
+                    // Check if this struct has FromJson impl
+                    let struct_ty = Ty::Con(TyCon::new(&base_name));
+                    if trait_registry.has_impl("FromJson", &struct_ty) {
+                        // from_json :: String -> Result<StructName, String>
+                        let result_ty = Ty::result(struct_ty, Ty::string());
+                        return Ok(Ty::fun(vec![Ty::string()], result_ty));
+                    }
                 }
             }
         }
