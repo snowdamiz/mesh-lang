@@ -1,15 +1,23 @@
 //! HTTP router for the Snow runtime.
 //!
-//! Routes are checked in registration order; first match wins.
-//! Supports exact match and wildcard patterns (`/api/*` matches any
-//! path starting with `/api/`).
+//! Routes are checked with priority ordering: exact routes first, then
+//! parameterized routes (`:param` segments), then wildcards. Within each
+//! tier, first match wins (registration order).
+//!
+//! Supports:
+//! - Exact match: `/api/health` matches `/api/health`
+//! - Wildcard patterns: `/api/*` matches any path starting with `/api/`
+//! - Path parameters: `/users/:id` matches `/users/42` and captures `id=42`
+//! - Method-specific routing: `HTTP.on_get(r, "/path", handler)` matches only GET
 
 use crate::string::SnowString;
 
 /// A single route entry mapping a URL pattern to a handler.
 pub struct RouteEntry {
-    /// URL pattern (exact or wildcard ending with `/*`).
+    /// URL pattern (exact, wildcard ending with `/*`, or parameterized with `:name`).
     pub pattern: String,
+    /// Optional HTTP method filter. None = any method, Some("GET") = only GET.
+    pub method: Option<String>,
     /// Pointer to the handler function.
     pub handler_fn: *mut u8,
     /// Pointer to the handler closure environment (null for bare functions).
@@ -21,20 +29,36 @@ pub struct SnowRouter {
     pub routes: Vec<RouteEntry>,
 }
 
-impl SnowRouter {
-    /// Find the first route matching the given path.
-    /// Returns (handler_fn, handler_env) or None.
-    pub fn match_route(&self, path: &str) -> Option<(*mut u8, *mut u8)> {
-        for entry in &self.routes {
-            if matches_pattern(&entry.pattern, path) {
-                return Some((entry.handler_fn, entry.handler_env));
-            }
-        }
-        None
-    }
+/// Check if a pattern has any parameterized segments (`:name`).
+fn has_param_segments(pattern: &str) -> bool {
+    pattern.split('/').any(|seg| seg.starts_with(':'))
 }
 
-/// Check if a pattern matches a path.
+/// Segment-based matching with parameter extraction.
+///
+/// Splits both pattern and path on `/`, filters empty segments, then compares
+/// pairwise. Literal segments must match exactly; `:name` segments capture the
+/// actual value into the returned params vec.
+///
+/// Returns `Some(params)` on match, `None` on mismatch.
+fn match_segments(pattern: &str, path: &str) -> Option<Vec<(String, String)>> {
+    let pat_segs: Vec<&str> = pattern.split('/').filter(|s| !s.is_empty()).collect();
+    let path_segs: Vec<&str> = path.split('/').filter(|s| !s.is_empty()).collect();
+    if pat_segs.len() != path_segs.len() {
+        return None;
+    }
+    let mut params = Vec::new();
+    for (pat, actual) in pat_segs.iter().zip(path_segs.iter()) {
+        if pat.starts_with(':') {
+            params.push((pat[1..].to_string(), actual.to_string()));
+        } else if pat != actual {
+            return None;
+        }
+    }
+    Some(params)
+}
+
+/// Check if a pattern matches a path (for exact and wildcard routes only).
 ///
 /// - Exact match: "/api/health" matches "/api/health"
 /// - Wildcard: "/api/*" matches "/api/users", "/api/users/123", etc.
@@ -45,6 +69,87 @@ fn matches_pattern(pattern: &str, path: &str) -> bool {
         path.starts_with(prefix) || path == &pattern[..pattern.len() - 2]
     } else {
         pattern == path
+    }
+}
+
+impl SnowRouter {
+    /// Find the first route matching the given path and HTTP method.
+    ///
+    /// Returns (handler_fn, handler_env, params) or None.
+    /// Uses two-pass matching for priority: exact/wildcard first, then parameterized.
+    /// Within each pass, also checks method filtering.
+    pub fn match_route(&self, path: &str, method: &str) -> Option<(*mut u8, *mut u8, Vec<(String, String)>)> {
+        // First pass: exact and wildcard routes (no `:param` segments).
+        for entry in &self.routes {
+            if has_param_segments(&entry.pattern) {
+                continue;
+            }
+            // Check method filter.
+            if let Some(ref m) = entry.method {
+                if m != method {
+                    continue;
+                }
+            }
+            if matches_pattern(&entry.pattern, path) {
+                return Some((entry.handler_fn, entry.handler_env, Vec::new()));
+            }
+        }
+
+        // Second pass: parameterized routes (have `:param` segments).
+        for entry in &self.routes {
+            if !has_param_segments(&entry.pattern) {
+                continue;
+            }
+            // Check method filter.
+            if let Some(ref m) = entry.method {
+                if m != method {
+                    continue;
+                }
+            }
+            if let Some(params) = match_segments(&entry.pattern, path) {
+                return Some((entry.handler_fn, entry.handler_env, params));
+            }
+        }
+
+        None
+    }
+}
+
+// ── Internal helper ──────────────────────────────────────────────────
+
+/// Add a route with an optional method filter to the router.
+/// Returns a NEW router pointer (immutable semantics).
+fn route_with_method(
+    router: *mut u8,
+    pattern: *const SnowString,
+    handler_fn: *mut u8,
+    method: Option<&str>,
+) -> *mut u8 {
+    let handler_env: *mut u8 = std::ptr::null_mut();
+    unsafe {
+        let old = &*(router as *const SnowRouter);
+        let pat_str = (*pattern).as_str().to_string();
+
+        let mut new_routes = Vec::with_capacity(old.routes.len() + 1);
+        for entry in &old.routes {
+            new_routes.push(RouteEntry {
+                pattern: entry.pattern.clone(),
+                method: entry.method.clone(),
+                handler_fn: entry.handler_fn,
+                handler_env: entry.handler_env,
+            });
+        }
+        new_routes.push(RouteEntry {
+            pattern: pat_str,
+            method: method.map(|m| m.to_string()),
+            handler_fn,
+            handler_env,
+        });
+
+        let new_router = Box::new(SnowRouter {
+            routes: new_routes,
+        });
+        Box::into_raw(new_router) as *mut u8
     }
 }
 
@@ -59,47 +164,57 @@ pub extern "C" fn snow_http_router() -> *mut u8 {
     Box::into_raw(router) as *mut u8
 }
 
-/// Add a route to the router. Returns a NEW router pointer (immutable semantics).
+/// Add a route to the router (method-agnostic). Returns a NEW router pointer.
 ///
-/// # Arguments
-/// - `router`: pointer to an existing SnowRouter
-/// - `pattern`: pointer to a SnowString URL pattern
-/// - `handler_fn`: function pointer for the route handler
-///
-/// The handler environment (env_ptr) is always null for bare named functions.
-/// Closure handlers are not supported in Phase 8 -- the handler must be a
-/// top-level named function.
+/// This is the existing `HTTP.route(router, pattern, handler)` -- matches
+/// any HTTP method (backward compatible).
 #[no_mangle]
 pub extern "C" fn snow_http_route(
     router: *mut u8,
     pattern: *const SnowString,
     handler_fn: *mut u8,
 ) -> *mut u8 {
-    let handler_env: *mut u8 = std::ptr::null_mut();
-    unsafe {
-        let old = &*(router as *const SnowRouter);
-        let pat_str = (*pattern).as_str().to_string();
+    route_with_method(router, pattern, handler_fn, None)
+}
 
-        // Clone existing routes and add new one.
-        let mut new_routes = Vec::with_capacity(old.routes.len() + 1);
-        for entry in &old.routes {
-            new_routes.push(RouteEntry {
-                pattern: entry.pattern.clone(),
-                handler_fn: entry.handler_fn,
-                handler_env: entry.handler_env,
-            });
-        }
-        new_routes.push(RouteEntry {
-            pattern: pat_str,
-            handler_fn,
-            handler_env,
-        });
+/// Add a GET-only route. Returns a NEW router pointer.
+#[no_mangle]
+pub extern "C" fn snow_http_route_get(
+    router: *mut u8,
+    pattern: *const SnowString,
+    handler_fn: *mut u8,
+) -> *mut u8 {
+    route_with_method(router, pattern, handler_fn, Some("GET"))
+}
 
-        let new_router = Box::new(SnowRouter {
-            routes: new_routes,
-        });
-        Box::into_raw(new_router) as *mut u8
-    }
+/// Add a POST-only route. Returns a NEW router pointer.
+#[no_mangle]
+pub extern "C" fn snow_http_route_post(
+    router: *mut u8,
+    pattern: *const SnowString,
+    handler_fn: *mut u8,
+) -> *mut u8 {
+    route_with_method(router, pattern, handler_fn, Some("POST"))
+}
+
+/// Add a PUT-only route. Returns a NEW router pointer.
+#[no_mangle]
+pub extern "C" fn snow_http_route_put(
+    router: *mut u8,
+    pattern: *const SnowString,
+    handler_fn: *mut u8,
+) -> *mut u8 {
+    route_with_method(router, pattern, handler_fn, Some("PUT"))
+}
+
+/// Add a DELETE-only route. Returns a NEW router pointer.
+#[no_mangle]
+pub extern "C" fn snow_http_route_delete(
+    router: *mut u8,
+    pattern: *const SnowString,
+    handler_fn: *mut u8,
+) -> *mut u8 {
+    route_with_method(router, pattern, handler_fn, Some("DELETE"))
 }
 
 #[cfg(test)]
@@ -132,27 +247,141 @@ mod tests {
     }
 
     #[test]
+    fn test_segment_matching() {
+        // Basic param capture
+        let params = match_segments("/users/:id", "/users/42").unwrap();
+        assert_eq!(params.len(), 1);
+        assert_eq!(params[0].0, "id");
+        assert_eq!(params[0].1, "42");
+
+        // Multiple params
+        let params = match_segments("/users/:user_id/posts/:post_id", "/users/7/posts/99").unwrap();
+        assert_eq!(params.len(), 2);
+        assert_eq!(params[0].0, "user_id");
+        assert_eq!(params[0].1, "7");
+        assert_eq!(params[1].0, "post_id");
+        assert_eq!(params[1].1, "99");
+
+        // Mixed literal and param
+        let params = match_segments("/api/users/:id/profile", "/api/users/42/profile").unwrap();
+        assert_eq!(params.len(), 1);
+        assert_eq!(params[0].0, "id");
+        assert_eq!(params[0].1, "42");
+    }
+
+    #[test]
+    fn test_segment_no_match() {
+        // Too many segments
+        assert!(match_segments("/users/:id", "/users/42/extra").is_none());
+        // Too few segments
+        assert!(match_segments("/users/:id/posts", "/users/42").is_none());
+        // Literal mismatch
+        assert!(match_segments("/users/:id", "/posts/42").is_none());
+    }
+
+    #[test]
+    fn test_exact_beats_param() {
+        let router = SnowRouter {
+            routes: vec![
+                RouteEntry {
+                    pattern: "/users/:id".to_string(),
+                    method: None,
+                    handler_fn: 1 as *mut u8,
+                    handler_env: std::ptr::null_mut(),
+                },
+                RouteEntry {
+                    pattern: "/users/me".to_string(),
+                    method: None,
+                    handler_fn: 2 as *mut u8,
+                    handler_env: std::ptr::null_mut(),
+                },
+            ],
+        };
+        // Exact route "/users/me" should win over parameterized "/users/:id"
+        // even though the parameterized route was registered first.
+        let (fn_ptr, _, params) = router.match_route("/users/me", "GET").unwrap();
+        assert_eq!(fn_ptr as usize, 2);
+        assert!(params.is_empty());
+
+        // Other paths should match the parameterized route.
+        let (fn_ptr, _, params) = router.match_route("/users/42", "GET").unwrap();
+        assert_eq!(fn_ptr as usize, 1);
+        assert_eq!(params[0].0, "id");
+        assert_eq!(params[0].1, "42");
+    }
+
+    #[test]
+    fn test_method_filtering() {
+        let router = SnowRouter {
+            routes: vec![
+                RouteEntry {
+                    pattern: "/users".to_string(),
+                    method: Some("GET".to_string()),
+                    handler_fn: 1 as *mut u8,
+                    handler_env: std::ptr::null_mut(),
+                },
+                RouteEntry {
+                    pattern: "/users".to_string(),
+                    method: Some("POST".to_string()),
+                    handler_fn: 2 as *mut u8,
+                    handler_env: std::ptr::null_mut(),
+                },
+            ],
+        };
+        // GET request should match the GET handler.
+        let (fn_ptr, _, _) = router.match_route("/users", "GET").unwrap();
+        assert_eq!(fn_ptr as usize, 1);
+
+        // POST request should match the POST handler.
+        let (fn_ptr, _, _) = router.match_route("/users", "POST").unwrap();
+        assert_eq!(fn_ptr as usize, 2);
+
+        // DELETE request should NOT match either.
+        assert!(router.match_route("/users", "DELETE").is_none());
+    }
+
+    #[test]
+    fn test_method_agnostic_route() {
+        let router = SnowRouter {
+            routes: vec![
+                RouteEntry {
+                    pattern: "/health".to_string(),
+                    method: None,
+                    handler_fn: 1 as *mut u8,
+                    handler_env: std::ptr::null_mut(),
+                },
+            ],
+        };
+        // Method-agnostic route should match any method.
+        assert!(router.match_route("/health", "GET").is_some());
+        assert!(router.match_route("/health", "POST").is_some());
+        assert!(router.match_route("/health", "DELETE").is_some());
+    }
+
+    #[test]
     fn test_router_match_order() {
         let router = SnowRouter {
             routes: vec![
                 RouteEntry {
                     pattern: "/exact".to_string(),
+                    method: None,
                     handler_fn: 1 as *mut u8,
                     handler_env: std::ptr::null_mut(),
                 },
                 RouteEntry {
                     pattern: "/*".to_string(),
+                    method: None,
                     handler_fn: 2 as *mut u8,
                     handler_env: std::ptr::null_mut(),
                 },
             ],
         };
         // Exact match should win (first in order).
-        let (fn_ptr, _) = router.match_route("/exact").unwrap();
+        let (fn_ptr, _, _) = router.match_route("/exact", "GET").unwrap();
         assert_eq!(fn_ptr as usize, 1);
 
         // Wildcard catches the rest.
-        let (fn_ptr, _) = router.match_route("/other").unwrap();
+        let (fn_ptr, _, _) = router.match_route("/other", "GET").unwrap();
         assert_eq!(fn_ptr as usize, 2);
     }
 
@@ -161,11 +390,12 @@ mod tests {
         let router = SnowRouter {
             routes: vec![RouteEntry {
                 pattern: "/only-this".to_string(),
+                method: None,
                 handler_fn: 1 as *mut u8,
                 handler_env: std::ptr::null_mut(),
             }],
         };
-        assert!(router.match_route("/other").is_none());
+        assert!(router.match_route("/other", "GET").is_none());
     }
 
     #[test]
@@ -187,6 +417,7 @@ mod tests {
             assert_eq!(r.routes.len(), 1);
             assert_eq!(r.routes[0].pattern, "/hello");
             assert_eq!(r.routes[0].handler_fn as usize, 42);
+            assert!(r.routes[0].method.is_none());
         }
     }
 }

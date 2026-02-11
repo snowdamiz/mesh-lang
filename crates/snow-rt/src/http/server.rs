@@ -27,6 +27,9 @@ use super::router::SnowRouter;
 ///
 /// All fields are opaque pointers at the LLVM level. The Snow program
 /// accesses them via accessor functions (request_method, request_path, etc.).
+///
+/// IMPORTANT: This struct is `#[repr(C)]` -- new fields MUST be appended
+/// at the end to preserve existing field offsets.
 #[repr(C)]
 pub struct SnowHttpRequest {
     /// HTTP method as SnowString (e.g. "GET", "POST").
@@ -39,6 +42,9 @@ pub struct SnowHttpRequest {
     pub query_params: *mut u8,
     /// Headers as SnowMap (string keys -> string values).
     pub headers: *mut u8,
+    /// Path parameters as SnowMap (string keys -> string values).
+    /// Populated by the router when matching parameterized routes.
+    pub path_params: *mut u8,
 }
 
 /// HTTP response returned by Snow handler functions.
@@ -115,6 +121,27 @@ pub extern "C" fn snow_http_request_query(req: *mut u8, name: *const SnowString)
         let key_str = (*name).as_str();
         let key_snow = snow_string_new(key_str.as_ptr(), key_str.len() as u64);
         let val = map::snow_map_get(request.query_params, key_snow as u64);
+        if val == 0 {
+            alloc_option(1, std::ptr::null_mut())
+        } else {
+            alloc_option(0, val as *mut u8)
+        }
+    }
+}
+
+/// Get the value of a path parameter by name. Returns SnowOption
+/// (tag 0 = Some with SnowString, tag 1 = None).
+///
+/// Path parameters are extracted from parameterized route patterns
+/// like `/users/:id`. For a request matching this pattern with path
+/// `/users/42`, `Request.param(req, "id")` returns `Some("42")`.
+#[no_mangle]
+pub extern "C" fn snow_http_request_param(req: *mut u8, name: *const SnowString) -> *mut u8 {
+    unsafe {
+        let request = &*(req as *const SnowHttpRequest);
+        let key_str = (*name).as_str();
+        let key_snow = snow_string_new(key_str.as_ptr(), key_str.len() as u64);
+        let val = map::snow_map_get(request.path_params, key_snow as u64);
         if val == 0 {
             alloc_option(1, std::ptr::null_mut())
         } else {
@@ -220,7 +247,7 @@ fn handle_request(router_ptr: *mut u8, mut request: tiny_http::Request) {
         let router = &*(router_ptr as *const SnowRouter);
 
         // Build the SnowHttpRequest.
-        let method_str = request.method().as_str();
+        let method_str = request.method().as_str().to_string();
         let method = snow_string_new(method_str.as_ptr(), method_str.len() as u64) as *mut u8;
 
         let url = request.url().to_string();
@@ -258,22 +285,30 @@ fn handle_request(router_ptr: *mut u8, mut request: tiny_http::Request) {
             headers_map = map::snow_map_put(headers_map, key as u64, val as u64);
         }
 
-        // Build the request struct (allocated on the actor's per-actor heap
-        // when running inside an actor context, falling back to global arena).
-        let snow_req = snow_gc_alloc_actor(
-            std::mem::size_of::<SnowHttpRequest>() as u64,
-            std::mem::align_of::<SnowHttpRequest>() as u64,
-        ) as *mut SnowHttpRequest;
-        (*snow_req).method = method;
-        (*snow_req).path = path;
-        (*snow_req).body = body;
-        (*snow_req).query_params = query_map;
-        (*snow_req).headers = headers_map;
+        // Match against router (now with method and path params).
+        if let Some((handler_fn, handler_env, params)) = router.match_route(path_str, &method_str) {
+            // Convert captured path params into a SnowMap.
+            let mut path_params_map = map::snow_map_new();
+            for (k, v) in &params {
+                let key = snow_string_new(k.as_ptr(), k.len() as u64);
+                let val = snow_string_new(v.as_ptr(), v.len() as u64);
+                path_params_map = map::snow_map_put(path_params_map, key as u64, val as u64);
+            }
 
-        let req_ptr = snow_req as *mut u8;
+            // Build the request struct.
+            let snow_req = snow_gc_alloc_actor(
+                std::mem::size_of::<SnowHttpRequest>() as u64,
+                std::mem::align_of::<SnowHttpRequest>() as u64,
+            ) as *mut SnowHttpRequest;
+            (*snow_req).method = method;
+            (*snow_req).path = path;
+            (*snow_req).body = body;
+            (*snow_req).query_params = query_map;
+            (*snow_req).headers = headers_map;
+            (*snow_req).path_params = path_params_map;
 
-        // Match against router.
-        if let Some((handler_fn, handler_env)) = router.match_route(path_str) {
+            let req_ptr = snow_req as *mut u8;
+
             // Call handler.
             let response_ptr = if handler_env.is_null() {
                 let f: fn(*mut u8) -> *mut u8 = std::mem::transmute(handler_fn);
@@ -341,6 +376,7 @@ mod tests {
         let body = snow_string_new(b"".as_ptr(), 0) as *mut u8;
         let query_params = map::snow_map_new();
         let headers = map::snow_map_new();
+        let path_params = map::snow_map_new();
 
         unsafe {
             let req_ptr = snow_gc_alloc_actor(
@@ -352,6 +388,7 @@ mod tests {
             (*req_ptr).body = body;
             (*req_ptr).query_params = query_params;
             (*req_ptr).headers = headers;
+            (*req_ptr).path_params = path_params;
 
             let req = req_ptr as *mut u8;
 
