@@ -100,7 +100,7 @@ See milestones/v1.9-ROADMAP.md for full phase details.
 
 **Milestone Goal:** Make Snow viable for real backend applications with JSON serde, database drivers (SQLite + PostgreSQL), and HTTP routing improvements.
 
-- [ ] **Phase 49: JSON Serde -- Structs** - Struct-aware JSON encode/decode via `deriving(Json)`
+- [x] **Phase 49: JSON Serde -- Structs** - Struct-aware JSON encode/decode via `deriving(Json)` (shipped 2026-02-11)
 - [ ] **Phase 50: JSON Serde -- Sum Types & Generics** - Complete JSON coverage for all Snow types
 - [ ] **Phase 51: HTTP Path Parameters** - Dynamic route segments and method-specific routing
 - [ ] **Phase 52: HTTP Middleware** - Function pipeline for request/response processing
@@ -122,9 +122,9 @@ See milestones/v1.9-ROADMAP.md for full phase details.
 **Plans:** 3 plans
 
 Plans:
-- [ ] 49-01-PLAN.md -- Runtime foundation: JSON INT/FLOAT tag split + 14 runtime functions with three-point registration
-- [ ] 49-02-PLAN.md -- Compiler pipeline: typeck deriving(Json) validation + MIR to_json/from_json generation + call dispatch wiring
-- [ ] 49-03-PLAN.md -- E2E test suite: 7 tests + 1 compile-fail covering all 9 requirements
+- [x] 49-01-PLAN.md -- Runtime foundation: JSON INT/FLOAT tag split + 14 runtime functions with three-point registration
+- [x] 49-02-PLAN.md -- Compiler pipeline: typeck deriving(Json) validation + MIR to_json/from_json generation + call dispatch wiring
+- [x] 49-03-PLAN.md -- E2E test suite: 7 tests + 1 compile-fail covering all 9 requirements
 
 ### Phase 50: JSON Serde -- Sum Types & Generics
 **Goal**: Users can serialize any Snow data type to JSON, including sum types and generic structs
@@ -215,11 +215,11 @@ Phases execute in numeric order: 49 -> 50 -> 51 -> 52 -> 53 -> 54
 | 33-36 | v1.7 | 8/8 | Complete | 2026-02-09 |
 | 37-42 | v1.8 | 12/12 | Complete | 2026-02-09 |
 | 43-48 | v1.9 | 13/13 | Complete | 2026-02-10 |
-| 49. JSON Serde -- Structs | v2.0 | 0/3 | Not started | - |
+| 49. JSON Serde -- Structs | v2.0 | 3/3 | Complete | 2026-02-11 |
 | 50. JSON Serde -- Sum Types & Generics | v2.0 | 0/TBD | Not started | - |
 | 51. HTTP Path Parameters | v2.0 | 0/TBD | Not started | - |
 | 52. HTTP Middleware | v2.0 | 0/TBD | Not started | - |
 | 53. SQLite Driver | v2.0 | 0/TBD | Not started | - |
 | 54. PostgreSQL Driver | v2.0 | 0/TBD | Not started | - |
 
-**Total: 48 phases shipped across 10 milestones. 141 plans completed. 6 new phases planned for v2.0.**
+**Total: 49 phases shipped across 10 milestones. 144 plans completed. 5 phases remaining in v2.0.**
