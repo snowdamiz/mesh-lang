@@ -1399,7 +1399,7 @@ fn e2e_http_path_params() {
         resp_e
     );
 
-    // ServerGuard Drop will kill the server process.
+    // ServerGuard Drop will kill the server process (path params).
 }
 
 // ── HTTP Middleware E2E Tests (Phase 52 Plan 02) ────────────────────────
@@ -1485,5 +1485,27 @@ fn e2e_http_middleware() {
         resp_c
     );
 
-    // ServerGuard Drop will kill the server process.
+    // ServerGuard Drop will kill the server process (middleware).
+}
+
+// ── SQLite E2E Tests (Phase 53 Plan 02) ─────────────────────────────────
+//
+// Verifies the full SQLite driver pipeline: Snow source -> compiler ->
+// linked binary -> in-memory SQLite CRUD operations. Tests open, execute
+// (DDL + DML with params), query with column names, parameterized WHERE,
+// and close.
+
+#[test]
+fn e2e_sqlite() {
+    let source = read_fixture("stdlib_sqlite.snow");
+    let output = compile_and_run(&source);
+    // Verify insert counts
+    assert!(output.contains("1"), "First insert should affect 1 row");
+    // Verify query results
+    assert!(output.contains("Alice:30"), "Should find Alice with age 30");
+    assert!(output.contains("Bob:25"), "Should find Bob with age 25");
+    // Verify parameterized query
+    assert!(output.contains("filtered:Alice"), "Filtered query should find Alice");
+    // Verify completion
+    assert!(output.contains("done"), "Program should complete successfully");
 }
