@@ -10,11 +10,11 @@ See: .planning/PROJECT.md (updated 2026-02-10)
 ## Current Position
 
 Phase: 49 of 54 (JSON Serde -- Structs)
-Plan: 1 of 3 in current phase
+Plan: 2 of 3 in current phase
 Status: Executing
-Last activity: 2026-02-10 -- Completed 49-01 (JSON runtime foundation)
+Last activity: 2026-02-10 -- Completed 49-02 (Struct serde codegen)
 
-Progress: [###░░░░░░░] 33%
+Progress: [###░░░░░░░] 67%
 
 ## Performance Metrics
 
@@ -32,6 +32,9 @@ Progress: [###░░░░░░░] 33%
 - 49-01: Separate JSON_INT (tag 2) and JSON_FLOAT (tag 6) for round-trip fidelity instead of single JSON_NUMBER
 - 49-01: as_int coerces Float to Int (truncation), as_float promotes Int to Float -- matching Snow's numeric widening
 - 49-01: Collection helpers use extern C function pointer callbacks for per-element encode/decode
+- 49-02: Use If + snow_result_is_ok/unwrap instead of Match on Constructor patterns for from_json (avoids Ptr vs SumType mismatch in LLVM codegen)
+- 49-02: Register Json as separate module alias with polymorphic encode accepting any type for struct dispatch
+- 49-02: Use snow_alloc_result(tag, value) for constructing Ok results in generated MIR
 
 ### Research Notes
 
@@ -54,6 +57,6 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-10
-Stopped at: Completed 49-01-PLAN.md
+Stopped at: Completed 49-02-PLAN.md
 Resume file: None
-Next action: Execute 49-02-PLAN.md (MIR lowering for to_json/from_json)
+Next action: Execute 49-03-PLAN.md (comprehensive E2E tests for struct serde)
