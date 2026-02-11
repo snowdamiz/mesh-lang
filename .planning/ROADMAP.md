@@ -104,7 +104,7 @@ See milestones/v1.9-ROADMAP.md for full phase details.
 - [x] **Phase 50: JSON Serde -- Sum Types & Generics** - Complete JSON coverage for all Snow types (shipped 2026-02-11)
 - [x] **Phase 51: HTTP Path Parameters** - Dynamic route segments and method-specific routing (shipped 2026-02-11)
 - [x] **Phase 52: HTTP Middleware** - Function pipeline for request/response processing (shipped 2026-02-11)
-- [ ] **Phase 53: SQLite Driver** - Embedded database access with parameterized queries
+- [x] **Phase 53: SQLite Driver** - Embedded database access with parameterized queries (shipped 2026-02-11)
 - [ ] **Phase 54: PostgreSQL Driver** - Production database access with wire protocol and auth
 
 ## Phase Details
@@ -182,8 +182,8 @@ Plans:
 **Plans:** 2 plans
 
 Plans:
-- [ ] 53-01-PLAN.md -- Runtime FFI (4 extern C functions via libsqlite3-sys bundled) + compiler pipeline (intrinsics, typeck, MIR lowering)
-- [ ] 53-02-PLAN.md -- E2E test: Snow fixture with SQLite CRUD lifecycle (open, execute, query, close)
+- [x] 53-01-PLAN.md -- Runtime FFI (4 extern C functions via libsqlite3-sys bundled) + compiler pipeline (intrinsics, typeck, MIR lowering)
+- [x] 53-02-PLAN.md -- E2E test: Snow fixture with SQLite CRUD lifecycle (open, execute, query, close)
 
 ### Phase 54: PostgreSQL Driver
 **Goal**: Users can connect to PostgreSQL for production database workloads with secure authentication
@@ -222,7 +222,7 @@ Phases execute in numeric order: 49 -> 50 -> 51 -> 52 -> 53 -> 54
 | 50. JSON Serde -- Sum Types & Generics | v2.0 | 2/2 | Complete | 2026-02-11 |
 | 51. HTTP Path Parameters | v2.0 | 2/2 | Complete | 2026-02-11 |
 | 52. HTTP Middleware | v2.0 | 2/2 | Complete | 2026-02-11 |
-| 53. SQLite Driver | v2.0 | 0/TBD | Not started | - |
+| 53. SQLite Driver | v2.0 | 2/2 | Complete | 2026-02-11 |
 | 54. PostgreSQL Driver | v2.0 | 0/TBD | Not started | - |
 
-**Total: 52 phases shipped across 10 milestones. 150 plans completed. 2 phases remaining in v2.0.**
+**Total: 53 phases shipped across 10 milestones. 152 plans completed. 1 phase remaining in v2.0.**
