@@ -102,7 +102,7 @@ See milestones/v1.9-ROADMAP.md for full phase details.
 
 - [x] **Phase 49: JSON Serde -- Structs** - Struct-aware JSON encode/decode via `deriving(Json)` (shipped 2026-02-11)
 - [x] **Phase 50: JSON Serde -- Sum Types & Generics** - Complete JSON coverage for all Snow types (shipped 2026-02-11)
-- [ ] **Phase 51: HTTP Path Parameters** - Dynamic route segments and method-specific routing
+- [x] **Phase 51: HTTP Path Parameters** - Dynamic route segments and method-specific routing (shipped 2026-02-11)
 - [ ] **Phase 52: HTTP Middleware** - Function pipeline for request/response processing
 - [ ] **Phase 53: SQLite Driver** - Embedded database access with parameterized queries
 - [ ] **Phase 54: PostgreSQL Driver** - Production database access with wire protocol and auth
@@ -147,13 +147,13 @@ Plans:
 **Success Criteria** (what must be TRUE):
   1. User defines a route like `/users/:id` and the router matches requests to `/users/42`
   2. User calls `Request.param(req, "id")` inside a handler and gets `Some("42")`
-  3. User registers routes with `HTTP.get`, `HTTP.post`, `HTTP.put`, `HTTP.delete` and only matching HTTP methods dispatch to the handler
+  3. User registers routes with `HTTP.on_get`, `HTTP.on_post`, `HTTP.on_put`, `HTTP.on_delete` and only matching HTTP methods dispatch to the handler
   4. Exact routes take priority over parameterized routes (`/users/me` matches before `/users/:id`)
 **Plans:** 2 plans
 
 Plans:
-- [ ] 51-01-PLAN.md -- Runtime + compiler pipeline: path param matching, method routing, request accessor, intrinsics, typeck, MIR arity dispatch
-- [ ] 51-02-PLAN.md -- E2E test: Snow fixture with path params + method routing + priority, verified via real HTTP server
+- [x] 51-01-PLAN.md -- Runtime + compiler pipeline: path param matching, method routing, request accessor, intrinsics, typeck, MIR lowering
+- [x] 51-02-PLAN.md -- E2E test: Snow fixture with path params + method routing + priority, verified via real HTTP server
 
 ### Phase 52: HTTP Middleware
 **Goal**: Users can wrap request handling with composable middleware functions for logging, auth, and cross-cutting concerns
@@ -219,9 +219,9 @@ Phases execute in numeric order: 49 -> 50 -> 51 -> 52 -> 53 -> 54
 | 43-48 | v1.9 | 13/13 | Complete | 2026-02-10 |
 | 49. JSON Serde -- Structs | v2.0 | 3/3 | Complete | 2026-02-11 |
 | 50. JSON Serde -- Sum Types & Generics | v2.0 | 2/2 | Complete | 2026-02-11 |
-| 51. HTTP Path Parameters | v2.0 | 0/2 | Planning complete | - |
+| 51. HTTP Path Parameters | v2.0 | 2/2 | Complete | 2026-02-11 |
 | 52. HTTP Middleware | v2.0 | 0/TBD | Not started | - |
 | 53. SQLite Driver | v2.0 | 0/TBD | Not started | - |
 | 54. PostgreSQL Driver | v2.0 | 0/TBD | Not started | - |
 
-**Total: 50 phases shipped across 10 milestones. 146 plans completed. 4 phases remaining in v2.0.**
+**Total: 51 phases shipped across 10 milestones. 148 plans completed. 3 phases remaining in v2.0.**
