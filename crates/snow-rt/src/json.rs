@@ -12,7 +12,7 @@
 //! ```text
 //! SnowJson { tag: u8, value: u64 }
 //! ```
-//! Tags: 0=Null, 1=Bool, 2=Number(i64), 3=Str(*SnowString), 4=Array(*SnowList), 5=Object(*SnowMap)
+//! Tags: 0=Null, 1=Bool, 2=Int(i64), 3=Str(*SnowString), 4=Array(*SnowList), 5=Object(*SnowMap), 6=Float(f64)
 
 use crate::collections::list;
 use crate::collections::map;
@@ -23,10 +23,11 @@ use crate::string::{snow_string_new, SnowString};
 /// Tag constants for SnowJson variants.
 const JSON_NULL: u8 = 0;
 const JSON_BOOL: u8 = 1;
-const JSON_NUMBER: u8 = 2;
+const JSON_INT: u8 = 2;
 const JSON_STR: u8 = 3;
 const JSON_ARRAY: u8 = 4;
 const JSON_OBJECT: u8 = 5;
+const JSON_FLOAT: u8 = 6;
 
 /// GC-allocated JSON value.
 ///
@@ -81,13 +82,13 @@ fn serde_value_to_snow_json(val: &serde_json::Value) -> *mut SnowJson {
             alloc_json(JSON_BOOL, if *b { 1 } else { 0 })
         }
         serde_json::Value::Number(n) => {
-            // Store as i64 if it fits, otherwise as f64 bits.
+            // Int and Float are separate tags for round-trip fidelity.
             if let Some(i) = n.as_i64() {
-                alloc_json(JSON_NUMBER, i as u64)
+                alloc_json(JSON_INT, i as u64)
             } else if let Some(f) = n.as_f64() {
-                alloc_json(JSON_NUMBER, f.to_bits())
+                alloc_json(JSON_FLOAT, f.to_bits())
             } else {
-                alloc_json(JSON_NUMBER, 0)
+                alloc_json(JSON_INT, 0)
             }
         }
         serde_json::Value::String(s) => {
@@ -126,13 +127,16 @@ unsafe fn snow_json_to_serde_value(json: *const SnowJson) -> serde_json::Value {
         JSON_BOOL => {
             serde_json::Value::Bool((*json).value != 0)
         }
-        JSON_NUMBER => {
-            // Stored as i64; try to represent as integer first.
-            let raw = (*json).value;
-            let ival = raw as i64;
-            // Heuristic: if the value round-trips as i64, use integer.
-            // This works for typical JSON integers.
+        JSON_INT => {
+            let ival = (*json).value as i64;
             serde_json::Value::Number(serde_json::Number::from(ival))
+        }
+        JSON_FLOAT => {
+            let bits = (*json).value;
+            let f = f64::from_bits(bits);
+            serde_json::Number::from_f64(f)
+                .map(serde_json::Value::Number)
+                .unwrap_or(serde_json::Value::Null)
         }
         JSON_STR => {
             let s = (*json).value as *const SnowString;
@@ -276,16 +280,16 @@ pub extern "C" fn snow_json_encode_list(list_ptr: *mut u8) -> *mut SnowString {
 
 // ── ToJSON/FromJSON support ─────────────────────────────────────────
 
-/// Create a SnowJson Number from an i64.
+/// Create a SnowJson Int from an i64.
 #[no_mangle]
 pub extern "C" fn snow_json_from_int(val: i64) -> *mut u8 {
-    alloc_json(JSON_NUMBER, val as u64) as *mut u8
+    alloc_json(JSON_INT, val as u64) as *mut u8
 }
 
-/// Create a SnowJson Number from an f64.
+/// Create a SnowJson Float from an f64.
 #[no_mangle]
 pub extern "C" fn snow_json_from_float(val: f64) -> *mut u8 {
-    alloc_json(JSON_NUMBER, val.to_bits()) as *mut u8
+    alloc_json(JSON_FLOAT, val.to_bits()) as *mut u8
 }
 
 /// Create a SnowJson Bool from an i8 (0 = false, non-zero = true).
@@ -354,12 +358,12 @@ mod tests {
             assert_eq!((*json).value, 1);
         }
 
-        // number
+        // number (integer)
         let result = snow_json_parse(make_string("42"));
         unsafe {
             assert_eq!((*result).tag, 0);
             let json = (*result).value as *const SnowJson;
-            assert_eq!((*json).tag, JSON_NUMBER);
+            assert_eq!((*json).tag, JSON_INT);
             assert_eq!((*json).value as i64, 42);
         }
 
@@ -463,7 +467,7 @@ mod tests {
         snow_rt_init();
         let json = snow_json_from_int(99) as *const SnowJson;
         unsafe {
-            assert_eq!((*json).tag, JSON_NUMBER);
+            assert_eq!((*json).tag, JSON_INT);
             assert_eq!((*json).value as i64, 99);
         }
     }
