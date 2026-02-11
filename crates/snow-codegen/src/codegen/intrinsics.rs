@@ -372,6 +372,36 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
     // snow_json_from_string(s: ptr) -> ptr
     module.add_function("snow_json_from_string", ptr_type.fn_type(&[ptr_type.into()], false), Some(inkwell::module::Linkage::External));
 
+    // ── Structured JSON object/array functions (Phase 49) ──────────────
+    // snow_json_object_new() -> ptr
+    module.add_function("snow_json_object_new", ptr_type.fn_type(&[], false), Some(inkwell::module::Linkage::External));
+    // snow_json_object_put(obj: ptr, key: ptr, val: ptr) -> ptr
+    module.add_function("snow_json_object_put", ptr_type.fn_type(&[ptr_type.into(), ptr_type.into(), ptr_type.into()], false), Some(inkwell::module::Linkage::External));
+    // snow_json_object_get(obj: ptr, key: ptr) -> ptr (SnowResult)
+    module.add_function("snow_json_object_get", ptr_type.fn_type(&[ptr_type.into(), ptr_type.into()], false), Some(inkwell::module::Linkage::External));
+    // snow_json_array_new() -> ptr
+    module.add_function("snow_json_array_new", ptr_type.fn_type(&[], false), Some(inkwell::module::Linkage::External));
+    // snow_json_array_push(arr: ptr, val: ptr) -> ptr
+    module.add_function("snow_json_array_push", ptr_type.fn_type(&[ptr_type.into(), ptr_type.into()], false), Some(inkwell::module::Linkage::External));
+    // snow_json_as_int(json: ptr) -> ptr (SnowResult)
+    module.add_function("snow_json_as_int", ptr_type.fn_type(&[ptr_type.into()], false), Some(inkwell::module::Linkage::External));
+    // snow_json_as_float(json: ptr) -> ptr (SnowResult)
+    module.add_function("snow_json_as_float", ptr_type.fn_type(&[ptr_type.into()], false), Some(inkwell::module::Linkage::External));
+    // snow_json_as_string(json: ptr) -> ptr (SnowResult)
+    module.add_function("snow_json_as_string", ptr_type.fn_type(&[ptr_type.into()], false), Some(inkwell::module::Linkage::External));
+    // snow_json_as_bool(json: ptr) -> ptr (SnowResult)
+    module.add_function("snow_json_as_bool", ptr_type.fn_type(&[ptr_type.into()], false), Some(inkwell::module::Linkage::External));
+    // snow_json_null() -> ptr
+    module.add_function("snow_json_null", ptr_type.fn_type(&[], false), Some(inkwell::module::Linkage::External));
+    // snow_json_from_list(list: ptr, elem_fn: ptr) -> ptr
+    module.add_function("snow_json_from_list", ptr_type.fn_type(&[ptr_type.into(), ptr_type.into()], false), Some(inkwell::module::Linkage::External));
+    // snow_json_from_map(map: ptr, val_fn: ptr) -> ptr
+    module.add_function("snow_json_from_map", ptr_type.fn_type(&[ptr_type.into(), ptr_type.into()], false), Some(inkwell::module::Linkage::External));
+    // snow_json_to_list(json_arr: ptr, elem_fn: ptr) -> ptr (SnowResult)
+    module.add_function("snow_json_to_list", ptr_type.fn_type(&[ptr_type.into(), ptr_type.into()], false), Some(inkwell::module::Linkage::External));
+    // snow_json_to_map(json_obj: ptr, val_fn: ptr) -> ptr (SnowResult)
+    module.add_function("snow_json_to_map", ptr_type.fn_type(&[ptr_type.into(), ptr_type.into()], false), Some(inkwell::module::Linkage::External));
+
     // ── Standard library: HTTP functions (Phase 8 Plan 05) ──────────────
 
     // snow_http_router() -> ptr
@@ -693,6 +723,22 @@ mod tests {
         assert!(module.get_function("snow_json_from_float").is_some());
         assert!(module.get_function("snow_json_from_bool").is_some());
         assert!(module.get_function("snow_json_from_string").is_some());
+
+        // Structured JSON functions (Phase 49)
+        assert!(module.get_function("snow_json_object_new").is_some());
+        assert!(module.get_function("snow_json_object_put").is_some());
+        assert!(module.get_function("snow_json_object_get").is_some());
+        assert!(module.get_function("snow_json_array_new").is_some());
+        assert!(module.get_function("snow_json_array_push").is_some());
+        assert!(module.get_function("snow_json_as_int").is_some());
+        assert!(module.get_function("snow_json_as_float").is_some());
+        assert!(module.get_function("snow_json_as_string").is_some());
+        assert!(module.get_function("snow_json_as_bool").is_some());
+        assert!(module.get_function("snow_json_null").is_some());
+        assert!(module.get_function("snow_json_from_list").is_some());
+        assert!(module.get_function("snow_json_from_map").is_some());
+        assert!(module.get_function("snow_json_to_list").is_some());
+        assert!(module.get_function("snow_json_to_map").is_some());
 
         // Hash runtime functions (Phase 21 Plan 01)
         assert!(module.get_function("snow_hash_int").is_some());

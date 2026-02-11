@@ -631,6 +631,22 @@ impl<'a> Lowerer<'a> {
         self.known_functions.insert("snow_json_from_float".to_string(), MirType::FnPtr(vec![MirType::Float], Box::new(MirType::Ptr)));
         self.known_functions.insert("snow_json_from_bool".to_string(), MirType::FnPtr(vec![MirType::Bool], Box::new(MirType::Ptr)));
         self.known_functions.insert("snow_json_from_string".to_string(), MirType::FnPtr(vec![MirType::String], Box::new(MirType::Ptr)));
+        // JSON structured object/array functions (Phase 49)
+        self.known_functions.insert("snow_json_object_new".to_string(), MirType::FnPtr(vec![], Box::new(MirType::Ptr)));
+        self.known_functions.insert("snow_json_object_put".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
+        self.known_functions.insert("snow_json_object_get".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
+        self.known_functions.insert("snow_json_array_new".to_string(), MirType::FnPtr(vec![], Box::new(MirType::Ptr)));
+        self.known_functions.insert("snow_json_array_push".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
+        self.known_functions.insert("snow_json_as_int".to_string(), MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Ptr)));
+        self.known_functions.insert("snow_json_as_float".to_string(), MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Ptr)));
+        self.known_functions.insert("snow_json_as_string".to_string(), MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Ptr)));
+        self.known_functions.insert("snow_json_as_bool".to_string(), MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Ptr)));
+        self.known_functions.insert("snow_json_null".to_string(), MirType::FnPtr(vec![], Box::new(MirType::Ptr)));
+        // JSON collection helpers (callback-based, for List<T> and Map<String, V> fields)
+        self.known_functions.insert("snow_json_from_list".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
+        self.known_functions.insert("snow_json_from_map".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
+        self.known_functions.insert("snow_json_to_list".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
+        self.known_functions.insert("snow_json_to_map".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
         // HTTP functions (Phase 8 Plan 05)
         self.known_functions.insert("snow_http_router".to_string(), MirType::FnPtr(vec![], Box::new(MirType::Ptr)));
         self.known_functions.insert("snow_http_route".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::String, MirType::Ptr], Box::new(MirType::Ptr)));

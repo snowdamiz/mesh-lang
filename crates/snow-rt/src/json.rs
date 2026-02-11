@@ -304,6 +304,237 @@ pub extern "C" fn snow_json_from_string(s: *const SnowString) -> *mut u8 {
     alloc_json(JSON_STR, s as u64) as *mut u8
 }
 
+// ── Structured JSON object/array functions (Phase 49) ───────────────
+
+/// Create an empty JSON object.
+#[no_mangle]
+pub extern "C" fn snow_json_object_new() -> *mut u8 {
+    let m = map::snow_map_new();
+    alloc_json(JSON_OBJECT, m as u64) as *mut u8
+}
+
+/// Add a key-value pair to a JSON object. Returns a new JSON object.
+#[no_mangle]
+pub extern "C" fn snow_json_object_put(obj: *mut u8, key: *mut u8, val: *mut u8) -> *mut u8 {
+    unsafe {
+        let j = obj as *mut SnowJson;
+        let m = (*j).value as *mut u8;
+        let new_map = map::snow_map_put(m, key as u64, val as u64);
+        alloc_json(JSON_OBJECT, new_map as u64) as *mut u8
+    }
+}
+
+/// Get a value from a JSON object by key. Returns SnowResult (Ok/Err).
+#[no_mangle]
+pub extern "C" fn snow_json_object_get(obj: *mut u8, key: *mut u8) -> *mut u8 {
+    unsafe {
+        let j = obj as *mut SnowJson;
+        if (*j).tag != JSON_OBJECT {
+            return err_result("expected Object") as *mut u8;
+        }
+        let m = (*j).value as *mut u8;
+        if map::snow_map_has_key(m, key as u64) != 0 {
+            let val = map::snow_map_get(m, key as u64);
+            alloc_result(0, val as *mut u8) as *mut u8
+        } else {
+            let key_str = key as *const SnowString;
+            err_result(&format!("missing field: {}", (*key_str).as_str())) as *mut u8
+        }
+    }
+}
+
+/// Create an empty JSON array.
+#[no_mangle]
+pub extern "C" fn snow_json_array_new() -> *mut u8 {
+    let l = list::snow_list_new();
+    alloc_json(JSON_ARRAY, l as u64) as *mut u8
+}
+
+/// Append a value to a JSON array. Returns a new JSON array.
+#[no_mangle]
+pub extern "C" fn snow_json_array_push(arr: *mut u8, val: *mut u8) -> *mut u8 {
+    unsafe {
+        let j = arr as *mut SnowJson;
+        let l = (*j).value as *mut u8;
+        let new_list = list::snow_list_append(l, val as u64);
+        alloc_json(JSON_ARRAY, new_list as u64) as *mut u8
+    }
+}
+
+/// Extract an Int from a SnowJson value. Returns SnowResult.
+/// Coerces Float to Int if needed.
+#[no_mangle]
+pub extern "C" fn snow_json_as_int(json: *mut u8) -> *mut u8 {
+    unsafe {
+        let j = json as *mut SnowJson;
+        match (*j).tag {
+            JSON_INT => {
+                alloc_result(0, (*j).value as i64 as *mut u8) as *mut u8
+            }
+            JSON_FLOAT => {
+                let f = f64::from_bits((*j).value);
+                alloc_result(0, f as i64 as *mut u8) as *mut u8
+            }
+            _ => err_result("expected Int") as *mut u8,
+        }
+    }
+}
+
+/// Extract a Float from a SnowJson value. Returns SnowResult.
+/// Promotes Int to Float if needed.
+#[no_mangle]
+pub extern "C" fn snow_json_as_float(json: *mut u8) -> *mut u8 {
+    unsafe {
+        let j = json as *mut SnowJson;
+        match (*j).tag {
+            JSON_FLOAT => {
+                alloc_result(0, (*j).value as *mut u8) as *mut u8
+            }
+            JSON_INT => {
+                let i = (*j).value as i64;
+                let f = (i as f64).to_bits();
+                alloc_result(0, f as *mut u8) as *mut u8
+            }
+            _ => err_result("expected Float") as *mut u8,
+        }
+    }
+}
+
+/// Extract a String from a SnowJson value. Returns SnowResult.
+#[no_mangle]
+pub extern "C" fn snow_json_as_string(json: *mut u8) -> *mut u8 {
+    unsafe {
+        let j = json as *mut SnowJson;
+        if (*j).tag == JSON_STR {
+            alloc_result(0, (*j).value as *mut u8) as *mut u8
+        } else {
+            err_result("expected String") as *mut u8
+        }
+    }
+}
+
+/// Extract a Bool from a SnowJson value. Returns SnowResult.
+#[no_mangle]
+pub extern "C" fn snow_json_as_bool(json: *mut u8) -> *mut u8 {
+    unsafe {
+        let j = json as *mut SnowJson;
+        if (*j).tag == JSON_BOOL {
+            alloc_result(0, (*j).value as *mut u8) as *mut u8
+        } else {
+            err_result("expected Bool") as *mut u8
+        }
+    }
+}
+
+/// Return a SnowJson null value. Used for Option::None encoding.
+#[no_mangle]
+pub extern "C" fn snow_json_null() -> *mut u8 {
+    alloc_json(JSON_NULL, 0) as *mut u8
+}
+
+// ── Collection helpers (Phase 49) ───────────────────────────────────
+
+/// Convert a SnowList to a JSON array using a per-element callback.
+/// `elem_fn` converts each list element (u64) to a *mut SnowJson.
+#[no_mangle]
+pub extern "C" fn snow_json_from_list(
+    list_ptr: *mut u8,
+    elem_fn: extern "C" fn(u64) -> *mut u8,
+) -> *mut u8 {
+    let len = list::snow_list_length(list_ptr);
+    let mut arr = snow_json_array_new();
+    for i in 0..len {
+        let elem = list::snow_list_get(list_ptr, i);
+        let json_elem = elem_fn(elem);
+        arr = snow_json_array_push(arr, json_elem);
+    }
+    arr
+}
+
+/// Convert a SnowMap to a JSON object using a per-value callback.
+/// Keys must be SnowString pointers. `val_fn` converts each value (u64) to a *mut SnowJson.
+#[no_mangle]
+pub extern "C" fn snow_json_from_map(
+    map_ptr: *mut u8,
+    val_fn: extern "C" fn(u64) -> *mut u8,
+) -> *mut u8 {
+    let keys_list = map::snow_map_keys(map_ptr);
+    let vals_list = map::snow_map_values(map_ptr);
+    let len = list::snow_list_length(keys_list);
+    let mut obj = snow_json_object_new();
+    for i in 0..len {
+        let key = list::snow_list_get(keys_list, i);
+        let val = list::snow_list_get(vals_list, i);
+        let json_key = key as *mut u8; // SnowString pointer used as map key
+        let json_val = val_fn(val);
+        obj = snow_json_object_put(obj, json_key, json_val);
+    }
+    obj
+}
+
+/// Decode a JSON array into a SnowList using a per-element callback.
+/// `elem_fn` converts each *mut SnowJson to a *mut SnowResult.
+/// Returns SnowResult: Ok(SnowList) or Err on first element failure.
+#[no_mangle]
+pub extern "C" fn snow_json_to_list(
+    json_arr: *mut u8,
+    elem_fn: extern "C" fn(*mut u8) -> *mut u8,
+) -> *mut u8 {
+    unsafe {
+        let j = json_arr as *mut SnowJson;
+        if (*j).tag != JSON_ARRAY {
+            return err_result("expected Array") as *mut u8;
+        }
+        let inner_list = (*j).value as *mut u8;
+        let len = list::snow_list_length(inner_list);
+        let mut result_list = list::snow_list_new();
+        for i in 0..len {
+            let elem = list::snow_list_get(inner_list, i);
+            let decoded = elem_fn(elem as *mut u8);
+            let res = decoded as *mut SnowResult;
+            if (*res).tag != 0 {
+                // Propagate error
+                return decoded;
+            }
+            result_list = list::snow_list_append(result_list, (*res).value as u64);
+        }
+        alloc_result(0, result_list as *mut u8) as *mut u8
+    }
+}
+
+/// Decode a JSON object into a SnowMap using a per-value callback.
+/// Keys remain as SnowStrings. `val_fn` converts each *mut SnowJson to a *mut SnowResult.
+/// Returns SnowResult: Ok(SnowMap) or Err on first value failure.
+#[no_mangle]
+pub extern "C" fn snow_json_to_map(
+    json_obj: *mut u8,
+    val_fn: extern "C" fn(*mut u8) -> *mut u8,
+) -> *mut u8 {
+    unsafe {
+        let j = json_obj as *mut SnowJson;
+        if (*j).tag != JSON_OBJECT {
+            return err_result("expected Object") as *mut u8;
+        }
+        let inner_map = (*j).value as *mut u8;
+        let keys_list = map::snow_map_keys(inner_map);
+        let vals_list = map::snow_map_values(inner_map);
+        let len = list::snow_list_length(keys_list);
+        let mut result_map = map::snow_map_new();
+        for i in 0..len {
+            let key = list::snow_list_get(keys_list, i);
+            let val = list::snow_list_get(vals_list, i);
+            let decoded = val_fn(val as *mut u8);
+            let res = decoded as *mut SnowResult;
+            if (*res).tag != 0 {
+                // Propagate error
+                return decoded;
+            }
+            result_map = map::snow_map_put(result_map, key, (*res).value as u64);
+        }
+        alloc_result(0, result_map as *mut u8) as *mut u8
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -513,6 +744,247 @@ mod tests {
         unsafe {
             let text = (*encoded).as_str();
             assert_eq!(text, r#"["a","b","c"]"#);
+        }
+    }
+
+    // ── Phase 49 structured JSON tests ──────────────────────────────
+
+    #[test]
+    fn test_json_object_new_put_get_roundtrip() {
+        snow_rt_init();
+        let mut obj = snow_json_object_new();
+        let key = make_string("name") as *mut u8;
+        let val = snow_json_from_string(make_string("Snow"));
+        obj = snow_json_object_put(obj, key, val);
+
+        // Get the value back
+        let result = snow_json_object_get(obj, key);
+        unsafe {
+            let res = result as *mut SnowResult;
+            assert_eq!((*res).tag, 0, "should be Ok");
+            let got_json = (*res).value as *const SnowJson;
+            assert_eq!((*got_json).tag, JSON_STR);
+            let s = (*got_json).value as *const SnowString;
+            assert_eq!((*s).as_str(), "Snow");
+        }
+    }
+
+    #[test]
+    fn test_json_object_get_missing_key() {
+        snow_rt_init();
+        let obj = snow_json_object_new();
+        let key = make_string("nonexistent") as *mut u8;
+        let result = snow_json_object_get(obj, key);
+        unsafe {
+            let res = result as *mut SnowResult;
+            assert_eq!((*res).tag, 1, "should be Err for missing key");
+        }
+    }
+
+    #[test]
+    fn test_json_array_new_push() {
+        snow_rt_init();
+        let mut arr = snow_json_array_new();
+        arr = snow_json_array_push(arr, snow_json_from_int(1));
+        arr = snow_json_array_push(arr, snow_json_from_int(2));
+
+        // Encode and verify
+        let encoded = snow_json_encode(arr);
+        unsafe {
+            let text = (*encoded).as_str();
+            assert_eq!(text, "[1,2]");
+        }
+    }
+
+    #[test]
+    fn test_json_as_int_from_int() {
+        snow_rt_init();
+        let json = snow_json_from_int(42);
+        let result = snow_json_as_int(json);
+        unsafe {
+            let res = result as *mut SnowResult;
+            assert_eq!((*res).tag, 0);
+            assert_eq!((*res).value as i64, 42);
+        }
+    }
+
+    #[test]
+    fn test_json_as_int_from_float() {
+        snow_rt_init();
+        let json = snow_json_from_float(3.7);
+        let result = snow_json_as_int(json);
+        unsafe {
+            let res = result as *mut SnowResult;
+            assert_eq!((*res).tag, 0);
+            assert_eq!((*res).value as i64, 3); // truncated
+        }
+    }
+
+    #[test]
+    fn test_json_as_int_from_string_error() {
+        snow_rt_init();
+        let json = snow_json_from_string(make_string("hello"));
+        let result = snow_json_as_int(json);
+        unsafe {
+            let res = result as *mut SnowResult;
+            assert_eq!((*res).tag, 1, "should be Err");
+        }
+    }
+
+    #[test]
+    fn test_json_as_float_from_float() {
+        snow_rt_init();
+        let json = snow_json_from_float(2.5);
+        let result = snow_json_as_float(json);
+        unsafe {
+            let res = result as *mut SnowResult;
+            assert_eq!((*res).tag, 0);
+            let bits = (*res).value as u64;
+            let f = f64::from_bits(bits);
+            assert!((f - 2.5).abs() < f64::EPSILON);
+        }
+    }
+
+    #[test]
+    fn test_json_as_float_from_int() {
+        snow_rt_init();
+        let json = snow_json_from_int(5);
+        let result = snow_json_as_float(json);
+        unsafe {
+            let res = result as *mut SnowResult;
+            assert_eq!((*res).tag, 0);
+            let bits = (*res).value as u64;
+            let f = f64::from_bits(bits);
+            assert!((f - 5.0).abs() < f64::EPSILON);
+        }
+    }
+
+    #[test]
+    fn test_json_as_string_happy() {
+        snow_rt_init();
+        let json = snow_json_from_string(make_string("world"));
+        let result = snow_json_as_string(json);
+        unsafe {
+            let res = result as *mut SnowResult;
+            assert_eq!((*res).tag, 0);
+            let s = (*res).value as *const SnowString;
+            assert_eq!((*s).as_str(), "world");
+        }
+    }
+
+    #[test]
+    fn test_json_as_string_error() {
+        snow_rt_init();
+        let json = snow_json_from_int(42);
+        let result = snow_json_as_string(json);
+        unsafe {
+            let res = result as *mut SnowResult;
+            assert_eq!((*res).tag, 1, "should be Err for non-string");
+        }
+    }
+
+    #[test]
+    fn test_json_as_bool() {
+        snow_rt_init();
+        let json = snow_json_from_bool(1);
+        let result = snow_json_as_bool(json);
+        unsafe {
+            let res = result as *mut SnowResult;
+            assert_eq!((*res).tag, 0);
+            assert_eq!((*res).value as u64, 1);
+        }
+    }
+
+    #[test]
+    fn test_json_as_bool_error() {
+        snow_rt_init();
+        let json = snow_json_from_int(1);
+        let result = snow_json_as_bool(json);
+        unsafe {
+            let res = result as *mut SnowResult;
+            assert_eq!((*res).tag, 1, "should be Err for non-bool");
+        }
+    }
+
+    #[test]
+    fn test_json_null() {
+        snow_rt_init();
+        let json = snow_json_null() as *const SnowJson;
+        unsafe {
+            assert_eq!((*json).tag, JSON_NULL);
+            assert_eq!((*json).value, 0);
+        }
+    }
+
+    extern "C" fn int_to_json(val: u64) -> *mut u8 {
+        snow_json_from_int(val as i64)
+    }
+
+    #[test]
+    fn test_json_from_list() {
+        snow_rt_init();
+        let mut l = list::snow_list_new();
+        l = list::snow_list_append(l, 10u64);
+        l = list::snow_list_append(l, 20u64);
+        l = list::snow_list_append(l, 30u64);
+
+        let json_arr = snow_json_from_list(l, int_to_json);
+        let encoded = snow_json_encode(json_arr);
+        unsafe {
+            assert_eq!((*encoded).as_str(), "[10,20,30]");
+        }
+    }
+
+    extern "C" fn json_to_int_result(json: *mut u8) -> *mut u8 {
+        snow_json_as_int(json)
+    }
+
+    #[test]
+    fn test_json_to_list_roundtrip() {
+        snow_rt_init();
+        // Build a JSON array [1, 2, 3]
+        let mut arr = snow_json_array_new();
+        arr = snow_json_array_push(arr, snow_json_from_int(1));
+        arr = snow_json_array_push(arr, snow_json_from_int(2));
+        arr = snow_json_array_push(arr, snow_json_from_int(3));
+
+        let result = snow_json_to_list(arr, json_to_int_result);
+        unsafe {
+            let res = result as *mut SnowResult;
+            assert_eq!((*res).tag, 0, "should be Ok");
+            let decoded_list = (*res).value as *mut u8;
+            assert_eq!(list::snow_list_length(decoded_list), 3);
+            assert_eq!(list::snow_list_get(decoded_list, 0) as i64, 1);
+            assert_eq!(list::snow_list_get(decoded_list, 1) as i64, 2);
+            assert_eq!(list::snow_list_get(decoded_list, 2) as i64, 3);
+        }
+    }
+
+    #[test]
+    fn test_json_to_list_error_propagation() {
+        snow_rt_init();
+        // Build a JSON array with a string element -- int decode should fail
+        let mut arr = snow_json_array_new();
+        arr = snow_json_array_push(arr, snow_json_from_int(1));
+        arr = snow_json_array_push(arr, snow_json_from_string(make_string("oops")));
+
+        let result = snow_json_to_list(arr, json_to_int_result);
+        unsafe {
+            let res = result as *mut SnowResult;
+            assert_eq!((*res).tag, 1, "should propagate Err from element decode");
+        }
+    }
+
+    #[test]
+    fn test_json_float_roundtrip() {
+        snow_rt_init();
+        // Create a float, encode it, re-parse, verify it comes back as float
+        let json = snow_json_from_float(3.14);
+        let encoded = snow_json_encode(json as *mut u8);
+        unsafe {
+            let text = (*encoded).as_str();
+            let parsed: f64 = text.parse().unwrap();
+            assert!((parsed - 3.14).abs() < 0.001);
         }
     }
 }
