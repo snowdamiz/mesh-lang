@@ -149,10 +149,11 @@ Plans:
   2. User calls `Request.param(req, "id")` inside a handler and gets `Some("42")`
   3. User registers routes with `HTTP.get`, `HTTP.post`, `HTTP.put`, `HTTP.delete` and only matching HTTP methods dispatch to the handler
   4. Exact routes take priority over parameterized routes (`/users/me` matches before `/users/:id`)
-**Plans**: TBD
+**Plans:** 2 plans
 
 Plans:
-- [ ] 51-01: TBD
+- [ ] 51-01-PLAN.md -- Runtime + compiler pipeline: path param matching, method routing, request accessor, intrinsics, typeck, MIR arity dispatch
+- [ ] 51-02-PLAN.md -- E2E test: Snow fixture with path params + method routing + priority, verified via real HTTP server
 
 ### Phase 52: HTTP Middleware
 **Goal**: Users can wrap request handling with composable middleware functions for logging, auth, and cross-cutting concerns
@@ -218,7 +219,7 @@ Phases execute in numeric order: 49 -> 50 -> 51 -> 52 -> 53 -> 54
 | 43-48 | v1.9 | 13/13 | Complete | 2026-02-10 |
 | 49. JSON Serde -- Structs | v2.0 | 3/3 | Complete | 2026-02-11 |
 | 50. JSON Serde -- Sum Types & Generics | v2.0 | 2/2 | Complete | 2026-02-11 |
-| 51. HTTP Path Parameters | v2.0 | 0/TBD | Not started | - |
+| 51. HTTP Path Parameters | v2.0 | 0/2 | Planning complete | - |
 | 52. HTTP Middleware | v2.0 | 0/TBD | Not started | - |
 | 53. SQLite Driver | v2.0 | 0/TBD | Not started | - |
 | 54. PostgreSQL Driver | v2.0 | 0/TBD | Not started | - |
