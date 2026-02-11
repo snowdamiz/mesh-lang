@@ -161,6 +161,21 @@ impl<'ctx> CodeGen<'ctx> {
             }
             let val = self.navigate_access_path(scrutinee_alloca, scrutinee_ty, path)?;
             let llvm_ty = self.llvm_type(ty);
+
+            // When the binding type is a Struct but the extracted value is a pointer
+            // (e.g., from a generic Result<Struct, String> where Ok's payload is Ptr),
+            // dereference the pointer to load the actual struct value.
+            let val = if matches!(ty, MirType::Struct(_))
+                && val.is_pointer_value()
+                && !llvm_ty.is_pointer_type()
+            {
+                self.builder
+                    .build_load(llvm_ty, val.into_pointer_value(), "deref_struct")
+                    .map_err(|e| e.to_string())?
+            } else {
+                val
+            };
+
             let alloca = self
                 .builder
                 .build_alloca(llvm_ty, name)

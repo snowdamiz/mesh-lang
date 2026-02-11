@@ -2989,7 +2989,7 @@ impl<'a> Lowerer<'a> {
                     pattern: MirPattern::Constructor {
                         type_name: sum_name.to_string(),
                         variant: "Some".to_string(),
-                        fields: vec![MirPattern::Wildcard],
+                        fields: vec![MirPattern::Var("__opt_val".to_string(), inner_mir_type.clone())],
                         bindings: vec![("__opt_val".to_string(), inner_mir_type)],
                     },
                     guard: None,
@@ -3095,8 +3095,9 @@ impl<'a> Lowerer<'a> {
 
     /// Generate a synthetic `FromJson__from_json__StructName` MIR function that
     /// extracts fields from a JSON object with nested Result propagation.
-    /// Uses snow_result_is_ok/snow_result_unwrap instead of Match on Result
-    /// to avoid MirType::Ptr vs SumType mismatch in LLVM codegen.
+    /// Returns a *mut SnowResult (Ptr) -- the caller handles conversion to SumType.
+    /// Uses snow_result_is_ok/snow_result_unwrap for internal SnowResult handling,
+    /// and snow_alloc_result(0, heap_struct_ptr) for the Ok result.
     fn generate_from_json_struct(&mut self, name: &str, fields: &[(String, MirType)]) {
         let mangled = format!("FromJson__from_json__{}", name);
         let struct_ty = MirType::Struct(name.to_string());
@@ -3118,7 +3119,8 @@ impl<'a> Lowerer<'a> {
             ty: struct_ty.clone(),
         };
 
-        // Use alloc_result(0, struct_ptr) for Ok result
+        // Use alloc_result(0, struct_ptr) for Ok result.
+        // The codegen will heap-allocate the struct via the StructValue -> Ptr coercion.
         let alloc_result_ty = MirType::FnPtr(
             vec![MirType::Int, MirType::Ptr],
             Box::new(MirType::Ptr),
@@ -3133,7 +3135,7 @@ impl<'a> Lowerer<'a> {
         };
 
         // Wrap each field extraction around the inner expression, from last to first.
-        // Uses If(snow_result_is_ok(res)) instead of Match on Result.
+        // Uses If(snow_result_is_ok(res)) for internal SnowResult handling.
         let mut body = ok_result;
 
         for (i, (field_name, field_ty)) in fields.iter().enumerate().rev() {
@@ -3369,7 +3371,8 @@ impl<'a> Lowerer<'a> {
     /// Generate a wrapper `__json_decode__StructName` that chains
     /// snow_json_parse + FromJson__from_json__StructName.
     /// This is what `StructName.from_json(str)` resolves to.
-    /// Uses If + snow_result_is_ok/unwrap instead of Match on Result.
+    /// Returns a *mut SnowResult (Ptr) -- the let-binding deref logic converts
+    /// it to a SumType("Result") when bound to a typed variable.
     fn generate_from_json_string_wrapper(&mut self, name: &str) {
         let wrapper_name = format!("__json_decode__{}", name);
         let parse_ty = MirType::FnPtr(vec![MirType::String], Box::new(MirType::Ptr));

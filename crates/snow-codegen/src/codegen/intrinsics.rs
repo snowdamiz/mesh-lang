@@ -402,6 +402,14 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
     // snow_json_to_map(json_obj: ptr, val_fn: ptr) -> ptr (SnowResult)
     module.add_function("snow_json_to_map", ptr_type.fn_type(&[ptr_type.into(), ptr_type.into()], false), Some(inkwell::module::Linkage::External));
 
+    // ── Result helpers (Phase 49: from_json Result propagation) ─────────
+    // snow_alloc_result(tag: i64, value: ptr) -> ptr
+    module.add_function("snow_alloc_result", ptr_type.fn_type(&[i64_type.into(), ptr_type.into()], false), Some(inkwell::module::Linkage::External));
+    // snow_result_is_ok(result: ptr) -> i64
+    module.add_function("snow_result_is_ok", i64_type.fn_type(&[ptr_type.into()], false), Some(inkwell::module::Linkage::External));
+    // snow_result_unwrap(result: ptr) -> ptr
+    module.add_function("snow_result_unwrap", ptr_type.fn_type(&[ptr_type.into()], false), Some(inkwell::module::Linkage::External));
+
     // ── Standard library: HTTP functions (Phase 8 Plan 05) ──────────────
 
     // snow_http_router() -> ptr

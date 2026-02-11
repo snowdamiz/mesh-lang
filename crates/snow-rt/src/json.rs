@@ -107,7 +107,8 @@ fn serde_value_to_snow_json(val: &serde_json::Value) -> *mut SnowJson {
         serde_json::Value::Object(obj) => {
             // Build a SnowMap from the object entries.
             // Keys are stored as SnowString pointers (as u64), values as SnowJson pointers (as u64).
-            let mut snow_map = map::snow_map_new();
+            // Use typed map with KEY_TYPE_STR (1) so lookups use string content comparison.
+            let mut snow_map = map::snow_map_new_typed(1);
             for (key, val) in obj {
                 let key_str = snow_string_new(key.as_ptr(), key.len() as u64);
                 let val_json = serde_value_to_snow_json(val);
@@ -307,9 +308,10 @@ pub extern "C" fn snow_json_from_string(s: *const SnowString) -> *mut u8 {
 // ── Structured JSON object/array functions (Phase 49) ───────────────
 
 /// Create an empty JSON object.
+/// Uses string-typed map (KEY_TYPE_STR) so key lookups use content comparison.
 #[no_mangle]
 pub extern "C" fn snow_json_object_new() -> *mut u8 {
-    let m = map::snow_map_new();
+    let m = map::snow_map_new_typed(1);
     alloc_json(JSON_OBJECT, m as u64) as *mut u8
 }
 

@@ -902,6 +902,32 @@ impl<'ctx> CodeGen<'ctx> {
                                     }
                                 }
                             }
+                            BasicMetadataValueEnum::StructValue(arg_sv) => {
+                                // If the runtime function expects a pointer but we have a struct value
+                                // (e.g., struct passed to snow_alloc_result), heap-allocate + store + pass ptr.
+                                // Must use GC heap (not stack alloca) because the pointer may be stored
+                                // in a SnowResult that outlives the current stack frame.
+                                if let inkwell::types::BasicMetadataTypeEnum::PointerType(_) = param_ty {
+                                    let sv_ty = arg_sv.get_type();
+                                    let i64_type = self.context.i64_type();
+                                    let ptr_type = self.context.ptr_type(inkwell::AddressSpace::default());
+                                    let size = sv_ty.size_of().unwrap_or(i64_type.const_int(64, false));
+                                    let align = i64_type.const_int(8, false);
+                                    let gc_alloc = self.module.get_function("snow_gc_alloc_actor")
+                                        .ok_or("snow_gc_alloc_actor not found")?;
+                                    let heap_ptr = self.builder
+                                        .build_call(gc_alloc, &[size.into(), align.into()], "struct_heap")
+                                        .map_err(|e| e.to_string())?
+                                        .try_as_basic_value()
+                                        .basic()
+                                        .ok_or("gc_alloc returned void")?
+                                        .into_pointer_value();
+                                    self.builder
+                                        .build_store(heap_ptr, arg_sv)
+                                        .map_err(|e| e.to_string())?;
+                                    coerced_args[i] = heap_ptr.into();
+                                }
+                            }
                             _ => {}
                         }
                     }
@@ -1095,6 +1121,16 @@ impl<'ctx> CodeGen<'ctx> {
         let fn_val = self.current_function();
         let cond_val = self.codegen_expr(cond)?.into_int_value();
 
+        // LLVM br requires an i1 condition. If the condition is a wider integer
+        // (e.g., i64 from snow_result_is_ok), truncate to i1 (nonzero = true).
+        let cond_i1 = if cond_val.get_type().get_bit_width() != 1 {
+            self.builder
+                .build_int_truncate(cond_val, self.context.bool_type(), "cond_i1")
+                .map_err(|e| e.to_string())?
+        } else {
+            cond_val
+        };
+
         let result_ty = self.llvm_type(ty);
         // Use entry-block alloca to prevent stack growth in TCE loops.
         let result_alloca = if self.tce_loop_header.is_some() {
@@ -1110,7 +1146,7 @@ impl<'ctx> CodeGen<'ctx> {
         let merge_bb = self.context.append_basic_block(fn_val, "if_merge");
 
         self.builder
-            .build_conditional_branch(cond_val, then_bb, else_bb)
+            .build_conditional_branch(cond_i1, then_bb, else_bb)
             .map_err(|e| e.to_string())?;
 
         // Then branch
@@ -1170,11 +1206,13 @@ impl<'ctx> CodeGen<'ctx> {
 
         let val = self.codegen_expr(value)?;
 
-        // When binding a runtime-returned pointer to a sum type variable,
-        // dereference the pointer to load the actual struct value.
+        // When binding a runtime-returned pointer to a sum type or struct variable,
+        // dereference the pointer to load the actual value.
         // Runtime functions like snow_file_read return *mut SnowResult (ptr)
         // but the variable type is SumType (a by-value struct).
-        let val = if matches!(ty, MirType::SumType(_))
+        // Similarly, from_json for nested structs returns a heap pointer via
+        // snow_alloc_result/snow_result_unwrap, but the field type is Struct.
+        let val = if matches!(ty, MirType::SumType(_) | MirType::Struct(_))
             && val.is_pointer_value()
             && !llvm_ty.is_pointer_type()
         {
