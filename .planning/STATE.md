@@ -10,17 +10,17 @@ See: .planning/PROJECT.md (updated 2026-02-10)
 ## Current Position
 
 Phase: 51 of 54 (HTTP Path Parameters)
-Plan: 1 of 2 in current phase
-Status: Executing
-Last activity: 2026-02-11 -- Plan 51-01 complete
+Plan: 2 of 2 in current phase
+Status: Phase Complete
+Last activity: 2026-02-11 -- Plan 51-02 complete
 
-Progress: [█████░░░░░] 50%
+Progress: [██████████] 100%
 
 ## Performance Metrics
 
 **All-time Totals:**
-- Plans completed: 147
-- Phases completed: 50
+- Plans completed: 148
+- Phases completed: 51
 - Milestones shipped: 10 (v1.0-v1.9)
 - Lines of Rust: 76,100
 - Timeline: 6 days (2026-02-05 -> 2026-02-10)
@@ -49,6 +49,8 @@ Progress: [█████░░░░░] 50%
 - 51-01: Use HTTP.on_get/on_post/on_put/on_delete naming to avoid collision with existing HTTP.get/post client functions
 - 51-01: Two-pass route matching (exact/wildcard first, then parameterized) for automatic priority
 - 51-01: Path params stored as SnowMap appended to SnowHttpRequest for repr(C) layout safety
+- 51-02: Three-pass route matching (exact > parameterized > wildcard) to prevent wildcard catch-all from stealing parameterized matches
+- 51-02: String-keyed SnowMaps (snow_map_new_typed(1)) for HTTP request path_params, query_params, and headers
 
 ### Research Notes
 
@@ -71,6 +73,6 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-11
-Stopped at: Completed 51-01-PLAN.md
+Stopped at: Completed 51-02-PLAN.md (Phase 51 complete)
 Resume file: None
-Next action: Execute 51-02-PLAN.md (E2E tests)
+Next action: Begin Phase 52
