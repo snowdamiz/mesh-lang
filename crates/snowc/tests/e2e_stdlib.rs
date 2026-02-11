@@ -1139,6 +1139,50 @@ fn e2e_stdlib_list_take_drop() {
     assert_eq!(output, "3\n10\n30\n2\n40\n5\n0\n");
 }
 
+// ── JSON Sum Type & Generic E2E Tests (Phase 50) ──────────────────────
+
+#[test]
+fn e2e_deriving_json_sum_type() {
+    let source = read_fixture("deriving_json_sum_type.snow");
+    let output = compile_and_run(&source);
+    let lines: Vec<&str> = output.trim().lines().collect();
+    assert_eq!(lines.len(), 5, "expected 5 lines, got: {}", output);
+    // Line 0: Circle encode
+    let json1: serde_json::Value = serde_json::from_str(lines[0]).expect("valid JSON line 0");
+    assert_eq!(json1["tag"], "Circle");
+    assert!(json1["fields"].is_array());
+    assert_eq!(json1["fields"].as_array().unwrap().len(), 1);
+    assert!((json1["fields"][0].as_f64().unwrap() - 3.14).abs() < 0.01);
+    // Line 1: Rectangle encode
+    let json2: serde_json::Value = serde_json::from_str(lines[1]).expect("valid JSON line 1");
+    assert_eq!(json2["tag"], "Rectangle");
+    assert_eq!(json2["fields"].as_array().unwrap().len(), 2);
+    assert!((json2["fields"][0].as_f64().unwrap() - 2.0).abs() < 0.01);
+    assert!((json2["fields"][1].as_f64().unwrap() - 5.0).abs() < 0.01);
+    // Line 2: Point encode
+    let json3: serde_json::Value = serde_json::from_str(lines[2]).expect("valid JSON line 2");
+    assert_eq!(json3["tag"], "Point");
+    assert_eq!(json3["fields"].as_array().unwrap().len(), 0);
+    // Line 3: Circle decode verification
+    assert_eq!(lines[3], "circle: 3.14");
+    // Line 4: Point decode verification
+    assert_eq!(lines[4], "point: ok");
+}
+
+#[test]
+fn e2e_deriving_json_generic() {
+    let source = read_fixture("deriving_json_generic.snow");
+    let output = compile_and_run(&source);
+    let lines: Vec<&str> = output.trim().lines().collect();
+    assert_eq!(lines.len(), 2, "expected 2 lines, got: {}", output);
+    // Line 0: Wrapper<Int> encode
+    let json1: serde_json::Value = serde_json::from_str(lines[0]).expect("valid JSON line 0");
+    assert_eq!(json1["value"], 42);
+    // Line 1: Wrapper<String> encode
+    let json2: serde_json::Value = serde_json::from_str(lines[1]).expect("valid JSON line 1");
+    assert_eq!(json2["value"], "hello");
+}
+
 // ── Phase 47 Plan 02: Map/Set Conversion E2E Tests ────────────────────
 
 #[test]

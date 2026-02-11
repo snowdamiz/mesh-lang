@@ -159,32 +159,33 @@ pub fn create_sum_type_layout<'ctx>(
         }
     }
 
-    // Calculate max payload size across all variants.
+    // Calculate max variant overlay size across all variants.
+    // We use the full overlay type { i8 tag, field0, field1, ... } to account
+    // for alignment padding between the tag and the first field.
     let target_data = inkwell::targets::TargetData::create(""); // temp for size queries
-    let max_payload_size = sum_type
+    let max_overlay_size = sum_type
         .variants
         .iter()
         .map(|v| {
             if v.fields.is_empty() {
-                0u64
+                // Just the tag byte
+                1u64
             } else {
-                let field_types: Vec<BasicTypeEnum<'ctx>> = v
-                    .fields
-                    .iter()
-                    .map(|f| llvm_type(context, f, struct_types, sum_type_layouts))
-                    .collect();
-                let variant_struct = context.struct_type(&field_types, false);
-                target_data.get_store_size(&variant_struct)
+                let overlay = variant_struct_type(context, &v.fields, struct_types, sum_type_layouts);
+                target_data.get_store_size(&overlay)
             }
         })
         .max()
-        .unwrap_or(0);
+        .unwrap_or(1);
 
-    if max_payload_size == 0 {
+    if max_overlay_size <= 1 {
         // Enum with no payloads (all nullary variants) -- just the tag.
         context.struct_type(&[tag_type.into()], false)
     } else {
-        let payload_type = context.i8_type().array_type(max_payload_size as u32);
+        // Allocate enough bytes for the largest variant overlay.
+        // Subtract 1 for the tag byte we add explicitly.
+        let payload_bytes = max_overlay_size - 1;
+        let payload_type = context.i8_type().array_type(payload_bytes as u32);
         context.struct_type(&[tag_type.into(), payload_type.into()], false)
     }
 }

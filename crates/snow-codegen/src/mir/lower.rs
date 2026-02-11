@@ -2870,18 +2870,18 @@ impl<'a> Lowerer<'a> {
         let arms: Vec<MirMatchArm> = variants
             .iter()
             .map(|v| {
-                // Bind fields as field_0, field_1, ...
+                // Bind fields with per-variant unique names to avoid LLVM domination errors
                 let field_pats: Vec<MirPattern> = v
                     .fields
                     .iter()
                     .enumerate()
-                    .map(|(i, ft)| MirPattern::Var(format!("field_{}", i), ft.clone()))
+                    .map(|(i, ft)| MirPattern::Var(format!("__tj_{}_{}", v.name, i), ft.clone()))
                     .collect();
                 let bindings: Vec<(String, MirType)> = v
                     .fields
                     .iter()
                     .enumerate()
-                    .map(|(i, ft)| (format!("field_{}", i), ft.clone()))
+                    .map(|(i, ft)| (format!("__tj_{}_{}", v.name, i), ft.clone()))
                     .collect();
 
                 // Build fields array
@@ -2894,7 +2894,7 @@ impl<'a> Lowerer<'a> {
                     ty: MirType::Ptr,
                 };
                 for (i, ft) in v.fields.iter().enumerate() {
-                    let field_var = MirExpr::Var(format!("field_{}", i), ft.clone());
+                    let field_var = MirExpr::Var(format!("__tj_{}_{}", v.name, i), ft.clone());
                     let json_val = self.emit_to_json_for_type(field_var, ft, name);
                     arr = MirExpr::Call {
                         func: Box::new(MirExpr::Var(
