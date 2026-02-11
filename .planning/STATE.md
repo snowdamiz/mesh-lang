@@ -10,11 +10,11 @@ See: .planning/PROJECT.md (updated 2026-02-10)
 ## Current Position
 
 Phase: 50 of 54 (JSON Serde -- Sum Types & Generics)
-Plan: 1 of 2 in current phase
-Status: Executing
-Last activity: 2026-02-11 -- Completed 50-01-PLAN.md
+Plan: 2 of 2 in current phase (COMPLETE)
+Status: Phase 50 Complete
+Last activity: 2026-02-11 -- Completed 50-02-PLAN.md
 
-Progress: [█████░░░░░] 50%
+Progress: [██████████] 100%
 
 ## Performance Metrics
 
@@ -43,6 +43,9 @@ Progress: [█████░░░░░] 50%
 - 50-01: Single-letter uppercase heuristic for is_json_serializable generic params -- invalid instantiations fail at link time
 - 50-01: If-chain for from_json tag matching (not Match) -- consistent with Phase 49 pattern
 - 50-01: Unique per-variant variable names in from_json to avoid LLVM SSA domination errors
+- 50-02: Use variant overlay sizes (with alignment) for sum type layout calculation, not raw payload sizes
+- 50-02: Generate wrapper trampoline functions for List<Struct/SumType> JSON callbacks
+- 50-02: Use Let binding auto-deref in trampolines to convert heap pointers back to inline values
 
 ### Research Notes
 
@@ -65,6 +68,6 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-11
-Stopped at: Completed 50-01-PLAN.md
+Stopped at: Completed 50-02-PLAN.md (Phase 50 complete)
 Resume file: None
-Next action: Execute 50-02-PLAN.md (E2E tests)
+Next action: Begin Phase 51 planning
