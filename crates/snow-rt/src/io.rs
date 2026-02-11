@@ -20,7 +20,7 @@ pub struct SnowResult {
 }
 
 /// Allocate a SnowResult on the GC heap.
-fn alloc_result(tag: u8, value: *mut u8) -> *mut SnowResult {
+pub(crate) fn alloc_result(tag: u8, value: *mut u8) -> *mut SnowResult {
     unsafe {
         let ptr = snow_gc_alloc_actor(
             std::mem::size_of::<SnowResult>() as u64,

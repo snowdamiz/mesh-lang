@@ -22,6 +22,7 @@
 
 pub mod actor;
 pub mod collections;
+pub mod db;
 pub mod env;
 pub mod file;
 pub mod gc;
@@ -41,6 +42,9 @@ pub use actor::{
     snow_timer_sleep, snow_timer_send_after,
 };
 pub use actor::service::{snow_service_call, snow_service_reply};
+pub use db::sqlite::{
+    snow_sqlite_open, snow_sqlite_close, snow_sqlite_execute, snow_sqlite_query,
+};
 pub use collections::list::{
     snow_list_all, snow_list_any, snow_list_append, snow_list_concat, snow_list_contains,
     snow_list_drop, snow_list_enumerate, snow_list_filter, snow_list_find, snow_list_flat_map,
