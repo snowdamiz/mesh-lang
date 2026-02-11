@@ -1,0 +1,29 @@
+fn logger(request, next) do
+  let response = next(request)
+  response
+end
+
+fn auth_check(request, next) do
+  let path = Request.path(request)
+  case String.starts_with(path, "/secret") do
+    true -> HTTP.response(401, "Unauthorized")
+    false -> next(request)
+  end
+end
+
+fn handler(request) do
+  HTTP.response(200, "hello-world")
+end
+
+fn secret_handler(request) do
+  HTTP.response(200, "secret-data")
+end
+
+fn main() do
+  let r = HTTP.router()
+  let r = HTTP.use(r, logger)
+  let r = HTTP.use(r, auth_check)
+  let r = HTTP.route(r, "/hello", handler)
+  let r = HTTP.route(r, "/secret", secret_handler)
+  HTTP.serve(r, 18083)
+end
