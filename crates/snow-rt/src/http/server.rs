@@ -263,8 +263,8 @@ fn handle_request(router_ptr: *mut u8, mut request: tiny_http::Request) {
         let _ = request.as_reader().read_to_end(&mut body_bytes);
         let body = snow_string_new(body_bytes.as_ptr(), body_bytes.len() as u64) as *mut u8;
 
-        // Parse query params into a SnowMap.
-        let mut query_map = map::snow_map_new();
+        // Parse query params into a SnowMap (string keys for content-based lookup).
+        let mut query_map = map::snow_map_new_typed(1);
         if !query_str.is_empty() {
             for param in query_str.split('&') {
                 if let Some((k, v)) = param.split_once('=') {
@@ -275,8 +275,8 @@ fn handle_request(router_ptr: *mut u8, mut request: tiny_http::Request) {
             }
         }
 
-        // Parse headers into a SnowMap.
-        let mut headers_map = map::snow_map_new();
+        // Parse headers into a SnowMap (string keys for content-based lookup).
+        let mut headers_map = map::snow_map_new_typed(1);
         for header in request.headers() {
             let name = header.field.as_str().as_str();
             let value_str = header.value.as_str();
@@ -288,7 +288,7 @@ fn handle_request(router_ptr: *mut u8, mut request: tiny_http::Request) {
         // Match against router (now with method and path params).
         if let Some((handler_fn, handler_env, params)) = router.match_route(path_str, &method_str) {
             // Convert captured path params into a SnowMap.
-            let mut path_params_map = map::snow_map_new();
+            let mut path_params_map = map::snow_map_new_typed(1);
             for (k, v) in &params {
                 let key = snow_string_new(k.as_ptr(), k.len() as u64);
                 let val = snow_string_new(v.as_ptr(), v.len() as u64);

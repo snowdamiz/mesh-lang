@@ -3,9 +3,10 @@ fn me_handler(request) do
 end
 
 fn user_handler(request) do
-  case Request.param(request, "id") do
+  let param = Request.param(request, "id")
+  case param do
     Some(id) -> HTTP.response(200, id)
-    None(_)  -> HTTP.response(400, "no-id")
+    None -> HTTP.response(400, "no-id")
   end
 end
 

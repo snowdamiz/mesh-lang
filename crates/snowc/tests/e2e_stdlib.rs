@@ -1248,3 +1248,156 @@ fn e2e_stdlib_set_conversions() {
     let set_conv_output = compile_and_run(&set_conv_source);
     assert_eq!(set_conv_output, "1\ntrue\nfalse\n3\n3\ntrue\ntrue\n");
 }
+
+// ── HTTP Path Parameters E2E Tests (Phase 51 Plan 02) ──────────────────
+//
+// Verifies the full Phase 51 stack: Snow source -> typeck -> MIR -> LLVM ->
+// runtime HTTP server with path parameter extraction, method-specific routing,
+// exact-before-parameterized priority, and backward-compatible fallback.
+
+/// Send an HTTP request to `127.0.0.1:{port}` with retries.
+/// Returns the raw HTTP response as a string. Panics after 5 failed attempts.
+fn send_request(port: u16, request: &str) -> String {
+    let mut response = String::new();
+    for attempt in 0..5 {
+        if attempt > 0 {
+            std::thread::sleep(std::time::Duration::from_millis(200));
+        }
+        match std::net::TcpStream::connect(format!("127.0.0.1:{}", port)) {
+            Ok(mut stream) => {
+                stream
+                    .set_read_timeout(Some(std::time::Duration::from_secs(5)))
+                    .unwrap();
+                stream
+                    .write_all(request.as_bytes())
+                    .expect("failed to write HTTP request");
+                stream
+                    .read_to_string(&mut response)
+                    .expect("failed to read HTTP response");
+                return response;
+            }
+            Err(_) => continue,
+        }
+    }
+    panic!("Failed to connect to 127.0.0.1:{} after 5 attempts", port);
+}
+
+#[test]
+fn e2e_http_path_params() {
+    let source = read_fixture("stdlib_http_path_params.snow");
+    let mut guard = compile_and_start_server(&source);
+
+    // Wait for server to be ready.
+    let stderr = guard.0.stderr.take().expect("no stderr pipe");
+    let stderr_reader = BufReader::new(stderr);
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        for line in stderr_reader.lines() {
+            if let Ok(line) = line {
+                if line.contains("HTTP server listening on") {
+                    let _ = tx.send(true);
+                    return;
+                }
+            }
+        }
+        let _ = tx.send(false);
+    });
+    let ready = rx
+        .recv_timeout(std::time::Duration::from_secs(10))
+        .unwrap_or(false);
+    assert!(ready, "Server did not start within 10 seconds");
+
+    // Test A: Path parameter extraction (HTTP-01 + HTTP-02)
+    let resp_a = send_request(
+        18082,
+        "GET /users/42 HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n",
+    );
+    assert!(
+        resp_a.contains("200"),
+        "Test A: Expected 200, got: {}",
+        resp_a
+    );
+    assert!(
+        resp_a.contains("42"),
+        "Test A: Expected body '42', got: {}",
+        resp_a
+    );
+
+    std::thread::sleep(std::time::Duration::from_millis(50));
+
+    // Test B: Exact route priority (SC-4) -- /users/me beats /users/:id
+    let resp_b = send_request(
+        18082,
+        "GET /users/me HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n",
+    );
+    assert!(
+        resp_b.contains("200"),
+        "Test B: Expected 200, got: {}",
+        resp_b
+    );
+    // The body must be "me" from the exact route handler, not the param handler.
+    // Split on the HTTP headers to get the body.
+    let body_b = resp_b.split("\r\n\r\n").nth(1).unwrap_or("");
+    assert_eq!(
+        body_b.trim(),
+        "me",
+        "Test B: Expected exact route 'me', got body: '{}'",
+        body_b
+    );
+
+    std::thread::sleep(std::time::Duration::from_millis(50));
+
+    // Test C: Method-specific routing (HTTP-03) -- POST /data
+    let resp_c = send_request(
+        18082,
+        "POST /data HTTP/1.1\r\nHost: localhost\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
+    );
+    assert!(
+        resp_c.contains("200"),
+        "Test C: Expected 200, got: {}",
+        resp_c
+    );
+    assert!(
+        resp_c.contains("posted"),
+        "Test C: Expected body 'posted', got: {}",
+        resp_c
+    );
+
+    std::thread::sleep(std::time::Duration::from_millis(50));
+
+    // Test D: Method filtering -- POST /users/42 should hit fallback (not the GET-only route)
+    let resp_d = send_request(
+        18082,
+        "POST /users/42 HTTP/1.1\r\nHost: localhost\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
+    );
+    assert!(
+        resp_d.contains("200"),
+        "Test D: Expected 200 (fallback), got: {}",
+        resp_d
+    );
+    assert!(
+        resp_d.contains("fallback"),
+        "Test D: Expected fallback body, got: {}",
+        resp_d
+    );
+
+    std::thread::sleep(std::time::Duration::from_millis(50));
+
+    // Test E: Fallback route (backward compat) -- GET /unknown/path
+    let resp_e = send_request(
+        18082,
+        "GET /unknown/path HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n",
+    );
+    assert!(
+        resp_e.contains("200"),
+        "Test E: Expected 200 (fallback), got: {}",
+        resp_e
+    );
+    assert!(
+        resp_e.contains("fallback"),
+        "Test E: Expected fallback body, got: {}",
+        resp_e
+    );
+
+    // ServerGuard Drop will kill the server process.
+}

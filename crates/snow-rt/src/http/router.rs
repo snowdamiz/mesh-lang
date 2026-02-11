@@ -72,19 +72,26 @@ fn matches_pattern(pattern: &str, path: &str) -> bool {
     }
 }
 
+/// Check if a pattern is a wildcard (ends with `/*`).
+fn is_wildcard(pattern: &str) -> bool {
+    pattern.ends_with("/*")
+}
+
 impl SnowRouter {
     /// Find the first route matching the given path and HTTP method.
     ///
     /// Returns (handler_fn, handler_env, params) or None.
-    /// Uses two-pass matching for priority: exact/wildcard first, then parameterized.
+    /// Uses three-pass matching for priority:
+    ///   1. Exact routes (no `:param`, no `*`) -- highest priority
+    ///   2. Parameterized routes (`:param` segments) -- medium priority
+    ///   3. Wildcard routes (`/*`) -- lowest priority (catch-all fallback)
     /// Within each pass, also checks method filtering.
     pub fn match_route(&self, path: &str, method: &str) -> Option<(*mut u8, *mut u8, Vec<(String, String)>)> {
-        // First pass: exact and wildcard routes (no `:param` segments).
+        // First pass: exact routes only (no `:param` segments, no wildcards).
         for entry in &self.routes {
-            if has_param_segments(&entry.pattern) {
+            if has_param_segments(&entry.pattern) || is_wildcard(&entry.pattern) {
                 continue;
             }
-            // Check method filter.
             if let Some(ref m) = entry.method {
                 if m != method {
                     continue;
@@ -100,7 +107,6 @@ impl SnowRouter {
             if !has_param_segments(&entry.pattern) {
                 continue;
             }
-            // Check method filter.
             if let Some(ref m) = entry.method {
                 if m != method {
                     continue;
@@ -108,6 +114,21 @@ impl SnowRouter {
             }
             if let Some(params) = match_segments(&entry.pattern, path) {
                 return Some((entry.handler_fn, entry.handler_env, params));
+            }
+        }
+
+        // Third pass: wildcard routes (catch-all fallback).
+        for entry in &self.routes {
+            if !is_wildcard(&entry.pattern) {
+                continue;
+            }
+            if let Some(ref m) = entry.method {
+                if m != method {
+                    continue;
+                }
+            }
+            if matches_pattern(&entry.pattern, path) {
+                return Some((entry.handler_fn, entry.handler_env, Vec::new()));
             }
         }
 
