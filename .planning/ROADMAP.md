@@ -179,11 +179,11 @@ Plans:
   3. User executes `Sqlite.execute(conn, "INSERT INTO users (name) VALUES (?)", ["Alice"])` and gets `Result<Int, String>` with rows affected
   4. SQLite is bundled into the compiled binary with zero system dependencies (no `apt install libsqlite3-dev` needed)
   5. Database handles survive garbage collection (opaque u64, not GC-managed pointers)
-**Plans**: TBD
+**Plans:** 2 plans
 
 Plans:
-- [ ] 53-01: TBD
-- [ ] 53-02: TBD
+- [ ] 53-01-PLAN.md -- Runtime FFI (4 extern C functions via libsqlite3-sys bundled) + compiler pipeline (intrinsics, typeck, MIR lowering)
+- [ ] 53-02-PLAN.md -- E2E test: Snow fixture with SQLite CRUD lifecycle (open, execute, query, close)
 
 ### Phase 54: PostgreSQL Driver
 **Goal**: Users can connect to PostgreSQL for production database workloads with secure authentication
