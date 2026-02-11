@@ -491,6 +491,17 @@ fn stdlib_modules() -> HashMap<String, HashMap<String, Scheme>> {
         vec![router_t.clone(), Ty::string(), Ty::fun(vec![request_t.clone()], response_t.clone())],
         router_t.clone(),
     )));
+    // Phase 52: Middleware
+    http_mod.insert("use".to_string(), Scheme::mono(Ty::fun(
+        vec![
+            router_t.clone(),
+            Ty::fun(
+                vec![request_t.clone(), Ty::fun(vec![request_t.clone()], response_t.clone())],
+                response_t.clone(),
+            ),
+        ],
+        router_t.clone(),
+    )));
     modules.insert("HTTP".to_string(), http_mod);
 
     // ── Request module (Phase 8 Plan 05) ─────────────────────────────

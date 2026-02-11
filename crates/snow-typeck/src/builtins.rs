@@ -600,6 +600,21 @@ pub fn register_builtins(
         )),
     );
 
+    // ── Phase 52: HTTP.use(Router, Fn(Request, Fn(Request) -> Response) -> Response) -> Router
+    env.insert(
+        "http_use".into(),
+        Scheme::mono(Ty::fun(
+            vec![
+                router_t.clone(),
+                Ty::fun(
+                    vec![request_t.clone(), Ty::fun(vec![request_t.clone()], response_t.clone())],
+                    response_t.clone(),
+                ),
+            ],
+            router_t.clone(),
+        )),
+    );
+
     // Request accessor functions
     // Request.method(Request) -> String
     env.insert(
@@ -1171,6 +1186,9 @@ mod tests {
         assert!(env.lookup("http_on_post").is_some());
         assert!(env.lookup("http_on_put").is_some());
         assert!(env.lookup("http_on_delete").is_some());
+
+        // Phase 52: Middleware
+        assert!(env.lookup("http_use").is_some());
     }
 
     #[test]

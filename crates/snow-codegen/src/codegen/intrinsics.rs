@@ -464,6 +464,11 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
     // snow_http_request_param(req: ptr, name: ptr) -> ptr (SnowOption)
     module.add_function("snow_http_request_param", ptr_type.fn_type(&[ptr_type.into(), ptr_type.into()], false), Some(inkwell::module::Linkage::External));
 
+    // ── Phase 52: Middleware ──────────────────────────────────────────────
+
+    // snow_http_use_middleware(router: ptr, middleware_fn: ptr) -> ptr
+    module.add_function("snow_http_use_middleware", ptr_type.fn_type(&[ptr_type.into(), ptr_type.into()], false), Some(inkwell::module::Linkage::External));
+
     // ── Hash runtime functions (Phase 21 Plan 01) ──────────────────────
 
     // snow_hash_int(value: i64) -> i64
@@ -734,6 +739,9 @@ mod tests {
         assert!(module.get_function("snow_http_route_put").is_some());
         assert!(module.get_function("snow_http_route_delete").is_some());
         assert!(module.get_function("snow_http_request_param").is_some());
+
+        // Phase 52: Middleware
+        assert!(module.get_function("snow_http_use_middleware").is_some());
 
         // Service runtime functions (Phase 9 Plan 03)
         assert!(module.get_function("snow_service_call").is_some());
