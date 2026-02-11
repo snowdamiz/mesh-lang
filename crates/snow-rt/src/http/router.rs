@@ -12,6 +12,15 @@
 
 use crate::string::SnowString;
 
+/// A single middleware entry holding the middleware function pointer.
+#[derive(Clone)]
+pub struct MiddlewareEntry {
+    /// Pointer to the middleware function.
+    pub fn_ptr: *mut u8,
+    /// Pointer to the middleware closure environment (null for bare functions).
+    pub env_ptr: *mut u8,
+}
+
 /// A single route entry mapping a URL pattern to a handler.
 pub struct RouteEntry {
     /// URL pattern (exact, wildcard ending with `/*`, or parameterized with `:name`).
@@ -24,9 +33,10 @@ pub struct RouteEntry {
     pub handler_env: *mut u8,
 }
 
-/// Router holding an ordered list of route entries.
+/// Router holding an ordered list of route entries and middleware.
 pub struct SnowRouter {
     pub routes: Vec<RouteEntry>,
+    pub middlewares: Vec<MiddlewareEntry>,
 }
 
 /// Check if a pattern has any parameterized segments (`:name`).
@@ -167,8 +177,11 @@ fn route_with_method(
             handler_env,
         });
 
+        let new_middlewares = old.middlewares.clone();
+
         let new_router = Box::new(SnowRouter {
             routes: new_routes,
+            middlewares: new_middlewares,
         });
         Box::into_raw(new_router) as *mut u8
     }
@@ -181,6 +194,7 @@ fn route_with_method(
 pub extern "C" fn snow_http_router() -> *mut u8 {
     let router = Box::new(SnowRouter {
         routes: Vec::new(),
+        middlewares: Vec::new(),
     });
     Box::into_raw(router) as *mut u8
 }
@@ -236,6 +250,44 @@ pub extern "C" fn snow_http_route_delete(
     handler_fn: *mut u8,
 ) -> *mut u8 {
     route_with_method(router, pattern, handler_fn, Some("DELETE"))
+}
+
+/// Add middleware to the router. Returns a NEW router pointer (immutable semantics).
+///
+/// The middleware function receives (request, next_closure) and returns a response.
+/// Multiple middleware compose in registration order: first added = outermost.
+#[no_mangle]
+pub extern "C" fn snow_http_use_middleware(
+    router: *mut u8,
+    middleware_fn: *mut u8,
+) -> *mut u8 {
+    unsafe {
+        let old = &*(router as *const SnowRouter);
+
+        // Copy all existing routes.
+        let mut new_routes = Vec::with_capacity(old.routes.len());
+        for entry in &old.routes {
+            new_routes.push(RouteEntry {
+                pattern: entry.pattern.clone(),
+                method: entry.method.clone(),
+                handler_fn: entry.handler_fn,
+                handler_env: entry.handler_env,
+            });
+        }
+
+        // Copy existing middleware and append the new one.
+        let mut new_middlewares = old.middlewares.clone();
+        new_middlewares.push(MiddlewareEntry {
+            fn_ptr: middleware_fn,
+            env_ptr: std::ptr::null_mut(),
+        });
+
+        let new_router = Box::new(SnowRouter {
+            routes: new_routes,
+            middlewares: new_middlewares,
+        });
+        Box::into_raw(new_router) as *mut u8
+    }
 }
 
 #[cfg(test)]
@@ -317,6 +369,7 @@ mod tests {
                     handler_env: std::ptr::null_mut(),
                 },
             ],
+            middlewares: vec![],
         };
         // Exact route "/users/me" should win over parameterized "/users/:id"
         // even though the parameterized route was registered first.
@@ -348,6 +401,7 @@ mod tests {
                     handler_env: std::ptr::null_mut(),
                 },
             ],
+            middlewares: vec![],
         };
         // GET request should match the GET handler.
         let (fn_ptr, _, _) = router.match_route("/users", "GET").unwrap();
@@ -372,6 +426,7 @@ mod tests {
                     handler_env: std::ptr::null_mut(),
                 },
             ],
+            middlewares: vec![],
         };
         // Method-agnostic route should match any method.
         assert!(router.match_route("/health", "GET").is_some());
@@ -396,6 +451,7 @@ mod tests {
                     handler_env: std::ptr::null_mut(),
                 },
             ],
+            middlewares: vec![],
         };
         // Exact match should win (first in order).
         let (fn_ptr, _, _) = router.match_route("/exact", "GET").unwrap();
@@ -415,6 +471,7 @@ mod tests {
                 handler_fn: 1 as *mut u8,
                 handler_env: std::ptr::null_mut(),
             }],
+            middlewares: vec![],
         };
         assert!(router.match_route("/other", "GET").is_none());
     }

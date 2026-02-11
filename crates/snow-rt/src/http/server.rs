@@ -19,7 +19,7 @@ use crate::collections::map;
 use crate::gc::snow_gc_alloc_actor;
 use crate::string::{snow_string_new, SnowString};
 
-use super::router::SnowRouter;
+use super::router::{MiddlewareEntry, SnowRouter};
 
 // ── Request/Response structs ────────────────────────────────────────────
 
@@ -240,6 +240,92 @@ pub extern "C" fn snow_http_serve(router: *mut u8, port: i64) {
     }
 }
 
+// ── Middleware chain infrastructure ──────────────────────────────────
+
+/// State for the middleware chain trampoline.
+///
+/// Each step in the chain creates a new ChainState with `index + 1`,
+/// builds a Snow closure wrapping `chain_next`, and calls the current
+/// middleware with (request, next_closure).
+struct ChainState {
+    middlewares: Vec<MiddlewareEntry>,
+    index: usize,
+    handler_fn: *mut u8,
+    handler_env: *mut u8,
+}
+
+/// Trampoline for the middleware `next` function.
+///
+/// This is what Snow calls when middleware invokes `next(request)`.
+/// If all middleware has been traversed, calls the route handler.
+/// Otherwise, calls the next middleware with a new `next` closure.
+extern "C" fn chain_next(env_ptr: *mut u8, request_ptr: *mut u8) -> *mut u8 {
+    unsafe {
+        let state = &*(env_ptr as *const ChainState);
+        if state.index >= state.middlewares.len() {
+            // End of chain: call the route handler.
+            call_handler(state.handler_fn, state.handler_env, request_ptr)
+        } else {
+            // Call the current middleware with a new next closure.
+            let mw = &state.middlewares[state.index];
+            let next_state = Box::new(ChainState {
+                middlewares: state.middlewares.clone(),
+                index: state.index + 1,
+                handler_fn: state.handler_fn,
+                handler_env: state.handler_env,
+            });
+            let next_env = Box::into_raw(next_state) as *mut u8;
+            let next_closure = build_snow_closure(chain_next as *mut u8, next_env);
+            call_middleware(mw.fn_ptr, mw.env_ptr, request_ptr, next_closure)
+        }
+    }
+}
+
+/// Build a Snow-compatible closure struct (GC-allocated).
+///
+/// Layout: `{ fn_ptr: *mut u8, env_ptr: *mut u8 }` -- 16 bytes, 8-byte aligned.
+/// This matches Snow's closure representation used by the codegen.
+fn build_snow_closure(fn_ptr: *mut u8, env_ptr: *mut u8) -> *mut u8 {
+    unsafe {
+        let closure = snow_gc_alloc_actor(16, 8) as *mut *mut u8;
+        *closure = fn_ptr;
+        *closure.add(1) = env_ptr;
+        closure as *mut u8
+    }
+}
+
+/// Call a route handler function.
+///
+/// If env_ptr is null: bare function `fn(request) -> response`.
+/// If non-null: closure `fn(env, request) -> response`.
+fn call_handler(fn_ptr: *mut u8, env_ptr: *mut u8, request: *mut u8) -> *mut u8 {
+    unsafe {
+        if env_ptr.is_null() {
+            let f: fn(*mut u8) -> *mut u8 = std::mem::transmute(fn_ptr);
+            f(request)
+        } else {
+            let f: fn(*mut u8, *mut u8) -> *mut u8 = std::mem::transmute(fn_ptr);
+            f(env_ptr, request)
+        }
+    }
+}
+
+/// Call a middleware function.
+///
+/// If env_ptr is null: bare function `fn(request, next_closure) -> response`.
+/// If non-null: closure `fn(env, request, next_closure) -> response`.
+fn call_middleware(fn_ptr: *mut u8, env_ptr: *mut u8, request: *mut u8, next_closure: *mut u8) -> *mut u8 {
+    unsafe {
+        if env_ptr.is_null() {
+            let f: fn(*mut u8, *mut u8) -> *mut u8 = std::mem::transmute(fn_ptr);
+            f(request, next_closure)
+        } else {
+            let f: fn(*mut u8, *mut u8, *mut u8) -> *mut u8 = std::mem::transmute(fn_ptr);
+            f(env_ptr, request, next_closure)
+        }
+    }
+}
+
 /// Handle a single HTTP request by matching it against the router
 /// and calling the appropriate handler function.
 fn handle_request(router_ptr: *mut u8, mut request: tiny_http::Request) {
@@ -285,17 +371,8 @@ fn handle_request(router_ptr: *mut u8, mut request: tiny_http::Request) {
             headers_map = map::snow_map_put(headers_map, key as u64, val as u64);
         }
 
-        // Match against router (now with method and path params).
-        if let Some((handler_fn, handler_env, params)) = router.match_route(path_str, &method_str) {
-            // Convert captured path params into a SnowMap.
-            let mut path_params_map = map::snow_map_new_typed(1);
-            for (k, v) in &params {
-                let key = snow_string_new(k.as_ptr(), k.len() as u64);
-                let val = snow_string_new(v.as_ptr(), v.len() as u64);
-                path_params_map = map::snow_map_put(path_params_map, key as u64, val as u64);
-            }
-
-            // Build the request struct.
+        // Build the request struct (needed for both matched and 404 paths when middleware is present).
+        let build_snow_request = |path_params_map: *mut u8| -> *mut u8 {
             let snow_req = snow_gc_alloc_actor(
                 std::mem::size_of::<SnowHttpRequest>() as u64,
                 std::mem::align_of::<SnowHttpRequest>() as u64,
@@ -306,44 +383,84 @@ fn handle_request(router_ptr: *mut u8, mut request: tiny_http::Request) {
             (*snow_req).query_params = query_map;
             (*snow_req).headers = headers_map;
             (*snow_req).path_params = path_params_map;
+            snow_req as *mut u8
+        };
 
-            let req_ptr = snow_req as *mut u8;
+        // Match against router (now with method and path params).
+        let matched = router.match_route(path_str, &method_str);
+        let has_middleware = !router.middlewares.is_empty();
 
-            // Call handler.
-            let response_ptr = if handler_env.is_null() {
-                let f: fn(*mut u8) -> *mut u8 = std::mem::transmute(handler_fn);
-                f(req_ptr)
+        let response_ptr = if let Some((handler_fn, handler_env, params)) = matched {
+            // Convert captured path params into a SnowMap.
+            let mut path_params_map = map::snow_map_new_typed(1);
+            for (k, v) in &params {
+                let key = snow_string_new(k.as_ptr(), k.len() as u64);
+                let val = snow_string_new(v.as_ptr(), v.len() as u64);
+                path_params_map = map::snow_map_put(path_params_map, key as u64, val as u64);
+            }
+
+            let req_ptr = build_snow_request(path_params_map);
+
+            if has_middleware {
+                // Execute middleware chain wrapping the matched handler.
+                let state = Box::new(ChainState {
+                    middlewares: router.middlewares.clone(),
+                    index: 0,
+                    handler_fn,
+                    handler_env,
+                });
+                chain_next(Box::into_raw(state) as *mut u8, req_ptr)
             } else {
-                let f: fn(*mut u8, *mut u8) -> *mut u8 = std::mem::transmute(handler_fn);
-                f(handler_env, req_ptr)
-            };
+                // Fast path: no middleware, call handler directly.
+                call_handler(handler_fn, handler_env, req_ptr)
+            }
+        } else if has_middleware {
+            // 404 with middleware: wrap a synthetic 404 handler in the middleware chain.
+            let path_params_map = map::snow_map_new_typed(1);
+            let req_ptr = build_snow_request(path_params_map);
 
-            // Extract response.
-            let resp = &*(response_ptr as *const SnowHttpResponse);
-            let status_code = resp.status as u32;
-            let body_str = if resp.body.is_null() {
-                ""
-            } else {
-                let body_snow = &*(resp.body as *const SnowString);
-                body_snow.as_str()
-            };
+            // Synthetic 404 handler: returns a 404 response.
+            extern "C" fn not_found_handler(_request: *mut u8) -> *mut u8 {
+                let body_text = b"Not Found";
+                let body = snow_string_new(body_text.as_ptr(), body_text.len() as u64);
+                snow_http_response_new(404, body)
+            }
 
-            let http_response = tiny_http::Response::from_string(body_str)
-                .with_status_code(tiny_http::StatusCode(status_code as u16))
-                .with_header(
-                    tiny_http::Header::from_bytes(
-                        &b"Content-Type"[..],
-                        &b"application/json; charset=utf-8"[..],
-                    )
-                    .unwrap(),
-                );
-            let _ = request.respond(http_response);
+            let state = Box::new(ChainState {
+                middlewares: router.middlewares.clone(),
+                index: 0,
+                handler_fn: not_found_handler as *mut u8,
+                handler_env: std::ptr::null_mut(),
+            });
+            chain_next(Box::into_raw(state) as *mut u8, req_ptr)
         } else {
-            // 404 Not Found.
+            // 404 without middleware: respond directly.
             let not_found = tiny_http::Response::from_string("Not Found")
                 .with_status_code(tiny_http::StatusCode(404));
             let _ = request.respond(not_found);
-        }
+            return;
+        };
+
+        // Extract response from the Snow response pointer.
+        let resp = &*(response_ptr as *const SnowHttpResponse);
+        let status_code = resp.status as u32;
+        let body_str = if resp.body.is_null() {
+            ""
+        } else {
+            let body_snow = &*(resp.body as *const SnowString);
+            body_snow.as_str()
+        };
+
+        let http_response = tiny_http::Response::from_string(body_str)
+            .with_status_code(tiny_http::StatusCode(status_code as u16))
+            .with_header(
+                tiny_http::Header::from_bytes(
+                    &b"Content-Type"[..],
+                    &b"application/json; charset=utf-8"[..],
+                )
+                .unwrap(),
+            );
+        let _ = request.respond(http_response);
     }
 }
 

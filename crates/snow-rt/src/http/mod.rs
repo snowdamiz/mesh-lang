@@ -22,7 +22,7 @@ pub mod server;
 pub use client::{snow_http_get, snow_http_post};
 pub use router::{
     snow_http_route, snow_http_route_delete, snow_http_route_get, snow_http_route_post,
-    snow_http_route_put, snow_http_router,
+    snow_http_route_put, snow_http_router, snow_http_use_middleware,
 };
 pub use server::{
     snow_http_request_body, snow_http_request_header, snow_http_request_method,
