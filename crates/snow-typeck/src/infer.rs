@@ -1984,6 +1984,12 @@ fn is_json_serializable(ty: &Ty, _type_registry: &TypeRegistry, trait_registry: 
         Ty::Con(con) => match con.name.as_str() {
             "Int" | "Float" | "Bool" | "String" => true,
             name => {
+                // Generic type params (single uppercase letter like T, U, V, K, A, B)
+                // are treated as serializable at definition time. Invalid instantiations
+                // will fail at link time with missing ToJson__to_json__<Type> errors.
+                if name.len() == 1 && name.chars().next().map_or(false, |c| c.is_ascii_uppercase()) {
+                    return true;
+                }
                 // Check if this type has a ToJson impl registered
                 let ty_for_lookup = Ty::Con(TyCon::new(name));
                 trait_registry.has_impl("ToJson", &ty_for_lookup)
@@ -2292,10 +2298,73 @@ fn register_sum_type_def(
         );
         let _ = trait_registry.register_impl(TraitImplDef {
             trait_name: "Display".to_string(),
-            impl_type: impl_ty,
+            impl_type: impl_ty.clone(),
             impl_type_name: name.clone(),
             methods: display_methods,
         });
+    }
+
+    // Json impl (ToJson + FromJson) -- only via explicit deriving(Json)
+    if derive_list.iter().any(|t| t == "Json") {
+        // Validate all variant field types are JSON-serializable.
+        let mut json_valid = true;
+        for variant in &variants {
+            for (field_idx, field) in variant.fields.iter().enumerate() {
+                let field_ty = match field {
+                    VariantFieldInfo::Positional(ty) => ty,
+                    VariantFieldInfo::Named(_, ty) => ty,
+                };
+                if !is_json_serializable(field_ty, type_registry, trait_registry) {
+                    let field_ident = match field {
+                        VariantFieldInfo::Positional(_) => format!("{}::{}", variant.name, field_idx),
+                        VariantFieldInfo::Named(fname, _) => format!("{}::{}", variant.name, fname),
+                    };
+                    ctx.errors.push(TypeError::NonSerializableField {
+                        struct_name: name.clone(),
+                        field_name: field_ident,
+                        field_type: format!("{}", field_ty),
+                    });
+                    json_valid = false;
+                }
+            }
+        }
+
+        if json_valid {
+            let mut to_json_methods = FxHashMap::default();
+            to_json_methods.insert(
+                "to_json".to_string(),
+                ImplMethodSig {
+                    has_self: true,
+                    param_count: 0,
+                    return_type: Some(Ty::Con(TyCon::new("Json"))),
+                },
+            );
+            let _ = trait_registry.register_impl(TraitImplDef {
+                trait_name: "ToJson".to_string(),
+                impl_type: impl_ty.clone(),
+                impl_type_name: name.clone(),
+                methods: to_json_methods,
+            });
+
+            let mut from_json_methods = FxHashMap::default();
+            from_json_methods.insert(
+                "from_json".to_string(),
+                ImplMethodSig {
+                    has_self: false,
+                    param_count: 1,
+                    return_type: Some(Ty::result(
+                        Ty::Con(TyCon::new(&name)),
+                        Ty::string(),
+                    )),
+                },
+            );
+            let _ = trait_registry.register_impl(TraitImplDef {
+                trait_name: "FromJson".to_string(),
+                impl_type: impl_ty,
+                impl_type_name: name.clone(),
+                methods: from_json_methods,
+            });
+        }
     }
 }
 
@@ -4693,6 +4762,15 @@ fn infer_field_access(
                     if trait_registry.has_impl("FromJson", &struct_ty) {
                         // from_json :: String -> Result<StructName, String>
                         let result_ty = Ty::result(struct_ty, Ty::string());
+                        return Ok(Ty::fun(vec![Ty::string()], result_ty));
+                    }
+                }
+                // Also check sum types: Shape.from_json
+                if let Some(_sum_info) = type_registry.lookup_sum_type(&base_name) {
+                    let sum_ty = Ty::Con(TyCon::new(&base_name));
+                    if trait_registry.has_impl("FromJson", &sum_ty) {
+                        // from_json :: String -> Result<SumTypeName, String>
+                        let result_ty = Ty::result(sum_ty, Ty::string());
                         return Ok(Ty::fun(vec![Ty::string()], result_ty));
                     }
                 }
