@@ -163,10 +163,11 @@ Plans:
   1. User adds middleware via `HTTP.use(router, middleware_fn)` and it runs on every request
   2. Middleware function receives the request and a `next` function, can inspect/modify the request before calling next, and can inspect/modify the response after
   3. Multiple middleware functions execute in registration order (first added = outermost), forming a composable pipeline
-**Plans**: TBD
+**Plans:** 2 plans
 
 Plans:
-- [ ] 52-01: TBD
+- [ ] 52-01-PLAN.md -- Runtime + compiler pipeline: middleware storage, chain execution with trampoline, intrinsics, typeck, MIR lowering
+- [ ] 52-02-PLAN.md -- E2E test: Snow fixture with middleware passthrough, short-circuit, and 404 handling
 
 ### Phase 53: SQLite Driver
 **Goal**: Users can store and retrieve data from SQLite databases with safe parameterized queries
@@ -220,7 +221,7 @@ Phases execute in numeric order: 49 -> 50 -> 51 -> 52 -> 53 -> 54
 | 49. JSON Serde -- Structs | v2.0 | 3/3 | Complete | 2026-02-11 |
 | 50. JSON Serde -- Sum Types & Generics | v2.0 | 2/2 | Complete | 2026-02-11 |
 | 51. HTTP Path Parameters | v2.0 | 2/2 | Complete | 2026-02-11 |
-| 52. HTTP Middleware | v2.0 | 0/TBD | Not started | - |
+| 52. HTTP Middleware | v2.0 | 0/2 | Not started | - |
 | 53. SQLite Driver | v2.0 | 0/TBD | Not started | - |
 | 54. PostgreSQL Driver | v2.0 | 0/TBD | Not started | - |
 
