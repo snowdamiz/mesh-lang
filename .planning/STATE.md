@@ -10,16 +10,16 @@ See: .planning/PROJECT.md (updated 2026-02-10)
 ## Current Position
 
 Phase: 50 of 54 (JSON Serde -- Sum Types & Generics)
-Plan: 0 of TBD in current phase
-Status: Ready to plan
-Last activity: 2026-02-11 -- Phase 49 complete, verified, approved
+Plan: 1 of 2 in current phase
+Status: Executing
+Last activity: 2026-02-11 -- Completed 50-01-PLAN.md
 
-Progress: [░░░░░░░░░░] 0%
+Progress: [█████░░░░░] 50%
 
 ## Performance Metrics
 
 **All-time Totals:**
-- Plans completed: 144
+- Plans completed: 145
 - Phases completed: 49
 - Milestones shipped: 10 (v1.0-v1.9)
 - Lines of Rust: 76,100
@@ -39,6 +39,10 @@ Progress: [░░░░░░░░░░] 0%
 - 49-03: Mark Option-in-struct JSON test as #[ignore] due to pre-existing codegen bug
 - 49-03: Use helper functions for multi-statement case arm bodies (Snow case arms are single expressions)
 - 49-03: Use unique variable names for Err bindings across multiple case blocks to avoid LLVM domination errors
+- 50-01: Array encoding for all variant fields (positional and named) -- {"tag":"V","fields":[...]}
+- 50-01: Single-letter uppercase heuristic for is_json_serializable generic params -- invalid instantiations fail at link time
+- 50-01: If-chain for from_json tag matching (not Match) -- consistent with Phase 49 pattern
+- 50-01: Unique per-variant variable names in from_json to avoid LLVM SSA domination errors
 
 ### Research Notes
 
@@ -61,6 +65,6 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-11
-Stopped at: Phase 49 complete, verified, human-approved
+Stopped at: Completed 50-01-PLAN.md
 Resume file: None
-Next action: Plan Phase 50 (JSON Serde -- Sum Types & Generics)
+Next action: Execute 50-02-PLAN.md (E2E tests)
