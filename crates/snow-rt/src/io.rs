@@ -32,6 +32,27 @@ fn alloc_result(tag: u8, value: *mut u8) -> *mut SnowResult {
     }
 }
 
+/// Allocate a SnowResult on the GC heap with the given tag and value.
+/// Tag 0 = Ok, tag 1 = Err.
+#[no_mangle]
+pub extern "C" fn snow_alloc_result(tag: i64, value: *mut u8) -> *mut u8 {
+    alloc_result(tag as u8, value) as *mut u8
+}
+
+/// Check if a SnowResult is Ok (tag == 0). Returns 1 for Ok, 0 for Err.
+#[no_mangle]
+pub extern "C" fn snow_result_is_ok(result: *mut u8) -> i64 {
+    let r = result as *const SnowResult;
+    unsafe { if (*r).tag == 0 { 1 } else { 0 } }
+}
+
+/// Extract the value from a SnowResult (Ok or Err payload).
+#[no_mangle]
+pub extern "C" fn snow_result_unwrap(result: *mut u8) -> *mut u8 {
+    let r = result as *const SnowResult;
+    unsafe { (*r).value }
+}
+
 /// Read a line from stdin. Returns a SnowResult (tag 0 = Ok with string,
 /// tag 1 = Err with error message string).
 ///
