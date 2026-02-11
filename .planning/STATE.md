@@ -10,16 +10,16 @@ See: .planning/PROJECT.md (updated 2026-02-10)
 ## Current Position
 
 Phase: 51 of 54 (HTTP Path Parameters)
-Plan: 0 of TBD in current phase
-Status: Ready to plan
-Last activity: 2026-02-11 -- Phase 50 complete, verified, approved
+Plan: 1 of 2 in current phase
+Status: Executing
+Last activity: 2026-02-11 -- Plan 51-01 complete
 
-Progress: [░░░░░░░░░░] 0%
+Progress: [█████░░░░░] 50%
 
 ## Performance Metrics
 
 **All-time Totals:**
-- Plans completed: 146
+- Plans completed: 147
 - Phases completed: 50
 - Milestones shipped: 10 (v1.0-v1.9)
 - Lines of Rust: 76,100
@@ -46,6 +46,9 @@ Progress: [░░░░░░░░░░] 0%
 - 50-02: Use variant overlay sizes (with alignment) for sum type layout calculation, not raw payload sizes
 - 50-02: Generate wrapper trampoline functions for List<Struct/SumType> JSON callbacks
 - 50-02: Use Let binding auto-deref in trampolines to convert heap pointers back to inline values
+- 51-01: Use HTTP.on_get/on_post/on_put/on_delete naming to avoid collision with existing HTTP.get/post client functions
+- 51-01: Two-pass route matching (exact/wildcard first, then parameterized) for automatic priority
+- 51-01: Path params stored as SnowMap appended to SnowHttpRequest for repr(C) layout safety
 
 ### Research Notes
 
@@ -68,6 +71,6 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-11
-Stopped at: Phase 50 complete, verified, approved
+Stopped at: Completed 51-01-PLAN.md
 Resume file: None
-Next action: Plan Phase 51 (HTTP Path Parameters)
+Next action: Execute 51-02-PLAN.md (E2E tests)
