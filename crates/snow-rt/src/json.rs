@@ -434,6 +434,28 @@ pub extern "C" fn snow_json_null() -> *mut u8 {
     alloc_json(JSON_NULL, 0) as *mut u8
 }
 
+/// Extract an element at the given index from a JSON array. Returns SnowResult.
+/// Ok(element) on success, Err(message) if not an array or index out of bounds.
+#[no_mangle]
+pub extern "C" fn snow_json_array_get(json_arr: *mut u8, index: i64) -> *mut u8 {
+    unsafe {
+        let j = json_arr as *mut SnowJson;
+        if (*j).tag != JSON_ARRAY {
+            return err_result("expected Array") as *mut u8;
+        }
+        let inner_list = (*j).value as *mut u8;
+        let len = list::snow_list_length(inner_list);
+        if index < 0 || index >= len as i64 {
+            return err_result(&format!(
+                "array index {} out of bounds (length {})",
+                index, len
+            )) as *mut u8;
+        }
+        let elem = list::snow_list_get(inner_list, index);
+        alloc_result(0, elem as *mut u8) as *mut u8
+    }
+}
+
 // ── Collection helpers (Phase 49) ───────────────────────────────────
 
 /// Convert a SnowList to a JSON array using a per-element callback.
@@ -987,6 +1009,70 @@ mod tests {
             let text = (*encoded).as_str();
             let parsed: f64 = text.parse().unwrap();
             assert!((parsed - 3.14).abs() < 0.001);
+        }
+    }
+
+    // ── Phase 50: snow_json_array_get tests ──────────────────────────
+
+    #[test]
+    fn test_json_array_get_valid() {
+        snow_rt_init();
+        let mut arr = snow_json_array_new();
+        arr = snow_json_array_push(arr, snow_json_from_int(10));
+        arr = snow_json_array_push(arr, snow_json_from_int(20));
+        arr = snow_json_array_push(arr, snow_json_from_int(30));
+
+        // Get element at index 0
+        let result = snow_json_array_get(arr, 0);
+        unsafe {
+            let res = result as *mut SnowResult;
+            assert_eq!((*res).tag, 0, "should be Ok for valid index 0");
+            let elem = (*res).value as *const SnowJson;
+            assert_eq!((*elem).tag, JSON_INT);
+            assert_eq!((*elem).value as i64, 10);
+        }
+
+        // Get element at index 2
+        let result2 = snow_json_array_get(arr, 2);
+        unsafe {
+            let res = result2 as *mut SnowResult;
+            assert_eq!((*res).tag, 0, "should be Ok for valid index 2");
+            let elem = (*res).value as *const SnowJson;
+            assert_eq!((*elem).value as i64, 30);
+        }
+    }
+
+    #[test]
+    fn test_json_array_get_out_of_bounds() {
+        snow_rt_init();
+        let mut arr = snow_json_array_new();
+        arr = snow_json_array_push(arr, snow_json_from_int(1));
+
+        // Index too large
+        let result = snow_json_array_get(arr, 5);
+        unsafe {
+            let res = result as *mut SnowResult;
+            assert_eq!((*res).tag, 1, "should be Err for out of bounds");
+        }
+
+        // Negative index
+        let result2 = snow_json_array_get(arr, -1);
+        unsafe {
+            let res = result2 as *mut SnowResult;
+            assert_eq!((*res).tag, 1, "should be Err for negative index");
+        }
+    }
+
+    #[test]
+    fn test_json_array_get_wrong_type() {
+        snow_rt_init();
+        let obj = snow_json_object_new();
+
+        // Passing an object instead of array
+        let result = snow_json_array_get(obj, 0);
+        unsafe {
+            let res = result as *mut SnowResult;
+            assert_eq!((*res).tag, 1, "should be Err for non-array");
         }
     }
 }

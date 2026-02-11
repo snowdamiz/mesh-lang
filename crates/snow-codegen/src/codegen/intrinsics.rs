@@ -383,6 +383,8 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
     module.add_function("snow_json_array_new", ptr_type.fn_type(&[], false), Some(inkwell::module::Linkage::External));
     // snow_json_array_push(arr: ptr, val: ptr) -> ptr
     module.add_function("snow_json_array_push", ptr_type.fn_type(&[ptr_type.into(), ptr_type.into()], false), Some(inkwell::module::Linkage::External));
+    // snow_json_array_get(arr: ptr, index: i64) -> ptr (SnowResult)
+    module.add_function("snow_json_array_get", ptr_type.fn_type(&[ptr_type.into(), i64_type.into()], false), Some(inkwell::module::Linkage::External));
     // snow_json_as_int(json: ptr) -> ptr (SnowResult)
     module.add_function("snow_json_as_int", ptr_type.fn_type(&[ptr_type.into()], false), Some(inkwell::module::Linkage::External));
     // snow_json_as_float(json: ptr) -> ptr (SnowResult)
@@ -738,6 +740,7 @@ mod tests {
         assert!(module.get_function("snow_json_object_get").is_some());
         assert!(module.get_function("snow_json_array_new").is_some());
         assert!(module.get_function("snow_json_array_push").is_some());
+        assert!(module.get_function("snow_json_array_get").is_some());
         assert!(module.get_function("snow_json_as_int").is_some());
         assert!(module.get_function("snow_json_as_float").is_some());
         assert!(module.get_function("snow_json_as_string").is_some());

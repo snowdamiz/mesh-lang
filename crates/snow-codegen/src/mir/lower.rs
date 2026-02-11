@@ -637,6 +637,7 @@ impl<'a> Lowerer<'a> {
         self.known_functions.insert("snow_json_object_get".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
         self.known_functions.insert("snow_json_array_new".to_string(), MirType::FnPtr(vec![], Box::new(MirType::Ptr)));
         self.known_functions.insert("snow_json_array_push".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
+        self.known_functions.insert("snow_json_array_get".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Int], Box::new(MirType::Ptr)));
         self.known_functions.insert("snow_json_as_int".to_string(), MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Ptr)));
         self.known_functions.insert("snow_json_as_float".to_string(), MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Ptr)));
         self.known_functions.insert("snow_json_as_string".to_string(), MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Ptr)));
