@@ -10,16 +10,16 @@ See: .planning/PROJECT.md (updated 2026-02-10)
 ## Current Position
 
 Phase: 49 of 54 (JSON Serde -- Structs)
-Plan: 0 of TBD in current phase
-Status: Ready to plan
-Last activity: 2026-02-10 -- Roadmap created for v2.0 (6 phases, 32 requirements)
+Plan: 1 of 3 in current phase
+Status: Executing
+Last activity: 2026-02-10 -- Completed 49-01 (JSON runtime foundation)
 
-Progress: [░░░░░░░░░░] 0%
+Progress: [###░░░░░░░] 33%
 
 ## Performance Metrics
 
 **All-time Totals:**
-- Plans completed: 141
+- Plans completed: 142
 - Phases completed: 48
 - Milestones shipped: 10 (v1.0-v1.9)
 - Lines of Rust: 76,100
@@ -29,7 +29,9 @@ Progress: [░░░░░░░░░░] 0%
 
 ### Decisions
 
-(Cleared at milestone boundary -- see PROJECT.md Key Decisions for full history)
+- 49-01: Separate JSON_INT (tag 2) and JSON_FLOAT (tag 6) for round-trip fidelity instead of single JSON_NUMBER
+- 49-01: as_int coerces Float to Int (truncation), as_float promotes Int to Float -- matching Snow's numeric widening
+- 49-01: Collection helpers use extern C function pointer callbacks for per-element encode/decode
 
 ### Research Notes
 
@@ -52,6 +54,6 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-10
-Stopped at: Roadmap created for v2.0 milestone
+Stopped at: Completed 49-01-PLAN.md
 Resume file: None
-Next action: Plan Phase 49 (JSON Serde -- Structs)
+Next action: Execute 49-02-PLAN.md (MIR lowering for to_json/from_json)
