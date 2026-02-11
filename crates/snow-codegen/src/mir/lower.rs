@@ -3546,14 +3546,62 @@ impl<'a> Lowerer<'a> {
     }
 
     /// Resolve the runtime callback function name for encoding an element to JSON.
-    fn resolve_to_json_callback(&self, elem_ty: &Ty) -> String {
+    /// For struct/sum types, generates a wrapper function that dereferences the
+    /// heap pointer (stored as u64 in the list) before calling the to_json function.
+    fn resolve_to_json_callback(&mut self, elem_ty: &Ty) -> String {
         match elem_ty {
             Ty::Con(con) => match con.name.as_str() {
                 "Int" => "snow_json_from_int".to_string(),
                 "Float" => "snow_json_from_float".to_string(),
                 "Bool" => "snow_json_from_bool".to_string(),
                 "String" => "snow_json_from_string".to_string(),
-                name => format!("ToJson__to_json__{}", name),
+                name => {
+                    // For struct/sum types, the list stores heap pointers as u64.
+                    // The runtime callback receives u64 (reinterpreted as ptr), but
+                    // ToJson__to_json__X expects an inline struct/sum value.
+                    // Generate a wrapper that uses a Let binding to deref the pointer
+                    // (the codegen's Let binding auto-derefs ptr->struct/sum).
+                    let wrapper_name = format!("__json_list_encode__{}", name);
+                    if !self.known_functions.contains_key(&wrapper_name) {
+                        let to_json_fn = format!("ToJson__to_json__{}", name);
+                        // Determine the MIR type for this type name
+                        let mir_ty = if self.registry.sum_type_defs.contains_key(name) {
+                            MirType::SumType(name.to_string())
+                        } else {
+                            MirType::Struct(name.to_string())
+                        };
+                        // Wrapper body: let __val : T = __elem_ptr; call to_json(__val)
+                        // The Let binding auto-derefs Ptr -> SumType/Struct
+                        let body = MirExpr::Let {
+                            name: "__deref_val".to_string(),
+                            ty: mir_ty.clone(),
+                            value: Box::new(MirExpr::Var("__elem_ptr".to_string(), MirType::Ptr)),
+                            body: Box::new(MirExpr::Call {
+                                func: Box::new(MirExpr::Var(
+                                    to_json_fn,
+                                    MirType::FnPtr(vec![mir_ty.clone()], Box::new(MirType::Ptr)),
+                                )),
+                                args: vec![MirExpr::Var("__deref_val".to_string(), mir_ty)],
+                                ty: MirType::Ptr,
+                            }),
+                        };
+                        let func = MirFunction {
+                            name: wrapper_name.clone(),
+                            params: vec![("__elem_ptr".to_string(), MirType::Ptr)],
+                            return_type: MirType::Ptr,
+                            body,
+                            is_closure_fn: false,
+                            captures: vec![],
+                            has_tail_calls: false,
+                        };
+                        self.functions.push(func);
+                        self.known_functions.insert(
+                            wrapper_name.clone(),
+                            MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Ptr)),
+                        );
+                    }
+                    wrapper_name
+                }
             },
             _ => "snow_json_from_int".to_string(),
         }

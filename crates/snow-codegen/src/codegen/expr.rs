@@ -3179,10 +3179,29 @@ impl<'ctx> CodeGen<'ctx> {
                     .map_err(|e| e.to_string())?;
                 Ok(cast_result.into_int_value())
             }
-            MirType::String | MirType::Ptr | MirType::Struct(_) | MirType::SumType(_)
-            | MirType::Pid(_) | MirType::Closure(_, _) | MirType::FnPtr(_, _) => {
+            MirType::String | MirType::Ptr | MirType::Pid(_)
+            | MirType::Closure(_, _) | MirType::FnPtr(_, _) => {
                 let ptr_val = val.into_pointer_value();
                 self.builder.build_ptr_to_int(ptr_val, i64_type, "ptr_to_i64")
+                    .map_err(|e| e.to_string())
+            }
+            MirType::Struct(_) | MirType::SumType(_) => {
+                // Struct and SumType values are inline LLVM StructValues.
+                // Heap-allocate them via GC so we can store a pointer in the list.
+                let struct_val = val.into_struct_value();
+                let gc_alloc_fn = get_intrinsic(&self.module, "snow_gc_alloc_actor");
+                let val_ty = struct_val.get_type();
+                let size = val_ty.size_of().unwrap_or(i64_type.const_int(8, false));
+                let align = i64_type.const_int(8, false);
+                let heap_ptr = self.builder
+                    .build_call(gc_alloc_fn, &[size.into(), align.into()], "heap_alloc")
+                    .map_err(|e| e.to_string())?
+                    .try_as_basic_value().basic()
+                    .ok_or("snow_gc_alloc_actor returned void")?
+                    .into_pointer_value();
+                self.builder.build_store(heap_ptr, struct_val)
+                    .map_err(|e| e.to_string())?;
+                self.builder.build_ptr_to_int(heap_ptr, i64_type, "struct_ptr_to_i64")
                     .map_err(|e| e.to_string())
             }
             MirType::Int => {

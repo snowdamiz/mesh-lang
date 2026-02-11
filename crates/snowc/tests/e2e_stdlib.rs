@@ -1183,6 +1183,56 @@ fn e2e_deriving_json_generic() {
     assert_eq!(json2["value"], "hello");
 }
 
+#[test]
+fn e2e_deriving_json_nested_sum() {
+    let source = read_fixture("deriving_json_nested_sum.snow");
+    let output = compile_and_run(&source);
+    let lines: Vec<&str> = output.trim().lines().collect();
+    assert_eq!(lines.len(), 1, "expected 1 line, got: {}", output);
+    let json: serde_json::Value = serde_json::from_str(lines[0]).expect("valid JSON");
+    // Verify Drawing struct has name and shapes fields
+    assert_eq!(json["name"], "test");
+    assert!(json["shapes"].is_array(), "shapes should be array");
+    let shapes = json["shapes"].as_array().unwrap();
+    assert_eq!(shapes.len(), 3, "expected 3 shapes");
+    // First shape: Circle(1.0)
+    assert_eq!(shapes[0]["tag"], "Circle");
+    assert_eq!(shapes[0]["fields"].as_array().unwrap().len(), 1);
+    assert!((shapes[0]["fields"][0].as_f64().unwrap() - 1.0).abs() < 0.01);
+    // Second shape: Point
+    assert_eq!(shapes[1]["tag"], "Point");
+    assert_eq!(shapes[1]["fields"].as_array().unwrap().len(), 0);
+    // Third shape: Circle(2.5)
+    assert_eq!(shapes[2]["tag"], "Circle");
+    assert!((shapes[2]["fields"][0].as_f64().unwrap() - 2.5).abs() < 0.01);
+}
+
+#[test]
+fn e2e_deriving_json_sum_non_serializable_compile_fail() {
+    // Verify that deriving(Json) on a sum type with a non-serializable variant field (Pid)
+    // produces a compile error containing E0038.
+    let source = r#"
+type BadSum do
+  HasPid(Pid)
+end deriving(Json)
+
+fn main() do
+  0
+end
+"#;
+    let result = compile_only(source);
+    assert!(
+        !result.status.success(),
+        "Expected compilation failure for non-serializable variant field, but it succeeded"
+    );
+    let stderr = String::from_utf8_lossy(&result.stderr);
+    assert!(
+        stderr.contains("E0038") || stderr.contains("not JSON-serializable"),
+        "Expected E0038 error for sum type variant field, got stderr: {}",
+        stderr
+    );
+}
+
 // ── Phase 47 Plan 02: Map/Set Conversion E2E Tests ────────────────────
 
 #[test]
