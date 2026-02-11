@@ -134,10 +134,11 @@ Plans:
   1. Sum type values encode as tagged JSON objects (`{"tag":"Variant","fields":[...]}`) and decode back to the correct variant
   2. Generic structs like `Wrapper<Int>` and `Wrapper<String>` both derive Json correctly via monomorphization
   3. Nested combinations (sum type containing a generic struct containing a list) round-trip through JSON
-**Plans**: TBD
+**Plans:** 2 plans
 
 Plans:
-- [ ] 50-01: TBD
+- [ ] 50-01-PLAN.md -- Sum type JSON codegen: runtime array_get + typeck registration + MIR to_json/from_json generation + dispatch wiring + generic struct fix
+- [ ] 50-02-PLAN.md -- E2E test suite: sum type encode/decode, generic struct, nested combinations, compile-fail
 
 ### Phase 51: HTTP Path Parameters
 **Goal**: Users can define REST-style routes with dynamic segments and extract parameters from requests
@@ -216,7 +217,7 @@ Phases execute in numeric order: 49 -> 50 -> 51 -> 52 -> 53 -> 54
 | 37-42 | v1.8 | 12/12 | Complete | 2026-02-09 |
 | 43-48 | v1.9 | 13/13 | Complete | 2026-02-10 |
 | 49. JSON Serde -- Structs | v2.0 | 3/3 | Complete | 2026-02-11 |
-| 50. JSON Serde -- Sum Types & Generics | v2.0 | 0/TBD | Not started | - |
+| 50. JSON Serde -- Sum Types & Generics | v2.0 | 0/2 | Not started | - |
 | 51. HTTP Path Parameters | v2.0 | 0/TBD | Not started | - |
 | 52. HTTP Middleware | v2.0 | 0/TBD | Not started | - |
 | 53. SQLite Driver | v2.0 | 0/TBD | Not started | - |
