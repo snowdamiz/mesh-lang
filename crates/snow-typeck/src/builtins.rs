@@ -566,6 +566,40 @@ pub fn register_builtins(
         )),
     );
 
+    // ── Phase 51: Method-specific routing ────────────────────────────────
+    // HTTP.on_get(Router, String, Fn(Request) -> Response) -> Router
+    env.insert(
+        "http_on_get".into(),
+        Scheme::mono(Ty::fun(
+            vec![router_t.clone(), Ty::string(), Ty::fun(vec![request_t.clone()], response_t.clone())],
+            router_t.clone(),
+        )),
+    );
+    // HTTP.on_post(Router, String, Fn(Request) -> Response) -> Router
+    env.insert(
+        "http_on_post".into(),
+        Scheme::mono(Ty::fun(
+            vec![router_t.clone(), Ty::string(), Ty::fun(vec![request_t.clone()], response_t.clone())],
+            router_t.clone(),
+        )),
+    );
+    // HTTP.on_put(Router, String, Fn(Request) -> Response) -> Router
+    env.insert(
+        "http_on_put".into(),
+        Scheme::mono(Ty::fun(
+            vec![router_t.clone(), Ty::string(), Ty::fun(vec![request_t.clone()], response_t.clone())],
+            router_t.clone(),
+        )),
+    );
+    // HTTP.on_delete(Router, String, Fn(Request) -> Response) -> Router
+    env.insert(
+        "http_on_delete".into(),
+        Scheme::mono(Ty::fun(
+            vec![router_t.clone(), Ty::string(), Ty::fun(vec![request_t.clone()], response_t.clone())],
+            router_t.clone(),
+        )),
+    );
+
     // Request accessor functions
     // Request.method(Request) -> String
     env.insert(
@@ -593,6 +627,14 @@ pub fn register_builtins(
     // Request.query(Request, String) -> Option<String>
     env.insert(
         "request_query".into(),
+        Scheme::mono(Ty::fun(
+            vec![request_t.clone(), Ty::string()],
+            Ty::option(Ty::string()),
+        )),
+    );
+    // Request.param(Request, String) -> Option<String>  (Phase 51)
+    env.insert(
+        "request_param".into(),
         Scheme::mono(Ty::fun(
             vec![request_t.clone(), Ty::string()],
             Ty::option(Ty::string()),
@@ -1122,6 +1164,13 @@ mod tests {
         assert!(env.lookup("request_body").is_some());
         assert!(env.lookup("request_header").is_some());
         assert!(env.lookup("request_query").is_some());
+        assert!(env.lookup("request_param").is_some());
+
+        // Phase 51: Method-specific routing
+        assert!(env.lookup("http_on_get").is_some());
+        assert!(env.lookup("http_on_post").is_some());
+        assert!(env.lookup("http_on_put").is_some());
+        assert!(env.lookup("http_on_delete").is_some());
     }
 
     #[test]

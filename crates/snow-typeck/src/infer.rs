@@ -474,6 +474,23 @@ fn stdlib_modules() -> HashMap<String, HashMap<String, Scheme>> {
         vec![Ty::string(), Ty::string()],
         Ty::result(Ty::string(), Ty::string()),
     )));
+    // Phase 51: Method-specific routing
+    http_mod.insert("on_get".to_string(), Scheme::mono(Ty::fun(
+        vec![router_t.clone(), Ty::string(), Ty::fun(vec![request_t.clone()], response_t.clone())],
+        router_t.clone(),
+    )));
+    http_mod.insert("on_post".to_string(), Scheme::mono(Ty::fun(
+        vec![router_t.clone(), Ty::string(), Ty::fun(vec![request_t.clone()], response_t.clone())],
+        router_t.clone(),
+    )));
+    http_mod.insert("on_put".to_string(), Scheme::mono(Ty::fun(
+        vec![router_t.clone(), Ty::string(), Ty::fun(vec![request_t.clone()], response_t.clone())],
+        router_t.clone(),
+    )));
+    http_mod.insert("on_delete".to_string(), Scheme::mono(Ty::fun(
+        vec![router_t.clone(), Ty::string(), Ty::fun(vec![request_t.clone()], response_t.clone())],
+        router_t.clone(),
+    )));
     modules.insert("HTTP".to_string(), http_mod);
 
     // ── Request module (Phase 8 Plan 05) ─────────────────────────────
@@ -486,6 +503,11 @@ fn stdlib_modules() -> HashMap<String, HashMap<String, Scheme>> {
         Ty::option(Ty::string()),
     )));
     request_mod.insert("query".to_string(), Scheme::mono(Ty::fun(
+        vec![request_t.clone(), Ty::string()],
+        Ty::option(Ty::string()),
+    )));
+    // Phase 51: Path parameter accessor
+    request_mod.insert("param".to_string(), Scheme::mono(Ty::fun(
         vec![request_t.clone(), Ty::string()],
         Ty::option(Ty::string()),
     )));
