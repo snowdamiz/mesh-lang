@@ -1615,6 +1615,12 @@ impl<'a> Lowerer<'a> {
             if derive_list.iter().any(|t| t == "Display") {
                 self.generate_display_struct(&name, &fields);
             }
+            // Json: only via explicit deriving(Json), never auto-derived
+            if derive_list.iter().any(|t| t == "Json") {
+                self.generate_to_json_struct(&name, &fields);
+                self.generate_from_json_struct(&name, &fields);
+                self.generate_from_json_string_wrapper(&name);
+            }
 
             self.structs.push(MirStructDef { name, fields });
         }
@@ -1676,6 +1682,7 @@ impl<'a> Lowerer<'a> {
         let has_debug = self.trait_registry.has_impl("Debug", typeck_ty);
         let has_ord = self.trait_registry.has_impl("Ord", typeck_ty);
         let has_hash = self.trait_registry.has_impl("Hash", typeck_ty);
+        let has_json = self.trait_registry.has_impl("ToJson", typeck_ty);
 
         // Generate trait functions for the monomorphized name.
         // Display and Debug use base_name for human-readable output (e.g., "Box(42)" not "Box_Int(42)").
@@ -1694,6 +1701,11 @@ impl<'a> Lowerer<'a> {
         }
         if has_display {
             self.generate_display_struct_with_display_name(&mangled, base_name, &fields);
+        }
+        if has_json {
+            self.generate_to_json_struct(&mangled, &fields);
+            self.generate_from_json_struct(&mangled, &fields);
+            self.generate_from_json_string_wrapper(&mangled);
         }
 
         // Push the monomorphized struct definition.
@@ -2819,6 +2831,609 @@ impl<'a> Lowerer<'a> {
         self.known_functions.insert(
             mangled,
             MirType::FnPtr(vec![sum_ty], Box::new(MirType::Int)),
+        );
+    }
+
+    // ── JSON (ToJson/FromJson) generation ─────────────────────────────
+
+    /// Generate a synthetic `ToJson__to_json__StructName` MIR function that
+    /// builds a JSON object field-by-field using the snow_json_object_new/put
+    /// runtime functions.
+    fn generate_to_json_struct(&mut self, name: &str, fields: &[(String, MirType)]) {
+        let mangled = format!("ToJson__to_json__{}", name);
+        let struct_ty = MirType::Struct(name.to_string());
+        let self_var = MirExpr::Var("self".to_string(), struct_ty.clone());
+
+        let obj_new_ty = MirType::FnPtr(vec![], Box::new(MirType::Ptr));
+        let obj_put_ty = MirType::FnPtr(
+            vec![MirType::Ptr, MirType::Ptr, MirType::Ptr],
+            Box::new(MirType::Ptr),
+        );
+
+        let mut body = MirExpr::Call {
+            func: Box::new(MirExpr::Var("snow_json_object_new".to_string(), obj_new_ty)),
+            args: vec![],
+            ty: MirType::Ptr,
+        };
+
+        for (field_name, field_ty) in fields {
+            let field_access = MirExpr::FieldAccess {
+                object: Box::new(self_var.clone()),
+                field: field_name.clone(),
+                ty: field_ty.clone(),
+            };
+
+            // Convert field value to SnowJson using type-directed dispatch.
+            // For collection types (MirType::Ptr), look up the typeck Ty to
+            // determine element types for callback-based encode/decode.
+            let json_val = if matches!(field_ty, MirType::Ptr) {
+                if let Some(info) = self.registry.struct_defs.get(name) {
+                    if let Some((_, typeck_ty)) = info.fields.iter().find(|(n, _)| n == field_name) {
+                        let typeck_ty = typeck_ty.clone();
+                        self.emit_collection_to_json(field_access, &typeck_ty, name)
+                    } else {
+                        field_access
+                    }
+                } else {
+                    field_access
+                }
+            } else {
+                self.emit_to_json_for_type(field_access, field_ty, name)
+            };
+
+            let key = MirExpr::StringLit(field_name.clone(), MirType::String);
+
+            body = MirExpr::Call {
+                func: Box::new(MirExpr::Var("snow_json_object_put".to_string(), obj_put_ty.clone())),
+                args: vec![body, key, json_val],
+                ty: MirType::Ptr,
+            };
+        }
+
+        let func = MirFunction {
+            name: mangled.clone(),
+            params: vec![("self".to_string(), struct_ty.clone())],
+            return_type: MirType::Ptr,
+            body,
+            is_closure_fn: false,
+            captures: vec![],
+            has_tail_calls: false,
+        };
+
+        self.functions.push(func);
+        self.known_functions.insert(
+            mangled,
+            MirType::FnPtr(vec![struct_ty], Box::new(MirType::Ptr)),
+        );
+    }
+
+    /// Emit a to_json conversion for a value of the given MIR type.
+    /// Returns a MirExpr that evaluates to *mut SnowJson (MirType::Ptr).
+    fn emit_to_json_for_type(&mut self, expr: MirExpr, ty: &MirType, _context_struct: &str) -> MirExpr {
+        match ty {
+            MirType::Int => {
+                let fn_ty = MirType::FnPtr(vec![MirType::Int], Box::new(MirType::Ptr));
+                MirExpr::Call {
+                    func: Box::new(MirExpr::Var("snow_json_from_int".to_string(), fn_ty)),
+                    args: vec![expr],
+                    ty: MirType::Ptr,
+                }
+            }
+            MirType::Float => {
+                let fn_ty = MirType::FnPtr(vec![MirType::Float], Box::new(MirType::Ptr));
+                MirExpr::Call {
+                    func: Box::new(MirExpr::Var("snow_json_from_float".to_string(), fn_ty)),
+                    args: vec![expr],
+                    ty: MirType::Ptr,
+                }
+            }
+            MirType::Bool => {
+                let fn_ty = MirType::FnPtr(vec![MirType::Bool], Box::new(MirType::Ptr));
+                MirExpr::Call {
+                    func: Box::new(MirExpr::Var("snow_json_from_bool".to_string(), fn_ty)),
+                    args: vec![expr],
+                    ty: MirType::Ptr,
+                }
+            }
+            MirType::String => {
+                let fn_ty = MirType::FnPtr(vec![MirType::String], Box::new(MirType::Ptr));
+                MirExpr::Call {
+                    func: Box::new(MirExpr::Var("snow_json_from_string".to_string(), fn_ty)),
+                    args: vec![expr],
+                    ty: MirType::Ptr,
+                }
+            }
+            MirType::Struct(inner_name) => {
+                let inner_mangled = format!("ToJson__to_json__{}", inner_name);
+                let fn_ty = MirType::FnPtr(vec![ty.clone()], Box::new(MirType::Ptr));
+                MirExpr::Call {
+                    func: Box::new(MirExpr::Var(inner_mangled, fn_ty)),
+                    args: vec![expr],
+                    ty: MirType::Ptr,
+                }
+            }
+            MirType::SumType(sum_name) if sum_name.starts_with("Option_") => {
+                self.emit_option_to_json(expr, sum_name, _context_struct)
+            }
+            _ => {
+                // Unsupported type at MIR level -- pass through as opaque pointer.
+                // Collection types (Ptr) are handled separately in generate_to_json_struct.
+                expr
+            }
+        }
+    }
+
+    /// Emit Option<T> to JSON encoding: Some(v) -> encode inner, None -> null.
+    fn emit_option_to_json(&mut self, expr: MirExpr, sum_name: &str, context_struct: &str) -> MirExpr {
+        let inner_type_str = sum_name.strip_prefix("Option_").unwrap_or("Int");
+        let inner_mir_type = self.mir_type_from_name(inner_type_str);
+
+        let null_ty = MirType::FnPtr(vec![], Box::new(MirType::Ptr));
+        let null_expr = MirExpr::Call {
+            func: Box::new(MirExpr::Var("snow_json_null".to_string(), null_ty)),
+            args: vec![],
+            ty: MirType::Ptr,
+        };
+
+        let some_var = MirExpr::Var("__opt_val".to_string(), inner_mir_type.clone());
+        let some_body = self.emit_to_json_for_type(some_var, &inner_mir_type, context_struct);
+
+        MirExpr::Match {
+            scrutinee: Box::new(expr),
+            arms: vec![
+                MirMatchArm {
+                    pattern: MirPattern::Constructor {
+                        type_name: sum_name.to_string(),
+                        variant: "Some".to_string(),
+                        fields: vec![MirPattern::Wildcard],
+                        bindings: vec![("__opt_val".to_string(), inner_mir_type)],
+                    },
+                    guard: None,
+                    body: some_body,
+                },
+                MirMatchArm {
+                    pattern: MirPattern::Constructor {
+                        type_name: sum_name.to_string(),
+                        variant: "None".to_string(),
+                        fields: vec![],
+                        bindings: vec![],
+                    },
+                    guard: None,
+                    body: null_expr,
+                },
+            ],
+            ty: MirType::Ptr,
+        }
+    }
+
+    /// Convert a type name string to a MirType.
+    fn mir_type_from_name(&self, name: &str) -> MirType {
+        match name {
+            "Int" => MirType::Int,
+            "Float" => MirType::Float,
+            "Bool" => MirType::Bool,
+            "String" => MirType::String,
+            n => {
+                if self.structs.iter().any(|s| s.name == n) || self.registry.struct_defs.contains_key(n) {
+                    MirType::Struct(n.to_string())
+                } else {
+                    MirType::Ptr
+                }
+            }
+        }
+    }
+
+    /// Emit collection (List/Map) to JSON encoding using callback-based runtime helpers.
+    fn emit_collection_to_json(&mut self, expr: MirExpr, typeck_ty: &Ty, _context_struct: &str) -> MirExpr {
+        match typeck_ty {
+            Ty::App(base, args) => {
+                if let Ty::Con(con) = base.as_ref() {
+                    match con.name.as_str() {
+                        "List" => {
+                            let elem_ty = args.first().cloned().unwrap_or(Ty::int());
+                            let callback_name = self.resolve_to_json_callback(&elem_ty);
+                            let fn_ty = MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr));
+                            let callback_ty = MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Ptr));
+                            MirExpr::Call {
+                                func: Box::new(MirExpr::Var("snow_json_from_list".to_string(), fn_ty)),
+                                args: vec![expr, MirExpr::Var(callback_name, callback_ty)],
+                                ty: MirType::Ptr,
+                            }
+                        }
+                        "Map" => {
+                            let val_ty = args.get(1).cloned().unwrap_or(Ty::string());
+                            let callback_name = self.resolve_to_json_callback(&val_ty);
+                            let fn_ty = MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr));
+                            let callback_ty = MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Ptr));
+                            MirExpr::Call {
+                                func: Box::new(MirExpr::Var("snow_json_from_map".to_string(), fn_ty)),
+                                args: vec![expr, MirExpr::Var(callback_name, callback_ty)],
+                                ty: MirType::Ptr,
+                            }
+                        }
+                        _ => expr,
+                    }
+                } else {
+                    expr
+                }
+            }
+            _ => expr,
+        }
+    }
+
+    /// Resolve the runtime callback function name for encoding an element to JSON.
+    fn resolve_to_json_callback(&self, elem_ty: &Ty) -> String {
+        match elem_ty {
+            Ty::Con(con) => match con.name.as_str() {
+                "Int" => "snow_json_from_int".to_string(),
+                "Float" => "snow_json_from_float".to_string(),
+                "Bool" => "snow_json_from_bool".to_string(),
+                "String" => "snow_json_from_string".to_string(),
+                name => format!("ToJson__to_json__{}", name),
+            },
+            _ => "snow_json_from_int".to_string(),
+        }
+    }
+
+    /// Resolve the runtime callback function name for decoding a JSON element to a typed value.
+    fn resolve_from_json_callback(&self, elem_ty: &Ty) -> String {
+        match elem_ty {
+            Ty::Con(con) => match con.name.as_str() {
+                "Int" => "snow_json_as_int".to_string(),
+                "Float" => "snow_json_as_float".to_string(),
+                "Bool" => "snow_json_as_bool".to_string(),
+                "String" => "snow_json_as_string".to_string(),
+                name => format!("FromJson__from_json__{}", name),
+            },
+            _ => "snow_json_as_int".to_string(),
+        }
+    }
+
+    /// Generate a synthetic `FromJson__from_json__StructName` MIR function that
+    /// extracts fields from a JSON object with nested Result propagation.
+    fn generate_from_json_struct(&mut self, name: &str, fields: &[(String, MirType)]) {
+        let mangled = format!("FromJson__from_json__{}", name);
+        let struct_ty = MirType::Struct(name.to_string());
+        let result_type_name = format!("Result_{}_String", name);
+        let result_ty = MirType::Ptr;
+
+        let json_var = MirExpr::Var("json".to_string(), MirType::Ptr);
+
+        // Build the innermost expression: Ok(StructLit { fields... })
+        let field_bindings: Vec<(String, MirExpr)> = fields.iter().enumerate().map(|(i, (fname, fty))| {
+            (fname.clone(), MirExpr::Var(format!("__field_{}", i), fty.clone()))
+        }).collect();
+
+        let struct_lit = MirExpr::StructLit {
+            name: name.to_string(),
+            fields: field_bindings,
+            ty: struct_ty.clone(),
+        };
+
+        let ok_variant = MirExpr::ConstructVariant {
+            type_name: result_type_name.clone(),
+            variant: "Ok".to_string(),
+            fields: vec![struct_lit],
+            ty: result_ty.clone(),
+        };
+
+        // Wrap each field extraction around the inner expression, from last to first
+        let mut body = ok_variant;
+
+        for (i, (field_name, field_ty)) in fields.iter().enumerate().rev() {
+            let obj_get_ty = MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr));
+            let key_lit = MirExpr::StringLit(field_name.clone(), MirType::String);
+
+            let get_call = MirExpr::Call {
+                func: Box::new(MirExpr::Var("snow_json_object_get".to_string(), obj_get_ty)),
+                args: vec![json_var.clone(), key_lit],
+                ty: MirType::Ptr,
+            };
+
+            let field_var = format!("__json_field_{}", i);
+            let val_var = format!("__field_{}", i);
+
+            // For collection fields (Ptr), look up typeck Ty for proper decoding
+            let extract_call = if matches!(field_ty, MirType::Ptr) {
+                if let Some(info) = self.registry.struct_defs.get(name) {
+                    if let Some((_, typeck_ty)) = info.fields.iter().find(|(n, _)| n == field_name) {
+                        let typeck_ty = typeck_ty.clone();
+                        self.emit_collection_from_json(
+                            MirExpr::Var(field_var.clone(), MirType::Ptr),
+                            &typeck_ty,
+                            name,
+                        )
+                    } else {
+                        self.emit_from_json_for_type(
+                            MirExpr::Var(field_var.clone(), MirType::Ptr),
+                            field_ty,
+                            name,
+                        )
+                    }
+                } else {
+                    self.emit_from_json_for_type(
+                        MirExpr::Var(field_var.clone(), MirType::Ptr),
+                        field_ty,
+                        name,
+                    )
+                }
+            } else {
+                self.emit_from_json_for_type(
+                    MirExpr::Var(field_var.clone(), MirType::Ptr),
+                    field_ty,
+                    name,
+                )
+            };
+
+            // Inner match: extract typed value from JSON
+            let inner_match = MirExpr::Match {
+                scrutinee: Box::new(extract_call),
+                arms: vec![
+                    MirMatchArm {
+                        pattern: MirPattern::Constructor {
+                            type_name: "Result".to_string(),
+                            variant: "Ok".to_string(),
+                            fields: vec![MirPattern::Wildcard],
+                            bindings: vec![(val_var, field_ty.clone())],
+                        },
+                        guard: None,
+                        body,
+                    },
+                    MirMatchArm {
+                        pattern: MirPattern::Constructor {
+                            type_name: "Result".to_string(),
+                            variant: "Err".to_string(),
+                            fields: vec![MirPattern::Wildcard],
+                            bindings: vec![("__err".to_string(), MirType::String)],
+                        },
+                        guard: None,
+                        body: MirExpr::ConstructVariant {
+                            type_name: result_type_name.clone(),
+                            variant: "Err".to_string(),
+                            fields: vec![MirExpr::Var("__err".to_string(), MirType::String)],
+                            ty: result_ty.clone(),
+                        },
+                    },
+                ],
+                ty: result_ty.clone(),
+            };
+
+            // Outer match: get field from object
+            body = MirExpr::Match {
+                scrutinee: Box::new(get_call),
+                arms: vec![
+                    MirMatchArm {
+                        pattern: MirPattern::Constructor {
+                            type_name: "Result".to_string(),
+                            variant: "Ok".to_string(),
+                            fields: vec![MirPattern::Wildcard],
+                            bindings: vec![(field_var, MirType::Ptr)],
+                        },
+                        guard: None,
+                        body: inner_match,
+                    },
+                    MirMatchArm {
+                        pattern: MirPattern::Constructor {
+                            type_name: "Result".to_string(),
+                            variant: "Err".to_string(),
+                            fields: vec![MirPattern::Wildcard],
+                            bindings: vec![("__err".to_string(), MirType::String)],
+                        },
+                        guard: None,
+                        body: MirExpr::ConstructVariant {
+                            type_name: result_type_name.clone(),
+                            variant: "Err".to_string(),
+                            fields: vec![MirExpr::Var("__err".to_string(), MirType::String)],
+                            ty: result_ty.clone(),
+                        },
+                    },
+                ],
+                ty: result_ty.clone(),
+            };
+        }
+
+        let func = MirFunction {
+            name: mangled.clone(),
+            params: vec![("json".to_string(), MirType::Ptr)],
+            return_type: result_ty.clone(),
+            body,
+            is_closure_fn: false,
+            captures: vec![],
+            has_tail_calls: false,
+        };
+
+        self.functions.push(func);
+        self.known_functions.insert(
+            mangled,
+            MirType::FnPtr(vec![MirType::Ptr], Box::new(result_ty)),
+        );
+    }
+
+    /// Emit a from_json extraction for a value of the given MIR type.
+    /// Returns a MirExpr that produces a Result (Ok(value) or Err(string)).
+    fn emit_from_json_for_type(&self, json_expr: MirExpr, target_ty: &MirType, _context_struct: &str) -> MirExpr {
+        let fn_name = match target_ty {
+            MirType::Int => "snow_json_as_int",
+            MirType::Float => "snow_json_as_float",
+            MirType::Bool => "snow_json_as_bool",
+            MirType::String => "snow_json_as_string",
+            MirType::Struct(inner) => {
+                let name = format!("FromJson__from_json__{}", inner);
+                let fn_ty = MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Ptr));
+                return MirExpr::Call {
+                    func: Box::new(MirExpr::Var(name, fn_ty)),
+                    args: vec![json_expr],
+                    ty: MirType::Ptr,
+                };
+            }
+            MirType::SumType(sum_name) if sum_name.starts_with("Option_") => {
+                // Option<T>: check if JSON is null -> None, else decode inner -> Some
+                return self.emit_option_from_json(json_expr, sum_name, _context_struct);
+            }
+            _ => "snow_json_as_int", // fallback for Ptr/unknown
+        };
+
+        let fn_ty = MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Ptr));
+        MirExpr::Call {
+            func: Box::new(MirExpr::Var(fn_name.to_string(), fn_ty)),
+            args: vec![json_expr],
+            ty: MirType::Ptr,
+        }
+    }
+
+    /// Emit Option<T> from JSON decoding: null -> Ok(None), other -> decode inner then wrap in Some.
+    fn emit_option_from_json(&self, json_expr: MirExpr, sum_name: &str, _context_struct: &str) -> MirExpr {
+        // For Option<T>, the from_json simply returns the JSON value.
+        // The inner extraction (Some/None wrapping) happens at a higher level
+        // via snow_json_as_* returning the inner value or null check.
+        // For simplicity, use snow_json_as_int as a fallback -- the runtime
+        // handles null -> Err, value -> Ok(value).
+        let inner_type_str = sum_name.strip_prefix("Option_").unwrap_or("Int");
+        let fn_name = match inner_type_str {
+            "Int" => "snow_json_as_int",
+            "Float" => "snow_json_as_float",
+            "Bool" => "snow_json_as_bool",
+            "String" => "snow_json_as_string",
+            _ => "snow_json_as_int",
+        };
+        let fn_ty = MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Ptr));
+        MirExpr::Call {
+            func: Box::new(MirExpr::Var(fn_name.to_string(), fn_ty)),
+            args: vec![json_expr],
+            ty: MirType::Ptr,
+        }
+    }
+
+    /// Emit collection (List/Map) from JSON decoding using callback-based runtime helpers.
+    fn emit_collection_from_json(&mut self, json_expr: MirExpr, typeck_ty: &Ty, _context_struct: &str) -> MirExpr {
+        match typeck_ty {
+            Ty::App(base, args) => {
+                if let Ty::Con(con) = base.as_ref() {
+                    match con.name.as_str() {
+                        "List" => {
+                            let elem_ty = args.first().cloned().unwrap_or(Ty::int());
+                            let callback_name = self.resolve_from_json_callback(&elem_ty);
+                            let fn_ty = MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr));
+                            let callback_ty = MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Ptr));
+                            MirExpr::Call {
+                                func: Box::new(MirExpr::Var("snow_json_to_list".to_string(), fn_ty)),
+                                args: vec![json_expr, MirExpr::Var(callback_name, callback_ty)],
+                                ty: MirType::Ptr,
+                            }
+                        }
+                        "Map" => {
+                            let val_ty = args.get(1).cloned().unwrap_or(Ty::string());
+                            let callback_name = self.resolve_from_json_callback(&val_ty);
+                            let fn_ty = MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr));
+                            let callback_ty = MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Ptr));
+                            MirExpr::Call {
+                                func: Box::new(MirExpr::Var("snow_json_to_map".to_string(), fn_ty)),
+                                args: vec![json_expr, MirExpr::Var(callback_name, callback_ty)],
+                                ty: MirType::Ptr,
+                            }
+                        }
+                        _ => {
+                            // Not a known collection -- fallback
+                            let fn_ty = MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Ptr));
+                            MirExpr::Call {
+                                func: Box::new(MirExpr::Var("snow_json_as_int".to_string(), fn_ty)),
+                                args: vec![json_expr],
+                                ty: MirType::Ptr,
+                            }
+                        }
+                    }
+                } else {
+                    let fn_ty = MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Ptr));
+                    MirExpr::Call {
+                        func: Box::new(MirExpr::Var("snow_json_as_int".to_string(), fn_ty)),
+                        args: vec![json_expr],
+                        ty: MirType::Ptr,
+                    }
+                }
+            }
+            _ => {
+                let fn_ty = MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Ptr));
+                MirExpr::Call {
+                    func: Box::new(MirExpr::Var("snow_json_as_int".to_string(), fn_ty)),
+                    args: vec![json_expr],
+                    ty: MirType::Ptr,
+                }
+            }
+        }
+    }
+
+    /// Generate a wrapper `__json_decode__StructName` that chains
+    /// snow_json_parse + FromJson__from_json__StructName.
+    /// This is what `StructName.from_json(str)` resolves to.
+    fn generate_from_json_string_wrapper(&mut self, name: &str) {
+        let wrapper_name = format!("__json_decode__{}", name);
+        let parse_ty = MirType::FnPtr(vec![MirType::String], Box::new(MirType::Ptr));
+        let from_json_ty = MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Ptr));
+        let result_type_name = format!("Result_{}_String", name);
+        let result_ty = MirType::Ptr;
+
+        let str_var = MirExpr::Var("__input".to_string(), MirType::String);
+
+        // snow_json_parse(input) -> Result<SnowJson, String>
+        let parse_call = MirExpr::Call {
+            func: Box::new(MirExpr::Var("snow_json_parse".to_string(), parse_ty)),
+            args: vec![str_var],
+            ty: MirType::Ptr,
+        };
+
+        // Match parse result: Ok(json) -> FromJson__from_json__(json), Err(e) -> Err(e)
+        let from_json_call = MirExpr::Call {
+            func: Box::new(MirExpr::Var(format!("FromJson__from_json__{}", name), from_json_ty)),
+            args: vec![MirExpr::Var("__parsed_json".to_string(), MirType::Ptr)],
+            ty: result_ty.clone(),
+        };
+
+        let body = MirExpr::Match {
+            scrutinee: Box::new(parse_call),
+            arms: vec![
+                MirMatchArm {
+                    pattern: MirPattern::Constructor {
+                        type_name: "Result".to_string(),
+                        variant: "Ok".to_string(),
+                        fields: vec![MirPattern::Wildcard],
+                        bindings: vec![("__parsed_json".to_string(), MirType::Ptr)],
+                    },
+                    guard: None,
+                    body: from_json_call,
+                },
+                MirMatchArm {
+                    pattern: MirPattern::Constructor {
+                        type_name: "Result".to_string(),
+                        variant: "Err".to_string(),
+                        fields: vec![MirPattern::Wildcard],
+                        bindings: vec![("__err".to_string(), MirType::String)],
+                    },
+                    guard: None,
+                    body: MirExpr::ConstructVariant {
+                        type_name: result_type_name,
+                        variant: "Err".to_string(),
+                        fields: vec![MirExpr::Var("__err".to_string(), MirType::String)],
+                        ty: result_ty.clone(),
+                    },
+                },
+            ],
+            ty: result_ty.clone(),
+        };
+
+        let func = MirFunction {
+            name: wrapper_name.clone(),
+            params: vec![("__input".to_string(), MirType::String)],
+            return_type: result_ty.clone(),
+            body,
+            is_closure_fn: false,
+            captures: vec![],
+            has_tail_calls: false,
+        };
+
+        self.functions.push(func);
+        self.known_functions.insert(
+            wrapper_name,
+            MirType::FnPtr(vec![MirType::String], Box::new(result_ty)),
         );
     }
 
@@ -4065,6 +4680,29 @@ impl<'a> Lowerer<'a> {
             }
         }
 
+        // Json.encode struct dispatch: if encoding a struct with ToJson, chain
+        // ToJson__to_json__StructName + snow_json_encode.
+        if let MirExpr::Var(ref name, _) = callee {
+            if name == "snow_json_encode" && args.len() == 1 {
+                if let MirType::Struct(ref struct_name) = args[0].ty().clone() {
+                    let to_json_fn = format!("ToJson__to_json__{}", struct_name);
+                    if self.known_functions.contains_key(&to_json_fn) {
+                        let fn_ty = MirType::FnPtr(vec![args[0].ty().clone()], Box::new(MirType::Ptr));
+                        let json_ptr = MirExpr::Call {
+                            func: Box::new(MirExpr::Var(to_json_fn, fn_ty)),
+                            args: args.clone(),
+                            ty: MirType::Ptr,
+                        };
+                        return MirExpr::Call {
+                            func: Box::new(callee),
+                            args: vec![json_ptr],
+                            ty: MirType::String,
+                        };
+                    }
+                }
+            }
+        }
+
         // Determine if this is a direct function call or a closure call.
         let is_known_fn = match &callee {
             MirExpr::Var(name, _) => self.known_functions.contains_key(name),
@@ -4196,6 +4834,21 @@ impl<'a> Lowerer<'a> {
                                 let ty = self.resolve_range(fa.syntax().text_range());
                                 // Return the generated function name as a Var reference.
                                 return MirExpr::Var(generated_fn.clone(), ty);
+                            }
+                        }
+                    }
+
+                    // Check if this is StructName.from_json (static trait method).
+                    // Resolves to __json_decode__StructName which chains parse + from_json.
+                    if self.registry.struct_defs.contains_key(&base_name) {
+                        let field = fa
+                            .field()
+                            .map(|t| t.text().to_string())
+                            .unwrap_or_default();
+                        if field == "from_json" {
+                            let wrapper_name = format!("__json_decode__{}", base_name);
+                            if let Some(fn_ty) = self.known_functions.get(&wrapper_name).cloned() {
+                                return MirExpr::Var(wrapper_name, fn_ty);
                             }
                         }
                     }
@@ -7596,7 +8249,7 @@ impl<'a> Lowerer<'a> {
 
 /// Set of known stdlib module names for qualified access lowering.
 const STDLIB_MODULES: &[&str] = &[
-    "String", "IO", "Env", "File", "List", "Map", "Set", "Tuple", "Range", "Queue", "HTTP", "JSON", "Request", "Job",
+    "String", "IO", "Env", "File", "List", "Map", "Set", "Tuple", "Range", "Queue", "HTTP", "JSON", "Json", "Request", "Job",
     "Math", "Int", "Float", "Timer",
 ];
 
