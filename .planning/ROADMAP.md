@@ -103,7 +103,7 @@ See milestones/v1.9-ROADMAP.md for full phase details.
 - [x] **Phase 49: JSON Serde -- Structs** - Struct-aware JSON encode/decode via `deriving(Json)` (shipped 2026-02-11)
 - [x] **Phase 50: JSON Serde -- Sum Types & Generics** - Complete JSON coverage for all Snow types (shipped 2026-02-11)
 - [x] **Phase 51: HTTP Path Parameters** - Dynamic route segments and method-specific routing (shipped 2026-02-11)
-- [ ] **Phase 52: HTTP Middleware** - Function pipeline for request/response processing
+- [x] **Phase 52: HTTP Middleware** - Function pipeline for request/response processing (shipped 2026-02-11)
 - [ ] **Phase 53: SQLite Driver** - Embedded database access with parameterized queries
 - [ ] **Phase 54: PostgreSQL Driver** - Production database access with wire protocol and auth
 
@@ -166,8 +166,8 @@ Plans:
 **Plans:** 2 plans
 
 Plans:
-- [ ] 52-01-PLAN.md -- Runtime + compiler pipeline: middleware storage, chain execution with trampoline, intrinsics, typeck, MIR lowering
-- [ ] 52-02-PLAN.md -- E2E test: Snow fixture with middleware passthrough, short-circuit, and 404 handling
+- [x] 52-01-PLAN.md -- Runtime + compiler pipeline: middleware storage, chain execution with trampoline, intrinsics, typeck, MIR lowering
+- [x] 52-02-PLAN.md -- E2E test: Snow fixture with middleware passthrough, short-circuit, and 404 handling
 
 ### Phase 53: SQLite Driver
 **Goal**: Users can store and retrieve data from SQLite databases with safe parameterized queries
@@ -221,8 +221,8 @@ Phases execute in numeric order: 49 -> 50 -> 51 -> 52 -> 53 -> 54
 | 49. JSON Serde -- Structs | v2.0 | 3/3 | Complete | 2026-02-11 |
 | 50. JSON Serde -- Sum Types & Generics | v2.0 | 2/2 | Complete | 2026-02-11 |
 | 51. HTTP Path Parameters | v2.0 | 2/2 | Complete | 2026-02-11 |
-| 52. HTTP Middleware | v2.0 | 0/2 | Not started | - |
+| 52. HTTP Middleware | v2.0 | 2/2 | Complete | 2026-02-11 |
 | 53. SQLite Driver | v2.0 | 0/TBD | Not started | - |
 | 54. PostgreSQL Driver | v2.0 | 0/TBD | Not started | - |
 
-**Total: 51 phases shipped across 10 milestones. 148 plans completed. 3 phases remaining in v2.0.**
+**Total: 52 phases shipped across 10 milestones. 150 plans completed. 2 phases remaining in v2.0.**
