@@ -500,6 +500,68 @@ fn e2e_deriving_json_number_types() {
     assert_eq!(lines[4], "3.15");
 }
 
+#[test]
+fn e2e_deriving_json_collections() {
+    let source = read_fixture("deriving_json_collections.snow");
+    let output = compile_and_run(&source);
+    let lines: Vec<&str> = output.trim().lines().collect();
+    assert_eq!(lines.len(), 3, "expected 3 lines, got: {}", output);
+    let json: serde_json::Value = serde_json::from_str(lines[0]).expect("valid JSON");
+    assert!(json["tags"].is_array(), "tags should be array");
+    assert_eq!(json["tags"].as_array().unwrap().len(), 3);
+    assert!(json["settings"].is_object(), "settings should be object");
+    assert_eq!(lines[1], "3");
+    assert_eq!(lines[2], "2");
+}
+
+#[test]
+fn e2e_deriving_json_roundtrip() {
+    let source = read_fixture("deriving_json_roundtrip.snow");
+    let output = compile_and_run(&source);
+    let lines: Vec<&str> = output.trim().lines().collect();
+    assert_eq!(lines.len(), 2, "expected 2 lines, got: {}", output);
+    assert_eq!(lines[0], "round-trip: ok");
+    assert_eq!(lines[1], "zero-values: ok");
+}
+
+#[test]
+fn e2e_deriving_json_error() {
+    let source = read_fixture("deriving_json_error.snow");
+    let output = compile_and_run(&source);
+    let lines: Vec<&str> = output.trim().lines().collect();
+    assert_eq!(lines.len(), 3, "expected 3 lines, got: {}", output);
+    assert_eq!(lines[0], "parse error: ok");
+    assert_eq!(lines[1], "missing field: ok");
+    assert_eq!(lines[2], "wrong type: ok");
+}
+
+#[test]
+fn e2e_deriving_json_non_serializable_compile_fail() {
+    // Verify that deriving(Json) on a struct with a non-serializable field (Pid)
+    // produces a compile error containing E0038.
+    let source = r#"
+struct BadStruct do
+  name :: String
+  worker :: Pid
+end deriving(Json)
+
+fn main() do
+  println("should not compile")
+end
+"#;
+    let result = compile_only(source);
+    assert!(
+        !result.status.success(),
+        "Expected compilation failure for non-serializable field, but it succeeded"
+    );
+    let stderr = String::from_utf8_lossy(&result.stderr);
+    assert!(
+        stderr.contains("E0038") || stderr.contains("not JSON-serializable"),
+        "Expected E0038 error, got stderr: {}",
+        stderr
+    );
+}
+
 // ── HTTP E2E Tests (Phase 8 Plan 05, updated Phase 15) ────────────────
 //
 // The HTTP server uses actor-per-connection (Phase 15) with crash isolation
