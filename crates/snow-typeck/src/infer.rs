@@ -608,13 +608,39 @@ fn stdlib_modules() -> HashMap<String, HashMap<String, Scheme>> {
     });
     modules.insert("Timer".to_string(), timer_mod);
 
+    // ── Sqlite module (Phase 53) ──────────────────────────────────────
+    let sqlite_conn_t = Ty::Con(TyCon::new("SqliteConn"));
+
+    let mut sqlite_mod = HashMap::new();
+    // Sqlite.open: fn(String) -> Result<SqliteConn, String>
+    sqlite_mod.insert("open".to_string(), Scheme::mono(Ty::fun(
+        vec![Ty::string()],
+        Ty::result(sqlite_conn_t.clone(), Ty::string()),
+    )));
+    // Sqlite.close: fn(SqliteConn) -> Unit
+    sqlite_mod.insert("close".to_string(), Scheme::mono(Ty::fun(
+        vec![sqlite_conn_t.clone()],
+        Ty::Tuple(vec![]),
+    )));
+    // Sqlite.execute: fn(SqliteConn, String, List<String>) -> Result<Int, String>
+    sqlite_mod.insert("execute".to_string(), Scheme::mono(Ty::fun(
+        vec![sqlite_conn_t.clone(), Ty::string(), Ty::list(Ty::string())],
+        Ty::result(Ty::int(), Ty::string()),
+    )));
+    // Sqlite.query: fn(SqliteConn, String, List<String>) -> Result<List<Map<String, String>>, String>
+    sqlite_mod.insert("query".to_string(), Scheme::mono(Ty::fun(
+        vec![sqlite_conn_t.clone(), Ty::string(), Ty::list(Ty::string())],
+        Ty::result(Ty::list(Ty::map(Ty::string(), Ty::string())), Ty::string()),
+    )));
+    modules.insert("Sqlite".to_string(), sqlite_mod);
+
     modules
 }
 
 /// Set of module names recognized by the stdlib for qualified access.
 const STDLIB_MODULE_NAMES: &[&str] = &[
     "String", "IO", "Env", "File", "List", "Map", "Set", "Tuple", "Range", "Queue", "HTTP", "JSON", "Json", "Request", "Job",
-    "Math", "Int", "Float", "Timer",
+    "Math", "Int", "Float", "Timer", "Sqlite",
 ];
 
 /// Check if a name is a known stdlib module.

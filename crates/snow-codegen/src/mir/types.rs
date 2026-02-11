@@ -72,6 +72,9 @@ fn resolve_con(con: &TyCon, registry: &TypeRegistry) -> MirType {
         "String" => MirType::String,
         "Unit" | "()" => MirType::Unit,
         "Pid" => MirType::Pid(None),
+        // SqliteConn is an opaque u64 handle, lowered to Int for GC safety (SQLT-07).
+        // The GC never traces integer values, so the connection won't be corrupted.
+        "SqliteConn" => MirType::Int,
         // Collection types, Json, and HTTP types are opaque pointers at LLVM level.
         "List" | "Map" | "Set" | "Range" | "Queue" | "Tuple" | "Json"
         | "Router" | "Request" | "Response" => MirType::Ptr,
@@ -367,6 +370,16 @@ mod tests {
         assert_eq!(
             resolve_type(&Ty::pid(Ty::int()), &reg, false),
             MirType::Pid(Some(Box::new(MirType::Int)))
+        );
+    }
+
+    #[test]
+    fn resolve_sqlite_conn_to_int() {
+        let reg = empty_registry();
+        // SqliteConn is an opaque u64 handle, lowered to MirType::Int.
+        assert_eq!(
+            resolve_type(&Ty::Con(TyCon::new("SqliteConn")), &reg, false),
+            MirType::Int,
         );
     }
 

@@ -615,6 +615,38 @@ pub fn register_builtins(
         )),
     );
 
+    // ── Phase 53: SQLite functions ──────────────────────────────────────
+    // SqliteConn opaque type -- lowered to Int (i64) at MIR level for GC safety.
+    let sqlite_conn_t = Ty::Con(TyCon::new("SqliteConn"));
+    env.insert("SqliteConn".into(), Scheme::mono(sqlite_conn_t.clone()));
+
+    // Sqlite.open(String) -> Result<SqliteConn, String>
+    env.insert(
+        "sqlite_open".into(),
+        Scheme::mono(Ty::fun(vec![Ty::string()], Ty::result(sqlite_conn_t.clone(), Ty::string()))),
+    );
+    // Sqlite.close(SqliteConn) -> Unit
+    env.insert(
+        "sqlite_close".into(),
+        Scheme::mono(Ty::fun(vec![sqlite_conn_t.clone()], Ty::Tuple(vec![]))),
+    );
+    // Sqlite.execute(SqliteConn, String, List<String>) -> Result<Int, String>
+    env.insert(
+        "sqlite_execute".into(),
+        Scheme::mono(Ty::fun(
+            vec![sqlite_conn_t.clone(), Ty::string(), Ty::list(Ty::string())],
+            Ty::result(Ty::int(), Ty::string()),
+        )),
+    );
+    // Sqlite.query(SqliteConn, String, List<String>) -> Result<List<Map<String, String>>, String>
+    env.insert(
+        "sqlite_query".into(),
+        Scheme::mono(Ty::fun(
+            vec![sqlite_conn_t.clone(), Ty::string(), Ty::list(Ty::string())],
+            Ty::result(Ty::list(Ty::map(Ty::string(), Ty::string())), Ty::string()),
+        )),
+    );
+
     // Request accessor functions
     // Request.method(Request) -> String
     env.insert(

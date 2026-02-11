@@ -469,6 +469,28 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
     // snow_http_use_middleware(router: ptr, middleware_fn: ptr) -> ptr
     module.add_function("snow_http_use_middleware", ptr_type.fn_type(&[ptr_type.into(), ptr_type.into()], false), Some(inkwell::module::Linkage::External));
 
+    // ── Phase 53: SQLite ──────────────────────────────────────────────
+
+    // snow_sqlite_open(path: ptr) -> ptr (SnowResult)
+    module.add_function("snow_sqlite_open",
+        ptr_type.fn_type(&[ptr_type.into()], false),
+        Some(inkwell::module::Linkage::External));
+
+    // snow_sqlite_close(conn: i64) -> void
+    module.add_function("snow_sqlite_close",
+        void_type.fn_type(&[i64_type.into()], false),
+        Some(inkwell::module::Linkage::External));
+
+    // snow_sqlite_execute(conn: i64, sql: ptr, params: ptr) -> ptr (SnowResult)
+    module.add_function("snow_sqlite_execute",
+        ptr_type.fn_type(&[i64_type.into(), ptr_type.into(), ptr_type.into()], false),
+        Some(inkwell::module::Linkage::External));
+
+    // snow_sqlite_query(conn: i64, sql: ptr, params: ptr) -> ptr (SnowResult)
+    module.add_function("snow_sqlite_query",
+        ptr_type.fn_type(&[i64_type.into(), ptr_type.into(), ptr_type.into()], false),
+        Some(inkwell::module::Linkage::External));
+
     // ── Hash runtime functions (Phase 21 Plan 01) ──────────────────────
 
     // snow_hash_int(value: i64) -> i64
@@ -742,6 +764,12 @@ mod tests {
 
         // Phase 52: Middleware
         assert!(module.get_function("snow_http_use_middleware").is_some());
+
+        // Phase 53: SQLite
+        assert!(module.get_function("snow_sqlite_open").is_some());
+        assert!(module.get_function("snow_sqlite_close").is_some());
+        assert!(module.get_function("snow_sqlite_execute").is_some());
+        assert!(module.get_function("snow_sqlite_query").is_some());
 
         // Service runtime functions (Phase 9 Plan 03)
         assert!(module.get_function("snow_service_call").is_some());

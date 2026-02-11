@@ -672,6 +672,12 @@ impl<'a> Lowerer<'a> {
         self.known_functions.insert("snow_http_request_param".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::String], Box::new(MirType::Ptr)));
         // Phase 52: Middleware
         self.known_functions.insert("snow_http_use_middleware".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
+        // ── SQLite functions (Phase 53) ──────────────────────────────────
+        // Connection handle is MirType::Int (i64) for GC safety (SQLT-07).
+        self.known_functions.insert("snow_sqlite_open".to_string(), MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Ptr)));
+        self.known_functions.insert("snow_sqlite_close".to_string(), MirType::FnPtr(vec![MirType::Int], Box::new(MirType::Unit)));
+        self.known_functions.insert("snow_sqlite_execute".to_string(), MirType::FnPtr(vec![MirType::Int, MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
+        self.known_functions.insert("snow_sqlite_query".to_string(), MirType::FnPtr(vec![MirType::Int, MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
         // ── Job functions (Phase 9 Plan 04) ──────────────────────────────
         // snow_job_async takes (fn_ptr, env_ptr) -> i64 (PID)
         // But the closure splitting at codegen will expand the closure arg into (fn_ptr, env_ptr)
@@ -3505,6 +3511,8 @@ impl<'a> Lowerer<'a> {
             "Float" => MirType::Float,
             "Bool" => MirType::Bool,
             "String" => MirType::String,
+            // SqliteConn is an opaque u64 handle, lowered to Int for GC safety (SQLT-07).
+            "SqliteConn" => MirType::Int,
             n => {
                 if self.structs.iter().any(|s| s.name == n) || self.registry.struct_defs.contains_key(n) {
                     MirType::Struct(n.to_string())
@@ -8807,7 +8815,7 @@ impl<'a> Lowerer<'a> {
 /// Set of known stdlib module names for qualified access lowering.
 const STDLIB_MODULES: &[&str] = &[
     "String", "IO", "Env", "File", "List", "Map", "Set", "Tuple", "Range", "Queue", "HTTP", "JSON", "Json", "Request", "Job",
-    "Math", "Int", "Float", "Timer",
+    "Math", "Int", "Float", "Timer", "Sqlite",
 ];
 
 /// Map Snow builtin function names to their runtime equivalents.
@@ -8995,6 +9003,11 @@ fn map_builtin_name(name: &str) -> String {
         "http_on_delete" => "snow_http_route_delete".to_string(),
         // Phase 52: Middleware
         "http_use" => "snow_http_use_middleware".to_string(),
+        // ── SQLite functions (Phase 53) ──────────────────────────────────
+        "sqlite_open" => "snow_sqlite_open".to_string(),
+        "sqlite_close" => "snow_sqlite_close".to_string(),
+        "sqlite_execute" => "snow_sqlite_execute".to_string(),
+        "sqlite_query" => "snow_sqlite_query".to_string(),
         // NOTE: No bare name mappings for HTTP/Request (router, route, get,
         // post, method, path, body, etc.) because they collide with common
         // variable names. Use module-qualified access instead:
