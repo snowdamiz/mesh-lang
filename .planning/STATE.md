@@ -10,16 +10,16 @@ See: .planning/PROJECT.md (updated 2026-02-12)
 ## Current Position
 
 Phase: 58 of 58 (Struct-to-Row Mapping)
-Plan: 0 of TBD in current phase
-Status: Ready to plan
-Last activity: 2026-02-12 -- Phase 57 complete (verified)
+Plan: 1 of 2 in current phase
+Status: Executing
+Last activity: 2026-02-12 -- Plan 01 complete (runtime row parsing + LLVM registration)
 
 Progress: [███████░░░] 75%
 
 ## Performance Metrics
 
 **All-time Totals:**
-- Plans completed: 160
+- Plans completed: 161
 - Phases completed: 57 (including Phase 57 Connection Pooling & Transactions, verified)
 - Milestones shipped: 11 (v1.0-v2.0)
 - Lines of Rust: 81,006
@@ -46,6 +46,10 @@ Progress: [███████░░░] 75%
 - Phase 57-03: Pg.transaction uses mono Result<Unit, String> for callback (sufficient for most use cases)
 - Phase 57-03: PoolHandle follows opaque u64 handle pattern (MirType::Int) like PgConn/SqliteConn
 - Phase 57-03: Pool.checkout returns PgConn specifically (PG-focused pool in v3.0)
+- Phase 58-01: FromRowFn type alias as unsafe extern C fn(*mut u8) -> *mut u8 for callback transmute
+- Phase 58-01: snow_pg_query_as returns List<SnowResult> (per-row results, not unwrapped values)
+- Phase 58-01: PostgreSQL Infinity/-Infinity pre-normalized to inf/-inf before f64::parse
+- Phase 58-01: Bool parsing accepts 8 case-insensitive variants for PostgreSQL compatibility
 
 ### Research Notes
 
@@ -67,6 +71,6 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-12
-Stopped at: Phase 57 complete, verified, roadmap updated
+Stopped at: Completed 58-01-PLAN.md (runtime row parsing + LLVM registration)
 Resume file: None
-Next action: `/gsd:plan-phase 58`
+Next action: Execute 58-02-PLAN.md (struct-to-row MIR codegen)
