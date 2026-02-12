@@ -2,7 +2,7 @@
 //!
 //! Provides:
 //! - **Router**: URL pattern matching with exact and wildcard routes
-//! - **Server**: Blocking HTTP server with hand-rolled HTTP/1.1 parser, actor-per-connection
+//! - **Server**: Blocking HTTP/HTTPS server with hand-rolled HTTP/1.1 parser, actor-per-connection
 //! - **Client**: HTTP GET/POST requests using ureq
 //! - **Request/Response**: Typed structs for request data and response construction
 //!
@@ -13,6 +13,10 @@
 //! to a lightweight actor with a 64 KiB stack, wrapped in `catch_unwind` for
 //! crash isolation. Blocking I/O is accepted within the actor context (similar
 //! to BEAM NIFs) since each actor runs on a scheduler worker thread.
+//!
+//! Both plaintext HTTP (`snow_http_serve`) and HTTPS (`snow_http_serve_tls`)
+//! share the same actor infrastructure via the `HttpStream` enum, which
+//! dispatches between `TcpStream` and `StreamOwned<ServerConnection, TcpStream>`.
 
 pub mod client;
 pub mod router;
@@ -26,5 +30,5 @@ pub use router::{
 pub use server::{
     snow_http_request_body, snow_http_request_header, snow_http_request_method,
     snow_http_request_param, snow_http_request_path, snow_http_request_query,
-    snow_http_response_new, snow_http_serve,
+    snow_http_response_new, snow_http_serve, snow_http_serve_tls,
 };

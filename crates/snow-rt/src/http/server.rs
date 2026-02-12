@@ -10,15 +10,21 @@
 //!
 //! Phase 8 used `std::thread::spawn` for per-connection handling. Phase 15
 //! replaced this with actor-per-connection using the existing lightweight
-//! actor system, unifying the runtime model. Phase 56 replaced the tiny_http
+//! actor system, unifying the runtime model. Phase 56-01 replaced the tiny_http
 //! library with a hand-rolled HTTP/1.1 parser to eliminate a rustls 0.20
 //! transitive dependency conflict with rustls 0.23 used by the rest of the
-//! runtime. Blocking I/O is accepted (similar to BEAM NIFs) since each actor
-//! runs on a scheduler worker thread.
+//! runtime. Phase 56-02 added TLS support via `HttpStream` enum (mirrors the
+//! `PgStream` pattern from Phase 55), enabling both HTTP and HTTPS serving
+//! through the same actor infrastructure. Blocking I/O is accepted (similar
+//! to BEAM NIFs) since each actor runs on a scheduler worker thread.
 
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::TcpStream;
+use std::sync::Arc;
 use std::time::Duration;
+
+use rustls::{ServerConfig, ServerConnection, StreamOwned};
+use rustls_pki_types::{CertificateDer, PrivateKeyDer, pem::PemObject};
 
 use crate::actor;
 use crate::collections::map;
@@ -26,6 +32,65 @@ use crate::gc::snow_gc_alloc_actor;
 use crate::string::{snow_string_new, SnowString};
 
 use super::router::{MiddlewareEntry, SnowRouter};
+
+// ── Stream Abstraction ──────────────────────────────────────────────────
+
+/// A connection stream that may be plain TCP or TLS-wrapped.
+///
+/// Mirrors the `PgStream` pattern from `crates/snow-rt/src/db/pg.rs` (Phase 55).
+/// Both variants implement `Read` and `Write`, enabling `parse_request` and
+/// `write_response` to operate on either stream type transparently.
+enum HttpStream {
+    Plain(TcpStream),
+    Tls(StreamOwned<ServerConnection, TcpStream>),
+}
+
+impl Read for HttpStream {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        match self {
+            HttpStream::Plain(s) => s.read(buf),
+            HttpStream::Tls(s) => s.read(buf),
+        }
+    }
+}
+
+impl Write for HttpStream {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        match self {
+            HttpStream::Plain(s) => s.write(buf),
+            HttpStream::Tls(s) => s.write(buf),
+        }
+    }
+    fn flush(&mut self) -> std::io::Result<()> {
+        match self {
+            HttpStream::Plain(s) => s.flush(),
+            HttpStream::Tls(s) => s.flush(),
+        }
+    }
+}
+
+// ── TLS Configuration ───────────────────────────────────────────────────
+
+/// Build a rustls `ServerConfig` from PEM-encoded certificate and private key files.
+///
+/// The certificate file may contain a chain (multiple PEM blocks). The private
+/// key file must contain exactly one PEM-encoded private key (RSA, ECDSA, or Ed25519).
+fn build_server_config(cert_path: &str, key_path: &str) -> Result<Arc<ServerConfig>, String> {
+    let certs: Vec<CertificateDer<'static>> = CertificateDer::pem_file_iter(cert_path)
+        .map_err(|e| format!("open cert file: {}", e))?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| format!("parse certs: {}", e))?;
+
+    let key = PrivateKeyDer::from_pem_file(key_path)
+        .map_err(|e| format!("load key: {}", e))?;
+
+    let config = ServerConfig::builder()
+        .with_no_client_auth()
+        .with_single_cert(certs, key)
+        .map_err(|e| format!("TLS config: {}", e))?;
+
+    Ok(Arc::new(config))
+}
 
 // ── Request/Response structs ────────────────────────────────────────────
 
@@ -172,15 +237,15 @@ struct ParsedRequest {
     body: Vec<u8>,
 }
 
-/// Parse an HTTP/1.1 request from a TCP stream.
+/// Parse an HTTP/1.1 request from an `HttpStream` (plain TCP or TLS).
 ///
-/// Uses `BufReader<&mut TcpStream>` so the stream can be reused for
+/// Uses `BufReader<&mut HttpStream>` so the stream can be reused for
 /// writing the response after parsing completes (the BufReader borrows
 /// the stream mutably, and the borrow ends when this function returns).
 ///
 /// Limits: max 100 headers, max 8KB total header data.
-fn parse_request(stream: &mut TcpStream) -> Result<ParsedRequest, String> {
-    let mut reader = BufReader::new(&mut *stream);
+fn parse_request(stream: &mut HttpStream) -> Result<ParsedRequest, String> {
+    let mut reader = BufReader::new(stream);
     let mut total_header_bytes: usize = 0;
 
     // 1. Read request line: "GET /path HTTP/1.1\r\n"
@@ -246,11 +311,11 @@ fn parse_request(stream: &mut TcpStream) -> Result<ParsedRequest, String> {
 
 // ── HTTP/1.1 Response Writer ────────────────────────────────────────────
 
-/// Write an HTTP/1.1 response to a TCP stream.
+/// Write an HTTP/1.1 response to an `HttpStream` (plain TCP or TLS).
 ///
 /// Format: status line, Content-Type, Content-Length, Connection: close,
 /// blank line, body bytes.
-fn write_response(stream: &mut TcpStream, status: u16, body: &[u8]) -> Result<(), String> {
+fn write_response(stream: &mut HttpStream, status: u16, body: &[u8]) -> Result<(), String> {
     let status_text = match status {
         200 => "OK",
         201 => "Created",
@@ -290,16 +355,22 @@ fn write_response(stream: &mut TcpStream, status: u16, body: &[u8]) -> Result<()
 struct ConnectionArgs {
     /// Router address as usize (for Send safety across thread boundaries).
     router_addr: usize,
-    /// Raw pointer to a boxed TcpStream, transferred as usize.
+    /// Raw pointer to a boxed `HttpStream`, transferred as usize.
     request_ptr: usize,
 }
 
 /// Actor entry function for handling a single HTTP connection.
 ///
 /// Receives a raw pointer to `ConnectionArgs` containing the router
-/// address and a boxed `TcpStream`. Wraps the handler call in
+/// address and a boxed `HttpStream`. Wraps the handler call in
 /// `catch_unwind` for crash isolation -- a panic in one handler does
 /// not affect other connections.
+///
+/// The read timeout is already set on the underlying TcpStream before
+/// wrapping in `HttpStream` (both Plain and Tls variants). For TLS
+/// connections, the actual TLS handshake happens lazily on the first
+/// `read` call (via `StreamOwned`), which occurs inside this actor --
+/// not in the accept loop.
 extern "C" fn connection_handler_entry(args: *const u8) {
     if args.is_null() {
         return;
@@ -307,16 +378,13 @@ extern "C" fn connection_handler_entry(args: *const u8) {
 
     let args = unsafe { Box::from_raw(args as *mut ConnectionArgs) };
     let router_ptr = args.router_addr as *mut u8;
-    let mut tcp_stream = unsafe { *Box::from_raw(args.request_ptr as *mut TcpStream) };
-
-    // Set a 30-second read timeout to prevent unbounded blocking.
-    let _ = tcp_stream.set_read_timeout(Some(Duration::from_secs(30)));
+    let mut stream = unsafe { *Box::from_raw(args.request_ptr as *mut HttpStream) };
 
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        match parse_request(&mut tcp_stream) {
+        match parse_request(&mut stream) {
             Ok(parsed) => {
                 let (status, body) = process_request(router_ptr, parsed);
-                let _ = write_response(&mut tcp_stream, status, &body);
+                let _ = write_response(&mut stream, status, &body);
             }
             Err(e) => {
                 eprintln!("[snow-rt] HTTP parse error: {}", e);
@@ -368,10 +436,14 @@ pub extern "C" fn snow_http_serve(router: *mut u8, port: i64) {
             }
         };
 
-        let request_ptr = Box::into_raw(Box::new(tcp_stream)) as usize;
+        // Set read timeout BEFORE wrapping in HttpStream.
+        tcp_stream.set_read_timeout(Some(Duration::from_secs(30))).ok();
+
+        let http_stream = HttpStream::Plain(tcp_stream);
+        let stream_ptr = Box::into_raw(Box::new(http_stream)) as usize;
         let args = ConnectionArgs {
             router_addr,
-            request_ptr,
+            request_ptr: stream_ptr,
         };
         let args_ptr = Box::into_raw(Box::new(args)) as *const u8;
         let args_size = std::mem::size_of::<ConnectionArgs>() as u64;
@@ -382,6 +454,104 @@ pub extern "C" fn snow_http_serve(router: *mut u8, port: i64) {
             args_ptr,
             args_size,
             1, // Normal priority
+        );
+    }
+}
+
+// ── HTTPS Server ────────────────────────────────────────────────────────
+
+/// Start an HTTPS server on the given port with TLS, blocking the calling thread.
+///
+/// Loads PEM-encoded certificate and private key files, builds a rustls
+/// `ServerConfig`, and enters the same accept loop as `snow_http_serve`.
+/// Each accepted connection is wrapped in `HttpStream::Tls` and dispatched
+/// to a lightweight actor.
+///
+/// The TLS handshake is lazy: `StreamOwned::new()` does NO I/O. The actual
+/// handshake occurs on the first `read` call inside the actor's coroutine,
+/// ensuring the accept loop is never blocked by slow TLS clients.
+#[no_mangle]
+pub extern "C" fn snow_http_serve_tls(
+    router: *mut u8,
+    port: i64,
+    cert_path: *const SnowString,
+    key_path: *const SnowString,
+) {
+    crate::actor::snow_rt_init_actor(0);
+
+    let cert_str = unsafe { (*cert_path).as_str() };
+    let key_str = unsafe { (*key_path).as_str() };
+
+    let tls_config = match build_server_config(cert_str, key_str) {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("[snow-rt] Failed to load TLS certificates: {}", e);
+            return;
+        }
+    };
+
+    let addr = format!("0.0.0.0:{}", port);
+    let listener = match std::net::TcpListener::bind(&addr) {
+        Ok(l) => l,
+        Err(e) => {
+            eprintln!("[snow-rt] Failed to bind {}: {}", addr, e);
+            return;
+        }
+    };
+
+    eprintln!("[snow-rt] HTTPS server listening on {}", addr);
+
+    let router_addr = router as usize;
+    // Leak the Arc<ServerConfig> as a raw pointer for transfer into the loop.
+    // The server runs forever, so this is intentional (no cleanup needed).
+    let config_ptr = Arc::into_raw(tls_config) as usize;
+
+    for tcp_stream in listener.incoming() {
+        let tcp_stream = match tcp_stream {
+            Ok(s) => s,
+            Err(e) => {
+                eprintln!("[snow-rt] accept error: {}", e);
+                continue;
+            }
+        };
+
+        // Set read timeout BEFORE wrapping in TLS (Pitfall 7 from research).
+        tcp_stream.set_read_timeout(Some(Duration::from_secs(30))).ok();
+
+        // Reconstruct the Arc without dropping it (we leaked it intentionally).
+        let tls_config = unsafe { Arc::from_raw(config_ptr as *const ServerConfig) };
+        let conn = match ServerConnection::new(Arc::clone(&tls_config)) {
+            Ok(c) => c,
+            Err(e) => {
+                eprintln!("[snow-rt] TLS connection setup failed: {}", e);
+                // Re-leak the Arc so it's available for the next connection.
+                std::mem::forget(tls_config);
+                continue;
+            }
+        };
+        // Re-leak the Arc so it's available for the next connection.
+        std::mem::forget(tls_config);
+
+        // StreamOwned::new does NO I/O -- handshake is lazy on first read/write.
+        // The actual handshake happens inside the actor when parse_request calls
+        // BufReader::read_line -> HttpStream::Tls::read -> StreamOwned::read.
+        let tls_stream = StreamOwned::new(conn, tcp_stream);
+        let http_stream = HttpStream::Tls(tls_stream);
+
+        let stream_ptr = Box::into_raw(Box::new(http_stream)) as usize;
+        let args = ConnectionArgs {
+            router_addr,
+            request_ptr: stream_ptr,
+        };
+        let args_ptr = Box::into_raw(Box::new(args)) as *const u8;
+        let args_size = std::mem::size_of::<ConnectionArgs>() as u64;
+
+        let sched = actor::global_scheduler();
+        sched.spawn(
+            connection_handler_entry as *const u8,
+            args_ptr,
+            args_size,
+            1,
         );
     }
 }
