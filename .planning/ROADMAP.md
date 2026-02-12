@@ -139,11 +139,11 @@ Plans:
   2. Existing `Http.serve(router, port)` continues to work for plaintext HTTP without modification
   3. All existing HTTP features (path parameters, method routing, middleware) work identically over HTTPS
   4. TLS handshakes do not block the actor scheduler -- unrelated actors continue executing during handshake processing
-**Plans**: TBD
+**Plans**: 2 plans
 
 Plans:
-- [ ] 56-01: TBD
-- [ ] 56-02: TBD
+- [ ] 56-01-PLAN.md -- Replace tiny_http with hand-rolled HTTP/1.1 parser for plaintext TCP
+- [ ] 56-02-PLAN.md -- Add Http.serve_tls with HttpStream enum and codegen integration
 
 ### Phase 57: Connection Pooling & Transactions
 **Goal**: Snow programs can manage database connections efficiently with pooling and execute multi-statement operations atomically with transactions
@@ -196,7 +196,7 @@ Phases execute in numeric order: 55 -> 56 -> 57 -> 58
 | 43-48 | v1.9 | 13/13 | Complete | 2026-02-10 |
 | 49-54 | v2.0 | 13/13 | Complete | 2026-02-12 |
 | 55. PG TLS | v3.0 | 1/1 | Complete | 2026-02-12 |
-| 56. HTTPS | v3.0 | 0/TBD | Not started | - |
+| 56. HTTPS | v3.0 | 0/2 | Not started | - |
 | 57. Pool+Txn | v3.0 | 0/TBD | Not started | - |
 | 58. Row Map | v3.0 | 0/TBD | Not started | - |
 
