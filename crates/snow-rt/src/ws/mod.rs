@@ -6,3 +6,5 @@
 //! The handshake and close modules will be added in Plan 02.
 
 pub mod frame;
+
+pub use frame::{WsOpcode, WsFrame, read_frame, write_frame, apply_mask};
