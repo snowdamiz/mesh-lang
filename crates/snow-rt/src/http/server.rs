@@ -1,18 +1,24 @@
 //! HTTP server runtime for the Snow language.
 //!
-//! Uses `tiny_http` for the HTTP server and the Snow actor system for
-//! per-connection handling. Each incoming connection is dispatched to a
-//! lightweight actor (corosensei coroutine on the M:N scheduler) rather
-//! than an OS thread, benefiting from 64 KiB stacks and crash isolation
-//! via `catch_unwind`.
+//! Uses a hand-rolled HTTP/1.1 request parser and response writer with the
+//! Snow actor system for per-connection handling. Each incoming connection is
+//! dispatched to a lightweight actor (corosensei coroutine on the M:N
+//! scheduler) rather than an OS thread, benefiting from 64 KiB stacks and
+//! crash isolation via `catch_unwind`.
 //!
 //! ## History
 //!
 //! Phase 8 used `std::thread::spawn` for per-connection handling. Phase 15
 //! replaced this with actor-per-connection using the existing lightweight
-//! actor system, unifying the runtime model. Blocking I/O in tiny-http is
-//! accepted (similar to BEAM NIFs) since each actor runs on a scheduler
-//! worker thread.
+//! actor system, unifying the runtime model. Phase 56 replaced the tiny_http
+//! library with a hand-rolled HTTP/1.1 parser to eliminate a rustls 0.20
+//! transitive dependency conflict with rustls 0.23 used by the rest of the
+//! runtime. Blocking I/O is accepted (similar to BEAM NIFs) since each actor
+//! runs on a scheduler worker thread.
+
+use std::io::{BufRead, BufReader, Read, Write};
+use std::net::TcpStream;
+use std::time::Duration;
 
 use crate::actor;
 use crate::collections::map;
@@ -156,6 +162,127 @@ fn alloc_option(tag: u8, value: *mut u8) -> *mut u8 {
     crate::option::alloc_option(tag, value) as *mut u8
 }
 
+// ── HTTP/1.1 Request Parser ─────────────────────────────────────────────
+
+/// Parsed HTTP/1.1 request with method, path, headers, and body.
+struct ParsedRequest {
+    method: String,
+    path: String,
+    headers: Vec<(String, String)>,
+    body: Vec<u8>,
+}
+
+/// Parse an HTTP/1.1 request from a TCP stream.
+///
+/// Uses `BufReader<&mut TcpStream>` so the stream can be reused for
+/// writing the response after parsing completes (the BufReader borrows
+/// the stream mutably, and the borrow ends when this function returns).
+///
+/// Limits: max 100 headers, max 8KB total header data.
+fn parse_request(stream: &mut TcpStream) -> Result<ParsedRequest, String> {
+    let mut reader = BufReader::new(&mut *stream);
+    let mut total_header_bytes: usize = 0;
+
+    // 1. Read request line: "GET /path HTTP/1.1\r\n"
+    let mut request_line = String::new();
+    reader
+        .read_line(&mut request_line)
+        .map_err(|e| format!("read request line: {}", e))?;
+    total_header_bytes += request_line.len();
+
+    let request_line_trimmed = request_line.trim_end();
+    let parts: Vec<&str> = request_line_trimmed.splitn(3, ' ').collect();
+    if parts.len() < 2 {
+        return Err(format!("malformed request line: {}", request_line_trimmed));
+    }
+    let method = parts[0].to_string();
+    let path = parts[1].to_string();
+
+    // 2. Read headers until blank line (\r\n alone).
+    let mut headers = Vec::new();
+    let mut content_length: usize = 0;
+    loop {
+        let mut line = String::new();
+        reader
+            .read_line(&mut line)
+            .map_err(|e| format!("read header: {}", e))?;
+        total_header_bytes += line.len();
+        if total_header_bytes > 8192 {
+            return Err("header section exceeds 8KB limit".to_string());
+        }
+
+        let trimmed = line.trim_end();
+        if trimmed.is_empty() {
+            break; // blank line = end of headers
+        }
+        if headers.len() >= 100 {
+            return Err("too many headers (max 100)".to_string());
+        }
+        if let Some((name, value)) = trimmed.split_once(':') {
+            let name = name.trim().to_string();
+            let value = value.trim().to_string();
+            if name.eq_ignore_ascii_case("content-length") {
+                content_length = value.parse().unwrap_or(0);
+            }
+            headers.push((name, value));
+        }
+    }
+
+    // 3. Read body based on Content-Length.
+    let mut body = vec![0u8; content_length];
+    if content_length > 0 {
+        reader
+            .read_exact(&mut body)
+            .map_err(|e| format!("read body: {}", e))?;
+    }
+
+    Ok(ParsedRequest {
+        method,
+        path,
+        headers,
+        body,
+    })
+}
+
+// ── HTTP/1.1 Response Writer ────────────────────────────────────────────
+
+/// Write an HTTP/1.1 response to a TCP stream.
+///
+/// Format: status line, Content-Type, Content-Length, Connection: close,
+/// blank line, body bytes.
+fn write_response(stream: &mut TcpStream, status: u16, body: &[u8]) -> Result<(), String> {
+    let status_text = match status {
+        200 => "OK",
+        201 => "Created",
+        204 => "No Content",
+        301 => "Moved Permanently",
+        302 => "Found",
+        400 => "Bad Request",
+        401 => "Unauthorized",
+        403 => "Forbidden",
+        404 => "Not Found",
+        405 => "Method Not Allowed",
+        500 => "Internal Server Error",
+        _ => "OK",
+    };
+
+    let header = format!(
+        "HTTP/1.1 {} {}\r\nContent-Type: application/json; charset=utf-8\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+        status, status_text, body.len()
+    );
+
+    stream
+        .write_all(header.as_bytes())
+        .map_err(|e| format!("write response header: {}", e))?;
+    stream
+        .write_all(body)
+        .map_err(|e| format!("write response body: {}", e))?;
+    stream
+        .flush()
+        .map_err(|e| format!("flush response: {}", e))?;
+    Ok(())
+}
+
 // ── Actor-per-connection infrastructure ────────────────────────────────
 
 /// Arguments passed to the connection handler actor via raw pointer.
@@ -163,16 +290,16 @@ fn alloc_option(tag: u8, value: *mut u8) -> *mut u8 {
 struct ConnectionArgs {
     /// Router address as usize (for Send safety across thread boundaries).
     router_addr: usize,
-    /// Raw pointer to a boxed tiny_http::Request, transferred as usize.
+    /// Raw pointer to a boxed TcpStream, transferred as usize.
     request_ptr: usize,
 }
 
 /// Actor entry function for handling a single HTTP connection.
 ///
 /// Receives a raw pointer to `ConnectionArgs` containing the router
-/// address and a boxed `tiny_http::Request`. Wraps the handler call
-/// in `catch_unwind` for crash isolation -- a panic in one handler
-/// does not affect other connections.
+/// address and a boxed `TcpStream`. Wraps the handler call in
+/// `catch_unwind` for crash isolation -- a panic in one handler does
+/// not affect other connections.
 extern "C" fn connection_handler_entry(args: *const u8) {
     if args.is_null() {
         return;
@@ -180,10 +307,21 @@ extern "C" fn connection_handler_entry(args: *const u8) {
 
     let args = unsafe { Box::from_raw(args as *mut ConnectionArgs) };
     let router_ptr = args.router_addr as *mut u8;
-    let request = unsafe { *Box::from_raw(args.request_ptr as *mut tiny_http::Request) };
+    let mut tcp_stream = unsafe { *Box::from_raw(args.request_ptr as *mut TcpStream) };
+
+    // Set a 30-second read timeout to prevent unbounded blocking.
+    let _ = tcp_stream.set_read_timeout(Some(Duration::from_secs(30)));
 
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        handle_request(router_ptr, request);
+        match parse_request(&mut tcp_stream) {
+            Ok(parsed) => {
+                let (status, body) = process_request(router_ptr, parsed);
+                let _ = write_response(&mut tcp_stream, status, &body);
+            }
+            Err(e) => {
+                eprintln!("[snow-rt] HTTP parse error: {}", e);
+            }
+        }
     }));
 
     if let Err(panic_info) = result {
@@ -209,8 +347,8 @@ pub extern "C" fn snow_http_serve(router: *mut u8, port: i64) {
     crate::actor::snow_rt_init_actor(0);
 
     let addr = format!("0.0.0.0:{}", port);
-    let server = match tiny_http::Server::http(&addr) {
-        Ok(s) => s,
+    let listener = match std::net::TcpListener::bind(&addr) {
+        Ok(l) => l,
         Err(e) => {
             eprintln!("[snow-rt] Failed to start HTTP server on {}: {}", addr, e);
             return;
@@ -221,8 +359,16 @@ pub extern "C" fn snow_http_serve(router: *mut u8, port: i64) {
 
     let router_addr = router as usize;
 
-    for request in server.incoming_requests() {
-        let request_ptr = Box::into_raw(Box::new(request)) as usize;
+    for tcp_stream in listener.incoming() {
+        let tcp_stream = match tcp_stream {
+            Ok(s) => s,
+            Err(e) => {
+                eprintln!("[snow-rt] accept error: {}", e);
+                continue;
+            }
+        };
+
+        let request_ptr = Box::into_raw(Box::new(tcp_stream)) as usize;
         let args = ConnectionArgs {
             router_addr,
             request_ptr,
@@ -336,17 +482,19 @@ fn call_middleware(fn_ptr: *mut u8, env_ptr: *mut u8, request: *mut u8, next_clo
     }
 }
 
-/// Handle a single HTTP request by matching it against the router
+/// Process a single HTTP request by matching it against the router
 /// and calling the appropriate handler function.
-fn handle_request(router_ptr: *mut u8, mut request: tiny_http::Request) {
+///
+/// Returns `(status_code, body_bytes)` for the response.
+fn process_request(router_ptr: *mut u8, parsed: ParsedRequest) -> (u16, Vec<u8>) {
     unsafe {
         let router = &*(router_ptr as *const SnowRouter);
 
         // Build the SnowHttpRequest.
-        let method_str = request.method().as_str().to_string();
+        let method_str = parsed.method;
         let method = snow_string_new(method_str.as_ptr(), method_str.len() as u64) as *mut u8;
 
-        let url = request.url().to_string();
+        let url = parsed.path;
         // Split URL into path and query string.
         let (path_str, query_str) = match url.find('?') {
             Some(idx) => (&url[..idx], &url[idx + 1..]),
@@ -354,9 +502,8 @@ fn handle_request(router_ptr: *mut u8, mut request: tiny_http::Request) {
         };
         let path = snow_string_new(path_str.as_ptr(), path_str.len() as u64) as *mut u8;
 
-        // Read body.
-        let mut body_bytes = Vec::new();
-        let _ = request.as_reader().read_to_end(&mut body_bytes);
+        // Body from parsed request.
+        let body_bytes = parsed.body;
         let body = snow_string_new(body_bytes.as_ptr(), body_bytes.len() as u64) as *mut u8;
 
         // Parse query params into a SnowMap (string keys for content-based lookup).
@@ -373,9 +520,7 @@ fn handle_request(router_ptr: *mut u8, mut request: tiny_http::Request) {
 
         // Parse headers into a SnowMap (string keys for content-based lookup).
         let mut headers_map = map::snow_map_new_typed(1);
-        for header in request.headers() {
-            let name = header.field.as_str().as_str();
-            let value_str = header.value.as_str();
+        for (name, value_str) in &parsed.headers {
             let key = snow_string_new(name.as_ptr(), name.len() as u64);
             let val = snow_string_new(value_str.as_ptr(), value_str.len() as u64);
             headers_map = map::snow_map_put(headers_map, key as u64, val as u64);
@@ -445,15 +590,12 @@ fn handle_request(router_ptr: *mut u8, mut request: tiny_http::Request) {
             chain_next(Box::into_raw(state) as *mut u8, req_ptr)
         } else {
             // 404 without middleware: respond directly.
-            let not_found = tiny_http::Response::from_string("Not Found")
-                .with_status_code(tiny_http::StatusCode(404));
-            let _ = request.respond(not_found);
-            return;
+            return (404, b"Not Found".to_vec());
         };
 
         // Extract response from the Snow response pointer.
         let resp = &*(response_ptr as *const SnowHttpResponse);
-        let status_code = resp.status as u32;
+        let status_code = resp.status as u16;
         let body_str = if resp.body.is_null() {
             ""
         } else {
@@ -461,16 +603,7 @@ fn handle_request(router_ptr: *mut u8, mut request: tiny_http::Request) {
             body_snow.as_str()
         };
 
-        let http_response = tiny_http::Response::from_string(body_str)
-            .with_status_code(tiny_http::StatusCode(status_code as u16))
-            .with_header(
-                tiny_http::Header::from_bytes(
-                    &b"Content-Type"[..],
-                    &b"application/json; charset=utf-8"[..],
-                )
-                .unwrap(),
-            );
-        let _ = request.respond(http_response);
+        (status_code, body_str.as_bytes().to_vec())
     }
 }
 
