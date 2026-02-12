@@ -587,6 +587,38 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
         ptr_type.fn_type(&[i64_type.into(), ptr_type.into(), ptr_type.into()], false),
         Some(inkwell::module::Linkage::External));
 
+    // ── Phase 58: Row Parsing & Struct-to-Row Mapping ────────────────────
+
+    // snow_row_from_row_get(row: ptr, col_name: ptr) -> ptr (SnowResult)
+    module.add_function("snow_row_from_row_get",
+        ptr_type.fn_type(&[ptr_type.into(), ptr_type.into()], false),
+        Some(inkwell::module::Linkage::External));
+
+    // snow_row_parse_int(s: ptr) -> ptr (SnowResult)
+    module.add_function("snow_row_parse_int",
+        ptr_type.fn_type(&[ptr_type.into()], false),
+        Some(inkwell::module::Linkage::External));
+
+    // snow_row_parse_float(s: ptr) -> ptr (SnowResult)
+    module.add_function("snow_row_parse_float",
+        ptr_type.fn_type(&[ptr_type.into()], false),
+        Some(inkwell::module::Linkage::External));
+
+    // snow_row_parse_bool(s: ptr) -> ptr (SnowResult)
+    module.add_function("snow_row_parse_bool",
+        ptr_type.fn_type(&[ptr_type.into()], false),
+        Some(inkwell::module::Linkage::External));
+
+    // snow_pg_query_as(conn: i64, sql: ptr, params: ptr, from_row_fn: ptr) -> ptr (SnowResult)
+    module.add_function("snow_pg_query_as",
+        ptr_type.fn_type(&[i64_type.into(), ptr_type.into(), ptr_type.into(), ptr_type.into()], false),
+        Some(inkwell::module::Linkage::External));
+
+    // snow_pool_query_as(pool: i64, sql: ptr, params: ptr, from_row_fn: ptr) -> ptr (SnowResult)
+    module.add_function("snow_pool_query_as",
+        ptr_type.fn_type(&[i64_type.into(), ptr_type.into(), ptr_type.into(), ptr_type.into()], false),
+        Some(inkwell::module::Linkage::External));
+
     // ── Hash runtime functions (Phase 21 Plan 01) ──────────────────────
 
     // snow_hash_int(value: i64) -> i64
@@ -892,6 +924,14 @@ mod tests {
         assert!(module.get_function("snow_pool_checkin").is_some());
         assert!(module.get_function("snow_pool_query").is_some());
         assert!(module.get_function("snow_pool_execute").is_some());
+
+        // Phase 58: Row Parsing & Struct-to-Row Mapping
+        assert!(module.get_function("snow_row_from_row_get").is_some());
+        assert!(module.get_function("snow_row_parse_int").is_some());
+        assert!(module.get_function("snow_row_parse_float").is_some());
+        assert!(module.get_function("snow_row_parse_bool").is_some());
+        assert!(module.get_function("snow_pg_query_as").is_some());
+        assert!(module.get_function("snow_pool_query_as").is_some());
 
         // Service runtime functions (Phase 9 Plan 03)
         assert!(module.get_function("snow_service_call").is_some());

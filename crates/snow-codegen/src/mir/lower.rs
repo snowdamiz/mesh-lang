@@ -704,6 +704,13 @@ impl<'a> Lowerer<'a> {
         self.known_functions.insert("snow_pool_checkin".to_string(), MirType::FnPtr(vec![MirType::Int, MirType::Int], Box::new(MirType::Unit)));
         self.known_functions.insert("snow_pool_query".to_string(), MirType::FnPtr(vec![MirType::Int, MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
         self.known_functions.insert("snow_pool_execute".to_string(), MirType::FnPtr(vec![MirType::Int, MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
+        // ── Phase 58: Row Parsing & Struct-to-Row Mapping ─────────────────
+        self.known_functions.insert("snow_row_from_row_get".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
+        self.known_functions.insert("snow_row_parse_int".to_string(), MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Ptr)));
+        self.known_functions.insert("snow_row_parse_float".to_string(), MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Ptr)));
+        self.known_functions.insert("snow_row_parse_bool".to_string(), MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Ptr)));
+        self.known_functions.insert("snow_pg_query_as".to_string(), MirType::FnPtr(vec![MirType::Int, MirType::Ptr, MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
+        self.known_functions.insert("snow_pool_query_as".to_string(), MirType::FnPtr(vec![MirType::Int, MirType::Ptr, MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
         // ── Job functions (Phase 9 Plan 04) ──────────────────────────────
         // snow_job_async takes (fn_ptr, env_ptr) -> i64 (PID)
         // But the closure splitting at codegen will expand the closure arg into (fn_ptr, env_ptr)
@@ -9056,6 +9063,9 @@ fn map_builtin_name(name: &str) -> String {
         "pool_checkin" => "snow_pool_checkin".to_string(),
         "pool_query" => "snow_pool_query".to_string(),
         "pool_execute" => "snow_pool_execute".to_string(),
+        // ── Phase 58: Struct-to-Row Mapping ───────────────────────────────
+        "pg_query_as" => "snow_pg_query_as".to_string(),
+        "pool_query_as" => "snow_pool_query_as".to_string(),
         // NOTE: No bare name mappings for HTTP/Request (router, route, get,
         // post, method, path, body, etc.) because they collide with common
         // variable names. Use module-qualified access instead:
