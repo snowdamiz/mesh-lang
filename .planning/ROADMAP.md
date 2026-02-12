@@ -13,7 +13,7 @@
 - [x] **v1.8 Module System** - Phases 37-42 (shipped 2026-02-09)
 - [x] **v1.9 Stdlib & Ergonomics** - Phases 43-48 (shipped 2026-02-10)
 - [x] **v2.0 Database & Serialization** - Phases 49-54 (shipped 2026-02-12)
-- [ ] **v3.0 Production Backend** - Phases 55-58 (in progress)
+- [ ] **v3.0 Production Backend** - Phases 55-58 (shipping)
 
 ## Phases
 
@@ -112,7 +112,7 @@ See milestones/v2.0-ROADMAP.md for full phase details.
 - [x] **Phase 55: PostgreSQL TLS** - Encrypted connections to cloud databases via SSLRequest protocol upgrade (completed 2026-02-12)
 - [x] **Phase 56: HTTPS Server** - Production HTTP serving with TLS via hand-rolled HTTP/1.1 parser replacing tiny_http (completed 2026-02-12)
 - [x] **Phase 57: Connection Pooling & Transactions** - Actor-compatible pool manager with transaction lifecycle and automatic cleanup (completed 2026-02-12)
-- [ ] **Phase 58: Struct-to-Row Mapping** - Automatic database row to struct hydration via deriving(Row)
+- [x] **Phase 58: Struct-to-Row Mapping** - Automatic database row to struct hydration via deriving(Row) (completed 2026-02-12)
 
 ## Phase Details
 
@@ -174,8 +174,8 @@ Plans:
 **Plans**: 2 plans
 
 Plans:
-- [ ] 58-01-PLAN.md -- Runtime row parsing functions + query_as + three-point LLVM registration
-- [ ] 58-02-PLAN.md -- Typeck validation, MIR generation for from_row, Pg/Pool.query_as type signatures, E2E tests
+- [x] 58-01-PLAN.md -- Runtime row parsing functions + query_as + three-point LLVM registration
+- [x] 58-02-PLAN.md -- Typeck validation, MIR generation for from_row, Pg/Pool.query_as type signatures, E2E tests
 
 ## Progress
 
@@ -198,6 +198,6 @@ Phases execute in numeric order: 55 -> 56 -> 57 -> 58
 | 55. PG TLS | v3.0 | 1/1 | Complete | 2026-02-12 |
 | 56. HTTPS | v3.0 | 2/2 | Complete | 2026-02-12 |
 | 57. Pool+Txn | v3.0 | 3/3 | Complete | 2026-02-12 |
-| 58. Row Map | v3.0 | 0/TBD | Not started | - |
+| 58. Row Map | v3.0 | 2/2 | Complete | 2026-02-12 |
 
-**Total: 57 phases shipped across 11 milestones. 160 plans completed.**
+**Total: 58 phases shipped across 12 milestones. 162 plans completed.**
