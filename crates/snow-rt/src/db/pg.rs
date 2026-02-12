@@ -29,7 +29,7 @@ use pbkdf2::pbkdf2_hmac;
 use rand::Rng;
 use sha2::Sha256;
 
-use crate::collections::list::{snow_list_append, snow_list_new};
+use crate::collections::list::{snow_list_append, snow_list_get, snow_list_length, snow_list_new};
 use crate::collections::map::{snow_map_new_typed, snow_map_put};
 use crate::io::alloc_result;
 use crate::string::{snow_string_new, SnowString};
@@ -1234,5 +1234,53 @@ pub extern "C" fn snow_pg_transaction(
                 err_result("transaction aborted: panic in callback")
             }
         }
+    }
+}
+
+// ── Struct-to-Row Query ───────────────────────────────────────────────
+
+type FromRowFn = unsafe extern "C" fn(*mut u8) -> *mut u8;
+
+/// Execute a SELECT query and map each row through a from_row callback.
+///
+/// # Signature
+///
+/// `snow_pg_query_as(conn_handle: u64, sql: *mut u8, params: *mut u8,
+///     from_row_fn: *mut u8) -> *mut u8 (SnowResult<List<SnowResult>, String>)`
+///
+/// 1. Calls `snow_pg_query` to get the raw rows.
+/// 2. If query fails, propagates the error result as-is.
+/// 3. If Ok: iterates the rows list, calling `from_row_fn` on each row map.
+/// 4. Collects all per-row results into a new list.
+/// 5. Returns Ok(list_of_results).
+#[no_mangle]
+pub extern "C" fn snow_pg_query_as(
+    conn_handle: u64,
+    sql: *mut u8,
+    params: *mut u8,
+    from_row_fn: *mut u8,
+) -> *mut u8 {
+    unsafe {
+        // Execute the query
+        let query_result = snow_pg_query(conn_handle, sql as *const SnowString, params);
+        let r = &*(query_result as *const crate::io::SnowResult);
+        if r.tag != 0 {
+            return query_result; // propagate query error
+        }
+
+        // Extract the rows list from the Ok result
+        let rows_list = r.value;
+        let row_count = snow_list_length(rows_list);
+        let from_row: FromRowFn = std::mem::transmute(from_row_fn);
+
+        // Map each row through the from_row callback
+        let mut result_list = snow_list_new();
+        for i in 0..row_count {
+            let row = snow_list_get(rows_list, i);
+            let mapped = from_row(row as *mut u8);
+            result_list = snow_list_append(result_list, mapped as u64);
+        }
+
+        alloc_result(0, result_list as *mut u8) as *mut u8
     }
 }

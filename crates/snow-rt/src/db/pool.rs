@@ -22,7 +22,8 @@ use std::time::{Duration, Instant};
 use parking_lot::{Condvar, Mutex};
 
 use super::pg::{
-    pg_simple_command, snow_pg_close, snow_pg_connect, snow_pg_execute, snow_pg_query, PgConn,
+    pg_simple_command, snow_pg_close, snow_pg_connect, snow_pg_execute, snow_pg_query,
+    snow_pg_query_as, PgConn,
 };
 use crate::io::alloc_result;
 use crate::string::{snow_string_new, SnowString};
@@ -342,6 +343,41 @@ pub extern "C" fn snow_pool_execute(
         snow_pool_checkin(pool_handle, conn_handle);
 
         exec_result
+    }
+}
+
+/// Execute a SELECT query with automatic checkout-use-checkin and map rows through a callback.
+///
+/// # Signature
+///
+/// `snow_pool_query_as(pool_handle: u64, sql: *mut u8, params: *mut u8,
+///     from_row_fn: *mut u8) -> *mut u8 (SnowResult<List<SnowResult>, String>)`
+///
+/// Same checkout/query_as/checkin pattern as `snow_pool_query` but delegates to
+/// `snow_pg_query_as` for struct mapping.
+#[no_mangle]
+pub extern "C" fn snow_pool_query_as(
+    pool_handle: u64,
+    sql: *mut u8,
+    params: *mut u8,
+    from_row_fn: *mut u8,
+) -> *mut u8 {
+    unsafe {
+        // Checkout
+        let checkout_result = snow_pool_checkout(pool_handle);
+        let r = &*(checkout_result as *const crate::io::SnowResult);
+        if r.tag != 0 {
+            return checkout_result; // propagate checkout error
+        }
+        let conn_handle = r.value as u64;
+
+        // Use
+        let query_result = snow_pg_query_as(conn_handle, sql, params, from_row_fn);
+
+        // Checkin (always, even on error)
+        snow_pool_checkin(pool_handle, conn_handle);
+
+        query_result
     }
 }
 
