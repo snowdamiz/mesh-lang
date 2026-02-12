@@ -2,7 +2,7 @@
 
 ## What This Is
 
-Snow is a programming language that combines Elixir/Ruby-style expressive syntax with static Hindley-Milner type inference and BEAM-style concurrency (actors, supervision trees, fault tolerance), compiled via LLVM to native single-binary executables. The compiler is written in Rust. v1.0 shipped a complete compiler pipeline, actor runtime, standard library, and developer tooling. v1.1 polished the language by resolving all five documented v1.0 limitations. v1.2 added Fun() type annotations and a mark-sweep garbage collector for per-actor heaps. v1.3 completed the trait/protocol system with user-defined interfaces, impl blocks, static dispatch via monomorphization, and six stdlib protocols (Display, Debug, Eq, Ord, Hash, Default) with auto-derive support. v1.4 fixed all five compiler correctness issues: pattern matching codegen, Ordering type, nested collection Display, generic type deriving, and type system soundness for constrained function aliases. v1.5 resolved the final three known limitations: polymorphic List<T>, compile-time Ord-requires-Eq enforcement, and qualified types for higher-order constraint propagation. v1.6 added method dot-syntax (`value.method(args)`) with automatic self-parameter desugaring, working across struct, primitive, generic, and collection types, with true chaining, mixed field/method access, and deterministic ambiguity diagnostics. v1.7 added complete loop and iteration support: while loops with break/continue, for-in over ranges and collections (List, Map, Set) with comprehension semantics returning collected lists, filter clause (`when`), and actor-safe reduction checks. v1.8 added a complete module system: file-based modules with path-to-name convention, `pub` visibility (private by default), qualified and selective imports, dependency graph with toposort and cycle detection, cross-module type checking for functions/structs/sum types/traits, MIR merge codegen with module-qualified name mangling, and module-aware diagnostics. v1.9 made the language practical for real programs: math stdlib via LLVM intrinsics, `?` operator for Result/Option error propagation, receive timeouts and timer primitives for actor programming, 20 collection operations across List/Map/Set/String, and self-recursive tail-call elimination for constant-stack actor loops. Zero known compiler correctness issues remain.
+Snow is a programming language that combines Elixir/Ruby-style expressive syntax with static Hindley-Milner type inference and BEAM-style concurrency (actors, supervision trees, fault tolerance), compiled via LLVM to native single-binary executables. The compiler is written in Rust. v1.0-v1.9 built a complete language: compiler pipeline, actor runtime, trait system, module system, loops, stdlib, and developer tooling (81K LOC Rust). v2.0 made Snow viable for real backend applications: JSON serde via `deriving(Json)` for structs/sum types/generics, SQLite driver (bundled C FFI), PostgreSQL driver (pure wire protocol with SCRAM-SHA-256/MD5 auth), HTTP path parameters with method routing, and composable middleware pipelines. Zero known compiler correctness issues remain.
 
 ## Core Value
 
@@ -82,20 +82,23 @@ Expressive, readable concurrency -- writing concurrent programs should feel as n
 - ✓ Set operations: difference, to_list, from_list -- v1.9
 - ✓ Self-recursive tail-call elimination: constant stack space for 1M+ iterations -- v1.9
 - ✓ Tail position detection through if/else, case, receive, blocks, let-chains -- v1.9
+- ✓ JSON struct serde with `deriving(Json)` for automatic encode/decode -- v2.0
+- ✓ JSON handles nested structs, Option, List, Map fields with type-safe round-trip -- v2.0
+- ✓ JSON sum type serde as tagged unions (`{"tag":"V","fields":[...]}`) -- v2.0
+- ✓ JSON generic struct serde via monomorphization -- v2.0
+- ✓ Compile error (E0038) when `deriving(Json)` on struct with non-serializable field -- v2.0
+- ✓ Int/Float JSON round-trip fidelity (separate tags) -- v2.0
+- ✓ HTTP path parameters (`/users/:id`) with segment-based matching and Request.param extraction -- v2.0
+- ✓ HTTP method-specific routing (on_get/on_post/on_put/on_delete) with three-pass priority -- v2.0
+- ✓ HTTP middleware pipeline with `HTTP.use(router, fn)`, next function, and registration-order composition -- v2.0
+- ✓ SQLite driver: open/close/query/execute with `?` parameterized queries, bundled (zero system deps) -- v2.0
+- ✓ PostgreSQL driver: connect/close/query/execute with `$1` parameterized queries, pure wire protocol -- v2.0
+- ✓ PostgreSQL SCRAM-SHA-256 and MD5 authentication -- v2.0
+- ✓ Database handles are GC-safe opaque u64 values -- v2.0
 
 ### Active
 
-## Current Milestone: v2.0 Database & Serialization
-
-**Goal:** Make Snow viable for real backend applications with JSON serde, database drivers, and HTTP routing improvements.
-
-**Target features:**
-- Struct ↔ JSON serde with `deriving(Json)` (full depth: nested structs, sum types, collections, Option)
-- SQLite driver (C FFI via LLVM)
-- PostgreSQL driver (pure wire protocol, zero external C dependencies)
-- Parameterized queries for SQL injection prevention
-- HTTP path parameters (`/users/:id`)
-- HTTP middleware (function pipeline)
+(No active requirements -- start next milestone with `/gsd:new-milestone`)
 
 ### Out of Scope
 
@@ -123,21 +126,28 @@ Expressive, readable concurrency -- writing concurrent programs should feel as n
 
 ## Context
 
-Shipped v1.9 with 76,100 lines of Rust (+2,716 from v1.8).
+Shipped v2.0 with 81,006 lines of Rust (+4,906 from v1.9).
 Tech stack: Rust compiler, LLVM 21 (Inkwell 0.8), corosensei coroutines, rowan CST, ariadne diagnostics.
 Crates: snow-lexer, snow-parser, snow-typeck, snow-mir, snow-codegen, snow-rt, snow-fmt, snow-repl, snow-pkg, snow-lsp, snowc.
+New deps: libsqlite3-sys (bundled), sha2/hmac/md-5/base64ct (PostgreSQL auth).
 
-1,419 tests passing (122 E2E + 1,297 unit/integration). Zero known critical bugs. Zero known compiler correctness issues.
+287+ tests passing (including 16 new v2.0 E2E tests). Zero known critical bugs. Zero known compiler correctness issues.
 
 Known limitations: None.
 
-Tech debt (minor):
+Tech debt (minor, pre-existing):
 - List.find Option return pattern matching triggers LLVM verification error with case expression (pre-existing codegen gap)
 - Timer e2e tests flake under high parallelism (5s timeout too tight when CPU-contended; pass with --test-threads=1)
 - Pre-existing TODO in lower.rs:5947 for string comparison callback
 - build_module_graph wrapper in discovery.rs used only in Phase 37 tests -- consider deprecation
 - report_diagnostics function in main.rs appears to be dead code
 - 3 compiler warnings (fixable with `cargo fix`)
+
+Tech debt (v2.0-introduced):
+- Middleware requires explicit `:: Request` parameter type annotations (incomplete inference)
+- PostgreSQL E2E test requires external server, marked `#[ignore]`
+- 1 dead_code warning in snow-rt build
+- No cross-feature integration tests (HTTP+JSON, DB+JSON)
 
 ## Constraints
 
@@ -221,6 +231,17 @@ Tech debt (minor):
 | Post-lowering MIR rewrite for TCE | Avoids threading is_tail_position through every lower_* method; clean separation | ✓ Good -- v1.9, minimal code changes |
 | Two-phase arg evaluation for TailCall | Evaluate all args THEN store; critical for parameter swap correctness (e.g., fib(n-1, b, a+b)) | ✓ Good -- v1.9, correct semantics |
 | Entry-block alloca hoisting for TCE | build_entry_alloca when tce_loop_header set; prevents stack growth in tail-call loops | ✓ Good -- v1.9, constant stack space |
+| Separate JSON_INT/JSON_FLOAT tags | Round-trip fidelity: 42 stays Int, 3.14 stays Float through encode/decode | ✓ Good -- v2.0, no type confusion |
+| If-chain for from_json (not Match) | Avoids Ptr vs SumType mismatch in LLVM codegen for Result pattern matching | ✓ Good -- v2.0, consistent across phases |
+| Tagged union JSON for sum types | `{"tag":"V","fields":[...]}` -- standard, unambiguous, round-trips all variant shapes | ✓ Good -- v2.0, clean encoding |
+| HTTP.on_get/on_post naming | Avoids collision with existing HTTP.get/post client functions | ✓ Good -- v2.0, backward compatible |
+| Three-pass route matching | Exact > parameterized > wildcard priority without explicit ordering | ✓ Good -- v2.0, correct semantics |
+| Trampoline-based middleware chain | chain_next builds Snow closure via GC-allocated {fn_ptr, env_ptr} struct | ✓ Good -- v2.0, composable pipeline |
+| libsqlite3-sys bundled | Compiles SQLite from C amalgamation -- zero system dependencies | ✓ Good -- v2.0, self-contained |
+| Opaque u64 handles for DB connections | GC cannot trace through opaque handles; prevents use-after-free | ✓ Good -- v2.0, GC-safe |
+| Pure Rust PostgreSQL wire protocol | ~550 lines hand-rolled; only crypto deps (sha2/hmac/md-5/base64ct) | ✓ Good -- v2.0, minimal dependencies |
+| Extended Query protocol for PostgreSQL | Parse/Bind/Execute/Sync with $1, $2 placeholders and text format | ✓ Good -- v2.0, parameterized queries |
+| Empty n= in SCRAM client-first-bare | PG knows username from StartupMessage; spec allows empty | ✓ Good -- v2.0, correct auth |
 
 ---
-*Last updated: 2026-02-10 after v2.0 milestone started*
+*Last updated: 2026-02-12 after v2.0 milestone*

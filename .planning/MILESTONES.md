@@ -274,3 +274,32 @@
 
 ---
 
+
+## v2.0 Database & Serialization (Shipped: 2026-02-12)
+
+**Delivered:** Made Snow viable for real backend applications with JSON struct/sum-type serde via `deriving(Json)`, SQLite and PostgreSQL database drivers with parameterized queries, HTTP path parameters with method-specific routing, and composable middleware pipelines.
+
+**Phases completed:** 49-54 (13 plans total)
+
+**Key accomplishments:**
+- JSON struct serde with `deriving(Json)`, typed extractors, and callback-based collection encode/decode for nested structs, Option, List, Map fields
+- Sum type and generic struct JSON serialization via tagged union encoding (`{"tag":"V","fields":[...]}`) and monomorphization
+- HTTP path parameter matching (`/users/:id`) with method-specific routing (GET/POST/PUT/DELETE) and three-pass priority (exact > parameterized > wildcard)
+- Composable middleware pipeline with trampoline-based chain execution, short-circuit support, and automatic 404 wrapping
+- SQLite driver with bundled C FFI (zero system deps), opaque GC-safe u64 handles, and `?` parameterized queries
+- PostgreSQL pure wire protocol client (~550 lines Rust) with SCRAM-SHA-256/MD5 auth and Extended Query protocol ($1, $2 params)
+
+**Stats:**
+- 76 files modified
+- 81,006 lines of Rust (+4,906 net from v1.9)
+- 6 phases, 13 plans
+- 2 days (2026-02-11 -> 2026-02-12)
+- 52 commits
+- 32/32 requirements satisfied, 287+ tests passing (+16 new v2.0 E2E tests)
+
+**Git range:** `feat(49-01)` -> `docs(54-02)`
+
+**What's next:** TBD -- database and serialization complete. Potential directions include connection pooling, TLS for PostgreSQL, transaction support, struct-to-row mapping, JSON pretty-print, iterator protocol, distributed actors, or hot code reloading.
+
+---
+
