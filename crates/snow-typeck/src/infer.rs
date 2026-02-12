@@ -634,6 +634,21 @@ fn stdlib_modules() -> HashMap<String, HashMap<String, Scheme>> {
         vec![sqlite_conn_t.clone(), Ty::string(), Ty::list(Ty::string())],
         Ty::result(Ty::list(Ty::map(Ty::string(), Ty::string())), Ty::string()),
     )));
+    // Sqlite.begin: fn(SqliteConn) -> Result<Unit, String>
+    sqlite_mod.insert("begin".to_string(), Scheme::mono(Ty::fun(
+        vec![sqlite_conn_t.clone()],
+        Ty::result(Ty::Tuple(vec![]), Ty::string()),
+    )));
+    // Sqlite.commit: fn(SqliteConn) -> Result<Unit, String>
+    sqlite_mod.insert("commit".to_string(), Scheme::mono(Ty::fun(
+        vec![sqlite_conn_t.clone()],
+        Ty::result(Ty::Tuple(vec![]), Ty::string()),
+    )));
+    // Sqlite.rollback: fn(SqliteConn) -> Result<Unit, String>
+    sqlite_mod.insert("rollback".to_string(), Scheme::mono(Ty::fun(
+        vec![sqlite_conn_t.clone()],
+        Ty::result(Ty::Tuple(vec![]), Ty::string()),
+    )));
     modules.insert("Sqlite".to_string(), sqlite_mod);
 
     // ── Pg module (Phase 54) ──────────────────────────────────────────
@@ -660,7 +675,63 @@ fn stdlib_modules() -> HashMap<String, HashMap<String, Scheme>> {
         vec![pg_conn_t.clone(), Ty::string(), Ty::list(Ty::string())],
         Ty::result(Ty::list(Ty::map(Ty::string(), Ty::string())), Ty::string()),
     )));
+    // Pg.begin: fn(PgConn) -> Result<Unit, String>
+    pg_mod.insert("begin".to_string(), Scheme::mono(Ty::fun(
+        vec![pg_conn_t.clone()],
+        Ty::result(Ty::Tuple(vec![]), Ty::string()),
+    )));
+    // Pg.commit: fn(PgConn) -> Result<Unit, String>
+    pg_mod.insert("commit".to_string(), Scheme::mono(Ty::fun(
+        vec![pg_conn_t.clone()],
+        Ty::result(Ty::Tuple(vec![]), Ty::string()),
+    )));
+    // Pg.rollback: fn(PgConn) -> Result<Unit, String>
+    pg_mod.insert("rollback".to_string(), Scheme::mono(Ty::fun(
+        vec![pg_conn_t.clone()],
+        Ty::result(Ty::Tuple(vec![]), Ty::string()),
+    )));
+    // Pg.transaction: fn(PgConn, fn(PgConn) -> Result<Unit, String>) -> Result<Unit, String>
+    pg_mod.insert("transaction".to_string(), Scheme::mono(Ty::fun(
+        vec![pg_conn_t.clone(), Ty::fun(vec![pg_conn_t.clone()], Ty::result(Ty::Tuple(vec![]), Ty::string()))],
+        Ty::result(Ty::Tuple(vec![]), Ty::string()),
+    )));
     modules.insert("Pg".to_string(), pg_mod);
+
+    // ── Pool module (Phase 57) ──────────────────────────────────────
+    let pool_handle_t = Ty::Con(TyCon::new("PoolHandle"));
+
+    let mut pool_mod = HashMap::new();
+    // Pool.open: fn(String, Int, Int, Int) -> Result<PoolHandle, String>
+    pool_mod.insert("open".to_string(), Scheme::mono(Ty::fun(
+        vec![Ty::string(), Ty::int(), Ty::int(), Ty::int()],
+        Ty::result(pool_handle_t.clone(), Ty::string()),
+    )));
+    // Pool.close: fn(PoolHandle) -> Unit
+    pool_mod.insert("close".to_string(), Scheme::mono(Ty::fun(
+        vec![pool_handle_t.clone()],
+        Ty::Tuple(vec![]),
+    )));
+    // Pool.checkout: fn(PoolHandle) -> Result<PgConn, String>
+    pool_mod.insert("checkout".to_string(), Scheme::mono(Ty::fun(
+        vec![pool_handle_t.clone()],
+        Ty::result(pg_conn_t.clone(), Ty::string()),
+    )));
+    // Pool.checkin: fn(PoolHandle, PgConn) -> Unit
+    pool_mod.insert("checkin".to_string(), Scheme::mono(Ty::fun(
+        vec![pool_handle_t.clone(), pg_conn_t.clone()],
+        Ty::Tuple(vec![]),
+    )));
+    // Pool.query: fn(PoolHandle, String, List<String>) -> Result<List<Map<String, String>>, String>
+    pool_mod.insert("query".to_string(), Scheme::mono(Ty::fun(
+        vec![pool_handle_t.clone(), Ty::string(), Ty::list(Ty::string())],
+        Ty::result(Ty::list(Ty::map(Ty::string(), Ty::string())), Ty::string()),
+    )));
+    // Pool.execute: fn(PoolHandle, String, List<String>) -> Result<Int, String>
+    pool_mod.insert("execute".to_string(), Scheme::mono(Ty::fun(
+        vec![pool_handle_t.clone(), Ty::string(), Ty::list(Ty::string())],
+        Ty::result(Ty::int(), Ty::string()),
+    )));
+    modules.insert("Pool".to_string(), pool_mod);
 
     modules
 }
@@ -668,7 +739,7 @@ fn stdlib_modules() -> HashMap<String, HashMap<String, Scheme>> {
 /// Set of module names recognized by the stdlib for qualified access.
 const STDLIB_MODULE_NAMES: &[&str] = &[
     "String", "IO", "Env", "File", "List", "Map", "Set", "Tuple", "Range", "Queue", "HTTP", "JSON", "Json", "Request", "Job",
-    "Math", "Int", "Float", "Timer", "Sqlite", "Pg",
+    "Math", "Int", "Float", "Timer", "Sqlite", "Pg", "Pool",
 ];
 
 /// Check if a name is a known stdlib module.

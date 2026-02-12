@@ -684,6 +684,93 @@ pub fn register_builtins(
         )),
     );
 
+    // ── Phase 57: PG Transaction functions ──────────────────────────
+    // Pg.begin(PgConn) -> Result<Unit, String>
+    env.insert(
+        "pg_begin".into(),
+        Scheme::mono(Ty::fun(vec![pg_conn_t.clone()], Ty::result(Ty::Tuple(vec![]), Ty::string()))),
+    );
+    // Pg.commit(PgConn) -> Result<Unit, String>
+    env.insert(
+        "pg_commit".into(),
+        Scheme::mono(Ty::fun(vec![pg_conn_t.clone()], Ty::result(Ty::Tuple(vec![]), Ty::string()))),
+    );
+    // Pg.rollback(PgConn) -> Result<Unit, String>
+    env.insert(
+        "pg_rollback".into(),
+        Scheme::mono(Ty::fun(vec![pg_conn_t.clone()], Ty::result(Ty::Tuple(vec![]), Ty::string()))),
+    );
+    // Pg.transaction(PgConn, fn(PgConn) -> Result<Unit, String>) -> Result<Unit, String>
+    env.insert(
+        "pg_transaction".into(),
+        Scheme::mono(Ty::fun(
+            vec![pg_conn_t.clone(), Ty::fun(vec![pg_conn_t.clone()], Ty::result(Ty::Tuple(vec![]), Ty::string()))],
+            Ty::result(Ty::Tuple(vec![]), Ty::string()),
+        )),
+    );
+
+    // ── Phase 57: SQLite Transaction functions ──────────────────────
+    // Sqlite.begin(SqliteConn) -> Result<Unit, String>
+    env.insert(
+        "sqlite_begin".into(),
+        Scheme::mono(Ty::fun(vec![sqlite_conn_t.clone()], Ty::result(Ty::Tuple(vec![]), Ty::string()))),
+    );
+    // Sqlite.commit(SqliteConn) -> Result<Unit, String>
+    env.insert(
+        "sqlite_commit".into(),
+        Scheme::mono(Ty::fun(vec![sqlite_conn_t.clone()], Ty::result(Ty::Tuple(vec![]), Ty::string()))),
+    );
+    // Sqlite.rollback(SqliteConn) -> Result<Unit, String>
+    env.insert(
+        "sqlite_rollback".into(),
+        Scheme::mono(Ty::fun(vec![sqlite_conn_t.clone()], Ty::result(Ty::Tuple(vec![]), Ty::string()))),
+    );
+
+    // ── Phase 57: Connection Pool ───────────────────────────────────
+    // PoolHandle opaque type
+    let pool_handle_t = Ty::Con(TyCon::new("PoolHandle"));
+    env.insert("PoolHandle".into(), Scheme::mono(pool_handle_t.clone()));
+
+    // Pool.open(String, Int, Int, Int) -> Result<PoolHandle, String>
+    env.insert(
+        "pool_open".into(),
+        Scheme::mono(Ty::fun(
+            vec![Ty::string(), Ty::int(), Ty::int(), Ty::int()],
+            Ty::result(pool_handle_t.clone(), Ty::string()),
+        )),
+    );
+    // Pool.close(PoolHandle) -> Unit
+    env.insert(
+        "pool_close".into(),
+        Scheme::mono(Ty::fun(vec![pool_handle_t.clone()], Ty::Tuple(vec![]))),
+    );
+    // Pool.checkout(PoolHandle) -> Result<PgConn, String>
+    env.insert(
+        "pool_checkout".into(),
+        Scheme::mono(Ty::fun(vec![pool_handle_t.clone()], Ty::result(pg_conn_t.clone(), Ty::string()))),
+    );
+    // Pool.checkin(PoolHandle, PgConn) -> Unit
+    env.insert(
+        "pool_checkin".into(),
+        Scheme::mono(Ty::fun(vec![pool_handle_t.clone(), pg_conn_t.clone()], Ty::Tuple(vec![]))),
+    );
+    // Pool.query(PoolHandle, String, List<String>) -> Result<List<Map<String, String>>, String>
+    env.insert(
+        "pool_query".into(),
+        Scheme::mono(Ty::fun(
+            vec![pool_handle_t.clone(), Ty::string(), Ty::list(Ty::string())],
+            Ty::result(Ty::list(Ty::map(Ty::string(), Ty::string())), Ty::string()),
+        )),
+    );
+    // Pool.execute(PoolHandle, String, List<String>) -> Result<Int, String>
+    env.insert(
+        "pool_execute".into(),
+        Scheme::mono(Ty::fun(
+            vec![pool_handle_t.clone(), Ty::string(), Ty::list(Ty::string())],
+            Ty::result(Ty::int(), Ty::string()),
+        )),
+    );
+
     // Request accessor functions
     // Request.method(Request) -> String
     env.insert(

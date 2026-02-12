@@ -685,6 +685,25 @@ impl<'a> Lowerer<'a> {
         self.known_functions.insert("snow_pg_close".to_string(), MirType::FnPtr(vec![MirType::Int], Box::new(MirType::Unit)));
         self.known_functions.insert("snow_pg_execute".to_string(), MirType::FnPtr(vec![MirType::Int, MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
         self.known_functions.insert("snow_pg_query".to_string(), MirType::FnPtr(vec![MirType::Int, MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
+        // ── Phase 57: PG Transaction functions ──────────────────────────
+        // snow_pg_begin(conn: i64) -> ptr (Result)
+        self.known_functions.insert("snow_pg_begin".to_string(), MirType::FnPtr(vec![MirType::Int], Box::new(MirType::Ptr)));
+        self.known_functions.insert("snow_pg_commit".to_string(), MirType::FnPtr(vec![MirType::Int], Box::new(MirType::Ptr)));
+        self.known_functions.insert("snow_pg_rollback".to_string(), MirType::FnPtr(vec![MirType::Int], Box::new(MirType::Ptr)));
+        // snow_pg_transaction(conn: i64, fn_ptr: ptr, env_ptr: ptr) -> ptr
+        self.known_functions.insert("snow_pg_transaction".to_string(), MirType::FnPtr(vec![MirType::Int, MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
+        // ── Phase 57: SQLite Transaction functions ──────────────────────
+        self.known_functions.insert("snow_sqlite_begin".to_string(), MirType::FnPtr(vec![MirType::Int], Box::new(MirType::Ptr)));
+        self.known_functions.insert("snow_sqlite_commit".to_string(), MirType::FnPtr(vec![MirType::Int], Box::new(MirType::Ptr)));
+        self.known_functions.insert("snow_sqlite_rollback".to_string(), MirType::FnPtr(vec![MirType::Int], Box::new(MirType::Ptr)));
+        // ── Phase 57: Connection Pool functions ─────────────────────────
+        // snow_pool_open(url: ptr, min: i64, max: i64, timeout: i64) -> ptr
+        self.known_functions.insert("snow_pool_open".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Int, MirType::Int, MirType::Int], Box::new(MirType::Ptr)));
+        self.known_functions.insert("snow_pool_close".to_string(), MirType::FnPtr(vec![MirType::Int], Box::new(MirType::Unit)));
+        self.known_functions.insert("snow_pool_checkout".to_string(), MirType::FnPtr(vec![MirType::Int], Box::new(MirType::Ptr)));
+        self.known_functions.insert("snow_pool_checkin".to_string(), MirType::FnPtr(vec![MirType::Int, MirType::Int], Box::new(MirType::Unit)));
+        self.known_functions.insert("snow_pool_query".to_string(), MirType::FnPtr(vec![MirType::Int, MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
+        self.known_functions.insert("snow_pool_execute".to_string(), MirType::FnPtr(vec![MirType::Int, MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
         // ── Job functions (Phase 9 Plan 04) ──────────────────────────────
         // snow_job_async takes (fn_ptr, env_ptr) -> i64 (PID)
         // But the closure splitting at codegen will expand the closure arg into (fn_ptr, env_ptr)
@@ -9021,6 +9040,22 @@ fn map_builtin_name(name: &str) -> String {
         "pg_close" => "snow_pg_close".to_string(),
         "pg_execute" => "snow_pg_execute".to_string(),
         "pg_query" => "snow_pg_query".to_string(),
+        // ── Phase 57: PG Transaction functions ──────────────────────────
+        "pg_begin" => "snow_pg_begin".to_string(),
+        "pg_commit" => "snow_pg_commit".to_string(),
+        "pg_rollback" => "snow_pg_rollback".to_string(),
+        "pg_transaction" => "snow_pg_transaction".to_string(),
+        // ── Phase 57: SQLite Transaction functions ──────────────────────
+        "sqlite_begin" => "snow_sqlite_begin".to_string(),
+        "sqlite_commit" => "snow_sqlite_commit".to_string(),
+        "sqlite_rollback" => "snow_sqlite_rollback".to_string(),
+        // ── Phase 57: Connection Pool functions ─────────────────────────
+        "pool_open" => "snow_pool_open".to_string(),
+        "pool_close" => "snow_pool_close".to_string(),
+        "pool_checkout" => "snow_pool_checkout".to_string(),
+        "pool_checkin" => "snow_pool_checkin".to_string(),
+        "pool_query" => "snow_pool_query".to_string(),
+        "pool_execute" => "snow_pool_execute".to_string(),
         // NOTE: No bare name mappings for HTTP/Request (router, route, get,
         // post, method, path, body, etc.) because they collide with common
         // variable names. Use module-qualified access instead:
