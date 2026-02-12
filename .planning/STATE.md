@@ -5,14 +5,16 @@
 See: .planning/PROJECT.md (updated 2026-02-12)
 
 **Core value:** Expressive, readable concurrency -- writing concurrent programs should feel as natural as sequential code, with supervision and fault tolerance built in.
-**Current focus:** v4.0 WebSocket Support
+**Current focus:** v4.0 WebSocket Support -- Phase 59 Protocol Core
 
 ## Current Position
 
-Phase: Not started (defining requirements)
-Plan: --
-Status: Defining requirements
-Last activity: 2026-02-12 -- Milestone v4.0 started
+Phase: 59 of 62 (Protocol Core)
+Plan: 0 of TBD in current phase
+Status: Ready to plan
+Last activity: 2026-02-12 -- Roadmap created for v4.0
+
+Progress: [░░░░░░░░░░] 0%
 
 ## Performance Metrics
 
@@ -31,7 +33,11 @@ Last activity: 2026-02-12 -- Milestone v4.0 started
 
 ### Research Notes
 
-(Cleared at milestone boundary)
+- Reader thread bridge (novel architecture) is highest risk -- Phase 60
+- Critical pitfalls: blocking reader thread, mailbox type tag collision, masking direction -- addressed in Phases 59-60
+- TLS reuses existing rustls infrastructure (low risk) -- Phase 61
+- Rooms follow existing process registry pattern (medium risk) -- Phase 62
+- sha1 0.10 is the only new dependency needed
 
 ### Pending Todos
 
@@ -44,6 +50,6 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-12
-Stopped at: Defining v4.0 requirements
+Stopped at: Roadmap created for v4.0 WebSocket Support
 Resume file: None
-Next action: Complete requirements and roadmap definition
+Next action: Plan Phase 59 (Protocol Core)

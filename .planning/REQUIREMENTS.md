@@ -101,49 +101,49 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| PROTO-01 | TBD | Pending |
-| PROTO-02 | TBD | Pending |
-| PROTO-03 | TBD | Pending |
-| PROTO-04 | TBD | Pending |
-| PROTO-05 | TBD | Pending |
-| PROTO-06 | TBD | Pending |
-| PROTO-07 | TBD | Pending |
-| PROTO-08 | TBD | Pending |
-| PROTO-09 | TBD | Pending |
-| ACTOR-01 | TBD | Pending |
-| ACTOR-02 | TBD | Pending |
-| ACTOR-03 | TBD | Pending |
-| ACTOR-04 | TBD | Pending |
-| ACTOR-05 | TBD | Pending |
-| ACTOR-06 | TBD | Pending |
-| ACTOR-07 | TBD | Pending |
-| SERVE-01 | TBD | Pending |
-| SERVE-02 | TBD | Pending |
-| SERVE-03 | TBD | Pending |
-| LIFE-01 | TBD | Pending |
-| LIFE-02 | TBD | Pending |
-| LIFE-03 | TBD | Pending |
-| LIFE-04 | TBD | Pending |
-| BEAT-01 | TBD | Pending |
-| BEAT-02 | TBD | Pending |
-| BEAT-03 | TBD | Pending |
-| BEAT-04 | TBD | Pending |
-| BEAT-05 | TBD | Pending |
-| FRAG-01 | TBD | Pending |
-| FRAG-02 | TBD | Pending |
-| FRAG-03 | TBD | Pending |
-| ROOM-01 | TBD | Pending |
-| ROOM-02 | TBD | Pending |
-| ROOM-03 | TBD | Pending |
-| ROOM-04 | TBD | Pending |
-| ROOM-05 | TBD | Pending |
-| ROOM-06 | TBD | Pending |
+| PROTO-01 | Phase 59 | Pending |
+| PROTO-02 | Phase 59 | Pending |
+| PROTO-03 | Phase 59 | Pending |
+| PROTO-04 | Phase 59 | Pending |
+| PROTO-05 | Phase 59 | Pending |
+| PROTO-06 | Phase 59 | Pending |
+| PROTO-07 | Phase 59 | Pending |
+| PROTO-08 | Phase 59 | Pending |
+| PROTO-09 | Phase 59 | Pending |
+| ACTOR-01 | Phase 60 | Pending |
+| ACTOR-02 | Phase 60 | Pending |
+| ACTOR-03 | Phase 60 | Pending |
+| ACTOR-04 | Phase 60 | Pending |
+| ACTOR-05 | Phase 60 | Pending |
+| ACTOR-06 | Phase 60 | Pending |
+| ACTOR-07 | Phase 60 | Pending |
+| SERVE-01 | Phase 60 | Pending |
+| SERVE-02 | Phase 61 | Pending |
+| SERVE-03 | Phase 60 | Pending |
+| LIFE-01 | Phase 60 | Pending |
+| LIFE-02 | Phase 60 | Pending |
+| LIFE-03 | Phase 60 | Pending |
+| LIFE-04 | Phase 60 | Pending |
+| BEAT-01 | Phase 61 | Pending |
+| BEAT-02 | Phase 61 | Pending |
+| BEAT-03 | Phase 61 | Pending |
+| BEAT-04 | Phase 61 | Pending |
+| BEAT-05 | Phase 61 | Pending |
+| FRAG-01 | Phase 61 | Pending |
+| FRAG-02 | Phase 61 | Pending |
+| FRAG-03 | Phase 61 | Pending |
+| ROOM-01 | Phase 62 | Pending |
+| ROOM-02 | Phase 62 | Pending |
+| ROOM-03 | Phase 62 | Pending |
+| ROOM-04 | Phase 62 | Pending |
+| ROOM-05 | Phase 62 | Pending |
+| ROOM-06 | Phase 62 | Pending |
 
 **Coverage:**
 - v4.0 requirements: 37 total
-- Mapped to phases: 0
-- Unmapped: 37 (awaiting roadmap creation)
+- Mapped to phases: 37
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-02-12*
-*Last updated: 2026-02-12 after initial definition*
+*Last updated: 2026-02-12 after roadmap creation*
