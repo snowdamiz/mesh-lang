@@ -680,6 +680,8 @@ impl<'a> Lowerer<'a> {
         self.known_functions.insert("snow_ws_send".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr], Box::new(MirType::Int)));
         // snow_ws_send_binary(conn: ptr, data: ptr, len: i64) -> i64
         self.known_functions.insert("snow_ws_send_binary".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr, MirType::Int], Box::new(MirType::Int)));
+        // snow_ws_serve_tls(on_connect_fn: ptr, on_connect_env: ptr, on_message_fn: ptr, on_message_env: ptr, on_close_fn: ptr, on_close_env: ptr, port: i64, cert_path: ptr, key_path: ptr) -> void
+        self.known_functions.insert("snow_ws_serve_tls".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr, MirType::Ptr, MirType::Ptr, MirType::Ptr, MirType::Ptr, MirType::Int, MirType::Ptr, MirType::Ptr], Box::new(MirType::Unit)));
         // ── SQLite functions (Phase 53) ──────────────────────────────────
         // Connection handle is MirType::Int (i64) for GC safety (SQLT-07).
         self.known_functions.insert("snow_sqlite_open".to_string(), MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Ptr)));
@@ -9508,6 +9510,7 @@ fn map_builtin_name(name: &str) -> String {
         "ws_serve" => "snow_ws_serve".to_string(),
         "ws_send" => "snow_ws_send".to_string(),
         "ws_send_binary" => "snow_ws_send_binary".to_string(),
+        "ws_serve_tls" => "snow_ws_serve_tls".to_string(),
         _ => name.to_string(),
     }
 }
