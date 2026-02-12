@@ -1509,3 +1509,38 @@ fn e2e_sqlite() {
     // Verify completion
     assert!(output.contains("done"), "Program should complete successfully");
 }
+
+// ── PostgreSQL E2E Tests (Phase 54 Plan 02) ─────────────────────────────
+//
+// Verifies the full PostgreSQL driver pipeline: Snow source -> compiler ->
+// linked binary -> TCP connection to PostgreSQL -> wire protocol -> CRUD
+// operations. Tests connect (SCRAM-SHA-256/MD5 auth), execute (DDL + DML
+// with $1/$2 params), query with column names, filtered query, and close.
+//
+// Requires a running PostgreSQL instance with:
+//   User: snow_test  Password: snow_test  Database: snow_test
+//
+// Easiest setup:
+//   docker run --name snow-pg-test -e POSTGRES_USER=snow_test \
+//     -e POSTGRES_PASSWORD=snow_test -e POSTGRES_DB=snow_test \
+//     -p 5432:5432 -d postgres:16
+//
+// Run with: cargo test e2e_pg -- --ignored
+
+#[test]
+#[ignore] // requires a running PostgreSQL instance
+fn e2e_pg() {
+    let source = read_fixture("stdlib_pg.snow");
+    let output = compile_and_run(&source);
+    // Verify DDL result (CREATE TABLE returns 0 rows affected in PostgreSQL)
+    assert!(output.contains("created: 0"), "CREATE TABLE should report 0 rows affected");
+    // Verify insert counts
+    assert!(output.contains("inserted: 1"), "INSERT should affect 1 row");
+    // Verify query results
+    assert!(output.contains("Alice is 30"), "Should find Alice with age 30");
+    assert!(output.contains("Bob is 25"), "Should find Bob with age 25");
+    // Verify parameterized query
+    assert!(output.contains("older: Alice"), "Filtered query should find Alice (age 30 > 26)");
+    // Verify completion
+    assert!(output.contains("done"), "Program should complete successfully");
+}
