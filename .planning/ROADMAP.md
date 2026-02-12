@@ -119,7 +119,7 @@ See milestones/v3.0-ROADMAP.md for full phase details.
 **Milestone Goal:** Add WebSocket support with actor-per-connection model, unified actor messaging, rooms/channels, ping/pong heartbeat, binary+text frames, and TLS (wss://).
 
 - [x] **Phase 59: Protocol Core** - RFC 6455 frame codec, HTTP upgrade handshake, text/binary/close frames (completed 2026-02-12)
-- [ ] **Phase 60: Actor Integration** - Actor-per-connection, reader thread bridge, mailbox delivery, callbacks, Ws.serve
+- [x] **Phase 60: Actor Integration** - Actor-per-connection, reader thread bridge, mailbox delivery, callbacks, Ws.serve (completed 2026-02-12)
 - [ ] **Phase 61: Production Hardening** - TLS (wss://), ping/pong heartbeat, message fragmentation
 - [ ] **Phase 62: Rooms & Channels** - Named rooms with join/leave/broadcast and automatic cleanup
 
@@ -152,8 +152,8 @@ Plans:
   5. Actor crash sends close frame 1011 to the client, and client disconnect causes actor exit with signal propagation to linked actors
 **Plans:** 2 plans
 Plans:
-- [ ] 60-01-PLAN.md -- Runtime server infrastructure (accept loop, reader thread bridge, lifecycle callbacks, Ws.send)
-- [ ] 60-02-PLAN.md -- Codegen wiring (intrinsics, STDLIB_MODULES, map_builtin_name)
+- [x] 60-01-PLAN.md -- Runtime server infrastructure (accept loop, reader thread bridge, lifecycle callbacks, Ws.send)
+- [x] 60-02-PLAN.md -- Codegen wiring (intrinsics, STDLIB_MODULES, map_builtin_name)
 
 ### Phase 61: Production Hardening
 **Goal**: WebSocket connections are production-ready with TLS encryption, dead connection detection via heartbeat, and large message support via fragmentation
@@ -196,8 +196,8 @@ Phases execute in numeric order: 59 -> 60 -> 61 -> 62
 | 49-54 | v2.0 | 13/13 | Complete | 2026-02-12 |
 | 55-58 | v3.0 | 8/8 | Complete | 2026-02-12 |
 | 59. Protocol Core | v4.0 | 2/2 | Complete | 2026-02-12 |
-| 60. Actor Integration | v4.0 | 0/TBD | Not started | - |
+| 60. Actor Integration | v4.0 | 2/2 | Complete | 2026-02-12 |
 | 61. Production Hardening | v4.0 | 0/TBD | Not started | - |
 | 62. Rooms & Channels | v4.0 | 0/TBD | Not started | - |
 
-**Total: 59 phases shipped across 12 milestones. 164 plans completed. 3 phases remaining for v4.0.**
+**Total: 60 phases shipped across 12 milestones. 166 plans completed. 2 phases remaining for v4.0.**
