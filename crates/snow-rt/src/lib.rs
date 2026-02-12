@@ -45,6 +45,10 @@ pub use actor::service::{snow_service_call, snow_service_reply};
 pub use db::pg::{
     snow_pg_connect, snow_pg_close, snow_pg_execute, snow_pg_query,
 };
+pub use db::pool::{
+    snow_pool_open, snow_pool_checkout, snow_pool_checkin, snow_pool_query,
+    snow_pool_execute, snow_pool_close,
+};
 pub use db::sqlite::{
     snow_sqlite_open, snow_sqlite_close, snow_sqlite_execute, snow_sqlite_query,
 };

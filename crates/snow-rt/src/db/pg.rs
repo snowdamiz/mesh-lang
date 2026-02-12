@@ -69,12 +69,12 @@ impl Write for PgStream {
 }
 
 /// Wrapper around a (possibly TLS-wrapped) stream to a PostgreSQL server.
-struct PgConn {
+pub(super) struct PgConn {
     stream: PgStream,
     /// Transaction status byte from the most recent ReadyForQuery message.
     /// b'I' = idle (not in transaction), b'T' = in transaction block,
     /// b'E' = in a failed transaction block. Updated on every ReadyForQuery.
-    txn_status: u8,
+    pub(super) txn_status: u8,
 }
 
 // ── SSL Mode ───────────────────────────────────────────────────────────
@@ -1089,7 +1089,7 @@ pub extern "C" fn snow_pg_query(
 
 /// Send a simple SQL command (BEGIN/COMMIT/ROLLBACK) using the Simple Query protocol.
 /// Returns Ok(()) or Err(error_message). Updates conn.txn_status from ReadyForQuery.
-fn pg_simple_command(conn: &mut PgConn, sql: &str) -> Result<(), String> {
+pub(super) fn pg_simple_command(conn: &mut PgConn, sql: &str) -> Result<(), String> {
     // Simple Query protocol: Byte1('Q') Int32(len) String(query\0)
     let mut buf = Vec::new();
     buf.push(b'Q');
