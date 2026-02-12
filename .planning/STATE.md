@@ -10,16 +10,16 @@ See: .planning/PROJECT.md (updated 2026-02-12)
 ## Current Position
 
 Phase: 57 of 58 (Connection Pooling & Transactions)
-Plan: 1 of 3 in current phase
+Plan: 2 of 3 in current phase
 Status: Executing
-Last activity: 2026-02-12 -- Plan 57-01 complete (transaction intrinsics)
+Last activity: 2026-02-12 -- Plan 57-02 complete (connection pool)
 
 Progress: [█████░░░░░] 50%
 
 ## Performance Metrics
 
 **All-time Totals:**
-- Plans completed: 158
+- Plans completed: 159
 - Phases completed: 56 (including Phase 56 HTTPS Server)
 - Milestones shipped: 11 (v1.0-v2.0)
 - Lines of Rust: 81,006
@@ -40,6 +40,9 @@ Progress: [█████░░░░░] 50%
 - Phase 57-01: Simple Query protocol for BEGIN/COMMIT/ROLLBACK (simpler than Extended Query, no params needed)
 - Phase 57-01: SnowResult tag read via struct cast, not raw u64 pointer read (tag is u8)
 - Phase 57-01: sqlite3_exec FFI for bare SQL instead of prepare/step/finalize
+- Phase 57-02: parking_lot::Mutex + Condvar pool (not std::sync) for consistency with scheduler
+- Phase 57-02: Health check via pg_simple_command("SELECT 1") on checkout, reusing Plan 01 helper
+- Phase 57-02: Optimistic slot reservation before dropping lock for connection creation I/O
 
 ### Research Notes
 
@@ -61,6 +64,6 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-12
-Stopped at: Completed 57-01-PLAN.md (transaction intrinsics)
+Stopped at: Completed 57-02-PLAN.md (connection pool)
 Resume file: None
-Next action: `/gsd:execute-phase 57` (Plan 02 - connection pool)
+Next action: `/gsd:execute-phase 57` (Plan 03 - compiler pipeline)
