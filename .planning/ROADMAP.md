@@ -150,7 +150,10 @@ Plans:
   3. The actor can send text and binary frames back to the client via Ws.send and Ws.send_binary, and the reader thread does not block the M:N scheduler
   4. User-defined on_connect, on_message, and on_close callbacks fire at the correct lifecycle points, with on_connect able to reject connections
   5. Actor crash sends close frame 1011 to the client, and client disconnect causes actor exit with signal propagation to linked actors
-**Plans**: TBD
+**Plans:** 2 plans
+Plans:
+- [ ] 60-01-PLAN.md -- Runtime server infrastructure (accept loop, reader thread bridge, lifecycle callbacks, Ws.send)
+- [ ] 60-02-PLAN.md -- Codegen wiring (intrinsics, STDLIB_MODULES, map_builtin_name)
 
 ### Phase 61: Production Hardening
 **Goal**: WebSocket connections are production-ready with TLS encryption, dead connection detection via heartbeat, and large message support via fragmentation
