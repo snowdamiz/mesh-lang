@@ -5,21 +5,21 @@
 See: .planning/PROJECT.md (updated 2026-02-12)
 
 **Core value:** Expressive, readable concurrency -- writing concurrent programs should feel as natural as sequential code, with supervision and fault tolerance built in.
-**Current focus:** v4.0 WebSocket Support -- Phase 59 Protocol Core
+**Current focus:** v4.0 WebSocket Support -- Phase 60 Actor Integration
 
 ## Current Position
 
-Phase: 59 of 62 (Protocol Core) -- COMPLETE
-Plan: 2 of 2 in current phase
-Status: Phase 59 complete, ready for Phase 60
-Last activity: 2026-02-12 -- Completed 59-02 (WebSocket handshake + close)
+Phase: 60 of 62 (Actor Integration)
+Plan: 1 of 1 in current phase -- COMPLETE
+Status: Phase 60 plan 01 complete
+Last activity: 2026-02-12 -- Completed 60-01 (WS server + actor bridge)
 
-Progress: [██░░░░░░░░] 25%
+Progress: [█████░░░░░] 50%
 
 ## Performance Metrics
 
 **All-time Totals:**
-- Plans completed: 164
+- Plans completed: 165
 - Phases completed: 59
 - Milestones shipped: 12 (v1.0-v3.0)
 - Lines of Rust: 83,451
@@ -34,6 +34,11 @@ Progress: [██░░░░░░░░] 25%
 - [59-02] BufReader used for HTTP header parsing in perform_upgrade with explicit buffer-empty sanity check
 - [59-02] process_frame echoes close code only (no reason) to minimize control frame size
 - [59-02] Continuation opcode passed through -- Phase 61 handles reassembly
+- [60-01] Modified perform_upgrade in-place to return (path, headers) instead of new function
+- [60-01] Reserved type tags u64::MAX-1 through u64::MAX-4 for WS mailbox messages
+- [60-01] Reader thread uses 5-second read timeout for periodic shutdown check
+- [60-01] Both reader thread and actor share Arc<Mutex<TcpStream>> for writes to prevent frame interleaving
+- [60-01] WsConnection stored on Rust heap via Box::into_raw, not GC heap
 
 ### Research Notes
 
@@ -54,6 +59,6 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-12
-Stopped at: Completed 59-02-PLAN.md (WebSocket handshake + close) -- Phase 59 complete
+Stopped at: Completed 60-01-PLAN.md (WS server + actor bridge)
 Resume file: None
-Next action: Plan Phase 60 (Actor-WebSocket integration)
+Next action: Continue Phase 60 or proceed to Phase 61
