@@ -291,14 +291,19 @@ fn compute_md5_password(user: &str, password: &str, salt: &[u8]) -> String {
 }
 
 /// Generate SCRAM-SHA-256 client-first-message and return (message, nonce).
-fn scram_client_first(username: &str) -> (String, String) {
+///
+/// Uses empty `n=` (no username in SASL) because PostgreSQL already knows
+/// the username from the StartupMessage. This matches libpq behavior and
+/// ensures the client-first-bare used in the AuthMessage computation is
+/// consistent with what the server sees.
+fn scram_client_first(_username: &str) -> (String, String) {
     let nonce: String = rand::rng()
         .sample_iter(&rand::distr::Alphanumeric)
         .take(24)
         .map(char::from)
         .collect();
 
-    let bare = format!("n={},r={}", username, nonce);
+    let bare = format!("n=,r={}", nonce);
     let message = format!("n,,{}", bare);
     (message, nonce)
 }
