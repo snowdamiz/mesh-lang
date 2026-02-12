@@ -91,36 +91,36 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| TLS-01 | — | Pending |
-| TLS-02 | — | Pending |
-| TLS-03 | — | Pending |
-| TLS-04 | — | Pending |
-| TLS-05 | — | Pending |
-| TLS-06 | — | Pending |
-| POOL-01 | — | Pending |
-| POOL-02 | — | Pending |
-| POOL-03 | — | Pending |
-| POOL-04 | — | Pending |
-| POOL-05 | — | Pending |
-| POOL-06 | — | Pending |
-| POOL-07 | — | Pending |
-| TXN-01 | — | Pending |
-| TXN-02 | — | Pending |
-| TXN-03 | — | Pending |
-| TXN-04 | — | Pending |
-| TXN-05 | — | Pending |
-| ROW-01 | — | Pending |
-| ROW-02 | — | Pending |
-| ROW-03 | — | Pending |
-| ROW-04 | — | Pending |
-| ROW-05 | — | Pending |
-| ROW-06 | — | Pending |
+| TLS-01 | Phase 55 | Pending |
+| TLS-02 | Phase 55 | Pending |
+| TLS-03 | Phase 55 | Pending |
+| TLS-04 | Phase 56 | Pending |
+| TLS-05 | Phase 56 | Pending |
+| TLS-06 | Phase 55 | Pending |
+| POOL-01 | Phase 57 | Pending |
+| POOL-02 | Phase 57 | Pending |
+| POOL-03 | Phase 57 | Pending |
+| POOL-04 | Phase 57 | Pending |
+| POOL-05 | Phase 57 | Pending |
+| POOL-06 | Phase 57 | Pending |
+| POOL-07 | Phase 57 | Pending |
+| TXN-01 | Phase 57 | Pending |
+| TXN-02 | Phase 57 | Pending |
+| TXN-03 | Phase 57 | Pending |
+| TXN-04 | Phase 57 | Pending |
+| TXN-05 | Phase 57 | Pending |
+| ROW-01 | Phase 58 | Pending |
+| ROW-02 | Phase 58 | Pending |
+| ROW-03 | Phase 58 | Pending |
+| ROW-04 | Phase 58 | Pending |
+| ROW-05 | Phase 58 | Pending |
+| ROW-06 | Phase 58 | Pending |
 
 **Coverage:**
 - v3.0 requirements: 24 total
-- Mapped to phases: 0
-- Unmapped: 24 ⚠️
+- Mapped to phases: 24
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-02-12*
-*Last updated: 2026-02-12 after initial definition*
+*Last updated: 2026-02-12 after roadmap creation*
