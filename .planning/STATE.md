@@ -9,18 +9,18 @@ See: .planning/PROJECT.md (updated 2026-02-12)
 
 ## Current Position
 
-Phase: 60 of 62 (Actor Integration)
-Plan: 1 of 1 in current phase -- COMPLETE
-Status: Phase 60 plan 01 complete
-Last activity: 2026-02-12 -- Completed 60-01 (WS server + actor bridge)
+Phase: 60 of 62 (Actor Integration) -- COMPLETE
+Plan: 2 of 2 in current phase -- COMPLETE
+Status: Phase 60 complete
+Last activity: 2026-02-12 -- Completed 60-02 (Codegen pipeline wiring)
 
-Progress: [█████░░░░░] 50%
+Progress: [██████████] 100%
 
 ## Performance Metrics
 
 **All-time Totals:**
-- Plans completed: 165
-- Phases completed: 59
+- Plans completed: 167
+- Phases completed: 60
 - Milestones shipped: 12 (v1.0-v3.0)
 - Lines of Rust: 83,451
 - Timeline: 8 days (2026-02-05 -> 2026-02-12)
@@ -39,6 +39,7 @@ Progress: [█████░░░░░] 50%
 - [60-01] Reader thread uses 5-second read timeout for periodic shutdown check
 - [60-01] Both reader thread and actor share Arc<Mutex<TcpStream>> for writes to prevent frame interleaving
 - [60-01] WsConnection stored on Rust heap via Box::into_raw, not GC heap
+- [60-02] snow_ws_send known_functions uses Ptr (not MirType::String) for SnowString pointer, matching extern C signature convention
 
 ### Research Notes
 
@@ -59,6 +60,6 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-12
-Stopped at: Completed 60-01-PLAN.md (WS server + actor bridge)
+Stopped at: Completed 60-02-PLAN.md (Codegen pipeline wiring) -- Phase 60 done
 Resume file: None
-Next action: Continue Phase 60 or proceed to Phase 61
+Next action: Proceed to Phase 61 (Production Hardening)
