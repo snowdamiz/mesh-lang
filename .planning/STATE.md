@@ -10,16 +10,16 @@ See: .planning/PROJECT.md (updated 2026-02-12)
 ## Current Position
 
 Phase: 59 of 62 (Protocol Core)
-Plan: 0 of TBD in current phase
-Status: Ready to plan
-Last activity: 2026-02-12 -- Roadmap created for v4.0
+Plan: 1 of 2 in current phase
+Status: Ready to execute
+Last activity: 2026-02-12 -- Completed 59-01 (WebSocket frame codec)
 
-Progress: [░░░░░░░░░░] 0%
+Progress: [█░░░░░░░░░] 13%
 
 ## Performance Metrics
 
 **All-time Totals:**
-- Plans completed: 162
+- Plans completed: 163
 - Phases completed: 58
 - Milestones shipped: 12 (v1.0-v3.0)
 - Lines of Rust: 83,451
@@ -29,7 +29,8 @@ Progress: [░░░░░░░░░░] 0%
 
 ### Decisions
 
-(Cleared at milestone boundary -- see PROJECT.md Key Decisions for full log)
+- [59-01] 64 MiB payload safety cap to prevent OOM; Phase 61 will tighten to 16 MiB
+- [59-01] Frame codec uses read_exact on raw stream (no BufReader) to avoid buffering issues at protocol boundary
 
 ### Research Notes
 
@@ -50,6 +51,6 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-12
-Stopped at: Roadmap created for v4.0 WebSocket Support
+Stopped at: Completed 59-01-PLAN.md (WebSocket frame codec)
 Resume file: None
-Next action: Plan Phase 59 (Protocol Core)
+Next action: Execute 59-02-PLAN.md (Handshake + Close)
