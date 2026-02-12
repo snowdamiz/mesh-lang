@@ -195,11 +195,11 @@ Plans:
   3. User executes `Pg.execute(conn, "INSERT INTO users (name) VALUES ($1)", ["Alice"])` and gets `Result<Int, String>` with rows affected
   4. Connection works with SCRAM-SHA-256 authentication (production PostgreSQL, cloud providers)
   5. Connection works with MD5 authentication (local development PostgreSQL)
-**Plans**: TBD
+**Plans:** 2 plans
 
 Plans:
-- [ ] 54-01: TBD
-- [ ] 54-02: TBD
+- [ ] 54-01-PLAN.md -- Pure Rust wire protocol runtime (SCRAM-SHA-256 + MD5 auth) + compiler pipeline (intrinsics, typeck, MIR lowering)
+- [ ] 54-02-PLAN.md -- E2E test: Snow fixture with PostgreSQL CRUD lifecycle (connect, execute, query, close)
 
 ## Progress
 
@@ -223,6 +223,6 @@ Phases execute in numeric order: 49 -> 50 -> 51 -> 52 -> 53 -> 54
 | 51. HTTP Path Parameters | v2.0 | 2/2 | Complete | 2026-02-11 |
 | 52. HTTP Middleware | v2.0 | 2/2 | Complete | 2026-02-11 |
 | 53. SQLite Driver | v2.0 | 2/2 | Complete | 2026-02-11 |
-| 54. PostgreSQL Driver | v2.0 | 0/TBD | Not started | - |
+| 54. PostgreSQL Driver | v2.0 | 0/2 | Not started | - |
 
 **Total: 53 phases shipped across 10 milestones. 152 plans completed. 1 phase remaining in v2.0.**
