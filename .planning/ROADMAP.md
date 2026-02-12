@@ -13,7 +13,7 @@
 - [x] **v1.8 Module System** - Phases 37-42 (shipped 2026-02-09)
 - [x] **v1.9 Stdlib & Ergonomics** - Phases 43-48 (shipped 2026-02-10)
 - [x] **v2.0 Database & Serialization** - Phases 49-54 (shipped 2026-02-12)
-- [ ] **v3.0 Production Backend** - Phases 55-58 (shipping)
+- [x] **v3.0 Production Backend** - Phases 55-58 (shipped 2026-02-12)
 
 ## Phases
 
@@ -105,82 +105,15 @@ See milestones/v2.0-ROADMAP.md for full phase details.
 
 </details>
 
-### v3.0 Production Backend (In Progress)
+<details>
+<summary>v3.0 Production Backend (Phases 55-58) - SHIPPED 2026-02-12</summary>
 
-**Milestone Goal:** Make Snow viable for production backend deployments with TLS encryption, connection pooling, database transactions, and automatic struct-to-row mapping.
+See milestones/v3.0-ROADMAP.md for full phase details.
+8 plans across 4 phases. 83,451 lines of Rust (+2,445). 33 commits.
 
-- [x] **Phase 55: PostgreSQL TLS** - Encrypted connections to cloud databases via SSLRequest protocol upgrade (completed 2026-02-12)
-- [x] **Phase 56: HTTPS Server** - Production HTTP serving with TLS via hand-rolled HTTP/1.1 parser replacing tiny_http (completed 2026-02-12)
-- [x] **Phase 57: Connection Pooling & Transactions** - Actor-compatible pool manager with transaction lifecycle and automatic cleanup (completed 2026-02-12)
-- [x] **Phase 58: Struct-to-Row Mapping** - Automatic database row to struct hydration via deriving(Row) (completed 2026-02-12)
-
-## Phase Details
-
-### Phase 55: PostgreSQL TLS
-**Goal**: Snow programs can connect to TLS-required PostgreSQL databases (AWS RDS, Supabase, Neon) using encrypted connections
-**Depends on**: Phase 54 (v2.0 PostgreSQL driver)
-**Requirements**: TLS-01, TLS-02, TLS-03, TLS-06
-**Success Criteria** (what must be TRUE):
-  1. User can connect to a PostgreSQL database with `sslmode=require` and all queries execute over an encrypted connection
-  2. User can connect with `sslmode=prefer` and the driver automatically upgrades to TLS when the server supports it, falling back to plaintext otherwise
-  3. User can connect with `sslmode=disable` and the connection works identically to v2.0 behavior (no TLS negotiation)
-  4. Existing v2.0 PostgreSQL code (plaintext connections) continues to work without modification
-**Plans**: 1 plan
-
-Plans:
-- [x] 55-01-PLAN.md -- PgStream enum, SSLRequest handshake, sslmode URL parsing, CryptoProvider install
-
-### Phase 56: HTTPS Server
-**Goal**: Snow programs can serve HTTP traffic over TLS for production deployments
-**Depends on**: Phase 55 (shared rustls/ring infrastructure)
-**Requirements**: TLS-04, TLS-05
-**Success Criteria** (what must be TRUE):
-  1. User can call `Http.serve_tls(router, port, cert_path, key_path)` and the server accepts HTTPS connections with a valid certificate
-  2. Existing `Http.serve(router, port)` continues to work for plaintext HTTP without modification
-  3. All existing HTTP features (path parameters, method routing, middleware) work identically over HTTPS
-  4. TLS handshakes do not block the actor scheduler -- unrelated actors continue executing during handshake processing
-**Plans**: 2 plans
-
-Plans:
-- [x] 56-01-PLAN.md -- Replace tiny_http with hand-rolled HTTP/1.1 parser for plaintext TCP
-- [x] 56-02-PLAN.md -- Add Http.serve_tls with HttpStream enum and codegen integration
-
-### Phase 57: Connection Pooling & Transactions
-**Goal**: Snow programs can manage database connections efficiently with pooling and execute multi-statement operations atomically with transactions
-**Depends on**: Phase 55 (TLS-enabled PG connections for pooled secure connections)
-**Requirements**: POOL-01, POOL-02, POOL-03, POOL-04, POOL-05, POOL-06, POOL-07, TXN-01, TXN-02, TXN-03, TXN-04, TXN-05
-**Success Criteria** (what must be TRUE):
-  1. User can create a PostgreSQL connection pool with `Pool.open(url, config)` specifying min/max connections and checkout timeout, and multiple actors can concurrently execute queries through the pool without connection conflicts
-  2. User can call `Pg.transaction(conn, fn(conn) do ... end)` and the block auto-commits on success or auto-rollbacks on error/panic, with the connection returned to a clean state
-  3. User can call `Pool.query(pool, sql, params)` for single queries with automatic checkout-use-checkin, and the pool recycles connections transparently
-  4. Pool detects and replaces dead connections via health check so stale connections from server restarts do not surface as user-visible errors
-  5. User can call `Sqlite.begin/commit/rollback` for manual SQLite transaction control
-**Plans**: 3 plans
-
-Plans:
-- [x] 57-01-PLAN.md -- PG txn_status tracking, PG/SQLite transaction intrinsics, Pg.transaction with catch_unwind
-- [x] 57-02-PLAN.md -- Mutex+Condvar connection pool with health check, checkout/checkin, auto query/execute
-- [x] 57-03-PLAN.md -- Compiler pipeline: LLVM declarations, MIR lowering, type checker for Pool/Pg.txn/Sqlite.txn
-
-### Phase 58: Struct-to-Row Mapping
-**Goal**: Snow programs can automatically map database query results to typed structs without manual field extraction
-**Depends on**: Phase 57 (connection pooling for realistic query_as usage)
-**Requirements**: ROW-01, ROW-02, ROW-03, ROW-04, ROW-05, ROW-06
-**Success Criteria** (what must be TRUE):
-  1. User can add `deriving(Row)` to a struct and call the generated `from_row` function to convert a `Map<String, String>` query result into a typed struct instance
-  2. User can call `Pg.query_as(conn, sql, params, from_row_fn)` and receive a `List<Result<T, String>>` of hydrated structs directly from a query
-  3. NULL database columns map to `None` for `Option<T>` fields and return a descriptive error for non-Option fields, so the user gets clear feedback on schema mismatches
-  4. Compiler emits an error when `deriving(Row)` is used on a struct with a field type that cannot be parsed from a string (e.g., nested structs, custom types)
-**Plans**: 2 plans
-
-Plans:
-- [x] 58-01-PLAN.md -- Runtime row parsing functions + query_as + three-point LLVM registration
-- [x] 58-02-PLAN.md -- Typeck validation, MIR generation for from_row, Pg/Pool.query_as type signatures, E2E tests
+</details>
 
 ## Progress
-
-**Execution Order:**
-Phases execute in numeric order: 55 -> 56 -> 57 -> 58
 
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
@@ -195,9 +128,6 @@ Phases execute in numeric order: 55 -> 56 -> 57 -> 58
 | 37-42 | v1.8 | 12/12 | Complete | 2026-02-09 |
 | 43-48 | v1.9 | 13/13 | Complete | 2026-02-10 |
 | 49-54 | v2.0 | 13/13 | Complete | 2026-02-12 |
-| 55. PG TLS | v3.0 | 1/1 | Complete | 2026-02-12 |
-| 56. HTTPS | v3.0 | 2/2 | Complete | 2026-02-12 |
-| 57. Pool+Txn | v3.0 | 3/3 | Complete | 2026-02-12 |
-| 58. Row Map | v3.0 | 2/2 | Complete | 2026-02-12 |
+| 55-58 | v3.0 | 8/8 | Complete | 2026-02-12 |
 
 **Total: 58 phases shipped across 12 milestones. 162 plans completed.**

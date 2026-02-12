@@ -2,7 +2,7 @@
 
 ## What This Is
 
-Snow is a programming language that combines Elixir/Ruby-style expressive syntax with static Hindley-Milner type inference and BEAM-style concurrency (actors, supervision trees, fault tolerance), compiled via LLVM to native single-binary executables. The compiler is written in Rust. v1.0-v1.9 built a complete language: compiler pipeline, actor runtime, trait system, module system, loops, stdlib, and developer tooling (81K LOC Rust). v2.0 made Snow viable for real backend applications: JSON serde via `deriving(Json)` for structs/sum types/generics, SQLite driver (bundled C FFI), PostgreSQL driver (pure wire protocol with SCRAM-SHA-256/MD5 auth), HTTP path parameters with method routing, and composable middleware pipelines. Zero known compiler correctness issues remain.
+Snow is a programming language that combines Elixir/Ruby-style expressive syntax with static Hindley-Milner type inference and BEAM-style concurrency (actors, supervision trees, fault tolerance), compiled via LLVM to native single-binary executables. The compiler is written in Rust. v1.0-v1.9 built a complete language: compiler pipeline, actor runtime, trait system, module system, loops, stdlib, and developer tooling. v2.0 added database drivers and JSON serde. v3.0 made Snow production-ready: TLS encryption for PostgreSQL and HTTPS, connection pooling with health checks, panic-safe database transactions, and automatic struct-to-row mapping via `deriving(Row)`. 83K LOC Rust across 12 milestones. Zero known compiler correctness issues.
 
 ## Core Value
 
@@ -95,18 +95,32 @@ Expressive, readable concurrency -- writing concurrent programs should feel as n
 - ✓ PostgreSQL driver: connect/close/query/execute with `$1` parameterized queries, pure wire protocol -- v2.0
 - ✓ PostgreSQL SCRAM-SHA-256 and MD5 authentication -- v2.0
 - ✓ Database handles are GC-safe opaque u64 values -- v2.0
+- ✓ PostgreSQL TLS via SSLRequest with sslmode=disable/prefer/require -- v3.0
+- ✓ PgStream enum (Plain/Tls) with Read+Write abstraction for transparent encryption -- v3.0
+- ✓ rustls 0.23 with ring crypto provider and webpki-roots CA certificates -- v3.0
+- ✓ Ring CryptoProvider installed at runtime startup for all TLS consumers -- v3.0
+- ✓ HTTPS server via Http.serve_tls(router, port, cert_path, key_path) -- v3.0
+- ✓ Hand-rolled HTTP/1.1 parser replacing tiny_http for unified TLS stack -- v3.0
+- ✓ Connection pool with configurable min/max connections and checkout timeout -- v3.0
+- ✓ Pool checkout/checkin with health check (SELECT 1) and dirty connection cleanup -- v3.0
+- ✓ Pool.query/Pool.execute with automatic checkout-use-checkin -- v3.0
+- ✓ Pool.close drains connections and prevents new checkouts -- v3.0
+- ✓ Opaque u64 pool handles (GC-safe, same pattern as DB connections) -- v3.0
+- ✓ Pg.begin/commit/rollback for manual PostgreSQL transaction control -- v3.0
+- ✓ Sqlite.begin/commit/rollback for manual SQLite transaction control -- v3.0
+- ✓ PgConn tracks transaction status byte from ReadyForQuery (I/T/E) -- v3.0
+- ✓ Pg.transaction(conn, fn) with automatic commit on success, rollback on error -- v3.0
+- ✓ Pg.transaction rollbacks on panic via catch_unwind -- v3.0
+- ✓ deriving(Row) generates from_row function for struct-to-row mapping -- v3.0
+- ✓ from_row maps Map<String,String> to typed struct fields (String, Int, Float, Bool, Option) -- v3.0
+- ✓ from_row returns Result<T,String> with descriptive error on missing column or parse failure -- v3.0
+- ✓ NULL columns map to None for Option fields, error for non-Option fields -- v3.0
+- ✓ Pg.query_as/Pool.query_as for one-step query and struct hydration -- v3.0
+- ✓ Compile error (E0039) when deriving(Row) on struct with non-mappable field type -- v3.0
 
 ### Active
 
-## Current Milestone: v3.0 Production Backend
-
-**Goal:** Make Snow viable for production backend deployments with connection pooling, TLS encryption, database transactions, and automatic struct-to-row mapping.
-
-**Target features:**
-- Connection pooling (actor-based pool manager for SQLite and PostgreSQL)
-- TLS/SSL (encrypted PostgreSQL connections + HTTPS server support)
-- Database transactions (block-based `Db.transaction(conn, fn)` with auto-commit/rollback)
-- Struct-to-row mapping (automatic query result to struct hydration via deriving)
+(No active requirements -- next milestone not yet planned)
 
 ### Out of Scope
 
@@ -134,12 +148,13 @@ Expressive, readable concurrency -- writing concurrent programs should feel as n
 
 ## Context
 
-Shipped v2.0 with 81,006 lines of Rust (+4,906 from v1.9).
+Shipped v3.0 with 83,451 lines of Rust (+2,445 from v2.0).
 Tech stack: Rust compiler, LLVM 21 (Inkwell 0.8), corosensei coroutines, rowan CST, ariadne diagnostics.
 Crates: snow-lexer, snow-parser, snow-typeck, snow-mir, snow-codegen, snow-rt, snow-fmt, snow-repl, snow-pkg, snow-lsp, snowc.
-New deps: libsqlite3-sys (bundled), sha2/hmac/md-5/base64ct (PostgreSQL auth).
+Deps: libsqlite3-sys (bundled), sha2/hmac/md-5/base64ct (PG auth), rustls 0.23/webpki-roots/ring (TLS).
+Removed: tiny_http (replaced with hand-rolled HTTP/1.1 parser in v3.0).
 
-287+ tests passing (including 16 new v2.0 E2E tests). Zero known critical bugs. Zero known compiler correctness issues.
+290+ tests passing (including 18 new v3.0 tests). Zero known critical bugs. Zero known compiler correctness issues.
 
 Known limitations: None.
 
@@ -150,8 +165,6 @@ Tech debt (minor, pre-existing):
 - build_module_graph wrapper in discovery.rs used only in Phase 37 tests -- consider deprecation
 - report_diagnostics function in main.rs appears to be dead code
 - 3 compiler warnings (fixable with `cargo fix`)
-
-Tech debt (v2.0-introduced):
 - Middleware requires explicit `:: Request` parameter type annotations (incomplete inference)
 - PostgreSQL E2E test requires external server, marked `#[ignore]`
 - 1 dead_code warning in snow-rt build
@@ -250,6 +263,21 @@ Tech debt (v2.0-introduced):
 | Pure Rust PostgreSQL wire protocol | ~550 lines hand-rolled; only crypto deps (sha2/hmac/md-5/base64ct) | ✓ Good -- v2.0, minimal dependencies |
 | Extended Query protocol for PostgreSQL | Parse/Bind/Execute/Sync with $1, $2 placeholders and text format | ✓ Good -- v2.0, parameterized queries |
 | Empty n= in SCRAM client-first-bare | PG knows username from StartupMessage; spec allows empty | ✓ Good -- v2.0, correct auth |
+| PgStream enum (Plain/Tls) | Zero-cost dispatch instead of Box<dyn Read+Write>; mirrors HttpStream | ✓ Good -- v3.0, unified pattern |
+| Default sslmode=prefer | Backward compatible with v2.0 URLs; auto-upgrades when server supports TLS | ✓ Good -- v3.0, safe default |
+| CryptoProvider in snow_rt_init() | Guarantees pre-TLS availability for both PG and HTTP consumers | ✓ Good -- v3.0, single install point |
+| Replace tiny_http with hand-rolled parser | Eliminates rustls 0.20 conflict; enables shared TLS stack | ✓ Good -- v3.0, unified rustls 0.23 |
+| HttpStream enum mirroring PgStream | Consistent pattern across database and HTTP TLS | ✓ Good -- v3.0, clean abstraction |
+| Lazy TLS handshake in actor | StreamOwned::new defers I/O; handshake inside per-connection actor | ✓ Good -- v3.0, non-blocking accept |
+| Arc::into_raw leak for ServerConfig | Server runs forever; no cleanup needed; avoids Arc overhead per request | ✓ Good -- v3.0, pragmatic |
+| Simple Query protocol for txn commands | BEGIN/COMMIT/ROLLBACK need no params; simpler than Extended Query | ✓ Good -- v3.0, minimal wire overhead |
+| parking_lot Mutex+Condvar for pool | Consistent with actor scheduler; blocking checkout with timeout | ✓ Good -- v3.0, reliable synchronization |
+| Health check on checkout (SELECT 1) | Detects dead connections from server restarts before user code | ✓ Good -- v3.0, transparent recovery |
+| Optimistic slot reservation for pool | Increment total_created before dropping lock for I/O; avoids over-creation | ✓ Good -- v3.0, correct concurrency |
+| Pg.transaction with catch_unwind | Panic-safe rollback prevents transaction leak on actor crash | ✓ Good -- v3.0, fault-tolerant |
+| FromRowFn callback via fn ptr transmute | Matches existing Snow closure pattern; enables query_as integration | ✓ Good -- v3.0, consistent callback architecture |
+| Polymorphic Scheme for query_as | Quantified TyVar enables type-safe generic result mapping | ✓ Good -- v3.0, correct type inference |
+| Option fields receive None for missing columns | Lenient NULL handling matches common SQL patterns | ✓ Good -- v3.0, practical ergonomics |
 
 ---
-*Last updated: 2026-02-12 after v3.0 milestone start*
+*Last updated: 2026-02-12 after v3.0 milestone completion*
