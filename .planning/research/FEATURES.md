@@ -1,8 +1,8 @@
 # Feature Landscape
 
-**Domain:** Production backend capabilities for compiled programming language (Snow v3.0)
+**Domain:** WebSocket support for compiled programming language with actor runtime (Snow)
 **Researched:** 2026-02-12
-**Confidence:** HIGH (all four features are well-studied across Elixir/Go/Rust ecosystems; existing Snow codebase patterns thoroughly reviewed)
+**Confidence:** HIGH (WebSocket protocol is a mature, stable RFC 6455 standard from 2011; actor-per-connection patterns well-studied in Erlang/Elixir; Snow's existing HTTP server and actor runtime thoroughly reviewed)
 
 ---
 
@@ -11,515 +11,351 @@
 Before defining features, here is what already exists and what this milestone builds on:
 
 **Working infrastructure these features extend:**
-- SQLite: `Sqlite.open/close/query/execute` with `?` parameterized queries, bundled C FFI via `libsqlite3-sys`
-- PostgreSQL: `Pg.connect/close/query/execute` with `$1` parameterized queries, pure wire protocol (no libpq), SCRAM-SHA-256/MD5 auth
-- Both return `Result<List<Map<String, String>>, String>` for queries -- all values as text strings
-- HTTP server: `tiny_http` with actor-per-connection, `SnowRouter` with path params, method routing, middleware pipeline
-- JSON serde: `deriving(Json)` generates `Json.encode(value)` and `StructName.from_json(str)` at compile time
-- Actor runtime: M:N scheduler with corosensei coroutines, typed `Pid<M>`, `snow_service_call` for request/reply, `snow_actor_register/whereis` for name registry
-- GC-safe opaque u64 handles for DB connections (`Box::into_raw as u64`)
-- `PgConn` wraps a `std::net::TcpStream` directly -- pure Rust, no external C libraries for PostgreSQL
-- `Result<T,E>` with `?` operator for error propagation, `Option<T>` for nullable values
-- `deriving(Eq, Ord, Display, Debug, Hash, Json)` infrastructure with MIR-level synthetic function generation
+- HTTP server: hand-rolled HTTP/1.1 parser with actor-per-connection, `HttpStream` enum (Plain/Tls), `SnowRouter` with path params, method routing, middleware pipeline, TLS via rustls
+- Actor runtime: M:N work-stealing scheduler with corosensei coroutines (64 KiB stacks), typed `Pid<M>`, `snow_actor_send/receive`, FIFO mailbox with deep-copy message passing, crash isolation via `catch_unwind`
+- Supervision trees: `Supervisor.start` with OneForOne/OneForAll/RestForOne/SimpleOneForOne strategies, automatic restart with intensity limits
+- Actor registry: `snow_actor_register/whereis` for named process lookup
+- Timer support: `Timer.sleep(ms)`, `Timer.send_after(pid, ms, msg)` for delayed messaging
+- `receive` with timeout: `snow_actor_receive(timeout_ms)` supports blocking, non-blocking, and timed receive
+- TLS infrastructure: rustls 0.23 with `ServerConfig`, PEM certificate loading, `StreamOwned` for lazy handshake
+- JSON serde: `deriving(Json)` for encode/decode
+- `HttpStream` enum pattern: already demonstrates Plain/Tls stream polymorphism (reusable for WS)
+- SHA-1 available via ring (already a transitive dependency of rustls)
 
 **What this milestone adds:**
-- Connection pooling (actor-based pool manager for SQLite and PostgreSQL)
-- TLS/SSL (encrypted PostgreSQL connections + HTTPS server support)
-- Database transactions (block-based `Db.transaction(conn, fn)` with auto-commit/rollback)
-- Struct-to-row mapping (automatic query result to struct hydration via `deriving(Db)`)
+- WebSocket server (`Ws.serve` / `Ws.serve_tls`) as a separate server type
+- HTTP upgrade handshake (101 Switching Protocols, Sec-WebSocket-Key/Accept)
+- WebSocket frame parsing and writing (text, binary, ping, pong, close, continuation)
+- Client-to-server frame unmasking
+- Unified mailbox messaging (WS frames arrive as actor messages)
+- Callback-style API (`on_connect`, `on_message`, `on_close`)
+- Room/channel system with join/leave/broadcast
+- Ping/pong heartbeat with configurable interval
+- Connection lifecycle management with close handshake
 
 ---
 
 ## Table Stakes
 
-Features users expect. Missing = product feels incomplete for production use.
+Features users expect from any WebSocket implementation. Missing = fundamentally broken or unusable.
 
-### 1. Connection Pooling
+### 1. HTTP Upgrade Handshake (RFC 6455 Section 4)
 
-Every production backend framework provides connection pooling. Opening a new database connection per request is prohibitively expensive: TCP handshake, TLS negotiation, and authentication add 10-150ms per connection. PostgreSQL allocates ~1.3MB per connection. Without pooling, a server handling 100 concurrent requests would need 100 simultaneous connections, each with full setup cost.
+Every WebSocket connection begins as an HTTP/1.1 GET request with specific headers. The server must validate the request, compute `Sec-WebSocket-Accept` from the client's `Sec-WebSocket-Key`, and respond with HTTP 101 Switching Protocols. This is the foundational protocol requirement -- without it, no WebSocket client can connect.
 
-Elixir has `db_connection` (GenServer-based pool with checkout/checkin). Go has `database/sql` (built-in pool with `SetMaxOpenConns`). Rust has `r2d2` and `sqlx::Pool`. Every production database library pools connections.
-
-Snow's actor runtime is a natural fit: a pool manager actor holds N connections, callers check out a connection, use it, and check it back in. This mirrors Elixir's `db_connection` pattern where each connection is a GenServer process.
+**Confidence: HIGH** -- RFC 6455 is definitive. The algorithm is: concatenate `Sec-WebSocket-Key` + magic string `"258EAFA5-E914-47DA-95CA-C5AB0DC85B11"`, SHA-1 hash, base64-encode. Snow already has SHA-1 available via ring (rustls dependency) and the hand-rolled HTTP parser can be extended to detect upgrade requests.
 
 | Feature | Why Expected | Complexity | Notes |
 |---------|--------------|------------|-------|
-| `Pool.start(config)` returns a pool handle | Every pool has a startup function. Elixir: `DBConnection.start_link(opts)`. Go: pool created implicitly by `sql.Open`. | Med | Config struct holds URL, min/max size, idle timeout. Pool actor spawns initial connections. |
-| `Pool.checkout(pool)` returns `Result<Conn, String>` | Caller gets exclusive access to one connection. Elixir: `DBConnection.checkout`. Go: implicit on every query. | Med | Pool actor receives checkout request, hands out an idle connection or creates a new one (up to max). Blocks if pool exhausted. |
-| `Pool.checkin(pool, conn)` returns connection | Explicit return. Elixir: `DBConnection.checkin`. Go: implicit via `rows.Close()`. | Low | Pool actor receives checkin, marks connection idle. |
-| `Pool.query(pool, sql, params)` auto checkout/checkin | Users should not need manual checkout for simple queries. Elixir: `Repo.all(query)` auto-manages. Go: `db.Query` auto-manages. | Med | Convenience wrapper: checkout, query, checkin. Returns `Result<List<Map<String, String>>, String>`. |
-| `Pool.execute(pool, sql, params)` auto checkout/checkin | Same pattern for write queries. | Low | Follows query pattern. Returns `Result<Int, String>`. |
-| Configurable pool size (min, max) | Every pool has size limits. Too few = contention. Too many = DB overload. | Low | Config fields `min_size: Int`, `max_size: Int`. Default min=2, max=10. |
-| Idle connection timeout | Connections sitting unused waste resources. Elixir: `idle_interval`. HikariCP: `idleTimeout`. | Med | Pool actor periodically checks idle connections, closes those exceeding timeout. |
-| Connection health validation | Stale/broken connections must not be handed to callers. HikariCP: `connectionTestQuery`. Elixir: `ping` callback. | Med | Before checkout, issue a lightweight query (`SELECT 1` for PG, `SELECT 1` for SQLite) to verify liveness. Discard dead connections. |
-| Graceful exhaustion handling | When max connections are in use, callers should wait (with timeout), not crash. | Med | Caller blocks with configurable acquisition timeout. Returns `Err("pool exhausted")` after timeout. |
+| Detect `Upgrade: websocket` + `Connection: Upgrade` headers | Without detection, HTTP server can't distinguish upgrade requests from normal requests | Low | Check headers in existing `parse_request` function. Case-insensitive comparison per RFC. |
+| Validate `Sec-WebSocket-Version: 13` | RFC mandates version check. Return 426 Upgrade Required with correct version if mismatch. | Low | Single header check. Version 13 is the only standard version. |
+| Compute `Sec-WebSocket-Accept` from `Sec-WebSocket-Key` | Client validates the accept value. Wrong value = client rejects connection. | Low | SHA-1 + base64. Both available via ring (SHA-1) and base64 crate or manual encoder. ~15 lines of Rust. |
+| Respond with `HTTP/1.1 101 Switching Protocols` | This is the protocol switch response. Without it, connection stays HTTP. | Low | Write status line + Upgrade + Connection + Sec-WebSocket-Accept headers to the stream. Reuse existing `write` on `HttpStream`. |
+| Reject malformed upgrade requests with 400 | Invalid or missing required headers must be rejected cleanly. | Low | Return 400 Bad Request instead of 101. |
 
-**Expected API surface:**
+**Depends on:** Existing HTTP parser, existing `HttpStream`, ring (SHA-1)
 
-```snow
-fn main() do
-  # Start a PostgreSQL pool
-  let pool = Pool.start(%{
-    url: "postgres://user:pass@localhost:5432/mydb",
-    min_size: 2,
-    max_size: 10,
-    idle_timeout: 60000
-  })?
+### 2. WebSocket Frame Parsing (RFC 6455 Section 5)
 
-  # Simple query (auto checkout/checkin)
-  let rows = Pool.query(pool, "SELECT name, age FROM users WHERE age > $1", ["25"])?
+After the handshake, all communication happens via WebSocket frames. The server must parse incoming frames and write outgoing frames according to the binary framing protocol. This includes handling the FIN bit, opcode, masking, and variable-length payload encoding.
 
-  # Simple execute (auto checkout/checkin)
-  let affected = Pool.execute(pool, "INSERT INTO users (name, age) VALUES ($1, $2)", ["Alice", "30"])?
-
-  # Manual checkout for multiple operations on same connection
-  let conn = Pool.checkout(pool)?
-  Pg.execute(conn, "INSERT INTO logs (msg) VALUES ($1)", ["started"])?
-  Pg.execute(conn, "INSERT INTO logs (msg) VALUES ($1)", ["finished"])?
-  Pool.checkin(pool, conn)
-end
-```
-
-**Implementation approach:**
-
-The pool is implemented as a Snow actor (using the existing actor runtime). This follows Elixir's `db_connection` pattern:
-1. A pool manager actor is spawned by `Pool.start`. It holds a list of idle connections and tracks checked-out connections.
-2. `Pool.checkout` sends a message to the pool actor requesting a connection. The pool either hands out an idle one or creates a new one (up to max_size).
-3. `Pool.checkin` sends the connection back. The pool actor marks it idle.
-4. `Pool.query/execute` are convenience wrappers: checkout -> operation -> checkin, with error handling to ensure checkin on failure.
-5. A periodic health check runs via `Timer.send_after` to evict idle/dead connections.
-
-The pool can work with both SQLite and PostgreSQL connections since both use opaque u64 handles and have the same query/execute API shape. The pool config includes a `driver` field (`:pg` or `:sqlite`) to know how to create new connections and validate health.
-
-**What NOT to include:**
-- Connection warming / pre-connect on startup beyond min_size -- simple lazy creation is sufficient
-- Dynamic pool resizing at runtime -- static min/max is fine for v3.0
-- Per-query timeout -- users handle this at the application level
-- Read/write splitting -- single pool per database is sufficient
-- Named pools / pool registry -- one pool per `Pool.start` call
-
-**Confidence:** HIGH -- connection pooling is a solved problem. The actor-based design maps cleanly to Snow's runtime. Elixir's `db_connection` provides an exact reference implementation using the same actor model.
-
-**Dependencies:** Existing actor runtime (`snow_actor_spawn`, `snow_service_call`, `snow_actor_register`), existing Pg/Sqlite connection functions, existing `Timer.send_after` for periodic health checks.
-
----
-
-### 2. TLS/SSL for PostgreSQL Connections
-
-Every cloud PostgreSQL provider (AWS RDS, GCP Cloud SQL, Azure Database, Supabase, Neon) requires or strongly recommends TLS. Without TLS support, Snow programs cannot connect to production databases. This is a hard blocker for real-world deployment.
-
-PostgreSQL TLS works via an upgrade mechanism: the client sends an 8-byte `SSLRequest` message (`00 00 00 08 04 D2 16 2F`) before the StartupMessage. The server responds with `S` (willing) or `N` (unwilling). On `S`, the client performs a TLS handshake, then sends the normal StartupMessage over the encrypted channel.
-
-Snow's PostgreSQL driver already speaks the wire protocol via `std::net::TcpStream`. The TLS upgrade wraps that `TcpStream` in a `rustls::StreamOwned<ClientConnection, TcpStream>`, which implements the same `Read + Write` traits. The rest of the wire protocol code remains unchanged.
+**Confidence: HIGH** -- RFC 6455 frame format is precisely specified. The wire format is straightforward binary parsing.
 
 | Feature | Why Expected | Complexity | Notes |
 |---------|--------------|------------|-------|
-| TLS-encrypted PostgreSQL connections | Cloud databases require TLS. AWS RDS, Supabase, Neon all enforce it. | **High** | Send SSLRequest before StartupMessage. On `S` response, perform TLS handshake with rustls. Wrap TcpStream in StreamOwned. |
-| `sslmode` parameter in connection URL | PostgreSQL connection strings support `?sslmode=require` etc. Universal convention. | Med | Parse `sslmode` from URL query params. Modes: `disable` (no TLS), `require` (TLS required, no cert verify), `verify-ca` / `verify-full` (with certificate validation). |
-| System root certificate trust | Connecting to cloud PG should work without manually providing CA certs. | Med | Use `webpki-roots` or `rustls-native-certs` to load system CA certificates. |
-| Self-signed cert support for development | Local Docker PostgreSQL often uses self-signed certs. `sslmode=require` should work without CA verification. | Low | `require` mode skips certificate validation (accepts any cert). Only `verify-ca`/`verify-full` validate. |
-| Fallback to plaintext if server declines | If server responds `N` to SSLRequest and sslmode is not `require`, proceed without TLS. | Low | Already handled: if server says `N` and sslmode allows, send StartupMessage unencrypted. |
+| Parse frame header: FIN, opcode, mask bit, payload length | Every received frame must be parsed. The 2-14 byte header encodes all frame metadata. | Med | Variable-length header: 2 bytes minimum, +2 for 16-bit length, +8 for 64-bit length, +4 for mask key. Bit-level parsing required. |
+| Handle 3 payload length encodings (7-bit, 16-bit, 64-bit) | Payload length <= 125 uses 7 bits. 126 = next 2 bytes are length. 127 = next 8 bytes are length. | Low | Three branches based on 7-bit length field. Network byte order (big-endian) for extended lengths. |
+| Unmask client-to-server frames (XOR with 4-byte key) | RFC 6455 mandates: clients MUST mask all frames. Server MUST close connection if frame is unmasked. | Low | XOR each payload byte with `mask_key[i % 4]`. Simple loop. ~5 lines of Rust. |
+| Write server-to-client frames (unmasked) | Server frames must NOT be masked. Client MUST close if it receives a masked server frame. | Low | Write header bytes + raw payload. No masking needed for server-to-client. |
+| Reject unknown opcodes | RFC mandates: receiving an unknown opcode MUST fail the connection. | Low | Check opcode in 0x0-0xA range. Close with 1002 (Protocol Error) for unknowns. |
+| Enforce max frame/message size | Without limits, a single client could exhaust server memory with enormous payloads. | Low | Configurable max (default 64 KiB or 1 MiB). Close with 1009 (Message Too Big) if exceeded. |
 
-**Expected API surface:**
+**Depends on:** Raw TCP stream access (already have via `HttpStream`)
 
-```snow
-fn main() do
-  # Cloud database -- TLS required
-  let conn = Pg.connect("postgres://user:pass@db.supabase.co:5432/mydb?sslmode=require")?
+### 3. Text and Binary Frame Types (RFC 6455 Section 5.6)
 
-  # Local development -- no TLS
-  let local = Pg.connect("postgres://dev:dev@localhost:5432/devdb")?
+The two data frame types are text (opcode 0x1, must be valid UTF-8) and binary (opcode 0x2, arbitrary bytes). Every WebSocket application needs at least text frames. Binary frames are required for non-text protocols.
 
-  # Strict verification
-  let strict = Pg.connect("postgres://user:pass@prod.example.com:5432/prod?sslmode=verify-full")?
-end
-```
-
-**Implementation approach:**
-
-1. **Abstract the stream type:** Change `PgConn` from holding `stream: TcpStream` to holding an enum or trait object that supports both plain TCP and TLS. Use `enum PgStream { Plain(TcpStream), Tls(StreamOwned<ClientConnection, TcpStream>) }` and implement `Read + Write` for it.
-2. **SSLRequest handshake:** After TCP connect but before StartupMessage, send the SSLRequest 8-byte message. Read the 1-byte response.
-3. **TLS upgrade:** On `S`, create a `rustls::ClientConfig` with appropriate certificate validation based on `sslmode`, construct a `ClientConnection`, wrap the `TcpStream` in `StreamOwned`.
-4. **Continue protocol:** The rest of `snow_pg_connect` (StartupMessage, authentication, ReadyForQuery) works unchanged because `PgStream` implements `Read + Write`.
-
-**New Rust dependencies:** `rustls` (pure Rust TLS), `webpki-roots` (Mozilla CA bundle), `rustls-pki-types` (certificate types).
-
-**What NOT to include:**
-- Client certificate authentication -- niche, defer
-- Custom CA certificate file path -- use system certs or `webpki-roots`
-- TLS session resumption -- optimization, not needed for correctness
-- ALPN-based direct TLS (PostgreSQL 17+) -- use standard SSLRequest flow
-
-**Confidence:** HIGH -- the SSLRequest protocol is well-documented (PostgreSQL docs 54.2, 54.7). `rustls::StreamOwned` wrapping `TcpStream` is the standard pattern for TLS upgrade on a synchronous stream. The existing PG wire protocol code uses `Read + Write` traits throughout, making the abstraction clean.
-
-**Dependencies:** Existing PgConn/TcpStream infrastructure, `rustls` crate, URL parsing already handles query params.
-
----
-
-### 3. TLS/SSL for HTTPS Server
-
-Production HTTP servers must support HTTPS. Snow's HTTP server uses `tiny_http`, which already has built-in TLS support via the `ssl-rustls` feature flag. Enabling HTTPS is a matter of feature-flagging `tiny_http` and adding a new `HTTP.serve_tls` function that accepts certificate/key paths.
+**Confidence: HIGH** -- These are the fundamental data-carrying frame types.
 
 | Feature | Why Expected | Complexity | Notes |
 |---------|--------------|------------|-------|
-| `HTTP.serve_tls(router, port, cert_path, key_path)` | Production servers must serve HTTPS. | **Med** | `tiny_http` supports `Server::https(addr, SslConfig)` with the `ssl-rustls` feature. Read cert/key PEM files, pass to SslConfig. |
-| PEM certificate and key file loading | Standard format for TLS certificates. Let's Encrypt, self-signed, all use PEM. | Low | `std::fs::read(cert_path)` and `std::fs::read(key_path)` to load PEM bytes. |
-| Plaintext `HTTP.serve` continues to work | Not all deployments need TLS (reverse proxy handles it). Development uses plaintext. | Low | Existing function unchanged. New function is additive. |
+| Text frames (opcode 0x1) with UTF-8 validation | Chat, JSON APIs, command protocols all use text. Invalid UTF-8 must trigger close with 1007 (Invalid Payload Data). | Low | Validate with `std::str::from_utf8()` on received text payloads. Snow strings are already UTF-8. |
+| Binary frames (opcode 0x2) | File transfer, protocol buffers, custom binary protocols all need binary frames. | Low | Pass raw bytes to Snow handler. No validation needed beyond frame parsing. |
+| Distinguish text vs binary in handler callbacks | User code needs to know what type of frame it received to process it correctly. | Low | Deliver as tagged union to Snow: `WsMessage::Text(String)` vs `WsMessage::Binary(Bytes)`. Maps to Snow ADT. |
 
-**Expected API surface:**
+**Depends on:** Frame parsing (feature 2)
 
-```snow
-fn main() do
-  let r = HTTP.router()
-  let r = HTTP.on_get(r, "/health", health_handler)
+### 4. Control Frames: Close Handshake (RFC 6455 Section 5.5.1, 7)
 
-  # HTTPS with certificate
-  HTTP.serve_tls(r, 443, "/etc/ssl/cert.pem", "/etc/ssl/key.pem")
+WebSocket has a two-phase close handshake. Either side can initiate close by sending a Close frame (opcode 0x8). The other side must respond with a Close frame. Only after both frames are exchanged does the TCP connection close. Without this, connections leak or clients see abnormal closure (code 1006).
 
-  # OR plaintext (existing, unchanged)
-  # HTTP.serve(r, 8080)
-end
-```
-
-**Implementation approach:**
-
-1. Add `ssl-rustls` feature to `tiny_http` dependency in `Cargo.toml`: `tiny_http = { version = "0.12", features = ["ssl-rustls"] }`
-2. New runtime function `snow_http_serve_tls(router, port, cert_path, key_path)` that:
-   - Reads the PEM files from disk
-   - Constructs `tiny_http::SslConfig { certificate, private_key }`
-   - Calls `Server::https(addr, config)` instead of `Server::http(addr)`
-   - Uses the same `incoming_requests()` loop and actor dispatch as the plaintext server
-
-**What NOT to include:**
-- Automatic Let's Encrypt / ACME -- out of scope for a language runtime
-- SNI-based virtual hosting -- single cert per server
-- HTTP to HTTPS redirect -- application-level concern
-- Hot-reloading certificates -- restart server to update certs
-
-**Confidence:** HIGH -- `tiny_http` has an official `ssl-rustls` example. The `Server::https` API is a drop-in replacement for `Server::http`. Pure additive change.
-
-**Dependencies:** `tiny_http` with `ssl-rustls` feature, `rustls` (shared dependency with PG TLS). File I/O for cert loading (existing `std::fs`).
-
----
-
-### 4. Database Transactions
-
-Every production application needs transactions for data consistency. Without a transaction API, Snow users must manually issue `Pg.execute(conn, "BEGIN", [])`, handle errors, and remember to COMMIT or ROLLBACK -- error-prone and ugly. Every framework provides a block-based transaction API: Elixir's `Repo.transaction(fn -> ... end)`, Go's `tx.Begin/Commit/Rollback` pattern, Rust's `sqlx::Transaction`.
-
-The block-based pattern is the right fit for Snow: pass a closure to `Db.transaction`, the runtime issues BEGIN before calling it and COMMIT after, or ROLLBACK if the closure returns Err or raises. This mirrors Elixir's `Repo.transaction` and Django's `atomic()`.
+**Confidence: HIGH** -- Every WebSocket library implements the close handshake. It is required for clean connection lifecycle.
 
 | Feature | Why Expected | Complexity | Notes |
 |---------|--------------|------------|-------|
-| `Db.transaction(conn, fn(conn) -> ... end)` | Block-based transaction with automatic BEGIN/COMMIT/ROLLBACK. Elixir: `Repo.transaction`. Django: `atomic()`. | **Med** | Send `BEGIN` before calling the closure, `COMMIT` on Ok, `ROLLBACK` on Err. Return the closure's result. |
-| Automatic ROLLBACK on error | If the closure returns `Err(e)`, the transaction must ROLLBACK and propagate the error. Non-negotiable for data safety. | Med | Wrap the closure call. If it returns tag 1 (Err), send ROLLBACK and forward the Err. |
-| Automatic ROLLBACK on panic/crash | If the closure crashes (actor panic), ROLLBACK must still execute. | Med | Use `catch_unwind` or ensure cleanup via the actor's terminate callback. |
-| Works with both PostgreSQL and SQLite | Transactions are universal SQL. `BEGIN`/`COMMIT`/`ROLLBACK` work on both. | Low | The transaction function just issues SQL commands. Same for both drivers. |
-| Nested transaction via savepoints | Inner `Db.transaction` within an outer one should use SAVEPOINT, not a real nested BEGIN. Elixir, Django, Rails all handle this. | **High** | Track nesting depth. Depth 0: real BEGIN/COMMIT. Depth 1+: SAVEPOINT/RELEASE SAVEPOINT. ROLLBACK TO SAVEPOINT on inner error. |
+| Send Close frame with status code and optional reason | Server needs to initiate clean shutdown. Status code is 2-byte big-endian in payload. | Low | Write close frame: opcode 0x8, payload = [status_hi, status_lo, ...reason_utf8]. |
+| Receive Close frame, respond with Close frame | RFC: endpoint MUST respond to Close with Close. After both, close TCP. | Med | State machine: track whether close has been sent/received. Must not send data frames after sending close. |
+| Standard close codes: 1000 (Normal), 1001 (Going Away), 1002 (Protocol Error), 1003 (Unsupported Data), 1007 (Invalid Payload), 1008 (Policy Violation), 1009 (Message Too Big), 1011 (Internal Error) | Applications need standardized error signaling. Codes 1005, 1006, 1015 are reserved (never sent on wire). | Low | Enum of close codes. Only codes 1000-1003, 1007-1011 are valid to send. |
+| Timeout on close handshake | If remote never responds to Close, TCP must be dropped after timeout (e.g., 5 seconds). | Low | Use existing `set_read_timeout` on TcpStream. Drop connection if Close response not received within timeout. |
 
-**Expected API surface:**
+**Depends on:** Frame parsing (feature 2)
 
-```snow
-fn transfer(pool, from_id, to_id, amount) -> Int!String do
-  let conn = Pool.checkout(pool)?
+### 5. Control Frames: Ping/Pong Heartbeat (RFC 6455 Section 5.5.2-3)
 
-  Db.transaction(conn, fn(tx) do
-    Pg.execute(tx, "UPDATE accounts SET balance = balance - $1 WHERE id = $2", [amount, from_id])?
-    Pg.execute(tx, "UPDATE accounts SET balance = balance + $1 WHERE id = $2", [amount, to_id])?
+Ping (0x9) and Pong (0xA) frames are the protocol-level keepalive mechanism. The server sends Ping; the client must respond with Pong containing the same payload. This detects dead connections that TCP alone may not notice for minutes or hours. Without heartbeat, idle connections silently die behind NATs, firewalls, and load balancers.
 
-    let rows = Pg.query(tx, "SELECT balance FROM accounts WHERE id = $1", [from_id])?
-    let balance = Map.get(List.head(rows), "balance")
-    case String.to_int(balance) do
-      Ok(b) when b >= 0 -> Ok(b)
-      _ -> Err("insufficient funds")
-    end
-  end)?
-
-  Pool.checkin(pool, conn)
-  Ok(0)
-end
-```
-
-**Implementation approach:**
-
-1. **Runtime function:** `snow_db_transaction(conn_handle, driver_tag, closure_fn, closure_env)` that:
-   - Sends `BEGIN` via the appropriate driver
-   - Calls the closure with the connection handle
-   - On Ok result: sends `COMMIT`, returns Ok
-   - On Err result: sends `ROLLBACK`, returns Err
-2. **Savepoint support (v3.0 stretch):** Track transaction depth on the connection. Depth 0 uses `BEGIN`/`COMMIT`/`ROLLBACK`. Depth 1+ uses `SAVEPOINT sp_N`/`RELEASE SAVEPOINT sp_N`/`ROLLBACK TO SAVEPOINT sp_N`.
-
-**What NOT to include:**
-- `Ecto.Multi`-style composable transaction builder -- too complex for v3.0
-- Distributed transactions / two-phase commit -- out of scope
-- Transaction isolation level configuration -- users can issue `SET TRANSACTION ISOLATION LEVEL` manually
-- Read-only transactions -- users issue `BEGIN READ ONLY` manually
-
-**Confidence:** HIGH -- transaction semantics are well-defined by SQL. The block-based pattern (closure + automatic BEGIN/COMMIT/ROLLBACK) is universal across Elixir, Django, Rails, and Spring. Snow's closure system supports this naturally.
-
-**Dependencies:** Existing Pg/Sqlite execute functions. Closure calling convention (fn_ptr + env_ptr). For pool integration, transaction operates on a checked-out connection.
-
----
-
-### 5. Struct-to-Row Mapping via `deriving(Db)`
-
-Currently, Snow database queries return `List<Map<String, String>>` -- all values as text. Users must manually extract fields and parse types:
-
-```snow
-let rows = Pg.query(conn, "SELECT name, age FROM users", [])?
-List.map(rows, fn(row) do
-  let name = Map.get(row, "name")
-  let age = String.to_int(Map.get(row, "age"))
-  # ... tedious, error-prone
-end)
-```
-
-Every modern framework automates this. Rust sqlx: `#[derive(FromRow)]`. Go: `db.StructScan`. Elixir Ecto: schema macros map columns to struct fields. Snow already has `deriving(Json)` that generates encode/decode from struct field metadata. `deriving(Db)` follows the exact same pattern: generate a `from_row` function that takes a `Map<String, String>` and returns a typed struct.
+**Confidence: HIGH** -- Every production WebSocket server implements ping/pong. Browsers automatically respond to Ping with Pong.
 
 | Feature | Why Expected | Complexity | Notes |
 |---------|--------------|------------|-------|
-| `deriving(Db)` generates `StructName.from_row(row)` | Automates `Map<String, String>` to struct conversion. Rust sqlx: `#[derive(FromRow)]`. | **Med-High** | Generate MIR function that extracts each field by name from the map, parses to correct type (String.to_int, String.to_float, etc.), constructs struct. Returns `Result<T, String>`. |
-| Automatic type coercion (String -> Int, String -> Float, etc.) | Database rows are text. Struct fields are typed. The mapping must bridge this. | Med | For each field: String field = direct use. Int field = `String.to_int`. Float field = `String.to_float`. Bool field = `"true"/"false"` comparison. |
-| Option field handling for NULL columns | Database columns can be NULL (represented as empty string `""` in current API). `Option<String>` field maps NULL to `None`. | Med | Empty string in map -> `None`. Non-empty -> `Some(parsed_value)`. Matches the existing NULL-as-empty-string convention. |
-| Error on missing or unparseable columns | If a column is missing or the text cannot parse to the expected type, return `Err` with a descriptive message. | Low | `"column 'age' not found"` or `"column 'age': expected integer, got 'abc'"`. |
-| Works with query results directly | `Db.query_as<User>(conn, sql, params)` that combines query + mapping. | Med | Convenience wrapper: query, then map each row through `User.from_row`. Returns `Result<List<User>, String>`. |
+| Server sends periodic Ping frames | Detects dead connections. Default interval: 30 seconds. | Med | Use `Timer.send_after` to schedule periodic ping messages to the connection actor. Actor sends Ping frame on timer tick. |
+| Receive Pong, validate payload matches sent Ping | RFC: Pong payload MUST echo Ping payload. Mismatch is a protocol violation. | Low | Compare Pong payload to last sent Ping payload. |
+| Close connection on missed Pongs | If N consecutive Pongs are missed, the connection is dead. Close with 1001 (Going Away). | Low | Counter in connection actor state. Reset on Pong receipt. Close when threshold exceeded (e.g., 2-3 missed). |
+| Receive unsolicited Ping from client, respond with Pong | RFC: endpoint MUST send Pong in response to Ping (unless Close already received). | Low | On receiving Ping frame, immediately write Pong frame with same payload. Max Ping/Pong payload: 125 bytes. |
+| Configurable ping interval and pong timeout | Different deployments need different intervals. Mobile needs shorter. Internal services can be longer. | Low | Configuration parameters: `ping_interval_ms` (default 30000), `pong_timeout_ms` (default 10000). |
 
-**Expected API surface:**
+**Depends on:** Frame parsing (feature 2), Timer.send_after (already exists)
 
-```snow
-struct User do
-  name :: String
-  age :: Int
-  email :: Option<String>
-end deriving(Db)
+### 6. Actor-per-Connection with Mailbox Integration
 
-fn main() do
-  let conn = Pg.connect("postgres://...")?
+Snow's defining feature is the actor-per-connection model. For WebSocket, this means each connected client gets its own lightweight actor (64 KiB stack, crash-isolated). Incoming WebSocket messages are delivered to the actor's mailbox as regular messages, unifying the programming model. The user writes a single `receive` loop that handles both WebSocket frames and actor-to-actor messages.
 
-  # Option A: Manual row mapping
-  let rows = Pg.query(conn, "SELECT name, age, email FROM users", [])?
-  let users = List.map(rows, fn(row) do
-    User.from_row(row)
-  end)
+**Confidence: HIGH** -- This directly mirrors how Phoenix Channels work on BEAM (each channel is a process with a mailbox). Snow's existing HTTP server already uses actor-per-connection.
 
-  # Option B: Query + map in one step (stretch goal)
-  # let users = Db.query_as(conn, User, "SELECT name, age, email FROM users", [])?
+| Feature | Why Expected | Complexity | Notes |
+|---------|--------------|------------|-------|
+| Each WS connection spawns a dedicated actor | Crash isolation: one bad connection can't take down others. State management: actor state persists for connection lifetime. | Med | Mirror existing `connection_handler_entry` pattern. After handshake, enter a read loop that pushes frames into the actor's own processing. |
+| WS messages delivered to actor mailbox | Unified receive: `receive do WsText(msg) -> ... end`. Same pattern as actor-to-actor messages. | Med | Read frame from socket, construct message with type tag, push to own mailbox or call handler directly. Key design decision: direct callback vs mailbox delivery. |
+| Actor can send WS frames back to its client | `Ws.send(conn, "hello")` writes a text frame to the connection's socket. | Med | Actor holds reference to its `HttpStream`. `Ws.send` writes a frame to the stream. Must handle concurrent write access (only the owning actor writes). |
+| Actor crash = clean WS close | If handler panics, connection closes with 1011 (Internal Error). | Low | Wrap handler in `catch_unwind` (already done for HTTP). On panic, send Close frame before dropping socket. |
+| Actor termination on WS disconnect | When client disconnects, the actor should exit. Linked actors get notified. | Low | Socket read returns EOF/error -> actor exits. Exit signal propagates via existing link mechanism. |
 
-  Pg.close(conn)
-end
-```
+**Depends on:** Existing actor runtime, existing `HttpStream`, existing `catch_unwind` pattern
 
-**Implementation approach:**
+### 7. Connection Lifecycle Callbacks
 
-Follows the `deriving(Json)` pattern exactly:
+Users need hooks into the WebSocket connection lifecycle: when a client connects, when it sends a message, and when it disconnects. This is the primary user-facing API. Phoenix has `join/3`, `handle_in/3`, `terminate/2`. Socket.IO has `on('connection')`, `on('message')`, `on('disconnect')`.
 
-1. **MIR lowering:** When `deriving(Db)` is seen on a struct, generate a synthetic function `Db__from_row__StructName(row: Map<String, String>) -> Result<StructName, String>`.
-2. **Field extraction:** For each field, call `Map.get(row, "field_name")` to get the text value.
-3. **Type coercion:** Based on the field's type:
-   - `String` -> use directly
-   - `Int` -> call `String.to_int`, propagate error
-   - `Float` -> call `String.to_float`, propagate error
-   - `Bool` -> compare with `"true"`/`"t"`/`"1"`
-   - `Option<T>` -> empty string becomes `None`, otherwise parse inner type and wrap in `Some`
-4. **Struct construction:** Build the struct from parsed fields.
-5. **Error handling:** Return `Err("column 'X': expected int, got 'Y'")` on parse failure.
+**Confidence: HIGH** -- Every WebSocket framework provides these callbacks. This is the table-stakes API surface.
 
-The `deriving(Db)` infrastructure reuses the field metadata extraction from `deriving(Json)`. The main difference is the source format (Map<String,String> instead of SnowJson) and the coercion logic (string parsing instead of JSON type checking).
+| Feature | Why Expected | Complexity | Notes |
+|---------|--------------|------------|-------|
+| `on_connect` callback: invoked when handshake completes | Authenticate users, initialize state, join rooms. Returning error rejects the connection. | Med | Called after 101 is sent. Receives connection handle + request headers (for auth tokens, cookies). Can return initial state. |
+| `on_message` callback: invoked on each text/binary frame | Core message handler. Receives the message payload and connection state. | Low | Dispatched per-frame after parsing. Provides message + current state, returns updated state. |
+| `on_close` callback: invoked when connection ends | Cleanup: leave rooms, persist state, log disconnection. | Low | Called before actor exits, whether close was clean or abnormal. Receives close code + reason. |
+| Pass request headers to `on_connect` | Authentication tokens, cookies, and subprotocol negotiation happen in the upgrade request. | Low | Existing `ParsedRequest` already captures headers. Pass them to `on_connect` callback. |
 
-**What NOT to include:**
-- Column renaming attributes (`@column("user_name")`) -- requires annotation syntax
-- Nested struct hydration from JOINs -- complex, defer
-- Custom type converters -- fixed mapping for v3.0
-- Automatic query generation from struct fields -- users write SQL
-- Row-to-struct for INSERT (reverse mapping) -- write operations use manual params
+**Depends on:** Upgrade handshake (feature 1), actor lifecycle (feature 6)
 
-**Confidence:** HIGH -- this follows the proven `deriving(Json)` pattern. The MIR lowering infrastructure is established. The main complexity is type coercion from strings, which is straightforward with existing `String.to_int`/`String.to_float`.
+### 8. Ws.serve / Ws.serve_tls Entry Points
 
-**Dependencies:** Existing deriving infrastructure, existing Map operations (`Map.get`), existing `String.to_int`/`String.to_float`, existing struct constructor codegen.
+Separate server entry points for WebSocket (not mixed with HTTP router). This follows the same pattern as the existing `Http.serve(router, port)` / `Http.serve_tls(router, port, cert, key)` but for WebSocket-specific handler configuration.
+
+**Confidence: HIGH** -- This mirrors Snow's existing API pattern.
+
+| Feature | Why Expected | Complexity | Notes |
+|---------|--------------|------------|-------|
+| `Ws.serve(handler, port)` starts a plaintext WS server | Basic entry point. Accepts TCP connections, performs upgrade, dispatches to handler actors. | Med | New accept loop similar to `snow_http_serve`. Calls upgrade handshake, then enters WS frame loop. |
+| `Ws.serve_tls(handler, port, cert, key)` starts a WSS server | Production deployments require encryption (wss://). | Low | Mirror `snow_http_serve_tls` pattern: load certs, wrap in `HttpStream::Tls`, same handshake+frame logic. |
+| Handler configuration struct | Bundle `on_connect`, `on_message`, `on_close` callbacks into a single configuration. | Low | Snow struct or builder pattern: `Ws.handler(on_connect, on_message, on_close)`. |
+
+**Depends on:** Existing TLS infrastructure, handshake (feature 1), callbacks (feature 7)
 
 ---
 
 ## Differentiators
 
-Features that set Snow apart. Not expected but valued -- these make Snow feel polished and intentional for production backends.
+Features that set Snow's WebSocket apart from minimal implementations. Not expected from a basic WS library, but valued for real applications.
+
+### 9. Rooms/Channels with Join/Leave/Broadcast
+
+A room/channel system lets connections subscribe to named groups and receive broadcasted messages. This is what makes WebSocket useful for chat, notifications, live dashboards, multiplayer games, and collaborative editing. Without rooms, users must manually maintain subscriber lists -- tedious and error-prone.
+
+Phoenix calls these "topics" (e.g., `"chat:lobby"`). Socket.IO calls them "rooms." The underlying mechanism is identical: a registry mapping room names to sets of connection PIDs.
+
+**Confidence: HIGH** -- The pattern is well-established across Phoenix Channels, Socket.IO, and ActionCable. Snow's existing actor registry provides the foundation.
 
 | Feature | Value Proposition | Complexity | Notes |
 |---------|-------------------|------------|-------|
-| Actor-based pool with supervision | Pool manager actor is supervised. If it crashes, supervisor restarts it and connections are re-established. Leverages Snow's existing supervision trees. No other non-BEAM language gets this for free. | Med | Pool actor is a child spec under a supervisor. Crash -> restart -> re-create connections. |
-| `Pool.transaction(pool, fn(conn) -> ... end)` | Combines checkout + transaction + checkin in one call. The most ergonomic pattern. Elixir: `Repo.transaction`. | Low | Wraps: checkout -> begin -> call closure -> commit/rollback -> checkin. |
-| `deriving(Db, Json)` on same struct | One struct definition, two auto-generated mapping layers. Parse from DB row AND serialize to JSON response. Eliminates boilerplate for the most common web API pattern. | Low | Both derives are independent. `deriving(Db, Json)` just generates both sets of functions. |
-| Health-checked pool connections | Pool validates connections before handing them out. Dead connections are silently replaced. Users never see stale connection errors. | Med | `SELECT 1` ping before checkout. On failure, discard and create new. |
-| Connection URL parsing for both drivers | `Pool.start(%{url: "postgres://..."})` and `Pool.start(%{url: "sqlite:///path/to/db.sqlite"})`. Unified config format. | Low | Parse URL scheme to determine driver. Already parsing PG URLs. |
-| Transaction + Pool integration | `Pool.transaction` ensures the connection is returned to the pool even if the transaction fails. No connection leak possible. | Med | Finally-style cleanup: checkin happens in all paths (success, error, panic). |
-| `sslmode=prefer` for PostgreSQL | Try TLS first, fall back to plaintext if server declines. Best of both worlds for flexible deployments. | Low | Send SSLRequest. On `N`, proceed with plaintext StartupMessage. On `S`, upgrade to TLS. |
+| `Ws.join(conn, room_name)` subscribes connection to a room | Connections can participate in named groups without manual PID tracking. | Med | Global room registry: `RwLock<HashMap<String, HashSet<ProcessId>>>`. Join adds PID to set. |
+| `Ws.leave(conn, room_name)` unsubscribes connection | Explicit unsubscribe for switching rooms or scoping messages. | Low | Remove PID from room set. |
+| `Ws.broadcast(room_name, message)` sends to all room members | The core value: one call reaches all subscribers. No manual iteration. | Med | Look up PIDs in room set, send WS frame to each. Must handle dead connections (PID no longer valid) gracefully. |
+| `Ws.broadcast_except(room_name, message, except_conn)` sends to all except sender | Chat pattern: sender doesn't need to receive their own message. | Low | Same as broadcast but skip the `except_conn` PID. |
+| Auto-leave on disconnect | When connection actor exits, automatically remove from all rooms. | Med | Hook into actor exit cleanup (like `cleanup_process` in registry). Room registry tracks PID->rooms reverse index for efficient cleanup. |
+| Room authorization in `on_connect` or `join` | Not all connections should access all rooms. | Low | `Ws.join` can return `Result<(), String>`. Application logic in callback decides. |
+
+**Depends on:** Actor registry pattern (exists), connection lifecycle (feature 6)
+
+### 10. Message Fragmentation (RFC 6455 Section 5.4)
+
+Large messages can be split across multiple frames using continuation frames (opcode 0x0). The first frame has the data type opcode (text/binary) with FIN=0. Subsequent frames have opcode 0x0 with FIN=0. The final frame has opcode 0x0 with FIN=1. Control frames (ping/pong/close) can be interleaved between fragments.
+
+**Confidence: HIGH** -- RFC 6455 specifies this precisely. Most clients don't fragment small messages, but large file transfers or streaming data will use fragmentation.
+
+| Feature | Value Proposition | Complexity | Notes |
+|---------|-------------------|------------|-------|
+| Reassemble fragmented messages | Clients may split large messages. Server must reconstruct the full message before delivering to handler. | Med | Buffer continuation frames, concatenate on FIN=1. Track "currently fragmented" state. Only one message can be fragmented at a time. |
+| Handle interleaved control frames during fragmentation | RFC allows ping/pong/close between fragments. Must not disrupt reassembly. | Med | Process control frames immediately even mid-fragment. Resume fragment reassembly after control frame handling. |
+| Server-side fragmentation for large outgoing messages | Send large messages without buffering entire payload. | Low | Optional: chunk outgoing messages into continuation frames if payload exceeds threshold. Most implementations send complete frames. |
+
+**Depends on:** Frame parsing (feature 2)
+
+### 11. Subprotocol Negotiation (RFC 6455 Section 4.2.2)
+
+The `Sec-WebSocket-Protocol` header allows client and server to agree on an application-level protocol (e.g., `graphql-ws`, `mqtt`, `stomp`). The client lists supported protocols; the server picks one. This enables protocol versioning and multi-protocol servers.
+
+**Confidence: HIGH** -- Well-defined in RFC 6455. Important for GraphQL subscriptions, MQTT-over-WS, and protocol evolution.
+
+| Feature | Value Proposition | Complexity | Notes |
+|---------|-------------------|------------|-------|
+| Parse `Sec-WebSocket-Protocol` from upgrade request | Read client's preferred subprotocol list from headers. | Low | Split comma-separated header value. Already have header access in `ParsedRequest`. |
+| Server selects subprotocol and includes in 101 response | Server picks the first mutually supported protocol. | Low | Match against configured supported protocols. Include selected protocol in response `Sec-WebSocket-Protocol` header. |
+| Pass selected subprotocol to `on_connect` callback | Application logic may behave differently based on negotiated protocol. | Low | String field in connection info passed to callback. |
+| Reject if no common subprotocol | If client requires a subprotocol the server doesn't support, reject with 400. | Low | Return HTTP 400 instead of 101 if no match and client specified protocols. |
+
+**Depends on:** Upgrade handshake (feature 1)
+
+### 12. Configurable Connection Limits and Backpressure
+
+Production deployments need to limit concurrent connections and handle slow consumers. Without limits, a server can be overwhelmed by connection storms. Without backpressure, fast producers can exhaust memory on slow consumers.
+
+**Confidence: MEDIUM** -- The pattern is well-understood, but Snow's actor scheduler already provides natural backpressure through mailbox depth and reduction-based preemption.
+
+| Feature | Value Proposition | Complexity | Notes |
+|---------|-------------------|------------|-------|
+| Max concurrent connections limit | Prevent resource exhaustion. Reject new connections with 503 when at capacity. | Low | Atomic counter in accept loop. Increment on accept, decrement on close. |
+| Per-connection send buffer limit | If client can't keep up, buffer fills. Close connection rather than OOM. | Med | Track outgoing buffer size per actor. Close with 1008 (Policy Violation) if threshold exceeded. |
+| Connection rate limiting | Prevent connection storms from overwhelming the server. | Low | Simple token-bucket or fixed-window counter in accept loop. |
+
+**Depends on:** Accept loop (feature 8), actor lifecycle (feature 6)
 
 ---
 
 ## Anti-Features
 
-Features to explicitly NOT build in this milestone.
+Features to explicitly NOT build in this milestone. Adding these would increase complexity without proportional value, or they conflict with Snow's design philosophy.
 
-| Anti-Feature | Why Avoid | What to Do Instead |
-|--------------|-----------|-------------------|
-| ORM / Query builder DSL | Massive scope, controversial (Go/Rust prefer raw SQL), Snow's type system not ready for type-safe query builder. | Raw SQL with parameterized queries. `deriving(Db)` maps results to structs. Users write SQL. |
-| Automatic migration framework | Schema versioning, up/down migrations, tracking table. Large feature. | Users call `execute("CREATE TABLE IF NOT EXISTS ...")` or use external tools. |
-| Connection pool per-query timeout | Complex (requires canceling in-flight queries on the wire). | Users handle timeouts at the application level or set PostgreSQL `statement_timeout`. |
-| Read/write splitting | Multiple pools with routing logic. | Single pool per database. Users create separate pools if needed. |
-| Async/non-blocking database I/O | Would require changing the blocking I/O model that works correctly. | Blocking I/O in actor context. M:N scheduler runs other actors. Same model as HTTP. |
-| Compile-time SQL validation | Requires connecting to a database during compilation (like Rust sqlx). | Runtime query validation only. SQL errors return `Err`. |
-| PgBouncer-style external pooler | External process management, configuration files, deployment complexity. | Built-in application-level pool is sufficient. |
-| WebSocket / HTTP/2 support | Different protocols, not related to production backend data layer. | Keep HTTP/1.1 request/response. |
-| Distributed transactions / 2PC | Cross-database consistency is a specialized concern. | Single-database transactions only. |
-| Custom serializer per DB column | Requires annotation/attribute system Snow does not have. | Fixed type mappings: String, Int, Float, Bool, Option. |
-| Row-to-struct for INSERT (reverse mapping) | Auto-generating INSERT SQL from struct fields requires schema awareness the runtime does not have. | Users write INSERT SQL with manual parameter lists. |
-| Connection pool rebalancing / warm-up | Dynamic resizing and connection pre-warming add complexity. | Static min/max pool size. Lazy connection creation. |
-| Nested struct hydration from JOINs | Mapping JOIN results to nested struct hierarchies (User with Address) requires understanding SQL result shape at compile time. | Flat struct mapping only. Users query and construct nested structs manually. |
+### 1. Per-Message Deflate Compression (RFC 7692)
+
+**Why Avoid:** Enormous implementation complexity for marginal benefit. Adds ~300KB memory overhead per connection. Requires negotiation of 4 parameters (`server_no_context_takeover`, `client_no_context_takeover`, `server_max_window_bits`, `client_max_window_bits`), context management across frames, integration with message fragmentation, and zlib/deflate dependency. Most WebSocket traffic is small JSON messages where compression overhead exceeds savings.
+
+**What to Do Instead:** Defer to a future milestone. Users who need compression can compress at the application level (e.g., gzip the JSON payload before sending as a binary frame). The extension negotiation hook can be stubbed (ignore `Sec-WebSocket-Extensions` header) without breaking clients -- they simply proceed uncompressed.
+
+### 2. WebSocket Extensions Framework (RFC 6455 Section 9)
+
+**Why Avoid:** The only widely-used extension is permessage-deflate (anti-feature 1 above). Building a generic extensions framework for a single extension is over-engineering. Extensions modify frame-level behavior (RSV bits, payload transformation) which significantly complicates the frame parser.
+
+**What to Do Instead:** Ignore `Sec-WebSocket-Extensions` header. Clients handle this gracefully -- they simply don't use extensions.
+
+### 3. HTTP/WebSocket Dual-Protocol on Same Port
+
+**Why Avoid:** Snow's design uses separate `Http.serve` and `Ws.serve` entry points. Mixing protocols on one port requires discriminating upgrade requests from normal HTTP at the routing level, adds complexity to the request pipeline, and blurs the architectural boundary. The HTTP middleware chain doesn't apply to WebSocket connections.
+
+**What to Do Instead:** Keep servers separate. Users who need both run `Http.serve` on one port and `Ws.serve` on another. This is clean, debuggable, and follows the principle of separation of concerns. A future milestone could add a combined server if demand warrants it.
+
+### 4. Client-Side WebSocket Library
+
+**Why Avoid:** Snow is a server-side language. Building a WebSocket client means implementing masking (client MUST mask frames), reconnection logic, exponential backoff, and a fundamentally different connection lifecycle. The use case (Snow connecting to external WS services) is niche compared to serving WS connections.
+
+**What to Do Instead:** Focus on the server. If Snow programs need to consume WebSocket APIs, they can use the existing HTTP client for REST alternatives, or a future milestone can add WS client support.
+
+### 5. WebTransport / HTTP/3 Support
+
+**Why Avoid:** WebTransport over HTTP/3 (RFC 9220) has no production browser implementations as of 2025. Chrome reached "Intent to Prototype" stage; Firefox has no announced implementation. The protocol requires QUIC (UDP-based), which is fundamentally different from Snow's TCP-based actor-per-connection model.
+
+**What to Do Instead:** Build on the stable, universal WebSocket protocol (RFC 6455 over TCP). WebTransport can be evaluated in 2-3 years when browser support matures.
+
+### 6. Automatic JSON Deserialization in WS Handlers
+
+**Why Avoid:** Coupling JSON parsing to the WebSocket frame layer conflates protocol concerns. Text frames can carry any format (XML, YAML, custom protocols). Binary frames are inherently format-agnostic.
+
+**What to Do Instead:** Users call `Json.parse(msg)` or `Struct.from_json(msg)` explicitly in their `on_message` callback. This is one extra line and keeps the WS layer protocol-agnostic. Snow's existing `deriving(Json)` makes this trivial.
 
 ---
 
 ## Feature Dependencies
 
 ```
-Connection Pooling
-  +-- Existing actor runtime (spawn, send, receive, register)
-  +-- Existing Pg.connect / Sqlite.open (connection creation)
-  +-- Existing Timer.send_after (idle timeout checks)
-  +-- NEW: Pool.start, Pool.checkout, Pool.checkin, Pool.query, Pool.execute
-  |
-  v
-TLS for PostgreSQL
-  +-- Existing PgConn with TcpStream
-  +-- Existing URL parsing in pg.rs
-  +-- NEW: rustls dependency
-  +-- NEW: PgStream enum (Plain | Tls)
-  +-- NEW: SSLRequest handshake in snow_pg_connect
-  +-- NEW: sslmode URL parameter parsing
-  |   (INDEPENDENT of pooling -- works on raw connections)
-  |
-  v
-TLS for HTTPS
-  +-- Existing tiny_http server infrastructure
-  +-- NEW: tiny_http ssl-rustls feature flag
-  +-- NEW: snow_http_serve_tls runtime function
-  +-- NEW: PEM file loading
-  |   (INDEPENDENT of DB features)
-  |
-  v
-Database Transactions
-  +-- Existing Pg.execute / Sqlite.execute (for BEGIN/COMMIT/ROLLBACK)
-  +-- Existing closure calling convention (fn_ptr + env_ptr)
-  +-- DEPENDS ON: Connection pooling (transactions operate on checked-out connections)
-  +-- NEW: Db.transaction runtime function
-  +-- NEW: Transaction depth tracking for savepoints (stretch)
-  |
-  v
-Struct-to-Row Mapping (deriving(Db))
-  +-- Existing deriving infrastructure (MIR lowering)
-  +-- Existing Map.get, String.to_int, String.to_float
-  +-- Existing struct constructor codegen
-  +-- INDEPENDENT of pooling and TLS (works on raw query results)
-  +-- NEW: Db__from_row__StructName synthetic MIR function
+Feature 1: Upgrade Handshake
+    |
+    +---> Feature 2: Frame Parsing
+    |         |
+    |         +---> Feature 3: Text/Binary Frames
+    |         +---> Feature 4: Close Handshake
+    |         +---> Feature 5: Ping/Pong Heartbeat
+    |         +---> Feature 10: Message Fragmentation
+    |
+    +---> Feature 7: Lifecycle Callbacks
+    |         |
+    |         +---> Feature 6: Actor-per-Connection (parallel with 2)
+    |
+    +---> Feature 11: Subprotocol Negotiation
+
+Feature 6: Actor-per-Connection
+    |
+    +---> Feature 9: Rooms/Channels (needs connection PIDs)
+    +---> Feature 12: Connection Limits
+
+Feature 8: Ws.serve Entry Points (depends on 1 + 2 + 6 + 7)
 ```
 
-**Critical dependency chain:** Pooling -> Transactions (transactions use checked-out connections from pool)
-**Can parallelize:** TLS (PG) + TLS (HTTPS) + deriving(Db) are all independent of each other
-**Foundation:** Connection pooling is foundational -- transactions and higher-level APIs build on it
+**Critical path:** Handshake -> Frame Parsing -> Actor Integration -> Callbacks -> Ws.serve
+
+**Parallelizable:** Ping/Pong and Close can be developed alongside text/binary frames once frame parsing exists. Rooms can be developed once actor-per-connection works. Subprotocol negotiation is independent of frame parsing.
 
 ---
 
 ## MVP Recommendation
 
-### Build order rationale:
+**Phase 1 (Protocol Core):** Build the foundation that everything else depends on.
 
-**1. TLS for PostgreSQL connections** -- Hard blocker for production. Cannot connect to cloud databases without it. Scoped change to `pg.rs` (add SSLRequest + rustls wrapping). Does not affect other features. Unblocks all real-world PostgreSQL usage.
+Prioritize:
+1. **Upgrade Handshake** (feature 1) -- without this, nothing works
+2. **Frame Parsing/Writing** (feature 2) -- the wire protocol
+3. **Text/Binary Frames** (feature 3) -- the data-carrying frames
+4. **Close Handshake** (feature 4) -- clean connection lifecycle
+5. **Actor-per-Connection** (feature 6) -- Snow's core model
 
-**2. TLS for HTTPS server** -- Second production blocker. Enable `ssl-rustls` on `tiny_http`, add `serve_tls` function. Small, self-contained change. Shares `rustls` dependency with PG TLS.
+These 5 features constitute a minimal but functional WebSocket server.
 
-**3. Connection pooling** -- Foundational for production workloads. Enables sharing connections across concurrent request handlers. Actor-based design leverages Snow's strengths. Required before transactions make ergonomic sense (transactions need a connection to operate on, and pooling is how connections are managed in production).
+**Phase 2 (Production Features):** Make it usable for real applications.
 
-**4. Database transactions** -- Builds on pooling. Block-based `Db.transaction(conn, fn)` with automatic BEGIN/COMMIT/ROLLBACK. Essential for data consistency. Nested savepoints as stretch goal.
+Prioritize:
+6. **Lifecycle Callbacks** (feature 7) -- the user-facing API
+7. **Ws.serve / Ws.serve_tls** (feature 8) -- the entry points
+8. **Ping/Pong Heartbeat** (feature 5) -- production keepalive
+9. **Message Fragmentation** (feature 10) -- protocol compliance
 
-**5. Struct-to-row mapping (deriving(Db))** -- Quality-of-life improvement. Follows proven `deriving(Json)` pattern. Can be built independently at any point but is most valuable after the data pipeline (pool + transactions) is solid.
+**Phase 3 (Application Layer):** Higher-level features for real-world patterns.
 
-### Prioritize:
-1. PostgreSQL TLS -- production database connectivity
-2. HTTPS server -- production HTTP serving
-3. Connection pooling -- production concurrency
-4. Database transactions -- production data integrity
-5. Struct-to-row mapping -- developer ergonomics
+Prioritize:
+10. **Rooms/Channels** (feature 9) -- the multiplayer/chat/notification pattern
+11. **Subprotocol Negotiation** (feature 11) -- protocol versioning
+12. **Connection Limits** (feature 12) -- production safety
 
-### Defer:
-- **Savepoint-based nested transactions**: Ship flat transactions first, add nesting later
-- **Custom CA certificate paths**: Use system certs and `webpki-roots` initially
-- **Dynamic pool resizing**: Static min/max is fine
-- **Column renaming in deriving(Db)**: Requires attribute syntax
-- **Per-route pool affinity**: Single pool per database is sufficient
-- **Ecto.Multi-style composable transactions**: Too complex for v3.0
-
----
-
-## Complexity Assessment
-
-| Feature | Estimated Effort | Risk | Notes |
-|---------|-----------------|------|-------|
-| PostgreSQL TLS | 3-5 days | **MEDIUM** | Core challenge: abstracting PgConn's stream type to support both plain and TLS. SSLRequest protocol is simple. Rustls integration is well-documented. Risk: ensuring Read/Write trait works identically for both stream types. |
-| HTTPS server | 1-2 days | LOW | `tiny_http` has built-in support. Enable feature flag, add `serve_tls` function, load PEM files. Minimal risk. |
-| Connection pooling | 5-8 days | **HIGH** | Most complex feature. Actor-based pool with checkout/checkin, health validation, idle timeout, exhaustion handling. Risk: subtle concurrency bugs in pool state management, connection leak paths, cleanup on actor crash. |
-| Database transactions | 3-4 days | MEDIUM | Straightforward BEGIN/COMMIT/ROLLBACK wrapping. Risk: ensuring ROLLBACK on all error/panic paths. Savepoint nesting adds complexity if included. |
-| Struct-to-row mapping | 3-5 days | MEDIUM | Follows `deriving(Json)` pattern but with string-to-type coercion. Risk: handling all type combinations correctly (Int, Float, Bool, String, Option variants). |
-
-**Total estimated effort:** 15-24 days
-
-**Key risks:**
-1. **Connection pool concurrency.** Multiple actors checking out/in simultaneously. The pool actor must handle messages atomically. Risk of deadlock if a transaction holds a connection and the same actor tries to check out another.
-2. **TLS stream abstraction.** The `PgStream` enum must implement `Read + Write` identically to `TcpStream`. All existing wire protocol code (read_message, write_* functions) uses these traits. Must verify no code path assumes direct TcpStream access.
-3. **Transaction cleanup on panic.** If a Snow actor panics inside a `Db.transaction` closure, the ROLLBACK must still execute. The existing `catch_unwind` in actor-per-connection HTTP handlers provides a pattern, but transactions add a nested cleanup requirement.
-4. **Pool connection leak.** If a checked-out connection is never returned (actor crashes without checkin), the pool must reclaim it. Elixir handles this via ETS heir mechanism. Snow needs an equivalent -- possibly monitoring the caller actor's lifecycle.
+Defer:
+- **Per-message deflate** (anti-feature 1): high complexity, low value for v1
+- **Dual-protocol server** (anti-feature 3): clean separation is better for now
+- **WS client** (anti-feature 4): server-only focus
 
 ---
 
 ## Sources
 
-### Connection Pooling
-- [Elixir db_connection source (connection_pool.ex)](https://github.com/elixir-ecto/db_connection/blob/master/lib/db_connection/connection_pool.ex) -- HIGH confidence
-- [Elixir db_connection Ownership model](https://hexdocs.pm/db_connection/DBConnection.Ownership.html) -- HIGH confidence
-- [Poolboy (Erlang worker pool)](https://github.com/devinus/poolboy) -- HIGH confidence
-- [HikariCP best practices](https://www.baeldung.com/spring-boot-hikari) -- MEDIUM confidence
-- [SQLAlchemy connection pooling docs](https://docs.sqlalchemy.org/en/20/core/pooling.html) -- HIGH confidence
-- [Stack Overflow: connection pooling overview](https://stackoverflow.blog/2020/10/14/improve-database-performance-with-connection-pooling/) -- MEDIUM confidence
-
-### TLS/SSL
-- [PostgreSQL wire protocol - Message Flow (SSLRequest)](https://www.postgresql.org/docs/current/protocol-flow.html) -- HIGH confidence
-- [PostgreSQL wire protocol - Message Formats (SSLRequest bytes)](https://www.postgresql.org/docs/current/protocol-message-formats.html) -- HIGH confidence
-- [jackc/pgproto3 SSLRequest Go implementation](https://github.com/jackc/pgproto3/blob/master/ssl_request.go) -- HIGH confidence
-- [tiny_http SSL example](https://github.com/tiny-http/tiny-http/blob/master/examples/ssl.rs) -- HIGH confidence
-- [tiny_http SslConfig docs](https://docs.rs/tiny_http/latest/tiny_http/struct.SslConfig.html) -- HIGH confidence
-- [rustls GitHub (StreamOwned pattern)](https://github.com/rustls/rustls) -- HIGH confidence
-
-### Database Transactions
-- [Elixir Ecto transaction guide (Curiosum)](https://www.curiosum.com/blog/elixir-ecto-database-transactions) -- MEDIUM confidence
-- [Ecto.Repo.transaction nesting behavior](https://medium.com/@takanori.ishikawa/ecto-repo-transaction-3-can-be-nested-82b83545dfb0) -- MEDIUM confidence
-- [Django atomic() transactions](https://docs.djangoproject.com/en/5.2/topics/db/transactions/) -- HIGH confidence
-- [EF Core transactions (savepoints)](https://learn.microsoft.com/en-us/ef/core/saving/transactions) -- HIGH confidence
-- [CockroachDB SAVEPOINT docs](https://www.cockroachlabs.com/docs/stable/savepoint) -- HIGH confidence
-
-### Struct-to-Row Mapping
-- [sqlx FromRow derive macro](https://docs.rs/sqlx/latest/sqlx/trait.FromRow.html) -- HIGH confidence
-- [SQLBoiler (Go code generation ORM)](https://github.com/aarondl/sqlboiler) -- MEDIUM confidence
-- [Rust ORM comparison: SQLx vs Diesel](https://infobytes.guru/articles/rust-orm-comparison-sqlx-diesel.html) -- MEDIUM confidence
-- [Raw+DC pattern (2026)](https://mkennedy.codes/posts/raw-dc-the-orm-pattern-of-2026/) -- LOW confidence
-
-### Snow Codebase (direct inspection)
-- `crates/snow-rt/src/db/pg.rs` -- PgConn with TcpStream, wire protocol, SCRAM-SHA-256 auth
-- `crates/snow-rt/src/db/sqlite.rs` -- SqliteConn with sqlite3 FFI, parameterized queries
-- `crates/snow-rt/src/http/server.rs` -- actor-per-connection HTTP with tiny_http, middleware chain
-- `crates/snow-rt/src/actor/service.rs` -- snow_service_call for synchronous request/reply
-- `crates/snow-rt/src/actor/mod.rs` -- scheduler, spawn, registry infrastructure
-- `crates/snow-rt/src/json.rs` -- SnowJson runtime type, deriving(Json) runtime support
-- `crates/snow-rt/Cargo.toml` -- current dependencies (tiny_http 0.12, rustls not yet present)
-- `tests/e2e/stdlib_pg.snow` -- existing PostgreSQL E2E test showing current API
-- `tests/e2e/stdlib_sqlite.snow` -- existing SQLite E2E test showing current API
-- `tests/e2e/deriving_json_basic.snow` -- existing deriving(Json) pattern to follow
-
----
-*Feature research for: Snow Language v3.0 Production Backend*
-*Researched: 2026-02-12*
+- [RFC 6455: The WebSocket Protocol](https://datatracker.ietf.org/doc/html/rfc6455) -- Definitive protocol specification
+- [RFC 7692: Compression Extensions for WebSocket](https://datatracker.ietf.org/doc/html/rfc7692) -- Per-message deflate extension (deferred)
+- [MDN: Writing WebSocket servers](https://developer.mozilla.org/en-US/docs/Web/API/WebSockets_API/Writing_WebSocket_servers) -- Implementation guide
+- [MDN: Sec-WebSocket-Accept](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Sec-WebSocket-Accept) -- Handshake header details
+- [WebSocket.org: Close Codes Reference](https://websocket.org/reference/close-codes/) -- Complete close code table
+- [websockets (Python) Keepalive docs](https://websockets.readthedocs.io/en/stable/topics/keepalive.html) -- Ping/pong best practices
+- [Phoenix Channels documentation](https://hexdocs.pm/phoenix/channels.html) -- Rooms/topics pattern reference
+- [Socket.IO Rooms documentation](https://socket.io/docs/v3/rooms/) -- Rooms pattern reference
+- [WebSock (Elixir)](https://github.com/phoenixframework/websock) -- Actor-per-WebSocket specification
+- [OpenMyMind: WebSocket Framing](https://www.openmymind.net/WebSocket-Framing-Masking-Fragmentation-and-More/) -- Frame format deep dive
+- [VideoSDK: Ping Pong Frame WebSocket](https://www.videosdk.live/developer-hub/websocket/ping-pong-frame-websocket) -- Heartbeat implementation guide
+- [OneUptime: WebSocket Heartbeat](https://oneuptime.com/blog/post/2026-01-24-websocket-heartbeat-ping-pong/view) -- Production heartbeat configuration
+- [Ably: WebSocket Architecture Best Practices](https://ably.com/topic/websocket-architecture-best-practices) -- Scalability patterns
+- Snow source: `crates/snow-rt/src/http/server.rs` -- Existing HTTP server with actor-per-connection pattern
+- Snow source: `crates/snow-rt/src/actor/mod.rs` -- Actor runtime with send/receive/mailbox
+- Snow source: `crates/snow-rt/src/actor/registry.rs` -- Named process registry (foundation for rooms)

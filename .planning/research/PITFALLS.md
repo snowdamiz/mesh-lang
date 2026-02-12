@@ -1,636 +1,608 @@
-# Domain Pitfalls: Connection Pooling, TLS/SSL, Transactions, and Struct-to-Row Mapping
+# Domain Pitfalls: WebSocket Support in Actor-Based Runtime
 
-**Domain:** Adding production backend features (connection pooling, TLS/SSL, database transactions, struct-to-row mapping) to an actor-based compiled language with cooperative scheduling, per-actor GC, and opaque u64 connection handles
+**Domain:** Adding WebSocket support (RFC 6455) to an actor-based compiled language with cooperative scheduling, per-actor GC, hand-rolled HTTP/1.1 parser, and TLS via rustls 0.23
 **Researched:** 2026-02-12
-**Confidence:** HIGH (based on direct Snow codebase analysis of pg.rs, sqlite.rs, scheduler.rs, heap.rs, stack.rs, server.rs, gc.rs, actor/mod.rs; PostgreSQL wire protocol documentation; TLS library comparison research; Erlang/BEAM transaction patterns; connection pooling literature)
+**Confidence:** HIGH (based on direct Snow codebase analysis of server.rs, scheduler.rs, mailbox.rs, actor/mod.rs, process.rs, stack.rs; RFC 6455 specification; real-world WebSocket implementation bugs from ws, tungstenite, Bun, aiohttp, Jetty, actix-web; actor-WebSocket integration patterns from Akka, Play Framework, actix)
 
-**Scope:** This document covers pitfalls specific to adding 4 production features to the existing Snow runtime. Each pitfall is analyzed against Snow's current architecture: corosensei coroutines (!Send, thread-pinned) on M:N work-stealing scheduler, per-actor mark-sweep GC with conservative stack scanning, opaque u64 connection handles via Box::into_raw, extern "C" runtime ABI, deriving infrastructure for code generation, and the existing PgConn/SqliteConn wrapper pattern.
+**Scope:** This document covers pitfalls specific to adding WebSocket support to the existing Snow runtime. Each pitfall is analyzed against Snow's current architecture: corosensei coroutines (!Send, thread-pinned) on M:N work-stealing scheduler with reduction-based cooperative preemption, per-actor mark-sweep GC with conservative stack scanning, hand-rolled HTTP/1.1 parser (server.rs parse_request/write_response), HttpStream enum (Plain/Tls) wrapping TcpStream or StreamOwned<ServerConnection, TcpStream>, actor-per-connection model with 64 KiB stacks, Connection: close header (no keep-alive), and FIFO mailbox with MessageBuffer (type_tag + data).
 
-**Relationship to prior research:** The v2.0 PITFALLS.md (2026-02-10) covered foundational pitfalls for SQLite FFI, PostgreSQL wire protocol basics, deriving(Json), and HTTP features. This document covers SUBSEQUENT milestone pitfalls that arise when adding production-grade features ON TOP of the v2.0 foundation. There is intentional minimal overlap; references to v2.0 pitfalls are noted where relevant.
+**Relationship to prior research:** The v3.0 PITFALLS.md (2026-02-12) covered connection pooling, TLS handshake blocking, and database transaction pitfalls. This document covers WebSocket-specific pitfalls that arise when extending the HTTP layer to support long-lived bidirectional connections. TLS handshake blocking (v3.0 Pitfall 2) applies to WSS connections but is not re-covered; references are noted where relevant.
 
 ---
 
 ## Critical Pitfalls
 
-Mistakes that cause data corruption, resource exhaustion, deadlocks, or require architectural rewrites.
+Mistakes that cause protocol violations, connection leaks, scheduler deadlocks, or require architectural rewrites.
 
 ---
 
-### Pitfall 1: Connection Pool Checkout Blocks Worker Thread, Causing Cascading Starvation
+### Pitfall 1: HTTP Upgrade Handshake Fails Because Current Parser Consumes and Discards the Connection
 
 **What goes wrong:**
-Snow's M:N scheduler uses corosensei coroutines that are `!Send` and thread-pinned (scheduler.rs line 9: "yielded coroutines stay in the worker's local suspended list and are resumed on the same thread"). When a connection pool has no available connections, the requesting actor must wait. If this wait is implemented as a blocking spin-loop or mutex wait, the entire OS worker thread blocks. Every other actor pinned to that worker thread -- including actors that HOLD pool connections and are trying to return them -- cannot make progress. This creates a deadlock: actor A waits for a connection, blocking the thread where actor B (which holds a connection and needs to run to return it) is suspended.
+The current `connection_handler_entry` (server.rs lines 374-398) follows a strict request-response-done lifecycle: parse one request, call one handler, write one response, then the actor exits and the stream is dropped. The function signature and control flow assume a single exchange. There is no mechanism for the handler to say "this connection should be upgraded to WebSocket -- keep it alive and give me the stream." After `process_request` returns, the handler has no access to the underlying `HttpStream`. The stream is a local variable inside `connection_handler_entry` and is dropped when the actor function returns.
 
-With N worker threads and a pool of M connections where M < N, only M worker threads can have active connections. If all M connections are held by actors on different worker threads, and those actors yield (e.g., waiting for a DB response), the remaining N-M workers are fine. But if multiple actors on the SAME worker thread request connections, and the pool is exhausted, the thread deadlocks because the actor holding the connection on that thread cannot be resumed.
+For WebSocket upgrade, the server must: (1) parse the HTTP upgrade request, (2) validate the Upgrade, Connection, Sec-WebSocket-Key, and Sec-WebSocket-Version headers, (3) compute and send the 101 Switching Protocols response with `Sec-WebSocket-Accept`, and then (4) keep the TCP connection open for bidirectional WebSocket framing indefinitely. Steps 1-3 can reuse parts of the existing parser, but step 4 requires the connection actor to enter a long-lived read/write loop instead of exiting.
 
 **Why it happens:**
-- Corosensei coroutines are `!Send` -- they cannot migrate between threads (scheduler.rs line 389: "suspended: Vec<(ProcessId, CoroutineHandle)>")
-- The worker loop (scheduler.rs lines 393-551) resumes suspended coroutines in Phase 1, then picks up new spawn requests in Phase 2. If a coroutine blocks (not yields), Phase 1 never completes for remaining coroutines on that thread
-- Snow has no mechanism to detect "this actor is blocked on a resource held by another actor on the same thread"
-- The existing pattern for blocking I/O (HTTP server, DB queries) accepts blocking because each operation is short-lived. Pool checkout waits can be indefinite
+- `connection_handler_entry` is designed for HTTP request-response, not long-lived connections (server.rs line 335: `Connection: close`)
+- The `HttpStream` is owned by the actor entry function, not by the Snow-level handler. The Snow handler only receives a `SnowHttpRequest` struct -- it never touches the raw stream
+- The `write_response` function hardcodes `Connection: close` and `Content-Type: application/json`, which are wrong for a 101 Switching Protocols response
+- There is no "upgrade" return path from `process_request` -- it always returns `(u16, Vec<u8>)`, which is a status code and body
 
 **Consequences:**
-- Complete scheduler deadlock when pool is exhausted and connections are held across yield points
-- Under moderate load: intermittent hangs where some HTTP requests never complete
-- Hard to diagnose: looks like a "slow query" but is actually a scheduling deadlock
-- Cannot be reproduced with low concurrency; manifests only under production load
+- Cannot implement WebSocket upgrade without modifying the connection handler architecture
+- If attempted by hacking `process_request` to return a special status code (101), the stream is still dropped after the response is written
+- If the stream is somehow kept alive, there is no mechanism for the Snow-level code to read/write WebSocket frames on it
 
 **Prevention:**
-1. **Implement pool checkout as actor message passing, not blocking wait.** The pool should be a dedicated service actor. Requesting actors send a `{checkout, self()}` message and block on `receive` (which yields to the scheduler via ProcessState::Waiting). The pool actor sends back a connection handle when one becomes available. This converts a blocking wait into a cooperative yield, allowing other actors on the same worker thread to continue.
-2. **Never hold a pool connection across a yield point without careful consideration.** If an actor checks out a connection, executes a query (which blocks the thread during TCP I/O), and then yields for another reason before checking in, the connection is held while the actor is suspended. Keep connection hold times minimal: checkout, execute, checkin in a tight sequence.
-3. **Set a maximum checkout timeout.** If no connection is available within N milliseconds, return an error to the calling actor rather than waiting indefinitely. This prevents cascading starvation.
-4. **Size the pool to match worker thread count.** A pool of N connections for N worker threads ensures that at least one connection is always available per thread. Over-provisioning prevents contention.
+1. **Redesign `connection_handler_entry` to support upgrade.** After `parse_request`, check for `Upgrade: websocket` and `Connection: Upgrade` headers. If present, do NOT call the normal `process_request` path. Instead, validate the handshake, send the 101 response, and transition the actor into a WebSocket frame read/write loop.
+2. **The upgrade detection must happen at the Rust runtime level, not in Snow user code.** The Snow handler cannot access raw streams. The runtime must detect upgrade requests, call the appropriate Snow WebSocket handler (registered via a new route type like `router.ws("/chat", handler)`), and manage the frame loop.
+3. **Send the 101 response with correct headers, not through `write_response`.** The 101 response requires specific headers (`Upgrade: websocket`, `Connection: Upgrade`, `Sec-WebSocket-Accept: <computed>`) and NO body. Write a dedicated `write_upgrade_response` function.
+4. **After the 101 response, the actor transitions into a WebSocket loop** that reads frames, delivers payloads as mailbox messages, and writes outgoing frames when the Snow handler sends them.
 
 **Detection:**
-- Application hangs under load with all worker threads in Phase 1 of the worker loop
-- `strace` shows threads sleeping in futex/read (blocked on pool checkout or DB I/O)
-- Reducing pool size reliably triggers the deadlock
-- Adding more worker threads temporarily alleviates the issue (until those threads also exhaust the pool)
+- WebSocket clients receive `Connection: close` and the TCP connection terminates after the 101 response
+- Client-side errors like "WebSocket connection closed before open"
+- The upgrade request is processed as a regular HTTP request and returns 404 or the handler receives it without access to the stream
 
-**Phase:** Connection pooling architecture. Must be designed as message-passing from the start. A blocking checkout API cannot be retrofitted to cooperative scheduling.
+**Phase:** HTTP upgrade handshake. This is the very first thing that must work. Everything else depends on it.
 
 ---
 
-### Pitfall 2: TLS Handshake Blocks Worker Thread for 100-500ms, Starving Co-located Actors
+### Pitfall 2: WebSocket Actor Blocks Worker Thread Indefinitely During Frame Read Loop
 
 **What goes wrong:**
-A TLS handshake involves multiple network round-trips (ClientHello -> ServerHello -> Certificate -> KeyExchange -> Finished) plus expensive cryptographic operations (RSA/ECDSA signature verification, key derivation). On a typical network, this takes 50-200ms; with certificate chain validation and OCSP stapling, it can reach 500ms. During this entire time, the OS worker thread is blocked in synchronous I/O (the rustls or native-tls handshake calls `TcpStream::read`/`write` which are blocking).
+After the WebSocket upgrade, the connection actor enters a loop reading frames from the socket. The current Snow runtime uses blocking `std::io::Read` on `TcpStream` (server.rs line 21: `use std::io::{BufRead, BufReader, Read, Write}`). In the HTTP case, this is acceptable because each read is a single short-lived request (bounded by the 30-second read timeout, server.rs line 440). But a WebSocket connection can be idle for minutes or hours between messages. A blocking `read()` call that waits for the next WebSocket frame will block the entire OS worker thread, preventing all other actors pinned to that thread from making progress.
 
-Snow's PostgreSQL driver currently uses blocking `TcpStream` (pg.rs line 19: `use std::net::TcpStream`). Adding TLS wraps this stream, but the handshake is a single blocking operation that takes orders of magnitude longer than a typical TCP connect (which is ~1-5ms for local connections). The HTTP server accept loop (server.rs line 224: `for request in server.incoming_requests()`) already blocks, but HTTP request handling is fast. A TLS accept for HTTPS adds the handshake cost to every new connection.
-
-With the M:N scheduler, a 200ms TLS handshake on one worker thread means all actors pinned to that thread are starved for 200ms. If the server handles 100 connections/second across 4 worker threads, each worker handles ~25 connections/second. A single 200ms handshake blocks 5 connection slots on that thread.
+With Snow's M:N scheduler, coroutines are `!Send` and thread-pinned (scheduler.rs line 9). If a WebSocket actor on worker thread 3 blocks in `TcpStream::read()` waiting for a frame, all other actors suspended on thread 3 (including other WebSocket connections, HTTP handlers, database actors) are starved. The scheduler's Phase 1 (lines 400-443) processes suspended coroutines sequentially -- it cannot skip a blocked coroutine because the block happens inside the coroutine's `resume()`, which does not return until the blocking I/O completes.
 
 **Why it happens:**
-- `std::net::TcpStream` is synchronous/blocking. rustls wraps it with `rustls::StreamOwned<ClientConnection, TcpStream>` which inherits the blocking behavior
-- Snow has no non-blocking I/O integration with the scheduler. The reduction check (mod.rs lines 160-191) only triggers yields at Snow-code yield points, not during Rust runtime I/O
-- TLS handshakes cannot be split into yield-compatible chunks without a full async I/O redesign
-- Unlike database queries (which are rare), HTTPS accept-loop TLS handshakes occur on EVERY new connection
+- `TcpStream::read()` is a blocking syscall -- it does not yield to the coroutine scheduler
+- The existing HTTP model (server.rs line 19 comment: "Blocking I/O is accepted...since each actor runs on a scheduler worker thread") works because HTTP requests are short. WebSocket connections are long
+- Snow's reduction check (`snow_reduction_check`, actor/mod.rs line 160) only yields at loop back-edges and function calls in Snow-compiled code, not during Rust runtime blocking I/O
+- There is no mechanism to make the coroutine yield while waiting for socket data
 
 **Consequences:**
-- HTTPS server throughput drops dramatically compared to HTTP (not just from crypto overhead, but from scheduler starvation)
-- Actors unrelated to HTTP (e.g., timer-based workers, database actors) experience 200ms latency spikes
-- Under connection storms (client reconnect after network blip), all worker threads simultaneously block on TLS handshakes, freezing the entire runtime
+- Worker thread starvation: if 4 WebSocket connections are idle on a 4-thread scheduler, ALL scheduler threads can be blocked, halting the entire runtime
+- Ping/pong heartbeats on other connections cannot fire because their actors are starved
+- New HTTP connections queue in the accept loop but are never dispatched because all workers are blocked
+- The system appears hung under moderate WebSocket load even with minimal message traffic
 
 **Prevention:**
-1. **Perform TLS handshakes on dedicated OS threads, outside the actor scheduler.** The HTTPS accept loop should run on a separate thread pool (similar to how `snow_timer_send_after` in mod.rs line 463 spawns OS threads for timers). After the handshake completes, the established TLS stream is passed to an actor for request handling. This isolates handshake latency from the scheduler.
-2. **For PostgreSQL TLS (client-side), accept the blocking cost but document it.** PG connections are long-lived and pooled, so the TLS handshake happens once per connection, not per query. The one-time ~200ms cost at pool initialization is acceptable.
-3. **For HTTPS (server-side), use a tiered architecture:** OS thread pool accepts TCP connections and performs TLS handshakes; completed connections are dispatched to actor-per-request on the Snow scheduler. This mirrors BEAM's approach where NIF-level operations run on dirty schedulers.
-4. **Set aggressive TLS handshake timeouts (5-10 seconds).** A slow or malicious client performing a deliberately slow handshake (Slowloris-style) should be disconnected before it starves a worker thread for too long.
+1. **Set a read timeout on the TcpStream for WebSocket connections.** Use a short timeout (e.g., 50-100ms) so that `read()` returns `WouldBlock` or `TimedOut` periodically, allowing the coroutine to yield and let other actors run. This is a "cooperative blocking" pattern: block briefly, check results, yield, repeat.
+2. **On each timeout/WouldBlock, yield to the scheduler** via `yield_current()`. The actor transitions from Running to Ready, gets re-enqueued, and is resumed later. Other actors on the same thread get to run.
+3. **Structure the WebSocket read loop as: set short timeout -> attempt read -> if WouldBlock, yield -> re-check -> resume.** This mirrors how Erlang/BEAM handles socket I/O: the runtime polls sockets and only wakes the process when data is available.
+4. **Do NOT remove the read timeout entirely.** An infinite read timeout on a WebSocket connection means a disconnected client (without TCP FIN) will hold the actor and thread forever. The 30-second timeout from the HTTP path is too long for WebSocket cooperative scheduling -- use a much shorter one.
 
 **Detection:**
-- HTTPS throughput is 5-10x lower than HTTP on the same hardware
-- Unrelated actors experience periodic 100-500ms latency spikes correlated with HTTPS connection rate
-- `perf` or profiling shows worker threads spending significant time in `rustls::conn::ConnectionCommon::complete_io`
+- All worker threads show as blocked in `read()` syscall (visible via `strace` or `lldb`)
+- HTTP requests stop being processed even though the server is running
+- Only observable under concurrent WebSocket connections (single connection works fine because it only blocks one thread)
+- Ping/pong heartbeats time out on connections that should be alive
 
-**Phase:** TLS implementation. The thread architecture (where handshakes run) must be decided before writing any TLS code.
+**Phase:** Core WebSocket frame loop. Must be solved in the same phase as the frame parser. A blocking frame loop cannot be retrofitted.
 
 ---
 
-### Pitfall 3: Transaction Left Open After Actor Crash Poisons Pooled Connection
+### Pitfall 3: Sec-WebSocket-Accept Computed from Hex Digest Instead of Raw Binary
 
 **What goes wrong:**
-An actor calls `BEGIN` on a PostgreSQL connection, executes some queries, but crashes (panic, linked actor death, supervisor kill) before calling `COMMIT` or `ROLLBACK`. The connection is returned to the pool in an in-transaction state. The PostgreSQL server reports this via ReadyForQuery status byte `T` (in transaction) instead of `I` (idle). The next actor that checks out this connection unknowingly inherits the open transaction. Its queries execute within the crashed actor's transaction context. If the previous transaction had an error, PostgreSQL puts the connection in the `E` (failed transaction) state, and ALL subsequent queries fail with "current transaction is aborted, commands ignored until end of transaction block."
+The WebSocket handshake requires the server to compute `Sec-WebSocket-Accept` as: `base64(SHA-1(Sec-WebSocket-Key + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"))`. The most common implementation bug, documented across dozens of libraries (Node.js ws, PowerBASIC WebSocket, Espruino, many Stack Overflow answers), is base64-encoding the hex string representation of the SHA-1 digest instead of the raw 20-byte binary digest.
 
-The existing PG driver (pg.rs lines 770-799, snow_pg_execute) reads messages until ReadyForQuery but does NOT check the transaction status byte. It silently discards ReadyForQuery's body content. This means the runtime has no way to detect that a connection is in a dirty transaction state.
+The hex digest is a 40-character ASCII string representing 20 bytes as hexadecimal. Base64-encoding this 40-character string produces a ~56-character result. The correct approach base64-encodes the raw 20 bytes, producing a ~28-character result. For the RFC's example key `dGhlIHNhbXBsZSBub25jZQ==`, the correct `Sec-WebSocket-Accept` is `s3pPLMBiTxaQ9kYGzzhZRbK+xOo=` (28 chars). The hex-then-base64 bug produces `YjM3YTRmMmNjMDYyNGYxNjkwZjY0NjA2Y2YzODU5NDViMmJlYzRlYQ==` (56 chars).
 
 **Why it happens:**
-- Snow actors follow the "let it crash" philosophy (Erlang-style). Crashes are expected and handled by supervisors. But database connections are stateful external resources that do NOT reset on actor restart.
-- The current pg.rs implementation ignores the ReadyForQuery status byte (pg.rs line 789: `b'Z' => break`), providing no mechanism to check transaction state.
-- Connection pooling amplifies the problem: without pooling, crashed connections are simply dropped (the TCP connection closes, PostgreSQL auto-rollbacks). With pooling, the connection survives the actor crash.
-- There is no terminate_callback equivalent for "return this connection to the pool with cleanup." The terminate_callback (mod.rs lines 557-575) can be set, but the connection handle (an opaque u64) must be explicitly passed to it.
+- Many cryptographic APIs default to hex output (e.g., `digest.hexdigest()` in Python, `.digest('hex')` in Node)
+- Rust's `sha1` crate returns raw bytes by default (`sha1::Sha1::digest()` returns `[u8; 20]`), which is correct -- but if someone uses a helper that converts to hex string first, the bug manifests
+- The GUID string `258EAFA5-E914-47DA-95CA-C5AB0DC85B11` is long and easy to mistype (one wrong character produces a silently wrong hash)
+- No client will tell you WHY the handshake failed; they just close the connection
 
 **Consequences:**
-- Silent data corruption: next actor's queries run in wrong transaction context
-- Mysterious "current transaction is aborted" errors on seemingly valid queries
-- Debugging nightmare: the error appears in actor B but was caused by actor A's crash
-- Pool connections become permanently poisoned (every subsequent user gets the error) until the connection is dropped and replaced
-- Under high crash rates (expected in development), pool becomes entirely poisoned within minutes
+- Every WebSocket connection attempt fails during handshake
+- The client disconnects immediately after receiving the 101 response with the wrong `Sec-WebSocket-Accept`
+- Extremely hard to debug without packet capture: the server thinks the handshake succeeded, but the client rejects it
+- Different clients may fail in different ways (some close silently, some report "handshake failed")
 
 **Prevention:**
-1. **Pool must validate connection state on checkin AND checkout.** On every checkin (connection return), send a `ROLLBACK` if ReadyForQuery status is `T` or `E`. On checkout, verify status is `I` (idle). If not, send `ROLLBACK` and re-verify. If still not idle, discard the connection and create a new one.
-2. **Parse the ReadyForQuery status byte.** Modify the message-reading loop in pg.rs to extract and store the transaction status from ReadyForQuery messages. The status byte is body[0]: `I` = idle, `T` = in transaction, `E` = failed transaction. Store this on PgConn for pool management.
-3. **Wrap connection checkout/checkin in actor lifecycle.** Use Snow's terminate_callback to ensure connections are always returned to the pool, even on crash. The pool's checkin handler then performs the ROLLBACK cleanup.
-4. **Consider a "connection wrapper" that automatically issues ROLLBACK on Drop.** In the Rust runtime, wrap the pool checkout in an RAII guard. When the guard is dropped (including on unwind from catch_unwind in the actor entry), it returns the connection to the pool with cleanup. This matches the connection_handler_entry pattern in server.rs line 185 where catch_unwind wraps the handler.
+1. **In Rust, use `sha1::Sha1::digest()` directly, which returns raw bytes.** Then `base64::engine::general_purpose::STANDARD.encode(&digest)`. Never convert to hex string at any point.
+2. **Store the GUID as a constant** and verify it matches the RFC exactly: `258EAFA5-E914-47DA-95CA-C5AB0DC85B11`.
+3. **Write a unit test using the RFC's example values.** RFC 6455 Section 4.2.2 provides: key `dGhlIHNhbXBsZSBub25jZQ==` must produce accept `s3pPLMBiTxaQ9kYGzzhZRbK+xOo=`. This is the single most valuable test for the entire WebSocket implementation.
+4. **Test against a real browser.** Open Chrome DevTools Network tab, connect to the server, and verify the handshake succeeds. If it fails, compare the `Sec-WebSocket-Accept` value in the response with the expected one.
 
 **Detection:**
-- "current transaction is aborted" errors that appear without any preceding error in the same actor
-- Queries silently execute in a transaction context when no BEGIN was issued
-- Pool connections accumulate in `T` or `E` state over time
-- Restarting the application (which drops all connections) temporarily fixes the issue
+- All WebSocket connections fail immediately after the 101 response
+- Browser console shows "WebSocket connection failed" with no further details
+- Wireshark shows the server sending 101 but the client sending a TCP RST
+- Comparing the Accept header value length: correct is ~28 chars, hex-bug is ~56 chars
 
-**Phase:** Connection pooling + transaction support. These two features are deeply coupled and MUST be designed together.
+**Phase:** HTTP upgrade handshake. Test this with the RFC example values before testing anything else.
 
 ---
 
-### Pitfall 4: Opaque u64 Connection Handle Becomes Dangling Pointer After Pool Reclaims Connection
+### Pitfall 4: Frame Masking Direction Reversed (Server Masks, Client Unmasks)
 
 **What goes wrong:**
-Snow currently represents connections as opaque u64 handles created via `Box::into_raw(conn) as u64` (pg.rs line 711, sqlite.rs line 162). The Snow program stores this u64 as a regular integer. With connection pooling, the lifecycle changes: the pool owns the connection, and the u64 handle is a loan, not ownership. If the pool reclaims a connection (timeout, validation failure, pool resize) while an actor still holds the u64 handle, the actor has a dangling pointer. Calling `snow_pg_execute` with this handle dereferences freed memory (`let conn = &mut *(conn_handle as *mut PgConn)` at pg.rs line 751).
+RFC 6455 Section 5.3 mandates asymmetric masking: clients MUST mask all frames sent to the server; servers MUST NOT mask frames sent to clients. A client that receives a masked frame from the server MUST close the connection (close code 1002, Protocol Error). Conversely, a server that receives an unmasked frame from a client MUST close the connection.
 
-The GC makes this worse: the u64 handle is an integer, so the GC never traces it (by design -- pg.rs line 10: "The GC never traces integer values"). This means there is no GC-based mechanism to detect that the underlying connection was freed. The handle looks valid (it's just a number) but points to deallocated memory.
+This asymmetry is the source of bugs in production WebSocket implementations. The actix-web project had a critical bug (Issue #2441) where server-side masking caused connection failures. The Alchemy-Websockets project (Issue #21) had the server masking frames because its client and server code shared implementation. The Ktor framework (Issue #423) had the client NOT masking by default, violating the spec. The ESP-IDF project (Issue #18227, February 2026) had a 50% failure rate on PONG frames due to incorrect mask handling depending on random mask key bits.
 
 **Why it happens:**
-- The current ownership model is simple: one actor creates a connection, uses it, closes it. The u64 handle has a 1:1 relationship with the PgConn Box.
-- Connection pooling introduces shared ownership: the pool owns the connection, actors borrow it. But the u64 handle mechanism has no borrow tracking.
-- There is no reference counting or generation counter on the handle. A recycled handle (same u64 value after Box deallocation and reallocation) could point to a completely different connection.
-- The Box::into_raw/Box::from_raw pattern is fundamentally incompatible with pooling because from_raw takes ownership and deallocates on drop.
+- When implementing both server-side frame writing and frame reading, it is natural to share code. If masking is a symmetric operation in the shared code, the server will accidentally mask outgoing frames
+- The mask is a 4-byte XOR key applied byte-by-byte. The implementation is trivial but the DIRECTION matters: only decode incoming client frames (apply mask), never encode outgoing server frames (no mask)
+- When testing server-to-server or with custom clients, the masking direction may not be checked, and bugs go unnoticed until a browser client connects
 
 **Consequences:**
-- Use-after-free crashes (SIGSEGV in snow_pg_execute or snow_pg_query)
-- If memory is reallocated, the handle points to a different object -- queries go to the wrong database connection
-- Intermittent: depends on allocator behavior and timing of pool reclamation vs. actor usage
-- Security risk: queries intended for one database could be sent to another if handle reuse occurs
+- Browser WebSocket clients immediately close the connection with code 1002 when they receive a masked frame from the server
+- If the server fails to unmask incoming client frames, all received text appears as garbage (XOR'd with the mask key)
+- 50% failure rates when mask key bytes have specific bit patterns (as seen in ESP-IDF)
+- Connection failures that appear random and are extremely difficult to reproduce
 
 **Prevention:**
-1. **Replace raw pointer handles with generation-counted slot IDs.** Instead of `Box::into_raw`, use a global `Vec<Option<PgConn>>` (or `SlotMap`) where the u64 handle encodes both the slot index and a generation counter. When a connection is reclaimed, the slot's generation is incremented. Accessing a stale handle (wrong generation) returns an error instead of undefined behavior. This is the standard pattern for entity-component systems and resource handles in game engines.
-2. **Never expose raw pool connections to Snow code.** The pool should return a "checkout token" (an opaque u64 that maps to a pool slot), not the raw PgConn pointer. All DB operations go through the pool, which validates the token before accessing the connection. The Snow-level API becomes `Pool.query(pool_handle, token, sql, params)` instead of `Pg.query(conn_handle, sql, params)`.
-3. **Use message-passing instead of shared handles.** The pool actor owns all connections. Snow code sends query messages to the pool actor, which executes them on an available connection and sends results back. The Snow program never has a connection handle at all. This is the safest approach but changes the API significantly.
-4. **If retaining direct handles, add a `is_valid(handle)` check at every FFI boundary.** Every `snow_pg_execute`/`snow_pg_query` call should validate the handle before dereferencing. This converts SIGSEGV into a Snow-level error.
+1. **In the frame writer, NEVER set the mask bit (bit 7 of the second byte) for server-to-client frames.** The mask bit must be 0 and no masking-key field should be present.
+2. **In the frame reader, ALWAYS check the mask bit on incoming client frames.** If bit 7 of the second byte is 0 (unmasked), close the connection with code 1002.
+3. **Apply unmasking to incoming frames:** `for i in 0..payload.len() { payload[i] ^= mask_key[i % 4]; }`
+4. **Write separate code paths for reading and writing frames.** Do not share a generic "frame codec" that applies masking in both directions.
+5. **Test with a real browser.** Chrome and Firefox strictly enforce the no-server-masking rule and will close the connection immediately.
 
 **Detection:**
-- SIGSEGV in `snow_pg_execute` or `snow_pg_query` with stack trace pointing to the `*(conn_handle as *mut PgConn)` dereference
-- Database operations randomly fail with "connection closed" or produce garbled results
-- Problem worsens under high concurrency (more pool recycling events)
-- ASAN builds catch use-after-free immediately
+- Browser console shows close code 1002 "Protocol Error"
+- Text messages received by the server appear as garbage (binary data)
+- Connection works with custom test clients that do not validate masking but fails with browsers
+- Intermittent failures that depend on the random mask key value
 
-**Phase:** Connection pooling handle design. The handle abstraction must be redesigned BEFORE implementing pooling. Cannot be retrofitted.
+**Phase:** Frame parser/writer. Must be tested with browser clients, not just custom test tools.
 
 ---
 
-### Pitfall 5: TLS Session State is Not GC-Visible, Causing Use-After-Free on GC-Triggered Collection
+### Pitfall 5: WebSocket Connection Actor Leaks When Client Disconnects Without Close Frame
 
 **What goes wrong:**
-When TLS wraps a TCP stream, the resulting object (`rustls::StreamOwned<ClientConnection, TcpStream>` or equivalent) contains internal buffers, session keys, and cipher state allocated on the Rust/system heap. Snow stores the connection as an opaque u64 handle (Box::into_raw pattern). The GC never sees this handle as a pointer (it's an integer). This is correct and intentional for the connection handle itself.
+When a WebSocket client disappears without sending a Close frame (network failure, browser tab closed, mobile app backgrounded, NAT timeout), the server-side actor never receives the Close frame it expects. If the actor's read loop only exits on receiving a Close frame or clean EOF, the actor will block indefinitely on `read()` waiting for data that will never arrive. The TcpStream will eventually time out (if a read timeout is set), but the actor stays alive in the scheduler's suspended list consuming a PID, process table entry, mailbox, actor heap memory, and room/channel membership.
 
-However, the problem occurs when Snow-level values (SnowStrings, query parameters) are passed to functions that operate on the TLS stream. During a TLS write, the data must be encrypted before sending. If the encryption involves multiple steps and a GC collection happens between preparing the plaintext (from a SnowString) and encrypting it, and the SnowString was the last reference on the stack, the GC could collect the SnowString. The TLS layer then encrypts freed memory.
+This is the WebSocket equivalent of "half-open connections" in TCP. Without active detection (ping/pong heartbeat), these ghost actors accumulate. In Snow's architecture, each ghost actor holds a `Process` in the process table (scheduler.rs line 100: `process_table: ProcessTable`), which includes an `ActorHeap`, a `Mailbox`, links, and state. With thousands of ghost actors, the process table grows unboundedly and memory leaks.
 
-This is a variant of the v2.0 Pitfall 16 (SnowString lifetime during PG wire protocol send), but TLS adds an extra layer: the plaintext data passes through the TLS encrypt buffer before reaching the TCP socket, creating a longer window where the SnowString must remain alive.
+The actix-web project documented this exact bug (Issue #2441): "WebSocket actor can be paralyzed due to lack of IO timeout, leading to a connection leak." The actor becomes unable to run IntervalFuncs (like ping/pong) which could shut it down if ping/pong takes too long, because the network buffer fills up and all sends block.
 
 **Why it happens:**
-- Conservative GC scans the coroutine stack (heap.rs mark_from_roots, lines 401-448). If a SnowString pointer is only held in a Rust local variable that the compiler optimizes away before the TLS write completes, the GC cannot see it.
-- TLS encryption is not atomic from the GC's perspective: prepare data -> encrypt -> send is multiple function calls
-- The current pg.rs already copies data into Rust Vec<u8> buffers before sending (e.g., write_parse at pg.rs line 142), which is safe. The risk is that TLS wrapping adds the temptation to pass SnowString data directly to the TLS stream without copying
+- TCP does not notify the server when a client simply disappears (no FIN packet sent)
+- OS-level TCP keepalives default to 2 hours on most systems, far too long for WebSocket use
+- Without ping/pong heartbeat, there is no application-level mechanism to detect dead connections
+- The actor's read loop blocks on `TcpStream::read()`, preventing the ping/pong timer from firing (this is the key insight from the actix-web bug)
+- Even with read timeouts, the actor may treat a timeout as "try again" rather than "connection is dead"
 
 **Consequences:**
-- Encrypted garbage sent over the wire, causing TLS protocol errors on the receiving end
-- Intermittent: only occurs when GC pressure coincides with TLS writes
-- Manifests as "TLS alert: bad_record_mac" or "TLS alert: decode_error" from the remote peer
-- Extremely hard to diagnose: looks like a network/TLS bug, not a GC bug
+- Memory leak: each ghost actor holds ~64KB of stack space plus heap allocations
+- Process table grows unboundedly: PID lookup degrades as the FxHashMap grows
+- Room/channel membership contains PIDs of dead actors, causing broadcast to fail or waste resources
+- Eventually the runtime runs out of memory or the process table becomes too large for the RwLock to perform well
 
 **Prevention:**
-1. **Maintain the existing copy-to-Vec<u8>-buffer pattern.** The current pg.rs already builds complete wire protocol messages in a `Vec<u8>` (system heap) before writing to the stream. When adding TLS, ensure the TLS stream receives data from these Rust-owned buffers, NEVER directly from GC-managed SnowString pointers. This is already the natural pattern; the risk is breaking it during refactoring.
-2. **Encapsulate TLS writes in a single Rust function that takes &[u8].** The function should accept a byte slice (already copied from SnowString), pass it through TLS encryption, and write to the socket. No GC-managed pointer should be reachable from parameters or locals during the TLS write.
-3. **Never yield (reduction_check) between copying SnowString data and completing the TLS write.** The pg.rs functions are called from actors, and reduction_check is inserted by the compiler at loop back-edges and function calls. Since the wire protocol functions are Rust extern "C" functions (not Snow code), the compiler does NOT insert reduction checks inside them. This is already safe; ensure TLS functions follow the same pattern (Rust code, no Snow callbacks).
+1. **Implement server-side ping/pong heartbeat.** Send a Ping frame every 20-30 seconds. If no Pong is received within 10 seconds, consider the connection dead and terminate the actor.
+2. **The ping timer must NOT be blocked by the read loop.** Use the short read timeout approach (Pitfall 2): read with 50-100ms timeout, yield, check ping timer, repeat. Do not rely on being able to "interrupt" a blocking read.
+3. **On read timeout or I/O error, check if a ping response is overdue.** If the last Pong was received more than (ping_interval + pong_timeout) ago, close the connection.
+4. **On actor exit, clean up room/channel membership, named registrations, and links.** Use the existing `terminate_callback` mechanism (actor/mod.rs line 562: `snow_actor_set_terminate`) to remove the actor from rooms and clean up resources.
+5. **Count active WebSocket connections and log when count grows unexpectedly.** A monitoring/diagnostic runtime function (`snow_ws_connection_count()`) helps detect leaks early.
 
 **Detection:**
-- TLS alert errors ("bad_record_mac", "decode_error") under GC pressure
-- ASAN/MSAN detecting reads of freed memory in TLS encryption paths
-- Works fine under low allocation pressure; fails under sustained load
-- PostgreSQL server logs showing malformed messages after TLS upgrade
+- Memory usage grows linearly over time without corresponding increase in active connections
+- `process_table.read().len()` grows monotonically (no cleanup)
+- Room broadcasts become slower over time (iterating over dead PIDs)
+- After hours of operation, the system runs out of file descriptors or memory
 
-**Phase:** TLS stream wrapping. Follow the existing buffer-copy pattern in pg.rs. Primarily a code-review concern, not an architectural decision.
+**Phase:** Ping/pong heartbeat. Should be implemented immediately after the frame loop works, not deferred.
+
+---
+
+### Pitfall 6: Fragmented Messages Not Reassembled, Causing Data Corruption
+
+**What goes wrong:**
+RFC 6455 Section 5.4 defines message fragmentation: a message can be split across multiple frames. The first fragment has the opcode (text/binary) with FIN=0. Subsequent continuation frames have opcode 0x0 with FIN=0. The final continuation frame has opcode 0x0 with FIN=1. The server must reassemble all fragments into a single message before delivering to the application. Additionally, control frames (Ping, Pong, Close) can be interleaved between fragments of a data message.
+
+This is where many WebSocket implementations fail. Bun's WebSocket client (Issue #3742) threw "Invalid binary message format" errors because it did not handle continuation frames. The aiohttp library (PR #1962) had "several bugs mainly caused by wrong handling of fragmented frames." The faye-websocket-node library (Issue #48) parsed partial frames split across TCP packets as complete frames, producing garbage opcodes. Chrome's DevTools Protocol does not support fragmentation at all, silently dropping messages larger than 1MB.
+
+**Why it happens:**
+- Simple test clients often send single-frame messages, so fragmentation bugs are not caught in basic testing
+- The frame parser must maintain state between frames: "am I in the middle of a fragmented message?"
+- Control frames (Ping/Pong/Close) can arrive BETWEEN data fragments, requiring the parser to handle interleaved control frames without disrupting fragment reassembly
+- TCP itself can split a WebSocket frame across multiple `read()` calls, requiring the parser to handle partial frame headers
+- Memory management for reassembly: fragments must be accumulated in a buffer that grows up to the message size limit
+
+**Consequences:**
+- Large messages (images, JSON documents, file uploads) arrive as corrupted partial data
+- Interleaved Ping frames during large message transfer cause the parser to lose track of the fragment state, treating the Ping payload as a data fragment
+- Partial TCP reads cause the parser to interpret garbage as frame headers (wrong opcodes, wrong lengths), leading to cascading parse errors
+- Messages may be silently truncated or duplicated depending on the nature of the bug
+
+**Prevention:**
+1. **Implement a proper frame parser state machine** with states: Idle, ReceivingFragments(opcode, accumulated_data). When FIN=0, accumulate. When FIN=1, deliver the complete message.
+2. **Handle control frames independently of fragment state.** When in ReceivingFragments state and a control frame arrives (opcode 0x8, 0x9, 0xA), process it immediately (respond to Ping with Pong, handle Close) without disturbing the accumulated data fragments.
+3. **Handle partial TCP reads.** A single `read()` call may not return a complete frame. Buffer incoming bytes and only parse frames when enough data is available. Use a ring buffer or growable Vec for this.
+4. **Set a maximum message size limit** (e.g., 16 MB). If accumulated fragments exceed this, close the connection with code 1009 (Message Too Big). Without this, a malicious client can exhaust server memory by sending infinite fragments without FIN=1.
+5. **Validate that continuation frames have opcode 0x0** and that a new data frame (opcode 0x1 or 0x2) does not arrive while a fragmented message is being assembled (this is a protocol error).
+6. **Test with the Autobahn WebSocket Testsuite** (open source). It has comprehensive test cases for fragmentation, interleaved control frames, and edge cases.
+
+**Detection:**
+- Large messages (>64KB, which often triggers fragmentation in many client libraries) arrive corrupted or truncated
+- Ping/Pong stops working when large messages are being transferred
+- Parse errors or connection resets during large message transfers
+- The Autobahn Testsuite reveals dozens of failing cases in the fragmentation section
+
+**Phase:** Frame parser. Must be part of the initial frame parser implementation, not added later. Retrofitting fragment support is extremely difficult.
+
+---
+
+### Pitfall 7: Mailbox Message Type Collision Between WS Frames and Actor Messages
+
+**What goes wrong:**
+Snow's actor mailbox uses `MessageBuffer` with a `type_tag: u64` (heap.rs) derived from the first 8 bytes of the message data (actor/mod.rs lines 274-279). When WebSocket messages are delivered to the actor's mailbox alongside regular actor-to-actor messages, the actor needs to distinguish "this is a WebSocket text frame" from "this is a message from another actor" from "this is an exit signal" (which uses `EXIT_SIGNAL_TAG`). If WebSocket frame messages use ad-hoc type tags that collide with regular message tags or the exit signal tag, the actor will misinterpret messages.
+
+The current type_tag derivation is naive: it reads the first 8 bytes of the message as a u64 (actor/mod.rs line 274-279). For a WebSocket text message containing "hello\0\0\0", the type_tag would be the u64 encoding of "hello\0\0\0". This could collide with a regular actor message that happens to start with the same bytes.
+
+**Why it happens:**
+- The type_tag system was designed for actor-to-actor messaging where the compiler controls the message format
+- WebSocket messages have arbitrary user content, so their first 8 bytes are unpredictable
+- Exit signals use `EXIT_SIGNAL_TAG` (link.rs), and if a WebSocket message happens to produce the same tag, it will be misinterpreted as an exit signal
+- There is no reserved tag space for "system messages" vs "user messages" vs "I/O messages"
+
+**Consequences:**
+- A WebSocket text message is mistakenly matched as an exit signal, causing the actor to terminate
+- A regular actor message is mistakenly treated as a WebSocket frame, causing the handler to process garbage as a chat message
+- Pattern matching on message type in Snow code (`receive` with match) cannot reliably distinguish message sources
+- Extremely hard to debug: depends on the exact bytes of the message content
+
+**Prevention:**
+1. **Define dedicated type tags for WebSocket messages in a reserved range.** For example, `WS_TEXT_TAG = 0xFFFF_FFFF_0001`, `WS_BINARY_TAG = 0xFFFF_FFFF_0002`, `WS_CLOSE_TAG = 0xFFFF_FFFF_0003`, `WS_PING_TAG = 0xFFFF_FFFF_0004`, `WS_PONG_TAG = 0xFFFF_FFFF_0005`. Reserve the upper 32 bits (0xFFFF_FFFF) for runtime system messages.
+2. **When injecting a WebSocket frame into the actor mailbox, use the dedicated tag**, not the first-8-bytes derivation. The message buffer should contain the frame payload (without frame headers), and the type_tag should identify it as a WS frame.
+3. **Ensure the Snow compiler generates type tags in a non-colliding range** (e.g., lower 32 bits only for user-defined message types).
+4. **Document the tag allocation scheme** so that future runtime features (database notifications, timer events, file I/O events) also get reserved tags.
+
+**Detection:**
+- Actors randomly exit when receiving WebSocket messages that happen to match EXIT_SIGNAL_TAG
+- WebSocket messages are handled by the wrong match clause in Snow pattern matching
+- Works most of the time but fails with specific message content
+
+**Phase:** Mailbox integration. Must be designed before writing any mailbox delivery code. Retrofitting a tag scheme is painful because it changes the ABI.
 
 ---
 
 ## Moderate Pitfalls
 
-Mistakes that cause incorrect behavior, performance problems, or developer confusion, but are fixable without architectural changes.
+Mistakes that cause incorrect behavior, poor performance, or security vulnerabilities but do not require full rewrites.
 
 ---
 
-### Pitfall 6: Transaction API Without Explicit Scoping Leads to Transaction Leaks
+### Pitfall 8: Close Handshake State Machine Not Implemented, Causing Resource Leaks
 
 **What goes wrong:**
-A naive transaction API exposes `Pg.begin(conn)`, `Pg.commit(conn)`, `Pg.rollback(conn)` as separate calls. Users write:
+RFC 6455 Section 7 defines a close handshake: either side can send a Close frame (opcode 0x8), and the other side must respond with a Close frame. After the close exchange, the TCP connection is shut down (the server should initiate TCP close). Many implementations get this wrong. The GNS3 server (Issue #2320) failed to initiate TCP close after the WebSocket close exchange. .NET Core prior to 3.0 had a state machine bug where the client transitioned to the wrong state after receiving the server's Close response. The ASP.NET Core Module killed TCP instead of sending a Close frame.
 
-```
-let conn = Pool.checkout(pool)
-Pg.begin(conn)
-let result = Pg.query(conn, "SELECT ...", [])
-// ... forgot to commit or rollback
-Pool.checkin(pool, conn)
-```
-
-The connection is returned to the pool with an open transaction. Even without a crash, simple programmer forgetfulness leaves transactions open. Every code path (including error branches) must explicitly commit or rollback. In a language without RAII or try-finally (Snow does not have either), this is extremely error-prone.
-
-The problem is compounded by Snow's pattern matching on Result types. If a query returns `Err`, the programmer's error-handling branch might return early without committing or rolling back:
-
-```
-match Pg.query(conn, sql, []) do
-  Ok(rows) -> Pg.commit(conn)
-  Err(msg) -> log(msg)  // forgot Pg.rollback(conn) here!
-end
-```
+If Snow's WebSocket actor simply calls `TcpStream::shutdown()` when it wants to close, without sending a Close frame first, compliant clients will report "WebSocket connection closed without completing the close handshake." If the actor receives a Close frame but does not respond with its own Close frame before shutting down TCP, the client will also report an error.
 
 **Why it happens:**
-- Snow has no RAII, try-finally, or defer mechanism for guaranteed cleanup
-- The actor model encourages message-passing patterns where connections are used across multiple message-handling iterations, making scope boundaries unclear
-- Erlang/BEAM has the same problem; the standard solution is a transaction wrapper function, not separate begin/commit/rollback calls
-
-**Consequences:**
-- Transaction leaks under normal operation (not just crashes)
-- Silent connection poisoning in the pool (see Pitfall 3)
-- Hard to test: individual tests pass (they commit explicitly), but complex flows miss branches
-- PostgreSQL eventually reports "too many idle in transaction" connections
+- Closing a WebSocket connection requires a 4-state machine (OPEN -> CLOSING -> CLOSED, plus the server-should-close-TCP-first rule)
+- It is tempting to just drop the TcpStream (which sends TCP FIN), skipping the WebSocket close frame entirely
+- When the actor panics (caught by `catch_unwind` in server.rs line 383), the cleanup path may skip the close frame
+- The close frame can optionally contain a status code (2 bytes) and a reason string (UTF-8). Invalid status codes (like 1005, which is reserved) cause client-side errors
 
 **Prevention:**
-1. **Provide a `Pg.transaction(conn, fn)` higher-order function as the PRIMARY API.** The function takes a callback, wraps it in BEGIN/COMMIT, and issues ROLLBACK if the callback returns Err or if the actor panics. The separate begin/commit/rollback calls should exist as escape hatches but be documented as advanced/unsafe.
-2. **The transaction wrapper should use catch_unwind (or equivalent) at the Rust level.** Similar to connection_handler_entry in server.rs line 185, wrap the callback in panic recovery. On panic, issue ROLLBACK before re-raising. This handles actor crashes that don't kill the process but do unwind the stack (catch_unwind in scheduler.rs).
-3. **The pool checkin handler should ALWAYS issue ROLLBACK if the connection is in-transaction.** This is the safety net for all the cases where the API-level wrapper doesn't catch the leak.
-4. **Consider a future `with` or `defer` language feature** that provides scoped resource management. This is a compiler feature, not a runtime feature, and should be tracked as a language enhancement separate from this milestone.
+1. **Implement a minimal close state machine:** Track whether a Close frame has been sent and/or received. When the application wants to close: send Close frame, set state to CLOSING, continue reading until a Close frame is received (or timeout), then shut down TCP.
+2. **When receiving a Close frame from the client:** respond with a Close frame (echoing the status code), then shut down TCP. The server should be the one to call `TcpStream::shutdown()`.
+3. **In the `catch_unwind` error path and `terminate_callback`:** attempt to send a Close frame with status 1011 (Internal Error) before dropping the stream. Use a short timeout (1-2 seconds) for this -- do not let a failed close frame delay actor cleanup.
+4. **Only use valid close status codes.** 1000 (Normal), 1001 (Going Away), 1008 (Policy Violation), 1011 (Internal Error) are the most common. Never send 1005 (No Status) or 1006 (Abnormal) on the wire -- they are reserved for local use.
 
 **Detection:**
-- PostgreSQL `pg_stat_activity` shows connections in "idle in transaction" state for long periods
-- Pool health checks detect connections with ReadyForQuery status `T`
-- Memory leaks from held transaction locks preventing VACUUM
+- Client-side console shows "WebSocket connection closed without completing the close handshake"
+- Connections in TIME_WAIT state on the client instead of the server (RFC says server should close TCP first)
+- Wireshark shows TCP FIN without a preceding Close frame
 
-**Phase:** Transaction API design. Design the `transaction(conn, fn)` wrapper before exposing any transaction functionality.
+**Phase:** Frame parser/writer, should be implemented alongside the frame loop.
 
 ---
 
-### Pitfall 7: struct-to-row Mapping Column Name Mismatch Due to Snake/Camel Case Conventions
+### Pitfall 9: Room/Channel Broadcast Creates O(N) Mailbox Contention Under the Same Mutex
 
 **What goes wrong:**
-Snow uses PascalCase for types and snake_case for fields (following Haskell/ML conventions). PostgreSQL uses lowercase identifiers by default (case-insensitive unless quoted). A Snow struct:
+When a message is broadcast to a room with N members, the naive approach iterates over all member PIDs and calls `snow_actor_send` for each one. Each `snow_actor_send` call (actor/mod.rs lines 261-297) acquires the process table's `RwLock` for reading, then acquires the target process's `Mutex` to push a message into the mailbox, then checks if the process is Waiting to potentially wake it. For a room with 1000 members, this means 1000 sequential RwLock read acquisitions and 1000 Mutex lock/unlock cycles. All of this happens synchronously on the sending actor's thread, blocking it for the entire duration.
 
-```
-struct UserProfile do
-  firstName :: String
-  lastName :: String
-  createdAt :: String
-end deriving(Row)
-```
-
-would try to match columns named `firstName`, `lastName`, `createdAt`. But PostgreSQL columns are typically `first_name`, `last_name`, `created_at`. The struct field names don't match the column names, causing deserialization to fail silently (missing fields become empty strings in the current Map<String, String> return type) or loudly (field not found errors in a typed mapping).
-
-The existing `deriving(Json)` infrastructure (typeck/infer.rs lines 2003-2060) maps struct field names directly to JSON keys. If `deriving(Row)` follows the same pattern, the naming mismatch between Snow fields and SQL columns is inevitable.
+In Snow's architecture, the process table is a `Arc<RwLock<FxHashMap<ProcessId, Arc<Mutex<Process>>>>>` (scheduler.rs line 67). The `RwLock` allows concurrent reads, so multiple room broadcasts can overlap. But each individual `Mutex<Process>` is per-actor, so if two broadcasts target the same actor, they serialize on that actor's mutex. More critically, the broadcasting actor is blocked for the entire iteration, unable to process its own incoming messages or yield cooperatively.
 
 **Why it happens:**
-- Snow and SQL have different naming conventions
-- The deriving infrastructure maps field names 1:1 without transformation
-- JSON keys typically match the programming language's naming convention (because the same language generates them), but SQL columns follow database conventions
-- There is no attribute or annotation system in Snow to override the mapping (e.g., `@column("first_name")` does not exist)
+- The natural implementation of "send to all members" is a loop calling `snow_actor_send`
+- There is no batch-send or multicast primitive in the actor runtime
+- Room membership is likely stored as a `Vec<ProcessId>` or `HashSet<ProcessId>`, requiring O(N) iteration
+- The deep-copy semantics of `snow_actor_send` (actor/mod.rs line 269: `slice.to_vec()`) mean the message is copied N times
 
 **Consequences:**
-- Every struct-to-row mapping requires column aliases in SQL: `SELECT first_name AS firstName, ...`
-- Boilerplate SQL for every query defeats the purpose of automatic mapping
-- Users blame the ORM/mapping layer for "not working" when it's a naming mismatch
-- Inconsistency between deriving(Json) (which works with camelCase keys) and deriving(Row) (which doesn't work with snake_case columns)
+- Broadcast latency scales linearly with room size: 1000-member room = 1000 lock/unlock cycles
+- The broadcasting actor's thread is blocked during the entire broadcast, starving co-located actors
+- For large rooms with frequent messages (e.g., chat rooms), broadcast becomes the bottleneck
+- Memory usage spikes: N copies of the same message in N different actor heaps
 
 **Prevention:**
-1. **Auto-convert field names to snake_case for column matching.** When `deriving(Row)` looks up a column in the result set, convert the struct field name to snake_case first. `firstName` becomes `first_name`, `createdAt` becomes `created_at`. This matches the conventions of Diesel (Rust), SQLAlchemy (Python), and ActiveRecord (Ruby).
-2. **Fall back to exact match if snake_case match fails.** This handles cases where the SQL column actually IS in camelCase (e.g., PostgreSQL with quoted identifiers).
-3. **Support case-insensitive matching as the default.** PostgreSQL folds unquoted identifiers to lowercase. `SELECT firstName FROM ...` actually returns a column named `firstname`. Case-insensitive matching handles this transparently.
-4. **Consider adding an annotation system in a future milestone.** `@column("first_name")` or `@json("firstName")` attributes on struct fields would give explicit control. This is a parser/typechecker feature and should not block the initial deriving(Row) implementation.
+1. **Implement broadcast as a dedicated runtime function** (`snow_ws_broadcast`) that iterates over members and pushes messages without going through the full `snow_actor_send` path. Skip the process table RwLock re-acquisition for each member (acquire once, iterate).
+2. **Use a reference-counted message for broadcast** instead of deep-copying N times. Wrap the message payload in an `Arc<Vec<u8>>` and store a reference in each mailbox. This reduces broadcast memory from O(N*M) to O(N+M) where M is the message size.
+3. **Consider a dedicated room actor** that owns the member list and performs broadcasts. This isolates the broadcast cost to one actor and prevents it from blocking the sending actor's thread. The sender sends one message to the room actor, which handles distribution.
+4. **For very large rooms (1000+ members), batch the broadcast across yield points.** Send to 50-100 members, yield, resume, send to the next batch. This prevents a single broadcast from monopolizing a worker thread.
 
 **Detection:**
-- Struct fields are always empty/default after deserialization from database rows
-- Queries work only when column aliases match struct field names exactly
-- deriving(Row) works perfectly with SELECT * from tables where column names happen to match Snow conventions
+- Message latency increases linearly with room size
+- Broadcasting actor stops receiving messages during broadcast (blocked)
+- CPU profiling shows excessive time in `snow_actor_send` during broadcasts
+- Memory spikes when messages are sent to large rooms
 
-**Phase:** struct-to-row mapping implementation. The naming convention decision should be made at design time.
-
----
-
-### Pitfall 8: Connection Pool Size Configuration Interacts With Worker Thread Count in Non-Obvious Ways
-
-**What goes wrong:**
-Snow's scheduler defaults to one worker thread per CPU core (scheduler.rs lines 117-123). The connection pool has a configurable maximum size. If pool_size > worker_thread_count, excess connections are wasted (no thread available to use them). If pool_size < worker_thread_count, some workers will always block waiting for connections. The "right" pool size depends on the workload: CPU-bound Snow code benefits from more workers with fewer connections; I/O-bound database code benefits from more connections with potentially fewer workers.
-
-The interaction is worse because Snow's cooperative scheduling means a single worker thread can multiplex many actors. If each actor needs a connection, pool_size must scale with actor count, not thread count. But actor count is dynamic and potentially unbounded (HTTP server spawns one actor per request).
-
-PostgreSQL also has its own connection limit (default: 100). If pool_size exceeds PG's max_connections, connection attempts fail with "too many connections." This is a common production problem.
-
-**Why it happens:**
-- No guidance for pool sizing relative to scheduler configuration
-- The relationship between Snow scheduler threads, Snow actors, and database connections is non-obvious
-- Default configurations (pool_size = 5, workers = num_cpus) may work on a developer machine but fail in production
-- PostgreSQL's max_connections is a shared resource across all clients, not just Snow
-
-**Consequences:**
-- Under-provisioned pool: connection checkout timeouts, application slowness
-- Over-provisioned pool: wasted PostgreSQL connections, potential "too many connections" errors
-- Pool size that works in development (few concurrent requests) fails in production (many concurrent requests)
-- No runtime visibility into pool utilization or wait times
-
-**Prevention:**
-1. **Default pool size = 2 * num_cpus, capped at 20.** This is a reasonable starting point based on PgBouncer documentation and HikariCP's sizing recommendations. It provides headroom for concurrent requests without exhausting typical PostgreSQL limits.
-2. **Expose pool metrics to Snow code.** Provide functions like `Pool.active_count(pool)`, `Pool.idle_count(pool)`, `Pool.waiting_count(pool)`. This allows users to implement health checks and auto-tuning.
-3. **Document the sizing heuristic prominently.** "For web applications: pool_size = 2 * number of CPU cores. For batch processing: pool_size = number of CPU cores. Never exceed PostgreSQL's max_connections."
-4. **Add a pool creation parameter for max_checkout_wait_ms.** Default to 5000ms. If a connection is not available within this time, return an error. This prevents silent hangs.
-
-**Detection:**
-- Checkout timeout errors under load
-- PostgreSQL "too many connections" errors
-- Application throughput plateaus despite available CPU
-- Pool waiting_count consistently > 0 (under-provisioned)
-
-**Phase:** Connection pool configuration. Should be addressed during pool implementation, not as a separate phase.
+**Phase:** Rooms/channels implementation. Design the room actor pattern from the start; retrofitting reference-counted messages is a significant refactor.
 
 ---
 
-### Pitfall 9: TLS Certificate Verification Requires System Root Certificates, Breaking Single-Binary Philosophy
+### Pitfall 10: Ping/Pong Timer Cannot Fire Because Read Loop Blocks the Actor
 
 **What goes wrong:**
-Snow compiles to a single static binary with no runtime dependencies. TLS client connections (to PostgreSQL) must verify the server's certificate against trusted root CAs. On Linux, root certificates live in `/etc/ssl/certs/` or `/etc/pki/tls/certs/`. On macOS, they're in the system keychain. On Alpine Linux (common in Docker), they're in `/etc/ssl/certs/ca-certificates.crt`. If none of these exist (minimal Docker image, embedded system), TLS connections fail with "certificate verify failed."
+Ping/pong heartbeat requires two concurrent activities within the same actor: (1) reading frames from the socket, and (2) sending Ping frames at regular intervals. In a traditional threaded model, these would be two threads or two async tasks. In Snow's coroutine model, an actor is single-threaded -- it executes sequentially. If the actor is blocked in `TcpStream::read()` waiting for a data frame, it cannot simultaneously check "has 30 seconds elapsed since the last ping?"
 
-rustls (the recommended TLS library for Snow's single-binary philosophy) uses `webpki-roots` or `rustls-native-certs` for root certificate loading. `webpki-roots` bundles Mozilla's root certificates INTO the binary (~200KB), making the binary self-contained. `rustls-native-certs` reads the system store at runtime, which fails on minimal systems.
-
-The choice between bundled and system certs affects both binary size and security model:
-- Bundled certs: self-contained binary, but root CAs become stale (new CAs not recognized, revoked CAs still trusted) until the binary is recompiled
-- System certs: always current, but requires system configuration and breaks the single-binary guarantee
+This is exactly the bug documented in the actix-web project (Issue #2441): "If an HTTP connection is severed at the client side without notification, and the WebSocket Actor sends a certain amount of messages, it becomes unable to run IntervalFuncs which could shut it down." The ping timer is starved because the actor is stuck in I/O.
 
 **Why it happens:**
-- TLS requires a trust anchor (root CA certificates) that the binary cannot generate
-- The single-binary philosophy conflicts with the need for externally-managed trust anchors
-- This is a fundamental tension in any self-contained TLS implementation
+- Snow actors have no internal concurrency -- they are single-threaded coroutines
+- There is no "select" or "poll" primitive that waits on multiple sources (socket + timer) simultaneously
+- `TcpStream::read()` is blocking and does not cooperate with timer checks
+- The `snow_timer_send_after` function (actor/mod.rs line 463) spawns an OS thread to deliver a timer message to the mailbox. But if the actor is blocked in `read()`, it never checks the mailbox to see the timer message
 
 **Consequences:**
-- TLS connections fail on minimal Docker images with "no trusted root certificates"
-- Developers on macOS (where system certs work) don't encounter the issue; it surfaces only in deployment
-- Bundled certs become a security liability if not updated regularly
-- Users expect "it just works" but TLS requires explicit certificate management
+- Dead connections are never detected because ping never fires while read is blocking
+- The timeout-based detection described in Pitfall 5 is the only mechanism that works, but it is coarse-grained (depends on the read timeout value)
+- If read timeout is set to 30 seconds and ping interval is 30 seconds, the ping is always late (it can only fire after the read timeout triggers a yield)
+- Combining read timeout + ping interval requires careful tuning: the read timeout must be significantly shorter than the ping interval
 
 **Prevention:**
-1. **Default to `webpki-roots` (bundled Mozilla root CAs).** This preserves the single-binary philosophy. The ~200KB binary size increase is negligible compared to LLVM's contribution to Snow binary size.
-2. **Allow runtime override via environment variable.** `SNOW_TLS_CA_FILE=/path/to/ca.crt` or `SNOW_TLS_CA_DIR=/path/to/certs/` allows users to specify custom certificates for corporate environments or self-signed CAs.
-3. **Support `SNOW_TLS_INSECURE=1` for development only.** Skip certificate verification when explicitly requested. Print a loud warning to stderr. Never enable by default.
-4. **For PostgreSQL `sslmode` compatibility**, support the standard connection string parameters: `sslmode=require` (encrypt but don't verify), `sslmode=verify-ca` (verify certificate), `sslmode=verify-full` (verify certificate and hostname). Default to `require` for development ergonomics, document `verify-full` for production.
-
-**Detection:**
-- "certificate verify failed" errors when connecting to cloud PostgreSQL (AWS RDS, Supabase, etc.)
-- Works locally (system certs available) but fails in Docker (minimal image)
-- SSL connections fail silently when `webpki-roots` doesn't include a specific CA (rare but possible with internal enterprise CAs)
-
-**Phase:** TLS library integration. The certificate strategy must be decided when adding rustls as a dependency.
-
----
-
-### Pitfall 10: struct-to-row Mapping with NULL Columns Causes Type Mismatch Panics
-
-**What goes wrong:**
-PostgreSQL columns can be NULL. Snow's type system distinguishes between `String` and `Option<String>`. If a struct has `name :: String` (not Optional) and the database returns NULL for that column, the deserializer must choose: panic, return an error, or silently substitute a default value. Each choice has consequences:
-
-- Panic: unexpected crash on production data
-- Error: forces every query to handle errors even when NULLs are "impossible" (e.g., NOT NULL column that is actually NULL during migration)
-- Default value (empty string for String, 0 for Int): silent data corruption
-
-The current pg.rs query function (line 892-899) already handles this by returning empty strings for NULL: `if col_len == -1 { String::new() }`. This works for the Map<String, String> return type but is incorrect for typed struct mapping where the field type should determine NULL handling.
-
-**Why it happens:**
-- SQL and Snow have different NULL semantics. SQL NULL means "no value." Snow Option<T> means "maybe no value." Snow String means "definitely has a value."
-- The database schema may allow NULLs even when the application expects them to be impossible
-- Schema changes (adding a nullable column, relaxing NOT NULL) break previously-working mappings
-
-**Consequences:**
-- Runtime panics when NULL appears in a non-Optional field
-- Silent data corruption if defaults are substituted for NULLs
-- Users must wrap EVERY field in Option<T> defensively, defeating the purpose of typed mapping
-- Breaking change when database schema evolves to allow NULLs
-
-**Prevention:**
-1. **Non-Optional fields: return a Result::Err if the column is NULL.** `from_row` should return `Result<T, String>` where Err contains "column 'name' is NULL but field type is non-optional String". This is explicit, safe, and matches Diesel/sqlx behavior.
-2. **Optional fields: NULL maps to None, non-NULL maps to Some(value).** `Option<String>` fields handle NULLs naturally.
-3. **Provide a derive option for default values.** A future annotation `@default("")` or `@default(0)` on struct fields could specify what value to use for NULL. This should NOT be the default behavior.
-4. **Document the NULL handling prominently.** "Use Option<T> for any column that might be NULL. Non-optional fields return an error on NULL."
-5. **Consider compile-time warnings** when deriving(Row) on a struct with non-Optional fields. The warning can't know the database schema, but it can remind the user: "field 'name' is non-optional; NULL values will cause runtime errors."
-
-**Detection:**
-- Runtime errors like "column 'name' is NULL but field is non-optional"
-- Tests pass with NOT NULL test data but fail with production data containing NULLs
-- Users defensively wrapping all fields in Option to avoid errors
-
-**Phase:** struct-to-row mapping deserialization. The NULL handling strategy must be decided at design time.
-
----
-
-### Pitfall 11: PostgreSQL `SSLRequest` Handshake Must Precede TLS, Breaking the Existing Connection Flow
-
-**What goes wrong:**
-PostgreSQL TLS is not "connect with TLS from the start." The protocol requires:
-1. Open a plain TCP connection
-2. Send `SSLRequest` message (8 bytes: length=8, code=80877103)
-3. Read 1 byte response: `S` (server supports SSL) or `N` (no SSL)
-4. If `S`: perform TLS handshake on the existing TCP connection
-5. Then send the normal `StartupMessage` over the TLS-encrypted connection
-
-The existing `snow_pg_connect` (pg.rs lines 491-713) sends the StartupMessage immediately after TCP connect. Adding TLS requires inserting the SSLRequest exchange BEFORE the StartupMessage. This changes the connection function's control flow and the PgConn struct (which currently wraps a plain TcpStream).
-
-If the developer naively wraps the TcpStream in TLS after the StartupMessage, the TLS handshake fails because the PostgreSQL server is already in normal protocol mode, not TLS negotiation mode.
-
-**Why it happens:**
-- PostgreSQL's TLS upgrade is an in-band protocol negotiation, not a separate port (unlike HTTPS which uses port 443)
-- The SSLRequest is NOT a standard PostgreSQL message (it has no type byte, just like the StartupMessage)
-- The existing code has no extension point for "do something between TCP connect and StartupMessage"
-- Many tutorials and examples show PostgreSQL TLS as "just wrap the stream," omitting the SSLRequest step
-
-**Consequences:**
-- TLS connection fails with "unexpected message" errors from PostgreSQL
-- If TLS handshake is attempted without SSLRequest, the server interprets TLS ClientHello as a malformed PostgreSQL message and disconnects
-- Works with `sslmode=disable` but fails with any SSL mode
-
-**Prevention:**
-1. **Refactor `snow_pg_connect` to have a clear two-phase structure.** Phase 1: TCP connect + optional TLS negotiation (SSLRequest -> TLS handshake). Phase 2: PostgreSQL StartupMessage + authentication. The PgConn struct should hold either a `TcpStream` or a `TlsStream<TcpStream>`, abstracted behind a trait or enum.
-2. **Use an enum for the stream type:**
-   ```rust
-   enum PgStream {
-       Plain(TcpStream),
-       Tls(rustls::StreamOwned<rustls::ClientConnection, TcpStream>),
+1. **Use the short read timeout approach (50-100ms) from Pitfall 2.** After each timeout, check: (a) is it time to send a Ping? (b) has the Pong deadline expired? (c) is there a message in the mailbox? This unified event loop handles both socket I/O and timers.
+2. **Track `last_ping_sent: Instant` and `last_pong_received: Instant` in the actor's state.** On each read timeout cycle, check if `now - last_ping_sent > ping_interval` and send a Ping. Check if `now - last_pong_received > ping_interval + pong_timeout` and close the connection.
+3. **Do NOT use `snow_timer_send_after` for ping scheduling.** It works for regular actors but fails for WebSocket actors because the actor cannot check its mailbox while blocked in read. Instead, drive the timer inline in the read loop.
+4. **Design the WebSocket event loop as:**
+   ```
+   loop {
+       // 1. Try to read a frame (short timeout)
+       match read_frame_with_timeout(stream, 100ms) {
+           Ok(frame) => handle_frame(frame),
+           Err(Timeout) => { /* no data, continue */ }
+           Err(other) => { break; /* connection error */ }
+       }
+       // 2. Check ping/pong timers
+       if should_send_ping() { send_ping(stream); }
+       if pong_overdue() { break; /* dead connection */ }
+       // 3. Check mailbox for outgoing messages
+       while let Some(msg) = mailbox.try_pop() {
+           write_frame(stream, msg);
+       }
+       // 4. Yield to scheduler
+       yield_current();
    }
    ```
-   Implement `Read + Write` for this enum so the rest of the wire protocol code is unchanged.
-3. **Handle the `N` response gracefully.** If the server responds with `N` (no SSL), the connection should either fall back to plain TCP (if `sslmode=prefer`) or return an error (if `sslmode=require`).
-4. **Test against PostgreSQL configured with `ssl=on`, `ssl=off`, and `ssl=prefer`.** Each configuration requires different behavior from the client.
 
 **Detection:**
-- "unexpected byte at start of message" errors from PostgreSQL server logs
-- TLS handshake timeout (server doesn't respond because it's waiting for a PostgreSQL message, not a TLS ClientHello)
-- Connection works with SSL disabled but fails with SSL enabled
+- Dead connections are only detected after the read timeout (e.g., 30 seconds) rather than the ping timeout (e.g., 10 seconds)
+- Ping frames are never sent (observable via Wireshark)
+- Connection cleanup takes much longer than expected
 
-**Phase:** PostgreSQL TLS implementation. The SSLRequest flow must be implemented before any TLS handshake code.
+**Phase:** Ping/pong heartbeat. The event loop structure must be designed together with the frame loop (Pitfall 2).
+
+---
+
+### Pitfall 11: Control Frames Fragmented or Exceeding 125 Bytes
+
+**What goes wrong:**
+RFC 6455 Section 5.5 states: "All control frames MUST have a payload length of 125 bytes or less and MUST NOT be fragmented." Control frames are Close (0x8), Ping (0x9), and Pong (0xA). The WebSocketPP library (Issue #591) violated this by sending Close frame headers and payloads in separate TCP writes, which network stacks could split into separate packets, making it appear fragmented to the receiver. If the server sends a Ping with more than 125 bytes of payload, compliant clients must close the connection.
+
+**Why it happens:**
+- When writing a frame, it is natural to write the header first and the payload second with separate `write()` calls. TCP may send these as separate packets
+- If the Ping payload includes diagnostic data (timestamps, connection IDs), it could exceed 125 bytes
+- Close frames with a long reason string can exceed 125 bytes
+
+**Prevention:**
+1. **Write control frames atomically** -- assemble the complete frame (header + payload) in a buffer and write it in a single `write_all()` call.
+2. **Validate payload length before sending control frames.** Close frames: 2 bytes (status code) + reason string <= 123 bytes. Ping/Pong: payload <= 125 bytes.
+3. **Never set FIN=0 on a control frame.** Control frames are always complete in a single frame.
+
+**Detection:**
+- Clients disconnect with code 1002 after receiving an oversized or fragmented control frame
+- Intermittent failures depending on TCP segmentation behavior
+
+**Phase:** Frame writer. Simple to prevent if checked during implementation.
+
+---
+
+### Pitfall 12: Text Frames Not Validated as UTF-8
+
+**What goes wrong:**
+RFC 6455 Section 5.6 specifies that text frames (opcode 0x1) must contain valid UTF-8 text. The server must validate that incoming text frames are valid UTF-8 (after unmasking). If the payload is not valid UTF-8, the server must close the connection with code 1007 (Invalid Frame Payload Data). Similarly, when the server sends text frames, the payload must be valid UTF-8.
+
+**Why it happens:**
+- Binary frames (opcode 0x2) have no encoding requirement, so it is tempting to treat text and binary the same
+- Rust strings are always valid UTF-8, so if the server converts the payload to a Rust `String`, invalid UTF-8 will cause a panic or error at the conversion point rather than a proper close with code 1007
+- Snow strings (SnowString) are byte buffers with a length field -- they may or may not enforce UTF-8
+
+**Prevention:**
+1. **After unmasking a text frame, validate UTF-8** using `std::str::from_utf8()`. If it fails, send a Close frame with code 1007 and terminate.
+2. **For fragmented text messages, validate UTF-8 on the reassembled complete message**, not on individual fragments (a multi-byte UTF-8 character can be split across fragments).
+3. **When sending text frames from Snow code, ensure the payload is valid UTF-8.** If Snow strings can contain arbitrary bytes, provide both `ws_send_text` (validates UTF-8) and `ws_send_binary` (no validation) APIs.
+
+**Detection:**
+- Autobahn Testsuite will catch this immediately
+- Clients sending non-UTF-8 in text frames cause panics or garbage instead of clean disconnects
+
+**Phase:** Frame parser. Part of frame validation.
+
+---
+
+### Pitfall 13: 64 KiB Actor Stack Overflow During Large Message Reassembly
+
+**What goes wrong:**
+Snow actors run on 64 KiB corosensei stacks (stack.rs line 17: `DEFAULT_STACK_SIZE`). If the WebSocket frame reassembly buffer is allocated on the stack (e.g., `let mut buf = [0u8; 65536]` for reading frames), it immediately consumes the entire stack space, causing a stack overflow. Even smaller buffers (4KB-8KB for frame headers + payload read buffers) leave very little stack space for the rest of the actor's call chain.
+
+The `parse_request` function for HTTP (server.rs line 247) uses `BufReader` and `String` which allocate on the heap, so this is not a problem for HTTP. But WebSocket frame parsing may involve fixed-size read buffers on the stack, and fragment reassembly requires accumulating arbitrarily large data.
+
+**Why it happens:**
+- 64 KiB is plenty for normal function call chains but is consumed quickly by large stack buffers
+- Frame read buffers, fragment accumulation buffers, and masking buffers can all be on the stack
+- Stack overflow in a coroutine manifests as a segfault, not a Rust panic, because corosensei stacks are manually allocated
+- The actor heap (ActorHeap) is available for heap allocation, but the frame parser runs in Rust runtime code, not in Snow code, so it does not naturally use the actor heap
+
+**Prevention:**
+1. **Allocate all frame buffers on the Rust heap** (Vec, Box) rather than on the stack. Read into a small stack buffer (e.g., 4KB) and copy to a heap-allocated Vec.
+2. **Fragment reassembly must use a heap-allocated Vec** that grows as fragments arrive.
+3. **Keep the frame parser's stack footprint minimal.** The frame header is at most 14 bytes (2 byte header + 8 byte extended length + 4 byte mask key), so only a small stack buffer is needed for header parsing.
+4. **Consider increasing the stack size for WebSocket actors** if needed, but prefer heap allocation to avoid coupling frame parser size to stack size.
+
+**Detection:**
+- Segfaults (not panics) when handling WebSocket connections
+- Crashes that only occur with large messages or during fragment reassembly
+- The crash happens inside the corosensei coroutine, making backtraces difficult to interpret
+
+**Phase:** Frame parser implementation. Use heap allocation from the start.
+
+---
+
+### Pitfall 14: Room Membership Not Cleaned Up When Actor Exits
+
+**What goes wrong:**
+When a WebSocket connection actor exits (cleanly or due to crash), it must be removed from all rooms/channels it has joined. If room membership is stored as a `HashSet<ProcessId>` in a room manager actor, and the connection actor exits without explicitly leaving, the room retains the dead PID. Subsequent broadcasts to the room will attempt to send messages to the dead PID. The `snow_actor_send` function will silently fail (the process table lookup returns None, actor/mod.rs line 285), but the iteration cost is wasted.
+
+Over time, rooms accumulate thousands of dead PIDs, making broadcast O(total_ever_joined) instead of O(currently_active). This is a memory and performance leak.
+
+**Why it happens:**
+- The actor may crash (panic caught by `catch_unwind`) and skip cleanup
+- Network disconnection triggers an I/O error, not a clean "leave all rooms" sequence
+- The `terminate_callback` mechanism (actor/mod.rs line 562) provides a cleanup hook, but it must be explicitly set and must know which rooms the actor has joined
+- Room membership may be distributed: the room manager must be notified, but if the connection actor crashes, it cannot send a "leave" message
+
+**Prevention:**
+1. **Use actor linking.** Link the connection actor to the room manager actor. When the connection actor exits, the room manager receives an exit signal (delivered as a mailbox message with EXIT_SIGNAL_TAG) and can remove the dead PID from all rooms.
+2. **Alternatively, set a `terminate_callback`** on the connection actor that sends "leave" messages to all joined rooms. The callback runs even on crash (scheduler.rs line 621: "invoke terminate_callback if set, wrapped in catch_unwind").
+3. **Periodically prune dead PIDs from room membership.** Check each PID against the process table and remove Exited ones. This is a safety net, not the primary mechanism.
+4. **Design rooms so that the room manager OWNS membership** and the connection actor only holds a reference to the room name/ID, not a membership slot. The room manager's exit signal handler does the cleanup.
+
+**Detection:**
+- Room broadcast slows down over time as dead PIDs accumulate
+- Memory usage for room data structures grows without bound
+- `snow_actor_send` to dead PIDs fails silently (no error, no delivery)
+
+**Phase:** Rooms/channels implementation. Design the cleanup mechanism with room creation.
 
 ---
 
 ## Minor Pitfalls
 
-Issues that cause developer friction or minor bugs, but have straightforward fixes.
+Mistakes that cause suboptimal behavior or minor spec violations but are easy to fix.
 
 ---
 
-### Pitfall 12: rustls Crypto Backend (aws-lc-rs) Build Complexity on Non-Standard Platforms
+### Pitfall 15: Extended Payload Length Encoding Off-By-One
 
 **What goes wrong:**
-rustls defaults to `aws-lc-rs` as its cryptographic backend. aws-lc-rs includes C and assembly code that requires a C compiler and CMake to build. On standard platforms (Linux x86_64, macOS ARM64), this works out of the box. On non-standard platforms (musl/Alpine Linux, cross-compilation for ARM, older macOS), the build may fail.
-
-The alternative backend `ring` is pure Rust + assembly and has fewer build dependencies, but is also not trivial to cross-compile.
-
-Snow's build system already compiles C code (SQLite amalgamation via `cc::Build` from the v2.0 milestone), so the toolchain is present. But aws-lc-rs requires CMake in addition to a C compiler, which may not be installed.
+WebSocket frame payload length encoding has three tiers: 0-125 bytes use the 7-bit length field directly. 126-65535 bytes use 126 as the 7-bit value followed by a 16-bit big-endian length. 65536+ bytes use 127 as the 7-bit value followed by a 64-bit big-endian length. Common bugs include using 126 for payloads > 65535 (truncating the length to 16 bits) or encoding the extended length as little-endian instead of big-endian.
 
 **Prevention:**
-1. **Use rustls with the `ring` crypto backend instead of the default `aws-lc-rs`.** Ring has broader platform support and simpler build requirements. The performance difference is negligible for Snow's use case (TLS is not the bottleneck; database queries and application logic are).
-2. **Add CMake as a documented build dependency** if aws-lc-rs is used. Update Snow's build instructions.
-3. **Test cross-compilation in CI.** Add a CI job that builds Snow for musl/Alpine to catch build issues early.
+1. **Use network byte order (big-endian)** for the 16-bit and 64-bit extended length fields. In Rust: `len.to_be_bytes()`.
+2. **Test with payloads of exactly 125, 126, 65535, and 65536 bytes** to exercise all three length tiers.
+3. **Test with large payloads (>65536 bytes)** to verify the 64-bit encoding.
 
-**Detection:**
-- Build failures on CI with "CMake not found" or "unsupported platform" errors from aws-lc-rs
-- Users reporting build failures on non-standard platforms
-
-**Phase:** TLS dependency selection. Decide on `ring` vs `aws-lc-rs` when adding the rustls dependency.
+**Phase:** Frame parser/writer. Simple to get right with boundary tests.
 
 ---
 
-### Pitfall 13: struct-to-row Mapping Code Generation Must Handle All Snow Primitive Types
+### Pitfall 16: Blocking TLS Handshake for WSS Connections Delays All Pending Connections
 
 **What goes wrong:**
-PostgreSQL returns column values as text strings in the text protocol format (which Snow's PG driver currently uses -- pg.rs uses format code 0 = text in write_bind at line 163 and write_describe_portal). The `deriving(Row)` code generator must produce parsing code for each Snow type:
+For WSS connections, the TLS handshake happens inside the connection actor (server.rs line 472: "The TLS handshake is lazy: StreamOwned::new() does NO I/O"). This is correct and already solved for HTTPS. But WebSocket connections may arrive in bursts (e.g., page load with multiple WebSocket connections). If the scheduler only has 4 worker threads and 10 WSS connections arrive simultaneously, 6 connections wait in the queue while 4 undergo TLS handshake (50-200ms each). The queued connections see a delay of 100-400ms before their handshake even begins.
 
-- `String`: no parsing needed (already text)
-- `Int`: parse text as i64 (can fail: "abc" is not a valid Int)
-- `Float`: parse text as f64 (can fail, and has precision concerns: "3.14159265358979323846" may lose precision)
-- `Bool`: parse "t"/"f"/"true"/"false"/"1"/"0" (PostgreSQL uses "t"/"f")
-- `Option<T>`: handle NULL (column length -1) then recursively parse T
-- `List<T>`: PostgreSQL array syntax `{1,2,3}` is NOT JSON array syntax `[1,2,3]`
-
-Missing any type or getting the parsing wrong for edge cases produces silent data corruption or runtime errors.
-
-**Why it happens:**
-- PostgreSQL's text representation varies by type and is not the same as JSON
-- Boolean is "t"/"f" not "true"/"false"
-- Arrays use curly braces not square brackets
-- Dates, timestamps, and UUIDs are text but require specific parsing
-- The deriving(Json) infrastructure handles JSON types, not PostgreSQL text types
-
-**Consequences:**
-- Bool fields always fail to parse ("true" instead of "t")
-- Float fields lose precision or fail on scientific notation ("1.23e4")
-- Array/List fields produce garbage when parsing `{1,2,3}` as if it were JSON
-- Date/timestamp fields are returned as unparsed strings, confusing users who expected typed values
+This is the v3.0 Pitfall 2 (TLS handshake blocking) applied to WebSocket connections, but worse because WebSocket connections are long-lived. For HTTP, the TLS handshake is amortized over one request. For WebSocket, the handshake is amortized over potentially hours of communication, so the initial burst cost is more acceptable.
 
 **Prevention:**
-1. **Start with String-only mapping.** For the initial implementation, `deriving(Row)` only supports structs where ALL fields are `String`. This avoids all parsing issues and is still useful (users parse manually, same as the current Map<String, String> approach but with named fields).
-2. **Add type-specific parsers incrementally.** After String, add Int (`str.parse::<i64>()`), Float (`str.parse::<f64>()`), Bool (`match s { "t" | "true" | "1" => true, _ => false }`). Each parser is tested in isolation.
-3. **Do NOT support PostgreSQL array syntax in the initial implementation.** Arrays (`{1,2,3}`) require a dedicated parser. Defer to a future milestone. Users who need arrays can use String fields and parse manually.
-4. **Return `Result<T, String>` from the generated `from_row` function.** Every parsing failure produces an Err with the column name, expected type, and actual value. Never panic on parse failure.
+- The existing architecture (lazy TLS handshake inside actor) is correct for WebSocket. No architectural change needed.
+- If burst connection latency is a concern, consider increasing worker thread count or moving TLS handshake to a dedicated thread pool. But this is an optimization, not a correctness issue.
 
-**Detection:**
-- Parse failures at runtime for non-String fields
-- Tests that only use String values pass, but Int/Float/Bool fields fail
-- PostgreSQL boolean "t"/"f" not recognized as valid booleans
-
-**Phase:** struct-to-row mapping type support. Start with String-only, expand incrementally.
+**Phase:** TLS integration. The existing HTTPS architecture already handles this correctly.
 
 ---
 
-### Pitfall 14: Pool Connection Health Check Adds Latency to Every Checkout
+### Pitfall 17: Outgoing Message Write Blocks When Network Buffer Is Full
 
 **What goes wrong:**
-Connection pools must validate that connections are still alive (the server hasn't closed them due to timeout, network failure, or restart). The standard approach is to send a "ping" query (`SELECT 1` or PostgreSQL's `;` empty query) on checkout. But this adds a network round-trip (1-5ms) to every checkout, which adds up: 100 queries/second * 3ms/ping = 300ms/second spent on health checks.
+When the server writes a WebSocket frame to a client with a slow or congested connection, `TcpStream::write()` blocks until the OS send buffer has space. If the send buffer is full (client is not reading), the write blocks the entire worker thread. For broadcasts to large rooms, one slow client can block the entire broadcast, delaying messages to all other clients.
 
-For Snow's actor-based model, the health check also blocks the worker thread (same as any DB operation), compounding the scheduling starvation problem from Pitfall 2.
-
-**Why it happens:**
-- Connections can become stale silently (TCP keepalive doesn't detect application-level disconnects)
-- Without health checks, stale connections cause query failures after checkout
-- The "check on checkout" pattern is the simplest but most expensive approach
-
-**Consequences:**
-- Measurable latency increase (1-5ms) on every database operation
-- Under high query volume, health checks consume significant pool capacity
-- False positive failures when the network has transient issues (health check fails but the connection would have worked for the actual query)
+This is related to the websockets library's documentation on broadcast: "A naive broadcast approach will block until the slowest client times out."
 
 **Prevention:**
-1. **Use "test on borrow with idle timeout" strategy.** Only health-check connections that have been idle for longer than N seconds (default: 30s). Recently-used connections are assumed to be alive. This eliminates health checks for hot pools.
-2. **Use TCP keepalive instead of application-level pings.** Set `TcpStream::set_keepalive(Some(Duration::from_secs(60)))` on PostgreSQL connections. The OS detects dead connections automatically. This is not sufficient for all failure modes but catches the most common (server restart, network partition).
-3. **Validate lazily: catch errors and retry.** Instead of health-checking on checkout, attempt the query. If it fails with a connection error (as opposed to a SQL error), discard the connection, check out a new one, and retry. This is the approach used by HikariCP (Java) and is the most performant.
-4. **For the initial implementation, skip health checks entirely.** Let stale connections fail naturally and be replaced. This is acceptable for a first version; health checks can be added later.
+1. **Set a write timeout on the TcpStream** (e.g., 5 seconds). If a write times out, consider the client dead and close the connection.
+2. **For broadcasts, skip clients that have a pending write backlog.** Track whether each connection has undelivered outgoing messages and skip it during broadcast if so.
+3. **Consider per-connection outgoing buffers** with a maximum size. If the buffer exceeds the limit, close the connection as unresponsive.
 
-**Detection:**
-- Checkout latency includes a consistent 1-5ms overhead
-- Health check failures cause checkout errors even when the database is healthy (transient network issue)
-- Pool metrics show high health-check-failure rate during network instability
+**Phase:** Frame writer / broadcast implementation.
 
-**Phase:** Connection pool health check implementation. Can be deferred to after the initial pool implementation.
+---
+
+### Pitfall 18: Binary and Text Frame Opcodes Mixed Up in Response
+
+**What goes wrong:**
+If a client sends a text frame (opcode 0x1) and the server responds with opcode 0x2 (binary), the client may handle the response differently (e.g., delivering it as an ArrayBuffer instead of a string in JavaScript). Conversely, responding to a binary frame with a text opcode may cause UTF-8 validation failures on the client.
+
+**Prevention:**
+1. **Track the opcode of the received message and use the same opcode for responses** where applicable, or let the Snow application explicitly choose text vs binary.
+2. **Provide separate `ws_send_text` and `ws_send_binary` APIs** in the Snow runtime. Do not auto-detect.
+
+**Phase:** Frame writer API design.
 
 ---
 
 ## Phase-Specific Warnings
 
-| Phase Topic | Likely Pitfall | Severity | Mitigation |
-|-------------|---------------|----------|------------|
-| Connection pooling architecture | Pool checkout blocks worker thread (Pitfall 1) | CRITICAL | Message-passing checkout, not blocking wait |
-| Connection pooling architecture | Dangling handle after pool reclaim (Pitfall 4) | CRITICAL | Generation-counted slot IDs, not raw pointers |
-| Connection pooling architecture | Pool size vs worker thread count (Pitfall 8) | MODERATE | Default 2*num_cpus, expose pool metrics |
-| Connection pooling architecture | Health check latency (Pitfall 14) | LOW | Idle-timeout strategy, lazy validation |
-| PostgreSQL TLS | SSLRequest must precede TLS handshake (Pitfall 11) | CRITICAL | Two-phase connect: SSLRequest then StartupMessage |
-| PostgreSQL TLS | TLS handshake blocks worker thread (Pitfall 2) | CRITICAL | Handshake on dedicated OS thread for HTTPS; accept for PG (one-time cost) |
-| PostgreSQL TLS | Certificate verification vs single-binary (Pitfall 9) | MODERATE | Bundle webpki-roots, allow env var override |
-| PostgreSQL TLS | GC + TLS stream interaction (Pitfall 5) | MODERATE | Maintain copy-to-buffer pattern from pg.rs |
-| PostgreSQL TLS | rustls build complexity (Pitfall 12) | LOW | Use ring backend, not aws-lc-rs |
-| HTTPS server TLS | TLS accept starvation (Pitfall 2) | CRITICAL | Dedicated thread pool for TLS accepts |
-| Database transactions | Open transaction after actor crash (Pitfall 3) | CRITICAL | Pool validates ReadyForQuery status, ROLLBACK on checkin |
-| Database transactions | Transaction leak from missing commit (Pitfall 6) | MODERATE | Provide transaction(conn, fn) wrapper as primary API |
-| struct-to-row mapping | Column name mismatch (Pitfall 7) | MODERATE | Auto snake_case conversion, case-insensitive matching |
-| struct-to-row mapping | NULL handling for non-Optional fields (Pitfall 10) | MODERATE | Return Result::Err on NULL for non-Optional fields |
-| struct-to-row mapping | Type parsing for non-String fields (Pitfall 13) | MODERATE | Start with String-only, expand incrementally |
-
----
-
-## Integration Pitfalls (Cross-Feature)
-
-These pitfalls arise from the INTERACTION between features, not from any single feature in isolation.
-
-### Pool + Transactions: The Deadly Combination
-
-Connection pooling and transactions are deeply coupled. Every pool design decision affects transaction safety, and vice versa. The critical interaction: if a connection with an open transaction is returned to the pool, every subsequent user of that connection is affected. This is Pitfall 3 (transaction poisoning) plus Pitfall 4 (handle lifecycle), combined.
-
-**The safe order of implementation:**
-1. First: pool with ROLLBACK-on-checkin safety net
-2. Then: transaction API that uses the pool
-3. Never: transaction API without pool awareness
-
-### TLS + Cooperative Scheduling: The Latency Tax
-
-TLS adds blocking time to both PostgreSQL connections (one-time handshake) and HTTPS server (per-connection handshake). For PostgreSQL, the one-time cost is acceptable because connections are pooled. For HTTPS, the per-connection cost is not acceptable on the actor scheduler.
-
-**The safe order of implementation:**
-1. First: PostgreSQL TLS (client-side, pooled connections, one-time handshake cost)
-2. Then: HTTPS TLS (server-side, requires dedicated thread pool for accepts)
-3. Never: HTTPS TLS on the actor scheduler without a dedicated accept thread pool
-
-### struct-to-row + Pool: Connection State Assumptions
-
-struct-to-row mapping generates code that executes queries and parses results. If the underlying connection is in a bad state (from a poisoned pool), the generated code receives garbage data and produces confusing errors. The mapping code should not assume a clean connection; it should validate that the query succeeded before attempting to parse rows.
+| Phase Topic | Likely Pitfall | Mitigation |
+|-------------|---------------|------------|
+| HTTP Upgrade Handshake | Pitfall 1 (connection lifecycle), Pitfall 3 (Sec-WebSocket-Accept), Pitfall 4 (masking direction) | Redesign connection handler; unit test with RFC example values; test with browser |
+| Frame Parser/Writer | Pitfall 6 (fragmentation), Pitfall 11 (control frames), Pitfall 12 (UTF-8), Pitfall 13 (stack overflow), Pitfall 15 (length encoding) | State machine design; heap allocation; boundary tests; Autobahn Testsuite |
+| Actor Integration / Event Loop | Pitfall 2 (blocking read), Pitfall 7 (type tag collision), Pitfall 10 (timer starvation) | Short read timeout + yield loop; reserved type tag ranges; inline timer checks |
+| Ping/Pong Heartbeat | Pitfall 5 (connection leak), Pitfall 10 (timer cannot fire) | Heartbeat driven by read timeout cycle, not by mailbox timer |
+| Rooms/Channels | Pitfall 9 (broadcast contention), Pitfall 14 (membership cleanup) | Room actor pattern; actor linking for cleanup; reference-counted messages |
+| Close Handshake | Pitfall 8 (state machine), Pitfall 4 (masking direction on Close frames) | Implement close state machine; validate close status codes |
+| TLS (WSS) | Pitfall 16 (handshake burst delay) | Existing HTTPS architecture is adequate; optimize only if measured |
+| Outgoing Messages | Pitfall 17 (write backlog), Pitfall 18 (opcode mismatch) | Write timeouts; separate text/binary APIs |
 
 ---
 
 ## Sources
 
-### Official Documentation
-- [PostgreSQL Wire Protocol v3: Message Flow](https://www.postgresql.org/docs/current/protocol-flow.html) -- SSLRequest, Sync, ReadyForQuery transaction status (HIGH confidence)
-- [PostgreSQL Wire Protocol v3: SSL Session Encryption](https://www.postgresql.org/docs/current/protocol-flow.html#PROTOCOL-FLOW-SSL) -- SSLRequest message format and flow (HIGH confidence)
-- [PostgreSQL SASL Authentication](https://www.postgresql.org/docs/current/sasl-authentication.html) -- SCRAM-SHA-256 over TLS (HIGH confidence)
-- [rustls documentation](https://docs.rs/rustls/latest/rustls/) -- TLS library API, certificate handling (HIGH confidence)
+### RFC and Protocol References
+- [RFC 6455: The WebSocket Protocol](https://datatracker.ietf.org/doc/html/rfc6455) -- PRIMARY SOURCE for all protocol behavior
+- [Sec-WebSocket-Accept header - MDN](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Sec-WebSocket-Accept)
+- [WebSocket Close Codes Reference](https://websocket.org/reference/close-codes/)
 
-### Domain Research
-- [Building a Connection Pool from Scratch (2025)](https://medium.com/nerd-for-tech/building-a-connection-pool-from-scratch-internals-design-and-real-world-insights-e4f72fd7d9af) -- Pool design patterns, thread safety, sizing heuristics (MEDIUM confidence)
-- [Npgsql Connection Reclamation via WeakReference](https://github.com/npgsql/npgsql/issues/2878) -- GC-safe connection pool handle pattern (MEDIUM confidence)
-- [Erlang: A Veteran's Take on Concurrency and Fault Tolerance](https://medium.com/@rng/erlang-a-veterans-take-on-concurrency-fault-tolerance-and-scalability-adff3f96565b) -- Actor model + database transaction patterns (MEDIUM confidence)
-- [Rustls vs NativeTls (Rust forum)](https://users.rust-lang.org/t/rustls-vs-nativetls/131051) -- TLS library comparison for static linking (MEDIUM confidence)
-- [Rustls Performance Benchmarks (Prossimo)](https://www.memorysafety.org/blog/rustls-performance/) -- rustls vs OpenSSL performance data (MEDIUM confidence)
-- [Pitfalls of Isolation Levels in Distributed Databases (PlanetScale)](https://planetscale.com/blog/pitfalls-of-isolation-levels-in-distributed-databases) -- Transaction isolation pitfalls (MEDIUM confidence)
-- [node-postgres: Lost Connection During Transaction](https://github.com/brianc/node-postgres/issues/1454) -- Connection state after crash in transaction (MEDIUM confidence)
-- [IBM Maximo: GC and Connection Leak](https://www.ibm.com/support/pages/garbage-collection-and-connection-leak) -- GC interaction with connection pools (MEDIUM confidence)
-- [Cooperative Scheduling Pitfalls (Microsoft)](https://learn.microsoft.com/en-us/cpp/parallel/concrt/comparing-the-concurrency-runtime-to-other-concurrency-models) -- Cooperative scheduling starvation patterns (MEDIUM confidence)
+### Real-World Implementation Bugs
+- [actix-web Issue #2441: WebSocket actor paralyzed by lack of IO timeout](https://github.com/actix/actix-web/issues/2441) -- connection leak via blocked actor
+- [Bun Issue #3742: Continuation frame handling failure](https://github.com/oven-sh/bun/issues/3742) -- fragmentation bug
+- [aiohttp PR #1962: Fix fragmented frame handling](https://github.com/aio-libs/aiohttp/pull/1962) -- fragmentation and control frame interleaving
+- [GNS3 Issue #2320: Server fails to initiate TCP close](https://github.com/GNS3/gns3-server/issues/2320) -- close handshake violation
+- [Ktor Issue #423: Client masking disabled by default](https://github.com/ktorio/ktor/issues/423) -- masking direction
+- [ESP-IDF Issue #18227: PONG frame 50% failure rate](https://github.com/espressif/esp-idf/issues/18227) -- mask key bit handling
+- [WebSocketPP Issue #591: Control frames sent fragmented](https://github.com/zaphoyd/websocketpp/issues/591) -- control frame fragmentation
+- [Jetty Issue #2491: FragmentExtension producing invalid frame streams](https://github.com/jetty/jetty.project/issues/2491)
+- [faye-websocket-node Issue #48: Malformed frames from TCP fragmentation](https://github.com/faye/faye-websocket-node/issues/48)
+- [.NET Runtime Issue #100771: Ping/Pong frame handling abstracted away](https://github.com/dotnet/runtime/issues/100771)
+- [reactor-netty Issue #1891: Invalid close status code 1005](https://github.com/reactor/reactor-netty/issues/1891)
 
-### Codebase Analysis (PRIMARY SOURCE)
-- `/Users/sn0w/Documents/dev/snow/crates/snow-rt/src/db/pg.rs` -- PostgreSQL wire protocol, PgConn struct, opaque u64 handle pattern, ReadyForQuery handling
-- `/Users/sn0w/Documents/dev/snow/crates/snow-rt/src/db/sqlite.rs` -- SQLite FFI, SqliteConn struct, matching handle pattern
-- `/Users/sn0w/Documents/dev/snow/crates/snow-rt/src/actor/scheduler.rs` -- M:N work-stealing scheduler, !Send coroutines, worker loop, process table
-- `/Users/sn0w/Documents/dev/snow/crates/snow-rt/src/actor/mod.rs` -- Actor lifecycle, terminate_callback, reduction_check, snow_actor_receive
-- `/Users/sn0w/Documents/dev/snow/crates/snow-rt/src/actor/stack.rs` -- Corosensei coroutine management, CURRENT_YIELDER, thread-pinning
-- `/Users/sn0w/Documents/dev/snow/crates/snow-rt/src/actor/heap.rs` -- Per-actor GC, conservative stack scanning, mark-sweep, find_object_containing
-- `/Users/sn0w/Documents/dev/snow/crates/snow-rt/src/actor/process.rs` -- PCB, ProcessState, terminate_callback type
-- `/Users/sn0w/Documents/dev/snow/crates/snow-rt/src/gc.rs` -- GC allocation entry points, global arena vs actor heap
-- `/Users/sn0w/Documents/dev/snow/crates/snow-rt/src/http/server.rs` -- Actor-per-connection HTTP, catch_unwind pattern, tiny_http blocking accept
-- `/Users/sn0w/Documents/dev/snow/crates/snow-typeck/src/infer.rs` -- deriving infrastructure, trait resolution for deriving(Json)
-- `/Users/sn0w/Documents/dev/snow/crates/snow-codegen/src/mir/lower.rs` -- MIR generation for deriving traits
+### Architecture and Design
+- [WebSocket Framing: Masking, Fragmentation and More](https://www.openmymind.net/WebSocket-Framing-Masking-Fragmentation-and-More/) -- excellent frame format walkthrough
+- [websockets library keepalive documentation](https://websockets.readthedocs.io/en/stable/topics/keepalive.html) -- ping/pong timing defaults
+- [How to Close a WebSocket (Correctly)](https://mcguirev10.com/2019/08/17/how-to-close-websocket-correctly.html) -- close handshake state machine
+- [WebSocket architecture best practices - Ably](https://ably.com/topic/websocket-architecture-best-practices) -- room/channel patterns
+- [websockets library broadcast documentation](https://websockets.readthedocs.io/en/stable/topics/broadcast.html) -- backpressure in broadcast
+- [Tokio Discussion #6175: Fairness and starvation](https://github.com/tokio-rs/tokio/discussions/6175) -- cooperative scheduling starvation
+- [Why Actors Are Perfect for WebSockets](https://redandgreen.co.uk/why-actors-are-perfect-for-websockets/rust-programming/) -- actor-WebSocket patterns
+- [How to Fix Invalid Frame Header WebSocket Errors](https://oneuptime.com/blog/post/2026-01-24-websocket-invalid-frame-header/view) -- frame parsing errors
+- [How to Configure WebSocket Heartbeat/Ping-Pong](https://oneuptime.com/blog/post/2026-01-24-websocket-heartbeat-ping-pong/view) -- timeout tuning
+
+### Snow Codebase References
+- `crates/snow-rt/src/http/server.rs` -- HttpStream, parse_request, write_response, connection_handler_entry
+- `crates/snow-rt/src/actor/scheduler.rs` -- M:N scheduler, worker_loop, thread-pinned coroutines
+- `crates/snow-rt/src/actor/mod.rs` -- snow_actor_send, snow_actor_receive, mailbox delivery, type_tag derivation
+- `crates/snow-rt/src/actor/mailbox.rs` -- FIFO mailbox with Mutex<VecDeque<Message>>
+- `crates/snow-rt/src/actor/process.rs` -- Process, ProcessState, MessageBuffer, EXIT_SIGNAL_TAG
+- `crates/snow-rt/src/actor/stack.rs` -- corosensei coroutines, 64 KiB stacks, yield_current
