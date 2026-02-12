@@ -12,7 +12,7 @@
 - [x] **v1.7 Loops & Iteration** - Phases 33-36 (shipped 2026-02-09)
 - [x] **v1.8 Module System** - Phases 37-42 (shipped 2026-02-09)
 - [x] **v1.9 Stdlib & Ergonomics** - Phases 43-48 (shipped 2026-02-10)
-- [ ] **v2.0 Database & Serialization** - Phases 49-54 (in progress)
+- [x] **v2.0 Database & Serialization** - Phases 49-54 (shipped 2026-02-12)
 
 ## Phases
 
@@ -105,7 +105,7 @@ See milestones/v1.9-ROADMAP.md for full phase details.
 - [x] **Phase 51: HTTP Path Parameters** - Dynamic route segments and method-specific routing (shipped 2026-02-11)
 - [x] **Phase 52: HTTP Middleware** - Function pipeline for request/response processing (shipped 2026-02-11)
 - [x] **Phase 53: SQLite Driver** - Embedded database access with parameterized queries (shipped 2026-02-11)
-- [ ] **Phase 54: PostgreSQL Driver** - Production database access with wire protocol and auth
+- [x] **Phase 54: PostgreSQL Driver** - Production database access with wire protocol and auth (shipped 2026-02-12)
 
 ## Phase Details
 
@@ -198,8 +198,8 @@ Plans:
 **Plans:** 2 plans
 
 Plans:
-- [ ] 54-01-PLAN.md -- Pure Rust wire protocol runtime (SCRAM-SHA-256 + MD5 auth) + compiler pipeline (intrinsics, typeck, MIR lowering)
-- [ ] 54-02-PLAN.md -- E2E test: Snow fixture with PostgreSQL CRUD lifecycle (connect, execute, query, close)
+- [x] 54-01-PLAN.md -- Pure Rust wire protocol runtime (SCRAM-SHA-256 + MD5 auth) + compiler pipeline (intrinsics, typeck, MIR lowering)
+- [x] 54-02-PLAN.md -- E2E test: Snow fixture with PostgreSQL CRUD lifecycle (connect, execute, query, close)
 
 ## Progress
 
@@ -223,6 +223,6 @@ Phases execute in numeric order: 49 -> 50 -> 51 -> 52 -> 53 -> 54
 | 51. HTTP Path Parameters | v2.0 | 2/2 | Complete | 2026-02-11 |
 | 52. HTTP Middleware | v2.0 | 2/2 | Complete | 2026-02-11 |
 | 53. SQLite Driver | v2.0 | 2/2 | Complete | 2026-02-11 |
-| 54. PostgreSQL Driver | v2.0 | 0/2 | Not started | - |
+| 54. PostgreSQL Driver | v2.0 | 2/2 | Complete | 2026-02-12 |
 
-**Total: 53 phases shipped across 10 milestones. 152 plans completed. 1 phase remaining in v2.0.**
+**Total: 54 phases shipped across 11 milestones. 154 plans completed. v2.0 complete.**
