@@ -17,9 +17,12 @@
 
 use std::io::{Read, Write};
 use std::net::{SocketAddr, TcpStream, ToSocketAddrs};
+use std::sync::Arc;
 use std::time::Duration;
 
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
+use rustls::{ClientConfig, ClientConnection, RootCertStore, StreamOwned};
+use rustls_pki_types::ServerName;
 use hmac::{Hmac, Mac};
 use md5::{Digest, Md5};
 use pbkdf2::pbkdf2_hmac;
@@ -33,9 +36,50 @@ use crate::string::{snow_string_new, SnowString};
 
 type HmacSha256 = Hmac<Sha256>;
 
-/// Wrapper around a TCP stream to a PostgreSQL server.
+// ── Stream Abstraction ─────────────────────────────────────────────────
+
+/// A PostgreSQL connection stream that may be plain TCP or TLS-wrapped.
+enum PgStream {
+    Plain(TcpStream),
+    Tls(StreamOwned<ClientConnection, TcpStream>),
+}
+
+impl Read for PgStream {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        match self {
+            PgStream::Plain(s) => s.read(buf),
+            PgStream::Tls(s) => s.read(buf),
+        }
+    }
+}
+
+impl Write for PgStream {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        match self {
+            PgStream::Plain(s) => s.write(buf),
+            PgStream::Tls(s) => s.write(buf),
+        }
+    }
+    fn flush(&mut self) -> std::io::Result<()> {
+        match self {
+            PgStream::Plain(s) => s.flush(),
+            PgStream::Tls(s) => s.flush(),
+        }
+    }
+}
+
+/// Wrapper around a (possibly TLS-wrapped) stream to a PostgreSQL server.
 struct PgConn {
-    stream: TcpStream,
+    stream: PgStream,
+}
+
+// ── SSL Mode ───────────────────────────────────────────────────────────
+
+#[derive(Clone, Copy, PartialEq)]
+enum SslMode {
+    Disable,
+    Prefer,
+    Require,
 }
 
 // ── URL Parsing ────────────────────────────────────────────────────────
@@ -47,6 +91,7 @@ struct PgUrl {
     user: String,
     password: String,
     database: String,
+    sslmode: SslMode,
 }
 
 /// Percent-decode a URL component (handles %XX sequences).
@@ -71,12 +116,35 @@ fn percent_decode(s: &str) -> String {
     String::from_utf8_lossy(&result).into_owned()
 }
 
-/// Parse a `postgres://user:pass@host:port/database` URL.
+/// Parse the sslmode query parameter from a URL query string.
+fn parse_sslmode(query_str: &str) -> SslMode {
+    for param in query_str.split('&') {
+        if let Some(value) = param.strip_prefix("sslmode=") {
+            return match value {
+                "disable" => SslMode::Disable,
+                "require" => SslMode::Require,
+                "prefer" => SslMode::Prefer,
+                _ => SslMode::Prefer,
+            };
+        }
+    }
+    SslMode::Prefer
+}
+
+/// Parse a `postgres://user:pass@host:port/database?sslmode=prefer` URL.
 fn parse_pg_url(url: &str) -> Result<PgUrl, String> {
     let rest = url
         .strip_prefix("postgres://")
         .or_else(|| url.strip_prefix("postgresql://"))
         .ok_or_else(|| "URL must start with postgres:// or postgresql://".to_string())?;
+
+    // Split off query string before parsing host/credentials
+    let (rest, query_str) = if let Some((r, q)) = rest.split_once('?') {
+        (r, q)
+    } else {
+        (rest, "")
+    };
+    let sslmode = parse_sslmode(query_str);
 
     // Split on '@' to separate credentials from host
     let (creds, host_part) = rest
@@ -112,6 +180,7 @@ fn parse_pg_url(url: &str) -> Result<PgUrl, String> {
         user,
         password,
         database,
+        sslmode,
     })
 }
 
@@ -242,8 +311,73 @@ fn write_terminate(buf: &mut Vec<u8>) {
     buf.extend_from_slice(&4_i32.to_be_bytes());
 }
 
+// ── TLS Negotiation ────────────────────────────────────────────────────
+
+/// Upgrade a TCP stream to a TLS-wrapped stream using rustls.
+fn upgrade_to_tls(
+    stream: TcpStream,
+    hostname: &str,
+) -> Result<StreamOwned<ClientConnection, TcpStream>, String> {
+    let root_store = RootCertStore::from_iter(
+        webpki_roots::TLS_SERVER_ROOTS.iter().cloned(),
+    );
+    let config = ClientConfig::builder()
+        .with_root_certificates(root_store)
+        .with_no_client_auth();
+    let server_name = ServerName::try_from(hostname.to_string())
+        .map_err(|_| format!("invalid hostname for TLS: {}", hostname))?;
+    let conn = ClientConnection::new(Arc::new(config), server_name)
+        .map_err(|e| format!("TLS connection: {}", e))?;
+    Ok(StreamOwned::new(conn, stream))
+}
+
+/// Perform PostgreSQL SSLRequest handshake and return a PgStream.
+///
+/// For sslmode=disable, returns Plain immediately.
+/// For prefer/require, sends the SSLRequest message and reads the 1-byte response.
+/// 'S' = server accepts SSL -> upgrade to TLS.
+/// 'N' = server declines -> error on require, fallback on prefer.
+fn negotiate_tls(
+    mut stream: TcpStream,
+    hostname: &str,
+    sslmode: SslMode,
+) -> Result<PgStream, String> {
+    if sslmode == SslMode::Disable {
+        return Ok(PgStream::Plain(stream));
+    }
+
+    // SSLRequest: Int32(8) Int32(80877103) -- no message type byte
+    let mut ssl_request = [0u8; 8];
+    ssl_request[0..4].copy_from_slice(&8_i32.to_be_bytes());
+    ssl_request[4..8].copy_from_slice(&80877103_i32.to_be_bytes());
+    stream
+        .write_all(&ssl_request)
+        .map_err(|e| format!("send SSLRequest: {}", e))?;
+
+    // Read exactly 1 byte response (CVE-2021-23222: do NOT read more)
+    let mut response = [0u8; 1];
+    stream
+        .read_exact(&mut response)
+        .map_err(|e| format!("read SSL response: {}", e))?;
+
+    match response[0] {
+        b'S' => {
+            let tls = upgrade_to_tls(stream, hostname)?;
+            Ok(PgStream::Tls(tls))
+        }
+        b'N' => match sslmode {
+            SslMode::Require => Err("server does not support SSL".to_string()),
+            SslMode::Prefer => Ok(PgStream::Plain(stream)),
+            SslMode::Disable => unreachable!(),
+        },
+        other => Err(format!("unexpected SSL response: 0x{:02x}", other)),
+    }
+}
+
+// ── Wire Protocol Helpers (Message Reading) ────────────────────────────
+
 /// Read a single message from the server: returns (tag_byte, body_bytes).
-fn read_message(stream: &mut TcpStream) -> Result<(u8, Vec<u8>), String> {
+fn read_message(stream: &mut PgStream) -> Result<(u8, Vec<u8>), String> {
     let mut tag = [0u8; 1];
     stream
         .read_exact(&mut tag)
@@ -506,14 +640,20 @@ pub extern "C" fn snow_pg_connect(url: *const SnowString) -> *mut u8 {
             Err(e) => return err_result(&format!("DNS resolution failed: {}", e)),
         };
 
-        let mut stream = match TcpStream::connect_timeout(&addr, Duration::from_secs(10)) {
+        let stream = match TcpStream::connect_timeout(&addr, Duration::from_secs(10)) {
             Ok(s) => s,
             Err(e) => return err_result(&format!("connection failed: {}", e)),
         };
 
-        // Set read/write timeouts for protocol messages
+        // Set read/write timeouts BEFORE TLS wrapping (StreamOwned inherits them)
         let _ = stream.set_read_timeout(Some(Duration::from_secs(30)));
         let _ = stream.set_write_timeout(Some(Duration::from_secs(10)));
+
+        // Negotiate TLS based on sslmode
+        let mut stream = match negotiate_tls(stream, &pg_url.host, pg_url.sslmode) {
+            Ok(s) => s,
+            Err(e) => return err_result(&format!("TLS: {}", e)),
+        };
 
         // Send StartupMessage
         let mut buf = Vec::new();
