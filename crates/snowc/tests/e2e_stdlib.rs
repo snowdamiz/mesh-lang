@@ -562,6 +562,68 @@ end
     );
 }
 
+// ── Row (Struct-to-Row Mapping) E2E Tests (Phase 58) ────────────────────
+
+#[test]
+fn e2e_deriving_row_basic() {
+    let source = read_fixture("deriving_row_basic.snow");
+    let output = compile_and_run(&source);
+    let lines: Vec<&str> = output.trim().lines().collect();
+    assert_eq!(lines.len(), 1, "expected 1 line, got: {}", output);
+    assert_eq!(lines[0], "Alice 30 95.5 true");
+}
+
+#[test]
+fn e2e_deriving_row_option() {
+    let source = read_fixture("deriving_row_option.snow");
+    let output = compile_and_run(&source);
+    let lines: Vec<&str> = output.trim().lines().collect();
+    assert_eq!(lines.len(), 1, "expected 1 line, got: {}", output);
+    // Struct with Option fields: empty string bio -> None, "25" age -> Some(25)
+    // from_row returns Ok(Profile) and we print the name
+    assert_eq!(lines[0], "Bob");
+}
+
+#[test]
+fn e2e_deriving_row_error() {
+    let source = read_fixture("deriving_row_error.snow");
+    let output = compile_and_run(&source);
+    let trimmed = output.trim();
+    // Should report missing column "count"
+    assert!(
+        trimmed.contains("count"),
+        "Expected error mentioning missing column 'count', got: {}",
+        trimmed
+    );
+}
+
+#[test]
+fn e2e_deriving_row_non_mappable_compile_fail() {
+    // Verify that deriving(Row) on a struct with a non-mappable field (List<Int>)
+    // produces a compile error containing E0039.
+    let source = r#"
+struct Bad do
+  name :: String
+  tags :: List<Int>
+end deriving(Row)
+
+fn main() do
+  println("should not compile")
+end
+"#;
+    let result = compile_only(source);
+    assert!(
+        !result.status.success(),
+        "Expected compile failure, but it succeeded"
+    );
+    let stderr = String::from_utf8_lossy(&result.stderr);
+    assert!(
+        stderr.contains("E0039") || stderr.contains("cannot be mapped from a database row"),
+        "Expected E0039 error, got stderr: {}",
+        stderr
+    );
+}
+
 // ── HTTP E2E Tests (Phase 8 Plan 05, updated Phase 15) ────────────────
 //
 // The HTTP server uses actor-per-connection (Phase 15) with crash isolation
