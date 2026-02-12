@@ -332,6 +332,70 @@ pub extern "C" fn snow_sqlite_query(
     }
 }
 
+// ── Transaction Management ──────────────────────────────────────────────
+
+/// Execute a bare SQL command (BEGIN/COMMIT/ROLLBACK) on a SQLite connection.
+/// Returns a SnowResult: Ok(null) on success, Err(message) on failure.
+fn sqlite_simple_exec(conn: &SqliteConn, sql: &str) -> *mut u8 {
+    let sql_cstr = match CString::new(sql) {
+        Ok(c) => c,
+        Err(_) => return err_result("SQL contains null byte"),
+    };
+    unsafe {
+        let rc = sqlite3_exec(
+            conn.db,
+            sql_cstr.as_ptr(),
+            None,
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+        );
+        if rc != SQLITE_OK {
+            sqlite_err_result(conn.db)
+        } else {
+            alloc_result(0, std::ptr::null_mut()) as *mut u8
+        }
+    }
+}
+
+/// Begin a SQLite transaction.
+///
+/// # Signature
+///
+/// `snow_sqlite_begin(conn_handle: u64) -> *mut u8 (SnowResult<Unit, String>)`
+///
+/// Sends `BEGIN` and returns Ok(()) or Err(error_message).
+#[no_mangle]
+pub extern "C" fn snow_sqlite_begin(conn_handle: u64) -> *mut u8 {
+    let conn = unsafe { &*(conn_handle as *const SqliteConn) };
+    sqlite_simple_exec(conn, "BEGIN")
+}
+
+/// Commit a SQLite transaction.
+///
+/// # Signature
+///
+/// `snow_sqlite_commit(conn_handle: u64) -> *mut u8 (SnowResult<Unit, String>)`
+///
+/// Sends `COMMIT` and returns Ok(()) or Err(error_message).
+#[no_mangle]
+pub extern "C" fn snow_sqlite_commit(conn_handle: u64) -> *mut u8 {
+    let conn = unsafe { &*(conn_handle as *const SqliteConn) };
+    sqlite_simple_exec(conn, "COMMIT")
+}
+
+/// Rollback a SQLite transaction.
+///
+/// # Signature
+///
+/// `snow_sqlite_rollback(conn_handle: u64) -> *mut u8 (SnowResult<Unit, String>)`
+///
+/// Sends `ROLLBACK` and returns Ok(()) or Err(error_message).
+#[no_mangle]
+pub extern "C" fn snow_sqlite_rollback(conn_handle: u64) -> *mut u8 {
+    let conn = unsafe { &*(conn_handle as *const SqliteConn) };
+    sqlite_simple_exec(conn, "ROLLBACK")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
