@@ -100,6 +100,10 @@ pub extern "C" fn snow_rt_init() {
         arena.init();
         *guard = Some(arena);
     }
+
+    // Install ring crypto provider for TLS (PostgreSQL + ureq HTTP client).
+    // Idempotent: ignore Err if already installed by another path.
+    let _ = rustls::crypto::ring::default_provider().install_default();
 }
 
 /// Allocate `size` bytes with the given `align`ment from the GC arena.
