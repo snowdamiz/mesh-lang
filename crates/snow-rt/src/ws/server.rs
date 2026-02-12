@@ -582,3 +582,295 @@ fn call_on_close(handler: &WsHandler, conn_ptr: *mut u8, code: u16, reason: &str
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ws::frame::{read_frame, apply_mask, WsOpcode};
+    use crate::ws::close::parse_close_payload;
+    use std::io::{Read, Write};
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    // ── Callback functions ───────────────────────────────────────────
+
+    /// on_connect with per-test counter via env pointer. Returns non-null (accept).
+    extern "C" fn counting_on_connect(
+        env: *mut u8, _conn: *mut u8, _path: *mut u8, _headers: *mut u8,
+    ) -> *mut u8 {
+        if !env.is_null() {
+            unsafe { (*(env as *const AtomicU64)).fetch_add(1, Ordering::SeqCst); }
+        }
+        1 as *mut u8
+    }
+
+    /// on_connect: accept without counting (env=null calling convention).
+    extern "C" fn accept_on_connect(
+        _conn: *mut u8, _path: *mut u8, _headers: *mut u8,
+    ) -> *mut u8 {
+        1 as *mut u8
+    }
+
+    /// on_message: echo the message back to the client (env=null).
+    extern "C" fn echo_on_message(conn: *mut u8, msg: *mut u8) -> *mut u8 {
+        snow_ws_send(conn, msg as *const SnowString);
+        std::ptr::null_mut()
+    }
+
+    /// on_message: always panic to test crash isolation (env=null).
+    /// NOT extern "C" -- Rust ABI allows panic to unwind through catch_unwind.
+    /// (extern "C" panics abort the process since Rust 1.71.)
+    fn crash_on_message(_conn: *mut u8, _msg: *mut u8) -> *mut u8 {
+        panic!("intentional test crash");
+    }
+
+    /// on_close with per-test counter via env pointer.
+    extern "C" fn counting_on_close(
+        env: *mut u8, _conn: *mut u8, _code: i64, _reason: *mut u8,
+    ) -> *mut u8 {
+        if !env.is_null() {
+            unsafe { (*(env as *const AtomicU64)).fetch_add(1, Ordering::SeqCst); }
+        }
+        std::ptr::null_mut()
+    }
+
+    /// on_close: no-op (env=null calling convention).
+    extern "C" fn noop_on_close(
+        _conn: *mut u8, _code: i64, _reason: *mut u8,
+    ) -> *mut u8 {
+        std::ptr::null_mut()
+    }
+
+    // ── Helpers ──────────────────────────────────────────────────────
+
+    /// Get a free port by binding to port 0 and releasing.
+    fn free_port() -> u16 {
+        let l = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        l.local_addr().unwrap().port()
+    }
+
+    /// Start a WS server that echoes messages back (no per-test counters).
+    fn start_echo_server(port: u16) {
+        std::thread::spawn(move || {
+            snow_ws_serve(
+                accept_on_connect as *mut u8, std::ptr::null_mut(),
+                echo_on_message as *mut u8, std::ptr::null_mut(),
+                noop_on_close as *mut u8, std::ptr::null_mut(),
+                port as i64,
+            );
+        });
+        std::thread::sleep(Duration::from_millis(200));
+    }
+
+    /// Start a WS server with per-test connect/close counters.
+    fn start_counting_server(
+        port: u16,
+        connect_ctr: &'static AtomicU64,
+        close_ctr: &'static AtomicU64,
+    ) {
+        // Cast to usize to cross thread boundary (*mut u8 is !Send).
+        let connect_env = connect_ctr as *const AtomicU64 as usize;
+        let close_env = close_ctr as *const AtomicU64 as usize;
+        std::thread::spawn(move || {
+            snow_ws_serve(
+                counting_on_connect as *mut u8, connect_env as *mut u8,
+                echo_on_message as *mut u8, std::ptr::null_mut(),
+                counting_on_close as *mut u8, close_env as *mut u8,
+                port as i64,
+            );
+        });
+        std::thread::sleep(Duration::from_millis(200));
+    }
+
+    /// Start a WS server where on_message always panics.
+    fn start_crash_server(port: u16) {
+        std::thread::spawn(move || {
+            snow_ws_serve(
+                accept_on_connect as *mut u8, std::ptr::null_mut(),
+                crash_on_message as *mut u8, std::ptr::null_mut(),
+                noop_on_close as *mut u8, std::ptr::null_mut(),
+                port as i64,
+            );
+        });
+        std::thread::sleep(Duration::from_millis(200));
+    }
+
+    /// Connect to a WS server and complete the HTTP upgrade handshake.
+    /// Reads the HTTP response byte-by-byte to avoid consuming frame data.
+    fn ws_connect(port: u16) -> TcpStream {
+        let mut stream = TcpStream::connect(format!("127.0.0.1:{}", port)).unwrap();
+        stream.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
+
+        let key = "dGhlIHNhbXBsZSBub25jZQ==";
+        write!(
+            stream,
+            "GET /ws HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: {key}\r\nSec-WebSocket-Version: 13\r\n\r\n"
+        ).unwrap();
+        stream.flush().unwrap();
+
+        // Read HTTP response byte-by-byte until \r\n\r\n to avoid
+        // consuming any WebSocket frame bytes that follow.
+        let mut resp = Vec::new();
+        let mut byte = [0u8; 1];
+        loop {
+            stream.read_exact(&mut byte).unwrap();
+            resp.push(byte[0]);
+            if resp.ends_with(b"\r\n\r\n") { break; }
+        }
+        let resp_str = String::from_utf8_lossy(&resp);
+        assert!(resp_str.contains("101"), "Expected 101 Switching Protocols, got: {}", resp_str);
+        stream
+    }
+
+    /// Send a masked text frame (client-to-server must be masked per RFC 6455).
+    fn ws_send_text(stream: &mut TcpStream, text: &str) {
+        let mask_key = [0x12, 0x34, 0x56, 0x78];
+        let mut payload = text.as_bytes().to_vec();
+        apply_mask(&mut payload, &mask_key);
+
+        let len = text.len();
+        let mut frame = vec![0x81u8]; // FIN=1, opcode=Text
+        if len <= 125 {
+            frame.push(0x80 | len as u8); // MASK=1
+        } else {
+            frame.push(0xFE); // MASK=1, 126
+            frame.extend_from_slice(&(len as u16).to_be_bytes());
+        }
+        frame.extend_from_slice(&mask_key);
+        frame.extend_from_slice(&payload);
+
+        stream.write_all(&frame).unwrap();
+        stream.flush().unwrap();
+    }
+
+    /// Send a masked close frame with the given status code.
+    fn ws_send_close(stream: &mut TcpStream, code: u16) {
+        let mask_key = [0xAA, 0xBB, 0xCC, 0xDD];
+        let mut payload = code.to_be_bytes().to_vec();
+        apply_mask(&mut payload, &mask_key);
+
+        let mut frame = vec![0x88u8, 0x82u8]; // FIN=1, Close, MASK=1, len=2
+        frame.extend_from_slice(&mask_key);
+        frame.extend_from_slice(&payload);
+
+        stream.write_all(&frame).unwrap();
+        stream.flush().unwrap();
+    }
+
+    // ── Tests ────────────────────────────────────────────────────────
+
+    /// End-to-end: connect, send text, get echo, close cleanly.
+    #[test]
+    fn test_ws_server_end_to_end_echo() {
+        let port = free_port();
+        start_echo_server(port);
+
+        let mut stream = ws_connect(port);
+
+        // Send text, expect echo back
+        ws_send_text(&mut stream, "Hello WebSocket");
+        let frame = read_frame(&mut stream).unwrap();
+        assert_eq!(frame.opcode, WsOpcode::Text);
+        assert_eq!(String::from_utf8_lossy(&frame.payload), "Hello WebSocket");
+
+        // Clean close handshake
+        ws_send_close(&mut stream, 1000);
+        let close = read_frame(&mut stream).unwrap();
+        assert_eq!(close.opcode, WsOpcode::Close);
+        let (code, _) = parse_close_payload(&close.payload);
+        assert_eq!(code, 1000);
+    }
+
+    /// Lifecycle: on_connect fires on handshake, on_close fires on close.
+    #[test]
+    fn test_ws_server_lifecycle_callbacks() {
+        let port = free_port();
+        let connect_ctr: &'static AtomicU64 = Box::leak(Box::new(AtomicU64::new(0)));
+        let close_ctr: &'static AtomicU64 = Box::leak(Box::new(AtomicU64::new(0)));
+        start_counting_server(port, connect_ctr, close_ctr);
+
+        // Before connect
+        assert_eq!(connect_ctr.load(Ordering::SeqCst), 0);
+        assert_eq!(close_ctr.load(Ordering::SeqCst), 0);
+
+        let mut stream = ws_connect(port);
+        std::thread::sleep(Duration::from_millis(200));
+        assert_eq!(connect_ctr.load(Ordering::SeqCst), 1, "on_connect should fire");
+
+        // Send close -> on_close should fire
+        ws_send_close(&mut stream, 1000);
+        let _ = read_frame(&mut stream); // consume close echo
+        std::thread::sleep(Duration::from_millis(500));
+        assert_eq!(close_ctr.load(Ordering::SeqCst), 1, "on_close should fire");
+    }
+
+    /// Crash isolation: actor panic sends close 1011, server keeps running.
+    #[test]
+    fn test_ws_server_crash_sends_1011() {
+        let port = free_port();
+        start_crash_server(port);
+
+        // First connection: any message triggers panic
+        let mut stream = ws_connect(port);
+        ws_send_text(&mut stream, "trigger crash");
+
+        let frame = read_frame(&mut stream).unwrap();
+        assert_eq!(frame.opcode, WsOpcode::Close);
+        let (code, _) = parse_close_payload(&frame.payload);
+        assert_eq!(code, 1011, "actor crash should send close code 1011");
+
+        // Second connection: server should still be accepting
+        std::thread::sleep(Duration::from_millis(200));
+        let _stream2 = ws_connect(port); // panics if server is dead
+    }
+
+    /// Reader thread delivers multiple rapid messages in FIFO order.
+    #[test]
+    fn test_ws_server_reader_thread_delivers_messages() {
+        let port = free_port();
+        start_echo_server(port);
+
+        let mut stream = ws_connect(port);
+
+        // Send 5 messages rapidly
+        for i in 0..5 {
+            ws_send_text(&mut stream, &format!("msg-{}", i));
+        }
+
+        // All should be echoed back in FIFO order
+        for i in 0..5 {
+            let frame = read_frame(&mut stream).unwrap();
+            assert_eq!(frame.opcode, WsOpcode::Text);
+            assert_eq!(
+                String::from_utf8_lossy(&frame.payload),
+                format!("msg-{}", i),
+                "messages should be delivered in FIFO order"
+            );
+        }
+    }
+
+    /// Client disconnect (TCP drop) triggers on_close and server keeps running.
+    #[test]
+    fn test_ws_server_client_disconnect_cleanup() {
+        let port = free_port();
+        let connect_ctr: &'static AtomicU64 = Box::leak(Box::new(AtomicU64::new(0)));
+        let close_ctr: &'static AtomicU64 = Box::leak(Box::new(AtomicU64::new(0)));
+        start_counting_server(port, connect_ctr, close_ctr);
+
+        {
+            let mut stream = ws_connect(port);
+            ws_send_text(&mut stream, "hello");
+            let _ = read_frame(&mut stream).unwrap(); // consume echo
+            // stream dropped -> TCP FIN, simulating client disconnect
+        }
+
+        // Wait for reader thread to detect disconnect and on_close to fire
+        std::thread::sleep(Duration::from_secs(2));
+        assert!(
+            close_ctr.load(Ordering::SeqCst) >= 1,
+            "on_close should fire on client disconnect"
+        );
+
+        // Server should still accept new connections
+        let _stream2 = ws_connect(port);
+    }
+}
