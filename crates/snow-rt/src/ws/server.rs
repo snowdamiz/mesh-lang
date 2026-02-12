@@ -19,26 +19,75 @@
 //!     |
 //!     +-- perform_upgrade (HTTP -> WebSocket)
 //!     +-- call on_connect (accept/reject)
-//!     +-- split stream: read clone -> reader thread, write -> Arc<Mutex>
-//!     +-- spawn reader thread
+//!     +-- wrap stream in Arc<Mutex<WsStream>> (unified plain/TLS)
+//!     +-- spawn reader thread (shared mutex for read/write)
 //!     +-- actor_message_loop (receive -> dispatch)
 //!     +-- cleanup (close frame, shutdown reader thread)
 //! ```
 
+use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
 use parking_lot::Mutex;
+use rustls::{ServerConfig, ServerConnection, StreamOwned};
 
-use crate::actor::{self, global_scheduler, MessageBuffer, Message, ProcessId, ProcessState};
+use crate::actor::{global_scheduler, MessageBuffer, Message, ProcessId, ProcessState};
 use crate::actor::process::Process;
 use crate::actor::stack;
 use crate::string::SnowString;
 use super::frame::{read_frame, write_frame, WsOpcode};
 use super::handshake::perform_upgrade;
 use super::close::{process_frame, send_close, WsCloseCode};
+
+// ---------------------------------------------------------------------------
+// Stream abstraction for plain TCP and TLS WebSocket connections
+// ---------------------------------------------------------------------------
+
+/// Stream abstraction for plain TCP and TLS WebSocket connections.
+/// Mirrors HttpStream in http/server.rs. Both variants implement Read + Write.
+enum WsStream {
+    Plain(TcpStream),
+    Tls(StreamOwned<ServerConnection, TcpStream>),
+}
+
+impl WsStream {
+    /// Set the read timeout on the underlying TcpStream.
+    /// Works for both Plain and Tls variants since TLS uses the underlying
+    /// TCP socket's timeout.
+    fn set_read_timeout(&self, dur: Option<Duration>) -> std::io::Result<()> {
+        match self {
+            WsStream::Plain(s) => s.set_read_timeout(dur),
+            WsStream::Tls(s) => s.get_ref().set_read_timeout(dur),
+        }
+    }
+}
+
+impl Read for WsStream {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        match self {
+            WsStream::Plain(s) => s.read(buf),
+            WsStream::Tls(s) => s.read(buf),
+        }
+    }
+}
+
+impl Write for WsStream {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        match self {
+            WsStream::Plain(s) => s.write(buf),
+            WsStream::Tls(s) => s.write(buf),
+        }
+    }
+    fn flush(&mut self) -> std::io::Result<()> {
+        match self {
+            WsStream::Plain(s) => s.flush(),
+            WsStream::Tls(s) => s.flush(),
+        }
+    }
+}
 
 // ---------------------------------------------------------------------------
 // Reserved type tags for WebSocket mailbox messages
@@ -84,9 +133,9 @@ struct WsHandler {
 unsafe impl Send for WsHandler {}
 
 /// Connection handle for `Ws.send` -- stored on the Rust heap (not GC heap)
-/// because it contains an `Arc<Mutex<TcpStream>>`.
+/// because it contains an `Arc<Mutex<WsStream>>`.
 struct WsConnection {
-    write_stream: Arc<Mutex<TcpStream>>,
+    write_stream: Arc<Mutex<WsStream>>,
     shutdown: Arc<AtomicBool>,
 }
 
@@ -153,8 +202,10 @@ pub extern "C" fn snow_ws_serve(
             }
         };
 
-        // Set read timeout before passing to the actor.
-        tcp_stream.set_read_timeout(Some(Duration::from_secs(30))).ok();
+        // Set read timeout before wrapping in WsStream.
+        tcp_stream.set_read_timeout(Some(Duration::from_secs(5))).ok();
+
+        let ws_stream = WsStream::Plain(tcp_stream);
 
         // Pack handler (copy the 6 pointers) and stream into args.
         let handler = WsHandler {
@@ -165,7 +216,7 @@ pub extern "C" fn snow_ws_serve(
             on_close_fn,
             on_close_env,
         };
-        let stream_ptr = Box::into_raw(Box::new(tcp_stream)) as usize;
+        let stream_ptr = Box::into_raw(Box::new(ws_stream)) as usize;
         let args = WsConnectionArgs {
             handler,
             stream_ptr,
@@ -179,6 +230,94 @@ pub extern "C" fn snow_ws_serve(
             args_ptr,
             args_size,
             1, // Normal priority
+        );
+    }
+}
+
+/// Start a WebSocket TLS server on the given port, blocking the calling thread.
+///
+/// Same as `snow_ws_serve` but wraps each connection in TLS via rustls.
+/// Certificate and private key are loaded from PEM files at the given paths.
+#[no_mangle]
+pub extern "C" fn snow_ws_serve_tls(
+    on_connect_fn: *mut u8,
+    on_connect_env: *mut u8,
+    on_message_fn: *mut u8,
+    on_message_env: *mut u8,
+    on_close_fn: *mut u8,
+    on_close_env: *mut u8,
+    port: i64,
+    cert_path: *const SnowString,
+    key_path: *const SnowString,
+) {
+    crate::actor::snow_rt_init_actor(0);
+
+    let cert_str = unsafe { (*cert_path).as_str() };
+    let key_str = unsafe { (*key_path).as_str() };
+
+    let tls_config = match crate::http::server::build_server_config(cert_str, key_str) {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("[snow-rt] Failed to load TLS certificates: {}", e);
+            return;
+        }
+    };
+
+    let addr = format!("0.0.0.0:{}", port);
+    let listener = match TcpListener::bind(&addr) {
+        Ok(l) => l,
+        Err(e) => {
+            eprintln!("[snow-rt] Failed to start WebSocket TLS server on {}: {}", addr, e);
+            return;
+        }
+    };
+
+    eprintln!("[snow-rt] WebSocket TLS server listening on {}", addr);
+
+    let config_ptr = Arc::into_raw(tls_config) as usize;
+
+    for tcp_stream in listener.incoming() {
+        let tcp_stream = match tcp_stream {
+            Ok(s) => s,
+            Err(e) => {
+                eprintln!("[snow-rt] accept error: {}", e);
+                continue;
+            }
+        };
+
+        // Set read timeout BEFORE TLS wrapping (Pitfall 1 from research)
+        tcp_stream.set_read_timeout(Some(Duration::from_secs(5))).ok();
+
+        let tls_config = unsafe { Arc::from_raw(config_ptr as *const ServerConfig) };
+        let conn = match ServerConnection::new(Arc::clone(&tls_config)) {
+            Ok(c) => c,
+            Err(e) => {
+                eprintln!("[snow-rt] TLS connection setup failed: {}", e);
+                std::mem::forget(tls_config);
+                continue;
+            }
+        };
+        std::mem::forget(tls_config);
+
+        let tls_stream = StreamOwned::new(conn, tcp_stream);
+        let ws_stream = WsStream::Tls(tls_stream);
+
+        let handler = WsHandler {
+            on_connect_fn, on_connect_env,
+            on_message_fn, on_message_env,
+            on_close_fn, on_close_env,
+        };
+        let stream_ptr = Box::into_raw(Box::new(ws_stream)) as usize;
+        let args = WsConnectionArgs { handler, stream_ptr };
+        let args_ptr = Box::into_raw(Box::new(args)) as *const u8;
+        let args_size = std::mem::size_of::<WsConnectionArgs>() as u64;
+
+        let sched = global_scheduler();
+        sched.spawn(
+            ws_connection_entry as *const u8,
+            args_ptr,
+            args_size,
+            1,
         );
     }
 }
@@ -238,7 +377,7 @@ extern "C" fn ws_connection_entry(args: *const u8) {
 
     let args = unsafe { Box::from_raw(args as *mut WsConnectionArgs) };
     let handler = args.handler;
-    let mut stream = unsafe { *Box::from_raw(args.stream_ptr as *mut TcpStream) };
+    let mut stream = unsafe { *Box::from_raw(args.stream_ptr as *mut WsStream) };
 
     // 1. Perform WebSocket upgrade handshake
     let (path, headers) = match perform_upgrade(&mut stream) {
@@ -249,20 +388,15 @@ extern "C" fn ws_connection_entry(args: *const u8) {
         }
     };
 
-    // 2. Split stream: clone for reading, original for writing via Arc<Mutex>
-    let read_stream = match stream.try_clone() {
-        Ok(s) => s,
-        Err(e) => {
-            eprintln!("[snow-rt] WS stream clone failed: {}", e);
-            return;
-        }
-    };
-    let write_stream = Arc::new(Mutex::new(stream));
+    // 2. Wrap stream in Arc<Mutex<WsStream>> for shared reader/writer access.
+    //    Unlike TcpStream::try_clone(), StreamOwned (TLS) cannot be cloned.
+    //    Using a single Arc<Mutex<WsStream>> unifies both plain and TLS paths.
+    let stream = Arc::new(Mutex::new(stream));
     let shutdown = Arc::new(AtomicBool::new(false));
 
     // 3. Create WsConnection handle (Rust heap, not GC heap)
     let conn = Box::into_raw(Box::new(WsConnection {
-        write_stream: write_stream.clone(),
+        write_stream: stream.clone(),
         shutdown: shutdown.clone(),
     }));
     let conn_ptr = conn as *mut u8;
@@ -278,7 +412,7 @@ extern "C" fn ws_connection_entry(args: *const u8) {
     let accepted = call_on_connect(&handler, conn_ptr, &path, &headers);
     if !accepted {
         // on_connect rejected -- send close 1008 (Policy Violation)
-        let _ = send_close(&mut *write_stream.lock(), WS_POLICY_VIOLATION, "rejected");
+        let _ = send_close(&mut *stream.lock(), WS_POLICY_VIOLATION, "rejected");
         shutdown.store(true, Ordering::SeqCst);
         // Clean up connection handle
         unsafe {
@@ -287,21 +421,14 @@ extern "C" fn ws_connection_entry(args: *const u8) {
         return;
     }
 
-    // 6. Set read timeout on the read stream clone for the reader thread
-    //    (5 seconds for periodic shutdown check)
-    read_stream
-        .set_read_timeout(Some(Duration::from_secs(5)))
-        .ok();
-
-    // 7. Spawn reader thread
+    // 6. Spawn reader thread (read timeout already set before WsStream wrapping)
     let reader_shutdown = shutdown.clone();
-    let reader_write = write_stream.clone();
+    let reader_stream = stream.clone();
     let reader_proc = proc_arc.clone();
     let reader_pid = my_pid;
     std::thread::spawn(move || {
         reader_thread_loop(
-            read_stream,
-            reader_write,
+            reader_stream,
             reader_proc,
             reader_pid,
             reader_shutdown,
@@ -319,7 +446,7 @@ extern "C" fn ws_connection_entry(args: *const u8) {
     if result.is_err() {
         // Actor crashed (ACTOR-05): send close 1011
         let _ = send_close(
-            &mut *write_stream.lock(),
+            &mut *stream.lock(),
             WsCloseCode::INTERNAL_ERROR,
             "internal error",
         );
@@ -340,27 +467,47 @@ extern "C" fn ws_connection_entry(args: *const u8) {
 // Reader thread
 // ---------------------------------------------------------------------------
 
-/// Reader thread loop: reads WebSocket frames from the TCP stream and pushes
-/// them into the actor's mailbox via reserved type tags.
+/// Reader thread loop: reads WebSocket frames and pushes them into the
+/// actor's mailbox via reserved type tags.
 ///
 /// Runs on a dedicated OS thread to avoid blocking the M:N scheduler's worker
 /// threads. Handles control frames (ping/pong/close) via `process_frame` and
 /// delivers data frames (text/binary) as mailbox messages.
+///
+/// Uses `Arc<Mutex<WsStream>>` for unified plain TCP / TLS access. The mutex
+/// is locked for each `read_frame` call and released between frames, allowing
+/// `Ws.send()` from the actor to acquire the lock between reads.
 fn reader_thread_loop(
-    mut read_stream: TcpStream,
-    write_stream: Arc<Mutex<TcpStream>>,
+    stream: Arc<Mutex<WsStream>>,
     proc_arc: Arc<Mutex<Process>>,
     actor_pid: ProcessId,
     shutdown: Arc<AtomicBool>,
 ) {
+    // Set read timeout for the reader thread. Controls:
+    // - Maximum contention window for Ws.send() from the actor side
+    // - Granularity for shutdown and heartbeat checks
+    // 100ms keeps contention low while allowing responsive shutdown.
+    {
+        let s = stream.lock();
+        s.set_read_timeout(Some(Duration::from_millis(100))).ok();
+    }
+
+
     loop {
         if shutdown.load(Ordering::SeqCst) {
             break;
         }
 
-        match read_frame(&mut read_stream) {
+        // Lock stream, read one frame, release lock.
+        // The 100ms read timeout keeps the contention window small.
+        let frame_result = {
+            let mut s = stream.lock();
+            read_frame(&mut *s)
+        };
+
+        match frame_result {
             Ok(frame) => {
-                let mut writer = write_stream.lock();
+                let mut writer = stream.lock();
                 match process_frame(&mut *writer, frame) {
                     Ok(Some(data_frame)) => {
                         drop(writer); // Release lock before mailbox push
@@ -397,8 +544,12 @@ fn reader_thread_loop(
                 if shutdown.load(Ordering::SeqCst) {
                     break;
                 }
-                // Check if it's a timeout (not a real error)
-                if e.contains("timed out") || e.contains("WouldBlock") {
+                // Check if it's a timeout (not a real error).
+                // macOS returns "Resource temporarily unavailable" (EAGAIN) for
+                // short timeouts and "timed out" (ETIMEDOUT) for longer ones.
+                if e.contains("timed out") || e.contains("WouldBlock")
+                    || e.contains("temporarily unavailable")
+                {
                     continue; // Just a read timeout, check shutdown and loop
                 }
                 // Real I/O error -- push disconnect

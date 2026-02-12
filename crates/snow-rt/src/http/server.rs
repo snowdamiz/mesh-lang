@@ -75,7 +75,7 @@ impl Write for HttpStream {
 ///
 /// The certificate file may contain a chain (multiple PEM blocks). The private
 /// key file must contain exactly one PEM-encoded private key (RSA, ECDSA, or Ed25519).
-fn build_server_config(cert_path: &str, key_path: &str) -> Result<Arc<ServerConfig>, String> {
+pub(crate) fn build_server_config(cert_path: &str, key_path: &str) -> Result<Arc<ServerConfig>, String> {
     let certs: Vec<CertificateDer<'static>> = CertificateDer::pem_file_iter(cert_path)
         .map_err(|e| format!("open cert file: {}", e))?
         .collect::<Result<Vec<_>, _>>()

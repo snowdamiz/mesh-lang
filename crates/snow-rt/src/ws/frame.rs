@@ -9,9 +9,8 @@
 
 use std::io::{Read, Write};
 
-/// Maximum payload size (64 MiB) to prevent OOM from malicious 64-bit lengths.
-/// Phase 61 will tighten this to 16 MiB for production use.
-const MAX_PAYLOAD_SIZE: u64 = 64 * 1024 * 1024;
+/// Maximum payload size (16 MiB production limit) to prevent OOM from malicious lengths.
+const MAX_PAYLOAD_SIZE: u64 = 16 * 1024 * 1024;
 
 /// WebSocket frame opcodes per RFC 6455 Section 5.2.
 #[derive(Debug, Clone, Copy, PartialEq)]
