@@ -110,7 +110,7 @@ See milestones/v2.0-ROADMAP.md for full phase details.
 **Milestone Goal:** Make Snow viable for production backend deployments with TLS encryption, connection pooling, database transactions, and automatic struct-to-row mapping.
 
 - [x] **Phase 55: PostgreSQL TLS** - Encrypted connections to cloud databases via SSLRequest protocol upgrade (completed 2026-02-12)
-- [ ] **Phase 56: HTTPS Server** - Production HTTP serving with TLS via hand-rolled HTTP/1.1 parser replacing tiny_http
+- [x] **Phase 56: HTTPS Server** - Production HTTP serving with TLS via hand-rolled HTTP/1.1 parser replacing tiny_http (completed 2026-02-12)
 - [ ] **Phase 57: Connection Pooling & Transactions** - Actor-compatible pool manager with transaction lifecycle and automatic cleanup
 - [ ] **Phase 58: Struct-to-Row Mapping** - Automatic database row to struct hydration via deriving(Row)
 
@@ -142,8 +142,8 @@ Plans:
 **Plans**: 2 plans
 
 Plans:
-- [ ] 56-01-PLAN.md -- Replace tiny_http with hand-rolled HTTP/1.1 parser for plaintext TCP
-- [ ] 56-02-PLAN.md -- Add Http.serve_tls with HttpStream enum and codegen integration
+- [x] 56-01-PLAN.md -- Replace tiny_http with hand-rolled HTTP/1.1 parser for plaintext TCP
+- [x] 56-02-PLAN.md -- Add Http.serve_tls with HttpStream enum and codegen integration
 
 ### Phase 57: Connection Pooling & Transactions
 **Goal**: Snow programs can manage database connections efficiently with pooling and execute multi-statement operations atomically with transactions
@@ -196,8 +196,8 @@ Phases execute in numeric order: 55 -> 56 -> 57 -> 58
 | 43-48 | v1.9 | 13/13 | Complete | 2026-02-10 |
 | 49-54 | v2.0 | 13/13 | Complete | 2026-02-12 |
 | 55. PG TLS | v3.0 | 1/1 | Complete | 2026-02-12 |
-| 56. HTTPS | v3.0 | 0/2 | Not started | - |
+| 56. HTTPS | v3.0 | 2/2 | Complete | 2026-02-12 |
 | 57. Pool+Txn | v3.0 | 0/TBD | Not started | - |
 | 58. Row Map | v3.0 | 0/TBD | Not started | - |
 
-**Total: 55 phases shipped across 11 milestones. 155 plans completed.**
+**Total: 56 phases shipped across 11 milestones. 157 plans completed.**
