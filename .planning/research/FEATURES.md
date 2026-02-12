@@ -1,59 +1,287 @@
 # Feature Landscape
 
-**Domain:** Database & serialization features for compiled programming language (Snow v2.0)
-**Researched:** 2026-02-10
-**Confidence:** HIGH (all features are well-studied across Go, Rust, Elixir; existing codebase patterns thoroughly reviewed)
+**Domain:** Production backend capabilities for compiled programming language (Snow v3.0)
+**Researched:** 2026-02-12
+**Confidence:** HIGH (all four features are well-studied across Elixir/Go/Rust ecosystems; existing Snow codebase patterns thoroughly reviewed)
 
 ---
 
 ## Current State in Snow
 
-Before defining features, here is what already exists and directly affects this milestone:
+Before defining features, here is what already exists and what this milestone builds on:
 
-**Working (infrastructure these features build on):**
-- Full compiler pipeline: lexer -> parser -> HM type inference -> MIR lowering -> LLVM codegen
-- `deriving(Eq, Ord, Display, Debug, Hash)` auto-generates trait implementations from struct field metadata
-- MIR lowering checks `derive_list` for trait names, then calls `self.generate_*_struct(name, fields)` to emit synthetic functions
-- `SnowJson` tagged union runtime type (tag: Null/Bool/Number/Str/Array/Object) in `snow-rt/src/json.rs`
-- `snow_json_from_int`, `snow_json_from_float`, `snow_json_from_bool`, `snow_json_from_string` -- build SnowJson values from Snow primitives
-- `snow_json_encode(SnowJson) -> String` and `snow_json_parse(String) -> Result<SnowJson, String>` -- roundtrip serialization
-- HTTP server with actor-per-connection model (`tiny_http` + M:N scheduler coroutines)
-- `SnowRouter` with exact match and `/*` wildcard patterns in `snow-rt/src/http/router.rs`
-- `SnowHttpRequest` struct: method, path, body, query_params (Map), headers (Map) in `snow-rt/src/http/server.rs`
-- Module-qualified access: `HTTP.route(r, "/path", handler)` resolves via `STDLIB_MODULES` list and `map_builtin_name` function
-- Known-function registration pattern: `self.known_functions.insert("snow_*", MirType::FnPtr(...))` in MIR lowering
-- Intrinsic declaration pattern in `snow-codegen/src/codegen/intrinsics.rs`
-- `Result<T, E>` with Ok/Err, `Option<T>` with Some/None, pattern matching, `?` operator
-- Collections: List, Map, Set with 20+ operations each
-- Actor runtime with typed `Pid<M>`, blocking I/O model (like BEAM NIFs)
+**Working infrastructure these features extend:**
+- SQLite: `Sqlite.open/close/query/execute` with `?` parameterized queries, bundled C FFI via `libsqlite3-sys`
+- PostgreSQL: `Pg.connect/close/query/execute` with `$1` parameterized queries, pure wire protocol (no libpq), SCRAM-SHA-256/MD5 auth
+- Both return `Result<List<Map<String, String>>, String>` for queries -- all values as text strings
+- HTTP server: `tiny_http` with actor-per-connection, `SnowRouter` with path params, method routing, middleware pipeline
+- JSON serde: `deriving(Json)` generates `Json.encode(value)` and `StructName.from_json(str)` at compile time
+- Actor runtime: M:N scheduler with corosensei coroutines, typed `Pid<M>`, `snow_service_call` for request/reply, `snow_actor_register/whereis` for name registry
+- GC-safe opaque u64 handles for DB connections (`Box::into_raw as u64`)
+- `PgConn` wraps a `std::net::TcpStream` directly -- pure Rust, no external C libraries for PostgreSQL
+- `Result<T,E>` with `?` operator for error propagation, `Option<T>` for nullable values
+- `deriving(Eq, Ord, Display, Debug, Hash, Json)` infrastructure with MIR-level synthetic function generation
 
 **What this milestone adds:**
-- `deriving(Json)` for struct-aware JSON encode/decode
-- SQLite driver (new C FFI dependency: sqlite3)
-- PostgreSQL driver (new C FFI dependency: libpq)
-- Parameterized queries for both database drivers
-- HTTP path parameters (`:param` segment matching)
-- HTTP middleware (handler wrapping pattern)
+- Connection pooling (actor-based pool manager for SQLite and PostgreSQL)
+- TLS/SSL (encrypted PostgreSQL connections + HTTPS server support)
+- Database transactions (block-based `Db.transaction(conn, fn)` with auto-commit/rollback)
+- Struct-to-row mapping (automatic query result to struct hydration via `deriving(Db)`)
 
 ---
 
 ## Table Stakes
 
-Features users expect. Missing = product feels incomplete.
+Features users expect. Missing = product feels incomplete for production use.
 
-### 1. Struct-Aware JSON Serde via `deriving(Json)`
+### 1. Connection Pooling
 
-Every modern language provides automatic JSON serialization from struct definitions. Rust has `#[derive(Serialize, Deserialize)]` via serde. Go has `json.Marshal`/`json.Unmarshal` with struct tags. Elixir has `@derive Jason.Encoder`. Snow already has the deriving infrastructure for 5 traits and the SnowJson runtime type. This feature connects them.
+Every production backend framework provides connection pooling. Opening a new database connection per request is prohibitively expensive: TCP handshake, TLS negotiation, and authentication add 10-150ms per connection. PostgreSQL allocates ~1.3MB per connection. Without pooling, a server handling 100 concurrent requests would need 100 simultaneous connections, each with full setup cost.
+
+Elixir has `db_connection` (GenServer-based pool with checkout/checkin). Go has `database/sql` (built-in pool with `SetMaxOpenConns`). Rust has `r2d2` and `sqlx::Pool`. Every production database library pools connections.
+
+Snow's actor runtime is a natural fit: a pool manager actor holds N connections, callers check out a connection, use it, and check it back in. This mirrors Elixir's `db_connection` pattern where each connection is a GenServer process.
 
 | Feature | Why Expected | Complexity | Notes |
 |---------|--------------|------------|-------|
-| `deriving(Json)` generates `json_encode` for structs | Universal: Rust serde, Go struct tags, Elixir `@derive Jason.Encoder`. Every language auto-generates serializers from struct metadata. | **High** | New synthetic function `Json__encode__StructName(self) -> String`. Pattern: iterate fields at codegen time, call `snow_json_from_*` per field, build SnowMap of field_name->SnowJson, wrap as SnowJson object, call `snow_json_encode`. |
-| Struct encode produces JSON object with field names as keys | `Point { x: 1, y: 2 }` must produce `{"x":1,"y":2}`. Universal across Go, Rust, Elixir. | Med | Field names and types already available in `MirStructDef.fields`. Codegen emits `snow_json_from_int(field_val)` for Int fields, etc. |
-| `deriving(Json)` generates `json_decode` from JSON string | Go `json.Unmarshal`, Rust `serde_json::from_str`, Elixir `Poison.decode!(s, as: %T{})`. Decoding is the harder half but expected. | **High** | New synthetic function `Json__decode__StructName(json_str) -> Result<StructName, String>`. Must parse JSON, extract SnowJson object, look up each field by name, cast to correct type, construct struct. |
-| Nested struct encode/decode | If `User` has `address :: Address` and both derive Json, encoding must recurse. | Med | Generated `json_encode` calls the inner type's `json_encode` when the field type is a struct with Json derived. Decode calls the inner type's `json_decode`. |
-| List field support in serde | A struct with `tags :: List<String>` must encode as a JSON array. | Med | Need new runtime helper `snow_json_from_list(list, element_encoder_fn)` that maps over elements. For decode: `snow_json_to_list(json_array, element_decoder_fn)`. |
-| Option field handling | `email :: Option<String>` encodes as the value or `null`, decodes missing/null as `None`. | Med | Standard across all three reference languages. Encode: `Some(v)` -> encode v, `None` -> `snow_json_from_null()`. Decode: JSON null or missing key -> `None`. |
-| Error messages on decode failure | When JSON doesn't match the struct shape, the error message must say which field failed and why. | Low | `"Expected field 'age' to be a number, got string"` -- quality error messages are table stakes for developer experience. |
+| `Pool.start(config)` returns a pool handle | Every pool has a startup function. Elixir: `DBConnection.start_link(opts)`. Go: pool created implicitly by `sql.Open`. | Med | Config struct holds URL, min/max size, idle timeout. Pool actor spawns initial connections. |
+| `Pool.checkout(pool)` returns `Result<Conn, String>` | Caller gets exclusive access to one connection. Elixir: `DBConnection.checkout`. Go: implicit on every query. | Med | Pool actor receives checkout request, hands out an idle connection or creates a new one (up to max). Blocks if pool exhausted. |
+| `Pool.checkin(pool, conn)` returns connection | Explicit return. Elixir: `DBConnection.checkin`. Go: implicit via `rows.Close()`. | Low | Pool actor receives checkin, marks connection idle. |
+| `Pool.query(pool, sql, params)` auto checkout/checkin | Users should not need manual checkout for simple queries. Elixir: `Repo.all(query)` auto-manages. Go: `db.Query` auto-manages. | Med | Convenience wrapper: checkout, query, checkin. Returns `Result<List<Map<String, String>>, String>`. |
+| `Pool.execute(pool, sql, params)` auto checkout/checkin | Same pattern for write queries. | Low | Follows query pattern. Returns `Result<Int, String>`. |
+| Configurable pool size (min, max) | Every pool has size limits. Too few = contention. Too many = DB overload. | Low | Config fields `min_size: Int`, `max_size: Int`. Default min=2, max=10. |
+| Idle connection timeout | Connections sitting unused waste resources. Elixir: `idle_interval`. HikariCP: `idleTimeout`. | Med | Pool actor periodically checks idle connections, closes those exceeding timeout. |
+| Connection health validation | Stale/broken connections must not be handed to callers. HikariCP: `connectionTestQuery`. Elixir: `ping` callback. | Med | Before checkout, issue a lightweight query (`SELECT 1` for PG, `SELECT 1` for SQLite) to verify liveness. Discard dead connections. |
+| Graceful exhaustion handling | When max connections are in use, callers should wait (with timeout), not crash. | Med | Caller blocks with configurable acquisition timeout. Returns `Err("pool exhausted")` after timeout. |
+
+**Expected API surface:**
+
+```snow
+fn main() do
+  # Start a PostgreSQL pool
+  let pool = Pool.start(%{
+    url: "postgres://user:pass@localhost:5432/mydb",
+    min_size: 2,
+    max_size: 10,
+    idle_timeout: 60000
+  })?
+
+  # Simple query (auto checkout/checkin)
+  let rows = Pool.query(pool, "SELECT name, age FROM users WHERE age > $1", ["25"])?
+
+  # Simple execute (auto checkout/checkin)
+  let affected = Pool.execute(pool, "INSERT INTO users (name, age) VALUES ($1, $2)", ["Alice", "30"])?
+
+  # Manual checkout for multiple operations on same connection
+  let conn = Pool.checkout(pool)?
+  Pg.execute(conn, "INSERT INTO logs (msg) VALUES ($1)", ["started"])?
+  Pg.execute(conn, "INSERT INTO logs (msg) VALUES ($1)", ["finished"])?
+  Pool.checkin(pool, conn)
+end
+```
+
+**Implementation approach:**
+
+The pool is implemented as a Snow actor (using the existing actor runtime). This follows Elixir's `db_connection` pattern:
+1. A pool manager actor is spawned by `Pool.start`. It holds a list of idle connections and tracks checked-out connections.
+2. `Pool.checkout` sends a message to the pool actor requesting a connection. The pool either hands out an idle one or creates a new one (up to max_size).
+3. `Pool.checkin` sends the connection back. The pool actor marks it idle.
+4. `Pool.query/execute` are convenience wrappers: checkout -> operation -> checkin, with error handling to ensure checkin on failure.
+5. A periodic health check runs via `Timer.send_after` to evict idle/dead connections.
+
+The pool can work with both SQLite and PostgreSQL connections since both use opaque u64 handles and have the same query/execute API shape. The pool config includes a `driver` field (`:pg` or `:sqlite`) to know how to create new connections and validate health.
+
+**What NOT to include:**
+- Connection warming / pre-connect on startup beyond min_size -- simple lazy creation is sufficient
+- Dynamic pool resizing at runtime -- static min/max is fine for v3.0
+- Per-query timeout -- users handle this at the application level
+- Read/write splitting -- single pool per database is sufficient
+- Named pools / pool registry -- one pool per `Pool.start` call
+
+**Confidence:** HIGH -- connection pooling is a solved problem. The actor-based design maps cleanly to Snow's runtime. Elixir's `db_connection` provides an exact reference implementation using the same actor model.
+
+**Dependencies:** Existing actor runtime (`snow_actor_spawn`, `snow_service_call`, `snow_actor_register`), existing Pg/Sqlite connection functions, existing `Timer.send_after` for periodic health checks.
+
+---
+
+### 2. TLS/SSL for PostgreSQL Connections
+
+Every cloud PostgreSQL provider (AWS RDS, GCP Cloud SQL, Azure Database, Supabase, Neon) requires or strongly recommends TLS. Without TLS support, Snow programs cannot connect to production databases. This is a hard blocker for real-world deployment.
+
+PostgreSQL TLS works via an upgrade mechanism: the client sends an 8-byte `SSLRequest` message (`00 00 00 08 04 D2 16 2F`) before the StartupMessage. The server responds with `S` (willing) or `N` (unwilling). On `S`, the client performs a TLS handshake, then sends the normal StartupMessage over the encrypted channel.
+
+Snow's PostgreSQL driver already speaks the wire protocol via `std::net::TcpStream`. The TLS upgrade wraps that `TcpStream` in a `rustls::StreamOwned<ClientConnection, TcpStream>`, which implements the same `Read + Write` traits. The rest of the wire protocol code remains unchanged.
+
+| Feature | Why Expected | Complexity | Notes |
+|---------|--------------|------------|-------|
+| TLS-encrypted PostgreSQL connections | Cloud databases require TLS. AWS RDS, Supabase, Neon all enforce it. | **High** | Send SSLRequest before StartupMessage. On `S` response, perform TLS handshake with rustls. Wrap TcpStream in StreamOwned. |
+| `sslmode` parameter in connection URL | PostgreSQL connection strings support `?sslmode=require` etc. Universal convention. | Med | Parse `sslmode` from URL query params. Modes: `disable` (no TLS), `require` (TLS required, no cert verify), `verify-ca` / `verify-full` (with certificate validation). |
+| System root certificate trust | Connecting to cloud PG should work without manually providing CA certs. | Med | Use `webpki-roots` or `rustls-native-certs` to load system CA certificates. |
+| Self-signed cert support for development | Local Docker PostgreSQL often uses self-signed certs. `sslmode=require` should work without CA verification. | Low | `require` mode skips certificate validation (accepts any cert). Only `verify-ca`/`verify-full` validate. |
+| Fallback to plaintext if server declines | If server responds `N` to SSLRequest and sslmode is not `require`, proceed without TLS. | Low | Already handled: if server says `N` and sslmode allows, send StartupMessage unencrypted. |
+
+**Expected API surface:**
+
+```snow
+fn main() do
+  # Cloud database -- TLS required
+  let conn = Pg.connect("postgres://user:pass@db.supabase.co:5432/mydb?sslmode=require")?
+
+  # Local development -- no TLS
+  let local = Pg.connect("postgres://dev:dev@localhost:5432/devdb")?
+
+  # Strict verification
+  let strict = Pg.connect("postgres://user:pass@prod.example.com:5432/prod?sslmode=verify-full")?
+end
+```
+
+**Implementation approach:**
+
+1. **Abstract the stream type:** Change `PgConn` from holding `stream: TcpStream` to holding an enum or trait object that supports both plain TCP and TLS. Use `enum PgStream { Plain(TcpStream), Tls(StreamOwned<ClientConnection, TcpStream>) }` and implement `Read + Write` for it.
+2. **SSLRequest handshake:** After TCP connect but before StartupMessage, send the SSLRequest 8-byte message. Read the 1-byte response.
+3. **TLS upgrade:** On `S`, create a `rustls::ClientConfig` with appropriate certificate validation based on `sslmode`, construct a `ClientConnection`, wrap the `TcpStream` in `StreamOwned`.
+4. **Continue protocol:** The rest of `snow_pg_connect` (StartupMessage, authentication, ReadyForQuery) works unchanged because `PgStream` implements `Read + Write`.
+
+**New Rust dependencies:** `rustls` (pure Rust TLS), `webpki-roots` (Mozilla CA bundle), `rustls-pki-types` (certificate types).
+
+**What NOT to include:**
+- Client certificate authentication -- niche, defer
+- Custom CA certificate file path -- use system certs or `webpki-roots`
+- TLS session resumption -- optimization, not needed for correctness
+- ALPN-based direct TLS (PostgreSQL 17+) -- use standard SSLRequest flow
+
+**Confidence:** HIGH -- the SSLRequest protocol is well-documented (PostgreSQL docs 54.2, 54.7). `rustls::StreamOwned` wrapping `TcpStream` is the standard pattern for TLS upgrade on a synchronous stream. The existing PG wire protocol code uses `Read + Write` traits throughout, making the abstraction clean.
+
+**Dependencies:** Existing PgConn/TcpStream infrastructure, `rustls` crate, URL parsing already handles query params.
+
+---
+
+### 3. TLS/SSL for HTTPS Server
+
+Production HTTP servers must support HTTPS. Snow's HTTP server uses `tiny_http`, which already has built-in TLS support via the `ssl-rustls` feature flag. Enabling HTTPS is a matter of feature-flagging `tiny_http` and adding a new `HTTP.serve_tls` function that accepts certificate/key paths.
+
+| Feature | Why Expected | Complexity | Notes |
+|---------|--------------|------------|-------|
+| `HTTP.serve_tls(router, port, cert_path, key_path)` | Production servers must serve HTTPS. | **Med** | `tiny_http` supports `Server::https(addr, SslConfig)` with the `ssl-rustls` feature. Read cert/key PEM files, pass to SslConfig. |
+| PEM certificate and key file loading | Standard format for TLS certificates. Let's Encrypt, self-signed, all use PEM. | Low | `std::fs::read(cert_path)` and `std::fs::read(key_path)` to load PEM bytes. |
+| Plaintext `HTTP.serve` continues to work | Not all deployments need TLS (reverse proxy handles it). Development uses plaintext. | Low | Existing function unchanged. New function is additive. |
+
+**Expected API surface:**
+
+```snow
+fn main() do
+  let r = HTTP.router()
+  let r = HTTP.on_get(r, "/health", health_handler)
+
+  # HTTPS with certificate
+  HTTP.serve_tls(r, 443, "/etc/ssl/cert.pem", "/etc/ssl/key.pem")
+
+  # OR plaintext (existing, unchanged)
+  # HTTP.serve(r, 8080)
+end
+```
+
+**Implementation approach:**
+
+1. Add `ssl-rustls` feature to `tiny_http` dependency in `Cargo.toml`: `tiny_http = { version = "0.12", features = ["ssl-rustls"] }`
+2. New runtime function `snow_http_serve_tls(router, port, cert_path, key_path)` that:
+   - Reads the PEM files from disk
+   - Constructs `tiny_http::SslConfig { certificate, private_key }`
+   - Calls `Server::https(addr, config)` instead of `Server::http(addr)`
+   - Uses the same `incoming_requests()` loop and actor dispatch as the plaintext server
+
+**What NOT to include:**
+- Automatic Let's Encrypt / ACME -- out of scope for a language runtime
+- SNI-based virtual hosting -- single cert per server
+- HTTP to HTTPS redirect -- application-level concern
+- Hot-reloading certificates -- restart server to update certs
+
+**Confidence:** HIGH -- `tiny_http` has an official `ssl-rustls` example. The `Server::https` API is a drop-in replacement for `Server::http`. Pure additive change.
+
+**Dependencies:** `tiny_http` with `ssl-rustls` feature, `rustls` (shared dependency with PG TLS). File I/O for cert loading (existing `std::fs`).
+
+---
+
+### 4. Database Transactions
+
+Every production application needs transactions for data consistency. Without a transaction API, Snow users must manually issue `Pg.execute(conn, "BEGIN", [])`, handle errors, and remember to COMMIT or ROLLBACK -- error-prone and ugly. Every framework provides a block-based transaction API: Elixir's `Repo.transaction(fn -> ... end)`, Go's `tx.Begin/Commit/Rollback` pattern, Rust's `sqlx::Transaction`.
+
+The block-based pattern is the right fit for Snow: pass a closure to `Db.transaction`, the runtime issues BEGIN before calling it and COMMIT after, or ROLLBACK if the closure returns Err or raises. This mirrors Elixir's `Repo.transaction` and Django's `atomic()`.
+
+| Feature | Why Expected | Complexity | Notes |
+|---------|--------------|------------|-------|
+| `Db.transaction(conn, fn(conn) -> ... end)` | Block-based transaction with automatic BEGIN/COMMIT/ROLLBACK. Elixir: `Repo.transaction`. Django: `atomic()`. | **Med** | Send `BEGIN` before calling the closure, `COMMIT` on Ok, `ROLLBACK` on Err. Return the closure's result. |
+| Automatic ROLLBACK on error | If the closure returns `Err(e)`, the transaction must ROLLBACK and propagate the error. Non-negotiable for data safety. | Med | Wrap the closure call. If it returns tag 1 (Err), send ROLLBACK and forward the Err. |
+| Automatic ROLLBACK on panic/crash | If the closure crashes (actor panic), ROLLBACK must still execute. | Med | Use `catch_unwind` or ensure cleanup via the actor's terminate callback. |
+| Works with both PostgreSQL and SQLite | Transactions are universal SQL. `BEGIN`/`COMMIT`/`ROLLBACK` work on both. | Low | The transaction function just issues SQL commands. Same for both drivers. |
+| Nested transaction via savepoints | Inner `Db.transaction` within an outer one should use SAVEPOINT, not a real nested BEGIN. Elixir, Django, Rails all handle this. | **High** | Track nesting depth. Depth 0: real BEGIN/COMMIT. Depth 1+: SAVEPOINT/RELEASE SAVEPOINT. ROLLBACK TO SAVEPOINT on inner error. |
+
+**Expected API surface:**
+
+```snow
+fn transfer(pool, from_id, to_id, amount) -> Int!String do
+  let conn = Pool.checkout(pool)?
+
+  Db.transaction(conn, fn(tx) do
+    Pg.execute(tx, "UPDATE accounts SET balance = balance - $1 WHERE id = $2", [amount, from_id])?
+    Pg.execute(tx, "UPDATE accounts SET balance = balance + $1 WHERE id = $2", [amount, to_id])?
+
+    let rows = Pg.query(tx, "SELECT balance FROM accounts WHERE id = $1", [from_id])?
+    let balance = Map.get(List.head(rows), "balance")
+    case String.to_int(balance) do
+      Ok(b) when b >= 0 -> Ok(b)
+      _ -> Err("insufficient funds")
+    end
+  end)?
+
+  Pool.checkin(pool, conn)
+  Ok(0)
+end
+```
+
+**Implementation approach:**
+
+1. **Runtime function:** `snow_db_transaction(conn_handle, driver_tag, closure_fn, closure_env)` that:
+   - Sends `BEGIN` via the appropriate driver
+   - Calls the closure with the connection handle
+   - On Ok result: sends `COMMIT`, returns Ok
+   - On Err result: sends `ROLLBACK`, returns Err
+2. **Savepoint support (v3.0 stretch):** Track transaction depth on the connection. Depth 0 uses `BEGIN`/`COMMIT`/`ROLLBACK`. Depth 1+ uses `SAVEPOINT sp_N`/`RELEASE SAVEPOINT sp_N`/`ROLLBACK TO SAVEPOINT sp_N`.
+
+**What NOT to include:**
+- `Ecto.Multi`-style composable transaction builder -- too complex for v3.0
+- Distributed transactions / two-phase commit -- out of scope
+- Transaction isolation level configuration -- users can issue `SET TRANSACTION ISOLATION LEVEL` manually
+- Read-only transactions -- users issue `BEGIN READ ONLY` manually
+
+**Confidence:** HIGH -- transaction semantics are well-defined by SQL. The block-based pattern (closure + automatic BEGIN/COMMIT/ROLLBACK) is universal across Elixir, Django, Rails, and Spring. Snow's closure system supports this naturally.
+
+**Dependencies:** Existing Pg/Sqlite execute functions. Closure calling convention (fn_ptr + env_ptr). For pool integration, transaction operates on a checked-out connection.
+
+---
+
+### 5. Struct-to-Row Mapping via `deriving(Db)`
+
+Currently, Snow database queries return `List<Map<String, String>>` -- all values as text. Users must manually extract fields and parse types:
+
+```snow
+let rows = Pg.query(conn, "SELECT name, age FROM users", [])?
+List.map(rows, fn(row) do
+  let name = Map.get(row, "name")
+  let age = String.to_int(Map.get(row, "age"))
+  # ... tedious, error-prone
+end)
+```
+
+Every modern framework automates this. Rust sqlx: `#[derive(FromRow)]`. Go: `db.StructScan`. Elixir Ecto: schema macros map columns to struct fields. Snow already has `deriving(Json)` that generates encode/decode from struct field metadata. `deriving(Db)` follows the exact same pattern: generate a `from_row` function that takes a `Map<String, String>` and returns a typed struct.
+
+| Feature | Why Expected | Complexity | Notes |
+|---------|--------------|------------|-------|
+| `deriving(Db)` generates `StructName.from_row(row)` | Automates `Map<String, String>` to struct conversion. Rust sqlx: `#[derive(FromRow)]`. | **Med-High** | Generate MIR function that extracts each field by name from the map, parses to correct type (String.to_int, String.to_float, etc.), constructs struct. Returns `Result<T, String>`. |
+| Automatic type coercion (String -> Int, String -> Float, etc.) | Database rows are text. Struct fields are typed. The mapping must bridge this. | Med | For each field: String field = direct use. Int field = `String.to_int`. Float field = `String.to_float`. Bool field = `"true"/"false"` comparison. |
+| Option field handling for NULL columns | Database columns can be NULL (represented as empty string `""` in current API). `Option<String>` field maps NULL to `None`. | Med | Empty string in map -> `None`. Non-empty -> `Some(parsed_value)`. Matches the existing NULL-as-empty-string convention. |
+| Error on missing or unparseable columns | If a column is missing or the text cannot parse to the expected type, return `Err` with a descriptive message. | Low | `"column 'age' not found"` or `"column 'age': expected integer, got 'abc'"`. |
+| Works with query results directly | `Db.query_as<User>(conn, sql, params)` that combines query + mapping. | Med | Convenience wrapper: query, then map each row through `User.from_row`. Returns `Result<List<User>, String>`. |
 
 **Expected API surface:**
 
@@ -62,295 +290,67 @@ struct User do
   name :: String
   age :: Int
   email :: Option<String>
-end deriving(Eq, Json)
+end deriving(Db)
 
 fn main() do
-  let user = User { name: "Alice", age: 30, email: Some("alice@example.com") }
+  let conn = Pg.connect("postgres://...")?
 
-  # Encode: struct -> JSON string
-  let json_str = JSON.encode(user)
-  # => '{"name":"Alice","age":30,"email":"alice@example.com"}'
-
-  # Decode: JSON string -> Result<User, String>
-  let result = User.from_json(json_str)
-  case result do
-    Ok(u) -> println("Got user: ${u.name}")
-    Err(e) -> println("Parse error: ${e}")
-  end
-end
-```
-
-**Implementation approach:**
-
-The compiler generates two MIR functions per struct that derives Json:
-
-1. `Json__encode__User(self: User) -> String` -- Extracts each field, converts to SnowJson via `snow_json_from_*`, builds a SnowMap, wraps as SnowJson Object, calls `snow_json_encode`.
-
-2. `Json__decode__User(input: String) -> Result<User, String>` -- Calls `snow_json_parse(input)` to get SnowJson. Checks it's an Object (tag 5). Extracts field values by name from the SnowMap. Casts each to the expected Snow type. Constructs the struct. Returns `Ok(user)` or `Err(message)`.
-
-The `JSON.encode(value)` call dispatches to the appropriate `Json__encode__T` based on the argument type. This requires the MIR lowerer to resolve the call based on the argument's type (similar to how Display trait dispatch works for `${expr}` interpolation).
-
-**What NOT to include:**
-- Field renaming attributes (`@json_name("user_name")`) -- requires annotation/attribute syntax Snow doesn't have yet
-- Custom serializers per field -- requires plugin system
-- JSON Schema validation -- separate concern
-- Streaming JSON parsing -- overkill for this stage
-
-**Confidence:** HIGH -- the deriving infrastructure is proven (5 traits), the SnowJson runtime type exists, the `snow_json_from_*` helpers exist. The main work is connecting them in MIR codegen.
-
-**Dependencies:** Existing deriving system, existing SnowJson runtime, existing `snow_json_from_*` and `snow_json_encode`/`snow_json_parse`.
-
----
-
-### 2. SQLite Driver
-
-SQLite is the most common embedded database. Every language provides a way to interact with it. Go has `database/sql` + `go-sqlite3`. Rust has `rusqlite`. Elixir has `Ecto.Adapters.SQLite3`. The SQLite C API is remarkably minimal: `sqlite3_open`, `sqlite3_prepare_v2`, `sqlite3_step`, `sqlite3_column_*`, `sqlite3_finalize`, `sqlite3_close`.
-
-| Feature | Why Expected | Complexity | Notes |
-|---------|--------------|------------|-------|
-| `Sqlite.open(path)` returns `Result<SqliteConn, String>` | Every SQLite wrapper starts with open. Universal first step. | Low | Wraps `sqlite3_open()`. Returns opaque handle as Ptr. Error via `sqlite3_errmsg`. |
-| `Sqlite.execute(conn, sql, params)` for INSERT/UPDATE/DELETE | Non-SELECT execution returning affected row count. Go: `db.Exec()`, Rust: `conn.execute()`. | Med | Calls `sqlite3_prepare_v2`, binds params via `sqlite3_bind_text`, `sqlite3_step`, `sqlite3_finalize`. Returns `Result<Int, String>`. |
-| `Sqlite.query(conn, sql, params)` for SELECT | Must return rows. Go: `db.Query()` + `rows.Scan()`, Rust: `conn.query_map()`. | **Med-High** | Prepare/step/column cycle. Returns `Result<List<Map<String, String>>, String>`. All values as strings initially -- matches Go's vanilla `database/sql` pattern. |
-| Parameterized queries with `?` placeholders | SQL injection prevention is non-negotiable. Every database driver uses parameterized queries. SQLite native: `?`. | Med | Params as `List<String>`. Runtime iterates and calls `sqlite3_bind_text(stmt, idx+1, value, -1, SQLITE_TRANSIENT)` for each. |
-| `Sqlite.close(conn)` | Resource cleanup. Universal. | Low | Calls `sqlite3_close()`. |
-| Error handling returns Result | All operations that can fail must return `Result<T, String>`. | Low | Established pattern in Snow. Use `sqlite3_errmsg(db)` for error messages. |
-
-**Expected API surface:**
-
-```snow
-fn main() do
-  let conn = Sqlite.open("app.db")?
-  Sqlite.execute(conn, "CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT, age INTEGER)", [])?
-  Sqlite.execute(conn, "INSERT INTO users (name, age) VALUES (?, ?)", ["Alice", "30"])?
-  let rows = Sqlite.query(conn, "SELECT name, age FROM users WHERE age > ?", ["25"])?
-  # rows :: List<Map<String, String>>
-  List.each(rows, fn(row) do
-    let name = Map.get(row, "name")
-    println("User: ${name}")
+  # Option A: Manual row mapping
+  let rows = Pg.query(conn, "SELECT name, age, email FROM users", [])?
+  let users = List.map(rows, fn(row) do
+    User.from_row(row)
   end)
-  Sqlite.close(conn)
-end
-```
 
-**Implementation approach:**
+  # Option B: Query + map in one step (stretch goal)
+  # let users = Db.query_as(conn, User, "SELECT name, age, email FROM users", [])?
 
-New Rust runtime module `snow-rt/src/db/sqlite.rs` that wraps the sqlite3 C API:
-1. Link `sqlite3` as a C dependency (use the `rusqlite` crate's bundled sqlite3, or link system sqlite3)
-2. Expose `snow_sqlite_open(path: *const SnowString) -> *mut SnowResult`
-3. Expose `snow_sqlite_execute(conn: *mut u8, sql: *const SnowString, params: *mut u8) -> *mut SnowResult`
-4. Expose `snow_sqlite_query(conn: *mut u8, sql: *const SnowString, params: *mut u8) -> *mut SnowResult`
-5. Expose `snow_sqlite_close(conn: *mut u8)`
-6. Register as `Sqlite` module in STDLIB_MODULES, map function names in `map_builtin_name`
-7. Declare intrinsics in `intrinsics.rs`, register types in `known_functions`
-
-**What NOT to include:**
-- Connection pooling -- single connection is fine for v2.0
-- Prepared statement caching -- user creates/discards connections
-- Transaction API (`begin`/`commit`/`rollback` as typed API) -- users call `Sqlite.execute(conn, "BEGIN", [])` manually
-- Automatic struct-to-row mapping -- return `List<Map<String, String>>`
-- Async/non-blocking I/O -- blocking is fine in actor context (same as HTTP)
-
-**Confidence:** HIGH -- SQLite C API is well-documented and stable. The Rust runtime already links C dependencies (via cargo). The pattern for adding new stdlib modules is established.
-
-**Dependencies:** C FFI linkage for sqlite3 library. No dependencies on other v2.0 features.
-
----
-
-### 3. PostgreSQL Driver
-
-PostgreSQL is the most common production database. Go has `pgx`. Rust has `rust-postgres` and `sqlx`. Elixir has `Ecto.Adapters.Postgres` via `postgrex`. The C interface is `libpq`: `PQconnectdb`, `PQexecParams`, `PQgetvalue`, `PQclear`, `PQfinish`.
-
-| Feature | Why Expected | Complexity | Notes |
-|---------|--------------|------------|-------|
-| `Pg.connect(conn_string)` returns `Result<PgConn, String>` | Standard connection string: `"host=localhost dbname=mydb user=me"`. Go pgx: `pgx.Connect(ctx, str)`, Rust: `Client::connect(str)`. | Med | Wraps `PQconnectdb(conninfo)`. Check `PQstatus(conn) == CONNECTION_OK`. Error via `PQerrorMessage`. |
-| `Pg.execute(conn, sql, params)` for non-SELECT | Same pattern as SQLite but with PostgreSQL's `$1, $2` param syntax. | Med | Uses `PQexecParams(conn, sql, nParams, NULL, paramValues, NULL, NULL, 0)`. Returns `Result<Int, String>`. |
-| `Pg.query(conn, sql, params)` for SELECT | Returns rows as `List<Map<String, String>>`. Same return type as SQLite for API consistency. | Med-High | Uses `PQexecParams`, then `PQntuples`/`PQnfields`/`PQfname`/`PQgetvalue` to extract rows. |
-| Parameterized queries with `$1, $2, ...` placeholders | PostgreSQL's native parameter syntax. All PG drivers use this. | Med | libpq `PQexecParams` takes param values as `const char *const *paramValues`. |
-| `Pg.close(conn)` | Calls `PQfinish`. Universal cleanup. | Low | |
-| Connection string parsing | Users expect standard PG connection strings to work. | Low | libpq handles this internally via `PQconnectdb`. |
-
-**Expected API surface:**
-
-```snow
-fn main() do
-  let conn = Pg.connect("host=localhost dbname=myapp user=snow")?
-  Pg.execute(conn, "INSERT INTO users (name, age) VALUES ($1, $2)", ["Alice", "30"])?
-  let rows = Pg.query(conn, "SELECT name, age FROM users WHERE age > $1", ["25"])?
-  List.each(rows, fn(row) do
-    let name = Map.get(row, "name")
-    println("User: ${name}")
-  end)
   Pg.close(conn)
 end
 ```
 
 **Implementation approach:**
 
-New Rust runtime module `snow-rt/src/db/pg.rs` that wraps libpq:
-1. Link `libpq` as a C dependency (use the `pq-sys` crate or link system libpq)
-2. Same module registration pattern as SQLite: `Pg` in STDLIB_MODULES
-3. Same return types: `Result<Int, String>` for execute, `Result<List<Map<String, String>>, String>` for query
-4. `PQexecParams` handles parameterized queries natively
+Follows the `deriving(Json)` pattern exactly:
 
-**API consistency with SQLite:**
-- Both return `Result<List<Map<String, String>>, String>` for queries
-- Both take `List<String>` for parameters
-- Difference: SQLite uses `?` placeholders, PostgreSQL uses `$1, $2, ...`
-- Difference: SQLite uses file path to open, PostgreSQL uses connection string
+1. **MIR lowering:** When `deriving(Db)` is seen on a struct, generate a synthetic function `Db__from_row__StructName(row: Map<String, String>) -> Result<StructName, String>`.
+2. **Field extraction:** For each field, call `Map.get(row, "field_name")` to get the text value.
+3. **Type coercion:** Based on the field's type:
+   - `String` -> use directly
+   - `Int` -> call `String.to_int`, propagate error
+   - `Float` -> call `String.to_float`, propagate error
+   - `Bool` -> compare with `"true"`/`"t"`/`"1"`
+   - `Option<T>` -> empty string becomes `None`, otherwise parse inner type and wrap in `Some`
+4. **Struct construction:** Build the struct from parsed fields.
+5. **Error handling:** Return `Err("column 'X': expected int, got 'Y'")` on parse failure.
 
-**What NOT to include:**
-- Connection pooling -- future enhancement
-- LISTEN/NOTIFY -- PostgreSQL-specific feature, defer
-- COPY command support -- niche, defer
-- SSL/TLS connection options -- libpq handles basic TLS via connection string params
-- Prepared statement caching -- users re-execute queries
-
-**Confidence:** HIGH -- libpq is the standard C interface to PostgreSQL, well-documented. The pattern mirrors SQLite exactly.
-
-**Dependencies:** C FFI linkage for libpq. No dependencies on other v2.0 features.
-
----
-
-### 4. HTTP Path Parameters
-
-Every modern web framework supports path parameters: Express `/users/:id`, Phoenix `/users/:id`, Go 1.22 `/users/{id}`, Axum `/users/{id}`. Snow's current router only supports exact match and `/*` wildcard. Without path parameters, building RESTful APIs requires manual path parsing.
-
-| Feature | Why Expected | Complexity | Notes |
-|---------|--------------|------------|-------|
-| Route patterns with `:param` segments | `/users/:id` matches `/users/42` and binds `id = "42"`. Universal convention. | Med | Extends `SnowRouter::match_route` to do segment-by-segment matching. When a pattern segment starts with `:`, it matches any single segment and captures the value. |
-| Extracted params accessible via `Request.param(req, "id")` | Returns `Option<String>`. Go 1.22: `r.PathValue("id")`, Axum: `Path(id)`, Phoenix: `conn.params["id"]`. | Med | `SnowHttpRequest` gains a `path_params: *mut u8` field (SnowMap). Router populates it during matching. New runtime function `snow_http_request_param`. |
-| Multiple params in one path | `/users/:user_id/posts/:post_id` captures both. Universal expectation. | Low | The segment matching loop captures all named segments. No special handling needed beyond the basic matching. |
-| Static routes take precedence over parameterized | `/users/me` matches before `/users/:id` when both are registered. Standard in Go 1.22, Axum, Express. | Low | Already handled by "first match wins" ordering. Document: register specific routes before parameterized ones. |
-| Mixed static and param segments | `/api/v1/users/:id` -- static `api`, static `v1`, static `users`, param `id`. | Low | Segment-by-segment: static segments must match exactly, param segments match anything. |
-
-**Expected API surface:**
-
-```snow
-fn get_user(request) do
-  let id = Request.param(request, "id")
-  case id do
-    Some(user_id) -> HTTP.response(200, "User: ${user_id}")
-    None -> HTTP.response(400, "Missing user ID")
-  end
-end
-
-fn get_user_post(request) do
-  let user_id = Request.param(request, "user_id")
-  let post_id = Request.param(request, "post_id")
-  HTTP.response(200, "User ${user_id}, Post ${post_id}")
-end
-
-fn main() do
-  let r = HTTP.router()
-  let r = HTTP.route(r, "/users/me", get_me)       # static, matches first
-  let r = HTTP.route(r, "/users/:id", get_user)     # param, matches second
-  let r = HTTP.route(r, "/users/:user_id/posts/:post_id", get_user_post)
-  HTTP.serve(r, 8080)
-end
-```
-
-**Implementation approach:**
-
-1. **Router matching (`router.rs`):** Modify `matches_pattern` to split pattern and path by `/`, compare segment by segment. If pattern segment starts with `:`, it matches any path segment and the captured pair `(param_name, segment_value)` is recorded.
-
-2. **Request struct (`server.rs`):** Add `path_params: *mut u8` field to `SnowHttpRequest`. The `handle_request` function builds this map from the router match result.
-
-3. **Accessor function:** New `snow_http_request_param(req: *mut u8, name: *const SnowString) -> *mut u8` returning SnowOption, same pattern as `snow_http_request_header` and `snow_http_request_query`.
-
-4. **Module registration:** Add `Request.param` to the function name mapping. Already has `Request.method`, `Request.path`, etc.
+The `deriving(Db)` infrastructure reuses the field metadata extraction from `deriving(Json)`. The main difference is the source format (Map<String,String> instead of SnowJson) and the coercion logic (string parsing instead of JSON type checking).
 
 **What NOT to include:**
-- Regex-based route matching -- over-engineering
-- Route groups/scoping -- future enhancement
-- Typed path extraction (automatic Int parsing) -- return String, users parse manually
-- Catch-all named wildcard (`/api/*rest` capturing "rest") -- current `/*` already works for catch-all
+- Column renaming attributes (`@column("user_name")`) -- requires annotation syntax
+- Nested struct hydration from JOINs -- complex, defer
+- Custom type converters -- fixed mapping for v3.0
+- Automatic query generation from struct fields -- users write SQL
+- Row-to-struct for INSERT (reverse mapping) -- write operations use manual params
 
-**Confidence:** HIGH -- the router code is simple and well-structured. The modification is straightforward segment-level matching. All reference implementations (Go, Axum, Phoenix) work identically.
+**Confidence:** HIGH -- this follows the proven `deriving(Json)` pattern. The MIR lowering infrastructure is established. The main complexity is type coercion from strings, which is straightforward with existing `String.to_int`/`String.to_float`.
 
-**Dependencies:** Existing `SnowRouter` and `SnowHttpRequest`. Must be built before middleware (middleware should see path params).
-
----
-
-### 5. HTTP Middleware
-
-Every web framework provides middleware for cross-cutting concerns: logging, authentication, CORS, rate limiting. Go uses handler wrapping `func(http.Handler) http.Handler`. Elixir Plug uses a pipeline of `call(conn, opts)` functions. Rust Tower uses `Layer`/`Service` traits. The core pattern is always the same: a function that wraps a handler.
-
-| Feature | Why Expected | Complexity | Notes |
-|---------|--------------|------------|-------|
-| Middleware wraps handlers, runs before/after | The fundamental middleware contract. Go: `func(http.Handler) http.Handler`. Elixir Plug: `call(conn, opts)`. | Med | In Snow, middleware is a function that takes a handler and returns a new handler: `fn(fn(Request) -> Response) -> fn(Request) -> Response`. Natural fit with Snow's closure support. |
-| Middleware composition via `HTTP.use(router, middleware)` | Multiple middleware compose in order. Go: nested wrapping. Elixir: `pipeline`. | Med | Router gains a `middlewares: Vec<(fn_ptr, env_ptr)>` list. `HTTP.use` appends. Before calling matched handler, server wraps it through middleware chain. |
-| Middleware can short-circuit (return early without calling next) | Auth middleware returns 401 without calling the inner handler. Universal pattern. | Low | Natural: if middleware returns a response without calling the wrapped handler, the chain stops. |
-| Middleware execution order is intuitive | First middleware added runs first (outermost). Matches Go and Express conventions. | Low | Middleware applied in registration order. First registered = outermost wrapper. |
-
-**Expected API surface:**
-
-```snow
-fn logging_middleware(handler) do
-  fn(request) do
-    let method = Request.method(request)
-    let path = Request.path(request)
-    println("[${method}] ${path}")
-    handler(request)
-  end
-end
-
-fn auth_middleware(handler) do
-  fn(request) do
-    let token = Request.header(request, "Authorization")
-    case token do
-      Some(_) -> handler(request)
-      None -> HTTP.response(401, "Unauthorized")
-    end
-  end
-end
-
-fn main() do
-  let r = HTTP.router()
-  let r = HTTP.route(r, "/api/users", list_users)
-  let r = HTTP.use(r, logging_middleware)
-  let r = HTTP.use(r, auth_middleware)
-  HTTP.serve(r, 8080)
-end
-```
-
-**Implementation approach:**
-
-Snow's closure system already supports the middleware pattern naturally. A middleware is a function that takes a handler function and returns a new handler function. The key implementation work is:
-
-1. **Router middleware list:** `SnowRouter` gains a `middlewares: Vec<(*mut u8, *mut u8)>` field (fn_ptr, env_ptr pairs).
-
-2. **`HTTP.use(router, middleware_fn)` runtime function:** `snow_http_use(router, middleware_fn)` returns a new router with the middleware appended.
-
-3. **Server handler wrapping:** In `handle_request`, before calling the matched route handler, wrap it through the middleware chain. Each middleware receives the next handler (inner) and returns a new handler (outer). The outermost wrapper receives the actual request.
-
-4. **Calling convention:** The middleware function is called with the inner handler as argument. It returns a closure. That closure is called with the request. This matches Snow's existing closure calling convention (fn_ptr + env_ptr).
-
-**What NOT to include:**
-- Per-route middleware -- global only for MVP. Per-route is a differentiator.
-- Middleware ordering DSL (like Phoenix pipelines) -- `HTTP.use` in order is sufficient
-- Response modification after handler (post-processing) -- the middleware pattern naturally supports this (middleware calls handler, then wraps the response), but we don't need special API for it
-- Async middleware -- blocking model is fine in actor context
-
-**Confidence:** HIGH -- Snow's closures already support the wrapping pattern. The main work is plumbing middleware through the router and server. The calling convention for closures (fn_ptr + env_ptr) is well-established.
-
-**Dependencies:** HTTP server infrastructure. Should be built after path params (middleware should have access to path params on the request).
+**Dependencies:** Existing deriving infrastructure, existing Map operations (`Map.get`), existing `String.to_int`/`String.to_float`, existing struct constructor codegen.
 
 ---
 
 ## Differentiators
 
-Features that set Snow apart. Not expected but valued -- these make Snow feel polished and intentional.
+Features that set Snow apart. Not expected but valued -- these make Snow feel polished and intentional for production backends.
 
 | Feature | Value Proposition | Complexity | Notes |
 |---------|-------------------|------------|-------|
-| Typed parameter binding for database queries | `Sqlite.query(conn, "SELECT * WHERE age > ?", [42])` where `42` is bound as Int via `sqlite3_bind_int64`. Most basic drivers bind everything as text. | Med | Runtime inspects Snow value type tag and calls `sqlite3_bind_int64` for Int, `sqlite3_bind_double` for Float, `sqlite3_bind_text` for String. Params become `List<Any>` or separate typed bind functions. |
-| `JSON.encode(value)` works on any type that derives Json | Dispatch based on argument type at compile time, not just on structs. Can also work on primitives and collections directly. | Med | The existing `JSON.encode_int`, `JSON.encode_string` etc. already handle primitives. The new dispatch unifies them: `JSON.encode(42)` calls `snow_json_encode_int`, `JSON.encode(user)` calls `Json__encode__User`. |
-| Wildcard route with named capture | `/api/*rest` captures the remainder as `Request.param(req, "rest")`. Go: `{rest...}`, Axum: `{*path}`. | Low | Extend the existing `/*` wildcard to optionally capture the suffix. Minimal change to router matching. |
-| JSON pretty-print option | `JSON.encode_pretty(value)` for human-readable output. Most JSON libs offer this. | Low | New runtime function wrapping `serde_json::to_string_pretty`. Low effort, nice developer UX. |
-| Consistent database API surface | SQLite and PostgreSQL share the same return types and pattern: `open`/`connect` -> `execute`/`query` -> `close`. Makes switching databases straightforward. | Low | Design choice, not implementation work. Both modules return `Result<List<Map<String, String>>, String>` for queries. |
-| `deriving(Json)` for sum types / enums | `type Color = Red \| Green \| Blue deriving(Json)` encodes as `"Red"`, `"Green"`, `"Blue"`. Tagged variants with fields encode as `{"tag":"Variant","field1":val}`. | High | Extension of the struct Json derive pattern. Sum types with no fields encode as strings. Sum types with fields encode as tagged objects. Defer to post-MVP. |
-| Per-route middleware | Apply middleware to specific routes: `HTTP.route(r, "/admin/*", handler, [auth_middleware])`. Phoenix: `pipe_through`. Express: `router.use("/admin", auth)`. | Med | Extend `RouteEntry` to carry per-route middleware. Not needed for MVP -- global is sufficient. |
-| Float column support in database queries | Return Float values from database columns as actual Float instead of String. | Low | Check `sqlite3_column_type` and use `sqlite3_column_double` for REAL columns. Enhancement over all-string return. |
+| Actor-based pool with supervision | Pool manager actor is supervised. If it crashes, supervisor restarts it and connections are re-established. Leverages Snow's existing supervision trees. No other non-BEAM language gets this for free. | Med | Pool actor is a child spec under a supervisor. Crash -> restart -> re-create connections. |
+| `Pool.transaction(pool, fn(conn) -> ... end)` | Combines checkout + transaction + checkin in one call. The most ergonomic pattern. Elixir: `Repo.transaction`. | Low | Wraps: checkout -> begin -> call closure -> commit/rollback -> checkin. |
+| `deriving(Db, Json)` on same struct | One struct definition, two auto-generated mapping layers. Parse from DB row AND serialize to JSON response. Eliminates boilerplate for the most common web API pattern. | Low | Both derives are independent. `deriving(Db, Json)` just generates both sets of functions. |
+| Health-checked pool connections | Pool validates connections before handing them out. Dead connections are silently replaced. Users never see stale connection errors. | Med | `SELECT 1` ping before checkout. On failure, discard and create new. |
+| Connection URL parsing for both drivers | `Pool.start(%{url: "postgres://..."})` and `Pool.start(%{url: "sqlite:///path/to/db.sqlite"})`. Unified config format. | Low | Parse URL scheme to determine driver. Already parsing PG URLs. |
+| Transaction + Pool integration | `Pool.transaction` ensures the connection is returned to the pool even if the transaction fails. No connection leak possible. | Med | Finally-style cleanup: checkin happens in all paths (success, error, panic). |
+| `sslmode=prefer` for PostgreSQL | Try TLS first, fall back to plaintext if server declines. Best of both worlds for flexible deployments. | Low | Send SSLRequest. On `N`, proceed with plaintext StartupMessage. On `S`, upgrade to TLS. |
 
 ---
 
@@ -360,69 +360,69 @@ Features to explicitly NOT build in this milestone.
 
 | Anti-Feature | Why Avoid | What to Do Instead |
 |--------------|-----------|-------------------|
-| ORM / Query builder DSL | Massive scope. Ecto took years. ORMs are controversial in Go/Rust (many prefer raw SQL). Snow's type system isn't ready for a type-safe query builder. | Raw SQL with parameterized queries. Users write SQL strings. This is what Go's `database/sql` does. |
-| Automatic struct-to-row mapping | Auto-mapping rows to structs (like Go sqlx `StructScan` or Rust sqlx `FromRow`) requires reflection or compile-time introspection Snow doesn't have. | Return rows as `List<Map<String, String>>`. Users extract fields manually. |
-| Async/non-blocking database I/O | The actor runtime uses blocking I/O. Adding async DB ops would require a different I/O model. The HTTP server already uses blocking I/O successfully. | Database ops block the calling actor's coroutine. The M:N scheduler runs other actors on other threads. Same model as HTTP. |
-| Connection pooling | Requires managing a pool of connections, handling concurrent access, idle timeouts, health checks. Significant complexity. | Single connection per `open`/`connect` call. Users manage connection lifecycle manually. Pool in a future milestone. |
-| Database transactions as typed API | `BEGIN`/`COMMIT`/`ROLLBACK` with proper error recovery semantics requires careful design around partial failure, nested transactions, savepoints. | Users call `Sqlite.execute(conn, "BEGIN", [])` and `Sqlite.execute(conn, "COMMIT", [])` manually. Functional but not type-safe. |
-| Database migrations framework | Schema versioning, up/down migrations, migration tracking table. Large feature surface. | Users call `Sqlite.execute(conn, "CREATE TABLE IF NOT EXISTS ...", [])`. Manual schema management. |
-| JSON Schema validation | Validating JSON against a schema is a separate concern from encoding/decoding. | Users validate by decoding into a typed struct -- decode failure means the data didn't match. |
-| Custom JSON serializers per field | Rust serde's `#[serde(serialize_with)]` requires a plugin/attribute system Snow doesn't have. | Default serialization for all field types. No customization. |
-| Field renaming in JSON serde | `@json_name("user_name")` requires annotation/attribute syntax not yet in the parser. | Use struct field names as-is for JSON keys. Snake_case in Snow = snake_case in JSON. |
-| WebSocket support | Different protocol. Not related to database/serialization. | Keep HTTP as request/response only. |
-| Regex-based route matching | Over-engineering. Modern frameworks moved to simpler segment-based patterns. | `:param` named segments and `*` wildcards cover 99% of use cases. |
-| Compile-time query validation | Like Rust sqlx's compile-time checked queries. Requires connecting to a database during compilation. | Runtime query validation only. SQL errors return `Err`. |
-| `JSON.decode` with type inference | `let user: User = JSON.decode(str)?` where the compiler infers the target type. Requires a more sophisticated type inference system than Snow currently has. | Use explicit `User.from_json(str)` generated by `deriving(Json)`. |
+| ORM / Query builder DSL | Massive scope, controversial (Go/Rust prefer raw SQL), Snow's type system not ready for type-safe query builder. | Raw SQL with parameterized queries. `deriving(Db)` maps results to structs. Users write SQL. |
+| Automatic migration framework | Schema versioning, up/down migrations, tracking table. Large feature. | Users call `execute("CREATE TABLE IF NOT EXISTS ...")` or use external tools. |
+| Connection pool per-query timeout | Complex (requires canceling in-flight queries on the wire). | Users handle timeouts at the application level or set PostgreSQL `statement_timeout`. |
+| Read/write splitting | Multiple pools with routing logic. | Single pool per database. Users create separate pools if needed. |
+| Async/non-blocking database I/O | Would require changing the blocking I/O model that works correctly. | Blocking I/O in actor context. M:N scheduler runs other actors. Same model as HTTP. |
+| Compile-time SQL validation | Requires connecting to a database during compilation (like Rust sqlx). | Runtime query validation only. SQL errors return `Err`. |
+| PgBouncer-style external pooler | External process management, configuration files, deployment complexity. | Built-in application-level pool is sufficient. |
+| WebSocket / HTTP/2 support | Different protocols, not related to production backend data layer. | Keep HTTP/1.1 request/response. |
+| Distributed transactions / 2PC | Cross-database consistency is a specialized concern. | Single-database transactions only. |
+| Custom serializer per DB column | Requires annotation/attribute system Snow does not have. | Fixed type mappings: String, Int, Float, Bool, Option. |
+| Row-to-struct for INSERT (reverse mapping) | Auto-generating INSERT SQL from struct fields requires schema awareness the runtime does not have. | Users write INSERT SQL with manual parameter lists. |
+| Connection pool rebalancing / warm-up | Dynamic resizing and connection pre-warming add complexity. | Static min/max pool size. Lazy connection creation. |
+| Nested struct hydration from JOINs | Mapping JOIN results to nested struct hierarchies (User with Address) requires understanding SQL result shape at compile time. | Flat struct mapping only. Users query and construct nested structs manually. |
 
 ---
 
 ## Feature Dependencies
 
 ```
-deriving(Json) encode
-  +-- Existing deriving infrastructure (MIR lowering for Eq, Display, etc.)
-  +-- Existing snow_json_from_int, snow_json_from_float, snow_json_from_bool, snow_json_from_string
-  +-- Existing snow_json_encode (SnowJson -> String)
-  +-- NEW: snow_json_from_null (for Option<T> None values)
-  +-- NEW: snow_json_from_map (for struct -> SnowJson Object conversion)
-  +-- NEW: snow_json_from_list_mapped (for List<T> field encoding)
+Connection Pooling
+  +-- Existing actor runtime (spawn, send, receive, register)
+  +-- Existing Pg.connect / Sqlite.open (connection creation)
+  +-- Existing Timer.send_after (idle timeout checks)
+  +-- NEW: Pool.start, Pool.checkout, Pool.checkin, Pool.query, Pool.execute
   |
   v
-deriving(Json) decode
-  +-- Existing snow_json_parse (String -> SnowJson)
-  +-- Existing struct constructor codegen
-  +-- NEW: snow_json_object_get_field (extract field from SnowJson Object by name)
-  +-- NEW: snow_json_to_int, snow_json_to_string, etc. (SnowJson -> Snow type)
-  +-- DEPENDS ON: encode being designed first (shared field metadata codegen)
-
-HTTP path parameters
-  +-- Existing SnowRouter (router.rs)
-  +-- Existing SnowHttpRequest (server.rs)
-  +-- NEW: path_params field on SnowHttpRequest
-  +-- NEW: segment-level matching in router
+TLS for PostgreSQL
+  +-- Existing PgConn with TcpStream
+  +-- Existing URL parsing in pg.rs
+  +-- NEW: rustls dependency
+  +-- NEW: PgStream enum (Plain | Tls)
+  +-- NEW: SSLRequest handshake in snow_pg_connect
+  +-- NEW: sslmode URL parameter parsing
+  |   (INDEPENDENT of pooling -- works on raw connections)
   |
   v
-HTTP middleware
-  +-- Existing HTTP server (handle_request in server.rs)
+TLS for HTTPS
+  +-- Existing tiny_http server infrastructure
+  +-- NEW: tiny_http ssl-rustls feature flag
+  +-- NEW: snow_http_serve_tls runtime function
+  +-- NEW: PEM file loading
+  |   (INDEPENDENT of DB features)
+  |
+  v
+Database Transactions
+  +-- Existing Pg.execute / Sqlite.execute (for BEGIN/COMMIT/ROLLBACK)
   +-- Existing closure calling convention (fn_ptr + env_ptr)
-  +-- DEPENDS ON: path params (middleware should see path params)
-  +-- NEW: middleware list on SnowRouter
-  +-- NEW: snow_http_use runtime function
-
-SQLite driver (INDEPENDENT)
-  +-- C FFI: sqlite3 library linkage
-  +-- NEW: snow-rt/src/db/sqlite.rs
-  +-- NEW: Sqlite module in STDLIB_MODULES
-
-PostgreSQL driver (INDEPENDENT, follows SQLite pattern)
-  +-- C FFI: libpq library linkage
-  +-- NEW: snow-rt/src/db/pg.rs
-  +-- NEW: Pg module in STDLIB_MODULES
+  +-- DEPENDS ON: Connection pooling (transactions operate on checked-out connections)
+  +-- NEW: Db.transaction runtime function
+  +-- NEW: Transaction depth tracking for savepoints (stretch)
+  |
+  v
+Struct-to-Row Mapping (deriving(Db))
+  +-- Existing deriving infrastructure (MIR lowering)
+  +-- Existing Map.get, String.to_int, String.to_float
+  +-- Existing struct constructor codegen
+  +-- INDEPENDENT of pooling and TLS (works on raw query results)
+  +-- NEW: Db__from_row__StructName synthetic MIR function
 ```
 
-**Critical dependency chain:** deriving(Json) encode -> decode (shared infrastructure)
-**Critical dependency chain:** HTTP path params -> HTTP middleware (middleware needs params)
-**Fully independent features:** SQLite driver, PostgreSQL driver (independent of each other and of JSON/HTTP)
+**Critical dependency chain:** Pooling -> Transactions (transactions use checked-out connections from pool)
+**Can parallelize:** TLS (PG) + TLS (HTTPS) + deriving(Db) are all independent of each other
+**Foundation:** Connection pooling is foundational -- transactions and higher-level APIs build on it
 
 ---
 
@@ -430,35 +430,30 @@ PostgreSQL driver (INDEPENDENT, follows SQLite pattern)
 
 ### Build order rationale:
 
-**1. `deriving(Json)` encode** -- Highest user-visible impact. Existing deriving infrastructure proven. Encode is simpler than decode. Unblocks practical HTTP handler patterns: `JSON.encode(user)` instead of manual map building.
+**1. TLS for PostgreSQL connections** -- Hard blocker for production. Cannot connect to cloud databases without it. Scoped change to `pg.rs` (add SSLRequest + rustls wrapping). Does not affect other features. Unblocks all real-world PostgreSQL usage.
 
-**2. `deriving(Json)` decode** -- Completes the serde story. Harder than encode (error handling, type coercion). Returns `Result<T, String>`. Must share field metadata codegen with encode.
+**2. TLS for HTTPS server** -- Second production blocker. Enable `ssl-rustls` on `tiny_http`, add `serve_tls` function. Small, self-contained change. Shares `rustls` dependency with PG TLS.
 
-**3. HTTP path parameters** -- Small, well-scoped change to existing router. Required before middleware makes sense. Extends SnowRouter with segment matching and SnowHttpRequest with params map.
+**3. Connection pooling** -- Foundational for production workloads. Enables sharing connections across concurrent request handlers. Actor-based design leverages Snow's strengths. Required before transactions make ergonomic sense (transactions need a connection to operate on, and pooling is how connections are managed in production).
 
-**4. HTTP middleware** -- Depends on path params being available. Changes handler calling convention in the server. Global middleware only for MVP.
+**4. Database transactions** -- Builds on pooling. Block-based `Db.transaction(conn, fn)` with automatic BEGIN/COMMIT/ROLLBACK. Essential for data consistency. Nested savepoints as stretch goal.
 
-**5. SQLite driver** -- New C FFI dependency. Independent of JSON/HTTP features. Simpler than PostgreSQL (embedded, no network). Establishes the database API pattern.
-
-**6. PostgreSQL driver** -- Follows SQLite's API pattern exactly. Adds libpq C FFI dependency. Network-based, slightly more complex error handling.
+**5. Struct-to-row mapping (deriving(Db))** -- Quality-of-life improvement. Follows proven `deriving(Json)` pattern. Can be built independently at any point but is most valuable after the data pipeline (pool + transactions) is solid.
 
 ### Prioritize:
-1. `deriving(Json)` encode -- makes HTTP handlers practical
-2. `deriving(Json)` decode -- completes the serde loop
-3. HTTP path parameters -- makes the router useful for real APIs
-4. HTTP middleware -- enables cross-cutting concerns (logging, auth)
-5. SQLite driver with parameterized queries -- local data persistence
-6. PostgreSQL driver with parameterized queries -- production database access
+1. PostgreSQL TLS -- production database connectivity
+2. HTTPS server -- production HTTP serving
+3. Connection pooling -- production concurrency
+4. Database transactions -- production data integrity
+5. Struct-to-row mapping -- developer ergonomics
 
 ### Defer:
-- **Unified Db module**: Ship Sqlite and Pg as separate modules, unify later
-- **Connection pooling**: Single connection is fine for initial release
-- **Field renaming in JSON**: Requires attribute/annotation syntax
-- **Per-route middleware**: Global middleware is sufficient MVP
-- **Transaction API**: Manual BEGIN/COMMIT via execute is acceptable
-- **Typed row mapping**: `List<Map<String, String>>` is the MVP return type
-- **Sum type JSON serde**: Ship struct serde first, extend to sum types later
-- **JSON type-inferred decode**: Use explicit `User.from_json(str)` instead
+- **Savepoint-based nested transactions**: Ship flat transactions first, add nesting later
+- **Custom CA certificate paths**: Use system certs and `webpki-roots` initially
+- **Dynamic pool resizing**: Static min/max is fine
+- **Column renaming in deriving(Db)**: Requires attribute syntax
+- **Per-route pool affinity**: Single pool per database is sufficient
+- **Ecto.Multi-style composable transactions**: Too complex for v3.0
 
 ---
 
@@ -466,58 +461,65 @@ PostgreSQL driver (INDEPENDENT, follows SQLite pattern)
 
 | Feature | Estimated Effort | Risk | Notes |
 |---------|-----------------|------|-------|
-| `deriving(Json)` encode | 3-4 days | MEDIUM | New MIR codegen pattern, but follows established deriving infrastructure. Must handle all field types (Int, Float, String, Bool, Option, List, nested struct). |
-| `deriving(Json)` decode | 4-6 days | **HIGH** | Error handling is complex. Must handle missing fields, wrong types, nested structs, Option fields. The SnowJson-to-Snow-type conversion needs careful codegen. |
-| HTTP path parameters | 2-3 days | LOW | Straightforward segment matching extension to existing router. Well-understood pattern. |
-| HTTP middleware | 2-3 days | MEDIUM | Must correctly wrap closures through the middleware chain. Calling convention must match existing closure handling. |
-| SQLite driver | 3-5 days | MEDIUM | New C FFI dependency. Build system integration. Multiple runtime functions. Testing requires actual SQLite database operations. |
-| PostgreSQL driver | 3-5 days | MEDIUM | Same pattern as SQLite. Requires libpq to be installed on build system. Connection string handling delegated to libpq. |
+| PostgreSQL TLS | 3-5 days | **MEDIUM** | Core challenge: abstracting PgConn's stream type to support both plain and TLS. SSLRequest protocol is simple. Rustls integration is well-documented. Risk: ensuring Read/Write trait works identically for both stream types. |
+| HTTPS server | 1-2 days | LOW | `tiny_http` has built-in support. Enable feature flag, add `serve_tls` function, load PEM files. Minimal risk. |
+| Connection pooling | 5-8 days | **HIGH** | Most complex feature. Actor-based pool with checkout/checkin, health validation, idle timeout, exhaustion handling. Risk: subtle concurrency bugs in pool state management, connection leak paths, cleanup on actor crash. |
+| Database transactions | 3-4 days | MEDIUM | Straightforward BEGIN/COMMIT/ROLLBACK wrapping. Risk: ensuring ROLLBACK on all error/panic paths. Savepoint nesting adds complexity if included. |
+| Struct-to-row mapping | 3-5 days | MEDIUM | Follows `deriving(Json)` pattern but with string-to-type coercion. Risk: handling all type combinations correctly (Int, Float, Bool, String, Option variants). |
 
-**Total estimated effort:** 17-26 days
+**Total estimated effort:** 15-24 days
 
 **Key risks:**
-1. **`deriving(Json)` decode correctness.** Decoding must handle all type combinations correctly. A SnowJson Number to Snow Int, SnowJson Str to Snow String, SnowJson Null to Snow None, SnowJson Array to Snow List, SnowJson Object to nested struct. Missing any case produces runtime crashes.
-2. **C FFI build dependencies.** SQLite and PostgreSQL require C libraries at build time. SQLite can be bundled (rusqlite does this). PostgreSQL requires libpq installed on the system. Build instructions must be clear.
-3. **Middleware closure calling convention.** The middleware wraps a handler (fn_ptr) and returns a new closure (fn_ptr + env_ptr). The server must call through this chain correctly. Getting the env_ptr handling wrong causes segfaults.
-4. **SnowJson Number representation.** Current runtime stores numbers as i64 (or f64 bits). Decoding must distinguish between integers and floats when mapping to Snow Int vs Float fields. The current `JSON_NUMBER` tag doesn't distinguish -- may need a `JSON_FLOAT` tag.
+1. **Connection pool concurrency.** Multiple actors checking out/in simultaneously. The pool actor must handle messages atomically. Risk of deadlock if a transaction holds a connection and the same actor tries to check out another.
+2. **TLS stream abstraction.** The `PgStream` enum must implement `Read + Write` identically to `TcpStream`. All existing wire protocol code (read_message, write_* functions) uses these traits. Must verify no code path assumes direct TcpStream access.
+3. **Transaction cleanup on panic.** If a Snow actor panics inside a `Db.transaction` closure, the ROLLBACK must still execute. The existing `catch_unwind` in actor-per-connection HTTP handlers provides a pattern, but transactions add a nested cleanup requirement.
+4. **Pool connection leak.** If a checked-out connection is never returned (actor crashes without checkin), the pool must reclaim it. Elixir handles this via ETS heir mechanism. Snow needs an equivalent -- possibly monitoring the caller actor's lifecycle.
 
 ---
 
 ## Sources
 
-### JSON Serde (struct-aware)
-- [Serde derive documentation](https://serde.rs/derive.html) -- HIGH confidence
-- [Go encoding/json package](https://pkg.go.dev/encoding/json) -- HIGH confidence
-- [Jason.Encoder (Elixir)](https://hexdocs.pm/jason/Jason.Encoder.html) -- HIGH confidence
-- [Poison (Elixir) decode with as:](https://hexdocs.pm/poison/Poison.html) -- HIGH confidence
+### Connection Pooling
+- [Elixir db_connection source (connection_pool.ex)](https://github.com/elixir-ecto/db_connection/blob/master/lib/db_connection/connection_pool.ex) -- HIGH confidence
+- [Elixir db_connection Ownership model](https://hexdocs.pm/db_connection/DBConnection.Ownership.html) -- HIGH confidence
+- [Poolboy (Erlang worker pool)](https://github.com/devinus/poolboy) -- HIGH confidence
+- [HikariCP best practices](https://www.baeldung.com/spring-boot-hikari) -- MEDIUM confidence
+- [SQLAlchemy connection pooling docs](https://docs.sqlalchemy.org/en/20/core/pooling.html) -- HIGH confidence
+- [Stack Overflow: connection pooling overview](https://stackoverflow.blog/2020/10/14/improve-database-performance-with-connection-pooling/) -- MEDIUM confidence
 
-### Database Drivers
-- [SQLite C/C++ Interface](https://sqlite.org/cintro.html) -- HIGH confidence
-- [rusqlite documentation](https://docs.rs/rusqlite/) -- HIGH confidence
-- [PostgreSQL libpq C Library](https://www.postgresql.org/docs/current/libpq.html) -- HIGH confidence
-- [Go pgx v5 driver](https://pkg.go.dev/github.com/jackc/pgx/v5) -- HIGH confidence
-- [Go database/sql querying](https://go.dev/doc/database/querying) -- HIGH confidence
-- [Elixir Ecto query API](https://hexdocs.pm/ecto/Ecto.Query.html) -- HIGH confidence
+### TLS/SSL
+- [PostgreSQL wire protocol - Message Flow (SSLRequest)](https://www.postgresql.org/docs/current/protocol-flow.html) -- HIGH confidence
+- [PostgreSQL wire protocol - Message Formats (SSLRequest bytes)](https://www.postgresql.org/docs/current/protocol-message-formats.html) -- HIGH confidence
+- [jackc/pgproto3 SSLRequest Go implementation](https://github.com/jackc/pgproto3/blob/master/ssl_request.go) -- HIGH confidence
+- [tiny_http SSL example](https://github.com/tiny-http/tiny-http/blob/master/examples/ssl.rs) -- HIGH confidence
+- [tiny_http SslConfig docs](https://docs.rs/tiny_http/latest/tiny_http/struct.SslConfig.html) -- HIGH confidence
+- [rustls GitHub (StreamOwned pattern)](https://github.com/rustls/rustls) -- HIGH confidence
 
-### HTTP Path Parameters
-- [Go 1.22 routing enhancements](https://go.dev/blog/routing-enhancements) -- HIGH confidence
-- [Axum Path extractor](https://docs.rs/axum/latest/axum/extract/struct.Path.html) -- HIGH confidence
-- [Phoenix.Router routing docs](https://hexdocs.pm/phoenix/routing.html) -- HIGH confidence
+### Database Transactions
+- [Elixir Ecto transaction guide (Curiosum)](https://www.curiosum.com/blog/elixir-ecto-database-transactions) -- MEDIUM confidence
+- [Ecto.Repo.transaction nesting behavior](https://medium.com/@takanori.ishikawa/ecto-repo-transaction-3-can-be-nested-82b83545dfb0) -- MEDIUM confidence
+- [Django atomic() transactions](https://docs.djangoproject.com/en/5.2/topics/db/transactions/) -- HIGH confidence
+- [EF Core transactions (savepoints)](https://learn.microsoft.com/en-us/ef/core/saving/transactions) -- HIGH confidence
+- [CockroachDB SAVEPOINT docs](https://www.cockroachlabs.com/docs/stable/savepoint) -- HIGH confidence
 
-### HTTP Middleware
-- [Elixir Plug library](https://hexdocs.pm/plug/readme.html) -- HIGH confidence
-- [Go HTTP middleware patterns](https://www.alexedwards.net/blog/making-and-using-middleware) -- MEDIUM confidence
-- [Tower middleware (Rust)](https://docs.rs/tower) -- HIGH confidence
+### Struct-to-Row Mapping
+- [sqlx FromRow derive macro](https://docs.rs/sqlx/latest/sqlx/trait.FromRow.html) -- HIGH confidence
+- [SQLBoiler (Go code generation ORM)](https://github.com/aarondl/sqlboiler) -- MEDIUM confidence
+- [Rust ORM comparison: SQLx vs Diesel](https://infobytes.guru/articles/rust-orm-comparison-sqlx-diesel.html) -- MEDIUM confidence
+- [Raw+DC pattern (2026)](https://mkennedy.codes/posts/raw-dc-the-orm-pattern-of-2026/) -- LOW confidence
 
 ### Snow Codebase (direct inspection)
-- `crates/snow-rt/src/json.rs` -- SnowJson runtime type, `snow_json_from_*` helpers, `snow_json_encode`/`snow_json_parse`
-- `crates/snow-rt/src/http/router.rs` -- SnowRouter with exact match and `/*` wildcard
-- `crates/snow-rt/src/http/server.rs` -- SnowHttpRequest struct, handle_request, actor-per-connection
-- `crates/snow-rt/src/http/client.rs` -- HTTP client pattern (ureq)
-- `crates/snow-codegen/src/mir/lower.rs` lines 1578-1604 -- deriving infrastructure for structs
-- `crates/snow-codegen/src/mir/lower.rs` lines 7583-7787 -- STDLIB_MODULES list and map_builtin_name function
-- `crates/snow-codegen/src/codegen/intrinsics.rs` lines 345-370 -- JSON intrinsic declarations
+- `crates/snow-rt/src/db/pg.rs` -- PgConn with TcpStream, wire protocol, SCRAM-SHA-256 auth
+- `crates/snow-rt/src/db/sqlite.rs` -- SqliteConn with sqlite3 FFI, parameterized queries
+- `crates/snow-rt/src/http/server.rs` -- actor-per-connection HTTP with tiny_http, middleware chain
+- `crates/snow-rt/src/actor/service.rs` -- snow_service_call for synchronous request/reply
+- `crates/snow-rt/src/actor/mod.rs` -- scheduler, spawn, registry infrastructure
+- `crates/snow-rt/src/json.rs` -- SnowJson runtime type, deriving(Json) runtime support
+- `crates/snow-rt/Cargo.toml` -- current dependencies (tiny_http 0.12, rustls not yet present)
+- `tests/e2e/stdlib_pg.snow` -- existing PostgreSQL E2E test showing current API
+- `tests/e2e/stdlib_sqlite.snow` -- existing SQLite E2E test showing current API
+- `tests/e2e/deriving_json_basic.snow` -- existing deriving(Json) pattern to follow
 
 ---
-*Feature research for: Snow Language v2.0 Database & Serialization*
-*Researched: 2026-02-10*
+*Feature research for: Snow Language v3.0 Production Backend*
+*Researched: 2026-02-12*

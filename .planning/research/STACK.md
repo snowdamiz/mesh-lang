@@ -1,18 +1,16 @@
-# Technology Stack: v2.0 Database & Serialization
+# Technology Stack: v3.0 Production Backend Features
 
-**Project:** Snow compiler -- JSON serde (deriving(Json)), SQLite driver (C FFI), PostgreSQL driver (pure wire protocol), parameterized queries, HTTP path parameters, HTTP middleware
-**Researched:** 2026-02-10
-**Confidence:** HIGH (based on direct codebase analysis of all 12 crates, PostgreSQL wire protocol official docs, SQLite C API official docs, and Rust crate ecosystem research)
+**Project:** Snow compiler -- connection pooling, TLS/SSL (PostgreSQL + HTTPS), database transactions, struct-to-row mapping
+**Researched:** 2026-02-12
+**Confidence:** HIGH (codebase analysis of snow-rt, verified crate versions via `cargo tree` and crates.io/docs.rs, PostgreSQL wire protocol docs, rustls official docs)
 
 ## Executive Summary
 
-This milestone requires **3-5 new Rust crate dependencies** in `snow-rt` (for SQLite C bindings, MD5 hashing, SHA-256/HMAC/PBKDF2 for PostgreSQL auth) and **zero changes** to the compiler toolchain (Inkwell, LLVM). The work divides into two categories:
+This milestone adds **production-grade backend capabilities** to Snow's existing database and HTTP infrastructure. The work requires **3 new direct Rust crate dependencies** in `snow-rt` (for TLS), but critically, **all of their transitive dependencies are already in the build** via `ureq 2`. This means zero new crate compilations for TLS support. Connection pooling, transactions, and struct-to-row mapping require **zero new dependencies** -- they build on existing `crossbeam-channel`, `parking_lot`, and the codegen deriving infrastructure.
 
-1. **Compiler-side (codegen):** JSON serde via `deriving(Json)` is 100% compile-time code generation -- the compiler emits LLVM IR that calls existing `snow_json_from_*` / `snow_json_parse` runtime functions field-by-field. No reflection, no runtime type info. HTTP path parameters and middleware require router changes and new runtime functions. All follow the established pattern: new MIR lowering -> new intrinsic declarations -> LLVM IR emission -> `extern "C"` runtime functions in `snow-rt`.
+The most significant decision is TLS strategy. Snow currently uses `tiny_http 0.12` (HTTP server) and `ureq 2` (HTTP client), with a hand-rolled PostgreSQL wire protocol over raw `std::net::TcpStream`. TLS must be added to all three communication paths. The recommended approach is to use **rustls 0.23** directly (not through `tiny_http`'s `ssl-rustls` feature, which depends on the obsolete `rustls 0.20`). This means wrapping `TcpStream` in `rustls::StreamOwned` at the runtime level, giving Snow a single TLS implementation shared across PostgreSQL, HTTP server, and HTTP client.
 
-2. **Runtime-side (snow-rt):** SQLite via `libsqlite3-sys` with `bundled` feature (compiles SQLite from source, zero system dependencies). PostgreSQL via pure Rust TCP implementation of the v3 wire protocol (no libpq dependency). Both expose `extern "C"` functions callable from Snow-compiled code.
-
-The critical architectural decision: **SQLite uses C FFI through the Rust runtime (not LLVM-emitted C calls)** because the Rust runtime already manages GC, strings, and error handling. The Snow compiler emits calls to `snow_sqlite_*` functions in `snow-rt`, which internally call `libsqlite3-sys` functions. This follows the exact same pattern as `snow_json_parse` calling `serde_json`.
+**Key discovery:** `ureq 2` already pulls in `rustls 0.23.36`, `ring 0.17.14`, `rustls-pki-types 1.14.0`, and `webpki-roots 1.0.6` as transitive dependencies (verified via `cargo tree`). Adding `rustls` as a direct dependency simply promotes an existing transitive dep to a direct one -- no new code to compile, no build time increase.
 
 ## Recommended Stack
 
@@ -23,424 +21,365 @@ The critical architectural decision: **SQLite uses C FFI through the Rust runtim
 | Rust | stable 2021 edition | Compiler implementation | No change |
 | Inkwell | 0.8.0 (`llvm21-1`) | LLVM IR generation | No change |
 | LLVM | 21.1 | Backend codegen + optimization | No change |
-| Rowan | 0.16 | CST for parser | No change |
-| ena | 0.14 | Union-find for HM type inference | No change |
-| ariadne | 0.6 | Diagnostic error reporting | No change |
 | corosensei | 0.3 | Stackful coroutines for actors | No change |
+| crossbeam-channel | 0.5 | MPMC channels for actor mailboxes | No change (reused for pool) |
+| parking_lot | 0.12 | Fast mutexes/condvars | No change (reused for pool) |
 
-### Runtime (snow-rt) -- NEW DEPENDENCIES
+### Runtime (snow-rt) -- NEW DIRECT DEPENDENCIES
+
+These are all already present as transitive dependencies of `ureq 2`. Adding them as direct deps enables Snow to use their APIs directly without adding any new crate compilations.
 
 | Technology | Version | Purpose | Why This |
 |------------|---------|---------|----------|
-| libsqlite3-sys | 0.36.0 | SQLite C FFI bindings | Provides raw `sqlite3_open`, `sqlite3_prepare_v2`, etc. Used with `bundled` feature to compile SQLite from source -- zero system dependency, cross-platform. No need for `rusqlite` wrapper since we write our own thin C FFI layer in the runtime. |
-| md5 | 0.8.0 | MD5 hashing for PostgreSQL legacy auth | PostgreSQL's MD5 auth requires `"md5" + MD5(MD5(password + username) + salt)`. Zero dependencies, 76M+ downloads, battle-tested. Required for compatibility with PostgreSQL servers using MD5 auth. |
-| sha2 | 0.10 | SHA-256 for SCRAM-SHA-256 auth | PostgreSQL's modern SCRAM-SHA-256 auth requires SHA-256 hashing. Part of RustCrypto ecosystem. |
-| hmac | 0.12 | HMAC-SHA256 for SCRAM-SHA-256 auth | SCRAM protocol requires HMAC-SHA256 for client/server proof computation. |
-| pbkdf2 | 0.12 | PBKDF2 key derivation for SCRAM auth | SCRAM-SHA-256 uses PBKDF2 with SHA-256 for salted key derivation. |
+| rustls | 0.23 | TLS 1.2/1.3 for PostgreSQL and HTTPS | Pure Rust, no OpenSSL dependency, blocking I/O via `StreamOwned`, single-binary friendly. Use with `ring` crypto provider for simpler cross-platform builds. Already resolved to 0.23.36 via ureq. |
+| webpki-roots | 1.0 | Mozilla root CA certificates | Compiled-in root certificates -- no system cert store dependency, deterministic across platforms. Required for validating server certificates (PostgreSQL cloud providers, HTTPS endpoints). Already resolved to 1.0.6 via ureq. |
+| rustls-pki-types | 1 | PEM parsing for custom certificates | Replaces the unmaintained `rustls-pemfile`. Provides `PemObject` trait for loading custom CA certs and server key/cert pairs (needed for HTTPS server). Already resolved to 1.14.0 via rustls. |
+
+### Runtime (snow-rt) -- EXISTING DEPENDENCIES REUSED
+
+| Technology | Version | New Use | Why No New Dep |
+|------------|---------|---------|----------------|
+| crossbeam-channel | 0.5 | Connection pool checkout/return channel | Already used for actor mailboxes. Bounded MPMC channel is the ideal primitive for a sync connection pool. |
+| parking_lot | 0.12 | Pool metadata mutex, health-check condvar | Already used for GC locks and scheduler state. |
+| serde_json | 1 | (unchanged) | Still used for JSON parse/encode in runtime. |
+| sha2/hmac/pbkdf2/base64/rand | (existing) | (unchanged) | Still used for PostgreSQL SCRAM-SHA-256 auth. |
 
 ### What NOT to Add
 
 | Crate | Why NOT |
 |-------|---------|
-| `rusqlite` | Overkill -- Snow's runtime only needs ~10 SQLite C functions (`open`, `close`, `prepare_v2`, `step`, `finalize`, `bind_*`, `column_*`, `errmsg`). `rusqlite` adds 15K+ lines of safe wrapper code we do not need. Use `libsqlite3-sys` directly with `unsafe` in the runtime, matching our existing pattern (the runtime is already full of `unsafe extern "C"` functions). |
-| `tokio-postgres` / `postgres` | These crates are async-first (require Tokio runtime) and synchronous wrapper respectively. Snow's runtime uses its own M:N actor scheduler with corosensei coroutines -- Tokio would conflict. Implement the PostgreSQL v3 wire protocol directly over `std::net::TcpStream`. The protocol is well-documented and straightforward (startup, extended query with Parse/Bind/Execute/Sync, read DataRow responses). |
-| `sqlx` | Same problem as tokio-postgres -- async runtime dependency. Also brings compile-time query checking which requires a running database, inappropriate for a language compiler's runtime. |
-| `diesel` | ORM abstraction layer -- completely wrong level of abstraction for a language runtime that needs raw protocol access. |
-| `base64` (crate) | Only needed for SCRAM-SHA-256. Can use a minimal inline base64 encoder/decoder (~40 lines) or the `base64` crate from RustCrypto. Decision: use the `base64ct` crate (0.1, constant-time, RustCrypto ecosystem, already a transitive dep of `pbkdf2`). |
-| `scram-rs` | Full SCRAM library is unnecessary -- SCRAM-SHA-256 implementation is ~100 lines using `sha2` + `hmac` + `pbkdf2`. Pulling in a full library for what is a simple 4-message exchange is excessive. |
-| `serde` (for runtime JSON) | Already in workspace for compiler tooling. NOT needed for Snow's JSON serde -- the `deriving(Json)` approach generates LLVM code that calls `snow_json_from_*` and `snow_json_parse` directly. No Rust serde involved at runtime. |
+| `native-tls` | Wraps platform TLS (OpenSSL on Linux, SChannel on Windows, Security.framework on macOS). Defeats Snow's single-binary philosophy -- requires system libraries at runtime. `rustls` compiles everything into the binary. |
+| `openssl` / `openssl-sys` | C dependency, requires `libssl-dev` installed. Cross-compilation nightmare. Conflicts with Snow's zero-system-dependency approach (bundled SQLite, pure Rust PG protocol). |
+| `tiny_http` with `ssl-rustls` feature | Depends on `rustls 0.20` (3 major versions behind, from 2022). Would create a version conflict with `rustls 0.23` used for PostgreSQL TLS. Instead, handle TLS at the TCP level before passing to `tiny_http`. |
+| `tokio-rustls` | Async TLS wrapper for Tokio. Snow uses blocking I/O on corosensei coroutines -- Tokio is not in the picture. Use `rustls::StreamOwned` directly for blocking TLS. |
+| `r2d2` / `deadpool` / `bb8` | Generic connection pool crates. `r2d2` uses `std::sync::Mutex` (slower than parking_lot). `deadpool`/`bb8` are async-first. A custom pool using `crossbeam-channel` (already a dependency) is ~80 lines, perfectly fits the actor model, and avoids a new dependency. |
+| `aws-lc-rs` (rustls default provider) | The default crypto provider for rustls 0.23. Requires a C/assembly build step via `cmake`. Cross-compilation from macOS to Linux is fragile. Use `ring` instead -- easier to build, sufficient feature set (no post-quantum needed for a language runtime). |
+| `ureq 3` | Major rewrite with breaking API changes. Snow's HTTP client usage is minimal (2 functions: `snow_http_get`, `snow_http_post`). Upgrading from ureq 2 to ureq 3 gains nothing for this milestone and risks churn. Consider upgrading separately. |
 
 ## Feature-by-Feature Stack Analysis
 
-### 1. JSON Serde via deriving(Json)
+### 1. TLS/SSL -- PostgreSQL (SSLRequest Wire Protocol)
 
-**Approach:** Compile-time code generation, not runtime reflection.
+**Approach:** Send SSLRequest before StartupMessage on existing `TcpStream`, upgrade to `rustls::StreamOwned<ClientConnection, TcpStream>`, then continue normal wire protocol over the encrypted stream.
 
-**How it works:** When a struct has `deriving(Json)`, the compiler generates two synthetic functions at MIR lowering time:
-
+**PostgreSQL SSLRequest flow:**
 ```
-// For: struct User { name: String, age: Int } deriving(Json)
-
-// Generated: User_to_json(self: User) -> *mut SnowJson
-//   1. Allocate SnowMap
-//   2. For each field:
-//      - snow_json_from_string(self.name) -> json_val
-//      - snow_map_put(map, "name", json_val)
-//      - snow_json_from_int(self.age) -> json_val
-//      - snow_map_put(map, "age", json_val)
-//   3. Return alloc_json(JSON_OBJECT, map)
-
-// Generated: User_from_json(json: *mut SnowJson) -> Result<User, String>
-//   1. Verify json.tag == JSON_OBJECT
-//   2. For each field:
-//      - snow_map_get(json.value, "name") -> field_json
-//      - Verify field_json.tag == JSON_STR -> extract string
-//      - snow_map_get(json.value, "age") -> field_json
-//      - Verify field_json.tag == JSON_NUMBER -> extract int
-//   3. Return Ok(User { name, age })
+Client                                Server
+  |  SSLRequest (8 bytes)              |
+  | ---------------------------------> |
+  |  'S' (1 byte = SSL accepted)       |
+  | <--------------------------------- |
+  |  TLS ClientHello                   |
+  | ---------------------------------> |
+  |  TLS ServerHello + handshake       |
+  | <--------------------------------- |
+  |  ... TLS established ...           |
+  |  StartupMessage (over TLS)         |
+  | ---------------------------------> |
+  |  AuthenticationRequest (over TLS)  |
+  | <--------------------------------- |
+  |  ... normal PG protocol ...        |
 ```
 
-**Stack requirements:** NONE new. Uses existing:
-- `snow_json_from_int`, `snow_json_from_string`, `snow_json_from_bool`, `snow_json_from_float` (already in `snow-rt/src/json.rs`)
-- `snow_json_parse`, `snow_json_encode` (already in `snow-rt/src/json.rs`)
-- `snow_map_new`, `snow_map_put`, `snow_map_get` (already in `snow-rt/src/collections/map.rs`)
+The SSLRequest message is exactly 8 bytes: `Int32(8) Int32(80877103)`. The server responds with a single byte: `S` (accept) or `N` (reject). If `S`, the client performs a TLS handshake, then sends StartupMessage over the encrypted channel.
 
-**New runtime functions needed:**
+**Key integration point:** The existing `PgConn` struct holds `stream: TcpStream`. After TLS, it must hold either a `TcpStream` or a `StreamOwned<ClientConnection, TcpStream>`. Use an enum:
 
-| Function | Signature | Purpose |
-|----------|-----------|---------|
-| `snow_json_to_string` | `(json: ptr) -> ptr` | Serialize SnowJson to JSON string (alias for `snow_json_encode`, but may need to handle struct-produced JSON objects) |
-| `snow_json_from_null` | `() -> ptr` | Create a JSON null value (for Option::None serialization) |
-| `snow_json_from_array` | `(list: ptr) -> ptr` | Create a JSON array from a SnowList of SnowJson values |
-| `snow_json_from_object` | `(map: ptr) -> ptr` | Create a JSON object from a SnowMap of (String -> SnowJson) |
-| `snow_json_get_tag` | `(json: ptr) -> i8` | Read the tag byte (for type checking during deserialization) |
-| `snow_json_get_value` | `(json: ptr) -> u64` | Read the value field (for extraction during deserialization) |
-| `snow_json_object_get` | `(json: ptr, key: ptr) -> ptr` | Get a field from a JSON object by string key (returns SnowOption) |
+```rust
+enum PgStream {
+    Plain(TcpStream),
+    Tls(StreamOwned<ClientConnection, TcpStream>),
+}
+```
 
-**Compiler changes:**
-- **Parser:** Already parses `deriving(...)` (verified: `has_deriving_clause()`, `deriving_traits()` on struct/sum type AST nodes)
-- **Typeck:** Add "Json" to the recognized deriving trait names. Validate that all fields of the struct have types that are JSON-serializable (primitives, String, Option, List, Map, other structs with deriving(Json), sum types with deriving(Json))
-- **MIR lowering:** In `lower_struct_def` and `lower_sum_type_def`, when `derive_list` contains "Json", generate `to_json` and `from_json` MIR functions. This follows the existing pattern for `generate_debug_inspect_struct`, `generate_eq_struct`, etc.
-- **Codegen:** No new codegen nodes -- the generated MIR functions use existing `Call`, `FieldAccess`, `StructLit`, `ConstructVariant` nodes
+Both variants implement `Read + Write`, so `read_message()` and all write functions work unchanged by operating on `&mut dyn Read + Write` instead of `&mut TcpStream`.
 
-**Confidence:** HIGH -- follows identical pattern to existing `deriving(Debug)`, `deriving(Eq)`, `deriving(Hash)`. The MIR lowering in `lower.rs` (lines 1579-1601) already has the dispatch structure for deriving traits.
+**Connection URL extension:** Add `sslmode` parameter to the existing URL parser:
+- `postgres://user:pass@host/db` -- plain (current behavior)
+- `postgres://user:pass@host/db?sslmode=require` -- TLS required
+- `postgres://user:pass@host/db?sslmode=prefer` -- try TLS, fall back to plain
+- `postgres://user:pass@host/db?sslmode=disable` -- no TLS (explicit)
 
----
-
-### 2. SQLite Driver (C FFI via Runtime)
-
-**Approach:** `libsqlite3-sys` with `bundled` feature in `snow-rt`, exposed via `extern "C"` functions.
-
-**Architecture decision: Why runtime FFI, not LLVM-emitted C calls**
-
-The Snow compiler could theoretically emit LLVM IR that calls `sqlite3_open` directly (declaring it as an external function in the LLVM module). However, this is the WRONG approach because:
-
-1. **Error handling:** SQLite returns integer error codes. Converting these to Snow's `Result<T, String>` requires calling `sqlite3_errmsg()` and constructing a `SnowString`. This logic belongs in Rust, not in generated LLVM IR.
-2. **Memory management:** SQLite allocates memory internally (statement handles, result strings). The runtime needs to track these for cleanup. Rust's RAII pattern handles this naturally.
-3. **GC integration:** Result values (rows, columns) must be allocated on the actor's GC heap via `snow_gc_alloc_actor`. This is trivial from Rust, complex from LLVM IR.
-4. **String conversion:** SQLite uses C strings (`*const c_char`), Snow uses `SnowString` (pointer + length). Conversion happens in the runtime.
-5. **Linker simplicity:** `libsqlite3-sys` with `bundled` compiles SQLite into `libsnow_rt.a`. The existing link step (`cc obj.o -L dir -lsnow_rt`) works unchanged.
-
-**Cargo.toml change (snow-rt):**
+**Cargo.toml additions (snow-rt):**
 
 ```toml
-[dependencies]
-libsqlite3-sys = { version = "0.36", features = ["bundled"] }
+# TLS for PostgreSQL and HTTPS
+rustls = { version = "0.23", default-features = false, features = ["ring", "tls12", "logging", "std"] }
+webpki-roots = "1.0"
+rustls-pki-types = { version = "1", features = ["std"] }
 ```
 
-The `bundled` feature uses the `cc` crate to compile SQLite 3.51.1 from source during `cargo build`. This produces a static archive that gets linked into `libsnow_rt.a`. No system SQLite installation needed. Cross-compilation works out of the box.
+Note: `default-features = false` disables `aws-lc-rs` (the default crypto provider). The `ring` feature enables the `ring`-based provider instead, which is easier to build cross-platform. The `tls12` feature ensures compatibility with PostgreSQL servers that only support TLS 1.2.
 
-**New runtime functions (snow-rt/src/sqlite.rs):**
+**Confidence:** HIGH -- SSLRequest is documented in the [PostgreSQL protocol docs](https://www.postgresql.org/docs/current/protocol-flow.html). `rustls::StreamOwned` is explicitly designed for wrapping blocking `TcpStream` -- it implements `Read` + `Write` and does not require an async runtime.
 
-| Function | Signature | Purpose |
-|----------|-----------|---------|
-| `snow_sqlite_open` | `(path: ptr) -> ptr` | Open database, returns `Result<DbHandle, String>` |
-| `snow_sqlite_close` | `(db: ptr) -> void` | Close database connection |
-| `snow_sqlite_execute` | `(db: ptr, sql: ptr) -> ptr` | Execute SQL without results, returns `Result<Unit, String>` |
-| `snow_sqlite_query` | `(db: ptr, sql: ptr, params: ptr) -> ptr` | Execute query with params, returns `Result<List<Row>, String>` |
-| `snow_sqlite_prepare` | `(db: ptr, sql: ptr) -> ptr` | Prepare statement, returns `Result<StmtHandle, String>` |
-| `snow_sqlite_bind_int` | `(stmt: ptr, idx: i64, val: i64) -> ptr` | Bind int param, returns `Result<Unit, String>` |
-| `snow_sqlite_bind_string` | `(stmt: ptr, idx: i64, val: ptr) -> ptr` | Bind string param |
-| `snow_sqlite_bind_float` | `(stmt: ptr, idx: i64, val: f64) -> ptr` | Bind float param |
-| `snow_sqlite_bind_null` | `(stmt: ptr, idx: i64) -> ptr` | Bind null param |
-| `snow_sqlite_step` | `(stmt: ptr) -> ptr` | Step statement, returns `Result<Option<Row>, String>` |
-| `snow_sqlite_finalize` | `(stmt: ptr) -> void` | Destroy prepared statement |
-| `snow_sqlite_row_get_int` | `(row: ptr, col: i64) -> i64` | Get int from column |
-| `snow_sqlite_row_get_string` | `(row: ptr, col: i64) -> ptr` | Get string from column |
-| `snow_sqlite_row_get_float` | `(row: ptr, col: i64) -> f64` | Get float from column |
-| `snow_sqlite_row_is_null` | `(row: ptr, col: i64) -> i8` | Check if column is null |
-| `snow_sqlite_column_count` | `(stmt: ptr) -> i64` | Number of result columns |
+---
 
-**Implementation pattern (snow_sqlite_open):**
+### 2. TLS/SSL -- HTTPS Server
+
+**Approach:** Replace `tiny_http` with a minimal hand-rolled HTTP/1.1 parser, enabling native `rustls::ServerConnection` integration for HTTPS. Do NOT use `tiny_http`'s `ssl-rustls` feature (it uses `rustls 0.20`, three major versions behind).
+
+**Why replace tiny_http:**
+- `tiny_http 0.12`'s `ssl-rustls` feature depends on `rustls 0.20` (from 2022). This is incompatible with `rustls 0.23` needed for PostgreSQL TLS.
+- `tiny_http::Server` does not support receiving pre-established TLS streams.
+- Snow's HTTP server already does minimal work -- `tiny_http` provides HTTP parsing, but the router, middleware, and actor dispatch are all in `snow-rt`.
+- The HTTP parsing that tiny_http does is straightforward: read request line, read headers, read body, write response (~200 lines of Rust).
+
+**Recommendation:** Replace `tiny_http` with a minimal hand-rolled HTTP/1.1 parser + `rustls` for TLS. This:
+- Eliminates the `rustls 0.20` version conflict
+- Creates a single TLS implementation for PG + HTTP
+- Gives full control over connection lifecycle (important for actor-per-connection model)
+- Removes a dependency with an outdated TLS stack
+
+**Server certificate loading:**
 
 ```rust
-use libsqlite3_sys::*;
-use std::ffi::CString;
+use rustls_pki_types::{CertificateDer, PrivateKeyDer, pem::PemObject};
 
-#[no_mangle]
-pub extern "C" fn snow_sqlite_open(path: *const SnowString) -> *mut SnowResult {
-    unsafe {
-        let path_str = (*path).as_str();
-        let c_path = match CString::new(path_str) {
-            Ok(c) => c,
-            Err(_) => return err_result("Invalid path: contains null byte"),
-        };
-        let mut db: *mut sqlite3 = std::ptr::null_mut();
-        let rc = sqlite3_open(c_path.as_ptr(), &mut db);
-        if rc != SQLITE_OK {
-            let err = if db.is_null() {
-                "Failed to open database".to_string()
-            } else {
-                let msg = std::ffi::CStr::from_ptr(sqlite3_errmsg(db));
-                let s = msg.to_string_lossy().to_string();
-                sqlite3_close(db);
-                s
-            };
-            return err_result(&err);
-        }
-        // Wrap db pointer as opaque handle
-        ok_result(db as *mut u8)
-    }
+// Load from PEM files (user provides cert + key paths)
+let certs: Vec<CertificateDer> = CertificateDer::pem_file_iter(cert_path)
+    .expect("cert file")
+    .collect::<Result<Vec<_>, _>>()
+    .expect("valid certs");
+let key = PrivateKeyDer::from_pem_file(key_path)
+    .expect("key file");
+```
+
+**New API in Snow:**
+
+```snow
+// HTTP (plain, existing)
+Http.serve(router, 8080)
+
+// HTTPS (new)
+Http.serve_tls(router, 8443, "cert.pem", "key.pem")
+```
+
+**Confidence:** MEDIUM-HIGH -- replacing `tiny_http` is more work than enabling a feature flag, but it eliminates the `rustls 0.20` version conflict and gives full control. The HTTP parsing is straightforward (Snow only needs HTTP/1.1, no HTTP/2, no chunked transfer encoding for the server side).
+
+---
+
+### 3. TLS/SSL -- HTTP Client
+
+**Approach:** `ureq 2` already uses `rustls` for HTTPS. No changes needed -- HTTPS client works out of the box.
+
+**Verification (via `cargo tree`):** `ureq 2` already resolves to `rustls 0.23.36` with `ring 0.17.14`. Since we use `rustls 0.23` as a direct dependency (which satisfies the same semver range), Cargo's version resolution will unify to a single `rustls` version. No conflict.
+
+**Crypto provider coordination:** Since we use the `ring` feature for rustls (instead of default `aws-lc-rs`), we need to install the `ring` provider at startup so that both our direct rustls usage and ureq's internal TLS use the same provider:
+
+```rust
+// In snow-rt initialization (called once at program start)
+rustls::crypto::ring::default_provider()
+    .install_default()
+    .expect("ring crypto provider");
+```
+
+This must happen before any TLS connection (PostgreSQL or HTTP client).
+
+**Confidence:** HIGH -- verified via `cargo tree` that `ureq 2` and our direct `rustls 0.23` dependency share the same resolved version.
+
+---
+
+### 4. Connection Pooling
+
+**Approach:** Build a synchronous connection pool using `crossbeam-channel` (bounded MPMC) and `parking_lot::Mutex`. No new crate dependencies.
+
+**Architecture:**
+
+```
+                  crossbeam-channel (bounded)
+Pool::checkout() ----recv()----> [conn1, conn2, conn3, ...]
+Pool::checkin()  ----send()----> [conn returned to channel]
+
+Pool {
+    available: crossbeam_channel::Receiver<ConnHandle>,
+    return_tx: crossbeam_channel::Sender<ConnHandle>,
+    config: PoolConfig,
+    state: parking_lot::Mutex<PoolState>,
 }
 ```
 
-**Linker impact:** NONE. The `bundled` feature compiles SQLite into `libsnow_rt.a` via the `cc` crate during `cargo build -p snow-rt`. The existing link step already links `libsnow_rt.a`. No additional `-lsqlite3` flag needed.
+The bounded channel acts as the pool itself. `checkout()` calls `recv_timeout()` (blocking wait with timeout). `checkin()` calls `send()` to return a connection. The channel capacity IS the pool size.
 
-**Confidence:** HIGH -- `libsqlite3-sys` with `bundled` is the standard approach used by rusqlite (0.38.0, 15K+ GitHub stars). The `extern "C"` function pattern is identical to 50+ existing functions in `snow-rt`.
+**Why crossbeam-channel not a Vec+Mutex:**
+- `crossbeam-channel` provides blocking wait with timeout (`recv_timeout`) -- no spin-loop needed
+- MPMC: multiple actors can checkout/checkin concurrently without contention on a single mutex
+- Already a dependency of `snow-rt` (used for actor mailboxes)
 
----
-
-### 3. PostgreSQL Driver (Pure Wire Protocol)
-
-**Approach:** Implement PostgreSQL v3 wire protocol directly over `std::net::TcpStream` in `snow-rt`. No external PostgreSQL library.
-
-**Why pure implementation instead of a crate:**
-
-1. **No async runtime dependency.** `tokio-postgres` requires Tokio. `postgres` (sync) embeds a Tokio runtime internally. Snow's M:N actor scheduler uses corosensei coroutines -- embedding Tokio would create a second scheduler, doubling thread count and creating deadlock risk.
-2. **The protocol is simple.** PostgreSQL v3 is a message-based protocol. Each message is: `[1-byte type][4-byte length][payload]`. The Extended Query flow (Parse -> Bind -> Execute -> Sync) requires handling ~12 message types. This is ~500-800 lines of Rust.
-3. **Full control.** Connection pooling, error handling, and timeout behavior can integrate with Snow's actor model naturally. Each database connection lives in an actor.
-
-**Protocol implementation (snow-rt/src/postgres/):**
-
-```
-snow-rt/src/postgres/
-  mod.rs        -- module root, re-exports
-  protocol.rs   -- message encoding/decoding (~300 lines)
-  connection.rs -- TcpStream management, startup, auth (~200 lines)
-  auth.rs       -- MD5 and SCRAM-SHA-256 authentication (~150 lines)
-  query.rs      -- parameterized query execution (~200 lines)
-  types.rs      -- PostgreSQL type OID mapping (~50 lines)
-```
-
-**Key message types to implement:**
-
-| Direction | Message | Byte ID | Purpose |
-|-----------|---------|---------|---------|
-| F -> B | StartupMessage | (none) | Protocol version 3.0, user, database |
-| F -> B | PasswordMessage | 'p' | MD5 or cleartext password |
-| F -> B | SASLInitialResponse | 'p' | SCRAM-SHA-256 first message |
-| F -> B | SASLResponse | 'p' | SCRAM-SHA-256 final message |
-| F -> B | Parse | 'P' | Prepare statement with $1, $2 params |
-| F -> B | Bind | 'B' | Bind parameter values to statement |
-| F -> B | Describe | 'D' | Get column metadata |
-| F -> B | Execute | 'E' | Execute prepared statement |
-| F -> B | Sync | 'S' | Transaction sync point |
-| F -> B | Terminate | 'X' | Close connection |
-| B -> F | AuthenticationOk | 'R' | Auth successful |
-| B -> F | AuthenticationMD5Password | 'R' | MD5 auth challenge (with salt) |
-| B -> F | AuthenticationSASL | 'R' | SCRAM auth start |
-| B -> F | ReadyForQuery | 'Z' | Backend ready (idle/txn/error) |
-| B -> F | RowDescription | 'T' | Column names and types |
-| B -> F | DataRow | 'D' | Row data (text or binary) |
-| B -> F | CommandComplete | 'C' | Query finished |
-| B -> F | ErrorResponse | 'E' | Error with severity, code, message |
-| B -> F | ParseComplete | '1' | Parse succeeded |
-| B -> F | BindComplete | '2' | Bind succeeded |
-| B -> F | ParameterStatus | 'S' | Server config param notification |
-
-**Authentication support:**
-
-| Method | Implementation | Dependencies |
-|--------|---------------|-------------|
-| `trust` | No password needed | None |
-| `password` (cleartext) | Send password in PasswordMessage | None |
-| `md5` | `"md5" + MD5(MD5(password + username) + salt)` | `md5` crate |
-| `scram-sha-256` | Full SCRAM exchange (4 messages) | `sha2`, `hmac`, `pbkdf2` |
-
-**SCRAM-SHA-256 is essential** -- it is the default auth method since PostgreSQL 10 and mandatory on many cloud providers (AWS RDS, Google Cloud SQL, Azure). Omitting it would make Snow unusable with most production PostgreSQL instances.
-
-**New runtime functions (snow-rt/src/postgres/):**
-
-| Function | Signature | Purpose |
-|----------|-----------|---------|
-| `snow_pg_connect` | `(conn_str: ptr) -> ptr` | Connect to PostgreSQL, returns `Result<ConnHandle, String>` |
-| `snow_pg_close` | `(conn: ptr) -> void` | Close connection |
-| `snow_pg_execute` | `(conn: ptr, sql: ptr, params: ptr) -> ptr` | Execute with params, returns `Result<Unit, String>` |
-| `snow_pg_query` | `(conn: ptr, sql: ptr, params: ptr) -> ptr` | Query with params, returns `Result<List<Row>, String>` |
-| `snow_pg_row_get_int` | `(row: ptr, col: i64) -> i64` | Get int from column |
-| `snow_pg_row_get_string` | `(row: ptr, col: i64) -> ptr` | Get string from column |
-| `snow_pg_row_get_float` | `(row: ptr, col: i64) -> f64` | Get float from column |
-| `snow_pg_row_is_null` | `(row: ptr, col: i64) -> i8` | Check if column is null |
-| `snow_pg_row_column_count` | `(row: ptr) -> i64` | Number of columns |
-
-**Connection string format:** `"host=localhost port=5432 user=snow password=secret dbname=mydb"` (key=value pairs, matching libpq convention for user familiarity).
-
-**Parameterized queries use `$1`, `$2` syntax** (PostgreSQL native), not `?` (which would conflict with Snow's error propagation operator and require translation):
+**Pool configuration:**
 
 ```snow
-let rows = Pg.query(conn, "SELECT * FROM users WHERE age > $1 AND name = $2", [42, "Alice"])?
+let pool = Pg.pool("postgres://user:pass@host/db", {
+    min_connections: 2,
+    max_connections: 10,
+    checkout_timeout: 5000,   // ms
+    idle_timeout: 300000,     // ms (5 min)
+    max_lifetime: 3600000,    // ms (1 hour)
+})
 ```
 
-**Confidence:** MEDIUM-HIGH -- PostgreSQL wire protocol is well-documented and stable (v3 since PostgreSQL 7.4, 2003). The implementation is straightforward but the SCRAM-SHA-256 auth adds complexity. The `rust-postgres` crate's `postgres_protocol` sub-crate demonstrates this is ~800 lines of Rust for a complete implementation.
-
----
-
-### 4. Parameterized Queries (Shared Infrastructure)
-
-**Approach:** Both SQLite and PostgreSQL share a common query parameter interface at the Snow language level.
-
-**Snow-level API:**
-
-```snow
-// SQLite uses ? placeholders
-let rows = Sqlite.query(db, "SELECT * FROM users WHERE age > ?", [42])?
-
-// PostgreSQL uses $1, $2 placeholders
-let rows = Pg.query(conn, "SELECT * FROM users WHERE age > $1", [42])?
-```
-
-**Parameter passing:** Parameters are passed as a `List<DbValue>` where `DbValue` is a sum type:
-
-```snow
-type DbValue =
-  | DbInt(Int)
-  | DbFloat(Float)
-  | DbString(String)
-  | DbBool(Bool)
-  | DbNull
-```
-
-**Runtime representation:** The parameter list is a `SnowList` where each element is a tagged union (8-byte tag + 8-byte value, matching Snow's sum type layout). The runtime functions iterate the list and call the appropriate `sqlite3_bind_*` or PostgreSQL Bind message encoding.
-
-**Stack requirement:** NONE new -- uses existing `SnowList` and sum type infrastructure.
-
-**Confidence:** HIGH -- follows existing patterns for passing heterogeneous data through the runtime.
-
----
-
-### 5. HTTP Path Parameters
-
-**Approach:** Extend the router in `snow-rt/src/http/router.rs` to support named path segments.
-
-**Current state:** The router supports exact match (`/api/health`) and wildcard (`/api/*`). It does NOT support named parameters like `/users/:id`.
-
-**New pattern matching:**
-
-```
-/users/:id        -> captures { "id": "123" }
-/users/:id/posts  -> captures { "id": "456" }
-/api/:version/*   -> captures { "version": "v2" }  (mixed named + wildcard)
-```
-
-**Implementation:** Extend `matches_pattern` in `router.rs` to detect `:name` segments, extract them during matching, and store them in a captures map. The captured parameters are added to the `SnowHttpRequest` struct as a new `path_params: *mut u8` field (SnowMap).
+**Runtime representation:** The pool is an opaque u64 handle (same pattern as `PgConn` -- `Box::into_raw` as u64, GC-safe).
 
 **New runtime functions:**
 
 | Function | Signature | Purpose |
 |----------|-----------|---------|
-| `snow_http_request_param` | `(req: ptr, name: ptr) -> ptr` | Get path parameter by name, returns `Option<String>` |
-| `snow_http_route_with_method` | `(router: ptr, method: ptr, pattern: ptr, handler: ptr) -> ptr` | Route with specific HTTP method |
+| `snow_pg_pool_new` | `(url: ptr, config: ptr) -> ptr` | Create pool, returns `Result<PoolHandle, String>` |
+| `snow_pg_pool_checkout` | `(pool: u64) -> ptr` | Get connection, returns `Result<ConnHandle, String>` |
+| `snow_pg_pool_checkin` | `(pool: u64, conn: u64) -> void` | Return connection to pool |
+| `snow_pg_pool_close` | `(pool: u64) -> void` | Drain and close all connections |
+| `snow_pg_pool_query` | `(pool: u64, sql: ptr, params: ptr) -> ptr` | Auto checkout+query+checkin |
+| `snow_pg_pool_execute` | `(pool: u64, sql: ptr, params: ptr) -> ptr` | Auto checkout+execute+checkin |
 
-**Stack requirement:** NONE new -- uses existing `SnowMap`, `SnowString` infrastructure.
+The `snow_pg_pool_query`/`snow_pg_pool_execute` convenience functions handle the checkout-use-checkin lifecycle automatically, which is the common case. Manual checkout/checkin is available for transactions.
 
-**Confidence:** HIGH -- simple extension to existing router. The `matches_pattern` function is 10 lines; extending it for `:param` captures adds ~30 lines.
+**Health checking:** A background thread (spawned at pool creation) periodically sends `SELECT 1` on idle connections and removes stale ones. Uses `parking_lot::Condvar` for timed wake-ups.
+
+**SQLite pooling:** SQLite connections are typically single-writer, so pooling is less useful. However, a read-only pool (WAL mode) could share the same infrastructure. Defer to a later milestone.
+
+**Confidence:** HIGH -- synchronous connection pooling with bounded channels is a well-established pattern. The existing `crossbeam-channel` and `parking_lot` dependencies provide all needed primitives.
 
 ---
 
-### 6. HTTP Middleware
+### 5. Database Transactions
 
-**Approach:** Middleware as a function chain in the router, applied before the handler.
+**Approach:** Implement transactions as a state machine on the PostgreSQL connection, using the existing `snow_pg_execute` for `BEGIN`/`COMMIT`/`ROLLBACK` and tracking transaction state in `PgConn`.
 
-**Design:** Middleware is a function `fn(Request) -> Result<Request, Response>`. If it returns `Ok(request)`, the chain continues. If it returns `Err(response)`, the response is sent immediately (short-circuit).
+**PostgreSQL transaction wire protocol:** PostgreSQL transactions are simply SQL commands (`BEGIN`, `COMMIT`, `ROLLBACK`) sent over the existing Extended Query protocol. The ReadyForQuery message includes a transaction status byte:
+- `I` = idle (not in transaction)
+- `T` = in transaction block
+- `E` = in failed transaction block (only ROLLBACK allowed)
 
-**Runtime representation:** The router stores an ordered list of middleware functions. During request handling, before calling the route handler, the runtime iterates the middleware chain:
+**PgConn state tracking:**
 
 ```rust
-// In handle_request():
-let mut current_req = snow_req;
-for middleware in &router.middleware {
-    let result = call_middleware(middleware, current_req);
-    match result_tag(result) {
-        0 => current_req = result_value(result) as *mut SnowHttpRequest, // Ok(modified_req)
-        1 => {
-            // Err(response) -- short-circuit
-            let resp = result_value(result) as *const SnowHttpResponse;
-            send_response(request, resp);
-            return;
-        }
-    }
+struct PgConn {
+    stream: PgStream,  // Plain or TLS
+    txn_status: u8,    // 'I', 'T', or 'E' from last ReadyForQuery
 }
-// Continue to route handler with (potentially modified) current_req
 ```
+
+The runtime already reads ReadyForQuery messages (the `b'Z'` match arm in the message loop at `snow-rt/src/db/pg.rs`). Currently it ignores the status byte. Adding `txn_status` tracking requires saving `body[0]` into the connection struct.
 
 **New runtime functions:**
 
 | Function | Signature | Purpose |
 |----------|-----------|---------|
-| `snow_http_use` | `(router: ptr, middleware_fn: ptr) -> ptr` | Add middleware to router, returns new router |
+| `snow_pg_begin` | `(conn: u64) -> ptr` | Send `BEGIN`, returns `Result<(), String>` |
+| `snow_pg_commit` | `(conn: u64) -> ptr` | Send `COMMIT`, returns `Result<(), String>` |
+| `snow_pg_rollback` | `(conn: u64) -> ptr` | Send `ROLLBACK`, returns `Result<(), String>` |
+| `snow_pg_in_transaction` | `(conn: u64) -> i8` | Returns 1 if in transaction, 0 otherwise |
 
-**Stack requirement:** NONE new -- middleware functions use the same calling convention as route handlers (fn pointer + optional env pointer for closures).
+**Transaction + Pool integration:**
 
-**Confidence:** HIGH -- follows the same function pointer calling convention already used for route handlers.
+```snow
+let conn = Pg.pool_checkout(pool)?
+let result = Pg.begin(conn)
+    |> fn(_) { Pg.execute(conn, "INSERT INTO users ...", []) }
+    |> fn(_) { Pg.execute(conn, "INSERT INTO logs ...", []) }
+    |> fn(_) { Pg.commit(conn) }
+
+match result {
+    Ok(_) -> Pg.pool_checkin(pool, conn)
+    Err(e) -> {
+        Pg.rollback(conn)
+        Pg.pool_checkin(pool, conn)
+        Err(e)
+    }
+}
+```
+
+**Savepoints:** PostgreSQL supports `SAVEPOINT name` / `RELEASE SAVEPOINT name` / `ROLLBACK TO SAVEPOINT name` for nested transactions. These are just SQL commands -- no special wire protocol support needed. Expose as optional API in a later milestone.
+
+**SQLite transactions:** Same approach -- `BEGIN`, `COMMIT`, `ROLLBACK` are SQL commands executed via `snow_sqlite_execute`. Add corresponding `snow_sqlite_begin`/`snow_sqlite_commit`/`snow_sqlite_rollback` convenience functions.
+
+**Stack requirement:** NONE new. Transactions are pure protocol-level operations using existing infrastructure.
+
+**Confidence:** HIGH -- PostgreSQL transactions are standard SQL commands with well-defined wire protocol behavior. The status byte in ReadyForQuery is already received but currently ignored.
+
+---
+
+### 6. Struct-to-Row Mapping (deriving(Row))
+
+**Approach:** Compile-time code generation via `deriving(Row)`, following the exact same pattern as the existing `deriving(Json)`. The compiler generates `to_row` and `from_row` functions that map struct fields to/from database column values.
+
+**How it works:**
+
+```snow
+struct User {
+    id: Int,
+    name: String,
+    email: String,
+    active: Bool
+} deriving(Row)
+
+// Generated by compiler:
+// User_from_row(row: Map<String, String>) -> Result<User, String>
+//   1. Map.get(row, "id")    -> parse as Int
+//   2. Map.get(row, "name")  -> use as String
+//   3. Map.get(row, "email") -> use as String
+//   4. Map.get(row, "active") -> parse as Bool
+//   5. Return Ok(User { id, name, email, active })
+
+// User_to_params(self: User) -> List<String>
+//   1. [Int.to_string(self.id), self.name, self.email, Bool.to_string(self.active)]
+```
+
+**Key design decisions:**
+
+1. **Column name mapping:** By default, field names map directly to column names (snake_case). The existing query returns `Map<String, String>` where keys are column names from `RowDescription`. This matches perfectly.
+
+2. **Type conversion:** All PostgreSQL column values arrive as text (the current implementation uses text format in the Bind message). Conversion from text to Snow types:
+   - `String` -> no conversion needed
+   - `Int` -> parse text as i64
+   - `Float` -> parse text as f64
+   - `Bool` -> parse "t"/"true"/"1" as true, "f"/"false"/"0" as false
+   - `Option<T>` -> empty string (NULL) maps to `None`, otherwise `Some(parse(value))`
+
+3. **Runtime support functions needed:**
+
+| Function | Signature | Purpose |
+|----------|-----------|---------|
+| `snow_db_row_get` | `(row: ptr, col_name: ptr) -> ptr` | Get column value by name from row map, returns `Option<String>` |
+| `snow_db_parse_int` | `(text: ptr) -> ptr` | Parse text to Int, returns `Result<Int, String>` |
+| `snow_db_parse_float` | `(text: ptr) -> ptr` | Parse text to Float, returns `Result<Float, String>` |
+| `snow_db_parse_bool` | `(text: ptr) -> ptr` | Parse text to Bool, returns `Result<Bool, String>` |
+
+**Compiler changes:**
+
+- **Typeck:** Add "Row" to recognized deriving trait names. Validate all fields are Row-mappable types (Int, Float, String, Bool, Option of those).
+- **MIR lowering:** In `lower_struct_def`, when `derive_list` contains "Row", generate `from_row` and `to_params` MIR functions. Pattern follows existing `generate_debug_inspect_struct`, `generate_eq_struct`, etc.
+- **Codegen:** No new codegen nodes -- generated MIR uses existing `Call`, `FieldAccess`, `StructLit` nodes.
+
+**Usage at the Snow level:**
+
+```snow
+// Automatic row mapping
+let users: List<User> = Pg.query_as(pool, "SELECT id, name, email, active FROM users WHERE active = $1", ["t"])?
+
+// Under the hood, query_as calls:
+// 1. Pg.query(pool, sql, params) -> List<Map<String, String>>
+// 2. List.map(rows, User_from_row) -> List<Result<User, String>>
+// 3. Collect results, fail on first error
+```
+
+**New runtime function for query_as:**
+
+| Function | Signature | Purpose |
+|----------|-----------|---------|
+| `snow_pg_query_as` | `(pool: u64, sql: ptr, params: ptr, from_row_fn: ptr) -> ptr` | Query + map rows using generated from_row function |
+
+The `from_row_fn` parameter is a function pointer to the compiler-generated `User_from_row` function. The runtime calls it for each row.
+
+**Stack requirement:** NONE new. Uses existing string operations, map lookups, and the deriving infrastructure in the compiler.
+
+**Confidence:** HIGH -- follows the identical pattern as `deriving(Json)` which is already implemented. The main difference is the source data format (Map<String, String> from database rows vs SnowJson tagged union from JSON).
 
 ---
 
 ## Integration Points with Existing Crates
 
-### snow-parser (additions)
-
-| Addition | Purpose | Estimated Lines |
-|----------|---------|----------------|
-| No parser changes for JSON serde | `deriving(Json)` uses existing `deriving(...)` syntax | 0 |
-| No parser changes for databases | Database operations are stdlib function calls | 0 |
-| No parser changes for HTTP | Middleware/params are stdlib function calls | 0 |
-
-### snow-typeck (additions)
-
-| Addition | Purpose | Estimated Lines |
-|----------|---------|----------------|
-| Recognize "Json" in deriving list | Allow `deriving(Json)` on structs/sum types | ~5 |
-| Validate Json-serializable fields | Check field types are JSON-compatible | ~40 |
-| `Sqlite` stdlib module types | Type signatures for open, query, execute, etc. | ~30 |
-| `Pg` stdlib module types | Type signatures for connect, query, execute, etc. | ~30 |
-| `DbValue` sum type | Built-in type for database parameters | ~15 |
-| `DbRow` struct type | Built-in type for database result rows | ~15 |
-| Extended HTTP module types | path_param, middleware, route_with_method | ~15 |
-
-### snow-codegen / MIR (additions)
-
-| Addition | Purpose | Estimated Lines |
-|----------|---------|----------------|
-| `generate_to_json_struct` | MIR function for struct -> JSON | ~80 |
-| `generate_from_json_struct` | MIR function for JSON -> struct | ~100 |
-| `generate_to_json_sum_type` | MIR function for sum type -> JSON | ~100 |
-| `generate_from_json_sum_type` | MIR function for JSON -> sum type | ~120 |
-| Sqlite/Pg call routing | Route `Sqlite.query(...)` to `snow_sqlite_query` | ~40 |
-| HTTP middleware/params routing | Route `Http.use(...)`, `request.param(...)` | ~20 |
-
-### snow-codegen / codegen (additions)
-
-| Addition | Purpose | Estimated Lines |
-|----------|---------|----------------|
-| SQLite intrinsic declarations | `snow_sqlite_open`, etc. in intrinsics.rs | ~40 |
-| PostgreSQL intrinsic declarations | `snow_pg_connect`, etc. in intrinsics.rs | ~30 |
-| JSON serde intrinsic declarations | `snow_json_from_null`, `snow_json_from_array`, etc. | ~20 |
-| HTTP middleware/params declarations | `snow_http_use`, `snow_http_request_param`, etc. | ~10 |
-
-### snow-codegen / link (NO CHANGES)
-
-The `bundled` feature in `libsqlite3-sys` compiles SQLite into `libsnow_rt.a`. No linker flag changes needed. PostgreSQL is pure Rust over TCP, no external libraries.
-
-### snow-rt (additions)
-
-| Addition | Purpose | Estimated Lines |
-|----------|---------|----------------|
-| `sqlite.rs` (new module) | SQLite driver: open, prepare, bind, step, close | ~300 |
-| `postgres/mod.rs` (new dir) | PostgreSQL module root | ~20 |
-| `postgres/protocol.rs` | Wire protocol message encode/decode | ~300 |
-| `postgres/connection.rs` | TCP connection, startup, shutdown | ~200 |
-| `postgres/auth.rs` | MD5 + SCRAM-SHA-256 authentication | ~150 |
-| `postgres/query.rs` | Parameterized query execution | ~200 |
-| `postgres/types.rs` | PostgreSQL OID -> Snow type mapping | ~50 |
-| `json.rs` additions | `snow_json_from_null`, `snow_json_from_array`, etc. | ~40 |
-| `http/router.rs` additions | Path parameter matching, method routing | ~60 |
-| `http/server.rs` additions | Middleware chain execution | ~50 |
-
-### Total Estimated New Lines: ~2,130
-
-## Cargo.toml Changes
-
-### snow-rt/Cargo.toml
+### snow-rt/Cargo.toml (CHANGES)
 
 ```toml
 [dependencies]
@@ -452,80 +391,151 @@ corosensei = "0.3"
 parking_lot = "0.12"
 rustc-hash = { workspace = true }
 serde_json = "1"
-tiny_http = "0.12"
 ureq = "2"
-
-# NEW: SQLite C FFI bindings (compiles SQLite from source)
 libsqlite3-sys = { version = "0.36", features = ["bundled"] }
-
-# NEW: PostgreSQL authentication
-md5 = "0.8"
 sha2 = "0.10"
 hmac = "0.12"
-pbkdf2 = "0.12"
+md-5 = "0.10"
+pbkdf2 = { version = "0.12", default-features = false, features = ["hmac"] }
+base64 = "0.22"
+rand = "0.9"
+
+# REMOVED (replaced by hand-rolled HTTP parser + rustls)
+# tiny_http = "0.12"
+
+# NEW: TLS for PostgreSQL + HTTPS server
+# Note: rustls, ring, webpki-roots, and rustls-pki-types are already
+# transitive deps of ureq 2 -- adding them as direct deps enables
+# our code to use their APIs without adding any new crate compilations.
+rustls = { version = "0.23", default-features = false, features = ["ring", "tls12", "logging", "std"] }
+webpki-roots = "1.0"
+rustls-pki-types = { version = "1", features = ["std"] }
 ```
 
-### Workspace Cargo.toml (no changes needed)
+### snow-rt Source File Changes
 
-The new crates are only dependencies of `snow-rt`, not workspace-wide.
+| File | Change Type | Purpose | Est. Lines |
+|------|-------------|---------|------------|
+| `db/pg.rs` | Modify | Add TLS upgrade (SSLRequest, StreamOwned), PgStream enum, txn_status tracking | +120 |
+| `db/pg_pool.rs` | New | Connection pool (crossbeam-channel based) | ~150 |
+| `db/pg_tls.rs` | New | rustls ClientConfig creation, certificate loading | ~80 |
+| `db/pg_txn.rs` | New | Transaction begin/commit/rollback convenience functions | ~60 |
+| `db/row.rs` | New | Row parsing helpers (parse_int, parse_float, parse_bool from text) | ~80 |
+| `http/server.rs` | Rewrite | Replace tiny_http with hand-rolled HTTP/1.1 parser + rustls | ~350 |
+| `http/tls.rs` | New | HTTPS ServerConfig, certificate loading, TLS accept | ~80 |
+| `tls.rs` | New | Shared TLS initialization (ring crypto provider install) | ~30 |
+
+### snow-codegen Changes
+
+| File | Change Type | Purpose | Est. Lines |
+|------|-------------|---------|------------|
+| `mir/lower.rs` | Modify | Add `deriving(Row)` dispatch in struct lowering | +10 |
+| `mir/lower.rs` | Modify | Generate `from_row` and `to_params` MIR functions | +120 |
+| `codegen/intrinsics.rs` | Modify | Declare pool, txn, TLS, and row-mapping intrinsics | +40 |
+| `codegen/db.rs` | New or modify | Route pool/txn/query_as calls to runtime functions | +30 |
+
+### snow-typeck Changes
+
+| File | Change Type | Purpose | Est. Lines |
+|------|-------------|---------|------------|
+| Stdlib module types | Modify | Add pool, transaction, TLS function signatures | +40 |
+| Deriving validation | Modify | Add "Row" to recognized deriving traits | +5 |
+
+### Linker (snow-codegen/link.rs) -- NO CHANGES
+
+`rustls` with `ring` compiles to pure Rust + assembly (ring's crypto primitives). Everything links into `libsnow_rt.a`. No additional `-l` flags needed.
 
 ## Alternatives Considered
 
 | Category | Recommended | Alternative | Why Not |
 |----------|-------------|-------------|---------|
-| SQLite binding | `libsqlite3-sys` (direct) | `rusqlite` (safe wrapper) | 15K lines of safe wrapper we do not need. Our runtime is already `unsafe extern "C"`. Direct FFI is simpler, smaller, no abstraction mismatch. |
-| SQLite binding | `bundled` feature | System SQLite (`pkg-config`) | Requires users to install `libsqlite3-dev`. Bundled compiles from source -- zero external dependencies, reproducible builds, consistent SQLite version. |
-| PostgreSQL driver | Pure wire protocol | `tokio-postgres` | Tokio runtime conflicts with corosensei M:N scheduler. Would double thread count and create potential deadlocks. |
-| PostgreSQL driver | Pure wire protocol | `postgres` (sync wrapper) | Still embeds internal Tokio runtime. Also 10K+ lines of code for features we do not need (COPY, notifications, TLS negotiation). |
-| PostgreSQL driver | Pure wire protocol | `postgres_protocol` (low-level) | This is the wire protocol crate from rust-postgres. Could use it, but it still pulls in tokio-related dependencies transitively and is designed for async I/O. Rolling our own ~800 lines of sync TCP protocol code is cleaner. |
-| PostgreSQL auth | `md5` + `sha2` + `hmac` + `pbkdf2` | `scram-rs` crate | Full SCRAM library for what is ~100 lines of code. Adds unnecessary dependency for a simple 4-message exchange. |
-| JSON serde | Compile-time codegen | Runtime reflection (type info tables) | Reflection requires storing type metadata in compiled binaries, increasing binary size and adding runtime overhead. Codegen is zero-cost at runtime. |
-| JSON serde | Compile-time codegen | Runtime `serde`-style visitor | Visitor pattern requires trait objects and dynamic dispatch. Snow uses static dispatch via monomorphization -- codegen fits naturally. |
-| HTTP path params | Router-level extraction | Regex-based routing | Regex is a massive dependency (~10K lines). Path parameter matching is simple string splitting -- `:id` segments are just `split('/')` + name lookup. |
-| HTTP middleware | Function chain | Tower-style middleware | Tower is async-first and generic over service types. Snow's middleware is simpler: `fn(Request) -> Result<Request, Response>`. |
-| Parameterized queries | `List<DbValue>` sum type | Type-level query params | Type-level params would require generic database functions with dependent types. Sum type approach is simple, safe, and sufficient. |
+| TLS library | `rustls 0.23` (ring provider) | `native-tls` | System dependency, non-deterministic behavior across platforms, defeats single-binary philosophy |
+| TLS library | `rustls 0.23` (ring provider) | `rustls 0.23` (aws-lc-rs provider) | aws-lc-rs requires cmake for C build step, fragile cross-compilation from macOS to Linux. ring is pure Rust + asm, easier to build. |
+| HTTPS server | Replace tiny_http + use rustls directly | `tiny_http` with `ssl-rustls` feature | Feature depends on `rustls 0.20` (3 major versions behind, 2022 era). Version conflict with our `rustls 0.23` for PostgreSQL TLS. |
+| HTTPS server | Replace tiny_http + use rustls directly | Fork tiny_http, update rustls | Maintenance burden of maintaining a fork. Better to own the HTTP parsing (~200 lines) than maintain a fork of a low-activity project. |
+| Connection pool | Custom (crossbeam-channel) | `r2d2` | Uses `std::sync::Mutex` (slower than parking_lot). Adds a dependency for ~80 lines of pool logic. Designed for generic resource pooling -- we only need database connections. |
+| Connection pool | Custom (crossbeam-channel) | `deadpool` | Async-first (requires tokio). Incompatible with Snow's sync actor model. |
+| Transactions | SQL commands over existing protocol | Dedicated transaction protocol layer | PostgreSQL transactions are just `BEGIN`/`COMMIT`/`ROLLBACK` SQL commands. No special protocol support needed. A complex abstraction layer would over-engineer a simple feature. |
+| Struct-to-row | Compile-time codegen (deriving(Row)) | Runtime reflection | Same reasoning as deriving(Json) -- codegen is zero-cost, reflection requires type metadata in binaries. |
+| Struct-to-row | Field name = column name | Annotation-based column mapping | Keep it simple for MVP. Column name aliasing can use SQL aliases (`SELECT user_id AS userId`). Annotations add parser complexity for marginal benefit. |
+
+## Dependency Graph Impact
+
+Verified via `cargo tree -p snow-rt` on 2026-02-12:
+
+```
+snow-rt (current)
+  |-- ureq 2 (existing)
+  |     |-- rustls 0.23.36          <-- ALREADY COMPILED
+  |     |     |-- ring 0.17.14      <-- ALREADY COMPILED
+  |     |     |-- rustls-pki-types 1.14.0  <-- ALREADY COMPILED
+  |     |     |-- rustls-webpki 0.103.9    <-- ALREADY COMPILED
+  |     |     |-- zeroize 1.8.2     <-- ALREADY COMPILED
+  |     |     |-- subtle 2.6.1      <-- ALREADY COMPILED
+  |     |     |-- once_cell 1.21.3  <-- ALREADY COMPILED
+  |     |-- webpki-roots 0.26.11    <-- ALREADY COMPILED
+  |     |     |-- webpki-roots 1.0.6  <-- ALREADY COMPILED
+  |-- tiny_http 0.12 (REMOVED)
+  |-- crossbeam-channel 0.5 (existing, reused for pool)
+  |-- parking_lot 0.12 (existing, reused for pool)
+  |-- libsqlite3-sys 0.36 (existing)
+  |-- sha2/hmac/md-5/pbkdf2/base64/rand (existing)
+  |-- corosensei 0.3 (existing)
+  |-- serde_json 1 (existing)
+
+After changes:
+  |-- rustls 0.23 (NEW direct dep, resolves to existing 0.23.36)
+  |-- webpki-roots 1.0 (NEW direct dep, resolves to existing 1.0.6)
+  |-- rustls-pki-types 1 (NEW direct dep, resolves to existing 1.14.0)
+```
+
+**Net dependency change:** +3 direct deps (rustls, webpki-roots, rustls-pki-types), -1 direct dep (tiny_http). **Zero new transitive crates** -- all TLS crates are already compiled as transitive deps of `ureq 2`. This means no build time increase for TLS support.
 
 ## Installation
 
 ```bash
-# Build runtime (now compiles SQLite from source via cc crate)
+# Build runtime (TLS crates already compiled via ureq -- no build time increase)
 cargo build -p snow-rt
 
-# Build compiler (unchanged)
-cargo build -p snowc
-
-# The cc crate needs a C compiler for SQLite compilation.
-# On macOS: Xcode command line tools (pre-installed or `xcode-select --install`)
-# On Linux: `apt install build-essential` or equivalent
-# This is the same requirement as the existing LLVM toolchain.
+# ring requires a C compiler for its assembly primitives
+# On macOS: Xcode command line tools (already required for LLVM/SQLite)
+# On Linux: build-essential (already required for LLVM/SQLite)
+# No new system requirements beyond what LLVM already needs.
 ```
+
+## Version Verification Matrix
+
+All versions verified via `cargo tree -p snow-rt` on 2026-02-12:
+
+| Crate | Spec in Cargo.toml | Resolved Version | Verified Via | Notes |
+|-------|-------------------|------------------|--------------|-------|
+| rustls | `0.23` (default-features=false, ring+tls12+logging+std) | 0.23.36 | `cargo tree` | Already transitive dep of ureq 2. MSRV Rust 1.71. |
+| webpki-roots | `1.0` | 1.0.6 | `cargo tree` | Already transitive dep of ureq 2 (via 0.26.11 re-export). |
+| rustls-pki-types | `1` (std feature) | 1.14.0 | `cargo tree` | Already transitive dep of rustls. Contains PEM parser (replaces unmaintained rustls-pemfile). |
+| ring | (transitive via rustls ring feature) | 0.17.14 | `cargo tree` | Already transitive dep of ureq 2. |
+| crossbeam-channel | `0.5` (existing) | 0.5.15 | `cargo tree` | Reused for connection pool. No change. |
+| parking_lot | `0.12` (existing) | 0.12.5 | `cargo tree` | Reused for pool state. No change. |
+| tiny_http | REMOVED | 0.12.0 | `cargo tree` | Uses rustls 0.20, incompatible with 0.23. |
+| ureq | `2` (unchanged) | 2 (resolves current) | `cargo tree` | Uses rustls 0.23.36, compatible. |
 
 ## Sources
 
-### Primary (HIGH confidence -- direct codebase analysis)
-- `snow-rt/src/json.rs`: Existing SnowJson tagged union, `snow_json_from_*` functions, `snow_json_parse`, `snow_json_encode`
-- `snow-rt/src/http/router.rs`: Existing router with exact match + wildcard patterns
-- `snow-rt/src/http/server.rs`: Existing HTTP server with actor-per-connection, request/response structs
-- `snow-codegen/src/mir/lower.rs` lines 1579-1601: Existing deriving dispatch (Debug, Eq, Ord, Hash, Display)
-- `snow-codegen/src/codegen/intrinsics.rs`: Full intrinsic declaration pattern (512 lines, 80+ functions)
-- `snow-codegen/src/link.rs`: Linker invocation via `cc` -- links `libsnow_rt.a`
-- `snow-codegen/src/mir/mod.rs`: MIR type system, struct/sum type definitions
+### PRIMARY (HIGH confidence -- official documentation + direct codebase analysis)
+- [PostgreSQL Protocol Flow: SSL Session Encryption](https://www.postgresql.org/docs/current/protocol-flow.html) -- SSLRequest message format, S/N response byte
+- [PostgreSQL Message Formats](https://www.postgresql.org/docs/current/protocol-message-formats.html) -- SSLRequest: Int32(8) Int32(80877103)
+- [rustls docs: StreamOwned](https://docs.rs/rustls/latest/rustls/struct.StreamOwned.html) -- blocking TLS stream wrapper, implements Read+Write
+- [rustls GitHub](https://github.com/rustls/rustls) -- 0.23.36 release, ring/aws-lc-rs provider system
+- [rustls-pki-types: PemObject trait](https://docs.rs/rustls-pki-types/latest/rustls_pki_types/pem/trait.PemObject.html) -- PEM loading API (replaces unmaintained rustls-pemfile)
+- [webpki-roots GitHub](https://github.com/rustls/webpki-roots) -- v1.0.6, Mozilla root CA bundle
+- Snow codebase: `snow-rt/src/db/pg.rs` (PgConn struct, wire protocol, auth), `snow-rt/src/http/server.rs` (tiny_http usage), `snow-rt/src/http/client.rs` (ureq usage)
+- `cargo tree -p snow-rt` output (2026-02-12) -- verified all resolved versions and transitive dep relationships
 
-### Secondary (HIGH confidence -- official documentation)
-- [PostgreSQL Wire Protocol v3](https://www.postgresql.org/docs/current/protocol.html) -- message formats, startup flow, extended query protocol
-- [PostgreSQL Message Formats](https://www.postgresql.org/docs/current/protocol-message-formats.html) -- byte-level message structures
-- [PostgreSQL Password Authentication](https://www.postgresql.org/docs/current/auth-password.html) -- MD5 and SCRAM-SHA-256 methods
-- [SQLite C/C++ Interface](https://sqlite.org/cintro.html) -- sqlite3_open, sqlite3_prepare_v2, sqlite3_bind_*, sqlite3_step
-- [SQLite Binding Values](https://sqlite.org/c3ref/bind_blob.html) -- bind function signatures and semantics
-- [libsqlite3-sys crate](https://crates.io/crates/libsqlite3-sys) -- v0.36.0, bundled SQLite 3.51.1
-- [libsqlite3-sys docs](https://docs.rs/libsqlite3-sys/latest/libsqlite3_sys/) -- Rust FFI function signatures
-
-### Tertiary (MEDIUM confidence -- ecosystem research)
-- [rust-postgres](https://github.com/sfackler/rust-postgres) -- reference implementation for PostgreSQL wire protocol in Rust
-- [md5 crate](https://crates.io/crates/md5) -- v0.8.0, zero dependencies, 76M+ downloads
-- [RustCrypto hashes](https://github.com/RustCrypto/hashes) -- sha2, hmac, pbkdf2 crate ecosystem
-- [PgDog blog: Hacking the Postgres wire protocol](https://pgdog.dev/blog/hacking-postgres-wire-protocol) -- practical implementation guide
+### SECONDARY (MEDIUM confidence -- ecosystem research)
+- [tiny_http Cargo.toml](https://github.com/tiny-http/tiny-http/blob/master/Cargo.toml) -- confirms rustls 0.20 dependency in ssl-rustls feature
+- [ureq crate](https://crates.io/crates/ureq) -- v2 uses rustls ^0.23.19
+- [RUSTSEC-2025-0134](https://rustsec.org/advisories/RUSTSEC-2025-0134.html) -- rustls-pemfile unmaintained advisory (use rustls-pki-types instead)
+- [rustls crypto providers](https://docs.rs/rustls/latest/rustls/#cryptography-providers) -- ring vs aws-lc-rs comparison
 
 ---
-*Stack research for: Snow v2.0 Database & Serialization features*
-*Researched: 2026-02-10*
+*Stack research for: Snow v3.0 Production Backend Features*
+*Researched: 2026-02-12*

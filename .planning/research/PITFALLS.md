@@ -1,231 +1,194 @@
-# Domain Pitfalls: Database, Serialization & HTTP Enhancements
+# Domain Pitfalls: Connection Pooling, TLS/SSL, Transactions, and Struct-to-Row Mapping
 
-**Domain:** Adding JSON serde (deriving(Json)), SQLite driver (C FFI), PostgreSQL driver (pure wire protocol), parameterized queries, HTTP path parameters, and HTTP middleware to an actor-based compiled language with per-actor GC
-**Researched:** 2026-02-10
-**Confidence:** HIGH (based on direct Snow codebase analysis of gc.rs, heap.rs, scheduler.rs, json.rs, server.rs, router.rs, codegen/types.rs, mir/types.rs; SQLite official C/C++ interface docs; PostgreSQL wire protocol v3.2 documentation; OWASP SQL injection prevention guides; conservative GC literature; cooperative scheduling research)
+**Domain:** Adding production backend features (connection pooling, TLS/SSL, database transactions, struct-to-row mapping) to an actor-based compiled language with cooperative scheduling, per-actor GC, and opaque u64 connection handles
+**Researched:** 2026-02-12
+**Confidence:** HIGH (based on direct Snow codebase analysis of pg.rs, sqlite.rs, scheduler.rs, heap.rs, stack.rs, server.rs, gc.rs, actor/mod.rs; PostgreSQL wire protocol documentation; TLS library comparison research; Erlang/BEAM transaction patterns; connection pooling literature)
 
-**Scope:** This document covers pitfalls specific to adding 6 feature areas to the Snow compiler and runtime for the next milestone. Each pitfall is analyzed against Snow's existing architecture: corosensei coroutines on M:N scheduler, per-actor mark-sweep GC with conservative stack scanning, uniform u64 value representation, extern "C" runtime ABI, LLVM codegen with no runtime reflection, and the existing opaque JSON/HTTP subsystems.
+**Scope:** This document covers pitfalls specific to adding 4 production features to the existing Snow runtime. Each pitfall is analyzed against Snow's current architecture: corosensei coroutines (!Send, thread-pinned) on M:N work-stealing scheduler, per-actor mark-sweep GC with conservative stack scanning, opaque u64 connection handles via Box::into_raw, extern "C" runtime ABI, deriving infrastructure for code generation, and the existing PgConn/SqliteConn wrapper pattern.
+
+**Relationship to prior research:** The v2.0 PITFALLS.md (2026-02-10) covered foundational pitfalls for SQLite FFI, PostgreSQL wire protocol basics, deriving(Json), and HTTP features. This document covers SUBSEQUENT milestone pitfalls that arise when adding production-grade features ON TOP of the v2.0 foundation. There is intentional minimal overlap; references to v2.0 pitfalls are noted where relevant.
 
 ---
 
 ## Critical Pitfalls
 
-Mistakes that cause crashes, security vulnerabilities, data corruption, or require architectural rewrites.
+Mistakes that cause data corruption, resource exhaustion, deadlocks, or require architectural rewrites.
 
 ---
 
-### Pitfall 1: Conservative GC Follows sqlite3* Pointers Into C Heap, Corrupting SQLite State
+### Pitfall 1: Connection Pool Checkout Blocks Worker Thread, Causing Cascading Starvation
 
 **What goes wrong:**
-Snow's conservative GC (heap.rs lines 390-448) scans every 8-byte-aligned word on the actor's coroutine stack and in GC-managed object bodies, treating any value that falls within a page range as a potential pointer. SQLite C FFI returns opaque pointers (`sqlite3*`, `sqlite3_stmt*`) that the Snow program stores in variables. These pointers point into C-heap memory (malloc'd by SQLite), NOT into the actor's GC-managed pages.
+Snow's M:N scheduler uses corosensei coroutines that are `!Send` and thread-pinned (scheduler.rs line 9: "yielded coroutines stay in the worker's local suspended list and are resumed on the same thread"). When a connection pool has no available connections, the requesting actor must wait. If this wait is implemented as a blocking spin-loop or mutex wait, the entire OS worker thread blocks. Every other actor pinned to that worker thread -- including actors that HOLD pool connections and are trying to return them -- cannot make progress. This creates a deadlock: actor A waits for a connection, blocking the thread where actor B (which holds a connection and needs to run to return it) is suspended.
 
-The GC's `find_object_containing()` (heap.rs lines 460-490) only checks against the actor's own pages, so SQLite pointers will NOT be mistakenly traced -- they fall outside page ranges. This is safe. However, the real danger is the inverse: if a GC-managed Snow value (e.g., a SnowString containing a SQL query) is passed to SQLite via FFI, and the only remaining reference to that string is held inside SQLite's internal structures (not on the Snow stack or in a GC-managed object), the GC will collect it. SQLite then reads freed memory.
-
-Concretely: you call `sqlite3_prepare_v2(db, sql_string_ptr, ...)`. The Snow GC may run between prepare and step. If `sql_string_ptr` was a temporary SnowString that's no longer on the stack, the GC frees it. SQLite's prepared statement holds a dangling pointer to the SQL text.
+With N worker threads and a pool of M connections where M < N, only M worker threads can have active connections. If all M connections are held by actors on different worker threads, and those actors yield (e.g., waiting for a DB response), the remaining N-M workers are fine. But if multiple actors on the SAME worker thread request connections, and the pool is exhausted, the thread deadlocks because the actor holding the connection on that thread cannot be resumed.
 
 **Why it happens:**
-Snow's GC is conservative and scans only the coroutine stack and GC heap objects. It has no knowledge of references held by C libraries. The `find_object_containing` check in heap.rs only scans the actor's own page list, so it correctly ignores C-heap pointers -- but it also means C-held references to GC objects are invisible roots.
+- Corosensei coroutines are `!Send` -- they cannot migrate between threads (scheduler.rs line 389: "suspended: Vec<(ProcessId, CoroutineHandle)>")
+- The worker loop (scheduler.rs lines 393-551) resumes suspended coroutines in Phase 1, then picks up new spawn requests in Phase 2. If a coroutine blocks (not yields), Phase 1 never completes for remaining coroutines on that thread
+- Snow has no mechanism to detect "this actor is blocked on a resource held by another actor on the same thread"
+- The existing pattern for blocking I/O (HTTP server, DB queries) accepts blocking because each operation is short-lived. Pool checkout waits can be indefinite
 
 **Consequences:**
-- Use-after-free crashes deep in SQLite (SIGSEGV in `sqlite3_step`)
-- Intermittent failures that only occur under GC pressure (hard to reproduce)
-- Data corruption if SQLite reads partially-overwritten GC-freed memory
+- Complete scheduler deadlock when pool is exhausted and connections are held across yield points
+- Under moderate load: intermittent hangs where some HTTP requests never complete
+- Hard to diagnose: looks like a "slow query" but is actually a scheduling deadlock
+- Cannot be reproduced with low concurrency; manifests only under production load
 
 **Prevention:**
-1. **Copy SQL strings to C heap before FFI calls.** When calling `sqlite3_prepare_v2`, copy the SnowString bytes into a Rust `Vec<u8>` or `CString` (system-heap allocated), pass that to SQLite, then free the C copy after SQLite no longer needs it (after `sqlite3_finalize`). This is the pattern used by Erlang NIFs.
-2. **Pin GC objects during FFI calls.** Add a root-pinning mechanism: before a blocking C call, register the Snow value as an explicit GC root in a side table on the Process struct. The GC mark phase checks this table in addition to the stack. Unpin after the C call returns.
-3. **Never store SnowString pointers in SQLite bind parameters.** For `sqlite3_bind_text`, always pass `SQLITE_TRANSIENT` so SQLite makes its own copy of the string data immediately.
-4. **Wrap sqlite3* and sqlite3_stmt* as opaque u64 values.** Store them as immediate integers (cast pointer-to-u64), not as GC-allocated objects. Since they don't fall within GC page ranges, the GC ignores them entirely. This is the simplest approach and matches how Snow already handles Router (Box::into_raw as *mut u8 in router.rs line 59).
+1. **Implement pool checkout as actor message passing, not blocking wait.** The pool should be a dedicated service actor. Requesting actors send a `{checkout, self()}` message and block on `receive` (which yields to the scheduler via ProcessState::Waiting). The pool actor sends back a connection handle when one becomes available. This converts a blocking wait into a cooperative yield, allowing other actors on the same worker thread to continue.
+2. **Never hold a pool connection across a yield point without careful consideration.** If an actor checks out a connection, executes a query (which blocks the thread during TCP I/O), and then yields for another reason before checking in, the connection is held while the actor is suspended. Keep connection hold times minimal: checkout, execute, checkin in a tight sequence.
+3. **Set a maximum checkout timeout.** If no connection is available within N milliseconds, return an error to the calling actor rather than waiting indefinitely. This prevents cascading starvation.
+4. **Size the pool to match worker thread count.** A pool of N connections for N worker threads ensures that at least one connection is always available per thread. Over-provisioning prevents contention.
 
 **Detection:**
-- ASAN/MSAN builds catching use-after-free in SQLite calls
-- Failures only under high allocation pressure (allocate many objects between prepare and step)
-- Intermittent SIGSEGV with stack traces inside `sqlite3_step` or `sqlite3_column_text`
+- Application hangs under load with all worker threads in Phase 1 of the worker loop
+- `strace` shows threads sleeping in futex/read (blocked on pool checkout or DB I/O)
+- Reducing pool size reliably triggers the deadlock
+- Adding more worker threads temporarily alleviates the issue (until those threads also exhaust the pool)
 
-**Phase:** SQLite driver implementation. Must be addressed in the foundational design, not retrofitted.
+**Phase:** Connection pooling architecture. Must be designed as message-passing from the start. A blocking checkout API cannot be retrofitted to cooperative scheduling.
 
 ---
 
-### Pitfall 2: Blocking SQLite/PostgreSQL Calls Starve the Actor Scheduler
+### Pitfall 2: TLS Handshake Blocks Worker Thread for 100-500ms, Starving Co-located Actors
 
 **What goes wrong:**
-Snow uses cooperative scheduling with corosensei coroutines on an M:N thread pool (scheduler.rs). Actors yield at explicit yield points: `snow_reduction_check()` calls inserted by the compiler, and `snow_actor_receive()` which sets the process to Waiting state. SQLite's `sqlite3_step()` and `sqlite3_exec()` are blocking C calls that can take milliseconds to seconds. PostgreSQL network I/O (connect, send query, read response) blocks on TCP sockets.
+A TLS handshake involves multiple network round-trips (ClientHello -> ServerHello -> Certificate -> KeyExchange -> Finished) plus expensive cryptographic operations (RSA/ECDSA signature verification, key derivation). On a typical network, this takes 50-200ms; with certificate chain validation and OCSP stapling, it can reach 500ms. During this entire time, the OS worker thread is blocked in synchronous I/O (the rustls or native-tls handshake calls `TcpStream::read`/`write` which are blocking).
 
-When an actor calls `sqlite3_step()`, the entire OS worker thread blocks. Since coroutines are `!Send` and thread-pinned (scheduler.rs line 2: "yielded coroutines stay in the worker's local suspended list"), ALL other actors suspended on that same worker thread are starved. With the default thread pool size (one per CPU core), a handful of concurrent database queries can block the entire scheduler.
+Snow's PostgreSQL driver currently uses blocking `TcpStream` (pg.rs line 19: `use std::net::TcpStream`). Adding TLS wraps this stream, but the handshake is a single blocking operation that takes orders of magnitude longer than a typical TCP connect (which is ~1-5ms for local connections). The HTTP server accept loop (server.rs line 224: `for request in server.incoming_requests()`) already blocks, but HTTP request handling is fast. A TLS accept for HTTPS adds the handshake cost to every new connection.
 
-The existing HTTP server already has this problem (server.rs line 15: "Blocking I/O in tiny-http is accepted (similar to BEAM NIFs)"), but database queries are typically much longer-running than HTTP request/response cycles.
+With the M:N scheduler, a 200ms TLS handshake on one worker thread means all actors pinned to that thread are starved for 200ms. If the server handles 100 connections/second across 4 worker threads, each worker handles ~25 connections/second. A single 200ms handshake blocks 5 connection slots on that thread.
 
 **Why it happens:**
-Snow's scheduler has no mechanism to detect that an actor is about to make a blocking syscall and preemptively move it or its siblings. There is no `spawn_link` to a separate OS thread for blocking work. The existing pattern (HTTP server) accepts blocking because each HTTP handler is short-lived. Database queries are not.
+- `std::net::TcpStream` is synchronous/blocking. rustls wraps it with `rustls::StreamOwned<ClientConnection, TcpStream>` which inherits the blocking behavior
+- Snow has no non-blocking I/O integration with the scheduler. The reduction check (mod.rs lines 160-191) only triggers yields at Snow-code yield points, not during Rust runtime I/O
+- TLS handshakes cannot be split into yield-compatible chunks without a full async I/O redesign
+- Unlike database queries (which are rare), HTTPS accept-loop TLS handshakes occur on EVERY new connection
 
 **Consequences:**
-- A single slow SQL query (table scan, complex join) blocks an entire worker thread
-- With N worker threads and N concurrent queries, the entire scheduler deadlocks
-- Service actors (registered processes doing `receive` loops) become unresponsive
-- No timeout mechanism to cancel stuck queries
+- HTTPS server throughput drops dramatically compared to HTTP (not just from crypto overhead, but from scheduler starvation)
+- Actors unrelated to HTTP (e.g., timer-based workers, database actors) experience 200ms latency spikes
+- Under connection storms (client reconnect after network blip), all worker threads simultaneously block on TLS handshakes, freezing the entire runtime
 
 **Prevention:**
-1. **Dedicate a separate OS thread (or thread pool) for database operations.** The SQLite driver should spawn a dedicated Rust `std::thread` that owns the `sqlite3*` connection. Snow actors communicate with it via message passing (actor send/receive). The database thread runs queries synchronously and sends results back. This is exactly the BEAM NIF pattern for "dirty schedulers."
-2. **For PostgreSQL, use non-blocking socket I/O.** Since the PG wire protocol is pure Snow-managed TCP (no C FFI), implement it with non-blocking sockets. Register the socket FD with the scheduler and yield the actor while waiting for socket readability/writability. Resume when data arrives. This avoids blocking entirely.
-3. **SQLite WAL mode + busy timeout.** Configure SQLite with `PRAGMA journal_mode=WAL` and `sqlite3_busy_timeout()` to reduce contention. Even with a dedicated thread, concurrent writers need WAL to avoid "database is locked" errors.
-4. **Limit concurrent database actors.** Use a connection pool pattern: a single actor owns the database connection and serializes queries. Other actors send query requests and receive results asynchronously. This is the "gen_server" pattern from Erlang/OTP.
+1. **Perform TLS handshakes on dedicated OS threads, outside the actor scheduler.** The HTTPS accept loop should run on a separate thread pool (similar to how `snow_timer_send_after` in mod.rs line 463 spawns OS threads for timers). After the handshake completes, the established TLS stream is passed to an actor for request handling. This isolates handshake latency from the scheduler.
+2. **For PostgreSQL TLS (client-side), accept the blocking cost but document it.** PG connections are long-lived and pooled, so the TLS handshake happens once per connection, not per query. The one-time ~200ms cost at pool initialization is acceptable.
+3. **For HTTPS (server-side), use a tiered architecture:** OS thread pool accepts TCP connections and performs TLS handshakes; completed connections are dispatched to actor-per-request on the Snow scheduler. This mirrors BEAM's approach where NIF-level operations run on dirty schedulers.
+4. **Set aggressive TLS handshake timeouts (5-10 seconds).** A slow or malicious client performing a deliberately slow handshake (Slowloris-style) should be disconnected before it starves a worker thread for too long.
 
 **Detection:**
-- Application becomes unresponsive under load (actors stop processing messages)
-- `Timer.sleep` in other actors takes much longer than expected
-- Worker threads show 100% CPU in blocking syscalls (strace shows futex/read)
+- HTTPS throughput is 5-10x lower than HTTP on the same hardware
+- Unrelated actors experience periodic 100-500ms latency spikes correlated with HTTPS connection rate
+- `perf` or profiling shows worker threads spending significant time in `rustls::conn::ConnectionCommon::complete_io`
 
-**Phase:** Must be designed at the architecture level before implementing either driver. The blocking strategy decision affects the entire API surface.
+**Phase:** TLS implementation. The thread architecture (where handshakes run) must be decided before writing any TLS code.
 
 ---
 
-### Pitfall 3: SQL Injection Through String Interpolation in Query Construction
+### Pitfall 3: Transaction Left Open After Actor Crash Poisons Pooled Connection
 
 **What goes wrong:**
-Snow has string interpolation and concatenation. Without parameterized queries as the default and ONLY path, users will construct SQL like:
-```
-let query = "SELECT * FROM users WHERE name = '" ++ user_input ++ "'"
-Db.exec(conn, query)
-```
-This is textbook SQL injection. Even WITH parameterized queries available, if the API also exposes raw `exec(conn, sql_string)` without parameters, users will take the path of least resistance and concatenate.
+An actor calls `BEGIN` on a PostgreSQL connection, executes some queries, but crashes (panic, linked actor death, supervisor kill) before calling `COMMIT` or `ROLLBACK`. The connection is returned to the pool in an in-transaction state. The PostgreSQL server reports this via ReadyForQuery status byte `T` (in transaction) instead of `I` (idle). The next actor that checks out this connection unknowingly inherits the open transaction. Its queries execute within the crashed actor's transaction context. If the previous transaction had an error, PostgreSQL puts the connection in the `E` (failed transaction) state, and ALL subsequent queries fail with "current transaction is aborted, commands ignored until end of transaction block."
 
-The deeper language-level issue: Snow has no way to distinguish a "SQL query string" from a regular string at the type level. Both are `String`. There's no `SqlQuery` newtype that enforces parameterization.
+The existing PG driver (pg.rs lines 770-799, snow_pg_execute) reads messages until ReadyForQuery but does NOT check the transaction status byte. It silently discards ReadyForQuery's body content. This means the runtime has no way to detect that a connection is in a dirty transaction state.
 
 **Why it happens:**
-- Raw query execution is simpler to implement than parameterized queries
-- String concatenation is the first thing every programmer reaches for
-- Without a distinct type, the compiler cannot enforce safe query construction
-- SQLite's `sqlite3_exec()` (one-shot convenience function) encourages raw strings
+- Snow actors follow the "let it crash" philosophy (Erlang-style). Crashes are expected and handled by supervisors. But database connections are stateful external resources that do NOT reset on actor restart.
+- The current pg.rs implementation ignores the ReadyForQuery status byte (pg.rs line 789: `b'Z' => break`), providing no mechanism to check transaction state.
+- Connection pooling amplifies the problem: without pooling, crashed connections are simply dropped (the TCP connection closes, PostgreSQL auto-rollbacks). With pooling, the connection survives the actor crash.
+- There is no terminate_callback equivalent for "return this connection to the pool with cleanup." The terminate_callback (mod.rs lines 557-575) can be set, but the connection handle (an opaque u64) must be explicitly passed to it.
 
 **Consequences:**
-- SQL injection vulnerabilities in every Snow application using the database
-- Data exfiltration, data destruction, authentication bypass
-- Snow gets a reputation as an insecure language for web development
+- Silent data corruption: next actor's queries run in wrong transaction context
+- Mysterious "current transaction is aborted" errors on seemingly valid queries
+- Debugging nightmare: the error appears in actor B but was caused by actor A's crash
+- Pool connections become permanently poisoned (every subsequent user gets the error) until the connection is dropped and replaced
+- Under high crash rates (expected in development), pool becomes entirely poisoned within minutes
 
 **Prevention:**
-1. **Make parameterized queries the primary API.** The user-facing API should be `Db.query(conn, "SELECT * FROM users WHERE name = ?", [name])`. The raw `Db.exec(conn, sql)` function should exist only for DDL (CREATE TABLE, etc.) where parameters are not applicable.
-2. **Use sqlite3_prepare_v2 + sqlite3_bind_* for all queries with parameters.** Never pass user data through `sqlite3_exec()`.
-3. **For PostgreSQL extended protocol, always use parameterized queries.** The PG wire protocol's Parse/Bind/Execute flow naturally separates query text from parameters. Simple protocol (`Query` message) should only be used for DDL or administrative commands.
-4. **Consider a `Query` type at the type system level** (future enhancement). A `Query` type that can only be constructed from string literals (not runtime strings) would provide compile-time SQL injection prevention. This is aspirational but worth noting in the design.
-5. **Document prominently** that string concatenation for SQL is a security vulnerability. Make the safe path the easy path.
+1. **Pool must validate connection state on checkin AND checkout.** On every checkin (connection return), send a `ROLLBACK` if ReadyForQuery status is `T` or `E`. On checkout, verify status is `I` (idle). If not, send `ROLLBACK` and re-verify. If still not idle, discard the connection and create a new one.
+2. **Parse the ReadyForQuery status byte.** Modify the message-reading loop in pg.rs to extract and store the transaction status from ReadyForQuery messages. The status byte is body[0]: `I` = idle, `T` = in transaction, `E` = failed transaction. Store this on PgConn for pool management.
+3. **Wrap connection checkout/checkin in actor lifecycle.** Use Snow's terminate_callback to ensure connections are always returned to the pool, even on crash. The pool's checkin handler then performs the ROLLBACK cleanup.
+4. **Consider a "connection wrapper" that automatically issues ROLLBACK on Drop.** In the Rust runtime, wrap the pool checkout in an RAII guard. When the guard is dropped (including on unwind from catch_unwind in the actor entry), it returns the connection to the pool with cleanup. This matches the connection_handler_entry pattern in server.rs line 185 where catch_unwind wraps the handler.
 
 **Detection:**
-- Code review for string concatenation with SQL keywords
-- SQL injection in applications built with Snow
-- No automated detection possible without a Query type -- this is a design decision, not a bug
+- "current transaction is aborted" errors that appear without any preceding error in the same actor
+- Queries silently execute in a transaction context when no BEGIN was issued
+- Pool connections accumulate in `T` or `E` state over time
+- Restarting the application (which drops all connections) temporarily fixes the issue
 
-**Phase:** Parameterized query API design. Must be decided before exposing any database API to users.
+**Phase:** Connection pooling + transaction support. These two features are deeply coupled and MUST be designed together.
 
 ---
 
-### Pitfall 4: deriving(Json) Codegen Emits Wrong Field Order or Misses Nested Types
+### Pitfall 4: Opaque u64 Connection Handle Becomes Dangling Pointer After Pool Reclaims Connection
 
 **What goes wrong:**
-Snow's existing JSON is opaque (json.rs: `SnowJson { tag: u8, value: u64 }` with tags for Null/Bool/Number/Str/Array/Object). The new `deriving(Json)` must generate `to_json()` and `from_json()` methods that convert between typed Snow structs and this SnowJson representation. The codegen runs at MIR/LLVM level where struct field metadata is available.
+Snow currently represents connections as opaque u64 handles created via `Box::into_raw(conn) as u64` (pg.rs line 711, sqlite.rs line 162). The Snow program stores this u64 as a regular integer. With connection pooling, the lifecycle changes: the pool owns the connection, and the u64 handle is a loan, not ownership. If the pool reclaims a connection (timeout, validation failure, pool resize) while an actor still holds the u64 handle, the actor has a dangling pointer. Calling `snow_pg_execute` with this handle dereferences freed memory (`let conn = &mut *(conn_handle as *mut PgConn)` at pg.rs line 751).
 
-The pitfall: struct field iteration order in the compiler must match the runtime's SnowMap key order. Snow structs are defined with named fields, and `to_json()` must emit a JSON object where keys match field names and values are recursively serialized. If the codegen iterates fields in a different order than the parser/typechecker stored them (e.g., HashMap iteration order vs. definition order), the JSON output has scrambled keys.
-
-For `from_json()`, the inverse is worse: the codegen must look up each struct field by name in the JSON object. If a field is missing, it must produce a type error (Result::Err), not silently default to zero. If a JSON field has the wrong type (expecting Int but got String), the generated code must handle this at runtime since JSON is dynamically typed.
-
-Nested types compound the problem: `deriving(Json)` on a struct `User { name: String, address: Address }` requires that `Address` also derives `Json`. If it doesn't, the codegen must either emit a compile error or fall back to opaque JSON representation. The compiler needs to track which types have `Json` implementations.
+The GC makes this worse: the u64 handle is an integer, so the GC never traces it (by design -- pg.rs line 10: "The GC never traces integer values"). This means there is no GC-based mechanism to detect that the underlying connection was freed. The handle looks valid (it's just a number) but points to deallocated memory.
 
 **Why it happens:**
-- Struct field order is an implementation detail that varies between HashMaps and Vecs in different compiler phases
-- The typechecker uses `StructDefInfo` with `fields: Vec<...>` which preserves definition order, but downstream code might re-sort or lose ordering
-- Recursive type traversal for nested `deriving(Json)` requires the trait resolution system to verify Json impl existence at compile time
-- Snow's HM type inference means the concrete type might not be known until after inference -- `deriving(Json)` on generic types requires monomorphization
+- The current ownership model is simple: one actor creates a connection, uses it, closes it. The u64 handle has a 1:1 relationship with the PgConn Box.
+- Connection pooling introduces shared ownership: the pool owns the connection, actors borrow it. But the u64 handle mechanism has no borrow tracking.
+- There is no reference counting or generation counter on the handle. A recycled handle (same u64 value after Box deallocation and reallocation) could point to a completely different connection.
+- The Box::into_raw/Box::from_raw pattern is fundamentally incompatible with pooling because from_raw takes ownership and deallocates on drop.
 
 **Consequences:**
-- JSON output has wrong field names or wrong field order (breaks API contracts)
-- `from_json()` silently produces zero-valued fields for missing data (logic bugs)
-- Nested structs without `deriving(Json)` cause runtime crashes instead of compile errors
-- Generic structs like `Wrapper<T>` fail to derive Json because T's Json impl isn't resolved
+- Use-after-free crashes (SIGSEGV in snow_pg_execute or snow_pg_query)
+- If memory is reallocated, the handle points to a different object -- queries go to the wrong database connection
+- Intermittent: depends on allocator behavior and timing of pool reclamation vs. actor usage
+- Security risk: queries intended for one database could be sent to another if handle reuse occurs
 
 **Prevention:**
-1. **Use definition order (Vec, not HashMap) for struct fields throughout the pipeline.** Verify that AST, typechecker StructDefInfo, MIR StructDef, and codegen all preserve insertion order. Snow's `StructDefInfo` already uses `Vec<FieldInfo>`, so this should be maintained through MIR lowering.
-2. **Generate from_json() with explicit field-by-field lookup.** For each field, generate: (a) look up key in JSON object, (b) if missing, return Err("missing field: name"), (c) if wrong type, return Err("expected Int for field: name, got String"), (d) recursively deserialize nested types.
-3. **Require explicit deriving(Json) on all nested types.** At compile time (during trait resolution), check that every field type of a `deriving(Json)` struct has a ToJson/FromJson implementation. Emit a compile error otherwise: "type Address does not implement Json, required by deriving(Json) on User."
-4. **Handle primitive types built-in.** Int, Float, Bool, String, List<T>, Map<String, T>, and Option<T> should have built-in Json implementations. Only user-defined structs/enums need explicit deriving.
-5. **Add round-trip tests.** For every struct with deriving(Json), test that `from_json(to_json(value)) == value`. Field order, nesting, and missing-field errors must all be covered.
+1. **Replace raw pointer handles with generation-counted slot IDs.** Instead of `Box::into_raw`, use a global `Vec<Option<PgConn>>` (or `SlotMap`) where the u64 handle encodes both the slot index and a generation counter. When a connection is reclaimed, the slot's generation is incremented. Accessing a stale handle (wrong generation) returns an error instead of undefined behavior. This is the standard pattern for entity-component systems and resource handles in game engines.
+2. **Never expose raw pool connections to Snow code.** The pool should return a "checkout token" (an opaque u64 that maps to a pool slot), not the raw PgConn pointer. All DB operations go through the pool, which validates the token before accessing the connection. The Snow-level API becomes `Pool.query(pool_handle, token, sql, params)` instead of `Pg.query(conn_handle, sql, params)`.
+3. **Use message-passing instead of shared handles.** The pool actor owns all connections. Snow code sends query messages to the pool actor, which executes them on an available connection and sends results back. The Snow program never has a connection handle at all. This is the safest approach but changes the API significantly.
+4. **If retaining direct handles, add a `is_valid(handle)` check at every FFI boundary.** Every `snow_pg_execute`/`snow_pg_query` call should validate the handle before dereferencing. This converts SIGSEGV into a Snow-level error.
 
 **Detection:**
-- JSON output with wrong field names in integration tests
-- `from_json()` returning unexpected Ok values for malformed input
-- Compile errors about missing trait impls when using nested types
+- SIGSEGV in `snow_pg_execute` or `snow_pg_query` with stack trace pointing to the `*(conn_handle as *mut PgConn)` dereference
+- Database operations randomly fail with "connection closed" or produce garbled results
+- Problem worsens under high concurrency (more pool recycling events)
+- ASAN builds catch use-after-free immediately
 
-**Phase:** deriving(Json) codegen implementation. The trait resolution check is the critical gate.
+**Phase:** Connection pooling handle design. The handle abstraction must be redesigned BEFORE implementing pooling. Cannot be retrofitted.
 
 ---
 
-### Pitfall 5: PostgreSQL Wire Protocol State Machine Mishandles Async Messages
+### Pitfall 5: TLS Session State is Not GC-Visible, Causing Use-After-Free on GC-Triggered Collection
 
 **What goes wrong:**
-The PostgreSQL wire protocol is stateful. The server can send asynchronous messages (NoticeResponse, ParameterStatus, NotificationResponse) at ANY time, even in the middle of processing query results. A naive implementation that expects a fixed message sequence (e.g., "after sending Query, expect RowDescription then DataRow then CommandComplete then ReadyForQuery") will crash or hang when it receives an unexpected NoticeResponse between DataRow messages.
+When TLS wraps a TCP stream, the resulting object (`rustls::StreamOwned<ClientConnection, TcpStream>` or equivalent) contains internal buffers, session keys, and cipher state allocated on the Rust/system heap. Snow stores the connection as an opaque u64 handle (Box::into_raw pattern). The GC never sees this handle as a pointer (it's an integer). This is correct and intentional for the connection handle itself.
 
-Additionally, the very first message (StartupMessage) has no message-type byte, unlike all subsequent messages. Many implementations get the initial handshake wrong because they apply the "read type byte, read length, read payload" pattern universally.
+However, the problem occurs when Snow-level values (SnowStrings, query parameters) are passed to functions that operate on the TLS stream. During a TLS write, the data must be encrypted before sending. If the encryption involves multiple steps and a GC collection happens between preparing the plaintext (from a SnowString) and encrypting it, and the SnowString was the last reference on the stack, the GC could collect the SnowString. The TLS layer then encrypts freed memory.
 
-The ErrorResponse handling in the extended protocol is another trap: after an error, the server discards ALL subsequent messages until it receives a Sync. If the client has pipelined multiple commands, it must be prepared for the server to skip them all and respond with ReadyForQuery after the Sync.
-
-**Why it happens:**
-- The PostgreSQL protocol documentation is thorough but dense; implementers often read only the "happy path"
-- Testing with `psql` (which uses simple protocol) masks extended protocol bugs
-- Async messages like ParameterStatus are sent when server config changes, which is rare in development but common in production (e.g., after SET commands, or when a DBA changes settings)
-- The startup message format exception is easy to miss
-
-**Consequences:**
-- Client hangs waiting for a message type that never arrives (desync)
-- Connection becomes unusable after any error (failed error recovery)
-- Production failures when server sends NoticeResponse or ParameterStatus at unexpected times
-- Authentication failures because the startup handshake is wrong
-
-**Prevention:**
-1. **Implement the client as a state machine with a message dispatch loop.** Every state must handle NoticeResponse, ParameterStatus, and ErrorResponse in addition to expected messages. Use a `match` on message type, not a sequential read sequence.
-2. **Special-case the startup sequence.** The initial exchange (StartupMessage -> AuthenticationXxx -> ParameterStatus* -> BackendKeyData -> ReadyForQuery) should be handled as a distinct phase with its own message reading logic that doesn't expect a type byte on the first response.
-3. **Always check the ReadyForQuery transaction status byte.** The byte is 'I' (idle), 'T' (in transaction), or 'E' (failed transaction requiring ROLLBACK). Ignoring this leads to silent transaction state corruption.
-4. **Buffer extended protocol messages until Sync.** When pipelining, buffer all outgoing messages (Parse, Bind, Describe, Execute) and only send them as a batch terminated by Sync. This makes error recovery predictable: on error, the server discards everything up to the Sync.
-5. **Test with pgbouncer and connection pooling.** Connection poolers add their own ParameterStatus and NoticeResponse messages, exposing async message handling bugs.
-
-**Detection:**
-- Connection hangs after certain query patterns
-- "unexpected message type" errors in logs
-- Works fine with simple queries but breaks with prepared statements
-- Works in development but fails in production (where async messages are more common)
-
-**Phase:** PostgreSQL wire protocol implementation. The state machine design must be correct from the start; retrofitting is essentially a rewrite.
-
----
-
-### Pitfall 6: sqlite3_stmt* Lifetime Leaks When Actor Crashes
-
-**What goes wrong:**
-SQLite requires that `sqlite3_finalize()` is called on every `sqlite3_stmt*` before `sqlite3_close()` is called on the connection. Snow actors can crash (panic in handler, supervisor kills them, linked actor dies). If an actor holding a prepared statement crashes, the `sqlite3_stmt*` is leaked -- `sqlite3_finalize()` is never called. Subsequently, `sqlite3_close()` on the connection returns `SQLITE_BUSY` because unfinalized statements remain.
-
-Snow's actor termination path (scheduler.rs `handle_process_exit`, line 607) invokes an optional `terminate_callback` and then marks the process as Exited. The actor's heap is eventually reclaimed. But SQLite's C-allocated `sqlite3_stmt*` is on the system heap, not the GC heap -- heap reset does not free it. And even if it did, freeing the raw memory without calling `sqlite3_finalize` corrupts SQLite's internal state.
+This is a variant of the v2.0 Pitfall 16 (SnowString lifetime during PG wire protocol send), but TLS adds an extra layer: the plaintext data passes through the TLS encrypt buffer before reaching the TCP socket, creating a longer window where the SnowString must remain alive.
 
 **Why it happens:**
-- C resource cleanup is not automatic -- there is no RAII in the Snow runtime
-- Snow actors are designed to crash and restart (Erlang "let it crash" philosophy), but C resources are not crash-safe
-- The terminate_callback mechanism exists but is optional and must be explicitly set
+- Conservative GC scans the coroutine stack (heap.rs mark_from_roots, lines 401-448). If a SnowString pointer is only held in a Rust local variable that the compiler optimizes away before the TLS write completes, the GC cannot see it.
+- TLS encryption is not atomic from the GC's perspective: prepare data -> encrypt -> send is multiple function calls
+- The current pg.rs already copies data into Rust Vec<u8> buffers before sending (e.g., write_parse at pg.rs line 142), which is safe. The risk is that TLS wrapping adds the temptation to pass SnowString data directly to the TLS stream without copying
 
 **Consequences:**
-- SQLite connections become permanently unusable after actor crashes
-- Memory leaks from unfinalized prepared statements accumulate
-- `sqlite3_close` fails silently or returns SQLITE_BUSY, leaving file locks held
-- Database file remains locked, blocking other processes
+- Encrypted garbage sent over the wire, causing TLS protocol errors on the receiving end
+- Intermittent: only occurs when GC pressure coincides with TLS writes
+- Manifests as "TLS alert: bad_record_mac" or "TLS alert: decode_error" from the remote peer
+- Extremely hard to diagnose: looks like a network/TLS bug, not a GC bug
 
 **Prevention:**
-1. **Wrap the sqlite3* connection in a "resource" abstraction that registers a terminate callback.** When an actor opens a database, the runtime should automatically register a cleanup function that calls `sqlite3_finalize` on all open statements and `sqlite3_close_v2` on the connection. `sqlite3_close_v2` is specifically designed for this: it defers closing until all statements are finalized, and it marks the connection as unusable immediately.
-2. **Use `sqlite3_close_v2()` instead of `sqlite3_close()`.** The v2 variant is "zombie-safe" -- it marks the connection as unusable and defers actual resource cleanup until all prepared statements are finalized. This prevents SQLITE_BUSY errors.
-3. **Track all sqlite3_stmt* per connection.** Maintain a list of active prepared statements in the connection wrapper. On cleanup (normal or crash), iterate and finalize all of them before closing the connection.
-4. **Connection-per-actor model.** Each actor that uses the database should own its own connection. When the actor exits (normally or via crash), its terminate callback handles cleanup. This avoids shared-connection lifetime issues.
+1. **Maintain the existing copy-to-Vec<u8>-buffer pattern.** The current pg.rs already builds complete wire protocol messages in a `Vec<u8>` (system heap) before writing to the stream. When adding TLS, ensure the TLS stream receives data from these Rust-owned buffers, NEVER directly from GC-managed SnowString pointers. This is already the natural pattern; the risk is breaking it during refactoring.
+2. **Encapsulate TLS writes in a single Rust function that takes &[u8].** The function should accept a byte slice (already copied from SnowString), pass it through TLS encryption, and write to the socket. No GC-managed pointer should be reachable from parameters or locals during the TLS write.
+3. **Never yield (reduction_check) between copying SnowString data and completing the TLS write.** The pg.rs functions are called from actors, and reduction_check is inserted by the compiler at loop back-edges and function calls. Since the wire protocol functions are Rust extern "C" functions (not Snow code), the compiler does NOT insert reduction checks inside them. This is already safe; ensure TLS functions follow the same pattern (Rust code, no Snow callbacks).
 
 **Detection:**
-- Database file locks not released after actor crash
-- "database is locked" errors from other actors/processes after a crash
-- Growing memory usage from leaked prepared statements
-- `sqlite3_close` returning SQLITE_BUSY in terminate callbacks
+- TLS alert errors ("bad_record_mac", "decode_error") under GC pressure
+- ASAN/MSAN detecting reads of freed memory in TLS encryption paths
+- Works fine under low allocation pressure; fails under sustained load
+- PostgreSQL server logs showing malformed messages after TLS upgrade
 
-**Phase:** SQLite driver architecture. The resource cleanup pattern must be established before any statement caching or connection pooling.
+**Phase:** TLS stream wrapping. Follow the existing buffer-copy pattern in pg.rs. Primarily a code-review concern, not an architectural decision.
 
 ---
 
@@ -235,183 +198,256 @@ Mistakes that cause incorrect behavior, performance problems, or developer confu
 
 ---
 
-### Pitfall 7: HTTP Path Parameter Routing Ambiguity With Existing Exact/Wildcard Matcher
+### Pitfall 6: Transaction API Without Explicit Scoping Leads to Transaction Leaks
 
 **What goes wrong:**
-Snow's current router (router.rs) supports exact match (`/api/health`) and wildcard (`/api/*`). Adding path parameters (`/users/:id`) introduces ambiguity: does `/users/profile` match the static route `/users/profile` or the parameterized route `/users/:id`? The current `matches_pattern` function (router.rs lines 42-49) uses a simple linear scan with first-match-wins semantics. Adding `:param` patterns to this system without a clear priority order creates unpredictable routing.
+A naive transaction API exposes `Pg.begin(conn)`, `Pg.commit(conn)`, `Pg.rollback(conn)` as separate calls. Users write:
 
-The existing wildcard semantics add further confusion: `/api/*` matches `/api/users/123` (multi-segment). Should `/api/:resource` match only `/api/users` (single segment) or also `/api/users/123` (multi-segment)?
-
-**Why it happens:**
-- The current router was designed for exact + wildcard only; path parameters were not part of the initial design
-- First-match-wins ordering means route registration order determines behavior, which is fragile
-- No compile-time or startup-time check for conflicting routes
-
-**Prevention:**
-1. **Define a clear priority order: exact > parameterized > wildcard.** When multiple routes match, always prefer the most specific one. This matches the behavior of Express.js, Actix-web, and most mature web frameworks.
-2. **Path parameters match exactly one segment.** `/users/:id` matches `/users/123` but NOT `/users/123/posts`. Multi-segment capture requires explicit wildcard (`/api/*path`).
-3. **Detect conflicting routes at registration time.** When adding a route, check if an existing route would create ambiguity. Emit a warning or error: "route /users/:id conflicts with /users/profile -- static route takes priority."
-4. **Store routes in a trie/radix tree instead of a linear list.** This makes lookup O(path length) instead of O(routes), and naturally handles priority (static children checked before parameterized children).
-
-**Detection:**
-- Routes that work in isolation but break when other routes are added
-- 404 errors for paths that should match a parameterized route
-- Wrong handler called for a path that matches both static and parameterized routes
-
-**Phase:** HTTP path parameter implementation. Design the router upgrade before implementing parameter extraction.
-
----
-
-### Pitfall 8: HTTP Middleware Execution Order and Short-Circuit Semantics
-
-**What goes wrong:**
-Middleware chains have two phases: the "inbound" phase (before the handler) and the "outbound" phase (after the handler). A logging middleware should wrap the entire request lifecycle; an authentication middleware should short-circuit before the handler if the request is unauthorized. If middleware is modeled as a simple list of functions that run sequentially before the handler, there's no way to implement "after handler" behavior (e.g., response logging, timing, CORS header injection).
-
-The existing `handle_request` function (server.rs lines 218-313) directly calls the handler and then writes the response. There's no hook point for post-handler processing.
-
-**Why it happens:**
-- The simplest middleware model is "list of functions that run before the handler," which misses outbound processing
-- Snow's function-pointer-based handler dispatch (transmute to fn(*mut u8) -> *mut u8) doesn't naturally compose with middleware wrapping
-- Without closures that capture middleware state, middleware can't maintain per-request context (e.g., request start time for logging)
-
-**Prevention:**
-1. **Model middleware as `fn(Request, Next) -> Response` where `Next` is a closure/function that calls the next middleware or handler.** This "onion" model (used by Express, Koa, Tower, Plug) naturally supports both pre-handler and post-handler logic. The middleware calls `Next(request)` to continue the chain and can modify the response afterward.
-2. **For Snow's runtime, implement middleware as a chain of function pointers.** Each middleware receives the request and a "next" function pointer. It can: (a) modify the request and pass to next, (b) short-circuit by returning a response directly, or (c) call next, then modify the response before returning.
-3. **Define middleware ordering at the router level, not per-route.** Global middleware (logging, CORS) applies to all routes. Route-specific middleware (auth) applies to individual routes. The router stores both lists and chains them appropriately.
-4. **Handle short-circuiting explicitly.** Authentication middleware returns a 401 response without calling next. Error-handling middleware wraps next in a try/catch equivalent (Result handling in Snow).
-
-**Detection:**
-- CORS headers missing from error responses (middleware didn't run on the outbound path)
-- Logging middleware doesn't log response times (no outbound hook)
-- Authentication middleware runs but handler is still called (short-circuit not working)
-
-**Phase:** HTTP middleware implementation. The middleware model choice affects the entire API.
-
----
-
-### Pitfall 9: JSON Number Precision Loss Between Snow's Int/Float and JSON
-
-**What goes wrong:**
-Snow's existing JSON representation (json.rs lines 82-91) stores numbers as `u64` in the SnowJson value field. For integers, the raw i64 is stored as-is. For floats, `f64::to_bits()` stores the IEEE 754 bit pattern. The problem: there's no tag to distinguish integer-stored-as-u64 from float-stored-as-u64. Both use tag `JSON_NUMBER` (tag 2). The `snow_json_to_serde_value` function (json.rs lines 129-135) always interprets the value as i64, losing all float information.
-
-When `deriving(Json)` generates `to_json()` for a Float field, it calls `snow_json_from_float` (json.rs line 288) which stores `f64::to_bits()`. When `from_json()` reads it back, the current code interprets it as i64, producing a garbage integer instead of the original float.
-
-More subtly: JSON numbers have no integer/float distinction. The number `1.0` and `1` are the same in JSON. But Snow has distinct Int and Float types. `from_json()` must decide: is the JSON number `42` an Int or a Float? The answer depends on the target type, which is known at compile time (from the struct field type) but NOT available at the runtime JSON parsing level.
-
-**Why it happens:**
-- The original JSON implementation was opaque (parse JSON, access by key, get values) -- there was no need to distinguish number types because users would explicitly call get_int/get_float
-- `deriving(Json)` requires automatic type-directed deserialization, which the existing representation doesn't support
-- The SnowJson tagged union has one NUMBER tag, not separate INT and FLOAT tags
-
-**Prevention:**
-1. **Add separate NUMBER_INT (tag 2) and NUMBER_FLOAT (tag 6) tags.** This is a breaking change to the SnowJson representation but is necessary for round-trip fidelity. The existing tag numbering (0-5) leaves room for tag 6.
-2. **In deriving(Json) from_json(), use the target type to coerce.** When deserializing into an Int field, accept both integer and float JSON numbers (truncating the float). When deserializing into a Float field, accept both (promoting the integer). This type-directed approach works because `from_json` is generated per-struct.
-3. **In the runtime JSON parser (serde_value_to_snow_json), use `as_i64()` vs `as_f64()` to choose the tag.** If `serde_json::Number::as_i64()` succeeds, store as NUMBER_INT. Otherwise use `as_f64()` and store as NUMBER_FLOAT.
-4. **Update `snow_json_to_serde_value` to check the new tags** and produce the correct serde_json::Number variant.
-
-**Detection:**
-- Float fields deserialize as garbage integers
-- Round-trip test: `from_json(to_json({ x: 3.14 }))` produces `{ x: some_large_integer }`
-- JSON encoding of floats produces integer strings
-
-**Phase:** JSON serde implementation. The SnowJson tag split should happen before deriving(Json) codegen.
-
----
-
-### Pitfall 10: PostgreSQL Connection Lifecycle in Actor-Per-Connection HTTP Model
-
-**What goes wrong:**
-Snow's HTTP server creates one actor per HTTP connection (server.rs lines 197-213). Each actor handles a single request and exits. If each HTTP handler actor opens a PostgreSQL connection, the overhead is enormous: the PostgreSQL wire protocol startup sequence involves 18+ message exchanges including authentication, parameter status exchange, and potentially TLS negotiation. At 100 requests/second, that's 100 TCP connections opened and closed per second, each with full handshake overhead.
-
-Even with SQLite (in-process), opening the database file on every request means repeated file I/O and page cache cold starts.
-
-**Why it happens:**
-- The actor-per-connection model is natural for HTTP but terrible for database connections
-- Without connection pooling, every request pays full connection setup cost
-- Snow has no built-in connection pool primitive
-
-**Prevention:**
-1. **Implement a database connection pool as a long-lived service actor.** The pool actor owns N connections and distributes them to requesting actors. HTTP handler actors send a "checkout" message, receive a connection handle, execute queries, and send a "checkin" message to return the connection.
-2. **For SQLite, use a single connection actor.** SQLite performs best with a single writer. A single actor owning the connection serializes all writes naturally. Read-only queries can use WAL mode with a separate read connection.
-3. **For PostgreSQL, maintain a small pool of persistent connections.** Pool size should be configurable (default: 5-10). Connections are validated with a simple query before checkout (to detect stale/broken connections).
-4. **The pool actor should handle connection recovery.** If a connection is broken (network error, server restart), the pool should detect it, discard the bad connection, and create a new one.
-
-**Detection:**
-- Extremely slow database operations in HTTP handlers
-- "too many connections" errors from PostgreSQL
-- High CPU/memory from connection churn
-- Latency spikes on first request after idle (connection not cached)
-
-**Phase:** Database driver architecture. Pool design should happen before HTTP+database integration.
-
----
-
-### Pitfall 11: Type System Integration for Database Row Types
-
-**What goes wrong:**
-Snow uses Hindley-Milner type inference (snow-typeck). Database queries return rows with typed columns, but the column types are known at the database level, not at the Snow type level. A query like `Db.query(conn, "SELECT id, name FROM users", [])` returns... what type? Options include:
-
-1. `List<Map<String, Json>>` -- fully dynamic, loses type safety
-2. `List<(Int, String)>` -- correct but how does the compiler know the column types?
-3. `List<User>` -- requires mapping column names to struct fields
-
-Option 1 is what most dynamic languages do but defeats Snow's static typing. Option 2 requires the programmer to specify the return type, and the compiler trusts them (unsafe). Option 3 requires a derive mechanism similar to `deriving(Json)`.
-
-The current type system resolves collection types as `MirType::Ptr` (mir/types.rs line 77), which is correct for runtime but means the type checker cannot verify column type mismatches at compile time.
-
-**Why it happens:**
-- SQL query results have schema-dependent types that are not known at compile time
-- Snow has no dependent types or type-level strings to express "this query returns these columns"
-- The gap between SQL's type system and Snow's type system is fundamental
-
-**Prevention:**
-1. **Start with explicit type annotation: `Db.query<User>(conn, sql, params)`.** The programmer specifies the expected result type. The runtime checks at runtime that column count and types match the struct fields (using the same metadata from `deriving(Json)`). This is the approach used by Diesel (Rust), sqlx (Rust, with compile-time verification), and most typed database libraries.
-2. **Reuse the deriving(Json) infrastructure for row mapping.** A struct with `deriving(Json)` already has field-name-to-type metadata. Extend this to support `deriving(Row)` or reuse the same serialization infrastructure. Column names map to field names; column types are coerced to Snow types (INTEGER -> Int, TEXT -> String, REAL -> Float, NULL -> Option<T>).
-3. **For the initial implementation, return `List<Map<String, String>>` (all text).** SQLite returns all values as text by default. PostgreSQL returns text in simple protocol mode. This is safe, correct, and type-system-compatible, but forces users to manually convert types. It's a good MVP that can be improved later.
-4. **Do NOT try to make the compiler verify SQL queries at compile time.** This is extremely complex (requires an SQL parser, schema awareness, and type-level computation). Save it for a much later milestone if ever.
-
-**Detection:**
-- Runtime type mismatch errors when query returns unexpected column types
-- Boilerplate type conversion code in every database handler
-- Users requesting compile-time SQL checking (feature request, not a bug)
-
-**Phase:** Database query result API design. The return type decision affects the entire user experience.
-
----
-
-### Pitfall 12: Existing Opaque JSON to Struct-Aware JSON Migration
-
-**What goes wrong:**
-Snow currently has `Json` as an opaque type (MirType::Ptr, resolved in mir/types.rs line 77). Users write:
 ```
-let json = Json.parse(text)?
-let name = Json.get(json, "name")
+let conn = Pool.checkout(pool)
+Pg.begin(conn)
+let result = Pg.query(conn, "SELECT ...", [])
+// ... forgot to commit or rollback
+Pool.checkin(pool, conn)
 ```
-The new `deriving(Json)` provides:
-```
-let user = User.from_json(text)?
-let name = user.name
-```
-Both systems must coexist. If `deriving(Json)` replaces the opaque `Json` type entirely, existing code breaks. If both exist but with confusing overlap, users don't know which to use.
 
-The deeper issue: `Json.parse` returns a `Json` value (opaque), while `User.from_json` returns a `Result<User, String>`. These are different types. The opaque `Json` type is still useful for dynamic JSON (unknown schema, configuration files, API responses with varying structure). The struct-aware path is for known schemas.
+The connection is returned to the pool with an open transaction. Even without a crash, simple programmer forgetfulness leaves transactions open. Every code path (including error branches) must explicitly commit or rollback. In a language without RAII or try-finally (Snow does not have either), this is extremely error-prone.
+
+The problem is compounded by Snow's pattern matching on Result types. If a query returns `Err`, the programmer's error-handling branch might return early without committing or rolling back:
+
+```
+match Pg.query(conn, sql, []) do
+  Ok(rows) -> Pg.commit(conn)
+  Err(msg) -> log(msg)  // forgot Pg.rollback(conn) here!
+end
+```
 
 **Why it happens:**
-- Two JSON systems serving different purposes but with overlapping names and use cases
-- Users expect `from_json` to work on a `Json` value, not a `String` -- but the impl takes a String because it parses from text
+- Snow has no RAII, try-finally, or defer mechanism for guaranteed cleanup
+- The actor model encourages message-passing patterns where connections are used across multiple message-handling iterations, making scope boundaries unclear
+- Erlang/BEAM has the same problem; the standard solution is a transaction wrapper function, not separate begin/commit/rollback calls
+
+**Consequences:**
+- Transaction leaks under normal operation (not just crashes)
+- Silent connection poisoning in the pool (see Pitfall 3)
+- Hard to test: individual tests pass (they commit explicitly), but complex flows miss branches
+- PostgreSQL eventually reports "too many idle in transaction" connections
 
 **Prevention:**
-1. **Keep both systems.** The opaque `Json` type (parse, get, encode) serves dynamic JSON. The `deriving(Json)` system (to_json, from_json) serves typed JSON. Make the naming clear: `Json.parse` returns `Json`, `User.from_json` returns `Result<User, String>`.
-2. **Add a bridge: `User.from_json_value(json: Json) -> Result<User, String>`.** This allows parsing JSON once with `Json.parse` and then converting to a typed struct. Useful when the top-level structure is dynamic but inner values are typed.
-3. **Document clearly** when to use each system: opaque for unknown/dynamic JSON, deriving for known schemas.
-4. **Consider naming the derive `deriving(Serialize)` or `deriving(Encode)` instead of `deriving(Json)`.** This avoids name collision with the `Json` type. However, `deriving(Json)` is more discoverable. The milestone context says `deriving(Json)`, so use that, but be prepared for naming confusion.
+1. **Provide a `Pg.transaction(conn, fn)` higher-order function as the PRIMARY API.** The function takes a callback, wraps it in BEGIN/COMMIT, and issues ROLLBACK if the callback returns Err or if the actor panics. The separate begin/commit/rollback calls should exist as escape hatches but be documented as advanced/unsafe.
+2. **The transaction wrapper should use catch_unwind (or equivalent) at the Rust level.** Similar to connection_handler_entry in server.rs line 185, wrap the callback in panic recovery. On panic, issue ROLLBACK before re-raising. This handles actor crashes that don't kill the process but do unwind the stack (catch_unwind in scheduler.rs).
+3. **The pool checkin handler should ALWAYS issue ROLLBACK if the connection is in-transaction.** This is the safety net for all the cases where the API-level wrapper doesn't catch the leak.
+4. **Consider a future `with` or `defer` language feature** that provides scoped resource management. This is a compiler feature, not a runtime feature, and should be tracked as a language enhancement separate from this milestone.
 
 **Detection:**
-- User confusion about which JSON system to use
-- Type errors when trying to pass opaque Json to a typed from_json
-- Existing code using Json.parse breaks (should not happen if both coexist)
+- PostgreSQL `pg_stat_activity` shows connections in "idle in transaction" state for long periods
+- Pool health checks detect connections with ReadyForQuery status `T`
+- Memory leaks from held transaction locks preventing VACUUM
 
-**Phase:** deriving(Json) design phase. The migration/coexistence strategy should be documented before implementation.
+**Phase:** Transaction API design. Design the `transaction(conn, fn)` wrapper before exposing any transaction functionality.
+
+---
+
+### Pitfall 7: struct-to-row Mapping Column Name Mismatch Due to Snake/Camel Case Conventions
+
+**What goes wrong:**
+Snow uses PascalCase for types and snake_case for fields (following Haskell/ML conventions). PostgreSQL uses lowercase identifiers by default (case-insensitive unless quoted). A Snow struct:
+
+```
+struct UserProfile do
+  firstName :: String
+  lastName :: String
+  createdAt :: String
+end deriving(Row)
+```
+
+would try to match columns named `firstName`, `lastName`, `createdAt`. But PostgreSQL columns are typically `first_name`, `last_name`, `created_at`. The struct field names don't match the column names, causing deserialization to fail silently (missing fields become empty strings in the current Map<String, String> return type) or loudly (field not found errors in a typed mapping).
+
+The existing `deriving(Json)` infrastructure (typeck/infer.rs lines 2003-2060) maps struct field names directly to JSON keys. If `deriving(Row)` follows the same pattern, the naming mismatch between Snow fields and SQL columns is inevitable.
+
+**Why it happens:**
+- Snow and SQL have different naming conventions
+- The deriving infrastructure maps field names 1:1 without transformation
+- JSON keys typically match the programming language's naming convention (because the same language generates them), but SQL columns follow database conventions
+- There is no attribute or annotation system in Snow to override the mapping (e.g., `@column("first_name")` does not exist)
+
+**Consequences:**
+- Every struct-to-row mapping requires column aliases in SQL: `SELECT first_name AS firstName, ...`
+- Boilerplate SQL for every query defeats the purpose of automatic mapping
+- Users blame the ORM/mapping layer for "not working" when it's a naming mismatch
+- Inconsistency between deriving(Json) (which works with camelCase keys) and deriving(Row) (which doesn't work with snake_case columns)
+
+**Prevention:**
+1. **Auto-convert field names to snake_case for column matching.** When `deriving(Row)` looks up a column in the result set, convert the struct field name to snake_case first. `firstName` becomes `first_name`, `createdAt` becomes `created_at`. This matches the conventions of Diesel (Rust), SQLAlchemy (Python), and ActiveRecord (Ruby).
+2. **Fall back to exact match if snake_case match fails.** This handles cases where the SQL column actually IS in camelCase (e.g., PostgreSQL with quoted identifiers).
+3. **Support case-insensitive matching as the default.** PostgreSQL folds unquoted identifiers to lowercase. `SELECT firstName FROM ...` actually returns a column named `firstname`. Case-insensitive matching handles this transparently.
+4. **Consider adding an annotation system in a future milestone.** `@column("first_name")` or `@json("firstName")` attributes on struct fields would give explicit control. This is a parser/typechecker feature and should not block the initial deriving(Row) implementation.
+
+**Detection:**
+- Struct fields are always empty/default after deserialization from database rows
+- Queries work only when column aliases match struct field names exactly
+- deriving(Row) works perfectly with SELECT * from tables where column names happen to match Snow conventions
+
+**Phase:** struct-to-row mapping implementation. The naming convention decision should be made at design time.
+
+---
+
+### Pitfall 8: Connection Pool Size Configuration Interacts With Worker Thread Count in Non-Obvious Ways
+
+**What goes wrong:**
+Snow's scheduler defaults to one worker thread per CPU core (scheduler.rs lines 117-123). The connection pool has a configurable maximum size. If pool_size > worker_thread_count, excess connections are wasted (no thread available to use them). If pool_size < worker_thread_count, some workers will always block waiting for connections. The "right" pool size depends on the workload: CPU-bound Snow code benefits from more workers with fewer connections; I/O-bound database code benefits from more connections with potentially fewer workers.
+
+The interaction is worse because Snow's cooperative scheduling means a single worker thread can multiplex many actors. If each actor needs a connection, pool_size must scale with actor count, not thread count. But actor count is dynamic and potentially unbounded (HTTP server spawns one actor per request).
+
+PostgreSQL also has its own connection limit (default: 100). If pool_size exceeds PG's max_connections, connection attempts fail with "too many connections." This is a common production problem.
+
+**Why it happens:**
+- No guidance for pool sizing relative to scheduler configuration
+- The relationship between Snow scheduler threads, Snow actors, and database connections is non-obvious
+- Default configurations (pool_size = 5, workers = num_cpus) may work on a developer machine but fail in production
+- PostgreSQL's max_connections is a shared resource across all clients, not just Snow
+
+**Consequences:**
+- Under-provisioned pool: connection checkout timeouts, application slowness
+- Over-provisioned pool: wasted PostgreSQL connections, potential "too many connections" errors
+- Pool size that works in development (few concurrent requests) fails in production (many concurrent requests)
+- No runtime visibility into pool utilization or wait times
+
+**Prevention:**
+1. **Default pool size = 2 * num_cpus, capped at 20.** This is a reasonable starting point based on PgBouncer documentation and HikariCP's sizing recommendations. It provides headroom for concurrent requests without exhausting typical PostgreSQL limits.
+2. **Expose pool metrics to Snow code.** Provide functions like `Pool.active_count(pool)`, `Pool.idle_count(pool)`, `Pool.waiting_count(pool)`. This allows users to implement health checks and auto-tuning.
+3. **Document the sizing heuristic prominently.** "For web applications: pool_size = 2 * number of CPU cores. For batch processing: pool_size = number of CPU cores. Never exceed PostgreSQL's max_connections."
+4. **Add a pool creation parameter for max_checkout_wait_ms.** Default to 5000ms. If a connection is not available within this time, return an error. This prevents silent hangs.
+
+**Detection:**
+- Checkout timeout errors under load
+- PostgreSQL "too many connections" errors
+- Application throughput plateaus despite available CPU
+- Pool waiting_count consistently > 0 (under-provisioned)
+
+**Phase:** Connection pool configuration. Should be addressed during pool implementation, not as a separate phase.
+
+---
+
+### Pitfall 9: TLS Certificate Verification Requires System Root Certificates, Breaking Single-Binary Philosophy
+
+**What goes wrong:**
+Snow compiles to a single static binary with no runtime dependencies. TLS client connections (to PostgreSQL) must verify the server's certificate against trusted root CAs. On Linux, root certificates live in `/etc/ssl/certs/` or `/etc/pki/tls/certs/`. On macOS, they're in the system keychain. On Alpine Linux (common in Docker), they're in `/etc/ssl/certs/ca-certificates.crt`. If none of these exist (minimal Docker image, embedded system), TLS connections fail with "certificate verify failed."
+
+rustls (the recommended TLS library for Snow's single-binary philosophy) uses `webpki-roots` or `rustls-native-certs` for root certificate loading. `webpki-roots` bundles Mozilla's root certificates INTO the binary (~200KB), making the binary self-contained. `rustls-native-certs` reads the system store at runtime, which fails on minimal systems.
+
+The choice between bundled and system certs affects both binary size and security model:
+- Bundled certs: self-contained binary, but root CAs become stale (new CAs not recognized, revoked CAs still trusted) until the binary is recompiled
+- System certs: always current, but requires system configuration and breaks the single-binary guarantee
+
+**Why it happens:**
+- TLS requires a trust anchor (root CA certificates) that the binary cannot generate
+- The single-binary philosophy conflicts with the need for externally-managed trust anchors
+- This is a fundamental tension in any self-contained TLS implementation
+
+**Consequences:**
+- TLS connections fail on minimal Docker images with "no trusted root certificates"
+- Developers on macOS (where system certs work) don't encounter the issue; it surfaces only in deployment
+- Bundled certs become a security liability if not updated regularly
+- Users expect "it just works" but TLS requires explicit certificate management
+
+**Prevention:**
+1. **Default to `webpki-roots` (bundled Mozilla root CAs).** This preserves the single-binary philosophy. The ~200KB binary size increase is negligible compared to LLVM's contribution to Snow binary size.
+2. **Allow runtime override via environment variable.** `SNOW_TLS_CA_FILE=/path/to/ca.crt` or `SNOW_TLS_CA_DIR=/path/to/certs/` allows users to specify custom certificates for corporate environments or self-signed CAs.
+3. **Support `SNOW_TLS_INSECURE=1` for development only.** Skip certificate verification when explicitly requested. Print a loud warning to stderr. Never enable by default.
+4. **For PostgreSQL `sslmode` compatibility**, support the standard connection string parameters: `sslmode=require` (encrypt but don't verify), `sslmode=verify-ca` (verify certificate), `sslmode=verify-full` (verify certificate and hostname). Default to `require` for development ergonomics, document `verify-full` for production.
+
+**Detection:**
+- "certificate verify failed" errors when connecting to cloud PostgreSQL (AWS RDS, Supabase, etc.)
+- Works locally (system certs available) but fails in Docker (minimal image)
+- SSL connections fail silently when `webpki-roots` doesn't include a specific CA (rare but possible with internal enterprise CAs)
+
+**Phase:** TLS library integration. The certificate strategy must be decided when adding rustls as a dependency.
+
+---
+
+### Pitfall 10: struct-to-row Mapping with NULL Columns Causes Type Mismatch Panics
+
+**What goes wrong:**
+PostgreSQL columns can be NULL. Snow's type system distinguishes between `String` and `Option<String>`. If a struct has `name :: String` (not Optional) and the database returns NULL for that column, the deserializer must choose: panic, return an error, or silently substitute a default value. Each choice has consequences:
+
+- Panic: unexpected crash on production data
+- Error: forces every query to handle errors even when NULLs are "impossible" (e.g., NOT NULL column that is actually NULL during migration)
+- Default value (empty string for String, 0 for Int): silent data corruption
+
+The current pg.rs query function (line 892-899) already handles this by returning empty strings for NULL: `if col_len == -1 { String::new() }`. This works for the Map<String, String> return type but is incorrect for typed struct mapping where the field type should determine NULL handling.
+
+**Why it happens:**
+- SQL and Snow have different NULL semantics. SQL NULL means "no value." Snow Option<T> means "maybe no value." Snow String means "definitely has a value."
+- The database schema may allow NULLs even when the application expects them to be impossible
+- Schema changes (adding a nullable column, relaxing NOT NULL) break previously-working mappings
+
+**Consequences:**
+- Runtime panics when NULL appears in a non-Optional field
+- Silent data corruption if defaults are substituted for NULLs
+- Users must wrap EVERY field in Option<T> defensively, defeating the purpose of typed mapping
+- Breaking change when database schema evolves to allow NULLs
+
+**Prevention:**
+1. **Non-Optional fields: return a Result::Err if the column is NULL.** `from_row` should return `Result<T, String>` where Err contains "column 'name' is NULL but field type is non-optional String". This is explicit, safe, and matches Diesel/sqlx behavior.
+2. **Optional fields: NULL maps to None, non-NULL maps to Some(value).** `Option<String>` fields handle NULLs naturally.
+3. **Provide a derive option for default values.** A future annotation `@default("")` or `@default(0)` on struct fields could specify what value to use for NULL. This should NOT be the default behavior.
+4. **Document the NULL handling prominently.** "Use Option<T> for any column that might be NULL. Non-optional fields return an error on NULL."
+5. **Consider compile-time warnings** when deriving(Row) on a struct with non-Optional fields. The warning can't know the database schema, but it can remind the user: "field 'name' is non-optional; NULL values will cause runtime errors."
+
+**Detection:**
+- Runtime errors like "column 'name' is NULL but field is non-optional"
+- Tests pass with NOT NULL test data but fail with production data containing NULLs
+- Users defensively wrapping all fields in Option to avoid errors
+
+**Phase:** struct-to-row mapping deserialization. The NULL handling strategy must be decided at design time.
+
+---
+
+### Pitfall 11: PostgreSQL `SSLRequest` Handshake Must Precede TLS, Breaking the Existing Connection Flow
+
+**What goes wrong:**
+PostgreSQL TLS is not "connect with TLS from the start." The protocol requires:
+1. Open a plain TCP connection
+2. Send `SSLRequest` message (8 bytes: length=8, code=80877103)
+3. Read 1 byte response: `S` (server supports SSL) or `N` (no SSL)
+4. If `S`: perform TLS handshake on the existing TCP connection
+5. Then send the normal `StartupMessage` over the TLS-encrypted connection
+
+The existing `snow_pg_connect` (pg.rs lines 491-713) sends the StartupMessage immediately after TCP connect. Adding TLS requires inserting the SSLRequest exchange BEFORE the StartupMessage. This changes the connection function's control flow and the PgConn struct (which currently wraps a plain TcpStream).
+
+If the developer naively wraps the TcpStream in TLS after the StartupMessage, the TLS handshake fails because the PostgreSQL server is already in normal protocol mode, not TLS negotiation mode.
+
+**Why it happens:**
+- PostgreSQL's TLS upgrade is an in-band protocol negotiation, not a separate port (unlike HTTPS which uses port 443)
+- The SSLRequest is NOT a standard PostgreSQL message (it has no type byte, just like the StartupMessage)
+- The existing code has no extension point for "do something between TCP connect and StartupMessage"
+- Many tutorials and examples show PostgreSQL TLS as "just wrap the stream," omitting the SSLRequest step
+
+**Consequences:**
+- TLS connection fails with "unexpected message" errors from PostgreSQL
+- If TLS handshake is attempted without SSLRequest, the server interprets TLS ClientHello as a malformed PostgreSQL message and disconnects
+- Works with `sslmode=disable` but fails with any SSL mode
+
+**Prevention:**
+1. **Refactor `snow_pg_connect` to have a clear two-phase structure.** Phase 1: TCP connect + optional TLS negotiation (SSLRequest -> TLS handshake). Phase 2: PostgreSQL StartupMessage + authentication. The PgConn struct should hold either a `TcpStream` or a `TlsStream<TcpStream>`, abstracted behind a trait or enum.
+2. **Use an enum for the stream type:**
+   ```rust
+   enum PgStream {
+       Plain(TcpStream),
+       Tls(rustls::StreamOwned<rustls::ClientConnection, TcpStream>),
+   }
+   ```
+   Implement `Read + Write` for this enum so the rest of the wire protocol code is unchanged.
+3. **Handle the `N` response gracefully.** If the server responds with `N` (no SSL), the connection should either fall back to plain TCP (if `sslmode=prefer`) or return an error (if `sslmode=require`).
+4. **Test against PostgreSQL configured with `ssl=on`, `ssl=off`, and `ssl=prefer`.** Each configuration requires different behavior from the client.
+
+**Detection:**
+- "unexpected byte at start of message" errors from PostgreSQL server logs
+- TLS handshake timeout (server doesn't respond because it's waiting for a PostgreSQL message, not a TLS ClientHello)
+- Connection works with SSL disabled but fails with SSL enabled
+
+**Phase:** PostgreSQL TLS implementation. The SSLRequest flow must be implemented before any TLS handshake code.
 
 ---
 
@@ -421,89 +457,99 @@ Issues that cause developer friction or minor bugs, but have straightforward fix
 
 ---
 
-### Pitfall 13: SQLite C Library Linking Across Platforms
+### Pitfall 12: rustls Crypto Backend (aws-lc-rs) Build Complexity on Non-Standard Platforms
 
 **What goes wrong:**
-Snow compiles to native binaries via LLVM and links against the Rust runtime (`-lsnow_rt`). Adding SQLite requires linking against `libsqlite3`. On macOS, SQLite is bundled in `/usr/lib/libsqlite3.dylib`. On Linux, it may or may not be installed (`apt install libsqlite3-dev`). On Windows, there's no system SQLite at all.
+rustls defaults to `aws-lc-rs` as its cryptographic backend. aws-lc-rs includes C and assembly code that requires a C compiler and CMake to build. On standard platforms (Linux x86_64, macOS ARM64), this works out of the box. On non-standard platforms (musl/Alpine Linux, cross-compilation for ARM, older macOS), the build may fail.
 
-The alternative is to bundle SQLite source code (the "amalgamation" -- a single `sqlite3.c` file) and compile it into the runtime. This is the approach used by rusqlite's `bundled` feature. But this means the Snow runtime crate needs a `build.rs` that compiles C code, adding complexity.
+The alternative backend `ring` is pure Rust + assembly and has fewer build dependencies, but is also not trivial to cross-compile.
+
+Snow's build system already compiles C code (SQLite amalgamation via `cc::Build` from the v2.0 milestone), so the toolchain is present. But aws-lc-rs requires CMake in addition to a C compiler, which may not be installed.
 
 **Prevention:**
-1. **Bundle the SQLite amalgamation in the Snow runtime.** Compile `sqlite3.c` via a `cc::Build` in the snow-rt build script. This eliminates the system dependency entirely. The amalgamation is ~240KB of C code and compiles in seconds.
-2. **Link statically.** The bundled SQLite is compiled into `libsnow_rt.a`, so Snow programs don't need SQLite installed at runtime.
-3. **Set appropriate compile flags:** `SQLITE_THREADSAFE=1` (serialized mode for safety), `SQLITE_ENABLE_FTS5` (full-text search), `SQLITE_ENABLE_JSON1` (JSON functions).
+1. **Use rustls with the `ring` crypto backend instead of the default `aws-lc-rs`.** Ring has broader platform support and simpler build requirements. The performance difference is negligible for Snow's use case (TLS is not the bottleneck; database queries and application logic are).
+2. **Add CMake as a documented build dependency** if aws-lc-rs is used. Update Snow's build instructions.
+3. **Test cross-compilation in CI.** Add a CI job that builds Snow for musl/Alpine to catch build issues early.
 
 **Detection:**
-- "undefined symbol: sqlite3_open" at link time
-- Snow programs fail to run on systems without SQLite installed
-- Different SQLite versions causing behavioral differences
+- Build failures on CI with "CMake not found" or "unsupported platform" errors from aws-lc-rs
+- Users reporting build failures on non-standard platforms
 
-**Phase:** SQLite driver build system setup. Do this first, before any runtime code.
+**Phase:** TLS dependency selection. Decide on `ring` vs `aws-lc-rs` when adding the rustls dependency.
 
 ---
 
-### Pitfall 14: PostgreSQL Password Authentication Hash Mismatch
+### Pitfall 13: struct-to-row Mapping Code Generation Must Handle All Snow Primitive Types
 
 **What goes wrong:**
-PostgreSQL supports multiple authentication methods: trust, password (cleartext), md5, and scram-sha-256. Most production setups use scram-sha-256 (the default since PostgreSQL 14). A wire protocol client that only implements cleartext password authentication will fail to connect to most PostgreSQL servers.
+PostgreSQL returns column values as text strings in the text protocol format (which Snow's PG driver currently uses -- pg.rs uses format code 0 = text in write_bind at line 163 and write_describe_portal). The `deriving(Row)` code generator must produce parsing code for each Snow type:
 
-The md5 authentication requires computing `md5(md5(password + username) + salt)` -- getting this wrong produces "password authentication failed" errors that look like wrong credentials, not wrong implementation.
+- `String`: no parsing needed (already text)
+- `Int`: parse text as i64 (can fail: "abc" is not a valid Int)
+- `Float`: parse text as f64 (can fail, and has precision concerns: "3.14159265358979323846" may lose precision)
+- `Bool`: parse "t"/"f"/"true"/"false"/"1"/"0" (PostgreSQL uses "t"/"f")
+- `Option<T>`: handle NULL (column length -1) then recursively parse T
+- `List<T>`: PostgreSQL array syntax `{1,2,3}` is NOT JSON array syntax `[1,2,3]`
 
-scram-sha-256 is a multi-step challenge-response protocol (SASLInitialResponse, SASLContinue, SASLFinal) that requires HMAC-SHA-256 and PBKDF2. It's significantly more complex than md5.
+Missing any type or getting the parsing wrong for edge cases produces silent data corruption or runtime errors.
+
+**Why it happens:**
+- PostgreSQL's text representation varies by type and is not the same as JSON
+- Boolean is "t"/"f" not "true"/"false"
+- Arrays use curly braces not square brackets
+- Dates, timestamps, and UUIDs are text but require specific parsing
+- The deriving(Json) infrastructure handles JSON types, not PostgreSQL text types
+
+**Consequences:**
+- Bool fields always fail to parse ("true" instead of "t")
+- Float fields lose precision or fail on scientific notation ("1.23e4")
+- Array/List fields produce garbage when parsing `{1,2,3}` as if it were JSON
+- Date/timestamp fields are returned as unparsed strings, confusing users who expected typed values
 
 **Prevention:**
-1. **Implement scram-sha-256 from the start.** It's the default auth method and will be required for nearly all connections. Use a well-tested HMAC-SHA-256 library (ring, sha2) rather than implementing crypto from scratch.
-2. **Support md5 as a fallback.** Some older PostgreSQL installations still use md5. The implementation is simple: `md5(concat(md5(concat(password, username)), salt))`.
-3. **Support trust for development.** Trust authentication requires no password exchange -- the server just sends AuthenticationOk after the startup message.
-4. **Test against a real PostgreSQL instance.** A local Docker container with different auth configurations exercises the entire authentication flow.
+1. **Start with String-only mapping.** For the initial implementation, `deriving(Row)` only supports structs where ALL fields are `String`. This avoids all parsing issues and is still useful (users parse manually, same as the current Map<String, String> approach but with named fields).
+2. **Add type-specific parsers incrementally.** After String, add Int (`str.parse::<i64>()`), Float (`str.parse::<f64>()`), Bool (`match s { "t" | "true" | "1" => true, _ => false }`). Each parser is tested in isolation.
+3. **Do NOT support PostgreSQL array syntax in the initial implementation.** Arrays (`{1,2,3}`) require a dedicated parser. Defer to a future milestone. Users who need arrays can use String fields and parse manually.
+4. **Return `Result<T, String>` from the generated `from_row` function.** Every parsing failure produces an Err with the column name, expected type, and actual value. Never panic on parse failure.
 
 **Detection:**
-- "password authentication failed for user" errors that are actually auth protocol bugs
-- Connection works with `trust` but fails with `md5` or `scram-sha-256`
-- Hanging during SASL exchange (wrong message sequence)
+- Parse failures at runtime for non-String fields
+- Tests that only use String values pass, but Int/Float/Bool fields fail
+- PostgreSQL boolean "t"/"f" not recognized as valid booleans
 
-**Phase:** PostgreSQL driver authentication implementation. Must be complete before any query functionality.
+**Phase:** struct-to-row mapping type support. Start with String-only, expand incrementally.
 
 ---
 
-### Pitfall 15: Path Parameter Extraction From URL Needs Percent-Decoding
+### Pitfall 14: Pool Connection Health Check Adds Latency to Every Checkout
 
 **What goes wrong:**
-HTTP URLs can contain percent-encoded characters: `/users/John%20Doe` should extract the parameter `id = "John Doe"`. If the router extracts path parameters by simple string splitting without percent-decoding, the parameter value will be `"John%20Doe"` (with literal percent signs).
+Connection pools must validate that connections are still alive (the server hasn't closed them due to timeout, network failure, or restart). The standard approach is to send a "ping" query (`SELECT 1` or PostgreSQL's `;` empty query) on checkout. But this adds a network round-trip (1-5ms) to every checkout, which adds up: 100 queries/second * 3ms/ping = 300ms/second spent on health checks.
 
-Similarly, path segments can contain characters that look like delimiters: `/files/a%2Fb` should be a single segment with value `a/b`, not two segments `a` and `b`.
+For Snow's actor-based model, the health check also blocks the worker thread (same as any DB operation), compounding the scheduling starvation problem from Pitfall 2.
 
-**Prevention:**
-1. **Percent-decode path parameters after extraction.** Use a standard URL decoding function (or implement the trivial `%XX` -> byte mapping).
-2. **Decode AFTER splitting on `/`.** The URL should be split into segments first (on literal `/`), then each segment should be percent-decoded. This ensures that `%2F` within a segment doesn't create a false segment boundary.
-3. **Handle invalid percent-encoding gracefully.** `%ZZ` is not valid. Return a 400 Bad Request or pass the literal string through.
+**Why it happens:**
+- Connections can become stale silently (TCP keepalive doesn't detect application-level disconnects)
+- Without health checks, stale connections cause query failures after checkout
+- The "check on checkout" pattern is the simplest but most expensive approach
 
-**Detection:**
-- Path parameters with spaces, unicode characters, or special characters are mangled
-- Routes with `/` in parameter values match wrong handlers
-- Tests using only ASCII alphanumeric paths pass but real-world URLs fail
-
-**Phase:** HTTP path parameter extraction. Simple to implement correctly, easy to get wrong if not considered.
-
----
-
-### Pitfall 16: SnowString Lifetime During PostgreSQL Wire Protocol Send
-
-**What goes wrong:**
-The PostgreSQL wire protocol client needs to serialize query strings and parameter values into TCP messages. If the query string is a SnowString (GC-managed on the actor heap), and the TCP send involves a blocking syscall or an async yield point, the GC might run between constructing the message and completing the send. If the SnowString is the only reference and it's not on the stack during the GC scan, it gets collected and the TCP send reads freed memory.
-
-This is the same class of problem as Pitfall 1 (GC + C FFI) but for network I/O instead of SQLite. The difference is that PostgreSQL uses no C FFI -- the wire protocol is pure Rust/Snow. But the data still crosses a boundary (user space -> kernel space via TCP send).
+**Consequences:**
+- Measurable latency increase (1-5ms) on every database operation
+- Under high query volume, health checks consume significant pool capacity
+- False positive failures when the network has transient issues (health check fails but the connection would have worked for the actual query)
 
 **Prevention:**
-1. **Copy SnowString data into a Rust Vec<u8> (system-heap) message buffer before sending.** The wire protocol serializer should build the complete message in a system-heap buffer, copy all SnowString data into it, and then send the buffer. The SnowString can be collected after the copy without affecting the send.
-2. **This is the natural implementation anyway.** Building a wire protocol message means concatenating bytes into a buffer, which inherently copies the data. Just make sure the intermediate SnowString reference isn't the only one at any yield point.
+1. **Use "test on borrow with idle timeout" strategy.** Only health-check connections that have been idle for longer than N seconds (default: 30s). Recently-used connections are assumed to be alive. This eliminates health checks for hot pools.
+2. **Use TCP keepalive instead of application-level pings.** Set `TcpStream::set_keepalive(Some(Duration::from_secs(60)))` on PostgreSQL connections. The OS detects dead connections automatically. This is not sufficient for all failure modes but catches the most common (server restart, network partition).
+3. **Validate lazily: catch errors and retry.** Instead of health-checking on checkout, attempt the query. If it fails with a connection error (as opposed to a SQL error), discard the connection, check out a new one, and retry. This is the approach used by HikariCP (Java) and is the most performant.
+4. **For the initial implementation, skip health checks entirely.** Let stale connections fail naturally and be replaced. This is acceptable for a first version; health checks can be added later.
 
 **Detection:**
-- Corrupted query text in PostgreSQL server logs
-- "invalid message format" errors from PostgreSQL
-- Intermittent under high GC pressure; hard to reproduce
+- Checkout latency includes a consistent 1-5ms overhead
+- Health check failures cause checkout errors even when the database is healthy (transient network issue)
+- Pool metrics show high health-check-failure rate during network instability
 
-**Phase:** PostgreSQL wire protocol serializer. Follow the copy-to-buffer pattern from the start.
+**Phase:** Connection pool health check implementation. Can be deferred to after the initial pool implementation.
 
 ---
 
@@ -511,53 +557,80 @@ This is the same class of problem as Pitfall 1 (GC + C FFI) but for network I/O 
 
 | Phase Topic | Likely Pitfall | Severity | Mitigation |
 |-------------|---------------|----------|------------|
-| SQLite C FFI foundation | GC follows C pointers (Pitfall 1) | CRITICAL | Store sqlite3* as opaque u64, use SQLITE_TRANSIENT for binds |
-| SQLite C FFI foundation | Blocking calls starve scheduler (Pitfall 2) | CRITICAL | Dedicated DB thread or actor, never block worker threads |
-| SQLite C FFI foundation | Statement leak on crash (Pitfall 6) | CRITICAL | sqlite3_close_v2, terminate callback, per-connection stmt tracking |
-| SQLite C FFI foundation | Cross-platform linking (Pitfall 13) | MODERATE | Bundle amalgamation, static link via cc::Build |
-| PostgreSQL wire protocol | State machine async messages (Pitfall 5) | CRITICAL | Flexible message dispatch, handle async messages everywhere |
-| PostgreSQL wire protocol | Auth hash mismatch (Pitfall 14) | MODERATE | Implement scram-sha-256 from day one |
-| PostgreSQL wire protocol | SnowString lifetime in send (Pitfall 16) | MODERATE | Copy to system-heap buffer before TCP send |
-| PostgreSQL wire protocol | Connection lifecycle (Pitfall 10) | MODERATE | Connection pool actor, not per-request connections |
-| Parameterized queries | SQL injection (Pitfall 3) | CRITICAL | Params-first API, sqlite3_bind_*/PG extended protocol |
-| Parameterized queries | Row type integration (Pitfall 11) | MODERATE | Start with Map<String,String>, add typed results later |
-| deriving(Json) | Field order / nested types (Pitfall 4) | CRITICAL | Definition-order iteration, compile-time trait check for nested types |
-| deriving(Json) | Number precision (Pitfall 9) | MODERATE | Separate INT/FLOAT tags in SnowJson representation |
-| deriving(Json) | Migration from opaque Json (Pitfall 12) | LOW | Keep both systems, add bridge function |
-| HTTP path parameters | Routing ambiguity (Pitfall 7) | MODERATE | Priority order: exact > param > wildcard; trie-based router |
-| HTTP path parameters | Percent-decoding (Pitfall 15) | LOW | Decode after split on /, handle invalid encoding |
-| HTTP middleware | Ordering / short-circuit (Pitfall 8) | MODERATE | Onion model: fn(Request, Next) -> Response |
+| Connection pooling architecture | Pool checkout blocks worker thread (Pitfall 1) | CRITICAL | Message-passing checkout, not blocking wait |
+| Connection pooling architecture | Dangling handle after pool reclaim (Pitfall 4) | CRITICAL | Generation-counted slot IDs, not raw pointers |
+| Connection pooling architecture | Pool size vs worker thread count (Pitfall 8) | MODERATE | Default 2*num_cpus, expose pool metrics |
+| Connection pooling architecture | Health check latency (Pitfall 14) | LOW | Idle-timeout strategy, lazy validation |
+| PostgreSQL TLS | SSLRequest must precede TLS handshake (Pitfall 11) | CRITICAL | Two-phase connect: SSLRequest then StartupMessage |
+| PostgreSQL TLS | TLS handshake blocks worker thread (Pitfall 2) | CRITICAL | Handshake on dedicated OS thread for HTTPS; accept for PG (one-time cost) |
+| PostgreSQL TLS | Certificate verification vs single-binary (Pitfall 9) | MODERATE | Bundle webpki-roots, allow env var override |
+| PostgreSQL TLS | GC + TLS stream interaction (Pitfall 5) | MODERATE | Maintain copy-to-buffer pattern from pg.rs |
+| PostgreSQL TLS | rustls build complexity (Pitfall 12) | LOW | Use ring backend, not aws-lc-rs |
+| HTTPS server TLS | TLS accept starvation (Pitfall 2) | CRITICAL | Dedicated thread pool for TLS accepts |
+| Database transactions | Open transaction after actor crash (Pitfall 3) | CRITICAL | Pool validates ReadyForQuery status, ROLLBACK on checkin |
+| Database transactions | Transaction leak from missing commit (Pitfall 6) | MODERATE | Provide transaction(conn, fn) wrapper as primary API |
+| struct-to-row mapping | Column name mismatch (Pitfall 7) | MODERATE | Auto snake_case conversion, case-insensitive matching |
+| struct-to-row mapping | NULL handling for non-Optional fields (Pitfall 10) | MODERATE | Return Result::Err on NULL for non-Optional fields |
+| struct-to-row mapping | Type parsing for non-String fields (Pitfall 13) | MODERATE | Start with String-only, expand incrementally |
+
+---
+
+## Integration Pitfalls (Cross-Feature)
+
+These pitfalls arise from the INTERACTION between features, not from any single feature in isolation.
+
+### Pool + Transactions: The Deadly Combination
+
+Connection pooling and transactions are deeply coupled. Every pool design decision affects transaction safety, and vice versa. The critical interaction: if a connection with an open transaction is returned to the pool, every subsequent user of that connection is affected. This is Pitfall 3 (transaction poisoning) plus Pitfall 4 (handle lifecycle), combined.
+
+**The safe order of implementation:**
+1. First: pool with ROLLBACK-on-checkin safety net
+2. Then: transaction API that uses the pool
+3. Never: transaction API without pool awareness
+
+### TLS + Cooperative Scheduling: The Latency Tax
+
+TLS adds blocking time to both PostgreSQL connections (one-time handshake) and HTTPS server (per-connection handshake). For PostgreSQL, the one-time cost is acceptable because connections are pooled. For HTTPS, the per-connection cost is not acceptable on the actor scheduler.
+
+**The safe order of implementation:**
+1. First: PostgreSQL TLS (client-side, pooled connections, one-time handshake cost)
+2. Then: HTTPS TLS (server-side, requires dedicated thread pool for accepts)
+3. Never: HTTPS TLS on the actor scheduler without a dedicated accept thread pool
+
+### struct-to-row + Pool: Connection State Assumptions
+
+struct-to-row mapping generates code that executes queries and parses results. If the underlying connection is in a bad state (from a poisoned pool), the generated code receives garbage data and produces confusing errors. The mapping code should not assume a clean connection; it should validate that the query succeeded before attempting to parse rows.
 
 ---
 
 ## Sources
 
 ### Official Documentation
-- [SQLite C/C++ Interface Introduction](https://sqlite.org/cintro.html) -- lifecycle rules for sqlite3/sqlite3_stmt objects
-- [SQLite Quirks, Caveats, and Gotchas](https://sqlite.org/quirks.html) -- SQLite-specific behavioral surprises
-- [SQLite Threading Modes](https://www.sqlite.org/threadsafe.html) -- multi-threaded SQLite configuration
-- [PostgreSQL Wire Protocol v3.2 (Frontend/Backend Protocol)](https://www.postgresql.org/docs/current/protocol.html) -- complete protocol specification
-- [PostgreSQL Message Flow](https://www.postgresql.org/docs/current/protocol-flow.html) -- detailed message exchange sequences
-- [OWASP SQL Injection Prevention Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/SQL_Injection_Prevention_Cheat_Sheet.html) -- parameterized query best practices
-- [OWASP Query Parameterization Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/Query_Parameterization_Cheat_Sheet.html) -- language-specific parameterization patterns
+- [PostgreSQL Wire Protocol v3: Message Flow](https://www.postgresql.org/docs/current/protocol-flow.html) -- SSLRequest, Sync, ReadyForQuery transaction status (HIGH confidence)
+- [PostgreSQL Wire Protocol v3: SSL Session Encryption](https://www.postgresql.org/docs/current/protocol-flow.html#PROTOCOL-FLOW-SSL) -- SSLRequest message format and flow (HIGH confidence)
+- [PostgreSQL SASL Authentication](https://www.postgresql.org/docs/current/sasl-authentication.html) -- SCRAM-SHA-256 over TLS (HIGH confidence)
+- [rustls documentation](https://docs.rs/rustls/latest/rustls/) -- TLS library API, certificate handling (HIGH confidence)
 
 ### Domain Research
-- [Haskell FFI Safety and Garbage Collection](https://frasertweedale.github.io/blog-fp/posts/2022-09-23-ffi-safety-and-gc.html) -- GC + FFI interaction analysis (HIGH confidence)
-- [Boehm Conservative GC](https://www.hboehm.info/gc/conservative.html) -- why conservative GC requires pointer discipline (HIGH confidence)
-- [Hacking the Postgres Wire Protocol (PgDog)](https://pgdog.dev/blog/hacking-postgres-wire-protocol) -- practical protocol implementation experience (MEDIUM confidence)
-- [pgwire Rust Library](https://github.com/sunng87/pgwire) -- reference implementation of PG wire protocol in Rust (MEDIUM confidence)
-- [Threading Models in Coroutines and Android SQLite API](https://medium.com/androiddevelopers/threading-models-in-coroutines-and-android-sqlite-api-6cab11f7eb90) -- SQLite + coroutine interaction (MEDIUM confidence)
-- [SQLite Concurrent Writes](https://tenthousandmeters.com/blog/sqlite-concurrent-writes-and-database-is-locked-errors/) -- concurrency pitfalls analysis (MEDIUM confidence)
-- [Middleware Order in ASP.NET Core](https://bytecrafted.dev/posts/aspnet-core/middleware-order-best-practices/) -- middleware ordering patterns (MEDIUM confidence)
-- [Managing Path Parameters in Express.js](https://medium.com/@gilbertandanje/managing-path-parameters-in-express-js-avoiding-route-conflicts-d9f5eefe8e68) -- route conflict analysis (MEDIUM confidence)
+- [Building a Connection Pool from Scratch (2025)](https://medium.com/nerd-for-tech/building-a-connection-pool-from-scratch-internals-design-and-real-world-insights-e4f72fd7d9af) -- Pool design patterns, thread safety, sizing heuristics (MEDIUM confidence)
+- [Npgsql Connection Reclamation via WeakReference](https://github.com/npgsql/npgsql/issues/2878) -- GC-safe connection pool handle pattern (MEDIUM confidence)
+- [Erlang: A Veteran's Take on Concurrency and Fault Tolerance](https://medium.com/@rng/erlang-a-veterans-take-on-concurrency-fault-tolerance-and-scalability-adff3f96565b) -- Actor model + database transaction patterns (MEDIUM confidence)
+- [Rustls vs NativeTls (Rust forum)](https://users.rust-lang.org/t/rustls-vs-nativetls/131051) -- TLS library comparison for static linking (MEDIUM confidence)
+- [Rustls Performance Benchmarks (Prossimo)](https://www.memorysafety.org/blog/rustls-performance/) -- rustls vs OpenSSL performance data (MEDIUM confidence)
+- [Pitfalls of Isolation Levels in Distributed Databases (PlanetScale)](https://planetscale.com/blog/pitfalls-of-isolation-levels-in-distributed-databases) -- Transaction isolation pitfalls (MEDIUM confidence)
+- [node-postgres: Lost Connection During Transaction](https://github.com/brianc/node-postgres/issues/1454) -- Connection state after crash in transaction (MEDIUM confidence)
+- [IBM Maximo: GC and Connection Leak](https://www.ibm.com/support/pages/garbage-collection-and-connection-leak) -- GC interaction with connection pools (MEDIUM confidence)
+- [Cooperative Scheduling Pitfalls (Microsoft)](https://learn.microsoft.com/en-us/cpp/parallel/concrt/comparing-the-concurrency-runtime-to-other-concurrency-models) -- Cooperative scheduling starvation patterns (MEDIUM confidence)
 
 ### Codebase Analysis (PRIMARY SOURCE)
-- `/Users/sn0w/Documents/dev/snow/crates/snow-rt/src/gc.rs` -- GC allocation entry points, conservative scanning model
-- `/Users/sn0w/Documents/dev/snow/crates/snow-rt/src/actor/heap.rs` -- per-actor heap, mark-sweep GC, free list, find_object_containing
-- `/Users/sn0w/Documents/dev/snow/crates/snow-rt/src/actor/scheduler.rs` -- M:N work-stealing scheduler, coroutine lifecycle
-- `/Users/sn0w/Documents/dev/snow/crates/snow-rt/src/actor/stack.rs` -- corosensei coroutine management, thread-local context
-- `/Users/sn0w/Documents/dev/snow/crates/snow-rt/src/json.rs` -- existing opaque SnowJson representation
-- `/Users/sn0w/Documents/dev/snow/crates/snow-rt/src/http/server.rs` -- actor-per-connection HTTP server
-- `/Users/sn0w/Documents/dev/snow/crates/snow-rt/src/http/router.rs` -- exact + wildcard router
-- `/Users/sn0w/Documents/dev/snow/crates/snow-codegen/src/codegen/types.rs` -- MirType to LLVM type mapping
-- `/Users/sn0w/Documents/dev/snow/crates/snow-codegen/src/mir/types.rs` -- Ty to MirType resolution, type registry
+- `/Users/sn0w/Documents/dev/snow/crates/snow-rt/src/db/pg.rs` -- PostgreSQL wire protocol, PgConn struct, opaque u64 handle pattern, ReadyForQuery handling
+- `/Users/sn0w/Documents/dev/snow/crates/snow-rt/src/db/sqlite.rs` -- SQLite FFI, SqliteConn struct, matching handle pattern
+- `/Users/sn0w/Documents/dev/snow/crates/snow-rt/src/actor/scheduler.rs` -- M:N work-stealing scheduler, !Send coroutines, worker loop, process table
+- `/Users/sn0w/Documents/dev/snow/crates/snow-rt/src/actor/mod.rs` -- Actor lifecycle, terminate_callback, reduction_check, snow_actor_receive
+- `/Users/sn0w/Documents/dev/snow/crates/snow-rt/src/actor/stack.rs` -- Corosensei coroutine management, CURRENT_YIELDER, thread-pinning
+- `/Users/sn0w/Documents/dev/snow/crates/snow-rt/src/actor/heap.rs` -- Per-actor GC, conservative stack scanning, mark-sweep, find_object_containing
+- `/Users/sn0w/Documents/dev/snow/crates/snow-rt/src/actor/process.rs` -- PCB, ProcessState, terminate_callback type
+- `/Users/sn0w/Documents/dev/snow/crates/snow-rt/src/gc.rs` -- GC allocation entry points, global arena vs actor heap
+- `/Users/sn0w/Documents/dev/snow/crates/snow-rt/src/http/server.rs` -- Actor-per-connection HTTP, catch_unwind pattern, tiny_http blocking accept
+- `/Users/sn0w/Documents/dev/snow/crates/snow-typeck/src/infer.rs` -- deriving infrastructure, trait resolution for deriving(Json)
+- `/Users/sn0w/Documents/dev/snow/crates/snow-codegen/src/mir/lower.rs` -- MIR generation for deriving traits
