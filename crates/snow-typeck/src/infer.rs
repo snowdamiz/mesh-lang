@@ -695,6 +695,17 @@ fn stdlib_modules() -> HashMap<String, HashMap<String, Scheme>> {
         vec![pg_conn_t.clone(), Ty::fun(vec![pg_conn_t.clone()], Ty::result(Ty::Tuple(vec![]), Ty::string()))],
         Ty::result(Ty::Tuple(vec![]), Ty::string()),
     )));
+    // Pg.query_as: forall a. fn(PgConn, String, List<String>, fn(Map<String, String>) -> Result<a, String>) -> Result<List<Result<a, String>>, String>
+    {
+        let a = TyVar(99990);
+        let a_ty = Ty::Var(a);
+        let from_row_fn = Ty::fun(vec![Ty::map(Ty::string(), Ty::string())], Ty::result(a_ty.clone(), Ty::string()));
+        let ret = Ty::result(Ty::list(Ty::result(a_ty, Ty::string())), Ty::string());
+        pg_mod.insert("query_as".to_string(), Scheme {
+            vars: vec![a],
+            ty: Ty::fun(vec![pg_conn_t.clone(), Ty::string(), Ty::list(Ty::string()), from_row_fn], ret),
+        });
+    }
     modules.insert("Pg".to_string(), pg_mod);
 
     // ── Pool module (Phase 57) ──────────────────────────────────────
@@ -731,6 +742,17 @@ fn stdlib_modules() -> HashMap<String, HashMap<String, Scheme>> {
         vec![pool_handle_t.clone(), Ty::string(), Ty::list(Ty::string())],
         Ty::result(Ty::int(), Ty::string()),
     )));
+    // Pool.query_as: forall a. fn(PoolHandle, String, List<String>, fn(Map<String, String>) -> Result<a, String>) -> Result<List<Result<a, String>>, String>
+    {
+        let a = TyVar(99991);
+        let a_ty = Ty::Var(a);
+        let from_row_fn = Ty::fun(vec![Ty::map(Ty::string(), Ty::string())], Ty::result(a_ty.clone(), Ty::string()));
+        let ret = Ty::result(Ty::list(Ty::result(a_ty, Ty::string())), Ty::string());
+        pool_mod.insert("query_as".to_string(), Scheme {
+            vars: vec![a],
+            ty: Ty::fun(vec![pool_handle_t.clone(), Ty::string(), Ty::list(Ty::string()), from_row_fn], ret),
+        });
+    }
     modules.insert("Pool".to_string(), pool_mod);
 
     modules
@@ -1942,7 +1964,7 @@ fn register_struct_def(
     let derive_all = !has_deriving; // no clause = derive all defaults
 
     // Validate derive trait names.
-    let valid_derives = ["Eq", "Ord", "Display", "Debug", "Hash", "Json"];
+    let valid_derives = ["Eq", "Ord", "Display", "Debug", "Hash", "Json", "Row"];
     for trait_name in &derive_list {
         if !valid_derives.contains(&trait_name.as_str()) {
             ctx.errors.push(TypeError::UnsupportedDerive {
@@ -2119,9 +2141,45 @@ fn register_struct_def(
             );
             let _ = trait_registry.register_impl(TraitImplDef {
                 trait_name: "FromJson".to_string(),
-                impl_type: impl_ty,
+                impl_type: impl_ty.clone(),
                 impl_type_name: name.clone(),
                 methods: from_json_methods,
+            });
+        }
+    }
+
+    // Row impl (FromRow) -- only via explicit deriving(Row), structs only
+    if derive_list.iter().any(|t| t == "Row") {
+        let mut row_valid = true;
+        for (field_name, field_ty) in &fields {
+            if !is_row_mappable(field_ty) {
+                ctx.errors.push(TypeError::NonMappableField {
+                    struct_name: name.clone(),
+                    field_name: field_name.clone(),
+                    field_type: format!("{}", field_ty),
+                });
+                row_valid = false;
+            }
+        }
+
+        if row_valid {
+            let mut from_row_methods = FxHashMap::default();
+            from_row_methods.insert(
+                "from_row".to_string(),
+                ImplMethodSig {
+                    has_self: false,
+                    param_count: 1, // takes a Map<String, String>
+                    return_type: Some(Ty::result(
+                        Ty::Con(TyCon::new(&name)),
+                        Ty::string(),
+                    )),
+                },
+            );
+            let _ = trait_registry.register_impl(TraitImplDef {
+                trait_name: "FromRow".to_string(),
+                impl_type: impl_ty.clone(),
+                impl_type_name: name.clone(),
+                methods: from_row_methods,
             });
         }
     }
@@ -2173,6 +2231,27 @@ fn is_json_serializable(ty: &Ty, _type_registry: &TypeRegistry, trait_registry: 
             }
         },
         _ => false, // Type variables, functions, etc. are not serializable
+    }
+}
+
+/// Check if a type is row-mappable for deriving(Row) validation.
+/// Row-mappable: Int, Float, Bool, String, Option<T> where T is row-mappable primitive.
+/// NOT mappable: nested structs, sum types (except Option), List, Map, Ptr.
+fn is_row_mappable(ty: &Ty) -> bool {
+    match ty {
+        Ty::Con(con) => matches!(con.name.as_str(), "Int" | "Float" | "Bool" | "String"),
+        Ty::App(base, args) => {
+            if let Ty::Con(con) = base.as_ref() {
+                if con.name == "Option" {
+                    args.first().map_or(false, |t| is_row_mappable(t))
+                } else {
+                    false
+                }
+            } else {
+                false
+            }
+        }
+        _ => false,
     }
 }
 
@@ -2336,7 +2415,7 @@ fn register_sum_type_def(
     let derive_all = !has_deriving; // no clause = derive all defaults
 
     // Validate derive trait names.
-    let valid_derives = ["Eq", "Ord", "Display", "Debug", "Hash", "Json"];
+    let valid_derives = ["Eq", "Ord", "Display", "Debug", "Hash", "Json", "Row"];
     for trait_name in &derive_list {
         if !valid_derives.contains(&trait_name.as_str()) {
             ctx.errors.push(TypeError::UnsupportedDerive {
@@ -4930,6 +5009,20 @@ fn infer_field_access(
                         // from_json :: String -> Result<SumTypeName, String>
                         let result_ty = Ty::result(sum_ty, Ty::string());
                         return Ok(Ty::fun(vec![Ty::string()], result_ty));
+                    }
+                }
+            }
+
+            // Check if base is a struct type name with FromRow trait method.
+            // e.g. User.from_row -- User is a struct with deriving(Row).
+            if field_name == "from_row" {
+                if let Some(_struct_info) = type_registry.lookup_struct(&base_name) {
+                    let struct_ty = Ty::Con(TyCon::new(&base_name));
+                    if trait_registry.has_impl("FromRow", &struct_ty) {
+                        // from_row :: Map<String, String> -> Result<StructName, String>
+                        let map_ty = Ty::map(Ty::string(), Ty::string());
+                        let result_ty = Ty::result(struct_ty, Ty::string());
+                        return Ok(Ty::fun(vec![map_ty], result_ty));
                     }
                 }
             }

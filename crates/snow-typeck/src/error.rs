@@ -299,6 +299,12 @@ pub enum TypeError {
         field_name: String,
         field_type: String,
     },
+    /// A field type in a `deriving(Row)` struct is not row-mappable.
+    NonMappableField {
+        struct_name: String,
+        field_name: String,
+        field_type: String,
+    },
 }
 
 impl fmt::Display for TypeError {
@@ -559,7 +565,7 @@ impl fmt::Display for TypeError {
             } => {
                 write!(
                     f,
-                    "cannot derive `{}` for `{}` -- only Eq, Ord, Display, Debug, Hash, and Json are derivable",
+                    "cannot derive `{}` for `{}` -- only Eq, Ord, Display, Debug, Hash, Json, and Row are derivable",
                     trait_name, type_name
                 )
             }
@@ -611,6 +617,17 @@ impl fmt::Display for TypeError {
                 write!(
                     f,
                     "field `{}` of type `{}` is not JSON-serializable",
+                    field_name, field_type
+                )
+            }
+            TypeError::NonMappableField {
+                field_name,
+                field_type,
+                ..
+            } => {
+                write!(
+                    f,
+                    "field `{}` has type `{}` which cannot be mapped from a database row (only Int, Float, Bool, String, and Option<T> are supported)",
                     field_name, field_type
                 )
             }

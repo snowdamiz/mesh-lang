@@ -211,6 +211,7 @@ fn type_error_span(error: &TypeError) -> Option<TextRange> {
         TypeError::TryIncompatibleReturn { span, .. } => Some(*span),
         TypeError::TryOnNonResultOption { span, .. } => Some(*span),
         TypeError::NonSerializableField { .. } => None,
+        TypeError::NonMappableField { .. } => None,
     }
 }
 
