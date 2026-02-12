@@ -171,11 +171,11 @@ Plans:
   2. User can call `Pg.query_as(conn, sql, params, from_row_fn)` and receive a `List<Result<T, String>>` of hydrated structs directly from a query
   3. NULL database columns map to `None` for `Option<T>` fields and return a descriptive error for non-Option fields, so the user gets clear feedback on schema mismatches
   4. Compiler emits an error when `deriving(Row)` is used on a struct with a field type that cannot be parsed from a string (e.g., nested structs, custom types)
-**Plans**: TBD
+**Plans**: 2 plans
 
 Plans:
-- [ ] 58-01: TBD
-- [ ] 58-02: TBD
+- [ ] 58-01-PLAN.md -- Runtime row parsing functions + query_as + three-point LLVM registration
+- [ ] 58-02-PLAN.md -- Typeck validation, MIR generation for from_row, Pg/Pool.query_as type signatures, E2E tests
 
 ## Progress
 
