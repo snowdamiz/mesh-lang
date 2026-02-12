@@ -5,21 +5,21 @@
 See: .planning/PROJECT.md (updated 2026-02-12)
 
 **Core value:** Expressive, readable concurrency -- writing concurrent programs should feel as natural as sequential code, with supervision and fault tolerance built in.
-**Current focus:** v4.0 WebSocket Support -- Phase 60 Actor Integration COMPLETE
+**Current focus:** v4.0 WebSocket Support -- Phase 61 Production Hardening IN PROGRESS
 
 ## Current Position
 
-Phase: 60 of 62 (Actor Integration) -- COMPLETE
-Plan: 2 of 2 in current phase -- COMPLETE
-Status: Phase 60 verified and complete, ready for Phase 61
-Last activity: 2026-02-12 -- Phase 60 verified (12/12 must-haves, 5 integration tests)
+Phase: 61 of 62 (Production Hardening) -- IN PROGRESS
+Plan: 1 of 2 in current phase -- COMPLETE
+Status: Plan 61-01 complete (TLS, heartbeat, fragmentation), ready for Plan 61-02
+Last activity: 2026-02-12 -- Plan 61-01 executed (2 tasks, 4 files, 323 tests pass)
 
-Progress: [█████░░░░░] 50%
+Progress: [██████░░░░] 55%
 
 ## Performance Metrics
 
 **All-time Totals:**
-- Plans completed: 166
+- Plans completed: 167
 - Phases completed: 60
 - Milestones shipped: 12 (v1.0-v3.0)
 - Lines of Rust: ~84,000
@@ -40,12 +40,17 @@ Progress: [█████░░░░░] 50%
 - [60-01] Both reader thread and actor share Arc<Mutex<TcpStream>> for writes to prevent frame interleaving
 - [60-01] WsConnection stored on Rust heap via Box::into_raw, not GC heap
 - [60-02] snow_ws_send known_functions uses Ptr (not MirType::String) for SnowString pointer, matching extern C signature convention
+- [61-01] Unified Arc<Mutex<WsStream>> for both plain and TLS (replaces try_clone)
+- [61-01] 100ms reader thread timeout balances mutex contention and responsiveness
+- [61-01] build_server_config made pub(crate) for cross-module reuse (HTTP + WS TLS)
+- [61-01] Pong handled before process_frame to validate heartbeat payload
+- [61-01] MAX_PAYLOAD_SIZE reduced from 64 MiB to 16 MiB (supersedes [59-01] cap)
+- [61-01] macOS EAGAIN detection added to timeout checks for short read timeouts
 
 ### Research Notes
 
 - Reader thread bridge (novel architecture) is highest risk -- Phase 60 DONE
-- Critical pitfalls: blocking reader thread, mailbox type tag collision, masking direction -- addressed in Phases 59-60
-- TLS reuses existing rustls infrastructure (low risk) -- Phase 61
+- TLS reuses existing rustls infrastructure (low risk) -- Phase 61 DONE (plan 01)
 - Rooms follow existing process registry pattern (medium risk) -- Phase 62
 - sha1 0.10 is the only new dependency needed
 
@@ -60,6 +65,6 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-12
-Stopped at: Phase 60 complete and verified with integration tests
+Stopped at: Completed 61-01-PLAN.md (TLS, heartbeat, fragmentation)
 Resume file: None
-Next action: Plan Phase 61 (Production Hardening)
+Next action: Execute Plan 61-02 (codegen wiring for Ws.serve_tls)
