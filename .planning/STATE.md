@@ -10,11 +10,11 @@ See: .planning/PROJECT.md (updated 2026-02-12)
 ## Current Position
 
 Phase: 58 of 58 (Struct-to-Row Mapping)
-Plan: 1 of 2 in current phase
+Plan: 2 of 2 in current phase
 Status: Executing
-Last activity: 2026-02-12 -- Plan 01 complete (runtime row parsing + LLVM registration)
+Last activity: 2026-02-12 -- Plan 02 complete (FromRow typeck + MIR generation)
 
-Progress: [███████░░░] 75%
+Progress: [████████░░] 85%
 
 ## Performance Metrics
 
@@ -50,6 +50,9 @@ Progress: [███████░░░] 75%
 - Phase 58-01: snow_pg_query_as returns List<SnowResult> (per-row results, not unwrapped values)
 - Phase 58-01: PostgreSQL Infinity/-Infinity pre-normalized to inf/-inf before f64::parse
 - Phase 58-01: Bool parsing accepts 8 case-insensitive variants for PostgreSQL compatibility
+- Phase 58-02: Polymorphic Scheme with quantified TyVar for query_as type signatures
+- Phase 58-02: Option fields receive None for missing columns (lenient) rather than error
+- Phase 58-02: Empty string in row column treated as NULL for Option fields
 
 ### Research Notes
 
@@ -71,6 +74,6 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-12
-Stopped at: Completed 58-01-PLAN.md (runtime row parsing + LLVM registration)
+Stopped at: Completed 58-02-PLAN.md (FromRow typeck + MIR generation)
 Resume file: None
-Next action: Execute 58-02-PLAN.md (struct-to-row MIR codegen)
+Next action: Phase 58 complete (2 plans executed)
