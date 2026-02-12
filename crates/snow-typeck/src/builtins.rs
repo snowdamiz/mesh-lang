@@ -547,6 +547,11 @@ pub fn register_builtins(
         "http_serve".into(),
         Scheme::mono(Ty::fun(vec![router_t.clone(), Ty::int()], Ty::Tuple(vec![]))),
     );
+    // HTTP.serve_tls(Router, Int, String, String) -> () (Phase 56)
+    env.insert(
+        "http_serve_tls".into(),
+        Scheme::mono(Ty::fun(vec![router_t.clone(), Ty::int(), Ty::string(), Ty::string()], Ty::Tuple(vec![]))),
+    );
     // HTTP.response(Int, String) -> Response
     env.insert(
         "http_response".into(),

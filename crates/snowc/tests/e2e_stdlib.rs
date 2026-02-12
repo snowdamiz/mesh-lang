@@ -614,6 +614,30 @@ end
     );
 }
 
+#[test]
+fn e2e_http_serve_tls_compile_only() {
+    // Verify HTTP.serve_tls(router, port, cert, key) compiles.
+    // Phase 56 Plan 02: HTTPS TLS layer.
+    let source = r#"
+fn handler(request) do
+  HTTP.response(200, "ok")
+end
+
+fn main() do
+  let r = HTTP.router()
+  let r = HTTP.route(r, "/", handler)
+  HTTP.serve_tls(r, 8443, "cert.pem", "key.pem")
+end
+"#;
+    let result = compile_only(source);
+    assert!(
+        result.status.success(),
+        "HTTP.serve_tls should compile:\nstdout: {}\nstderr: {}",
+        String::from_utf8_lossy(&result.stdout),
+        String::from_utf8_lossy(&result.stderr)
+    );
+}
+
 // ── List Pipe Chain E2E Tests (Phase 8 Plan 06 - Gap Closure) ─────────
 
 #[test]

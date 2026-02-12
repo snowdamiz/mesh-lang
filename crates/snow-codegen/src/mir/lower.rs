@@ -656,6 +656,7 @@ impl<'a> Lowerer<'a> {
         self.known_functions.insert("snow_http_router".to_string(), MirType::FnPtr(vec![], Box::new(MirType::Ptr)));
         self.known_functions.insert("snow_http_route".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::String, MirType::Ptr], Box::new(MirType::Ptr)));
         self.known_functions.insert("snow_http_serve".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Int], Box::new(MirType::Unit)));
+        self.known_functions.insert("snow_http_serve_tls".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Int, MirType::String, MirType::String], Box::new(MirType::Unit)));
         self.known_functions.insert("snow_http_response_new".to_string(), MirType::FnPtr(vec![MirType::Int, MirType::String], Box::new(MirType::Ptr)));
         self.known_functions.insert("snow_http_get".to_string(), MirType::FnPtr(vec![MirType::String], Box::new(MirType::Ptr)));
         self.known_functions.insert("snow_http_post".to_string(), MirType::FnPtr(vec![MirType::String, MirType::String], Box::new(MirType::Ptr)));
@@ -8991,6 +8992,7 @@ fn map_builtin_name(name: &str) -> String {
         "http_router" => "snow_http_router".to_string(),
         "http_route" => "snow_http_route".to_string(),
         "http_serve" => "snow_http_serve".to_string(),
+        "http_serve_tls" => "snow_http_serve_tls".to_string(),
         "http_response" => "snow_http_response_new".to_string(),
         "http_get" => "snow_http_get".to_string(),
         "http_post" => "snow_http_post".to_string(),

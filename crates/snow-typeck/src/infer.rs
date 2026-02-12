@@ -468,6 +468,8 @@ fn stdlib_modules() -> HashMap<String, HashMap<String, Scheme>> {
         router_t.clone(),
     )));
     http_mod.insert("serve".to_string(), Scheme::mono(Ty::fun(vec![router_t.clone(), Ty::int()], Ty::Tuple(vec![]))));
+    // Phase 56: HTTPS TLS server
+    http_mod.insert("serve_tls".to_string(), Scheme::mono(Ty::fun(vec![router_t.clone(), Ty::int(), Ty::string(), Ty::string()], Ty::Tuple(vec![]))));
     http_mod.insert("response".to_string(), Scheme::mono(Ty::fun(vec![Ty::int(), Ty::string()], response_t.clone())));
     http_mod.insert("get".to_string(), Scheme::mono(Ty::fun(vec![Ty::string()], Ty::result(Ty::string(), Ty::string()))));
     http_mod.insert("post".to_string(), Scheme::mono(Ty::fun(

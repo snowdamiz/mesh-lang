@@ -423,6 +423,9 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
     // snow_http_serve(router: ptr, port: i64) -> void
     module.add_function("snow_http_serve", void_type.fn_type(&[ptr_type.into(), i64_type.into()], false), Some(inkwell::module::Linkage::External));
 
+    // snow_http_serve_tls(router: ptr, port: i64, cert_path: ptr, key_path: ptr) -> void
+    module.add_function("snow_http_serve_tls", void_type.fn_type(&[ptr_type.into(), i64_type.into(), ptr_type.into(), ptr_type.into()], false), Some(inkwell::module::Linkage::External));
+
     // snow_http_response_new(status: i64, body: ptr) -> ptr
     module.add_function("snow_http_response_new", ptr_type.fn_type(&[i64_type.into(), ptr_type.into()], false), Some(inkwell::module::Linkage::External));
 
@@ -768,6 +771,7 @@ mod tests {
         assert!(module.get_function("snow_http_router").is_some());
         assert!(module.get_function("snow_http_route").is_some());
         assert!(module.get_function("snow_http_serve").is_some());
+        assert!(module.get_function("snow_http_serve_tls").is_some());
         assert!(module.get_function("snow_http_response_new").is_some());
         assert!(module.get_function("snow_http_get").is_some());
         assert!(module.get_function("snow_http_post").is_some());
