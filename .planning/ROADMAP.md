@@ -135,7 +135,10 @@ See milestones/v3.0-ROADMAP.md for full phase details.
   3. The server can write unmasked text and binary frames back to the client
   4. A close handshake completes cleanly in both directions (server-initiated and client-initiated) with proper status codes
   5. Malformed upgrade requests receive HTTP 400, and unknown opcodes trigger close with code 1002
-**Plans**: TBD
+**Plans:** 2 plans
+Plans:
+- [ ] 59-01-PLAN.md -- Frame codec (WsOpcode, WsFrame, read/write/mask)
+- [ ] 59-02-PLAN.md -- Handshake, close handshake, text UTF-8 validation
 
 ### Phase 60: Actor Integration
 **Goal**: Each WebSocket connection runs as an isolated actor with WS frames arriving in the standard mailbox, callback-based user API, and a dedicated server entry point
@@ -189,7 +192,7 @@ Phases execute in numeric order: 59 -> 60 -> 61 -> 62
 | 43-48 | v1.9 | 13/13 | Complete | 2026-02-10 |
 | 49-54 | v2.0 | 13/13 | Complete | 2026-02-12 |
 | 55-58 | v3.0 | 8/8 | Complete | 2026-02-12 |
-| 59. Protocol Core | v4.0 | 0/TBD | Not started | - |
+| 59. Protocol Core | v4.0 | 0/2 | Planning complete | - |
 | 60. Actor Integration | v4.0 | 0/TBD | Not started | - |
 | 61. Production Hardening | v4.0 | 0/TBD | Not started | - |
 | 62. Rooms & Channels | v4.0 | 0/TBD | Not started | - |
