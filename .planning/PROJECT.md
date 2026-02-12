@@ -98,7 +98,15 @@ Expressive, readable concurrency -- writing concurrent programs should feel as n
 
 ### Active
 
-(No active requirements -- start next milestone with `/gsd:new-milestone`)
+## Current Milestone: v3.0 Production Backend
+
+**Goal:** Make Snow viable for production backend deployments with connection pooling, TLS encryption, database transactions, and automatic struct-to-row mapping.
+
+**Target features:**
+- Connection pooling (actor-based pool manager for SQLite and PostgreSQL)
+- TLS/SSL (encrypted PostgreSQL connections + HTTPS server support)
+- Database transactions (block-based `Db.transaction(conn, fn)` with auto-commit/rollback)
+- Struct-to-row mapping (automatic query result to struct hydration via deriving)
 
 ### Out of Scope
 
@@ -244,4 +252,4 @@ Tech debt (v2.0-introduced):
 | Empty n= in SCRAM client-first-bare | PG knows username from StartupMessage; spec allows empty | ✓ Good -- v2.0, correct auth |
 
 ---
-*Last updated: 2026-02-12 after v2.0 milestone*
+*Last updated: 2026-02-12 after v3.0 milestone start*
