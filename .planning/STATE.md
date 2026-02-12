@@ -5,16 +5,14 @@
 See: .planning/PROJECT.md (updated 2026-02-12)
 
 **Core value:** Expressive, readable concurrency -- writing concurrent programs should feel as natural as sequential code, with supervision and fault tolerance built in.
-**Current focus:** Planning next milestone
+**Current focus:** v4.0 WebSocket Support
 
 ## Current Position
 
-Phase: 58 of 58 (all phases complete)
-Plan: N/A
-Status: v3.0 milestone archived
-Last activity: 2026-02-12 -- v3.0 Production Backend milestone completed and archived
-
-Progress: [██████████] 100% (all milestones through v3.0)
+Phase: Not started (defining requirements)
+Plan: --
+Status: Defining requirements
+Last activity: 2026-02-12 -- Milestone v4.0 started
 
 ## Performance Metrics
 
@@ -46,6 +44,6 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-12
-Stopped at: v3.0 milestone archived
+Stopped at: Defining v4.0 requirements
 Resume file: None
-Next action: `/gsd:new-milestone`
+Next action: Complete requirements and roadmap definition

@@ -2,7 +2,21 @@
 
 ## What This Is
 
-Snow is a programming language that combines Elixir/Ruby-style expressive syntax with static Hindley-Milner type inference and BEAM-style concurrency (actors, supervision trees, fault tolerance), compiled via LLVM to native single-binary executables. The compiler is written in Rust. v1.0-v1.9 built a complete language: compiler pipeline, actor runtime, trait system, module system, loops, stdlib, and developer tooling. v2.0 added database drivers and JSON serde. v3.0 made Snow production-ready: TLS encryption for PostgreSQL and HTTPS, connection pooling with health checks, panic-safe database transactions, and automatic struct-to-row mapping via `deriving(Row)`. 83K LOC Rust across 12 milestones. Zero known compiler correctness issues.
+Snow is a programming language that combines Elixir/Ruby-style expressive syntax with static Hindley-Milner type inference and BEAM-style concurrency (actors, supervision trees, fault tolerance), compiled via LLVM to native single-binary executables. The compiler is written in Rust. v1.0-v1.9 built a complete language: compiler pipeline, actor runtime, trait system, module system, loops, stdlib, and developer tooling. v2.0 added database drivers and JSON serde. v3.0 made Snow production-ready: TLS encryption for PostgreSQL and HTTPS, connection pooling with health checks, panic-safe database transactions, and automatic struct-to-row mapping via `deriving(Row)`. v4.0 adds WebSocket support for real-time bidirectional communication. 83K LOC Rust across 12 milestones. Zero known compiler correctness issues.
+
+## Current Milestone: v4.0 WebSocket Support
+
+**Goal:** Add WebSocket support with actor-per-connection model, unified actor messaging, rooms/channels, ping/pong heartbeat, binary+text frames, and TLS (wss://).
+
+**Target features:**
+- Separate WebSocket server (`Ws.serve` / `Ws.serve_tls`)
+- Actor-per-connection with WS messages arriving in actor mailbox via `receive`
+- Callback API (`on_connect`, `on_message`, `on_close`) for convenience
+- RFC 6455 WebSocket protocol (HTTP upgrade handshake, frame parsing, masking)
+- Text and binary frame support
+- TLS (wss://) using existing rustls infrastructure
+- Rooms/channels with server-managed and client-initiated join/leave
+- Ping/pong heartbeat with configurable timeout and dead connection cleanup
 
 ## Core Value
 
@@ -120,7 +134,14 @@ Expressive, readable concurrency -- writing concurrent programs should feel as n
 
 ### Active
 
-(No active requirements -- next milestone not yet planned)
+- [ ] WebSocket server with actor-per-connection model
+- [ ] RFC 6455 protocol implementation (upgrade handshake, frame parsing, masking)
+- [ ] Unified messaging: WS messages arrive in actor mailbox via receive
+- [ ] Callback API (on_connect, on_message, on_close)
+- [ ] Text and binary frame support
+- [ ] TLS (wss://) via existing rustls stack
+- [ ] Rooms/channels with join/broadcast
+- [ ] Ping/pong heartbeat with dead connection cleanup
 
 ### Out of Scope
 
@@ -153,6 +174,7 @@ Tech stack: Rust compiler, LLVM 21 (Inkwell 0.8), corosensei coroutines, rowan C
 Crates: snow-lexer, snow-parser, snow-typeck, snow-mir, snow-codegen, snow-rt, snow-fmt, snow-repl, snow-pkg, snow-lsp, snowc.
 Deps: libsqlite3-sys (bundled), sha2/hmac/md-5/base64ct (PG auth), rustls 0.23/webpki-roots/ring (TLS).
 Removed: tiny_http (replaced with hand-rolled HTTP/1.1 parser in v3.0).
+Existing infrastructure relevant to v4.0: hand-rolled HTTP/1.1 parser (server.rs), HttpStream enum (Plain/Tls), actor-per-connection pattern, rustls 0.23 TLS stack, SHA-1 available via ring.
 
 290+ tests passing (including 18 new v3.0 tests). Zero known critical bugs. Zero known compiler correctness issues.
 
@@ -280,4 +302,4 @@ Tech debt (minor, pre-existing):
 | Option fields receive None for missing columns | Lenient NULL handling matches common SQL patterns | ✓ Good -- v3.0, practical ergonomics |
 
 ---
-*Last updated: 2026-02-12 after v3.0 milestone completion*
+*Last updated: 2026-02-12 after v4.0 milestone start*
