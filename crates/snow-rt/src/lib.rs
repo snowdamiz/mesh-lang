@@ -29,6 +29,7 @@ pub mod gc;
 pub mod hash;
 pub mod http;
 pub mod io;
+pub mod ws;
 pub mod json;
 pub mod option;
 pub mod panic;
