@@ -71,6 +71,10 @@ impl Write for PgStream {
 /// Wrapper around a (possibly TLS-wrapped) stream to a PostgreSQL server.
 struct PgConn {
     stream: PgStream,
+    /// Transaction status byte from the most recent ReadyForQuery message.
+    /// b'I' = idle (not in transaction), b'T' = in transaction block,
+    /// b'E' = in a failed transaction block. Updated on every ReadyForQuery.
+    txn_status: u8,
 }
 
 // ── SSL Mode ───────────────────────────────────────────────────────────
@@ -829,13 +833,17 @@ pub extern "C" fn snow_pg_connect(url: *const SnowString) -> *mut u8 {
         }
 
         // Read messages until ReadyForQuery ('Z')
+        let mut last_txn_status: u8 = b'I';
         loop {
             let (tag, body) = match read_message(&mut stream) {
                 Ok(m) => m,
                 Err(e) => return err_result(&format!("post-auth read: {}", e)),
             };
             match tag {
-                b'Z' => break,                // ReadyForQuery
+                b'Z' => {
+                    last_txn_status = if !body.is_empty() { body[0] } else { b'I' };
+                    break;
+                }
                 b'S' => {}                    // ParameterStatus -- skip
                 b'K' => {}                    // BackendKeyData -- skip
                 b'N' => {}                    // NoticeResponse -- skip
@@ -847,7 +855,7 @@ pub extern "C" fn snow_pg_connect(url: *const SnowString) -> *mut u8 {
         }
 
         // Create the PgConn handle
-        let conn = Box::new(PgConn { stream });
+        let conn = Box::new(PgConn { stream, txn_status: last_txn_status });
         let handle = Box::into_raw(conn) as u64;
         alloc_result(0, handle as *mut u8) as *mut u8
     }
@@ -926,7 +934,10 @@ pub extern "C" fn snow_pg_execute(
                     // ErrorResponse
                     error_msg = Some(parse_error_response(&body));
                 }
-                b'Z' => break, // ReadyForQuery
+                b'Z' => {
+                    conn.txn_status = if !body.is_empty() { body[0] } else { b'I' };
+                    break;
+                }
                 b'N' => {}     // NoticeResponse -- skip
                 _ => {}
             }
@@ -1057,7 +1068,10 @@ pub extern "C" fn snow_pg_query(
                     // ErrorResponse
                     error_msg = Some(parse_error_response(&body));
                 }
-                b'Z' => break, // ReadyForQuery
+                b'Z' => {
+                    conn.txn_status = if !body.is_empty() { body[0] } else { b'I' };
+                    break;
+                }
                 b'N' => {}     // NoticeResponse -- skip
                 _ => {}
             }
@@ -1067,6 +1081,158 @@ pub extern "C" fn snow_pg_query(
             err_result(&msg)
         } else {
             alloc_result(0, result_list) as *mut u8
+        }
+    }
+}
+
+// ── Transaction Management ─────────────────────────────────────────────
+
+/// Send a simple SQL command (BEGIN/COMMIT/ROLLBACK) using the Simple Query protocol.
+/// Returns Ok(()) or Err(error_message). Updates conn.txn_status from ReadyForQuery.
+fn pg_simple_command(conn: &mut PgConn, sql: &str) -> Result<(), String> {
+    // Simple Query protocol: Byte1('Q') Int32(len) String(query\0)
+    let mut buf = Vec::new();
+    buf.push(b'Q');
+    let body = format!("{}\0", sql);
+    let len = (body.len() + 4) as i32;
+    buf.extend_from_slice(&len.to_be_bytes());
+    buf.extend_from_slice(body.as_bytes());
+    conn.stream.write_all(&buf).map_err(|e| format!("send {}: {}", sql, e))?;
+
+    let mut error_msg: Option<String> = None;
+    loop {
+        let (tag, body) = read_message(&mut conn.stream).map_err(|e| format!("read {}: {}", sql, e))?;
+        match tag {
+            b'C' => {} // CommandComplete
+            b'E' => { error_msg = Some(parse_error_response(&body)); }
+            b'Z' => {
+                conn.txn_status = if !body.is_empty() { body[0] } else { b'I' };
+                break;
+            }
+            _ => {}
+        }
+    }
+    match error_msg {
+        Some(msg) => Err(msg),
+        None => Ok(()),
+    }
+}
+
+/// Begin a PostgreSQL transaction.
+///
+/// # Signature
+///
+/// `snow_pg_begin(conn_handle: u64) -> *mut u8 (SnowResult<Unit, String>)`
+///
+/// Sends `BEGIN` and returns Ok(()) or Err(error_message).
+#[no_mangle]
+pub extern "C" fn snow_pg_begin(conn_handle: u64) -> *mut u8 {
+    unsafe {
+        let conn = &mut *(conn_handle as *mut PgConn);
+        match pg_simple_command(conn, "BEGIN") {
+            Ok(()) => alloc_result(0, std::ptr::null_mut()) as *mut u8,
+            Err(e) => err_result(&e),
+        }
+    }
+}
+
+/// Commit a PostgreSQL transaction.
+///
+/// # Signature
+///
+/// `snow_pg_commit(conn_handle: u64) -> *mut u8 (SnowResult<Unit, String>)`
+///
+/// Sends `COMMIT` and returns Ok(()) or Err(error_message).
+#[no_mangle]
+pub extern "C" fn snow_pg_commit(conn_handle: u64) -> *mut u8 {
+    unsafe {
+        let conn = &mut *(conn_handle as *mut PgConn);
+        match pg_simple_command(conn, "COMMIT") {
+            Ok(()) => alloc_result(0, std::ptr::null_mut()) as *mut u8,
+            Err(e) => err_result(&e),
+        }
+    }
+}
+
+/// Rollback a PostgreSQL transaction.
+///
+/// # Signature
+///
+/// `snow_pg_rollback(conn_handle: u64) -> *mut u8 (SnowResult<Unit, String>)`
+///
+/// Sends `ROLLBACK` and returns Ok(()) or Err(error_message).
+#[no_mangle]
+pub extern "C" fn snow_pg_rollback(conn_handle: u64) -> *mut u8 {
+    unsafe {
+        let conn = &mut *(conn_handle as *mut PgConn);
+        match pg_simple_command(conn, "ROLLBACK") {
+            Ok(()) => alloc_result(0, std::ptr::null_mut()) as *mut u8,
+            Err(e) => err_result(&e),
+        }
+    }
+}
+
+/// Execute a Snow closure inside a PostgreSQL transaction with automatic
+/// commit on success and rollback on error or panic.
+///
+/// # Signature
+///
+/// `snow_pg_transaction(conn_handle: u64, fn_ptr: *const u8, env_ptr: *const u8)
+///     -> *mut u8 (SnowResult<T, String>)`
+///
+/// Protocol:
+/// 1. Send BEGIN. On failure, return Err immediately.
+/// 2. Call the Snow closure via catch_unwind for panic safety.
+/// 3. On Ok result from closure: COMMIT. If COMMIT fails, ROLLBACK and return Err.
+/// 4. On Err result from closure: ROLLBACK and propagate the Err.
+/// 5. On panic: ROLLBACK and return Err("transaction aborted: panic in callback").
+#[no_mangle]
+pub extern "C" fn snow_pg_transaction(
+    conn_handle: u64,
+    fn_ptr: *const u8,
+    env_ptr: *const u8,
+) -> *mut u8 {
+    unsafe {
+        let conn = &mut *(conn_handle as *mut PgConn);
+
+        // 1. BEGIN
+        if let Err(e) = pg_simple_command(conn, "BEGIN") {
+            return err_result(&format!("BEGIN: {}", e));
+        }
+
+        // 2. Call the closure with catch_unwind for panic safety
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            if env_ptr.is_null() {
+                let f: extern "C" fn(u64) -> *mut u8 = std::mem::transmute(fn_ptr);
+                f(conn_handle)
+            } else {
+                let f: extern "C" fn(*const u8, u64) -> *mut u8 = std::mem::transmute(fn_ptr);
+                f(env_ptr, conn_handle)
+            }
+        }));
+
+        match result {
+            Ok(result_ptr) => {
+                // Check if closure returned Ok or Err via SnowResult tag
+                let r = &*(result_ptr as *const crate::io::SnowResult);
+                if r.tag == 0 {
+                    // Success -> COMMIT
+                    if let Err(e) = pg_simple_command(conn, "COMMIT") {
+                        let _ = pg_simple_command(conn, "ROLLBACK");
+                        return err_result(&format!("COMMIT: {}", e));
+                    }
+                    result_ptr
+                } else {
+                    // Error -> ROLLBACK
+                    let _ = pg_simple_command(conn, "ROLLBACK");
+                    result_ptr // propagate the Err result
+                }
+            }
+            Err(_) => {
+                // Panic -> ROLLBACK
+                let _ = pg_simple_command(conn, "ROLLBACK");
+                err_result("transaction aborted: panic in callback")
+            }
         }
     }
 }
