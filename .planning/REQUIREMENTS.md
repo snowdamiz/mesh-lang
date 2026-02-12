@@ -1,0 +1,126 @@
+# Requirements: Snow
+
+**Defined:** 2026-02-12
+**Core Value:** Expressive, readable concurrency -- writing concurrent programs should feel as natural as sequential code, with supervision and fault tolerance built in.
+
+## v3.0 Requirements
+
+Requirements for production backend milestone. Each maps to roadmap phases.
+
+### TLS/SSL
+
+- [ ] **TLS-01**: PostgreSQL connections support TLS via SSLRequest protocol upgrade with sslmode parameter (disable/prefer/require)
+- [ ] **TLS-02**: PgConn uses PgStream enum (Plain/Tls) with Read+Write abstraction so all wire protocol code works on both
+- [ ] **TLS-03**: TLS uses rustls 0.23 with ring crypto provider, webpki-roots for CA certificates
+- [ ] **TLS-04**: HTTPS server via Http.serve_tls(router, port, cert_path, key_path) using rustls ServerConnection
+- [ ] **TLS-05**: tiny_http replaced with hand-rolled HTTP/1.1 parser for unified TLS stack
+- [ ] **TLS-06**: Ring crypto provider installed at runtime startup for both PG TLS and HTTP client (ureq) compatibility
+
+### Connection Pooling
+
+- [ ] **POOL-01**: User can create a PostgreSQL connection pool with configurable min/max connections and checkout timeout
+- [ ] **POOL-02**: User can checkout and checkin connections manually for transaction-scoped operations
+- [ ] **POOL-03**: User can execute single queries via Pool.query/Pool.execute with automatic checkout-use-checkin
+- [ ] **POOL-04**: Pool validates idle connections via health check (SELECT 1) and replaces dead connections
+- [ ] **POOL-05**: Pool returns connections to idle state on checkin (ROLLBACK if in transaction)
+- [ ] **POOL-06**: Pool.close drains all connections and prevents new checkouts
+- [ ] **POOL-07**: Pool handles are opaque u64 values (GC-safe, same pattern as DB connections)
+
+### Transactions
+
+- [ ] **TXN-01**: User can call Pg.begin(conn), Pg.commit(conn), Pg.rollback(conn) for manual transaction control
+- [ ] **TXN-02**: User can call Sqlite.begin(conn), Sqlite.commit(conn), Sqlite.rollback(conn) for SQLite transactions
+- [ ] **TXN-03**: PgConn tracks transaction status byte from ReadyForQuery (I/T/E)
+- [ ] **TXN-04**: User can use Pg.transaction(conn, fn(conn) do ... end) with automatic commit on success, rollback on error
+- [ ] **TXN-05**: Pg.transaction rollbacks on panic (catch_unwind) to prevent transaction leak
+
+### Struct-to-Row Mapping
+
+- [ ] **ROW-01**: User can add deriving(Row) to a struct to auto-generate from_row function
+- [ ] **ROW-02**: from_row maps Map<String, String> column values to typed struct fields (String, Int, Float, Bool, Option)
+- [ ] **ROW-03**: from_row returns Result<T, String> with descriptive error on missing column or parse failure
+- [ ] **ROW-04**: NULL columns (empty string) map to None for Option fields, error for non-Option fields
+- [ ] **ROW-05**: User can call Pg.query_as(conn, sql, params, from_row_fn) to query and map rows in one step
+- [ ] **ROW-06**: Compile error when deriving(Row) on struct with non-mappable field type
+
+## Future Requirements
+
+Deferred to future release. Tracked but not in current roadmap.
+
+### Connection Pooling (Extended)
+
+- **POOL-08**: Dynamic pool resizing based on load
+- **POOL-09**: SQLite connection pooling (WAL mode read-only pool)
+- **POOL-10**: Per-route pool affinity for multi-database setups
+
+### Transactions (Extended)
+
+- **TXN-06**: Savepoint-based nested transactions (SAVEPOINT/RELEASE/ROLLBACK TO)
+- **TXN-07**: SQLite block-based Sqlite.transaction(conn, fn) wrapper
+
+### Struct-to-Row Mapping (Extended)
+
+- **ROW-07**: Column renaming via annotations (@column("user_name"))
+- **ROW-08**: Nested struct hydration from JOIN results
+- **ROW-09**: to_params reverse mapping (struct to INSERT parameter list)
+
+### TLS (Extended)
+
+- **TLS-07**: Custom CA certificate paths via environment variable
+- **TLS-08**: sslmode=verify-ca and sslmode=verify-full for certificate hostname verification
+- **TLS-09**: Client certificate authentication for PostgreSQL
+
+## Out of Scope
+
+Explicitly excluded. Documented to prevent scope creep.
+
+| Feature | Reason |
+|---------|--------|
+| ORM / Query builder DSL | Massive scope, Snow's type system not ready for type-safe query builder |
+| Automatic migration framework | Schema versioning is separate tooling concern |
+| Async/non-blocking database I/O | Actor model handles concurrency transparently |
+| Compile-time SQL validation | Requires database connection during compilation |
+| WebSocket / HTTP/2 support | Different protocols, not related to production backend data layer |
+| Distributed transactions / 2PC | Specialized concern, single-database transactions sufficient |
+| PgBouncer-style external pooler | Built-in application-level pool sufficient |
+| Read/write splitting | Single pool per database, users create separate pools |
+
+## Traceability
+
+Which phases cover which requirements. Updated during roadmap creation.
+
+| Requirement | Phase | Status |
+|-------------|-------|--------|
+| TLS-01 | — | Pending |
+| TLS-02 | — | Pending |
+| TLS-03 | — | Pending |
+| TLS-04 | — | Pending |
+| TLS-05 | — | Pending |
+| TLS-06 | — | Pending |
+| POOL-01 | — | Pending |
+| POOL-02 | — | Pending |
+| POOL-03 | — | Pending |
+| POOL-04 | — | Pending |
+| POOL-05 | — | Pending |
+| POOL-06 | — | Pending |
+| POOL-07 | — | Pending |
+| TXN-01 | — | Pending |
+| TXN-02 | — | Pending |
+| TXN-03 | — | Pending |
+| TXN-04 | — | Pending |
+| TXN-05 | — | Pending |
+| ROW-01 | — | Pending |
+| ROW-02 | — | Pending |
+| ROW-03 | — | Pending |
+| ROW-04 | — | Pending |
+| ROW-05 | — | Pending |
+| ROW-06 | — | Pending |
+
+**Coverage:**
+- v3.0 requirements: 24 total
+- Mapped to phases: 0
+- Unmapped: 24 ⚠️
+
+---
+*Requirements defined: 2026-02-12*
+*Last updated: 2026-02-12 after initial definition*
