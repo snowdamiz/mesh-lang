@@ -122,7 +122,7 @@ pub fn write_bad_request<W: Write>(stream: &mut W, reason: &str) -> std::io::Res
 /// the borrow ends and the caller resumes raw stream access for frame I/O.
 /// This is safe because RFC 6455 clients do not send frames before receiving
 /// the 101 response. We verify the buffer is empty as a sanity check.
-pub fn perform_upgrade<S: Read + Write>(stream: &mut S) -> Result<(), String> {
+pub fn perform_upgrade<S: Read + Write>(stream: &mut S) -> Result<(String, Vec<(String, String)>), String> {
     let mut reader = BufReader::new(&mut *stream);
 
     // 1. Read request line: "GET /path HTTP/1.1\r\n"
@@ -137,6 +137,7 @@ pub fn perform_upgrade<S: Read + Write>(stream: &mut S) -> Result<(), String> {
         return Err(format!("malformed request line: {}", request_line_trimmed));
     }
     let method = parts[0];
+    let path = parts[1].to_string();
 
     // 2. Read headers until blank line
     let mut headers: Vec<(String, String)> = Vec::new();
@@ -172,7 +173,7 @@ pub fn perform_upgrade<S: Read + Write>(stream: &mut S) -> Result<(), String> {
             let accept_key = compute_accept_key(&client_key);
             write_upgrade_response(stream, &accept_key)
                 .map_err(|e| format!("write upgrade response: {}", e))?;
-            Ok(())
+            Ok((path, headers))
         }
         Err(reason) => {
             let _ = write_bad_request(stream, reason);
@@ -326,6 +327,10 @@ mod tests {
 
         let result = perform_upgrade(&mut stream);
         assert!(result.is_ok(), "upgrade should succeed, got: {:?}", result);
+
+        let (path, headers) = result.unwrap();
+        assert_eq!(path, "/ws", "path should be /ws");
+        assert!(!headers.is_empty(), "headers should not be empty");
 
         let response = String::from_utf8_lossy(&stream.write_buf);
         assert!(
