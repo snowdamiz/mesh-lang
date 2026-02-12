@@ -516,6 +516,77 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
         ptr_type.fn_type(&[i64_type.into(), ptr_type.into(), ptr_type.into()], false),
         Some(inkwell::module::Linkage::External));
 
+    // ── Phase 57: PostgreSQL Transactions ──────────────────────────────
+
+    // snow_pg_begin(conn: i64) -> ptr (SnowResult)
+    module.add_function("snow_pg_begin",
+        ptr_type.fn_type(&[i64_type.into()], false),
+        Some(inkwell::module::Linkage::External));
+
+    // snow_pg_commit(conn: i64) -> ptr (SnowResult)
+    module.add_function("snow_pg_commit",
+        ptr_type.fn_type(&[i64_type.into()], false),
+        Some(inkwell::module::Linkage::External));
+
+    // snow_pg_rollback(conn: i64) -> ptr (SnowResult)
+    module.add_function("snow_pg_rollback",
+        ptr_type.fn_type(&[i64_type.into()], false),
+        Some(inkwell::module::Linkage::External));
+
+    // snow_pg_transaction(conn: i64, fn_ptr: ptr, env_ptr: ptr) -> ptr (SnowResult)
+    module.add_function("snow_pg_transaction",
+        ptr_type.fn_type(&[i64_type.into(), ptr_type.into(), ptr_type.into()], false),
+        Some(inkwell::module::Linkage::External));
+
+    // ── Phase 57: SQLite Transactions ──────────────────────────────────
+
+    // snow_sqlite_begin(conn: i64) -> ptr (SnowResult)
+    module.add_function("snow_sqlite_begin",
+        ptr_type.fn_type(&[i64_type.into()], false),
+        Some(inkwell::module::Linkage::External));
+
+    // snow_sqlite_commit(conn: i64) -> ptr (SnowResult)
+    module.add_function("snow_sqlite_commit",
+        ptr_type.fn_type(&[i64_type.into()], false),
+        Some(inkwell::module::Linkage::External));
+
+    // snow_sqlite_rollback(conn: i64) -> ptr (SnowResult)
+    module.add_function("snow_sqlite_rollback",
+        ptr_type.fn_type(&[i64_type.into()], false),
+        Some(inkwell::module::Linkage::External));
+
+    // ── Phase 57: Connection Pool ──────────────────────────────────────
+
+    // snow_pool_open(url: ptr, min: i64, max: i64, timeout: i64) -> ptr (SnowResult)
+    module.add_function("snow_pool_open",
+        ptr_type.fn_type(&[ptr_type.into(), i64_type.into(), i64_type.into(), i64_type.into()], false),
+        Some(inkwell::module::Linkage::External));
+
+    // snow_pool_close(pool: i64) -> void
+    module.add_function("snow_pool_close",
+        void_type.fn_type(&[i64_type.into()], false),
+        Some(inkwell::module::Linkage::External));
+
+    // snow_pool_checkout(pool: i64) -> ptr (SnowResult)
+    module.add_function("snow_pool_checkout",
+        ptr_type.fn_type(&[i64_type.into()], false),
+        Some(inkwell::module::Linkage::External));
+
+    // snow_pool_checkin(pool: i64, conn: i64) -> void
+    module.add_function("snow_pool_checkin",
+        void_type.fn_type(&[i64_type.into(), i64_type.into()], false),
+        Some(inkwell::module::Linkage::External));
+
+    // snow_pool_query(pool: i64, sql: ptr, params: ptr) -> ptr (SnowResult)
+    module.add_function("snow_pool_query",
+        ptr_type.fn_type(&[i64_type.into(), ptr_type.into(), ptr_type.into()], false),
+        Some(inkwell::module::Linkage::External));
+
+    // snow_pool_execute(pool: i64, sql: ptr, params: ptr) -> ptr (SnowResult)
+    module.add_function("snow_pool_execute",
+        ptr_type.fn_type(&[i64_type.into(), ptr_type.into(), ptr_type.into()], false),
+        Some(inkwell::module::Linkage::External));
+
     // ── Hash runtime functions (Phase 21 Plan 01) ──────────────────────
 
     // snow_hash_int(value: i64) -> i64
@@ -802,6 +873,25 @@ mod tests {
         assert!(module.get_function("snow_pg_close").is_some());
         assert!(module.get_function("snow_pg_execute").is_some());
         assert!(module.get_function("snow_pg_query").is_some());
+
+        // Phase 57: PostgreSQL Transactions
+        assert!(module.get_function("snow_pg_begin").is_some());
+        assert!(module.get_function("snow_pg_commit").is_some());
+        assert!(module.get_function("snow_pg_rollback").is_some());
+        assert!(module.get_function("snow_pg_transaction").is_some());
+
+        // Phase 57: SQLite Transactions
+        assert!(module.get_function("snow_sqlite_begin").is_some());
+        assert!(module.get_function("snow_sqlite_commit").is_some());
+        assert!(module.get_function("snow_sqlite_rollback").is_some());
+
+        // Phase 57: Connection Pool
+        assert!(module.get_function("snow_pool_open").is_some());
+        assert!(module.get_function("snow_pool_close").is_some());
+        assert!(module.get_function("snow_pool_checkout").is_some());
+        assert!(module.get_function("snow_pool_checkin").is_some());
+        assert!(module.get_function("snow_pool_query").is_some());
+        assert!(module.get_function("snow_pool_execute").is_some());
 
         // Service runtime functions (Phase 9 Plan 03)
         assert!(module.get_function("snow_service_call").is_some());

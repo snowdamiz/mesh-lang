@@ -77,6 +77,8 @@ fn resolve_con(con: &TyCon, registry: &TypeRegistry) -> MirType {
         "SqliteConn" => MirType::Int,
         // PgConn is an opaque u64 handle, lowered to Int for GC safety (same as SqliteConn).
         "PgConn" => MirType::Int,
+        // PoolHandle is an opaque u64 handle, lowered to Int for GC safety (same as PgConn/SqliteConn).
+        "PoolHandle" => MirType::Int,
         // Collection types, Json, and HTTP types are opaque pointers at LLVM level.
         "List" | "Map" | "Set" | "Range" | "Queue" | "Tuple" | "Json"
         | "Router" | "Request" | "Response" => MirType::Ptr,
