@@ -10,17 +10,17 @@ See: .planning/PROJECT.md (updated 2026-02-10)
 ## Current Position
 
 Phase: 54 of 54 (PostgreSQL Driver)
-Plan: 1 of 2 in current phase
-Status: In progress
-Last activity: 2026-02-12 -- Plan 54-01 complete (PostgreSQL driver implementation)
+Plan: 2 of 2 in current phase
+Status: Phase complete
+Last activity: 2026-02-12 -- Plan 54-02 complete (PostgreSQL E2E tests)
 
 Progress: [##########] 100%
 
 ## Performance Metrics
 
 **All-time Totals:**
-- Plans completed: 153
-- Phases completed: 53
+- Plans completed: 154
+- Phases completed: 54
 - Milestones shipped: 10 (v1.0-v1.9)
 - Lines of Rust: 76,100
 - Timeline: 7 days (2026-02-05 -> 2026-02-11)
@@ -65,6 +65,8 @@ Progress: [##########] 100%
 - 54-01: PgConn holds TcpStream, stored as Box::into_raw as u64 for GC safety (same as SqliteConn)
 - 54-01: Extended Query protocol (Parse/Bind/Execute/Sync) for parameterized queries with $1, $2 placeholders
 - 54-01: Text format (code 0) for all parameters and results matching Snow's String-based API
+- 54-02: SCRAM-SHA-256 client-first-bare must use empty n= (not n=username) -- PG knows username from StartupMessage
+- 54-02: E2E test marked #[ignore] for external service deps -- run with cargo test e2e_pg -- --ignored
 
 ### Research Notes
 
@@ -87,6 +89,6 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-12
-Stopped at: Completed 54-01-PLAN.md (PostgreSQL driver implementation)
+Stopped at: Completed 54-02-PLAN.md (PostgreSQL E2E tests) -- Phase 54 complete
 Resume file: None
-Next action: Execute 54-02-PLAN.md (PostgreSQL E2E tests)
+Next action: Phase 54 complete. All v2.0 Database & Serialization milestones shipped.
