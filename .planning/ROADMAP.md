@@ -111,7 +111,7 @@ See milestones/v2.0-ROADMAP.md for full phase details.
 
 - [x] **Phase 55: PostgreSQL TLS** - Encrypted connections to cloud databases via SSLRequest protocol upgrade (completed 2026-02-12)
 - [x] **Phase 56: HTTPS Server** - Production HTTP serving with TLS via hand-rolled HTTP/1.1 parser replacing tiny_http (completed 2026-02-12)
-- [ ] **Phase 57: Connection Pooling & Transactions** - Actor-compatible pool manager with transaction lifecycle and automatic cleanup
+- [x] **Phase 57: Connection Pooling & Transactions** - Actor-compatible pool manager with transaction lifecycle and automatic cleanup (completed 2026-02-12)
 - [ ] **Phase 58: Struct-to-Row Mapping** - Automatic database row to struct hydration via deriving(Row)
 
 ## Phase Details
@@ -158,9 +158,9 @@ Plans:
 **Plans**: 3 plans
 
 Plans:
-- [ ] 57-01-PLAN.md -- PG txn_status tracking, PG/SQLite transaction intrinsics, Pg.transaction with catch_unwind
-- [ ] 57-02-PLAN.md -- Mutex+Condvar connection pool with health check, checkout/checkin, auto query/execute
-- [ ] 57-03-PLAN.md -- Compiler pipeline: LLVM declarations, MIR lowering, type checker for Pool/Pg.txn/Sqlite.txn
+- [x] 57-01-PLAN.md -- PG txn_status tracking, PG/SQLite transaction intrinsics, Pg.transaction with catch_unwind
+- [x] 57-02-PLAN.md -- Mutex+Condvar connection pool with health check, checkout/checkin, auto query/execute
+- [x] 57-03-PLAN.md -- Compiler pipeline: LLVM declarations, MIR lowering, type checker for Pool/Pg.txn/Sqlite.txn
 
 ### Phase 58: Struct-to-Row Mapping
 **Goal**: Snow programs can automatically map database query results to typed structs without manual field extraction
@@ -197,7 +197,7 @@ Phases execute in numeric order: 55 -> 56 -> 57 -> 58
 | 49-54 | v2.0 | 13/13 | Complete | 2026-02-12 |
 | 55. PG TLS | v3.0 | 1/1 | Complete | 2026-02-12 |
 | 56. HTTPS | v3.0 | 2/2 | Complete | 2026-02-12 |
-| 57. Pool+Txn | v3.0 | 0/3 | Not started | - |
+| 57. Pool+Txn | v3.0 | 3/3 | Complete | 2026-02-12 |
 | 58. Row Map | v3.0 | 0/TBD | Not started | - |
 
-**Total: 56 phases shipped across 11 milestones. 157 plans completed.**
+**Total: 57 phases shipped across 11 milestones. 160 plans completed.**
