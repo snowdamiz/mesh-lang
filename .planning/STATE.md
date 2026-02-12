@@ -9,18 +9,18 @@ See: .planning/PROJECT.md (updated 2026-02-12)
 
 ## Current Position
 
-Phase: 59 of 62 (Protocol Core)
-Plan: 1 of 2 in current phase
-Status: Ready to execute
-Last activity: 2026-02-12 -- Completed 59-01 (WebSocket frame codec)
+Phase: 59 of 62 (Protocol Core) -- COMPLETE
+Plan: 2 of 2 in current phase
+Status: Phase 59 complete, ready for Phase 60
+Last activity: 2026-02-12 -- Completed 59-02 (WebSocket handshake + close)
 
-Progress: [█░░░░░░░░░] 13%
+Progress: [██░░░░░░░░] 25%
 
 ## Performance Metrics
 
 **All-time Totals:**
-- Plans completed: 163
-- Phases completed: 58
+- Plans completed: 164
+- Phases completed: 59
 - Milestones shipped: 12 (v1.0-v3.0)
 - Lines of Rust: 83,451
 - Timeline: 8 days (2026-02-05 -> 2026-02-12)
@@ -31,6 +31,9 @@ Progress: [█░░░░░░░░░] 13%
 
 - [59-01] 64 MiB payload safety cap to prevent OOM; Phase 61 will tighten to 16 MiB
 - [59-01] Frame codec uses read_exact on raw stream (no BufReader) to avoid buffering issues at protocol boundary
+- [59-02] BufReader used for HTTP header parsing in perform_upgrade with explicit buffer-empty sanity check
+- [59-02] process_frame echoes close code only (no reason) to minimize control frame size
+- [59-02] Continuation opcode passed through -- Phase 61 handles reassembly
 
 ### Research Notes
 
@@ -51,6 +54,6 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-12
-Stopped at: Completed 59-01-PLAN.md (WebSocket frame codec)
+Stopped at: Completed 59-02-PLAN.md (WebSocket handshake + close) -- Phase 59 complete
 Resume file: None
-Next action: Execute 59-02-PLAN.md (Handshake + Close)
+Next action: Plan Phase 60 (Actor-WebSocket integration)
