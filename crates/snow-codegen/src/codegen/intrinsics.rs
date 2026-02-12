@@ -491,6 +491,28 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
         ptr_type.fn_type(&[i64_type.into(), ptr_type.into(), ptr_type.into()], false),
         Some(inkwell::module::Linkage::External));
 
+    // ── Phase 54: PostgreSQL ──────────────────────────────────────────────
+
+    // snow_pg_connect(url: ptr) -> ptr (SnowResult)
+    module.add_function("snow_pg_connect",
+        ptr_type.fn_type(&[ptr_type.into()], false),
+        Some(inkwell::module::Linkage::External));
+
+    // snow_pg_close(conn: i64) -> void
+    module.add_function("snow_pg_close",
+        void_type.fn_type(&[i64_type.into()], false),
+        Some(inkwell::module::Linkage::External));
+
+    // snow_pg_execute(conn: i64, sql: ptr, params: ptr) -> ptr (SnowResult)
+    module.add_function("snow_pg_execute",
+        ptr_type.fn_type(&[i64_type.into(), ptr_type.into(), ptr_type.into()], false),
+        Some(inkwell::module::Linkage::External));
+
+    // snow_pg_query(conn: i64, sql: ptr, params: ptr) -> ptr (SnowResult)
+    module.add_function("snow_pg_query",
+        ptr_type.fn_type(&[i64_type.into(), ptr_type.into(), ptr_type.into()], false),
+        Some(inkwell::module::Linkage::External));
+
     // ── Hash runtime functions (Phase 21 Plan 01) ──────────────────────
 
     // snow_hash_int(value: i64) -> i64
@@ -770,6 +792,12 @@ mod tests {
         assert!(module.get_function("snow_sqlite_close").is_some());
         assert!(module.get_function("snow_sqlite_execute").is_some());
         assert!(module.get_function("snow_sqlite_query").is_some());
+
+        // Phase 54: PostgreSQL
+        assert!(module.get_function("snow_pg_connect").is_some());
+        assert!(module.get_function("snow_pg_close").is_some());
+        assert!(module.get_function("snow_pg_execute").is_some());
+        assert!(module.get_function("snow_pg_query").is_some());
 
         // Service runtime functions (Phase 9 Plan 03)
         assert!(module.get_function("snow_service_call").is_some());

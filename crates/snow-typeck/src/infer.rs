@@ -634,13 +634,39 @@ fn stdlib_modules() -> HashMap<String, HashMap<String, Scheme>> {
     )));
     modules.insert("Sqlite".to_string(), sqlite_mod);
 
+    // ── Pg module (Phase 54) ──────────────────────────────────────────
+    let pg_conn_t = Ty::Con(TyCon::new("PgConn"));
+
+    let mut pg_mod = HashMap::new();
+    // Pg.connect: fn(String) -> Result<PgConn, String>
+    pg_mod.insert("connect".to_string(), Scheme::mono(Ty::fun(
+        vec![Ty::string()],
+        Ty::result(pg_conn_t.clone(), Ty::string()),
+    )));
+    // Pg.close: fn(PgConn) -> Unit
+    pg_mod.insert("close".to_string(), Scheme::mono(Ty::fun(
+        vec![pg_conn_t.clone()],
+        Ty::Tuple(vec![]),
+    )));
+    // Pg.execute: fn(PgConn, String, List<String>) -> Result<Int, String>
+    pg_mod.insert("execute".to_string(), Scheme::mono(Ty::fun(
+        vec![pg_conn_t.clone(), Ty::string(), Ty::list(Ty::string())],
+        Ty::result(Ty::int(), Ty::string()),
+    )));
+    // Pg.query: fn(PgConn, String, List<String>) -> Result<List<Map<String, String>>, String>
+    pg_mod.insert("query".to_string(), Scheme::mono(Ty::fun(
+        vec![pg_conn_t.clone(), Ty::string(), Ty::list(Ty::string())],
+        Ty::result(Ty::list(Ty::map(Ty::string(), Ty::string())), Ty::string()),
+    )));
+    modules.insert("Pg".to_string(), pg_mod);
+
     modules
 }
 
 /// Set of module names recognized by the stdlib for qualified access.
 const STDLIB_MODULE_NAMES: &[&str] = &[
     "String", "IO", "Env", "File", "List", "Map", "Set", "Tuple", "Range", "Queue", "HTTP", "JSON", "Json", "Request", "Job",
-    "Math", "Int", "Float", "Timer", "Sqlite",
+    "Math", "Int", "Float", "Timer", "Sqlite", "Pg",
 ];
 
 /// Check if a name is a known stdlib module.

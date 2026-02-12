@@ -647,6 +647,38 @@ pub fn register_builtins(
         )),
     );
 
+    // ── Phase 54: PostgreSQL functions ─────────────────────────────────────
+    // PgConn opaque type -- lowered to Int (i64) at MIR level for GC safety.
+    let pg_conn_t = Ty::Con(TyCon::new("PgConn"));
+    env.insert("PgConn".into(), Scheme::mono(pg_conn_t.clone()));
+
+    // Pg.connect(String) -> Result<PgConn, String>
+    env.insert(
+        "pg_connect".into(),
+        Scheme::mono(Ty::fun(vec![Ty::string()], Ty::result(pg_conn_t.clone(), Ty::string()))),
+    );
+    // Pg.close(PgConn) -> Unit
+    env.insert(
+        "pg_close".into(),
+        Scheme::mono(Ty::fun(vec![pg_conn_t.clone()], Ty::Tuple(vec![]))),
+    );
+    // Pg.execute(PgConn, String, List<String>) -> Result<Int, String>
+    env.insert(
+        "pg_execute".into(),
+        Scheme::mono(Ty::fun(
+            vec![pg_conn_t.clone(), Ty::string(), Ty::list(Ty::string())],
+            Ty::result(Ty::int(), Ty::string()),
+        )),
+    );
+    // Pg.query(PgConn, String, List<String>) -> Result<List<Map<String, String>>, String>
+    env.insert(
+        "pg_query".into(),
+        Scheme::mono(Ty::fun(
+            vec![pg_conn_t.clone(), Ty::string(), Ty::list(Ty::string())],
+            Ty::result(Ty::list(Ty::map(Ty::string(), Ty::string())), Ty::string()),
+        )),
+    );
+
     // Request accessor functions
     // Request.method(Request) -> String
     env.insert(

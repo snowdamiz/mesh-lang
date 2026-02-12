@@ -678,6 +678,12 @@ impl<'a> Lowerer<'a> {
         self.known_functions.insert("snow_sqlite_close".to_string(), MirType::FnPtr(vec![MirType::Int], Box::new(MirType::Unit)));
         self.known_functions.insert("snow_sqlite_execute".to_string(), MirType::FnPtr(vec![MirType::Int, MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
         self.known_functions.insert("snow_sqlite_query".to_string(), MirType::FnPtr(vec![MirType::Int, MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
+        // ── PostgreSQL functions (Phase 54) ──────────────────────────────
+        // Connection handle is MirType::Int (i64) for GC safety (same as SQLite).
+        self.known_functions.insert("snow_pg_connect".to_string(), MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Ptr)));
+        self.known_functions.insert("snow_pg_close".to_string(), MirType::FnPtr(vec![MirType::Int], Box::new(MirType::Unit)));
+        self.known_functions.insert("snow_pg_execute".to_string(), MirType::FnPtr(vec![MirType::Int, MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
+        self.known_functions.insert("snow_pg_query".to_string(), MirType::FnPtr(vec![MirType::Int, MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
         // ── Job functions (Phase 9 Plan 04) ──────────────────────────────
         // snow_job_async takes (fn_ptr, env_ptr) -> i64 (PID)
         // But the closure splitting at codegen will expand the closure arg into (fn_ptr, env_ptr)
@@ -8815,7 +8821,7 @@ impl<'a> Lowerer<'a> {
 /// Set of known stdlib module names for qualified access lowering.
 const STDLIB_MODULES: &[&str] = &[
     "String", "IO", "Env", "File", "List", "Map", "Set", "Tuple", "Range", "Queue", "HTTP", "JSON", "Json", "Request", "Job",
-    "Math", "Int", "Float", "Timer", "Sqlite",
+    "Math", "Int", "Float", "Timer", "Sqlite", "Pg",
 ];
 
 /// Map Snow builtin function names to their runtime equivalents.
@@ -9008,6 +9014,11 @@ fn map_builtin_name(name: &str) -> String {
         "sqlite_close" => "snow_sqlite_close".to_string(),
         "sqlite_execute" => "snow_sqlite_execute".to_string(),
         "sqlite_query" => "snow_sqlite_query".to_string(),
+        // ── PostgreSQL functions (Phase 54) ──────────────────────────────
+        "pg_connect" => "snow_pg_connect".to_string(),
+        "pg_close" => "snow_pg_close".to_string(),
+        "pg_execute" => "snow_pg_execute".to_string(),
+        "pg_query" => "snow_pg_query".to_string(),
         // NOTE: No bare name mappings for HTTP/Request (router, route, get,
         // post, method, path, body, etc.) because they collide with common
         // variable names. Use module-qualified access instead:
