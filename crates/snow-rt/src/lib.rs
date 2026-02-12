@@ -42,6 +42,9 @@ pub use actor::{
     snow_timer_sleep, snow_timer_send_after,
 };
 pub use actor::service::{snow_service_call, snow_service_reply};
+pub use db::pg::{
+    snow_pg_connect, snow_pg_close, snow_pg_execute, snow_pg_query,
+};
 pub use db::sqlite::{
     snow_sqlite_open, snow_sqlite_close, snow_sqlite_execute, snow_sqlite_query,
 };

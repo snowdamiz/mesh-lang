@@ -18,6 +18,13 @@ serde_json = "1"
 tiny_http = "0.12"
 ureq = "2"
 libsqlite3-sys = { version = "0.36", features = ["bundled"] }
+# Phase 54: PostgreSQL wire protocol
+sha2 = "0.10"
+hmac = "0.12"
+md-5 = "0.10"
+pbkdf2 = { version = "0.12", default-features = false, features = ["hmac"] }
+base64 = "0.22"
+rand = "0.9"
 
 [dev-dependencies]
 tempfile = "3"
