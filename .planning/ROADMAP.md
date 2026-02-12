@@ -155,12 +155,12 @@ Plans:
   3. User can call `Pool.query(pool, sql, params)` for single queries with automatic checkout-use-checkin, and the pool recycles connections transparently
   4. Pool detects and replaces dead connections via health check so stale connections from server restarts do not surface as user-visible errors
   5. User can call `Sqlite.begin/commit/rollback` for manual SQLite transaction control
-**Plans**: TBD
+**Plans**: 3 plans
 
 Plans:
-- [ ] 57-01: TBD
-- [ ] 57-02: TBD
-- [ ] 57-03: TBD
+- [ ] 57-01-PLAN.md -- PG txn_status tracking, PG/SQLite transaction intrinsics, Pg.transaction with catch_unwind
+- [ ] 57-02-PLAN.md -- Mutex+Condvar connection pool with health check, checkout/checkin, auto query/execute
+- [ ] 57-03-PLAN.md -- Compiler pipeline: LLVM declarations, MIR lowering, type checker for Pool/Pg.txn/Sqlite.txn
 
 ### Phase 58: Struct-to-Row Mapping
 **Goal**: Snow programs can automatically map database query results to typed structs without manual field extraction
@@ -197,7 +197,7 @@ Phases execute in numeric order: 55 -> 56 -> 57 -> 58
 | 49-54 | v2.0 | 13/13 | Complete | 2026-02-12 |
 | 55. PG TLS | v3.0 | 1/1 | Complete | 2026-02-12 |
 | 56. HTTPS | v3.0 | 2/2 | Complete | 2026-02-12 |
-| 57. Pool+Txn | v3.0 | 0/TBD | Not started | - |
+| 57. Pool+Txn | v3.0 | 0/3 | Not started | - |
 | 58. Row Map | v3.0 | 0/TBD | Not started | - |
 
 **Total: 56 phases shipped across 11 milestones. 157 plans completed.**
