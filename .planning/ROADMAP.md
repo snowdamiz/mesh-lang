@@ -125,11 +125,10 @@ See milestones/v2.0-ROADMAP.md for full phase details.
   2. User can connect with `sslmode=prefer` and the driver automatically upgrades to TLS when the server supports it, falling back to plaintext otherwise
   3. User can connect with `sslmode=disable` and the connection works identically to v2.0 behavior (no TLS negotiation)
   4. Existing v2.0 PostgreSQL code (plaintext connections) continues to work without modification
-**Plans**: TBD
+**Plans**: 1 plan
 
 Plans:
-- [ ] 55-01: TBD
-- [ ] 55-02: TBD
+- [ ] 55-01-PLAN.md -- PgStream enum, SSLRequest handshake, sslmode URL parsing, CryptoProvider install
 
 ### Phase 56: HTTPS Server
 **Goal**: Snow programs can serve HTTP traffic over TLS for production deployments
@@ -196,7 +195,7 @@ Phases execute in numeric order: 55 -> 56 -> 57 -> 58
 | 37-42 | v1.8 | 12/12 | Complete | 2026-02-09 |
 | 43-48 | v1.9 | 13/13 | Complete | 2026-02-10 |
 | 49-54 | v2.0 | 13/13 | Complete | 2026-02-12 |
-| 55. PG TLS | v3.0 | 0/TBD | Not started | - |
+| 55. PG TLS | v3.0 | 0/1 | Not started | - |
 | 56. HTTPS | v3.0 | 0/TBD | Not started | - |
 | 57. Pool+Txn | v3.0 | 0/TBD | Not started | - |
 | 58. Row Map | v3.0 | 0/TBD | Not started | - |
