@@ -109,7 +109,7 @@ See milestones/v2.0-ROADMAP.md for full phase details.
 
 **Milestone Goal:** Make Snow viable for production backend deployments with TLS encryption, connection pooling, database transactions, and automatic struct-to-row mapping.
 
-- [ ] **Phase 55: PostgreSQL TLS** - Encrypted connections to cloud databases via SSLRequest protocol upgrade
+- [x] **Phase 55: PostgreSQL TLS** - Encrypted connections to cloud databases via SSLRequest protocol upgrade (completed 2026-02-12)
 - [ ] **Phase 56: HTTPS Server** - Production HTTP serving with TLS via hand-rolled HTTP/1.1 parser replacing tiny_http
 - [ ] **Phase 57: Connection Pooling & Transactions** - Actor-compatible pool manager with transaction lifecycle and automatic cleanup
 - [ ] **Phase 58: Struct-to-Row Mapping** - Automatic database row to struct hydration via deriving(Row)
@@ -128,7 +128,7 @@ See milestones/v2.0-ROADMAP.md for full phase details.
 **Plans**: 1 plan
 
 Plans:
-- [ ] 55-01-PLAN.md -- PgStream enum, SSLRequest handshake, sslmode URL parsing, CryptoProvider install
+- [x] 55-01-PLAN.md -- PgStream enum, SSLRequest handshake, sslmode URL parsing, CryptoProvider install
 
 ### Phase 56: HTTPS Server
 **Goal**: Snow programs can serve HTTP traffic over TLS for production deployments
@@ -195,9 +195,9 @@ Phases execute in numeric order: 55 -> 56 -> 57 -> 58
 | 37-42 | v1.8 | 12/12 | Complete | 2026-02-09 |
 | 43-48 | v1.9 | 13/13 | Complete | 2026-02-10 |
 | 49-54 | v2.0 | 13/13 | Complete | 2026-02-12 |
-| 55. PG TLS | v3.0 | 0/1 | Not started | - |
+| 55. PG TLS | v3.0 | 1/1 | Complete | 2026-02-12 |
 | 56. HTTPS | v3.0 | 0/TBD | Not started | - |
 | 57. Pool+Txn | v3.0 | 0/TBD | Not started | - |
 | 58. Row Map | v3.0 | 0/TBD | Not started | - |
 
-**Total: 54 phases shipped across 11 milestones. 154 plans completed.**
+**Total: 55 phases shipped across 11 milestones. 155 plans completed.**
