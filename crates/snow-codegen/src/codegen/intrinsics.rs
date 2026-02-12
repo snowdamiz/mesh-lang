@@ -426,6 +426,16 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
     // snow_http_serve_tls(router: ptr, port: i64, cert_path: ptr, key_path: ptr) -> void
     module.add_function("snow_http_serve_tls", void_type.fn_type(&[ptr_type.into(), i64_type.into(), ptr_type.into(), ptr_type.into()], false), Some(inkwell::module::Linkage::External));
 
+    // ── WebSocket functions (Phase 60) ──────────────────────────────────
+    // snow_ws_serve(on_connect_fn: ptr, on_connect_env: ptr, on_message_fn: ptr, on_message_env: ptr, on_close_fn: ptr, on_close_env: ptr, port: i64) -> void
+    module.add_function("snow_ws_serve", void_type.fn_type(&[ptr_type.into(), ptr_type.into(), ptr_type.into(), ptr_type.into(), ptr_type.into(), ptr_type.into(), i64_type.into()], false), Some(inkwell::module::Linkage::External));
+
+    // snow_ws_send(conn: ptr, msg: ptr) -> i64
+    module.add_function("snow_ws_send", i64_type.fn_type(&[ptr_type.into(), ptr_type.into()], false), Some(inkwell::module::Linkage::External));
+
+    // snow_ws_send_binary(conn: ptr, data: ptr, len: i64) -> i64
+    module.add_function("snow_ws_send_binary", i64_type.fn_type(&[ptr_type.into(), ptr_type.into(), i64_type.into()], false), Some(inkwell::module::Linkage::External));
+
     // snow_http_response_new(status: i64, body: ptr) -> ptr
     module.add_function("snow_http_response_new", ptr_type.fn_type(&[i64_type.into(), ptr_type.into()], false), Some(inkwell::module::Linkage::External));
 
@@ -993,6 +1003,11 @@ mod tests {
         // Timer functions (Phase 44 Plan 02)
         assert!(module.get_function("snow_timer_sleep").is_some());
         assert!(module.get_function("snow_timer_send_after").is_some());
+
+        // WebSocket functions (Phase 60)
+        assert!(module.get_function("snow_ws_serve").is_some());
+        assert!(module.get_function("snow_ws_send").is_some());
+        assert!(module.get_function("snow_ws_send_binary").is_some());
     }
 
     #[test]

@@ -673,6 +673,13 @@ impl<'a> Lowerer<'a> {
         self.known_functions.insert("snow_http_request_param".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::String], Box::new(MirType::Ptr)));
         // Phase 52: Middleware
         self.known_functions.insert("snow_http_use_middleware".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
+        // ── WebSocket functions (Phase 60) ──────────────────────────────
+        // snow_ws_serve(on_connect_fn: ptr, on_connect_env: ptr, on_message_fn: ptr, on_message_env: ptr, on_close_fn: ptr, on_close_env: ptr, port: i64) -> void
+        self.known_functions.insert("snow_ws_serve".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr, MirType::Ptr, MirType::Ptr, MirType::Ptr, MirType::Ptr, MirType::Int], Box::new(MirType::Unit)));
+        // snow_ws_send(conn: ptr, msg: ptr) -> i64
+        self.known_functions.insert("snow_ws_send".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr], Box::new(MirType::Int)));
+        // snow_ws_send_binary(conn: ptr, data: ptr, len: i64) -> i64
+        self.known_functions.insert("snow_ws_send_binary".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr, MirType::Int], Box::new(MirType::Int)));
         // ── SQLite functions (Phase 53) ──────────────────────────────────
         // Connection handle is MirType::Int (i64) for GC safety (SQLT-07).
         self.known_functions.insert("snow_sqlite_open".to_string(), MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Ptr)));
@@ -9255,7 +9262,7 @@ impl<'a> Lowerer<'a> {
 /// Set of known stdlib module names for qualified access lowering.
 const STDLIB_MODULES: &[&str] = &[
     "String", "IO", "Env", "File", "List", "Map", "Set", "Tuple", "Range", "Queue", "HTTP", "JSON", "Json", "Request", "Job",
-    "Math", "Int", "Float", "Timer", "Sqlite", "Pg",
+    "Math", "Int", "Float", "Timer", "Sqlite", "Pg", "Ws",
 ];
 
 /// Map Snow builtin function names to their runtime equivalents.
@@ -9497,6 +9504,10 @@ fn map_builtin_name(name: &str) -> String {
         // ── Timer functions (Phase 44 Plan 02) ──────────────────────────
         "timer_sleep" => "snow_timer_sleep".to_string(),
         "timer_send_after" => "snow_timer_send_after".to_string(),
+        // ── WebSocket functions (Phase 60) ────────────────────────────
+        "ws_serve" => "snow_ws_serve".to_string(),
+        "ws_send" => "snow_ws_send".to_string(),
+        "ws_send_binary" => "snow_ws_send_binary".to_string(),
         _ => name.to_string(),
     }
 }
