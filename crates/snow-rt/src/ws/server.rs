@@ -29,7 +29,7 @@ use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use parking_lot::Mutex;
 use rustls::{ServerConfig, ServerConnection, StreamOwned};
@@ -38,9 +38,9 @@ use crate::actor::{global_scheduler, MessageBuffer, Message, ProcessId, ProcessS
 use crate::actor::process::Process;
 use crate::actor::stack;
 use crate::string::SnowString;
-use super::frame::{read_frame, write_frame, WsOpcode};
+use super::frame::{read_frame, write_frame, WsFrame, WsOpcode};
 use super::handshake::perform_upgrade;
-use super::close::{process_frame, send_close, WsCloseCode};
+use super::close::{process_frame, send_close, validate_text_payload, WsCloseCode};
 
 // ---------------------------------------------------------------------------
 // Stream abstraction for plain TCP and TLS WebSocket connections
@@ -86,6 +86,156 @@ impl Write for WsStream {
             WsStream::Plain(s) => s.flush(),
             WsStream::Tls(s) => s.flush(),
         }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Heartbeat state (BEAT-01 through BEAT-05)
+// ---------------------------------------------------------------------------
+
+/// Tracks ping/pong heartbeat state for dead connection detection.
+///
+/// The reader thread sends periodic Ping frames with random 4-byte payloads
+/// and validates that the Pong response echoes the payload. If no valid Pong
+/// is received within `pong_timeout` after the last Ping, the connection is
+/// considered dead and closed with code 1001 (Going Away).
+struct HeartbeatState {
+    last_ping_sent: Instant,
+    last_pong_received: Instant,
+    ping_interval: Duration,       // default 30s
+    pong_timeout: Duration,        // default 10s
+    pending_ping_payload: Option<[u8; 4]>,
+}
+
+impl HeartbeatState {
+    fn new() -> Self {
+        let now = Instant::now();
+        Self {
+            last_ping_sent: now,
+            last_pong_received: now,
+            ping_interval: Duration::from_secs(30),
+            pong_timeout: Duration::from_secs(10),
+            pending_ping_payload: None,
+        }
+    }
+
+    fn should_send_ping(&self) -> bool {
+        self.last_ping_sent.elapsed() >= self.ping_interval
+    }
+
+    fn is_pong_overdue(&self) -> bool {
+        if self.pending_ping_payload.is_some() {
+            self.last_ping_sent.elapsed() >= self.pong_timeout
+        } else {
+            false
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Fragment reassembly state (FRAG-01 through FRAG-03)
+// ---------------------------------------------------------------------------
+
+/// Tracks fragment reassembly state for continuation frames.
+///
+/// RFC 6455 Section 5.4: fragmented messages consist of a first fragment
+/// (FIN=0, data opcode), zero or more continuation fragments (FIN=0,
+/// opcode 0x0), and a final fragment (FIN=1, opcode 0x0). Control frames
+/// may be interleaved between fragments.
+struct FragmentState {
+    /// The opcode of the first fragment (Text or Binary). None = not in a fragment sequence.
+    initial_opcode: Option<WsOpcode>,
+    /// Accumulated payload bytes from all fragments so far.
+    buffer: Vec<u8>,
+    /// Maximum total message size (16 MiB).
+    max_message_size: usize,
+}
+
+impl FragmentState {
+    fn new() -> Self {
+        Self {
+            initial_opcode: None,
+            buffer: Vec::new(),
+            max_message_size: 16 * 1024 * 1024,
+        }
+    }
+
+    fn is_assembling(&self) -> bool {
+        self.initial_opcode.is_some()
+    }
+}
+
+/// Result of feeding a data frame to the fragment reassembly state machine.
+enum ReassembleResult {
+    /// A complete message is ready (unfragmented or final fragment assembled).
+    Complete(WsFrame),
+    /// Still accumulating fragments.
+    Accumulating,
+    /// Total message size exceeded the limit (FRAG-03).
+    TooLarge,
+    /// Protocol error (e.g., new message during fragmented sequence, unexpected continuation).
+    ProtocolError(&'static str),
+}
+
+/// Feed a data frame through the fragment reassembly state machine.
+///
+/// Control frames (Ping/Pong/Close) must be handled BEFORE calling this
+/// function -- they are not part of the fragment sequence (FRAG-02).
+fn reassemble(frag: &mut FragmentState, frame: WsFrame) -> ReassembleResult {
+    match frame.opcode {
+        // Unfragmented message: FIN=1, data opcode, not currently assembling
+        WsOpcode::Text | WsOpcode::Binary if frame.fin && !frag.is_assembling() => {
+            ReassembleResult::Complete(frame)
+        }
+        // First fragment: FIN=0, data opcode, not currently assembling
+        WsOpcode::Text | WsOpcode::Binary if !frame.fin && !frag.is_assembling() => {
+            frag.initial_opcode = Some(frame.opcode);
+            frag.buffer = frame.payload;
+            if frag.buffer.len() > frag.max_message_size {
+                frag.initial_opcode = None;
+                frag.buffer.clear();
+                return ReassembleResult::TooLarge;
+            }
+            ReassembleResult::Accumulating
+        }
+        // Protocol error: new message started while assembling
+        WsOpcode::Text | WsOpcode::Binary if frag.is_assembling() => {
+            frag.initial_opcode = None;
+            frag.buffer.clear();
+            ReassembleResult::ProtocolError("new message during fragmented sequence")
+        }
+        // Continuation fragment: FIN=0, currently assembling
+        WsOpcode::Continuation if !frame.fin && frag.is_assembling() => {
+            if frag.buffer.len() + frame.payload.len() > frag.max_message_size {
+                frag.initial_opcode = None;
+                frag.buffer.clear();
+                return ReassembleResult::TooLarge;
+            }
+            frag.buffer.extend_from_slice(&frame.payload);
+            ReassembleResult::Accumulating
+        }
+        // Final fragment: FIN=1, continuation, currently assembling
+        WsOpcode::Continuation if frame.fin && frag.is_assembling() => {
+            if frag.buffer.len() + frame.payload.len() > frag.max_message_size {
+                frag.initial_opcode = None;
+                frag.buffer.clear();
+                return ReassembleResult::TooLarge;
+            }
+            frag.buffer.extend_from_slice(&frame.payload);
+            let opcode = frag.initial_opcode.take().unwrap();
+            let payload = std::mem::take(&mut frag.buffer);
+            ReassembleResult::Complete(WsFrame {
+                fin: true,
+                opcode,
+                payload,
+            })
+        }
+        // Protocol error: continuation without preceding first fragment
+        WsOpcode::Continuation if !frag.is_assembling() => {
+            ReassembleResult::ProtocolError("unexpected continuation frame")
+        }
+        // Control frames should never reach reassemble (handled before this call)
+        _ => ReassembleResult::ProtocolError("unexpected opcode in reassembly")
     }
 }
 
@@ -471,12 +621,19 @@ extern "C" fn ws_connection_entry(args: *const u8) {
 /// actor's mailbox via reserved type tags.
 ///
 /// Runs on a dedicated OS thread to avoid blocking the M:N scheduler's worker
-/// threads. Handles control frames (ping/pong/close) via `process_frame` and
-/// delivers data frames (text/binary) as mailbox messages.
+/// threads. Integrates three concerns:
+///
+/// 1. **Frame dispatch**: control frames (ping/pong/close) handled inline,
+///    data frames (text/binary/continuation) routed through fragment reassembly.
+/// 2. **Heartbeat** (BEAT-01..05): periodic Ping with random payload, validates
+///    Pong response, closes dead connections after pong timeout.
+/// 3. **Fragmentation** (FRAG-01..03): reassembles continuation frames into
+///    complete messages, enforces 16 MiB size limit, handles interleaved
+///    control frames without corrupting fragment state.
 ///
 /// Uses `Arc<Mutex<WsStream>>` for unified plain TCP / TLS access. The mutex
-/// is locked for each `read_frame` call and released between frames, allowing
-/// `Ws.send()` from the actor to acquire the lock between reads.
+/// is locked briefly for each `read_frame` call (100ms timeout) and released
+/// between frames, allowing `Ws.send()` from the actor to acquire the lock.
 fn reader_thread_loop(
     stream: Arc<Mutex<WsStream>>,
     proc_arc: Arc<Mutex<Process>>,
@@ -492,10 +649,31 @@ fn reader_thread_loop(
         s.set_read_timeout(Some(Duration::from_millis(100))).ok();
     }
 
+    let mut heartbeat = HeartbeatState::new();
+    let mut frag = FragmentState::new();
 
     loop {
         if shutdown.load(Ordering::SeqCst) {
             break;
+        }
+
+        // HEARTBEAT: Check pong timeout (BEAT-04)
+        if heartbeat.is_pong_overdue() {
+            let mut s = stream.lock();
+            let _ = send_close(&mut *s, WsCloseCode::GOING_AWAY, "pong timeout");
+            drop(s);
+            push_disconnect(&proc_arc, actor_pid);
+            break;
+        }
+
+        // HEARTBEAT: Send periodic ping (BEAT-01)
+        if heartbeat.should_send_ping() {
+            let payload: [u8; 4] = rand::random();
+            let mut s = stream.lock();
+            let _ = write_frame(&mut *s, WsOpcode::Ping, &payload, true);
+            drop(s);
+            heartbeat.last_ping_sent = Instant::now();
+            heartbeat.pending_ping_payload = Some(payload);
         }
 
         // Lock stream, read one frame, release lock.
@@ -507,22 +685,63 @@ fn reader_thread_loop(
 
         match frame_result {
             Ok(frame) => {
-                let mut writer = stream.lock();
-                match process_frame(&mut *writer, frame) {
-                    Ok(Some(data_frame)) => {
-                        drop(writer); // Release lock before mailbox push
-                        let tag = match data_frame.opcode {
+                // HEARTBEAT: Handle Pong BEFORE process_frame (BEAT-02, BEAT-03)
+                // The existing process_frame silently ignores Pong; we need
+                // to inspect the payload to validate it matches our Ping.
+                if frame.opcode == WsOpcode::Pong {
+                    if let Some(expected) = heartbeat.pending_ping_payload {
+                        if frame.payload == expected {
+                            heartbeat.last_pong_received = Instant::now();
+                            heartbeat.pending_ping_payload = None;
+                        }
+                    }
+                    continue; // Pong handled, skip to next frame
+                }
+
+                // Handle control frames inline (FRAG-02): Ping and Close are
+                // processed regardless of fragment state, without corrupting
+                // the fragment buffer.
+                if matches!(frame.opcode, WsOpcode::Ping | WsOpcode::Close) {
+                    let mut s = stream.lock();
+                    match process_frame(&mut *s, frame) {
+                        Ok(None) => { /* Ping -> Pong sent */ }
+                        Err(_) => {
+                            drop(s);
+                            // Close frame -> push disconnect
+                            push_disconnect(&proc_arc, actor_pid);
+                            break;
+                        }
+                        _ => {}
+                    }
+                    continue;
+                }
+
+                // FRAGMENTATION: Feed data frames through reassembly (FRAG-01, FRAG-03)
+                match reassemble(&mut frag, frame) {
+                    ReassembleResult::Complete(msg) => {
+                        // UTF-8 validation for text (Pitfall 6: validate on
+                        // the fully reassembled payload, not individual fragments)
+                        if msg.opcode == WsOpcode::Text {
+                            if validate_text_payload(&msg.payload).is_err() {
+                                let mut s = stream.lock();
+                                let _ = send_close(&mut *s, WsCloseCode::INVALID_DATA, "invalid UTF-8");
+                                drop(s);
+                                push_disconnect(&proc_arc, actor_pid);
+                                break;
+                            }
+                        }
+                        let tag = match msg.opcode {
                             WsOpcode::Text => WS_TEXT_TAG,
                             WsOpcode::Binary => WS_BINARY_TAG,
-                            _ => WS_TEXT_TAG, // Continuation treated as text for now
+                            _ => WS_TEXT_TAG,
                         };
-                        let buffer = MessageBuffer::new(data_frame.payload, tag);
-                        let msg = Message { buffer };
+                        let buffer = MessageBuffer::new(msg.payload, tag);
+                        let message = Message { buffer };
 
                         // Push to mailbox and wake actor if Waiting (Pitfall 7)
                         {
                             let mut proc = proc_arc.lock();
-                            proc.mailbox.push(msg);
+                            proc.mailbox.push(message);
                             if matches!(proc.state, ProcessState::Waiting) {
                                 proc.state = ProcessState::Ready;
                                 drop(proc);
@@ -531,10 +750,18 @@ fn reader_thread_loop(
                             }
                         }
                     }
-                    Ok(None) => { /* Control frame handled (ping->pong) */ }
-                    Err(_) => {
-                        drop(writer);
-                        // Close or protocol error -- push disconnect
+                    ReassembleResult::Accumulating => { /* waiting for more fragments */ }
+                    ReassembleResult::TooLarge => {
+                        let mut s = stream.lock();
+                        let _ = send_close(&mut *s, WsCloseCode::MESSAGE_TOO_BIG, "message too big");
+                        drop(s);
+                        push_disconnect(&proc_arc, actor_pid);
+                        break;
+                    }
+                    ReassembleResult::ProtocolError(reason) => {
+                        let mut s = stream.lock();
+                        let _ = send_close(&mut *s, WsCloseCode::PROTOCOL_ERROR, reason);
+                        drop(s);
                         push_disconnect(&proc_arc, actor_pid);
                         break;
                     }

@@ -26,6 +26,8 @@ impl WsCloseCode {
     pub const PROTOCOL_ERROR: u16 = 1002;
     /// Invalid frame payload data (1007) -- used for UTF-8 failure (PROTO-05).
     pub const INVALID_DATA: u16 = 1007;
+    /// Message too big (1009) -- used when fragmented message exceeds 16 MiB (FRAG-03).
+    pub const MESSAGE_TOO_BIG: u16 = 1009;
     /// Internal server error (1011) -- used when an actor crashes (Phase 60).
     pub const INTERNAL_ERROR: u16 = 1011;
 }
