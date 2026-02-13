@@ -5,21 +5,21 @@
 See: .planning/PROJECT.md (updated 2026-02-12)
 
 **Core value:** Expressive, readable concurrency -- writing concurrent programs should feel as natural as sequential code, with supervision and fault tolerance built in.
-**Current focus:** v5.0 Distributed Actors -- Phase 65: Remote Send & Distribution Router
+**Current focus:** v5.0 Distributed Actors -- Phase 66: Remote Links, Monitors & Failure Handling
 
 ## Current Position
 
-Phase: 65 of 69 (Remote Send & Distribution Router)
-Plan: 3 of 3 in current phase
-Status: Phase Complete
-Last activity: 2026-02-13 -- Completed 65-03 (Integration Tests)
+Phase: 66 of 69 (Remote Links, Monitors & Failure Handling)
+Plan: 1 of 3 in current phase
+Status: In Progress
+Last activity: 2026-02-13 -- Completed 66-01 (Local Monitor Infrastructure)
 
 Progress: [██████████] 100%
 
 ## Performance Metrics
 
 **All-time Totals:**
-- Plans completed: 179
+- Plans completed: 180
 - Phases completed: 65
 - Milestones shipped: 14 (v1.0-v4.0)
 - Lines of Rust: ~84,400
@@ -56,6 +56,10 @@ Progress: [██████████] 100%
 - 65-03: In-memory Cursor-based wire format roundtrip testing (no network I/O, no flakiness)
 - 65-03: Peer list parsing tested inline to avoid NODE_STATE dependency and thread spawning
 - 65-03: Node query API tests handle both init/uninit NODE_STATE for parallel test safety
+- 66-01: FxHashMap<u64, ProcessId> for monitors/monitored_by (O(1) lookup by monitor ref)
+- 66-01: DOWN(noproc) delivered immediately when monitoring dead/nonexistent process
+- 66-01: Remote monitor records locally only (DIST_MONITOR deferred to Plan 02)
+- 66-01: encode_reason/decode_reason promoted to pub(crate) for wire message reuse
 
 ### Research Notes
 
@@ -76,6 +80,6 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-13
-Stopped at: Completed 65-03-PLAN.md (Integration Tests) -- Phase 65 complete
+Stopped at: Completed 66-01-PLAN.md (Local Monitor Infrastructure)
 Resume file: None
-Next action: Begin Phase 66 (Nodedown Monitor)
+Next action: Execute 66-02-PLAN.md (Remote Monitors)
