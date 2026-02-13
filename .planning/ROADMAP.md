@@ -147,7 +147,11 @@ See milestones/v4.0-ROADMAP.md for full phase details.
   3. Every Snow value type (Int, Float, Bool, String, List, Map, Set, tuples, structs, sum types, Option, Result, PID) round-trips through STF encode/decode without data loss
   4. Attempting to serialize a closure or function pointer produces a clear runtime error instead of silent corruption
   5. Local send performance is unchanged -- the locality check adds no measurable overhead to the existing fast path
-**Plans**: TBD
+**Plans:** 3 plans
+Plans:
+- [ ] 63-01-PLAN.md -- PID bit-packing and locality check in send
+- [ ] 63-02-PLAN.md -- STF module scaffold and scalar type encode/decode
+- [ ] 63-03-PLAN.md -- STF container/composite types and round-trip tests
 
 ### Phase 64: Node Connection & Authentication
 **Goal**: Snow nodes can discover each other, establish TLS-encrypted connections, and authenticate via shared cookie
@@ -232,7 +236,7 @@ See milestones/v4.0-ROADMAP.md for full phase details.
 | 49-54 | v2.0 | 13/13 | Complete | 2026-02-12 |
 | 55-58 | v3.0 | 8/8 | Complete | 2026-02-12 |
 | 59-62 | v4.0 | 8/8 | Complete | 2026-02-12 |
-| 63 | v5.0 | 0/TBD | Not started | - |
+| 63 | v5.0 | 0/3 | Planned | - |
 | 64 | v5.0 | 0/TBD | Not started | - |
 | 65 | v5.0 | 0/TBD | Not started | - |
 | 66 | v5.0 | 0/TBD | Not started | - |
