@@ -437,6 +437,11 @@ impl InterfaceDef {
     pub fn methods(&self) -> impl Iterator<Item = InterfaceMethod> + '_ {
         child_nodes(&self.syntax)
     }
+
+    /// The associated type declarations in the interface.
+    pub fn assoc_types(&self) -> impl Iterator<Item = AssocTypeDef> + '_ {
+        child_nodes(&self.syntax)
+    }
 }
 
 ast_node!(InterfaceMethod, INTERFACE_METHOD);
@@ -483,6 +488,52 @@ impl ImplDef {
             .children()
             .filter(|n| n.kind() == SyntaxKind::BLOCK)
             .flat_map(|block| block.children().filter_map(FnDef::cast))
+    }
+
+    /// The associated type bindings in the impl block.
+    pub fn assoc_type_bindings(&self) -> impl Iterator<Item = AssocTypeBinding> + '_ {
+        // Associated type bindings are inside the BLOCK child.
+        self.syntax
+            .children()
+            .filter(|n| n.kind() == SyntaxKind::BLOCK)
+            .flat_map(|block| block.children().filter_map(AssocTypeBinding::cast))
+    }
+}
+
+// ── Associated Type Declaration ──────────────────────────────────────────
+
+ast_node!(AssocTypeDef, ASSOC_TYPE_DEF);
+
+impl AssocTypeDef {
+    /// The associated type name (e.g., "Item").
+    pub fn name(&self) -> Option<Name> {
+        child_node(&self.syntax)
+    }
+}
+
+// ── Associated Type Binding ─────────────────────────────────────────────
+
+ast_node!(AssocTypeBinding, ASSOC_TYPE_BINDING);
+
+impl AssocTypeBinding {
+    /// The associated type name (e.g., "Item").
+    pub fn name(&self) -> Option<Name> {
+        child_node(&self.syntax)
+    }
+
+    /// The concrete type node bound to this associated type.
+    ///
+    /// For `type Item = Int`, this returns the SyntaxNode containing the type
+    /// expression after the `=` sign. The node will typically be an IDENT token
+    /// or a more complex type expression (generic application, etc.).
+    pub fn type_node(&self) -> Option<SyntaxNode> {
+        // The type expression follows the EQ token. Look for a child that is
+        // not NAME, not a keyword token, and not EQ -- it will be the type ref.
+        // In practice, parse_type emits IDENT tokens (and optional GENERIC_ARG_LIST).
+        // The simplest approach: return any child node that isn't NAME.
+        self.syntax.children().find(|n| {
+            n.kind() != SyntaxKind::NAME
+        })
     }
 }
 

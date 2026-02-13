@@ -509,7 +509,7 @@ pub(crate) fn parse_interface_def(p: &mut Parser) {
     let do_span = p.current_span();
     p.expect(SyntaxKind::DO_KW);
 
-    // Parse method signatures.
+    // Parse method signatures and associated type declarations.
     if !p.has_error() {
         loop {
             p.eat_newlines();
@@ -518,7 +518,11 @@ pub(crate) fn parse_interface_def(p: &mut Parser) {
                 break;
             }
 
-            parse_interface_method(p);
+            if p.at(SyntaxKind::TYPE_KW) {
+                parse_assoc_type_decl(p);
+            } else {
+                parse_interface_method(p);
+            }
 
             if p.has_error() {
                 break;
@@ -600,6 +604,46 @@ fn parse_interface_method(p: &mut Parser) {
     p.close(m, SyntaxKind::INTERFACE_METHOD);
 }
 
+/// Parse an associated type declaration inside an interface: `type Item`
+fn parse_assoc_type_decl(p: &mut Parser) {
+    let m = p.open();
+    p.advance(); // TYPE_KW
+
+    if p.at(SyntaxKind::IDENT) {
+        let name = p.open();
+        p.advance();
+        p.close(name, SyntaxKind::NAME);
+    } else {
+        p.error("expected associated type name");
+    }
+
+    p.close(m, SyntaxKind::ASSOC_TYPE_DEF);
+}
+
+/// Parse an associated type binding inside an impl: `type Item = ConcreteType`
+fn parse_assoc_type_binding(p: &mut Parser) {
+    let m = p.open();
+    p.advance(); // TYPE_KW
+
+    if p.at(SyntaxKind::IDENT) {
+        let name = p.open();
+        p.advance();
+        p.close(name, SyntaxKind::NAME);
+    } else {
+        p.error("expected associated type name");
+        p.close(m, SyntaxKind::ASSOC_TYPE_BINDING);
+        return;
+    }
+
+    p.expect(SyntaxKind::EQ); // =
+
+    if !p.has_error() {
+        parse_type(p); // The concrete type
+    }
+
+    p.close(m, SyntaxKind::ASSOC_TYPE_BINDING);
+}
+
 // ── Impl Definition ─────────────────────────────────────────────────────
 
 /// Parse an impl block: `impl TraitName for TypeName [where ...] do fn_defs end`
@@ -655,9 +699,9 @@ pub(crate) fn parse_impl_def(p: &mut Parser) {
     let do_span = p.current_span();
     p.expect(SyntaxKind::DO_KW);
 
-    // Parse method definitions.
+    // Parse method definitions and associated type bindings.
     if !p.has_error() {
-        parse_item_block_body(p);
+        parse_impl_body(p);
     }
 
     // Expect `end`.
@@ -672,6 +716,62 @@ pub(crate) fn parse_impl_def(p: &mut Parser) {
     }
 
     p.close(m, SyntaxKind::IMPL_DEF);
+}
+
+/// Parse the body of an impl block: associated type bindings and method definitions.
+///
+/// Unlike `parse_item_block_body`, this specifically handles `type Item = T`
+/// as associated type bindings rather than top-level type aliases/sum types.
+fn parse_impl_body(p: &mut Parser) {
+    let m = p.open();
+
+    loop {
+        p.eat_newlines();
+        while p.eat(SyntaxKind::SEMICOLON) {
+            p.eat_newlines();
+        }
+
+        match p.current() {
+            SyntaxKind::END_KW | SyntaxKind::EOF => break,
+            SyntaxKind::TYPE_KW => {
+                parse_assoc_type_binding(p);
+            }
+            SyntaxKind::FN_KW | SyntaxKind::DEF_KW => {
+                parse_fn_def(p);
+            }
+            SyntaxKind::PUB_KW => {
+                // pub fn ...
+                match p.nth(1) {
+                    SyntaxKind::FN_KW | SyntaxKind::DEF_KW => {
+                        parse_fn_def(p);
+                    }
+                    _ => {
+                        p.error("expected `fn` or `type` in impl body");
+                        break;
+                    }
+                }
+            }
+            _ => {
+                p.error("expected `fn`, `type`, or `end` in impl body");
+                break;
+            }
+        }
+
+        if p.has_error() {
+            break;
+        }
+
+        match p.current() {
+            SyntaxKind::NEWLINE => {
+                p.eat_newlines();
+            }
+            SyntaxKind::SEMICOLON => {}
+            SyntaxKind::END_KW | SyntaxKind::EOF => {}
+            _ => {}
+        }
+    }
+
+    p.close(m, SyntaxKind::BLOCK);
 }
 
 // ── Sum Type Definition ──────────────────────────────────────────────────

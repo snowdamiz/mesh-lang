@@ -2413,3 +2413,140 @@ fn for_in_without_when_filter_returns_none() {
     assert!(for_in.iterable().is_some(), "iterable() should still work");
     assert!(for_in.body().is_some(), "body() should still work");
 }
+
+// ═══════════════════════════════════════════════════════════════════════
+// Phase 74-01: Associated Type Parser and AST Support
+// ═══════════════════════════════════════════════════════════════════════
+
+#[test]
+fn interface_with_assoc_type_decl() {
+    let source = "interface Iterator do\n  type Item\n  fn next(self) -> Int\nend";
+    let p = parse(source);
+    assert!(p.ok(), "parse errors: {:?}", p.errors());
+    assert_snapshot!(source_and_debug(source));
+}
+
+#[test]
+fn impl_with_assoc_type_binding() {
+    let source = "impl Iterator for MyList do\n  type Item = Int\n  fn next(self) -> Int do\n    42\n  end\nend";
+    let p = parse(source);
+    assert!(p.ok(), "parse errors: {:?}", p.errors());
+    assert_snapshot!(source_and_debug(source));
+}
+
+#[test]
+fn interface_assoc_type_cst_has_assoc_type_def() {
+    let source = "interface Foo do\n  type Item\n  fn next(self) -> Int\nend";
+    let p = parse(source);
+    assert!(p.ok(), "parse errors: {:?}", p.errors());
+    let root = p.syntax();
+
+    // Find ASSOC_TYPE_DEF in the CST
+    fn find_kind(node: &mesh_parser::SyntaxNode, target: SyntaxKind) -> bool {
+        if node.kind() == target {
+            return true;
+        }
+        node.children().any(|c| find_kind(&c, target))
+    }
+
+    assert!(
+        find_kind(&root, SyntaxKind::ASSOC_TYPE_DEF),
+        "CST should contain ASSOC_TYPE_DEF node"
+    );
+}
+
+#[test]
+fn impl_assoc_type_cst_has_assoc_type_binding() {
+    let source = "impl Iterator for MyList do\n  type Item = Int\n  fn next(self) -> Int do\n    42\n  end\nend";
+    let p = parse(source);
+    assert!(p.ok(), "parse errors: {:?}", p.errors());
+    let root = p.syntax();
+
+    fn find_kind(node: &mesh_parser::SyntaxNode, target: SyntaxKind) -> bool {
+        if node.kind() == target {
+            return true;
+        }
+        node.children().any(|c| find_kind(&c, target))
+    }
+
+    assert!(
+        find_kind(&root, SyntaxKind::ASSOC_TYPE_BINDING),
+        "CST should contain ASSOC_TYPE_BINDING node"
+    );
+}
+
+#[test]
+fn ast_interface_def_assoc_types_accessor() {
+    use mesh_parser::ast::item::{AssocTypeDef, InterfaceDef};
+    let source = "interface Iterator do\n  type Item\n  fn next(self) -> Int\nend";
+    let p = parse(source);
+    assert!(p.ok(), "parse errors: {:?}", p.errors());
+    let tree = p.tree();
+
+    let iface: InterfaceDef = tree
+        .syntax()
+        .children()
+        .find_map(InterfaceDef::cast)
+        .expect("should have interface def");
+
+    let assoc_types: Vec<AssocTypeDef> = iface.assoc_types().collect();
+    assert_eq!(assoc_types.len(), 1);
+    assert_eq!(assoc_types[0].name().unwrap().text().unwrap(), "Item");
+
+    // Methods should still work
+    let methods: Vec<_> = iface.methods().collect();
+    assert_eq!(methods.len(), 1);
+    assert_eq!(methods[0].name().unwrap().text().unwrap(), "next");
+}
+
+#[test]
+fn ast_impl_def_assoc_type_bindings_accessor() {
+    use mesh_parser::ast::item::{AssocTypeBinding, ImplDef};
+    let source = "impl Iterator for MyList do\n  type Item = Int\n  fn next(self) -> Int do\n    42\n  end\nend";
+    let p = parse(source);
+    assert!(p.ok(), "parse errors: {:?}", p.errors());
+    let tree = p.tree();
+
+    let impl_def: ImplDef = tree
+        .syntax()
+        .children()
+        .find_map(ImplDef::cast)
+        .expect("should have impl def");
+
+    let bindings: Vec<AssocTypeBinding> = impl_def.assoc_type_bindings().collect();
+    assert_eq!(bindings.len(), 1);
+    assert_eq!(bindings[0].name().unwrap().text().unwrap(), "Item");
+
+    // Methods should still work
+    let methods: Vec<_> = impl_def.methods().collect();
+    assert_eq!(methods.len(), 1);
+    assert_eq!(methods[0].name().unwrap().text().unwrap(), "next");
+}
+
+#[test]
+fn interface_multiple_assoc_types() {
+    let source = "interface Numeric do\n  type Output\n  type Input\n  fn compute(self) -> Int\nend";
+    let p = parse(source);
+    assert!(p.ok(), "parse errors: {:?}", p.errors());
+
+    use mesh_parser::ast::item::InterfaceDef;
+    let tree = p.tree();
+    let iface: InterfaceDef = tree
+        .syntax()
+        .children()
+        .find_map(InterfaceDef::cast)
+        .expect("should have interface def");
+
+    let assoc_types: Vec<_> = iface.assoc_types().collect();
+    assert_eq!(assoc_types.len(), 2);
+    assert_eq!(assoc_types[0].name().unwrap().text().unwrap(), "Output");
+    assert_eq!(assoc_types[1].name().unwrap().text().unwrap(), "Input");
+}
+
+#[test]
+fn impl_assoc_type_generic_binding() {
+    // Test binding to a generic type: type Item = List<Int>
+    let source = "impl Foo for Bar do\n  type Item = List<Int>\n  fn baz(self) do\n    42\n  end\nend";
+    let p = parse(source);
+    assert!(p.ok(), "parse errors: {:?}", p.errors());
+}
