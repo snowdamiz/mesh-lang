@@ -1,0 +1,119 @@
+{
+  "name": "mesh-dark",
+  "type": "dark",
+  "colors": {
+    "editor.background": "#1e1e1e",
+    "editor.foreground": "#e5e5e5"
+  },
+  "tokenColors": [
+    {
+      "settings": {
+        "foreground": "#e5e5e5",
+        "background": "#1e1e1e"
+      }
+    },
+    {
+      "name": "Comments",
+      "scope": ["comment", "comment.line"],
+      "settings": {
+        "foreground": "#666666",
+        "fontStyle": "italic"
+      }
+    },
+    {
+      "name": "Strings",
+      "scope": ["string", "string.quoted"],
+      "settings": {
+        "foreground": "#999999"
+      }
+    },
+    {
+      "name": "Keywords Control",
+      "scope": ["keyword.control.mesh"],
+      "settings": {
+        "foreground": "#ffffff",
+        "fontStyle": "bold"
+      }
+    },
+    {
+      "name": "Keywords Declaration",
+      "scope": ["keyword.declaration.mesh"],
+      "settings": {
+        "foreground": "#ffffff",
+        "fontStyle": "bold"
+      }
+    },
+    {
+      "name": "Keywords Operator",
+      "scope": ["keyword.operator.mesh"],
+      "settings": {
+        "foreground": "#cccccc",
+        "fontStyle": "bold"
+      }
+    },
+    {
+      "name": "Types",
+      "scope": ["entity.name.type", "support.type"],
+      "settings": {
+        "foreground": "#cccccc",
+        "fontStyle": "italic"
+      }
+    },
+    {
+      "name": "Functions",
+      "scope": ["entity.name.function", "support.function"],
+      "settings": {
+        "foreground": "#dddddd"
+      }
+    },
+    {
+      "name": "Constants and Booleans",
+      "scope": ["constant", "constant.language", "constant.numeric"],
+      "settings": {
+        "foreground": "#888888"
+      }
+    },
+    {
+      "name": "Variables",
+      "scope": ["variable", "variable.other"],
+      "settings": {
+        "foreground": "#d0d0d0"
+      }
+    },
+    {
+      "name": "Operators",
+      "scope": [
+        "keyword.operator.pipe",
+        "keyword.operator.arrow",
+        "keyword.operator.annotation",
+        "keyword.operator.comparison",
+        "keyword.operator.arithmetic",
+        "keyword.operator.assignment"
+      ],
+      "settings": {
+        "foreground": "#aaaaaa"
+      }
+    },
+    {
+      "name": "Punctuation",
+      "scope": ["punctuation"],
+      "settings": {
+        "foreground": "#777777"
+      }
+    },
+    {
+      "name": "Escape Characters",
+      "scope": ["constant.character.escape"],
+      "settings": {
+        "foreground": "#888888"
+      }
+    },
+    {
+      "name": "Interpolation",
+      "scope": ["meta.interpolation", "punctuation.section.interpolation"],
+      "settings": {
+        "foreground": "#aaaaaa"
+      }
+    }
+  ]
+}

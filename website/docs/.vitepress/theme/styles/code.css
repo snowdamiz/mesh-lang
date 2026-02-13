@@ -1,0 +1,39 @@
+/* Dual theme switching for code blocks */
+.dark .vp-code span {
+  color: var(--shiki-dark, inherit);
+  font-style: var(--shiki-dark-font-style, inherit);
+  font-weight: var(--shiki-dark-font-weight, inherit);
+}
+
+html:not(.dark) .vp-code span {
+  color: var(--shiki-light, inherit);
+  font-style: var(--shiki-light-font-style, inherit);
+  font-weight: var(--shiki-light-font-weight, inherit);
+}
+
+/* Code block container styling */
+div[class*='language-'] {
+  position: relative;
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+/* Light mode code block background */
+div[class*='language-'] > pre {
+  background-color: var(--muted);
+  padding: 1rem 1.25rem;
+  overflow-x: auto;
+}
+
+/* Dark mode code block background */
+.dark div[class*='language-'] > pre {
+  background-color: var(--secondary);
+}
+
+/* Code font */
+.vp-code,
+.vp-code * {
+  font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace;
+  font-size: 0.875rem;
+  line-height: 1.7;
+}
