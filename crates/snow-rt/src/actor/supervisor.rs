@@ -178,12 +178,23 @@ pub fn start_children(
 ///
 /// Spawns the child via the scheduler, links the supervisor to the child,
 /// and updates the child state.
+///
+/// If the child spec has `target_node` set, the child is spawned on the
+/// remote node via `snow_node_spawn`. Otherwise, spawns locally (unchanged).
 pub fn start_single_child(
     child: &mut ChildState,
     scheduler: &Scheduler,
     sup_pid: ProcessId,
 ) -> Result<ProcessId, String> {
-    // Spawn the child process.
+    // Route to remote spawn if target_node is set.
+    if child.spec.target_node.is_some() {
+        let node = child.spec.target_node.clone().unwrap();
+        let fn_name = child.spec.start_fn_name.clone()
+            .ok_or("remote child requires start_fn_name")?;
+        return start_single_child_remote(child, sup_pid, &node, &fn_name);
+    }
+
+    // Local spawn path (existing behavior unchanged).
     let child_pid = scheduler.spawn(
         child.spec.start_fn,
         child.spec.start_args_ptr,
@@ -206,6 +217,48 @@ pub fn start_single_child(
     child.running = true;
 
     Ok(child_pid)
+}
+
+/// Start a child process on a remote node via `snow_node_spawn`.
+///
+/// Calls `snow_node_spawn` with `link_flag=1` (spawn + bidirectional link).
+/// The link ensures the supervisor receives DIST_EXIT when the remote child
+/// crashes, which the supervisor's existing `trap_exit + handle_child_exit`
+/// handles automatically.
+///
+/// The returned PID from `snow_node_spawn` is a fully-qualified remote PID
+/// with correct node_id/creation/local_id (Phase 67 handles this).
+fn start_single_child_remote(
+    child: &mut ChildState,
+    _sup_pid: ProcessId,
+    target_node: &str,
+    fn_name: &str,
+) -> Result<ProcessId, String> {
+    let node_bytes = target_node.as_bytes();
+    let fn_bytes = fn_name.as_bytes();
+
+    // snow_node_spawn is an extern "C" function expecting raw pointers.
+    // It must be called from within an actor coroutine context (reads
+    // stack::get_current_pid()). The supervisor IS an actor, so this works.
+    let result = crate::dist::node::snow_node_spawn(
+        node_bytes.as_ptr(),
+        node_bytes.len() as u64,
+        fn_bytes.as_ptr(),
+        fn_bytes.len() as u64,
+        child.spec.start_args_ptr,
+        child.spec.start_args_size,
+        1, // link_flag=1: spawn with bidirectional link
+    );
+
+    if result == 0 {
+        return Err("remote spawn failed: node not connected or function not found".to_string());
+    }
+
+    let remote_pid = ProcessId(result);
+    child.pid = Some(remote_pid);
+    child.running = true;
+
+    Ok(remote_pid)
 }
 
 /// Start children from index `from_idx` to end, in forward order.
@@ -292,6 +345,18 @@ pub fn terminate_single_child(
             return;
         }
     };
+
+    // Remote children: send exit signal via distribution, don't access local process table.
+    if !child_pid.is_local() {
+        crate::dist::node::send_dist_exit(sup_pid, child_pid, &ExitReason::Shutdown);
+        // The bidirectional link will deliver the child's exit back to the supervisor's
+        // mailbox. We mark as not running immediately -- the supervisor's receive loop
+        // handles the actual exit signal. This matches OTP semantics where termination
+        // is asynchronous for remote children.
+        child.running = false;
+        child.pid = None;
+        return;
+    }
 
     match child.spec.shutdown {
         ShutdownType::BrutalKill => {
@@ -537,6 +602,8 @@ mod tests {
             restart_type: restart,
             shutdown,
             child_type: ChildType::Worker,
+            target_node: None,
+            start_fn_name: None,
         }
     }
 
