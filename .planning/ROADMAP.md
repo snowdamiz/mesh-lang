@@ -114,78 +114,15 @@ See milestones/v3.0-ROADMAP.md for full phase details.
 
 </details>
 
-### v4.0 WebSocket Support (SHIPPED 2026-02-12)
+<details>
+<summary>v4.0 WebSocket Support (Phases 59-62) - SHIPPED 2026-02-12</summary>
 
-**Milestone Goal:** Add WebSocket support with actor-per-connection model, unified actor messaging, rooms/channels, ping/pong heartbeat, binary+text frames, and TLS (wss://).
+See milestones/v4.0-ROADMAP.md for full phase details.
+8 plans across 4 phases. ~84,400 lines of Rust (+~950). 38 commits.
 
-- [x] **Phase 59: Protocol Core** - RFC 6455 frame codec, HTTP upgrade handshake, text/binary/close frames (completed 2026-02-12)
-- [x] **Phase 60: Actor Integration** - Actor-per-connection, reader thread bridge, mailbox delivery, callbacks, Ws.serve (completed 2026-02-12)
-- [x] **Phase 61: Production Hardening** - TLS (wss://), ping/pong heartbeat, message fragmentation (completed 2026-02-12)
-- [x] **Phase 62: Rooms & Channels** - Named rooms with join/leave/broadcast and automatic cleanup (completed 2026-02-12)
-
-## Phase Details
-
-### Phase 59: Protocol Core
-**Goal**: WebSocket wire protocol speaks RFC 6455 -- frames can be parsed, written, masked/unmasked, and connections can be upgraded from HTTP
-**Depends on**: Nothing (first phase of v4.0; builds on existing HTTP parser in snow-rt)
-**Requirements**: PROTO-01, PROTO-02, PROTO-03, PROTO-04, PROTO-05, PROTO-06, PROTO-07, PROTO-08, PROTO-09
-**Success Criteria** (what must be TRUE):
-  1. A WebSocket client can complete an HTTP upgrade handshake and receive a valid 101 Switching Protocols response with correct Sec-WebSocket-Accept header
-  2. The server can read client frames (text and binary) of all three payload length encodings (7-bit, 16-bit, 64-bit), correctly unmasking the payload
-  3. The server can write unmasked text and binary frames back to the client
-  4. A close handshake completes cleanly in both directions (server-initiated and client-initiated) with proper status codes
-  5. Malformed upgrade requests receive HTTP 400, and unknown opcodes trigger close with code 1002
-**Plans:** 2 plans
-Plans:
-- [x] 59-01-PLAN.md -- Frame codec (WsOpcode, WsFrame, read/write/mask)
-- [x] 59-02-PLAN.md -- Handshake, close handshake, text UTF-8 validation
-
-### Phase 60: Actor Integration
-**Goal**: Each WebSocket connection runs as an isolated actor with WS frames arriving in the standard mailbox, callback-based user API, and a dedicated server entry point
-**Depends on**: Phase 59 (frame codec and upgrade handshake)
-**Requirements**: ACTOR-01, ACTOR-02, ACTOR-03, ACTOR-04, ACTOR-05, ACTOR-06, ACTOR-07, SERVE-01, SERVE-03, LIFE-01, LIFE-02, LIFE-03, LIFE-04
-**Success Criteria** (what must be TRUE):
-  1. A Snow program can call Ws.serve(handler, port) to start a WebSocket server that accepts connections, each handled by a dedicated actor with crash isolation
-  2. WebSocket text and binary frames are delivered to the actor mailbox and can be received via the standard `receive` expression alongside actor-to-actor messages without type tag collision
-  3. The actor can send text and binary frames back to the client via Ws.send and Ws.send_binary, and the reader thread does not block the M:N scheduler
-  4. User-defined on_connect, on_message, and on_close callbacks fire at the correct lifecycle points, with on_connect able to reject connections
-  5. Actor crash sends close frame 1011 to the client, and client disconnect causes actor exit with signal propagation to linked actors
-**Plans:** 2 plans
-Plans:
-- [x] 60-01-PLAN.md -- Runtime server infrastructure (accept loop, reader thread bridge, lifecycle callbacks, Ws.send)
-- [x] 60-02-PLAN.md -- Codegen wiring (intrinsics, STDLIB_MODULES, map_builtin_name)
-
-### Phase 61: Production Hardening
-**Goal**: WebSocket connections are production-ready with TLS encryption, dead connection detection via heartbeat, and large message support via fragmentation
-**Depends on**: Phase 60 (working actor-per-connection WebSocket server)
-**Requirements**: SERVE-02, BEAT-01, BEAT-02, BEAT-03, BEAT-04, BEAT-05, FRAG-01, FRAG-02, FRAG-03
-**Success Criteria** (what must be TRUE):
-  1. A Snow program can call Ws.serve_tls(handler, port, cert_path, key_path) to start a wss:// server using the existing rustls infrastructure
-  2. The server sends periodic Ping frames and automatically responds to client Pings with Pong, closing connections that miss the Pong timeout threshold
-  3. Fragmented messages (continuation frames) are reassembled into complete messages, with interleaved control frames handled correctly and messages exceeding 16MB rejected with close code 1009
-**Plans:** 2 plans
-Plans:
-- [x] 61-01-PLAN.md -- Runtime hardening (WsStream enum, TLS serve, heartbeat, fragmentation)
-- [x] 61-02-PLAN.md -- Codegen wiring (snow_ws_serve_tls intrinsic, known_functions, map_builtin_name)
-
-### Phase 62: Rooms & Channels
-**Goal**: Connections can join named rooms for pub/sub broadcast messaging with automatic cleanup on disconnect
-**Depends on**: Phase 60 (working actor-per-connection model for room membership)
-**Requirements**: ROOM-01, ROOM-02, ROOM-03, ROOM-04, ROOM-05, ROOM-06
-**Success Criteria** (what must be TRUE):
-  1. A connection actor can call Ws.join(conn, room) and Ws.leave(conn, room) to subscribe and unsubscribe from named rooms
-  2. Ws.broadcast(room, message) delivers a text frame to all connections in the room, and Ws.broadcast_except(room, message, conn) delivers to all except the specified connection
-  3. When a connection disconnects, it is automatically removed from all rooms it had joined
-  4. Multiple connection actors can concurrently join, leave, and broadcast to the same room without data corruption
-**Plans:** 2 plans
-Plans:
-- [x] 62-01-PLAN.md -- RoomRegistry, runtime functions (join/leave/broadcast/broadcast_except), disconnect cleanup
-- [x] 62-02-PLAN.md -- Codegen wiring (LLVM intrinsics, known_functions, map_builtin_name)
+</details>
 
 ## Progress
-
-**Execution Order:**
-Phases execute in numeric order: 59 -> 60 -> 61 -> 62
 
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
@@ -201,9 +138,6 @@ Phases execute in numeric order: 59 -> 60 -> 61 -> 62
 | 43-48 | v1.9 | 13/13 | Complete | 2026-02-10 |
 | 49-54 | v2.0 | 13/13 | Complete | 2026-02-12 |
 | 55-58 | v3.0 | 8/8 | Complete | 2026-02-12 |
-| 59. Protocol Core | v4.0 | 2/2 | Complete | 2026-02-12 |
-| 60. Actor Integration | v4.0 | 2/2 | Complete | 2026-02-12 |
-| 61. Production Hardening | v4.0 | 2/2 | Complete | 2026-02-12 |
-| 62. Rooms & Channels | v4.0 | 2/2 | Complete | 2026-02-12 |
+| 59-62 | v4.0 | 8/8 | Complete | 2026-02-12 |
 
-**Total: 62 phases shipped across 13 milestones. 170 plans completed. v4.0 complete.**
+**Total: 62 phases shipped across 14 milestones. 170 plans completed. All milestones complete.**

@@ -2,21 +2,13 @@
 
 ## What This Is
 
-Snow is a programming language that combines Elixir/Ruby-style expressive syntax with static Hindley-Milner type inference and BEAM-style concurrency (actors, supervision trees, fault tolerance), compiled via LLVM to native single-binary executables. The compiler is written in Rust. v1.0-v1.9 built a complete language: compiler pipeline, actor runtime, trait system, module system, loops, stdlib, and developer tooling. v2.0 added database drivers and JSON serde. v3.0 made Snow production-ready: TLS encryption for PostgreSQL and HTTPS, connection pooling with health checks, panic-safe database transactions, and automatic struct-to-row mapping via `deriving(Row)`. v4.0 adds WebSocket support for real-time bidirectional communication. 83K LOC Rust across 12 milestones. Zero known compiler correctness issues.
+Snow is a programming language that combines Elixir/Ruby-style expressive syntax with static Hindley-Milner type inference and BEAM-style concurrency (actors, supervision trees, fault tolerance), compiled via LLVM to native single-binary executables. The compiler is written in Rust. v1.0-v1.9 built a complete language: compiler pipeline, actor runtime, trait system, module system, loops, stdlib, and developer tooling. v2.0 added database drivers and JSON serde. v3.0 made Snow production-ready: TLS encryption for PostgreSQL and HTTPS, connection pooling with health checks, panic-safe database transactions, and automatic struct-to-row mapping via `deriving(Row)`. v4.0 added WebSocket support with RFC 6455 protocol, actor-per-connection model, TLS (wss://), heartbeat, fragmentation, and rooms/channels. ~84K LOC Rust across 14 milestones. Zero known compiler correctness issues.
 
-## Current Milestone: v4.0 WebSocket Support
+## Current State
 
-**Goal:** Add WebSocket support with actor-per-connection model, unified actor messaging, rooms/channels, ping/pong heartbeat, binary+text frames, and TLS (wss://).
+Shipped v4.0 WebSocket Support (2026-02-13). All 14 milestones complete.
 
-**Target features:**
-- Separate WebSocket server (`Ws.serve` / `Ws.serve_tls`)
-- Actor-per-connection with WS messages arriving in actor mailbox via `receive`
-- Callback API (`on_connect`, `on_message`, `on_close`) for convenience
-- RFC 6455 WebSocket protocol (HTTP upgrade handshake, frame parsing, masking)
-- Text and binary frame support
-- TLS (wss://) using existing rustls infrastructure
-- Rooms/channels with server-managed and client-initiated join/leave
-- Ping/pong heartbeat with configurable timeout and dead connection cleanup
+**Latest milestone (v4.0):** RFC 6455 WebSocket frame codec, actor-per-connection server with crash isolation, TLS (wss://), heartbeat ping/pong, fragment reassembly, and named rooms with pub/sub broadcast. 37/37 requirements satisfied, 1,524 tests passing.
 
 ## Core Value
 
@@ -131,17 +123,18 @@ Expressive, readable concurrency -- writing concurrent programs should feel as n
 - ✓ NULL columns map to None for Option fields, error for non-Option fields -- v3.0
 - ✓ Pg.query_as/Pool.query_as for one-step query and struct hydration -- v3.0
 - ✓ Compile error (E0039) when deriving(Row) on struct with non-mappable field type -- v3.0
+- ✓ WebSocket server with actor-per-connection model (Ws.serve, crash isolation via catch_unwind) -- v4.0
+- ✓ RFC 6455 protocol implementation (HTTP upgrade handshake, frame parsing, XOR masking, close handshake) -- v4.0
+- ✓ Unified messaging: WS text/binary frames arrive in actor mailbox via receive with reserved type tags -- v4.0
+- ✓ Callback API (on_connect with reject, on_message, on_close with close code) -- v4.0
+- ✓ Text and binary frame support with UTF-8 validation -- v4.0
+- ✓ TLS (wss://) via WsStream enum reusing rustls 0.23 infrastructure -- v4.0
+- ✓ Rooms/channels with Ws.join/leave/broadcast/broadcast_except and automatic disconnect cleanup -- v4.0
+- ✓ Ping/pong heartbeat (30s interval, 10s timeout) with dead connection detection and fragment reassembly (16 MiB limit) -- v4.0
 
 ### Active
 
-- [ ] WebSocket server with actor-per-connection model
-- [ ] RFC 6455 protocol implementation (upgrade handshake, frame parsing, masking)
-- [ ] Unified messaging: WS messages arrive in actor mailbox via receive
-- [ ] Callback API (on_connect, on_message, on_close)
-- [ ] Text and binary frame support
-- [ ] TLS (wss://) via existing rustls stack
-- [ ] Rooms/channels with join/broadcast
-- [ ] Ping/pong heartbeat with dead connection cleanup
+(No active requirements -- all milestones complete)
 
 ### Out of Scope
 
@@ -169,14 +162,14 @@ Expressive, readable concurrency -- writing concurrent programs should feel as n
 
 ## Context
 
-Shipped v3.0 with 83,451 lines of Rust (+2,445 from v2.0).
+Shipped v4.0 with ~84,400 lines of Rust (+~950 from v3.0).
 Tech stack: Rust compiler, LLVM 21 (Inkwell 0.8), corosensei coroutines, rowan CST, ariadne diagnostics.
 Crates: snow-lexer, snow-parser, snow-typeck, snow-mir, snow-codegen, snow-rt, snow-fmt, snow-repl, snow-pkg, snow-lsp, snowc.
-Deps: libsqlite3-sys (bundled), sha2/hmac/md-5/base64ct (PG auth), rustls 0.23/webpki-roots/ring (TLS).
+Deps: libsqlite3-sys (bundled), sha2/hmac/md-5/base64ct (PG auth), rustls 0.23/webpki-roots/ring (TLS + SHA-1 for WS handshake).
 Removed: tiny_http (replaced with hand-rolled HTTP/1.1 parser in v3.0).
-Existing infrastructure relevant to v4.0: hand-rolled HTTP/1.1 parser (server.rs), HttpStream enum (Plain/Tls), actor-per-connection pattern, rustls 0.23 TLS stack, SHA-1 available via ring.
+New in v4.0: ws/ module (frame.rs, handshake.rs, close.rs, server.rs, rooms.rs), 8 LLVM intrinsics for Ws.* API, WsStream enum (Plain/Tls), RoomRegistry with dual-map design.
 
-290+ tests passing (including 18 new v3.0 tests). Zero known critical bugs. Zero known compiler correctness issues.
+1,524 tests passing (including 44 new WebSocket-specific tests). Zero known critical bugs. Zero known compiler correctness issues.
 
 Known limitations: None.
 
@@ -184,13 +177,9 @@ Tech debt (minor, pre-existing):
 - List.find Option return pattern matching triggers LLVM verification error with case expression (pre-existing codegen gap)
 - Timer e2e tests flake under high parallelism (5s timeout too tight when CPU-contended; pass with --test-threads=1)
 - Pre-existing TODO in lower.rs:5947 for string comparison callback
-- build_module_graph wrapper in discovery.rs used only in Phase 37 tests -- consider deprecation
-- report_diagnostics function in main.rs appears to be dead code
 - 3 compiler warnings (fixable with `cargo fix`)
 - Middleware requires explicit `:: Request` parameter type annotations (incomplete inference)
 - PostgreSQL E2E test requires external server, marked `#[ignore]`
-- 1 dead_code warning in snow-rt build
-- No cross-feature integration tests (HTTP+JSON, DB+JSON)
 
 ## Constraints
 
@@ -300,6 +289,15 @@ Tech debt (minor, pre-existing):
 | FromRowFn callback via fn ptr transmute | Matches existing Snow closure pattern; enables query_as integration | ✓ Good -- v3.0, consistent callback architecture |
 | Polymorphic Scheme for query_as | Quantified TyVar enables type-safe generic result mapping | ✓ Good -- v3.0, correct type inference |
 | Option fields receive None for missing columns | Lenient NULL handling matches common SQL patterns | ✓ Good -- v3.0, practical ergonomics |
+| SHA-1 via ring (not sha1 crate) | Already a dependency for TLS; reuse avoids new crate for RFC 6455 Sec-WebSocket-Accept | ✓ Good -- v4.0, zero new deps |
+| Reader thread bridge (OS thread per WS conn) | Avoids blocking M:N scheduler with network I/O; thread does read + mailbox delivery | ✓ Good -- v4.0, scheduler-safe |
+| Reserved type tags (u64::MAX-1 through -4) | WS frame types in mailbox without collision with user actor-to-actor messages | ✓ Good -- v4.0, clean separation |
+| Arc<Mutex<WsStream>> unified pattern | Single code path for plain TCP and TLS WebSocket I/O; replaces try_clone | ✓ Good -- v4.0, simpler than alternatives |
+| 100ms reader thread timeout | Balances mutex contention with heartbeat responsiveness; macOS EAGAIN handled | ✓ Good -- v4.0, responsive heartbeat |
+| Pong handled before process_frame | Heartbeat needs to validate payload before normal dispatch | ✓ Good -- v4.0, correct ordering |
+| 16 MiB MAX_PAYLOAD_SIZE | Production safety limit; generous for most WS use cases; close 1009 on exceed | ✓ Good -- v4.0, safe default |
+| RoomRegistry dual-map (rooms + conn_rooms) | O(1) join/leave, O(rooms_per_conn) cleanup; nested lock ordering prevents deadlocks | ✓ Good -- v4.0, efficient + safe |
+| Room cleanup before shutdown.store | Prevents use-after-free when concurrent broadcasts access WsConnection during disconnect | ✓ Good -- v4.0, correct ordering |
 
 ---
-*Last updated: 2026-02-12 after v4.0 milestone start*
+*Last updated: 2026-02-13 after v4.0 milestone*

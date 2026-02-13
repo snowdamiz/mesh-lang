@@ -331,3 +331,32 @@
 
 ---
 
+
+## v4.0 WebSocket Support (Shipped: 2026-02-13)
+
+**Delivered:** Added real-time bidirectional communication to Snow with a complete RFC 6455 WebSocket implementation: frame codec with masking, HTTP upgrade handshake, actor-per-connection server with crash isolation, TLS (wss://), heartbeat with dead connection detection, message fragmentation, and named rooms with pub/sub broadcast.
+
+**Phases completed:** 59-62 (8 plans total)
+
+**Key accomplishments:**
+- RFC 6455 frame codec with 3 payload length encodings, XOR masking, 6 opcodes, HTTP upgrade handshake with Sec-WebSocket-Accept, close handshake, and UTF-8 text validation
+- Actor-per-connection WebSocket server with reader thread bridge delivering frames to actor mailbox via reserved type tags, crash isolation (close 1011), and exit signal propagation
+- Callback API (on_connect/on_message/on_close) with connection rejection, Ws.serve(handler, port) entry point, Ws.send/Ws.send_binary for responses
+- TLS (wss://) via WsStream enum reusing existing rustls 0.23 infrastructure, with build_server_config shared across HTTP and WS
+- Heartbeat ping/pong with 30s interval, 10s dead connection timeout, payload validation, plus fragment reassembly with 16 MiB limit and interleaved control frame handling
+- Named rooms with RoomRegistry (join/leave/broadcast/broadcast_except), concurrent access via dual-map design, and automatic disconnect cleanup
+
+**Stats:**
+- 47 files modified
+- ~84,400 lines of Rust (+~950 net from v3.0)
+- 4 phases, 8 plans, 50 truths verified
+- 1 day (2026-02-12)
+- 38 commits
+- 37/37 requirements satisfied, 1,524 tests passing (+44 new WebSocket-specific tests)
+
+**Git range:** `feat(59-01)` -> `feat(62-02)`
+
+**What's next:** TBD -- WebSocket support complete. Potential directions include per-message deflate compression, subprotocol negotiation, WebSocket client library, distributed actors, hot code reloading, iterator protocol, or incremental compilation.
+
+---
+
