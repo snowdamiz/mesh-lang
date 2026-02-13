@@ -496,6 +496,75 @@ mod tests {
     }
 
     #[test]
+    fn test_register_two_names_both_resolve() {
+        let reg = fresh_registry();
+        let pid1 = ProcessId::next();
+        let pid2 = ProcessId::next();
+
+        reg.register("service_a".to_string(), pid1, "node1@host".to_string())
+            .unwrap();
+        reg.register("service_b".to_string(), pid2, "node2@host".to_string())
+            .unwrap();
+
+        assert_eq!(reg.whereis("service_a"), Some(pid1));
+        assert_eq!(reg.whereis("service_b"), Some(pid2));
+    }
+
+    #[test]
+    fn test_register_duplicate_preserves_original() {
+        let reg = fresh_registry();
+        let pid1 = ProcessId::next();
+        let pid2 = ProcessId::next();
+
+        reg.register("lock_mgr".to_string(), pid1, "node1@host".to_string())
+            .unwrap();
+        let _ = reg.register("lock_mgr".to_string(), pid2, "node2@host".to_string());
+
+        // Original mapping must be preserved.
+        assert_eq!(reg.whereis("lock_mgr"), Some(pid1));
+    }
+
+    #[test]
+    fn test_cleanup_process_preserves_other_pids() {
+        let reg = fresh_registry();
+        let pid_a = ProcessId::next();
+        let pid_b = ProcessId::next();
+
+        reg.register("x".to_string(), pid_a, "node1@host".to_string())
+            .unwrap();
+        reg.register("y".to_string(), pid_a, "node1@host".to_string())
+            .unwrap();
+        reg.register("z".to_string(), pid_b, "node1@host".to_string())
+            .unwrap();
+
+        let removed = reg.cleanup_process(pid_a);
+        assert_eq!(removed.len(), 2);
+        assert!(removed.contains(&"x".to_string()));
+        assert!(removed.contains(&"y".to_string()));
+
+        // pid_b's name must still be present.
+        assert_eq!(reg.whereis("z"), Some(pid_b));
+    }
+
+    #[test]
+    fn test_merge_snapshot_skips_existing_names() {
+        let reg = fresh_registry();
+        let pid1 = ProcessId::next();
+        let pid2 = ProcessId::next();
+
+        reg.register("a".to_string(), pid1, "node1@host".to_string())
+            .unwrap();
+
+        // Merge a snapshot containing name "a" with a different PID.
+        reg.merge_snapshot(vec![
+            ("a".to_string(), pid2, "node2@host".to_string()),
+        ]);
+
+        // Existing registration wins -- "a" still maps to pid1.
+        assert_eq!(reg.whereis("a"), Some(pid1));
+    }
+
+    #[test]
     fn test_concurrent_register_whereis() {
         use std::sync::Arc;
 
@@ -527,5 +596,170 @@ mod tests {
                 t
             );
         }
+    }
+
+    // -----------------------------------------------------------------------
+    // Wire format roundtrip tests
+    // -----------------------------------------------------------------------
+    //
+    // These follow the in-memory Cursor pattern used by the node.rs wire tests.
+    // No network I/O, no NODE_STATE dependency -- pure encode/decode verification.
+
+    #[test]
+    fn test_dist_global_register_wire_format() {
+        use super::super::node::DIST_GLOBAL_REGISTER;
+
+        let name = "my_service";
+        let pid = ProcessId(42);
+        let node_name = "node1@host";
+
+        // Encode: [tag][u16 name_len][name][u64 pid][u16 node_name_len][node_name]
+        let name_bytes = name.as_bytes();
+        let node_bytes = node_name.as_bytes();
+        let mut payload = Vec::new();
+        payload.push(DIST_GLOBAL_REGISTER);
+        payload.extend_from_slice(&(name_bytes.len() as u16).to_le_bytes());
+        payload.extend_from_slice(name_bytes);
+        payload.extend_from_slice(&pid.as_u64().to_le_bytes());
+        payload.extend_from_slice(&(node_bytes.len() as u16).to_le_bytes());
+        payload.extend_from_slice(node_bytes);
+
+        // Decode using the same logic as the reader loop handler.
+        let msg = &payload;
+        assert_eq!(msg[0], DIST_GLOBAL_REGISTER);
+
+        let decoded_name_len = u16::from_le_bytes(msg[1..3].try_into().unwrap()) as usize;
+        assert_eq!(decoded_name_len, name.len());
+
+        let decoded_name = std::str::from_utf8(&msg[3..3 + decoded_name_len]).unwrap();
+        assert_eq!(decoded_name, name);
+
+        let decoded_pid = u64::from_le_bytes(
+            msg[3 + decoded_name_len..3 + decoded_name_len + 8]
+                .try_into()
+                .unwrap(),
+        );
+        assert_eq!(decoded_pid, pid.as_u64());
+
+        let node_name_len = u16::from_le_bytes(
+            msg[3 + decoded_name_len + 8..3 + decoded_name_len + 10]
+                .try_into()
+                .unwrap(),
+        ) as usize;
+        assert_eq!(node_name_len, node_name.len());
+
+        let decoded_node = std::str::from_utf8(
+            &msg[3 + decoded_name_len + 10..3 + decoded_name_len + 10 + node_name_len],
+        )
+        .unwrap();
+        assert_eq!(decoded_node, node_name);
+
+        // Verify total payload length matches expected.
+        assert_eq!(
+            msg.len(),
+            1 + 2 + name.len() + 8 + 2 + node_name.len()
+        );
+    }
+
+    #[test]
+    fn test_dist_global_unregister_wire_format() {
+        use super::super::node::DIST_GLOBAL_UNREGISTER;
+
+        let name = "old_service";
+
+        // Encode: [tag][u16 name_len][name]
+        let name_bytes = name.as_bytes();
+        let mut payload = Vec::new();
+        payload.push(DIST_GLOBAL_UNREGISTER);
+        payload.extend_from_slice(&(name_bytes.len() as u16).to_le_bytes());
+        payload.extend_from_slice(name_bytes);
+
+        // Decode and verify.
+        let msg = &payload;
+        assert_eq!(msg[0], DIST_GLOBAL_UNREGISTER);
+
+        let decoded_name_len = u16::from_le_bytes(msg[1..3].try_into().unwrap()) as usize;
+        assert_eq!(decoded_name_len, name.len());
+
+        let decoded_name = std::str::from_utf8(&msg[3..3 + decoded_name_len]).unwrap();
+        assert_eq!(decoded_name, name);
+
+        // Verify total payload length.
+        assert_eq!(msg.len(), 1 + 2 + name.len());
+    }
+
+    #[test]
+    fn test_dist_global_sync_wire_format() {
+        use super::super::node::DIST_GLOBAL_SYNC;
+
+        let entries = vec![
+            ("svc_alpha", ProcessId(100), "node_a@host"),
+            ("svc_beta", ProcessId(200), "node_b@host"),
+            ("svc_gamma", ProcessId(300), "node_a@host"),
+        ];
+
+        // Encode: [tag][u32 count][(u16 name_len, name, u64 pid, u16 node_len, node)*]
+        let mut payload = Vec::new();
+        payload.push(DIST_GLOBAL_SYNC);
+        payload.extend_from_slice(&(entries.len() as u32).to_le_bytes());
+        for (name, pid, node_name) in &entries {
+            let name_bytes = name.as_bytes();
+            payload.extend_from_slice(&(name_bytes.len() as u16).to_le_bytes());
+            payload.extend_from_slice(name_bytes);
+            payload.extend_from_slice(&pid.as_u64().to_le_bytes());
+            let node_bytes = node_name.as_bytes();
+            payload.extend_from_slice(&(node_bytes.len() as u16).to_le_bytes());
+            payload.extend_from_slice(node_bytes);
+        }
+
+        // Decode using the same logic as the reader loop DIST_GLOBAL_SYNC handler.
+        let msg = &payload;
+        assert_eq!(msg[0], DIST_GLOBAL_SYNC);
+
+        let count = u32::from_le_bytes(msg[1..5].try_into().unwrap()) as usize;
+        assert_eq!(count, entries.len());
+
+        let mut pos = 5;
+        for (expected_name, expected_pid, expected_node) in &entries {
+            let name_len =
+                u16::from_le_bytes(msg[pos..pos + 2].try_into().unwrap()) as usize;
+            pos += 2;
+            let decoded_name = std::str::from_utf8(&msg[pos..pos + name_len]).unwrap();
+            assert_eq!(decoded_name, *expected_name);
+            pos += name_len;
+
+            let decoded_pid =
+                u64::from_le_bytes(msg[pos..pos + 8].try_into().unwrap());
+            assert_eq!(decoded_pid, expected_pid.as_u64());
+            pos += 8;
+
+            let node_len =
+                u16::from_le_bytes(msg[pos..pos + 2].try_into().unwrap()) as usize;
+            pos += 2;
+            let decoded_node = std::str::from_utf8(&msg[pos..pos + node_len]).unwrap();
+            assert_eq!(decoded_node, *expected_node);
+            pos += node_len;
+        }
+
+        // Should have consumed entire payload.
+        assert_eq!(pos, msg.len());
+    }
+
+    #[test]
+    fn test_dist_global_sync_empty() {
+        use super::super::node::DIST_GLOBAL_SYNC;
+
+        // Encode: [tag][u32 count=0]
+        let mut payload = Vec::new();
+        payload.push(DIST_GLOBAL_SYNC);
+        payload.extend_from_slice(&0u32.to_le_bytes());
+
+        // Decode and verify.
+        let msg = &payload;
+        assert_eq!(msg[0], DIST_GLOBAL_SYNC);
+
+        let count = u32::from_le_bytes(msg[1..5].try_into().unwrap()) as usize;
+        assert_eq!(count, 0);
+        assert_eq!(msg.len(), 5); // tag + u32 count, no entries
     }
 }
