@@ -185,6 +185,9 @@ pub(crate) const DIST_SEND: u8 = 0x10;
 /// Distribution message tag: send to a named process on the receiving node.
 /// Wire format: [tag][u16 name_len LE][name bytes][raw message bytes]
 pub(crate) const DIST_REG_SEND: u8 = 0x11;
+/// Distribution message tag: peer list exchange for automatic mesh formation.
+/// Wire format: [tag][u16 count][u16 name_len, name bytes, ...]
+pub(crate) const DIST_PEER_LIST: u8 = 0x12;
 
 // ---------------------------------------------------------------------------
 // HeartbeatState -- ping/pong dead connection detection
@@ -230,6 +233,87 @@ impl HeartbeatState {
         } else {
             false
         }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Mesh formation: peer list exchange
+// ---------------------------------------------------------------------------
+
+/// Send our current peer list to a newly connected node for mesh formation.
+///
+/// Wire format: [DIST_PEER_LIST][u16 count][u16 name_len][name bytes]...
+/// Skips the receiving node's own name (no need to tell B about B).
+fn send_peer_list(session: &Arc<NodeSession>) {
+    let state = match node_state() {
+        Some(s) => s,
+        None => return,
+    };
+
+    let sessions = state.sessions.read();
+    let peers: Vec<&String> = sessions.keys()
+        .filter(|name| *name != &session.remote_name)
+        .collect();
+
+    if peers.is_empty() {
+        return;
+    }
+
+    let mut payload = Vec::new();
+    payload.push(DIST_PEER_LIST);
+    payload.extend_from_slice(&(peers.len() as u16).to_le_bytes());
+    for peer_name in &peers {
+        let bytes = peer_name.as_bytes();
+        payload.extend_from_slice(&(bytes.len() as u16).to_le_bytes());
+        payload.extend_from_slice(bytes);
+    }
+    drop(sessions); // Release read lock before acquiring stream lock
+
+    let mut stream = session.stream.lock().unwrap();
+    let _ = write_msg(&mut *stream, &payload);
+}
+
+/// Handle an incoming DIST_PEER_LIST -- connect to unknown peers on a separate thread.
+///
+/// Parses the peer list, filters out self and already-connected nodes,
+/// then spawns a thread to connect to the remaining peers. The thread spawn
+/// avoids deadlock (see Pitfall 7 in RESEARCH.md).
+fn handle_peer_list(data: &[u8]) {
+    if data.len() < 2 { return; }
+    let count = u16::from_le_bytes(data[0..2].try_into().unwrap()) as usize;
+    let mut pos = 2;
+    let mut to_connect = Vec::new();
+
+    let state = match node_state() {
+        Some(s) => s,
+        None => return,
+    };
+
+    for _ in 0..count {
+        if pos + 2 > data.len() { break; }
+        let name_len = u16::from_le_bytes(data[pos..pos+2].try_into().unwrap()) as usize;
+        pos += 2;
+        if pos + name_len > data.len() { break; }
+        if let Ok(peer_name) = std::str::from_utf8(&data[pos..pos+name_len]) {
+            // Skip self and already-connected nodes
+            if peer_name != state.name {
+                let sessions = state.sessions.read();
+                if !sessions.contains_key(peer_name) {
+                    to_connect.push(peer_name.to_string());
+                }
+            }
+        }
+        pos += name_len;
+    }
+
+    // Spawn connection attempts on a separate thread to avoid deadlock
+    if !to_connect.is_empty() {
+        std::thread::spawn(move || {
+            for peer in to_connect {
+                let bytes = peer.as_bytes();
+                snow_node_connect(bytes.as_ptr(), bytes.len() as u64);
+            }
+        });
     }
 }
 
@@ -368,6 +452,9 @@ fn reader_loop_session(
                                 }
                             }
                         }
+                    }
+                    DIST_PEER_LIST => {
+                        handle_peer_list(&msg[1..]);
                     }
                     _ => {
                         // Unknown tag -- silently ignore for forward compatibility.
@@ -1244,6 +1331,7 @@ fn accept_loop(listener: TcpListener, state: &NodeState) {
                 {
                     Ok(session) => {
                         spawn_session_threads(&session);
+                        send_peer_list(&session);
                     }
                     Err(e) => {
                         eprintln!(
@@ -1449,6 +1537,7 @@ pub extern "C" fn snow_node_connect(
     match register_session(state, remote_name.clone(), remote_creation, node_id, stream) {
         Ok(session) => {
             spawn_session_threads(&session);
+            send_peer_list(&session);
             0
         }
         Err(e) => {
