@@ -18,7 +18,7 @@
 
 use std::io::{self, Read, Write};
 use std::net::{TcpListener, TcpStream};
-use std::sync::atomic::{AtomicBool, AtomicU8, AtomicU16, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU8, AtomicU16, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
@@ -99,6 +99,58 @@ pub fn node_state() -> Option<&'static NodeState> {
 }
 
 // ---------------------------------------------------------------------------
+// Function name registry for remote spawn (Phase 67)
+// ---------------------------------------------------------------------------
+
+/// A wrapper around `*const u8` that is `Send + Sync`.
+///
+/// Function pointers in the registry are valid for the lifetime of the program
+/// (they point to compiled code in the text segment) and are never freed.
+#[derive(Clone, Copy)]
+struct FnPtr(*const u8);
+unsafe impl Send for FnPtr {}
+unsafe impl Sync for FnPtr {}
+
+/// Global registry mapping function names to their code pointers.
+///
+/// Populated at program startup by codegen-emitted `snow_register_function`
+/// calls. Used by the remote spawn handler to look up a function pointer
+/// by name when a DIST_SPAWN request arrives from another node.
+static FUNCTION_REGISTRY: OnceLock<RwLock<FxHashMap<String, FnPtr>>> = OnceLock::new();
+
+/// Get or initialize the function registry.
+fn function_registry() -> &'static RwLock<FxHashMap<String, FnPtr>> {
+    FUNCTION_REGISTRY.get_or_init(|| RwLock::new(FxHashMap::default()))
+}
+
+/// Register a function by name for remote spawn.
+///
+/// Called by codegen-emitted code in the main wrapper at program startup.
+/// Each top-level (non-closure) function is registered so that remote nodes
+/// can spawn it by name.
+#[no_mangle]
+pub extern "C" fn snow_register_function(name_ptr: *const u8, name_len: u64, fn_ptr: *const u8) {
+    if name_ptr.is_null() || fn_ptr.is_null() {
+        return;
+    }
+    let name = unsafe {
+        let slice = std::slice::from_raw_parts(name_ptr, name_len as usize);
+        std::str::from_utf8_unchecked(slice).to_string()
+    };
+    function_registry().write().insert(name, FnPtr(fn_ptr));
+}
+
+/// Look up a registered function by name.
+///
+/// Returns `Some(fn_ptr)` if the function was registered, `None` otherwise.
+pub(crate) fn lookup_function(name: &str) -> Option<*const u8> {
+    function_registry().read().get(name).map(|p| p.0)
+}
+
+/// Monotonic counter for generating unique spawn request IDs.
+static SPAWN_REQUEST_ID: AtomicU64 = AtomicU64::new(1);
+
+// ---------------------------------------------------------------------------
 // NodeSession -- placeholder for Plan 02
 // ---------------------------------------------------------------------------
 
@@ -120,6 +172,10 @@ pub struct NodeSession {
     pub shutdown: AtomicBool,
     /// When this connection was established
     pub connected_at: Instant,
+    /// Pending remote spawn requests: request_id -> requesting ProcessId.
+    /// Used by DIST_SPAWN_REPLY handler to route the spawned PID back to
+    /// the requesting process.
+    pub(crate) pending_spawns: std::sync::Mutex<FxHashMap<u64, crate::actor::process::ProcessId>>,
 }
 
 // ---------------------------------------------------------------------------
@@ -214,6 +270,14 @@ pub(crate) const DIST_UNLINK: u8 = 0x14;
 /// Distribution message tag: exit signal propagation.
 /// Wire format: [tag][u64 from_pid][u64 to_pid][reason_bytes]
 pub(crate) const DIST_EXIT: u8 = 0x15;
+/// Distribution message tag: remote spawn request (Phase 67).
+/// Wire format: [tag][u64 request_id][u16 fn_name_len][fn_name bytes][args bytes]
+pub(crate) const DIST_SPAWN: u8 = 0x19;
+/// Distribution message tag: remote spawn reply (Phase 67).
+/// Wire format: [tag][u64 request_id][u64 spawned_pid]
+pub(crate) const DIST_SPAWN_REPLY: u8 = 0x1A;
+/// Reserved type_tag for spawn reply messages in mailbox.
+pub(crate) const SPAWN_REPLY_TAG: u64 = u64::MAX - 4;
 
 // ---------------------------------------------------------------------------
 // HeartbeatState -- ping/pong dead connection detection
@@ -1453,6 +1517,7 @@ fn register_session(
         stream: Mutex::new(stream),
         shutdown: AtomicBool::new(false),
         connected_at: Instant::now(),
+        pending_spawns: std::sync::Mutex::new(FxHashMap::default()),
     });
 
     sessions.insert(remote_name.clone(), Arc::clone(&session));

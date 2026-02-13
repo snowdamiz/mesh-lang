@@ -747,6 +747,58 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
             0,
         ),
     );
+
+    // ── Phase 67: Node distribution & remote spawn ──────────────────────
+
+    // snow_node_start(name_ptr: ptr, name_len: i64, cookie_ptr: ptr, cookie_len: i64) -> i64
+    module.add_function("snow_node_start",
+        i64_type.fn_type(&[ptr_type.into(), i64_type.into(), ptr_type.into(), i64_type.into()], false),
+        Some(inkwell::module::Linkage::External));
+
+    // snow_node_connect(name_ptr: ptr, name_len: i64) -> i64
+    module.add_function("snow_node_connect",
+        i64_type.fn_type(&[ptr_type.into(), i64_type.into()], false),
+        Some(inkwell::module::Linkage::External));
+
+    // snow_node_self() -> ptr
+    module.add_function("snow_node_self",
+        ptr_type.fn_type(&[], false),
+        Some(inkwell::module::Linkage::External));
+
+    // snow_node_list() -> ptr
+    module.add_function("snow_node_list",
+        ptr_type.fn_type(&[], false),
+        Some(inkwell::module::Linkage::External));
+
+    // snow_node_monitor(node_ptr: ptr, node_len: i64) -> i64
+    module.add_function("snow_node_monitor",
+        i64_type.fn_type(&[ptr_type.into(), i64_type.into()], false),
+        Some(inkwell::module::Linkage::External));
+
+    // snow_node_spawn(node_ptr: ptr, node_len: i64, fn_name_ptr: ptr, fn_name_len: i64, args_ptr: ptr, args_size: i64, link_flag: i8) -> i64
+    module.add_function("snow_node_spawn",
+        i64_type.fn_type(&[ptr_type.into(), i64_type.into(), ptr_type.into(), i64_type.into(), ptr_type.into(), i64_type.into(), i8_type.into()], false),
+        Some(inkwell::module::Linkage::External));
+
+    // snow_register_function(name_ptr: ptr, name_len: i64, fn_ptr: ptr) -> void
+    module.add_function("snow_register_function",
+        void_type.fn_type(&[ptr_type.into(), i64_type.into(), ptr_type.into()], false),
+        Some(inkwell::module::Linkage::External));
+
+    // snow_process_monitor(target_pid: i64) -> i64
+    module.add_function("snow_process_monitor",
+        i64_type.fn_type(&[i64_type.into()], false),
+        Some(inkwell::module::Linkage::External));
+
+    // snow_process_demonitor(monitor_ref: i64) -> i64
+    module.add_function("snow_process_demonitor",
+        i64_type.fn_type(&[i64_type.into()], false),
+        Some(inkwell::module::Linkage::External));
+
+    // snow_actor_send_named(name_ptr: ptr, name_len: i64, node_ptr: ptr, node_len: i64, msg_ptr: ptr, msg_size: i64) -> void
+    module.add_function("snow_actor_send_named",
+        void_type.fn_type(&[ptr_type.into(), i64_type.into(), ptr_type.into(), i64_type.into(), ptr_type.into(), i64_type.into()], false),
+        Some(inkwell::module::Linkage::External));
 }
 
 /// Get a runtime function by name from the module.
@@ -1031,6 +1083,18 @@ mod tests {
         assert!(module.get_function("snow_ws_leave").is_some());
         assert!(module.get_function("snow_ws_broadcast").is_some());
         assert!(module.get_function("snow_ws_broadcast_except").is_some());
+
+        // Phase 67: Node distribution & remote spawn
+        assert!(module.get_function("snow_node_start").is_some());
+        assert!(module.get_function("snow_node_connect").is_some());
+        assert!(module.get_function("snow_node_self").is_some());
+        assert!(module.get_function("snow_node_list").is_some());
+        assert!(module.get_function("snow_node_monitor").is_some());
+        assert!(module.get_function("snow_node_spawn").is_some());
+        assert!(module.get_function("snow_register_function").is_some());
+        assert!(module.get_function("snow_process_monitor").is_some());
+        assert!(module.get_function("snow_process_demonitor").is_some());
+        assert!(module.get_function("snow_actor_send_named").is_some());
     }
 
     #[test]
