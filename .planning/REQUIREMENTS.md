@@ -77,4 +77,38 @@
 
 ## Traceability
 
-(Populated by roadmapper)
+| Requirement | Phase | Status |
+|-------------|-------|--------|
+| ASSOC-01 | Phase 74 | Pending |
+| ASSOC-02 | Phase 74 | Pending |
+| ASSOC-03 | Phase 74 | Pending |
+| ASSOC-04 | Phase 74 | Pending |
+| ASSOC-05 | Phase 74 | Pending |
+| NUM-01 | Phase 75 | Pending |
+| NUM-02 | Phase 75 | Pending |
+| NUM-03 | Phase 75 | Pending |
+| ITER-01 | Phase 76 | Pending |
+| ITER-02 | Phase 76 | Pending |
+| ITER-03 | Phase 76 | Pending |
+| ITER-04 | Phase 76 | Pending |
+| ITER-05 | Phase 76 | Pending |
+| ITER-06 | Phase 76 | Pending |
+| CONV-01 | Phase 77 | Pending |
+| CONV-02 | Phase 77 | Pending |
+| CONV-03 | Phase 77 | Pending |
+| CONV-04 | Phase 77 | Pending |
+| COMB-01 | Phase 78 | Pending |
+| COMB-02 | Phase 78 | Pending |
+| COMB-03 | Phase 78 | Pending |
+| COMB-04 | Phase 78 | Pending |
+| COMB-05 | Phase 78 | Pending |
+| COMB-06 | Phase 78 | Pending |
+| TERM-01 | Phase 78 | Pending |
+| TERM-02 | Phase 78 | Pending |
+| TERM-03 | Phase 78 | Pending |
+| TERM-04 | Phase 78 | Pending |
+| TERM-05 | Phase 78 | Pending |
+| COLL-01 | Phase 79 | Pending |
+| COLL-02 | Phase 79 | Pending |
+| COLL-03 | Phase 79 | Pending |
+| COLL-04 | Phase 79 | Pending |
