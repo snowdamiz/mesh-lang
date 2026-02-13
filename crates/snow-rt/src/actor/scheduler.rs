@@ -651,6 +651,7 @@ fn invoke_terminate_callback(cb: TerminateCallback, reason: &ExitReason) {
         ExitReason::Linked(_, _) => 3,
         ExitReason::Shutdown => 4,
         ExitReason::Custom(_) => 5,
+        ExitReason::Noconnection => 6,
     };
 
     // catch_unwind ensures a panicking terminate callback does not unwind

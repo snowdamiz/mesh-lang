@@ -14,6 +14,7 @@
 //!   is delivered as a regular message.
 
 use std::collections::HashSet;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 
 use parking_lot::Mutex;
@@ -26,6 +27,20 @@ use super::process::{ExitReason, Message, Process, ProcessId, ProcessState};
 /// u64::MAX is reserved as the exit signal sentinel -- no regular message
 /// should use this tag. The data payload encodes the exiting PID and reason.
 pub const EXIT_SIGNAL_TAG: u64 = u64::MAX;
+
+/// Special type_tag used for DOWN signal messages (monitor notifications).
+///
+/// u64::MAX - 1 is reserved for monitor DOWN signals. The data payload
+/// encodes [monitor_ref, monitored_pid, reason].
+pub const DOWN_SIGNAL_TAG: u64 = u64::MAX - 1;
+
+/// Generate a globally unique monitor reference.
+///
+/// Each call returns a new u64, guaranteed unique across all threads.
+pub fn next_monitor_ref() -> u64 {
+    static MONITOR_REF_COUNTER: AtomicU64 = AtomicU64::new(1);
+    MONITOR_REF_COUNTER.fetch_add(1, Ordering::Relaxed)
+}
 
 /// Create a bidirectional link between two processes.
 ///
@@ -68,7 +83,7 @@ pub fn encode_exit_signal(exiting_pid: ProcessId, reason: &ExitReason) -> Vec<u8
     data
 }
 
-fn encode_reason(data: &mut Vec<u8>, reason: &ExitReason) {
+pub(crate) fn encode_reason(data: &mut Vec<u8>, reason: &ExitReason) {
     match reason {
         ExitReason::Normal => {
             data.push(0);
@@ -96,6 +111,9 @@ fn encode_reason(data: &mut Vec<u8>, reason: &ExitReason) {
             data.extend_from_slice(&(bytes.len() as u64).to_le_bytes());
             data.extend_from_slice(bytes);
         }
+        ExitReason::Noconnection => {
+            data.push(6);
+        }
     }
 }
 
@@ -117,7 +135,7 @@ pub fn decode_exit_signal(data: &[u8]) -> Option<(ProcessId, ExitReason)> {
 /// Decode an ExitReason from raw bytes.
 ///
 /// Returns `(ExitReason, bytes_consumed)` or `None` if the data is malformed.
-fn decode_reason(data: &[u8]) -> Option<(ExitReason, usize)> {
+pub(crate) fn decode_reason(data: &[u8]) -> Option<(ExitReason, usize)> {
     if data.is_empty() {
         return None;
     }
@@ -162,8 +180,19 @@ fn decode_reason(data: &[u8]) -> Option<(ExitReason, usize)> {
             let msg = std::str::from_utf8(&data[9..9 + str_len]).ok()?.to_string();
             Some((ExitReason::Custom(msg), 1 + 8 + str_len))
         }
+        6 => Some((ExitReason::Noconnection, 1)),
         _ => None,
     }
+}
+
+/// Encode a DOWN message for monitor notification.
+/// Layout: [u64 monitor_ref][u64 monitored_pid][reason bytes via encode_reason]
+pub fn encode_down_signal(monitor_ref: u64, monitored_pid: ProcessId, reason: &ExitReason) -> Vec<u8> {
+    let mut data = Vec::new();
+    data.extend_from_slice(&monitor_ref.to_le_bytes());
+    data.extend_from_slice(&monitored_pid.0.to_le_bytes());
+    encode_reason(&mut data, reason);
+    data
 }
 
 /// Propagate exit signals to all linked processes.

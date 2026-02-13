@@ -9,6 +9,8 @@ use std::fmt;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 
+use rustc_hash::FxHashMap;
+
 use super::heap::{ActorHeap, MessageBuffer};
 use super::mailbox::Mailbox;
 
@@ -147,6 +149,9 @@ pub enum ExitReason {
     ///
     /// Treated as crashing for exit propagation (like Error).
     Custom(String),
+    /// Node connection lost -- the remote process may still be alive.
+    /// Delivered to linked processes when the remote node disconnects.
+    Noconnection,
 }
 
 // ---------------------------------------------------------------------------
@@ -251,6 +256,11 @@ pub struct Process {
     /// Used by supervisors to monitor child processes.
     pub trap_exit: bool,
 
+    /// Processes being monitored by this process. Maps monitor_ref -> monitored_pid.
+    pub monitors: FxHashMap<u64, ProcessId>,
+    /// Processes monitoring this process. Maps monitor_ref -> monitoring_pid.
+    pub monitored_by: FxHashMap<u64, ProcessId>,
+
     /// FIFO mailbox for incoming messages.
     /// Wrapped in Arc for thread-safe access from sender threads.
     pub mailbox: Arc<Mailbox>,
@@ -284,6 +294,8 @@ impl Process {
             reductions: DEFAULT_REDUCTIONS,
             links: HashSet::new(),
             trap_exit: false,
+            monitors: FxHashMap::default(),
+            monitored_by: FxHashMap::default(),
             mailbox: Arc::new(Mailbox::new()),
             heap: ActorHeap::new(),
             terminate_callback: None,
