@@ -235,7 +235,10 @@ Plans:
 **Success Criteria** (what must be TRUE):
   1. A WebSocket room broadcast on one node delivers the message to room members connected to other nodes
   2. A supervision tree can monitor and restart child actors running on remote nodes, treating remote crashes the same as local ones
-**Plans**: TBD
+**Plans:** 2 plans
+Plans:
+- [ ] 69-01-PLAN.md -- Distributed WebSocket room broadcast (DIST_ROOM_BROADCAST wire message, cluster-wide forwarding)
+- [ ] 69-02-PLAN.md -- Remote supervision (ChildSpec target_node, remote spawn/terminate/restart)
 
 ## Progress
 
@@ -262,6 +265,6 @@ Plans:
 | 66 | v5.0 | 3/3 | Complete | 2026-02-13 |
 | 67 | v5.0 | 3/3 | Complete | 2026-02-13 |
 | 68 | v5.0 | 3/3 | Complete | 2026-02-13 |
-| 69 | v5.0 | 0/TBD | Not started | - |
+| 69 | v5.0 | 0/2 | Not started | - |
 
 **Total: 68 phases shipped across 14 milestones. 188 plans completed. v5.0 in progress (6/7 phases complete).**
