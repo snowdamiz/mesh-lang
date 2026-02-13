@@ -16,17 +16,23 @@
 //! HMAC-SHA256 cookie challenge/response in Plan 02's handshake, NOT by PKI.
 //! The client-side TLS config intentionally skips certificate verification.
 
-use std::net::TcpListener;
+use std::io::{self, Read, Write};
+use std::net::{TcpListener, TcpStream};
 use std::sync::atomic::{AtomicBool, AtomicU8, AtomicU16, Ordering};
-use std::sync::{Arc, OnceLock};
+use std::sync::{Arc, Mutex, OnceLock};
+use std::time::Instant;
 
+use hmac::{Hmac, Mac};
 use parking_lot::RwLock;
 use ring::rand::SystemRandom;
 use ring::signature::{self, EcdsaKeyPair, KeyPair};
 use rustc_hash::FxHashMap;
 use rustls::client::danger::{HandshakeSignatureValid, ServerCertVerified, ServerCertVerifier};
 use rustls::pki_types::{CertificateDer, PrivateKeyDer, ServerName, UnixTime};
-use rustls::{ClientConfig, DigitallySignedStruct, Error, ServerConfig, SignatureScheme};
+use rustls::{ClientConfig, DigitallySignedStruct, Error, ServerConfig, SignatureScheme, StreamOwned};
+use sha2::Sha256;
+
+type HmacSha256 = Hmac<Sha256>;
 
 // ---------------------------------------------------------------------------
 // NodeState -- global singleton for the local node
@@ -95,8 +101,9 @@ pub fn node_state() -> Option<&'static NodeState> {
 
 /// Represents a connection to a remote node.
 ///
-/// Plan 02 will flesh this out with TLS stream, reader thread, and
-/// heartbeat state. For now it holds minimal identity information.
+/// Holds the authenticated TLS stream, identity info, and shutdown flag.
+/// Plan 03 will add reader and heartbeat threads using the stream and
+/// shutdown flag.
 pub struct NodeSession {
     /// Full name of the remote node
     pub remote_name: String,
@@ -104,8 +111,403 @@ pub struct NodeSession {
     pub remote_creation: u8,
     /// The node_id assigned to this remote node (for PID encoding)
     pub node_id: u16,
+    /// The TLS stream, shared between writer and reader threads
+    pub stream: Mutex<NodeStream>,
     /// Signals the session's reader/heartbeat threads to stop
     pub shutdown: AtomicBool,
+    /// When this connection was established
+    pub connected_at: Instant,
+}
+
+// ---------------------------------------------------------------------------
+// NodeStream -- TLS stream abstraction for node connections
+// ---------------------------------------------------------------------------
+
+/// Stream abstraction for inter-node TLS connections.
+///
+/// Server variant is used when we accepted the connection; Client variant
+/// when we initiated it. Both implement Read + Write by delegating to
+/// the inner `StreamOwned`.
+pub(crate) enum NodeStream {
+    ServerTls(StreamOwned<rustls::ServerConnection, TcpStream>),
+    ClientTls(StreamOwned<rustls::ClientConnection, TcpStream>),
+}
+
+impl Read for NodeStream {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        match self {
+            NodeStream::ServerTls(s) => s.read(buf),
+            NodeStream::ClientTls(s) => s.read(buf),
+        }
+    }
+}
+
+impl Write for NodeStream {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        match self {
+            NodeStream::ServerTls(s) => s.write(buf),
+            NodeStream::ClientTls(s) => s.write(buf),
+        }
+    }
+    fn flush(&mut self) -> io::Result<()> {
+        match self {
+            NodeStream::ServerTls(s) => s.flush(),
+            NodeStream::ClientTls(s) => s.flush(),
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Handshake protocol constants
+// ---------------------------------------------------------------------------
+
+/// Initiator sends their name + creation.
+const HANDSHAKE_NAME: u8 = 1;
+/// Acceptor sends their name + creation + challenge.
+const HANDSHAKE_CHALLENGE: u8 = 2;
+/// Initiator sends response to challenge + own challenge.
+const HANDSHAKE_REPLY: u8 = 3;
+/// Acceptor sends response to initiator's challenge.
+const HANDSHAKE_ACK: u8 = 4;
+
+/// Maximum handshake message size (4 KiB). Prevents unbounded allocation
+/// from a malicious or buggy peer during the handshake.
+const MAX_HANDSHAKE_MSG: u32 = 4096;
+
+// ---------------------------------------------------------------------------
+// Wire format helpers (length-prefixed binary, little-endian)
+// ---------------------------------------------------------------------------
+
+/// Write a length-prefixed message: `[u32 length][payload]`.
+fn write_msg(stream: &mut impl Write, payload: &[u8]) -> io::Result<()> {
+    let len = payload.len() as u32;
+    stream.write_all(&len.to_le_bytes())?;
+    stream.write_all(payload)?;
+    stream.flush()
+}
+
+/// Read a length-prefixed message: read `[u32 length]`, then read exactly
+/// that many bytes. Enforces MAX_HANDSHAKE_MSG to prevent allocation bombs.
+fn read_msg(stream: &mut impl Read) -> io::Result<Vec<u8>> {
+    let mut len_buf = [0u8; 4];
+    stream.read_exact(&mut len_buf)?;
+    let len = u32::from_le_bytes(len_buf);
+    if len > MAX_HANDSHAKE_MSG {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!("handshake message too large: {} bytes (max {})", len, MAX_HANDSHAKE_MSG),
+        ));
+    }
+    let mut buf = vec![0u8; len as usize];
+    stream.read_exact(&mut buf)?;
+    Ok(buf)
+}
+
+// ---------------------------------------------------------------------------
+// HMAC-SHA256 challenge/response functions
+// ---------------------------------------------------------------------------
+
+/// Generate a 32-byte random challenge.
+fn generate_challenge() -> [u8; 32] {
+    rand::random()
+}
+
+/// Compute HMAC-SHA256(cookie, challenge) as the challenge response.
+///
+/// Follows the pattern from `db/pg.rs` SCRAM-SHA-256 authentication.
+fn compute_response(cookie: &str, challenge: &[u8; 32]) -> [u8; 32] {
+    let mut mac = HmacSha256::new_from_slice(cookie.as_bytes())
+        .expect("HMAC can take key of any size");
+    mac.update(challenge);
+    let result = mac.finalize().into_bytes();
+    let mut out = [0u8; 32];
+    out.copy_from_slice(&result);
+    out
+}
+
+/// Verify a challenge response using constant-time comparison.
+///
+/// Uses `Mac::verify_slice` for constant-time comparison, preventing
+/// timing attacks (research pitfall 3).
+fn verify_response(cookie: &str, challenge: &[u8; 32], response: &[u8; 32]) -> bool {
+    let mut mac = HmacSha256::new_from_slice(cookie.as_bytes())
+        .expect("HMAC can take key of any size");
+    mac.update(challenge);
+    mac.verify_slice(response).is_ok()
+}
+
+// ---------------------------------------------------------------------------
+// Handshake message builders and parsers
+// ---------------------------------------------------------------------------
+
+/// Send NAME message: `[tag=1][u16 name_len][name_bytes][u8 creation]`.
+fn send_name(stream: &mut impl Write, name: &str, creation: u8) -> Result<(), String> {
+    let name_bytes = name.as_bytes();
+    let mut payload = Vec::with_capacity(1 + 2 + name_bytes.len() + 1);
+    payload.push(HANDSHAKE_NAME);
+    payload.extend_from_slice(&(name_bytes.len() as u16).to_le_bytes());
+    payload.extend_from_slice(name_bytes);
+    payload.push(creation);
+    write_msg(stream, &payload).map_err(|e| format!("send_name failed: {}", e))
+}
+
+/// Receive and parse NAME message. Returns (name, creation).
+fn recv_name(stream: &mut impl Read) -> Result<(String, u8), String> {
+    let msg = read_msg(stream).map_err(|e| format!("recv_name failed: {}", e))?;
+    if msg.is_empty() || msg[0] != HANDSHAKE_NAME {
+        return Err(format!(
+            "expected HANDSHAKE_NAME tag ({}), got {}",
+            HANDSHAKE_NAME,
+            msg.first().copied().unwrap_or(0)
+        ));
+    }
+    // [tag=1][u16 name_len][name_bytes][u8 creation]
+    if msg.len() < 4 {
+        return Err("NAME message too short".to_string());
+    }
+    let name_len = u16::from_le_bytes([msg[1], msg[2]]) as usize;
+    if msg.len() < 3 + name_len + 1 {
+        return Err("NAME message truncated".to_string());
+    }
+    let name = std::str::from_utf8(&msg[3..3 + name_len])
+        .map_err(|_| "invalid UTF-8 in node name".to_string())?
+        .to_string();
+    let creation = msg[3 + name_len];
+    Ok((name, creation))
+}
+
+/// Send CHALLENGE message: `[tag=2][u16 name_len][name_bytes][u8 creation][32 bytes challenge]`.
+fn send_challenge(
+    stream: &mut impl Write,
+    name: &str,
+    creation: u8,
+    challenge: &[u8; 32],
+) -> Result<(), String> {
+    let name_bytes = name.as_bytes();
+    let mut payload = Vec::with_capacity(1 + 2 + name_bytes.len() + 1 + 32);
+    payload.push(HANDSHAKE_CHALLENGE);
+    payload.extend_from_slice(&(name_bytes.len() as u16).to_le_bytes());
+    payload.extend_from_slice(name_bytes);
+    payload.push(creation);
+    payload.extend_from_slice(challenge);
+    write_msg(stream, &payload).map_err(|e| format!("send_challenge failed: {}", e))
+}
+
+/// Receive and parse CHALLENGE message. Returns (name, creation, challenge).
+fn recv_challenge(stream: &mut impl Read) -> Result<(String, u8, [u8; 32]), String> {
+    let msg = read_msg(stream).map_err(|e| format!("recv_challenge failed: {}", e))?;
+    if msg.is_empty() || msg[0] != HANDSHAKE_CHALLENGE {
+        return Err(format!(
+            "expected HANDSHAKE_CHALLENGE tag ({}), got {}",
+            HANDSHAKE_CHALLENGE,
+            msg.first().copied().unwrap_or(0)
+        ));
+    }
+    if msg.len() < 4 {
+        return Err("CHALLENGE message too short".to_string());
+    }
+    let name_len = u16::from_le_bytes([msg[1], msg[2]]) as usize;
+    if msg.len() < 3 + name_len + 1 + 32 {
+        return Err("CHALLENGE message truncated".to_string());
+    }
+    let name = std::str::from_utf8(&msg[3..3 + name_len])
+        .map_err(|_| "invalid UTF-8 in node name".to_string())?
+        .to_string();
+    let creation = msg[3 + name_len];
+    let mut challenge = [0u8; 32];
+    challenge.copy_from_slice(&msg[3 + name_len + 1..3 + name_len + 1 + 32]);
+    Ok((name, creation, challenge))
+}
+
+/// Send CHALLENGE_REPLY message: `[tag=3][32 bytes response][32 bytes own_challenge]`.
+fn send_challenge_reply(
+    stream: &mut impl Write,
+    response: &[u8; 32],
+    own_challenge: &[u8; 32],
+) -> Result<(), String> {
+    let mut payload = Vec::with_capacity(1 + 32 + 32);
+    payload.push(HANDSHAKE_REPLY);
+    payload.extend_from_slice(response);
+    payload.extend_from_slice(own_challenge);
+    write_msg(stream, &payload).map_err(|e| format!("send_challenge_reply failed: {}", e))
+}
+
+/// Receive and parse CHALLENGE_REPLY message. Returns (response, their_challenge).
+fn recv_challenge_reply(stream: &mut impl Read) -> Result<([u8; 32], [u8; 32]), String> {
+    let msg = read_msg(stream).map_err(|e| format!("recv_challenge_reply failed: {}", e))?;
+    if msg.is_empty() || msg[0] != HANDSHAKE_REPLY {
+        return Err(format!(
+            "expected HANDSHAKE_REPLY tag ({}), got {}",
+            HANDSHAKE_REPLY,
+            msg.first().copied().unwrap_or(0)
+        ));
+    }
+    if msg.len() < 1 + 32 + 32 {
+        return Err("CHALLENGE_REPLY message too short".to_string());
+    }
+    let mut response = [0u8; 32];
+    response.copy_from_slice(&msg[1..33]);
+    let mut their_challenge = [0u8; 32];
+    their_challenge.copy_from_slice(&msg[33..65]);
+    Ok((response, their_challenge))
+}
+
+/// Send CHALLENGE_ACK message: `[tag=4][32 bytes response]`.
+fn send_challenge_ack(stream: &mut impl Write, response: &[u8; 32]) -> Result<(), String> {
+    let mut payload = Vec::with_capacity(1 + 32);
+    payload.push(HANDSHAKE_ACK);
+    payload.extend_from_slice(response);
+    write_msg(stream, &payload).map_err(|e| format!("send_challenge_ack failed: {}", e))
+}
+
+/// Receive and parse CHALLENGE_ACK message. Returns the response.
+fn recv_challenge_ack(stream: &mut impl Read) -> Result<[u8; 32], String> {
+    let msg = read_msg(stream).map_err(|e| format!("recv_challenge_ack failed: {}", e))?;
+    if msg.is_empty() || msg[0] != HANDSHAKE_ACK {
+        return Err(format!(
+            "expected HANDSHAKE_ACK tag ({}), got {}",
+            HANDSHAKE_ACK,
+            msg.first().copied().unwrap_or(0)
+        ));
+    }
+    if msg.len() < 1 + 32 {
+        return Err("CHALLENGE_ACK message too short".to_string());
+    }
+    let mut response = [0u8; 32];
+    response.copy_from_slice(&msg[1..33]);
+    Ok(response)
+}
+
+// ---------------------------------------------------------------------------
+// perform_handshake -- 4-message HMAC-SHA256 challenge/response exchange
+// ---------------------------------------------------------------------------
+
+/// Perform the HMAC-SHA256 cookie challenge/response handshake.
+///
+/// This runs AFTER TLS is established. Both sides prove they know the shared
+/// cookie via a 4-message binary exchange:
+///
+/// 1. Initiator sends NAME (their name + creation)
+/// 2. Acceptor sends CHALLENGE (their name + creation + random challenge)
+/// 3. Initiator sends REPLY (response to challenge + own challenge)
+/// 4. Acceptor sends ACK (response to initiator's challenge)
+///
+/// Returns `(remote_name, remote_creation)` on success, or an error string.
+fn perform_handshake(
+    stream: &mut (impl Read + Write),
+    state: &NodeState,
+    is_initiator: bool,
+) -> Result<(String, u8), String> {
+    let creation = state.creation();
+
+    if is_initiator {
+        // Step 1: Send our name
+        send_name(stream, &state.name, creation)?;
+
+        // Step 2: Receive their name + challenge
+        let (remote_name, remote_creation, their_challenge) = recv_challenge(stream)?;
+
+        // Step 3: Compute response + generate our own challenge
+        let our_response = compute_response(&state.cookie, &their_challenge);
+        let our_challenge = generate_challenge();
+        send_challenge_reply(stream, &our_response, &our_challenge)?;
+
+        // Step 4: Receive and verify their response to our challenge
+        let their_response = recv_challenge_ack(stream)?;
+        if !verify_response(&state.cookie, &our_challenge, &their_response) {
+            return Err(format!(
+                "cookie mismatch: authentication failed from {}",
+                remote_name
+            ));
+        }
+
+        Ok((remote_name, remote_creation))
+    } else {
+        // Step 1: Receive their name
+        let (remote_name, remote_creation) = recv_name(stream)?;
+
+        // Tiebreaker: if we already have a session to this remote, reject.
+        // The node with the lexicographically smaller name keeps its outgoing
+        // connection; the other drops.
+        {
+            let sessions = state.sessions.read();
+            if sessions.contains_key(&remote_name) {
+                return Err("already connected".to_string());
+            }
+        }
+
+        // Step 2: Generate our challenge and send it
+        let our_challenge = generate_challenge();
+        send_challenge(stream, &state.name, creation, &our_challenge)?;
+
+        // Step 3: Receive their response + their challenge
+        let (their_response, their_challenge) = recv_challenge_reply(stream)?;
+
+        // Verify their response to our challenge
+        if !verify_response(&state.cookie, &our_challenge, &their_response) {
+            return Err(format!(
+                "cookie mismatch: authentication failed from {}",
+                remote_name
+            ));
+        }
+
+        // Step 4: Compute our response to their challenge and send ACK
+        let our_response = compute_response(&state.cookie, &their_challenge);
+        send_challenge_ack(stream, &our_response)?;
+
+        Ok((remote_name, remote_creation))
+    }
+}
+
+// ---------------------------------------------------------------------------
+// register_session -- inserts authenticated session into NodeState
+// ---------------------------------------------------------------------------
+
+/// Register an authenticated session in `NodeState`.
+///
+/// Checks for duplicate connections. If the remote_name already has a session,
+/// applies the tiebreaker: the node with the lexicographically smaller name
+/// keeps its connection. If we lose, returns an error.
+fn register_session(
+    state: &NodeState,
+    remote_name: String,
+    remote_creation: u8,
+    node_id: u16,
+    stream: NodeStream,
+) -> Result<Arc<NodeSession>, String> {
+    let mut sessions = state.sessions.write();
+
+    // Tiebreaker for duplicate connections
+    if sessions.contains_key(&remote_name) {
+        // Lexicographically smaller name wins
+        if state.name < remote_name {
+            // We are smaller -- keep our existing connection, reject this one
+            return Err(format!("duplicate connection to {}: keeping existing", remote_name));
+        } else {
+            // We are larger -- this new connection wins, remove old
+            sessions.remove(&remote_name);
+            let mut id_map = state.node_id_map.write();
+            // Find and remove the old node_id mapping
+            id_map.retain(|_, v| v != &remote_name);
+        }
+    }
+
+    let session = Arc::new(NodeSession {
+        remote_name: remote_name.clone(),
+        remote_creation,
+        node_id,
+        stream: Mutex::new(stream),
+        shutdown: AtomicBool::new(false),
+        connected_at: Instant::now(),
+    });
+
+    sessions.insert(remote_name.clone(), Arc::clone(&session));
+    drop(sessions);
+
+    let mut id_map = state.node_id_map.write();
+    id_map.insert(node_id, remote_name);
+
+    Ok(session)
 }
 
 // ---------------------------------------------------------------------------
@@ -670,17 +1072,34 @@ mod tests {
     }
 
     #[test]
-    fn test_node_session_fields() {
-        let session = NodeSession {
-            remote_name: "other@host".to_string(),
-            remote_creation: 3,
-            node_id: 42,
-            shutdown: AtomicBool::new(false),
-        };
-        assert_eq!(session.remote_name, "other@host");
-        assert_eq!(session.remote_creation, 3);
-        assert_eq!(session.node_id, 42);
-        assert!(!session.shutdown.load(Ordering::Relaxed));
+    fn test_compute_response_deterministic() {
+        // Same inputs must produce the same output
+        let cookie = "secret_cookie";
+        let challenge = [42u8; 32];
+        let r1 = compute_response(cookie, &challenge);
+        let r2 = compute_response(cookie, &challenge);
+        assert_eq!(r1, r2);
+
+        // Different challenge produces different output
+        let different_challenge = [99u8; 32];
+        let r3 = compute_response(cookie, &different_challenge);
+        assert_ne!(r1, r3);
+    }
+
+    #[test]
+    fn test_verify_response_correct() {
+        let cookie = "my_cookie";
+        let challenge = generate_challenge();
+        let response = compute_response(cookie, &challenge);
+        assert!(verify_response(cookie, &challenge, &response));
+    }
+
+    #[test]
+    fn test_verify_response_wrong_cookie() {
+        let challenge = generate_challenge();
+        let response = compute_response("correct_cookie", &challenge);
+        // Wrong cookie should fail verification
+        assert!(!verify_response("wrong_cookie", &challenge, &response));
     }
 
     #[test]
