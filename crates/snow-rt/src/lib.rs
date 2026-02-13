@@ -45,6 +45,7 @@ pub use actor::{
     snow_timer_sleep, snow_timer_send_after,
     snow_process_monitor, snow_process_demonitor,
     snow_node_monitor,
+    snow_global_register, snow_global_whereis, snow_global_unregister,
 };
 pub use actor::service::{snow_service_call, snow_service_reply};
 pub use db::pg::{

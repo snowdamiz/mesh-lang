@@ -667,8 +667,16 @@ fn handle_process_exit(process_table: &ProcessTable, pid: ProcessId, reason: Exi
         }
     }
 
-    // Step 3: Clean up named registrations.
+    // Step 3: Clean up named registrations (local).
     registry::global_registry().cleanup_process(pid);
+
+    // Step 3.5: Clean up global registrations for the exiting process (Phase 68).
+    let removed_global_names = crate::dist::global::global_name_registry().cleanup_process(pid);
+    if !removed_global_names.is_empty() {
+        for name in &removed_global_names {
+            crate::dist::global::broadcast_global_unregister(name);
+        }
+    }
 
     // Step 4: Mark the process as Exited.
     if let Some(proc_arc) = process_table.read().get(&pid) {

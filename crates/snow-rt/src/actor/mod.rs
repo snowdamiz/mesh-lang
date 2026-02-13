@@ -1272,6 +1272,123 @@ pub extern "C" fn snow_node_monitor(node_ptr: *const u8, node_len: u64) -> u64 {
     0
 }
 
+// ---------------------------------------------------------------------------
+// Global registry extern "C" ABI functions (Phase 68)
+// ---------------------------------------------------------------------------
+
+/// Register a process globally across the cluster.
+///
+/// The name is specified as a pointer to UTF-8 bytes and a length.
+/// The `pid` argument is the raw u64 PID value of the process to register.
+///
+/// On success, broadcasts `DIST_GLOBAL_REGISTER` to all connected nodes
+/// and returns 0. Returns 1 on error (name already taken, invalid UTF-8).
+///
+/// - `name_ptr`: pointer to UTF-8 name bytes
+/// - `name_len`: length of the name in bytes
+/// - `pid`: raw u64 PID value
+#[no_mangle]
+pub extern "C" fn snow_global_register(
+    name_ptr: *const u8,
+    name_len: u64,
+    pid: u64,
+) -> u64 {
+    if name_ptr.is_null() || name_len == 0 {
+        return 1;
+    }
+
+    let name = unsafe {
+        let slice = std::slice::from_raw_parts(name_ptr, name_len as usize);
+        match std::str::from_utf8(slice) {
+            Ok(s) => s.to_string(),
+            Err(_) => return 1,
+        }
+    };
+
+    let pid = process::ProcessId(pid);
+
+    // Determine our node name for the owning_node field.
+    let node_name = match crate::dist::node::node_state() {
+        Some(s) => s.name.clone(),
+        None => "nonode@nohost".to_string(),
+    };
+
+    let registry = crate::dist::global::global_name_registry();
+    match registry.register(name.clone(), pid, node_name.clone()) {
+        Ok(()) => {
+            // Broadcast to all connected nodes.
+            crate::dist::global::broadcast_global_register(&name, pid, &node_name);
+            0
+        }
+        Err(_) => 1,
+    }
+}
+
+/// Look up a globally registered process by name.
+///
+/// Returns the PID of the process registered under the given name, or 0
+/// if no process is registered with that name.
+///
+/// This is always a local lookup -- no network call is made.
+///
+/// - `name_ptr`: pointer to UTF-8 name bytes
+/// - `name_len`: length of the name in bytes
+#[no_mangle]
+pub extern "C" fn snow_global_whereis(
+    name_ptr: *const u8,
+    name_len: u64,
+) -> u64 {
+    if name_ptr.is_null() || name_len == 0 {
+        return 0;
+    }
+
+    let name = unsafe {
+        let slice = std::slice::from_raw_parts(name_ptr, name_len as usize);
+        match std::str::from_utf8(slice) {
+            Ok(s) => s,
+            Err(_) => return 0,
+        }
+    };
+
+    match crate::dist::global::global_name_registry().whereis(name) {
+        Some(pid) => pid.as_u64(),
+        None => 0,
+    }
+}
+
+/// Unregister a globally registered name.
+///
+/// On success, broadcasts `DIST_GLOBAL_UNREGISTER` to all connected nodes
+/// and returns 0. Returns 1 if the name was not registered or invalid UTF-8.
+///
+/// - `name_ptr`: pointer to UTF-8 name bytes
+/// - `name_len`: length of the name in bytes
+#[no_mangle]
+pub extern "C" fn snow_global_unregister(
+    name_ptr: *const u8,
+    name_len: u64,
+) -> u64 {
+    if name_ptr.is_null() || name_len == 0 {
+        return 1;
+    }
+
+    let name = unsafe {
+        let slice = std::slice::from_raw_parts(name_ptr, name_len as usize);
+        match std::str::from_utf8(slice) {
+            Ok(s) => s.to_string(),
+            Err(_) => return 1,
+        }
+    };
+
+    let registry = crate::dist::global::global_name_registry();
+    if registry.unregister(&name) {
+        crate::dist::global::broadcast_global_unregister(&name);
+        0
+    } else {
+        1
+    }
+}
+
 /// Parse a `SupervisorConfig` from raw bytes.
 fn parse_supervisor_config(data: &[u8]) -> Option<supervisor::SupervisorConfig> {
     if data.len() < 14 {

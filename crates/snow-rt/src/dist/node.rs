@@ -1292,6 +1292,12 @@ fn handle_node_disconnect(node_name: &str, node_id: u16) {
             }
         }
     }
+
+    // Phase 68: Clean up global registrations for the disconnected node.
+    let removed_names = crate::dist::global::global_name_registry().cleanup_node(node_name);
+    for name in &removed_names {
+        crate::dist::global::broadcast_global_unregister(name);
+    }
 }
 
 /// Deliver a :nodeup or :nodedown message to a process.
