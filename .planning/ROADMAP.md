@@ -120,7 +120,7 @@ See milestones/v3.0-ROADMAP.md for full phase details.
 
 - [x] **Phase 59: Protocol Core** - RFC 6455 frame codec, HTTP upgrade handshake, text/binary/close frames (completed 2026-02-12)
 - [x] **Phase 60: Actor Integration** - Actor-per-connection, reader thread bridge, mailbox delivery, callbacks, Ws.serve (completed 2026-02-12)
-- [ ] **Phase 61: Production Hardening** - TLS (wss://), ping/pong heartbeat, message fragmentation
+- [x] **Phase 61: Production Hardening** - TLS (wss://), ping/pong heartbeat, message fragmentation (completed 2026-02-12)
 - [ ] **Phase 62: Rooms & Channels** - Named rooms with join/leave/broadcast and automatic cleanup
 
 ## Phase Details
@@ -165,8 +165,8 @@ Plans:
   3. Fragmented messages (continuation frames) are reassembled into complete messages, with interleaved control frames handled correctly and messages exceeding 16MB rejected with close code 1009
 **Plans:** 2 plans
 Plans:
-- [ ] 61-01-PLAN.md -- Runtime hardening (WsStream enum, TLS serve, heartbeat, fragmentation)
-- [ ] 61-02-PLAN.md -- Codegen wiring (snow_ws_serve_tls intrinsic, known_functions, map_builtin_name)
+- [x] 61-01-PLAN.md -- Runtime hardening (WsStream enum, TLS serve, heartbeat, fragmentation)
+- [x] 61-02-PLAN.md -- Codegen wiring (snow_ws_serve_tls intrinsic, known_functions, map_builtin_name)
 
 ### Phase 62: Rooms & Channels
 **Goal**: Connections can join named rooms for pub/sub broadcast messaging with automatic cleanup on disconnect
@@ -200,7 +200,7 @@ Phases execute in numeric order: 59 -> 60 -> 61 -> 62
 | 55-58 | v3.0 | 8/8 | Complete | 2026-02-12 |
 | 59. Protocol Core | v4.0 | 2/2 | Complete | 2026-02-12 |
 | 60. Actor Integration | v4.0 | 2/2 | Complete | 2026-02-12 |
-| 61. Production Hardening | v4.0 | 0/2 | Planned | - |
+| 61. Production Hardening | v4.0 | 2/2 | Complete | 2026-02-12 |
 | 62. Rooms & Channels | v4.0 | 0/TBD | Not started | - |
 
-**Total: 60 phases shipped across 12 milestones. 166 plans completed. 2 phases remaining for v4.0.**
+**Total: 61 phases shipped across 12 milestones. 168 plans completed. 1 phase remaining for v4.0.**
