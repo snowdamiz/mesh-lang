@@ -32,6 +32,9 @@ rand = "0.9"
 rustls = { version = "0.23", default-features = false, features = ["ring", "tls12", "logging", "std"] }
 webpki-roots = "0.26"
 rustls-pki-types = "1"
+# Phase 64: ring for ECDSA key generation (ephemeral TLS certs for node connections)
+# Already compiled as transitive dep of rustls -- zero additional compile time.
+ring = "0.17"
 
 [dev-dependencies]
 tempfile = "3"
