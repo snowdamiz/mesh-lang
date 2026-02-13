@@ -179,7 +179,11 @@ Plans:
   3. Messages between a given sender-receiver pair arrive in the order they were sent
   4. Connecting node A to node B causes automatic mesh formation with node C (if B is already connected to C)
   5. User can call `Node.list()` to see all connected nodes and `Node.self()` to get own node identity
-**Plans**: TBD
+**Plans:** 3 plans
+Plans:
+- [ ] 65-01-PLAN.md -- dist_send, reader loop handlers, snow_actor_send_named
+- [ ] 65-02-PLAN.md -- Mesh formation via peer list exchange, Node.self/list APIs
+- [ ] 65-03-PLAN.md -- Integration tests for remote send, mesh, and node queries
 
 ### Phase 66: Remote Links, Monitors & Failure Handling
 **Goal**: Distributed fault tolerance -- supervisors and monitors detect remote crashes and network partitions
@@ -242,7 +246,7 @@ Plans:
 | 59-62 | v4.0 | 8/8 | Complete | 2026-02-12 |
 | 63 | v5.0 | 3/3 | Complete | 2026-02-13 |
 | 64 | v5.0 | 3/3 | Complete | 2026-02-13 |
-| 65 | v5.0 | 0/TBD | Not started | - |
+| 65 | v5.0 | 0/3 | Not started | - |
 | 66 | v5.0 | 0/TBD | Not started | - |
 | 67 | v5.0 | 0/TBD | Not started | - |
 | 68 | v5.0 | 0/TBD | Not started | - |
