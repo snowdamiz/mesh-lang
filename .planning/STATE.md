@@ -10,9 +10,9 @@ See: .planning/PROJECT.md (updated 2026-02-12)
 ## Current Position
 
 Phase: 68 of 69 (Global Registry)
-Plan: 3 of 3 in current phase
-Status: Phase Complete
-Last activity: 2026-02-13 -- Completed 68-03 (Sync-on-Connect and Tests)
+Plan: 2 of 3 in current phase
+Status: Executing
+Last activity: 2026-02-13 -- Completed 68-02 (Compiler Integration)
 
 Progress: [██████████] 100%
 
@@ -83,6 +83,8 @@ Progress: [██████████] 100%
 - 68-01: PID reconstruction on receive: reader loop replaces node_id=0 PIDs with session.node_id via from_remote
 - 68-01: Broadcast pattern: collect Arc refs, drop sessions lock, then iterate and write (follows send_peer_list)
 - 68-01: nonode@nohost as node_name when Node.start not called (allows pre-distribution global registration)
+- 68-02: Reuse codegen_node_string_call for single-string-arg Global functions (whereis, unregister)
+- 68-02: Dedicated codegen_global_register helper for two-arg call (string unpacking + pid passthrough)
 - 68-03: send_global_sync placed in global.rs alongside broadcast functions (same module locality)
 - 68-03: Wire format tests use direct payload byte verification (read_msg is private to node.rs)
 
@@ -105,6 +107,6 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-13
-Stopped at: Completed 68-03-PLAN.md (Sync-on-Connect and Tests)
+Stopped at: Completed 68-02-PLAN.md (Compiler Integration)
 Resume file: None
-Next action: Begin Phase 69 (final phase of Distributed Actors milestone)
+Next action: Execute 68-03-PLAN.md (Sync-on-Connect and Tests)
