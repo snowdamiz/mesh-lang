@@ -819,6 +819,101 @@ fn reader_loop_session(
                             }
                         }
                     }
+                    DIST_SPAWN => {
+                        // Wire format: [tag][u64 req_id][u64 requester_pid][u8 link_flag]
+                        //              [u16 fn_name_len][fn_name bytes][remaining = args_data]
+                        if msg.len() >= 20 {
+                            use crate::actor::process::ProcessId;
+
+                            let req_id = u64::from_le_bytes(msg[1..9].try_into().unwrap());
+                            let requester_pid = ProcessId(u64::from_le_bytes(msg[9..17].try_into().unwrap()));
+                            let link_flag = msg[17];
+                            let fn_name_len = u16::from_le_bytes(msg[18..20].try_into().unwrap()) as usize;
+
+                            if msg.len() >= 20 + fn_name_len {
+                                let fn_name = std::str::from_utf8(&msg[20..20 + fn_name_len]).unwrap_or("");
+                                let args_data = &msg[20 + fn_name_len..];
+
+                                match lookup_function(fn_name) {
+                                    Some(fn_ptr) => {
+                                        // Spawn the actor locally.
+                                        let spawned_pid = crate::actor::snow_actor_spawn(
+                                            fn_ptr,
+                                            args_data.as_ptr(),
+                                            args_data.len() as u64,
+                                            1, // normal priority
+                                        );
+                                        let spawned = ProcessId(spawned_pid);
+
+                                        // If spawn_link, establish bidirectional link.
+                                        if link_flag == 1 {
+                                            let sched = crate::actor::global_scheduler();
+                                            // Add requester_pid to the new process's links set.
+                                            // The requester_pid as received over the wire has node_id=0
+                                            // (it's the caller's local PID). We need to construct a
+                                            // remote-qualified PID using this session's node_id and creation.
+                                            let remote_requester = ProcessId::from_remote(
+                                                session.node_id,
+                                                session.remote_creation,
+                                                requester_pid.local_id(),
+                                            );
+                                            if let Some(proc_arc) = sched.get_process(spawned) {
+                                                proc_arc.lock().links.insert(remote_requester);
+                                            }
+                                            // Send DIST_LINK back so the requester's node records
+                                            // the reverse link. from=spawned (local), to=requester (remote).
+                                            // We send the local spawned PID as-is; the remote side will
+                                            // use its own session info to qualify it.
+                                            send_dist_link_via_session(&session, spawned, requester_pid);
+                                        }
+
+                                        // Reply with the spawned process's local_id.
+                                        send_spawn_reply(&session, req_id, 0, spawned.local_id());
+                                    }
+                                    None => {
+                                        // Function not found on this node.
+                                        send_spawn_reply(&session, req_id, 1, 0);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    DIST_SPAWN_REPLY => {
+                        // Wire format: [tag][u64 req_id][u8 status][u64 spawned_local_id]
+                        if msg.len() >= 18 {
+                            use crate::actor::process::{ProcessState, Message};
+                            use crate::actor::heap::MessageBuffer;
+
+                            let req_id = u64::from_le_bytes(msg[1..9].try_into().unwrap());
+                            let status = msg[9];
+                            let spawned_local_id = u64::from_le_bytes(msg[10..18].try_into().unwrap());
+
+                            // Look up which process is waiting for this spawn reply.
+                            let requester = session.pending_spawns.lock().unwrap().remove(&req_id);
+
+                            if let Some(requester_pid) = requester {
+                                // Build spawn reply payload: [u64 req_id][u8 status][u64 spawned_local_id]
+                                let mut reply_data = Vec::with_capacity(17);
+                                reply_data.extend_from_slice(&req_id.to_le_bytes());
+                                reply_data.push(status);
+                                reply_data.extend_from_slice(&spawned_local_id.to_le_bytes());
+
+                                let buffer = MessageBuffer::new(reply_data, SPAWN_REPLY_TAG);
+                                let reply_msg = Message { buffer };
+
+                                let sched = crate::actor::global_scheduler();
+                                if let Some(proc_arc) = sched.get_process(requester_pid) {
+                                    let mut proc = proc_arc.lock();
+                                    proc.mailbox.push(reply_msg);
+                                    if matches!(proc.state, ProcessState::Waiting) {
+                                        proc.state = ProcessState::Ready;
+                                        drop(proc);
+                                        sched.wake_process(requester_pid);
+                                    }
+                                }
+                            }
+                        }
+                    }
                     _ => {
                         // Unknown tag -- silently ignore for forward compatibility.
                     }
@@ -1144,6 +1239,44 @@ fn send_dist_monitor_exit(
     payload.extend_from_slice(&monitoring_pid.as_u64().to_le_bytes());
     payload.extend_from_slice(&monitor_ref.to_le_bytes());
     crate::actor::link::encode_reason(&mut payload, reason);
+    let mut stream = session.stream.lock().unwrap();
+    let _ = write_msg(&mut *stream, &payload);
+}
+
+// ---------------------------------------------------------------------------
+// send_spawn_reply -- reply to a DIST_SPAWN request with status and pid
+// ---------------------------------------------------------------------------
+
+/// Send a DIST_SPAWN_REPLY back to the requesting node.
+///
+/// Wire format: [DIST_SPAWN_REPLY][u64 request_id LE][u8 status][u64 spawned_local_id LE]
+/// Status 0 = success (pid is the spawned process's local_id).
+/// Status 1 = error (function not found; pid is 0).
+fn send_spawn_reply(session: &NodeSession, req_id: u64, status: u8, spawned_local_id: u64) {
+    let mut payload = Vec::with_capacity(18);
+    payload.push(DIST_SPAWN_REPLY);
+    payload.extend_from_slice(&req_id.to_le_bytes());
+    payload.push(status);
+    payload.extend_from_slice(&spawned_local_id.to_le_bytes());
+    let mut stream = session.stream.lock().unwrap();
+    let _ = write_msg(&mut *stream, &payload);
+}
+
+/// Send a DIST_LINK using a known session (no PID-based routing).
+///
+/// Used by the DIST_SPAWN handler to establish a bidirectional link between
+/// the locally-spawned process and the remote requester. Unlike `send_dist_link`
+/// which routes by `to_pid.node_id()`, this takes the session directly since
+/// the DIST_SPAWN handler already has it.
+fn send_dist_link_via_session(
+    session: &NodeSession,
+    from_pid: crate::actor::process::ProcessId,
+    to_pid: crate::actor::process::ProcessId,
+) {
+    let mut payload = Vec::with_capacity(1 + 8 + 8);
+    payload.push(DIST_LINK);
+    payload.extend_from_slice(&from_pid.as_u64().to_le_bytes());
+    payload.extend_from_slice(&to_pid.as_u64().to_le_bytes());
     let mut stream = session.stream.lock().unwrap();
     let _ = write_msg(&mut *stream, &payload);
 }
@@ -2209,6 +2342,174 @@ pub extern "C" fn snow_node_list() -> *mut u8 {
         string_ptrs.as_ptr(),
         string_ptrs.len() as i64,
     )
+}
+
+// ---------------------------------------------------------------------------
+// snow_node_spawn -- spawn an actor on a remote node
+// ---------------------------------------------------------------------------
+
+/// Spawn an actor on a remote node and return its PID.
+///
+/// Called from compiled Snow code via `Node.spawn(node, function, args)` or
+/// `Node.spawn_link(node, function, args)`. Sends a DIST_SPAWN request to the
+/// target node containing the function name and packed argument buffer. Blocks
+/// the calling actor (yields coroutine) until the remote node replies with the
+/// spawned PID via DIST_SPAWN_REPLY.
+///
+/// # Arguments
+/// - `node_ptr`, `node_len`: Target node name (UTF-8 bytes)
+/// - `fn_name_ptr`, `fn_name_len`: Function name to spawn (UTF-8 bytes)
+/// - `args_ptr`, `args_size`: Packed argument buffer (raw i64 array from codegen)
+/// - `link_flag`: 0 = spawn, 1 = spawn_link (establishes bidirectional link)
+///
+/// # Returns
+/// - Remote PID (u64) on success
+/// - 0 on failure (not connected, function not found, write error, etc.)
+#[no_mangle]
+pub extern "C" fn snow_node_spawn(
+    node_ptr: *const u8,
+    node_len: u64,
+    fn_name_ptr: *const u8,
+    fn_name_len: u64,
+    args_ptr: *const u8,
+    args_size: u64,
+    link_flag: u8,
+) -> u64 {
+    use crate::actor::process::{ProcessId, ProcessState};
+    use crate::actor::stack;
+
+    // Must be called from within an actor context (coroutine).
+    let my_pid = match stack::get_current_pid() {
+        Some(pid) => pid,
+        None => return 0,
+    };
+
+    let state = match node_state() {
+        Some(s) => s,
+        None => return 0,
+    };
+
+    let node_name = unsafe {
+        if node_ptr.is_null() { return 0; }
+        std::str::from_utf8(std::slice::from_raw_parts(node_ptr, node_len as usize))
+            .unwrap_or("")
+    };
+
+    let fn_name = unsafe {
+        if fn_name_ptr.is_null() { return 0; }
+        std::str::from_utf8(std::slice::from_raw_parts(fn_name_ptr, fn_name_len as usize))
+            .unwrap_or("")
+    };
+
+    if node_name.is_empty() || fn_name.is_empty() {
+        return 0;
+    }
+
+    // Look up session for the target node.
+    let session = {
+        let sessions = state.sessions.read();
+        match sessions.get(node_name) {
+            Some(s) => Arc::clone(s),
+            None => return 0, // Not connected to target node
+        }
+    };
+
+    // Generate a unique request ID for correlation.
+    let req_id = SPAWN_REQUEST_ID.fetch_add(1, Ordering::Relaxed);
+
+    // Register pending spawn so the reader thread can route the reply.
+    session.pending_spawns.lock().unwrap().insert(req_id, my_pid);
+
+    // Copy args data immediately (do NOT retain pointer to GC heap).
+    let args_data = if args_ptr.is_null() || args_size == 0 {
+        &[] as &[u8]
+    } else {
+        unsafe { std::slice::from_raw_parts(args_ptr, args_size as usize) }
+    };
+
+    // Build DIST_SPAWN payload.
+    let fn_name_bytes = fn_name.as_bytes();
+    let mut payload = Vec::with_capacity(1 + 8 + 8 + 1 + 2 + fn_name_bytes.len() + args_data.len());
+    payload.push(DIST_SPAWN);
+    payload.extend_from_slice(&req_id.to_le_bytes());
+    payload.extend_from_slice(&my_pid.as_u64().to_le_bytes());
+    payload.push(link_flag);
+    payload.extend_from_slice(&(fn_name_bytes.len() as u16).to_le_bytes());
+    payload.extend_from_slice(fn_name_bytes);
+    payload.extend_from_slice(args_data);
+
+    // Send the request over the TLS stream.
+    {
+        let mut stream = session.stream.lock().unwrap();
+        if write_msg(&mut *stream, &payload).is_err() {
+            // Write failed -- clean up pending spawn entry.
+            session.pending_spawns.lock().unwrap().remove(&req_id);
+            return 0;
+        }
+    }
+
+    // Wait for DIST_SPAWN_REPLY in the mailbox.
+    // The reader thread will deliver it as a message with SPAWN_REPLY_TAG
+    // containing [u64 req_id][u8 status][u64 spawned_local_id].
+    let sched = crate::actor::global_scheduler();
+    loop {
+        // Check mailbox for a matching spawn reply (selective receive).
+        if let Some(proc_arc) = sched.get_process(my_pid) {
+            let reply = proc_arc.lock().mailbox.remove_first(|msg| {
+                if msg.buffer.type_tag != SPAWN_REPLY_TAG {
+                    return false;
+                }
+                if msg.buffer.data.len() < 17 {
+                    return false;
+                }
+                let msg_req_id = u64::from_le_bytes(
+                    msg.buffer.data[0..8].try_into().unwrap(),
+                );
+                msg_req_id == req_id
+            });
+
+            if let Some(reply_msg) = reply {
+                let status = reply_msg.buffer.data[8];
+                let spawned_local_id = u64::from_le_bytes(
+                    reply_msg.buffer.data[9..17].try_into().unwrap(),
+                );
+
+                if status == 0 {
+                    // Construct the remote PID using session's node_id and creation.
+                    let remote_pid = ProcessId::from_remote(
+                        session.node_id,
+                        session.remote_creation,
+                        spawned_local_id,
+                    );
+
+                    // If spawn_link, add remote PID to our links set.
+                    if link_flag == 1 {
+                        if let Some(proc_arc) = sched.get_process(my_pid) {
+                            proc_arc.lock().links.insert(remote_pid);
+                        }
+                    }
+
+                    return remote_pid.as_u64();
+                } else {
+                    // Function not found or other error.
+                    return 0;
+                }
+            }
+        } else {
+            // Our process no longer exists -- bail out.
+            return 0;
+        }
+
+        // No matching reply yet. Enter Waiting state and yield.
+        if let Some(proc_arc) = sched.get_process(my_pid) {
+            let mut proc = proc_arc.lock();
+            if !matches!(proc.state, ProcessState::Exited(_)) {
+                proc.state = ProcessState::Waiting;
+            }
+            drop(proc);
+        }
+        stack::yield_current();
+    }
 }
 
 // ---------------------------------------------------------------------------

@@ -48,6 +48,27 @@ impl Mailbox {
     pub fn len(&self) -> usize {
         self.queue.lock().len()
     }
+
+    /// Selectively remove the first message matching a predicate.
+    ///
+    /// Scans the mailbox from front to back and removes the first message
+    /// for which `predicate` returns `true`. All other messages remain in
+    /// their original order. Returns `None` if no message matches.
+    ///
+    /// This implements Erlang-style selective receive: the caller can wait
+    /// for a specific message while leaving unrelated messages queued.
+    pub fn remove_first<F>(&self, predicate: F) -> Option<Message>
+    where
+        F: Fn(&Message) -> bool,
+    {
+        let mut queue = self.queue.lock();
+        for i in 0..queue.len() {
+            if predicate(&queue[i]) {
+                return queue.remove(i);
+            }
+        }
+        None
+    }
 }
 
 impl Default for Mailbox {
