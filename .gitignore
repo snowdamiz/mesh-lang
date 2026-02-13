@@ -5,3 +5,8 @@
 *.snap.new
 
 editors/vscode-mesh/node_modules/
+
+# Website
+website/node_modules/
+website/.vitepress/dist/
+website/.vitepress/cache/
