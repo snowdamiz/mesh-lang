@@ -137,7 +137,7 @@ See milestones/v5.0-ROADMAP.md for full phase details.
 **Milestone Goal:** Create a polished documentation website and landing page that showcases Mesh's capabilities and documents all language features for developers.
 
 - [x] **Phase 70: Scaffold + Design System** - VitePress custom theme with Tailwind v4, shadcn-vue, dark/light mode, and NavBar (completed 2026-02-13)
-- [ ] **Phase 71: Syntax Highlighting + Landing Page** - Mesh code rendering via TextMate grammar and the site's first impression
+- [x] **Phase 71: Syntax Highlighting + Landing Page** - Mesh code rendering via TextMate grammar and the site's first impression (completed 2026-02-13)
 - [ ] **Phase 72: Docs Infrastructure + Core Content** - Sidebar navigation, docs layout, and core language documentation
 - [ ] **Phase 73: Extended Content + Polish** - Remaining docs, search, SEO, and site-wide features
 
@@ -168,8 +168,8 @@ Plans:
   5. Code blocks use a monochrome Shiki theme that matches the site's grayscale aesthetic in both dark and light modes
 **Plans:** 2 plans
 Plans:
-- [ ] 71-01-PLAN.md -- Monochrome Shiki themes + code block CSS + VitePress grammar registration
-- [ ] 71-02-PLAN.md -- Landing page components (Hero, Features, Why Mesh) with Shiki highlighting
+- [x] 71-01-PLAN.md -- Monochrome Shiki themes + code block CSS + VitePress grammar registration
+- [x] 71-02-PLAN.md -- Landing page components (Hero, Features, Why Mesh) with Shiki highlighting
 
 #### Phase 72: Docs Infrastructure + Core Content
 **Goal**: Developers can navigate a structured documentation site with sidebar, table of contents, and prev/next links, and read complete guides covering the core language (getting started, basics, types, concurrency)
@@ -216,8 +216,8 @@ Phases execute in numeric order: 70 -> 71 -> 72 -> 73
 | 59-62 | v4.0 | 8/8 | Complete | 2026-02-12 |
 | 63-69 | v5.0 | 20/20 | Complete | 2026-02-13 |
 | 70 | v6.0 | 2/2 | Complete | 2026-02-13 |
-| 71 | v6.0 | 0/2 | Not started | - |
+| 71 | v6.0 | 2/2 | Complete | 2026-02-13 |
 | 72 | v6.0 | 0/TBD | Not started | - |
 | 73 | v6.0 | 0/TBD | Not started | - |
 
-**Total: 70 phases shipped across 15 milestones. 192 plans completed. v6.0 in progress (1/4 phases complete).**
+**Total: 71 phases shipped across 15 milestones. 194 plans completed. v6.0 in progress (2/4 phases complete).**
