@@ -132,7 +132,7 @@ See milestones/v4.0-ROADMAP.md for full phase details.
 - [x] **Phase 65: Remote Send & Distribution Router** - Transparent message routing across nodes with mesh formation (completed 2026-02-13)
 - [x] **Phase 66: Remote Links, Monitors & Failure Handling** - Cross-node fault tolerance with exit signal and partition propagation (completed 2026-02-13)
 - [x] **Phase 67: Remote Spawn & LLVM Integration** - Spawn actors on remote nodes with full Snow-level API (completed 2026-02-13)
-- [ ] **Phase 68: Global Registry** - Cluster-wide process name registration and lookup
+- [x] **Phase 68: Global Registry** - Cluster-wide process name registration and lookup (completed 2026-02-13)
 - [ ] **Phase 69: Cross-Node Integration** - Distributed WebSocket rooms and remote supervision trees
 
 ## Phase Details
@@ -224,9 +224,9 @@ Plans:
   3. When a node disconnects, all global registrations owned by processes on that node are automatically cleaned up
 **Plans:** 3 plans
 Plans:
-- [ ] 68-01-PLAN.md -- GlobalRegistry data structure, runtime APIs, wire protocol, cleanup hooks
-- [ ] 68-02-PLAN.md -- Compiler integration (Global module in typechecker, MIR, LLVM codegen)
-- [ ] 68-03-PLAN.md -- Sync on connect, wire format tests, GlobalRegistry unit tests
+- [x] 68-01-PLAN.md -- GlobalRegistry data structure, runtime APIs, wire protocol, cleanup hooks
+- [x] 68-02-PLAN.md -- Compiler integration (Global module in typechecker, MIR, LLVM codegen)
+- [x] 68-03-PLAN.md -- Sync on connect, wire format tests, GlobalRegistry unit tests
 
 ### Phase 69: Cross-Node Integration
 **Goal**: Existing WebSocket rooms and supervision trees work transparently across node boundaries
@@ -261,7 +261,7 @@ Plans:
 | 65 | v5.0 | 3/3 | Complete | 2026-02-13 |
 | 66 | v5.0 | 3/3 | Complete | 2026-02-13 |
 | 67 | v5.0 | 3/3 | Complete | 2026-02-13 |
-| 68 | v5.0 | 0/TBD | Not started | - |
+| 68 | v5.0 | 3/3 | Complete | 2026-02-13 |
 | 69 | v5.0 | 0/TBD | Not started | - |
 
-**Total: 67 phases shipped across 14 milestones. 185 plans completed. v5.0 in progress (5/7 phases complete).**
+**Total: 68 phases shipped across 14 milestones. 188 plans completed. v5.0 in progress (6/7 phases complete).**
