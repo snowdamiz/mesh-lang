@@ -10,11 +10,11 @@ See: .planning/PROJECT.md (updated 2026-02-13)
 ## Current Position
 
 Phase: 70 (1 of 4 in v6.0) — Scaffold + Design System
-Plan: 01 of 02 complete
-Status: Executing phase 70
-Last activity: 2026-02-13 — Completed 70-01 (VitePress scaffold)
+Plan: 02 of 02 complete
+Status: Phase 70 complete
+Last activity: 2026-02-13 — Completed 70-02 (NavBar + ThemeToggle)
 
-Progress: [█████░░░░░] 50% (1/2 plans in phase 70)
+Progress: [██████████] 100% (2/2 plans in phase 70)
 
 ## Performance Metrics
 
@@ -36,6 +36,7 @@ Progress: [█████░░░░░] 50% (1/2 plans in phase 70)
 - 70-01: .vitepress/ placed inside docs/ (VitePress source root) for correct theme resolution
 - 70-01: config.mts used instead of config.ts for ESM compatibility with VitePress
 - 70-01: shadcn-vue neutral base color chosen for zero-chroma monochrome OKLCH palette
+- [Phase 70-02]: Used VitePress isDark instead of VueUse useDark to avoid dual localStorage keys fighting
 
 ### Research Notes
 
@@ -59,10 +60,11 @@ None.
 | # | Description | Date | Commit | Directory |
 |---|-------------|------|--------|-----------|
 | 1 | Rename project from Snow to Mesh, change .snow file extension to .mpl | 2026-02-13 | 3fe109e1 | [1-rename-project-from-snow-to-mesh-change-](./quick/1-rename-project-from-snow-to-mesh-change-/) |
+| Phase 70 P02 | 15 | 2 tasks | 3 files |
 
 ## Session Continuity
 
 Last session: 2026-02-13
-Stopped at: Completed 70-01-PLAN.md (VitePress scaffold)
+Stopped at: Completed 70-02-PLAN.md (NavBar + ThemeToggle) — Phase 70 complete
 Resume file: None
-Next action: Execute 70-02-PLAN.md (NavBar + ThemeToggle)
+Next action: Begin Phase 71 or other milestone work
