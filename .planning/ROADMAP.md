@@ -127,7 +127,7 @@ See milestones/v4.0-ROADMAP.md for full phase details.
 
 **Milestone Goal:** BEAM-style distributed actor system -- Snow programs on different machines form a cluster with location-transparent PIDs, remote spawn, cross-node monitoring, and a binary wire format over TLS.
 
-- [ ] **Phase 63: PID Encoding & Wire Format** - Location-transparent PID representation and binary serialization for all Snow types
+- [x] **Phase 63: PID Encoding & Wire Format** - Location-transparent PID representation and binary serialization for all Snow types (completed 2026-02-13)
 - [ ] **Phase 64: Node Connection & Authentication** - TLS-encrypted inter-node TCP with cookie-based auth and discovery
 - [ ] **Phase 65: Remote Send & Distribution Router** - Transparent message routing across nodes with mesh formation
 - [ ] **Phase 66: Remote Links, Monitors & Failure Handling** - Cross-node fault tolerance with exit signal and partition propagation
@@ -149,9 +149,9 @@ See milestones/v4.0-ROADMAP.md for full phase details.
   5. Local send performance is unchanged -- the locality check adds no measurable overhead to the existing fast path
 **Plans:** 3 plans
 Plans:
-- [ ] 63-01-PLAN.md -- PID bit-packing and locality check in send
-- [ ] 63-02-PLAN.md -- STF module scaffold and scalar type encode/decode
-- [ ] 63-03-PLAN.md -- STF container/composite types and round-trip tests
+- [x] 63-01-PLAN.md -- PID bit-packing and locality check in send
+- [x] 63-02-PLAN.md -- STF module scaffold and scalar type encode/decode
+- [x] 63-03-PLAN.md -- STF container/composite types and round-trip tests
 
 ### Phase 64: Node Connection & Authentication
 **Goal**: Snow nodes can discover each other, establish TLS-encrypted connections, and authenticate via shared cookie
@@ -236,7 +236,7 @@ Plans:
 | 49-54 | v2.0 | 13/13 | Complete | 2026-02-12 |
 | 55-58 | v3.0 | 8/8 | Complete | 2026-02-12 |
 | 59-62 | v4.0 | 8/8 | Complete | 2026-02-12 |
-| 63 | v5.0 | 0/3 | Planned | - |
+| 63 | v5.0 | 3/3 | Complete | 2026-02-13 |
 | 64 | v5.0 | 0/TBD | Not started | - |
 | 65 | v5.0 | 0/TBD | Not started | - |
 | 66 | v5.0 | 0/TBD | Not started | - |
@@ -244,4 +244,4 @@ Plans:
 | 68 | v5.0 | 0/TBD | Not started | - |
 | 69 | v5.0 | 0/TBD | Not started | - |
 
-**Total: 62 phases shipped across 13 milestones. 170 plans completed. v5.0 in progress (7 phases planned).**
+**Total: 63 phases shipped across 14 milestones. 173 plans completed. v5.0 in progress (1/7 phases complete).**
