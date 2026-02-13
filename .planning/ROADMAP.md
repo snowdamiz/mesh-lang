@@ -194,7 +194,11 @@ Plans:
   2. User can monitor a node with `Node.monitor(node)` and receives `:nodedown` when the node disconnects and `:nodeup` when it reconnects
   3. When a node connection is lost, all remote links fire `:noconnection` exit signals and all remote monitors fire `:down` messages
   4. Remote links propagate exit signals bidirectionally -- a crash on node A terminates linked processes on node B and vice versa
-**Plans**: TBD
+**Plans:** 3 plans
+Plans:
+- [ ] 66-01-PLAN.md -- Process monitor infrastructure (monitors/monitored_by, Noconnection, DOWN messages)
+- [ ] 66-02-PLAN.md -- Node monitoring & connection loss propagation (handle_node_disconnect, nodedown/nodeup)
+- [ ] 66-03-PLAN.md -- Remote link exit propagation (DIST_EXIT, bidirectional exit signals)
 
 ### Phase 67: Remote Spawn & LLVM Integration
 **Goal**: Users can spawn actors on remote nodes from Snow code with full language-level API
