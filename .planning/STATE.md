@@ -5,25 +5,25 @@
 See: .planning/PROJECT.md (updated 2026-02-12)
 
 **Core value:** Expressive, readable concurrency -- writing concurrent programs should feel as natural as sequential code, with supervision and fault tolerance built in.
-**Current focus:** v4.0 WebSocket Support -- Phase 61 Production Hardening COMPLETE
+**Current focus:** v4.0 WebSocket Support -- Phase 62 Rooms & Channels IN PROGRESS
 
 ## Current Position
 
-Phase: 61 of 62 (Production Hardening) -- COMPLETE
-Plan: 2 of 2 in current phase -- COMPLETE
-Status: Phase 61 complete (TLS, heartbeat, fragmentation, codegen wiring)
-Last activity: 2026-02-12 -- Plan 61-02 executed (2 tasks, 2 files, 1515 tests pass)
+Phase: 62 of 62 (Rooms & Channels) -- IN PROGRESS
+Plan: 1 of 2 in current phase -- COMPLETE
+Status: Plan 62-01 complete (RoomRegistry, 4 runtime functions, disconnect cleanup)
+Last activity: 2026-02-13 -- Plan 62-01 executed (2 tasks, 3 files, 332 tests pass)
 
-Progress: [██████░░░░] 58%
+Progress: [█████████░] 90%
 
 ## Performance Metrics
 
 **All-time Totals:**
-- Plans completed: 168
+- Plans completed: 169
 - Phases completed: 61
 - Milestones shipped: 12 (v1.0-v3.0)
-- Lines of Rust: ~84,000
-- Timeline: 8 days (2026-02-05 -> 2026-02-12)
+- Lines of Rust: ~84,400
+- Timeline: 8 days (2026-02-05 -> 2026-02-13)
 
 ## Accumulated Context
 
@@ -47,12 +47,15 @@ Progress: [██████░░░░] 58%
 - [61-01] MAX_PAYLOAD_SIZE reduced from 64 MiB to 16 MiB (supersedes [59-01] cap)
 - [61-01] macOS EAGAIN detection added to timeout checks for short read timeouts
 - [61-02] Used MirType::Ptr (not MirType::String) for cert/key SnowString pointer args, consistent with WS function family convention from Phase 60-02
+- [62-01] Nested lock ordering (rooms first, conn_rooms second) for deadlock prevention in RoomRegistry
+- [62-01] WsStream made pub(crate) alongside WsConnection for cross-module access from rooms.rs
+- [62-01] Room cleanup inserted before shutdown.store to prevent UAF in concurrent broadcasts
 
 ### Research Notes
 
 - Reader thread bridge (novel architecture) is highest risk -- Phase 60 DONE
 - TLS reuses existing rustls infrastructure (low risk) -- Phase 61 DONE (plan 01)
-- Rooms follow existing process registry pattern (medium risk) -- Phase 62
+- Rooms follow existing process registry pattern (medium risk) -- Phase 62 plan 01 DONE (runtime)
 - sha1 0.10 is the only new dependency needed
 
 ### Pending Todos
@@ -65,7 +68,7 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-02-12
-Stopped at: Completed 61-02-PLAN.md (codegen wiring for Ws.serve_tls)
+Last session: 2026-02-13
+Stopped at: Completed 62-01-PLAN.md (RoomRegistry runtime functions)
 Resume file: None
-Next action: Begin Phase 62 (Rooms/Channels)
+Next action: Execute Plan 62-02 (codegen wiring for Ws.join/leave/broadcast/broadcast_except)
