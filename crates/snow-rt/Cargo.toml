@@ -1,8 +1,8 @@
 [package]
-name = "snow-rt"
+name = "mesh-rt"
 version = "0.1.0"
 edition = "2021"
-description = "Snow language runtime library (GC, strings, panic handler, actor scheduler)"
+description = "Mesh language runtime library (GC, strings, panic handler, actor scheduler)"
 
 [lib]
 crate-type = ["staticlib", "lib"]

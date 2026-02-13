@@ -1,19 +1,19 @@
 [package]
-name = "snowc"
+name = "meshc"
 version = "0.1.0"
 edition = "2021"
-description = "The Snow compiler"
+description = "The Mesh compiler"
 
 [dependencies]
-snow-common = { path = "../snow-common" }
-snow-lexer = { path = "../snow-lexer" }
-snow-parser = { path = "../snow-parser" }
-snow-typeck = { path = "../snow-typeck" }
-snow-codegen = { path = "../snow-codegen" }
-snow-lsp = { path = "../snow-lsp" }
-snow-fmt = { path = "../snow-fmt" }
-snow-pkg = { path = "../snow-pkg" }
-snow-repl = { path = "../snow-repl" }
+mesh-common = { path = "../mesh-common" }
+mesh-lexer = { path = "../mesh-lexer" }
+mesh-parser = { path = "../mesh-parser" }
+mesh-typeck = { path = "../mesh-typeck" }
+mesh-codegen = { path = "../mesh-codegen" }
+mesh-lsp = { path = "../mesh-lsp" }
+mesh-fmt = { path = "../mesh-fmt" }
+mesh-pkg = { path = "../mesh-pkg" }
+mesh-repl = { path = "../mesh-repl" }
 clap = { workspace = true }
 ariadne = { workspace = true }
 serde_json = { workspace = true }

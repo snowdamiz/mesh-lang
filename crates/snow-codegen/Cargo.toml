@@ -1,14 +1,14 @@
 [package]
-name = "snow-codegen"
+name = "mesh-codegen"
 version = "0.1.0"
 edition = "2021"
-description = "LLVM code generation for the Snow compiler"
+description = "LLVM code generation for the Mesh compiler"
 
 [dependencies]
 inkwell = { workspace = true }
-snow-common = { path = "../snow-common" }
-snow-parser = { path = "../snow-parser" }
-snow-typeck = { path = "../snow-typeck" }
+mesh-common = { path = "../mesh-common" }
+mesh-parser = { path = "../mesh-parser" }
+mesh-typeck = { path = "../mesh-typeck" }
 rustc-hash = { workspace = true }
 rowan = { workspace = true }
 

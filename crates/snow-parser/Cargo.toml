@@ -1,11 +1,11 @@
 [package]
-name = "snow-parser"
+name = "mesh-parser"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-snow-common = { path = "../snow-common" }
-snow-lexer = { path = "../snow-lexer" }
+mesh-common = { path = "../mesh-common" }
+mesh-lexer = { path = "../mesh-lexer" }
 rowan = { workspace = true }
 
 [dev-dependencies]

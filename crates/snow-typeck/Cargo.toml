@@ -1,11 +1,11 @@
 [package]
-name = "snow-typeck"
+name = "mesh-typeck"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-snow-common = { path = "../snow-common" }
-snow-parser = { path = "../snow-parser" }
+mesh-common = { path = "../mesh-common" }
+mesh-parser = { path = "../mesh-parser" }
 ena = { workspace = true }
 rustc-hash = { workspace = true }
 rowan = { workspace = true }

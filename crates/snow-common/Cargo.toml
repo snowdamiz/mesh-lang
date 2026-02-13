@@ -1,8 +1,8 @@
 [package]
-name = "snow-common"
+name = "mesh-common"
 version = "0.1.0"
 edition = "2021"
-description = "Shared types for the Snow compiler (tokens, spans, errors)"
+description = "Shared types for the Mesh compiler (tokens, spans, errors)"
 
 [dependencies]
 rustc-hash = { workspace = true }

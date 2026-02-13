@@ -1,8 +1,8 @@
 [package]
-name = "snow-pkg"
+name = "mesh-pkg"
 version = "0.1.0"
 edition = "2021"
-description = "Snow language package manager (manifest parsing, dependency resolution, lockfile)"
+description = "Mesh language package manager (manifest parsing, dependency resolution, lockfile)"
 
 [dependencies]
 toml = { workspace = true }

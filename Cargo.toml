@@ -1,16 +1,16 @@
 [workspace]
 members = [
-    "crates/snow-common",
-    "crates/snow-lexer",
-    "crates/snow-parser",
-    "crates/snow-typeck",
-    "crates/snow-rt",
-    "crates/snow-codegen",
-    "crates/snowc",
-    "crates/snow-pkg",
-    "crates/snow-lsp",
-    "crates/snow-fmt",
-    "crates/snow-repl",
+    "crates/mesh-common",
+    "crates/mesh-lexer",
+    "crates/mesh-parser",
+    "crates/mesh-typeck",
+    "crates/mesh-rt",
+    "crates/mesh-codegen",
+    "crates/meshc",
+    "crates/mesh-pkg",
+    "crates/mesh-lsp",
+    "crates/mesh-fmt",
+    "crates/mesh-repl",
 ]
 resolver = "2"
 
