@@ -1059,6 +1059,123 @@ pub extern "C" fn snow_actor_exit(target_pid: u64, reason_tag: u8) {
     }
 }
 
+/// Monitor a target process.
+///
+/// Creates a unidirectional monitor: when the target process exits, the
+/// caller receives a DOWN message containing the monitor reference, the
+/// monitored PID, and the exit reason.
+///
+/// If the target process is already dead or does not exist, a DOWN message
+/// with reason "noproc" is delivered immediately.
+///
+/// Returns a unique monitor reference (u64) that can be used to demonitor.
+#[no_mangle]
+pub extern "C" fn snow_process_monitor(target_pid: u64) -> u64 {
+    let my_pid = match stack::get_current_pid() {
+        Some(pid) => pid,
+        None => return 0,
+    };
+
+    let sched = global_scheduler();
+    let monitor_ref = link::next_monitor_ref();
+    let target = ProcessId(target_pid);
+
+    if target.is_local() {
+        // Local monitoring path.
+        match sched.get_process(target) {
+            Some(target_arc) => {
+                let mut target_proc = target_arc.lock();
+
+                // If target is already exited, deliver DOWN immediately with noproc.
+                if matches!(target_proc.state, ProcessState::Exited(_)) {
+                    drop(target_proc);
+                    deliver_down_immediately(sched, my_pid, monitor_ref, target, "noproc");
+                    return monitor_ref;
+                }
+
+                // Register monitor bidirectionally.
+                target_proc.monitored_by.insert(monitor_ref, my_pid);
+                drop(target_proc);
+
+                if let Some(my_arc) = sched.get_process(my_pid) {
+                    my_arc.lock().monitors.insert(monitor_ref, target);
+                }
+            }
+            None => {
+                // Target does not exist -- deliver DOWN(noproc) immediately.
+                deliver_down_immediately(sched, my_pid, monitor_ref, target, "noproc");
+            }
+        }
+    } else {
+        // Remote monitoring: for now just record locally (Plan 02 adds DIST_MONITOR).
+        if let Some(my_arc) = sched.get_process(my_pid) {
+            my_arc.lock().monitors.insert(monitor_ref, target);
+        }
+    }
+
+    monitor_ref
+}
+
+/// Remove a monitor.
+///
+/// Removes the monitor identified by `monitor_ref` from both the caller's
+/// monitors map and the target's monitored_by map.
+///
+/// Returns 0 on success, 1 on failure (monitor not found).
+#[no_mangle]
+pub extern "C" fn snow_process_demonitor(monitor_ref: u64) -> u64 {
+    let my_pid = match stack::get_current_pid() {
+        Some(pid) => pid,
+        None => return 1,
+    };
+
+    let sched = global_scheduler();
+
+    // Remove from caller's monitors map to get the monitored PID.
+    let monitored_pid = if let Some(my_arc) = sched.get_process(my_pid) {
+        my_arc.lock().monitors.remove(&monitor_ref)
+    } else {
+        return 1;
+    };
+
+    let monitored_pid = match monitored_pid {
+        Some(pid) => pid,
+        None => return 1,
+    };
+
+    // If the monitored process is local, remove from its monitored_by map.
+    if monitored_pid.is_local() {
+        if let Some(target_arc) = sched.get_process(monitored_pid) {
+            target_arc.lock().monitored_by.remove(&monitor_ref);
+        }
+    }
+
+    0
+}
+
+/// Deliver a DOWN message immediately to the monitoring process.
+///
+/// Used when monitoring an already-dead or nonexistent process.
+fn deliver_down_immediately(
+    sched: &scheduler::Scheduler,
+    monitoring_pid: ProcessId,
+    monitor_ref: u64,
+    monitored_pid: ProcessId,
+    reason_str: &str,
+) {
+    if let Some(proc_arc) = sched.get_process(monitoring_pid) {
+        let mut proc = proc_arc.lock();
+        let reason = ExitReason::Error(reason_str.to_string());
+        let down_data = link::encode_down_signal(monitor_ref, monitored_pid, &reason);
+        let buffer = heap::MessageBuffer::new(down_data, link::DOWN_SIGNAL_TAG);
+        proc.mailbox.push(Message { buffer });
+
+        if matches!(proc.state, ProcessState::Waiting) {
+            proc.state = ProcessState::Ready;
+        }
+    }
+}
+
 /// Parse a `SupervisorConfig` from raw bytes.
 fn parse_supervisor_config(data: &[u8]) -> Option<supervisor::SupervisorConfig> {
     if data.len() < 14 {

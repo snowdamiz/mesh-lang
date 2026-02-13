@@ -605,13 +605,14 @@ fn try_get_request(
 /// 2. THEN: propagate exit signals to all linked processes
 /// 3. Mark the process as Exited
 fn handle_process_exit(process_table: &ProcessTable, pid: ProcessId, reason: ExitReason) {
-    // Extract terminate callback and linked PIDs under a single lock.
-    let (terminate_cb, linked_pids) = {
+    // Extract terminate callback, linked PIDs, and monitored_by under a single lock.
+    let (terminate_cb, linked_pids, monitored_by_entries) = {
         if let Some(proc_arc) = process_table.read().get(&pid) {
             let mut proc = proc_arc.lock();
             let cb = proc.terminate_callback.take();
             let links = std::mem::take(&mut proc.links);
-            (cb, links)
+            let monitored_by = std::mem::take(&mut proc.monitored_by);
+            (cb, links, monitored_by)
         } else {
             return;
         }
@@ -630,6 +631,22 @@ fn handle_process_exit(process_table: &ProcessTable, pid: ProcessId, reason: Exi
     // Wake processes that were in Waiting state.
     // (The state has already been set to Ready by propagate_exit.)
     let _ = woken;
+
+    // Step 2.5: Deliver DOWN messages to all monitoring processes.
+    for (monitor_ref, monitoring_pid) in &monitored_by_entries {
+        if let Some(mon_proc_arc) = process_table.read().get(monitoring_pid) {
+            let mut mon_proc = mon_proc_arc.lock();
+            // Remove the monitor ref from the monitoring process's monitors map.
+            mon_proc.monitors.remove(monitor_ref);
+            // Deliver DOWN message.
+            let down_data = link::encode_down_signal(*monitor_ref, pid, &reason);
+            let buffer = super::heap::MessageBuffer::new(down_data, link::DOWN_SIGNAL_TAG);
+            mon_proc.mailbox.push(super::process::Message { buffer });
+            if matches!(mon_proc.state, ProcessState::Waiting) {
+                mon_proc.state = ProcessState::Ready;
+            }
+        }
+    }
 
     // Step 3: Clean up named registrations.
     registry::global_registry().cleanup_process(pid);
