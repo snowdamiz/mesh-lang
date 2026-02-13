@@ -20,7 +20,7 @@ use std::io::{self, Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::sync::atomic::{AtomicBool, AtomicU8, AtomicU16, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use hmac::{Hmac, Mac};
 use parking_lot::RwLock;
@@ -153,6 +153,269 @@ impl Write for NodeStream {
         match self {
             NodeStream::ServerTls(s) => s.flush(),
             NodeStream::ClientTls(s) => s.flush(),
+        }
+    }
+}
+
+impl NodeStream {
+    /// Set the read timeout on the underlying TcpStream.
+    ///
+    /// Works for both ServerTls and ClientTls variants since the TLS layer
+    /// delegates to the underlying TCP socket's timeout.
+    fn set_read_timeout(&self, dur: Option<Duration>) -> io::Result<()> {
+        match self {
+            NodeStream::ServerTls(s) => s.get_ref().set_read_timeout(dur),
+            NodeStream::ClientTls(s) => s.get_ref().set_read_timeout(dur),
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Heartbeat wire format constants
+// ---------------------------------------------------------------------------
+
+/// Ping message tag for inter-node heartbeat.
+const HEARTBEAT_PING: u8 = 0xF0;
+/// Pong message tag for inter-node heartbeat.
+const HEARTBEAT_PONG: u8 = 0xF1;
+
+// ---------------------------------------------------------------------------
+// HeartbeatState -- ping/pong dead connection detection
+// ---------------------------------------------------------------------------
+
+/// Tracks ping/pong heartbeat state for dead connection detection.
+///
+/// The heartbeat thread sends periodic pings with random 8-byte payloads.
+/// The reader thread forwards pong responses by updating `last_pong_received`
+/// and clearing `pending_ping_payload`. If no valid pong is received within
+/// `pong_timeout` after the last ping, the connection is considered dead.
+///
+/// Follows the same pattern as `ws/server.rs` HeartbeatState.
+struct HeartbeatState {
+    last_ping_sent: Instant,
+    last_pong_received: Instant,
+    ping_interval: Duration,
+    pong_timeout: Duration,
+    pending_ping_payload: Option<[u8; 8]>,
+}
+
+impl HeartbeatState {
+    fn new(interval: Duration, timeout: Duration) -> Self {
+        let now = Instant::now();
+        Self {
+            last_ping_sent: now,
+            last_pong_received: now,
+            ping_interval: interval,
+            pong_timeout: timeout,
+            pending_ping_payload: None,
+        }
+    }
+
+    /// True if enough time has elapsed since the last ping to send another.
+    fn should_send_ping(&self) -> bool {
+        self.last_ping_sent.elapsed() >= self.ping_interval
+    }
+
+    /// True if a ping is pending and the pong hasn't arrived within the timeout.
+    fn is_pong_overdue(&self) -> bool {
+        if self.pending_ping_payload.is_some() {
+            self.last_ping_sent.elapsed() >= self.pong_timeout
+        } else {
+            false
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// spawn_session_threads -- starts reader + heartbeat for an authenticated session
+// ---------------------------------------------------------------------------
+
+/// Spawn the reader and heartbeat threads for an authenticated node session.
+///
+/// Both threads share the session (via `Arc<NodeSession>`) for stream access
+/// and shutdown signalling, plus a shared `HeartbeatState` for coordinating
+/// ping/pong timing between the reader and heartbeat threads.
+fn spawn_session_threads(session: &Arc<NodeSession>) {
+    let heartbeat_state = Arc::new(Mutex::new(HeartbeatState::new(
+        Duration::from_secs(60),
+        Duration::from_secs(15),
+    )));
+
+    let session_for_reader = Arc::clone(session);
+    let session_for_heartbeat = Arc::clone(session);
+    let hs_for_reader = Arc::clone(&heartbeat_state);
+    let hs_for_heartbeat = Arc::clone(&heartbeat_state);
+    let remote_name = session.remote_name.clone();
+
+    // Reader thread
+    let reader_name = format!("snow-node-reader-{}", session.remote_name);
+    std::thread::Builder::new()
+        .name(reader_name)
+        .spawn(move || {
+            reader_loop_session(session_for_reader, hs_for_reader);
+        })
+        .expect("failed to spawn node reader thread");
+
+    // Heartbeat thread
+    let hb_name = format!("snow-node-heartbeat-{}", remote_name);
+    let remote_name_hb = session.remote_name.clone();
+    std::thread::Builder::new()
+        .name(hb_name)
+        .spawn(move || {
+            heartbeat_loop_session(session_for_heartbeat, hs_for_heartbeat, remote_name_hb);
+        })
+        .expect("failed to spawn node heartbeat thread");
+}
+
+// ---------------------------------------------------------------------------
+// reader_loop_session -- receives messages on a dedicated OS thread
+// ---------------------------------------------------------------------------
+
+/// Reader thread for a node session.
+///
+/// Runs on a dedicated OS thread, reading incoming messages from the TLS
+/// stream. Handles heartbeat messages:
+/// - HEARTBEAT_PING: responds immediately with HEARTBEAT_PONG echoing the payload
+/// - HEARTBEAT_PONG: validates payload matches pending ping and updates HeartbeatState
+/// - Other tags: ignored (Phase 65 will add message routing)
+///
+/// Uses a 100ms read timeout to allow periodic shutdown checks without
+/// busy-waiting.
+fn reader_loop_session(
+    session: Arc<NodeSession>,
+    heartbeat_state: Arc<Mutex<HeartbeatState>>,
+) {
+    // Set read timeout to 100ms for periodic shutdown checks.
+    {
+        let s = session.stream.lock().unwrap();
+        s.set_read_timeout(Some(Duration::from_millis(100))).ok();
+    }
+
+    loop {
+        if session.shutdown.load(Ordering::SeqCst) {
+            break;
+        }
+
+        let result = {
+            let mut s = session.stream.lock().unwrap();
+            read_msg(&mut *s)
+        };
+
+        match result {
+            Ok(msg) => {
+                if msg.is_empty() {
+                    continue;
+                }
+                match msg[0] {
+                    HEARTBEAT_PING => {
+                        if msg.len() >= 9 {
+                            let mut pong = Vec::with_capacity(9);
+                            pong.push(HEARTBEAT_PONG);
+                            pong.extend_from_slice(&msg[1..9]);
+                            let mut s = session.stream.lock().unwrap();
+                            let _ = write_msg(&mut *s, &pong);
+                        }
+                    }
+                    HEARTBEAT_PONG => {
+                        if msg.len() >= 9 {
+                            let mut hs = heartbeat_state.lock().unwrap();
+                            if let Some(expected) = hs.pending_ping_payload {
+                                if msg[1..9] == expected {
+                                    hs.last_pong_received = Instant::now();
+                                    hs.pending_ping_payload = None;
+                                }
+                            }
+                        }
+                    }
+                    _ => {
+                        // Phase 65 will handle actual message routing.
+                    }
+                }
+            }
+            Err(e) => {
+                let msg = e.to_string();
+                if msg.contains("timed out")
+                    || msg.contains("WouldBlock")
+                    || msg.contains("temporarily unavailable")
+                {
+                    continue;
+                }
+                session.shutdown.store(true, Ordering::SeqCst);
+                break;
+            }
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// heartbeat_loop_session -- sends periodic pings on a dedicated OS thread
+// ---------------------------------------------------------------------------
+
+/// Heartbeat thread for a node session.
+///
+/// Sends periodic HEARTBEAT_PING messages with random 8-byte payloads and
+/// monitors for timely HEARTBEAT_PONG responses (via shared HeartbeatState
+/// updated by the reader thread). If a pong is overdue, declares the
+/// connection dead and signals shutdown.
+///
+/// After the loop exits (shutdown or timeout), calls `cleanup_session` to
+/// remove the session from NodeState.
+fn heartbeat_loop_session(
+    session: Arc<NodeSession>,
+    heartbeat_state: Arc<Mutex<HeartbeatState>>,
+    session_name: String,
+) {
+    loop {
+        std::thread::sleep(Duration::from_millis(500));
+
+        if session.shutdown.load(Ordering::SeqCst) {
+            break;
+        }
+
+        let mut hs = heartbeat_state.lock().unwrap();
+
+        if hs.is_pong_overdue() {
+            eprintln!("snow node heartbeat timeout: {}", session_name);
+            session.shutdown.store(true, Ordering::SeqCst);
+            break;
+        }
+
+        if hs.should_send_ping() {
+            let payload: [u8; 8] = rand::random();
+            let mut ping = Vec::with_capacity(9);
+            ping.push(HEARTBEAT_PING);
+            ping.extend_from_slice(&payload);
+
+            hs.last_ping_sent = Instant::now();
+            hs.pending_ping_payload = Some(payload);
+            drop(hs);
+
+            let mut s = session.stream.lock().unwrap();
+            let _ = write_msg(&mut *s, &ping);
+        }
+    }
+
+    cleanup_session(&session_name);
+}
+
+// ---------------------------------------------------------------------------
+// cleanup_session -- removes a disconnected node from NodeState
+// ---------------------------------------------------------------------------
+
+/// Remove a disconnected node's session from NodeState.
+///
+/// Removes the session from `sessions` by remote name, then removes the
+/// corresponding `node_id` from `node_id_map`. Phase 66 will add `:nodedown`
+/// notification here.
+fn cleanup_session(remote_name: &str) {
+    if let Some(state) = NODE_STATE.get() {
+        let removed = {
+            let mut sessions = state.sessions.write();
+            sessions.remove(remote_name)
+        };
+        if let Some(session) = removed {
+            let mut id_map = state.node_id_map.write();
+            id_map.remove(&session.node_id);
         }
     }
 }
@@ -864,8 +1127,7 @@ pub fn parse_node_name(name: &str) -> Result<(&str, &str, u16), String> {
 /// 1. Wraps in TLS server connection
 /// 2. Performs HMAC-SHA256 cookie handshake (acceptor side)
 /// 3. Registers authenticated session in NodeState
-///
-/// Plan 03 will spawn reader + heartbeat threads for each session.
+/// 4. Spawns reader + heartbeat threads for the session
 fn accept_loop(listener: TcpListener, state: &NodeState) {
     // Use non-blocking mode with periodic shutdown checks.
     listener
@@ -911,8 +1173,8 @@ fn accept_loop(listener: TcpListener, state: &NodeState) {
                 let stream = NodeStream::ServerTls(tls_stream);
                 match register_session(state, remote_name.clone(), remote_creation, node_id, stream)
                 {
-                    Ok(_session) => {
-                        // Plan 03 will spawn reader + heartbeat threads here.
+                    Ok(session) => {
+                        spawn_session_threads(&session);
                     }
                     Err(e) => {
                         eprintln!(
@@ -1116,8 +1378,8 @@ pub extern "C" fn snow_node_connect(
     let node_id = state.assign_node_id();
     let stream = NodeStream::ClientTls(tls_stream);
     match register_session(state, remote_name.clone(), remote_creation, node_id, stream) {
-        Ok(_session) => {
-            // Plan 03 will spawn reader + heartbeat threads here.
+        Ok(session) => {
+            spawn_session_threads(&session);
             0
         }
         Err(e) => {
