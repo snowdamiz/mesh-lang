@@ -5,16 +5,14 @@
 See: .planning/PROJECT.md (updated 2026-02-13)
 
 **Core value:** Expressive, readable concurrency -- writing concurrent programs should feel as natural and clean as writing sequential code, with the safety net of supervision and fault tolerance built into the language.
-**Current focus:** All milestones complete (v1.0-v6.0). Planning next milestone.
+**Current focus:** v7.0 Iterator Protocol & Trait Ecosystem
 
 ## Current Position
 
-Phase: All complete
-Plan: All complete
-Status: All Milestones Shipped
-Last activity: 2026-02-13 -- v6.0 Website & Documentation milestone archived
-
-Progress: [██████████] 100% (16/16 milestones shipped)
+Phase: Not started (defining requirements)
+Plan: —
+Status: Defining requirements
+Last activity: 2026-02-13 — Milestone v7.0 started
 
 ## Performance Metrics
 
@@ -53,6 +51,6 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-13
-Stopped at: v6.0 milestone archived
+Stopped at: v7.0 milestone started, defining requirements
 Resume file: None
-Next action: `/gsd:new-milestone` to start next milestone cycle
+Next action: Complete requirements and roadmap definition

@@ -4,9 +4,21 @@
 
 Mesh is a programming language that combines Elixir/Ruby-style expressive syntax with static Hindley-Milner type inference and BEAM-style concurrency (actors, supervision trees, fault tolerance), compiled via LLVM to native single-binary executables. The compiler is written in Rust. v1.0-v1.9 built a complete language: compiler pipeline, actor runtime, trait system, module system, loops, stdlib, and developer tooling. v2.0 added database drivers and JSON serde. v3.0 made Mesh production-ready: TLS encryption for PostgreSQL and HTTPS, connection pooling with health checks, panic-safe database transactions, and automatic struct-to-row mapping via `deriving(Row)`. v4.0 added WebSocket support with RFC 6455 protocol, actor-per-connection model, TLS (wss://), heartbeat, fragmentation, and rooms/channels. v5.0 added distributed actors: location-transparent PIDs, TLS-encrypted inter-node connections with cookie auth and mesh formation, transparent remote send, remote process/node monitoring with fault propagation, remote spawn via function name registry, global process registry, and cross-node WebSocket rooms and supervision trees -- all with zero new crate dependencies. v6.0 added a documentation website with VitePress, custom syntax highlighting, 9 documentation guides, landing page, and production-quality site features. ~93K LOC Rust + ~5K LOC website across 16 milestones. Zero known compiler correctness issues.
 
+## Current Milestone: v7.0 Iterator Protocol & Trait Ecosystem
+
+**Goal:** Add associated types to the trait system, then build a comprehensive trait-based protocol ecosystem: lazy iterators with pipe-style composition, From/Into conversion, numeric traits for generic math, and the Collect trait for iterator materialization.
+
+**Target features:**
+- Associated types in traits (type Item, Self.Item, bounded associated types, HM inference integration)
+- Iterator protocol (Iterator/Iterable traits, lazy combinators, for-in desugaring via Iterable)
+- Built-in Iterable implementations for List, Map, Set, Range (coexisting with eager operations)
+- From/Into conversion traits with ? operator error type conversion
+- Numeric traits (Add, Sub, Mul, Div, Neg) with operator dispatch for generic numeric programming
+- Collect trait for generic iterator materialization into List, Map, Set, String
+
 ## Current State
 
-Shipped v6.0 Website & Documentation (2026-02-13). 16 milestones complete, 73 phases, 201 plans. 9 days from project start to documentation site.
+Shipped v6.0 Website & Documentation (2026-02-13). 16 milestones complete, 73 phases, 201 plans. 9 days from project start to documentation site. Starting v7.0.
 
 **Latest milestone (v6.0):** Complete documentation website and landing page built with VitePress + Tailwind v4 + shadcn-vue. Custom Mesh syntax highlighting via TextMate grammar. 9 documentation guides covering all language features. Landing page with feature showcase. Full-text search, SEO, copy buttons, edit links, version badge. 32/32 requirements satisfied.
 
@@ -147,7 +159,12 @@ Expressive, readable concurrency -- writing concurrent programs should feel as n
 
 ### Active
 
-(No active requirements -- all milestones complete)
+- [ ] Associated types in traits with HM inference integration
+- [ ] Iterator protocol with lazy combinators and for-in desugaring
+- [ ] Built-in Iterable for List, Map, Set, Range
+- [ ] From/Into conversion traits with ? operator integration
+- [ ] Numeric traits (Add, Sub, Mul, Div, Neg) with operator dispatch
+- [ ] Collect trait for iterator materialization
 
 ### Out of Scope
 
@@ -332,4 +349,4 @@ Tech debt (minor, pre-existing):
 | CSS-only copy button | VitePress injects button.copy on code blocks; only CSS styling needed | ✓ Good -- v6.0, zero custom JS |
 
 ---
-*Last updated: 2026-02-13 after v6.0 milestone*
+*Last updated: 2026-02-13 after v7.0 milestone start*
