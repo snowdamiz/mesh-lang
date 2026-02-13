@@ -623,28 +623,47 @@ fn handle_process_exit(process_table: &ProcessTable, pid: ProcessId, reason: Exi
         invoke_terminate_callback(cb, &reason);
     }
 
-    // Step 2: Propagate exit signals to linked processes.
-    let woken = link::propagate_exit(pid, &reason, linked_pids, |linked_pid| {
+    // Step 2: Partition links into local and remote, then propagate.
+    let (local_links, remote_links): (std::collections::HashSet<ProcessId>, std::collections::HashSet<ProcessId>) =
+        linked_pids.into_iter().partition(|linked_pid| linked_pid.node_id() == 0);
+
+    // Propagate exit signals to local linked processes.
+    let woken = link::propagate_exit(pid, &reason, local_links, |linked_pid| {
         process_table.read().get(&linked_pid).cloned()
     });
 
     // Wake processes that were in Waiting state.
-    // (The state has already been set to Ready by propagate_exit.)
     let _ = woken;
 
-    // Step 2.5: Deliver DOWN messages to all monitoring processes.
+    // Send DIST_EXIT for each remote link. Silently drops if node disconnected
+    // (handle_node_disconnect already synthesized :noconnection locally).
+    for remote_pid in &remote_links {
+        crate::dist::node::send_dist_exit(pid, *remote_pid, &reason);
+    }
+
+    // Step 2.5: Deliver DOWN messages to monitoring processes.
+    // Partition into local and remote monitors.
     for (monitor_ref, monitoring_pid) in &monitored_by_entries {
-        if let Some(mon_proc_arc) = process_table.read().get(monitoring_pid) {
-            let mut mon_proc = mon_proc_arc.lock();
-            // Remove the monitor ref from the monitoring process's monitors map.
-            mon_proc.monitors.remove(monitor_ref);
-            // Deliver DOWN message.
-            let down_data = link::encode_down_signal(*monitor_ref, pid, &reason);
-            let buffer = super::heap::MessageBuffer::new(down_data, link::DOWN_SIGNAL_TAG);
-            mon_proc.mailbox.push(super::process::Message { buffer });
-            if matches!(mon_proc.state, ProcessState::Waiting) {
-                mon_proc.state = ProcessState::Ready;
+        if monitoring_pid.node_id() == 0 {
+            // Local monitor: deliver DOWN message directly.
+            if let Some(mon_proc_arc) = process_table.read().get(monitoring_pid) {
+                let mut mon_proc = mon_proc_arc.lock();
+                mon_proc.monitors.remove(monitor_ref);
+                let down_data = link::encode_down_signal(*monitor_ref, pid, &reason);
+                let buffer = super::heap::MessageBuffer::new(down_data, link::DOWN_SIGNAL_TAG);
+                mon_proc.mailbox.push(super::process::Message { buffer });
+                if matches!(mon_proc.state, ProcessState::Waiting) {
+                    mon_proc.state = ProcessState::Ready;
+                }
             }
+        } else {
+            // Remote monitor: send DIST_MONITOR_EXIT wire message.
+            crate::dist::node::send_dist_monitor_exit_by_pid(
+                pid,
+                *monitoring_pid,
+                *monitor_ref,
+                &reason,
+            );
         }
     }
 
