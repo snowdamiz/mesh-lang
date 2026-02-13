@@ -1,26 +1,14 @@
-# Snow
+# Mesh
 
 ## What This Is
 
-Snow is a programming language that combines Elixir/Ruby-style expressive syntax with static Hindley-Milner type inference and BEAM-style concurrency (actors, supervision trees, fault tolerance), compiled via LLVM to native single-binary executables. The compiler is written in Rust. v1.0-v1.9 built a complete language: compiler pipeline, actor runtime, trait system, module system, loops, stdlib, and developer tooling. v2.0 added database drivers and JSON serde. v3.0 made Snow production-ready: TLS encryption for PostgreSQL and HTTPS, connection pooling with health checks, panic-safe database transactions, and automatic struct-to-row mapping via `deriving(Row)`. v4.0 added WebSocket support with RFC 6455 protocol, actor-per-connection model, TLS (wss://), heartbeat, fragmentation, and rooms/channels. v5.0 added distributed actors: location-transparent PIDs, TLS-encrypted inter-node connections with cookie auth and mesh formation, transparent remote send, remote process/node monitoring with fault propagation, remote spawn via function name registry, global process registry, and cross-node WebSocket rooms and supervision trees -- all with zero new crate dependencies. ~93K LOC Rust across 15 milestones. Zero known compiler correctness issues.
-
-## Current Milestone: v6.0 Website & Documentation
-
-**Goal:** Create a combined landing page and full documentation site for the Mesh language using Vite + Vue 3 + Tailwind CSS + shadcn-vue, with monochrome design, dark/light mode toggle, sidebar-navigated docs covering all language features, and a custom Mesh syntax highlighter.
-
-**Target features:**
-- Landing page with hero section showcasing Mesh's value proposition
-- Full documentation covering all language features (syntax, types, actors, stdlib, HTTP, DB, WebSocket, distributed)
-- Sidebar navigation with collapsible sections (VitePress/Rust Book style)
-- Monochrome design with dark + light mode toggle
-- Custom Mesh syntax highlighter for code examples
-- Located in /website directory within the repo
+Mesh is a programming language that combines Elixir/Ruby-style expressive syntax with static Hindley-Milner type inference and BEAM-style concurrency (actors, supervision trees, fault tolerance), compiled via LLVM to native single-binary executables. The compiler is written in Rust. v1.0-v1.9 built a complete language: compiler pipeline, actor runtime, trait system, module system, loops, stdlib, and developer tooling. v2.0 added database drivers and JSON serde. v3.0 made Mesh production-ready: TLS encryption for PostgreSQL and HTTPS, connection pooling with health checks, panic-safe database transactions, and automatic struct-to-row mapping via `deriving(Row)`. v4.0 added WebSocket support with RFC 6455 protocol, actor-per-connection model, TLS (wss://), heartbeat, fragmentation, and rooms/channels. v5.0 added distributed actors: location-transparent PIDs, TLS-encrypted inter-node connections with cookie auth and mesh formation, transparent remote send, remote process/node monitoring with fault propagation, remote spawn via function name registry, global process registry, and cross-node WebSocket rooms and supervision trees -- all with zero new crate dependencies. v6.0 added a documentation website with VitePress, custom syntax highlighting, 9 documentation guides, landing page, and production-quality site features. ~93K LOC Rust + ~5K LOC website across 16 milestones. Zero known compiler correctness issues.
 
 ## Current State
 
-Shipped v5.0 Distributed Actors (2026-02-13). 15 milestones complete, 69 phases, 190 plans.
+Shipped v6.0 Website & Documentation (2026-02-13). 16 milestones complete, 73 phases, 201 plans. 9 days from project start to documentation site.
 
-**Latest milestone (v5.0):** BEAM-style distributed actor system with location-transparent PIDs, TLS-encrypted inter-node connections, cookie-based auth, automatic mesh formation, transparent remote send, remote process/node monitoring with fault propagation, remote spawn via function name registry, global process registry, and cross-node WebSocket rooms and supervision trees. 29/29 requirements satisfied. Zero new crate dependencies for entire milestone.
+**Latest milestone (v6.0):** Complete documentation website and landing page built with VitePress + Tailwind v4 + shadcn-vue. Custom Mesh syntax highlighting via TextMate grammar. 9 documentation guides covering all language features. Landing page with feature showcase. Full-text search, SEO, copy buttons, edit links, version badge. 32/32 requirements satisfied.
 
 ## Core Value
 
@@ -155,10 +143,11 @@ Expressive, readable concurrency -- writing concurrent programs should feel as n
 - ✓ Global process registry: `Global.register/whereis/unregister` with cluster-wide broadcast and auto-cleanup -- v5.0
 - ✓ Cross-node WebSocket room broadcast via DIST_ROOM_BROADCAST wire message -- v5.0
 - ✓ Remote supervision: supervision trees can monitor and restart children on remote nodes -- v5.0
+- ✓ Mesh website with landing page, 9 documentation guides, custom syntax highlighting, search, SEO -- v6.0
 
 ### Active
 
-- [ ] Mesh website with landing page and full documentation (v6.0)
+(No active requirements -- all milestones complete)
 
 ### Out of Scope
 
@@ -186,13 +175,13 @@ Expressive, readable concurrency -- writing concurrent programs should feel as n
 
 ## Context
 
-Shipped v5.0 with 93,515 lines of Rust (+9,115 from v4.0).
+Shipped v6.0 with 93,515 lines of Rust + 5,134 lines of website source (Vue/TypeScript/CSS/Markdown).
 Tech stack: Rust compiler, LLVM 21 (Inkwell 0.8), corosensei coroutines, rowan CST, ariadne diagnostics.
+Website: VitePress, Vue 3, Tailwind CSS v4, shadcn-vue, Shiki syntax highlighting.
 Crates: snow-lexer, snow-parser, snow-typeck, snow-mir, snow-codegen, snow-rt, snow-fmt, snow-repl, snow-pkg, snow-lsp, snowc.
 Deps: libsqlite3-sys (bundled), sha2/hmac/md-5/base64ct (PG auth), rustls 0.23/webpki-roots/ring (TLS + certs + SHA-1 for WS handshake).
-New in v5.0: dist/ module (stf.rs, node.rs, global.rs), 10+ LLVM intrinsics for Node/Process/Global APIs, NodeState singleton, NodeSession TLS connections, Snow Term Format binary serialization, GlobalRegistry with three-map design, DIST_ROOM_BROADCAST wire message, remote ChildSpec in supervisor.
 
-Zero new crate dependencies for v5.0 milestone (reused existing ring, rustls, sha2/hmac). Zero known critical bugs. Zero known compiler correctness issues.
+Zero known critical bugs. Zero known compiler correctness issues. All 16 milestones shipped.
 
 Known limitations: None.
 
@@ -333,6 +322,14 @@ Tech debt (minor, pre-existing):
 | Single RwLock for GlobalRegistry | Wraps all three maps (names, pid_names, node_names) for deadlock-free consistency | ✓ Good -- v5.0, simple correctness |
 | DIST_ROOM_BROADCAST no re-forwarding | Reader loop delivers locally only; prevents broadcast storms in mesh | ✓ Good -- v5.0, correct topology |
 | Remote supervisor async terminate | Mark not-running immediately; receive loop handles exit signal | ✓ Good -- v5.0, non-blocking supervision |
+| VitePress custom theme (not extend default) | Blank Layout.vue prevents default theme CSS leaking; full design control | ✓ Good -- v6.0, clean monochrome design |
+| VitePress isDark over VueUse useDark | Avoids dual localStorage keys fighting; VitePress manages theme internally | ✓ Good -- v6.0, no theme toggle conflicts |
+| Monochrome OKLCH palette at zero chroma | Perceptually uniform grayscale; no color bias in dark or light mode | ✓ Good -- v6.0, consistent aesthetic |
+| onMounted client-side Shiki highlighting | Raw code fallback for SSR; highlighting runs only in browser | ✓ Good -- v6.0, no hydration mismatch |
+| DOM-based heading extraction for TOC | page.headers unreliable for dynamic content; DOM MutationObserver is authoritative | ✓ Good -- v6.0, correct TOC always |
+| E2E-verified code examples in docs | All examples sourced from test files, not invented; prevents stale/wrong docs | ✓ Good -- v6.0, accurate documentation |
+| VPNavBarSearch for search | Zero-config MiniSearch; handles Cmd+K, modal, results without custom code | ✓ Good -- v6.0, minimal implementation |
+| CSS-only copy button | VitePress injects button.copy on code blocks; only CSS styling needed | ✓ Good -- v6.0, zero custom JS |
 
 ---
-*Last updated: 2026-02-13 after v6.0 milestone start*
+*Last updated: 2026-02-13 after v6.0 milestone*
