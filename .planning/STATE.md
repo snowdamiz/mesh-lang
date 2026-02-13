@@ -5,22 +5,22 @@
 See: .planning/PROJECT.md (updated 2026-02-12)
 
 **Core value:** Expressive, readable concurrency -- writing concurrent programs should feel as natural as sequential code, with supervision and fault tolerance built in.
-**Current focus:** v4.0 WebSocket Support -- Phase 61 Production Hardening IN PROGRESS
+**Current focus:** v4.0 WebSocket Support -- Phase 61 Production Hardening COMPLETE
 
 ## Current Position
 
-Phase: 61 of 62 (Production Hardening) -- IN PROGRESS
-Plan: 1 of 2 in current phase -- COMPLETE
-Status: Plan 61-01 complete (TLS, heartbeat, fragmentation), ready for Plan 61-02
-Last activity: 2026-02-12 -- Plan 61-01 executed (2 tasks, 4 files, 323 tests pass)
+Phase: 61 of 62 (Production Hardening) -- COMPLETE
+Plan: 2 of 2 in current phase -- COMPLETE
+Status: Phase 61 complete (TLS, heartbeat, fragmentation, codegen wiring)
+Last activity: 2026-02-12 -- Plan 61-02 executed (2 tasks, 2 files, 1515 tests pass)
 
-Progress: [██████░░░░] 55%
+Progress: [██████░░░░] 58%
 
 ## Performance Metrics
 
 **All-time Totals:**
-- Plans completed: 167
-- Phases completed: 60
+- Plans completed: 168
+- Phases completed: 61
 - Milestones shipped: 12 (v1.0-v3.0)
 - Lines of Rust: ~84,000
 - Timeline: 8 days (2026-02-05 -> 2026-02-12)
@@ -46,6 +46,7 @@ Progress: [██████░░░░] 55%
 - [61-01] Pong handled before process_frame to validate heartbeat payload
 - [61-01] MAX_PAYLOAD_SIZE reduced from 64 MiB to 16 MiB (supersedes [59-01] cap)
 - [61-01] macOS EAGAIN detection added to timeout checks for short read timeouts
+- [61-02] Used MirType::Ptr (not MirType::String) for cert/key SnowString pointer args, consistent with WS function family convention from Phase 60-02
 
 ### Research Notes
 
@@ -65,6 +66,6 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-12
-Stopped at: Completed 61-01-PLAN.md (TLS, heartbeat, fragmentation)
+Stopped at: Completed 61-02-PLAN.md (codegen wiring for Ws.serve_tls)
 Resume file: None
-Next action: Execute Plan 61-02 (codegen wiring for Ws.serve_tls)
+Next action: Begin Phase 62 (Rooms/Channels)
