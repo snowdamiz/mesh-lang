@@ -1,272 +1,248 @@
-# Technology Stack: Mesh Website & Documentation
+# Technology Stack
 
-**Project:** Mesh programming language website -- landing page + full documentation with custom syntax highlighting
+**Project:** Mesh v7.0 -- Iterator Protocol & Trait Ecosystem
 **Researched:** 2026-02-13
-**Confidence:** HIGH (all versions verified against npm registry, official docs checked, integration paths confirmed)
-
-## Design Decision: VitePress, Not Custom Vite + Vue
-
-Use **VitePress** with a fully custom theme rather than building a docs site from scratch with Vite + Vue + vue-router + shadcn-vue. Rationale:
-
-1. **Markdown-first architecture is free.** VitePress gives you file-based routing for `.md` files, frontmatter parsing, sidebar generation from file structure, and SPA navigation -- all out of the box. Building this from scratch with `unplugin-vue-markdown` + `vue-router` + custom sidebar is 2-3 weeks of plumbing work that VitePress eliminates.
-
-2. **Custom themes replace everything.** VitePress supports fully custom themes that completely replace the default UI. The theme entry file is just a Vue component -- same DX as a custom Vite + Vue app. You get VitePress's markdown pipeline, build system, and static generation while owning 100% of the visual design.
-
-3. **Shiki is built in.** VitePress uses Shiki for syntax highlighting with native support for loading custom TextMate grammars. The existing `mesh.tmLanguage.json` in `editors/vscode-mesh/syntaxes/` works directly. No integration plumbing needed.
-
-4. **shadcn-vue still works.** VitePress custom themes are standard Vue 3 SFCs. shadcn-vue components can be registered and used in the layout, sidebar, and any interactive elements.
-
-5. **The Vue and Vite docs themselves use VitePress.** This is the battle-tested path for programming language/framework documentation.
-
-What you lose: nothing meaningful. VitePress custom themes have the same power as a standalone Vue app. The only tradeoff is learning VitePress's config conventions, which takes an hour.
-
-## Design Decision: Tailwind CSS v4 with CSS-First Config
-
-Use **Tailwind CSS v4** with the `@tailwindcss/vite` plugin and CSS-first configuration (no `tailwind.config.js`). Rationale:
-
-1. **Monochrome design maps directly to CSS custom properties.** Tailwind v4's `@theme` directive lets you define a minimal grayscale palette in CSS. No JavaScript config file needed.
-2. **Dark mode via `dark:` variant.** Tailwind v4's dark mode support works with the `dark` class on `<html>`, which VueUse's `useDark` toggles.
-3. **First-party Vite plugin** (`@tailwindcss/vite`) provides zero-config integration. No PostCSS config, no content globs.
-
-## Design Decision: Reuse Existing TextMate Grammar for Mesh
-
-The project already has a complete TextMate grammar at `editors/vscode-mesh/syntaxes/mesh.tmLanguage.json` covering keywords, types, operators, strings with interpolation, comments, function definitions, and number literals. Shiki (built into VitePress) loads custom TextMate grammars natively via the `langs` config. No new grammar needs to be written.
 
 ## Recommended Stack
 
-### Core Framework
+No new Rust crate dependencies required. All v7.0 features are compiler-internal changes to existing crates (mesh-parser, mesh-typeck, mesh-codegen, mesh-rt). This is consistent with Mesh's zero-new-deps philosophy for compiler features.
 
-| Technology | Version | Purpose | Why |
-|------------|---------|---------|-----|
-| VitePress | ^1.6.4 | Static site generator, markdown pipeline, build system | Markdown-first docs framework built on Vite + Vue 3. Custom theme support means full design control. Used by Vue, Vite, and most major Vue ecosystem projects for their docs. |
-| Vue 3 | ^3.5.28 | UI framework (via VitePress) | Bundled with VitePress. Composition API + `<script setup>` for all custom components. |
-| Vite | ^7.3 | Build tool (via VitePress) | Bundled with VitePress 1.6.x. Instant HMR, fast builds. |
+### Compiler Internals: What Changes
 
-### Styling
+| Component | Crate | Purpose | Changes Required |
+|-----------|-------|---------|-----------------|
+| Parser | mesh-parser | Parse associated type declarations in interfaces | New `ASSOC_TYPE` syntax kind, `type Item` in interface bodies |
+| Type Representation | mesh-typeck/ty.rs | Represent associated type projections | New `Ty::Projection` variant for `Self.Item` |
+| Unification Engine | mesh-typeck/unify.rs | Handle projection types during unification | Deferred normalization when encountering projections |
+| Trait Registry | mesh-typeck/traits.rs | Store associated type info in trait/impl defs | `associated_types` field on `TraitDef` and `ImplDef` |
+| Type Inference | mesh-typeck/infer.rs | Infer associated types, resolve projections | Projection normalization pass, `Self.Item` resolution |
+| Builtins | mesh-typeck/builtins.rs | Register Iterator/Iterable/From/Into/Add/.../Collect | New trait registrations with associated types |
+| MIR Lowering | mesh-codegen/mir/lower.rs | Desugar for-in to Iterable protocol, iterator state | New iterator state machine lowering, for-in rewrite |
+| MIR Types | mesh-codegen/mir/types.rs | Resolve projection types to concrete MIR types | Projection normalization in `resolve_type` |
+| Runtime | mesh-rt | Iterator runtime helpers | `mesh_iter_*` functions for lazy evaluation support |
 
-| Technology | Version | Purpose | Why |
-|------------|---------|---------|-----|
-| Tailwind CSS | ^4.1.18 | Utility-first CSS framework | Monochrome design is trivially expressed with a minimal `@theme` palette. Dark mode via `dark:` variant. No config file needed in v4. |
-| @tailwindcss/vite | ^4.1.18 | Vite plugin for Tailwind v4 | First-party integration. Zero-config content detection, Lightning CSS in production. |
-| @tailwindcss/typography | ^0.5.19 | Prose styling for rendered markdown | `prose` classes handle markdown content typography (headings, lists, code blocks, paragraphs). `dark:prose-invert` for dark mode. |
+### Core Framework (No Changes)
 
-### UI Components
+| Technology | Version | Purpose | Why No Change |
+|------------|---------|---------|---------------|
+| Rust | stable | Compiler language | Existing toolchain sufficient |
+| LLVM 21 | via Inkwell 0.8 | Code generation | No new LLVM features needed |
+| ena | existing | Union-find for unification | Works with projection extensions |
+| rowan | existing | CST for parsing | Existing node types extensible |
+| rustc_hash | existing | FxHashMap throughout | No change |
 
-| Technology | Version | Purpose | Why |
-|------------|---------|---------|-----|
-| shadcn-vue | ^2.4.3 | Component primitives (dropdown menu for theme toggle, sheet for mobile sidebar, scroll-area) | Copy-paste components that own their code. Uses Reka UI under the hood. Tailwind-native. Only install the 3-5 components actually needed -- not a monolithic library. |
-| reka-ui | ^2.8.0 | Accessible headless primitives (transitive via shadcn-vue) | Provides WAI-ARIA compliant primitives. Installed as shadcn-vue dependency. |
-| lucide-vue-next | ^0.563.0 | Icon library | 1,600+ SVG icons. Tree-shakeable. Used by shadcn-vue for default icons. Sun/Moon icons for theme toggle, Menu icon for mobile nav, Search icon, ChevronRight for sidebar. |
+## Detailed Technical Decisions
 
-### Syntax Highlighting
+### 1. Associated Types: Projection-Based Representation
 
-| Technology | Version | Purpose | Why |
-|------------|---------|---------|-----|
-| shiki | (bundled with VitePress) | Code syntax highlighting | Built into VitePress. TextMate grammar engine (same as VS Code). Load `mesh.tmLanguage.json` for Mesh language support. Generates highlighted HTML at build time -- zero runtime JS. |
+**Decision:** Add `Ty::Projection { trait_name: String, assoc_name: String, self_ty: Box<Ty> }` variant to the `Ty` enum.
 
-### Utilities
+**Why:** Mesh's existing `Ty` enum (Var, Con, Fun, App, Tuple, Never) has no way to represent "the Item type of T's Iterator impl." A projection type is the standard approach used by Rust (chalk), Haskell (type families), and Swift (associated types). It keeps the type representation self-contained -- no need for external lookup during pure type operations.
 
-| Technology | Version | Purpose | Why |
-|------------|---------|---------|-----|
-| @vueuse/core | ^14.2.1 | Vue composition utilities | `useDark()` + `useToggle()` for dark/light mode with localStorage persistence and system preference detection. `useMediaQuery()` for responsive behavior. `useScrollLock()` for mobile sidebar. |
+**Alternative considered:** Eagerly resolving associated types to concrete types at trait-impl registration time. Rejected because this fails when the Self type is still a type variable during inference (e.g., in generic functions like `fn sum<T>(iter: T) where T: Iterator`).
 
-### Search (Deferred -- Phase 2)
+**Confidence:** HIGH -- this is the established pattern in every language with associated types and type inference.
 
-| Technology | Version | Purpose | When |
-|------------|---------|---------|------|
-| minisearch | ^7.x | Client-side full-text search | Add when docs content is substantial. VitePress supports local search via MiniSearch out of the box with `themeConfig.search.provider: 'local'`. Zero-config. |
+### 2. Deferred Projection Normalization
+
+**Decision:** When unification encounters a `Ty::Projection` against another type T, succeed immediately and emit a deferred `ProjectionEq(projection, T)` constraint. Resolve these constraints after the main unification pass when more type information is available.
+
+**Why:** Mesh's existing unification (Algorithm J via ena union-find) resolves types eagerly. But projection types often can't be resolved until the Self type is fully known. Chalk (Rust's trait solver) and OutsideIn(X) (GHC) both use deferred constraint strategies for exactly this reason.
+
+**Integration with existing InferCtx:** Add a `pending_projections: Vec<(Ty, Ty)>` field to `InferCtx`. After each top-level inference pass, drain pending projections and attempt normalization. If Self is resolved, look up the impl and substitute. If still unresolved, keep deferred.
+
+**Alternative considered:** Immediately failing when projection can't be resolved. Rejected because this would break inference for generic code where types flow in from multiple directions.
+
+**Confidence:** HIGH -- deferred constraint resolution is standard for associated types.
+
+### 3. Projection Normalization Algorithm
+
+**Decision:** Normalize `Ty::Projection { trait_name, assoc_name, self_ty }` by:
+1. Resolve `self_ty` through the unification table
+2. Look up `trait_name` impl for the resolved self_ty in `TraitRegistry`
+3. If found, substitute the associated type value from the impl
+4. If self_ty is still a type variable, defer
+
+**Why:** This is the minimal algorithm that handles Mesh's use case. Mesh doesn't need Rust's full trait solver (no lifetime parameters, no higher-ranked trait bounds, no specialization, no negative impls). The existing `TraitRegistry::find_impl` + structural unification already handles step 2 correctly.
+
+**Key simplification vs. Rust:** Mesh uses monomorphization exclusively (no trait objects, no dynamic dispatch). This means every projection MUST normalize to a concrete type before codegen. No need for placeholder/applicative types as in Chalk -- unresolved projections at codegen time are errors.
+
+**Confidence:** HIGH -- simplification is valid given Mesh's static dispatch model.
+
+### 4. Iterator Protocol: Two-Trait Design (Iterator + Iterable)
+
+**Decision:** Define two traits:
+```
+interface Iterator do
+  type Item
+  fn next(self) :: Option<Self.Item>
+end
+
+interface Iterable do
+  type Item
+  type Iter        # must implement Iterator
+  fn iter(self) :: Self.Iter
+end
+```
+
+**Why:** This mirrors Rust's `Iterator`/`IntoIterator` split, which is the battle-tested design. The separation allows:
+- Types that ARE iterators (stateful, have next()) to be used directly
+- Types that CAN PRODUCE iterators (collections) to be iterable via for-in
+- Multiple iterator types per collection (e.g., values vs. entries for Map)
+
+**Mesh-specific adaptation:** Use `iter()` instead of Rust's `into_iter()` because Mesh has no ownership/move semantics. All values are GC-managed, so "consuming" vs. "borrowing" iteration is not a concern.
+
+**For-in desugaring:** `for x in collection do body end` desugars to:
+```
+let __iter = Iterable.iter(collection)
+while true do
+  case Iterator.next(__iter) do
+    Some(x) -> body
+    None -> break
+  end
+end
+```
+
+This reuses the existing while/break/case infrastructure. The desugaring happens in MIR lowering (lower.rs), replacing the current indexed iteration paths.
+
+**Confidence:** HIGH -- Rust's design is proven, and the adaptation to Mesh's GC model is straightforward.
+
+### 5. Lazy Iterator Combinators: Struct-Based State Machines
+
+**Decision:** Each combinator (map, filter, take, etc.) returns a new struct that implements Iterator. These structs are compiler-generated during monomorphization.
+
+Example: `list.iter().map(fn x -> x * 2 end).filter(fn x -> x > 5 end)` produces:
+- `ListIterator<Int>` (from list.iter())
+- `MapIterator<ListIterator<Int>, Int>` (wrapping the ListIterator + closure)
+- `FilterIterator<MapIterator<...>, Int>` (wrapping the MapIterator + closure)
+
+Each struct's `next()` calls the inner iterator's `next()` and applies the transformation.
+
+**Why:** This is how Rust, C++, and every compiled language with monomorphized iterators works. The monomorphization pass already generates specialized code per type, so each combinator chain produces a unique, fully-inlined call sequence. No heap allocation for the iterator pipeline itself (closures may still capture to heap, but the iterator structs are stack-allocated or register-promoted).
+
+**Mesh-specific consideration:** Mesh's GC manages all heap objects. Iterator structs will be GC-allocated (like all Mesh structs) but are typically short-lived and collected quickly. The existing mark-sweep GC handles this fine.
+
+**Alternative considered:** Implementing combinators as built-in runtime functions (like current List.map). Rejected because this defeats laziness -- each step would materialize an intermediate list. The whole point of the iterator protocol is lazy, fused evaluation.
+
+**Confidence:** HIGH -- this is the standard compiled-language approach.
+
+### 6. From/Into: Synthetic Impl Generation (Not Blanket Impls)
+
+**Decision:** Implement From/Into as:
+```
+interface From<T> do
+  fn from(value :: T) :: Self
+end
+
+interface Into<T> do
+  fn into(self) :: T
+end
+```
+
+When the user writes `impl From<String> for Int`, the compiler automatically generates the reverse `impl Into<Int> for String`. This is a synthetic impl, generated during trait registration.
+
+**Why:** Mesh does not support blanket impls (overlapping impls are out of scope per PROJECT.md). Instead of the Rust approach (`impl<T, U> Into<U> for T where U: From<T>`), Mesh synthesizes concrete Into impls from each From impl. This is simpler and avoids the need for a blanket impl system.
+
+**Coherence:** Since Mesh generates the Into impl deterministically from each From impl, there is no coherence concern. The existing `TraitRegistry::register_impl` duplicate detection catches any conflicts.
+
+**Integration with ? operator:** Currently, `?` desugars Result/Option with identical error types. With From/Into, `?` can convert error types: if the function returns `Result<T, TargetError>` and the expression is `Result<T, SourceError>`, the Err arm calls `From.from(err)` to convert. This extends the existing `lower_try_result` in MIR lowering.
+
+**Confidence:** MEDIUM -- synthetic impl generation is non-standard but simpler than blanket impls. The ? operator integration adds complexity to the existing desugaring.
+
+### 7. Numeric Traits: Extend Existing Operator Dispatch
+
+**Decision:** The existing Add/Sub/Mul/Div/Mod traits (already in builtins.rs) become the user-facing numeric traits. Add Neg for unary minus. Users can `impl Add for MyType` to enable `+` on their types.
+
+**What changes:** Currently, `infer_trait_binary_op` checks `trait_registry.has_impl(trait_name, &resolved)` and returns the resolved type. This already works for user types. The key addition is:
+1. Making the existing compiler-known Add/Sub/Mul/Div traits user-implementable (they already are -- users just haven't had this documented/tested)
+2. Adding Neg trait for unary `-` dispatch (currently unary minus returns operand_ty without trait check)
+3. Verifying that `resolve_trait_callee` in MIR correctly mangles user-defined numeric trait impls
+
+**Simplification decision:** Keep Mesh's current same-type constraint for arithmetic (`a + b` requires a and b to be the same type). This avoids mixed-type arithmetic complexity while still enabling `impl Add for Vector2D`.
+
+**Why:** The infrastructure is already 90% there. The existing `register_compiler_known_traits` registers Add/Sub/Mul/Div/Mod with impls for Int and Float. The `infer_trait_binary_op` function already dispatches through the trait registry. The `resolve_trait_callee` in MIR already mangles to `Add__add__TypeName`. Adding user-defined impls is extending what exists, not building new.
+
+**Confidence:** HIGH -- builds directly on existing infrastructure with minimal new code.
+
+### 8. Collect Trait: Type-Directed Materialization
+
+**Decision:** Define Collect as:
+```
+interface Collect do
+  type Item
+  type Output
+  fn from_iter(iter) :: Self.Output
+end
+```
+
+Usage: `iter.collect()` where the target type is inferred from context (let binding annotation or return type).
+
+**Implementation approach:** The `collect()` method on Iterator calls `Collect.from_iter(self)`. The type checker resolves which Collect impl to use based on the expected return type. Built-in impls provided for:
+- Collect for List -- produces `List<T>` from any `Iterator<Item=T>`
+- Collect for Map -- produces `Map<K,V>` from `Iterator<Item=(K,V)>`
+- Collect for Set -- produces `Set<T>` from `Iterator<Item=T>`
+- Collect for String -- produces String from `Iterator<Item=String>` (join)
+
+**Type inference integration:** `collect()` returns a type determined by context. The type checker uses the target type annotation to select the appropriate Collect impl. Example:
+```
+let result :: List<Int> = numbers.iter().map(fn x -> x * 2 end).collect()
+```
+The `List<Int>` annotation drives inference, selecting the List collect impl.
+
+**Confidence:** MEDIUM -- type-directed dispatch through projection normalization is the right approach but requires the associated types infrastructure to be solid first.
+
+## Algorithms and Data Structures Needed
+
+### New in mesh-typeck
+
+| Algorithm/DS | Purpose | Complexity |
+|-------------|---------|------------|
+| Projection normalization | Resolve `Self.Item` to concrete type | O(1) per lookup via TraitRegistry |
+| Deferred projection constraints | Queue unresolved projections for later resolution | Vec<(Ty, Ty)> on InferCtx |
+| Associated type storage in TraitDef | Store `type Item` declarations | FxHashMap<String, Option<Ty>> on TraitDef |
+| Associated type storage in ImplDef | Store `type Item = ConcreteType` | FxHashMap<String, Ty> on ImplDef |
+| Synthetic Into impl generation | Auto-generate Into from From | Deterministic rewrite at registration time |
+
+### New in mesh-codegen
+
+| Algorithm/DS | Purpose | Complexity |
+|-------------|---------|------------|
+| Iterator struct generation | Create MapIterator, FilterIterator, etc. | Monomorphization produces structs per chain |
+| For-in desugaring to Iterable | Rewrite for-in to iter()+next() loop | Replaces indexed iteration in lower_for_in_expr |
+| Collect dispatch in MIR | Route collect() to correct from_iter impl | resolve_trait_callee with projection resolution |
+| From-based ? error conversion | Extend lower_try_expr with From::from call | Additional match arm in Err case |
+
+### New in mesh-rt
+
+| Function | Purpose | Signature |
+|----------|---------|-----------|
+| mesh_list_iter | Create ListIterator from List | (list_ptr) -> iter_ptr |
+| mesh_map_iter | Create MapIterator from Map | (map_ptr) -> iter_ptr |
+| mesh_set_iter | Create SetIterator from Set | (set_ptr) -> iter_ptr |
+| mesh_range_iter | Create RangeIterator from Range | (start, end) -> iter_ptr |
+| mesh_iter_next_* | Advance specific iterator type | (iter_ptr) -> option_ptr |
 
 ## Alternatives Considered
 
 | Category | Recommended | Alternative | Why Not |
 |----------|-------------|-------------|---------|
-| Framework | VitePress (custom theme) | Custom Vite + Vue + vue-router | 2-3 weeks of plumbing work for markdown pipeline, file-based routing, sidebar generation, static HTML generation. VitePress provides all of this and still allows a fully custom theme. |
-| Framework | VitePress (custom theme) | Astro | Astro is excellent for content sites but requires learning a new template language. VitePress gives native Vue SFC support, which is what the user specified. |
-| Framework | VitePress (custom theme) | Nuxt Content | Heavier framework. Nuxt adds SSR complexity unnecessary for a static docs site. VitePress is purpose-built for this use case. |
-| Styling | Tailwind CSS v4 | Tailwind CSS v3 | v3 requires `tailwind.config.js`, PostCSS config, content glob patterns. v4 is CSS-first, zero-config with Vite plugin, and 5-100x faster builds. |
-| Components | shadcn-vue | Headless UI | shadcn-vue has more components, better Vue 3 support, and Tailwind v4 compatibility. Headless UI has fewer components and slower releases. |
-| Components | shadcn-vue | Naive UI / Element Plus | These are styled component libraries that fight Tailwind. shadcn-vue owns its styles via Tailwind classes. Monochrome design requires full style control. |
-| Dark mode | @vueuse/core useDark | Custom implementation | VueUse handles localStorage persistence, system preference detection, SSR hydration mismatch avoidance, and the HTML class toggle. 4 lines vs 40+ lines of custom code. |
-| Syntax highlighting | Shiki (via VitePress) | Prism.js | Prism requires custom language definitions in a different format. Shiki uses TextMate grammars (same as VS Code), and the project already has `mesh.tmLanguage.json`. Zero extra work. |
-| Syntax highlighting | Shiki (via VitePress) | Highlight.js | Same argument as Prism. TextMate grammar already exists. Shiki is the modern standard (used by VS Code, GitHub, VitePress). |
-| Icons | lucide-vue-next | @iconify/vue | Lucide is what shadcn-vue uses by default. Using the same icon set avoids inconsistency. Both are tree-shakeable. |
-| Search | MiniSearch (VitePress built-in) | Algolia DocSearch | DocSearch requires application/approval and external dependency. MiniSearch runs entirely client-side with zero setup. Appropriate for a language docs site. |
-
-## What NOT to Install
-
-These are commonly over-engineered into docs sites:
-
-| Technology | Why Skip |
-|------------|----------|
-| Pinia (state management) | A docs site has no global state. Dark mode is handled by VueUse. Sidebar state is local component state. |
-| vue-router | VitePress handles all routing. Adding vue-router creates conflicts. |
-| unplugin-vue-markdown | VitePress already compiles markdown to Vue components. This plugin is for non-VitePress setups. |
-| @shikijs/markdown-it | VitePress has Shiki integration built in. This plugin is for standalone markdown-it usage. |
-| markdown-it | VitePress bundles and configures markdown-it internally. |
-| Nuxt | Server-side rendering is unnecessary for a static docs site. VitePress generates static HTML. |
-| CMS (Strapi, Contentful, etc.) | Documentation lives in the repo as markdown files. A CMS adds deployment complexity for zero benefit. |
-| i18n | English-only for now. Add later if needed -- VitePress supports i18n natively. |
-| Analytics SDK | Add a `<script>` tag for Plausible/Fathom later. No npm dependency needed. |
-
-## Integration Points with Existing Repo
-
-### Directory Structure
-
-```
-/website/                          # VitePress project root
-  .vitepress/
-    config.ts                      # VitePress configuration
-    theme/
-      index.ts                     # Custom theme entry
-      Layout.vue                   # Root layout (replaces default theme)
-      components/
-        Sidebar.vue                # Docs sidebar navigation
-        ThemeToggle.vue            # Dark/light mode toggle
-        NavBar.vue                 # Top navigation bar
-        CodeBlock.vue              # Custom code block wrapper (if needed)
-      styles/
-        main.css                   # Tailwind imports + @theme + prose overrides
-  docs/                            # Markdown documentation pages
-    index.md                       # Landing page
-    getting-started/
-    language/
-    actors/
-    stdlib/
-    tooling/
-  public/                          # Static assets (logo, og-image)
-  package.json                     # Website-specific dependencies
-  tsconfig.json
-```
-
-### TextMate Grammar Reuse
-
-The VitePress config loads the existing grammar from the shared repo:
-
-```typescript
-// .vitepress/config.ts
-import meshGrammar from '../../editors/vscode-mesh/syntaxes/mesh.tmLanguage.json'
-
-export default defineConfig({
-  markdown: {
-    languages: [
-      {
-        ...meshGrammar,
-        name: 'mesh',
-        scopeName: 'source.mesh',
-      }
-    ],
-    // Shiki theme configuration for monochrome
-    theme: {
-      light: 'github-light',   // Or a custom monochrome theme
-      dark: 'github-dark',     // Or a custom monochrome theme
-    }
-  }
-})
-```
-
-### Monorepo Considerations
-
-- The `/website` directory has its own `package.json` -- completely separate from the Rust workspace.
-- No shared `node_modules` with the rest of the repo.
-- The only cross-reference is the TextMate grammar import, which uses a relative path.
-- CI can build the website independently: `cd website && npm run build`.
-- The Rust `Cargo.toml` workspace is unaffected.
-
-## Installation
-
-```bash
-# From the repo root
-mkdir website && cd website
-
-# Initialize VitePress
-npm init -y
-npm install vitepress vue
-
-# Tailwind CSS v4
-npm install tailwindcss @tailwindcss/vite @tailwindcss/typography
-
-# UI utilities
-npm install @vueuse/core
-
-# Icons
-npm install lucide-vue-next
-
-# shadcn-vue CLI (for adding individual components)
-npx shadcn-vue@latest init
-
-# Then add only the components needed:
-npx shadcn-vue@latest add button
-npx shadcn-vue@latest add dropdown-menu
-npx shadcn-vue@latest add sheet
-npx shadcn-vue@latest add scroll-area
-npx shadcn-vue@latest add separator
-```
-
-### Dev Dependencies
-
-```bash
-npm install -D typescript @types/node
-```
-
-### Total Dependencies
-
-- **Runtime:** 5 direct dependencies (vitepress, vue, tailwindcss, @vueuse/core, lucide-vue-next)
-- **Build:** 3 direct dev dependencies (@tailwindcss/vite, @tailwindcss/typography, typescript)
-- **Copy-paste (not npm deps):** shadcn-vue components live in the project source tree
-- **Transitive:** reka-ui, shiki, markdown-it (all via vitepress or shadcn-vue)
-
-This is a minimal dependency footprint for a full-featured docs site.
-
-## Version Pinning Summary
-
-| Package | Version | Status | Verified |
-|---------|---------|--------|----------|
-| vitepress | ^1.6.4 | Latest stable | npm, 2026-02-13 |
-| vue | ^3.5.28 | Latest stable | npm, 2026-02-13 |
-| tailwindcss | ^4.1.18 | Latest stable | npm, 2026-02-13 |
-| @tailwindcss/vite | ^4.1.18 | Latest stable | npm, 2026-02-13 |
-| @tailwindcss/typography | ^0.5.19 | Latest stable | npm, 2026-02-13 |
-| @vueuse/core | ^14.2.1 | Latest stable (requires Vue 3.5+) | npm, 2026-02-13 |
-| lucide-vue-next | ^0.563.0 | Latest stable | npm, 2026-02-13 |
-| shadcn-vue | ^2.4.3 | Latest stable (uses Reka UI v2) | npm, 2026-02-13 |
-| reka-ui | ^2.8.0 | Latest stable (transitive) | npm, 2026-02-13 |
-| shiki | ~3.22.0 | Bundled with VitePress | npm, 2026-02-13 |
-| typescript | ^5.x | Dev dependency | stable |
-
-## Key Risks and Mitigations
-
-| Risk | Severity | Mitigation |
-|------|----------|------------|
-| VitePress custom theme fights Tailwind reset | Low | VitePress custom themes bypass the default theme CSS entirely. Add `@import "tailwindcss"` in the theme's CSS entry point. No conflicts. |
-| shadcn-vue Tailwind v4 migration complexity | Low | shadcn-vue 2.x has official Tailwind v4 support and migration guide. CSS variables remap via `@theme` directive. |
-| Shiki custom grammar not loading | Low | Verified: Shiki v3 supports `langs` array with inline TextMate grammar objects. The existing `mesh.tmLanguage.json` is a valid TextMate grammar. |
-| VitePress version mismatch with Vite 7 | Low | VitePress 1.6.x ships with Vite 7 support. Verified in changelog. |
-| @vueuse/core requires Vue 3.5+ | None | VitePress 1.6.x bundles Vue 3.5+. Verified compatibility. |
-| Dark mode hydration mismatch | Low | `useDark()` from VueUse handles SSR/SSG hydration correctly by reading the value during `onMounted`. VitePress generates static HTML; hydration adds the dark class on mount. |
+| Associated type representation | Ty::Projection variant | External lookup table | Projection variant is self-contained, works with existing resolve/unify |
+| Projection resolution | Deferred constraints | Eager resolution | Fails for generic code where Self is still a type variable |
+| Iterator design | Two-trait (Iterator + Iterable) | Single-trait Iterable | Cannot distinguish stateful iterators from iterable collections |
+| Lazy evaluation | Struct-based state machines | Generator/coroutine-based | Struct approach needs no new runtime machinery, monomorphizes cleanly |
+| From/Into blanket impl | Synthetic concrete impls | Full blanket impl system | Blanket impls require specialization/negative-reasoning; out of scope |
+| Collect dispatch | Type-directed via context | Explicit target type parameter | Context-driven approach gives better ergonomics |
+| Numeric traits | Extend existing Add/Sub/Mul/Div | New separate numeric trait hierarchy | Existing traits already work; just need user-facing exposure |
 
 ## Sources
 
-- [VitePress documentation](https://vitepress.dev/) -- custom themes, markdown config, Shiki integration
-- [VitePress custom theme guide](https://vitepress.dev/guide/custom-theme) -- fully replacing default theme
-- [VitePress npm](https://www.npmjs.com/package/vitepress) -- v1.6.4, last published ~6 months ago
-- [Vite releases](https://vite.dev/releases) -- v7.3.1 current stable
-- [Vue.js releases](https://vuejs.org/about/releases) -- v3.5.28 current stable
-- [Tailwind CSS v4 announcement](https://tailwindcss.com/blog/tailwindcss-v4) -- CSS-first config, Vite plugin, Lightning CSS
-- [Tailwind CSS npm](https://www.npmjs.com/package/tailwindcss) -- v4.1.18
-- [@tailwindcss/vite npm](https://www.npmjs.com/package/@tailwindcss/vite) -- v4.1.18
-- [@tailwindcss/typography npm](https://www.npmjs.com/package/@tailwindcss/typography) -- v0.5.19
-- [shadcn-vue](https://www.shadcn-vue.com/) -- v2.4.3, Reka UI migration, Tailwind v4 support
-- [shadcn-vue Tailwind v4 guide](https://www.shadcn-vue.com/docs/tailwind-v4) -- migration steps, CSS variable remapping
-- [shadcn-vue dark mode (Vite)](https://www.shadcn-vue.com/docs/dark-mode/vite) -- VueUse integration
-- [Reka UI](https://reka-ui.com) -- v2.8.0, accessible headless primitives
-- [VueUse useDark](https://vueuse.org/core/usedark/) -- dark mode composable
-- [@vueuse/core npm](https://www.npmjs.com/package/@vueuse/core) -- v14.2.1, requires Vue 3.5+
-- [Shiki custom languages](https://shiki.style/guide/load-lang) -- loading TextMate grammars
-- [shiki npm](https://www.npmjs.com/package/shiki) -- v3.22.0
-- [lucide-vue-next npm](https://www.npmjs.com/package/lucide-vue-next) -- v0.563.0
-- [VS Code Syntax Highlight Guide](https://code.visualstudio.com/api/language-extensions/syntax-highlight-guide) -- TextMate grammar format reference
-- Mesh codebase: `editors/vscode-mesh/syntaxes/mesh.tmLanguage.json` -- existing TextMate grammar for Mesh language
-
----
-*Stack research for: Mesh Language Website & Documentation*
-*Researched: 2026-02-13*
+- [Rust Chalk: Type Equality and Unification](https://rust-lang.github.io/chalk/book/clauses/type_equality.html) -- projection normalization algorithm (HIGH confidence)
+- [Niko Matsakis: Unification in Chalk Part 2](https://smallcultfollowing.com/babysteps/blog/2017/04/23/unification-in-chalk-part-2/) -- deferred projection constraints (HIGH confidence)
+- [Rust Compiler Dev Guide: Trait Resolution](https://rustc-dev-guide.rust-lang.org/traits/resolution.html) -- candidate assembly for associated types (HIGH confidence)
+- [Rust Compiler Dev Guide: Type Inference](https://rustc-dev-guide.rust-lang.org/type-inference.html) -- InferCtxt and union-find integration (HIGH confidence)
+- [Rust IntoIterator PR #20790](https://github.com/rust-lang/rust/pull/20790) -- for-loop desugaring design (HIGH confidence)
+- [Rust RFC 0195: Associated Items](https://rust-lang.github.io/rfcs/0195-associated-items.html) -- original associated types design (HIGH confidence)
+- [Rust RFC 0235: Collections Conventions](https://rust-lang.github.io/rfcs/0235-collections-conventions.html) -- collect/from_iter patterns (HIGH confidence)
+- [C# Iterator Block State Machines](https://csharpindepth.com/articles/IteratorBlockImplementation) -- state machine compilation pattern (MEDIUM confidence)
+- [Swift Associated Type Inference](https://forums.swift.org/t/recent-improvements-to-associated-type-inference/70265) -- practical challenges (MEDIUM confidence)
+- [Rust Coherence and Orphan Rules](https://ohadravid.github.io/posts/2023-05-coherence-and-errors/) -- From/Into coherence patterns (HIGH confidence)
