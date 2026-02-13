@@ -97,6 +97,7 @@ pub use json::{
     snow_json_encode_map, snow_json_encode_string, snow_json_from_bool, snow_json_from_float,
     snow_json_from_int, snow_json_from_string, snow_json_parse,
 };
+pub use dist::node::{snow_node_self, snow_node_list, snow_node_start, snow_node_connect};
 pub use panic::snow_panic;
 pub use string::{
     snow_bool_to_string, snow_float_to_string, snow_int_to_string, snow_print, snow_println,

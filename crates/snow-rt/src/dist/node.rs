@@ -1551,6 +1551,62 @@ pub extern "C" fn snow_node_connect(
 }
 
 // ---------------------------------------------------------------------------
+// Node query APIs -- Node.self() and Node.list()
+// ---------------------------------------------------------------------------
+
+/// Return the current node's name as a Snow string pointer.
+///
+/// Returns null pointer if node is not started (snow_node_start not called).
+/// The returned string is GC-allocated via snow_string_new.
+#[no_mangle]
+pub extern "C" fn snow_node_self() -> *const u8 {
+    match node_state() {
+        Some(state) => {
+            crate::string::snow_string_new(
+                state.name.as_ptr(),
+                state.name.len() as u64,
+            ) as *const u8
+        }
+        None => std::ptr::null(),
+    }
+}
+
+/// Return a list of connected node names as a Snow list of strings.
+///
+/// Returns an empty list if node is not started or no connections exist.
+/// Each element is a GC-allocated Snow string. The list itself is allocated
+/// via snow_list_from_array.
+#[no_mangle]
+pub extern "C" fn snow_node_list() -> *mut u8 {
+    let state = match node_state() {
+        Some(s) => s,
+        None => {
+            return crate::collections::list::snow_list_new();
+        }
+    };
+
+    let sessions = state.sessions.read();
+    if sessions.is_empty() {
+        return crate::collections::list::snow_list_new();
+    }
+
+    let names: Vec<String> = sessions.keys().cloned().collect();
+    drop(sessions);
+
+    // Build array of Snow string pointers, then create list from array
+    let mut string_ptrs: Vec<u64> = Vec::with_capacity(names.len());
+    for name in &names {
+        let s = crate::string::snow_string_new(name.as_ptr(), name.len() as u64);
+        string_ptrs.push(s as u64);
+    }
+
+    crate::collections::list::snow_list_from_array(
+        string_ptrs.as_ptr(),
+        string_ptrs.len() as i64,
+    )
+}
+
+// ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
