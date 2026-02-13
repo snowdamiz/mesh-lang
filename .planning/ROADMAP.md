@@ -130,7 +130,7 @@ See milestones/v4.0-ROADMAP.md for full phase details.
 - [x] **Phase 63: PID Encoding & Wire Format** - Location-transparent PID representation and binary serialization for all Snow types (completed 2026-02-13)
 - [x] **Phase 64: Node Connection & Authentication** - TLS-encrypted inter-node TCP with cookie-based auth and discovery (completed 2026-02-13)
 - [x] **Phase 65: Remote Send & Distribution Router** - Transparent message routing across nodes with mesh formation (completed 2026-02-13)
-- [ ] **Phase 66: Remote Links, Monitors & Failure Handling** - Cross-node fault tolerance with exit signal and partition propagation
+- [x] **Phase 66: Remote Links, Monitors & Failure Handling** - Cross-node fault tolerance with exit signal and partition propagation (completed 2026-02-13)
 - [ ] **Phase 67: Remote Spawn & LLVM Integration** - Spawn actors on remote nodes with full Snow-level API
 - [ ] **Phase 68: Global Registry** - Cluster-wide process name registration and lookup
 - [ ] **Phase 69: Cross-Node Integration** - Distributed WebSocket rooms and remote supervision trees
@@ -196,9 +196,9 @@ Plans:
   4. Remote links propagate exit signals bidirectionally -- a crash on node A terminates linked processes on node B and vice versa
 **Plans:** 3 plans
 Plans:
-- [ ] 66-01-PLAN.md -- Process monitor infrastructure (monitors/monitored_by, Noconnection, DOWN messages)
-- [ ] 66-02-PLAN.md -- Node monitoring & connection loss propagation (handle_node_disconnect, nodedown/nodeup)
-- [ ] 66-03-PLAN.md -- Remote link exit propagation (DIST_EXIT, bidirectional exit signals)
+- [x] 66-01-PLAN.md -- Process monitor infrastructure (monitors/monitored_by, Noconnection, DOWN messages)
+- [x] 66-02-PLAN.md -- Node monitoring & connection loss propagation (handle_node_disconnect, nodedown/nodeup)
+- [x] 66-03-PLAN.md -- Remote link exit propagation (DIST_EXIT, bidirectional exit signals)
 
 ### Phase 67: Remote Spawn & LLVM Integration
 **Goal**: Users can spawn actors on remote nodes from Snow code with full language-level API
@@ -251,9 +251,9 @@ Plans:
 | 63 | v5.0 | 3/3 | Complete | 2026-02-13 |
 | 64 | v5.0 | 3/3 | Complete | 2026-02-13 |
 | 65 | v5.0 | 3/3 | Complete | 2026-02-13 |
-| 66 | v5.0 | 0/TBD | Not started | - |
+| 66 | v5.0 | 3/3 | Complete | 2026-02-13 |
 | 67 | v5.0 | 0/TBD | Not started | - |
 | 68 | v5.0 | 0/TBD | Not started | - |
 | 69 | v5.0 | 0/TBD | Not started | - |
 
-**Total: 65 phases shipped across 14 milestones. 179 plans completed. v5.0 in progress (3/7 phases complete).**
+**Total: 66 phases shipped across 14 milestones. 182 plans completed. v5.0 in progress (4/7 phases complete).**
