@@ -112,7 +112,7 @@ pub struct NodeSession {
     /// The node_id assigned to this remote node (for PID encoding)
     pub node_id: u16,
     /// The TLS stream, shared between writer and reader threads
-    pub stream: Mutex<NodeStream>,
+    pub(crate) stream: Mutex<NodeStream>,
     /// Signals the session's reader/heartbeat threads to stop
     pub shutdown: AtomicBool,
     /// When this connection was established
@@ -860,24 +860,67 @@ pub fn parse_node_name(name: &str) -> Result<(&str, &str, u16), String> {
 
 /// Accept loop for incoming node connections.
 ///
-/// Runs on a dedicated OS thread. Accepts TCP connections and (for now)
-/// drops them with a stub comment. Plan 02 will add the TLS handshake
-/// and cookie authentication here.
-fn accept_loop(listener: TcpListener, shutdown: &AtomicBool) {
+/// Runs on a dedicated OS thread. For each accepted TCP connection:
+/// 1. Wraps in TLS server connection
+/// 2. Performs HMAC-SHA256 cookie handshake (acceptor side)
+/// 3. Registers authenticated session in NodeState
+///
+/// Plan 03 will spawn reader + heartbeat threads for each session.
+fn accept_loop(listener: TcpListener, state: &NodeState) {
     // Use non-blocking mode with periodic shutdown checks.
     listener
         .set_nonblocking(true)
         .expect("set_nonblocking failed on node listener");
 
     loop {
-        if shutdown.load(Ordering::Relaxed) {
+        if state.listener_shutdown.load(Ordering::Relaxed) {
             break;
         }
 
         match listener.accept() {
-            Ok((_stream, _addr)) => {
-                // Plan 02: perform TLS handshake + cookie authentication here.
-                // For now, drop the connection.
+            Ok((tcp_stream, _addr)) => {
+                // Switch to blocking mode for the TLS handshake
+                tcp_stream
+                    .set_nonblocking(false)
+                    .expect("set_nonblocking(false) failed on accepted stream");
+
+                // Wrap in TLS server connection
+                let server_conn = match rustls::ServerConnection::new(
+                    Arc::clone(&state.tls_server_config),
+                ) {
+                    Ok(conn) => conn,
+                    Err(e) => {
+                        eprintln!("snow node: TLS server connection failed: {}", e);
+                        continue;
+                    }
+                };
+                let mut tls_stream = StreamOwned::new(server_conn, tcp_stream);
+
+                // Perform HMAC-SHA256 cookie handshake (acceptor side)
+                let (remote_name, remote_creation) =
+                    match perform_handshake(&mut tls_stream, state, false) {
+                        Ok(result) => result,
+                        Err(e) => {
+                            eprintln!("snow node: handshake failed: {}", e);
+                            continue;
+                        }
+                    };
+
+                // Register the authenticated session
+                let node_id = state.assign_node_id();
+                let stream = NodeStream::ServerTls(tls_stream);
+                match register_session(state, remote_name.clone(), remote_creation, node_id, stream)
+                {
+                    Ok(_session) => {
+                        // Plan 03 will spawn reader + heartbeat threads here.
+                    }
+                    Err(e) => {
+                        eprintln!(
+                            "snow node: session registration failed for {}: {}",
+                            remote_name, e
+                        );
+                    }
+                }
             }
             Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
                 // No pending connection -- brief sleep to avoid busy-wait,
@@ -978,13 +1021,113 @@ pub extern "C" fn snow_node_start(
     });
 
     // Spawn accept loop on a background thread.
-    // Access the shutdown flag via the static NODE_STATE, which is 'static.
+    // Access NodeState via the static NODE_STATE, which is 'static.
     std::thread::spawn(move || {
         let state = NODE_STATE.get().expect("NODE_STATE initialized above");
-        accept_loop(listener, &state.listener_shutdown);
+        accept_loop(listener, state);
     });
 
     0
+}
+
+// ---------------------------------------------------------------------------
+// snow_node_connect -- extern "C" entry point for outgoing connections
+// ---------------------------------------------------------------------------
+
+/// Connect to a remote node and perform mutual cookie authentication.
+///
+/// Called from compiled Snow code via `Node.connect("name@host:port")`.
+///
+/// # Arguments
+/// - `name_ptr`, `name_len`: UTF-8 target address ("name@host:port")
+///
+/// # Returns
+/// - `0` on success (authenticated connection established)
+/// - `-1` if node not started (snow_node_start not called)
+/// - `-2` if TCP connection failed
+/// - `-3` if handshake failed (wrong cookie, I/O error, or invalid format)
+#[no_mangle]
+pub extern "C" fn snow_node_connect(
+    name_ptr: *const u8,
+    name_len: u64,
+) -> i64 {
+    // Check NODE_STATE is initialized
+    let state = match NODE_STATE.get() {
+        Some(s) => s,
+        None => {
+            eprintln!("snow node: node not started");
+            return -1;
+        }
+    };
+
+    // Extract target address from raw pointer
+    let target = unsafe {
+        let slice = std::slice::from_raw_parts(name_ptr, name_len as usize);
+        match std::str::from_utf8(slice) {
+            Ok(s) => s.to_string(),
+            Err(_) => return -3,
+        }
+    };
+
+    // Parse host:port from target. Port is REQUIRED for connect.
+    let (_name_part, host, port) = match parse_node_name(&target) {
+        Ok(parsed) => parsed,
+        Err(e) => {
+            eprintln!("snow node: invalid connect target: {}", e);
+            return -3;
+        }
+    };
+
+    // Open TCP connection
+    let tcp_stream = match TcpStream::connect(format!("{}:{}", host, port)) {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!("snow node: TCP connect to {}:{} failed: {}", host, port, e);
+            return -2;
+        }
+    };
+
+    // Wrap in TLS client connection.
+    // Server name is "snow-node" -- doesn't matter since we skip verification.
+    let server_name: ServerName<'static> = "snow-node".try_into().unwrap();
+    let client_conn = match rustls::ClientConnection::new(
+        Arc::clone(&state.tls_client_config),
+        server_name,
+    ) {
+        Ok(conn) => conn,
+        Err(e) => {
+            eprintln!("snow node: TLS client connection failed: {}", e);
+            return -3;
+        }
+    };
+    let mut tls_stream = StreamOwned::new(client_conn, tcp_stream);
+
+    // Perform HMAC-SHA256 cookie handshake (initiator side)
+    let (remote_name, remote_creation) =
+        match perform_handshake(&mut tls_stream, state, true) {
+            Ok(result) => result,
+            Err(e) => {
+                eprintln!("snow node: handshake with {}:{} failed: {}", host, port, e);
+                return -3;
+            }
+        };
+
+    // Register the authenticated session
+    let node_id = state.assign_node_id();
+    let stream = NodeStream::ClientTls(tls_stream);
+    match register_session(state, remote_name.clone(), remote_creation, node_id, stream) {
+        Ok(_session) => {
+            // Plan 03 will spawn reader + heartbeat threads here.
+            0
+        }
+        Err(e) => {
+            eprintln!(
+                "snow node: session registration failed for {}: {}",
+                remote_name, e
+            );
+            -3
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
