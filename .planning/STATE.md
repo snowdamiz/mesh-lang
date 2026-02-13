@@ -5,22 +5,22 @@
 See: .planning/PROJECT.md (updated 2026-02-12)
 
 **Core value:** Expressive, readable concurrency -- writing concurrent programs should feel as natural as sequential code, with supervision and fault tolerance built in.
-**Current focus:** v5.0 Distributed Actors -- Phase 68 complete, next: Phase 69 (Cross-Node Integration)
+**Current focus:** v5.0 Distributed Actors -- Phase 69 complete (Cross-Node Integration)
 
 ## Current Position
 
-Phase: 68 of 69 (Global Registry)
-Plan: 3 of 3 in current phase
+Phase: 69 of 69 (Cross-Node Integration)
+Plan: 2 of 2 in current phase
 Status: Phase Complete
-Last activity: 2026-02-13 -- Phase 68 verified and complete
+Last activity: 2026-02-13 -- Plan 69-02 (Remote Supervisor Children) complete
 
 Progress: [██████████] 100%
 
 ## Performance Metrics
 
 **All-time Totals:**
-- Plans completed: 188
-- Phases completed: 68
+- Plans completed: 190
+- Phases completed: 69
 - Milestones shipped: 14 (v1.0-v4.0)
 - Lines of Rust: ~85,500
 - Timeline: 9 days (2026-02-05 -> 2026-02-13)
@@ -87,6 +87,9 @@ Progress: [██████████] 100%
 - 68-02: Dedicated codegen_global_register helper for two-arg call (string unpacking + pid passthrough)
 - 68-03: send_global_sync placed in global.rs alongside broadcast functions (same module locality)
 - 68-03: Wire format tests use direct payload byte verification (read_msg is private to node.rs)
+- 69-02: Clone target_node/start_fn_name before mutable borrow to satisfy Rust borrow checker in start_single_child
+- 69-02: Backward-compatible wire format: missing has_target_node byte after child_type treated as local
+- 69-02: Remote terminate is asynchronous: mark not-running immediately, supervisor receive loop handles exit signal
 
 ### Research Notes
 
@@ -107,6 +110,6 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-13
-Stopped at: Phase 68 complete -- verified and marked in ROADMAP.md
+Stopped at: Completed 69-02-PLAN.md -- Phase 69 (Cross-Node Integration) complete
 Resume file: None
-Next action: Begin Phase 69 (Cross-Node Integration)
+Next action: Phase 69 complete -- all plans executed
