@@ -10,16 +10,16 @@ See: .planning/PROJECT.md (updated 2026-02-12)
 ## Current Position
 
 Phase: 65 of 69 (Remote Send & Distribution Router)
-Plan: 1 of 3 in current phase
+Plan: 2 of 3 in current phase
 Status: In Progress
-Last activity: 2026-02-13 -- Completed 65-01 (Remote Send & Distribution Router)
+Last activity: 2026-02-13 -- Completed 65-02 (Mesh Formation & Node Query APIs)
 
 Progress: [██████████] 100%
 
 ## Performance Metrics
 
 **All-time Totals:**
-- Plans completed: 177
+- Plans completed: 178
 - Phases completed: 64
 - Milestones shipped: 14 (v1.0-v4.0)
 - Lines of Rust: ~84,400
@@ -50,6 +50,9 @@ Progress: [██████████] 100%
 - 65-01: Silent drop on all dist failure paths (unknown node, no session, write error) -- Phase 66 adds :nodedown
 - 65-01: read_dist_msg 16MB limit replaces read_msg 4KB in reader loop post-handshake
 - 65-01: snow_actor_send_named handles local self-send via registry before remote path
+- 65-02: Mesh connections spawned on separate thread to avoid reader loop deadlock
+- 65-02: Self/already-connected nodes filtered from peer list to prevent infinite loops
+- 65-02: snow_node_self returns null when not started; snow_node_list returns empty list
 
 ### Research Notes
 
@@ -70,6 +73,6 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-13
-Stopped at: Completed 65-01-PLAN.md (Remote Send & Distribution Router)
+Stopped at: Completed 65-02-PLAN.md (Mesh Formation & Node Query APIs)
 Resume file: None
-Next action: Execute 65-02-PLAN.md
+Next action: Execute 65-03-PLAN.md
