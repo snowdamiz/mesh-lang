@@ -208,7 +208,11 @@ Plans:
   1. User can spawn an actor on a remote node with `Node.spawn(node, function, args)` and receive a usable PID back
   2. User can spawn-and-link with `Node.spawn_link(node, function, args)` so that the remote actor's crash propagates back
   3. Remote spawn uses function names (not pointers) so that differently-compiled binaries can spawn each other's functions
-**Plans**: TBD
+**Plans:** 3 plans
+Plans:
+- [ ] 67-01-PLAN.md -- Function name registry, intrinsic declarations, registration codegen
+- [ ] 67-02-PLAN.md -- Remote spawn runtime (DIST_SPAWN wire protocol, snow_node_spawn)
+- [ ] 67-03-PLAN.md -- Node & Process module LLVM integration (MIR lowering, codegen)
 
 ### Phase 68: Global Registry
 **Goal**: Processes can be registered by name across the entire cluster and looked up from any node
