@@ -197,7 +197,11 @@ Plans:
   2. Typing a search query returns relevant documentation pages via full-text search, and all code blocks have a copy-to-clipboard button
   3. Every page has SEO meta tags (title, description, Open Graph), a custom 404 page exists, and each docs page shows an "Edit on GitHub" link and a last-updated timestamp
   4. A version badge somewhere on the site displays the current Mesh version
-**Plans**: TBD
+**Plans:** 3 plans
+Plans:
+- [ ] 73-01-PLAN.md -- Web and Database documentation (DOCS-05, DOCS-06)
+- [ ] 73-02-PLAN.md -- Distributed Actors and Tooling documentation (DOCS-07, DOCS-08)
+- [ ] 73-03-PLAN.md -- Site features: search, copy button, SEO, 404, edit link, last-updated, version badge (FEAT-01 through FEAT-07)
 
 ## Progress
 
@@ -223,6 +227,6 @@ Phases execute in numeric order: 70 -> 71 -> 72 -> 73
 | 70 | v6.0 | 2/2 | Complete | 2026-02-13 |
 | 71 | v6.0 | 2/2 | Complete | 2026-02-13 |
 | 72 | v6.0 | 4/4 | Complete | 2026-02-13 |
-| 73 | v6.0 | 0/TBD | Not started | - |
+| 73 | v6.0 | 0/3 | Not started | - |
 
 **Total: 72 phases shipped across 15 milestones. 198 plans completed. v6.0 in progress (3/4 phases complete).**
