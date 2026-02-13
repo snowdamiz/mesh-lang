@@ -10,16 +10,16 @@ See: .planning/PROJECT.md (updated 2026-02-12)
 ## Current Position
 
 Phase: 66 of 69 (Remote Links, Monitors & Failure Handling)
-Plan: 1 of 3 in current phase
+Plan: 2 of 3 in current phase
 Status: In Progress
-Last activity: 2026-02-13 -- Completed 66-01 (Local Monitor Infrastructure)
+Last activity: 2026-02-13 -- Completed 66-02 (Node Monitoring & Connection Loss Propagation)
 
 Progress: [██████████] 100%
 
 ## Performance Metrics
 
 **All-time Totals:**
-- Plans completed: 180
+- Plans completed: 181
 - Phases completed: 65
 - Milestones shipped: 14 (v1.0-v4.0)
 - Lines of Rust: ~84,400
@@ -60,6 +60,11 @@ Progress: [██████████] 100%
 - 66-01: DOWN(noproc) delivered immediately when monitoring dead/nonexistent process
 - 66-01: Remote monitor records locally only (DIST_MONITOR deferred to Plan 02)
 - 66-01: encode_reason/decode_reason promoted to pub(crate) for wire message reuse
+- 66-02: Two-phase disconnect handling (collect under read lock, execute after drop) avoids deadlocks
+- 66-02: NODEDOWN_TAG = u64::MAX - 2, NODEUP_TAG = u64::MAX - 3 as reserved sentinel type tags
+- 66-02: Remote monitor sends DIST_MONITOR wire; if session gone, immediate DOWN(noconnection)
+- 66-02: DIST_MONITOR on dead process immediately replies DIST_MONITOR_EXIT(noproc)
+- 66-02: Node monitors default persistent (is_once=false), retained across events
 
 ### Research Notes
 
@@ -80,6 +85,6 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-13
-Stopped at: Completed 66-01-PLAN.md (Local Monitor Infrastructure)
+Stopped at: Completed 66-02-PLAN.md (Node Monitoring & Connection Loss Propagation)
 Resume file: None
-Next action: Execute 66-02-PLAN.md (Remote Monitors)
+Next action: Execute 66-03-PLAN.md (Remote Link Exit Propagation)
