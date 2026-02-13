@@ -770,4 +770,414 @@ mod tests {
         let result = stf_decode_value(&[]);
         assert_eq!(result, Err(StfError::UnexpectedEof));
     }
+
+    // ── Container round-trip tests ────────────────────────────────
+
+    /// Helper: allocate a list of i64 values on the GC heap.
+    fn alloc_list_of_ints(values: &[i64]) -> *mut u8 {
+        let count = values.len() as u64;
+        let total = 16 + (count as usize) * 8; // header + data
+        let ptr = crate::gc::snow_gc_alloc_actor(total as u64, 8);
+        unsafe {
+            *(ptr as *mut u64) = count;           // len
+            *((ptr as *mut u64).add(1)) = count;  // cap
+            let data = (ptr as *mut u64).add(2);
+            for (i, &v) in values.iter().enumerate() {
+                *data.add(i) = v as u64;
+            }
+        }
+        ptr
+    }
+
+    /// Helper: allocate a set of i64 values on the GC heap.
+    fn alloc_set_of_ints(values: &[i64]) -> *mut u8 {
+        let count = values.len() as u64;
+        let total = 16 + (count as usize) * 8;
+        let ptr = crate::gc::snow_gc_alloc_actor(total as u64, 8);
+        unsafe {
+            *(ptr as *mut u64) = count;           // len
+            *((ptr as *mut u64).add(1)) = count;  // cap
+            let data = (ptr as *mut u64).add(2);
+            for (i, &v) in values.iter().enumerate() {
+                *data.add(i) = v as u64;
+            }
+        }
+        ptr
+    }
+
+    #[test]
+    fn test_list_int_roundtrip() {
+        snow_rt_init();
+        let list = alloc_list_of_ints(&[10, 20, 30]);
+        let ty = StfType::List(Box::new(StfType::Int));
+        let encoded = stf_encode_value(list as u64, &ty).unwrap();
+        let (decoded_ptr, decoded_type) = stf_decode_value(&encoded).unwrap();
+        assert_eq!(decoded_type, StfType::List(Box::new(StfType::Int)));
+        unsafe {
+            let ptr = decoded_ptr as *const u64;
+            let len = *ptr;
+            assert_eq!(len, 3);
+            let data = ptr.add(2);
+            assert_eq!(*data as i64, 10);
+            assert_eq!(*data.add(1) as i64, 20);
+            assert_eq!(*data.add(2) as i64, 30);
+        }
+    }
+
+    #[test]
+    fn test_list_string_roundtrip() {
+        snow_rt_init();
+        let s1 = snow_string_new("hello".as_ptr(), 5);
+        let s2 = snow_string_new("world".as_ptr(), 5);
+        // Allocate list of 2 string pointers.
+        let list = crate::gc::snow_gc_alloc_actor(16 + 2 * 8, 8);
+        unsafe {
+            *(list as *mut u64) = 2;                       // len
+            *((list as *mut u64).add(1)) = 2;              // cap
+            *((list as *mut u64).add(2)) = s1 as u64;      // data[0]
+            *((list as *mut u64).add(3)) = s2 as u64;      // data[1]
+        }
+        let ty = StfType::List(Box::new(StfType::String));
+        let encoded = stf_encode_value(list as u64, &ty).unwrap();
+        let (decoded_ptr, decoded_type) = stf_decode_value(&encoded).unwrap();
+        assert_eq!(decoded_type, StfType::List(Box::new(StfType::String)));
+        unsafe {
+            let ptr = decoded_ptr as *const u64;
+            assert_eq!(*ptr, 2); // len
+            let d0 = *ptr.add(2) as *const SnowString;
+            let d1 = *ptr.add(3) as *const SnowString;
+            assert_eq!((*d0).as_str(), "hello");
+            assert_eq!((*d1).as_str(), "world");
+        }
+    }
+
+    #[test]
+    fn test_map_roundtrip() {
+        snow_rt_init();
+        // Create a map with 2 int->string entries.
+        let v1 = snow_string_new("alpha".as_ptr(), 5);
+        let v2 = snow_string_new("beta".as_ptr(), 4);
+        // Map layout: { len, cap|key_type, entries: [(key, val), ...] }
+        let total = 16 + 2 * 16; // header + 2 entries of 16 bytes
+        let map = crate::gc::snow_gc_alloc_actor(total as u64, 8);
+        unsafe {
+            *(map as *mut u64) = 2;                          // len
+            *((map as *mut u64).add(1)) = (0u64 << 56) | 2; // key_type=0 (int), cap=2
+            let entries = (map as *mut u64).add(2);
+            *entries = 1;                          // key[0]
+            *entries.add(1) = v1 as u64;           // val[0]
+            *entries.add(2) = 2;                   // key[1]
+            *entries.add(3) = v2 as u64;           // val[1]
+        }
+        let ty = StfType::Map(Box::new(StfType::Int), Box::new(StfType::String));
+        let encoded = stf_encode_value(map as u64, &ty).unwrap();
+        let (decoded_ptr, decoded_type) = stf_decode_value(&encoded).unwrap();
+        assert_eq!(decoded_type, StfType::Map(Box::new(StfType::Int), Box::new(StfType::String)));
+        unsafe {
+            let ptr = decoded_ptr as *const u64;
+            assert_eq!(*ptr, 2); // len
+            let entries = ptr.add(2);
+            assert_eq!(*entries, 1);       // key[0]
+            assert_eq!(*entries.add(2), 2); // key[1]
+            let dv0 = *entries.add(1) as *const SnowString;
+            let dv1 = *entries.add(3) as *const SnowString;
+            assert_eq!((*dv0).as_str(), "alpha");
+            assert_eq!((*dv1).as_str(), "beta");
+        }
+    }
+
+    #[test]
+    fn test_set_roundtrip() {
+        snow_rt_init();
+        let set = alloc_set_of_ints(&[100, 200, 300]);
+        let ty = StfType::Set(Box::new(StfType::Int));
+        let encoded = stf_encode_value(set as u64, &ty).unwrap();
+        let (decoded_ptr, decoded_type) = stf_decode_value(&encoded).unwrap();
+        assert_eq!(decoded_type, StfType::Set(Box::new(StfType::Int)));
+        unsafe {
+            let ptr = decoded_ptr as *const u64;
+            assert_eq!(*ptr, 3); // len
+            let data = ptr.add(2);
+            assert_eq!(*data as i64, 100);
+            assert_eq!(*data.add(1) as i64, 200);
+            assert_eq!(*data.add(2) as i64, 300);
+        }
+    }
+
+    #[test]
+    fn test_tuple_roundtrip() {
+        snow_rt_init();
+        let s = snow_string_new("hi".as_ptr(), 2);
+        // Tuple layout: { len: u64, data: [u64; len] }
+        let total = 8 + 3 * 8;
+        let tuple = crate::gc::snow_gc_alloc_actor(total as u64, 8);
+        unsafe {
+            *(tuple as *mut u64) = 3;                      // len/arity
+            *((tuple as *mut u64).add(1)) = 42u64;         // Int
+            *((tuple as *mut u64).add(2)) = s as u64;      // String
+            *((tuple as *mut u64).add(3)) = 1u64;          // Bool (true)
+        }
+        let ty = StfType::Tuple(vec![StfType::Int, StfType::String, StfType::Bool]);
+        let encoded = stf_encode_value(tuple as u64, &ty).unwrap();
+        let (decoded_ptr, decoded_type) = stf_decode_value(&encoded).unwrap();
+        assert_eq!(decoded_type, StfType::Tuple(vec![StfType::Int, StfType::String, StfType::Bool]));
+        unsafe {
+            let ptr = decoded_ptr as *const u64;
+            assert_eq!(*ptr, 3); // arity
+            let data = ptr.add(1);
+            assert_eq!(*data as i64, 42);
+            let decoded_str = &*(*data.add(1) as *const SnowString);
+            assert_eq!(decoded_str.as_str(), "hi");
+            assert_eq!(*data.add(2), 1); // true
+        }
+    }
+
+    // ── Composite round-trip tests ────────────────────────────────
+
+    #[test]
+    fn test_struct_roundtrip() {
+        snow_rt_init();
+        let name_str = snow_string_new("Alice".as_ptr(), 5);
+        // Struct is contiguous u64 fields (no header): [name_ptr, age]
+        let total = 2 * 8;
+        let s = crate::gc::snow_gc_alloc_actor(total as u64, 8);
+        unsafe {
+            *(s as *mut u64) = name_str as u64;       // field 0: name
+            *((s as *mut u64).add(1)) = 30u64;        // field 1: age
+        }
+        let ty = StfType::Struct(
+            "Person".to_string(),
+            vec![
+                ("name".to_string(), StfType::String),
+                ("age".to_string(), StfType::Int),
+            ],
+        );
+        let encoded = stf_encode_value(s as u64, &ty).unwrap();
+        let (decoded_ptr, decoded_type) = stf_decode_value(&encoded).unwrap();
+        match &decoded_type {
+            StfType::Struct(name, fields) => {
+                assert_eq!(name, "Person");
+                assert_eq!(fields.len(), 2);
+                assert_eq!(fields[0].0, "name");
+                assert_eq!(fields[1].0, "age");
+            }
+            _ => panic!("expected Struct type"),
+        }
+        unsafe {
+            let ptr = decoded_ptr as *const u64;
+            let decoded_name = &*(*ptr as *const SnowString);
+            assert_eq!(decoded_name.as_str(), "Alice");
+            assert_eq!(*ptr.add(1) as i64, 30);
+        }
+    }
+
+    #[test]
+    fn test_option_some_roundtrip() {
+        snow_rt_init();
+        // Create SnowOption with tag=0 (Some), value pointing to int 42.
+        // For Option<Int>, the inner value is the i64 itself cast as a pointer.
+        let opt_ptr = crate::option::alloc_option(0, 42u64 as *mut u8);
+        let ty = StfType::OptionOf(Box::new(StfType::Int));
+        let encoded = stf_encode_value(opt_ptr as u64, &ty).unwrap();
+        let (decoded_ptr, decoded_type) = stf_decode_value(&encoded).unwrap();
+        match &decoded_type {
+            StfType::OptionOf(inner) => assert_eq!(**inner, StfType::Int),
+            _ => panic!("expected OptionOf"),
+        }
+        unsafe {
+            let opt = &*(decoded_ptr as *const crate::option::SnowOption);
+            assert_eq!(opt.tag, 0); // Some
+            assert_eq!(opt.value as u64, 42);
+        }
+    }
+
+    #[test]
+    fn test_option_none_roundtrip() {
+        snow_rt_init();
+        let opt_ptr = crate::option::alloc_option(1, std::ptr::null_mut());
+        let ty = StfType::OptionOf(Box::new(StfType::Int));
+        let encoded = stf_encode_value(opt_ptr as u64, &ty).unwrap();
+        let (decoded_ptr, _decoded_type) = stf_decode_value(&encoded).unwrap();
+        unsafe {
+            let opt = &*(decoded_ptr as *const crate::option::SnowOption);
+            assert_eq!(opt.tag, 1); // None
+            assert!(opt.value.is_null());
+        }
+    }
+
+    #[test]
+    fn test_result_ok_roundtrip() {
+        snow_rt_init();
+        // Result<Int, String> with Ok(99)
+        let res_ptr = crate::option::alloc_option(0, 99u64 as *mut u8);
+        let ty = StfType::ResultOf(Box::new(StfType::Int), Box::new(StfType::String));
+        let encoded = stf_encode_value(res_ptr as u64, &ty).unwrap();
+        let (decoded_ptr, _decoded_type) = stf_decode_value(&encoded).unwrap();
+        unsafe {
+            let opt = &*(decoded_ptr as *const crate::option::SnowOption);
+            assert_eq!(opt.tag, 0); // Ok
+            assert_eq!(opt.value as u64, 99);
+        }
+    }
+
+    #[test]
+    fn test_result_err_roundtrip() {
+        snow_rt_init();
+        // Result<Int, String> with Err("oops")
+        let err_str = snow_string_new("oops".as_ptr(), 4);
+        let res_ptr = crate::option::alloc_option(1, err_str as *mut u8);
+        let ty = StfType::ResultOf(Box::new(StfType::Int), Box::new(StfType::String));
+        let encoded = stf_encode_value(res_ptr as u64, &ty).unwrap();
+        let (decoded_ptr, _decoded_type) = stf_decode_value(&encoded).unwrap();
+        unsafe {
+            let opt = &*(decoded_ptr as *const crate::option::SnowOption);
+            assert_eq!(opt.tag, 1); // Err
+            let decoded_str = &*(opt.value as *const SnowString);
+            assert_eq!(decoded_str.as_str(), "oops");
+        }
+    }
+
+    // ── Nesting tests ─────────────────────────────────────────────
+
+    #[test]
+    fn test_nested_list_of_lists() {
+        snow_rt_init();
+        // Create 2 inner lists of ints.
+        let inner1 = alloc_list_of_ints(&[1, 2]);
+        let inner2 = alloc_list_of_ints(&[3, 4, 5]);
+        // Outer list holds 2 list pointers.
+        let outer = crate::gc::snow_gc_alloc_actor(16 + 2 * 8, 8);
+        unsafe {
+            *(outer as *mut u64) = 2;
+            *((outer as *mut u64).add(1)) = 2;
+            *((outer as *mut u64).add(2)) = inner1 as u64;
+            *((outer as *mut u64).add(3)) = inner2 as u64;
+        }
+        let ty = StfType::List(Box::new(StfType::List(Box::new(StfType::Int))));
+        let encoded = stf_encode_value(outer as u64, &ty).unwrap();
+        let (decoded_ptr, _) = stf_decode_value(&encoded).unwrap();
+        unsafe {
+            let ptr = decoded_ptr as *const u64;
+            assert_eq!(*ptr, 2); // outer len
+            let d0 = *ptr.add(2) as *const u64; // inner list 0
+            let d1 = *ptr.add(3) as *const u64; // inner list 1
+            assert_eq!(*d0, 2); // inner list 0 len
+            assert_eq!(*d0.add(2) as i64, 1);
+            assert_eq!(*d0.add(3) as i64, 2);
+            assert_eq!(*d1, 3); // inner list 1 len
+            assert_eq!(*d1.add(2) as i64, 3);
+            assert_eq!(*d1.add(3) as i64, 4);
+            assert_eq!(*d1.add(4) as i64, 5);
+        }
+    }
+
+    #[test]
+    fn test_list_of_maps() {
+        snow_rt_init();
+        // Create a map with 1 int->int entry: {10 => 20}
+        let map1 = crate::gc::snow_gc_alloc_actor(16 + 1 * 16, 8);
+        unsafe {
+            *(map1 as *mut u64) = 1;                          // len
+            *((map1 as *mut u64).add(1)) = (0u64 << 56) | 1; // key_type=0, cap=1
+            *((map1 as *mut u64).add(2)) = 10;                // key
+            *((map1 as *mut u64).add(3)) = 20;                // val
+        }
+        // Create a map with 1 int->int entry: {30 => 40}
+        let map2 = crate::gc::snow_gc_alloc_actor(16 + 1 * 16, 8);
+        unsafe {
+            *(map2 as *mut u64) = 1;
+            *((map2 as *mut u64).add(1)) = (0u64 << 56) | 1;
+            *((map2 as *mut u64).add(2)) = 30;
+            *((map2 as *mut u64).add(3)) = 40;
+        }
+        // Outer list of 2 maps.
+        let outer = crate::gc::snow_gc_alloc_actor(16 + 2 * 8, 8);
+        unsafe {
+            *(outer as *mut u64) = 2;
+            *((outer as *mut u64).add(1)) = 2;
+            *((outer as *mut u64).add(2)) = map1 as u64;
+            *((outer as *mut u64).add(3)) = map2 as u64;
+        }
+        let ty = StfType::List(Box::new(
+            StfType::Map(Box::new(StfType::Int), Box::new(StfType::Int)),
+        ));
+        let encoded = stf_encode_value(outer as u64, &ty).unwrap();
+        let (decoded_ptr, _) = stf_decode_value(&encoded).unwrap();
+        unsafe {
+            let ptr = decoded_ptr as *const u64;
+            assert_eq!(*ptr, 2); // outer len
+            // Check first decoded map
+            let dm0 = *ptr.add(2) as *const u64;
+            assert_eq!(*dm0, 1); // map0 len
+            assert_eq!(*dm0.add(2), 10);  // key
+            assert_eq!(*dm0.add(3), 20);  // val
+            // Check second decoded map
+            let dm1 = *ptr.add(3) as *const u64;
+            assert_eq!(*dm1, 1); // map1 len
+            assert_eq!(*dm1.add(2), 30);
+            assert_eq!(*dm1.add(3), 40);
+        }
+    }
+
+    // ── Error condition tests ─────────────────────────────────────
+
+    #[test]
+    fn test_collection_too_large() {
+        snow_rt_init();
+        // Craft a payload: version + TAG_LIST + count > MAX_COLLECTION_LEN
+        let big_count: u32 = MAX_COLLECTION_LEN + 1;
+        let mut buf = vec![STF_VERSION, TAG_LIST];
+        buf.extend_from_slice(&big_count.to_le_bytes());
+        let result = stf_decode_value(&buf);
+        assert_eq!(result, Err(StfError::PayloadTooLarge(big_count)));
+    }
+
+    #[test]
+    fn test_string_too_large() {
+        snow_rt_init();
+        // Craft a payload: version + TAG_STRING + len > MAX_STRING_LEN
+        let big_len: u32 = MAX_STRING_LEN + 1;
+        let mut buf = vec![STF_VERSION, TAG_STRING];
+        buf.extend_from_slice(&big_len.to_le_bytes());
+        let result = stf_decode_value(&buf);
+        assert_eq!(result, Err(StfError::PayloadTooLarge(big_len)));
+    }
+
+    #[test]
+    fn test_unknown_tag() {
+        snow_rt_init();
+        let buf = vec![STF_VERSION, 0xFE];
+        let result = stf_decode_value(&buf);
+        assert_eq!(result, Err(StfError::InvalidTag(0xFE)));
+    }
+
+    // ── Empty container tests ─────────────────────────────────────
+
+    #[test]
+    fn test_empty_list_roundtrip() {
+        snow_rt_init();
+        let list = alloc_list_of_ints(&[]);
+        let ty = StfType::List(Box::new(StfType::Int));
+        let encoded = stf_encode_value(list as u64, &ty).unwrap();
+        let (decoded_ptr, _) = stf_decode_value(&encoded).unwrap();
+        unsafe {
+            assert_eq!(*(decoded_ptr as *const u64), 0);
+        }
+    }
+
+    #[test]
+    fn test_empty_map_roundtrip() {
+        snow_rt_init();
+        let map = crate::gc::snow_gc_alloc_actor(16, 8);
+        unsafe {
+            *(map as *mut u64) = 0;
+            *((map as *mut u64).add(1)) = 0;
+        }
+        let ty = StfType::Map(Box::new(StfType::Int), Box::new(StfType::Int));
+        let encoded = stf_encode_value(map as u64, &ty).unwrap();
+        let (decoded_ptr, _) = stf_decode_value(&encoded).unwrap();
+        unsafe {
+            assert_eq!(*(decoded_ptr as *const u64), 0);
+        }
+    }
 }
