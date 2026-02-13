@@ -10,16 +10,16 @@ See: .planning/PROJECT.md (updated 2026-02-12)
 ## Current Position
 
 Phase: 67 of 69 (Remote Spawn & LLVM Integration)
-Plan: 2 of 3 in current phase
+Plan: 3 of 3 in current phase
 Status: In Progress
-Last activity: 2026-02-13 -- Completed 67-02 (Remote Spawn Wire Protocol)
+Last activity: 2026-02-12 -- Completed 67-03 (Node Spawn API & LLVM Integration)
 
 Progress: [██████████] 100%
 
 ## Performance Metrics
 
 **All-time Totals:**
-- Plans completed: 183
+- Plans completed: 184
 - Phases completed: 66
 - Milestones shipped: 14 (v1.0-v4.0)
 - Lines of Rust: ~84,400
@@ -75,6 +75,10 @@ Progress: [██████████] 100%
 - 67-02: send_dist_link_via_session for spawn_link (avoids PID-based routing; wire requester_pid has node_id=0)
 - 67-02: Remote-qualify requester PID in DIST_SPAWN handler (from_remote with session.node_id/creation for correct routing)
 - 67-02: DIST_SPAWN_REPLY contains spawned_local_id only; caller reconstructs full remote PID from session info
+- 67-03: codegen_unpack_string extracts (data_ptr, len) from SnowString using GEP arithmetic (offset 0 = len, offset 8 = data)
+- 67-03: Node.spawn converts function reference to string constant at codegen time (MirExpr::Var name extraction)
+- 67-03: Parser extended to accept keywords (self, monitor, spawn, link) as field names after dot
+- 67-03: Node.spawn/spawn_link use fresh type variable for variadic call handling (bypasses arity check)
 
 ### Research Notes
 
@@ -94,7 +98,7 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-02-13
-Stopped at: Completed 67-02-PLAN.md
+Last session: 2026-02-12
+Stopped at: Completed 67-03-PLAN.md
 Resume file: None
-Next action: Execute 67-03-PLAN.md (Node Spawn API & LLVM Integration)
+Next action: Complete Phase 67 (all 3 plans done)
