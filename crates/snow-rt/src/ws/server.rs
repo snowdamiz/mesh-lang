@@ -48,7 +48,7 @@ use super::close::{process_frame, send_close, validate_text_payload, WsCloseCode
 
 /// Stream abstraction for plain TCP and TLS WebSocket connections.
 /// Mirrors HttpStream in http/server.rs. Both variants implement Read + Write.
-enum WsStream {
+pub(crate) enum WsStream {
     Plain(TcpStream),
     Tls(StreamOwned<ServerConnection, TcpStream>),
 }
@@ -284,9 +284,9 @@ unsafe impl Send for WsHandler {}
 
 /// Connection handle for `Ws.send` -- stored on the Rust heap (not GC heap)
 /// because it contains an `Arc<Mutex<WsStream>>`.
-struct WsConnection {
-    write_stream: Arc<Mutex<WsStream>>,
-    shutdown: Arc<AtomicBool>,
+pub(crate) struct WsConnection {
+    pub(crate) write_stream: Arc<Mutex<WsStream>>,
+    pub(crate) shutdown: Arc<AtomicBool>,
 }
 
 /// Arguments passed to the spawned WebSocket actor, following the HTTP

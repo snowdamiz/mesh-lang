@@ -9,8 +9,10 @@ pub mod frame;
 pub mod handshake;
 pub mod close;
 pub mod server;
+pub mod rooms;
 
 pub use frame::{WsOpcode, WsFrame, read_frame, write_frame, apply_mask};
 pub use handshake::{perform_upgrade, write_bad_request};
 pub use close::{parse_close_payload, build_close_payload, send_close, validate_text_payload, process_frame, WsCloseCode};
 pub use server::{WS_TEXT_TAG, WS_BINARY_TAG, WS_DISCONNECT_TAG, WS_CONNECT_TAG};
+pub use rooms::global_room_registry;
