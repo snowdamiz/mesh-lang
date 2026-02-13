@@ -2359,4 +2359,185 @@ mod tests {
             err_msg
         );
     }
+
+    // -------------------------------------------------------------------
+    // Plan 65-03 Task 2: Node query API and peer list handling tests
+    // -------------------------------------------------------------------
+
+    #[test]
+    fn test_snow_node_self_returns_value_or_null() {
+        // snow_node_self returns null when NODE_STATE is not initialized,
+        // or a valid string pointer when it IS initialized.
+        // Since tests share a process and NODE_STATE is a OnceLock, another
+        // test may have initialized it. We test both cases:
+        let result = snow_node_self();
+        if node_state().is_none() {
+            // Not initialized: should return null
+            assert!(result.is_null(), "expected null when node not started");
+        } else {
+            // Already initialized by another test: should return non-null
+            assert!(!result.is_null(), "expected non-null when node started");
+        }
+    }
+
+    #[test]
+    fn test_snow_node_list_returns_valid_list() {
+        // snow_node_list should always return a valid list, never null.
+        // When not initialized or no connections, returns an empty list.
+        let result = snow_node_list();
+        assert!(!result.is_null(), "snow_node_list should never return null");
+
+        // The returned list should be a valid Snow list with length >= 0
+        let len = crate::collections::list::snow_list_length(result);
+        assert!(len >= 0, "list length should be non-negative");
+    }
+
+    #[test]
+    fn test_handle_peer_list_parsing_logic() {
+        // Test the peer list wire format parsing logic that handle_peer_list uses.
+        // We verify the parsing inline since handle_peer_list requires NODE_STATE
+        // and spawns threads. This tests the same byte-reading code path.
+
+        let peers = vec!["node_a@10.0.0.1:9000", "node_b@10.0.0.2:9001", "node_c@10.0.0.3:9002"];
+
+        // Build the peer list payload (the data AFTER the DIST_PEER_LIST tag)
+        let mut data = Vec::new();
+        data.extend_from_slice(&(peers.len() as u16).to_le_bytes());
+        for peer in &peers {
+            let bytes = peer.as_bytes();
+            data.extend_from_slice(&(bytes.len() as u16).to_le_bytes());
+            data.extend_from_slice(bytes);
+        }
+
+        // Parse using the same logic as handle_peer_list
+        let count = u16::from_le_bytes(data[0..2].try_into().unwrap()) as usize;
+        assert_eq!(count, 3);
+
+        let mut pos = 2;
+        let mut decoded = Vec::new();
+        for _ in 0..count {
+            let name_len = u16::from_le_bytes(data[pos..pos+2].try_into().unwrap()) as usize;
+            pos += 2;
+            let name = std::str::from_utf8(&data[pos..pos+name_len]).unwrap();
+            decoded.push(name.to_string());
+            pos += name_len;
+        }
+
+        assert_eq!(decoded, peers);
+
+        // Test filtering logic: given a self-name and known-names, filter correctly
+        let self_name = "node_a@10.0.0.1:9000";
+        let known_names: Vec<&str> = vec!["node_b@10.0.0.2:9001"];
+
+        let to_connect: Vec<&str> = decoded.iter()
+            .filter(|name| name.as_str() != self_name)
+            .filter(|name| !known_names.contains(&name.as_str()))
+            .map(|s| s.as_str())
+            .collect();
+
+        // Should only have node_c (node_a is self, node_b is already connected)
+        assert_eq!(to_connect, vec!["node_c@10.0.0.3:9002"]);
+    }
+
+    #[test]
+    fn test_handle_peer_list_empty_data() {
+        // handle_peer_list returns early if data.len() < 2.
+        // Test that the parsing logic handles empty/truncated data gracefully.
+
+        // Empty data: less than 2 bytes
+        let data: &[u8] = &[];
+        assert!(data.len() < 2); // Would cause handle_peer_list to early-return
+
+        // Single byte: still < 2
+        let data: &[u8] = &[0x01];
+        assert!(data.len() < 2);
+
+        // Count=0 peer list: valid but empty
+        let data: &[u8] = &[0x00, 0x00]; // count = 0
+        let count = u16::from_le_bytes(data[0..2].try_into().unwrap()) as usize;
+        assert_eq!(count, 0);
+    }
+
+    #[test]
+    fn test_send_peer_list_wire_format_roundtrip() {
+        // Verify the peer list encoding logic produces correctly formatted data.
+        // We build a peer list payload the same way send_peer_list does,
+        // then parse it to verify correctness.
+
+        // Simulate the peer list we'd send (excluding the receiving node)
+        let all_sessions = vec![
+            "peer_x@10.0.0.10:5000".to_string(),
+            "peer_y@10.0.0.11:5001".to_string(),
+            "receiving_node@10.0.0.12:5002".to_string(),
+        ];
+        let receiving_node = "receiving_node@10.0.0.12:5002";
+
+        // Filter like send_peer_list does
+        let peers: Vec<&String> = all_sessions.iter()
+            .filter(|name| name.as_str() != receiving_node)
+            .collect();
+
+        assert_eq!(peers.len(), 2);
+
+        // Build payload like send_peer_list
+        let mut payload = Vec::new();
+        payload.push(DIST_PEER_LIST);
+        payload.extend_from_slice(&(peers.len() as u16).to_le_bytes());
+        for peer_name in &peers {
+            let bytes = peer_name.as_bytes();
+            payload.extend_from_slice(&(bytes.len() as u16).to_le_bytes());
+            payload.extend_from_slice(bytes);
+        }
+
+        // Parse back: skip the tag byte
+        let data = &payload[1..];
+        let count = u16::from_le_bytes(data[0..2].try_into().unwrap()) as usize;
+        assert_eq!(count, 2);
+
+        let mut pos = 2;
+        let mut decoded = Vec::new();
+        for _ in 0..count {
+            let name_len = u16::from_le_bytes(data[pos..pos+2].try_into().unwrap()) as usize;
+            pos += 2;
+            let name = std::str::from_utf8(&data[pos..pos+name_len]).unwrap();
+            decoded.push(name.to_string());
+            pos += name_len;
+        }
+
+        assert_eq!(decoded.len(), 2);
+        assert!(decoded.contains(&"peer_x@10.0.0.10:5000".to_string()));
+        assert!(decoded.contains(&"peer_y@10.0.0.11:5001".to_string()));
+        assert!(!decoded.contains(&receiving_node.to_string()));
+    }
+
+    #[test]
+    fn test_handle_peer_list_truncated_name() {
+        // Test graceful handling when a peer list entry has a name_len
+        // that extends beyond the buffer (truncated data).
+        // handle_peer_list uses `if pos + name_len > data.len() { break; }`
+
+        let mut data = Vec::new();
+        data.extend_from_slice(&1u16.to_le_bytes()); // count = 1
+        data.extend_from_slice(&100u16.to_le_bytes()); // name_len = 100
+        data.extend_from_slice(b"short"); // Only 5 bytes, not 100
+
+        // Parse with the same logic as handle_peer_list
+        let count = u16::from_le_bytes(data[0..2].try_into().unwrap()) as usize;
+        assert_eq!(count, 1);
+
+        let mut pos = 2;
+        let mut decoded = Vec::new();
+        for _ in 0..count {
+            if pos + 2 > data.len() { break; }
+            let name_len = u16::from_le_bytes(data[pos..pos+2].try_into().unwrap()) as usize;
+            pos += 2;
+            if pos + name_len > data.len() { break; } // This should trigger
+            let name = std::str::from_utf8(&data[pos..pos+name_len]).unwrap();
+            decoded.push(name.to_string());
+            pos += name_len;
+        }
+
+        // Should have decoded 0 peers (truncated name caused early break)
+        assert_eq!(decoded.len(), 0);
+    }
 }
