@@ -461,4 +461,154 @@ mod tests {
             -1
         );
     }
+
+    // -----------------------------------------------------------------------
+    // Cluster broadcast tests (Phase 69)
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_local_room_broadcast_empty_room() {
+        // Calling local_room_broadcast on a non-existent room should return 0
+        // failures and not panic. Verifies graceful handling of empty rooms.
+        let failures = local_room_broadcast("empty_room_that_does_not_exist", "hello");
+        assert_eq!(failures, 0);
+    }
+
+    #[test]
+    fn test_broadcast_room_to_cluster_no_distribution() {
+        // When node distribution is not started (node_state() returns None),
+        // broadcast_room_to_cluster should return immediately without panic.
+        // In test context, NODE_STATE is typically not initialized (unless
+        // test_snow_node_start_binds_listener ran first), so this tests the
+        // early-return guard.
+        broadcast_room_to_cluster("lobby", "hello");
+        // No panic = success. The function returns () so no value to check,
+        // but reaching this point means the early-return guard worked.
+    }
+
+    // -----------------------------------------------------------------------
+    // DIST_ROOM_BROADCAST wire format tests (Phase 69)
+    // -----------------------------------------------------------------------
+    //
+    // Follow the in-memory payload byte verification pattern from global.rs
+    // wire format tests. No network I/O, no NODE_STATE dependency.
+
+    #[test]
+    fn test_dist_room_broadcast_wire_format() {
+        use crate::dist::node::DIST_ROOM_BROADCAST;
+
+        let room = "lobby";
+        let msg = "hello world";
+
+        // Encode: [tag 0x1E][u16 room_name_len][room_name][u32 msg_len][msg]
+        let room_bytes = room.as_bytes();
+        let msg_bytes = msg.as_bytes();
+        let mut payload = Vec::new();
+        payload.push(DIST_ROOM_BROADCAST);
+        payload.extend_from_slice(&(room_bytes.len() as u16).to_le_bytes());
+        payload.extend_from_slice(room_bytes);
+        payload.extend_from_slice(&(msg_bytes.len() as u32).to_le_bytes());
+        payload.extend_from_slice(msg_bytes);
+
+        // Decode using the same logic as the reader loop handler.
+        assert_eq!(payload[0], DIST_ROOM_BROADCAST);
+        assert_eq!(payload[0], 0x1E);
+
+        let decoded_room_len =
+            u16::from_le_bytes(payload[1..3].try_into().unwrap()) as usize;
+        assert_eq!(decoded_room_len, room.len());
+
+        let decoded_room =
+            std::str::from_utf8(&payload[3..3 + decoded_room_len]).unwrap();
+        assert_eq!(decoded_room, room);
+
+        let decoded_msg_len = u32::from_le_bytes(
+            payload[3 + decoded_room_len..7 + decoded_room_len]
+                .try_into()
+                .unwrap(),
+        ) as usize;
+        assert_eq!(decoded_msg_len, msg.len());
+
+        let decoded_msg = std::str::from_utf8(
+            &payload[7 + decoded_room_len..7 + decoded_room_len + decoded_msg_len],
+        )
+        .unwrap();
+        assert_eq!(decoded_msg, msg);
+
+        // Verify total payload length matches expected.
+        assert_eq!(
+            payload.len(),
+            1 + 2 + room.len() + 4 + msg.len()
+        );
+    }
+
+    #[test]
+    fn test_dist_room_broadcast_wire_roundtrip() {
+        use crate::dist::node::DIST_ROOM_BROADCAST;
+
+        // Test with various inputs: empty message, ASCII room, multi-byte UTF-8 room.
+        let test_cases: Vec<(&str, &str)> = vec![
+            ("lobby", ""),                          // empty message
+            ("chat_room_42", "hello world"),         // ASCII room + message
+            ("\u{1F680}rocket", "blast off!"),       // multi-byte UTF-8 room name (rocket emoji)
+            ("room", "\u{00E9}\u{00E8}\u{00EA}"),   // multi-byte UTF-8 message (accented chars)
+        ];
+
+        for (room, msg) in &test_cases {
+            let room_bytes = room.as_bytes();
+            let msg_bytes = msg.as_bytes();
+
+            // Encode using broadcast_room_to_cluster's logic
+            let mut payload = Vec::with_capacity(
+                1 + 2 + room_bytes.len() + 4 + msg_bytes.len(),
+            );
+            payload.push(DIST_ROOM_BROADCAST);
+            payload.extend_from_slice(&(room_bytes.len() as u16).to_le_bytes());
+            payload.extend_from_slice(room_bytes);
+            payload.extend_from_slice(&(msg_bytes.len() as u32).to_le_bytes());
+            payload.extend_from_slice(msg_bytes);
+
+            // Decode using reader loop logic
+            assert_eq!(payload[0], DIST_ROOM_BROADCAST);
+
+            let decoded_room_len =
+                u16::from_le_bytes(payload[1..3].try_into().unwrap()) as usize;
+            assert_eq!(decoded_room_len, room_bytes.len());
+
+            if payload.len() >= 3 + decoded_room_len + 4 {
+                let decoded_room =
+                    std::str::from_utf8(&payload[3..3 + decoded_room_len]).unwrap();
+                assert_eq!(decoded_room, *room);
+
+                let decoded_msg_len = u32::from_le_bytes(
+                    payload[3 + decoded_room_len..7 + decoded_room_len]
+                        .try_into()
+                        .unwrap(),
+                ) as usize;
+                assert_eq!(decoded_msg_len, msg_bytes.len());
+
+                if payload.len() >= 7 + decoded_room_len + decoded_msg_len {
+                    let decoded_msg = std::str::from_utf8(
+                        &payload[7 + decoded_room_len
+                            ..7 + decoded_room_len + decoded_msg_len],
+                    )
+                    .unwrap();
+                    assert_eq!(decoded_msg, *msg);
+                } else {
+                    panic!("payload too short for message body");
+                }
+            } else {
+                panic!("payload too short for room name + msg_len header");
+            }
+
+            // Verify exact payload length.
+            assert_eq!(
+                payload.len(),
+                1 + 2 + room_bytes.len() + 4 + msg_bytes.len(),
+                "payload length mismatch for room={:?}, msg={:?}",
+                room,
+                msg,
+            );
+        }
+    }
 }
