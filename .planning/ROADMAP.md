@@ -123,126 +123,15 @@ See milestones/v4.0-ROADMAP.md for full phase details.
 
 </details>
 
-### v5.0 Distributed Actors (In Progress)
+<details>
+<summary>v5.0 Distributed Actors (Phases 63-69) - SHIPPED 2026-02-13</summary>
 
-**Milestone Goal:** BEAM-style distributed actor system -- Snow programs on different machines form a cluster with location-transparent PIDs, remote spawn, cross-node monitoring, and a binary wire format over TLS.
+See milestones/v5.0-ROADMAP.md for full phase details.
+20 plans across 7 phases. 93,515 lines of Rust (+9,115). 75 commits.
 
-- [x] **Phase 63: PID Encoding & Wire Format** - Location-transparent PID representation and binary serialization for all Snow types (completed 2026-02-13)
-- [x] **Phase 64: Node Connection & Authentication** - TLS-encrypted inter-node TCP with cookie-based auth and discovery (completed 2026-02-13)
-- [x] **Phase 65: Remote Send & Distribution Router** - Transparent message routing across nodes with mesh formation (completed 2026-02-13)
-- [x] **Phase 66: Remote Links, Monitors & Failure Handling** - Cross-node fault tolerance with exit signal and partition propagation (completed 2026-02-13)
-- [x] **Phase 67: Remote Spawn & LLVM Integration** - Spawn actors on remote nodes with full Snow-level API (completed 2026-02-13)
-- [x] **Phase 68: Global Registry** - Cluster-wide process name registration and lookup (completed 2026-02-13)
-- [x] **Phase 69: Cross-Node Integration** - Distributed WebSocket rooms and remote supervision trees (completed 2026-02-13)
-
-## Phase Details
-
-### Phase 63: PID Encoding & Wire Format
-**Goal**: PIDs carry node identity and all Snow values can be serialized to a binary format for inter-node transport
-**Depends on**: Nothing (foundation phase)
-**Requirements**: MSG-01, MSG-03, MSG-04, MSG-05, MSG-08, FT-05
-**Success Criteria** (what must be TRUE):
-  1. Existing Snow programs produce identical output with no PID encoding regressions (all 1,524 tests pass)
-  2. A PID created on one node can be decoded on another node to identify the originating node and local process
-  3. Every Snow value type (Int, Float, Bool, String, List, Map, Set, tuples, structs, sum types, Option, Result, PID) round-trips through STF encode/decode without data loss
-  4. Attempting to serialize a closure or function pointer produces a clear runtime error instead of silent corruption
-  5. Local send performance is unchanged -- the locality check adds no measurable overhead to the existing fast path
-**Plans:** 3 plans
-Plans:
-- [x] 63-01-PLAN.md -- PID bit-packing and locality check in send
-- [x] 63-02-PLAN.md -- STF module scaffold and scalar type encode/decode
-- [x] 63-03-PLAN.md -- STF container/composite types and round-trip tests
-
-### Phase 64: Node Connection & Authentication
-**Goal**: Snow nodes can discover each other, establish TLS-encrypted connections, and authenticate via shared cookie
-**Depends on**: Phase 63
-**Requirements**: NODE-01, NODE-02, NODE-03, NODE-04, NODE-05, NODE-08
-**Success Criteria** (what must be TRUE):
-  1. User can start a named node with `Node.start("name@host", cookie: "secret")` and the process becomes addressable
-  2. User can connect to a remote node with `Node.connect("name@host:port")` and the connection succeeds with mutual authentication
-  3. A connection attempt with a wrong cookie is rejected with a clear error (not silent failure or crash)
-  4. Inter-node traffic is TLS-encrypted using the existing rustls infrastructure (not plaintext)
-  5. A dead node connection is detected via heartbeat within the configured timeout interval
-**Plans:** 3 plans
-Plans:
-- [x] 64-01-PLAN.md -- NodeState, TLS config, ephemeral cert, TCP listener, Node.start
-- [x] 64-02-PLAN.md -- HMAC-SHA256 handshake protocol, Node.connect, NodeSession
-- [x] 64-03-PLAN.md -- Heartbeat, reader thread, connection lifecycle, tests
-
-### Phase 65: Remote Send & Distribution Router
-**Goal**: `send(pid, msg)` works transparently for remote PIDs and connected nodes form a mesh
-**Depends on**: Phase 64
-**Requirements**: MSG-02, MSG-06, MSG-07, NODE-06, NODE-07
-**Success Criteria** (what must be TRUE):
-  1. User can send a message to a PID on a remote node using the same `send(pid, msg)` syntax as local sends, and the remote actor receives it
-  2. User can send a message to a named process on a remote node with `send({name, node}, msg)` and it arrives
-  3. Messages between a given sender-receiver pair arrive in the order they were sent
-  4. Connecting node A to node B causes automatic mesh formation with node C (if B is already connected to C)
-  5. User can call `Node.list()` to see all connected nodes and `Node.self()` to get own node identity
-**Plans:** 3 plans
-Plans:
-- [x] 65-01-PLAN.md -- dist_send, reader loop handlers, snow_actor_send_named
-- [x] 65-02-PLAN.md -- Mesh formation via peer list exchange, Node.self/list APIs
-- [x] 65-03-PLAN.md -- Integration tests for remote send, mesh, and node queries
-
-### Phase 66: Remote Links, Monitors & Failure Handling
-**Goal**: Distributed fault tolerance -- supervisors and monitors detect remote crashes and network partitions
-**Depends on**: Phase 65
-**Requirements**: FT-01, FT-02, FT-03, FT-04
-**Success Criteria** (what must be TRUE):
-  1. User can monitor a remote process with `Process.monitor(remote_pid)` and receives a `:down` message when that process crashes
-  2. User can monitor a node with `Node.monitor(node)` and receives `:nodedown` when the node disconnects and `:nodeup` when it reconnects
-  3. When a node connection is lost, all remote links fire `:noconnection` exit signals and all remote monitors fire `:down` messages
-  4. Remote links propagate exit signals bidirectionally -- a crash on node A terminates linked processes on node B and vice versa
-**Plans:** 3 plans
-Plans:
-- [x] 66-01-PLAN.md -- Process monitor infrastructure (monitors/monitored_by, Noconnection, DOWN messages)
-- [x] 66-02-PLAN.md -- Node monitoring & connection loss propagation (handle_node_disconnect, nodedown/nodeup)
-- [x] 66-03-PLAN.md -- Remote link exit propagation (DIST_EXIT, bidirectional exit signals)
-
-### Phase 67: Remote Spawn & LLVM Integration
-**Goal**: Users can spawn actors on remote nodes from Snow code with full language-level API
-**Depends on**: Phase 66
-**Requirements**: EXEC-01, EXEC-02, EXEC-03
-**Success Criteria** (what must be TRUE):
-  1. User can spawn an actor on a remote node with `Node.spawn(node, function, args)` and receive a usable PID back
-  2. User can spawn-and-link with `Node.spawn_link(node, function, args)` so that the remote actor's crash propagates back
-  3. Remote spawn uses function names (not pointers) so that differently-compiled binaries can spawn each other's functions
-**Plans:** 3 plans
-Plans:
-- [x] 67-01-PLAN.md -- Function name registry, intrinsic declarations, registration codegen
-- [x] 67-02-PLAN.md -- Remote spawn runtime (DIST_SPAWN wire protocol, snow_node_spawn)
-- [x] 67-03-PLAN.md -- Node & Process module LLVM integration (MIR lowering, codegen)
-
-### Phase 68: Global Registry
-**Goal**: Processes can be registered by name across the entire cluster and looked up from any node
-**Depends on**: Phase 65
-**Requirements**: CLUST-01, CLUST-02, CLUST-03
-**Success Criteria** (what must be TRUE):
-  1. User can register a process globally with `Global.register(name, pid)` and the name is visible from all connected nodes
-  2. User can look up a globally registered name with `Global.whereis(name)` from any node and get back the correct PID
-  3. When a node disconnects, all global registrations owned by processes on that node are automatically cleaned up
-**Plans:** 3 plans
-Plans:
-- [x] 68-01-PLAN.md -- GlobalRegistry data structure, runtime APIs, wire protocol, cleanup hooks
-- [x] 68-02-PLAN.md -- Compiler integration (Global module in typechecker, MIR, LLVM codegen)
-- [x] 68-03-PLAN.md -- Sync on connect, wire format tests, GlobalRegistry unit tests
-
-### Phase 69: Cross-Node Integration
-**Goal**: Existing WebSocket rooms and supervision trees work transparently across node boundaries
-**Depends on**: Phase 66, Phase 68
-**Requirements**: CLUST-04, CLUST-05
-**Success Criteria** (what must be TRUE):
-  1. A WebSocket room broadcast on one node delivers the message to room members connected to other nodes
-  2. A supervision tree can monitor and restart child actors running on remote nodes, treating remote crashes the same as local ones
-**Plans:** 2 plans
-Plans:
-- [x] 69-01-PLAN.md -- Distributed WebSocket room broadcast (DIST_ROOM_BROADCAST wire message, cluster-wide forwarding)
-- [x] 69-02-PLAN.md -- Remote supervision (ChildSpec target_node, remote spawn/terminate/restart)
+</details>
 
 ## Progress
-
-**Execution Order:** 63 -> 64 -> 65 -> 66 -> 67 -> 68 -> 69
 
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
@@ -259,12 +148,6 @@ Plans:
 | 49-54 | v2.0 | 13/13 | Complete | 2026-02-12 |
 | 55-58 | v3.0 | 8/8 | Complete | 2026-02-12 |
 | 59-62 | v4.0 | 8/8 | Complete | 2026-02-12 |
-| 63 | v5.0 | 3/3 | Complete | 2026-02-13 |
-| 64 | v5.0 | 3/3 | Complete | 2026-02-13 |
-| 65 | v5.0 | 3/3 | Complete | 2026-02-13 |
-| 66 | v5.0 | 3/3 | Complete | 2026-02-13 |
-| 67 | v5.0 | 3/3 | Complete | 2026-02-13 |
-| 68 | v5.0 | 3/3 | Complete | 2026-02-13 |
-| 69 | v5.0 | 2/2 | Complete | 2026-02-13 |
+| 63-69 | v5.0 | 20/20 | Complete | 2026-02-13 |
 
-**Total: 69 phases shipped across 15 milestones. 190 plans completed. v5.0 complete.**
+**Total: 69 phases shipped across 15 milestones. 190 plans completed. All milestones complete.**

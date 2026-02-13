@@ -360,3 +360,33 @@
 
 ---
 
+
+## v5.0 Distributed Actors (Shipped: 2026-02-13)
+
+**Delivered:** BEAM-style distributed actor system enabling Snow programs on different machines to form a cluster with location-transparent PIDs, remote spawn, cross-node monitoring, global process registry, and a binary wire format (STF) over TLS -- all with zero new crate dependencies.
+
+**Phases completed:** 63-69 (20 plans total)
+
+**Key accomplishments:**
+- Location-transparent PIDs with 16-bit node_id bit-packing in existing u64 and Snow Term Format (STF) binary serialization for all Snow types with round-trip fidelity
+- TLS-encrypted inter-node connections with HMAC-SHA256 cookie-based authentication, ephemeral ECDSA P-256 certificates, heartbeat dead connection detection, and automatic mesh formation
+- Transparent remote send: `send(pid, msg)` routes to remote nodes automatically; `send({name, node}, msg)` for named remote processes; message ordering preserved per sender-receiver pair
+- Distributed fault tolerance: remote process monitors (`:down`), node monitors (`:nodedown`/`:nodeup`), bidirectional exit signal propagation, and partition-aware link cleanup
+- Remote spawn via function name registry: `Node.spawn(node, function, args)` and `Node.spawn_link` with LLVM codegen for Node/Process/Global modules (10+ new intrinsics)
+- Global process registry: `Global.register/whereis/unregister` with cluster-wide broadcast, sync-on-connect, and automatic cleanup on node disconnect
+- Cross-node integration: WebSocket room broadcasts transparently reach all cluster nodes via DIST_ROOM_BROADCAST; supervision trees can monitor and restart remote children
+
+**Stats:**
+- 75 files modified
+- 93,515 lines of Rust (+9,115 net from v4.0)
+- 7 phases, 20 plans
+- 1 day (2026-02-12 -> 2026-02-13)
+- 75 commits
+- 29/29 requirements satisfied
+
+**Git range:** `feat(63-01)` -> `docs(phase-69)`
+
+**What's next:** TBD -- distributed actors complete. Potential directions include atom cache optimization, process groups (pg), distributed ETS, hot code reloading, iterator protocol, or incremental compilation.
+
+---
+

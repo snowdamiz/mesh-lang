@@ -2,29 +2,13 @@
 
 ## What This Is
 
-Snow is a programming language that combines Elixir/Ruby-style expressive syntax with static Hindley-Milner type inference and BEAM-style concurrency (actors, supervision trees, fault tolerance), compiled via LLVM to native single-binary executables. The compiler is written in Rust. v1.0-v1.9 built a complete language: compiler pipeline, actor runtime, trait system, module system, loops, stdlib, and developer tooling. v2.0 added database drivers and JSON serde. v3.0 made Snow production-ready: TLS encryption for PostgreSQL and HTTPS, connection pooling with health checks, panic-safe database transactions, and automatic struct-to-row mapping via `deriving(Row)`. v4.0 added WebSocket support with RFC 6455 protocol, actor-per-connection model, TLS (wss://), heartbeat, fragmentation, and rooms/channels. ~84K LOC Rust across 14 milestones. Zero known compiler correctness issues.
-
-## Current Milestone: v5.0 Distributed Actors
-
-**Goal:** BEAM-style distributed actor system — Snow programs on different machines form a cluster with location-transparent PIDs, remote spawn, cross-node monitoring, and a binary wire format over TLS.
-
-**Target features:**
-- Node naming, identity, and cookie-based authentication
-- Node connection over TLS-encrypted TCP with automatic mesh formation
-- Built-in node registry (epmd equivalent) for discovery
-- Location-transparent PIDs that route `send` across nodes automatically
-- Remote spawn of actors on other nodes
-- Remote process monitoring with `:down` on crash or net split
-- Node monitoring with `:nodedown`/`:nodeup` events
-- Binary wire format (ETF-style) for efficient inter-node serialization
-- Distributed global process registry across cluster
-- Cross-node integration with existing WebSocket rooms and supervision trees
+Snow is a programming language that combines Elixir/Ruby-style expressive syntax with static Hindley-Milner type inference and BEAM-style concurrency (actors, supervision trees, fault tolerance), compiled via LLVM to native single-binary executables. The compiler is written in Rust. v1.0-v1.9 built a complete language: compiler pipeline, actor runtime, trait system, module system, loops, stdlib, and developer tooling. v2.0 added database drivers and JSON serde. v3.0 made Snow production-ready: TLS encryption for PostgreSQL and HTTPS, connection pooling with health checks, panic-safe database transactions, and automatic struct-to-row mapping via `deriving(Row)`. v4.0 added WebSocket support with RFC 6455 protocol, actor-per-connection model, TLS (wss://), heartbeat, fragmentation, and rooms/channels. v5.0 added distributed actors: location-transparent PIDs, TLS-encrypted inter-node connections with cookie auth and mesh formation, transparent remote send, remote process/node monitoring with fault propagation, remote spawn via function name registry, global process registry, and cross-node WebSocket rooms and supervision trees -- all with zero new crate dependencies. ~93K LOC Rust across 15 milestones. Zero known compiler correctness issues.
 
 ## Current State
 
-Shipped v4.0 WebSocket Support (2026-02-13). Starting v5.0 Distributed Actors.
+Shipped v5.0 Distributed Actors (2026-02-13). 15 milestones complete, 69 phases, 190 plans.
 
-**Latest milestone (v4.0):** RFC 6455 WebSocket frame codec, actor-per-connection server with crash isolation, TLS (wss://), heartbeat ping/pong, fragment reassembly, and named rooms with pub/sub broadcast. 37/37 requirements satisfied, 1,524 tests passing.
+**Latest milestone (v5.0):** BEAM-style distributed actor system with location-transparent PIDs, TLS-encrypted inter-node connections, cookie-based auth, automatic mesh formation, transparent remote send, remote process/node monitoring with fault propagation, remote spawn via function name registry, global process registry, and cross-node WebSocket rooms and supervision trees. 29/29 requirements satisfied. Zero new crate dependencies for entire milestone.
 
 ## Core Value
 
@@ -147,18 +131,22 @@ Expressive, readable concurrency -- writing concurrent programs should feel as n
 - ✓ TLS (wss://) via WsStream enum reusing rustls 0.23 infrastructure -- v4.0
 - ✓ Rooms/channels with Ws.join/leave/broadcast/broadcast_except and automatic disconnect cleanup -- v4.0
 - ✓ Ping/pong heartbeat (30s interval, 10s timeout) with dead connection detection and fragment reassembly (16 MiB limit) -- v4.0
+- ✓ Location-transparent PIDs with 16-bit node_id bit-packing in u64 and branch-free locality check -- v5.0
+- ✓ Snow Term Format (STF) binary wire protocol serializing all Snow types with version byte and round-trip fidelity -- v5.0
+- ✓ Node naming, TLS-encrypted connections with HMAC-SHA256 cookie auth, and heartbeat dead connection detection -- v5.0
+- ✓ Automatic mesh formation via peer list exchange on node connect -- v5.0
+- ✓ Transparent remote send: `send(pid, msg)` routes to remote node automatically, `send({name, node}, msg)` for named processes -- v5.0
+- ✓ Remote process monitoring (`Process.monitor`) delivering `:down` on crash or net split -- v5.0
+- ✓ Node monitoring (`Node.monitor`) delivering `:nodedown`/`:nodeup` events -- v5.0
+- ✓ Remote links with bidirectional exit signal propagation across nodes -- v5.0
+- ✓ Remote spawn via function name registry: `Node.spawn(node, function, args)` and `Node.spawn_link` -- v5.0
+- ✓ Global process registry: `Global.register/whereis/unregister` with cluster-wide broadcast and auto-cleanup -- v5.0
+- ✓ Cross-node WebSocket room broadcast via DIST_ROOM_BROADCAST wire message -- v5.0
+- ✓ Remote supervision: supervision trees can monitor and restart children on remote nodes -- v5.0
 
 ### Active
 
-- [ ] Node naming, identity, cookie-based authentication, and TLS-encrypted inter-node TCP
-- [ ] Node connection with automatic mesh formation and built-in registry for discovery
-- [ ] Location-transparent PIDs with automatic local/remote routing for send
-- [ ] Remote spawn of actors on other nodes returning usable PIDs
-- [ ] Remote process monitoring delivering :down on crash or net split
-- [ ] Node monitoring delivering :nodedown/:nodeup events
-- [ ] Binary wire format (ETF-style) for inter-node message serialization
-- [ ] Distributed global process registry across cluster
-- [ ] Cross-node WebSocket rooms and supervision tree integration
+(No active requirements -- start next milestone with `/gsd:new-milestone`)
 
 ### Out of Scope
 
@@ -186,14 +174,13 @@ Expressive, readable concurrency -- writing concurrent programs should feel as n
 
 ## Context
 
-Shipped v4.0 with ~84,400 lines of Rust (+~950 from v3.0).
+Shipped v5.0 with 93,515 lines of Rust (+9,115 from v4.0).
 Tech stack: Rust compiler, LLVM 21 (Inkwell 0.8), corosensei coroutines, rowan CST, ariadne diagnostics.
 Crates: snow-lexer, snow-parser, snow-typeck, snow-mir, snow-codegen, snow-rt, snow-fmt, snow-repl, snow-pkg, snow-lsp, snowc.
-Deps: libsqlite3-sys (bundled), sha2/hmac/md-5/base64ct (PG auth), rustls 0.23/webpki-roots/ring (TLS + SHA-1 for WS handshake).
-Removed: tiny_http (replaced with hand-rolled HTTP/1.1 parser in v3.0).
-New in v4.0: ws/ module (frame.rs, handshake.rs, close.rs, server.rs, rooms.rs), 8 LLVM intrinsics for Ws.* API, WsStream enum (Plain/Tls), RoomRegistry with dual-map design.
+Deps: libsqlite3-sys (bundled), sha2/hmac/md-5/base64ct (PG auth), rustls 0.23/webpki-roots/ring (TLS + certs + SHA-1 for WS handshake).
+New in v5.0: dist/ module (stf.rs, node.rs, global.rs), 10+ LLVM intrinsics for Node/Process/Global APIs, NodeState singleton, NodeSession TLS connections, Snow Term Format binary serialization, GlobalRegistry with three-map design, DIST_ROOM_BROADCAST wire message, remote ChildSpec in supervisor.
 
-1,524 tests passing (including 44 new WebSocket-specific tests). Zero known critical bugs. Zero known compiler correctness issues.
+Zero new crate dependencies for v5.0 milestone (reused existing ring, rustls, sha2/hmac). Zero known critical bugs. Zero known compiler correctness issues.
 
 Known limitations: None.
 
@@ -204,6 +191,7 @@ Tech debt (minor, pre-existing):
 - 3 compiler warnings (fixable with `cargo fix`)
 - Middleware requires explicit `:: Request` parameter type annotations (incomplete inference)
 - PostgreSQL E2E test requires external server, marked `#[ignore]`
+- send_dist_unlink marked dead_code since snow_actor_unlink not yet exposed as extern C
 
 ## Constraints
 
@@ -322,6 +310,17 @@ Tech debt (minor, pre-existing):
 | 16 MiB MAX_PAYLOAD_SIZE | Production safety limit; generous for most WS use cases; close 1009 on exceed | ✓ Good -- v4.0, safe default |
 | RoomRegistry dual-map (rooms + conn_rooms) | O(1) join/leave, O(rooms_per_conn) cleanup; nested lock ordering prevents deadlocks | ✓ Good -- v4.0, efficient + safe |
 | Room cleanup before shutdown.store | Prevents use-after-free when concurrent broadcasts access WsConnection during disconnect | ✓ Good -- v4.0, correct ordering |
+| PID bit-packing: 16-bit node_id, 8-bit creation, 40-bit local_id | Fits in existing u64, backward compatible (local PIDs have node_id=0) | ✓ Good -- v5.0, zero-overhead locality check |
+| Custom STF wire format (not Erlang ETF) | Snow's type system differs from Erlang; custom format is simpler and type-safe | ✓ Good -- v5.0, round-trip fidelity for all types |
+| Hand-crafted ASN.1 DER for ephemeral certs | Avoids rcgen dependency; ring provides ECDSA P-256 key gen | ✓ Good -- v5.0, zero new deps |
+| HMAC-SHA256 cookie-based auth | Constant-time verification via Mac::verify_slice; simple trust model | ✓ Good -- v5.0, secure handshake |
+| Silent drop on dist failure paths | Remote sends silently fail until Phase 66 adds :nodedown signals | ✓ Good -- v5.0, incremental build |
+| Two-phase disconnect (collect refs, drop lock, execute) | Prevents deadlocks in handle_node_disconnect | ✓ Good -- v5.0, safe concurrency |
+| FnPtr newtype for function registry | Send+Sync wrapper for function pointers in OnceLock static | ✓ Good -- v5.0, safe remote spawn |
+| Selective receive via Mailbox::remove_first | Erlang-style predicate scan preserving FIFO for non-matching | ✓ Good -- v5.0, correct spawn reply handling |
+| Single RwLock for GlobalRegistry | Wraps all three maps (names, pid_names, node_names) for deadlock-free consistency | ✓ Good -- v5.0, simple correctness |
+| DIST_ROOM_BROADCAST no re-forwarding | Reader loop delivers locally only; prevents broadcast storms in mesh | ✓ Good -- v5.0, correct topology |
+| Remote supervisor async terminate | Mark not-running immediately; receive loop handles exit signal | ✓ Good -- v5.0, non-blocking supervision |
 
 ---
-*Last updated: 2026-02-12 after v5.0 milestone start*
+*Last updated: 2026-02-13 after v5.0 milestone*
