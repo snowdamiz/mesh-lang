@@ -660,4 +660,62 @@ mod tests {
         let _server = build_node_server_config(cert, key);
         let _client = build_node_client_config();
     }
+
+    #[test]
+    fn test_node_state_accessor_before_init() {
+        // node_state() returns None when snow_node_start hasn't been called.
+        // NOTE: Since tests share the process, if another test initializes
+        // NODE_STATE first, this may return Some. We test the accessor itself.
+        let _result = node_state(); // should not panic
+    }
+
+    #[test]
+    fn test_node_session_fields() {
+        let session = NodeSession {
+            remote_name: "other@host".to_string(),
+            remote_creation: 3,
+            node_id: 42,
+            shutdown: AtomicBool::new(false),
+        };
+        assert_eq!(session.remote_name, "other@host");
+        assert_eq!(session.remote_creation, 3);
+        assert_eq!(session.node_id, 42);
+        assert!(!session.shutdown.load(Ordering::Relaxed));
+    }
+
+    #[test]
+    fn test_snow_node_start_binds_listener() {
+        let _ = rustls::crypto::ring::default_provider().install_default();
+
+        // Use port 0 to get an OS-assigned port (avoids conflicts)
+        let name = b"test@127.0.0.1:0";
+        let cookie = b"secret";
+        let result = snow_node_start(
+            name.as_ptr(),
+            name.len() as u64,
+            cookie.as_ptr(),
+            cookie.len() as u64,
+        );
+
+        // Either success (0) or already initialized (-1) if another test ran first.
+        // Both are acceptable in a test environment with shared process state.
+        assert!(result == 0 || result == -1, "unexpected result: {}", result);
+
+        // node_state should return Some after initialization
+        if result == 0 {
+            let state = node_state().expect("node_state should be initialized");
+            assert!(state.port > 0, "port should be assigned");
+            assert_eq!(state.cookie, "secret");
+            assert_eq!(state.creation(), 1);
+
+            // assign_node_id should start at 1 and increment
+            let id1 = state.assign_node_id();
+            let id2 = state.assign_node_id();
+            assert_eq!(id1, 1);
+            assert_eq!(id2, 2);
+
+            // Signal shutdown to clean up the listener thread
+            state.listener_shutdown.store(true, Ordering::Relaxed);
+        }
+    }
 }
