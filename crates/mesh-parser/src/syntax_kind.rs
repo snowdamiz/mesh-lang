@@ -231,6 +231,10 @@ pub enum SyntaxKind {
     INTERFACE_METHOD,
     /// Impl block: `impl Printable for Int do ... end`
     IMPL_DEF,
+    /// Associated type declaration inside an interface: `type Item`
+    ASSOC_TYPE_DEF,
+    /// Associated type binding inside an impl: `type Item = Int`
+    ASSOC_TYPE_BINDING,
     /// Type alias: `type Name = ExistingType`
     TYPE_ALIAS_DEF,
     /// Where clause: `where T: Trait`
@@ -653,6 +657,8 @@ mod tests {
             SyntaxKind::INTERFACE_DEF,
             SyntaxKind::INTERFACE_METHOD,
             SyntaxKind::IMPL_DEF,
+            SyntaxKind::ASSOC_TYPE_DEF,
+            SyntaxKind::ASSOC_TYPE_BINDING,
             SyntaxKind::TYPE_ALIAS_DEF,
             SyntaxKind::WHERE_CLAUSE,
             SyntaxKind::TRAIT_BOUND,
@@ -705,8 +711,8 @@ mod tests {
             SyntaxKind::SECONDS_LIMIT,
         ];
         assert!(
-            node_kinds.len() >= 82,
-            "expected at least 82 composite node kinds, got {}",
+            node_kinds.len() >= 84,
+            "expected at least 84 composite node kinds, got {}",
             node_kinds.len()
         );
     }
