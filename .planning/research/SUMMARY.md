@@ -1,327 +1,239 @@
-# Project Research Summary
+# Research Summary: Snow v5.0 Distributed Actors
 
-**Project:** Snow compiler -- WebSocket server (ws:// and wss://), RFC 6455 frame codec, actor-per-connection, rooms/channels, heartbeat
-**Domain:** WebSocket support for compiled language with actor runtime
+**Project:** Snow compiler -- BEAM-style distributed actor system (multi-node clustering, location-transparent PIDs, remote spawn/send/monitor, binary wire format, node registry, TLS-encrypted inter-node transport)
+**Domain:** Distributed actor system for compiled language with existing single-node actor runtime
 **Researched:** 2026-02-12
-**Confidence:** HIGH
+**Overall confidence:** HIGH
 
 ## Executive Summary
 
-WebSocket support for Snow requires extending the existing HTTP server infrastructure with RFC 6455 frame codec, long-lived bidirectional connections, and pub/sub rooms. The recommended approach leverages Snow's proven patterns: actor-per-connection model (reusing HTTP server architecture), hand-rolled frame parser (consistent with HTTP/PostgreSQL wire protocol implementations), and reader-thread-to-mailbox bridge for unified event handling. The implementation is additive -- a new `http/ws.rs` module with compiler registration, requiring only ONE new dependency (`sha1 0.10` for the upgrade handshake).
+Adding BEAM-style distribution to Snow's existing actor runtime is architecturally feasible with minimal disruption to the single-node fast path. The key insight is that Snow's ProcessId is already a u64 passed through LLVM intrinsics as i64 -- by encoding a 16-bit node identifier in the upper bits of this u64, PIDs become location-transparent without changing any extern "C" function signatures, LLVM IR, or existing codegen. All existing local PIDs naturally have node_id=0 (the counter starts at 0 and increments), so the encoding change is fully backward compatible with the 1,524 existing tests.
 
-The critical architectural challenge is reconciling WebSocket's long-lived connections with Snow's M:N cooperative scheduler. Unlike HTTP's request-response-close model, WebSocket actors must simultaneously handle socket I/O and actor messages indefinitely without blocking worker threads. The solution: reader thread per connection that delivers frames to actor mailbox + short read timeouts (50-100ms) with yield cycles. This enables ping/pong heartbeat, dead connection detection, and room broadcasts without scheduler starvation.
+The distribution layer inserts a locality check at the top of `snow_actor_send`: a single bit-shift (`pid >> 48 == 0`) routes local sends through the existing fast path unchanged, while remote sends are dispatched to a per-node NodeSession actor that serializes messages over TLS-encrypted TCP. This follows the same reader-thread-bridge pattern proven in WebSocket (`ws/server.rs`) -- one OS thread per peer connection for blocking I/O, with messages delivered to the NodeSession's mailbox via reserved type tags in the `u64::MAX - N` range.
 
-Key risks are protocol compliance (masking direction, close handshake, fragmentation) and resource management (connection leaks, room cleanup, broadcast contention). All are mitigated through established patterns: RFC test vectors for handshake, Autobahn Testsuite for frames, actor linking for cleanup, and RwLock registry for rooms. The architecture positions WebSocket as a peer to HTTP (separate servers on separate ports), avoiding invasive changes to existing infrastructure.
+The wire format is a custom Snow Term Format (STF) rather than Erlang ETF compatibility. Snow's type system (HM-inferred, static types, no atoms/funs/ports) is fundamentally different from Erlang's dynamic terms. A Snow-native format maps directly to Snow's types, avoids ETF's security baggage (RCE via fun deserialization), and requires approximately 300-400 lines of encode/decode. Authentication uses HMAC-SHA256 challenge/response (stronger than Erlang's MD5, using existing `sha2` + `hmac` crates). The entire implementation requires zero new crate dependencies -- all needed cryptographic primitives, TLS infrastructure, and synchronization primitives are already in Cargo.toml from PostgreSQL, HTTP, and WebSocket milestones.
+
+The most critical risks are: (1) message serialization correctness -- Snow's local messages are raw byte copies containing heap pointers that are meaningless across address spaces, requiring a proper serialization layer for remote sends; (2) PID reuse after node restart -- without a creation counter in the PID encoding, restarted nodes can confuse old cached PIDs with new processes; and (3) remote link/monitor propagation -- the current `propagate_exit` only queries the local process table, silently dropping exit signals for remote PIDs. All three have well-understood solutions modeled on BEAM's architecture.
 
 ## Key Findings
 
-### Recommended Stack
+**Stack:** Zero new dependencies. Reuses rustls 0.23 (TLS), sha2+hmac (HMAC-SHA256 auth), parking_lot (locks), rustc-hash (FxHashMap), crossbeam-channel (message routing). Hand-rolled wire format and discovery, consistent with the project's hand-rolled HTTP parser, PostgreSQL wire protocol, and WebSocket frame codec.
 
-Snow's WebSocket implementation reuses 90% of existing infrastructure and adds only one new direct dependency. The hand-rolled approach (frame codec + upgrade handshake) is consistent with the codebase philosophy and adds ~600-800 lines to `http/ws.rs`.
+**Architecture:** Distribution router in `snow_actor_send` with `pid >> 48` locality check. One NodeSession actor per peer node following the WebSocket reader-thread-bridge pattern. New `snow-rt/src/dist/` module with 8 files. Only 3 existing files need modification (actor/mod.rs, actor/process.rs, actor/link.rs) with ~50 total lines changed.
 
-**Core technologies:**
-- **sha1 0.10**: SHA-1 digest for WebSocket upgrade handshake (`Sec-WebSocket-Accept` computation) -- RustCrypto project, same family as existing `sha2`, pure Rust, minimal API surface
-- **Hand-rolled RFC 6455 frame codec**: Parse and serialize WebSocket frames (~200 lines) -- consistent with hand-rolled HTTP/1.1 parser and PostgreSQL wire protocol
-- **Existing dependencies reused**: `base64 0.22` (upgrade handshake), `rustls 0.23` (wss:// via WsStream::Tls), `parking_lot 0.12` (room registry + stream mutex), `rustc-hash` (room subscriber sets)
-
-**Alternatives rejected:**
-- tungstenite: Pulls 6+ crates including `http`, `httparse`, `thiserror`. Snow already has HTTP parsing and SHA-1 available. Frame parsing is simpler than what Snow has already implemented.
-- ring for SHA-1: Works but large API surface. `sha1 0.10` is purpose-built, small, and from the same RustCrypto family.
-- Room actor (message-passing): Centralized bottleneck for broadcast. Lock-based registry with direct `snow_actor_send()` fan-out is faster and matches existing process registry pattern.
-
-### Expected Features
-
-Research identified 12 features across three tiers: table stakes (8), differentiators (4), and anti-features (6 to avoid).
-
-**Must have (table stakes):**
-- HTTP upgrade handshake (RFC 6455 Section 4): `Sec-WebSocket-Accept` computation, 101 Switching Protocols
-- WebSocket frame parsing: 2-14 byte header, 3 payload length encodings, client-to-server unmasking
-- Text/binary frame types: opcode 0x1 (UTF-8 validated), opcode 0x2 (raw bytes)
-- Close handshake (opcode 0x8): Two-phase close with status codes, clean TCP shutdown
-- Ping/pong heartbeat (opcodes 0x9/0xA): Detects dead connections, auto-Pong response, configurable interval
-- Actor-per-connection with mailbox integration: WS frames arrive as actor messages, unified `receive` loop
-- Connection lifecycle callbacks: `on_connect`, `on_message`, `on_close` for user-facing API
-- `Ws.serve` / `Ws.serve_tls` entry points: Separate server (not mixed with HTTP router)
-
-**Should have (competitive):**
-- Rooms/channels with join/leave/broadcast: Named groups for chat, notifications, multiplayer -- core WebSocket value proposition
-- Message fragmentation (RFC 6455 Section 5.4): Reassemble multi-frame messages, handle interleaved control frames
-- Subprotocol negotiation (`Sec-WebSocket-Protocol`): Support GraphQL subscriptions, MQTT-over-WS, protocol versioning
-- Configurable connection limits and backpressure: Max concurrent connections, send buffer limits, rate limiting
-
-**Defer (anti-features for v1):**
-- Per-message deflate compression (RFC 7692): 300KB/connection overhead, 4-parameter negotiation, minimal benefit for small JSON messages
-- HTTP/WebSocket dual-protocol on same port: Clean separation is better; users run `Http.serve` on one port, `Ws.serve` on another
-- WebSocket client library: Server-only focus; client use cases are niche
-- WebTransport/HTTP/3: No browser implementations as of 2025
-
-### Architecture Approach
-
-The WebSocket implementation is entirely additive -- a new `http/ws.rs` module (~600-800 lines) plus compiler registration. No structural changes to HTTP server, actor runtime, or scheduler. The architecture follows proven patterns from the codebase.
-
-**Major components:**
-1. **WsStream enum**: Reuses `HttpStream` pattern (`Plain(TcpStream)` / `Tls(StreamOwned)`) for transparent TLS dispatch. Separate type avoids coupling to HTTP server internals.
-2. **Reader thread bridge**: Each connection spawns an OS thread that blocks on `read_frame()` and delivers frames to the actor mailbox via `snow_actor_send()`. The connection actor uses standard `snow_actor_receive()` for both WS frames AND actor messages in a unified mailbox. Rationale: WebSocket readers block indefinitely (hours), not suitable for M:N coroutines. Same pattern as `snow_timer_send_after` OS thread.
-3. **WsConn handle (u64)**: GC-safe connection state (`Mutex<WsStream>` for writer, PID, shutdown flag, path) exposed as opaque handle. Same pattern as `PgConn`, `SqliteConn`, `PgPool`.
-4. **Room registry**: Global `RwLock<HashMap<String, HashSet<ProcessId>>>` for named groups. Join adds PID to set, broadcast iterates set and calls `snow_actor_send()` directly. Cleanup via actor linking and terminate callbacks.
-5. **Inline ping/pong timer**: Driven by short read timeout cycles (50-100ms) rather than `snow_timer_send_after` mailbox messages. The actor tracks `last_ping_sent`/`last_pong_received` and checks timers on each read timeout iteration. Avoids the "ping can't fire while read is blocking" pitfall.
-
-### Critical Pitfalls
-
-**1. HTTP Upgrade Handshake Fails Because Current Parser Consumes and Discards the Connection**
-The current `connection_handler_entry` follows request-response-done lifecycle: parse, handle, respond, exit. No mechanism for handlers to say "keep this connection alive for WebSocket." Prevention: Redesign to detect `Upgrade: websocket` headers at runtime level, validate handshake, send 101 with correct headers (not through `write_response`), then transition actor into WebSocket frame loop. Phase: HTTP upgrade handshake (foundational).
-
-**2. WebSocket Actor Blocks Worker Thread Indefinitely During Frame Read Loop**
-Blocking `TcpStream::read()` for next WebSocket frame can wait hours, starving all actors pinned to that worker thread (coroutines are `!Send` and thread-pinned). With 4 worker threads, 4 idle connections can halt the entire runtime. Prevention: Set short read timeout (50-100ms), yield to scheduler on timeout, create cooperative blocking pattern: brief block, check results, yield, repeat. Phase: Core frame loop (must be solved with parser).
-
-**3. Sec-WebSocket-Accept Computed from Hex Digest Instead of Raw Binary**
-The most common WebSocket handshake bug across dozens of libraries: base64-encoding the hex string representation of SHA-1 instead of raw 20 bytes. Produces 56-char result instead of correct 28-char result. Every connection fails silently during handshake. Prevention: Use `sha1::Sha1::digest()` raw bytes directly, never convert to hex. Unit test with RFC example values: key `dGhlIHNhbXBsZSBub25jZQ==` must produce accept `s3pPLMBiTxaQ9kYGzzhZRbK+xOo=`. Phase: HTTP upgrade handshake.
-
-**4. Frame Masking Direction Reversed (Server Masks, Client Unmasks)**
-RFC mandates asymmetric masking: clients MUST mask, servers MUST NOT mask. Browser clients close with code 1002 if they receive masked server frames. 50% failure rates when mask key has specific bit patterns (ESP-IDF bug). Prevention: In frame writer, NEVER set mask bit for server-to-client. In frame reader, ALWAYS check mask bit on client-to-server. Separate code paths for reading/writing. Test with real browsers. Phase: Frame parser/writer.
-
-**5. WebSocket Connection Actor Leaks When Client Disconnects Without Close Frame**
-Network failures, browser tab closes, NAT timeouts leave ghost actors blocking on `read()` indefinitely. Without ping/pong heartbeat, actors accumulate consuming PIDs, memory, room memberships. Prevention: Implement server-side ping/pong heartbeat (30s ping, 10s pong timeout). Use short read timeout approach so ping timer is not blocked by read loop. Clean up room membership via terminate callbacks. Phase: Ping/pong heartbeat (implement immediately after frame loop).
-
-**6. Fragmented Messages Not Reassembled, Causing Data Corruption**
-RFC allows messages split across multiple frames (FIN=0 + continuation opcode 0x0). Control frames (Ping/Pong/Close) can interleave. Large messages (>64KB) arrive corrupted without proper reassembly. Prevention: State machine (Idle / ReceivingFragments), handle control frames independently, buffer partial TCP reads, enforce max message size (16MB), validate continuation opcodes. Test with Autobahn Testsuite. Phase: Frame parser (must be in initial implementation).
-
-**7. Mailbox Message Type Collision Between WS Frames and Actor Messages**
-WebSocket messages delivered to actor mailbox need type tags to distinguish from actor-to-actor messages. The current first-8-bytes derivation can collide with user content or EXIT_SIGNAL_TAG. Prevention: Reserved type tag ranges: `WS_TEXT_TAG = 0xFFFF_FFFF_0001`, `WS_BINARY_TAG = 0xFFFF_FFFF_0002`, etc. Upper 32 bits (0xFFFF_FFFF) for runtime system messages, lower 32 bits for user-defined types. Phase: Mailbox integration (design before writing delivery code).
+**Critical pitfall:** Message serialization cannot simply copy raw bytes across nodes -- heap pointers, closure environments, and collection handles are address-space-local. A proper Snow value serialization format must be built, and closures must be detected and rejected at serialization time.
 
 ## Implications for Roadmap
 
-Based on research, suggested phase structure follows dependency chains and enables incremental testing:
+Based on research, suggested phase structure:
 
-### Phase 1: Protocol Core (Frame Codec + Upgrade Handshake)
-**Rationale:** Foundation -- everything depends on frame I/O and upgrade working correctly. WebSocket is fundamentally a wire protocol transformation on top of HTTP/1.1. Get the protocol implementation solid before adding application features.
+### Phase 1: PID Encoding and Wire Format Foundation
+**Rationale:** Everything depends on the PID bit-packing scheme and the serialization format. These are independent of networking and can be tested in isolation. Getting the PID encoding right first means all 1,524 existing tests validate backward compatibility before any distribution code is written.
 
 **Delivers:**
-- `WsStream` enum (Plain/Tls)
-- `read_frame()` / `write_frame()` -- RFC 6455 frame parser (2-14 byte header, 3 length encodings, masking, opcodes)
-- HTTP upgrade validation and 101 response writer
-- SHA-1 + base64 for `Sec-WebSocket-Accept`
-- Text/binary frame types with UTF-8 validation
-- Close handshake (opcode 0x8, status codes, two-phase close)
+- ProcessId bit-packing: 16-bit node_id + 48-bit local_id in existing u64
+- `node_id()`, `local_id()`, `is_local()`, `from_remote()` methods on ProcessId
+- Snow Term Format (STF) binary encoder/decoder for all Snow types
+- Wire format versioning (version byte from day one)
+- Closure detection and rejection during serialization
+- Unit tests: PID encoding round-trips, STF encode/decode for every Snow type, existing test suite passes with zero regressions
 
-**Addresses features:**
-- Feature 1: HTTP Upgrade Handshake
-- Feature 2: WebSocket Frame Parsing
-- Feature 3: Text and Binary Frame Types
-- Feature 4: Close Handshake
+**Addresses features:** Binary wire format, location-transparent PID encoding
+**Avoids pitfalls:** Pitfall 1 (ABI break), Pitfall 2 (message serialization), Pitfall 6 (PID reuse via creation counter), Pitfall 9 (wire format versioning), Pitfall 12 (closure serialization)
 
-**Avoids pitfalls:**
-- Pitfall 3: Sec-WebSocket-Accept hex vs binary (RFC test vector)
-- Pitfall 4: Frame masking direction (separate read/write paths)
-- Pitfall 11: Control frames >125 bytes or fragmented
-- Pitfall 12: Text frames not UTF-8 validated
-- Pitfall 13: Stack overflow from large buffers (use heap allocation)
-- Pitfall 15: Extended payload length encoding (boundary tests)
-
-**Test strategy:** Unit tests for frame round-trip, RFC handshake example values, Autobahn Testsuite for frame compliance.
-
-**Estimated complexity:** Medium. Frame format is precisely specified but has edge cases (3 length tiers, masking). Upgrade handshake reuses existing parser.
+**Estimated complexity:** High. The STF encoder/decoder must handle all Snow types including recursive structures (List of Maps of Strings). The PID encoding must be validated against all existing tests.
 
 ---
 
-### Phase 2: Actor Integration (Connection Lifecycle + Reader Thread Bridge)
-**Rationale:** Establishes Snow's unique actor-per-connection model. The reader thread bridge solves the fundamental problem: WebSocket's long-lived blocking I/O on M:N cooperative scheduler. Must be designed together with frame loop (Pitfall 2).
+### Phase 2: Node Connection and Authentication
+**Rationale:** With PIDs and wire format ready, establish the networking layer. This phase focuses purely on node-to-node connectivity: TCP/TLS streams, challenge/response handshake, and connection lifecycle. No actor integration yet -- just transport.
 
 **Delivers:**
-- `snow_ws_serve()` accept loop (copy `snow_http_serve` pattern)
-- `ws_connection_handler_entry()` with upgrade + reader thread spawn
-- Reader thread: blocking `read_frame()` loop sending to actor mailbox
-- `WsConn` handle creation and lifecycle
-- `snow_ws_send()` / `snow_ws_send_binary()` / `snow_ws_close()`
-- Short read timeout (50-100ms) + yield cycle for cooperative blocking
-- Reserved type tags for WS mailbox messages (0xFFFF_FFFF_000X range)
+- DistStream enum (Plain/Tls) following PgStream/HttpStream/WsStream pattern
+- Cookie-based HMAC-SHA256 challenge/response handshake
+- Node naming (`name@host:port` format) and identity (creation counter)
+- Built-in node registry (EPMD equivalent) for name resolution
+- TLS encryption using existing rustls 0.23 infrastructure
+- Framed message reading/writing (4-byte length prefix)
+- Heartbeat tick on dedicated OS thread (60s interval, 15s timeout)
 
-**Addresses features:**
-- Feature 6: Actor-per-Connection with Mailbox Integration
-- Feature 7: Connection Lifecycle Callbacks
-- Feature 8: Ws.serve Entry Points
+**Addresses features:** Node naming/identity, cookie authentication, TLS transport, node registry, heartbeat
+**Avoids pitfalls:** Pitfall 8 (O(N^2) mesh -- start with explicit connections), Pitfall 11 (no auth -- HMAC-SHA256 from day one), Pitfall 13 (heartbeat on scheduler -- dedicated thread)
 
-**Avoids pitfalls:**
-- Pitfall 1: Connection lifecycle (redesigned handler entry)
-- Pitfall 2: Blocking worker thread (short timeout + yield)
-- Pitfall 7: Mailbox type tag collision (reserved ranges)
-- Pitfall 8: Close handshake state machine
-
-**Uses stack:**
-- Existing actor runtime: `snow_actor_spawn`, `snow_actor_send`, `snow_actor_receive`
-- `std::thread::spawn` for reader thread (same pattern as `snow_timer_send_after`)
-- `WsConn` as u64 handle (GC-safe pattern from `PgConn`, `SqliteConn`)
-
-**Test strategy:** E2E test with simple echo WebSocket server, verify reader thread delivers frames to mailbox, test crash isolation (`catch_unwind`).
-
-**Estimated complexity:** High. Reader thread bridge is novel architecture. Event loop design (read timeout + yield + timer checks) requires careful tuning.
+**Estimated complexity:** High. Handshake protocol has multiple failure modes. TLS integration reuses proven patterns but needs both client and server roles (unlike previous milestones which were one or the other).
 
 ---
 
-### Phase 3: Production Hardening (TLS + Heartbeat + Fragmentation)
-**Rationale:** Makes it production-ready. TLS is straightforward (reuse existing rustls infrastructure). Heartbeat is critical for detecting dead connections. Fragmentation is required for RFC compliance and large message support.
+### Phase 3: Remote Send and Distribution Router
+**Rationale:** The core value proposition: `send(pid, msg)` works transparently for remote PIDs. This phase wires the PID locality check into `snow_actor_send` and creates the NodeSession actor that manages per-peer message flow.
 
 **Delivers:**
-- `snow_ws_serve_tls()` -- reuse `build_server_config` from HTTP server
-- `WsStream::Tls` variant with `Mutex<WsStream>` for reader/writer coordination
-- Inline ping/pong timer (driven by read timeout cycles, not mailbox messages)
-- Auto-Pong response in reader thread (immediate response before mailbox delivery)
-- Server-initiated Ping (30s interval, 10s pong timeout)
-- Connection cleanup on missed Pongs
-- Message fragmentation reassembly (state machine: Idle / ReceivingFragments)
-- Interleaved control frame handling
-- Max message size limit (16MB default, close with 1009 if exceeded)
+- Distribution router: locality check in `snow_actor_send` (branch-free for local path)
+- NodeSession actor (one per peer, reader-thread-bridge pattern)
+- NodeRegistry dual-map (by_name + by_id)
+- Reserved type tags for distribution signals (u64::MAX-10 through u64::MAX-19)
+- Remote message delivery with per-sender FIFO ordering (guaranteed by TCP)
+- Remote send by registered name (`send({name, node}, msg)`)
+- `Node.connect()`, `Node.self()`, `nodes()` API functions
 
-**Addresses features:**
-- Feature 5: Ping/Pong Heartbeat
-- Feature 10: Message Fragmentation
-- TLS support (part of Feature 8: Ws.serve_tls)
+**Addresses features:** Location-transparent PIDs, remote message delivery, remote send by name, node listing
+**Avoids pitfalls:** Pitfall 5 (local perf regression -- branch-free check), Pitfall 14 (process table pollution -- remote PIDs never in local table)
 
-**Avoids pitfalls:**
-- Pitfall 5: Connection leaks (heartbeat detects dead connections)
-- Pitfall 6: Fragmented messages (reassembly state machine)
-- Pitfall 10: Ping timer starvation (inline timer checks, not mailbox)
-- Pitfall 16: TLS handshake burst delay (existing architecture handles this)
-
-**Test strategy:** E2E with self-signed cert, test heartbeat timeout with killed client, Autobahn Testsuite for fragmentation cases.
-
-**Estimated complexity:** Medium. TLS reuses proven patterns. Heartbeat driven by timeout cycle (designed in Phase 2). Fragmentation requires state machine but well-specified.
+**Estimated complexity:** High. NodeSession actor is the main workhorse. Reader thread bridge follows WebSocket pattern but handles more message types (SEND, LINK, EXIT, MONITOR, SPAWN). Must benchmark local send path to verify zero regression.
 
 ---
 
-### Phase 4: Application Layer (Rooms + Compiler Integration)
-**Rationale:** Higher-level features for real-world patterns. Rooms enable the multiplayer/chat/notification use cases that make WebSocket valuable. Compiler integration unlocks Snow-language-level usage.
+### Phase 4: Remote Links, Monitors, and Failure Handling
+**Rationale:** Distribution without fault tolerance is dangerous. Remote links and monitors complete the safety story: supervisors can detect remote child crashes, and network partitions trigger `:noconnection` exit signals.
 
 **Delivers:**
-- Global room registry (`RwLock<HashMap<String, HashSet<ProcessId>>>`)
-- `snow_ws_join()` / `snow_ws_leave()` / `snow_ws_broadcast()`
-- Auto-cleanup on actor exit (terminate callback + actor linking)
-- Reverse index (PID -> rooms) for efficient cleanup
-- Reference-counted messages for broadcast (Arc<Vec<u8>> instead of N copies)
-- Register all functions in `intrinsics.rs`, `builtins.rs`, `lower.rs`
-- Subprotocol negotiation (`Sec-WebSocket-Protocol` header)
-- Connection limits (max concurrent, per-connection send buffer)
+- Remote link protocol (LINK/UNLINK wire messages)
+- Remote process monitoring (MONITOR/DEMONITOR/MONITOR_EXIT)
+- Node monitoring (`:nodedown`/`:nodeup` events)
+- Connection loss handling: fire exit signals for all remote links, `:DOWN` for all monitors, `:nodedown` for all node monitors
+- Creation counter validation (reject stale PIDs from restarted nodes)
+- Extended `propagate_exit` to route exit signals over the network for remote PIDs
 
-**Addresses features:**
-- Feature 9: Rooms/Channels with Join/Leave/Broadcast
-- Feature 11: Subprotocol Negotiation
-- Feature 12: Configurable Connection Limits
+**Addresses features:** Remote process monitoring, node monitoring, connection loss handling
+**Avoids pitfalls:** Pitfall 7 (silent link breakage), Pitfall 6 (PID reuse -- creation counter validation)
 
-**Avoids pitfalls:**
-- Pitfall 9: Broadcast contention (direct send fan-out, reference-counted messages)
-- Pitfall 14: Room membership leaks (terminate callback + linking)
-- Pitfall 17: Write backlog (write timeouts, skip slow clients)
+**Estimated complexity:** High. Failure handling has many edge cases: race between monitor setup and process death, simultaneous node crashes, link cycles across nodes. Must test with simulated network partitions.
 
-**Test strategy:** Multi-connection broadcast test, verify cleanup after disconnect, load test with 1000 connections.
+---
 
-**Estimated complexity:** Medium. Room registry follows existing process registry pattern. Compiler integration is mechanical (15 functions).
+### Phase 5: Remote Spawn and LLVM Integration
+**Rationale:** Remote spawn requires a function name registry (new concept for Snow -- currently functions are identified by pointer, not name). This is the final core feature. LLVM intrinsic registration wires everything into the Snow language.
+
+**Delivers:**
+- Function name registry: maps Snow module+function names to entry point pointers
+- `Node.spawn(node, function, args)` and `Node.spawn_link(node, function, args)`
+- SPAWN_REQUEST/SPAWN_REPLY wire protocol
+- All new LLVM intrinsics registered in intrinsics.rs, builtins.rs, lower.rs
+- `Node.start()`, `Node.connect()`, `Node.self()`, `Node.spawn()`, `Node.monitor()` Snow-level API
+- E2E tests: multi-node spawn, remote send, monitor, link, partition handling
+
+**Addresses features:** Remote spawn, LLVM integration
+**Avoids pitfalls:** Pitfall 12 (closure serialization -- named functions only for remote spawn)
+
+**Estimated complexity:** High. Function name registry is a new concept. Remote spawn must handle: function not found on remote node, serialization failure for args, remote node disconnects during spawn.
+
+---
+
+### Phase 6: Distributed Global Registry (Differentiator)
+**Rationale:** Cluster-wide name resolution enables service discovery without passing PIDs. This is the highest-level feature, building on all previous phases.
+
+**Delivers:**
+- Cluster-wide name registry (one name -> one PID across all nodes)
+- Coordinator-based registration (broadcast to all nodes, first-writer-wins)
+- Automatic cleanup on `:nodedown` (remove registrations from disconnected node)
+- `Global.register(name, pid)`, `Global.whereis(name)`, `Global.unregister(name)`
+
+**Addresses features:** Distributed global process registry
+**Avoids pitfalls:** Pitfall 3 (split-brain -- first-writer-wins with explicit conflict resolution, no automatic partition healing)
+
+**Estimated complexity:** High. Distributed coordination is inherently complex. Defer process groups (pg equivalent) to v5.1.
+
+---
+
+### Phase 7: Cross-Node Integration (Differentiator)
+**Rationale:** Integration with existing WebSocket rooms and supervision trees. These are the features that make Snow's distribution unique -- combining WS + actors + distribution in a single language.
+
+**Delivers:**
+- Cross-node WebSocket room broadcast (extend RoomRegistry to route across nodes)
+- Cross-node supervision integration (supervisors monitoring remote children)
+
+**Addresses features:** Cross-node WS rooms, cross-node supervision
+**Avoids pitfalls:** Pitfall 10 (supervisor restart timing -- async restart, separate `:noconnection` handling)
+
+**Estimated complexity:** Medium. Builds on solid foundation from phases 1-5. WS room extension follows existing broadcast pattern. Supervision integration requires careful handling of network latency in restart rate limiting.
 
 ---
 
 ### Phase Ordering Rationale
 
-**Dependency chains:**
-- Phase 1 (protocol core) is foundational -- everything depends on frame I/O working
-- Phase 2 (actor integration) requires Phase 1 frames but implements the unique Snow model
-- Phase 3 (production hardening) builds on Phase 2 event loop (heartbeat driven by timeout cycle)
-- Phase 4 (application layer) requires working connections (Phase 2-3) to test rooms
+**Dependency chain:**
+- Phase 1 (PID + wire format) is the foundation -- nothing else can start without it
+- Phase 2 (connections) requires wire format for handshake framing
+- Phase 3 (remote send) requires both PID encoding and connections
+- Phase 4 (links/monitors) requires remote send infrastructure
+- Phase 5 (remote spawn) requires all previous phases plus function name registry
+- Phases 6-7 are highest-level features requiring everything below to be solid
 
 **Risk mitigation:**
-- Most critical pitfalls (1-7) addressed in Phases 1-2 before adding features
-- Fragmentation (Pitfall 6) in Phase 3 because it requires state machine in frame parser
-- Room leaks (Pitfall 14) addressed in Phase 4 with room implementation
+- Critical pitfalls (1, 2, 5, 6) are addressed in Phase 1 before any networking code
+- Security (Pitfall 11) is addressed in Phase 2, not deferred
+- Fault tolerance (Pitfall 7) is addressed in Phase 4, before remote spawn adds more failure modes
+- Split-brain (Pitfall 3) is explicitly deferred to Phase 6 with a simple coordinator approach
 
 **Incremental value:**
-- Phase 1: Can test upgrade handshake + basic frame I/O with external tools
-- Phase 2: Fully functional WebSocket server (echo, simple apps)
-- Phase 3: Production-ready (TLS, heartbeat, large messages)
-- Phase 4: Real-world features (chat, multiplayer, notifications)
+- Phase 1: Validated PID encoding + tested wire format (no runtime behavior change)
+- Phase 2: Nodes can connect and authenticate (foundation for all cross-node features)
+- Phase 3: `send(remote_pid, msg)` works -- the core distribution feature
+- Phase 4: Distribution is safe -- links, monitors, and partition handling work
+- Phase 5: Full distribution API accessible from Snow code
+- Phases 6-7: Advanced features for production distributed applications
 
-**Architectural coherence:**
-- Phase 2 establishes the event loop structure (timeout + yield + inline timers)
-- Phase 3 heartbeat naturally fits into Phase 2 structure (no refactor)
-- Phase 4 builds on stable connection model from Phase 2-3
+**Research flags for phases:**
+- **Phase 1 (PID + Wire Format):** Needs validation research during planning -- must verify that STF encoder handles all Snow types correctly, including nested ADT variants and generic type instances. The interaction between type_tag derivation and STF encoding needs careful design.
+- **Phase 3 (Remote Send):** May need research on NodeSession actor design -- mailbox ordering, flow control, backpressure for slow remote nodes. Prototype the reader-thread-bridge for distribution to verify it handles the higher message diversity (SEND, LINK, EXIT, MONITOR, SPAWN) compared to WebSocket (TEXT, BINARY, CLOSE, PING).
+- **Phase 4 (Failure Handling):** Needs research on race conditions -- what happens when a monitor request is in flight while the target process exits? BEAM has well-defined semantics for these races; Snow must match them.
+- **Phase 6 (Global Registry):** Likely needs deeper research on distributed coordination. The first-writer-wins approach is simple but may not handle all edge cases. Study Erlang's `global` module failure modes before implementation.
 
-### Research Flags
-
-**Phases likely needing deeper research during planning:**
-- **Phase 2 (Actor Integration):** Reader thread bridge is novel architecture. May need research on optimal read timeout value, yield frequency, and mailbox type tag allocation scheme. Prototype recommended.
-- **Phase 3 (Fragmentation):** RFC 6455 Section 5.4 is precise but complex (interleaved control frames, partial TCP reads). Study Autobahn Testsuite expectations and reference implementations (tungstenite frame parser patterns).
-
-**Phases with standard patterns (skip research-phase):**
-- **Phase 1 (Protocol Core):** RFC 6455 is definitive. Frame format is precisely specified. Upgrade handshake algorithm is deterministic.
-- **Phase 3 (TLS):** Reuses existing `rustls 0.23` infrastructure from HTTP server. Known pattern.
-- **Phase 4 (Rooms):** Follows existing process registry pattern (`actor/registry.rs`). Broadcast is well-studied (Phoenix Channels, Socket.IO).
+**Phases with standard patterns (likely skip research-phase):**
+- **Phase 2 (Connections):** TLS + TCP + handshake follows established patterns from PG, HTTP, WS. Cookie auth is well-specified.
+- **Phase 5 (Remote Spawn + LLVM):** Mechanical wiring of established patterns. Function registry is new but straightforward.
+- **Phase 7 (Cross-Node Integration):** Extends existing patterns (rooms, supervision) with distribution routing.
 
 ## Confidence Assessment
 
 | Area | Confidence | Notes |
 |------|------------|-------|
-| Stack | HIGH | Codebase analysis verified all dependencies exist or are minimal additions. RFC 6455 is authoritative for protocol requirements. Hand-rolled approach is proven (HTTP, PostgreSQL wire protocol). |
-| Features | HIGH | WebSocket protocol is mature (RFC from 2011). Table stakes features cross-verified with MDN, production libraries (tungstenite, websockets), and Phoenix Channels. Autobahn Testsuite provides definitive compliance testing. |
-| Architecture | HIGH | Based on direct inspection of all relevant snow-rt modules (server.rs, scheduler.rs, actor/mod.rs, process.rs, stack.rs). Reader thread bridge follows existing pattern (`snow_timer_send_after`). GC-safe handle pattern proven in 3 places (pg.rs, sqlite.rs, pool.rs). |
-| Pitfalls | HIGH | 18 pitfalls sourced from real-world bugs in production systems (actix-web, Bun, aiohttp, GNS3, ESP-IDF, WebSocketPP, Ktor). Each pitfall has documented prevention strategy and detection method. Critical path pitfalls (1-7) aligned with phase structure. |
+| Stack | HIGH | Zero new dependencies. All crates verified in existing Cargo.toml/Cargo.lock. Hand-rolled approach follows established project pattern (PG wire protocol, HTTP parser, WS frame codec). |
+| Features | HIGH | BEAM distribution protocol is exhaustively documented by Ericsson. Feature set cross-referenced with Erlang/OTP, Akka, Orleans, Proto.Actor. Table stakes vs differentiators clearly separated with dependency graph. |
+| Architecture | HIGH | Based on direct analysis of all relevant snow-rt modules (actor/mod.rs, process.rs, scheduler.rs, link.rs, registry.rs, heap.rs, ws/server.rs, ws/rooms.rs). PID encoding impact analyzed for every existing code path. Distribution patterns follow proven reader-thread-bridge from WebSocket. |
+| Pitfalls | HIGH | 16 pitfalls documented with severity (7 critical, 5 moderate, 4 minor). Each verified against Snow's specific architecture (not generic distributed systems advice). Sources include Erlang distribution protocol docs, academic papers on distributed actor GC, real-world post-mortems from Akka/Proto.Actor/Swift distributed actors. |
 
-**Overall confidence:** HIGH
+## Gaps to Address
 
-Research is backed by:
-- Authoritative RFC 6455 specification
-- Direct codebase analysis of Snow runtime (all modules inspected)
-- Real-world bug analysis from 10+ production WebSocket implementations
-- Cross-verification with 3+ established libraries (tungstenite, websockets, Phoenix)
-- Autobahn Testsuite for protocol compliance testing
+### Resolved During Research
+- **PID representation strategy:** Resolved as 16-bit node_id + 48-bit local_id bit-packing in existing u64. Backward compatible.
+- **Wire format approach:** Resolved as custom STF (not ETF). Maps directly to Snow's type system.
+- **Authentication:** Resolved as HMAC-SHA256 challenge/response. Stronger than BEAM's MD5, using existing crates.
+- **Node discovery:** Resolved as built-in (no separate EPMD daemon). Follows single-binary philosophy.
 
-### Gaps to Address
+### Open Questions for Phase Planning
+1. **Creation counter bit allocation:** The PITFALLS.md suggests 16-bit node_id + 8-bit creation + 40-bit local_id, while ARCHITECTURE.md uses 16-bit node_id + 48-bit local_id without explicit creation bits. Need to finalize: embed creation in PID (reduces local_id space) or track creation separately in NodeRegistry. BEAM tracks creation separately from PID bits in newer versions.
+2. **Function name registry for remote spawn:** Snow currently identifies functions by pointer, not name. Need to design a mapping from Snow module+function names to entry point addresses that works across different compiled binaries (which may have different LLVM optimization layouts). This is a new concept requiring Phase 5 research.
+3. **STF encoding for generic types:** Snow's monomorphization means `List<Int>` and `List<String>` are different types at runtime. Does the wire format need to encode the concrete type, or can the receiver infer it from context? Needs Phase 1 design work.
+4. **Backpressure for remote send:** If a remote node is slow to consume messages, the local NodeSession's outgoing buffer grows unboundedly. Need a flow control strategy (bounded buffer with backpressure, drop policy, or TCP backpressure via write blocking). Address during Phase 3.
+5. **Testing strategy for distributed scenarios:** Need a test harness that can start multiple Snow runtimes on localhost with different ports. Deterministic simulation testing (DST) is ideal but complex; may start with integration tests using real TCP on localhost. Address during Phase 1 test infrastructure setup.
 
-**Architecture gaps:**
-1. **Optimal read timeout value**: Research suggests 50-100ms but actual value depends on scheduler load and target latency. Should be configurable or auto-tuned. Addressed during Phase 2 implementation with benchmarking.
-2. **Broadcast scalability at 10K+ connections**: Reader-thread-per-connection model works up to ~5K-10K connections. Beyond that, need epoll/io_uring reader pool. Document connection limit for v1, plan epoll upgrade for v2 if demand warrants.
-3. **TLS stream splitting for wss://**: `StreamOwned` cannot be cloned for separate read/write. Research proposes `Mutex<WsStream>` shared between reader thread and actor. Needs prototype to verify performance. Fallback: plain TCP uses `try_clone()`, TLS uses Mutex.
-
-**Feature gaps:**
-1. **Subprotocol negotiation priority**: RFC 6455 specifies server picks from client's list, but doesn't mandate "first match" vs "priority order." Check GraphQL subscriptions (`graphql-ws`) and MQTT-over-WebSocket for conventions. Address during Phase 4 implementation.
-2. **Connection rate limiting algorithm**: Research mentions token-bucket or fixed-window but doesn't specify which. Use simple fixed-window (count per second) for v1, upgrade to token-bucket if needed. Phase 4 decision.
-
-**Pitfall validation:**
-1. **Autobahn Testsuite coverage**: Verify that Autobahn covers all identified pitfalls (especially fragmentation, masking, close handshake). Run full suite during Phase 1 implementation to confirm test harness is adequate.
-2. **Reader thread vs coroutine decision**: Research strongly recommends OS thread for long-lived blocking I/O. But should prototype "non-blocking read with short timeout in coroutine" to empirically verify it causes scheduler starvation. Phase 2 prototyping task.
-
-None of these gaps block starting Phase 1. All are addressable during implementation with validation testing.
+None of these gaps block starting Phase 1. All are addressable during phase-specific planning.
 
 ## Sources
 
 ### Primary (HIGH confidence)
-- [RFC 6455: The WebSocket Protocol](https://datatracker.ietf.org/doc/html/rfc6455) -- Authoritative protocol specification for handshake, frame format, close codes, fragmentation
-- Snow codebase: `crates/snow-rt/src/http/server.rs` -- HttpStream enum, parse_request, connection_handler_entry, actor-per-connection pattern
-- Snow codebase: `crates/snow-rt/src/actor/mod.rs` -- snow_actor_spawn/send/receive, timer_send_after OS thread pattern, type_tag derivation
-- Snow codebase: `crates/snow-rt/src/actor/scheduler.rs` -- M:N scheduler, worker loop, !Send coroutines, thread-pinned execution
-- Snow codebase: `crates/snow-rt/src/db/pg.rs` -- PgStream enum (Plain/Tls pattern), GC-safe u64 handle pattern
-- Snow codebase: `crates/snow-rt/Cargo.toml` + `Cargo.lock` -- Current dependency versions verified
+- [Erlang Distribution Protocol (erts v16.2)](https://www.erlang.org/doc/apps/erts/erl_dist_protocol.html) -- Handshake protocol, message framing, capability flags
+- [Erlang External Term Format (erts v16.2)](https://www.erlang.org/doc/apps/erts/erl_ext_dist.html) -- Type tags and binary encoding reference
+- [Distributed Erlang System Documentation v28.3.1](https://www.erlang.org/doc/system/distributed.html) -- Node naming, connection, PIDs, remote spawn
+- [Erlang Distribution over TLS (ssl v11.5.1)](https://www.erlang.org/doc/apps/ssl/ssl_distribution.html) -- TLS integration for distribution
+- [Erlang Processes Reference Manual v28.3.1](https://www.erlang.org/doc/system/ref_man_processes.html) -- Monitors, links, signal ordering guarantees
+- [Erlang Blog: Message Passing](https://www.erlang.org/blog/message-passing/) -- Ordering guarantees, remote delivery, noconnection semantics
+- [EEF Security WG: Serialization](https://erlef.github.io/security-wg/secure_coding_and_deployment_hardening/serialisation.html) -- ETF security concerns
+- [EEF Security WG: Distribution](https://erlef.github.io/security-wg/secure_coding_and_deployment_hardening/distribution.html) -- Cookie auth limitations, TLS recommendation
+- Snow codebase: all actor runtime modules, WebSocket modules, codegen intrinsics (direct file analysis)
 
 ### Secondary (MEDIUM confidence)
-- [tungstenite-rs GitHub](https://github.com/snapview/tungstenite-rs) -- Reference frame codec patterns
-- [sha1 crate on crates.io](https://crates.io/crates/sha1) -- RustCrypto SHA-1 API
-- [Phoenix Channels documentation](https://hexdocs.pm/phoenix/channels.html) -- Rooms/topics pattern for BEAM actors
-- [Socket.IO Rooms documentation](https://socket.io/docs/v3/rooms/) -- Rooms pattern reference
-- [WebSock (Elixir)](https://github.com/phoenixframework/websock) -- Actor-per-WebSocket specification
-- [MDN: Writing WebSocket servers](https://developer.mozilla.org/en-US/docs/Web/API/WebSockets_API/Writing_WebSocket_servers) -- Implementation guide
-- [Autobahn WebSocket Testsuite](https://github.com/crossbario/autobahn-testsuite) -- Comprehensive protocol compliance tests
+- [Programming Distributed Erlang Applications: Pitfalls and Recipes (Svensson, Fredlund)](https://dl.acm.org/doi/10.1145/1292520.1292527) -- PID reuse, naming, semantic differences
+- [Akka Location Transparency](https://doc.akka.io/libraries/akka-core/current/general/remoting.html) -- Transparent routing, actor paths
+- [Orleans Overview (Microsoft Learn)](https://learn.microsoft.com/en-us/dotnet/orleans/overview) -- Virtual actor model reference
+- [ractor_cluster](https://docs.rs/ractor_cluster/latest/ractor_cluster/) -- Erlang-style cluster protocol in Rust
+- [Proto.Actor Location Transparency](https://proto.actor/docs/location-transparency/) -- PID-based routing patterns
+- [Distribunomicon (Learn You Some Erlang)](https://learnyousomeerlang.com/distribunomicon) -- Practical distribution pitfalls
 
-### Real-World Bug Analysis (MEDIUM confidence)
-- [actix-web Issue #2441](https://github.com/actix/actix-web/issues/2441) -- WebSocket actor paralyzed by lack of IO timeout (Pitfall 2, 5, 10)
-- [Bun Issue #3742](https://github.com/oven-sh/bun/issues/3742) -- Continuation frame handling failure (Pitfall 6)
-- [aiohttp PR #1962](https://github.com/aio-libs/aiohttp/pull/1962) -- Fragmented frame handling bugs (Pitfall 6)
-- [ESP-IDF Issue #18227](https://github.com/espressif/esp-idf/issues/18227) -- PONG frame 50% failure rate from mask key bits (Pitfall 4)
-- [GNS3 Issue #2320](https://github.com/GNS3/gns3-server/issues/2320) -- Server fails to initiate TCP close (Pitfall 8)
-- [Ktor Issue #423](https://github.com/ktorio/ktor/issues/423) -- Client masking disabled by default (Pitfall 4)
-- [WebSocketPP Issue #591](https://github.com/zaphoyd/websocketpp/issues/591) -- Control frames sent fragmented (Pitfall 11)
-- [faye-websocket-node Issue #48](https://github.com/faye/faye-websocket-node/issues/48) -- Malformed frames from TCP fragmentation (Pitfall 6)
-
-### Tertiary (LOW confidence, context only)
-- [OpenMyMind: WebSocket Framing](https://www.openmymind.net/WebSocket-Framing-Masking-Fragmentation-and-More/) -- Frame format walkthrough
-- [websockets library keepalive docs](https://websockets.readthedocs.io/en/stable/topics/keepalive.html) -- Ping/pong timing defaults (30s recommended)
-- [Ably: WebSocket Architecture Best Practices](https://ably.com/topic/websocket-architecture-best-practices) -- Scalability patterns
-- [websockets library broadcast docs](https://websockets.readthedocs.io/en/stable/topics/broadcast.html) -- Backpressure in broadcast
+### Tertiary (LOW confidence)
+- [Deterministic Simulation Testing](https://www.risingwave.com/blog/deterministic-simulation-a-new-era-of-distributed-system-testing/) -- DST overview for testing strategy
+- [FoundationDB's Simulation Testing](https://alex-ii.github.io/notes/2018/04/29/distributed_systems_with_deterministic_simulation.html) -- DST reference
 
 ---
 *Research completed: 2026-02-12*

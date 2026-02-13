@@ -1,740 +1,683 @@
-# Architecture Patterns
+# Architecture Patterns: Distributed Actors for Snow
 
-**Domain:** WebSocket support for Snow programming language -- server-side ws:// and wss://, actor-per-connection, unified mailbox messaging, rooms/channels, heartbeat
+**Domain:** BEAM-style distributed actor system for Snow programming language
 **Researched:** 2026-02-12
-**Confidence:** HIGH (based on direct codebase inspection of all snow-rt modules, RFC 6455 protocol specification, and established patterns from HTTP server + actor runtime)
+**Overall confidence:** HIGH (based on direct codebase analysis + BEAM protocol documentation)
 
-## Current Architecture Summary
+## Executive Summary
 
-The Snow runtime (`snow-rt`) is a static library linked into compiled Snow binaries. It exposes `extern "C"` functions that LLVM-generated code calls directly. New features integrate at up to four layers:
+Snow's existing actor runtime in `snow-rt` provides single-node M:N scheduling with ProcessId (sequential u64), per-actor mailboxes, process registry, links/monitors, and exit signal propagation. The distribution layer must make `send`, `link`, `spawn`, and `monitor` location-transparent without restructuring the single-node fast path.
 
-1. **typeck builtins** (`snow-typeck/src/builtins.rs`) -- Snow-level type signatures
-2. **MIR lowering** (`snow-codegen/src/mir/lower.rs`) -- name mapping + known function registration
-3. **LLVM intrinsics** (`snow-codegen/src/codegen/intrinsics.rs`) -- LLVM function declarations
-4. **Runtime implementation** (`snow-rt/src/`) -- actual Rust code
-
-The existing pattern for adding new runtime functionality is well-established: SQLite, PostgreSQL, HTTP server, HTTP client, JSON, connection pooling, and transactions all follow the same four-layer integration path.
-
-### Existing Architecture Relevant to WebSocket
-
-**HTTP Server (`http/server.rs`):**
-- Accept loop on `TcpListener::incoming()` dispatches each connection to a lightweight actor
-- `HttpStream` enum wraps `TcpStream` (Plain) or `StreamOwned<ServerConnection, TcpStream>` (TLS)
-- `HttpStream` implements `Read + Write` for transparent plain/TLS dispatch
-- Hand-rolled HTTP/1.1 parser: reads request line, headers, body from `BufReader<&mut HttpStream>`
-- `connection_handler_entry` is the actor entry function: parse request, process via router, write response, actor exits
-- `ConnectionArgs` struct transfers router address + boxed stream via raw pointer to the actor
-- Each connection actor runs with `catch_unwind` for crash isolation
-- TLS handshake is lazy (happens on first read inside the actor, not in accept loop)
-- `Connection: close` -- no HTTP keep-alive, one request per actor
-
-**Actor Runtime (`actor/mod.rs`, `actor/scheduler.rs`):**
-- `snow_actor_spawn(fn_ptr, args, args_size, priority)` -> PID
-- `snow_actor_send(target_pid, msg_ptr, msg_size)` -- deep-copies message into target mailbox
-- `snow_actor_receive(timeout_ms)` -- blocks actor (yields to scheduler), returns message pointer
-- Messages in mailbox have layout: `[u64 type_tag][u64 data_len][u8... data]`
-- `snow_actor_register(name_ptr, name_len)` / `snow_actor_whereis(name_ptr, name_len)` for named processes
-- `snow_actor_link(target_pid)` for bidirectional links, exit signal propagation
-- `snow_timer_send_after(pid, ms, msg_ptr, msg_size)` for delayed messages (used for heartbeat)
-- Coroutines are `!Send` -- thread-pinned, resumed by the same worker thread
-
-**GC-Safe Handle Pattern (`db/pg.rs`, `db/pool.rs`):**
-- External resources stored as `Box::into_raw` cast to `u64` handle
-- GC never traces integer values, so handles survive garbage collection
-- Callers pass handles (u64) through Snow code; runtime functions cast back to `*mut T`
-
-**Stream Abstraction Pattern (used twice already):**
-- `PgStream { Plain(TcpStream), Tls(StreamOwned<ClientConnection, TcpStream>) }` in `db/pg.rs`
-- `HttpStream { Plain(TcpStream), Tls(StreamOwned<ServerConnection, TcpStream>) }` in `http/server.rs`
-- Both implement `Read + Write`, enabling transparent TLS dispatch
-
----
+The architecture inserts a **distribution layer** between the public `snow_actor_*` API functions and the local scheduler, following the same pattern BEAM uses: a PID encodes its origin node, and the runtime checks locality on every operation. Local operations proceed at current speed. Remote operations are routed through a per-node TCP session actor that serializes messages onto the wire.
 
 ## Recommended Architecture
 
-### High-Level Integration Map
+### Layer Diagram
 
 ```
-FEATURE              RUNTIME (snow-rt)             COMPILER              SNOW API
-=======              =============                 ========              ========
-
-WS Accept Loop       http/ws.rs (NEW)              intrinsics.rs         Ws.serve(port, handler)
-                     WsListener, accept loop       builtins.rs           Ws.serve_tls(port, handler, cert, key)
-                     Spawns actor per connection    lower.rs
-
-WS Connection        http/ws.rs (NEW)              intrinsics.rs         Ws.send(conn, msg)
-                     WsConn handle (u64)           builtins.rs           Ws.send_binary(conn, data)
-                     Frame read/write, masking      lower.rs             Ws.close(conn)
-
-WS Mailbox Bridge    http/ws.rs (NEW)              intrinsics.rs         receive { ... }
-                     Reader thread -> send()       builtins.rs           (WS frames arrive as actor messages)
-                     Unified with actor receive     lower.rs
-
-WS Rooms             http/ws.rs (NEW)              intrinsics.rs         Ws.join(conn, room)
-                     Global room registry          builtins.rs           Ws.leave(conn, room)
-                     Broadcast via send_all         lower.rs             Ws.broadcast(room, msg)
-
-WS Heartbeat         http/ws.rs (NEW)              intrinsics.rs         (automatic, configurable)
-                     Timer.send_after loop         builtins.rs           Ws.set_ping_interval(conn, ms)
-                     Auto-Pong on Ping frames       lower.rs
+Snow-compiled program
+    |
+    v
+snow_actor_send(pid, msg_ptr, msg_size)    <-- existing extern "C" ABI
+    |
+    v
++-------------------------------------------+
+|          Distribution Router               |  NEW (in snow-rt)
+|  if is_local(pid) -> local_send()          |
+|  if is_remote(pid) -> remote_send(pid,msg) |
++-------------------------------------------+
+    |                           |
+    v                           v
++------------------+   +-------------------+
+| Local Scheduler  |   | NodeSession actor  |  NEW (in snow-rt)
+| (existing)       |   | per remote node    |
+| Mailbox.push()   |   | serializes msg     |
+| wake if Waiting  |   | writes to TCP/TLS  |
++------------------+   +-------------------+
+                                |
+                                v
+                        +-------------------+
+                        | Wire Protocol     |  NEW (in snow-rt)
+                        | Binary encoding   |
+                        | of Snow values    |
+                        +-------------------+
+                                |
+                                v
+                          TCP / TLS stream
 ```
 
 ### Component Boundaries
 
-| Component | Responsibility | Communicates With | New/Modified |
-|-----------|---------------|-------------------|--------------|
-| `http/ws.rs` | WebSocket server, frame I/O, connection lifecycle, rooms, heartbeat | `http/server.rs` (shares `HttpStream` type), actor scheduler, `string.rs`, `gc.rs` | **NEW** |
-| `http/mod.rs` | Re-export new WS functions | `http/ws.rs` | **MODIFY** (add `pub mod ws;` + re-exports) |
-| `codegen/intrinsics.rs` | LLVM declarations for `snow_ws_*` functions | LLVM IR module | **MODIFY** (add ~15 function declarations) |
-| `typeck/builtins.rs` | Type signatures for `Ws.*` module functions | typeck | **MODIFY** (add Ws module + function signatures) |
-| `mir/lower.rs` | Map `Ws.*` calls to runtime function names | codegen pipeline | **MODIFY** (add known function entries) |
+| Component | Responsibility | Location | Communicates With |
+|-----------|---------------|----------|-------------------|
+| **DistributionRouter** | Check PID locality, route to local or remote path | `snow-rt/src/dist/router.rs` | `snow_actor_*` API, NodeSession, Scheduler |
+| **NodeId** | Unique node identity (name + creation) | `snow-rt/src/dist/node.rs` | Everything in dist module |
+| **DistributedPid** | Extended PID encoding with node information | `snow-rt/src/actor/process.rs` (modified) | Router, wire format, all PID consumers |
+| **NodeSession** | Per-connection actor managing one remote node link | `snow-rt/src/dist/session.rs` | Router, Wire codec, TCP stream |
+| **NodeRegistry** | Maps node names to NodeSession actors | `snow-rt/src/dist/registry.rs` | Router, NodeSession, EPMD-equivalent |
+| **WireCodec** | Binary serialization of messages, PIDs, signals | `snow-rt/src/dist/wire.rs` | NodeSession, MessageBuffer |
+| **Handshake** | Challenge/response authentication between nodes | `snow-rt/src/dist/handshake.rs` | NodeSession, TLS stream |
+| **NodeDiscovery** | Node name resolution (EPMD-equivalent) | `snow-rt/src/dist/discovery.rs` | NodeSession startup, CLI |
 
-**Key observation: NO existing files need structural changes.** The HTTP server, actor runtime, and scheduler are untouched. WebSocket support is entirely additive -- a new module (`http/ws.rs`) plus compiler registration of new builtin functions. This follows the exact pattern used for SQLite, PostgreSQL, and connection pooling.
+## PID Representation: The Critical Design Decision
 
----
-
-## Detailed Component Design
-
-### 1. WsStream -- Stream Abstraction
-
-Reuse the proven `HttpStream` pattern for WebSocket connections.
-
-```
-enum WsStream {
-    Plain(TcpStream),
-    Tls(StreamOwned<ServerConnection, TcpStream>),
-}
-
-impl Read for WsStream { ... }
-impl Write for WsStream { ... }
-```
-
-**Rationale:** The `HttpStream` and `PgStream` patterns are proven in this codebase. `WsStream` is identical in structure. It could even reuse `HttpStream` directly, but a separate type avoids coupling WebSocket internals to HTTP server internals. The types are small enough (~10 lines each) that duplication is preferable to coupling.
-
-### 2. WebSocket Upgrade Handshake
-
-The upgrade handshake validates an HTTP/1.1 GET request and returns HTTP 101.
-
-**Data flow:**
-```
-Client                    Snow Runtime (inside WS connection actor)
-  |                              |
-  | -- GET / HTTP/1.1 ---------> |  parse_request() (reuse existing HTTP parser)
-  | Upgrade: websocket           |  validate_ws_upgrade():
-  | Connection: Upgrade          |    - check Upgrade: websocket
-  | Sec-WebSocket-Key: ...       |    - check Connection: Upgrade
-  | Sec-WebSocket-Version: 13    |    - extract Sec-WebSocket-Key
-  |                              |    - compute SHA-1(key + GUID), base64 encode
-  | <--- 101 Switching --------- |  write_101_response():
-  | Upgrade: websocket           |    - write HTTP/1.1 101 Switching Protocols
-  | Connection: Upgrade          |    - write Sec-WebSocket-Accept header
-  | Sec-WebSocket-Accept: ...    |
-  |                              |
-  | <==== WebSocket Frames ====> |  enter frame_loop()
-```
-
-**Implementation detail:** The existing `parse_request()` function in `http/server.rs` already parses HTTP/1.1 requests (method, path, headers). The WS handshake reuses this parser to read the initial upgrade request. The path from the upgrade request is available to the Snow handler as context.
-
-**Sec-WebSocket-Accept computation (RFC 6455 Section 4.2.2):**
-```
-accept = base64_encode(SHA-1(Sec-WebSocket-Key + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"))
-```
-
-**New dependency:** `sha1` crate (pure Rust, ~200 lines). `base64` is already a direct dependency of `snow-rt` (used by PostgreSQL SCRAM-SHA-256 auth).
-
-### 3. WebSocket Frame Codec (RFC 6455 Section 5)
-
-**Frame wire format:**
-```
- 0                   1                   2                   3
- 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
-+-+-+-+-+-------+-+-------------+-------------------------------+
-|F|R|R|R| opcode|M| Payload len |    Extended payload length    |
-|I|S|S|S|  (4)  |A|     (7)     |             (16/64)           |
-|N|V|V|V|       |S|             |   (if payload len == 126/127) |
-| |1|2|3|       |K|             |                               |
-+-+-+-+-+-------+-+-------------+-------------------------------+
-|                     Masking-key (if MASK set)                  |
-+-------------------------------+-------------------------------+
-|                         Payload Data                          |
-+---------------------------------------------------------------+
-```
-
-**Opcodes:**
-- `0x1` -- Text frame
-- `0x2` -- Binary frame
-- `0x8` -- Close
-- `0x9` -- Ping
-- `0xA` -- Pong
-- `0x0` -- Continuation (fragmented messages)
-
-**Key rules:**
-- Server-to-client frames are NEVER masked
-- Client-to-server frames are ALWAYS masked (32-bit key, XOR each byte)
-- Payload length: 7-bit (0-125), 16-bit (126 prefix), 64-bit (127 prefix)
-
-**Implementation:**
+### Current State
 
 ```rust
-struct WsFrame {
-    fin: bool,
-    opcode: u8,
-    payload: Vec<u8>,
-}
+// snow-rt/src/actor/process.rs
+pub struct ProcessId(pub u64);
 
-fn read_frame(stream: &mut WsStream) -> Result<WsFrame, String> {
-    // Read 2-byte header
-    // Decode payload length (7/16/64 bit)
-    // Read masking key (4 bytes, always present from client)
-    // Read payload bytes
-    // XOR-unmask payload
-    // Return frame
-}
-
-fn write_frame(stream: &mut WsStream, opcode: u8, payload: &[u8]) -> Result<(), String> {
-    // Set FIN bit (no fragmentation for server-sent frames)
-    // MASK bit = 0 (server never masks)
-    // Encode payload length (7/16/64 bit)
-    // Write header + payload
-    // Flush
-}
-```
-
-**Message reassembly:** For fragmented messages (FIN=0 + continuation frames), buffer fragments until FIN=1. Reassembled message has the opcode of the first fragment.
-
-### 4. Actor-per-Connection with Reader Thread Bridge
-
-This is the most architecturally significant design decision. WebSocket connections are long-lived and bidirectional, unlike HTTP's request-response-close model.
-
-**The Problem:** Each WebSocket connection needs to simultaneously:
-1. Read incoming frames from the client (blocking I/O on `WsStream`)
-2. Receive messages from other Snow actors (via mailbox)
-3. Send outgoing frames to the client
-
-The actor runtime uses `snow_actor_receive()` which yields the coroutine. But if the actor is yielded waiting for a mailbox message, it cannot also be blocking on `stream.read()` for incoming WebSocket frames. The actor can only block on one thing at a time.
-
-**The Solution: Reader Thread Bridge**
-
-```
-                     +------------------+
-                     |  Snow Actor      |
-                     |  (WS Handler)    |
-                     |                  |
-                     |  receive {       |      <--- unified mailbox
-                     |    :text(msg) -> |
-                     |    :binary(d) -> |
-                     |    :ping ->      |
-                     |    :close ->     |
-                     |    other_msg ->  |      <--- regular actor msgs
-                     |  }               |
-                     +--------+---------+
-                              |
-                     mailbox  |  snow_actor_send()
-                              |
-              +---------------+----------------+
-              |                                |
-    +---------+--------+           +-----------+---------+
-    |  Reader Thread   |           |  Other Snow Actors  |
-    |  (per connection)|           |  (app logic, rooms) |
-    |                  |           |                     |
-    |  loop {          |           |  send(ws_pid, msg)  |
-    |    read_frame()  |           +---------------------+
-    |    send(pid, frame)
-    |  }               |
-    +------------------+
-```
-
-**How it works:**
-
-1. The accept loop spawns a Snow actor for each connection (same as HTTP)
-2. Inside the connection actor, the runtime spawns a background OS thread (not an actor) that owns the read half of the `WsStream`
-3. The reader thread runs `read_frame()` in a blocking loop
-4. Each received frame is converted to an actor message and sent to the connection actor's mailbox via `snow_actor_send()`
-5. The connection actor uses `snow_actor_receive()` (the standard actor receive) to get both WS frames AND regular actor messages in a single unified mailbox
-6. The connection actor owns the write half of the `WsStream` for sending frames
-
-**Why a reader thread, not a reader actor:**
-- Actors use coroutines with 64 KiB stacks on the M:N scheduler
-- Blocking I/O in an actor is acceptable for short operations (HTTP request, DB query)
-- But a WebSocket reader blocks indefinitely (connection lifetime could be hours/days)
-- A permanently-blocked actor wastes a scheduler slot and can cause starvation
-- A background OS thread is the correct primitive for "block forever on I/O" -- same pattern as `snow_timer_send_after` which spawns an OS thread
-
-**Stream splitting:** The `WsStream` cannot be shared between the reader thread and the actor (both need `&mut` for read/write). Solution: after the upgrade handshake completes, extract the inner `TcpStream` and use `TcpStream::try_clone()` to create separate read/write halves. The reader thread gets one clone, the actor gets the other. For TLS streams, `StreamOwned` does not support cloning -- instead, use the file descriptor directly: `TcpStream::try_clone()` works at the OS level (duplicates the fd), and TLS can be layered on each half independently. Alternatively (and simpler): keep TLS at the outer level and clone the underlying `TcpStream` before TLS wrapping, giving each side its own `StreamOwned`.
-
-**Simpler alternative for TLS:** Since the TLS handshake completes during the HTTP upgrade phase (which happens synchronously before splitting), the simplest approach is:
-
-```rust
-// After upgrade handshake completes on the full WsStream:
-match ws_stream {
-    WsStream::Plain(tcp) => {
-        let read_tcp = tcp.try_clone()?;
-        // reader_thread gets read_tcp
-        // actor keeps tcp for writing
-    }
-    WsStream::Tls(tls_stream) => {
-        // TLS is trickier -- StreamOwned<ServerConnection, TcpStream> cannot be split
-        // Option A: Use a Mutex<WsStream> shared between reader thread and actor
-        // Option B: Downgrade to fd-level and re-wrap
-        // Option C: Single-threaded approach with non-blocking read + timeout
+impl ProcessId {
+    pub fn next() -> Self {
+        static COUNTER: AtomicU64 = AtomicU64::new(0);
+        ProcessId(COUNTER.fetch_add(1, Ordering::Relaxed))
     }
 }
 ```
 
-**Recommended approach for TLS WebSocket:** Use a `Mutex<WsStream>` shared between the reader thread and the connection actor. The reader thread locks to read a frame, then unlocks. The actor locks to write a frame, then unlocks. Since reads and writes don't overlap (reader thread blocks on read, actor only writes when it has a message to send), contention is minimal. This is simpler than splitting the TLS stream and follows a pattern the codebase already uses (e.g., `parking_lot::Mutex` on process state).
+The current PID is a plain sequential `u64` from a global atomic counter. The LLVM intrinsics pass PIDs as `i64`. The Snow type system exposes PIDs as `Pid<M>` which at the LLVM level is also `i64`. Every call to `snow_actor_send`, `snow_actor_link`, `snow_actor_self`, `snow_actor_spawn` uses `u64` PIDs. The `ProcessTable` is `FxHashMap<ProcessId, Arc<Mutex<Process>>>`.
 
-**Alternative simpler approach:** For the initial implementation, avoid TLS stream splitting entirely. The reader thread can use `set_read_timeout` on the underlying TcpStream to periodically check a shutdown flag. For plain TCP, `try_clone()` works cleanly. For TLS, the Mutex approach works. Both patterns are well-tested in the Rust ecosystem.
+### Design: Encode Node ID Into the u64
 
-### 5. WsConn Handle -- GC-Safe Connection State
+**Recommended approach:** Partition the u64 PID space to embed a node identifier.
+
+```
+Bit layout (64 bits total):
+[  16-bit node_id  |  48-bit local_id  ]
+ bits 63..48           bits 47..0
+```
+
+- **node_id = 0** means "this node" (local). All existing PIDs are local since they start from 0 and increment, so the high 16 bits are already zero for any PID < 2^48 (~281 trillion). This means **existing code does not need to change** -- current PIDs naturally encode as local.
+- **node_id > 0** means the PID belongs to a remote node. The 16-bit field supports 65,535 remote nodes.
+- **48-bit local_id** supports ~281 trillion processes per node, far more than any realistic workload.
+
+This preserves the `u64` ABI -- all LLVM intrinsic signatures remain identical. The `ProcessId(u64)` struct keeps its `#[derive(Clone, Copy, PartialEq, Eq, Hash)]`. No codegen changes required.
 
 ```rust
-struct WsConn {
-    /// Write half of the stream (Plain or TLS).
-    writer: Mutex<WsStream>,
-    /// PID of the connection actor (for sending messages from rooms/broadcast).
-    actor_pid: u64,
-    /// Shutdown flag checked by the reader thread.
-    shutdown: AtomicBool,
-    /// Path from the upgrade request (available to handler).
-    path: String,
-}
-```
+// New methods on ProcessId (backward compatible):
+impl ProcessId {
+    pub fn node_id(self) -> u16 {
+        (self.0 >> 48) as u16
+    }
 
-Exposed to Snow code as an opaque `u64` handle (same pattern as `PgConn`, `SqliteConn`, `PgPool`).
+    pub fn local_id(self) -> u64 {
+        self.0 & 0x0000_FFFF_FFFF_FFFF
+    }
 
-### 6. Room/Channel Registry
+    pub fn is_local(self) -> bool {
+        self.node_id() == 0
+    }
 
-Rooms are a global registry mapping room names to sets of connection PIDs.
+    pub fn from_remote(node_id: u16, local_id: u64) -> Self {
+        ProcessId((node_id as u64) << 48 | (local_id & 0x0000_FFFF_FFFF_FFFF))
+    }
 
-```rust
-static WS_ROOMS: OnceLock<RwLock<HashMap<String, HashSet<u64>>>> = OnceLock::new();
-
-fn ws_join(conn_handle: u64, room_name: &str) {
-    // Add conn's actor PID to the room's PID set
-}
-
-fn ws_leave(conn_handle: u64, room_name: &str) {
-    // Remove conn's actor PID from the room's PID set
-}
-
-fn ws_broadcast(room_name: &str, msg: &[u8]) {
-    // For each PID in the room, send the message via snow_actor_send()
-    // The connection actor receives it, then calls write_frame() to push to client
-}
-```
-
-**Why a global registry, not an actor:** Rooms are a lookup table, not a process. Using a `RwLock<HashMap>` is simpler and faster than routing room join/leave/broadcast through a centralized actor. The actor-per-connection model means each connection actor handles its own I/O -- the room registry just provides the fan-out list.
-
-**Cleanup on disconnect:** When a connection actor exits (client disconnects or error), its terminate callback removes the actor PID from all rooms. This uses the existing `snow_actor_set_terminate` infrastructure.
-
-### 7. Heartbeat / Ping-Pong
-
-**Auto-Pong:** When the frame reader receives a Ping frame (opcode 0x9), it immediately writes back a Pong frame (opcode 0xA) with the same payload. This happens in the reader thread BEFORE forwarding to the actor mailbox. Rationale: Pong responses must be timely (RFC 6455 Section 5.5.2). Routing through the actor mailbox adds latency.
-
-**Server-initiated Ping:** Configurable ping interval (default: 30 seconds). Uses `snow_timer_send_after` to send a `:ping_tick` message to the connection actor periodically. The actor writes a Ping frame to the client. If no Pong is received within a timeout, the connection is closed.
-
-```
-Timer thread                Connection Actor
-    |                             |
-    | -- :ping_tick (every 30s) -> |
-    |                             | write_frame(Ping)
-    |                             |
-    |        Reader Thread        |
-    |             |               |
-    |             | -- Pong -----> | (auto-forwarded as :pong message)
-    |             |               | reset pong_received flag
-    |                             |
-    | -- :ping_tick -----------> | if !pong_received: close connection
-```
-
-### 8. Message Type Tags for WS Frames in Mailbox
-
-WebSocket frames are delivered to the connection actor's mailbox using specific type tags so they can be distinguished from regular actor messages.
-
-```rust
-// Type tags for WS frame messages in actor mailbox
-const WS_TEXT_TAG: u64    = 0x5753_5445_5854_0001; // "WSTEXT" + 01
-const WS_BINARY_TAG: u64  = 0x5753_4249_4E00_0002; // "WSBIN" + 02
-const WS_CLOSE_TAG: u64   = 0x5753_434C_4F53_0003; // "WSCLOS" + 03
-const WS_PING_TAG: u64    = 0x5753_5049_4E47_0004; // "WSPING" + 04
-const WS_PONG_TAG: u64    = 0x5753_504F_4E47_0005; // "WSPONG" + 05
-const WS_PING_TICK_TAG: u64 = 0x5753_5449_434B_0006; // "WSTICK" + 06
-```
-
-The connection actor's receive loop pattern-matches on these tags to distinguish WebSocket events from application-level messages.
-
-**Snow-level API:**
-```snow
-fn handle_connection(conn) do
-  loop do
-    receive do
-      {:ws_text, message} ->
-        # Handle text message from client
-        Ws.send(conn, "echo: " <> message)
-
-      {:ws_binary, data} ->
-        # Handle binary message from client
-
-      {:ws_close, _} ->
-        # Client sent Close frame
-        break
-
-      {:broadcast, room_msg} ->
-        # Message from another actor (e.g., room broadcast)
-        Ws.send(conn, room_msg)
-    end
-  end
-end
-```
-
-### 9. Accept Loop Architecture
-
-```rust
-#[no_mangle]
-pub extern "C" fn snow_ws_serve(handler_fn: *mut u8, port: i64) {
-    crate::actor::snow_rt_init_actor(0);
-
-    let addr = format!("0.0.0.0:{}", port);
-    let listener = TcpListener::bind(&addr).expect("bind failed");
-
-    for tcp_stream in listener.incoming() {
-        let tcp_stream = match tcp_stream { Ok(s) => s, Err(_) => continue };
-        tcp_stream.set_read_timeout(Some(Duration::from_secs(30))).ok();
-
-        let ws_stream = WsStream::Plain(tcp_stream);
-
-        // Pack handler_fn + stream into ConnectionArgs
-        let args = WsConnectionArgs {
-            handler_fn: handler_fn as usize,
-            stream_ptr: Box::into_raw(Box::new(ws_stream)) as usize,
-        };
-        let args_ptr = Box::into_raw(Box::new(args)) as *const u8;
-
-        let sched = actor::global_scheduler();
-        sched.spawn(
-            ws_connection_handler_entry as *const u8,
-            args_ptr,
-            std::mem::size_of::<WsConnectionArgs>() as u64,
-            1, // Normal priority
-        );
+    /// Next local PID (backward compatible -- high 16 bits stay 0)
+    pub fn next() -> Self {
+        static COUNTER: AtomicU64 = AtomicU64::new(0);
+        ProcessId(COUNTER.fetch_add(1, Ordering::Relaxed))
     }
 }
 ```
 
-This is structurally identical to `snow_http_serve` in `http/server.rs`. The TLS variant (`snow_ws_serve_tls`) follows the `snow_http_serve_tls` pattern exactly: build `ServerConfig`, `StreamOwned::new()` for lazy handshake, wrap in `WsStream::Tls`.
+### Impact Analysis
 
-### 10. Connection Actor Entry Function
+| Existing code path | Impact | Change needed |
+|--------------------|--------|---------------|
+| `ProcessId::next()` | NONE | Counter stays < 2^48, high bits are 0 |
+| `snow_actor_spawn` returns `u64` | NONE | Local spawns return node_id=0 PIDs |
+| `snow_actor_send(target_pid, ...)` | MINOR | Add locality check at entry point |
+| `snow_actor_self()` returns `u64` | NONE | Returns local PID as before |
+| `snow_actor_link(target_pid)` | MINOR | Add locality check, remote link protocol |
+| `snow_actor_receive(timeout)` | NONE | Mailbox is local, remote messages arrive via NodeSession push |
+| `ProcessTable` HashMap lookup | NONE | Remote PIDs are not in local table; router handles before lookup |
+| `snow_actor_register(name)` | NONE | Names are local to the node |
+| `snow_actor_whereis(name)` | POTENTIAL | Could extend to `{name, node}` tuples later |
+| Exit signal propagation (`link.rs`) | MINOR | Must handle remote linked PIDs |
+| Supervisor (`supervisor.rs`) | NONE | Supervisors are node-local (same as BEAM) |
+| WebSocket server (`ws/server.rs`) | NONE | WebSocket connections are node-local |
+| Reserved type tags (`u64::MAX-N`) | CAUTION | Must reserve tags for dist signals |
+| `Display for ProcessId` (`<0.N>`) | MINOR | Change to `<node_id.N>` format |
+| LLVM intrinsics (`intrinsics.rs`) | NONE | PID is still i64, no signature changes |
+
+### Alternative Considered: 128-bit PID
+
+A 128-bit PID would provide separate 64-bit fields for node and local process. However, this would require changing every LLVM intrinsic signature, every codegen call site, the Snow type system representation of `Pid<M>`, and every internal API. The churn would be enormous for negligible practical benefit (65K nodes and 281T processes is sufficient). **Rejected.**
+
+### Alternative Considered: Indirection Table
+
+Map opaque local u64 handles to `(node_id, remote_pid)` pairs via a side table. This avoids changing PID representation but adds a hash lookup on every send for every PID type (local and remote). **Rejected** -- locality check on the high 16 bits is a single shift+compare, much cheaper than a hash lookup.
+
+## Distribution Router: Where Remote Send Integrates
+
+The key integration point is `snow_actor_send`. Currently:
 
 ```rust
-extern "C" fn ws_connection_handler_entry(args: *const u8) {
-    let args = unsafe { Box::from_raw(args as *mut WsConnectionArgs) };
-    let handler_fn = args.handler_fn as *mut u8;
-    let mut stream = unsafe { *Box::from_raw(args.stream_ptr as *mut WsStream) };
+pub extern "C" fn snow_actor_send(target_pid: u64, msg_ptr: *const u8, msg_size: u64) {
+    let sched = global_scheduler();
+    let pid = ProcessId(target_pid);
+    // ... deep copy, push to mailbox, wake if Waiting
+}
+```
 
-    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        // Phase 1: HTTP upgrade handshake
-        let upgrade_req = parse_request(&mut stream);  // reuse HTTP parser
-        let (path, headers) = match upgrade_req {
-            Ok(parsed) => validate_ws_upgrade(parsed),
-            Err(e) => { eprintln!("[ws] parse error: {}", e); return; }
-        };
-        write_101_response(&mut stream, &headers);
+The modified version adds a locality check:
 
-        // Phase 2: Create WsConn handle
-        let my_pid = snow_actor_self();
-        let conn = WsConn {
-            writer: Mutex::new(stream),
-            actor_pid: my_pid,
-            shutdown: AtomicBool::new(false),
-            path,
-        };
-        let conn_handle = Box::into_raw(Box::new(conn)) as u64;
+```rust
+pub extern "C" fn snow_actor_send(target_pid: u64, msg_ptr: *const u8, msg_size: u64) {
+    let pid = ProcessId(target_pid);
 
-        // Phase 3: Spawn reader thread
-        // (reader thread reads frames, sends to actor mailbox)
-        spawn_reader_thread(conn_handle);
-
-        // Phase 4: Call Snow handler with conn handle
-        // Handler signature: fn(conn: u64) -> void
-        call_ws_handler(handler_fn, conn_handle);
-
-        // Phase 5: Cleanup on handler return
-        shutdown_connection(conn_handle);
-    }));
-
-    if let Err(panic_info) = result {
-        eprintln!("[ws] handler panicked: {:?}", panic_info);
+    if pid.is_local() {
+        // Fast path: existing local send (unchanged)
+        local_send(pid, msg_ptr, msg_size);
+    } else {
+        // Distribution path: route through NodeSession
+        dist::router::remote_send(pid, msg_ptr, msg_size);
     }
 }
 ```
 
----
+The `is_local()` check is a single bitwise operation (`pid >> 48 == 0`), adding negligible overhead to the local path. The critical property: **existing single-node programs see zero performance impact**.
 
-## Data Flow Diagrams
+### Remote Send Flow
+
+```
+1. snow_actor_send(remote_pid, msg_ptr, msg_size)
+2. pid.is_local() == false
+3. dist::router::remote_send(pid, msg_ptr, msg_size)
+4. Router looks up NodeSession for pid.node_id()
+5. NodeSession actor serializes: [SEND | target_local_id | type_tag | msg_bytes]
+6. NodeSession writes framed message to TCP/TLS stream
+7. Remote node's NodeSession reads frame
+8. Remote node looks up local ProcessId(msg.target_local_id)
+9. Remote node does local_send(target, deserialized_msg)
+```
+
+### Remote Link Flow
+
+Links between nodes require a protocol exchange (not just mailbox push):
+
+```
+1. snow_actor_link(remote_pid)
+2. Router sends LINK signal to remote NodeSession
+3. Remote node creates bidirectional link entry:
+   - Remote process.links adds DistributedPid(our_node, our_pid)
+   - Local process.links adds remote_pid
+4. When either process exits, exit signal traverses the wire
+```
+
+This follows the BEAM model exactly: link.rs `propagate_exit` already iterates `HashSet<ProcessId>`. For remote PIDs in that set, the exit signal is serialized and sent via the NodeSession rather than looking up a local process.
+
+### Remote Spawn Flow
+
+```
+1. snow_dist_spawn(node_name, fn_name, args) -> remote_pid
+2. Router resolves node_name to NodeSession
+3. NodeSession sends SPAWN_REQUEST [fn_name | serialized_args]
+4. Remote node looks up fn_name in its function registry
+5. Remote node does local spawn, returns PID
+6. NodeSession sends SPAWN_REPLY [node_id | local_pid]
+7. Caller receives DistributedPid(remote_node_id, remote_local_pid)
+```
+
+Note: Remote spawn requires the remote node to have a registry of spawnable functions (by name). This is a new concept for Snow -- currently functions are identified by pointer, not name. The function registry maps Snow module+function names to entry point pointers.
+
+## Node Connection Management
+
+### Architecture: One NodeSession Actor Per Peer
+
+Following the established **reader thread bridge pattern** from WebSocket (`ws/server.rs`), each remote node connection uses:
+
+1. **NodeSession actor**: Runs on the M:N scheduler as a regular Snow actor with `trap_exit = true`
+2. **Reader thread**: Dedicated OS thread reads framed messages from the TCP/TLS stream, pushes to NodeSession mailbox via reserved type tags
+3. **Writer access**: NodeSession actor writes outgoing messages directly to the stream (same `Arc<Mutex<Stream>>` pattern as `WsConnection`)
+
+```
++------------------------------------------+
+| NodeSession Actor (on M:N scheduler)      |
+|                                            |
+|  Mailbox receives:                         |
+|    - DIST_SEND_TAG: forward to remote      |  <-- from Router
+|    - DIST_RECV_TAG: incoming from remote   |  <-- from Reader thread
+|    - DIST_LINK_TAG: link protocol          |
+|    - DIST_MONITOR_TAG: monitor protocol    |
+|    - DIST_SPAWN_TAG: remote spawn request  |
+|    - EXIT_SIGNAL_TAG: exit signals         |
++------------------------------------------+
+        |                         ^
+        v (writes)                | (reads)
++------------------------------------------+
+|     Arc<Mutex<TLS/TCP Stream>>            |
++------------------------------------------+
+        |                         ^
+        v                         |
++------------------------------------------+
+|     Reader Thread (OS thread)             |
+|     read_frame() -> push to mailbox       |
++------------------------------------------+
+```
+
+### Reserved Type Tags for Distribution
+
+Following the existing pattern (WebSocket uses `u64::MAX-1` through `u64::MAX-4`, exit signals use `u64::MAX`):
+
+```rust
+pub const EXIT_SIGNAL_TAG:     u64 = u64::MAX;      // existing
+pub const WS_TEXT_TAG:         u64 = u64::MAX - 1;   // existing
+pub const WS_BINARY_TAG:      u64 = u64::MAX - 2;   // existing
+pub const WS_DISCONNECT_TAG:  u64 = u64::MAX - 3;   // existing
+pub const WS_CONNECT_TAG:     u64 = u64::MAX - 4;   // existing
+
+// Distribution tags:
+pub const DIST_SEND_TAG:       u64 = u64::MAX - 10;  // outgoing send request
+pub const DIST_RECV_TAG:       u64 = u64::MAX - 11;  // incoming message from remote
+pub const DIST_LINK_TAG:       u64 = u64::MAX - 12;  // link protocol signal
+pub const DIST_UNLINK_TAG:     u64 = u64::MAX - 13;  // unlink protocol signal
+pub const DIST_MONITOR_TAG:    u64 = u64::MAX - 14;  // monitor signal
+pub const DIST_DEMONITOR_TAG:  u64 = u64::MAX - 15;  // demonitor signal
+pub const DIST_SPAWN_REQ_TAG:  u64 = u64::MAX - 16;  // spawn request
+pub const DIST_SPAWN_REPLY_TAG:u64 = u64::MAX - 17;  // spawn reply
+pub const DIST_EXIT_TAG:       u64 = u64::MAX - 18;  // remote exit signal
+pub const DIST_NODE_DOWN_TAG:  u64 = u64::MAX - 19;  // node disconnect notification
+```
+
+### NodeRegistry: Dual-Map Pattern
+
+Following the existing `RoomRegistry` pattern from `ws/rooms.rs`:
+
+```rust
+pub struct NodeRegistry {
+    /// node_name -> NodeSession info
+    by_name: RwLock<FxHashMap<String, NodeSessionInfo>>,
+    /// node_id (u16) -> NodeSession info
+    by_id: RwLock<FxHashMap<u16, NodeSessionInfo>>,
+}
+
+pub struct NodeSessionInfo {
+    pub node_id: u16,
+    pub node_name: String,
+    pub session_pid: ProcessId,
+    pub creation: u32,
+}
+```
+
+The `by_id` map is the hot path (every remote send does `pid.node_id()` lookup), so it must be fast. The `by_name` map is used for initial connection setup and `Node.connect(name)`.
 
 ### Connection Lifecycle
 
 ```
-1. TCP Accept
-   TcpListener.accept() -> TcpStream
-
-2. Actor Spawn
-   scheduler.spawn(ws_connection_handler_entry, args)
-
-3. HTTP Upgrade (inside actor)
-   parse_request() -> validate_ws_upgrade() -> write_101_response()
-
-4. Reader Thread Spawn (inside actor)
-   std::thread::spawn(reader_loop)
-   Reader blocks on stream.read(), sends frames to actor mailbox
-
-5. Handler Invocation (inside actor)
-   call_ws_handler(handler_fn, conn_handle)
-   Handler runs receive loop, processes WS frames + actor messages
-
-6. Disconnect
-   Client sends Close frame -> reader delivers :ws_close to mailbox
-   OR handler returns -> actor sets shutdown flag
-   OR reader error -> reader sends :ws_close to mailbox
-   -> cleanup: leave all rooms, close stream, free WsConn
+1. Node A calls Node.connect("node_b@host")
+2. Discovery resolves "node_b@host" to IP:port
+3. TCP connection established
+4. TLS handshake (using existing rustls CryptoProvider)
+5. Distribution handshake:
+   a. send_name: node_a sends its name, capabilities, creation
+   b. recv_status: node_b accepts or rejects
+   c. challenge: node_b sends random challenge
+   d. challenge_reply: node_a proves knowledge of shared cookie
+   e. challenge_ack: node_b proves knowledge of shared cookie
+6. NodeSession actors spawned on both sides
+7. node_id assigned and registered in NodeRegistry
+8. Nodes exchange alive process lists (optional, for pg-style groups)
 ```
 
-### Message Flow: Client sends text, server echoes
+### Node Failure Detection
+
+Each NodeSession uses heartbeat (similar to WebSocket heartbeat in `ws/server.rs`):
+
+- NodeSession sends periodic TICK messages (every 15s)
+- Reader thread detects TCP read timeout (no data for 60s)
+- On detected failure: push `DIST_NODE_DOWN_TAG` to all processes monitoring that node
+- All remote PIDs from the failed node become "dead" -- sends to them silently fail
+- Links to remote processes on the failed node trigger exit signals locally
+
+## Binary Wire Format
+
+### Design Philosophy
+
+Snow does NOT need to be compatible with Erlang's External Term Format (ETF). The wire format should be:
+
+1. **Simple**: Snow has fewer types than Erlang
+2. **Efficient**: Minimal overhead for common cases (integers, strings, tuples)
+3. **Self-describing**: Type tags on the wire for safe deserialization
+4. **Versionable**: A version byte for future evolution
+
+### Framing Layer
+
+Each message on the wire is framed as:
 
 ```
-Client           Reader Thread        Actor Mailbox        Connection Actor
-  |                   |                    |                      |
-  | -- Text Frame --> |                    |                      |
-  |                   | read_frame()       |                      |
-  |                   | unmask payload     |                      |
-  |                   | snow_actor_send()  |                      |
-  |                   | ----------------> [WS_TEXT_TAG, payload]   |
-  |                   |                    |                      |
-  |                   |                    | snow_actor_receive()  |
-  |                   |                    | <-------------------- |
-  |                   |                    |  match WS_TEXT_TAG    |
-  |                   |                    |                      |
-  | <-- Text Frame ---|--------------------|----- write_frame() --|
-  |                   |                    |                      |
+[4-byte length (big-endian)] [message bytes]
 ```
 
-### Message Flow: Room broadcast
+This matches the Erlang distribution protocol framing and is a well-understood pattern. The 4-byte length supports messages up to 4 GiB.
+
+### Message Envelope
 
 ```
-Actor A (sender)     Room Registry        Actor B (ws conn)     Client B
-  |                      |                      |                  |
-  | Ws.broadcast("chat", msg)                   |                  |
-  | ----- ws_broadcast() |                      |                  |
-  |                      | lookup "chat" PIDs   |                  |
-  |                      | for each PID:        |                  |
-  |                      | snow_actor_send() -->|                  |
-  |                      |                      | receive match    |
-  |                      |                      | write_frame() -->|
-  |                      |                      |                  |
+[1-byte op_type] [payload...]
+
+Op types:
+  0x01 = SEND          [8-byte target_local_pid] [8-byte type_tag] [N-byte serialized_msg]
+  0x02 = LINK          [8-byte from_pid] [8-byte to_pid]
+  0x03 = UNLINK        [8-byte from_pid] [8-byte to_pid] [8-byte unlink_id]
+  0x04 = EXIT          [8-byte from_pid] [8-byte to_pid] [exit_reason_bytes]
+  0x05 = MONITOR       [8-byte from_pid] [8-byte to_pid] [8-byte ref]
+  0x06 = DEMONITOR     [8-byte from_pid] [8-byte to_pid] [8-byte ref]
+  0x07 = MONITOR_EXIT  [8-byte from_pid] [8-byte to_pid] [8-byte ref] [reason_bytes]
+  0x08 = SPAWN_REQ     [8-byte req_id] [name_len:u16] [name_bytes] [args_bytes]
+  0x09 = SPAWN_REPLY   [8-byte req_id] [8-byte pid_or_error]
+  0x0A = REG_SEND      [name_len:u16] [name_bytes] [8-byte type_tag] [msg_bytes]
+  0x0B = TICK           (empty -- heartbeat keepalive)
+  0x0C = NODE_INFO     [capabilities...] (exchanged during handshake)
 ```
 
----
+### Value Serialization Format
+
+For the message body within SEND envelopes, Snow values are serialized as:
+
+```
+Type tags (1 byte):
+  0x01 = Int(i64)       -> [8 bytes LE]
+  0x02 = Float(f64)     -> [8 bytes LE]
+  0x03 = Bool           -> [1 byte: 0 or 1]
+  0x04 = String         -> [4-byte length] [UTF-8 bytes]
+  0x05 = Atom           -> [2-byte length] [UTF-8 bytes]
+  0x06 = Tuple          -> [1-byte arity] [element...]
+  0x07 = List           -> [4-byte length] [element...]
+  0x08 = Map            -> [4-byte length] [key, value...]
+  0x09 = Pid            -> [2-byte node_id] [8-byte local_id]
+  0x0A = Ref            -> [2-byte node_id] [8-byte ref_id]
+  0x0B = Binary         -> [4-byte length] [bytes]
+  0x0C = Nil            -> (no payload)
+  0x0D = ADT variant    -> [4-byte tag_hash] [1-byte arity] [fields...]
+  0x0E = Opaque handle  -> NOT SERIALIZABLE (error)
+```
+
+### Integration With Existing Type System
+
+The `MessageBuffer` in `heap.rs` already carries `data: Vec<u8>` and `type_tag: u64`. For local sends, messages are copied as raw bytes between actor heaps. For remote sends, the same `Vec<u8>` is wrapped in the wire SEND envelope.
+
+**Key insight**: Snow messages are already serialized as byte arrays with type tags in the existing MessageBuffer. The wire format wraps these byte arrays with routing information. The deserialization on the remote side reconstructs a MessageBuffer and pushes it into the local mailbox -- the receiving actor sees no difference from a local message.
+
+```rust
+// Remote send: serialize for wire
+fn remote_send(pid: ProcessId, msg_ptr: *const u8, msg_size: u64) {
+    let data = unsafe { std::slice::from_raw_parts(msg_ptr, msg_size as usize) };
+    let type_tag = derive_type_tag(data);
+
+    let node_id = pid.node_id();
+    let session = node_registry().get_by_id(node_id);
+
+    // Build wire frame: [op=SEND][target_local_pid][type_tag][msg_bytes]
+    let mut frame = Vec::with_capacity(1 + 8 + 8 + data.len());
+    frame.push(0x01); // SEND
+    frame.extend_from_slice(&pid.local_id().to_le_bytes());
+    frame.extend_from_slice(&type_tag.to_le_bytes());
+    frame.extend_from_slice(data);
+
+    // Push to NodeSession's outgoing queue
+    session.enqueue_outgoing(frame);
+}
+
+// Remote receive: deserialize from wire
+fn handle_incoming_send(frame: &[u8]) {
+    let target_local_id = u64::from_le_bytes(frame[1..9].try_into().unwrap());
+    let type_tag = u64::from_le_bytes(frame[9..17].try_into().unwrap());
+    let msg_data = frame[17..].to_vec();
+
+    let buffer = MessageBuffer::new(msg_data, type_tag);
+    let msg = Message { buffer };
+
+    // Standard local delivery
+    let pid = ProcessId(target_local_id); // node_id=0 since it's local now
+    if let Some(proc_arc) = global_scheduler().get_process(pid) {
+        let mut proc = proc_arc.lock();
+        proc.mailbox.push(msg);
+        if matches!(proc.state, ProcessState::Waiting) {
+            proc.state = ProcessState::Ready;
+            drop(proc);
+            global_scheduler().wake_process(pid);
+        }
+    }
+}
+```
+
+## Handshake and Authentication
+
+### Cookie-Based Auth (BEAM-compatible model)
+
+```
+Node A (initiator)                    Node B (acceptor)
+    |                                     |
+    |--- TCP connect --->                 |
+    |--- send_name(name_a, flags) ------->|
+    |<-- recv_status("ok") --------------|
+    |<-- send_challenge(name_b, chall_b)-|
+    |--- send_challenge_reply(          ->|
+    |      chall_a, md5(cookie+chall_b))  |
+    |<-- send_challenge_ack(            --|
+    |      md5(cookie+chall_a))           |
+    |                                     |
+    |===== CONNECTED (TLS encrypted) =====|
+```
+
+Snow already has rustls 0.23 with CryptoProvider. The TLS handshake happens BEFORE the distribution handshake, so all cookie exchange is encrypted. This is better than BEAM's default (which sends challenge/response in cleartext unless TLS is explicitly configured).
+
+### Node Creation Counter
+
+Following the BEAM model, each node incarnation gets a unique 32-bit `creation` value. This allows distinguishing PIDs from a crashed-and-restarted node versus the current incarnation. PIDs with a stale creation are treated as dead.
+
+```rust
+pub struct NodeIdentity {
+    pub name: String,           // e.g., "snow@192.168.1.10"
+    pub creation: u32,          // incremented on each node restart
+    pub node_id: u16,           // assigned during connection setup
+    pub cookie: String,         // shared secret for authentication
+    pub listen_port: u16,       // port for incoming connections
+}
+```
+
+## Node Discovery (EPMD Equivalent)
+
+### Design: Embedded Discovery (No Separate Daemon)
+
+BEAM uses a separate EPMD daemon (port 4369) for node name resolution. For Snow, **embed discovery into the runtime** to avoid requiring a separate process:
+
+1. **Static configuration**: Pass node addresses via config file or environment
+2. **DNS-based**: Resolve node names via DNS SRV records
+3. **mDNS**: Optional zero-config discovery for development (like Elixir's libcluster)
+
+For the first implementation, use **static configuration** (simplest, most predictable):
+
+```elixir
+# Snow config
+Node.start("snow@192.168.1.10", cookie: "secret")
+Node.connect("snow@192.168.1.20:4370")
+```
+
+The runtime listens on a configurable port (default 4370) for incoming distribution connections. Outgoing connections specify host:port directly.
+
+## New Modules and Files
+
+### New: `snow-rt/src/dist/` Module
+
+```
+snow-rt/src/dist/
+    mod.rs              # Module root, public API
+    node.rs             # NodeIdentity, NodeId, creation management
+    router.rs           # Distribution router (locality check + remote dispatch)
+    session.rs          # NodeSession actor (per-peer connection management)
+    registry.rs         # NodeRegistry (node_name -> session mapping)
+    wire.rs             # Binary wire format codec (serialize/deserialize)
+    handshake.rs        # Challenge/response authentication protocol
+    discovery.rs        # Node name resolution
+    tick.rs             # Heartbeat / failure detection
+```
+
+### Modified: Existing Files
+
+| File | Change | Scope |
+|------|--------|-------|
+| `snow-rt/src/actor/process.rs` | Add `node_id()`, `local_id()`, `is_local()`, `from_remote()` to ProcessId | Small, backward-compatible |
+| `snow-rt/src/actor/mod.rs` | Add locality check in `snow_actor_send`, `snow_actor_link` | ~10 lines each |
+| `snow-rt/src/actor/link.rs` | Handle remote PIDs in `propagate_exit` | ~20 lines |
+| `snow-rt/src/actor/registry.rs` | No changes needed (names are node-local) | None |
+| `snow-rt/src/lib.rs` | Add `pub mod dist;` and re-export dist API functions | Small |
+| `snow-codegen/src/codegen/intrinsics.rs` | Declare new dist intrinsics (`snow_node_connect`, `snow_dist_spawn`, etc.) | ~30 lines |
+| `snow-rt/src/actor/scheduler.rs` | No changes (scheduler is node-local) | None |
+
+### New LLVM Intrinsics
+
+```rust
+// New extern "C" functions for Snow codegen:
+snow_node_start(name: ptr, name_len: u64, port: i64, cookie: ptr, cookie_len: u64)
+snow_node_connect(name: ptr, name_len: u64) -> i64  // returns node_id or 0
+snow_node_disconnect(name: ptr, name_len: u64)
+snow_node_self() -> ptr  // returns node name as SnowString
+snow_node_list() -> ptr  // returns list of connected node names
+snow_dist_spawn(node: ptr, node_len: u64, fn_name: ptr, fn_len: u64,
+                args: ptr, args_size: u64) -> u64  // returns remote PID
+snow_dist_send_named(node: ptr, node_len: u64, name: ptr, name_len: u64,
+                     msg: ptr, msg_size: u64)  // send to {name, node}
+snow_node_monitor(node: ptr, node_len: u64) -> u64  // monitor node connectivity
+```
+
+Note: `snow_actor_send` does NOT need a new intrinsic -- it already takes a `u64` PID. Remote PIDs just have a non-zero node_id in the high 16 bits. Location transparency is achieved through the existing send interface.
+
+## Data Flow: Complete Remote Message Journey
+
+```
+Actor A on Node 1                        Actor B on Node 2
+    |                                        |
+1.  send(pid_b, message)                     |
+2.  snow_actor_send(0x0002_0000_0000_0005,   |
+                    msg_ptr, msg_size)        |
+3.  pid.is_local() == false (node_id=2)      |
+4.  router.remote_send(pid, msg)             |
+5.  NodeRegistry.get_by_id(2) -> session     |
+6.  Build wire frame:                        |
+    [len:4][op:SEND][local_pid:8]            |
+    [type_tag:8][msg_data:N]                 |
+7.  session.write(frame) ----TCP/TLS-------->|
+                                         8.  Reader thread: read_frame()
+                                         9.  Parse: op=SEND, target=5, tag, data
+                                         10. MessageBuffer::new(data, tag)
+                                         11. local_send(ProcessId(5), msg)
+                                         12. proc.mailbox.push(msg)
+                                         13. wake if Waiting
+                                             |
+                                         14. Actor B receives message
+                                             (identical to local delivery)
+```
 
 ## Patterns to Follow
 
-### Pattern 1: GC-Safe Handle (proven in pg.rs, sqlite.rs, pool.rs)
+### Pattern 1: Reader Thread Bridge (from WebSocket)
 
-**What:** External resources stored as `Box::into_raw() as u64` handles
-**When:** Any Rust struct that must persist across Snow function calls
-**Example:** `WsConn` handle passed to `Ws.send(conn, msg)`
+**What:** Dedicated OS thread per connection for I/O, delivers messages to actor mailbox via reserved type tags.
 
-### Pattern 2: Accept Loop + Actor Spawn (proven in http/server.rs)
+**When:** Always for distribution connections. TCP reads are blocking; the M:N scheduler coroutines must not block on I/O.
 
-**What:** TCP listener accept loop spawns a new actor per connection
-**When:** Server-side network services
-**Why reuse:** Same `sched.spawn()` call, same `ConnectionArgs` pattern, same `catch_unwind` wrapping
+**Why reuse this pattern:** It is already proven in the WebSocket implementation (`ws/server.rs`). The NodeSession actor follows the exact same structure as the WebSocket connection actor: reader thread reads frames, pushes to mailbox, actor processes messages.
 
-### Pattern 3: Stream Enum for Plain/TLS (proven in pg.rs, http/server.rs)
+### Pattern 2: Opaque Handle (from WsConnection)
 
-**What:** Enum dispatching between `TcpStream` and `StreamOwned` for transparent TLS
-**When:** Any network connection that may be plaintext or encrypted
-**Why reuse:** Identical pattern, avoids trait objects, compile-time dispatch
+**What:** Rust-heap allocated struct (not GC heap) referenced by raw pointer cast to u64.
 
-### Pattern 4: Reader Thread for Long-Lived I/O (proven in timer.rs)
+**When:** For NodeSession connection handles exposed to Snow code.
 
-**What:** Background OS thread performing blocking I/O, delivers results via `snow_actor_send()`
-**When:** I/O that blocks indefinitely and must not consume a scheduler coroutine slot
-**Example:** `snow_timer_send_after` spawns an OS thread that sleeps then sends; WS reader thread blocks on `read_frame()` then sends
+**Why:** Same reason as WsConnection -- the connection state (TCP stream, TLS state) cannot live on the GC heap. The u64 handle is GC-safe.
 
-### Pattern 5: Global Registry with RwLock (proven in actor/registry.rs)
+### Pattern 3: RoomRegistry Dual-Map (from ws/rooms.rs)
 
-**What:** `OnceLock<RwLock<HashMap<String, ...>>>` for named lookups
-**When:** Service discovery / group membership
-**Example:** Process registry maps names to PIDs; Room registry maps room names to PID sets
+**What:** Two synchronized maps for forward and reverse lookup with consistent lock ordering.
 
----
+**When:** NodeRegistry needs both name-to-session and id-to-session lookups.
+
+### Pattern 4: Reserved Type Tags (from WebSocket + exit signals)
+
+**What:** Sentinel values in the `u64::MAX - N` range for special mailbox messages.
+
+**When:** All distribution protocol messages delivered to NodeSession actors.
 
 ## Anti-Patterns to Avoid
 
-### Anti-Pattern 1: HTTP Upgrade Through Existing HTTP Server
+### Anti-Pattern 1: Global Lock on Every Send
 
-**What:** Routing WebSocket upgrades through the existing `snow_http_serve` router
-**Why bad:** The HTTP server uses `Connection: close` -- each actor exits after one response. WebSocket connections are long-lived. The HTTP pipeline (router -> middleware -> handler -> response) returns a `SnowHttpResponse`, not a persistent connection. Retrofitting long-lived connections into the request/response model would require invasive changes to `server.rs`.
-**Instead:** Separate `Ws.serve(port, handler)` with its own accept loop. Keeps HTTP and WS architecturally independent. If users need both on the same port, a future "protocol detection" layer can be added later.
+**What:** Taking a global lock to check if a PID is remote.
 
-### Anti-Pattern 2: WebSocket Reader as Actor (instead of OS thread)
+**Why bad:** Would serialize all sends, destroying M:N scheduler throughput.
 
-**What:** Using `snow_actor_spawn` for the frame reader
-**Why bad:** The reader blocks on `stream.read()` indefinitely. Blocking I/O in an actor coroutine is tolerable for short operations (HTTP request ~30s timeout, DB query ~seconds), but a WebSocket connection can last hours or days. A permanently-blocked actor wastes a scheduler slot, prevents the worker thread from running other actors, and can cause thread starvation with many connections. The scheduler has a fixed number of worker threads (default = CPU cores).
-**Instead:** Background OS thread (cheap, blocks on kernel I/O without consuming scheduler resources).
+**Instead:** The `pid >> 48 == 0` locality check is a single bitwise operation with zero contention. Only remote sends need the NodeRegistry lock, and that is a read lock (RwLock) that can be concurrent.
 
-### Anti-Pattern 3: Centralizing Room Broadcast Through a Room Actor
+### Anti-Pattern 2: Serializing Local Messages
 
-**What:** A single "room manager" actor that processes all join/leave/broadcast messages
-**Why bad:** Creates a bottleneck. A chat server with 10K connections broadcasting 100 msg/s means the room actor must process 1M send operations per second. The actor is single-threaded (one coroutine). This limits broadcast throughput to one actor's capacity.
-**Instead:** Lock-free room registry (`RwLock<HashMap>`) with direct `snow_actor_send()` fan-out. Broadcast iterates the PID set and sends directly -- no routing through a central actor. The `RwLock` is held only briefly for lookups, not for the actual sends.
+**What:** Running local messages through the wire serializer for "uniformity."
 
-### Anti-Pattern 4: Sharing WsStream Without Synchronization
+**Why bad:** Adds serialization overhead to 100% of sends when only cross-node sends need it.
 
-**What:** Passing `WsStream` raw pointer to both reader thread and actor
-**Why bad:** Data race on `Read + Write` operations. `TcpStream` is not thread-safe for concurrent read+write (on the same fd) without synchronization. For TLS streams, `StreamOwned` is definitely not safe for concurrent access.
-**Instead:** For plain TCP, use `TcpStream::try_clone()` to get separate read/write fds. For TLS, use `Mutex<WsStream>` with the reader thread and actor taking turns.
+**Instead:** Local sends remain as raw byte copy between actor heaps (the existing MessageBuffer path). Only remote sends serialize to the wire format.
 
----
+### Anti-Pattern 3: Synchronous Remote Operations
 
-## New vs Modified Components (Explicit)
+**What:** Blocking the calling actor while waiting for remote send acknowledgment.
 
-### NEW Files
+**Why bad:** Defeats the purpose of async actors. Network latency would block the caller.
 
-| File | Lines (est.) | Purpose |
-|------|-------------|---------|
-| `crates/snow-rt/src/http/ws.rs` | ~600-800 | WebSocket server: accept loop, frame codec, connection actor, reader thread, rooms, heartbeat |
+**Instead:** Remote sends are fire-and-forget (like BEAM). The message is enqueued in the NodeSession's outgoing buffer and sent asynchronously. If the node is down, the send silently fails (or triggers a nodedown monitor if the caller is monitoring).
 
-### MODIFIED Files
+### Anti-Pattern 4: Separate Distribution Thread Pool
 
-| File | Change | Size of Change |
-|------|--------|---------------|
-| `crates/snow-rt/src/http/mod.rs` | Add `pub mod ws;` and re-export WS functions | ~10 lines |
-| `crates/snow-rt/Cargo.toml` | Add `sha1 = "0.10"` dependency | 1 line |
-| `crates/snow-codegen/src/codegen/intrinsics.rs` | Declare ~12-15 `snow_ws_*` LLVM functions | ~60 lines |
-| `crates/snow-typeck/src/builtins.rs` | Add `Ws` module type signatures | ~40 lines |
-| `crates/snow-codegen/src/mir/lower.rs` | Map `Ws.*` calls to `snow_ws_*` runtime names | ~30 lines |
+**What:** Creating a separate thread pool for distribution I/O.
 
-### UNCHANGED Files
+**Why bad:** Adds complexity and coordination overhead. The existing M:N scheduler already handles actor scheduling well.
 
-All existing files remain untouched structurally:
-- `http/server.rs` -- HTTP server continues working independently
-- `http/router.rs` -- HTTP routing is HTTP-only
-- `actor/mod.rs` -- Actor runtime used as-is
-- `actor/scheduler.rs` -- Scheduler used as-is
-- `actor/mailbox.rs` -- Mailbox used as-is (WS frames are just actor messages)
-- `db/*` -- Database modules unrelated
+**Instead:** NodeSession actors run on the existing M:N scheduler. Only the reader threads (one per peer connection) are separate OS threads, following the proven WebSocket pattern.
 
----
+### Anti-Pattern 5: Embedding Full Node Name in Every PID
 
-## New Runtime Functions (extern "C" ABI)
+**What:** Storing the node name string inside the PID.
 
-| Function | Signature | Purpose |
-|----------|-----------|---------|
-| `snow_ws_serve` | `(handler_fn: ptr, port: i64) -> void` | Start WS server on port, call handler per connection |
-| `snow_ws_serve_tls` | `(handler_fn: ptr, port: i64, cert: ptr, key: ptr) -> void` | Start WSS server with TLS |
-| `snow_ws_send` | `(conn: u64, msg: ptr) -> void` | Send text frame to client |
-| `snow_ws_send_binary` | `(conn: u64, data: ptr, len: u64) -> void` | Send binary frame to client |
-| `snow_ws_close` | `(conn: u64) -> void` | Send Close frame and shut down connection |
-| `snow_ws_join` | `(conn: u64, room: ptr) -> void` | Join a named room |
-| `snow_ws_leave` | `(conn: u64, room: ptr) -> void` | Leave a named room |
-| `snow_ws_broadcast` | `(room: ptr, msg: ptr) -> void` | Send text to all connections in room |
-| `snow_ws_broadcast_binary` | `(room: ptr, data: ptr, len: u64) -> void` | Send binary to all connections in room |
-| `snow_ws_set_ping_interval` | `(conn: u64, ms: i64) -> void` | Configure ping interval (0 = disable) |
-| `snow_ws_path` | `(conn: u64) -> ptr` | Get the upgrade request path |
-| `snow_ws_conn_pid` | `(conn: u64) -> u64` | Get the actor PID for this connection |
+**Why bad:** PIDs are copied constantly. String allocation and comparison would destroy performance.
 
----
-
-## Suggested Build Order
-
-Build order follows dependency chains and enables incremental testing.
-
-### Phase 1: Frame Codec + Upgrade Handshake
-- `WsStream` enum (copy `HttpStream` pattern)
-- `read_frame()` / `write_frame()` -- frame parsing and serialization
-- `validate_ws_upgrade()` / `write_101_response()` -- HTTP upgrade
-- SHA-1 + base64 for `Sec-WebSocket-Accept`
-- **Test:** Unit tests for frame codec (round-trip encode/decode), handshake validation
-- **Dependencies:** `sha1` crate, existing `base64` crate
-- **Rationale:** Foundation. Everything else depends on frame I/O working correctly.
-
-### Phase 2: Accept Loop + Connection Actor + Reader Thread
-- `snow_ws_serve()` accept loop (copy `snow_http_serve` pattern)
-- `ws_connection_handler_entry()` with upgrade + reader thread spawn
-- Reader thread: blocking `read_frame()` loop -> `snow_actor_send()` to actor mailbox
-- `WsConn` handle creation and lifecycle
-- `snow_ws_send()` / `snow_ws_close()`
-- **Test:** E2E test with a simple echo WebSocket server
-- **Dependencies:** Phase 1 (frame codec), actor runtime (spawn, send, receive)
-- **Rationale:** Establishes the core connection model. Rooms and heartbeat are additive.
-
-### Phase 3: TLS Support (wss://)
-- `snow_ws_serve_tls()` -- reuse `build_server_config` from `http/server.rs`
-- `WsStream::Tls` variant with `Mutex<WsStream>` for reader/writer coordination
-- **Test:** E2E test with self-signed cert
-- **Dependencies:** Phase 2, existing rustls infrastructure
-- **Rationale:** TLS is important for production but can ship after basic ws:// works.
-
-### Phase 4: Rooms + Broadcast
-- Global room registry (`WS_ROOMS`)
-- `snow_ws_join()` / `snow_ws_leave()` / `snow_ws_broadcast()`
-- Auto-cleanup on connection actor exit (terminate callback)
-- **Test:** Multi-connection broadcast test
-- **Dependencies:** Phase 2 (working connections)
-- **Rationale:** Rooms are the primary differentiator. They depend on basic connections working.
-
-### Phase 5: Heartbeat + Compiler Integration
-- Auto-Pong in reader thread
-- Server-initiated Ping via `snow_timer_send_after`
-- Pong timeout detection
-- `snow_ws_set_ping_interval()`
-- Register all functions in `intrinsics.rs`, `builtins.rs`, `lower.rs`
-- **Test:** Connection timeout test, full E2E with Snow source
-- **Dependencies:** Phase 2 (connections), Phase 4 (rooms complete)
-- **Rationale:** Heartbeat is important for production resilience. Compiler integration unlocks Snow-language-level usage.
-
----
+**Instead:** 16-bit node_id in the PID, with a side table mapping node_id to node name. The hot path only touches the u16.
 
 ## Scalability Considerations
 
-| Concern | At 100 connections | At 10K connections | At 100K connections |
-|---------|-------------------|-------------------|--------------------|
-| Memory per connection | ~64 KiB actor stack + ~4 KiB WsConn + OS thread stack (~8 KiB) = ~76 KiB | ~760 MB total | ~7.6 GB -- possible with tuning (smaller stacks) |
-| Reader threads | 100 OS threads | 10K OS threads -- **bottleneck** | Need epoll/io_uring reader pool |
-| Room broadcast (100-member room) | 100 `snow_actor_send()` calls -- instant | Same -- scales linearly | Same -- O(N) per broadcast, N = room size |
-| Scheduler pressure | 100 actors, minimal -- well within scheduler capacity | 10K actors, moderate -- scheduler handles this (BEAM runs millions) | Scheduler fine, reader threads are the bottleneck |
+| Concern | 1 Node | 10 Nodes | 100 Nodes |
+|---------|--------|----------|-----------|
+| PID encoding | No overhead | 16-bit check per send | Same |
+| Connections | 0 | 9 TCP+TLS per node (full mesh) | 99 per node (consider partial mesh) |
+| Reader threads | 0 | 9 OS threads | 99 OS threads (may need pooling) |
+| NodeRegistry lookup | N/A | RwLock, ~10 entries | RwLock, ~100 entries |
+| Wire format overhead | N/A | ~17 bytes per message | Same |
+| Heartbeat traffic | None | 9 ticks/15s = 0.6 msg/s | 99 ticks/15s = 6.6 msg/s |
 
-**10K+ connections scaling note:** The reader-thread-per-connection model works well up to ~5K-10K connections. Beyond that, an epoll/io_uring-based reader pool (small fixed number of reader threads multiplexing many connections) would be needed. This is out of scope for the initial implementation. The actor-per-connection model itself scales well -- it is the OS thread per connection for the reader that limits scale.
+At 100+ nodes, the full-mesh approach (every node connects to every other) creates O(N^2) connections. For very large clusters, a partial-mesh or routing-node topology would be needed. This is a future concern -- BEAM systems typically run 5-50 node clusters.
 
-**Mitigation for initial release:** Document the connection limit. For most WebSocket use cases (chat, real-time dashboards, multiplayer games), 5K-10K concurrent connections is sufficient. If higher scale is needed later, the reader thread can be replaced with an epoll-based reader pool without changing the actor-per-connection model or the Snow API.
+## Suggested Build Order
 
----
+Based on dependency analysis of the existing codebase:
+
+1. **PID encoding** (`process.rs` changes) -- Foundation, everything depends on it
+2. **Wire format codec** (`dist/wire.rs`) -- Independent, can be tested in isolation
+3. **Distribution router** (`dist/router.rs` + `mod.rs` changes) -- Bridges PID to session
+4. **Node identity and registry** (`dist/node.rs`, `dist/registry.rs`) -- NodeSession needs it
+5. **Handshake protocol** (`dist/handshake.rs`) -- Needed before NodeSession can work
+6. **NodeSession actor** (`dist/session.rs`) -- The main workhorse, depends on 1-5
+7. **Node discovery** (`dist/discovery.rs`) -- Last mile: finding peers
+8. **Remote spawn** -- Requires function name registry (new concept)
+9. **Remote monitoring** -- Extension of existing `link.rs`
+10. **LLVM intrinsics** (`intrinsics.rs`) -- Wire up Snow-level API
 
 ## Sources
 
-- [RFC 6455 -- The WebSocket Protocol](https://datatracker.ietf.org/doc/html/rfc6455) -- HIGH confidence (authoritative specification)
-- [WebSocket Protocol Wikipedia](https://en.wikipedia.org/wiki/WebSocket) -- MEDIUM confidence (overview, verified against RFC)
-- [Tungstenite -- Synchronous WebSocket for Rust](https://github.com/snapview/tungstenite-rs) -- MEDIUM confidence (reference implementation for frame codec patterns)
-- Snow codebase direct inspection (all files listed above) -- HIGH confidence
-
-### Snow Codebase (direct inspection)
-- `crates/snow-rt/src/http/server.rs` -- HTTP server accept loop, `HttpStream`, actor-per-connection pattern
-- `crates/snow-rt/src/http/router.rs` -- HTTP router (NOT used by WS, but shows the module pattern)
-- `crates/snow-rt/src/http/mod.rs` -- HTTP module re-exports
-- `crates/snow-rt/src/actor/mod.rs` -- Actor spawn, send, receive, timer_send_after, register/whereis
-- `crates/snow-rt/src/actor/scheduler.rs` -- M:N scheduler, worker loop, `!Send` coroutines
-- `crates/snow-rt/src/actor/process.rs` -- Process Control Block, mailbox, links
-- `crates/snow-rt/src/actor/mailbox.rs` -- FIFO mailbox with `parking_lot::Mutex`
-- `crates/snow-rt/src/actor/registry.rs` -- Named process registry (`OnceLock<ProcessRegistry>`)
-- `crates/snow-rt/src/actor/service.rs` -- Service call/reply pattern
-- `crates/snow-rt/src/actor/stack.rs` -- Corosensei coroutines, thread-local state
-- `crates/snow-rt/src/db/pg.rs` -- `PgStream` enum, GC-safe u64 handles, TLS upgrade
-- `crates/snow-rt/src/db/pool.rs` -- Connection pool with Mutex+Condvar
-- `crates/snow-rt/src/gc.rs` -- Global arena + per-actor heap allocation
-- `crates/snow-rt/Cargo.toml` -- Current dependencies (base64 already present, sha1 needed)
-- `crates/snow-codegen/src/codegen/intrinsics.rs` -- LLVM function declarations pattern
-
----
-*Architecture research for: Snow Language WebSocket Support*
-*Researched: 2026-02-12*
+- [Erlang Distribution Protocol -- erts v16.2](https://www.erlang.org/doc/apps/erts/erl_dist_protocol.html) -- Official protocol specification (HIGH confidence)
+- [Erlang External Term Format -- erts v16.2](https://www.erlang.org/doc/apps/erts/erl_ext_dist.html) -- PID encoding format (HIGH confidence)
+- [Distributed Erlang -- Erlang System Documentation v28.3.1](https://www.erlang.org/doc/system/distributed.html) -- Distribution architecture overview (HIGH confidence)
+- [Erlang Distribution over TLS](https://www.erlang.org/doc/apps/ssl/ssl_distribution.html) -- TLS integration for distribution (HIGH confidence)
+- [EEF Security WG -- Distribution Protocol and EPMD](https://security.erlef.org/secure_coding_and_deployment_hardening/distribution.html) -- Security considerations (HIGH confidence)
+- [Proto.Actor -- Location Transparency](https://proto.actor/docs/location-transparency/) -- PID-based location transparency patterns (MEDIUM confidence)
+- [Ractor -- Rust actor framework](https://github.com/slawlor/ractor) -- Rust distributed actor implementation reference (MEDIUM confidence)
+- [ractor_cluster](https://docs.rs/ractor_cluster/latest/ractor_cluster/) -- Erlang-style cluster protocol in Rust (MEDIUM confidence)
+- Direct analysis of Snow codebase: `snow-rt/src/actor/`, `snow-rt/src/ws/`, `snow-codegen/src/codegen/intrinsics.rs` (HIGH confidence)
