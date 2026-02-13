@@ -15,7 +15,7 @@
 - [x] **v2.0 Database & Serialization** - Phases 49-54 (shipped 2026-02-12)
 - [x] **v3.0 Production Backend** - Phases 55-58 (shipped 2026-02-12)
 - [x] **v4.0 WebSocket Support** - Phases 59-62 (shipped 2026-02-12)
-- [ ] **v5.0 Distributed Actors** - Phases 63-69 (in progress)
+- [x] **v5.0 Distributed Actors** - Phases 63-69 (shipped 2026-02-13)
 
 ## Phases
 
@@ -133,7 +133,7 @@ See milestones/v4.0-ROADMAP.md for full phase details.
 - [x] **Phase 66: Remote Links, Monitors & Failure Handling** - Cross-node fault tolerance with exit signal and partition propagation (completed 2026-02-13)
 - [x] **Phase 67: Remote Spawn & LLVM Integration** - Spawn actors on remote nodes with full Snow-level API (completed 2026-02-13)
 - [x] **Phase 68: Global Registry** - Cluster-wide process name registration and lookup (completed 2026-02-13)
-- [ ] **Phase 69: Cross-Node Integration** - Distributed WebSocket rooms and remote supervision trees
+- [x] **Phase 69: Cross-Node Integration** - Distributed WebSocket rooms and remote supervision trees (completed 2026-02-13)
 
 ## Phase Details
 
@@ -237,8 +237,8 @@ Plans:
   2. A supervision tree can monitor and restart child actors running on remote nodes, treating remote crashes the same as local ones
 **Plans:** 2 plans
 Plans:
-- [ ] 69-01-PLAN.md -- Distributed WebSocket room broadcast (DIST_ROOM_BROADCAST wire message, cluster-wide forwarding)
-- [ ] 69-02-PLAN.md -- Remote supervision (ChildSpec target_node, remote spawn/terminate/restart)
+- [x] 69-01-PLAN.md -- Distributed WebSocket room broadcast (DIST_ROOM_BROADCAST wire message, cluster-wide forwarding)
+- [x] 69-02-PLAN.md -- Remote supervision (ChildSpec target_node, remote spawn/terminate/restart)
 
 ## Progress
 
@@ -265,6 +265,6 @@ Plans:
 | 66 | v5.0 | 3/3 | Complete | 2026-02-13 |
 | 67 | v5.0 | 3/3 | Complete | 2026-02-13 |
 | 68 | v5.0 | 3/3 | Complete | 2026-02-13 |
-| 69 | v5.0 | 0/2 | Not started | - |
+| 69 | v5.0 | 2/2 | Complete | 2026-02-13 |
 
-**Total: 68 phases shipped across 14 milestones. 188 plans completed. v5.0 in progress (6/7 phases complete).**
+**Total: 69 phases shipped across 15 milestones. 190 plans completed. v5.0 complete.**
