@@ -10,16 +10,16 @@ See: .planning/PROJECT.md (updated 2026-02-13)
 ## Current Position
 
 Phase: 70 (1 of 4 in v6.0) — Scaffold + Design System
-Plan: —
-Status: Ready to plan
-Last activity: 2026-02-13 — Roadmap created for v6.0
+Plan: 01 of 02 complete
+Status: Executing phase 70
+Last activity: 2026-02-13 — Completed 70-01 (VitePress scaffold)
 
-Progress: [░░░░░░░░░░] 0%
+Progress: [█████░░░░░] 50% (1/2 plans in phase 70)
 
 ## Performance Metrics
 
 **All-time Totals:**
-- Plans completed: 190
+- Plans completed: 191
 - Phases completed: 69
 - Milestones shipped: 15 (v1.0-v5.0)
 - Lines of Rust: ~93,500
@@ -33,6 +33,9 @@ Progress: [░░░░░░░░░░] 0%
 
 - Quick-1: File extension .mpl chosen for Mesh source files (not .mesh to avoid .mesh/ directory confusion)
 - Quick-1: Delete and regenerate snapshots rather than manual edit (simpler, guarantees correctness)
+- 70-01: .vitepress/ placed inside docs/ (VitePress source root) for correct theme resolution
+- 70-01: config.mts used instead of config.ts for ESM compatibility with VitePress
+- 70-01: shadcn-vue neutral base color chosen for zero-chroma monochrome OKLCH palette
 
 ### Research Notes
 
@@ -60,6 +63,6 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-13
-Stopped at: Roadmap created for v6.0 Website & Documentation
+Stopped at: Completed 70-01-PLAN.md (VitePress scaffold)
 Resume file: None
-Next action: Plan Phase 70 (Scaffold + Design System)
+Next action: Execute 70-02-PLAN.md (NavBar + ThemeToggle)
