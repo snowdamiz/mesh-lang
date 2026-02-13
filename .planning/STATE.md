@@ -21,7 +21,7 @@ Progress: [██████████] 100% (4/4 phases in v6.0)
 **All-time Totals:**
 - Plans completed: 203
 - Phases completed: 73
-- Milestones shipped: 15 (v1.0-v5.0)
+- Milestones shipped: 16 (v1.0-v6.0)
 - Lines of Rust: ~93,500
 - Timeline: 9 days (2026-02-05 -> 2026-02-13)
 

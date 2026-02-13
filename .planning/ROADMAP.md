@@ -16,7 +16,7 @@
 - [x] **v3.0 Production Backend** - Phases 55-58 (shipped 2026-02-12)
 - [x] **v4.0 WebSocket Support** - Phases 59-62 (shipped 2026-02-12)
 - [x] **v5.0 Distributed Actors** - Phases 63-69 (shipped 2026-02-13)
-- [ ] **v6.0 Website & Documentation** - Phases 70-73 (in progress)
+- [x] **v6.0 Website & Documentation** - Phases 70-73 (shipped 2026-02-13)
 
 ## Phases
 
@@ -132,14 +132,14 @@ See milestones/v5.0-ROADMAP.md for full phase details.
 
 </details>
 
-### v6.0 Website & Documentation (In Progress)
+### v6.0 Website & Documentation (SHIPPED 2026-02-13)
 
 **Milestone Goal:** Create a polished documentation website and landing page that showcases Mesh's capabilities and documents all language features for developers.
 
 - [x] **Phase 70: Scaffold + Design System** - VitePress custom theme with Tailwind v4, shadcn-vue, dark/light mode, and NavBar (completed 2026-02-13)
 - [x] **Phase 71: Syntax Highlighting + Landing Page** - Mesh code rendering via TextMate grammar and the site's first impression (completed 2026-02-13)
 - [x] **Phase 72: Docs Infrastructure + Core Content** - Sidebar navigation, docs layout, and core language documentation (completed 2026-02-13)
-- [ ] **Phase 73: Extended Content + Polish** - Remaining docs, search, SEO, and site-wide features
+- [x] **Phase 73: Extended Content + Polish** - Remaining docs, search, SEO, and site-wide features (completed 2026-02-13)
 
 #### Phase 70: Scaffold + Design System
 **Goal**: Developers can visit the site and see a styled shell with dark/light mode toggle, responsive layout, and consistent monochrome design -- the foundation every subsequent page builds on
@@ -199,9 +199,9 @@ Plans:
   4. A version badge somewhere on the site displays the current Mesh version
 **Plans:** 3 plans
 Plans:
-- [ ] 73-01-PLAN.md -- Web and Database documentation (DOCS-05, DOCS-06)
-- [ ] 73-02-PLAN.md -- Distributed Actors and Tooling documentation (DOCS-07, DOCS-08)
-- [ ] 73-03-PLAN.md -- Site features: search, copy button, SEO, 404, edit link, last-updated, version badge (FEAT-01 through FEAT-07)
+- [x] 73-01-PLAN.md -- Web and Database documentation (DOCS-05, DOCS-06)
+- [x] 73-02-PLAN.md -- Distributed Actors and Tooling documentation (DOCS-07, DOCS-08)
+- [x] 73-03-PLAN.md -- Site features: search, copy button, SEO, 404, edit link, last-updated, version badge (FEAT-01 through FEAT-07)
 
 ## Progress
 
@@ -227,6 +227,6 @@ Phases execute in numeric order: 70 -> 71 -> 72 -> 73
 | 70 | v6.0 | 2/2 | Complete | 2026-02-13 |
 | 71 | v6.0 | 2/2 | Complete | 2026-02-13 |
 | 72 | v6.0 | 4/4 | Complete | 2026-02-13 |
-| 73 | v6.0 | 0/3 | Not started | - |
+| 73 | v6.0 | 3/3 | Complete | 2026-02-13 |
 
-**Total: 72 phases shipped across 15 milestones. 198 plans completed. v6.0 in progress (3/4 phases complete).**
+**Total: 73 phases shipped across 16 milestones. 201 plans completed. v6.0 complete.**
