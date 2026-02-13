@@ -128,7 +128,7 @@ See milestones/v4.0-ROADMAP.md for full phase details.
 **Milestone Goal:** BEAM-style distributed actor system -- Snow programs on different machines form a cluster with location-transparent PIDs, remote spawn, cross-node monitoring, and a binary wire format over TLS.
 
 - [x] **Phase 63: PID Encoding & Wire Format** - Location-transparent PID representation and binary serialization for all Snow types (completed 2026-02-13)
-- [ ] **Phase 64: Node Connection & Authentication** - TLS-encrypted inter-node TCP with cookie-based auth and discovery
+- [x] **Phase 64: Node Connection & Authentication** - TLS-encrypted inter-node TCP with cookie-based auth and discovery (completed 2026-02-13)
 - [ ] **Phase 65: Remote Send & Distribution Router** - Transparent message routing across nodes with mesh formation
 - [ ] **Phase 66: Remote Links, Monitors & Failure Handling** - Cross-node fault tolerance with exit signal and partition propagation
 - [ ] **Phase 67: Remote Spawn & LLVM Integration** - Spawn actors on remote nodes with full Snow-level API
@@ -165,9 +165,9 @@ Plans:
   5. A dead node connection is detected via heartbeat within the configured timeout interval
 **Plans:** 3 plans
 Plans:
-- [ ] 64-01-PLAN.md -- NodeState, TLS config, ephemeral cert, TCP listener, Node.start
-- [ ] 64-02-PLAN.md -- HMAC-SHA256 handshake protocol, Node.connect, NodeSession
-- [ ] 64-03-PLAN.md -- Heartbeat, reader thread, connection lifecycle, tests
+- [x] 64-01-PLAN.md -- NodeState, TLS config, ephemeral cert, TCP listener, Node.start
+- [x] 64-02-PLAN.md -- HMAC-SHA256 handshake protocol, Node.connect, NodeSession
+- [x] 64-03-PLAN.md -- Heartbeat, reader thread, connection lifecycle, tests
 
 ### Phase 65: Remote Send & Distribution Router
 **Goal**: `send(pid, msg)` works transparently for remote PIDs and connected nodes form a mesh
@@ -241,11 +241,11 @@ Plans:
 | 55-58 | v3.0 | 8/8 | Complete | 2026-02-12 |
 | 59-62 | v4.0 | 8/8 | Complete | 2026-02-12 |
 | 63 | v5.0 | 3/3 | Complete | 2026-02-13 |
-| 64 | v5.0 | 0/TBD | Not started | - |
+| 64 | v5.0 | 3/3 | Complete | 2026-02-13 |
 | 65 | v5.0 | 0/TBD | Not started | - |
 | 66 | v5.0 | 0/TBD | Not started | - |
 | 67 | v5.0 | 0/TBD | Not started | - |
 | 68 | v5.0 | 0/TBD | Not started | - |
 | 69 | v5.0 | 0/TBD | Not started | - |
 
-**Total: 63 phases shipped across 14 milestones. 173 plans completed. v5.0 in progress (1/7 phases complete).**
+**Total: 64 phases shipped across 14 milestones. 176 plans completed. v5.0 in progress (2/7 phases complete).**
