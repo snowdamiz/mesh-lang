@@ -522,6 +522,41 @@ impl<'ctx> CodeGen<'ctx> {
             .build_call(rt_init_actor, &[zero.into()], "")
             .map_err(|e| e.to_string())?;
 
+        // Register all top-level functions for remote spawn (Phase 67).
+        // Must happen before the entry function runs because the entry function
+        // may call Node.spawn which needs the registry populated.
+        let register_fn = intrinsics::get_intrinsic(&self.module, "snow_register_function");
+        for mir_fn in &self.mir_functions {
+            // Skip closure/lambda functions (they capture environment pointers,
+            // cannot be spawned remotely) and compiler-internal functions.
+            if mir_fn.is_closure_fn || mir_fn.name.starts_with("__") {
+                continue;
+            }
+
+            // Create a global string constant for the function name.
+            let name_global = self.builder.build_global_string_ptr(
+                &mir_fn.name,
+                &format!("fn_reg_{}", mir_fn.name),
+            ).map_err(|e| e.to_string())?;
+
+            let name_len = self.context.i64_type().const_int(
+                mir_fn.name.len() as u64, false,
+            );
+
+            // Get the LLVM function value for this MIR function.
+            if let Some(fn_val) = self.functions.get(&mir_fn.name) {
+                self.builder.build_call(
+                    register_fn,
+                    &[
+                        name_global.as_pointer_value().into(),
+                        name_len.into(),
+                        fn_val.as_global_value().as_pointer_value().into(),
+                    ],
+                    "",
+                ).map_err(|e| e.to_string())?;
+            }
+        }
+
         // Call the Snow entry function on the main thread.
         // snow_main runs synchronously, spawning service/job actors along the way.
         // The runtime handles service calls from the main thread context by using
