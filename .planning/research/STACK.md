@@ -1,306 +1,272 @@
-# Technology Stack: Snow Distributed Actors
+# Technology Stack: Mesh Website & Documentation
 
-**Project:** Snow compiler -- BEAM-style distributed actor system (multi-node clustering, location-transparent PIDs, remote spawn/send/monitor, binary wire format, node registry)
-**Researched:** 2026-02-12
-**Confidence:** HIGH (codebase analysis of snow-rt actor/scheduler/registry/TLS, Erlang distribution protocol specification, verified crate availability via Cargo.lock)
+**Project:** Mesh programming language website -- landing page + full documentation with custom syntax highlighting
+**Researched:** 2026-02-13
+**Confidence:** HIGH (all versions verified against npm registry, official docs checked, integration paths confirmed)
+
+## Design Decision: VitePress, Not Custom Vite + Vue
+
+Use **VitePress** with a fully custom theme rather than building a docs site from scratch with Vite + Vue + vue-router + shadcn-vue. Rationale:
+
+1. **Markdown-first architecture is free.** VitePress gives you file-based routing for `.md` files, frontmatter parsing, sidebar generation from file structure, and SPA navigation -- all out of the box. Building this from scratch with `unplugin-vue-markdown` + `vue-router` + custom sidebar is 2-3 weeks of plumbing work that VitePress eliminates.
+
+2. **Custom themes replace everything.** VitePress supports fully custom themes that completely replace the default UI. The theme entry file is just a Vue component -- same DX as a custom Vite + Vue app. You get VitePress's markdown pipeline, build system, and static generation while owning 100% of the visual design.
+
+3. **Shiki is built in.** VitePress uses Shiki for syntax highlighting with native support for loading custom TextMate grammars. The existing `mesh.tmLanguage.json` in `editors/vscode-mesh/syntaxes/` works directly. No integration plumbing needed.
+
+4. **shadcn-vue still works.** VitePress custom themes are standard Vue 3 SFCs. shadcn-vue components can be registered and used in the layout, sidebar, and any interactive elements.
+
+5. **The Vue and Vite docs themselves use VitePress.** This is the battle-tested path for programming language/framework documentation.
+
+What you lose: nothing meaningful. VitePress custom themes have the same power as a standalone Vue app. The only tradeoff is learning VitePress's config conventions, which takes an hour.
+
+## Design Decision: Tailwind CSS v4 with CSS-First Config
+
+Use **Tailwind CSS v4** with the `@tailwindcss/vite` plugin and CSS-first configuration (no `tailwind.config.js`). Rationale:
+
+1. **Monochrome design maps directly to CSS custom properties.** Tailwind v4's `@theme` directive lets you define a minimal grayscale palette in CSS. No JavaScript config file needed.
+2. **Dark mode via `dark:` variant.** Tailwind v4's dark mode support works with the `dark` class on `<html>`, which VueUse's `useDark` toggles.
+3. **First-party Vite plugin** (`@tailwindcss/vite`) provides zero-config integration. No PostCSS config, no content globs.
+
+## Design Decision: Reuse Existing TextMate Grammar for Mesh
+
+The project already has a complete TextMate grammar at `editors/vscode-mesh/syntaxes/mesh.tmLanguage.json` covering keywords, types, operators, strings with interpolation, comments, function definitions, and number literals. Shiki (built into VitePress) loads custom TextMate grammars natively via the `langs` config. No new grammar needs to be written.
 
 ## Recommended Stack
 
-### Design Decision: Custom Wire Format, Not ETF
-
-Snow should implement a **Snow-native binary term format (STF)** inspired by ETF but tailored to Snow's type system, rather than attempting ETF compatibility. Rationale:
-
-1. **Snow is not Erlang.** Snow has HM-inferred static types, not Erlang's dynamic terms. ETF encodes atoms, references, funs, ports -- Snow has none of these. Implementing full ETF is wasted effort.
-2. **ETF carries security baggage.** ETF allows deserializing anonymous functions, which is a known RCE vector (per [EEF Security WG](https://erlef.github.io/security-wg/secure_coding_and_deployment_hardening/serialisation.html)). A custom format avoids this by design.
-3. **Type-tag dispatch already exists.** Snow messages already use `[u64 type_tag, u64 data_len, u8... data]` layout in actor heaps. STF extends this with node/PID metadata, not replaces it.
-4. **Simpler, faster, smaller.** No need for varint atom encoding, external fun refs, or BERT compatibility. Big-endian fixed-width fields match what the runtime already does.
-
-The wire format should use **big-endian** byte order (matching Erlang's convention and network byte order) with fixed-width integer fields. This aligns with the PostgreSQL wire protocol already implemented in `pg.rs`.
-
-### Design Decision: Built-in Node Registry, Not EPMD
-
-Snow should implement a **built-in node registry** (the node process itself handles registration/discovery) rather than requiring a separate EPMD daemon. Rationale:
-
-1. **Single-binary philosophy.** Snow compiles to standalone native binaries. Requiring a separate daemon process contradicts this.
-2. **Simpler deployment.** One binary, one process. No `epmd` to manage, no port 4369 to secure.
-3. **EPMD is simple.** The protocol is ~5 message types with trivial wire format. Embedding it adds minimal complexity.
-4. **Erlang itself supports this.** OTP 21+ supports `-epmd_module` for custom discovery. Snow can bake this in from the start.
-
-Each Snow node listens on a configurable port for both distribution connections and registry queries. Nodes discover each other via explicit `Node.connect("name@host:port")` -- no multicast/mDNS needed for v1.
-
-### NEW Dependencies
+### Core Framework
 
 | Technology | Version | Purpose | Why |
 |------------|---------|---------|-----|
-| *None* | -- | -- | All new functionality is built with existing deps + std library. See rationale below. |
+| VitePress | ^1.6.4 | Static site generator, markdown pipeline, build system | Markdown-first docs framework built on Vite + Vue 3. Custom theme support means full design control. Used by Vue, Vite, and most major Vue ecosystem projects for their docs. |
+| Vue 3 | ^3.5.28 | UI framework (via VitePress) | Bundled with VitePress. Composition API + `<script setup>` for all custom components. |
+| Vite | ^7.3 | Build tool (via VitePress) | Bundled with VitePress 1.6.x. Instant HMR, fast builds. |
 
-**Zero new crate dependencies.** This is deliberate and follows the project's established pattern:
-
-- The PostgreSQL wire protocol was built with `std::net::TcpStream` + existing crypto crates (sha2, hmac, md5, base64, rand).
-- The HTTP server was built with `std::net::TcpListener` + hand-rolled parser.
-- The WebSocket server was built with `sha1` (same RustCrypto family) + hand-rolled frame codec.
-- Distribution follows the same pattern: `std::net::TcpStream` + `rustls` for TLS + hand-rolled wire protocol.
-
-The only crate that was considered and rejected is `dashmap` (see Alternatives below).
-
-### Existing Dependencies Reused (NO CHANGES to Cargo.toml)
-
-| Technology | Version (Cargo.lock) | New Use | Already Used For |
-|------------|---------------------|---------|-----------------|
-| rustls | 0.23.36 | TLS for inter-node connections (`DistStream::Tls` variant) | PostgreSQL TLS (`PgStream`), HTTPS (`HttpStream`), WSS (`WsStream`) |
-| webpki-roots | 0.26 | Root CA certs for verifying peer node certificates | PostgreSQL TLS, HTTPS |
-| rustls-pki-types | 1 | PEM cert/key loading for node TLS identity | HTTPS `Http.serve_tls()`, WSS `Ws.serve_tls()` |
-| ring | 0.17.14 | (transitive via rustls) Available for MD5 challenge digest if needed | Transitive dep of rustls |
-| sha2 | 0.10.9 | HMAC-SHA256 for cookie-based challenge/response authentication | PostgreSQL SCRAM-SHA-256 |
-| hmac | 0.12.1 | HMAC construction for challenge/response | PostgreSQL SCRAM-SHA-256 |
-| rand | 0.9.2 | Generate 32-bit random challenges for handshake | PostgreSQL SCRAM nonce |
-| parking_lot | 0.12.5 | `RwLock` for node connection table, `Mutex` for per-connection state | Actor process table, process registry, room registry |
-| rustc-hash | workspace (2) | `FxHashMap` for node table, remote PID routing table | Process registry, scheduler, room registry |
-| crossbeam-channel | 0.5.15 | Channel for distribution controller to enqueue remote messages | Actor scheduler high-priority channel |
-| crossbeam-deque | 0.8.6 | (unchanged) Work-stealing scheduler | Actor scheduler |
-| corosensei | 0.3.2 | (unchanged) Coroutines for actor execution | M:N actor scheduler |
-| base64 | 0.22 | (potentially) Encoding cookie in config files | PostgreSQL SCRAM |
-| serde_json | 1 | (potentially) Node config file parsing | Existing JSON support |
-
-### Core Framework: Hand-Rolled Distribution Protocol
+### Styling
 
 | Technology | Version | Purpose | Why |
 |------------|---------|---------|-----|
-| Hand-rolled STF (Snow Term Format) | N/A | Binary serialization of messages for inter-node transport | Consistent with project approach: hand-rolled PostgreSQL wire protocol, HTTP/1.1 parser, WebSocket frame codec. Snow's message format is simpler than ETF (no atoms, funs, ports). ~300-400 lines of encode/decode. |
-| Hand-rolled distribution handshake | N/A | Node authentication via HMAC-SHA256 challenge/response with shared cookie | Mirrors Erlang's approach but uses HMAC-SHA256 instead of MD5 (stronger, already available via `sha2` + `hmac`). ~200 lines. |
-| Hand-rolled node registry | N/A | Built-in EPMD-equivalent: node name registration, port lookup | Simpler than EPMD (no separate daemon). Each node can answer "what port is node X on this host?" ~150 lines. |
+| Tailwind CSS | ^4.1.18 | Utility-first CSS framework | Monochrome design is trivially expressed with a minimal `@theme` palette. Dark mode via `dark:` variant. No config file needed in v4. |
+| @tailwindcss/vite | ^4.1.18 | Vite plugin for Tailwind v4 | First-party integration. Zero-config content detection, Lightning CSS in production. |
+| @tailwindcss/typography | ^0.5.19 | Prose styling for rendered markdown | `prose` classes handle markdown content typography (headings, lists, code blocks, paragraphs). `dark:prose-invert` for dark mode. |
 
-### Infrastructure
+### UI Components
 
 | Technology | Version | Purpose | Why |
 |------------|---------|---------|-----|
-| `std::net::TcpListener` | std | Distribution listener for incoming node connections | Same pattern as HTTP server and WebSocket server. Blocking accept is appropriate for Snow's blocking I/O model. |
-| `std::net::TcpStream` | std | Distribution connections to peer nodes | Same as PostgreSQL client, HTTP server connections. |
-| `std::thread::spawn` | std | Background thread per node connection for receiving messages | Same pattern as WebSocket reader threads. One OS thread per peer node connection (typically 2-20 nodes, not thousands). |
-| `std::sync::atomic::AtomicBool` | std | Shutdown flags for connection threads | Same pattern as WebSocket reader shutdown. |
-| `std::sync::atomic::AtomicU64` | std | Node creation counter (incarnation number) | Same pattern as `ProcessId::next()`. |
+| shadcn-vue | ^2.4.3 | Component primitives (dropdown menu for theme toggle, sheet for mobile sidebar, scroll-area) | Copy-paste components that own their code. Uses Reka UI under the hood. Tailwind-native. Only install the 3-5 components actually needed -- not a monolithic library. |
+| reka-ui | ^2.8.0 | Accessible headless primitives (transitive via shadcn-vue) | Provides WAI-ARIA compliant primitives. Installed as shadcn-vue dependency. |
+| lucide-vue-next | ^0.563.0 | Icon library | 1,600+ SVG icons. Tree-shakeable. Used by shadcn-vue for default icons. Sun/Moon icons for theme toggle, Menu icon for mobile nav, Search icon, ChevronRight for sidebar. |
 
-## Integration Points with Existing Runtime
+### Syntax Highlighting
 
-### ProcessId Extension
+| Technology | Version | Purpose | Why |
+|------------|---------|---------|-----|
+| shiki | (bundled with VitePress) | Code syntax highlighting | Built into VitePress. TextMate grammar engine (same as VS Code). Load `mesh.tmLanguage.json` for Mesh language support. Generates highlighted HTML at build time -- zero runtime JS. |
 
-Current `ProcessId` is a simple `u64` counter:
-```
-pub struct ProcessId(pub u64);
-// Generated via: static COUNTER: AtomicU64
-```
+### Utilities
 
-For distribution, PIDs must encode node identity. Recommended approach:
+| Technology | Version | Purpose | Why |
+|------------|---------|---------|-----|
+| @vueuse/core | ^14.2.1 | Vue composition utilities | `useDark()` + `useToggle()` for dark/light mode with localStorage persistence and system preference detection. `useMediaQuery()` for responsive behavior. `useScrollLock()` for mobile sidebar. |
 
-```
-// Bit layout for distributed ProcessId (still u64):
-// [16 bits: node_id][48 bits: local_process_number]
-//
-// node_id 0 = local node (backward compatible)
-// node_id 1-65535 = remote nodes
-//
-// 48 bits = 281 trillion local PIDs per node (plenty)
-```
+### Search (Deferred -- Phase 2)
 
-This is a **zero-cost change** for existing local code: `node_id = 0` means all existing PIDs keep working. The `ProcessId(pub u64)` struct is unchanged; interpretation changes.
-
-### snow_actor_send Extension
-
-Current `snow_actor_send` looks up the target in the local process table. For distribution:
-
-```
-// Pseudocode for distributed send:
-fn snow_actor_send(target_pid: u64, msg_ptr, msg_size) {
-    let node_id = target_pid >> 48;
-    if node_id == 0 {
-        // Local send (existing path, unchanged)
-        local_send(target_pid, msg_ptr, msg_size);
-    } else {
-        // Remote send: serialize message, route to node connection
-        let conn = node_connections.get(node_id);
-        conn.send_distributed(target_pid, msg_ptr, msg_size);
-    }
-}
-```
-
-### DistStream (New, Following Existing Pattern)
-
-```rust
-// Mirrors PgStream, HttpStream, WsStream pattern exactly:
-enum DistStream {
-    Plain(TcpStream),
-    Tls(StreamOwned<ClientConnection, TcpStream>),  // client side
-    TlsServer(StreamOwned<ServerConnection, TcpStream>),  // server side
-}
-```
-
-### Connection Lifecycle
-
-Following the established Snow pattern (OS thread per connection for blocking I/O):
-
-1. **Listener thread** (`std::thread::spawn`): accepts incoming TCP connections on the distribution port
-2. **Handshake** on the accepted connection (challenge/response with cookie)
-3. **TLS upgrade** if configured (using existing `rustls` ClientConfig/ServerConfig)
-4. **Receiver thread** per connection: reads framed messages, deserializes, routes to local actor mailboxes via `snow_actor_send`
-5. **Send path**: when `snow_actor_send` targets a remote PID, the message is serialized and written to the connection's `DistStream` (under `Mutex`, same as WebSocket write path)
-
-## Wire Format: Snow Term Format (STF)
-
-### Message Frame
-
-```
-[4 bytes: total_length (big-endian u32)]
-[1 byte:  message_type]
-[variable: payload]
-```
-
-Message types:
-- `0x01` SEND -- send message to remote PID
-- `0x02` LINK -- create link between local and remote PID
-- `0x03` UNLINK -- remove link
-- `0x04` EXIT -- propagate exit signal
-- `0x05` MONITOR -- set up monitor
-- `0x06` DEMONITOR -- remove monitor
-- `0x07` MONITOR_DOWN -- monitor triggered
-- `0x08` SPAWN_REQUEST -- request remote spawn
-- `0x09` SPAWN_REPLY -- response with new PID
-- `0x10` REG_SEND -- send to named process on remote node
-- `0x11` HEARTBEAT -- keepalive tick
-
-### Value Encoding (for message payloads)
-
-```
-Tag byte followed by type-specific data:
-
-0x01  u8:     [1 byte value]
-0x02  i64:    [8 bytes big-endian]
-0x03  f64:    [8 bytes IEEE 754 big-endian]
-0x04  bool:   [1 byte: 0=false, 1=true]
-0x05  string: [4 bytes length][UTF-8 bytes]
-0x06  binary: [4 bytes length][raw bytes]
-0x07  tuple:  [2 bytes arity][elements...]
-0x08  list:   [4 bytes length][elements...]
-0x09  map:    [4 bytes count][key,value pairs...]
-0x0A  pid:    [8 bytes: full u64 ProcessId]
-0x0B  nil:    (unit/none)
-0x0C  atom:   [2 bytes length][UTF-8 bytes] (for tagged unions/enum variants)
-0x0D  result: [1 byte: 0=ok, 1=err][value]
-```
-
-This maps directly to Snow's type system. No ETF baggage (no funs, ports, refs, external funs, compressed terms).
-
-### Handshake Protocol
-
-Simplified from Erlang's 7-step handshake to 4 steps:
-
-```
-1. A -> B:  HELLO  [name_len:2][name:UTF-8][flags:8][creation:4]
-2. B -> A:  CHALLENGE [name_len:2][name:UTF-8][flags:8][creation:4][challenge:4]
-3. A -> B:  CHALLENGE_REPLY [challenge:4][digest:32]
-                            (digest = HMAC-SHA256(cookie, challenge_B))
-4. B -> A:  CHALLENGE_ACK [digest:32]
-                          (digest = HMAC-SHA256(cookie, challenge_A))
-```
-
-Uses HMAC-SHA256 instead of Erlang's MD5. Both `sha2` and `hmac` are already in Cargo.toml. The cookie never crosses the wire.
+| Technology | Version | Purpose | When |
+|------------|---------|---------|------|
+| minisearch | ^7.x | Client-side full-text search | Add when docs content is substantial. VitePress supports local search via MiniSearch out of the box with `themeConfig.search.provider: 'local'`. Zero-config. |
 
 ## Alternatives Considered
 
 | Category | Recommended | Alternative | Why Not |
 |----------|-------------|-------------|---------|
-| Wire format | Hand-rolled STF | Erlang ETF | ETF encodes Erlang-specific types (atoms, funs, ports, refs) that Snow does not have. Full ETF compatibility is wasted effort and carries security baggage (RCE via fun deserialization). |
-| Wire format | Hand-rolled STF | Protocol Buffers (prost) | Adds `prost` + `prost-build` + protoc dependency. Overkill for an internal binary protocol. Snow controls both ends of the wire. Protobuf's schema evolution features are unnecessary. |
-| Wire format | Hand-rolled STF | bincode 3.0 / postcard 1.1 | Adds external dependency for what is ~300 lines of code. These crates optimize for Rust struct serde, but Snow needs to serialize Snow-typed values (from LLVM-compiled code), not Rust structs. The runtime operates on raw `*const u8` buffers, not serde-compatible types. |
-| Wire format | Hand-rolled STF | MessagePack (rmp-serde) | Adds dependency. MessagePack is a general-purpose format with JSON-like semantics. Snow's type system is richer (tuples, tagged unions, typed PIDs). Custom format maps directly. |
-| Node discovery | Built-in registry | External EPMD daemon | Requires deploying a separate process. Violates single-binary philosophy. |
-| Node discovery | Built-in registry | mDNS (mdns-sd crate) | Adds dependency. mDNS is for LAN discovery. Production distributed systems use explicit configuration (known hosts/ports), not multicast discovery. LAN discovery can be added later as an optional feature. |
-| Node discovery | Built-in registry | Gossip protocol (memberlist) | Massive dependency. Overkill for initial version. Snow nodes will use explicit `Node.connect()`. Gossip-based auto-discovery is a future enhancement. |
-| Node connections | `parking_lot::Mutex<DistStream>` | DashMap for connection table | Adds a new dependency. `parking_lot::RwLock<FxHashMap>` is the existing pattern used in the process table, process registry, and room registry. Connection table has the same access pattern (many reads, few writes). Stay consistent. |
-| Challenge auth | HMAC-SHA256 | MD5 (Erlang's approach) | MD5 is cryptographically broken. HMAC-SHA256 is stronger and both `sha2` and `hmac` are already direct dependencies. Zero additional cost for better security. |
-| Challenge auth | HMAC-SHA256 | Full TLS client certs only | TLS client certs are harder to set up and manage. Cookie-based auth is simpler for development/testing. TLS is still used for transport encryption. The cookie provides cluster membership control (which nodes can join). |
-| Transport | TCP + optional TLS | QUIC (quinn crate) | Adds `quinn` + `rustls` (different integration) + UDP complexity. QUIC's multiplexing benefit is marginal for node-to-node connections (typically 1 connection per peer). TCP is simpler, proven for this use case. BEAM uses TCP. The Snow runtime uses blocking I/O, and quinn requires async. |
-| Serialization lib | No external crate | serde + bincode | The runtime works with raw `*const u8` message buffers passed via `extern "C"` ABI from LLVM-compiled code. These are not Rust structs with `#[derive(Serialize)]`. Serde does not apply here. |
+| Framework | VitePress (custom theme) | Custom Vite + Vue + vue-router | 2-3 weeks of plumbing work for markdown pipeline, file-based routing, sidebar generation, static HTML generation. VitePress provides all of this and still allows a fully custom theme. |
+| Framework | VitePress (custom theme) | Astro | Astro is excellent for content sites but requires learning a new template language. VitePress gives native Vue SFC support, which is what the user specified. |
+| Framework | VitePress (custom theme) | Nuxt Content | Heavier framework. Nuxt adds SSR complexity unnecessary for a static docs site. VitePress is purpose-built for this use case. |
+| Styling | Tailwind CSS v4 | Tailwind CSS v3 | v3 requires `tailwind.config.js`, PostCSS config, content glob patterns. v4 is CSS-first, zero-config with Vite plugin, and 5-100x faster builds. |
+| Components | shadcn-vue | Headless UI | shadcn-vue has more components, better Vue 3 support, and Tailwind v4 compatibility. Headless UI has fewer components and slower releases. |
+| Components | shadcn-vue | Naive UI / Element Plus | These are styled component libraries that fight Tailwind. shadcn-vue owns its styles via Tailwind classes. Monochrome design requires full style control. |
+| Dark mode | @vueuse/core useDark | Custom implementation | VueUse handles localStorage persistence, system preference detection, SSR hydration mismatch avoidance, and the HTML class toggle. 4 lines vs 40+ lines of custom code. |
+| Syntax highlighting | Shiki (via VitePress) | Prism.js | Prism requires custom language definitions in a different format. Shiki uses TextMate grammars (same as VS Code), and the project already has `mesh.tmLanguage.json`. Zero extra work. |
+| Syntax highlighting | Shiki (via VitePress) | Highlight.js | Same argument as Prism. TextMate grammar already exists. Shiki is the modern standard (used by VS Code, GitHub, VitePress). |
+| Icons | lucide-vue-next | @iconify/vue | Lucide is what shadcn-vue uses by default. Using the same icon set avoids inconsistency. Both are tree-shakeable. |
+| Search | MiniSearch (VitePress built-in) | Algolia DocSearch | DocSearch requires application/approval and external dependency. MiniSearch runs entirely client-side with zero setup. Appropriate for a language docs site. |
 
-## Architecture: What Goes Where
+## What NOT to Install
+
+These are commonly over-engineered into docs sites:
+
+| Technology | Why Skip |
+|------------|----------|
+| Pinia (state management) | A docs site has no global state. Dark mode is handled by VueUse. Sidebar state is local component state. |
+| vue-router | VitePress handles all routing. Adding vue-router creates conflicts. |
+| unplugin-vue-markdown | VitePress already compiles markdown to Vue components. This plugin is for non-VitePress setups. |
+| @shikijs/markdown-it | VitePress has Shiki integration built in. This plugin is for standalone markdown-it usage. |
+| markdown-it | VitePress bundles and configures markdown-it internally. |
+| Nuxt | Server-side rendering is unnecessary for a static docs site. VitePress generates static HTML. |
+| CMS (Strapi, Contentful, etc.) | Documentation lives in the repo as markdown files. A CMS adds deployment complexity for zero benefit. |
+| i18n | English-only for now. Add later if needed -- VitePress supports i18n natively. |
+| Analytics SDK | Add a `<script>` tag for Plausible/Fathom later. No npm dependency needed. |
+
+## Integration Points with Existing Repo
+
+### Directory Structure
 
 ```
-crates/snow-rt/src/
-  actor/
-    mod.rs          -- extend snow_actor_send() with remote routing
-    process.rs      -- ProcessId bit-layout documentation (no struct change)
-    registry.rs     -- (unchanged, local registry)
-  dist/             -- NEW MODULE
-    mod.rs          -- public API: snow_dist_* extern "C" functions
-    node.rs         -- NodeId, NodeInfo, node connection management
-    handshake.rs    -- challenge/response protocol
-    transport.rs    -- DistStream enum, framed read/write
-    stf.rs          -- Snow Term Format encode/decode
-    registry.rs     -- node name registry (EPMD equivalent)
-    monitor.rs      -- remote process monitoring
-    remote_spawn.rs -- remote spawn request/reply
+/website/                          # VitePress project root
+  .vitepress/
+    config.ts                      # VitePress configuration
+    theme/
+      index.ts                     # Custom theme entry
+      Layout.vue                   # Root layout (replaces default theme)
+      components/
+        Sidebar.vue                # Docs sidebar navigation
+        ThemeToggle.vue            # Dark/light mode toggle
+        NavBar.vue                 # Top navigation bar
+        CodeBlock.vue              # Custom code block wrapper (if needed)
+      styles/
+        main.css                   # Tailwind imports + @theme + prose overrides
+  docs/                            # Markdown documentation pages
+    index.md                       # Landing page
+    getting-started/
+    language/
+    actors/
+    stdlib/
+    tooling/
+  public/                          # Static assets (logo, og-image)
+  package.json                     # Website-specific dependencies
+  tsconfig.json
 ```
 
-This follows the existing pattern: `db/` has `pg.rs`, `pool.rs`, `row.rs`; `http/` has `server.rs`, `router.rs`; `ws/` has `frame.rs`, `handshake.rs`, `server.rs`.
+### TextMate Grammar Reuse
+
+The VitePress config loads the existing grammar from the shared repo:
+
+```typescript
+// .vitepress/config.ts
+import meshGrammar from '../../editors/vscode-mesh/syntaxes/mesh.tmLanguage.json'
+
+export default defineConfig({
+  markdown: {
+    languages: [
+      {
+        ...meshGrammar,
+        name: 'mesh',
+        scopeName: 'source.mesh',
+      }
+    ],
+    // Shiki theme configuration for monochrome
+    theme: {
+      light: 'github-light',   // Or a custom monochrome theme
+      dark: 'github-dark',     // Or a custom monochrome theme
+    }
+  }
+})
+```
+
+### Monorepo Considerations
+
+- The `/website` directory has its own `package.json` -- completely separate from the Rust workspace.
+- No shared `node_modules` with the rest of the repo.
+- The only cross-reference is the TextMate grammar import, which uses a relative path.
+- CI can build the website independently: `cd website && npm run build`.
+- The Rust `Cargo.toml` workspace is unaffected.
 
 ## Installation
 
-```toml
-# In crates/snow-rt/Cargo.toml:
-# NO CHANGES REQUIRED.
-#
-# All dependencies needed for distribution are already present:
-# - rustls 0.23 (TLS transport)
-# - sha2 0.10 + hmac 0.12 (HMAC-SHA256 challenge auth)
-# - rand 0.9 (challenge generation)
-# - parking_lot 0.12 (connection table locks)
-# - rustc-hash (FxHashMap for routing tables)
-# - crossbeam-channel 0.5 (message routing channels)
+```bash
+# From the repo root
+mkdir website && cd website
+
+# Initialize VitePress
+npm init -y
+npm install vitepress vue
+
+# Tailwind CSS v4
+npm install tailwindcss @tailwindcss/vite @tailwindcss/typography
+
+# UI utilities
+npm install @vueuse/core
+
+# Icons
+npm install lucide-vue-next
+
+# shadcn-vue CLI (for adding individual components)
+npx shadcn-vue@latest init
+
+# Then add only the components needed:
+npx shadcn-vue@latest add button
+npx shadcn-vue@latest add dropdown-menu
+npx shadcn-vue@latest add sheet
+npx shadcn-vue@latest add scroll-area
+npx shadcn-vue@latest add separator
 ```
+
+### Dev Dependencies
+
+```bash
+npm install -D typescript @types/node
+```
+
+### Total Dependencies
+
+- **Runtime:** 5 direct dependencies (vitepress, vue, tailwindcss, @vueuse/core, lucide-vue-next)
+- **Build:** 3 direct dev dependencies (@tailwindcss/vite, @tailwindcss/typography, typescript)
+- **Copy-paste (not npm deps):** shadcn-vue components live in the project source tree
+- **Transitive:** reka-ui, shiki, markdown-it (all via vitepress or shadcn-vue)
+
+This is a minimal dependency footprint for a full-featured docs site.
 
 ## Version Pinning Summary
 
-| Crate | Pin | Status | Role in Distribution |
-|-------|-----|--------|---------------------|
-| rustls | `"0.23"` | Existing | TLS transport for inter-node connections |
-| webpki-roots | `"0.26"` | Existing | CA certs for peer node verification |
-| rustls-pki-types | `"1"` | Existing | PEM cert/key loading for node identity |
-| sha2 | `"0.10"` | Existing | HMAC-SHA256 challenge digest |
-| hmac | `"0.12"` | Existing | HMAC construction for challenge/response |
-| rand | `"0.9"` | Existing | 32-bit random challenge generation |
-| parking_lot | `"0.12"` | Existing | RwLock/Mutex for connection state |
-| rustc-hash | workspace | Existing | FxHashMap for node/routing tables |
-| crossbeam-channel | `"0.5"` | Existing | Distribution message routing |
-| **NEW deps** | -- | **None** | -- |
+| Package | Version | Status | Verified |
+|---------|---------|--------|----------|
+| vitepress | ^1.6.4 | Latest stable | npm, 2026-02-13 |
+| vue | ^3.5.28 | Latest stable | npm, 2026-02-13 |
+| tailwindcss | ^4.1.18 | Latest stable | npm, 2026-02-13 |
+| @tailwindcss/vite | ^4.1.18 | Latest stable | npm, 2026-02-13 |
+| @tailwindcss/typography | ^0.5.19 | Latest stable | npm, 2026-02-13 |
+| @vueuse/core | ^14.2.1 | Latest stable (requires Vue 3.5+) | npm, 2026-02-13 |
+| lucide-vue-next | ^0.563.0 | Latest stable | npm, 2026-02-13 |
+| shadcn-vue | ^2.4.3 | Latest stable (uses Reka UI v2) | npm, 2026-02-13 |
+| reka-ui | ^2.8.0 | Latest stable (transitive) | npm, 2026-02-13 |
+| shiki | ~3.22.0 | Bundled with VitePress | npm, 2026-02-13 |
+| typescript | ^5.x | Dev dependency | stable |
 
 ## Key Risks and Mitigations
 
 | Risk | Severity | Mitigation |
 |------|----------|------------|
-| Blocking I/O for inter-node connections | Medium | One OS thread per peer node is acceptable for typical cluster sizes (2-20 nodes). This is the same model used for PostgreSQL, HTTP, and WebSocket connections. If Snow needs 1000+ peer connections, revisit with async I/O. |
-| ProcessId bit-packing breaks existing code | Low | `node_id = 0` preserves all existing behavior. Only new distributed code reads the node_id bits. Existing `ProcessId::next()` continues to produce `0x0000_XXXXXXXXXXXX` values. |
-| STF format evolution | Low | Version byte in handshake flags. Both nodes negotiate compatible format version. |
-| Cookie security | Medium | Cookie is never sent on the wire (HMAC challenge/response). TLS encrypts the transport. For production, recommend TLS-required mode. |
+| VitePress custom theme fights Tailwind reset | Low | VitePress custom themes bypass the default theme CSS entirely. Add `@import "tailwindcss"` in the theme's CSS entry point. No conflicts. |
+| shadcn-vue Tailwind v4 migration complexity | Low | shadcn-vue 2.x has official Tailwind v4 support and migration guide. CSS variables remap via `@theme` directive. |
+| Shiki custom grammar not loading | Low | Verified: Shiki v3 supports `langs` array with inline TextMate grammar objects. The existing `mesh.tmLanguage.json` is a valid TextMate grammar. |
+| VitePress version mismatch with Vite 7 | Low | VitePress 1.6.x ships with Vite 7 support. Verified in changelog. |
+| @vueuse/core requires Vue 3.5+ | None | VitePress 1.6.x bundles Vue 3.5+. Verified compatibility. |
+| Dark mode hydration mismatch | Low | `useDark()` from VueUse handles SSR/SSG hydration correctly by reading the value during `onMounted`. VitePress generates static HTML; hydration adds the dark class on mount. |
 
 ## Sources
 
-- [Erlang Distribution Protocol Specification (erts v16.2)](https://www.erlang.org/doc/apps/erts/erl_dist_protocol.html) -- Handshake protocol, message framing, capability flags
-- [Erlang External Term Format (erts v16.2)](https://www.erlang.org/doc/apps/erts/erl_ext_dist.html) -- ETF type tags and encoding (reference, not target)
-- [Erlang Distribution over TLS (ssl v11.5.1)](https://www.erlang.org/doc/apps/ssl/ssl_distribution.html) -- TLS integration for distribution
-- [Alternative Node Discovery (erts v16.2)](https://www.erlang.org/doc/apps/erts/alt_disco.html) -- Custom EPMD replacement patterns
-- [EEF Security WG: Serialization](https://erlef.github.io/security-wg/secure_coding_and_deployment_hardening/serialisation.html) -- ETF security concerns (RCE via fun deserialization)
-- [EEF Security WG: Distribution](https://erlef.github.io/security-wg/secure_coding_and_deployment_hardening/distribution.html) -- Cookie auth limitations, TLS recommendation
-- [rustls 0.23 on crates.io](https://crates.io/crates/rustls) -- Current version 0.23.36
-- [ractor_cluster](https://github.com/slawlor/ractor) -- Reference for Rust actor distribution patterns (not used as dependency)
-- [Coerce-rs](https://github.com/LeonHartley/Coerce-rs) -- Reference for location-transparent ActorRef (not used as dependency)
-- Snow codebase: `crates/snow-rt/Cargo.toml` -- current dependency list
-- Snow codebase: `crates/snow-rt/src/actor/mod.rs` -- ProcessId, snow_actor_send, scheduler integration points
-- Snow codebase: `crates/snow-rt/src/actor/process.rs` -- ProcessId(pub u64) struct, Message layout
-- Snow codebase: `crates/snow-rt/src/actor/registry.rs` -- ProcessRegistry pattern (RwLock<FxHashMap>)
-- Snow codebase: `crates/snow-rt/src/actor/scheduler.rs` -- ProcessTable type, work-stealing architecture
-- Snow codebase: `crates/snow-rt/src/db/pg.rs` -- PgStream enum (TLS abstraction pattern), hand-rolled wire protocol precedent
-- Snow codebase: `crates/snow-rt/src/http/server.rs` -- HttpStream enum, TLS server pattern
-- Snow codebase: `crates/snow-rt/src/ws/` -- WsStream, hand-rolled frame codec, reader thread pattern
+- [VitePress documentation](https://vitepress.dev/) -- custom themes, markdown config, Shiki integration
+- [VitePress custom theme guide](https://vitepress.dev/guide/custom-theme) -- fully replacing default theme
+- [VitePress npm](https://www.npmjs.com/package/vitepress) -- v1.6.4, last published ~6 months ago
+- [Vite releases](https://vite.dev/releases) -- v7.3.1 current stable
+- [Vue.js releases](https://vuejs.org/about/releases) -- v3.5.28 current stable
+- [Tailwind CSS v4 announcement](https://tailwindcss.com/blog/tailwindcss-v4) -- CSS-first config, Vite plugin, Lightning CSS
+- [Tailwind CSS npm](https://www.npmjs.com/package/tailwindcss) -- v4.1.18
+- [@tailwindcss/vite npm](https://www.npmjs.com/package/@tailwindcss/vite) -- v4.1.18
+- [@tailwindcss/typography npm](https://www.npmjs.com/package/@tailwindcss/typography) -- v0.5.19
+- [shadcn-vue](https://www.shadcn-vue.com/) -- v2.4.3, Reka UI migration, Tailwind v4 support
+- [shadcn-vue Tailwind v4 guide](https://www.shadcn-vue.com/docs/tailwind-v4) -- migration steps, CSS variable remapping
+- [shadcn-vue dark mode (Vite)](https://www.shadcn-vue.com/docs/dark-mode/vite) -- VueUse integration
+- [Reka UI](https://reka-ui.com) -- v2.8.0, accessible headless primitives
+- [VueUse useDark](https://vueuse.org/core/usedark/) -- dark mode composable
+- [@vueuse/core npm](https://www.npmjs.com/package/@vueuse/core) -- v14.2.1, requires Vue 3.5+
+- [Shiki custom languages](https://shiki.style/guide/load-lang) -- loading TextMate grammars
+- [shiki npm](https://www.npmjs.com/package/shiki) -- v3.22.0
+- [lucide-vue-next npm](https://www.npmjs.com/package/lucide-vue-next) -- v0.563.0
+- [VS Code Syntax Highlight Guide](https://code.visualstudio.com/api/language-extensions/syntax-highlight-guide) -- TextMate grammar format reference
+- Mesh codebase: `editors/vscode-mesh/syntaxes/mesh.tmLanguage.json` -- existing TextMate grammar for Mesh language
 
 ---
-*Stack research for: Snow Language Distributed Actor System*
-*Researched: 2026-02-12*
+*Stack research for: Mesh Language Website & Documentation*
+*Researched: 2026-02-13*
