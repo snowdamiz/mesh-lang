@@ -578,7 +578,7 @@ fn main() do
 end
 "#;
     let output = compile_and_run(source);
-    assert_eq!(output, "Hello, world!\nHi,Mesh!\n");
+    assert_eq!(output, "Hello, world!\nHi, Mesh!\n");
 }
 
 // ── Phase 22: Deriving Clause ─────────────────────────────────────────

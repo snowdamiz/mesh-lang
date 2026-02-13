@@ -99,7 +99,7 @@ fn resolve_deps(
                 branch,
                 tag,
             } => {
-                let dest = project_dir.join(".mpl").join("deps").join(name);
+                let dest = project_dir.join(".mesh").join("deps").join(name);
                 let resolved_rev = fetch_git_dep(
                     url,
                     &dest,

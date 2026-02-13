@@ -899,6 +899,160 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f8ca58f447f06ed17d5fc4043ce1b10dd205e060fb3ce5b979b8ed8e59ff3f79"
 
 [[package]]
+name = "mesh-codegen"
+version = "0.1.0"
+dependencies = [
+ "inkwell",
+ "insta",
+ "mesh-common",
+ "mesh-parser",
+ "mesh-typeck",
+ "rowan",
+ "rustc-hash 2.1.1",
+]
+
+[[package]]
+name = "mesh-common"
+version = "0.1.0"
+dependencies = [
+ "rustc-hash 2.1.1",
+ "serde",
+]
+
+[[package]]
+name = "mesh-fmt"
+version = "0.1.0"
+dependencies = [
+ "insta",
+ "mesh-common",
+ "mesh-parser",
+ "rowan",
+]
+
+[[package]]
+name = "mesh-lexer"
+version = "0.1.0"
+dependencies = [
+ "insta",
+ "mesh-common",
+ "serde",
+]
+
+[[package]]
+name = "mesh-lsp"
+version = "0.1.0"
+dependencies = [
+ "mesh-common",
+ "mesh-lexer",
+ "mesh-parser",
+ "mesh-typeck",
+ "rowan",
+ "serde_json",
+ "tokio",
+ "tower-lsp",
+]
+
+[[package]]
+name = "mesh-parser"
+version = "0.1.0"
+dependencies = [
+ "insta",
+ "mesh-common",
+ "mesh-lexer",
+ "rowan",
+ "serde",
+]
+
+[[package]]
+name = "mesh-pkg"
+version = "0.1.0"
+dependencies = [
+ "git2",
+ "semver",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "toml",
+]
+
+[[package]]
+name = "mesh-repl"
+version = "0.1.0"
+dependencies = [
+ "inkwell",
+ "mesh-codegen",
+ "mesh-common",
+ "mesh-lexer",
+ "mesh-parser",
+ "mesh-rt",
+ "mesh-typeck",
+ "rowan",
+ "rustyline",
+]
+
+[[package]]
+name = "mesh-rt"
+version = "0.1.0"
+dependencies = [
+ "base64",
+ "corosensei",
+ "crossbeam-channel",
+ "crossbeam-deque",
+ "crossbeam-utils",
+ "hmac",
+ "libsqlite3-sys",
+ "md-5",
+ "parking_lot",
+ "pbkdf2",
+ "rand",
+ "ring",
+ "rustc-hash 2.1.1",
+ "rustls",
+ "rustls-pki-types",
+ "serde_json",
+ "sha1",
+ "sha2",
+ "tempfile",
+ "ureq",
+ "webpki-roots 0.26.11",
+]
+
+[[package]]
+name = "mesh-typeck"
+version = "0.1.0"
+dependencies = [
+ "ariadne",
+ "ena",
+ "insta",
+ "mesh-common",
+ "mesh-parser",
+ "rowan",
+ "rustc-hash 2.1.1",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "meshc"
+version = "0.1.0"
+dependencies = [
+ "ariadne",
+ "clap",
+ "mesh-codegen",
+ "mesh-common",
+ "mesh-fmt",
+ "mesh-lexer",
+ "mesh-lsp",
+ "mesh-parser",
+ "mesh-pkg",
+ "mesh-repl",
+ "mesh-typeck",
+ "serde_json",
+ "tempfile",
+ "tokio",
+]
+
+[[package]]
 name = "miniz_oxide"
 version = "0.8.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1387,160 +1541,6 @@ name = "smallvec"
 version = "1.15.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "67b1b7a3b5fe4f1376887184045fcf45c69e92af734b7aaddc05fb777b6fbd03"
-
-[[package]]
-name = "snow-codegen"
-version = "0.1.0"
-dependencies = [
- "inkwell",
- "insta",
- "rowan",
- "rustc-hash 2.1.1",
- "snow-common",
- "snow-parser",
- "snow-typeck",
-]
-
-[[package]]
-name = "snow-common"
-version = "0.1.0"
-dependencies = [
- "rustc-hash 2.1.1",
- "serde",
-]
-
-[[package]]
-name = "snow-fmt"
-version = "0.1.0"
-dependencies = [
- "insta",
- "rowan",
- "snow-common",
- "snow-parser",
-]
-
-[[package]]
-name = "snow-lexer"
-version = "0.1.0"
-dependencies = [
- "insta",
- "serde",
- "snow-common",
-]
-
-[[package]]
-name = "snow-lsp"
-version = "0.1.0"
-dependencies = [
- "rowan",
- "serde_json",
- "snow-common",
- "snow-lexer",
- "snow-parser",
- "snow-typeck",
- "tokio",
- "tower-lsp",
-]
-
-[[package]]
-name = "snow-parser"
-version = "0.1.0"
-dependencies = [
- "insta",
- "rowan",
- "serde",
- "snow-common",
- "snow-lexer",
-]
-
-[[package]]
-name = "snow-pkg"
-version = "0.1.0"
-dependencies = [
- "git2",
- "semver",
- "serde",
- "serde_json",
- "tempfile",
- "toml",
-]
-
-[[package]]
-name = "snow-repl"
-version = "0.1.0"
-dependencies = [
- "inkwell",
- "rowan",
- "rustyline",
- "snow-codegen",
- "snow-common",
- "snow-lexer",
- "snow-parser",
- "snow-rt",
- "snow-typeck",
-]
-
-[[package]]
-name = "snow-rt"
-version = "0.1.0"
-dependencies = [
- "base64",
- "corosensei",
- "crossbeam-channel",
- "crossbeam-deque",
- "crossbeam-utils",
- "hmac",
- "libsqlite3-sys",
- "md-5",
- "parking_lot",
- "pbkdf2",
- "rand",
- "ring",
- "rustc-hash 2.1.1",
- "rustls",
- "rustls-pki-types",
- "serde_json",
- "sha1",
- "sha2",
- "tempfile",
- "ureq",
- "webpki-roots 0.26.11",
-]
-
-[[package]]
-name = "snow-typeck"
-version = "0.1.0"
-dependencies = [
- "ariadne",
- "ena",
- "insta",
- "rowan",
- "rustc-hash 2.1.1",
- "serde",
- "serde_json",
- "snow-common",
- "snow-parser",
-]
-
-[[package]]
-name = "snowc"
-version = "0.1.0"
-dependencies = [
- "ariadne",
- "clap",
- "serde_json",
- "snow-codegen",
- "snow-common",
- "snow-fmt",
- "snow-lexer",
- "snow-lsp",
- "snow-parser",
- "snow-pkg",
- "snow-repl",
- "snow-typeck",
- "tempfile",
- "tokio",
-]
 
 [[package]]
 name = "socket2"

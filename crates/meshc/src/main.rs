@@ -620,7 +620,7 @@ fn collect_mesh_files(path: &Path) -> Result<Vec<PathBuf>, String> {
     }
 
     if path.is_file() {
-        if path.extension().and_then(|e| e.to_str()) == Some("mesh") {
+        if path.extension().and_then(|e| e.to_str()) == Some("mpl") {
             return Ok(vec![path.to_path_buf()]);
         } else {
             return Err(format!(
@@ -648,7 +648,7 @@ fn collect_mesh_files_recursive(dir: &Path, files: &mut Vec<PathBuf>) -> std::io
         let entry_path = entry.path();
         if entry_path.is_dir() {
             collect_mesh_files_recursive(&entry_path, files)?;
-        } else if entry_path.extension().and_then(|e| e.to_str()) == Some("mesh") {
+        } else if entry_path.extension().and_then(|e| e.to_str()) == Some("mpl") {
             files.push(entry_path);
         }
     }

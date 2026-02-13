@@ -184,7 +184,7 @@ mod tests {
 
         let path_mesh = make_string(path_str);
         let content1 = make_string("Hello");
-        let content2 = make_string(",Mesh!");
+        let content2 = make_string(", Mesh!");
 
         // Append twice
         let r1 = mesh_file_append(path_mesh, content1);

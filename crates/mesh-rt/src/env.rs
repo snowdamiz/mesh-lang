@@ -75,7 +75,7 @@ mod tests {
     fn test_env_get_missing() {
         mesh_rt_init();
         let key = mesh_string_new(
-            b"SNOW_NONEXISTENT_VAR_12345".as_ptr(),
+            b"MESH_NONEXISTENT_VAR_12345".as_ptr(),
             25,
         );
         let result = mesh_env_get(key);
