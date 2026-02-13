@@ -10,16 +10,16 @@ See: .planning/PROJECT.md (updated 2026-02-12)
 ## Current Position
 
 Phase: 63 of 69 (PID Encoding & Wire Format)
-Plan: 1 of 3 in current phase
+Plan: 2 of 3 in current phase
 Status: Executing
-Last activity: 2026-02-13 -- Completed 63-01 (PID bit-packing and locality check)
+Last activity: 2026-02-13 -- Completed 63-02 (STF scalar encode/decode)
 
-Progress: [███░░░░░░░] 33%
+Progress: [██████░░░░] 66%
 
 ## Performance Metrics
 
 **All-time Totals:**
-- Plans completed: 170
+- Plans completed: 172
 - Phases completed: 62
 - Milestones shipped: 14 (v1.0-v4.0)
 - Lines of Rust: ~84,400
@@ -32,6 +32,8 @@ Progress: [███░░░░░░░] 33%
 - 63-01: Mask PID counter to 40 bits defensively (prevents silent corruption at 2^40)
 - 63-01: Display format <0.N> for local PIDs (backward compat), <node.N.creation> for remote
 - 63-01: dist_send_stub silently drops (no panic) -- remote PIDs unreachable in Phase 63
+- 63-02: UTF-8 validation on string decode (reject invalid wire data, not trust)
+- 63-02: Container/composite stubs return InvalidTag(0) for Plan 03 to replace
 
 ### Research Notes
 
@@ -52,6 +54,6 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-13
-Stopped at: Completed 63-01-PLAN.md (PID bit-packing and locality check)
+Stopped at: Completed 63-02-PLAN.md (STF scalar encode/decode)
 Resume file: None
-Next action: Execute 63-02-PLAN.md
+Next action: Execute 63-03-PLAN.md
