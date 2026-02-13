@@ -5,16 +5,14 @@
 See: .planning/PROJECT.md (updated 2026-02-13)
 
 **Core value:** Expressive, readable concurrency -- writing concurrent programs should feel as natural as sequential code, with supervision and fault tolerance built in.
-**Current focus:** All milestones complete (v1.0-v4.0). Planning next milestone.
+**Current focus:** v5.0 Distributed Actors — BEAM-style multi-node actor distribution.
 
 ## Current Position
 
-Phase: 62 of 62 (all complete)
-Plan: N/A
-Status: v4.0 WebSocket Support shipped
-Last activity: 2026-02-13 -- v4.0 milestone archived
-
-Progress: [██████████] 100%
+Phase: Not started (defining requirements)
+Plan: —
+Status: Defining requirements
+Last activity: 2026-02-12 — Milestone v5.0 started
 
 ## Performance Metrics
 
@@ -45,7 +43,7 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-02-13
-Stopped at: v4.0 milestone archived
+Last session: 2026-02-12
+Stopped at: v5.0 milestone started, defining requirements
 Resume file: None
-Next action: /gsd:new-milestone to start next milestone
+Next action: Complete research and requirements definition

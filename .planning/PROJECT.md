@@ -4,9 +4,25 @@
 
 Snow is a programming language that combines Elixir/Ruby-style expressive syntax with static Hindley-Milner type inference and BEAM-style concurrency (actors, supervision trees, fault tolerance), compiled via LLVM to native single-binary executables. The compiler is written in Rust. v1.0-v1.9 built a complete language: compiler pipeline, actor runtime, trait system, module system, loops, stdlib, and developer tooling. v2.0 added database drivers and JSON serde. v3.0 made Snow production-ready: TLS encryption for PostgreSQL and HTTPS, connection pooling with health checks, panic-safe database transactions, and automatic struct-to-row mapping via `deriving(Row)`. v4.0 added WebSocket support with RFC 6455 protocol, actor-per-connection model, TLS (wss://), heartbeat, fragmentation, and rooms/channels. ~84K LOC Rust across 14 milestones. Zero known compiler correctness issues.
 
+## Current Milestone: v5.0 Distributed Actors
+
+**Goal:** BEAM-style distributed actor system — Snow programs on different machines form a cluster with location-transparent PIDs, remote spawn, cross-node monitoring, and a binary wire format over TLS.
+
+**Target features:**
+- Node naming, identity, and cookie-based authentication
+- Node connection over TLS-encrypted TCP with automatic mesh formation
+- Built-in node registry (epmd equivalent) for discovery
+- Location-transparent PIDs that route `send` across nodes automatically
+- Remote spawn of actors on other nodes
+- Remote process monitoring with `:down` on crash or net split
+- Node monitoring with `:nodedown`/`:nodeup` events
+- Binary wire format (ETF-style) for efficient inter-node serialization
+- Distributed global process registry across cluster
+- Cross-node integration with existing WebSocket rooms and supervision trees
+
 ## Current State
 
-Shipped v4.0 WebSocket Support (2026-02-13). All 14 milestones complete.
+Shipped v4.0 WebSocket Support (2026-02-13). Starting v5.0 Distributed Actors.
 
 **Latest milestone (v4.0):** RFC 6455 WebSocket frame codec, actor-per-connection server with crash isolation, TLS (wss://), heartbeat ping/pong, fragment reassembly, and named rooms with pub/sub broadcast. 37/37 requirements satisfied, 1,524 tests passing.
 
@@ -134,7 +150,15 @@ Expressive, readable concurrency -- writing concurrent programs should feel as n
 
 ### Active
 
-(No active requirements -- all milestones complete)
+- [ ] Node naming, identity, cookie-based authentication, and TLS-encrypted inter-node TCP
+- [ ] Node connection with automatic mesh formation and built-in registry for discovery
+- [ ] Location-transparent PIDs with automatic local/remote routing for send
+- [ ] Remote spawn of actors on other nodes returning usable PIDs
+- [ ] Remote process monitoring delivering :down on crash or net split
+- [ ] Node monitoring delivering :nodedown/:nodeup events
+- [ ] Binary wire format (ETF-style) for inter-node message serialization
+- [ ] Distributed global process registry across cluster
+- [ ] Cross-node WebSocket rooms and supervision tree integration
 
 ### Out of Scope
 
@@ -300,4 +324,4 @@ Tech debt (minor, pre-existing):
 | Room cleanup before shutdown.store | Prevents use-after-free when concurrent broadcasts access WsConnection during disconnect | ✓ Good -- v4.0, correct ordering |
 
 ---
-*Last updated: 2026-02-13 after v4.0 milestone*
+*Last updated: 2026-02-12 after v5.0 milestone start*
