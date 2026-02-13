@@ -1269,4 +1269,93 @@ mod tests {
             assert!(state.children[i].running);
         }
     }
+
+    // -----------------------------------------------------------------------
+    // Remote child tests (Phase 69)
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_remote_child_spec_fields() {
+        let spec = ChildSpec {
+            id: "remote_worker".to_string(),
+            start_fn: std::ptr::null(),
+            start_args_ptr: std::ptr::null(),
+            start_args_size: 0,
+            restart_type: RestartType::Permanent,
+            shutdown: ShutdownType::default(),
+            child_type: ChildType::Worker,
+            target_node: Some("worker@host:9000".to_string()),
+            start_fn_name: Some("my_worker".to_string()),
+        };
+
+        assert_eq!(spec.target_node.as_deref(), Some("worker@host:9000"));
+        assert_eq!(spec.start_fn_name.as_deref(), Some("my_worker"));
+
+        let child_state = ChildState {
+            spec,
+            pid: None,
+            running: false,
+        };
+
+        assert_eq!(child_state.spec.target_node.as_deref(), Some("worker@host:9000"));
+        assert_eq!(child_state.spec.start_fn_name.as_deref(), Some("my_worker"));
+    }
+
+    #[test]
+    fn test_find_child_index_with_remote_pid() {
+        let mut state = SupervisorState::new(Strategy::OneForOne, 3, 5);
+
+        // Create a child with a remote PID (node_id=5, creation=1, local_id=42).
+        let remote_pid = ProcessId::from_remote(5, 1, 42);
+
+        let child = ChildState {
+            spec: test_child_spec("remote_child", RestartType::Permanent, ShutdownType::BrutalKill),
+            pid: Some(remote_pid),
+            running: true,
+        };
+        state.children.push(child);
+
+        // Also add a local child.
+        let local_pid = ProcessId::next();
+        let local_child = ChildState {
+            spec: test_child_spec("local_child", RestartType::Permanent, ShutdownType::BrutalKill),
+            pid: Some(local_pid),
+            running: true,
+        };
+        state.children.push(local_child);
+
+        // find_child_index should locate the remote child.
+        assert_eq!(state.find_child_index(remote_pid), Some(0));
+        assert_eq!(state.find_child_index(local_pid), Some(1));
+
+        // Unknown PID returns None.
+        let unknown = ProcessId::from_remote(99, 1, 1);
+        assert_eq!(state.find_child_index(unknown), None);
+    }
+
+    #[test]
+    fn test_terminate_remote_child_marks_not_running() {
+        let sched = test_scheduler();
+        let sup_pid = sched.spawn(noop_entry as *const u8, std::ptr::null(), 0, 1);
+
+        // Create a ChildState with a remote PID (node_id != 0).
+        let remote_pid = ProcessId::from_remote(5, 1, 42);
+        let mut child = ChildState {
+            spec: test_child_spec("remote_child", RestartType::Permanent, ShutdownType::BrutalKill),
+            pid: Some(remote_pid),
+            running: true,
+        };
+
+        // Verify the PID is indeed remote.
+        assert!(!remote_pid.is_local());
+
+        // Terminate the remote child. The send_dist_exit call will silently
+        // return (no node_state in test), which is fine -- we're testing the
+        // control flow, not the network.
+        terminate_single_child(&mut child, &sched, sup_pid);
+
+        // Verify child is marked as not running with no PID.
+        assert!(!child.running);
+        assert!(child.pid.is_none());
+    }
 }
