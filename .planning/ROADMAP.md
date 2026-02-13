@@ -129,7 +129,7 @@ See milestones/v4.0-ROADMAP.md for full phase details.
 
 - [x] **Phase 63: PID Encoding & Wire Format** - Location-transparent PID representation and binary serialization for all Snow types (completed 2026-02-13)
 - [x] **Phase 64: Node Connection & Authentication** - TLS-encrypted inter-node TCP with cookie-based auth and discovery (completed 2026-02-13)
-- [ ] **Phase 65: Remote Send & Distribution Router** - Transparent message routing across nodes with mesh formation
+- [x] **Phase 65: Remote Send & Distribution Router** - Transparent message routing across nodes with mesh formation (completed 2026-02-13)
 - [ ] **Phase 66: Remote Links, Monitors & Failure Handling** - Cross-node fault tolerance with exit signal and partition propagation
 - [ ] **Phase 67: Remote Spawn & LLVM Integration** - Spawn actors on remote nodes with full Snow-level API
 - [ ] **Phase 68: Global Registry** - Cluster-wide process name registration and lookup
@@ -181,9 +181,9 @@ Plans:
   5. User can call `Node.list()` to see all connected nodes and `Node.self()` to get own node identity
 **Plans:** 3 plans
 Plans:
-- [ ] 65-01-PLAN.md -- dist_send, reader loop handlers, snow_actor_send_named
-- [ ] 65-02-PLAN.md -- Mesh formation via peer list exchange, Node.self/list APIs
-- [ ] 65-03-PLAN.md -- Integration tests for remote send, mesh, and node queries
+- [x] 65-01-PLAN.md -- dist_send, reader loop handlers, snow_actor_send_named
+- [x] 65-02-PLAN.md -- Mesh formation via peer list exchange, Node.self/list APIs
+- [x] 65-03-PLAN.md -- Integration tests for remote send, mesh, and node queries
 
 ### Phase 66: Remote Links, Monitors & Failure Handling
 **Goal**: Distributed fault tolerance -- supervisors and monitors detect remote crashes and network partitions
@@ -246,10 +246,10 @@ Plans:
 | 59-62 | v4.0 | 8/8 | Complete | 2026-02-12 |
 | 63 | v5.0 | 3/3 | Complete | 2026-02-13 |
 | 64 | v5.0 | 3/3 | Complete | 2026-02-13 |
-| 65 | v5.0 | 0/3 | Not started | - |
+| 65 | v5.0 | 3/3 | Complete | 2026-02-13 |
 | 66 | v5.0 | 0/TBD | Not started | - |
 | 67 | v5.0 | 0/TBD | Not started | - |
 | 68 | v5.0 | 0/TBD | Not started | - |
 | 69 | v5.0 | 0/TBD | Not started | - |
 
-**Total: 64 phases shipped across 14 milestones. 176 plans completed. v5.0 in progress (2/7 phases complete).**
+**Total: 65 phases shipped across 14 milestones. 179 plans completed. v5.0 in progress (3/7 phases complete).**
