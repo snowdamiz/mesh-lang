@@ -10,16 +10,16 @@ See: .planning/PROJECT.md (updated 2026-02-13)
 ## Current Position
 
 Phase: 71 (2 of 4 in v6.0) — Syntax Highlighting + Landing Page
-Plan: —
-Status: Ready to plan
-Last activity: 2026-02-13 — Phase 70 complete (verified)
+Plan: 01 of 02 complete
+Status: Executing
+Last activity: 2026-02-13 — Plan 71-01 complete (syntax highlighting)
 
 Progress: [██░░░░░░░░] 25% (1/4 phases in v6.0)
 
 ## Performance Metrics
 
 **All-time Totals:**
-- Plans completed: 192
+- Plans completed: 193
 - Phases completed: 70
 - Milestones shipped: 15 (v1.0-v5.0)
 - Lines of Rust: ~93,500
@@ -37,6 +37,8 @@ Progress: [██░░░░░░░░] 25% (1/4 phases in v6.0)
 - 70-01: config.mts used instead of config.ts for ESM compatibility with VitePress
 - 70-01: shadcn-vue neutral base color chosen for zero-chroma monochrome OKLCH palette
 - [Phase 70-02]: Used VitePress isDark instead of VueUse useDark to avoid dual localStorage keys fighting
+- 71-01: Removed aliases: ['mesh'] from Shiki language config to fix circular alias build error
+- 71-01: Used as any casts on TextMate JSON imports per VitePress maintainer recommendation
 
 ### Research Notes
 
@@ -64,6 +66,6 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-13
-Stopped at: Phase 70 complete and verified
+Stopped at: Completed 71-01-PLAN.md
 Resume file: None
-Next action: Plan Phase 71 (Syntax Highlighting + Landing Page)
+Next action: Execute 71-02 (Landing Page)
