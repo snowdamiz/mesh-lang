@@ -5,21 +5,21 @@
 See: .planning/PROJECT.md (updated 2026-02-12)
 
 **Core value:** Expressive, readable concurrency -- writing concurrent programs should feel as natural as sequential code, with supervision and fault tolerance built in.
-**Current focus:** v5.0 Distributed Actors -- Phase 66: Remote Links, Monitors & Failure Handling
+**Current focus:** v5.0 Distributed Actors -- Phase 67: Remote Spawn & LLVM Integration
 
 ## Current Position
 
-Phase: 66 of 69 (Remote Links, Monitors & Failure Handling)
-Plan: 3 of 3 in current phase
-Status: Phase Complete
-Last activity: 2026-02-13 -- Phase 66 verified and complete
+Phase: 67 of 69 (Remote Spawn & LLVM Integration)
+Plan: 1 of 3 in current phase
+Status: In Progress
+Last activity: 2026-02-13 -- Completed 67-01 (Function Registry & LLVM Intrinsics)
 
 Progress: [██████████] 100%
 
 ## Performance Metrics
 
 **All-time Totals:**
-- Plans completed: 182
+- Plans completed: 183
 - Phases completed: 66
 - Milestones shipped: 14 (v1.0-v4.0)
 - Lines of Rust: ~84,400
@@ -68,6 +68,9 @@ Progress: [██████████] 100%
 - 66-03: Partition links/monitors by node_id in handle_process_exit for clean local/remote separation
 - 66-03: Batch trap_exit signals before waking (avoids re-acquire borrow issues in disconnect handler)
 - 66-03: send_dist_unlink marked dead_code since snow_actor_unlink not yet exposed as extern C
+- 67-01: FnPtr newtype wrapper for Send+Sync function pointer storage in OnceLock static
+- 67-01: snow_node_start LLVM declaration has 4 params (port in name string), matching runtime exactly
+- 67-01: Registration loop skips closures and __-prefixed internal functions (not remotely spawnable)
 
 ### Research Notes
 
@@ -88,6 +91,6 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-13
-Stopped at: Phase 66 complete -- verified and marked in ROADMAP.md
+Stopped at: Completed 67-01-PLAN.md
 Resume file: None
-Next action: Begin Phase 67 (Remote Spawn & LLVM Integration)
+Next action: Execute 67-02-PLAN.md (Remote Spawn Wire Protocol)
