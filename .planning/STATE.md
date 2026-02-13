@@ -5,22 +5,22 @@
 See: .planning/PROJECT.md (updated 2026-02-12)
 
 **Core value:** Expressive, readable concurrency -- writing concurrent programs should feel as natural as sequential code, with supervision and fault tolerance built in.
-**Current focus:** v4.0 WebSocket Support -- Phase 62 Rooms & Channels IN PROGRESS
+**Current focus:** v4.0 WebSocket Support -- Phase 62 Rooms & Channels COMPLETE
 
 ## Current Position
 
-Phase: 62 of 62 (Rooms & Channels) -- IN PROGRESS
-Plan: 1 of 2 in current phase -- COMPLETE
-Status: Plan 62-01 complete (RoomRegistry, 4 runtime functions, disconnect cleanup)
-Last activity: 2026-02-13 -- Plan 62-01 executed (2 tasks, 3 files, 332 tests pass)
+Phase: 62 of 62 (Rooms & Channels) -- COMPLETE
+Plan: 2 of 2 in current phase -- COMPLETE
+Status: Phase 62 complete (runtime + codegen wiring for rooms/channels)
+Last activity: 2026-02-13 -- Plan 62-02 executed (2 tasks, 2 files, 1524 tests pass)
 
-Progress: [█████████░] 90%
+Progress: [██████████] 100%
 
 ## Performance Metrics
 
 **All-time Totals:**
-- Plans completed: 169
-- Phases completed: 61
+- Plans completed: 170
+- Phases completed: 62
 - Milestones shipped: 12 (v1.0-v3.0)
 - Lines of Rust: ~84,400
 - Timeline: 8 days (2026-02-05 -> 2026-02-13)
@@ -50,12 +50,13 @@ Progress: [█████████░] 90%
 - [62-01] Nested lock ordering (rooms first, conn_rooms second) for deadlock prevention in RoomRegistry
 - [62-01] WsStream made pub(crate) alongside WsConnection for cross-module access from rooms.rs
 - [62-01] Room cleanup inserted before shutdown.store to prevent UAF in concurrent broadcasts
+- [62-02] Used MirType::Ptr (not MirType::String) for all room function args, consistent with WS family convention from Phase 60-02
 
 ### Research Notes
 
 - Reader thread bridge (novel architecture) is highest risk -- Phase 60 DONE
 - TLS reuses existing rustls infrastructure (low risk) -- Phase 61 DONE (plan 01)
-- Rooms follow existing process registry pattern (medium risk) -- Phase 62 plan 01 DONE (runtime)
+- Rooms follow existing process registry pattern (medium risk) -- Phase 62 DONE (runtime + codegen)
 - sha1 0.10 is the only new dependency needed
 
 ### Pending Todos
@@ -69,6 +70,6 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-13
-Stopped at: Completed 62-01-PLAN.md (RoomRegistry runtime functions)
+Stopped at: Completed 62-02-PLAN.md (codegen wiring for room functions)
 Resume file: None
-Next action: Execute Plan 62-02 (codegen wiring for Ws.join/leave/broadcast/broadcast_except)
+Next action: Phase 62 complete. All WebSocket phases (59-62) complete. v4.0 milestone ready.
