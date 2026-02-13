@@ -799,6 +799,23 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
     module.add_function("snow_actor_send_named",
         void_type.fn_type(&[ptr_type.into(), i64_type.into(), ptr_type.into(), i64_type.into(), ptr_type.into(), i64_type.into()], false),
         Some(inkwell::module::Linkage::External));
+
+    // ── Phase 68: Global Registry ──────────────────────────────────────
+
+    // snow_global_register(name_ptr: ptr, name_len: i64, pid: i64) -> i64
+    module.add_function("snow_global_register",
+        i64_type.fn_type(&[ptr_type.into(), i64_type.into(), i64_type.into()], false),
+        Some(inkwell::module::Linkage::External));
+
+    // snow_global_whereis(name_ptr: ptr, name_len: i64) -> i64
+    module.add_function("snow_global_whereis",
+        i64_type.fn_type(&[ptr_type.into(), i64_type.into()], false),
+        Some(inkwell::module::Linkage::External));
+
+    // snow_global_unregister(name_ptr: ptr, name_len: i64) -> i64
+    module.add_function("snow_global_unregister",
+        i64_type.fn_type(&[ptr_type.into(), i64_type.into()], false),
+        Some(inkwell::module::Linkage::External));
 }
 
 /// Get a runtime function by name from the module.
@@ -1095,6 +1112,11 @@ mod tests {
         assert!(module.get_function("snow_process_monitor").is_some());
         assert!(module.get_function("snow_process_demonitor").is_some());
         assert!(module.get_function("snow_actor_send_named").is_some());
+
+        // Phase 68: Global Registry
+        assert!(module.get_function("snow_global_register").is_some());
+        assert!(module.get_function("snow_global_whereis").is_some());
+        assert!(module.get_function("snow_global_unregister").is_some());
     }
 
     #[test]

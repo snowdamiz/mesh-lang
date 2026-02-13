@@ -688,6 +688,19 @@ impl<'ctx> CodeGen<'ctx> {
             if name == "snow_node_spawn_link" {
                 return self.codegen_node_spawn(args, 1);
             }
+            // ── Phase 68: Global Registry codegen ───────────────────────────
+            // Global.register(name, pid) -> snow_global_register(name_ptr, name_len, pid)
+            if name == "snow_global_register" && args.len() == 2 {
+                return self.codegen_global_register(args);
+            }
+            // Global.whereis(name) -> snow_global_whereis(name_ptr, name_len)
+            if name == "snow_global_whereis" {
+                return self.codegen_node_string_call(args, "snow_global_whereis");
+            }
+            // Global.unregister(name) -> snow_global_unregister(name_ptr, name_len)
+            if name == "snow_global_unregister" {
+                return self.codegen_node_string_call(args, "snow_global_unregister");
+            }
         }
 
         // Math/Int/Float stdlib intrinsics (Phase 43)
@@ -1963,6 +1976,37 @@ impl<'ctx> CodeGen<'ctx> {
             .try_as_basic_value()
             .basic()
             .ok_or_else(|| format!("{} returned void", intrinsic_name))
+    }
+
+    /// Codegen for Global.register(name, pid).
+    ///
+    /// Unpacks the first string argument to (ptr, len), passes the second argument
+    /// (pid as i64) through directly. Calls snow_global_register(name_ptr, name_len, pid).
+    fn codegen_global_register(
+        &mut self,
+        args: &[MirExpr],
+    ) -> Result<BasicValueEnum<'ctx>, String> {
+        // Unpack string argument (name)
+        let str_val = self.codegen_expr(&args[0])?;
+        let (name_ptr, name_len) = self.codegen_unpack_string(str_val)?;
+
+        // Second argument is pid (i64)
+        let pid_val = self.codegen_expr(&args[1])?;
+
+        let func = get_intrinsic(&self.module, "snow_global_register");
+        let result = self
+            .builder
+            .build_call(
+                func,
+                &[name_ptr.into(), name_len.into(), pid_val.into()],
+                "global_register",
+            )
+            .map_err(|e| e.to_string())?;
+
+        result
+            .try_as_basic_value()
+            .basic()
+            .ok_or_else(|| "snow_global_register returned void".to_string())
     }
 
     /// Codegen for Node.spawn / Node.spawn_link.
