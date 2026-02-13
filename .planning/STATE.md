@@ -10,17 +10,17 @@ See: .planning/PROJECT.md (updated 2026-02-12)
 ## Current Position
 
 Phase: 65 of 69 (Remote Send & Distribution Router)
-Plan: 2 of 3 in current phase
-Status: In Progress
-Last activity: 2026-02-13 -- Completed 65-02 (Mesh Formation & Node Query APIs)
+Plan: 3 of 3 in current phase
+Status: Phase Complete
+Last activity: 2026-02-13 -- Completed 65-03 (Integration Tests)
 
 Progress: [██████████] 100%
 
 ## Performance Metrics
 
 **All-time Totals:**
-- Plans completed: 178
-- Phases completed: 64
+- Plans completed: 179
+- Phases completed: 65
 - Milestones shipped: 14 (v1.0-v4.0)
 - Lines of Rust: ~84,400
 - Timeline: 8 days (2026-02-05 -> 2026-02-13)
@@ -53,6 +53,9 @@ Progress: [██████████] 100%
 - 65-02: Mesh connections spawned on separate thread to avoid reader loop deadlock
 - 65-02: Self/already-connected nodes filtered from peer list to prevent infinite loops
 - 65-02: snow_node_self returns null when not started; snow_node_list returns empty list
+- 65-03: In-memory Cursor-based wire format roundtrip testing (no network I/O, no flakiness)
+- 65-03: Peer list parsing tested inline to avoid NODE_STATE dependency and thread spawning
+- 65-03: Node query API tests handle both init/uninit NODE_STATE for parallel test safety
 
 ### Research Notes
 
@@ -73,6 +76,6 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-13
-Stopped at: Completed 65-02-PLAN.md (Mesh Formation & Node Query APIs)
+Stopped at: Completed 65-03-PLAN.md (Integration Tests) -- Phase 65 complete
 Resume file: None
-Next action: Execute 65-03-PLAN.md
+Next action: Begin Phase 66 (Nodedown Monitor)
