@@ -9274,6 +9274,7 @@ impl<'a> Lowerer<'a> {
 const STDLIB_MODULES: &[&str] = &[
     "String", "IO", "Env", "File", "List", "Map", "Set", "Tuple", "Range", "Queue", "HTTP", "JSON", "Json", "Request", "Job",
     "Math", "Int", "Float", "Timer", "Sqlite", "Pg", "Ws",
+    "Node", "Process",  // Phase 67
 ];
 
 /// Map Snow builtin function names to their runtime equivalents.
@@ -9525,6 +9526,17 @@ fn map_builtin_name(name: &str) -> String {
         "ws_leave" => "snow_ws_leave".to_string(),
         "ws_broadcast" => "snow_ws_broadcast".to_string(),
         "ws_broadcast_except" => "snow_ws_broadcast_except".to_string(),
+        // ── Phase 67: Node distribution functions ─────────────────────────
+        "node_start" => "snow_node_start".to_string(),
+        "node_connect" => "snow_node_connect".to_string(),
+        "node_self" => "snow_node_self".to_string(),
+        "node_list" => "snow_node_list".to_string(),
+        "node_monitor" => "snow_node_monitor".to_string(),
+        "node_spawn" => "snow_node_spawn".to_string(),
+        "node_spawn_link" => "snow_node_spawn_link".to_string(),
+        // ── Phase 67: Process monitor/demonitor ───────────────────────────
+        "process_monitor" => "snow_process_monitor".to_string(),
+        "process_demonitor" => "snow_process_demonitor".to_string(),
         _ => name.to_string(),
     }
 }
