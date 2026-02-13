@@ -2127,4 +2127,236 @@ mod tests {
         cleanup_session("nonexistent@host");
         // If we get here, cleanup_session handled the None case gracefully.
     }
+
+    // -------------------------------------------------------------------
+    // Plan 65-03 Task 1: Wire format and message routing unit tests
+    // -------------------------------------------------------------------
+
+    #[test]
+    fn test_dist_send_wire_format() {
+        use std::io::Cursor;
+
+        // Test 1: Normal DIST_SEND message with payload
+        let target_pid: u64 = 0x0001_0000_0000_0042; // node_id=1, local pid=0x42
+        let message = b"hello remote actor";
+
+        let mut payload = Vec::new();
+        payload.push(DIST_SEND);
+        payload.extend_from_slice(&target_pid.to_le_bytes());
+        payload.extend_from_slice(message);
+
+        let mut buf = Vec::new();
+        write_msg(&mut buf, &payload).unwrap();
+
+        let mut cursor = Cursor::new(&buf);
+        let msg = read_dist_msg(&mut cursor).unwrap();
+
+        assert_eq!(msg[0], DIST_SEND);
+        let decoded_pid = u64::from_le_bytes(msg[1..9].try_into().unwrap());
+        assert_eq!(decoded_pid, target_pid);
+        assert_eq!(&msg[9..], message);
+
+        // Test 2: Empty message payload (msg_size == 0)
+        let mut payload = Vec::new();
+        payload.push(DIST_SEND);
+        payload.extend_from_slice(&target_pid.to_le_bytes());
+        // No message bytes
+
+        let mut buf = Vec::new();
+        write_msg(&mut buf, &payload).unwrap();
+
+        let mut cursor = Cursor::new(&buf);
+        let msg = read_dist_msg(&mut cursor).unwrap();
+
+        assert_eq!(msg.len(), 9); // tag + 8 bytes pid, no message
+        assert_eq!(msg[0], DIST_SEND);
+        let decoded_pid = u64::from_le_bytes(msg[1..9].try_into().unwrap());
+        assert_eq!(decoded_pid, target_pid);
+
+        // Test 3: Large payload (8KB -- above old 4KB handshake limit)
+        let big_message = vec![0xABu8; 8192];
+        let mut payload = Vec::new();
+        payload.push(DIST_SEND);
+        payload.extend_from_slice(&target_pid.to_le_bytes());
+        payload.extend_from_slice(&big_message);
+
+        let mut buf = Vec::new();
+        write_msg(&mut buf, &payload).unwrap();
+
+        let mut cursor = Cursor::new(&buf);
+        let msg = read_dist_msg(&mut cursor).unwrap();
+
+        assert_eq!(msg[0], DIST_SEND);
+        assert_eq!(&msg[9..], &big_message[..]);
+    }
+
+    #[test]
+    fn test_dist_reg_send_wire_format() {
+        use std::io::Cursor;
+
+        // Test 1: Normal DIST_REG_SEND with name and message
+        let name = "my_server";
+        let message = b"request data";
+
+        let mut payload = Vec::new();
+        payload.push(DIST_REG_SEND);
+        payload.extend_from_slice(&(name.len() as u16).to_le_bytes());
+        payload.extend_from_slice(name.as_bytes());
+        payload.extend_from_slice(message);
+
+        let mut buf = Vec::new();
+        write_msg(&mut buf, &payload).unwrap();
+
+        let mut cursor = Cursor::new(&buf);
+        let msg = read_dist_msg(&mut cursor).unwrap();
+
+        assert_eq!(msg[0], DIST_REG_SEND);
+        let name_len = u16::from_le_bytes(msg[1..3].try_into().unwrap()) as usize;
+        assert_eq!(name_len, name.len());
+        let decoded_name = std::str::from_utf8(&msg[3..3 + name_len]).unwrap();
+        assert_eq!(decoded_name, name);
+        assert_eq!(&msg[3 + name_len..], message);
+
+        // Test 2: Empty name (edge case)
+        let empty_name = "";
+        let message = b"msg to empty name";
+
+        let mut payload = Vec::new();
+        payload.push(DIST_REG_SEND);
+        payload.extend_from_slice(&(empty_name.len() as u16).to_le_bytes());
+        // No name bytes
+        payload.extend_from_slice(message);
+
+        let mut buf = Vec::new();
+        write_msg(&mut buf, &payload).unwrap();
+
+        let mut cursor = Cursor::new(&buf);
+        let msg = read_dist_msg(&mut cursor).unwrap();
+
+        assert_eq!(msg[0], DIST_REG_SEND);
+        let name_len = u16::from_le_bytes(msg[1..3].try_into().unwrap()) as usize;
+        assert_eq!(name_len, 0);
+        assert_eq!(&msg[3..], message);
+
+        // Test 3: Long name (255 chars)
+        let long_name = "a".repeat(255);
+        let message = b"payload";
+
+        let mut payload = Vec::new();
+        payload.push(DIST_REG_SEND);
+        payload.extend_from_slice(&(long_name.len() as u16).to_le_bytes());
+        payload.extend_from_slice(long_name.as_bytes());
+        payload.extend_from_slice(message);
+
+        let mut buf = Vec::new();
+        write_msg(&mut buf, &payload).unwrap();
+
+        let mut cursor = Cursor::new(&buf);
+        let msg = read_dist_msg(&mut cursor).unwrap();
+
+        assert_eq!(msg[0], DIST_REG_SEND);
+        let name_len = u16::from_le_bytes(msg[1..3].try_into().unwrap()) as usize;
+        assert_eq!(name_len, 255);
+        let decoded_name = std::str::from_utf8(&msg[3..3 + name_len]).unwrap();
+        assert_eq!(decoded_name, long_name);
+        assert_eq!(&msg[3 + name_len..], message);
+    }
+
+    #[test]
+    fn test_dist_peer_list_wire_format() {
+        use std::io::Cursor;
+
+        // Test 1: Multiple peers
+        let peers = vec!["alpha@10.0.0.1:9000", "beta@10.0.0.2:9001", "gamma@10.0.0.3:9002"];
+
+        let mut payload = Vec::new();
+        payload.push(DIST_PEER_LIST);
+        payload.extend_from_slice(&(peers.len() as u16).to_le_bytes());
+        for peer in &peers {
+            let bytes = peer.as_bytes();
+            payload.extend_from_slice(&(bytes.len() as u16).to_le_bytes());
+            payload.extend_from_slice(bytes);
+        }
+
+        let mut buf = Vec::new();
+        write_msg(&mut buf, &payload).unwrap();
+
+        let mut cursor = Cursor::new(&buf);
+        let msg = read_dist_msg(&mut cursor).unwrap();
+
+        assert_eq!(msg[0], DIST_PEER_LIST);
+        let count = u16::from_le_bytes(msg[1..3].try_into().unwrap()) as usize;
+        assert_eq!(count, 3);
+
+        // Parse the peer names back out
+        let mut pos = 3;
+        let mut decoded_peers = Vec::new();
+        for _ in 0..count {
+            let name_len = u16::from_le_bytes(msg[pos..pos+2].try_into().unwrap()) as usize;
+            pos += 2;
+            let name = std::str::from_utf8(&msg[pos..pos+name_len]).unwrap();
+            decoded_peers.push(name.to_string());
+            pos += name_len;
+        }
+
+        assert_eq!(decoded_peers, peers);
+
+        // Test 2: Empty peer list (count=0)
+        let mut payload = Vec::new();
+        payload.push(DIST_PEER_LIST);
+        payload.extend_from_slice(&0u16.to_le_bytes());
+
+        let mut buf = Vec::new();
+        write_msg(&mut buf, &payload).unwrap();
+
+        let mut cursor = Cursor::new(&buf);
+        let msg = read_dist_msg(&mut cursor).unwrap();
+
+        assert_eq!(msg[0], DIST_PEER_LIST);
+        let count = u16::from_le_bytes(msg[1..3].try_into().unwrap()) as usize;
+        assert_eq!(count, 0);
+    }
+
+    #[test]
+    fn test_read_dist_msg_accepts_large_messages() {
+        use std::io::Cursor;
+
+        // 8KB payload: above MAX_HANDSHAKE_MSG (4KB) but below MAX_DIST_MSG (16MB)
+        let payload = vec![0xBBu8; 8192];
+        let mut buf = Vec::new();
+        write_msg(&mut buf, &payload).unwrap();
+
+        let mut cursor = Cursor::new(&buf);
+        let msg = read_dist_msg(&mut cursor).unwrap();
+        assert_eq!(msg.len(), 8192);
+        assert_eq!(msg, payload);
+
+        // Verify read_msg would reject this (4KB limit)
+        let mut cursor = Cursor::new(&buf);
+        let err = read_msg(&mut cursor);
+        assert!(err.is_err());
+        assert!(err.unwrap_err().to_string().contains("too large"));
+    }
+
+    #[test]
+    fn test_read_dist_msg_rejects_oversized() {
+        use std::io::Cursor;
+
+        // Write a length header claiming a message larger than MAX_DIST_MSG
+        let fake_len = MAX_DIST_MSG + 1;
+        let mut buf = Vec::new();
+        buf.extend_from_slice(&fake_len.to_le_bytes());
+        // Don't need to write actual payload -- read_dist_msg should reject
+        // before trying to allocate
+
+        let mut cursor = Cursor::new(&buf);
+        let err = read_dist_msg(&mut cursor);
+        assert!(err.is_err());
+        let err_msg = err.unwrap_err().to_string();
+        assert!(
+            err_msg.contains("dist message too large"),
+            "expected 'dist message too large', got: {}",
+            err_msg
+        );
+    }
 }
