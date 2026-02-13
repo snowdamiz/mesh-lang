@@ -7,8 +7,8 @@
     "jsx": "preserve",
     "baseUrl": ".",
     "paths": {
-      "@/*": ["./.vitepress/theme/*"]
+      "@/*": ["./docs/.vitepress/theme/*"]
     }
   },
-  "include": [".vitepress/**/*.ts", ".vitepress/**/*.vue", "docs/**/*.md"]
+  "include": ["docs/.vitepress/**/*.ts", "docs/.vitepress/**/*.vue", "docs/**/*.md"]
 }
