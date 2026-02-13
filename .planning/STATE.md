@@ -10,9 +10,9 @@ See: .planning/PROJECT.md (updated 2026-02-12)
 ## Current Position
 
 Phase: 67 of 69 (Remote Spawn & LLVM Integration)
-Plan: 1 of 3 in current phase
+Plan: 2 of 3 in current phase
 Status: In Progress
-Last activity: 2026-02-13 -- Completed 67-01 (Function Registry & LLVM Intrinsics)
+Last activity: 2026-02-13 -- Completed 67-02 (Remote Spawn Wire Protocol)
 
 Progress: [██████████] 100%
 
@@ -71,6 +71,10 @@ Progress: [██████████] 100%
 - 67-01: FnPtr newtype wrapper for Send+Sync function pointer storage in OnceLock static
 - 67-01: snow_node_start LLVM declaration has 4 params (port in name string), matching runtime exactly
 - 67-01: Registration loop skips closures and __-prefixed internal functions (not remotely spawnable)
+- 67-02: Selective receive via Mailbox::remove_first predicate scan (Erlang-style, preserves FIFO for non-matching)
+- 67-02: send_dist_link_via_session for spawn_link (avoids PID-based routing; wire requester_pid has node_id=0)
+- 67-02: Remote-qualify requester PID in DIST_SPAWN handler (from_remote with session.node_id/creation for correct routing)
+- 67-02: DIST_SPAWN_REPLY contains spawned_local_id only; caller reconstructs full remote PID from session info
 
 ### Research Notes
 
@@ -91,6 +95,6 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-13
-Stopped at: Completed 67-01-PLAN.md
+Stopped at: Completed 67-02-PLAN.md
 Resume file: None
-Next action: Execute 67-02-PLAN.md (Remote Spawn Wire Protocol)
+Next action: Execute 67-03-PLAN.md (Node Spawn API & LLVM Integration)
