@@ -5,21 +5,21 @@
 See: .planning/PROJECT.md (updated 2026-02-12)
 
 **Core value:** Expressive, readable concurrency -- writing concurrent programs should feel as natural as sequential code, with supervision and fault tolerance built in.
-**Current focus:** v5.0 Distributed Actors -- Phase 67 complete, next: Phase 68 (Global Registry)
+**Current focus:** v5.0 Distributed Actors -- Phase 68 in progress (Global Registry)
 
 ## Current Position
 
-Phase: 67 of 69 (Remote Spawn & LLVM Integration)
-Plan: 3 of 3 in current phase
-Status: Phase Complete
-Last activity: 2026-02-13 -- Phase 67 verified and complete
+Phase: 68 of 69 (Global Registry)
+Plan: 1 of 3 in current phase
+Status: Executing
+Last activity: 2026-02-13 -- Completed 68-01 (Global Registry Runtime)
 
 Progress: [██████████] 100%
 
 ## Performance Metrics
 
 **All-time Totals:**
-- Plans completed: 185
+- Plans completed: 186
 - Phases completed: 67
 - Milestones shipped: 14 (v1.0-v4.0)
 - Lines of Rust: ~85,200
@@ -79,6 +79,10 @@ Progress: [██████████] 100%
 - 67-03: Node.spawn converts function reference to string constant at codegen time (MirExpr::Var name extraction)
 - 67-03: Parser extended to accept keywords (self, monitor, spawn, link) as field names after dot
 - 67-03: Node.spawn/spawn_link use fresh type variable for variadic call handling (bypasses arity check)
+- 68-01: Single RwLock<GlobalRegistryInner> wrapping all three maps (names, pid_names, node_names) for deadlock-free consistency
+- 68-01: PID reconstruction on receive: reader loop replaces node_id=0 PIDs with session.node_id via from_remote
+- 68-01: Broadcast pattern: collect Arc refs, drop sessions lock, then iterate and write (follows send_peer_list)
+- 68-01: nonode@nohost as node_name when Node.start not called (allows pre-distribution global registration)
 
 ### Research Notes
 
@@ -99,6 +103,6 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-13
-Stopped at: Phase 67 complete -- verified and marked in ROADMAP.md
+Stopped at: Completed 68-01-PLAN.md (Global Registry Runtime)
 Resume file: None
-Next action: Begin Phase 68 (Global Registry)
+Next action: Execute 68-02-PLAN.md (Compiler Integration)
