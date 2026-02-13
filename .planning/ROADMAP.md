@@ -14,7 +14,7 @@
 - [x] **v1.9 Stdlib & Ergonomics** - Phases 43-48 (shipped 2026-02-10)
 - [x] **v2.0 Database & Serialization** - Phases 49-54 (shipped 2026-02-12)
 - [x] **v3.0 Production Backend** - Phases 55-58 (shipped 2026-02-12)
-- [ ] **v4.0 WebSocket Support** - Phases 59-62 (in progress)
+- [x] **v4.0 WebSocket Support** - Phases 59-62 (shipped 2026-02-12)
 
 ## Phases
 
@@ -114,14 +114,14 @@ See milestones/v3.0-ROADMAP.md for full phase details.
 
 </details>
 
-### v4.0 WebSocket Support (In Progress)
+### v4.0 WebSocket Support (SHIPPED 2026-02-12)
 
 **Milestone Goal:** Add WebSocket support with actor-per-connection model, unified actor messaging, rooms/channels, ping/pong heartbeat, binary+text frames, and TLS (wss://).
 
 - [x] **Phase 59: Protocol Core** - RFC 6455 frame codec, HTTP upgrade handshake, text/binary/close frames (completed 2026-02-12)
 - [x] **Phase 60: Actor Integration** - Actor-per-connection, reader thread bridge, mailbox delivery, callbacks, Ws.serve (completed 2026-02-12)
 - [x] **Phase 61: Production Hardening** - TLS (wss://), ping/pong heartbeat, message fragmentation (completed 2026-02-12)
-- [ ] **Phase 62: Rooms & Channels** - Named rooms with join/leave/broadcast and automatic cleanup
+- [x] **Phase 62: Rooms & Channels** - Named rooms with join/leave/broadcast and automatic cleanup (completed 2026-02-12)
 
 ## Phase Details
 
@@ -179,8 +179,8 @@ Plans:
   4. Multiple connection actors can concurrently join, leave, and broadcast to the same room without data corruption
 **Plans:** 2 plans
 Plans:
-- [ ] 62-01-PLAN.md -- RoomRegistry, runtime functions (join/leave/broadcast/broadcast_except), disconnect cleanup
-- [ ] 62-02-PLAN.md -- Codegen wiring (LLVM intrinsics, known_functions, map_builtin_name)
+- [x] 62-01-PLAN.md -- RoomRegistry, runtime functions (join/leave/broadcast/broadcast_except), disconnect cleanup
+- [x] 62-02-PLAN.md -- Codegen wiring (LLVM intrinsics, known_functions, map_builtin_name)
 
 ## Progress
 
@@ -204,6 +204,6 @@ Phases execute in numeric order: 59 -> 60 -> 61 -> 62
 | 59. Protocol Core | v4.0 | 2/2 | Complete | 2026-02-12 |
 | 60. Actor Integration | v4.0 | 2/2 | Complete | 2026-02-12 |
 | 61. Production Hardening | v4.0 | 2/2 | Complete | 2026-02-12 |
-| 62. Rooms & Channels | v4.0 | 0/2 | Not started | - |
+| 62. Rooms & Channels | v4.0 | 2/2 | Complete | 2026-02-12 |
 
-**Total: 61 phases shipped across 12 milestones. 168 plans completed. 1 phase remaining for v4.0.**
+**Total: 62 phases shipped across 13 milestones. 170 plans completed. v4.0 complete.**
