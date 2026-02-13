@@ -591,6 +591,8 @@ extern "C" fn ws_connection_entry(args: *const u8) {
     }));
 
     // 9. Cleanup
+    // ROOM-05: remove from all rooms before signaling shutdown
+    crate::ws::rooms::global_room_registry().cleanup_connection(conn as usize);
     shutdown.store(true, Ordering::SeqCst);
 
     if result.is_err() {
