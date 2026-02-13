@@ -288,6 +288,11 @@ pub(crate) const DIST_GLOBAL_UNREGISTER: u8 = 0x1C;
 /// Wire tag for global registry: bulk sync snapshot on node connect.
 /// Format: [tag 0x1D][u32 count][(u16 name_len, name, u64 pid, u16 node_len, node_name)*]
 pub(crate) const DIST_GLOBAL_SYNC: u8 = 0x1D;
+
+/// Wire tag for distributed room broadcast (Phase 69).
+/// Format: [tag 0x1E][u16 room_name_len][room_name bytes][u32 msg_len][msg bytes]
+pub(crate) const DIST_ROOM_BROADCAST: u8 = 0x1E;
+
 /// Reserved type_tag for spawn reply messages in mailbox.
 pub(crate) const SPAWN_REPLY_TAG: u64 = u64::MAX - 4;
 
@@ -1043,6 +1048,37 @@ fn reader_loop_session(
                             }
                             crate::dist::global::global_name_registry()
                                 .merge_snapshot(entries);
+                        }
+                    }
+                    DIST_ROOM_BROADCAST => {
+                        // Wire format: [tag 0x1E][u16 room_name_len][room_name][u32 msg_len][msg]
+                        // Deliver to local room members only -- do NOT re-forward to other
+                        // nodes (prevents infinite broadcast storms; see RESEARCH.md Pitfall 1).
+                        if msg.len() >= 3 {
+                            let room_name_len = u16::from_le_bytes(
+                                msg[1..3].try_into().unwrap(),
+                            ) as usize;
+                            if msg.len() >= 3 + room_name_len + 4 {
+                                if let Ok(room_name) = std::str::from_utf8(
+                                    &msg[3..3 + room_name_len],
+                                ) {
+                                    let msg_len = u32::from_le_bytes(
+                                        msg[3 + room_name_len..7 + room_name_len]
+                                            .try_into()
+                                            .unwrap(),
+                                    ) as usize;
+                                    if msg.len() >= 7 + room_name_len + msg_len {
+                                        if let Ok(text) = std::str::from_utf8(
+                                            &msg[7 + room_name_len
+                                                ..7 + room_name_len + msg_len],
+                                        ) {
+                                            crate::ws::rooms::local_room_broadcast(
+                                                room_name, text,
+                                            );
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
                     _ => {

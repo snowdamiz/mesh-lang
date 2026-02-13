@@ -137,6 +137,73 @@ pub fn global_room_registry() -> &'static RoomRegistry {
 }
 
 // ---------------------------------------------------------------------------
+// Cluster-aware broadcast helpers (pub(crate) for use from dist::node reader)
+// ---------------------------------------------------------------------------
+
+/// Broadcast a text frame to local room members only.
+///
+/// Extracts the local delivery logic from `snow_ws_broadcast` into a reusable
+/// helper. Called by the reader loop when receiving `DIST_ROOM_BROADCAST` from
+/// a remote node (local-only delivery, no re-forwarding to prevent storms).
+///
+/// Returns the number of write failures (0 = all succeeded).
+pub(crate) fn local_room_broadcast(room: &str, msg: &str) -> i64 {
+    let payload = msg.as_bytes();
+
+    // Snapshot member list (read lock, released immediately)
+    let members = global_room_registry().members(room);
+
+    let mut failures = 0i64;
+    for conn_usize in members {
+        let conn = unsafe { &*(conn_usize as *const WsConnection) };
+        // Check shutdown flag to avoid writing to closing connections
+        if conn.shutdown.load(Ordering::SeqCst) {
+            continue;
+        }
+        let mut stream = conn.write_stream.lock();
+        if write_frame(&mut *stream, WsOpcode::Text, payload, true).is_err() {
+            failures += 1;
+        }
+    }
+    failures
+}
+
+/// Forward a room broadcast to all connected cluster nodes.
+///
+/// Follows the collect-then-iterate pattern from `global.rs::broadcast_global_register`:
+/// acquire sessions read lock, collect `Arc<NodeSession>` references, drop lock,
+/// then iterate and write to each session's stream.
+///
+/// Returns immediately (no-op) if distribution is not started (`node_state()` is None).
+pub(crate) fn broadcast_room_to_cluster(room: &str, msg: &str) {
+    let state = match crate::dist::node::node_state() {
+        Some(s) => s,
+        None => return,
+    };
+
+    // Build payload: [tag 0x1E][u16 room_name_len][room_name][u32 msg_len][msg]
+    let room_bytes = room.as_bytes();
+    let msg_bytes = msg.as_bytes();
+    let mut payload = Vec::with_capacity(1 + 2 + room_bytes.len() + 4 + msg_bytes.len());
+    payload.push(crate::dist::node::DIST_ROOM_BROADCAST);
+    payload.extend_from_slice(&(room_bytes.len() as u16).to_le_bytes());
+    payload.extend_from_slice(room_bytes);
+    payload.extend_from_slice(&(msg_bytes.len() as u32).to_le_bytes());
+    payload.extend_from_slice(msg_bytes);
+
+    // Collect session references, then drop sessions lock before writing.
+    let sessions: Vec<std::sync::Arc<crate::dist::node::NodeSession>> = {
+        let map = state.sessions.read();
+        map.values().map(|s| std::sync::Arc::clone(s)).collect()
+    };
+
+    for session in &sessions {
+        let mut stream = session.stream.lock().unwrap();
+        let _ = crate::dist::node::write_msg(&mut *stream, &payload);
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Runtime functions (extern "C" for Snow codegen)
 // ---------------------------------------------------------------------------
 
@@ -173,14 +240,14 @@ pub extern "C" fn snow_ws_leave(conn: *mut u8, room_name: *const SnowString) -> 
     0
 }
 
-/// Broadcast a text frame to all connections in a named room.
+/// Broadcast a text frame to all connections in a named room, cluster-wide.
 ///
-/// `room_name` and `msg` are pointers to `SnowString` values. Snapshots the
-/// member list (releases read lock), then iterates and writes to each
-/// connection. Connections with the `shutdown` flag set are skipped.
+/// `room_name` and `msg` are pointers to `SnowString` values. Performs local
+/// delivery first (snapshot members, write frames), then forwards the message
+/// to all connected cluster nodes via `DIST_ROOM_BROADCAST`.
 ///
-/// Returns the number of write failures (0 = all succeeded), or -1 on null
-/// arguments.
+/// Returns the number of local write failures (0 = all succeeded), or -1 on
+/// null arguments.
 #[no_mangle]
 pub extern "C" fn snow_ws_broadcast(
     room_name: *const SnowString,
@@ -191,33 +258,27 @@ pub extern "C" fn snow_ws_broadcast(
     }
     let room = unsafe { (*room_name).as_str() };
     let text = unsafe { (*msg).as_str() };
-    let payload = text.as_bytes();
 
-    // Snapshot member list (read lock, released immediately)
-    let members = global_room_registry().members(room);
+    // Step 1: Local delivery to this node's room members
+    let failures = local_room_broadcast(room, text);
 
-    let mut failures = 0i64;
-    for conn_usize in members {
-        let conn = unsafe { &*(conn_usize as *const WsConnection) };
-        // Check shutdown flag to avoid writing to closing connections
-        if conn.shutdown.load(Ordering::SeqCst) {
-            continue;
-        }
-        let mut stream = conn.write_stream.lock();
-        if write_frame(&mut *stream, WsOpcode::Text, payload, true).is_err() {
-            failures += 1;
-        }
-    }
+    // Step 2: Forward to all connected cluster nodes
+    broadcast_room_to_cluster(room, text);
+
     failures
 }
 
-/// Broadcast a text frame to all connections in a room except one.
+/// Broadcast a text frame to all connections in a room except one, cluster-wide.
 ///
-/// Same as `snow_ws_broadcast` but skips the connection at `except_conn`.
+/// Same as `snow_ws_broadcast` but skips the connection at `except_conn` for
+/// local delivery. The excluded connection only applies on this node (it is a
+/// local pointer); remote nodes deliver to ALL their local members, which is
+/// correct since the excluded connection is never on those nodes.
+///
 /// `except_conn` can be null (treated as no exclusion).
 ///
-/// Returns the number of write failures (0 = all succeeded), or -1 on null
-/// room_name or msg.
+/// Returns the number of local write failures (0 = all succeeded), or -1 on
+/// null room_name or msg.
 #[no_mangle]
 pub extern "C" fn snow_ws_broadcast_except(
     room_name: *const SnowString,
@@ -232,7 +293,7 @@ pub extern "C" fn snow_ws_broadcast_except(
     let payload = text.as_bytes();
     let except = except_conn as usize;
 
-    // Snapshot member list (read lock, released immediately)
+    // Step 1: Local delivery with exclusion (except_conn only meaningful locally)
     let members = global_room_registry().members(room);
 
     let mut failures = 0i64;
@@ -250,6 +311,12 @@ pub extern "C" fn snow_ws_broadcast_except(
             failures += 1;
         }
     }
+
+    // Step 2: Forward full message to all connected cluster nodes
+    // Remote nodes deliver to ALL their local members (no exclusion needed --
+    // the excluded connection is local to this node by definition).
+    broadcast_room_to_cluster(room, text);
+
     failures
 }
 
