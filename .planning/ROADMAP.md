@@ -222,7 +222,11 @@ Plans:
   1. User can register a process globally with `Global.register(name, pid)` and the name is visible from all connected nodes
   2. User can look up a globally registered name with `Global.whereis(name)` from any node and get back the correct PID
   3. When a node disconnects, all global registrations owned by processes on that node are automatically cleaned up
-**Plans**: TBD
+**Plans:** 3 plans
+Plans:
+- [ ] 68-01-PLAN.md -- GlobalRegistry data structure, runtime APIs, wire protocol, cleanup hooks
+- [ ] 68-02-PLAN.md -- Compiler integration (Global module in typechecker, MIR, LLVM codegen)
+- [ ] 68-03-PLAN.md -- Sync on connect, wire format tests, GlobalRegistry unit tests
 
 ### Phase 69: Cross-Node Integration
 **Goal**: Existing WebSocket rooms and supervision trees work transparently across node boundaries
