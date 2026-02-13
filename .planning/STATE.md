@@ -5,21 +5,21 @@
 See: .planning/PROJECT.md (updated 2026-02-13)
 
 **Core value:** Expressive, readable concurrency -- writing concurrent programs should feel as natural and clean as writing sequential code, with the safety net of supervision and fault tolerance built into the language.
-**Current focus:** v6.0 Website & Documentation -- Phase 72: Docs Infrastructure + Core Content
+**Current focus:** v6.0 Website & Documentation -- Phase 73: Extended Content + Polish
 
 ## Current Position
 
-Phase: 72 (3 of 4 in v6.0) — Docs Infrastructure + Core Content
-Plan: 04 of 04 complete
-Status: Phase Complete
-Last activity: 2026-02-13 — Plan 72-04 complete (type system, concurrency, cheatsheet docs)
+Phase: 73 (4 of 4 in v6.0) — Extended Content + Polish
+Plan: 02 of 03 complete
+Status: In Progress
+Last activity: 2026-02-13 — Plan 73-02 complete (distributed & tooling docs)
 
-Progress: [███████░░░] 75% (3/4 phases in v6.0)
+Progress: [█████████░] 90% (3.67/4 phases in v6.0)
 
 ## Performance Metrics
 
 **All-time Totals:**
-- Plans completed: 197
+- Plans completed: 199
 - Phases completed: 72
 - Milestones shipped: 15 (v1.0-v5.0)
 - Lines of Rust: ~93,500
@@ -50,6 +50,9 @@ Progress: [███████░░░] 75% (3/4 phases in v6.0)
 - 72-04: All code examples sourced from e2e test files for syntax accuracy
 - 72-04: Added Option/Result shorthand syntax (T? and T!E) to Type System docs
 - 72-04: Included service auto-generated method naming convention in Concurrency docs
+- 73-02: Distributed examples derived from codegen mapping and runtime source (no e2e tests for distributed features)
+- 73-02: Documented Node.spawn and Node.spawn_link based on runtime extern C API signatures
+- 73-02: Included mesh.toml manifest format with git and path dependency examples from manifest.rs source
 
 ### Research Notes
 
@@ -77,6 +80,6 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-13
-Stopped at: Completed 72-04-PLAN.md (Phase 72 complete)
+Stopped at: Completed 73-02-PLAN.md (distributed & tooling docs)
 Resume file: None
-Next action: Begin next phase in v6.0 milestone
+Next action: Execute 73-03-PLAN.md (site features)
