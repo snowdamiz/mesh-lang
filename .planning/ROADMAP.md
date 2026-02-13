@@ -163,7 +163,11 @@ Plans:
   3. A connection attempt with a wrong cookie is rejected with a clear error (not silent failure or crash)
   4. Inter-node traffic is TLS-encrypted using the existing rustls infrastructure (not plaintext)
   5. A dead node connection is detected via heartbeat within the configured timeout interval
-**Plans**: TBD
+**Plans:** 3 plans
+Plans:
+- [ ] 64-01-PLAN.md -- NodeState, TLS config, ephemeral cert, TCP listener, Node.start
+- [ ] 64-02-PLAN.md -- HMAC-SHA256 handshake protocol, Node.connect, NodeSession
+- [ ] 64-03-PLAN.md -- Heartbeat, reader thread, connection lifecycle, tests
 
 ### Phase 65: Remote Send & Distribution Router
 **Goal**: `send(pid, msg)` works transparently for remote PIDs and connected nodes form a mesh
