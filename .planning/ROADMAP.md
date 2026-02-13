@@ -181,7 +181,12 @@ Plans:
   3. Each docs page shows a right-side "On this page" table of contents listing section headings, and previous/next page links at the bottom
   4. A developer can follow the Getting Started guide from installation through compiling and running their first Mesh program
   5. Documentation covers language basics (variables, types, functions, pattern matching, control flow, pipes, error handling, modules), the type system (inference, generics, structs, sum types, traits, deriving), concurrency (actors, spawning, message passing, linking/monitoring, supervision), and a syntax cheatsheet
-**Plans**: TBD
+**Plans:** 4 plans
+Plans:
+- [ ] 72-01-PLAN.md -- Scaffold UI primitives, typography, composables, and sidebar config
+- [ ] 72-02-PLAN.md -- Build docs layout components and wire into Layout.vue
+- [ ] 72-03-PLAN.md -- Getting Started and Language Basics documentation
+- [ ] 72-04-PLAN.md -- Type System, Concurrency, and Syntax Cheatsheet documentation
 
 #### Phase 73: Extended Content + Polish
 **Goal**: The documentation is complete across all Mesh feature areas (web, database, distributed) and the site has production-quality features (search, SEO, edit links, version badge)
@@ -217,7 +222,7 @@ Phases execute in numeric order: 70 -> 71 -> 72 -> 73
 | 63-69 | v5.0 | 20/20 | Complete | 2026-02-13 |
 | 70 | v6.0 | 2/2 | Complete | 2026-02-13 |
 | 71 | v6.0 | 2/2 | Complete | 2026-02-13 |
-| 72 | v6.0 | 0/TBD | Not started | - |
+| 72 | v6.0 | 0/4 | Not started | - |
 | 73 | v6.0 | 0/TBD | Not started | - |
 
 **Total: 71 phases shipped across 15 milestones. 194 plans completed. v6.0 in progress (2/4 phases complete).**
