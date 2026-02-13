@@ -61,9 +61,8 @@ const MAX_STRING_LEN: u32 = 16 * 1024 * 1024;
 /// Maximum collection element count (1 million).
 const MAX_COLLECTION_LEN: u32 = 1_000_000;
 
-// Suppress unused warning until Plan 03 uses this constant.
-#[allow(dead_code)]
-const _MAX_COLLECTION_LEN_USED: u32 = MAX_COLLECTION_LEN;
+/// Maximum field name / type name length in bytes (64 KB).
+const MAX_NAME_LEN: u16 = u16::MAX;
 
 // ── StfType ──────────────────────────────────────────────────────────────
 
@@ -182,15 +181,162 @@ pub fn stf_encode(value: u64, type_hint: &StfType, buf: &mut Vec<u8>) -> Result<
             Ok(())
         }
         StfType::Closure | StfType::FnPtr => Err(StfError::ClosureNotSerializable),
-        // Container and composite types -- implemented in Plan 03
-        StfType::List(_)
-        | StfType::Map(_, _)
-        | StfType::Set(_)
-        | StfType::Tuple(_)
-        | StfType::Struct(_, _)
-        | StfType::SumType(_, _)
-        | StfType::OptionOf(_)
-        | StfType::ResultOf(_, _) => Err(StfError::InvalidTag(0)),
+
+        // ── Container types ────────────────────────────────────────
+
+        StfType::List(elem_type) => {
+            buf.push(TAG_LIST);
+            let ptr = value as *const u8;
+            let len = unsafe { *(ptr as *const u64) } as u32;
+            if len > MAX_COLLECTION_LEN {
+                return Err(StfError::PayloadTooLarge(len));
+            }
+            buf.extend_from_slice(&len.to_le_bytes());
+            let data = unsafe { (ptr as *const u64).add(2) };
+            for i in 0..len as usize {
+                let elem = unsafe { *data.add(i) };
+                stf_encode(elem, elem_type, buf)?;
+            }
+            Ok(())
+        }
+
+        StfType::Map(key_type, val_type) => {
+            buf.push(TAG_MAP);
+            let ptr = value as *const u8;
+            let len = unsafe { *(ptr as *const u64) } as u32;
+            if len > MAX_COLLECTION_LEN {
+                return Err(StfError::PayloadTooLarge(len));
+            }
+            // Extract key_type_tag from upper 8 bits of cap field.
+            let key_type_tag = unsafe { (*((ptr as *const u64).add(1))) >> 56 } as u8;
+            buf.push(key_type_tag);
+            buf.extend_from_slice(&len.to_le_bytes());
+            // Entries start at offset 2 words. Each entry is [u64 key, u64 value].
+            let entries = unsafe { (ptr as *const u64).add(2) };
+            for i in 0..len as usize {
+                let key = unsafe { *entries.add(i * 2) };
+                let val = unsafe { *entries.add(i * 2 + 1) };
+                stf_encode(key, key_type, buf)?;
+                stf_encode(val, val_type, buf)?;
+            }
+            Ok(())
+        }
+
+        StfType::Set(elem_type) => {
+            buf.push(TAG_SET);
+            let ptr = value as *const u8;
+            let len = unsafe { *(ptr as *const u64) } as u32;
+            if len > MAX_COLLECTION_LEN {
+                return Err(StfError::PayloadTooLarge(len));
+            }
+            buf.extend_from_slice(&len.to_le_bytes());
+            let data = unsafe { (ptr as *const u64).add(2) };
+            for i in 0..len as usize {
+                let elem = unsafe { *data.add(i) };
+                stf_encode(elem, elem_type, buf)?;
+            }
+            Ok(())
+        }
+
+        StfType::Tuple(elem_types) => {
+            buf.push(TAG_TUPLE);
+            let arity = elem_types.len() as u8;
+            buf.push(arity);
+            let ptr = value as *const u8;
+            // Tuple layout: { u64 len, u64[len] data }
+            let data = unsafe { (ptr as *const u64).add(1) };
+            for (i, et) in elem_types.iter().enumerate() {
+                let elem = unsafe { *data.add(i) };
+                stf_encode(elem, et, buf)?;
+            }
+            Ok(())
+        }
+
+        // ── Composite types ───────────────────────────────────────
+
+        StfType::Struct(name, fields) => {
+            buf.push(TAG_STRUCT);
+            // Write struct name.
+            let name_bytes = name.as_bytes();
+            let name_len = name_bytes.len() as u16;
+            buf.extend_from_slice(&name_len.to_le_bytes());
+            buf.extend_from_slice(name_bytes);
+            // Write field count.
+            let field_count = fields.len() as u16;
+            buf.extend_from_slice(&field_count.to_le_bytes());
+            // Struct value is contiguous u64 fields (no header).
+            let ptr = value as *const u64;
+            for (i, (field_name, field_type)) in fields.iter().enumerate() {
+                let fn_bytes = field_name.as_bytes();
+                let fn_len = fn_bytes.len() as u16;
+                buf.extend_from_slice(&fn_len.to_le_bytes());
+                buf.extend_from_slice(fn_bytes);
+                let field_val = unsafe { *ptr.add(i) };
+                stf_encode(field_val, field_type, buf)?;
+            }
+            Ok(())
+        }
+
+        StfType::SumType(type_name, variants) => {
+            buf.push(TAG_SUM_TYPE);
+            // Write type name.
+            let tn_bytes = type_name.as_bytes();
+            let tn_len = tn_bytes.len() as u16;
+            buf.extend_from_slice(&tn_len.to_le_bytes());
+            buf.extend_from_slice(tn_bytes);
+            // Read variant tag from first byte of sum type layout.
+            let variant_tag = unsafe { *(value as *const u8) };
+            buf.push(variant_tag);
+            // Look up the variant's field types.
+            let variant_fields = if (variant_tag as usize) < variants.len() {
+                &variants[variant_tag as usize].1
+            } else {
+                return Err(StfError::InvalidTag(variant_tag));
+            };
+            let field_count = variant_fields.len() as u16;
+            buf.extend_from_slice(&field_count.to_le_bytes());
+            // Fields start at offset 8 (after tag byte, padded to 8-byte alignment).
+            let fields_ptr = unsafe { (value as *const u64).add(1) };
+            for (i, ft) in variant_fields.iter().enumerate() {
+                let fv = unsafe { *fields_ptr.add(i) };
+                stf_encode(fv, ft, buf)?;
+            }
+            Ok(())
+        }
+
+        // ── Option/Result (special-cased) ─────────────────────────
+
+        StfType::OptionOf(inner_type) => {
+            // SnowOption layout: { tag: u8 at offset 0, value: *mut u8 at offset 8 }
+            let tag = unsafe { *(value as *const u8) };
+            if tag == 0 {
+                // Some
+                buf.push(TAG_OPTION_SOME);
+                let inner_ptr = unsafe { *((value as *const u64).add(1)) };
+                stf_encode(inner_ptr, inner_type, buf)?;
+            } else {
+                // None
+                buf.push(TAG_OPTION_NONE);
+            }
+            Ok(())
+        }
+
+        StfType::ResultOf(ok_type, err_type) => {
+            // Same layout as Option: { tag: u8, value: *mut u8 at offset 8 }
+            let tag = unsafe { *(value as *const u8) };
+            if tag == 0 {
+                // Ok
+                buf.push(TAG_RESULT_OK);
+                let inner_ptr = unsafe { *((value as *const u64).add(1)) };
+                stf_encode(inner_ptr, ok_type, buf)?;
+            } else {
+                // Err
+                buf.push(TAG_RESULT_ERR);
+                let inner_ptr = unsafe { *((value as *const u64).add(1)) };
+                stf_encode(inner_ptr, err_type, buf)?;
+            }
+            Ok(())
+        }
     }
 }
 
@@ -230,6 +376,32 @@ fn read_u8(data: &[u8], pos: &mut usize) -> Result<u8, StfError> {
     let b = data[*pos];
     *pos += 1;
     Ok(b)
+}
+
+/// Helper: read a little-endian u16 from `data` at `*pos`.
+#[inline]
+fn read_u16(data: &[u8], pos: &mut usize) -> Result<u16, StfError> {
+    let bytes = read_bytes(data, pos, 2)?;
+    Ok(u16::from_le_bytes(bytes.try_into().unwrap()))
+}
+
+/// Helper: read a little-endian u32 from `data` at `*pos`.
+#[inline]
+fn read_u32(data: &[u8], pos: &mut usize) -> Result<u32, StfError> {
+    let bytes = read_bytes(data, pos, 4)?;
+    Ok(u32::from_le_bytes(bytes.try_into().unwrap()))
+}
+
+/// Helper: read a length-prefixed UTF-8 string (u16 len + bytes).
+fn read_name(data: &[u8], pos: &mut usize) -> Result<std::string::String, StfError> {
+    let len = read_u16(data, pos)?;
+    if len > MAX_NAME_LEN {
+        return Err(StfError::PayloadTooLarge(len as u32));
+    }
+    let bytes = read_bytes(data, pos, len as usize)?;
+    std::str::from_utf8(bytes)
+        .map(|s| s.to_string())
+        .map_err(|_| StfError::InvalidUtf8)
 }
 
 /// Decode a single STF value from `data` starting at `*pos`.
@@ -277,11 +449,181 @@ pub fn stf_decode(data: &[u8], pos: &mut usize) -> Result<(u64, StfType), StfErr
             Ok((raw_pid, StfType::Pid))
         }
         TAG_CLOSURE => Err(StfError::ClosureNotSerializable),
-        // Container tags -- implemented in Plan 03
-        TAG_LIST | TAG_MAP | TAG_SET | TAG_TUPLE | TAG_STRUCT | TAG_SUM_TYPE
-        | TAG_OPTION_SOME | TAG_OPTION_NONE | TAG_RESULT_OK | TAG_RESULT_ERR => {
-            Err(StfError::InvalidTag(tag))
+
+        // ── Container tags ─────────────────────────────────────────
+
+        TAG_LIST => {
+            let count = read_u32(data, pos)?;
+            if count > MAX_COLLECTION_LEN {
+                return Err(StfError::PayloadTooLarge(count));
+            }
+            // Allocate list: { len: u64, cap: u64, data: [u64; count] }
+            let total = 16 + (count as usize) * 8;
+            let ptr = crate::gc::snow_gc_alloc_actor(total as u64, 8);
+            unsafe {
+                *(ptr as *mut u64) = count as u64;       // len
+                *((ptr as *mut u64).add(1)) = count as u64; // cap
+            }
+            let data_ptr = unsafe { (ptr as *mut u64).add(2) };
+            let mut elem_type = StfType::Unit;
+            for i in 0..count as usize {
+                let (val, et) = stf_decode(data, pos)?;
+                unsafe { *data_ptr.add(i) = val; }
+                if i == 0 {
+                    elem_type = et;
+                }
+            }
+            Ok((ptr as u64, StfType::List(Box::new(elem_type))))
         }
+
+        TAG_MAP => {
+            let key_type_tag = read_u8(data, pos)?;
+            let count = read_u32(data, pos)?;
+            if count > MAX_COLLECTION_LEN {
+                return Err(StfError::PayloadTooLarge(count));
+            }
+            // Allocate map: { len: u64, cap|key_type: u64, entries: [(u64,u64); count] }
+            let total = 16 + (count as usize) * 16;
+            let ptr = crate::gc::snow_gc_alloc_actor(total as u64, 8);
+            unsafe {
+                *(ptr as *mut u64) = count as u64; // len
+                // Store cap with key_type_tag in upper 8 bits.
+                *((ptr as *mut u64).add(1)) = ((key_type_tag as u64) << 56) | (count as u64);
+            }
+            let entries_ptr = unsafe { (ptr as *mut u64).add(2) };
+            let mut kt = StfType::Int;
+            let mut vt = StfType::Unit;
+            for i in 0..count as usize {
+                let (key, key_t) = stf_decode(data, pos)?;
+                let (val, val_t) = stf_decode(data, pos)?;
+                unsafe {
+                    *entries_ptr.add(i * 2) = key;
+                    *entries_ptr.add(i * 2 + 1) = val;
+                }
+                if i == 0 {
+                    kt = key_t;
+                    vt = val_t;
+                }
+            }
+            Ok((ptr as u64, StfType::Map(Box::new(kt), Box::new(vt))))
+        }
+
+        TAG_SET => {
+            let count = read_u32(data, pos)?;
+            if count > MAX_COLLECTION_LEN {
+                return Err(StfError::PayloadTooLarge(count));
+            }
+            // Allocate set: { len: u64, cap: u64, data: [u64; count] }
+            let total = 16 + (count as usize) * 8;
+            let ptr = crate::gc::snow_gc_alloc_actor(total as u64, 8);
+            unsafe {
+                *(ptr as *mut u64) = count as u64;       // len
+                *((ptr as *mut u64).add(1)) = count as u64; // cap
+            }
+            let data_ptr = unsafe { (ptr as *mut u64).add(2) };
+            let mut elem_type = StfType::Unit;
+            for i in 0..count as usize {
+                let (val, et) = stf_decode(data, pos)?;
+                unsafe { *data_ptr.add(i) = val; }
+                if i == 0 {
+                    elem_type = et;
+                }
+            }
+            Ok((ptr as u64, StfType::Set(Box::new(elem_type))))
+        }
+
+        TAG_TUPLE => {
+            let arity = read_u8(data, pos)?;
+            // Allocate tuple: { u64 len, u64[arity] data }
+            let total = 8 + (arity as usize) * 8;
+            let ptr = crate::gc::snow_gc_alloc_actor(total as u64, 8);
+            unsafe { *(ptr as *mut u64) = arity as u64; }
+            let data_ptr = unsafe { (ptr as *mut u64).add(1) };
+            let mut elem_types = Vec::with_capacity(arity as usize);
+            for i in 0..arity as usize {
+                let (val, et) = stf_decode(data, pos)?;
+                unsafe { *data_ptr.add(i) = val; }
+                elem_types.push(et);
+            }
+            Ok((ptr as u64, StfType::Tuple(elem_types)))
+        }
+
+        // ── Composite tags ────────────────────────────────────────
+
+        TAG_STRUCT => {
+            let name = read_name(data, pos)?;
+            let field_count = read_u16(data, pos)?;
+            // Allocate struct: contiguous u64 fields (no header).
+            let total = (field_count as usize) * 8;
+            let ptr = if total > 0 {
+                crate::gc::snow_gc_alloc_actor(total as u64, 8)
+            } else {
+                std::ptr::null_mut()
+            };
+            let mut fields = Vec::with_capacity(field_count as usize);
+            for i in 0..field_count as usize {
+                let field_name = read_name(data, pos)?;
+                let (val, ft) = stf_decode(data, pos)?;
+                if !ptr.is_null() {
+                    unsafe { *((ptr as *mut u64).add(i)) = val; }
+                }
+                fields.push((field_name, ft));
+            }
+            Ok((ptr as u64, StfType::Struct(name, fields)))
+        }
+
+        TAG_SUM_TYPE => {
+            let type_name = read_name(data, pos)?;
+            let variant_tag = read_u8(data, pos)?;
+            let field_count = read_u16(data, pos)?;
+            // Allocate sum type layout: { u8 tag at offset 0, fields at offset 8 }
+            let total = 8 + (field_count as usize) * 8;
+            let ptr = crate::gc::snow_gc_alloc_actor(total as u64, 8);
+            unsafe { *(ptr as *mut u8) = variant_tag; }
+            let fields_ptr = unsafe { (ptr as *mut u64).add(1) };
+            let mut field_types = Vec::with_capacity(field_count as usize);
+            for i in 0..field_count as usize {
+                let (val, ft) = stf_decode(data, pos)?;
+                unsafe { *fields_ptr.add(i) = val; }
+                field_types.push(ft);
+            }
+            // Build a variants list with this variant's fields at the correct index.
+            let mut variants = Vec::new();
+            for idx in 0..=variant_tag {
+                if idx == variant_tag {
+                    variants.push((std::string::String::new(), field_types.clone()));
+                } else {
+                    variants.push((std::string::String::new(), Vec::new()));
+                }
+            }
+            Ok((ptr as u64, StfType::SumType(type_name, variants)))
+        }
+
+        // ── Option/Result tags ────────────────────────────────────
+
+        TAG_OPTION_SOME => {
+            let (inner_val, inner_type) = stf_decode(data, pos)?;
+            let opt_ptr = crate::option::alloc_option(0, inner_val as *mut u8);
+            Ok((opt_ptr as u64, StfType::OptionOf(Box::new(inner_type))))
+        }
+
+        TAG_OPTION_NONE => {
+            let opt_ptr = crate::option::alloc_option(1, std::ptr::null_mut());
+            Ok((opt_ptr as u64, StfType::OptionOf(Box::new(StfType::Unit))))
+        }
+
+        TAG_RESULT_OK => {
+            let (inner_val, inner_type) = stf_decode(data, pos)?;
+            let ptr = crate::option::alloc_option(0, inner_val as *mut u8);
+            Ok((ptr as u64, StfType::ResultOf(Box::new(inner_type), Box::new(StfType::Unit))))
+        }
+
+        TAG_RESULT_ERR => {
+            let (inner_val, inner_type) = stf_decode(data, pos)?;
+            let ptr = crate::option::alloc_option(1, inner_val as *mut u8);
+            Ok((ptr as u64, StfType::ResultOf(Box::new(StfType::Unit), Box::new(inner_type))))
+        }
+
         unknown => Err(StfError::InvalidTag(unknown)),
     }
 }
