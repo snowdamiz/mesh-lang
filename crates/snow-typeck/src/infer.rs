@@ -755,6 +755,50 @@ fn stdlib_modules() -> HashMap<String, HashMap<String, Scheme>> {
     }
     modules.insert("Pool".to_string(), pool_mod);
 
+    // ── Node module (Phase 67) ──────────────────────────────────────
+    let node_spawn_t = TyVar(u32::MAX - 30);  // Synthetic type var T for Node.spawn
+    let _node_t = Ty::Var(node_spawn_t);
+
+    let mut node_mod = HashMap::new();
+    // Node.start: fn(String, String) -> Int  (name, cookie -> 0 on success)
+    node_mod.insert("start".to_string(), Scheme::mono(Ty::fun(
+        vec![Ty::string(), Ty::string()],
+        Ty::int(),
+    )));
+    // Node.connect: fn(String) -> Int  (node_name -> 0 on success)
+    node_mod.insert("connect".to_string(), Scheme::mono(Ty::fun(
+        vec![Ty::string()],
+        Ty::int(),
+    )));
+    // Node.self: fn() -> String  (returns node name)
+    node_mod.insert("self".to_string(), Scheme::mono(Ty::fun(vec![], Ty::string())));
+    // Node.list: fn() -> List<String>  (returns connected node names)
+    node_mod.insert("list".to_string(), Scheme::mono(Ty::fun(vec![], Ty::list(Ty::string()))));
+    // Node.monitor: fn(String) -> Int  (node_name -> monitor ref)
+    node_mod.insert("monitor".to_string(), Scheme::mono(Ty::fun(
+        vec![Ty::string()],
+        Ty::int(),
+    )));
+    // Node.spawn/spawn_link are NOT defined here because they are variadic
+    // (node_name, func_ref, args...). The type checker handles them specially
+    // in infer_field_access by returning a fresh function type that matches
+    // the actual call site arguments.
+    modules.insert("Node".to_string(), node_mod);
+
+    // ── Process module (Phase 67) ───────────────────────────────────
+    let mut process_mod = HashMap::new();
+    // Process.monitor: fn(Int) -> Int  (target_pid -> monitor ref)
+    process_mod.insert("monitor".to_string(), Scheme::mono(Ty::fun(
+        vec![Ty::int()],
+        Ty::int(),
+    )));
+    // Process.demonitor: fn(Int) -> Int  (monitor_ref -> 0 on success)
+    process_mod.insert("demonitor".to_string(), Scheme::mono(Ty::fun(
+        vec![Ty::int()],
+        Ty::int(),
+    )));
+    modules.insert("Process".to_string(), process_mod);
+
     modules
 }
 
@@ -762,6 +806,7 @@ fn stdlib_modules() -> HashMap<String, HashMap<String, Scheme>> {
 const STDLIB_MODULE_NAMES: &[&str] = &[
     "String", "IO", "Env", "File", "List", "Map", "Set", "Tuple", "Range", "Queue", "HTTP", "JSON", "Json", "Request", "Job",
     "Math", "Int", "Float", "Timer", "Sqlite", "Pg", "Pool",
+    "Node", "Process",  // Phase 67
 ];
 
 /// Check if a name is a known stdlib module.
@@ -4960,6 +5005,17 @@ fn infer_field_access(
                         return Ok(ty);
                     }
                 }
+            }
+
+            // Node.spawn and Node.spawn_link are variadic -- return a permissive
+            // type that matches any call site arguments (returns Int = remote PID).
+            if base_name == "Node" && (field_name == "spawn" || field_name == "spawn_link") {
+                // Build a function type that accepts whatever arguments are at the call site.
+                // The type is: fn(any_args...) -> Int. We use fresh type variables for all
+                // parameters since the actual types are checked at codegen time.
+                // The caller (infer_call) will create arg types and unify; by returning
+                // a fresh variable, unification will succeed with any argument list.
+                return Ok(ctx.fresh_var());
             }
 
             // Check if base is a user-defined service module (e.g. Counter.get_count).

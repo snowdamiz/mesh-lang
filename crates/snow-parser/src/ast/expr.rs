@@ -275,11 +275,13 @@ impl FieldAccess {
 
     /// The field name token.
     pub fn field(&self) -> Option<SyntaxToken> {
-        // The field IDENT is after the DOT token; find the last IDENT.
+        // The field is after the DOT token; find the last IDENT or keyword-as-field.
+        // Keywords like `self` and `monitor` are valid as field names in
+        // module-qualified access (e.g., Node.self, Process.monitor).
         self.syntax
             .children_with_tokens()
             .filter_map(|it| it.into_token())
-            .filter(|t| t.kind() == SyntaxKind::IDENT)
+            .filter(|t| matches!(t.kind(), SyntaxKind::IDENT | SyntaxKind::SELF_KW | SyntaxKind::MONITOR_KW | SyntaxKind::SPAWN_KW | SyntaxKind::LINK_KW))
             .last()
     }
 }

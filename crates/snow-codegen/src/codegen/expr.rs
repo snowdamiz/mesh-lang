@@ -667,6 +667,27 @@ impl<'ctx> CodeGen<'ctx> {
             if name == "snow_timer_send_after" && args.len() == 3 {
                 return self.codegen_timer_send_after(args);
             }
+            // ── Phase 67: Node distribution special codegen ─────────────────
+            // Node.start(name, cookie) -> snow_node_start(name_ptr, name_len, cookie_ptr, cookie_len)
+            if name == "snow_node_start" && args.len() == 2 {
+                return self.codegen_node_start(args);
+            }
+            // Node.connect(name) -> snow_node_connect(name_ptr, name_len)
+            if name == "snow_node_connect" {
+                return self.codegen_node_string_call(args, "snow_node_connect");
+            }
+            // Node.monitor(node_name) -> snow_node_monitor(name_ptr, name_len)
+            if name == "snow_node_monitor" {
+                return self.codegen_node_string_call(args, "snow_node_monitor");
+            }
+            // Node.spawn(node, func, args...) -> snow_node_spawn(node_ptr, node_len, fn_name_ptr, fn_name_len, args_ptr, args_size, link_flag)
+            if name == "snow_node_spawn" {
+                return self.codegen_node_spawn(args, 0);
+            }
+            // Node.spawn_link -> same as spawn but with link_flag=1
+            if name == "snow_node_spawn_link" {
+                return self.codegen_node_spawn(args, 1);
+            }
         }
 
         // Math/Int/Float stdlib intrinsics (Phase 43)
@@ -1843,6 +1864,227 @@ impl<'ctx> CodeGen<'ctx> {
 
         // Returns Unit.
         Ok(self.context.struct_type(&[], false).const_zero().into())
+    }
+
+    // ── Phase 67: Node distribution codegen helpers ──────────────────────
+
+    /// Extract raw (data_ptr, len) from a SnowString pointer.
+    ///
+    /// SnowString layout: `{ len: u64, data_bytes... }`.
+    /// - `len` is at offset 0 (first 8 bytes)
+    /// - `data_ptr` is at `string_ptr + 8` (bytes following the header)
+    fn codegen_unpack_string(
+        &mut self,
+        string_val: BasicValueEnum<'ctx>,
+    ) -> Result<(inkwell::values::PointerValue<'ctx>, inkwell::values::IntValue<'ctx>), String> {
+        let i64_ty = self.context.i64_type();
+        let ptr_ty = self.context.ptr_type(inkwell::AddressSpace::default());
+
+        // Get the SnowString pointer (may be a pointer or i64-encoded pointer).
+        let string_ptr = if string_val.is_pointer_value() {
+            string_val.into_pointer_value()
+        } else {
+            // inttoptr: i64 -> ptr
+            self.builder
+                .build_int_to_ptr(string_val.into_int_value(), ptr_ty, "str_ptr")
+                .map_err(|e| e.to_string())?
+        };
+
+        // Load len from offset 0 (the SnowString header).
+        let len_val = self
+            .builder
+            .build_load(i64_ty, string_ptr, "str_len")
+            .map_err(|e| e.to_string())?
+            .into_int_value();
+
+        // Data pointer is string_ptr + 8 bytes (after the u64 len field).
+        let eight = i64_ty.const_int(8, false);
+        let data_ptr = unsafe {
+            self.builder
+                .build_gep(self.context.i8_type(), string_ptr, &[eight], "str_data")
+                .map_err(|e| e.to_string())?
+        };
+
+        Ok((data_ptr, len_val))
+    }
+
+    /// Codegen for Node.start(name, cookie).
+    ///
+    /// Unpacks two SnowString args into (ptr, len) pairs and calls
+    /// snow_node_start(name_ptr, name_len, cookie_ptr, cookie_len).
+    fn codegen_node_start(
+        &mut self,
+        args: &[MirExpr],
+    ) -> Result<BasicValueEnum<'ctx>, String> {
+        let name_val = self.codegen_expr(&args[0])?;
+        let cookie_val = self.codegen_expr(&args[1])?;
+
+        let (name_ptr, name_len) = self.codegen_unpack_string(name_val)?;
+        let (cookie_ptr, cookie_len) = self.codegen_unpack_string(cookie_val)?;
+
+        let start_fn = get_intrinsic(&self.module, "snow_node_start");
+        let result = self
+            .builder
+            .build_call(
+                start_fn,
+                &[name_ptr.into(), name_len.into(), cookie_ptr.into(), cookie_len.into()],
+                "node_start",
+            )
+            .map_err(|e| e.to_string())?;
+
+        result
+            .try_as_basic_value()
+            .basic()
+            .ok_or_else(|| "snow_node_start returned void".to_string())
+    }
+
+    /// Codegen for Node functions taking a single string arg (connect, monitor).
+    ///
+    /// Unpacks the SnowString arg into (ptr, len) and calls the given intrinsic.
+    fn codegen_node_string_call(
+        &mut self,
+        args: &[MirExpr],
+        intrinsic_name: &str,
+    ) -> Result<BasicValueEnum<'ctx>, String> {
+        let str_val = self.codegen_expr(&args[0])?;
+        let (data_ptr, data_len) = self.codegen_unpack_string(str_val)?;
+
+        let func = get_intrinsic(&self.module, intrinsic_name);
+        let result = self
+            .builder
+            .build_call(
+                func,
+                &[data_ptr.into(), data_len.into()],
+                "node_call",
+            )
+            .map_err(|e| e.to_string())?;
+
+        result
+            .try_as_basic_value()
+            .basic()
+            .ok_or_else(|| format!("{} returned void", intrinsic_name))
+    }
+
+    /// Codegen for Node.spawn / Node.spawn_link.
+    ///
+    /// Node.spawn(node_name, func_ref, args...) compiles to:
+    ///   snow_node_spawn(node_ptr, node_len, fn_name_ptr, fn_name_len, args_ptr, args_size, link_flag)
+    ///
+    /// The function reference (args[1]) is a MirExpr::Var whose name is the function name.
+    /// Instead of evaluating it as a function pointer, we emit the function name as a
+    /// string constant. The remaining args (args[2..]) are packed into an i64 array
+    /// (same as local actor spawn).
+    fn codegen_node_spawn(
+        &mut self,
+        args: &[MirExpr],
+        link_flag: u8,
+    ) -> Result<BasicValueEnum<'ctx>, String> {
+        let i64_ty = self.context.i64_type();
+        let i8_ty = self.context.i8_type();
+        let ptr_ty = self.context.ptr_type(inkwell::AddressSpace::default());
+
+        // args[0] = node name (String expression)
+        let node_val = self.codegen_expr(&args[0])?;
+        let (node_ptr, node_len) = self.codegen_unpack_string(node_val)?;
+
+        // args[1] = function reference -- extract the name as a string constant.
+        // The MIR has this as MirExpr::Var("function_name", FnPtr(...)).
+        let fn_name = match &args[1] {
+            MirExpr::Var(name, _) => name.clone(),
+            _ => {
+                // Fallback: try to evaluate and use a placeholder.
+                // This should not happen in practice -- Node.spawn's second arg
+                // should always be a named function reference.
+                "unknown".to_string()
+            }
+        };
+
+        // Create a global string constant for the function name.
+        let fn_name_global = self
+            .builder
+            .build_global_string_ptr(&fn_name, "spawn_fn_name")
+            .map_err(|e| e.to_string())?;
+        let fn_name_len = i64_ty.const_int(fn_name.len() as u64, false);
+
+        // args[2..] = actor arguments. Pack into i64 array on GC heap (same as local spawn).
+        let spawn_args = &args[2..];
+        let (args_ptr, args_size) = if spawn_args.is_empty() {
+            (ptr_ty.const_null(), i64_ty.const_int(0, false))
+        } else {
+            let arg_vals: Vec<BasicValueEnum<'ctx>> = spawn_args
+                .iter()
+                .map(|a| self.codegen_expr(a))
+                .collect::<Result<Vec<_>, _>>()?;
+
+            let total_size = (arg_vals.len() * 8) as u64;
+            let gc_alloc_fn = get_intrinsic(&self.module, "snow_gc_alloc_actor");
+            let size_val = i64_ty.const_int(total_size, false);
+            let align_val = i64_ty.const_int(8, false);
+            let buf_ptr = self
+                .builder
+                .build_call(gc_alloc_fn, &[size_val.into(), align_val.into()], "spawn_args")
+                .map_err(|e| e.to_string())?
+                .try_as_basic_value()
+                .basic()
+                .ok_or("snow_gc_alloc_actor returned void")?
+                .into_pointer_value();
+            let arr_ty = i64_ty.array_type(arg_vals.len() as u32);
+
+            for (i, val) in arg_vals.iter().enumerate() {
+                let int_val = if val.is_int_value() {
+                    val.into_int_value()
+                } else if val.is_pointer_value() {
+                    self.builder
+                        .build_ptr_to_int(val.into_pointer_value(), i64_ty, "arg_int")
+                        .map_err(|e| e.to_string())?
+                } else if val.is_float_value() {
+                    self.builder
+                        .build_bit_cast(val.into_float_value(), i64_ty, "arg_int")
+                        .map_err(|e: inkwell::builder::BuilderError| e.to_string())?
+                        .into_int_value()
+                } else {
+                    i64_ty.const_int(0, false)
+                };
+                let idx = self.context.i32_type().const_int(i as u64, false);
+                let zero = self.context.i32_type().const_int(0, false);
+                let element_ptr = unsafe {
+                    self.builder
+                        .build_gep(arr_ty, buf_ptr, &[zero, idx], "arg_ptr")
+                        .map_err(|e| e.to_string())?
+                };
+                self.builder
+                    .build_store(element_ptr, int_val)
+                    .map_err(|e| e.to_string())?;
+            }
+
+            (buf_ptr, i64_ty.const_int(total_size, false))
+        };
+
+        let link_val = i8_ty.const_int(link_flag as u64, false);
+
+        // Call snow_node_spawn(node_ptr, node_len, fn_name_ptr, fn_name_len, args_ptr, args_size, link_flag)
+        let spawn_fn = get_intrinsic(&self.module, "snow_node_spawn");
+        let result = self
+            .builder
+            .build_call(
+                spawn_fn,
+                &[
+                    node_ptr.into(),
+                    node_len.into(),
+                    fn_name_global.as_pointer_value().into(),
+                    fn_name_len.into(),
+                    args_ptr.into(),
+                    args_size.into(),
+                    link_val.into(),
+                ],
+                "remote_pid",
+            )
+            .map_err(|e| e.to_string())?;
+
+        result
+            .try_as_basic_value()
+            .basic()
+            .ok_or_else(|| "snow_node_spawn returned void".to_string())
     }
 
     fn codegen_actor_receive(
