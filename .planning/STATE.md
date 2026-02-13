@@ -10,16 +10,16 @@ See: .planning/PROJECT.md (updated 2026-02-12)
 ## Current Position
 
 Phase: 64 of 69 (Node Connection & Authentication)
-Plan: 1 of 3 in current phase
+Plan: 2 of 3 in current phase
 Status: Executing
-Last activity: 2026-02-13 -- Completed 64-01 (Node Identity & TLS Infrastructure)
+Last activity: 2026-02-13 -- Completed 64-02 (Handshake Protocol)
 
 Progress: [██████████] 100%
 
 ## Performance Metrics
 
 **All-time Totals:**
-- Plans completed: 174
+- Plans completed: 175
 - Phases completed: 63
 - Milestones shipped: 14 (v1.0-v4.0)
 - Lines of Rust: ~84,400
@@ -41,6 +41,9 @@ Progress: [██████████] 100%
 - 64-01: Hand-crafted ASN.1 DER for minimal self-signed cert (no rcgen dependency)
 - 64-01: SkipCertVerification with ring signature delegation (cookie-based trust model)
 - 64-01: Non-blocking accept loop with 100ms sleep/shutdown-check pattern
+- 64-02: Constant-time HMAC verification via Mac::verify_slice (prevents timing attacks)
+- 64-02: Little-endian wire format with 4KB max message size for handshake
+- 64-02: Duplicate connection tiebreaker: lexicographically smaller name wins
 
 ### Research Notes
 
@@ -61,6 +64,6 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-13
-Stopped at: Completed 64-01-PLAN.md (Node Identity & TLS Infrastructure)
+Stopped at: Completed 64-02-PLAN.md (Handshake Protocol)
 Resume file: None
-Next action: Execute 64-02-PLAN.md (Handshake Protocol)
+Next action: Execute 64-03-PLAN.md (Heartbeat & Session Management)
