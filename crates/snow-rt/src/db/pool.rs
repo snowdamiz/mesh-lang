@@ -1,17 +1,17 @@
-//! PostgreSQL connection pool for the Snow runtime.
+//! PostgreSQL connection pool for the Mesh runtime.
 //!
 //! Provides a bounded pool of PostgreSQL connections with Mutex+Condvar
-//! synchronization. Multiple Snow actors share a fixed set of database
+//! synchronization. Multiple Mesh actors share a fixed set of database
 //! connections, preventing connection exhaustion.
 //!
 //! ## Functions
 //!
-//! - `snow_pool_open`: Create a pool with configurable min/max/timeout
-//! - `snow_pool_checkout`: Borrow a connection (blocks with timeout)
-//! - `snow_pool_checkin`: Return a connection (auto-ROLLBACK if dirty)
-//! - `snow_pool_query`: Auto checkout-use-checkin for SELECT
-//! - `snow_pool_execute`: Auto checkout-use-checkin for INSERT/UPDATE/DELETE
-//! - `snow_pool_close`: Drain all connections, prevent new checkouts
+//! - `mesh_pool_open`: Create a pool with configurable min/max/timeout
+//! - `mesh_pool_checkout`: Borrow a connection (blocks with timeout)
+//! - `mesh_pool_checkin`: Return a connection (auto-ROLLBACK if dirty)
+//! - `mesh_pool_query`: Auto checkout-use-checkin for SELECT
+//! - `mesh_pool_execute`: Auto checkout-use-checkin for INSERT/UPDATE/DELETE
+//! - `mesh_pool_close`: Drain all connections, prevent new checkouts
 //!
 //! Pool handles are opaque u64 values (Box::into_raw), same pattern as
 //! PgConn/SqliteConn handles.
@@ -22,11 +22,11 @@ use std::time::{Duration, Instant};
 use parking_lot::{Condvar, Mutex};
 
 use super::pg::{
-    pg_simple_command, snow_pg_close, snow_pg_connect, snow_pg_execute, snow_pg_query,
-    snow_pg_query_as, PgConn,
+    pg_simple_command, mesh_pg_close, mesh_pg_connect, mesh_pg_execute, mesh_pg_query,
+    mesh_pg_query_as, PgConn,
 };
 use crate::io::alloc_result;
-use crate::string::{snow_string_new, SnowString};
+use crate::string::{mesh_string_new, MeshString};
 
 // ── Data Structures ──────────────────────────────────────────────────────
 
@@ -55,34 +55,34 @@ struct PgPool {
 
 // ── Helpers ──────────────────────────────────────────────────────────────
 
-/// Extract a Rust &str from a raw SnowString pointer.
-unsafe fn snow_str_to_rust(s: *const SnowString) -> &'static str {
+/// Extract a Rust &str from a raw MeshString pointer.
+unsafe fn mesh_str_to_rust(s: *const MeshString) -> &'static str {
     (*s).as_str()
 }
 
-/// Create a SnowString from a Rust &str and return as *mut u8.
-fn rust_str_to_snow(s: &str) -> *mut u8 {
-    snow_string_new(s.as_ptr(), s.len() as u64) as *mut u8
+/// Create a MeshString from a Rust &str and return as *mut u8.
+fn rust_str_to_mesh(s: &str) -> *mut u8 {
+    mesh_string_new(s.as_ptr(), s.len() as u64) as *mut u8
 }
 
-/// Create an error SnowResult from a Rust string.
+/// Create an error MeshResult from a Rust string.
 fn err_result(msg: &str) -> *mut u8 {
-    let s = rust_str_to_snow(msg);
+    let s = rust_str_to_mesh(msg);
     alloc_result(1, s) as *mut u8
 }
 
 /// Create a new PG connection from a URL string.
 /// Returns Ok(handle_u64) or Err(error_message).
 unsafe fn create_connection(url: &str) -> Result<u64, String> {
-    // Create a SnowString from the URL
-    let url_snow = snow_string_new(url.as_ptr(), url.len() as u64);
-    let result_ptr = snow_pg_connect(url_snow as *const SnowString);
-    let r = &*(result_ptr as *const crate::io::SnowResult);
+    // Create a MeshString from the URL
+    let url_mesh = mesh_string_new(url.as_ptr(), url.len() as u64);
+    let result_ptr = mesh_pg_connect(url_mesh as *const MeshString);
+    let r = &*(result_ptr as *const crate::io::MeshResult);
     if r.tag == 0 {
         Ok(r.value as u64)
     } else {
-        // Extract the error message string from the SnowString value
-        let err_str = &*(r.value as *const SnowString);
+        // Extract the error message string from the MeshString value
+        let err_str = &*(r.value as *const MeshString);
         Err(err_str.as_str().to_string())
     }
 }
@@ -100,20 +100,20 @@ unsafe fn health_check(handle: u64) -> bool {
 ///
 /// # Signature
 ///
-/// `snow_pool_open(url: *const SnowString, min_conns: i64, max_conns: i64,
-///     timeout_ms: i64) -> *mut u8 (SnowResult<u64, String>)`
+/// `mesh_pool_open(url: *const MeshString, min_conns: i64, max_conns: i64,
+///     timeout_ms: i64) -> *mut u8 (MeshResult<u64, String>)`
 ///
-/// Pre-creates `min_conns` connections. Returns SnowResult with tag 0 (Ok)
+/// Pre-creates `min_conns` connections. Returns MeshResult with tag 0 (Ok)
 /// containing the pool handle as u64, or tag 1 (Err) with error message.
 #[no_mangle]
-pub extern "C" fn snow_pool_open(
-    url: *const SnowString,
+pub extern "C" fn mesh_pool_open(
+    url: *const MeshString,
     min_conns: i64,
     max_conns: i64,
     timeout_ms: i64,
 ) -> *mut u8 {
     unsafe {
-        let url_str = snow_str_to_rust(url);
+        let url_str = mesh_str_to_rust(url);
 
         // Clamp parameters to reasonable values
         let min = (min_conns.max(0)) as usize;
@@ -134,7 +134,7 @@ pub extern "C" fn snow_pool_open(
                 Err(e) => {
                     // Close all already-created connections
                     for c in idle.drain(..) {
-                        snow_pg_close(c.handle);
+                        mesh_pg_close(c.handle);
                     }
                     return err_result(&format!("pool open: {}", e));
                 }
@@ -164,13 +164,13 @@ pub extern "C" fn snow_pool_open(
 ///
 /// # Signature
 ///
-/// `snow_pool_checkout(pool_handle: u64) -> *mut u8 (SnowResult<u64, String>)`
+/// `mesh_pool_checkout(pool_handle: u64) -> *mut u8 (MeshResult<u64, String>)`
 ///
 /// Returns an idle connection, creates a new one if under max, or blocks
 /// with timeout if pool is exhausted. Performs health check on idle
 /// connections before returning them.
 #[no_mangle]
-pub extern "C" fn snow_pool_checkout(pool_handle: u64) -> *mut u8 {
+pub extern "C" fn mesh_pool_checkout(pool_handle: u64) -> *mut u8 {
     unsafe {
         let pool = &*(pool_handle as *const PgPool);
         let timeout = Duration::from_millis({
@@ -194,7 +194,7 @@ pub extern "C" fn snow_pool_checkout(pool_handle: u64) -> *mut u8 {
                     return alloc_result(0, conn.handle as *mut u8) as *mut u8;
                 } else {
                     // Connection is dead -- close it and try next
-                    snow_pg_close(conn.handle);
+                    mesh_pg_close(conn.handle);
                     inner.total_created -= 1;
                     continue;
                 }
@@ -237,13 +237,13 @@ pub extern "C" fn snow_pool_checkout(pool_handle: u64) -> *mut u8 {
 ///
 /// # Signature
 ///
-/// `snow_pool_checkin(pool_handle: u64, conn_handle: u64)`
+/// `mesh_pool_checkin(pool_handle: u64, conn_handle: u64)`
 ///
 /// If the connection has an active transaction (txn_status != 'I'),
 /// sends ROLLBACK to clean it up. If ROLLBACK fails, the connection
 /// is destroyed instead of returned to idle.
 #[no_mangle]
-pub extern "C" fn snow_pool_checkin(pool_handle: u64, conn_handle: u64) {
+pub extern "C" fn mesh_pool_checkin(pool_handle: u64, conn_handle: u64) {
     unsafe {
         let pool = &*(pool_handle as *const PgPool);
 
@@ -251,7 +251,7 @@ pub extern "C" fn snow_pool_checkin(pool_handle: u64, conn_handle: u64) {
             let inner = pool.inner.lock();
             if inner.closed {
                 // Pool is closed -- just destroy the connection
-                snow_pg_close(conn_handle);
+                mesh_pg_close(conn_handle);
                 // Note: total_created/active_count will be cleaned up by close
                 return;
             }
@@ -262,7 +262,7 @@ pub extern "C" fn snow_pool_checkin(pool_handle: u64, conn_handle: u64) {
         if conn.txn_status != b'I' {
             if pg_simple_command(conn, "ROLLBACK").is_err() {
                 // Connection is broken -- close it instead of returning to idle
-                snow_pg_close(conn_handle);
+                mesh_pg_close(conn_handle);
                 let mut inner = pool.inner.lock();
                 inner.total_created -= 1;
                 inner.active_count -= 1;
@@ -288,28 +288,28 @@ pub extern "C" fn snow_pool_checkin(pool_handle: u64, conn_handle: u64) {
 ///
 /// # Signature
 ///
-/// `snow_pool_query(pool_handle: u64, sql: *const SnowString, params: *mut u8)
-///     -> *mut u8 (SnowResult<List<Map<String, String>>, String>)`
+/// `mesh_pool_query(pool_handle: u64, sql: *const MeshString, params: *mut u8)
+///     -> *mut u8 (MeshResult<List<Map<String, String>>, String>)`
 #[no_mangle]
-pub extern "C" fn snow_pool_query(
+pub extern "C" fn mesh_pool_query(
     pool_handle: u64,
-    sql: *const SnowString,
+    sql: *const MeshString,
     params: *mut u8,
 ) -> *mut u8 {
     unsafe {
         // Checkout
-        let checkout_result = snow_pool_checkout(pool_handle);
-        let r = &*(checkout_result as *const crate::io::SnowResult);
+        let checkout_result = mesh_pool_checkout(pool_handle);
+        let r = &*(checkout_result as *const crate::io::MeshResult);
         if r.tag != 0 {
             return checkout_result; // propagate checkout error
         }
         let conn_handle = r.value as u64;
 
         // Use
-        let query_result = snow_pg_query(conn_handle, sql, params);
+        let query_result = mesh_pg_query(conn_handle, sql, params);
 
         // Checkin (always, even on error)
-        snow_pool_checkin(pool_handle, conn_handle);
+        mesh_pool_checkin(pool_handle, conn_handle);
 
         query_result
     }
@@ -319,28 +319,28 @@ pub extern "C" fn snow_pool_query(
 ///
 /// # Signature
 ///
-/// `snow_pool_execute(pool_handle: u64, sql: *const SnowString, params: *mut u8)
-///     -> *mut u8 (SnowResult<Int, String>)`
+/// `mesh_pool_execute(pool_handle: u64, sql: *const MeshString, params: *mut u8)
+///     -> *mut u8 (MeshResult<Int, String>)`
 #[no_mangle]
-pub extern "C" fn snow_pool_execute(
+pub extern "C" fn mesh_pool_execute(
     pool_handle: u64,
-    sql: *const SnowString,
+    sql: *const MeshString,
     params: *mut u8,
 ) -> *mut u8 {
     unsafe {
         // Checkout
-        let checkout_result = snow_pool_checkout(pool_handle);
-        let r = &*(checkout_result as *const crate::io::SnowResult);
+        let checkout_result = mesh_pool_checkout(pool_handle);
+        let r = &*(checkout_result as *const crate::io::MeshResult);
         if r.tag != 0 {
             return checkout_result; // propagate checkout error
         }
         let conn_handle = r.value as u64;
 
         // Use
-        let exec_result = snow_pg_execute(conn_handle, sql, params);
+        let exec_result = mesh_pg_execute(conn_handle, sql, params);
 
         // Checkin (always, even on error)
-        snow_pool_checkin(pool_handle, conn_handle);
+        mesh_pool_checkin(pool_handle, conn_handle);
 
         exec_result
     }
@@ -350,13 +350,13 @@ pub extern "C" fn snow_pool_execute(
 ///
 /// # Signature
 ///
-/// `snow_pool_query_as(pool_handle: u64, sql: *mut u8, params: *mut u8,
-///     from_row_fn: *mut u8) -> *mut u8 (SnowResult<List<SnowResult>, String>)`
+/// `mesh_pool_query_as(pool_handle: u64, sql: *mut u8, params: *mut u8,
+///     from_row_fn: *mut u8) -> *mut u8 (MeshResult<List<MeshResult>, String>)`
 ///
-/// Same checkout/query_as/checkin pattern as `snow_pool_query` but delegates to
-/// `snow_pg_query_as` for struct mapping.
+/// Same checkout/query_as/checkin pattern as `mesh_pool_query` but delegates to
+/// `mesh_pg_query_as` for struct mapping.
 #[no_mangle]
-pub extern "C" fn snow_pool_query_as(
+pub extern "C" fn mesh_pool_query_as(
     pool_handle: u64,
     sql: *mut u8,
     params: *mut u8,
@@ -364,18 +364,18 @@ pub extern "C" fn snow_pool_query_as(
 ) -> *mut u8 {
     unsafe {
         // Checkout
-        let checkout_result = snow_pool_checkout(pool_handle);
-        let r = &*(checkout_result as *const crate::io::SnowResult);
+        let checkout_result = mesh_pool_checkout(pool_handle);
+        let r = &*(checkout_result as *const crate::io::MeshResult);
         if r.tag != 0 {
             return checkout_result; // propagate checkout error
         }
         let conn_handle = r.value as u64;
 
         // Use
-        let query_result = snow_pg_query_as(conn_handle, sql, params, from_row_fn);
+        let query_result = mesh_pg_query_as(conn_handle, sql, params, from_row_fn);
 
         // Checkin (always, even on error)
-        snow_pool_checkin(pool_handle, conn_handle);
+        mesh_pool_checkin(pool_handle, conn_handle);
 
         query_result
     }
@@ -385,13 +385,13 @@ pub extern "C" fn snow_pool_query_as(
 ///
 /// # Signature
 ///
-/// `snow_pool_close(pool_handle: u64)`
+/// `mesh_pool_close(pool_handle: u64)`
 ///
 /// Sets pool to closed state, drains all idle connections, and wakes
 /// all blocked checkouts so they return "pool is closed" errors.
 /// Active connections will be closed when checked in.
 #[no_mangle]
-pub extern "C" fn snow_pool_close(pool_handle: u64) {
+pub extern "C" fn mesh_pool_close(pool_handle: u64) {
     unsafe {
         let pool = &*(pool_handle as *const PgPool);
         let idle_conns: Vec<u64>;
@@ -405,7 +405,7 @@ pub extern "C" fn snow_pool_close(pool_handle: u64) {
 
         // Close idle connections outside the lock
         for handle in idle_conns {
-            snow_pg_close(handle);
+            mesh_pg_close(handle);
         }
 
         // Wake all blocked checkouts so they see closed=true

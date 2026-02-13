@@ -2,14 +2,14 @@
 //! child spec validation (start fn, restart type, shutdown value), and
 //! duplicate child name detection.
 
-use snow_typeck::error::TypeError;
-use snow_typeck::TypeckResult;
+use mesh_typeck::error::TypeError;
+use mesh_typeck::TypeckResult;
 
 // ── Helpers ────────────────────────────────────────────────────────────
 
 fn check_source(src: &str) -> TypeckResult {
-    let parse = snow_parser::parse(src);
-    snow_typeck::check(&parse)
+    let parse = mesh_parser::parse(src);
+    mesh_typeck::check(&parse)
 }
 
 fn assert_no_errors(result: &TypeckResult) {

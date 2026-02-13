@@ -7,16 +7,16 @@
 //! - Built-in Result<T, E> with `Ok`, `Err` constructors and `T!E` sugar
 //! - Type alias resolution (transparent aliases)
 
-use snow_typeck::error::TypeError;
-use snow_typeck::ty::Ty;
-use snow_typeck::TypeckResult;
+use mesh_typeck::error::TypeError;
+use mesh_typeck::ty::Ty;
+use mesh_typeck::TypeckResult;
 
 // ── Helpers ────────────────────────────────────────────────────────────
 
-/// Parse Snow source and run the type checker.
+/// Parse Mesh source and run the type checker.
 fn check_source(src: &str) -> TypeckResult {
-    let parse = snow_parser::parse(src);
-    snow_typeck::check(&parse)
+    let parse = mesh_parser::parse(src);
+    mesh_typeck::check(&parse)
 }
 
 /// Assert that the result has no errors and the final expression type
@@ -62,7 +62,7 @@ fn test_struct_definition_and_literal() {
     assert_result_type(
         &result,
         Ty::App(
-            Box::new(Ty::Con(snow_typeck::ty::TyCon::new("Point"))),
+            Box::new(Ty::Con(mesh_typeck::ty::TyCon::new("Point"))),
             vec![],
         ),
     );
@@ -86,7 +86,7 @@ fn test_generic_struct() {
     assert_result_type(
         &result,
         Ty::App(
-            Box::new(Ty::Con(snow_typeck::ty::TyCon::new("Pair"))),
+            Box::new(Ty::Con(mesh_typeck::ty::TyCon::new("Pair"))),
             vec![Ty::int(), Ty::string()],
         ),
     );

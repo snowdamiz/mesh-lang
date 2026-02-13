@@ -1,6 +1,6 @@
 //! Per-actor GC-aware heap with free-list allocator.
 //!
-//! Each Snow actor gets its own heap for memory allocation. This eliminates
+//! Each Mesh actor gets its own heap for memory allocation. This eliminates
 //! global arena contention and enables per-actor memory reclamation via
 //! mark-sweep garbage collection.
 //!

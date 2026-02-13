@@ -1,4 +1,4 @@
-//! Type representation for the Snow type system.
+//! Type representation for the Mesh type system.
 //!
 //! Defines the core `Ty` enum, type constructors (`TyCon`), type variables
 //! (`TyVar`), and polymorphic type schemes (`Scheme`). These form the
@@ -63,9 +63,9 @@ impl fmt::Display for TyCon {
     }
 }
 
-/// A Snow type.
+/// A Mesh type.
 ///
-/// Represents all possible types in the Snow type system:
+/// Represents all possible types in the Mesh type system:
 /// - `Var`: an inference variable (to be resolved by unification)
 /// - `Con`: a concrete type constructor (Int, String, Bool, ...)
 /// - `Fun`: a function type (params -> return)

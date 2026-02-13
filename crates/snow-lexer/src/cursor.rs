@@ -1,4 +1,4 @@
-/// Byte-level source iterator for the Snow lexer.
+/// Byte-level source iterator for the Mesh lexer.
 ///
 /// The cursor wraps a source string and provides character-by-character
 /// iteration with byte-offset position tracking. All positions are byte

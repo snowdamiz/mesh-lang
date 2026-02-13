@@ -1,4 +1,4 @@
-//! Corosensei-based stackful coroutine management for Snow actors.
+//! Corosensei-based stackful coroutine management for Mesh actors.
 //!
 //! Each actor runs as a stackful coroutine with a 64 KiB stack. The coroutine
 //! yields when its reduction counter is exhausted, allowing the scheduler to
@@ -8,7 +8,7 @@
 //!
 //! Three thread-locals track the current execution context:
 //! - `CURRENT_YIELDER`: pointer to the active coroutine's Yielder (for yield on reduction exhaustion)
-//! - `CURRENT_PID`: the PID of the currently running actor (for `snow_actor_self()`)
+//! - `CURRENT_PID`: the PID of the currently running actor (for `mesh_actor_self()`)
 //! - `STACK_BASE`: base address of the coroutine stack (for GC stack scanning bounds)
 
 use corosensei::stack::DefaultStack;
@@ -26,7 +26,7 @@ thread_local! {
     /// Raw pointer to the current coroutine's Yielder.
     ///
     /// Set before resuming a coroutine, cleared after it yields or completes.
-    /// Used by `snow_reduction_check()` to yield the current actor.
+    /// Used by `mesh_reduction_check()` to yield the current actor.
     ///
     /// Safety: The pointer is valid only while the coroutine is running.
     /// We store it as `*const ()` to erase the lifetime; the Yielder is
@@ -76,7 +76,7 @@ pub fn set_stack_base(base: *const u8) {
 // Yield support
 // ---------------------------------------------------------------------------
 
-/// Yield the current coroutine (called from `snow_reduction_check`).
+/// Yield the current coroutine (called from `mesh_reduction_check`).
 ///
 /// After `suspend()` returns (coroutine is resumed), we re-install the yielder
 /// into the thread-local because another coroutine may have run on this thread
@@ -118,11 +118,11 @@ pub struct CoroutineHandle {
 impl CoroutineHandle {
     /// Create a new coroutine that will call `entry_fn(args_ptr)`.
     ///
-    /// The entry function signature matches the Snow actor ABI:
+    /// The entry function signature matches the Mesh actor ABI:
     /// `extern "C" fn(args: *const u8)`.
     ///
     /// The coroutine installs its Yielder into the thread-local before
-    /// calling the entry function, so `snow_reduction_check()` can yield.
+    /// calling the entry function, so `mesh_reduction_check()` can yield.
     pub fn new(entry_fn: *const u8, args_ptr: *const u8) -> Self {
         let stack =
             DefaultStack::new(DEFAULT_STACK_SIZE).expect("failed to allocate coroutine stack");
@@ -150,7 +150,7 @@ impl CoroutineHandle {
                 }
             }
 
-            // Install yielder in thread-local so snow_reduction_check can access it.
+            // Install yielder in thread-local so mesh_reduction_check can access it.
             CURRENT_YIELDER.with(|c| {
                 c.set(Some(yielder as *const Yielder<(), ()> as *const ()));
             });

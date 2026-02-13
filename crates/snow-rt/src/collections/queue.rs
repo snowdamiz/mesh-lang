@@ -1,12 +1,12 @@
-//! GC-managed immutable FIFO Queue for the Snow runtime.
+//! GC-managed immutable FIFO Queue for the Mesh runtime.
 //!
-//! A SnowQueue is backed by two lists (front + back) for amortized O(1)
+//! A MeshQueue is backed by two lists (front + back) for amortized O(1)
 //! push/pop. Layout is an opaque GC-allocated struct:
 //! `{ u64 front_ptr, u64 back_ptr }`.
 //!
 //! All operations return NEW queues (immutable semantics).
 
-use crate::gc::snow_gc_alloc_actor;
+use crate::gc::mesh_gc_alloc_actor;
 
 // ── Internal helpers ──────────────────────────────────────────────────
 
@@ -22,7 +22,7 @@ unsafe fn queue_back(q: *const u8) -> *mut u8 {
 }
 
 unsafe fn alloc_queue(front: *mut u8, back: *mut u8) -> *mut u8 {
-    let p = snow_gc_alloc_actor(QUEUE_SIZE as u64, 8);
+    let p = mesh_gc_alloc_actor(QUEUE_SIZE as u64, 8);
     *(p as *mut u64) = front as u64;
     *((p as *mut u64).add(1)) = back as u64;
     p
@@ -34,8 +34,8 @@ unsafe fn alloc_queue(front: *mut u8, back: *mut u8) -> *mut u8 {
 /// we transfer it directly (no reversal needed) to maintain FIFO order.
 unsafe fn normalize(front: *mut u8, back: *mut u8) -> (*mut u8, *mut u8) {
     use super::list;
-    if list::snow_list_length(front) == 0 && list::snow_list_length(back) > 0 {
-        (back, list::snow_list_new())
+    if list::mesh_list_length(front) == 0 && list::mesh_list_length(back) > 0 {
+        (back, list::mesh_list_new())
     } else {
         (front, back)
     }
@@ -45,20 +45,20 @@ unsafe fn normalize(front: *mut u8, back: *mut u8) -> (*mut u8, *mut u8) {
 
 /// Create an empty queue.
 #[no_mangle]
-pub extern "C" fn snow_queue_new() -> *mut u8 {
+pub extern "C" fn mesh_queue_new() -> *mut u8 {
     unsafe {
-        let front = super::list::snow_list_new();
-        let back = super::list::snow_list_new();
+        let front = super::list::mesh_list_new();
+        let back = super::list::mesh_list_new();
         alloc_queue(front, back)
     }
 }
 
 /// Push an element to the back of the queue. Returns a NEW queue.
 #[no_mangle]
-pub extern "C" fn snow_queue_push(queue: *mut u8, element: u64) -> *mut u8 {
+pub extern "C" fn mesh_queue_push(queue: *mut u8, element: u64) -> *mut u8 {
     unsafe {
         let front = queue_front(queue);
-        let new_back = super::list::snow_list_append(queue_back(queue), element);
+        let new_back = super::list::mesh_list_append(queue_back(queue), element);
         let (f, b) = normalize(front, new_back);
         alloc_queue(f, b)
     }
@@ -69,7 +69,7 @@ pub extern "C" fn snow_queue_push(queue: *mut u8, element: u64) -> *mut u8 {
 ///
 /// Panics if the queue is empty.
 #[no_mangle]
-pub extern "C" fn snow_queue_pop(queue: *mut u8) -> *mut u8 {
+pub extern "C" fn mesh_queue_pop(queue: *mut u8) -> *mut u8 {
     unsafe {
         let front = queue_front(queue);
         let back = queue_back(queue);
@@ -77,17 +77,17 @@ pub extern "C" fn snow_queue_pop(queue: *mut u8) -> *mut u8 {
         // Normalize if needed.
         let (front, back) = normalize(front, back);
 
-        if super::list::snow_list_length(front) == 0 {
-            panic!("snow_queue_pop: empty queue");
+        if super::list::mesh_list_length(front) == 0 {
+            panic!("mesh_queue_pop: empty queue");
         }
 
-        let element = super::list::snow_list_head(front);
-        let new_front = super::list::snow_list_tail(front);
+        let element = super::list::mesh_list_head(front);
+        let new_front = super::list::mesh_list_tail(front);
         let (nf, nb) = normalize(new_front, back);
         let new_queue = alloc_queue(nf, nb);
 
         // Return a pair: { element, new_queue_ptr }.
-        let result = snow_gc_alloc_actor(16, 8);
+        let result = mesh_gc_alloc_actor(16, 8);
         *(result as *mut u64) = element;
         *((result as *mut u64).add(1)) = new_queue as u64;
         result
@@ -96,34 +96,34 @@ pub extern "C" fn snow_queue_pop(queue: *mut u8) -> *mut u8 {
 
 /// Peek at the front element without removing it. Panics if empty.
 #[no_mangle]
-pub extern "C" fn snow_queue_peek(queue: *mut u8) -> u64 {
+pub extern "C" fn mesh_queue_peek(queue: *mut u8) -> u64 {
     unsafe {
         let front = queue_front(queue);
         let back = queue_back(queue);
         let (front, _) = normalize(front, back);
 
-        if super::list::snow_list_length(front) == 0 {
-            panic!("snow_queue_peek: empty queue");
+        if super::list::mesh_list_length(front) == 0 {
+            panic!("mesh_queue_peek: empty queue");
         }
 
-        super::list::snow_list_head(front)
+        super::list::mesh_list_head(front)
     }
 }
 
 /// Return the total number of elements in the queue.
 #[no_mangle]
-pub extern "C" fn snow_queue_size(queue: *mut u8) -> i64 {
+pub extern "C" fn mesh_queue_size(queue: *mut u8) -> i64 {
     unsafe {
-        let front_len = super::list::snow_list_length(queue_front(queue));
-        let back_len = super::list::snow_list_length(queue_back(queue));
+        let front_len = super::list::mesh_list_length(queue_front(queue));
+        let back_len = super::list::mesh_list_length(queue_back(queue));
         front_len + back_len
     }
 }
 
 /// Returns 1 if the queue is empty, 0 otherwise.
 #[no_mangle]
-pub extern "C" fn snow_queue_is_empty(queue: *mut u8) -> i8 {
-    if snow_queue_size(queue) == 0 {
+pub extern "C" fn mesh_queue_is_empty(queue: *mut u8) -> i8 {
+    if mesh_queue_size(queue) == 0 {
         1
     } else {
         0
@@ -133,34 +133,34 @@ pub extern "C" fn snow_queue_is_empty(queue: *mut u8) -> i8 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::gc::snow_rt_init;
+    use crate::gc::mesh_rt_init;
 
     #[test]
     fn test_queue_new_is_empty() {
-        snow_rt_init();
-        let q = snow_queue_new();
-        assert_eq!(snow_queue_size(q), 0);
-        assert_eq!(snow_queue_is_empty(q), 1);
+        mesh_rt_init();
+        let q = mesh_queue_new();
+        assert_eq!(mesh_queue_size(q), 0);
+        assert_eq!(mesh_queue_is_empty(q), 1);
     }
 
     #[test]
     fn test_queue_push_pop_fifo() {
-        snow_rt_init();
-        let q = snow_queue_new();
-        let q = snow_queue_push(q, 10);
-        let q = snow_queue_push(q, 20);
-        let q = snow_queue_push(q, 30);
-        assert_eq!(snow_queue_size(q), 3);
+        mesh_rt_init();
+        let q = mesh_queue_new();
+        let q = mesh_queue_push(q, 10);
+        let q = mesh_queue_push(q, 20);
+        let q = mesh_queue_push(q, 30);
+        assert_eq!(mesh_queue_size(q), 3);
 
         // Pop should return elements in FIFO order.
-        let result = snow_queue_pop(q);
+        let result = mesh_queue_pop(q);
         unsafe {
             let elem = *(result as *const u64);
             let new_q = *((result as *const u64).add(1)) as *mut u8;
             assert_eq!(elem, 10);
-            assert_eq!(snow_queue_size(new_q), 2);
+            assert_eq!(mesh_queue_size(new_q), 2);
 
-            let result2 = snow_queue_pop(new_q);
+            let result2 = mesh_queue_pop(new_q);
             let elem2 = *(result2 as *const u64);
             assert_eq!(elem2, 20);
         }
@@ -168,33 +168,33 @@ mod tests {
 
     #[test]
     fn test_queue_peek() {
-        snow_rt_init();
-        let q = snow_queue_new();
-        let q = snow_queue_push(q, 42);
-        let q = snow_queue_push(q, 99);
-        assert_eq!(snow_queue_peek(q), 42);
+        mesh_rt_init();
+        let q = mesh_queue_new();
+        let q = mesh_queue_push(q, 42);
+        let q = mesh_queue_push(q, 99);
+        assert_eq!(mesh_queue_peek(q), 42);
         // Peek doesn't remove the element.
-        assert_eq!(snow_queue_size(q), 2);
+        assert_eq!(mesh_queue_size(q), 2);
     }
 
     #[test]
     fn test_queue_immutability() {
-        snow_rt_init();
-        let q1 = snow_queue_new();
-        let q2 = snow_queue_push(q1, 1);
-        assert_eq!(snow_queue_size(q1), 0);
-        assert_eq!(snow_queue_size(q2), 1);
+        mesh_rt_init();
+        let q1 = mesh_queue_new();
+        let q2 = mesh_queue_push(q1, 1);
+        assert_eq!(mesh_queue_size(q1), 0);
+        assert_eq!(mesh_queue_size(q2), 1);
     }
 
     #[test]
     fn test_queue_is_empty_after_pop_all() {
-        snow_rt_init();
-        let q = snow_queue_new();
-        let q = snow_queue_push(q, 1);
-        let result = snow_queue_pop(q);
+        mesh_rt_init();
+        let q = mesh_queue_new();
+        let q = mesh_queue_push(q, 1);
+        let result = mesh_queue_pop(q);
         unsafe {
             let new_q = *((result as *const u64).add(1)) as *mut u8;
-            assert_eq!(snow_queue_is_empty(new_q), 1);
+            assert_eq!(mesh_queue_is_empty(new_q), 1);
         }
     }
 }

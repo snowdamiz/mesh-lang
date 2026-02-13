@@ -1,31 +1,31 @@
-//! End-to-end integration tests for the Snow supervisor compiler pipeline.
+//! End-to-end integration tests for the Mesh supervisor compiler pipeline.
 //!
-//! Each test compiles a .snow program that exercises supervisor features,
+//! Each test compiles a .mpl program that exercises supervisor features,
 //! builds it into a native binary, and verifies expected behavior.
 
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 
-/// Helper: compile a Snow source file and assert it compiles successfully.
+/// Helper: compile a Mesh source file and assert it compiles successfully.
 /// Returns the path to the compiled binary.
-fn compile_snow(source: &str) -> (tempfile::TempDir, PathBuf) {
+fn compile_mesh(source: &str) -> (tempfile::TempDir, PathBuf) {
     let temp_dir = tempfile::tempdir().expect("failed to create temp dir");
     let project_dir = temp_dir.path().join("project");
     std::fs::create_dir_all(&project_dir).expect("failed to create project dir");
 
-    let main_snow = project_dir.join("main.snow");
-    std::fs::write(&main_snow, source).expect("failed to write main.snow");
+    let main_mesh = project_dir.join("main.mpl");
+    std::fs::write(&main_mesh, source).expect("failed to write main.mpl");
 
-    // Build with snowc
-    let snowc = find_snowc();
-    let output = Command::new(&snowc)
+    // Build with meshc
+    let meshc = find_meshc();
+    let output = Command::new(&meshc)
         .args(["build", project_dir.to_str().unwrap()])
         .output()
-        .expect("failed to invoke snowc");
+        .expect("failed to invoke meshc");
 
     assert!(
         output.status.success(),
-        "snowc build failed:\nstdout: {}\nstderr: {}",
+        "meshc build failed:\nstdout: {}\nstderr: {}",
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr)
     );
@@ -55,8 +55,8 @@ fn read_fixture(name: &str) -> String {
         .unwrap_or_else(|e| panic!("failed to read fixture {}: {}", fixture_path.display(), e))
 }
 
-/// Find the snowc binary in the target directory.
-fn find_snowc() -> PathBuf {
+/// Find the meshc binary in the target directory.
+fn find_meshc() -> PathBuf {
     let mut path = std::env::current_exe()
         .expect("cannot find current exe")
         .parent()
@@ -67,30 +67,30 @@ fn find_snowc() -> PathBuf {
         path = path.parent().unwrap().to_path_buf();
     }
 
-    let snowc = path.join("snowc");
+    let meshc = path.join("meshc");
     assert!(
-        snowc.exists(),
-        "snowc binary not found at {}. Run `cargo build -p snowc` first.",
-        snowc.display()
+        meshc.exists(),
+        "meshc binary not found at {}. Run `cargo build -p meshc` first.",
+        meshc.display()
     );
-    snowc
+    meshc
 }
 
-/// Helper: compile a Snow source file without asserting success.
+/// Helper: compile a Mesh source file without asserting success.
 /// Returns the raw compilation output (for negative tests).
 fn compile_only(source: &str) -> Output {
     let temp_dir = tempfile::tempdir().expect("failed to create temp dir");
     let project_dir = temp_dir.path().join("project");
     std::fs::create_dir_all(&project_dir).expect("failed to create project dir");
 
-    let main_snow = project_dir.join("main.snow");
-    std::fs::write(&main_snow, source).expect("failed to write main.snow");
+    let main_mesh = project_dir.join("main.mpl");
+    std::fs::write(&main_mesh, source).expect("failed to write main.mpl");
 
-    let snowc = find_snowc();
-    Command::new(&snowc)
+    let meshc = find_meshc();
+    Command::new(&meshc)
         .args(["build", project_dir.to_str().unwrap()])
         .output()
-        .expect("failed to invoke snowc")
+        .expect("failed to invoke meshc")
 }
 
 /// Helper: run a compiled binary with a timeout and return stdout.
@@ -147,8 +147,8 @@ fn run_with_timeout(binary: &Path, timeout_secs: u64) -> String {
 /// type checking, MIR lowering, and LLVM codegen with supervisor intrinsics.
 #[test]
 fn supervisor_basic() {
-    let source = read_fixture("supervisor_basic.snow");
-    let (_temp_dir, binary) = compile_snow(&source);
+    let source = read_fixture("supervisor_basic.mpl");
+    let (_temp_dir, binary) = compile_mesh(&source);
 
     // Verify the binary exists and is executable.
     assert!(binary.exists(), "compiled supervisor binary should exist");
@@ -209,8 +209,8 @@ fn supervisor_basic() {
 /// and runtime. The supervisor starts and prints expected output.
 #[test]
 fn supervisor_one_for_all() {
-    let source = read_fixture("supervisor_one_for_all.snow");
-    let (_temp_dir, binary) = compile_snow(&source);
+    let source = read_fixture("supervisor_one_for_all.mpl");
+    let (_temp_dir, binary) = compile_mesh(&source);
 
     let stdout = run_with_timeout(&binary, 10);
     assert!(
@@ -226,8 +226,8 @@ fn supervisor_one_for_all() {
 /// configuration. The supervisor starts and manages restart counting.
 #[test]
 fn supervisor_restart_limit() {
-    let source = read_fixture("supervisor_restart_limit.snow");
-    let (_temp_dir, binary) = compile_snow(&source);
+    let source = read_fixture("supervisor_restart_limit.mpl");
+    let (_temp_dir, binary) = compile_mesh(&source);
 
     let stdout = run_with_timeout(&binary, 10);
     assert!(
@@ -244,7 +244,7 @@ fn supervisor_restart_limit() {
 /// error E0018 (InvalidChildStart).
 #[test]
 fn supervisor_typed_error_rejected() {
-    let source = read_fixture("supervisor_typed_error.snow");
+    let source = read_fixture("supervisor_typed_error.mpl");
     let result = compile_only(&source);
 
     assert!(

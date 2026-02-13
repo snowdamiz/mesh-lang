@@ -1,16 +1,16 @@
-//! Integration tests for Snow trait system: interface definitions, impl blocks,
+//! Integration tests for Mesh trait system: interface definitions, impl blocks,
 //! where clause constraints, compiler-known operator traits, and trait method dispatch.
 
-use snow_typeck::error::TypeError;
-use snow_typeck::ty::Ty;
-use snow_typeck::TypeckResult;
+use mesh_typeck::error::TypeError;
+use mesh_typeck::ty::Ty;
+use mesh_typeck::TypeckResult;
 
 // ── Helpers ────────────────────────────────────────────────────────────
 
-/// Parse Snow source and run the type checker.
+/// Parse Mesh source and run the type checker.
 fn check_source(src: &str) -> TypeckResult {
-    let parse = snow_parser::parse(src);
-    snow_typeck::check(&parse)
+    let parse = mesh_parser::parse(src);
+    mesh_typeck::check(&parse)
 }
 
 /// Assert that the result has no errors and the final expression type
@@ -105,7 +105,7 @@ fn test_impl_wrong_method_signature() {
 // ── Where clauses ────────────────────────────────────────────────────
 
 /// 5. Function with where clause called with satisfying type.
-///    Note: Snow uses `::` for type annotations in params (not `:`).
+///    Note: Mesh uses `::` for type annotations in params (not `:`).
 #[test]
 fn test_where_clause_satisfied() {
     let result = check_source(

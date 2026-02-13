@@ -1,6 +1,6 @@
-//! GC-managed immutable Map for the Snow runtime.
+//! GC-managed immutable Map for the Mesh runtime.
 //!
-//! A SnowMap stores key-value pairs where both keys and values are uniform
+//! A MeshMap stores key-value pairs where both keys and values are uniform
 //! 8-byte (`u64`) values. Backed by a simple vector of `(u64, u64)` pairs
 //! with linear scan -- efficient for the small maps typical in Phase 8.
 //!
@@ -8,9 +8,9 @@
 //!
 //! The upper 8 bits of the capacity field store a key_type tag:
 //! - 0 = integer keys (compared by value)
-//! - 1 = string keys (compared by content via snow_string_eq)
+//! - 1 = string keys (compared by content via mesh_string_eq)
 
-use crate::gc::snow_gc_alloc_actor;
+use crate::gc::mesh_gc_alloc_actor;
 use super::list::alloc_pair;
 use std::ptr;
 
@@ -21,7 +21,7 @@ const ENTRY_SIZE: usize = 16;
 
 /// Key type tag: integer keys (compared by value equality).
 const KEY_TYPE_INT: u64 = 0;
-/// Key type tag: string keys (compared by content via snow_string_eq).
+/// Key type tag: string keys (compared by content via mesh_string_eq).
 const KEY_TYPE_STR: u64 = 1;
 /// Number of bits to shift for the key_type tag in the cap field.
 const TAG_SHIFT: u64 = 56;
@@ -60,9 +60,9 @@ unsafe fn map_entries_mut(m: *mut u8) -> *mut [u64; 2] {
 /// Check if two keys are equal, dispatching based on the map's key_type.
 unsafe fn keys_equal(m: *const u8, a: u64, b: u64) -> bool {
     if map_key_type(m) == KEY_TYPE_STR {
-        crate::string::snow_string_eq(
-            a as *const crate::string::SnowString,
-            b as *const crate::string::SnowString,
+        crate::string::mesh_string_eq(
+            a as *const crate::string::MeshString,
+            b as *const crate::string::MeshString,
         ) != 0
     } else {
         a == b
@@ -71,7 +71,7 @@ unsafe fn keys_equal(m: *const u8, a: u64, b: u64) -> bool {
 
 unsafe fn alloc_map(cap: u64, key_type: u64) -> *mut u8 {
     let total = HEADER_SIZE + (cap as usize) * ENTRY_SIZE;
-    let p = snow_gc_alloc_actor(total as u64, 8);
+    let p = mesh_gc_alloc_actor(total as u64, 8);
     *(p as *mut u64) = 0; // len
     *((p as *mut u64).add(1)) = (key_type << TAG_SHIFT) | cap; // key_type tag + cap
     p
@@ -93,14 +93,14 @@ unsafe fn find_key(m: *const u8, key: u64) -> Option<usize> {
 
 /// Create an empty map (integer keys, backward compatible).
 #[no_mangle]
-pub extern "C" fn snow_map_new() -> *mut u8 {
+pub extern "C" fn mesh_map_new() -> *mut u8 {
     unsafe { alloc_map(0, KEY_TYPE_INT) }
 }
 
 /// Create an empty map with a specific key_type tag.
 /// key_type: 0 = Int, 1 = String.
 #[no_mangle]
-pub extern "C" fn snow_map_new_typed(key_type: i64) -> *mut u8 {
+pub extern "C" fn mesh_map_new_typed(key_type: i64) -> *mut u8 {
     unsafe { alloc_map(0, key_type as u64) }
 }
 
@@ -108,7 +108,7 @@ pub extern "C" fn snow_map_new_typed(key_type: i64) -> *mut u8 {
 /// returns a new empty map with string key_type. Otherwise returns the map unchanged.
 /// Used by codegen to tag maps before the first string-key put.
 #[no_mangle]
-pub extern "C" fn snow_map_tag_string(map: *mut u8) -> *mut u8 {
+pub extern "C" fn mesh_map_tag_string(map: *mut u8) -> *mut u8 {
     unsafe {
         if map_len(map) == 0 && map_key_type(map) != KEY_TYPE_STR {
             alloc_map(0, KEY_TYPE_STR)
@@ -120,7 +120,7 @@ pub extern "C" fn snow_map_tag_string(map: *mut u8) -> *mut u8 {
 
 /// Return a NEW map with the key-value pair added (or updated).
 #[no_mangle]
-pub extern "C" fn snow_map_put(map: *mut u8, key: u64, value: u64) -> *mut u8 {
+pub extern "C" fn mesh_map_put(map: *mut u8, key: u64, value: u64) -> *mut u8 {
     unsafe {
         let len = map_len(map) as usize;
         let kt = map_key_type(map);
@@ -157,7 +157,7 @@ pub extern "C" fn snow_map_put(map: *mut u8, key: u64, value: u64) -> *mut u8 {
 
 /// Get the value for a key. Returns 0 if not found.
 #[no_mangle]
-pub extern "C" fn snow_map_get(map: *mut u8, key: u64) -> u64 {
+pub extern "C" fn mesh_map_get(map: *mut u8, key: u64) -> u64 {
     unsafe {
         if let Some(idx) = find_key(map, key) {
             (*map_entries(map).add(idx))[1]
@@ -169,7 +169,7 @@ pub extern "C" fn snow_map_get(map: *mut u8, key: u64) -> u64 {
 
 /// Returns 1 if the key exists, 0 otherwise.
 #[no_mangle]
-pub extern "C" fn snow_map_has_key(map: *mut u8, key: u64) -> i8 {
+pub extern "C" fn mesh_map_has_key(map: *mut u8, key: u64) -> i8 {
     unsafe {
         if find_key(map, key).is_some() {
             1
@@ -181,7 +181,7 @@ pub extern "C" fn snow_map_has_key(map: *mut u8, key: u64) -> i8 {
 
 /// Return a NEW map without the given key.
 #[no_mangle]
-pub extern "C" fn snow_map_delete(map: *mut u8, key: u64) -> *mut u8 {
+pub extern "C" fn mesh_map_delete(map: *mut u8, key: u64) -> *mut u8 {
     unsafe {
         let len = map_len(map) as usize;
         let kt = map_key_type(map);
@@ -221,19 +221,19 @@ pub extern "C" fn snow_map_delete(map: *mut u8, key: u64) -> *mut u8 {
 
 /// Return the number of entries in the map.
 #[no_mangle]
-pub extern "C" fn snow_map_size(map: *mut u8) -> i64 {
+pub extern "C" fn mesh_map_size(map: *mut u8) -> i64 {
     unsafe { map_len(map) as i64 }
 }
 
 /// Return a List of all keys in the map.
 #[no_mangle]
-pub extern "C" fn snow_map_keys(map: *mut u8) -> *mut u8 {
+pub extern "C" fn mesh_map_keys(map: *mut u8) -> *mut u8 {
     unsafe {
         let len = map_len(map) as usize;
         let entries = map_entries(map);
-        let mut list = super::list::snow_list_new();
+        let mut list = super::list::mesh_list_new();
         for i in 0..len {
-            list = super::list::snow_list_append(list, (*entries.add(i))[0]);
+            list = super::list::mesh_list_append(list, (*entries.add(i))[0]);
         }
         list
     }
@@ -241,13 +241,13 @@ pub extern "C" fn snow_map_keys(map: *mut u8) -> *mut u8 {
 
 /// Return a List of all values in the map.
 #[no_mangle]
-pub extern "C" fn snow_map_values(map: *mut u8) -> *mut u8 {
+pub extern "C" fn mesh_map_values(map: *mut u8) -> *mut u8 {
     unsafe {
         let len = map_len(map) as usize;
         let entries = map_entries(map);
-        let mut list = super::list::snow_list_new();
+        let mut list = super::list::mesh_list_new();
         for i in 0..len {
-            list = super::list::snow_list_append(list, (*entries.add(i))[1]);
+            list = super::list::mesh_list_append(list, (*entries.add(i))[1]);
         }
         list
     }
@@ -256,12 +256,12 @@ pub extern "C" fn snow_map_values(map: *mut u8) -> *mut u8 {
 /// Get the key at index i (insertion order). Panics if out of bounds.
 /// Used by for-in codegen for indexed map iteration.
 #[no_mangle]
-pub extern "C" fn snow_map_entry_key(map: *mut u8, index: i64) -> u64 {
+pub extern "C" fn mesh_map_entry_key(map: *mut u8, index: i64) -> u64 {
     unsafe {
         let len = map_len(map);
         if index < 0 || index as u64 >= len {
             panic!(
-                "snow_map_entry_key: index {} out of bounds (len {})",
+                "mesh_map_entry_key: index {} out of bounds (len {})",
                 index, len
             );
         }
@@ -273,12 +273,12 @@ pub extern "C" fn snow_map_entry_key(map: *mut u8, index: i64) -> u64 {
 /// Get the value at index i (insertion order). Panics if out of bounds.
 /// Used by for-in codegen for indexed map iteration.
 #[no_mangle]
-pub extern "C" fn snow_map_entry_value(map: *mut u8, index: i64) -> u64 {
+pub extern "C" fn mesh_map_entry_value(map: *mut u8, index: i64) -> u64 {
     unsafe {
         let len = map_len(map);
         if index < 0 || index as u64 >= len {
             panic!(
-                "snow_map_entry_value: index {} out of bounds (len {})",
+                "mesh_map_entry_value: index {} out of bounds (len {})",
                 index, len
             );
         }
@@ -287,12 +287,12 @@ pub extern "C" fn snow_map_entry_value(map: *mut u8, index: i64) -> u64 {
     }
 }
 
-/// Convert a map to a human-readable SnowString: `%{k1 => v1, k2 => v2, ...}`.
+/// Convert a map to a human-readable MeshString: `%{k1 => v1, k2 => v2, ...}`.
 ///
 /// `key_to_str` and `val_to_str` are bare function pointers `fn(u64) -> *mut u8`
-/// that convert keys and values to SnowString pointers respectively.
+/// that convert keys and values to MeshString pointers respectively.
 #[no_mangle]
-pub extern "C" fn snow_map_to_string(
+pub extern "C" fn mesh_map_to_string(
     map: *mut u8,
     key_to_str: *mut u8,
     val_to_str: *mut u8,
@@ -305,37 +305,37 @@ pub extern "C" fn snow_map_to_string(
         let kf: ElemToStr = std::mem::transmute(key_to_str);
         let vf: ElemToStr = std::mem::transmute(val_to_str);
 
-        let mut result = crate::string::snow_string_new(b"%{".as_ptr(), 2) as *mut u8;
+        let mut result = crate::string::mesh_string_new(b"%{".as_ptr(), 2) as *mut u8;
         for i in 0..len {
             if i > 0 {
-                let sep = crate::string::snow_string_new(b", ".as_ptr(), 2) as *mut u8;
-                result = crate::string::snow_string_concat(
-                    result as *const crate::string::SnowString,
-                    sep as *const crate::string::SnowString,
+                let sep = crate::string::mesh_string_new(b", ".as_ptr(), 2) as *mut u8;
+                result = crate::string::mesh_string_concat(
+                    result as *const crate::string::MeshString,
+                    sep as *const crate::string::MeshString,
                 ) as *mut u8;
             }
             let key = (*entries.add(i))[0];
             let val = (*entries.add(i))[1];
             let key_str = kf(key);
-            result = crate::string::snow_string_concat(
-                result as *const crate::string::SnowString,
-                key_str as *const crate::string::SnowString,
+            result = crate::string::mesh_string_concat(
+                result as *const crate::string::MeshString,
+                key_str as *const crate::string::MeshString,
             ) as *mut u8;
-            let arrow = crate::string::snow_string_new(b" => ".as_ptr(), 4) as *mut u8;
-            result = crate::string::snow_string_concat(
-                result as *const crate::string::SnowString,
-                arrow as *const crate::string::SnowString,
+            let arrow = crate::string::mesh_string_new(b" => ".as_ptr(), 4) as *mut u8;
+            result = crate::string::mesh_string_concat(
+                result as *const crate::string::MeshString,
+                arrow as *const crate::string::MeshString,
             ) as *mut u8;
             let val_str = vf(val);
-            result = crate::string::snow_string_concat(
-                result as *const crate::string::SnowString,
-                val_str as *const crate::string::SnowString,
+            result = crate::string::mesh_string_concat(
+                result as *const crate::string::MeshString,
+                val_str as *const crate::string::MeshString,
             ) as *mut u8;
         }
-        let close = crate::string::snow_string_new(b"}".as_ptr(), 1) as *mut u8;
-        result = crate::string::snow_string_concat(
-            result as *const crate::string::SnowString,
-            close as *const crate::string::SnowString,
+        let close = crate::string::mesh_string_new(b"}".as_ptr(), 1) as *mut u8;
+        result = crate::string::mesh_string_concat(
+            result as *const crate::string::MeshString,
+            close as *const crate::string::MeshString,
         ) as *mut u8;
         result
     }
@@ -344,7 +344,7 @@ pub extern "C" fn snow_map_to_string(
 /// Merge two maps. All entries from `a` are included; entries from `b`
 /// overwrite duplicates from `a`. Returns a NEW merged map.
 #[no_mangle]
-pub extern "C" fn snow_map_merge(a: *mut u8, b: *mut u8) -> *mut u8 {
+pub extern "C" fn mesh_map_merge(a: *mut u8, b: *mut u8) -> *mut u8 {
     unsafe {
         let a_len = map_len(a) as usize;
         let b_len = map_len(b) as usize;
@@ -366,7 +366,7 @@ pub extern "C" fn snow_map_merge(a: *mut u8, b: *mut u8) -> *mut u8 {
         for i in 0..b_len {
             let key = (*b_entries.add(i))[0];
             let val = (*b_entries.add(i))[1];
-            result = snow_map_put(result, key, val);
+            result = mesh_map_put(result, key, val);
         }
 
         result
@@ -375,16 +375,16 @@ pub extern "C" fn snow_map_merge(a: *mut u8, b: *mut u8) -> *mut u8 {
 
 /// Convert a map to a list of (key, value) 2-tuples.
 #[no_mangle]
-pub extern "C" fn snow_map_to_list(map: *mut u8) -> *mut u8 {
+pub extern "C" fn mesh_map_to_list(map: *mut u8) -> *mut u8 {
     unsafe {
         let len = map_len(map) as usize;
         let entries = map_entries(map);
-        let list = super::list::snow_list_builder_new(len as i64);
+        let list = super::list::mesh_list_builder_new(len as i64);
         for i in 0..len {
             let key = (*entries.add(i))[0];
             let val = (*entries.add(i))[1];
             let pair = alloc_pair(key, val);
-            super::list::snow_list_builder_push(list, pair as u64);
+            super::list::mesh_list_builder_push(list, pair as u64);
         }
         list
     }
@@ -393,16 +393,16 @@ pub extern "C" fn snow_map_to_list(map: *mut u8) -> *mut u8 {
 /// Build a map from a list of (key, value) 2-tuples.
 /// Defaults to KEY_TYPE_INT since runtime cannot detect key type.
 #[no_mangle]
-pub extern "C" fn snow_map_from_list(list: *mut u8) -> *mut u8 {
+pub extern "C" fn mesh_map_from_list(list: *mut u8) -> *mut u8 {
     unsafe {
-        let len = super::list::snow_list_length(list);
-        let mut map = snow_map_new();
+        let len = super::list::mesh_list_length(list);
+        let mut map = mesh_map_new();
         let data = (list as *const u64).add(2); // skip len + cap header
         for i in 0..len as usize {
             let tuple_ptr = *data.add(i) as *mut u8;
             let key = *((tuple_ptr as *const u64).add(1)); // offset 1 = first tuple element
             let val = *((tuple_ptr as *const u64).add(2)); // offset 2 = second tuple element
-            map = snow_map_put(map, key, val);
+            map = mesh_map_put(map, key, val);
         }
         map
     }
@@ -411,166 +411,166 @@ pub extern "C" fn snow_map_from_list(list: *mut u8) -> *mut u8 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::gc::snow_rt_init;
+    use crate::gc::mesh_rt_init;
 
     #[test]
     fn test_map_new_is_empty() {
-        snow_rt_init();
-        let map = snow_map_new();
-        assert_eq!(snow_map_size(map), 0);
+        mesh_rt_init();
+        let map = mesh_map_new();
+        assert_eq!(mesh_map_size(map), 0);
     }
 
     #[test]
     fn test_map_put_get() {
-        snow_rt_init();
-        let map = snow_map_new();
-        let map = snow_map_put(map, 42, 100);
-        assert_eq!(snow_map_size(map), 1);
-        assert_eq!(snow_map_get(map, 42), 100);
-        assert_eq!(snow_map_has_key(map, 42), 1);
-        assert_eq!(snow_map_has_key(map, 99), 0);
+        mesh_rt_init();
+        let map = mesh_map_new();
+        let map = mesh_map_put(map, 42, 100);
+        assert_eq!(mesh_map_size(map), 1);
+        assert_eq!(mesh_map_get(map, 42), 100);
+        assert_eq!(mesh_map_has_key(map, 42), 1);
+        assert_eq!(mesh_map_has_key(map, 99), 0);
     }
 
     #[test]
     fn test_map_put_overwrite() {
-        snow_rt_init();
-        let map = snow_map_new();
-        let map = snow_map_put(map, 1, 10);
-        let map = snow_map_put(map, 1, 20);
-        assert_eq!(snow_map_size(map), 1);
-        assert_eq!(snow_map_get(map, 1), 20);
+        mesh_rt_init();
+        let map = mesh_map_new();
+        let map = mesh_map_put(map, 1, 10);
+        let map = mesh_map_put(map, 1, 20);
+        assert_eq!(mesh_map_size(map), 1);
+        assert_eq!(mesh_map_get(map, 1), 20);
     }
 
     #[test]
     fn test_map_delete() {
-        snow_rt_init();
-        let map = snow_map_new();
-        let map = snow_map_put(map, 1, 10);
-        let map = snow_map_put(map, 2, 20);
-        let map = snow_map_delete(map, 1);
-        assert_eq!(snow_map_size(map), 1);
-        assert_eq!(snow_map_has_key(map, 1), 0);
-        assert_eq!(snow_map_get(map, 2), 20);
+        mesh_rt_init();
+        let map = mesh_map_new();
+        let map = mesh_map_put(map, 1, 10);
+        let map = mesh_map_put(map, 2, 20);
+        let map = mesh_map_delete(map, 1);
+        assert_eq!(mesh_map_size(map), 1);
+        assert_eq!(mesh_map_has_key(map, 1), 0);
+        assert_eq!(mesh_map_get(map, 2), 20);
     }
 
     #[test]
     fn test_map_keys_values() {
-        snow_rt_init();
-        let map = snow_map_new();
-        let map = snow_map_put(map, 1, 10);
-        let map = snow_map_put(map, 2, 20);
-        let keys = snow_map_keys(map);
-        let vals = snow_map_values(map);
-        assert_eq!(super::super::list::snow_list_length(keys), 2);
-        assert_eq!(super::super::list::snow_list_length(vals), 2);
+        mesh_rt_init();
+        let map = mesh_map_new();
+        let map = mesh_map_put(map, 1, 10);
+        let map = mesh_map_put(map, 2, 20);
+        let keys = mesh_map_keys(map);
+        let vals = mesh_map_values(map);
+        assert_eq!(super::super::list::mesh_list_length(keys), 2);
+        assert_eq!(super::super::list::mesh_list_length(vals), 2);
     }
 
     #[test]
     fn test_map_immutability() {
-        snow_rt_init();
-        let map1 = snow_map_new();
-        let map2 = snow_map_put(map1, 1, 10);
+        mesh_rt_init();
+        let map1 = mesh_map_new();
+        let map2 = mesh_map_put(map1, 1, 10);
         // Original map unchanged.
-        assert_eq!(snow_map_size(map1), 0);
-        assert_eq!(snow_map_size(map2), 1);
+        assert_eq!(mesh_map_size(map1), 0);
+        assert_eq!(mesh_map_size(map2), 1);
     }
 
     #[test]
     fn test_map_string_keys() {
-        snow_rt_init();
+        mesh_rt_init();
         // Create a string-key map (key_type = 1).
-        let map = snow_map_new_typed(1);
+        let map = mesh_map_new_typed(1);
 
         // Create string keys and values.
-        let key1 = crate::string::snow_string_new(b"name".as_ptr(), 4) as u64;
-        let val1 = crate::string::snow_string_new(b"Alice".as_ptr(), 5) as u64;
-        let key2 = crate::string::snow_string_new(b"city".as_ptr(), 4) as u64;
-        let val2 = crate::string::snow_string_new(b"Portland".as_ptr(), 8) as u64;
+        let key1 = crate::string::mesh_string_new(b"name".as_ptr(), 4) as u64;
+        let val1 = crate::string::mesh_string_new(b"Alice".as_ptr(), 5) as u64;
+        let key2 = crate::string::mesh_string_new(b"city".as_ptr(), 4) as u64;
+        let val2 = crate::string::mesh_string_new(b"Portland".as_ptr(), 8) as u64;
 
-        let map = snow_map_put(map, key1, val1);
-        let map = snow_map_put(map, key2, val2);
+        let map = mesh_map_put(map, key1, val1);
+        let map = mesh_map_put(map, key2, val2);
 
-        assert_eq!(snow_map_size(map), 2);
+        assert_eq!(mesh_map_size(map), 2);
 
         // Look up with a DIFFERENT string pointer but same content.
-        let lookup_key = crate::string::snow_string_new(b"name".as_ptr(), 4) as u64;
-        let got = snow_map_get(map, lookup_key);
+        let lookup_key = crate::string::mesh_string_new(b"name".as_ptr(), 4) as u64;
+        let got = mesh_map_get(map, lookup_key);
         assert_eq!(got, val1);
 
-        let lookup_key2 = crate::string::snow_string_new(b"city".as_ptr(), 4) as u64;
-        assert_eq!(snow_map_has_key(map, lookup_key2), 1);
+        let lookup_key2 = crate::string::mesh_string_new(b"city".as_ptr(), 4) as u64;
+        assert_eq!(mesh_map_has_key(map, lookup_key2), 1);
 
         // Non-existent key.
-        let missing = crate::string::snow_string_new(b"missing".as_ptr(), 7) as u64;
-        assert_eq!(snow_map_has_key(map, missing), 0);
+        let missing = crate::string::mesh_string_new(b"missing".as_ptr(), 7) as u64;
+        assert_eq!(mesh_map_has_key(map, missing), 0);
     }
 
     #[test]
     fn test_map_string_key_overwrite() {
-        snow_rt_init();
-        let map = snow_map_new_typed(1);
+        mesh_rt_init();
+        let map = mesh_map_new_typed(1);
 
-        let key = crate::string::snow_string_new(b"name".as_ptr(), 4) as u64;
-        let val1 = crate::string::snow_string_new(b"Alice".as_ptr(), 5) as u64;
-        let val2 = crate::string::snow_string_new(b"Bob".as_ptr(), 3) as u64;
+        let key = crate::string::mesh_string_new(b"name".as_ptr(), 4) as u64;
+        let val1 = crate::string::mesh_string_new(b"Alice".as_ptr(), 5) as u64;
+        let val2 = crate::string::mesh_string_new(b"Bob".as_ptr(), 3) as u64;
 
-        let map = snow_map_put(map, key, val1);
+        let map = mesh_map_put(map, key, val1);
         // Use a different pointer for the same key content.
-        let key2 = crate::string::snow_string_new(b"name".as_ptr(), 4) as u64;
-        let map = snow_map_put(map, key2, val2);
+        let key2 = crate::string::mesh_string_new(b"name".as_ptr(), 4) as u64;
+        let map = mesh_map_put(map, key2, val2);
 
-        assert_eq!(snow_map_size(map), 1);
+        assert_eq!(mesh_map_size(map), 1);
 
-        let lookup = crate::string::snow_string_new(b"name".as_ptr(), 4) as u64;
-        let got = snow_map_get(map, lookup);
+        let lookup = crate::string::mesh_string_new(b"name".as_ptr(), 4) as u64;
+        let got = mesh_map_get(map, lookup);
         assert_eq!(got, val2);
     }
 
     #[test]
     fn test_map_to_string() {
-        snow_rt_init();
-        let map = snow_map_new();
-        let map = snow_map_put(map, 1, 10);
-        let map = snow_map_put(map, 2, 20);
+        mesh_rt_init();
+        let map = mesh_map_new();
+        let map = mesh_map_put(map, 1, 10);
+        let map = mesh_map_put(map, 2, 20);
 
-        let result = snow_map_to_string(
+        let result = mesh_map_to_string(
             map,
-            crate::string::snow_int_to_string as *mut u8,
-            crate::string::snow_int_to_string as *mut u8,
+            crate::string::mesh_int_to_string as *mut u8,
+            crate::string::mesh_int_to_string as *mut u8,
         );
-        let s = unsafe { &*(result as *const crate::string::SnowString) };
+        let s = unsafe { &*(result as *const crate::string::MeshString) };
         let text = unsafe { s.as_str() };
         assert_eq!(text, "%{1 => 10, 2 => 20}");
     }
 
     #[test]
     fn test_map_to_string_empty() {
-        snow_rt_init();
-        let map = snow_map_new();
+        mesh_rt_init();
+        let map = mesh_map_new();
 
-        let result = snow_map_to_string(
+        let result = mesh_map_to_string(
             map,
-            crate::string::snow_int_to_string as *mut u8,
-            crate::string::snow_int_to_string as *mut u8,
+            crate::string::mesh_int_to_string as *mut u8,
+            crate::string::mesh_int_to_string as *mut u8,
         );
-        let s = unsafe { &*(result as *const crate::string::SnowString) };
+        let s = unsafe { &*(result as *const crate::string::MeshString) };
         let text = unsafe { s.as_str() };
         assert_eq!(text, "%{}");
     }
 
     #[test]
     fn test_map_entry_key_value() {
-        snow_rt_init();
-        let map = snow_map_new();
-        let map = snow_map_put(map, 10, 100);
-        let map = snow_map_put(map, 20, 200);
-        let map = snow_map_put(map, 30, 300);
+        mesh_rt_init();
+        let map = mesh_map_new();
+        let map = mesh_map_put(map, 10, 100);
+        let map = mesh_map_put(map, 20, 200);
+        let map = mesh_map_put(map, 30, 300);
 
-        assert_eq!(snow_map_entry_key(map, 0), 10);
-        assert_eq!(snow_map_entry_value(map, 0), 100);
-        assert_eq!(snow_map_entry_key(map, 1), 20);
-        assert_eq!(snow_map_entry_value(map, 1), 200);
-        assert_eq!(snow_map_entry_key(map, 2), 30);
-        assert_eq!(snow_map_entry_value(map, 2), 300);
+        assert_eq!(mesh_map_entry_key(map, 0), 10);
+        assert_eq!(mesh_map_entry_value(map, 0), 100);
+        assert_eq!(mesh_map_entry_key(map, 1), 20);
+        assert_eq!(mesh_map_entry_value(map, 1), 200);
+        assert_eq!(mesh_map_entry_key(map, 2), 30);
+        assert_eq!(mesh_map_entry_value(map, 2), 300);
     }
 }

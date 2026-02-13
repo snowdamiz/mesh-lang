@@ -1,4 +1,4 @@
-//! Service runtime support for Snow.
+//! Service runtime support for Mesh.
 //!
 //! Provides synchronous call/reply semantics on top of the actor message
 //! passing primitives. A "service call" sends a message to a service actor,
@@ -24,7 +24,7 @@ use super::GLOBAL_SCHEDULER;
 ///
 /// 1. Get the caller's PID
 /// 2. Build a call message: [u64 type_tag][u64 caller_pid][payload bytes]
-/// 3. Send to target via snow_actor_send
+/// 3. Send to target via mesh_actor_send
 /// 4. Block on receive (infinite wait) for the reply
 /// 5. Return a pointer to the reply data
 ///
@@ -36,7 +36,7 @@ use super::GLOBAL_SCHEDULER;
 /// - `payload_ptr`: pointer to argument bytes (array of i64 values)
 /// - `payload_size`: size of the payload in bytes
 #[no_mangle]
-pub extern "C" fn snow_service_call(
+pub extern "C" fn mesh_service_call(
     target_pid: u64,
     msg_tag: u64,
     payload_ptr: *const u8,
@@ -87,7 +87,7 @@ pub extern "C" fn snow_service_call(
 
     // Block the caller until a reply arrives.
     //
-    // If we're inside a coroutine, use the standard snow_actor_receive which
+    // If we're inside a coroutine, use the standard mesh_actor_receive which
     // yields to the scheduler. If we're on the main thread (no coroutine),
     // do a spin-wait on the mailbox instead (the main thread cannot yield).
     let caller_pid_obj = stack::get_current_pid().unwrap();
@@ -97,7 +97,7 @@ pub extern "C" fn snow_service_call(
 
     if in_coroutine {
         // Standard path: yield to scheduler while waiting for reply.
-        super::snow_actor_receive(-1)
+        super::mesh_actor_receive(-1)
     } else {
         // Main thread path: spin-wait on the mailbox.
         loop {
@@ -123,13 +123,13 @@ pub extern "C" fn snow_service_call(
 /// - `reply_ptr`: pointer to the reply data bytes
 /// - `reply_size`: size of the reply data in bytes
 #[no_mangle]
-pub extern "C" fn snow_service_reply(
+pub extern "C" fn mesh_service_reply(
     caller_pid: u64,
     reply_ptr: *const u8,
     reply_size: u64,
 ) {
-    // Send the reply data to the caller using snow_actor_send.
-    super::snow_actor_send(caller_pid, reply_ptr, reply_size);
+    // Send the reply data to the caller using mesh_actor_send.
+    super::mesh_actor_send(caller_pid, reply_ptr, reply_size);
 }
 
 // ---------------------------------------------------------------------------
@@ -149,7 +149,7 @@ mod tests {
         let caller_pid = sched.spawn(noop as *const u8, std::ptr::null(), 0, 1);
 
         // Initialize the global scheduler for this test.
-        // (In real usage, snow_rt_init_actor does this.)
+        // (In real usage, mesh_rt_init_actor does this.)
         // We can't easily set the global scheduler in a unit test without
         // interfering with other tests, so test the message format instead.
 
@@ -193,10 +193,10 @@ mod tests {
 
     #[test]
     fn test_service_call_returns_null_outside_actor() {
-        // snow_service_call requires a current PID (must be inside actor context).
+        // mesh_service_call requires a current PID (must be inside actor context).
         // Without one, it should return null.
         assert!(stack::get_current_pid().is_none());
-        let result = snow_service_call(0, 0, std::ptr::null(), 0);
+        let result = mesh_service_call(0, 0, std::ptr::null(), 0);
         assert!(result.is_null());
     }
 }

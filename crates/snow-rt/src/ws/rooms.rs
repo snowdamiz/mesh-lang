@@ -6,7 +6,7 @@
 //!
 //! ## Architecture
 //!
-//! Modeled on `ProcessRegistry` (`crates/snow-rt/src/actor/registry.rs`):
+//! Modeled on `ProcessRegistry` (`crates/mesh-rt/src/actor/registry.rs`):
 //! - `rooms: RwLock<FxHashMap<String, HashSet<usize>>>` -- room to connections
 //! - `conn_rooms: RwLock<FxHashMap<usize, HashSet<String>>>` -- reverse index
 //!
@@ -15,10 +15,10 @@
 //!
 //! ## Runtime Functions
 //!
-//! - `snow_ws_join(conn, room)` -- subscribe connection to room
-//! - `snow_ws_leave(conn, room)` -- unsubscribe connection from room
-//! - `snow_ws_broadcast(room, msg)` -- send text frame to all in room
-//! - `snow_ws_broadcast_except(room, msg, except)` -- send to all except one
+//! - `mesh_ws_join(conn, room)` -- subscribe connection to room
+//! - `mesh_ws_leave(conn, room)` -- unsubscribe connection from room
+//! - `mesh_ws_broadcast(room, msg)` -- send text frame to all in room
+//! - `mesh_ws_broadcast_except(room, msg, except)` -- send to all except one
 
 use parking_lot::RwLock;
 use rustc_hash::FxHashMap;
@@ -26,7 +26,7 @@ use std::collections::HashSet;
 use std::sync::OnceLock;
 use std::sync::atomic::Ordering;
 
-use crate::string::SnowString;
+use crate::string::MeshString;
 use super::server::WsConnection;
 use super::{write_frame, WsOpcode};
 
@@ -142,7 +142,7 @@ pub fn global_room_registry() -> &'static RoomRegistry {
 
 /// Broadcast a text frame to local room members only.
 ///
-/// Extracts the local delivery logic from `snow_ws_broadcast` into a reusable
+/// Extracts the local delivery logic from `mesh_ws_broadcast` into a reusable
 /// helper. Called by the reader loop when receiving `DIST_ROOM_BROADCAST` from
 /// a remote node (local-only delivery, no re-forwarding to prevent storms).
 ///
@@ -204,17 +204,17 @@ pub(crate) fn broadcast_room_to_cluster(room: &str, msg: &str) {
 }
 
 // ---------------------------------------------------------------------------
-// Runtime functions (extern "C" for Snow codegen)
+// Runtime functions (extern "C" for Mesh codegen)
 // ---------------------------------------------------------------------------
 
 /// Subscribe a WebSocket connection to a named room.
 ///
 /// `conn` is a pointer to a `WsConnection`. `room_name` is a pointer to a
-/// `SnowString` containing the room name.
+/// `MeshString` containing the room name.
 ///
 /// Returns 0 on success, -1 on null arguments.
 #[no_mangle]
-pub extern "C" fn snow_ws_join(conn: *mut u8, room_name: *const SnowString) -> i64 {
+pub extern "C" fn mesh_ws_join(conn: *mut u8, room_name: *const MeshString) -> i64 {
     if conn.is_null() || room_name.is_null() {
         return -1;
     }
@@ -227,11 +227,11 @@ pub extern "C" fn snow_ws_join(conn: *mut u8, room_name: *const SnowString) -> i
 /// Unsubscribe a WebSocket connection from a named room.
 ///
 /// `conn` is a pointer to a `WsConnection`. `room_name` is a pointer to a
-/// `SnowString` containing the room name.
+/// `MeshString` containing the room name.
 ///
 /// Returns 0 on success, -1 on null arguments.
 #[no_mangle]
-pub extern "C" fn snow_ws_leave(conn: *mut u8, room_name: *const SnowString) -> i64 {
+pub extern "C" fn mesh_ws_leave(conn: *mut u8, room_name: *const MeshString) -> i64 {
     if conn.is_null() || room_name.is_null() {
         return -1;
     }
@@ -242,16 +242,16 @@ pub extern "C" fn snow_ws_leave(conn: *mut u8, room_name: *const SnowString) -> 
 
 /// Broadcast a text frame to all connections in a named room, cluster-wide.
 ///
-/// `room_name` and `msg` are pointers to `SnowString` values. Performs local
+/// `room_name` and `msg` are pointers to `MeshString` values. Performs local
 /// delivery first (snapshot members, write frames), then forwards the message
 /// to all connected cluster nodes via `DIST_ROOM_BROADCAST`.
 ///
 /// Returns the number of local write failures (0 = all succeeded), or -1 on
 /// null arguments.
 #[no_mangle]
-pub extern "C" fn snow_ws_broadcast(
-    room_name: *const SnowString,
-    msg: *const SnowString,
+pub extern "C" fn mesh_ws_broadcast(
+    room_name: *const MeshString,
+    msg: *const MeshString,
 ) -> i64 {
     if room_name.is_null() || msg.is_null() {
         return -1;
@@ -270,7 +270,7 @@ pub extern "C" fn snow_ws_broadcast(
 
 /// Broadcast a text frame to all connections in a room except one, cluster-wide.
 ///
-/// Same as `snow_ws_broadcast` but skips the connection at `except_conn` for
+/// Same as `mesh_ws_broadcast` but skips the connection at `except_conn` for
 /// local delivery. The excluded connection only applies on this node (it is a
 /// local pointer); remote nodes deliver to ALL their local members, which is
 /// correct since the excluded connection is never on those nodes.
@@ -280,9 +280,9 @@ pub extern "C" fn snow_ws_broadcast(
 /// Returns the number of local write failures (0 = all succeeded), or -1 on
 /// null room_name or msg.
 #[no_mangle]
-pub extern "C" fn snow_ws_broadcast_except(
-    room_name: *const SnowString,
-    msg: *const SnowString,
+pub extern "C" fn mesh_ws_broadcast_except(
+    room_name: *const MeshString,
+    msg: *const MeshString,
     except_conn: *mut u8,
 ) -> i64 {
     if room_name.is_null() || msg.is_null() {
@@ -453,11 +453,11 @@ mod tests {
 
     #[test]
     fn test_null_args_return_negative_one() {
-        assert_eq!(snow_ws_join(std::ptr::null_mut(), std::ptr::null()), -1);
-        assert_eq!(snow_ws_leave(std::ptr::null_mut(), std::ptr::null()), -1);
-        assert_eq!(snow_ws_broadcast(std::ptr::null(), std::ptr::null()), -1);
+        assert_eq!(mesh_ws_join(std::ptr::null_mut(), std::ptr::null()), -1);
+        assert_eq!(mesh_ws_leave(std::ptr::null_mut(), std::ptr::null()), -1);
+        assert_eq!(mesh_ws_broadcast(std::ptr::null(), std::ptr::null()), -1);
         assert_eq!(
-            snow_ws_broadcast_except(std::ptr::null(), std::ptr::null(), std::ptr::null_mut()),
+            mesh_ws_broadcast_except(std::ptr::null(), std::ptr::null(), std::ptr::null_mut()),
             -1
         );
     }
@@ -479,7 +479,7 @@ mod tests {
         // When node distribution is not started (node_state() returns None),
         // broadcast_room_to_cluster should return immediately without panic.
         // In test context, NODE_STATE is typically not initialized (unless
-        // test_snow_node_start_binds_listener ran first), so this tests the
+        // test_mesh_node_start_binds_listener ran first), so this tests the
         // early-return guard.
         broadcast_room_to_cluster("lobby", "hello");
         // No panic = success. The function returns () so no value to check,

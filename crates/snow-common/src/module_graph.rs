@@ -1,4 +1,4 @@
-//! Module graph types for the Snow compiler.
+//! Module graph types for the Mesh compiler.
 //!
 //! Provides the core data structures used by all module-system phases:
 //! [`ModuleId`], [`ModuleInfo`], [`ModuleGraph`], and [`CycleError`].
@@ -20,11 +20,11 @@ pub struct ModuleInfo {
     pub id: ModuleId,
     /// PascalCase module name, e.g. `"Math.Vector"`.
     pub name: String,
-    /// Path relative to the project root, e.g. `"math/vector.snow"`.
+    /// Path relative to the project root, e.g. `"math/vector.mpl"`.
     pub path: PathBuf,
     /// Modules that this module depends on (via `import` statements).
     pub dependencies: Vec<ModuleId>,
-    /// Whether this module is the project entry point (`main.snow`).
+    /// Whether this module is the project entry point (`main.mpl`).
     pub is_entry: bool,
 }
 
@@ -211,8 +211,8 @@ mod tests {
     #[test]
     fn test_add_and_resolve() {
         let mut graph = ModuleGraph::new();
-        let id_a = graph.add_module("Math.Vector".into(), "math/vector.snow".into(), false);
-        let id_b = graph.add_module("Utils".into(), "utils.snow".into(), false);
+        let id_a = graph.add_module("Math.Vector".into(), "math/vector.mpl".into(), false);
+        let id_b = graph.add_module("Utils".into(), "utils.mpl".into(), false);
 
         assert_eq!(graph.resolve("Math.Vector"), Some(id_a));
         assert_eq!(graph.resolve("Utils"), Some(id_b));
@@ -229,8 +229,8 @@ mod tests {
     #[test]
     fn test_add_dependency() {
         let mut graph = ModuleGraph::new();
-        let id_a = graph.add_module("A".into(), "a.snow".into(), false);
-        let id_b = graph.add_module("B".into(), "b.snow".into(), false);
+        let id_a = graph.add_module("A".into(), "a.mpl".into(), false);
+        let id_b = graph.add_module("B".into(), "b.mpl".into(), false);
 
         graph.add_dependency(id_a, id_b);
 
@@ -245,8 +245,8 @@ mod tests {
     #[test]
     fn test_entry_module() {
         let mut graph = ModuleGraph::new();
-        let entry_id = graph.add_module("Main".into(), "main.snow".into(), true);
-        let lib_id = graph.add_module("Lib".into(), "lib.snow".into(), false);
+        let entry_id = graph.add_module("Main".into(), "main.mpl".into(), true);
+        let lib_id = graph.add_module("Lib".into(), "lib.mpl".into(), false);
 
         assert!(graph.get(entry_id).is_entry);
         assert!(!graph.get(lib_id).is_entry);
@@ -258,9 +258,9 @@ mod tests {
     fn test_toposort_linear() {
         // A depends on B, B depends on C. Result: [C, B, A].
         let mut graph = ModuleGraph::new();
-        let id_a = graph.add_module("A".into(), "a.snow".into(), false);
-        let id_b = graph.add_module("B".into(), "b.snow".into(), false);
-        let id_c = graph.add_module("C".into(), "c.snow".into(), false);
+        let id_a = graph.add_module("A".into(), "a.mpl".into(), false);
+        let id_b = graph.add_module("B".into(), "b.mpl".into(), false);
+        let id_c = graph.add_module("C".into(), "c.mpl".into(), false);
 
         graph.add_dependency(id_a, id_b);
         graph.add_dependency(id_b, id_c);
@@ -274,9 +274,9 @@ mod tests {
     fn test_toposort_independent() {
         // A, B, C with no deps. Result: [A, B, C] (alphabetical).
         let mut graph = ModuleGraph::new();
-        graph.add_module("C".into(), "c.snow".into(), false);
-        graph.add_module("A".into(), "a.snow".into(), false);
-        graph.add_module("B".into(), "b.snow".into(), false);
+        graph.add_module("C".into(), "c.mpl".into(), false);
+        graph.add_module("A".into(), "a.mpl".into(), false);
+        graph.add_module("B".into(), "b.mpl".into(), false);
 
         let order = topological_sort(&graph).unwrap();
         let names: Vec<&str> = order.iter().map(|id| graph.get(*id).name.as_str()).collect();
@@ -287,10 +287,10 @@ mod tests {
     fn test_toposort_diamond() {
         // A deps [B, C], B deps [D], C deps [D]. Result: [D, B, C, A].
         let mut graph = ModuleGraph::new();
-        let id_a = graph.add_module("A".into(), "a.snow".into(), false);
-        let id_b = graph.add_module("B".into(), "b.snow".into(), false);
-        let id_c = graph.add_module("C".into(), "c.snow".into(), false);
-        let id_d = graph.add_module("D".into(), "d.snow".into(), false);
+        let id_a = graph.add_module("A".into(), "a.mpl".into(), false);
+        let id_b = graph.add_module("B".into(), "b.mpl".into(), false);
+        let id_c = graph.add_module("C".into(), "c.mpl".into(), false);
+        let id_d = graph.add_module("D".into(), "d.mpl".into(), false);
 
         graph.add_dependency(id_a, id_b);
         graph.add_dependency(id_a, id_c);
@@ -306,9 +306,9 @@ mod tests {
     fn test_toposort_cycle() {
         // A deps [B], B deps [C], C deps [A]. Returns Err with cycle path.
         let mut graph = ModuleGraph::new();
-        let id_a = graph.add_module("A".into(), "a.snow".into(), false);
-        let id_b = graph.add_module("B".into(), "b.snow".into(), false);
-        let id_c = graph.add_module("C".into(), "c.snow".into(), false);
+        let id_a = graph.add_module("A".into(), "a.mpl".into(), false);
+        let id_b = graph.add_module("B".into(), "b.mpl".into(), false);
+        let id_c = graph.add_module("C".into(), "c.mpl".into(), false);
 
         graph.add_dependency(id_a, id_b);
         graph.add_dependency(id_b, id_c);
@@ -331,7 +331,7 @@ mod tests {
     fn test_toposort_self_cycle() {
         // A deps [A]. in_degree never reaches 0 -> CycleError.
         let mut graph = ModuleGraph::new();
-        let id_a = graph.add_module("A".into(), "a.snow".into(), false);
+        let id_a = graph.add_module("A".into(), "a.mpl".into(), false);
 
         graph.add_dependency(id_a, id_a);
 
@@ -343,9 +343,9 @@ mod tests {
     fn test_toposort_entry_last() {
         // Entry module (Main) depends on Utils and Math. Result: [Math, Utils, Main].
         let mut graph = ModuleGraph::new();
-        let id_main = graph.add_module("Main".into(), "main.snow".into(), true);
-        let id_utils = graph.add_module("Utils".into(), "utils.snow".into(), false);
-        let id_math = graph.add_module("Math".into(), "math.snow".into(), false);
+        let id_main = graph.add_module("Main".into(), "main.mpl".into(), true);
+        let id_utils = graph.add_module("Utils".into(), "utils.mpl".into(), false);
+        let id_math = graph.add_module("Math".into(), "math.mpl".into(), false);
 
         graph.add_dependency(id_main, id_utils);
         graph.add_dependency(id_main, id_math);

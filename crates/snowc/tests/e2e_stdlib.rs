@@ -1,4 +1,4 @@
-//! End-to-end integration tests for Snow standard library functions (Phase 8).
+//! End-to-end integration tests for Mesh standard library functions (Phase 8).
 //!
 //! Tests string operations, module-qualified access (String.length),
 //! from/import resolution, IO operations, and HTTP server/client compilation.
@@ -7,24 +7,24 @@ use std::io::{BufRead, BufReader, Read as _, Write as _};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
 
-/// Helper: compile a Snow source file and run the resulting binary, returning stdout.
+/// Helper: compile a Mesh source file and run the resulting binary, returning stdout.
 fn compile_and_run(source: &str) -> String {
     let temp_dir = tempfile::tempdir().expect("failed to create temp dir");
     let project_dir = temp_dir.path().join("project");
     std::fs::create_dir_all(&project_dir).expect("failed to create project dir");
 
-    let main_snow = project_dir.join("main.snow");
-    std::fs::write(&main_snow, source).expect("failed to write main.snow");
+    let main_mesh = project_dir.join("main.mpl");
+    std::fs::write(&main_mesh, source).expect("failed to write main.mpl");
 
-    let snowc = find_snowc();
-    let output = Command::new(&snowc)
+    let meshc = find_meshc();
+    let output = Command::new(&meshc)
         .args(["build", project_dir.to_str().unwrap()])
         .output()
-        .expect("failed to invoke snowc");
+        .expect("failed to invoke meshc");
 
     assert!(
         output.status.success(),
-        "snowc build failed:\nstdout: {}\nstderr: {}",
+        "meshc build failed:\nstdout: {}\nstderr: {}",
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr)
     );
@@ -45,8 +45,8 @@ fn compile_and_run(source: &str) -> String {
     String::from_utf8_lossy(&run_output.stdout).to_string()
 }
 
-/// Find the snowc binary in the target directory.
-fn find_snowc() -> PathBuf {
+/// Find the meshc binary in the target directory.
+fn find_meshc() -> PathBuf {
     let mut path = std::env::current_exe()
         .expect("cannot find current exe")
         .parent()
@@ -57,50 +57,50 @@ fn find_snowc() -> PathBuf {
         path = path.parent().unwrap().to_path_buf();
     }
 
-    let snowc = path.join("snowc");
+    let meshc = path.join("meshc");
     assert!(
-        snowc.exists(),
-        "snowc binary not found at {}. Run `cargo build -p snowc` first.",
-        snowc.display()
+        meshc.exists(),
+        "meshc binary not found at {}. Run `cargo build -p meshc` first.",
+        meshc.display()
     );
-    snowc
+    meshc
 }
 
-/// Helper: compile a Snow source file without running it. Returns compilation output.
+/// Helper: compile a Mesh source file without running it. Returns compilation output.
 fn compile_only(source: &str) -> Output {
     let temp_dir = tempfile::tempdir().expect("failed to create temp dir");
     let project_dir = temp_dir.path().join("project");
     std::fs::create_dir_all(&project_dir).expect("failed to create project dir");
 
-    let main_snow = project_dir.join("main.snow");
-    std::fs::write(&main_snow, source).expect("failed to write main.snow");
+    let main_mesh = project_dir.join("main.mpl");
+    std::fs::write(&main_mesh, source).expect("failed to write main.mpl");
 
-    let snowc = find_snowc();
-    Command::new(&snowc)
+    let meshc = find_meshc();
+    Command::new(&meshc)
         .args(["build", project_dir.to_str().unwrap()])
         .output()
-        .expect("failed to invoke snowc")
+        .expect("failed to invoke meshc")
 }
 
-/// Helper: compile a Snow source file and run the binary with piped stdin input.
+/// Helper: compile a Mesh source file and run the binary with piped stdin input.
 /// Useful for testing interactive I/O functions like IO.read_line().
 fn compile_and_run_with_stdin(source: &str, stdin_input: &str) -> String {
     let temp_dir = tempfile::tempdir().expect("failed to create temp dir");
     let project_dir = temp_dir.path().join("project");
     std::fs::create_dir_all(&project_dir).expect("failed to create project dir");
 
-    let main_snow = project_dir.join("main.snow");
-    std::fs::write(&main_snow, source).expect("failed to write main.snow");
+    let main_mesh = project_dir.join("main.mpl");
+    std::fs::write(&main_mesh, source).expect("failed to write main.mpl");
 
-    let snowc = find_snowc();
-    let output = Command::new(&snowc)
+    let meshc = find_meshc();
+    let output = Command::new(&meshc)
         .args(["build", project_dir.to_str().unwrap()])
         .output()
-        .expect("failed to invoke snowc");
+        .expect("failed to invoke meshc");
 
     assert!(
         output.status.success(),
-        "snowc build failed:\nstdout: {}\nstderr: {}",
+        "meshc build failed:\nstdout: {}\nstderr: {}",
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr)
     );
@@ -151,51 +151,51 @@ fn read_fixture(name: &str) -> String {
 
 #[test]
 fn e2e_string_length() {
-    let source = read_fixture("stdlib_string_length.snow");
+    let source = read_fixture("stdlib_string_length.mpl");
     let output = compile_and_run(&source);
     assert_eq!(output, "5\n");
 }
 
 #[test]
 fn e2e_string_contains() {
-    let source = read_fixture("stdlib_string_contains.snow");
+    let source = read_fixture("stdlib_string_contains.mpl");
     let output = compile_and_run(&source);
     assert_eq!(output, "true\nfalse\n");
 }
 
 #[test]
 fn e2e_string_trim() {
-    let source = read_fixture("stdlib_string_trim.snow");
+    let source = read_fixture("stdlib_string_trim.mpl");
     let output = compile_and_run(&source);
     assert_eq!(output, "hello\n");
 }
 
 #[test]
 fn e2e_string_case_conversion() {
-    let source = read_fixture("stdlib_string_case.snow");
+    let source = read_fixture("stdlib_string_case.mpl");
     let output = compile_and_run(&source);
     assert_eq!(output, "HELLO\nworld\n");
 }
 
 #[test]
 fn e2e_string_replace() {
-    let source = read_fixture("stdlib_string_replace.snow");
+    let source = read_fixture("stdlib_string_replace.mpl");
     let output = compile_and_run(&source);
-    assert_eq!(output, "hello snow\n");
+    assert_eq!(output, "hello mesh\n");
 }
 
 // ── Module Resolution E2E Tests ─────────────────────────────────────────
 
 #[test]
 fn e2e_module_qualified_access() {
-    let source = read_fixture("stdlib_module_qualified.snow");
+    let source = read_fixture("stdlib_module_qualified.mpl");
     let output = compile_and_run(&source);
     assert_eq!(output, "4\n");
 }
 
 #[test]
 fn e2e_from_import_resolution() {
-    let source = read_fixture("stdlib_from_import.snow");
+    let source = read_fixture("stdlib_from_import.mpl");
     let output = compile_and_run(&source);
     assert_eq!(output, "4\n");
 }
@@ -204,28 +204,28 @@ fn e2e_from_import_resolution() {
 
 #[test]
 fn e2e_file_write_and_read() {
-    let source = read_fixture("stdlib_file_write_read.snow");
+    let source = read_fixture("stdlib_file_write_read.mpl");
     let output = compile_and_run(&source);
-    assert_eq!(output, "Hello, Snow!\n");
+    assert_eq!(output, "Hello, Mesh!\n");
 }
 
 #[test]
 fn e2e_file_exists() {
-    let source = read_fixture("stdlib_file_exists.snow");
+    let source = read_fixture("stdlib_file_exists.mpl");
     let output = compile_and_run(&source);
     assert_eq!(output, "false\ntrue\n\n");
 }
 
 #[test]
 fn e2e_file_read_process_write() {
-    let source = read_fixture("stdlib_file_process.snow");
+    let source = read_fixture("stdlib_file_process.mpl");
     let output = compile_and_run(&source);
     assert_eq!(output, "HELLO WORLD\n");
 }
 
 #[test]
 fn e2e_file_error_handling() {
-    let source = read_fixture("stdlib_file_error.snow");
+    let source = read_fixture("stdlib_file_error.mpl");
     let output = compile_and_run(&source);
     assert_eq!(output, "error\n");
 }
@@ -234,7 +234,7 @@ fn e2e_file_error_handling() {
 
 #[test]
 fn e2e_io_eprintln_does_not_crash() {
-    let source = read_fixture("stdlib_io_eprintln.snow");
+    let source = read_fixture("stdlib_io_eprintln.mpl");
     let output = compile_and_run(&source);
     assert_eq!(output, "done\n");
 }
@@ -242,7 +242,7 @@ fn e2e_io_eprintln_does_not_crash() {
 #[test]
 fn e2e_io_read_line() {
     // Verify IO.read_line() compiles and runs through the full pipeline with piped stdin.
-    let source = read_fixture("stdlib_io_read_line.snow");
+    let source = read_fixture("stdlib_io_read_line.mpl");
     let output = compile_and_run_with_stdin(&source, "hello world\n");
     assert_eq!(output, "hello world\n");
 }
@@ -251,7 +251,7 @@ fn e2e_io_read_line() {
 
 #[test]
 fn e2e_list_basic() {
-    let source = read_fixture("stdlib_list_basic.snow");
+    let source = read_fixture("stdlib_list_basic.mpl");
     let output = compile_and_run(&source);
     assert_eq!(output, "3\n1\n");
 }
@@ -260,42 +260,42 @@ fn e2e_list_basic() {
 
 #[test]
 fn e2e_list_literal_int() {
-    let source = read_fixture("list_literal_int.snow");
+    let source = read_fixture("list_literal_int.mpl");
     let output = compile_and_run(&source);
     assert_eq!(output, "3\n1\n3\n");
 }
 
 #[test]
 fn e2e_list_literal_string() {
-    let source = read_fixture("list_literal_string.snow");
+    let source = read_fixture("list_literal_string.mpl");
     let output = compile_and_run(&source);
     assert_eq!(output, "2\nhello\nworld\n");
 }
 
 #[test]
 fn e2e_list_literal_bool() {
-    let source = read_fixture("list_literal_bool.snow");
+    let source = read_fixture("list_literal_bool.mpl");
     let output = compile_and_run(&source);
     assert_eq!(output, "3\ntrue\nfalse\n");
 }
 
 #[test]
 fn e2e_list_concat() {
-    let source = read_fixture("list_concat.snow");
+    let source = read_fixture("list_concat.mpl");
     let output = compile_and_run(&source);
     assert_eq!(output, "4\n1\n4\n");
 }
 
 #[test]
 fn e2e_list_nested() {
-    let source = read_fixture("list_nested.snow");
+    let source = read_fixture("list_nested.mpl");
     let output = compile_and_run(&source);
     assert_eq!(output, "2\n2\n2\n");
 }
 
 #[test]
 fn e2e_list_append_string() {
-    let source = read_fixture("list_append_string.snow");
+    let source = read_fixture("list_append_string.mpl");
     let output = compile_and_run(&source);
     assert_eq!(output, "2\nworld\n");
 }
@@ -304,28 +304,28 @@ fn e2e_list_append_string() {
 
 #[test]
 fn e2e_list_display_string() {
-    let source = read_fixture("list_display_string.snow");
+    let source = read_fixture("list_display_string.mpl");
     let output = compile_and_run(&source);
     assert_eq!(output, "[hello, world]\n");
 }
 
 #[test]
 fn e2e_list_debug() {
-    let source = read_fixture("list_debug.snow");
+    let source = read_fixture("list_debug.mpl");
     let output = compile_and_run(&source);
     assert_eq!(output, "[1, 2, 3]\n");
 }
 
 #[test]
 fn e2e_list_eq() {
-    let source = read_fixture("list_eq.snow");
+    let source = read_fixture("list_eq.mpl");
     let output = compile_and_run(&source);
     assert_eq!(output, "equal\nnot equal\n");
 }
 
 #[test]
 fn e2e_list_ord() {
-    let source = read_fixture("list_ord.snow");
+    let source = read_fixture("list_ord.mpl");
     let output = compile_and_run(&source);
     assert_eq!(output, "less\ngreater\n");
 }
@@ -334,63 +334,63 @@ fn e2e_list_ord() {
 
 #[test]
 fn e2e_list_cons_int() {
-    let source = read_fixture("list_cons_int.snow");
+    let source = read_fixture("list_cons_int.mpl");
     let output = compile_and_run(&source);
     assert_eq!(output, "15\n");
 }
 
 #[test]
 fn e2e_list_cons_string() {
-    let source = read_fixture("list_cons_string.snow");
+    let source = read_fixture("list_cons_string.mpl");
     let output = compile_and_run(&source);
     assert_eq!(output, "hello\nempty\n");
 }
 
 #[test]
 fn e2e_map_basic() {
-    let source = read_fixture("stdlib_map_basic.snow");
+    let source = read_fixture("stdlib_map_basic.mpl");
     let output = compile_and_run(&source);
     assert_eq!(output, "10\n2\n");
 }
 
 #[test]
 fn e2e_map_string_keys() {
-    let source = read_fixture("stdlib_map_string_keys.snow");
+    let source = read_fixture("stdlib_map_string_keys.mpl");
     let output = compile_and_run(&source);
     assert_eq!(output, "Alice\n2\ntrue\nBob\n");
 }
 
 #[test]
 fn e2e_map_literal() {
-    let source = read_fixture("map_literal.snow");
+    let source = read_fixture("map_literal.mpl");
     let output = compile_and_run(&source);
     assert_eq!(output, "Alice\n30\n2\n");
 }
 
 #[test]
 fn e2e_map_literal_int() {
-    let source = read_fixture("map_literal_int.snow");
+    let source = read_fixture("map_literal_int.mpl");
     let output = compile_and_run(&source);
     assert_eq!(output, "20\n3\n");
 }
 
 #[test]
 fn e2e_set_basic() {
-    let source = read_fixture("stdlib_set_basic.snow");
+    let source = read_fixture("stdlib_set_basic.mpl");
     let output = compile_and_run(&source);
     assert_eq!(output, "2\n");
 }
 
 #[test]
 fn e2e_range_basic() {
-    let source = read_fixture("stdlib_range_basic.snow");
+    let source = read_fixture("stdlib_range_basic.mpl");
     let output = compile_and_run(&source);
     assert_eq!(output, "3\n3\n1\n");
 }
 
 #[test]
 fn e2e_queue_basic() {
-    let source = read_fixture("stdlib_queue_basic.snow");
+    let source = read_fixture("stdlib_queue_basic.mpl");
     let output = compile_and_run(&source);
     assert_eq!(output, "2\n10\n");
 }
@@ -399,21 +399,21 @@ fn e2e_queue_basic() {
 
 #[test]
 fn e2e_json_encode_int() {
-    let source = read_fixture("stdlib_json_encode_int.snow");
+    let source = read_fixture("stdlib_json_encode_int.mpl");
     let output = compile_and_run(&source);
     assert_eq!(output, "42\n");
 }
 
 #[test]
 fn e2e_json_encode_string() {
-    let source = read_fixture("stdlib_json_encode_string.snow");
+    let source = read_fixture("stdlib_json_encode_string.mpl");
     let output = compile_and_run(&source);
     assert_eq!(output, "\"hello\"\n");
 }
 
 #[test]
 fn e2e_json_encode_bool() {
-    let source = read_fixture("stdlib_json_encode_bool.snow");
+    let source = read_fixture("stdlib_json_encode_bool.mpl");
     let output = compile_and_run(&source);
     assert_eq!(output, "true\nfalse\n");
 }
@@ -421,14 +421,14 @@ fn e2e_json_encode_bool() {
 #[test]
 fn e2e_json_encode_map() {
     // Tests multiple JSON encode functions together (encode_int, encode_string, encode_bool)
-    let source = read_fixture("stdlib_json_encode_map.snow");
+    let source = read_fixture("stdlib_json_encode_map.mpl");
     let output = compile_and_run(&source);
     assert_eq!(output, "100\n\"test\"\ntrue\n");
 }
 
 #[test]
 fn e2e_json_parse_roundtrip() {
-    let source = read_fixture("stdlib_json_parse_roundtrip.snow");
+    let source = read_fixture("stdlib_json_parse_roundtrip.mpl");
     let output = compile_and_run(&source);
     assert_eq!(output, "99\n");
 }
@@ -437,7 +437,7 @@ fn e2e_json_parse_roundtrip() {
 
 #[test]
 fn e2e_deriving_json_basic() {
-    let source = read_fixture("deriving_json_basic.snow");
+    let source = read_fixture("deriving_json_basic.mpl");
     let output = compile_and_run(&source);
     // First line: JSON encode (field order may vary since JSON objects are unordered).
     // Second line: decoded fields.
@@ -453,7 +453,7 @@ fn e2e_deriving_json_basic() {
 
 #[test]
 fn e2e_deriving_json_nested() {
-    let source = read_fixture("deriving_json_nested.snow");
+    let source = read_fixture("deriving_json_nested.mpl");
     let output = compile_and_run(&source);
     let lines: Vec<&str> = output.trim().lines().collect();
     assert_eq!(lines.len(), 4, "expected 4 lines, got: {}", output);
@@ -476,7 +476,7 @@ fn e2e_deriving_json_nested() {
 #[test]
 #[ignore] // blocked on Option-in-struct codegen bug
 fn e2e_deriving_json_option() {
-    let source = read_fixture("deriving_json_option.snow");
+    let source = read_fixture("deriving_json_option.mpl");
     let output = compile_and_run(&source);
     let lines: Vec<&str> = output.trim().lines().collect();
     assert_eq!(lines.len(), 2, "expected 2 lines, got: {}", output);
@@ -487,7 +487,7 @@ fn e2e_deriving_json_option() {
 
 #[test]
 fn e2e_deriving_json_number_types() {
-    let source = read_fixture("deriving_json_number_types.snow");
+    let source = read_fixture("deriving_json_number_types.mpl");
     let output = compile_and_run(&source);
     let lines: Vec<&str> = output.trim().lines().collect();
     assert_eq!(lines.len(), 5, "expected 5 lines, got: {}", output);
@@ -502,7 +502,7 @@ fn e2e_deriving_json_number_types() {
 
 #[test]
 fn e2e_deriving_json_collections() {
-    let source = read_fixture("deriving_json_collections.snow");
+    let source = read_fixture("deriving_json_collections.mpl");
     let output = compile_and_run(&source);
     let lines: Vec<&str> = output.trim().lines().collect();
     assert_eq!(lines.len(), 3, "expected 3 lines, got: {}", output);
@@ -516,7 +516,7 @@ fn e2e_deriving_json_collections() {
 
 #[test]
 fn e2e_deriving_json_roundtrip() {
-    let source = read_fixture("deriving_json_roundtrip.snow");
+    let source = read_fixture("deriving_json_roundtrip.mpl");
     let output = compile_and_run(&source);
     let lines: Vec<&str> = output.trim().lines().collect();
     assert_eq!(lines.len(), 2, "expected 2 lines, got: {}", output);
@@ -526,7 +526,7 @@ fn e2e_deriving_json_roundtrip() {
 
 #[test]
 fn e2e_deriving_json_error() {
-    let source = read_fixture("deriving_json_error.snow");
+    let source = read_fixture("deriving_json_error.mpl");
     let output = compile_and_run(&source);
     let lines: Vec<&str> = output.trim().lines().collect();
     assert_eq!(lines.len(), 3, "expected 3 lines, got: {}", output);
@@ -566,7 +566,7 @@ end
 
 #[test]
 fn e2e_deriving_row_basic() {
-    let source = read_fixture("deriving_row_basic.snow");
+    let source = read_fixture("deriving_row_basic.mpl");
     let output = compile_and_run(&source);
     let lines: Vec<&str> = output.trim().lines().collect();
     assert_eq!(lines.len(), 1, "expected 1 line, got: {}", output);
@@ -575,7 +575,7 @@ fn e2e_deriving_row_basic() {
 
 #[test]
 fn e2e_deriving_row_option() {
-    let source = read_fixture("deriving_row_option.snow");
+    let source = read_fixture("deriving_row_option.mpl");
     let output = compile_and_run(&source);
     let lines: Vec<&str> = output.trim().lines().collect();
     assert_eq!(lines.len(), 1, "expected 1 line, got: {}", output);
@@ -586,7 +586,7 @@ fn e2e_deriving_row_option() {
 
 #[test]
 fn e2e_deriving_row_error() {
-    let source = read_fixture("deriving_row_error.snow");
+    let source = read_fixture("deriving_row_error.mpl");
     let output = compile_and_run(&source);
     let trimmed = output.trim();
     // Should report missing column "count"
@@ -633,7 +633,7 @@ end
 #[test]
 fn e2e_http_server_compiles() {
     // Verify a server program compiles (cannot run because it blocks on serve).
-    let source = read_fixture("stdlib_http_response.snow");
+    let source = read_fixture("stdlib_http_response.mpl");
     let output = compile_and_run(&source);
     assert_eq!(output, "compiled\n");
 }
@@ -642,7 +642,7 @@ fn e2e_http_server_compiles() {
 fn e2e_http_client_compiles_and_runs() {
     // Verify an HTTP client program compiles and runs.
     // This makes a real HTTP request to example.com.
-    let source = read_fixture("stdlib_http_client.snow");
+    let source = read_fixture("stdlib_http_client.mpl");
     let output = compile_and_run(&source);
     // Should print "ok" (successful GET to example.com) or "error" (no network).
     assert!(
@@ -706,7 +706,7 @@ end
 fn e2e_list_pipe_chain() {
     // Verify map/filter/reduce with closures through the full compiler pipeline.
     // Input: [1..10], map(x*2) -> [2..20], filter(x>10) -> [12,14,16,18,20], reduce(sum) -> 80.
-    let source = read_fixture("stdlib_list_pipe_chain.snow");
+    let source = read_fixture("stdlib_list_pipe_chain.mpl");
     let output = compile_and_run(&source);
     assert_eq!(output, "80\n");
 }
@@ -714,7 +714,7 @@ fn e2e_list_pipe_chain() {
 // ── HTTP Runtime E2E Tests (Phase 8 Plan 07 - Gap Closure) ────────────
 //
 // These tests start a REAL HTTP server and make actual HTTP requests,
-// verifying that the Snow HTTP server works end-to-end at runtime.
+// verifying that the Mesh HTTP server works end-to-end at runtime.
 
 /// RAII guard that kills the server child process on drop.
 struct ServerGuard(std::process::Child);
@@ -726,10 +726,10 @@ impl Drop for ServerGuard {
     }
 }
 
-/// Compile a Snow source file and spawn the resulting binary as a server.
+/// Compile a Mesh source file and spawn the resulting binary as a server.
 /// Returns a ServerGuard that kills the process on drop.
 ///
-/// Waits for the server to emit its "[snow-rt] HTTP server listening on"
+/// Waits for the server to emit its "[mesh-rt] HTTP server listening on"
 /// message on stderr before returning, ensuring the server is ready.
 fn compile_and_start_server(source: &str) -> ServerGuard {
     let temp_dir = tempfile::tempdir().expect("failed to create temp dir");
@@ -738,18 +738,18 @@ fn compile_and_start_server(source: &str) -> ServerGuard {
     let project_dir = temp_dir.path().join("project");
     std::fs::create_dir_all(&project_dir).expect("failed to create project dir");
 
-    let main_snow = project_dir.join("main.snow");
-    std::fs::write(&main_snow, source).expect("failed to write main.snow");
+    let main_mesh = project_dir.join("main.mpl");
+    std::fs::write(&main_mesh, source).expect("failed to write main.mpl");
 
-    let snowc = find_snowc();
-    let output = Command::new(&snowc)
+    let meshc = find_meshc();
+    let output = Command::new(&meshc)
         .args(["build", project_dir.to_str().unwrap()])
         .output()
-        .expect("failed to invoke snowc");
+        .expect("failed to invoke meshc");
 
     assert!(
         output.status.success(),
-        "snowc build failed:\nstdout: {}\nstderr: {}",
+        "meshc build failed:\nstdout: {}\nstderr: {}",
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr)
     );
@@ -772,9 +772,9 @@ fn compile_and_start_server(source: &str) -> ServerGuard {
 
 #[test]
 fn e2e_http_server_runtime() {
-    // This test starts a real HTTP server from a compiled Snow program,
+    // This test starts a real HTTP server from a compiled Mesh program,
     // makes an HTTP request, and verifies the response body.
-    let source = read_fixture("stdlib_http_server_runtime.snow");
+    let source = read_fixture("stdlib_http_server_runtime.mpl");
     let mut guard = compile_and_start_server(&source);
 
     // Wait for the server to be ready by reading stderr for the listening message.
@@ -837,8 +837,8 @@ fn e2e_http_server_runtime() {
         "Expected HTTP 200 in response, got: {}",
         response
     );
-    // The Snow string literal "{\"status\":\"ok\"}" preserves backslash
-    // characters (Snow does not interpret escape sequences in strings).
+    // The Mesh string literal "{\"status\":\"ok\"}" preserves backslash
+    // characters (Mesh does not interpret escape sequences in strings).
     // The response body is the literal bytes: {\"status\":\"ok\"}
     assert!(
         response.contains(r#"{\"status\":\"ok\"}"#),
@@ -856,7 +856,7 @@ fn e2e_http_server_runtime() {
 
 #[test]
 fn e2e_http_crash_isolation() {
-    let source = read_fixture("stdlib_http_crash_isolation.snow");
+    let source = read_fixture("stdlib_http_crash_isolation.mpl");
     let mut guard = compile_and_start_server(&source);
 
     let stderr = guard.0.stderr.take().expect("no stderr pipe");
@@ -1149,32 +1149,32 @@ end
 
 #[test]
 fn e2e_list_sort() {
-    let source = read_fixture("stdlib_list_sort.snow");
+    let source = read_fixture("stdlib_list_sort.mpl");
     let output = compile_and_run(&source);
     assert_eq!(output, "1\n9\n8\n");
 }
 
 #[test]
 fn e2e_list_find() {
-    // NOTE: List.find returns Option<T> (SnowOption ptr from runtime).
+    // NOTE: List.find returns Option<T> (MeshOption ptr from runtime).
     // Pattern matching on the result via `case` hits a codegen domination
     // issue (pre-existing gap in FFI Option return handling).
     // This test verifies the function compiles, links, and runs without crash.
-    let source = read_fixture("stdlib_list_find.snow");
+    let source = read_fixture("stdlib_list_find.mpl");
     let output = compile_and_run(&source);
     assert_eq!(output, "ok\n");
 }
 
 #[test]
 fn e2e_list_any_all() {
-    let source = read_fixture("stdlib_list_any_all.snow");
+    let source = read_fixture("stdlib_list_any_all.mpl");
     let output = compile_and_run(&source);
     assert_eq!(output, "true\ntrue\nfalse\nfalse\n");
 }
 
 #[test]
 fn e2e_list_contains() {
-    let source = read_fixture("stdlib_list_contains.snow");
+    let source = read_fixture("stdlib_list_contains.mpl");
     let output = compile_and_run(&source);
     assert_eq!(output, "true\nfalse\nfalse\n");
 }
@@ -1183,14 +1183,14 @@ fn e2e_list_contains() {
 
 #[test]
 fn e2e_string_split_join() {
-    let source = read_fixture("stdlib_string_split_join.snow");
+    let source = read_fixture("stdlib_string_split_join.mpl");
     let output = compile_and_run(&source);
     assert_eq!(output, "3\nhello\nhello - world - foo\none,two,three\n");
 }
 
 #[test]
 fn e2e_string_parse() {
-    let source = read_fixture("stdlib_string_parse.snow");
+    let source = read_fixture("stdlib_string_parse.mpl");
     let output = compile_and_run(&source);
     assert_eq!(output, "42\nnone\n3.14\nnone\n-100\n");
 }
@@ -1199,28 +1199,28 @@ fn e2e_string_parse() {
 
 #[test]
 fn e2e_stdlib_list_zip() {
-    let source = read_fixture("stdlib_list_zip.snow");
+    let source = read_fixture("stdlib_list_zip.mpl");
     let output = compile_and_run(&source);
     assert_eq!(output, "1\n10\n3\n2\n");
 }
 
 #[test]
 fn e2e_stdlib_list_flat_map() {
-    let source = read_fixture("stdlib_list_flat_map.snow");
+    let source = read_fixture("stdlib_list_flat_map.mpl");
     let output = compile_and_run(&source);
     assert_eq!(output, "6\n1\n10\n2\n5\n1\n5\n");
 }
 
 #[test]
 fn e2e_stdlib_list_enumerate() {
-    let source = read_fixture("stdlib_list_enumerate.snow");
+    let source = read_fixture("stdlib_list_enumerate.mpl");
     let output = compile_and_run(&source);
     assert_eq!(output, "3\n0\n10\n");
 }
 
 #[test]
 fn e2e_stdlib_list_take_drop() {
-    let source = read_fixture("stdlib_list_take_drop.snow");
+    let source = read_fixture("stdlib_list_take_drop.mpl");
     let output = compile_and_run(&source);
     assert_eq!(output, "3\n10\n30\n2\n40\n5\n0\n");
 }
@@ -1229,7 +1229,7 @@ fn e2e_stdlib_list_take_drop() {
 
 #[test]
 fn e2e_deriving_json_sum_type() {
-    let source = read_fixture("deriving_json_sum_type.snow");
+    let source = read_fixture("deriving_json_sum_type.mpl");
     let output = compile_and_run(&source);
     let lines: Vec<&str> = output.trim().lines().collect();
     assert_eq!(lines.len(), 5, "expected 5 lines, got: {}", output);
@@ -1257,7 +1257,7 @@ fn e2e_deriving_json_sum_type() {
 
 #[test]
 fn e2e_deriving_json_generic() {
-    let source = read_fixture("deriving_json_generic.snow");
+    let source = read_fixture("deriving_json_generic.mpl");
     let output = compile_and_run(&source);
     let lines: Vec<&str> = output.trim().lines().collect();
     assert_eq!(lines.len(), 2, "expected 2 lines, got: {}", output);
@@ -1271,7 +1271,7 @@ fn e2e_deriving_json_generic() {
 
 #[test]
 fn e2e_deriving_json_nested_sum() {
-    let source = read_fixture("deriving_json_nested_sum.snow");
+    let source = read_fixture("deriving_json_nested_sum.mpl");
     let output = compile_and_run(&source);
     let lines: Vec<&str> = output.trim().lines().collect();
     assert_eq!(lines.len(), 1, "expected 1 line, got: {}", output);
@@ -1323,21 +1323,21 @@ end
 
 #[test]
 fn e2e_stdlib_map_conversions() {
-    let map_conv_source = read_fixture("stdlib_map_conversions.snow");
+    let map_conv_source = read_fixture("stdlib_map_conversions.mpl");
     let map_conv_output = compile_and_run(&map_conv_source);
     assert_eq!(map_conv_output, "3\n10\n200\n30\n2\n2\n10\n20\n");
 }
 
 #[test]
 fn e2e_stdlib_set_conversions() {
-    let set_conv_source = read_fixture("stdlib_set_conversions.snow");
+    let set_conv_source = read_fixture("stdlib_set_conversions.mpl");
     let set_conv_output = compile_and_run(&set_conv_source);
     assert_eq!(set_conv_output, "1\ntrue\nfalse\n3\n3\ntrue\ntrue\n");
 }
 
 // ── HTTP Path Parameters E2E Tests (Phase 51 Plan 02) ──────────────────
 //
-// Verifies the full Phase 51 stack: Snow source -> typeck -> MIR -> LLVM ->
+// Verifies the full Phase 51 stack: Mesh source -> typeck -> MIR -> LLVM ->
 // runtime HTTP server with path parameter extraction, method-specific routing,
 // exact-before-parameterized priority, and backward-compatible fallback.
 
@@ -1370,7 +1370,7 @@ fn send_request(port: u16, request: &str) -> String {
 
 #[test]
 fn e2e_http_path_params() {
-    let source = read_fixture("stdlib_http_path_params.snow");
+    let source = read_fixture("stdlib_http_path_params.mpl");
     let mut guard = compile_and_start_server(&source);
 
     // Wait for server to be ready.
@@ -1490,13 +1490,13 @@ fn e2e_http_path_params() {
 
 // ── HTTP Middleware E2E Tests (Phase 52 Plan 02) ────────────────────────
 //
-// Verifies the full Phase 52 middleware stack: Snow source -> typeck -> MIR ->
+// Verifies the full Phase 52 middleware stack: Mesh source -> typeck -> MIR ->
 // LLVM -> runtime HTTP server with middleware interception. Tests passthrough
 // middleware, short-circuit (auth), and middleware on unmatched routes (404).
 
 #[test]
 fn e2e_http_middleware() {
-    let source = read_fixture("stdlib_http_middleware.snow");
+    let source = read_fixture("stdlib_http_middleware.mpl");
     let mut guard = compile_and_start_server(&source);
 
     // Wait for server to be ready.
@@ -1576,14 +1576,14 @@ fn e2e_http_middleware() {
 
 // ── SQLite E2E Tests (Phase 53 Plan 02) ─────────────────────────────────
 //
-// Verifies the full SQLite driver pipeline: Snow source -> compiler ->
+// Verifies the full SQLite driver pipeline: Mesh source -> compiler ->
 // linked binary -> in-memory SQLite CRUD operations. Tests open, execute
 // (DDL + DML with params), query with column names, parameterized WHERE,
 // and close.
 
 #[test]
 fn e2e_sqlite() {
-    let source = read_fixture("stdlib_sqlite.snow");
+    let source = read_fixture("stdlib_sqlite.mpl");
     let output = compile_and_run(&source);
     // Verify insert counts
     assert!(output.contains("1"), "First insert should affect 1 row");
@@ -1598,17 +1598,17 @@ fn e2e_sqlite() {
 
 // ── PostgreSQL E2E Tests (Phase 54 Plan 02) ─────────────────────────────
 //
-// Verifies the full PostgreSQL driver pipeline: Snow source -> compiler ->
+// Verifies the full PostgreSQL driver pipeline: Mesh source -> compiler ->
 // linked binary -> TCP connection to PostgreSQL -> wire protocol -> CRUD
 // operations. Tests connect (SCRAM-SHA-256/MD5 auth), execute (DDL + DML
 // with $1/$2 params), query with column names, filtered query, and close.
 //
 // Requires a running PostgreSQL instance with:
-//   User: snow_test  Password: snow_test  Database: snow_test
+//   User: mesh_test  Password: mesh_test  Database: mesh_test
 //
 // Easiest setup:
-//   docker run --name snow-pg-test -e POSTGRES_USER=snow_test \
-//     -e POSTGRES_PASSWORD=snow_test -e POSTGRES_DB=snow_test \
+//   docker run --name mesh-pg-test -e POSTGRES_USER=mesh_test \
+//     -e POSTGRES_PASSWORD=mesh_test -e POSTGRES_DB=mesh_test \
 //     -p 5432:5432 -d postgres:16
 //
 // Run with: cargo test e2e_pg -- --ignored
@@ -1616,7 +1616,7 @@ fn e2e_sqlite() {
 #[test]
 #[ignore] // requires a running PostgreSQL instance
 fn e2e_pg() {
-    let source = read_fixture("stdlib_pg.snow");
+    let source = read_fixture("stdlib_pg.mpl");
     let output = compile_and_run(&source);
     // Verify DDL result (CREATE TABLE returns 0 rows affected in PostgreSQL)
     assert!(output.contains("created: 0"), "CREATE TABLE should report 0 rows affected");

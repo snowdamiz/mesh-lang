@@ -1,13 +1,13 @@
-//! Snapshot tests for Snow type error diagnostics.
+//! Snapshot tests for Mesh type error diagnostics.
 //!
 //! Each test triggers a specific type error, renders it through the ariadne
 //! diagnostic pipeline, and snapshots the output with insta. These verify
 //! that error messages are terse, include dual-span labels, and show fix
 //! suggestions when plausible.
 
-use snow_typeck::diagnostics::{render_diagnostic, DiagnosticOptions};
-use snow_typeck::error::TypeError;
-use snow_typeck::TypeckResult;
+use mesh_typeck::diagnostics::{render_diagnostic, DiagnosticOptions};
+use mesh_typeck::error::TypeError;
+use mesh_typeck::TypeckResult;
 
 // ── Helpers ────────────────────────────────────────────────────────────
 
@@ -16,10 +16,10 @@ fn opts() -> DiagnosticOptions {
     DiagnosticOptions::colorless()
 }
 
-/// Parse Snow source and run the type checker.
+/// Parse Mesh source and run the type checker.
 fn check_source(src: &str) -> TypeckResult {
-    let parse = snow_parser::parse(src);
-    snow_typeck::check(&parse)
+    let parse = mesh_parser::parse(src);
+    mesh_typeck::check(&parse)
 }
 
 /// Render the first error from a type check result as a diagnostic string.
@@ -30,13 +30,13 @@ fn render_first_error(src: &str) -> String {
         "expected at least one error for source: {:?}",
         src
     );
-    render_diagnostic(&result.errors[0], src, "test.snow", &opts(), None)
+    render_diagnostic(&result.errors[0], src, "test.mpl", &opts(), None)
 }
 
 /// Render all errors from a type check result as diagnostic strings.
 fn render_all_errors(src: &str) -> Vec<String> {
     let result = check_source(src);
-    result.render_errors(src, "test.snow", &opts())
+    result.render_errors(src, "test.mpl", &opts())
 }
 
 // ── Diagnostic Snapshot Tests ──────────────────────────────────────────
@@ -153,7 +153,7 @@ fn test_diag_non_exhaustive_match() {
         missing_patterns: vec!["None".to_string()],
         span: rowan::TextRange::new(0.into(), 26.into()),
     };
-    let output = render_diagnostic(&err, src, "test.snow", &opts(), None);
+    let output = render_diagnostic(&err, src, "test.mpl", &opts(), None);
     insta::assert_snapshot!(output);
 }
 
@@ -165,7 +165,7 @@ fn test_diag_non_exhaustive_match_multiple() {
         missing_patterns: vec!["Rect".to_string(), "Point".to_string()],
         span: rowan::TextRange::new(0.into(), 28.into()),
     };
-    let output = render_diagnostic(&err, src, "test.snow", &opts(), None);
+    let output = render_diagnostic(&err, src, "test.mpl", &opts(), None);
     assert!(output.contains("E0012"), "expected E0012 code: {}", output);
     assert!(output.contains("Rect"), "expected Rect in missing: {}", output);
     assert!(output.contains("Point"), "expected Point in missing: {}", output);
@@ -179,7 +179,7 @@ fn test_diag_redundant_arm() {
         arm_index: 1,
         span: rowan::TextRange::new(18.into(), 24.into()),
     };
-    let output = render_diagnostic(&err, src, "test.snow", &opts(), None);
+    let output = render_diagnostic(&err, src, "test.mpl", &opts(), None);
     insta::assert_snapshot!(output);
 }
 
@@ -190,7 +190,7 @@ fn test_diag_redundant_arm_is_warning() {
         arm_index: 1,
         span: rowan::TextRange::new(18.into(), 27.into()),
     };
-    let output = render_diagnostic(&err, src, "test.snow", &opts(), None);
+    let output = render_diagnostic(&err, src, "test.mpl", &opts(), None);
     assert!(output.contains("Warning"), "expected Warning kind: {}", output);
     assert!(output.contains("W0001"), "expected W0001 code: {}", output);
     assert!(output.contains("unreachable"), "expected 'unreachable' label: {}", output);
@@ -203,7 +203,7 @@ fn test_diag_invalid_guard_expression() {
         reason: "function calls not allowed in guards".to_string(),
         span: rowan::TextRange::new(16.into(), 20.into()),
     };
-    let output = render_diagnostic(&err, src, "test.snow", &opts(), None);
+    let output = render_diagnostic(&err, src, "test.mpl", &opts(), None);
     insta::assert_snapshot!(output);
 }
 
@@ -214,7 +214,7 @@ fn test_diag_unknown_variant() {
         name: "Triangle".to_string(),
         span: rowan::TextRange::new(42.into(), 54.into()),
     };
-    let output = render_diagnostic(&err, src, "test.snow", &opts(), None);
+    let output = render_diagnostic(&err, src, "test.mpl", &opts(), None);
     assert!(output.contains("E0010"), "expected E0010 code: {}", output);
     assert!(output.contains("Triangle"), "expected 'Triangle' in output: {}", output);
 }
@@ -227,7 +227,7 @@ fn test_diag_or_pattern_binding_mismatch() {
         found_bindings: vec!["b".to_string(), "c".to_string()],
         span: rowan::TextRange::new(10.into(), 20.into()),
     };
-    let output = render_diagnostic(&err, src, "test.snow", &opts(), None);
+    let output = render_diagnostic(&err, src, "test.mpl", &opts(), None);
     assert!(output.contains("E0011"), "expected E0011 code: {}", output);
     assert!(output.contains("bind"), "expected binding-related message: {}", output);
 }
@@ -238,11 +238,11 @@ fn test_diag_or_pattern_binding_mismatch() {
 fn test_diag_send_type_mismatch() {
     let src = "send(pid, 42)";
     let err = TypeError::SendTypeMismatch {
-        expected: snow_typeck::ty::Ty::string(),
-        found: snow_typeck::ty::Ty::int(),
+        expected: mesh_typeck::ty::Ty::string(),
+        found: mesh_typeck::ty::Ty::int(),
         span: rowan::TextRange::new(0.into(), 13.into()),
     };
-    let output = render_diagnostic(&err, src, "test.snow", &opts(), None);
+    let output = render_diagnostic(&err, src, "test.mpl", &opts(), None);
     insta::assert_snapshot!(output);
 }
 
@@ -251,7 +251,7 @@ fn test_diag_self_outside_actor() {
     let src = "let me = self()";
     let result = check_source(src);
     assert!(!result.errors.is_empty(), "expected SelfOutsideActor error");
-    let output = render_diagnostic(&result.errors[0], src, "test.snow", &opts(), None);
+    let output = render_diagnostic(&result.errors[0], src, "test.mpl", &opts(), None);
     assert!(output.contains("E0015"), "expected E0015 code: {}", output);
     assert!(output.contains("self()"), "expected 'self()' in output: {}", output);
     insta::assert_snapshot!(output);
@@ -261,10 +261,10 @@ fn test_diag_self_outside_actor() {
 fn test_diag_spawn_non_function() {
     let src = "spawn(42)";
     let err = TypeError::SpawnNonFunction {
-        found: snow_typeck::ty::Ty::int(),
+        found: mesh_typeck::ty::Ty::int(),
         span: rowan::TextRange::new(0.into(), 9.into()),
     };
-    let output = render_diagnostic(&err, src, "test.snow", &opts(), None);
+    let output = render_diagnostic(&err, src, "test.mpl", &opts(), None);
     assert!(output.contains("E0016"), "expected E0016 code: {}", output);
     assert!(output.contains("function"), "expected 'function' in output: {}", output);
     insta::assert_snapshot!(output);
@@ -275,7 +275,7 @@ fn test_diag_receive_outside_actor() {
     let src = "receive do\nn -> n\nend";
     let result = check_source(src);
     assert!(!result.errors.is_empty(), "expected ReceiveOutsideActor error");
-    let output = render_diagnostic(&result.errors[0], src, "test.snow", &opts(), None);
+    let output = render_diagnostic(&result.errors[0], src, "test.mpl", &opts(), None);
     assert!(output.contains("E0017"), "expected E0017 code: {}", output);
     assert!(output.contains("receive"), "expected 'receive' in output: {}", output);
     insta::assert_snapshot!(output);
@@ -285,11 +285,11 @@ fn test_diag_receive_outside_actor() {
 fn test_diag_send_type_mismatch_details() {
     let src = "send(pid, \"hello\")";
     let err = TypeError::SendTypeMismatch {
-        expected: snow_typeck::ty::Ty::int(),
-        found: snow_typeck::ty::Ty::string(),
+        expected: mesh_typeck::ty::Ty::int(),
+        found: mesh_typeck::ty::Ty::string(),
         span: rowan::TextRange::new(0.into(), 18.into()),
     };
-    let output = render_diagnostic(&err, src, "test.snow", &opts(), None);
+    let output = render_diagnostic(&err, src, "test.mpl", &opts(), None);
     assert!(output.contains("Int"), "expected 'Int' type in output: {}", output);
     assert!(output.contains("String"), "expected 'String' type in output: {}", output);
     assert!(output.contains("Pid"), "expected 'Pid' in help text: {}", output);
@@ -303,7 +303,7 @@ fn test_json_output_mode() {
     let result = check_source(src);
     assert!(!result.errors.is_empty());
     let json_opts = DiagnosticOptions::json_mode();
-    let output = render_diagnostic(&result.errors[0], src, "test.snow", &json_opts, None);
+    let output = render_diagnostic(&result.errors[0], src, "test.mpl", &json_opts, None);
     let parsed: serde_json::Value = serde_json::from_str(&output)
         .unwrap_or_else(|e| panic!("invalid JSON output: {}\n{}", e, output));
     assert_eq!(parsed["code"], "E0001");
@@ -318,7 +318,7 @@ fn test_json_one_line() {
     let result = check_source(src);
     assert!(!result.errors.is_empty());
     let json_opts = DiagnosticOptions::json_mode();
-    let output = render_diagnostic(&result.errors[0], src, "test.snow", &json_opts, None);
+    let output = render_diagnostic(&result.errors[0], src, "test.mpl", &json_opts, None);
     assert!(!output.contains('\n'), "JSON output should be one line: {}", output);
 }
 
@@ -327,10 +327,10 @@ fn test_not_a_function_fix_suggestion() {
     // Directly construct a NotAFunction error to test the fix suggestion.
     let src = "let x = 42\nx(1)";
     let err = TypeError::NotAFunction {
-        ty: snow_typeck::ty::Ty::int(),
+        ty: mesh_typeck::ty::Ty::int(),
         span: rowan::TextRange::new(11.into(), 15.into()),
     };
-    let output = render_diagnostic(&err, src, "test.snow", &opts(), None);
+    let output = render_diagnostic(&err, src, "test.mpl", &opts(), None);
     assert!(
         output.contains("did you mean to call it"),
         "expected fix suggestion for not-a-function: {}",
@@ -342,7 +342,7 @@ fn test_not_a_function_fix_suggestion() {
 
 #[test]
 fn test_diag_ambiguous_method_deterministic_order() {
-    use snow_typeck::ty::Ty;
+    use mesh_typeck::ty::Ty;
 
     let src = "x.to_string()";
     let err = TypeError::AmbiguousMethod {
@@ -351,21 +351,21 @@ fn test_diag_ambiguous_method_deterministic_order() {
         ty: Ty::int(),
         span: rowan::TextRange::new(0.into(), 13.into()),
     };
-    let output = render_diagnostic(&err, src, "test.snow", &opts(), None);
+    let output = render_diagnostic(&err, src, "test.mpl", &opts(), None);
     insta::assert_snapshot!(output);
 }
 
 #[test]
 fn test_diag_ambiguous_method_help_text() {
-    use snow_typeck::ty::Ty;
+    use mesh_typeck::ty::Ty;
 
     let src = "point.to_string()";
     let err = TypeError::AmbiguousMethod {
         method_name: "to_string".to_string(),
         candidate_traits: vec!["Display".to_string(), "Printable".to_string()],
-        ty: Ty::Con(snow_typeck::ty::TyCon::new("Point")),
+        ty: Ty::Con(mesh_typeck::ty::TyCon::new("Point")),
         span: rowan::TextRange::new(0.into(), 17.into()),
     };
-    let output = render_diagnostic(&err, src, "test.snow", &opts(), None);
+    let output = render_diagnostic(&err, src, "test.mpl", &opts(), None);
     insta::assert_snapshot!(output);
 }

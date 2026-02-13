@@ -1,18 +1,18 @@
-//! Interactive REPL with LLVM JIT compilation for the Snow language.
+//! Interactive REPL with LLVM JIT compilation for the Mesh language.
 //!
-//! This crate implements a Read-Eval-Print Loop that uses the full Snow compiler
+//! This crate implements a Read-Eval-Print Loop that uses the full Mesh compiler
 //! pipeline (parse -> typecheck -> MIR -> LLVM IR) with JIT execution. This
 //! ensures REPL behavior is identical to compiled code.
 //!
 //! ## Architecture
 //!
-//! - [`jit`]: JIT compilation engine -- compiles and executes Snow expressions
+//! - [`jit`]: JIT compilation engine -- compiles and executes Mesh expressions
 //! - [`session`]: Session state management -- tracks definitions and results
 //!
 //! ## Usage
 //!
 //! ```no_run
-//! use snow_repl::{ReplConfig, run_repl};
+//! use mesh_repl::{ReplConfig, run_repl};
 //!
 //! let config = ReplConfig::default();
 //! run_repl(&config).unwrap();
@@ -24,11 +24,11 @@ pub mod session;
 pub use jit::{jit_eval, EvalResult};
 pub use session::ReplSession;
 
-use snow_common::token::TokenKind;
+use mesh_common::token::TokenKind;
 
 /// Configuration for the REPL.
 pub struct ReplConfig {
-    /// The primary prompt string (default: "snow> ").
+    /// The primary prompt string (default: "mesh> ").
     pub prompt: String,
     /// The continuation prompt for multi-line input (default: "  ... ").
     pub continuation: String,
@@ -37,7 +37,7 @@ pub struct ReplConfig {
 impl Default for ReplConfig {
     fn default() -> Self {
         Self {
-            prompt: "snow> ".to_string(),
+            prompt: "mesh> ".to_string(),
             continuation: "  ... ".to_string(),
         }
     }
@@ -112,13 +112,13 @@ pub fn process_command(cmd: &str, session: &mut ReplSession) -> CommandResult {
 
 /// Check whether the accumulated input is complete (all blocks balanced).
 ///
-/// Uses the Snow lexer to tokenize incrementally and check for unmatched
+/// Uses the Mesh lexer to tokenize incrementally and check for unmatched
 /// `do`/`end` blocks, parentheses, brackets, braces, and string literals.
 ///
 /// Returns `true` if the input is complete and ready for evaluation.
 /// Returns `false` if more input is needed (continuation mode).
 pub fn is_input_complete(input: &str) -> bool {
-    let tokens = snow_lexer::Lexer::tokenize(input);
+    let tokens = mesh_lexer::Lexer::tokenize(input);
 
     let mut do_count: i32 = 0;
     let mut paren_depth: i32 = 0;
@@ -129,7 +129,7 @@ pub fn is_input_complete(input: &str) -> bool {
     for token in &tokens {
         match &token.kind {
             // Block openers: do, fn (when followed by params), case, if, etc.
-            // In Snow, `do`/`end` are the primary block delimiters
+            // In Mesh, `do`/`end` are the primary block delimiters
             TokenKind::Do => do_count += 1,
             TokenKind::End => do_count -= 1,
 
@@ -178,7 +178,7 @@ pub fn format_result(result: &EvalResult) -> String {
 /// Generate help text for the :help command.
 fn help_text() -> String {
     "\
-Snow REPL -- Interactive Snow with LLVM JIT
+Mesh REPL -- Interactive Mesh with LLVM JIT
 
 Commands:
   :help, :h          Show this help message
@@ -186,7 +186,7 @@ Commands:
   :quit, :q          Exit the REPL
   :clear             Clear the screen
   :reset             Reset session (clear all definitions and history)
-  :load <file>       Load and evaluate a Snow source file
+  :load <file>       Load and evaluate a Mesh source file
 
 Tips:
   - Expressions are evaluated and results shown as: value :: Type
@@ -208,19 +208,19 @@ fn type_check_expression(expr: &str, session: &ReplSession) -> CommandResult {
     full_source.push_str(&format!("fn __repl_type_check() do\n  {}\nend\n", expr));
 
     // Parse
-    let parse = snow_parser::parse(&full_source);
+    let parse = mesh_parser::parse(&full_source);
     if !parse.ok() {
         let errors: Vec<String> = parse.errors().iter().map(|e| format!("{}", e)).collect();
         return CommandResult::Error(format!("Parse error: {}", errors.join(", ")));
     }
 
     // Type check
-    let typeck = snow_typeck::check(&parse);
+    let typeck = mesh_typeck::check(&parse);
     if !typeck.errors.is_empty() {
         let rendered = typeck.render_errors(
             &full_source,
             "<repl>",
-            &snow_typeck::diagnostics::DiagnosticOptions::colorless(),
+            &mesh_typeck::diagnostics::DiagnosticOptions::colorless(),
         );
         return CommandResult::Error(rendered.join("\n"));
     }
@@ -247,7 +247,7 @@ fn load_file(path: &str, session: &mut ReplSession) -> CommandResult {
                 s
             };
 
-            let parse = snow_parser::parse(&full_with_file);
+            let parse = mesh_parser::parse(&full_with_file);
             if !parse.ok() {
                 let errors: Vec<String> =
                     parse.errors().iter().map(|e| format!("{}", e)).collect();
@@ -258,12 +258,12 @@ fn load_file(path: &str, session: &mut ReplSession) -> CommandResult {
                 ));
             }
 
-            let typeck = snow_typeck::check(&parse);
+            let typeck = mesh_typeck::check(&parse);
             if !typeck.errors.is_empty() {
                 let rendered = typeck.render_errors(
                     &full_with_file,
                     path,
-                    &snow_typeck::diagnostics::DiagnosticOptions::colorless(),
+                    &mesh_typeck::diagnostics::DiagnosticOptions::colorless(),
                 );
                 return CommandResult::Error(rendered.join("\n"));
             }
@@ -280,7 +280,7 @@ fn load_file(path: &str, session: &mut ReplSession) -> CommandResult {
 ///
 /// This is the main entry point for the REPL. It reads input from the user
 /// using rustyline for line editing and history, evaluates it using JIT
-/// compilation through the full Snow compiler pipeline, and prints results.
+/// compilation through the full Mesh compiler pipeline, and prints results.
 ///
 /// The actor runtime is initialized at startup so that spawn/send/receive
 /// work in the REPL.
@@ -301,7 +301,7 @@ pub fn run_repl(config: &ReplConfig) -> Result<(), String> {
 
     let mut session = ReplSession::new();
 
-    println!("Snow REPL v0.1.0 (type :help for commands)");
+    println!("Mesh REPL v0.1.0 (type :help for commands)");
 
     let mut input_buffer = String::new();
     let mut in_continuation = false;
@@ -400,10 +400,10 @@ pub fn run_repl(config: &ReplConfig) -> Result<(), String> {
 
 /// Get the history file path, if available.
 fn dirs_for_history() -> Option<std::path::PathBuf> {
-    // Use $HOME/.snow_repl_history
+    // Use $HOME/.mesh_repl_history
     std::env::var("HOME")
         .ok()
-        .map(|home| std::path::PathBuf::from(home).join(".snow_repl_history"))
+        .map(|home| std::path::PathBuf::from(home).join(".mesh_repl_history"))
 }
 
 #[cfg(test)]
@@ -480,7 +480,7 @@ mod tests {
         let mut session = ReplSession::new();
         match process_command(":help", &mut session) {
             CommandResult::Output(text) => {
-                assert!(text.contains("Snow REPL"));
+                assert!(text.contains("Mesh REPL"));
                 assert!(text.contains(":help"));
                 assert!(text.contains(":quit"));
             }
@@ -492,7 +492,7 @@ mod tests {
     fn test_help_shorthand() {
         let mut session = ReplSession::new();
         match process_command(":h", &mut session) {
-            CommandResult::Output(text) => assert!(text.contains("Snow REPL")),
+            CommandResult::Output(text) => assert!(text.contains("Mesh REPL")),
             _ => panic!("Expected Output for :h"),
         }
     }
@@ -581,7 +581,7 @@ mod tests {
     #[test]
     fn test_load_command_nonexistent_file() {
         let mut session = ReplSession::new();
-        match process_command(":load /nonexistent/file.snow", &mut session) {
+        match process_command(":load /nonexistent/file.mpl", &mut session) {
             CommandResult::Error(msg) => assert!(msg.contains("Failed to read")),
             _ => panic!("Expected Error for nonexistent file"),
         }

@@ -1,11 +1,11 @@
-//! PostgreSQL wire protocol v3 client for the Snow runtime.
+//! PostgreSQL wire protocol v3 client for the Mesh runtime.
 //!
-//! Provides four extern "C" functions that Snow programs call to interact
+//! Provides four extern "C" functions that Mesh programs call to interact
 //! with PostgreSQL databases:
-//! - `snow_pg_connect`: Connect to a PostgreSQL server via URL
-//! - `snow_pg_close`: Close a connection
-//! - `snow_pg_execute`: Execute a write query (INSERT/UPDATE/DELETE/CREATE)
-//! - `snow_pg_query`: Execute a read query (SELECT), returns rows
+//! - `mesh_pg_connect`: Connect to a PostgreSQL server via URL
+//! - `mesh_pg_close`: Close a connection
+//! - `mesh_pg_execute`: Execute a write query (INSERT/UPDATE/DELETE/CREATE)
+//! - `mesh_pg_query`: Execute a read query (SELECT), returns rows
 //!
 //! Connection handles are opaque u64 values (Box::into_raw as u64) for GC
 //! safety. The GC never traces integer values, so the connection won't be
@@ -29,10 +29,10 @@ use pbkdf2::pbkdf2_hmac;
 use rand::Rng;
 use sha2::Sha256;
 
-use crate::collections::list::{snow_list_append, snow_list_get, snow_list_length, snow_list_new};
-use crate::collections::map::{snow_map_new_typed, snow_map_put};
+use crate::collections::list::{mesh_list_append, mesh_list_get, mesh_list_length, mesh_list_new};
+use crate::collections::map::{mesh_map_new_typed, mesh_map_put};
 use crate::io::alloc_result;
-use crate::string::{snow_string_new, SnowString};
+use crate::string::{mesh_string_new, MeshString};
 
 type HmacSha256 = Hmac<Sha256>;
 
@@ -565,39 +565,39 @@ fn parse_error_response(body: &[u8]) -> String {
     "unknown PostgreSQL error".to_string()
 }
 
-// ── SnowString / SnowResult Helpers ────────────────────────────────────
+// ── MeshString / MeshResult Helpers ────────────────────────────────────
 
-/// Extract a Rust &str from a raw SnowString pointer.
+/// Extract a Rust &str from a raw MeshString pointer.
 ///
 /// # Safety
 ///
-/// The pointer must reference a valid SnowString allocation.
-unsafe fn snow_str_to_rust(s: *const SnowString) -> &'static str {
+/// The pointer must reference a valid MeshString allocation.
+unsafe fn mesh_str_to_rust(s: *const MeshString) -> &'static str {
     (*s).as_str()
 }
 
-/// Create a SnowString from a Rust &str and return as *mut u8.
-fn rust_str_to_snow(s: &str) -> *mut u8 {
-    snow_string_new(s.as_ptr(), s.len() as u64) as *mut u8
+/// Create a MeshString from a Rust &str and return as *mut u8.
+fn rust_str_to_mesh(s: &str) -> *mut u8 {
+    mesh_string_new(s.as_ptr(), s.len() as u64) as *mut u8
 }
 
-/// Create an error SnowResult from a Rust string.
+/// Create an error MeshResult from a Rust string.
 fn err_result(msg: &str) -> *mut u8 {
-    let s = rust_str_to_snow(msg);
+    let s = rust_str_to_mesh(msg);
     alloc_result(1, s) as *mut u8
 }
 
-/// Extract param strings from a Snow List<String>.
+/// Extract param strings from a Mesh List<String>.
 ///
-/// SnowList layout: `{ len: u64, cap: u64, data: [u64; cap] }`
-/// Each element is a u64 that is actually a pointer to a SnowString.
+/// MeshList layout: `{ len: u64, cap: u64, data: [u64; cap] }`
+/// Each element is a u64 that is actually a pointer to a MeshString.
 unsafe fn extract_params(params: *mut u8) -> Vec<String> {
     let len = *(params as *const u64);
     let data_ptr = (params as *const u64).add(2); // skip len + cap
     let mut result = Vec::with_capacity(len as usize);
     for i in 0..len as usize {
-        let param_ptr = *data_ptr.add(i) as *const SnowString;
-        let param_str = snow_str_to_rust(param_ptr);
+        let param_ptr = *data_ptr.add(i) as *const MeshString;
+        let param_str = mesh_str_to_rust(param_ptr);
         result.push(param_str.to_string());
     }
     result
@@ -621,14 +621,14 @@ fn parse_command_tag(tag: &str) -> i64 {
 ///
 /// # Signature
 ///
-/// `snow_pg_connect(url: *const SnowString) -> *mut u8 (SnowResult<u64, String>)`
+/// `mesh_pg_connect(url: *const MeshString) -> *mut u8 (MeshResult<u64, String>)`
 ///
-/// Returns SnowResult with tag 0 (Ok) containing the connection handle as
+/// Returns MeshResult with tag 0 (Ok) containing the connection handle as
 /// a u64, or tag 1 (Err) containing an error message string.
 #[no_mangle]
-pub extern "C" fn snow_pg_connect(url: *const SnowString) -> *mut u8 {
+pub extern "C" fn mesh_pg_connect(url: *const MeshString) -> *mut u8 {
     unsafe {
-        let url_str = snow_str_to_rust(url);
+        let url_str = mesh_str_to_rust(url);
         let pg_url = match parse_pg_url(url_str) {
             Ok(u) => u,
             Err(e) => return err_result(&e),
@@ -865,12 +865,12 @@ pub extern "C" fn snow_pg_connect(url: *const SnowString) -> *mut u8 {
 ///
 /// # Signature
 ///
-/// `snow_pg_close(conn_handle: u64)`
+/// `mesh_pg_close(conn_handle: u64)`
 ///
 /// Recovers the Box<PgConn> from the handle, sends Terminate message,
 /// and lets Box::drop free the Rust memory and close the TcpStream.
 #[no_mangle]
-pub extern "C" fn snow_pg_close(conn_handle: u64) {
+pub extern "C" fn mesh_pg_close(conn_handle: u64) {
     unsafe {
         let mut conn = Box::from_raw(conn_handle as *mut PgConn);
         let mut buf = Vec::new();
@@ -884,20 +884,20 @@ pub extern "C" fn snow_pg_close(conn_handle: u64) {
 ///
 /// # Signature
 ///
-/// `snow_pg_execute(conn_handle: u64, sql: *const SnowString, params: *mut u8)
-///     -> *mut u8 (SnowResult<Int, String>)`
+/// `mesh_pg_execute(conn_handle: u64, sql: *const MeshString, params: *mut u8)
+///     -> *mut u8 (MeshResult<Int, String>)`
 ///
 /// Parameters are bound via the Extended Query protocol using $1, $2, etc.
 /// Returns the number of rows affected from the CommandComplete tag.
 #[no_mangle]
-pub extern "C" fn snow_pg_execute(
+pub extern "C" fn mesh_pg_execute(
     conn_handle: u64,
-    sql: *const SnowString,
+    sql: *const MeshString,
     params: *mut u8,
 ) -> *mut u8 {
     unsafe {
         let conn = &mut *(conn_handle as *mut PgConn);
-        let sql_str = snow_str_to_rust(sql);
+        let sql_str = mesh_str_to_rust(sql);
         let param_strs = extract_params(params);
         let param_refs: Vec<&str> = param_strs.iter().map(|s| s.as_str()).collect();
 
@@ -955,21 +955,21 @@ pub extern "C" fn snow_pg_execute(
 ///
 /// # Signature
 ///
-/// `snow_pg_query(conn_handle: u64, sql: *const SnowString, params: *mut u8)
-///     -> *mut u8 (SnowResult<List<Map<String, String>>, String>)`
+/// `mesh_pg_query(conn_handle: u64, sql: *const MeshString, params: *mut u8)
+///     -> *mut u8 (MeshResult<List<Map<String, String>>, String>)`
 ///
 /// Each row is a Map<String, String> where keys are column names and values
 /// are the text representation of column values. NULL columns become empty
 /// strings.
 #[no_mangle]
-pub extern "C" fn snow_pg_query(
+pub extern "C" fn mesh_pg_query(
     conn_handle: u64,
-    sql: *const SnowString,
+    sql: *const MeshString,
     params: *mut u8,
 ) -> *mut u8 {
     unsafe {
         let conn = &mut *(conn_handle as *mut PgConn);
-        let sql_str = snow_str_to_rust(sql);
+        let sql_str = mesh_str_to_rust(sql);
         let param_strs = extract_params(params);
         let param_refs: Vec<&str> = param_strs.iter().map(|s| s.as_str()).collect();
 
@@ -986,7 +986,7 @@ pub extern "C" fn snow_pg_query(
         }
 
         let mut col_names: Vec<String> = Vec::new();
-        let mut result_list = snow_list_new();
+        let mut result_list = mesh_list_new();
         let mut error_msg: Option<String> = None;
 
         // Read messages until ReadyForQuery
@@ -1030,7 +1030,7 @@ pub extern "C" fn snow_pg_query(
                     let mut offset = 2;
 
                     // Create a string-keyed map for this row (key_type = 1 = string)
-                    let mut row_map = snow_map_new_typed(1);
+                    let mut row_map = mesh_map_new_typed(1);
 
                     for col in 0..num_cols {
                         if offset + 4 > body.len() {
@@ -1056,12 +1056,12 @@ pub extern "C" fn snow_pg_query(
                             "?"
                         };
 
-                        let key_snow = rust_str_to_snow(col_name);
-                        let val_snow = rust_str_to_snow(&value_str);
-                        row_map = snow_map_put(row_map, key_snow as u64, val_snow as u64);
+                        let key_mesh = rust_str_to_mesh(col_name);
+                        let val_mesh = rust_str_to_mesh(&value_str);
+                        row_map = mesh_map_put(row_map, key_mesh as u64, val_mesh as u64);
                     }
 
-                    result_list = snow_list_append(result_list, row_map as u64);
+                    result_list = mesh_list_append(result_list, row_map as u64);
                 }
                 b'C' => {} // CommandComplete -- skip for query
                 b'E' => {
@@ -1122,11 +1122,11 @@ pub(super) fn pg_simple_command(conn: &mut PgConn, sql: &str) -> Result<(), Stri
 ///
 /// # Signature
 ///
-/// `snow_pg_begin(conn_handle: u64) -> *mut u8 (SnowResult<Unit, String>)`
+/// `mesh_pg_begin(conn_handle: u64) -> *mut u8 (MeshResult<Unit, String>)`
 ///
 /// Sends `BEGIN` and returns Ok(()) or Err(error_message).
 #[no_mangle]
-pub extern "C" fn snow_pg_begin(conn_handle: u64) -> *mut u8 {
+pub extern "C" fn mesh_pg_begin(conn_handle: u64) -> *mut u8 {
     unsafe {
         let conn = &mut *(conn_handle as *mut PgConn);
         match pg_simple_command(conn, "BEGIN") {
@@ -1140,11 +1140,11 @@ pub extern "C" fn snow_pg_begin(conn_handle: u64) -> *mut u8 {
 ///
 /// # Signature
 ///
-/// `snow_pg_commit(conn_handle: u64) -> *mut u8 (SnowResult<Unit, String>)`
+/// `mesh_pg_commit(conn_handle: u64) -> *mut u8 (MeshResult<Unit, String>)`
 ///
 /// Sends `COMMIT` and returns Ok(()) or Err(error_message).
 #[no_mangle]
-pub extern "C" fn snow_pg_commit(conn_handle: u64) -> *mut u8 {
+pub extern "C" fn mesh_pg_commit(conn_handle: u64) -> *mut u8 {
     unsafe {
         let conn = &mut *(conn_handle as *mut PgConn);
         match pg_simple_command(conn, "COMMIT") {
@@ -1158,11 +1158,11 @@ pub extern "C" fn snow_pg_commit(conn_handle: u64) -> *mut u8 {
 ///
 /// # Signature
 ///
-/// `snow_pg_rollback(conn_handle: u64) -> *mut u8 (SnowResult<Unit, String>)`
+/// `mesh_pg_rollback(conn_handle: u64) -> *mut u8 (MeshResult<Unit, String>)`
 ///
 /// Sends `ROLLBACK` and returns Ok(()) or Err(error_message).
 #[no_mangle]
-pub extern "C" fn snow_pg_rollback(conn_handle: u64) -> *mut u8 {
+pub extern "C" fn mesh_pg_rollback(conn_handle: u64) -> *mut u8 {
     unsafe {
         let conn = &mut *(conn_handle as *mut PgConn);
         match pg_simple_command(conn, "ROLLBACK") {
@@ -1172,22 +1172,22 @@ pub extern "C" fn snow_pg_rollback(conn_handle: u64) -> *mut u8 {
     }
 }
 
-/// Execute a Snow closure inside a PostgreSQL transaction with automatic
+/// Execute a Mesh closure inside a PostgreSQL transaction with automatic
 /// commit on success and rollback on error or panic.
 ///
 /// # Signature
 ///
-/// `snow_pg_transaction(conn_handle: u64, fn_ptr: *const u8, env_ptr: *const u8)
-///     -> *mut u8 (SnowResult<T, String>)`
+/// `mesh_pg_transaction(conn_handle: u64, fn_ptr: *const u8, env_ptr: *const u8)
+///     -> *mut u8 (MeshResult<T, String>)`
 ///
 /// Protocol:
 /// 1. Send BEGIN. On failure, return Err immediately.
-/// 2. Call the Snow closure via catch_unwind for panic safety.
+/// 2. Call the Mesh closure via catch_unwind for panic safety.
 /// 3. On Ok result from closure: COMMIT. If COMMIT fails, ROLLBACK and return Err.
 /// 4. On Err result from closure: ROLLBACK and propagate the Err.
 /// 5. On panic: ROLLBACK and return Err("transaction aborted: panic in callback").
 #[no_mangle]
-pub extern "C" fn snow_pg_transaction(
+pub extern "C" fn mesh_pg_transaction(
     conn_handle: u64,
     fn_ptr: *const u8,
     env_ptr: *const u8,
@@ -1213,8 +1213,8 @@ pub extern "C" fn snow_pg_transaction(
 
         match result {
             Ok(result_ptr) => {
-                // Check if closure returned Ok or Err via SnowResult tag
-                let r = &*(result_ptr as *const crate::io::SnowResult);
+                // Check if closure returned Ok or Err via MeshResult tag
+                let r = &*(result_ptr as *const crate::io::MeshResult);
                 if r.tag == 0 {
                     // Success -> COMMIT
                     if let Err(e) = pg_simple_command(conn, "COMMIT") {
@@ -1245,16 +1245,16 @@ type FromRowFn = unsafe extern "C" fn(*mut u8) -> *mut u8;
 ///
 /// # Signature
 ///
-/// `snow_pg_query_as(conn_handle: u64, sql: *mut u8, params: *mut u8,
-///     from_row_fn: *mut u8) -> *mut u8 (SnowResult<List<SnowResult>, String>)`
+/// `mesh_pg_query_as(conn_handle: u64, sql: *mut u8, params: *mut u8,
+///     from_row_fn: *mut u8) -> *mut u8 (MeshResult<List<MeshResult>, String>)`
 ///
-/// 1. Calls `snow_pg_query` to get the raw rows.
+/// 1. Calls `mesh_pg_query` to get the raw rows.
 /// 2. If query fails, propagates the error result as-is.
 /// 3. If Ok: iterates the rows list, calling `from_row_fn` on each row map.
 /// 4. Collects all per-row results into a new list.
 /// 5. Returns Ok(list_of_results).
 #[no_mangle]
-pub extern "C" fn snow_pg_query_as(
+pub extern "C" fn mesh_pg_query_as(
     conn_handle: u64,
     sql: *mut u8,
     params: *mut u8,
@@ -1262,23 +1262,23 @@ pub extern "C" fn snow_pg_query_as(
 ) -> *mut u8 {
     unsafe {
         // Execute the query
-        let query_result = snow_pg_query(conn_handle, sql as *const SnowString, params);
-        let r = &*(query_result as *const crate::io::SnowResult);
+        let query_result = mesh_pg_query(conn_handle, sql as *const MeshString, params);
+        let r = &*(query_result as *const crate::io::MeshResult);
         if r.tag != 0 {
             return query_result; // propagate query error
         }
 
         // Extract the rows list from the Ok result
         let rows_list = r.value;
-        let row_count = snow_list_length(rows_list);
+        let row_count = mesh_list_length(rows_list);
         let from_row: FromRowFn = std::mem::transmute(from_row_fn);
 
         // Map each row through the from_row callback
-        let mut result_list = snow_list_new();
+        let mut result_list = mesh_list_new();
         for i in 0..row_count {
-            let row = snow_list_get(rows_list, i);
+            let row = mesh_list_get(rows_list, i);
             let mapped = from_row(row as *mut u8);
-            result_list = snow_list_append(result_list, mapped as u64);
+            result_list = mesh_list_append(result_list, mapped as u64);
         }
 
         alloc_result(0, result_list as *mut u8) as *mut u8

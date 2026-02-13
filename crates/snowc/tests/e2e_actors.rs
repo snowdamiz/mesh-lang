@@ -1,6 +1,6 @@
-//! End-to-end integration tests for the Snow actor runtime.
+//! End-to-end integration tests for the Mesh actor runtime.
 //!
-//! Each test compiles a .snow program that exercises actor features,
+//! Each test compiles a .mpl program that exercises actor features,
 //! runs the resulting binary, and asserts the expected stdout output.
 //!
 //! Actor tests use generous timeouts since they involve concurrency.
@@ -9,26 +9,26 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::Duration;
 
-/// Helper: compile a Snow source and run the binary with a timeout.
+/// Helper: compile a Mesh source and run the binary with a timeout.
 /// Returns stdout on success. Panics on compilation failure or timeout.
 fn compile_and_run_with_timeout(source: &str, timeout_secs: u64) -> String {
     let temp_dir = tempfile::tempdir().expect("failed to create temp dir");
     let project_dir = temp_dir.path().join("project");
     std::fs::create_dir_all(&project_dir).expect("failed to create project dir");
 
-    let main_snow = project_dir.join("main.snow");
-    std::fs::write(&main_snow, source).expect("failed to write main.snow");
+    let main_mesh = project_dir.join("main.mpl");
+    std::fs::write(&main_mesh, source).expect("failed to write main.mpl");
 
-    // Build with snowc
-    let snowc = find_snowc();
-    let output = Command::new(&snowc)
+    // Build with meshc
+    let meshc = find_meshc();
+    let output = Command::new(&meshc)
         .args(["build", project_dir.to_str().unwrap()])
         .output()
-        .expect("failed to invoke snowc");
+        .expect("failed to invoke meshc");
 
     assert!(
         output.status.success(),
-        "snowc build failed:\nstdout: {}\nstderr: {}",
+        "meshc build failed:\nstdout: {}\nstderr: {}",
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr)
     );
@@ -58,21 +58,21 @@ fn compile_and_run_with_timeout(source: &str, timeout_secs: u64) -> String {
     }
 }
 
-/// Helper: compile a Snow source and expect compilation to fail.
+/// Helper: compile a Mesh source and expect compilation to fail.
 /// Returns the stderr output.
 fn compile_expect_error(source: &str) -> String {
     let temp_dir = tempfile::tempdir().expect("failed to create temp dir");
     let project_dir = temp_dir.path().join("project");
     std::fs::create_dir_all(&project_dir).expect("failed to create project dir");
 
-    let main_snow = project_dir.join("main.snow");
-    std::fs::write(&main_snow, source).expect("failed to write main.snow");
+    let main_mesh = project_dir.join("main.mpl");
+    std::fs::write(&main_mesh, source).expect("failed to write main.mpl");
 
-    let snowc = find_snowc();
-    let output = Command::new(&snowc)
+    let meshc = find_meshc();
+    let output = Command::new(&meshc)
         .args(["build", project_dir.to_str().unwrap()])
         .output()
-        .expect("failed to invoke snowc");
+        .expect("failed to invoke meshc");
 
     assert!(
         !output.status.success(),
@@ -142,8 +142,8 @@ fn read_fixture(name: &str) -> String {
         .unwrap_or_else(|e| panic!("failed to read fixture {}: {}", fixture_path.display(), e))
 }
 
-/// Find the snowc binary in the target directory.
-fn find_snowc() -> PathBuf {
+/// Find the meshc binary in the target directory.
+fn find_meshc() -> PathBuf {
     let mut path = std::env::current_exe()
         .expect("cannot find current exe")
         .parent()
@@ -154,13 +154,13 @@ fn find_snowc() -> PathBuf {
         path = path.parent().unwrap().to_path_buf();
     }
 
-    let snowc = path.join("snowc");
+    let meshc = path.join("meshc");
     assert!(
-        snowc.exists(),
-        "snowc binary not found at {}. Run `cargo build -p snowc` first.",
-        snowc.display()
+        meshc.exists(),
+        "meshc binary not found at {}. Run `cargo build -p meshc` first.",
+        meshc.display()
     );
-    snowc
+    meshc
 }
 
 // ── Actor E2E Tests ─────────────────────────────────────────────────────
@@ -169,7 +169,7 @@ fn find_snowc() -> PathBuf {
 /// An actor receives a message and prints a response.
 #[test]
 fn actors_basic() {
-    let source = read_fixture("actors_basic.snow");
+    let source = read_fixture("actors_basic.mpl");
     let output = compile_and_run_with_timeout(&source, 10);
     assert!(
         output.contains("actor received"),
@@ -187,7 +187,7 @@ fn actors_basic() {
 /// Multiple actors receive messages and process them.
 #[test]
 fn actors_messaging() {
-    let source = read_fixture("actors_messaging.snow");
+    let source = read_fixture("actors_messaging.mpl");
     let output = compile_and_run_with_timeout(&source, 10);
     // All three workers should print their done message
     let count = output.matches("worker done").count();
@@ -204,7 +204,7 @@ fn actors_messaging() {
 /// Both should complete.
 #[test]
 fn actors_preemption() {
-    let source = read_fixture("actors_preemption.snow");
+    let source = read_fixture("actors_preemption.mpl");
     let output = compile_and_run_with_timeout(&source, 10);
     assert!(
         output.contains("fast done"),
@@ -222,7 +222,7 @@ fn actors_preemption() {
 /// This tests the exit signal propagation through link().
 #[test]
 fn actors_linking() {
-    let source = read_fixture("actors_linking.snow");
+    let source = read_fixture("actors_linking.mpl");
     let output = compile_and_run_with_timeout(&source, 10);
     assert!(
         output.contains("link test done"),
@@ -235,7 +235,7 @@ fn actors_linking() {
 /// A program that tries to send the wrong type to a typed Pid should fail.
 #[test]
 fn actors_typed_pid() {
-    let source = read_fixture("actors_typed_pid.snow");
+    let source = read_fixture("actors_typed_pid.mpl");
     let output = compile_and_run_with_timeout(&source, 10);
     assert!(
         output.contains("typed pid ok"),
@@ -247,7 +247,7 @@ fn actors_typed_pid() {
 /// Test 6: 100K actor benchmark -- spawn 100K actors and verify they all respond.
 #[test]
 fn actors_100k() {
-    let source = read_fixture("actors_100k.snow");
+    let source = read_fixture("actors_100k.mpl");
     let output = compile_and_run_with_timeout(&source, 30);
     assert!(
         output.contains("100000 actors done"),
@@ -259,7 +259,7 @@ fn actors_100k() {
 /// Test 7: Terminate callback -- cleanup logic runs before actor exit.
 #[test]
 fn actors_terminate() {
-    let source = read_fixture("actors_terminate.snow");
+    let source = read_fixture("actors_terminate.mpl");
     let output = compile_and_run_with_timeout(&source, 10);
     assert!(
         output.contains("terminate test done"),
@@ -273,7 +273,7 @@ fn actors_terminate() {
 /// reclaimed at yield points so memory stays bounded.
 #[test]
 fn gc_bounded_memory() {
-    let source = read_fixture("gc_bounded_memory.snow");
+    let source = read_fixture("gc_bounded_memory.mpl");
     let output = compile_and_run_with_timeout(&source, 30);
     assert!(
         output.contains("gc bounded memory test done"),

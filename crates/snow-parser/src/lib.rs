@@ -1,6 +1,6 @@
-//! Snow parser: recursive descent parser producing a rowan-based CST.
+//! Mesh parser: recursive descent parser producing a rowan-based CST.
 //!
-//! This crate transforms the token stream from `snow-lexer` into a lossless
+//! This crate transforms the token stream from `mesh-lexer` into a lossless
 //! concrete syntax tree (CST) using the `rowan` library. The CST preserves
 //! all tokens including whitespace and comments, enabling future tooling
 //! (formatter, LSP) to work from the same tree.
@@ -16,7 +16,7 @@ pub use cst::{SyntaxElement, SyntaxNode, SyntaxToken};
 pub use error::ParseError;
 pub use syntax_kind::SyntaxKind;
 
-/// Result of parsing a Snow source file.
+/// Result of parsing a Mesh source file.
 ///
 /// Contains the green tree (the immutable, cheap-to-clone CST) and any
 /// parse errors encountered. With the current first-error-only strategy,
@@ -51,25 +51,25 @@ impl Parse {
     }
 }
 
-/// Parse a Snow source file into a CST.
+/// Parse a Mesh source file into a CST.
 ///
 /// This is the main entry point for the parser. It lexes the source,
 /// parses the token stream, and returns a [`Parse`] result containing
 /// the syntax tree and any errors.
 pub fn parse(source: &str) -> Parse {
-    let tokens = snow_lexer::Lexer::tokenize(source);
+    let tokens = mesh_lexer::Lexer::tokenize(source);
     let mut p = parser::Parser::new(tokens, source);
     parser::parse_source_file(&mut p);
     let (green, errors) = p.build_tree();
     Parse { green, errors }
 }
 
-/// Parse a single expression from Snow source code.
+/// Parse a single expression from Mesh source code.
 ///
 /// This is primarily useful for testing the expression parser in isolation.
 /// Wraps the expression in a SOURCE_FILE root node.
 pub fn parse_expr(source: &str) -> Parse {
-    let tokens = snow_lexer::Lexer::tokenize(source);
+    let tokens = mesh_lexer::Lexer::tokenize(source);
     let mut p = parser::Parser::new(tokens, source);
     let root = p.open();
     parser::expressions::expr(&mut p);
@@ -83,13 +83,13 @@ pub fn parse_expr(source: &str) -> Parse {
     Parse { green, errors }
 }
 
-/// Parse a block of Snow statements from source code.
+/// Parse a block of Mesh statements from source code.
 ///
 /// This parses the source as a block body (sequence of statements separated
 /// by newlines), wrapped in a SOURCE_FILE root node. Useful for testing
 /// let bindings, return expressions, and multi-statement blocks.
 pub fn parse_block(source: &str) -> Parse {
-    let tokens = snow_lexer::Lexer::tokenize(source);
+    let tokens = mesh_lexer::Lexer::tokenize(source);
     let mut p = parser::Parser::new(tokens, source);
     let root = p.open();
     parser::expressions::parse_block_body(&mut p);

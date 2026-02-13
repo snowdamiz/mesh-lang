@@ -1323,7 +1323,7 @@ mod tests {
         // Expected: Leaf { arm_index: 0, bindings: [] }
         let arms = vec![make_arm(MirPattern::Wildcard, None, int_body(1))];
 
-        let tree = compile_match(&MirType::Int, &arms, "test.snow", 1, &FxHashMap::default());
+        let tree = compile_match(&MirType::Int, &arms, "test.mpl", 1, &FxHashMap::default());
 
         match tree {
             DecisionTree::Leaf {
@@ -1349,7 +1349,7 @@ mod tests {
             var_expr("y", MirType::Int),
         )];
 
-        let tree = compile_match(&MirType::Int, &arms, "test.snow", 1, &FxHashMap::default());
+        let tree = compile_match(&MirType::Int, &arms, "test.mpl", 1, &FxHashMap::default());
 
         match tree {
             DecisionTree::Leaf {
@@ -1386,7 +1386,7 @@ mod tests {
             make_arm(MirPattern::Wildcard, None, string_body("other")),
         ];
 
-        let tree = compile_match(&MirType::Int, &arms, "test.snow", 1, &FxHashMap::default());
+        let tree = compile_match(&MirType::Int, &arms, "test.mpl", 1, &FxHashMap::default());
 
         // Should be Test(Root, 1, Leaf(0), Test(Root, 2, Leaf(1), Leaf(2)))
         match &tree {
@@ -1458,7 +1458,7 @@ mod tests {
             ),
         ];
 
-        let tree = compile_match(&MirType::Bool, &arms, "test.snow", 1, &FxHashMap::default());
+        let tree = compile_match(&MirType::Bool, &arms, "test.mpl", 1, &FxHashMap::default());
 
         match &tree {
             DecisionTree::Test {
@@ -1535,7 +1535,7 @@ mod tests {
             ),
         ];
 
-        let tree = compile_match(&MirType::SumType("Shape".to_string()), &arms, "test.snow", 1, &FxHashMap::default());
+        let tree = compile_match(&MirType::SumType("Shape".to_string()), &arms, "test.mpl", 1, &FxHashMap::default());
 
         match &tree {
             DecisionTree::Switch {
@@ -1630,7 +1630,7 @@ mod tests {
             MirType::SumType("Option".to_string()),
             MirType::Int,
         ]);
-        let tree = compile_match(&scrutinee_ty, &arms, "test.snow", 1, &FxHashMap::default());
+        let tree = compile_match(&scrutinee_ty, &arms, "test.mpl", 1, &FxHashMap::default());
 
         // The tree should switch on TupleField(Root, 0) for constructor tag
         match &tree {
@@ -1703,7 +1703,7 @@ mod tests {
             make_arm(MirPattern::Wildcard, None, string_body("big")),
         ];
 
-        let tree = compile_match(&MirType::Int, &arms, "test.snow", 1, &FxHashMap::default());
+        let tree = compile_match(&MirType::Int, &arms, "test.mpl", 1, &FxHashMap::default());
 
         // Should be Test(Root, 1, Leaf(0), Test(Root, 2, Leaf(0), Leaf(1)))
         match &tree {
@@ -1765,7 +1765,7 @@ mod tests {
             make_arm(MirPattern::Wildcard, None, string_body("non-positive")),
         ];
 
-        let tree = compile_match(&MirType::Int, &arms, "test.snow", 1, &FxHashMap::default());
+        let tree = compile_match(&MirType::Int, &arms, "test.mpl", 1, &FxHashMap::default());
 
         match &tree {
             DecisionTree::Guard {
@@ -1813,7 +1813,7 @@ mod tests {
             string_body("positive"),
         )];
 
-        let tree = compile_match(&MirType::Int, &arms, "test.snow", 1, &FxHashMap::default());
+        let tree = compile_match(&MirType::Int, &arms, "test.mpl", 1, &FxHashMap::default());
 
         match &tree {
             DecisionTree::Guard {
@@ -1860,7 +1860,7 @@ mod tests {
         let tree = compile_match(
             &MirType::SumType("Option".to_string()),
             &arms,
-            "test.snow",
+            "test.mpl",
             1,
             &FxHashMap::default(),
         );
@@ -1924,7 +1924,7 @@ mod tests {
         ];
 
         let scrutinee_ty = MirType::Tuple(vec![MirType::Int, MirType::Int]);
-        let tree = compile_match(&scrutinee_ty, &arms, "test.snow", 1, &FxHashMap::default());
+        let tree = compile_match(&scrutinee_ty, &arms, "test.mpl", 1, &FxHashMap::default());
 
         // Should test tuple fields, not Root
         fn contains_tuple_field_test(tree: &DecisionTree) -> bool {
@@ -1984,7 +1984,7 @@ mod tests {
             make_arm(MirPattern::Wildcard, None, int_body(0)),
         ];
 
-        let tree = compile_match(&MirType::String, &arms, "test.snow", 1, &FxHashMap::default());
+        let tree = compile_match(&MirType::String, &arms, "test.mpl", 1, &FxHashMap::default());
 
         match &tree {
             DecisionTree::Test {
@@ -2035,7 +2035,7 @@ mod tests {
             make_arm(MirPattern::Wildcard, None, string_body("zero")),
         ];
 
-        let tree = compile_match(&MirType::Int, &arms, "test.snow", 1, &FxHashMap::default());
+        let tree = compile_match(&MirType::Int, &arms, "test.mpl", 1, &FxHashMap::default());
 
         // Should be Guard(pos_guard, Leaf(0), Guard(neg_guard, Leaf(1), Leaf(2)))
         match &tree {
@@ -2119,7 +2119,7 @@ mod tests {
         let tree = compile_match(
             &MirType::SumType("Color".to_string()),
             &arms,
-            "test.snow",
+            "test.mpl",
             1,
             &FxHashMap::default(),
         );
@@ -2212,7 +2212,7 @@ mod tests {
         let tree = compile_match(
             &MirType::SumType("Option".to_string()),
             &arms,
-            "test.snow",
+            "test.mpl",
             1,
             &sum_type_defs,
         );
@@ -2292,7 +2292,7 @@ mod tests {
         let tree = compile_match(
             &MirType::SumType("Option".to_string()),
             &arms,
-            "test.snow",
+            "test.mpl",
             1,
             &sum_type_defs,
         );

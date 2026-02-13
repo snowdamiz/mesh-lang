@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 
-/// Represents the contents of a snow.lock file.
+/// Represents the contents of a mesh.lock file.
 ///
 /// The lockfile captures the exact resolved state of all dependencies,
 /// ensuring deterministic builds. Packages are always sorted by name.
@@ -66,7 +66,7 @@ mod tests {
     #[test]
     fn lockfile_round_trip() {
         let dir = TempDir::new().unwrap();
-        let lock_path = dir.path().join("snow.lock");
+        let lock_path = dir.path().join("mesh.lock");
 
         let lockfile = Lockfile::new(vec![
             LockedPackage {
@@ -131,7 +131,7 @@ mod tests {
     #[test]
     fn lockfile_empty() {
         let dir = TempDir::new().unwrap();
-        let lock_path = dir.path().join("snow.lock");
+        let lock_path = dir.path().join("mesh.lock");
 
         let lockfile = Lockfile::new(vec![]);
         assert_eq!(lockfile.version, 1);

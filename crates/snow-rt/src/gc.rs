@@ -1,11 +1,11 @@
-//! GC allocation entry points for Snow runtime.
+//! GC allocation entry points for Mesh runtime.
 //!
 //! Two allocation paths exist:
 //!
-//! - **Global arena** (`snow_gc_alloc`): Simple bump allocator for non-actor
+//! - **Global arena** (`mesh_gc_alloc`): Simple bump allocator for non-actor
 //!   contexts (main thread, startup). No object headers, no collection.
 //!
-//! - **Per-actor heap** (`snow_gc_alloc_actor`): GcHeader-aware allocator that
+//! - **Per-actor heap** (`mesh_gc_alloc_actor`): GcHeader-aware allocator that
 //!   prepends a 16-byte header to every allocation. Supports mark-sweep GC
 //!   with free-list reuse. Falls back to the global arena when no actor
 //!   context is available.
@@ -93,7 +93,7 @@ static ARENA: Mutex<Option<Arena>> = Mutex::new(None);
 ///
 /// This function is safe to call multiple times; subsequent calls are no-ops.
 #[no_mangle]
-pub extern "C" fn snow_rt_init() {
+pub extern "C" fn mesh_rt_init() {
     let mut guard = ARENA.lock().unwrap();
     if guard.is_none() {
         let mut arena = Arena::new();
@@ -116,7 +116,7 @@ pub extern "C" fn snow_rt_init() {
 /// The returned pointer must not be freed by the caller. The arena owns
 /// the memory.
 #[no_mangle]
-pub extern "C" fn snow_gc_alloc(size: u64, align: u64) -> *mut u8 {
+pub extern "C" fn mesh_gc_alloc(size: u64, align: u64) -> *mut u8 {
     let mut guard = ARENA.lock().unwrap();
     let arena = guard.get_or_insert_with(|| {
         let mut a = Arena::new();
@@ -141,13 +141,13 @@ pub extern "C" fn snow_gc_alloc(size: u64, align: u64) -> *mut u8 {
 /// The returned pointer must not be freed by the caller. The actor's heap
 /// owns the memory.
 #[no_mangle]
-pub extern "C" fn snow_gc_alloc_actor(size: u64, align: u64) -> *mut u8 {
+pub extern "C" fn mesh_gc_alloc_actor(size: u64, align: u64) -> *mut u8 {
     // Try to allocate from the current actor's heap.
     if let Some(ptr) = try_alloc_from_actor_heap(size as usize, align as usize) {
         return ptr;
     }
     // Fallback to global arena.
-    snow_gc_alloc(size, align)
+    mesh_gc_alloc(size, align)
 }
 
 /// Attempt to allocate from the current actor's per-actor heap.
@@ -170,7 +170,7 @@ fn try_alloc_from_actor_heap(size: usize, align: usize) -> Option<*mut u8> {
 /// Trigger garbage collection on the current actor's heap.
 ///
 /// Explicitly forces a mark-sweep GC cycle on the calling actor's heap,
-/// regardless of heap pressure. This can be called from Snow code via
+/// regardless of heap pressure. This can be called from Mesh code via
 /// `System.gc()` or similar intrinsic.
 ///
 /// The function:
@@ -181,7 +181,7 @@ fn try_alloc_from_actor_heap(size: usize, align: usize) -> Option<*mut u8> {
 /// No-op if called outside of an actor context or if GC is already in
 /// progress (re-entrancy guard).
 #[no_mangle]
-pub extern "C" fn snow_gc_collect() {
+pub extern "C" fn mesh_gc_collect() {
     use crate::actor::stack;
     use crate::actor::GLOBAL_SCHEDULER;
 
@@ -260,16 +260,16 @@ mod tests {
 
     #[test]
     fn test_gc_alloc_extern() {
-        snow_rt_init();
-        let ptr = snow_gc_alloc(64, 8);
+        mesh_rt_init();
+        let ptr = mesh_gc_alloc(64, 8);
         assert!(!ptr.is_null());
     }
 
     #[test]
-    fn test_snow_gc_collect_no_crash_outside_actor() {
+    fn test_mesh_gc_collect_no_crash_outside_actor() {
         // When called outside an actor context (no current PID), should be a
         // no-op without crashing.
-        snow_gc_collect();
+        mesh_gc_collect();
     }
 
     #[test]

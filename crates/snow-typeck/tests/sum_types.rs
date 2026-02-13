@@ -9,16 +9,16 @@
 //! - Or-patterns and as-patterns
 //! - Error cases: unknown variants, binding mismatches
 
-use snow_typeck::error::TypeError;
-use snow_typeck::ty::{Ty, TyCon};
-use snow_typeck::TypeckResult;
+use mesh_typeck::error::TypeError;
+use mesh_typeck::ty::{Ty, TyCon};
+use mesh_typeck::TypeckResult;
 
 // ── Helpers ────────────────────────────────────────────────────────────
 
-/// Parse Snow source and run the type checker.
+/// Parse Mesh source and run the type checker.
 fn check_source(src: &str) -> TypeckResult {
-    let parse = snow_parser::parse(src);
-    snow_typeck::check(&parse)
+    let parse = mesh_parser::parse(src);
+    mesh_typeck::check(&parse)
 }
 
 /// Assert that the result has no errors and the final expression type

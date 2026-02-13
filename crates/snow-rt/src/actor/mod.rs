@@ -1,11 +1,11 @@
-//! Actor runtime module for Snow.
+//! Actor runtime module for Mesh.
 //!
 //! Provides the core actor infrastructure: Process Control Blocks, M:N
 //! work-stealing scheduler, and stackful coroutine management via corosensei.
 //!
 //! ## Architecture
 //!
-//! Snow actors are lightweight processes multiplexed across OS threads:
+//! Mesh actors are lightweight processes multiplexed across OS threads:
 //!
 //! - **Process** (`process.rs`): The PCB holding PID, state, priority,
 //!   reductions, mailbox, links, and terminate callback.
@@ -17,18 +17,18 @@
 //! ## extern "C" ABI
 //!
 //! The following functions form the actor runtime ABI called by compiled
-//! Snow programs:
+//! Mesh programs:
 //!
-//! - `snow_rt_init_actor(num_schedulers)` -- initialize the scheduler
-//! - `snow_actor_spawn(fn_ptr, args, args_size, priority)` -- spawn an actor
-//! - `snow_actor_self()` -- get current actor's PID
-//! - `snow_reduction_check()` -- decrement reductions, yield if exhausted
-//! - `snow_actor_send(target_pid, msg_ptr, msg_size)` -- send message to actor
-//! - `snow_actor_receive(timeout_ms)` -- receive message from mailbox
-//! - `snow_actor_link(target_pid)` -- bidirectional link to target actor
-//! - `snow_actor_set_terminate(pid, callback_fn_ptr)` -- set terminate callback
-//! - `snow_actor_register(name_ptr, name_len)` -- register current actor by name
-//! - `snow_actor_whereis(name_ptr, name_len)` -- look up actor PID by name
+//! - `mesh_rt_init_actor(num_schedulers)` -- initialize the scheduler
+//! - `mesh_actor_spawn(fn_ptr, args, args_size, priority)` -- spawn an actor
+//! - `mesh_actor_self()` -- get current actor's PID
+//! - `mesh_reduction_check()` -- decrement reductions, yield if exhausted
+//! - `mesh_actor_send(target_pid, msg_ptr, msg_size)` -- send message to actor
+//! - `mesh_actor_receive(timeout_ms)` -- receive message from mailbox
+//! - `mesh_actor_link(target_pid)` -- bidirectional link to target actor
+//! - `mesh_actor_set_terminate(pid, callback_fn_ptr)` -- set terminate callback
+//! - `mesh_actor_register(name_ptr, name_len)` -- register current actor by name
+//! - `mesh_actor_whereis(name_ptr, name_len)` -- look up actor PID by name
 
 pub mod child_spec;
 pub mod heap;
@@ -60,7 +60,7 @@ use std::sync::OnceLock;
 // Global scheduler instance
 // ---------------------------------------------------------------------------
 
-/// The global scheduler, initialized by `snow_rt_init_actor()`.
+/// The global scheduler, initialized by `mesh_rt_init_actor()`.
 ///
 /// The Scheduler itself uses interior mutability (Mutex on workers, Arc on
 /// shared state) so it can be shared without an outer Mutex. This prevents
@@ -70,11 +70,11 @@ pub(crate) static GLOBAL_SCHEDULER: OnceLock<Scheduler> = OnceLock::new();
 
 /// Get a reference to the global scheduler.
 ///
-/// Panics if the scheduler has not been initialized via `snow_rt_init_actor()`.
+/// Panics if the scheduler has not been initialized via `mesh_rt_init_actor()`.
 pub(crate) fn global_scheduler() -> &'static Scheduler {
     GLOBAL_SCHEDULER
         .get()
-        .expect("actor scheduler not initialized -- call snow_rt_init_actor() first")
+        .expect("actor scheduler not initialized -- call mesh_rt_init_actor() first")
 }
 
 // ---------------------------------------------------------------------------
@@ -83,33 +83,33 @@ pub(crate) fn global_scheduler() -> &'static Scheduler {
 
 /// Initialize the actor scheduler.
 ///
-/// Must be called before any `snow_actor_spawn()` calls. Sets up the global
+/// Must be called before any `mesh_actor_spawn()` calls. Sets up the global
 /// scheduler with the specified number of worker threads and starts them
 /// in the background.
 ///
 /// Also creates a "main thread process" entry in the process table, giving the
-/// main thread a PID and mailbox. This allows `snow_service_call` to work from
+/// main thread a PID and mailbox. This allows `mesh_service_call` to work from
 /// the main thread (non-coroutine context) by using spin-wait instead of yield.
 ///
 /// Worker threads are started immediately so that actors spawned during
-/// `snow_main()` begin executing right away. This is critical for service
+/// `mesh_main()` begin executing right away. This is critical for service
 /// calls which need the service actor to be running to process the request.
 ///
 /// If `num_schedulers` is 0, defaults to the number of available CPU cores.
 ///
 /// This function is idempotent -- subsequent calls are no-ops.
 #[no_mangle]
-pub extern "C" fn snow_rt_init_actor(num_schedulers: u32) {
+pub extern "C" fn mesh_rt_init_actor(num_schedulers: u32) {
     GLOBAL_SCHEDULER.get_or_init(|| {
         let sched = Scheduler::new(num_schedulers);
 
         // Create a process entry for the main thread so it has a PID and mailbox.
-        // This enables snow_service_call to work from non-coroutine context.
+        // This enables mesh_service_call to work from non-coroutine context.
         let main_pid = sched.create_main_process();
         stack::set_current_pid(main_pid);
 
         // Start worker threads in the background immediately so that actors
-        // spawned during snow_main() can begin executing right away.
+        // spawned during mesh_main() can begin executing right away.
         sched.start();
 
         sched
@@ -128,7 +128,7 @@ pub extern "C" fn snow_rt_init_actor(num_schedulers: u32) {
 /// - `args_size`: size of the arguments in bytes
 /// - `priority`: 0 = High, 1 = Normal, 2 = Low
 #[no_mangle]
-pub extern "C" fn snow_actor_spawn(
+pub extern "C" fn mesh_actor_spawn(
     fn_ptr: *const u8,
     args: *const u8,
     args_size: u64,
@@ -141,9 +141,9 @@ pub extern "C" fn snow_actor_spawn(
 /// Get the PID of the currently running actor.
 ///
 /// Returns the PID as a `u64`. Returns `u64::MAX` if called outside of an
-/// actor context (should not happen in compiled Snow programs).
+/// actor context (should not happen in compiled Mesh programs).
 #[no_mangle]
-pub extern "C" fn snow_actor_self() -> u64 {
+pub extern "C" fn mesh_actor_self() -> u64 {
     stack::get_current_pid()
         .map(|pid| pid.as_u64())
         .unwrap_or(u64::MAX)
@@ -151,13 +151,13 @@ pub extern "C" fn snow_actor_self() -> u64 {
 
 /// Decrement the current actor's reduction counter and yield if exhausted.
 ///
-/// This function is inserted by the Snow compiler at loop back-edges and
+/// This function is inserted by the Mesh compiler at loop back-edges and
 /// function call sites. When the reduction counter reaches zero, the actor
 /// yields its timeslice to the scheduler, which can then run other actors.
 ///
 /// The reduction counter is reset to `DEFAULT_REDUCTIONS` (4000) after yield.
 #[no_mangle]
-pub extern "C" fn snow_reduction_check() {
+pub extern "C" fn mesh_reduction_check() {
     // Get the current actor's process from the process table.
     // We decrement a thread-local shadow counter to avoid locking on every
     // reduction check. The actual Process.reductions field is updated by
@@ -258,7 +258,7 @@ fn try_trigger_gc() {
 /// of the message data (if available), or 0 for empty messages. Future phases
 /// will use compiler-generated type tags.
 #[no_mangle]
-pub extern "C" fn snow_actor_send(target_pid: u64, msg_ptr: *const u8, msg_size: u64) {
+pub extern "C" fn mesh_actor_send(target_pid: u64, msg_ptr: *const u8, msg_size: u64) {
     // Locality check: upper 16 bits == 0 means local PID.
     // Single shift+compare -- essentially free on modern CPUs.
     if target_pid >> 48 == 0 {
@@ -268,7 +268,7 @@ pub extern "C" fn snow_actor_send(target_pid: u64, msg_ptr: *const u8, msg_size:
     }
 }
 
-/// Local send path -- the original snow_actor_send body, unchanged.
+/// Local send path -- the original mesh_actor_send body, unchanged.
 ///
 /// Deep-copies the message bytes into a `MessageBuffer`, pushes it into
 /// the target actor's FIFO mailbox, and wakes the target if it is Waiting.
@@ -357,11 +357,11 @@ fn dist_send(target_pid: u64, msg_ptr: *const u8, msg_size: u64) {
 
 /// Send a message to a named process on a remote node.
 ///
-/// Called from compiled Snow code for `send({name, node}, msg)` syntax.
+/// Called from compiled Mesh code for `send({name, node}, msg)` syntax.
 /// If the target node is ourselves, performs a local registry lookup + send.
 /// Silently drops if node not started, name not found, or session unavailable.
 #[no_mangle]
-pub extern "C" fn snow_actor_send_named(
+pub extern "C" fn mesh_actor_send_named(
     name_ptr: *const u8,
     name_len: u64,
     node_ptr: *const u8,
@@ -434,7 +434,7 @@ pub extern "C" fn snow_actor_send_named(
 /// The returned pointer points to a layout: `[u64 type_tag, u64 data_len, u8... data]`
 /// allocated in the current actor's heap.
 #[no_mangle]
-pub extern "C" fn snow_actor_receive(timeout_ms: i64) -> *const u8 {
+pub extern "C" fn mesh_actor_receive(timeout_ms: i64) -> *const u8 {
     let my_pid = match stack::get_current_pid() {
         Some(pid) => pid,
         None => return std::ptr::null(),
@@ -548,7 +548,7 @@ pub extern "C" fn snow_actor_receive(timeout_ms: i64) -> *const u8 {
 /// so the scheduler continues to resume it. On each resume, checks if the
 /// deadline has passed. Does NOT consume messages from the mailbox.
 #[no_mangle]
-pub extern "C" fn snow_timer_sleep(ms: i64) {
+pub extern "C" fn mesh_timer_sleep(ms: i64) {
     if ms <= 0 {
         return;
     }
@@ -582,7 +582,7 @@ pub extern "C" fn snow_timer_sleep(ms: i64) {
 /// The message bytes are deep-copied at call time so the caller's stack frame
 /// can be freed safely.
 #[no_mangle]
-pub extern "C" fn snow_timer_send_after(target_pid: i64, ms: i64, msg_ptr: *const u8, msg_size: i64) {
+pub extern "C" fn mesh_timer_send_after(target_pid: i64, ms: i64, msg_ptr: *const u8, msg_size: i64) {
     // Deep-copy message bytes before spawning thread
     let data = if msg_ptr.is_null() || msg_size <= 0 {
         Vec::new()
@@ -596,8 +596,8 @@ pub extern "C" fn snow_timer_send_after(target_pid: i64, ms: i64, msg_ptr: *cons
 
     std::thread::spawn(move || {
         std::thread::sleep(delay);
-        // Reuse snow_actor_send: construct message and deliver
-        snow_actor_send(pid, data.as_ptr(), data.len() as u64);
+        // Reuse mesh_actor_send: construct message and deliver
+        mesh_actor_send(pid, data.as_ptr(), data.len() as u64);
     });
 }
 
@@ -658,7 +658,7 @@ pub(crate) fn copy_msg_to_actor_heap(
 ///
 /// - `target_pid`: the PID of the actor to link with
 #[no_mangle]
-pub extern "C" fn snow_actor_link(target_pid: u64) {
+pub extern "C" fn mesh_actor_link(target_pid: u64) {
     let my_pid = match stack::get_current_pid() {
         Some(pid) => pid,
         None => return,
@@ -693,7 +693,7 @@ pub extern "C" fn snow_actor_link(target_pid: u64) {
 /// - `callback_fn_ptr`: pointer to the terminate callback function
 ///   with signature `extern "C" fn(state_ptr: *const u8, reason_ptr: *const u8)`
 #[no_mangle]
-pub extern "C" fn snow_actor_set_terminate(pid: u64, callback_fn_ptr: *const u8) {
+pub extern "C" fn mesh_actor_set_terminate(pid: u64, callback_fn_ptr: *const u8) {
     if callback_fn_ptr.is_null() {
         return;
     }
@@ -710,23 +710,23 @@ pub extern "C" fn snow_actor_set_terminate(pid: u64, callback_fn_ptr: *const u8)
 
 /// Signal the scheduler to shut down and wait for all workers to finish.
 ///
-/// This function must be called after `snow_main()` returns. It signals
+/// This function must be called after `mesh_main()` returns. It signals
 /// shutdown (allowing workers to terminate Waiting actors) and joins the
-/// worker threads that were started by `snow_rt_init_actor()`.
+/// worker threads that were started by `mesh_rt_init_actor()`.
 ///
 /// The scheduler shuts down when the active process count reaches zero
 /// (i.e., all spawned actors have completed or been force-terminated).
 #[no_mangle]
-pub extern "C" fn snow_rt_run_scheduler() {
+pub extern "C" fn mesh_rt_run_scheduler() {
     // Get the main thread's PID before clearing it.
     let main_pid = stack::get_current_pid();
 
-    // Clear the main thread's PID now that snow_main has returned.
+    // Clear the main thread's PID now that mesh_main has returned.
     stack::clear_current_pid();
 
     let sched = GLOBAL_SCHEDULER
         .get()
-        .expect("actor scheduler not initialized -- call snow_rt_init_actor() first");
+        .expect("actor scheduler not initialized -- call mesh_rt_init_actor() first");
 
     // Mark the main thread process as Exited so the scheduler doesn't
     // count it as a Ready/Running process during shutdown.
@@ -752,7 +752,7 @@ pub extern "C" fn snow_rt_run_scheduler() {
 /// - `name_ptr`: pointer to UTF-8 name bytes
 /// - `name_len`: length of the name in bytes
 #[no_mangle]
-pub extern "C" fn snow_actor_register(name_ptr: *const u8, name_len: u64) -> u64 {
+pub extern "C" fn mesh_actor_register(name_ptr: *const u8, name_len: u64) -> u64 {
     let my_pid = match stack::get_current_pid() {
         Some(pid) => pid,
         None => return 1,
@@ -784,7 +784,7 @@ pub extern "C" fn snow_actor_register(name_ptr: *const u8, name_len: u64) -> u64
 /// - `name_ptr`: pointer to UTF-8 name bytes
 /// - `name_len`: length of the name in bytes
 #[no_mangle]
-pub extern "C" fn snow_actor_whereis(name_ptr: *const u8, name_len: u64) -> u64 {
+pub extern "C" fn mesh_actor_whereis(name_ptr: *const u8, name_len: u64) -> u64 {
     if name_ptr.is_null() || name_len == 0 {
         return 0;
     }
@@ -832,7 +832,7 @@ pub extern "C" fn snow_actor_whereis(name_ptr: *const u8, name_len: u64) -> u64 
 ///
 /// Returns the supervisor PID as `u64`, or `u64::MAX` on error.
 #[no_mangle]
-pub extern "C" fn snow_supervisor_start(
+pub extern "C" fn mesh_supervisor_start(
     config_ptr: *const u8,
     config_size: u64,
 ) -> u64 {
@@ -870,7 +870,7 @@ pub extern "C" fn snow_supervisor_start(
 
     // Spawn the supervisor as a normal actor (no-op entry -- it doesn't run
     // a coroutine. The supervisor logic is driven externally by the compiled
-    // Snow program's receive loop or by the runtime's supervisor_entry).
+    // Mesh program's receive loop or by the runtime's supervisor_entry).
     extern "C" fn supervisor_noop(_args: *const u8) {}
     let sup_pid = sched.spawn(supervisor_noop as *const u8, std::ptr::null(), 0, 1);
 
@@ -901,7 +901,7 @@ pub extern "C" fn snow_supervisor_start(
 ///
 /// Returns the child PID as `u64`, or `u64::MAX` on error.
 #[no_mangle]
-pub extern "C" fn snow_supervisor_start_child(
+pub extern "C" fn mesh_supervisor_start_child(
     sup_pid: u64,
     args_ptr: *const u8,
     args_size: u64,
@@ -953,7 +953,7 @@ pub extern "C" fn snow_supervisor_start_child(
 ///
 /// Returns 0 on success, 1 on failure.
 #[no_mangle]
-pub extern "C" fn snow_supervisor_terminate_child(
+pub extern "C" fn mesh_supervisor_terminate_child(
     sup_pid: u64,
     child_pid: u64,
 ) -> u64 {
@@ -984,7 +984,7 @@ pub extern "C" fn snow_supervisor_terminate_child(
 /// Returns the number of currently running children, or 0 if the
 /// supervisor PID is not found.
 #[no_mangle]
-pub extern "C" fn snow_supervisor_count_children(sup_pid: u64) -> u64 {
+pub extern "C" fn mesh_supervisor_count_children(sup_pid: u64) -> u64 {
     let sup_pid = ProcessId(sup_pid);
 
     match supervisor::get_supervisor_state(sup_pid) {
@@ -1000,7 +1000,7 @@ pub extern "C" fn snow_supervisor_count_children(sup_pid: u64) -> u64 {
 /// causing this process to crash. Used by supervisors to monitor
 /// children, and by regular actors that want to handle linked exits.
 #[no_mangle]
-pub extern "C" fn snow_actor_trap_exit() {
+pub extern "C" fn mesh_actor_trap_exit() {
     let my_pid = match stack::get_current_pid() {
         Some(pid) => pid,
         None => return,
@@ -1025,7 +1025,7 @@ pub extern "C" fn snow_actor_trap_exit() {
 /// For other reasons: if the target has trap_exit enabled, the signal is
 /// delivered as a message. Otherwise, the target is terminated immediately.
 #[no_mangle]
-pub extern "C" fn snow_actor_exit(target_pid: u64, reason_tag: u8) {
+pub extern "C" fn mesh_actor_exit(target_pid: u64, reason_tag: u8) {
     let sched = global_scheduler();
     let pid = ProcessId(target_pid);
 
@@ -1082,7 +1082,7 @@ pub extern "C" fn snow_actor_exit(target_pid: u64, reason_tag: u8) {
 ///
 /// Returns a unique monitor reference (u64) that can be used to demonitor.
 #[no_mangle]
-pub extern "C" fn snow_process_monitor(target_pid: u64) -> u64 {
+pub extern "C" fn mesh_process_monitor(target_pid: u64) -> u64 {
     let my_pid = match stack::get_current_pid() {
         Some(pid) => pid,
         None => return 0,
@@ -1180,7 +1180,7 @@ fn send_dist_monitor(from_pid: ProcessId, to_pid: ProcessId, monitor_ref: u64) -
 ///
 /// Returns 0 on success, 1 on failure (monitor not found).
 #[no_mangle]
-pub extern "C" fn snow_process_demonitor(monitor_ref: u64) -> u64 {
+pub extern "C" fn mesh_process_demonitor(monitor_ref: u64) -> u64 {
     let my_pid = match stack::get_current_pid() {
         Some(pid) => pid,
         None => return 1,
@@ -1240,7 +1240,7 @@ fn deliver_down_immediately(
 ///
 /// Returns 0 on success, 1 on failure.
 #[no_mangle]
-pub extern "C" fn snow_node_monitor(node_ptr: *const u8, node_len: u64) -> u64 {
+pub extern "C" fn mesh_node_monitor(node_ptr: *const u8, node_len: u64) -> u64 {
     let my_pid = match stack::get_current_pid() {
         Some(pid) => pid,
         None => return 1,
@@ -1288,7 +1288,7 @@ pub extern "C" fn snow_node_monitor(node_ptr: *const u8, node_len: u64) -> u64 {
 /// - `name_len`: length of the name in bytes
 /// - `pid`: raw u64 PID value
 #[no_mangle]
-pub extern "C" fn snow_global_register(
+pub extern "C" fn mesh_global_register(
     name_ptr: *const u8,
     name_len: u64,
     pid: u64,
@@ -1334,7 +1334,7 @@ pub extern "C" fn snow_global_register(
 /// - `name_ptr`: pointer to UTF-8 name bytes
 /// - `name_len`: length of the name in bytes
 #[no_mangle]
-pub extern "C" fn snow_global_whereis(
+pub extern "C" fn mesh_global_whereis(
     name_ptr: *const u8,
     name_len: u64,
 ) -> u64 {
@@ -1364,7 +1364,7 @@ pub extern "C" fn snow_global_whereis(
 /// - `name_ptr`: pointer to UTF-8 name bytes
 /// - `name_len`: length of the name in bytes
 #[no_mangle]
-pub extern "C" fn snow_global_unregister(
+pub extern "C" fn mesh_global_unregister(
     name_ptr: *const u8,
     name_len: u64,
 ) -> u64 {
@@ -1593,7 +1593,7 @@ mod tests {
         let sched = Scheduler::new(1);
         let target_pid = create_test_process(&sched);
 
-        // Manually push a message (simulating snow_actor_send logic).
+        // Manually push a message (simulating mesh_actor_send logic).
         let data = vec![42u8, 43, 44, 45];
         let buffer = MessageBuffer::new(data.clone(), 99);
         let msg = Message { buffer };
@@ -1638,7 +1638,7 @@ mod tests {
         // Set process to Waiting.
         proc_arc.lock().state = ProcessState::Waiting;
 
-        // Push message and wake (simulating snow_actor_send).
+        // Push message and wake (simulating mesh_actor_send).
         let buffer = MessageBuffer::new(vec![1, 2, 3], 1);
         let msg = Message { buffer };
         {
@@ -1688,11 +1688,11 @@ mod tests {
 
     #[test]
     fn test_receive_returns_null_outside_actor() {
-        // snow_actor_receive requires a current PID. Without one, returns null.
+        // mesh_actor_receive requires a current PID. Without one, returns null.
         // Note: we can't easily test this through the extern "C" fn because
         // it requires GLOBAL_SCHEDULER. Test the logic instead.
         assert!(stack::get_current_pid().is_none());
-        // If we called snow_actor_receive here, it would return null because
+        // If we called mesh_actor_receive here, it would return null because
         // there's no current PID set.
     }
 

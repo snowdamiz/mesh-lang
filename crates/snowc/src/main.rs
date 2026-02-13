@@ -1,13 +1,13 @@
-//! The Snow compiler CLI.
+//! The Mesh compiler CLI.
 //!
-//! Provides the `snowc` command with the following subcommands:
+//! Provides the `meshc` command with the following subcommands:
 //!
-//! - `snowc build <dir>` - Compile a Snow project to a native binary
-//! - `snowc init <name>` - Initialize a new Snow project
-//! - `snowc deps [dir]` - Resolve and fetch dependencies
-//! - `snowc fmt <path>` - Format Snow source files in-place
-//! - `snowc repl` - Start an interactive REPL with LLVM JIT
-//! - `snowc lsp` - Start the LSP server (communicates via stdin/stdout)
+//! - `meshc build <dir>` - Compile a Mesh project to a native binary
+//! - `meshc init <name>` - Initialize a new Mesh project
+//! - `meshc deps [dir]` - Resolve and fetch dependencies
+//! - `meshc fmt <path>` - Format Mesh source files in-place
+//! - `meshc repl` - Start an interactive REPL with LLVM JIT
+//! - `meshc lsp` - Start the LSP server (communicates via stdin/stdout)
 //!
 //! Options:
 //! - `--opt-level` - Optimization level (0 = debug, 2 = release)
@@ -24,10 +24,10 @@ use std::process;
 
 use clap::{Parser, Subcommand};
 
-use snow_typeck::diagnostics::DiagnosticOptions;
+use mesh_typeck::diagnostics::DiagnosticOptions;
 
 #[derive(Parser)]
-#[command(name = "snowc", version, about = "The Snow compiler")]
+#[command(name = "meshc", version, about = "The Mesh compiler")]
 struct Cli {
     #[command(subcommand)]
     command: Commands,
@@ -35,9 +35,9 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Compile a Snow project to a native binary
+    /// Compile a Mesh project to a native binary
     Build {
-        /// Path to the project directory (must contain main.snow)
+        /// Path to the project directory (must contain main.mpl)
         dir: PathBuf,
 
         /// Optimization level (0 = debug, 2 = release)
@@ -64,7 +64,7 @@ enum Commands {
         #[arg(long = "no-color")]
         no_color: bool,
     },
-    /// Initialize a new Snow project
+    /// Initialize a new Mesh project
     Init {
         /// Project name (creates directory with this name)
         name: String,
@@ -75,9 +75,9 @@ enum Commands {
         #[arg(default_value = ".")]
         dir: PathBuf,
     },
-    /// Format Snow source files
+    /// Format Mesh source files
     Fmt {
-        /// Path to a Snow source file (or directory to format all .snow files)
+        /// Path to a Mesh source file (or directory to format all .mpl files)
         path: PathBuf,
 
         /// Check if files are formatted (exit 1 if not, don't modify)
@@ -137,7 +137,7 @@ fn main() {
         }
         Commands::Init { name } => {
             let dir = std::env::current_dir().unwrap_or_default();
-            if let Err(e) = snow_pkg::scaffold_project(&name, &dir) {
+            if let Err(e) = mesh_pkg::scaffold_project(&name, &dir) {
                 eprintln!("error: {}", e);
                 process::exit(1);
             }
@@ -154,7 +154,7 @@ fn main() {
             line_width,
             indent_size,
         } => {
-            let config = snow_fmt::FormatConfig {
+            let config = mesh_fmt::FormatConfig {
                 indent_size,
                 max_width: line_width,
             };
@@ -181,19 +181,19 @@ fn main() {
             }
         }
         Commands::Repl => {
-            if let Err(e) = snow_repl::run_repl(&snow_repl::ReplConfig::default()) {
+            if let Err(e) = mesh_repl::run_repl(&mesh_repl::ReplConfig::default()) {
                 eprintln!("REPL error: {}", e);
                 process::exit(1);
             }
         }
         Commands::Lsp => {
             let rt = tokio::runtime::Runtime::new().expect("Failed to create tokio runtime");
-            rt.block_on(snow_lsp::run_server());
+            rt.block_on(mesh_lsp::run_server());
         }
     }
 }
 
-/// Execute the build pipeline: discover all .snow files -> parse -> typecheck entry -> codegen -> link.
+/// Execute the build pipeline: discover all .mpl files -> parse -> typecheck entry -> codegen -> link.
 fn build(
     dir: &Path,
     opt_level: u8,
@@ -213,11 +213,11 @@ fn build(
         return Err(format!("'{}' is not a directory", dir.display()));
     }
 
-    // Find the entry point: main.snow
-    let main_snow = dir.join("main.snow");
-    if !main_snow.exists() {
+    // Find the entry point: main.mpl
+    let main_mesh = dir.join("main.mpl");
+    if !main_mesh.exists() {
         return Err(format!(
-            "No 'main.snow' found in '{}'. Snow projects must have a main.snow entry point.",
+            "No 'main.mpl' found in '{}'. Mesh projects must have a main.mpl entry point.",
             dir.display()
         ));
     }
@@ -285,8 +285,8 @@ fn build(
 
     // Type-check ALL modules in topological order (Phase 39)
     let module_count = project.graph.module_count();
-    let mut all_exports: Vec<Option<snow_typeck::ExportedSymbols>> = (0..module_count).map(|_| None).collect();
-    let mut all_typeck: Vec<Option<snow_typeck::TypeckResult>> = (0..module_count).map(|_| None).collect();
+    let mut all_exports: Vec<Option<mesh_typeck::ExportedSymbols>> = (0..module_count).map(|_| None).collect();
+    let mut all_typeck: Vec<Option<mesh_typeck::TypeckResult>> = (0..module_count).map(|_| None).collect();
     let mut has_type_errors = false;
 
     for &id in &project.compilation_order {
@@ -310,13 +310,13 @@ fn build(
         import_ctx.current_module = Some(module_name.clone());
 
         // Type-check this module with imports
-        let typeck = snow_typeck::check_with_imports(parse, &import_ctx);
+        let typeck = mesh_typeck::check_with_imports(parse, &import_ctx);
 
         // Report type-check diagnostics for this module
         let file_name = module_path.display().to_string();
         for error in &typeck.errors {
             has_type_errors = true;
-            let rendered = snow_typeck::diagnostics::render_diagnostic(
+            let rendered = mesh_typeck::diagnostics::render_diagnostic(
                 error, source, &file_name, diag_opts, None,
             );
             eprint!("{}", rendered);
@@ -324,14 +324,14 @@ fn build(
 
         // Report warnings
         for warning in &typeck.warnings {
-            let rendered = snow_typeck::diagnostics::render_diagnostic(
+            let rendered = mesh_typeck::diagnostics::render_diagnostic(
                 warning, source, &file_name, diag_opts, None,
             );
             eprint!("{}", rendered);
         }
 
         // Collect exports for downstream modules
-        let exports = snow_typeck::collect_exports(parse, &typeck);
+        let exports = mesh_typeck::collect_exports(parse, &typeck);
         all_exports[idx] = Some(exports);
         all_typeck[idx] = Some(typeck);
     }
@@ -356,13 +356,13 @@ fn build(
             .map(|e| e.functions.keys().cloned().collect())
             .unwrap_or_default();
 
-        let mir = snow_codegen::lower_to_mir_raw(parse, typeck, module_name, &pub_fns)?;
+        let mir = mesh_codegen::lower_to_mir_raw(parse, typeck, module_name, &pub_fns)?;
         if id == entry_id {
             entry_mir_idx = i;
         }
         mir_modules.push(mir);
     }
-    let merged_mir = snow_codegen::merge_mir_modules(mir_modules, entry_mir_idx);
+    let merged_mir = mesh_codegen::merge_mir_modules(mir_modules, entry_mir_idx);
 
     // Determine output path
     let project_name = dir
@@ -377,12 +377,12 @@ fn build(
     // Emit LLVM IR if requested
     if emit_llvm {
         let ll_path = output_path.with_extension("ll");
-        snow_codegen::compile_mir_to_llvm_ir(&merged_mir, &ll_path, target)?;
+        mesh_codegen::compile_mir_to_llvm_ir(&merged_mir, &ll_path, target)?;
         eprintln!("  LLVM IR: {}", ll_path.display());
     }
 
     // Compile to native binary
-    snow_codegen::compile_mir_to_binary(&merged_mir, &output_path, opt_level, target, None)?;
+    mesh_codegen::compile_mir_to_binary(&merged_mir, &output_path, opt_level, target, None)?;
 
     eprintln!("  Compiled: {}", output_path.display());
 
@@ -395,13 +395,13 @@ fn build(
 /// then constructs an ImportContext with the exports of those modules. Trait defs
 /// and impls from ALL already-checked modules are included (XMOD-05: globally visible).
 fn build_import_context(
-    graph: &snow_common::module_graph::ModuleGraph,
-    all_exports: &[Option<snow_typeck::ExportedSymbols>],
-    parse: &snow_parser::Parse,
-    _module_id: snow_common::module_graph::ModuleId,
-) -> snow_typeck::ImportContext {
-    use snow_parser::ast::item::Item;
-    use snow_typeck::{ImportContext, ModuleExports};
+    graph: &mesh_common::module_graph::ModuleGraph,
+    all_exports: &[Option<mesh_typeck::ExportedSymbols>],
+    parse: &mesh_parser::Parse,
+    _module_id: mesh_common::module_graph::ModuleId,
+) -> mesh_typeck::ImportContext {
+    use mesh_parser::ast::item::Item;
+    use mesh_typeck::{ImportContext, ModuleExports};
 
     let mut ctx = ImportContext::empty();
 
@@ -462,8 +462,8 @@ fn build_import_context(
 fn report_diagnostics(
     source: &str,
     path: &Path,
-    parse: &snow_parser::Parse,
-    typeck: &snow_typeck::TypeckResult,
+    parse: &mesh_parser::Parse,
+    typeck: &mesh_typeck::TypeckResult,
     diag_opts: &DiagnosticOptions,
 ) -> bool {
     let file_name = path.display().to_string();
@@ -510,7 +510,7 @@ fn report_diagnostics(
     // Check for type errors
     for error in &typeck.errors {
         has_errors = true;
-        let rendered = snow_typeck::diagnostics::render_diagnostic(
+        let rendered = mesh_typeck::diagnostics::render_diagnostic(
             error, source, &file_name, diag_opts, None,
         );
         eprint!("{}", rendered);
@@ -521,19 +521,19 @@ fn report_diagnostics(
 
 // ── Deps subcommand ──────────────────────────────────────────────────
 
-/// Execute the `deps` subcommand: resolve dependencies and generate snow.lock.
+/// Execute the `deps` subcommand: resolve dependencies and generate mesh.lock.
 ///
-/// If snow.lock already exists and the manifest hasn't changed, skips resolution.
+/// If mesh.lock already exists and the manifest hasn't changed, skips resolution.
 fn deps_command(dir: &Path) -> Result<(), String> {
-    let manifest_path = dir.join("snow.toml");
+    let manifest_path = dir.join("mesh.toml");
     if !manifest_path.exists() {
         return Err(format!(
-            "No 'snow.toml' found in '{}'. Run `snowc init` to create a project.",
+            "No 'mesh.toml' found in '{}'. Run `meshc init` to create a project.",
             dir.display()
         ));
     }
 
-    let lock_path = dir.join("snow.lock");
+    let lock_path = dir.join("mesh.lock");
 
     // Check if lockfile is fresh: exists and manifest hasn't been modified after it
     if lock_path.exists() {
@@ -551,7 +551,7 @@ fn deps_command(dir: &Path) -> Result<(), String> {
         }
     }
 
-    let (resolved, lockfile) = snow_pkg::resolve_dependencies(dir)?;
+    let (resolved, lockfile) = mesh_pkg::resolve_dependencies(dir)?;
 
     lockfile.write(&lock_path)?;
 
@@ -574,16 +574,16 @@ struct FmtStats {
     unformatted: usize,
 }
 
-/// Execute the `fmt` subcommand: format Snow source files in-place or check formatting.
+/// Execute the `fmt` subcommand: format Mesh source files in-place or check formatting.
 fn fmt_command(
     path: &Path,
     check: bool,
-    config: &snow_fmt::FormatConfig,
+    config: &mesh_fmt::FormatConfig,
 ) -> Result<FmtStats, String> {
-    let files = collect_snow_files(path)?;
+    let files = collect_mesh_files(path)?;
     if files.is_empty() {
         return Err(format!(
-            "No .snow files found at '{}'",
+            "No .mpl files found at '{}'",
             path.display()
         ));
     }
@@ -595,7 +595,7 @@ fn fmt_command(
         let source = std::fs::read_to_string(file)
             .map_err(|e| format!("Failed to read '{}': {}", file.display(), e))?;
 
-        let formatted = snow_fmt::format_source(&source, config);
+        let formatted = mesh_fmt::format_source(&source, config);
         total += 1;
 
         if formatted != source {
@@ -612,19 +612,19 @@ fn fmt_command(
     Ok(FmtStats { total, unformatted })
 }
 
-/// Collect `.snow` files from a path. If the path is a file, return it directly.
-/// If it is a directory, recursively find all `.snow` files.
-fn collect_snow_files(path: &Path) -> Result<Vec<PathBuf>, String> {
+/// Collect `.mpl` files from a path. If the path is a file, return it directly.
+/// If it is a directory, recursively find all `.mpl` files.
+fn collect_mesh_files(path: &Path) -> Result<Vec<PathBuf>, String> {
     if !path.exists() {
         return Err(format!("Path '{}' does not exist", path.display()));
     }
 
     if path.is_file() {
-        if path.extension().and_then(|e| e.to_str()) == Some("snow") {
+        if path.extension().and_then(|e| e.to_str()) == Some("mesh") {
             return Ok(vec![path.to_path_buf()]);
         } else {
             return Err(format!(
-                "'{}' is not a .snow file",
+                "'{}' is not a .mpl file",
                 path.display()
             ));
         }
@@ -632,7 +632,7 @@ fn collect_snow_files(path: &Path) -> Result<Vec<PathBuf>, String> {
 
     if path.is_dir() {
         let mut files = Vec::new();
-        collect_snow_files_recursive(path, &mut files)
+        collect_mesh_files_recursive(path, &mut files)
             .map_err(|e| format!("Failed to walk directory '{}': {}", path.display(), e))?;
         files.sort();
         return Ok(files);
@@ -641,14 +641,14 @@ fn collect_snow_files(path: &Path) -> Result<Vec<PathBuf>, String> {
     Err(format!("'{}' is not a file or directory", path.display()))
 }
 
-/// Recursively collect `.snow` files from a directory.
-fn collect_snow_files_recursive(dir: &Path, files: &mut Vec<PathBuf>) -> std::io::Result<()> {
+/// Recursively collect `.mpl` files from a directory.
+fn collect_mesh_files_recursive(dir: &Path, files: &mut Vec<PathBuf>) -> std::io::Result<()> {
     for entry in std::fs::read_dir(dir)? {
         let entry = entry?;
         let entry_path = entry.path();
         if entry_path.is_dir() {
-            collect_snow_files_recursive(&entry_path, files)?;
-        } else if entry_path.extension().and_then(|e| e.to_str()) == Some("snow") {
+            collect_mesh_files_recursive(&entry_path, files)?;
+        } else if entry_path.extension().and_then(|e| e.to_str()) == Some("mesh") {
             files.push(entry_path);
         }
     }

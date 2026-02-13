@@ -13,7 +13,7 @@
 //! - `Test`: Load scrutinee value, compare with literal, conditional branch,
 //!   recurse for success/failure
 //! - `Guard`: Codegen guard expression, conditional branch, recurse
-//! - `Fail`: Emit snow_panic + unreachable
+//! - `Fail`: Emit mesh_panic + unreachable
 
 use inkwell::basic_block::BasicBlock;
 use inkwell::values::{BasicValueEnum, PointerValue};
@@ -353,11 +353,11 @@ impl<'ctx> CodeGen<'ctx> {
                     .map_err(|e| e.to_string())?
             }
             MirLiteral::String(s) => {
-                // Create a SnowString for the pattern literal
+                // Create a MeshString for the pattern literal
                 let pattern_str = self.codegen_string_lit(s)?;
 
-                // Call snow_string_eq(scrutinee, pattern)
-                let eq_fn = get_intrinsic(&self.module, "snow_string_eq");
+                // Call mesh_string_eq(scrutinee, pattern)
+                let eq_fn = get_intrinsic(&self.module, "mesh_string_eq");
                 let result = self
                     .builder
                     .build_call(eq_fn, &[test_val.into(), pattern_str.into()], "str_eq")
@@ -365,7 +365,7 @@ impl<'ctx> CodeGen<'ctx> {
                 let i8_result = result
                     .try_as_basic_value()
                     .basic()
-                    .ok_or("snow_string_eq returned void")?
+                    .ok_or("mesh_string_eq returned void")?
                     .into_int_value();
 
                 // Convert i8 result to i1 for branch condition
@@ -514,8 +514,8 @@ impl<'ctx> CodeGen<'ctx> {
         let list_val = self.navigate_access_path(scrutinee_alloca, scrutinee_ty, scrutinee_path)?;
         let list_ptr = list_val.into_pointer_value();
 
-        // Call snow_list_length(list) to check if non-empty.
-        let length_fn = get_intrinsic(&self.module, "snow_list_length");
+        // Call mesh_list_length(list) to check if non-empty.
+        let length_fn = get_intrinsic(&self.module, "mesh_list_length");
         let length_result = self
             .builder
             .build_call(length_fn, &[list_ptr.into()], "list_len")
@@ -523,7 +523,7 @@ impl<'ctx> CodeGen<'ctx> {
         let length_val = length_result
             .try_as_basic_value()
             .basic()
-            .ok_or("snow_list_length returned void")?
+            .ok_or("mesh_list_length returned void")?
             .into_int_value();
 
         // Compare length > 0.
@@ -696,11 +696,11 @@ impl<'ctx> CodeGen<'ctx> {
             }
 
             AccessPath::ListHead(parent) => {
-                // Load the list pointer, call snow_list_head, store result in an alloca.
+                // Load the list pointer, call mesh_list_head, store result in an alloca.
                 let parent_val = self.navigate_access_path(scrutinee_alloca, scrutinee_ty, parent)?;
                 let list_ptr = parent_val.into_pointer_value();
 
-                let head_fn = get_intrinsic(&self.module, "snow_list_head");
+                let head_fn = get_intrinsic(&self.module, "mesh_list_head");
                 let head_result = self
                     .builder
                     .build_call(head_fn, &[list_ptr.into()], "list_head")
@@ -708,7 +708,7 @@ impl<'ctx> CodeGen<'ctx> {
                 let head_i64 = head_result
                     .try_as_basic_value()
                     .basic()
-                    .ok_or("snow_list_head returned void")?
+                    .ok_or("mesh_list_head returned void")?
                     .into_int_value();
 
                 // Convert u64 -> actual element type based on resolve_path_type.
@@ -728,11 +728,11 @@ impl<'ctx> CodeGen<'ctx> {
             }
 
             AccessPath::ListTail(parent) => {
-                // Load the list pointer, call snow_list_tail, store result in an alloca.
+                // Load the list pointer, call mesh_list_tail, store result in an alloca.
                 let parent_val = self.navigate_access_path(scrutinee_alloca, scrutinee_ty, parent)?;
                 let list_ptr = parent_val.into_pointer_value();
 
-                let tail_fn = get_intrinsic(&self.module, "snow_list_tail");
+                let tail_fn = get_intrinsic(&self.module, "mesh_list_tail");
                 let tail_result = self
                     .builder
                     .build_call(tail_fn, &[list_ptr.into()], "list_tail")
@@ -740,7 +740,7 @@ impl<'ctx> CodeGen<'ctx> {
                 let tail_ptr = tail_result
                     .try_as_basic_value()
                     .basic()
-                    .ok_or("snow_list_tail returned void")?
+                    .ok_or("mesh_list_tail returned void")?
                     .into_pointer_value();
 
                 // Store in an alloca so we can return a pointer.
@@ -757,9 +757,9 @@ impl<'ctx> CodeGen<'ctx> {
         }
     }
 
-    /// Convert a u64 value from snow_list_head to the actual element type.
+    /// Convert a u64 value from mesh_list_head to the actual element type.
     ///
-    /// `snow_list_head` returns u64 (uniform storage). Based on the element type:
+    /// `mesh_list_head` returns u64 (uniform storage). Based on the element type:
     /// - Int: keep as i64
     /// - Bool: truncate to i1
     /// - Float: bitcast to f64

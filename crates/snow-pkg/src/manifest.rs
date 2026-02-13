@@ -2,7 +2,7 @@ use serde::Deserialize;
 use std::collections::BTreeMap;
 use std::path::Path;
 
-/// Represents a parsed snow.toml manifest file.
+/// Represents a parsed mesh.toml manifest file.
 #[derive(Debug, Deserialize)]
 pub struct Manifest {
     pub package: Package,
@@ -10,7 +10,7 @@ pub struct Manifest {
     pub dependencies: BTreeMap<String, Dependency>,
 }
 
-/// Package metadata from the [package] section of snow.toml.
+/// Package metadata from the [package] section of mesh.toml.
 #[derive(Debug, Deserialize)]
 pub struct Package {
     pub name: String,
@@ -40,14 +40,14 @@ pub enum Dependency {
 }
 
 impl Manifest {
-    /// Read and parse a snow.toml manifest from a file path.
+    /// Read and parse a mesh.toml manifest from a file path.
     pub fn from_file(path: &Path) -> Result<Manifest, String> {
         let content = std::fs::read_to_string(path)
             .map_err(|e| format!("Failed to read {}: {}", path.display(), e))?;
         Self::from_str(&content)
     }
 
-    /// Parse a snow.toml manifest from a string.
+    /// Parse a mesh.toml manifest from a string.
     pub fn from_str(content: &str) -> Result<Manifest, String> {
         toml::from_str(content).map_err(|e| format!("Failed to parse manifest: {}", e))
     }

@@ -1,24 +1,24 @@
-//! Integration tests for the Snow type inference engine.
+//! Integration tests for the Mesh type inference engine.
 //!
-//! These tests parse Snow source code, run type checking via `snow_typeck::check()`,
+//! These tests parse Mesh source code, run type checking via `mesh_typeck::check()`,
 //! and assert on the inferred types and errors. They exercise the core behaviors
 //! of Algorithm J inference: literals, let-bindings, let-polymorphism, occurs check,
 //! if-branches, function application, closures, arithmetic, and error detection.
 
-use snow_typeck::error::TypeError;
-use snow_typeck::ty::Ty;
-use snow_typeck::TypeckResult;
+use mesh_typeck::error::TypeError;
+use mesh_typeck::ty::Ty;
+use mesh_typeck::TypeckResult;
 
 // ── Helpers ────────────────────────────────────────────────────────────
 
-/// Parse Snow source and run the type checker.
+/// Parse Mesh source and run the type checker.
 fn check_source(src: &str) -> TypeckResult {
-    let parse = snow_parser::parse(src);
+    let parse = mesh_parser::parse(src);
     // Uncomment to debug parse failures:
     // if !parse.ok() {
     //     panic!("parse errors: {:?}", parse.errors());
     // }
-    snow_typeck::check(&parse)
+    mesh_typeck::check(&parse)
 }
 
 /// Assert that the result has no errors and the final expression type

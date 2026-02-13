@@ -2,7 +2,7 @@ use serde::Serialize;
 
 /// Byte-offset span into source text. Start is inclusive, end is exclusive.
 ///
-/// All positions in the Snow compiler are tracked as byte offsets into the
+/// All positions in the Mesh compiler are tracked as byte offsets into the
 /// original source string. Line/column information is computed on demand
 /// via [`LineIndex`] when needed for error reporting or diagnostics.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]

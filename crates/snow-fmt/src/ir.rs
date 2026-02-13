@@ -1,4 +1,4 @@
-//! Wadler-Lindig format IR for Snow code formatting.
+//! Wadler-Lindig format IR for Mesh code formatting.
 //!
 //! This module defines the intermediate representation used between the CST
 //! walker and the printer. The IR captures formatting intent (groups, indentation,

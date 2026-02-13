@@ -1,12 +1,12 @@
-//! GC-managed immutable List for the Snow runtime.
+//! GC-managed immutable List for the Mesh runtime.
 //!
-//! A SnowList stores elements as uniform 8-byte (`u64`) values in a contiguous
+//! A MeshList stores elements as uniform 8-byte (`u64`) values in a contiguous
 //! GC-allocated buffer. Layout: `{ len: u64, cap: u64, data: [u64; cap] }`.
 //!
 //! All mutation operations (append, tail, concat, etc.) return a NEW list,
 //! preserving immutability semantics.
 
-use crate::gc::snow_gc_alloc_actor;
+use crate::gc::mesh_gc_alloc_actor;
 use crate::option::alloc_option;
 use std::ptr;
 
@@ -41,7 +41,7 @@ unsafe fn list_data_mut(list: *mut u8) -> *mut u64 {
 /// Allocate a new list with the given capacity, length set to 0.
 unsafe fn alloc_list(cap: u64) -> *mut u8 {
     let total = HEADER_SIZE + (cap as usize) * ELEM_SIZE;
-    let p = snow_gc_alloc_actor(total as u64, 8);
+    let p = mesh_gc_alloc_actor(total as u64, 8);
     // len = 0, cap = cap
     *(p as *mut u64) = 0;
     *((p as *mut u64).add(1)) = cap;
@@ -58,11 +58,11 @@ unsafe fn alloc_list_from(src: *const u64, len: u64, cap: u64) -> *mut u8 {
     p
 }
 
-/// Allocate a 2-element tuple on the GC heap matching Snow's tuple layout.
+/// Allocate a 2-element tuple on the GC heap matching Mesh's tuple layout.
 /// Layout: { u64 len=2, u64 elem0, u64 elem1 }
 pub(crate) unsafe fn alloc_pair(a: u64, b: u64) -> *mut u8 {
     let total = 8 + 2 * 8; // len field + 2 elements
-    let p = snow_gc_alloc_actor(total as u64, 8);
+    let p = mesh_gc_alloc_actor(total as u64, 8);
     *(p as *mut u64) = 2;           // len = 2
     *((p as *mut u64).add(1)) = a;  // first element
     *((p as *mut u64).add(2)) = b;  // second element
@@ -73,19 +73,19 @@ pub(crate) unsafe fn alloc_pair(a: u64, b: u64) -> *mut u8 {
 
 /// Create an empty list.
 #[no_mangle]
-pub extern "C" fn snow_list_new() -> *mut u8 {
+pub extern "C" fn mesh_list_new() -> *mut u8 {
     unsafe { alloc_list(0) }
 }
 
 /// Return the number of elements in the list.
 #[no_mangle]
-pub extern "C" fn snow_list_length(list: *mut u8) -> i64 {
+pub extern "C" fn mesh_list_length(list: *mut u8) -> i64 {
     unsafe { list_len(list) as i64 }
 }
 
 /// Return a NEW list with `element` appended at the end.
 #[no_mangle]
-pub extern "C" fn snow_list_append(list: *mut u8, element: u64) -> *mut u8 {
+pub extern "C" fn mesh_list_append(list: *mut u8, element: u64) -> *mut u8 {
     unsafe {
         let len = list_len(list);
         let new_cap = len + 1;
@@ -101,11 +101,11 @@ pub extern "C" fn snow_list_append(list: *mut u8, element: u64) -> *mut u8 {
 
 /// Return the first element. Panics if empty.
 #[no_mangle]
-pub extern "C" fn snow_list_head(list: *mut u8) -> u64 {
+pub extern "C" fn mesh_list_head(list: *mut u8) -> u64 {
     unsafe {
         let len = list_len(list);
         if len == 0 {
-            panic!("snow_list_head: empty list");
+            panic!("mesh_list_head: empty list");
         }
         *list_data(list)
     }
@@ -113,11 +113,11 @@ pub extern "C" fn snow_list_head(list: *mut u8) -> u64 {
 
 /// Return a NEW list without the first element. Panics if empty.
 #[no_mangle]
-pub extern "C" fn snow_list_tail(list: *mut u8) -> *mut u8 {
+pub extern "C" fn mesh_list_tail(list: *mut u8) -> *mut u8 {
     unsafe {
         let len = list_len(list);
         if len == 0 {
-            panic!("snow_list_tail: empty list");
+            panic!("mesh_list_tail: empty list");
         }
         let new_len = len - 1;
         alloc_list_from(list_data(list).add(1), new_len, new_len)
@@ -126,12 +126,12 @@ pub extern "C" fn snow_list_tail(list: *mut u8) -> *mut u8 {
 
 /// Get the element at `index`. Panics if out of bounds.
 #[no_mangle]
-pub extern "C" fn snow_list_get(list: *mut u8, index: i64) -> u64 {
+pub extern "C" fn mesh_list_get(list: *mut u8, index: i64) -> u64 {
     unsafe {
         let len = list_len(list);
         if index < 0 || index as u64 >= len {
             panic!(
-                "snow_list_get: index {} out of bounds (len {})",
+                "mesh_list_get: index {} out of bounds (len {})",
                 index, len
             );
         }
@@ -141,7 +141,7 @@ pub extern "C" fn snow_list_get(list: *mut u8, index: i64) -> u64 {
 
 /// Concatenate two lists into a NEW list.
 #[no_mangle]
-pub extern "C" fn snow_list_concat(a: *mut u8, b: *mut u8) -> *mut u8 {
+pub extern "C" fn mesh_list_concat(a: *mut u8, b: *mut u8) -> *mut u8 {
     unsafe {
         let a_len = list_len(a);
         let b_len = list_len(b);
@@ -164,7 +164,7 @@ pub extern "C" fn snow_list_concat(a: *mut u8, b: *mut u8) -> *mut u8 {
 
 /// Return a reversed copy of the list.
 #[no_mangle]
-pub extern "C" fn snow_list_reverse(list: *mut u8) -> *mut u8 {
+pub extern "C" fn mesh_list_reverse(list: *mut u8) -> *mut u8 {
     unsafe {
         let len = list_len(list);
         let new_list = alloc_list(len);
@@ -183,7 +183,7 @@ pub extern "C" fn snow_list_reverse(list: *mut u8) -> *mut u8 {
 /// If `env_ptr` is null, `fn_ptr` is called as `fn(element) -> result`.
 /// If `env_ptr` is non-null, `fn_ptr` is called as `fn(env_ptr, element) -> result`.
 #[no_mangle]
-pub extern "C" fn snow_list_map(
+pub extern "C" fn mesh_list_map(
     list: *mut u8,
     fn_ptr: *mut u8,
     env_ptr: *mut u8,
@@ -215,7 +215,7 @@ pub extern "C" fn snow_list_map(
 
 /// Keep elements where the closure returns non-zero (true).
 #[no_mangle]
-pub extern "C" fn snow_list_filter(
+pub extern "C" fn mesh_list_filter(
     list: *mut u8,
     fn_ptr: *mut u8,
     env_ptr: *mut u8,
@@ -262,7 +262,7 @@ pub extern "C" fn snow_list_filter(
 /// If `env_ptr` is null: `fn_ptr(acc, element) -> acc`
 /// If `env_ptr` is non-null: `fn_ptr(env_ptr, acc, element) -> acc`
 #[no_mangle]
-pub extern "C" fn snow_list_reduce(
+pub extern "C" fn mesh_list_reduce(
     list: *mut u8,
     init: u64,
     fn_ptr: *mut u8,
@@ -294,7 +294,7 @@ pub extern "C" fn snow_list_reduce(
 /// Create a list with pre-allocated capacity for N elements.
 /// Length starts at 0. Used by for-in codegen for O(N) result building.
 #[no_mangle]
-pub extern "C" fn snow_list_builder_new(capacity: i64) -> *mut u8 {
+pub extern "C" fn mesh_list_builder_new(capacity: i64) -> *mut u8 {
     unsafe { alloc_list(capacity.max(0) as u64) }
 }
 
@@ -302,7 +302,7 @@ pub extern "C" fn snow_list_builder_new(capacity: i64) -> *mut u8 {
 /// SAFETY: Only valid during construction before the list is shared.
 /// Increments len and writes element at data[len].
 #[no_mangle]
-pub extern "C" fn snow_list_builder_push(list: *mut u8, element: u64) {
+pub extern "C" fn mesh_list_builder_push(list: *mut u8, element: u64) {
     unsafe {
         let len = list_len(list) as usize;
         let data = list_data_mut(list);
@@ -313,7 +313,7 @@ pub extern "C" fn snow_list_builder_push(list: *mut u8, element: u64) {
 
 /// Create a list from an array of u64 elements.
 #[no_mangle]
-pub extern "C" fn snow_list_from_array(data: *const u64, count: i64) -> *mut u8 {
+pub extern "C" fn mesh_list_from_array(data: *const u64, count: i64) -> *mut u8 {
     unsafe {
         let count = count.max(0) as u64;
         alloc_list_from(data, count, count)
@@ -325,7 +325,7 @@ pub extern "C" fn snow_list_from_array(data: *const u64, count: i64) -> *mut u8 
 /// `elem_eq` is a bare function pointer `fn(u64, u64) -> i8` that returns 1
 /// if two elements are equal, 0 otherwise. Returns 1 if lists are equal, 0 if not.
 #[no_mangle]
-pub extern "C" fn snow_list_eq(
+pub extern "C" fn mesh_list_eq(
     list_a: *mut u8,
     list_b: *mut u8,
     elem_eq: *mut u8,
@@ -356,7 +356,7 @@ pub extern "C" fn snow_list_eq(
 /// negative if a < b, 0 if equal, positive if a > b. Returns negative/0/positive
 /// for the lexicographic ordering of the two lists.
 #[no_mangle]
-pub extern "C" fn snow_list_compare(
+pub extern "C" fn mesh_list_compare(
     list_a: *mut u8,
     list_b: *mut u8,
     elem_cmp: *mut u8,
@@ -386,14 +386,14 @@ pub extern "C" fn snow_list_compare(
     }
 }
 
-/// Convert a list to a human-readable SnowString: `[elem1, elem2, ...]`.
+/// Convert a list to a human-readable MeshString: `[elem1, elem2, ...]`.
 ///
 /// `elem_to_str` is a bare function pointer `fn(u64) -> *mut u8` that converts
-/// each element (stored as a uniform u64) to a SnowString pointer. The MIR
+/// each element (stored as a uniform u64) to a MeshString pointer. The MIR
 /// lowerer passes the appropriate runtime to_string function (e.g.,
-/// `snow_int_to_string` for `List<Int>`).
+/// `mesh_int_to_string` for `List<Int>`).
 #[no_mangle]
-pub extern "C" fn snow_list_to_string(
+pub extern "C" fn mesh_list_to_string(
     list: *mut u8,
     elem_to_str: *mut u8,
 ) -> *mut u8 {
@@ -404,26 +404,26 @@ pub extern "C" fn snow_list_to_string(
         let data = list_data(list);
         let f: ElemToStr = std::mem::transmute(elem_to_str);
 
-        // Build the result string piece by piece using snow_string_concat.
-        let mut result = crate::string::snow_string_new(b"[".as_ptr(), 1) as *mut u8;
+        // Build the result string piece by piece using mesh_string_concat.
+        let mut result = crate::string::mesh_string_new(b"[".as_ptr(), 1) as *mut u8;
         for i in 0..len {
             if i > 0 {
-                let sep = crate::string::snow_string_new(b", ".as_ptr(), 2) as *mut u8;
-                result = crate::string::snow_string_concat(
-                    result as *const crate::string::SnowString,
-                    sep as *const crate::string::SnowString,
+                let sep = crate::string::mesh_string_new(b", ".as_ptr(), 2) as *mut u8;
+                result = crate::string::mesh_string_concat(
+                    result as *const crate::string::MeshString,
+                    sep as *const crate::string::MeshString,
                 ) as *mut u8;
             }
             let elem_str = f(*data.add(i));
-            result = crate::string::snow_string_concat(
-                result as *const crate::string::SnowString,
-                elem_str as *const crate::string::SnowString,
+            result = crate::string::mesh_string_concat(
+                result as *const crate::string::MeshString,
+                elem_str as *const crate::string::MeshString,
             ) as *mut u8;
         }
-        let close = crate::string::snow_string_new(b"]".as_ptr(), 1) as *mut u8;
-        result = crate::string::snow_string_concat(
-            result as *const crate::string::SnowString,
-            close as *const crate::string::SnowString,
+        let close = crate::string::mesh_string_new(b"]".as_ptr(), 1) as *mut u8;
+        result = crate::string::mesh_string_concat(
+            result as *const crate::string::MeshString,
+            close as *const crate::string::MeshString,
         ) as *mut u8;
         result
     }
@@ -437,7 +437,7 @@ pub extern "C" fn snow_list_to_string(
 /// If `env_ptr` is null, `fn_ptr` is called as `fn(a, b) -> i64`.
 /// If `env_ptr` is non-null, `fn_ptr` is called as `fn(env_ptr, a, b) -> i64`.
 #[no_mangle]
-pub extern "C" fn snow_list_sort(
+pub extern "C" fn mesh_list_sort(
     list: *mut u8,
     fn_ptr: *mut u8,
     env_ptr: *mut u8,
@@ -494,13 +494,13 @@ pub extern "C" fn snow_list_sort(
     }
 }
 
-/// Find the first element matching a predicate. Returns SnowOption
+/// Find the first element matching a predicate. Returns MeshOption
 /// (tag 0 = Some with element, tag 1 = None).
 ///
 /// If `env_ptr` is null, `fn_ptr` is called as `fn(elem) -> u64` (nonzero = true).
 /// If `env_ptr` is non-null, `fn_ptr` is called as `fn(env_ptr, elem) -> u64`.
 #[no_mangle]
-pub extern "C" fn snow_list_find(
+pub extern "C" fn mesh_list_find(
     list: *mut u8,
     fn_ptr: *mut u8,
     env_ptr: *mut u8,
@@ -537,7 +537,7 @@ pub extern "C" fn snow_list_find(
 /// Returns 1 (true) if at least one element matches, 0 (false) otherwise.
 /// Short-circuits on first match.
 #[no_mangle]
-pub extern "C" fn snow_list_any(
+pub extern "C" fn mesh_list_any(
     list: *mut u8,
     fn_ptr: *mut u8,
     env_ptr: *mut u8,
@@ -572,7 +572,7 @@ pub extern "C" fn snow_list_any(
 /// Returns 1 (true) if every element matches, 0 (false) otherwise.
 /// Short-circuits on first non-match.
 #[no_mangle]
-pub extern "C" fn snow_list_all(
+pub extern "C" fn mesh_list_all(
     list: *mut u8,
     fn_ptr: *mut u8,
     env_ptr: *mut u8,
@@ -608,7 +608,7 @@ pub extern "C" fn snow_list_all(
 /// Works correctly for Int, Bool, and pointer identity. For String content
 /// equality, users should use `List.any(list, fn(x) -> x == elem end)`.
 #[no_mangle]
-pub extern "C" fn snow_list_contains(list: *mut u8, elem: u64) -> i8 {
+pub extern "C" fn mesh_list_contains(list: *mut u8, elem: u64) -> i8 {
     unsafe {
         let len = list_len(list);
         let src = list_data(list);
@@ -623,7 +623,7 @@ pub extern "C" fn snow_list_contains(list: *mut u8, elem: u64) -> i8 {
 
 /// Zip two lists into a list of 2-tuples, truncated to the shorter length.
 #[no_mangle]
-pub extern "C" fn snow_list_zip(a: *mut u8, b: *mut u8) -> *mut u8 {
+pub extern "C" fn mesh_list_zip(a: *mut u8, b: *mut u8) -> *mut u8 {
     unsafe {
         let len_a = list_len(a);
         let len_b = list_len(b);
@@ -648,7 +648,7 @@ pub extern "C" fn snow_list_zip(a: *mut u8, b: *mut u8) -> *mut u8 {
 /// If `env_ptr` is null, `fn_ptr` is called as `fn(element) -> list_ptr_as_u64`.
 /// If `env_ptr` is non-null, `fn_ptr` is called as `fn(env_ptr, element) -> list_ptr_as_u64`.
 #[no_mangle]
-pub extern "C" fn snow_list_flat_map(
+pub extern "C" fn mesh_list_flat_map(
     list: *mut u8,
     fn_ptr: *mut u8,
     env_ptr: *mut u8,
@@ -698,7 +698,7 @@ pub extern "C" fn snow_list_flat_map(
 ///
 /// Each element of the outer list is treated as a list pointer (stored as u64).
 #[no_mangle]
-pub extern "C" fn snow_list_flatten(list: *mut u8) -> *mut u8 {
+pub extern "C" fn mesh_list_flatten(list: *mut u8) -> *mut u8 {
     unsafe {
         let outer_len = list_len(list) as usize;
         let outer_data = list_data(list);
@@ -726,7 +726,7 @@ pub extern "C" fn snow_list_flatten(list: *mut u8) -> *mut u8 {
 
 /// Create a list of (index, element) tuples from a list.
 #[no_mangle]
-pub extern "C" fn snow_list_enumerate(list: *mut u8) -> *mut u8 {
+pub extern "C" fn mesh_list_enumerate(list: *mut u8) -> *mut u8 {
     unsafe {
         let len = list_len(list);
         let src = list_data(list);
@@ -745,7 +745,7 @@ pub extern "C" fn snow_list_enumerate(list: *mut u8) -> *mut u8 {
 /// Return a new list with the first `n` elements.
 /// Clamps `n` to [0, len].
 #[no_mangle]
-pub extern "C" fn snow_list_take(list: *mut u8, n: i64) -> *mut u8 {
+pub extern "C" fn mesh_list_take(list: *mut u8, n: i64) -> *mut u8 {
     unsafe {
         let len = list_len(list);
         let actual_n = (n.max(0) as u64).min(len);
@@ -756,7 +756,7 @@ pub extern "C" fn snow_list_take(list: *mut u8, n: i64) -> *mut u8 {
 /// Return a new list with the first `n` elements removed.
 /// Clamps `n` to [0, len].
 #[no_mangle]
-pub extern "C" fn snow_list_drop(list: *mut u8, n: i64) -> *mut u8 {
+pub extern "C" fn mesh_list_drop(list: *mut u8, n: i64) -> *mut u8 {
     unsafe {
         let len = list_len(list);
         let actual_n = (n.max(0) as u64).min(len);
@@ -767,11 +767,11 @@ pub extern "C" fn snow_list_drop(list: *mut u8, n: i64) -> *mut u8 {
 
 /// Return the last element of the list. Panics if empty.
 #[no_mangle]
-pub extern "C" fn snow_list_last(list: *mut u8) -> u64 {
+pub extern "C" fn mesh_list_last(list: *mut u8) -> u64 {
     unsafe {
         let len = list_len(list);
         if len == 0 {
-            panic!("snow_list_last: empty list");
+            panic!("mesh_list_last: empty list");
         }
         *list_data(list).add(len as usize - 1)
     }
@@ -780,146 +780,146 @@ pub extern "C" fn snow_list_last(list: *mut u8) -> u64 {
 /// Return the element at index `n`. Panics if out of bounds.
 /// (Alias for get, used by List.nth module-qualified access.)
 #[no_mangle]
-pub extern "C" fn snow_list_nth(list: *mut u8, index: i64) -> u64 {
-    snow_list_get(list, index)
+pub extern "C" fn mesh_list_nth(list: *mut u8, index: i64) -> u64 {
+    mesh_list_get(list, index)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::gc::snow_rt_init;
+    use crate::gc::mesh_rt_init;
 
     #[test]
     fn test_list_new_is_empty() {
-        snow_rt_init();
-        let list = snow_list_new();
-        assert_eq!(snow_list_length(list), 0);
+        mesh_rt_init();
+        let list = mesh_list_new();
+        assert_eq!(mesh_list_length(list), 0);
     }
 
     #[test]
     fn test_list_append_and_length() {
-        snow_rt_init();
-        let list = snow_list_new();
-        let list = snow_list_append(list, 10);
-        let list = snow_list_append(list, 20);
-        let list = snow_list_append(list, 30);
-        assert_eq!(snow_list_length(list), 3);
+        mesh_rt_init();
+        let list = mesh_list_new();
+        let list = mesh_list_append(list, 10);
+        let list = mesh_list_append(list, 20);
+        let list = mesh_list_append(list, 30);
+        assert_eq!(mesh_list_length(list), 3);
     }
 
     #[test]
     fn test_list_head_tail() {
-        snow_rt_init();
-        let list = snow_list_new();
-        let list = snow_list_append(list, 1);
-        let list = snow_list_append(list, 2);
-        let list = snow_list_append(list, 3);
-        assert_eq!(snow_list_head(list), 1);
-        let tail = snow_list_tail(list);
-        assert_eq!(snow_list_length(tail), 2);
-        assert_eq!(snow_list_head(tail), 2);
+        mesh_rt_init();
+        let list = mesh_list_new();
+        let list = mesh_list_append(list, 1);
+        let list = mesh_list_append(list, 2);
+        let list = mesh_list_append(list, 3);
+        assert_eq!(mesh_list_head(list), 1);
+        let tail = mesh_list_tail(list);
+        assert_eq!(mesh_list_length(tail), 2);
+        assert_eq!(mesh_list_head(tail), 2);
     }
 
     #[test]
     fn test_list_get() {
-        snow_rt_init();
-        let list = snow_list_new();
-        let list = snow_list_append(list, 100);
-        let list = snow_list_append(list, 200);
-        let list = snow_list_append(list, 300);
-        assert_eq!(snow_list_get(list, 0), 100);
-        assert_eq!(snow_list_get(list, 1), 200);
-        assert_eq!(snow_list_get(list, 2), 300);
+        mesh_rt_init();
+        let list = mesh_list_new();
+        let list = mesh_list_append(list, 100);
+        let list = mesh_list_append(list, 200);
+        let list = mesh_list_append(list, 300);
+        assert_eq!(mesh_list_get(list, 0), 100);
+        assert_eq!(mesh_list_get(list, 1), 200);
+        assert_eq!(mesh_list_get(list, 2), 300);
     }
 
     #[test]
     fn test_list_concat() {
-        snow_rt_init();
-        let a = snow_list_new();
-        let a = snow_list_append(a, 1);
-        let a = snow_list_append(a, 2);
-        let b = snow_list_new();
-        let b = snow_list_append(b, 3);
-        let b = snow_list_append(b, 4);
-        let c = snow_list_concat(a, b);
-        assert_eq!(snow_list_length(c), 4);
-        assert_eq!(snow_list_get(c, 0), 1);
-        assert_eq!(snow_list_get(c, 3), 4);
+        mesh_rt_init();
+        let a = mesh_list_new();
+        let a = mesh_list_append(a, 1);
+        let a = mesh_list_append(a, 2);
+        let b = mesh_list_new();
+        let b = mesh_list_append(b, 3);
+        let b = mesh_list_append(b, 4);
+        let c = mesh_list_concat(a, b);
+        assert_eq!(mesh_list_length(c), 4);
+        assert_eq!(mesh_list_get(c, 0), 1);
+        assert_eq!(mesh_list_get(c, 3), 4);
     }
 
     #[test]
     fn test_list_reverse() {
-        snow_rt_init();
-        let list = snow_list_new();
-        let list = snow_list_append(list, 1);
-        let list = snow_list_append(list, 2);
-        let list = snow_list_append(list, 3);
-        let rev = snow_list_reverse(list);
-        assert_eq!(snow_list_get(rev, 0), 3);
-        assert_eq!(snow_list_get(rev, 1), 2);
-        assert_eq!(snow_list_get(rev, 2), 1);
+        mesh_rt_init();
+        let list = mesh_list_new();
+        let list = mesh_list_append(list, 1);
+        let list = mesh_list_append(list, 2);
+        let list = mesh_list_append(list, 3);
+        let rev = mesh_list_reverse(list);
+        assert_eq!(mesh_list_get(rev, 0), 3);
+        assert_eq!(mesh_list_get(rev, 1), 2);
+        assert_eq!(mesh_list_get(rev, 2), 1);
     }
 
     #[test]
     fn test_list_map() {
-        snow_rt_init();
-        let list = snow_list_new();
-        let list = snow_list_append(list, 1);
-        let list = snow_list_append(list, 2);
-        let list = snow_list_append(list, 3);
+        mesh_rt_init();
+        let list = mesh_list_new();
+        let list = mesh_list_append(list, 1);
+        let list = mesh_list_append(list, 2);
+        let list = mesh_list_append(list, 3);
 
         unsafe extern "C" fn double(x: u64) -> u64 {
             x * 2
         }
 
-        let mapped = snow_list_map(list, double as *mut u8, std::ptr::null_mut());
-        assert_eq!(snow_list_length(mapped), 3);
-        assert_eq!(snow_list_get(mapped, 0), 2);
-        assert_eq!(snow_list_get(mapped, 1), 4);
-        assert_eq!(snow_list_get(mapped, 2), 6);
+        let mapped = mesh_list_map(list, double as *mut u8, std::ptr::null_mut());
+        assert_eq!(mesh_list_length(mapped), 3);
+        assert_eq!(mesh_list_get(mapped, 0), 2);
+        assert_eq!(mesh_list_get(mapped, 1), 4);
+        assert_eq!(mesh_list_get(mapped, 2), 6);
     }
 
     #[test]
     fn test_list_filter() {
-        snow_rt_init();
-        let list = snow_list_new();
-        let list = snow_list_append(list, 1);
-        let list = snow_list_append(list, 2);
-        let list = snow_list_append(list, 3);
-        let list = snow_list_append(list, 4);
+        mesh_rt_init();
+        let list = mesh_list_new();
+        let list = mesh_list_append(list, 1);
+        let list = mesh_list_append(list, 2);
+        let list = mesh_list_append(list, 3);
+        let list = mesh_list_append(list, 4);
 
         // Keep only even numbers (value % 2 == 0).
         unsafe extern "C" fn is_even(x: u64) -> u64 {
             if x % 2 == 0 { 1 } else { 0 }
         }
 
-        let filtered = snow_list_filter(list, is_even as *mut u8, std::ptr::null_mut());
-        assert_eq!(snow_list_length(filtered), 2);
-        assert_eq!(snow_list_get(filtered, 0), 2);
-        assert_eq!(snow_list_get(filtered, 1), 4);
+        let filtered = mesh_list_filter(list, is_even as *mut u8, std::ptr::null_mut());
+        assert_eq!(mesh_list_length(filtered), 2);
+        assert_eq!(mesh_list_get(filtered, 0), 2);
+        assert_eq!(mesh_list_get(filtered, 1), 4);
     }
 
     #[test]
     fn test_list_reduce() {
-        snow_rt_init();
-        let list = snow_list_new();
-        let list = snow_list_append(list, 1);
-        let list = snow_list_append(list, 2);
-        let list = snow_list_append(list, 3);
+        mesh_rt_init();
+        let list = mesh_list_new();
+        let list = mesh_list_append(list, 1);
+        let list = mesh_list_append(list, 2);
+        let list = mesh_list_append(list, 3);
 
         unsafe extern "C" fn add(acc: u64, x: u64) -> u64 {
             acc + x
         }
 
-        let sum = snow_list_reduce(list, 0, add as *mut u8, std::ptr::null_mut());
+        let sum = mesh_list_reduce(list, 0, add as *mut u8, std::ptr::null_mut());
         assert_eq!(sum, 6);
     }
 
     #[test]
     fn test_list_map_with_closure() {
-        snow_rt_init();
-        let list = snow_list_new();
-        let list = snow_list_append(list, 10);
-        let list = snow_list_append(list, 20);
+        mesh_rt_init();
+        let list = mesh_list_new();
+        let list = mesh_list_append(list, 10);
+        let list = mesh_list_append(list, 20);
 
         // Simulate a closure with an environment: add the value stored at env_ptr.
         unsafe extern "C" fn add_env(env: *mut u8, x: u64) -> u64 {
@@ -931,201 +931,201 @@ mod tests {
         let mut env_val: u64 = 5;
         let env_ptr = &mut env_val as *mut u64 as *mut u8;
 
-        let mapped = snow_list_map(list, add_env as *mut u8, env_ptr);
-        assert_eq!(snow_list_get(mapped, 0), 15);
-        assert_eq!(snow_list_get(mapped, 1), 25);
+        let mapped = mesh_list_map(list, add_env as *mut u8, env_ptr);
+        assert_eq!(mesh_list_get(mapped, 0), 15);
+        assert_eq!(mesh_list_get(mapped, 1), 25);
     }
 
     #[test]
     fn test_list_from_array() {
-        snow_rt_init();
+        mesh_rt_init();
         let data: [u64; 3] = [10, 20, 30];
-        let list = snow_list_from_array(data.as_ptr(), 3);
-        assert_eq!(snow_list_length(list), 3);
-        assert_eq!(snow_list_get(list, 0), 10);
-        assert_eq!(snow_list_get(list, 2), 30);
+        let list = mesh_list_from_array(data.as_ptr(), 3);
+        assert_eq!(mesh_list_length(list), 3);
+        assert_eq!(mesh_list_get(list, 0), 10);
+        assert_eq!(mesh_list_get(list, 2), 30);
     }
 
     #[test]
     fn test_list_empty_reverse() {
-        snow_rt_init();
-        let list = snow_list_new();
-        let rev = snow_list_reverse(list);
-        assert_eq!(snow_list_length(rev), 0);
+        mesh_rt_init();
+        let list = mesh_list_new();
+        let rev = mesh_list_reverse(list);
+        assert_eq!(mesh_list_length(rev), 0);
     }
 
     #[test]
     fn test_list_reduce_empty() {
-        snow_rt_init();
-        let list = snow_list_new();
+        mesh_rt_init();
+        let list = mesh_list_new();
 
         unsafe extern "C" fn add(acc: u64, x: u64) -> u64 {
             acc + x
         }
 
-        let result = snow_list_reduce(list, 42, add as *mut u8, std::ptr::null_mut());
+        let result = mesh_list_reduce(list, 42, add as *mut u8, std::ptr::null_mut());
         assert_eq!(result, 42); // Initial value returned unchanged.
     }
 
     #[test]
     fn test_list_to_string() {
-        snow_rt_init();
-        let list = snow_list_new();
-        let list = snow_list_append(list, 1);
-        let list = snow_list_append(list, 2);
-        let list = snow_list_append(list, 3);
+        mesh_rt_init();
+        let list = mesh_list_new();
+        let list = mesh_list_append(list, 1);
+        let list = mesh_list_append(list, 2);
+        let list = mesh_list_append(list, 3);
 
-        let result = snow_list_to_string(
+        let result = mesh_list_to_string(
             list,
-            crate::string::snow_int_to_string as *mut u8,
+            crate::string::mesh_int_to_string as *mut u8,
         );
-        let s = unsafe { &*(result as *const crate::string::SnowString) };
+        let s = unsafe { &*(result as *const crate::string::MeshString) };
         let text = unsafe { s.as_str() };
         assert_eq!(text, "[1, 2, 3]");
     }
 
     #[test]
     fn test_list_eq_same() {
-        snow_rt_init();
-        let a = snow_list_new();
-        let a = snow_list_append(a, 1);
-        let a = snow_list_append(a, 2);
-        let a = snow_list_append(a, 3);
-        let b = snow_list_new();
-        let b = snow_list_append(b, 1);
-        let b = snow_list_append(b, 2);
-        let b = snow_list_append(b, 3);
+        mesh_rt_init();
+        let a = mesh_list_new();
+        let a = mesh_list_append(a, 1);
+        let a = mesh_list_append(a, 2);
+        let a = mesh_list_append(a, 3);
+        let b = mesh_list_new();
+        let b = mesh_list_append(b, 1);
+        let b = mesh_list_append(b, 2);
+        let b = mesh_list_append(b, 3);
 
         unsafe extern "C" fn int_eq(a: u64, b: u64) -> i8 {
             if a == b { 1 } else { 0 }
         }
 
-        assert_eq!(snow_list_eq(a, b, int_eq as *mut u8), 1);
+        assert_eq!(mesh_list_eq(a, b, int_eq as *mut u8), 1);
     }
 
     #[test]
     fn test_list_eq_different() {
-        snow_rt_init();
-        let a = snow_list_new();
-        let a = snow_list_append(a, 1);
-        let a = snow_list_append(a, 2);
-        let b = snow_list_new();
-        let b = snow_list_append(b, 1);
-        let b = snow_list_append(b, 3);
+        mesh_rt_init();
+        let a = mesh_list_new();
+        let a = mesh_list_append(a, 1);
+        let a = mesh_list_append(a, 2);
+        let b = mesh_list_new();
+        let b = mesh_list_append(b, 1);
+        let b = mesh_list_append(b, 3);
 
         unsafe extern "C" fn int_eq(a: u64, b: u64) -> i8 {
             if a == b { 1 } else { 0 }
         }
 
-        assert_eq!(snow_list_eq(a, b, int_eq as *mut u8), 0);
+        assert_eq!(mesh_list_eq(a, b, int_eq as *mut u8), 0);
     }
 
     #[test]
     fn test_list_eq_different_length() {
-        snow_rt_init();
-        let a = snow_list_new();
-        let a = snow_list_append(a, 1);
-        let a = snow_list_append(a, 2);
-        let b = snow_list_new();
-        let b = snow_list_append(b, 1);
+        mesh_rt_init();
+        let a = mesh_list_new();
+        let a = mesh_list_append(a, 1);
+        let a = mesh_list_append(a, 2);
+        let b = mesh_list_new();
+        let b = mesh_list_append(b, 1);
 
         unsafe extern "C" fn int_eq(a: u64, b: u64) -> i8 {
             if a == b { 1 } else { 0 }
         }
 
-        assert_eq!(snow_list_eq(a, b, int_eq as *mut u8), 0);
+        assert_eq!(mesh_list_eq(a, b, int_eq as *mut u8), 0);
     }
 
     #[test]
     fn test_list_compare_less() {
-        snow_rt_init();
-        let a = snow_list_new();
-        let a = snow_list_append(a, 1);
-        let a = snow_list_append(a, 2);
-        let b = snow_list_new();
-        let b = snow_list_append(b, 1);
-        let b = snow_list_append(b, 3);
+        mesh_rt_init();
+        let a = mesh_list_new();
+        let a = mesh_list_append(a, 1);
+        let a = mesh_list_append(a, 2);
+        let b = mesh_list_new();
+        let b = mesh_list_append(b, 1);
+        let b = mesh_list_append(b, 3);
 
         unsafe extern "C" fn int_cmp(a: u64, b: u64) -> i64 {
             (a as i64) - (b as i64)
         }
 
-        assert!(snow_list_compare(a, b, int_cmp as *mut u8) < 0);
+        assert!(mesh_list_compare(a, b, int_cmp as *mut u8) < 0);
     }
 
     #[test]
     fn test_list_compare_equal() {
-        snow_rt_init();
-        let a = snow_list_new();
-        let a = snow_list_append(a, 1);
-        let a = snow_list_append(a, 2);
-        let b = snow_list_new();
-        let b = snow_list_append(b, 1);
-        let b = snow_list_append(b, 2);
+        mesh_rt_init();
+        let a = mesh_list_new();
+        let a = mesh_list_append(a, 1);
+        let a = mesh_list_append(a, 2);
+        let b = mesh_list_new();
+        let b = mesh_list_append(b, 1);
+        let b = mesh_list_append(b, 2);
 
         unsafe extern "C" fn int_cmp(a: u64, b: u64) -> i64 {
             (a as i64) - (b as i64)
         }
 
-        assert_eq!(snow_list_compare(a, b, int_cmp as *mut u8), 0);
+        assert_eq!(mesh_list_compare(a, b, int_cmp as *mut u8), 0);
     }
 
     #[test]
     fn test_list_compare_length() {
-        snow_rt_init();
-        let a = snow_list_new();
-        let a = snow_list_append(a, 1);
-        let a = snow_list_append(a, 2);
-        let b = snow_list_new();
-        let b = snow_list_append(b, 1);
-        let b = snow_list_append(b, 2);
-        let b = snow_list_append(b, 3);
+        mesh_rt_init();
+        let a = mesh_list_new();
+        let a = mesh_list_append(a, 1);
+        let a = mesh_list_append(a, 2);
+        let b = mesh_list_new();
+        let b = mesh_list_append(b, 1);
+        let b = mesh_list_append(b, 2);
+        let b = mesh_list_append(b, 3);
 
         unsafe extern "C" fn int_cmp(a: u64, b: u64) -> i64 {
             (a as i64) - (b as i64)
         }
 
-        assert!(snow_list_compare(a, b, int_cmp as *mut u8) < 0);
+        assert!(mesh_list_compare(a, b, int_cmp as *mut u8) < 0);
     }
 
     #[test]
     fn test_list_to_string_empty() {
-        snow_rt_init();
-        let list = snow_list_new();
+        mesh_rt_init();
+        let list = mesh_list_new();
 
-        let result = snow_list_to_string(
+        let result = mesh_list_to_string(
             list,
-            crate::string::snow_int_to_string as *mut u8,
+            crate::string::mesh_int_to_string as *mut u8,
         );
-        let s = unsafe { &*(result as *const crate::string::SnowString) };
+        let s = unsafe { &*(result as *const crate::string::MeshString) };
         let text = unsafe { s.as_str() };
         assert_eq!(text, "[]");
     }
 
     #[test]
     fn test_list_builder_new_empty() {
-        snow_rt_init();
-        let list = snow_list_builder_new(0);
-        assert_eq!(snow_list_length(list), 0);
+        mesh_rt_init();
+        let list = mesh_list_builder_new(0);
+        assert_eq!(mesh_list_length(list), 0);
     }
 
     #[test]
     fn test_list_builder_new_has_zero_length() {
-        snow_rt_init();
-        let list = snow_list_builder_new(3);
-        assert_eq!(snow_list_length(list), 0);
+        mesh_rt_init();
+        let list = mesh_list_builder_new(3);
+        assert_eq!(mesh_list_length(list), 0);
     }
 
     #[test]
     fn test_list_builder_push_three_elements() {
-        snow_rt_init();
-        let list = snow_list_builder_new(3);
-        snow_list_builder_push(list, 10);
-        snow_list_builder_push(list, 20);
-        snow_list_builder_push(list, 30);
-        assert_eq!(snow_list_length(list), 3);
-        assert_eq!(snow_list_get(list, 0), 10);
-        assert_eq!(snow_list_get(list, 1), 20);
-        assert_eq!(snow_list_get(list, 2), 30);
+        mesh_rt_init();
+        let list = mesh_list_builder_new(3);
+        mesh_list_builder_push(list, 10);
+        mesh_list_builder_push(list, 20);
+        mesh_list_builder_push(list, 30);
+        assert_eq!(mesh_list_length(list), 3);
+        assert_eq!(mesh_list_get(list, 0), 10);
+        assert_eq!(mesh_list_get(list, 1), 20);
+        assert_eq!(mesh_list_get(list, 2), 30);
     }
 }

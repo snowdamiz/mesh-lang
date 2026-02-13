@@ -1,4 +1,4 @@
-//! Item/declaration parsers for Snow.
+//! Item/declaration parsers for Mesh.
 //!
 //! Parses top-level and nested declarations: function definitions, module
 //! definitions, import declarations, and struct definitions. Handles visibility

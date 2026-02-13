@@ -1,20 +1,20 @@
-//! Project scaffolding for `snowc init`.
+//! Project scaffolding for `meshc init`.
 //!
-//! Creates the standard Snow project layout:
+//! Creates the standard Mesh project layout:
 //!
 //! ```text
 //! <name>/
-//!   snow.toml
-//!   main.snow
+//!   mesh.toml
+//!   main.mpl
 //! ```
 
 use std::path::Path;
 
-/// Create a new Snow project with the given name inside the given parent directory.
+/// Create a new Mesh project with the given name inside the given parent directory.
 ///
 /// Creates `<dir>/<name>/` containing:
-/// - `snow.toml` with package metadata and empty dependencies
-/// - `main.snow` with a minimal hello-world program
+/// - `mesh.toml` with package metadata and empty dependencies
+/// - `main.mpl` with a minimal hello-world program
 ///
 /// Returns an error if the target directory already exists.
 pub fn scaffold_project(name: &str, dir: &Path) -> Result<(), String> {
@@ -27,7 +27,7 @@ pub fn scaffold_project(name: &str, dir: &Path) -> Result<(), String> {
     std::fs::create_dir_all(&project_dir)
         .map_err(|e| format!("Failed to create directory '{}': {}", name, e))?;
 
-    // Write snow.toml
+    // Write mesh.toml
     let manifest = format!(
         r#"[package]
 name = "{}"
@@ -37,16 +37,16 @@ version = "0.1.0"
 "#,
         name
     );
-    std::fs::write(project_dir.join("snow.toml"), manifest)
-        .map_err(|e| format!("Failed to write snow.toml: {}", e))?;
+    std::fs::write(project_dir.join("mesh.toml"), manifest)
+        .map_err(|e| format!("Failed to write mesh.toml: {}", e))?;
 
-    // Write main.snow
-    let main_snow = r#"fn main() do
-  IO.puts("Hello from Snow!")
+    // Write main.mpl
+    let main_mesh = r#"fn main() do
+  IO.puts("Hello from Mesh!")
 end
 "#;
-    std::fs::write(project_dir.join("main.snow"), main_snow)
-        .map_err(|e| format!("Failed to write main.snow: {}", e))?;
+    std::fs::write(project_dir.join("main.mpl"), main_mesh)
+        .map_err(|e| format!("Failed to write main.mpl: {}", e))?;
 
     println!("Created project '{}'", name);
     Ok(())
@@ -67,21 +67,21 @@ mod tests {
         assert!(project_dir.exists(), "Project directory should exist");
         assert!(project_dir.is_dir(), "Project path should be a directory");
         assert!(
-            project_dir.join("snow.toml").exists(),
-            "snow.toml should exist"
+            project_dir.join("mesh.toml").exists(),
+            "mesh.toml should exist"
         );
         assert!(
-            project_dir.join("main.snow").exists(),
-            "main.snow should exist"
+            project_dir.join("main.mpl").exists(),
+            "main.mpl should exist"
         );
     }
 
     #[test]
-    fn scaffold_snow_toml_is_valid() {
+    fn scaffold_mesh_toml_is_valid() {
         let tmp = TempDir::new().unwrap();
         scaffold_project("test-project", tmp.path()).unwrap();
 
-        let toml_path = tmp.path().join("test-project").join("snow.toml");
+        let toml_path = tmp.path().join("test-project").join("mesh.toml");
         let content = std::fs::read_to_string(&toml_path).unwrap();
         let manifest = Manifest::from_str(&content).unwrap();
 
@@ -91,11 +91,11 @@ mod tests {
     }
 
     #[test]
-    fn scaffold_main_snow_content() {
+    fn scaffold_main_mesh_content() {
         let tmp = TempDir::new().unwrap();
         scaffold_project("hello", tmp.path()).unwrap();
 
-        let main_path = tmp.path().join("hello").join("main.snow");
+        let main_path = tmp.path().join("hello").join("main.mpl");
         let content = std::fs::read_to_string(&main_path).unwrap();
         assert!(content.contains("fn main()"), "Should have main function");
         assert!(

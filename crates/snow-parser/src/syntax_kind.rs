@@ -1,11 +1,11 @@
-//! SyntaxKind enum for the Snow CST.
+//! SyntaxKind enum for the Mesh CST.
 //!
 //! This is a superset of `TokenKind` (mapped to SCREAMING_SNAKE_CASE) plus
 //! composite node kinds for CST nodes produced by the parser.
 
-use snow_common::token::TokenKind;
+use mesh_common::token::TokenKind;
 
-/// Every kind of syntax element in the Snow CST.
+/// Every kind of syntax element in the Mesh CST.
 ///
 /// Token kinds (leaves) are mapped 1:1 from [`TokenKind`]. Composite node kinds
 /// represent parser-produced tree nodes. The first two values are sentinels used

@@ -1661,7 +1661,7 @@ mod tests {
             code: "E0001".to_string(),
             severity: "error".to_string(),
             message: "expected Int, found String".to_string(),
-            file: "main.snow".to_string(),
+            file: "main.mpl".to_string(),
             spans: vec![JsonSpan {
                 start: 10,
                 end: 15,
@@ -1681,7 +1681,7 @@ mod tests {
             code: "E0001".to_string(),
             severity: "error".to_string(),
             message: "expected Option<Int>, found Int".to_string(),
-            file: "test.snow".to_string(),
+            file: "test.mpl".to_string(),
             spans: vec![],
             fix: Some("wrap in Some(...)".to_string()),
         };

@@ -1,7 +1,7 @@
-//! HTTP server runtime for the Snow language.
+//! HTTP server runtime for the Mesh language.
 //!
 //! Uses a hand-rolled HTTP/1.1 request parser and response writer with the
-//! Snow actor system for per-connection handling. Each incoming connection is
+//! Mesh actor system for per-connection handling. Each incoming connection is
 //! dispatched to a lightweight actor (corosensei coroutine on the M:N
 //! scheduler) rather than an OS thread, benefiting from 64 KiB stacks and
 //! crash isolation via `catch_unwind`.
@@ -28,16 +28,16 @@ use rustls_pki_types::{CertificateDer, PrivateKeyDer, pem::PemObject};
 
 use crate::actor;
 use crate::collections::map;
-use crate::gc::snow_gc_alloc_actor;
-use crate::string::{snow_string_new, SnowString};
+use crate::gc::mesh_gc_alloc_actor;
+use crate::string::{mesh_string_new, MeshString};
 
-use super::router::{MiddlewareEntry, SnowRouter};
+use super::router::{MiddlewareEntry, MeshRouter};
 
 // ── Stream Abstraction ──────────────────────────────────────────────────
 
 /// A connection stream that may be plain TCP or TLS-wrapped.
 ///
-/// Mirrors the `PgStream` pattern from `crates/snow-rt/src/db/pg.rs` (Phase 55).
+/// Mirrors the `PgStream` pattern from `crates/mesh-rt/src/db/pg.rs` (Phase 55).
 /// Both variants implement `Read` and `Write`, enabling `parse_request` and
 /// `write_response` to operate on either stream type transparently.
 enum HttpStream {
@@ -94,36 +94,36 @@ pub(crate) fn build_server_config(cert_path: &str, key_path: &str) -> Result<Arc
 
 // ── Request/Response structs ────────────────────────────────────────────
 
-/// HTTP request representation passed to Snow handler functions.
+/// HTTP request representation passed to Mesh handler functions.
 ///
-/// All fields are opaque pointers at the LLVM level. The Snow program
+/// All fields are opaque pointers at the LLVM level. The Mesh program
 /// accesses them via accessor functions (request_method, request_path, etc.).
 ///
 /// IMPORTANT: This struct is `#[repr(C)]` -- new fields MUST be appended
 /// at the end to preserve existing field offsets.
 #[repr(C)]
-pub struct SnowHttpRequest {
-    /// HTTP method as SnowString (e.g. "GET", "POST").
+pub struct MeshHttpRequest {
+    /// HTTP method as MeshString (e.g. "GET", "POST").
     pub method: *mut u8,
-    /// Request path as SnowString (e.g. "/api/users").
+    /// Request path as MeshString (e.g. "/api/users").
     pub path: *mut u8,
-    /// Request body as SnowString (empty string for GET).
+    /// Request body as MeshString (empty string for GET).
     pub body: *mut u8,
-    /// Query parameters as SnowMap (string keys -> string values).
+    /// Query parameters as MeshMap (string keys -> string values).
     pub query_params: *mut u8,
-    /// Headers as SnowMap (string keys -> string values).
+    /// Headers as MeshMap (string keys -> string values).
     pub headers: *mut u8,
-    /// Path parameters as SnowMap (string keys -> string values).
+    /// Path parameters as MeshMap (string keys -> string values).
     /// Populated by the router when matching parameterized routes.
     pub path_params: *mut u8,
 }
 
-/// HTTP response returned by Snow handler functions.
+/// HTTP response returned by Mesh handler functions.
 #[repr(C)]
-pub struct SnowHttpResponse {
+pub struct MeshHttpResponse {
     /// HTTP status code (e.g. 200, 404).
     pub status: i64,
-    /// Response body as SnowString.
+    /// Response body as MeshString.
     pub body: *mut u8,
 }
 
@@ -131,12 +131,12 @@ pub struct SnowHttpResponse {
 
 /// Create a new HTTP response with the given status code and body.
 #[no_mangle]
-pub extern "C" fn snow_http_response_new(status: i64, body: *const SnowString) -> *mut u8 {
+pub extern "C" fn mesh_http_response_new(status: i64, body: *const MeshString) -> *mut u8 {
     unsafe {
-        let ptr = snow_gc_alloc_actor(
-            std::mem::size_of::<SnowHttpResponse>() as u64,
-            std::mem::align_of::<SnowHttpResponse>() as u64,
-        ) as *mut SnowHttpResponse;
+        let ptr = mesh_gc_alloc_actor(
+            std::mem::size_of::<MeshHttpResponse>() as u64,
+            std::mem::align_of::<MeshHttpResponse>() as u64,
+        ) as *mut MeshHttpResponse;
         (*ptr).status = status;
         (*ptr).body = body as *mut u8;
         ptr as *mut u8
@@ -147,51 +147,51 @@ pub extern "C" fn snow_http_response_new(status: i64, body: *const SnowString) -
 
 /// Get the HTTP method from a request.
 #[no_mangle]
-pub extern "C" fn snow_http_request_method(req: *mut u8) -> *mut u8 {
-    unsafe { (*(req as *const SnowHttpRequest)).method }
+pub extern "C" fn mesh_http_request_method(req: *mut u8) -> *mut u8 {
+    unsafe { (*(req as *const MeshHttpRequest)).method }
 }
 
 /// Get the URL path from a request.
 #[no_mangle]
-pub extern "C" fn snow_http_request_path(req: *mut u8) -> *mut u8 {
-    unsafe { (*(req as *const SnowHttpRequest)).path }
+pub extern "C" fn mesh_http_request_path(req: *mut u8) -> *mut u8 {
+    unsafe { (*(req as *const MeshHttpRequest)).path }
 }
 
 /// Get the request body.
 #[no_mangle]
-pub extern "C" fn snow_http_request_body(req: *mut u8) -> *mut u8 {
-    unsafe { (*(req as *const SnowHttpRequest)).body }
+pub extern "C" fn mesh_http_request_body(req: *mut u8) -> *mut u8 {
+    unsafe { (*(req as *const MeshHttpRequest)).body }
 }
 
-/// Get the value of a request header by name. Returns SnowOption
-/// (tag 0 = Some with SnowString, tag 1 = None).
+/// Get the value of a request header by name. Returns MeshOption
+/// (tag 0 = Some with MeshString, tag 1 = None).
 #[no_mangle]
-pub extern "C" fn snow_http_request_header(req: *mut u8, name: *const SnowString) -> *mut u8 {
+pub extern "C" fn mesh_http_request_header(req: *mut u8, name: *const MeshString) -> *mut u8 {
     unsafe {
-        let request = &*(req as *const SnowHttpRequest);
+        let request = &*(req as *const MeshHttpRequest);
         let key_str = (*name).as_str();
-        // Look up in the headers map. Keys are SnowString pointers stored as u64.
-        let key_snow = snow_string_new(key_str.as_ptr(), key_str.len() as u64);
-        let val = map::snow_map_get(request.headers, key_snow as u64);
+        // Look up in the headers map. Keys are MeshString pointers stored as u64.
+        let key_mesh = mesh_string_new(key_str.as_ptr(), key_str.len() as u64);
+        let val = map::mesh_map_get(request.headers, key_mesh as u64);
         if val == 0 {
             // None
             alloc_option(1, std::ptr::null_mut())
         } else {
-            // Some -- val is the SnowString pointer stored as u64
+            // Some -- val is the MeshString pointer stored as u64
             alloc_option(0, val as *mut u8)
         }
     }
 }
 
-/// Get the value of a query parameter by name. Returns SnowOption
-/// (tag 0 = Some with SnowString, tag 1 = None).
+/// Get the value of a query parameter by name. Returns MeshOption
+/// (tag 0 = Some with MeshString, tag 1 = None).
 #[no_mangle]
-pub extern "C" fn snow_http_request_query(req: *mut u8, name: *const SnowString) -> *mut u8 {
+pub extern "C" fn mesh_http_request_query(req: *mut u8, name: *const MeshString) -> *mut u8 {
     unsafe {
-        let request = &*(req as *const SnowHttpRequest);
+        let request = &*(req as *const MeshHttpRequest);
         let key_str = (*name).as_str();
-        let key_snow = snow_string_new(key_str.as_ptr(), key_str.len() as u64);
-        let val = map::snow_map_get(request.query_params, key_snow as u64);
+        let key_mesh = mesh_string_new(key_str.as_ptr(), key_str.len() as u64);
+        let val = map::mesh_map_get(request.query_params, key_mesh as u64);
         if val == 0 {
             alloc_option(1, std::ptr::null_mut())
         } else {
@@ -200,19 +200,19 @@ pub extern "C" fn snow_http_request_query(req: *mut u8, name: *const SnowString)
     }
 }
 
-/// Get the value of a path parameter by name. Returns SnowOption
-/// (tag 0 = Some with SnowString, tag 1 = None).
+/// Get the value of a path parameter by name. Returns MeshOption
+/// (tag 0 = Some with MeshString, tag 1 = None).
 ///
 /// Path parameters are extracted from parameterized route patterns
 /// like `/users/:id`. For a request matching this pattern with path
 /// `/users/42`, `Request.param(req, "id")` returns `Some("42")`.
 #[no_mangle]
-pub extern "C" fn snow_http_request_param(req: *mut u8, name: *const SnowString) -> *mut u8 {
+pub extern "C" fn mesh_http_request_param(req: *mut u8, name: *const MeshString) -> *mut u8 {
     unsafe {
-        let request = &*(req as *const SnowHttpRequest);
+        let request = &*(req as *const MeshHttpRequest);
         let key_str = (*name).as_str();
-        let key_snow = snow_string_new(key_str.as_ptr(), key_str.len() as u64);
-        let val = map::snow_map_get(request.path_params, key_snow as u64);
+        let key_mesh = mesh_string_new(key_str.as_ptr(), key_str.len() as u64);
+        let val = map::mesh_map_get(request.path_params, key_mesh as u64);
         if val == 0 {
             alloc_option(1, std::ptr::null_mut())
         } else {
@@ -387,13 +387,13 @@ extern "C" fn connection_handler_entry(args: *const u8) {
                 let _ = write_response(&mut stream, status, &body);
             }
             Err(e) => {
-                eprintln!("[snow-rt] HTTP parse error: {}", e);
+                eprintln!("[mesh-rt] HTTP parse error: {}", e);
             }
         }
     }));
 
     if let Err(panic_info) = result {
-        eprintln!("[snow-rt] HTTP handler panicked: {:?}", panic_info);
+        eprintln!("[mesh-rt] HTTP handler panicked: {:?}", panic_info);
     }
 }
 
@@ -402,7 +402,7 @@ extern "C" fn connection_handler_entry(args: *const u8) {
 /// Start an HTTP server on the given port, blocking the calling thread.
 ///
 /// The server listens for incoming connections and dispatches each
-/// request to a lightweight actor via the Snow actor scheduler. Each
+/// request to a lightweight actor via the Mesh actor scheduler. Each
 /// connection handler runs as a coroutine (64 KiB stack) with crash
 /// isolation via `catch_unwind` in `connection_handler_entry`.
 ///
@@ -410,20 +410,20 @@ extern "C" fn connection_handler_entry(args: *const u8) {
 /// - If handler_env is null: `fn(request_ptr) -> response_ptr`
 /// - If handler_env is non-null: `fn(handler_env, request_ptr) -> response_ptr`
 #[no_mangle]
-pub extern "C" fn snow_http_serve(router: *mut u8, port: i64) {
+pub extern "C" fn mesh_http_serve(router: *mut u8, port: i64) {
     // Ensure the actor scheduler is initialized (idempotent).
-    crate::actor::snow_rt_init_actor(0);
+    crate::actor::mesh_rt_init_actor(0);
 
     let addr = format!("0.0.0.0:{}", port);
     let listener = match std::net::TcpListener::bind(&addr) {
         Ok(l) => l,
         Err(e) => {
-            eprintln!("[snow-rt] Failed to start HTTP server on {}: {}", addr, e);
+            eprintln!("[mesh-rt] Failed to start HTTP server on {}: {}", addr, e);
             return;
         }
     };
 
-    eprintln!("[snow-rt] HTTP server listening on {}", addr);
+    eprintln!("[mesh-rt] HTTP server listening on {}", addr);
 
     let router_addr = router as usize;
 
@@ -431,7 +431,7 @@ pub extern "C" fn snow_http_serve(router: *mut u8, port: i64) {
         let tcp_stream = match tcp_stream {
             Ok(s) => s,
             Err(e) => {
-                eprintln!("[snow-rt] accept error: {}", e);
+                eprintln!("[mesh-rt] accept error: {}", e);
                 continue;
             }
         };
@@ -463,7 +463,7 @@ pub extern "C" fn snow_http_serve(router: *mut u8, port: i64) {
 /// Start an HTTPS server on the given port with TLS, blocking the calling thread.
 ///
 /// Loads PEM-encoded certificate and private key files, builds a rustls
-/// `ServerConfig`, and enters the same accept loop as `snow_http_serve`.
+/// `ServerConfig`, and enters the same accept loop as `mesh_http_serve`.
 /// Each accepted connection is wrapped in `HttpStream::Tls` and dispatched
 /// to a lightweight actor.
 ///
@@ -471,13 +471,13 @@ pub extern "C" fn snow_http_serve(router: *mut u8, port: i64) {
 /// handshake occurs on the first `read` call inside the actor's coroutine,
 /// ensuring the accept loop is never blocked by slow TLS clients.
 #[no_mangle]
-pub extern "C" fn snow_http_serve_tls(
+pub extern "C" fn mesh_http_serve_tls(
     router: *mut u8,
     port: i64,
-    cert_path: *const SnowString,
-    key_path: *const SnowString,
+    cert_path: *const MeshString,
+    key_path: *const MeshString,
 ) {
-    crate::actor::snow_rt_init_actor(0);
+    crate::actor::mesh_rt_init_actor(0);
 
     let cert_str = unsafe { (*cert_path).as_str() };
     let key_str = unsafe { (*key_path).as_str() };
@@ -485,7 +485,7 @@ pub extern "C" fn snow_http_serve_tls(
     let tls_config = match build_server_config(cert_str, key_str) {
         Ok(c) => c,
         Err(e) => {
-            eprintln!("[snow-rt] Failed to load TLS certificates: {}", e);
+            eprintln!("[mesh-rt] Failed to load TLS certificates: {}", e);
             return;
         }
     };
@@ -494,12 +494,12 @@ pub extern "C" fn snow_http_serve_tls(
     let listener = match std::net::TcpListener::bind(&addr) {
         Ok(l) => l,
         Err(e) => {
-            eprintln!("[snow-rt] Failed to bind {}: {}", addr, e);
+            eprintln!("[mesh-rt] Failed to bind {}: {}", addr, e);
             return;
         }
     };
 
-    eprintln!("[snow-rt] HTTPS server listening on {}", addr);
+    eprintln!("[mesh-rt] HTTPS server listening on {}", addr);
 
     let router_addr = router as usize;
     // Leak the Arc<ServerConfig> as a raw pointer for transfer into the loop.
@@ -510,7 +510,7 @@ pub extern "C" fn snow_http_serve_tls(
         let tcp_stream = match tcp_stream {
             Ok(s) => s,
             Err(e) => {
-                eprintln!("[snow-rt] accept error: {}", e);
+                eprintln!("[mesh-rt] accept error: {}", e);
                 continue;
             }
         };
@@ -523,7 +523,7 @@ pub extern "C" fn snow_http_serve_tls(
         let conn = match ServerConnection::new(Arc::clone(&tls_config)) {
             Ok(c) => c,
             Err(e) => {
-                eprintln!("[snow-rt] TLS connection setup failed: {}", e);
+                eprintln!("[mesh-rt] TLS connection setup failed: {}", e);
                 // Re-leak the Arc so it's available for the next connection.
                 std::mem::forget(tls_config);
                 continue;
@@ -561,7 +561,7 @@ pub extern "C" fn snow_http_serve_tls(
 /// State for the middleware chain trampoline.
 ///
 /// Each step in the chain creates a new ChainState with `index + 1`,
-/// builds a Snow closure wrapping `chain_next`, and calls the current
+/// builds a Mesh closure wrapping `chain_next`, and calls the current
 /// middleware with (request, next_closure).
 struct ChainState {
     middlewares: Vec<MiddlewareEntry>,
@@ -572,7 +572,7 @@ struct ChainState {
 
 /// Trampoline for the middleware `next` function.
 ///
-/// This is what Snow calls when middleware invokes `next(request)`.
+/// This is what Mesh calls when middleware invokes `next(request)`.
 /// If all middleware has been traversed, calls the route handler.
 /// Otherwise, calls the next middleware with a new `next` closure.
 extern "C" fn chain_next(env_ptr: *mut u8, request_ptr: *mut u8) -> *mut u8 {
@@ -591,19 +591,19 @@ extern "C" fn chain_next(env_ptr: *mut u8, request_ptr: *mut u8) -> *mut u8 {
                 handler_env: state.handler_env,
             });
             let next_env = Box::into_raw(next_state) as *mut u8;
-            let next_closure = build_snow_closure(chain_next as *mut u8, next_env);
+            let next_closure = build_mesh_closure(chain_next as *mut u8, next_env);
             call_middleware(mw.fn_ptr, mw.env_ptr, request_ptr, next_closure)
         }
     }
 }
 
-/// Build a Snow-compatible closure struct (GC-allocated).
+/// Build a Mesh-compatible closure struct (GC-allocated).
 ///
 /// Layout: `{ fn_ptr: *mut u8, env_ptr: *mut u8 }` -- 16 bytes, 8-byte aligned.
-/// This matches Snow's closure representation used by the codegen.
-fn build_snow_closure(fn_ptr: *mut u8, env_ptr: *mut u8) -> *mut u8 {
+/// This matches Mesh's closure representation used by the codegen.
+fn build_mesh_closure(fn_ptr: *mut u8, env_ptr: *mut u8) -> *mut u8 {
     unsafe {
-        let closure = snow_gc_alloc_actor(16, 8) as *mut *mut u8;
+        let closure = mesh_gc_alloc_actor(16, 8) as *mut *mut u8;
         *closure = fn_ptr;
         *closure.add(1) = env_ptr;
         closure as *mut u8
@@ -628,7 +628,7 @@ fn call_handler(fn_ptr: *mut u8, env_ptr: *mut u8, request: *mut u8) -> *mut u8 
 
 /// Call a middleware function.
 ///
-/// Snow compiles middleware with signature `fn(request: ptr, next: {ptr, ptr}) -> ptr`.
+/// Mesh compiles middleware with signature `fn(request: ptr, next: {ptr, ptr}) -> ptr`.
 /// The `next` parameter is a closure struct `{fn_ptr, env_ptr}` which LLVM's calling
 /// convention decomposes into two separate register-passed arguments. So the actual
 /// ABI signature is `fn(request, next_fn_ptr, next_env_ptr) -> response`.
@@ -658,11 +658,11 @@ fn call_middleware(fn_ptr: *mut u8, env_ptr: *mut u8, request: *mut u8, next_clo
 /// Returns `(status_code, body_bytes)` for the response.
 fn process_request(router_ptr: *mut u8, parsed: ParsedRequest) -> (u16, Vec<u8>) {
     unsafe {
-        let router = &*(router_ptr as *const SnowRouter);
+        let router = &*(router_ptr as *const MeshRouter);
 
-        // Build the SnowHttpRequest.
+        // Build the MeshHttpRequest.
         let method_str = parsed.method;
-        let method = snow_string_new(method_str.as_ptr(), method_str.len() as u64) as *mut u8;
+        let method = mesh_string_new(method_str.as_ptr(), method_str.len() as u64) as *mut u8;
 
         let url = parsed.path;
         // Split URL into path and query string.
@@ -670,45 +670,45 @@ fn process_request(router_ptr: *mut u8, parsed: ParsedRequest) -> (u16, Vec<u8>)
             Some(idx) => (&url[..idx], &url[idx + 1..]),
             None => (url.as_str(), ""),
         };
-        let path = snow_string_new(path_str.as_ptr(), path_str.len() as u64) as *mut u8;
+        let path = mesh_string_new(path_str.as_ptr(), path_str.len() as u64) as *mut u8;
 
         // Body from parsed request.
         let body_bytes = parsed.body;
-        let body = snow_string_new(body_bytes.as_ptr(), body_bytes.len() as u64) as *mut u8;
+        let body = mesh_string_new(body_bytes.as_ptr(), body_bytes.len() as u64) as *mut u8;
 
-        // Parse query params into a SnowMap (string keys for content-based lookup).
-        let mut query_map = map::snow_map_new_typed(1);
+        // Parse query params into a MeshMap (string keys for content-based lookup).
+        let mut query_map = map::mesh_map_new_typed(1);
         if !query_str.is_empty() {
             for param in query_str.split('&') {
                 if let Some((k, v)) = param.split_once('=') {
-                    let key = snow_string_new(k.as_ptr(), k.len() as u64);
-                    let val = snow_string_new(v.as_ptr(), v.len() as u64);
-                    query_map = map::snow_map_put(query_map, key as u64, val as u64);
+                    let key = mesh_string_new(k.as_ptr(), k.len() as u64);
+                    let val = mesh_string_new(v.as_ptr(), v.len() as u64);
+                    query_map = map::mesh_map_put(query_map, key as u64, val as u64);
                 }
             }
         }
 
-        // Parse headers into a SnowMap (string keys for content-based lookup).
-        let mut headers_map = map::snow_map_new_typed(1);
+        // Parse headers into a MeshMap (string keys for content-based lookup).
+        let mut headers_map = map::mesh_map_new_typed(1);
         for (name, value_str) in &parsed.headers {
-            let key = snow_string_new(name.as_ptr(), name.len() as u64);
-            let val = snow_string_new(value_str.as_ptr(), value_str.len() as u64);
-            headers_map = map::snow_map_put(headers_map, key as u64, val as u64);
+            let key = mesh_string_new(name.as_ptr(), name.len() as u64);
+            let val = mesh_string_new(value_str.as_ptr(), value_str.len() as u64);
+            headers_map = map::mesh_map_put(headers_map, key as u64, val as u64);
         }
 
         // Build the request struct (needed for both matched and 404 paths when middleware is present).
-        let build_snow_request = |path_params_map: *mut u8| -> *mut u8 {
-            let snow_req = snow_gc_alloc_actor(
-                std::mem::size_of::<SnowHttpRequest>() as u64,
-                std::mem::align_of::<SnowHttpRequest>() as u64,
-            ) as *mut SnowHttpRequest;
-            (*snow_req).method = method;
-            (*snow_req).path = path;
-            (*snow_req).body = body;
-            (*snow_req).query_params = query_map;
-            (*snow_req).headers = headers_map;
-            (*snow_req).path_params = path_params_map;
-            snow_req as *mut u8
+        let build_mesh_request = |path_params_map: *mut u8| -> *mut u8 {
+            let mesh_req = mesh_gc_alloc_actor(
+                std::mem::size_of::<MeshHttpRequest>() as u64,
+                std::mem::align_of::<MeshHttpRequest>() as u64,
+            ) as *mut MeshHttpRequest;
+            (*mesh_req).method = method;
+            (*mesh_req).path = path;
+            (*mesh_req).body = body;
+            (*mesh_req).query_params = query_map;
+            (*mesh_req).headers = headers_map;
+            (*mesh_req).path_params = path_params_map;
+            mesh_req as *mut u8
         };
 
         // Match against router (now with method and path params).
@@ -716,15 +716,15 @@ fn process_request(router_ptr: *mut u8, parsed: ParsedRequest) -> (u16, Vec<u8>)
         let has_middleware = !router.middlewares.is_empty();
 
         let response_ptr = if let Some((handler_fn, handler_env, params)) = matched {
-            // Convert captured path params into a SnowMap.
-            let mut path_params_map = map::snow_map_new_typed(1);
+            // Convert captured path params into a MeshMap.
+            let mut path_params_map = map::mesh_map_new_typed(1);
             for (k, v) in &params {
-                let key = snow_string_new(k.as_ptr(), k.len() as u64);
-                let val = snow_string_new(v.as_ptr(), v.len() as u64);
-                path_params_map = map::snow_map_put(path_params_map, key as u64, val as u64);
+                let key = mesh_string_new(k.as_ptr(), k.len() as u64);
+                let val = mesh_string_new(v.as_ptr(), v.len() as u64);
+                path_params_map = map::mesh_map_put(path_params_map, key as u64, val as u64);
             }
 
-            let req_ptr = build_snow_request(path_params_map);
+            let req_ptr = build_mesh_request(path_params_map);
 
             if has_middleware {
                 // Execute middleware chain wrapping the matched handler.
@@ -741,14 +741,14 @@ fn process_request(router_ptr: *mut u8, parsed: ParsedRequest) -> (u16, Vec<u8>)
             }
         } else if has_middleware {
             // 404 with middleware: wrap a synthetic 404 handler in the middleware chain.
-            let path_params_map = map::snow_map_new_typed(1);
-            let req_ptr = build_snow_request(path_params_map);
+            let path_params_map = map::mesh_map_new_typed(1);
+            let req_ptr = build_mesh_request(path_params_map);
 
             // Synthetic 404 handler: returns a 404 response.
             extern "C" fn not_found_handler(_request: *mut u8) -> *mut u8 {
                 let body_text = b"Not Found";
-                let body = snow_string_new(body_text.as_ptr(), body_text.len() as u64);
-                snow_http_response_new(404, body)
+                let body = mesh_string_new(body_text.as_ptr(), body_text.len() as u64);
+                mesh_http_response_new(404, body)
             }
 
             let state = Box::new(ChainState {
@@ -763,14 +763,14 @@ fn process_request(router_ptr: *mut u8, parsed: ParsedRequest) -> (u16, Vec<u8>)
             return (404, b"Not Found".to_vec());
         };
 
-        // Extract response from the Snow response pointer.
-        let resp = &*(response_ptr as *const SnowHttpResponse);
+        // Extract response from the Mesh response pointer.
+        let resp = &*(response_ptr as *const MeshHttpResponse);
         let status_code = resp.status as u16;
         let body_str = if resp.body.is_null() {
             ""
         } else {
-            let body_snow = &*(resp.body as *const SnowString);
-            body_snow.as_str()
+            let body_mesh = &*(resp.body as *const MeshString);
+            body_mesh.as_str()
         };
 
         (status_code, body_str.as_bytes().to_vec())
@@ -780,39 +780,39 @@ fn process_request(router_ptr: *mut u8, parsed: ParsedRequest) -> (u16, Vec<u8>)
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::gc::snow_rt_init;
+    use crate::gc::mesh_rt_init;
 
     #[test]
     fn test_response_creation() {
-        snow_rt_init();
-        let body = snow_string_new(b"Hello".as_ptr(), 5);
-        let resp_ptr = snow_http_response_new(200, body);
+        mesh_rt_init();
+        let body = mesh_string_new(b"Hello".as_ptr(), 5);
+        let resp_ptr = mesh_http_response_new(200, body);
         assert!(!resp_ptr.is_null());
         unsafe {
-            let resp = &*(resp_ptr as *const SnowHttpResponse);
+            let resp = &*(resp_ptr as *const MeshHttpResponse);
             assert_eq!(resp.status, 200);
-            let body_str = &*(resp.body as *const SnowString);
+            let body_str = &*(resp.body as *const MeshString);
             assert_eq!(body_str.as_str(), "Hello");
         }
     }
 
     #[test]
     fn test_request_accessors() {
-        snow_rt_init();
+        mesh_rt_init();
 
         // Build a request manually.
-        let method = snow_string_new(b"GET".as_ptr(), 3) as *mut u8;
-        let path = snow_string_new(b"/test".as_ptr(), 5) as *mut u8;
-        let body = snow_string_new(b"".as_ptr(), 0) as *mut u8;
-        let query_params = map::snow_map_new();
-        let headers = map::snow_map_new();
-        let path_params = map::snow_map_new();
+        let method = mesh_string_new(b"GET".as_ptr(), 3) as *mut u8;
+        let path = mesh_string_new(b"/test".as_ptr(), 5) as *mut u8;
+        let body = mesh_string_new(b"".as_ptr(), 0) as *mut u8;
+        let query_params = map::mesh_map_new();
+        let headers = map::mesh_map_new();
+        let path_params = map::mesh_map_new();
 
         unsafe {
-            let req_ptr = snow_gc_alloc_actor(
-                std::mem::size_of::<SnowHttpRequest>() as u64,
-                std::mem::align_of::<SnowHttpRequest>() as u64,
-            ) as *mut SnowHttpRequest;
+            let req_ptr = mesh_gc_alloc_actor(
+                std::mem::size_of::<MeshHttpRequest>() as u64,
+                std::mem::align_of::<MeshHttpRequest>() as u64,
+            ) as *mut MeshHttpRequest;
             (*req_ptr).method = method;
             (*req_ptr).path = path;
             (*req_ptr).body = body;
@@ -823,18 +823,18 @@ mod tests {
             let req = req_ptr as *mut u8;
 
             // Test method accessor.
-            let m = snow_http_request_method(req);
-            let m_str = &*(m as *const SnowString);
+            let m = mesh_http_request_method(req);
+            let m_str = &*(m as *const MeshString);
             assert_eq!(m_str.as_str(), "GET");
 
             // Test path accessor.
-            let p = snow_http_request_path(req);
-            let p_str = &*(p as *const SnowString);
+            let p = mesh_http_request_path(req);
+            let p_str = &*(p as *const MeshString);
             assert_eq!(p_str.as_str(), "/test");
 
             // Test body accessor.
-            let b = snow_http_request_body(req);
-            let b_str = &*(b as *const SnowString);
+            let b = mesh_http_request_body(req);
+            let b_str = &*(b as *const MeshString);
             assert_eq!(b_str.as_str(), "");
         }
     }

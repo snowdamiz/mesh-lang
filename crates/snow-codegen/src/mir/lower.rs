@@ -7,21 +7,21 @@ use std::collections::{HashMap, HashSet};
 
 use rowan::TextRange;
 use rustc_hash::FxHashMap;
-use snow_parser::ast::expr::{
+use mesh_parser::ast::expr::{
     BinaryExpr, CallExpr, CaseExpr, ClosureExpr, Expr, FieldAccess, ForInExpr, IfExpr, LinkExpr,
     ListLiteral, Literal, MapLiteral, MatchArm, NameRef, PipeExpr, ReceiveExpr, ReturnExpr,
     SendExpr, SpawnExpr, StringExpr, StructLiteral, TryExpr, TupleExpr, UnaryExpr, WhileExpr,
 };
-use snow_parser::ast::item::{
+use mesh_parser::ast::item::{
     ActorDef, Block, FnDef, ImplDef, InterfaceMethod, Item, LetBinding, ServiceDef, SourceFile,
     StructDef, SumTypeDef, SupervisorDef,
 };
-use snow_parser::ast::pat::Pattern;
-use snow_parser::ast::AstNode;
-use snow_parser::syntax_kind::SyntaxKind;
-use snow_parser::Parse;
-use snow_typeck::ty::Ty;
-use snow_typeck::{TraitRegistry, TypeckResult};
+use mesh_parser::ast::pat::Pattern;
+use mesh_parser::ast::AstNode;
+use mesh_parser::syntax_kind::SyntaxKind;
+use mesh_parser::Parse;
+use mesh_typeck::ty::Ty;
+use mesh_typeck::{TraitRegistry, TypeckResult};
 
 use super::types::{mangle_type_name, mir_type_to_impl_name, mir_type_to_ty, resolve_type};
 use super::{
@@ -159,7 +159,7 @@ struct Lowerer<'a> {
     /// Type map from typeck: TextRange -> Ty.
     types: &'a FxHashMap<TextRange, Ty>,
     /// Type registry for struct/sum type lookups.
-    registry: &'a snow_typeck::TypeRegistry,
+    registry: &'a mesh_typeck::TypeRegistry,
     /// Trait registry for trait method dispatch resolution.
     trait_registry: &'a TraitRegistry,
     /// Default method body text ranges from interface definitions.
@@ -280,16 +280,16 @@ impl<'a> Lowerer<'a> {
     ///
     /// Rules:
     /// - Empty module_name (single-file mode): return name unchanged
-    /// - "main": unchanged (handled separately as snow_main)
+    /// - "main": unchanged (handled separately as mesh_main)
     /// - Pub functions: unchanged (cross-module references use unqualified name)
-    /// - Builtin/runtime prefixes (snow_, trait impls): unchanged
+    /// - Builtin/runtime prefixes (mesh_, trait impls): unchanged
     /// - Otherwise: `ModuleName__name` (dots replaced with underscores)
     fn qualify_name(&self, name: &str) -> String {
         // Single-file mode: no prefix
         if self.module_name.is_empty() {
             return name.to_string();
         }
-        // main is handled separately (renamed to snow_main)
+        // main is handled separately (renamed to mesh_main)
         if name == "main" {
             return name.to_string();
         }
@@ -299,7 +299,7 @@ impl<'a> Lowerer<'a> {
         }
         // Builtin/runtime prefixes: do not prefix
         const BUILTIN_PREFIXES: &[&str] = &[
-            "snow_", "Ord__", "Eq__", "Display__", "Debug__", "Hash__",
+            "mesh_", "Ord__", "Eq__", "Display__", "Debug__", "Hash__",
             "Default__", "Add__", "Sub__", "Mul__", "Div__", "Rem__", "Neg__",
         ];
         for prefix in BUILTIN_PREFIXES {
@@ -446,307 +446,307 @@ impl<'a> Lowerer<'a> {
         // Register stdlib functions as known functions (Phase 8).
         // String operations
         self.known_functions.insert(
-            "snow_string_length".to_string(),
+            "mesh_string_length".to_string(),
             MirType::FnPtr(vec![MirType::String], Box::new(MirType::Int)),
         );
         self.known_functions.insert(
-            "snow_string_slice".to_string(),
+            "mesh_string_slice".to_string(),
             MirType::FnPtr(vec![MirType::String, MirType::Int, MirType::Int], Box::new(MirType::String)),
         );
         self.known_functions.insert(
-            "snow_string_contains".to_string(),
+            "mesh_string_contains".to_string(),
             MirType::FnPtr(vec![MirType::String, MirType::String], Box::new(MirType::Bool)),
         );
         self.known_functions.insert(
-            "snow_string_starts_with".to_string(),
+            "mesh_string_starts_with".to_string(),
             MirType::FnPtr(vec![MirType::String, MirType::String], Box::new(MirType::Bool)),
         );
         self.known_functions.insert(
-            "snow_string_ends_with".to_string(),
+            "mesh_string_ends_with".to_string(),
             MirType::FnPtr(vec![MirType::String, MirType::String], Box::new(MirType::Bool)),
         );
         self.known_functions.insert(
-            "snow_string_trim".to_string(),
+            "mesh_string_trim".to_string(),
             MirType::FnPtr(vec![MirType::String], Box::new(MirType::String)),
         );
         self.known_functions.insert(
-            "snow_string_to_upper".to_string(),
+            "mesh_string_to_upper".to_string(),
             MirType::FnPtr(vec![MirType::String], Box::new(MirType::String)),
         );
         self.known_functions.insert(
-            "snow_string_to_lower".to_string(),
+            "mesh_string_to_lower".to_string(),
             MirType::FnPtr(vec![MirType::String], Box::new(MirType::String)),
         );
         self.known_functions.insert(
-            "snow_string_replace".to_string(),
+            "mesh_string_replace".to_string(),
             MirType::FnPtr(vec![MirType::String, MirType::String, MirType::String], Box::new(MirType::String)),
         );
         // Phase 46: String split/join/to_int/to_float
         self.known_functions.insert(
-            "snow_string_split".to_string(),
+            "mesh_string_split".to_string(),
             MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)),
         );
         self.known_functions.insert(
-            "snow_string_join".to_string(),
+            "mesh_string_join".to_string(),
             MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)),
         );
         self.known_functions.insert(
-            "snow_string_to_int".to_string(),
+            "mesh_string_to_int".to_string(),
             MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Ptr)),
         );
         self.known_functions.insert(
-            "snow_string_to_float".to_string(),
+            "mesh_string_to_float".to_string(),
             MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Ptr)),
         );
         // File I/O functions
         self.known_functions.insert(
-            "snow_file_read".to_string(),
+            "mesh_file_read".to_string(),
             MirType::FnPtr(vec![MirType::String], Box::new(MirType::Ptr)),
         );
         self.known_functions.insert(
-            "snow_file_write".to_string(),
+            "mesh_file_write".to_string(),
             MirType::FnPtr(vec![MirType::String, MirType::String], Box::new(MirType::Ptr)),
         );
         self.known_functions.insert(
-            "snow_file_append".to_string(),
+            "mesh_file_append".to_string(),
             MirType::FnPtr(vec![MirType::String, MirType::String], Box::new(MirType::Ptr)),
         );
         self.known_functions.insert(
-            "snow_file_exists".to_string(),
+            "mesh_file_exists".to_string(),
             MirType::FnPtr(vec![MirType::String], Box::new(MirType::Bool)),
         );
         self.known_functions.insert(
-            "snow_file_delete".to_string(),
+            "mesh_file_delete".to_string(),
             MirType::FnPtr(vec![MirType::String], Box::new(MirType::Ptr)),
         );
         // IO functions
         self.known_functions.insert(
-            "snow_io_read_line".to_string(),
+            "mesh_io_read_line".to_string(),
             MirType::FnPtr(vec![], Box::new(MirType::Ptr)),
         );
         self.known_functions.insert(
-            "snow_io_eprintln".to_string(),
+            "mesh_io_eprintln".to_string(),
             MirType::FnPtr(vec![MirType::String], Box::new(MirType::Unit)),
         );
         // Env functions
         self.known_functions.insert(
-            "snow_env_get".to_string(),
+            "mesh_env_get".to_string(),
             MirType::FnPtr(vec![MirType::String], Box::new(MirType::Ptr)),
         );
         self.known_functions.insert(
-            "snow_env_args".to_string(),
+            "mesh_env_args".to_string(),
             MirType::FnPtr(vec![], Box::new(MirType::Ptr)),
         );
         // ── Collection functions (Phase 8 Plan 02) ─────────────────────
         // List
-        self.known_functions.insert("snow_list_new".to_string(), MirType::FnPtr(vec![], Box::new(MirType::Ptr)));
-        self.known_functions.insert("snow_list_length".to_string(), MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Int)));
-        self.known_functions.insert("snow_list_append".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Int], Box::new(MirType::Ptr)));
-        self.known_functions.insert("snow_list_head".to_string(), MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Ptr)));
-        self.known_functions.insert("snow_list_tail".to_string(), MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Ptr)));
-        self.known_functions.insert("snow_list_get".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Int], Box::new(MirType::Ptr)));
-        self.known_functions.insert("snow_list_concat".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
-        self.known_functions.insert("snow_list_reverse".to_string(), MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Ptr)));
-        self.known_functions.insert("snow_list_map".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
-        self.known_functions.insert("snow_list_filter".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
-        self.known_functions.insert("snow_list_reduce".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Int, MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
-        self.known_functions.insert("snow_list_from_array".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Int], Box::new(MirType::Ptr)));
+        self.known_functions.insert("mesh_list_new".to_string(), MirType::FnPtr(vec![], Box::new(MirType::Ptr)));
+        self.known_functions.insert("mesh_list_length".to_string(), MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Int)));
+        self.known_functions.insert("mesh_list_append".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Int], Box::new(MirType::Ptr)));
+        self.known_functions.insert("mesh_list_head".to_string(), MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Ptr)));
+        self.known_functions.insert("mesh_list_tail".to_string(), MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Ptr)));
+        self.known_functions.insert("mesh_list_get".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Int], Box::new(MirType::Ptr)));
+        self.known_functions.insert("mesh_list_concat".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
+        self.known_functions.insert("mesh_list_reverse".to_string(), MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Ptr)));
+        self.known_functions.insert("mesh_list_map".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
+        self.known_functions.insert("mesh_list_filter".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
+        self.known_functions.insert("mesh_list_reduce".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Int, MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
+        self.known_functions.insert("mesh_list_from_array".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Int], Box::new(MirType::Ptr)));
         // Phase 46: sort, find, any, all, contains
-        self.known_functions.insert("snow_list_sort".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
-        self.known_functions.insert("snow_list_find".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
-        self.known_functions.insert("snow_list_any".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr, MirType::Ptr], Box::new(MirType::Bool)));
-        self.known_functions.insert("snow_list_all".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr, MirType::Ptr], Box::new(MirType::Bool)));
-        self.known_functions.insert("snow_list_contains".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Int], Box::new(MirType::Bool)));
+        self.known_functions.insert("mesh_list_sort".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
+        self.known_functions.insert("mesh_list_find".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
+        self.known_functions.insert("mesh_list_any".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr, MirType::Ptr], Box::new(MirType::Bool)));
+        self.known_functions.insert("mesh_list_all".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr, MirType::Ptr], Box::new(MirType::Bool)));
+        self.known_functions.insert("mesh_list_contains".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Int], Box::new(MirType::Bool)));
         // Phase 47: zip, flat_map, flatten, enumerate, take, drop, last, nth
-        self.known_functions.insert("snow_list_zip".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
-        self.known_functions.insert("snow_list_flat_map".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
-        self.known_functions.insert("snow_list_flatten".to_string(), MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Ptr)));
-        self.known_functions.insert("snow_list_enumerate".to_string(), MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Ptr)));
-        self.known_functions.insert("snow_list_take".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Int], Box::new(MirType::Ptr)));
-        self.known_functions.insert("snow_list_drop".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Int], Box::new(MirType::Ptr)));
-        self.known_functions.insert("snow_list_last".to_string(), MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Ptr)));
-        self.known_functions.insert("snow_list_nth".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Int], Box::new(MirType::Ptr)));
+        self.known_functions.insert("mesh_list_zip".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
+        self.known_functions.insert("mesh_list_flat_map".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
+        self.known_functions.insert("mesh_list_flatten".to_string(), MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Ptr)));
+        self.known_functions.insert("mesh_list_enumerate".to_string(), MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Ptr)));
+        self.known_functions.insert("mesh_list_take".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Int], Box::new(MirType::Ptr)));
+        self.known_functions.insert("mesh_list_drop".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Int], Box::new(MirType::Ptr)));
+        self.known_functions.insert("mesh_list_last".to_string(), MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Ptr)));
+        self.known_functions.insert("mesh_list_nth".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Int], Box::new(MirType::Ptr)));
         // Map
-        self.known_functions.insert("snow_map_new".to_string(), MirType::FnPtr(vec![], Box::new(MirType::Ptr)));
-        self.known_functions.insert("snow_map_new_typed".to_string(), MirType::FnPtr(vec![MirType::Int], Box::new(MirType::Ptr)));
-        self.known_functions.insert("snow_map_tag_string".to_string(), MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Ptr)));
-        self.known_functions.insert("snow_map_put".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Int, MirType::Int], Box::new(MirType::Ptr)));
-        self.known_functions.insert("snow_map_get".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Int], Box::new(MirType::Int)));
-        self.known_functions.insert("snow_map_has_key".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Int], Box::new(MirType::Bool)));
-        self.known_functions.insert("snow_map_delete".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Int], Box::new(MirType::Ptr)));
-        self.known_functions.insert("snow_map_size".to_string(), MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Int)));
-        self.known_functions.insert("snow_map_keys".to_string(), MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Ptr)));
-        self.known_functions.insert("snow_map_values".to_string(), MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Ptr)));
+        self.known_functions.insert("mesh_map_new".to_string(), MirType::FnPtr(vec![], Box::new(MirType::Ptr)));
+        self.known_functions.insert("mesh_map_new_typed".to_string(), MirType::FnPtr(vec![MirType::Int], Box::new(MirType::Ptr)));
+        self.known_functions.insert("mesh_map_tag_string".to_string(), MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Ptr)));
+        self.known_functions.insert("mesh_map_put".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Int, MirType::Int], Box::new(MirType::Ptr)));
+        self.known_functions.insert("mesh_map_get".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Int], Box::new(MirType::Int)));
+        self.known_functions.insert("mesh_map_has_key".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Int], Box::new(MirType::Bool)));
+        self.known_functions.insert("mesh_map_delete".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Int], Box::new(MirType::Ptr)));
+        self.known_functions.insert("mesh_map_size".to_string(), MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Int)));
+        self.known_functions.insert("mesh_map_keys".to_string(), MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Ptr)));
+        self.known_functions.insert("mesh_map_values".to_string(), MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Ptr)));
         // Phase 47: Map merge/to_list/from_list
-        self.known_functions.insert("snow_map_merge".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
-        self.known_functions.insert("snow_map_to_list".to_string(), MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Ptr)));
-        self.known_functions.insert("snow_map_from_list".to_string(), MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Ptr)));
+        self.known_functions.insert("mesh_map_merge".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
+        self.known_functions.insert("mesh_map_to_list".to_string(), MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Ptr)));
+        self.known_functions.insert("mesh_map_from_list".to_string(), MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Ptr)));
         // Set
-        self.known_functions.insert("snow_set_new".to_string(), MirType::FnPtr(vec![], Box::new(MirType::Ptr)));
-        self.known_functions.insert("snow_set_add".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Int], Box::new(MirType::Ptr)));
-        self.known_functions.insert("snow_set_remove".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Int], Box::new(MirType::Ptr)));
-        self.known_functions.insert("snow_set_contains".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Int], Box::new(MirType::Bool)));
-        self.known_functions.insert("snow_set_size".to_string(), MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Int)));
-        self.known_functions.insert("snow_set_union".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
-        self.known_functions.insert("snow_set_intersection".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
+        self.known_functions.insert("mesh_set_new".to_string(), MirType::FnPtr(vec![], Box::new(MirType::Ptr)));
+        self.known_functions.insert("mesh_set_add".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Int], Box::new(MirType::Ptr)));
+        self.known_functions.insert("mesh_set_remove".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Int], Box::new(MirType::Ptr)));
+        self.known_functions.insert("mesh_set_contains".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Int], Box::new(MirType::Bool)));
+        self.known_functions.insert("mesh_set_size".to_string(), MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Int)));
+        self.known_functions.insert("mesh_set_union".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
+        self.known_functions.insert("mesh_set_intersection".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
         // Phase 47: Set difference/to_list/from_list
-        self.known_functions.insert("snow_set_difference".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
-        self.known_functions.insert("snow_set_to_list".to_string(), MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Ptr)));
-        self.known_functions.insert("snow_set_from_list".to_string(), MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Ptr)));
+        self.known_functions.insert("mesh_set_difference".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
+        self.known_functions.insert("mesh_set_to_list".to_string(), MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Ptr)));
+        self.known_functions.insert("mesh_set_from_list".to_string(), MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Ptr)));
         // Collection Display (Phase 21 Plan 04)
-        self.known_functions.insert("snow_list_to_string".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
-        self.known_functions.insert("snow_map_to_string".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
-        self.known_functions.insert("snow_set_to_string".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
-        self.known_functions.insert("snow_string_to_string".to_string(), MirType::FnPtr(vec![MirType::Int], Box::new(MirType::Ptr)));
+        self.known_functions.insert("mesh_list_to_string".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
+        self.known_functions.insert("mesh_map_to_string".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
+        self.known_functions.insert("mesh_set_to_string".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
+        self.known_functions.insert("mesh_string_to_string".to_string(), MirType::FnPtr(vec![MirType::Int], Box::new(MirType::Ptr)));
         // List Eq/Ord (Phase 27)
-        self.known_functions.insert("snow_list_eq".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr, MirType::Ptr], Box::new(MirType::Bool)));
-        self.known_functions.insert("snow_list_compare".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr, MirType::Ptr], Box::new(MirType::Int)));
+        self.known_functions.insert("mesh_list_eq".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr, MirType::Ptr], Box::new(MirType::Bool)));
+        self.known_functions.insert("mesh_list_compare".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr, MirType::Ptr], Box::new(MirType::Int)));
         // Tuple
-        self.known_functions.insert("snow_tuple_nth".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Int], Box::new(MirType::Int)));
-        self.known_functions.insert("snow_tuple_first".to_string(), MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Int)));
-        self.known_functions.insert("snow_tuple_second".to_string(), MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Int)));
-        self.known_functions.insert("snow_tuple_size".to_string(), MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Int)));
+        self.known_functions.insert("mesh_tuple_nth".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Int], Box::new(MirType::Int)));
+        self.known_functions.insert("mesh_tuple_first".to_string(), MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Int)));
+        self.known_functions.insert("mesh_tuple_second".to_string(), MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Int)));
+        self.known_functions.insert("mesh_tuple_size".to_string(), MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Int)));
         // Range
-        self.known_functions.insert("snow_range_new".to_string(), MirType::FnPtr(vec![MirType::Int, MirType::Int], Box::new(MirType::Ptr)));
-        self.known_functions.insert("snow_range_to_list".to_string(), MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Ptr)));
-        self.known_functions.insert("snow_range_map".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
-        self.known_functions.insert("snow_range_filter".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
-        self.known_functions.insert("snow_range_length".to_string(), MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Int)));
+        self.known_functions.insert("mesh_range_new".to_string(), MirType::FnPtr(vec![MirType::Int, MirType::Int], Box::new(MirType::Ptr)));
+        self.known_functions.insert("mesh_range_to_list".to_string(), MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Ptr)));
+        self.known_functions.insert("mesh_range_map".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
+        self.known_functions.insert("mesh_range_filter".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
+        self.known_functions.insert("mesh_range_length".to_string(), MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Int)));
         // Queue
-        self.known_functions.insert("snow_queue_new".to_string(), MirType::FnPtr(vec![], Box::new(MirType::Ptr)));
-        self.known_functions.insert("snow_queue_push".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Int], Box::new(MirType::Ptr)));
-        self.known_functions.insert("snow_queue_pop".to_string(), MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Ptr)));
-        self.known_functions.insert("snow_queue_peek".to_string(), MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Int)));
-        self.known_functions.insert("snow_queue_size".to_string(), MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Int)));
-        self.known_functions.insert("snow_queue_is_empty".to_string(), MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Bool)));
+        self.known_functions.insert("mesh_queue_new".to_string(), MirType::FnPtr(vec![], Box::new(MirType::Ptr)));
+        self.known_functions.insert("mesh_queue_push".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Int], Box::new(MirType::Ptr)));
+        self.known_functions.insert("mesh_queue_pop".to_string(), MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Ptr)));
+        self.known_functions.insert("mesh_queue_peek".to_string(), MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Int)));
+        self.known_functions.insert("mesh_queue_size".to_string(), MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Int)));
+        self.known_functions.insert("mesh_queue_is_empty".to_string(), MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Bool)));
         // JSON functions (Phase 8 Plan 04)
-        self.known_functions.insert("snow_json_parse".to_string(), MirType::FnPtr(vec![MirType::String], Box::new(MirType::Ptr)));
-        self.known_functions.insert("snow_json_encode".to_string(), MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::String)));
-        self.known_functions.insert("snow_json_encode_string".to_string(), MirType::FnPtr(vec![MirType::String], Box::new(MirType::String)));
-        self.known_functions.insert("snow_json_encode_int".to_string(), MirType::FnPtr(vec![MirType::Int], Box::new(MirType::String)));
-        self.known_functions.insert("snow_json_encode_bool".to_string(), MirType::FnPtr(vec![MirType::Bool], Box::new(MirType::String)));
-        self.known_functions.insert("snow_json_encode_map".to_string(), MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::String)));
-        self.known_functions.insert("snow_json_encode_list".to_string(), MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::String)));
-        self.known_functions.insert("snow_json_from_int".to_string(), MirType::FnPtr(vec![MirType::Int], Box::new(MirType::Ptr)));
-        self.known_functions.insert("snow_json_from_float".to_string(), MirType::FnPtr(vec![MirType::Float], Box::new(MirType::Ptr)));
-        self.known_functions.insert("snow_json_from_bool".to_string(), MirType::FnPtr(vec![MirType::Bool], Box::new(MirType::Ptr)));
-        self.known_functions.insert("snow_json_from_string".to_string(), MirType::FnPtr(vec![MirType::String], Box::new(MirType::Ptr)));
+        self.known_functions.insert("mesh_json_parse".to_string(), MirType::FnPtr(vec![MirType::String], Box::new(MirType::Ptr)));
+        self.known_functions.insert("mesh_json_encode".to_string(), MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::String)));
+        self.known_functions.insert("mesh_json_encode_string".to_string(), MirType::FnPtr(vec![MirType::String], Box::new(MirType::String)));
+        self.known_functions.insert("mesh_json_encode_int".to_string(), MirType::FnPtr(vec![MirType::Int], Box::new(MirType::String)));
+        self.known_functions.insert("mesh_json_encode_bool".to_string(), MirType::FnPtr(vec![MirType::Bool], Box::new(MirType::String)));
+        self.known_functions.insert("mesh_json_encode_map".to_string(), MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::String)));
+        self.known_functions.insert("mesh_json_encode_list".to_string(), MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::String)));
+        self.known_functions.insert("mesh_json_from_int".to_string(), MirType::FnPtr(vec![MirType::Int], Box::new(MirType::Ptr)));
+        self.known_functions.insert("mesh_json_from_float".to_string(), MirType::FnPtr(vec![MirType::Float], Box::new(MirType::Ptr)));
+        self.known_functions.insert("mesh_json_from_bool".to_string(), MirType::FnPtr(vec![MirType::Bool], Box::new(MirType::Ptr)));
+        self.known_functions.insert("mesh_json_from_string".to_string(), MirType::FnPtr(vec![MirType::String], Box::new(MirType::Ptr)));
         // JSON structured object/array functions (Phase 49)
-        self.known_functions.insert("snow_json_object_new".to_string(), MirType::FnPtr(vec![], Box::new(MirType::Ptr)));
-        self.known_functions.insert("snow_json_object_put".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
-        self.known_functions.insert("snow_json_object_get".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
-        self.known_functions.insert("snow_json_array_new".to_string(), MirType::FnPtr(vec![], Box::new(MirType::Ptr)));
-        self.known_functions.insert("snow_json_array_push".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
-        self.known_functions.insert("snow_json_array_get".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Int], Box::new(MirType::Ptr)));
-        self.known_functions.insert("snow_json_as_int".to_string(), MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Ptr)));
-        self.known_functions.insert("snow_json_as_float".to_string(), MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Ptr)));
-        self.known_functions.insert("snow_json_as_string".to_string(), MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Ptr)));
-        self.known_functions.insert("snow_json_as_bool".to_string(), MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Ptr)));
-        self.known_functions.insert("snow_json_null".to_string(), MirType::FnPtr(vec![], Box::new(MirType::Ptr)));
+        self.known_functions.insert("mesh_json_object_new".to_string(), MirType::FnPtr(vec![], Box::new(MirType::Ptr)));
+        self.known_functions.insert("mesh_json_object_put".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
+        self.known_functions.insert("mesh_json_object_get".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
+        self.known_functions.insert("mesh_json_array_new".to_string(), MirType::FnPtr(vec![], Box::new(MirType::Ptr)));
+        self.known_functions.insert("mesh_json_array_push".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
+        self.known_functions.insert("mesh_json_array_get".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Int], Box::new(MirType::Ptr)));
+        self.known_functions.insert("mesh_json_as_int".to_string(), MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Ptr)));
+        self.known_functions.insert("mesh_json_as_float".to_string(), MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Ptr)));
+        self.known_functions.insert("mesh_json_as_string".to_string(), MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Ptr)));
+        self.known_functions.insert("mesh_json_as_bool".to_string(), MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Ptr)));
+        self.known_functions.insert("mesh_json_null".to_string(), MirType::FnPtr(vec![], Box::new(MirType::Ptr)));
         // JSON collection helpers (callback-based, for List<T> and Map<String, V> fields)
-        self.known_functions.insert("snow_json_from_list".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
-        self.known_functions.insert("snow_json_from_map".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
-        self.known_functions.insert("snow_json_to_list".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
-        self.known_functions.insert("snow_json_to_map".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
+        self.known_functions.insert("mesh_json_from_list".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
+        self.known_functions.insert("mesh_json_from_map".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
+        self.known_functions.insert("mesh_json_to_list".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
+        self.known_functions.insert("mesh_json_to_map".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
         // Result helpers (for from_json Result propagation)
-        self.known_functions.insert("snow_alloc_result".to_string(), MirType::FnPtr(vec![MirType::Int, MirType::Ptr], Box::new(MirType::Ptr)));
-        self.known_functions.insert("snow_result_is_ok".to_string(), MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Int)));
-        self.known_functions.insert("snow_result_unwrap".to_string(), MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Ptr)));
+        self.known_functions.insert("mesh_alloc_result".to_string(), MirType::FnPtr(vec![MirType::Int, MirType::Ptr], Box::new(MirType::Ptr)));
+        self.known_functions.insert("mesh_result_is_ok".to_string(), MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Int)));
+        self.known_functions.insert("mesh_result_unwrap".to_string(), MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Ptr)));
         // HTTP functions (Phase 8 Plan 05)
-        self.known_functions.insert("snow_http_router".to_string(), MirType::FnPtr(vec![], Box::new(MirType::Ptr)));
-        self.known_functions.insert("snow_http_route".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::String, MirType::Ptr], Box::new(MirType::Ptr)));
-        self.known_functions.insert("snow_http_serve".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Int], Box::new(MirType::Unit)));
-        self.known_functions.insert("snow_http_serve_tls".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Int, MirType::String, MirType::String], Box::new(MirType::Unit)));
-        self.known_functions.insert("snow_http_response_new".to_string(), MirType::FnPtr(vec![MirType::Int, MirType::String], Box::new(MirType::Ptr)));
-        self.known_functions.insert("snow_http_get".to_string(), MirType::FnPtr(vec![MirType::String], Box::new(MirType::Ptr)));
-        self.known_functions.insert("snow_http_post".to_string(), MirType::FnPtr(vec![MirType::String, MirType::String], Box::new(MirType::Ptr)));
-        self.known_functions.insert("snow_http_request_method".to_string(), MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::String)));
-        self.known_functions.insert("snow_http_request_path".to_string(), MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::String)));
-        self.known_functions.insert("snow_http_request_body".to_string(), MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::String)));
-        self.known_functions.insert("snow_http_request_header".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::String], Box::new(MirType::Ptr)));
-        self.known_functions.insert("snow_http_request_query".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::String], Box::new(MirType::Ptr)));
+        self.known_functions.insert("mesh_http_router".to_string(), MirType::FnPtr(vec![], Box::new(MirType::Ptr)));
+        self.known_functions.insert("mesh_http_route".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::String, MirType::Ptr], Box::new(MirType::Ptr)));
+        self.known_functions.insert("mesh_http_serve".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Int], Box::new(MirType::Unit)));
+        self.known_functions.insert("mesh_http_serve_tls".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Int, MirType::String, MirType::String], Box::new(MirType::Unit)));
+        self.known_functions.insert("mesh_http_response_new".to_string(), MirType::FnPtr(vec![MirType::Int, MirType::String], Box::new(MirType::Ptr)));
+        self.known_functions.insert("mesh_http_get".to_string(), MirType::FnPtr(vec![MirType::String], Box::new(MirType::Ptr)));
+        self.known_functions.insert("mesh_http_post".to_string(), MirType::FnPtr(vec![MirType::String, MirType::String], Box::new(MirType::Ptr)));
+        self.known_functions.insert("mesh_http_request_method".to_string(), MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::String)));
+        self.known_functions.insert("mesh_http_request_path".to_string(), MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::String)));
+        self.known_functions.insert("mesh_http_request_body".to_string(), MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::String)));
+        self.known_functions.insert("mesh_http_request_header".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::String], Box::new(MirType::Ptr)));
+        self.known_functions.insert("mesh_http_request_query".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::String], Box::new(MirType::Ptr)));
         // Phase 51: Method-specific routing and path parameter extraction
-        self.known_functions.insert("snow_http_route_get".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::String, MirType::Ptr], Box::new(MirType::Ptr)));
-        self.known_functions.insert("snow_http_route_post".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::String, MirType::Ptr], Box::new(MirType::Ptr)));
-        self.known_functions.insert("snow_http_route_put".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::String, MirType::Ptr], Box::new(MirType::Ptr)));
-        self.known_functions.insert("snow_http_route_delete".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::String, MirType::Ptr], Box::new(MirType::Ptr)));
-        self.known_functions.insert("snow_http_request_param".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::String], Box::new(MirType::Ptr)));
+        self.known_functions.insert("mesh_http_route_get".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::String, MirType::Ptr], Box::new(MirType::Ptr)));
+        self.known_functions.insert("mesh_http_route_post".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::String, MirType::Ptr], Box::new(MirType::Ptr)));
+        self.known_functions.insert("mesh_http_route_put".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::String, MirType::Ptr], Box::new(MirType::Ptr)));
+        self.known_functions.insert("mesh_http_route_delete".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::String, MirType::Ptr], Box::new(MirType::Ptr)));
+        self.known_functions.insert("mesh_http_request_param".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::String], Box::new(MirType::Ptr)));
         // Phase 52: Middleware
-        self.known_functions.insert("snow_http_use_middleware".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
+        self.known_functions.insert("mesh_http_use_middleware".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
         // ── WebSocket functions (Phase 60) ──────────────────────────────
-        // snow_ws_serve(on_connect_fn: ptr, on_connect_env: ptr, on_message_fn: ptr, on_message_env: ptr, on_close_fn: ptr, on_close_env: ptr, port: i64) -> void
-        self.known_functions.insert("snow_ws_serve".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr, MirType::Ptr, MirType::Ptr, MirType::Ptr, MirType::Ptr, MirType::Int], Box::new(MirType::Unit)));
-        // snow_ws_send(conn: ptr, msg: ptr) -> i64
-        self.known_functions.insert("snow_ws_send".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr], Box::new(MirType::Int)));
-        // snow_ws_send_binary(conn: ptr, data: ptr, len: i64) -> i64
-        self.known_functions.insert("snow_ws_send_binary".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr, MirType::Int], Box::new(MirType::Int)));
-        // snow_ws_serve_tls(on_connect_fn: ptr, on_connect_env: ptr, on_message_fn: ptr, on_message_env: ptr, on_close_fn: ptr, on_close_env: ptr, port: i64, cert_path: ptr, key_path: ptr) -> void
-        self.known_functions.insert("snow_ws_serve_tls".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr, MirType::Ptr, MirType::Ptr, MirType::Ptr, MirType::Ptr, MirType::Int, MirType::Ptr, MirType::Ptr], Box::new(MirType::Unit)));
+        // mesh_ws_serve(on_connect_fn: ptr, on_connect_env: ptr, on_message_fn: ptr, on_message_env: ptr, on_close_fn: ptr, on_close_env: ptr, port: i64) -> void
+        self.known_functions.insert("mesh_ws_serve".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr, MirType::Ptr, MirType::Ptr, MirType::Ptr, MirType::Ptr, MirType::Int], Box::new(MirType::Unit)));
+        // mesh_ws_send(conn: ptr, msg: ptr) -> i64
+        self.known_functions.insert("mesh_ws_send".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr], Box::new(MirType::Int)));
+        // mesh_ws_send_binary(conn: ptr, data: ptr, len: i64) -> i64
+        self.known_functions.insert("mesh_ws_send_binary".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr, MirType::Int], Box::new(MirType::Int)));
+        // mesh_ws_serve_tls(on_connect_fn: ptr, on_connect_env: ptr, on_message_fn: ptr, on_message_env: ptr, on_close_fn: ptr, on_close_env: ptr, port: i64, cert_path: ptr, key_path: ptr) -> void
+        self.known_functions.insert("mesh_ws_serve_tls".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr, MirType::Ptr, MirType::Ptr, MirType::Ptr, MirType::Ptr, MirType::Int, MirType::Ptr, MirType::Ptr], Box::new(MirType::Unit)));
         // ── WebSocket Room functions (Phase 62) ──────────────────────────
-        // snow_ws_join(conn: ptr, room: ptr) -> i64
-        self.known_functions.insert("snow_ws_join".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr], Box::new(MirType::Int)));
-        // snow_ws_leave(conn: ptr, room: ptr) -> i64
-        self.known_functions.insert("snow_ws_leave".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr], Box::new(MirType::Int)));
-        // snow_ws_broadcast(room: ptr, msg: ptr) -> i64
-        self.known_functions.insert("snow_ws_broadcast".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr], Box::new(MirType::Int)));
-        // snow_ws_broadcast_except(room: ptr, msg: ptr, except_conn: ptr) -> i64
-        self.known_functions.insert("snow_ws_broadcast_except".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr, MirType::Ptr], Box::new(MirType::Int)));
+        // mesh_ws_join(conn: ptr, room: ptr) -> i64
+        self.known_functions.insert("mesh_ws_join".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr], Box::new(MirType::Int)));
+        // mesh_ws_leave(conn: ptr, room: ptr) -> i64
+        self.known_functions.insert("mesh_ws_leave".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr], Box::new(MirType::Int)));
+        // mesh_ws_broadcast(room: ptr, msg: ptr) -> i64
+        self.known_functions.insert("mesh_ws_broadcast".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr], Box::new(MirType::Int)));
+        // mesh_ws_broadcast_except(room: ptr, msg: ptr, except_conn: ptr) -> i64
+        self.known_functions.insert("mesh_ws_broadcast_except".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr, MirType::Ptr], Box::new(MirType::Int)));
         // ── SQLite functions (Phase 53) ──────────────────────────────────
         // Connection handle is MirType::Int (i64) for GC safety (SQLT-07).
-        self.known_functions.insert("snow_sqlite_open".to_string(), MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Ptr)));
-        self.known_functions.insert("snow_sqlite_close".to_string(), MirType::FnPtr(vec![MirType::Int], Box::new(MirType::Unit)));
-        self.known_functions.insert("snow_sqlite_execute".to_string(), MirType::FnPtr(vec![MirType::Int, MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
-        self.known_functions.insert("snow_sqlite_query".to_string(), MirType::FnPtr(vec![MirType::Int, MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
+        self.known_functions.insert("mesh_sqlite_open".to_string(), MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Ptr)));
+        self.known_functions.insert("mesh_sqlite_close".to_string(), MirType::FnPtr(vec![MirType::Int], Box::new(MirType::Unit)));
+        self.known_functions.insert("mesh_sqlite_execute".to_string(), MirType::FnPtr(vec![MirType::Int, MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
+        self.known_functions.insert("mesh_sqlite_query".to_string(), MirType::FnPtr(vec![MirType::Int, MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
         // ── PostgreSQL functions (Phase 54) ──────────────────────────────
         // Connection handle is MirType::Int (i64) for GC safety (same as SQLite).
-        self.known_functions.insert("snow_pg_connect".to_string(), MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Ptr)));
-        self.known_functions.insert("snow_pg_close".to_string(), MirType::FnPtr(vec![MirType::Int], Box::new(MirType::Unit)));
-        self.known_functions.insert("snow_pg_execute".to_string(), MirType::FnPtr(vec![MirType::Int, MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
-        self.known_functions.insert("snow_pg_query".to_string(), MirType::FnPtr(vec![MirType::Int, MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
+        self.known_functions.insert("mesh_pg_connect".to_string(), MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Ptr)));
+        self.known_functions.insert("mesh_pg_close".to_string(), MirType::FnPtr(vec![MirType::Int], Box::new(MirType::Unit)));
+        self.known_functions.insert("mesh_pg_execute".to_string(), MirType::FnPtr(vec![MirType::Int, MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
+        self.known_functions.insert("mesh_pg_query".to_string(), MirType::FnPtr(vec![MirType::Int, MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
         // ── Phase 57: PG Transaction functions ──────────────────────────
-        // snow_pg_begin(conn: i64) -> ptr (Result)
-        self.known_functions.insert("snow_pg_begin".to_string(), MirType::FnPtr(vec![MirType::Int], Box::new(MirType::Ptr)));
-        self.known_functions.insert("snow_pg_commit".to_string(), MirType::FnPtr(vec![MirType::Int], Box::new(MirType::Ptr)));
-        self.known_functions.insert("snow_pg_rollback".to_string(), MirType::FnPtr(vec![MirType::Int], Box::new(MirType::Ptr)));
-        // snow_pg_transaction(conn: i64, fn_ptr: ptr, env_ptr: ptr) -> ptr
-        self.known_functions.insert("snow_pg_transaction".to_string(), MirType::FnPtr(vec![MirType::Int, MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
+        // mesh_pg_begin(conn: i64) -> ptr (Result)
+        self.known_functions.insert("mesh_pg_begin".to_string(), MirType::FnPtr(vec![MirType::Int], Box::new(MirType::Ptr)));
+        self.known_functions.insert("mesh_pg_commit".to_string(), MirType::FnPtr(vec![MirType::Int], Box::new(MirType::Ptr)));
+        self.known_functions.insert("mesh_pg_rollback".to_string(), MirType::FnPtr(vec![MirType::Int], Box::new(MirType::Ptr)));
+        // mesh_pg_transaction(conn: i64, fn_ptr: ptr, env_ptr: ptr) -> ptr
+        self.known_functions.insert("mesh_pg_transaction".to_string(), MirType::FnPtr(vec![MirType::Int, MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
         // ── Phase 57: SQLite Transaction functions ──────────────────────
-        self.known_functions.insert("snow_sqlite_begin".to_string(), MirType::FnPtr(vec![MirType::Int], Box::new(MirType::Ptr)));
-        self.known_functions.insert("snow_sqlite_commit".to_string(), MirType::FnPtr(vec![MirType::Int], Box::new(MirType::Ptr)));
-        self.known_functions.insert("snow_sqlite_rollback".to_string(), MirType::FnPtr(vec![MirType::Int], Box::new(MirType::Ptr)));
+        self.known_functions.insert("mesh_sqlite_begin".to_string(), MirType::FnPtr(vec![MirType::Int], Box::new(MirType::Ptr)));
+        self.known_functions.insert("mesh_sqlite_commit".to_string(), MirType::FnPtr(vec![MirType::Int], Box::new(MirType::Ptr)));
+        self.known_functions.insert("mesh_sqlite_rollback".to_string(), MirType::FnPtr(vec![MirType::Int], Box::new(MirType::Ptr)));
         // ── Phase 57: Connection Pool functions ─────────────────────────
-        // snow_pool_open(url: ptr, min: i64, max: i64, timeout: i64) -> ptr
-        self.known_functions.insert("snow_pool_open".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Int, MirType::Int, MirType::Int], Box::new(MirType::Ptr)));
-        self.known_functions.insert("snow_pool_close".to_string(), MirType::FnPtr(vec![MirType::Int], Box::new(MirType::Unit)));
-        self.known_functions.insert("snow_pool_checkout".to_string(), MirType::FnPtr(vec![MirType::Int], Box::new(MirType::Ptr)));
-        self.known_functions.insert("snow_pool_checkin".to_string(), MirType::FnPtr(vec![MirType::Int, MirType::Int], Box::new(MirType::Unit)));
-        self.known_functions.insert("snow_pool_query".to_string(), MirType::FnPtr(vec![MirType::Int, MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
-        self.known_functions.insert("snow_pool_execute".to_string(), MirType::FnPtr(vec![MirType::Int, MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
+        // mesh_pool_open(url: ptr, min: i64, max: i64, timeout: i64) -> ptr
+        self.known_functions.insert("mesh_pool_open".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Int, MirType::Int, MirType::Int], Box::new(MirType::Ptr)));
+        self.known_functions.insert("mesh_pool_close".to_string(), MirType::FnPtr(vec![MirType::Int], Box::new(MirType::Unit)));
+        self.known_functions.insert("mesh_pool_checkout".to_string(), MirType::FnPtr(vec![MirType::Int], Box::new(MirType::Ptr)));
+        self.known_functions.insert("mesh_pool_checkin".to_string(), MirType::FnPtr(vec![MirType::Int, MirType::Int], Box::new(MirType::Unit)));
+        self.known_functions.insert("mesh_pool_query".to_string(), MirType::FnPtr(vec![MirType::Int, MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
+        self.known_functions.insert("mesh_pool_execute".to_string(), MirType::FnPtr(vec![MirType::Int, MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
         // ── Phase 58: Row Parsing & Struct-to-Row Mapping ─────────────────
-        self.known_functions.insert("snow_row_from_row_get".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
-        self.known_functions.insert("snow_row_parse_int".to_string(), MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Ptr)));
-        self.known_functions.insert("snow_row_parse_float".to_string(), MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Ptr)));
-        self.known_functions.insert("snow_row_parse_bool".to_string(), MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Ptr)));
-        self.known_functions.insert("snow_pg_query_as".to_string(), MirType::FnPtr(vec![MirType::Int, MirType::Ptr, MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
-        self.known_functions.insert("snow_pool_query_as".to_string(), MirType::FnPtr(vec![MirType::Int, MirType::Ptr, MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
+        self.known_functions.insert("mesh_row_from_row_get".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
+        self.known_functions.insert("mesh_row_parse_int".to_string(), MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Ptr)));
+        self.known_functions.insert("mesh_row_parse_float".to_string(), MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Ptr)));
+        self.known_functions.insert("mesh_row_parse_bool".to_string(), MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Ptr)));
+        self.known_functions.insert("mesh_pg_query_as".to_string(), MirType::FnPtr(vec![MirType::Int, MirType::Ptr, MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
+        self.known_functions.insert("mesh_pool_query_as".to_string(), MirType::FnPtr(vec![MirType::Int, MirType::Ptr, MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
         // ── Job functions (Phase 9 Plan 04) ──────────────────────────────
-        // snow_job_async takes (fn_ptr, env_ptr) -> i64 (PID)
+        // mesh_job_async takes (fn_ptr, env_ptr) -> i64 (PID)
         // But the closure splitting at codegen will expand the closure arg into (fn_ptr, env_ptr)
-        self.known_functions.insert("snow_job_async".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr], Box::new(MirType::Int)));
-        self.known_functions.insert("snow_job_await".to_string(), MirType::FnPtr(vec![MirType::Int], Box::new(MirType::Ptr)));
-        self.known_functions.insert("snow_job_await_timeout".to_string(), MirType::FnPtr(vec![MirType::Int, MirType::Int], Box::new(MirType::Ptr)));
-        // snow_job_map takes (list_ptr, fn_ptr, env_ptr) -> ptr
+        self.known_functions.insert("mesh_job_async".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr], Box::new(MirType::Int)));
+        self.known_functions.insert("mesh_job_await".to_string(), MirType::FnPtr(vec![MirType::Int], Box::new(MirType::Ptr)));
+        self.known_functions.insert("mesh_job_await_timeout".to_string(), MirType::FnPtr(vec![MirType::Int, MirType::Int], Box::new(MirType::Ptr)));
+        // mesh_job_map takes (list_ptr, fn_ptr, env_ptr) -> ptr
         // Closure splitting expands the closure arg into (fn_ptr, env_ptr)
-        self.known_functions.insert("snow_job_map".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
+        self.known_functions.insert("mesh_job_map".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
         // ── Timer functions (Phase 44 Plan 02) ──────────────────────────────
-        // snow_timer_sleep(ms: i64) -> void (Unit)
-        self.known_functions.insert("snow_timer_sleep".to_string(), MirType::FnPtr(vec![MirType::Int], Box::new(MirType::Unit)));
-        // snow_timer_send_after(pid: i64, ms: i64, msg_ptr: ptr, msg_size: i64) -> void (Unit)
-        self.known_functions.insert("snow_timer_send_after".to_string(), MirType::FnPtr(vec![MirType::Int, MirType::Int, MirType::Ptr, MirType::Int], Box::new(MirType::Unit)));
+        // mesh_timer_sleep(ms: i64) -> void (Unit)
+        self.known_functions.insert("mesh_timer_sleep".to_string(), MirType::FnPtr(vec![MirType::Int], Box::new(MirType::Unit)));
+        // mesh_timer_send_after(pid: i64, ms: i64, msg_ptr: ptr, msg_size: i64) -> void (Unit)
+        self.known_functions.insert("mesh_timer_send_after".to_string(), MirType::FnPtr(vec![MirType::Int, MirType::Int, MirType::Ptr, MirType::Int], Box::new(MirType::Unit)));
         // ── Service runtime functions (Phase 9 Plan 03) ─────────────────
-        self.known_functions.insert("snow_service_call".to_string(), MirType::FnPtr(vec![MirType::Int, MirType::Int, MirType::Ptr, MirType::Int], Box::new(MirType::Ptr)));
-        self.known_functions.insert("snow_service_reply".to_string(), MirType::FnPtr(vec![MirType::Int, MirType::Ptr, MirType::Int], Box::new(MirType::Unit)));
-        self.known_functions.insert("snow_actor_send".to_string(), MirType::FnPtr(vec![MirType::Int, MirType::Ptr, MirType::Int], Box::new(MirType::Unit)));
+        self.known_functions.insert("mesh_service_call".to_string(), MirType::FnPtr(vec![MirType::Int, MirType::Int, MirType::Ptr, MirType::Int], Box::new(MirType::Ptr)));
+        self.known_functions.insert("mesh_service_reply".to_string(), MirType::FnPtr(vec![MirType::Int, MirType::Ptr, MirType::Int], Box::new(MirType::Unit)));
+        self.known_functions.insert("mesh_actor_send".to_string(), MirType::FnPtr(vec![MirType::Int, MirType::Ptr, MirType::Int], Box::new(MirType::Unit)));
 
         // Also register variant constructors as known functions.
         for (_, sum_info) in &self.registry.sum_type_defs {
@@ -934,11 +934,11 @@ impl<'a> Lowerer<'a> {
 
         self.pop_scope();
 
-        // Rename "main" to "snow_main" to avoid collision with C main() entry point.
+        // Rename "main" to "mesh_main" to avoid collision with C main() entry point.
         // Then apply module-qualified naming for private functions.
         let fn_name = if name == "main" {
-            self.entry_function = Some("snow_main".to_string());
-            "snow_main".to_string()
+            self.entry_function = Some("mesh_main".to_string());
+            "mesh_main".to_string()
         } else {
             self.qualify_name(&name)
         };
@@ -1034,7 +1034,7 @@ impl<'a> Lowerer<'a> {
                     let mir_ty = if is_self {
                         // For self, resolve to the concrete struct type.
                         resolve_type(
-                            &Ty::Con(snow_typeck::ty::TyCon::new(type_name)),
+                            &Ty::Con(mesh_typeck::ty::TyCon::new(type_name)),
                             self.registry,
                             false,
                         )
@@ -1162,7 +1162,7 @@ impl<'a> Lowerer<'a> {
 
                 let mir_ty = if is_self {
                     resolve_type(
-                        &Ty::Con(snow_typeck::ty::TyCon::new(type_name)),
+                        &Ty::Con(mesh_typeck::ty::TyCon::new(type_name)),
                         self.registry,
                         false,
                     )
@@ -1292,8 +1292,8 @@ impl<'a> Lowerer<'a> {
             self.pop_scope();
 
             let fn_name = if name == "main" {
-                self.entry_function = Some("snow_main".to_string());
-                "snow_main".to_string()
+                self.entry_function = Some("mesh_main".to_string());
+                "mesh_main".to_string()
             } else {
                 self.qualify_name(&name)
             };
@@ -1326,8 +1326,8 @@ impl<'a> Lowerer<'a> {
             self.pop_scope();
 
             let fn_name = if name == "main" {
-                self.entry_function = Some("snow_main".to_string());
-                "snow_main".to_string()
+                self.entry_function = Some("mesh_main".to_string());
+                "mesh_main".to_string()
             } else {
                 self.qualify_name(&name)
             };
@@ -1808,8 +1808,8 @@ impl<'a> Lowerer<'a> {
                         .iter()
                         .map(|f| {
                             let ty = match f {
-                                snow_typeck::VariantFieldInfo::Positional(ty) => ty,
-                                snow_typeck::VariantFieldInfo::Named(_, ty) => ty,
+                                mesh_typeck::VariantFieldInfo::Positional(ty) => ty,
+                                mesh_typeck::VariantFieldInfo::Named(_, ty) => ty,
                             };
                             resolve_type(ty, self.registry, false)
                         })
@@ -1889,7 +1889,7 @@ impl<'a> Lowerer<'a> {
             // Append "field_name: "
             let label = format!("{}: ", field_name);
             result = MirExpr::Call {
-                func: Box::new(MirExpr::Var("snow_string_concat".to_string(), concat_ty.clone())),
+                func: Box::new(MirExpr::Var("mesh_string_concat".to_string(), concat_ty.clone())),
                 args: vec![result, MirExpr::StringLit(label, MirType::String)],
                 ty: MirType::String,
             };
@@ -1906,7 +1906,7 @@ impl<'a> Lowerer<'a> {
 
             // Append field value string
             result = MirExpr::Call {
-                func: Box::new(MirExpr::Var("snow_string_concat".to_string(), concat_ty.clone())),
+                func: Box::new(MirExpr::Var("mesh_string_concat".to_string(), concat_ty.clone())),
                 args: vec![result, field_str],
                 ty: MirType::String,
             };
@@ -1914,7 +1914,7 @@ impl<'a> Lowerer<'a> {
             // Append separator: ", " for non-last fields
             if !is_last {
                 result = MirExpr::Call {
-                    func: Box::new(MirExpr::Var("snow_string_concat".to_string(), concat_ty.clone())),
+                    func: Box::new(MirExpr::Var("mesh_string_concat".to_string(), concat_ty.clone())),
                     args: vec![result, MirExpr::StringLit(", ".to_string(), MirType::String)],
                     ty: MirType::String,
                 };
@@ -1924,7 +1924,7 @@ impl<'a> Lowerer<'a> {
         // Append closing " }" for non-empty structs
         if !fields.is_empty() {
             result = MirExpr::Call {
-                func: Box::new(MirExpr::Var("snow_string_concat".to_string(), concat_ty.clone())),
+                func: Box::new(MirExpr::Var("mesh_string_concat".to_string(), concat_ty.clone())),
                 args: vec![result, MirExpr::StringLit(" }".to_string(), MirType::String)],
                 ty: MirType::String,
             };
@@ -2761,8 +2761,8 @@ impl<'a> Lowerer<'a> {
     // ── Hash generation ─────────────────────────────────────────────
 
     /// Generate a synthetic `Hash__hash__StructName` MIR function that
-    /// hashes each field via the appropriate `snow_hash_*` runtime function
-    /// and chains results with `snow_hash_combine`.
+    /// hashes each field via the appropriate `mesh_hash_*` runtime function
+    /// and chains results with `mesh_hash_combine`.
     fn generate_hash_struct(&mut self, name: &str, fields: &[(String, MirType)]) {
         let mangled = format!("Hash__hash__{}", name);
         let struct_ty = MirType::Struct(name.to_string());
@@ -2777,7 +2777,7 @@ impl<'a> Lowerer<'a> {
             // Empty struct: return a constant hash (the FNV offset basis).
             MirExpr::IntLit(0xcbf29ce484222325_u64 as i64, MirType::Int)
         } else {
-            // For each field, compute hash, then chain with snow_hash_combine.
+            // For each field, compute hash, then chain with mesh_hash_combine.
             let mut result: Option<MirExpr> = None;
             for (field_name, field_ty) in fields {
                 let field_access = MirExpr::FieldAccess {
@@ -2792,7 +2792,7 @@ impl<'a> Lowerer<'a> {
                     None => field_hash,
                     Some(prev) => MirExpr::Call {
                         func: Box::new(MirExpr::Var(
-                            "snow_hash_combine".to_string(),
+                            "mesh_hash_combine".to_string(),
                             combine_ty.clone(),
                         )),
                         args: vec![prev, field_hash],
@@ -2857,7 +2857,7 @@ impl<'a> Lowerer<'a> {
 
                     // Start with hashing the tag
                     let tag_hash = MirExpr::Call {
-                        func: Box::new(MirExpr::Var("snow_hash_int".to_string(), hash_int_ty.clone())),
+                        func: Box::new(MirExpr::Var("mesh_hash_int".to_string(), hash_int_ty.clone())),
                         args: vec![MirExpr::IntLit(v.tag as i64, MirType::Int)],
                         ty: MirType::Int,
                     };
@@ -2869,7 +2869,7 @@ impl<'a> Lowerer<'a> {
                         let field_hash = self.emit_hash_for_type(field_var, ft);
                         result = MirExpr::Call {
                             func: Box::new(MirExpr::Var(
-                                "snow_hash_combine".to_string(),
+                                "mesh_hash_combine".to_string(),
                                 combine_ty.clone(),
                             )),
                             args: vec![result, field_hash],
@@ -2956,7 +2956,7 @@ impl<'a> Lowerer<'a> {
                 // Build fields array
                 let mut arr = MirExpr::Call {
                     func: Box::new(MirExpr::Var(
-                        "snow_json_array_new".to_string(),
+                        "mesh_json_array_new".to_string(),
                         arr_new_ty.clone(),
                     )),
                     args: vec![],
@@ -2967,7 +2967,7 @@ impl<'a> Lowerer<'a> {
                     let json_val = self.emit_to_json_for_type(field_var, ft, name);
                     arr = MirExpr::Call {
                         func: Box::new(MirExpr::Var(
-                            "snow_json_array_push".to_string(),
+                            "mesh_json_array_push".to_string(),
                             arr_push_ty.clone(),
                         )),
                         args: vec![arr, json_val],
@@ -2978,7 +2978,7 @@ impl<'a> Lowerer<'a> {
                 // Build {"tag": "VariantName", "fields": [...]}
                 let mut obj = MirExpr::Call {
                     func: Box::new(MirExpr::Var(
-                        "snow_json_object_new".to_string(),
+                        "mesh_json_object_new".to_string(),
                         obj_new_ty.clone(),
                     )),
                     args: vec![],
@@ -2988,7 +2988,7 @@ impl<'a> Lowerer<'a> {
                 let tag_key = MirExpr::StringLit("tag".to_string(), MirType::String);
                 let tag_val = MirExpr::Call {
                     func: Box::new(MirExpr::Var(
-                        "snow_json_from_string".to_string(),
+                        "mesh_json_from_string".to_string(),
                         from_string_ty.clone(),
                     )),
                     args: vec![MirExpr::StringLit(v.name.clone(), MirType::String)],
@@ -2996,7 +2996,7 @@ impl<'a> Lowerer<'a> {
                 };
                 obj = MirExpr::Call {
                     func: Box::new(MirExpr::Var(
-                        "snow_json_object_put".to_string(),
+                        "mesh_json_object_put".to_string(),
                         obj_put_ty.clone(),
                     )),
                     args: vec![obj, tag_key, tag_val],
@@ -3006,7 +3006,7 @@ impl<'a> Lowerer<'a> {
                 let fields_key = MirExpr::StringLit("fields".to_string(), MirType::String);
                 obj = MirExpr::Call {
                     func: Box::new(MirExpr::Var(
-                        "snow_json_object_put".to_string(),
+                        "mesh_json_object_put".to_string(),
                         obj_put_ty.clone(),
                     )),
                     args: vec![obj, fields_key, arr],
@@ -3030,7 +3030,7 @@ impl<'a> Lowerer<'a> {
             // No variants: return empty JSON object
             MirExpr::Call {
                 func: Box::new(MirExpr::Var(
-                    "snow_json_object_new".to_string(),
+                    "mesh_json_object_new".to_string(),
                     obj_new_ty,
                 )),
                 args: vec![],
@@ -3080,7 +3080,7 @@ impl<'a> Lowerer<'a> {
         // Build the unknown-tag error as the final else branch
         // Use a simple error message (can't easily concat runtime strings in MIR)
         let unknown_tag_err = MirExpr::Call {
-            func: Box::new(MirExpr::Var("snow_alloc_result".to_string(), alloc_result_ty.clone())),
+            func: Box::new(MirExpr::Var("mesh_alloc_result".to_string(), alloc_result_ty.clone())),
             args: vec![
                 MirExpr::IntLit(1, MirType::Int),
                 MirExpr::StringLit(format!("unknown variant for {}", name), MirType::String),
@@ -3102,7 +3102,7 @@ impl<'a> Lowerer<'a> {
                     ty: MirType::SumType(name.to_string()),
                 };
                 MirExpr::Call {
-                    func: Box::new(MirExpr::Var("snow_alloc_result".to_string(), alloc_result_ty.clone())),
+                    func: Box::new(MirExpr::Var("mesh_alloc_result".to_string(), alloc_result_ty.clone())),
                     args: vec![MirExpr::IntLit(0, MirType::Int), variant_val],
                     ty: MirType::Ptr,
                 }
@@ -3120,10 +3120,10 @@ impl<'a> Lowerer<'a> {
                 )
             };
 
-            // If snow_string_eq(tag_str, "VariantName") then decode else continue chain
+            // If mesh_string_eq(tag_str, "VariantName") then decode else continue chain
             tag_dispatch = MirExpr::If {
                 cond: Box::new(MirExpr::Call {
-                    func: Box::new(MirExpr::Var("snow_string_eq".to_string(), str_eq_ty.clone())),
+                    func: Box::new(MirExpr::Var("mesh_string_eq".to_string(), str_eq_ty.clone())),
                     args: vec![
                         MirExpr::Var("__tag_str".to_string(), MirType::String),
                         MirExpr::StringLit(v.name.clone(), MirType::String),
@@ -3137,10 +3137,10 @@ impl<'a> Lowerer<'a> {
         }
 
         // Wrap the tag dispatch in tag extraction:
-        // let tag_res = snow_json_object_get(json, "tag")
+        // let tag_res = mesh_json_object_get(json, "tag")
         // if is_ok(tag_res):
         //   let tag_json = unwrap(tag_res)
-        //   let tag_str_res = snow_json_as_string(tag_json)
+        //   let tag_str_res = mesh_json_as_string(tag_json)
         //   if is_ok(tag_str_res):
         //     let tag_str = unwrap(tag_str_res)
         //     <tag_dispatch>
@@ -3151,7 +3151,7 @@ impl<'a> Lowerer<'a> {
             name: "__tag_res".to_string(),
             ty: MirType::Ptr,
             value: Box::new(MirExpr::Call {
-                func: Box::new(MirExpr::Var("snow_json_object_get".to_string(), obj_get_ty)),
+                func: Box::new(MirExpr::Var("mesh_json_object_get".to_string(), obj_get_ty)),
                 args: vec![
                     json_var,
                     MirExpr::StringLit("tag".to_string(), MirType::String),
@@ -3160,7 +3160,7 @@ impl<'a> Lowerer<'a> {
             }),
             body: Box::new(MirExpr::If {
                 cond: Box::new(MirExpr::Call {
-                    func: Box::new(MirExpr::Var("snow_result_is_ok".to_string(), is_ok_ty.clone())),
+                    func: Box::new(MirExpr::Var("mesh_result_is_ok".to_string(), is_ok_ty.clone())),
                     args: vec![MirExpr::Var("__tag_res".to_string(), MirType::Ptr)],
                     ty: MirType::Int,
                 }),
@@ -3168,7 +3168,7 @@ impl<'a> Lowerer<'a> {
                     name: "__tag_json".to_string(),
                     ty: MirType::Ptr,
                     value: Box::new(MirExpr::Call {
-                        func: Box::new(MirExpr::Var("snow_result_unwrap".to_string(), unwrap_ty.clone())),
+                        func: Box::new(MirExpr::Var("mesh_result_unwrap".to_string(), unwrap_ty.clone())),
                         args: vec![MirExpr::Var("__tag_res".to_string(), MirType::Ptr)],
                         ty: MirType::Ptr,
                     }),
@@ -3176,13 +3176,13 @@ impl<'a> Lowerer<'a> {
                         name: "__tag_str_res".to_string(),
                         ty: MirType::Ptr,
                         value: Box::new(MirExpr::Call {
-                            func: Box::new(MirExpr::Var("snow_json_as_string".to_string(), as_string_ty)),
+                            func: Box::new(MirExpr::Var("mesh_json_as_string".to_string(), as_string_ty)),
                             args: vec![MirExpr::Var("__tag_json".to_string(), MirType::Ptr)],
                             ty: MirType::Ptr,
                         }),
                         body: Box::new(MirExpr::If {
                             cond: Box::new(MirExpr::Call {
-                                func: Box::new(MirExpr::Var("snow_result_is_ok".to_string(), is_ok_ty.clone())),
+                                func: Box::new(MirExpr::Var("mesh_result_is_ok".to_string(), is_ok_ty.clone())),
                                 args: vec![MirExpr::Var("__tag_str_res".to_string(), MirType::Ptr)],
                                 ty: MirType::Int,
                             }),
@@ -3190,7 +3190,7 @@ impl<'a> Lowerer<'a> {
                                 name: "__tag_str".to_string(),
                                 ty: MirType::String,
                                 value: Box::new(MirExpr::Call {
-                                    func: Box::new(MirExpr::Var("snow_result_unwrap".to_string(), unwrap_ty)),
+                                    func: Box::new(MirExpr::Var("mesh_result_unwrap".to_string(), unwrap_ty)),
                                     args: vec![MirExpr::Var("__tag_str_res".to_string(), MirType::Ptr)],
                                     ty: MirType::Ptr,
                                 }),
@@ -3253,7 +3253,7 @@ impl<'a> Lowerer<'a> {
         };
 
         let ok_result = MirExpr::Call {
-            func: Box::new(MirExpr::Var("snow_alloc_result".to_string(), alloc_result_ty.clone())),
+            func: Box::new(MirExpr::Var("mesh_alloc_result".to_string(), alloc_result_ty.clone())),
             args: vec![MirExpr::IntLit(0, MirType::Int), variant_val],
             ty: MirType::Ptr,
         };
@@ -3267,9 +3267,9 @@ impl<'a> Lowerer<'a> {
             let extract_res_var = format!("__er_{}_{}", variant_name, i);
             let val_var = format!("__fval_{}_{}", variant_name, i);
 
-            // snow_json_array_get(fields_arr, i)
+            // mesh_json_array_get(fields_arr, i)
             let arr_get_call = MirExpr::Call {
-                func: Box::new(MirExpr::Var("snow_json_array_get".to_string(), arr_get_ty.clone())),
+                func: Box::new(MirExpr::Var("mesh_json_array_get".to_string(), arr_get_ty.clone())),
                 args: vec![
                     MirExpr::Var(format!("__fields_arr_{}", variant_name), MirType::Ptr),
                     MirExpr::IntLit(i as i64, MirType::Int),
@@ -3291,7 +3291,7 @@ impl<'a> Lowerer<'a> {
                 value: Box::new(extract_call),
                 body: Box::new(MirExpr::If {
                     cond: Box::new(MirExpr::Call {
-                        func: Box::new(MirExpr::Var("snow_result_is_ok".to_string(), is_ok_ty.clone())),
+                        func: Box::new(MirExpr::Var("mesh_result_is_ok".to_string(), is_ok_ty.clone())),
                         args: vec![MirExpr::Var(extract_res_var.clone(), MirType::Ptr)],
                         ty: MirType::Int,
                     }),
@@ -3299,7 +3299,7 @@ impl<'a> Lowerer<'a> {
                         name: val_var,
                         ty: ft.clone(),
                         value: Box::new(MirExpr::Call {
-                            func: Box::new(MirExpr::Var("snow_result_unwrap".to_string(), unwrap_ty.clone())),
+                            func: Box::new(MirExpr::Var("mesh_result_unwrap".to_string(), unwrap_ty.clone())),
                             args: vec![MirExpr::Var(extract_res_var.clone(), MirType::Ptr)],
                             ty: MirType::Ptr,
                         }),
@@ -3317,7 +3317,7 @@ impl<'a> Lowerer<'a> {
                 value: Box::new(arr_get_call),
                 body: Box::new(MirExpr::If {
                     cond: Box::new(MirExpr::Call {
-                        func: Box::new(MirExpr::Var("snow_result_is_ok".to_string(), is_ok_ty.clone())),
+                        func: Box::new(MirExpr::Var("mesh_result_is_ok".to_string(), is_ok_ty.clone())),
                         args: vec![MirExpr::Var(arr_get_res_var.clone(), MirType::Ptr)],
                         ty: MirType::Int,
                     }),
@@ -3325,7 +3325,7 @@ impl<'a> Lowerer<'a> {
                         name: field_json_var,
                         ty: MirType::Ptr,
                         value: Box::new(MirExpr::Call {
-                            func: Box::new(MirExpr::Var("snow_result_unwrap".to_string(), unwrap_ty.clone())),
+                            func: Box::new(MirExpr::Var("mesh_result_unwrap".to_string(), unwrap_ty.clone())),
                             args: vec![MirExpr::Var(arr_get_res_var.clone(), MirType::Ptr)],
                             ty: MirType::Ptr,
                         }),
@@ -3338,7 +3338,7 @@ impl<'a> Lowerer<'a> {
         }
 
         // Wrap the entire thing in fields array extraction:
-        // let fields_res = snow_json_object_get(json, "fields")
+        // let fields_res = mesh_json_object_get(json, "fields")
         // if is_ok(fields_res):
         //   let fields_arr = unwrap(fields_res)
         //   <body with per-field extraction>
@@ -3350,7 +3350,7 @@ impl<'a> Lowerer<'a> {
             name: fields_res_var.clone(),
             ty: MirType::Ptr,
             value: Box::new(MirExpr::Call {
-                func: Box::new(MirExpr::Var("snow_json_object_get".to_string(), obj_get_ty.clone())),
+                func: Box::new(MirExpr::Var("mesh_json_object_get".to_string(), obj_get_ty.clone())),
                 args: vec![
                     MirExpr::Var("json".to_string(), MirType::Ptr),
                     MirExpr::StringLit("fields".to_string(), MirType::String),
@@ -3359,7 +3359,7 @@ impl<'a> Lowerer<'a> {
             }),
             body: Box::new(MirExpr::If {
                 cond: Box::new(MirExpr::Call {
-                    func: Box::new(MirExpr::Var("snow_result_is_ok".to_string(), is_ok_ty.clone())),
+                    func: Box::new(MirExpr::Var("mesh_result_is_ok".to_string(), is_ok_ty.clone())),
                     args: vec![MirExpr::Var(fields_res_var.clone(), MirType::Ptr)],
                     ty: MirType::Int,
                 }),
@@ -3367,7 +3367,7 @@ impl<'a> Lowerer<'a> {
                     name: fields_arr_var,
                     ty: MirType::Ptr,
                     value: Box::new(MirExpr::Call {
-                        func: Box::new(MirExpr::Var("snow_result_unwrap".to_string(), unwrap_ty.clone())),
+                        func: Box::new(MirExpr::Var("mesh_result_unwrap".to_string(), unwrap_ty.clone())),
                         args: vec![MirExpr::Var(fields_res_var.clone(), MirType::Ptr)],
                         ty: MirType::Ptr,
                     }),
@@ -3380,7 +3380,7 @@ impl<'a> Lowerer<'a> {
     }
 
     /// Generate a synthetic `ToJson__to_json__StructName` MIR function that
-    /// builds a JSON object field-by-field using the snow_json_object_new/put
+    /// builds a JSON object field-by-field using the mesh_json_object_new/put
     /// runtime functions.
     fn generate_to_json_struct(&mut self, name: &str, fields: &[(String, MirType)]) {
         let mangled = format!("ToJson__to_json__{}", name);
@@ -3394,7 +3394,7 @@ impl<'a> Lowerer<'a> {
         );
 
         let mut body = MirExpr::Call {
-            func: Box::new(MirExpr::Var("snow_json_object_new".to_string(), obj_new_ty)),
+            func: Box::new(MirExpr::Var("mesh_json_object_new".to_string(), obj_new_ty)),
             args: vec![],
             ty: MirType::Ptr,
         };
@@ -3406,7 +3406,7 @@ impl<'a> Lowerer<'a> {
                 ty: field_ty.clone(),
             };
 
-            // Convert field value to SnowJson using type-directed dispatch.
+            // Convert field value to MeshJson using type-directed dispatch.
             // For collection types (MirType::Ptr), look up the typeck Ty to
             // determine element types for callback-based encode/decode.
             let json_val = if matches!(field_ty, MirType::Ptr) {
@@ -3427,7 +3427,7 @@ impl<'a> Lowerer<'a> {
             let key = MirExpr::StringLit(field_name.clone(), MirType::String);
 
             body = MirExpr::Call {
-                func: Box::new(MirExpr::Var("snow_json_object_put".to_string(), obj_put_ty.clone())),
+                func: Box::new(MirExpr::Var("mesh_json_object_put".to_string(), obj_put_ty.clone())),
                 args: vec![body, key, json_val],
                 ty: MirType::Ptr,
             };
@@ -3451,13 +3451,13 @@ impl<'a> Lowerer<'a> {
     }
 
     /// Emit a to_json conversion for a value of the given MIR type.
-    /// Returns a MirExpr that evaluates to *mut SnowJson (MirType::Ptr).
+    /// Returns a MirExpr that evaluates to *mut MeshJson (MirType::Ptr).
     fn emit_to_json_for_type(&mut self, expr: MirExpr, ty: &MirType, _context_struct: &str) -> MirExpr {
         match ty {
             MirType::Int => {
                 let fn_ty = MirType::FnPtr(vec![MirType::Int], Box::new(MirType::Ptr));
                 MirExpr::Call {
-                    func: Box::new(MirExpr::Var("snow_json_from_int".to_string(), fn_ty)),
+                    func: Box::new(MirExpr::Var("mesh_json_from_int".to_string(), fn_ty)),
                     args: vec![expr],
                     ty: MirType::Ptr,
                 }
@@ -3465,7 +3465,7 @@ impl<'a> Lowerer<'a> {
             MirType::Float => {
                 let fn_ty = MirType::FnPtr(vec![MirType::Float], Box::new(MirType::Ptr));
                 MirExpr::Call {
-                    func: Box::new(MirExpr::Var("snow_json_from_float".to_string(), fn_ty)),
+                    func: Box::new(MirExpr::Var("mesh_json_from_float".to_string(), fn_ty)),
                     args: vec![expr],
                     ty: MirType::Ptr,
                 }
@@ -3473,7 +3473,7 @@ impl<'a> Lowerer<'a> {
             MirType::Bool => {
                 let fn_ty = MirType::FnPtr(vec![MirType::Bool], Box::new(MirType::Ptr));
                 MirExpr::Call {
-                    func: Box::new(MirExpr::Var("snow_json_from_bool".to_string(), fn_ty)),
+                    func: Box::new(MirExpr::Var("mesh_json_from_bool".to_string(), fn_ty)),
                     args: vec![expr],
                     ty: MirType::Ptr,
                 }
@@ -3481,7 +3481,7 @@ impl<'a> Lowerer<'a> {
             MirType::String => {
                 let fn_ty = MirType::FnPtr(vec![MirType::String], Box::new(MirType::Ptr));
                 MirExpr::Call {
-                    func: Box::new(MirExpr::Var("snow_json_from_string".to_string(), fn_ty)),
+                    func: Box::new(MirExpr::Var("mesh_json_from_string".to_string(), fn_ty)),
                     args: vec![expr],
                     ty: MirType::Ptr,
                 }
@@ -3523,7 +3523,7 @@ impl<'a> Lowerer<'a> {
 
         let null_ty = MirType::FnPtr(vec![], Box::new(MirType::Ptr));
         let null_expr = MirExpr::Call {
-            func: Box::new(MirExpr::Var("snow_json_null".to_string(), null_ty)),
+            func: Box::new(MirExpr::Var("mesh_json_null".to_string(), null_ty)),
             args: vec![],
             ty: MirType::Ptr,
         };
@@ -3590,7 +3590,7 @@ impl<'a> Lowerer<'a> {
                             let fn_ty = MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr));
                             let callback_ty = MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Ptr));
                             MirExpr::Call {
-                                func: Box::new(MirExpr::Var("snow_json_from_list".to_string(), fn_ty)),
+                                func: Box::new(MirExpr::Var("mesh_json_from_list".to_string(), fn_ty)),
                                 args: vec![expr, MirExpr::Var(callback_name, callback_ty)],
                                 ty: MirType::Ptr,
                             }
@@ -3601,7 +3601,7 @@ impl<'a> Lowerer<'a> {
                             let fn_ty = MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr));
                             let callback_ty = MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Ptr));
                             MirExpr::Call {
-                                func: Box::new(MirExpr::Var("snow_json_from_map".to_string(), fn_ty)),
+                                func: Box::new(MirExpr::Var("mesh_json_from_map".to_string(), fn_ty)),
                                 args: vec![expr, MirExpr::Var(callback_name, callback_ty)],
                                 ty: MirType::Ptr,
                             }
@@ -3622,10 +3622,10 @@ impl<'a> Lowerer<'a> {
     fn resolve_to_json_callback(&mut self, elem_ty: &Ty) -> String {
         match elem_ty {
             Ty::Con(con) => match con.name.as_str() {
-                "Int" => "snow_json_from_int".to_string(),
-                "Float" => "snow_json_from_float".to_string(),
-                "Bool" => "snow_json_from_bool".to_string(),
-                "String" => "snow_json_from_string".to_string(),
+                "Int" => "mesh_json_from_int".to_string(),
+                "Float" => "mesh_json_from_float".to_string(),
+                "Bool" => "mesh_json_from_bool".to_string(),
+                "String" => "mesh_json_from_string".to_string(),
                 name => {
                     // For struct/sum types, the list stores heap pointers as u64.
                     // The runtime callback receives u64 (reinterpreted as ptr), but
@@ -3674,7 +3674,7 @@ impl<'a> Lowerer<'a> {
                     wrapper_name
                 }
             },
-            _ => "snow_json_from_int".to_string(),
+            _ => "mesh_json_from_int".to_string(),
         }
     }
 
@@ -3682,21 +3682,21 @@ impl<'a> Lowerer<'a> {
     fn resolve_from_json_callback(&self, elem_ty: &Ty) -> String {
         match elem_ty {
             Ty::Con(con) => match con.name.as_str() {
-                "Int" => "snow_json_as_int".to_string(),
-                "Float" => "snow_json_as_float".to_string(),
-                "Bool" => "snow_json_as_bool".to_string(),
-                "String" => "snow_json_as_string".to_string(),
+                "Int" => "mesh_json_as_int".to_string(),
+                "Float" => "mesh_json_as_float".to_string(),
+                "Bool" => "mesh_json_as_bool".to_string(),
+                "String" => "mesh_json_as_string".to_string(),
                 name => format!("FromJson__from_json__{}", name),
             },
-            _ => "snow_json_as_int".to_string(),
+            _ => "mesh_json_as_int".to_string(),
         }
     }
 
     /// Generate a synthetic `FromJson__from_json__StructName` MIR function that
     /// extracts fields from a JSON object with nested Result propagation.
-    /// Returns a *mut SnowResult (Ptr) -- the caller handles conversion to SumType.
-    /// Uses snow_result_is_ok/snow_result_unwrap for internal SnowResult handling,
-    /// and snow_alloc_result(0, heap_struct_ptr) for the Ok result.
+    /// Returns a *mut MeshResult (Ptr) -- the caller handles conversion to SumType.
+    /// Uses mesh_result_is_ok/mesh_result_unwrap for internal MeshResult handling,
+    /// and mesh_alloc_result(0, heap_struct_ptr) for the Ok result.
     fn generate_from_json_struct(&mut self, name: &str, fields: &[(String, MirType)]) {
         let mangled = format!("FromJson__from_json__{}", name);
         let struct_ty = MirType::Struct(name.to_string());
@@ -3725,7 +3725,7 @@ impl<'a> Lowerer<'a> {
             Box::new(MirType::Ptr),
         );
         let ok_result = MirExpr::Call {
-            func: Box::new(MirExpr::Var("snow_alloc_result".to_string(), alloc_result_ty.clone())),
+            func: Box::new(MirExpr::Var("mesh_alloc_result".to_string(), alloc_result_ty.clone())),
             args: vec![
                 MirExpr::IntLit(0, MirType::Int),
                 struct_lit,
@@ -3734,7 +3734,7 @@ impl<'a> Lowerer<'a> {
         };
 
         // Wrap each field extraction around the inner expression, from last to first.
-        // Uses If(snow_result_is_ok(res)) for internal SnowResult handling.
+        // Uses If(mesh_result_is_ok(res)) for internal MeshResult handling.
         let mut body = ok_result;
 
         for (i, (field_name, field_ty)) in fields.iter().enumerate().rev() {
@@ -3742,7 +3742,7 @@ impl<'a> Lowerer<'a> {
             let key_lit = MirExpr::StringLit(field_name.clone(), MirType::String);
 
             let get_call = MirExpr::Call {
-                func: Box::new(MirExpr::Var("snow_json_object_get".to_string(), obj_get_ty)),
+                func: Box::new(MirExpr::Var("mesh_json_object_get".to_string(), obj_get_ty)),
                 args: vec![json_var.clone(), key_lit],
                 ty: MirType::Ptr,
             };
@@ -3784,14 +3784,14 @@ impl<'a> Lowerer<'a> {
                 )
             };
 
-            // Inner check: if snow_result_is_ok(extract_result)
+            // Inner check: if mesh_result_is_ok(extract_result)
             let inner_check = MirExpr::Let {
                 name: extract_result_var.clone(),
                 ty: MirType::Ptr,
                 value: Box::new(extract_call),
                 body: Box::new(MirExpr::If {
                     cond: Box::new(MirExpr::Call {
-                        func: Box::new(MirExpr::Var("snow_result_is_ok".to_string(), is_ok_ty.clone())),
+                        func: Box::new(MirExpr::Var("mesh_result_is_ok".to_string(), is_ok_ty.clone())),
                         args: vec![MirExpr::Var(extract_result_var.clone(), MirType::Ptr)],
                         ty: MirType::Int,
                     }),
@@ -3799,7 +3799,7 @@ impl<'a> Lowerer<'a> {
                         name: val_var,
                         ty: field_ty.clone(),
                         value: Box::new(MirExpr::Call {
-                            func: Box::new(MirExpr::Var("snow_result_unwrap".to_string(), unwrap_ty.clone())),
+                            func: Box::new(MirExpr::Var("mesh_result_unwrap".to_string(), unwrap_ty.clone())),
                             args: vec![MirExpr::Var(extract_result_var.clone(), MirType::Ptr)],
                             ty: MirType::Ptr,
                         }),
@@ -3810,14 +3810,14 @@ impl<'a> Lowerer<'a> {
                 }),
             };
 
-            // Outer check: if snow_result_is_ok(get_result)
+            // Outer check: if mesh_result_is_ok(get_result)
             body = MirExpr::Let {
                 name: get_result_var.clone(),
                 ty: MirType::Ptr,
                 value: Box::new(get_call),
                 body: Box::new(MirExpr::If {
                     cond: Box::new(MirExpr::Call {
-                        func: Box::new(MirExpr::Var("snow_result_is_ok".to_string(), is_ok_ty.clone())),
+                        func: Box::new(MirExpr::Var("mesh_result_is_ok".to_string(), is_ok_ty.clone())),
                         args: vec![MirExpr::Var(get_result_var.clone(), MirType::Ptr)],
                         ty: MirType::Int,
                     }),
@@ -3825,7 +3825,7 @@ impl<'a> Lowerer<'a> {
                         name: field_var,
                         ty: MirType::Ptr,
                         value: Box::new(MirExpr::Call {
-                            func: Box::new(MirExpr::Var("snow_result_unwrap".to_string(), unwrap_ty.clone())),
+                            func: Box::new(MirExpr::Var("mesh_result_unwrap".to_string(), unwrap_ty.clone())),
                             args: vec![MirExpr::Var(get_result_var.clone(), MirType::Ptr)],
                             ty: MirType::Ptr,
                         }),
@@ -3857,8 +3857,8 @@ impl<'a> Lowerer<'a> {
     /// Generate a `FromRow__from_row__StructName` MIR function that extracts
     /// struct fields from a Map<String, String> (database row).
     ///
-    /// Takes a Ptr (Map<String, String>) parameter and returns a Ptr (SnowResult).
-    /// For each field: calls snow_row_from_row_get to get the column value,
+    /// Takes a Ptr (Map<String, String>) parameter and returns a Ptr (MeshResult).
+    /// For each field: calls mesh_row_from_row_get to get the column value,
     /// then parses it to the correct type (Int/Float/Bool/String/Option<T>).
     /// Option fields receive None for missing columns and empty strings (NULL).
     fn generate_from_row_struct(&mut self, name: &str, fields: &[(String, MirType)]) {
@@ -3894,7 +3894,7 @@ impl<'a> Lowerer<'a> {
         };
 
         let ok_result = MirExpr::Call {
-            func: Box::new(MirExpr::Var("snow_alloc_result".to_string(), alloc_result_ty.clone())),
+            func: Box::new(MirExpr::Var("mesh_alloc_result".to_string(), alloc_result_ty.clone())),
             args: vec![
                 MirExpr::IntLit(0, MirType::Int),
                 struct_lit,
@@ -3913,9 +3913,9 @@ impl<'a> Lowerer<'a> {
             let col_str_var = format!("__col_str_{}", i);
             let val_var = format!("__field_{}", i);
 
-            // snow_row_from_row_get(row, "field_name")
+            // mesh_row_from_row_get(row, "field_name")
             let get_call = MirExpr::Call {
-                func: Box::new(MirExpr::Var("snow_row_from_row_get".to_string(), row_get_ty.clone())),
+                func: Box::new(MirExpr::Var("mesh_row_from_row_get".to_string(), row_get_ty.clone())),
                 args: vec![row_var.clone(), key_lit],
                 ty: MirType::Ptr,
             };
@@ -3939,7 +3939,7 @@ impl<'a> Lowerer<'a> {
 
                 // Ok(None) result
                 let ok_none = MirExpr::Call {
-                    func: Box::new(MirExpr::Var("snow_alloc_result".to_string(), alloc_result_ty.clone())),
+                    func: Box::new(MirExpr::Var("mesh_alloc_result".to_string(), alloc_result_ty.clone())),
                     args: vec![MirExpr::IntLit(0, MirType::Int), none_expr.clone()],
                     ty: MirType::Ptr,
                 };
@@ -3961,7 +3961,7 @@ impl<'a> Lowerer<'a> {
                     name: col_str_var.clone(),
                     ty: MirType::Ptr,
                     value: Box::new(MirExpr::Call {
-                        func: Box::new(MirExpr::Var("snow_result_unwrap".to_string(), unwrap_ty.clone())),
+                        func: Box::new(MirExpr::Var("mesh_result_unwrap".to_string(), unwrap_ty.clone())),
                         args: vec![MirExpr::Var(get_result_var.clone(), MirType::Ptr)],
                         ty: MirType::Ptr,
                     }),
@@ -3969,7 +3969,7 @@ impl<'a> Lowerer<'a> {
                         cond: Box::new(MirExpr::BinOp {
                             op: BinOp::Eq,
                             lhs: Box::new(MirExpr::Call {
-                                func: Box::new(MirExpr::Var("snow_string_length".to_string(), str_len_ty.clone())),
+                                func: Box::new(MirExpr::Var("mesh_string_length".to_string(), str_len_ty.clone())),
                                 args: vec![MirExpr::Var(col_str_var.clone(), MirType::Ptr)],
                                 ty: MirType::Int,
                             }),
@@ -3994,7 +3994,7 @@ impl<'a> Lowerer<'a> {
                     value: Box::new(get_call),
                     body: Box::new(MirExpr::If {
                         cond: Box::new(MirExpr::Call {
-                            func: Box::new(MirExpr::Var("snow_result_is_ok".to_string(), is_ok_ty.clone())),
+                            func: Box::new(MirExpr::Var("mesh_result_is_ok".to_string(), is_ok_ty.clone())),
                             args: vec![MirExpr::Var(get_result_var.clone(), MirType::Ptr)],
                             ty: MirType::Int,
                         }),
@@ -4004,7 +4004,7 @@ impl<'a> Lowerer<'a> {
                             value: Box::new(null_check),
                             body: Box::new(MirExpr::If {
                                 cond: Box::new(MirExpr::Call {
-                                    func: Box::new(MirExpr::Var("snow_result_is_ok".to_string(), is_ok_ty.clone())),
+                                    func: Box::new(MirExpr::Var("mesh_result_is_ok".to_string(), is_ok_ty.clone())),
                                     args: vec![MirExpr::Var(outer_result_var.clone(), MirType::Ptr)],
                                     ty: MirType::Int,
                                 }),
@@ -4012,7 +4012,7 @@ impl<'a> Lowerer<'a> {
                                     name: val_var.clone(),
                                     ty: MirType::Ptr,
                                     value: Box::new(MirExpr::Call {
-                                        func: Box::new(MirExpr::Var("snow_result_unwrap".to_string(), unwrap_ty.clone())),
+                                        func: Box::new(MirExpr::Var("mesh_result_unwrap".to_string(), unwrap_ty.clone())),
                                         args: vec![MirExpr::Var(outer_result_var.clone(), MirType::Ptr)],
                                         ty: MirType::Ptr,
                                     }),
@@ -4046,7 +4046,7 @@ impl<'a> Lowerer<'a> {
                         value: Box::new(get_call),
                         body: Box::new(MirExpr::If {
                             cond: Box::new(MirExpr::Call {
-                                func: Box::new(MirExpr::Var("snow_result_is_ok".to_string(), is_ok_ty.clone())),
+                                func: Box::new(MirExpr::Var("mesh_result_is_ok".to_string(), is_ok_ty.clone())),
                                 args: vec![MirExpr::Var(get_result_var.clone(), MirType::Ptr)],
                                 ty: MirType::Int,
                             }),
@@ -4054,7 +4054,7 @@ impl<'a> Lowerer<'a> {
                                 name: val_var,
                                 ty: MirType::String,
                                 value: Box::new(MirExpr::Call {
-                                    func: Box::new(MirExpr::Var("snow_result_unwrap".to_string(), unwrap_ty.clone())),
+                                    func: Box::new(MirExpr::Var("mesh_result_unwrap".to_string(), unwrap_ty.clone())),
                                     args: vec![MirExpr::Var(get_result_var.clone(), MirType::Ptr)],
                                     ty: MirType::Ptr,
                                 }),
@@ -4067,10 +4067,10 @@ impl<'a> Lowerer<'a> {
                 } else {
                     // Int, Float, Bool: get column value, then parse
                     let parse_fn = match field_ty {
-                        MirType::Int => "snow_row_parse_int",
-                        MirType::Float => "snow_row_parse_float",
-                        MirType::Bool => "snow_row_parse_bool",
-                        _ => "snow_row_parse_int", // fallback
+                        MirType::Int => "mesh_row_parse_int",
+                        MirType::Float => "mesh_row_parse_float",
+                        MirType::Bool => "mesh_row_parse_bool",
+                        _ => "mesh_row_parse_int", // fallback
                     };
                     let parse_fn_ty = MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Ptr));
                     let parse_result_var = format!("__parse_res_{}", i);
@@ -4080,7 +4080,7 @@ impl<'a> Lowerer<'a> {
                         name: col_str_var.clone(),
                         ty: MirType::Ptr,
                         value: Box::new(MirExpr::Call {
-                            func: Box::new(MirExpr::Var("snow_result_unwrap".to_string(), unwrap_ty.clone())),
+                            func: Box::new(MirExpr::Var("mesh_result_unwrap".to_string(), unwrap_ty.clone())),
                             args: vec![MirExpr::Var(get_result_var.clone(), MirType::Ptr)],
                             ty: MirType::Ptr,
                         }),
@@ -4094,7 +4094,7 @@ impl<'a> Lowerer<'a> {
                             }),
                             body: Box::new(MirExpr::If {
                                 cond: Box::new(MirExpr::Call {
-                                    func: Box::new(MirExpr::Var("snow_result_is_ok".to_string(), is_ok_ty.clone())),
+                                    func: Box::new(MirExpr::Var("mesh_result_is_ok".to_string(), is_ok_ty.clone())),
                                     args: vec![MirExpr::Var(parse_result_var.clone(), MirType::Ptr)],
                                     ty: MirType::Int,
                                 }),
@@ -4102,7 +4102,7 @@ impl<'a> Lowerer<'a> {
                                     name: val_var,
                                     ty: field_ty.clone(),
                                     value: Box::new(MirExpr::Call {
-                                        func: Box::new(MirExpr::Var("snow_result_unwrap".to_string(), unwrap_ty.clone())),
+                                        func: Box::new(MirExpr::Var("mesh_result_unwrap".to_string(), unwrap_ty.clone())),
                                         args: vec![MirExpr::Var(parse_result_var.clone(), MirType::Ptr)],
                                         ty: MirType::Ptr,
                                     }),
@@ -4121,7 +4121,7 @@ impl<'a> Lowerer<'a> {
                         value: Box::new(get_call),
                         body: Box::new(MirExpr::If {
                             cond: Box::new(MirExpr::Call {
-                                func: Box::new(MirExpr::Var("snow_result_is_ok".to_string(), is_ok_ty.clone())),
+                                func: Box::new(MirExpr::Var("mesh_result_is_ok".to_string(), is_ok_ty.clone())),
                                 args: vec![MirExpr::Var(get_result_var.clone(), MirType::Ptr)],
                                 ty: MirType::Int,
                             }),
@@ -4175,7 +4175,7 @@ impl<'a> Lowerer<'a> {
                 ty: MirType::SumType(option_sum_name.to_string()),
             };
             return MirExpr::Call {
-                func: Box::new(MirExpr::Var("snow_alloc_result".to_string(), alloc_result_ty.clone())),
+                func: Box::new(MirExpr::Var("mesh_alloc_result".to_string(), alloc_result_ty.clone())),
                 args: vec![MirExpr::IntLit(0, MirType::Int), some_expr],
                 ty: MirType::Ptr,
             };
@@ -4183,10 +4183,10 @@ impl<'a> Lowerer<'a> {
 
         // For Int/Float/Bool: parse, then wrap in Some
         let parse_fn = match inner_type_str {
-            "Int" => "snow_row_parse_int",
-            "Float" => "snow_row_parse_float",
-            "Bool" => "snow_row_parse_bool",
-            _ => "snow_row_parse_int",
+            "Int" => "mesh_row_parse_int",
+            "Float" => "mesh_row_parse_float",
+            "Bool" => "mesh_row_parse_bool",
+            _ => "mesh_row_parse_int",
         };
         let parse_fn_ty = MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Ptr));
         let parse_var = format!("__opt_parse_{}", field_idx);
@@ -4210,7 +4210,7 @@ impl<'a> Lowerer<'a> {
             }),
             body: Box::new(MirExpr::If {
                 cond: Box::new(MirExpr::Call {
-                    func: Box::new(MirExpr::Var("snow_result_is_ok".to_string(), is_ok_ty.clone())),
+                    func: Box::new(MirExpr::Var("mesh_result_is_ok".to_string(), is_ok_ty.clone())),
                     args: vec![MirExpr::Var(parse_var.clone(), MirType::Ptr)],
                     ty: MirType::Int,
                 }),
@@ -4218,7 +4218,7 @@ impl<'a> Lowerer<'a> {
                     name: parsed_val_var.clone(),
                     ty: inner_ty.clone(),
                     value: Box::new(MirExpr::Call {
-                        func: Box::new(MirExpr::Var("snow_result_unwrap".to_string(), unwrap_ty.clone())),
+                        func: Box::new(MirExpr::Var("mesh_result_unwrap".to_string(), unwrap_ty.clone())),
                         args: vec![MirExpr::Var(parse_var.clone(), MirType::Ptr)],
                         ty: MirType::Ptr,
                     }),
@@ -4230,7 +4230,7 @@ impl<'a> Lowerer<'a> {
                             ty: MirType::SumType(option_sum_name.to_string()),
                         };
                         MirExpr::Call {
-                            func: Box::new(MirExpr::Var("snow_alloc_result".to_string(), alloc_result_ty.clone())),
+                            func: Box::new(MirExpr::Var("mesh_alloc_result".to_string(), alloc_result_ty.clone())),
                             args: vec![MirExpr::IntLit(0, MirType::Int), some_expr],
                             ty: MirType::Ptr,
                         }
@@ -4246,10 +4246,10 @@ impl<'a> Lowerer<'a> {
     /// Returns a MirExpr that produces a Result (Ok(value) or Err(string)).
     fn emit_from_json_for_type(&self, json_expr: MirExpr, target_ty: &MirType, _context_struct: &str) -> MirExpr {
         let fn_name = match target_ty {
-            MirType::Int => "snow_json_as_int",
-            MirType::Float => "snow_json_as_float",
-            MirType::Bool => "snow_json_as_bool",
-            MirType::String => "snow_json_as_string",
+            MirType::Int => "mesh_json_as_int",
+            MirType::Float => "mesh_json_as_float",
+            MirType::Bool => "mesh_json_as_bool",
+            MirType::String => "mesh_json_as_string",
             MirType::Struct(inner) => {
                 let name = format!("FromJson__from_json__{}", inner);
                 let fn_ty = MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Ptr));
@@ -4273,7 +4273,7 @@ impl<'a> Lowerer<'a> {
                     ty: MirType::Ptr,
                 };
             }
-            _ => "snow_json_as_int", // fallback for Ptr/unknown
+            _ => "mesh_json_as_int", // fallback for Ptr/unknown
         };
 
         let fn_ty = MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Ptr));
@@ -4288,16 +4288,16 @@ impl<'a> Lowerer<'a> {
     fn emit_option_from_json(&self, json_expr: MirExpr, sum_name: &str, _context_struct: &str) -> MirExpr {
         // For Option<T>, the from_json simply returns the JSON value.
         // The inner extraction (Some/None wrapping) happens at a higher level
-        // via snow_json_as_* returning the inner value or null check.
-        // For simplicity, use snow_json_as_int as a fallback -- the runtime
+        // via mesh_json_as_* returning the inner value or null check.
+        // For simplicity, use mesh_json_as_int as a fallback -- the runtime
         // handles null -> Err, value -> Ok(value).
         let inner_type_str = sum_name.strip_prefix("Option_").unwrap_or("Int");
         let fn_name = match inner_type_str {
-            "Int" => "snow_json_as_int",
-            "Float" => "snow_json_as_float",
-            "Bool" => "snow_json_as_bool",
-            "String" => "snow_json_as_string",
-            _ => "snow_json_as_int",
+            "Int" => "mesh_json_as_int",
+            "Float" => "mesh_json_as_float",
+            "Bool" => "mesh_json_as_bool",
+            "String" => "mesh_json_as_string",
+            _ => "mesh_json_as_int",
         };
         let fn_ty = MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Ptr));
         MirExpr::Call {
@@ -4319,7 +4319,7 @@ impl<'a> Lowerer<'a> {
                             let fn_ty = MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr));
                             let callback_ty = MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Ptr));
                             MirExpr::Call {
-                                func: Box::new(MirExpr::Var("snow_json_to_list".to_string(), fn_ty)),
+                                func: Box::new(MirExpr::Var("mesh_json_to_list".to_string(), fn_ty)),
                                 args: vec![json_expr, MirExpr::Var(callback_name, callback_ty)],
                                 ty: MirType::Ptr,
                             }
@@ -4330,7 +4330,7 @@ impl<'a> Lowerer<'a> {
                             let fn_ty = MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr));
                             let callback_ty = MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Ptr));
                             MirExpr::Call {
-                                func: Box::new(MirExpr::Var("snow_json_to_map".to_string(), fn_ty)),
+                                func: Box::new(MirExpr::Var("mesh_json_to_map".to_string(), fn_ty)),
                                 args: vec![json_expr, MirExpr::Var(callback_name, callback_ty)],
                                 ty: MirType::Ptr,
                             }
@@ -4339,7 +4339,7 @@ impl<'a> Lowerer<'a> {
                             // Not a known collection -- fallback
                             let fn_ty = MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Ptr));
                             MirExpr::Call {
-                                func: Box::new(MirExpr::Var("snow_json_as_int".to_string(), fn_ty)),
+                                func: Box::new(MirExpr::Var("mesh_json_as_int".to_string(), fn_ty)),
                                 args: vec![json_expr],
                                 ty: MirType::Ptr,
                             }
@@ -4348,7 +4348,7 @@ impl<'a> Lowerer<'a> {
                 } else {
                     let fn_ty = MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Ptr));
                     MirExpr::Call {
-                        func: Box::new(MirExpr::Var("snow_json_as_int".to_string(), fn_ty)),
+                        func: Box::new(MirExpr::Var("mesh_json_as_int".to_string(), fn_ty)),
                         args: vec![json_expr],
                         ty: MirType::Ptr,
                     }
@@ -4357,7 +4357,7 @@ impl<'a> Lowerer<'a> {
             _ => {
                 let fn_ty = MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Ptr));
                 MirExpr::Call {
-                    func: Box::new(MirExpr::Var("snow_json_as_int".to_string(), fn_ty)),
+                    func: Box::new(MirExpr::Var("mesh_json_as_int".to_string(), fn_ty)),
                     args: vec![json_expr],
                     ty: MirType::Ptr,
                 }
@@ -4366,9 +4366,9 @@ impl<'a> Lowerer<'a> {
     }
 
     /// Generate a wrapper `__json_decode__StructName` that chains
-    /// snow_json_parse + FromJson__from_json__StructName.
+    /// mesh_json_parse + FromJson__from_json__StructName.
     /// This is what `StructName.from_json(str)` resolves to.
-    /// Returns a *mut SnowResult (Ptr) -- the let-binding deref logic converts
+    /// Returns a *mut MeshResult (Ptr) -- the let-binding deref logic converts
     /// it to a SumType("Result") when bound to a typed variable.
     fn generate_from_json_string_wrapper(&mut self, name: &str) {
         let wrapper_name = format!("__json_decode__{}", name);
@@ -4379,9 +4379,9 @@ impl<'a> Lowerer<'a> {
 
         let str_var = MirExpr::Var("__input".to_string(), MirType::String);
 
-        // snow_json_parse(input) -> *mut SnowResult
+        // mesh_json_parse(input) -> *mut MeshResult
         let parse_call = MirExpr::Call {
-            func: Box::new(MirExpr::Var("snow_json_parse".to_string(), parse_ty)),
+            func: Box::new(MirExpr::Var("mesh_json_parse".to_string(), parse_ty)),
             args: vec![str_var],
             ty: MirType::Ptr,
         };
@@ -4400,7 +4400,7 @@ impl<'a> Lowerer<'a> {
             value: Box::new(parse_call),
             body: Box::new(MirExpr::If {
                 cond: Box::new(MirExpr::Call {
-                    func: Box::new(MirExpr::Var("snow_result_is_ok".to_string(), is_ok_ty)),
+                    func: Box::new(MirExpr::Var("mesh_result_is_ok".to_string(), is_ok_ty)),
                     args: vec![MirExpr::Var("__parse_res".to_string(), MirType::Ptr)],
                     ty: MirType::Int,
                 }),
@@ -4408,7 +4408,7 @@ impl<'a> Lowerer<'a> {
                     name: "__parsed_json".to_string(),
                     ty: MirType::Ptr,
                     value: Box::new(MirExpr::Call {
-                        func: Box::new(MirExpr::Var("snow_result_unwrap".to_string(), unwrap_ty)),
+                        func: Box::new(MirExpr::Var("mesh_result_unwrap".to_string(), unwrap_ty)),
                         args: vec![MirExpr::Var("__parse_res".to_string(), MirType::Ptr)],
                         ty: MirType::Ptr,
                     }),
@@ -4478,7 +4478,7 @@ impl<'a> Lowerer<'a> {
 
                 // Append field value string
                 result = MirExpr::Call {
-                    func: Box::new(MirExpr::Var("snow_string_concat".to_string(), concat_ty.clone())),
+                    func: Box::new(MirExpr::Var("mesh_string_concat".to_string(), concat_ty.clone())),
                     args: vec![result, field_str],
                     ty: MirType::String,
                 };
@@ -4486,7 +4486,7 @@ impl<'a> Lowerer<'a> {
                 // Append separator: ", " for non-last fields
                 if !is_last {
                     result = MirExpr::Call {
-                        func: Box::new(MirExpr::Var("snow_string_concat".to_string(), concat_ty.clone())),
+                        func: Box::new(MirExpr::Var("mesh_string_concat".to_string(), concat_ty.clone())),
                         args: vec![result, MirExpr::StringLit(", ".to_string(), MirType::String)],
                         ty: MirType::String,
                     };
@@ -4495,7 +4495,7 @@ impl<'a> Lowerer<'a> {
 
             // Append closing ")"
             result = MirExpr::Call {
-                func: Box::new(MirExpr::Var("snow_string_concat".to_string(), concat_ty.clone())),
+                func: Box::new(MirExpr::Var("mesh_string_concat".to_string(), concat_ty.clone())),
                 args: vec![result, MirExpr::StringLit(")".to_string(), MirType::String)],
                 ty: MirType::String,
             };
@@ -4578,7 +4578,7 @@ impl<'a> Lowerer<'a> {
                             // Append field value
                             result = MirExpr::Call {
                                 func: Box::new(MirExpr::Var(
-                                    "snow_string_concat".to_string(),
+                                    "mesh_string_concat".to_string(),
                                     concat_ty.clone(),
                                 )),
                                 args: vec![result, field_str],
@@ -4589,7 +4589,7 @@ impl<'a> Lowerer<'a> {
                             if !is_last {
                                 result = MirExpr::Call {
                                     func: Box::new(MirExpr::Var(
-                                        "snow_string_concat".to_string(),
+                                        "mesh_string_concat".to_string(),
                                         concat_ty.clone(),
                                     )),
                                     args: vec![
@@ -4604,7 +4604,7 @@ impl<'a> Lowerer<'a> {
                         // Append closing ")"
                         result = MirExpr::Call {
                             func: Box::new(MirExpr::Var(
-                                "snow_string_concat".to_string(),
+                                "mesh_string_concat".to_string(),
                                 concat_ty.clone(),
                             )),
                             args: vec![
@@ -4659,7 +4659,7 @@ impl<'a> Lowerer<'a> {
             MirType::Int => {
                 let fn_ty = MirType::FnPtr(vec![MirType::Int], Box::new(MirType::Int));
                 MirExpr::Call {
-                    func: Box::new(MirExpr::Var("snow_hash_int".to_string(), fn_ty)),
+                    func: Box::new(MirExpr::Var("mesh_hash_int".to_string(), fn_ty)),
                     args: vec![expr],
                     ty: MirType::Int,
                 }
@@ -4667,7 +4667,7 @@ impl<'a> Lowerer<'a> {
             MirType::Float => {
                 let fn_ty = MirType::FnPtr(vec![MirType::Float], Box::new(MirType::Int));
                 MirExpr::Call {
-                    func: Box::new(MirExpr::Var("snow_hash_float".to_string(), fn_ty)),
+                    func: Box::new(MirExpr::Var("mesh_hash_float".to_string(), fn_ty)),
                     args: vec![expr],
                     ty: MirType::Int,
                 }
@@ -4675,7 +4675,7 @@ impl<'a> Lowerer<'a> {
             MirType::Bool => {
                 let fn_ty = MirType::FnPtr(vec![MirType::Bool], Box::new(MirType::Int));
                 MirExpr::Call {
-                    func: Box::new(MirExpr::Var("snow_hash_bool".to_string(), fn_ty)),
+                    func: Box::new(MirExpr::Var("mesh_hash_bool".to_string(), fn_ty)),
                     args: vec![expr],
                     ty: MirType::Int,
                 }
@@ -4683,7 +4683,7 @@ impl<'a> Lowerer<'a> {
             MirType::String => {
                 let fn_ty = MirType::FnPtr(vec![MirType::String], Box::new(MirType::Int));
                 MirExpr::Call {
-                    func: Box::new(MirExpr::Var("snow_hash_string".to_string(), fn_ty)),
+                    func: Box::new(MirExpr::Var("mesh_hash_string".to_string(), fn_ty)),
                     args: vec![expr],
                     ty: MirType::Int,
                 }
@@ -4702,7 +4702,7 @@ impl<'a> Lowerer<'a> {
                 // Fallback: hash as int (cast to i64)
                 let fn_ty = MirType::FnPtr(vec![MirType::Int], Box::new(MirType::Int));
                 MirExpr::Call {
-                    func: Box::new(MirExpr::Var("snow_hash_int".to_string(), fn_ty)),
+                    func: Box::new(MirExpr::Var("mesh_hash_int".to_string(), fn_ty)),
                     args: vec![expr],
                     ty: MirType::Int,
                 }
@@ -5017,7 +5017,7 @@ impl<'a> Lowerer<'a> {
 
         // Check scope first for local variables. This ensures pattern bindings
         // (e.g., `head` from `head :: tail`) take precedence over builtin function
-        // name mappings (e.g., `head` -> `snow_list_head`).
+        // name mappings (e.g., `head` -> `mesh_list_head`).
         if let Some(scope_ty) = self.lookup_var(&name) {
             // Apply module-qualified naming to user-defined functions (Phase 41).
             // Function names in scope still need qualification to match their
@@ -5135,7 +5135,7 @@ impl<'a> Lowerer<'a> {
         }
 
         // List Eq/Ord dispatch: if lhs is Ptr and typeck type is List<T>,
-        // emit snow_list_eq / snow_list_compare with element callback.
+        // emit mesh_list_eq / mesh_list_compare with element callback.
         if matches!(lhs_ty, MirType::Ptr) {
             if let Some(lhs_ast) = bin.lhs() {
                 if let Some(lhs_typeck) = self.get_ty(lhs_ast.syntax().text_range()).cloned() {
@@ -5149,7 +5149,7 @@ impl<'a> Lowerer<'a> {
                                 );
                                 let call = MirExpr::Call {
                                     func: Box::new(MirExpr::Var(
-                                        "snow_list_eq".to_string(),
+                                        "mesh_list_eq".to_string(),
                                         MirType::FnPtr(
                                             vec![MirType::Ptr, MirType::Ptr, MirType::Ptr],
                                             Box::new(MirType::Bool),
@@ -5176,7 +5176,7 @@ impl<'a> Lowerer<'a> {
                                 );
                                 let compare_call = MirExpr::Call {
                                     func: Box::new(MirExpr::Var(
-                                        "snow_list_compare".to_string(),
+                                        "mesh_list_compare".to_string(),
                                         MirType::FnPtr(
                                             vec![MirType::Ptr, MirType::Ptr, MirType::Ptr],
                                             Box::new(MirType::Int),
@@ -5275,18 +5275,18 @@ impl<'a> Lowerer<'a> {
                 // Primitive Display/Debug/Hash builtin redirects
                 let resolved = match mangled.as_str() {
                     "Display__to_string__Int" | "Debug__inspect__Int" => {
-                        "snow_int_to_string".to_string()
+                        "mesh_int_to_string".to_string()
                     }
                     "Display__to_string__Float" | "Debug__inspect__Float" => {
-                        "snow_float_to_string".to_string()
+                        "mesh_float_to_string".to_string()
                     }
                     "Display__to_string__Bool" | "Debug__inspect__Bool" => {
-                        "snow_bool_to_string".to_string()
+                        "mesh_bool_to_string".to_string()
                     }
-                    "Hash__hash__Int" => "snow_hash_int".to_string(),
-                    "Hash__hash__Float" => "snow_hash_float".to_string(),
-                    "Hash__hash__Bool" => "snow_hash_bool".to_string(),
-                    "Hash__hash__String" => "snow_hash_string".to_string(),
+                    "Hash__hash__Int" => "mesh_hash_int".to_string(),
+                    "Hash__hash__Float" => "mesh_hash_float".to_string(),
+                    "Hash__hash__Bool" => "mesh_hash_bool".to_string(),
+                    "Hash__hash__String" => "mesh_hash_string".to_string(),
                     _ => mangled,
                 };
                 return MirExpr::Var(resolved, var_ty.clone());
@@ -5303,13 +5303,13 @@ impl<'a> Lowerer<'a> {
             }
 
             // Stdlib module method fallback: check if this is a module function
-            // callable as a method on the receiver's type (e.g., "hello".length() -> snow_string_length).
+            // callable as a method on the receiver's type (e.g., "hello".length() -> mesh_string_length).
             let module_method = match first_arg_ty {
                 MirType::String => {
                     let prefixed = format!("string_{}", name);
                     let runtime = map_builtin_name(&prefixed);
                     if self.known_functions.contains_key(&runtime)
-                        || runtime.starts_with("snow_string_")
+                        || runtime.starts_with("mesh_string_")
                     {
                         Some(runtime)
                     } else {
@@ -5321,7 +5321,7 @@ impl<'a> Lowerer<'a> {
                     let prefixed = format!("list_{}", name);
                     let runtime = map_builtin_name(&prefixed);
                     if self.known_functions.contains_key(&runtime)
-                        || runtime.starts_with("snow_list_")
+                        || runtime.starts_with("mesh_list_")
                     {
                         Some(runtime)
                     } else {
@@ -5338,7 +5338,7 @@ impl<'a> Lowerer<'a> {
             if self.lookup_var(name).is_none() {
                 let type_name = mir_type_to_impl_name(first_arg_ty);
                 eprintln!(
-                    "[snow-codegen] warning: call to '{}' could not be resolved \
+                    "[mesh-codegen] warning: call to '{}' could not be resolved \
                      as a trait method for type '{}'. This may indicate a type checker bug.",
                     name, type_name
                 );
@@ -5418,12 +5418,12 @@ impl<'a> Lowerer<'a> {
                                 Box::new(MirType::String),
                             );
                             let left = MirExpr::Call {
-                                func: Box::new(MirExpr::Var("snow_string_concat".to_string(), concat_ty.clone())),
+                                func: Box::new(MirExpr::Var("mesh_string_concat".to_string(), concat_ty.clone())),
                                 args: vec![quote.clone(), val],
                                 ty: MirType::String,
                             };
                             return MirExpr::Call {
-                                func: Box::new(MirExpr::Var("snow_string_concat".to_string(), concat_ty)),
+                                func: Box::new(MirExpr::Var("mesh_string_concat".to_string(), concat_ty)),
                                 args: vec![left, quote],
                                 ty: MirType::String,
                             };
@@ -5501,11 +5501,11 @@ impl<'a> Lowerer<'a> {
 
         // For Map functions that take a key argument (put, get, has_key, delete),
         // handle key type dispatch:
-        // - String keys: wrap the map argument in snow_map_tag_string()
+        // - String keys: wrap the map argument in mesh_map_tag_string()
         // - Struct keys with Hash impl: hash the key via Hash__hash__TypeName,
         //   use the hash as an integer key (hash-as-key approach for v1.3)
         let args = if let MirExpr::Var(ref name, _) = callee {
-            if matches!(name.as_str(), "snow_map_put" | "snow_map_get" | "snow_map_has_key" | "snow_map_delete")
+            if matches!(name.as_str(), "mesh_map_put" | "mesh_map_get" | "mesh_map_has_key" | "mesh_map_delete")
                 && args.len() >= 2
             {
                 let key_ty = args[1].ty().clone();
@@ -5514,7 +5514,7 @@ impl<'a> Lowerer<'a> {
                     let mut new_args = args;
                     let map_arg = new_args.remove(0);
                     let tagged_map = MirExpr::Call {
-                        func: Box::new(MirExpr::Var("snow_map_tag_string".to_string(), MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Ptr)))),
+                        func: Box::new(MirExpr::Var("mesh_map_tag_string".to_string(), MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Ptr)))),
                         args: vec![map_arg],
                         ty: MirType::Ptr,
                     };
@@ -5581,7 +5581,7 @@ impl<'a> Lowerer<'a> {
                         // Unknown type: fall through to normal call handling.
                         // This follows the error recovery pattern from 19-03.
                         eprintln!(
-                            "[snow-codegen] warning: default() call could not resolve \
+                            "[mesh-codegen] warning: default() call could not resolve \
                              concrete type from context. This may indicate a missing type annotation."
                         );
                     }
@@ -5667,12 +5667,12 @@ impl<'a> Lowerer<'a> {
                 let concat_ty =
                     MirType::FnPtr(vec![MirType::String, MirType::String], Box::new(MirType::String));
                 let left = MirExpr::Call {
-                    func: Box::new(MirExpr::Var("snow_string_concat".to_string(), concat_ty.clone())),
+                    func: Box::new(MirExpr::Var("mesh_string_concat".to_string(), concat_ty.clone())),
                     args: vec![quote.clone(), val],
                     ty: MirType::String,
                 };
                 return MirExpr::Call {
-                    func: Box::new(MirExpr::Var("snow_string_concat".to_string(), concat_ty)),
+                    func: Box::new(MirExpr::Var("mesh_string_concat".to_string(), concat_ty)),
                     args: vec![left, quote],
                     ty: MirType::String,
                 };
@@ -5680,9 +5680,9 @@ impl<'a> Lowerer<'a> {
         }
 
         // Json.encode struct/sum type dispatch: if encoding a struct or sum type
-        // with ToJson, chain ToJson__to_json__TypeName + snow_json_encode.
+        // with ToJson, chain ToJson__to_json__TypeName + mesh_json_encode.
         if let MirExpr::Var(ref name, _) = callee {
-            if name == "snow_json_encode" && args.len() == 1 {
+            if name == "mesh_json_encode" && args.len() == 1 {
                 let arg_ty = args[0].ty().clone();
                 let type_name = match &arg_ty {
                     MirType::Struct(ref struct_name) => Some(struct_name.clone()),
@@ -6641,7 +6641,7 @@ impl<'a> Lowerer<'a> {
     /// Lower a closure clause's parameter at `param_idx` to a MirPattern.
     fn lower_closure_clause_param_pattern(
         &mut self,
-        param_list: Option<&snow_parser::ast::item::ParamList>,
+        param_list: Option<&mesh_parser::ast::item::ParamList>,
         param_idx: usize,
         mir_params: &[(String, MirType)],
     ) -> MirPattern {
@@ -6672,8 +6672,8 @@ impl<'a> Lowerer<'a> {
         // Collect all clause data: first clause + CLOSURE_CLAUSE children.
         // For each clause we need: param_list, guard, body.
         struct ClauseData {
-            param_list: Option<snow_parser::ast::item::ParamList>,
-            guard: Option<snow_parser::ast::item::GuardClause>,
+            param_list: Option<mesh_parser::ast::item::ParamList>,
+            guard: Option<mesh_parser::ast::item::GuardClause>,
             body: Option<Block>,
         }
 
@@ -6784,7 +6784,7 @@ impl<'a> Lowerer<'a> {
     /// Check if a closure clause is a catch-all (all params are variables/wildcards).
     fn is_closure_catch_all(
         &self,
-        param_list: &Option<snow_parser::ast::item::ParamList>,
+        param_list: &Option<mesh_parser::ast::item::ParamList>,
         _mir_params: &[(String, MirType)],
     ) -> bool {
         if let Some(pl) = param_list {
@@ -6803,7 +6803,7 @@ impl<'a> Lowerer<'a> {
     /// Collect variable bindings from a closure clause's params.
     fn collect_closure_clause_bindings(
         &mut self,
-        param_list: &Option<snow_parser::ast::item::ParamList>,
+        param_list: &Option<mesh_parser::ast::item::ParamList>,
         mir_params: &[(String, MirType)],
         bindings: &mut Vec<(String, MirExpr)>,
     ) {
@@ -6844,7 +6844,7 @@ impl<'a> Lowerer<'a> {
     /// Build a condition expression that checks if all closure clause params match.
     fn build_closure_clause_condition(
         &self,
-        param_list: &Option<snow_parser::ast::item::ParamList>,
+        param_list: &Option<mesh_parser::ast::item::ParamList>,
         mir_params: &[(String, MirType)],
     ) -> Option<MirExpr> {
         let mut conditions: Vec<MirExpr> = Vec::new();
@@ -6932,7 +6932,7 @@ impl<'a> Lowerer<'a> {
         for seg in segments {
             result = MirExpr::Call {
                 func: Box::new(MirExpr::Var(
-                    "snow_string_concat".to_string(),
+                    "mesh_string_concat".to_string(),
                     MirType::FnPtr(
                         vec![MirType::String, MirType::String],
                         Box::new(MirType::String),
@@ -6955,7 +6955,7 @@ impl<'a> Lowerer<'a> {
             MirType::String => expr, // already a string
             MirType::Int => MirExpr::Call {
                 func: Box::new(MirExpr::Var(
-                    "snow_int_to_string".to_string(),
+                    "mesh_int_to_string".to_string(),
                     MirType::FnPtr(vec![MirType::Int], Box::new(MirType::String)),
                 )),
                 args: vec![expr],
@@ -6963,7 +6963,7 @@ impl<'a> Lowerer<'a> {
             },
             MirType::Float => MirExpr::Call {
                 func: Box::new(MirExpr::Var(
-                    "snow_float_to_string".to_string(),
+                    "mesh_float_to_string".to_string(),
                     MirType::FnPtr(vec![MirType::Float], Box::new(MirType::String)),
                 )),
                 args: vec![expr],
@@ -6971,7 +6971,7 @@ impl<'a> Lowerer<'a> {
             },
             MirType::Bool => MirExpr::Call {
                 func: Box::new(MirExpr::Var(
-                    "snow_bool_to_string".to_string(),
+                    "mesh_bool_to_string".to_string(),
                     MirType::FnPtr(vec![MirType::Bool], Box::new(MirType::String)),
                 )),
                 args: vec![expr],
@@ -7109,7 +7109,7 @@ impl<'a> Lowerer<'a> {
                 let fn_ptr_expr = MirExpr::Var(elem_fn, fn_ptr_ty.clone());
                 Some(MirExpr::Call {
                     func: Box::new(MirExpr::Var(
-                        "snow_list_to_string".to_string(),
+                        "mesh_list_to_string".to_string(),
                         MirType::FnPtr(
                             vec![MirType::Ptr, MirType::Ptr],
                             Box::new(MirType::String),
@@ -7134,7 +7134,7 @@ impl<'a> Lowerer<'a> {
                 let val_ptr_expr = MirExpr::Var(val_fn, fn_ptr_ty.clone());
                 Some(MirExpr::Call {
                     func: Box::new(MirExpr::Var(
-                        "snow_map_to_string".to_string(),
+                        "mesh_map_to_string".to_string(),
                         MirType::FnPtr(
                             vec![MirType::Ptr, MirType::Ptr, MirType::Ptr],
                             Box::new(MirType::String),
@@ -7153,7 +7153,7 @@ impl<'a> Lowerer<'a> {
                 let fn_ptr_expr = MirExpr::Var(elem_fn, fn_ptr_ty.clone());
                 Some(MirExpr::Call {
                     func: Box::new(MirExpr::Var(
-                        "snow_set_to_string".to_string(),
+                        "mesh_set_to_string".to_string(),
                         MirType::FnPtr(
                             vec![MirType::Ptr, MirType::Ptr],
                             Box::new(MirType::String),
@@ -7176,17 +7176,17 @@ impl<'a> Lowerer<'a> {
     fn resolve_to_string_callback(&mut self, elem_ty: &Ty) -> String {
         match elem_ty {
             Ty::Con(con) => match con.name.as_str() {
-                "Int" => "snow_int_to_string".to_string(),
-                "Float" => "snow_float_to_string".to_string(),
-                "Bool" => "snow_bool_to_string".to_string(),
-                "String" => "snow_string_to_string".to_string(),
+                "Int" => "mesh_int_to_string".to_string(),
+                "Float" => "mesh_float_to_string".to_string(),
+                "Bool" => "mesh_bool_to_string".to_string(),
+                "String" => "mesh_string_to_string".to_string(),
                 // Bare collection type without type args -- default to Int callback
-                "List" => self.generate_display_collection_wrapper("list", "snow_list_to_string", &Ty::int(), None),
-                "Set" => self.generate_display_collection_wrapper("set", "snow_set_to_string", &Ty::int(), None),
+                "List" => self.generate_display_collection_wrapper("list", "mesh_list_to_string", &Ty::int(), None),
+                "Set" => self.generate_display_collection_wrapper("set", "mesh_set_to_string", &Ty::int(), None),
                 "Map" => self.generate_display_map_wrapper(&Ty::int(), &Ty::int()),
                 name => {
                     // Check if this user type has a Display impl
-                    let ty_for_lookup = Ty::Con(snow_typeck::ty::TyCon::new(name));
+                    let ty_for_lookup = Ty::Con(mesh_typeck::ty::TyCon::new(name));
                     let matching = self
                         .trait_registry
                         .find_method_traits("to_string", &ty_for_lookup);
@@ -7199,7 +7199,7 @@ impl<'a> Lowerer<'a> {
                             inspect_name
                         } else {
                             // No Display or Debug impl -- fallback
-                            "snow_int_to_string".to_string()
+                            "mesh_int_to_string".to_string()
                         }
                     }
                 }
@@ -7209,11 +7209,11 @@ impl<'a> Lowerer<'a> {
                     match con.name.as_str() {
                         "List" => {
                             let inner_ty = args.first().cloned().unwrap_or_else(Ty::int);
-                            self.generate_display_collection_wrapper("list", "snow_list_to_string", &inner_ty, None)
+                            self.generate_display_collection_wrapper("list", "mesh_list_to_string", &inner_ty, None)
                         }
                         "Set" => {
                             let inner_ty = args.first().cloned().unwrap_or_else(Ty::int);
-                            self.generate_display_collection_wrapper("set", "snow_set_to_string", &inner_ty, None)
+                            self.generate_display_collection_wrapper("set", "mesh_set_to_string", &inner_ty, None)
                         }
                         "Map" => {
                             let key_ty = args.first().cloned().unwrap_or_else(Ty::int);
@@ -7234,22 +7234,22 @@ impl<'a> Lowerer<'a> {
                                 return inspect_name;
                             }
                             // Check trait registry for Display impl
-                            let ty_for_lookup = Ty::Con(snow_typeck::ty::TyCon::new(name));
+                            let ty_for_lookup = Ty::Con(mesh_typeck::ty::TyCon::new(name));
                             let matching = self
                                 .trait_registry
                                 .find_method_traits("to_string", &ty_for_lookup);
                             if !matching.is_empty() {
                                 format!("{}__to_string__{}", matching[0], mangled)
                             } else {
-                                "snow_int_to_string".to_string()
+                                "mesh_int_to_string".to_string()
                             }
                         }
                     }
                 } else {
-                    "snow_int_to_string".to_string()
+                    "mesh_int_to_string".to_string()
                 }
             }
-            _ => "snow_int_to_string".to_string(),
+            _ => "mesh_int_to_string".to_string(),
         }
     }
 
@@ -7296,7 +7296,7 @@ impl<'a> Lowerer<'a> {
     fn generate_display_collection_wrapper(
         &mut self,
         collection_kind: &str,   // "list" or "set"
-        runtime_fn: &str,        // "snow_list_to_string" or "snow_set_to_string"
+        runtime_fn: &str,        // "mesh_list_to_string" or "mesh_set_to_string"
         inner_ty: &Ty,
         _extra: Option<&str>,
     ) -> String {
@@ -7317,7 +7317,7 @@ impl<'a> Lowerer<'a> {
 
         // Build the wrapper function MIR:
         //   fn __display_list_Int_to_str(__elem: Ptr) -> Ptr {
-        //       snow_list_to_string(__elem, snow_int_to_string)
+        //       mesh_list_to_string(__elem, mesh_int_to_string)
         //   }
         let param_name = "__elem".to_string();
         let fn_ptr_ty = MirType::FnPtr(
@@ -7351,7 +7351,7 @@ impl<'a> Lowerer<'a> {
 
     /// Generate a synthetic MIR wrapper function for displaying a Map element.
     ///
-    /// The wrapper calls `snow_map_to_string` with recursively resolved key and
+    /// The wrapper calls `mesh_map_to_string` with recursively resolved key and
     /// value callbacks.
     fn generate_display_map_wrapper(&mut self, key_ty: &Ty, val_ty: &Ty) -> String {
         let key_mangled = self.mangle_ty_for_display(key_ty);
@@ -7373,7 +7373,7 @@ impl<'a> Lowerer<'a> {
 
         // Build the wrapper function MIR:
         //   fn __display_map_Int_String_to_str(__elem: Ptr) -> Ptr {
-        //       snow_map_to_string(__elem, snow_int_to_string, snow_string_to_string)
+        //       mesh_map_to_string(__elem, mesh_int_to_string, mesh_string_to_string)
         //   }
         let param_name = "__elem".to_string();
         let fn_ptr_ty = MirType::FnPtr(
@@ -7381,7 +7381,7 @@ impl<'a> Lowerer<'a> {
             Box::new(MirType::Ptr),
         );
         let body = MirExpr::Call {
-            func: Box::new(MirExpr::Var("snow_map_to_string".to_string(), fn_ptr_ty)),
+            func: Box::new(MirExpr::Var("mesh_map_to_string".to_string(), fn_ptr_ty)),
             args: vec![
                 MirExpr::Var(param_name.clone(), MirType::Ptr),
                 MirExpr::Var(
@@ -7548,7 +7548,7 @@ impl<'a> Lowerer<'a> {
         name
     }
 
-    /// Generate `__eq_string_callback(a: Ptr, b: Ptr) -> Bool { snow_string_eq(a, b) }`
+    /// Generate `__eq_string_callback(a: Ptr, b: Ptr) -> Bool { mesh_string_eq(a, b) }`
     fn generate_string_eq_callback(&mut self) -> String {
         let name = "__eq_string_callback".to_string();
         if self.known_functions.contains_key(&name) {
@@ -7559,7 +7559,7 @@ impl<'a> Lowerer<'a> {
 
         let body = MirExpr::Call {
             func: Box::new(MirExpr::Var(
-                "snow_string_eq".to_string(),
+                "mesh_string_eq".to_string(),
                 MirType::FnPtr(vec![MirType::String, MirType::String], Box::new(MirType::Bool)),
             )),
             args: vec![
@@ -7632,11 +7632,11 @@ impl<'a> Lowerer<'a> {
 
     /// Generate `__cmp_string_callback(a: Ptr, b: Ptr) -> Int` that compares strings lexicographically.
     ///
-    /// Since there's no snow_string_compare runtime function, we use snow_string_eq
+    /// Since there's no mesh_string_compare runtime function, we use mesh_string_eq
     /// and a length-based fallback: if eq, return 0; otherwise use a < b heuristic.
-    /// For simplicity, we generate: if snow_string_eq(a, b) { 0 } else { -1 }
+    /// For simplicity, we generate: if mesh_string_eq(a, b) { 0 } else { -1 }
     /// This gives correct equality semantics but simplified ordering.
-    /// TODO: Add proper snow_string_compare in a future phase.
+    /// TODO: Add proper mesh_string_compare in a future phase.
     fn generate_string_cmp_callback(&mut self) -> String {
         let name = "__cmp_string_callback".to_string();
         if self.known_functions.contains_key(&name) {
@@ -7645,10 +7645,10 @@ impl<'a> Lowerer<'a> {
         let fn_ty = MirType::FnPtr(vec![MirType::String, MirType::String], Box::new(MirType::Int));
         self.known_functions.insert(name.clone(), fn_ty);
 
-        // if snow_string_eq(a, b) { 0 } else { -1 }
+        // if mesh_string_eq(a, b) { 0 } else { -1 }
         let eq_call = MirExpr::Call {
             func: Box::new(MirExpr::Var(
-                "snow_string_eq".to_string(),
+                "mesh_string_eq".to_string(),
                 MirType::FnPtr(vec![MirType::String, MirType::String], Box::new(MirType::Bool)),
             )),
             args: vec![
@@ -7691,7 +7691,7 @@ impl<'a> Lowerer<'a> {
 
         let body = MirExpr::Call {
             func: Box::new(MirExpr::Var(
-                "snow_list_eq".to_string(),
+                "mesh_list_eq".to_string(),
                 MirType::FnPtr(
                     vec![MirType::Ptr, MirType::Ptr, MirType::Ptr],
                     Box::new(MirType::Bool),
@@ -7735,7 +7735,7 @@ impl<'a> Lowerer<'a> {
 
         let body = MirExpr::Call {
             func: Box::new(MirExpr::Var(
-                "snow_list_compare".to_string(),
+                "mesh_list_compare".to_string(),
                 MirType::FnPtr(
                     vec![MirType::Ptr, MirType::Ptr, MirType::Ptr],
                     Box::new(MirType::Int),
@@ -8010,15 +8010,15 @@ impl<'a> Lowerer<'a> {
 
         // Multi-element tuple: generate a heap-allocated runtime tuple.
         // Runtime layout: { u64 len, u64[len] elements }
-        // Allocate via snow_gc_alloc_actor, store length + elements, return pointer.
+        // Allocate via mesh_gc_alloc_actor, store length + elements, return pointer.
         let n = elements.len();
         let total_size = 8 + n * 8; // u64 len + n * u64 elements
 
-        // Generate a synthetic __snow_make_tuple(elem0, elem1, ...) call.
+        // Generate a synthetic __mesh_make_tuple(elem0, elem1, ...) call.
         // Codegen expands this inline: gc_alloc + store length + store elements.
         MirExpr::Call {
             func: Box::new(MirExpr::Var(
-                "__snow_make_tuple".to_string(),
+                "__mesh_make_tuple".to_string(),
                 MirType::FnPtr(vec![MirType::Int; n], Box::new(MirType::Ptr)),
             )),
             args: elements,
@@ -8029,14 +8029,14 @@ impl<'a> Lowerer<'a> {
     // ── Map literal lowering ────────────────────────────────────────
 
     /// Desugar `%{k1 => v1, k2 => v2}` to:
-    ///   snow_map_new_typed(key_type_tag)
-    ///   |> snow_map_put(_, k1, v1)
-    ///   |> snow_map_put(_, k2, v2)
+    ///   mesh_map_new_typed(key_type_tag)
+    ///   |> mesh_map_put(_, k1, v1)
+    ///   |> mesh_map_put(_, k2, v2)
     fn lower_map_literal(&mut self, map_lit: &MapLiteral) -> MirExpr {
         let key_type_tag = self.infer_map_key_type(map_lit.syntax().text_range());
 
         let new_typed_fn = MirExpr::Var(
-            "snow_map_new_typed".to_string(),
+            "mesh_map_new_typed".to_string(),
             MirType::FnPtr(vec![MirType::Int], Box::new(MirType::Ptr)),
         );
         let mut result = MirExpr::Call {
@@ -8060,7 +8060,7 @@ impl<'a> Lowerer<'a> {
                 .map(|e| self.lower_expr(&e))
                 .unwrap_or(MirExpr::Unit);
 
-            let put_fn = MirExpr::Var("snow_map_put".to_string(), put_fn_ty.clone());
+            let put_fn = MirExpr::Var("mesh_map_put".to_string(), put_fn_ty.clone());
             result = MirExpr::Call {
                 func: Box::new(put_fn),
                 args: vec![result, key, val],
@@ -8075,20 +8075,20 @@ impl<'a> Lowerer<'a> {
 
     /// Lower a list literal `[e1, e2, ...]` to MIR.
     ///
-    /// For empty lists: calls snow_list_new().
+    /// For empty lists: calls mesh_list_new().
     /// For non-empty lists: creates a MirExpr::ListLit with lowered elements.
     /// The codegen will stack-allocate an array, store elements, and call
-    /// snow_list_from_array(arr_ptr, count).
+    /// mesh_list_from_array(arr_ptr, count).
     fn lower_list_literal(&mut self, list_lit: &ListLiteral) -> MirExpr {
         let elements: Vec<MirExpr> = list_lit.elements()
             .map(|e| self.lower_expr(&e))
             .collect();
 
         if elements.is_empty() {
-            // Empty list: call snow_list_new()
+            // Empty list: call mesh_list_new()
             let fn_ty = MirType::FnPtr(vec![], Box::new(MirType::Ptr));
             return MirExpr::Call {
-                func: Box::new(MirExpr::Var("snow_list_new".to_string(), fn_ty)),
+                func: Box::new(MirExpr::Var("mesh_list_new".to_string(), fn_ty)),
                 args: vec![],
                 ty: MirType::Ptr,
             };
@@ -8533,7 +8533,7 @@ impl<'a> Lowerer<'a> {
             if let Some(param_list) = init_fn.param_list() {
                 let fn_range = init_fn.syntax().text_range();
                 let fn_ty_raw = self.get_ty(fn_range).cloned();
-                if let Some(snow_typeck::ty::Ty::Fun(param_tys, _)) = &fn_ty_raw {
+                if let Some(mesh_typeck::ty::Ty::Fun(param_tys, _)) = &fn_ty_raw {
                     for (param, param_ty) in param_list.params().zip(param_tys.iter()) {
                         let param_name = param
                             .name()
@@ -8629,7 +8629,7 @@ impl<'a> Lowerer<'a> {
             self.pop_scope();
 
             // Call handler body returns a heap-allocated tuple (new_state, reply).
-            // The return type is Ptr since __snow_make_tuple returns a pointer.
+            // The return type is Ptr since __mesh_make_tuple returns a pointer.
             let ret_ty = if matches!(body.ty(), MirType::Ptr) { MirType::Ptr } else { MirType::Int };
             self.functions.push(MirFunction {
                 name: handler_fn_name.clone(),
@@ -8724,7 +8724,7 @@ impl<'a> Lowerer<'a> {
         //
         // Actually, the simplest approach: generate the loop function with a body
         // that calls a synthetic dispatch function we also generate. The dispatch
-        // function is generated per-service and uses snow_service_call/reply.
+        // function is generated per-service and uses mesh_service_call/reply.
         //
         // SIMPLEST APPROACH: Don't generate an explicit loop function with raw pointer
         // arithmetic. Instead, generate a function with ActorReceive that has a single
@@ -8735,7 +8735,7 @@ impl<'a> Lowerer<'a> {
         // The ActorReceive codegen loads data starting at offset 16 (past the 16-byte header).
         // So the received value will be the type_tag (first i64 of data after header).
         //
-        // Wait - let me reconsider the message format. snow_service_call builds:
+        // Wait - let me reconsider the message format. mesh_service_call builds:
         //   [u64 type_tag][u64 caller_pid][payload_args]
         // This entire blob is the data portion. The MessageBuffer wraps it with its own
         // header [u64 type_tag_in_mb][u64 data_len]. So the full message in the mailbox is:
@@ -8829,7 +8829,7 @@ impl<'a> Lowerer<'a> {
         // ── Generate call helper functions ─────────────────────────────────
         // __service_{name}_call_{snake}(pid: i64, args...) -> Int
         // Builds message: [u64 type_tag][args as i64s]
-        // Calls snow_service_call(pid, tag, payload_ptr, payload_size)
+        // Calls mesh_service_call(pid, tag, payload_ptr, payload_size)
         // Returns reply as i64
 
         for info in &call_infos {
@@ -8840,16 +8840,16 @@ impl<'a> Lowerer<'a> {
                 params.push((p_name.clone(), MirType::Int));
             }
 
-            // Body: call snow_service_call(pid, tag, payload, size)
-            // We represent this as a Call to snow_service_call with the right args.
-            // The codegen for Call on "snow_service_call" will handle the details.
+            // Body: call mesh_service_call(pid, tag, payload, size)
+            // We represent this as a Call to mesh_service_call with the right args.
+            // The codegen for Call on "mesh_service_call" will handle the details.
             //
             // Actually, we need to build the payload buffer. This requires stack allocation
             // which is done in codegen. So we'll represent the call helper body as a
             // special ServiceCall MIR node.
             let body = MirExpr::Call {
                 func: Box::new(MirExpr::Var(
-                    "snow_service_call".to_string(),
+                    "mesh_service_call".to_string(),
                     MirType::FnPtr(
                         vec![MirType::Int, MirType::Int, MirType::Ptr, MirType::Int],
                         Box::new(MirType::Ptr),
@@ -8884,7 +8884,7 @@ impl<'a> Lowerer<'a> {
         // ── Generate cast helper functions ─────────────────────────────────
         // __service_{name}_cast_{snake}(pid: i64, args...) -> Unit
         // Builds message: [u64 type_tag][args as i64s]
-        // Calls snow_actor_send(pid, msg_ptr, msg_size) (fire-and-forget)
+        // Calls mesh_actor_send(pid, msg_ptr, msg_size) (fire-and-forget)
 
         for info in &cast_infos {
             let fn_name = format!("__service_{}_cast_{}", name_lower, info.snake_name);
@@ -8894,7 +8894,7 @@ impl<'a> Lowerer<'a> {
                 params.push((p_name.clone(), MirType::Int));
             }
 
-            // Body: build message buffer with [tag][args] and call snow_actor_send.
+            // Body: build message buffer with [tag][args] and call mesh_actor_send.
             // Represent as an ActorSend with a constructed message.
             // Actually, we need the message to include the type_tag as part of the data.
             // For cast, the message is: [u64 type_tag][args as i64s] (no caller_pid).
@@ -8906,7 +8906,7 @@ impl<'a> Lowerer<'a> {
 
             let body = MirExpr::Call {
                 func: Box::new(MirExpr::Var(
-                    "snow_actor_send".to_string(),
+                    "mesh_actor_send".to_string(),
                     MirType::FnPtr(
                         vec![MirType::Int, MirType::Ptr, MirType::Int],
                         Box::new(MirType::Unit),
@@ -9005,7 +9005,7 @@ impl<'a> Lowerer<'a> {
         // However, since MIR ActorReceive only gives us a single typed value
         // and we need raw pointer access, we'll use a special approach:
         //
-        // Generate the loop as a regular function that calls snow_actor_receive(-1)
+        // Generate the loop as a regular function that calls mesh_actor_receive(-1)
         // directly, then does pointer arithmetic for dispatch.
         //
         // The MIR body will be a Call to __service_{name}_dispatch(state, msg_ptr)
@@ -9048,7 +9048,7 @@ impl<'a> Lowerer<'a> {
 
         // The loop function body is: receive -> dispatch -> recurse.
         // We represent this as a Block containing:
-        //   1. Call snow_actor_receive(-1) -> msg_ptr
+        //   1. Call mesh_actor_receive(-1) -> msg_ptr
         //   2. Service-specific dispatch on msg_ptr
         //   3. Tail call to loop with new_state
         //
@@ -9278,270 +9278,270 @@ const STDLIB_MODULES: &[&str] = &[
     "Global",  // Phase 68
 ];
 
-/// Map Snow builtin function names to their runtime equivalents.
+/// Map Mesh builtin function names to their runtime equivalents.
 ///
-/// Snow source uses clean names like `println`, `print`, `string_length`.
-/// These are mapped to the actual runtime function names like `snow_println`,
-/// `snow_print`, `snow_string_length` at the MIR level.
+/// Mesh source uses clean names like `println`, `print`, `string_length`.
+/// These are mapped to the actual runtime function names like `mesh_println`,
+/// `mesh_print`, `mesh_string_length` at the MIR level.
 fn map_builtin_name(name: &str) -> String {
     match name {
-        "println" => "snow_println".to_string(),
-        "print" => "snow_print".to_string(),
+        "println" => "mesh_println".to_string(),
+        "print" => "mesh_print".to_string(),
         // String operations
-        "string_length" => "snow_string_length".to_string(),
-        "string_slice" => "snow_string_slice".to_string(),
-        "string_contains" => "snow_string_contains".to_string(),
-        "string_starts_with" => "snow_string_starts_with".to_string(),
-        "string_ends_with" => "snow_string_ends_with".to_string(),
-        "string_trim" => "snow_string_trim".to_string(),
-        "string_to_upper" => "snow_string_to_upper".to_string(),
-        "string_to_lower" => "snow_string_to_lower".to_string(),
-        "string_replace" => "snow_string_replace".to_string(),
-        "string_split" => "snow_string_split".to_string(),
-        "string_join" => "snow_string_join".to_string(),
-        "string_to_int" => "snow_string_to_int".to_string(),
-        "string_to_float" => "snow_string_to_float".to_string(),
+        "string_length" => "mesh_string_length".to_string(),
+        "string_slice" => "mesh_string_slice".to_string(),
+        "string_contains" => "mesh_string_contains".to_string(),
+        "string_starts_with" => "mesh_string_starts_with".to_string(),
+        "string_ends_with" => "mesh_string_ends_with".to_string(),
+        "string_trim" => "mesh_string_trim".to_string(),
+        "string_to_upper" => "mesh_string_to_upper".to_string(),
+        "string_to_lower" => "mesh_string_to_lower".to_string(),
+        "string_replace" => "mesh_string_replace".to_string(),
+        "string_split" => "mesh_string_split".to_string(),
+        "string_join" => "mesh_string_join".to_string(),
+        "string_to_int" => "mesh_string_to_int".to_string(),
+        "string_to_float" => "mesh_string_to_float".to_string(),
         // File I/O functions
-        "file_read" => "snow_file_read".to_string(),
-        "file_write" => "snow_file_write".to_string(),
-        "file_append" => "snow_file_append".to_string(),
-        "file_exists" => "snow_file_exists".to_string(),
-        "file_delete" => "snow_file_delete".to_string(),
+        "file_read" => "mesh_file_read".to_string(),
+        "file_write" => "mesh_file_write".to_string(),
+        "file_append" => "mesh_file_append".to_string(),
+        "file_exists" => "mesh_file_exists".to_string(),
+        "file_delete" => "mesh_file_delete".to_string(),
         // IO functions
-        "io_read_line" => "snow_io_read_line".to_string(),
-        "io_eprintln" => "snow_io_eprintln".to_string(),
+        "io_read_line" => "mesh_io_read_line".to_string(),
+        "io_eprintln" => "mesh_io_eprintln".to_string(),
         // Env functions
-        "env_get" => "snow_env_get".to_string(),
-        "env_args" => "snow_env_args".to_string(),
+        "env_get" => "mesh_env_get".to_string(),
+        "env_args" => "mesh_env_args".to_string(),
         // Names that have already been resolved via from-import and lowered
         // with the module prefix (e.g., user wrote `length` after `from String import length`,
         // but it was registered with both names so it may arrive as bare name here).
-        "length" => "snow_string_length".to_string(),
-        "trim" => "snow_string_trim".to_string(),
-        "contains" => "snow_string_contains".to_string(),
-        "starts_with" => "snow_string_starts_with".to_string(),
-        "ends_with" => "snow_string_ends_with".to_string(),
-        "to_upper" => "snow_string_to_upper".to_string(),
-        "to_lower" => "snow_string_to_lower".to_string(),
-        "replace" => "snow_string_replace".to_string(),
-        "slice" => "snow_string_slice".to_string(),
-        "split" => "snow_string_split".to_string(),
-        "join" => "snow_string_join".to_string(),
-        "read_line" => "snow_io_read_line".to_string(),
-        "eprintln" => "snow_io_eprintln".to_string(),
+        "length" => "mesh_string_length".to_string(),
+        "trim" => "mesh_string_trim".to_string(),
+        "contains" => "mesh_string_contains".to_string(),
+        "starts_with" => "mesh_string_starts_with".to_string(),
+        "ends_with" => "mesh_string_ends_with".to_string(),
+        "to_upper" => "mesh_string_to_upper".to_string(),
+        "to_lower" => "mesh_string_to_lower".to_string(),
+        "replace" => "mesh_string_replace".to_string(),
+        "slice" => "mesh_string_slice".to_string(),
+        "split" => "mesh_string_split".to_string(),
+        "join" => "mesh_string_join".to_string(),
+        "read_line" => "mesh_io_read_line".to_string(),
+        "eprintln" => "mesh_io_eprintln".to_string(),
         // File bare names (from File import read, etc.)
-        "read" => "snow_file_read".to_string(),
-        "write" => "snow_file_write".to_string(),
-        "append" => "snow_file_append".to_string(),
-        "exists" => "snow_file_exists".to_string(),
-        "delete" => "snow_file_delete".to_string(),
+        "read" => "mesh_file_read".to_string(),
+        "write" => "mesh_file_write".to_string(),
+        "append" => "mesh_file_append".to_string(),
+        "exists" => "mesh_file_exists".to_string(),
+        "delete" => "mesh_file_delete".to_string(),
         // ── Collection functions (Phase 8 Plan 02) ───────────────────
         // List operations
-        "list_new" => "snow_list_new".to_string(),
-        "list_length" => "snow_list_length".to_string(),
-        "list_append" => "snow_list_append".to_string(),
-        "list_head" => "snow_list_head".to_string(),
-        "list_tail" => "snow_list_tail".to_string(),
-        "list_get" => "snow_list_get".to_string(),
-        "list_concat" => "snow_list_concat".to_string(),
-        "list_reverse" => "snow_list_reverse".to_string(),
-        "list_map" => "snow_list_map".to_string(),
-        "list_filter" => "snow_list_filter".to_string(),
-        "list_reduce" => "snow_list_reduce".to_string(),
+        "list_new" => "mesh_list_new".to_string(),
+        "list_length" => "mesh_list_length".to_string(),
+        "list_append" => "mesh_list_append".to_string(),
+        "list_head" => "mesh_list_head".to_string(),
+        "list_tail" => "mesh_list_tail".to_string(),
+        "list_get" => "mesh_list_get".to_string(),
+        "list_concat" => "mesh_list_concat".to_string(),
+        "list_reverse" => "mesh_list_reverse".to_string(),
+        "list_map" => "mesh_list_map".to_string(),
+        "list_filter" => "mesh_list_filter".to_string(),
+        "list_reduce" => "mesh_list_reduce".to_string(),
         // Phase 46: sort, find, any, all, contains
-        "list_sort" => "snow_list_sort".to_string(),
-        "list_find" => "snow_list_find".to_string(),
-        "list_any" => "snow_list_any".to_string(),
-        "list_all" => "snow_list_all".to_string(),
-        "list_contains" => "snow_list_contains".to_string(),
+        "list_sort" => "mesh_list_sort".to_string(),
+        "list_find" => "mesh_list_find".to_string(),
+        "list_any" => "mesh_list_any".to_string(),
+        "list_all" => "mesh_list_all".to_string(),
+        "list_contains" => "mesh_list_contains".to_string(),
         // Phase 47: zip, flat_map, flatten, enumerate, take, drop, last, nth
-        "list_zip" => "snow_list_zip".to_string(),
-        "list_flat_map" => "snow_list_flat_map".to_string(),
-        "list_flatten" => "snow_list_flatten".to_string(),
-        "list_enumerate" => "snow_list_enumerate".to_string(),
-        "list_take" => "snow_list_take".to_string(),
-        "list_drop" => "snow_list_drop".to_string(),
-        "list_last" => "snow_list_last".to_string(),
-        "list_nth" => "snow_list_nth".to_string(),
+        "list_zip" => "mesh_list_zip".to_string(),
+        "list_flat_map" => "mesh_list_flat_map".to_string(),
+        "list_flatten" => "mesh_list_flatten".to_string(),
+        "list_enumerate" => "mesh_list_enumerate".to_string(),
+        "list_take" => "mesh_list_take".to_string(),
+        "list_drop" => "mesh_list_drop".to_string(),
+        "list_last" => "mesh_list_last".to_string(),
+        "list_nth" => "mesh_list_nth".to_string(),
         // Map operations
-        "map_new" => "snow_map_new".to_string(),
-        "map_put" => "snow_map_put".to_string(),
-        "map_get" => "snow_map_get".to_string(),
-        "map_has_key" => "snow_map_has_key".to_string(),
-        "map_delete" => "snow_map_delete".to_string(),
-        "map_size" => "snow_map_size".to_string(),
-        "map_keys" => "snow_map_keys".to_string(),
-        "map_values" => "snow_map_values".to_string(),
+        "map_new" => "mesh_map_new".to_string(),
+        "map_put" => "mesh_map_put".to_string(),
+        "map_get" => "mesh_map_get".to_string(),
+        "map_has_key" => "mesh_map_has_key".to_string(),
+        "map_delete" => "mesh_map_delete".to_string(),
+        "map_size" => "mesh_map_size".to_string(),
+        "map_keys" => "mesh_map_keys".to_string(),
+        "map_values" => "mesh_map_values".to_string(),
         // Phase 47: Map merge/to_list/from_list
-        "map_merge" => "snow_map_merge".to_string(),
-        "map_to_list" => "snow_map_to_list".to_string(),
-        "map_from_list" => "snow_map_from_list".to_string(),
+        "map_merge" => "mesh_map_merge".to_string(),
+        "map_to_list" => "mesh_map_to_list".to_string(),
+        "map_from_list" => "mesh_map_from_list".to_string(),
         // Set operations
-        "set_new" => "snow_set_new".to_string(),
-        "set_add" => "snow_set_add".to_string(),
-        "set_remove" => "snow_set_remove".to_string(),
-        "set_contains" => "snow_set_contains".to_string(),
-        "set_size" => "snow_set_size".to_string(),
-        "set_union" => "snow_set_union".to_string(),
-        "set_intersection" => "snow_set_intersection".to_string(),
+        "set_new" => "mesh_set_new".to_string(),
+        "set_add" => "mesh_set_add".to_string(),
+        "set_remove" => "mesh_set_remove".to_string(),
+        "set_contains" => "mesh_set_contains".to_string(),
+        "set_size" => "mesh_set_size".to_string(),
+        "set_union" => "mesh_set_union".to_string(),
+        "set_intersection" => "mesh_set_intersection".to_string(),
         // Phase 47: Set difference/to_list/from_list
-        "set_difference" => "snow_set_difference".to_string(),
-        "set_to_list" => "snow_set_to_list".to_string(),
-        "set_from_list" => "snow_set_from_list".to_string(),
+        "set_difference" => "mesh_set_difference".to_string(),
+        "set_to_list" => "mesh_set_to_list".to_string(),
+        "set_from_list" => "mesh_set_from_list".to_string(),
         // Tuple operations
-        "tuple_nth" => "snow_tuple_nth".to_string(),
-        "tuple_first" => "snow_tuple_first".to_string(),
-        "tuple_second" => "snow_tuple_second".to_string(),
-        "tuple_size" => "snow_tuple_size".to_string(),
+        "tuple_nth" => "mesh_tuple_nth".to_string(),
+        "tuple_first" => "mesh_tuple_first".to_string(),
+        "tuple_second" => "mesh_tuple_second".to_string(),
+        "tuple_size" => "mesh_tuple_size".to_string(),
         // Range operations
-        "range_new" => "snow_range_new".to_string(),
-        "range_to_list" => "snow_range_to_list".to_string(),
-        "range_map" => "snow_range_map".to_string(),
-        "range_filter" => "snow_range_filter".to_string(),
-        "range_length" => "snow_range_length".to_string(),
+        "range_new" => "mesh_range_new".to_string(),
+        "range_to_list" => "mesh_range_to_list".to_string(),
+        "range_map" => "mesh_range_map".to_string(),
+        "range_filter" => "mesh_range_filter".to_string(),
+        "range_length" => "mesh_range_length".to_string(),
         // Queue operations
-        "queue_new" => "snow_queue_new".to_string(),
-        "queue_push" => "snow_queue_push".to_string(),
-        "queue_pop" => "snow_queue_pop".to_string(),
-        "queue_peek" => "snow_queue_peek".to_string(),
-        "queue_size" => "snow_queue_size".to_string(),
-        "queue_is_empty" => "snow_queue_is_empty".to_string(),
+        "queue_new" => "mesh_queue_new".to_string(),
+        "queue_push" => "mesh_queue_push".to_string(),
+        "queue_pop" => "mesh_queue_pop".to_string(),
+        "queue_peek" => "mesh_queue_peek".to_string(),
+        "queue_size" => "mesh_queue_size".to_string(),
+        "queue_is_empty" => "mesh_queue_is_empty".to_string(),
         // Bare names for prelude functions (map, filter, reduce, head, tail)
         // These are ambiguous -- default to list operations.
-        "map" => "snow_list_map".to_string(),
-        "filter" => "snow_list_filter".to_string(),
-        "reduce" => "snow_list_reduce".to_string(),
-        "head" => "snow_list_head".to_string(),
-        "tail" => "snow_list_tail".to_string(),
-        "zip" => "snow_list_zip".to_string(),
-        "flat_map" => "snow_list_flat_map".to_string(),
-        "flatten" => "snow_list_flatten".to_string(),
-        "enumerate" => "snow_list_enumerate".to_string(),
-        "last" => "snow_list_last".to_string(),
-        "nth" => "snow_list_nth".to_string(),
-        "merge" => "snow_map_merge".to_string(),
-        "difference" => "snow_set_difference".to_string(),
+        "map" => "mesh_list_map".to_string(),
+        "filter" => "mesh_list_filter".to_string(),
+        "reduce" => "mesh_list_reduce".to_string(),
+        "head" => "mesh_list_head".to_string(),
+        "tail" => "mesh_list_tail".to_string(),
+        "zip" => "mesh_list_zip".to_string(),
+        "flat_map" => "mesh_list_flat_map".to_string(),
+        "flatten" => "mesh_list_flatten".to_string(),
+        "enumerate" => "mesh_list_enumerate".to_string(),
+        "last" => "mesh_list_last".to_string(),
+        "nth" => "mesh_list_nth".to_string(),
+        "merge" => "mesh_map_merge".to_string(),
+        "difference" => "mesh_set_difference".to_string(),
         // ── JSON functions (Phase 8 Plan 04) ─────────────────────────
-        "json_parse" => "snow_json_parse".to_string(),
-        "json_encode" => "snow_json_encode".to_string(),
-        "json_encode_string" => "snow_json_encode_string".to_string(),
-        "json_encode_int" => "snow_json_encode_int".to_string(),
-        "json_encode_bool" => "snow_json_encode_bool".to_string(),
-        "json_encode_map" => "snow_json_encode_map".to_string(),
-        "json_encode_list" => "snow_json_encode_list".to_string(),
-        "json_from_int" => "snow_json_from_int".to_string(),
-        "json_from_float" => "snow_json_from_float".to_string(),
-        "json_from_bool" => "snow_json_from_bool".to_string(),
-        "json_from_string" => "snow_json_from_string".to_string(),
+        "json_parse" => "mesh_json_parse".to_string(),
+        "json_encode" => "mesh_json_encode".to_string(),
+        "json_encode_string" => "mesh_json_encode_string".to_string(),
+        "json_encode_int" => "mesh_json_encode_int".to_string(),
+        "json_encode_bool" => "mesh_json_encode_bool".to_string(),
+        "json_encode_map" => "mesh_json_encode_map".to_string(),
+        "json_encode_list" => "mesh_json_encode_list".to_string(),
+        "json_from_int" => "mesh_json_from_int".to_string(),
+        "json_from_float" => "mesh_json_from_float".to_string(),
+        "json_from_bool" => "mesh_json_from_bool".to_string(),
+        "json_from_string" => "mesh_json_from_string".to_string(),
         // JSON bare names for from/import usage
-        "parse" => "snow_json_parse".to_string(),
-        "encode" => "snow_json_encode".to_string(),
-        "encode_string" => "snow_json_encode_string".to_string(),
-        "encode_int" => "snow_json_encode_int".to_string(),
-        "encode_bool" => "snow_json_encode_bool".to_string(),
-        "encode_map" => "snow_json_encode_map".to_string(),
-        "encode_list" => "snow_json_encode_list".to_string(),
+        "parse" => "mesh_json_parse".to_string(),
+        "encode" => "mesh_json_encode".to_string(),
+        "encode_string" => "mesh_json_encode_string".to_string(),
+        "encode_int" => "mesh_json_encode_int".to_string(),
+        "encode_bool" => "mesh_json_encode_bool".to_string(),
+        "encode_map" => "mesh_json_encode_map".to_string(),
+        "encode_list" => "mesh_json_encode_list".to_string(),
         // ── HTTP functions (Phase 8 Plan 05) ──────────────────────────
-        "http_router" => "snow_http_router".to_string(),
-        "http_route" => "snow_http_route".to_string(),
-        "http_serve" => "snow_http_serve".to_string(),
-        "http_serve_tls" => "snow_http_serve_tls".to_string(),
-        "http_response" => "snow_http_response_new".to_string(),
-        "http_get" => "snow_http_get".to_string(),
-        "http_post" => "snow_http_post".to_string(),
+        "http_router" => "mesh_http_router".to_string(),
+        "http_route" => "mesh_http_route".to_string(),
+        "http_serve" => "mesh_http_serve".to_string(),
+        "http_serve_tls" => "mesh_http_serve_tls".to_string(),
+        "http_response" => "mesh_http_response_new".to_string(),
+        "http_get" => "mesh_http_get".to_string(),
+        "http_post" => "mesh_http_post".to_string(),
         // Request accessor functions (prefixed form from module-qualified access)
-        "request_method" => "snow_http_request_method".to_string(),
-        "request_path" => "snow_http_request_path".to_string(),
-        "request_body" => "snow_http_request_body".to_string(),
-        "request_header" => "snow_http_request_header".to_string(),
-        "request_query" => "snow_http_request_query".to_string(),
+        "request_method" => "mesh_http_request_method".to_string(),
+        "request_path" => "mesh_http_request_path".to_string(),
+        "request_body" => "mesh_http_request_body".to_string(),
+        "request_header" => "mesh_http_request_header".to_string(),
+        "request_query" => "mesh_http_request_query".to_string(),
         // Phase 51: Path parameter accessor
-        "request_param" => "snow_http_request_param".to_string(),
-        // Phase 51: Method-specific routing (HTTP.on_get -> http_on_get -> snow_http_route_get)
-        "http_on_get" => "snow_http_route_get".to_string(),
-        "http_on_post" => "snow_http_route_post".to_string(),
-        "http_on_put" => "snow_http_route_put".to_string(),
-        "http_on_delete" => "snow_http_route_delete".to_string(),
+        "request_param" => "mesh_http_request_param".to_string(),
+        // Phase 51: Method-specific routing (HTTP.on_get -> http_on_get -> mesh_http_route_get)
+        "http_on_get" => "mesh_http_route_get".to_string(),
+        "http_on_post" => "mesh_http_route_post".to_string(),
+        "http_on_put" => "mesh_http_route_put".to_string(),
+        "http_on_delete" => "mesh_http_route_delete".to_string(),
         // Phase 52: Middleware
-        "http_use" => "snow_http_use_middleware".to_string(),
+        "http_use" => "mesh_http_use_middleware".to_string(),
         // ── SQLite functions (Phase 53) ──────────────────────────────────
-        "sqlite_open" => "snow_sqlite_open".to_string(),
-        "sqlite_close" => "snow_sqlite_close".to_string(),
-        "sqlite_execute" => "snow_sqlite_execute".to_string(),
-        "sqlite_query" => "snow_sqlite_query".to_string(),
+        "sqlite_open" => "mesh_sqlite_open".to_string(),
+        "sqlite_close" => "mesh_sqlite_close".to_string(),
+        "sqlite_execute" => "mesh_sqlite_execute".to_string(),
+        "sqlite_query" => "mesh_sqlite_query".to_string(),
         // ── PostgreSQL functions (Phase 54) ──────────────────────────────
-        "pg_connect" => "snow_pg_connect".to_string(),
-        "pg_close" => "snow_pg_close".to_string(),
-        "pg_execute" => "snow_pg_execute".to_string(),
-        "pg_query" => "snow_pg_query".to_string(),
+        "pg_connect" => "mesh_pg_connect".to_string(),
+        "pg_close" => "mesh_pg_close".to_string(),
+        "pg_execute" => "mesh_pg_execute".to_string(),
+        "pg_query" => "mesh_pg_query".to_string(),
         // ── Phase 57: PG Transaction functions ──────────────────────────
-        "pg_begin" => "snow_pg_begin".to_string(),
-        "pg_commit" => "snow_pg_commit".to_string(),
-        "pg_rollback" => "snow_pg_rollback".to_string(),
-        "pg_transaction" => "snow_pg_transaction".to_string(),
+        "pg_begin" => "mesh_pg_begin".to_string(),
+        "pg_commit" => "mesh_pg_commit".to_string(),
+        "pg_rollback" => "mesh_pg_rollback".to_string(),
+        "pg_transaction" => "mesh_pg_transaction".to_string(),
         // ── Phase 57: SQLite Transaction functions ──────────────────────
-        "sqlite_begin" => "snow_sqlite_begin".to_string(),
-        "sqlite_commit" => "snow_sqlite_commit".to_string(),
-        "sqlite_rollback" => "snow_sqlite_rollback".to_string(),
+        "sqlite_begin" => "mesh_sqlite_begin".to_string(),
+        "sqlite_commit" => "mesh_sqlite_commit".to_string(),
+        "sqlite_rollback" => "mesh_sqlite_rollback".to_string(),
         // ── Phase 57: Connection Pool functions ─────────────────────────
-        "pool_open" => "snow_pool_open".to_string(),
-        "pool_close" => "snow_pool_close".to_string(),
-        "pool_checkout" => "snow_pool_checkout".to_string(),
-        "pool_checkin" => "snow_pool_checkin".to_string(),
-        "pool_query" => "snow_pool_query".to_string(),
-        "pool_execute" => "snow_pool_execute".to_string(),
+        "pool_open" => "mesh_pool_open".to_string(),
+        "pool_close" => "mesh_pool_close".to_string(),
+        "pool_checkout" => "mesh_pool_checkout".to_string(),
+        "pool_checkin" => "mesh_pool_checkin".to_string(),
+        "pool_query" => "mesh_pool_query".to_string(),
+        "pool_execute" => "mesh_pool_execute".to_string(),
         // ── Phase 58: Struct-to-Row Mapping ───────────────────────────────
-        "pg_query_as" => "snow_pg_query_as".to_string(),
-        "pool_query_as" => "snow_pool_query_as".to_string(),
+        "pg_query_as" => "mesh_pg_query_as".to_string(),
+        "pool_query_as" => "mesh_pool_query_as".to_string(),
         // NOTE: No bare name mappings for HTTP/Request (router, route, get,
         // post, method, path, body, etc.) because they collide with common
         // variable names. Use module-qualified access instead:
         //   HTTP.router(), HTTP.route(), Request.method(), etc.
         // ── Job functions (Phase 9 Plan 04) ────────────────────────────
-        "job_async" => "snow_job_async".to_string(),
-        "job_await" => "snow_job_await".to_string(),
-        "job_await_timeout" => "snow_job_await_timeout".to_string(),
-        "job_map" => "snow_job_map".to_string(),
+        "job_async" => "mesh_job_async".to_string(),
+        "job_await" => "mesh_job_await".to_string(),
+        "job_await_timeout" => "mesh_job_await_timeout".to_string(),
+        "job_map" => "mesh_job_map".to_string(),
         // ── Math/Int/Float functions (Phase 43 Plan 01) ─────────────────
-        "math_abs" => "snow_math_abs".to_string(),
-        "math_min" => "snow_math_min".to_string(),
-        "math_max" => "snow_math_max".to_string(),
-        "math_pi" => "snow_math_pi".to_string(),
-        "math_pow" => "snow_math_pow".to_string(),
-        "math_sqrt" => "snow_math_sqrt".to_string(),
-        "math_floor" => "snow_math_floor".to_string(),
-        "math_ceil" => "snow_math_ceil".to_string(),
-        "math_round" => "snow_math_round".to_string(),
-        "int_to_float" => "snow_int_to_float".to_string(),
-        "float_to_int" => "snow_float_to_int".to_string(),
+        "math_abs" => "mesh_math_abs".to_string(),
+        "math_min" => "mesh_math_min".to_string(),
+        "math_max" => "mesh_math_max".to_string(),
+        "math_pi" => "mesh_math_pi".to_string(),
+        "math_pow" => "mesh_math_pow".to_string(),
+        "math_sqrt" => "mesh_math_sqrt".to_string(),
+        "math_floor" => "mesh_math_floor".to_string(),
+        "math_ceil" => "mesh_math_ceil".to_string(),
+        "math_round" => "mesh_math_round".to_string(),
+        "int_to_float" => "mesh_int_to_float".to_string(),
+        "float_to_int" => "mesh_float_to_int".to_string(),
         // ── Timer functions (Phase 44 Plan 02) ──────────────────────────
-        "timer_sleep" => "snow_timer_sleep".to_string(),
-        "timer_send_after" => "snow_timer_send_after".to_string(),
+        "timer_sleep" => "mesh_timer_sleep".to_string(),
+        "timer_send_after" => "mesh_timer_send_after".to_string(),
         // ── WebSocket functions (Phase 60) ────────────────────────────
-        "ws_serve" => "snow_ws_serve".to_string(),
-        "ws_send" => "snow_ws_send".to_string(),
-        "ws_send_binary" => "snow_ws_send_binary".to_string(),
-        "ws_serve_tls" => "snow_ws_serve_tls".to_string(),
+        "ws_serve" => "mesh_ws_serve".to_string(),
+        "ws_send" => "mesh_ws_send".to_string(),
+        "ws_send_binary" => "mesh_ws_send_binary".to_string(),
+        "ws_serve_tls" => "mesh_ws_serve_tls".to_string(),
         // ── WebSocket Room functions (Phase 62) ────────────────────────
-        "ws_join" => "snow_ws_join".to_string(),
-        "ws_leave" => "snow_ws_leave".to_string(),
-        "ws_broadcast" => "snow_ws_broadcast".to_string(),
-        "ws_broadcast_except" => "snow_ws_broadcast_except".to_string(),
+        "ws_join" => "mesh_ws_join".to_string(),
+        "ws_leave" => "mesh_ws_leave".to_string(),
+        "ws_broadcast" => "mesh_ws_broadcast".to_string(),
+        "ws_broadcast_except" => "mesh_ws_broadcast_except".to_string(),
         // ── Phase 67: Node distribution functions ─────────────────────────
-        "node_start" => "snow_node_start".to_string(),
-        "node_connect" => "snow_node_connect".to_string(),
-        "node_self" => "snow_node_self".to_string(),
-        "node_list" => "snow_node_list".to_string(),
-        "node_monitor" => "snow_node_monitor".to_string(),
-        "node_spawn" => "snow_node_spawn".to_string(),
-        "node_spawn_link" => "snow_node_spawn_link".to_string(),
+        "node_start" => "mesh_node_start".to_string(),
+        "node_connect" => "mesh_node_connect".to_string(),
+        "node_self" => "mesh_node_self".to_string(),
+        "node_list" => "mesh_node_list".to_string(),
+        "node_monitor" => "mesh_node_monitor".to_string(),
+        "node_spawn" => "mesh_node_spawn".to_string(),
+        "node_spawn_link" => "mesh_node_spawn_link".to_string(),
         // ── Phase 67: Process monitor/demonitor ───────────────────────────
-        "process_monitor" => "snow_process_monitor".to_string(),
-        "process_demonitor" => "snow_process_demonitor".to_string(),
+        "process_monitor" => "mesh_process_monitor".to_string(),
+        "process_demonitor" => "mesh_process_demonitor".to_string(),
         // ── Phase 68: Global registry functions ─────────────────────────
-        "global_register" => "snow_global_register".to_string(),
-        "global_whereis" => "snow_global_whereis".to_string(),
-        "global_unregister" => "snow_global_unregister".to_string(),
+        "global_register" => "mesh_global_register".to_string(),
+        "global_whereis" => "mesh_global_whereis".to_string(),
+        "global_unregister" => "mesh_global_unregister".to_string(),
         _ => name.to_string(),
     }
 }
@@ -9564,7 +9564,7 @@ fn to_snake_case(name: &str) -> String {
 
 /// Extract simple string content from a LITERAL or STRING_EXPR syntax node.
 /// Walks children looking for STRING_CONTENT tokens and concatenates them.
-fn extract_simple_string_content(node: &snow_parser::cst::SyntaxNode) -> String {
+fn extract_simple_string_content(node: &mesh_parser::cst::SyntaxNode) -> String {
     let mut content = String::new();
     for child in node.children_with_tokens() {
         if child.kind() == SyntaxKind::STRING_CONTENT {
@@ -9578,7 +9578,7 @@ fn extract_simple_string_content(node: &snow_parser::cst::SyntaxNode) -> String 
 
 /// Extract a negative integer literal value from a LITERAL_PAT node.
 /// Looks for MINUS token followed by INT_LITERAL.
-fn extract_negative_literal(node: &snow_parser::cst::SyntaxNode) -> i64 {
+fn extract_negative_literal(node: &mesh_parser::cst::SyntaxNode) -> i64 {
     let mut found_minus = false;
     for child in node.children_with_tokens() {
         if let Some(token) = child.as_token() {
@@ -9594,7 +9594,7 @@ fn extract_negative_literal(node: &snow_parser::cst::SyntaxNode) -> i64 {
 }
 
 /// Find the type name that contains a given variant name.
-fn find_type_for_variant(variant: &str, registry: &snow_typeck::TypeRegistry) -> Option<String> {
+fn find_type_for_variant(variant: &str, registry: &mesh_typeck::TypeRegistry) -> Option<String> {
     for (type_name, info) in &registry.sum_type_defs {
         for v in &info.variants {
             if v.name == variant {
@@ -9901,7 +9901,7 @@ fn rewrite_tail_calls(expr: &mut MirExpr, current_fn_name: &str) -> bool {
 
 // ── Public API ───────────────────────────────────────────────────────
 
-/// Lower a parsed and type-checked Snow program to MIR.
+/// Lower a parsed and type-checked Mesh program to MIR.
 ///
 /// This is the main entry point for AST-to-MIR conversion. It walks the
 /// typed AST, desugars pipe operators and string interpolation, lifts closures,
@@ -9916,7 +9916,7 @@ pub fn lower_to_mir(parse: &Parse, typeck: &TypeckResult, module_name: &str, pub
     let mut lowerer = Lowerer::new(typeck, parse, module_name, pub_fns);
 
     // Also register builtin sum types from the registry (Option, Result).
-    // Generic type params (T, E) are resolved to Ptr since all Snow values
+    // Generic type params (T, E) are resolved to Ptr since all Mesh values
     // are heap-allocated pointers at the LLVM level.
     for (name, info) in &typeck.type_registry.sum_type_defs {
         let generic_params: Vec<String> = info.generic_params.clone();
@@ -9930,8 +9930,8 @@ pub fn lower_to_mir(parse: &Parse, typeck: &TypeckResult, module_name: &str, pub
                     .iter()
                     .map(|f| {
                         let ty = match f {
-                            snow_typeck::VariantFieldInfo::Positional(ty) => ty,
-                            snow_typeck::VariantFieldInfo::Named(_, ty) => ty,
+                            mesh_typeck::VariantFieldInfo::Positional(ty) => ty,
+                            mesh_typeck::VariantFieldInfo::Named(_, ty) => ty,
                         };
                         // Check if this is a generic type parameter.
                         // Generic params like T, E resolve to MirType::Struct("T")
@@ -10049,10 +10049,10 @@ pub fn lower_to_mir(parse: &Parse, typeck: &TypeckResult, module_name: &str, pub
 mod tests {
     use super::*;
 
-    /// Helper to parse and type-check a Snow source, then lower to MIR.
+    /// Helper to parse and type-check a Mesh source, then lower to MIR.
     fn lower(source: &str) -> MirModule {
-        let parse = snow_parser::parse(source);
-        let typeck = snow_typeck::check(&parse);
+        let parse = mesh_parser::parse(source);
+        let typeck = mesh_typeck::check(&parse);
         let empty_pub_fns = HashSet::new();
         // Ignore type errors for MIR lowering tests -- we test lowering, not typeck.
         lower_to_mir(&parse, &typeck, "", &empty_pub_fns).expect("MIR lowering failed")
@@ -10090,8 +10090,8 @@ mod tests {
             "fn double(x :: Int) -> Int do x * 2 end\n\
              fn main() do 5 |> double end",
         );
-        let main = mir.functions.iter().find(|f| f.name == "snow_main");
-        assert!(main.is_some(), "Expected 'snow_main' function in MIR");
+        let main = mir.functions.iter().find(|f| f.name == "mesh_main");
+        assert!(main.is_some(), "Expected 'mesh_main' function in MIR");
         let main = main.unwrap();
 
         // Body should be a Call with func=double, args=[5]
@@ -10114,7 +10114,7 @@ fn main() do
 end
 "#;
         let mir = lower(source);
-        let main = mir.functions.iter().find(|f| f.name == "snow_main");
+        let main = mir.functions.iter().find(|f| f.name == "mesh_main");
         assert!(main.is_some());
         let main = main.unwrap();
 
@@ -10123,7 +10123,7 @@ end
             match expr {
                 MirExpr::Call { func, .. } => {
                     if let MirExpr::Var(name, _) = func.as_ref() {
-                        if name == "snow_string_concat" {
+                        if name == "mesh_string_concat" {
                             return true;
                         }
                     }
@@ -10139,7 +10139,7 @@ end
 
         assert!(
             has_concat_call(&main.body),
-            "Expected snow_string_concat call in interpolated string body: {:?}",
+            "Expected mesh_string_concat call in interpolated string body: {:?}",
             main.body
         );
     }
@@ -10171,7 +10171,7 @@ end
     #[test]
     fn lower_main_sets_entry_function() {
         let mir = lower("fn main() do 0 end");
-        assert_eq!(mir.entry_function, Some("snow_main".to_string()));
+        assert_eq!(mir.entry_function, Some("mesh_main".to_string()));
     }
 
     #[test]
@@ -10218,7 +10218,7 @@ fn main() do
 end
 "#;
         let mir = lower(source);
-        let main = mir.functions.iter().find(|f| f.name == "snow_main");
+        let main = mir.functions.iter().find(|f| f.name == "mesh_main");
         assert!(main.is_some());
         let main = main.unwrap();
 
@@ -10253,7 +10253,7 @@ fn main() do
 end
 "#;
         let mir = lower(source);
-        let main = mir.functions.iter().find(|f| f.name == "snow_main");
+        let main = mir.functions.iter().find(|f| f.name == "mesh_main");
         assert!(main.is_some());
     }
 
@@ -10397,10 +10397,10 @@ end
 "#,
         );
 
-        let main_fn = mir.functions.iter().find(|f| f.name == "snow_main");
+        let main_fn = mir.functions.iter().find(|f| f.name == "mesh_main");
         assert!(
             main_fn.is_some(),
-            "Missing snow_main function. Functions: {:?}",
+            "Missing mesh_main function. Functions: {:?}",
             mir.functions.iter().map(|f| &f.name).collect::<Vec<_>>()
         );
     }
@@ -10487,8 +10487,8 @@ end
         let mir = lower(source);
 
         // The main function body should contain a Call to "Greetable__greet__Point".
-        let main_fn = mir.functions.iter().find(|f| f.name == "snow_main");
-        assert!(main_fn.is_some(), "Expected snow_main function");
+        let main_fn = mir.functions.iter().find(|f| f.name == "mesh_main");
+        assert!(main_fn.is_some(), "Expected mesh_main function");
         let main_fn = main_fn.unwrap();
 
         fn find_mangled_call(expr: &MirExpr, target: &str) -> bool {
@@ -10541,8 +10541,8 @@ end
 "#;
         let mir = lower(source);
 
-        let main_fn = mir.functions.iter().find(|f| f.name == "snow_main");
-        assert!(main_fn.is_some(), "Expected snow_main function");
+        let main_fn = mir.functions.iter().find(|f| f.name == "mesh_main");
+        assert!(main_fn.is_some(), "Expected mesh_main function");
         let main_fn = main_fn.unwrap();
 
         fn find_mangled_call(expr: &MirExpr, target: &str) -> bool {
@@ -10583,7 +10583,7 @@ end
 "#;
         let mir = lower(source);
 
-        let main_fn = mir.functions.iter().find(|f| f.name == "snow_main");
+        let main_fn = mir.functions.iter().find(|f| f.name == "mesh_main");
         assert!(main_fn.is_some());
         let main_fn = main_fn.unwrap();
 
@@ -10652,8 +10652,8 @@ fn main() do bar(42) end
     fn mono_depth_fields_initialized() {
         // Directly verify the Lowerer struct fields are properly initialized.
         let source = "let x = 1";
-        let parse = snow_parser::parse(source);
-        let typeck = snow_typeck::check(&parse);
+        let parse = mesh_parser::parse(source);
+        let typeck = mesh_typeck::check(&parse);
         // We can't access Lowerer directly (it's private), but we can verify
         // that lowering a deeply nested call chain doesn't crash -- the depth
         // counter prevents stack overflow.
@@ -10703,7 +10703,7 @@ fn main() do bar(42) end
         }
     }
 
-    /// Success Criterion 1: A Snow program with interface, impl, struct, and trait
+    /// Success Criterion 1: A Mesh program with interface, impl, struct, and trait
     /// method call compiles through MIR lowering and produces correct mangled call.
     #[test]
     fn e2e_trait_method_call_compiles() {
@@ -10745,8 +10745,8 @@ end
         let main_fn = mir
             .functions
             .iter()
-            .find(|f| f.name == "snow_main")
-            .expect("Expected snow_main function");
+            .find(|f| f.name == "mesh_main")
+            .expect("Expected mesh_main function");
         assert!(
             find_call_to(&main_fn.body, "Greetable__greet__Greeter"),
             "Expected call to Greetable__greet__Greeter in main body, got: {:?}",
@@ -10899,8 +10899,8 @@ end
         let main_fn = mir
             .functions
             .iter()
-            .find(|f| f.name == "snow_main")
-            .expect("Expected snow_main function");
+            .find(|f| f.name == "mesh_main")
+            .expect("Expected mesh_main function");
         assert!(
             find_call_to(&main_fn.body, "Speakable__speak__Dog"),
             "Expected call to Speakable__speak__Dog in main body"
@@ -10929,12 +10929,12 @@ fn main() do
   show(42)
 end
 "#;
-        let parse = snow_parser::parse(source);
-        let typeck = snow_typeck::check(&parse);
+        let parse = mesh_parser::parse(source);
+        let typeck = mesh_typeck::check(&parse);
 
         // Typeck should report TraitNotSatisfied error for Int not implementing Displayable.
         let has_trait_error = typeck.errors.iter().any(|e| {
-            matches!(e, snow_typeck::error::TypeError::TraitNotSatisfied { .. })
+            matches!(e, mesh_typeck::error::TypeError::TraitNotSatisfied { .. })
         });
         assert!(
             has_trait_error,
@@ -10971,11 +10971,11 @@ fn main() do
   f(42)
 end
 "#;
-        let parse = snow_parser::parse(source);
-        let typeck = snow_typeck::check(&parse);
+        let parse = mesh_parser::parse(source);
+        let typeck = mesh_typeck::check(&parse);
 
         let has_trait_error = typeck.errors.iter().any(|e| {
-            matches!(e, snow_typeck::error::TypeError::TraitNotSatisfied { .. })
+            matches!(e, mesh_typeck::error::TypeError::TraitNotSatisfied { .. })
         });
         assert!(
             has_trait_error,
@@ -11003,11 +11003,11 @@ fn main() do
   g(42)
 end
 "#;
-        let parse = snow_parser::parse(source);
-        let typeck = snow_typeck::check(&parse);
+        let parse = mesh_parser::parse(source);
+        let typeck = mesh_typeck::check(&parse);
 
         let has_trait_error = typeck.errors.iter().any(|e| {
-            matches!(e, snow_typeck::error::TypeError::TraitNotSatisfied { .. })
+            matches!(e, mesh_typeck::error::TypeError::TraitNotSatisfied { .. })
         });
         assert!(
             has_trait_error,
@@ -11035,11 +11035,11 @@ fn main() do
   f(42)
 end
 "#;
-        let parse = snow_parser::parse(source_bad);
-        let typeck = snow_typeck::check(&parse);
+        let parse = mesh_parser::parse(source_bad);
+        let typeck = mesh_typeck::check(&parse);
 
         let has_trait_error = typeck.errors.iter().any(|e| {
-            matches!(e, snow_typeck::error::TypeError::TraitNotSatisfied { .. })
+            matches!(e, mesh_typeck::error::TypeError::TraitNotSatisfied { .. })
         });
         assert!(
             has_trait_error,
@@ -11073,11 +11073,11 @@ fn main() do
   f(p)
 end
 "#;
-        let parse_good = snow_parser::parse(source_good);
-        let typeck_good = snow_typeck::check(&parse_good);
+        let parse_good = mesh_parser::parse(source_good);
+        let typeck_good = mesh_typeck::check(&parse_good);
 
         let has_trait_error_good = typeck_good.errors.iter().any(|e| {
-            matches!(e, snow_typeck::error::TypeError::TraitNotSatisfied { .. })
+            matches!(e, mesh_typeck::error::TypeError::TraitNotSatisfied { .. })
         });
         assert!(
             !has_trait_error_good,
@@ -11113,11 +11113,11 @@ fn main() do
   apply(show, 42)
 end
 "#;
-        let parse = snow_parser::parse(source);
-        let typeck = snow_typeck::check(&parse);
+        let parse = mesh_parser::parse(source);
+        let typeck = mesh_typeck::check(&parse);
 
         let has_trait_error = typeck.errors.iter().any(|e| {
-            matches!(e, snow_typeck::error::TypeError::TraitNotSatisfied { .. })
+            matches!(e, mesh_typeck::error::TypeError::TraitNotSatisfied { .. })
         });
         assert!(
             !has_trait_error,
@@ -11147,11 +11147,11 @@ fn main() do
   apply(say_hello, 42)
 end
 "#;
-        let parse = snow_parser::parse(source);
-        let typeck = snow_typeck::check(&parse);
+        let parse = mesh_parser::parse(source);
+        let typeck = mesh_typeck::check(&parse);
 
         let has_trait_error = typeck.errors.iter().any(|e| {
-            matches!(e, snow_typeck::error::TypeError::TraitNotSatisfied { .. })
+            matches!(e, mesh_typeck::error::TypeError::TraitNotSatisfied { .. })
         });
         assert!(
             has_trait_error,
@@ -11191,11 +11191,11 @@ fn main() do
   wrap(apply, show, 42)
 end
 "#;
-        let parse = snow_parser::parse(source);
-        let typeck = snow_typeck::check(&parse);
+        let parse = mesh_parser::parse(source);
+        let typeck = mesh_typeck::check(&parse);
 
         let has_trait_error = typeck.errors.iter().any(|e| {
-            matches!(e, snow_typeck::error::TypeError::TraitNotSatisfied { .. })
+            matches!(e, mesh_typeck::error::TypeError::TraitNotSatisfied { .. })
         });
         assert!(
             !has_trait_error,
@@ -11232,11 +11232,11 @@ fn main() do
   result
 end
 "#;
-        let parse = snow_parser::parse(source);
-        let typeck = snow_typeck::check(&parse);
+        let parse = mesh_parser::parse(source);
+        let typeck = mesh_typeck::check(&parse);
 
         let has_trait_error = typeck.errors.iter().any(|e| {
-            matches!(e, snow_typeck::error::TypeError::TraitNotSatisfied { .. })
+            matches!(e, mesh_typeck::error::TypeError::TraitNotSatisfied { .. })
         });
         assert!(
             !has_trait_error,
@@ -11273,11 +11273,11 @@ fn main() do
   apply(f, 42)
 end
 "#;
-        let parse = snow_parser::parse(source);
-        let typeck = snow_typeck::check(&parse);
+        let parse = mesh_parser::parse(source);
+        let typeck = mesh_typeck::check(&parse);
 
         let has_trait_error = typeck.errors.iter().any(|e| {
-            matches!(e, snow_typeck::error::TypeError::TraitNotSatisfied { .. })
+            matches!(e, mesh_typeck::error::TypeError::TraitNotSatisfied { .. })
         });
         assert!(
             !has_trait_error,
@@ -11344,8 +11344,8 @@ end
         // Verify the Lowerer is initialized with depth tracking by confirming
         // that lowering succeeds (the fields exist and are properly initialized).
         // The Lowerer struct is private, so we verify indirectly through behavior.
-        let parse = snow_parser::parse(source);
-        let typeck = snow_typeck::check(&parse);
+        let parse = mesh_parser::parse(source);
+        let typeck = mesh_typeck::check(&parse);
         let empty_pub_fns = HashSet::new();
         let _mir = lower_to_mir(&parse, &typeck, "", &empty_pub_fns).expect("MIR lowering with depth tracking");
     }
@@ -11822,12 +11822,12 @@ end
 "#;
         let mir = lower(source);
         let hash_fn = mir.functions.iter().find(|f| f.name == "Hash__hash__Point").unwrap();
-        // Body should contain a snow_hash_combine call (chaining two field hashes).
+        // Body should contain a mesh_hash_combine call (chaining two field hashes).
         fn has_combine(expr: &MirExpr) -> bool {
             match expr {
                 MirExpr::Call { func, args, .. } => {
                     if let MirExpr::Var(name, _) = func.as_ref() {
-                        if name == "snow_hash_combine" {
+                        if name == "mesh_hash_combine" {
                             return true;
                         }
                     }
@@ -11836,7 +11836,7 @@ end
                 _ => false,
             }
         }
-        assert!(has_combine(&hash_fn.body), "Hash body should contain snow_hash_combine for multi-field struct");
+        assert!(has_combine(&hash_fn.body), "Hash body should contain mesh_hash_combine for multi-field struct");
     }
 
     #[test]
@@ -11873,8 +11873,8 @@ fn main() do
 end
 "#;
         let mir = lower(source);
-        let main_fn = mir.functions.iter().find(|f| f.name == "snow_main");
-        assert!(main_fn.is_some(), "Expected snow_main function in MIR");
+        let main_fn = mir.functions.iter().find(|f| f.name == "mesh_main");
+        assert!(main_fn.is_some(), "Expected mesh_main function in MIR");
         // The MIR should contain a Hash__hash__Point call somewhere in the body
         // (emitted as part of the map_put key hashing).
         fn has_hash_call(expr: &MirExpr) -> bool {
@@ -11907,8 +11907,8 @@ fn main() do
 end
 "#;
         let mir = lower(source);
-        let main_fn = mir.functions.iter().find(|f| f.name == "snow_main");
-        assert!(main_fn.is_some(), "Expected snow_main function in MIR");
+        let main_fn = mir.functions.iter().find(|f| f.name == "mesh_main");
+        assert!(main_fn.is_some(), "Expected mesh_main function in MIR");
         // The body should contain an IntLit(0) somewhere (from default() -> 0).
         fn has_int_zero(expr: &MirExpr) -> bool {
             match expr {
@@ -11930,8 +11930,8 @@ fn main() do
 end
 "#;
         let mir = lower(source);
-        let main_fn = mir.functions.iter().find(|f| f.name == "snow_main");
-        assert!(main_fn.is_some(), "Expected snow_main function in MIR");
+        let main_fn = mir.functions.iter().find(|f| f.name == "mesh_main");
+        assert!(main_fn.is_some(), "Expected mesh_main function in MIR");
         fn has_float_zero(expr: &MirExpr) -> bool {
             match expr {
                 MirExpr::FloatLit(val, MirType::Float) if *val == 0.0 => true,
@@ -11952,8 +11952,8 @@ fn main() do
 end
 "#;
         let mir = lower(source);
-        let main_fn = mir.functions.iter().find(|f| f.name == "snow_main");
-        assert!(main_fn.is_some(), "Expected snow_main function in MIR");
+        let main_fn = mir.functions.iter().find(|f| f.name == "mesh_main");
+        assert!(main_fn.is_some(), "Expected mesh_main function in MIR");
         fn has_empty_string(expr: &MirExpr) -> bool {
             match expr {
                 MirExpr::StringLit(s, MirType::String) if s.is_empty() => true,
@@ -11974,8 +11974,8 @@ fn main() do
 end
 "#;
         let mir = lower(source);
-        let main_fn = mir.functions.iter().find(|f| f.name == "snow_main");
-        assert!(main_fn.is_some(), "Expected snow_main function in MIR");
+        let main_fn = mir.functions.iter().find(|f| f.name == "mesh_main");
+        assert!(main_fn.is_some(), "Expected mesh_main function in MIR");
         fn has_bool_false(expr: &MirExpr) -> bool {
             match expr {
                 MirExpr::BoolLit(false, MirType::Bool) => true,
@@ -12007,11 +12007,11 @@ end
 impl Describable for Point do
 end
 "#;
-        let parse = snow_parser::parse(source);
-        let typeck = snow_typeck::check(&parse);
+        let parse = mesh_parser::parse(source);
+        let typeck = mesh_typeck::check(&parse);
         // Check that there are no MissingTraitMethod errors.
         let missing_errors: Vec<_> = typeck.errors.iter().filter(|e| {
-            matches!(e, snow_typeck::error::TypeError::MissingTraitMethod { .. })
+            matches!(e, mesh_typeck::error::TypeError::MissingTraitMethod { .. })
         }).collect();
         assert!(missing_errors.is_empty(),
             "Expected no MissingTraitMethod errors, got: {:?}", missing_errors);
@@ -12137,8 +12137,8 @@ end
 
     #[test]
     fn list_display_emits_runtime_call() {
-        // String interpolation with a List should emit snow_list_to_string
-        // with snow_int_to_string as the element callback.
+        // String interpolation with a List should emit mesh_list_to_string
+        // with mesh_int_to_string as the element callback.
         let source = r#"
 fn main() do
   let xs = List.append(List.new(), 1)
@@ -12146,19 +12146,19 @@ fn main() do
 end
 "#;
         let mir = lower(source);
-        let main = mir.functions.iter().find(|f| f.name == "snow_main");
-        assert!(main.is_some(), "Expected 'snow_main' function in MIR");
+        let main = mir.functions.iter().find(|f| f.name == "mesh_main");
+        assert!(main.is_some(), "Expected 'mesh_main' function in MIR");
         let main = main.unwrap();
 
         assert!(
-            has_call_to(&main.body, "snow_list_to_string"),
-            "Expected snow_list_to_string call in interpolated string body.\n\
+            has_call_to(&main.body, "mesh_list_to_string"),
+            "Expected mesh_list_to_string call in interpolated string body.\n\
              Body: {:?}",
             main.body
         );
         assert!(
-            has_var_ref(&main.body, "snow_int_to_string"),
-            "Expected snow_int_to_string callback reference in interpolated string body.\n\
+            has_var_ref(&main.body, "mesh_int_to_string"),
+            "Expected mesh_int_to_string callback reference in interpolated string body.\n\
              Body: {:?}",
             main.body
         );
@@ -12166,8 +12166,8 @@ end
 
     #[test]
     fn map_display_emits_runtime_call() {
-        // String interpolation with a Map<String, Int> should emit snow_map_to_string
-        // with snow_string_to_string and snow_int_to_string as callbacks.
+        // String interpolation with a Map<String, Int> should emit mesh_map_to_string
+        // with mesh_string_to_string and mesh_int_to_string as callbacks.
         let source = r#"
 fn main() do
   let m = %{"a" => 1}
@@ -12175,13 +12175,13 @@ fn main() do
 end
 "#;
         let mir = lower(source);
-        let main = mir.functions.iter().find(|f| f.name == "snow_main");
-        assert!(main.is_some(), "Expected 'snow_main' function in MIR");
+        let main = mir.functions.iter().find(|f| f.name == "mesh_main");
+        assert!(main.is_some(), "Expected 'mesh_main' function in MIR");
         let main = main.unwrap();
 
         assert!(
-            has_call_to(&main.body, "snow_map_to_string"),
-            "Expected snow_map_to_string call in interpolated string body.\n\
+            has_call_to(&main.body, "mesh_map_to_string"),
+            "Expected mesh_map_to_string call in interpolated string body.\n\
              Body: {:?}",
             main.body
         );
@@ -12189,7 +12189,7 @@ end
 
     #[test]
     fn set_display_emits_runtime_call() {
-        // String interpolation with a Set should emit snow_set_to_string.
+        // String interpolation with a Set should emit mesh_set_to_string.
         let source = r#"
 fn main() do
   let s = Set.add(Set.new(), 1)
@@ -12197,13 +12197,13 @@ fn main() do
 end
 "#;
         let mir = lower(source);
-        let main = mir.functions.iter().find(|f| f.name == "snow_main");
-        assert!(main.is_some(), "Expected 'snow_main' function in MIR");
+        let main = mir.functions.iter().find(|f| f.name == "mesh_main");
+        assert!(main.is_some(), "Expected 'mesh_main' function in MIR");
         let main = main.unwrap();
 
         assert!(
-            has_call_to(&main.body, "snow_set_to_string"),
-            "Expected snow_set_to_string call in interpolated string body.\n\
+            has_call_to(&main.body, "mesh_set_to_string"),
+            "Expected mesh_set_to_string call in interpolated string body.\n\
              Body: {:?}",
             main.body
         );
@@ -12218,8 +12218,8 @@ end
         // __display_list_Int_to_str wrapper function.
         //
         // We test this indirectly: lower a program with list string interpolation,
-        // then verify the snow_list_to_string call is present and uses
-        // snow_int_to_string (flat case). The wrapper generation for nested
+        // then verify the mesh_list_to_string call is present and uses
+        // mesh_int_to_string (flat case). The wrapper generation for nested
         // types (List<List<Int>>) will be exercised once the type system
         // supports generic collection element types (TGEN-02).
         let source = r#"
@@ -12229,19 +12229,19 @@ fn main() do
 end
 "#;
         let mir = lower(source);
-        let main = mir.functions.iter().find(|f| f.name == "snow_main");
-        assert!(main.is_some(), "Expected 'snow_main' function in MIR");
+        let main = mir.functions.iter().find(|f| f.name == "mesh_main");
+        assert!(main.is_some(), "Expected 'mesh_main' function in MIR");
         let main = main.unwrap();
 
-        // The flat list case: snow_list_to_string with snow_int_to_string callback
+        // The flat list case: mesh_list_to_string with mesh_int_to_string callback
         assert!(
-            has_call_to(&main.body, "snow_list_to_string"),
-            "Expected snow_list_to_string call.\nBody: {:?}",
+            has_call_to(&main.body, "mesh_list_to_string"),
+            "Expected mesh_list_to_string call.\nBody: {:?}",
             main.body
         );
         assert!(
-            has_var_ref(&main.body, "snow_int_to_string"),
-            "Expected snow_int_to_string callback reference.\nBody: {:?}",
+            has_var_ref(&main.body, "mesh_int_to_string"),
+            "Expected mesh_int_to_string callback reference.\nBody: {:?}",
             main.body
         );
 
@@ -12307,8 +12307,8 @@ fn main() -> Ordering do
 end
 "#;
         let mir = lower(source);
-        let main = mir.functions.iter().find(|f| f.name == "snow_main");
-        assert!(main.is_some(), "Expected 'snow_main' function in MIR");
+        let main = mir.functions.iter().find(|f| f.name == "mesh_main");
+        assert!(main.is_some(), "Expected 'mesh_main' function in MIR");
         let main = main.unwrap();
         assert!(
             has_call_to(&main.body, "Ord__compare__Int"),
@@ -12383,8 +12383,8 @@ fn main() -> Int do
 end
 "#;
         let mir = lower(source);
-        let main = mir.functions.iter().find(|f| f.name == "snow_main");
-        assert!(main.is_some(), "Expected 'snow_main' function in MIR");
+        let main = mir.functions.iter().find(|f| f.name == "mesh_main");
+        assert!(main.is_some(), "Expected 'mesh_main' function in MIR");
         let main = main.unwrap();
 
         // The body should contain a Match expression with Constructor patterns
@@ -12421,8 +12421,8 @@ fn main() -> Int do
 end
 "#;
         let mir = lower(source);
-        let main = mir.functions.iter().find(|f| f.name == "snow_main");
-        assert!(main.is_some(), "Expected 'snow_main' function in MIR");
+        let main = mir.functions.iter().find(|f| f.name == "mesh_main");
+        assert!(main.is_some(), "Expected 'mesh_main' function in MIR");
         let main = main.unwrap();
 
         // Should dispatch compare call
@@ -12464,8 +12464,8 @@ end
         let main_fn = mir
             .functions
             .iter()
-            .find(|f| f.name == "snow_main")
-            .expect("Expected snow_main function");
+            .find(|f| f.name == "mesh_main")
+            .expect("Expected mesh_main function");
         assert!(
             find_call_to(&main_fn.body, "Display__to_string__Point"),
             "Expected call to Display__to_string__Point in main body (method dot-syntax), got: {:?}",
@@ -12504,8 +12504,8 @@ end
         let main_fn = mir
             .functions
             .iter()
-            .find(|f| f.name == "snow_main")
-            .expect("Expected snow_main function");
+            .find(|f| f.name == "mesh_main")
+            .expect("Expected mesh_main function");
 
         // Count calls to the mangled name -- should be 2 (one bare, one dot-syntax)
         fn count_calls(expr: &MirExpr, target: &str) -> usize {
@@ -12569,8 +12569,8 @@ end
         let main_fn = mir
             .functions
             .iter()
-            .find(|f| f.name == "snow_main")
-            .expect("Expected snow_main function");
+            .find(|f| f.name == "mesh_main")
+            .expect("Expected mesh_main function");
         assert!(
             find_call_to(&main_fn.body, "Greeter__greet__Person"),
             "Expected call to Greeter__greet__Person in main body (dot-syntax with args), got: {:?}",
@@ -12597,8 +12597,8 @@ end
         let main_fn = mir
             .functions
             .iter()
-            .find(|f| f.name == "snow_main")
-            .expect("Expected snow_main function");
+            .find(|f| f.name == "mesh_main")
+            .expect("Expected mesh_main function");
 
         // Check that a FieldAccess for "x" exists in the body
         fn has_field_access(expr: &MirExpr, field_name: &str) -> bool {
@@ -12638,11 +12638,11 @@ end
         let main_fn = mir
             .functions
             .iter()
-            .find(|f| f.name == "snow_main")
-            .expect("Expected snow_main function");
+            .find(|f| f.name == "mesh_main")
+            .expect("Expected mesh_main function");
         assert!(
-            find_call_to(&main_fn.body, "snow_string_length"),
-            "Expected call to snow_string_length in main body (module-qualified preserved), got: {:?}",
+            find_call_to(&main_fn.body, "mesh_string_length"),
+            "Expected call to mesh_string_length in main body (module-qualified preserved), got: {:?}",
             main_fn.body
         );
     }

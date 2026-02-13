@@ -1,6 +1,6 @@
-//! Distribution subsystem for Snow.
+//! Distribution subsystem for Mesh.
 //!
-//! Provides PID bit-packing helpers, the Snow Term Format (STF) binary
+//! Provides PID bit-packing helpers, the Mesh Term Format (STF) binary
 //! serializer/deserializer, and the node identity/connection layer for
 //! inter-node message transport.
 

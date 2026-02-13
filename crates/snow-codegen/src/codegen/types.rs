@@ -19,7 +19,7 @@ use crate::mir::{MirSumTypeDef, MirType};
 /// | Int            | i64                               |
 /// | Float          | f64                               |
 /// | Bool           | i1                                |
-/// | String         | ptr (opaque pointer to SnowString)|
+/// | String         | ptr (opaque pointer to MeshString)|
 /// | Unit           | {} (empty struct)                 |
 /// | Tuple(elems)   | { elem0, elem1, ... }             |
 /// | Struct(name)   | named struct from cache           |

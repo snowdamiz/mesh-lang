@@ -1,6 +1,6 @@
 //! Dependency resolver with DFS traversal, conflict detection, and cycle detection.
 //!
-//! Resolves dependencies declared in a snow.toml manifest, handling both
+//! Resolves dependencies declared in a mesh.toml manifest, handling both
 //! git-based and path-based dependencies. Transitive dependencies are resolved
 //! recursively, with diamond conflicts and cycles reported as errors.
 
@@ -57,7 +57,7 @@ struct ResolveCtx {
 /// dependencies. Detects diamond conflicts (same name, different sources)
 /// and cycles (A -> B -> A).
 ///
-/// Git dependencies are cloned/fetched into `project_dir/.snow/deps/<name>/`.
+/// Git dependencies are cloned/fetched into `project_dir/.mesh/deps/<name>/`.
 /// Path dependencies are resolved relative to the manifest's directory.
 pub fn resolve(manifest: &Manifest, project_dir: &Path) -> Result<Vec<ResolvedDep>, String> {
     let mut ctx = ResolveCtx {
@@ -75,7 +75,7 @@ pub fn resolve(manifest: &Manifest, project_dir: &Path) -> Result<Vec<ResolvedDe
 ///
 /// `base_dir` is the directory containing the current manifest (used for
 /// resolving relative path dependencies). `project_dir` is the top-level
-/// project directory (used for the .snow/deps checkout location).
+/// project directory (used for the .mesh/deps checkout location).
 fn resolve_deps(
     deps: &BTreeMap<String, Dependency>,
     base_dir: &Path,
@@ -99,7 +99,7 @@ fn resolve_deps(
                 branch,
                 tag,
             } => {
-                let dest = project_dir.join(".snow").join("deps").join(name);
+                let dest = project_dir.join(".mpl").join("deps").join(name);
                 let resolved_rev = fetch_git_dep(
                     url,
                     &dest,
@@ -157,7 +157,7 @@ fn resolve_deps(
         );
 
         // Check for transitive dependencies
-        let sub_manifest_path = dep_path.join("snow.toml");
+        let sub_manifest_path = dep_path.join("mesh.toml");
         if sub_manifest_path.exists() {
             ctx.visiting.insert(name.clone());
             let sub_manifest = Manifest::from_file(&sub_manifest_path)?;
@@ -262,12 +262,12 @@ pub fn fetch_git_dep(
 
 /// High-level API: resolve dependencies from a project directory.
 ///
-/// Reads snow.toml from `project_dir`, resolves all dependencies, and produces
+/// Reads mesh.toml from `project_dir`, resolves all dependencies, and produces
 /// a lockfile. Returns the resolved dependencies and lockfile.
 pub fn resolve_dependencies(
     project_dir: &Path,
 ) -> Result<(Vec<ResolvedDep>, Lockfile), String> {
-    let manifest_path = project_dir.join("snow.toml");
+    let manifest_path = project_dir.join("mesh.toml");
     let manifest = Manifest::from_file(&manifest_path)?;
 
     let resolved = resolve(&manifest, project_dir)?;
@@ -294,7 +294,7 @@ mod tests {
     use super::*;
     use tempfile::TempDir;
 
-    /// Helper: create a minimal snow.toml in the given directory.
+    /// Helper: create a minimal mesh.toml in the given directory.
     fn write_manifest(dir: &Path, name: &str, deps: &str) {
         let content = format!(
             r#"[package]
@@ -305,7 +305,7 @@ version = "0.1.0"
 "#,
             name, deps
         );
-        std::fs::write(dir.join("snow.toml"), content).unwrap();
+        std::fs::write(dir.join("mesh.toml"), content).unwrap();
     }
 
     #[test]
@@ -324,7 +324,7 @@ version = "0.1.0"
         );
         write_manifest(root.path(), "my-project", &deps);
 
-        let manifest = Manifest::from_file(&root.path().join("snow.toml")).unwrap();
+        let manifest = Manifest::from_file(&root.path().join("mesh.toml")).unwrap();
         let resolved = resolve(&manifest, root.path()).unwrap();
 
         assert_eq!(resolved.len(), 1);
@@ -363,7 +363,7 @@ version = "0.1.0"
         );
         write_manifest(root.path(), "root", &deps_root);
 
-        let manifest = Manifest::from_file(&root.path().join("snow.toml")).unwrap();
+        let manifest = Manifest::from_file(&root.path().join("mesh.toml")).unwrap();
         let resolved = resolve(&manifest, root.path()).unwrap();
 
         let names: HashSet<&str> = resolved.iter().map(|d| d.name.as_str()).collect();
@@ -411,7 +411,7 @@ version = "0.1.0"
         );
         write_manifest(root.path(), "root", &deps_root);
 
-        let manifest = Manifest::from_file(&root.path().join("snow.toml")).unwrap();
+        let manifest = Manifest::from_file(&root.path().join("mesh.toml")).unwrap();
         let result = resolve(&manifest, root.path());
         assert!(result.is_err());
         let err = result.unwrap_err();
@@ -454,7 +454,7 @@ version = "0.1.0"
         );
         write_manifest(root.path(), "root", &deps_root);
 
-        let manifest = Manifest::from_file(&root.path().join("snow.toml")).unwrap();
+        let manifest = Manifest::from_file(&root.path().join("mesh.toml")).unwrap();
         let result = resolve(&manifest, root.path());
         assert!(result.is_err());
         let err = result.unwrap_err();
@@ -478,11 +478,11 @@ version = "0.1.0"
 name = "upstream-lib"
 version = "1.0.0"
 "#;
-        std::fs::write(git_repo_dir.join("snow.toml"), manifest_content).unwrap();
+        std::fs::write(git_repo_dir.join("mesh.toml"), manifest_content).unwrap();
 
         // Stage and commit
         let mut index = repo.index().unwrap();
-        index.add_path(Path::new("snow.toml")).unwrap();
+        index.add_path(Path::new("mesh.toml")).unwrap();
         index.write().unwrap();
         let tree_oid = index.write_tree().unwrap();
         let tree = repo.find_tree(tree_oid).unwrap();
@@ -501,7 +501,7 @@ version = "1.0.0"
         );
         write_manifest(&project_dir, "my-project", &deps);
 
-        let manifest = Manifest::from_file(&project_dir.join("snow.toml")).unwrap();
+        let manifest = Manifest::from_file(&project_dir.join("mesh.toml")).unwrap();
         let resolved = resolve(&manifest, &project_dir).unwrap();
 
         assert_eq!(resolved.len(), 1);
@@ -515,9 +515,9 @@ version = "1.0.0"
             _ => panic!("Expected git dependency"),
         }
 
-        // Verify the dep was cloned into .snow/deps/
-        let checkout = project_dir.join(".snow/deps/upstream-lib/snow.toml");
-        assert!(checkout.exists(), "Git dep should be cloned to .snow/deps/");
+        // Verify the dep was cloned into .mesh/deps/
+        let checkout = project_dir.join(".mesh/deps/upstream-lib/mesh.toml");
+        assert!(checkout.exists(), "Git dep should be cloned to .mesh/deps/");
     }
 
     #[test]
@@ -528,10 +528,10 @@ version = "1.0.0"
 
         // Init repo with initial commit on main
         let repo = git2::Repository::init(&git_repo_dir).unwrap();
-        std::fs::write(git_repo_dir.join("snow.toml"), "[package]\nname = \"branch-lib\"\nversion = \"0.1.0\"\n").unwrap();
+        std::fs::write(git_repo_dir.join("mesh.toml"), "[package]\nname = \"branch-lib\"\nversion = \"0.1.0\"\n").unwrap();
 
         let mut index = repo.index().unwrap();
-        index.add_path(Path::new("snow.toml")).unwrap();
+        index.add_path(Path::new("mesh.toml")).unwrap();
         index.write().unwrap();
         let tree_oid = index.write_tree().unwrap();
         let tree = repo.find_tree(tree_oid).unwrap();
@@ -564,7 +564,7 @@ version = "1.0.0"
         );
         write_manifest(&project_dir, "my-project", &deps);
 
-        let manifest = Manifest::from_file(&project_dir.join("snow.toml")).unwrap();
+        let manifest = Manifest::from_file(&project_dir.join("mesh.toml")).unwrap();
         let resolved = resolve(&manifest, &project_dir).unwrap();
 
         assert_eq!(resolved.len(), 1);
@@ -640,7 +640,7 @@ version = "1.0.0"
         );
         write_manifest(root.path(), "root", &deps_root);
 
-        let manifest = Manifest::from_file(&root.path().join("snow.toml")).unwrap();
+        let manifest = Manifest::from_file(&root.path().join("mesh.toml")).unwrap();
         let resolved = resolve(&manifest, root.path()).unwrap();
 
         // shared should appear only once

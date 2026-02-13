@@ -1,4 +1,4 @@
-//! HTTP module for the Snow standard library.
+//! HTTP module for the Mesh standard library.
 //!
 //! Provides:
 //! - **Router**: URL pattern matching with exact and wildcard routes
@@ -8,13 +8,13 @@
 //!
 //! ## Architecture
 //!
-//! The server uses the Snow actor system (corosensei coroutines on M:N
+//! The server uses the Mesh actor system (corosensei coroutines on M:N
 //! scheduler) for per-connection handling. Each incoming request is dispatched
 //! to a lightweight actor with a 64 KiB stack, wrapped in `catch_unwind` for
 //! crash isolation. Blocking I/O is accepted within the actor context (similar
 //! to BEAM NIFs) since each actor runs on a scheduler worker thread.
 //!
-//! Both plaintext HTTP (`snow_http_serve`) and HTTPS (`snow_http_serve_tls`)
+//! Both plaintext HTTP (`mesh_http_serve`) and HTTPS (`mesh_http_serve_tls`)
 //! share the same actor infrastructure via the `HttpStream` enum, which
 //! dispatches between `TcpStream` and `StreamOwned<ServerConnection, TcpStream>`.
 
@@ -22,13 +22,13 @@ pub mod client;
 pub mod router;
 pub mod server;
 
-pub use client::{snow_http_get, snow_http_post};
+pub use client::{mesh_http_get, mesh_http_post};
 pub use router::{
-    snow_http_route, snow_http_route_delete, snow_http_route_get, snow_http_route_post,
-    snow_http_route_put, snow_http_router, snow_http_use_middleware,
+    mesh_http_route, mesh_http_route_delete, mesh_http_route_get, mesh_http_route_post,
+    mesh_http_route_put, mesh_http_router, mesh_http_use_middleware,
 };
 pub use server::{
-    snow_http_request_body, snow_http_request_header, snow_http_request_method,
-    snow_http_request_param, snow_http_request_path, snow_http_request_query,
-    snow_http_response_new, snow_http_serve, snow_http_serve_tls,
+    mesh_http_request_body, mesh_http_request_header, mesh_http_request_method,
+    mesh_http_request_param, mesh_http_request_path, mesh_http_request_query,
+    mesh_http_response_new, mesh_http_serve, mesh_http_serve_tls,
 };

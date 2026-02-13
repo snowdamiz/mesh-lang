@@ -1,12 +1,12 @@
-//! GC-managed immutable Set for the Snow runtime.
+//! GC-managed immutable Set for the Mesh runtime.
 //!
-//! A SnowSet stores unique elements as uniform 8-byte (`u64`) values.
+//! A MeshSet stores unique elements as uniform 8-byte (`u64`) values.
 //! Backed by a simple sorted vector with linear scan -- efficient for
 //! the small sets typical in Phase 8.
 //!
 //! All mutation operations return a NEW set (immutable semantics).
 
-use crate::gc::snow_gc_alloc_actor;
+use crate::gc::mesh_gc_alloc_actor;
 use std::ptr;
 
 /// Header: len (u64), cap (u64).
@@ -29,7 +29,7 @@ unsafe fn set_data_mut(s: *mut u8) -> *mut u64 {
 
 unsafe fn alloc_set(cap: u64) -> *mut u8 {
     let total = HEADER_SIZE + (cap as usize) * ELEM_SIZE;
-    let p = snow_gc_alloc_actor(total as u64, 8);
+    let p = mesh_gc_alloc_actor(total as u64, 8);
     *(p as *mut u64) = 0;
     *((p as *mut u64).add(1)) = cap;
     p
@@ -50,13 +50,13 @@ unsafe fn contains_elem(s: *const u8, elem: u64) -> bool {
 
 /// Create an empty set.
 #[no_mangle]
-pub extern "C" fn snow_set_new() -> *mut u8 {
+pub extern "C" fn mesh_set_new() -> *mut u8 {
     unsafe { alloc_set(0) }
 }
 
 /// Return a NEW set with the element added (no-op if already present).
 #[no_mangle]
-pub extern "C" fn snow_set_add(set: *mut u8, element: u64) -> *mut u8 {
+pub extern "C" fn mesh_set_add(set: *mut u8, element: u64) -> *mut u8 {
     unsafe {
         if contains_elem(set, element) {
             // Already present -- return a copy.
@@ -83,7 +83,7 @@ pub extern "C" fn snow_set_add(set: *mut u8, element: u64) -> *mut u8 {
 
 /// Return a NEW set without the element.
 #[no_mangle]
-pub extern "C" fn snow_set_remove(set: *mut u8, element: u64) -> *mut u8 {
+pub extern "C" fn mesh_set_remove(set: *mut u8, element: u64) -> *mut u8 {
     unsafe {
         let len = set_len(set) as usize;
         let data = set_data(set);
@@ -103,7 +103,7 @@ pub extern "C" fn snow_set_remove(set: *mut u8, element: u64) -> *mut u8 {
 
 /// Returns 1 if the element is in the set, 0 otherwise.
 #[no_mangle]
-pub extern "C" fn snow_set_contains(set: *mut u8, element: u64) -> i8 {
+pub extern "C" fn mesh_set_contains(set: *mut u8, element: u64) -> i8 {
     unsafe {
         if contains_elem(set, element) {
             1
@@ -115,13 +115,13 @@ pub extern "C" fn snow_set_contains(set: *mut u8, element: u64) -> i8 {
 
 /// Return the number of elements in the set.
 #[no_mangle]
-pub extern "C" fn snow_set_size(set: *mut u8) -> i64 {
+pub extern "C" fn mesh_set_size(set: *mut u8) -> i64 {
     unsafe { set_len(set) as i64 }
 }
 
 /// Return a NEW set that is the union of `a` and `b`.
 #[no_mangle]
-pub extern "C" fn snow_set_union(a: *mut u8, b: *mut u8) -> *mut u8 {
+pub extern "C" fn mesh_set_union(a: *mut u8, b: *mut u8) -> *mut u8 {
     unsafe {
         // Start with a copy of `a`, then add elements from `b`.
         let a_len = set_len(a) as usize;
@@ -162,7 +162,7 @@ pub extern "C" fn snow_set_union(a: *mut u8, b: *mut u8) -> *mut u8 {
 
 /// Return a NEW set that is the intersection of `a` and `b`.
 #[no_mangle]
-pub extern "C" fn snow_set_intersection(a: *mut u8, b: *mut u8) -> *mut u8 {
+pub extern "C" fn mesh_set_intersection(a: *mut u8, b: *mut u8) -> *mut u8 {
     unsafe {
         let a_len = set_len(a) as usize;
         let result = alloc_set(a_len as u64);
@@ -186,12 +186,12 @@ pub extern "C" fn snow_set_intersection(a: *mut u8, b: *mut u8) -> *mut u8 {
 /// Get the element at index i. Panics if out of bounds.
 /// Used by for-in codegen for indexed set iteration.
 #[no_mangle]
-pub extern "C" fn snow_set_element_at(set: *mut u8, index: i64) -> u64 {
+pub extern "C" fn mesh_set_element_at(set: *mut u8, index: i64) -> u64 {
     unsafe {
         let len = set_len(set);
         if index < 0 || index as u64 >= len {
             panic!(
-                "snow_set_element_at: index {} out of bounds (len {})",
+                "mesh_set_element_at: index {} out of bounds (len {})",
                 index, len
             );
         }
@@ -200,12 +200,12 @@ pub extern "C" fn snow_set_element_at(set: *mut u8, index: i64) -> u64 {
     }
 }
 
-/// Convert a set to a human-readable SnowString: `#{elem1, elem2, ...}`.
+/// Convert a set to a human-readable MeshString: `#{elem1, elem2, ...}`.
 ///
 /// `elem_to_str` is a bare function pointer `fn(u64) -> *mut u8` that converts
-/// each element to a SnowString pointer.
+/// each element to a MeshString pointer.
 #[no_mangle]
-pub extern "C" fn snow_set_to_string(
+pub extern "C" fn mesh_set_to_string(
     set: *mut u8,
     elem_to_str: *mut u8,
 ) -> *mut u8 {
@@ -216,25 +216,25 @@ pub extern "C" fn snow_set_to_string(
         let data = set_data(set);
         let f: ElemToStr = std::mem::transmute(elem_to_str);
 
-        let mut result = crate::string::snow_string_new(b"#{".as_ptr(), 2) as *mut u8;
+        let mut result = crate::string::mesh_string_new(b"#{".as_ptr(), 2) as *mut u8;
         for i in 0..len {
             if i > 0 {
-                let sep = crate::string::snow_string_new(b", ".as_ptr(), 2) as *mut u8;
-                result = crate::string::snow_string_concat(
-                    result as *const crate::string::SnowString,
-                    sep as *const crate::string::SnowString,
+                let sep = crate::string::mesh_string_new(b", ".as_ptr(), 2) as *mut u8;
+                result = crate::string::mesh_string_concat(
+                    result as *const crate::string::MeshString,
+                    sep as *const crate::string::MeshString,
                 ) as *mut u8;
             }
             let elem_str = f(*data.add(i));
-            result = crate::string::snow_string_concat(
-                result as *const crate::string::SnowString,
-                elem_str as *const crate::string::SnowString,
+            result = crate::string::mesh_string_concat(
+                result as *const crate::string::MeshString,
+                elem_str as *const crate::string::MeshString,
             ) as *mut u8;
         }
-        let close = crate::string::snow_string_new(b"}".as_ptr(), 1) as *mut u8;
-        result = crate::string::snow_string_concat(
-            result as *const crate::string::SnowString,
-            close as *const crate::string::SnowString,
+        let close = crate::string::mesh_string_new(b"}".as_ptr(), 1) as *mut u8;
+        result = crate::string::mesh_string_concat(
+            result as *const crate::string::MeshString,
+            close as *const crate::string::MeshString,
         ) as *mut u8;
         result
     }
@@ -242,7 +242,7 @@ pub extern "C" fn snow_set_to_string(
 
 /// Return a NEW set containing elements in `a` that are NOT in `b`.
 #[no_mangle]
-pub extern "C" fn snow_set_difference(a: *mut u8, b: *mut u8) -> *mut u8 {
+pub extern "C" fn mesh_set_difference(a: *mut u8, b: *mut u8) -> *mut u8 {
     unsafe {
         let a_len = set_len(a) as usize;
         let a_data = set_data(a);
@@ -265,27 +265,27 @@ pub extern "C" fn snow_set_difference(a: *mut u8, b: *mut u8) -> *mut u8 {
 
 /// Convert a set to a list of its elements.
 #[no_mangle]
-pub extern "C" fn snow_set_to_list(set: *mut u8) -> *mut u8 {
+pub extern "C" fn mesh_set_to_list(set: *mut u8) -> *mut u8 {
     unsafe {
         let len = set_len(set) as usize;
         let src = set_data(set);
-        let list = super::list::snow_list_builder_new(len as i64);
+        let list = super::list::mesh_list_builder_new(len as i64);
         for i in 0..len {
-            super::list::snow_list_builder_push(list, *src.add(i));
+            super::list::mesh_list_builder_push(list, *src.add(i));
         }
         list
     }
 }
 
-/// Build a set from a list. Duplicates are removed via snow_set_add.
+/// Build a set from a list. Duplicates are removed via mesh_set_add.
 #[no_mangle]
-pub extern "C" fn snow_set_from_list(list: *mut u8) -> *mut u8 {
+pub extern "C" fn mesh_set_from_list(list: *mut u8) -> *mut u8 {
     unsafe {
-        let len = super::list::snow_list_length(list);
+        let len = super::list::mesh_list_length(list);
         let data = (list as *const u64).add(2); // skip len + cap header
-        let mut set = snow_set_new();
+        let mut set = mesh_set_new();
         for i in 0..len as usize {
-            set = snow_set_add(set, *data.add(i));
+            set = mesh_set_add(set, *data.add(i));
         }
         set
     }
@@ -294,134 +294,134 @@ pub extern "C" fn snow_set_from_list(list: *mut u8) -> *mut u8 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::gc::snow_rt_init;
+    use crate::gc::mesh_rt_init;
 
     #[test]
     fn test_set_new_is_empty() {
-        snow_rt_init();
-        let set = snow_set_new();
-        assert_eq!(snow_set_size(set), 0);
+        mesh_rt_init();
+        let set = mesh_set_new();
+        assert_eq!(mesh_set_size(set), 0);
     }
 
     #[test]
     fn test_set_add_contains() {
-        snow_rt_init();
-        let set = snow_set_new();
-        let set = snow_set_add(set, 10);
-        let set = snow_set_add(set, 20);
-        assert_eq!(snow_set_size(set), 2);
-        assert_eq!(snow_set_contains(set, 10), 1);
-        assert_eq!(snow_set_contains(set, 20), 1);
-        assert_eq!(snow_set_contains(set, 30), 0);
+        mesh_rt_init();
+        let set = mesh_set_new();
+        let set = mesh_set_add(set, 10);
+        let set = mesh_set_add(set, 20);
+        assert_eq!(mesh_set_size(set), 2);
+        assert_eq!(mesh_set_contains(set, 10), 1);
+        assert_eq!(mesh_set_contains(set, 20), 1);
+        assert_eq!(mesh_set_contains(set, 30), 0);
     }
 
     #[test]
     fn test_set_add_duplicate() {
-        snow_rt_init();
-        let set = snow_set_new();
-        let set = snow_set_add(set, 10);
-        let set = snow_set_add(set, 10);
-        assert_eq!(snow_set_size(set), 1);
+        mesh_rt_init();
+        let set = mesh_set_new();
+        let set = mesh_set_add(set, 10);
+        let set = mesh_set_add(set, 10);
+        assert_eq!(mesh_set_size(set), 1);
     }
 
     #[test]
     fn test_set_remove() {
-        snow_rt_init();
-        let set = snow_set_new();
-        let set = snow_set_add(set, 1);
-        let set = snow_set_add(set, 2);
-        let set = snow_set_add(set, 3);
-        let set = snow_set_remove(set, 2);
-        assert_eq!(snow_set_size(set), 2);
-        assert_eq!(snow_set_contains(set, 2), 0);
-        assert_eq!(snow_set_contains(set, 1), 1);
-        assert_eq!(snow_set_contains(set, 3), 1);
+        mesh_rt_init();
+        let set = mesh_set_new();
+        let set = mesh_set_add(set, 1);
+        let set = mesh_set_add(set, 2);
+        let set = mesh_set_add(set, 3);
+        let set = mesh_set_remove(set, 2);
+        assert_eq!(mesh_set_size(set), 2);
+        assert_eq!(mesh_set_contains(set, 2), 0);
+        assert_eq!(mesh_set_contains(set, 1), 1);
+        assert_eq!(mesh_set_contains(set, 3), 1);
     }
 
     #[test]
     fn test_set_union() {
-        snow_rt_init();
-        let a = snow_set_new();
-        let a = snow_set_add(a, 1);
-        let a = snow_set_add(a, 2);
-        let b = snow_set_new();
-        let b = snow_set_add(b, 2);
-        let b = snow_set_add(b, 3);
-        let c = snow_set_union(a, b);
-        assert_eq!(snow_set_size(c), 3);
-        assert_eq!(snow_set_contains(c, 1), 1);
-        assert_eq!(snow_set_contains(c, 2), 1);
-        assert_eq!(snow_set_contains(c, 3), 1);
+        mesh_rt_init();
+        let a = mesh_set_new();
+        let a = mesh_set_add(a, 1);
+        let a = mesh_set_add(a, 2);
+        let b = mesh_set_new();
+        let b = mesh_set_add(b, 2);
+        let b = mesh_set_add(b, 3);
+        let c = mesh_set_union(a, b);
+        assert_eq!(mesh_set_size(c), 3);
+        assert_eq!(mesh_set_contains(c, 1), 1);
+        assert_eq!(mesh_set_contains(c, 2), 1);
+        assert_eq!(mesh_set_contains(c, 3), 1);
     }
 
     #[test]
     fn test_set_intersection() {
-        snow_rt_init();
-        let a = snow_set_new();
-        let a = snow_set_add(a, 1);
-        let a = snow_set_add(a, 2);
-        let a = snow_set_add(a, 3);
-        let b = snow_set_new();
-        let b = snow_set_add(b, 2);
-        let b = snow_set_add(b, 3);
-        let b = snow_set_add(b, 4);
-        let c = snow_set_intersection(a, b);
-        assert_eq!(snow_set_size(c), 2);
-        assert_eq!(snow_set_contains(c, 2), 1);
-        assert_eq!(snow_set_contains(c, 3), 1);
-        assert_eq!(snow_set_contains(c, 1), 0);
+        mesh_rt_init();
+        let a = mesh_set_new();
+        let a = mesh_set_add(a, 1);
+        let a = mesh_set_add(a, 2);
+        let a = mesh_set_add(a, 3);
+        let b = mesh_set_new();
+        let b = mesh_set_add(b, 2);
+        let b = mesh_set_add(b, 3);
+        let b = mesh_set_add(b, 4);
+        let c = mesh_set_intersection(a, b);
+        assert_eq!(mesh_set_size(c), 2);
+        assert_eq!(mesh_set_contains(c, 2), 1);
+        assert_eq!(mesh_set_contains(c, 3), 1);
+        assert_eq!(mesh_set_contains(c, 1), 0);
     }
 
     #[test]
     fn test_set_immutability() {
-        snow_rt_init();
-        let s1 = snow_set_new();
-        let s2 = snow_set_add(s1, 1);
-        assert_eq!(snow_set_size(s1), 0);
-        assert_eq!(snow_set_size(s2), 1);
+        mesh_rt_init();
+        let s1 = mesh_set_new();
+        let s2 = mesh_set_add(s1, 1);
+        assert_eq!(mesh_set_size(s1), 0);
+        assert_eq!(mesh_set_size(s2), 1);
     }
 
     #[test]
     fn test_set_to_string() {
-        snow_rt_init();
-        let set = snow_set_new();
-        let set = snow_set_add(set, 10);
-        let set = snow_set_add(set, 20);
-        let set = snow_set_add(set, 30);
+        mesh_rt_init();
+        let set = mesh_set_new();
+        let set = mesh_set_add(set, 10);
+        let set = mesh_set_add(set, 20);
+        let set = mesh_set_add(set, 30);
 
-        let result = snow_set_to_string(
+        let result = mesh_set_to_string(
             set,
-            crate::string::snow_int_to_string as *mut u8,
+            crate::string::mesh_int_to_string as *mut u8,
         );
-        let s = unsafe { &*(result as *const crate::string::SnowString) };
+        let s = unsafe { &*(result as *const crate::string::MeshString) };
         let text = unsafe { s.as_str() };
         assert_eq!(text, "#{10, 20, 30}");
     }
 
     #[test]
     fn test_set_to_string_empty() {
-        snow_rt_init();
-        let set = snow_set_new();
+        mesh_rt_init();
+        let set = mesh_set_new();
 
-        let result = snow_set_to_string(
+        let result = mesh_set_to_string(
             set,
-            crate::string::snow_int_to_string as *mut u8,
+            crate::string::mesh_int_to_string as *mut u8,
         );
-        let s = unsafe { &*(result as *const crate::string::SnowString) };
+        let s = unsafe { &*(result as *const crate::string::MeshString) };
         let text = unsafe { s.as_str() };
         assert_eq!(text, "#{}");
     }
 
     #[test]
     fn test_set_element_at() {
-        snow_rt_init();
-        let set = snow_set_new();
-        let set = snow_set_add(set, 10);
-        let set = snow_set_add(set, 20);
-        let set = snow_set_add(set, 30);
+        mesh_rt_init();
+        let set = mesh_set_new();
+        let set = mesh_set_add(set, 10);
+        let set = mesh_set_add(set, 20);
+        let set = mesh_set_add(set, 30);
 
-        assert_eq!(snow_set_element_at(set, 0), 10);
-        assert_eq!(snow_set_element_at(set, 1), 20);
-        assert_eq!(snow_set_element_at(set, 2), 30);
+        assert_eq!(mesh_set_element_at(set, 0), 10);
+        assert_eq!(mesh_set_element_at(set, 1), 20);
+        assert_eq!(mesh_set_element_at(set, 2), 30);
     }
 }

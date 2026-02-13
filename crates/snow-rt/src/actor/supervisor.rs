@@ -1,4 +1,4 @@
-//! Supervisor runtime for Snow actors.
+//! Supervisor runtime for Mesh actors.
 //!
 //! Implements OTP-style supervision with four restart strategies
 //! (one_for_one, one_for_all, rest_for_one, simple_one_for_one),
@@ -18,7 +18,7 @@
 //! ## Usage
 //!
 //! The extern "C" ABI functions in `mod.rs` delegate to the functions in
-//! this module. Compiled Snow programs call those ABI functions to start
+//! this module. Compiled Mesh programs call those ABI functions to start
 //! supervisors, add/remove children, etc.
 
 use std::collections::VecDeque;
@@ -98,7 +98,7 @@ impl std::fmt::Debug for SupervisorState {
 
 /// Configuration for creating a new supervisor.
 ///
-/// This is the data passed to `snow_supervisor_start` from compiled Snow
+/// This is the data passed to `mesh_supervisor_start` from compiled Mesh
 /// programs. The config is deserialized from raw bytes.
 #[derive(Debug, Clone)]
 pub struct SupervisorConfig {
@@ -180,7 +180,7 @@ pub fn start_children(
 /// and updates the child state.
 ///
 /// If the child spec has `target_node` set, the child is spawned on the
-/// remote node via `snow_node_spawn`. Otherwise, spawns locally (unchanged).
+/// remote node via `mesh_node_spawn`. Otherwise, spawns locally (unchanged).
 pub fn start_single_child(
     child: &mut ChildState,
     scheduler: &Scheduler,
@@ -219,14 +219,14 @@ pub fn start_single_child(
     Ok(child_pid)
 }
 
-/// Start a child process on a remote node via `snow_node_spawn`.
+/// Start a child process on a remote node via `mesh_node_spawn`.
 ///
-/// Calls `snow_node_spawn` with `link_flag=1` (spawn + bidirectional link).
+/// Calls `mesh_node_spawn` with `link_flag=1` (spawn + bidirectional link).
 /// The link ensures the supervisor receives DIST_EXIT when the remote child
 /// crashes, which the supervisor's existing `trap_exit + handle_child_exit`
 /// handles automatically.
 ///
-/// The returned PID from `snow_node_spawn` is a fully-qualified remote PID
+/// The returned PID from `mesh_node_spawn` is a fully-qualified remote PID
 /// with correct node_id/creation/local_id (Phase 67 handles this).
 fn start_single_child_remote(
     child: &mut ChildState,
@@ -237,10 +237,10 @@ fn start_single_child_remote(
     let node_bytes = target_node.as_bytes();
     let fn_bytes = fn_name.as_bytes();
 
-    // snow_node_spawn is an extern "C" function expecting raw pointers.
+    // mesh_node_spawn is an extern "C" function expecting raw pointers.
     // It must be called from within an actor coroutine context (reads
     // stack::get_current_pid()). The supervisor IS an actor, so this works.
-    let result = crate::dist::node::snow_node_spawn(
+    let result = crate::dist::node::mesh_node_spawn(
         node_bytes.as_ptr(),
         node_bytes.len() as u64,
         fn_bytes.as_ptr(),

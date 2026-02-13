@@ -9,16 +9,16 @@
 //! 4. Traits: interface + impl + where clause enforcement
 //! 5. Error locations: type errors carry source span information
 
-use snow_typeck::error::TypeError;
-use snow_typeck::ty::Ty;
-use snow_typeck::TypeckResult;
+use mesh_typeck::error::TypeError;
+use mesh_typeck::ty::Ty;
+use mesh_typeck::TypeckResult;
 
 // ── Helpers ────────────────────────────────────────────────────────────
 
-/// Parse Snow source and run the type checker.
+/// Parse Mesh source and run the type checker.
 fn check_source(src: &str) -> TypeckResult {
-    let parse = snow_parser::parse(src);
-    snow_typeck::check(&parse)
+    let parse = mesh_parser::parse(src);
+    mesh_typeck::check(&parse)
 }
 
 /// Assert that the result has no errors and the final expression type
@@ -98,7 +98,7 @@ fn test_success_criterion_2_occurs_check_diagnostic() {
     let result = check_source(src);
     assert!(!result.errors.is_empty(), "expected an error");
 
-    let rendered = result.render_errors(src, "test.snow", &snow_typeck::diagnostics::DiagnosticOptions::colorless());
+    let rendered = result.render_errors(src, "test.mpl", &mesh_typeck::diagnostics::DiagnosticOptions::colorless());
     assert!(!rendered.is_empty(), "expected rendered diagnostics");
     let first = &rendered[0];
     assert!(
@@ -218,7 +218,7 @@ fn test_success_criterion_5_error_locations() {
     );
 
     // Render the diagnostic and check it contains source location information.
-    let rendered = result.render_errors(src, "test.snow", &snow_typeck::diagnostics::DiagnosticOptions::colorless());
+    let rendered = result.render_errors(src, "test.mpl", &mesh_typeck::diagnostics::DiagnosticOptions::colorless());
     assert!(!rendered.is_empty(), "expected rendered diagnostics");
     let first = &rendered[0];
 
@@ -250,7 +250,7 @@ fn test_success_criterion_5_unbound_var_location() {
         "UnboundVariable(foo)",
     );
 
-    let rendered = result.render_errors(src, "test.snow", &snow_typeck::diagnostics::DiagnosticOptions::colorless());
+    let rendered = result.render_errors(src, "test.mpl", &mesh_typeck::diagnostics::DiagnosticOptions::colorless());
     assert!(!rendered.is_empty());
     assert!(
         rendered[0].contains("foo"),
@@ -271,7 +271,7 @@ fn test_success_criterion_5_arity_location() {
         "ArityMismatch(2, 1)",
     );
 
-    let rendered = result.render_errors(src, "test.snow", &snow_typeck::diagnostics::DiagnosticOptions::colorless());
+    let rendered = result.render_errors(src, "test.mpl", &mesh_typeck::diagnostics::DiagnosticOptions::colorless());
     assert!(!rendered.is_empty());
     let first = &rendered[0];
     assert!(

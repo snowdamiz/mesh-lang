@@ -1,9 +1,9 @@
-// Snow lexer -- tokenizer for the Snow programming language.
+// Mesh lexer -- tokenizer for the Mesh programming language.
 
 mod cursor;
 
 use cursor::Cursor;
-use snow_common::token::{keyword_from_str, Token, TokenKind};
+use mesh_common::token::{keyword_from_str, Token, TokenKind};
 
 /// Tracks what the lexer is currently doing.
 #[derive(Debug, Clone, PartialEq)]
@@ -16,7 +16,7 @@ enum LexerState {
     InInterpolation { brace_depth: u32 },
 }
 
-/// The Snow lexer. Converts source text into a stream of tokens.
+/// The Mesh lexer. Converts source text into a stream of tokens.
 ///
 /// Wraps a [`Cursor`] for byte-level iteration and implements
 /// `Iterator<Item = Token>` so callers can consume tokens lazily

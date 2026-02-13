@@ -1,6 +1,6 @@
 //! Object file linking via system `cc`.
 //!
-//! Links compiled object files with the Snow runtime library (`libsnow_rt.a`)
+//! Links compiled object files with the Mesh runtime library (`libmesh_rt.a`)
 //! to produce native executables. Uses the system C compiler (`cc`) as the
 //! linker driver, which handles platform-specific details (CRT objects, libc,
 //! macOS vs Linux linker flags) automatically.
@@ -8,13 +8,13 @@
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-/// Link an object file with the Snow runtime to produce a native executable.
+/// Link an object file with the Mesh runtime to produce a native executable.
 ///
 /// # Arguments
 ///
 /// * `object_path` - Path to the compiled `.o` file
 /// * `output_path` - Path for the output executable
-/// * `rt_lib_path` - Optional path to `libsnow_rt.a`; if None, attempts to
+/// * `rt_lib_path` - Optional path to `libmesh_rt.a`; if None, attempts to
 ///   locate it in the workspace target directory
 ///
 /// # Errors
@@ -28,12 +28,12 @@ pub fn link(
     // Find the runtime library
     let rt_path = match rt_lib_path {
         Some(p) => p.to_path_buf(),
-        None => find_snow_rt()?,
+        None => find_mesh_rt()?,
     };
 
     if !rt_path.exists() {
         return Err(format!(
-            "Snow runtime library not found at '{}'. Run `cargo build -p snow-rt` first.",
+            "Mesh runtime library not found at '{}'. Run `cargo build -p mesh-rt` first.",
             rt_path.display()
         ));
     }
@@ -47,7 +47,7 @@ pub fn link(
     cmd.arg(object_path)
         .arg("-L")
         .arg(rt_dir)
-        .arg("-lsnow_rt")
+        .arg("-lmesh_rt")
         .arg("-o")
         .arg(output_path);
 
@@ -72,11 +72,11 @@ pub fn link(
     Ok(())
 }
 
-/// Locate the Snow runtime static library (`libsnow_rt.a`).
+/// Locate the Mesh runtime static library (`libmesh_rt.a`).
 ///
 /// Searches in the workspace target directory under both `debug` and `release`
 /// profiles. Prefers the debug build.
-fn find_snow_rt() -> Result<PathBuf, String> {
+fn find_mesh_rt() -> Result<PathBuf, String> {
     // Walk up from the current executable's directory to find the workspace root,
     // or use the CARGO_MANIFEST_DIR-based heuristic.
     let candidates = [
@@ -86,7 +86,7 @@ fn find_snow_rt() -> Result<PathBuf, String> {
 
     for candidate in candidates.iter().flatten() {
         for profile in &["debug", "release"] {
-            let path = candidate.join(profile).join("libsnow_rt.a");
+            let path = candidate.join(profile).join("libmesh_rt.a");
             if path.exists() {
                 return Ok(path);
             }
@@ -94,7 +94,7 @@ fn find_snow_rt() -> Result<PathBuf, String> {
     }
 
     Err(
-        "Could not locate libsnow_rt.a. Ensure `cargo build -p snow-rt` has been run."
+        "Could not locate libmesh_rt.a. Ensure `cargo build -p mesh-rt` has been run."
             .to_string(),
     )
 }

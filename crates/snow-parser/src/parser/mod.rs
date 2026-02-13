@@ -1,4 +1,4 @@
-//! Event-based parser for Snow.
+//! Event-based parser for Mesh.
 //!
 //! The parser consumes a token stream and produces events (Open/Close/Advance)
 //! that are later converted into a rowan green tree. This decouples parsing
@@ -19,7 +19,7 @@
 //!
 //! # Newline Significance
 //!
-//! Newlines are significant in Snow (they act as statement terminators) UNLESS
+//! Newlines are significant in Mesh (they act as statement terminators) UNLESS
 //! the parser is inside delimiters (`()`, `[]`, `{}`). The `current()` and
 //! `nth()` methods transparently skip insignificant newlines. Comments are
 //! always skipped by lookahead. The `advance()` method emits Advance events
@@ -29,8 +29,8 @@ pub(crate) mod expressions;
 pub(crate) mod items;
 pub(crate) mod patterns;
 
-use snow_common::span::Span;
-use snow_common::token::{Token, TokenKind};
+use mesh_common::span::Span;
+use mesh_common::token::{Token, TokenKind};
 
 use crate::error::ParseError;
 use crate::syntax_kind::SyntaxKind;
@@ -71,7 +71,7 @@ pub(crate) struct MarkClosed {
     index: usize,
 }
 
-/// Event-based parser for Snow source code.
+/// Event-based parser for Mesh source code.
 ///
 /// The parser consumes a `Vec<Token>` (from the lexer) and source text,
 /// producing events that are later converted into a rowan green tree.
@@ -79,7 +79,7 @@ pub(crate) struct MarkClosed {
 /// # Usage
 ///
 /// ```ignore
-/// let tokens = snow_lexer::Lexer::tokenize(source);
+/// let tokens = mesh_lexer::Lexer::tokenize(source);
 /// let mut parser = Parser::new(tokens, source);
 /// // ... call parse methods ...
 /// let (green, errors) = parser.build_tree();
@@ -669,7 +669,7 @@ pub(crate) fn parse_item_or_stmt(p: &mut Parser) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use snow_lexer::Lexer;
+    use mesh_lexer::Lexer;
 
     #[test]
     fn smoke_test_parser_produces_green_node() {

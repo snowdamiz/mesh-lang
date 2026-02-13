@@ -1,20 +1,20 @@
 //! End-to-end integration tests for all Phase 10 developer tools.
 //!
-//! Verifies that the snowc binary's developer-facing subcommands work together:
-//! - `snowc build --json` produces valid JSON diagnostics for type errors
-//! - `snowc fmt` formats files, `snowc fmt --check` verifies formatting
-//! - `snowc init` creates a compilable project
-//! - `snowc repl --help` confirms REPL subcommand availability
-//! - `snowc lsp --help` confirms LSP subcommand availability
+//! Verifies that the meshc binary's developer-facing subcommands work together:
+//! - `meshc build --json` produces valid JSON diagnostics for type errors
+//! - `meshc fmt` formats files, `meshc fmt --check` verifies formatting
+//! - `meshc init` creates a compilable project
+//! - `meshc repl --help` confirms REPL subcommand availability
+//! - `meshc lsp --help` confirms LSP subcommand availability
 
 use std::path::PathBuf;
 use std::process::Command;
 
-/// Locate the snowc binary built by cargo.
-fn snowc_bin() -> PathBuf {
-    // CARGO_BIN_EXE_snowc is set by cargo when running integration tests
-    // for the snowc package.
-    PathBuf::from(env!("CARGO_BIN_EXE_snowc"))
+/// Locate the meshc binary built by cargo.
+fn meshc_bin() -> PathBuf {
+    // CARGO_BIN_EXE_meshc is set by cargo when running integration tests
+    // for the meshc package.
+    PathBuf::from(env!("CARGO_BIN_EXE_meshc"))
 }
 
 // ── Error messages (--json) ──────────────────────────────────────────
@@ -25,17 +25,17 @@ fn test_build_json_output() {
     let project = dir.path().join("proj");
     std::fs::create_dir_all(&project).unwrap();
 
-    // Write a Snow file with a type error (assigning string to Int annotation).
+    // Write a Mesh file with a type error (assigning string to Int annotation).
     std::fs::write(
-        project.join("main.snow"),
+        project.join("main.mpl"),
         "let x :: Int = \"hello\"\n",
     )
     .unwrap();
 
-    let output = Command::new(snowc_bin())
+    let output = Command::new(meshc_bin())
         .args(["build", "--json", project.to_str().unwrap()])
         .output()
-        .expect("failed to run snowc build --json");
+        .expect("failed to run meshc build --json");
 
     assert!(
         !output.status.success(),
@@ -89,19 +89,19 @@ fn test_build_json_output() {
 #[test]
 fn test_fmt_formats_file() {
     let dir = tempfile::tempdir().unwrap();
-    let file = dir.path().join("test.snow");
+    let file = dir.path().join("test.mpl");
 
-    // Write an unformatted Snow file (no spaces around operator, no indentation).
+    // Write an unformatted Mesh file (no spaces around operator, no indentation).
     std::fs::write(&file, "fn add(a,b) do\na+b\nend").unwrap();
 
-    let output = Command::new(snowc_bin())
+    let output = Command::new(meshc_bin())
         .args(["fmt", file.to_str().unwrap()])
         .output()
-        .expect("failed to run snowc fmt");
+        .expect("failed to run meshc fmt");
 
     assert!(
         output.status.success(),
-        "snowc fmt failed: {}",
+        "meshc fmt failed: {}",
         String::from_utf8_lossy(&output.stderr)
     );
 
@@ -114,15 +114,15 @@ fn test_fmt_formats_file() {
 #[test]
 fn test_fmt_check_formatted() {
     let dir = tempfile::tempdir().unwrap();
-    let file = dir.path().join("good.snow");
+    let file = dir.path().join("good.mpl");
 
     // Write an already-formatted file.
     std::fs::write(&file, "fn add(a, b) do\n  a + b\nend\n").unwrap();
 
-    let output = Command::new(snowc_bin())
+    let output = Command::new(meshc_bin())
         .args(["fmt", "--check", file.to_str().unwrap()])
         .output()
-        .expect("failed to run snowc fmt --check");
+        .expect("failed to run meshc fmt --check");
 
     assert!(
         output.status.success(),
@@ -134,15 +134,15 @@ fn test_fmt_check_formatted() {
 #[test]
 fn test_fmt_check_unformatted() {
     let dir = tempfile::tempdir().unwrap();
-    let file = dir.path().join("bad.snow");
+    let file = dir.path().join("bad.mpl");
 
     // Write an unformatted file.
     std::fs::write(&file, "fn bad(a,b) do\na+b\nend").unwrap();
 
-    let output = Command::new(snowc_bin())
+    let output = Command::new(meshc_bin())
         .args(["fmt", "--check", file.to_str().unwrap()])
         .output()
-        .expect("failed to run snowc fmt --check");
+        .expect("failed to run meshc fmt --check");
 
     assert_eq!(
         output.status.code(),
@@ -158,25 +158,25 @@ fn test_fmt_check_unformatted() {
 #[test]
 fn test_fmt_idempotent() {
     let dir = tempfile::tempdir().unwrap();
-    let file = dir.path().join("idem.snow");
+    let file = dir.path().join("idem.mpl");
 
     // Write an unformatted file.
     std::fs::write(&file, "fn foo(x) do\nlet y = x\ny\nend").unwrap();
 
     // Format once.
-    let output1 = Command::new(snowc_bin())
+    let output1 = Command::new(meshc_bin())
         .args(["fmt", file.to_str().unwrap()])
         .output()
-        .expect("failed to run snowc fmt (first pass)");
+        .expect("failed to run meshc fmt (first pass)");
     assert!(output1.status.success(), "First format pass failed");
 
     let after_first = std::fs::read_to_string(&file).unwrap();
 
     // Format again.
-    let output2 = Command::new(snowc_bin())
+    let output2 = Command::new(meshc_bin())
         .args(["fmt", file.to_str().unwrap()])
         .output()
-        .expect("failed to run snowc fmt (second pass)");
+        .expect("failed to run meshc fmt (second pass)");
     assert!(output2.status.success(), "Second format pass failed");
 
     let after_second = std::fs::read_to_string(&file).unwrap();
@@ -189,10 +189,10 @@ fn test_fmt_idempotent() {
     );
 
     // Additionally verify --check agrees the file is formatted.
-    let check = Command::new(snowc_bin())
+    let check = Command::new(meshc_bin())
         .args(["fmt", "--check", file.to_str().unwrap()])
         .output()
-        .expect("failed to run snowc fmt --check after formatting");
+        .expect("failed to run meshc fmt --check after formatting");
     assert!(
         check.status.success(),
         "fmt --check disagrees after formatting: {}",
@@ -206,39 +206,39 @@ fn test_fmt_idempotent() {
 fn test_init_creates_project() {
     let dir = tempfile::tempdir().unwrap();
 
-    let output = Command::new(snowc_bin())
+    let output = Command::new(meshc_bin())
         .args(["init", "test-project"])
         .current_dir(dir.path())
         .output()
-        .expect("failed to run snowc init");
+        .expect("failed to run meshc init");
 
     assert!(
         output.status.success(),
-        "snowc init failed: {}",
+        "meshc init failed: {}",
         String::from_utf8_lossy(&output.stderr)
     );
 
-    // Verify snow.toml exists.
-    let toml_path = dir.path().join("test-project").join("snow.toml");
+    // Verify mesh.toml exists.
+    let toml_path = dir.path().join("test-project").join("mesh.toml");
     assert!(
         toml_path.exists(),
-        "snow.toml not created at {}",
+        "mesh.toml not created at {}",
         toml_path.display()
     );
 
-    // Verify main.snow exists.
-    let main_path = dir.path().join("test-project").join("main.snow");
+    // Verify main.mpl exists.
+    let main_path = dir.path().join("test-project").join("main.mpl");
     assert!(
         main_path.exists(),
-        "main.snow not created at {}",
+        "main.mpl not created at {}",
         main_path.display()
     );
 
-    // Verify snow.toml contains the project name.
+    // Verify mesh.toml contains the project name.
     let toml_contents = std::fs::read_to_string(&toml_path).unwrap();
     assert!(
         toml_contents.contains("test-project"),
-        "snow.toml does not contain project name"
+        "mesh.toml does not contain project name"
     );
 }
 
@@ -246,14 +246,14 @@ fn test_init_creates_project() {
 
 #[test]
 fn test_repl_help() {
-    let output = Command::new(snowc_bin())
+    let output = Command::new(meshc_bin())
         .args(["repl", "--help"])
         .output()
-        .expect("failed to run snowc repl --help");
+        .expect("failed to run meshc repl --help");
 
     assert!(
         output.status.success(),
-        "snowc repl --help failed: {}",
+        "meshc repl --help failed: {}",
         String::from_utf8_lossy(&output.stderr)
     );
 
@@ -272,14 +272,14 @@ fn test_repl_help() {
 
 #[test]
 fn test_lsp_subcommand_exists() {
-    let output = Command::new(snowc_bin())
+    let output = Command::new(meshc_bin())
         .args(["lsp", "--help"])
         .output()
-        .expect("failed to run snowc lsp --help");
+        .expect("failed to run meshc lsp --help");
 
     assert!(
         output.status.success(),
-        "snowc lsp --help should exit 0, got: {:?}\nstderr: {}",
+        "meshc lsp --help should exit 0, got: {:?}\nstderr: {}",
         output.status.code(),
         String::from_utf8_lossy(&output.stderr)
     );

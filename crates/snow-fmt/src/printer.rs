@@ -1,4 +1,4 @@
-//! Wadler-Lindig printer for the Snow format IR.
+//! Wadler-Lindig printer for the Mesh format IR.
 //!
 //! The printer converts a `FormatIR` tree into a formatted string by deciding
 //! at each `Group` boundary whether to render flat (all on one line) or broken

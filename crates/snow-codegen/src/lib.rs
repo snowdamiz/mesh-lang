@@ -1,6 +1,6 @@
-//! LLVM code generation for the Snow compiler.
+//! LLVM code generation for the Mesh compiler.
 //!
-//! This crate transforms a typed Snow program (represented by the parser's
+//! This crate transforms a typed Mesh program (represented by the parser's
 //! `Parse` and the type checker's `TypeckResult`) into native machine code
 //! via LLVM, using the Inkwell safe bindings.
 //!
@@ -30,7 +30,7 @@ use codegen::CodeGen;
 use mir::lower::lower_to_mir;
 use mir::mono::monomorphize;
 
-/// Lower a parsed and type-checked Snow program to MIR.
+/// Lower a parsed and type-checked Mesh program to MIR.
 ///
 /// This runs the full MIR lowering pipeline: AST-to-MIR conversion (with
 /// pipe desugaring, string interpolation compilation, and closure conversion),
@@ -40,8 +40,8 @@ use mir::mono::monomorphize;
 ///
 /// Returns an error string if MIR lowering fails.
 pub fn lower_to_mir_module(
-    parse: &snow_parser::Parse,
-    typeck: &snow_typeck::TypeckResult,
+    parse: &mesh_parser::Parse,
+    typeck: &mesh_typeck::TypeckResult,
 ) -> Result<mir::MirModule, String> {
     let empty_pub_fns = HashSet::new();
     let mut module = lower_to_mir(parse, typeck, "", &empty_pub_fns)?;
@@ -49,7 +49,7 @@ pub fn lower_to_mir_module(
     Ok(module)
 }
 
-/// Lower a parsed and type-checked Snow program to MIR without monomorphization.
+/// Lower a parsed and type-checked Mesh program to MIR without monomorphization.
 ///
 /// Use this when lowering multiple modules that will be merged before
 /// monomorphization (which requires reachability analysis from the entry point).
@@ -58,8 +58,8 @@ pub fn lower_to_mir_module(
 ///
 /// Returns an error string if MIR lowering fails.
 pub fn lower_to_mir_raw(
-    parse: &snow_parser::Parse,
-    typeck: &snow_typeck::TypeckResult,
+    parse: &mesh_parser::Parse,
+    typeck: &mesh_typeck::TypeckResult,
     module_name: &str,
     pub_fns: &HashSet<String>,
 ) -> Result<mir::MirModule, String> {
@@ -67,7 +67,7 @@ pub fn lower_to_mir_raw(
     Ok(module)
 }
 
-/// Compile a parsed and type-checked Snow program to an object file.
+/// Compile a parsed and type-checked Mesh program to an object file.
 ///
 /// This is the main entry point for code generation. It:
 /// 1. Lowers the AST to MIR
@@ -78,7 +78,7 @@ pub fn lower_to_mir_raw(
 ///
 /// # Arguments
 ///
-/// * `parse` - The parsed Snow source
+/// * `parse` - The parsed Mesh source
 /// * `typeck` - The type-checked results
 /// * `output` - Path to write the object file
 /// * `opt_level` - Optimization level (0 = none, 2 = default)
@@ -88,8 +88,8 @@ pub fn lower_to_mir_raw(
 ///
 /// Returns an error string if compilation fails at any stage.
 pub fn compile_to_object(
-    parse: &snow_parser::Parse,
-    typeck: &snow_typeck::TypeckResult,
+    parse: &mesh_parser::Parse,
+    typeck: &mesh_typeck::TypeckResult,
     output: &Path,
     opt_level: u8,
     target_triple: Option<&str>,
@@ -97,7 +97,7 @@ pub fn compile_to_object(
     let mir = lower_to_mir_module(parse, typeck)?;
 
     let context = Context::create();
-    let mut codegen = CodeGen::new(&context, "snow_module", opt_level, target_triple)?;
+    let mut codegen = CodeGen::new(&context, "mesh_module", opt_level, target_triple)?;
     codegen.compile(&mir)?;
 
     if opt_level > 0 {
@@ -108,14 +108,14 @@ pub fn compile_to_object(
     Ok(())
 }
 
-/// Compile a parsed and type-checked Snow program to LLVM IR text.
+/// Compile a parsed and type-checked Mesh program to LLVM IR text.
 ///
 /// Similar to `compile_to_object` but emits human-readable LLVM IR (.ll file)
 /// instead of a binary object file. Useful for debugging and inspection.
 ///
 /// # Arguments
 ///
-/// * `parse` - The parsed Snow source
+/// * `parse` - The parsed Mesh source
 /// * `typeck` - The type-checked results
 /// * `output` - Path to write the .ll file
 /// * `target_triple` - Optional target triple; None = host default
@@ -124,42 +124,42 @@ pub fn compile_to_object(
 ///
 /// Returns an error string if compilation fails at any stage.
 pub fn compile_to_llvm_ir(
-    parse: &snow_parser::Parse,
-    typeck: &snow_typeck::TypeckResult,
+    parse: &mesh_parser::Parse,
+    typeck: &mesh_typeck::TypeckResult,
     output: &Path,
     target_triple: Option<&str>,
 ) -> Result<(), String> {
     let mir = lower_to_mir_module(parse, typeck)?;
 
     let context = Context::create();
-    let mut codegen = CodeGen::new(&context, "snow_module", 0, target_triple)?;
+    let mut codegen = CodeGen::new(&context, "mesh_module", 0, target_triple)?;
     codegen.compile(&mir)?;
 
     codegen.emit_llvm_ir(output)?;
     Ok(())
 }
 
-/// Compile a parsed and type-checked Snow program to a native binary.
+/// Compile a parsed and type-checked Mesh program to a native binary.
 ///
 /// This is the full compilation pipeline: lower to MIR, generate LLVM IR,
-/// optimize, emit object file, and link with snow-rt to produce a native
+/// optimize, emit object file, and link with mesh-rt to produce a native
 /// executable.
 ///
 /// # Arguments
 ///
-/// * `parse` - The parsed Snow source
+/// * `parse` - The parsed Mesh source
 /// * `typeck` - The type-checked results
 /// * `output` - Path to write the final executable
 /// * `opt_level` - Optimization level (0 = none, 2 = default)
 /// * `target_triple` - Optional target triple; None = host default
-/// * `rt_lib_path` - Optional path to `libsnow_rt.a`; None = auto-detect
+/// * `rt_lib_path` - Optional path to `libmesh_rt.a`; None = auto-detect
 ///
 /// # Errors
 ///
 /// Returns an error string if compilation or linking fails.
 pub fn compile_to_binary(
-    parse: &snow_parser::Parse,
-    typeck: &snow_typeck::TypeckResult,
+    parse: &mesh_parser::Parse,
+    typeck: &mesh_typeck::TypeckResult,
     output: &Path,
     opt_level: u8,
     target_triple: Option<&str>,
@@ -169,13 +169,13 @@ pub fn compile_to_binary(
     let obj_path = output.with_extension("o");
     compile_to_object(parse, typeck, &obj_path, opt_level, target_triple)?;
 
-    // Link with snow-rt
+    // Link with mesh-rt
     link::link(&obj_path, output, rt_lib_path)?;
 
     Ok(())
 }
 
-/// Compile a parsed and type-checked Snow program (verify-only pipeline).
+/// Compile a parsed and type-checked Mesh program (verify-only pipeline).
 ///
 /// Compiles through the full LLVM IR generation to verify correctness, but
 /// does not emit any files. Useful for testing.
@@ -184,13 +184,13 @@ pub fn compile_to_binary(
 ///
 /// Returns an error string if compilation fails at any stage.
 pub fn compile(
-    parse: &snow_parser::Parse,
-    typeck: &snow_typeck::TypeckResult,
+    parse: &mesh_parser::Parse,
+    typeck: &mesh_typeck::TypeckResult,
 ) -> Result<(), String> {
     let mir = lower_to_mir_module(parse, typeck)?;
 
     let context = Context::create();
-    let mut codegen = CodeGen::new(&context, "snow_module", 0, None)?;
+    let mut codegen = CodeGen::new(&context, "mesh_module", 0, None)?;
     codegen.compile(&mir)?;
 
     Ok(())
@@ -212,7 +212,7 @@ pub fn compile_mir_to_binary(
     let obj_path = output.with_extension("o");
 
     let context = Context::create();
-    let mut codegen = CodeGen::new(&context, "snow_module", opt_level, target_triple)?;
+    let mut codegen = CodeGen::new(&context, "mesh_module", opt_level, target_triple)?;
     codegen.compile(mir)?;
 
     if opt_level > 0 {
@@ -232,7 +232,7 @@ pub fn compile_mir_to_llvm_ir(
     target_triple: Option<&str>,
 ) -> Result<(), String> {
     let context = Context::create();
-    let mut codegen = CodeGen::new(&context, "snow_module", 0, target_triple)?;
+    let mut codegen = CodeGen::new(&context, "mesh_module", 0, target_triple)?;
     codegen.compile(mir)?;
 
     codegen.emit_llvm_ir(output)?;

@@ -215,14 +215,14 @@ impl<'ctx> CodeGen<'ctx> {
         global.set_constant(true);
         global.set_unnamed_addr(true);
 
-        // Call snow_string_new(data_ptr, len)
+        // Call mesh_string_new(data_ptr, len)
         let data_ptr = global.as_pointer_value();
         let len = self
             .context
             .i64_type()
             .const_int(s.len() as u64, false);
 
-        let string_new = get_intrinsic(&self.module, "snow_string_new");
+        let string_new = get_intrinsic(&self.module, "mesh_string_new");
         let result = self
             .builder
             .build_call(
@@ -235,7 +235,7 @@ impl<'ctx> CodeGen<'ctx> {
         result
             .try_as_basic_value()
             .basic()
-            .ok_or_else(|| "snow_string_new returned void".to_string())
+            .ok_or_else(|| "mesh_string_new returned void".to_string())
     }
 
     // ── Variable reference ───────────────────────────────────────────
@@ -246,7 +246,7 @@ impl<'ctx> CodeGen<'ctx> {
         ty: &MirType,
     ) -> Result<BasicValueEnum<'ctx>, String> {
         // Math.pi constant (Phase 43) -- accessed without parentheses as a variable
-        if name == "snow_math_pi" {
+        if name == "mesh_math_pi" {
             return Ok(self.context.f64_type().const_float(std::f64::consts::PI).into());
         }
 
@@ -255,7 +255,7 @@ impl<'ctx> CodeGen<'ctx> {
             return Ok(fn_val.as_global_value().as_pointer_value().into());
         }
 
-        // Check if it's a runtime intrinsic function (e.g., snow_int_to_string
+        // Check if it's a runtime intrinsic function (e.g., mesh_int_to_string
         // used as a callback function pointer for collection Display).
         if let Some(fn_val) = self.module.get_function(name) {
             return Ok(fn_val.as_global_value().as_pointer_value().into());
@@ -479,7 +479,7 @@ impl<'ctx> CodeGen<'ctx> {
         lhs: BasicValueEnum<'ctx>,
         rhs: BasicValueEnum<'ctx>,
     ) -> Result<BasicValueEnum<'ctx>, String> {
-        let concat_fn = get_intrinsic(&self.module, "snow_string_concat");
+        let concat_fn = get_intrinsic(&self.module, "mesh_string_concat");
         let result = self
             .builder
             .build_call(concat_fn, &[lhs.into(), rhs.into()], "concat")
@@ -487,7 +487,7 @@ impl<'ctx> CodeGen<'ctx> {
         result
             .try_as_basic_value()
             .basic()
-            .ok_or_else(|| "snow_string_concat returned void".to_string())
+            .ok_or_else(|| "mesh_string_concat returned void".to_string())
     }
 
     fn codegen_list_concat(
@@ -495,7 +495,7 @@ impl<'ctx> CodeGen<'ctx> {
         lhs: BasicValueEnum<'ctx>,
         rhs: BasicValueEnum<'ctx>,
     ) -> Result<BasicValueEnum<'ctx>, String> {
-        let concat_fn = get_intrinsic(&self.module, "snow_list_concat");
+        let concat_fn = get_intrinsic(&self.module, "mesh_list_concat");
         let result = self
             .builder
             .build_call(concat_fn, &[lhs.into(), rhs.into()], "list_concat")
@@ -503,7 +503,7 @@ impl<'ctx> CodeGen<'ctx> {
         result
             .try_as_basic_value()
             .basic()
-            .ok_or_else(|| "snow_list_concat returned void".to_string())
+            .ok_or_else(|| "mesh_list_concat returned void".to_string())
     }
 
     fn codegen_string_compare(
@@ -512,7 +512,7 @@ impl<'ctx> CodeGen<'ctx> {
         lhs: BasicValueEnum<'ctx>,
         rhs: BasicValueEnum<'ctx>,
     ) -> Result<BasicValueEnum<'ctx>, String> {
-        let eq_fn = get_intrinsic(&self.module, "snow_string_eq");
+        let eq_fn = get_intrinsic(&self.module, "mesh_string_eq");
         let result = self
             .builder
             .build_call(eq_fn, &[lhs.into(), rhs.into()], "str_eq")
@@ -520,7 +520,7 @@ impl<'ctx> CodeGen<'ctx> {
         let i8_result = result
             .try_as_basic_value()
             .basic()
-            .ok_or("snow_string_eq returned void")?
+            .ok_or("mesh_string_eq returned void")?
             .into_int_value();
 
         let zero = self.context.i8_type().const_int(0, false);
@@ -641,72 +641,72 @@ impl<'ctx> CodeGen<'ctx> {
             }
         }
 
-        // Check if it's a service call helper (snow_service_call with inline args).
-        // Pattern: Call to snow_service_call with [pid, tag, ...extra_args]
+        // Check if it's a service call helper (mesh_service_call with inline args).
+        // Pattern: Call to mesh_service_call with [pid, tag, ...extra_args]
         // We need to pack extra_args into a payload buffer.
         if let MirExpr::Var(name, _) = func {
-            if name == "snow_service_call" && args.len() >= 2 {
+            if name == "mesh_service_call" && args.len() >= 2 {
                 return self.codegen_service_call_helper(args);
             }
-            // Check if it's a service cast helper (snow_actor_send with [pid, tag, ...args]).
-            // Pattern: Call to snow_actor_send from a __service_*_cast_* function.
-            if name == "snow_actor_send" && args.len() >= 2 {
+            // Check if it's a service cast helper (mesh_actor_send with [pid, tag, ...args]).
+            // Pattern: Call to mesh_actor_send from a __service_*_cast_* function.
+            if name == "mesh_actor_send" && args.len() >= 2 {
                 // Check if second arg is a literal tag (service cast pattern).
                 if let MirExpr::IntLit(_, _) = &args[1] {
                     return self.codegen_service_cast_helper(args);
                 }
             }
             // Synthetic tuple allocation intrinsic.
-            // __snow_make_tuple(elem0, elem1, ...) -> ptr
+            // __mesh_make_tuple(elem0, elem1, ...) -> ptr
             // Allocates { u64 len, u64[N] elements } on the GC heap.
-            if name == "__snow_make_tuple" {
+            if name == "__mesh_make_tuple" {
                 return self.codegen_make_tuple(&arg_vals);
             }
-            // Timer.send_after(pid, ms, msg) -> snow_timer_send_after(pid, ms, msg_ptr, msg_size)
+            // Timer.send_after(pid, ms, msg) -> mesh_timer_send_after(pid, ms, msg_ptr, msg_size)
             // The 3rd arg (msg) needs message serialization like codegen_actor_send.
-            if name == "snow_timer_send_after" && args.len() == 3 {
+            if name == "mesh_timer_send_after" && args.len() == 3 {
                 return self.codegen_timer_send_after(args);
             }
             // ── Phase 67: Node distribution special codegen ─────────────────
-            // Node.start(name, cookie) -> snow_node_start(name_ptr, name_len, cookie_ptr, cookie_len)
-            if name == "snow_node_start" && args.len() == 2 {
+            // Node.start(name, cookie) -> mesh_node_start(name_ptr, name_len, cookie_ptr, cookie_len)
+            if name == "mesh_node_start" && args.len() == 2 {
                 return self.codegen_node_start(args);
             }
-            // Node.connect(name) -> snow_node_connect(name_ptr, name_len)
-            if name == "snow_node_connect" {
-                return self.codegen_node_string_call(args, "snow_node_connect");
+            // Node.connect(name) -> mesh_node_connect(name_ptr, name_len)
+            if name == "mesh_node_connect" {
+                return self.codegen_node_string_call(args, "mesh_node_connect");
             }
-            // Node.monitor(node_name) -> snow_node_monitor(name_ptr, name_len)
-            if name == "snow_node_monitor" {
-                return self.codegen_node_string_call(args, "snow_node_monitor");
+            // Node.monitor(node_name) -> mesh_node_monitor(name_ptr, name_len)
+            if name == "mesh_node_monitor" {
+                return self.codegen_node_string_call(args, "mesh_node_monitor");
             }
-            // Node.spawn(node, func, args...) -> snow_node_spawn(node_ptr, node_len, fn_name_ptr, fn_name_len, args_ptr, args_size, link_flag)
-            if name == "snow_node_spawn" {
+            // Node.spawn(node, func, args...) -> mesh_node_spawn(node_ptr, node_len, fn_name_ptr, fn_name_len, args_ptr, args_size, link_flag)
+            if name == "mesh_node_spawn" {
                 return self.codegen_node_spawn(args, 0);
             }
             // Node.spawn_link -> same as spawn but with link_flag=1
-            if name == "snow_node_spawn_link" {
+            if name == "mesh_node_spawn_link" {
                 return self.codegen_node_spawn(args, 1);
             }
             // ── Phase 68: Global Registry codegen ───────────────────────────
-            // Global.register(name, pid) -> snow_global_register(name_ptr, name_len, pid)
-            if name == "snow_global_register" && args.len() == 2 {
+            // Global.register(name, pid) -> mesh_global_register(name_ptr, name_len, pid)
+            if name == "mesh_global_register" && args.len() == 2 {
                 return self.codegen_global_register(args);
             }
-            // Global.whereis(name) -> snow_global_whereis(name_ptr, name_len)
-            if name == "snow_global_whereis" {
-                return self.codegen_node_string_call(args, "snow_global_whereis");
+            // Global.whereis(name) -> mesh_global_whereis(name_ptr, name_len)
+            if name == "mesh_global_whereis" {
+                return self.codegen_node_string_call(args, "mesh_global_whereis");
             }
-            // Global.unregister(name) -> snow_global_unregister(name_ptr, name_len)
-            if name == "snow_global_unregister" {
-                return self.codegen_node_string_call(args, "snow_global_unregister");
+            // Global.unregister(name) -> mesh_global_unregister(name_ptr, name_len)
+            if name == "mesh_global_unregister" {
+                return self.codegen_node_string_call(args, "mesh_global_unregister");
             }
         }
 
         // Math/Int/Float stdlib intrinsics (Phase 43)
         if let MirExpr::Var(name, _) = func {
             match name.as_str() {
-                "snow_math_abs" => {
+                "mesh_math_abs" => {
                     let arg_val = self.codegen_expr(&args[0])?;
                     return match args[0].ty() {
                         MirType::Int => {
@@ -733,7 +733,7 @@ impl<'ctx> CodeGen<'ctx> {
                         other => Err(format!("Math.abs: unsupported type {:?}", other)),
                     };
                 }
-                "snow_math_min" => {
+                "mesh_math_min" => {
                     let lhs = self.codegen_expr(&args[0])?;
                     let rhs = self.codegen_expr(&args[1])?;
                     return match args[0].ty() {
@@ -758,7 +758,7 @@ impl<'ctx> CodeGen<'ctx> {
                         other => Err(format!("Math.min: unsupported type {:?}", other)),
                     };
                 }
-                "snow_math_max" => {
+                "mesh_math_max" => {
                     let lhs = self.codegen_expr(&args[0])?;
                     let rhs = self.codegen_expr(&args[1])?;
                     return match args[0].ty() {
@@ -783,7 +783,7 @@ impl<'ctx> CodeGen<'ctx> {
                         other => Err(format!("Math.max: unsupported type {:?}", other)),
                     };
                 }
-                "snow_int_to_float" => {
+                "mesh_int_to_float" => {
                     let arg_val = self.codegen_expr(&args[0])?;
                     let int_val = arg_val.into_int_value();
                     let float_val = self.builder
@@ -791,7 +791,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .map_err(|e| e.to_string())?;
                     return Ok(float_val.into());
                 }
-                "snow_float_to_int" => {
+                "mesh_float_to_int" => {
                     let arg_val = self.codegen_expr(&args[0])?;
                     let float_val = arg_val.into_float_value();
                     let int_val = self.builder
@@ -800,7 +800,7 @@ impl<'ctx> CodeGen<'ctx> {
                     return Ok(int_val.into());
                 }
                 // ── pow/sqrt/floor/ceil/round (Phase 43 Plan 02) ──────────
-                "snow_math_pow" => {
+                "mesh_math_pow" => {
                     let base_val = self.codegen_expr(&args[0])?;
                     let exp_val = self.codegen_expr(&args[1])?;
                     let intrinsic = Intrinsic::find("llvm.pow").ok_or("llvm.pow not found")?;
@@ -811,7 +811,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .map_err(|e| e.to_string())?;
                     return result.try_as_basic_value().basic().ok_or("pow returned void".into());
                 }
-                "snow_math_sqrt" => {
+                "mesh_math_sqrt" => {
                     let arg_val = self.codegen_expr(&args[0])?;
                     let intrinsic = Intrinsic::find("llvm.sqrt").ok_or("llvm.sqrt not found")?;
                     let f64_ty = self.context.f64_type();
@@ -821,7 +821,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .map_err(|e| e.to_string())?;
                     return result.try_as_basic_value().basic().ok_or("sqrt returned void".into());
                 }
-                "snow_math_floor" => {
+                "mesh_math_floor" => {
                     let arg_val = self.codegen_expr(&args[0])?;
                     let intrinsic = Intrinsic::find("llvm.floor").ok_or("llvm.floor not found")?;
                     let f64_ty = self.context.f64_type();
@@ -835,7 +835,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .map_err(|e| e.to_string())?;
                     return Ok(int_result.into());
                 }
-                "snow_math_ceil" => {
+                "mesh_math_ceil" => {
                     let arg_val = self.codegen_expr(&args[0])?;
                     let intrinsic = Intrinsic::find("llvm.ceil").ok_or("llvm.ceil not found")?;
                     let f64_ty = self.context.f64_type();
@@ -849,7 +849,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .map_err(|e| e.to_string())?;
                     return Ok(int_result.into());
                 }
-                "snow_math_round" => {
+                "mesh_math_round" => {
                     let arg_val = self.codegen_expr(&args[0])?;
                     let intrinsic = Intrinsic::find("llvm.round").ok_or("llvm.round not found")?;
                     let f64_ty = self.context.f64_type();
@@ -912,7 +912,7 @@ impl<'ctx> CodeGen<'ctx> {
                             }
                             BasicMetadataValueEnum::PointerValue(arg_pv) => {
                                 // If the runtime function expects i64 but we have a pointer
-                                // (e.g., string values passed to snow_map_put), cast ptr->i64.
+                                // (e.g., string values passed to mesh_map_put), cast ptr->i64.
                                 if let inkwell::types::BasicMetadataTypeEnum::IntType(param_it) = param_ty {
                                     if param_it.get_bit_width() == 64 {
                                         let cast = self
@@ -925,7 +925,7 @@ impl<'ctx> CodeGen<'ctx> {
                             }
                             BasicMetadataValueEnum::FloatValue(arg_fv) => {
                                 // If the runtime function expects i64 but we have a float
-                                // (e.g., Float values passed to snow_list_append), bitcast f64->i64.
+                                // (e.g., Float values passed to mesh_list_append), bitcast f64->i64.
                                 if let inkwell::types::BasicMetadataTypeEnum::IntType(param_it) = param_ty {
                                     if param_it.get_bit_width() == 64 {
                                         let cast = self
@@ -938,17 +938,17 @@ impl<'ctx> CodeGen<'ctx> {
                             }
                             BasicMetadataValueEnum::StructValue(arg_sv) => {
                                 // If the runtime function expects a pointer but we have a struct value
-                                // (e.g., struct passed to snow_alloc_result), heap-allocate + store + pass ptr.
+                                // (e.g., struct passed to mesh_alloc_result), heap-allocate + store + pass ptr.
                                 // Must use GC heap (not stack alloca) because the pointer may be stored
-                                // in a SnowResult that outlives the current stack frame.
+                                // in a MeshResult that outlives the current stack frame.
                                 if let inkwell::types::BasicMetadataTypeEnum::PointerType(_) = param_ty {
                                     let sv_ty = arg_sv.get_type();
                                     let i64_type = self.context.i64_type();
                                     let ptr_type = self.context.ptr_type(inkwell::AddressSpace::default());
                                     let size = sv_ty.size_of().unwrap_or(i64_type.const_int(64, false));
                                     let align = i64_type.const_int(8, false);
-                                    let gc_alloc = self.module.get_function("snow_gc_alloc_actor")
-                                        .ok_or("snow_gc_alloc_actor not found")?;
+                                    let gc_alloc = self.module.get_function("mesh_gc_alloc_actor")
+                                        .ok_or("mesh_gc_alloc_actor not found")?;
                                     let heap_ptr = self.builder
                                         .build_call(gc_alloc, &[size.into(), align.into()], "struct_heap")
                                         .map_err(|e| e.to_string())?
@@ -982,9 +982,9 @@ impl<'ctx> CodeGen<'ctx> {
                     .ok_or_else(|| "Function call returned void".to_string())?;
 
                 // Runtime functions returning i8 or i64 for Bool values need
-                // truncation to i1 to match Snow's Bool representation.
-                // i8: functions like snow_set_contains that return bool as i8.
-                // i64: functions like snow_list_get that return u64 (uniform storage).
+                // truncation to i1 to match Mesh's Bool representation.
+                // i8: functions like mesh_set_contains that return bool as i8.
+                // i64: functions like mesh_list_get that return u64 (uniform storage).
                 if matches!(ty, MirType::Bool) {
                     if let BasicValueEnum::IntValue(iv) = result {
                         let bw = iv.get_type().get_bit_width();
@@ -1156,7 +1156,7 @@ impl<'ctx> CodeGen<'ctx> {
         let cond_val = self.codegen_expr(cond)?.into_int_value();
 
         // LLVM br requires an i1 condition. If the condition is a wider integer
-        // (e.g., i64 from snow_result_is_ok), truncate to i1 (nonzero = true).
+        // (e.g., i64 from mesh_result_is_ok), truncate to i1 (nonzero = true).
         let cond_i1 = if cond_val.get_type().get_bit_width() != 1 {
             self.builder
                 .build_int_truncate(cond_val, self.context.bool_type(), "cond_i1")
@@ -1242,10 +1242,10 @@ impl<'ctx> CodeGen<'ctx> {
 
         // When binding a runtime-returned pointer to a sum type or struct variable,
         // dereference the pointer to load the actual value.
-        // Runtime functions like snow_file_read return *mut SnowResult (ptr)
+        // Runtime functions like mesh_file_read return *mut MeshResult (ptr)
         // but the variable type is SumType (a by-value struct).
         // Similarly, from_json for nested structs returns a heap pointer via
-        // snow_alloc_result/snow_result_unwrap, but the field type is Struct.
+        // mesh_alloc_result/mesh_result_unwrap, but the field type is Struct.
         let val = if matches!(ty, MirType::SumType(_) | MirType::Struct(_))
             && val.is_pointer_value()
             && !llvm_ty.is_pointer_type()
@@ -1563,12 +1563,12 @@ impl<'ctx> CodeGen<'ctx> {
         let fn_ptr = fn_val.as_global_value().as_pointer_value();
 
         // Allocate environment on GC heap.
-        // Snow closures always have __env as first param, so env_ptr must be
+        // Mesh closures always have __env as first param, so env_ptr must be
         // non-null even for zero-capture closures. This ensures runtime HOFs
         // (map, filter, reduce) use the closure calling convention fn(env, ...).
         let env_ptr = if captures.is_empty() {
             // No captures -> allocate a minimal 8-byte env (non-null sentinel).
-            let gc_alloc = get_intrinsic(&self.module, "snow_gc_alloc_actor");
+            let gc_alloc = get_intrinsic(&self.module, "mesh_gc_alloc_actor");
             let size_val = self.context.i64_type().const_int(8, false);
             let align_val = self.context.i64_type().const_int(8, false);
             let env_raw = self
@@ -1577,7 +1577,7 @@ impl<'ctx> CodeGen<'ctx> {
                 .map_err(|e| e.to_string())?
                 .try_as_basic_value()
                 .basic()
-                .ok_or("snow_gc_alloc_actor returned void")?;
+                .ok_or("mesh_gc_alloc_actor returned void")?;
             env_raw.into_pointer_value()
         } else {
             // Build an env struct type from capture types
@@ -1591,8 +1591,8 @@ impl<'ctx> CodeGen<'ctx> {
             let target_data = inkwell::targets::TargetData::create("");
             let env_size = target_data.get_store_size(&env_struct_ty);
 
-            // Allocate via snow_gc_alloc_actor(size, align=8)
-            let gc_alloc = get_intrinsic(&self.module, "snow_gc_alloc_actor");
+            // Allocate via mesh_gc_alloc_actor(size, align=8)
+            let gc_alloc = get_intrinsic(&self.module, "mesh_gc_alloc_actor");
             let size_val = self.context.i64_type().const_int(env_size, false);
             let align_val = self.context.i64_type().const_int(8, false);
             let env_raw = self
@@ -1601,7 +1601,7 @@ impl<'ctx> CodeGen<'ctx> {
                 .map_err(|e| e.to_string())?
                 .try_as_basic_value()
                 .basic()
-                .ok_or("snow_gc_alloc_actor returned void")?;
+                .ok_or("mesh_gc_alloc_actor returned void")?;
 
             let env_ptr_val = env_raw.into_pointer_value();
 
@@ -1702,7 +1702,7 @@ impl<'ctx> CodeGen<'ctx> {
             // actor runs asynchronously after the caller returns. Stack allocas
             // would be freed before the actor reads the args.
             let total_size = (arg_vals.len() * 8) as u64;
-            let gc_alloc_fn = get_intrinsic(&self.module, "snow_gc_alloc_actor");
+            let gc_alloc_fn = get_intrinsic(&self.module, "mesh_gc_alloc_actor");
             let size_val = i64_ty.const_int(total_size, false);
             let align_val = i64_ty.const_int(8, false);
             let buf_alloca = self.builder
@@ -1710,7 +1710,7 @@ impl<'ctx> CodeGen<'ctx> {
                 .map_err(|e| e.to_string())?
                 .try_as_basic_value()
                 .basic()
-                .ok_or("snow_gc_alloc_actor returned void")?
+                .ok_or("mesh_gc_alloc_actor returned void")?
                 .into_pointer_value();
             let arr_ty = i64_ty.array_type(arg_vals.len() as u32);
 
@@ -1749,8 +1749,8 @@ impl<'ctx> CodeGen<'ctx> {
 
         let priority_val = self.context.i8_type().const_int(priority as u64, false);
 
-        // Call snow_actor_spawn(fn_ptr, args, args_size, priority) -> i64
-        let spawn_fn = get_intrinsic(&self.module, "snow_actor_spawn");
+        // Call mesh_actor_spawn(fn_ptr, args, args_size, priority) -> i64
+        let spawn_fn = get_intrinsic(&self.module, "mesh_actor_spawn");
         let pid_val = self
             .builder
             .build_call(
@@ -1761,9 +1761,9 @@ impl<'ctx> CodeGen<'ctx> {
             .map_err(|e| e.to_string())?
             .try_as_basic_value()
             .basic()
-            .ok_or("snow_actor_spawn returned void")?;
+            .ok_or("mesh_actor_spawn returned void")?;
 
-        // If terminate callback exists, call snow_actor_set_terminate(pid, callback_fn_ptr)
+        // If terminate callback exists, call mesh_actor_set_terminate(pid, callback_fn_ptr)
         if let Some(cb_expr) = terminate_callback {
             let cb_val = self.codegen_expr(cb_expr)?;
             let cb_ptr = if cb_val.is_pointer_value() {
@@ -1773,7 +1773,7 @@ impl<'ctx> CodeGen<'ctx> {
                     .build_int_to_ptr(cb_val.into_int_value(), ptr_ty, "cb_ptr")
                     .map_err(|e| e.to_string())?
             };
-            let set_terminate_fn = get_intrinsic(&self.module, "snow_actor_set_terminate");
+            let set_terminate_fn = get_intrinsic(&self.module, "mesh_actor_set_terminate");
             self.builder
                 .build_call(
                     set_terminate_fn,
@@ -1819,8 +1819,8 @@ impl<'ctx> CodeGen<'ctx> {
             (msg_alloca, i64_ty.const_int(size, false))
         };
 
-        // Call snow_actor_send(target_pid, msg_ptr, msg_size)
-        let send_fn = get_intrinsic(&self.module, "snow_actor_send");
+        // Call mesh_actor_send(target_pid, msg_ptr, msg_size)
+        let send_fn = get_intrinsic(&self.module, "mesh_actor_send");
         self.builder
             .build_call(
                 send_fn,
@@ -1836,7 +1836,7 @@ impl<'ctx> CodeGen<'ctx> {
     /// Codegen for Timer.send_after(pid, ms, msg).
     ///
     /// Serializes the message (3rd arg) to (ptr, size) like codegen_actor_send,
-    /// then calls snow_timer_send_after(pid, ms, msg_ptr, msg_size).
+    /// then calls mesh_timer_send_after(pid, ms, msg_ptr, msg_size).
     fn codegen_timer_send_after(
         &mut self,
         args: &[MirExpr],
@@ -1865,8 +1865,8 @@ impl<'ctx> CodeGen<'ctx> {
             (msg_alloca, i64_ty.const_int(size, false))
         };
 
-        // Call snow_timer_send_after(pid, ms, msg_ptr, msg_size)
-        let send_after_fn = get_intrinsic(&self.module, "snow_timer_send_after");
+        // Call mesh_timer_send_after(pid, ms, msg_ptr, msg_size)
+        let send_after_fn = get_intrinsic(&self.module, "mesh_timer_send_after");
         self.builder
             .build_call(
                 send_after_fn,
@@ -1881,9 +1881,9 @@ impl<'ctx> CodeGen<'ctx> {
 
     // ── Phase 67: Node distribution codegen helpers ──────────────────────
 
-    /// Extract raw (data_ptr, len) from a SnowString pointer.
+    /// Extract raw (data_ptr, len) from a MeshString pointer.
     ///
-    /// SnowString layout: `{ len: u64, data_bytes... }`.
+    /// MeshString layout: `{ len: u64, data_bytes... }`.
     /// - `len` is at offset 0 (first 8 bytes)
     /// - `data_ptr` is at `string_ptr + 8` (bytes following the header)
     fn codegen_unpack_string(
@@ -1893,7 +1893,7 @@ impl<'ctx> CodeGen<'ctx> {
         let i64_ty = self.context.i64_type();
         let ptr_ty = self.context.ptr_type(inkwell::AddressSpace::default());
 
-        // Get the SnowString pointer (may be a pointer or i64-encoded pointer).
+        // Get the MeshString pointer (may be a pointer or i64-encoded pointer).
         let string_ptr = if string_val.is_pointer_value() {
             string_val.into_pointer_value()
         } else {
@@ -1903,7 +1903,7 @@ impl<'ctx> CodeGen<'ctx> {
                 .map_err(|e| e.to_string())?
         };
 
-        // Load len from offset 0 (the SnowString header).
+        // Load len from offset 0 (the MeshString header).
         let len_val = self
             .builder
             .build_load(i64_ty, string_ptr, "str_len")
@@ -1923,8 +1923,8 @@ impl<'ctx> CodeGen<'ctx> {
 
     /// Codegen for Node.start(name, cookie).
     ///
-    /// Unpacks two SnowString args into (ptr, len) pairs and calls
-    /// snow_node_start(name_ptr, name_len, cookie_ptr, cookie_len).
+    /// Unpacks two MeshString args into (ptr, len) pairs and calls
+    /// mesh_node_start(name_ptr, name_len, cookie_ptr, cookie_len).
     fn codegen_node_start(
         &mut self,
         args: &[MirExpr],
@@ -1935,7 +1935,7 @@ impl<'ctx> CodeGen<'ctx> {
         let (name_ptr, name_len) = self.codegen_unpack_string(name_val)?;
         let (cookie_ptr, cookie_len) = self.codegen_unpack_string(cookie_val)?;
 
-        let start_fn = get_intrinsic(&self.module, "snow_node_start");
+        let start_fn = get_intrinsic(&self.module, "mesh_node_start");
         let result = self
             .builder
             .build_call(
@@ -1948,12 +1948,12 @@ impl<'ctx> CodeGen<'ctx> {
         result
             .try_as_basic_value()
             .basic()
-            .ok_or_else(|| "snow_node_start returned void".to_string())
+            .ok_or_else(|| "mesh_node_start returned void".to_string())
     }
 
     /// Codegen for Node functions taking a single string arg (connect, monitor).
     ///
-    /// Unpacks the SnowString arg into (ptr, len) and calls the given intrinsic.
+    /// Unpacks the MeshString arg into (ptr, len) and calls the given intrinsic.
     fn codegen_node_string_call(
         &mut self,
         args: &[MirExpr],
@@ -1981,7 +1981,7 @@ impl<'ctx> CodeGen<'ctx> {
     /// Codegen for Global.register(name, pid).
     ///
     /// Unpacks the first string argument to (ptr, len), passes the second argument
-    /// (pid as i64) through directly. Calls snow_global_register(name_ptr, name_len, pid).
+    /// (pid as i64) through directly. Calls mesh_global_register(name_ptr, name_len, pid).
     fn codegen_global_register(
         &mut self,
         args: &[MirExpr],
@@ -1993,7 +1993,7 @@ impl<'ctx> CodeGen<'ctx> {
         // Second argument is pid (i64)
         let pid_val = self.codegen_expr(&args[1])?;
 
-        let func = get_intrinsic(&self.module, "snow_global_register");
+        let func = get_intrinsic(&self.module, "mesh_global_register");
         let result = self
             .builder
             .build_call(
@@ -2006,13 +2006,13 @@ impl<'ctx> CodeGen<'ctx> {
         result
             .try_as_basic_value()
             .basic()
-            .ok_or_else(|| "snow_global_register returned void".to_string())
+            .ok_or_else(|| "mesh_global_register returned void".to_string())
     }
 
     /// Codegen for Node.spawn / Node.spawn_link.
     ///
     /// Node.spawn(node_name, func_ref, args...) compiles to:
-    ///   snow_node_spawn(node_ptr, node_len, fn_name_ptr, fn_name_len, args_ptr, args_size, link_flag)
+    ///   mesh_node_spawn(node_ptr, node_len, fn_name_ptr, fn_name_len, args_ptr, args_size, link_flag)
     ///
     /// The function reference (args[1]) is a MirExpr::Var whose name is the function name.
     /// Instead of evaluating it as a function pointer, we emit the function name as a
@@ -2061,7 +2061,7 @@ impl<'ctx> CodeGen<'ctx> {
                 .collect::<Result<Vec<_>, _>>()?;
 
             let total_size = (arg_vals.len() * 8) as u64;
-            let gc_alloc_fn = get_intrinsic(&self.module, "snow_gc_alloc_actor");
+            let gc_alloc_fn = get_intrinsic(&self.module, "mesh_gc_alloc_actor");
             let size_val = i64_ty.const_int(total_size, false);
             let align_val = i64_ty.const_int(8, false);
             let buf_ptr = self
@@ -2070,7 +2070,7 @@ impl<'ctx> CodeGen<'ctx> {
                 .map_err(|e| e.to_string())?
                 .try_as_basic_value()
                 .basic()
-                .ok_or("snow_gc_alloc_actor returned void")?
+                .ok_or("mesh_gc_alloc_actor returned void")?
                 .into_pointer_value();
             let arr_ty = i64_ty.array_type(arg_vals.len() as u32);
 
@@ -2106,8 +2106,8 @@ impl<'ctx> CodeGen<'ctx> {
 
         let link_val = i8_ty.const_int(link_flag as u64, false);
 
-        // Call snow_node_spawn(node_ptr, node_len, fn_name_ptr, fn_name_len, args_ptr, args_size, link_flag)
-        let spawn_fn = get_intrinsic(&self.module, "snow_node_spawn");
+        // Call mesh_node_spawn(node_ptr, node_len, fn_name_ptr, fn_name_len, args_ptr, args_size, link_flag)
+        let spawn_fn = get_intrinsic(&self.module, "mesh_node_spawn");
         let result = self
             .builder
             .build_call(
@@ -2128,7 +2128,7 @@ impl<'ctx> CodeGen<'ctx> {
         result
             .try_as_basic_value()
             .basic()
-            .ok_or_else(|| "snow_node_spawn returned void".to_string())
+            .ok_or_else(|| "mesh_node_spawn returned void".to_string())
     }
 
     fn codegen_actor_receive(
@@ -2148,19 +2148,19 @@ impl<'ctx> CodeGen<'ctx> {
             i64_ty.const_int(u64::MAX, true) // -1 as i64
         };
 
-        // Call snow_actor_receive(timeout_ms) -> ptr (null when timeout fires)
-        let receive_fn = get_intrinsic(&self.module, "snow_actor_receive");
+        // Call mesh_actor_receive(timeout_ms) -> ptr (null when timeout fires)
+        let receive_fn = get_intrinsic(&self.module, "mesh_actor_receive");
         let msg_ptr = self
             .builder
             .build_call(receive_fn, &[timeout_val.into()], "msg_ptr")
             .map_err(|e| e.to_string())?
             .try_as_basic_value()
             .basic()
-            .ok_or("snow_actor_receive returned void")?
+            .ok_or("mesh_actor_receive returned void")?
             .into_pointer_value();
 
         // When timeout_body is present, we need null-check branching:
-        //   [snow_actor_receive] -> [is_null?] -> timeout_bb (null) / msg_bb (non-null) -> recv_merge_bb
+        //   [mesh_actor_receive] -> [is_null?] -> timeout_bb (null) / msg_bb (non-null) -> recv_merge_bb
         // When timeout_body is None, the runtime waits indefinitely (no null possible).
         if let Some(timeout_expr) = timeout_body {
             let fn_val = self.current_function();
@@ -2177,7 +2177,7 @@ impl<'ctx> CodeGen<'ctx> {
             let msg_bb = self.context.append_basic_block(fn_val, "msg_bb");
             let recv_merge_bb = self.context.append_basic_block(fn_val, "recv_merge_bb");
 
-            // Null check: timeout fires when snow_actor_receive returns null.
+            // Null check: timeout fires when mesh_actor_receive returns null.
             let is_null = self
                 .builder
                 .build_is_null(msg_ptr, "msg_is_null")
@@ -2322,15 +2322,15 @@ impl<'ctx> CodeGen<'ctx> {
     }
 
     fn codegen_actor_self(&mut self) -> Result<BasicValueEnum<'ctx>, String> {
-        // Call snow_actor_self() -> i64
-        let self_fn = get_intrinsic(&self.module, "snow_actor_self");
+        // Call mesh_actor_self() -> i64
+        let self_fn = get_intrinsic(&self.module, "mesh_actor_self");
         let result = self
             .builder
             .build_call(self_fn, &[], "self_pid")
             .map_err(|e| e.to_string())?
             .try_as_basic_value()
             .basic()
-            .ok_or("snow_actor_self returned void")?;
+            .ok_or("mesh_actor_self returned void")?;
 
         Ok(result)
     }
@@ -2342,8 +2342,8 @@ impl<'ctx> CodeGen<'ctx> {
         // Evaluate the target PID.
         let target_val = self.codegen_expr(target)?.into_int_value();
 
-        // Call snow_actor_link(target_pid)
-        let link_fn = get_intrinsic(&self.module, "snow_actor_link");
+        // Call mesh_actor_link(target_pid)
+        let link_fn = get_intrinsic(&self.module, "mesh_actor_link");
         self.builder
             .build_call(link_fn, &[target_val.into()], "")
             .map_err(|e| e.to_string())?;
@@ -2438,12 +2438,12 @@ impl<'ctx> CodeGen<'ctx> {
             .into_int_value();
 
         // Pre-allocate result list builder.
-        let list_builder_new = get_intrinsic(&self.module, "snow_list_builder_new");
+        let list_builder_new = get_intrinsic(&self.module, "mesh_list_builder_new");
         let result_list = self.builder.build_call(list_builder_new, &[range_len.into()], "result_list")
             .map_err(|e| e.to_string())?
             .try_as_basic_value()
             .basic()
-            .ok_or_else(|| "snow_list_builder_new returned void".to_string())?
+            .ok_or_else(|| "mesh_list_builder_new returned void".to_string())?
             .into_pointer_value();
 
         // Alloca to hold the result list pointer (for break to return partial list).
@@ -2507,7 +2507,7 @@ impl<'ctx> CodeGen<'ctx> {
             if bb.get_terminator().is_none() {
                 let body_ty = body_expr.ty();
                 let body_as_i64 = self.convert_to_list_element(body_val, body_ty)?;
-                let list_builder_push = get_intrinsic(&self.module, "snow_list_builder_push");
+                let list_builder_push = get_intrinsic(&self.module, "mesh_list_builder_push");
                 let result_loaded = self.builder.build_load(ptr_ty, result_alloca, "res_list")
                     .map_err(|e| e.to_string())?
                     .into_pointer_value();
@@ -2591,12 +2591,12 @@ impl<'ctx> CodeGen<'ctx> {
 
     // ── Reduction check ─────────────────────────────────────────────────
 
-    /// Emit a call to snow_reduction_check() for preemptive scheduling.
+    /// Emit a call to mesh_reduction_check() for preemptive scheduling.
     ///
     /// Inserted after function call sites and closure calls to enable
     /// cooperative preemption of actor processes.
     fn emit_reduction_check(&self) {
-        if let Some(check_fn) = self.module.get_function("snow_reduction_check") {
+        if let Some(check_fn) = self.module.get_function("mesh_reduction_check") {
             // Only emit if the current block is not yet terminated.
             if let Some(bb) = self.builder.get_insert_block() {
                 if bb.get_terminator().is_none() {
@@ -2619,7 +2619,7 @@ impl<'ctx> CodeGen<'ctx> {
         let i64_ty = self.context.i64_type();
         let ptr_ty = self.context.ptr_type(inkwell::AddressSpace::default());
 
-        // Build the binary config buffer for snow_supervisor_start.
+        // Build the binary config buffer for mesh_supervisor_start.
         // Format: strategy(u8) + max_restarts(u32 LE) + max_seconds(u64 LE) +
         //         child_count(u32 LE) + for each child:
         //           id_len(u32 LE) + id_bytes + fn_ptr_placeholder(u64) +
@@ -2733,8 +2733,8 @@ impl<'ctx> CodeGen<'ctx> {
                 .map_err(|e| e.to_string())?;
         }
 
-        // Call snow_supervisor_start(config_ptr, config_size) -> i64 (PID)
-        let sup_start_fn = get_intrinsic(&self.module, "snow_supervisor_start");
+        // Call mesh_supervisor_start(config_ptr, config_size) -> i64 (PID)
+        let sup_start_fn = get_intrinsic(&self.module, "mesh_supervisor_start");
         let pid_val = self
             .builder
             .build_call(
@@ -2745,7 +2745,7 @@ impl<'ctx> CodeGen<'ctx> {
             .map_err(|e| e.to_string())?
             .try_as_basic_value()
             .basic()
-            .ok_or("snow_supervisor_start returned void")?;
+            .ok_or("mesh_supervisor_start returned void")?;
 
         Ok(pid_val)
     }
@@ -2758,7 +2758,7 @@ impl<'ctx> CodeGen<'ctx> {
         file: &str,
         line: u32,
     ) -> Result<BasicValueEnum<'ctx>, String> {
-        let panic_fn = get_intrinsic(&self.module, "snow_panic");
+        let panic_fn = get_intrinsic(&self.module, "mesh_panic");
 
         // Create global constants for message and file strings
         let msg_val = self.context.const_string(message.as_bytes(), false);
@@ -2810,7 +2810,7 @@ impl<'ctx> CodeGen<'ctx> {
     /// Generate the service loop function body.
     ///
     /// The loop:
-    /// 1. Calls snow_actor_receive(-1) to get a raw message pointer
+    /// 1. Calls mesh_actor_receive(-1) to get a raw message pointer
     /// 2. Extracts type_tag from data offset 0
     /// 3. Extracts caller_pid from data offset 8
     /// 4. Extracts handler args from data offset 16+
@@ -2863,15 +2863,15 @@ impl<'ctx> CodeGen<'ctx> {
             .map_err(|e| e.to_string())?
             .into_int_value();
 
-        // Call snow_actor_receive(-1) -> ptr (blocks until message arrives).
-        let receive_fn = get_intrinsic(&self.module, "snow_actor_receive");
+        // Call mesh_actor_receive(-1) -> ptr (blocks until message arrives).
+        let receive_fn = get_intrinsic(&self.module, "mesh_actor_receive");
         let timeout = i64_ty.const_int(u64::MAX, true); // -1
         let msg_ptr = self.builder
             .build_call(receive_fn, &[timeout.into()], "msg_ptr")
             .map_err(|e| e.to_string())?
             .try_as_basic_value()
             .basic()
-            .ok_or("snow_actor_receive returned void")?
+            .ok_or("mesh_actor_receive returned void")?
             .into_pointer_value();
 
         // Check for null (shutdown signal). If null, exit the loop.
@@ -3015,7 +3015,7 @@ impl<'ctx> CodeGen<'ctx> {
                 // body returns a Tuple which at the LLVM level is a struct {i64, i64}.
                 // But our handler function has return type Int (i64).
                 //
-                // REALITY CHECK: The handler body returns whatever the Snow code returns.
+                // REALITY CHECK: The handler body returns whatever the Mesh code returns.
                 // For a counter service: `(count, count)` returns a tuple.
                 // But MIR lowered the handler with return_type: MirType::Int.
                 //
@@ -3023,7 +3023,7 @@ impl<'ctx> CodeGen<'ctx> {
                 // which in our LLVM codegen produces a struct value, but the function
                 // signature says i64. This mismatch needs to be resolved.
                 //
-                // PRAGMATIC FIX: Since all Snow values can be represented as i64 at
+                // PRAGMATIC FIX: Since all Mesh values can be represented as i64 at
                 // the LLVM level (ints, pointers, bools), and tuples are allocated
                 // as runtime objects that return a pointer, we can treat the handler
                 // return as i64 and interpret it accordingly.
@@ -3047,7 +3047,7 @@ impl<'ctx> CodeGen<'ctx> {
                 // and the new state is the same as old state (for get_count which is
                 // read-only), or we extract from the result.
                 //
-                // Actually the handler body (as lowered from Snow source) already computes
+                // Actually the handler body (as lowered from Mesh source) already computes
                 // both new_state and reply. E.g.:
                 //   call get_count() |count| :: Int do
                 //     (count, count)
@@ -3058,13 +3058,13 @@ impl<'ctx> CodeGen<'ctx> {
                 // We need to:
                 //   1. Extract reply from result[1] (second element)
                 //   2. Extract new_state from result[0] (first element)
-                //   3. Call snow_service_reply(caller_pid, &reply, 8)
+                //   3. Call mesh_service_reply(caller_pid, &reply, 8)
                 //   4. Recurse with new_state
                 //
                 // Since tuples are represented as runtime pointers, we need to load
-                // from the tuple. Snow tuples use snow_tuple_first/snow_tuple_second.
+                // from the tuple. Mesh tuples use mesh_tuple_first/mesh_tuple_second.
                 //
-                // HOWEVER: The Snow tuple (count, count) in the handler body will be
+                // HOWEVER: The Mesh tuple (count, count) in the handler body will be
                 // lowered by lower_tuple_expr which creates a runtime tuple allocation.
                 // The result is a pointer (MirType::Ptr).
                 //
@@ -3079,8 +3079,8 @@ impl<'ctx> CodeGen<'ctx> {
                 // generate TWO separate calls from the loop:
                 //   1. Call a "handler_body" function that takes (state, args) and
                 //      returns the raw body result (a tuple ptr)
-                //   2. Extract reply via snow_tuple_second(result)
-                //   3. Extract new_state via snow_tuple_first(result)
+                //   2. Extract reply via mesh_tuple_second(result)
+                //   3. Extract new_state via mesh_tuple_first(result)
                 //   4. Reply with the reply value
                 //
                 // But this requires the handler function to return Ptr (tuple pointer).
@@ -3097,26 +3097,26 @@ impl<'ctx> CodeGen<'ctx> {
                 };
 
                 // Extract new_state = tuple_first(result_ptr) -> i64
-                let tuple_first_fn = get_intrinsic(&self.module, "snow_tuple_first");
+                let tuple_first_fn = get_intrinsic(&self.module, "mesh_tuple_first");
                 let new_state_val = self.builder
                     .build_call(tuple_first_fn, &[result_ptr.into()], "new_state")
                     .map_err(|e| e.to_string())?
                     .try_as_basic_value()
                     .basic()
-                    .ok_or("snow_tuple_first returned void")?
+                    .ok_or("mesh_tuple_first returned void")?
                     .into_int_value();
 
                 // Extract reply = tuple_second(result_ptr) -> i64
-                let tuple_second_fn = get_intrinsic(&self.module, "snow_tuple_second");
+                let tuple_second_fn = get_intrinsic(&self.module, "mesh_tuple_second");
                 let reply_val = self.builder
                     .build_call(tuple_second_fn, &[result_ptr.into()], "reply")
                     .map_err(|e| e.to_string())?
                     .try_as_basic_value()
                     .basic()
-                    .ok_or("snow_tuple_second returned void")?
+                    .ok_or("mesh_tuple_second returned void")?
                     .into_int_value();
 
-                // Send reply to caller: snow_service_reply(caller_pid, &reply, 8)
+                // Send reply to caller: mesh_service_reply(caller_pid, &reply, 8)
                 let reply_alloca = self.builder
                     .build_alloca(i64_ty, "reply_buf")
                     .map_err(|e| e.to_string())?;
@@ -3125,7 +3125,7 @@ impl<'ctx> CodeGen<'ctx> {
                     .map_err(|e| e.to_string())?;
                 let reply_size = i64_ty.const_int(8, false);
 
-                let service_reply_fn = get_intrinsic(&self.module, "snow_service_reply");
+                let service_reply_fn = get_intrinsic(&self.module, "mesh_service_reply");
                 self.builder
                     .build_call(
                         service_reply_fn,
@@ -3174,8 +3174,8 @@ impl<'ctx> CodeGen<'ctx> {
         let n = elements.len();
         let total_size = 8 + n * 8; // u64 len + n * u64 elements
 
-        // Allocate via snow_gc_alloc_actor(size, align)
-        let gc_alloc = get_intrinsic(&self.module, "snow_gc_alloc_actor");
+        // Allocate via mesh_gc_alloc_actor(size, align)
+        let gc_alloc = get_intrinsic(&self.module, "mesh_gc_alloc_actor");
         let size_val = i64_type.const_int(total_size as u64, false);
         let align_val = i64_type.const_int(8, false);
         let tuple_ptr = self.builder
@@ -3183,7 +3183,7 @@ impl<'ctx> CodeGen<'ctx> {
             .map_err(|e| e.to_string())?
             .try_as_basic_value()
             .basic()
-            .ok_or("snow_gc_alloc_actor returned void")?
+            .ok_or("mesh_gc_alloc_actor returned void")?
             .into_pointer_value();
 
         // Store length at offset 0
@@ -3248,7 +3248,7 @@ impl<'ctx> CodeGen<'ctx> {
 
     /// Takes MIR args: [pid, tag, ...handler_args]
     /// Packs into a message buffer: [u64 handler_args[0], handler_args[1], ...]
-    /// Calls snow_service_call(pid, tag, payload_ptr, payload_size) -> ptr
+    /// Calls mesh_service_call(pid, tag, payload_ptr, payload_size) -> ptr
     /// Loads the reply from the returned pointer as i64.
     fn codegen_service_call_helper(
         &mut self,
@@ -3293,8 +3293,8 @@ impl<'ctx> CodeGen<'ctx> {
             (buf, i64_ty.const_int(payload_size as u64, false))
         };
 
-        // Call snow_service_call(pid, tag, payload_ptr, payload_size) -> ptr
-        let service_call_fn = get_intrinsic(&self.module, "snow_service_call");
+        // Call mesh_service_call(pid, tag, payload_ptr, payload_size) -> ptr
+        let service_call_fn = get_intrinsic(&self.module, "mesh_service_call");
         let result_ptr = self.builder
             .build_call(
                 service_call_fn,
@@ -3304,7 +3304,7 @@ impl<'ctx> CodeGen<'ctx> {
             .map_err(|e| e.to_string())?
             .try_as_basic_value()
             .basic()
-            .ok_or("snow_service_call returned void")?
+            .ok_or("mesh_service_call returned void")?
             .into_pointer_value();
 
         // The reply is a raw message pointer. The data after the 16-byte header
@@ -3325,7 +3325,7 @@ impl<'ctx> CodeGen<'ctx> {
     ///
     /// Takes MIR args: [pid, tag, ...handler_args]
     /// Packs into a message buffer: [u64 tag][u64 0 (no caller)][i64 handler_args...]
-    /// Calls snow_actor_send(pid, msg_ptr, msg_size).
+    /// Calls mesh_actor_send(pid, msg_ptr, msg_size).
     fn codegen_service_cast_helper(
         &mut self,
         args: &[MirExpr],
@@ -3385,8 +3385,8 @@ impl<'ctx> CodeGen<'ctx> {
 
         let msg_size = i64_ty.const_int((num_elements * 8) as u64, false);
 
-        // Call snow_actor_send(pid, msg_ptr, msg_size).
-        let send_fn = get_intrinsic(&self.module, "snow_actor_send");
+        // Call mesh_actor_send(pid, msg_ptr, msg_size).
+        let send_fn = get_intrinsic(&self.module, "mesh_actor_send");
         self.builder
             .build_call(
                 send_fn,
@@ -3406,7 +3406,7 @@ impl<'ctx> CodeGen<'ctx> {
         elements: &[MirExpr],
     ) -> Result<BasicValueEnum<'ctx>, String> {
         // Placeholder: will be fully implemented in Task 2.
-        // For now, stack-allocate an i64 array and call snow_list_from_array.
+        // For now, stack-allocate an i64 array and call mesh_list_from_array.
         let i64_type = self.context.i64_type();
         let ptr_type = self.context.ptr_type(inkwell::AddressSpace::default());
         let count = elements.len();
@@ -3433,13 +3433,13 @@ impl<'ctx> CodeGen<'ctx> {
         ).map_err(|e| e.to_string())?;
         let count_val = i64_type.const_int(count as u64, false);
 
-        let from_array_fn = get_intrinsic(&self.module, "snow_list_from_array");
+        let from_array_fn = get_intrinsic(&self.module, "mesh_list_from_array");
         let result = self.builder
             .build_call(from_array_fn, &[array_ptr.into(), count_val.into()], "list")
             .map_err(|e| e.to_string())?;
 
         result.try_as_basic_value().basic()
-            .ok_or_else(|| "snow_list_from_array returned void".to_string())
+            .ok_or_else(|| "mesh_list_from_array returned void".to_string())
     }
 
     /// Convert a value to i64 for uniform list element storage.
@@ -3475,7 +3475,7 @@ impl<'ctx> CodeGen<'ctx> {
                 // Struct and SumType values are inline LLVM StructValues.
                 // Heap-allocate them via GC so we can store a pointer in the list.
                 let struct_val = val.into_struct_value();
-                let gc_alloc_fn = get_intrinsic(&self.module, "snow_gc_alloc_actor");
+                let gc_alloc_fn = get_intrinsic(&self.module, "mesh_gc_alloc_actor");
                 let val_ty = struct_val.get_type();
                 let size = val_ty.size_of().unwrap_or(i64_type.const_int(8, false));
                 let align = i64_type.const_int(8, false);
@@ -3483,7 +3483,7 @@ impl<'ctx> CodeGen<'ctx> {
                     .build_call(gc_alloc_fn, &[size.into(), align.into()], "heap_alloc")
                     .map_err(|e| e.to_string())?
                     .try_as_basic_value().basic()
-                    .ok_or("snow_gc_alloc_actor returned void")?
+                    .ok_or("mesh_gc_alloc_actor returned void")?
                     .into_pointer_value();
                 self.builder.build_store(heap_ptr, struct_val)
                     .map_err(|e| e.to_string())?;
@@ -3561,21 +3561,21 @@ impl<'ctx> CodeGen<'ctx> {
         let collection = self.codegen_expr(collection_expr)?.into_pointer_value();
 
         // Get length of the list.
-        let list_length = get_intrinsic(&self.module, "snow_list_length");
+        let list_length = get_intrinsic(&self.module, "mesh_list_length");
         let len = self.builder.build_call(list_length, &[collection.into()], "len")
             .map_err(|e| e.to_string())?
             .try_as_basic_value()
             .basic()
-            .ok_or_else(|| "snow_list_length returned void".to_string())?
+            .ok_or_else(|| "mesh_list_length returned void".to_string())?
             .into_int_value();
 
         // Pre-allocate result list builder.
-        let list_builder_new = get_intrinsic(&self.module, "snow_list_builder_new");
+        let list_builder_new = get_intrinsic(&self.module, "mesh_list_builder_new");
         let result_list = self.builder.build_call(list_builder_new, &[len.into()], "result_list")
             .map_err(|e| e.to_string())?
             .try_as_basic_value()
             .basic()
-            .ok_or_else(|| "snow_list_builder_new returned void".to_string())?
+            .ok_or_else(|| "mesh_list_builder_new returned void".to_string())?
             .into_pointer_value();
 
         // Alloca for result list pointer (break returns partial list).
@@ -3619,13 +3619,13 @@ impl<'ctx> CodeGen<'ctx> {
             .map_err(|e| e.to_string())?
             .into_int_value();
 
-        // Call snow_list_get(collection, counter) -> u64.
-        let list_get = get_intrinsic(&self.module, "snow_list_get");
+        // Call mesh_list_get(collection, counter) -> u64.
+        let list_get = get_intrinsic(&self.module, "mesh_list_get");
         let raw_elem = self.builder.build_call(list_get, &[collection.into(), counter_in_body.into()], "raw_elem")
             .map_err(|e| e.to_string())?
             .try_as_basic_value()
             .basic()
-            .ok_or_else(|| "snow_list_get returned void".to_string())?
+            .ok_or_else(|| "mesh_list_get returned void".to_string())?
             .into_int_value();
 
         // Convert from i64 to typed value.
@@ -3659,7 +3659,7 @@ impl<'ctx> CodeGen<'ctx> {
         if let Some(bb) = self.builder.get_insert_block() {
             if bb.get_terminator().is_none() {
                 let body_as_i64 = self.convert_to_list_element(body_val, body_ty)?;
-                let list_builder_push = get_intrinsic(&self.module, "snow_list_builder_push");
+                let list_builder_push = get_intrinsic(&self.module, "mesh_list_builder_push");
                 let result_loaded = self.builder.build_load(ptr_ty, result_alloca, "res_list")
                     .map_err(|e| e.to_string())?
                     .into_pointer_value();
@@ -3728,21 +3728,21 @@ impl<'ctx> CodeGen<'ctx> {
         let collection = self.codegen_expr(collection_expr)?.into_pointer_value();
 
         // Get size of the map.
-        let map_size = get_intrinsic(&self.module, "snow_map_size");
+        let map_size = get_intrinsic(&self.module, "mesh_map_size");
         let len = self.builder.build_call(map_size, &[collection.into()], "map_len")
             .map_err(|e| e.to_string())?
             .try_as_basic_value()
             .basic()
-            .ok_or_else(|| "snow_map_size returned void".to_string())?
+            .ok_or_else(|| "mesh_map_size returned void".to_string())?
             .into_int_value();
 
         // Pre-allocate result list builder.
-        let list_builder_new = get_intrinsic(&self.module, "snow_list_builder_new");
+        let list_builder_new = get_intrinsic(&self.module, "mesh_list_builder_new");
         let result_list = self.builder.build_call(list_builder_new, &[len.into()], "result_list")
             .map_err(|e| e.to_string())?
             .try_as_basic_value()
             .basic()
-            .ok_or_else(|| "snow_list_builder_new returned void".to_string())?
+            .ok_or_else(|| "mesh_list_builder_new returned void".to_string())?
             .into_pointer_value();
 
         // Alloca for result list pointer.
@@ -3786,20 +3786,20 @@ impl<'ctx> CodeGen<'ctx> {
             .into_int_value();
 
         // Get key and value for this entry.
-        let map_entry_key = get_intrinsic(&self.module, "snow_map_entry_key");
+        let map_entry_key = get_intrinsic(&self.module, "mesh_map_entry_key");
         let raw_key = self.builder.build_call(map_entry_key, &[collection.into(), counter_in_body.into()], "raw_key")
             .map_err(|e| e.to_string())?
             .try_as_basic_value()
             .basic()
-            .ok_or_else(|| "snow_map_entry_key returned void".to_string())?
+            .ok_or_else(|| "mesh_map_entry_key returned void".to_string())?
             .into_int_value();
 
-        let map_entry_value = get_intrinsic(&self.module, "snow_map_entry_value");
+        let map_entry_value = get_intrinsic(&self.module, "mesh_map_entry_value");
         let raw_val = self.builder.build_call(map_entry_value, &[collection.into(), counter_in_body.into()], "raw_val")
             .map_err(|e| e.to_string())?
             .try_as_basic_value()
             .basic()
-            .ok_or_else(|| "snow_map_entry_value returned void".to_string())?
+            .ok_or_else(|| "mesh_map_entry_value returned void".to_string())?
             .into_int_value();
 
         // Convert from i64 to typed values.
@@ -3842,7 +3842,7 @@ impl<'ctx> CodeGen<'ctx> {
         if let Some(bb) = self.builder.get_insert_block() {
             if bb.get_terminator().is_none() {
                 let body_as_i64 = self.convert_to_list_element(body_val, body_ty)?;
-                let list_builder_push = get_intrinsic(&self.module, "snow_list_builder_push");
+                let list_builder_push = get_intrinsic(&self.module, "mesh_list_builder_push");
                 let result_loaded = self.builder.build_load(ptr_ty, result_alloca, "res_list")
                     .map_err(|e| e.to_string())?
                     .into_pointer_value();
@@ -3919,21 +3919,21 @@ impl<'ctx> CodeGen<'ctx> {
         let collection = self.codegen_expr(collection_expr)?.into_pointer_value();
 
         // Get size of the set.
-        let set_size = get_intrinsic(&self.module, "snow_set_size");
+        let set_size = get_intrinsic(&self.module, "mesh_set_size");
         let len = self.builder.build_call(set_size, &[collection.into()], "set_len")
             .map_err(|e| e.to_string())?
             .try_as_basic_value()
             .basic()
-            .ok_or_else(|| "snow_set_size returned void".to_string())?
+            .ok_or_else(|| "mesh_set_size returned void".to_string())?
             .into_int_value();
 
         // Pre-allocate result list builder.
-        let list_builder_new = get_intrinsic(&self.module, "snow_list_builder_new");
+        let list_builder_new = get_intrinsic(&self.module, "mesh_list_builder_new");
         let result_list = self.builder.build_call(list_builder_new, &[len.into()], "result_list")
             .map_err(|e| e.to_string())?
             .try_as_basic_value()
             .basic()
-            .ok_or_else(|| "snow_list_builder_new returned void".to_string())?
+            .ok_or_else(|| "mesh_list_builder_new returned void".to_string())?
             .into_pointer_value();
 
         // Alloca for result list pointer.
@@ -3976,13 +3976,13 @@ impl<'ctx> CodeGen<'ctx> {
             .map_err(|e| e.to_string())?
             .into_int_value();
 
-        // Call snow_set_element_at(collection, counter) -> u64.
-        let set_element_at = get_intrinsic(&self.module, "snow_set_element_at");
+        // Call mesh_set_element_at(collection, counter) -> u64.
+        let set_element_at = get_intrinsic(&self.module, "mesh_set_element_at");
         let raw_elem = self.builder.build_call(set_element_at, &[collection.into(), counter_in_body.into()], "raw_elem")
             .map_err(|e| e.to_string())?
             .try_as_basic_value()
             .basic()
-            .ok_or_else(|| "snow_set_element_at returned void".to_string())?
+            .ok_or_else(|| "mesh_set_element_at returned void".to_string())?
             .into_int_value();
 
         // Convert from i64 to typed value.
@@ -4016,7 +4016,7 @@ impl<'ctx> CodeGen<'ctx> {
         if let Some(bb) = self.builder.get_insert_block() {
             if bb.get_terminator().is_none() {
                 let body_as_i64 = self.convert_to_list_element(body_val, body_ty)?;
-                let list_builder_push = get_intrinsic(&self.module, "snow_list_builder_push");
+                let list_builder_push = get_intrinsic(&self.module, "mesh_list_builder_push");
                 let result_loaded = self.builder.build_load(ptr_ty, result_alloca, "res_list")
                     .map_err(|e| e.to_string())?
                     .into_pointer_value();

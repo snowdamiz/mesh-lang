@@ -1,6 +1,6 @@
-//! Algorithm J inference engine for Snow.
+//! Algorithm J inference engine for Mesh.
 //!
-//! Walks the Snow AST, generates type constraints, and solves them via
+//! Walks the Mesh AST, generates type constraints, and solves them via
 //! unification. Implements Hindley-Milner type inference with:
 //! - Let-polymorphism (generalize + instantiate)
 //! - Occurs check (rejects infinite types)
@@ -11,20 +11,20 @@
 //! - Struct definitions, struct literals, and field access (03-03)
 
 use rowan::TextRange;
-use snow_parser::ast::expr::{
+use mesh_parser::ast::expr::{
     BinaryExpr, BreakExpr, CallExpr, CaseExpr, ClosureExpr, ContinueExpr, Expr, FieldAccess,
     ForInExpr, IfExpr, LinkExpr, ListLiteral, Literal, MapLiteral, NameRef, PipeExpr, ReceiveExpr,
     ReturnExpr, SendExpr, SelfExpr, SpawnExpr, StructLiteral, TryExpr, TupleExpr, UnaryExpr,
     WhileExpr,
 };
-use snow_parser::ast::item::{
+use mesh_parser::ast::item::{
     ActorDef, Block, FnDef, InterfaceDef, ImplDef as AstImplDef, Item, LetBinding, ServiceDef,
     StructDef, SumTypeDef, SupervisorDef, TypeAliasDef,
 };
-use snow_parser::ast::pat::Pattern;
-use snow_parser::ast::AstNode;
-use snow_parser::syntax_kind::SyntaxKind;
-use snow_parser::Parse;
+use mesh_parser::ast::pat::Pattern;
+use mesh_parser::ast::AstNode;
+use mesh_parser::syntax_kind::SyntaxKind;
+use mesh_parser::Parse;
 
 use crate::builtins;
 use crate::env::TypeEnv;
@@ -47,7 +47,7 @@ enum ChildKind {
     /// An item, identified by its index in the original items list.
     ItemIndex(usize),
     /// A bare expression (not wrapped in an item).
-    Expr(snow_parser::SyntaxNode),
+    Expr(mesh_parser::SyntaxNode),
 }
 
 // ── Struct & Type Registry (03-03) ────────────────────────────────────
@@ -110,7 +110,7 @@ pub enum VariantFieldInfo {
 
 /// Registry for struct definitions, type aliases, and sum type definitions.
 ///
-/// This is the central store of all type definitions in a Snow program.
+/// This is the central store of all type definitions in a Mesh program.
 /// Codegen uses this to determine memory layouts for structs and ADTs.
 #[derive(Clone, Debug, Default)]
 pub struct TypeRegistry {
@@ -445,7 +445,7 @@ fn stdlib_modules() -> HashMap<String, HashMap<String, Scheme>> {
     modules.insert("JSON".to_string(), json_mod.clone());
 
     // Also register "Json" as an alias for the JSON module.
-    // Snow users write Json.encode(...) for struct serde (Phase 49).
+    // Mesh users write Json.encode(...) for struct serde (Phase 49).
     // Override `encode` to accept any type (struct with ToJson impl will be
     // dispatched at codegen time via ToJson__to_json__StructName).
     let json_encode_tv = TyVar(9999);
@@ -834,7 +834,7 @@ fn is_stdlib_module(name: &str) -> bool {
     STDLIB_MODULE_NAMES.contains(&name)
 }
 
-/// Infer types for a parsed Snow program.
+/// Infer types for a parsed Mesh program.
 ///
 /// This is the main entry point for single-module type checking.
 /// Delegates to `infer_with_imports` with an empty ImportContext.
@@ -842,7 +842,7 @@ pub fn infer(parse: &Parse) -> TypeckResult {
     infer_with_imports(parse, &ImportContext::empty())
 }
 
-/// Infer types for a parsed Snow program with pre-resolved imports.
+/// Infer types for a parsed Mesh program with pre-resolved imports.
 ///
 /// This is the multi-module entry point. The ImportContext contains
 /// symbols from already-type-checked dependency modules, which are
@@ -2351,7 +2351,7 @@ fn register_type_alias(alias_def: &TypeAliasDef, type_registry: &mut TypeRegistr
 
 /// Parse the aliased type from a TYPE_ALIAS_DEF node.
 /// Collects tokens after the `=` sign and parses them as a type.
-fn parse_alias_type(node: &snow_parser::SyntaxNode, _generic_params: &[String]) -> Ty {
+fn parse_alias_type(node: &mesh_parser::SyntaxNode, _generic_params: &[String]) -> Ty {
     let mut tokens: Vec<(SyntaxKind, String)> = Vec::new();
     let mut past_eq = false;
 
@@ -4447,7 +4447,7 @@ fn infer_block(
 /// Helper for block child classification.
 enum BlockChildKind {
     ItemIdx(usize),
-    ExprNode(snow_parser::SyntaxNode),
+    ExprNode(mesh_parser::SyntaxNode),
 }
 
 /// Infer the type of a tuple expression.
@@ -5473,7 +5473,7 @@ fn infer_pattern(
                 let name_text = name_tok.text().to_string();
 
                 // Check if this identifier is a known nullary variant constructor.
-                // In Snow, bare uppercase names like `Red`, `None`, `Point` in pattern
+                // In Mesh, bare uppercase names like `Red`, `None`, `Point` in pattern
                 // position should resolve to constructors, not create fresh bindings.
                 if let Some(scheme) = env.lookup(&name_text) {
                     let candidate = ctx.instantiate(scheme);
@@ -5552,7 +5552,7 @@ fn infer_pattern(
 fn infer_constructor_pattern(
     ctx: &mut InferCtx,
     env: &mut TypeEnv,
-    ctor_pat: &snow_parser::ast::pat::ConstructorPat,
+    ctor_pat: &mesh_parser::ast::pat::ConstructorPat,
     pat: &Pattern,
     types: &mut FxHashMap<TextRange, Ty>,
     type_registry: &TypeRegistry,
@@ -5640,7 +5640,7 @@ fn infer_constructor_pattern(
 fn infer_or_pattern(
     ctx: &mut InferCtx,
     env: &mut TypeEnv,
-    or_pat: &snow_parser::ast::pat::OrPat,
+    or_pat: &mesh_parser::ast::pat::OrPat,
     pat: &Pattern,
     types: &mut FxHashMap<TextRange, Ty>,
     type_registry: &TypeRegistry,
@@ -5772,7 +5772,7 @@ fn collect_binding_names_recursive(pat: &Pattern, names: &mut Vec<String>, env: 
 fn infer_as_pattern(
     ctx: &mut InferCtx,
     env: &mut TypeEnv,
-    as_pat: &snow_parser::ast::pat::AsPat,
+    as_pat: &mesh_parser::ast::pat::AsPat,
     pat: &Pattern,
     types: &mut FxHashMap<TextRange, Ty>,
     type_registry: &TypeRegistry,
@@ -5802,7 +5802,7 @@ fn infer_as_pattern(
 fn infer_cons_pattern(
     ctx: &mut InferCtx,
     env: &mut TypeEnv,
-    cons_pat: &snow_parser::ast::pat::ConsPat,
+    cons_pat: &mesh_parser::ast::pat::ConsPat,
     pat: &Pattern,
     types: &mut FxHashMap<TextRange, Ty>,
     type_registry: &TypeRegistry,
@@ -5838,7 +5838,7 @@ const ACTOR_MSG_TYPE_KEY: &str = "__actor_msg_type__";
 
 /// Infer an actor definition:
 ///
-/// ```snow
+/// ```mesh
 /// actor counter(state :: Int) do
 ///   receive do
 ///     n :: Int -> counter(state + n)
@@ -6866,20 +6866,20 @@ fn extract_where_constraints(fn_: &FnDef) -> Vec<(String, String)> {
 }
 
 /// Resolve a type annotation to a Ty, from the annotation's type name.
-fn resolve_type_name(ann: &snow_parser::ast::item::TypeAnnotation) -> Option<Ty> {
+fn resolve_type_name(ann: &mesh_parser::ast::item::TypeAnnotation) -> Option<Ty> {
     let name = resolve_type_name_str(ann)?;
     Some(name_to_type(&name))
 }
 
 /// Extract the type name string from a type annotation.
-fn resolve_type_name_str(ann: &snow_parser::ast::item::TypeAnnotation) -> Option<String> {
+fn resolve_type_name_str(ann: &mesh_parser::ast::item::TypeAnnotation) -> Option<String> {
     ann.type_name().map(|t| t.text().to_string())
 }
 
 /// Resolve a type annotation using the type registry (supports struct types, aliases).
 fn resolve_type_annotation(
     _ctx: &mut InferCtx,
-    ann: &snow_parser::ast::item::TypeAnnotation,
+    ann: &mesh_parser::ast::item::TypeAnnotation,
     type_registry: &TypeRegistry,
 ) -> Option<Ty> {
     // Collect all significant tokens from the annotation to parse the full type.
@@ -6904,7 +6904,7 @@ fn resolve_type_annotation(
 /// Collect significant tokens (IDENT, LT, GT, COMMA, QUESTION, BANG,
 /// L_PAREN, R_PAREN) from a TYPE_ANNOTATION node tree.
 fn collect_annotation_tokens(
-    node: &snow_parser::SyntaxNode,
+    node: &mesh_parser::SyntaxNode,
     tokens: &mut Vec<(SyntaxKind, String)>,
 ) {
     for child in node.children_with_tokens() {

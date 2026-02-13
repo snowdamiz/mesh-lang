@@ -1,12 +1,12 @@
-//! Pratt expression parser for Snow.
+//! Pratt expression parser for Mesh.
 //!
 //! Implements operator precedence parsing using binding power tables.
-//! Handles all Snow expression forms: literals, identifiers, binary/unary
+//! Handles all Mesh expression forms: literals, identifiers, binary/unary
 //! operators, function calls, field access, indexing, pipe, grouping,
 //! string interpolation, compound expressions (if/else, case/match,
 //! closures, blocks), and basic statements (let bindings, return).
 
-use snow_common::span::Span;
+use mesh_common::span::Span;
 
 use crate::syntax_kind::SyntaxKind;
 

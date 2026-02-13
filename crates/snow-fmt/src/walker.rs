@@ -1,6 +1,6 @@
-//! CST-to-FormatIR walker for Snow source code.
+//! CST-to-FormatIR walker for Mesh source code.
 //!
-//! This module walks the rowan CST produced by `snow-parser` and converts it
+//! This module walks the rowan CST produced by `mesh-parser` and converts it
 //! into a `FormatIR` document tree. The walker processes all tokens including
 //! trivia (comments, newlines) to preserve them in the formatted output.
 //!
@@ -13,7 +13,7 @@
 //! for unconditional spaces, and reserve `ir::space()` for inside `Group` nodes.
 
 use rowan::NodeOrToken;
-use snow_parser::{SyntaxKind, SyntaxNode, SyntaxToken};
+use mesh_parser::{SyntaxKind, SyntaxNode, SyntaxToken};
 
 use crate::ir::{self, FormatIR};
 
@@ -26,7 +26,7 @@ fn sp() -> FormatIR {
 
 /// Walk a CST node and produce a FormatIR document tree.
 ///
-/// This is the main entry point for converting a parsed Snow syntax tree
+/// This is the main entry point for converting a parsed Mesh syntax tree
 /// into the format IR that the printer can render.
 pub fn walk_node(node: &SyntaxNode) -> FormatIR {
     let kind = node.kind();

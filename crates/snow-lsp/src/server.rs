@@ -1,4 +1,4 @@
-//! Tower-lsp Backend implementation for the Snow language server.
+//! Tower-lsp Backend implementation for the Mesh language server.
 //!
 //! Implements the LSP `LanguageServer` trait with support for:
 //! - textDocument/didOpen, didChange, didClose (diagnostics)
@@ -23,19 +23,19 @@ struct DocumentState {
     analysis: AnalysisResult,
 }
 
-/// The Snow LSP server backend.
+/// The Mesh LSP server backend.
 ///
 /// Holds a reference to the LSP client (for sending notifications like
 /// diagnostics) and an in-memory document store keyed by URI.
-pub struct SnowBackend {
+pub struct MeshBackend {
     /// The LSP client used to send notifications (e.g., publishDiagnostics).
     client: Client,
     /// Document store: URI -> (source, analysis result).
     documents: Mutex<HashMap<String, DocumentState>>,
 }
 
-impl SnowBackend {
-    /// Create a new Snow LSP backend.
+impl MeshBackend {
+    /// Create a new Mesh LSP backend.
     pub fn new(client: Client) -> Self {
         Self {
             client,
@@ -69,7 +69,7 @@ impl SnowBackend {
 }
 
 #[tower_lsp::async_trait]
-impl LanguageServer for SnowBackend {
+impl LanguageServer for MeshBackend {
     async fn initialize(&self, _: InitializeParams) -> Result<InitializeResult> {
         Ok(InitializeResult {
             capabilities: ServerCapabilities {
@@ -86,7 +86,7 @@ impl LanguageServer for SnowBackend {
 
     async fn initialized(&self, _: InitializedParams) {
         self.client
-            .log_message(MessageType::INFO, "Snow LSP server initialized")
+            .log_message(MessageType::INFO, "Mesh LSP server initialized")
             .await;
     }
 
@@ -145,7 +145,7 @@ impl LanguageServer for SnowBackend {
             Some(ty_str) => Ok(Some(Hover {
                 contents: HoverContents::Markup(MarkupContent {
                     kind: MarkupKind::Markdown,
-                    value: format!("```snow\n{}\n```", ty_str),
+                    value: format!("```mesh\n{}\n```", ty_str),
                 }),
                 range: None,
             })),
@@ -211,7 +211,7 @@ mod tests {
     /// Verify that the server advertises the expected capabilities.
     #[tokio::test]
     async fn server_capabilities() {
-        let (service, _) = tower_lsp::LspService::new(|client| SnowBackend::new(client));
+        let (service, _) = tower_lsp::LspService::new(|client| MeshBackend::new(client));
         let server = service.inner();
         let result = server
             .initialize(InitializeParams::default())

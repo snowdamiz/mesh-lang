@@ -1,4 +1,4 @@
-//! Job (async task) runtime support for Snow.
+//! Job (async task) runtime support for Mesh.
 //!
 //! Jobs provide a simple async computation pattern:
 //! - `Job.async(fn)` spawns a linked actor that runs the function and sends
@@ -18,13 +18,13 @@
 //!
 //! ## Result Layout
 //!
-//! Returns a `SnowResult` (same as File/IO/JSON):
+//! Returns a `MeshResult` (same as File/IO/JSON):
 //! - tag 0 = Ok (value is the job's return value)
 //! - tag 1 = Err (value is a string describing the crash reason)
 
-use crate::gc::snow_gc_alloc_actor;
-use crate::io::SnowResult;
-use crate::string::snow_string_new;
+use crate::gc::mesh_gc_alloc_actor;
+use crate::io::MeshResult;
+use crate::string::mesh_string_new;
 
 use super::heap::MessageBuffer;
 use super::link::EXIT_SIGNAL_TAG;
@@ -38,23 +38,23 @@ use super::GLOBAL_SCHEDULER;
 /// differentiate between "job completed with a value" and "job crashed".
 pub const JOB_RESULT_TAG: u64 = u64::MAX - 1;
 
-/// Allocate a SnowResult on the GC heap.
-fn alloc_result(tag: u8, value: *mut u8) -> *mut SnowResult {
+/// Allocate a MeshResult on the GC heap.
+fn alloc_result(tag: u8, value: *mut u8) -> *mut MeshResult {
     unsafe {
-        let ptr = snow_gc_alloc_actor(
-            std::mem::size_of::<SnowResult>() as u64,
-            std::mem::align_of::<SnowResult>() as u64,
-        ) as *mut SnowResult;
+        let ptr = mesh_gc_alloc_actor(
+            std::mem::size_of::<MeshResult>() as u64,
+            std::mem::align_of::<MeshResult>() as u64,
+        ) as *mut MeshResult;
         (*ptr).tag = tag;
         (*ptr).value = value;
         ptr
     }
 }
 
-/// Build an Err SnowResult from a Rust string slice.
-fn err_result(msg: &str) -> *mut SnowResult {
-    let snow_str = snow_string_new(msg.as_ptr(), msg.len() as u64);
-    alloc_result(1, snow_str as *mut u8)
+/// Build an Err MeshResult from a Rust string slice.
+fn err_result(msg: &str) -> *mut MeshResult {
+    let mesh_str = mesh_string_new(msg.as_ptr(), msg.len() as u64);
+    alloc_result(1, mesh_str as *mut u8)
 }
 
 // ---------------------------------------------------------------------------
@@ -74,7 +74,7 @@ fn err_result(msg: &str) -> *mut SnowResult {
 /// - `fn_ptr`: pointer to the function to run (signature: fn(env) -> i64)
 /// - `env_ptr`: pointer to the closure environment
 #[no_mangle]
-pub extern "C" fn snow_job_async(fn_ptr: *const u8, env_ptr: *const u8) -> u64 {
+pub extern "C" fn mesh_job_async(fn_ptr: *const u8, env_ptr: *const u8) -> u64 {
     let caller_pid = match stack::get_current_pid() {
         Some(pid) => pid.as_u64(),
         None => {
@@ -102,7 +102,7 @@ fn spawn_job_actor(fn_ptr: *const u8, env_ptr: *const u8, caller_pid: u64) -> u6
 
     // Allocate args on the GC heap so they survive past this function.
     let args_heap = unsafe {
-        let ptr = snow_gc_alloc_actor(args.len() as u64, 8);
+        let ptr = mesh_gc_alloc_actor(args.len() as u64, 8);
         std::ptr::copy_nonoverlapping(args.as_ptr(), ptr, args.len());
         ptr
     };
@@ -142,7 +142,7 @@ extern "C" fn job_entry(args: *const u8) {
 
     // Link to the caller (if valid).
     if caller_pid != u64::MAX {
-        super::snow_actor_link(caller_pid);
+        super::mesh_actor_link(caller_pid);
     }
 
     // Call the user function: fn(env_ptr) -> i64
@@ -182,7 +182,7 @@ extern "C" fn job_entry(args: *const u8) {
     // Actor exits normally after this function returns.
 }
 
-/// Block until the job completes and return a `SnowResult`.
+/// Block until the job completes and return a `MeshResult`.
 ///
 /// Receives messages from the job actor:
 /// - `JOB_RESULT_TAG` message: extract the value, return Ok(value)
@@ -190,11 +190,11 @@ extern "C" fn job_entry(args: *const u8) {
 ///
 /// - `job_pid`: PID of the job actor (unused for filtering; we block on any message)
 ///
-/// Returns a pointer to a heap-allocated SnowResult.
+/// Returns a pointer to a heap-allocated MeshResult.
 #[no_mangle]
-pub extern "C" fn snow_job_await(_job_pid: u64) -> *const u8 {
-    // Use snow_actor_receive(-1) to block indefinitely.
-    let msg_ptr = super::snow_actor_receive(-1);
+pub extern "C" fn mesh_job_await(_job_pid: u64) -> *const u8 {
+    // Use mesh_actor_receive(-1) to block indefinitely.
+    let msg_ptr = super::mesh_actor_receive(-1);
     if msg_ptr.is_null() {
         return err_result("job await: no message received") as *const u8;
     }
@@ -202,18 +202,18 @@ pub extern "C" fn snow_job_await(_job_pid: u64) -> *const u8 {
     decode_job_message(msg_ptr)
 }
 
-/// Block until the job completes or timeout, returning a `SnowResult`.
+/// Block until the job completes or timeout, returning a `MeshResult`.
 ///
-/// Same as `snow_job_await` but with a timeout in milliseconds.
+/// Same as `mesh_job_await` but with a timeout in milliseconds.
 /// If timeout expires before a result arrives, returns Err("timeout").
 ///
 /// - `job_pid`: PID of the job actor
 /// - `timeout_ms`: timeout in milliseconds
 ///
-/// Returns a pointer to a heap-allocated SnowResult.
+/// Returns a pointer to a heap-allocated MeshResult.
 #[no_mangle]
-pub extern "C" fn snow_job_await_timeout(_job_pid: u64, timeout_ms: i64) -> *const u8 {
-    let msg_ptr = super::snow_actor_receive(timeout_ms);
+pub extern "C" fn mesh_job_await_timeout(_job_pid: u64, timeout_ms: i64) -> *const u8 {
+    let msg_ptr = super::mesh_actor_receive(timeout_ms);
     if msg_ptr.is_null() {
         return err_result("timeout") as *const u8;
     }
@@ -221,7 +221,7 @@ pub extern "C" fn snow_job_await_timeout(_job_pid: u64, timeout_ms: i64) -> *con
     decode_job_message(msg_ptr)
 }
 
-/// Decode a received message into a SnowResult.
+/// Decode a received message into a MeshResult.
 ///
 /// Message layout from actor_receive: [u64 type_tag][u64 data_len][u8... data]
 fn decode_job_message(msg_ptr: *const u8) -> *const u8 {
@@ -321,34 +321,34 @@ fn decode_job_message(msg_ptr: *const u8) -> *const u8 {
 ///    receives the element as its argument, with env_ptr for captures)
 /// 2. Collect all job PIDs
 /// 3. Await each job in order
-/// 4. Build a result list of SnowResult values
+/// 4. Build a result list of MeshResult values
 ///
-/// - `list_ptr`: pointer to a Snow list (SnowList)
+/// - `list_ptr`: pointer to a Mesh list (MeshList)
 /// - `fn_ptr`: pointer to the mapping function
 /// - `env_ptr`: pointer to the closure environment
 ///
-/// Returns a pointer to a new Snow list containing SnowResult values.
+/// Returns a pointer to a new Mesh list containing MeshResult values.
 #[no_mangle]
-pub extern "C" fn snow_job_map(
+pub extern "C" fn mesh_job_map(
     list_ptr: *const u8,
     fn_ptr: *const u8,
     env_ptr: *const u8,
 ) -> *const u8 {
-    use crate::collections::list::{snow_list_append, snow_list_get, snow_list_length, snow_list_new};
+    use crate::collections::list::{mesh_list_append, mesh_list_get, mesh_list_length, mesh_list_new};
 
     if list_ptr.is_null() || fn_ptr.is_null() {
-        return snow_list_new() as *const u8;
+        return mesh_list_new() as *const u8;
     }
 
-    let len = snow_list_length(list_ptr as *mut u8);
+    let len = mesh_list_length(list_ptr as *mut u8);
     if len == 0 {
-        return snow_list_new() as *const u8;
+        return mesh_list_new() as *const u8;
     }
 
     // Spawn jobs for each element.
     let mut job_pids = Vec::with_capacity(len as usize);
     for i in 0..len {
-        let element = snow_list_get(list_ptr as *mut u8, i);
+        let element = mesh_list_get(list_ptr as *mut u8, i);
 
         let caller_pid = stack::get_current_pid()
             .map(|p| p.as_u64())
@@ -362,14 +362,14 @@ pub extern "C" fn snow_job_map(
         full_args.extend_from_slice(&caller_pid.to_le_bytes());
 
         let full_args_heap = unsafe {
-            let ptr = snow_gc_alloc_actor(full_args.len() as u64, 8);
+            let ptr = mesh_gc_alloc_actor(full_args.len() as u64, 8);
             std::ptr::copy_nonoverlapping(full_args.as_ptr(), ptr, full_args.len());
             ptr
         };
 
         let sched = match GLOBAL_SCHEDULER.get() {
             Some(s) => s,
-            None => return snow_list_new() as *const u8,
+            None => return mesh_list_new() as *const u8,
         };
 
         let pid = sched.spawn(
@@ -382,16 +382,16 @@ pub extern "C" fn snow_job_map(
     }
 
     // Await each job in order and build result list.
-    let mut result_list = snow_list_new();
+    let mut result_list = mesh_list_new();
     for _job_pid in &job_pids {
         // Block until we get a result from this job.
-        let msg_ptr = super::snow_actor_receive(-1);
+        let msg_ptr = super::mesh_actor_receive(-1);
         let result = if msg_ptr.is_null() {
             err_result("job map: no message received") as u64
         } else {
             decode_job_message(msg_ptr) as u64
         };
-        result_list = snow_list_append(result_list, result);
+        result_list = mesh_list_append(result_list, result);
     }
 
     result_list as *const u8
@@ -424,7 +424,7 @@ extern "C" fn map_job_entry(args: *const u8) {
 
     // Link to the caller.
     if caller_pid != u64::MAX {
-        super::snow_actor_link(caller_pid);
+        super::mesh_actor_link(caller_pid);
     }
 
     // Call the mapping function: fn(env_ptr, element) -> i64
@@ -477,7 +477,7 @@ mod tests {
 
     #[test]
     fn test_alloc_result_ok() {
-        crate::gc::snow_rt_init();
+        crate::gc::mesh_rt_init();
         let result = alloc_result(0, 42 as *mut u8);
         unsafe {
             assert_eq!((*result).tag, 0);
@@ -487,7 +487,7 @@ mod tests {
 
     #[test]
     fn test_alloc_result_err() {
-        crate::gc::snow_rt_init();
+        crate::gc::mesh_rt_init();
         let result = err_result("test error");
         unsafe {
             assert_eq!((*result).tag, 1);
@@ -497,9 +497,9 @@ mod tests {
 
     #[test]
     fn test_decode_job_result_message() {
-        crate::gc::snow_rt_init();
+        crate::gc::mesh_rt_init();
 
-        // Build a fake message as it would appear after snow_actor_receive:
+        // Build a fake message as it would appear after mesh_actor_receive:
         // [u64 type_tag][u64 data_len][u64 JOB_RESULT_TAG][i64 result_value]
         let result_value: i64 = 99;
         let mut msg = Vec::new();
@@ -509,7 +509,7 @@ mod tests {
         msg.extend_from_slice(&result_value.to_le_bytes()); // data: value
 
         let result_ptr = decode_job_message(msg.as_ptr());
-        let result = result_ptr as *const SnowResult;
+        let result = result_ptr as *const MeshResult;
         unsafe {
             assert_eq!((*result).tag, 0); // Ok
             assert_eq!((*result).value as i64, 99);
@@ -518,7 +518,7 @@ mod tests {
 
     #[test]
     fn test_decode_exit_signal_message() {
-        crate::gc::snow_rt_init();
+        crate::gc::mesh_rt_init();
 
         // Build a fake exit signal message:
         // [u64 EXIT_SIGNAL_TAG][u64 data_len][u64 exiting_pid][u8 reason_tag=0 (Normal)]
@@ -529,21 +529,21 @@ mod tests {
         msg.push(0); // reason_tag: Normal
 
         let result_ptr = decode_job_message(msg.as_ptr());
-        let result = result_ptr as *const SnowResult;
+        let result = result_ptr as *const MeshResult;
         unsafe {
             assert_eq!((*result).tag, 1); // Err
-            // Value should be a SnowString containing "normal"
+            // Value should be a MeshString containing "normal"
             assert!(!(*result).value.is_null());
         }
     }
 
     #[test]
-    fn test_snow_job_async_returns_max_without_scheduler() {
+    fn test_mesh_job_async_returns_max_without_scheduler() {
         // Without GLOBAL_SCHEDULER, should return u64::MAX.
         // Note: the scheduler may be initialized by other tests, so
         // we just verify the function doesn't crash.
         extern "C" fn dummy_fn(_env: *const u8) -> i64 { 42 }
-        let _pid = snow_job_async(dummy_fn as *const u8, std::ptr::null());
+        let _pid = mesh_job_async(dummy_fn as *const u8, std::ptr::null());
         // If scheduler not initialized, returns u64::MAX.
         // If initialized (from other tests), returns a valid PID.
         // Either way, no panic = success.

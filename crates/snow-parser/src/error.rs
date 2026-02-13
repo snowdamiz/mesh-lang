@@ -1,8 +1,8 @@
-//! Parse error types for the Snow parser.
+//! Parse error types for the Mesh parser.
 
 use std::fmt;
 
-use snow_common::span::Span;
+use mesh_common::span::Span;
 
 /// A parse error with location information and optional related span.
 ///

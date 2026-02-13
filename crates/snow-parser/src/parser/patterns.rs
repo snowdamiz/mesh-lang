@@ -1,4 +1,4 @@
-//! Pattern parser for Snow.
+//! Pattern parser for Mesh.
 //!
 //! Parses patterns used in match arms, let bindings, and destructuring.
 //! Patterns include: wildcard (`_`), identifier, literal, tuple, struct,

@@ -1,16 +1,16 @@
 //! Parser integration tests using insta snapshots.
 //!
-//! Each test parses a Snow expression/declaration/program, builds the CST,
+//! Each test parses a Mesh expression/declaration/program, builds the CST,
 //! and snapshots the debug tree output to verify correct structure.
 
 use insta::assert_snapshot;
-use snow_parser::ast::expr::{BinaryExpr, ForInExpr, IfExpr, Literal};
-use snow_parser::ast::item::{
+use mesh_parser::ast::expr::{BinaryExpr, ForInExpr, IfExpr, Literal};
+use mesh_parser::ast::item::{
     FnDef, LetBinding, ServiceDef, SourceFile, StructDef, SumTypeDef,
 };
-use snow_parser::SyntaxKind;
-use snow_parser::ast::pat::{AsPat, ConstructorPat, OrPat, Pattern};
-use snow_parser::{debug_tree, parse, parse_block, parse_expr, AstNode};
+use mesh_parser::SyntaxKind;
+use mesh_parser::ast::pat::{AsPat, ConstructorPat, OrPat, Pattern};
+use mesh_parser::{debug_tree, parse, parse_block, parse_expr, AstNode};
 
 fn parse_and_debug(source: &str) -> String {
     let parse = parse_expr(source);
@@ -27,7 +27,7 @@ fn source_and_debug(source: &str) -> String {
     format_parse(&parse)
 }
 
-fn format_parse(parse: &snow_parser::Parse) -> String {
+fn format_parse(parse: &mesh_parser::Parse) -> String {
     let tree = debug_tree(&parse.syntax());
     if !parse.errors().is_empty() {
         format!(
@@ -894,7 +894,7 @@ fn ast_let_binding_accessors() {
     // Initializer
     let init = let_binding.initializer().expect("should have initializer");
     match init {
-        snow_parser::ast::expr::Expr::Literal(_) => {} // expected
+        mesh_parser::ast::expr::Expr::Literal(_) => {} // expected
         other => panic!("expected Literal, got {:?}", other),
     }
 }
@@ -913,7 +913,7 @@ fn ast_if_expr_accessors() {
     // Condition
     let cond = if_expr.condition().expect("should have condition");
     match cond {
-        snow_parser::ast::expr::Expr::Literal(_) => {} // true
+        mesh_parser::ast::expr::Expr::Literal(_) => {} // true
         other => panic!("expected Literal condition, got {:?}", other),
     }
 
@@ -983,14 +983,14 @@ fn ast_binary_expr_accessors() {
     // LHS
     let lhs = binary.lhs().expect("should have lhs");
     match lhs {
-        snow_parser::ast::expr::Expr::Literal(_) => {}
+        mesh_parser::ast::expr::Expr::Literal(_) => {}
         other => panic!("expected Literal lhs, got {:?}", other),
     }
 
     // RHS
     let rhs = binary.rhs().expect("should have rhs");
     match rhs {
-        snow_parser::ast::expr::Expr::Literal(_) => {}
+        mesh_parser::ast::expr::Expr::Literal(_) => {}
         other => panic!("expected Literal rhs, got {:?}", other),
     }
 
@@ -1020,10 +1020,10 @@ fn ast_import_accessors() {
     assert!(p.ok(), "parse errors: {:?}", p.errors());
     let tree = p.tree();
 
-    let from_import: snow_parser::ast::item::FromImportDecl = tree
+    let from_import: mesh_parser::ast::item::FromImportDecl = tree
         .syntax()
         .children()
-        .find_map(snow_parser::ast::item::FromImportDecl::cast)
+        .find_map(mesh_parser::ast::item::FromImportDecl::cast)
         .expect("should have from import");
 
     let path = from_import.module_path().expect("should have module path");
@@ -1049,7 +1049,7 @@ end";
     assert!(p.ok(), "parse errors: {:?}", p.errors());
     let tree = p.tree();
 
-    let module: snow_parser::ast::item::ModuleDef = tree
+    let module: mesh_parser::ast::item::ModuleDef = tree
         .modules()
         .next()
         .expect("should have module");
@@ -1060,7 +1060,7 @@ end";
     let items: Vec<_> = module.items().collect();
     assert_eq!(items.len(), 1);
     match &items[0] {
-        snow_parser::ast::item::Item::FnDef(_) => {}
+        mesh_parser::ast::item::Item::FnDef(_) => {}
         other => panic!("expected FnDef, got {:?}", other),
     }
 }
@@ -1265,7 +1265,7 @@ fn interface_method_with_default_body() {
     let root = SourceFile::cast(parse.syntax()).unwrap();
     let items: Vec<_> = root.items().collect();
     assert_eq!(items.len(), 1);
-    if let snow_parser::ast::item::Item::InterfaceDef(iface) = &items[0] {
+    if let mesh_parser::ast::item::Item::InterfaceDef(iface) = &items[0] {
         let methods: Vec<_> = iface.methods().collect();
         assert_eq!(methods.len(), 1);
         let method = &methods[0];
@@ -1284,7 +1284,7 @@ fn interface_method_without_body() {
     let root = SourceFile::cast(parse.syntax()).unwrap();
     let items: Vec<_> = root.items().collect();
     assert_eq!(items.len(), 1);
-    if let snow_parser::ast::item::Item::InterfaceDef(iface) = &items[0] {
+    if let mesh_parser::ast::item::Item::InterfaceDef(iface) = &items[0] {
         let methods: Vec<_> = iface.methods().collect();
         assert_eq!(methods.len(), 1);
         let method = &methods[0];
@@ -1508,7 +1508,7 @@ fn ast_constructor_pat_qualified() {
     let root = p.syntax();
 
     // Find the CONSTRUCTOR_PAT via tree traversal
-    fn find_constructor_pat(node: &snow_parser::SyntaxNode) -> Option<ConstructorPat> {
+    fn find_constructor_pat(node: &mesh_parser::SyntaxNode) -> Option<ConstructorPat> {
         if let Some(pat) = ConstructorPat::cast(node.clone()) {
             return Some(pat);
         }
@@ -1540,7 +1540,7 @@ fn ast_constructor_pat_unqualified() {
     assert!(p.ok(), "parse errors: {:?}", p.errors());
     let root = p.syntax();
 
-    fn find_constructor_pat(node: &snow_parser::SyntaxNode) -> Option<ConstructorPat> {
+    fn find_constructor_pat(node: &mesh_parser::SyntaxNode) -> Option<ConstructorPat> {
         if let Some(pat) = ConstructorPat::cast(node.clone()) {
             return Some(pat);
         }
@@ -1568,7 +1568,7 @@ fn ast_or_pat_accessors() {
     assert!(p.ok(), "parse errors: {:?}", p.errors());
     let root = p.syntax();
 
-    fn find_or_pat(node: &snow_parser::SyntaxNode) -> Option<OrPat> {
+    fn find_or_pat(node: &mesh_parser::SyntaxNode) -> Option<OrPat> {
         if let Some(pat) = OrPat::cast(node.clone()) {
             return Some(pat);
         }
@@ -1591,7 +1591,7 @@ fn ast_as_pat_accessors() {
     assert!(p.ok(), "parse errors: {:?}", p.errors());
     let root = p.syntax();
 
-    fn find_as_pat(node: &snow_parser::SyntaxNode) -> Option<AsPat> {
+    fn find_as_pat(node: &mesh_parser::SyntaxNode) -> Option<AsPat> {
         if let Some(pat) = AsPat::cast(node.clone()) {
             return Some(pat);
         }
@@ -1626,11 +1626,11 @@ fn ast_sum_type_in_items() {
     let items: Vec<_> = tree.items().collect();
     assert_eq!(items.len(), 2);
     match &items[0] {
-        snow_parser::ast::item::Item::SumTypeDef(_) => {} // expected
+        mesh_parser::ast::item::Item::SumTypeDef(_) => {} // expected
         other => panic!("expected SumTypeDef, got {:?}", other),
     }
     match &items[1] {
-        snow_parser::ast::item::Item::FnDef(_) => {} // expected
+        mesh_parser::ast::item::Item::FnDef(_) => {} // expected
         other => panic!("expected FnDef, got {:?}", other),
     }
 }
@@ -1730,7 +1730,7 @@ end";
 
 #[test]
 fn ast_actor_def_accessors() {
-    use snow_parser::ast::item::ActorDef;
+    use mesh_parser::ast::item::ActorDef;
     let p = parse("actor Counter(state) do\n  state\nend");
     assert!(p.ok(), "parse errors: {:?}", p.errors());
     let tree = p.tree();
@@ -1749,7 +1749,7 @@ fn ast_actor_def_accessors() {
 
 #[test]
 fn ast_actor_def_with_terminate() {
-    use snow_parser::ast::item::ActorDef;
+    use mesh_parser::ast::item::ActorDef;
     let source = "actor Worker do\n  0\n  terminate do\n    1\n  end\nend";
     let p = parse(source);
     assert!(p.ok(), "parse errors: {:?}", p.errors());
@@ -1776,11 +1776,11 @@ fn ast_actor_in_items() {
     let items: Vec<_> = tree.items().collect();
     assert_eq!(items.len(), 2);
     match &items[0] {
-        snow_parser::ast::item::Item::ActorDef(_) => {}
+        mesh_parser::ast::item::Item::ActorDef(_) => {}
         other => panic!("expected ActorDef, got {:?}", other),
     }
     match &items[1] {
-        snow_parser::ast::item::Item::FnDef(_) => {}
+        mesh_parser::ast::item::Item::FnDef(_) => {}
         other => panic!("expected FnDef, got {:?}", other),
     }
 }
@@ -1859,7 +1859,7 @@ end";
     assert_eq!(items.len(), 1);
 
     match &items[0] {
-        snow_parser::ast::item::Item::ServiceDef(svc) => {
+        mesh_parser::ast::item::Item::ServiceDef(svc) => {
             // Name
             assert_eq!(svc.name().unwrap().text().unwrap(), "Counter");
 
@@ -1897,11 +1897,11 @@ fn ast_service_in_items() {
     let items: Vec<_> = tree.items().collect();
     assert_eq!(items.len(), 2);
     match &items[0] {
-        snow_parser::ast::item::Item::ServiceDef(_) => {}
+        mesh_parser::ast::item::Item::ServiceDef(_) => {}
         other => panic!("expected ServiceDef, got {:?}", other),
     }
     match &items[1] {
-        snow_parser::ast::item::Item::FnDef(_) => {}
+        mesh_parser::ast::item::Item::FnDef(_) => {}
         other => panic!("expected FnDef, got {:?}", other),
     }
 }

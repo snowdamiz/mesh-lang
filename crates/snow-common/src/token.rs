@@ -2,7 +2,7 @@ use serde::Serialize;
 
 use crate::span::Span;
 
-/// A token produced by the Snow lexer.
+/// A token produced by the Mesh lexer.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct Token {
     pub kind: TokenKind,
@@ -19,7 +19,7 @@ impl Token {
     }
 }
 
-/// Every kind of token in the Snow language.
+/// Every kind of token in the Mesh language.
 ///
 /// This enum is the complete vocabulary for the lexer. It covers all keywords,
 /// operators, delimiters, literals, string interpolation markers, comments,
@@ -188,7 +188,7 @@ pub enum TokenKind {
 
 /// Look up a keyword from its string representation.
 ///
-/// Returns `Some(TokenKind)` if the string is a Snow keyword, `None` otherwise.
+/// Returns `Some(TokenKind)` if the string is a Mesh keyword, `None` otherwise.
 /// The lexer calls this to distinguish keywords from identifiers after scanning
 /// an identifier-shaped token.
 pub fn keyword_from_str(s: &str) -> Option<TokenKind> {

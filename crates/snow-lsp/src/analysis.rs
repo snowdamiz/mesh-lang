@@ -1,6 +1,6 @@
 //! Document analysis: parse, type-check, and produce LSP diagnostics.
 //!
-//! This module bridges the Snow compiler frontend (parser + typeck) with the
+//! This module bridges the Mesh compiler frontend (parser + typeck) with the
 //! LSP protocol. It converts byte-offset spans into LSP line/character
 //! positions (0-based, UTF-16 code units per the LSP spec) and translates
 //! parse errors and type errors into `lsp_types::Diagnostic`.
@@ -8,26 +8,26 @@
 use rowan::TextRange;
 use tower_lsp::lsp_types::{Diagnostic, DiagnosticSeverity, Position, Range};
 
-use snow_typeck::error::{ConstraintOrigin, TypeError};
-use snow_typeck::ty::Ty;
-use snow_typeck::TypeckResult;
+use mesh_typeck::error::{ConstraintOrigin, TypeError};
+use mesh_typeck::ty::Ty;
+use mesh_typeck::TypeckResult;
 
-/// The result of analyzing a Snow document.
+/// The result of analyzing a Mesh document.
 pub struct AnalysisResult {
     /// LSP diagnostics (parse errors + type errors + warnings).
     pub diagnostics: Vec<Diagnostic>,
     /// The parse result, kept for further queries.
-    pub parse: snow_parser::Parse,
+    pub parse: mesh_parser::Parse,
     /// The type-check result, kept for hover queries.
     pub typeck: TypeckResult,
 }
 
-/// Analyze a Snow document: parse, type-check, and produce diagnostics.
+/// Analyze a Mesh document: parse, type-check, and produce diagnostics.
 ///
 /// This is the main entry point called by the LSP server on didOpen/didChange.
 pub fn analyze_document(_uri: &str, source: &str) -> AnalysisResult {
-    let parse = snow_parser::parse(source);
-    let typeck = snow_typeck::check(&parse);
+    let parse = mesh_parser::parse(source);
+    let typeck = mesh_typeck::check(&parse);
 
     let mut diagnostics = Vec::new();
 
@@ -38,7 +38,7 @@ pub fn analyze_document(_uri: &str, source: &str) -> AnalysisResult {
         diagnostics.push(Diagnostic {
             range: Range::new(start, end),
             severity: Some(DiagnosticSeverity::ERROR),
-            source: Some("snow".to_string()),
+            source: Some("mesh".to_string()),
             message: error.message.clone(),
             ..Default::default()
         });
@@ -245,7 +245,7 @@ fn type_error_to_diagnostic(
     Some(Diagnostic {
         range: Range::new(start, end),
         severity: Some(severity),
-        source: Some("snow".to_string()),
+        source: Some("mesh".to_string()),
         message: format!("{}", error),
         ..Default::default()
     })
@@ -260,7 +260,7 @@ mod tests {
     #[test]
     fn analyze_valid_source_no_diagnostics() {
         let source = "let x = 42";
-        let result = analyze_document("file:///test.snow", source);
+        let result = analyze_document("file:///test.mpl", source);
         assert!(
             result.diagnostics.is_empty(),
             "Valid source should produce no diagnostics, got: {:?}",
@@ -271,7 +271,7 @@ mod tests {
     #[test]
     fn analyze_valid_function_no_diagnostics() {
         let source = "fn add(a, b) do\na + b\nend";
-        let result = analyze_document("file:///test.snow", source);
+        let result = analyze_document("file:///test.mpl", source);
         assert!(
             result.diagnostics.is_empty(),
             "Valid function should produce no diagnostics, got: {:?}",
@@ -283,21 +283,21 @@ mod tests {
     fn analyze_type_error_produces_diagnostic() {
         // Using an undefined variable should produce a type error diagnostic.
         let source = "let x = undefined_var";
-        let result = analyze_document("file:///test.snow", source);
+        let result = analyze_document("file:///test.mpl", source);
         assert!(
             !result.diagnostics.is_empty(),
             "Type error should produce at least one diagnostic"
         );
         let diag = &result.diagnostics[0];
         assert_eq!(diag.severity, Some(DiagnosticSeverity::ERROR));
-        assert_eq!(diag.source.as_deref(), Some("snow"));
+        assert_eq!(diag.source.as_deref(), Some("mesh"));
     }
 
     #[test]
     fn analyze_type_error_has_range() {
         // The diagnostic range should point to the error location.
         let source = "let x = undefined_var";
-        let result = analyze_document("file:///test.snow", source);
+        let result = analyze_document("file:///test.mpl", source);
         assert!(!result.diagnostics.is_empty());
         let diag = &result.diagnostics[0];
         // The error is for "undefined_var" which is on line 0.
@@ -308,7 +308,7 @@ mod tests {
     fn analyze_multiple_errors_all_reported() {
         // Two undefined variables should produce at least two diagnostics.
         let source = "let x = undef1\nlet y = undef2";
-        let result = analyze_document("file:///test.snow", source);
+        let result = analyze_document("file:///test.mpl", source);
         assert!(
             result.diagnostics.len() >= 2,
             "Expected at least 2 diagnostics, got {}",
@@ -322,7 +322,7 @@ mod tests {
         // Note: `fn do end` is now valid syntax (no-params closure, Phase 12-01).
         // Use a clearly invalid expression instead.
         let source = "let x = + +";
-        let result = analyze_document("file:///test.snow", source);
+        let result = analyze_document("file:///test.mpl", source);
         assert!(
             !result.diagnostics.is_empty(),
             "Parse error should produce at least one diagnostic"
@@ -336,7 +336,7 @@ mod tests {
     #[test]
     fn hover_integer_literal() {
         let source = "let x = 42";
-        let result = analyze_document("file:///test.snow", source);
+        let result = analyze_document("file:///test.mpl", source);
         // Hover over the let binding -- should show the type.
         // The rowan tree has "letx=42" so the LET_BINDING covers tree offsets.
         // The type map uses tree-coordinate ranges.
@@ -355,7 +355,7 @@ mod tests {
     fn hover_over_empty_space_returns_none() {
         // Hovering over whitespace or at end of file should return None.
         let source = "let x = 42";
-        let result = analyze_document("file:///test.snow", source);
+        let result = analyze_document("file:///test.mpl", source);
         // Position past end of source.
         let ty = type_at_position(source, &result.typeck, &Position { line: 5, character: 0 });
         assert!(ty.is_none(), "Hover past end should return None");
@@ -366,7 +366,7 @@ mod tests {
     #[test]
     fn goto_def_function_defined_then_called() {
         let source = "fn greet(name) do\nname\nend\nlet msg = greet(42)";
-        let result = analyze_document("file:///test.snow", source);
+        let result = analyze_document("file:///test.mpl", source);
         let root = result.parse.syntax();
         // Find the call to "greet" in `greet(42)`.
         let call_offset = source.rfind("greet").unwrap();
@@ -384,7 +384,7 @@ mod tests {
     #[test]
     fn goto_def_let_binding_used_later() {
         let source = "let count = 10\nlet doubled = count + count";
-        let result = analyze_document("file:///test.snow", source);
+        let result = analyze_document("file:///test.mpl", source);
         let root = result.parse.syntax();
         // Find "count" in the second let binding.
         let second_count = source.find("count + count").unwrap();
@@ -399,7 +399,7 @@ mod tests {
     #[test]
     fn goto_def_variable_shadowing_inner_scope() {
         let source = "fn test() do\nlet x = 1\nfn inner() do\nlet x = 2\nlet y = x\nend\nend";
-        let result = analyze_document("file:///test.snow", source);
+        let result = analyze_document("file:///test.mpl", source);
         let root = result.parse.syntax();
         let y_binding = source.find("let y = x").unwrap();
         let x_use = y_binding + "let y = ".len();
@@ -414,7 +414,7 @@ mod tests {
     #[test]
     fn goto_def_unknown_identifier_returns_none() {
         let source = "let y = completely_unknown";
-        let result = analyze_document("file:///test.snow", source);
+        let result = analyze_document("file:///test.mpl", source);
         let root = result.parse.syntax();
         let unknown_offset = source.find("completely_unknown").unwrap();
         let def = crate::definition::find_definition(source, &root, unknown_offset);
@@ -424,7 +424,7 @@ mod tests {
     #[test]
     fn goto_def_struct_name_resolves() {
         let source = "struct Point do\nx :: Int\nend";
-        let result = analyze_document("file:///test.snow", source);
+        let result = analyze_document("file:///test.mpl", source);
         let root = result.parse.syntax();
         // Definition search for "Point" at the struct def should find itself.
         let point_offset = source.find("Point").unwrap();
@@ -516,10 +516,10 @@ mod tests {
     fn source_tree_offset_roundtrip() {
         let source = "let x = 42\nlet y = x";
         // For each non-EOF token in the source, verify the roundtrip.
-        let tokens = snow_lexer::Lexer::tokenize(source);
+        let tokens = mesh_lexer::Lexer::tokenize(source);
         for token in &tokens {
             // Skip EOF (zero-length token at end).
-            if token.kind == snow_common::token::TokenKind::Eof {
+            if token.kind == mesh_common::token::TokenKind::Eof {
                 continue;
             }
             let src_start = token.span.start as usize;

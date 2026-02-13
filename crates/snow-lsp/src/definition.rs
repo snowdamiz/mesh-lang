@@ -9,14 +9,14 @@
 //!
 //! ## Coordinate system
 //!
-//! The Snow lexer skips whitespace, so the rowan CST does not contain whitespace
+//! The Mesh lexer skips whitespace, so the rowan CST does not contain whitespace
 //! tokens. This means rowan `TextRange` offsets are NOT the same as source byte
 //! offsets. We re-lex the source to build a mapping from source byte offsets to
 //! rowan tree offsets.
 
 use rowan::TextRange;
-use snow_parser::SyntaxKind;
-use snow_parser::SyntaxNode;
+use mesh_parser::SyntaxKind;
+use mesh_parser::SyntaxNode;
 
 /// Known built-in module names that have no source definition.
 const BUILTIN_MODULES: &[&str] = &[
@@ -30,7 +30,7 @@ const BUILTIN_MODULES: &[&str] = &[
 /// Since the lexer skips whitespace, rowan tree offsets differ from source
 /// offsets. This function re-lexes the source to build the mapping.
 pub fn source_to_tree_offset(source: &str, source_offset: usize) -> Option<usize> {
-    let tokens = snow_lexer::Lexer::tokenize(source);
+    let tokens = mesh_lexer::Lexer::tokenize(source);
     let mut tree_offset: usize = 0;
 
     for token in &tokens {
@@ -55,7 +55,7 @@ pub fn source_to_tree_offset(source: &str, source_offset: usize) -> Option<usize
 ///
 /// Inverse of `source_to_tree_offset`.
 pub fn tree_to_source_offset(source: &str, tree_offset: usize) -> Option<usize> {
-    let tokens = snow_lexer::Lexer::tokenize(source);
+    let tokens = mesh_lexer::Lexer::tokenize(source);
     let mut cumulative_tree: usize = 0;
 
     for token in &tokens {
@@ -350,7 +350,7 @@ mod tests {
 
     /// Helper: parse source, convert source offset to tree offset, and find definition.
     fn def_at(source: &str, source_offset: usize) -> Option<TextRange> {
-        let parse = snow_parser::parse(source);
+        let parse = mesh_parser::parse(source);
         let root = parse.syntax();
         find_definition(source, &root, source_offset)
     }

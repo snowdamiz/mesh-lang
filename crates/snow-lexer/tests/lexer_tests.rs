@@ -1,6 +1,6 @@
 use insta::assert_yaml_snapshot;
 use serde::Serialize;
-use snow_lexer::Lexer;
+use mesh_lexer::Lexer;
 
 /// A human-readable representation of a token for snapshot testing.
 #[derive(Serialize)]
@@ -33,28 +33,28 @@ fn tokenize_snapshot(source: &str) -> Vec<TokenSnapshot> {
 
 #[test]
 fn test_keywords() {
-    let source = include_str!("../../../tests/fixtures/keywords.snow");
+    let source = include_str!("../../../tests/fixtures/keywords.mpl");
     let tokens = tokenize_snapshot(source);
     assert_yaml_snapshot!(tokens);
 }
 
 #[test]
 fn test_operators() {
-    let source = include_str!("../../../tests/fixtures/operators.snow");
+    let source = include_str!("../../../tests/fixtures/operators.mpl");
     let tokens = tokenize_snapshot(source);
     assert_yaml_snapshot!(tokens);
 }
 
 #[test]
 fn test_numbers() {
-    let source = include_str!("../../../tests/fixtures/numbers.snow");
+    let source = include_str!("../../../tests/fixtures/numbers.mpl");
     let tokens = tokenize_snapshot(source);
     assert_yaml_snapshot!(tokens);
 }
 
 #[test]
 fn test_identifiers() {
-    let source = include_str!("../../../tests/fixtures/identifiers.snow");
+    let source = include_str!("../../../tests/fixtures/identifiers.mpl");
     let tokens = tokenize_snapshot(source);
     assert_yaml_snapshot!(tokens);
 }
@@ -102,42 +102,42 @@ fn test_spans_accurate() {
 
 #[test]
 fn test_simple_string_escapes() {
-    let source = include_str!("../../../tests/fixtures/strings.snow");
+    let source = include_str!("../../../tests/fixtures/strings.mpl");
     let tokens = tokenize_snapshot(source);
     assert_yaml_snapshot!(tokens);
 }
 
 #[test]
 fn test_string_interpolation() {
-    let source = include_str!("../../../tests/fixtures/interpolation.snow");
+    let source = include_str!("../../../tests/fixtures/interpolation.mpl");
     let tokens = tokenize_snapshot(source);
     assert_yaml_snapshot!(tokens);
 }
 
 #[test]
 fn test_comments() {
-    let source = include_str!("../../../tests/fixtures/comments.snow");
+    let source = include_str!("../../../tests/fixtures/comments.mpl");
     let tokens = tokenize_snapshot(source);
     assert_yaml_snapshot!(tokens);
 }
 
 #[test]
 fn test_newlines() {
-    let source = include_str!("../../../tests/fixtures/newlines.snow");
+    let source = include_str!("../../../tests/fixtures/newlines.mpl");
     let tokens = tokenize_snapshot(source);
     assert_yaml_snapshot!(tokens);
 }
 
 #[test]
 fn test_error_recovery() {
-    let source = include_str!("../../../tests/fixtures/error_recovery.snow");
+    let source = include_str!("../../../tests/fixtures/error_recovery.mpl");
     let tokens = tokenize_snapshot(source);
     assert_yaml_snapshot!(tokens);
 }
 
 #[test]
 fn test_full_program() {
-    let source = include_str!("../../../tests/fixtures/full_program.snow");
+    let source = include_str!("../../../tests/fixtures/full_program.mpl");
     let tokens = tokenize_snapshot(source);
     assert_yaml_snapshot!(tokens);
 }

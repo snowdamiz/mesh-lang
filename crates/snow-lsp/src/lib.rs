@@ -1,6 +1,6 @@
-//! Snow Language Server Protocol (LSP) implementation.
+//! Mesh Language Server Protocol (LSP) implementation.
 //!
-//! This crate provides an LSP server for the Snow programming language,
+//! This crate provides an LSP server for the Mesh programming language,
 //! enabling real-time feedback in editors like VS Code and Neovim:
 //!
 //! - **Diagnostics**: Parse errors and type errors displayed inline
@@ -16,16 +16,16 @@ pub mod server;
 
 use tower_lsp::{LspService, Server};
 
-use server::SnowBackend;
+use server::MeshBackend;
 
-/// Run the Snow LSP server on stdin/stdout.
+/// Run the Mesh LSP server on stdin/stdout.
 ///
-/// This is the main entry point called by `snowc lsp`. It sets up the
+/// This is the main entry point called by `meshc lsp`. It sets up the
 /// tower-lsp service and runs the event loop until the client disconnects.
 pub async fn run_server() {
     let stdin = tokio::io::stdin();
     let stdout = tokio::io::stdout();
 
-    let (service, socket) = LspService::new(|client| SnowBackend::new(client));
+    let (service, socket) = LspService::new(|client| MeshBackend::new(client));
     Server::new(stdin, stdout, socket).serve(service).await;
 }

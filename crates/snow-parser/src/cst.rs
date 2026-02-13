@@ -1,15 +1,15 @@
-//! Rowan-based concrete syntax tree types for Snow.
+//! Rowan-based concrete syntax tree types for Mesh.
 //!
-//! Defines the `SnowLanguage` marker type that connects [`SyntaxKind`] to
+//! Defines the `MeshLanguage` marker type that connects [`SyntaxKind`] to
 //! rowan's generic tree infrastructure, plus type aliases for convenience.
 
 use crate::syntax_kind::SyntaxKind;
 
-/// Marker type for Snow's language in rowan's generic tree system.
+/// Marker type for Mesh's language in rowan's generic tree system.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum SnowLanguage {}
+pub enum MeshLanguage {}
 
-impl rowan::Language for SnowLanguage {
+impl rowan::Language for MeshLanguage {
     type Kind = SyntaxKind;
 
     fn kind_from_raw(raw: rowan::SyntaxKind) -> Self::Kind {
@@ -25,10 +25,10 @@ impl rowan::Language for SnowLanguage {
 }
 
 /// A CST node (interior node with children).
-pub type SyntaxNode = rowan::SyntaxNode<SnowLanguage>;
+pub type SyntaxNode = rowan::SyntaxNode<MeshLanguage>;
 
 /// A CST token (leaf node with text).
-pub type SyntaxToken = rowan::SyntaxToken<SnowLanguage>;
+pub type SyntaxToken = rowan::SyntaxToken<MeshLanguage>;
 
 /// Either a node or a token in the CST.
-pub type SyntaxElement = rowan::SyntaxElement<SnowLanguage>;
+pub type SyntaxElement = rowan::SyntaxElement<MeshLanguage>;

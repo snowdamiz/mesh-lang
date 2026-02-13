@@ -159,7 +159,7 @@ pub fn perform_upgrade<S: Read + Write>(stream: &mut S) -> Result<(String, Vec<(
     // Sanity check: BufReader should not have buffered extra bytes
     if !reader.buffer().is_empty() {
         eprintln!(
-            "[snow-rt] warning: {} bytes buffered beyond HTTP headers during WebSocket upgrade",
+            "[mesh-rt] warning: {} bytes buffered beyond HTTP headers during WebSocket upgrade",
             reader.buffer().len()
         );
     }

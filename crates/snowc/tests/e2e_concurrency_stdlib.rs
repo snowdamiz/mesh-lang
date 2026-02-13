@@ -1,7 +1,7 @@
-//! End-to-end integration tests for Snow concurrency standard library (Phase 9).
+//! End-to-end integration tests for Mesh concurrency standard library (Phase 9).
 //!
 //! Tests Service and Job constructs through the full compiler pipeline:
-//! Snow source -> parse -> typecheck -> MIR -> LLVM codegen -> native binary -> run.
+//! Mesh source -> parse -> typecheck -> MIR -> LLVM codegen -> native binary -> run.
 //!
 //! Tests use generous timeouts (30s) because:
 //! - Each test compiles a fresh binary to a temp directory
@@ -14,26 +14,26 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::Duration;
 
-/// Helper: compile a Snow source and run the binary with a timeout.
+/// Helper: compile a Mesh source and run the binary with a timeout.
 /// Returns stdout on success. Panics on compilation failure or timeout.
 fn compile_and_run_with_timeout(source: &str, timeout_secs: u64) -> String {
     let temp_dir = tempfile::tempdir().expect("failed to create temp dir");
     let project_dir = temp_dir.path().join("project");
     std::fs::create_dir_all(&project_dir).expect("failed to create project dir");
 
-    let main_snow = project_dir.join("main.snow");
-    std::fs::write(&main_snow, source).expect("failed to write main.snow");
+    let main_mesh = project_dir.join("main.mpl");
+    std::fs::write(&main_mesh, source).expect("failed to write main.mpl");
 
-    // Build with snowc
-    let snowc = find_snowc();
-    let output = Command::new(&snowc)
+    // Build with meshc
+    let meshc = find_meshc();
+    let output = Command::new(&meshc)
         .args(["build", project_dir.to_str().unwrap()])
         .output()
-        .expect("failed to invoke snowc");
+        .expect("failed to invoke meshc");
 
     assert!(
         output.status.success(),
-        "snowc build failed:\nstdout: {}\nstderr: {}",
+        "meshc build failed:\nstdout: {}\nstderr: {}",
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr)
     );
@@ -121,8 +121,8 @@ fn read_fixture(name: &str) -> String {
         .unwrap_or_else(|e| panic!("failed to read fixture {}: {}", fixture_path.display(), e))
 }
 
-/// Find the snowc binary in the target directory.
-fn find_snowc() -> PathBuf {
+/// Find the meshc binary in the target directory.
+fn find_meshc() -> PathBuf {
     let mut path = std::env::current_exe()
         .expect("cannot find current exe")
         .parent()
@@ -133,13 +133,13 @@ fn find_snowc() -> PathBuf {
         path = path.parent().unwrap().to_path_buf();
     }
 
-    let snowc = path.join("snowc");
+    let meshc = path.join("meshc");
     assert!(
-        snowc.exists(),
-        "snowc binary not found at {}. Run `cargo build -p snowc` first.",
-        snowc.display()
+        meshc.exists(),
+        "meshc binary not found at {}. Run `cargo build -p meshc` first.",
+        meshc.display()
     );
-    snowc
+    meshc
 }
 
 // ── Service E2E Tests ──────────────────────────────────────────────────
@@ -148,7 +148,7 @@ fn find_snowc() -> PathBuf {
 /// Exercises: service definition, init, call with reply, cast fire-and-forget.
 #[test]
 fn e2e_service_counter() {
-    let source = read_fixture("service_counter.snow");
+    let source = read_fixture("service_counter.mpl");
     let output = compile_and_run_with_timeout(&source, 30);
     assert_eq!(output, "10\n15\n0\n");
 }
@@ -157,7 +157,7 @@ fn e2e_service_counter() {
 /// Exercises: multiple handler dispatch on type tags.
 #[test]
 fn e2e_service_call_cast() {
-    let source = read_fixture("service_call_cast.snow");
+    let source = read_fixture("service_call_cast.mpl");
     let output = compile_and_run_with_timeout(&source, 30);
     assert_eq!(output, "100\n200\n0\n");
 }
@@ -166,7 +166,7 @@ fn e2e_service_call_cast() {
 /// Exercises: functional state management (handler receives state, returns new state).
 #[test]
 fn e2e_service_state_management() {
-    let source = read_fixture("service_state_management.snow");
+    let source = read_fixture("service_state_management.mpl");
     let output = compile_and_run_with_timeout(&source, 30);
     assert_eq!(output, "6\n");
 }
@@ -177,7 +177,7 @@ fn e2e_service_state_management() {
 /// Exercises: Job.async with closure, Job.await returning Ok(value).
 #[test]
 fn e2e_job_async_await() {
-    let source = read_fixture("job_async_await.snow");
+    let source = read_fixture("job_async_await.mpl");
     let output = compile_and_run_with_timeout(&source, 30);
     assert_eq!(output, "42\n");
 }

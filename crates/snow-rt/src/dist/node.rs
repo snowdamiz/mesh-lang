@@ -1,8 +1,8 @@
-//! Node identity, TLS configuration, and TCP listener for Snow distribution.
+//! Node identity, TLS configuration, and TCP listener for Mesh distribution.
 //!
-//! This module implements the foundational layer for Snow's distributed actor
-//! system. A Snow runtime becomes a named, addressable node by calling
-//! `snow_node_start`, which:
+//! This module implements the foundational layer for Mesh's distributed actor
+//! system. A Mesh runtime becomes a named, addressable node by calling
+//! `mesh_node_start`, which:
 //!
 //! 1. Parses the node name ("name@host" or "name@host:port")
 //! 2. Generates an ephemeral ECDSA P-256 self-signed certificate
@@ -38,7 +38,7 @@ type HmacSha256 = Hmac<Sha256>;
 // NodeState -- global singleton for the local node
 // ---------------------------------------------------------------------------
 
-/// Global node state, initialized once by `snow_node_start`.
+/// Global node state, initialized once by `mesh_node_start`.
 ///
 /// Holds the node's identity, TLS configs, and connected sessions.
 /// Follows the same `OnceLock` pattern as `GLOBAL_SCHEDULER` and
@@ -91,7 +91,7 @@ static NODE_STATE: OnceLock<NodeState> = OnceLock::new();
 
 /// Get a reference to the global node state, if initialized.
 ///
-/// Returns `Some` if `snow_node_start` has been called, `None` otherwise.
+/// Returns `Some` if `mesh_node_start` has been called, `None` otherwise.
 /// This is the primary access point for code that needs to check whether
 /// the runtime is operating as a named node.
 pub fn node_state() -> Option<&'static NodeState> {
@@ -113,7 +113,7 @@ unsafe impl Sync for FnPtr {}
 
 /// Global registry mapping function names to their code pointers.
 ///
-/// Populated at program startup by codegen-emitted `snow_register_function`
+/// Populated at program startup by codegen-emitted `mesh_register_function`
 /// calls. Used by the remote spawn handler to look up a function pointer
 /// by name when a DIST_SPAWN request arrives from another node.
 static FUNCTION_REGISTRY: OnceLock<RwLock<FxHashMap<String, FnPtr>>> = OnceLock::new();
@@ -129,7 +129,7 @@ fn function_registry() -> &'static RwLock<FxHashMap<String, FnPtr>> {
 /// Each top-level (non-closure) function is registered so that remote nodes
 /// can spawn it by name.
 #[no_mangle]
-pub extern "C" fn snow_register_function(name_ptr: *const u8, name_len: u64, fn_ptr: *const u8) {
+pub extern "C" fn mesh_register_function(name_ptr: *const u8, name_len: u64, fn_ptr: *const u8) {
     if name_ptr.is_null() || fn_ptr.is_null() {
         return;
     }
@@ -418,7 +418,7 @@ fn handle_peer_list(data: &[u8]) {
         std::thread::spawn(move || {
             for peer in to_connect {
                 let bytes = peer.as_bytes();
-                snow_node_connect(bytes.as_ptr(), bytes.len() as u64);
+                mesh_node_connect(bytes.as_ptr(), bytes.len() as u64);
             }
         });
     }
@@ -579,7 +579,7 @@ fn spawn_session_threads(session: &Arc<NodeSession>) {
     let remote_name = session.remote_name.clone();
 
     // Reader thread
-    let reader_name = format!("snow-node-reader-{}", session.remote_name);
+    let reader_name = format!("mesh-node-reader-{}", session.remote_name);
     std::thread::Builder::new()
         .name(reader_name)
         .spawn(move || {
@@ -588,7 +588,7 @@ fn spawn_session_threads(session: &Arc<NodeSession>) {
         .expect("failed to spawn node reader thread");
 
     // Heartbeat thread
-    let hb_name = format!("snow-node-heartbeat-{}", remote_name);
+    let hb_name = format!("mesh-node-heartbeat-{}", remote_name);
     let remote_name_hb = session.remote_name.clone();
     std::thread::Builder::new()
         .name(hb_name)
@@ -854,7 +854,7 @@ fn reader_loop_session(
                                 match lookup_function(fn_name) {
                                     Some(fn_ptr) => {
                                         // Spawn the actor locally.
-                                        let spawned_pid = crate::actor::snow_actor_spawn(
+                                        let spawned_pid = crate::actor::mesh_actor_spawn(
                                             fn_ptr,
                                             args_data.as_ptr(),
                                             args_data.len() as u64,
@@ -1129,7 +1129,7 @@ fn heartbeat_loop_session(
         let mut hs = heartbeat_state.lock().unwrap();
 
         if hs.is_pong_overdue() {
-            eprintln!("snow node heartbeat timeout: {}", session_name);
+            eprintln!("mesh node heartbeat timeout: {}", session_name);
             session.shutdown.store(true, Ordering::SeqCst);
             break;
         }
@@ -1892,9 +1892,9 @@ fn generate_ephemeral_cert() -> (CertificateDer<'static>, PrivateKeyDer<'static>
 /// - Version: v3
 /// - Serial: 1
 /// - Signature algorithm: ECDSA with SHA-256
-/// - Issuer: CN=snow-node
+/// - Issuer: CN=mesh-node
 /// - Validity: 2020-01-01 to 2099-12-31 (effectively forever)
-/// - Subject: CN=snow-node
+/// - Subject: CN=mesh-node
 /// - Subject Public Key Info: ECDSA P-256
 fn build_tbs_certificate(public_key: &[u8]) -> Vec<u8> {
     // OID for ECDSA with SHA-256: 1.2.840.10045.4.3.2
@@ -1915,8 +1915,8 @@ fn build_tbs_certificate(public_key: &[u8]) -> Vec<u8> {
     // signature AlgorithmIdentifier (ECDSA-SHA256)
     let sig_alg = der_sequence(&[oid_ecdsa_sha256]);
 
-    // issuer: RDNSequence with CN=snow-node
-    let issuer = build_dn(b"snow-node");
+    // issuer: RDNSequence with CN=mesh-node
+    let issuer = build_dn(b"mesh-node");
 
     // validity: NotBefore 2020-01-01, NotAfter 2099-12-31
     let not_before = der_utc_time(b"200101000000Z");
@@ -1924,7 +1924,7 @@ fn build_tbs_certificate(public_key: &[u8]) -> Vec<u8> {
     let validity = der_sequence(&[&not_before, &not_after]);
 
     // subject: same as issuer
-    let subject = build_dn(b"snow-node");
+    let subject = build_dn(b"mesh-node");
 
     // subjectPublicKeyInfo
     let spki_alg = der_sequence(&[oid_ec_public_key, oid_secp256r1]);
@@ -2218,7 +2218,7 @@ fn accept_loop(listener: TcpListener, state: &NodeState) {
                 ) {
                     Ok(conn) => conn,
                     Err(e) => {
-                        eprintln!("snow node: TLS server connection failed: {}", e);
+                        eprintln!("mesh node: TLS server connection failed: {}", e);
                         continue;
                     }
                 };
@@ -2229,7 +2229,7 @@ fn accept_loop(listener: TcpListener, state: &NodeState) {
                     match perform_handshake(&mut tls_stream, state, false) {
                         Ok(result) => result,
                         Err(e) => {
-                            eprintln!("snow node: handshake failed: {}", e);
+                            eprintln!("mesh node: handshake failed: {}", e);
                             continue;
                         }
                     };
@@ -2246,7 +2246,7 @@ fn accept_loop(listener: TcpListener, state: &NodeState) {
                     }
                     Err(e) => {
                         eprintln!(
-                            "snow node: session registration failed for {}: {}",
+                            "mesh node: session registration failed for {}: {}",
                             remote_name, e
                         );
                     }
@@ -2266,12 +2266,12 @@ fn accept_loop(listener: TcpListener, state: &NodeState) {
 }
 
 // ---------------------------------------------------------------------------
-// snow_node_start -- extern "C" entry point
+// mesh_node_start -- extern "C" entry point
 // ---------------------------------------------------------------------------
 
 /// Initialize the local node and start listening for connections.
 ///
-/// Called from compiled Snow code via `Node.start("name@host", cookie: "secret")`.
+/// Called from compiled Mesh code via `Node.start("name@host", cookie: "secret")`.
 ///
 /// # Arguments
 /// - `name_ptr`, `name_len`: UTF-8 node name ("name@host" or "name@host:port")
@@ -2282,7 +2282,7 @@ fn accept_loop(listener: TcpListener, state: &NodeState) {
 /// - `-1` if node already started
 /// - `-2` if TCP bind failed
 #[no_mangle]
-pub extern "C" fn snow_node_start(
+pub extern "C" fn mesh_node_start(
     name_ptr: *const u8,
     name_len: u64,
     cookie_ptr: *const u8,
@@ -2362,23 +2362,23 @@ pub extern "C" fn snow_node_start(
 }
 
 // ---------------------------------------------------------------------------
-// snow_node_connect -- extern "C" entry point for outgoing connections
+// mesh_node_connect -- extern "C" entry point for outgoing connections
 // ---------------------------------------------------------------------------
 
 /// Connect to a remote node and perform mutual cookie authentication.
 ///
-/// Called from compiled Snow code via `Node.connect("name@host:port")`.
+/// Called from compiled Mesh code via `Node.connect("name@host:port")`.
 ///
 /// # Arguments
 /// - `name_ptr`, `name_len`: UTF-8 target address ("name@host:port")
 ///
 /// # Returns
 /// - `0` on success (authenticated connection established)
-/// - `-1` if node not started (snow_node_start not called)
+/// - `-1` if node not started (mesh_node_start not called)
 /// - `-2` if TCP connection failed
 /// - `-3` if handshake failed (wrong cookie, I/O error, or invalid format)
 #[no_mangle]
-pub extern "C" fn snow_node_connect(
+pub extern "C" fn mesh_node_connect(
     name_ptr: *const u8,
     name_len: u64,
 ) -> i64 {
@@ -2386,7 +2386,7 @@ pub extern "C" fn snow_node_connect(
     let state = match NODE_STATE.get() {
         Some(s) => s,
         None => {
-            eprintln!("snow node: node not started");
+            eprintln!("mesh node: node not started");
             return -1;
         }
     };
@@ -2404,7 +2404,7 @@ pub extern "C" fn snow_node_connect(
     let (_name_part, host, port) = match parse_node_name(&target) {
         Ok(parsed) => parsed,
         Err(e) => {
-            eprintln!("snow node: invalid connect target: {}", e);
+            eprintln!("mesh node: invalid connect target: {}", e);
             return -3;
         }
     };
@@ -2413,21 +2413,21 @@ pub extern "C" fn snow_node_connect(
     let tcp_stream = match TcpStream::connect(format!("{}:{}", host, port)) {
         Ok(s) => s,
         Err(e) => {
-            eprintln!("snow node: TCP connect to {}:{} failed: {}", host, port, e);
+            eprintln!("mesh node: TCP connect to {}:{} failed: {}", host, port, e);
             return -2;
         }
     };
 
     // Wrap in TLS client connection.
-    // Server name is "snow-node" -- doesn't matter since we skip verification.
-    let server_name: ServerName<'static> = "snow-node".try_into().unwrap();
+    // Server name is "mesh-node" -- doesn't matter since we skip verification.
+    let server_name: ServerName<'static> = "mesh-node".try_into().unwrap();
     let client_conn = match rustls::ClientConnection::new(
         Arc::clone(&state.tls_client_config),
         server_name,
     ) {
         Ok(conn) => conn,
         Err(e) => {
-            eprintln!("snow node: TLS client connection failed: {}", e);
+            eprintln!("mesh node: TLS client connection failed: {}", e);
             return -3;
         }
     };
@@ -2438,7 +2438,7 @@ pub extern "C" fn snow_node_connect(
         match perform_handshake(&mut tls_stream, state, true) {
             Ok(result) => result,
             Err(e) => {
-                eprintln!("snow node: handshake with {}:{} failed: {}", host, port, e);
+                eprintln!("mesh node: handshake with {}:{} failed: {}", host, port, e);
                 return -3;
             }
         };
@@ -2455,7 +2455,7 @@ pub extern "C" fn snow_node_connect(
         }
         Err(e) => {
             eprintln!(
-                "snow node: session registration failed for {}: {}",
+                "mesh node: session registration failed for {}: {}",
                 remote_name, e
             );
             -3
@@ -2467,15 +2467,15 @@ pub extern "C" fn snow_node_connect(
 // Node query APIs -- Node.self() and Node.list()
 // ---------------------------------------------------------------------------
 
-/// Return the current node's name as a Snow string pointer.
+/// Return the current node's name as a Mesh string pointer.
 ///
-/// Returns null pointer if node is not started (snow_node_start not called).
-/// The returned string is GC-allocated via snow_string_new.
+/// Returns null pointer if node is not started (mesh_node_start not called).
+/// The returned string is GC-allocated via mesh_string_new.
 #[no_mangle]
-pub extern "C" fn snow_node_self() -> *const u8 {
+pub extern "C" fn mesh_node_self() -> *const u8 {
     match node_state() {
         Some(state) => {
-            crate::string::snow_string_new(
+            crate::string::mesh_string_new(
                 state.name.as_ptr(),
                 state.name.len() as u64,
             ) as *const u8
@@ -2484,48 +2484,48 @@ pub extern "C" fn snow_node_self() -> *const u8 {
     }
 }
 
-/// Return a list of connected node names as a Snow list of strings.
+/// Return a list of connected node names as a Mesh list of strings.
 ///
 /// Returns an empty list if node is not started or no connections exist.
-/// Each element is a GC-allocated Snow string. The list itself is allocated
-/// via snow_list_from_array.
+/// Each element is a GC-allocated Mesh string. The list itself is allocated
+/// via mesh_list_from_array.
 #[no_mangle]
-pub extern "C" fn snow_node_list() -> *mut u8 {
+pub extern "C" fn mesh_node_list() -> *mut u8 {
     let state = match node_state() {
         Some(s) => s,
         None => {
-            return crate::collections::list::snow_list_new();
+            return crate::collections::list::mesh_list_new();
         }
     };
 
     let sessions = state.sessions.read();
     if sessions.is_empty() {
-        return crate::collections::list::snow_list_new();
+        return crate::collections::list::mesh_list_new();
     }
 
     let names: Vec<String> = sessions.keys().cloned().collect();
     drop(sessions);
 
-    // Build array of Snow string pointers, then create list from array
+    // Build array of Mesh string pointers, then create list from array
     let mut string_ptrs: Vec<u64> = Vec::with_capacity(names.len());
     for name in &names {
-        let s = crate::string::snow_string_new(name.as_ptr(), name.len() as u64);
+        let s = crate::string::mesh_string_new(name.as_ptr(), name.len() as u64);
         string_ptrs.push(s as u64);
     }
 
-    crate::collections::list::snow_list_from_array(
+    crate::collections::list::mesh_list_from_array(
         string_ptrs.as_ptr(),
         string_ptrs.len() as i64,
     )
 }
 
 // ---------------------------------------------------------------------------
-// snow_node_spawn -- spawn an actor on a remote node
+// mesh_node_spawn -- spawn an actor on a remote node
 // ---------------------------------------------------------------------------
 
 /// Spawn an actor on a remote node and return its PID.
 ///
-/// Called from compiled Snow code via `Node.spawn(node, function, args)` or
+/// Called from compiled Mesh code via `Node.spawn(node, function, args)` or
 /// `Node.spawn_link(node, function, args)`. Sends a DIST_SPAWN request to the
 /// target node containing the function name and packed argument buffer. Blocks
 /// the calling actor (yields coroutine) until the remote node replies with the
@@ -2541,7 +2541,7 @@ pub extern "C" fn snow_node_list() -> *mut u8 {
 /// - Remote PID (u64) on success
 /// - 0 on failure (not connected, function not found, write error, etc.)
 #[no_mangle]
-pub extern "C" fn snow_node_spawn(
+pub extern "C" fn mesh_node_spawn(
     node_ptr: *const u8,
     node_len: u64,
     fn_name_ptr: *const u8,
@@ -2765,7 +2765,7 @@ mod tests {
 
     #[test]
     fn test_node_state_accessor_before_init() {
-        // node_state() returns None when snow_node_start hasn't been called.
+        // node_state() returns None when mesh_node_start hasn't been called.
         // NOTE: Since tests share the process, if another test initializes
         // NODE_STATE first, this may return Some. We test the accessor itself.
         let _result = node_state(); // should not panic
@@ -2803,13 +2803,13 @@ mod tests {
     }
 
     #[test]
-    fn test_snow_node_start_binds_listener() {
+    fn test_mesh_node_start_binds_listener() {
         let _ = rustls::crypto::ring::default_provider().install_default();
 
         // Use port 0 to get an OS-assigned port (avoids conflicts)
         let name = b"test@127.0.0.1:0";
         let cookie = b"secret";
-        let result = snow_node_start(
+        let result = mesh_node_start(
             name.as_ptr(),
             name.len() as u64,
             cookie.as_ptr(),
@@ -3126,7 +3126,7 @@ mod tests {
 
         // Client (initiator) connects.
         let tcp_stream = TcpStream::connect(format!("127.0.0.1:{}", port)).unwrap();
-        let server_name: ServerName<'static> = "snow-node".try_into().unwrap();
+        let server_name: ServerName<'static> = "mesh-node".try_into().unwrap();
         let client_conn =
             rustls::ClientConnection::new(Arc::clone(&client_config_b), server_name).unwrap();
         let mut tls_stream = StreamOwned::new(client_conn, tcp_stream);
@@ -3452,12 +3452,12 @@ mod tests {
     // -------------------------------------------------------------------
 
     #[test]
-    fn test_snow_node_self_returns_value_or_null() {
-        // snow_node_self returns null when NODE_STATE is not initialized,
+    fn test_mesh_node_self_returns_value_or_null() {
+        // mesh_node_self returns null when NODE_STATE is not initialized,
         // or a valid string pointer when it IS initialized.
         // Since tests share a process and NODE_STATE is a OnceLock, another
         // test may have initialized it. We test both cases:
-        let result = snow_node_self();
+        let result = mesh_node_self();
         if node_state().is_none() {
             // Not initialized: should return null
             assert!(result.is_null(), "expected null when node not started");
@@ -3468,14 +3468,14 @@ mod tests {
     }
 
     #[test]
-    fn test_snow_node_list_returns_valid_list() {
-        // snow_node_list should always return a valid list, never null.
+    fn test_mesh_node_list_returns_valid_list() {
+        // mesh_node_list should always return a valid list, never null.
         // When not initialized or no connections, returns an empty list.
-        let result = snow_node_list();
-        assert!(!result.is_null(), "snow_node_list should never return null");
+        let result = mesh_node_list();
+        assert!(!result.is_null(), "mesh_node_list should never return null");
 
-        // The returned list should be a valid Snow list with length >= 0
-        let len = crate::collections::list::snow_list_length(result);
+        // The returned list should be a valid Mesh list with length >= 0
+        let len = crate::collections::list::mesh_list_length(result);
         assert!(len >= 0, "list length should be non-negative");
     }
 

@@ -499,7 +499,7 @@ impl<'ctx> CodeGen<'ctx> {
     /// Generate the C-level `main` function wrapper.
     ///
     /// Creates: `main(argc: i32, argv: ptr) -> i32` that calls
-    /// `snow_rt_init()`, then calls the Snow entry function, then returns 0.
+    /// `mesh_rt_init()`, then calls the Mesh entry function, then returns 0.
     fn generate_main_wrapper(&mut self, entry_name: &str) -> Result<(), String> {
         let i32_type = self.context.i32_type();
         let ptr_type = self.context.ptr_type(inkwell::AddressSpace::default());
@@ -509,14 +509,14 @@ impl<'ctx> CodeGen<'ctx> {
         let entry = self.context.append_basic_block(main_fn, "entry");
         self.builder.position_at_end(entry);
 
-        // Call snow_rt_init()
-        let rt_init = intrinsics::get_intrinsic(&self.module, "snow_rt_init");
+        // Call mesh_rt_init()
+        let rt_init = intrinsics::get_intrinsic(&self.module, "mesh_rt_init");
         self.builder
             .build_call(rt_init, &[], "")
             .map_err(|e| e.to_string())?;
 
-        // Call snow_rt_init_actor(0) -- initialize actor scheduler with default threads
-        let rt_init_actor = intrinsics::get_intrinsic(&self.module, "snow_rt_init_actor");
+        // Call mesh_rt_init_actor(0) -- initialize actor scheduler with default threads
+        let rt_init_actor = intrinsics::get_intrinsic(&self.module, "mesh_rt_init_actor");
         let zero = self.context.i32_type().const_int(0, false);
         self.builder
             .build_call(rt_init_actor, &[zero.into()], "")
@@ -525,7 +525,7 @@ impl<'ctx> CodeGen<'ctx> {
         // Register all top-level functions for remote spawn (Phase 67).
         // Must happen before the entry function runs because the entry function
         // may call Node.spawn which needs the registry populated.
-        let register_fn = intrinsics::get_intrinsic(&self.module, "snow_register_function");
+        let register_fn = intrinsics::get_intrinsic(&self.module, "mesh_register_function");
         for mir_fn in &self.mir_functions {
             // Skip closure/lambda functions (they capture environment pointers,
             // cannot be spawned remotely) and compiler-internal functions.
@@ -557,21 +557,21 @@ impl<'ctx> CodeGen<'ctx> {
             }
         }
 
-        // Call the Snow entry function on the main thread.
-        // snow_main runs synchronously, spawning service/job actors along the way.
+        // Call the Mesh entry function on the main thread.
+        // mesh_main runs synchronously, spawning service/job actors along the way.
         // The runtime handles service calls from the main thread context by using
         // a dedicated main process entry in the process table.
-        let snow_main = self
+        let mesh_main = self
             .functions
             .get(entry_name)
             .ok_or_else(|| format!("Entry function '{}' not found", entry_name))?;
         self.builder
-            .build_call(*snow_main, &[], "")
+            .build_call(*mesh_main, &[], "")
             .map_err(|e| e.to_string())?;
 
         // Run the actor scheduler to process all spawned actors.
         // This blocks until all actors have completed.
-        let rt_run_scheduler = intrinsics::get_intrinsic(&self.module, "snow_rt_run_scheduler");
+        let rt_run_scheduler = intrinsics::get_intrinsic(&self.module, "mesh_rt_run_scheduler");
         self.builder
             .build_call(rt_run_scheduler, &[], "")
             .map_err(|e| e.to_string())?;
@@ -661,7 +661,7 @@ mod tests {
     fn hello_world_mir() -> MirModule {
         MirModule {
             functions: vec![MirFunction {
-                name: "snow_main".to_string(),
+                name: "mesh_main".to_string(),
                 params: vec![],
                 return_type: MirType::Unit,
                 body: MirExpr::Unit,
@@ -671,7 +671,7 @@ mod tests {
             }],
             structs: vec![],
             sum_types: vec![],
-            entry_function: Some("snow_main".to_string()),
+            entry_function: Some("mesh_main".to_string()),
             service_dispatch: std::collections::HashMap::new(),
         }
     }
@@ -716,7 +716,7 @@ mod tests {
 
         let ir = codegen.get_llvm_ir();
         assert!(ir.contains("define i32 @main"), "Should have main wrapper");
-        assert!(ir.contains("snow_rt_init"), "Should call snow_rt_init");
+        assert!(ir.contains("mesh_rt_init"), "Should call mesh_rt_init");
     }
 
     #[test]
@@ -726,7 +726,7 @@ mod tests {
         let mir = empty_mir_module();
         codegen.compile(&mir).unwrap();
 
-        let tmp = std::env::temp_dir().join("snow_test.ll");
+        let tmp = std::env::temp_dir().join("mesh_test.ll");
         codegen.emit_llvm_ir(&tmp).unwrap();
         assert!(tmp.exists());
         std::fs::remove_file(&tmp).ok();
@@ -739,7 +739,7 @@ mod tests {
         let mir = empty_mir_module();
         codegen.compile(&mir).unwrap();
 
-        let tmp = std::env::temp_dir().join("snow_test.o");
+        let tmp = std::env::temp_dir().join("mesh_test.o");
         codegen.emit_object(&tmp).unwrap();
         assert!(tmp.exists());
         std::fs::remove_file(&tmp).ok();
@@ -871,7 +871,7 @@ mod tests {
     }
 
     #[test]
-    fn test_string_literal_calls_snow_string_new() {
+    fn test_string_literal_calls_mesh_string_new() {
         let body = MirExpr::Block(
             vec![
                 MirExpr::StringLit("hello world".to_string(), MirType::String),
@@ -880,8 +880,8 @@ mod tests {
         );
         let ir = compile_expr_to_ir(body, MirType::String);
         assert!(
-            ir.contains("snow_string_new"),
-            "Should call snow_string_new: {}",
+            ir.contains("mesh_string_new"),
+            "Should call mesh_string_new: {}",
             ir
         );
     }
@@ -937,7 +937,7 @@ mod tests {
                     has_tail_calls: false,
                 },
                 MirFunction {
-                    name: "snow_main".to_string(),
+                    name: "mesh_main".to_string(),
                     params: vec![],
                     return_type: MirType::Unit,
                     body: MirExpr::Block(
@@ -964,7 +964,7 @@ mod tests {
             ],
             structs: vec![],
             sum_types: vec![],
-            entry_function: Some("snow_main".to_string()),
+            entry_function: Some("mesh_main".to_string()),
             service_dispatch: std::collections::HashMap::new(),
         };
 
@@ -983,7 +983,7 @@ mod tests {
         let body = MirExpr::Block(
             vec![MirExpr::Call {
                 func: Box::new(MirExpr::Var(
-                    "snow_println".to_string(),
+                    "mesh_println".to_string(),
                     MirType::FnPtr(vec![MirType::String], Box::new(MirType::Unit)),
                 )),
                 args: vec![MirExpr::StringLit(
@@ -997,7 +997,7 @@ mod tests {
 
         let mir = MirModule {
             functions: vec![MirFunction {
-                name: "snow_main".to_string(),
+                name: "mesh_main".to_string(),
                 params: vec![],
                 return_type: MirType::Unit,
                 body,
@@ -1007,7 +1007,7 @@ mod tests {
             }],
             structs: vec![],
             sum_types: vec![],
-            entry_function: Some("snow_main".to_string()),
+            entry_function: Some("mesh_main".to_string()),
             service_dispatch: std::collections::HashMap::new(),
         };
 
@@ -1016,8 +1016,8 @@ mod tests {
         codegen.compile(&mir).unwrap();
 
         let ir = codegen.get_llvm_ir();
-        assert!(ir.contains("snow_string_new"), "Should call snow_string_new");
-        assert!(ir.contains("snow_println"), "Should call snow_println");
+        assert!(ir.contains("mesh_string_new"), "Should call mesh_string_new");
+        assert!(ir.contains("mesh_println"), "Should call mesh_println");
         assert!(ir.contains("Hello, world!"), "Should contain string literal");
     }
 
@@ -1235,7 +1235,7 @@ mod tests {
 
     #[test]
     fn test_actor_spawn_codegen() {
-        // Test that ActorSpawn generates a call to snow_actor_spawn
+        // Test that ActorSpawn generates a call to mesh_actor_spawn
         let body = MirExpr::ActorSpawn {
             func: Box::new(MirExpr::Var(
                 "my_actor".to_string(),
@@ -1281,13 +1281,13 @@ mod tests {
 
         let ir = codegen.get_llvm_ir();
         assert!(
-            ir.contains("snow_actor_spawn"),
-            "Should call snow_actor_spawn: {}",
+            ir.contains("mesh_actor_spawn"),
+            "Should call mesh_actor_spawn: {}",
             ir
         );
         assert!(
-            ir.contains("snow_actor_self"),
-            "Should call snow_actor_self: {}",
+            ir.contains("mesh_actor_self"),
+            "Should call mesh_actor_self: {}",
             ir
         );
     }
@@ -1305,8 +1305,8 @@ mod tests {
             MirType::Unit,
         );
         assert!(
-            ir.contains("snow_actor_send"),
-            "Should call snow_actor_send: {}",
+            ir.contains("mesh_actor_send"),
+            "Should call mesh_actor_send: {}",
             ir
         );
     }
@@ -1321,8 +1321,8 @@ mod tests {
         };
         let ir = compile_expr_to_ir(body, MirType::Int);
         assert!(
-            ir.contains("snow_actor_receive"),
-            "Should call snow_actor_receive: {}",
+            ir.contains("mesh_actor_receive"),
+            "Should call mesh_actor_receive: {}",
             ir
         );
     }
@@ -1339,8 +1339,8 @@ mod tests {
             MirType::Unit,
         );
         assert!(
-            ir.contains("snow_actor_link"),
-            "Should call snow_actor_link: {}",
+            ir.contains("mesh_actor_link"),
+            "Should call mesh_actor_link: {}",
             ir
         );
     }
@@ -1354,20 +1354,20 @@ mod tests {
 
         let ir = codegen.get_llvm_ir();
         assert!(
-            ir.contains("snow_rt_init_actor"),
-            "Main should call snow_rt_init_actor: {}",
+            ir.contains("mesh_rt_init_actor"),
+            "Main should call mesh_rt_init_actor: {}",
             ir
         );
         assert!(
-            ir.contains("snow_rt_run_scheduler"),
-            "Main should call snow_rt_run_scheduler: {}",
+            ir.contains("mesh_rt_run_scheduler"),
+            "Main should call mesh_rt_run_scheduler: {}",
             ir
         );
     }
 
     #[test]
     fn test_reduction_check_after_call() {
-        // After a user function call, there should be a snow_reduction_check
+        // After a user function call, there should be a mesh_reduction_check
         let mir = MirModule {
             functions: vec![
                 MirFunction {
@@ -1408,8 +1408,8 @@ mod tests {
 
         let ir = codegen.get_llvm_ir();
         assert!(
-            ir.contains("snow_reduction_check"),
-            "Should insert snow_reduction_check after call: {}",
+            ir.contains("mesh_reduction_check"),
+            "Should insert mesh_reduction_check after call: {}",
             ir
         );
     }
@@ -1419,17 +1419,17 @@ mod tests {
         // Verify that Pid type maps to i64 in the generated IR
         let body = MirExpr::ActorSelf { ty: MirType::Pid(None) };
         let ir = compile_expr_to_ir(body, MirType::Pid(None));
-        // snow_actor_self returns i64
+        // mesh_actor_self returns i64
         assert!(
-            ir.contains("i64 @snow_actor_self"),
-            "snow_actor_self should return i64: {}",
+            ir.contains("i64 @mesh_actor_self"),
+            "mesh_actor_self should return i64: {}",
             ir
         );
     }
 
     #[test]
     fn test_actor_spawn_with_terminate_callback() {
-        // Test that snow_actor_set_terminate is called after spawn when callback exists
+        // Test that mesh_actor_set_terminate is called after spawn when callback exists
         let body = MirExpr::ActorSpawn {
             func: Box::new(MirExpr::Var(
                 "my_actor".to_string(),
@@ -1492,13 +1492,13 @@ mod tests {
 
         let ir = codegen.get_llvm_ir();
         assert!(
-            ir.contains("snow_actor_spawn"),
-            "Should call snow_actor_spawn: {}",
+            ir.contains("mesh_actor_spawn"),
+            "Should call mesh_actor_spawn: {}",
             ir
         );
         assert!(
-            ir.contains("snow_actor_set_terminate"),
-            "Should call snow_actor_set_terminate: {}",
+            ir.contains("mesh_actor_set_terminate"),
+            "Should call mesh_actor_set_terminate: {}",
             ir
         );
     }
@@ -1545,7 +1545,7 @@ mod tests {
 
     #[test]
     fn test_while_loop_reduction_check() {
-        // While loop body should emit snow_reduction_check at back-edge
+        // While loop body should emit mesh_reduction_check at back-edge
         let body = MirExpr::While {
             cond: Box::new(MirExpr::BoolLit(false, MirType::Bool)),
             body: Box::new(MirExpr::IntLit(42, MirType::Int)),
@@ -1553,8 +1553,8 @@ mod tests {
         };
         let ir = compile_expr_to_ir(body, MirType::Unit);
         assert!(
-            ir.contains("snow_reduction_check"),
-            "Should emit snow_reduction_check at loop back-edge: {}",
+            ir.contains("mesh_reduction_check"),
+            "Should emit mesh_reduction_check at loop back-edge: {}",
             ir
         );
     }
@@ -1584,8 +1584,8 @@ mod tests {
         let ir = compile_expr_to_ir(body, MirType::Unit);
         // Continue should emit reduction check before branching to cond
         assert!(
-            ir.contains("snow_reduction_check"),
-            "Continue should emit snow_reduction_check: {}",
+            ir.contains("mesh_reduction_check"),
+            "Continue should emit mesh_reduction_check: {}",
             ir
         );
     }
@@ -1631,7 +1631,7 @@ mod tests {
 
     #[test]
     fn test_for_in_range_reduction_check_in_latch() {
-        // Latch block should contain snow_reduction_check
+        // Latch block should contain mesh_reduction_check
         let body = MirExpr::ForInRange {
             var: "i".to_string(),
             start: Box::new(MirExpr::IntLit(0, MirType::Int)),
@@ -1642,8 +1642,8 @@ mod tests {
         };
         let ir = compile_expr_to_ir(body, MirType::Ptr);
         assert!(
-            ir.contains("snow_reduction_check"),
-            "Should emit snow_reduction_check in latch block: {}",
+            ir.contains("mesh_reduction_check"),
+            "Should emit mesh_reduction_check in latch block: {}",
             ir
         );
     }
@@ -1661,12 +1661,12 @@ mod tests {
         };
         let ir = compile_expr_to_ir(body, MirType::Ptr);
         assert!(
-            ir.contains("snow_list_builder_new"),
+            ir.contains("mesh_list_builder_new"),
             "ForInRange should use list builder: {}",
             ir
         );
         assert!(
-            ir.contains("snow_list_builder_push"),
+            ir.contains("mesh_list_builder_push"),
             "ForInRange should push body results to list: {}",
             ir
         );
@@ -1698,18 +1698,18 @@ mod tests {
         assert!(ir.contains("forin_latch"), "Should have forin_latch block: {}", ir);
         assert!(ir.contains("forin_merge"), "Should have forin_merge block: {}", ir);
         assert!(
-            ir.contains("snow_list_length"),
-            "Should call snow_list_length: {}",
+            ir.contains("mesh_list_length"),
+            "Should call mesh_list_length: {}",
             ir
         );
         assert!(
-            ir.contains("snow_list_builder_new"),
+            ir.contains("mesh_list_builder_new"),
             "Should use list builder: {}",
             ir
         );
         assert!(
-            ir.contains("snow_list_get"),
-            "Should call snow_list_get: {}",
+            ir.contains("mesh_list_get"),
+            "Should call mesh_list_get: {}",
             ir
         );
     }

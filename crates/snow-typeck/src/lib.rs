@@ -1,6 +1,6 @@
-//! Snow type checker: Hindley-Milner type inference with extensions.
+//! Mesh type checker: Hindley-Milner type inference with extensions.
 //!
-//! This crate implements type checking and inference for the Snow language.
+//! This crate implements type checking and inference for the Mesh language.
 //! It builds on the parser's CST/AST to assign types to all expressions,
 //! detect type errors, and support features like:
 //!
@@ -113,7 +113,7 @@ pub struct ExportedSymbols {
 
 // ── TypeckResult ────────────────────────────────────────────────────────
 
-/// The result of type checking a Snow program.
+/// The result of type checking a Mesh program.
 ///
 /// Contains a mapping from source ranges to their inferred types, plus
 /// any type errors encountered during checking. Also includes the type
@@ -165,20 +165,20 @@ impl TypeckResult {
     }
 }
 
-/// Type-check a parsed Snow program.
+/// Type-check a parsed Mesh program.
 ///
 /// This is the main entry point for the type checker. It walks the AST,
 /// infers types for all expressions, checks type annotations, and reports
 /// errors.
-pub fn check(parse: &snow_parser::Parse) -> TypeckResult {
+pub fn check(parse: &mesh_parser::Parse) -> TypeckResult {
     infer::infer(parse)
 }
 
-/// Type-check a parsed Snow program with pre-resolved imports.
+/// Type-check a parsed Mesh program with pre-resolved imports.
 ///
 /// This is the multi-module entry point. The ImportContext contains
 /// symbols from already-type-checked dependency modules.
-pub fn check_with_imports(parse: &snow_parser::Parse, import_ctx: &ImportContext) -> TypeckResult {
+pub fn check_with_imports(parse: &mesh_parser::Parse, import_ctx: &ImportContext) -> TypeckResult {
     infer::infer_with_imports(parse, import_ctx)
 }
 
@@ -189,12 +189,12 @@ pub fn check_with_imports(parse: &snow_parser::Parse, import_ctx: &ImportContext
 /// tree for FnDef items, struct/sum type defs from TypeRegistry, and
 /// trait defs/impls from TraitRegistry.
 pub fn collect_exports(
-    parse: &snow_parser::Parse,
+    parse: &mesh_parser::Parse,
     typeck: &TypeckResult,
 ) -> ExportedSymbols {
-    use snow_parser::ast::item::Item;
-    use snow_parser::ast::AstNode;
-    use snow_parser::syntax_kind::SyntaxKind;
+    use mesh_parser::ast::item::Item;
+    use mesh_parser::ast::AstNode;
+    use mesh_parser::syntax_kind::SyntaxKind;
 
     let tree = parse.tree();
     let mut exports = ExportedSymbols::default();

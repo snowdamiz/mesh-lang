@@ -1,6 +1,6 @@
-//! Process Control Block (PCB) for Snow actors.
+//! Process Control Block (PCB) for Mesh actors.
 //!
-//! Each Snow actor is a lightweight process with its own PID, state, priority,
+//! Each Mesh actor is a lightweight process with its own PID, state, priority,
 //! reduction counter, mailbox, and optional terminate callback. Processes are
 //! multiplexed across OS threads by the M:N scheduler.
 
@@ -202,7 +202,7 @@ pub struct Message {
 /// Callback invoked before an actor fully terminates.
 ///
 /// The runtime calls this (if set) before exit-reason propagation to linked
-/// processes. The compiled `terminate do ... end` block in a Snow actor
+/// processes. The compiled `terminate do ... end` block in a Mesh actor
 /// generates a function matching this signature.
 ///
 /// - `state_ptr`: pointer to the actor's current state (GenServer state, etc.)

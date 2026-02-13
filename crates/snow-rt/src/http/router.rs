@@ -1,4 +1,4 @@
-//! HTTP router for the Snow runtime.
+//! HTTP router for the Mesh runtime.
 //!
 //! Routes are checked with priority ordering: exact routes first, then
 //! parameterized routes (`:param` segments), then wildcards. Within each
@@ -10,7 +10,7 @@
 //! - Path parameters: `/users/:id` matches `/users/42` and captures `id=42`
 //! - Method-specific routing: `HTTP.on_get(r, "/path", handler)` matches only GET
 
-use crate::string::SnowString;
+use crate::string::MeshString;
 
 /// A single middleware entry holding the middleware function pointer.
 #[derive(Clone)]
@@ -34,7 +34,7 @@ pub struct RouteEntry {
 }
 
 /// Router holding an ordered list of route entries and middleware.
-pub struct SnowRouter {
+pub struct MeshRouter {
     pub routes: Vec<RouteEntry>,
     pub middlewares: Vec<MiddlewareEntry>,
 }
@@ -87,7 +87,7 @@ fn is_wildcard(pattern: &str) -> bool {
     pattern.ends_with("/*")
 }
 
-impl SnowRouter {
+impl MeshRouter {
     /// Find the first route matching the given path and HTTP method.
     ///
     /// Returns (handler_fn, handler_env, params) or None.
@@ -152,13 +152,13 @@ impl SnowRouter {
 /// Returns a NEW router pointer (immutable semantics).
 fn route_with_method(
     router: *mut u8,
-    pattern: *const SnowString,
+    pattern: *const MeshString,
     handler_fn: *mut u8,
     method: Option<&str>,
 ) -> *mut u8 {
     let handler_env: *mut u8 = std::ptr::null_mut();
     unsafe {
-        let old = &*(router as *const SnowRouter);
+        let old = &*(router as *const MeshRouter);
         let pat_str = (*pattern).as_str().to_string();
 
         let mut new_routes = Vec::with_capacity(old.routes.len() + 1);
@@ -179,7 +179,7 @@ fn route_with_method(
 
         let new_middlewares = old.middlewares.clone();
 
-        let new_router = Box::new(SnowRouter {
+        let new_router = Box::new(MeshRouter {
             routes: new_routes,
             middlewares: new_middlewares,
         });
@@ -189,10 +189,10 @@ fn route_with_method(
 
 // ── Public extern "C" API ──────────────────────────────────────────────
 
-/// Create an empty router. Returns a pointer to a heap-allocated SnowRouter.
+/// Create an empty router. Returns a pointer to a heap-allocated MeshRouter.
 #[no_mangle]
-pub extern "C" fn snow_http_router() -> *mut u8 {
-    let router = Box::new(SnowRouter {
+pub extern "C" fn mesh_http_router() -> *mut u8 {
+    let router = Box::new(MeshRouter {
         routes: Vec::new(),
         middlewares: Vec::new(),
     });
@@ -204,9 +204,9 @@ pub extern "C" fn snow_http_router() -> *mut u8 {
 /// This is the existing `HTTP.route(router, pattern, handler)` -- matches
 /// any HTTP method (backward compatible).
 #[no_mangle]
-pub extern "C" fn snow_http_route(
+pub extern "C" fn mesh_http_route(
     router: *mut u8,
-    pattern: *const SnowString,
+    pattern: *const MeshString,
     handler_fn: *mut u8,
 ) -> *mut u8 {
     route_with_method(router, pattern, handler_fn, None)
@@ -214,9 +214,9 @@ pub extern "C" fn snow_http_route(
 
 /// Add a GET-only route. Returns a NEW router pointer.
 #[no_mangle]
-pub extern "C" fn snow_http_route_get(
+pub extern "C" fn mesh_http_route_get(
     router: *mut u8,
-    pattern: *const SnowString,
+    pattern: *const MeshString,
     handler_fn: *mut u8,
 ) -> *mut u8 {
     route_with_method(router, pattern, handler_fn, Some("GET"))
@@ -224,9 +224,9 @@ pub extern "C" fn snow_http_route_get(
 
 /// Add a POST-only route. Returns a NEW router pointer.
 #[no_mangle]
-pub extern "C" fn snow_http_route_post(
+pub extern "C" fn mesh_http_route_post(
     router: *mut u8,
-    pattern: *const SnowString,
+    pattern: *const MeshString,
     handler_fn: *mut u8,
 ) -> *mut u8 {
     route_with_method(router, pattern, handler_fn, Some("POST"))
@@ -234,9 +234,9 @@ pub extern "C" fn snow_http_route_post(
 
 /// Add a PUT-only route. Returns a NEW router pointer.
 #[no_mangle]
-pub extern "C" fn snow_http_route_put(
+pub extern "C" fn mesh_http_route_put(
     router: *mut u8,
-    pattern: *const SnowString,
+    pattern: *const MeshString,
     handler_fn: *mut u8,
 ) -> *mut u8 {
     route_with_method(router, pattern, handler_fn, Some("PUT"))
@@ -244,9 +244,9 @@ pub extern "C" fn snow_http_route_put(
 
 /// Add a DELETE-only route. Returns a NEW router pointer.
 #[no_mangle]
-pub extern "C" fn snow_http_route_delete(
+pub extern "C" fn mesh_http_route_delete(
     router: *mut u8,
-    pattern: *const SnowString,
+    pattern: *const MeshString,
     handler_fn: *mut u8,
 ) -> *mut u8 {
     route_with_method(router, pattern, handler_fn, Some("DELETE"))
@@ -257,12 +257,12 @@ pub extern "C" fn snow_http_route_delete(
 /// The middleware function receives (request, next_closure) and returns a response.
 /// Multiple middleware compose in registration order: first added = outermost.
 #[no_mangle]
-pub extern "C" fn snow_http_use_middleware(
+pub extern "C" fn mesh_http_use_middleware(
     router: *mut u8,
     middleware_fn: *mut u8,
 ) -> *mut u8 {
     unsafe {
-        let old = &*(router as *const SnowRouter);
+        let old = &*(router as *const MeshRouter);
 
         // Copy all existing routes.
         let mut new_routes = Vec::with_capacity(old.routes.len());
@@ -282,7 +282,7 @@ pub extern "C" fn snow_http_use_middleware(
             env_ptr: std::ptr::null_mut(),
         });
 
-        let new_router = Box::new(SnowRouter {
+        let new_router = Box::new(MeshRouter {
             routes: new_routes,
             middlewares: new_middlewares,
         });
@@ -293,8 +293,8 @@ pub extern "C" fn snow_http_use_middleware(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::gc::snow_rt_init;
-    use crate::string::snow_string_new;
+    use crate::gc::mesh_rt_init;
+    use crate::string::mesh_string_new;
 
     #[test]
     fn test_exact_match() {
@@ -354,7 +354,7 @@ mod tests {
 
     #[test]
     fn test_exact_beats_param() {
-        let router = SnowRouter {
+        let router = MeshRouter {
             routes: vec![
                 RouteEntry {
                     pattern: "/users/:id".to_string(),
@@ -386,7 +386,7 @@ mod tests {
 
     #[test]
     fn test_method_filtering() {
-        let router = SnowRouter {
+        let router = MeshRouter {
             routes: vec![
                 RouteEntry {
                     pattern: "/users".to_string(),
@@ -417,7 +417,7 @@ mod tests {
 
     #[test]
     fn test_method_agnostic_route() {
-        let router = SnowRouter {
+        let router = MeshRouter {
             routes: vec![
                 RouteEntry {
                     pattern: "/health".to_string(),
@@ -436,7 +436,7 @@ mod tests {
 
     #[test]
     fn test_router_match_order() {
-        let router = SnowRouter {
+        let router = MeshRouter {
             routes: vec![
                 RouteEntry {
                     pattern: "/exact".to_string(),
@@ -464,7 +464,7 @@ mod tests {
 
     #[test]
     fn test_router_no_match() {
-        let router = SnowRouter {
+        let router = MeshRouter {
             routes: vec![RouteEntry {
                 pattern: "/only-this".to_string(),
                 method: None,
@@ -477,21 +477,21 @@ mod tests {
     }
 
     #[test]
-    fn test_snow_http_router_and_route() {
-        snow_rt_init();
+    fn test_mesh_http_router_and_route() {
+        mesh_rt_init();
 
-        let router = snow_http_router();
+        let router = mesh_http_router();
         assert!(!router.is_null());
 
-        let pattern = snow_string_new(b"/hello".as_ptr(), 6);
+        let pattern = mesh_string_new(b"/hello".as_ptr(), 6);
         let handler_fn = 42usize as *mut u8;
 
-        let router2 = snow_http_route(router, pattern, handler_fn);
+        let router2 = mesh_http_route(router, pattern, handler_fn);
         assert!(!router2.is_null());
 
         // Verify the new router has the route.
         unsafe {
-            let r = &*(router2 as *const SnowRouter);
+            let r = &*(router2 as *const MeshRouter);
             assert_eq!(r.routes.len(), 1);
             assert_eq!(r.routes[0].pattern, "/hello");
             assert_eq!(r.routes[0].handler_fn as usize, 42);

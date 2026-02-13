@@ -1,9 +1,9 @@
-//! End-to-end integration tests for `snowc fmt`.
+//! End-to-end integration tests for `meshc fmt`.
 
 use std::path::PathBuf;
 use std::process::Command;
 
-fn find_snowc() -> PathBuf {
+fn find_meshc() -> PathBuf {
     let mut path = std::env::current_exe()
         .expect("cannot find current exe")
         .parent()
@@ -13,23 +13,23 @@ fn find_snowc() -> PathBuf {
     if path.ends_with("deps") {
         path.pop();
     }
-    path.join("snowc")
+    path.join("meshc")
 }
 
 #[test]
 fn fmt_formats_single_file_in_place() {
     let dir = tempfile::tempdir().unwrap();
-    let file = dir.path().join("test.snow");
+    let file = dir.path().join("test.mpl");
     std::fs::write(&file, "fn add(a,b) do\na+b\nend").unwrap();
 
-    let output = Command::new(find_snowc())
+    let output = Command::new(find_meshc())
         .args(["fmt", file.to_str().unwrap()])
         .output()
-        .expect("failed to run snowc fmt");
+        .expect("failed to run meshc fmt");
 
     assert!(
         output.status.success(),
-        "snowc fmt failed: {}",
+        "meshc fmt failed: {}",
         String::from_utf8_lossy(&output.stderr)
     );
 
@@ -40,16 +40,16 @@ fn fmt_formats_single_file_in_place() {
 #[test]
 fn fmt_already_formatted_file_unchanged() {
     let dir = tempfile::tempdir().unwrap();
-    let file = dir.path().join("good.snow");
+    let file = dir.path().join("good.mpl");
     let canonical = "fn add(a, b) do\n  a + b\nend\n";
     std::fs::write(&file, canonical).unwrap();
 
     let _mtime_before = std::fs::metadata(&file).unwrap().modified().unwrap();
 
-    let output = Command::new(find_snowc())
+    let output = Command::new(find_meshc())
         .args(["fmt", file.to_str().unwrap()])
         .output()
-        .expect("failed to run snowc fmt");
+        .expect("failed to run meshc fmt");
 
     assert!(output.status.success());
 
@@ -63,13 +63,13 @@ fn fmt_already_formatted_file_unchanged() {
 #[test]
 fn fmt_check_exits_1_on_unformatted() {
     let dir = tempfile::tempdir().unwrap();
-    let file = dir.path().join("bad.snow");
+    let file = dir.path().join("bad.mpl");
     std::fs::write(&file, "fn bad(a,b) do\na+b\nend").unwrap();
 
-    let output = Command::new(find_snowc())
+    let output = Command::new(find_meshc())
         .args(["fmt", "--check", file.to_str().unwrap()])
         .output()
-        .expect("failed to run snowc fmt --check");
+        .expect("failed to run meshc fmt --check");
 
     assert_eq!(
         output.status.code(),
@@ -85,13 +85,13 @@ fn fmt_check_exits_1_on_unformatted() {
 #[test]
 fn fmt_check_exits_0_on_formatted() {
     let dir = tempfile::tempdir().unwrap();
-    let file = dir.path().join("good.snow");
+    let file = dir.path().join("good.mpl");
     std::fs::write(&file, "fn add(a, b) do\n  a + b\nend\n").unwrap();
 
-    let output = Command::new(find_snowc())
+    let output = Command::new(find_meshc())
         .args(["fmt", "--check", file.to_str().unwrap()])
         .output()
-        .expect("failed to run snowc fmt --check");
+        .expect("failed to run meshc fmt --check");
 
     assert!(
         output.status.success(),
@@ -101,34 +101,34 @@ fn fmt_check_exits_0_on_formatted() {
 }
 
 #[test]
-fn fmt_directory_formats_all_snow_files() {
+fn fmt_directory_formats_all_mesh_files() {
     let dir = tempfile::tempdir().unwrap();
     let sub = dir.path().join("sub");
     std::fs::create_dir_all(&sub).unwrap();
 
-    std::fs::write(dir.path().join("a.snow"), "let x=1").unwrap();
-    std::fs::write(sub.join("b.snow"), "let y=2").unwrap();
-    // Non-.snow file should be ignored.
+    std::fs::write(dir.path().join("a.mpl"), "let x=1").unwrap();
+    std::fs::write(sub.join("b.mpl"), "let y=2").unwrap();
+    // Non-.mpl file should be ignored.
     std::fs::write(dir.path().join("readme.txt"), "hello").unwrap();
 
-    let output = Command::new(find_snowc())
+    let output = Command::new(find_meshc())
         .args(["fmt", dir.path().to_str().unwrap()])
         .output()
-        .expect("failed to run snowc fmt on directory");
+        .expect("failed to run meshc fmt on directory");
 
     assert!(
         output.status.success(),
-        "snowc fmt dir failed: {}",
+        "meshc fmt dir failed: {}",
         String::from_utf8_lossy(&output.stderr)
     );
 
-    let a = std::fs::read_to_string(dir.path().join("a.snow")).unwrap();
+    let a = std::fs::read_to_string(dir.path().join("a.mpl")).unwrap();
     assert_eq!(a, "let x = 1\n");
 
-    let b = std::fs::read_to_string(sub.join("b.snow")).unwrap();
+    let b = std::fs::read_to_string(sub.join("b.mpl")).unwrap();
     assert_eq!(b, "let y = 2\n");
 
-    // Non-.snow file should be untouched.
+    // Non-.mpl file should be untouched.
     let readme = std::fs::read_to_string(dir.path().join("readme.txt")).unwrap();
     assert_eq!(readme, "hello");
 }
@@ -136,10 +136,10 @@ fn fmt_directory_formats_all_snow_files() {
 #[test]
 fn fmt_custom_line_width_and_indent_size() {
     let dir = tempfile::tempdir().unwrap();
-    let file = dir.path().join("test.snow");
+    let file = dir.path().join("test.mpl");
     std::fs::write(&file, "fn foo(x) do\nlet y = x\ny\nend").unwrap();
 
-    let output = Command::new(find_snowc())
+    let output = Command::new(find_meshc())
         .args([
             "fmt",
             "--indent-size",
@@ -149,7 +149,7 @@ fn fmt_custom_line_width_and_indent_size() {
             file.to_str().unwrap(),
         ])
         .output()
-        .expect("failed to run snowc fmt with options");
+        .expect("failed to run meshc fmt with options");
 
     assert!(output.status.success());
 

@@ -9,15 +9,15 @@
 //! - self() returns Pid<M> inside actor, errors outside
 //! - Typed Pid is assignable to untyped Pid
 
-use snow_typeck::error::TypeError;
-use snow_typeck::ty::Ty;
-use snow_typeck::TypeckResult;
+use mesh_typeck::error::TypeError;
+use mesh_typeck::ty::Ty;
+use mesh_typeck::TypeckResult;
 
 // ── Helpers ────────────────────────────────────────────────────────────
 
 fn check_source(src: &str) -> TypeckResult {
-    let parse = snow_parser::parse(src);
-    snow_typeck::check(&parse)
+    let parse = mesh_parser::parse(src);
+    mesh_typeck::check(&parse)
 }
 
 fn assert_no_errors(result: &TypeckResult) {
@@ -190,8 +190,8 @@ fn test_link_returns_unit() {
 
 #[test]
 fn test_unify_pid_typed_with_untyped() {
-    use snow_typeck::unify::InferCtx;
-    use snow_typeck::error::ConstraintOrigin;
+    use mesh_typeck::unify::InferCtx;
+    use mesh_typeck::error::ConstraintOrigin;
 
     let mut ctx = InferCtx::new();
 
@@ -206,8 +206,8 @@ fn test_unify_pid_typed_with_untyped() {
 
 #[test]
 fn test_unify_pid_typed_with_untyped_reverse() {
-    use snow_typeck::unify::InferCtx;
-    use snow_typeck::error::ConstraintOrigin;
+    use mesh_typeck::unify::InferCtx;
+    use mesh_typeck::error::ConstraintOrigin;
 
     let mut ctx = InferCtx::new();
 
@@ -222,8 +222,8 @@ fn test_unify_pid_typed_with_untyped_reverse() {
 
 #[test]
 fn test_unify_pid_typed_same_msg() {
-    use snow_typeck::unify::InferCtx;
-    use snow_typeck::error::ConstraintOrigin;
+    use mesh_typeck::unify::InferCtx;
+    use mesh_typeck::error::ConstraintOrigin;
 
     let mut ctx = InferCtx::new();
 
@@ -238,8 +238,8 @@ fn test_unify_pid_typed_same_msg() {
 
 #[test]
 fn test_unify_pid_typed_different_msg() {
-    use snow_typeck::unify::InferCtx;
-    use snow_typeck::error::ConstraintOrigin;
+    use mesh_typeck::unify::InferCtx;
+    use mesh_typeck::error::ConstraintOrigin;
 
     let mut ctx = InferCtx::new();
 

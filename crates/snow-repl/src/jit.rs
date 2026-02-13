@@ -1,42 +1,42 @@
 //! JIT compilation engine for REPL inputs.
 //!
-//! Uses the full Snow compiler pipeline (parse -> typecheck -> MIR -> LLVM IR)
+//! Uses the full Mesh compiler pipeline (parse -> typecheck -> MIR -> LLVM IR)
 //! to compile expressions, then executes them via LLVM's JIT execution engine.
 //! This ensures REPL behavior is identical to compiled code.
 //!
-//! The actor runtime (snow-rt) is linked and its symbols are registered with
+//! The actor runtime (mesh-rt) is linked and its symbols are registered with
 //! LLVM so that JIT-compiled code can call runtime functions like
-//! `snow_gc_alloc`, `snow_actor_spawn`, etc.
+//! `mesh_gc_alloc`, `mesh_actor_spawn`, etc.
 
 use crate::session::ReplSession;
 use std::sync::Once;
 
 static RUNTIME_INIT: Once = Once::new();
 
-/// Initialize the Snow runtime (GC + actor scheduler) and register all
+/// Initialize the Mesh runtime (GC + actor scheduler) and register all
 /// runtime symbols with LLVM so that JIT-compiled code can resolve them.
 ///
 /// This is called once at REPL startup. Subsequent calls are no-ops.
 pub fn init_runtime() {
     RUNTIME_INIT.call_once(|| {
         // Initialize the GC arena
-        snow_rt::snow_rt_init();
+        mesh_rt::mesh_rt_init();
 
         // Initialize the actor scheduler with default number of workers
-        snow_rt::snow_rt_init_actor(0);
+        mesh_rt::mesh_rt_init_actor(0);
 
-        // Register snow-rt symbols with LLVM's global symbol table so the
+        // Register mesh-rt symbols with LLVM's global symbol table so the
         // JIT execution engine can resolve them. LLVM's MCJIT uses dlsym
         // on some platforms, but explicit registration is more reliable.
         register_runtime_symbols();
     });
 }
 
-/// Register all snow-rt extern "C" symbols with LLVM's dynamic lookup.
+/// Register all mesh-rt extern "C" symbols with LLVM's dynamic lookup.
 ///
 /// This calls LLVMAddSymbol for each runtime function, making them
 /// available to JIT-compiled code. Without this, the JIT engine cannot
-/// resolve calls to runtime functions like snow_gc_alloc, snow_print, etc.
+/// resolve calls to runtime functions like mesh_gc_alloc, mesh_print, etc.
 fn register_runtime_symbols() {
     // LLVMAddSymbol is the LLVM C API for registering symbols with the
     // JIT's symbol resolver. inkwell 0.8 doesn't expose it directly,
@@ -54,143 +54,143 @@ fn register_runtime_symbols() {
     }
 
     // GC / runtime init
-    add_sym("snow_rt_init", snow_rt::snow_rt_init as *const ());
-    add_sym("snow_gc_alloc", snow_rt::snow_gc_alloc as *const ());
-    add_sym("snow_gc_alloc_actor", snow_rt::snow_gc_alloc_actor as *const ());
+    add_sym("mesh_rt_init", mesh_rt::mesh_rt_init as *const ());
+    add_sym("mesh_gc_alloc", mesh_rt::mesh_gc_alloc as *const ());
+    add_sym("mesh_gc_alloc_actor", mesh_rt::mesh_gc_alloc_actor as *const ());
 
     // IO
-    add_sym("snow_print", snow_rt::snow_print as *const ());
-    add_sym("snow_println", snow_rt::snow_println as *const ());
-    add_sym("snow_io_read_line", snow_rt::snow_io_read_line as *const ());
-    add_sym("snow_io_eprintln", snow_rt::snow_io_eprintln as *const ());
+    add_sym("mesh_print", mesh_rt::mesh_print as *const ());
+    add_sym("mesh_println", mesh_rt::mesh_println as *const ());
+    add_sym("mesh_io_read_line", mesh_rt::mesh_io_read_line as *const ());
+    add_sym("mesh_io_eprintln", mesh_rt::mesh_io_eprintln as *const ());
 
     // String operations
-    add_sym("snow_string_new", snow_rt::snow_string_new as *const ());
-    add_sym("snow_string_concat", snow_rt::snow_string_concat as *const ());
-    add_sym("snow_string_length", snow_rt::snow_string_length as *const ());
-    add_sym("snow_string_eq", snow_rt::snow_string_eq as *const ());
-    add_sym("snow_string_contains", snow_rt::snow_string_contains as *const ());
-    add_sym("snow_string_slice", snow_rt::snow_string_slice as *const ());
-    add_sym("snow_string_replace", snow_rt::snow_string_replace as *const ());
-    add_sym("snow_string_starts_with", snow_rt::snow_string_starts_with as *const ());
-    add_sym("snow_string_ends_with", snow_rt::snow_string_ends_with as *const ());
-    add_sym("snow_string_trim", snow_rt::snow_string_trim as *const ());
-    add_sym("snow_string_to_upper", snow_rt::snow_string_to_upper as *const ());
-    add_sym("snow_string_to_lower", snow_rt::snow_string_to_lower as *const ());
-    add_sym("snow_int_to_string", snow_rt::snow_int_to_string as *const ());
-    add_sym("snow_bool_to_string", snow_rt::snow_bool_to_string as *const ());
-    add_sym("snow_float_to_string", snow_rt::snow_float_to_string as *const ());
+    add_sym("mesh_string_new", mesh_rt::mesh_string_new as *const ());
+    add_sym("mesh_string_concat", mesh_rt::mesh_string_concat as *const ());
+    add_sym("mesh_string_length", mesh_rt::mesh_string_length as *const ());
+    add_sym("mesh_string_eq", mesh_rt::mesh_string_eq as *const ());
+    add_sym("mesh_string_contains", mesh_rt::mesh_string_contains as *const ());
+    add_sym("mesh_string_slice", mesh_rt::mesh_string_slice as *const ());
+    add_sym("mesh_string_replace", mesh_rt::mesh_string_replace as *const ());
+    add_sym("mesh_string_starts_with", mesh_rt::mesh_string_starts_with as *const ());
+    add_sym("mesh_string_ends_with", mesh_rt::mesh_string_ends_with as *const ());
+    add_sym("mesh_string_trim", mesh_rt::mesh_string_trim as *const ());
+    add_sym("mesh_string_to_upper", mesh_rt::mesh_string_to_upper as *const ());
+    add_sym("mesh_string_to_lower", mesh_rt::mesh_string_to_lower as *const ());
+    add_sym("mesh_int_to_string", mesh_rt::mesh_int_to_string as *const ());
+    add_sym("mesh_bool_to_string", mesh_rt::mesh_bool_to_string as *const ());
+    add_sym("mesh_float_to_string", mesh_rt::mesh_float_to_string as *const ());
 
     // Panic
-    add_sym("snow_panic", snow_rt::snow_panic as *const ());
+    add_sym("mesh_panic", mesh_rt::mesh_panic as *const ());
 
     // Actor runtime
-    add_sym("snow_rt_init_actor", snow_rt::snow_rt_init_actor as *const ());
-    add_sym("snow_rt_run_scheduler", snow_rt::snow_rt_run_scheduler as *const ());
-    add_sym("snow_actor_spawn", snow_rt::snow_actor_spawn as *const ());
-    add_sym("snow_actor_send", snow_rt::snow_actor_send as *const ());
-    add_sym("snow_actor_receive", snow_rt::snow_actor_receive as *const ());
-    add_sym("snow_actor_self", snow_rt::snow_actor_self as *const ());
-    add_sym("snow_actor_link", snow_rt::snow_actor_link as *const ());
-    add_sym("snow_actor_set_terminate", snow_rt::snow_actor_set_terminate as *const ());
-    add_sym("snow_actor_register", snow_rt::snow_actor_register as *const ());
-    add_sym("snow_actor_whereis", snow_rt::snow_actor_whereis as *const ());
-    add_sym("snow_reduction_check", snow_rt::snow_reduction_check as *const ());
+    add_sym("mesh_rt_init_actor", mesh_rt::mesh_rt_init_actor as *const ());
+    add_sym("mesh_rt_run_scheduler", mesh_rt::mesh_rt_run_scheduler as *const ());
+    add_sym("mesh_actor_spawn", mesh_rt::mesh_actor_spawn as *const ());
+    add_sym("mesh_actor_send", mesh_rt::mesh_actor_send as *const ());
+    add_sym("mesh_actor_receive", mesh_rt::mesh_actor_receive as *const ());
+    add_sym("mesh_actor_self", mesh_rt::mesh_actor_self as *const ());
+    add_sym("mesh_actor_link", mesh_rt::mesh_actor_link as *const ());
+    add_sym("mesh_actor_set_terminate", mesh_rt::mesh_actor_set_terminate as *const ());
+    add_sym("mesh_actor_register", mesh_rt::mesh_actor_register as *const ());
+    add_sym("mesh_actor_whereis", mesh_rt::mesh_actor_whereis as *const ());
+    add_sym("mesh_reduction_check", mesh_rt::mesh_reduction_check as *const ());
 
     // Services
-    add_sym("snow_service_call", snow_rt::snow_service_call as *const ());
-    add_sym("snow_service_reply", snow_rt::snow_service_reply as *const ());
+    add_sym("mesh_service_call", mesh_rt::mesh_service_call as *const ());
+    add_sym("mesh_service_reply", mesh_rt::mesh_service_reply as *const ());
 
     // Collections -- List
-    add_sym("snow_list_new", snow_rt::snow_list_new as *const ());
-    add_sym("snow_list_from_array", snow_rt::snow_list_from_array as *const ());
-    add_sym("snow_list_get", snow_rt::snow_list_get as *const ());
-    add_sym("snow_list_head", snow_rt::snow_list_head as *const ());
-    add_sym("snow_list_tail", snow_rt::snow_list_tail as *const ());
-    add_sym("snow_list_length", snow_rt::snow_list_length as *const ());
-    add_sym("snow_list_append", snow_rt::snow_list_append as *const ());
-    add_sym("snow_list_concat", snow_rt::snow_list_concat as *const ());
-    add_sym("snow_list_map", snow_rt::snow_list_map as *const ());
-    add_sym("snow_list_filter", snow_rt::snow_list_filter as *const ());
-    add_sym("snow_list_reduce", snow_rt::snow_list_reduce as *const ());
-    add_sym("snow_list_reverse", snow_rt::snow_list_reverse as *const ());
+    add_sym("mesh_list_new", mesh_rt::mesh_list_new as *const ());
+    add_sym("mesh_list_from_array", mesh_rt::mesh_list_from_array as *const ());
+    add_sym("mesh_list_get", mesh_rt::mesh_list_get as *const ());
+    add_sym("mesh_list_head", mesh_rt::mesh_list_head as *const ());
+    add_sym("mesh_list_tail", mesh_rt::mesh_list_tail as *const ());
+    add_sym("mesh_list_length", mesh_rt::mesh_list_length as *const ());
+    add_sym("mesh_list_append", mesh_rt::mesh_list_append as *const ());
+    add_sym("mesh_list_concat", mesh_rt::mesh_list_concat as *const ());
+    add_sym("mesh_list_map", mesh_rt::mesh_list_map as *const ());
+    add_sym("mesh_list_filter", mesh_rt::mesh_list_filter as *const ());
+    add_sym("mesh_list_reduce", mesh_rt::mesh_list_reduce as *const ());
+    add_sym("mesh_list_reverse", mesh_rt::mesh_list_reverse as *const ());
 
     // Collections -- Map
-    add_sym("snow_map_new", snow_rt::snow_map_new as *const ());
-    add_sym("snow_map_put", snow_rt::snow_map_put as *const ());
-    add_sym("snow_map_get", snow_rt::snow_map_get as *const ());
-    add_sym("snow_map_delete", snow_rt::snow_map_delete as *const ());
-    add_sym("snow_map_has_key", snow_rt::snow_map_has_key as *const ());
-    add_sym("snow_map_size", snow_rt::snow_map_size as *const ());
-    add_sym("snow_map_keys", snow_rt::snow_map_keys as *const ());
-    add_sym("snow_map_values", snow_rt::snow_map_values as *const ());
+    add_sym("mesh_map_new", mesh_rt::mesh_map_new as *const ());
+    add_sym("mesh_map_put", mesh_rt::mesh_map_put as *const ());
+    add_sym("mesh_map_get", mesh_rt::mesh_map_get as *const ());
+    add_sym("mesh_map_delete", mesh_rt::mesh_map_delete as *const ());
+    add_sym("mesh_map_has_key", mesh_rt::mesh_map_has_key as *const ());
+    add_sym("mesh_map_size", mesh_rt::mesh_map_size as *const ());
+    add_sym("mesh_map_keys", mesh_rt::mesh_map_keys as *const ());
+    add_sym("mesh_map_values", mesh_rt::mesh_map_values as *const ());
 
     // Collections -- Set
-    add_sym("snow_set_new", snow_rt::snow_set_new as *const ());
-    add_sym("snow_set_add", snow_rt::snow_set_add as *const ());
-    add_sym("snow_set_remove", snow_rt::snow_set_remove as *const ());
-    add_sym("snow_set_contains", snow_rt::snow_set_contains as *const ());
-    add_sym("snow_set_size", snow_rt::snow_set_size as *const ());
-    add_sym("snow_set_union", snow_rt::snow_set_union as *const ());
-    add_sym("snow_set_intersection", snow_rt::snow_set_intersection as *const ());
+    add_sym("mesh_set_new", mesh_rt::mesh_set_new as *const ());
+    add_sym("mesh_set_add", mesh_rt::mesh_set_add as *const ());
+    add_sym("mesh_set_remove", mesh_rt::mesh_set_remove as *const ());
+    add_sym("mesh_set_contains", mesh_rt::mesh_set_contains as *const ());
+    add_sym("mesh_set_size", mesh_rt::mesh_set_size as *const ());
+    add_sym("mesh_set_union", mesh_rt::mesh_set_union as *const ());
+    add_sym("mesh_set_intersection", mesh_rt::mesh_set_intersection as *const ());
 
     // Collections -- Queue
-    add_sym("snow_queue_new", snow_rt::snow_queue_new as *const ());
-    add_sym("snow_queue_push", snow_rt::snow_queue_push as *const ());
-    add_sym("snow_queue_pop", snow_rt::snow_queue_pop as *const ());
-    add_sym("snow_queue_peek", snow_rt::snow_queue_peek as *const ());
-    add_sym("snow_queue_size", snow_rt::snow_queue_size as *const ());
-    add_sym("snow_queue_is_empty", snow_rt::snow_queue_is_empty as *const ());
+    add_sym("mesh_queue_new", mesh_rt::mesh_queue_new as *const ());
+    add_sym("mesh_queue_push", mesh_rt::mesh_queue_push as *const ());
+    add_sym("mesh_queue_pop", mesh_rt::mesh_queue_pop as *const ());
+    add_sym("mesh_queue_peek", mesh_rt::mesh_queue_peek as *const ());
+    add_sym("mesh_queue_size", mesh_rt::mesh_queue_size as *const ());
+    add_sym("mesh_queue_is_empty", mesh_rt::mesh_queue_is_empty as *const ());
 
     // Collections -- Range
-    add_sym("snow_range_new", snow_rt::snow_range_new as *const ());
-    add_sym("snow_range_to_list", snow_rt::snow_range_to_list as *const ());
-    add_sym("snow_range_length", snow_rt::snow_range_length as *const ());
-    add_sym("snow_range_map", snow_rt::snow_range_map as *const ());
-    add_sym("snow_range_filter", snow_rt::snow_range_filter as *const ());
+    add_sym("mesh_range_new", mesh_rt::mesh_range_new as *const ());
+    add_sym("mesh_range_to_list", mesh_rt::mesh_range_to_list as *const ());
+    add_sym("mesh_range_length", mesh_rt::mesh_range_length as *const ());
+    add_sym("mesh_range_map", mesh_rt::mesh_range_map as *const ());
+    add_sym("mesh_range_filter", mesh_rt::mesh_range_filter as *const ());
 
     // Collections -- Tuple
-    add_sym("snow_tuple_first", snow_rt::snow_tuple_first as *const ());
-    add_sym("snow_tuple_second", snow_rt::snow_tuple_second as *const ());
-    add_sym("snow_tuple_nth", snow_rt::snow_tuple_nth as *const ());
-    add_sym("snow_tuple_size", snow_rt::snow_tuple_size as *const ());
+    add_sym("mesh_tuple_first", mesh_rt::mesh_tuple_first as *const ());
+    add_sym("mesh_tuple_second", mesh_rt::mesh_tuple_second as *const ());
+    add_sym("mesh_tuple_nth", mesh_rt::mesh_tuple_nth as *const ());
+    add_sym("mesh_tuple_size", mesh_rt::mesh_tuple_size as *const ());
 
     // File operations
-    add_sym("snow_file_read", snow_rt::snow_file_read as *const ());
-    add_sym("snow_file_write", snow_rt::snow_file_write as *const ());
-    add_sym("snow_file_append", snow_rt::snow_file_append as *const ());
-    add_sym("snow_file_exists", snow_rt::snow_file_exists as *const ());
-    add_sym("snow_file_delete", snow_rt::snow_file_delete as *const ());
+    add_sym("mesh_file_read", mesh_rt::mesh_file_read as *const ());
+    add_sym("mesh_file_write", mesh_rt::mesh_file_write as *const ());
+    add_sym("mesh_file_append", mesh_rt::mesh_file_append as *const ());
+    add_sym("mesh_file_exists", mesh_rt::mesh_file_exists as *const ());
+    add_sym("mesh_file_delete", mesh_rt::mesh_file_delete as *const ());
 
     // Environment
-    add_sym("snow_env_get", snow_rt::snow_env_get as *const ());
-    add_sym("snow_env_args", snow_rt::snow_env_args as *const ());
+    add_sym("mesh_env_get", mesh_rt::mesh_env_get as *const ());
+    add_sym("mesh_env_args", mesh_rt::mesh_env_args as *const ());
 
     // JSON
-    add_sym("snow_json_parse", snow_rt::snow_json_parse as *const ());
-    add_sym("snow_json_encode", snow_rt::snow_json_encode as *const ());
-    add_sym("snow_json_from_string", snow_rt::snow_json_from_string as *const ());
-    add_sym("snow_json_from_int", snow_rt::snow_json_from_int as *const ());
-    add_sym("snow_json_from_float", snow_rt::snow_json_from_float as *const ());
-    add_sym("snow_json_from_bool", snow_rt::snow_json_from_bool as *const ());
-    add_sym("snow_json_encode_string", snow_rt::snow_json_encode_string as *const ());
-    add_sym("snow_json_encode_int", snow_rt::snow_json_encode_int as *const ());
-    add_sym("snow_json_encode_bool", snow_rt::snow_json_encode_bool as *const ());
-    add_sym("snow_json_encode_list", snow_rt::snow_json_encode_list as *const ());
-    add_sym("snow_json_encode_map", snow_rt::snow_json_encode_map as *const ());
+    add_sym("mesh_json_parse", mesh_rt::mesh_json_parse as *const ());
+    add_sym("mesh_json_encode", mesh_rt::mesh_json_encode as *const ());
+    add_sym("mesh_json_from_string", mesh_rt::mesh_json_from_string as *const ());
+    add_sym("mesh_json_from_int", mesh_rt::mesh_json_from_int as *const ());
+    add_sym("mesh_json_from_float", mesh_rt::mesh_json_from_float as *const ());
+    add_sym("mesh_json_from_bool", mesh_rt::mesh_json_from_bool as *const ());
+    add_sym("mesh_json_encode_string", mesh_rt::mesh_json_encode_string as *const ());
+    add_sym("mesh_json_encode_int", mesh_rt::mesh_json_encode_int as *const ());
+    add_sym("mesh_json_encode_bool", mesh_rt::mesh_json_encode_bool as *const ());
+    add_sym("mesh_json_encode_list", mesh_rt::mesh_json_encode_list as *const ());
+    add_sym("mesh_json_encode_map", mesh_rt::mesh_json_encode_map as *const ());
 
     // HTTP
-    add_sym("snow_http_get", snow_rt::snow_http_get as *const ());
-    add_sym("snow_http_post", snow_rt::snow_http_post as *const ());
-    add_sym("snow_http_router", snow_rt::snow_http_router as *const ());
-    add_sym("snow_http_route", snow_rt::snow_http_route as *const ());
-    add_sym("snow_http_serve", snow_rt::snow_http_serve as *const ());
-    add_sym("snow_http_request_method", snow_rt::snow_http_request_method as *const ());
-    add_sym("snow_http_request_path", snow_rt::snow_http_request_path as *const ());
-    add_sym("snow_http_request_body", snow_rt::snow_http_request_body as *const ());
-    add_sym("snow_http_request_header", snow_rt::snow_http_request_header as *const ());
-    add_sym("snow_http_request_query", snow_rt::snow_http_request_query as *const ());
-    add_sym("snow_http_response_new", snow_rt::snow_http_response_new as *const ());
+    add_sym("mesh_http_get", mesh_rt::mesh_http_get as *const ());
+    add_sym("mesh_http_post", mesh_rt::mesh_http_post as *const ());
+    add_sym("mesh_http_router", mesh_rt::mesh_http_router as *const ());
+    add_sym("mesh_http_route", mesh_rt::mesh_http_route as *const ());
+    add_sym("mesh_http_serve", mesh_rt::mesh_http_serve as *const ());
+    add_sym("mesh_http_request_method", mesh_rt::mesh_http_request_method as *const ());
+    add_sym("mesh_http_request_path", mesh_rt::mesh_http_request_path as *const ());
+    add_sym("mesh_http_request_body", mesh_rt::mesh_http_request_body as *const ());
+    add_sym("mesh_http_request_header", mesh_rt::mesh_http_request_header as *const ());
+    add_sym("mesh_http_request_query", mesh_rt::mesh_http_request_query as *const ());
+    add_sym("mesh_http_response_new", mesh_rt::mesh_http_response_new as *const ());
 }
 
 /// The result of evaluating an expression in the REPL.
@@ -223,7 +223,7 @@ pub fn is_definition(input: &str) -> bool {
         })
 }
 
-/// Evaluate a Snow expression or definition using the full compiler pipeline.
+/// Evaluate a Mesh expression or definition using the full compiler pipeline.
 ///
 /// For expressions: wraps in a function, compiles via LLVM JIT, executes, and
 /// returns the result value with its type.
@@ -260,16 +260,16 @@ fn eval_definition(input: &str, session: &mut ReplSession) -> Result<EvalResult,
     full_source.push_str(input);
 
     // Parse to check for syntax errors
-    let parse = snow_parser::parse(&full_source);
+    let parse = mesh_parser::parse(&full_source);
     if !parse.ok() {
         let errors: Vec<String> = parse.errors().iter().map(|e| format!("{}", e)).collect();
         return Err(format!("Parse error: {}", errors.join(", ")));
     }
 
     // Type check to validate the definition
-    let typeck = snow_typeck::check(&parse);
+    let typeck = mesh_typeck::check(&parse);
     if !typeck.errors.is_empty() {
-        let rendered = typeck.render_errors(&full_source, "<repl>", &snow_typeck::diagnostics::DiagnosticOptions::colorless());
+        let rendered = typeck.render_errors(&full_source, "<repl>", &mesh_typeck::diagnostics::DiagnosticOptions::colorless());
         return Err(rendered.join("\n"));
     }
 
@@ -303,16 +303,16 @@ fn eval_expression(input: &str, session: &mut ReplSession) -> Result<EvalResult,
     let (full_source, wrapper_fn) = session.wrap_expression(input);
 
     // Step 1: Parse
-    let parse = snow_parser::parse(&full_source);
+    let parse = mesh_parser::parse(&full_source);
     if !parse.ok() {
         let errors: Vec<String> = parse.errors().iter().map(|e| format!("{}", e)).collect();
         return Err(format!("Parse error: {}", errors.join(", ")));
     }
 
     // Step 2: Type check
-    let typeck = snow_typeck::check(&parse);
+    let typeck = mesh_typeck::check(&parse);
     if !typeck.errors.is_empty() {
-        let rendered = typeck.render_errors(&full_source, "<repl>", &snow_typeck::diagnostics::DiagnosticOptions::colorless());
+        let rendered = typeck.render_errors(&full_source, "<repl>", &mesh_typeck::diagnostics::DiagnosticOptions::colorless());
         return Err(rendered.join("\n"));
     }
 
@@ -324,7 +324,7 @@ fn eval_expression(input: &str, session: &mut ReplSession) -> Result<EvalResult,
     };
 
     // Step 3: Lower to MIR
-    let mir = snow_codegen::lower_to_mir_module(&parse, &typeck)?;
+    let mir = mesh_codegen::lower_to_mir_module(&parse, &typeck)?;
 
     // Step 4: Generate LLVM IR and execute via JIT
     let value = jit_execute(&mir, &wrapper_fn, &result_type_name)?;
@@ -343,13 +343,13 @@ fn eval_expression(input: &str, session: &mut ReplSession) -> Result<EvalResult,
 /// Uses LLVM's JIT execution engine to call the generated wrapper function
 /// and capture its return value.
 fn jit_execute(
-    mir: &snow_codegen::mir::MirModule,
+    mir: &mesh_codegen::mir::MirModule,
     wrapper_fn_name: &str,
     result_type: &str,
 ) -> Result<String, String> {
     use inkwell::context::Context;
     use inkwell::targets::{InitializationConfig, Target};
-    use snow_codegen::codegen::CodeGen;
+    use mesh_codegen::codegen::CodeGen;
 
     // Initialize native target for JIT
     Target::initialize_native(&InitializationConfig::default())
@@ -392,7 +392,7 @@ fn jit_execute(
     }
 }
 
-/// Format a raw JIT result value based on its Snow type.
+/// Format a raw JIT result value based on its Mesh type.
 fn format_jit_result(raw: i64, type_name: &str) -> String {
     match type_name {
         "Int" => format!("{}", raw),
@@ -519,7 +519,7 @@ mod tests {
     #[test]
     fn test_repl_config_default() {
         let config = crate::ReplConfig::default();
-        assert_eq!(config.prompt, "snow> ");
+        assert_eq!(config.prompt, "mesh> ");
         assert_eq!(config.continuation, "  ... ");
     }
 }

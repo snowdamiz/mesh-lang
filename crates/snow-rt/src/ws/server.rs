@@ -1,7 +1,7 @@
 //! WebSocket server runtime: actor-per-connection with reader thread bridge.
 //!
 //! Integrates the Phase 59 WebSocket protocol layer (frame codec, handshake,
-//! close) with Snow's actor system. Each accepted WebSocket connection spawns
+//! close) with Mesh's actor system. Each accepted WebSocket connection spawns
 //! a dedicated actor with crash isolation via `catch_unwind`.
 //!
 //! The **reader thread bridge** is the novel component: a dedicated OS thread
@@ -37,7 +37,7 @@ use rustls::{ServerConfig, ServerConnection, StreamOwned};
 use crate::actor::{global_scheduler, MessageBuffer, Message, ProcessId, ProcessState};
 use crate::actor::process::Process;
 use crate::actor::stack;
-use crate::string::SnowString;
+use crate::string::MeshString;
 use super::frame::{read_frame, write_frame, WsFrame, WsOpcode};
 use super::handshake::perform_upgrade;
 use super::close::{process_frame, send_close, validate_text_payload, WsCloseCode};
@@ -262,11 +262,11 @@ const WS_POLICY_VIOLATION: u16 = 1008;
 // Handler and connection structs
 // ---------------------------------------------------------------------------
 
-/// WebSocket handler containing three Snow closure pairs (on_connect,
+/// WebSocket handler containing three Mesh closure pairs (on_connect,
 /// on_message, on_close). Each closure is a `{fn_ptr, env_ptr}` pair.
 ///
-/// Passed from the Snow-compiled program to `snow_ws_serve`. The struct
-/// is `#[repr(C)]` so Snow's codegen can construct it directly.
+/// Passed from the Mesh-compiled program to `mesh_ws_serve`. The struct
+/// is `#[repr(C)]` so Mesh's codegen can construct it directly.
 #[repr(C)]
 struct WsHandler {
     on_connect_fn: *mut u8,
@@ -278,7 +278,7 @@ struct WsHandler {
 }
 
 // WsHandler contains raw function pointers transferred between threads.
-// The pointers are to compiled Snow functions which are valid for the
+// The pointers are to compiled Mesh functions which are valid for the
 // lifetime of the program.
 unsafe impl Send for WsHandler {}
 
@@ -302,7 +302,7 @@ struct WsConnectionArgs {
 unsafe impl Send for WsConnectionArgs {}
 
 // ---------------------------------------------------------------------------
-// Public API: snow_ws_serve, snow_ws_send, snow_ws_send_binary
+// Public API: mesh_ws_serve, mesh_ws_send, mesh_ws_send_binary
 // ---------------------------------------------------------------------------
 
 /// Start a WebSocket server on the given port, blocking the calling thread.
@@ -320,7 +320,7 @@ unsafe impl Send for WsConnectionArgs {}
 /// - `on_close_fn/env`: Called when connection ends with (conn, code, reason)
 /// - `port`: TCP port to listen on
 #[no_mangle]
-pub extern "C" fn snow_ws_serve(
+pub extern "C" fn mesh_ws_serve(
     on_connect_fn: *mut u8,
     on_connect_env: *mut u8,
     on_message_fn: *mut u8,
@@ -330,24 +330,24 @@ pub extern "C" fn snow_ws_serve(
     port: i64,
 ) {
     // Ensure the actor scheduler is initialized (idempotent).
-    crate::actor::snow_rt_init_actor(0);
+    crate::actor::mesh_rt_init_actor(0);
 
     let addr = format!("0.0.0.0:{}", port);
     let listener = match TcpListener::bind(&addr) {
         Ok(l) => l,
         Err(e) => {
-            eprintln!("[snow-rt] Failed to start WebSocket server on {}: {}", addr, e);
+            eprintln!("[mesh-rt] Failed to start WebSocket server on {}: {}", addr, e);
             return;
         }
     };
 
-    eprintln!("[snow-rt] WebSocket server listening on {}", addr);
+    eprintln!("[mesh-rt] WebSocket server listening on {}", addr);
 
     for tcp_stream in listener.incoming() {
         let tcp_stream = match tcp_stream {
             Ok(s) => s,
             Err(e) => {
-                eprintln!("[snow-rt] accept error: {}", e);
+                eprintln!("[mesh-rt] accept error: {}", e);
                 continue;
             }
         };
@@ -386,10 +386,10 @@ pub extern "C" fn snow_ws_serve(
 
 /// Start a WebSocket TLS server on the given port, blocking the calling thread.
 ///
-/// Same as `snow_ws_serve` but wraps each connection in TLS via rustls.
+/// Same as `mesh_ws_serve` but wraps each connection in TLS via rustls.
 /// Certificate and private key are loaded from PEM files at the given paths.
 #[no_mangle]
-pub extern "C" fn snow_ws_serve_tls(
+pub extern "C" fn mesh_ws_serve_tls(
     on_connect_fn: *mut u8,
     on_connect_env: *mut u8,
     on_message_fn: *mut u8,
@@ -397,10 +397,10 @@ pub extern "C" fn snow_ws_serve_tls(
     on_close_fn: *mut u8,
     on_close_env: *mut u8,
     port: i64,
-    cert_path: *const SnowString,
-    key_path: *const SnowString,
+    cert_path: *const MeshString,
+    key_path: *const MeshString,
 ) {
-    crate::actor::snow_rt_init_actor(0);
+    crate::actor::mesh_rt_init_actor(0);
 
     let cert_str = unsafe { (*cert_path).as_str() };
     let key_str = unsafe { (*key_path).as_str() };
@@ -408,7 +408,7 @@ pub extern "C" fn snow_ws_serve_tls(
     let tls_config = match crate::http::server::build_server_config(cert_str, key_str) {
         Ok(c) => c,
         Err(e) => {
-            eprintln!("[snow-rt] Failed to load TLS certificates: {}", e);
+            eprintln!("[mesh-rt] Failed to load TLS certificates: {}", e);
             return;
         }
     };
@@ -417,12 +417,12 @@ pub extern "C" fn snow_ws_serve_tls(
     let listener = match TcpListener::bind(&addr) {
         Ok(l) => l,
         Err(e) => {
-            eprintln!("[snow-rt] Failed to start WebSocket TLS server on {}: {}", addr, e);
+            eprintln!("[mesh-rt] Failed to start WebSocket TLS server on {}: {}", addr, e);
             return;
         }
     };
 
-    eprintln!("[snow-rt] WebSocket TLS server listening on {}", addr);
+    eprintln!("[mesh-rt] WebSocket TLS server listening on {}", addr);
 
     let config_ptr = Arc::into_raw(tls_config) as usize;
 
@@ -430,7 +430,7 @@ pub extern "C" fn snow_ws_serve_tls(
         let tcp_stream = match tcp_stream {
             Ok(s) => s,
             Err(e) => {
-                eprintln!("[snow-rt] accept error: {}", e);
+                eprintln!("[mesh-rt] accept error: {}", e);
                 continue;
             }
         };
@@ -442,7 +442,7 @@ pub extern "C" fn snow_ws_serve_tls(
         let conn = match ServerConnection::new(Arc::clone(&tls_config)) {
             Ok(c) => c,
             Err(e) => {
-                eprintln!("[snow-rt] TLS connection setup failed: {}", e);
+                eprintln!("[mesh-rt] TLS connection setup failed: {}", e);
                 std::mem::forget(tls_config);
                 continue;
             }
@@ -475,11 +475,11 @@ pub extern "C" fn snow_ws_serve_tls(
 /// Send a text frame to a WebSocket client.
 ///
 /// `conn` is a pointer to a `WsConnection` (obtained from the on_connect
-/// callback). `msg` is a pointer to a `SnowString` containing the text.
+/// callback). `msg` is a pointer to a `MeshString` containing the text.
 ///
 /// Returns 0 on success, -1 on error.
 #[no_mangle]
-pub extern "C" fn snow_ws_send(conn: *mut u8, msg: *const SnowString) -> i64 {
+pub extern "C" fn mesh_ws_send(conn: *mut u8, msg: *const MeshString) -> i64 {
     if conn.is_null() || msg.is_null() {
         return -1;
     }
@@ -499,7 +499,7 @@ pub extern "C" fn snow_ws_send(conn: *mut u8, msg: *const SnowString) -> i64 {
 ///
 /// Returns 0 on success, -1 on error.
 #[no_mangle]
-pub extern "C" fn snow_ws_send_binary(conn: *mut u8, data: *const u8, len: i64) -> i64 {
+pub extern "C" fn mesh_ws_send_binary(conn: *mut u8, data: *const u8, len: i64) -> i64 {
     if conn.is_null() || data.is_null() {
         return -1;
     }
@@ -533,7 +533,7 @@ extern "C" fn ws_connection_entry(args: *const u8) {
     let (path, headers) = match perform_upgrade(&mut stream) {
         Ok(ph) => ph,
         Err(e) => {
-            eprintln!("[snow-rt] WS upgrade failed: {}", e);
+            eprintln!("[mesh-rt] WS upgrade failed: {}", e);
             return;
         }
     };
@@ -809,17 +809,17 @@ fn push_disconnect(proc_arc: &Arc<Mutex<Process>>, actor_pid: ProcessId) {
 
 /// Main message loop for the WebSocket actor.
 ///
-/// Blocks on `snow_actor_receive(-1)` to get messages from the mailbox.
+/// Blocks on `mesh_actor_receive(-1)` to get messages from the mailbox.
 /// Dispatches based on the type tag:
 /// - `WS_TEXT_TAG` / `WS_BINARY_TAG`: call on_message callback
 /// - `WS_DISCONNECT_TAG`: client disconnected, exit loop
 /// - `EXIT_SIGNAL_TAG`: exit signal from linked actor, exit loop
 /// - Other: regular actor-to-actor message (ignored for now)
 fn actor_message_loop(handler: &WsHandler, conn_ptr: *mut u8) {
-    use crate::actor::snow_actor_receive;
+    use crate::actor::mesh_actor_receive;
 
     loop {
-        let msg_ptr = snow_actor_receive(-1);
+        let msg_ptr = mesh_actor_receive(-1);
         if msg_ptr.is_null() {
             break;
         }
@@ -864,7 +864,7 @@ fn actor_message_loop(handler: &WsHandler, conn_ptr: *mut u8) {
 
 /// Call the on_connect callback.
 ///
-/// Builds Snow-level path string and headers map, invokes the callback.
+/// Builds Mesh-level path string and headers map, invokes the callback.
 /// Returns `true` if the connection is accepted, `false` if rejected.
 ///
 /// If no on_connect callback is set (null fn pointer), accepts by default.
@@ -879,27 +879,27 @@ fn call_on_connect(
     }
 
     unsafe {
-        // Build Snow-level path string
-        let path_snow =
-            crate::string::snow_string_new(path.as_ptr(), path.len() as u64) as *mut u8;
+        // Build Mesh-level path string
+        let path_mesh =
+            crate::string::mesh_string_new(path.as_ptr(), path.len() as u64) as *mut u8;
 
         // Build headers map
-        let mut headers_map = crate::collections::map::snow_map_new_typed(1);
+        let mut headers_map = crate::collections::map::mesh_map_new_typed(1);
         for (name, value) in headers {
-            let key = crate::string::snow_string_new(name.as_ptr(), name.len() as u64);
-            let val = crate::string::snow_string_new(value.as_ptr(), value.len() as u64);
-            headers_map = crate::collections::map::snow_map_put(headers_map, key as u64, val as u64);
+            let key = crate::string::mesh_string_new(name.as_ptr(), name.len() as u64);
+            let val = crate::string::mesh_string_new(value.as_ptr(), value.len() as u64);
+            headers_map = crate::collections::map::mesh_map_put(headers_map, key as u64, val as u64);
         }
 
         // Call the closure: if env is null, bare function; if non-null, closure
         let result = if handler.on_connect_env.is_null() {
             let f: fn(*mut u8, *mut u8, *mut u8) -> *mut u8 =
                 std::mem::transmute(handler.on_connect_fn);
-            f(conn_ptr, path_snow, headers_map)
+            f(conn_ptr, path_mesh, headers_map)
         } else {
             let f: fn(*mut u8, *mut u8, *mut u8, *mut u8) -> *mut u8 =
                 std::mem::transmute(handler.on_connect_fn);
-            f(handler.on_connect_env, conn_ptr, path_snow, headers_map)
+            f(handler.on_connect_env, conn_ptr, path_mesh, headers_map)
         };
 
         // Convention: non-null = accepted, null = rejected
@@ -909,7 +909,7 @@ fn call_on_connect(
 
 /// Call the on_message callback.
 ///
-/// Converts the frame payload to a SnowString and invokes the callback.
+/// Converts the frame payload to a MeshString and invokes the callback.
 fn call_on_message(
     handler: &WsHandler,
     conn_ptr: *mut u8,
@@ -922,18 +922,18 @@ fn call_on_message(
     }
 
     unsafe {
-        // Build a Snow string from the frame payload
-        let msg_snow =
-            crate::string::snow_string_new(data_ptr, data_len as u64) as *mut u8;
+        // Build a Mesh string from the frame payload
+        let msg_mesh =
+            crate::string::mesh_string_new(data_ptr, data_len as u64) as *mut u8;
 
         if handler.on_message_env.is_null() {
             let f: fn(*mut u8, *mut u8) -> *mut u8 =
                 std::mem::transmute(handler.on_message_fn);
-            f(conn_ptr, msg_snow);
+            f(conn_ptr, msg_mesh);
         } else {
             let f: fn(*mut u8, *mut u8, *mut u8) -> *mut u8 =
                 std::mem::transmute(handler.on_message_fn);
-            f(handler.on_message_env, conn_ptr, msg_snow);
+            f(handler.on_message_env, conn_ptr, msg_mesh);
         }
     }
 }
@@ -948,17 +948,17 @@ fn call_on_close(handler: &WsHandler, conn_ptr: *mut u8, code: u16, reason: &str
 
     unsafe {
         let code_i64 = code as i64;
-        let reason_snow =
-            crate::string::snow_string_new(reason.as_ptr(), reason.len() as u64) as *mut u8;
+        let reason_mesh =
+            crate::string::mesh_string_new(reason.as_ptr(), reason.len() as u64) as *mut u8;
 
         if handler.on_close_env.is_null() {
             let f: fn(*mut u8, i64, *mut u8) -> *mut u8 =
                 std::mem::transmute(handler.on_close_fn);
-            f(conn_ptr, code_i64, reason_snow);
+            f(conn_ptr, code_i64, reason_mesh);
         } else {
             let f: fn(*mut u8, *mut u8, i64, *mut u8) -> *mut u8 =
                 std::mem::transmute(handler.on_close_fn);
-            f(handler.on_close_env, conn_ptr, code_i64, reason_snow);
+            f(handler.on_close_env, conn_ptr, code_i64, reason_mesh);
         }
     }
 }
@@ -992,7 +992,7 @@ mod tests {
 
     /// on_message: echo the message back to the client (env=null).
     extern "C" fn echo_on_message(conn: *mut u8, msg: *mut u8) -> *mut u8 {
-        snow_ws_send(conn, msg as *const SnowString);
+        mesh_ws_send(conn, msg as *const MeshString);
         std::ptr::null_mut()
     }
 
@@ -1031,7 +1031,7 @@ mod tests {
     /// Start a WS server that echoes messages back (no per-test counters).
     fn start_echo_server(port: u16) {
         std::thread::spawn(move || {
-            snow_ws_serve(
+            mesh_ws_serve(
                 accept_on_connect as *mut u8, std::ptr::null_mut(),
                 echo_on_message as *mut u8, std::ptr::null_mut(),
                 noop_on_close as *mut u8, std::ptr::null_mut(),
@@ -1051,7 +1051,7 @@ mod tests {
         let connect_env = connect_ctr as *const AtomicU64 as usize;
         let close_env = close_ctr as *const AtomicU64 as usize;
         std::thread::spawn(move || {
-            snow_ws_serve(
+            mesh_ws_serve(
                 counting_on_connect as *mut u8, connect_env as *mut u8,
                 echo_on_message as *mut u8, std::ptr::null_mut(),
                 counting_on_close as *mut u8, close_env as *mut u8,
@@ -1064,7 +1064,7 @@ mod tests {
     /// Start a WS server where on_message always panics.
     fn start_crash_server(port: u16) {
         std::thread::spawn(move || {
-            snow_ws_serve(
+            mesh_ws_serve(
                 accept_on_connect as *mut u8, std::ptr::null_mut(),
                 crash_on_message as *mut u8, std::ptr::null_mut(),
                 noop_on_close as *mut u8, std::ptr::null_mut(),

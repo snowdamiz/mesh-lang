@@ -1,11 +1,11 @@
-//! SQLite C FFI wrapper functions for the Snow runtime.
+//! SQLite C FFI wrapper functions for the Mesh runtime.
 //!
-//! Provides four extern "C" functions that Snow programs call to interact
+//! Provides four extern "C" functions that Mesh programs call to interact
 //! with SQLite databases:
-//! - `snow_sqlite_open`: Open a database connection
-//! - `snow_sqlite_close`: Close a connection
-//! - `snow_sqlite_execute`: Execute a write query (INSERT/UPDATE/DELETE/CREATE)
-//! - `snow_sqlite_query`: Execute a read query (SELECT), returns rows
+//! - `mesh_sqlite_open`: Open a database connection
+//! - `mesh_sqlite_close`: Close a connection
+//! - `mesh_sqlite_execute`: Execute a write query (INSERT/UPDATE/DELETE/CREATE)
+//! - `mesh_sqlite_query`: Execute a read query (SELECT), returns rows
 //!
 //! Connection handles are opaque u64 values (Box::into_raw as u64) for GC
 //! safety. The GC never traces integer values, so the connection won't be
@@ -15,10 +15,10 @@ use libsqlite3_sys::*;
 use std::ffi::{CStr, CString};
 use std::os::raw::c_int;
 
-use crate::collections::list::{snow_list_append, snow_list_new};
-use crate::collections::map::{snow_map_new_typed, snow_map_put};
+use crate::collections::list::{mesh_list_append, mesh_list_new};
+use crate::collections::map::{mesh_map_new_typed, mesh_map_put};
 use crate::io::alloc_result;
-use crate::string::{snow_string_new, SnowString};
+use crate::string::{mesh_string_new, MeshString};
 
 /// Wrapper around a raw SQLite database pointer.
 struct SqliteConn {
@@ -46,27 +46,27 @@ impl Drop for StmtGuard {
 /// a destructor function pointer.
 const SQLITE_TRANSIENT_VALUE: isize = -1;
 
-/// Extract a Rust &str from a raw SnowString pointer.
+/// Extract a Rust &str from a raw MeshString pointer.
 ///
 /// # Safety
 ///
-/// The pointer must reference a valid SnowString allocation.
-unsafe fn snow_str_to_rust(s: *const SnowString) -> &'static str {
+/// The pointer must reference a valid MeshString allocation.
+unsafe fn mesh_str_to_rust(s: *const MeshString) -> &'static str {
     (*s).as_str()
 }
 
-/// Create a SnowString from a Rust &str and return as *mut u8.
-fn rust_str_to_snow(s: &str) -> *mut u8 {
-    snow_string_new(s.as_ptr(), s.len() as u64) as *mut u8
+/// Create a MeshString from a Rust &str and return as *mut u8.
+fn rust_str_to_mesh(s: &str) -> *mut u8 {
+    mesh_string_new(s.as_ptr(), s.len() as u64) as *mut u8
 }
 
-/// Create an error SnowResult from a Rust string.
+/// Create an error MeshResult from a Rust string.
 fn err_result(msg: &str) -> *mut u8 {
-    let s = rust_str_to_snow(msg);
+    let s = rust_str_to_mesh(msg);
     alloc_result(1, s) as *mut u8
 }
 
-/// Create an error SnowResult from a sqlite3 error message.
+/// Create an error MeshResult from a sqlite3 error message.
 unsafe fn sqlite_err_result(db: *mut sqlite3) -> *mut u8 {
     let c_msg = sqlite3_errmsg(db);
     if c_msg.is_null() {
@@ -77,11 +77,11 @@ unsafe fn sqlite_err_result(db: *mut sqlite3) -> *mut u8 {
     }
 }
 
-/// Read the SnowList of SnowString parameters and bind them to a prepared
+/// Read the MeshList of MeshString parameters and bind them to a prepared
 /// statement using sqlite3_bind_text with SQLITE_TRANSIENT.
 ///
-/// SnowList layout: `{ len: u64, cap: u64, data: [u64; cap] }`
-/// Each element is a u64 that is actually a pointer to a SnowString.
+/// MeshList layout: `{ len: u64, cap: u64, data: [u64; cap] }`
+/// Each element is a u64 that is actually a pointer to a MeshString.
 ///
 /// Returns Ok(()) on success, Err(error_string) on bind failure.
 unsafe fn bind_params(
@@ -96,8 +96,8 @@ unsafe fn bind_params(
     let mut cstrings = Vec::with_capacity(len as usize);
 
     for i in 0..len as usize {
-        let param_ptr = *data_ptr.add(i) as *const SnowString;
-        let param_str = snow_str_to_rust(param_ptr);
+        let param_ptr = *data_ptr.add(i) as *const MeshString;
+        let param_str = mesh_str_to_rust(param_ptr);
         let cstr = match CString::new(param_str) {
             Ok(c) => c,
             Err(_) => return Err(err_result("parameter contains null byte")),
@@ -129,14 +129,14 @@ unsafe fn bind_params(
 ///
 /// # Signature
 ///
-/// `snow_sqlite_open(path: *const SnowString) -> *mut u8 (SnowResult<u64, String>)`
+/// `mesh_sqlite_open(path: *const MeshString) -> *mut u8 (MeshResult<u64, String>)`
 ///
-/// Returns SnowResult with tag 0 (Ok) containing the connection handle as
+/// Returns MeshResult with tag 0 (Ok) containing the connection handle as
 /// a u64, or tag 1 (Err) containing an error message string.
 #[no_mangle]
-pub extern "C" fn snow_sqlite_open(path: *const SnowString) -> *mut u8 {
+pub extern "C" fn mesh_sqlite_open(path: *const MeshString) -> *mut u8 {
     unsafe {
-        let path_str = snow_str_to_rust(path);
+        let path_str = mesh_str_to_rust(path);
         let c_path = match CString::new(path_str) {
             Ok(c) => c,
             Err(_) => return err_result("path contains null byte"),
@@ -168,12 +168,12 @@ pub extern "C" fn snow_sqlite_open(path: *const SnowString) -> *mut u8 {
 ///
 /// # Signature
 ///
-/// `snow_sqlite_close(conn_handle: u64)`
+/// `mesh_sqlite_close(conn_handle: u64)`
 ///
 /// Recovers the Box<SqliteConn> from the handle, calls sqlite3_close,
 /// and lets Box::drop free the Rust memory.
 #[no_mangle]
-pub extern "C" fn snow_sqlite_close(conn_handle: u64) {
+pub extern "C" fn mesh_sqlite_close(conn_handle: u64) {
     unsafe {
         let conn = Box::from_raw(conn_handle as *mut SqliteConn);
         sqlite3_close(conn.db);
@@ -185,20 +185,20 @@ pub extern "C" fn snow_sqlite_close(conn_handle: u64) {
 ///
 /// # Signature
 ///
-/// `snow_sqlite_execute(conn_handle: u64, sql: *const SnowString, params: *mut u8)
-///     -> *mut u8 (SnowResult<Int, String>)`
+/// `mesh_sqlite_execute(conn_handle: u64, sql: *const MeshString, params: *mut u8)
+///     -> *mut u8 (MeshResult<Int, String>)`
 ///
 /// Parameters are bound as text via sqlite3_bind_text. Returns the number
 /// of rows affected (via sqlite3_changes) on success.
 #[no_mangle]
-pub extern "C" fn snow_sqlite_execute(
+pub extern "C" fn mesh_sqlite_execute(
     conn_handle: u64,
-    sql: *const SnowString,
+    sql: *const MeshString,
     params: *mut u8,
 ) -> *mut u8 {
     unsafe {
         let conn = &*(conn_handle as *const SqliteConn);
-        let sql_str = snow_str_to_rust(sql);
+        let sql_str = mesh_str_to_rust(sql);
         let sql_cstr = match CString::new(sql_str) {
             Ok(c) => c,
             Err(_) => return err_result("SQL contains null byte"),
@@ -238,21 +238,21 @@ pub extern "C" fn snow_sqlite_execute(
 ///
 /// # Signature
 ///
-/// `snow_sqlite_query(conn_handle: u64, sql: *const SnowString, params: *mut u8)
-///     -> *mut u8 (SnowResult<List<Map<String, String>>, String>)`
+/// `mesh_sqlite_query(conn_handle: u64, sql: *const MeshString, params: *mut u8)
+///     -> *mut u8 (MeshResult<List<Map<String, String>>, String>)`
 ///
 /// Each row is a Map<String, String> where keys are column names and values
 /// are the text representation of column values. NULL columns become empty
 /// strings.
 #[no_mangle]
-pub extern "C" fn snow_sqlite_query(
+pub extern "C" fn mesh_sqlite_query(
     conn_handle: u64,
-    sql: *const SnowString,
+    sql: *const MeshString,
     params: *mut u8,
 ) -> *mut u8 {
     unsafe {
         let conn = &*(conn_handle as *const SqliteConn);
-        let sql_str = snow_str_to_rust(sql);
+        let sql_str = mesh_str_to_rust(sql);
         let sql_cstr = match CString::new(sql_str) {
             Ok(c) => c,
             Err(_) => return err_result("SQL contains null byte"),
@@ -291,7 +291,7 @@ pub extern "C" fn snow_sqlite_query(
         }
 
         // Iterate rows
-        let mut result_list = snow_list_new();
+        let mut result_list = mesh_list_new();
 
         loop {
             let step_rc = sqlite3_step(stmt);
@@ -303,7 +303,7 @@ pub extern "C" fn snow_sqlite_query(
             }
 
             // Create a string-keyed map for this row (key_type = 1 = string)
-            let mut row_map = snow_map_new_typed(1);
+            let mut row_map = mesh_map_new_typed(1);
 
             for col in 0..col_count {
                 let col_type = sqlite3_column_type(stmt, col as c_int);
@@ -320,12 +320,12 @@ pub extern "C" fn snow_sqlite_query(
                     }
                 };
 
-                let key_snow = rust_str_to_snow(&col_names[col]);
-                let val_snow = rust_str_to_snow(&value_str);
-                row_map = snow_map_put(row_map, key_snow as u64, val_snow as u64);
+                let key_mesh = rust_str_to_mesh(&col_names[col]);
+                let val_mesh = rust_str_to_mesh(&value_str);
+                row_map = mesh_map_put(row_map, key_mesh as u64, val_mesh as u64);
             }
 
-            result_list = snow_list_append(result_list, row_map as u64);
+            result_list = mesh_list_append(result_list, row_map as u64);
         }
 
         alloc_result(0, result_list) as *mut u8
@@ -335,7 +335,7 @@ pub extern "C" fn snow_sqlite_query(
 // ── Transaction Management ──────────────────────────────────────────────
 
 /// Execute a bare SQL command (BEGIN/COMMIT/ROLLBACK) on a SQLite connection.
-/// Returns a SnowResult: Ok(null) on success, Err(message) on failure.
+/// Returns a MeshResult: Ok(null) on success, Err(message) on failure.
 fn sqlite_simple_exec(conn: &SqliteConn, sql: &str) -> *mut u8 {
     let sql_cstr = match CString::new(sql) {
         Ok(c) => c,
@@ -361,11 +361,11 @@ fn sqlite_simple_exec(conn: &SqliteConn, sql: &str) -> *mut u8 {
 ///
 /// # Signature
 ///
-/// `snow_sqlite_begin(conn_handle: u64) -> *mut u8 (SnowResult<Unit, String>)`
+/// `mesh_sqlite_begin(conn_handle: u64) -> *mut u8 (MeshResult<Unit, String>)`
 ///
 /// Sends `BEGIN` and returns Ok(()) or Err(error_message).
 #[no_mangle]
-pub extern "C" fn snow_sqlite_begin(conn_handle: u64) -> *mut u8 {
+pub extern "C" fn mesh_sqlite_begin(conn_handle: u64) -> *mut u8 {
     let conn = unsafe { &*(conn_handle as *const SqliteConn) };
     sqlite_simple_exec(conn, "BEGIN")
 }
@@ -374,11 +374,11 @@ pub extern "C" fn snow_sqlite_begin(conn_handle: u64) -> *mut u8 {
 ///
 /// # Signature
 ///
-/// `snow_sqlite_commit(conn_handle: u64) -> *mut u8 (SnowResult<Unit, String>)`
+/// `mesh_sqlite_commit(conn_handle: u64) -> *mut u8 (MeshResult<Unit, String>)`
 ///
 /// Sends `COMMIT` and returns Ok(()) or Err(error_message).
 #[no_mangle]
-pub extern "C" fn snow_sqlite_commit(conn_handle: u64) -> *mut u8 {
+pub extern "C" fn mesh_sqlite_commit(conn_handle: u64) -> *mut u8 {
     let conn = unsafe { &*(conn_handle as *const SqliteConn) };
     sqlite_simple_exec(conn, "COMMIT")
 }
@@ -387,11 +387,11 @@ pub extern "C" fn snow_sqlite_commit(conn_handle: u64) -> *mut u8 {
 ///
 /// # Signature
 ///
-/// `snow_sqlite_rollback(conn_handle: u64) -> *mut u8 (SnowResult<Unit, String>)`
+/// `mesh_sqlite_rollback(conn_handle: u64) -> *mut u8 (MeshResult<Unit, String>)`
 ///
 /// Sends `ROLLBACK` and returns Ok(()) or Err(error_message).
 #[no_mangle]
-pub extern "C" fn snow_sqlite_rollback(conn_handle: u64) -> *mut u8 {
+pub extern "C" fn mesh_sqlite_rollback(conn_handle: u64) -> *mut u8 {
     let conn = unsafe { &*(conn_handle as *const SqliteConn) };
     sqlite_simple_exec(conn, "ROLLBACK")
 }
@@ -399,97 +399,97 @@ pub extern "C" fn snow_sqlite_rollback(conn_handle: u64) -> *mut u8 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::gc::snow_rt_init;
-    use crate::io::SnowResult;
+    use crate::gc::mesh_rt_init;
+    use crate::io::MeshResult;
 
-    /// Helper to create a SnowString from a byte literal.
-    fn mk_str(s: &[u8]) -> *mut SnowString {
-        snow_string_new(s.as_ptr(), s.len() as u64)
+    /// Helper to create a MeshString from a byte literal.
+    fn mk_str(s: &[u8]) -> *mut MeshString {
+        mesh_string_new(s.as_ptr(), s.len() as u64)
     }
 
     #[test]
     fn test_open_close() {
-        snow_rt_init();
+        mesh_rt_init();
 
         // Open an in-memory database
         let path = mk_str(b":memory:");
-        let result = snow_sqlite_open(path);
+        let result = mesh_sqlite_open(path);
         assert!(!result.is_null());
 
-        let r = unsafe { &*(result as *const SnowResult) };
+        let r = unsafe { &*(result as *const MeshResult) };
         assert_eq!(r.tag, 0, "open should succeed");
 
         let handle = r.value as u64;
         assert_ne!(handle, 0, "handle should be non-zero");
 
         // Close it
-        snow_sqlite_close(handle);
+        mesh_sqlite_close(handle);
     }
 
     #[test]
     fn test_execute_create_table() {
-        snow_rt_init();
+        mesh_rt_init();
 
         // Open
         let path = mk_str(b":memory:");
-        let result = snow_sqlite_open(path);
-        let r = unsafe { &*(result as *const SnowResult) };
+        let result = mesh_sqlite_open(path);
+        let r = unsafe { &*(result as *const MeshResult) };
         assert_eq!(r.tag, 0);
         let handle = r.value as u64;
 
         // Create table
         let sql = mk_str(b"CREATE TABLE test (id INTEGER PRIMARY KEY, name TEXT)");
-        let empty_params = snow_list_new();
-        let exec_result = snow_sqlite_execute(handle, sql, empty_params);
-        let er = unsafe { &*(exec_result as *const SnowResult) };
+        let empty_params = mesh_list_new();
+        let exec_result = mesh_sqlite_execute(handle, sql, empty_params);
+        let er = unsafe { &*(exec_result as *const MeshResult) };
         assert_eq!(er.tag, 0, "CREATE TABLE should succeed");
 
-        snow_sqlite_close(handle);
+        mesh_sqlite_close(handle);
     }
 
     #[test]
     fn test_insert_and_query() {
-        snow_rt_init();
+        mesh_rt_init();
 
         // Open
         let path = mk_str(b":memory:");
-        let result = snow_sqlite_open(path);
-        let r = unsafe { &*(result as *const SnowResult) };
+        let result = mesh_sqlite_open(path);
+        let r = unsafe { &*(result as *const MeshResult) };
         assert_eq!(r.tag, 0);
         let handle = r.value as u64;
 
         // Create table
         let sql = mk_str(b"CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT, age TEXT)");
-        let empty_params = snow_list_new();
-        let exec_result = snow_sqlite_execute(handle, sql, empty_params);
-        let er = unsafe { &*(exec_result as *const SnowResult) };
+        let empty_params = mesh_list_new();
+        let exec_result = mesh_sqlite_execute(handle, sql, empty_params);
+        let er = unsafe { &*(exec_result as *const MeshResult) };
         assert_eq!(er.tag, 0);
 
         // Insert a row with params
         let insert_sql = mk_str(b"INSERT INTO users (name, age) VALUES (?, ?)");
-        let mut params = snow_list_new();
+        let mut params = mesh_list_new();
         let name_val = mk_str(b"Alice");
         let age_val = mk_str(b"30");
-        params = snow_list_append(params, name_val as u64);
-        params = snow_list_append(params, age_val as u64);
+        params = mesh_list_append(params, name_val as u64);
+        params = mesh_list_append(params, age_val as u64);
 
-        let insert_result = snow_sqlite_execute(handle, insert_sql, params);
-        let ir = unsafe { &*(insert_result as *const SnowResult) };
+        let insert_result = mesh_sqlite_execute(handle, insert_sql, params);
+        let ir = unsafe { &*(insert_result as *const MeshResult) };
         assert_eq!(ir.tag, 0, "INSERT should succeed");
         assert_eq!(ir.value as i64, 1, "should affect 1 row");
 
         // Query
         let query_sql = mk_str(b"SELECT name, age FROM users");
-        let empty_params2 = snow_list_new();
-        let query_result = snow_sqlite_query(handle, query_sql, empty_params2);
-        let qr = unsafe { &*(query_result as *const SnowResult) };
+        let empty_params2 = mesh_list_new();
+        let query_result = mesh_sqlite_query(handle, query_sql, empty_params2);
+        let qr = unsafe { &*(query_result as *const MeshResult) };
         assert_eq!(qr.tag, 0, "SELECT should succeed");
 
-        // The result is a SnowList with 1 row
+        // The result is a MeshList with 1 row
         let list_ptr = qr.value;
         let list_len = unsafe { *(list_ptr as *const u64) };
         assert_eq!(list_len, 1, "should have 1 row");
 
-        snow_sqlite_close(handle);
+        mesh_sqlite_close(handle);
     }
 }

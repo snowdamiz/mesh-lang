@@ -4,8 +4,8 @@
 //! used in MIR. After type checking, all types should be fully resolved
 //! (no remaining type variables).
 
-use snow_typeck::ty::{Ty, TyCon};
-use snow_typeck::TypeRegistry;
+use mesh_typeck::ty::{Ty, TyCon};
+use mesh_typeck::TypeRegistry;
 
 use super::MirType;
 
@@ -222,8 +222,8 @@ pub fn mir_type_to_impl_name(mir_type: &MirType) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use snow_typeck::ty::Ty;
-    use snow_typeck::TypeRegistry;
+    use mesh_typeck::ty::Ty;
+    use mesh_typeck::TypeRegistry;
 
     fn empty_registry() -> TypeRegistry {
         TypeRegistry {
@@ -301,7 +301,7 @@ mod tests {
 
     #[test]
     fn resolve_option_sum_type() {
-        use snow_typeck::{SumTypeDefInfo, VariantInfo};
+        use mesh_typeck::{SumTypeDefInfo, VariantInfo};
 
         let mut reg = empty_registry();
         reg.sum_type_defs.insert(
@@ -330,7 +330,7 @@ mod tests {
 
     #[test]
     fn resolve_struct_no_args() {
-        use snow_typeck::StructDefInfo;
+        use mesh_typeck::StructDefInfo;
 
         let mut reg = empty_registry();
         reg.struct_defs.insert(
@@ -389,7 +389,7 @@ mod tests {
 
     #[test]
     fn resolve_var_falls_back_to_unit() {
-        use snow_typeck::ty::TyVar;
+        use mesh_typeck::ty::TyVar;
         let reg = empty_registry();
         // Unresolved type variables fall back to Unit for graceful degradation.
         assert_eq!(resolve_type(&Ty::Var(TyVar(0)), &reg, false), MirType::Unit);

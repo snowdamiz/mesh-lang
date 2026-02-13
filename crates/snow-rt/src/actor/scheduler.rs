@@ -1,4 +1,4 @@
-//! M:N work-stealing scheduler for Snow actors.
+//! M:N work-stealing scheduler for Mesh actors.
 //!
 //! The scheduler multiplexes lightweight actor processes across a fixed number
 //! of OS threads (one per CPU core by default). Work distribution uses
@@ -199,7 +199,7 @@ impl Scheduler {
     /// worker threads run in the background. Call `wait()` to join them.
     ///
     /// This is used when the main thread needs to call into services (which
-    /// require the scheduler to be running) before `snow_main` returns.
+    /// require the scheduler to be running) before `mesh_main` returns.
     pub fn start(&self) {
         let num_threads = self.num_threads;
         let mut handles = self.worker_handles.lock();
@@ -308,7 +308,7 @@ impl Scheduler {
 
     /// Create a process entry for the main thread.
     ///
-    /// This gives the main thread a PID and mailbox so that `snow_service_call`
+    /// This gives the main thread a PID and mailbox so that `mesh_service_call`
     /// can work from non-coroutine context. The main thread process is NOT
     /// counted in active_count because it is not managed by the scheduler --
     /// its lifetime is controlled by the C main function.
@@ -334,7 +334,7 @@ impl Scheduler {
 
     /// Wake a process that was in Waiting state.
     ///
-    /// This is called by `snow_actor_send` after setting the process state
+    /// This is called by `mesh_actor_send` after setting the process state
     /// to Ready. Since coroutines are `!Send` and thread-pinned, the actual
     /// resumption happens in the worker loop when it notices the state change.
     ///
@@ -414,7 +414,7 @@ fn worker_loop(
 
             did_work = true;
 
-            // Set thread-local PID for snow_actor_self().
+            // Set thread-local PID for mesh_actor_self().
             set_current_pid(pid);
 
             let yielded = handle.resume();
@@ -511,7 +511,7 @@ fn worker_loop(
                 if !has_ready {
                     // No Ready/Running processes remain. Wake all Waiting
                     // actors so they can detect shutdown and exit gracefully.
-                    // The snow_actor_receive function checks is_shutdown()
+                    // The mesh_actor_receive function checks is_shutdown()
                     // and returns null when no other actors are active,
                     // causing the service loop to exit cleanly.
                     for (pid, _) in suspended.iter() {

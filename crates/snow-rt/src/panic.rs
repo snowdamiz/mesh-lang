@@ -1,6 +1,6 @@
-//! Runtime panic handler for Snow programs.
+//! Runtime panic handler for Mesh programs.
 //!
-//! Called when a Snow program encounters an unrecoverable error at runtime,
+//! Called when a Mesh program encounters an unrecoverable error at runtime,
 //! such as a non-exhaustive match failure (guarded arms edge case).
 //!
 //! Uses `panic!()` rather than `abort()` so that actor crash isolation
@@ -19,7 +19,7 @@
 /// `msg` must point to `msg_len` valid UTF-8 bytes.
 /// `file` must point to `file_len` valid UTF-8 bytes.
 #[no_mangle]
-pub extern "C" fn snow_panic(
+pub extern "C" fn mesh_panic(
     msg: *const u8,
     msg_len: u64,
     file: *const u8,
@@ -30,6 +30,6 @@ pub extern "C" fn snow_panic(
         let msg = std::str::from_utf8_unchecked(std::slice::from_raw_parts(msg, msg_len as usize));
         let file =
             std::str::from_utf8_unchecked(std::slice::from_raw_parts(file, file_len as usize));
-        panic!("Snow panic at {}:{}: {}", file, line, msg);
+        panic!("Mesh panic at {}:{}: {}", file, line, msg);
     }
 }

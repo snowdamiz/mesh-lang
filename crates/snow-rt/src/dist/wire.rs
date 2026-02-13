@@ -1,6 +1,6 @@
-//! Snow Term Format (STF) binary serializer/deserializer.
+//! Mesh Term Format (STF) binary serializer/deserializer.
 //!
-//! STF is a self-describing binary format for encoding Snow runtime values
+//! STF is a self-describing binary format for encoding Mesh runtime values
 //! for inter-node message transport. Each value is prefixed by a 1-byte
 //! type tag, enabling recursive serialization/deserialization.
 //!
@@ -12,7 +12,7 @@
 //! ## Safety Invariant
 //!
 //! STF encode runs as a pure Rust function operating on raw pointers -- it
-//! does NOT call any Snow runtime functions that trigger `reduction_check`.
+//! does NOT call any Mesh runtime functions that trigger `reduction_check`.
 //! This means GC cannot trigger during serialization, so GC-managed objects
 //! referenced by raw pointers remain valid throughout the encode operation.
 
@@ -66,9 +66,9 @@ const MAX_NAME_LEN: u16 = u16::MAX;
 
 // ── StfType ──────────────────────────────────────────────────────────────
 
-/// Type hint enum that mirrors Snow's runtime type system.
+/// Type hint enum that mirrors Mesh's runtime type system.
 ///
-/// The STF encoder requires type hints because Snow stores all values as
+/// The STF encoder requires type hints because Mesh stores all values as
 /// uniform `u64` at runtime (type erasure). The codegen layer provides
 /// these hints when emitting remote send calls.
 #[derive(Debug, Clone, PartialEq)]
@@ -129,16 +129,16 @@ impl std::fmt::Display for StfError {
 
 // ── Encode ───────────────────────────────────────────────────────────────
 
-use crate::string::{SnowString, snow_string_new};
+use crate::string::{MeshString, mesh_string_new};
 
-/// Encode a single Snow value into the buffer (without version byte).
+/// Encode a single Mesh value into the buffer (without version byte).
 ///
-/// `value` is the raw `u64` representation of the Snow value. The
+/// `value` is the raw `u64` representation of the Mesh value. The
 /// `type_hint` tells the encoder how to interpret the bits.
 ///
 /// # Safety
 ///
-/// For `StfType::String`, `value` must be a valid pointer to a `SnowString`.
+/// For `StfType::String`, `value` must be a valid pointer to a `MeshString`.
 pub fn stf_encode(value: u64, type_hint: &StfType, buf: &mut Vec<u8>) -> Result<(), StfError> {
     match type_hint {
         StfType::Int => {
@@ -161,8 +161,8 @@ pub fn stf_encode(value: u64, type_hint: &StfType, buf: &mut Vec<u8>) -> Result<
         }
         StfType::String => {
             buf.push(TAG_STRING);
-            let snow_str = unsafe { &*(value as *const SnowString) };
-            let bytes = unsafe { snow_str.as_bytes() };
+            let mesh_str = unsafe { &*(value as *const MeshString) };
+            let bytes = unsafe { mesh_str.as_bytes() };
             let len = bytes.len() as u32;
             if len > MAX_STRING_LEN {
                 return Err(StfError::PayloadTooLarge(len));
@@ -307,7 +307,7 @@ pub fn stf_encode(value: u64, type_hint: &StfType, buf: &mut Vec<u8>) -> Result<
         // ── Option/Result (special-cased) ─────────────────────────
 
         StfType::OptionOf(inner_type) => {
-            // SnowOption layout: { tag: u8 at offset 0, value: *mut u8 at offset 8 }
+            // MeshOption layout: { tag: u8 at offset 0, value: *mut u8 at offset 8 }
             let tag = unsafe { *(value as *const u8) };
             if tag == 0 {
                 // Some
@@ -340,7 +340,7 @@ pub fn stf_encode(value: u64, type_hint: &StfType, buf: &mut Vec<u8>) -> Result<
     }
 }
 
-/// Encode a Snow value with the STF version header.
+/// Encode a Mesh value with the STF version header.
 ///
 /// Returns a complete STF payload: `[version_byte][encoded_value]`.
 ///
@@ -411,7 +411,7 @@ fn read_name(data: &[u8], pos: &mut usize) -> Result<std::string::String, StfErr
 ///
 /// # Safety
 ///
-/// For `TAG_STRING`, this allocates a new `SnowString` via the GC
+/// For `TAG_STRING`, this allocates a new `MeshString` via the GC
 /// allocator. The caller must ensure the GC arena is initialized.
 pub fn stf_decode(data: &[u8], pos: &mut usize) -> Result<(u64, StfType), StfError> {
     let tag = read_u8(data, pos)?;
@@ -439,7 +439,7 @@ pub fn stf_decode(data: &[u8], pos: &mut usize) -> Result<(u64, StfType), StfErr
             if std::str::from_utf8(str_bytes).is_err() {
                 return Err(StfError::InvalidUtf8);
             }
-            let str_ptr = snow_string_new(str_bytes.as_ptr(), len as u64);
+            let str_ptr = mesh_string_new(str_bytes.as_ptr(), len as u64);
             Ok((str_ptr as u64, StfType::String))
         }
         TAG_UNIT => Ok((0, StfType::Unit)),
@@ -459,7 +459,7 @@ pub fn stf_decode(data: &[u8], pos: &mut usize) -> Result<(u64, StfType), StfErr
             }
             // Allocate list: { len: u64, cap: u64, data: [u64; count] }
             let total = 16 + (count as usize) * 8;
-            let ptr = crate::gc::snow_gc_alloc_actor(total as u64, 8);
+            let ptr = crate::gc::mesh_gc_alloc_actor(total as u64, 8);
             unsafe {
                 *(ptr as *mut u64) = count as u64;       // len
                 *((ptr as *mut u64).add(1)) = count as u64; // cap
@@ -484,7 +484,7 @@ pub fn stf_decode(data: &[u8], pos: &mut usize) -> Result<(u64, StfType), StfErr
             }
             // Allocate map: { len: u64, cap|key_type: u64, entries: [(u64,u64); count] }
             let total = 16 + (count as usize) * 16;
-            let ptr = crate::gc::snow_gc_alloc_actor(total as u64, 8);
+            let ptr = crate::gc::mesh_gc_alloc_actor(total as u64, 8);
             unsafe {
                 *(ptr as *mut u64) = count as u64; // len
                 // Store cap with key_type_tag in upper 8 bits.
@@ -515,7 +515,7 @@ pub fn stf_decode(data: &[u8], pos: &mut usize) -> Result<(u64, StfType), StfErr
             }
             // Allocate set: { len: u64, cap: u64, data: [u64; count] }
             let total = 16 + (count as usize) * 8;
-            let ptr = crate::gc::snow_gc_alloc_actor(total as u64, 8);
+            let ptr = crate::gc::mesh_gc_alloc_actor(total as u64, 8);
             unsafe {
                 *(ptr as *mut u64) = count as u64;       // len
                 *((ptr as *mut u64).add(1)) = count as u64; // cap
@@ -536,7 +536,7 @@ pub fn stf_decode(data: &[u8], pos: &mut usize) -> Result<(u64, StfType), StfErr
             let arity = read_u8(data, pos)?;
             // Allocate tuple: { u64 len, u64[arity] data }
             let total = 8 + (arity as usize) * 8;
-            let ptr = crate::gc::snow_gc_alloc_actor(total as u64, 8);
+            let ptr = crate::gc::mesh_gc_alloc_actor(total as u64, 8);
             unsafe { *(ptr as *mut u64) = arity as u64; }
             let data_ptr = unsafe { (ptr as *mut u64).add(1) };
             let mut elem_types = Vec::with_capacity(arity as usize);
@@ -556,7 +556,7 @@ pub fn stf_decode(data: &[u8], pos: &mut usize) -> Result<(u64, StfType), StfErr
             // Allocate struct: contiguous u64 fields (no header).
             let total = (field_count as usize) * 8;
             let ptr = if total > 0 {
-                crate::gc::snow_gc_alloc_actor(total as u64, 8)
+                crate::gc::mesh_gc_alloc_actor(total as u64, 8)
             } else {
                 std::ptr::null_mut()
             };
@@ -578,7 +578,7 @@ pub fn stf_decode(data: &[u8], pos: &mut usize) -> Result<(u64, StfType), StfErr
             let field_count = read_u16(data, pos)?;
             // Allocate sum type layout: { u8 tag at offset 0, fields at offset 8 }
             let total = 8 + (field_count as usize) * 8;
-            let ptr = crate::gc::snow_gc_alloc_actor(total as u64, 8);
+            let ptr = crate::gc::mesh_gc_alloc_actor(total as u64, 8);
             unsafe { *(ptr as *mut u8) = variant_tag; }
             let fields_ptr = unsafe { (ptr as *mut u64).add(1) };
             let mut field_types = Vec::with_capacity(field_count as usize);
@@ -651,11 +651,11 @@ pub fn stf_decode_value(data: &[u8]) -> Result<(u64, StfType), StfError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::gc::snow_rt_init;
+    use crate::gc::mesh_rt_init;
 
     #[test]
     fn test_int_roundtrip() {
-        snow_rt_init();
+        mesh_rt_init();
         let values: &[i64] = &[-1, 0, i64::MAX];
         for &v in values {
             let encoded = stf_encode_value(v as u64, &StfType::Int).unwrap();
@@ -668,7 +668,7 @@ mod tests {
 
     #[test]
     fn test_float_roundtrip() {
-        snow_rt_init();
+        mesh_rt_init();
         let values: &[f64] = &[3.14, -0.0, f64::INFINITY, f64::NAN];
         for &v in values {
             let bits = v.to_bits();
@@ -683,7 +683,7 @@ mod tests {
 
     #[test]
     fn test_bool_roundtrip() {
-        snow_rt_init();
+        mesh_rt_init();
         // true
         let encoded = stf_encode_value(1, &StfType::Bool).unwrap();
         let (val, typ) = stf_decode_value(&encoded).unwrap();
@@ -699,22 +699,22 @@ mod tests {
 
     #[test]
     fn test_string_roundtrip() {
-        snow_rt_init();
+        mesh_rt_init();
         let test_str = "hello";
-        let snow_str = snow_string_new(test_str.as_ptr(), test_str.len() as u64);
-        let encoded = stf_encode_value(snow_str as u64, &StfType::String).unwrap();
+        let mesh_str = mesh_string_new(test_str.as_ptr(), test_str.len() as u64);
+        let encoded = stf_encode_value(mesh_str as u64, &StfType::String).unwrap();
         assert_eq!(encoded[0], STF_VERSION, "version byte");
         let (decoded_ptr, typ) = stf_decode_value(&encoded).unwrap();
         assert_eq!(typ, StfType::String);
         unsafe {
-            let decoded_str = &*(decoded_ptr as *const SnowString);
+            let decoded_str = &*(decoded_ptr as *const MeshString);
             assert_eq!(decoded_str.as_str(), "hello");
         }
     }
 
     #[test]
     fn test_unit_roundtrip() {
-        snow_rt_init();
+        mesh_rt_init();
         let encoded = stf_encode_value(0, &StfType::Unit).unwrap();
         assert_eq!(encoded[0], STF_VERSION, "version byte");
         let (val, typ) = stf_decode_value(&encoded).unwrap();
@@ -724,7 +724,7 @@ mod tests {
 
     #[test]
     fn test_pid_roundtrip() {
-        snow_rt_init();
+        mesh_rt_init();
         // A PID with node_id=5, creation=2, local_id=42
         let raw_pid: u64 = (5u64 << 48) | (2u64 << 40) | 42;
         let encoded = stf_encode_value(raw_pid, &StfType::Pid).unwrap();
@@ -777,7 +777,7 @@ mod tests {
     fn alloc_list_of_ints(values: &[i64]) -> *mut u8 {
         let count = values.len() as u64;
         let total = 16 + (count as usize) * 8; // header + data
-        let ptr = crate::gc::snow_gc_alloc_actor(total as u64, 8);
+        let ptr = crate::gc::mesh_gc_alloc_actor(total as u64, 8);
         unsafe {
             *(ptr as *mut u64) = count;           // len
             *((ptr as *mut u64).add(1)) = count;  // cap
@@ -793,7 +793,7 @@ mod tests {
     fn alloc_set_of_ints(values: &[i64]) -> *mut u8 {
         let count = values.len() as u64;
         let total = 16 + (count as usize) * 8;
-        let ptr = crate::gc::snow_gc_alloc_actor(total as u64, 8);
+        let ptr = crate::gc::mesh_gc_alloc_actor(total as u64, 8);
         unsafe {
             *(ptr as *mut u64) = count;           // len
             *((ptr as *mut u64).add(1)) = count;  // cap
@@ -807,7 +807,7 @@ mod tests {
 
     #[test]
     fn test_list_int_roundtrip() {
-        snow_rt_init();
+        mesh_rt_init();
         let list = alloc_list_of_ints(&[10, 20, 30]);
         let ty = StfType::List(Box::new(StfType::Int));
         let encoded = stf_encode_value(list as u64, &ty).unwrap();
@@ -826,11 +826,11 @@ mod tests {
 
     #[test]
     fn test_list_string_roundtrip() {
-        snow_rt_init();
-        let s1 = snow_string_new("hello".as_ptr(), 5);
-        let s2 = snow_string_new("world".as_ptr(), 5);
+        mesh_rt_init();
+        let s1 = mesh_string_new("hello".as_ptr(), 5);
+        let s2 = mesh_string_new("world".as_ptr(), 5);
         // Allocate list of 2 string pointers.
-        let list = crate::gc::snow_gc_alloc_actor(16 + 2 * 8, 8);
+        let list = crate::gc::mesh_gc_alloc_actor(16 + 2 * 8, 8);
         unsafe {
             *(list as *mut u64) = 2;                       // len
             *((list as *mut u64).add(1)) = 2;              // cap
@@ -844,8 +844,8 @@ mod tests {
         unsafe {
             let ptr = decoded_ptr as *const u64;
             assert_eq!(*ptr, 2); // len
-            let d0 = *ptr.add(2) as *const SnowString;
-            let d1 = *ptr.add(3) as *const SnowString;
+            let d0 = *ptr.add(2) as *const MeshString;
+            let d1 = *ptr.add(3) as *const MeshString;
             assert_eq!((*d0).as_str(), "hello");
             assert_eq!((*d1).as_str(), "world");
         }
@@ -853,13 +853,13 @@ mod tests {
 
     #[test]
     fn test_map_roundtrip() {
-        snow_rt_init();
+        mesh_rt_init();
         // Create a map with 2 int->string entries.
-        let v1 = snow_string_new("alpha".as_ptr(), 5);
-        let v2 = snow_string_new("beta".as_ptr(), 4);
+        let v1 = mesh_string_new("alpha".as_ptr(), 5);
+        let v2 = mesh_string_new("beta".as_ptr(), 4);
         // Map layout: { len, cap|key_type, entries: [(key, val), ...] }
         let total = 16 + 2 * 16; // header + 2 entries of 16 bytes
-        let map = crate::gc::snow_gc_alloc_actor(total as u64, 8);
+        let map = crate::gc::mesh_gc_alloc_actor(total as u64, 8);
         unsafe {
             *(map as *mut u64) = 2;                          // len
             *((map as *mut u64).add(1)) = (0u64 << 56) | 2; // key_type=0 (int), cap=2
@@ -879,8 +879,8 @@ mod tests {
             let entries = ptr.add(2);
             assert_eq!(*entries, 1);       // key[0]
             assert_eq!(*entries.add(2), 2); // key[1]
-            let dv0 = *entries.add(1) as *const SnowString;
-            let dv1 = *entries.add(3) as *const SnowString;
+            let dv0 = *entries.add(1) as *const MeshString;
+            let dv1 = *entries.add(3) as *const MeshString;
             assert_eq!((*dv0).as_str(), "alpha");
             assert_eq!((*dv1).as_str(), "beta");
         }
@@ -888,7 +888,7 @@ mod tests {
 
     #[test]
     fn test_set_roundtrip() {
-        snow_rt_init();
+        mesh_rt_init();
         let set = alloc_set_of_ints(&[100, 200, 300]);
         let ty = StfType::Set(Box::new(StfType::Int));
         let encoded = stf_encode_value(set as u64, &ty).unwrap();
@@ -906,11 +906,11 @@ mod tests {
 
     #[test]
     fn test_tuple_roundtrip() {
-        snow_rt_init();
-        let s = snow_string_new("hi".as_ptr(), 2);
+        mesh_rt_init();
+        let s = mesh_string_new("hi".as_ptr(), 2);
         // Tuple layout: { len: u64, data: [u64; len] }
         let total = 8 + 3 * 8;
-        let tuple = crate::gc::snow_gc_alloc_actor(total as u64, 8);
+        let tuple = crate::gc::mesh_gc_alloc_actor(total as u64, 8);
         unsafe {
             *(tuple as *mut u64) = 3;                      // len/arity
             *((tuple as *mut u64).add(1)) = 42u64;         // Int
@@ -926,7 +926,7 @@ mod tests {
             assert_eq!(*ptr, 3); // arity
             let data = ptr.add(1);
             assert_eq!(*data as i64, 42);
-            let decoded_str = &*(*data.add(1) as *const SnowString);
+            let decoded_str = &*(*data.add(1) as *const MeshString);
             assert_eq!(decoded_str.as_str(), "hi");
             assert_eq!(*data.add(2), 1); // true
         }
@@ -936,11 +936,11 @@ mod tests {
 
     #[test]
     fn test_struct_roundtrip() {
-        snow_rt_init();
-        let name_str = snow_string_new("Alice".as_ptr(), 5);
+        mesh_rt_init();
+        let name_str = mesh_string_new("Alice".as_ptr(), 5);
         // Struct is contiguous u64 fields (no header): [name_ptr, age]
         let total = 2 * 8;
-        let s = crate::gc::snow_gc_alloc_actor(total as u64, 8);
+        let s = crate::gc::mesh_gc_alloc_actor(total as u64, 8);
         unsafe {
             *(s as *mut u64) = name_str as u64;       // field 0: name
             *((s as *mut u64).add(1)) = 30u64;        // field 1: age
@@ -965,7 +965,7 @@ mod tests {
         }
         unsafe {
             let ptr = decoded_ptr as *const u64;
-            let decoded_name = &*(*ptr as *const SnowString);
+            let decoded_name = &*(*ptr as *const MeshString);
             assert_eq!(decoded_name.as_str(), "Alice");
             assert_eq!(*ptr.add(1) as i64, 30);
         }
@@ -973,8 +973,8 @@ mod tests {
 
     #[test]
     fn test_option_some_roundtrip() {
-        snow_rt_init();
-        // Create SnowOption with tag=0 (Some), value pointing to int 42.
+        mesh_rt_init();
+        // Create MeshOption with tag=0 (Some), value pointing to int 42.
         // For Option<Int>, the inner value is the i64 itself cast as a pointer.
         let opt_ptr = crate::option::alloc_option(0, 42u64 as *mut u8);
         let ty = StfType::OptionOf(Box::new(StfType::Int));
@@ -985,7 +985,7 @@ mod tests {
             _ => panic!("expected OptionOf"),
         }
         unsafe {
-            let opt = &*(decoded_ptr as *const crate::option::SnowOption);
+            let opt = &*(decoded_ptr as *const crate::option::MeshOption);
             assert_eq!(opt.tag, 0); // Some
             assert_eq!(opt.value as u64, 42);
         }
@@ -993,13 +993,13 @@ mod tests {
 
     #[test]
     fn test_option_none_roundtrip() {
-        snow_rt_init();
+        mesh_rt_init();
         let opt_ptr = crate::option::alloc_option(1, std::ptr::null_mut());
         let ty = StfType::OptionOf(Box::new(StfType::Int));
         let encoded = stf_encode_value(opt_ptr as u64, &ty).unwrap();
         let (decoded_ptr, _decoded_type) = stf_decode_value(&encoded).unwrap();
         unsafe {
-            let opt = &*(decoded_ptr as *const crate::option::SnowOption);
+            let opt = &*(decoded_ptr as *const crate::option::MeshOption);
             assert_eq!(opt.tag, 1); // None
             assert!(opt.value.is_null());
         }
@@ -1007,14 +1007,14 @@ mod tests {
 
     #[test]
     fn test_result_ok_roundtrip() {
-        snow_rt_init();
+        mesh_rt_init();
         // Result<Int, String> with Ok(99)
         let res_ptr = crate::option::alloc_option(0, 99u64 as *mut u8);
         let ty = StfType::ResultOf(Box::new(StfType::Int), Box::new(StfType::String));
         let encoded = stf_encode_value(res_ptr as u64, &ty).unwrap();
         let (decoded_ptr, _decoded_type) = stf_decode_value(&encoded).unwrap();
         unsafe {
-            let opt = &*(decoded_ptr as *const crate::option::SnowOption);
+            let opt = &*(decoded_ptr as *const crate::option::MeshOption);
             assert_eq!(opt.tag, 0); // Ok
             assert_eq!(opt.value as u64, 99);
         }
@@ -1022,17 +1022,17 @@ mod tests {
 
     #[test]
     fn test_result_err_roundtrip() {
-        snow_rt_init();
+        mesh_rt_init();
         // Result<Int, String> with Err("oops")
-        let err_str = snow_string_new("oops".as_ptr(), 4);
+        let err_str = mesh_string_new("oops".as_ptr(), 4);
         let res_ptr = crate::option::alloc_option(1, err_str as *mut u8);
         let ty = StfType::ResultOf(Box::new(StfType::Int), Box::new(StfType::String));
         let encoded = stf_encode_value(res_ptr as u64, &ty).unwrap();
         let (decoded_ptr, _decoded_type) = stf_decode_value(&encoded).unwrap();
         unsafe {
-            let opt = &*(decoded_ptr as *const crate::option::SnowOption);
+            let opt = &*(decoded_ptr as *const crate::option::MeshOption);
             assert_eq!(opt.tag, 1); // Err
-            let decoded_str = &*(opt.value as *const SnowString);
+            let decoded_str = &*(opt.value as *const MeshString);
             assert_eq!(decoded_str.as_str(), "oops");
         }
     }
@@ -1041,12 +1041,12 @@ mod tests {
 
     #[test]
     fn test_nested_list_of_lists() {
-        snow_rt_init();
+        mesh_rt_init();
         // Create 2 inner lists of ints.
         let inner1 = alloc_list_of_ints(&[1, 2]);
         let inner2 = alloc_list_of_ints(&[3, 4, 5]);
         // Outer list holds 2 list pointers.
-        let outer = crate::gc::snow_gc_alloc_actor(16 + 2 * 8, 8);
+        let outer = crate::gc::mesh_gc_alloc_actor(16 + 2 * 8, 8);
         unsafe {
             *(outer as *mut u64) = 2;
             *((outer as *mut u64).add(1)) = 2;
@@ -1073,9 +1073,9 @@ mod tests {
 
     #[test]
     fn test_list_of_maps() {
-        snow_rt_init();
+        mesh_rt_init();
         // Create a map with 1 int->int entry: {10 => 20}
-        let map1 = crate::gc::snow_gc_alloc_actor(16 + 1 * 16, 8);
+        let map1 = crate::gc::mesh_gc_alloc_actor(16 + 1 * 16, 8);
         unsafe {
             *(map1 as *mut u64) = 1;                          // len
             *((map1 as *mut u64).add(1)) = (0u64 << 56) | 1; // key_type=0, cap=1
@@ -1083,7 +1083,7 @@ mod tests {
             *((map1 as *mut u64).add(3)) = 20;                // val
         }
         // Create a map with 1 int->int entry: {30 => 40}
-        let map2 = crate::gc::snow_gc_alloc_actor(16 + 1 * 16, 8);
+        let map2 = crate::gc::mesh_gc_alloc_actor(16 + 1 * 16, 8);
         unsafe {
             *(map2 as *mut u64) = 1;
             *((map2 as *mut u64).add(1)) = (0u64 << 56) | 1;
@@ -1091,7 +1091,7 @@ mod tests {
             *((map2 as *mut u64).add(3)) = 40;
         }
         // Outer list of 2 maps.
-        let outer = crate::gc::snow_gc_alloc_actor(16 + 2 * 8, 8);
+        let outer = crate::gc::mesh_gc_alloc_actor(16 + 2 * 8, 8);
         unsafe {
             *(outer as *mut u64) = 2;
             *((outer as *mut u64).add(1)) = 2;
@@ -1123,7 +1123,7 @@ mod tests {
 
     #[test]
     fn test_collection_too_large() {
-        snow_rt_init();
+        mesh_rt_init();
         // Craft a payload: version + TAG_LIST + count > MAX_COLLECTION_LEN
         let big_count: u32 = MAX_COLLECTION_LEN + 1;
         let mut buf = vec![STF_VERSION, TAG_LIST];
@@ -1134,7 +1134,7 @@ mod tests {
 
     #[test]
     fn test_string_too_large() {
-        snow_rt_init();
+        mesh_rt_init();
         // Craft a payload: version + TAG_STRING + len > MAX_STRING_LEN
         let big_len: u32 = MAX_STRING_LEN + 1;
         let mut buf = vec![STF_VERSION, TAG_STRING];
@@ -1145,7 +1145,7 @@ mod tests {
 
     #[test]
     fn test_unknown_tag() {
-        snow_rt_init();
+        mesh_rt_init();
         let buf = vec![STF_VERSION, 0xFE];
         let result = stf_decode_value(&buf);
         assert_eq!(result, Err(StfError::InvalidTag(0xFE)));
@@ -1155,7 +1155,7 @@ mod tests {
 
     #[test]
     fn test_empty_list_roundtrip() {
-        snow_rt_init();
+        mesh_rt_init();
         let list = alloc_list_of_ints(&[]);
         let ty = StfType::List(Box::new(StfType::Int));
         let encoded = stf_encode_value(list as u64, &ty).unwrap();
@@ -1167,8 +1167,8 @@ mod tests {
 
     #[test]
     fn test_empty_map_roundtrip() {
-        snow_rt_init();
-        let map = crate::gc::snow_gc_alloc_actor(16, 8);
+        mesh_rt_init();
+        let map = crate::gc::mesh_gc_alloc_actor(16, 8);
         unsafe {
             *(map as *mut u64) = 0;
             *((map as *mut u64).add(1)) = 0;

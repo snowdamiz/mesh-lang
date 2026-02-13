@@ -1,4 +1,4 @@
-//! FIFO mailbox for Snow actor message passing.
+//! FIFO mailbox for Mesh actor message passing.
 //!
 //! Each actor has a mailbox that delivers messages in strict FIFO order.
 //! The mailbox is thread-safe (protected by a Mutex) since messages can

@@ -1,4 +1,4 @@
-//! Child specification types for Snow supervision.
+//! Child specification types for Mesh supervision.
 //!
 //! Defines the types used to configure supervised children: restart policy,
 //! shutdown behavior, child type, and the full child specification struct.
@@ -90,7 +90,7 @@ pub enum ChildType {
 /// Specification for a child actor under supervision.
 ///
 /// Contains all the information needed to start, monitor, and restart a child.
-/// The `start_fn` and `start_args_ptr` are raw pointers to the compiled Snow
+/// The `start_fn` and `start_args_ptr` are raw pointers to the compiled Mesh
 /// function and its serialized arguments, respectively.
 #[derive(Debug, Clone)]
 pub struct ChildSpec {
@@ -109,11 +109,11 @@ pub struct ChildSpec {
     /// Whether this child is a worker or a nested supervisor.
     pub child_type: ChildType,
     /// Optional target node name for remote spawning (e.g., "worker@192.168.1.2:9000").
-    /// When set, the supervisor spawns this child on the remote node via snow_node_spawn.
+    /// When set, the supervisor spawns this child on the remote node via mesh_node_spawn.
     /// When None, the supervisor spawns locally (existing behavior unchanged).
     pub target_node: Option<String>,
     /// Function name for remote spawning (required when target_node is Some).
-    /// Used by snow_node_spawn to look up the function on the remote node.
+    /// Used by mesh_node_spawn to look up the function on the remote node.
     pub start_fn_name: Option<String>,
 }
 

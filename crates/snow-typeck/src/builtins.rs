@@ -262,7 +262,7 @@ pub fn register_builtins(
     env.insert("Queue".into(), Scheme::mono(Ty::queue()));
 
     // Use opaque types (untyped) for non-list collection function signatures.
-    // At the LLVM level these are all pointers; type safety is checked by Snow's type system.
+    // At the LLVM level these are all pointers; type safety is checked by Mesh's type system.
     let map_t = Ty::map_untyped();
     let set_t = Ty::set_untyped();
     let range_t = Ty::range();
@@ -1190,7 +1190,7 @@ fn register_compiler_known_traits(registry: &mut TraitRegistry) {
     }
 
     // ── Default trait ──────────────────────────────────────────────
-    // Default is the first STATIC trait method in Snow: no self parameter.
+    // Default is the first STATIC trait method in Mesh: no self parameter.
     // default() -> Self, where the return type is resolved per-impl.
     registry.register_trait(TraitDef {
         name: "Default".to_string(),

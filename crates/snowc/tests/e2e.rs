@@ -1,31 +1,31 @@
-//! End-to-end integration tests for the Snow compiler.
+//! End-to-end integration tests for the Mesh compiler.
 //!
-//! Each test writes a `.snow` source file, invokes the full compilation pipeline,
+//! Each test writes a `.mpl` source file, invokes the full compilation pipeline,
 //! runs the resulting binary, and asserts the expected stdout output.
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-/// Helper: compile a Snow source file and run the resulting binary, returning stdout.
+/// Helper: compile a Mesh source file and run the resulting binary, returning stdout.
 fn compile_and_run(source: &str) -> String {
     let temp_dir = tempfile::tempdir().expect("failed to create temp dir");
     let project_dir = temp_dir.path().join("project");
     std::fs::create_dir_all(&project_dir).expect("failed to create project dir");
 
     // Write the source file
-    let main_snow = project_dir.join("main.snow");
-    std::fs::write(&main_snow, source).expect("failed to write main.snow");
+    let main_mesh = project_dir.join("main.mpl");
+    std::fs::write(&main_mesh, source).expect("failed to write main.mpl");
 
-    // Build with snowc
-    let snowc = find_snowc();
-    let output = Command::new(&snowc)
+    // Build with meshc
+    let meshc = find_meshc();
+    let output = Command::new(&meshc)
         .args(["build", project_dir.to_str().unwrap()])
         .output()
-        .expect("failed to invoke snowc");
+        .expect("failed to invoke meshc");
 
     assert!(
         output.status.success(),
-        "snowc build failed:\nstdout: {}\nstderr: {}",
+        "meshc build failed:\nstdout: {}\nstderr: {}",
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr)
     );
@@ -47,20 +47,20 @@ fn compile_and_run(source: &str) -> String {
     String::from_utf8_lossy(&run_output.stdout).to_string()
 }
 
-/// Helper: compile a Snow source file, return the compilation error.
+/// Helper: compile a Mesh source file, return the compilation error.
 fn compile_expect_error(source: &str) -> String {
     let temp_dir = tempfile::tempdir().expect("failed to create temp dir");
     let project_dir = temp_dir.path().join("project");
     std::fs::create_dir_all(&project_dir).expect("failed to create project dir");
 
-    let main_snow = project_dir.join("main.snow");
-    std::fs::write(&main_snow, source).expect("failed to write main.snow");
+    let main_mesh = project_dir.join("main.mpl");
+    std::fs::write(&main_mesh, source).expect("failed to write main.mpl");
 
-    let snowc = find_snowc();
-    let output = Command::new(&snowc)
+    let meshc = find_meshc();
+    let output = Command::new(&meshc)
         .args(["build", project_dir.to_str().unwrap()])
         .output()
-        .expect("failed to invoke snowc");
+        .expect("failed to invoke meshc");
 
     assert!(
         !output.status.success(),
@@ -70,8 +70,8 @@ fn compile_expect_error(source: &str) -> String {
     String::from_utf8_lossy(&output.stderr).to_string()
 }
 
-/// Find the snowc binary in the target directory.
-fn find_snowc() -> PathBuf {
+/// Find the meshc binary in the target directory.
+fn find_meshc() -> PathBuf {
     let mut path = std::env::current_exe()
         .expect("cannot find current exe")
         .parent()
@@ -83,13 +83,13 @@ fn find_snowc() -> PathBuf {
         path = path.parent().unwrap().to_path_buf();
     }
 
-    let snowc = path.join("snowc");
+    let meshc = path.join("meshc");
     assert!(
-        snowc.exists(),
-        "snowc binary not found at {}. Run `cargo build -p snowc` first.",
-        snowc.display()
+        meshc.exists(),
+        "meshc binary not found at {}. Run `cargo build -p meshc` first.",
+        meshc.display()
     );
-    snowc
+    meshc
 }
 
 /// Read a test fixture from the tests/e2e/ directory.
@@ -112,7 +112,7 @@ fn read_fixture(name: &str) -> String {
 /// SC1: Hello World program compiles and runs.
 #[test]
 fn e2e_hello_world() {
-    let source = read_fixture("hello.snow");
+    let source = read_fixture("hello.mpl");
     let output = compile_and_run(&source);
     assert_eq!(output, "Hello, World!\n");
 }
@@ -120,7 +120,7 @@ fn e2e_hello_world() {
 /// SC2: Functions with integer arithmetic.
 #[test]
 fn e2e_functions() {
-    let source = read_fixture("functions.snow");
+    let source = read_fixture("functions.mpl");
     let output = compile_and_run(&source);
     assert_eq!(output, "7\n10\n");
 }
@@ -128,7 +128,7 @@ fn e2e_functions() {
 /// SC2: Integer pattern matching in case expressions.
 #[test]
 fn e2e_pattern_match() {
-    let source = read_fixture("pattern_match.snow");
+    let source = read_fixture("pattern_match.mpl");
     let output = compile_and_run(&source);
     assert_eq!(output, "zero\none\nother\n");
 }
@@ -136,7 +136,7 @@ fn e2e_pattern_match() {
 /// SC2: Closures with captured variables.
 #[test]
 fn e2e_closures() {
-    let source = read_fixture("closures.snow");
+    let source = read_fixture("closures.mpl");
     let output = compile_and_run(&source);
     assert_eq!(output, "8\n15\n");
 }
@@ -144,7 +144,7 @@ fn e2e_closures() {
 /// SC2: Pipe operator chaining.
 #[test]
 fn e2e_pipe() {
-    let source = read_fixture("pipe.snow");
+    let source = read_fixture("pipe.mpl");
     let output = compile_and_run(&source);
     assert_eq!(output, "11\n");
 }
@@ -152,7 +152,7 @@ fn e2e_pipe() {
 /// SC2: String interpolation with variables.
 #[test]
 fn e2e_string_interp() {
-    let source = read_fixture("string_interp.snow");
+    let source = read_fixture("string_interp.mpl");
     let output = compile_and_run(&source);
     assert_eq!(output, "Hello, World!\nThe answer is 42\n");
 }
@@ -160,7 +160,7 @@ fn e2e_string_interp() {
 /// SC2: ADT sum type construction.
 #[test]
 fn e2e_adts() {
-    let source = read_fixture("adts.snow");
+    let source = read_fixture("adts.mpl");
     let output = compile_and_run(&source);
     assert_eq!(output, "red created\ngreen created\nblue created\n");
 }
@@ -168,7 +168,7 @@ fn e2e_adts() {
 /// SC2/SC5: Comprehensive multi-feature test (100+ lines).
 #[test]
 fn e2e_comprehensive() {
-    let source = read_fixture("comprehensive.snow");
+    let source = read_fixture("comprehensive.mpl");
     let output = compile_and_run(&source);
     let expected = "\
 30
@@ -185,7 +185,7 @@ blue
 30
 20
 5
-Hello, Snow!
+Hello, Mesh!
 The answer is 42
 4
 logic works
@@ -200,19 +200,19 @@ fn e2e_emit_llvm() {
     let project_dir = temp_dir.path().join("project");
     std::fs::create_dir_all(&project_dir).expect("failed to create project dir");
 
-    let source = read_fixture("hello.snow");
-    let main_snow = project_dir.join("main.snow");
-    std::fs::write(&main_snow, &source).expect("failed to write main.snow");
+    let source = read_fixture("hello.mpl");
+    let main_mesh = project_dir.join("main.mpl");
+    std::fs::write(&main_mesh, &source).expect("failed to write main.mpl");
 
-    let snowc = find_snowc();
-    let output = Command::new(&snowc)
+    let meshc = find_meshc();
+    let output = Command::new(&meshc)
         .args(["build", project_dir.to_str().unwrap(), "--emit-llvm"])
         .output()
-        .expect("failed to invoke snowc");
+        .expect("failed to invoke meshc");
 
     assert!(
         output.status.success(),
-        "snowc build --emit-llvm failed:\nstderr: {}",
+        "meshc build --emit-llvm failed:\nstderr: {}",
         String::from_utf8_lossy(&output.stderr)
     );
 
@@ -230,8 +230,8 @@ fn e2e_emit_llvm() {
         "LLVM IR should contain function definitions"
     );
     assert!(
-        ir_content.contains("snow_println"),
-        "LLVM IR should reference snow_println"
+        ir_content.contains("mesh_println"),
+        "LLVM IR should reference mesh_println"
     );
 }
 
@@ -242,9 +242,9 @@ fn e2e_target_flag() {
     let project_dir = temp_dir.path().join("project");
     std::fs::create_dir_all(&project_dir).expect("failed to create project dir");
 
-    let source = read_fixture("hello.snow");
-    let main_snow = project_dir.join("main.snow");
-    std::fs::write(&main_snow, &source).expect("failed to write main.snow");
+    let source = read_fixture("hello.mpl");
+    let main_mesh = project_dir.join("main.mpl");
+    std::fs::write(&main_mesh, &source).expect("failed to write main.mpl");
 
     // Use host triple
     let triple = if cfg!(target_arch = "aarch64") {
@@ -253,8 +253,8 @@ fn e2e_target_flag() {
         "x86_64-unknown-linux-gnu"
     };
 
-    let snowc = find_snowc();
-    let output = Command::new(&snowc)
+    let meshc = find_meshc();
+    let output = Command::new(&meshc)
         .args([
             "build",
             project_dir.to_str().unwrap(),
@@ -262,11 +262,11 @@ fn e2e_target_flag() {
             triple,
         ])
         .output()
-        .expect("failed to invoke snowc");
+        .expect("failed to invoke meshc");
 
     assert!(
         output.status.success(),
-        "snowc build --target {} failed:\nstderr: {}",
+        "meshc build --target {} failed:\nstderr: {}",
         triple,
         String::from_utf8_lossy(&output.stderr)
     );
@@ -289,12 +289,12 @@ fn e2e_optimization_levels() {
         let project_dir = temp_dir.path().join("project");
         std::fs::create_dir_all(&project_dir).expect("failed to create project dir");
 
-        let source = read_fixture("hello.snow");
-        let main_snow = project_dir.join("main.snow");
-        std::fs::write(&main_snow, &source).expect("failed to write main.snow");
+        let source = read_fixture("hello.mpl");
+        let main_mesh = project_dir.join("main.mpl");
+        std::fs::write(&main_mesh, &source).expect("failed to write main.mpl");
 
-        let snowc = find_snowc();
-        let output = Command::new(&snowc)
+        let meshc = find_meshc();
+        let output = Command::new(&meshc)
             .args([
                 "build",
                 project_dir.to_str().unwrap(),
@@ -302,11 +302,11 @@ fn e2e_optimization_levels() {
                 opt_level,
             ])
             .output()
-            .expect("failed to invoke snowc");
+            .expect("failed to invoke meshc");
 
         assert!(
             output.status.success(),
-            "snowc build --opt-level={} failed:\nstderr: {}",
+            "meshc build --opt-level={} failed:\nstderr: {}",
             opt_level,
             String::from_utf8_lossy(&output.stderr)
         );
@@ -325,27 +325,27 @@ fn e2e_optimization_levels() {
     }
 }
 
-/// SC3: Binary is self-contained (no dynamic snow_rt dependency).
+/// SC3: Binary is self-contained (no dynamic mesh_rt dependency).
 #[test]
 fn e2e_self_contained_binary() {
     let temp_dir = tempfile::tempdir().expect("failed to create temp dir");
     let project_dir = temp_dir.path().join("project");
     std::fs::create_dir_all(&project_dir).expect("failed to create project dir");
 
-    let source = read_fixture("hello.snow");
-    let main_snow = project_dir.join("main.snow");
-    std::fs::write(&main_snow, &source).expect("failed to write main.snow");
+    let source = read_fixture("hello.mpl");
+    let main_mesh = project_dir.join("main.mpl");
+    std::fs::write(&main_mesh, &source).expect("failed to write main.mpl");
 
-    let snowc = find_snowc();
-    let output = Command::new(&snowc)
+    let meshc = find_meshc();
+    let output = Command::new(&meshc)
         .args(["build", project_dir.to_str().unwrap()])
         .output()
-        .expect("failed to invoke snowc");
+        .expect("failed to invoke meshc");
     assert!(output.status.success());
 
     let binary = project_dir.join("project");
 
-    // Check that the binary doesn't have a dynamic dependency on snow_rt
+    // Check that the binary doesn't have a dynamic dependency on mesh_rt
     // On macOS, use `otool -L`; on Linux, use `ldd`
     if cfg!(target_os = "macos") {
         let otool_output = Command::new("otool")
@@ -354,8 +354,8 @@ fn e2e_self_contained_binary() {
             .expect("failed to run otool");
         let deps = String::from_utf8_lossy(&otool_output.stdout);
         assert!(
-            !deps.contains("snow_rt"),
-            "Binary should not dynamically link snow_rt. Dependencies:\n{}",
+            !deps.contains("mesh_rt"),
+            "Binary should not dynamically link mesh_rt. Dependencies:\n{}",
             deps
         );
     } else {
@@ -365,8 +365,8 @@ fn e2e_self_contained_binary() {
         if let Ok(out) = ldd_output {
             let deps = String::from_utf8_lossy(&out.stdout);
             assert!(
-                !deps.contains("snow_rt"),
-                "Binary should not dynamically link snow_rt. Dependencies:\n{}",
+                !deps.contains("mesh_rt"),
+                "Binary should not dynamically link mesh_rt. Dependencies:\n{}",
                 deps
             );
         }
@@ -380,17 +380,17 @@ fn e2e_performance() {
     let project_dir = temp_dir.path().join("project");
     std::fs::create_dir_all(&project_dir).expect("failed to create project dir");
 
-    let source = read_fixture("comprehensive.snow");
-    let main_snow = project_dir.join("main.snow");
-    std::fs::write(&main_snow, &source).expect("failed to write main.snow");
+    let source = read_fixture("comprehensive.mpl");
+    let main_mesh = project_dir.join("main.mpl");
+    std::fs::write(&main_mesh, &source).expect("failed to write main.mpl");
 
-    let snowc = find_snowc();
+    let meshc = find_meshc();
 
     let start = std::time::Instant::now();
-    let output = Command::new(&snowc)
+    let output = Command::new(&meshc)
         .args(["build", project_dir.to_str().unwrap(), "--opt-level", "0"])
         .output()
-        .expect("failed to invoke snowc");
+        .expect("failed to invoke meshc");
     let elapsed = start.elapsed();
 
     assert!(
@@ -411,7 +411,7 @@ fn e2e_performance() {
 /// Multi-clause functions with literal patterns, recursion, and = expr body form.
 #[test]
 fn e2e_multi_clause_functions() {
-    let source = read_fixture("multi_clause.snow");
+    let source = read_fixture("multi_clause.mpl");
     let output = compile_and_run(&source);
     assert_eq!(
         output,
@@ -423,7 +423,7 @@ fn e2e_multi_clause_functions() {
 /// Multi-clause functions with guard clauses (when keyword).
 #[test]
 fn e2e_multi_clause_guards() {
-    let source = read_fixture("multi_clause_guards.snow");
+    let source = read_fixture("multi_clause_guards.mpl");
     let output = compile_and_run(&source);
     assert_eq!(
         output,
@@ -473,7 +473,7 @@ end
 /// Bare param closures in pipe chains: the primary Phase 12 use case.
 #[test]
 fn e2e_closure_bare_params_pipe() {
-    let source = read_fixture("closure_bare_params_pipe.snow");
+    let source = read_fixture("closure_bare_params_pipe.mpl");
     let output = compile_and_run(&source);
     assert_eq!(
         output, "24\n",
@@ -484,7 +484,7 @@ fn e2e_closure_bare_params_pipe() {
 /// Multi-clause closures with literal pattern matching.
 #[test]
 fn e2e_closure_multi_clause() {
-    let source = read_fixture("closure_multi_clause.snow");
+    let source = read_fixture("closure_multi_clause.mpl");
     let output = compile_and_run(&source);
     assert_eq!(
         output, "3\n",
@@ -495,7 +495,7 @@ fn e2e_closure_multi_clause() {
 /// Do/end body closures with multi-statement bodies.
 #[test]
 fn e2e_closure_do_end_body() {
-    let source = read_fixture("closure_do_end_body.snow");
+    let source = read_fixture("closure_do_end_body.mpl");
     let output = compile_and_run(&source);
     assert_eq!(
         output, "15\n",
@@ -507,7 +507,7 @@ fn e2e_closure_do_end_body() {
 /// list |> map(fn x -> x + 1 end) |> filter(fn x -> x > 3 end) |> reduce(0, fn acc, x -> acc + x end)
 #[test]
 fn e2e_pipe_chain_closures() {
-    let source = read_fixture("pipe_chain_closures.snow");
+    let source = read_fixture("pipe_chain_closures.mpl");
     let output = compile_and_run(&source);
     assert_eq!(
         output, "15\n",
@@ -574,11 +574,11 @@ end
 
 fn main() do
   println(greet("world"))
-  println(greet("Snow"))
+  println(greet("Mesh"))
 end
 "#;
     let output = compile_and_run(source);
-    assert_eq!(output, "Hello, world!\nHi, Snow!\n");
+    assert_eq!(output, "Hello, world!\nHi,Mesh!\n");
 }
 
 // ── Phase 22: Deriving Clause ─────────────────────────────────────────
@@ -587,7 +587,7 @@ end
 /// Display produces positional "Point(1, 2)" format.
 #[test]
 fn e2e_deriving_struct() {
-    let source = read_fixture("deriving_struct.snow");
+    let source = read_fixture("deriving_struct.mpl");
     let output = compile_and_run(&source);
     assert_eq!(output, "Point(1, 2)\ntrue\nfalse\n");
 }
@@ -597,7 +597,7 @@ fn e2e_deriving_struct() {
 /// codegen limitation for non-nullary variants; tested with nullary only here.
 #[test]
 fn e2e_deriving_sum_type() {
-    let source = read_fixture("deriving_sum_type.snow");
+    let source = read_fixture("deriving_sum_type.mpl");
     let output = compile_and_run(&source);
     assert_eq!(output, "Red\nGreen\nBlue\ntrue\nfalse\n");
 }
@@ -605,7 +605,7 @@ fn e2e_deriving_sum_type() {
 /// Backward compatibility: no deriving clause = derive all defaults.
 #[test]
 fn e2e_deriving_backward_compat() {
-    let source = read_fixture("deriving_backward_compat.snow");
+    let source = read_fixture("deriving_backward_compat.mpl");
     let output = compile_and_run(&source);
     assert_eq!(output, "true\n");
 }
@@ -613,7 +613,7 @@ fn e2e_deriving_backward_compat() {
 /// Selective deriving: only Eq, no other protocols.
 #[test]
 fn e2e_deriving_selective() {
-    let source = read_fixture("deriving_selective.snow");
+    let source = read_fixture("deriving_selective.mpl");
     let output = compile_and_run(&source);
     assert_eq!(output, "true\n");
 }
@@ -621,7 +621,7 @@ fn e2e_deriving_selective() {
 /// Empty deriving clause: opt-out of all auto-derived protocols.
 #[test]
 fn e2e_deriving_empty() {
-    let source = read_fixture("deriving_empty.snow");
+    let source = read_fixture("deriving_empty.mpl");
     let output = compile_and_run(&source);
     assert_eq!(output, "42\n");
 }
@@ -652,7 +652,7 @@ end
 /// Fun() type annotations: parsing, positions, and unification with closures.
 #[test]
 fn e2e_fun_type_annotations() {
-    let source = read_fixture("fun_type.snow");
+    let source = read_fixture("fun_type.mpl");
     let output = compile_and_run(&source);
     assert_eq!(
         output, "42\n99\n30\n",
@@ -665,7 +665,7 @@ fn e2e_fun_type_annotations() {
 /// Option field extraction: Some(42) pattern match extracts the inner value.
 #[test]
 fn e2e_option_field_extraction() {
-    let source = read_fixture("option_field_extraction.snow");
+    let source = read_fixture("option_field_extraction.mpl");
     let output = compile_and_run(&source);
     assert_eq!(output, "42\n");
 }
@@ -673,7 +673,7 @@ fn e2e_option_field_extraction() {
 /// Ordering pattern match: compare(3, 5) returns Less, matched to 1.
 #[test]
 fn e2e_ordering_pattern_match() {
-    let source = read_fixture("ordering_pattern_match.snow");
+    let source = read_fixture("ordering_pattern_match.mpl");
     let output = compile_and_run(&source);
     assert_eq!(output, "1\n");
 }
@@ -681,7 +681,7 @@ fn e2e_ordering_pattern_match() {
 /// Ordering as variable: compare result stored in variable, then matched.
 #[test]
 fn e2e_ordering_as_variable() {
-    let source = read_fixture("ordering_as_variable.snow");
+    let source = read_fixture("ordering_as_variable.mpl");
     let output = compile_and_run(&source);
     assert_eq!(output, "2\n");
 }
@@ -690,7 +690,7 @@ fn e2e_ordering_as_variable() {
 /// Validates that Red/Green/Blue are recognized as constructors, not variables.
 #[test]
 fn e2e_nullary_constructor_match() {
-    let source = read_fixture("nullary_constructor_match.snow");
+    let source = read_fixture("nullary_constructor_match.mpl");
     let output = compile_and_run(&source);
     assert_eq!(output, "1\n2\n3\n");
 }
@@ -702,13 +702,13 @@ fn e2e_nullary_constructor_match() {
 /// Display callback resolution for flat collections.
 #[test]
 fn e2e_nested_collection_display() {
-    let source = read_fixture("nested_collection_display.snow");
+    let source = read_fixture("nested_collection_display.mpl");
     let output = compile_and_run(&source);
     assert_eq!(output, "[10, 20, 30]\n", "List Display via string interpolation should render as [10, 20, 30]");
     // NOTE: List<List<Int>> e2e test requires generic List element types
     // (List.append currently typed as (List, Int) -> List).
     // Recursive callback resolution is verified at the MIR unit test level
-    // in snow-codegen (nested_list_callback_generates_wrapper).
+    // in mesh-codegen (nested_list_callback_generates_wrapper).
     // TODO: add full nested e2e test after Plan 02 (generic collection elements).
 }
 
@@ -716,7 +716,7 @@ fn e2e_nested_collection_display() {
 /// Verifies monomorphized trait function generation at struct literal lowering sites.
 #[test]
 fn e2e_generic_deriving() {
-    let source = read_fixture("generic_deriving.snow");
+    let source = read_fixture("generic_deriving.mpl");
     let output = compile_and_run(&source);
     assert_eq!(output, "Box(42)\nBox(hello)\ntrue\nfalse\n");
 }
@@ -882,7 +882,7 @@ end
 }
 
 /// Phase 31: primitive Int method call via dot-syntax (METH-04).
-/// 42.to_string() resolves through Display trait -> snow_int_to_string.
+/// 42.to_string() resolves through Display trait -> mesh_int_to_string.
 #[test]
 fn e2e_method_dot_syntax_primitive_int() {
     let source = r#"
@@ -897,7 +897,7 @@ end
 }
 
 /// Phase 31: primitive Bool method call via dot-syntax (METH-04).
-/// true.to_string() resolves through Display trait -> snow_bool_to_string.
+/// true.to_string() resolves through Display trait -> mesh_bool_to_string.
 #[test]
 fn e2e_method_dot_syntax_primitive_bool() {
     let source = r#"
@@ -911,7 +911,7 @@ end
 }
 
 /// Phase 31: primitive Float method call via dot-syntax.
-/// 3.14.to_string() resolves through Display trait -> snow_float_to_string.
+/// 3.14.to_string() resolves through Display trait -> mesh_float_to_string.
 #[test]
 fn e2e_method_dot_syntax_primitive_float() {
     let source = r#"
@@ -1105,7 +1105,7 @@ end
 /// WHILE-03: While returns Unit (usable as expression).
 #[test]
 fn e2e_while_loop() {
-    let source = read_fixture("while_loop.snow");
+    let source = read_fixture("while_loop.mpl");
     let output = compile_and_run(&source);
     assert_eq!(output, "loop ran\nskipped\ndone\n");
 }
@@ -1114,7 +1114,7 @@ fn e2e_while_loop() {
 /// Verifies code after break in same block is unreachable.
 #[test]
 fn e2e_break_continue() {
-    let source = read_fixture("break_continue.snow");
+    let source = read_fixture("break_continue.mpl");
     let output = compile_and_run(&source);
     assert_eq!(output, "before break\nafter loop\niteration\nnested break works\n");
 }
@@ -1157,7 +1157,7 @@ fn e2e_continue_in_closure_error() {
 /// FORIN-08: Loop variable scoped to body (reuse i).
 #[test]
 fn e2e_for_in_range_basic() {
-    let source = read_fixture("for_in_range.snow");
+    let source = read_fixture("for_in_range.mpl");
     let output = compile_and_run(&source);
     assert_eq!(output, "0\n1\n2\n3\n4\n---\n10\n11\n12\ndone\n");
 }
@@ -1235,7 +1235,7 @@ end
 /// For-in over List: comprehension, continue, break.
 #[test]
 fn e2e_for_in_list() {
-    let source = read_fixture("for_in_list.snow");
+    let source = read_fixture("for_in_list.mpl");
     let output = compile_and_run(&source);
     assert_eq!(output, "2\n4\n6\n---\n10\n20\n40\n50\n---\n2\ndone\n");
 }
@@ -1243,7 +1243,7 @@ fn e2e_for_in_list() {
 /// For-in over Map: {k, v} destructuring collects values into a list.
 #[test]
 fn e2e_for_in_map() {
-    let source = read_fixture("for_in_map.snow");
+    let source = read_fixture("for_in_map.mpl");
     let output = compile_and_run(&source);
     assert_eq!(output, "3\ndone\n");
 }
@@ -1251,7 +1251,7 @@ fn e2e_for_in_map() {
 /// For-in over Set: element iteration collects into a list.
 #[test]
 fn e2e_for_in_set() {
-    let source = read_fixture("for_in_set.snow");
+    let source = read_fixture("for_in_set.mpl");
     let output = compile_and_run(&source);
     assert_eq!(output, "3\ndone\n");
 }
@@ -1442,7 +1442,7 @@ end
 /// FILT-01/FILT-02: Full integration fixture covering all filter scenarios.
 #[test]
 fn e2e_for_in_filter_comprehensive() {
-    let source = read_fixture("for_in_filter.snow");
+    let source = read_fixture("for_in_filter.mpl");
     let output = compile_and_run(&source);
     assert_eq!(
         output,
@@ -1452,33 +1452,33 @@ fn e2e_for_in_filter_comprehensive() {
 
 // ── Phase 38: Multi-File Build Pipeline ───────────────────────────────
 
-/// Phase 38: Multi-file build -- directory with multiple .snow files discovers,
-/// parses all, and produces a working binary from main.snow entry point.
+/// Phase 38: Multi-file build -- directory with multiple .mpl files discovers,
+/// parses all, and produces a working binary from main.mpl entry point.
 #[test]
 fn e2e_multi_file_basic() {
     let temp_dir = tempfile::tempdir().expect("failed to create temp dir");
     let project_dir = temp_dir.path().join("project");
     std::fs::create_dir_all(&project_dir).expect("failed to create project dir");
 
-    // main.snow does not import utils, but both files exist
+    // main.mpl does not import utils, but both files exist
     std::fs::write(
-        project_dir.join("main.snow"),
+        project_dir.join("main.mpl"),
         "fn main() do\n  println(\"hello multi\")\nend\n",
     ).unwrap();
     std::fs::write(
-        project_dir.join("utils.snow"),
+        project_dir.join("utils.mpl"),
         "fn helper() do\n  42\nend\n",
     ).unwrap();
 
-    let snowc = find_snowc();
-    let output = Command::new(&snowc)
+    let meshc = find_meshc();
+    let output = Command::new(&meshc)
         .args(["build", project_dir.to_str().unwrap()])
         .output()
-        .expect("failed to invoke snowc");
+        .expect("failed to invoke meshc");
 
     assert!(
         output.status.success(),
-        "snowc build failed on multi-file project:\nstderr: {}",
+        "meshc build failed on multi-file project:\nstderr: {}",
         String::from_utf8_lossy(&output.stderr)
     );
 
@@ -1499,24 +1499,24 @@ fn e2e_multi_file_parse_error_in_non_entry() {
     std::fs::create_dir_all(&project_dir).expect("failed to create project dir");
 
     std::fs::write(
-        project_dir.join("main.snow"),
+        project_dir.join("main.mpl"),
         "fn main() do\n  println(\"hello\")\nend\n",
     ).unwrap();
-    // broken.snow has a syntax error
+    // broken.mpl has a syntax error
     std::fs::write(
-        project_dir.join("broken.snow"),
+        project_dir.join("broken.mpl"),
         "fn incomplete(\n",
     ).unwrap();
 
-    let snowc = find_snowc();
-    let output = Command::new(&snowc)
+    let meshc = find_meshc();
+    let output = Command::new(&meshc)
         .args(["build", project_dir.to_str().unwrap()])
         .output()
-        .expect("failed to invoke snowc");
+        .expect("failed to invoke meshc");
 
     assert!(
         !output.status.success(),
-        "expected build to fail due to parse error in broken.snow"
+        "expected build to fail due to parse error in broken.mpl"
     );
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(
@@ -1534,23 +1534,23 @@ fn e2e_multi_file_nested_modules() {
     std::fs::create_dir_all(project_dir.join("math")).expect("failed to create dirs");
 
     std::fs::write(
-        project_dir.join("main.snow"),
+        project_dir.join("main.mpl"),
         "fn main() do\n  println(\"nested ok\")\nend\n",
     ).unwrap();
     std::fs::write(
-        project_dir.join("math/vector.snow"),
+        project_dir.join("math/vector.mpl"),
         "fn add(a :: Int, b :: Int) -> Int do\n  a + b\nend\n",
     ).unwrap();
 
-    let snowc = find_snowc();
-    let output = Command::new(&snowc)
+    let meshc = find_meshc();
+    let output = Command::new(&meshc)
         .args(["build", project_dir.to_str().unwrap()])
         .output()
-        .expect("failed to invoke snowc");
+        .expect("failed to invoke meshc");
 
     assert!(
         output.status.success(),
-        "snowc build failed with nested modules:\nstderr: {}",
+        "meshc build failed with nested modules:\nstderr: {}",
         String::from_utf8_lossy(&output.stderr)
     );
 
@@ -1565,7 +1565,7 @@ fn e2e_multi_file_nested_modules() {
 
 // ── Phase 39: Cross-Module Type Checking ──────────────────────────────
 
-/// Helper: compile a multi-file Snow project (Vec of (relative_path, source)) and run
+/// Helper: compile a multi-file Mesh project (Vec of (relative_path, source)) and run
 /// the resulting binary, returning stdout.
 fn compile_multifile_and_run(files: &[(&str, &str)]) -> String {
     let temp_dir = tempfile::tempdir().expect("failed to create temp dir");
@@ -1579,15 +1579,15 @@ fn compile_multifile_and_run(files: &[(&str, &str)]) -> String {
         std::fs::write(&full_path, source).expect("failed to write file");
     }
 
-    let snowc = find_snowc();
-    let output = Command::new(&snowc)
+    let meshc = find_meshc();
+    let output = Command::new(&meshc)
         .args(["build", project_dir.to_str().unwrap()])
         .output()
-        .expect("failed to invoke snowc");
+        .expect("failed to invoke meshc");
 
     assert!(
         output.status.success(),
-        "snowc build failed:\nstdout: {}\nstderr: {}",
+        "meshc build failed:\nstdout: {}\nstderr: {}",
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr)
     );
@@ -1608,7 +1608,7 @@ fn compile_multifile_and_run(files: &[(&str, &str)]) -> String {
     String::from_utf8_lossy(&run_output.stdout).to_string()
 }
 
-/// Helper: compile a multi-file Snow project, expecting build failure.
+/// Helper: compile a multi-file Mesh project, expecting build failure.
 /// Returns stderr.
 fn compile_multifile_expect_error(files: &[(&str, &str)]) -> String {
     let temp_dir = tempfile::tempdir().expect("failed to create temp dir");
@@ -1622,11 +1622,11 @@ fn compile_multifile_expect_error(files: &[(&str, &str)]) -> String {
         std::fs::write(&full_path, source).expect("failed to write file");
     }
 
-    let snowc = find_snowc();
-    let output = Command::new(&snowc)
+    let meshc = find_meshc();
+    let output = Command::new(&meshc)
         .args(["build", project_dir.to_str().unwrap()])
         .output()
-        .expect("failed to invoke snowc");
+        .expect("failed to invoke meshc");
 
     assert!(
         !output.status.success(),
@@ -1641,7 +1641,7 @@ fn compile_multifile_expect_error(files: &[(&str, &str)]) -> String {
 #[test]
 fn e2e_cross_module_qualified_function_call() {
     let output = compile_multifile_and_run(&[
-        ("math.snow", r#"
+        ("math.mpl", r#"
 pub fn add(a :: Int, b :: Int) -> Int do
   a + b
 end
@@ -1650,7 +1650,7 @@ pub fn mul(a :: Int, b :: Int) -> Int do
   a * b
 end
 "#),
-        ("main.snow", r#"
+        ("main.mpl", r#"
 import Math
 
 fn main() do
@@ -1667,7 +1667,7 @@ end
 #[test]
 fn e2e_cross_module_selective_import() {
     let output = compile_multifile_and_run(&[
-        ("math.snow", r#"
+        ("math.mpl", r#"
 pub fn add(a :: Int, b :: Int) -> Int do
   a + b
 end
@@ -1676,7 +1676,7 @@ pub fn mul(a :: Int, b :: Int) -> Int do
   a * b
 end
 "#),
-        ("main.snow", r#"
+        ("main.mpl", r#"
 from Math import add
 
 fn main() do
@@ -1693,7 +1693,7 @@ end
 #[test]
 fn e2e_cross_module_struct() {
     let output = compile_multifile_and_run(&[
-        ("point.snow", r#"
+        ("point.mpl", r#"
 pub struct Point do
   x :: Int
   y :: Int
@@ -1703,7 +1703,7 @@ pub fn origin() -> Point do
   Point { x: 0, y: 0 }
 end
 "#),
-        ("main.snow", r#"
+        ("main.mpl", r#"
 import Point
 
 fn main() do
@@ -1720,7 +1720,7 @@ end
 #[test]
 fn e2e_cross_module_sum_type() {
     let output = compile_multifile_and_run(&[
-        ("shapes.snow", r#"
+        ("shapes.mpl", r#"
 pub type Shape do
   Circle(Int)
   Rectangle(Int, Int)
@@ -1733,7 +1733,7 @@ pub fn area(s :: Shape) -> Int do
   end
 end
 "#),
-        ("main.snow", r#"
+        ("main.mpl", r#"
 from Shapes import Shape, area
 
 fn main() do
@@ -1750,7 +1750,7 @@ end
 #[test]
 fn e2e_import_nonexistent_module_error() {
     let error = compile_multifile_expect_error(&[
-        ("main.snow", r#"
+        ("main.mpl", r#"
 import NonExistent
 
 fn main() do
@@ -1769,12 +1769,12 @@ end
 #[test]
 fn e2e_import_nonexistent_name_error() {
     let error = compile_multifile_expect_error(&[
-        ("math.snow", r#"
+        ("math.mpl", r#"
 pub fn add(a :: Int, b :: Int) -> Int do
   a + b
 end
 "#),
-        ("main.snow", r#"
+        ("main.mpl", r#"
 from Math import subtract
 
 fn main() do
@@ -1793,12 +1793,12 @@ end
 #[test]
 fn e2e_nested_module_qualified_access() {
     let output = compile_multifile_and_run(&[
-        ("math/vector.snow", r#"
+        ("math/vector.mpl", r#"
 pub fn dot(a :: Int, b :: Int) -> Int do
   a * b
 end
 "#),
-        ("main.snow", r#"
+        ("main.mpl", r#"
 import Math.Vector
 
 fn main() do
@@ -1815,7 +1815,7 @@ end
 #[test]
 fn e2e_cross_module_struct_via_function() {
     let output = compile_multifile_and_run(&[
-        ("geometry.snow", r#"
+        ("geometry.mpl", r#"
 pub struct Point do
   x :: Int
   y :: Int
@@ -1825,7 +1825,7 @@ pub fn make_point(a :: Int, b :: Int) -> Point do
   Point { x: a, y: b }
 end
 "#),
-        ("main.snow", r#"
+        ("main.mpl", r#"
 import Geometry
 
 fn main() do
@@ -1842,17 +1842,17 @@ end
 #[test]
 fn e2e_cross_module_multiple_imports() {
     let output = compile_multifile_and_run(&[
-        ("math.snow", r#"
+        ("math.mpl", r#"
 pub fn add(a :: Int, b :: Int) -> Int do
   a + b
 end
 "#),
-        ("utils.snow", r#"
+        ("utils.mpl", r#"
 pub fn double(x :: Int) -> Int do
   x * 2
 end
 "#),
-        ("main.snow", r#"
+        ("main.mpl", r#"
 from Math import add
 from Utils import double
 
@@ -1888,12 +1888,12 @@ end
 #[test]
 fn e2e_visibility_private_fn_blocked() {
     let error = compile_multifile_expect_error(&[
-        ("math.snow", r#"
+        ("math.mpl", r#"
 fn secret(a :: Int) -> Int do
   a + 1
 end
 "#),
-        ("main.snow", r#"
+        ("main.mpl", r#"
 from Math import secret
 
 fn main() do
@@ -1913,12 +1913,12 @@ end
 #[test]
 fn e2e_visibility_pub_fn_works() {
     let output = compile_multifile_and_run(&[
-        ("math.snow", r#"
+        ("math.mpl", r#"
 pub fn add(a :: Int, b :: Int) -> Int do
   a + b
 end
 "#),
-        ("main.snow", r#"
+        ("main.mpl", r#"
 from Math import add
 
 fn main() do
@@ -1934,7 +1934,7 @@ end
 #[test]
 fn e2e_visibility_private_struct_blocked() {
     let error = compile_multifile_expect_error(&[
-        ("shapes.snow", r#"
+        ("shapes.mpl", r#"
 struct Point do
   x :: Int
   y :: Int
@@ -1944,7 +1944,7 @@ pub fn dummy() -> Int do
   0
 end
 "#),
-        ("main.snow", r#"
+        ("main.mpl", r#"
 from Shapes import Point
 
 fn main() do
@@ -1964,7 +1964,7 @@ end
 #[test]
 fn e2e_visibility_pub_struct_accessible() {
     let output = compile_multifile_and_run(&[
-        ("geometry.snow", r#"
+        ("geometry.mpl", r#"
 pub struct Point do
   x :: Int
   y :: Int
@@ -1974,7 +1974,7 @@ pub fn make(a :: Int, b :: Int) -> Point do
   Point { x: a, y: b }
 end
 "#),
-        ("main.snow", r#"
+        ("main.mpl", r#"
 from Geometry import Point, make
 
 fn main() do
@@ -1991,7 +1991,7 @@ end
 #[test]
 fn e2e_visibility_private_sum_type_blocked() {
     let error = compile_multifile_expect_error(&[
-        ("colors.snow", r#"
+        ("colors.mpl", r#"
 type Color do
   Red
   Blue
@@ -2002,7 +2002,7 @@ pub fn dummy() -> Int do
   0
 end
 "#),
-        ("main.snow", r#"
+        ("main.mpl", r#"
 from Colors import Color
 
 fn main() do
@@ -2022,14 +2022,14 @@ end
 #[test]
 fn e2e_visibility_pub_sum_type_accessible() {
     let output = compile_multifile_and_run(&[
-        ("colors.snow", r#"
+        ("colors.mpl", r#"
 pub type Color do
   Red
   Blue
   Green
 end
 "#),
-        ("main.snow", r#"
+        ("main.mpl", r#"
 from Colors import Color
 
 fn main() do
@@ -2050,12 +2050,12 @@ end
 #[test]
 fn e2e_visibility_error_suggests_pub() {
     let error = compile_multifile_expect_error(&[
-        ("helpers.snow", r#"
+        ("helpers.mpl", r#"
 fn internal() -> Int do
   42
 end
 "#),
-        ("main.snow", r#"
+        ("main.mpl", r#"
 from Helpers import internal
 
 fn main() do
@@ -2085,7 +2085,7 @@ end
 #[test]
 fn e2e_visibility_qualified_private_blocked() {
     let error = compile_multifile_expect_error(&[
-        ("helpers.snow", r#"
+        ("helpers.mpl", r#"
 fn secret() -> Int do
   42
 end
@@ -2094,7 +2094,7 @@ pub fn public_fn() -> Int do
   1
 end
 "#),
-        ("main.snow", r#"
+        ("main.mpl", r#"
 import Helpers
 
 fn main() do
@@ -2114,7 +2114,7 @@ end
 #[test]
 fn e2e_visibility_mixed_pub_private() {
     let output = compile_multifile_and_run(&[
-        ("utils.snow", r#"
+        ("utils.mpl", r#"
 pub fn visible(x :: Int) -> Int do
   x * 2
 end
@@ -2123,7 +2123,7 @@ fn hidden(x :: Int) -> Int do
   x * 3
 end
 "#),
-        ("main.snow", r#"
+        ("main.mpl", r#"
 from Utils import visible
 
 fn main() do
@@ -2142,7 +2142,7 @@ end
 #[test]
 fn e2e_xmod07_private_function_name_collision() {
     let output = compile_multifile_and_run(&[
-        ("utils.snow", r#"
+        ("utils.mpl", r#"
 fn helper() -> Int do
   42
 end
@@ -2151,7 +2151,7 @@ pub fn get_utils_value() -> Int do
   helper()
 end
 "#),
-        ("math_ops.snow", r#"
+        ("math_ops.mpl", r#"
 fn helper() -> Int do
   99
 end
@@ -2160,7 +2160,7 @@ pub fn get_math_value() -> Int do
   helper()
 end
 "#),
-        ("main.snow", r#"
+        ("main.mpl", r#"
 from Utils import get_utils_value
 from MathOps import get_math_value
 
@@ -2180,19 +2180,19 @@ end
 #[test]
 fn e2e_xmod07_closure_name_collision() {
     let output = compile_multifile_and_run(&[
-        ("utils.snow", r#"
+        ("utils.mpl", r#"
 pub fn apply_utils(x :: Int) -> Int do
   let f = fn n -> n + 10 end
   f(x)
 end
 "#),
-        ("math.snow", r#"
+        ("math.mpl", r#"
 pub fn apply_math(x :: Int) -> Int do
   let f = fn n -> n * 2 end
   f(x)
 end
 "#),
-        ("main.snow", r#"
+        ("main.mpl", r#"
 import Utils
 import Math
 
@@ -2212,12 +2212,12 @@ end
 #[test]
 fn e2e_xmod06_cross_module_generic_function() {
     let output = compile_multifile_and_run(&[
-        ("utils.snow", r#"
+        ("utils.mpl", r#"
 pub fn identity(x :: Int) -> Int do
   x
 end
 "#),
-        ("main.snow", r#"
+        ("main.mpl", r#"
 from Utils import identity
 
 fn main() do
@@ -2235,11 +2235,11 @@ end
 #[test]
 fn e2e_xmod06_cross_module_generic_identity() {
     let output = compile_multifile_and_run(&[
-        ("utils.snow", r#"
+        ("utils.mpl", r#"
 pub fn identity(x :: Int) -> Int = x
 pub fn identity_str(x :: String) -> String = x
 "#),
-        ("main.snow", r#"
+        ("main.mpl", r#"
 from Utils import identity, identity_str
 
 fn main() do
@@ -2257,7 +2257,7 @@ end
 #[test]
 fn e2e_xmod_comprehensive_multi_module_binary() {
     let output = compile_multifile_and_run(&[
-        ("geometry.snow", r#"
+        ("geometry.mpl", r#"
 pub struct Point do
   x :: Int
   y :: Int
@@ -2271,7 +2271,7 @@ pub fn point_sum(p :: Point) -> Int do
   p.x + p.y
 end
 "#),
-        ("math.snow", r#"
+        ("math.mpl", r#"
 from Geometry import Point, make_point
 
 fn helper() -> Int do
@@ -2282,7 +2282,7 @@ pub fn add_points(a :: Point, b :: Point) -> Point do
   make_point(a.x + b.x, a.y + b.y)
 end
 "#),
-        ("main.snow", r#"
+        ("main.mpl", r#"
 import Geometry
 import Math
 
@@ -2306,7 +2306,7 @@ end
 #[test]
 fn e2e_comprehensive_multi_module_integration() {
     let output = compile_multifile_and_run(&[
-        ("geometry.snow", r#"
+        ("geometry.mpl", r#"
 pub struct Point do
   x :: Int
   y :: Int
@@ -2320,19 +2320,19 @@ pub fn point_sum(p :: Point) -> Int do
   p.x + p.y
 end
 "#),
-        ("math/vector.snow", r#"
+        ("math/vector.mpl", r#"
 from Geometry import Point, make_point, point_sum
 
 pub fn scaled_sum(p :: Point, factor :: Int) -> Int do
   point_sum(p) * factor
 end
 "#),
-        ("utils.snow", r#"
+        ("utils.mpl", r#"
 pub fn double(n :: Int) -> Int do
   n * 2
 end
 "#),
-        ("main.snow", r#"
+        ("main.mpl", r#"
 from Geometry import make_point
 from Utils import double
 import Math.Vector
@@ -2354,13 +2354,13 @@ end
 #[test]
 fn e2e_module_qualified_type_in_error() {
     let error = compile_multifile_expect_error(&[
-        ("geometry.snow", r#"
+        ("geometry.mpl", r#"
 pub struct Point do
   x :: Int
   y :: Int
 end
 "#),
-        ("main.snow", r#"
+        ("main.mpl", r#"
 from Geometry import Point
 
 fn takes_string(s :: String) -> String do
@@ -2386,12 +2386,12 @@ end
 #[test]
 fn e2e_file_path_in_multi_module_error() {
     let error = compile_multifile_expect_error(&[
-        ("geometry.snow", r#"
+        ("geometry.mpl", r#"
 pub fn bad_fn(x :: Int) -> String do
   x
 end
 "#),
-        ("main.snow", r#"
+        ("main.mpl", r#"
 import Geometry
 
 fn main() do
@@ -2401,8 +2401,8 @@ end
     ]);
     // The error output should contain the actual file path, not <unknown>
     assert!(
-        error.contains("geometry.snow"),
-        "expected error to contain 'geometry.snow', got:\n{}",
+        error.contains("geometry.mpl"),
+        "expected error to contain 'geometry.mpl', got:\n{}",
         error
     );
 }
@@ -2413,7 +2413,7 @@ end
 /// safe_divide(20, 2)? in a function returning Result<Int, String> unwraps Ok(10).
 #[test]
 fn e2e_try_result_ok_path() {
-    let source = read_fixture("try_result_ok_path.snow");
+    let source = read_fixture("try_result_ok_path.mpl");
     let output = compile_and_run(&source);
     assert_eq!(output, "20\n");
 }
@@ -2422,7 +2422,7 @@ fn e2e_try_result_ok_path() {
 /// safe_divide(20, 0)? early-returns Err("division by zero").
 #[test]
 fn e2e_try_result_err_path() {
-    let source = read_fixture("try_result_err_path.snow");
+    let source = read_fixture("try_result_err_path.mpl");
     let output = compile_and_run(&source);
     assert_eq!(output, "division by zero\n");
 }
@@ -2431,7 +2431,7 @@ fn e2e_try_result_err_path() {
 /// find_positive(5, 10)? unwraps Some(5), result is Some(105).
 #[test]
 fn e2e_try_option_some_path() {
-    let source = read_fixture("try_option_some_path.snow");
+    let source = read_fixture("try_option_some_path.mpl");
     let output = compile_and_run(&source);
     assert_eq!(output, "105\n");
 }
@@ -2440,7 +2440,7 @@ fn e2e_try_option_some_path() {
 /// find_positive(-1, -2)? early-returns None.
 #[test]
 fn e2e_try_option_none_path() {
-    let source = read_fixture("try_option_none_path.snow");
+    let source = read_fixture("try_option_none_path.mpl");
     let output = compile_and_run(&source);
     assert_eq!(output, "none\n");
 }
@@ -2450,7 +2450,7 @@ fn e2e_try_option_none_path() {
 /// Tests: success path, first-step error, second-step error.
 #[test]
 fn e2e_try_chained_result() {
-    let source = read_fixture("try_chained_result.snow");
+    let source = read_fixture("try_chained_result.mpl");
     let output = compile_and_run(&source);
     assert_eq!(output, "21\nnegative input\ntoo large\n");
 }
@@ -2459,7 +2459,7 @@ fn e2e_try_chained_result() {
 /// bad_caller returns Int but uses ? -- compiler must reject with E0036.
 #[test]
 fn e2e_try_incompatible_return_type() {
-    let source = read_fixture("try_error_incompatible_return.snow");
+    let source = read_fixture("try_error_incompatible_return.mpl");
     let error = compile_expect_error(&source);
     assert!(
         error.contains("E0036") || error.contains("requires function to return"),
@@ -2472,7 +2472,7 @@ fn e2e_try_incompatible_return_type() {
 /// Using ? on a plain Int -- compiler must reject with E0037.
 #[test]
 fn e2e_try_on_non_result_option() {
-    let source = read_fixture("try_error_non_result_option.snow");
+    let source = read_fixture("try_error_non_result_option.mpl");
     let error = compile_expect_error(&source);
     assert!(
         error.contains("E0037") || error.contains("requires `Result` or `Option`"),
@@ -2487,7 +2487,7 @@ fn e2e_try_on_non_result_option() {
 /// Proves TCE loop wrapping prevents stack overflow for deep recursion.
 #[test]
 fn tce_countdown() {
-    let source = read_fixture("tce_countdown.snow");
+    let source = read_fixture("tce_countdown.mpl");
     let output = compile_and_run(&source);
     assert_eq!(output.trim(), "done");
 }
@@ -2496,7 +2496,7 @@ fn tce_countdown() {
 /// After 100,001 swaps (odd count), a=1,b=2 becomes a=2,b=1.
 #[test]
 fn tce_param_swap() {
-    let source = read_fixture("tce_param_swap.snow");
+    let source = read_fixture("tce_param_swap.mpl");
     let output = compile_and_run(&source);
     assert_eq!(output.trim(), "2\n1");
 }
@@ -2505,7 +2505,7 @@ fn tce_param_swap() {
 /// Chain: process(2,0) -> process(1,20) -> process(0,30) -> prints 30.
 #[test]
 fn tce_case_arms() {
-    let source = read_fixture("tce_case_arms.snow");
+    let source = read_fixture("tce_case_arms.mpl");
     let output = compile_and_run(&source);
     assert_eq!(output.trim(), "30");
 }
@@ -2514,7 +2514,7 @@ fn tce_case_arms() {
 /// count_loop(0, 1000000) runs 1M iterations inside an actor without stack overflow.
 #[test]
 fn tce_actor_loop() {
-    let source = read_fixture("tce_actor_loop.snow");
+    let source = read_fixture("tce_actor_loop.mpl");
     let output = compile_and_run(&source);
     assert_eq!(output.trim(), "1000000");
 }
