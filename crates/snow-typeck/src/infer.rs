@@ -799,6 +799,25 @@ fn stdlib_modules() -> HashMap<String, HashMap<String, Scheme>> {
     )));
     modules.insert("Process".to_string(), process_mod);
 
+    // ── Global module (Phase 68) ─────────────────────────────────────
+    let mut global_mod = HashMap::new();
+    // Global.register: fn(String, Int) -> Int  (name, pid -> 0 success, 1 error)
+    global_mod.insert("register".to_string(), Scheme::mono(Ty::fun(
+        vec![Ty::string(), Ty::int()],
+        Ty::int(),
+    )));
+    // Global.whereis: fn(String) -> Int  (name -> pid raw u64, 0 if not found)
+    global_mod.insert("whereis".to_string(), Scheme::mono(Ty::fun(
+        vec![Ty::string()],
+        Ty::int(),
+    )));
+    // Global.unregister: fn(String) -> Int  (name -> 0 success, 1 not found)
+    global_mod.insert("unregister".to_string(), Scheme::mono(Ty::fun(
+        vec![Ty::string()],
+        Ty::int(),
+    )));
+    modules.insert("Global".to_string(), global_mod);
+
     modules
 }
 
@@ -807,6 +826,7 @@ const STDLIB_MODULE_NAMES: &[&str] = &[
     "String", "IO", "Env", "File", "List", "Map", "Set", "Tuple", "Range", "Queue", "HTTP", "JSON", "Json", "Request", "Job",
     "Math", "Int", "Float", "Timer", "Sqlite", "Pg", "Pool",
     "Node", "Process",  // Phase 67
+    "Global",  // Phase 68
 ];
 
 /// Check if a name is a known stdlib module.

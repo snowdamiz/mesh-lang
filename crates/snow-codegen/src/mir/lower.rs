@@ -9275,6 +9275,7 @@ const STDLIB_MODULES: &[&str] = &[
     "String", "IO", "Env", "File", "List", "Map", "Set", "Tuple", "Range", "Queue", "HTTP", "JSON", "Json", "Request", "Job",
     "Math", "Int", "Float", "Timer", "Sqlite", "Pg", "Ws",
     "Node", "Process",  // Phase 67
+    "Global",  // Phase 68
 ];
 
 /// Map Snow builtin function names to their runtime equivalents.
@@ -9537,6 +9538,10 @@ fn map_builtin_name(name: &str) -> String {
         // ── Phase 67: Process monitor/demonitor ───────────────────────────
         "process_monitor" => "snow_process_monitor".to_string(),
         "process_demonitor" => "snow_process_demonitor".to_string(),
+        // ── Phase 68: Global registry functions ─────────────────────────
+        "global_register" => "snow_global_register".to_string(),
+        "global_whereis" => "snow_global_whereis".to_string(),
+        "global_unregister" => "snow_global_unregister".to_string(),
         _ => name.to_string(),
     }
 }
