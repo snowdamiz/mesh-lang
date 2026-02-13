@@ -1,4 +1,4 @@
-# Roadmap: Snow
+# Roadmap: Mesh
 
 ## Milestones
 
@@ -16,6 +16,7 @@
 - [x] **v3.0 Production Backend** - Phases 55-58 (shipped 2026-02-12)
 - [x] **v4.0 WebSocket Support** - Phases 59-62 (shipped 2026-02-12)
 - [x] **v5.0 Distributed Actors** - Phases 63-69 (shipped 2026-02-13)
+- [ ] **v6.0 Website & Documentation** - Phases 70-73 (in progress)
 
 ## Phases
 
@@ -131,7 +132,66 @@ See milestones/v5.0-ROADMAP.md for full phase details.
 
 </details>
 
+### v6.0 Website & Documentation (In Progress)
+
+**Milestone Goal:** Create a polished documentation website and landing page that showcases Mesh's capabilities and documents all language features for developers.
+
+- [ ] **Phase 70: Scaffold + Design System** - VitePress custom theme with Tailwind v4, shadcn-vue, dark/light mode, and NavBar
+- [ ] **Phase 71: Syntax Highlighting + Landing Page** - Mesh code rendering via TextMate grammar and the site's first impression
+- [ ] **Phase 72: Docs Infrastructure + Core Content** - Sidebar navigation, docs layout, and core language documentation
+- [ ] **Phase 73: Extended Content + Polish** - Remaining docs, search, SEO, and site-wide features
+
+#### Phase 70: Scaffold + Design System
+**Goal**: Developers can visit the site and see a styled shell with dark/light mode toggle, responsive layout, and consistent monochrome design -- the foundation every subsequent page builds on
+**Depends on**: Nothing (first phase of v6.0)
+**Requirements**: INFRA-01, INFRA-02, INFRA-03, INFRA-04, INFRA-05, NAV-05
+**Success Criteria** (what must be TRUE):
+  1. Running `npm run dev` in /website serves a VitePress site with a blank custom Layout.vue (no default theme styles leak through)
+  2. Tailwind utility classes render correctly with monochrome OKLCH colors (gray-50 through gray-950 at zero chroma)
+  3. shadcn-vue components (Button, Sheet, etc.) render with the monochrome palette and respect dark/light mode
+  4. Clicking the theme toggle switches between dark and light mode, the choice persists across page reloads, and there is no flash of wrong theme on initial load
+  5. A NavBar is visible at the top of the page with the Mesh logo/wordmark, navigation links, and the theme toggle
+**Plans**: TBD
+
+#### Phase 71: Syntax Highlighting + Landing Page
+**Goal**: A visitor arriving at the site sees a compelling landing page with properly highlighted Mesh code examples that communicate what the language is and why it matters
+**Depends on**: Phase 70
+**Requirements**: INFRA-06, SYNTAX-01, SYNTAX-02, LAND-01, LAND-02, LAND-03
+**Success Criteria** (what must be TRUE):
+  1. Mesh code blocks on any page render with syntax highlighting (keywords, types, operators, strings, comments, do/end blocks, pattern matching all visually distinct)
+  2. The landing page hero section displays a tagline, a highlighted Mesh code sample, and a call-to-action link to the docs
+  3. A feature showcase section presents 3-4 key Mesh capabilities (actors, pattern matching, type inference, pipe operator) with real highlighted code examples
+  4. A "Why Mesh?" section explains Mesh's positioning relative to Elixir, Rust, and Go
+  5. Code blocks use a monochrome Shiki theme that matches the site's grayscale aesthetic in both dark and light modes
+**Plans**: TBD
+
+#### Phase 72: Docs Infrastructure + Core Content
+**Goal**: Developers can navigate a structured documentation site with sidebar, table of contents, and prev/next links, and read complete guides covering the core language (getting started, basics, types, concurrency)
+**Depends on**: Phase 71
+**Requirements**: NAV-01, NAV-02, NAV-03, NAV-04, DOCS-01, DOCS-02, DOCS-03, DOCS-04, DOCS-09
+**Success Criteria** (what must be TRUE):
+  1. A collapsible sidebar on docs pages shows all documentation sections organized into groups, with the current page highlighted
+  2. On mobile, the sidebar opens as a sheet overlay and auto-closes when a link is tapped
+  3. Each docs page shows a right-side "On this page" table of contents listing section headings, and previous/next page links at the bottom
+  4. A developer can follow the Getting Started guide from installation through compiling and running their first Mesh program
+  5. Documentation covers language basics (variables, types, functions, pattern matching, control flow, pipes, error handling, modules), the type system (inference, generics, structs, sum types, traits, deriving), concurrency (actors, spawning, message passing, linking/monitoring, supervision), and a syntax cheatsheet
+**Plans**: TBD
+
+#### Phase 73: Extended Content + Polish
+**Goal**: The documentation is complete across all Mesh feature areas (web, database, distributed) and the site has production-quality features (search, SEO, edit links, version badge)
+**Depends on**: Phase 72
+**Requirements**: DOCS-05, DOCS-06, DOCS-07, DOCS-08, FEAT-01, FEAT-02, FEAT-03, FEAT-04, FEAT-05, FEAT-06, FEAT-07
+**Success Criteria** (what must be TRUE):
+  1. Documentation covers web features (HTTP server, routing, middleware, WebSocket, rooms/channels, TLS), databases (SQLite, PostgreSQL, pooling, transactions, struct mapping), distributed actors (node connections, remote actors, global registry), and tooling (formatter, REPL, package manager, LSP, editor support)
+  2. Typing a search query returns relevant documentation pages via full-text search, and all code blocks have a copy-to-clipboard button
+  3. Every page has SEO meta tags (title, description, Open Graph), a custom 404 page exists, and each docs page shows an "Edit on GitHub" link and a last-updated timestamp
+  4. A version badge somewhere on the site displays the current Mesh version
+**Plans**: TBD
+
 ## Progress
+
+**Execution Order:**
+Phases execute in numeric order: 70 -> 71 -> 72 -> 73
 
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
@@ -149,5 +209,9 @@ See milestones/v5.0-ROADMAP.md for full phase details.
 | 55-58 | v3.0 | 8/8 | Complete | 2026-02-12 |
 | 59-62 | v4.0 | 8/8 | Complete | 2026-02-12 |
 | 63-69 | v5.0 | 20/20 | Complete | 2026-02-13 |
+| 70 | v6.0 | 0/TBD | Not started | - |
+| 71 | v6.0 | 0/TBD | Not started | - |
+| 72 | v6.0 | 0/TBD | Not started | - |
+| 73 | v6.0 | 0/TBD | Not started | - |
 
-**Total: 69 phases shipped across 15 milestones. 190 plans completed. All milestones complete.**
+**Total: 69 phases shipped across 15 milestones. 190 plans completed. v6.0 in progress (4 phases planned).**

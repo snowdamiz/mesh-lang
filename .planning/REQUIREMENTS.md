@@ -95,44 +95,44 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| INFRA-01 | — | Pending |
-| INFRA-02 | — | Pending |
-| INFRA-03 | — | Pending |
-| INFRA-04 | — | Pending |
-| INFRA-05 | — | Pending |
-| INFRA-06 | — | Pending |
-| LAND-01 | — | Pending |
-| LAND-02 | — | Pending |
-| LAND-03 | — | Pending |
-| NAV-01 | — | Pending |
-| NAV-02 | — | Pending |
-| NAV-03 | — | Pending |
-| NAV-04 | — | Pending |
-| NAV-05 | — | Pending |
-| SYNTAX-01 | — | Pending |
-| SYNTAX-02 | — | Pending |
-| DOCS-01 | — | Pending |
-| DOCS-02 | — | Pending |
-| DOCS-03 | — | Pending |
-| DOCS-04 | — | Pending |
-| DOCS-05 | — | Pending |
-| DOCS-06 | — | Pending |
-| DOCS-07 | — | Pending |
-| DOCS-08 | — | Pending |
-| DOCS-09 | — | Pending |
-| FEAT-01 | — | Pending |
-| FEAT-02 | — | Pending |
-| FEAT-03 | — | Pending |
-| FEAT-04 | — | Pending |
-| FEAT-05 | — | Pending |
-| FEAT-06 | — | Pending |
-| FEAT-07 | — | Pending |
+| INFRA-01 | Phase 70 | Pending |
+| INFRA-02 | Phase 70 | Pending |
+| INFRA-03 | Phase 70 | Pending |
+| INFRA-04 | Phase 70 | Pending |
+| INFRA-05 | Phase 70 | Pending |
+| INFRA-06 | Phase 71 | Pending |
+| LAND-01 | Phase 71 | Pending |
+| LAND-02 | Phase 71 | Pending |
+| LAND-03 | Phase 71 | Pending |
+| NAV-01 | Phase 72 | Pending |
+| NAV-02 | Phase 72 | Pending |
+| NAV-03 | Phase 72 | Pending |
+| NAV-04 | Phase 72 | Pending |
+| NAV-05 | Phase 70 | Pending |
+| SYNTAX-01 | Phase 71 | Pending |
+| SYNTAX-02 | Phase 71 | Pending |
+| DOCS-01 | Phase 72 | Pending |
+| DOCS-02 | Phase 72 | Pending |
+| DOCS-03 | Phase 72 | Pending |
+| DOCS-04 | Phase 72 | Pending |
+| DOCS-05 | Phase 73 | Pending |
+| DOCS-06 | Phase 73 | Pending |
+| DOCS-07 | Phase 73 | Pending |
+| DOCS-08 | Phase 73 | Pending |
+| DOCS-09 | Phase 72 | Pending |
+| FEAT-01 | Phase 73 | Pending |
+| FEAT-02 | Phase 73 | Pending |
+| FEAT-03 | Phase 73 | Pending |
+| FEAT-04 | Phase 73 | Pending |
+| FEAT-05 | Phase 73 | Pending |
+| FEAT-06 | Phase 73 | Pending |
+| FEAT-07 | Phase 73 | Pending |
 
 **Coverage:**
 - v6.0 requirements: 32 total
-- Mapped to phases: 0
-- Unmapped: 32 ⚠️
+- Mapped to phases: 32
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-02-13*
-*Last updated: 2026-02-13 after initial definition*
+*Last updated: 2026-02-13 after roadmap creation*

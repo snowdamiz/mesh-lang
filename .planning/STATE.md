@@ -5,14 +5,16 @@
 See: .planning/PROJECT.md (updated 2026-02-13)
 
 **Core value:** Expressive, readable concurrency -- writing concurrent programs should feel as natural and clean as writing sequential code, with the safety net of supervision and fault tolerance built into the language.
-**Current focus:** v6.0 Website & Documentation
+**Current focus:** v6.0 Website & Documentation -- Phase 70: Scaffold + Design System
 
 ## Current Position
 
-Phase: Not started (defining requirements)
+Phase: 70 (1 of 4 in v6.0) — Scaffold + Design System
 Plan: —
-Status: Defining requirements
-Last activity: 2026-02-13 — Milestone v6.0 started
+Status: Ready to plan
+Last activity: 2026-02-13 — Roadmap created for v6.0
+
+Progress: [░░░░░░░░░░] 0%
 
 ## Performance Metrics
 
@@ -34,7 +36,12 @@ Last activity: 2026-02-13 — Milestone v6.0 started
 
 ### Research Notes
 
-None.
+- VitePress custom theme (blank Layout.vue) -- do NOT extend default theme
+- Tailwind CSS v4 with @tailwindcss/vite plugin + @theme directive for monochrome OKLCH
+- shadcn-vue with Tailwind v4 CSS variable bridge (follow official migration guide)
+- Existing TextMate grammar at editors/vscode-mesh/syntaxes/mesh.tmLanguage.json loads into Shiki
+- FOUC prevention via inline head script applying dark class before paint
+- Full research in .planning/research/SUMMARY.md
 
 ### Pending Todos
 
@@ -53,6 +60,6 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-13
-Stopped at: Starting milestone v6.0 Website & Documentation
+Stopped at: Roadmap created for v6.0 Website & Documentation
 Resume file: None
-Next action: Define requirements for v6.0
+Next action: Plan Phase 70 (Scaffold + Design System)
