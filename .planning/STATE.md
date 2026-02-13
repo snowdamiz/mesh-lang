@@ -5,21 +5,21 @@
 See: .planning/PROJECT.md (updated 2026-02-12)
 
 **Core value:** Expressive, readable concurrency -- writing concurrent programs should feel as natural as sequential code, with supervision and fault tolerance built in.
-**Current focus:** v5.0 Distributed Actors -- Phase 64: Node Connection & Authentication
+**Current focus:** v5.0 Distributed Actors -- Phase 65: Remote Send & Distribution Router
 
 ## Current Position
 
-Phase: 64 of 69 (Node Connection & Authentication)
-Plan: 3 of 3 in current phase
-Status: Phase Complete
-Last activity: 2026-02-13 -- Completed 64-03 (Heartbeat & Session Management)
+Phase: 65 of 69 (Remote Send & Distribution Router)
+Plan: 1 of 3 in current phase
+Status: In Progress
+Last activity: 2026-02-13 -- Completed 65-01 (Remote Send & Distribution Router)
 
 Progress: [██████████] 100%
 
 ## Performance Metrics
 
 **All-time Totals:**
-- Plans completed: 176
+- Plans completed: 177
 - Phases completed: 64
 - Milestones shipped: 14 (v1.0-v4.0)
 - Lines of Rust: ~84,400
@@ -47,6 +47,9 @@ Progress: [██████████] 100%
 - 64-03: Arc<Mutex<HeartbeatState>> shared between reader/heartbeat threads (simpler than channel)
 - 64-03: Session-based thread functions take Arc<NodeSession> directly (avoid double-mutex)
 - 64-03: 100ms read timeout + 500ms heartbeat poll interval for responsive shutdown
+- 65-01: Silent drop on all dist failure paths (unknown node, no session, write error) -- Phase 66 adds :nodedown
+- 65-01: read_dist_msg 16MB limit replaces read_msg 4KB in reader loop post-handshake
+- 65-01: snow_actor_send_named handles local self-send via registry before remote path
 
 ### Research Notes
 
@@ -67,6 +70,6 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-13
-Stopped at: Completed 64-03-PLAN.md (Heartbeat & Session Management) -- Phase 64 complete
+Stopped at: Completed 65-01-PLAN.md (Remote Send & Distribution Router)
 Resume file: None
-Next action: Begin Phase 65 (Message Routing)
+Next action: Execute 65-02-PLAN.md
