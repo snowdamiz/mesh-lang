@@ -177,7 +177,10 @@ Plans:
   2. Ws.broadcast(room, message) delivers a text frame to all connections in the room, and Ws.broadcast_except(room, message, conn) delivers to all except the specified connection
   3. When a connection disconnects, it is automatically removed from all rooms it had joined
   4. Multiple connection actors can concurrently join, leave, and broadcast to the same room without data corruption
-**Plans**: TBD
+**Plans:** 2 plans
+Plans:
+- [ ] 62-01-PLAN.md -- RoomRegistry, runtime functions (join/leave/broadcast/broadcast_except), disconnect cleanup
+- [ ] 62-02-PLAN.md -- Codegen wiring (LLVM intrinsics, known_functions, map_builtin_name)
 
 ## Progress
 
@@ -201,6 +204,6 @@ Phases execute in numeric order: 59 -> 60 -> 61 -> 62
 | 59. Protocol Core | v4.0 | 2/2 | Complete | 2026-02-12 |
 | 60. Actor Integration | v4.0 | 2/2 | Complete | 2026-02-12 |
 | 61. Production Hardening | v4.0 | 2/2 | Complete | 2026-02-12 |
-| 62. Rooms & Channels | v4.0 | 0/TBD | Not started | - |
+| 62. Rooms & Channels | v4.0 | 0/2 | Not started | - |
 
 **Total: 61 phases shipped across 12 milestones. 168 plans completed. 1 phase remaining for v4.0.**
