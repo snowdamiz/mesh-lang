@@ -4,6 +4,18 @@
 
 Snow is a programming language that combines Elixir/Ruby-style expressive syntax with static Hindley-Milner type inference and BEAM-style concurrency (actors, supervision trees, fault tolerance), compiled via LLVM to native single-binary executables. The compiler is written in Rust. v1.0-v1.9 built a complete language: compiler pipeline, actor runtime, trait system, module system, loops, stdlib, and developer tooling. v2.0 added database drivers and JSON serde. v3.0 made Snow production-ready: TLS encryption for PostgreSQL and HTTPS, connection pooling with health checks, panic-safe database transactions, and automatic struct-to-row mapping via `deriving(Row)`. v4.0 added WebSocket support with RFC 6455 protocol, actor-per-connection model, TLS (wss://), heartbeat, fragmentation, and rooms/channels. v5.0 added distributed actors: location-transparent PIDs, TLS-encrypted inter-node connections with cookie auth and mesh formation, transparent remote send, remote process/node monitoring with fault propagation, remote spawn via function name registry, global process registry, and cross-node WebSocket rooms and supervision trees -- all with zero new crate dependencies. ~93K LOC Rust across 15 milestones. Zero known compiler correctness issues.
 
+## Current Milestone: v6.0 Website & Documentation
+
+**Goal:** Create a combined landing page and full documentation site for the Mesh language using Vite + Vue 3 + Tailwind CSS + shadcn-vue, with monochrome design, dark/light mode toggle, sidebar-navigated docs covering all language features, and a custom Mesh syntax highlighter.
+
+**Target features:**
+- Landing page with hero section showcasing Mesh's value proposition
+- Full documentation covering all language features (syntax, types, actors, stdlib, HTTP, DB, WebSocket, distributed)
+- Sidebar navigation with collapsible sections (VitePress/Rust Book style)
+- Monochrome design with dark + light mode toggle
+- Custom Mesh syntax highlighter for code examples
+- Located in /website directory within the repo
+
 ## Current State
 
 Shipped v5.0 Distributed Actors (2026-02-13). 15 milestones complete, 69 phases, 190 plans.
@@ -146,7 +158,7 @@ Expressive, readable concurrency -- writing concurrent programs should feel as n
 
 ### Active
 
-(No active requirements -- start next milestone with `/gsd:new-milestone`)
+- [ ] Mesh website with landing page and full documentation (v6.0)
 
 ### Out of Scope
 
@@ -323,4 +335,4 @@ Tech debt (minor, pre-existing):
 | Remote supervisor async terminate | Mark not-running immediately; receive loop handles exit signal | ✓ Good -- v5.0, non-blocking supervision |
 
 ---
-*Last updated: 2026-02-13 after v5.0 milestone*
+*Last updated: 2026-02-13 after v6.0 milestone start*

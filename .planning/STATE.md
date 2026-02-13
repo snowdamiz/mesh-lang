@@ -4,17 +4,15 @@
 
 See: .planning/PROJECT.md (updated 2026-02-13)
 
-**Core value:** Expressive, readable concurrency -- writing concurrent programs should feel as natural as sequential code, with supervision and fault tolerance built in.
-**Current focus:** All milestones complete (v1.0-v5.0). Project renamed from Snow to Mesh.
+**Core value:** Expressive, readable concurrency -- writing concurrent programs should feel as natural and clean as writing sequential code, with the safety net of supervision and fault tolerance built into the language.
+**Current focus:** v6.0 Website & Documentation
 
 ## Current Position
 
-Phase: 69 of 69 (all complete)
-Plan: All plans complete
-Status: v5.0 Distributed Actors shipped
-Last activity: 2026-02-13 - Completed quick task 1: Rename project from Snow to Mesh, change .snow file extension to .mpl
-
-Progress: [██████████] 100%
+Phase: Not started (defining requirements)
+Plan: —
+Status: Defining requirements
+Last activity: 2026-02-13 — Milestone v6.0 started
 
 ## Performance Metrics
 
@@ -55,6 +53,6 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-13
-Stopped at: Completed quick task 1 (Snow -> Mesh rename)
+Stopped at: Starting milestone v6.0 Website & Documentation
 Resume file: None
-Next action: Start next milestone with /gsd:new-milestone
+Next action: Define requirements for v6.0
