@@ -24,15 +24,65 @@ use super::mailbox::Mailbox;
 pub struct ProcessId(pub u64);
 
 impl ProcessId {
-    /// Generate a fresh, globally unique PID.
+    /// Generate a fresh, globally unique local PID.
+    ///
+    /// The counter is masked to 40 bits to prevent overflow into the
+    /// creation and node_id fields. In practice the counter will never
+    /// reach 2^40 (~1 trillion), but the mask is defensive.
     pub fn next() -> Self {
         static COUNTER: AtomicU64 = AtomicU64::new(0);
-        ProcessId(COUNTER.fetch_add(1, Ordering::Relaxed))
+        ProcessId(COUNTER.fetch_add(1, Ordering::Relaxed) & 0x0000_00FF_FFFF_FFFF)
     }
 
     /// Return the raw numeric value.
     pub fn as_u64(self) -> u64 {
         self.0
+    }
+
+    /// Extract the 16-bit node identifier (bits 63..48).
+    ///
+    /// A node_id of 0 means the PID belongs to the local node.
+    #[inline]
+    pub fn node_id(self) -> u16 {
+        (self.0 >> 48) as u16
+    }
+
+    /// Extract the 8-bit creation counter (bits 47..40).
+    ///
+    /// The creation counter distinguishes different incarnations of the
+    /// same node, preventing stale PID confusion after a node restart.
+    #[inline]
+    pub fn creation(self) -> u8 {
+        ((self.0 >> 40) & 0xFF) as u8
+    }
+
+    /// Extract the 40-bit local process identifier (bits 39..0).
+    #[inline]
+    pub fn local_id(self) -> u64 {
+        self.0 & 0x0000_00FF_FFFF_FFFF
+    }
+
+    /// Check if this PID belongs to the local node (node_id == 0).
+    #[inline]
+    pub fn is_local(self) -> bool {
+        self.0 >> 48 == 0
+    }
+
+    /// Construct a PID from remote node components.
+    ///
+    /// Layout: `[16-bit node_id | 8-bit creation | 40-bit local_id]`
+    #[inline]
+    pub fn from_remote(node_id: u16, creation: u8, local_id: u64) -> Self {
+        debug_assert!(
+            local_id < (1u64 << 40),
+            "local_id exceeds 40 bits: {}",
+            local_id
+        );
+        ProcessId(
+            (node_id as u64) << 48
+                | (creation as u64) << 40
+                | (local_id & 0x0000_00FF_FFFF_FFFF),
+        )
     }
 }
 
@@ -44,7 +94,15 @@ impl fmt::Debug for ProcessId {
 
 impl fmt::Display for ProcessId {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "<0.{}>", self.0)
+        let node = self.node_id();
+        let creation = self.creation();
+        if node == 0 && creation == 0 {
+            // Backward-compatible format for local PIDs.
+            write!(f, "<0.{}>", self.local_id())
+        } else {
+            // Extended format for remote PIDs: <node_id.local_id.creation>
+            write!(f, "<{}.{}.{}>", node, self.local_id(), creation)
+        }
     }
 }
 
@@ -321,5 +379,48 @@ mod tests {
         let dbg = format!("{:?}", proc);
         assert!(dbg.contains("Process"));
         assert!(dbg.contains("High"));
+    }
+
+    #[test]
+    fn test_pid_bit_packing_roundtrip() {
+        let pid = ProcessId::from_remote(5, 3, 42);
+        assert_eq!(pid.node_id(), 5);
+        assert_eq!(pid.creation(), 3);
+        assert_eq!(pid.local_id(), 42);
+    }
+
+    #[test]
+    fn test_pid_local_is_local() {
+        let pid = ProcessId::next();
+        assert!(pid.is_local());
+        assert_eq!(pid.node_id(), 0);
+        assert_eq!(pid.creation(), 0);
+    }
+
+    #[test]
+    fn test_pid_remote_is_not_local() {
+        let pid = ProcessId::from_remote(1, 0, 99);
+        assert!(!pid.is_local());
+    }
+
+    #[test]
+    fn test_pid_display_local_unchanged() {
+        // Local PID with raw value 42 should display as "<0.42>".
+        let pid = ProcessId(42);
+        assert_eq!(format!("{}", pid), "<0.42>");
+    }
+
+    #[test]
+    fn test_pid_display_remote() {
+        let pid = ProcessId::from_remote(5, 2, 42);
+        assert_eq!(format!("{}", pid), "<5.42.2>");
+    }
+
+    #[test]
+    fn test_pid_next_masked() {
+        // Verify that ProcessId::next() produces a value where local_id
+        // equals the raw value (no spillover into creation/node_id bits).
+        let pid = ProcessId::next();
+        assert_eq!(pid.local_id(), pid.as_u64());
     }
 }
