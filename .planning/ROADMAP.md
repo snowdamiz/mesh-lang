@@ -131,7 +131,7 @@ See milestones/v4.0-ROADMAP.md for full phase details.
 - [x] **Phase 64: Node Connection & Authentication** - TLS-encrypted inter-node TCP with cookie-based auth and discovery (completed 2026-02-13)
 - [x] **Phase 65: Remote Send & Distribution Router** - Transparent message routing across nodes with mesh formation (completed 2026-02-13)
 - [x] **Phase 66: Remote Links, Monitors & Failure Handling** - Cross-node fault tolerance with exit signal and partition propagation (completed 2026-02-13)
-- [ ] **Phase 67: Remote Spawn & LLVM Integration** - Spawn actors on remote nodes with full Snow-level API
+- [x] **Phase 67: Remote Spawn & LLVM Integration** - Spawn actors on remote nodes with full Snow-level API (completed 2026-02-13)
 - [ ] **Phase 68: Global Registry** - Cluster-wide process name registration and lookup
 - [ ] **Phase 69: Cross-Node Integration** - Distributed WebSocket rooms and remote supervision trees
 
@@ -210,9 +210,9 @@ Plans:
   3. Remote spawn uses function names (not pointers) so that differently-compiled binaries can spawn each other's functions
 **Plans:** 3 plans
 Plans:
-- [ ] 67-01-PLAN.md -- Function name registry, intrinsic declarations, registration codegen
-- [ ] 67-02-PLAN.md -- Remote spawn runtime (DIST_SPAWN wire protocol, snow_node_spawn)
-- [ ] 67-03-PLAN.md -- Node & Process module LLVM integration (MIR lowering, codegen)
+- [x] 67-01-PLAN.md -- Function name registry, intrinsic declarations, registration codegen
+- [x] 67-02-PLAN.md -- Remote spawn runtime (DIST_SPAWN wire protocol, snow_node_spawn)
+- [x] 67-03-PLAN.md -- Node & Process module LLVM integration (MIR lowering, codegen)
 
 ### Phase 68: Global Registry
 **Goal**: Processes can be registered by name across the entire cluster and looked up from any node
@@ -256,8 +256,8 @@ Plans:
 | 64 | v5.0 | 3/3 | Complete | 2026-02-13 |
 | 65 | v5.0 | 3/3 | Complete | 2026-02-13 |
 | 66 | v5.0 | 3/3 | Complete | 2026-02-13 |
-| 67 | v5.0 | 0/TBD | Not started | - |
+| 67 | v5.0 | 3/3 | Complete | 2026-02-13 |
 | 68 | v5.0 | 0/TBD | Not started | - |
 | 69 | v5.0 | 0/TBD | Not started | - |
 
-**Total: 66 phases shipped across 14 milestones. 182 plans completed. v5.0 in progress (4/7 phases complete).**
+**Total: 67 phases shipped across 14 milestones. 185 plans completed. v5.0 in progress (5/7 phases complete).**
