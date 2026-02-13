@@ -305,6 +305,23 @@ pub enum TypeError {
         field_name: String,
         field_type: String,
     },
+    /// An impl block is missing a required associated type declared by the trait.
+    MissingAssocType {
+        trait_name: String,
+        assoc_name: String,
+        impl_ty: String,
+    },
+    /// An impl block provides an associated type not declared by the trait.
+    ExtraAssocType {
+        trait_name: String,
+        assoc_name: String,
+        impl_ty: String,
+    },
+    /// An associated type reference (Self.Item) could not be resolved.
+    UnresolvedAssocType {
+        assoc_name: String,
+        span: TextRange,
+    },
 }
 
 impl fmt::Display for TypeError {
@@ -629,6 +646,38 @@ impl fmt::Display for TypeError {
                     f,
                     "field `{}` has type `{}` which cannot be mapped from a database row (only Int, Float, Bool, String, and Option<T> are supported)",
                     field_name, field_type
+                )
+            }
+            TypeError::MissingAssocType {
+                trait_name,
+                assoc_name,
+                impl_ty,
+            } => {
+                write!(
+                    f,
+                    "impl `{}` for `{}` is missing associated type `{}`",
+                    trait_name, impl_ty, assoc_name
+                )
+            }
+            TypeError::ExtraAssocType {
+                trait_name,
+                assoc_name,
+                impl_ty,
+            } => {
+                write!(
+                    f,
+                    "impl `{}` for `{}` provides associated type `{}` which is not declared by the trait",
+                    trait_name, impl_ty, assoc_name
+                )
+            }
+            TypeError::UnresolvedAssocType {
+                assoc_name,
+                ..
+            } => {
+                write!(
+                    f,
+                    "cannot resolve associated type `{}` -- Self.Item can only be used inside an impl block",
+                    assoc_name
                 )
             }
         }

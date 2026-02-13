@@ -28,6 +28,12 @@ pub struct TraitMethodSig {
     pub has_default_body: bool,
 }
 
+/// An associated type declaration in a trait.
+#[derive(Clone, Debug)]
+pub struct AssocTypeDef {
+    pub name: String,
+}
+
 /// A trait (interface) definition.
 #[derive(Clone, Debug)]
 pub struct TraitDef {
@@ -35,6 +41,8 @@ pub struct TraitDef {
     pub name: String,
     /// Method signatures required by this trait.
     pub methods: Vec<TraitMethodSig>,
+    /// Associated type declarations (e.g., `type Item` in interface body).
+    pub associated_types: Vec<AssocTypeDef>,
 }
 
 /// An impl registration: which type implements which trait.
@@ -49,6 +57,8 @@ pub struct ImplDef {
     /// Methods provided by this impl, keyed by method name.
     /// Value is (param_count, return_type).
     pub methods: FxHashMap<String, ImplMethodSig>,
+    /// Associated type bindings (e.g., `type Item = Int`).
+    pub associated_types: FxHashMap<String, Ty>,
 }
 
 /// A method signature in an impl block.
@@ -127,6 +137,28 @@ impl TraitRegistry {
                             }
                         }
                     }
+                }
+            }
+
+            // Check for missing associated types.
+            for assoc in &trait_def.associated_types {
+                if !impl_def.associated_types.contains_key(&assoc.name) {
+                    errors.push(TypeError::MissingAssocType {
+                        trait_name: impl_def.trait_name.clone(),
+                        assoc_name: assoc.name.clone(),
+                        impl_ty: impl_def.impl_type_name.clone(),
+                    });
+                }
+            }
+
+            // Check for extra associated types.
+            for (name, _) in &impl_def.associated_types {
+                if !trait_def.associated_types.iter().any(|a| &a.name == name) {
+                    errors.push(TypeError::ExtraAssocType {
+                        trait_name: impl_def.trait_name.clone(),
+                        assoc_name: name.clone(),
+                        impl_ty: impl_def.impl_type_name.clone(),
+                    });
                 }
             }
         }
@@ -297,6 +329,20 @@ impl TraitRegistry {
         trait_names
     }
 
+    /// Resolve an associated type for a concrete implementing type.
+    ///
+    /// Given trait "Iterator", associated type "Item", and concrete type List<Int>,
+    /// finds the impl and returns the bound type (e.g., Int).
+    pub fn resolve_associated_type(
+        &self,
+        trait_name: &str,
+        assoc_name: &str,
+        impl_ty: &Ty,
+    ) -> Option<Ty> {
+        let impl_def = self.find_impl(trait_name, impl_ty)?;
+        impl_def.associated_types.get(assoc_name).cloned()
+    }
+
     /// Check where-clause constraints: verify that a concrete type satisfies
     /// all required trait bounds.
     pub fn check_where_constraints(
@@ -331,19 +377,30 @@ impl TraitRegistry {
 /// Concrete constructors (Int, Float, String, List, Option, etc.) are
 /// never freshened -- only single-uppercase-letter names are.
 fn freshen_type_params(ty: &Ty, ctx: &mut InferCtx) -> Ty {
+    freshen_type_params_with_names(ty, ctx, &[])
+}
+
+/// Like `freshen_type_params`, but also treats the given explicit names
+/// as type parameters (enables multi-character type parameter names like
+/// "Item", "Output", etc.).
+fn freshen_type_params_with_names(ty: &Ty, ctx: &mut InferCtx, type_param_names: &[String]) -> Ty {
     let mut param_map: FxHashMap<String, Ty> = FxHashMap::default();
-    freshen_recursive(ty, ctx, &mut param_map)
+    freshen_recursive(ty, ctx, &mut param_map, type_param_names)
 }
 
 fn freshen_recursive(
     ty: &Ty,
     ctx: &mut InferCtx,
     param_map: &mut FxHashMap<String, Ty>,
+    type_param_names: &[String],
 ) -> Ty {
     match ty {
         Ty::Con(c) => {
-            // A single uppercase ASCII letter is a type parameter.
-            if c.name.len() == 1 && c.name.as_bytes()[0].is_ascii_uppercase() {
+            // A single uppercase ASCII letter is a type parameter,
+            // or the name is in the explicit type_param_names list.
+            if (c.name.len() == 1 && c.name.as_bytes()[0].is_ascii_uppercase())
+                || type_param_names.iter().any(|n| n == &c.name)
+            {
                 param_map
                     .entry(c.name.clone())
                     .or_insert_with(|| ctx.fresh_var())
@@ -353,25 +410,25 @@ fn freshen_recursive(
             }
         }
         Ty::App(con, args) => {
-            let con_fresh = freshen_recursive(con, ctx, param_map);
+            let con_fresh = freshen_recursive(con, ctx, param_map, type_param_names);
             let args_fresh: Vec<Ty> = args
                 .iter()
-                .map(|a| freshen_recursive(a, ctx, param_map))
+                .map(|a| freshen_recursive(a, ctx, param_map, type_param_names))
                 .collect();
             Ty::App(Box::new(con_fresh), args_fresh)
         }
         Ty::Fun(params, ret) => {
             let params_fresh: Vec<Ty> = params
                 .iter()
-                .map(|p| freshen_recursive(p, ctx, param_map))
+                .map(|p| freshen_recursive(p, ctx, param_map, type_param_names))
                 .collect();
-            let ret_fresh = freshen_recursive(ret, ctx, param_map);
+            let ret_fresh = freshen_recursive(ret, ctx, param_map, type_param_names);
             Ty::Fun(params_fresh, Box::new(ret_fresh))
         }
         Ty::Tuple(elems) => {
             let elems_fresh: Vec<Ty> = elems
                 .iter()
-                .map(|e| freshen_recursive(e, ctx, param_map))
+                .map(|e| freshen_recursive(e, ctx, param_map, type_param_names))
                 .collect();
             Ty::Tuple(elems_fresh)
         }
@@ -395,6 +452,7 @@ mod tests {
                 return_type: Some(Ty::string()),
                 has_default_body: false,
             }],
+            associated_types: vec![],
         }
     }
 
@@ -408,6 +466,7 @@ mod tests {
                 return_type: Some(Ty::string()),
                 has_default_body: false,
             }],
+            associated_types: vec![],
         }
     }
 
@@ -443,6 +502,7 @@ mod tests {
             impl_type: Ty::int(),
             impl_type_name: "Int".to_string(),
             methods: display_method_sig(),
+            associated_types: FxHashMap::default(),
         });
 
         assert!(errors.is_empty());
@@ -460,6 +520,7 @@ mod tests {
             impl_type: Ty::int(),
             impl_type_name: "Int".to_string(),
             methods: FxHashMap::default(), // no methods
+            associated_types: FxHashMap::default(),
         });
 
         assert_eq!(errors.len(), 1);
@@ -483,6 +544,7 @@ mod tests {
             impl_type: list_of_t,
             impl_type_name: "List<T>".to_string(),
             methods: display_method_sig(),
+            associated_types: FxHashMap::default(),
         });
         assert!(errors.is_empty());
 
@@ -514,6 +576,7 @@ mod tests {
             impl_type: list_of_t,
             impl_type_name: "List<T>".to_string(),
             methods: display_method_sig(),
+            associated_types: FxHashMap::default(),
         });
 
         // Bare Int should NOT match List<T>.
@@ -540,6 +603,7 @@ mod tests {
                 return_type: None,
                 has_default_body: false,
             }],
+            associated_types: vec![],
         });
 
         let mut add_methods = FxHashMap::default();
@@ -556,6 +620,7 @@ mod tests {
             impl_type: Ty::int(),
             impl_type_name: "Int".to_string(),
             methods: add_methods,
+            associated_types: FxHashMap::default(),
         });
 
         let mut add_float_methods = FxHashMap::default();
@@ -572,6 +637,7 @@ mod tests {
             impl_type: Ty::float(),
             impl_type_name: "Float".to_string(),
             methods: add_float_methods,
+            associated_types: FxHashMap::default(),
         });
 
         // Int has Add, Float has Add, String does not.
@@ -603,6 +669,7 @@ mod tests {
             impl_type: list_of_t,
             impl_type_name: "List<T>".to_string(),
             methods: display_method_sig(),
+            associated_types: FxHashMap::default(),
         });
 
         // Should find to_string for List<Int>.
@@ -628,6 +695,7 @@ mod tests {
             impl_type: list_of_t,
             impl_type_name: "List<T>".to_string(),
             methods: display_method_sig(),
+            associated_types: FxHashMap::default(),
         });
 
         // find_impl should return the generic impl when queried with List<Int>.
@@ -652,6 +720,7 @@ mod tests {
             impl_type: Ty::int(),
             impl_type_name: "Int".to_string(),
             methods: display_method_sig(),
+            associated_types: FxHashMap::default(),
         });
         assert!(errors.is_empty());
 
@@ -661,6 +730,7 @@ mod tests {
             impl_type: Ty::int(),
             impl_type_name: "Int".to_string(),
             methods: display_method_sig(),
+            associated_types: FxHashMap::default(),
         });
         assert_eq!(errors.len(), 1);
         match &errors[0] {
@@ -688,6 +758,7 @@ mod tests {
             impl_type: Ty::int(),
             impl_type_name: "Int".to_string(),
             methods: display_method_sig(),
+            associated_types: FxHashMap::default(),
         });
         assert!(errors.is_empty());
 
@@ -697,6 +768,7 @@ mod tests {
             impl_type: Ty::string(),
             impl_type_name: "String".to_string(),
             methods: display_method_sig(),
+            associated_types: FxHashMap::default(),
         });
         assert!(errors.is_empty());
     }
@@ -711,6 +783,7 @@ mod tests {
             impl_type: Ty::int(),
             impl_type_name: "Int".to_string(),
             methods: display_method_sig(),
+            associated_types: FxHashMap::default(),
         });
 
         let traits = registry.find_method_traits("to_string", &Ty::int());
@@ -730,6 +803,7 @@ mod tests {
                 return_type: Some(Ty::string()),
                 has_default_body: false,
             }],
+            associated_types: vec![],
         });
 
         let _ = registry.register_impl(ImplDef {
@@ -737,12 +811,14 @@ mod tests {
             impl_type: Ty::int(),
             impl_type_name: "Int".to_string(),
             methods: display_method_sig(),
+            associated_types: FxHashMap::default(),
         });
         let _ = registry.register_impl(ImplDef {
             trait_name: "Displayable".to_string(),
             impl_type: Ty::int(),
             impl_type_name: "Int".to_string(),
             methods: display_method_sig(),
+            associated_types: FxHashMap::default(),
         });
 
         let traits = registry.find_method_traits("to_string", &Ty::int());
@@ -767,6 +843,7 @@ mod tests {
                 return_type: None,
                 has_default_body: false,
             }],
+            associated_types: vec![],
         });
 
         // Built-in impl: Add for Int (same path as builtins.rs registration).
@@ -784,6 +861,7 @@ mod tests {
             impl_type: Ty::int(),
             impl_type_name: "Int".to_string(),
             methods: int_methods,
+            associated_types: FxHashMap::default(),
         });
         assert!(errors.is_empty());
 
@@ -803,6 +881,7 @@ mod tests {
             impl_type: my_struct.clone(),
             impl_type_name: "MyStruct".to_string(),
             methods: struct_methods,
+            associated_types: FxHashMap::default(),
         });
         assert!(errors.is_empty());
 

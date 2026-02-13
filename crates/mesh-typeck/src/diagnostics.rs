@@ -130,6 +130,9 @@ fn error_code(err: &TypeError) -> &'static str {
         TypeError::TryOnNonResultOption { .. } => "E0037",
         TypeError::NonSerializableField { .. } => "E0038",
         TypeError::NonMappableField { .. } => "E0039",
+        TypeError::MissingAssocType { .. } => "E0040",
+        TypeError::ExtraAssocType { .. } => "E0041",
+        TypeError::UnresolvedAssocType { .. } => "E0042",
     }
 }
 
@@ -491,7 +494,8 @@ pub fn render_json_diagnostic(
                 | TypeError::ImportNameNotFound { span, .. }
                 | TypeError::PrivateItem { span, .. }
                 | TypeError::TryIncompatibleReturn { span, .. }
-                | TypeError::TryOnNonResultOption { span, .. } => {
+                | TypeError::TryOnNonResultOption { span, .. }
+                | TypeError::UnresolvedAssocType { span, .. } => {
                     let range = text_range_to_range(*span);
                     spans.push(JsonSpan {
                         start: range.start,
@@ -1590,6 +1594,75 @@ pub fn render_diagnostic(
                         .with_color(Color::Red),
                 )
                 .with_help("only Int, Float, Bool, String, and Option<T> fields are supported for deriving(Row)")
+                .finish()
+        }
+
+        TypeError::MissingAssocType {
+            trait_name,
+            assoc_name,
+            impl_ty,
+        } => {
+            let msg = format!(
+                "impl `{}` for `{}` is missing associated type `{}`",
+                trait_name, impl_ty, assoc_name
+            );
+            let span = clamp(0..source_len.max(1).min(source_len));
+
+            Report::build(ReportKind::Error, (fname.clone(), span.clone()))
+                .with_code(code)
+                .with_message(&msg)
+                .with_config(config)
+                .with_label(
+                    Label::new((fname.clone(), span))
+                        .with_message(format!("missing `type {} = ...`", assoc_name))
+                        .with_color(Color::Red),
+                )
+                .with_help(format!("add `type {} = <ConcreteType>` to the impl block", assoc_name))
+                .finish()
+        }
+
+        TypeError::ExtraAssocType {
+            trait_name,
+            assoc_name,
+            impl_ty,
+        } => {
+            let msg = format!(
+                "impl `{}` for `{}` provides associated type `{}` which is not declared by the trait",
+                trait_name, impl_ty, assoc_name
+            );
+            let span = clamp(0..source_len.max(1).min(source_len));
+
+            Report::build(ReportKind::Error, (fname.clone(), span.clone()))
+                .with_code(code)
+                .with_message(&msg)
+                .with_config(config)
+                .with_label(
+                    Label::new((fname.clone(), span))
+                        .with_message(format!("`{}` is not declared by `{}`", assoc_name, trait_name))
+                        .with_color(Color::Red),
+                )
+                .finish()
+        }
+
+        TypeError::UnresolvedAssocType {
+            assoc_name,
+            span,
+        } => {
+            let msg = format!(
+                "cannot resolve associated type `{}`",
+                assoc_name
+            );
+            let span = clamp(text_range_to_range(*span));
+
+            Report::build(ReportKind::Error, (fname.clone(), span.clone()))
+                .with_code(code)
+                .with_message(&msg)
+                .with_config(config)
+                .with_label(
+                    Label::new((fname.clone(), span))
+                        .with_message("Self.Item can only be used inside an impl block")
+                        .with_color(Color::Red),
+                )
                 .finish()
         }
     };

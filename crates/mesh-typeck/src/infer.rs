@@ -2081,6 +2081,7 @@ fn register_struct_def(
             impl_type: impl_ty.clone(),
             impl_type_name: name.clone(),
             methods: debug_methods,
+            associated_types: FxHashMap::default(),
         });
     }
 
@@ -2100,6 +2101,7 @@ fn register_struct_def(
             impl_type: impl_ty.clone(),
             impl_type_name: name.clone(),
             methods: eq_methods,
+            associated_types: FxHashMap::default(),
         });
     }
 
@@ -2119,6 +2121,7 @@ fn register_struct_def(
             impl_type: impl_ty.clone(),
             impl_type_name: name.clone(),
             methods: ord_methods,
+            associated_types: FxHashMap::default(),
         });
     }
 
@@ -2138,6 +2141,7 @@ fn register_struct_def(
             impl_type: impl_ty.clone(),
             impl_type_name: name.clone(),
             methods: hash_methods,
+            associated_types: FxHashMap::default(),
         });
     }
 
@@ -2157,6 +2161,7 @@ fn register_struct_def(
             impl_type: impl_ty.clone(),
             impl_type_name: name.clone(),
             methods: display_methods,
+            associated_types: FxHashMap::default(),
         });
     }
 
@@ -2190,6 +2195,7 @@ fn register_struct_def(
                 impl_type: impl_ty.clone(),
                 impl_type_name: name.clone(),
                 methods: to_json_methods,
+                associated_types: FxHashMap::default(),
             });
 
             let mut from_json_methods = FxHashMap::default();
@@ -2209,6 +2215,7 @@ fn register_struct_def(
                 impl_type: impl_ty.clone(),
                 impl_type_name: name.clone(),
                 methods: from_json_methods,
+                associated_types: FxHashMap::default(),
             });
         }
     }
@@ -2245,6 +2252,7 @@ fn register_struct_def(
                 impl_type: impl_ty.clone(),
                 impl_type_name: name.clone(),
                 methods: from_row_methods,
+                associated_types: FxHashMap::default(),
             });
         }
     }
@@ -2527,6 +2535,7 @@ fn register_sum_type_def(
             impl_type: impl_ty.clone(),
             impl_type_name: name.clone(),
             methods: debug_methods,
+            associated_types: FxHashMap::default(),
         });
     }
 
@@ -2546,6 +2555,7 @@ fn register_sum_type_def(
             impl_type: impl_ty.clone(),
             impl_type_name: name.clone(),
             methods: eq_methods,
+            associated_types: FxHashMap::default(),
         });
     }
 
@@ -2565,6 +2575,7 @@ fn register_sum_type_def(
             impl_type: impl_ty.clone(),
             impl_type_name: name.clone(),
             methods: ord_methods,
+            associated_types: FxHashMap::default(),
         });
     }
 
@@ -2584,6 +2595,7 @@ fn register_sum_type_def(
             impl_type: impl_ty.clone(),
             impl_type_name: name.clone(),
             methods: hash_methods,
+            associated_types: FxHashMap::default(),
         });
     }
 
@@ -2603,6 +2615,7 @@ fn register_sum_type_def(
             impl_type: impl_ty.clone(),
             impl_type_name: name.clone(),
             methods: display_methods,
+            associated_types: FxHashMap::default(),
         });
     }
 
@@ -2646,6 +2659,7 @@ fn register_sum_type_def(
                 impl_type: impl_ty.clone(),
                 impl_type_name: name.clone(),
                 methods: to_json_methods,
+                associated_types: FxHashMap::default(),
             });
 
             let mut from_json_methods = FxHashMap::default();
@@ -2665,6 +2679,7 @@ fn register_sum_type_def(
                 impl_type: impl_ty,
                 impl_type_name: name.clone(),
                 methods: from_json_methods,
+                associated_types: FxHashMap::default(),
             });
         }
     }
@@ -2738,6 +2753,7 @@ fn infer_interface_def(
     trait_registry.register_trait(TraitDef {
         name: trait_name,
         methods,
+        associated_types: vec![],
     });
 }
 
@@ -2889,6 +2905,7 @@ fn infer_impl_def(
         impl_type,
         impl_type_name,
         methods: impl_methods,
+        associated_types: FxHashMap::default(),
     });
 
     ctx.errors.extend(errors);

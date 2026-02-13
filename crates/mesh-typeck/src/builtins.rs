@@ -832,6 +832,7 @@ fn register_compiler_known_traits(registry: &mut TraitRegistry) {
                 return_type: None, // return type is Self (the implementing type)
                 has_default_body: false,
             }],
+            associated_types: vec![],
         });
 
         // Register impls for Int and Float.
@@ -850,6 +851,7 @@ fn register_compiler_known_traits(registry: &mut TraitRegistry) {
                 impl_type: ty.clone(),
                 impl_type_name: ty_name.to_string(),
                 methods,
+                associated_types: FxHashMap::default(),
             });
         }
     }
@@ -865,6 +867,7 @@ fn register_compiler_known_traits(registry: &mut TraitRegistry) {
             return_type: Some(Ty::bool()),
             has_default_body: false,
         }],
+        associated_types: vec![],
     });
 
     // Eq impls for Int, Float, String, Bool.
@@ -888,6 +891,7 @@ fn register_compiler_known_traits(registry: &mut TraitRegistry) {
             impl_type: ty.clone(),
             impl_type_name: ty_name.to_string(),
             methods,
+            associated_types: FxHashMap::default(),
         });
     }
 
@@ -911,6 +915,7 @@ fn register_compiler_known_traits(registry: &mut TraitRegistry) {
                 has_default_body: true,
             },
         ],
+        associated_types: vec![],
     });
 
     // Ord impls for Int, Float, String.
@@ -941,6 +946,7 @@ fn register_compiler_known_traits(registry: &mut TraitRegistry) {
             impl_type: ty.clone(),
             impl_type_name: ty_name.to_string(),
             methods,
+            associated_types: FxHashMap::default(),
         });
     }
 
@@ -962,6 +968,7 @@ fn register_compiler_known_traits(registry: &mut TraitRegistry) {
             impl_type: list_t.clone(),
             impl_type_name: "List".to_string(),
             methods: eq_methods,
+            associated_types: FxHashMap::default(),
         });
 
         let mut ord_methods = FxHashMap::default();
@@ -986,6 +993,7 @@ fn register_compiler_known_traits(registry: &mut TraitRegistry) {
             impl_type: list_t,
             impl_type_name: "List".to_string(),
             methods: ord_methods,
+            associated_types: FxHashMap::default(),
         });
     }
 
@@ -1000,6 +1008,7 @@ fn register_compiler_known_traits(registry: &mut TraitRegistry) {
             return_type: Some(Ty::bool()),
             has_default_body: false,
         }],
+        associated_types: vec![],
     });
 
     let mut not_methods = FxHashMap::default();
@@ -1016,6 +1025,7 @@ fn register_compiler_known_traits(registry: &mut TraitRegistry) {
         impl_type: Ty::bool(),
         impl_type_name: "Bool".to_string(),
         methods: not_methods,
+        associated_types: FxHashMap::default(),
     });
 
     // ── Display trait ──────────────────────────────────────────────
@@ -1028,6 +1038,7 @@ fn register_compiler_known_traits(registry: &mut TraitRegistry) {
             return_type: Some(Ty::string()),
             has_default_body: false,
         }],
+        associated_types: vec![],
     });
 
     for (ty, ty_name) in &[
@@ -1050,6 +1061,7 @@ fn register_compiler_known_traits(registry: &mut TraitRegistry) {
             impl_type: ty.clone(),
             impl_type_name: ty_name.to_string(),
             methods,
+            associated_types: FxHashMap::default(),
         });
     }
 
@@ -1073,6 +1085,7 @@ fn register_compiler_known_traits(registry: &mut TraitRegistry) {
             impl_type: list_t,
             impl_type_name: "List".to_string(),
             methods,
+            associated_types: FxHashMap::default(),
         });
     }
     {
@@ -1094,6 +1107,7 @@ fn register_compiler_known_traits(registry: &mut TraitRegistry) {
             impl_type: map_kv,
             impl_type_name: "Map".to_string(),
             methods,
+            associated_types: FxHashMap::default(),
         });
     }
     {
@@ -1112,6 +1126,7 @@ fn register_compiler_known_traits(registry: &mut TraitRegistry) {
             impl_type: set_t,
             impl_type_name: "Set".to_string(),
             methods,
+            associated_types: FxHashMap::default(),
         });
     }
 
@@ -1125,6 +1140,7 @@ fn register_compiler_known_traits(registry: &mut TraitRegistry) {
             return_type: Some(Ty::string()),
             has_default_body: false,
         }],
+        associated_types: vec![],
     });
 
     // Debug impls for primitives (Int, Float, String, Bool).
@@ -1150,6 +1166,7 @@ fn register_compiler_known_traits(registry: &mut TraitRegistry) {
             impl_type: ty.clone(),
             impl_type_name: ty_name.to_string(),
             methods,
+            associated_types: FxHashMap::default(),
         });
     }
 
@@ -1163,6 +1180,7 @@ fn register_compiler_known_traits(registry: &mut TraitRegistry) {
             return_type: Some(Ty::int()),
             has_default_body: false,
         }],
+        associated_types: vec![],
     });
 
     // Hash impls for primitives (Int, Float, String, Bool).
@@ -1186,6 +1204,7 @@ fn register_compiler_known_traits(registry: &mut TraitRegistry) {
             impl_type: ty.clone(),
             impl_type_name: ty_name.to_string(),
             methods,
+            associated_types: FxHashMap::default(),
         });
     }
 
@@ -1201,6 +1220,7 @@ fn register_compiler_known_traits(registry: &mut TraitRegistry) {
             return_type: None, // Self -- resolved per concrete type at call site
             has_default_body: false,
         }],
+        associated_types: vec![],
     });
 
     // Default impls for primitives (Int, Float, String, Bool).
@@ -1225,6 +1245,7 @@ fn register_compiler_known_traits(registry: &mut TraitRegistry) {
             impl_type: ty.clone(),
             impl_type_name: ty_name.to_string(),
             methods,
+            associated_types: FxHashMap::default(),
         });
     }
 }
