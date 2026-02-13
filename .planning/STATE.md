@@ -2,17 +2,19 @@
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-02-13)
+See: .planning/PROJECT.md (updated 2026-02-12)
 
 **Core value:** Expressive, readable concurrency -- writing concurrent programs should feel as natural as sequential code, with supervision and fault tolerance built in.
-**Current focus:** v5.0 Distributed Actors — BEAM-style multi-node actor distribution.
+**Current focus:** v5.0 Distributed Actors -- Phase 63: PID Encoding & Wire Format
 
 ## Current Position
 
-Phase: Not started (defining requirements)
-Plan: —
-Status: Defining requirements
-Last activity: 2026-02-12 — Milestone v5.0 started
+Phase: 63 of 69 (PID Encoding & Wire Format)
+Plan: 0 of TBD in current phase
+Status: Ready to plan
+Last activity: 2026-02-12 -- Roadmap created for v5.0 (7 phases, 29 requirements)
+
+Progress: [░░░░░░░░░░] 0%
 
 ## Performance Metrics
 
@@ -31,7 +33,11 @@ Last activity: 2026-02-12 — Milestone v5.0 started
 
 ### Research Notes
 
-(Cleared at milestone boundary)
+- PID encoding: 16-bit node_id in upper bits of existing u64 (backward compatible)
+- Wire format: Custom Snow Term Format (STF), not Erlang ETF
+- Auth: HMAC-SHA256 challenge/response using existing sha2+hmac crates
+- Zero new crate dependencies for entire milestone
+- Reader-thread-bridge pattern from WebSocket reused for NodeSession
 
 ### Pending Todos
 
@@ -44,6 +50,6 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-12
-Stopped at: v5.0 milestone started, defining requirements
+Stopped at: v5.0 roadmap created (7 phases, 29 requirements mapped)
 Resume file: None
-Next action: Complete research and requirements definition
+Next action: `/gsd:plan-phase 63`

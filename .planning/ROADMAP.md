@@ -15,6 +15,7 @@
 - [x] **v2.0 Database & Serialization** - Phases 49-54 (shipped 2026-02-12)
 - [x] **v3.0 Production Backend** - Phases 55-58 (shipped 2026-02-12)
 - [x] **v4.0 WebSocket Support** - Phases 59-62 (shipped 2026-02-12)
+- [ ] **v5.0 Distributed Actors** - Phases 63-69 (in progress)
 
 ## Phases
 
@@ -122,7 +123,99 @@ See milestones/v4.0-ROADMAP.md for full phase details.
 
 </details>
 
+### v5.0 Distributed Actors (In Progress)
+
+**Milestone Goal:** BEAM-style distributed actor system -- Snow programs on different machines form a cluster with location-transparent PIDs, remote spawn, cross-node monitoring, and a binary wire format over TLS.
+
+- [ ] **Phase 63: PID Encoding & Wire Format** - Location-transparent PID representation and binary serialization for all Snow types
+- [ ] **Phase 64: Node Connection & Authentication** - TLS-encrypted inter-node TCP with cookie-based auth and discovery
+- [ ] **Phase 65: Remote Send & Distribution Router** - Transparent message routing across nodes with mesh formation
+- [ ] **Phase 66: Remote Links, Monitors & Failure Handling** - Cross-node fault tolerance with exit signal and partition propagation
+- [ ] **Phase 67: Remote Spawn & LLVM Integration** - Spawn actors on remote nodes with full Snow-level API
+- [ ] **Phase 68: Global Registry** - Cluster-wide process name registration and lookup
+- [ ] **Phase 69: Cross-Node Integration** - Distributed WebSocket rooms and remote supervision trees
+
+## Phase Details
+
+### Phase 63: PID Encoding & Wire Format
+**Goal**: PIDs carry node identity and all Snow values can be serialized to a binary format for inter-node transport
+**Depends on**: Nothing (foundation phase)
+**Requirements**: MSG-01, MSG-03, MSG-04, MSG-05, MSG-08, FT-05
+**Success Criteria** (what must be TRUE):
+  1. Existing Snow programs produce identical output with no PID encoding regressions (all 1,524 tests pass)
+  2. A PID created on one node can be decoded on another node to identify the originating node and local process
+  3. Every Snow value type (Int, Float, Bool, String, List, Map, Set, tuples, structs, sum types, Option, Result, PID) round-trips through STF encode/decode without data loss
+  4. Attempting to serialize a closure or function pointer produces a clear runtime error instead of silent corruption
+  5. Local send performance is unchanged -- the locality check adds no measurable overhead to the existing fast path
+**Plans**: TBD
+
+### Phase 64: Node Connection & Authentication
+**Goal**: Snow nodes can discover each other, establish TLS-encrypted connections, and authenticate via shared cookie
+**Depends on**: Phase 63
+**Requirements**: NODE-01, NODE-02, NODE-03, NODE-04, NODE-05, NODE-08
+**Success Criteria** (what must be TRUE):
+  1. User can start a named node with `Node.start("name@host", cookie: "secret")` and the process becomes addressable
+  2. User can connect to a remote node with `Node.connect("name@host:port")` and the connection succeeds with mutual authentication
+  3. A connection attempt with a wrong cookie is rejected with a clear error (not silent failure or crash)
+  4. Inter-node traffic is TLS-encrypted using the existing rustls infrastructure (not plaintext)
+  5. A dead node connection is detected via heartbeat within the configured timeout interval
+**Plans**: TBD
+
+### Phase 65: Remote Send & Distribution Router
+**Goal**: `send(pid, msg)` works transparently for remote PIDs and connected nodes form a mesh
+**Depends on**: Phase 64
+**Requirements**: MSG-02, MSG-06, MSG-07, NODE-06, NODE-07
+**Success Criteria** (what must be TRUE):
+  1. User can send a message to a PID on a remote node using the same `send(pid, msg)` syntax as local sends, and the remote actor receives it
+  2. User can send a message to a named process on a remote node with `send({name, node}, msg)` and it arrives
+  3. Messages between a given sender-receiver pair arrive in the order they were sent
+  4. Connecting node A to node B causes automatic mesh formation with node C (if B is already connected to C)
+  5. User can call `Node.list()` to see all connected nodes and `Node.self()` to get own node identity
+**Plans**: TBD
+
+### Phase 66: Remote Links, Monitors & Failure Handling
+**Goal**: Distributed fault tolerance -- supervisors and monitors detect remote crashes and network partitions
+**Depends on**: Phase 65
+**Requirements**: FT-01, FT-02, FT-03, FT-04
+**Success Criteria** (what must be TRUE):
+  1. User can monitor a remote process with `Process.monitor(remote_pid)` and receives a `:down` message when that process crashes
+  2. User can monitor a node with `Node.monitor(node)` and receives `:nodedown` when the node disconnects and `:nodeup` when it reconnects
+  3. When a node connection is lost, all remote links fire `:noconnection` exit signals and all remote monitors fire `:down` messages
+  4. Remote links propagate exit signals bidirectionally -- a crash on node A terminates linked processes on node B and vice versa
+**Plans**: TBD
+
+### Phase 67: Remote Spawn & LLVM Integration
+**Goal**: Users can spawn actors on remote nodes from Snow code with full language-level API
+**Depends on**: Phase 66
+**Requirements**: EXEC-01, EXEC-02, EXEC-03
+**Success Criteria** (what must be TRUE):
+  1. User can spawn an actor on a remote node with `Node.spawn(node, function, args)` and receive a usable PID back
+  2. User can spawn-and-link with `Node.spawn_link(node, function, args)` so that the remote actor's crash propagates back
+  3. Remote spawn uses function names (not pointers) so that differently-compiled binaries can spawn each other's functions
+**Plans**: TBD
+
+### Phase 68: Global Registry
+**Goal**: Processes can be registered by name across the entire cluster and looked up from any node
+**Depends on**: Phase 65
+**Requirements**: CLUST-01, CLUST-02, CLUST-03
+**Success Criteria** (what must be TRUE):
+  1. User can register a process globally with `Global.register(name, pid)` and the name is visible from all connected nodes
+  2. User can look up a globally registered name with `Global.whereis(name)` from any node and get back the correct PID
+  3. When a node disconnects, all global registrations owned by processes on that node are automatically cleaned up
+**Plans**: TBD
+
+### Phase 69: Cross-Node Integration
+**Goal**: Existing WebSocket rooms and supervision trees work transparently across node boundaries
+**Depends on**: Phase 66, Phase 68
+**Requirements**: CLUST-04, CLUST-05
+**Success Criteria** (what must be TRUE):
+  1. A WebSocket room broadcast on one node delivers the message to room members connected to other nodes
+  2. A supervision tree can monitor and restart child actors running on remote nodes, treating remote crashes the same as local ones
+**Plans**: TBD
+
 ## Progress
+
+**Execution Order:** 63 -> 64 -> 65 -> 66 -> 67 -> 68 -> 69
 
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
@@ -139,5 +232,12 @@ See milestones/v4.0-ROADMAP.md for full phase details.
 | 49-54 | v2.0 | 13/13 | Complete | 2026-02-12 |
 | 55-58 | v3.0 | 8/8 | Complete | 2026-02-12 |
 | 59-62 | v4.0 | 8/8 | Complete | 2026-02-12 |
+| 63 | v5.0 | 0/TBD | Not started | - |
+| 64 | v5.0 | 0/TBD | Not started | - |
+| 65 | v5.0 | 0/TBD | Not started | - |
+| 66 | v5.0 | 0/TBD | Not started | - |
+| 67 | v5.0 | 0/TBD | Not started | - |
+| 68 | v5.0 | 0/TBD | Not started | - |
+| 69 | v5.0 | 0/TBD | Not started | - |
 
-**Total: 62 phases shipped across 14 milestones. 170 plans completed. All milestones complete.**
+**Total: 62 phases shipped across 13 milestones. 170 plans completed. v5.0 in progress (7 phases planned).**
