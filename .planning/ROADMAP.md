@@ -166,7 +166,10 @@ Plans:
   3. A feature showcase section presents 3-4 key Mesh capabilities (actors, pattern matching, type inference, pipe operator) with real highlighted code examples
   4. A "Why Mesh?" section explains Mesh's positioning relative to Elixir, Rust, and Go
   5. Code blocks use a monochrome Shiki theme that matches the site's grayscale aesthetic in both dark and light modes
-**Plans**: TBD
+**Plans:** 2 plans
+Plans:
+- [ ] 71-01-PLAN.md -- Monochrome Shiki themes + code block CSS + VitePress grammar registration
+- [ ] 71-02-PLAN.md -- Landing page components (Hero, Features, Why Mesh) with Shiki highlighting
 
 #### Phase 72: Docs Infrastructure + Core Content
 **Goal**: Developers can navigate a structured documentation site with sidebar, table of contents, and prev/next links, and read complete guides covering the core language (getting started, basics, types, concurrency)
@@ -213,7 +216,7 @@ Phases execute in numeric order: 70 -> 71 -> 72 -> 73
 | 59-62 | v4.0 | 8/8 | Complete | 2026-02-12 |
 | 63-69 | v5.0 | 20/20 | Complete | 2026-02-13 |
 | 70 | v6.0 | 2/2 | Complete | 2026-02-13 |
-| 71 | v6.0 | 0/TBD | Not started | - |
+| 71 | v6.0 | 0/2 | Not started | - |
 | 72 | v6.0 | 0/TBD | Not started | - |
 | 73 | v6.0 | 0/TBD | Not started | - |
 
