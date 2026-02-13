@@ -276,6 +276,18 @@ pub(crate) const DIST_SPAWN: u8 = 0x19;
 /// Distribution message tag: remote spawn reply (Phase 67).
 /// Wire format: [tag][u64 request_id][u64 spawned_pid]
 pub(crate) const DIST_SPAWN_REPLY: u8 = 0x1A;
+
+/// Wire tag for global registry: register a name across the cluster.
+/// Format: [tag 0x1B][u16 name_len][name bytes][u64 pid][u16 node_name_len][node_name bytes]
+pub(crate) const DIST_GLOBAL_REGISTER: u8 = 0x1B;
+
+/// Wire tag for global registry: unregister a name across the cluster.
+/// Format: [tag 0x1C][u16 name_len][name bytes]
+pub(crate) const DIST_GLOBAL_UNREGISTER: u8 = 0x1C;
+
+/// Wire tag for global registry: bulk sync snapshot on node connect.
+/// Format: [tag 0x1D][u32 count][(u16 name_len, name, u64 pid, u16 node_len, node_name)*]
+pub(crate) const DIST_GLOBAL_SYNC: u8 = 0x1D;
 /// Reserved type_tag for spawn reply messages in mailbox.
 pub(crate) const SPAWN_REPLY_TAG: u64 = u64::MAX - 4;
 
@@ -912,6 +924,125 @@ fn reader_loop_session(
                                     }
                                 }
                             }
+                        }
+                    }
+                    DIST_GLOBAL_REGISTER => {
+                        // Wire format: [tag][u16 name_len][name][u64 pid][u16 node_name_len][node_name]
+                        if msg.len() >= 3 {
+                            let name_len = u16::from_le_bytes(msg[1..3].try_into().unwrap()) as usize;
+                            if msg.len() >= 3 + name_len + 8 + 2 {
+                                if let Ok(name) = std::str::from_utf8(&msg[3..3 + name_len]) {
+                                    let pid_raw = u64::from_le_bytes(
+                                        msg[3 + name_len..3 + name_len + 8].try_into().unwrap(),
+                                    );
+                                    let node_name_len = u16::from_le_bytes(
+                                        msg[3 + name_len + 8..3 + name_len + 10]
+                                            .try_into()
+                                            .unwrap(),
+                                    ) as usize;
+                                    if msg.len() >= 3 + name_len + 10 + node_name_len {
+                                        if let Ok(node_name) = std::str::from_utf8(
+                                            &msg[3 + name_len + 10
+                                                ..3 + name_len + 10 + node_name_len],
+                                        ) {
+                                            // Reconstruct the PID for our local view.
+                                            // If the PID has node_id=0 (local to sender), replace
+                                            // with this session's node_id so it routes correctly.
+                                            use crate::actor::process::ProcessId;
+                                            let mut pid = ProcessId(pid_raw);
+                                            if pid.node_id() == 0 {
+                                                pid = ProcessId::from_remote(
+                                                    session.node_id,
+                                                    session.remote_creation,
+                                                    pid.local_id(),
+                                                );
+                                            }
+                                            let _ = crate::dist::global::global_name_registry()
+                                                .register(
+                                                    name.to_string(),
+                                                    pid,
+                                                    node_name.to_string(),
+                                                );
+                                            // Silently drop errors (name conflict).
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    DIST_GLOBAL_UNREGISTER => {
+                        // Wire format: [tag][u16 name_len][name]
+                        if msg.len() >= 3 {
+                            let name_len = u16::from_le_bytes(msg[1..3].try_into().unwrap()) as usize;
+                            if msg.len() >= 3 + name_len {
+                                if let Ok(name) = std::str::from_utf8(&msg[3..3 + name_len]) {
+                                    crate::dist::global::global_name_registry().unregister(name);
+                                }
+                            }
+                        }
+                    }
+                    DIST_GLOBAL_SYNC => {
+                        // Wire format: [tag][u32 count][(u16 name_len, name, u64 pid, u16 node_len, node)*]
+                        if msg.len() >= 5 {
+                            use crate::actor::process::ProcessId;
+                            let count =
+                                u32::from_le_bytes(msg[1..5].try_into().unwrap()) as usize;
+                            let mut pos = 5;
+                            let mut entries = Vec::with_capacity(count);
+                            for _ in 0..count {
+                                if pos + 2 > msg.len() {
+                                    break;
+                                }
+                                let name_len = u16::from_le_bytes(
+                                    msg[pos..pos + 2].try_into().unwrap(),
+                                ) as usize;
+                                pos += 2;
+                                if pos + name_len + 8 + 2 > msg.len() {
+                                    break;
+                                }
+                                let name = match std::str::from_utf8(
+                                    &msg[pos..pos + name_len],
+                                ) {
+                                    Ok(s) => s,
+                                    Err(_) => break,
+                                };
+                                pos += name_len;
+                                let pid_raw = u64::from_le_bytes(
+                                    msg[pos..pos + 8].try_into().unwrap(),
+                                );
+                                pos += 8;
+                                let node_len = u16::from_le_bytes(
+                                    msg[pos..pos + 2].try_into().unwrap(),
+                                ) as usize;
+                                pos += 2;
+                                if pos + node_len > msg.len() {
+                                    break;
+                                }
+                                let node_name = match std::str::from_utf8(
+                                    &msg[pos..pos + node_len],
+                                ) {
+                                    Ok(s) => s,
+                                    Err(_) => break,
+                                };
+                                pos += node_len;
+
+                                // Reconstruct PID: if node_id=0, qualify with session info.
+                                let mut pid = ProcessId(pid_raw);
+                                if pid.node_id() == 0 {
+                                    pid = ProcessId::from_remote(
+                                        session.node_id,
+                                        session.remote_creation,
+                                        pid.local_id(),
+                                    );
+                                }
+                                entries.push((
+                                    name.to_string(),
+                                    pid,
+                                    node_name.to_string(),
+                                ));
+                            }
+                            crate::dist::global::global_name_registry()
+                                .merge_snapshot(entries);
                         }
                     }
                     _ => {
