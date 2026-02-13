@@ -1,0 +1,65 @@
+{
+  "name": "mesh-lang",
+  "displayName": "Mesh Language",
+  "description": "Mesh language support — syntax highlighting, diagnostics, hover, and go-to-definition",
+  "version": "0.1.0",
+  "publisher": "mesh-lang",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.75.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "activationEvents": [
+    "onLanguage:mesh"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "languages": [
+      {
+        "id": "mesh",
+        "aliases": [
+          "Mesh",
+          "mesh"
+        ],
+        "extensions": [
+          ".mpl"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "mesh",
+        "scopeName": "source.mesh",
+        "path": "./syntaxes/mesh.tmLanguage.json"
+      }
+    ],
+    "configuration": {
+      "title": "Mesh",
+      "properties": {
+        "mesh.lsp.path": {
+          "type": "string",
+          "default": "meshc",
+          "description": "Path to the meshc binary (must be in PATH, or provide absolute path)"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "package": "vsce package --no-dependencies",
+    "install-local": "vsce package --no-dependencies && code --install-extension mesh-lang-0.1.0.vsix"
+  },
+  "dependencies": {
+    "vscode-languageclient": "^9.0.1"
+  },
+  "devDependencies": {
+    "@types/node": "^25.2.1",
+    "@types/vscode": "^1.75.0",
+    "@vscode/vsce": "^2.22.0",
+    "typescript": "^5.3.0"
+  }
+}
