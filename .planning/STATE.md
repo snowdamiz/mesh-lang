@@ -5,22 +5,22 @@
 See: .planning/PROJECT.md (updated 2026-02-13)
 
 **Core value:** Expressive, readable concurrency -- writing concurrent programs should feel as natural and clean as writing sequential code, with the safety net of supervision and fault tolerance built into the language.
-**Current focus:** v6.0 Website & Documentation -- Phase 70: Scaffold + Design System
+**Current focus:** v6.0 Website & Documentation -- Phase 71: Syntax Highlighting + Landing Page
 
 ## Current Position
 
-Phase: 70 (1 of 4 in v6.0) — Scaffold + Design System
-Plan: 02 of 02 complete
-Status: Phase 70 complete
-Last activity: 2026-02-13 — Completed 70-02 (NavBar + ThemeToggle)
+Phase: 71 (2 of 4 in v6.0) — Syntax Highlighting + Landing Page
+Plan: —
+Status: Ready to plan
+Last activity: 2026-02-13 — Phase 70 complete (verified)
 
-Progress: [██████████] 100% (2/2 plans in phase 70)
+Progress: [██░░░░░░░░] 25% (1/4 phases in v6.0)
 
 ## Performance Metrics
 
 **All-time Totals:**
-- Plans completed: 191
-- Phases completed: 69
+- Plans completed: 192
+- Phases completed: 70
 - Milestones shipped: 15 (v1.0-v5.0)
 - Lines of Rust: ~93,500
 - Timeline: 9 days (2026-02-05 -> 2026-02-13)
@@ -60,11 +60,10 @@ None.
 | # | Description | Date | Commit | Directory |
 |---|-------------|------|--------|-----------|
 | 1 | Rename project from Snow to Mesh, change .snow file extension to .mpl | 2026-02-13 | 3fe109e1 | [1-rename-project-from-snow-to-mesh-change-](./quick/1-rename-project-from-snow-to-mesh-change-/) |
-| Phase 70 P02 | 15 | 2 tasks | 3 files |
 
 ## Session Continuity
 
 Last session: 2026-02-13
-Stopped at: Completed 70-02-PLAN.md (NavBar + ThemeToggle) — Phase 70 complete
+Stopped at: Phase 70 complete and verified
 Resume file: None
-Next action: Begin Phase 71 or other milestone work
+Next action: Plan Phase 71 (Syntax Highlighting + Landing Page)
