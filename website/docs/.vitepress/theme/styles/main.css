@@ -110,3 +110,34 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* VitePress search component CSS variable bridge */
+:root {
+  --vp-c-bg: var(--background);
+  --vp-c-bg-soft: var(--muted);
+  --vp-c-bg-alt: var(--secondary);
+  --vp-c-text-1: var(--foreground);
+  --vp-c-text-2: var(--muted-foreground);
+  --vp-c-text-3: var(--muted-foreground);
+  --vp-c-divider: var(--border);
+  --vp-c-brand-1: var(--foreground);
+  --vp-c-brand-2: var(--muted-foreground);
+  --vp-c-brand-3: var(--foreground);
+  --vp-c-default-soft: var(--accent);
+  --vp-font-family-base: inherit;
+  --vp-font-family-mono: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
+  --vp-shadow-1: 0 1px 2px rgba(0, 0, 0, 0.04), 0 1px 2px rgba(0, 0, 0, 0.06);
+  --vp-shadow-2: 0 3px 12px rgba(0, 0, 0, 0.07), 0 1px 4px rgba(0, 0, 0, 0.07);
+  --vp-shadow-3: 0 12px 32px rgba(0, 0, 0, 0.1), 0 2px 6px rgba(0, 0, 0, 0.08);
+  --vp-z-index-local-nav: 10;
+  --vp-z-index-nav: 20;
+  --vp-z-index-layout-top: 30;
+  --vp-z-index-backdrop: 40;
+  --vp-z-index-sidebar: 50;
+  --vp-z-index-footer: 60;
+}
+.dark {
+  --vp-shadow-1: 0 1px 2px rgba(0, 0, 0, 0.24), 0 1px 2px rgba(0, 0, 0, 0.36);
+  --vp-shadow-2: 0 3px 12px rgba(0, 0, 0, 0.36), 0 1px 4px rgba(0, 0, 0, 0.32);
+  --vp-shadow-3: 0 12px 32px rgba(0, 0, 0, 0.4), 0 2px 6px rgba(0, 0, 0, 0.32);
+}

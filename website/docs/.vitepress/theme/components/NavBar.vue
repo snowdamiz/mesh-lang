@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { VPNavBarSearch } from 'vitepress/theme'
 import ThemeToggle from './ThemeToggle.vue'
 import { useSidebar } from '@/composables/useSidebar'
 import { Menu } from 'lucide-vue-next'
@@ -34,8 +35,9 @@ const { hasSidebar, is960, toggle } = useSidebar()
         </a>
       </nav>
 
-      <!-- Right side: theme toggle -->
+      <!-- Right side: search + theme toggle -->
       <div class="flex items-center gap-2">
+        <VPNavBarSearch />
         <ThemeToggle />
       </div>
     </div>
