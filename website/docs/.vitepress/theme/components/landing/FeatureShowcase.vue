@@ -99,33 +99,38 @@ onMounted(async () => {
 </script>
 
 <template>
-  <section class="border-t border-border py-16 md:py-24">
-    <div class="mx-auto max-w-4xl px-4">
-      <h2 class="text-center text-3xl font-bold tracking-tight text-foreground">
-        What makes Mesh special
-      </h2>
+  <section class="border-t border-border py-20 md:py-28">
+    <div class="mx-auto max-w-5xl px-4">
+      <div class="text-center">
+        <h2 class="text-3xl font-bold tracking-tight text-foreground sm:text-4xl" style="letter-spacing: -0.03em;">
+          What makes Mesh special
+        </h2>
+        <p class="mx-auto mt-4 max-w-lg text-muted-foreground">
+          A language designed for building reliable, concurrent systems with minimal boilerplate.
+        </p>
+      </div>
 
-      <div class="mt-12 grid gap-6 md:grid-cols-2">
+      <div class="mt-14 grid gap-5 md:grid-cols-2">
         <div
           v-for="(feature, index) in features"
           :key="feature.title"
-          class="rounded-lg border border-border p-6"
+          class="group rounded-xl border border-border bg-card p-6 transition-colors hover:border-foreground/20"
         >
-          <h3 class="text-lg font-semibold text-foreground">
+          <h3 class="text-base font-semibold text-foreground tracking-tight">
             {{ feature.title }}
           </h3>
-          <p class="mt-2 text-sm text-muted-foreground">
+          <p class="mt-2 text-sm leading-relaxed text-muted-foreground">
             {{ feature.description }}
           </p>
-          <div class="mt-4 overflow-hidden rounded-md border border-border bg-muted">
+          <div class="mt-4 overflow-hidden rounded-lg border border-border bg-muted/50">
             <div
               v-if="highlighted[index]"
               v-html="highlighted[index]"
-              class="vp-code [&_pre]:p-3 [&_pre]:!bg-transparent [&_pre]:text-xs [&_pre]:leading-relaxed"
+              class="vp-code [&_pre]:p-4 [&_pre]:!bg-transparent [&_pre]:text-xs [&_pre]:leading-relaxed"
             />
             <pre
               v-else
-              class="overflow-x-auto p-3 text-xs leading-relaxed text-foreground"
+              class="overflow-x-auto p-4 text-xs leading-relaxed text-foreground font-mono"
             ><code>{{ feature.code }}</code></pre>
           </div>
         </div>

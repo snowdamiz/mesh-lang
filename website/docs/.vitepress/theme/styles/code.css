@@ -21,7 +21,7 @@ div[class*='language-'] {
 /* Light mode code block background */
 div[class*='language-'] > pre {
   background-color: var(--muted);
-  padding: 1rem 1.25rem;
+  padding: 1.25rem 1.5rem;
   overflow-x: auto;
 }
 
@@ -33,9 +33,10 @@ div[class*='language-'] > pre {
 /* Code font */
 .vp-code,
 .vp-code * {
-  font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace;
-  font-size: 0.875rem;
-  line-height: 1.7;
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  line-height: 1.75;
+  letter-spacing: -0.01em;
 }
 
 /* CSS variable for copy icon SVG */
@@ -53,18 +54,18 @@ div[class*='language-'] > button.copy {
   display: block;
   justify-content: center;
   align-items: center;
-  border-radius: 4px;
-  width: 40px;
-  height: 40px;
+  border-radius: 6px;
+  width: 36px;
+  height: 36px;
   border: 1px solid var(--border);
-  background-color: var(--muted);
+  background-color: var(--background);
   background-image: var(--vp-icon-copy);
   background-position: 50%;
-  background-size: 20px;
+  background-size: 18px;
   background-repeat: no-repeat;
   cursor: pointer;
   opacity: 0;
-  transition: opacity 0.15s ease, border-color 0.15s ease;
+  transition: opacity 0.2s ease, border-color 0.2s ease, background-color 0.2s ease;
 }
 
 div[class*='language-']:hover > button.copy,
@@ -75,7 +76,7 @@ div[class*='language-'] > button.copy:focus {
 div[class*='language-'] > button.copy:hover,
 div[class*='language-'] > button.copy.copied {
   border-color: var(--muted-foreground);
-  background-color: var(--secondary);
+  background-color: var(--muted);
 }
 
 div[class*='language-'] > button.copy.copied::before {
@@ -86,14 +87,14 @@ div[class*='language-'] > button.copy.copied::before {
   justify-content: center;
   align-items: center;
   border: 1px solid var(--border);
-  border-radius: 4px;
+  border-radius: 6px;
   padding: 0 10px;
   width: fit-content;
-  height: 40px;
+  height: 36px;
   font-size: 12px;
   font-weight: 500;
   color: var(--foreground);
-  background-color: var(--muted);
+  background-color: var(--background);
   white-space: nowrap;
   content: 'Copied';
 }
@@ -101,13 +102,15 @@ div[class*='language-'] > button.copy.copied::before {
 /* Language label */
 div[class*='language-'] > span.lang {
   position: absolute;
-  top: 6px;
+  top: 8px;
   right: 12px;
   z-index: 2;
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 500;
   color: var(--muted-foreground);
-  transition: opacity 0.15s ease;
+  transition: opacity 0.2s ease;
+  text-transform: lowercase;
+  letter-spacing: 0.02em;
 }
 
 /* Hide language label when copy button appears */

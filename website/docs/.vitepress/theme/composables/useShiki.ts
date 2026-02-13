@@ -27,5 +27,6 @@ export function highlightCode(hl: Highlighter, code: string): string {
   return hl.codeToHtml(code, {
     lang: 'mesh',
     themes: { light: 'mesh-light', dark: 'mesh-dark' },
+    defaultColor: false,
   })
 }

@@ -16,7 +16,7 @@
       "name": "Comments",
       "scope": ["comment", "comment.line"],
       "settings": {
-        "foreground": "#666666",
+        "foreground": "#6b7b6b",
         "fontStyle": "italic"
       }
     },
@@ -24,14 +24,14 @@
       "name": "Strings",
       "scope": ["string", "string.quoted"],
       "settings": {
-        "foreground": "#999999"
+        "foreground": "#c0a090"
       }
     },
     {
       "name": "Keywords Control",
       "scope": ["keyword.control.mesh"],
       "settings": {
-        "foreground": "#ffffff",
+        "foreground": "#e0e4ee",
         "fontStyle": "bold"
       }
     },
@@ -39,7 +39,7 @@
       "name": "Keywords Declaration",
       "scope": ["keyword.declaration.mesh"],
       "settings": {
-        "foreground": "#ffffff",
+        "foreground": "#e0e4ee",
         "fontStyle": "bold"
       }
     },
@@ -47,7 +47,7 @@
       "name": "Keywords Operator",
       "scope": ["keyword.operator.mesh"],
       "settings": {
-        "foreground": "#cccccc",
+        "foreground": "#b0b5c0",
         "fontStyle": "bold"
       }
     },
@@ -55,7 +55,7 @@
       "name": "Types",
       "scope": ["entity.name.type", "support.type"],
       "settings": {
-        "foreground": "#cccccc",
+        "foreground": "#90a8b8",
         "fontStyle": "italic"
       }
     },
@@ -63,21 +63,21 @@
       "name": "Functions",
       "scope": ["entity.name.function", "support.function"],
       "settings": {
-        "foreground": "#dddddd"
+        "foreground": "#88b0aa"
       }
     },
     {
       "name": "Constants and Booleans",
       "scope": ["constant", "constant.language", "constant.numeric"],
       "settings": {
-        "foreground": "#888888"
+        "foreground": "#b098c0"
       }
     },
     {
       "name": "Variables",
       "scope": ["variable", "variable.other"],
       "settings": {
-        "foreground": "#d0d0d0"
+        "foreground": "#c8c8c8"
       }
     },
     {
@@ -91,28 +91,28 @@
         "keyword.operator.assignment"
       ],
       "settings": {
-        "foreground": "#aaaaaa"
+        "foreground": "#9898a8"
       }
     },
     {
       "name": "Punctuation",
       "scope": ["punctuation"],
       "settings": {
-        "foreground": "#777777"
+        "foreground": "#686878"
       }
     },
     {
       "name": "Escape Characters",
       "scope": ["constant.character.escape"],
       "settings": {
-        "foreground": "#888888"
+        "foreground": "#8a9a7a"
       }
     },
     {
       "name": "Interpolation",
       "scope": ["meta.interpolation", "punctuation.section.interpolation"],
       "settings": {
-        "foreground": "#aaaaaa"
+        "foreground": "#9898a8"
       }
     }
   ]

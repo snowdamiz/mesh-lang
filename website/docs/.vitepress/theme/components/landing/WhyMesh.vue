@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { ArrowRight } from 'lucide-vue-next'
+
 const comparisons = [
   {
     language: 'Elixir',
@@ -22,39 +24,47 @@ const comparisons = [
 </script>
 
 <template>
-  <section class="border-t border-border py-16 md:py-24">
-    <div class="mx-auto max-w-4xl px-4">
-      <h2 class="text-center text-3xl font-bold tracking-tight text-foreground">
-        Why Mesh?
-      </h2>
-      <p class="mx-auto mt-4 max-w-2xl text-center text-muted-foreground">
-        Mesh sits at a unique intersection in the programming language landscape.
-      </p>
+  <section class="border-t border-border py-20 md:py-28">
+    <div class="mx-auto max-w-5xl px-4">
+      <div class="text-center">
+        <h2 class="text-3xl font-bold tracking-tight text-foreground sm:text-4xl" style="letter-spacing: -0.03em;">
+          Why Mesh?
+        </h2>
+        <p class="mx-auto mt-4 max-w-lg text-muted-foreground">
+          Mesh sits at a unique intersection in the programming language landscape.
+        </p>
+      </div>
 
-      <div class="mt-12 grid gap-6 md:grid-cols-3">
+      <div class="mt-14 grid gap-5 md:grid-cols-3">
         <div
           v-for="comparison in comparisons"
           :key="comparison.language"
-          class="rounded-lg border border-border p-6"
+          class="rounded-xl border border-border bg-card p-6 transition-colors hover:border-foreground/20"
         >
-          <h3 class="text-lg font-semibold text-foreground">
+          <div class="inline-flex items-center rounded-md bg-muted px-2.5 py-1 text-xs font-medium text-foreground">
             {{ comparison.label }}
-          </h3>
-          <p class="mt-3 text-sm leading-relaxed text-muted-foreground">
+          </div>
+          <p class="mt-4 text-sm leading-relaxed text-muted-foreground">
             {{ comparison.description }}
           </p>
         </div>
       </div>
 
-      <p class="mt-12 text-center text-sm text-muted-foreground">
-        Mesh is open source and under active development.
-        <a
-          href="https://github.com/user/mesh"
-          class="text-foreground underline underline-offset-4 transition-colors hover:text-muted-foreground"
-        >
-          View on GitHub
-        </a>
-      </p>
+      <!-- Footer CTA -->
+      <div class="mt-20 text-center">
+        <div class="inline-flex flex-col items-center gap-4">
+          <p class="text-sm text-muted-foreground">
+            Mesh is open source and under active development.
+          </p>
+          <a
+            href="https://github.com/user/mesh"
+            class="inline-flex items-center gap-1.5 text-sm font-medium text-foreground transition-colors hover:text-muted-foreground"
+          >
+            View on GitHub
+            <ArrowRight class="size-3.5" />
+          </a>
+        </div>
+      </div>
     </div>
   </section>
 </template>

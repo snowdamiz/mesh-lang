@@ -1,16 +1,16 @@
 <script setup lang="ts">
+import { Button } from '@/components/ui/button'
+import { ArrowLeft } from 'lucide-vue-next'
 </script>
 
 <template>
   <main class="flex min-h-[calc(100vh-3.5rem)] flex-col items-center justify-center px-4 text-center">
-    <h1 class="text-8xl font-bold tracking-tight text-foreground">404</h1>
+    <div class="text-8xl font-bold tracking-tighter text-foreground" style="letter-spacing: -0.05em;">404</div>
     <p class="mt-4 text-lg text-muted-foreground">Page not found</p>
     <p class="mt-2 text-sm text-muted-foreground">The page you're looking for doesn't exist or has been moved.</p>
-    <a
-      href="/"
-      class="mt-8 inline-flex items-center rounded-md border border-border bg-background px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
-    >
+    <Button as="a" href="/" variant="outline" class="mt-8">
+      <ArrowLeft class="size-4" />
       Back to home
-    </a>
+    </Button>
   </main>
 </template>

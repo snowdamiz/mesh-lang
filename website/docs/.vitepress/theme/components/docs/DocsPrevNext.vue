@@ -6,15 +6,15 @@ const prevNext = usePrevNext()
 </script>
 
 <template>
-  <div class="not-prose flex justify-between border-t border-border pt-6">
+  <div class="not-prose flex justify-between gap-4 border-t border-border pt-6">
     <!-- Previous link -->
     <a
       v-if="prevNext.prev?.link"
       :href="prevNext.prev.link"
-      class="flex items-center gap-1 text-sm text-primary hover:text-foreground transition-colors"
+      class="group flex items-center gap-2 rounded-lg border border-border px-4 py-3 text-sm transition-colors hover:border-foreground/20 hover:bg-accent"
     >
-      <ChevronLeft class="size-4" />
-      {{ prevNext.prev.text }}
+      <ChevronLeft class="size-4 text-muted-foreground group-hover:text-foreground transition-colors" />
+      <span class="text-muted-foreground group-hover:text-foreground transition-colors">{{ prevNext.prev.text }}</span>
     </a>
     <span v-else />
 
@@ -22,10 +22,10 @@ const prevNext = usePrevNext()
     <a
       v-if="prevNext.next?.link"
       :href="prevNext.next.link"
-      class="ml-auto flex items-center gap-1 text-sm text-primary hover:text-foreground transition-colors"
+      class="group ml-auto flex items-center gap-2 rounded-lg border border-border px-4 py-3 text-sm transition-colors hover:border-foreground/20 hover:bg-accent"
     >
-      {{ prevNext.next.text }}
-      <ChevronRight class="size-4" />
+      <span class="text-muted-foreground group-hover:text-foreground transition-colors">{{ prevNext.next.text }}</span>
+      <ChevronRight class="size-4 text-muted-foreground group-hover:text-foreground transition-colors" />
     </a>
   </div>
 </template>
