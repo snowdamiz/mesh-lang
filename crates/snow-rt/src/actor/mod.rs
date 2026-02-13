@@ -355,6 +355,69 @@ fn dist_send(target_pid: u64, msg_ptr: *const u8, msg_size: u64) {
     let _ = crate::dist::node::write_msg(&mut *stream, &payload);
 }
 
+/// Send a message to a named process on a remote node.
+///
+/// Called from compiled Snow code for `send({name, node}, msg)` syntax.
+/// If the target node is ourselves, performs a local registry lookup + send.
+/// Silently drops if node not started, name not found, or session unavailable.
+#[no_mangle]
+pub extern "C" fn snow_actor_send_named(
+    name_ptr: *const u8,
+    name_len: u64,
+    node_ptr: *const u8,
+    node_len: u64,
+    msg_ptr: *const u8,
+    msg_size: u64,
+) {
+    let name = unsafe {
+        std::str::from_utf8(std::slice::from_raw_parts(name_ptr, name_len as usize))
+    };
+    let node = unsafe {
+        std::str::from_utf8(std::slice::from_raw_parts(node_ptr, node_len as usize))
+    };
+
+    let (name, node) = match (name, node) {
+        (Ok(n), Ok(nd)) => (n, nd),
+        _ => return,
+    };
+
+    let state = match crate::dist::node::node_state() {
+        Some(s) => s,
+        None => return,
+    };
+
+    // If target node is ourselves, do local registry lookup + send
+    if node == state.name {
+        if let Some(pid) = crate::actor::registry::global_registry().whereis(name) {
+            local_send(pid.as_u64(), msg_ptr, msg_size);
+        }
+        return;
+    }
+
+    // Look up remote session
+    let session = {
+        let sessions = state.sessions.read();
+        match sessions.get(node) {
+            Some(s) => std::sync::Arc::clone(s),
+            None => return,
+        }
+    };
+
+    // Build DIST_REG_SEND message: [tag][u16 name_len LE][name bytes][msg bytes]
+    let name_bytes = name.as_bytes();
+    let mut payload = Vec::with_capacity(1 + 2 + name_bytes.len() + msg_size as usize);
+    payload.push(crate::dist::node::DIST_REG_SEND);
+    payload.extend_from_slice(&(name_bytes.len() as u16).to_le_bytes());
+    payload.extend_from_slice(name_bytes);
+    if !msg_ptr.is_null() && msg_size > 0 {
+        let slice = unsafe { std::slice::from_raw_parts(msg_ptr, msg_size as usize) };
+        payload.extend_from_slice(slice);
+    }
+
+    let mut stream = session.stream.lock().unwrap();
+    let _ = crate::dist::node::write_msg(&mut *stream, &payload);
+}
+
 /// Receive a message from the current actor's mailbox.
 ///
 /// Returns a pointer to the message data in the current actor's heap, or
