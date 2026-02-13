@@ -652,6 +652,10 @@ pub(crate) fn copy_msg_to_actor_heap(
 /// a message. For crashes, the linked process also crashes (unless
 /// `trap_exit` is set).
 ///
+/// Supports both local and remote PIDs:
+/// - Local: adds to both processes' link sets directly
+/// - Remote: adds to local process's link set, sends DIST_LINK to remote node
+///
 /// - `target_pid`: the PID of the actor to link with
 #[no_mangle]
 pub extern "C" fn snow_actor_link(target_pid: u64) {
@@ -663,12 +667,20 @@ pub extern "C" fn snow_actor_link(target_pid: u64) {
     let sched = global_scheduler();
     let target = ProcessId(target_pid);
 
-    // Add bidirectional link: my_pid <-> target_pid
-    let my_proc = sched.get_process(my_pid);
-    let target_proc = sched.get_process(target);
+    if target.node_id() == 0 {
+        // Local link: add to both processes' link sets directly.
+        let my_proc = sched.get_process(my_pid);
+        let target_proc = sched.get_process(target);
 
-    if let (Some(my_proc), Some(target_proc)) = (my_proc, target_proc) {
-        link::link(&my_proc, &target_proc, my_pid, target);
+        if let (Some(my_proc), Some(target_proc)) = (my_proc, target_proc) {
+            link::link(&my_proc, &target_proc, my_pid, target);
+        }
+    } else {
+        // Remote link: record locally + send DIST_LINK to remote node.
+        if let Some(my_proc) = sched.get_process(my_pid) {
+            my_proc.lock().links.insert(target);
+        }
+        crate::dist::node::send_dist_link(my_pid, target);
     }
 }
 
@@ -1107,13 +1119,58 @@ pub extern "C" fn snow_process_monitor(target_pid: u64) -> u64 {
             }
         }
     } else {
-        // Remote monitoring: for now just record locally (Plan 02 adds DIST_MONITOR).
+        // Remote monitoring: record locally and send DIST_MONITOR to the remote node.
         if let Some(my_arc) = sched.get_process(my_pid) {
             my_arc.lock().monitors.insert(monitor_ref, target);
+        }
+        // Send DIST_MONITOR wire message; if session not found, deliver DOWN(noconnection).
+        if !send_dist_monitor(my_pid, target, monitor_ref) {
+            // Session not found -- deliver DOWN(noconnection) immediately.
+            if let Some(my_arc) = sched.get_process(my_pid) {
+                my_arc.lock().monitors.remove(&monitor_ref);
+            }
+            deliver_down_immediately(sched, my_pid, monitor_ref, target, "noconnection");
         }
     }
 
     monitor_ref
+}
+
+/// Send a DIST_MONITOR wire message to a remote node.
+///
+/// Returns true if the message was sent, false if the session was not found.
+fn send_dist_monitor(from_pid: ProcessId, to_pid: ProcessId, monitor_ref: u64) -> bool {
+    let state = match crate::dist::node::node_state() {
+        Some(s) => s,
+        None => return false,
+    };
+
+    let node_id = to_pid.node_id();
+    let node_name = {
+        let map = state.node_id_map.read();
+        match map.get(&node_id) {
+            Some(name) => name.clone(),
+            None => return false,
+        }
+    };
+
+    let session = {
+        let sessions = state.sessions.read();
+        match sessions.get(&node_name) {
+            Some(s) => std::sync::Arc::clone(s),
+            None => return false,
+        }
+    };
+
+    // Wire format: [DIST_MONITOR][u64 from_pid][u64 to_pid][u64 ref]
+    let mut payload = Vec::with_capacity(1 + 8 + 8 + 8);
+    payload.push(crate::dist::node::DIST_MONITOR);
+    payload.extend_from_slice(&from_pid.as_u64().to_le_bytes());
+    payload.extend_from_slice(&to_pid.as_u64().to_le_bytes());
+    payload.extend_from_slice(&monitor_ref.to_le_bytes());
+
+    let mut stream = session.stream.lock().unwrap();
+    crate::dist::node::write_msg(&mut *stream, &payload).is_ok()
 }
 
 /// Remove a monitor.
@@ -1174,6 +1231,45 @@ fn deliver_down_immediately(
             proc.state = ProcessState::Ready;
         }
     }
+}
+
+/// Monitor a node for :nodedown/:nodeup events.
+///
+/// Registers the calling process to receive NODEDOWN_TAG and NODEUP_TAG
+/// messages when the specified node disconnects or reconnects.
+///
+/// Returns 0 on success, 1 on failure.
+#[no_mangle]
+pub extern "C" fn snow_node_monitor(node_ptr: *const u8, node_len: u64) -> u64 {
+    let my_pid = match stack::get_current_pid() {
+        Some(pid) => pid,
+        None => return 1,
+    };
+
+    if node_ptr.is_null() || node_len == 0 {
+        return 1;
+    }
+
+    let node_name = unsafe {
+        let slice = std::slice::from_raw_parts(node_ptr, node_len as usize);
+        match std::str::from_utf8(slice) {
+            Ok(s) => s.to_string(),
+            Err(_) => return 1,
+        }
+    };
+
+    let state = match crate::dist::node::node_state() {
+        Some(s) => s,
+        None => return 1,
+    };
+
+    let mut monitors = state.node_monitors.write();
+    monitors
+        .entry(node_name)
+        .or_insert_with(Vec::new)
+        .push((my_pid, false)); // false = persistent monitor (not once)
+
+    0
 }
 
 /// Parse a `SupervisorConfig` from raw bytes.
