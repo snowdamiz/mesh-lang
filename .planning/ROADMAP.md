@@ -161,7 +161,11 @@ See milestones/v6.0-ROADMAP.md for full phase details.
   2. User can reference `Self.Item` in trait method signatures and the compiler resolves it to the concrete type from the impl
   3. Compiler infers concrete associated types through generic function calls without explicit annotation (HM integration works)
   4. Compiler reports clear error when an impl is missing an associated type binding or provides an extra one
-**Plans**: TBD
+**Plans:** 3 plans
+Plans:
+- [ ] 74-01-PLAN.md -- Parser and AST support for associated type syntax
+- [ ] 74-02-PLAN.md -- Type checker: TraitDef/ImplDef extension, validation, Self.Item resolution
+- [ ] 74-03-PLAN.md -- MIR integration, cross-module export, E2E and compile-fail tests
 
 #### Phase 75: Numeric Traits
 **Goal**: Users can implement arithmetic operators for custom types and write generic numeric code
@@ -238,7 +242,7 @@ See milestones/v6.0-ROADMAP.md for full phase details.
 | 59-62 | v4.0 | 8/8 | Complete | 2026-02-12 |
 | 63-69 | v5.0 | 20/20 | Complete | 2026-02-13 |
 | 70-73 | v6.0 | 11/11 | Complete | 2026-02-13 |
-| 74 | v7.0 | 0/TBD | Not started | - |
+| 74 | v7.0 | 0/3 | Not started | - |
 | 75 | v7.0 | 0/TBD | Not started | - |
 | 76 | v7.0 | 0/TBD | Not started | - |
 | 77 | v7.0 | 0/TBD | Not started | - |
