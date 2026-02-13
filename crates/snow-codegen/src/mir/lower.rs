@@ -682,6 +682,15 @@ impl<'a> Lowerer<'a> {
         self.known_functions.insert("snow_ws_send_binary".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr, MirType::Int], Box::new(MirType::Int)));
         // snow_ws_serve_tls(on_connect_fn: ptr, on_connect_env: ptr, on_message_fn: ptr, on_message_env: ptr, on_close_fn: ptr, on_close_env: ptr, port: i64, cert_path: ptr, key_path: ptr) -> void
         self.known_functions.insert("snow_ws_serve_tls".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr, MirType::Ptr, MirType::Ptr, MirType::Ptr, MirType::Ptr, MirType::Int, MirType::Ptr, MirType::Ptr], Box::new(MirType::Unit)));
+        // ── WebSocket Room functions (Phase 62) ──────────────────────────
+        // snow_ws_join(conn: ptr, room: ptr) -> i64
+        self.known_functions.insert("snow_ws_join".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr], Box::new(MirType::Int)));
+        // snow_ws_leave(conn: ptr, room: ptr) -> i64
+        self.known_functions.insert("snow_ws_leave".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr], Box::new(MirType::Int)));
+        // snow_ws_broadcast(room: ptr, msg: ptr) -> i64
+        self.known_functions.insert("snow_ws_broadcast".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr], Box::new(MirType::Int)));
+        // snow_ws_broadcast_except(room: ptr, msg: ptr, except_conn: ptr) -> i64
+        self.known_functions.insert("snow_ws_broadcast_except".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr, MirType::Ptr], Box::new(MirType::Int)));
         // ── SQLite functions (Phase 53) ──────────────────────────────────
         // Connection handle is MirType::Int (i64) for GC safety (SQLT-07).
         self.known_functions.insert("snow_sqlite_open".to_string(), MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Ptr)));
@@ -9511,6 +9520,11 @@ fn map_builtin_name(name: &str) -> String {
         "ws_send" => "snow_ws_send".to_string(),
         "ws_send_binary" => "snow_ws_send_binary".to_string(),
         "ws_serve_tls" => "snow_ws_serve_tls".to_string(),
+        // ── WebSocket Room functions (Phase 62) ────────────────────────
+        "ws_join" => "snow_ws_join".to_string(),
+        "ws_leave" => "snow_ws_leave".to_string(),
+        "ws_broadcast" => "snow_ws_broadcast".to_string(),
+        "ws_broadcast_except" => "snow_ws_broadcast_except".to_string(),
         _ => name.to_string(),
     }
 }

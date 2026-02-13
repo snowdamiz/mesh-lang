@@ -439,6 +439,19 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
     // snow_ws_serve_tls(on_connect_fn: ptr, on_connect_env: ptr, on_message_fn: ptr, on_message_env: ptr, on_close_fn: ptr, on_close_env: ptr, port: i64, cert_path: ptr, key_path: ptr) -> void
     module.add_function("snow_ws_serve_tls", void_type.fn_type(&[ptr_type.into(), ptr_type.into(), ptr_type.into(), ptr_type.into(), ptr_type.into(), ptr_type.into(), i64_type.into(), ptr_type.into(), ptr_type.into()], false), Some(inkwell::module::Linkage::External));
 
+    // ── WebSocket Room functions (Phase 62) ──────────────────────────────
+    // snow_ws_join(conn: ptr, room: ptr) -> i64
+    module.add_function("snow_ws_join", i64_type.fn_type(&[ptr_type.into(), ptr_type.into()], false), Some(inkwell::module::Linkage::External));
+
+    // snow_ws_leave(conn: ptr, room: ptr) -> i64
+    module.add_function("snow_ws_leave", i64_type.fn_type(&[ptr_type.into(), ptr_type.into()], false), Some(inkwell::module::Linkage::External));
+
+    // snow_ws_broadcast(room: ptr, msg: ptr) -> i64
+    module.add_function("snow_ws_broadcast", i64_type.fn_type(&[ptr_type.into(), ptr_type.into()], false), Some(inkwell::module::Linkage::External));
+
+    // snow_ws_broadcast_except(room: ptr, msg: ptr, except_conn: ptr) -> i64
+    module.add_function("snow_ws_broadcast_except", i64_type.fn_type(&[ptr_type.into(), ptr_type.into(), ptr_type.into()], false), Some(inkwell::module::Linkage::External));
+
     // snow_http_response_new(status: i64, body: ptr) -> ptr
     module.add_function("snow_http_response_new", ptr_type.fn_type(&[i64_type.into(), ptr_type.into()], false), Some(inkwell::module::Linkage::External));
 
@@ -1012,6 +1025,12 @@ mod tests {
         assert!(module.get_function("snow_ws_send").is_some());
         assert!(module.get_function("snow_ws_send_binary").is_some());
         assert!(module.get_function("snow_ws_serve_tls").is_some());
+
+        // WebSocket Room functions (Phase 62)
+        assert!(module.get_function("snow_ws_join").is_some());
+        assert!(module.get_function("snow_ws_leave").is_some());
+        assert!(module.get_function("snow_ws_broadcast").is_some());
+        assert!(module.get_function("snow_ws_broadcast_except").is_some());
     }
 
     #[test]
