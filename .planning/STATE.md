@@ -5,21 +5,21 @@
 See: .planning/PROJECT.md (updated 2026-02-13)
 
 **Core value:** Expressive, readable concurrency -- writing concurrent programs should feel as natural and clean as writing sequential code, with the safety net of supervision and fault tolerance built into the language.
-**Current focus:** v6.0 Website & Documentation -- Phase 71: Syntax Highlighting + Landing Page
+**Current focus:** v6.0 Website & Documentation -- Phase 72: Docs Infrastructure + Core Content
 
 ## Current Position
 
-Phase: 71 (2 of 4 in v6.0) — Syntax Highlighting + Landing Page
-Plan: 02 of 02 complete
-Status: Phase Complete
-Last activity: 2026-02-13 — Plan 71-02 complete (landing page)
+Phase: 72 (3 of 4 in v6.0) — Docs Infrastructure + Core Content
+Plan: 01 of 04 complete
+Status: In Progress
+Last activity: 2026-02-13 — Plan 72-01 complete (docs infrastructure foundations)
 
 Progress: [█████░░░░░] 50% (2/4 phases in v6.0)
 
 ## Performance Metrics
 
 **All-time Totals:**
-- Plans completed: 194
+- Plans completed: 195
 - Phases completed: 71
 - Milestones shipped: 15 (v1.0-v5.0)
 - Lines of Rust: ~93,500
@@ -41,6 +41,8 @@ Progress: [█████░░░░░] 50% (2/4 phases in v6.0)
 - 71-01: Used as any casts on TextMate JSON imports per VitePress maintainer recommendation
 - 71-02: Used onMounted client-side highlighting with raw code fallback for SSR compatibility
 - 71-02: Composed landing page from 3 section components (Hero, Features, WhyMesh) for maintainability
+- 72-01: Used VitePress public API only (useData, useRoute, onContentUpdated) -- no vitepress/theme imports
+- 72-01: DOM-based heading extraction over page.headers for reliable dynamic content TOC
 
 ### Research Notes
 
@@ -68,6 +70,6 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-13
-Stopped at: Completed 71-02-PLAN.md (Phase 71 complete)
+Stopped at: Completed 72-01-PLAN.md
 Resume file: None
-Next action: Plan and execute Phase 72
+Next action: Execute 72-02-PLAN.md (docs layout components)
