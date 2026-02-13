@@ -5,7 +5,7 @@
 See: .planning/PROJECT.md (updated 2026-02-13)
 
 **Core value:** Expressive, readable concurrency -- writing concurrent programs should feel as natural as sequential code, with supervision and fault tolerance built in.
-**Current focus:** All milestones complete (v1.0-v5.0). Planning next milestone.
+**Current focus:** All milestones complete (v1.0-v5.0). Project renamed from Snow to Mesh.
 
 ## Current Position
 
@@ -31,6 +31,9 @@ Progress: [██████████] 100%
 
 (See PROJECT.md Key Decisions table for full log)
 
+- Quick-1: File extension .mpl chosen for Mesh source files (not .mesh to avoid .mesh/ directory confusion)
+- Quick-1: Delete and regenerate snapshots rather than manual edit (simpler, guarantees correctness)
+
 ### Research Notes
 
 None.
@@ -46,6 +49,6 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-13
-Stopped at: v5.0 milestone archived
+Stopped at: Completed quick task 1 (Snow -> Mesh rename)
 Resume file: None
 Next action: Start next milestone with /gsd:new-milestone
