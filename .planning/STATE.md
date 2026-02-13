@@ -10,9 +10,9 @@ See: .planning/PROJECT.md (updated 2026-02-12)
 ## Current Position
 
 Phase: 66 of 69 (Remote Links, Monitors & Failure Handling)
-Plan: 2 of 3 in current phase
+Plan: 3 of 3 in current phase
 Status: In Progress
-Last activity: 2026-02-13 -- Completed 66-02 (Node Monitoring & Connection Loss Propagation)
+Last activity: 2026-02-13 -- Completed 66-03 (Remote Link Exit Propagation)
 
 Progress: [██████████] 100%
 
@@ -65,6 +65,9 @@ Progress: [██████████] 100%
 - 66-02: Remote monitor sends DIST_MONITOR wire; if session gone, immediate DOWN(noconnection)
 - 66-02: DIST_MONITOR on dead process immediately replies DIST_MONITOR_EXIT(noproc)
 - 66-02: Node monitors default persistent (is_once=false), retained across events
+- 66-03: Partition links/monitors by node_id in handle_process_exit for clean local/remote separation
+- 66-03: Batch trap_exit signals before waking (avoids re-acquire borrow issues in disconnect handler)
+- 66-03: send_dist_unlink marked dead_code since snow_actor_unlink not yet exposed as extern C
 
 ### Research Notes
 
@@ -85,6 +88,6 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-13
-Stopped at: Completed 66-02-PLAN.md (Node Monitoring & Connection Loss Propagation)
+Stopped at: Completed 66-03-PLAN.md (Remote Link Exit Propagation)
 Resume file: None
-Next action: Execute 66-03-PLAN.md (Remote Link Exit Propagation)
+Next action: Phase 66 complete -- proceed to Phase 67
