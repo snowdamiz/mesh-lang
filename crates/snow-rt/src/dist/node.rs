@@ -2206,6 +2206,7 @@ fn accept_loop(listener: TcpListener, state: &NodeState) {
                     Ok(session) => {
                         spawn_session_threads(&session);
                         send_peer_list(&session);
+                        crate::dist::global::send_global_sync(&session);
                     }
                     Err(e) => {
                         eprintln!(
@@ -2413,6 +2414,7 @@ pub extern "C" fn snow_node_connect(
         Ok(session) => {
             spawn_session_threads(&session);
             send_peer_list(&session);
+            crate::dist::global::send_global_sync(&session);
             0
         }
         Err(e) => {

@@ -292,6 +292,41 @@ pub(crate) fn broadcast_global_unregister(name: &str) {
 }
 
 // ---------------------------------------------------------------------------
+// Sync-on-connect (Phase 68, Plan 03)
+// ---------------------------------------------------------------------------
+
+/// Send our global registry snapshot to a newly connected node.
+///
+/// Called right after `send_peer_list` on both server (accept) and client
+/// (connect) sides so that both nodes converge to the union of all known
+/// global names. If there are no local registrations, this is a no-op.
+pub(crate) fn send_global_sync(session: &std::sync::Arc<super::node::NodeSession>) {
+    let registry = global_name_registry();
+    let snapshot = registry.snapshot();
+
+    if snapshot.is_empty() {
+        return; // Nothing to sync
+    }
+
+    let mut payload = Vec::new();
+    payload.push(super::node::DIST_GLOBAL_SYNC);
+    payload.extend_from_slice(&(snapshot.len() as u32).to_le_bytes());
+
+    for (name, pid, node_name) in &snapshot {
+        let name_bytes = name.as_bytes();
+        payload.extend_from_slice(&(name_bytes.len() as u16).to_le_bytes());
+        payload.extend_from_slice(name_bytes);
+        payload.extend_from_slice(&pid.as_u64().to_le_bytes());
+        let node_bytes = node_name.as_bytes();
+        payload.extend_from_slice(&(node_bytes.len() as u16).to_le_bytes());
+        payload.extend_from_slice(node_bytes);
+    }
+
+    let mut stream = session.stream.lock().unwrap();
+    let _ = super::node::write_msg(&mut *stream, &payload);
+}
+
+// ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
