@@ -179,6 +179,13 @@ const HEARTBEAT_PING: u8 = 0xF0;
 /// Pong message tag for inter-node heartbeat.
 const HEARTBEAT_PONG: u8 = 0xF1;
 
+/// Distribution message tag: send to a specific PID on the receiving node.
+/// Wire format: [tag][u64 target_pid LE][raw message bytes]
+pub(crate) const DIST_SEND: u8 = 0x10;
+/// Distribution message tag: send to a named process on the receiving node.
+/// Wire format: [tag][u16 name_len LE][name bytes][raw message bytes]
+pub(crate) const DIST_REG_SEND: u8 = 0x11;
+
 // ---------------------------------------------------------------------------
 // HeartbeatState -- ping/pong dead connection detection
 // ---------------------------------------------------------------------------
@@ -298,7 +305,7 @@ fn reader_loop_session(
 
         let result = {
             let mut s = session.stream.lock().unwrap();
-            read_msg(&mut *s)
+            read_dist_msg(&mut *s)
         };
 
         match result {
@@ -327,8 +334,43 @@ fn reader_loop_session(
                             }
                         }
                     }
+                    DIST_SEND => {
+                        // Wire format: [tag][u64 target_pid LE][raw message bytes]
+                        if msg.len() >= 9 {
+                            let target_pid = u64::from_le_bytes(
+                                msg[1..9].try_into().unwrap(),
+                            );
+                            let msg_data = &msg[9..];
+                            crate::actor::local_send(
+                                target_pid,
+                                msg_data.as_ptr(),
+                                msg_data.len() as u64,
+                            );
+                        }
+                    }
+                    DIST_REG_SEND => {
+                        // Wire format: [tag][u16 name_len LE][name bytes][raw message bytes]
+                        if msg.len() >= 3 {
+                            let name_len = u16::from_le_bytes(
+                                msg[1..3].try_into().unwrap(),
+                            ) as usize;
+                            if msg.len() >= 3 + name_len {
+                                if let Ok(name) = std::str::from_utf8(&msg[3..3 + name_len]) {
+                                    if let Some(pid) = crate::actor::registry::global_registry().whereis(name) {
+                                        let msg_data = &msg[3 + name_len..];
+                                        crate::actor::local_send(
+                                            pid.as_u64(),
+                                            msg_data.as_ptr(),
+                                            msg_data.len() as u64,
+                                        );
+                                    }
+                                    // If name not found, silently drop (matches Erlang behavior)
+                                }
+                            }
+                        }
+                    }
                     _ => {
-                        // Phase 65 will handle actual message routing.
+                        // Unknown tag -- silently ignore for forward compatibility.
                     }
                 }
             }
@@ -442,7 +484,7 @@ const MAX_HANDSHAKE_MSG: u32 = 4096;
 // ---------------------------------------------------------------------------
 
 /// Write a length-prefixed message: `[u32 length][payload]`.
-fn write_msg(stream: &mut impl Write, payload: &[u8]) -> io::Result<()> {
+pub(crate) fn write_msg(stream: &mut impl Write, payload: &[u8]) -> io::Result<()> {
     let len = payload.len() as u32;
     stream.write_all(&len.to_le_bytes())?;
     stream.write_all(payload)?;
@@ -459,6 +501,33 @@ fn read_msg(stream: &mut impl Read) -> io::Result<Vec<u8>> {
         return Err(io::Error::new(
             io::ErrorKind::InvalidData,
             format!("handshake message too large: {} bytes (max {})", len, MAX_HANDSHAKE_MSG),
+        ));
+    }
+    let mut buf = vec![0u8; len as usize];
+    stream.read_exact(&mut buf)?;
+    Ok(buf)
+}
+
+/// Maximum size for distribution messages (16 MiB).
+///
+/// Post-handshake messages can be much larger than the 4 KiB handshake limit.
+/// Actor messages containing large binaries or deeply nested data structures
+/// may approach this limit.
+const MAX_DIST_MSG: u32 = 16 * 1024 * 1024;
+
+/// Read a length-prefixed distribution message with a 16 MiB limit.
+///
+/// Used in the reader loop after the handshake is complete. The larger limit
+/// allows full-size actor messages to be transmitted between nodes, while
+/// still preventing unbounded allocations from malicious or buggy peers.
+pub(crate) fn read_dist_msg(stream: &mut impl Read) -> io::Result<Vec<u8>> {
+    let mut len_buf = [0u8; 4];
+    stream.read_exact(&mut len_buf)?;
+    let len = u32::from_le_bytes(len_buf);
+    if len > MAX_DIST_MSG {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!("dist message too large: {} bytes (max {})", len, MAX_DIST_MSG),
         ));
     }
     let mut buf = vec![0u8; len as usize];

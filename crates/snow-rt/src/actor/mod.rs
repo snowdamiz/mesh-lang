@@ -264,7 +264,7 @@ pub extern "C" fn snow_actor_send(target_pid: u64, msg_ptr: *const u8, msg_size:
     if target_pid >> 48 == 0 {
         local_send(target_pid, msg_ptr, msg_size);
     } else {
-        dist_send_stub(target_pid, msg_ptr, msg_size);
+        dist_send(target_pid, msg_ptr, msg_size);
     }
 }
 
@@ -272,7 +272,7 @@ pub extern "C" fn snow_actor_send(target_pid: u64, msg_ptr: *const u8, msg_size:
 ///
 /// Deep-copies the message bytes into a `MessageBuffer`, pushes it into
 /// the target actor's FIFO mailbox, and wakes the target if it is Waiting.
-fn local_send(target_pid: u64, msg_ptr: *const u8, msg_size: u64) {
+pub(crate) fn local_send(target_pid: u64, msg_ptr: *const u8, msg_size: u64) {
     let sched = global_scheduler();
     let pid = ProcessId(target_pid);
 
@@ -310,14 +310,49 @@ fn local_send(target_pid: u64, msg_ptr: *const u8, msg_size: u64) {
     }
 }
 
-/// Cold stub for remote sends -- Phase 65 will replace this with actual
-/// remote send via NodeSession. For now, remote PIDs should not exist in
-/// single-node programs. Silently drop -- no panic, no log.
+/// Remote send path -- routes a message to a remote actor via the node's
+/// TLS session.
+///
+/// Extracts the node_id from the upper 16 bits of the target PID, looks
+/// up the corresponding NodeSession, and writes a DIST_SEND message to
+/// the TLS stream. Silently drops on any failure (unknown node, no
+/// session, write error) -- Phase 66 will add :nodedown notifications.
 #[cold]
-fn dist_send_stub(_target_pid: u64, _msg_ptr: *const u8, _msg_size: u64) {
-    // Phase 65 will replace this with actual remote send via NodeSession.
-    // For now, remote PIDs should not exist in single-node programs.
-    // Silently drop -- no panic, no log.
+fn dist_send(target_pid: u64, msg_ptr: *const u8, msg_size: u64) {
+    let state = match crate::dist::node::node_state() {
+        Some(s) => s,
+        None => return, // Node not started; silently drop
+    };
+
+    let node_id = (target_pid >> 48) as u16;
+    let node_name = {
+        let map = state.node_id_map.read();
+        match map.get(&node_id) {
+            Some(name) => name.clone(),
+            None => return, // Unknown node; silently drop
+        }
+    };
+
+    let session = {
+        let sessions = state.sessions.read();
+        match sessions.get(&node_name) {
+            Some(s) => std::sync::Arc::clone(s),
+            None => return, // Not connected; silently drop
+        }
+    };
+
+    // Build wire message: [DIST_SEND][u64 target_pid LE][raw message bytes]
+    let mut payload = Vec::with_capacity(1 + 8 + msg_size as usize);
+    payload.push(crate::dist::node::DIST_SEND);
+    payload.extend_from_slice(&target_pid.to_le_bytes());
+    if !msg_ptr.is_null() && msg_size > 0 {
+        let slice = unsafe { std::slice::from_raw_parts(msg_ptr, msg_size as usize) };
+        payload.extend_from_slice(slice);
+    }
+
+    // Write to TLS stream; silently drop on error (Phase 66 adds :nodedown)
+    let mut stream = session.stream.lock().unwrap();
+    let _ = crate::dist::node::write_msg(&mut *stream, &payload);
 }
 
 /// Receive a message from the current actor's mailbox.
