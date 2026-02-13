@@ -138,7 +138,7 @@ See milestones/v5.0-ROADMAP.md for full phase details.
 
 - [x] **Phase 70: Scaffold + Design System** - VitePress custom theme with Tailwind v4, shadcn-vue, dark/light mode, and NavBar (completed 2026-02-13)
 - [x] **Phase 71: Syntax Highlighting + Landing Page** - Mesh code rendering via TextMate grammar and the site's first impression (completed 2026-02-13)
-- [ ] **Phase 72: Docs Infrastructure + Core Content** - Sidebar navigation, docs layout, and core language documentation
+- [x] **Phase 72: Docs Infrastructure + Core Content** - Sidebar navigation, docs layout, and core language documentation (completed 2026-02-13)
 - [ ] **Phase 73: Extended Content + Polish** - Remaining docs, search, SEO, and site-wide features
 
 #### Phase 70: Scaffold + Design System
@@ -183,10 +183,10 @@ Plans:
   5. Documentation covers language basics (variables, types, functions, pattern matching, control flow, pipes, error handling, modules), the type system (inference, generics, structs, sum types, traits, deriving), concurrency (actors, spawning, message passing, linking/monitoring, supervision), and a syntax cheatsheet
 **Plans:** 4 plans
 Plans:
-- [ ] 72-01-PLAN.md -- Scaffold UI primitives, typography, composables, and sidebar config
-- [ ] 72-02-PLAN.md -- Build docs layout components and wire into Layout.vue
-- [ ] 72-03-PLAN.md -- Getting Started and Language Basics documentation
-- [ ] 72-04-PLAN.md -- Type System, Concurrency, and Syntax Cheatsheet documentation
+- [x] 72-01-PLAN.md -- Scaffold UI primitives, typography, composables, and sidebar config
+- [x] 72-02-PLAN.md -- Build docs layout components and wire into Layout.vue
+- [x] 72-03-PLAN.md -- Getting Started and Language Basics documentation
+- [x] 72-04-PLAN.md -- Type System, Concurrency, and Syntax Cheatsheet documentation
 
 #### Phase 73: Extended Content + Polish
 **Goal**: The documentation is complete across all Mesh feature areas (web, database, distributed) and the site has production-quality features (search, SEO, edit links, version badge)
@@ -222,7 +222,7 @@ Phases execute in numeric order: 70 -> 71 -> 72 -> 73
 | 63-69 | v5.0 | 20/20 | Complete | 2026-02-13 |
 | 70 | v6.0 | 2/2 | Complete | 2026-02-13 |
 | 71 | v6.0 | 2/2 | Complete | 2026-02-13 |
-| 72 | v6.0 | 0/4 | Not started | - |
+| 72 | v6.0 | 4/4 | Complete | 2026-02-13 |
 | 73 | v6.0 | 0/TBD | Not started | - |
 
-**Total: 71 phases shipped across 15 milestones. 194 plans completed. v6.0 in progress (2/4 phases complete).**
+**Total: 72 phases shipped across 15 milestones. 198 plans completed. v6.0 in progress (3/4 phases complete).**
