@@ -87,6 +87,9 @@ Progress: [██████████] 100%
 - 68-02: Dedicated codegen_global_register helper for two-arg call (string unpacking + pid passthrough)
 - 68-03: send_global_sync placed in global.rs alongside broadcast functions (same module locality)
 - 68-03: Wire format tests use direct payload byte verification (read_msg is private to node.rs)
+- 69-01: DIST_ROOM_BROADCAST (0x1E) uses u32 for msg_len to support large messages, u16 for room_name_len
+- 69-01: Reader loop delivers DIST_ROOM_BROADCAST locally only (no re-forwarding prevents broadcast storms)
+- 69-01: broadcast_except forwards full message to remote nodes (excluded connection only applies locally)
 - 69-02: Clone target_node/start_fn_name before mutable borrow to satisfy Rust borrow checker in start_single_child
 - 69-02: Backward-compatible wire format: missing has_target_node byte after child_type treated as local
 - 69-02: Remote terminate is asynchronous: mark not-running immediately, supervisor receive loop handles exit signal
