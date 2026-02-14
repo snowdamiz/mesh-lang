@@ -13,10 +13,12 @@ const label = theme.value.outline?.label ?? 'On this page'
 </script>
 
 <template>
-  <nav v-if="headers.length > 0" class="py-5 pr-4">
+  <nav v-if="headers.length > 0" class="h-full pr-4">
     <ScrollArea class="h-full">
-      <div class="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">{{ label }}</div>
-      <DocsOutlineItem :headers="headers" :active-id="activeId" />
+      <div class="pt-5 pb-5">
+        <div class="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">{{ label }}</div>
+        <DocsOutlineItem :headers="headers" :active-id="activeId" />
+      </div>
     </ScrollArea>
   </nav>
 </template>
