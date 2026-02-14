@@ -190,7 +190,10 @@ Plans:
   3. All existing for-in loops over List, Map, Set, and Range continue to compile and produce identical results (zero regressions)
   4. User can create an iterator from a collection via `Iter.from(list)` and call `next()` manually
   5. Built-in List, Map, Set, and Range all implement Iterable with compiler-provided iterator types
-**Plans**: TBD
+**Plans:** 2 plans
+Plans:
+- [ ] 76-01-PLAN.md -- Iterator/Iterable trait registration, runtime iterator handles, typeck Iterable resolution
+- [ ] 76-02-PLAN.md -- ForInIterator MIR/codegen pipeline, Iter.from(), E2E tests
 
 #### Phase 77: From/Into Conversion
 **Goal**: Users can define type conversions and the ? operator auto-converts error types
