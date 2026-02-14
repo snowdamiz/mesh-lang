@@ -10,17 +10,17 @@ See: .planning/PROJECT.md (updated 2026-02-13)
 ## Current Position
 
 Phase: 85 (5 of 6 in v8.0) -- Formatting + Audit
-Plan: 1 of 2 in current phase
-Status: Plan 85-01 complete
-Last activity: 2026-02-14 -- Plan 85-01 complete (LSP Formatting + Collection Literal Handlers)
+Plan: 2 of 2 in current phase
+Status: Phase 85 complete
+Last activity: 2026-02-14 -- Plan 85-02 complete (JIT Runtime Symbol Registration)
 
 Progress: [████████░░] 100%
 
 ## Performance Metrics
 
 **All-time Totals:**
-- Plans completed: 227
-- Phases completed: 84
+- Plans completed: 228
+- Phases completed: 85
 - Milestones shipped: 17 (v1.0-v7.0)
 - Lines of Rust: ~97,200
 - Lines of website: ~5,500
@@ -56,6 +56,8 @@ Progress: [████████░░] 100%
 - 85-01: Full-document TextEdit replacement for LSP formatting -- simpler than computing diff edits
 - 85-01: Tab size from LSP params.options.tab_size per standard -- users control indent via editor settings
 - 85-01: Return None when formatted == source to skip no-op edits
+- 85-02: Collection iterator constructors referenced via full module path since not re-exported from lib.rs
+- 85-02: mesh_int_to_float/mesh_float_to_int not registered -- codegen intrinsics, not runtime functions
 
 ### Pending Todos
 
@@ -78,10 +80,11 @@ None. (Phase 83 scope-walk concern resolved -- pattern works correctly.)
 | Phase 84 P01 | 4min | 2 tasks | 6 files |
 | Phase 84 P02 | ~15min | 2 tasks | 3 files |
 | Phase 85 P01 | 3min | 2 tasks | 4 files |
+| Phase 85 P02 | 3min | 1 task | 1 file |
 
 ## Session Continuity
 
 Last session: 2026-02-14
-Stopped at: Completed 85-01-PLAN.md (LSP Formatting + Collection Literal Handlers)
+Stopped at: Completed 85-02-PLAN.md (JIT Runtime Symbol Registration) -- Phase 85 complete
 Resume file: None
-Next action: Execute Phase 85 Plan 02 (Formatting Audit)
+Next action: Plan/execute Phase 86
