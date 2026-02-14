@@ -4,6 +4,7 @@
 //! - textDocument/didOpen, didChange, didClose (diagnostics)
 //! - textDocument/hover (type information)
 //! - textDocument/definition (go-to-definition)
+//! - textDocument/documentSymbol (Outline, Breadcrumbs, Go-to-Symbol)
 //! - Server capabilities advertisement
 
 use std::collections::HashMap;
@@ -12,6 +13,9 @@ use std::sync::Mutex;
 use tower_lsp::jsonrpc::Result;
 use tower_lsp::lsp_types::*;
 use tower_lsp::{Client, LanguageServer};
+
+use mesh_parser::SyntaxKind;
+use mesh_parser::SyntaxNode;
 
 use crate::analysis::{self, AnalysisResult};
 
@@ -78,6 +82,7 @@ impl LanguageServer for MeshBackend {
                 )),
                 hover_provider: Some(HoverProviderCapability::Simple(true)),
                 definition_provider: Some(OneOf::Left(true)),
+                document_symbol_provider: Some(OneOf::Left(true)),
                 ..Default::default()
             },
             ..Default::default()
@@ -202,6 +207,262 @@ impl LanguageServer for MeshBackend {
 
         Ok(Some(GotoDefinitionResponse::Scalar(location)))
     }
+
+    async fn document_symbol(
+        &self,
+        params: DocumentSymbolParams,
+    ) -> Result<Option<DocumentSymbolResponse>> {
+        let uri_str = params.text_document.uri.to_string();
+
+        let docs = self.documents.lock().unwrap();
+        let doc = match docs.get(&uri_str) {
+            Some(doc) => doc,
+            None => return Ok(None),
+        };
+
+        let root = doc.analysis.parse.syntax();
+        let symbols = collect_symbols(&doc.source, &root);
+
+        Ok(Some(DocumentSymbolResponse::Nested(symbols)))
+    }
+}
+
+/// Walk CST children and collect document symbols for the Outline panel.
+///
+/// Recursively descends into container nodes (modules, actors, services,
+/// interfaces, impls) to produce a hierarchical symbol tree.
+fn collect_symbols(source: &str, node: &SyntaxNode) -> Vec<DocumentSymbol> {
+    let mut symbols = Vec::new();
+
+    for child in node.children() {
+        match child.kind() {
+            SyntaxKind::FN_DEF => {
+                if let Some(sym) = make_symbol(source, &child, SymbolKind::FUNCTION, None) {
+                    symbols.push(sym);
+                }
+            }
+            SyntaxKind::STRUCT_DEF => {
+                if let Some(sym) = make_symbol(source, &child, SymbolKind::STRUCT, None) {
+                    symbols.push(sym);
+                }
+            }
+            SyntaxKind::MODULE_DEF => {
+                if let Some(mut sym) = make_symbol(source, &child, SymbolKind::MODULE, None) {
+                    let block = child.children().find(|n| n.kind() == SyntaxKind::BLOCK);
+                    if let Some(block) = block {
+                        let children = collect_symbols(source, &block);
+                        if !children.is_empty() {
+                            sym.children = Some(children);
+                        }
+                    }
+                    symbols.push(sym);
+                }
+            }
+            SyntaxKind::ACTOR_DEF => {
+                if let Some(mut sym) = make_symbol(source, &child, SymbolKind::CLASS, None) {
+                    let block = child.children().find(|n| n.kind() == SyntaxKind::BLOCK);
+                    if let Some(block) = block {
+                        let children = collect_symbols(source, &block);
+                        if !children.is_empty() {
+                            sym.children = Some(children);
+                        }
+                    }
+                    symbols.push(sym);
+                }
+            }
+            SyntaxKind::SERVICE_DEF => {
+                if let Some(mut sym) = make_symbol(source, &child, SymbolKind::CLASS, None) {
+                    let block = child.children().find(|n| n.kind() == SyntaxKind::BLOCK);
+                    if let Some(block) = block {
+                        let children = collect_symbols(source, &block);
+                        if !children.is_empty() {
+                            sym.children = Some(children);
+                        }
+                    }
+                    symbols.push(sym);
+                }
+            }
+            SyntaxKind::SUPERVISOR_DEF => {
+                if let Some(sym) = make_symbol(source, &child, SymbolKind::CLASS, None) {
+                    symbols.push(sym);
+                }
+            }
+            SyntaxKind::INTERFACE_DEF => {
+                if let Some(mut sym) = make_symbol(source, &child, SymbolKind::INTERFACE, None) {
+                    // Collect interface methods as child symbols.
+                    let mut method_symbols = Vec::new();
+                    for method in child.children() {
+                        if method.kind() == SyntaxKind::INTERFACE_METHOD {
+                            if let Some(msym) =
+                                make_symbol(source, &method, SymbolKind::FUNCTION, None)
+                            {
+                                method_symbols.push(msym);
+                            }
+                        }
+                    }
+                    if !method_symbols.is_empty() {
+                        sym.children = Some(method_symbols);
+                    }
+                    symbols.push(sym);
+                }
+            }
+            SyntaxKind::IMPL_DEF => {
+                // IMPL_DEF has no NAME child; extract name from PATH child.
+                let impl_name = extract_impl_name(&child);
+                let sel_node = child
+                    .children()
+                    .find(|n| n.kind() == SyntaxKind::PATH);
+                if let Some(mut sym) =
+                    make_symbol(source, &child, SymbolKind::OBJECT, Some((&impl_name, sel_node.as_ref())))
+                {
+                    let block = child.children().find(|n| n.kind() == SyntaxKind::BLOCK);
+                    if let Some(block) = block {
+                        let children = collect_symbols(source, &block);
+                        if !children.is_empty() {
+                            sym.children = Some(children);
+                        }
+                    }
+                    symbols.push(sym);
+                }
+            }
+            SyntaxKind::LET_BINDING => {
+                if let Some(sym) = make_symbol(source, &child, SymbolKind::VARIABLE, None) {
+                    symbols.push(sym);
+                }
+            }
+            SyntaxKind::SUM_TYPE_DEF => {
+                if let Some(sym) = make_symbol(source, &child, SymbolKind::ENUM, None) {
+                    symbols.push(sym);
+                }
+            }
+            SyntaxKind::TYPE_ALIAS_DEF => {
+                if let Some(sym) = make_symbol(source, &child, SymbolKind::TYPE_PARAMETER, None) {
+                    symbols.push(sym);
+                }
+            }
+            // Also handle fn defs and call/cast handlers inside service blocks.
+            SyntaxKind::CALL_HANDLER => {
+                if let Some(sym) = make_symbol(source, &child, SymbolKind::FUNCTION, None) {
+                    symbols.push(sym);
+                }
+            }
+            SyntaxKind::CAST_HANDLER => {
+                if let Some(sym) = make_symbol(source, &child, SymbolKind::FUNCTION, None) {
+                    symbols.push(sym);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    symbols
+}
+
+/// Extract a display name for an IMPL_DEF node.
+///
+/// Returns "impl TraitName" by reading the first IDENT from the first PATH child.
+fn extract_impl_name(node: &SyntaxNode) -> String {
+    for child in node.children() {
+        if child.kind() == SyntaxKind::PATH {
+            // Get the first IDENT token from the PATH.
+            for token in child.children_with_tokens() {
+                if let rowan::NodeOrToken::Token(t) = token {
+                    if t.kind() == SyntaxKind::IDENT {
+                        return format!("impl {}", t.text());
+                    }
+                }
+            }
+        }
+    }
+    "impl".to_string()
+}
+
+/// Construct a `DocumentSymbol` from a CST node.
+///
+/// Computes the full range (entire definition) and selection range (name only)
+/// using the rowan-to-source offset conversion chain.
+///
+/// The `override_name` parameter allows callers (e.g., for IMPL_DEF) to provide
+/// a custom name and an alternative node for the selection range.
+fn make_symbol(
+    source: &str,
+    node: &SyntaxNode,
+    kind: SymbolKind,
+    override_name: Option<(&str, Option<&SyntaxNode>)>,
+) -> Option<DocumentSymbol> {
+    let (name, sel_range_node) = match override_name {
+        Some((n, sel_node)) => (n.to_string(), sel_node),
+        None => {
+            // Find the NAME child and extract the IDENT token text.
+            let name_text = node
+                .children()
+                .find(|n| n.kind() == SyntaxKind::NAME)
+                .and_then(|name_node| {
+                    name_node
+                        .children_with_tokens()
+                        .filter_map(|it| it.into_token())
+                        .find(|t| t.kind() == SyntaxKind::IDENT)
+                        .map(|t| t.text().to_string())
+                })?;
+            (name_text, None)
+        }
+    };
+
+    // Compute the full range of the node.
+    let node_range = node.text_range();
+    let range_start_tree: usize = node_range.start().into();
+    let range_end_tree: usize = node_range.end().into();
+    let range_start_source =
+        crate::definition::tree_to_source_offset(source, range_start_tree)?;
+    let range_end_source =
+        crate::definition::tree_to_source_offset(source, range_end_tree)?;
+
+    let range = Range::new(
+        analysis::offset_to_position(source, range_start_source),
+        analysis::offset_to_position(source, range_end_source),
+    );
+
+    // Compute the selection range (name identifier only).
+    let selection_range = if let Some(sel_node) = sel_range_node {
+        // Use the provided node (e.g., PATH for IMPL_DEF).
+        let sel_text_range = sel_node.text_range();
+        let sel_start_tree: usize = sel_text_range.start().into();
+        let sel_end_tree: usize = sel_text_range.end().into();
+        let sel_start_source =
+            crate::definition::tree_to_source_offset(source, sel_start_tree)?;
+        let sel_end_source =
+            crate::definition::tree_to_source_offset(source, sel_end_tree)?;
+        Range::new(
+            analysis::offset_to_position(source, sel_start_source),
+            analysis::offset_to_position(source, sel_end_source),
+        )
+    } else {
+        // Find the NAME child for selection range.
+        let name_node = node.children().find(|n| n.kind() == SyntaxKind::NAME)?;
+        let name_text_range = name_node.text_range();
+        let sel_start_tree: usize = name_text_range.start().into();
+        let sel_end_tree: usize = name_text_range.end().into();
+        let sel_start_source =
+            crate::definition::tree_to_source_offset(source, sel_start_tree)?;
+        let sel_end_source =
+            crate::definition::tree_to_source_offset(source, sel_end_tree)?;
+        Range::new(
+            analysis::offset_to_position(source, sel_start_source),
+            analysis::offset_to_position(source, sel_end_source),
+        )
+    };
+
+    #[allow(deprecated)] // `deprecated` field is deprecated but required by the struct
+    Some(DocumentSymbol {
+        name,
+        detail: None,
+        kind,
+        tags: None,
+        deprecated: None,
+        range,
+        selection_range,
+        children: None,
+    })
 }
 
 #[cfg(test)]
@@ -221,5 +482,6 @@ mod tests {
         let caps = result.capabilities;
         assert!(caps.hover_provider.is_some());
         assert!(caps.text_document_sync.is_some());
+        assert!(caps.document_symbol_provider.is_some());
     }
 }
