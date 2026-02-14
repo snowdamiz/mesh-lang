@@ -429,3 +429,33 @@
 **What's next:** TBD -- language is feature-complete for v1. Potential v2 directions include distributed actors, hot code reloading, and macros.
 
 ---
+
+## v8.0 Developer Tooling (Shipped: 2026-02-14)
+
+**Delivered:** Made Mesh installable, editable, and navigable with one-command install scripts, complete TextMate grammar and Shiki themes, LSP code completion/signature help/formatting/document symbols, VS Code Marketplace publishing, REPL JIT audit for v7.0 symbols, and documentation corrections.
+
+**Phases completed:** 81-86 (11 plans total)
+
+**Key accomplishments:**
+- Complete TextMate grammar covering all Mesh syntax (keywords, operators, doc comments, triple-quoted strings, module-qualified calls) with Shiki themes and hierarchical LSP document symbols
+- GitHub Actions 6-target CI pipeline with LLVM static linking plus POSIX/PowerShell install scripts with platform detection, SHA-256 verification, and PATH configuration
+- Four-tier LSP completion engine (scope-aware names, built-in types, keywords, snippets) and signature help with parameter tracking from type system
+- VS Code extension published to Marketplace and Open VSX with icon, README, CHANGELOG (18KB VSIX)
+- LSP textDocument/formatting wired to mesh-fmt with handlers for map/list literals and associated type bindings
+- 80+ REPL JIT runtime symbol registrations for v7.0 iterators, collect, hash, timer, and stdlib gaps
+- Documentation corrections: meshc binary name, curl installer URL, dynamic version badge, LLVM compilation description, project-based code examples
+
+**Stats:**
+- 80 files changed, +14,864 / -1,938 lines
+- 98,836 lines of Rust (+1,646 from v7.0)
+- 6 phases, 11 plans
+- 1 day (2026-02-14)
+- 59 commits
+- 42/42 requirements satisfied
+
+**Git range:** `feat(81-01)` -> `docs(phase-86)`
+
+**What's next:** All 18 milestones complete. Potential directions include dot-triggered completion, semantic tokens, workspace symbols, Tree-sitter grammar, Homebrew packaging, inlay hints, or new language features.
+
+---
+

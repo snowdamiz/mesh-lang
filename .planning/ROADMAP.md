@@ -18,7 +18,7 @@
 - [x] **v5.0 Distributed Actors** - Phases 63-69 (shipped 2026-02-13)
 - [x] **v6.0 Website & Documentation** - Phases 70-73 (shipped 2026-02-13)
 - [x] **v7.0 Iterator Protocol & Trait Ecosystem** - Phases 74-80 (shipped 2026-02-14)
-- [ ] **v8.0 Developer Tooling** - Phases 81-86 (in progress)
+- [x] **v8.0 Developer Tooling** - Phases 81-86 (shipped 2026-02-14)
 
 ## Phases
 
@@ -150,38 +150,13 @@ See milestones/v7.0-ROADMAP.md for full phase details.
 
 </details>
 
-### v8.0 Developer Tooling (In Progress)
-
-**Milestone Goal:** Make Mesh installable, editable, and navigable -- one-command install, complete syntax highlighting, code intelligence, and accurate documentation.
-
-- [x] **Phase 81: Grammar + Document Symbols** - Complete syntax highlighting + LSP outline/breadcrumbs/go-to-symbol (completed 2026-02-14)
-  **Plans:** 2 plans
-  Plans:
-  - [x] 81-01-PLAN.md -- Complete TextMate grammar (GRAM-01 through GRAM-10)
-  - [x] 81-02-PLAN.md -- LSP document symbol handler (SYM-01 through SYM-03)
-- [x] **Phase 82: Install Infrastructure** - CI pipeline, prebuilt binaries, install script (completed 2026-02-14)
-  **Plans:** 2 plans
-  Plans:
-  - [x] 82-01-PLAN.md -- GitHub Actions CI: 6-target matrix build, LLVM static linking, release workflow
-  - [x] 82-02-PLAN.md -- Install scripts: POSIX shell + PowerShell, platform detection, checksum verification, PATH config
-- [x] **Phase 83: Completion + Signature Help** - Code completion and function parameter info (completed 2026-02-14)
-  **Plans:** 2 plans
-  Plans:
-  - [x] 83-01-PLAN.md -- Code completion: keyword/type/snippet completions, scope-aware variable/function completion from CST walk
-  - [x] 83-02-PLAN.md -- Signature help: parameter extraction from type system, active parameter tracking, trigger characters
-- [x] **Phase 84: VS Code Extension Publishing** - Users can discover and install the Mesh extension from VS Code Marketplace or Open VSX with one click (completed 2026-02-14)
-  **Plans:** 2 plans
-  Plans:
-  - [x] 84-01-PLAN.md -- Marketplace metadata: icon, README, CHANGELOG, .vscodeignore, version bump to 0.2.0
-  - [x] 84-02-PLAN.md -- Publishing: GitHub Actions dual-registry workflow (VS Code Marketplace + Open VSX) on ext-v* tags
-- [x] **Phase 85: Formatting + Audit** - LSP formatting handler, formatter walker completeness for v7.0 syntax, REPL JIT v7.0 symbol registration (completed 2026-02-14)
-  **Plans:** 2 plans
-  Plans:
-  - [x] 85-01-PLAN.md -- LSP formatting handler + formatter walker audit (map/list literals, assoc types)
-  - [x] 85-02-PLAN.md -- REPL JIT symbol registration for v7.0 iterators, collect, and missing stdlib functions
-- [x] **Phase 86: Documentation Corrections** - Binary name, install command, version badge, examples (completed 2026-02-14)
+<details>
+<summary>v8.0 Developer Tooling (Phases 81-86) - SHIPPED 2026-02-14</summary>
 
 See milestones/v8.0-ROADMAP.md for full phase details.
+11 plans across 6 phases. 98,836 lines of Rust (+1,646). 59 commits.
+
+</details>
 
 ## Progress
 
@@ -203,6 +178,6 @@ See milestones/v8.0-ROADMAP.md for full phase details.
 | 63-69 | v5.0 | 20/20 | Complete | 2026-02-13 |
 | 70-73 | v6.0 | 11/11 | Complete | 2026-02-13 |
 | 74-80 | v7.0 | 17/17 | Complete | 2026-02-14 |
-| 81-86 | v8.0 | 11/11 | In progress | - |
+| 81-86 | v8.0 | 11/11 | Complete | 2026-02-14 |
 
-**Total: 86 phases shipped across 17 milestones. 229 plans completed. 6 phases planned for v8.0.**
+**Total: 86 phases shipped across 18 milestones. 240 plans completed.**

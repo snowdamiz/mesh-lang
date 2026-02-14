@@ -2,24 +2,13 @@
 
 ## What This Is
 
-Mesh is a programming language that combines Elixir/Ruby-style expressive syntax with static Hindley-Milner type inference and BEAM-style concurrency (actors, supervision trees, fault tolerance), compiled via LLVM to native single-binary executables. The compiler is written in Rust. v1.0-v1.9 built a complete language: compiler pipeline, actor runtime, trait system, module system, loops, stdlib, and developer tooling. v2.0 added database drivers and JSON serde. v3.0 made Mesh production-ready: TLS encryption for PostgreSQL and HTTPS, connection pooling with health checks, panic-safe database transactions, and automatic struct-to-row mapping via `deriving(Row)`. v4.0 added WebSocket support with RFC 6455 protocol, actor-per-connection model, TLS (wss://), heartbeat, fragmentation, and rooms/channels. v5.0 added distributed actors: location-transparent PIDs, TLS-encrypted inter-node connections with cookie auth and mesh formation, transparent remote send, remote process/node monitoring with fault propagation, remote spawn via function name registry, global process registry, and cross-node WebSocket rooms and supervision trees -- all with zero new crate dependencies. v6.0 added a documentation website with VitePress, custom syntax highlighting, 9 documentation guides, landing page, and production-quality site features. v7.0 added associated types to the trait system and built a comprehensive trait-based protocol ecosystem: lazy iterators with pipe-style composition, From/Into conversion, numeric traits for user-extensible arithmetic, and Collect for iterator materialization. ~97K LOC Rust + ~5K LOC website across 17 milestones. Zero known compiler correctness issues.
-
-## Current Milestone: v8.0 Developer Tooling
-
-**Goal:** Make Mesh installable, editable, and debuggable — real install script with prebuilt binaries, updated VS Code extension grammar, LSP improvements, REPL/formatter audit, and docs corrections.
-
-**Target features:**
-- Install script (`curl | sh`) with prebuilt macOS/Linux binaries and GitHub releases
-- VS Code extension grammar updated for all v1.7-v7.0 language features
-- LSP enhancements: code completion, document symbols, signature help
-- REPL and formatter audited for v7.0 language features
-- Website/docs fixes: version badge, install instructions, terminology corrections
+Mesh is a programming language that combines Elixir/Ruby-style expressive syntax with static Hindley-Milner type inference and BEAM-style concurrency (actors, supervision trees, fault tolerance), compiled via LLVM to native single-binary executables. The compiler is written in Rust. v1.0-v1.9 built a complete language: compiler pipeline, actor runtime, trait system, module system, loops, stdlib, and developer tooling. v2.0 added database drivers and JSON serde. v3.0 made Mesh production-ready: TLS encryption for PostgreSQL and HTTPS, connection pooling with health checks, panic-safe database transactions, and automatic struct-to-row mapping via `deriving(Row)`. v4.0 added WebSocket support with RFC 6455 protocol, actor-per-connection model, TLS (wss://), heartbeat, fragmentation, and rooms/channels. v5.0 added distributed actors: location-transparent PIDs, TLS-encrypted inter-node connections with cookie auth and mesh formation, transparent remote send, remote process/node monitoring with fault propagation, remote spawn via function name registry, global process registry, and cross-node WebSocket rooms and supervision trees -- all with zero new crate dependencies. v6.0 added a documentation website with VitePress, custom syntax highlighting, 9 documentation guides, landing page, and production-quality site features. v7.0 added associated types to the trait system and built a comprehensive trait-based protocol ecosystem: lazy iterators with pipe-style composition, From/Into conversion, numeric traits for user-extensible arithmetic, and Collect for iterator materialization. v8.0 made Mesh installable and editable: one-command install scripts with prebuilt binaries, complete TextMate grammar and Shiki themes, LSP code completion/signature help/formatting/document symbols, VS Code Marketplace publishing, and documentation corrections. ~99K LOC Rust + ~5K LOC website across 18 milestones. Zero known compiler correctness issues.
 
 ## Current State
 
-Shipped v7.0 Iterator Protocol & Trait Ecosystem (2026-02-14). 17 milestones complete, 80 phases, 218 plans. 10 days from project start to trait ecosystem. Starting v8.0 Developer Tooling.
+Shipped v8.0 Developer Tooling (2026-02-14). 18 milestones complete, 86 phases, 240 plans. 10 days from project start to full developer tooling.
 
-**Latest milestone (v7.0):** Associated types in traits with HM inference integration. Iterator/Iterable two-trait protocol with built-in implementations for all collections. Lazy iterator pipelines (map, filter, take, skip, enumerate, zip) with type-tag dispatch. Terminal operations (count, sum, any, all, find, reduce). From/Into conversion traits with automatic Into generation and ? operator error type conversion. Numeric traits (Add/Sub/Mul/Div/Neg) with Output associated type. Collect trait for materialization into List, Map, Set, String. Complete website documentation updated. 33/33 requirements satisfied.
+**Latest milestone (v8.0):** Complete TextMate grammar and Shiki themes for all Mesh syntax. GitHub Actions 6-target CI pipeline with LLVM static linking. POSIX/PowerShell install scripts with platform detection and SHA-256 verification. LSP code completion (keywords, types, snippets, scope-aware names), signature help with parameter tracking, document symbols, and formatting. VS Code extension published to Marketplace and Open VSX. REPL JIT updated with 80+ v7.0 runtime symbols. Documentation corrections across website. 42/42 requirements satisfied.
 
 ## Core Value
 
@@ -163,14 +152,16 @@ Expressive, readable concurrency -- writing concurrent programs should feel as n
 - ✓ Numeric traits (Add, Sub, Mul, Div, Neg) with Output associated type for user-extensible arithmetic -- v7.0
 - ✓ Collect trait for iterator materialization into List, Map, Set, String -- v7.0
 - ✓ Website documentation updated with all v7.0 features (Iterators page, Type System, Cheatsheet, Language Basics) -- v7.0
+- ✓ Install script with prebuilt binaries for macOS and Linux (6-target CI pipeline, curl|sh one-liner) -- v8.0
+- ✓ VS Code extension grammar updated for all language features through v7.0 (TextMate + Shiki themes) -- v8.0
+- ✓ LSP code completion, document symbols, signature help, formatting -- v8.0
+- ✓ REPL and formatter compatibility with v7.0 features (80+ JIT symbol registrations) -- v8.0
+- ✓ Website and docs corrections (install instructions, version badge, terminology, binary name) -- v8.0
+- ✓ VS Code extension published to Marketplace and Open VSX (18KB VSIX, 0.2.0) -- v8.0
 
 ### Active
 
-- [ ] Install script with prebuilt binaries for macOS and Linux
-- [ ] VS Code extension grammar updated for all language features through v7.0
-- [ ] LSP code completion, document symbols, signature help
-- [ ] REPL and formatter compatibility with v7.0 features
-- [ ] Website and docs corrections (install instructions, version badge, terminology)
+(No active requirements -- all milestones complete)
 
 ### Out of Scope
 
@@ -198,13 +189,14 @@ Expressive, readable concurrency -- writing concurrent programs should feel as n
 
 ## Context
 
-Shipped v7.0 with 97,190 lines of Rust + ~5,500 lines of website source (Vue/TypeScript/CSS/Markdown).
+Shipped v8.0 with 98,836 lines of Rust + ~5,500 lines of website source (Vue/TypeScript/CSS/Markdown).
 Tech stack: Rust compiler, LLVM 21 (Inkwell 0.8), corosensei coroutines, rowan CST, ariadne diagnostics.
 Website: VitePress, Vue 3, Tailwind CSS v4, shadcn-vue, Shiki syntax highlighting.
-Crates: snow-lexer, snow-parser, snow-typeck, snow-mir, snow-codegen, snow-rt, snow-fmt, snow-repl, snow-pkg, snow-lsp, snowc.
+Crates: mesh-lexer, mesh-parser, mesh-typeck, mesh-mir, mesh-codegen, mesh-rt, mesh-fmt, mesh-repl, mesh-pkg, mesh-lsp, meshc.
 Deps: libsqlite3-sys (bundled), sha2/hmac/md-5/base64ct (PG auth), rustls 0.23/webpki-roots/ring (TLS + certs + SHA-1 for WS handshake).
+Distribution: GitHub Actions CI (6 targets), install scripts (POSIX + PowerShell), VS Code Marketplace + Open VSX.
 
-Zero known critical bugs. Zero known compiler correctness issues. All 17 milestones shipped.
+Zero known critical bugs. Zero known compiler correctness issues. All 18 milestones shipped.
 
 Known limitations: None.
 
@@ -365,6 +357,14 @@ Tech debt (minor, pre-existing):
 | Type-tag dispatch for iterators | u8 tag as first byte of all iterator handles for uniform generic_next | ✓ Good -- v7.0, simple dispatch |
 | iterator_ptr_compatible() unification | ListIterator and adapter types unify with Ptr for combinator chaining | ✓ Good -- v7.0, seamless pipelines |
 | Safe Vec<u64> intermediary for collect | Bounds checking vs mesh_list_builder which has none | ✓ Good -- v7.0, safe collection |
+| DocumentSymbolResponse::Nested for Outline | Hierarchical tree instead of flat SymbolInformation list | ✓ Good -- v8.0, proper nesting |
+| Module-qualified call lookahead in grammar | Only match call sites (`Module.fn()`), not field access | ✓ Good -- v8.0, precise highlighting |
+| LLVM 21 per-platform installation in CI | Homebrew on macOS, official tarballs on Linux, ycm-core on ARM64 | ✓ Good -- v8.0, all 6 targets build |
+| ~/.mesh/bin install location | Rustup convention with ~/.mesh/env sourced from shell profiles | ✓ Good -- v8.0, familiar pattern |
+| Four-tier completion sort ordering | 0_scope > 1_types > 2_keywords > 3_snippets | ✓ Good -- v8.0, intuitive ranking |
+| Multi-strategy callee type resolution | Direct range, NAME_REF children, Ty::Fun containment for signature help | ✓ Good -- v8.0, robust lookup |
+| Full-document TextEdit for LSP formatting | Simpler than computing diff edits; return None on no-op | ✓ Good -- v8.0, clean implementation |
+| Dynamic version badge via useData().theme | DocsVersionBadge.vue pattern avoids hardcoded version strings | ✓ Good -- v8.0, maintenance-free |
 
 ---
-*Last updated: 2026-02-13 after v8.0 milestone start*
+*Last updated: 2026-02-14 after v8.0 milestone*
