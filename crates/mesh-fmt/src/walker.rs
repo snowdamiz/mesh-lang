@@ -81,6 +81,10 @@ pub fn walk_node(node: &SyntaxNode) -> FormatIR {
         SyntaxKind::TERMINATE_CLAUSE => walk_terminate_clause(node),
         SyntaxKind::CHILD_SPEC_DEF => walk_block_def(node),
         SyntaxKind::STRUCT_LITERAL => walk_struct_literal(node),
+        SyntaxKind::MAP_LITERAL => walk_map_literal(node),
+        SyntaxKind::MAP_ENTRY => walk_map_entry(node),
+        SyntaxKind::LIST_LITERAL => walk_list_literal(node),
+        SyntaxKind::ASSOC_TYPE_BINDING => walk_assoc_type_binding(node),
         SyntaxKind::TRY_EXPR => walk_tokens_inline(node),
         // Simple leaf-like nodes: just emit their tokens inline.
         SyntaxKind::LITERAL
@@ -116,6 +120,9 @@ pub fn walk_node(node: &SyntaxNode) -> FormatIR {
         | SyntaxKind::RESTART_LIMIT
         | SyntaxKind::SECONDS_LIMIT
         | SyntaxKind::STRUCT_LITERAL_FIELD
+        | SyntaxKind::ASSOC_TYPE_DEF
+        | SyntaxKind::FUN_TYPE
+        | SyntaxKind::CONS_PAT
         | SyntaxKind::PARAM => walk_tokens_inline(node),
         // Fallback: emit tokens with spaces.
         _ => walk_tokens_inline(node),
@@ -1785,6 +1792,117 @@ fn walk_struct_literal(node: &SyntaxNode) -> FormatIR {
     ir::group(ir::concat(parts))
 }
 
+// ── Map literal ─────────────────────────────────────────────────────
+
+fn walk_map_literal(node: &SyntaxNode) -> FormatIR {
+    let mut parts = Vec::new();
+    for child in node.children_with_tokens() {
+        match child {
+            NodeOrToken::Token(tok) => match tok.kind() {
+                SyntaxKind::PERCENT => parts.push(ir::text("%")),
+                SyntaxKind::L_BRACE => {
+                    parts.push(ir::text("{"));
+                }
+                SyntaxKind::R_BRACE => {
+                    parts.push(ir::text("}"));
+                }
+                SyntaxKind::COMMA => {
+                    parts.push(ir::text(","));
+                    parts.push(sp());
+                }
+                SyntaxKind::NEWLINE => {}
+                _ => {
+                    add_token_with_context(&tok, &mut parts);
+                }
+            },
+            NodeOrToken::Node(n) => {
+                parts.push(walk_node(&n));
+            }
+        }
+    }
+    ir::group(ir::concat(parts))
+}
+
+// ── Map entry ───────────────────────────────────────────────────────
+
+fn walk_map_entry(node: &SyntaxNode) -> FormatIR {
+    let mut parts = Vec::new();
+    for child in node.children_with_tokens() {
+        match child {
+            NodeOrToken::Token(tok) => match tok.kind() {
+                SyntaxKind::FAT_ARROW => {
+                    parts.push(sp());
+                    parts.push(ir::text("=>"));
+                    parts.push(sp());
+                }
+                SyntaxKind::NEWLINE => {}
+                _ => {
+                    add_token_with_context(&tok, &mut parts);
+                }
+            },
+            NodeOrToken::Node(n) => {
+                parts.push(walk_node(&n));
+            }
+        }
+    }
+    ir::concat(parts)
+}
+
+// ── List literal ────────────────────────────────────────────────────
+
+fn walk_list_literal(node: &SyntaxNode) -> FormatIR {
+    let mut parts = Vec::new();
+    for child in node.children_with_tokens() {
+        match child {
+            NodeOrToken::Token(tok) => match tok.kind() {
+                SyntaxKind::L_BRACKET => parts.push(ir::text("[")),
+                SyntaxKind::R_BRACKET => parts.push(ir::text("]")),
+                SyntaxKind::COMMA => {
+                    parts.push(ir::text(","));
+                    parts.push(sp());
+                }
+                SyntaxKind::NEWLINE => {}
+                _ => {
+                    add_token_with_context(&tok, &mut parts);
+                }
+            },
+            NodeOrToken::Node(n) => {
+                parts.push(walk_node(&n));
+            }
+        }
+    }
+    ir::group(ir::concat(parts))
+}
+
+// ── Associated type binding ─────────────────────────────────────────
+
+fn walk_assoc_type_binding(node: &SyntaxNode) -> FormatIR {
+    let mut parts = Vec::new();
+    for child in node.children_with_tokens() {
+        match child {
+            NodeOrToken::Token(tok) => match tok.kind() {
+                SyntaxKind::TYPE_KW => {
+                    parts.push(ir::text("type"));
+                    parts.push(sp());
+                }
+                SyntaxKind::EQ => {
+                    parts.push(sp());
+                    parts.push(ir::text("="));
+                    parts.push(sp());
+                }
+                SyntaxKind::NEWLINE => {}
+                _ => {
+                    parts.push(ir::text(tok.text()));
+                }
+            },
+            NodeOrToken::Node(n) => {
+                parts.push(walk_node(&n));
+            }
+        }
+    }
+    ir::concat(parts)
+}
+
 // ── Walk block inner items ──────────────────────────────────────────
 
 /// Walk the children of a BLOCK that contains items (fns, fields, etc.)
@@ -2256,5 +2374,30 @@ mod tests {
         let first = fmt(src);
         let second = fmt(&first);
         assert_eq!(first, second, "Idempotency failed.\nFirst: {:?}\nSecond: {:?}", first, second);
+    }
+
+    #[test]
+    fn map_literal_formatting() {
+        let result = fmt("%{\"a\" => 1, \"b\" => 2}");
+        assert!(result.contains("=>"), "Result: {:?}", result);
+        assert!(result.contains("%{"), "Result: {:?}", result);
+    }
+
+    #[test]
+    fn list_literal_formatting() {
+        let result = fmt("[1, 2, 3]");
+        assert_eq!(result, "[1, 2, 3]\n");
+    }
+
+    #[test]
+    fn empty_list_literal() {
+        let result = fmt("[]");
+        assert_eq!(result, "[]\n");
+    }
+
+    #[test]
+    fn empty_map_literal() {
+        let result = fmt("%{}");
+        assert_eq!(result, "%{}\n");
     }
 }

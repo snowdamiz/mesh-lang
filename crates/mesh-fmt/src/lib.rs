@@ -295,6 +295,29 @@ mod idempotency_tests {
             "let b = not true",
         );
     }
+
+    #[test]
+    fn idempotent_list_literal() {
+        assert_idempotent("list literal", "[1, 2, 3]");
+    }
+
+    #[test]
+    fn idempotent_map_literal() {
+        assert_idempotent("map literal", "let m = %{\"a\" => 1, \"b\" => 2}");
+    }
+
+    #[test]
+    fn idempotent_nested_list() {
+        assert_idempotent("nested list", "let xs = [[1, 2], [3, 4]]");
+    }
+
+    #[test]
+    fn idempotent_assoc_type_binding() {
+        assert_idempotent(
+            "assoc type binding in impl",
+            "impl Iterator for MyIter do\ntype Item = Int\nfn next(self) do\nNone\nend\nend",
+        );
+    }
 }
 
 #[cfg(test)]
