@@ -10,9 +10,9 @@ See: .planning/PROJECT.md (updated 2026-02-13)
 ## Current Position
 
 Phase: 74 of 79 (Associated Types)
-Plan: 1 of 3 in current phase
+Plan: 2 of 3 in current phase
 Status: Executing
-Last activity: 2026-02-13 -- Completed 74-01 (parser/AST for associated types)
+Last activity: 2026-02-13 -- Completed 74-02 (type-checker core for associated types)
 
 Progress: [█░░░░░░░░░] 5% (v7.0)
 
@@ -35,6 +35,11 @@ Progress: [█░░░░░░░░░] 5% (v7.0)
 **Phase 74-01:**
 - Used dedicated parse_impl_body instead of modifying shared parse_item_block_body to avoid changing code paths used by module/function bodies
 - Created separate ASSOC_TYPE_BINDING SyntaxKind (not reusing TYPE_ALIAS_DEF) for distinct CST semantics
+
+**Phase 74-02:**
+- Uppercase Self is IDENT (not SELF_KW) -- resolution uses IDENT text matching
+- Associated type bindings extracted by iterating tokens after EQ in ASSOC_TYPE_BINDING node
+- resolve_self_assoc_type filters whitespace trivia before pattern matching
 
 ### Research Notes
 
@@ -63,6 +68,6 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-13
-Stopped at: Completed 74-01-PLAN.md (parser/AST for associated types)
+Stopped at: Completed 74-02-PLAN.md (type-checker core for associated types)
 Resume file: None
-Next action: `/gsd:execute-phase 74` (Plan 02 -- type checker for associated types)
+Next action: `/gsd:execute-phase 74` (Plan 03 -- MIR lowering for associated types)
