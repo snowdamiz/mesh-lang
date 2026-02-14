@@ -19,6 +19,7 @@
 - [x] **v6.0 Website & Documentation** - Phases 70-73 (shipped 2026-02-13)
 - [x] **v7.0 Iterator Protocol & Trait Ecosystem** - Phases 74-80 (shipped 2026-02-14)
 - [x] **v8.0 Developer Tooling** - Phases 81-86 (shipped 2026-02-14)
+- [ ] **v9.0 Mesher** - Phases 87-95 (in progress)
 
 ## Phases
 
@@ -158,7 +159,130 @@ See milestones/v8.0-ROADMAP.md for full phase details.
 
 </details>
 
+### v9.0 Mesher (In Progress)
+
+**Milestone Goal:** Build a full monitoring/observability SaaS platform ("Mesher") using Mesh for the entire backend, dogfooding every language feature under high-concurrency, high-throughput conditions. Separate Vue frontend in same monorepo. PostgreSQL for storage. Zero external dependencies beyond PG.
+
+- [ ] **Phase 87: Foundation** - Data model, database schema, storage writer, org/project tenancy
+- [ ] **Phase 88: Ingestion Pipeline** - HTTP/WS event ingestion with DSN auth, rate limiting, supervised processing
+- [ ] **Phase 89: Error Grouping & Issue Lifecycle** - Fingerprinting, issue creation, regression detection, state machine
+- [ ] **Phase 90: Real-Time Streaming** - WebSocket dashboard streaming with rooms, filters, backpressure
+- [ ] **Phase 91: REST API** - Search, filter, pagination, dashboard aggregation, project/alert/org CRUD, event detail
+- [ ] **Phase 92: Alerting System** - Rule engine, timer-driven evaluation, notifications, dedup/cooldown
+- [ ] **Phase 93: Data Retention & Cleanup** - Retention policies, partition management, storage tracking, sampling
+- [ ] **Phase 94: Multi-Node Clustering** - Distributed actors, global registry, cross-node event routing and broadcast
+- [ ] **Phase 95: Vue Frontend** - SPA dashboard with ECharts, TanStack tables, real-time WebSocket streaming
+
+## Phase Details
+
+### Phase 87: Foundation
+**Goal**: All data types, database schema, and storage layer exist so that subsequent phases can store and retrieve events, issues, projects, and organizations
+**Depends on**: Nothing (first phase of v9.0)
+**Requirements**: ORG-01, ORG-02, ORG-03
+**Success Criteria** (what must be TRUE):
+  1. Mesh compiles and runs a multi-module Mesher project that defines Event, Issue, Project, Organization, and AlertRule structs with deriving(Json, Row)
+  2. PostgreSQL schema exists with time-partitioned events table, issues table with UNIQUE(project_id, fingerprint), and organization/project tables
+  3. StorageWriter service accumulates events in a buffer and flushes them to PostgreSQL in batches on a timer
+  4. User can create organizations and projects via Mesh service calls, and the system generates unique DSN keys per project
+**Plans**: TBD
+
+### Phase 88: Ingestion Pipeline
+**Goal**: External clients can send error events into the system via HTTP and WebSocket, with authentication, validation, rate limiting, and supervised actor-based processing
+**Depends on**: Phase 87
+**Requirements**: INGEST-01, INGEST-02, INGEST-03, INGEST-04, INGEST-05, INGEST-06, RESIL-01, RESIL-02, RESIL-03
+**Success Criteria** (what must be TRUE):
+  1. Client can POST an event to /api/v1/events with a DSN key and receive a 202 response with an event ID
+  2. System validates events (required fields, UTC timestamps, size limits) and rejects malformed payloads with appropriate error codes
+  3. System enforces per-project rate limits and returns 429 with Retry-After header when exceeded
+  4. Client can stream events over a persistent WebSocket connection with crash-isolated actor-per-connection
+  5. Event processing pipeline runs under a supervision tree that automatically restarts crashed processor actors
+**Plans**: TBD
+
+### Phase 89: Error Grouping & Issue Lifecycle
+**Goal**: Events are automatically grouped into issues via fingerprinting, and users can manage issue states with regression detection
+**Depends on**: Phase 88
+**Requirements**: GROUP-01, GROUP-02, GROUP-03, GROUP-04, GROUP-05, ISSUE-01, ISSUE-02, ISSUE-03, ISSUE-04, ISSUE-05
+**Success Criteria** (what must be TRUE):
+  1. System computes fingerprints from stack trace frames, falls back to exception type or raw message, and respects user-provided custom fingerprint overrides
+  2. First occurrence of a fingerprint creates a new Issue; subsequent events increment the count and update last_seen
+  3. User can transition issues between unresolved, resolved, and archived states, and the system detects regressions when a resolved issue receives a new event
+  4. User can assign issues to team members and can delete/discard issues to suppress future events for that fingerprint
+  5. System auto-escalates archived issues when a volume spike occurs for that fingerprint
+**Plans**: TBD
+
+### Phase 90: Real-Time Streaming
+**Goal**: Connected dashboard clients receive new events and issue updates in real-time via WebSocket rooms with filtering and backpressure
+**Depends on**: Phase 88
+**Requirements**: STREAM-01, STREAM-02, STREAM-03, STREAM-04, STREAM-05
+**Success Criteria** (what must be TRUE):
+  1. Client can subscribe to a WebSocket stream and receive new events for a specific project in real-time
+  2. Client can apply filters (level, environment) to the WebSocket stream and only receive matching events
+  3. System pushes new issue notifications and issue count updates to all connected dashboards for that project
+  4. System drops old queued events for slow clients instead of letting buffers grow unbounded
+**Plans**: TBD
+
+### Phase 91: REST API
+**Goal**: Users can query, search, and browse all platform data through a complete REST API with pagination, aggregation, and CRUD operations
+**Depends on**: Phase 89
+**Requirements**: SEARCH-01, SEARCH-02, SEARCH-03, SEARCH-04, SEARCH-05, DASH-01, DASH-02, DASH-03, DASH-04, DASH-05, DASH-06, DETAIL-01, DETAIL-02, DETAIL-03, DETAIL-04, DETAIL-05, DETAIL-06, ORG-04, ORG-05
+**Success Criteria** (what must be TRUE):
+  1. User can filter issues by status, level, time range, and assignment; search event messages via full-text search; and filter events by tag key-value pairs
+  2. User can paginate issue and event lists using keyset pagination with a default 24-hour time range
+  3. Dashboard endpoints return event volume over time (hourly/daily buckets), error breakdown by level, top issues by frequency, event breakdown by tag, per-issue event timeline, and project health summary
+  4. User can view full event payload, formatted stack traces, breadcrumbs, tags, user context, and navigate between events within an issue
+  5. User can manage team membership with roles (owner/admin/member) and create API tokens for programmatic access
+**Plans**: TBD
+
+### Phase 92: Alerting System
+**Goal**: Users can define alert rules that the system evaluates on a timer, triggering notifications with deduplication and cooldown to prevent alert fatigue
+**Depends on**: Phase 91
+**Requirements**: ALERT-01, ALERT-02, ALERT-03, ALERT-04, ALERT-05, ALERT-06
+**Success Criteria** (what must be TRUE):
+  1. User can create alert rules with configurable conditions (event count above threshold in time window, new issue creation, issue regression)
+  2. A single timer-driven evaluator actor checks all alert rules per tick and triggers matching alerts
+  3. System delivers alert notifications via WebSocket to connected dashboards in real-time
+  4. System enforces deduplication windows and cooldown periods to prevent duplicate and repeated alert firing
+  5. User can manage alert states (active, acknowledged, resolved)
+**Plans**: TBD
+
+### Phase 93: Data Retention & Cleanup
+**Goal**: Stored event data is automatically cleaned up per project retention policies, with partition-based deletion and storage visibility
+**Depends on**: Phase 87
+**Requirements**: RETAIN-01, RETAIN-02, RETAIN-03, RETAIN-04
+**Success Criteria** (what must be TRUE):
+  1. User can configure retention period per project (30/60/90 days) and the system drops old partitions on schedule
+  2. Issue summaries (counts, first/last seen) are preserved even after their underlying events are deleted
+  3. User can view storage usage per project and configure event sampling rate for high-volume projects
+**Plans**: TBD
+
+### Phase 94: Multi-Node Clustering
+**Goal**: Multiple Mesher nodes form a cluster and distribute event processing, service discovery, and WebSocket broadcasts across the mesh
+**Depends on**: Phase 90
+**Requirements**: CLUSTER-01, CLUSTER-02, CLUSTER-03, CLUSTER-04, CLUSTER-05
+**Success Criteria** (what must be TRUE):
+  1. Mesher nodes discover each other via Node.connect and form a mesh with automatic peer exchange
+  2. Services (EventRouter, StorageWriter) register in the global process registry for cross-node discovery
+  3. Events ingested on one node are routed to processors on other nodes, and WebSocket broadcasts reach dashboards on all nodes
+  4. System spawns remote processor actors on other nodes when local load is high
+**Plans**: TBD
+
+### Phase 95: Vue Frontend
+**Goal**: Users can interact with the entire Mesher platform through a Vue SPA with dashboards, event browsing, issue management, alerting, and real-time streaming
+**Depends on**: Phase 91, Phase 90
+**Requirements**: UI-01, UI-02, UI-03, UI-04, UI-05, UI-06, UI-07, UI-08
+**Success Criteria** (what must be TRUE):
+  1. User can view a project overview dashboard with ECharts time-series charts (event volume, error breakdown) and a TanStack-powered issue list
+  2. User can browse and search events with filters, pagination, and view event detail with formatted stack traces, breadcrumbs, and tags
+  3. User can manage issues (state transitions, assignment) and manage alert rules (create, edit, delete)
+  4. User can see real-time event streaming via WebSocket updating the dashboard live
+  5. User can manage organizations and projects through the UI
+**Plans**: TBD
+
 ## Progress
+
+**Execution Order:**
+Phases execute in numeric order: 87 -> 88 -> 89 -> 90 -> 91 -> 92 -> 93 -> 94 -> 95
+Note: Phase 93 depends only on 87 (can run in parallel with 88-92 if desired). Phase 90 and 89 both depend on 88.
 
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
@@ -179,5 +303,14 @@ See milestones/v8.0-ROADMAP.md for full phase details.
 | 70-73 | v6.0 | 11/11 | Complete | 2026-02-13 |
 | 74-80 | v7.0 | 17/17 | Complete | 2026-02-14 |
 | 81-86 | v8.0 | 11/11 | Complete | 2026-02-14 |
+| 87 | v9.0 | 0/TBD | Not started | - |
+| 88 | v9.0 | 0/TBD | Not started | - |
+| 89 | v9.0 | 0/TBD | Not started | - |
+| 90 | v9.0 | 0/TBD | Not started | - |
+| 91 | v9.0 | 0/TBD | Not started | - |
+| 92 | v9.0 | 0/TBD | Not started | - |
+| 93 | v9.0 | 0/TBD | Not started | - |
+| 94 | v9.0 | 0/TBD | Not started | - |
+| 95 | v9.0 | 0/TBD | Not started | - |
 
-**Total: 86 phases shipped across 18 milestones. 240 plans completed.**
+**Total: 86 phases shipped across 18 milestones. 240 plans completed. 9 phases planned for v9.0.**

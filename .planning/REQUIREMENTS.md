@@ -161,13 +161,81 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| — | — | — |
+| ORG-01 | Phase 87 | Pending |
+| ORG-02 | Phase 87 | Pending |
+| ORG-03 | Phase 87 | Pending |
+| INGEST-01 | Phase 88 | Pending |
+| INGEST-02 | Phase 88 | Pending |
+| INGEST-03 | Phase 88 | Pending |
+| INGEST-04 | Phase 88 | Pending |
+| INGEST-05 | Phase 88 | Pending |
+| INGEST-06 | Phase 88 | Pending |
+| RESIL-01 | Phase 88 | Pending |
+| RESIL-02 | Phase 88 | Pending |
+| RESIL-03 | Phase 88 | Pending |
+| GROUP-01 | Phase 89 | Pending |
+| GROUP-02 | Phase 89 | Pending |
+| GROUP-03 | Phase 89 | Pending |
+| GROUP-04 | Phase 89 | Pending |
+| GROUP-05 | Phase 89 | Pending |
+| ISSUE-01 | Phase 89 | Pending |
+| ISSUE-02 | Phase 89 | Pending |
+| ISSUE-03 | Phase 89 | Pending |
+| ISSUE-04 | Phase 89 | Pending |
+| ISSUE-05 | Phase 89 | Pending |
+| STREAM-01 | Phase 90 | Pending |
+| STREAM-02 | Phase 90 | Pending |
+| STREAM-03 | Phase 90 | Pending |
+| STREAM-04 | Phase 90 | Pending |
+| STREAM-05 | Phase 90 | Pending |
+| SEARCH-01 | Phase 91 | Pending |
+| SEARCH-02 | Phase 91 | Pending |
+| SEARCH-03 | Phase 91 | Pending |
+| SEARCH-04 | Phase 91 | Pending |
+| SEARCH-05 | Phase 91 | Pending |
+| DASH-01 | Phase 91 | Pending |
+| DASH-02 | Phase 91 | Pending |
+| DASH-03 | Phase 91 | Pending |
+| DASH-04 | Phase 91 | Pending |
+| DASH-05 | Phase 91 | Pending |
+| DASH-06 | Phase 91 | Pending |
+| DETAIL-01 | Phase 91 | Pending |
+| DETAIL-02 | Phase 91 | Pending |
+| DETAIL-03 | Phase 91 | Pending |
+| DETAIL-04 | Phase 91 | Pending |
+| DETAIL-05 | Phase 91 | Pending |
+| DETAIL-06 | Phase 91 | Pending |
+| ORG-04 | Phase 91 | Pending |
+| ORG-05 | Phase 91 | Pending |
+| ALERT-01 | Phase 92 | Pending |
+| ALERT-02 | Phase 92 | Pending |
+| ALERT-03 | Phase 92 | Pending |
+| ALERT-04 | Phase 92 | Pending |
+| ALERT-05 | Phase 92 | Pending |
+| ALERT-06 | Phase 92 | Pending |
+| RETAIN-01 | Phase 93 | Pending |
+| RETAIN-02 | Phase 93 | Pending |
+| RETAIN-03 | Phase 93 | Pending |
+| RETAIN-04 | Phase 93 | Pending |
+| CLUSTER-01 | Phase 94 | Pending |
+| CLUSTER-02 | Phase 94 | Pending |
+| CLUSTER-03 | Phase 94 | Pending |
+| CLUSTER-04 | Phase 94 | Pending |
+| CLUSTER-05 | Phase 94 | Pending |
+| UI-01 | Phase 95 | Pending |
+| UI-02 | Phase 95 | Pending |
+| UI-03 | Phase 95 | Pending |
+| UI-04 | Phase 95 | Pending |
+| UI-05 | Phase 95 | Pending |
+| UI-06 | Phase 95 | Pending |
+| UI-07 | Phase 95 | Pending |
+| UI-08 | Phase 95 | Pending |
 
 **Coverage:**
-- v9.0 requirements: 68 total
-- Mapped to phases: 0
-- Unmapped: 68 (pending roadmap creation)
+- v9.0 requirements: 69 total
+- Mapped to phases: 69
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-02-14*
-*Last updated: 2026-02-14 after initial definition*
+*Last updated: 2026-02-14 after roadmap creation*
