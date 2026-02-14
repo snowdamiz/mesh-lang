@@ -6,6 +6,7 @@
 //! - textDocument/definition (go-to-definition)
 //! - textDocument/documentSymbol (Outline, Breadcrumbs, Go-to-Symbol)
 //! - textDocument/completion (keyword, type, snippet, scope-aware completions)
+//! - textDocument/signatureHelp (parameter info and active parameter tracking)
 //! - Server capabilities advertisement
 
 use std::collections::HashMap;
@@ -88,6 +89,11 @@ impl LanguageServer for MeshBackend {
                     trigger_characters: None,
                     resolve_provider: Some(false),
                     ..Default::default()
+                }),
+                signature_help_provider: Some(SignatureHelpOptions {
+                    trigger_characters: Some(vec!["(".to_string(), ",".to_string()]),
+                    retrigger_characters: None,
+                    work_done_progress_options: Default::default(),
                 }),
                 ..Default::default()
             },
@@ -260,6 +266,30 @@ impl LanguageServer for MeshBackend {
         } else {
             Ok(Some(CompletionResponse::Array(items)))
         }
+    }
+
+    async fn signature_help(
+        &self,
+        params: SignatureHelpParams,
+    ) -> Result<Option<SignatureHelp>> {
+        let uri_str = params
+            .text_document_position_params
+            .text_document
+            .uri
+            .to_string();
+        let position = params.text_document_position_params.position;
+
+        let docs = self.documents.lock().unwrap();
+        let doc = match docs.get(&uri_str) {
+            Some(doc) => doc,
+            None => return Ok(None),
+        };
+
+        Ok(crate::signature_help::compute_signature_help(
+            &doc.source,
+            &doc.analysis,
+            &position,
+        ))
     }
 }
 
@@ -520,5 +550,6 @@ mod tests {
         assert!(caps.text_document_sync.is_some());
         assert!(caps.document_symbol_provider.is_some());
         assert!(caps.completion_provider.is_some());
+        assert!(caps.signature_help_provider.is_some());
     }
 }

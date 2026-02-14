@@ -7,6 +7,7 @@
 //! - **Hover**: Type information shown on hover
 //! - **Go-to-definition**: Navigate to variable, function, and type definitions
 //! - **Completion**: Keywords, built-in types, snippets, and scope-aware names
+//! - **Signature help**: Parameter info and active parameter highlighting in function calls
 //!
 //! The server communicates via stdin/stdout using the LSP protocol over
 //! JSON-RPC, powered by the `tower-lsp` framework.
