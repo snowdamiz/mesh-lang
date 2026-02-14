@@ -9,18 +9,18 @@ See: .planning/PROJECT.md (updated 2026-02-13)
 
 ## Current Position
 
-Phase: 81 (1 of 6 in v8.0) -- Grammar + Document Symbols
-Plan: 1 of 2 in current phase
-Status: Executing
-Last activity: 2026-02-14 -- Completed 81-01 (TextMate grammar + Shiki themes)
+Phase: 81 (1 of 6 in v8.0) -- Grammar + Document Symbols [COMPLETE]
+Plan: 2 of 2 in current phase
+Status: Phase complete
+Last activity: 2026-02-14 -- Completed 81-02 (LSP document symbols)
 
-Progress: [█████░░░░░] 50%
+Progress: [██████████] 100%
 
 ## Performance Metrics
 
 **All-time Totals:**
-- Plans completed: 219
-- Phases completed: 80
+- Plans completed: 220
+- Phases completed: 81
 - Milestones shipped: 17 (v1.0-v7.0)
 - Lines of Rust: ~97,200
 - Lines of website: ~5,500
@@ -35,6 +35,9 @@ Progress: [█████░░░░░] 50%
 - 81-01: Removed nil from constant.language -- Mesh uses None (support.function) not nil
 - 81-01: Doc comments use non-italic greener shade to visually distinguish from regular italic comments
 - 81-01: Module-qualified call pattern uses lookahead to only match call sites, not field access
+- 81-02: Used DocumentSymbolResponse::Nested for hierarchical Outline tree (not flat SymbolInformation)
+- 81-02: IMPL_DEF named as "impl TraitName" from PATH child since no NAME child exists
+- 81-02: CALL_HANDLER/CAST_HANDLER included as FUNCTION symbols for service body visibility
 
 ### Pending Todos
 
@@ -55,6 +58,6 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-14
-Stopped at: Completed 81-01-PLAN.md (TextMate grammar + Shiki themes)
+Stopped at: Completed 81-02-PLAN.md (LSP document symbols) -- Phase 81 complete
 Resume file: None
-Next action: Execute 81-02-PLAN.md (LSP document symbols)
+Next action: Plan Phase 82 (Install + Build)
