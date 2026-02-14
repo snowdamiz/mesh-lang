@@ -8164,17 +8164,28 @@ impl<'a> Lowerer<'a> {
             let target_err_name = fn_err_name.as_deref().unwrap();
             let source_err_ty = self.type_name_to_mir_type(source_err_name);
             let target_err_ty = self.type_name_to_mir_type(target_err_name);
+
+            // Normalize struct error types to Ptr for the Result variant layout.
+            // User-defined struct constructors return heap-allocated pointers
+            // (via mesh_gc_alloc), so the From function's return value IS already
+            // a pointer at LLVM level. The Result layout uses { i8, ptr }, so the
+            // MIR type must be Ptr to match the variant field slot.
+            let effective_err_ty = match &target_err_ty {
+                MirType::Struct(_) => MirType::Ptr,
+                other => other.clone(),
+            };
+
             let from_fn_name = format!("From_{}__from__{}", source_err_name, target_err_name);
             let from_fn_ty = MirType::FnPtr(
                 vec![source_err_ty.clone()],
-                Box::new(target_err_ty.clone()),
+                Box::new(effective_err_ty.clone()),
             );
             let converted_err = MirExpr::Call {
                 func: Box::new(MirExpr::Var(from_fn_name, from_fn_ty)),
                 args: vec![MirExpr::Var(err_name.clone(), source_err_ty.clone())],
-                ty: target_err_ty.clone(),
+                ty: effective_err_ty.clone(),
             };
-            (converted_err, target_err_ty)
+            (converted_err, effective_err_ty)
         } else {
             // Error types match -- use original error directly.
             (MirExpr::Var(err_name.clone(), error_ty.clone()), error_ty.clone())
