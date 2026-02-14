@@ -2783,3 +2783,12 @@ fn e2e_collect_map() {
     let output = compile_and_run(&source);
     assert_eq!(output, "%{0 => 100, 1 => 200, 2 => 300}\n%{10 => 1, 20 => 2, 30 => 3}\n3\n");
 }
+
+/// Phase 79 COLL-03 + COLL-04: Set.collect deduplication and String.collect concatenation.
+/// Set.collect deduplicates elements, String.collect joins string elements.
+#[test]
+fn e2e_collect_set_string() {
+    let source = read_fixture("collect_set_string.mpl");
+    let output = compile_and_run(&source);
+    assert_eq!(output, "3\n3\ntrue\nhello world\nabc\n");
+}
