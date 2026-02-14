@@ -9,17 +9,17 @@ See: .planning/PROJECT.md (updated 2026-02-13)
 
 ## Current Position
 
-Phase: 77 of 79 (From/Into Conversion)
-Plan: 3 of 3 in current phase (COMPLETE)
-Status: Phase 77 complete (gap closure done)
-Last activity: 2026-02-14 -- Plan 77-03 (Gap Closure: Struct Error Types) complete, 2/2 tasks
+Phase: 78 of 79 (Lazy Combinators & Terminals)
+Plan: 1 of 3 in current phase (COMPLETE)
+Status: Plan 78-01 complete (runtime iterator infrastructure)
+Last activity: 2026-02-14 -- Plan 78-01 (Runtime Iterator Infrastructure) complete, 2/2 tasks
 
 Progress: [██████████] 100% (v7.0)
 
 ## Performance Metrics
 
 **All-time Totals:**
-- Plans completed: 211
+- Plans completed: 212
 - Phases completed: 77
 - Milestones shipped: 16 (v1.0-v6.0)
 - Lines of Rust: ~93,500
@@ -80,6 +80,11 @@ Progress: [██████████] 100% (v7.0)
 - Struct-to-ptr coercion in codegen_call: GC-allocate struct return values when MIR expects Ptr
 - Two-layer fix needed: MIR normalization + codegen coercion (user-defined functions return structs by value, not as pointers)
 
+**Phase 78-01:**
+- Type-tag dispatch (Option A) chosen over function-pointer dispatch (Option C) -- tag u8 as first byte of all iterator handles for uniform generic_next dispatch
+- Tag numbering: 0-3 for collection iterators, 10-15 for adapter iterators (gap 4-9 reserved for future collection types)
+- All combinator adapters are lazy (no intermediate allocation); terminal operations loop via generic_next until None
+
 ### Research Notes
 
 v7.0 research completed (HIGH confidence). Key findings:
@@ -107,6 +112,6 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-14
-Stopped at: Completed 77-03-PLAN.md (Gap Closure: Struct Error Types in Result)
+Stopped at: Completed 78-01-PLAN.md (Runtime Iterator Infrastructure)
 Resume file: None
-Next action: Phase 77 verified complete. Proceed to Phase 78 (Lazy Combinators & Terminals).
+Next action: Proceed to 78-02-PLAN.md (Compiler Wiring: type checker, MIR lowerer, codegen intrinsics for lazy iterator API).
