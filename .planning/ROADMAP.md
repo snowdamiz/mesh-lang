@@ -18,6 +18,7 @@
 - [x] **v5.0 Distributed Actors** - Phases 63-69 (shipped 2026-02-13)
 - [x] **v6.0 Website & Documentation** - Phases 70-73 (shipped 2026-02-13)
 - [x] **v7.0 Iterator Protocol & Trait Ecosystem** - Phases 74-80 (shipped 2026-02-14)
+- [ ] **v8.0 Developer Tooling** - Phases 81-86 (in progress)
 
 ## Phases
 
@@ -149,6 +150,19 @@ See milestones/v7.0-ROADMAP.md for full phase details.
 
 </details>
 
+### v8.0 Developer Tooling (In Progress)
+
+**Milestone Goal:** Make Mesh installable, editable, and navigable -- one-command install, complete syntax highlighting, code intelligence, and accurate documentation.
+
+- [ ] **Phase 81: Grammar + Document Symbols** - Complete syntax highlighting + LSP outline/breadcrumbs/go-to-symbol
+- [ ] **Phase 82: Install Infrastructure** - CI pipeline, prebuilt binaries, install script
+- [ ] **Phase 83: Completion + Signature Help** - Code completion and function parameter info
+- [ ] **Phase 84: VS Code Extension Publishing** - Marketplace + Open VSX publishing
+- [ ] **Phase 85: Formatting + Audit** - LSP formatting, formatter/REPL v7.0 audit
+- [ ] **Phase 86: Documentation Corrections** - Binary name, install command, version badge, examples
+
+See milestones/v8.0-ROADMAP.md for full phase details.
+
 ## Progress
 
 | Phase | Milestone | Plans Complete | Status | Completed |
@@ -169,5 +183,6 @@ See milestones/v7.0-ROADMAP.md for full phase details.
 | 63-69 | v5.0 | 20/20 | Complete | 2026-02-13 |
 | 70-73 | v6.0 | 11/11 | Complete | 2026-02-13 |
 | 74-80 | v7.0 | 17/17 | Complete | 2026-02-14 |
+| 81-86 | v8.0 | 0/TBD | In progress | - |
 
-**Total: 80 phases shipped across 17 milestones. 218 plans completed.**
+**Total: 80 phases shipped across 17 milestones. 218 plans completed. 6 phases planned for v8.0.**

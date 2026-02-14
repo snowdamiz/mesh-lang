@@ -5,14 +5,16 @@
 See: .planning/PROJECT.md (updated 2026-02-13)
 
 **Core value:** Expressive, readable concurrency -- writing concurrent programs should feel as natural and clean as writing sequential code, with the safety net of supervision and fault tolerance built into the language.
-**Current focus:** v8.0 Developer Tooling
+**Current focus:** v8.0 Developer Tooling -- Phase 81 (Grammar + Document Symbols)
 
 ## Current Position
 
-Phase: Not started (defining requirements)
-Plan: —
-Status: Defining requirements
-Last activity: 2026-02-13 — Milestone v8.0 started
+Phase: 81 (1 of 6 in v8.0) -- Grammar + Document Symbols
+Plan: 0 of TBD in current phase
+Status: Ready to plan
+Last activity: 2026-02-13 -- Roadmap created for v8.0 Developer Tooling (6 phases, 42 requirements)
+
+Progress: [░░░░░░░░░░] 0%
 
 ## Performance Metrics
 
@@ -29,14 +31,7 @@ Last activity: 2026-02-13 — Milestone v8.0 started
 ### Decisions
 
 (See PROJECT.md Key Decisions table for full log)
-
-### Roadmap Evolution
-
-(Archived -- see milestones/ directory for per-milestone roadmaps)
-
-### Research Notes
-
-(Archived with v7.0 milestone)
+No new decisions yet for v8.0.
 
 ### Pending Todos
 
@@ -44,7 +39,8 @@ None.
 
 ### Blockers/Concerns
 
-None.
+- Phase 82 (Install): LLVM 21 CI installation time needs validation (apt/Homebrew availability, caching strategy)
+- Phase 83 (Completion): Scope-aware CST walk complexity -- may need prototype before full implementation
 
 ### Quick Tasks Completed
 
@@ -56,6 +52,6 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-13
-Stopped at: Defining requirements for v8.0
+Stopped at: v8.0 roadmap created, ready to plan Phase 81
 Resume file: None
-Next action: Define requirements and create roadmap
+Next action: Plan Phase 81 (Grammar + Document Symbols)

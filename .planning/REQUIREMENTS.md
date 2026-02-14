@@ -102,45 +102,45 @@
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| GRAM-01 | TBD | Pending |
-| GRAM-02 | TBD | Pending |
-| GRAM-03 | TBD | Pending |
-| GRAM-04 | TBD | Pending |
-| GRAM-05 | TBD | Pending |
-| GRAM-06 | TBD | Pending |
-| GRAM-07 | TBD | Pending |
-| GRAM-08 | TBD | Pending |
-| GRAM-09 | TBD | Pending |
-| GRAM-10 | TBD | Pending |
-| SYM-01 | TBD | Pending |
-| SYM-02 | TBD | Pending |
-| SYM-03 | TBD | Pending |
-| COMP-01 | TBD | Pending |
-| COMP-02 | TBD | Pending |
-| COMP-03 | TBD | Pending |
-| COMP-04 | TBD | Pending |
-| SIG-01 | TBD | Pending |
-| SIG-02 | TBD | Pending |
-| SIG-03 | TBD | Pending |
-| FMT-01 | TBD | Pending |
-| DIST-01 | TBD | Pending |
-| DIST-02 | TBD | Pending |
-| DIST-03 | TBD | Pending |
-| INST-01 | TBD | Pending |
-| INST-02 | TBD | Pending |
-| INST-03 | TBD | Pending |
-| INST-04 | TBD | Pending |
-| INST-05 | TBD | Pending |
-| INST-06 | TBD | Pending |
-| EXT-01 | TBD | Pending |
-| EXT-02 | TBD | Pending |
-| EXT-03 | TBD | Pending |
-| EXT-04 | TBD | Pending |
-| EXT-05 | TBD | Pending |
-| AUDIT-01 | TBD | Pending |
-| AUDIT-02 | TBD | Pending |
-| DOCS-01 | TBD | Pending |
-| DOCS-02 | TBD | Pending |
-| DOCS-03 | TBD | Pending |
-| DOCS-04 | TBD | Pending |
-| DOCS-05 | TBD | Pending |
+| GRAM-01 | Phase 81 | Pending |
+| GRAM-02 | Phase 81 | Pending |
+| GRAM-03 | Phase 81 | Pending |
+| GRAM-04 | Phase 81 | Pending |
+| GRAM-05 | Phase 81 | Pending |
+| GRAM-06 | Phase 81 | Pending |
+| GRAM-07 | Phase 81 | Pending |
+| GRAM-08 | Phase 81 | Pending |
+| GRAM-09 | Phase 81 | Pending |
+| GRAM-10 | Phase 81 | Pending |
+| SYM-01 | Phase 81 | Pending |
+| SYM-02 | Phase 81 | Pending |
+| SYM-03 | Phase 81 | Pending |
+| DIST-01 | Phase 82 | Pending |
+| DIST-02 | Phase 82 | Pending |
+| DIST-03 | Phase 82 | Pending |
+| INST-01 | Phase 82 | Pending |
+| INST-02 | Phase 82 | Pending |
+| INST-03 | Phase 82 | Pending |
+| INST-04 | Phase 82 | Pending |
+| INST-05 | Phase 82 | Pending |
+| INST-06 | Phase 82 | Pending |
+| COMP-01 | Phase 83 | Pending |
+| COMP-02 | Phase 83 | Pending |
+| COMP-03 | Phase 83 | Pending |
+| COMP-04 | Phase 83 | Pending |
+| SIG-01 | Phase 83 | Pending |
+| SIG-02 | Phase 83 | Pending |
+| SIG-03 | Phase 83 | Pending |
+| FMT-01 | Phase 85 | Pending |
+| EXT-01 | Phase 84 | Pending |
+| EXT-02 | Phase 84 | Pending |
+| EXT-03 | Phase 84 | Pending |
+| EXT-04 | Phase 84 | Pending |
+| EXT-05 | Phase 84 | Pending |
+| AUDIT-01 | Phase 85 | Pending |
+| AUDIT-02 | Phase 85 | Pending |
+| DOCS-01 | Phase 86 | Pending |
+| DOCS-02 | Phase 86 | Pending |
+| DOCS-03 | Phase 86 | Pending |
+| DOCS-04 | Phase 86 | Pending |
+| DOCS-05 | Phase 86 | Pending |
