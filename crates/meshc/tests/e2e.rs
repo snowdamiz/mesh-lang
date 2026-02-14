@@ -2628,3 +2628,13 @@ fn e2e_numeric_neg() {
     let output = compile_and_run(&source);
     assert_eq!(output, "-3\n-7\n-42\n-3.5\n");
 }
+
+/// Phase 76: User-defined Iterable with built-in runtime iterator.
+/// EvenNumbers struct implements Iterable with ListIterator backing.
+/// for-in over user-defined Iterable desugars through ForInIterator codegen.
+#[test]
+fn e2e_iterator_iterable() {
+    let source = read_fixture("iterator_iterable.mpl");
+    let output = compile_and_run(&source);
+    assert_eq!(output, "[4, 8, 12, 16, 20]\n2\n4\n6\n8\n10\n");
+}

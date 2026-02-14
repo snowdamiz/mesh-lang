@@ -819,6 +819,19 @@ fn stdlib_modules() -> HashMap<String, HashMap<String, Scheme>> {
     )));
     modules.insert("Global".to_string(), global_mod);
 
+    // ── Iter module (Phase 76) ─────────────────────────────────────
+    {
+        let iter_t_var = TyVar(91200);
+        let iter_t = Ty::Var(iter_t_var);
+        let mut iter_mod = HashMap::new();
+        // Iter.from: fn(List<T>) -> ListIterator (polymorphic over element type)
+        iter_mod.insert("from".to_string(), Scheme {
+            vars: vec![iter_t_var],
+            ty: Ty::fun(vec![Ty::list(iter_t)], Ty::Con(TyCon::new("ListIterator"))),
+        });
+        modules.insert("Iter".to_string(), iter_mod);
+    }
+
     modules
 }
 
@@ -828,6 +841,7 @@ const STDLIB_MODULE_NAMES: &[&str] = &[
     "Math", "Int", "Float", "Timer", "Sqlite", "Pg", "Pool",
     "Node", "Process",  // Phase 67
     "Global",  // Phase 68
+    "Iter",  // Phase 76
 ];
 
 /// Check if a name is a known stdlib module.
