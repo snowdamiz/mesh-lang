@@ -2714,3 +2714,33 @@ fn e2e_from_try_struct_error() {
     let output = compile_and_run(&source);
     assert_eq!(output, "something failed\n");
 }
+
+// ── Phase 78: Lazy Combinators & Terminals E2E Tests ─────────────────
+
+/// Phase 78 COMB-01/02/06: Iter.map and Iter.filter combinators with pipe chain.
+/// Verifies map doubles elements, filter keeps evens, map+filter chain, map+sum.
+#[test]
+fn e2e_iter_map_filter() {
+    let source = read_fixture("iter_map_filter.mpl");
+    let output = compile_and_run(&source);
+    assert_eq!(output, "10\n5\n5\n165\n");
+}
+
+/// Phase 78 COMB-03: Iter.take and Iter.skip combinators.
+/// Verifies take limits, skip offsets, take(0) and skip(all) edge cases.
+#[test]
+fn e2e_iter_take_skip() {
+    let source = read_fixture("iter_take_skip.mpl");
+    let output = compile_and_run(&source);
+    assert_eq!(output, "6\n27\n0\n0\n");
+}
+
+/// Phase 78 COMB-04/05: Iter.enumerate and Iter.zip combinators.
+/// Verifies enumerate produces countable tuples, zip combines iterators,
+/// zip with unequal lengths stops at shorter.
+#[test]
+fn e2e_iter_enumerate_zip() {
+    let source = read_fixture("iter_enumerate_zip.mpl");
+    let output = compile_and_run(&source);
+    assert_eq!(output, "3\n3\n2\n");
+}

@@ -8,7 +8,7 @@ use ena::unify::InPlaceUnificationTable;
 use rustc_hash::FxHashMap;
 
 use crate::error::{ConstraintOrigin, TypeError};
-use crate::ty::{Scheme, Ty, TyVar};
+use crate::ty::{Scheme, Ty, TyCon, TyVar};
 
 /// The inference context -- owns the unification table, level state, and errors.
 ///
@@ -194,6 +194,28 @@ impl InferCtx {
         }
     }
 
+    /// Check if two TyCon names are compatible because they both represent
+    /// opaque iterator handle pointers. All iterator handle types
+    /// (ListIterator, MapIterator, etc.) and adapter types resolve to
+    /// MirType::Ptr at the MIR/codegen level, so they must be unifiable
+    /// with each other and with the generic `Ptr` type in the type checker.
+    fn iterator_ptr_compatible(c1: &TyCon, c2: &TyCon) -> bool {
+        fn is_iter_ptr(name: &str) -> bool {
+            name == "Ptr"
+                || name == "ListIterator"
+                || name == "MapIterator"
+                || name == "SetIterator"
+                || name == "RangeIterator"
+                || name == "MapAdapterIterator"
+                || name == "FilterAdapterIterator"
+                || name == "TakeAdapterIterator"
+                || name == "SkipAdapterIterator"
+                || name == "EnumerateAdapterIterator"
+                || name == "ZipAdapterIterator"
+        }
+        is_iter_ptr(&c1.name) && is_iter_ptr(&c2.name)
+    }
+
     // ── Unification ─────────────────────────────────────────────────────
 
     /// Unify two types, making them equal.
@@ -242,7 +264,7 @@ impl InferCtx {
 
             // Concrete constructor meets concrete constructor -- names must match.
             (Ty::Con(c1), Ty::Con(c2)) => {
-                if c1 == c2 {
+                if c1 == c2 || Self::iterator_ptr_compatible(&c1, &c2) {
                     Ok(())
                 } else {
                     let err = TypeError::Mismatch {
