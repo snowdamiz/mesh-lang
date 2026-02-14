@@ -17,6 +17,10 @@
 //! - `--json` - Output diagnostics as JSON (one object per line)
 //! - `--no-color` - Disable colorized output
 
+#[cfg(target_env = "musl")]
+#[global_allocator]
+static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
+
 mod discovery;
 
 use std::path::{Path, PathBuf};

@@ -30,3 +30,4 @@ toml = "0.8"
 git2 = "0.19"
 semver = "1"
 rustyline = "15"
+mimalloc = { version = "0.1", default-features = false }
