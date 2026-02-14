@@ -5,21 +5,21 @@
 See: .planning/PROJECT.md (updated 2026-02-13)
 
 **Core value:** Expressive, readable concurrency -- writing concurrent programs should feel as natural and clean as writing sequential code, with the safety net of supervision and fault tolerance built into the language.
-**Current focus:** v8.0 Developer Tooling -- Phase 84 (VS Code Extension Publishing)
+**Current focus:** v8.0 Developer Tooling -- Phase 85 (Formatting + Audit)
 
 ## Current Position
 
-Phase: 84 (4 of 6 in v8.0) -- VS Code Extension Publishing
-Plan: 2 of 2 in current phase
-Status: Phase 84 complete
-Last activity: 2026-02-14 -- Plan 84-02 complete (Publish to Marketplace)
+Phase: 85 (5 of 6 in v8.0) -- Formatting + Audit
+Plan: 1 of 2 in current phase
+Status: Plan 85-01 complete
+Last activity: 2026-02-14 -- Plan 85-01 complete (LSP Formatting + Collection Literal Handlers)
 
 Progress: [████████░░] 100%
 
 ## Performance Metrics
 
 **All-time Totals:**
-- Plans completed: 226
+- Plans completed: 227
 - Phases completed: 84
 - Milestones shipped: 17 (v1.0-v7.0)
 - Lines of Rust: ~97,200
@@ -53,6 +53,9 @@ Progress: [████████░░] 100%
 - 84-02: Publisher ID changed from mesh-lang to OpenWorthTechnologies to match actual Marketplace publisher
 - 84-02: Open VSX publish step uses continue-on-error to avoid blocking Marketplace publish
 - 84-02: VSIX packaged in separate step with path via step output for reliability
+- 85-01: Full-document TextEdit replacement for LSP formatting -- simpler than computing diff edits
+- 85-01: Tab size from LSP params.options.tab_size per standard -- users control indent via editor settings
+- 85-01: Return None when formatted == source to skip no-op edits
 
 ### Pending Todos
 
@@ -74,10 +77,11 @@ None. (Phase 83 scope-walk concern resolved -- pattern works correctly.)
 | Phase 83 P02 | 4min | 2 tasks | 3 files |
 | Phase 84 P01 | 4min | 2 tasks | 6 files |
 | Phase 84 P02 | ~15min | 2 tasks | 3 files |
+| Phase 85 P01 | 3min | 2 tasks | 4 files |
 
 ## Session Continuity
 
 Last session: 2026-02-14
-Stopped at: Completed 84-02-PLAN.md (Publish to Marketplace) -- Phase 84 complete
+Stopped at: Completed 85-01-PLAN.md (LSP Formatting + Collection Literal Handlers)
 Resume file: None
-Next action: Plan/execute Phase 85 (Formatting + Audit)
+Next action: Execute Phase 85 Plan 02 (Formatting Audit)
