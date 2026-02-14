@@ -169,7 +169,11 @@ See milestones/v7.0-ROADMAP.md for full phase details.
   Plans:
   - [x] 83-01-PLAN.md -- Code completion: keyword/type/snippet completions, scope-aware variable/function completion from CST walk
   - [x] 83-02-PLAN.md -- Signature help: parameter extraction from type system, active parameter tracking, trigger characters
-- [ ] **Phase 84: VS Code Extension Publishing** - Marketplace + Open VSX publishing
+- [ ] **Phase 84: VS Code Extension Publishing** - Users can discover and install the Mesh extension from VS Code Marketplace or Open VSX with one click
+  **Plans:** 2 plans
+  Plans:
+  - [ ] 84-01-PLAN.md -- Marketplace metadata: icon, README, CHANGELOG, .vscodeignore, version bump to 0.2.0
+  - [ ] 84-02-PLAN.md -- Publishing: GitHub Actions dual-registry workflow (VS Code Marketplace + Open VSX) on ext-v* tags
 - [ ] **Phase 85: Formatting + Audit** - LSP formatting, formatter/REPL v7.0 audit
 - [ ] **Phase 86: Documentation Corrections** - Binary name, install command, version badge, examples
 
