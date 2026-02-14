@@ -9860,6 +9860,19 @@ fn map_builtin_name(name: &str) -> String {
         "global_unregister" => "mesh_global_unregister".to_string(),
         // ── Phase 76: Iterator functions ──────────────────────────────
         "iter_from" => "mesh_iter_from".to_string(),
+        // ── Phase 78: Lazy Combinators & Terminals ──────────────────
+        "iter_map" => "mesh_iter_map".to_string(),
+        "iter_filter" => "mesh_iter_filter".to_string(),
+        "iter_take" => "mesh_iter_take".to_string(),
+        "iter_skip" => "mesh_iter_skip".to_string(),
+        "iter_enumerate" => "mesh_iter_enumerate".to_string(),
+        "iter_zip" => "mesh_iter_zip".to_string(),
+        "iter_count" => "mesh_iter_count".to_string(),
+        "iter_sum" => "mesh_iter_sum".to_string(),
+        "iter_any" => "mesh_iter_any".to_string(),
+        "iter_all" => "mesh_iter_all".to_string(),
+        "iter_find" => "mesh_iter_find".to_string(),
+        "iter_reduce" => "mesh_iter_reduce".to_string(),
         _ => name.to_string(),
     }
 }
