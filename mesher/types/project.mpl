@@ -1,8 +1,6 @@
 # Project and organization data types for Mesher monitoring platform.
 # Flat org -> project hierarchy (no teams layer).
 
-module Types.Project
-
 # Organization -- top-level tenancy unit.
 pub struct Organization do
   id :: String
@@ -16,7 +14,7 @@ pub struct Project do
   id :: String
   org_id :: String
   name :: String
-  platform :: Option<String>
+  platform :: String
   created_at :: String
 end deriving(Json, Row)
 

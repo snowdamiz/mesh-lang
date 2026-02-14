@@ -2,11 +2,13 @@
 # Defines the core event model: severity levels, stack frames,
 # exception info, breadcrumbs, and the event/payload structs.
 
-module Types.Event
-
 # Severity levels following Sentry convention (5 levels).
 pub type Severity do
-  Fatal | Error | Warning | Info | Debug
+  Fatal
+  Error
+  Warning
+  Info
+  Debug
 end deriving(Json)
 
 # Structured stack frame for fingerprinting and display.
@@ -23,7 +25,7 @@ end deriving(Json)
 pub struct ExceptionInfo do
   type_name :: String
   value :: String
-  module :: String
+  module_name :: String
 end deriving(Json)
 
 # Breadcrumb trail entry -- data field is JSON string for flexible JSONB.

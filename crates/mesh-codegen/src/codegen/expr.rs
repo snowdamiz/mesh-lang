@@ -2887,8 +2887,30 @@ impl<'ctx> CodeGen<'ctx> {
 
         let fn_val = self.current_function();
 
+        // Determine the state LLVM type from the first handler function's first param.
+        // All handlers share the same state type (the init function's return type).
+        let first_handler_name = call_handlers.first()
+            .map(|(_, name, _)| name.as_str())
+            .or_else(|| cast_handlers.first().map(|(_, name, _)| name.as_str()));
+        let state_is_ptr = if let Some(name) = first_handler_name {
+            if let Some(handler_fn) = self.functions.get(name) {
+                let param_types = handler_fn.get_type().get_param_types();
+                // First param is state; check if it's a pointer type
+                !param_types.is_empty() && param_types[0].is_pointer_type()
+            } else {
+                false
+            }
+        } else {
+            false
+        };
+        let state_llvm_ty: inkwell::types::BasicTypeEnum<'ctx> = if state_is_ptr {
+            ptr_ty.into()
+        } else {
+            i64_ty.into()
+        };
+
         // The service loop function receives a ptr to the args buffer.
-        // Load the initial state from the args buffer (first i64).
+        // Load the initial state from the args buffer (first 8-byte slot).
         let args_ptr_alloca = *self.locals.get("__args_ptr")
             .ok_or("Missing __args_ptr parameter in service loop")?;
         let args_ptr_val = self.builder
@@ -2896,13 +2918,12 @@ impl<'ctx> CodeGen<'ctx> {
             .map_err(|e| e.to_string())?
             .into_pointer_value();
         let init_state = self.builder
-            .build_load(i64_ty, args_ptr_val, "init_state")
-            .map_err(|e| e.to_string())?
-            .into_int_value();
+            .build_load(state_llvm_ty, args_ptr_val, "init_state")
+            .map_err(|e| e.to_string())?;
 
         // Create a state alloca to hold the mutable state across iterations.
         let state_alloca = self.builder
-            .build_alloca(i64_ty, "__state")
+            .build_alloca(state_llvm_ty, "__state")
             .map_err(|e| e.to_string())?;
         self.builder
             .build_store(state_alloca, init_state)
@@ -2917,9 +2938,8 @@ impl<'ctx> CodeGen<'ctx> {
 
         // Load the current state from the state alloca.
         let state_val = self.builder
-            .build_load(i64_ty, state_alloca, "state")
-            .map_err(|e| e.to_string())?
-            .into_int_value();
+            .build_load(state_llvm_ty, state_alloca, "state")
+            .map_err(|e| e.to_string())?;
 
         // Call mesh_actor_receive(-1) -> ptr (blocks until message arrives).
         let receive_fn = get_intrinsic(&self.module, "mesh_actor_receive");
@@ -3023,7 +3043,13 @@ impl<'ctx> CodeGen<'ctx> {
             let bb = handler_blocks[i];
             self.builder.position_at_end(bb);
 
+            // Look up handler function to get parameter types for correct arg loading.
+            let handler_fn = self.functions.get(*handler_fn_name).copied()
+                .ok_or_else(|| format!("Handler function '{}' not found", handler_fn_name))?;
+            let handler_param_types = handler_fn.get_type().get_param_types();
+
             // Extract handler arguments from the message (offset 16 from data_ptr).
+            // First arg is state (already loaded), then handler params.
             let mut handler_args: Vec<BasicMetadataValueEnum<'ctx>> = vec![state_val.into()];
             for arg_idx in 0..*num_args {
                 let arg_offset = 16 + (arg_idx * 8);
@@ -3037,15 +3063,21 @@ impl<'ctx> CodeGen<'ctx> {
                         )
                         .map_err(|e| e.to_string())?
                 };
+                // Load arg with the correct type based on handler function param type.
+                // Param index is arg_idx + 1 (first param is state).
+                let param_idx = arg_idx + 1;
+                let load_ty: inkwell::types::BasicTypeEnum<'ctx> = if param_idx < handler_param_types.len() && handler_param_types[param_idx].is_pointer_type() {
+                    ptr_ty.into()
+                } else {
+                    i64_ty.into()
+                };
                 let arg_val = self.builder
-                    .build_load(i64_ty, arg_ptr, &format!("arg_{}", arg_idx))
+                    .build_load(load_ty, arg_ptr, &format!("arg_{}", arg_idx))
                     .map_err(|e| e.to_string())?;
                 handler_args.push(arg_val.into());
             }
 
             // Call the handler function.
-            let handler_fn = self.functions.get(*handler_fn_name).copied()
-                .ok_or_else(|| format!("Handler function '{}' not found", handler_fn_name))?;
             let handler_result = self.builder
                 .build_call(
                     handler_fn,
@@ -3192,10 +3224,20 @@ impl<'ctx> CodeGen<'ctx> {
                     )
                     .map_err(|e| e.to_string())?;
 
-                new_state_val
+                // Convert new_state_val to the proper state type.
+                if state_is_ptr {
+                    let state_ptr: inkwell::values::PointerValue<'ctx> = self.builder
+                        .build_int_to_ptr(new_state_val, ptr_ty, "new_state_ptr")
+                        .map_err(|e| e.to_string())?;
+                    state_ptr.into()
+                } else {
+                    let v: inkwell::values::BasicValueEnum<'ctx> = new_state_val.into();
+                    v
+                }
             } else {
-                // For cast handlers, the result IS the new state (i64).
-                handler_result.into_int_value()
+                // For cast handlers, the result IS the new state.
+                // The handler already returns the correct type.
+                handler_result
             };
 
             // Update the state alloca and branch back to loop.
@@ -3289,6 +3331,21 @@ impl<'ctx> CodeGen<'ctx> {
                         .map_err(|e| format!("{}", e))?;
                     self.builder
                         .build_load(i64_type, fv_alloca, "float_to_i64")
+                        .map_err(|e| format!("{}", e))?
+                        .into_int_value()
+                }
+                BasicMetadataValueEnum::StructValue(sv) => {
+                    // Store struct to alloca, then load as i64 (treats it as opaque bits).
+                    // This handles Result/tagged-union values in tuples.
+                    let sv_alloca = self.builder
+                        .build_alloca(sv.get_type(), "struct_tmp")
+                        .map_err(|e| format!("{}", e))?;
+                    self.builder
+                        .build_store(sv_alloca, sv)
+                        .map_err(|e| format!("{}", e))?;
+                    // Load the first i64 worth of data (the tag or pointer representation).
+                    self.builder
+                        .build_load(i64_type, sv_alloca, "struct_to_i64")
                         .map_err(|e| format!("{}", e))?
                         .into_int_value()
                 }

@@ -251,6 +251,17 @@ struct Lowerer<'a> {
     try_counter: u32,
 }
 
+/// Walk through Let/Block wrappers to find the effective return type of a MIR expression.
+/// Let { ty, body, .. } has `ty` as the binding's value type, but the effective type is body's type.
+/// Block(exprs, ty) already stores the last expression's type as `ty`.
+fn effective_return_type(expr: &MirExpr) -> MirType {
+    match expr {
+        MirExpr::Let { body, .. } => effective_return_type(body),
+        MirExpr::Block(_, ty) => ty.clone(),
+        other => other.ty().clone(),
+    }
+}
+
 impl<'a> Lowerer<'a> {
     fn new(typeck: &'a TypeckResult, parse: &'a Parse, module_name: &str, pub_fns: &HashSet<String>) -> Self {
         Lowerer {
@@ -8880,10 +8891,12 @@ impl<'a> Lowerer<'a> {
         };
 
         let init_fn_name = format!("__service_{}_init", name_lower);
+        let init_ret_ty = effective_return_type(&init_body);
+        let init_ret_ty = if matches!(init_ret_ty, MirType::Unit) { MirType::Int } else { init_ret_ty };
         self.functions.push(MirFunction {
             name: init_fn_name.clone(),
             params: init_params.clone(),
-            return_type: MirType::Int,
+            return_type: init_ret_ty.clone(),
             body: init_body,
             is_closure_fn: false,
             captures: Vec::new(),
@@ -8893,7 +8906,7 @@ impl<'a> Lowerer<'a> {
             init_fn_name.clone(),
             MirType::FnPtr(
                 init_params.iter().map(|(_, t)| t.clone()).collect(),
-                Box::new(MirType::Int),
+                Box::new(init_ret_ty.clone()),
             ),
         );
 
@@ -8911,10 +8924,10 @@ impl<'a> Lowerer<'a> {
 
             self.push_scope();
 
-            // State param.
+            // State param: use the actual init return type (e.g. Int for PoolHandle, Struct for WriterState).
             let state_param_name = info.state_param.clone().unwrap_or_else(|| "state".to_string());
-            self.insert_var(state_param_name.clone(), MirType::Int);
-            let mut params = vec![(state_param_name, MirType::Int)];
+            self.insert_var(state_param_name.clone(), init_ret_ty.clone());
+            let mut params = vec![(state_param_name, init_ret_ty.clone())];
 
             // Handler params.
             if let Some(param_list) = handler.params() {
@@ -8941,8 +8954,10 @@ impl<'a> Lowerer<'a> {
             self.pop_scope();
 
             // Call handler body returns a heap-allocated tuple (new_state, reply).
-            // The return type is Ptr since __mesh_make_tuple returns a pointer.
-            let ret_ty = if matches!(body.ty(), MirType::Ptr) { MirType::Ptr } else { MirType::Int };
+            // The return type is ALWAYS Ptr since __mesh_make_tuple returns a pointer.
+            // Note: body.ty() may not report Ptr when the body is wrapped in Let
+            // bindings (Let.ty is the binding's value type, not the body's final type).
+            let ret_ty = MirType::Ptr;
             self.functions.push(MirFunction {
                 name: handler_fn_name.clone(),
                 params,
@@ -8968,8 +8983,8 @@ impl<'a> Lowerer<'a> {
             self.push_scope();
 
             let state_param_name = info.state_param.clone().unwrap_or_else(|| "state".to_string());
-            self.insert_var(state_param_name.clone(), MirType::Int);
-            let mut params = vec![(state_param_name, MirType::Int)];
+            self.insert_var(state_param_name.clone(), init_ret_ty.clone());
+            let mut params = vec![(state_param_name, init_ret_ty.clone())];
 
             if let Some(param_list) = handler.params() {
                 for param in param_list.params() {
@@ -8993,10 +9008,14 @@ impl<'a> Lowerer<'a> {
 
             self.pop_scope();
 
+            // Cast handler returns new state. Use effective_return_type to walk
+            // through Let wrappers and find the actual return type.
+            let cast_ret_ty = effective_return_type(&body);
+            let cast_ret_ty = if matches!(cast_ret_ty, MirType::Unit) { MirType::Int } else { cast_ret_ty };
             self.functions.push(MirFunction {
                 name: handler_fn_name.clone(),
                 params,
-                return_type: MirType::Int,
+                return_type: cast_ret_ty.clone(),
                 body,
                 is_closure_fn: false,
                 captures: Vec::new(),
@@ -9004,7 +9023,7 @@ impl<'a> Lowerer<'a> {
             });
             self.known_functions.insert(
                 handler_fn_name,
-                MirType::FnPtr(vec![], Box::new(MirType::Int)),
+                MirType::FnPtr(vec![], Box::new(cast_ret_ty)),
             );
         }
 
@@ -9585,7 +9604,7 @@ impl<'a> Lowerer<'a> {
 /// Set of known stdlib module names for qualified access lowering.
 const STDLIB_MODULES: &[&str] = &[
     "String", "IO", "Env", "File", "List", "Map", "Set", "Tuple", "Range", "Queue", "HTTP", "JSON", "Json", "Request", "Job",
-    "Math", "Int", "Float", "Timer", "Sqlite", "Pg", "Ws",
+    "Math", "Int", "Float", "Timer", "Sqlite", "Pg", "Ws", "Pool",
     "Node", "Process",  // Phase 67
     "Global",  // Phase 68
     "Iter",  // Phase 76

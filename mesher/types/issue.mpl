@@ -1,11 +1,11 @@
 # Issue data types for Mesher monitoring platform.
 # Issues are grouped errors identified by fingerprint.
 
-module Types.Issue
-
 # Issue lifecycle status -- state machine for issue resolution.
 pub type IssueStatus do
-  Unresolved | Resolved | Archived
+  Unresolved
+  Resolved
+  Archived
 end deriving(Json)
 
 # Database Row struct for issues. Status stored as text in DB,
@@ -20,5 +20,5 @@ pub struct Issue do
   event_count :: Int
   first_seen :: String
   last_seen :: String
-  assigned_to :: Option<String>
+  assigned_to :: String
 end deriving(Json, Row)

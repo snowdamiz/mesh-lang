@@ -1,8 +1,6 @@
 # Alert data types for Mesher monitoring platform.
 # Alert rules define conditions and actions for automated notifications.
 
-module Types.Alert
-
 # Alert rule -- condition_json and action_json are JSONB stored as String in Row struct.
 pub struct AlertRule do
   id :: String

@@ -1,8 +1,6 @@
 # User and authentication data types for Mesher monitoring platform.
 # NO password_hash field in the User struct -- never expose to application code.
 
-module Types.User
-
 # User account -- password_hash lives only in the database.
 pub struct User do
   id :: String

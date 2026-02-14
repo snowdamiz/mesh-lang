@@ -3330,10 +3330,22 @@ fn infer_fn_def(
                     if let Some(tp_ty) = type_params.get(&type_name) {
                         (tp_ty.clone(), Some(type_name))
                     } else {
-                        (name_to_type(&type_name), None)
+                        // Try full annotation resolution first (handles generic args
+                        // like List<String>, Map<String, String>, Result<T, E>).
+                        // Fall back to simple name_to_type if that fails.
+                        if let Some(full_ty) = resolve_type_annotation(ctx, &ann, type_registry) {
+                            (full_ty, None)
+                        } else {
+                            (name_to_type(&type_name), None)
+                        }
                     }
                 } else {
-                    (ctx.fresh_var(), None)
+                    // No simple type name -- try full annotation resolution.
+                    if let Some(full_ty) = resolve_type_annotation(ctx, &ann, type_registry) {
+                        (full_ty, None)
+                    } else {
+                        (ctx.fresh_var(), None)
+                    }
                 }
             } else {
                 (ctx.fresh_var(), None)
