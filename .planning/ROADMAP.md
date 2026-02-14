@@ -204,10 +204,11 @@ Plans:
   2. Writing `From<A> for B` automatically makes `Into<B>` available on values of type A without additional code
   3. Built-in conversions work: `Float.from(42)` produces `42.0`, `String.from(42)` produces `"42"`
   4. The `?` operator auto-converts error types: a function returning `Result<T, AppError>` can use `?` on `Result<T, String>` if `From<String> for AppError` exists
-**Plans:** 2 plans
+**Plans:** 3 plans
 Plans:
-- [ ] 77-01-PLAN.md -- Parameterized trait registry, From/Into trait registration, built-in impls, type checking
-- [ ] 77-02-PLAN.md -- MIR/codegen From dispatch, ? operator error conversion, E2E tests
+- [x] 77-01-PLAN.md -- Parameterized trait registry, From/Into trait registration, built-in impls, type checking
+- [x] 77-02-PLAN.md -- MIR/codegen From dispatch, ? operator error conversion, E2E tests
+- [ ] 77-03-PLAN.md -- Gap closure: Fix struct error types in Result for From-based ? conversion
 
 #### Phase 78: Lazy Combinators & Terminals
 **Goal**: Users can compose lazy iterator pipelines and consume them with terminal operations
