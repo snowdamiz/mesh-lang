@@ -1715,8 +1715,32 @@ impl<'ctx> CodeGen<'ctx> {
         inner: &MirExpr,
     ) -> Result<BasicValueEnum<'ctx>, String> {
         let val = self.codegen_expr(inner)?;
+
+        // When the inner expression produces a pointer but the function returns
+        // a struct type (e.g., Result's { i8, ptr }), load the struct value
+        // from the pointer before the return instruction. This handles cases
+        // where variant construction or other codegen paths return a pointer
+        // instead of the value itself.
+        let fn_val = self.current_function();
+        let ret_ty = fn_val.get_type().get_return_type();
+        let return_val = if val.is_pointer_value() {
+            if let Some(ret_ty) = ret_ty {
+                if ret_ty.is_struct_type() {
+                    self.builder
+                        .build_load(ret_ty, val.into_pointer_value(), "ret_load")
+                        .map_err(|e| e.to_string())?
+                } else {
+                    val
+                }
+            } else {
+                val
+            }
+        } else {
+            val
+        };
+
         self.builder
-            .build_return(Some(&val))
+            .build_return(Some(&return_val))
             .map_err(|e| e.to_string())?;
         // Return a dummy value since we've already emitted a return
         Ok(self.context.struct_type(&[], false).const_zero().into())

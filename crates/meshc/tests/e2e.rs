@@ -2803,3 +2803,12 @@ fn e2e_err_binding_pattern() {
     let output = compile_and_run(&source);
     assert_eq!(output, "ok: 10\nnegative: -3\n");
 }
+
+/// Phase 87.1: ? operator with chained calls and different Result types.
+/// Multiple ? calls in one function, with Ok/Err pattern matching on results.
+#[test]
+fn e2e_try_operator_result() {
+    let source = read_fixture("try_operator_result.mpl");
+    let output = compile_and_run(&source);
+    assert_eq!(output, "valid: 42\nerror: must be positive\nerror: too large\n");
+}
