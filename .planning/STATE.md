@@ -10,9 +10,9 @@ See: .planning/PROJECT.md (updated 2026-02-13)
 ## Current Position
 
 Phase: 75 of 79 (Numeric Traits)
-Plan: 1 of 2 in current phase
-Status: Executing
-Last activity: 2026-02-14 -- Plan 75-01 complete (Output associated type + Neg trait)
+Plan: 2 of 2 in current phase
+Status: Phase Complete
+Last activity: 2026-02-14 -- Plan 75-02 complete (MIR dispatch fix + Neg dispatch + E2E tests)
 
 Progress: [█░░░░░░░░░] 17% (v7.0)
 
@@ -50,6 +50,11 @@ Progress: [█░░░░░░░░░] 17% (v7.0)
 - Primitives (Int/Float) bypass Neg trait check via fast path for backward compat and performance
 - Output resolution falls back to operand type when no Output defined (backward compat)
 
+**Phase 75-02:**
+- Parser disambiguates self keyword: self() is actor self-call, self.x is method receiver field access
+- Typeck fn_ty for impl methods includes all params (self + non-self) for correct MIR lowering
+- Comparison ops keep Bool return; arithmetic ops use Output type from resolve_range
+
 ### Research Notes
 
 v7.0 research completed (HIGH confidence). Key findings:
@@ -77,6 +82,6 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-14
-Stopped at: Completed 75-01-PLAN.md
+Stopped at: Completed 75-02-PLAN.md (Phase 75 complete)
 Resume file: None
-Next action: `/gsd:execute-phase 75` (Plan 02 remaining)
+Next action: `/gsd:execute-phase 76` (Next phase)
