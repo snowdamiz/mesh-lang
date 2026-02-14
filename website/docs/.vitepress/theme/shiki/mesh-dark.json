@@ -21,6 +21,14 @@
       }
     },
     {
+      "name": "Doc Comments",
+      "scope": ["comment.line.documentation", "comment.line.documentation.module"],
+      "settings": {
+        "foreground": "#8aaa7a",
+        "fontStyle": ""
+      }
+    },
+    {
       "name": "Strings",
       "scope": ["string", "string.quoted"],
       "settings": {
@@ -88,7 +96,13 @@
         "keyword.operator.annotation",
         "keyword.operator.comparison",
         "keyword.operator.arithmetic",
-        "keyword.operator.assignment"
+        "keyword.operator.assignment",
+        "keyword.operator.range",
+        "keyword.operator.diamond",
+        "keyword.operator.concat",
+        "keyword.operator.arrow.fat",
+        "keyword.operator.try",
+        "keyword.operator.logical"
       ],
       "settings": {
         "foreground": "#9898a8"
