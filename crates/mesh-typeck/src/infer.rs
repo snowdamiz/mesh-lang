@@ -2093,6 +2093,7 @@ fn register_struct_def(
         );
         let _ = trait_registry.register_impl(TraitImplDef {
             trait_name: "Debug".to_string(),
+            trait_type_args: vec![],
             impl_type: impl_ty.clone(),
             impl_type_name: name.clone(),
             methods: debug_methods,
@@ -2113,6 +2114,7 @@ fn register_struct_def(
         );
         let _ = trait_registry.register_impl(TraitImplDef {
             trait_name: "Eq".to_string(),
+            trait_type_args: vec![],
             impl_type: impl_ty.clone(),
             impl_type_name: name.clone(),
             methods: eq_methods,
@@ -2133,6 +2135,7 @@ fn register_struct_def(
         );
         let _ = trait_registry.register_impl(TraitImplDef {
             trait_name: "Ord".to_string(),
+            trait_type_args: vec![],
             impl_type: impl_ty.clone(),
             impl_type_name: name.clone(),
             methods: ord_methods,
@@ -2153,6 +2156,7 @@ fn register_struct_def(
         );
         let _ = trait_registry.register_impl(TraitImplDef {
             trait_name: "Hash".to_string(),
+            trait_type_args: vec![],
             impl_type: impl_ty.clone(),
             impl_type_name: name.clone(),
             methods: hash_methods,
@@ -2173,6 +2177,7 @@ fn register_struct_def(
         );
         let _ = trait_registry.register_impl(TraitImplDef {
             trait_name: "Display".to_string(),
+            trait_type_args: vec![],
             impl_type: impl_ty.clone(),
             impl_type_name: name.clone(),
             methods: display_methods,
@@ -2207,6 +2212,7 @@ fn register_struct_def(
             );
             let _ = trait_registry.register_impl(TraitImplDef {
                 trait_name: "ToJson".to_string(),
+                trait_type_args: vec![],
                 impl_type: impl_ty.clone(),
                 impl_type_name: name.clone(),
                 methods: to_json_methods,
@@ -2227,6 +2233,7 @@ fn register_struct_def(
             );
             let _ = trait_registry.register_impl(TraitImplDef {
                 trait_name: "FromJson".to_string(),
+                trait_type_args: vec![],
                 impl_type: impl_ty.clone(),
                 impl_type_name: name.clone(),
                 methods: from_json_methods,
@@ -2264,6 +2271,7 @@ fn register_struct_def(
             );
             let _ = trait_registry.register_impl(TraitImplDef {
                 trait_name: "FromRow".to_string(),
+                trait_type_args: vec![],
                 impl_type: impl_ty.clone(),
                 impl_type_name: name.clone(),
                 methods: from_row_methods,
@@ -2547,6 +2555,7 @@ fn register_sum_type_def(
         );
         let _ = trait_registry.register_impl(TraitImplDef {
             trait_name: "Debug".to_string(),
+            trait_type_args: vec![],
             impl_type: impl_ty.clone(),
             impl_type_name: name.clone(),
             methods: debug_methods,
@@ -2567,6 +2576,7 @@ fn register_sum_type_def(
         );
         let _ = trait_registry.register_impl(TraitImplDef {
             trait_name: "Eq".to_string(),
+            trait_type_args: vec![],
             impl_type: impl_ty.clone(),
             impl_type_name: name.clone(),
             methods: eq_methods,
@@ -2587,6 +2597,7 @@ fn register_sum_type_def(
         );
         let _ = trait_registry.register_impl(TraitImplDef {
             trait_name: "Ord".to_string(),
+            trait_type_args: vec![],
             impl_type: impl_ty.clone(),
             impl_type_name: name.clone(),
             methods: ord_methods,
@@ -2607,6 +2618,7 @@ fn register_sum_type_def(
         );
         let _ = trait_registry.register_impl(TraitImplDef {
             trait_name: "Hash".to_string(),
+            trait_type_args: vec![],
             impl_type: impl_ty.clone(),
             impl_type_name: name.clone(),
             methods: hash_methods,
@@ -2627,6 +2639,7 @@ fn register_sum_type_def(
         );
         let _ = trait_registry.register_impl(TraitImplDef {
             trait_name: "Display".to_string(),
+            trait_type_args: vec![],
             impl_type: impl_ty.clone(),
             impl_type_name: name.clone(),
             methods: display_methods,
@@ -2671,6 +2684,7 @@ fn register_sum_type_def(
             );
             let _ = trait_registry.register_impl(TraitImplDef {
                 trait_name: "ToJson".to_string(),
+                trait_type_args: vec![],
                 impl_type: impl_ty.clone(),
                 impl_type_name: name.clone(),
                 methods: to_json_methods,
@@ -2691,6 +2705,7 @@ fn register_sum_type_def(
             );
             let _ = trait_registry.register_impl(TraitImplDef {
                 trait_name: "FromJson".to_string(),
+                trait_type_args: vec![],
                 impl_type: impl_ty,
                 impl_type_name: name.clone(),
                 methods: from_json_methods,
@@ -3037,6 +3052,7 @@ fn infer_impl_def(
     // Register the impl and collect validation errors.
     let errors = trait_registry.register_impl(TraitImplDef {
         trait_name,
+        trait_type_args: vec![],
         impl_type,
         impl_type_name,
         methods: impl_methods,

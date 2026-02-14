@@ -64,6 +64,9 @@ pub struct TraitDef {
 pub struct ImplDef {
     /// The trait being implemented.
     pub trait_name: String,
+    /// Type arguments on the trait (e.g., `[Ty::int()]` for `From<Int>`).
+    /// Empty for non-parameterized traits.
+    pub trait_type_args: Vec<Ty>,
     /// The concrete type that implements the trait.
     pub impl_type: Ty,
     /// A human-readable name for the implementing type (for error messages).
@@ -184,6 +187,8 @@ impl TraitRegistry {
         }
 
         // Check for duplicate (structurally overlapping) impls before inserting.
+        // For parameterized traits (e.g., From<Int> vs From<Float> for String),
+        // two impls are only duplicates if both impl_type AND trait_type_args unify.
         let existing_impls = self.impls.entry(impl_def.trait_name.clone()).or_default();
         for existing in existing_impls.iter() {
             let mut ctx = InferCtx::new();
@@ -193,6 +198,24 @@ impl TraitRegistry {
                 .unify(freshened_existing, freshened_new, ConstraintOrigin::Builtin)
                 .is_ok()
             {
+                // If both have trait_type_args, also check those unify before flagging as duplicate.
+                if existing.trait_type_args.len() == impl_def.trait_type_args.len()
+                    && !existing.trait_type_args.is_empty()
+                {
+                    let mut args_match = true;
+                    for (a, b) in existing.trait_type_args.iter().zip(&impl_def.trait_type_args) {
+                        let fa = freshen_type_params(a, &mut ctx);
+                        let fb = freshen_type_params(b, &mut ctx);
+                        if ctx.unify(fa, fb, ConstraintOrigin::Builtin).is_err() {
+                            args_match = false;
+                            break;
+                        }
+                    }
+                    if !args_match {
+                        continue; // Different trait_type_args -- not a duplicate
+                    }
+                }
+
                 errors.push(TypeError::DuplicateImpl {
                     trait_name: impl_def.trait_name.clone(),
                     impl_type: impl_def.impl_type_name.clone(),
@@ -203,7 +226,46 @@ impl TraitRegistry {
         }
 
         // Store the impl (even if it has errors, for method lookup).
+        // Capture info needed for synthetic Into generation before moving.
+        let maybe_synthesize_into = impl_def.trait_name == "From"
+            && !impl_def.trait_type_args.is_empty();
+        let synth_source_ty = if maybe_synthesize_into {
+            Some(impl_def.trait_type_args[0].clone())
+        } else {
+            None
+        };
+        let synth_target_ty = if maybe_synthesize_into {
+            Some(impl_def.impl_type.clone())
+        } else {
+            None
+        };
+
         existing_impls.push(impl_def);
+
+        // Synthetic Into generation: when `impl From<A> for B` is registered,
+        // automatically synthesize `impl Into<B> for A`.
+        if let (Some(source_ty), Some(target_ty)) = (synth_source_ty, synth_target_ty) {
+            let mut into_methods = FxHashMap::default();
+            into_methods.insert(
+                "into".to_string(),
+                ImplMethodSig {
+                    has_self: true,
+                    param_count: 0,
+                    return_type: Some(target_ty.clone()),
+                },
+            );
+            let source_name = format!("{}", source_ty);
+            let into_impl = ImplDef {
+                trait_name: "Into".to_string(),
+                trait_type_args: vec![target_ty],
+                impl_type: source_ty,
+                impl_type_name: source_name,
+                methods: into_methods,
+                associated_types: FxHashMap::default(),
+            };
+            // Insert directly to avoid infinite recursion (don't call register_impl).
+            self.impls.entry("Into".to_string()).or_default().push(into_impl);
+        }
 
         errors
     }
@@ -248,6 +310,62 @@ impl TraitRegistry {
             }
         }
         None
+    }
+
+    /// Find the impl for a given trait, type, and trait type arguments.
+    ///
+    /// Like `find_impl` but also matches on `trait_type_args`. If the query
+    /// `trait_type_args` is empty, falls through to standard `find_impl` behavior.
+    pub fn find_impl_with_type_args(
+        &self,
+        trait_name: &str,
+        trait_type_args: &[Ty],
+        impl_ty: &Ty,
+    ) -> Option<&ImplDef> {
+        if trait_type_args.is_empty() {
+            return self.find_impl(trait_name, impl_ty);
+        }
+        let impls = self.impls.get(trait_name)?;
+        for impl_def in impls {
+            if impl_def.trait_type_args.len() != trait_type_args.len() {
+                continue;
+            }
+            let mut ctx = InferCtx::new();
+            let freshened_impl = freshen_type_params(&impl_def.impl_type, &mut ctx);
+            if ctx
+                .unify(freshened_impl, impl_ty.clone(), ConstraintOrigin::Builtin)
+                .is_err()
+            {
+                continue;
+            }
+            // Also check trait type args match.
+            let mut all_match = true;
+            for (stored, query) in impl_def.trait_type_args.iter().zip(trait_type_args) {
+                let freshened = freshen_type_params(stored, &mut ctx);
+                if ctx
+                    .unify(freshened, query.clone(), ConstraintOrigin::Builtin)
+                    .is_err()
+                {
+                    all_match = false;
+                    break;
+                }
+            }
+            if all_match {
+                return Some(impl_def);
+            }
+        }
+        None
+    }
+
+    /// Check whether a concrete type has an impl with specific trait type args.
+    pub fn has_impl_with_type_args(
+        &self,
+        trait_name: &str,
+        trait_type_args: &[Ty],
+        impl_ty: &Ty,
+    ) -> bool {
+        self.find_impl_with_type_args(trait_name, trait_type_args, impl_ty)
+            .is_some()
     }
 
     /// Look up a trait definition by name.
@@ -519,6 +637,7 @@ mod tests {
 
         let errors = registry.register_impl(ImplDef {
             trait_name: "Printable".to_string(),
+            trait_type_args: vec![],
             impl_type: Ty::int(),
             impl_type_name: "Int".to_string(),
             methods: display_method_sig(),
@@ -537,6 +656,7 @@ mod tests {
 
         let errors = registry.register_impl(ImplDef {
             trait_name: "Printable".to_string(),
+            trait_type_args: vec![],
             impl_type: Ty::int(),
             impl_type_name: "Int".to_string(),
             methods: FxHashMap::default(), // no methods
@@ -561,6 +681,7 @@ mod tests {
         );
         let errors = registry.register_impl(ImplDef {
             trait_name: "Display".to_string(),
+            trait_type_args: vec![],
             impl_type: list_of_t,
             impl_type_name: "List<T>".to_string(),
             methods: display_method_sig(),
@@ -593,6 +714,7 @@ mod tests {
         );
         let _ = registry.register_impl(ImplDef {
             trait_name: "Display".to_string(),
+            trait_type_args: vec![],
             impl_type: list_of_t,
             impl_type_name: "List<T>".to_string(),
             methods: display_method_sig(),
@@ -637,6 +759,7 @@ mod tests {
         );
         let _ = registry.register_impl(ImplDef {
             trait_name: "Add".to_string(),
+            trait_type_args: vec![],
             impl_type: Ty::int(),
             impl_type_name: "Int".to_string(),
             methods: add_methods,
@@ -654,6 +777,7 @@ mod tests {
         );
         let _ = registry.register_impl(ImplDef {
             trait_name: "Add".to_string(),
+            trait_type_args: vec![],
             impl_type: Ty::float(),
             impl_type_name: "Float".to_string(),
             methods: add_float_methods,
@@ -686,6 +810,7 @@ mod tests {
         );
         let _ = registry.register_impl(ImplDef {
             trait_name: "Display".to_string(),
+            trait_type_args: vec![],
             impl_type: list_of_t,
             impl_type_name: "List<T>".to_string(),
             methods: display_method_sig(),
@@ -712,6 +837,7 @@ mod tests {
         );
         let _ = registry.register_impl(ImplDef {
             trait_name: "Display".to_string(),
+            trait_type_args: vec![],
             impl_type: list_of_t,
             impl_type_name: "List<T>".to_string(),
             methods: display_method_sig(),
@@ -737,6 +863,7 @@ mod tests {
         // First impl: Printable for Int -- should succeed.
         let errors = registry.register_impl(ImplDef {
             trait_name: "Printable".to_string(),
+            trait_type_args: vec![],
             impl_type: Ty::int(),
             impl_type_name: "Int".to_string(),
             methods: display_method_sig(),
@@ -747,6 +874,7 @@ mod tests {
         // Second impl: Printable for Int -- should produce DuplicateImpl error.
         let errors = registry.register_impl(ImplDef {
             trait_name: "Printable".to_string(),
+            trait_type_args: vec![],
             impl_type: Ty::int(),
             impl_type_name: "Int".to_string(),
             methods: display_method_sig(),
@@ -775,6 +903,7 @@ mod tests {
         // impl Printable for Int.
         let errors = registry.register_impl(ImplDef {
             trait_name: "Printable".to_string(),
+            trait_type_args: vec![],
             impl_type: Ty::int(),
             impl_type_name: "Int".to_string(),
             methods: display_method_sig(),
@@ -785,6 +914,7 @@ mod tests {
         // impl Printable for String -- different type, no duplicate.
         let errors = registry.register_impl(ImplDef {
             trait_name: "Printable".to_string(),
+            trait_type_args: vec![],
             impl_type: Ty::string(),
             impl_type_name: "String".to_string(),
             methods: display_method_sig(),
@@ -800,6 +930,7 @@ mod tests {
 
         let _ = registry.register_impl(ImplDef {
             trait_name: "Printable".to_string(),
+            trait_type_args: vec![],
             impl_type: Ty::int(),
             impl_type_name: "Int".to_string(),
             methods: display_method_sig(),
@@ -828,6 +959,7 @@ mod tests {
 
         let _ = registry.register_impl(ImplDef {
             trait_name: "Printable".to_string(),
+            trait_type_args: vec![],
             impl_type: Ty::int(),
             impl_type_name: "Int".to_string(),
             methods: display_method_sig(),
@@ -835,6 +967,7 @@ mod tests {
         });
         let _ = registry.register_impl(ImplDef {
             trait_name: "Displayable".to_string(),
+            trait_type_args: vec![],
             impl_type: Ty::int(),
             impl_type_name: "Int".to_string(),
             methods: display_method_sig(),
@@ -878,6 +1011,7 @@ mod tests {
         );
         let errors = registry.register_impl(ImplDef {
             trait_name: "Add".to_string(),
+            trait_type_args: vec![],
             impl_type: Ty::int(),
             impl_type_name: "Int".to_string(),
             methods: int_methods,
@@ -898,6 +1032,7 @@ mod tests {
         );
         let errors = registry.register_impl(ImplDef {
             trait_name: "Add".to_string(),
+            trait_type_args: vec![],
             impl_type: my_struct.clone(),
             impl_type_name: "MyStruct".to_string(),
             methods: struct_methods,

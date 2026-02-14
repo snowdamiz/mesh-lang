@@ -850,6 +850,7 @@ fn register_compiler_known_traits(registry: &mut TraitRegistry) {
             assoc_types.insert("Output".to_string(), ty.clone());
             let _ = registry.register_impl(ImplDef {
                 trait_name: trait_name.to_string(),
+                trait_type_args: vec![],
                 impl_type: ty.clone(),
                 impl_type_name: ty_name.to_string(),
                 methods,
@@ -887,6 +888,7 @@ fn register_compiler_known_traits(registry: &mut TraitRegistry) {
         assoc_types.insert("Output".to_string(), ty.clone());
         let _ = registry.register_impl(ImplDef {
             trait_name: "Neg".to_string(),
+            trait_type_args: vec![],
             impl_type: ty.clone(),
             impl_type_name: ty_name.to_string(),
             methods,
@@ -941,6 +943,7 @@ fn register_compiler_known_traits(registry: &mut TraitRegistry) {
         assoc_types.insert("Iter".to_string(), Ty::Con(TyCon::new("ListIterator")));
         let _ = registry.register_impl(ImplDef {
             trait_name: "Iterable".to_string(),
+            trait_type_args: vec![],
             impl_type: list_t,
             impl_type_name: "List".to_string(),
             methods,
@@ -960,6 +963,7 @@ fn register_compiler_known_traits(registry: &mut TraitRegistry) {
         assoc_types.insert("Item".to_string(), Ty::Con(TyCon::new("T")));
         let _ = registry.register_impl(ImplDef {
             trait_name: "Iterator".to_string(),
+            trait_type_args: vec![],
             impl_type: Ty::Con(TyCon::new("ListIterator")),
             impl_type_name: "ListIterator".to_string(),
             methods,
@@ -984,6 +988,7 @@ fn register_compiler_known_traits(registry: &mut TraitRegistry) {
         assoc_types.insert("Iter".to_string(), Ty::Con(TyCon::new("MapIterator")));
         let _ = registry.register_impl(ImplDef {
             trait_name: "Iterable".to_string(),
+            trait_type_args: vec![],
             impl_type: map_kv,
             impl_type_name: "Map".to_string(),
             methods,
@@ -1003,6 +1008,7 @@ fn register_compiler_known_traits(registry: &mut TraitRegistry) {
         assoc_types.insert("Item".to_string(), Ty::Tuple(vec![Ty::Con(TyCon::new("K")), Ty::Con(TyCon::new("V"))]));
         let _ = registry.register_impl(ImplDef {
             trait_name: "Iterator".to_string(),
+            trait_type_args: vec![],
             impl_type: Ty::Con(TyCon::new("MapIterator")),
             impl_type_name: "MapIterator".to_string(),
             methods,
@@ -1024,6 +1030,7 @@ fn register_compiler_known_traits(registry: &mut TraitRegistry) {
         assoc_types.insert("Iter".to_string(), Ty::Con(TyCon::new("SetIterator")));
         let _ = registry.register_impl(ImplDef {
             trait_name: "Iterable".to_string(),
+            trait_type_args: vec![],
             impl_type: set_t,
             impl_type_name: "Set".to_string(),
             methods,
@@ -1043,6 +1050,7 @@ fn register_compiler_known_traits(registry: &mut TraitRegistry) {
         assoc_types.insert("Item".to_string(), Ty::int());
         let _ = registry.register_impl(ImplDef {
             trait_name: "Iterator".to_string(),
+            trait_type_args: vec![],
             impl_type: Ty::Con(TyCon::new("SetIterator")),
             impl_type_name: "SetIterator".to_string(),
             methods,
@@ -1064,6 +1072,7 @@ fn register_compiler_known_traits(registry: &mut TraitRegistry) {
         assoc_types.insert("Iter".to_string(), Ty::Con(TyCon::new("RangeIterator")));
         let _ = registry.register_impl(ImplDef {
             trait_name: "Iterable".to_string(),
+            trait_type_args: vec![],
             impl_type: range_t,
             impl_type_name: "Range".to_string(),
             methods,
@@ -1083,6 +1092,7 @@ fn register_compiler_known_traits(registry: &mut TraitRegistry) {
         assoc_types.insert("Item".to_string(), Ty::int());
         let _ = registry.register_impl(ImplDef {
             trait_name: "Iterator".to_string(),
+            trait_type_args: vec![],
             impl_type: Ty::Con(TyCon::new("RangeIterator")),
             impl_type_name: "RangeIterator".to_string(),
             methods,
@@ -1122,6 +1132,7 @@ fn register_compiler_known_traits(registry: &mut TraitRegistry) {
         );
         let _ = registry.register_impl(ImplDef {
             trait_name: "Eq".to_string(),
+            trait_type_args: vec![],
             impl_type: ty.clone(),
             impl_type_name: ty_name.to_string(),
             methods,
@@ -1177,6 +1188,7 @@ fn register_compiler_known_traits(registry: &mut TraitRegistry) {
         );
         let _ = registry.register_impl(ImplDef {
             trait_name: "Ord".to_string(),
+            trait_type_args: vec![],
             impl_type: ty.clone(),
             impl_type_name: ty_name.to_string(),
             methods,
@@ -1199,6 +1211,7 @@ fn register_compiler_known_traits(registry: &mut TraitRegistry) {
         );
         let _ = registry.register_impl(ImplDef {
             trait_name: "Eq".to_string(),
+            trait_type_args: vec![],
             impl_type: list_t.clone(),
             impl_type_name: "List".to_string(),
             methods: eq_methods,
@@ -1224,6 +1237,7 @@ fn register_compiler_known_traits(registry: &mut TraitRegistry) {
         );
         let _ = registry.register_impl(ImplDef {
             trait_name: "Ord".to_string(),
+            trait_type_args: vec![],
             impl_type: list_t,
             impl_type_name: "List".to_string(),
             methods: ord_methods,
@@ -1256,6 +1270,7 @@ fn register_compiler_known_traits(registry: &mut TraitRegistry) {
     );
     let _ = registry.register_impl(ImplDef {
         trait_name: "Not".to_string(),
+        trait_type_args: vec![],
         impl_type: Ty::bool(),
         impl_type_name: "Bool".to_string(),
         methods: not_methods,
@@ -1292,6 +1307,7 @@ fn register_compiler_known_traits(registry: &mut TraitRegistry) {
         );
         let _ = registry.register_impl(ImplDef {
             trait_name: "Display".to_string(),
+            trait_type_args: vec![],
             impl_type: ty.clone(),
             impl_type_name: ty_name.to_string(),
             methods,
@@ -1316,6 +1332,7 @@ fn register_compiler_known_traits(registry: &mut TraitRegistry) {
         );
         let _ = registry.register_impl(ImplDef {
             trait_name: "Display".to_string(),
+            trait_type_args: vec![],
             impl_type: list_t,
             impl_type_name: "List".to_string(),
             methods,
@@ -1338,6 +1355,7 @@ fn register_compiler_known_traits(registry: &mut TraitRegistry) {
         );
         let _ = registry.register_impl(ImplDef {
             trait_name: "Display".to_string(),
+            trait_type_args: vec![],
             impl_type: map_kv,
             impl_type_name: "Map".to_string(),
             methods,
@@ -1357,6 +1375,7 @@ fn register_compiler_known_traits(registry: &mut TraitRegistry) {
         );
         let _ = registry.register_impl(ImplDef {
             trait_name: "Display".to_string(),
+            trait_type_args: vec![],
             impl_type: set_t,
             impl_type_name: "Set".to_string(),
             methods,
@@ -1397,6 +1416,7 @@ fn register_compiler_known_traits(registry: &mut TraitRegistry) {
         );
         let _ = registry.register_impl(ImplDef {
             trait_name: "Debug".to_string(),
+            trait_type_args: vec![],
             impl_type: ty.clone(),
             impl_type_name: ty_name.to_string(),
             methods,
@@ -1435,6 +1455,7 @@ fn register_compiler_known_traits(registry: &mut TraitRegistry) {
         );
         let _ = registry.register_impl(ImplDef {
             trait_name: "Hash".to_string(),
+            trait_type_args: vec![],
             impl_type: ty.clone(),
             impl_type_name: ty_name.to_string(),
             methods,
@@ -1476,6 +1497,7 @@ fn register_compiler_known_traits(registry: &mut TraitRegistry) {
         );
         let _ = registry.register_impl(ImplDef {
             trait_name: "Default".to_string(),
+            trait_type_args: vec![],
             impl_type: ty.clone(),
             impl_type_name: ty_name.to_string(),
             methods,
