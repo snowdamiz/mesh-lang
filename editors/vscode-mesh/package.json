@@ -3,7 +3,7 @@
   "displayName": "Mesh Language",
   "description": "Mesh language support — syntax highlighting, diagnostics, hover, go-to-definition, completions, and signature help",
   "version": "0.2.0",
-  "publisher": "mesh-lang",
+  "publisher": "OpenWorthTechnologies",
   "license": "MIT",
   "icon": "images/icon.png",
   "galleryBanner": {

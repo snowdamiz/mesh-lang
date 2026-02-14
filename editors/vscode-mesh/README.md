@@ -1,7 +1,7 @@
 # Mesh Language
 
-[![VS Code Marketplace Version](https://img.shields.io/visual-studio-marketplace/v/mesh-lang.mesh-lang)](https://marketplace.visualstudio.com/items?itemName=mesh-lang.mesh-lang)
-[![VS Code Marketplace Installs](https://img.shields.io/visual-studio-marketplace/i/mesh-lang.mesh-lang)](https://marketplace.visualstudio.com/items?itemName=mesh-lang.mesh-lang)
+[![VS Code Marketplace Version](https://img.shields.io/visual-studio-marketplace/v/OpenWorthTechnologies.mesh-lang)](https://marketplace.visualstudio.com/items?itemName=OpenWorthTechnologies.mesh-lang)
+[![VS Code Marketplace Installs](https://img.shields.io/visual-studio-marketplace/i/OpenWorthTechnologies.mesh-lang)](https://marketplace.visualstudio.com/items?itemName=OpenWorthTechnologies.mesh-lang)
 
 Language support for [Mesh](https://meshlang.dev) -- an expressive, readable programming language with built-in concurrency via actors and supervision trees.
 
