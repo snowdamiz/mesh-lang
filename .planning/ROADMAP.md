@@ -165,6 +165,10 @@ See milestones/v7.0-ROADMAP.md for full phase details.
   - [x] 82-01-PLAN.md -- GitHub Actions CI: 6-target matrix build, LLVM static linking, release workflow
   - [x] 82-02-PLAN.md -- Install scripts: POSIX shell + PowerShell, platform detection, checksum verification, PATH config
 - [ ] **Phase 83: Completion + Signature Help** - Code completion and function parameter info
+  **Plans:** 2 plans
+  Plans:
+  - [ ] 83-01-PLAN.md -- Code completion: keyword/type/snippet completions, scope-aware variable/function completion from CST walk
+  - [ ] 83-02-PLAN.md -- Signature help: parameter extraction from type system, active parameter tracking, trigger characters
 - [ ] **Phase 84: VS Code Extension Publishing** - Marketplace + Open VSX publishing
 - [ ] **Phase 85: Formatting + Audit** - LSP formatting, formatter/REPL v7.0 audit
 - [ ] **Phase 86: Documentation Corrections** - Binary name, install command, version badge, examples
