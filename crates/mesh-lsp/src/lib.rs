@@ -11,6 +11,7 @@
 //! JSON-RPC, powered by the `tower-lsp` framework.
 
 pub mod analysis;
+pub mod completion;
 pub mod definition;
 pub mod server;
 
