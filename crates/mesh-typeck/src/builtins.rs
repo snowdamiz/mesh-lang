@@ -2,7 +2,7 @@
 //!
 //! Registers primitive types (Int, Float, String, Bool), generic type
 //! constructors (Option, Result), built-in arithmetic operators, and
-//! compiler-known traits (Add, Sub, Mul, Div, Mod, Eq, Ord, Not) into
+//! compiler-known traits (Add, Sub, Mul, Div, Mod, Eq, Ord, Not, Iterator, Iterable) into
 //! the type environment and trait registry.
 
 use rustc_hash::FxHashMap;
@@ -889,6 +889,202 @@ fn register_compiler_known_traits(registry: &mut TraitRegistry) {
             trait_name: "Neg".to_string(),
             impl_type: ty.clone(),
             impl_type_name: ty_name.to_string(),
+            methods,
+            associated_types: assoc_types,
+        });
+    }
+
+    // ── Iterator trait ──────────────────────────────────────────────
+
+    registry.register_trait(TraitDef {
+        name: "Iterator".to_string(),
+        methods: vec![TraitMethodSig {
+            name: "next".to_string(),
+            has_self: true,
+            param_count: 0,
+            return_type: None, // Option<Self.Item> -- resolved per impl
+            has_default_body: false,
+        }],
+        associated_types: vec![AssocTypeDef { name: "Item".to_string() }],
+    });
+
+    // ── Iterable trait ─────────────────────────────────────────────
+
+    registry.register_trait(TraitDef {
+        name: "Iterable".to_string(),
+        methods: vec![TraitMethodSig {
+            name: "iter".to_string(),
+            has_self: true,
+            param_count: 0,
+            return_type: None, // Self.Iter -- resolved per impl
+            has_default_body: false,
+        }],
+        associated_types: vec![
+            AssocTypeDef { name: "Item".to_string() },
+            AssocTypeDef { name: "Iter".to_string() },
+        ],
+    });
+
+    // ── Built-in Iterable impls for collections ────────────────────
+
+    // impl Iterable for List<T>
+    {
+        let list_t = Ty::App(Box::new(Ty::Con(TyCon::new("List"))), vec![Ty::Con(TyCon::new("T"))]);
+        let mut methods = FxHashMap::default();
+        methods.insert("iter".to_string(), ImplMethodSig {
+            has_self: true,
+            param_count: 0,
+            return_type: None,
+        });
+        let mut assoc_types = FxHashMap::default();
+        assoc_types.insert("Item".to_string(), Ty::Con(TyCon::new("T")));
+        assoc_types.insert("Iter".to_string(), Ty::Con(TyCon::new("ListIterator")));
+        let _ = registry.register_impl(ImplDef {
+            trait_name: "Iterable".to_string(),
+            impl_type: list_t,
+            impl_type_name: "List".to_string(),
+            methods,
+            associated_types: assoc_types,
+        });
+    }
+
+    // impl Iterator for ListIterator
+    {
+        let mut methods = FxHashMap::default();
+        methods.insert("next".to_string(), ImplMethodSig {
+            has_self: true,
+            param_count: 0,
+            return_type: None,
+        });
+        let mut assoc_types = FxHashMap::default();
+        assoc_types.insert("Item".to_string(), Ty::Con(TyCon::new("T")));
+        let _ = registry.register_impl(ImplDef {
+            trait_name: "Iterator".to_string(),
+            impl_type: Ty::Con(TyCon::new("ListIterator")),
+            impl_type_name: "ListIterator".to_string(),
+            methods,
+            associated_types: assoc_types,
+        });
+    }
+
+    // impl Iterable for Map<K,V>
+    {
+        let map_kv = Ty::App(
+            Box::new(Ty::Con(TyCon::new("Map"))),
+            vec![Ty::Con(TyCon::new("K")), Ty::Con(TyCon::new("V"))],
+        );
+        let mut methods = FxHashMap::default();
+        methods.insert("iter".to_string(), ImplMethodSig {
+            has_self: true,
+            param_count: 0,
+            return_type: None,
+        });
+        let mut assoc_types = FxHashMap::default();
+        assoc_types.insert("Item".to_string(), Ty::Tuple(vec![Ty::Con(TyCon::new("K")), Ty::Con(TyCon::new("V"))]));
+        assoc_types.insert("Iter".to_string(), Ty::Con(TyCon::new("MapIterator")));
+        let _ = registry.register_impl(ImplDef {
+            trait_name: "Iterable".to_string(),
+            impl_type: map_kv,
+            impl_type_name: "Map".to_string(),
+            methods,
+            associated_types: assoc_types,
+        });
+    }
+
+    // impl Iterator for MapIterator
+    {
+        let mut methods = FxHashMap::default();
+        methods.insert("next".to_string(), ImplMethodSig {
+            has_self: true,
+            param_count: 0,
+            return_type: None,
+        });
+        let mut assoc_types = FxHashMap::default();
+        assoc_types.insert("Item".to_string(), Ty::Tuple(vec![Ty::Con(TyCon::new("K")), Ty::Con(TyCon::new("V"))]));
+        let _ = registry.register_impl(ImplDef {
+            trait_name: "Iterator".to_string(),
+            impl_type: Ty::Con(TyCon::new("MapIterator")),
+            impl_type_name: "MapIterator".to_string(),
+            methods,
+            associated_types: assoc_types,
+        });
+    }
+
+    // impl Iterable for Set (untyped -- Set stores Int elements)
+    {
+        let set_t = Ty::Con(TyCon::new("Set"));
+        let mut methods = FxHashMap::default();
+        methods.insert("iter".to_string(), ImplMethodSig {
+            has_self: true,
+            param_count: 0,
+            return_type: None,
+        });
+        let mut assoc_types = FxHashMap::default();
+        assoc_types.insert("Item".to_string(), Ty::int());
+        assoc_types.insert("Iter".to_string(), Ty::Con(TyCon::new("SetIterator")));
+        let _ = registry.register_impl(ImplDef {
+            trait_name: "Iterable".to_string(),
+            impl_type: set_t,
+            impl_type_name: "Set".to_string(),
+            methods,
+            associated_types: assoc_types,
+        });
+    }
+
+    // impl Iterator for SetIterator
+    {
+        let mut methods = FxHashMap::default();
+        methods.insert("next".to_string(), ImplMethodSig {
+            has_self: true,
+            param_count: 0,
+            return_type: None,
+        });
+        let mut assoc_types = FxHashMap::default();
+        assoc_types.insert("Item".to_string(), Ty::int());
+        let _ = registry.register_impl(ImplDef {
+            trait_name: "Iterator".to_string(),
+            impl_type: Ty::Con(TyCon::new("SetIterator")),
+            impl_type_name: "SetIterator".to_string(),
+            methods,
+            associated_types: assoc_types,
+        });
+    }
+
+    // impl Iterable for Range
+    {
+        let range_t = Ty::Con(TyCon::new("Range"));
+        let mut methods = FxHashMap::default();
+        methods.insert("iter".to_string(), ImplMethodSig {
+            has_self: true,
+            param_count: 0,
+            return_type: None,
+        });
+        let mut assoc_types = FxHashMap::default();
+        assoc_types.insert("Item".to_string(), Ty::int());
+        assoc_types.insert("Iter".to_string(), Ty::Con(TyCon::new("RangeIterator")));
+        let _ = registry.register_impl(ImplDef {
+            trait_name: "Iterable".to_string(),
+            impl_type: range_t,
+            impl_type_name: "Range".to_string(),
+            methods,
+            associated_types: assoc_types,
+        });
+    }
+
+    // impl Iterator for RangeIterator
+    {
+        let mut methods = FxHashMap::default();
+        methods.insert("next".to_string(), ImplMethodSig {
+            has_self: true,
+            param_count: 0,
+            return_type: None,
+        });
+        let mut assoc_types = FxHashMap::default();
+        assoc_types.insert("Item".to_string(), Ty::int());
+        let _ = registry.register_impl(ImplDef {
+            trait_name: "Iterator".to_string(),
+            impl_type: Ty::Con(TyCon::new("RangeIterator")),
+            impl_type_name: "RangeIterator".to_string(),
             methods,
             associated_types: assoc_types,
         });
