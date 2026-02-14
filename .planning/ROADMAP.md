@@ -147,7 +147,7 @@ See milestones/v6.0-ROADMAP.md for full phase details.
 
 - [x] **Phase 74: Associated Types** - Type system foundation for trait-level type members (completed 2026-02-13)
 - [x] **Phase 75: Numeric Traits** - User-extensible arithmetic operators via Add/Sub/Mul/Div/Neg (completed 2026-02-13)
-- [ ] **Phase 76: Iterator Protocol** - Iterator/Iterable traits with built-in implementations and for-in desugaring
+- [x] **Phase 76: Iterator Protocol** - Iterator/Iterable traits with built-in implementations and for-in desugaring (completed 2026-02-13)
 - [ ] **Phase 77: From/Into Conversion** - Type conversion traits with automatic Into generation and ? operator integration
 - [ ] **Phase 78: Lazy Combinators & Terminals** - Lazy iterator pipeline composition and consuming operations
 - [ ] **Phase 79: Collect** - Generic iterator materialization into List, Map, Set, String
@@ -192,8 +192,8 @@ Plans:
   5. Built-in List, Map, Set, and Range all implement Iterable with compiler-provided iterator types
 **Plans:** 2 plans
 Plans:
-- [ ] 76-01-PLAN.md -- Iterator/Iterable trait registration, runtime iterator handles, typeck Iterable resolution
-- [ ] 76-02-PLAN.md -- ForInIterator MIR/codegen pipeline, Iter.from(), E2E tests
+- [x] 76-01-PLAN.md -- Iterator/Iterable trait registration, runtime iterator handles, typeck Iterable resolution
+- [x] 76-02-PLAN.md -- ForInIterator MIR/codegen pipeline, Iter.from(), E2E tests
 
 #### Phase 77: From/Into Conversion
 **Goal**: Users can define type conversions and the ? operator auto-converts error types
@@ -250,9 +250,9 @@ Plans:
 | 70-73 | v6.0 | 11/11 | Complete | 2026-02-13 |
 | 74 | v7.0 | 3/3 | Complete | 2026-02-13 |
 | 75 | v7.0 | 2/2 | Complete | 2026-02-13 |
-| 76 | v7.0 | 0/TBD | Not started | - |
+| 76 | v7.0 | 2/2 | Complete | 2026-02-13 |
 | 77 | v7.0 | 0/TBD | Not started | - |
 | 78 | v7.0 | 0/TBD | Not started | - |
 | 79 | v7.0 | 0/TBD | Not started | - |
 
-**Total: 75 phases shipped across 16 milestones. 206 plans completed. v7.0 in progress (6 phases, 33 requirements).**
+**Total: 76 phases shipped across 16 milestones. 208 plans completed. v7.0 in progress (6 phases, 33 requirements).**
