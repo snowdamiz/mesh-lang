@@ -233,7 +233,10 @@ Plans:
   1. User can materialize an iterator into a List via `List.collect(iter)` or `iter |> List.collect()`
   2. User can materialize an iterator of `{key, value}` tuples into a Map via `Map.collect(iter)`
   3. User can materialize an iterator into a Set via `Set.collect(iter)` and into a String via `String.collect(char_iter)`
-**Plans**: TBD
+**Plans:** 2 plans
+Plans:
+- [ ] 79-01-PLAN.md -- Runtime collect functions + compiler wiring for List, Map, Set, String
+- [ ] 79-02-PLAN.md -- E2E tests for all four collect functions
 
 ## Progress
 
@@ -261,6 +264,6 @@ Plans:
 | 76 | v7.0 | 2/2 | Complete | 2026-02-13 |
 | 77 | v7.0 | 3/3 | Complete | 2026-02-13 |
 | 78 | v7.0 | 3/3 | Complete | 2026-02-14 |
-| 79 | v7.0 | 0/TBD | Not started | - |
+| 79 | v7.0 | 0/2 | Not started | - |
 
 **Total: 78 phases shipped across 16 milestones. 214 plans completed. v7.0 in progress (6 phases, 33 requirements).**
