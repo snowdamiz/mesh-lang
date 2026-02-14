@@ -5,6 +5,7 @@
 //! - textDocument/hover (type information)
 //! - textDocument/definition (go-to-definition)
 //! - textDocument/documentSymbol (Outline, Breadcrumbs, Go-to-Symbol)
+//! - textDocument/completion (keyword, type, snippet, scope-aware completions)
 //! - Server capabilities advertisement
 
 use std::collections::HashMap;
@@ -83,6 +84,11 @@ impl LanguageServer for MeshBackend {
                 hover_provider: Some(HoverProviderCapability::Simple(true)),
                 definition_provider: Some(OneOf::Left(true)),
                 document_symbol_provider: Some(OneOf::Left(true)),
+                completion_provider: Some(CompletionOptions {
+                    trigger_characters: None,
+                    resolve_provider: Some(false),
+                    ..Default::default()
+                }),
                 ..Default::default()
             },
             ..Default::default()
@@ -224,6 +230,36 @@ impl LanguageServer for MeshBackend {
         let symbols = collect_symbols(&doc.source, &root);
 
         Ok(Some(DocumentSymbolResponse::Nested(symbols)))
+    }
+
+    async fn completion(
+        &self,
+        params: CompletionParams,
+    ) -> Result<Option<CompletionResponse>> {
+        let uri_str = params
+            .text_document_position
+            .text_document
+            .uri
+            .to_string();
+        let position = params.text_document_position.position;
+
+        let docs = self.documents.lock().unwrap();
+        let doc = match docs.get(&uri_str) {
+            Some(doc) => doc,
+            None => return Ok(None),
+        };
+
+        let items = crate::completion::compute_completions(
+            &doc.source,
+            &doc.analysis,
+            &position,
+        );
+
+        if items.is_empty() {
+            Ok(None)
+        } else {
+            Ok(Some(CompletionResponse::Array(items)))
+        }
     }
 }
 
@@ -483,5 +519,6 @@ mod tests {
         assert!(caps.hover_provider.is_some());
         assert!(caps.text_document_sync.is_some());
         assert!(caps.document_symbol_provider.is_some());
+        assert!(caps.completion_provider.is_some());
     }
 }

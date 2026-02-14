@@ -6,6 +6,7 @@
 //! - **Diagnostics**: Parse errors and type errors displayed inline
 //! - **Hover**: Type information shown on hover
 //! - **Go-to-definition**: Navigate to variable, function, and type definitions
+//! - **Completion**: Keywords, built-in types, snippets, and scope-aware names
 //!
 //! The server communicates via stdin/stdout using the LSP protocol over
 //! JSON-RPC, powered by the `tower-lsp` framework.
