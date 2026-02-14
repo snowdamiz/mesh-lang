@@ -5,21 +5,21 @@
 See: .planning/PROJECT.md (updated 2026-02-14)
 
 **Core value:** Expressive, readable concurrency -- writing concurrent programs should feel as natural and clean as writing sequential code, with the safety net of supervision and fault tolerance built into the language.
-**Current focus:** v9.0 Mesher Phase 87 (Foundation)
+**Current focus:** v9.0 Mesher Phase 87.1 (Issues Encountered)
 
 ## Current Position
 
-Phase: 87 of 95 (Foundation)
-Plan: 2 of 2 in current phase
-Status: Phase Complete
-Last activity: 2026-02-14 -- Completed 87-02 (Service Layer)
+Phase: 87.1 of 95 (Issues Encountered)
+Plan: 1 of 2 in current phase
+Status: In Progress
+Last activity: 2026-02-14 -- Completed 87.1-01 (Codegen Fixes)
 
-Progress: [####################..........] 90% overall (242/258 plans shipped)
+Progress: [####################..........] 91% overall (243/258 plans shipped)
 
 ## Performance Metrics
 
 **All-time Totals:**
-- Plans completed: 242
+- Plans completed: 243
 - Phases completed: 87
 - Milestones shipped: 18 (v1.0-v8.0)
 - Lines of Rust: ~98,800
@@ -42,6 +42,13 @@ Cleared at milestone boundary. v8.0 decisions archived in PROJECT.md.
 - [87-02] Explicit case matching instead of ? operator -- LLVM codegen bug with ? in Result functions
 - [87-02] JSON string buffer for StorageWriter -- polymorphic type variables can't cross module boundaries
 - [87-02] Timer actor pattern (recursive sleep + cast) for periodic flush -- Timer.send_after incompatible with service dispatch
+- [87.1-01] Entry-block alloca placement in codegen_leaf matches existing codegen_guard pattern
+- [87.1-01] Re-store to existing alloca when same variable name reused across case expressions
+- [87.1-01] Defensive ptr-to-struct load in codegen_return even though current code returns struct values
+
+### Roadmap Evolution
+
+- Phase 87.1 inserted after Phase 87: Issues Encountered (URGENT)
 
 ### Pending Todos
 
@@ -50,7 +57,7 @@ None.
 ### Blockers/Concerns
 
 Research flags from research/SUMMARY.md:
-- List.find Option pattern matching codegen bug (pre-existing) -- may need compiler fix during ingestion phase
+- ~~List.find Option pattern matching codegen bug~~ -- FIXED in 87.1-01
 - Map.collect integer key assumption -- workaround: manual Map building with fold
 - Timer.send_after spawns OS thread per call -- use single recurring timer actor for alerting
 - Phase 94 (Multi-Node Clustering) may need research-phase for split-brain handling
@@ -65,6 +72,6 @@ Research flags from research/SUMMARY.md:
 ## Session Continuity
 
 Last session: 2026-02-14
-Stopped at: Completed 87-02-PLAN.md (Phase 87 complete)
+Stopped at: Completed 87.1-01-PLAN.md (Codegen Fixes)
 Resume file: None
-Next action: Plan Phase 88 (Ingestion Pipeline)
+Next action: Execute 87.1-02-PLAN.md (Module System Fixes)
