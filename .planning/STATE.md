@@ -10,9 +10,9 @@ See: .planning/PROJECT.md (updated 2026-02-14)
 ## Current Position
 
 Phase: 87 of 95 (Foundation)
-Plan: 1 of 2 in current phase
-Status: Executing
-Last activity: 2026-02-14 -- Completed 87-01 (Data Types & PostgreSQL Schema)
+Plan: 2 of 2 in current phase
+Status: Phase Complete
+Last activity: 2026-02-14 -- Completed 87-02 (Service Layer)
 
 Progress: [####################..........] 90% overall (241/258 plans shipped)
 
@@ -24,7 +24,7 @@ Progress: [####################..........] 90% overall (241/258 plans shipped)
 - Milestones shipped: 18 (v1.0-v8.0)
 - Lines of Rust: ~98,800
 - Lines of website: ~5,500
-- Lines of Mesh: ~623 (first Mesh application code)
+- Lines of Mesh: ~950 (first Mesh application code)
 - Timeline: 10 days (2026-02-05 -> 2026-02-14)
 
 ## Accumulated Context
@@ -38,6 +38,10 @@ Cleared at milestone boundary. v8.0 decisions archived in PROJECT.md.
 - [87-01] UUID columns cast to ::text in SELECT for deriving(Row) compatibility
 - [87-01] User struct excludes password_hash -- never exposed to application code
 - [87-01] Flat org -> project hierarchy with org_memberships for roles
+- [87-02] All services in main.mpl -- cross-module service export not supported in Mesh
+- [87-02] Explicit case matching instead of ? operator -- LLVM codegen bug with ? in Result functions
+- [87-02] JSON string buffer for StorageWriter -- polymorphic type variables can't cross module boundaries
+- [87-02] Timer actor pattern (recursive sleep + cast) for periodic flush -- Timer.send_after incompatible with service dispatch
 
 ### Pending Todos
 
@@ -61,6 +65,6 @@ Research flags from research/SUMMARY.md:
 ## Session Continuity
 
 Last session: 2026-02-14
-Stopped at: Completed 87-01-PLAN.md
+Stopped at: Completed 87-02-PLAN.md (Phase 87 complete)
 Resume file: None
-Next action: Execute 87-02-PLAN.md
+Next action: Plan Phase 88 (Ingestion Pipeline)
