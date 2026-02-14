@@ -5,22 +5,22 @@
 See: .planning/PROJECT.md (updated 2026-02-13)
 
 **Core value:** Expressive, readable concurrency -- writing concurrent programs should feel as natural and clean as writing sequential code, with the safety net of supervision and fault tolerance built into the language.
-**Current focus:** v8.0 Developer Tooling -- Phase 85 (Formatting + Audit)
+**Current focus:** v8.0 Developer Tooling -- Phase 86 (Documentation Corrections)
 
 ## Current Position
 
-Phase: 85 (5 of 6 in v8.0) -- Formatting + Audit
-Plan: 2 of 2 in current phase
-Status: Phase 85 complete
-Last activity: 2026-02-14 -- Plan 85-02 complete (JIT Runtime Symbol Registration)
+Phase: 86 (6 of 6 in v8.0) -- Documentation Corrections
+Plan: 1 of 1 in current phase
+Status: Phase 86 complete
+Last activity: 2026-02-14 -- Plan 86-01 complete (Documentation Corrections)
 
-Progress: [████████░░] 100%
+Progress: [██████████] 100%
 
 ## Performance Metrics
 
 **All-time Totals:**
-- Plans completed: 228
-- Phases completed: 85
+- Plans completed: 229
+- Phases completed: 86
 - Milestones shipped: 17 (v1.0-v7.0)
 - Lines of Rust: ~97,200
 - Lines of website: ~5,500
@@ -58,6 +58,7 @@ Progress: [████████░░] 100%
 - 85-01: Return None when formatted == source to skip no-op edits
 - 85-02: Collection iterator constructors referenced via full module path since not re-exported from lib.rs
 - 85-02: mesh_int_to_float/mesh_float_to_int not registered -- codegen intrinsics, not runtime functions
+- 86-01: Version badge uses dynamic useData().theme.meshVersion pattern from DocsVersionBadge.vue rather than hardcoded string
 
 ### Pending Todos
 
@@ -81,10 +82,11 @@ None. (Phase 83 scope-walk concern resolved -- pattern works correctly.)
 | Phase 84 P02 | ~15min | 2 tasks | 3 files |
 | Phase 85 P01 | 3min | 2 tasks | 4 files |
 | Phase 85 P02 | 3min | 1 task | 1 file |
+| Phase 86 P01 | 1min | 2 tasks | 4 files |
 
 ## Session Continuity
 
 Last session: 2026-02-14
-Stopped at: Completed 85-02-PLAN.md (JIT Runtime Symbol Registration) -- Phase 85 complete
+Stopped at: Completed 86-01-PLAN.md (Documentation Corrections) -- Phase 86 complete
 Resume file: None
-Next action: Plan/execute Phase 86
+Next action: Phase 86 complete -- all v8.0 phases done
