@@ -151,6 +151,7 @@ See milestones/v6.0-ROADMAP.md for full phase details.
 - [x] **Phase 77: From/Into Conversion** - Type conversion traits with automatic Into generation and ? operator integration (completed 2026-02-13)
 - [x] **Phase 78: Lazy Combinators & Terminals** - Lazy iterator pipeline composition and consuming operations (completed 2026-02-14)
 - [x] **Phase 79: Collect** - Generic iterator materialization into List, Map, Set, String (completed 2026-02-14)
+- [x] **Phase 80: Documentation Update** - Website docs for all v7.0 features (completed 2026-02-14)
 
 #### Phase 74: Associated Types
 **Goal**: Users can declare type members in traits and the compiler resolves them through inference
@@ -240,7 +241,7 @@ Plans:
 
 ## Progress
 
-**Execution Order:** 74 -> 75 -> 76 -> 77 -> 78 -> 79
+**Execution Order:** 74 -> 75 -> 76 -> 77 -> 78 -> 79 -> 80
 
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
@@ -265,15 +266,16 @@ Plans:
 | 77 | v7.0 | 3/3 | Complete | 2026-02-13 |
 | 78 | v7.0 | 3/3 | Complete | 2026-02-14 |
 | 79 | v7.0 | 2/2 | Complete | 2026-02-14 |
+| 80 | v7.0 | 2/2 | Complete | 2026-02-14 |
 
-**Total: 79 phases shipped across 17 milestones. 216 plans completed.**
+**Total: 80 phases shipped across 17 milestones. 218 plans completed.**
 
-### Phase 80: Documentation Update for v7.0 APIs
+#### Phase 80: Documentation Update for v7.0 APIs
 
 **Goal:** Update the website documentation to cover all v7.0 features: custom interfaces, associated types, numeric traits, From/Into conversion, iterator protocol, lazy combinators, terminal operations, and collect
 **Depends on:** Phase 79
 **Plans:** 2 plans
 
 Plans:
-- [ ] 80-01-PLAN.md -- Create Iterators documentation page + sidebar config
-- [ ] 80-02-PLAN.md -- Update Type System, Cheatsheet, and Language Basics pages
+- [x] 80-01-PLAN.md -- Create Iterators documentation page + sidebar config (completed 2026-02-14)
+- [x] 80-02-PLAN.md -- Update Type System, Cheatsheet, and Language Basics pages (completed 2026-02-14)
