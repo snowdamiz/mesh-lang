@@ -1,0 +1,45 @@
+# Publish Mesh VS Code extension to VS Code Marketplace and Open VSX
+# Trigger: git tag ext-v0.2.0 && git push origin ext-v0.2.0
+# Requires secrets: VS_MARKETPLACE_TOKEN, OPEN_VSX_TOKEN
+
+name: Publish Extension
+
+on:
+  push:
+    tags:
+      - "ext-v*"
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies
+        run: npm ci
+        working-directory: editors/vscode-mesh
+
+      - name: Compile TypeScript
+        run: npm run compile
+        working-directory: editors/vscode-mesh
+
+      - name: Publish to Open VSX Registry
+        uses: HaaLeo/publish-vscode-extension@v2
+        id: publishToOpenVSX
+        with:
+          pat: ${{ secrets.OPEN_VSX_TOKEN }}
+          packagePath: ./editors/vscode-mesh
+
+      - name: Publish to Visual Studio Marketplace
+        uses: HaaLeo/publish-vscode-extension@v2
+        with:
+          pat: ${{ secrets.VS_MARKETPLACE_TOKEN }}
+          registryUrl: https://marketplace.visualstudio.com
+          extensionFile: ${{ steps.publishToOpenVSX.outputs.vsixPath }}
