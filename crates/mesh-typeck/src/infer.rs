@@ -3522,7 +3522,14 @@ fn infer_trait_binary_op(
     }
 
     if trait_registry.has_impl(trait_name, &resolved) {
-        Ok(resolved)
+        // Resolve the Output associated type for the result type.
+        // For Int + Int, Output = Int; for Float * Float, Output = Float.
+        // Falls back to the operand type if no Output is defined (backward compat).
+        if let Some(output_ty) = trait_registry.resolve_associated_type(trait_name, "Output", &resolved) {
+            Ok(output_ty)
+        } else {
+            Ok(resolved)
+        }
     } else {
         let err = TypeError::TraitNotSatisfied {
             ty: resolved,
@@ -3559,7 +3566,36 @@ fn infer_unary(
     let op_kind = un.op().map(|t| t.kind());
 
     match op_kind {
-        Some(SyntaxKind::MINUS) => Ok(operand_ty),
+        Some(SyntaxKind::MINUS) => {
+            let resolved = ctx.resolve(operand_ty.clone());
+
+            // Deferred: type variable, return as-is.
+            if is_type_var(&resolved) {
+                return Ok(resolved);
+            }
+
+            // Fast path: primitive Int/Float -- no trait check needed.
+            if matches!(&resolved, Ty::Con(ref tc) if tc.name == "Int" || tc.name == "Float") {
+                return Ok(resolved);
+            }
+
+            // User type: check Neg trait.
+            if trait_registry.has_impl("Neg", &resolved) {
+                if let Some(output_ty) = trait_registry.resolve_associated_type("Neg", "Output", &resolved) {
+                    Ok(output_ty)
+                } else {
+                    Ok(resolved)
+                }
+            } else {
+                let err = TypeError::TraitNotSatisfied {
+                    ty: resolved,
+                    trait_name: "Neg".to_string(),
+                    origin: ConstraintOrigin::Builtin,
+                };
+                ctx.errors.push(err.clone());
+                Err(err)
+            }
+        }
         Some(SyntaxKind::BANG | SyntaxKind::NOT_KW) => {
             ctx.unify(operand_ty, Ty::bool(), ConstraintOrigin::Builtin)?;
             Ok(Ty::bool())
