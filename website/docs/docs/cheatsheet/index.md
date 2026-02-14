@@ -115,25 +115,113 @@ type Mapper = Fun(Int) -> String
 
 See [Type System](/docs/type-system/) for details.
 
-## Traits
+## Interfaces & Traits
 
 ```mesh
-# Available derives
-# Eq, Ord, Display, Debug, Hash, Json
+# Define a custom interface
+interface Greeter do
+  fn greet(self) -> String
+end
 
-# Deriving on structs
+# Implement for a type
+impl Greeter for Person do
+  fn greet(self) -> String do
+    "Hello"
+  end
+end
+
+# Associated types
+interface Container do
+  type Item
+  fn first(self) -> Self.Item
+end
+
+impl Container for MyBox do
+  type Item = Int
+  fn first(self) -> Int do self.value end
+end
+
+# Deriving built-in traits
 struct Tag do
   id :: Int
 end deriving(Eq, Hash)
 
-# Deriving on sum types
-type Status do
-  Active
-  Inactive
-end deriving(Eq, Display)
+# Available derives: Eq, Ord, Display, Debug, Hash, Json
 ```
 
 See [Type System -- Traits](/docs/type-system/#traits) for details.
+
+## Numeric Traits
+
+```mesh
+# Operator overloading via traits
+impl Add for Vec2 do
+  type Output = Vec2
+  fn add(self, other :: Vec2) -> Vec2 do
+    Vec2 { x: self.x + other.x, y: self.y + other.y }
+  end
+end
+
+# Available: Add (+), Sub (-), Mul (*), Div (/), Neg (unary -)
+let sum = v1 + v2     # calls Add.add
+let neg = -v1         # calls Neg.neg
+```
+
+See [Type System -- Numeric Traits](/docs/type-system/#numeric-traits) for details.
+
+## From/Into Conversion
+
+```mesh
+# User-defined conversion
+impl From<Int> for Wrapper do
+  fn from(n :: Int) -> Wrapper do
+    Wrapper { value: n }
+  end
+end
+let w = Wrapper.from(42)
+
+# Built-in conversions
+let f = Float.from(42)       # Int -> Float
+let s = String.from(42)      # Int -> String
+
+# ? operator auto-converts error types via From
+fn process() -> Int!AppError do
+  let n = risky()?  # String error auto-converts to AppError
+  Ok(n)
+end
+```
+
+See [Type System -- From/Into](/docs/type-system/#from-into-conversion) for details.
+
+## Iterators
+
+```mesh
+# Create iterator from collection
+let iter = Iter.from([1, 2, 3, 4, 5])
+
+# Lazy combinators (chained with pipe operator)
+Iter.from(list) |> Iter.map(fn x -> x * 2 end)
+Iter.from(list) |> Iter.filter(fn x -> x > 3 end)
+Iter.from(list) |> Iter.take(3)
+Iter.from(list) |> Iter.skip(2)
+Iter.from(list) |> Iter.enumerate()
+Iter.from(a) |> Iter.zip(Iter.from(b))
+
+# Terminal operations
+Iter.from(list) |> Iter.count()
+Iter.from(list) |> Iter.sum()
+Iter.from(list) |> Iter.any(fn x -> x > 3 end)
+Iter.from(list) |> Iter.all(fn x -> x > 0 end)
+Iter.from(list) |> Iter.reduce(0, fn acc, x -> acc + x end)
+
+# Collect into collections
+Iter.from(list) |> Iter.map(fn x -> x * 2 end) |> List.collect()
+Iter.from(list) |> Iter.enumerate() |> Map.collect()
+Iter.from(list) |> Set.collect()
+Iter.from(strings) |> String.collect()
+```
+
+See [Iterators](/docs/iterators/) for details.
 
 ## Error Handling
 

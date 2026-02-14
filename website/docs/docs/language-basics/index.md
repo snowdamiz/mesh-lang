@@ -592,6 +592,7 @@ Note that `Map.put` returns a new map -- all collections in Mesh are immutable.
 
 You now have a solid foundation in the Mesh language. Continue with:
 
-- [Type System](/docs/type-system/) -- structs, sum types, deriving, and advanced type features
+- [Type System](/docs/type-system/) -- structs, sum types, traits, and advanced type features
+- [Iterators](/docs/iterators/) -- lazy iterator pipelines, combinators, and collection materialization
 - [Concurrency](/docs/concurrency/) -- actors, message passing, supervision trees, and services
 - [Syntax Cheatsheet](/docs/cheatsheet/) -- quick reference for all Mesh syntax
