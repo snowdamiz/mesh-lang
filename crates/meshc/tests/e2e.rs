@@ -2518,3 +2518,34 @@ fn tce_actor_loop() {
     let output = compile_and_run(&source);
     assert_eq!(output.trim(), "1000000");
 }
+
+// ── Phase 74: Associated Types ──────────────────────────────────────────
+
+/// Phase 74: Basic associated type -- different impls resolve Self.Item to
+/// different concrete types (Int and String).
+#[test]
+fn e2e_assoc_type_basic() {
+    let source = read_fixture("assoc_type_basic.mpl");
+    let output = compile_and_run(&source);
+    assert_eq!(output, "42\nhello\n");
+}
+
+/// Phase 74: Multiple associated types in a single interface.
+/// Mapper has both Input and Output associated types; impl resolves Output
+/// to String and the method returns "mapped".
+#[test]
+fn e2e_assoc_type_multiple() {
+    let source = read_fixture("assoc_type_multiple.mpl");
+    let output = compile_and_run(&source);
+    assert_eq!(output, "mapped\n");
+}
+
+/// Phase 74: Associated types coexist with deriving(Display).
+/// Wrapper derives Display and also implements Container with assoc type.
+/// Both dot-syntax method calls work on the same struct.
+#[test]
+fn e2e_assoc_type_with_deriving() {
+    let source = read_fixture("assoc_type_with_deriving.mpl");
+    let output = compile_and_run(&source);
+    assert_eq!(output, "Wrapper(1, 2)\n99\n");
+}
