@@ -825,6 +825,15 @@ pub extern "C" fn mesh_list_iter_next(iter_ptr: *mut u8) -> *mut u8 {
     }
 }
 
+/// Iter.from(collection) -- creates an iterator handle from a List.
+/// For Phase 76, this is equivalent to mesh_list_iter_new.
+/// Future phases can add type-tag dispatch for Map/Set/Range.
+#[no_mangle]
+pub extern "C" fn mesh_iter_from(collection: *mut u8) -> *mut u8 {
+    // Delegate to list iterator creation.
+    mesh_list_iter_new(collection)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
