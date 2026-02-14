@@ -179,7 +179,7 @@ See milestones/v7.0-ROADMAP.md for full phase details.
   Plans:
   - [x] 85-01-PLAN.md -- LSP formatting handler + formatter walker audit (map/list literals, assoc types)
   - [x] 85-02-PLAN.md -- REPL JIT symbol registration for v7.0 iterators, collect, and missing stdlib functions
-- [ ] **Phase 86: Documentation Corrections** - Binary name, install command, version badge, examples
+- [x] **Phase 86: Documentation Corrections** - Binary name, install command, version badge, examples (completed 2026-02-14)
 
 See milestones/v8.0-ROADMAP.md for full phase details.
 
@@ -203,6 +203,6 @@ See milestones/v8.0-ROADMAP.md for full phase details.
 | 63-69 | v5.0 | 20/20 | Complete | 2026-02-13 |
 | 70-73 | v6.0 | 11/11 | Complete | 2026-02-13 |
 | 74-80 | v7.0 | 17/17 | Complete | 2026-02-14 |
-| 81-86 | v8.0 | 10/TBD | In progress | - |
+| 81-86 | v8.0 | 11/11 | In progress | - |
 
-**Total: 85 phases shipped across 17 milestones. 228 plans completed. 6 phases planned for v8.0.**
+**Total: 86 phases shipped across 17 milestones. 229 plans completed. 6 phases planned for v8.0.**
