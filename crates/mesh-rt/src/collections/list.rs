@@ -789,6 +789,7 @@ pub extern "C" fn mesh_list_nth(list: *mut u8, index: i64) -> u64 {
 /// Internal iterator state for List iteration.
 #[repr(C)]
 struct ListIterator {
+    tag: u8,
     list: *mut u8,
     index: i64,
     length: i64,
@@ -803,6 +804,7 @@ pub extern "C" fn mesh_list_iter_new(list: *mut u8) -> *mut u8 {
             std::mem::size_of::<ListIterator>() as u64,
             std::mem::align_of::<ListIterator>() as u64,
         ) as *mut ListIterator;
+        (*iter).tag = 0; // ITER_TAG_LIST
         (*iter).list = list;
         (*iter).index = 0;
         (*iter).length = len;

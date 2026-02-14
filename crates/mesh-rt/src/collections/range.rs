@@ -135,6 +135,7 @@ pub extern "C" fn mesh_range_length(range: *mut u8) -> i64 {
 /// Internal iterator state for Range iteration.
 #[repr(C)]
 struct RangeIterator {
+    tag: u8,
     current: i64,
     end: i64,
 }
@@ -147,6 +148,7 @@ pub extern "C" fn mesh_range_iter_new(start: i64, end: i64) -> *mut u8 {
             std::mem::size_of::<RangeIterator>() as u64,
             std::mem::align_of::<RangeIterator>() as u64,
         ) as *mut RangeIterator;
+        (*iter).tag = 3; // ITER_TAG_RANGE
         (*iter).current = start;
         (*iter).end = end;
         iter as *mut u8

@@ -32,6 +32,7 @@ pub mod io;
 pub mod ws;
 pub mod dist;
 pub mod json;
+pub mod iter;
 pub mod option;
 pub mod panic;
 pub mod string;

@@ -413,6 +413,7 @@ pub extern "C" fn mesh_map_from_list(list: *mut u8) -> *mut u8 {
 /// Internal iterator state for Map iteration.
 #[repr(C)]
 struct MapIterator {
+    tag: u8,
     map: *mut u8,
     index: i64,
     size: i64,
@@ -427,6 +428,7 @@ pub extern "C" fn mesh_map_iter_new(map: *mut u8) -> *mut u8 {
             std::mem::size_of::<MapIterator>() as u64,
             std::mem::align_of::<MapIterator>() as u64,
         ) as *mut MapIterator;
+        (*iter).tag = 1; // ITER_TAG_MAP
         (*iter).map = map;
         (*iter).index = 0;
         (*iter).size = size;

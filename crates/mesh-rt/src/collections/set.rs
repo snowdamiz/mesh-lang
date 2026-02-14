@@ -296,6 +296,7 @@ pub extern "C" fn mesh_set_from_list(list: *mut u8) -> *mut u8 {
 /// Internal iterator state for Set iteration.
 #[repr(C)]
 struct SetIterator {
+    tag: u8,
     set: *mut u8,
     index: i64,
     size: i64,
@@ -310,6 +311,7 @@ pub extern "C" fn mesh_set_iter_new(set: *mut u8) -> *mut u8 {
             std::mem::size_of::<SetIterator>() as u64,
             std::mem::align_of::<SetIterator>() as u64,
         ) as *mut u8 as *mut SetIterator;
+        (*iter).tag = 2; // ITER_TAG_SET
         (*iter).set = set;
         (*iter).index = 0;
         (*iter).size = size;
