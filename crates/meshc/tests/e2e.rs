@@ -2686,6 +2686,8 @@ fn e2e_from_string_from_bool() {
 
 /// Phase 77 CONV-04: ? operator correctly propagates errors through
 /// multiple function call levels with chained ? desugaring.
+/// NOTE: This tests chained ? with the SAME error type (String), not From conversion.
+/// For From-based error type conversion, see e2e_from_try_struct_error.
 #[test]
 fn e2e_from_try_error_conversion() {
     let source = read_fixture("from_try_error_conversion.mpl");
@@ -2701,4 +2703,14 @@ fn e2e_from_try_same_error() {
     let source = read_fixture("from_try_same_error.mpl");
     let output = compile_and_run(&source);
     assert_eq!(output, "err: fail\n");
+}
+
+/// Phase 77 CONV-04 gap closure: ? operator auto-converts String error to
+/// AppError struct via From<String> for AppError. This is the exact success
+/// criterion #4 test case -- struct error types in Result Err variants.
+#[test]
+fn e2e_from_try_struct_error() {
+    let source = read_fixture("from_try_struct_error.mpl");
+    let output = compile_and_run(&source);
+    assert_eq!(output, "something failed\n");
 }

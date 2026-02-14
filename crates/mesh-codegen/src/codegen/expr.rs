@@ -886,10 +886,38 @@ impl<'ctx> CodeGen<'ctx> {
                     return Ok(self.context.struct_type(&[], false).const_zero().into());
                 }
 
-                return call
+                let result = call
                     .try_as_basic_value()
                     .basic()
-                    .ok_or_else(|| "Function call returned void".to_string());
+                    .ok_or_else(|| "Function call returned void".to_string())?;
+
+                // User function returning struct when MIR expects Ptr (e.g.,
+                // From conversion returning a struct that goes into Result's
+                // { i8, ptr } Err variant). Heap-allocate the struct and return
+                // a pointer so it survives the current stack frame.
+                if matches!(ty, MirType::Ptr) {
+                    if let BasicValueEnum::StructValue(sv) = result {
+                        let sv_ty = sv.get_type();
+                        let i64_type = self.context.i64_type();
+                        let size = sv_ty.size_of().unwrap_or(i64_type.const_int(64, false));
+                        let align = i64_type.const_int(8, false);
+                        let gc_alloc = self.module.get_function("mesh_gc_alloc_actor")
+                            .ok_or("mesh_gc_alloc_actor not found")?;
+                        let heap_ptr = self.builder
+                            .build_call(gc_alloc, &[size.into(), align.into()], "struct_to_ptr")
+                            .map_err(|e| e.to_string())?
+                            .try_as_basic_value()
+                            .basic()
+                            .ok_or("gc_alloc returned void")?
+                            .into_pointer_value();
+                        self.builder
+                            .build_store(heap_ptr, sv)
+                            .map_err(|e| e.to_string())?;
+                        return Ok(heap_ptr.into());
+                    }
+                }
+
+                return Ok(result);
             }
 
             // Check if it's a runtime intrinsic (don't add reduction check for runtime calls)
@@ -1030,6 +1058,32 @@ impl<'ctx> CodeGen<'ctx> {
                                 .map_err(|e| e.to_string())?;
                             return Ok(ptr_val.into());
                         }
+                    }
+                }
+
+                // Functions returning struct values when MIR expects Ptr (e.g.,
+                // From conversion returning a struct that goes into Result's
+                // { i8, ptr } Err variant). Heap-allocate the struct and return
+                // a pointer so it survives the current stack frame.
+                if matches!(ty, MirType::Ptr) {
+                    if let BasicValueEnum::StructValue(sv) = result {
+                        let sv_ty = sv.get_type();
+                        let i64_type = self.context.i64_type();
+                        let size = sv_ty.size_of().unwrap_or(i64_type.const_int(64, false));
+                        let align = i64_type.const_int(8, false);
+                        let gc_alloc = self.module.get_function("mesh_gc_alloc_actor")
+                            .ok_or("mesh_gc_alloc_actor not found")?;
+                        let heap_ptr = self.builder
+                            .build_call(gc_alloc, &[size.into(), align.into()], "struct_to_ptr")
+                            .map_err(|e| e.to_string())?
+                            .try_as_basic_value()
+                            .basic()
+                            .ok_or("gc_alloc returned void")?
+                            .into_pointer_value();
+                        self.builder
+                            .build_store(heap_ptr, sv)
+                            .map_err(|e| e.to_string())?;
+                        return Ok(heap_ptr.into());
                     }
                 }
 
