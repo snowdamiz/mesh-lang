@@ -820,6 +820,51 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
     // mesh_iter_from(collection: ptr) -> ptr (Iter.from entry point)
     module.add_function("mesh_iter_from", ptr_type.fn_type(&[ptr_type.into()], false), Some(inkwell::module::Linkage::External));
 
+    // ── Phase 78: Lazy Combinators & Terminals ──────────────────────────
+    // Combinators: adapter constructors
+    // mesh_iter_map(source: ptr, fn_ptr: ptr, env_ptr: ptr) -> ptr
+    module.add_function("mesh_iter_map", ptr_type.fn_type(&[ptr_type.into(), ptr_type.into(), ptr_type.into()], false), Some(inkwell::module::Linkage::External));
+    // mesh_iter_filter(source: ptr, fn_ptr: ptr, env_ptr: ptr) -> ptr
+    module.add_function("mesh_iter_filter", ptr_type.fn_type(&[ptr_type.into(), ptr_type.into(), ptr_type.into()], false), Some(inkwell::module::Linkage::External));
+    // mesh_iter_take(source: ptr, n: i64) -> ptr
+    module.add_function("mesh_iter_take", ptr_type.fn_type(&[ptr_type.into(), i64_type.into()], false), Some(inkwell::module::Linkage::External));
+    // mesh_iter_skip(source: ptr, n: i64) -> ptr
+    module.add_function("mesh_iter_skip", ptr_type.fn_type(&[ptr_type.into(), i64_type.into()], false), Some(inkwell::module::Linkage::External));
+    // mesh_iter_enumerate(source: ptr) -> ptr
+    module.add_function("mesh_iter_enumerate", ptr_type.fn_type(&[ptr_type.into()], false), Some(inkwell::module::Linkage::External));
+    // mesh_iter_zip(source_a: ptr, source_b: ptr) -> ptr
+    module.add_function("mesh_iter_zip", ptr_type.fn_type(&[ptr_type.into(), ptr_type.into()], false), Some(inkwell::module::Linkage::External));
+
+    // Terminals
+    // mesh_iter_count(iter: ptr) -> i64
+    module.add_function("mesh_iter_count", i64_type.fn_type(&[ptr_type.into()], false), Some(inkwell::module::Linkage::External));
+    // mesh_iter_sum(iter: ptr) -> i64
+    module.add_function("mesh_iter_sum", i64_type.fn_type(&[ptr_type.into()], false), Some(inkwell::module::Linkage::External));
+    // mesh_iter_any(iter: ptr, fn_ptr: ptr, env_ptr: ptr) -> i8 (Bool)
+    module.add_function("mesh_iter_any", i8_type.fn_type(&[ptr_type.into(), ptr_type.into(), ptr_type.into()], false), Some(inkwell::module::Linkage::External));
+    // mesh_iter_all(iter: ptr, fn_ptr: ptr, env_ptr: ptr) -> i8 (Bool)
+    module.add_function("mesh_iter_all", i8_type.fn_type(&[ptr_type.into(), ptr_type.into(), ptr_type.into()], false), Some(inkwell::module::Linkage::External));
+    // mesh_iter_find(iter: ptr, fn_ptr: ptr, env_ptr: ptr) -> ptr (MeshOption)
+    module.add_function("mesh_iter_find", ptr_type.fn_type(&[ptr_type.into(), ptr_type.into(), ptr_type.into()], false), Some(inkwell::module::Linkage::External));
+    // mesh_iter_reduce(iter: ptr, init: i64, fn_ptr: ptr, env_ptr: ptr) -> i64
+    module.add_function("mesh_iter_reduce", i64_type.fn_type(&[ptr_type.into(), i64_type.into(), ptr_type.into(), ptr_type.into()], false), Some(inkwell::module::Linkage::External));
+
+    // Adapter _next functions (for resolve_iterator_fn dispatch)
+    // mesh_iter_generic_next(iter: ptr) -> ptr (MeshOption)
+    module.add_function("mesh_iter_generic_next", ptr_type.fn_type(&[ptr_type.into()], false), Some(inkwell::module::Linkage::External));
+    // mesh_iter_map_next(adapter: ptr) -> ptr (MeshOption)
+    module.add_function("mesh_iter_map_next", ptr_type.fn_type(&[ptr_type.into()], false), Some(inkwell::module::Linkage::External));
+    // mesh_iter_filter_next(adapter: ptr) -> ptr (MeshOption)
+    module.add_function("mesh_iter_filter_next", ptr_type.fn_type(&[ptr_type.into()], false), Some(inkwell::module::Linkage::External));
+    // mesh_iter_take_next(adapter: ptr) -> ptr (MeshOption)
+    module.add_function("mesh_iter_take_next", ptr_type.fn_type(&[ptr_type.into()], false), Some(inkwell::module::Linkage::External));
+    // mesh_iter_skip_next(adapter: ptr) -> ptr (MeshOption)
+    module.add_function("mesh_iter_skip_next", ptr_type.fn_type(&[ptr_type.into()], false), Some(inkwell::module::Linkage::External));
+    // mesh_iter_enumerate_next(adapter: ptr) -> ptr (MeshOption)
+    module.add_function("mesh_iter_enumerate_next", ptr_type.fn_type(&[ptr_type.into()], false), Some(inkwell::module::Linkage::External));
+    // mesh_iter_zip_next(adapter: ptr) -> ptr (MeshOption)
+    module.add_function("mesh_iter_zip_next", ptr_type.fn_type(&[ptr_type.into()], false), Some(inkwell::module::Linkage::External));
+
     // ── Phase 68: Global Registry ──────────────────────────────────────
 
     // mesh_global_register(name_ptr: ptr, name_len: i64, pid: i64) -> i64
@@ -1148,6 +1193,27 @@ mod tests {
         assert!(module.get_function("mesh_range_iter_new").is_some());
         assert!(module.get_function("mesh_range_iter_next").is_some());
         assert!(module.get_function("mesh_iter_from").is_some());
+
+        // Phase 78: Lazy Combinators & Terminals
+        assert!(module.get_function("mesh_iter_map").is_some());
+        assert!(module.get_function("mesh_iter_filter").is_some());
+        assert!(module.get_function("mesh_iter_take").is_some());
+        assert!(module.get_function("mesh_iter_skip").is_some());
+        assert!(module.get_function("mesh_iter_enumerate").is_some());
+        assert!(module.get_function("mesh_iter_zip").is_some());
+        assert!(module.get_function("mesh_iter_count").is_some());
+        assert!(module.get_function("mesh_iter_sum").is_some());
+        assert!(module.get_function("mesh_iter_any").is_some());
+        assert!(module.get_function("mesh_iter_all").is_some());
+        assert!(module.get_function("mesh_iter_find").is_some());
+        assert!(module.get_function("mesh_iter_reduce").is_some());
+        assert!(module.get_function("mesh_iter_generic_next").is_some());
+        assert!(module.get_function("mesh_iter_map_next").is_some());
+        assert!(module.get_function("mesh_iter_filter_next").is_some());
+        assert!(module.get_function("mesh_iter_take_next").is_some());
+        assert!(module.get_function("mesh_iter_skip_next").is_some());
+        assert!(module.get_function("mesh_iter_enumerate_next").is_some());
+        assert!(module.get_function("mesh_iter_zip_next").is_some());
     }
 
     #[test]

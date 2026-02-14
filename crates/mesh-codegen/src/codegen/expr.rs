@@ -3785,6 +3785,13 @@ impl<'ctx> CodeGen<'ctx> {
             "Iterable__iter__List" => "mesh_list_iter_new",
             "Iterable__iter__Map" => "mesh_map_iter_new",
             "Iterable__iter__Set" => "mesh_set_iter_new",
+            // Phase 78: Adapter iterator next dispatch
+            "Iterator__next__MapAdapterIterator" => "mesh_iter_map_next",
+            "Iterator__next__FilterAdapterIterator" => "mesh_iter_filter_next",
+            "Iterator__next__TakeAdapterIterator" => "mesh_iter_take_next",
+            "Iterator__next__SkipAdapterIterator" => "mesh_iter_skip_next",
+            "Iterator__next__EnumerateAdapterIterator" => "mesh_iter_enumerate_next",
+            "Iterator__next__ZipAdapterIterator" => "mesh_iter_zip_next",
             _ => mangled, // Fall through to intrinsic lookup.
         };
         self.module.get_function(runtime_name)

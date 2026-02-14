@@ -82,7 +82,10 @@ fn resolve_con(con: &TyCon, registry: &TypeRegistry) -> MirType {
         // Collection types, Json, HTTP types, and iterator handles are opaque pointers at LLVM level.
         "List" | "Map" | "Set" | "Range" | "Queue" | "Tuple" | "Json"
         | "Router" | "Request" | "Response"
-        | "ListIterator" | "MapIterator" | "SetIterator" | "RangeIterator" => MirType::Ptr,
+        | "ListIterator" | "MapIterator" | "SetIterator" | "RangeIterator"
+        // Phase 78: Adapter iterator types
+        | "MapAdapterIterator" | "FilterAdapterIterator" | "TakeAdapterIterator"
+        | "SkipAdapterIterator" | "EnumerateAdapterIterator" | "ZipAdapterIterator" => MirType::Ptr,
         name => {
             // Check registry: struct or sum type?
             if registry.struct_defs.contains_key(name) {

@@ -84,6 +84,16 @@ pub use collections::set::{
 };
 pub use collections::tuple::{mesh_tuple_first, mesh_tuple_nth, mesh_tuple_second, mesh_tuple_size};
 pub use env::{mesh_env_args, mesh_env_get};
+pub use iter::{
+    mesh_iter_generic_next,
+    mesh_iter_map, mesh_iter_map_next,
+    mesh_iter_filter, mesh_iter_filter_next,
+    mesh_iter_take, mesh_iter_take_next,
+    mesh_iter_skip, mesh_iter_skip_next,
+    mesh_iter_enumerate, mesh_iter_enumerate_next,
+    mesh_iter_zip, mesh_iter_zip_next,
+    mesh_iter_count, mesh_iter_sum, mesh_iter_any, mesh_iter_all, mesh_iter_find, mesh_iter_reduce,
+};
 pub use option::{MeshOption, alloc_option};
 pub use file::{
     mesh_file_append, mesh_file_delete, mesh_file_exists, mesh_file_read, mesh_file_write,
