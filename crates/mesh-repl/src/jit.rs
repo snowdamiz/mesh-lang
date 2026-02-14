@@ -80,6 +80,10 @@ fn register_runtime_symbols() {
     add_sym("mesh_int_to_string", mesh_rt::mesh_int_to_string as *const ());
     add_sym("mesh_bool_to_string", mesh_rt::mesh_bool_to_string as *const ());
     add_sym("mesh_float_to_string", mesh_rt::mesh_float_to_string as *const ());
+    add_sym("mesh_string_split", mesh_rt::mesh_string_split as *const ());
+    add_sym("mesh_string_join", mesh_rt::mesh_string_join as *const ());
+    add_sym("mesh_string_to_int", mesh_rt::mesh_string_to_int as *const ());
+    add_sym("mesh_string_to_float", mesh_rt::mesh_string_to_float as *const ());
 
     // Panic
     add_sym("mesh_panic", mesh_rt::mesh_panic as *const ());
@@ -114,6 +118,19 @@ fn register_runtime_symbols() {
     add_sym("mesh_list_filter", mesh_rt::mesh_list_filter as *const ());
     add_sym("mesh_list_reduce", mesh_rt::mesh_list_reduce as *const ());
     add_sym("mesh_list_reverse", mesh_rt::mesh_list_reverse as *const ());
+    add_sym("mesh_list_sort", mesh_rt::mesh_list_sort as *const ());
+    add_sym("mesh_list_find", mesh_rt::mesh_list_find as *const ());
+    add_sym("mesh_list_any", mesh_rt::mesh_list_any as *const ());
+    add_sym("mesh_list_all", mesh_rt::mesh_list_all as *const ());
+    add_sym("mesh_list_contains", mesh_rt::mesh_list_contains as *const ());
+    add_sym("mesh_list_zip", mesh_rt::mesh_list_zip as *const ());
+    add_sym("mesh_list_flat_map", mesh_rt::mesh_list_flat_map as *const ());
+    add_sym("mesh_list_flatten", mesh_rt::mesh_list_flatten as *const ());
+    add_sym("mesh_list_enumerate", mesh_rt::mesh_list_enumerate as *const ());
+    add_sym("mesh_list_take", mesh_rt::mesh_list_take as *const ());
+    add_sym("mesh_list_drop", mesh_rt::mesh_list_drop as *const ());
+    add_sym("mesh_list_nth", mesh_rt::mesh_list_nth as *const ());
+    add_sym("mesh_list_last", mesh_rt::mesh_list_last as *const ());
 
     // Collections -- Map
     add_sym("mesh_map_new", mesh_rt::mesh_map_new as *const ());
@@ -124,6 +141,9 @@ fn register_runtime_symbols() {
     add_sym("mesh_map_size", mesh_rt::mesh_map_size as *const ());
     add_sym("mesh_map_keys", mesh_rt::mesh_map_keys as *const ());
     add_sym("mesh_map_values", mesh_rt::mesh_map_values as *const ());
+    add_sym("mesh_map_merge", mesh_rt::mesh_map_merge as *const ());
+    add_sym("mesh_map_to_list", mesh_rt::mesh_map_to_list as *const ());
+    add_sym("mesh_map_from_list", mesh_rt::mesh_map_from_list as *const ());
 
     // Collections -- Set
     add_sym("mesh_set_new", mesh_rt::mesh_set_new as *const ());
@@ -133,6 +153,9 @@ fn register_runtime_symbols() {
     add_sym("mesh_set_size", mesh_rt::mesh_set_size as *const ());
     add_sym("mesh_set_union", mesh_rt::mesh_set_union as *const ());
     add_sym("mesh_set_intersection", mesh_rt::mesh_set_intersection as *const ());
+    add_sym("mesh_set_difference", mesh_rt::mesh_set_difference as *const ());
+    add_sym("mesh_set_to_list", mesh_rt::mesh_set_to_list as *const ());
+    add_sym("mesh_set_from_list", mesh_rt::mesh_set_from_list as *const ());
 
     // Collections -- Queue
     add_sym("mesh_queue_new", mesh_rt::mesh_queue_new as *const ());
@@ -148,6 +171,63 @@ fn register_runtime_symbols() {
     add_sym("mesh_range_length", mesh_rt::mesh_range_length as *const ());
     add_sym("mesh_range_map", mesh_rt::mesh_range_map as *const ());
     add_sym("mesh_range_filter", mesh_rt::mesh_range_filter as *const ());
+
+    // Iterator protocol -- generic dispatch
+    add_sym("mesh_iter_generic_next", mesh_rt::mesh_iter_generic_next as *const ());
+
+    // Iterator adapters -- constructors
+    add_sym("mesh_iter_map", mesh_rt::mesh_iter_map as *const ());
+    add_sym("mesh_iter_filter", mesh_rt::mesh_iter_filter as *const ());
+    add_sym("mesh_iter_take", mesh_rt::mesh_iter_take as *const ());
+    add_sym("mesh_iter_skip", mesh_rt::mesh_iter_skip as *const ());
+    add_sym("mesh_iter_enumerate", mesh_rt::mesh_iter_enumerate as *const ());
+    add_sym("mesh_iter_zip", mesh_rt::mesh_iter_zip as *const ());
+
+    // Iterator adapters -- next functions
+    add_sym("mesh_iter_map_next", mesh_rt::mesh_iter_map_next as *const ());
+    add_sym("mesh_iter_filter_next", mesh_rt::mesh_iter_filter_next as *const ());
+    add_sym("mesh_iter_take_next", mesh_rt::mesh_iter_take_next as *const ());
+    add_sym("mesh_iter_skip_next", mesh_rt::mesh_iter_skip_next as *const ());
+    add_sym("mesh_iter_enumerate_next", mesh_rt::mesh_iter_enumerate_next as *const ());
+    add_sym("mesh_iter_zip_next", mesh_rt::mesh_iter_zip_next as *const ());
+
+    // Iterator terminal operations
+    add_sym("mesh_iter_count", mesh_rt::mesh_iter_count as *const ());
+    add_sym("mesh_iter_sum", mesh_rt::mesh_iter_sum as *const ());
+    add_sym("mesh_iter_any", mesh_rt::mesh_iter_any as *const ());
+    add_sym("mesh_iter_all", mesh_rt::mesh_iter_all as *const ());
+    add_sym("mesh_iter_find", mesh_rt::mesh_iter_find as *const ());
+    add_sym("mesh_iter_reduce", mesh_rt::mesh_iter_reduce as *const ());
+
+    // Collect operations
+    add_sym("mesh_list_collect", mesh_rt::mesh_list_collect as *const ());
+    add_sym("mesh_map_collect", mesh_rt::mesh_map_collect as *const ());
+    add_sym("mesh_set_collect", mesh_rt::mesh_set_collect as *const ());
+    add_sym("mesh_string_collect", mesh_rt::mesh_string_collect as *const ());
+
+    // Collection iterator constructors + next functions
+    add_sym("mesh_list_iter_new", mesh_rt::collections::list::mesh_list_iter_new as *const ());
+    add_sym("mesh_list_iter_next", mesh_rt::collections::list::mesh_list_iter_next as *const ());
+    add_sym("mesh_map_iter_new", mesh_rt::collections::map::mesh_map_iter_new as *const ());
+    add_sym("mesh_map_iter_next", mesh_rt::collections::map::mesh_map_iter_next as *const ());
+    add_sym("mesh_set_iter_new", mesh_rt::collections::set::mesh_set_iter_new as *const ());
+    add_sym("mesh_set_iter_next", mesh_rt::collections::set::mesh_set_iter_next as *const ());
+    add_sym("mesh_range_iter_new", mesh_rt::collections::range::mesh_range_iter_new as *const ());
+    add_sym("mesh_range_iter_next", mesh_rt::collections::range::mesh_range_iter_next as *const ());
+    add_sym("mesh_iter_from", mesh_rt::collections::list::mesh_iter_from as *const ());
+
+    // Hash operations
+    add_sym("mesh_hash_int", mesh_rt::mesh_hash_int as *const ());
+    add_sym("mesh_hash_float", mesh_rt::mesh_hash_float as *const ());
+    add_sym("mesh_hash_string", mesh_rt::mesh_hash_string as *const ());
+    add_sym("mesh_hash_bool", mesh_rt::mesh_hash_bool as *const ());
+    add_sym("mesh_hash_combine", mesh_rt::mesh_hash_combine as *const ());
+
+    // Timer + monitor operations
+    add_sym("mesh_timer_sleep", mesh_rt::mesh_timer_sleep as *const ());
+    add_sym("mesh_timer_send_after", mesh_rt::mesh_timer_send_after as *const ());
+    add_sym("mesh_process_monitor", mesh_rt::mesh_process_monitor as *const ());
+    add_sym("mesh_process_demonitor", mesh_rt::mesh_process_demonitor as *const ());
 
     // Collections -- Tuple
     add_sym("mesh_tuple_first", mesh_rt::mesh_tuple_first as *const ());
