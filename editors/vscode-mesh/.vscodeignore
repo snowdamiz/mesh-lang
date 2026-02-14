@@ -1,4 +1,23 @@
+# Source files (compiled to out/)
 src/**
+**/*.ts
+!**/*.d.ts
+
+# Config files
 tsconfig.json
-node_modules/**
 .vscode/**
+.github/**
+.gitignore
+
+# Dev artifacts
+node_modules/**
+out/**/*.map
+**/*.test.js
+**/*.spec.js
+
+# Package manager
+package-lock.json
+
+# CI/CD
+.eslintrc*
+.prettierrc*

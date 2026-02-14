@@ -1,10 +1,33 @@
 {
   "name": "mesh-lang",
   "displayName": "Mesh Language",
-  "description": "Mesh language support — syntax highlighting, diagnostics, hover, and go-to-definition",
-  "version": "0.1.0",
+  "description": "Mesh language support — syntax highlighting, diagnostics, hover, go-to-definition, completions, and signature help",
+  "version": "0.2.0",
   "publisher": "mesh-lang",
   "license": "MIT",
+  "icon": "images/icon.png",
+  "galleryBanner": {
+    "color": "#1a1a2e",
+    "theme": "dark"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/mesh-lang/mesh.git"
+  },
+  "homepage": "https://meshlang.dev",
+  "bugs": {
+    "url": "https://github.com/mesh-lang/mesh/issues"
+  },
+  "keywords": [
+    "mesh",
+    "language",
+    "syntax highlighting",
+    "lsp",
+    "actor",
+    "concurrency"
+  ],
+  "pricing": "Free",
+  "markdown": "github",
   "engines": {
     "vscode": "^1.75.0"
   },
@@ -26,7 +49,11 @@
         "extensions": [
           ".mpl"
         ],
-        "configuration": "./language-configuration.json"
+        "configuration": "./language-configuration.json",
+        "icon": {
+          "light": "./images/icon.png",
+          "dark": "./images/icon.png"
+        }
       }
     ],
     "grammars": [
@@ -48,10 +75,11 @@
     }
   },
   "scripts": {
+    "vscode:prepublish": "npm run compile",
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
     "package": "vsce package --no-dependencies",
-    "install-local": "vsce package --no-dependencies && code --install-extension mesh-lang-0.1.0.vsix"
+    "install-local": "vsce package --no-dependencies && code --install-extension mesh-lang-0.2.0.vsix"
   },
   "dependencies": {
     "vscode-languageclient": "^9.0.1"
@@ -59,7 +87,7 @@
   "devDependencies": {
     "@types/node": "^25.2.1",
     "@types/vscode": "^1.75.0",
-    "@vscode/vsce": "^2.22.0",
+    "@vscode/vsce": "^3.7.1",
     "typescript": "^5.3.0"
   }
 }
