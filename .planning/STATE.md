@@ -10,21 +10,21 @@ See: .planning/PROJECT.md (updated 2026-02-14)
 ## Current Position
 
 Phase: 87 of 95 (Foundation)
-Plan: 0 of TBD in current phase
-Status: Ready to plan
-Last activity: 2026-02-14 -- Roadmap created for v9.0 Mesher (9 phases, 69 requirements)
+Plan: 1 of 2 in current phase
+Status: Executing
+Last activity: 2026-02-14 -- Completed 87-01 (Data Types & PostgreSQL Schema)
 
-Progress: [####################..........] 90% overall (240/240 plans shipped, 9 new phases planned)
+Progress: [####################..........] 90% overall (241/258 plans shipped)
 
 ## Performance Metrics
 
 **All-time Totals:**
-- Plans completed: 240
+- Plans completed: 241
 - Phases completed: 86
 - Milestones shipped: 18 (v1.0-v8.0)
 - Lines of Rust: ~98,800
 - Lines of website: ~5,500
-- Lines of Mesh: 0 (v9.0 will be the first Mesh application)
+- Lines of Mesh: ~623 (first Mesh application code)
 - Timeline: 10 days (2026-02-05 -> 2026-02-14)
 
 ## Accumulated Context
@@ -32,6 +32,12 @@ Progress: [####################..........] 90% overall (240/240 plans shipped, 9
 ### Decisions
 
 Cleared at milestone boundary. v8.0 decisions archived in PROJECT.md.
+
+- [87-01] Row structs use all-String fields for DB text protocol; JSONB parsed with from_json() separately
+- [87-01] Recursive helper functions for iteration (Mesh has no mutable variable assignment)
+- [87-01] UUID columns cast to ::text in SELECT for deriving(Row) compatibility
+- [87-01] User struct excludes password_hash -- never exposed to application code
+- [87-01] Flat org -> project hierarchy with org_memberships for roles
 
 ### Pending Todos
 
@@ -55,6 +61,6 @@ Research flags from research/SUMMARY.md:
 ## Session Continuity
 
 Last session: 2026-02-14
-Stopped at: Roadmap created for v9.0 Mesher milestone
+Stopped at: Completed 87-01-PLAN.md
 Resume file: None
-Next action: `/gsd:plan-phase 87`
+Next action: Execute 87-02-PLAN.md
