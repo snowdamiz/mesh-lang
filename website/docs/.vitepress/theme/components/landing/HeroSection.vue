@@ -1,8 +1,11 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
+import { useData } from 'vitepress'
 import { Button } from '@/components/ui/button'
 import { getHighlighter, highlightCode } from '@/composables/useShiki'
 import { ArrowRight } from 'lucide-vue-next'
+
+const { theme } = useData()
 
 const highlightedHtml = ref('')
 
@@ -52,7 +55,7 @@ onMounted(async () => {
               <span class="absolute inline-flex size-full animate-ping rounded-full bg-foreground/40" />
               <span class="relative inline-block size-2 rounded-full bg-foreground" />
             </span>
-            Now in development &mdash; v0.1.0
+            Now in development &mdash; v{{ theme.meshVersion }}
           </div>
 
           <h1 class="text-5xl font-extrabold tracking-tighter text-foreground sm:text-6xl lg:text-7xl" style="line-height: 1.05;">

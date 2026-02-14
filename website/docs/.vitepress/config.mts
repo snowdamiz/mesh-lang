@@ -73,7 +73,7 @@ export default defineConfig({
       pattern: 'https://github.com/snowdamiz/mesh-lang/edit/main/website/docs/:path',
       text: 'Edit this page on GitHub',
     },
-    meshVersion: '0.1.0',
+    meshVersion: '7.0',
     sidebar: {
       '/docs/': [
         {
