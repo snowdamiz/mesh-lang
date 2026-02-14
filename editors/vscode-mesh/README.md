@@ -15,8 +15,6 @@ Language support for [Mesh](https://meshlang.dev) -- an expressive, readable pro
 - **Signature Help** -- parameter hints for function calls showing argument types and names
 - **Document Symbols** -- Outline view with hierarchical symbols for functions, services, types, and more
 
-![Syntax Highlighting](images/screenshot-syntax.png)
-
 ## Requirements
 
 The Mesh compiler (`meshc`) must be installed and available in your PATH. The extension connects to the built-in language server provided by `meshc`.
