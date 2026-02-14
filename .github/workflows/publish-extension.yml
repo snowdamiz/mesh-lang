@@ -30,16 +30,20 @@ jobs:
         run: npm run compile
         working-directory: editors/vscode-mesh
 
+      - name: Package VSIX
+        run: npx vsce package --no-dependencies
+        working-directory: editors/vscode-mesh
+
       - name: Publish to Open VSX Registry
         uses: HaaLeo/publish-vscode-extension@v2
-        id: publishToOpenVSX
+        continue-on-error: true
         with:
           pat: ${{ secrets.OPEN_VSX_TOKEN }}
-          packagePath: ./editors/vscode-mesh
+          extensionFile: editors/vscode-mesh/*.vsix
 
       - name: Publish to Visual Studio Marketplace
         uses: HaaLeo/publish-vscode-extension@v2
         with:
           pat: ${{ secrets.VS_MARKETPLACE_TOKEN }}
           registryUrl: https://marketplace.visualstudio.com
-          extensionFile: ${{ steps.publishToOpenVSX.outputs.vsixPath }}
+          extensionFile: editors/vscode-mesh/*.vsix
