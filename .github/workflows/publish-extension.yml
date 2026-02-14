@@ -31,7 +31,10 @@ jobs:
         working-directory: editors/vscode-mesh
 
       - name: Package VSIX
-        run: npx vsce package --no-dependencies
+        id: package
+        run: |
+          npx vsce package --no-dependencies
+          echo "vsix_path=$(ls *.vsix)" >> "$GITHUB_OUTPUT"
         working-directory: editors/vscode-mesh
 
       - name: Publish to Open VSX Registry
@@ -39,11 +42,11 @@ jobs:
         continue-on-error: true
         with:
           pat: ${{ secrets.OPEN_VSX_TOKEN }}
-          extensionFile: editors/vscode-mesh/*.vsix
+          extensionFile: editors/vscode-mesh/${{ steps.package.outputs.vsix_path }}
 
       - name: Publish to Visual Studio Marketplace
         uses: HaaLeo/publish-vscode-extension@v2
         with:
           pat: ${{ secrets.VS_MARKETPLACE_TOKEN }}
           registryUrl: https://marketplace.visualstudio.com
-          extensionFile: editors/vscode-mesh/*.vsix
+          extensionFile: editors/vscode-mesh/${{ steps.package.outputs.vsix_path }}
