@@ -408,6 +408,50 @@ pub extern "C" fn mesh_map_from_list(list: *mut u8) -> *mut u8 {
     }
 }
 
+// ── Iterator handle ───────────────────────────────────────────────────
+
+/// Internal iterator state for Map iteration.
+#[repr(C)]
+struct MapIterator {
+    map: *mut u8,
+    index: i64,
+    size: i64,
+}
+
+/// Create a new iterator handle for a map.
+#[no_mangle]
+pub extern "C" fn mesh_map_iter_new(map: *mut u8) -> *mut u8 {
+    unsafe {
+        let size = mesh_map_size(map);
+        let iter = crate::gc::mesh_gc_alloc_actor(
+            std::mem::size_of::<MapIterator>() as u64,
+            std::mem::align_of::<MapIterator>() as u64,
+        ) as *mut MapIterator;
+        (*iter).map = map;
+        (*iter).index = 0;
+        (*iter).size = size;
+        iter as *mut u8
+    }
+}
+
+/// Advance the map iterator, returning Option<(K, V)> (tag 0 = Some, tag 1 = None).
+/// The Some payload is a GC-allocated 2-tuple (key, value).
+#[no_mangle]
+pub extern "C" fn mesh_map_iter_next(iter_ptr: *mut u8) -> *mut u8 {
+    unsafe {
+        let iter = iter_ptr as *mut MapIterator;
+        if (*iter).index >= (*iter).size {
+            crate::option::alloc_option(1, std::ptr::null_mut()) as *mut u8
+        } else {
+            let key = mesh_map_entry_key((*iter).map, (*iter).index);
+            let val = mesh_map_entry_value((*iter).map, (*iter).index);
+            (*iter).index += 1;
+            let pair = alloc_pair(key, val);
+            crate::option::alloc_option(0, pair as *mut u8) as *mut u8
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

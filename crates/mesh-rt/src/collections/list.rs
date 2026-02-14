@@ -784,6 +784,47 @@ pub extern "C" fn mesh_list_nth(list: *mut u8, index: i64) -> u64 {
     mesh_list_get(list, index)
 }
 
+// ── Iterator handle ───────────────────────────────────────────────────
+
+/// Internal iterator state for List iteration.
+#[repr(C)]
+struct ListIterator {
+    list: *mut u8,
+    index: i64,
+    length: i64,
+}
+
+/// Create a new iterator handle for a list.
+#[no_mangle]
+pub extern "C" fn mesh_list_iter_new(list: *mut u8) -> *mut u8 {
+    unsafe {
+        let len = mesh_list_length(list);
+        let iter = mesh_gc_alloc_actor(
+            std::mem::size_of::<ListIterator>() as u64,
+            std::mem::align_of::<ListIterator>() as u64,
+        ) as *mut ListIterator;
+        (*iter).list = list;
+        (*iter).index = 0;
+        (*iter).length = len;
+        iter as *mut u8
+    }
+}
+
+/// Advance the list iterator, returning Option (tag 0 = Some, tag 1 = None).
+#[no_mangle]
+pub extern "C" fn mesh_list_iter_next(iter_ptr: *mut u8) -> *mut u8 {
+    unsafe {
+        let iter = iter_ptr as *mut ListIterator;
+        if (*iter).index >= (*iter).length {
+            alloc_option(1, std::ptr::null_mut()) as *mut u8
+        } else {
+            let elem = mesh_list_get((*iter).list, (*iter).index);
+            (*iter).index += 1;
+            alloc_option(0, elem as usize as *mut u8) as *mut u8
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

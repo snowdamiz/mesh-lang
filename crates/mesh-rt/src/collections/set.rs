@@ -291,6 +291,47 @@ pub extern "C" fn mesh_set_from_list(list: *mut u8) -> *mut u8 {
     }
 }
 
+// ── Iterator handle ───────────────────────────────────────────────────
+
+/// Internal iterator state for Set iteration.
+#[repr(C)]
+struct SetIterator {
+    set: *mut u8,
+    index: i64,
+    size: i64,
+}
+
+/// Create a new iterator handle for a set.
+#[no_mangle]
+pub extern "C" fn mesh_set_iter_new(set: *mut u8) -> *mut u8 {
+    unsafe {
+        let size = mesh_set_size(set);
+        let iter = mesh_gc_alloc_actor(
+            std::mem::size_of::<SetIterator>() as u64,
+            std::mem::align_of::<SetIterator>() as u64,
+        ) as *mut u8 as *mut SetIterator;
+        (*iter).set = set;
+        (*iter).index = 0;
+        (*iter).size = size;
+        iter as *mut u8
+    }
+}
+
+/// Advance the set iterator, returning Option (tag 0 = Some, tag 1 = None).
+#[no_mangle]
+pub extern "C" fn mesh_set_iter_next(iter_ptr: *mut u8) -> *mut u8 {
+    unsafe {
+        let iter = iter_ptr as *mut SetIterator;
+        if (*iter).index >= (*iter).size {
+            crate::option::alloc_option(1, std::ptr::null_mut()) as *mut u8
+        } else {
+            let elem = mesh_set_element_at((*iter).set, (*iter).index);
+            (*iter).index += 1;
+            crate::option::alloc_option(0, elem as usize as *mut u8) as *mut u8
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

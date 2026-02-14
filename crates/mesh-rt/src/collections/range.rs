@@ -130,6 +130,44 @@ pub extern "C" fn mesh_range_length(range: *mut u8) -> i64 {
     }
 }
 
+// ── Iterator handle ───────────────────────────────────────────────────
+
+/// Internal iterator state for Range iteration.
+#[repr(C)]
+struct RangeIterator {
+    current: i64,
+    end: i64,
+}
+
+/// Create a new iterator handle for a range [start, end).
+#[no_mangle]
+pub extern "C" fn mesh_range_iter_new(start: i64, end: i64) -> *mut u8 {
+    unsafe {
+        let iter = mesh_gc_alloc_actor(
+            std::mem::size_of::<RangeIterator>() as u64,
+            std::mem::align_of::<RangeIterator>() as u64,
+        ) as *mut RangeIterator;
+        (*iter).current = start;
+        (*iter).end = end;
+        iter as *mut u8
+    }
+}
+
+/// Advance the range iterator, returning Option (tag 0 = Some, tag 1 = None).
+#[no_mangle]
+pub extern "C" fn mesh_range_iter_next(iter_ptr: *mut u8) -> *mut u8 {
+    unsafe {
+        let iter = iter_ptr as *mut RangeIterator;
+        if (*iter).current >= (*iter).end {
+            crate::option::alloc_option(1, std::ptr::null_mut()) as *mut u8
+        } else {
+            let val = (*iter).current;
+            (*iter).current += 1;
+            crate::option::alloc_option(0, val as usize as *mut u8) as *mut u8
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
