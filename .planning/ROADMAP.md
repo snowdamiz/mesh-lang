@@ -145,7 +145,7 @@ See milestones/v6.0-ROADMAP.md for full phase details.
 
 **Milestone Goal:** Add associated types to the trait system, then build a comprehensive trait-based protocol ecosystem: lazy iterators with pipe-style composition, From/Into conversion, numeric traits for generic math, and the Collect trait for iterator materialization.
 
-- [ ] **Phase 74: Associated Types** - Type system foundation for trait-level type members
+- [x] **Phase 74: Associated Types** - Type system foundation for trait-level type members (completed 2026-02-13)
 - [ ] **Phase 75: Numeric Traits** - User-extensible arithmetic operators via Add/Sub/Mul/Div/Neg
 - [ ] **Phase 76: Iterator Protocol** - Iterator/Iterable traits with built-in implementations and for-in desugaring
 - [ ] **Phase 77: From/Into Conversion** - Type conversion traits with automatic Into generation and ? operator integration
@@ -163,9 +163,9 @@ See milestones/v6.0-ROADMAP.md for full phase details.
   4. Compiler reports clear error when an impl is missing an associated type binding or provides an extra one
 **Plans:** 3 plans
 Plans:
-- [ ] 74-01-PLAN.md -- Parser and AST support for associated type syntax
-- [ ] 74-02-PLAN.md -- Type checker: TraitDef/ImplDef extension, validation, Self.Item resolution
-- [ ] 74-03-PLAN.md -- MIR integration, cross-module export, E2E and compile-fail tests
+- [x] 74-01-PLAN.md -- Parser and AST support for associated type syntax
+- [x] 74-02-PLAN.md -- Type checker: TraitDef/ImplDef extension, validation, Self.Item resolution
+- [x] 74-03-PLAN.md -- MIR integration, cross-module export, E2E and compile-fail tests
 
 #### Phase 75: Numeric Traits
 **Goal**: Users can implement arithmetic operators for custom types and write generic numeric code
@@ -242,11 +242,11 @@ Plans:
 | 59-62 | v4.0 | 8/8 | Complete | 2026-02-12 |
 | 63-69 | v5.0 | 20/20 | Complete | 2026-02-13 |
 | 70-73 | v6.0 | 11/11 | Complete | 2026-02-13 |
-| 74 | v7.0 | 0/3 | Not started | - |
+| 74 | v7.0 | 3/3 | Complete | 2026-02-13 |
 | 75 | v7.0 | 0/TBD | Not started | - |
 | 76 | v7.0 | 0/TBD | Not started | - |
 | 77 | v7.0 | 0/TBD | Not started | - |
 | 78 | v7.0 | 0/TBD | Not started | - |
 | 79 | v7.0 | 0/TBD | Not started | - |
 
-**Total: 73 phases shipped across 16 milestones. 201 plans completed. v7.0 in progress (6 phases, 33 requirements).**
+**Total: 74 phases shipped across 16 milestones. 204 plans completed. v7.0 in progress (6 phases, 33 requirements).**
