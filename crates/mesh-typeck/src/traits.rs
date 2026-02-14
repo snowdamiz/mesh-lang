@@ -10,6 +10,20 @@ use crate::error::{ConstraintOrigin, TypeError};
 use crate::ty::Ty;
 use crate::unify::InferCtx;
 
+/// Check if a type contains `Self` (e.g., `Ty::Con("Self")` from a `Self.Item` projection).
+///
+/// Used during trait method signature comparison to skip the check when the trait's
+/// return type involves `Self.Item`, which is only resolved at impl level.
+fn ty_contains_self(ty: &Ty) -> bool {
+    match ty {
+        Ty::Con(con) => con.name == "Self",
+        Ty::App(base, args) => ty_contains_self(base) || args.iter().any(ty_contains_self),
+        Ty::Fun(params, ret) => params.iter().any(ty_contains_self) || ty_contains_self(ret),
+        Ty::Tuple(elems) => elems.iter().any(ty_contains_self),
+        _ => false,
+    }
+}
+
 /// A method signature within a trait definition.
 #[derive(Clone, Debug)]
 pub struct TraitMethodSig {
@@ -127,7 +141,13 @@ impl TraitRegistry {
                         if let (Some(expected_ret), Some(actual_ret)) =
                             (&method.return_type, &impl_method.return_type)
                         {
-                            if expected_ret != actual_ret {
+                            // Skip comparison when the trait's return type involves `Self`
+                            // (e.g., `-> Self.Item`). The interface stores Self.Item as
+                            // Ty::Con("Self") because the associated type projection is only
+                            // resolved in impl context. The method body type-checking already
+                            // validates the concrete return type against the resolved type.
+                            let expected_involves_self = ty_contains_self(expected_ret);
+                            if !expected_involves_self && expected_ret != actual_ret {
                                 errors.push(TypeError::TraitMethodSignatureMismatch {
                                     trait_name: impl_def.trait_name.clone(),
                                     method_name: method.name.clone(),
