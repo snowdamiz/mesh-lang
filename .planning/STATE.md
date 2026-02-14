@@ -5,7 +5,7 @@
 See: .planning/PROJECT.md (updated 2026-02-13)
 
 **Core value:** Expressive, readable concurrency -- writing concurrent programs should feel as natural and clean as writing sequential code, with the safety net of supervision and fault tolerance built into the language.
-**Current focus:** v7.0 Phase 78 - Lazy Combinators & Terminals
+**Current focus:** v7.0 Phase 79 - Collect
 
 ## Current Position
 
@@ -125,4 +125,4 @@ None.
 Last session: 2026-02-14
 Stopped at: Completed 78-03-PLAN.md (E2E Tests) -- Phase 78 fully complete
 Resume file: None
-Next action: Proceed to Phase 79 or milestone completion.
+Next action: Plan and execute Phase 79 (Collect) -- final phase of v7.0.

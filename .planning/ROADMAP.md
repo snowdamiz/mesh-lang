@@ -149,7 +149,7 @@ See milestones/v6.0-ROADMAP.md for full phase details.
 - [x] **Phase 75: Numeric Traits** - User-extensible arithmetic operators via Add/Sub/Mul/Div/Neg (completed 2026-02-13)
 - [x] **Phase 76: Iterator Protocol** - Iterator/Iterable traits with built-in implementations and for-in desugaring (completed 2026-02-13)
 - [x] **Phase 77: From/Into Conversion** - Type conversion traits with automatic Into generation and ? operator integration (completed 2026-02-13)
-- [ ] **Phase 78: Lazy Combinators & Terminals** - Lazy iterator pipeline composition and consuming operations
+- [x] **Phase 78: Lazy Combinators & Terminals** - Lazy iterator pipeline composition and consuming operations (completed 2026-02-14)
 - [ ] **Phase 79: Collect** - Generic iterator materialization into List, Map, Set, String
 
 #### Phase 74: Associated Types
@@ -221,9 +221,9 @@ Plans:
   4. A pipeline like `Iter.from(1..1000000) |> Iter.filter(...) |> Iter.take(10) |> Iter.count` stops after finding 10 matches (short-circuit evaluation)
 **Plans:** 3 plans
 Plans:
-- [ ] 78-01-PLAN.md -- Runtime adapter infrastructure: type-tagged iterator handles, generic dispatch, combinator adapters, terminal operations
-- [ ] 78-02-PLAN.md -- Compiler wiring: type checker signatures, MIR lowerer mappings, intrinsic declarations, adapter type registration
-- [ ] 78-03-PLAN.md -- E2E tests for all combinators and terminals with multi-combinator pipeline verification
+- [x] 78-01-PLAN.md -- Runtime adapter infrastructure: type-tagged iterator handles, generic dispatch, combinator adapters, terminal operations
+- [x] 78-02-PLAN.md -- Compiler wiring: type checker signatures, MIR lowerer mappings, intrinsic declarations, adapter type registration
+- [x] 78-03-PLAN.md -- E2E tests for all combinators and terminals with multi-combinator pipeline verification
 
 #### Phase 79: Collect
 **Goal**: Users can materialize iterator pipelines into concrete collections
@@ -260,7 +260,7 @@ Plans:
 | 75 | v7.0 | 2/2 | Complete | 2026-02-13 |
 | 76 | v7.0 | 2/2 | Complete | 2026-02-13 |
 | 77 | v7.0 | 3/3 | Complete | 2026-02-13 |
-| 78 | v7.0 | 0/TBD | Not started | - |
+| 78 | v7.0 | 3/3 | Complete | 2026-02-14 |
 | 79 | v7.0 | 0/TBD | Not started | - |
 
-**Total: 77 phases shipped across 16 milestones. 211 plans completed. v7.0 in progress (6 phases, 33 requirements).**
+**Total: 78 phases shipped across 16 milestones. 214 plans completed. v7.0 in progress (6 phases, 33 requirements).**
