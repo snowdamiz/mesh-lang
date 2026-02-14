@@ -174,11 +174,11 @@ See milestones/v7.0-ROADMAP.md for full phase details.
   Plans:
   - [x] 84-01-PLAN.md -- Marketplace metadata: icon, README, CHANGELOG, .vscodeignore, version bump to 0.2.0
   - [x] 84-02-PLAN.md -- Publishing: GitHub Actions dual-registry workflow (VS Code Marketplace + Open VSX) on ext-v* tags
-- [ ] **Phase 85: Formatting + Audit** - LSP formatting handler, formatter walker completeness for v7.0 syntax, REPL JIT v7.0 symbol registration
+- [x] **Phase 85: Formatting + Audit** - LSP formatting handler, formatter walker completeness for v7.0 syntax, REPL JIT v7.0 symbol registration (completed 2026-02-14)
   **Plans:** 2 plans
   Plans:
-  - [ ] 85-01-PLAN.md -- LSP formatting handler + formatter walker audit (map/list literals, assoc types)
-  - [ ] 85-02-PLAN.md -- REPL JIT symbol registration for v7.0 iterators, collect, and missing stdlib functions
+  - [x] 85-01-PLAN.md -- LSP formatting handler + formatter walker audit (map/list literals, assoc types)
+  - [x] 85-02-PLAN.md -- REPL JIT symbol registration for v7.0 iterators, collect, and missing stdlib functions
 - [ ] **Phase 86: Documentation Corrections** - Binary name, install command, version badge, examples
 
 See milestones/v8.0-ROADMAP.md for full phase details.
@@ -203,6 +203,6 @@ See milestones/v8.0-ROADMAP.md for full phase details.
 | 63-69 | v5.0 | 20/20 | Complete | 2026-02-13 |
 | 70-73 | v6.0 | 11/11 | Complete | 2026-02-13 |
 | 74-80 | v7.0 | 17/17 | Complete | 2026-02-14 |
-| 81-86 | v8.0 | 8/TBD | In progress | - |
+| 81-86 | v8.0 | 10/TBD | In progress | - |
 
-**Total: 84 phases shipped across 17 milestones. 226 plans completed. 6 phases planned for v8.0.**
+**Total: 85 phases shipped across 17 milestones. 228 plans completed. 6 phases planned for v8.0.**
