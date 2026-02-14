@@ -25,9 +25,16 @@ export default defineConfig({
 
   // Site-wide SEO defaults
   head: [
+    ['script', {}, `;(() => {
+      const s = localStorage.getItem('vitepress-theme-appearance')
+      if (!s || s === 'auto') {
+        document.documentElement.classList.remove('dark')
+        localStorage.setItem('vitepress-theme-appearance', 'light')
+      }
+    })()`],
     ['link', { rel: 'icon', type: 'image/svg+xml', href: '/logo-icon-black.svg', media: '(prefers-color-scheme: light)' }],
     ['link', { rel: 'icon', type: 'image/svg+xml', href: '/logo-icon-white.svg', media: '(prefers-color-scheme: dark)' }],
-    ['meta', { name: 'theme-color', content: '#1e1e1e' }],
+    ['meta', { name: 'theme-color', content: '#ffffff' }],
     ['meta', { property: 'og:site_name', content: 'Mesh Programming Language' }],
     ['meta', { name: 'twitter:card', content: 'summary_large_image' }],
   ],

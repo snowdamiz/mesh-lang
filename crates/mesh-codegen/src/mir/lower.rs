@@ -9410,6 +9410,7 @@ const STDLIB_MODULES: &[&str] = &[
     "Math", "Int", "Float", "Timer", "Sqlite", "Pg", "Ws",
     "Node", "Process",  // Phase 67
     "Global",  // Phase 68
+    "Iter",  // Phase 76
 ];
 
 /// Map Mesh builtin function names to their runtime equivalents.
