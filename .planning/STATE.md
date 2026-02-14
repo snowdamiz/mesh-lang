@@ -5,21 +5,21 @@
 See: .planning/PROJECT.md (updated 2026-02-13)
 
 **Core value:** Expressive, readable concurrency -- writing concurrent programs should feel as natural and clean as writing sequential code, with the safety net of supervision and fault tolerance built into the language.
-**Current focus:** v8.0 Developer Tooling -- Phase 83 (Completion & Signature Help)
+**Current focus:** v8.0 Developer Tooling -- Phase 84 (VS Code Extension Publishing)
 
 ## Current Position
 
-Phase: 83 (3 of 6 in v8.0) -- Completion & Signature Help
-Plan: 2 of 2 in current phase
-Status: Phase 83 complete
-Last activity: 2026-02-14 -- Plan 83-02 complete (Signature Help)
+Phase: 84 (4 of 6 in v8.0) -- VS Code Extension Publishing
+Plan: 1 of 2 in current phase
+Status: Plan 84-01 complete
+Last activity: 2026-02-14 -- Plan 84-01 complete (Marketplace Metadata)
 
-Progress: [███░░░░░░░] 42%
+Progress: [████░░░░░░] 50%
 
 ## Performance Metrics
 
 **All-time Totals:**
-- Plans completed: 224
+- Plans completed: 225
 - Phases completed: 83
 - Milestones shipped: 17 (v1.0-v7.0)
 - Lines of Rust: ~97,200
@@ -48,6 +48,8 @@ Progress: [███░░░░░░░] 42%
 - 83-01: Sort ordering: 0_scope > 1_types > 2_keywords > 3_snippets for intuitive ranking
 - 83-02: Multi-strategy callee type resolution: direct range, NAME_REF children, Ty::Fun containment
 - 83-02: Parameter names from CST FN_DEF nodes; type-only labels for built-in functions
+- 84-01: Generated icon from SVG using Pillow with 4x supersampling for antialiasing
+- 84-01: VSIX at 18KB with zero dev artifacts -- only grammar, compiled JS, and metadata
 
 ### Pending Todos
 
@@ -67,10 +69,11 @@ None. (Phase 83 scope-walk concern resolved -- pattern works correctly.)
 | Phase 82 P02 | 3min | 2 tasks | 4 files |
 | Phase 83 P01 | 4min | 2 tasks | 3 files |
 | Phase 83 P02 | 4min | 2 tasks | 3 files |
+| Phase 84 P01 | 4min | 2 tasks | 6 files |
 
 ## Session Continuity
 
 Last session: 2026-02-14
-Stopped at: Completed 83-02-PLAN.md (Signature Help) -- Phase 83 complete
+Stopped at: Completed 84-01-PLAN.md (Marketplace Metadata)
 Resume file: None
-Next action: Begin next phase in v8.0 Developer Tooling milestone
+Next action: Execute 84-02-PLAN.md (Publish to Marketplace)
