@@ -174,7 +174,11 @@ See milestones/v7.0-ROADMAP.md for full phase details.
   Plans:
   - [x] 84-01-PLAN.md -- Marketplace metadata: icon, README, CHANGELOG, .vscodeignore, version bump to 0.2.0
   - [x] 84-02-PLAN.md -- Publishing: GitHub Actions dual-registry workflow (VS Code Marketplace + Open VSX) on ext-v* tags
-- [ ] **Phase 85: Formatting + Audit** - LSP formatting, formatter/REPL v7.0 audit
+- [ ] **Phase 85: Formatting + Audit** - LSP formatting handler, formatter walker completeness for v7.0 syntax, REPL JIT v7.0 symbol registration
+  **Plans:** 2 plans
+  Plans:
+  - [ ] 85-01-PLAN.md -- LSP formatting handler + formatter walker audit (map/list literals, assoc types)
+  - [ ] 85-02-PLAN.md -- REPL JIT symbol registration for v7.0 iterators, collect, and missing stdlib functions
 - [ ] **Phase 86: Documentation Corrections** - Binary name, install command, version badge, examples
 
 See milestones/v8.0-ROADMAP.md for full phase details.
