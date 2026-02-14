@@ -89,9 +89,10 @@ fn extract_set_elem_type(ty: &Ty) -> Option<Ty> {
     }
 }
 
-/// Extract the trait name and type name from an ImplDef's PATH children.
-/// Returns `(trait_name, type_name)`, e.g. `("Greetable", "Point")`.
-fn extract_impl_names(impl_def: &ImplDef) -> (String, String) {
+/// Extract the trait name, trait type args, and type name from an ImplDef's PATH children.
+/// Returns `(trait_name, trait_type_args, type_name)`, e.g. `("From", vec!["Int"], "Float")`.
+/// For non-parameterized traits, trait_type_args is empty.
+fn extract_impl_names(impl_def: &ImplDef) -> (String, Vec<String>, String) {
     let paths: Vec<_> = impl_def
         .syntax()
         .children()
@@ -108,6 +109,21 @@ fn extract_impl_names(impl_def: &ImplDef) -> (String, String) {
         })
         .unwrap_or_else(|| "<unknown>".to_string());
 
+    // Extract trait type arguments from GENERIC_ARG_LIST (e.g., <Int> in From<Int>).
+    // GENERIC_ARG_LIST is a direct child of IMPL_DEF.
+    let trait_type_args: Vec<String> = impl_def
+        .syntax()
+        .children()
+        .filter(|n| n.kind() == SyntaxKind::GENERIC_ARG_LIST)
+        .flat_map(|gal| {
+            gal.children_with_tokens()
+                .filter_map(|t| t.into_token())
+                .filter(|t| t.kind() == SyntaxKind::IDENT)
+                .map(|t| t.text().to_string())
+                .collect::<Vec<_>>()
+        })
+        .collect();
+
     let type_name = paths
         .get(1)
         .and_then(|path| {
@@ -118,7 +134,24 @@ fn extract_impl_names(impl_def: &ImplDef) -> (String, String) {
         })
         .unwrap_or_else(|| "<unknown>".to_string());
 
-    (trait_name, type_name)
+    (trait_name, trait_type_args, type_name)
+}
+
+/// Build a mangled trait method name, incorporating trait type args when present.
+/// Non-parameterized: `Trait__method__Type` (e.g., `Display__to_string__Int`)
+/// Parameterized: `Trait_TypeArg__method__ImplType` (e.g., `From_Int__from__Float`)
+fn mangle_trait_method(
+    trait_name: &str,
+    trait_type_args: &[String],
+    method_name: &str,
+    impl_type_name: &str,
+) -> String {
+    if trait_type_args.is_empty() {
+        format!("{}__{}__{}", trait_name, method_name, impl_type_name)
+    } else {
+        let args_str = trait_type_args.join("_");
+        format!("{}_{}__{}__{}", trait_name, args_str, method_name, impl_type_name)
+    }
 }
 
 /// Substitute type parameters in a `Ty` using a substitution map.
@@ -397,13 +430,14 @@ impl<'a> Lowerer<'a> {
                     }
                 }
                 Item::ImplDef(impl_def) => {
-                    let (trait_name, type_name) = extract_impl_names(&impl_def);
+                    let (trait_name, trait_type_args, type_name) = extract_impl_names(&impl_def);
                     let mut provided_methods = std::collections::HashSet::new();
                     for method in impl_def.methods() {
                         if let Some(method_name) = method.name().and_then(|n| n.text()) {
                             provided_methods.insert(method_name.clone());
-                            let mangled =
-                                format!("{}__{}__{}", trait_name, method_name, type_name);
+                            let mangled = mangle_trait_method(
+                                &trait_name, &trait_type_args, &method_name, &type_name,
+                            );
                             let fn_ty =
                                 self.resolve_range(method.syntax().text_range());
                             self.known_functions.insert(mangled.clone(), fn_ty);
@@ -415,8 +449,8 @@ impl<'a> Lowerer<'a> {
                             if trait_method.has_default_body
                                 && !provided_methods.contains(&trait_method.name)
                             {
-                                let mangled = format!(
-                                    "{}__{}__{}", trait_name, trait_method.name, type_name
+                                let mangled = mangle_trait_method(
+                                    &trait_name, &trait_type_args, &trait_method.name, &type_name,
                                 );
                                 // Use the return type from the trait method sig, fallback to Unit.
                                 let fn_ty = if let Some(ret_ty) = &trait_method.return_type {
@@ -809,7 +843,7 @@ impl<'a> Lowerer<'a> {
             Item::SumTypeDef(sum_def) => self.lower_sum_type_def(&sum_def),
             Item::LetBinding(let_) => self.lower_top_level_let(&let_),
             Item::ImplDef(impl_def) => {
-                let (trait_name, type_name) = extract_impl_names(&impl_def);
+                let (trait_name, trait_type_args, type_name) = extract_impl_names(&impl_def);
 
                 // Collect names of methods explicitly provided in this impl.
                 let mut provided_methods = std::collections::HashSet::new();
@@ -819,8 +853,9 @@ impl<'a> Lowerer<'a> {
                         .and_then(|n| n.text())
                         .unwrap_or_else(|| "<unnamed>".to_string());
                     provided_methods.insert(method_name.clone());
-                    let mangled =
-                        format!("{}__{}__{}", trait_name, method_name, type_name);
+                    let mangled = mangle_trait_method(
+                        &trait_name, &trait_type_args, &method_name, &type_name,
+                    );
                     self.lower_impl_method(&method, &mangled, &type_name);
                 }
 
@@ -5327,6 +5362,11 @@ impl<'a> Lowerer<'a> {
                     "Hash__hash__Float" => "mesh_hash_float".to_string(),
                     "Hash__hash__Bool" => "mesh_hash_bool".to_string(),
                     "Hash__hash__String" => "mesh_hash_string".to_string(),
+                    // Built-in From dispatch (Phase 77)
+                    "From_Int__from__Float" => "mesh_int_to_float".to_string(),
+                    "From_Int__from__String" => "mesh_int_to_string".to_string(),
+                    "From_Float__from__String" => "mesh_float_to_string".to_string(),
+                    "From_Bool__from__String" => "mesh_bool_to_string".to_string(),
                     _ => mangled,
                 };
                 return MirExpr::Var(resolved, var_ty.clone());
@@ -5648,6 +5688,26 @@ impl<'a> Lowerer<'a> {
             }
         }
 
+        // Polymorphic String.from dispatch: mesh_string_from accepts Int/Float/Bool
+        // and routes to the correct runtime conversion function based on arg type.
+        if let MirExpr::Var(ref name, _) = callee {
+            if name == "mesh_string_from" && args.len() == 1 {
+                let arg_ty = args[0].ty().clone();
+                let resolved_name = match &arg_ty {
+                    MirType::Int => "mesh_int_to_string",
+                    MirType::Float => "mesh_float_to_string",
+                    MirType::Bool => "mesh_bool_to_string",
+                    _ => "mesh_int_to_string", // fallback
+                };
+                let fn_ty = MirType::FnPtr(vec![arg_ty], Box::new(MirType::String));
+                return MirExpr::Call {
+                    func: Box::new(MirExpr::Var(resolved_name.to_string(), fn_ty)),
+                    args,
+                    ty: MirType::String,
+                };
+            }
+        }
+
         // Collection Display/Debug dispatch: if the callee is "to_string" or
         // "debug"/"inspect" and the first arg is a collection (MirType::Ptr),
         // resolve the typeck type from the AST to emit the correct
@@ -5912,6 +5972,32 @@ impl<'a> Lowerer<'a> {
                             let fn_name = format!("FromRow__from_row__{}", base_name);
                             if let Some(fn_ty) = self.known_functions.get(&fn_name).cloned() {
                                 return MirExpr::Var(fn_name, fn_ty);
+                            }
+                        }
+                    }
+
+                    // Check if this is StructName.from (From trait method, Phase 77).
+                    // Look up mangled From_X__from__StructName in known_functions.
+                    if self.registry.struct_defs.contains_key(&base_name)
+                        || self.registry.sum_type_defs.contains_key(&base_name)
+                    {
+                        let field = fa
+                            .field()
+                            .map(|t| t.text().to_string())
+                            .unwrap_or_default();
+                        if field == "from" {
+                            // Find the From impl function by scanning known_functions
+                            // for any key matching From_*__from__{base_name}.
+                            let suffix = format!("__from__{}", base_name);
+                            for (fn_name, fn_ty) in self.known_functions.iter() {
+                                if fn_name.starts_with("From_") && fn_name.ends_with(&suffix) {
+                                    return MirExpr::Var(fn_name.clone(), fn_ty.clone());
+                                }
+                            }
+                            // Fallback: try unparameterized name.
+                            let unparameterized = format!("From__from__{}", base_name);
+                            if let Some(fn_ty) = self.known_functions.get(&unparameterized).cloned() {
+                                return MirExpr::Var(unparameterized, fn_ty);
                             }
                         }
                     }
@@ -8000,6 +8086,8 @@ impl<'a> Lowerer<'a> {
     }
 
     /// Desugar `result_expr?` into Match + Return for Result<T, E>.
+    /// When error types differ and a From impl exists, inserts a From.from() call
+    /// to convert the operand's error type to the function return's error type.
     fn lower_try_result(
         &mut self,
         operand: MirExpr,
@@ -8018,10 +8106,39 @@ impl<'a> Lowerer<'a> {
         // Determine the function return type's sum type name for the Err early-return.
         let fn_return_type_name = self.fn_return_sum_type_name(fn_ret_ty);
 
-        // Find the error type from the sum type definition.
-        // The Err variant's field type gives us the error type E.
+        // Find the error type from the operand's sum type definition.
         let error_ty = self.find_variant_field_type(&pattern_type_name, "Err")
             .unwrap_or(MirType::Ptr);
+
+        // Find the function return type's error type for From conversion check.
+        let fn_err_ty = self.find_variant_field_type(&fn_return_type_name, "Err");
+
+        // Check if From-based error conversion is needed:
+        // If the operand error type differs from the function return error type,
+        // insert a From.from() call to convert the error.
+        let (err_body_expr, err_body_ty) = match &fn_err_ty {
+            Some(fn_err) if *fn_err != error_ty => {
+                // Error types differ -- insert From conversion.
+                // Mangled name: From_{source_err_type}__from__{target_err_type}
+                let source_name = mir_type_to_impl_name(&error_ty);
+                let target_name = mir_type_to_impl_name(fn_err);
+                let from_fn_name = format!("From_{}__{}__{}", source_name, "from", target_name);
+                let from_fn_ty = MirType::FnPtr(
+                    vec![error_ty.clone()],
+                    Box::new(fn_err.clone()),
+                );
+                let converted_err = MirExpr::Call {
+                    func: Box::new(MirExpr::Var(from_fn_name, from_fn_ty)),
+                    args: vec![MirExpr::Var(err_name.clone(), error_ty.clone())],
+                    ty: fn_err.clone(),
+                };
+                (converted_err, fn_err.clone())
+            }
+            _ => {
+                // Error types match or fn_err_ty not found -- use original error directly.
+                (MirExpr::Var(err_name.clone(), error_ty.clone()), error_ty.clone())
+            }
+        };
 
         // Build the desugared match expression.
         MirExpr::Match {
@@ -8038,19 +8155,19 @@ impl<'a> Lowerer<'a> {
                     guard: None,
                     body: MirExpr::Var(val_name, success_ty.clone()),
                 },
-                // Err(__try_err_N) -> return Err(__try_err_N)
+                // Err(__try_err_N) -> return Err(converted_err_or_raw_err)
                 MirMatchArm {
                     pattern: MirPattern::Constructor {
                         type_name: pattern_type_name,
                         variant: "Err".to_string(),
                         fields: vec![MirPattern::Var(err_name.clone(), error_ty.clone())],
-                        bindings: vec![(err_name.clone(), error_ty.clone())],
+                        bindings: vec![(err_name, error_ty)],
                     },
                     guard: None,
                     body: MirExpr::Return(Box::new(MirExpr::ConstructVariant {
                         type_name: fn_return_type_name,
                         variant: "Err".to_string(),
-                        fields: vec![MirExpr::Var(err_name, error_ty)],
+                        fields: vec![err_body_expr],
                         ty: fn_ret_ty.clone(),
                     })),
                 },
@@ -9649,6 +9766,9 @@ fn map_builtin_name(name: &str) -> String {
         "math_round" => "mesh_math_round".to_string(),
         "int_to_float" => "mesh_int_to_float".to_string(),
         "float_to_int" => "mesh_float_to_int".to_string(),
+        // ── Phase 77: From conversion dispatch ──────────────────────────
+        "float_from" => "mesh_int_to_float".to_string(),
+        "string_from" => "mesh_string_from".to_string(),
         // ── Timer functions (Phase 44 Plan 02) ──────────────────────────
         "timer_sleep" => "mesh_timer_sleep".to_string(),
         "timer_send_after" => "mesh_timer_send_after".to_string(),
