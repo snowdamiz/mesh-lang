@@ -9,10 +9,10 @@ See: .planning/PROJECT.md (updated 2026-02-13)
 
 ## Current Position
 
-Phase: 78 of 79 (Lazy Combinators & Terminals) -- PHASE COMPLETE
-Plan: 3 of 3 in current phase (COMPLETE)
-Status: Phase 78 complete -- all 3 plans executed (runtime, compiler wiring, E2E tests)
-Last activity: 2026-02-14 -- Plan 78-03 (E2E Tests) complete, 2/2 tasks
+Phase: 79 of 79 (Collect)
+Plan: 1 of 2 in current phase (COMPLETE)
+Status: Plan 79-01 complete -- runtime collect functions + compiler wiring
+Last activity: 2026-02-14 -- Plan 79-01 (Collect Runtime & Compiler Wiring) complete, 2/2 tasks
 
 Progress: [██████████] 100% (v7.0)
 
@@ -96,6 +96,10 @@ Progress: [██████████] 100% (v7.0)
 - Single-line pipe chains required (parser does not support multi-line |> continuation)
 - Skipped find terminal E2E test (MeshOption lacks printing support; correctness proven by runtime unit tests)
 
+**Phase 79-01:**
+- Used safe Rust Vec<u64> intermediary for mesh_list_collect instead of mesh_list_builder (builder has no bounds checking)
+- Map.collect defaults to integer keys via mesh_map_new() (string-keyed maps deferred to future extension)
+
 ### Research Notes
 
 v7.0 research completed (HIGH confidence). Key findings:
@@ -123,6 +127,6 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-14
-Stopped at: Completed 78-03-PLAN.md (E2E Tests) -- Phase 78 fully complete
+Stopped at: Completed 79-01-PLAN.md (Collect Runtime & Compiler Wiring)
 Resume file: None
-Next action: Plan and execute Phase 79 (Collect) -- final phase of v7.0.
+Next action: Execute Phase 79-02 (E2E tests for collect operations).
