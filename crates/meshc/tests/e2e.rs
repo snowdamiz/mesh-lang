@@ -2638,3 +2638,67 @@ fn e2e_iterator_iterable() {
     let output = compile_and_run(&source);
     assert_eq!(output, "[4, 8, 12, 16, 20]\n2\n4\n6\n8\n10\n");
 }
+
+// ── Phase 77: From/Into Conversion E2E Tests ────────────────────────────
+
+/// Phase 77 CONV-01: User-defined impl From<Int> for Wrapper compiles
+/// and Wrapper.from(21) calls the user-provided conversion at runtime.
+#[test]
+fn e2e_from_user_defined() {
+    let source = read_fixture("from_user_defined.mpl");
+    let output = compile_and_run(&source);
+    assert_eq!(output, "42\n");
+}
+
+/// Phase 77 CONV-03: Built-in Float.from(42) produces a float value.
+/// The string interpolation uses mesh_float_to_string which formats
+/// whole-number floats without trailing ".0" (Rust's f64::to_string behavior).
+#[test]
+fn e2e_from_float_from_int() {
+    let source = read_fixture("from_float_from_int.mpl");
+    let output = compile_and_run(&source);
+    assert_eq!(output.trim(), "42");
+}
+
+/// Phase 77 CONV-03: Built-in String.from(42) produces "42".
+#[test]
+fn e2e_from_string_from_int() {
+    let source = read_fixture("from_string_from_int.mpl");
+    let output = compile_and_run(&source);
+    assert_eq!(output, "42\n");
+}
+
+/// Phase 77 CONV-03: Built-in String.from(3.14) produces "3.14".
+#[test]
+fn e2e_from_string_from_float() {
+    let source = read_fixture("from_string_from_float.mpl");
+    let output = compile_and_run(&source);
+    assert_eq!(output.trim(), "3.14");
+}
+
+/// Phase 77 CONV-03: Built-in String.from(true) produces "true".
+#[test]
+fn e2e_from_string_from_bool() {
+    let source = read_fixture("from_string_from_bool.mpl");
+    let output = compile_and_run(&source);
+    assert_eq!(output, "true\n");
+}
+
+/// Phase 77 CONV-04: ? operator correctly propagates errors through
+/// multiple function call levels with chained ? desugaring.
+#[test]
+fn e2e_from_try_error_conversion() {
+    let source = read_fixture("from_try_error_conversion.mpl");
+    let output = compile_and_run(&source);
+    // compute(60): 60/2=30, 30/3=10, 10+100=110
+    assert_eq!(output, "110\n");
+}
+
+/// Phase 77 CONV-04: ? operator backward compat -- same error types
+/// work without any From conversion (regression test).
+#[test]
+fn e2e_from_try_same_error() {
+    let source = read_fixture("from_try_same_error.mpl");
+    let output = compile_and_run(&source);
+    assert_eq!(output, "err: fail\n");
+}

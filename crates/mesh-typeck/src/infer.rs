@@ -3010,7 +3010,13 @@ fn infer_impl_def(
         env.insert("self".into(), Scheme::mono(impl_type.clone()));
 
         // Collect all param types for fn_ty (self + non-self params).
-        let mut all_param_tys: Vec<Ty> = vec![impl_type.clone()];
+        // Only prepend impl_type when method has self parameter (e.g., instance methods).
+        // Static trait methods like From.from() do NOT take self.
+        let mut all_param_tys: Vec<Ty> = if has_self {
+            vec![impl_type.clone()]
+        } else {
+            vec![]
+        };
 
         if let Some(param_list) = method.param_list() {
             for param in param_list.params() {
@@ -7031,8 +7037,36 @@ fn infer_try_expr(
                 let fn_ret_resolved = ctx.resolve(fn_ret_ty.clone());
                 match &fn_ret_resolved {
                     Ty::App(con, args) if matches!(con.as_ref(), Ty::Con(tc) if tc.name == "Result") && args.len() == 2 => {
-                        // Unify the error types.
-                        let _ = ctx.unify(err_ty.clone(), args[1].clone(), ConstraintOrigin::Builtin);
+                        // Try direct unification first (preserves existing behavior).
+                        let err_resolved = ctx.resolve(err_ty.clone());
+                        let fn_err_resolved = ctx.resolve(args[1].clone());
+                        // Save error count before unify -- unify pushes errors internally
+                        // and we need to undo them if a From impl exists.
+                        let err_count_before = ctx.errors.len();
+                        if ctx.unify(err_resolved.clone(), fn_err_resolved.clone(), ConstraintOrigin::Builtin).is_err() {
+                            // Direct unification failed -- check for From impl.
+                            // Only attempt From lookup when both types are concrete (not inference variables).
+                            let err_is_concrete = !matches!(&err_resolved, Ty::Var(_));
+                            let fn_err_is_concrete = !matches!(&fn_err_resolved, Ty::Var(_));
+                            if err_is_concrete && fn_err_is_concrete {
+                                if trait_registry.has_impl_with_type_args("From", &[err_resolved.clone()], &fn_err_resolved) {
+                                    // From impl exists -- type check passes. Remove the
+                                    // unification error that unify() pushed internally.
+                                    ctx.errors.truncate(err_count_before);
+                                } else {
+                                    // No From impl either -- replace the unification error
+                                    // with a more descriptive TryIncompatibleReturn error.
+                                    ctx.errors.truncate(err_count_before);
+                                    ctx.errors.push(TypeError::TryIncompatibleReturn {
+                                        operand_ty: resolved.clone(),
+                                        fn_return_ty: fn_ret_resolved.clone(),
+                                        span,
+                                    });
+                                }
+                            }
+                            // If either type is still a variable, let inference continue
+                            // (keep the unification error from ctx.unify).
+                        }
                     }
                     Ty::Var(_) => {
                         // fn return type is not yet resolved -- unify it with Result<fresh, E>.

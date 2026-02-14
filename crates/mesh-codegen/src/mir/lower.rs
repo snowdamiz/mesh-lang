@@ -8085,6 +8085,40 @@ impl<'a> Lowerer<'a> {
         }
     }
 
+    /// Extract the error type name from a monomorphized Result type name.
+    /// e.g., "Result_Int_String" -> Some("String"), "Result_Int_AppError" -> Some("AppError")
+    /// Returns None if the type name doesn't have enough parts.
+    fn extract_error_type_from_result_name(&self, name: &str) -> Option<String> {
+        // Monomorphized Result names: Result_OkType_ErrType
+        // The error type is everything after the second underscore.
+        let parts: Vec<&str> = name.splitn(3, '_').collect();
+        if parts.len() == 3 {
+            Some(parts[2].to_string())
+        } else {
+            None
+        }
+    }
+
+    /// Convert a type name string back to a MirType.
+    fn type_name_to_mir_type(&self, name: &str) -> MirType {
+        match name {
+            "Int" => MirType::Int,
+            "Float" => MirType::Float,
+            "String" => MirType::String,
+            "Bool" => MirType::Bool,
+            _ => {
+                // Check if it's a known struct
+                if self.registry.struct_defs.contains_key(name) {
+                    MirType::Struct(name.to_string())
+                } else if self.registry.sum_type_defs.contains_key(name) {
+                    MirType::SumType(name.to_string())
+                } else {
+                    MirType::Ptr
+                }
+            }
+        }
+    }
+
     /// Desugar `result_expr?` into Match + Return for Result<T, E>.
     /// When error types differ and a From impl exists, inserts a From.from() call
     /// to convert the operand's error type to the function return's error type.
@@ -8106,38 +8140,54 @@ impl<'a> Lowerer<'a> {
         // Determine the function return type's sum type name for the Err early-return.
         let fn_return_type_name = self.fn_return_sum_type_name(fn_ret_ty);
 
-        // Find the error type from the operand's sum type definition.
+        // Find the error type from the sum type definition.
         let error_ty = self.find_variant_field_type(&pattern_type_name, "Err")
             .unwrap_or(MirType::Ptr);
 
-        // Find the function return type's error type for From conversion check.
-        let fn_err_ty = self.find_variant_field_type(&fn_return_type_name, "Err");
+        // Check if From-based error conversion is needed by comparing the
+        // monomorphized Result type names. If the operand and fn return have
+        // different Result type names, the error types must differ.
+        let operand_err_name = self.extract_error_type_from_result_name(operand_type_name);
+        let fn_ret_type_name_full = match fn_ret_ty {
+            MirType::SumType(n) => n.clone(),
+            _ => String::new(),
+        };
+        let fn_err_name = self.extract_error_type_from_result_name(&fn_ret_type_name_full);
 
-        // Check if From-based error conversion is needed:
-        // If the operand error type differs from the function return error type,
-        // insert a From.from() call to convert the error.
-        let (err_body_expr, err_body_ty) = match &fn_err_ty {
-            Some(fn_err) if *fn_err != error_ty => {
-                // Error types differ -- insert From conversion.
-                // Mangled name: From_{source_err_type}__from__{target_err_type}
-                let source_name = mir_type_to_impl_name(&error_ty);
-                let target_name = mir_type_to_impl_name(fn_err);
-                let from_fn_name = format!("From_{}__{}__{}", source_name, "from", target_name);
-                let from_fn_ty = MirType::FnPtr(
-                    vec![error_ty.clone()],
-                    Box::new(fn_err.clone()),
-                );
-                let converted_err = MirExpr::Call {
-                    func: Box::new(MirExpr::Var(from_fn_name, from_fn_ty)),
-                    args: vec![MirExpr::Var(err_name.clone(), error_ty.clone())],
-                    ty: fn_err.clone(),
-                };
-                (converted_err, fn_err.clone())
-            }
-            _ => {
-                // Error types match or fn_err_ty not found -- use original error directly.
-                (MirExpr::Var(err_name.clone(), error_ty.clone()), error_ty.clone())
-            }
+        let needs_from_conversion = match (&operand_err_name, &fn_err_name) {
+            (Some(op_err), Some(fn_err)) => op_err != fn_err,
+            _ => false,
+        };
+
+        let (err_body_expr, err_body_ty) = if needs_from_conversion {
+            let source_err_name = operand_err_name.as_deref().unwrap();
+            let target_err_name = fn_err_name.as_deref().unwrap();
+            let source_err_ty = self.type_name_to_mir_type(source_err_name);
+            let target_err_ty = self.type_name_to_mir_type(target_err_name);
+            let from_fn_name = format!("From_{}__from__{}", source_err_name, target_err_name);
+            let from_fn_ty = MirType::FnPtr(
+                vec![source_err_ty.clone()],
+                Box::new(target_err_ty.clone()),
+            );
+            let converted_err = MirExpr::Call {
+                func: Box::new(MirExpr::Var(from_fn_name, from_fn_ty)),
+                args: vec![MirExpr::Var(err_name.clone(), source_err_ty.clone())],
+                ty: target_err_ty.clone(),
+            };
+            (converted_err, target_err_ty)
+        } else {
+            // Error types match -- use original error directly.
+            (MirExpr::Var(err_name.clone(), error_ty.clone()), error_ty.clone())
+        };
+
+        // Use the correct error type for the Err arm's pattern binding.
+        // When From conversion is needed, the pattern binds the SOURCE error type
+        // (from the operand), but the body uses the CONVERTED error type.
+        let pattern_err_ty = if needs_from_conversion {
+            let source_err_name = operand_err_name.as_deref().unwrap();
+            self.type_name_to_mir_type(source_err_name)
+        } else {
+            error_ty.clone()
         };
 
         // Build the desugared match expression.
@@ -8160,8 +8210,8 @@ impl<'a> Lowerer<'a> {
                     pattern: MirPattern::Constructor {
                         type_name: pattern_type_name,
                         variant: "Err".to_string(),
-                        fields: vec![MirPattern::Var(err_name.clone(), error_ty.clone())],
-                        bindings: vec![(err_name, error_ty)],
+                        fields: vec![MirPattern::Var(err_name.clone(), pattern_err_ty.clone())],
+                        bindings: vec![(err_name, pattern_err_ty)],
                     },
                     guard: None,
                     body: MirExpr::Return(Box::new(MirExpr::ConstructVariant {
