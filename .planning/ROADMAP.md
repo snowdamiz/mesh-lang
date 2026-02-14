@@ -148,7 +148,7 @@ See milestones/v6.0-ROADMAP.md for full phase details.
 - [x] **Phase 74: Associated Types** - Type system foundation for trait-level type members (completed 2026-02-13)
 - [x] **Phase 75: Numeric Traits** - User-extensible arithmetic operators via Add/Sub/Mul/Div/Neg (completed 2026-02-13)
 - [x] **Phase 76: Iterator Protocol** - Iterator/Iterable traits with built-in implementations and for-in desugaring (completed 2026-02-13)
-- [ ] **Phase 77: From/Into Conversion** - Type conversion traits with automatic Into generation and ? operator integration
+- [x] **Phase 77: From/Into Conversion** - Type conversion traits with automatic Into generation and ? operator integration (completed 2026-02-13)
 - [ ] **Phase 78: Lazy Combinators & Terminals** - Lazy iterator pipeline composition and consuming operations
 - [ ] **Phase 79: Collect** - Generic iterator materialization into List, Map, Set, String
 
@@ -208,7 +208,7 @@ Plans:
 Plans:
 - [x] 77-01-PLAN.md -- Parameterized trait registry, From/Into trait registration, built-in impls, type checking
 - [x] 77-02-PLAN.md -- MIR/codegen From dispatch, ? operator error conversion, E2E tests
-- [ ] 77-03-PLAN.md -- Gap closure: Fix struct error types in Result for From-based ? conversion
+- [x] 77-03-PLAN.md -- Gap closure: Fix struct error types in Result for From-based ? conversion
 
 #### Phase 78: Lazy Combinators & Terminals
 **Goal**: Users can compose lazy iterator pipelines and consume them with terminal operations
@@ -255,8 +255,8 @@ Plans:
 | 74 | v7.0 | 3/3 | Complete | 2026-02-13 |
 | 75 | v7.0 | 2/2 | Complete | 2026-02-13 |
 | 76 | v7.0 | 2/2 | Complete | 2026-02-13 |
-| 77 | v7.0 | 0/TBD | Not started | - |
+| 77 | v7.0 | 3/3 | Complete | 2026-02-13 |
 | 78 | v7.0 | 0/TBD | Not started | - |
 | 79 | v7.0 | 0/TBD | Not started | - |
 
-**Total: 76 phases shipped across 16 milestones. 208 plans completed. v7.0 in progress (6 phases, 33 requirements).**
+**Total: 77 phases shipped across 16 milestones. 211 plans completed. v7.0 in progress (6 phases, 33 requirements).**
