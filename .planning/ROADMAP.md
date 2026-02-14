@@ -219,7 +219,11 @@ Plans:
   2. User can chain take/skip/enumerate/zip combinators to build multi-step pipelines that evaluate lazily
   3. User can consume an iterator with `Iter.count`, `Iter.sum`, `Iter.any`, `Iter.all`, `Iter.find`, and `Iter.reduce` producing the expected scalar results
   4. A pipeline like `Iter.from(1..1000000) |> Iter.filter(...) |> Iter.take(10) |> Iter.count` stops after finding 10 matches (short-circuit evaluation)
-**Plans**: TBD
+**Plans:** 3 plans
+Plans:
+- [ ] 78-01-PLAN.md -- Runtime adapter infrastructure: type-tagged iterator handles, generic dispatch, combinator adapters, terminal operations
+- [ ] 78-02-PLAN.md -- Compiler wiring: type checker signatures, MIR lowerer mappings, intrinsic declarations, adapter type registration
+- [ ] 78-03-PLAN.md -- E2E tests for all combinators and terminals with multi-combinator pipeline verification
 
 #### Phase 79: Collect
 **Goal**: Users can materialize iterator pipelines into concrete collections
