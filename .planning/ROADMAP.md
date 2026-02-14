@@ -17,7 +17,7 @@
 - [x] **v4.0 WebSocket Support** - Phases 59-62 (shipped 2026-02-12)
 - [x] **v5.0 Distributed Actors** - Phases 63-69 (shipped 2026-02-13)
 - [x] **v6.0 Website & Documentation** - Phases 70-73 (shipped 2026-02-13)
-- [ ] **v7.0 Iterator Protocol & Trait Ecosystem** - Phases 74-79 (in progress)
+- [x] **v7.0 Iterator Protocol & Trait Ecosystem** - Phases 74-79 (shipped 2026-02-14)
 
 ## Phases
 
@@ -150,7 +150,7 @@ See milestones/v6.0-ROADMAP.md for full phase details.
 - [x] **Phase 76: Iterator Protocol** - Iterator/Iterable traits with built-in implementations and for-in desugaring (completed 2026-02-13)
 - [x] **Phase 77: From/Into Conversion** - Type conversion traits with automatic Into generation and ? operator integration (completed 2026-02-13)
 - [x] **Phase 78: Lazy Combinators & Terminals** - Lazy iterator pipeline composition and consuming operations (completed 2026-02-14)
-- [ ] **Phase 79: Collect** - Generic iterator materialization into List, Map, Set, String
+- [x] **Phase 79: Collect** - Generic iterator materialization into List, Map, Set, String (completed 2026-02-14)
 
 #### Phase 74: Associated Types
 **Goal**: Users can declare type members in traits and the compiler resolves them through inference
@@ -235,8 +235,8 @@ Plans:
   3. User can materialize an iterator into a Set via `Set.collect(iter)` and into a String via `String.collect(char_iter)`
 **Plans:** 2 plans
 Plans:
-- [ ] 79-01-PLAN.md -- Runtime collect functions + compiler wiring for List, Map, Set, String
-- [ ] 79-02-PLAN.md -- E2E tests for all four collect functions
+- [x] 79-01-PLAN.md -- Runtime collect functions + compiler wiring for List, Map, Set, String
+- [x] 79-02-PLAN.md -- E2E tests for all four collect functions
 
 ## Progress
 
@@ -264,6 +264,6 @@ Plans:
 | 76 | v7.0 | 2/2 | Complete | 2026-02-13 |
 | 77 | v7.0 | 3/3 | Complete | 2026-02-13 |
 | 78 | v7.0 | 3/3 | Complete | 2026-02-14 |
-| 79 | v7.0 | 0/2 | Not started | - |
+| 79 | v7.0 | 2/2 | Complete | 2026-02-14 |
 
-**Total: 78 phases shipped across 16 milestones. 214 plans completed. v7.0 in progress (6 phases, 33 requirements).**
+**Total: 79 phases shipped across 17 milestones. 216 plans completed.**
