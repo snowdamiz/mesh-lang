@@ -4194,12 +4194,32 @@ fn infer_for_in(
                 env.insert(var_name, Scheme::mono(elem_ty));
             }
             CollectionType::Unknown => {
-                // Fallback: bind as the iterable type itself.
                 let var_name = for_in
                     .binding_name()
                     .and_then(|n| n.text())
                     .unwrap_or_else(|| "_".to_string());
-                env.insert(var_name, Scheme::mono(Ty::int()));
+
+                // Check if the type implements Iterable (collection -> iterator).
+                if trait_registry.has_impl("Iterable", &iter_ty) {
+                    if let Some(item_ty) = trait_registry.resolve_associated_type("Iterable", "Item", &iter_ty) {
+                        env.insert(var_name, Scheme::mono(item_ty));
+                    } else {
+                        // Iterable impl exists but no Item type resolved -- fallback to Int
+                        env.insert(var_name, Scheme::mono(Ty::int()));
+                    }
+                }
+                // Check if the type directly implements Iterator (type IS an iterator).
+                else if trait_registry.has_impl("Iterator", &iter_ty) {
+                    if let Some(item_ty) = trait_registry.resolve_associated_type("Iterator", "Item", &iter_ty) {
+                        env.insert(var_name, Scheme::mono(item_ty));
+                    } else {
+                        env.insert(var_name, Scheme::mono(Ty::int()));
+                    }
+                }
+                // True fallback: bind as Int (existing behavior).
+                else {
+                    env.insert(var_name, Scheme::mono(Ty::int()));
+                }
             }
         }
     }
