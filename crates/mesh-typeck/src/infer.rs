@@ -269,6 +269,14 @@ fn stdlib_modules() -> HashMap<String, HashMap<String, Scheme>> {
         "to_float".to_string(),
         Scheme::mono(Ty::fun(vec![Ty::string()], Ty::option(Ty::float()))),
     );
+    // Phase 77: String.from(T) -> String (polymorphic -- accepts Int, Float, Bool)
+    {
+        let from_input_var = TyVar(91100);
+        string_mod.insert("from".to_string(), Scheme {
+            vars: vec![from_input_var],
+            ty: Ty::fun(vec![Ty::Var(from_input_var)], Ty::string()),
+        });
+    }
     modules.insert("String".to_string(), string_mod);
 
     // ── IO module ──────────────────────────────────────────────────
@@ -595,6 +603,8 @@ fn stdlib_modules() -> HashMap<String, HashMap<String, Scheme>> {
     // ── Float module (Phase 43 Plan 01) ────────────────────────────────
     let mut float_mod = HashMap::new();
     float_mod.insert("to_int".to_string(), Scheme::mono(Ty::fun(vec![Ty::float()], Ty::int())));
+    // Phase 77: Float.from(Int) -> Float
+    float_mod.insert("from".to_string(), Scheme::mono(Ty::fun(vec![Ty::int()], Ty::float())));
     modules.insert("Float".to_string(), float_mod);
 
     // ── Timer module (Phase 44 Plan 02) ───────────────────────────────
@@ -2912,6 +2922,21 @@ fn infer_impl_def(
         })
         .unwrap_or_else(|| "<unknown>".to_string());
 
+    // Extract trait type arguments from GENERIC_ARG_LIST (e.g., <Int> in From<Int>).
+    // GENERIC_ARG_LIST is a direct child of IMPL_DEF, appearing after the trait PATH.
+    let trait_type_args: Vec<Ty> = impl_
+        .syntax()
+        .children()
+        .filter(|n| n.kind() == SyntaxKind::GENERIC_ARG_LIST)
+        .flat_map(|gal| {
+            gal.children_with_tokens()
+                .filter_map(|t| t.into_token())
+                .filter(|t| t.kind() == SyntaxKind::IDENT)
+                .map(|t| name_to_type(&t.text().to_string()))
+                .collect::<Vec<_>>()
+        })
+        .collect();
+
     // Extract type name from the second PATH child (after `for`).
     let impl_type_name = paths
         .get(1)
@@ -3052,7 +3077,7 @@ fn infer_impl_def(
     // Register the impl and collect validation errors.
     let errors = trait_registry.register_impl(TraitImplDef {
         trait_name,
-        trait_type_args: vec![],
+        trait_type_args,
         impl_type,
         impl_type_name,
         methods: impl_methods,

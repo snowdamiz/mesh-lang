@@ -1504,6 +1504,120 @@ fn register_compiler_known_traits(registry: &mut TraitRegistry) {
             associated_types: FxHashMap::default(),
         });
     }
+
+    // ── From<T> trait ───────────────────────────────────────────────
+    registry.register_trait(TraitDef {
+        name: "From".to_string(),
+        methods: vec![TraitMethodSig {
+            name: "from".to_string(),
+            has_self: false,
+            param_count: 1,
+            return_type: None, // Self -- resolved per impl
+            has_default_body: false,
+        }],
+        associated_types: vec![],
+    });
+
+    // ── Into<T> trait ───────────────────────────────────────────────
+    registry.register_trait(TraitDef {
+        name: "Into".to_string(),
+        methods: vec![TraitMethodSig {
+            name: "into".to_string(),
+            has_self: true,
+            param_count: 0,
+            return_type: None, // T -- the target type
+            has_default_body: false,
+        }],
+        associated_types: vec![],
+    });
+
+    // ── Built-in From impls ────────────────────────────────────────
+    // Each registers a From impl with trait_type_args; synthetic Into
+    // generation in register_impl automatically creates corresponding Into impls.
+
+    // impl From<Int> for Float
+    {
+        let mut methods = FxHashMap::default();
+        methods.insert(
+            "from".to_string(),
+            ImplMethodSig {
+                has_self: false,
+                param_count: 1,
+                return_type: Some(Ty::float()),
+            },
+        );
+        let _ = registry.register_impl(ImplDef {
+            trait_name: "From".to_string(),
+            trait_type_args: vec![Ty::int()],
+            impl_type: Ty::float(),
+            impl_type_name: "Float".to_string(),
+            methods,
+            associated_types: FxHashMap::default(),
+        });
+    }
+
+    // impl From<Int> for String
+    {
+        let mut methods = FxHashMap::default();
+        methods.insert(
+            "from".to_string(),
+            ImplMethodSig {
+                has_self: false,
+                param_count: 1,
+                return_type: Some(Ty::string()),
+            },
+        );
+        let _ = registry.register_impl(ImplDef {
+            trait_name: "From".to_string(),
+            trait_type_args: vec![Ty::int()],
+            impl_type: Ty::string(),
+            impl_type_name: "String".to_string(),
+            methods,
+            associated_types: FxHashMap::default(),
+        });
+    }
+
+    // impl From<Float> for String
+    {
+        let mut methods = FxHashMap::default();
+        methods.insert(
+            "from".to_string(),
+            ImplMethodSig {
+                has_self: false,
+                param_count: 1,
+                return_type: Some(Ty::string()),
+            },
+        );
+        let _ = registry.register_impl(ImplDef {
+            trait_name: "From".to_string(),
+            trait_type_args: vec![Ty::float()],
+            impl_type: Ty::string(),
+            impl_type_name: "String".to_string(),
+            methods,
+            associated_types: FxHashMap::default(),
+        });
+    }
+
+    // impl From<Bool> for String
+    {
+        let mut methods = FxHashMap::default();
+        methods.insert(
+            "from".to_string(),
+            ImplMethodSig {
+                has_self: false,
+                param_count: 1,
+                return_type: Some(Ty::string()),
+            },
+        );
+        let _ = registry.register_impl(ImplDef {
+            trait_name: "From".to_string(),
+            trait_type_args: vec![Ty::bool()],
+            impl_type: Ty::string(),
+            impl_type_name: "String".to_string(),
+            methods,
+            associated_types: FxHashMap::default(),
+        });
+    }
 }
 
 #[cfg(test)]
