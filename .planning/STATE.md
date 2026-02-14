@@ -10,9 +10,9 @@ See: .planning/PROJECT.md (updated 2026-02-13)
 ## Current Position
 
 Phase: 78 of 79 (Lazy Combinators & Terminals)
-Plan: 1 of 3 in current phase (COMPLETE)
-Status: Plan 78-01 complete (runtime iterator infrastructure)
-Last activity: 2026-02-14 -- Plan 78-01 (Runtime Iterator Infrastructure) complete, 2/2 tasks
+Plan: 2 of 3 in current phase (COMPLETE)
+Status: Plan 78-02 complete (compiler wiring for lazy iterator API)
+Last activity: 2026-02-14 -- Plan 78-02 (Compiler Wiring) complete, 2/2 tasks
 
 Progress: [██████████] 100% (v7.0)
 
@@ -85,6 +85,12 @@ Progress: [██████████] 100% (v7.0)
 - Tag numbering: 0-3 for collection iterators, 10-15 for adapter iterators (gap 4-9 reserved for future collection types)
 - All combinator adapters are lazy (no intermediate allocation); terminal operations loop via generic_next until None
 
+**Phase 78-02:**
+- Used Ptr (opaque pointer) for all iterator handle types in type checker signatures
+- Fresh TyVar IDs 91201-91207 for polymorphic Iter method signatures
+- Bool-returning terminals (any/all) use i8 LLVM type matching existing convention
+- Adapter type names registered defensively in types.rs for future codegen paths
+
 ### Research Notes
 
 v7.0 research completed (HIGH confidence). Key findings:
@@ -112,6 +118,6 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-14
-Stopped at: Completed 78-01-PLAN.md (Runtime Iterator Infrastructure)
+Stopped at: Completed 78-02-PLAN.md (Compiler Wiring)
 Resume file: None
-Next action: Proceed to 78-02-PLAN.md (Compiler Wiring: type checker, MIR lowerer, codegen intrinsics for lazy iterator API).
+Next action: Proceed to 78-03-PLAN.md (E2E tests for lazy iterator pipelines).
