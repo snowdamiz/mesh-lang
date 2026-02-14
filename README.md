@@ -124,10 +124,6 @@ end
 
 Full documentation, including guides and API references, is available at **[meshlang.dev](https://meshlang.dev)** (placeholder link).
 
-- [Language Tour](https://meshlang.dev/tour)
-- [Actor Model Guide](https://meshlang.dev/guides/actors)
-- [Standard Library Reference](https://meshlang.dev/stdlib)
-
 ## Project Status
 
 Mesh is currently in active development.
