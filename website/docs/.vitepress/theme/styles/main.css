@@ -245,6 +245,9 @@
   .DocSearch-Button {
     min-width: 200px;
   }
+  .DocSearch-Button .DocSearch-Button-Keys {
+    margin-left: auto;
+  }
 }
 
 /* VitePress search component CSS variable bridge */
