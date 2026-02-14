@@ -1277,6 +1277,13 @@ fn compile_expr_patterns(
             }
             compile_expr_patterns(body, sum_type_defs);
         }
+        MirExpr::ForInIterator { iterator, filter, body, .. } => {
+            compile_expr_patterns(iterator, sum_type_defs);
+            if let Some(f) = filter {
+                compile_expr_patterns(f, sum_type_defs);
+            }
+            compile_expr_patterns(body, sum_type_defs);
+        }
         // TCE: TailCall args may contain match expressions.
         MirExpr::TailCall { args, .. } => {
             for arg in args {

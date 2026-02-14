@@ -373,6 +373,31 @@ pub enum MirExpr {
         ty: MirType,
     },
 
+    /// For-in loop over any type implementing Iterable/Iterator.
+    /// Desugared to repeated next() calls with Option tag checking.
+    ForInIterator {
+        /// Loop variable name.
+        var: String,
+        /// The iterator expression (result of calling iter() on the collection,
+        /// or the collection itself if it directly implements Iterator).
+        iterator: Box<MirExpr>,
+        /// Optional filter expression (`when condition`).
+        filter: Option<Box<MirExpr>>,
+        /// Loop body.
+        body: Box<MirExpr>,
+        /// Resolved element type (Item type for the concrete iterator type).
+        elem_ty: MirType,
+        /// Type of body expression (for list builder element conversion).
+        body_ty: MirType,
+        /// Mangled name for the next() function: "Iterator__next__TypeName".
+        next_fn: String,
+        /// Mangled name for the iter() function (if Iterable): "Iterable__iter__TypeName".
+        /// Empty string if the type directly implements Iterator (no iter() call needed).
+        iter_fn: String,
+        /// Result type (Ptr for comprehension semantics -- list of body results).
+        ty: MirType,
+    },
+
     /// Start a supervisor with configured strategy, limits, and child specs.
     SupervisorStart {
         /// Supervisor name (for registration and debugging).
@@ -428,6 +453,7 @@ impl MirExpr {
             MirExpr::ForInList { ty, .. } => ty,
             MirExpr::ForInMap { ty, .. } => ty,
             MirExpr::ForInSet { ty, .. } => ty,
+            MirExpr::ForInIterator { ty, .. } => ty,
             MirExpr::SupervisorStart { ty, .. } => ty,
         }
     }

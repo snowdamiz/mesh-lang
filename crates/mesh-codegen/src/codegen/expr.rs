@@ -159,6 +159,10 @@ impl<'ctx> CodeGen<'ctx> {
                 self.codegen_for_in_set(var, collection, filter.as_deref(), body, elem_ty, body_ty, ty)
             }
 
+            MirExpr::ForInIterator { var, iterator, filter, body, elem_ty, body_ty, next_fn, iter_fn, ty } => {
+                self.codegen_for_in_iterator(var, iterator, filter.as_deref(), body, elem_ty, body_ty, next_fn, iter_fn, ty)
+            }
+
             MirExpr::SupervisorStart {
                 name,
                 strategy,
@@ -3704,6 +3708,24 @@ impl<'ctx> CodeGen<'ctx> {
         let final_result = self.builder.build_load(ptr_ty, result_alloca, "forin_result")
             .map_err(|e| e.to_string())?;
         Ok(final_result)
+    }
+
+    // ── For-in over Iterator (Iterable/Iterator protocol) ─────────────
+
+    fn codegen_for_in_iterator(
+        &mut self,
+        _var: &str,
+        _iterator_expr: &MirExpr,
+        _filter: Option<&MirExpr>,
+        _body_expr: &MirExpr,
+        _elem_ty: &MirType,
+        _body_ty: &MirType,
+        _next_fn: &str,
+        _iter_fn: &str,
+        _ty: &MirType,
+    ) -> Result<BasicValueEnum<'ctx>, String> {
+        // Stub -- full implementation in Task 2.
+        Err("codegen_for_in_iterator not yet implemented".to_string())
     }
 
     // ── For-in over Map ──────────────────────────────────────────────────

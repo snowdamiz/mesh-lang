@@ -253,6 +253,19 @@ fn collect_function_refs(expr: &MirExpr, refs: &mut Vec<String>) {
             }
             collect_function_refs(body, refs);
         }
+        MirExpr::ForInIterator { iterator, filter, body, next_fn, iter_fn, .. } => {
+            collect_function_refs(iterator, refs);
+            if let Some(f) = filter {
+                collect_function_refs(f, refs);
+            }
+            collect_function_refs(body, refs);
+            // Mark the next() function as reachable.
+            refs.push(next_fn.clone());
+            // Mark the iter() function as reachable (if Iterable path).
+            if !iter_fn.is_empty() {
+                refs.push(iter_fn.clone());
+            }
+        }
         // TCE: TailCall args may reference functions.
         MirExpr::TailCall { args, .. } => {
             for arg in args {

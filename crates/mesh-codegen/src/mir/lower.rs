@@ -6020,10 +6020,104 @@ impl<'a> Lowerer<'a> {
             if let Some(elem_ty) = extract_list_elem_type(ty) {
                 return self.lower_for_in_list(for_in, &elem_ty);
             }
+
+            // Check if type implements Iterable (collection -> produces iterator).
+            let ty_for_lookup = ty.clone();
+            if self.trait_registry.has_impl("Iterable", &ty_for_lookup) {
+                return self.lower_for_in_iterator(for_in, &ty_for_lookup, true);
+            }
+            // Check if type directly implements Iterator (type IS an iterator).
+            if self.trait_registry.has_impl("Iterator", &ty_for_lookup) {
+                return self.lower_for_in_iterator(for_in, &ty_for_lookup, false);
+            }
         }
 
         // Fallback: treat as list iteration with Int elements.
         self.lower_for_in_list(for_in, &Ty::int())
+    }
+
+    fn lower_for_in_iterator(&mut self, for_in: &ForInExpr, ty: &Ty, is_iterable: bool) -> MirExpr {
+        let var_name = for_in
+            .binding_name()
+            .and_then(|n| n.text())
+            .unwrap_or_else(|| "_".to_string());
+
+        // Resolve the MIR type to get the impl name for mangling.
+        let mir_ty = resolve_type(ty, self.registry, false);
+        let type_name = mir_type_to_impl_name(&mir_ty);
+
+        // Determine iter_fn and next_fn names, and the element type.
+        let (iter_fn, next_fn, elem_ty) = if is_iterable {
+            // Iterable path: call iter() to get iterator, then next() on iterator.
+            let iter_fn_name = format!("Iterable__iter__{}", type_name);
+
+            // Resolve Iter type from Iterable impl to get the iterator type name.
+            let iter_type = self.trait_registry
+                .resolve_associated_type("Iterable", "Iter", ty)
+                .unwrap_or_else(|| Ty::Con(mesh_typeck::ty::TyCon::new("Unknown")));
+
+            // Extract iterator type name directly from Ty::Con to preserve
+            // opaque handle names like "ListIterator" (which resolve to MirType::Ptr).
+            let iter_type_name = match &iter_type {
+                Ty::Con(tc) => tc.name.clone(),
+                Ty::App(base, _) => {
+                    if let Ty::Con(tc) = base.as_ref() {
+                        tc.name.clone()
+                    } else {
+                        "Unknown".to_string()
+                    }
+                }
+                _ => "Unknown".to_string(),
+            };
+            let next_fn_name = format!("Iterator__next__{}", iter_type_name);
+
+            // Resolve Item type from Iterable impl.
+            let item_ty = self.trait_registry
+                .resolve_associated_type("Iterable", "Item", ty)
+                .unwrap_or(Ty::int());
+
+            (iter_fn_name, next_fn_name, item_ty)
+        } else {
+            // Direct Iterator path: no iter() call, just next().
+            let next_fn_name = format!("Iterator__next__{}", type_name);
+            let item_ty = self.trait_registry
+                .resolve_associated_type("Iterator", "Item", ty)
+                .unwrap_or(Ty::int());
+
+            (String::new(), next_fn_name, item_ty)
+        };
+
+        // Lower the iterable/iterator expression.
+        let collection = for_in
+            .iterable()
+            .map(|e| self.lower_expr(&e))
+            .unwrap_or(MirExpr::Unit);
+
+        let elem_mir_ty = resolve_type(&elem_ty, self.registry, false);
+
+        self.push_scope();
+        self.insert_var(var_name.clone(), elem_mir_ty.clone());
+        let filter = for_in
+            .filter()
+            .map(|f| Box::new(self.lower_expr(&f)));
+        let body = for_in
+            .body()
+            .map(|b| self.lower_block(&b))
+            .unwrap_or(MirExpr::Unit);
+        let body_ty = body.ty().clone();
+        self.pop_scope();
+
+        MirExpr::ForInIterator {
+            var: var_name,
+            iterator: Box::new(collection),
+            filter,
+            body: Box::new(body),
+            elem_ty: elem_mir_ty,
+            body_ty,
+            next_fn,
+            iter_fn,
+            ty: MirType::Ptr,
+        }
     }
 
     fn lower_for_in_range(&mut self, for_in: &ForInExpr, bin: &BinaryExpr) -> MirExpr {
@@ -9850,6 +9944,15 @@ fn collect_free_vars(
         }
         MirExpr::ForInSet { var, collection, filter, body, .. } => {
             collect_free_vars(collection, params, outer_vars, captures);
+            let mut inner_params = params.clone();
+            inner_params.insert(var.as_str());
+            if let Some(f) = filter {
+                collect_free_vars(f, &inner_params, outer_vars, captures);
+            }
+            collect_free_vars(body, &inner_params, outer_vars, captures);
+        }
+        MirExpr::ForInIterator { var, iterator, filter, body, .. } => {
+            collect_free_vars(iterator, params, outer_vars, captures);
             let mut inner_params = params.clone();
             inner_params.insert(var.as_str());
             if let Some(f) = filter {
