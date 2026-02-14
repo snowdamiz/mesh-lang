@@ -16,9 +16,13 @@ use crate::gc::mesh_gc_alloc_actor;
 use crate::option::{MeshOption, alloc_option};
 use crate::collections::list::alloc_pair;
 use crate::collections::list::mesh_list_iter_next;
+use crate::collections::list::mesh_list_from_array;
 use crate::collections::map::mesh_map_iter_next;
+use crate::collections::map::{mesh_map_new, mesh_map_put};
 use crate::collections::set::mesh_set_iter_next;
+use crate::collections::set::{mesh_set_new, mesh_set_add};
 use crate::collections::range::mesh_range_iter_next;
+use crate::string::{MeshString, mesh_string_new, mesh_string_concat};
 
 // ── Type tag constants ──────────────────────────────────────────────────
 
@@ -508,5 +512,152 @@ pub extern "C" fn mesh_iter_reduce(
             };
         }
         acc
+    }
+}
+
+// ── Collect Terminal Operations (Phase 79) ──────────────────────────
+
+/// List.collect(iter) -- materialize iterator into a List.
+/// Collects all elements into a safe Rust Vec, then builds the final
+/// GC-allocated list via mesh_list_from_array in one shot.
+/// This avoids mesh_list_builder_push which has NO bounds checking.
+#[no_mangle]
+pub extern "C" fn mesh_list_collect(iter: *mut u8) -> *mut u8 {
+    unsafe {
+        let mut elements: Vec<u64> = Vec::new();
+        loop {
+            let option = mesh_iter_generic_next(iter);
+            let opt_ref = option as *mut MeshOption;
+            if (*opt_ref).tag == 1 {
+                break; // None -- done
+            }
+            elements.push((*opt_ref).value as u64);
+        }
+        mesh_list_from_array(elements.as_ptr(), elements.len() as i64)
+    }
+}
+
+/// Map.collect(iter) -- materialize iterator of (key, value) tuples into a Map.
+/// Expects each element to be a tuple pointer with layout { len: u64, key: u64, value: u64 }.
+#[no_mangle]
+pub extern "C" fn mesh_map_collect(iter: *mut u8) -> *mut u8 {
+    unsafe {
+        let mut map = mesh_map_new();
+        loop {
+            let option = mesh_iter_generic_next(iter);
+            let opt_ref = option as *mut MeshOption;
+            if (*opt_ref).tag == 1 {
+                break; // None
+            }
+            let tuple_ptr = (*opt_ref).value as *mut u8;
+            // Tuple layout: { u64 len=2, u64 key, u64 value }
+            let key = *((tuple_ptr as *const u64).add(1));
+            let val = *((tuple_ptr as *const u64).add(2));
+            map = mesh_map_put(map, key, val);
+        }
+        map
+    }
+}
+
+/// Set.collect(iter) -- materialize iterator into a Set.
+/// Duplicates are handled automatically by mesh_set_add.
+#[no_mangle]
+pub extern "C" fn mesh_set_collect(iter: *mut u8) -> *mut u8 {
+    unsafe {
+        let mut set = mesh_set_new();
+        loop {
+            let option = mesh_iter_generic_next(iter);
+            let opt_ref = option as *mut MeshOption;
+            if (*opt_ref).tag == 1 {
+                break; // None
+            }
+            let elem = (*opt_ref).value as u64;
+            set = mesh_set_add(set, elem);
+        }
+        set
+    }
+}
+
+/// String.collect(iter) -- materialize string iterator into a single concatenated String.
+/// Each yielded value is treated as a *const MeshString pointer (NOT an integer).
+#[no_mangle]
+pub extern "C" fn mesh_string_collect(iter: *mut u8) -> *mut u8 {
+    unsafe {
+        let mut result = mesh_string_new(std::ptr::null(), 0) as *mut u8;
+        loop {
+            let option = mesh_iter_generic_next(iter);
+            let opt_ref = option as *mut MeshOption;
+            if (*opt_ref).tag == 1 {
+                break; // None
+            }
+            let str_ptr = (*opt_ref).value as *const MeshString;
+            result = mesh_string_concat(
+                result as *const MeshString,
+                str_ptr,
+            ) as *mut u8;
+        }
+        result
+    }
+}
+
+// ── Tests ────────────────────────────────────────────────────────────
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::gc::mesh_rt_init;
+    use crate::collections::list::{mesh_list_iter_new, mesh_list_length, mesh_list_get, mesh_list_from_array};
+    use crate::collections::map::mesh_map_size;
+    use crate::collections::set::mesh_set_size;
+
+    fn init_runtime() {
+        unsafe { mesh_rt_init() };
+    }
+
+    #[test]
+    fn test_list_collect() {
+        init_runtime();
+        unsafe {
+            // Build a list [10, 20, 30]
+            let data: Vec<u64> = vec![10, 20, 30];
+            let list = mesh_list_from_array(data.as_ptr(), 3);
+            let iter = mesh_list_iter_new(list);
+            let collected = mesh_list_collect(iter);
+
+            assert_eq!(mesh_list_length(collected), 3);
+            assert_eq!(mesh_list_get(collected, 0), 10);
+            assert_eq!(mesh_list_get(collected, 1), 20);
+            assert_eq!(mesh_list_get(collected, 2), 30);
+        }
+    }
+
+    #[test]
+    fn test_map_collect() {
+        init_runtime();
+        unsafe {
+            // Build a list of 2 elements, then enumerate -> collect into map
+            // enumerate produces (index, value) tuples
+            let data: Vec<u64> = vec![100, 200];
+            let list = mesh_list_from_array(data.as_ptr(), 2);
+            let iter = mesh_list_iter_new(list);
+            let enum_iter = mesh_iter_enumerate(iter);
+            let collected_map = mesh_map_collect(enum_iter);
+
+            assert_eq!(mesh_map_size(collected_map), 2);
+        }
+    }
+
+    #[test]
+    fn test_set_collect() {
+        init_runtime();
+        unsafe {
+            // Build a list [1, 2, 2, 3] -> collect into set (dedup)
+            let data: Vec<u64> = vec![1, 2, 2, 3];
+            let list = mesh_list_from_array(data.as_ptr(), 4);
+            let iter = mesh_list_iter_new(list);
+            let collected_set = mesh_set_collect(iter);
+
+            assert_eq!(mesh_set_size(collected_set), 3); // Deduplication: {1, 2, 3}
+        }
     }
 }
