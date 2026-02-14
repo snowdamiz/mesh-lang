@@ -34,7 +34,8 @@ use crate::exhaustiveness::{
     TypeRegistry as AbsTypeRegistry, ConstructorSig,
 };
 use crate::traits::{
-    ImplDef as TraitImplDef, ImplMethodSig, TraitDef, TraitMethodSig, TraitRegistry,
+    AssocTypeDef as TraitAssocTypeDef, ImplDef as TraitImplDef, ImplMethodSig, TraitDef,
+    TraitMethodSig, TraitRegistry,
 };
 use crate::ty::{Scheme, Ty, TyCon, TyVar};
 use crate::unify::InferCtx;
@@ -2750,11 +2751,103 @@ fn infer_interface_def(
         });
     }
 
+    // Collect associated type declarations from the interface.
+    let mut associated_types = Vec::new();
+    for assoc in iface.assoc_types() {
+        if let Some(name) = assoc.name().and_then(|n| n.text()) {
+            associated_types.push(TraitAssocTypeDef { name });
+        }
+    }
+
     trait_registry.register_trait(TraitDef {
         name: trait_name,
         methods,
-        associated_types: vec![],
+        associated_types,
     });
+}
+
+/// Extract the concrete type from an associated type binding node.
+///
+/// The ASSOC_TYPE_BINDING node contains: TYPE_KW, NAME, EQ, then the type tokens.
+/// For simple types (Int, String, T), there's a bare IDENT token after EQ.
+/// For generic types, there's IDENT + GENERIC_ARG_LIST.
+/// We collect all significant tokens after EQ and parse them into a Ty.
+fn resolve_assoc_type_binding(
+    binding: &mesh_parser::ast::item::AssocTypeBinding,
+    type_registry: &TypeRegistry,
+) -> Option<Ty> {
+    let mut tokens: Vec<(SyntaxKind, String)> = Vec::new();
+    let mut past_eq = false;
+    for child in binding.syntax().children_with_tokens() {
+        match child {
+            rowan::NodeOrToken::Token(t) => {
+                let kind = t.kind();
+                if kind == SyntaxKind::EQ {
+                    past_eq = true;
+                    continue;
+                }
+                if past_eq {
+                    match kind {
+                        SyntaxKind::IDENT | SyntaxKind::LT | SyntaxKind::GT
+                        | SyntaxKind::COMMA | SyntaxKind::QUESTION | SyntaxKind::BANG
+                        | SyntaxKind::L_PAREN | SyntaxKind::R_PAREN
+                        | SyntaxKind::ARROW | SyntaxKind::DOT => {
+                            tokens.push((kind, t.text().to_string()));
+                        }
+                        _ => {}
+                    }
+                }
+            }
+            rowan::NodeOrToken::Node(n) => {
+                if past_eq {
+                    // Recurse into child nodes (e.g., GENERIC_ARG_LIST)
+                    collect_annotation_tokens(&n, &mut tokens);
+                }
+            }
+        }
+    }
+    if tokens.is_empty() {
+        return None;
+    }
+    let mut start = 0;
+    let ty = parse_type_tokens(&tokens, &mut start);
+    Some(resolve_alias(ty, type_registry))
+}
+
+/// Resolve a Self.X reference in a type annotation to the concrete associated type.
+///
+/// Returns Some(Ty) if the annotation contains a Self.X pattern where X is found
+/// in the assoc_types map. Returns None if no Self.X pattern is found.
+fn resolve_self_assoc_type(
+    ann: &mesh_parser::ast::item::TypeAnnotation,
+    assoc_types: &FxHashMap<String, Ty>,
+) -> Option<Ty> {
+    // Look for Self.X pattern in annotation tokens:
+    // tokens containing SELF_KW followed by DOT followed by IDENT
+    let tokens: Vec<_> = ann
+        .syntax()
+        .children_with_tokens()
+        .filter_map(|t| t.into_token())
+        .collect();
+
+    // Skip leading ARROW (return type annotation prefix)
+    let mut i = 0;
+    while i < tokens.len() && tokens[i].kind() == SyntaxKind::ARROW {
+        i += 1;
+    }
+
+    // Look for SELF_KW DOT IDENT pattern
+    while i + 2 < tokens.len() {
+        if tokens[i].kind() == SyntaxKind::SELF_KW
+            && tokens[i + 1].kind() == SyntaxKind::DOT
+            && tokens[i + 2].kind() == SyntaxKind::IDENT
+        {
+            let assoc_name = tokens[i + 2].text().to_string();
+            return assoc_types.get(&assoc_name).cloned();
+        }
+        i += 1;
+    }
+    None
 }
 
 /// Process an impl definition: register the impl and type-check methods.
@@ -2797,6 +2890,16 @@ fn infer_impl_def(
 
     let impl_type = name_to_type(&impl_type_name);
 
+    // Collect associated type bindings from the impl block.
+    let mut assoc_types: FxHashMap<String, Ty> = FxHashMap::default();
+    for binding in impl_.assoc_type_bindings() {
+        if let Some(name) = binding.name().and_then(|n| n.text()) {
+            if let Some(concrete_ty) = resolve_assoc_type_binding(&binding, type_registry) {
+                assoc_types.insert(name, concrete_ty);
+            }
+        }
+    }
+
     // Collect methods from the impl block.
     let mut impl_methods = FxHashMap::default();
 
@@ -2827,7 +2930,11 @@ fn infer_impl_def(
             }
         }
 
-        let return_type = method.return_type().and_then(|ann| resolve_type_name(&ann));
+        let return_type = method.return_type().and_then(|ann| {
+            // Try Self.Item resolution first, then fall back to standard type resolution.
+            resolve_self_assoc_type(&ann, &assoc_types)
+                .or_else(|| resolve_type_name(&ann))
+        });
 
         impl_methods.insert(
             method_name.clone(),
@@ -2857,7 +2964,11 @@ fn infer_impl_def(
                         let name_text = name_tok.text().to_string();
                         let param_ty = param
                             .type_annotation()
-                            .and_then(|ann| resolve_type_name(&ann))
+                            .and_then(|ann| {
+                                // Try Self.Item resolution first for impl method params.
+                                resolve_self_assoc_type(&ann, &assoc_types)
+                                    .or_else(|| resolve_type_name(&ann))
+                            })
                             .unwrap_or_else(|| ctx.fresh_var());
                         env.insert(name_text, Scheme::mono(param_ty));
                     }
@@ -2905,7 +3016,7 @@ fn infer_impl_def(
         impl_type,
         impl_type_name,
         methods: impl_methods,
-        associated_types: FxHashMap::default(),
+        associated_types: assoc_types,
     });
 
     ctx.errors.extend(errors);
