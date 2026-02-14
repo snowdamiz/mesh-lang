@@ -163,7 +163,7 @@ See milestones/v8.0-ROADMAP.md for full phase details.
 
 **Milestone Goal:** Build a full monitoring/observability SaaS platform ("Mesher") using Mesh for the entire backend, dogfooding every language feature under high-concurrency, high-throughput conditions. Separate Vue frontend in same monorepo. PostgreSQL for storage. Zero external dependencies beyond PG.
 
-- [ ] **Phase 87: Foundation** - Data model, database schema, storage writer, org/project tenancy
+- [x] **Phase 87: Foundation** - Data model, database schema, storage writer, org/project tenancy (completed 2026-02-14)
 - [ ] **Phase 88: Ingestion Pipeline** - HTTP/WS event ingestion with DSN auth, rate limiting, supervised processing
 - [ ] **Phase 89: Error Grouping & Issue Lifecycle** - Fingerprinting, issue creation, regression detection, state machine
 - [ ] **Phase 90: Real-Time Streaming** - WebSocket dashboard streaming with rooms, filters, backpressure
@@ -186,8 +186,8 @@ See milestones/v8.0-ROADMAP.md for full phase details.
   4. User can create organizations and projects via Mesh service calls, and the system generates unique DSN keys per project
 **Plans:** 2 plans
 Plans:
-- [ ] 87-01-PLAN.md -- Data types, PostgreSQL schema DDL, and query helpers
-- [ ] 87-02-PLAN.md -- Org/project/user services, StorageWriter, and main entry point
+- [x] 87-01-PLAN.md -- Data types, PostgreSQL schema DDL, and query helpers
+- [x] 87-02-PLAN.md -- Org/project/user services, StorageWriter, and main entry point
 
 ### Phase 88: Ingestion Pipeline
 **Goal**: External clients can send error events into the system via HTTP and WebSocket, with authentication, validation, rate limiting, and supervised actor-based processing
@@ -306,7 +306,7 @@ Note: Phase 93 depends only on 87 (can run in parallel with 88-92 if desired). P
 | 70-73 | v6.0 | 11/11 | Complete | 2026-02-13 |
 | 74-80 | v7.0 | 17/17 | Complete | 2026-02-14 |
 | 81-86 | v8.0 | 11/11 | Complete | 2026-02-14 |
-| 87 | v9.0 | 0/2 | Planning | - |
+| 87 | v9.0 | 2/2 | Complete | 2026-02-14 |
 | 88 | v9.0 | 0/TBD | Not started | - |
 | 89 | v9.0 | 0/TBD | Not started | - |
 | 90 | v9.0 | 0/TBD | Not started | - |
@@ -316,4 +316,4 @@ Note: Phase 93 depends only on 87 (can run in parallel with 88-92 if desired). P
 | 94 | v9.0 | 0/TBD | Not started | - |
 | 95 | v9.0 | 0/TBD | Not started | - |
 
-**Total: 86 phases shipped across 18 milestones. 240 plans completed. 9 phases planned for v9.0.**
+**Total: 87 phases shipped across 18 milestones. 242 plans completed. 9 phases planned for v9.0.**
