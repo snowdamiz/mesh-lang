@@ -8,48 +8,45 @@ This guide will take you from zero to running your first Mesh program. By the en
 
 ## What is Mesh?
 
-Mesh is a statically-typed, compiled programming language designed for expressive, readable concurrency. It combines the actor model from Erlang/Elixir with a modern type system, pattern matching, and native compilation via Rust.
+Mesh is a statically-typed, compiled programming language designed for expressive, readable concurrency. It combines the actor model from Erlang/Elixir with a modern type system, pattern matching, and native compilation via LLVM.
 
 Key properties of Mesh:
 
 - **Statically typed with inference** -- the compiler catches type errors at compile time, but you rarely need to write type annotations thanks to type inference
-- **Compiles to native code** -- Mesh compiles through Rust to produce fast native binaries
+- **Compiles to native code** -- Mesh compiles via LLVM to produce fast native binaries
 - **Actor-based concurrency** -- lightweight actors with message passing, supervision trees, and fault tolerance built into the language
 - **Familiar syntax** -- inspired by Elixir and Rust, with `do...end` blocks, pattern matching, and pipe operators
 
 ## Installation
 
-### Prerequisites
-
-Mesh compiles through Rust, so you need the Rust toolchain installed:
+Install Mesh with a single command:
 
 ```bash
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+curl -sSf https://mesh-lang.org/install.sh | sh
 ```
 
-### Building from Source
-
-Clone the repository and build the compiler:
-
-```bash
-git clone https://github.com/snowdamiz/mesh-lang.git
-cd mesh
-cargo build --release
-```
+This downloads the latest `meshc` binary and adds it to your PATH.
 
 ### Verifying Installation
 
-After building, verify the compiler is available:
+After installing, verify the compiler is available:
 
 ```bash
-./target/release/mesh --version
+meshc --version
 ```
 
 You should see the Mesh version number printed to the terminal.
 
 ## Hello World
 
-Create a file called `hello.mpl`:
+Create a new Mesh project:
+
+```bash
+meshc init hello
+cd hello
+```
+
+Open `main.mpl` -- meshc generates a starter file for you. Replace its contents with:
 
 ```mesh
 fn main() do
@@ -60,7 +57,8 @@ end
 Compile and run it:
 
 ```bash
-mesh hello.mpl
+meshc build .
+./hello
 ```
 
 You should see `Hello, World!` printed to the terminal.
@@ -74,7 +72,7 @@ Let's break down what's happening:
 
 ## Your First Program
 
-Now let's write something more interesting. Create a file called `greet.mpl`:
+Now let's write something more interesting. Open `main.mpl` and replace its contents with:
 
 ```mesh
 fn greet(name :: String) -> String do
@@ -87,10 +85,11 @@ fn main() do
 end
 ```
 
-Run it:
+Compile and run it:
 
 ```bash
-mesh greet.mpl
+meshc build .
+./hello
 ```
 
 This prints `Hello, Mesh!`. Here's what's new:
