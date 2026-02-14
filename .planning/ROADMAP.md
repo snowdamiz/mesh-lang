@@ -160,6 +160,10 @@ See milestones/v7.0-ROADMAP.md for full phase details.
   - [x] 81-01-PLAN.md -- Complete TextMate grammar (GRAM-01 through GRAM-10)
   - [x] 81-02-PLAN.md -- LSP document symbol handler (SYM-01 through SYM-03)
 - [ ] **Phase 82: Install Infrastructure** - CI pipeline, prebuilt binaries, install script
+  **Plans:** 2 plans
+  Plans:
+  - [ ] 82-01-PLAN.md -- GitHub Actions CI: 6-target matrix build, LLVM static linking, release workflow
+  - [ ] 82-02-PLAN.md -- Install scripts: POSIX shell + PowerShell, platform detection, checksum verification, PATH config
 - [ ] **Phase 83: Completion + Signature Help** - Code completion and function parameter info
 - [ ] **Phase 84: VS Code Extension Publishing** - Marketplace + Open VSX publishing
 - [ ] **Phase 85: Formatting + Audit** - LSP formatting, formatter/REPL v7.0 audit
