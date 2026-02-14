@@ -205,18 +205,26 @@ The `?` operator propagates errors early -- if the expression evaluates to `Err`
 
 ## Traits
 
-Traits define shared behavior that types can implement. Define a trait with the `trait` keyword and implement it with `impl`:
+Traits define shared behavior that types can implement. Define a trait with the `interface` keyword and implement it with `impl`:
 
 ```mesh
-struct Pair do
-  a :: Int
-  b :: Int
+interface Greeter do
+  fn greet(self) -> String
+end
+
+struct Person do
+  name :: String
+end
+
+impl Greeter for Person do
+  fn greet(self) -> String do
+    "Hello, I'm ${self.name}"
+  end
 end
 
 fn main() do
-  let p = Pair { a: 10, b: 20 }
-  let q = Pair { a: 10, b: 20 }
-  println("${p == q}")
+  let p = Person { name: "Alice" }
+  println(p.greet())
 end
 ```
 
@@ -339,7 +347,156 @@ end
 | `Hash` | Hash value computation |
 | `Json` | JSON serialization and deserialization |
 
+## Associated Types
+
+Interfaces can declare associated types -- type members that implementing types must define. This enables generic protocols where the concrete types are determined by the implementation:
+
+```mesh
+interface Container do
+  type Item
+  fn first(self) -> Self.Item
+end
+
+struct IntBox do
+  value :: Int
+end
+
+impl Container for IntBox do
+  type Item = Int
+  fn first(self) -> Int do
+    self.value
+  end
+end
+
+fn main() do
+  let b = IntBox { value: 42 }
+  println("${b.first()}")
+end
+```
+
+Use `Self.Item` in method signatures to reference the associated type. The compiler resolves it to the concrete type from each implementation.
+
+Interfaces can have multiple associated types:
+
+```mesh
+interface Mapper do
+  type Input
+  type Output
+  fn apply(self) -> Self.Output
+end
+```
+
+## Numeric Traits
+
+Mesh provides built-in traits for arithmetic operators. Implement them to use `+`, `-`, `*`, `/` with your custom types:
+
+| Trait | Operator | Method |
+|-------|----------|--------|
+| `Add` | `+` | `add(self, other)` |
+| `Sub` | `-` | `sub(self, other)` |
+| `Mul` | `*` | `mul(self, other)` |
+| `Div` | `/` | `div(self, other)` |
+| `Neg` | `-` (unary) | `neg(self)` |
+
+Each numeric trait has an associated `type Output` that determines the result type:
+
+```mesh
+struct Vec2 do
+  x :: Float
+  y :: Float
+end
+
+impl Add for Vec2 do
+  type Output = Vec2
+  fn add(self, other :: Vec2) -> Vec2 do
+    Vec2 { x: self.x + other.x, y: self.y + other.y }
+  end
+end
+
+impl Neg for Vec2 do
+  type Output = Vec2
+  fn neg(self) -> Vec2 do
+    Vec2 { x: 0.0 - self.x, y: 0.0 - self.y }
+  end
+end
+
+fn main() do
+  let a = Vec2 { x: 1.0, y: 2.0 }
+  let b = Vec2 { x: 3.0, y: 4.0 }
+  let sum = a + b
+  let neg = -a
+  println("${sum.x}, ${sum.y}")
+  println("${neg.x}, ${neg.y}")
+end
+```
+
+## From/Into Conversion
+
+The `From` trait defines how to convert one type into another. Implement `From<SourceType> for TargetType` with a `from` function:
+
+```mesh
+struct Wrapper do
+  value :: Int
+end
+
+impl From<Int> for Wrapper do
+  fn from(n :: Int) -> Wrapper do
+    Wrapper { value: n * 2 }
+  end
+end
+
+fn main() do
+  let w = Wrapper.from(21)
+  println("${w.value}")
+end
+```
+
+### Built-in Conversions
+
+Mesh provides built-in `From` implementations for common type conversions:
+
+| Conversion | Example | Result |
+|------------|---------|--------|
+| Int to Float | `Float.from(42)` | `42.0` |
+| Int to String | `String.from(42)` | `"42"` |
+| Float to String | `String.from(3.14)` | `"3.14"` |
+| Bool to String | `String.from(true)` | `"true"` |
+
+### Error Type Conversion with ?
+
+When you implement `From<SourceError> for TargetError`, the `?` operator automatically converts error types. This lets you compose functions with different error types:
+
+```mesh
+struct AppError do
+  message :: String
+end
+
+impl From<String> for AppError do
+  fn from(msg :: String) -> AppError do
+    AppError { message: msg }
+  end
+end
+
+fn risky() -> Int!String do
+  Err("something failed")
+end
+
+fn process() -> Int!AppError do
+  let n = risky()?    # auto-converts String error to AppError
+  Ok(n + 1)
+end
+
+fn main() do
+  let r = process()
+  case r do
+    Ok(val) -> println("${val}")
+    Err(e) -> println(e.message)
+  end
+end
+```
+
 ## Next Steps
 
+- [Iterators](/docs/iterators/) -- lazy iterator pipelines, combinators, and collection materialization
 - [Concurrency](/docs/concurrency/) -- actors, message passing, and supervision
 - [Syntax Cheatsheet](/docs/cheatsheet/) -- quick reference for all Mesh syntax
