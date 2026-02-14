@@ -5086,6 +5086,8 @@ impl<'a> Lowerer<'a> {
                 BinOp::Add => Some(("Add", "add", false, false)),
                 BinOp::Sub => Some(("Sub", "sub", false, false)),
                 BinOp::Mul => Some(("Mul", "mul", false, false)),
+                BinOp::Div => Some(("Div", "div", false, false)),
+                BinOp::Mod => Some(("Mod", "mod", false, false)),
                 BinOp::Eq => Some(("Eq", "eq", false, false)),
                 BinOp::NotEq => Some(("Eq", "eq", true, false)),      // negate eq
                 BinOp::Lt => Some(("Ord", "lt", false, false)),
@@ -5106,9 +5108,17 @@ impl<'a> Lowerer<'a> {
 
                 if has_impl {
                     let rhs_ty = rhs.ty().clone();
+                    // Comparison operators (Eq/Ord) return Bool; arithmetic
+                    // operators return the Output type from typeck (ty from
+                    // resolve_range).
+                    let result_ty = match op {
+                        BinOp::Eq | BinOp::NotEq | BinOp::Lt | BinOp::Gt
+                        | BinOp::LtEq | BinOp::GtEq => MirType::Bool,
+                        _ => ty.clone(),
+                    };
                     let fn_ty = MirType::FnPtr(
                         vec![lhs_ty.clone(), rhs_ty],
-                        Box::new(MirType::Bool),
+                        Box::new(result_ty.clone()),
                     );
                     let (call_lhs, call_rhs) = if swap_args {
                         (rhs, lhs)
@@ -5118,7 +5128,7 @@ impl<'a> Lowerer<'a> {
                     let call = MirExpr::Call {
                         func: Box::new(MirExpr::Var(mangled, fn_ty)),
                         args: vec![call_lhs, call_rhs],
-                        ty: MirType::Bool,
+                        ty: result_ty,
                     };
                     if negate {
                         return MirExpr::BinOp {
@@ -5232,6 +5242,36 @@ impl<'a> Lowerer<'a> {
             .unwrap_or(UnaryOp::Neg);
 
         let ty = self.resolve_range(un.syntax().text_range());
+
+        // Neg trait dispatch for user types: if the operand is a struct or
+        // sum type with a Neg impl, emit a trait method call instead of a
+        // hardware UnaryOp.  Primitives (Int/Float) fall through to the
+        // hardware path.
+        if op == UnaryOp::Neg {
+            let operand_ty = operand.ty().clone();
+            let is_user_type =
+                matches!(operand_ty, MirType::Struct(_) | MirType::SumType(_));
+            if is_user_type {
+                let ty_for_lookup = mir_type_to_ty(&operand_ty);
+                let type_name = mir_type_to_impl_name(&operand_ty);
+                let mangled = format!("Neg__neg__{}", type_name);
+
+                let has_impl = self.trait_registry.has_impl("Neg", &ty_for_lookup)
+                    || self.known_functions.contains_key(&mangled);
+
+                if has_impl {
+                    let fn_ty = MirType::FnPtr(
+                        vec![operand_ty],
+                        Box::new(ty.clone()),
+                    );
+                    return MirExpr::Call {
+                        func: Box::new(MirExpr::Var(mangled, fn_ty)),
+                        args: vec![operand],
+                        ty,
+                    };
+                }
+            }
+        }
 
         MirExpr::UnaryOp {
             op,
