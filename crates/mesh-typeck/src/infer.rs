@@ -2818,16 +2818,21 @@ fn resolve_assoc_type_binding(
 ///
 /// Returns Some(Ty) if the annotation contains a Self.X pattern where X is found
 /// in the assoc_types map. Returns None if no Self.X pattern is found.
+///
+/// Note: uppercase `Self` is parsed as an IDENT token (not SELF_KW, which is
+/// lowercase `self`).
 fn resolve_self_assoc_type(
     ann: &mesh_parser::ast::item::TypeAnnotation,
     assoc_types: &FxHashMap<String, Ty>,
 ) -> Option<Ty> {
     // Look for Self.X pattern in annotation tokens:
-    // tokens containing SELF_KW followed by DOT followed by IDENT
+    // IDENT("Self") followed by DOT followed by IDENT(name)
+    // Filter out whitespace/trivia tokens first.
     let tokens: Vec<_> = ann
         .syntax()
         .children_with_tokens()
         .filter_map(|t| t.into_token())
+        .filter(|t| !t.kind().is_trivia())
         .collect();
 
     // Skip leading ARROW (return type annotation prefix)
@@ -2836,9 +2841,10 @@ fn resolve_self_assoc_type(
         i += 1;
     }
 
-    // Look for SELF_KW DOT IDENT pattern
+    // Look for IDENT("Self") DOT IDENT pattern
     while i + 2 < tokens.len() {
-        if tokens[i].kind() == SyntaxKind::SELF_KW
+        if tokens[i].kind() == SyntaxKind::IDENT
+            && tokens[i].text() == "Self"
             && tokens[i + 1].kind() == SyntaxKind::DOT
             && tokens[i + 2].kind() == SyntaxKind::IDENT
         {

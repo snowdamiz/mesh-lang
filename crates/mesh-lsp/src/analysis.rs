@@ -212,6 +212,9 @@ fn type_error_span(error: &TypeError) -> Option<TextRange> {
         TypeError::TryOnNonResultOption { span, .. } => Some(*span),
         TypeError::NonSerializableField { .. } => None,
         TypeError::NonMappableField { .. } => None,
+        TypeError::MissingAssocType { .. } => None,
+        TypeError::ExtraAssocType { .. } => None,
+        TypeError::UnresolvedAssocType { span, .. } => Some(*span),
     }
 }
 
