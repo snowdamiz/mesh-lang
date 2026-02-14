@@ -1,308 +1,396 @@
-# Stack Research
+# Technology Stack
 
-**Domain:** Developer Tooling for Mesh Programming Language (install scripts, binary distribution, LSP improvements, VS Code extension publishing, REPL/formatter audit)
-**Researched:** 2026-02-13
-**Confidence:** HIGH
+**Project:** Mesher -- Monitoring/Observability SaaS Platform
+**Researched:** 2026-02-14
+**Confidence:** HIGH (frontend), HIGH (backend/Mesh), MEDIUM (database schema patterns)
 
 ## Recommended Stack
 
-### Core Technologies
+### Backend (Mesh -- Already Validated)
 
-| Technology | Version | Purpose | Why Recommended |
-|------------|---------|---------|-----------------|
-| tower-lsp | 0.20 (existing) | LSP server framework | Already in use; provides `completion`, `signature_help`, `document_symbol` trait methods ready to implement -- no version change needed |
-| lsp-types | 0.94 (via tower-lsp 0.20) | LSP protocol types | CompletionItem, DocumentSymbol, SignatureInformation all available in current version |
-| @vscode/vsce | ^2.22.0 (existing) | VS Code extension packaging and publishing | Already in devDependencies; handles `vsce package` and `vsce publish` to Marketplace |
-| vscode-languageclient | ^9.0.1 (existing) | VS Code LSP client | Already in use; supports all LSP 3.17 features client-side including completion, signature help, document symbols |
-| GitHub Actions | N/A | CI/CD for binary releases and extension publishing | Already using for website deploy; extend for release workflow |
-| Shell script (POSIX sh) | N/A | Install script for prebuilt binaries | Standard `curl -LsSf | sh` pattern used by Rust ecosystem (rustup, cargo-dist, Gleam) |
+The entire backend is written in Mesh (.mpl files compiled by meshc). No new Rust crates or compiler changes are needed. All required backend capabilities already exist in the Mesh language and runtime:
 
-### Supporting Libraries (Rust -- No New Dependencies)
+| Capability | Mesh Feature | Status |
+|------------|-------------|--------|
+| HTTP API (ingestion + REST) | `HTTP.on_get/on_post/on_put/on_delete`, middleware, path params, TLS | Shipped v2.0-v3.0 |
+| WebSocket streaming | `Ws.serve`, actor-per-connection, rooms, TLS | Shipped v4.0 |
+| PostgreSQL storage | `Pg.connect`, `Pool.new`, `Pool.query_as`, transactions, `deriving(Row)` | Shipped v2.0-v3.0 |
+| JSON serde | `deriving(Json)`, encode/decode for structs, sum types, generics | Shipped v2.0 |
+| Actor concurrency | Spawn, send, receive, supervision trees, crash isolation | Shipped v1.0 |
+| Distributed clustering | Node.connect, Global.register, remote spawn, cross-node rooms | Shipped v5.0 |
+| Timers | Timer.sleep, Timer.send_after, receive timeouts | Shipped v1.9 |
+| Pattern matching | Case expressions, sum type matching, guards, exhaustiveness | Shipped v1.0 |
+| Iterators/Collections | Lazy iterators, map/filter/reduce, Collect | Shipped v7.0 |
+| Module system | Multi-file builds, pub visibility, imports | Shipped v1.8 |
 
-No new Rust crate dependencies are needed. All LSP features are implemented by overriding additional trait methods on the existing `tower_lsp::LanguageServer` trait. The data needed for completion, symbols, and signature help is already present in the existing `TypeckResult`, `Parse`, and `TypeEnv` structures.
+**No new Mesh stdlib additions are required for v9.0.** The existing HTTP server, WebSocket server, PostgreSQL driver, JSON serde, actor system, and distributed actors cover all Mesher backend needs. If anything surfaces during implementation (e.g., a missing string function), it would be a minor stdlib addition, not a stack decision.
 
-| Existing Library | Version | New Usage | Why Sufficient |
-|-----------------|---------|-----------|----------------|
-| tower-lsp | 0.20 | Override `completion()`, `signature_help()`, `document_symbol()` methods | These are provided methods on `LanguageServer` trait; just override them |
-| rowan | 0.16 | Walk CST for document symbols extraction | Already used for go-to-definition; same traversal pattern for symbols |
-| mesh-typeck | internal | Extract function/struct/type info for completions | `TypeckResult.type_registry` has all struct/sum-type defs; `builtins.rs` has all built-in names |
-| mesh-parser | internal | AST item enumeration for document symbols | `SourceFile::items()` already iterates FnDef, StructDef, ModuleDef, etc. with Name/ParamList |
-| mesh-fmt | internal | LSP formatting integration via `textDocument/formatting` | `format_source()` already works; just wire to LSP `formatting()` method |
+### Frontend (Vue 3 -- New Application)
 
-### Supporting Libraries (Node.js/TypeScript -- No New Dependencies)
+The Mesher frontend is a separate Vue 3 SPA in the same monorepo, communicating with the Mesh backend via REST API and WebSocket. The existing website (VitePress docs site) is completely separate and should not share code with Mesher.
 
-The VS Code extension needs no new dependencies. `vscode-languageclient` ^9.0.1 already supports all client-side features for completion, signature help, and document symbols. The extension currently declares `documentSelector` and `fileEvents` which is sufficient for all new LSP capabilities.
+#### Core Framework
 
-| Existing Library | Version | Notes |
-|-----------------|---------|-------|
-| vscode-languageclient | ^9.0.1 | Completion, signature help, symbols all work automatically when server advertises capabilities |
-| @vscode/vsce | ^2.22.0 | `vsce publish` with Personal Access Token for Marketplace |
-| typescript | ^5.3.0 | Build toolchain, no change needed |
-
-### Development Tools
-
-| Tool | Purpose | Notes |
-|------|---------|-------|
-| GitHub Actions (release workflow) | Build prebuilt binaries for macOS (x86_64 + aarch64), Linux (x86_64) | Matrix build with `cargo build --release`, then upload to GitHub Releases |
-| `vsce` CLI | Package and publish VS Code extension | Run `vsce package --no-dependencies` then `vsce publish` with PAT |
-| Azure DevOps PAT | VS Code Marketplace authentication | Required for publishing; max 1-year expiry, store in GitHub Secrets |
-| `softprops/action-gh-release` | GitHub Action for creating releases | Standard Action for uploading binary artifacts to GitHub Releases |
-
-## Detailed Technical Decisions
-
-### 1. Install Script: POSIX Shell Script (Not cargo-dist)
-
-**Decision:** Write a custom POSIX shell install script, not use cargo-dist.
-
-**Why:** Mesh depends on LLVM 21 at compile time. cargo-dist is designed for standalone Rust binaries and has significant limitations with LLVM system dependencies:
-- cargo-dist's musl static linking explicitly cannot dynamically link against C libraries (which LLVM requires)
-- The `llvm-sys` crate needs `llvm-config` available at build time, which binary distributions of LLVM typically don't include
-- cargo-dist's cross-compilation support is still evolving for complex system deps
-
-**Install script pattern:** Follow the Gleam/rustup model:
-1. Detect OS (macOS/Linux) and architecture (x86_64/aarch64)
-2. Construct download URL from GitHub Releases: `https://github.com/{owner}/{repo}/releases/latest/download/meshc-{os}-{arch}.tar.gz`
-3. Download, verify checksum, extract to `~/.mesh/bin/`
-4. Add to PATH (or print instructions)
-
-**The script itself needs no dependencies** beyond `curl`, `tar`, and `sh` -- all present on macOS and Linux by default.
-
-**Confidence:** HIGH -- this pattern is proven by rustup, Gleam, Deno, Bun, and many other language toolchains.
-
-### 2. Binary Distribution: Native Builds per Platform via GitHub Actions
-
-**Decision:** Build binaries natively on each platform runner (not cross-compile).
-
-**Why:** Mesh's `meshc` binary links against LLVM 21. Cross-compiling LLVM-linked binaries is extremely fragile. Building natively on `macos-latest` (for aarch64) and `ubuntu-latest` (for x86_64 Linux) avoids all linker complexity.
-
-**Build matrix:**
-
-| Target | Runner | Notes |
-|--------|--------|-------|
-| `x86_64-apple-darwin` | `macos-13` | Intel Mac; install LLVM 21 via Homebrew |
-| `aarch64-apple-darwin` | `macos-latest` (ARM) | Apple Silicon; install LLVM 21 via Homebrew |
-| `x86_64-unknown-linux-gnu` | `ubuntu-latest` | Install LLVM 21 from apt.llvm.org |
-
-**Not targeting Windows initially** because Mesh does not currently have Windows support in its codegen/runtime (the runtime uses POSIX APIs). Adding Windows is a separate future effort.
-
-**Linking strategy:** Dynamic linking to LLVM on macOS (Homebrew manages LLVM), static linking on Linux where possible. The install script should document LLVM as a runtime dependency on macOS or bundle the required LLVM shared libraries.
-
-**Alternative considered:** cargo-dist. Rejected because cargo-dist cannot handle the LLVM system dependency correctly for static binary distribution, and its cross-compilation for C-dependent crates is unreliable.
-
-**Confidence:** HIGH -- native CI builds are the most reliable approach for LLVM-dependent binaries.
-
-### 3. LSP Completion: Use Existing TypeckResult + Builtins Data
-
-**Decision:** Build completion items from three sources, all already available:
-1. **Built-in names** from `builtins.rs`: `println`, `print`, `IO.read_line`, `String.length`, etc.
-2. **User-defined names** from `TypeckResult.type_registry`: struct defs, sum type defs, function schemes
-3. **Keywords**: `fn`, `let`, `if`, `case`, `do`, `end`, `struct`, `module`, `type`, `import`, `from`, etc.
-
-**tower-lsp integration:** Override `completion()` method, declare `completion_provider: Some(CompletionOptions { trigger_characters: Some(vec![".".to_string()]), ..Default::default() })` in ServerCapabilities.
-
-**No new crates needed.** The `AnalysisResult` in `mesh-lsp/analysis.rs` already contains the `TypeckResult` which has `type_registry` (all struct/sum-type defs) and `types` (all inferred types). The `analysis::analyze_document` function runs the full parse + typecheck pipeline on every change.
-
-**Confidence:** HIGH -- all data sources already exist; this is wiring, not research.
-
-### 4. LSP Document Symbols: Walk AST Items
-
-**Decision:** Use the existing `SourceFile::items()` iterator to produce hierarchical `DocumentSymbol` responses.
-
-**Mapping:**
-
-| Mesh Item | LSP SymbolKind | Detail String |
-|-----------|---------------|---------------|
-| FnDef | Function | Parameter list + return type if annotated |
-| StructDef | Struct | Field names |
-| SumTypeDef | Enum | Variant names |
-| ModuleDef | Module | (children are nested symbols) |
-| LetBinding | Variable | Inferred type from TypeckResult |
-| InterfaceDef | Interface | Method names |
-| ImplDef | Class | "impl Trait for Type" |
-| ActorDef | Class | Actor name |
-| ServiceDef | Class | Service name |
-| TypeAliasDef | TypeParameter | Aliased type |
-
-**Return format:** Use hierarchical `DocumentSymbol` (not flat `SymbolInformation`) because Mesh has nested items (functions inside modules, methods inside actors/services).
-
-**Confidence:** HIGH -- direct mapping from existing AST types.
-
-### 5. LSP Signature Help: Extract From TypeckResult
-
-**Decision:** Implement `signature_help()` by:
-1. Finding the enclosing call expression at the cursor position
-2. Resolving the callee name through the existing name resolution
-3. Looking up the function's type scheme in `TypeckResult` or builtins
-4. Formatting parameters with types from the scheme
-
-**Trigger characters:** `(` and `,` -- standard for function call signature help.
-
-**tower-lsp integration:** Declare `signature_help_provider: Some(SignatureHelpOptions { trigger_characters: Some(vec!["(".to_string(), ",".to_string()]), ..Default::default() })` in ServerCapabilities.
-
-**Confidence:** MEDIUM -- requires finding the enclosing call expression, which needs new CST traversal logic (unlike document symbols which just walk top-level items). The type lookup part is straightforward.
-
-### 6. LSP Formatting: Wire mesh-fmt to textDocument/formatting
-
-**Decision:** Implement `formatting()` by calling `mesh_fmt::format_source()` and producing a single full-document `TextEdit`.
-
-**Why full-document TextEdit:** `mesh-fmt` already produces the complete formatted output. Diffing to produce minimal edits is unnecessary complexity -- VS Code handles full-document replacement efficiently.
-
-**Confidence:** HIGH -- trivial integration; `format_source()` is a pure function that takes source and returns formatted source.
-
-### 7. VS Code Extension Publishing: vsce + GitHub Actions
-
-**Decision:** Publish to the VS Code Marketplace using `@vscode/vsce` (already in devDeps) with Azure DevOps Personal Access Token.
-
-**Publishing workflow:**
-1. Create publisher on marketplace.visualstudio.com (publisher name: `mesh-lang`, already in package.json)
-2. Generate Azure DevOps PAT with Marketplace publish scope
-3. Store PAT as GitHub Secret `VSCE_PAT`
-4. Add GitHub Actions workflow: on tag push, `vsce publish` with version from tag
-
-**Extension updates needed before publishing:**
-- Add `icon` field in package.json (128px squared PNG)
-- Add `repository` field pointing to GitHub
-- Ensure `README.md` exists in editors/vscode-mesh/ (marketplace description)
-- Add `CHANGELOG.md` for marketplace changelog tab
-- Consider `galleryBanner.color` for visual branding
-
-**Not publishing to Open VSX initially.** Open VSX has ~6K extensions vs Marketplace's ~80K. Add later if demand exists.
-
-**Confidence:** HIGH -- vsce is the standard tool, already configured in the project.
-
-### 8. REPL Audit: No Stack Changes
-
-**Decision:** The REPL audit is a quality pass, not a feature addition. No new dependencies.
-
-**Areas to audit:**
-- Multi-line continuation edge cases (nested do/end with comments)
-- String result formatting for complex types (lists, structs, sum types)
-- Error recovery (partial input that fails parse/typecheck should not crash the JIT)
-- `:load` interaction with session state
-
-**Existing stack is sufficient:** rustyline 15 for line editing, inkwell 0.8 for JIT execution, mesh-rt for runtime support.
-
-**Confidence:** HIGH -- audit scope, not stack scope.
-
-### 9. Formatter Audit: No Stack Changes
-
-**Decision:** The formatter audit is a quality pass. No new dependencies.
-
-**Areas to audit:**
-- Pipe operator multiline formatting (documented known issue)
-- Interface method body formatting (documented known issue)
-- Comment preservation edge cases
-- Long parameter list wrapping
-
-**Existing stack is sufficient:** rowan 0.16 CST, Wadler-Lindig IR in mesh-fmt.
-
-**Confidence:** HIGH -- audit scope, not stack scope.
-
-## Installation
-
-No new Rust dependencies to install. The workspace Cargo.toml remains unchanged.
-
-For the VS Code extension publishing setup:
-```bash
-# One-time: create marketplace publisher
-# Visit https://marketplace.visualstudio.com/manage and create publisher "mesh-lang"
-
-# One-time: generate PAT at https://dev.azure.com
-# Add to GitHub Secrets as VSCE_PAT
-
-# Build and publish (automated via GitHub Actions, or manually):
-cd editors/vscode-mesh
-npm run compile
-npx vsce publish
+| Technology | Version | Purpose | Why |
+|------------|---------|---------|-----|
+| Vue | ^3.5.28 | UI framework | Already used for docs site; team expertise; excellent reactivity for real-time dashboards |
+| Vite | ^6.2 | Build tool / dev server | Default for Vue 3; fast HMR; already used by VitePress under the hood |
+| TypeScript | ^5.9.3 | Type safety | Already used in project; catches API contract mismatches at build time |
+| vue-router | ^5.0.2 | Client-side routing | Official Vue router; v5 merges file-based routing into core; no breaking changes from v4 |
+| Pinia | ^3.0.4 | State management | Official Vue state management; lightweight (1.5KB); composition API native; devtools support |
+
+#### UI Components
+
+| Technology | Version | Purpose | Why |
+|------------|---------|---------|-----|
+| Tailwind CSS | ^4.1 | Utility-first CSS | Already used in docs site; consistent styling approach across monorepo |
+| shadcn-vue | (copy-paste, no version) | Component primitives | Already used in docs site (button, collapsible, dropdown-menu, scroll-area, sheet); provides accessible, unstyled building blocks |
+| reka-ui | ^2.8.0 | Headless primitives (shadcn-vue dep) | Already a dependency; provides Dialog, Popover, Select, Tabs used by shadcn-vue |
+| lucide-vue-next | ^0.564.0 | Icon library | Already a dependency; consistent iconography |
+
+#### Data Visualization
+
+| Technology | Version | Purpose | Why |
+|------------|---------|---------|-----|
+| Apache ECharts | ^6.0.0 | Charting engine | Most feature-complete open-source charting library; handles time-series line charts, bar charts, heatmaps, and large datasets efficiently; free (Apache 2.0) |
+| vue-echarts | ^8.0.1 | Vue 3 wrapper for ECharts | Official Vue integration; smart option merging; reactive updates; 459 dependents on npm |
+
+**Why ECharts over alternatives:**
+- **vs Chart.js**: Chart.js is simpler but lacks time-series zoom/brush, heatmaps, and large dataset rendering needed for monitoring dashboards
+- **vs ApexCharts**: ApexCharts is good for interactive charts but ECharts handles 100K+ data points with better performance via canvas rendering and progressive loading
+- **vs Highcharts**: Highcharts requires a commercial license for SaaS; ECharts is Apache 2.0
+- **vs Unovis**: Unovis is newer and less proven; ECharts has 63K+ GitHub stars and years of production use in monitoring tools (Apache projects, Alibaba, Baidu)
+
+#### Virtual Scrolling (Log Viewer)
+
+| Technology | Version | Purpose | Why |
+|------------|---------|---------|-----|
+| @tanstack/vue-virtual | ^3.13.18 | Virtual scrolling for log viewer | Headless virtualizer; 60FPS with 100K+ items; framework-agnostic core with Vue adapter; recommended by VueUse over their own useVirtualList |
+
+**Why TanStack Virtual over alternatives:**
+- **vs vue-virtual-scroller**: TanStack is more actively maintained, has better TypeScript support, and is framework-agnostic (same API patterns as TanStack Table/Query)
+- **vs native intersection observer**: Manual implementation is error-prone for variable-height log entries with different severity colors/stack traces
+- **vs Quasar virtual scroll**: Quasar is a full framework; we only need the virtualizer
+
+#### Data Tables
+
+| Technology | Version | Purpose | Why |
+|------------|---------|---------|-----|
+| @tanstack/vue-table | ^8.21.3 | Data table logic (sorting, filtering, pagination) | Headless; works with shadcn-vue Table component; 24K+ GitHub stars; official shadcn-vue data table pattern |
+
+**Why TanStack Table:** shadcn-vue's official data table guide is built on TanStack Table. This gives us sorting, filtering, column visibility, and pagination with full TypeScript support while keeping our own shadcn-vue styled markup.
+
+#### Date Handling
+
+| Technology | Version | Purpose | Why |
+|------------|---------|---------|-----|
+| date-fns | ^4.1.0 | Date formatting and manipulation | Tree-shakable (import only what you use); functional API (no mutable objects); first-class timezone support in v4; 200+ functions; 35K+ GitHub stars |
+
+**Why date-fns over Day.js:** date-fns v4 has built-in timezone support (critical for monitoring -- events from different timezones), better tree-shaking (smaller effective bundle), and a functional API that fits Vue's composition API pattern. Day.js requires plugins for timezone and relative time.
+
+#### HTTP Client
+
+| Technology | Version | Purpose | Why |
+|------------|---------|---------|-----|
+| Native fetch | (browser built-in) | REST API calls to Mesh backend | No library needed; modern browsers support fetch natively; AbortController for cancellation; Response.json() for parsing |
+
+**Why NOT axios/ky/ofetch:** The Mesher frontend has a single backend (the Mesh API server). A thin fetch wrapper composable (e.g., `useMesherApi()`) provides all needed functionality: base URL, auth headers, JSON parsing, error handling. Adding a dependency for this is over-engineering.
+
+### Database (PostgreSQL -- Schema Patterns)
+
+No additional database technology is needed. The Mesh PostgreSQL driver with connection pooling handles all storage. The schema design is the important decision, not the technology.
+
+| Decision | Recommendation | Why |
+|----------|---------------|-----|
+| Database engine | PostgreSQL (already supported) | Mesh has full PG driver with TLS, pooling, transactions, deriving(Row) |
+| Time-series approach | Native `PARTITION BY RANGE` on timestamp | No extension dependencies (TimescaleDB adds operational complexity); native partitioning is sufficient for Mesher's scale |
+| Partition granularity | Daily partitions for events/logs | Enables efficient data expiration (DROP partition vs DELETE rows); keeps per-partition indexes small |
+| Partition management | Manual CREATE via Mesh startup code | pg_partman requires PG extension installation; manual partition creation (30 days ahead) is simpler for a self-hosted product |
+| ID generation | BIGSERIAL or UUID v7 (time-sortable) | ULIDs/UUID v7 are time-sortable, enabling time-range queries on primary key; BIGSERIAL is simpler if timestamps are always included in queries |
+
+**Why NOT TimescaleDB:** TimescaleDB adds an extension dependency that complicates deployment (requires installation on PG server, version compatibility concerns). Native PostgreSQL partitioning provides the core benefit (partition pruning on time-range queries, efficient data expiration) without any extensions. For Mesher's expected scale (thousands of events/second, not millions), native partitioning is sufficient.
+
+### SDK / Agent (Lightweight HTTP Client)
+
+The Mesher SDK sends events from user applications to the Mesher ingestion API. Design it as a simple HTTP POST client, not a complex agent.
+
+| Decision | Recommendation | Why |
+|----------|---------------|-----|
+| Transport protocol | HTTPS POST with JSON body | Simple, universal, works from any language; no gRPC/protobuf complexity |
+| Ingestion endpoint | `POST /api/v1/events` | Single endpoint; event type in payload, not URL path |
+| Authentication | API key in header (`X-Mesher-Key: <key>`) | Simple; no OAuth complexity for server-to-server calls |
+| Batching | Client-side batching (flush every 5s or 100 events) | Reduces HTTP overhead; prevents event loss on crash via flush-on-shutdown |
+| Retry | Exponential backoff with jitter, max 3 retries | Standard pattern; prevents thundering herd |
+| SDK languages (initial) | JavaScript/TypeScript only | Start with one; expand later |
+| SDK size | < 5KB minified | Tiny footprint; no heavy dependencies |
+
+**Event payload format (JSON):**
+```json
+{
+  "type": "error",
+  "timestamp": "2026-02-14T12:00:00.000Z",
+  "level": "error",
+  "message": "Connection refused",
+  "fingerprint": "conn_refused_pg",
+  "metadata": {
+    "service": "api-gateway",
+    "environment": "production",
+    "runtime": "node/22.0.0"
+  },
+  "stacktrace": "Error: Connection refused\n  at connect (pg.js:42)\n  ..."
+}
 ```
 
-For the install script (no build step, it's a shell script):
-```bash
-# The install script itself is a static file served from GitHub
-# Users will run:
-curl -LsSf https://raw.githubusercontent.com/{owner}/{repo}/main/install.sh | sh
-```
+**Why NOT OpenTelemetry format:** OTLP is complex (protobuf, spans, trace context). Mesher is a log/error monitoring tool, not a full APM/tracing platform. A simple JSON format keeps the SDK tiny and the ingestion pipeline simple. Users who want OTLP can add a bridge later.
+
+### Deployment
+
+| Technology | Purpose | Why |
+|------------|---------|-----|
+| Single Mesh binary | Backend server | meshc compiles to a native binary; no runtime dependencies |
+| Vite build (static files) | Frontend assets | `vite build` produces static HTML/JS/CSS served by Mesh HTTP server or a CDN |
+| PostgreSQL 16+ | Database | Standard; supports native partitioning; widely available |
+| TLS certificates | HTTPS/WSS | Mesh supports Http.serve_tls and Ws.serve_tls; use Let's Encrypt or self-signed for dev |
+| Docker (optional) | Containerized deployment | Mesh binary + PG in docker-compose for easy local dev and deployment |
 
 ## Alternatives Considered
 
-| Recommended | Alternative | When to Use Alternative |
-|-------------|-------------|-------------------------|
-| Custom shell install script | cargo-dist | If Mesh didn't depend on LLVM; cargo-dist works great for pure-Rust binaries |
-| Native CI builds per platform | Cross-compilation from Linux | If binary had no C/LLVM dependencies; cross works for pure Rust or simple C deps |
-| tower-lsp 0.20 (stay) | tower-lsp-server (community fork) | If needing LSP 3.18 features or notebook support; not needed for Mesh's use case |
-| tower-lsp 0.20 (stay) | Upgrade to tower-lsp-server (community) | When tower-lsp 0.20 becomes unmaintained; community fork has newer lsp-types but requires dropping async_trait macro |
-| Full-document TextEdit for formatting | Minimal diff-based edits | If formatter performance on large files becomes an issue (unlikely for Mesh source sizes) |
-| VS Code Marketplace only | Marketplace + Open VSX | When significant Codium/Theia/Eclipse user base requests it |
-| Dynamic LLVM linking (macOS) | Static LLVM linking | If producing fully self-contained binaries; requires building LLVM from source with static libs |
-| GitHub Releases | Homebrew tap | After initial distribution is stable; Homebrew is a secondary channel |
+| Category | Recommended | Alternative | Why Not |
+|----------|-------------|-------------|---------|
+| Charting | ECharts + vue-echarts | Chart.js / vue-chartjs | Lacks time-series brush/zoom, heatmaps, and large dataset handling needed for monitoring |
+| Charting | ECharts + vue-echarts | Highcharts | Commercial license required for SaaS products |
+| Charting | ECharts + vue-echarts | Unovis | Newer, smaller ecosystem; less proven at scale |
+| Virtual scroll | @tanstack/vue-virtual | vue-virtual-scroller | Less active maintenance; TanStack has better TS types |
+| Data table | @tanstack/vue-table | ag-Grid | ag-Grid community is limited; enterprise is paid; shadcn-vue integrates with TanStack |
+| State management | Pinia | Vuex | Vuex is legacy; Pinia is the official successor |
+| Router | vue-router 5 | vue-router 4 | v5 is latest npm release; no breaking changes from v4 |
+| Date library | date-fns | Day.js | Day.js lacks built-in timezone support; requires plugins |
+| Date library | date-fns | VueUse useDateFormat | Too limited for timezone conversion and relative time ("5 minutes ago") |
+| HTTP client | Native fetch | Axios | Unnecessary dependency for single-backend SPA |
+| Time-series DB | PostgreSQL native partitioning | TimescaleDB | Extension dependency; operational complexity; not needed at Mesher's scale |
+| Time-series DB | PostgreSQL native partitioning | InfluxDB / ClickHouse | Different database entirely; Mesh only has a PG driver |
+| SDK format | Simple JSON over HTTPS | OpenTelemetry OTLP | OTLP is complex; Mesher is not a full APM; simple JSON keeps SDK < 5KB |
+| Frontend framework | Vue 3 | React / Svelte | Existing team expertise with Vue; docs site already in Vue; monorepo consistency |
 
-## What NOT to Use
+## Installation
 
-| Avoid | Why | Use Instead |
-|-------|-----|-------------|
-| cargo-dist for binary releases | Cannot handle LLVM system dependency correctly; musl static linking prohibits C library linkage | Custom GitHub Actions workflow with native builds per platform |
-| `cross` (cross-rs) for CI builds | Cannot cross-compile to macOS; Docker-based approach fails with LLVM system deps | Native runner per platform (`macos-latest`, `ubuntu-latest`) |
-| tower-lsp-server (community fork) | Breaking change: removes `#[async_trait]` macro, requires lsp-types migration; tower-lsp 0.20 has all needed methods | Stay on tower-lsp 0.20; monitor community fork for future migration |
-| esbuild/webpack bundler for VS Code extension | Extension has minimal dependencies (just vscode-languageclient); bundling adds complexity with no benefit | `vsce package --no-dependencies` (already configured) |
-| Homebrew formula as primary distribution | Requires maintaining a tap, formula updates, and adds friction for non-macOS users | Shell install script that works on macOS and Linux uniformly |
-| `lsp-types` upgrade (0.94 -> 0.97) | Would require tower-lsp fork or migration to community fork; 0.94 has all types needed | Stay on lsp-types 0.94 (via tower-lsp 0.20) |
+### Frontend (new app in monorepo)
 
-## Version Compatibility
+```bash
+# Create the Mesher frontend app
+mkdir -p mesher/frontend
+cd mesher/frontend
 
-| Package | Compatible With | Notes |
-|---------|-----------------|-------|
-| tower-lsp 0.20 | tokio 1.x, lsp-types 0.94 | Stable; last release from original author. All needed LSP 3.17 features present. |
-| vscode-languageclient ^9.0.1 | VS Code ^1.75.0 | Supports LSP 3.17; auto-negotiates capabilities with server |
-| @vscode/vsce ^2.22.0 | Node.js >= 18 | Used for packaging and publishing |
-| LLVM 21 (Inkwell 0.8) | Rust stable (tested 1.92.0) | Binary builds must match LLVM version exactly |
-| rustyline 15 | Rust stable | No compatibility concerns |
-| rowan 0.16 | Rust stable | No compatibility concerns |
+# Initialize with Vite
+npm create vite@latest . -- --template vue-ts
+
+# Core dependencies
+npm install vue@^3.5.28 vue-router@^5.0.2 pinia@^3.0.4
+
+# UI
+npm install tailwindcss@^4.1 @tailwindcss/vite@^4.1 @tailwindcss/typography@^0.5
+npm install class-variance-authority@^0.7.1 clsx@^2.1.1 tailwind-merge@^3.4.0
+npm install reka-ui@^2.8.0 lucide-vue-next@^0.564.0
+
+# Data visualization
+npm install echarts@^6.0.0 vue-echarts@^8.0.1
+
+# Data tables & virtual scrolling
+npm install @tanstack/vue-table@^8.21.3 @tanstack/vue-virtual@^3.13.18
+
+# Date handling
+npm install date-fns@^4.1.0
+
+# Dev dependencies
+npm install -D typescript@^5.9.3 @types/node@^25.2.3
+```
+
+### Backend (Mesh -- no installation)
+
+No new dependencies. The Mesher backend is pure Mesh code using existing stdlib modules:
+
+```
+# File structure for Mesh backend
+mesher/backend/
+  main.mpl              # Entry point: start HTTP + WS servers
+  config.mpl            # Configuration loading
+  ingestion/
+    handler.mpl          # HTTP ingestion endpoint
+    processor.mpl        # Event processing pipeline
+  api/
+    router.mpl           # REST API routes
+    events.mpl           # Event query endpoints
+    projects.mpl         # Project CRUD
+    alerts.mpl           # Alert rule endpoints
+  ws/
+    handler.mpl          # WebSocket connection handler
+    streaming.mpl        # Real-time event streaming
+  storage/
+    schema.mpl           # Database schema setup
+    events.mpl           # Event storage queries
+    projects.mpl         # Project storage queries
+  alerting/
+    engine.mpl           # Rule evaluation engine
+    notifier.mpl         # Alert notification dispatch
+  grouping/
+    fingerprint.mpl      # Error fingerprinting
+    dedup.mpl            # Deduplication logic
+```
+
+### SDK (TypeScript, separate package)
+
+```bash
+# Create SDK package
+mkdir -p mesher/sdk
+cd mesher/sdk
+npm init -y
+
+# No production dependencies -- pure TypeScript with native fetch
+npm install -D typescript@^5.9.3
+```
+
+## What NOT to Add
+
+| Avoid | Why | Do Instead |
+|-------|-----|------------|
+| TimescaleDB | Extension dependency; operational complexity; Mesh PG driver works with native PG | Use native PostgreSQL PARTITION BY RANGE |
+| InfluxDB / ClickHouse | Mesh has no driver for these; adding one is scope creep | Use PostgreSQL with partitioning |
+| Axios / ky / ofetch | Unnecessary dependency for single-backend SPA | Use native fetch with a thin composable wrapper |
+| Full OpenTelemetry SDK | Over-engineered for Mesher's log/error use case | Simple JSON POST SDK |
+| Nuxt | SSR is unnecessary for a dashboard SPA; adds build complexity | Plain Vite + Vue 3 |
+| Quasar / Vuetify / PrimeVue | Full component frameworks conflict with shadcn-vue / Tailwind approach | Use shadcn-vue (already established in project) |
+| Socket.io client | Mesh uses raw WebSocket (RFC 6455), not Socket.io protocol | Use native WebSocket API |
+| D3.js directly | Too low-level for dashboard charts; ECharts provides the right abstraction | Use ECharts via vue-echarts |
+| GraphQL | Adds query language complexity; REST is simpler for dashboard CRUD + event queries | Use REST endpoints |
+| Redis / message queue | Mesh actors with supervision trees handle all in-memory processing; adding external state is unnecessary | Use Mesh actor mailboxes for event pipeline |
+| Webpack | Vite is the standard Vue 3 build tool; Webpack adds configuration overhead | Use Vite |
+| CSS-in-JS (styled-components, emotion) | Conflicts with Tailwind approach; worse performance | Use Tailwind CSS |
 
 ## Integration Points
 
-### LSP Server -> VS Code Extension (Automatic)
+### Frontend <-> Mesh Backend (REST API)
 
-The VS Code extension does NOT need code changes for new LSP features. The `vscode-languageclient` library automatically:
-- Sends `textDocument/completion` requests when the user types
-- Sends `textDocument/signatureHelp` requests on trigger characters
-- Sends `textDocument/documentSymbol` requests for outline view and breadcrumbs
-- Sends `textDocument/formatting` requests on format command
+The Vue frontend communicates with the Mesh HTTP server via REST endpoints:
 
-All of this is driven by the server's `ServerCapabilities` response in `initialize()`. The extension just needs to start the server and declare the document selector -- which it already does.
-
-### Install Script -> Binary Distribution
-
-The install script must match the exact naming convention used by the GitHub Actions release workflow:
 ```
-meshc-x86_64-apple-darwin.tar.gz
-meshc-aarch64-apple-darwin.tar.gz
-meshc-x86_64-unknown-linux-gnu.tar.gz
+GET    /api/v1/projects                  # List projects
+POST   /api/v1/projects                  # Create project
+GET    /api/v1/projects/:id/events       # Query events (with filters)
+GET    /api/v1/projects/:id/events/:eid  # Single event detail
+GET    /api/v1/projects/:id/groups       # Error groups
+GET    /api/v1/projects/:id/stats        # Dashboard statistics
+POST   /api/v1/projects/:id/alerts       # Create alert rule
+GET    /api/v1/projects/:id/alerts       # List alert rules
 ```
 
-The install script and release workflow must be developed together to ensure naming alignment.
-
-### meshc Binary -> LSP Server
-
-The install script installs `meshc` to `~/.mesh/bin/meshc`. The VS Code extension already checks this path (line 42 of `extension.ts`):
-```typescript
-path.join(home, ".mesh", "bin", "meshc"),
+**CORS:** The Mesh HTTP server needs to add CORS headers via middleware. This is a Mesh middleware function, not a stack addition:
+```
+# Mesh middleware (pseudocode)
+fn cors_middleware(req, next) do
+  response = next(req)
+  # Add Access-Control-Allow-Origin, etc.
+  response
+end
 ```
 
-No changes needed -- the extension's `findMeshc()` function already looks in the correct location.
+### Frontend <-> Mesh Backend (WebSocket)
+
+The Vue frontend connects to the Mesh WebSocket server for real-time streaming:
+
+```
+wss://mesher.example.com/ws/stream?project=<id>&token=<auth>
+```
+
+- Mesh WS handler joins the connection to a room per project
+- Events flow: Ingestion -> Processing Actor -> Ws.broadcast(room, event_json)
+- Frontend receives JSON messages via native WebSocket API
+- No Socket.io or other WS library needed on either side
+
+### SDK -> Mesh Backend (Ingestion)
+
+```
+POST /api/v1/ingest
+Headers:
+  Content-Type: application/json
+  X-Mesher-Key: <project_api_key>
+Body: { events: [...] }  # Batched events array
+```
+
+The Mesh HTTP server deserializes via Json.decode, processes via actor pipeline, and stores in PostgreSQL.
+
+### Mesh Backend -> PostgreSQL
+
+All queries use the existing `Pool.query_as` / `Pool.execute` with `deriving(Row)` for struct mapping. No ORM, no query builder -- raw parameterized SQL strings. This is the Mesh way (explicit, no magic).
+
+## Version Compatibility Matrix
+
+| Package | Compatible With | Notes |
+|---------|----------------|-------|
+| Vue 3.5.28 | Vite 6.x, Pinia 3.x, vue-router 5.x | Current stable |
+| Pinia 3.0.4 | Vue 3 only (dropped Vue 2) | Straightforward upgrade from Pinia 2 |
+| vue-router 5.0.2 | Vue 3 only | No breaking changes from vue-router 4 |
+| echarts 6.0.0 | vue-echarts 8.0.1 | Major version pairing |
+| @tanstack/vue-table 8.21.3 | Vue 3.x | Stable; v9 alpha exists but not ready |
+| @tanstack/vue-virtual 3.13.18 | Vue 3.x | Stable |
+| date-fns 4.1.0 | Any framework | Pure functions; no framework coupling |
+| Tailwind CSS 4.1 | Vite 6.x via @tailwindcss/vite | Already proven in docs site |
+| shadcn-vue | Tailwind 4.x, reka-ui 2.x | Copy-paste components; no version lock |
+
+## Monorepo Structure
+
+```
+snow/
+  crates/                    # Mesh compiler (Rust) -- existing
+  website/                   # VitePress docs site -- existing
+  mesher/                    # NEW: Mesher monitoring platform
+    backend/                 # Mesh source files (.mpl)
+      main.mpl
+      ingestion/
+      api/
+      ws/
+      storage/
+      alerting/
+      grouping/
+    frontend/                # Vue 3 SPA
+      package.json
+      vite.config.ts
+      src/
+        main.ts
+        App.vue
+        router/
+        stores/
+        views/
+        components/
+        composables/
+        lib/                 # shadcn-vue components
+    sdk/                     # TypeScript SDK
+      package.json
+      src/
+        index.ts
+        client.ts
+        types.ts
+```
+
+The frontend and SDK have separate `package.json` files. They do NOT share the website's `package.json` -- different apps with different dependencies.
 
 ## Sources
 
-- [tower-lsp 0.20 docs](https://docs.rs/tower-lsp/0.20.0/tower_lsp/trait.LanguageServer.html) -- LanguageServer trait with completion, signature_help, document_symbol methods (HIGH confidence)
-- [tower-lsp GitHub](https://github.com/ebkalderon/tower-lsp) -- Repository and release history (HIGH confidence)
-- [tower-lsp-community/tower-lsp-server](https://github.com/tower-lsp-community/tower-lsp-server) -- Community fork with updated lsp-types; evaluated and not adopted (HIGH confidence)
-- [LSP 3.17 Specification](https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/) -- Protocol capability definitions (HIGH confidence)
-- [VS Code Publishing Extensions](https://code.visualstudio.com/api/working-with-extensions/publishing-extension) -- vsce publishing workflow, PAT setup, marketplace requirements (HIGH confidence)
-- [Gleam Installation Guide](https://gleam.run/getting-started/installing/) -- Install script and binary distribution pattern for a similar Rust-built language toolchain (HIGH confidence)
-- [cargo-dist releases](https://github.com/axodotdev/cargo-dist/releases) -- Evaluated for binary distribution; rejected due to LLVM dependency constraints (HIGH confidence)
-- [Cross-platform Rust CI/CD Pipeline](https://ahmedjama.com/blog/2025/12/cross-platform-rust-pipeline-github-actions/) -- GitHub Actions matrix build pattern for Rust binaries (MEDIUM confidence)
-- [houseabsolute/actions-rust-cross](https://github.com/houseabsolute/actions-rust-cross) -- Cross-compilation GitHub Action; evaluated, not suitable for LLVM deps (HIGH confidence)
-- [cargo-dist LLVM limitations](https://github.com/axodotdev/cargo-dist/releases/tag/v0.4.0) -- System dependency handling and musl static linking constraints (HIGH confidence)
+- [vue-echarts npm](https://www.npmjs.com/package/vue-echarts) -- v8.0.1, verified against echarts 6.0.0 (HIGH confidence)
+- [echarts npm](https://www.npmjs.com/package/echarts) -- v6.0.0, Apache 2.0 license (HIGH confidence)
+- [vue-router npm](https://www.npmjs.com/package/vue-router) -- v5.0.2, released Feb 2026 (HIGH confidence)
+- [Pinia npm](https://www.npmjs.com/package/pinia) -- v3.0.4, Vue 3 only (HIGH confidence)
+- [@tanstack/vue-virtual npm](https://www.npmjs.com/package/@tanstack/vue-virtual) -- v3.13.18 (HIGH confidence)
+- [@tanstack/vue-table npm](https://www.npmjs.com/package/@tanstack/vue-table) -- v8.21.3 (HIGH confidence)
+- [date-fns npm](https://www.npmjs.com/package/date-fns) -- v4.1.0 with timezone support (HIGH confidence)
+- [shadcn-vue Data Table docs](https://www.shadcn-vue.com/docs/components/data-table) -- TanStack Table integration guide (HIGH confidence)
+- [PostgreSQL Partitioning docs](https://www.postgresql.org/docs/current/ddl-partitioning.html) -- Native PARTITION BY RANGE (HIGH confidence)
+- [Sentry SDK Overview](https://develop.sentry.dev/sdk/overview/) -- SDK design patterns and event payload format (HIGH confidence)
+- [Sentry Event Payloads](https://develop.sentry.dev/sdk/data-model/event-payloads/) -- JSON event structure reference (HIGH confidence)
+- [TanStack Virtual docs](https://tanstack.com/virtual/latest) -- Virtual scrolling for massive lists (HIGH confidence)
+- [Luzmo Vue Chart Libraries Guide](https://www.luzmo.com/blog/vue-chart-libraries) -- 2025 comparison of Vue charting options (MEDIUM confidence)
+- [PostgreSQL Partitioning for Time-Series](https://aws.amazon.com/blogs/database/speed-up-time-series-data-ingestion-by-partitioning-tables-on-amazon-rds-for-postgresql/) -- AWS best practices for PG partitioning (MEDIUM confidence)
+- [pg_partman vs Hypertables](https://www.tigerdata.com/learn/pg_partman-vs-hypertables-for-postgres-partitioning) -- Comparison of partitioning approaches (MEDIUM confidence)
 
 ---
-*Stack research for: Mesh Developer Tooling Milestone*
-*Researched: 2026-02-13*
+*Stack research for: Mesher Monitoring Platform (v9.0)*
+*Researched: 2026-02-14*

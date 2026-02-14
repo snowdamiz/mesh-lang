@@ -1,284 +1,367 @@
 # Feature Landscape
 
-**Domain:** Developer tooling for the Mesh programming language -- install script, prebuilt binary distribution, LSP enhancements (completion, document symbols, signature help), VS Code TextMate grammar update, extension marketplace publishing, REPL/formatter audit, docs fixes.
-**Researched:** 2026-02-13
-**Confidence:** HIGH for install scripts, grammar, marketplace. MEDIUM for LSP completion (depends on available type info in existing analysis pipeline).
+**Domain:** Core monitoring/observability SaaS platform (Mesher) -- log ingestion, error tracking, real-time streaming, alerting, dashboards. NOT full observability (no distributed tracing, no APM, no infrastructure metrics).
+**Researched:** 2026-02-14
+**Confidence:** HIGH for core feature set (well-documented domain with Sentry, GlitchTip, Highlight.io as references). MEDIUM for SDK design specifics (depends on Mesh's capabilities as a client library target). HIGH for architecture patterns (standard ingestion pipeline patterns).
 
 ## Existing System Baseline
 
-Before defining features, here is what Mesh already has (verified from codebase):
+Before defining features, here is what Mesh already provides (verified from PROJECT.md):
 
-- **CLI binary:** `meshc` -- single binary with subcommands: `build`, `init`, `deps`, `fmt`, `repl`, `lsp`. Built with Rust + clap. Bundles LLVM-compiled runtime. Current install: `git clone` + `cargo build`.
-- **LSP server:** `mesh-lsp` crate using `tower-lsp` v0.20. Advertises: `text_document_sync` (FULL), `hover_provider`, `definition_provider`. Does NOT advertise: completion, document symbols, signature help, formatting, rename, references.
-- **Analysis pipeline:** `analysis.rs` calls `mesh_parser::parse(source)` then `mesh_typeck::check(&parse)`. Result contains: parse tree (rowan CST), typeck result with type map (`BTreeMap<TextRange, Ty>`), error list, warning list. Single-file analysis only (no multi-module context in LSP).
-- **VS Code extension:** `editors/vscode-mesh/` at v0.1.0, publisher `mesh-lang`. Not published to any marketplace. Uses `vscode-languageclient` v9. Finds `meshc` via: settings > workspace target/ > `~/.mesh/bin/meshc` > `/usr/local/bin/meshc` > PATH.
-- **TextMate grammar:** `mesh.tmLanguage.json` with 48 keywords in the lexer but only a subset in the grammar. Website imports grammar directly via `editors/vscode-mesh/syntaxes/mesh.tmLanguage.json` for Shiki highlighting.
-- **Language configuration:** Comment toggling (`#`), brackets, auto-closing pairs, indent/dedent on `do`/`end` blocks, folding.
-- **Target platforms:** macOS (arm64, x86_64) and Linux (x86_64).
+- **HTTP server:** Hand-rolled HTTP/1.1 parser with TLS (HTTPS), path parameters, method routing, middleware pipeline. Actor-per-connection model with crash isolation.
+- **WebSocket server:** RFC 6455 with TLS (wss://), rooms/channels with join/leave/broadcast, heartbeat, actor-per-connection. Cross-node room broadcast via distributed actors.
+- **PostgreSQL driver:** Pure wire protocol, SCRAM-SHA-256 auth, TLS, connection pooling (min/max/timeout), transactions with panic-safe rollback, `deriving(Row)` for struct mapping, `Pool.query_as` for one-step query+hydration.
+- **SQLite driver:** Bundled (zero system deps), parameterized queries.
+- **JSON serde:** `deriving(Json)` for automatic encode/decode, nested structs, Option, List, Map, tagged union sum types.
+- **Actor system:** Lightweight actors with typed message passing, supervision trees with let-it-crash, process monitoring, linked processes, selective receive.
+- **Distributed actors:** Location-transparent PIDs, TLS-encrypted inter-node connections, cookie auth, mesh formation, global process registry, remote spawn, cross-node supervision.
+- **Language features:** HM type inference, pattern matching with exhaustiveness, sum types, traits with associated types, iterators, From/Into, generic monomorphization, modules, pipe operator.
+- **Timers:** `Timer.sleep`, `Timer.send_after` for delayed messages, receive timeouts.
 
-### Grammar Gap Analysis
+### What Mesh Does NOT Have (Relevant Gaps)
 
-The TextMate grammar is missing keywords and operators added in phases 1.7-7.0:
-
-**Keywords in lexer but missing from grammar `keyword.control`:**
-- `for`, `while`, `cond`, `break`, `continue` (control flow added in phases 1.5-6.3)
-
-**Keywords in lexer but missing from grammar `keyword.declaration`:**
-- `trait`, `alias` (added in phases 3.x-6.x)
-
-**Keywords in lexer but missing from grammar `keyword.operator`:**
-- `send`, `receive`, `monitor`, `terminate`, `trap`, `after` (actor/supervision keywords, phases 6-7)
-
-**Operators in lexer but missing from grammar:**
-- `..` (range), `<>` (diamond/string concat), `++` (list concat), `=>` (fat arrow), `?` (try operator), `|` (or-pattern bar), `&&`, `||`
-
-**Types in lexer/typeck but missing from grammar `support.type`:**
-- `Tuple`, `Range`, `Char`, `Ref`, `Atom`, `Duration`, `Instant`, `Regex`, `Bytes` (if any of these exist as builtins)
-
-**Literal patterns missing from grammar:**
-- Hex literals (`0xFF`), binary literals (`0b1010`), scientific notation (`1.0e10`)
-- Triple-quoted strings (`"""..."""`)
-- Doc comments (`## ...`, `##! ...`)
+- **No HTTP client** -- cannot make outbound HTTP requests (needed for webhook alerting). Would need to be built or use a shell-out pattern.
+- **No email sending** -- alerting via email requires SMTP or external service integration.
+- **No full-text search engine** -- PostgreSQL `LIKE`/`tsvector` or build custom indexing.
+- **No background job queue** -- actors with timers serve this purpose (evaluate alert rules on intervals).
+- **No template engine** -- email templates would be string interpolation.
+- **No rate limiting primitive** -- must be built from actor state + timers.
+- **No cursor/pagination primitive** -- must be built from SQL OFFSET/LIMIT or keyset pagination.
 
 ---
 
 ## Table Stakes
 
-Features users expect from a programming language's developer tooling. Missing = language feels amateur or unusable in practice.
+Features users expect from a monitoring platform. Missing = product feels incomplete or unusable.
 
-### 1. Install Script with Platform Detection
+### 1. Event Ingestion API
 
-| Feature | Why Expected | Complexity | Notes |
-|---------|--------------|------------|-------|
-| `curl -sSf https://mesh-lang.org/install.sh \| sh` one-liner | Every modern language (Rust, Zig, Deno, Gleam, Bun) uses this pattern. Users expect a single command to install. | **Med** | Shell script: detect OS (`uname -s`) and arch (`uname -m`), download correct binary, place in `~/.mesh/bin/`, update PATH. |
-| Platform detection (macOS arm64, macOS x86_64, Linux x86_64) | Must auto-detect the 3 target platforms and fail clearly on unsupported ones. | **Low** | `uname -s` for OS, `uname -m` for arch. Map to download URLs. |
-| `~/.mesh/bin/meshc` install location | Consistent well-known location. VS Code extension already checks `~/.mesh/bin/meshc`. | **Low** | `mkdir -p ~/.mesh/bin && cp meshc ~/.mesh/bin/`. |
-| PATH configuration with shell detection | Must add `~/.mesh/bin` to PATH in the correct shell config (`.bashrc`, `.zshrc`, `.profile`). | **Med** | Detect shell via `$SHELL`, append `export PATH="$HOME/.mesh/bin:$PATH"` if not already present. Handle bash, zsh, fish. |
-| SHA-256 checksum verification | Security table stakes. Every serious install script verifies downloads. | **Low** | Host `.sha256` files alongside binaries. Verify with `shasum -a 256 -c`. |
-| `set -euo pipefail` error safety | Script must fail on any error, not silently corrupt. | **Low** | First line of script. |
-| TLS-only download (HTTPS enforcement) | Must not allow HTTP fallback. | **Low** | `curl --proto '=https' --tlsv1.2`. |
-| Idempotent re-runs | Running the installer twice must not break anything. Must detect existing install and update. | **Low** | Check if binary exists, compare versions, replace if newer. |
-| `--yes` / non-interactive mode | CI/CD environments need unattended install. | **Low** | Skip confirmation prompt when flag present. |
-| Uninstall instructions | Users must know how to remove it. | **Low** | Print `rm -rf ~/.mesh` at end, or provide `meshc self uninstall`. |
+The foundational capability -- accepting error events and log entries from client applications.
 
-**Confidence: HIGH** -- The rustup install pattern is the gold standard and is well-documented.
+| Feature | Why Expected | Complexity | Mesh Dependency | Notes |
+|---------|--------------|------------|-----------------|-------|
+| POST `/api/v1/events` endpoint | Every monitoring platform has an HTTP ingestion endpoint. This is literally the entry point for all data. | **Low** | HTTP server, JSON serde | Accept JSON event payloads with required fields: `event_id`, `timestamp`, `platform`, `level`, `message`. |
+| Authentication via DSN/API key | Events must be associated with a project. DSN (Data Source Name) embeds project ID + secret key in a URL. Sentry pioneered this pattern and every competitor uses it. | **Low** | HTTP middleware | DSN format: `https://<key>@<host>/<project_id>`. Parse from `X-Mesher-Auth` header or query string. |
+| Event validation and normalization | Reject malformed events, normalize timestamps, trim oversized fields, set defaults. | **Med** | Pattern matching, sum types | Validate required fields, normalize timestamp to UTC, truncate message at 8KB, tags at 200 chars. |
+| Bulk event ingestion | SDKs batch events for efficiency. Must accept arrays of events in a single request. | **Low** | JSON serde (List) | POST `/api/v1/events/bulk` accepting `List<Event>`. Process sequentially or fan out to actors. |
+| Rate limiting per project | Protect the system from runaway clients. Must enforce events-per-minute limits per project and return 429 with `Retry-After` header. | **Med** | Actor state + timers | Per-project actor tracking event count per window. Sliding window or token bucket algorithm. |
+| Response with event ID | Client needs confirmation the event was accepted and an ID for correlation. | **Low** | JSON serde | Return `{"id": "<event_id>"}` on 202 Accepted. |
+| WebSocket ingestion for streaming | High-throughput clients benefit from persistent connections. Actor-per-connection model is natural here. | **Med** | WebSocket server, rooms | Connect once, stream events as JSON frames. Natural fit for Mesh's actor-per-connection. |
 
-### 2. Prebuilt Binary Distribution via GitHub Releases
+**Confidence: HIGH** -- Standard REST ingestion pattern. Mesh's HTTP server, JSON serde, and actor model directly support this.
 
-| Feature | Why Expected | Complexity | Notes |
-|---------|--------------|------------|-------|
-| Prebuilt tarballs for 3 target triples | Users cannot be expected to have Rust + LLVM toolchain installed. Prebuilt binaries are mandatory. | **High** | CI pipeline: build `meshc` on each platform, create tarballs, upload to GitHub Release. LLVM linkage complicates cross-compilation. |
-| GitHub Actions CI for automated releases | Manual release process does not scale and will be forgotten. | **Med** | Use `cargo-dist` or custom workflow. Trigger on git tag push. Build matrix: `macos-14` (arm64), `macos-13` (x86_64), `ubuntu-latest` (x86_64). |
-| SHA-256 checksum files per artifact | Install script needs these. Also manual verification. | **Low** | `shasum -a 256 binary.tar.gz > binary.tar.gz.sha256`. |
-| Versioned release naming | `meshc-v0.8.0-aarch64-apple-darwin.tar.gz` pattern. | **Low** | Standard naming convention. |
-| GitHub Release with changelog | Users discovering the project need release notes. | **Low** | Can auto-generate from git log or maintain CHANGELOG.md. |
+### 2. Error Grouping and Fingerprinting
 
-**Key challenge:** Mesh bundles LLVM (via `inkwell` with `llvm21-1` feature). This means the binary is large (likely 50-200MB depending on LLVM linkage) and cross-compilation requires LLVM headers for the target platform. Each platform must be built ON that platform (native compilation in CI), not cross-compiled.
+The feature that separates a monitoring platform from a log aggregator. Without grouping, users drown in individual events.
 
-**Confidence: HIGH** -- GitHub Actions build matrices for Rust projects are well-established.
+| Feature | Why Expected | Complexity | Mesh Dependency | Notes |
+|---------|--------------|------------|-----------------|-------|
+| Automatic fingerprinting from stack trace | Sentry's primary grouping mechanism. Identical stack traces (same file + function + line across frames) produce the same fingerprint hash. Users expect "100 occurrences of this error" not "100 separate errors." | **High** | Pattern matching, string ops | Hash stack trace frames: normalize frame data (strip line numbers for some languages, keep function names), compute SHA-256 of concatenated frame signatures. |
+| Fallback to exception type + message | When no stack trace available, group by error type and message (with variable parts stripped). Standard Sentry fallback hierarchy. | **Med** | Pattern matching, string ops | Regex-strip numbers, UUIDs, hex addresses, file paths from error messages before hashing. |
+| Fallback to raw message | Last resort when neither stack trace nor exception type available. Group by normalized message content. | **Low** | String ops | Strip parameters, compute hash of remaining text. |
+| Custom fingerprint override | SDKs should be able to set an explicit fingerprint array on events, overriding automatic grouping. Sentry supports this and power users rely on it. | **Low** | JSON serde (List<String>) | If `fingerprint` field present in event, use it directly instead of computing. |
+| Issue creation from first event | First event with a new fingerprint creates an "Issue" -- the aggregate container. Subsequent events with the same fingerprint increment the issue's event count. | **Med** | PostgreSQL, transactions | Insert into `issues` table on first occurrence. Use `ON CONFLICT DO UPDATE` for atomic upsert. |
+| Event count and first/last seen timestamps | Each issue tracks total events, first seen, and last seen. Essential for triage. | **Low** | PostgreSQL | `UPDATE issues SET event_count = event_count + 1, last_seen = NOW() WHERE fingerprint = $1`. |
 
-### 3. TextMate Grammar Completeness
+**Confidence: HIGH** -- Sentry's grouping algorithm is well-documented in their developer docs. The fallback hierarchy (stack trace -> exception -> message) is the industry standard.
 
-| Feature | Why Expected | Complexity | Notes |
-|---------|--------------|------------|-------|
-| All 48 keywords properly categorized and highlighted | Syntax highlighting is the most basic feature. Incomplete highlighting makes the language look broken. | **Low** | Update regex patterns in `mesh.tmLanguage.json`. Pure data change, no logic. |
-| All operators highlighted | Missing `..`, `<>`, `++`, `=>`, `?`, `\|`, `&&`, `\|\|` cause visual inconsistency. | **Low** | Add patterns to operators section. |
-| Doc comments (`##`, `##!`) with distinct scope | Doc comments should render differently from regular comments. Table stakes for any documented language. | **Low** | Add patterns: `comment.block.documentation.mesh` for `##` lines. |
-| Hex/binary/scientific number literals | `0xFF`, `0b1010`, `1.0e10` must highlight as numbers, not identifiers/errors. | **Low** | Extend number regex patterns. |
-| Triple-quoted strings | `"""..."""` must highlight as strings. | **Low** | Add begin/end pattern with `"""` delimiters. |
-| String interpolation in triple-quoted strings | `${expr}` inside `"""..."""` must highlight consistently. | **Low** | Reuse existing interpolation pattern within triple-quoted string scope. |
-| Module-qualified function calls | `List.map(fn)`, `Map.get(key)` -- the module part should highlight as a type/module, not a variable. | **Med** | Pattern: `\b([A-Z][a-zA-Z0-9_]*)\s*\.` with capture for module name. |
-| Pipe operator `\|>` chain highlighting | Already present. Verify it works correctly. | **Low** | Already in grammar as `keyword.operator.pipe.mesh`. |
+### 3. Issue Lifecycle and Triage
 
-**Critical dependency:** The website's Shiki syntax highlighting imports directly from `editors/vscode-mesh/syntaxes/mesh.tmLanguage.json`. Any grammar update automatically fixes website code highlighting too. This is a single change with double impact.
+Users need to track issues through a workflow: new -> acknowledged -> resolved -> regressed.
 
-**Confidence: HIGH** -- TextMate grammar patterns are well-documented and testable via VS Code's "Developer: Inspect Editor Tokens and Scopes" command.
+| Feature | Why Expected | Complexity | Mesh Dependency | Notes |
+|---------|--------------|------------|-----------------|-------|
+| Issue states: unresolved, resolved, archived | Minimum viable workflow. Sentry uses: unresolved, resolved, archived (with escalating sub-state). Start simpler. | **Low** | PostgreSQL, sum types | `status` column as enum: `Unresolved`, `Resolved`, `Archived`. Sum type maps directly. |
+| Resolve an issue | Mark as fixed. If the same fingerprint appears again, auto-reopen (regression). | **Low** | PostgreSQL | `UPDATE issues SET status = 'Resolved', resolved_at = NOW()`. |
+| Regression detection | If a resolved issue gets a new event, automatically change status back to `Unresolved` and flag as regressed. Users expect this -- it is how Sentry ensures fixed bugs stay fixed. | **Med** | PostgreSQL, event processing | During event ingestion: if matching issue is `Resolved`, set to `Unresolved` and set `is_regressed = true`. |
+| Archive (mute) an issue | Low-priority or noisy issues can be archived to clean up the issue list. Should auto-unarchive if event volume spikes (escalation). | **Med** | PostgreSQL, actor timer | Track event velocity. If archived issue receives >10x normal volume in 1 hour, unarchive and flag as escalating. |
+| Assign issue to user | Team members need to own issues. Simple foreign key to user. | **Low** | PostgreSQL | `assigned_to` column on issues table. |
+| Delete and discard | Remove an issue and optionally discard all future events matching that fingerprint. Prevents known-noise from consuming quota. | **Med** | PostgreSQL, in-memory set | Maintain a discard set (fingerprints to silently drop). Check during ingestion before processing. |
 
-### 4. VS Code Extension Published to Marketplace
+**Confidence: HIGH** -- Sentry's issue lifecycle is thoroughly documented in their blog series and docs.
 
-| Feature | Why Expected | Complexity | Notes |
-|---------|--------------|------------|-------|
-| Published to VS Code Marketplace | Users must be able to `ext install mesh-lang.mesh-lang` to get syntax highlighting. If they can't find it in marketplace, the language does not exist to most developers. | **Med** | Requires: Azure DevOps PAT, publisher ID registration, `vsce publish`. One-time setup + CI automation. |
-| Published to Open VSX | Cursor, VSCodium, Windsurf users rely on Open VSX. 10M+ developers use VS Code forks that only access Open VSX. | **Med** | Requires: Eclipse Foundation account, OVSX token, `npx ovsx publish`. |
-| Extension icon | Marketplace listings without icons look abandoned. | **Low** | Design a simple Mesh logo icon (128x128 PNG). |
-| Extension README with screenshots | Marketplace README is the extension's landing page. Must show syntax highlighting, hover, diagnostics. | **Low** | Screenshots of VS Code with Mesh code, hover showing types, red squiggly diagnostics. |
-| CHANGELOG.md | Marketplace renders this as the changelog tab. | **Low** | Document what's in each version. |
-| Version bump to 0.2.0+ | v0.1.0 signals "not really released." 0.2.0+ signals intentional first public release. | **Low** | Update `package.json` version. |
-| CI/CD publish on tag | Manual publishing will fall behind. Automate publish to both marketplaces on release. | **Med** | GitHub Action: `vsce publish` + `npx ovsx publish` using secrets `VSCE_PAT` and `OVSX_PAT`. |
+### 4. Project and Team Organization
 
-**Confidence: HIGH** -- VS Code extension publishing is extremely well-documented.
+Multi-tenant structure for organizing monitoring data.
 
-### 5. LSP: Document Symbols (Outline + Breadcrumbs)
+| Feature | Why Expected | Complexity | Mesh Dependency | Notes |
+|---------|--------------|------------|-----------------|-------|
+| Organizations (tenants) | Top-level container. All data is scoped to an org. Required for any SaaS platform. | **Low** | PostgreSQL | `organizations` table with name, slug, created_at. |
+| Projects within organizations | Each monitored application is a project. Issues, events, and settings are project-scoped. Sentry, Datadog, and every competitor uses this hierarchy. | **Low** | PostgreSQL | `projects` table with org_id FK, name, platform, DSN key. |
+| DSN key generation per project | Each project gets a unique DSN for SDK configuration. Format: `https://<public_key>@<host>/<project_id>`. | **Low** | Crypto (random bytes) | Generate 32-char hex key on project creation. Store in `project_keys` table. |
+| Team membership with roles | Users belong to orgs with roles: owner, admin, member. Controls who can manage projects, resolve issues, configure alerts. | **Med** | PostgreSQL, middleware | `memberships` table with user_id, org_id, role. Middleware checks role on protected endpoints. |
+| API key / auth token management | Programmatic access for CI/CD, scripts, and custom integrations. | **Low** | PostgreSQL, crypto | `api_tokens` table with hashed token, user_id, scopes, expiry. |
 
-| Feature | Why Expected | Complexity | Notes |
-|---------|--------------|------------|-------|
-| `textDocument/documentSymbol` handler | Powers VS Code's Outline panel, breadcrumb bar, and "Go to Symbol" (`Cmd+Shift+O`). Without it, navigating large Mesh files requires manual scrolling. | **Med** | Walk the CST (rowan parse tree), emit `DocumentSymbol` for each fn, struct, module, actor, service, supervisor, interface, impl, let binding. |
-| Hierarchical symbols | Symbols must nest: functions inside modules, fields inside structs, methods inside impl blocks. | **Med** | Use `DocumentSymbol.children` for nested constructs. Walk tree recursively. |
-| Correct `SymbolKind` mapping | Mesh constructs map to: `fn` -> Function (12), `struct` -> Struct (23), `module` -> Module (2), `actor` -> Class (5), `interface` -> Interface (11), `let` -> Variable (13), `type` -> TypeParameter (26). | **Low** | Static mapping from CST node kind to SymbolKind. |
-| Selection range vs full range | `range` = entire definition (including body), `selection_range` = the name identifier only. Critical for breadcrumbs to highlight the right text. | **Low** | Already have CST ranges. Extract name token range vs full node range. |
+**Confidence: HIGH** -- Standard SaaS multi-tenancy pattern. Well-understood RBAC model.
 
-**Value multiplier:** One implementation powers three VS Code features simultaneously (Outline, Breadcrumbs, Go to Symbol).
+### 5. Search and Filtering
 
-**Confidence: HIGH** -- CST walking for document symbols is straightforward. The existing analysis pipeline already has the parse tree.
+Users must be able to find specific events and issues. A monitoring platform without search is useless at scale.
 
-### 6. LSP: Code Completion
+| Feature | Why Expected | Complexity | Mesh Dependency | Notes |
+|---------|--------------|------------|-----------------|-------|
+| Issue list with filters | Filter issues by: status (unresolved/resolved/archived), level (error/warning/info), first seen, last seen, assigned user, event count. | **Med** | PostgreSQL | Dynamic SQL query building with WHERE clauses. Use parameterized queries for safety. |
+| Full-text search on event messages | Users search for "NullPointerException" or "timeout" across all events. Table stakes for any log/error tool. | **Med** | PostgreSQL tsvector | Use PostgreSQL's built-in full-text search: `tsvector` column on events, `GIN` index, `to_tsquery` for searches. Avoids external search engine. |
+| Tag-based filtering | Events carry tags (environment, release, server, custom). Users filter by `environment:production` or `release:v2.3.1`. | **Med** | PostgreSQL, JSONB or separate table | Store tags as JSONB on events table, or normalize into `event_tags` table with GIN index for fast lookup. |
+| Time range filtering | Every query should be scoped to a time range. Default to last 24 hours. | **Low** | PostgreSQL | `WHERE timestamp BETWEEN $1 AND $2`. Index on timestamp column. |
+| Pagination | Issue and event lists must paginate. Keyset pagination (cursor-based) preferred over OFFSET for performance at scale. | **Med** | PostgreSQL | Use `WHERE id > $cursor ORDER BY id LIMIT $page_size`. Return next cursor in response. |
+| Sort by frequency, last seen, first seen | Users need to prioritize by most frequent, most recent, or newest issues. | **Low** | PostgreSQL | `ORDER BY event_count DESC` / `ORDER BY last_seen DESC` / `ORDER BY first_seen DESC`. |
 
-| Feature | Why Expected | Complexity | Notes |
-|---------|--------------|------------|-------|
-| Keyword completion | Typing `re` suggests `return`, `receive`. Most basic form of completion. | **Low** | Static list of 48 keywords. Filter by prefix. Emit as `CompletionItemKind::Keyword` (14). |
-| Built-in type completion | Typing `Li` suggests `List`. | **Low** | Static list of built-in types. Emit as `CompletionItemKind::Struct` (22) or `Class` (7). |
-| In-scope variable completion | Typing `co` suggests `count` if `let count = 10` is in scope. | **High** | Requires scope analysis: walk CST upward from cursor position, collect all let bindings, fn parameters, and function names visible at that point. |
-| Function signature in detail | Completion for `add` shows `fn add(a, b) -> Int` in the detail field. | **High** | Requires type information from typeck result. Must map completion position to available typed symbols. |
-| Trigger characters: `.` | Typing `list.` should trigger completion with available methods/fields. | **High** | Requires resolving the type of the expression before the dot, then looking up methods/fields on that type. This is significantly more complex than keyword completion. |
-| Module-qualified completion | Typing `List.` suggests `map`, `filter`, `reduce`, `new`. | **Med** | Requires knowing which module functions exist. Could start with hardcoded built-in module members. |
-| Snippet completions for common patterns | `fn` -> expands to `fn name(params) do\n  \nend`. | **Low** | Static snippet definitions. Emit as `CompletionItemKind::Snippet` (15) with `InsertTextFormat::Snippet`. |
+**Confidence: HIGH** -- PostgreSQL full-text search is well-documented and sufficient for a monitoring platform's scale. No need for Elasticsearch at MVP.
 
-**Recommended phasing:** Start with keyword + type + snippet completion (LOW effort, immediate value). Defer dot-triggered and scope-aware completion to a follow-up. The keyword/type/snippet layer requires zero changes to the analysis pipeline.
+### 6. Real-Time Event Streaming
 
-**Confidence: MEDIUM** -- Keyword completion is trivial. Scope-aware completion requires significant analysis work that may not fit in this milestone.
+Users expect to see events appear in their dashboard immediately, not after a page refresh.
 
-### 7. LSP: Signature Help
+| Feature | Why Expected | Complexity | Mesh Dependency | Notes |
+|---------|--------------|------------|-----------------|-------|
+| WebSocket stream of new events | Live tail -- events appear in real-time as they are ingested. Every modern monitoring tool has this. Sentry has live event feed, Datadog has live tail. | **Med** | WebSocket server, rooms | One WebSocket room per project. When an event is ingested, broadcast to the project's room. Mesh's room system handles this natively. |
+| Filtered streaming | Users want to stream only errors (not warnings), or only events from production environment. | **Med** | WebSocket, pattern matching | Client sends filter criteria on connect. Server-side actor applies filters before forwarding events. |
+| New issue notifications | When a brand new issue is created (not just a new event on existing issue), push a notification to connected dashboards. | **Low** | WebSocket rooms | Broadcast `{type: "new_issue", issue: {...}}` to project room on first-occurrence events. |
+| Issue count updates | When an existing issue gets more events, update the count in real-time on the dashboard without full page reload. | **Low** | WebSocket rooms | Broadcast `{type: "issue_update", issue_id: ..., event_count: ...}` to project room. |
+| Connection management and backpressure | Don't overwhelm slow clients. Buffer or drop old events if client can't keep up. | **Med** | Actor mailbox, WebSocket | Per-client actor mailbox provides natural backpressure. If mailbox fills, drop oldest undelivered events. |
 
-| Feature | Why Expected | Complexity | Notes |
-|---------|--------------|------------|-------|
-| `textDocument/signatureHelp` for function calls | When typing `add(`, show parameter info: `fn add(a :: Int, b :: Int) -> Int`. Highlights which parameter the cursor is on. | **High** | Requires: 1) detecting cursor is inside a call expression, 2) resolving the called function, 3) retrieving its parameter names and types, 4) determining which parameter position the cursor is at by counting commas. |
-| Trigger characters: `(` and `,` | `(` triggers initial display, `,` advances to next parameter. | **Low** | Declared in `ServerCapabilities.signature_help_provider.trigger_characters`. |
-| Active parameter highlighting | Parameter 0 highlighted when after `(`, parameter 1 after first `,`, etc. | **Med** | Count commas between `(` and cursor position in the CST. |
+**Confidence: HIGH** -- Mesh's WebSocket room system and actor-per-connection model are purpose-built for this. This is the strongest dogfooding opportunity.
 
-**Dependency:** Useful signature help requires type annotations on functions to be available. For functions with explicit annotations, this works well. For inferred-only functions, parameter types may show as type variables.
+### 7. Alerting System
 
-**Confidence: MEDIUM** -- The CST contains the information needed, but extracting function signatures at the cursor position requires careful tree traversal.
+Notify teams when something goes wrong. Without alerting, users must constantly watch the dashboard.
+
+| Feature | Why Expected | Complexity | Mesh Dependency | Notes |
+|---------|--------------|------------|-----------------|-------|
+| Alert rules with conditions | "Alert when issue X has >100 events in 1 hour" or "Alert on any new issue with level=fatal." Sentry's default: alert on first occurrence of any new issue. | **High** | Actor system, timers, PostgreSQL | Alert rules stored in DB. Evaluator actor runs on a timer (e.g., every 60s), queries event counts against rule conditions. |
+| Threshold-based alerts | "Error rate > N events per M minutes." The most common alert type. | **Med** | PostgreSQL aggregate queries | `SELECT COUNT(*) FROM events WHERE project_id = $1 AND timestamp > NOW() - interval '1 hour'`. Compare against threshold. |
+| New issue alert | Alert immediately when a never-before-seen issue appears. This is Sentry's default alert rule. | **Low** | Event processing pipeline | During ingestion, if fingerprint is new (INSERT succeeded, not UPDATE), trigger alert. |
+| Regression alert | Alert when a resolved issue regresses (reappears). Critical for teams that mark issues as fixed. | **Low** | Event processing pipeline | During regression detection (see Issue Lifecycle), trigger alert. |
+| Alert notification via WebSocket | In-app notifications in the dashboard. Simplest notification channel, fully within Mesh's capabilities. | **Low** | WebSocket rooms | Broadcast alert to org-wide notification room. |
+| Alert notification via webhook | POST alert payload to a user-configured URL. Enables Slack, Discord, PagerDuty integration without building each one. | **High** | **Needs HTTP client** | This requires outbound HTTP capability. Either build a minimal HTTP client in Mesh, or shell out to `curl`. Major gap. |
+| Alert cooldown / deduplication | Don't send the same alert every 60 seconds. Enforce a cooldown period (e.g., alert at most once per hour per rule). | **Med** | Actor state, timers | Track last_triggered timestamp per rule. Skip if within cooldown window. |
+| Alert states: active, acknowledged, resolved | Track whether alerts have been seen and addressed. Auto-resolve when condition no longer met. | **Med** | PostgreSQL, actor timers | `alerts` table with state machine. Evaluator actor checks if condition is still true, auto-resolves if not. |
+
+**Confidence: MEDIUM** -- Alert rule evaluation is straightforward. The major concern is **webhook notification requiring an HTTP client**, which Mesh does not have. In-app (WebSocket) alerts are fully supported. Webhook alerts are the industry standard notification mechanism and will need the HTTP client gap addressed.
+
+### 8. Dashboard and Visualization Data
+
+The API must serve pre-aggregated data that a Vue frontend can render as charts and widgets.
+
+| Feature | Why Expected | Complexity | Mesh Dependency | Notes |
+|---------|--------------|------------|-----------------|-------|
+| Event volume over time | Time-series data: events per hour/day for a project. Powers the main overview chart. Every monitoring dashboard has this. | **Med** | PostgreSQL, `date_trunc` | `SELECT date_trunc('hour', timestamp) as bucket, COUNT(*) FROM events WHERE project_id = $1 GROUP BY bucket ORDER BY bucket`. |
+| Error breakdown by level | Pie/bar chart: how many fatal vs error vs warning vs info events. | **Low** | PostgreSQL | `SELECT level, COUNT(*) FROM events WHERE project_id = $1 GROUP BY level`. |
+| Top issues by frequency | "Most frequent errors" list. The primary triage view. | **Low** | PostgreSQL | `SELECT * FROM issues WHERE project_id = $1 ORDER BY event_count DESC LIMIT 10`. |
+| Events by tag (environment, release) | Breakdown by deployment context. "How many errors in production vs staging?" | **Med** | PostgreSQL, JSONB or tags table | Aggregate on tag values. If JSONB: `SELECT tags->>'environment', COUNT(*) GROUP BY 1`. |
+| Issue event timeline | For a single issue: events over time. Shows if the issue is getting worse or better. | **Med** | PostgreSQL | `SELECT date_trunc('hour', timestamp), COUNT(*) FROM events WHERE issue_id = $1 GROUP BY 1`. |
+| Project health summary | At-a-glance: total unresolved issues, events in last 24h, new issues today. Dashboard overview widget. | **Low** | PostgreSQL | Three simple COUNT queries aggregated into one response. |
+
+**Confidence: HIGH** -- Pure SQL aggregation queries. PostgreSQL handles this well at moderate scale. The Vue frontend consumes JSON and renders with a charting library (Chart.js or similar).
+
+### 9. Event Detail View
+
+When a user clicks on an event, they need full context.
+
+| Feature | Why Expected | Complexity | Mesh Dependency | Notes |
+|---------|--------------|------------|-----------------|-------|
+| Full event payload display | Show all event data: message, stack trace, tags, extra context, user info, breadcrumbs, timestamp, level. | **Low** | PostgreSQL, JSON serde | Store full event JSON in a `payload` JSONB column. Return directly to frontend. |
+| Stack trace rendering | Formatted stack trace with file names, line numbers, function names. The core debugging view. | **Low** | JSON serde (frontend concern) | Backend stores stack trace as structured JSON (list of frames). Frontend renders with syntax highlighting. |
+| Breadcrumbs (event trail) | Chronological list of actions/events leading up to the error. SDKs send these as part of the event payload. | **Low** | JSON serde | Stored as part of event payload. `breadcrumbs: [{timestamp, category, message, level}]`. |
+| Tags display | Key-value pairs showing environment, release, server, custom tags. | **Low** | JSON serde | Already part of event payload. Frontend renders as tag chips. |
+| Navigation between events in an issue | "Next event" / "Previous event" buttons within an issue. | **Low** | PostgreSQL | `SELECT id FROM events WHERE issue_id = $1 AND id > $2 ORDER BY id LIMIT 1`. |
+| User context | Which user experienced the error. SDKs send user info (id, email, IP). | **Low** | JSON serde | Part of event payload. `user: {id, email, ip_address, username}`. |
+
+**Confidence: HIGH** -- This is essentially storing and retrieving JSON documents. The complexity is in the frontend rendering, not the backend.
+
+### 10. Data Retention
+
+Events accumulate fast. Must manage storage lifecycle.
+
+| Feature | Why Expected | Complexity | Mesh Dependency | Notes |
+|---------|--------------|------------|-----------------|-------|
+| Configurable retention period per project | "Keep events for 30/60/90 days." After that, delete. Sentry and all competitors offer this. | **Med** | PostgreSQL, actor timer | `retention_days` column on projects. Background actor runs daily: `DELETE FROM events WHERE project_id = $1 AND timestamp < NOW() - interval '$N days'`. |
+| Preserve issue summaries after event deletion | When old events are purged, keep the issue record (fingerprint, count, first/last seen). Losing issue history is unacceptable. | **Low** | PostgreSQL | Only delete from `events` table. `issues` table is preserved. |
+| Storage usage display | Show users how much storage each project uses. Needed for quota management. | **Med** | PostgreSQL | `SELECT pg_total_relation_size('events')` or track per-project with a materialized count. |
+| Event sampling at ingestion | When volume is extreme, sample (keep 1 in N events). Reduces storage while preserving statistical accuracy. | **Med** | Actor state, random | Per-project sample rate config. During ingestion, generate random float, drop if > sample_rate. Track dropped count. |
+
+**Confidence: HIGH** -- Standard data lifecycle management. PostgreSQL handles bulk deletes and partitioning well.
 
 ---
 
 ## Differentiators
 
-Features that set Mesh apart from other young languages' tooling. Not expected, but signal quality.
+Features that set Mesher apart from the competition. Not expected, but valuable.
 
-| Feature | Value Proposition | Complexity | Notes |
-|---------|-------------------|------------|-------|
-| Website syntax highlighting auto-updates | Grammar fix is a single change that updates both VS Code AND website. No other young language has this shared-grammar architecture. | **Zero** | Already built -- Shiki imports from `mesh.tmLanguage.json`. |
-| Install script with version management | `mesh install v0.8.0` or `mesh self update`. Most young languages only offer "install latest." | **Med** | Extend install script to accept version arg, download specific release. |
-| LSP semantic tokens | Semantic highlighting on top of TextMate grammar. Allows the LSP to override token colors based on type information (e.g., distinguish mutable vs immutable, local vs module-level). | **High** | Requires implementing `textDocument/semanticTokens/full`. Significant LSP work. |
-| LSP workspace symbols | `Cmd+T` to search across all files in workspace. | **High** | Requires multi-file indexing, which the LSP currently does not support (single-file analysis only). |
-| Formatter integration in LSP | `textDocument/formatting` handler that runs `mesh_fmt::format_source`. | **Low** | Wire existing formatter through LSP. Single function call. |
-| Error lens / inline diagnostics | Already works via existing `publishDiagnostics`. Extensions like Error Lens pick this up automatically. | **Zero** | Already functional with current LSP. |
+| Feature | Value Proposition | Complexity | Mesh Dependency | Notes |
+|---------|-------------------|------------|-----------------|-------|
+| **Multi-node event processing** | Distribute event ingestion across multiple Mesh nodes using distributed actors. No single point of failure. Demonstrates Mesh's clustering capability under real load. | **High** | Distributed actors, global registry | Ingestion actors on multiple nodes. Global registry for service discovery. Cross-node event routing. This is THE differentiator as a dogfooding exercise. |
+| **Actor-per-connection streaming** | Each WebSocket dashboard connection is its own actor with its own state and filters. Crashes in one connection never affect others. True isolation. | **Low** | WebSocket server, actors | Already how Mesh WebSocket works. Just needs filter state per actor. |
+| **Supervision tree resilience** | If the event processing pipeline crashes, it automatically restarts via supervision. Zero manual intervention. Live demo of Mesh's fault tolerance. | **Med** | Supervision trees, crash recovery | Design processing pipeline as supervised actor tree. Intentionally stress-test crash recovery. |
+| **Zero-dependency backend** | Single Mesh binary for the entire backend. No Kafka, no Redis, no Elasticsearch, no Zookeeper. Compare to self-hosted Sentry's 12+ services. GlitchTip-level simplicity. | **Med** | All existing Mesh features | PostgreSQL is the only external dependency. Actor mailboxes replace message queues. Actor state replaces Redis caches. PG full-text search replaces Elasticsearch. |
+| **Live alert rule evaluation** | Alert rules evaluated by a dedicated actor that receives events via message passing, not by polling the database. Lower latency than cron-based evaluation. | **Med** | Actor system, pattern matching | Alert evaluator actor subscribes to event stream. Maintains in-memory counters. Fires alerts in real-time. |
+| **Cross-node WebSocket broadcast** | Dashboard users connected to different Mesh nodes all see the same real-time events. Demonstrates cross-node room broadcast. | **Med** | Distributed actors, cross-node rooms | Already supported by Mesh's DIST_ROOM_BROADCAST. Just wire it into the event pipeline. |
+| **Built with the language it monitors** | Meta-dogfooding: Mesher is built in Mesh, and Mesher monitors Mesh applications. The SDK is written in Mesh. Unique narrative. | **Low** | All of Mesh | Marketing differentiator and ultimate stress test. |
 
 ---
 
 ## Anti-Features
 
-Features to explicitly NOT build in this developer tooling milestone.
+Features to explicitly NOT build. Each would expand scope beyond "core monitoring" into "full observability platform."
 
 | Anti-Feature | Why Avoid | What to Do Instead |
 |--------------|-----------|-------------------|
-| **Tree-sitter grammar** | Duplicates the TextMate grammar effort. Tree-sitter is used by Neovim/Helix but not VS Code. Build it when there's Neovim user demand. | Keep TextMate grammar as single source of truth. |
-| **DAP (Debug Adapter Protocol)** | Mesh compiles to native binaries. DAP requires debug info in DWARF format, stepping support, etc. Enormous scope. | Users use `gdb`/`lldb` on compiled binaries. |
-| **Homebrew/APT/Pacman packaging** | Each package manager has its own review process, maintenance burden, and submission timeline. Not worth it pre-1.0. | Direct binary distribution via install script. Revisit post-1.0. |
-| **Windows support** | Not a target platform. Binary distribution, install script, and CI would need significant additional work. | Document "WSL recommended" for Windows users. |
-| **Full rename/refactoring support** | Requires complete scope analysis across files, which the single-file LSP does not support. | Defer until multi-file LSP analysis exists. |
-| **Language-specific formatter for extension** | The LSP could provide formatting, but the extension should not bundle a separate formatter. | Use `textDocument/formatting` through the LSP, which calls the existing `meshc fmt` pipeline. |
-| **Extension settings UI** | Complex webview-based settings panels. The single `mesh.lsp.path` setting is sufficient. | Keep settings minimal. |
-| **Auto-update mechanism** | Self-updating binaries add complexity and security concerns. | Users re-run install script or download new release. |
-| **Code actions / quick fixes** | Requires deep understanding of error recovery and suggested fixes. Premature for current tooling maturity. | Focus on accurate diagnostics first. |
-| **Inlay hints** | Type annotations shown inline. Useful but requires complete type information at every expression, which the LSP already stores in typeck. | Could be a fast follow-up, but not table stakes. Defer. |
+| **Distributed tracing / APM** | Requires span collection, trace assembly, waterfall visualization, service maps. Enormous scope. Sentry bolted this on later, separate from core error tracking. This is a full product. | Focus on error events and log entries. If users want tracing, they use Jaeger/Zipkin alongside Mesher. |
+| **Infrastructure metrics** | CPU, memory, disk, network monitoring requires agents on hosts, time-series database, different query patterns. Datadog's core business, not ours. | Mesher monitors application errors, not infrastructure. Point users to Prometheus/Grafana for infra. |
+| **Session replay** | Recording user browser sessions (DOM snapshots, mouse movements, clicks) requires specialized SDKs, massive storage, and a complex replay player. Highlight.io's differentiator. | Breadcrumbs provide lightweight context. Session replay is a separate product. |
+| **Source map processing** | Unminifying JavaScript stack traces requires uploading, storing, and processing source maps during ingestion. Significant complexity for one platform. | Accept stack traces as-is. Document that source map processing is deferred. Users can use Sentry for JS-heavy needs. |
+| **Release tracking and deploy integration** | Associating events with git commits, PRs, and deploy timestamps. Sentry's "suspect commits" feature. Requires deep SCM integration. | Accept `release` as a string tag on events. No commit-level resolution. |
+| **Profiling** | Code-level performance profiling (CPU/memory flame graphs). Sentry added this as a separate product. Requires agent-level instrumentation. | Out of scope. Focus on error events. |
+| **Custom dashboards builder** | Drag-and-drop dashboard creation with arbitrary widget placement. Grafana's core product. Enormous frontend complexity. | Provide fixed, well-designed dashboard layouts. Customization limited to filter/time-range selection. |
+| **Log aggregation with query language** | Building a full log query language (like Datadog's or Splunk's) with parsing, regex, aggregation pipelines. This is a search engine project. | Full-text search on event messages via PostgreSQL. Structured tag filtering. No custom query DSL. |
+| **Multi-region data residency** | Storing data in specific geographic regions for GDPR compliance. Requires multi-region infrastructure and routing logic. | Single-region deployment. Document data location. Compliance is a v2+ concern. |
+| **Billing and usage-based pricing** | Metering, invoicing, plan management, Stripe integration. Full SaaS billing is a product in itself. | Track usage for display purposes. No billing system. Mesher is a dogfooding project, not a revenue product. |
+| **Email alerting** | Requires SMTP client, email templates, delivery tracking, bounce handling. Mesh has no SMTP capability. | Use webhooks for external notification. In-app WebSocket alerts are the primary channel. |
+| **Mobile SDK** | iOS/Android SDKs require platform-specific crash reporting (signal handlers, NDK, etc.). Each is a separate project. | Mesher SDKs target server-side applications only (Mesh, then possibly Python/Node). |
+| **AI-powered grouping** | Sentry uses ML to improve grouping beyond fingerprints. Requires ML pipeline, training data, inference infrastructure. | Use deterministic fingerprinting (stack trace hash, exception type, message normalization). AI is a v2+ feature. |
 
 ---
 
 ## Feature Dependencies
 
 ```
-TextMate Grammar Update (no dependencies, standalone)
+Project/Org Setup (foundation -- everything depends on this)
   |
-  +-> Website syntax highlighting (automatic, shared file)
-  |
-  +-> Extension marketplace publishing (needs updated grammar first)
-       |
-       +-> Icon + README + screenshots (needs working grammar to screenshot)
-       |
-       +-> CI/CD publish pipeline (needs publisher accounts set up)
-
-Prebuilt Binary Distribution
-  |
-  +-> GitHub Actions CI pipeline (build matrix for 3 targets)
+  +-> DSN Key Generation (projects need keys for SDK auth)
   |     |
-  |     +-> SHA-256 checksums (generated in CI)
-  |     |
-  |     +-> GitHub Release with artifacts
+  |     +-> Event Ingestion API (needs DSN to authenticate events)
+  |           |
+  |           +-> Event Validation & Normalization
+  |           |     |
+  |           |     +-> Error Grouping / Fingerprinting (needs validated events)
+  |           |     |     |
+  |           |     |     +-> Issue Creation (first occurrence of fingerprint)
+  |           |     |     |     |
+  |           |     |     |     +-> Issue Lifecycle (resolve, archive, assign)
+  |           |     |     |     |
+  |           |     |     |     +-> Regression Detection (needs resolved issues + new events)
+  |           |     |     |
+  |           |     |     +-> Discard Set (needs fingerprints to filter against)
+  |           |     |
+  |           |     +-> Real-Time Streaming (broadcast ingested events to WebSocket rooms)
+  |           |     |     |
+  |           |     |     +-> Filtered Streaming (needs events + filter criteria)
+  |           |     |     |
+  |           |     |     +-> Issue Count Updates (needs issue IDs from grouping)
+  |           |     |
+  |           |     +-> Alert Rule Evaluation (needs event stream to evaluate against rules)
+  |           |           |
+  |           |           +-> Alert Notifications (WebSocket first, webhook later)
+  |           |           |
+  |           |           +-> Alert Cooldown / Dedup (needs alert history)
+  |           |
+  |           +-> Event Storage in PostgreSQL (needs validated, normalized events)
+  |                 |
+  |                 +-> Search and Filtering (needs stored events)
+  |                 |     |
+  |                 |     +-> Full-Text Search (needs tsvector index on events)
+  |                 |     |
+  |                 |     +-> Tag-Based Filtering (needs tags stored/indexed)
+  |                 |
+  |                 +-> Dashboard Aggregation Queries (needs event data)
+  |                 |
+  |                 +-> Data Retention (needs events to age out)
   |
-  +-> Install script (downloads from GitHub Release)
-       |
-       +-> Platform detection (OS + arch)
-       |
-       +-> PATH configuration (shell detection)
-       |
-       +-> Checksum verification (uses SHA-256 files from CI)
+  +-> Team Membership / RBAC (needs orgs and users)
+        |
+        +-> Issue Assignment (needs users and issues)
 
-LSP: Document Symbols (depends only on existing CST)
+Multi-Node Clustering (can be layered on top of single-node at any time)
   |
-  +-> Outline panel, Breadcrumbs, Go to Symbol in VS Code
-
-LSP: Keyword/Type Completion (depends only on static keyword list)
+  +-> Distributed Event Ingestion (multiple ingestion nodes)
   |
-  +-> Scope-aware completion (depends on CST scope analysis)
-  |     |
-  |     +-> Dot-triggered completion (depends on type resolution)
+  +-> Cross-Node WebSocket Broadcast (real-time streaming across nodes)
+  |
+  +-> Global Process Registry for service discovery
 
-LSP: Signature Help (depends on CST + typeck result)
-
-LSP: Formatting via LSP (depends on existing mesh_fmt crate)
+SDK (parallel track -- can be built independently)
+  |
+  +-> Mesh SDK (captures errors, sends to ingestion API)
+  |
+  +-> JavaScript SDK (optional, for monitoring web apps)
 ```
 
-**Key ordering insight:** Grammar update and LSP document symbols have zero dependencies on each other and can be done in parallel. Install script depends on prebuilt binaries existing, so CI pipeline must come first. Marketplace publishing should happen after grammar is updated (so the published extension has correct highlighting).
+**Key ordering insight:** The dependency chain is linear and deep. Project setup must come first, then ingestion, then grouping, then everything else. Real-time streaming and alerting both depend on the ingestion pipeline being complete. Multi-node clustering is an overlay that can be added to any phase without changing the single-node architecture. The SDK is a parallel workstream.
 
 ---
 
 ## MVP Recommendation
 
-Prioritize by impact-to-effort ratio and dependency order:
+Prioritize by dependency order and dogfooding value:
 
-1. **TextMate grammar update** -- Fix all missing keywords, operators, types, literals, doc comments. Single file change with highest immediate visual impact. Also fixes website highlighting for free.
+1. **Project/Org data model + auth** -- Foundation. Create orgs, projects, DSN keys, user accounts, API tokens. Without this, nothing else works. Low complexity, pure PostgreSQL schema + CRUD endpoints.
 
-2. **LSP document symbols** -- Add `textDocument/documentSymbol` handler. Walks existing CST. Enables Outline, Breadcrumbs, Go to Symbol. Medium effort, triple feature payoff.
+2. **Event ingestion API** -- Core pipeline. HTTP POST endpoint accepting events, validating, storing in PostgreSQL. This immediately stress-tests HTTP server, JSON serde, connection pooling, and actor concurrency. Highest dogfooding value per line of code.
 
-3. **LSP keyword/type/snippet completion** -- Static completion for keywords, built-in types, and common patterns. No analysis pipeline changes needed. Immediately makes the editor feel alive.
+3. **Error grouping and issue creation** -- The feature that makes this a monitoring platform, not a log database. Fingerprint computation using pattern matching and string operations. Issue upsert with PostgreSQL transactions. Exercises `deriving(Row)`, `deriving(Json)`, sum types.
 
-4. **LSP signature help** -- Add `textDocument/signatureHelp` for function calls. Requires CST traversal to find call site and resolve function. Medium-high effort.
+4. **Real-time WebSocket streaming** -- The most impressive demo feature and best dogfooding of WebSocket rooms. Events flow from ingestion to dashboard in real-time via actor message passing. Exercises WebSocket, rooms, actor-per-connection.
 
-5. **GitHub Actions CI pipeline** -- Build matrix for 3 targets, produce tarballs + checksums, create GitHub Release on tag push. Unblocks install script.
+5. **Issue lifecycle (resolve/archive/regress)** -- Makes the platform usable for actual triage. State machine in PostgreSQL. Regression detection during ingestion. Low incremental complexity.
 
-6. **Install script** -- Shell script with platform detection, download, checksum verification, PATH setup. Depends on #5.
+6. **Search and filtering + dashboard data** -- Makes the platform useful for investigation. PostgreSQL full-text search, tag filtering, time-series aggregation. Exercises complex SQL with parameterized queries.
 
-7. **VS Code extension marketplace publishing** -- Register publisher, set up PAT/OVSX tokens, publish to both marketplaces. Depends on #1 (updated grammar).
+7. **Alerting (rules + WebSocket notifications)** -- Closes the loop: users don't have to watch the dashboard. Actor-based rule evaluator with timer-driven evaluation. Start with in-app WebSocket notifications only (defer webhooks until HTTP client exists).
 
-8. **LSP formatting** -- Wire `mesh_fmt` through `textDocument/formatting`. Very low effort if done after the above.
+8. **Data retention** -- Background actor with daily cleanup. Exercises Timer.send_after for scheduling.
+
+9. **Multi-node clustering** -- The ultimate dogfooding phase. Distribute ingestion and streaming across multiple Mesh nodes. Exercises distributed actors, global registry, cross-node rooms.
 
 **Defer to follow-up:**
-- Scope-aware completion (requires analysis pipeline work)
-- Dot-triggered completion (requires type resolution at cursor)
-- Semantic tokens (high effort, incremental value over TextMate)
-- Workspace symbols (requires multi-file indexing)
-- Version management in install script (nice-to-have)
-- Inlay hints (fast follow-up once type map is exposed)
+- Webhook alerting (requires HTTP client capability in Mesh -- significant language work)
+- SDK for external languages (Python, Node, etc.)
+- Source map processing
+- Advanced dashboard customization
+- Log aggregation query language
+- Email notifications
+
+---
+
+## Complexity Summary
+
+| Feature Area | Complexity | Primary Mesh Features Exercised |
+|--------------|------------|-------------------------------|
+| Project/Org/Auth | Low | HTTP server, PostgreSQL, JSON serde, middleware |
+| Event Ingestion | Med | HTTP server, WebSocket, actors, connection pooling, JSON serde |
+| Error Grouping | High | Pattern matching, string ops, PostgreSQL transactions, sum types |
+| Issue Lifecycle | Low | PostgreSQL, sum types, pattern matching |
+| Real-Time Streaming | Med | WebSocket rooms, actor-per-connection, message passing |
+| Search & Filtering | Med | PostgreSQL full-text search, parameterized queries |
+| Dashboard Data | Med | PostgreSQL aggregation, JSON serde |
+| Alerting | High | Actor system, timers, supervision, PostgreSQL |
+| Data Retention | Low | Actor timers, PostgreSQL bulk operations |
+| Multi-Node | High | Distributed actors, global registry, cross-node rooms, clustering |
+| Event Detail View | Low | PostgreSQL, JSON serde |
 
 ---
 
 ## Sources
 
-- [VS Code Syntax Highlight Guide](https://code.visualstudio.com/api/language-extensions/syntax-highlight-guide) -- HIGH confidence
-- [VS Code Language Extensions Overview](https://code.visualstudio.com/api/language-extensions/overview) -- HIGH confidence
-- [VS Code Publishing Extensions](https://code.visualstudio.com/api/working-with-extensions/publishing-extension) -- HIGH confidence
-- [VS Code Semantic Highlight Guide](https://code.visualstudio.com/api/language-extensions/semantic-highlight-guide) -- HIGH confidence
-- [TextMate Language Grammars Manual](https://macromates.com/manual/en/language_grammars) -- HIGH confidence
-- [LSP 3.17 Specification](https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/) -- HIGH confidence
-- [tower-lsp LanguageServer trait](https://docs.rs/tower-lsp/latest/tower_lsp/trait.LanguageServer.html) -- HIGH confidence
-- [lsp-types CompletionItemKind](https://docs.rs/lsp-types/latest/lsp_types/struct.CompletionItemKind.html) -- HIGH confidence
-- [lsp-types DocumentSymbol](https://docs.rs/lsp-types/latest/lsp_types/struct.DocumentSymbol.html) -- HIGH confidence
-- [lsp-types SignatureHelp](https://docs.rs/lsp-types/latest/lsp_types/struct.SignatureHelp.html) -- HIGH confidence
-- [cargo-dist documentation](https://axodotdev.github.io/cargo-dist/) -- HIGH confidence
-- [rustup-init installer architecture](https://deepwiki.com/rust-lang/rustup/5.1-rustup-init-installer) -- MEDIUM confidence
-- [Open VSX Registry](https://open-vsx.org/) -- HIGH confidence
-- [Building VS Code Extensions in 2026](https://abdulkadersafi.com/blog/building-vs-code-extensions-in-2026-the-complete-modern-guide) -- MEDIUM confidence
-- [My Experience Publishing an Extension for All VS Code IDEs](https://davidgomes.com/my-experience-with-publishing-an-extension-for-all-vs-code-ides/) -- MEDIUM confidence
-- [Sorbet Document Outline (LSP documentSymbol example)](https://sorbet.org/docs/outline) -- HIGH confidence
-- Mesh codebase: `mesh.tmLanguage.json`, `token.rs`, `server.rs`, `analysis.rs`, `extension.ts`, `package.json` -- verified directly
+- [Sentry Issue Grouping](https://docs.sentry.io/concepts/data-management/event-grouping/) -- HIGH confidence, authoritative
+- [Sentry Grouping Developer Docs](https://develop.sentry.dev/backend/application-domains/grouping/) -- HIGH confidence, authoritative
+- [Sentry Event Payloads](https://develop.sentry.dev/sdk/event-payloads/) -- HIGH confidence, authoritative
+- [Sentry SDK Expected Features](https://develop.sentry.dev/sdk/expected-features/) -- HIGH confidence, authoritative
+- [Sentry Envelope Protocol](https://develop.sentry.dev/sdk/envelopes/) -- HIGH confidence, authoritative
+- [Sentry Rate Limiting](https://develop.sentry.dev/sdk/expected-features/rate-limiting/) -- HIGH confidence, authoritative
+- [Sentry Issue States](https://docs.sentry.io/product/issues/states-triage/) -- HIGH confidence, authoritative
+- [Sentry Workflow: Resolve](https://blog.sentry.io/the-sentry-workflow-resolve/) -- HIGH confidence
+- [Sentry Fingerprint Rules](https://docs.sentry.io/concepts/data-management/event-grouping/fingerprint-rules/) -- HIGH confidence
+- [GlitchTip Architecture](https://glitchtip.com/documentation/hosted-architecture/) -- HIGH confidence
+- [GlitchTip](https://glitchtip.com/) -- HIGH confidence, open source reference
+- [Highlight.io vs Sentry](https://www.highlight.io/compare/highlight-vs-sentry) -- MEDIUM confidence
+- [Sentry Self-Hosted Developer Docs](https://develop.sentry.dev/self-hosted/) -- HIGH confidence
+- [Datadog vs Sentry Comparison](https://betterstack.com/community/comparisons/datadog-vs-sentry/) -- MEDIUM confidence
+- [System Design: Monitoring and Alerting](https://algomaster.io/learn/system-design-interviews/design-monitoring-and-alerting-system) -- MEDIUM confidence
+- [Datadog Dashboard Widgets](https://docs.datadoghq.com/dashboards/widgets/) -- HIGH confidence, authoritative
+- [Log Retention Policies](https://www.groundcover.com/learn/logging/log-retention-policies) -- MEDIUM confidence
+- [ClickHouse Full-Text Search](https://www.cloudquery.io/blog/why-and-how-we-built-our-own-full-text-search-engine-with-clickhouse) -- MEDIUM confidence
+- [Multi-Tenant RBAC Design](https://workos.com/blog/how-to-design-multi-tenant-rbac-saas) -- MEDIUM confidence
+- [SDK Best Practices](https://www.speakeasy.com/blog/sdk-best-practices) -- MEDIUM confidence
+- [Observability Trends 2026](https://www.ibm.com/think/insights/observability-trends) -- MEDIUM confidence
+- [Google SRE Monitoring](https://sre.google/sre-book/monitoring-distributed-systems/) -- HIGH confidence, authoritative

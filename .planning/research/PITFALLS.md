@@ -1,409 +1,515 @@
 # Domain Pitfalls
 
-**Domain:** Developer tooling additions to existing Mesh programming language -- install script, VS Code extension updates, LSP features, REPL/formatter audit, docs corrections
-**Researched:** 2026-02-13
-**Confidence:** HIGH (codebase-informed, ecosystem research verified)
+**Domain:** Mesher monitoring/observability SaaS platform -- dogfooding Mesh language for full backend, high-volume event ingestion, real-time streaming, alerting, multi-node clustering
+**Researched:** 2026-02-14
+**Confidence:** HIGH (Mesh runtime source analysis + monitoring domain research + dogfooding experience patterns)
+
+---
 
 ## Critical Pitfalls
 
-Mistakes that cause broken user experience, security incidents, or require significant rework.
+Mistakes that cause rewrites, data loss, or block progress for days.
 
 ---
 
-### Pitfall 1: Install Script Downloads 50MB+ Binary Without Verification
+### Pitfall 1: The Dual-Bug Problem -- Is It the App or the Compiler?
 
-**What goes wrong:** The `meshc` binary statically links LLVM 21 (via `inkwell` with `llvm21-1` feature), producing a binary in the 50-100MB range. A `curl | sh` install script that downloads this binary without SHA256 checksum verification leaves users vulnerable to supply chain attacks, and large downloads are more likely to be interrupted mid-stream -- a partially downloaded binary that is `chmod +x`'d and placed in `$PATH` will produce confusing "exec format error" or segfault messages rather than a clear error.
+**What goes wrong:** When the Mesher application produces incorrect behavior, the developer cannot immediately tell whether the bug is in the application logic or in the Mesh compiler/runtime. A monitoring dashboard showing wrong event counts could be a SQL query bug, a Map iteration bug in Mesh, a codegen bug in the compiler, or a GC bug in the runtime. Every debugging session starts with a triage question -- "is this Mesh or is this me?" -- that doubles investigation time.
 
-**Why it happens:** Most install script tutorials show a simple `curl -L | tar xz && mv binary /usr/local/bin/` pattern without verification. When the binary is small (<5MB), the risk of interrupted downloads is low. At 50MB+, network interruptions become common, especially on CI runners, slower connections, and corporate proxies that time out large downloads.
+**Why it happens:** Mesher is the first large Mesh application. The compiler has zero *known* bugs, but zero known bugs means zero large-application testing. Every Mesh language feature has been validated with small E2E tests (typically <50 lines), never with a multi-file application doing concurrent database writes, WebSocket broadcasts, and actor supervision simultaneously. The interaction between features under real load will surface compiler/runtime bugs that isolated tests never trigger.
 
 **Consequences:**
-- Users who `curl | sh` on a flaky connection get a corrupted binary that segfaults, and blame Mesh
-- No checksum verification means a compromised CDN/GitHub release could serve a malicious binary
-- The install script cannot distinguish between "download interrupted" and "successful download" without verification
-- Corporate environments and CI systems often require checksum verification for security policy compliance
+- Debugging time doubles because every bug requires ruling out compiler/runtime issues first
+- Workarounds for compiler bugs leak into application code, creating technical debt that must be unwound when the compiler is fixed
+- Developer morale drops when "simple" features take 3x longer due to unknown compiler limitations
+- The project stalls if a critical compiler bug blocks a core feature (e.g., a codegen bug that prevents pattern matching on database query results)
 
 **Prevention:**
-1. Generate SHA256 checksums for every release artifact and publish them alongside the binaries in GitHub Releases (e.g., `meshc-darwin-arm64.tar.gz.sha256`).
-2. The install script must: (a) download the tarball to a temp file, (b) download the checksum file, (c) verify the checksum BEFORE extracting or installing, (d) fail with a clear error message if verification fails.
-3. Use `curl -fSL` (fail on HTTP errors, show errors, follow redirects) rather than just `curl -sSf` to ensure HTTP errors are caught.
-4. Always `set -euo pipefail` at the top of the install script so any failure aborts immediately rather than continuing with partial state.
+1. **Minimal reproduction discipline:** When a bug is encountered, immediately create a minimal standalone `.mesh` file that reproduces the behavior in isolation. If the minimal file works, the bug is in the app. If it fails, the bug is in the compiler.
+2. **Compiler bug journal:** Maintain a running log of every compiler/runtime issue discovered during Mesher development. Each entry: symptom, minimal repro, workaround, fix status. This becomes the v9.0 bug fix backlog.
+3. **Fix compiler bugs immediately, do not work around them long-term.** A workaround in the app creates two problems: the workaround itself, and the eventual removal of the workaround. Short-term workarounds (<1 day) are acceptable. If a workaround would be more than a few lines, fix the compiler first.
+4. **Never assume the compiler is correct.** Zero known bugs means "zero bugs found by small tests." Treat every unexpected behavior as potentially a compiler bug until the minimal repro proves otherwise.
 
-**Detection:** Test the install script with artificially truncated downloads (truncate the tarball at 50%, run the script). It must fail clearly, not install a broken binary.
+**Detection:** Any behavior that works in a minimal file but fails in the multi-module Mesher project points to a compiler issue (likely in module system, name mangling, or cross-module monomorphization). Any behavior that fails even in a minimal file is definitely a compiler bug.
 
-**Phase mapping:** Install script phase. Must be implemented correctly from the first version -- a broken install experience will be users' first interaction with Mesh.
+**Phase mapping:** Every phase. This is the meta-challenge that persists throughout the entire milestone.
 
 ---
 
-### Pitfall 2: Platform Detection Fails on Non-Standard Environments
+### Pitfall 2: Timer.send_after Spawns an OS Thread Per Timer
 
-**What goes wrong:** The install script uses `uname -s` and `uname -m` to detect OS and architecture, then maps these to GitHub Release asset names. But the mapping has well-known failure modes: `uname -m` returns `aarch64` on Linux but `arm64` on macOS for the same ARM64 architecture. WSL2 reports `Linux` but users may want the Windows binary. Some CI containers report unexpected values. If the script does not handle these variations, it downloads the wrong binary or fails with an opaque "asset not found" error.
+**What goes wrong:** The alerting system needs timer-driven evaluation -- checking alert rules every N seconds. The natural Mesh pattern is `Timer.send_after(self(), interval, :check_alerts)`. But `Timer.send_after` spawns a dedicated OS thread that sleeps for the duration and then sends the message. If the alerting evaluator runs every 10 seconds across 100 alert rules, that is 100 OS threads created and destroyed every 10 seconds, or 600 threads per minute. At scale, this exhausts OS thread limits and causes thread creation failures.
 
-**Why it happens:** There is no universal standard for how `uname` reports architecture. Common variations:
-- macOS: `arm64` or `x86_64`
-- Linux: `aarch64` or `x86_64`
-- Some Linux ARM: `armv7l` (32-bit ARM, which Mesh probably does not support)
-- Rosetta on macOS: `uname -m` may report `x86_64` even on ARM hardware if the shell is running under Rosetta
+**Why it happens:** `Timer.send_after` was designed for occasional delayed messages, not for recurring timers. The implementation in `mesh_timer_send_after` (actor/mod.rs:585) spawns `std::thread::spawn` with a deep-copied message. There is no timer wheel or recurring timer facility in the Mesh runtime. Each `send_after` creates a new OS thread, which has ~8MB default stack on Linux and ~512KB on macOS.
 
 **Consequences:**
-- Users on ARM Linux get a confusing "no matching release asset" error
-- Users running a Rosetta terminal on Apple Silicon download the x86_64 binary, which works but runs under emulation (significantly slower, especially for a compiler)
-- The install script silently downloads the wrong binary for the platform
+- Thread exhaustion under high alert rule count (thousands of threads for hundreds of rules)
+- OS-level errors: `pthread_create` failures causing actor panics
+- High memory overhead from thread stacks (100 threads x 8MB = 800MB on Linux just for timer stacks)
+- Timer inaccuracy under load -- thread scheduling jitter means timers fire late
 
 **Prevention:**
-1. Normalize architecture names in the script: map both `aarch64` and `arm64` to a single canonical name that matches the GitHub Release asset naming convention.
-2. On macOS, additionally check `sysctl -n machdep.cpu.brand_string` or `arch` to detect Apple Silicon even when running under Rosetta.
-3. Explicitly list supported platforms and fail with a clear message for unsupported ones: "Mesh does not provide prebuilt binaries for armv7l. Build from source instead."
-4. Use a consistent asset naming convention: `meshc-{os}-{arch}.tar.gz` where `os` is `linux`/`darwin` and `arch` is `x86_64`/`arm64` (not `aarch64`).
+1. **Use a single recurring timer actor** instead of individual `send_after` per rule. One actor calls `Timer.send_after(self(), interval, :tick)` and on receiving `:tick`, evaluates ALL alert rules, then schedules the next tick. This creates exactly one OS thread per tick, not one per rule.
+2. **Batch timer operations.** Group alerts by evaluation interval (e.g., all 10s alerts together, all 60s alerts together). Use one timer per interval group, not one per rule.
+3. **If the compiler is extended:** Consider adding a `Timer.send_interval(pid, ms, msg)` runtime function that uses a single background thread with a timer wheel instead of spawning a thread per invocation. This would be a runtime improvement triggered by dogfooding.
+4. **Monitor OS thread count.** Track the number of OS threads in the Mesher process. If it grows unboundedly, timer usage is the likely cause.
 
-**Detection:** Test the install script in: native macOS ARM64, macOS x86_64, Rosetta terminal, Linux x86_64, Linux aarch64 (GitHub's arm64 runner), and WSL2.
+**Detection:** `ps -M <pid> | wc -l` on macOS or `ls /proc/<pid>/task | wc -l` on Linux shows OS thread count. If it correlates with alert rule count, Timer.send_after is the cause.
 
-**Phase mapping:** Install script phase. The detection logic must be correct before the first release or every user hitting the wrong case will file a bug.
+**Phase mapping:** Alerting phase. Must be designed correctly from the start -- retrofitting a timer architecture is expensive.
 
 ---
 
-### Pitfall 3: LSP Mutex Deadlock Under Concurrent Requests
+### Pitfall 3: Map Linear Scan Becomes O(n^2) for Large Event Metadata
 
-**What goes wrong:** The existing `MeshBackend` in `server.rs` uses `std::sync::Mutex<HashMap<String, DocumentState>>` to protect the document store. tower-lsp executes up to 4 async handlers concurrently. If handler A locks the mutex and then calls `self.client.log_message().await` (or any other `.await`), the Tokio runtime may schedule handler B on the same thread, which also tries to lock the mutex -- causing a deadlock. The existing code already has this pattern: `analyze_and_publish()` locks the mutex, does work, drops the lock, then awaits `publish_diagnostics`. This is currently safe because the lock is dropped before the `.await`, but adding new LSP features (completion, document symbols, signature help) increases the risk of accidentally holding the lock across an `.await`.
+**What goes wrong:** Mesh's Map implementation uses a vector of `(u64, u64)` pairs with linear scan for lookups (collections/map.rs). For small maps (5-20 keys), this is fine. But monitoring events often carry metadata maps with 50+ keys (HTTP headers, tags, labels, context). Looking up a key in a 50-entry map requires scanning 50 entries. If the ingestion pipeline does 10 map lookups per event (extracting fingerprint fields, checking for required tags, etc.), that is 500 comparisons per event. At 10,000 events/second, that is 5 million comparisons/second -- all linear scans that could be hash lookups.
 
-**Why it happens:** `tower-lsp` unconditionally executes pending async tasks concurrently (up to 4 at a time) without guaranteeing execution order. `std::sync::Mutex` blocks the OS thread when contended. If task A holds the mutex and is suspended at an `.await` point, and task B is scheduled on the same OS thread and tries to acquire the same mutex, the thread deadlocks because task A cannot be resumed to release the lock.
+**Why it happens:** The Map implementation was designed for "small maps typical in Phase 8" (as stated in the map.rs header comment). It has no hash table, no tree structure, just a sorted or unsorted vector. This was a reasonable tradeoff when maps had 3-5 entries. Monitoring event metadata maps are much larger.
 
 **Consequences:**
-- The LSP server hangs completely -- the editor shows "Mesh Language Server" as not responding
-- The user must restart VS Code or kill the process
-- The deadlock is non-deterministic and hard to reproduce, making it appear as intermittent "server hangs"
-- Adding new features (completion, document symbols) that read from the document store increases contention and makes deadlocks more likely
+- Ingestion throughput bottleneck from O(n) map lookups instead of O(1)
+- CPU-bound processing when the bottleneck should be I/O-bound
+- The performance cliff is non-linear: going from 10-key maps to 50-key maps makes lookups 5x slower, not just 5x more data
 
 **Prevention:**
-1. NEVER hold `std::sync::Mutex` guard across an `.await` point. The current code does this correctly, but it must be enforced as a pattern rule for all new handlers.
-2. For new LSP features, follow the existing pattern in `hover()` and `goto_definition()`: lock the mutex, clone/extract the needed data, drop the lock, then do async work.
-3. Consider switching to `tokio::sync::RwLock` for the document store. Completion, document symbols, and hover are all read-only operations. Using an `RwLock` allows multiple readers concurrently while only blocking on writes (did_open, did_change). This dramatically reduces contention.
-4. Keep the lock scope as small as possible: lock, extract what you need into local variables, unlock immediately. Never call any method on `self` while holding the lock.
+1. **Limit metadata map sizes.** Enforce a maximum number of tags/labels per event (e.g., 32). This is a product decision that also limits the linear scan cost. Sentry limits custom tags.
+2. **Avoid repeated map lookups in hot paths.** Extract all needed fields from an event map once (destructure into local variables) rather than doing repeated `Map.get` calls.
+3. **If performance is unacceptable:** This is a strong signal that the Mesh runtime needs a hash-based Map implementation. Log the dogfooding finding and consider adding it as a runtime improvement.
+4. **Profile before optimizing.** The linear scan may be fast enough for the actual event sizes Mesher encounters. Profile ingestion throughput before assuming this is the bottleneck.
 
-**Detection:** Run the LSP server with rapid successive requests (type a character, immediately hover, immediately request completions). If the server hangs, there is a deadlock. Clippy lint `clippy::await_holding_lock` catches some cases statically.
+**Detection:** Profile the ingestion pipeline. If `mesh_map_get` appears in the top 10 of a CPU profile, map linear scan is the bottleneck.
 
-**Phase mapping:** LSP features phase. Must be reviewed for EVERY new handler implementation.
+**Phase mapping:** Ingestion pipeline phase. Design event data structures to minimize map lookups.
 
 ---
 
-### Pitfall 4: Forgetting to Advertise New LSP Capabilities
+### Pitfall 4: PostgreSQL Schema Without Time-Based Partitioning
 
-**What goes wrong:** In tower-lsp, the `initialize` method returns `ServerCapabilities` that tell the editor which features the server supports. If you implement `completion()`, `document_symbol()`, or `signature_help()` on the `LanguageServer` trait but forget to set the corresponding capability in `initialize`, the editor will NEVER send those requests to the server. The feature silently does nothing, and the developer wastes hours debugging why their handler is never called.
+**What goes wrong:** The events table is created as a single unpartitioned table. After a week of ingestion at even modest throughput (1,000 events/second), the table has 600 million rows. Queries for "events in the last hour" scan the entire table because there is no partition pruning. Index maintenance on writes becomes the bottleneck: every INSERT updates B-tree indexes across 600M rows. Autovacuum runs for hours and still cannot keep up with the write rate. The database becomes unusable.
 
-**Why it happens:** The capability declaration and the handler implementation are in different parts of the code (capabilities in `initialize()`, handler as a separate `async fn`). There is no compile-time check that links them -- tower-lsp provides default no-op implementations for all handlers, so missing a capability produces no error.
+**Why it happens:** PostgreSQL's default behavior is a single heap table with B-tree indexes. The getting-started experience is fast: `CREATE TABLE events (...)` works immediately. The problem only surfaces after days or weeks of production ingestion, by which time the table is too large to partition without downtime (partitioning existing tables requires `pg_partman` or manual migration with data copying).
 
 **Consequences:**
-- Completion, document symbols, or signature help silently do not work
-- The developer thinks the handler has a bug, but the handler is never invoked
-- Hours wasted on debugging the handler logic when the problem is a missing one-liner in `initialize()`
+- Query latency grows linearly with table size (no partition pruning)
+- Write throughput degrades as indexes grow (B-tree splits, WAL amplification)
+- Autovacuum cannot keep pace with dead tuples from high write + delete patterns
+- Disk space grows without bound because old data is expensive to delete from an unpartitioned table (DELETE + VACUUM vs. DROP PARTITION)
 
 **Prevention:**
-1. Add capabilities and handler implementations in the same commit, reviewed together.
-2. For each new feature, add a test that calls `server.initialize()` and asserts the relevant capability is present. The existing `server_capabilities` test in `server.rs:213-224` checks for `hover_provider` and `text_document_sync` -- extend it for each new capability:
-   - `completion_provider: Some(CompletionOptions { trigger_characters: Some(vec![".".into(), ":".into()]), .. })`
-   - `document_symbol_provider: Some(OneOf::Left(true))`
-   - `signature_help_provider: Some(SignatureHelpOptions { trigger_characters: Some(vec!["(".into(), ",".into()]), .. })`
-3. Write an integration test that sends a `textDocument/completion` request and verifies a non-empty response for a known-good file. If capabilities are missing, this test fails immediately.
+1. **Partition the events table by time from day one.** Use PostgreSQL native range partitioning by a `created_at` timestamp column. Create daily or hourly partitions depending on expected volume.
+2. **Use BRIN indexes instead of B-tree for timestamp columns.** BRIN indexes are orders of magnitude smaller for time-series data and have negligible write overhead because the data arrives in roughly sorted order.
+3. **Design for partition-based retention.** Deleting old data is `DROP TABLE events_2026_02_13` (instant) rather than `DELETE FROM events WHERE created_at < '2026-02-13'` (hours of vacuum).
+4. **Batch inserts.** The COPY protocol is up to 10x faster than individual INSERT statements. Mesh's `Pg.execute` uses the Extended Query protocol (one row at a time). Buffer events in memory and flush in batches.
+5. **Tune PostgreSQL for write-heavy workloads:** increase `checkpoint_timeout` to 10-15 minutes, increase `max_wal_size` to 2GB+, reduce `random_page_cost` for SSD storage, configure `autovacuum_naptime` for aggressive cleanup.
 
-**Detection:** The capability test catches this at CI time. Alternatively, enable LSP tracing in VS Code (`"mesh.trace.server": "verbose"`) and verify the initialize response includes the expected capabilities.
+**Detection:** Monitor `pg_stat_user_tables.n_dead_tup` and `pg_stat_user_tables.last_autovacuum`. If dead tuple count grows faster than autovacuum can clean, or if `seq_scan` count is high on the events table, the schema needs partitioning.
 
-**Phase mapping:** LSP features phase. Check for EVERY new LSP method added.
+**Phase mapping:** Database schema phase. Must be designed into the schema from the first migration. Retrofitting partitioning is a major migration.
 
 ---
 
-### Pitfall 5: VS Code Extension Published with Secrets or Wrong Scope
+### Pitfall 5: Alert Storm from Cascading Rule Triggers
 
-**What goes wrong:** Publishing a VS Code extension to the Marketplace requires an Azure DevOps Personal Access Token (PAT). Two critical mistakes are common: (1) the PAT is created with the wrong scope (must be "Marketplace (Manage)" with "All accessible organizations"), causing 401/403 errors during `vsce publish`; (2) the `.vsix` package accidentally includes `.env` files, PAT tokens, or API keys from the development environment, which are then publicly downloadable by anyone who installs the extension.
+**What goes wrong:** The alerting system fires rules independently. When a systemic failure occurs (e.g., database goes down), every error rate rule, every response time rule, and every availability rule fires simultaneously. An operator receives 200 alerts in 30 seconds. They dismiss all notifications because the volume is overwhelming, and miss the one alert that identifies the root cause. Alert fatigue sets in, and operators begin ignoring alerts entirely.
 
-**Why it happens:** The `vsce package` command bundles everything in the extension directory that is not excluded by `.vsixignore`. If `.vsixignore` is missing or incomplete, sensitive files from the development process leak into the published package. Microsoft's Wiz Research found over 550 validated secrets across more than 500 published VS Code extensions -- this is a widespread problem, not a theoretical one.
+**Why it happens:** Each alert rule evaluates independently without knowledge of other rules. A single root cause (database failure) manifests as multiple symptoms (high error rate, slow response times, connection timeouts, queue buildup), each triggering its own alert. Without correlation or grouping, every symptom generates a separate notification.
 
 **Consequences:**
-- Leaked PAT tokens can be used to publish malicious updates to your extension, affecting all users
-- Microsoft now blocks extensions with detected secrets, causing publish failures and delays
-- Wrong PAT scope causes `vsce publish` to fail with opaque authentication errors that are difficult to debug
+- Operators receive hundreds of alerts for a single incident, leading to alert fatigue
+- Root cause identification is buried under symptom noise
+- Operators learn to ignore alerts, defeating the purpose of the alerting system
+- High notification volume can overwhelm delivery channels (email/webhook rate limits)
 
 **Prevention:**
-1. Create a `.vsixignore` file that excludes everything except the required files:
+1. **Alert deduplication window.** When an alert fires, suppress duplicate alerts for the same rule for a configurable period (e.g., 5 minutes). Only re-alert if the condition persists after the window.
+2. **Alert grouping by source.** Group alerts that fire within the same time window (e.g., 30 seconds) into a single notification: "5 alerts fired for project X" with a link to the details.
+3. **Tiered severity levels.** Distinguish between `critical` (pages immediately), `warning` (batched notification), and `info` (logged but not notified). Start with conservative severity assignments.
+4. **Cooldown periods.** After an alert fires, do not re-fire the same alert for a configurable cooldown period even if the condition remains true. Use "resolved" notifications when the condition clears.
+5. **Start with fewer, broader rules.** It is better to have 5 well-tuned alert rules than 50 noisy ones. Add granularity only when operators request it.
+
+**Detection:** Track the ratio of actionable alerts (operator took action) to total alerts. If the ratio is below 30%, the system has too much noise. Track alert volume per incident -- if a single incident generates more than 10 alerts, grouping is needed.
+
+**Phase mapping:** Alerting phase. Deduplication and cooldown must be part of the initial alerting design, not bolted on later.
+
+---
+
+### Pitfall 6: List.find Option Pattern Matching LLVM Verification Error
+
+**What goes wrong:** The developer writes natural Mesh code to find an event in a list:
+```
+case List.find(events, fn(e) do e.severity == "error" end) do
+  Some(event) -> handle(event)
+  None -> skip()
+end
+```
+This triggers a known LLVM verification error because `List.find` returns `Option<T>` through the FFI boundary, and pattern matching on FFI-returned Options has a pre-existing codegen gap. The compiler crashes or produces incorrect code.
+
+**Why it happens:** This is a documented pre-existing limitation: "List.find Option return pattern matching triggers LLVM verification error with case expression (pre-existing codegen gap)." The bug exists because FFI functions that return `Option<T>` produce a different LLVM IR layout than user-defined functions that return `Option<T>`, and the pattern match compiler expects the user-defined layout.
+
+**Consequences:**
+- A common monitoring pattern (finding specific events) cannot use the natural `case List.find(...) do` syntax
+- Developers must use workarounds (e.g., `List.filter` + `List.length` checks, or `List.any` followed by `List.filter`)
+- The workaround is less readable and less efficient than the intended pattern
+- New developers hitting this bug will think the language is broken
+
+**Prevention:**
+1. **Fix this codegen bug before or during Mesher development.** It is the single most impactful pre-existing limitation for application code. `List.find` with pattern matching is a bread-and-butter operation for any data processing application.
+2. **If not fixed immediately:** Document the workaround prominently. The workaround is:
    ```
-   **
-   !out/**
-   !syntaxes/**
-   !language-configuration.json
-   !package.json
-   !LICENSE
-   !README.md
-   !CHANGELOG.md
+   let results = List.filter(events, fn(e) do e.severity == "error" end)
+   if List.length(results) > 0 do
+     let event = List.head(results)
+     handle(event)
+   else
+     skip()
+   end
    ```
-2. Before publishing, inspect the `.vsix` contents: `vsce ls` shows what will be included. Review for any files that should not be there.
-3. Store the PAT as a GitHub Actions secret (`VSCE_PAT`), never in the repo. Automate publishing via CI so the PAT is never on a developer's machine.
-4. When creating the Azure DevOps PAT: select "All accessible organizations" in the Organization dropdown, and set scope to "Marketplace (Manage)". These are the two most common mistakes.
-5. The existing `package.json` already has `"package": "vsce package --no-dependencies"` -- this is good, as it avoids bundling `node_modules`. Verify that `--no-dependencies` continues to be used.
+3. **Track this as a high-priority compiler fix** triggered by dogfooding. The fact that Mesher needs it and cannot use it is exactly the kind of finding dogfooding is meant to produce.
 
-**Detection:** Run `vsce ls` before every publish and review the file list. Add a CI step that runs `vsce package` and then inspects the `.vsix` for known secret patterns (`.env`, `token`, `key`, `secret` in filenames).
+**Detection:** Any `case List.find(...) do Some(...) -> ...` pattern in Mesh code will trigger the LLVM verification error at compile time. The compiler will crash with an LLVM error, not a user-friendly Mesh error.
 
-**Phase mapping:** VS Code extension phase. Must be correct for the first marketplace publish -- you cannot un-publish secrets.
+**Phase mapping:** Should be fixed in the first phase or as a pre-Mesher compiler fix. Blocking for any phase that processes lists of events.
 
 ---
 
-### Pitfall 6: TextMate Grammar Conflicts Between Keywords and Type Names
+### Pitfall 7: Single-Line Pipe Chains Make Complex Data Pipelines Unreadable
 
-**What goes wrong:** The existing `mesh.tmLanguage.json` has a broad `entity.name.type.mesh` pattern that matches `\b[A-Z][a-zA-Z0-9_]*\b` (any PascalCase identifier). This pattern also matches keywords that happen to be PascalCase, like `Some`, `None`, `Ok`, `Err`, `Int`, `Float`, `String`, `Bool`, etc. The grammar has a separate `support.function.mesh` for `Some|None|Ok|Err` and `support.type.mesh` for `Int|Float|String|...`, but TextMate grammar rule priority depends on declaration ORDER within the patterns array, not specificity. If the `types` repository (which contains the broad PascalCase pattern) is included BEFORE `keywords`, user-defined types like `Some` or `Result` could be incorrectly highlighted.
+**What goes wrong:** Mesh's parser does not support multi-line pipe continuation. A monitoring event processing pipeline that chains multiple transformations must be written as a single line:
+```
+let result = events |> List.filter(fn(e) do e.level == "error" end) |> List.map(fn(e) do fingerprint(e) end) |> List.group_by(fn(f) do f.group_key end)
+```
+This line is 150+ characters and unreadable. In Elixir, this would be a clean multi-line pipeline:
+```elixir
+events
+|> Enum.filter(&(&1.level == "error"))
+|> Enum.map(&fingerprint/1)
+|> Enum.group_by(&(&1.group_key))
+```
 
-**Why it happens:** TextMate grammars use first-match-wins within a pattern list. The current top-level `patterns` array includes `#keywords` before `#types`, which is correct -- keywords match first. But when adding new language features (new keywords, new built-in types), developers often add them to the wrong section or forget to add them to the keyword exclusion list, causing them to be matched by the catch-all type pattern instead.
-
-**Consequences:**
-- New keywords added to Mesh but not to the grammar show up as type names (wrong color)
-- User-defined types that happen to share a name with a built-in get inconsistent highlighting
-- String interpolation expressions lose their highlighting if the interpolation grammar includes are in the wrong order
-
-**Prevention:**
-1. When adding new Mesh keywords or built-in types, ALWAYS update the TextMate grammar's keyword patterns first.
-2. Keep the pattern include order as: `#comments`, `#strings`, `#numbers`, `#keywords`, `#operators`, `#functions`, `#types`, `#variables`. This ensures specific patterns win over general ones.
-3. Test grammar changes with a comprehensive test file that includes every keyword, every built-in type, user-defined types, and edge cases (type names that are substrings of keywords, keywords inside string interpolation).
-4. Use the "TextMate Syntax Highlighting and Intellisense" extension (`RedCMD.tmlanguage-syntax-highlighter`) during development to get live feedback on grammar changes.
-
-**Detection:** Create a `test.mpl` file with all keywords and types, open in VS Code, and visually inspect. Use the "Developer: Inspect Editor Tokens and Scopes" command to verify each token's scope.
-
-**Phase mapping:** VS Code extension phase. Must be verified whenever the grammar is updated for new language features.
-
----
-
-### Pitfall 7: Completion Items with Wrong UTF-16 Position Offsets
-
-**What goes wrong:** The LSP specification requires positions in UTF-16 code units, not byte offsets or Unicode scalar values. The existing `analysis.rs` correctly handles UTF-16 conversion for diagnostics, hover, and go-to-definition. But completion items require `TextEdit` ranges that specify where the completion text should be inserted, and these ranges must also use UTF-16 character offsets. If completion ranges use byte offsets instead of UTF-16 offsets, completion inserts text at the wrong position for any line containing non-ASCII characters (emoji, CJK characters, multi-byte UTF-8 sequences).
-
-**Why it happens:** Internally, Mesh source code is stored as a Rust `String` (UTF-8 bytes). Rowan's `TextRange` uses byte offsets. The temptation when building completion items is to pass the byte offset directly as the LSP `Position.character`, which works for ASCII-only code but breaks for multi-byte characters. The existing `offset_to_position` function in `analysis.rs:73-88` correctly counts UTF-16 code units, but a developer adding completion support might bypass it and construct `Position` directly from byte offsets.
+**Why it happens:** The Mesh parser does not support `|>` as a continuation operator at the start of a new line. This is a documented limitation: "Single-line pipe chains only (parser does not support multi-line |> continuation)."
 
 **Consequences:**
-- Completion inserts text at the wrong column for non-ASCII source files
-- The misalignment can corrupt source code (inserting in the middle of a multi-byte character)
-- The bug only manifests with non-ASCII content, so it passes most English-only tests
+- Code readability degrades severely for any non-trivial data transformation
+- Developers break pipelines into intermediate `let` bindings, which is verbose but readable
+- The language's Elixir-inspired syntax promise ("expressive, readable") is undermined for the exact use case (data pipelines) where pipes are most valuable
+- Code review becomes harder because long lines are hard to diff
 
 **Prevention:**
-1. ALWAYS use the existing `offset_to_position` and `position_to_offset` functions from `analysis.rs` when constructing LSP positions. Never construct `Position { line, character }` manually from byte counts.
-2. Prefer using `textEdit` over `insertText` in completion items. The LSP spec says `insertText` is "subject to interpretation by the client side" and some clients modify it unexpectedly. `textEdit` with explicit range is unambiguous.
-3. Add tests with non-ASCII source code (e.g., variable names with Unicode, comments with emoji) that verify completion inserts at the correct position.
+1. **Accept intermediate let bindings as the standard pattern for now.** Instead of one long pipe, use:
+   ```
+   let errors = List.filter(events, fn(e) do e.level == "error" end)
+   let fingerprinted = List.map(errors, fn(e) do fingerprint(e) end)
+   let grouped = group_by(fingerprinted, fn(f) do f.group_key end)
+   ```
+   This is more verbose but readable and debuggable (each intermediate value can be inspected).
+2. **Consider fixing the parser during Mesher development** if pipe-heavy code becomes a constant pain point. Multi-line pipe continuation is likely a parser change of moderate scope.
+3. **Enforce a line length limit** in the project (e.g., 120 characters) to force developers into the intermediate-binding pattern rather than writing 200-character pipe chains.
 
-**Detection:** Write a test with source like `let emoji_var = "test" # comment` where there are multi-byte characters before the completion position. Verify the `TextEdit.range` uses UTF-16 offsets.
+**Detection:** Any pipe chain longer than 100 characters signals that the single-line limitation is being hit.
 
-**Phase mapping:** LSP completion phase. Must be verified with non-ASCII test cases.
+**Phase mapping:** All phases with data processing. Particularly impactful in ingestion pipeline and error grouping phases.
 
 ---
 
 ## Moderate Pitfalls
 
-### Pitfall 8: Install Script Does Not Handle Existing Installation
-
-**What goes wrong:** The install script downloads and installs `meshc` to `$HOME/.mesh/bin/meshc` (matching the well-known path in the VS Code extension's `findMeshc()`). If the user already has a previous version installed, the script must either upgrade cleanly or warn about the existing installation. A naive script that silently overwrites the binary can break if the old process is still running (common with LSP servers that are kept alive by the editor).
-
-**Prevention:**
-1. Check for an existing installation and display the current version before overwriting.
-2. On upgrade, write the new binary to a temp file first, then atomically rename it to the final path. This avoids a window where the binary is partially written.
-3. If the old binary is currently running (check with `pgrep meshc` or `lsof`), warn the user to restart their editor after the upgrade.
-4. The VS Code extension checks `$HOME/.mesh/bin/meshc` as a well-known path (line 42 of `extension.ts`). The install script MUST use this exact path or the extension will not find the binary.
-
-**Phase mapping:** Install script phase.
-
 ---
 
-### Pitfall 9: Install Script Does Not Update PATH
+### Pitfall 8: WebSocket Actor-Per-Connection Memory Pressure Under Dashboard Load
 
-**What goes wrong:** The script installs the binary to `$HOME/.mesh/bin/` but the user's `$PATH` does not include this directory. After installation, `meshc --version` fails with "command not found". The user thinks installation failed.
+**What goes wrong:** Mesher streams real-time events to dashboards via WebSocket. Each WebSocket connection spawns an actor (64 KiB stack) plus a reader thread (OS thread). With 100 concurrent dashboard users watching real-time event streams, that is 100 actors + 100 OS threads. Each actor's per-actor heap grows as events are buffered for sending, and the 256 KiB GC threshold means each actor heap can hold up to 256 KiB of event data before collection. Total memory for 100 dashboard connections: 100 * (64 KiB stack + 256 KiB heap + ~512 KiB reader thread stack) = ~80 MB. At 1,000 connections, it is 800 MB just for WebSocket overhead.
 
-**Prevention:**
-1. After installing the binary, check if `$HOME/.mesh/bin` is already in `$PATH`. If not, append the appropriate line to `~/.bashrc`, `~/.zshrc`, or `~/.profile` (detect the user's shell first).
-2. Print a clear message: "Add `export PATH=$HOME/.mesh/bin:$PATH` to your shell profile, then restart your terminal."
-3. Also create a symlink in `/usr/local/bin/meshc` if the user has write access, as a convenience fallback.
-4. Test with a fresh user profile that has no prior Mesh configuration.
-
-**Phase mapping:** Install script phase.
-
----
-
-### Pitfall 10: GitHub Actions CI Does Not Have LLVM for Cross-Platform Builds
-
-**What goes wrong:** Building `meshc` requires LLVM 21 (`inkwell` with `llvm21-1` feature). The current `.cargo/config.toml` hardcodes `LLVM_SYS_211_PREFIX = "/opt/homebrew/opt/llvm"` which is specific to Apple Silicon macOS with Homebrew. A GitHub Actions workflow building for Linux x86_64, Linux arm64, macOS x86_64, and macOS arm64 needs LLVM 21 installed on each runner, and the LLVM path differs per platform.
-
-**Why it happens:** LLVM is not pre-installed on GitHub Actions runners. Installing LLVM 21 from source takes 30-60 minutes per build. Pre-built LLVM packages exist but are platform-specific and may not match the exact version/configuration required by `inkwell`.
+**Why it happens:** The actor-per-connection model with a reader thread per connection is a correct design for isolation but expensive per connection. Each connection's reader thread is a full OS thread (`std::thread::spawn` in ws/server.rs:579). The per-actor GC threshold of 256 KiB means event data accumulates in the heap between GC cycles.
 
 **Consequences:**
-- CI builds fail because LLVM is not found
-- Build times become 30+ minutes if LLVM is compiled from source on each run
-- The `.cargo/config.toml` `LLVM_SYS_211_PREFIX` path breaks on non-macOS runners
-- Cross-compilation for ARM64 Linux from x86_64 runners requires cross-compiled LLVM libraries, which is complex
+- Memory usage scales linearly with connected dashboard users
+- OS thread exhaustion possible at high connection counts (1,000+ dashboards)
+- GC pauses in individual actor heaps may cause message delivery delays to dashboard users
+- Reader threads blocked on Mutex contention (Arc<Mutex<WsStream>>) during broadcasts
 
 **Prevention:**
-1. Do NOT hardcode `LLVM_SYS_211_PREFIX` in `.cargo/config.toml` for CI builds. Instead, set it as an environment variable per CI job, varying by runner OS and architecture.
-2. Use pre-built LLVM packages for CI: `apt-get install llvm-21-dev` on Ubuntu, `brew install llvm@21` on macOS.
-3. Cache the LLVM installation between CI runs to avoid repeated downloads.
-4. Build native binaries on native runners (macOS arm64 on `macos-14`, macOS x86_64 on `macos-13`, Linux x86_64 on `ubuntu-latest`, Linux arm64 on `ubuntu-latest-arm64`) rather than cross-compiling. Cross-compilation with LLVM is fragile.
-5. Consider `cargo-dist` which automates multi-platform Rust binary releases with install script generation, handling all the LLVM complexity.
+1. **Limit concurrent WebSocket connections per project/user.** A monitoring dashboard does not need 1,000 simultaneous WebSocket connections. Implement connection limits (e.g., 50 per project).
+2. **Use WebSocket rooms for broadcast efficiency.** Send events to room channels, not individual connections. The room broadcast (Ws.broadcast) sends once per room, not once per connection, reducing the work done per event.
+3. **Consider connection timeouts.** Dashboard tabs left open but unfocused should not maintain active WebSocket connections indefinitely. Implement idle timeouts that close connections after no client-side heartbeat pong.
+4. **Monitor per-actor heap sizes.** If WebSocket actors' heaps grow large (many events buffered for slow clients), implement backpressure: drop older events if the send buffer exceeds a threshold.
 
-**Detection:** The CI workflow must successfully build on all target platforms. Test with a clean runner (no cache) to verify the LLVM installation step works independently.
+**Detection:** Monitor total OS thread count and memory usage. Correlate with WebSocket connection count. If memory grows faster than expected per connection, check per-actor heap sizes.
 
-**Phase mapping:** Install script / release infrastructure phase. Blocks the entire install script feature since there are no binaries to download without CI builds.
+**Phase mapping:** Real-time streaming phase. Connection limits should be designed into the WebSocket handler from the start.
 
 ---
 
-### Pitfall 11: Document Symbols Return Wrong `selection_range`
+### Pitfall 9: Error Grouping Over-Groups or Under-Groups Events
 
-**What goes wrong:** The LSP `DocumentSymbol` struct requires two ranges: `range` (the full extent of the symbol, including its body) and `selection_range` (the identifier itself, e.g., the function name). The spec requires that `selection_range` is CONTAINED within `range`. If the whitespace-skipping coordinate system issue (documented in `definition.rs` comments) causes `selection_range` to extend beyond `range`, editors may crash or refuse to display the symbol outline.
+**What goes wrong:** The error grouping algorithm assigns a fingerprint to each error event based on its stack trace, error message, and type. If the fingerprint is too coarse (e.g., based only on error type), unrelated errors with the same type are grouped together: a `NullPointerException` from module A and a `NullPointerException` from module B appear as the same issue, masking the true error count for each. If the fingerprint is too fine (e.g., includes line numbers), the same logical error appears as multiple issues every time the code changes, creating hundreds of duplicate issues.
 
-**Why it happens:** The Mesh lexer skips whitespace, so rowan CST offsets differ from source byte offsets. The existing `tree_to_source_offset` and `source_to_tree_offset` functions handle this translation, but they add complexity. If `range` and `selection_range` are computed using different coordinate systems (one in tree offsets, one in source offsets), the containment invariant may be violated.
-
-**Prevention:**
-1. Always compute BOTH `range` and `selection_range` in the same coordinate system. Use source byte offsets for both, then convert both through `offset_to_position()`.
-2. After computing both ranges, add a debug assertion that `selection_range.start >= range.start && selection_range.end <= range.end`.
-3. For functions: `range` = from `fn` keyword to `end` keyword; `selection_range` = just the function name. For structs: `range` = from `struct` keyword to `end`; `selection_range` = just the struct name.
-4. Reuse the tree-to-source offset mapping from `definition.rs` rather than reimplementing it.
-
-**Phase mapping:** LSP document symbols phase.
-
----
-
-### Pitfall 12: Completion Trigger Characters Conflict with Mesh Syntax
-
-**What goes wrong:** LSP completion trigger characters tell the editor "send a completion request when the user types this character." Common trigger characters are `.` (member access) and `:` (type annotations). In Mesh, `::` is the type annotation operator and `|>` is the pipe operator. If `.` is a trigger character, typing `IO.println` triggers completion after the `.`, which is correct. But if `:` is a trigger character, typing `x :: Int` triggers completion after the first `:`, which is likely wrong (the user is typing a type annotation, not requesting completions).
-
-**Why it happens:** Trigger characters are single characters, not sequences. There is no way to say "trigger on `::` but not on `:`". Some editors handle this by checking context (are we in a type annotation position?), but many just fire the completion request on every `:`.
+**Why it happens:** Error grouping is inherently subjective. Sentry's developers acknowledge: "It is not possible for Sentry to always group errors correctly, as 'correct' is subjective to the developer." The challenge is compounded by:
+- Stack traces vary by deployment (different line numbers, inlined functions)
+- Error messages often include dynamic data (user IDs, timestamps) that make every occurrence unique
+- Different callers hitting the same bug produce different stack traces
 
 **Consequences:**
-- Unnecessary completion popups appear while typing type annotations (`x :: Int`)
-- The completion popup interrupts the user's flow
-- If the completion handler is slow (re-parses the document), it causes perceptible lag on every `:` keystroke
+- Over-grouping: Issues show inflated counts, mixing unrelated errors. Operators cannot tell which errors are actually frequent.
+- Under-grouping: The issues list has hundreds of entries for what is logically the same bug. Operators waste time triaging duplicates.
+- Users lose trust in the error counts and stop using the grouping feature
 
 **Prevention:**
-1. Start with ONLY `.` as a trigger character. This handles module member access (`IO.println`, `List.map`) which is the most useful completion context.
-2. Do NOT add `:` as a trigger character for v1. Users can still trigger completion manually with Ctrl+Space for type annotations.
-3. If `:` is needed later, the completion handler must check context: if the character before the cursor is also `:` (forming `::`), filter completion results to only return type names.
-4. For pipe operator completions (`x |> ___`), do not use `|` or `>` as trigger characters. Instead, rely on the editor's built-in identifier completion after the user starts typing a function name.
+1. **Start simple, evolve incrementally.** Use a three-part fingerprint: `hash(error_type + top_3_stack_frames + normalized_message)`. Strip dynamic data (numbers, UUIDs, timestamps) from error messages before hashing.
+2. **Normalize stack traces.** Remove line numbers (which change on every deploy). Use only function names and module paths for fingerprinting. This is the approach Sentry uses for most platforms.
+3. **Allow user-defined fingerprints.** Provide an API field (`fingerprint`) that lets users override automatic grouping. This is the escape hatch for when automatic grouping is wrong.
+4. **Version the grouping algorithm.** When the algorithm changes, apply the new version only to new events. Existing issues keep their original grouping. This prevents a grouping algorithm update from splitting all existing issues into new ones.
+5. **Display grouping metadata.** Show users what fields contributed to the fingerprint so they can understand why events are grouped together and provide feedback.
 
-**Detection:** Type `x :: Int` in the editor and verify no completion popup appears. Type `IO.` and verify completions appear.
+**Detection:** Track the issue creation rate relative to the event rate. If 90% of events create new issues (very high unique fingerprint rate), the algorithm is under-grouping. If one issue has 10,000 events with clearly different error messages, it is over-grouping.
 
-**Phase mapping:** LSP completion phase.
+**Phase mapping:** Error grouping phase. The initial algorithm should be conservative (slight over-grouping is better than under-grouping, because users can split issues but cannot merge them).
 
 ---
 
-### Pitfall 13: REPL and Formatter Audit Misses New Language Features
+### Pitfall 10: Middleware Parameter Type Annotation Requirement Breaks Ergonomics
 
-**What goes wrong:** When new language features are added to the parser and type checker (e.g., `from X import Y`, `impl From<A> for B`, iterators), the REPL and formatter may not support them. The REPL uses the full compiler pipeline (`mesh-parser` -> `mesh-typeck` -> `mesh-codegen` with JIT), so parser changes are picked up automatically, but the REPL's session state management may not handle new top-level forms. The formatter (`mesh-fmt`) uses its own CST walker (`walker.rs`) that explicitly matches on `SyntaxKind` variants -- new variants are silently ignored, producing unformatted output.
+**What goes wrong:** Mesh middleware requires explicit `:: Request` parameter type annotations due to incomplete type inference. Every middleware function must annotate its parameter:
+```
+fn log_middleware(req :: Request, next) do
+  IO.println("Request: " <> req.path)
+  next(req)
+end
+```
+Forgetting the `:: Request` annotation causes a type error that is confusing because the parameter type should be inferrable from the middleware registration context. In a monitoring platform with multiple middleware layers (auth, rate limiting, logging, CORS), every middleware function needs this boilerplate annotation.
 
-**Why it happens:** The formatter's `walker.rs` has explicit match arms for each `SyntaxKind`. When a new syntax node is added to the parser (e.g., `SyntaxKind::ASSOC_TYPE_DEF`), if no match arm is added to the formatter, the node's children are not visited and their formatting is lost (output is empty for that node).
+**Why it happens:** Documented limitation: "Middleware requires explicit `:: Request` parameter type annotations (incomplete inference)." The type inference engine does not propagate the expected parameter type from the middleware registration site (`HTTP.use(router, fn)`) back to the closure parameter.
 
 **Consequences:**
-- `meshc fmt` silently drops new syntax constructs from the output, corrupting source files
-- The REPL may error on valid new syntax that works in compiled mode
-- Users discover the bug only after running `meshc fmt` on their files and losing code
+- Every middleware function has boilerplate type annotations
+- Error messages when annotations are forgotten are not helpful (generic type error, not "add :: Request")
+- Developers coming from Elixir/Ruby expect parameter types to be inferred
 
 **Prevention:**
-1. The formatter should have a catch-all arm for unknown `SyntaxKind` variants that preserves the original text verbatim rather than dropping it. This is the "do no harm" principle: unknown syntax should pass through unchanged.
-2. When adding new syntax to the parser, immediately check: does the formatter handle it? Does the REPL handle it? Add this to the review checklist for every parser change.
-3. Add snapshot tests (`insta` is already a dependency) for the formatter that cover every syntax construct, including new ones.
-4. For the REPL, test each new syntax construct interactively and verify it works in the JIT pipeline.
+1. **Establish a project convention:** All middleware functions use `:: Request` annotations. Document this in a project style guide.
+2. **Use a single middleware file** that collects all middleware definitions. This contains the boilerplate in one place and makes it easy to copy the pattern.
+3. **Consider fixing this inference gap** if it is encountered frequently. The fix would be to propagate the expected function type from `HTTP.use` to the closure parameter during type inference.
 
-**Detection:** Format a file containing every new syntax feature and diff the output against the input. Any disappearing lines indicate a formatter bug.
+**Detection:** Compilation errors in middleware functions that fail to compile without type annotations.
 
-**Phase mapping:** REPL/formatter audit phase. Must be done AFTER all language features for the current milestone are implemented.
+**Phase mapping:** HTTP API phase. Will be encountered early when setting up the ingestion API.
 
 ---
 
-### Pitfall 14: Documentation Shows Wrong Install Commands
+### Pitfall 11: Conservative Stack Scanning Retains Garbage Under High Allocation
 
-**What goes wrong:** The current getting-started docs show `./target/release/mesh --version` (the binary is actually `meshc`, not `mesh`) and `mesh hello.mpl` (the actual command is `meshc build <dir>`, not `meshc <file>`). The landing page reportedly shows a fake `curl | sh` command that does not work. If the install script is implemented but the docs are not updated to match, users copy-paste commands that fail.
+**What goes wrong:** Mesh uses conservative stack scanning for garbage collection -- every 8-byte word on the stack is treated as a potential pointer. Under high allocation rates (e.g., an ingestion actor allocating a struct per incoming event, processing 1,000 events/second), false positives from conservative scanning retain dead objects that look like valid pointers but are actually stale integer values on the stack. The per-actor heap grows beyond the GC threshold because GC runs but fails to reclaim memory due to false pointer retention.
 
-**Why it happens:** Documentation is written before or independently from the actual implementation. The getting-started guide was written when the CLI interface was different (or aspirational). The docs reference `mesh` as the binary name but the actual binary is `meshc`. The docs show `mesh hello.mpl` (single-file compilation) but the CLI expects `meshc build <dir>` (directory-based project compilation).
+**Why it happens:** Conservative GC (documented in PROJECT.md key decisions) does not have type maps for the stack. An integer value that happens to match a heap address prevents that heap object from being collected. At high allocation rates, the probability of false positive retention increases because there are more objects to accidentally "point to."
 
 **Consequences:**
-- New users' very first experience is copy-pasting a command that fails
-- Users lose trust in the documentation and in the project
-- Support burden increases with "basic install doesn't work" issues
+- Per-actor heap grows larger than expected, consuming more memory
+- GC cycles run but reclaim less memory than precise scanning would
+- Long-running ingestion actors accumulate retained garbage over hours/days
+- Memory usage appears to "leak" slowly even though GC is running
 
 **Prevention:**
-1. After the install script is working, manually walk through the entire getting-started guide on a clean system, executing every command.
-2. Update the getting-started guide to show the actual install command (`curl -fsSL https://mesh-lang.dev/install.sh | sh`), the actual binary name (`meshc`), and the actual compilation command (`meshc build .`).
-3. Add a CI job that extracts code blocks from the docs and runs them in a Docker container to verify they work (doc-testing).
-4. The landing page's fake install command must be replaced with the real one, or removed entirely until the install script exists.
+1. **Minimize live variables in hot loops.** The fewer variables on the stack, the fewer false positive pointers. Extract processing into helper functions that return values rather than keeping many live bindings.
+2. **Monitor per-actor heap sizes.** If an actor's heap grows monotonically despite GC runs, conservative scanning false positives are the likely cause.
+3. **Consider periodic actor restart.** For long-running ingestion actors, a supervised restart every N hours resets the heap to zero. This is the BEAM "let it crash" philosophy applied to memory management.
+4. **Profile GC effectiveness.** Track bytes reclaimed per GC cycle vs. total heap size. If the ratio declines over time, false retention is growing.
 
-**Detection:** Fresh install on a clean macOS and Linux VM, following only the docs. Every command must succeed.
+**Detection:** Per-actor heap size monitoring. A healthy actor should have heap size oscillating between ~50% and 100% of the GC threshold. If heap size grows monotonically past the threshold and GC runs show diminishing returns, conservative scanning is the cause.
 
-**Phase mapping:** Docs correction phase. Must be done AFTER the install script is working to ensure docs match reality.
+**Phase mapping:** All phases with high-throughput actors. Particularly the ingestion pipeline.
+
+---
+
+### Pitfall 12: Map.collect Assumes Integer Keys -- Breaks String-Keyed Aggregations
+
+**What goes wrong:** A natural monitoring operation is grouping events by a string key:
+```
+let counts = events
+  |> Iter.from()
+  |> Iter.map(fn(e) do {e.source, 1} end)
+  |> Iter.collect()  # Tries to collect into Map<String, Int>
+```
+But `Map.collect` assumes integer keys (documented limitation: "Map.collect assumes integer keys"). Collecting into a `Map<String, Int>` produces a map with broken key comparisons or incorrect behavior because the runtime's `mesh_map_new()` defaults to integer key type tag.
+
+**Why it happens:** The `Iter.collect()` for Map calls `mesh_map_new()` which defaults to `KEY_TYPE_INT` (tag 0). String keys require `KEY_TYPE_STR` (tag 1), but the collect path does not propagate the key type from the iterator's element type to the map constructor.
+
+**Consequences:**
+- Aggregating events by string fields (source, level, project name) produces incorrect results
+- String keys are compared as integer values (pointer comparison), so different strings that happen to have different addresses are always "not equal"
+- The bug is silent -- the map appears to work but contains duplicate entries for the same logical key
+
+**Prevention:**
+1. **Do not use `Iter.collect()` to build string-keyed maps.** Build maps manually:
+   ```
+   let counts = Map.new()
+   for event in events do
+     let key = event.source
+     let current = Map.get(counts, key)
+     Map.put(counts, key, current + 1)
+   end
+   ```
+2. **Track this as a compiler/runtime fix.** The fix is to propagate the key type from the iterator element type to the map constructor in the collect codegen path.
+3. **Use `List.group_by` or manual accumulation** for string-keyed aggregations until the fix lands.
+
+**Detection:** Any `Iter.collect()` call that produces a `Map<String, V>` will silently produce incorrect results. Test by inserting the same string key twice and checking if the map has 1 entry or 2.
+
+**Phase mapping:** Error grouping and analytics phases. Any phase that aggregates events by string fields.
+
+---
+
+### Pitfall 13: Multi-Node Split Brain Without Consensus Protocol
+
+**What goes wrong:** Mesher runs on multiple nodes using Mesh's distributed actor system. When a network partition occurs between nodes, each partition continues operating independently. Both partitions accept events, fire alerts, and update state. When the partition heals, the system has divergent state: different event counts, different alert histories, conflicting global registry entries. There is no consensus protocol or conflict resolution mechanism.
+
+**Why it happens:** Mesh's distributed actor system provides transparent remote send, global process registry, and node monitoring, but does not include a consensus protocol (Raft, Paxos). The global registry uses cluster-wide broadcast for registration, which means during a partition, each side of the partition has its own registry state. Node monitoring delivers `:nodedown` signals, but there is no quorum mechanism to decide which partition is "authoritative."
+
+**Consequences:**
+- Duplicate alert notifications (both partitions fire the same alert rule)
+- Inconsistent event counts between nodes after partition heals
+- Global registry conflicts: same name registered on different nodes in different partitions
+- Dashboard shows different data depending on which node it connects to
+
+**Prevention:**
+1. **Design for eventual consistency, not strong consistency.** Monitoring data is append-only and idempotent. Duplicate events are better than lost events. Design the system so that both partitions can ingest events independently, and deduplicate when the partition heals.
+2. **Use PostgreSQL as the source of truth, not in-memory actor state.** Alert state, event counts, and grouping should be durably stored in PostgreSQL. When a partition heals, nodes re-read from the database rather than trying to reconcile in-memory state.
+3. **Alerting deduplication via database.** Before sending an alert notification, check the database for a recent alert with the same fingerprint. If one exists within the deduplication window, skip the notification. This prevents duplicate alerts during partitions.
+4. **Designate a primary node for alerting.** Only one node evaluates alert rules. If that node goes down (`:nodedown`), a standby node takes over. This avoids dual-fire during partitions.
+5. **Defer multi-node to a later phase.** Build Mesher as a single-node application first. Multi-node adds complexity that is not needed for the initial dogfooding goal. Add clustering once the single-node version is stable.
+
+**Detection:** Simulate a network partition (block traffic between nodes with `iptables` or `pfctl`). Check if both nodes fire the same alerts. Check if event counts diverge. Check if the global registry has conflicting entries after the partition heals.
+
+**Phase mapping:** Multi-node clustering phase. Should be the last phase, after single-node stability is proven.
+
+---
+
+### Pitfall 14: Ingestion Pipeline Backpressure Missing -- Events Dropped Under Load
+
+**What goes wrong:** The ingestion HTTP endpoint accepts events and spawns an actor per request. Under burst traffic (e.g., a client application suddenly sends 10,000 errors/second), the system spawns 10,000 actors simultaneously. Each actor attempts a database write. The connection pool has a max of N connections (e.g., 20). The remaining 9,980 actors block on pool checkout, consuming 9,980 * 64 KiB = 624 MB of memory just for actor stacks. If the checkout timeout expires, 9,980 actors get timeout errors and the events are lost.
+
+**Why it happens:** The HTTP server is actor-per-connection, which means each request gets its own actor that runs until the response is sent. There is no queue between the HTTP acceptance and the database write. The connection pool provides bounded database access, but the backpressure signal (checkout timeout) is too late -- the actor has already been spawned and is consuming memory.
+
+**Consequences:**
+- Memory spikes during traffic bursts (thousands of actors waiting on the pool)
+- Event loss when pool checkout times out
+- Database connection pool contention causes cascading slowdowns
+- The system appears to "crash" under load because all resources are consumed by waiting actors
+
+**Prevention:**
+1. **Buffer events in memory before writing to the database.** Use a dedicated ingestion actor that receives events via its mailbox and batches them. Instead of each HTTP handler writing directly to the database, it sends the event to the buffer actor and immediately returns `202 Accepted`. The buffer actor flushes to the database in batches (e.g., every 100 events or every 1 second, whichever comes first).
+2. **Return 429 Too Many Requests when the buffer is full.** If the in-memory buffer exceeds a configurable size (e.g., 10,000 events), reject new events with 429 status. This provides backpressure to the client SDK.
+3. **Use batch INSERT.** Instead of one INSERT per event, buffer events and write them in a single multi-row INSERT or COPY operation. This reduces connection pool contention because one checkout handles 100 events instead of 1.
+4. **Monitor buffer depth.** Track the size of the in-memory event buffer. If it approaches the maximum, emit a metric/log that can trigger autoscaling or client-side rate limiting.
+
+**Detection:** Monitor connection pool checkout wait time and timeout rate. If checkout timeouts exceed 1% of requests, the system needs buffering.
+
+**Phase mapping:** Ingestion pipeline phase. The buffering architecture must be designed from the start, not added after the naive approach fails under load.
+
+---
+
+### Pitfall 15: TyVar Resolution Failure for Chained Method Calls on Collected Iterators
+
+**What goes wrong:** The developer writes a pipeline that collects an iterator into a List, then calls `.to_string()` on the result:
+```
+let names = events |> Iter.from() |> Iter.map(fn(e) do e.name end) |> Iter.collect()
+IO.println(names.to_string())
+```
+The `.to_string()` call on the collected List fails with a type error because the `TyVar` from the `Ptr -> List<T>` conversion remains unresolved for the `.to_string()` method. This is a documented tech debt item: "TyVar from Ptr->List<T> remains unresolved for .to_string() on collected collections (use string interpolation instead)."
+
+**Why it happens:** The `Iter.collect()` return type is `Ptr` in the type system (opaque pointer), which gets coerced to `List<T>`. But the type variable `T` in the resulting `List<T>` is not fully resolved when the `.to_string()` trait method is dispatched, causing a type error.
+
+**Consequences:**
+- Cannot call `.to_string()` directly on iterator results
+- Must use string interpolation `"${names}"` as a workaround
+- Confusing error message that does not suggest the workaround
+
+**Prevention:**
+1. **Use string interpolation** (`"${collected_list}"`) instead of `.to_string()` on iterator results. This is the documented workaround.
+2. **Bind to intermediate variable with explicit type** if possible to help the type checker.
+3. **Consider fixing this type resolution** if it is encountered frequently during Mesher development.
+
+**Detection:** Type error on `.to_string()` calls after `Iter.collect()`.
+
+**Phase mapping:** Any phase that formats collected iterator results for logging or API responses.
 
 ---
 
 ## Minor Pitfalls
 
-### Pitfall 15: VS Code Extension Version Not Bumped Before Publish
+---
 
-**What goes wrong:** The VS Code Marketplace rejects extension uploads with the same version number as an already-published version. The current `package.json` has `"version": "0.1.0"`. If a developer publishes 0.1.0, makes changes, and forgets to bump the version before publishing again, the publish fails.
+### Pitfall 16: Database Connection Pool Blocking in Actor Context
+
+**What goes wrong:** The connection pool uses `parking_lot::Mutex` + `Condvar` for synchronization. When an actor calls `Pool.checkout` and all connections are busy, the actor's OS worker thread blocks on the Condvar. This blocks the entire M:N scheduler worker thread, preventing other actors scheduled on that worker from running.
 
 **Prevention:**
-1. Automate version bumping in the publish CI workflow: `vsce publish patch` automatically increments the patch version.
-2. Alternatively, tie the extension version to the git tag: extract version from the release tag and inject it into `package.json` before packaging.
-3. Add a CI check that the version in `package.json` is different from the currently published version.
+1. Size the connection pool to match the number of scheduler worker threads (one connection per CPU core is a good starting point).
+2. Keep checkout timeout short (1-2 seconds) to prevent long worker thread blocking.
+3. Use the batch buffer pattern (Pitfall 14) to reduce the number of actors competing for pool connections.
 
-**Phase mapping:** VS Code extension publish phase.
+**Phase mapping:** Database integration phase.
 
 ---
 
-### Pitfall 16: `vsce create-publisher` Is No Longer Available
+### Pitfall 17: WebSocket Room Broadcast Amplification Across Nodes
 
-**What goes wrong:** The `vsce create-publisher` command was removed from `vsce`. Developers following old tutorials will get an error. Publisher accounts must now be created at the Visual Studio Marketplace publisher management page (https://marketplace.visualstudio.com/manage).
+**What goes wrong:** In a multi-node setup, a `Ws.broadcast(room, message)` sends the message to all local connections AND forwards it to all other nodes via `DIST_ROOM_BROADCAST`. If multiple nodes receive the same event and each broadcasts to the same room, the message is sent N times (once per node). With 3 nodes, each dashboard user receives the event 3 times.
 
-**Prevention:** Document the correct publisher creation process. The publisher name in `package.json` (`"publisher": "mesh-lang"`) must exactly match the publisher created on the Marketplace portal.
+**Prevention:**
+1. Designate event broadcasting responsibility to a single node (the node that ingested the event).
+2. Use `Ws.broadcast_except` to avoid echo when forwarding between nodes.
+3. Include a message ID in broadcast messages so clients can deduplicate.
 
-**Phase mapping:** VS Code extension publish phase.
+**Phase mapping:** Multi-node streaming phase.
 
 ---
 
-### Pitfall 17: Extension Does Not Bundle LSP Binary
+### Pitfall 18: No String Concatenation in Pattern Matching for Log Parsing
 
-**What goes wrong:** The VS Code extension expects `meshc` to be in the user's PATH or at a well-known location (`$HOME/.mesh/bin/meshc`). If neither exists, the extension shows an error dialog. But the error message says "Install Mesh or configure the path to meshc" -- it does not tell the user HOW to install Mesh. If the install script does not exist yet when the extension is published, or the extension is published before the install script is well-known, users will be stuck.
+**What goes wrong:** Monitoring often requires parsing log messages by pattern. In Elixir, you can match `"ERROR: " <> rest` to extract the rest of a message. Mesh supports string pattern matching via `snow_string_eq` but does not support string prefix/suffix destructuring in patterns. Log parsing must use `String.split`, `String.starts_with`, or similar stdlib functions instead of pattern matching.
 
 **Prevention:**
-1. The extension's error message should include a direct link to the installation instructions: "Install Mesh: https://mesh-lang.dev/docs/getting-started"
-2. Consider adding an automatic download option: the extension could offer to download the `meshc` binary directly, similar to how the Rust analyzer extension can download `rust-analyzer`.
-3. Ensure the install script is published and documented BEFORE the VS Code extension is published to the Marketplace.
+1. Use `String.split`, `String.starts_with`, and `String.contains` for log parsing.
+2. Design the event schema so that structured fields (level, message, source) are sent as separate fields, not as a single log line that needs parsing.
+3. Encourage clients to send structured JSON events rather than raw log lines.
 
-**Phase mapping:** VS Code extension + install script. The install script should be completed first.
+**Phase mapping:** Ingestion pipeline and error grouping phases.
 
 ---
 
-### Pitfall 18: Signature Help Fires on Every `(` Including Non-Function Calls
+### Pitfall 19: Missing `List.group_by` in Stdlib
 
-**What goes wrong:** If `(` is registered as a signature help trigger character, the editor sends a signature help request every time `(` is typed. In Mesh, `(` is used for function calls (`add(1, 2)`), grouped expressions (`(a + b) * c`), and tuple construction. Only function calls should show signature help. If the handler does not distinguish these contexts, it returns wrong or empty signature information for non-call contexts, causing visual noise.
+**What goes wrong:** Error grouping requires grouping events by fingerprint. The natural function is `List.group_by(events, fn(e) do e.fingerprint end)` which returns `Map<String, List<Event>>`. But Mesh's stdlib does not include `List.group_by`. The developer must implement grouping manually with a fold/reduce over the list.
 
 **Prevention:**
-1. In the signature help handler, check if the `(` follows an identifier that resolves to a function. If not, return `None`.
-2. Use the existing analysis infrastructure (CST traversal, name resolution) to determine if the cursor is inside a `CALL_EXPR` node before computing signatures.
-3. Return `None` (no signature help) rather than an empty `SignatureHelp` for non-call contexts. Some editors handle empty vs. None differently.
+1. Check if `List.group_by` exists in the current stdlib before assuming it does. If not, implement it as a Mesh function in the Mesher codebase.
+2. Track missing stdlib functions discovered during Mesher development. These become candidates for stdlib additions in a future language version.
 
-**Phase mapping:** LSP signature help phase.
+**Phase mapping:** Error grouping phase.
 
 ---
 
-### Pitfall 19: GitHub Release Assets Not Available for All Platforms at Launch
+### Pitfall 20: Clock Skew Between Nodes Causes Event Ordering Issues
 
-**What goes wrong:** The install script is published but GitHub Release assets only exist for macOS arm64 (the developer's machine). Linux users and macOS x86_64 users get "no matching asset found" errors. The install script is blamed, but the issue is missing release artifacts.
+**What goes wrong:** In a multi-node setup, events ingested on different nodes get timestamps from different system clocks. If node A's clock is 2 seconds ahead of node B's clock, events ingested on node A appear to be 2 seconds in the future relative to events on node B. Dashboard queries for "last 5 minutes" miss recent events from node B or include extra events from node A.
 
 **Prevention:**
-1. Do not publish the install script until release assets exist for ALL advertised platforms.
-2. The CI release workflow must build for at minimum: `darwin-arm64`, `darwin-x86_64`, `linux-x86_64`, `linux-arm64`.
-3. The install script should list supported platforms and clearly state which are available. If an asset is missing, say "No prebuilt binary available for [platform]. Build from source: [instructions]" rather than a generic error.
+1. Use NTP synchronization on all nodes (ensure `ntpd` or `chrony` is running).
+2. Use the client-provided timestamp as the canonical event time, not the server ingestion time. This makes event ordering independent of server clock skew.
+3. For server-generated timestamps (alert fire time, ingestion time), accept that clock skew of a few milliseconds is unavoidable and design queries with tolerance (e.g., add 5-second buffer to time range queries).
 
-**Phase mapping:** Install script + CI release workflow. The CI workflow must be working before the install script is published.
+**Phase mapping:** Multi-node clustering phase.
 
 ---
 
-### Pitfall 20: LSP Full Document Sync Is Expensive for Large Files
+### Pitfall 21: Forgetting to Handle WebSocket Disconnection Cleanup
 
-**What goes wrong:** The current LSP server uses `TextDocumentSyncKind::FULL`, meaning the entire document is sent on every keystroke. For small files this is fine, but for large Mesh files (hundreds of lines), re-parsing and re-typechecking the entire document on every keystroke causes perceptible lag, especially since the type checker is not incremental.
+**What goes wrong:** When a dashboard WebSocket disconnects (browser tab closed, network drop), the WebSocket actor receives an `on_close` callback. If the actor has registered state (room memberships, active query subscriptions, per-connection metrics), failing to clean up this state causes resource leaks. Room memberships are automatically cleaned up by the Mesh runtime (`RoomRegistry` dual-map with `conn_rooms`), but application-level state (e.g., "this connection was watching project X") is not automatically cleaned.
 
 **Prevention:**
-1. For v1 of the new LSP features, keep `FULL` sync. It is simpler and correctness matters more than performance at this stage.
-2. Add a debounce in the `did_change` handler: do not analyze immediately on every change, but wait 100-200ms after the last change before re-analyzing. This batches rapid keystrokes into a single analysis pass.
-3. Log timing information (`analyze_document` duration) to identify when performance becomes a problem.
-4. Future optimization: switch to `INCREMENTAL` sync, which only sends the changed range, and incrementally re-parse using rowan's green tree editing.
+1. Implement all cleanup in the `on_close` callback.
+2. Use the actor supervision tree to ensure cleanup happens even if the WebSocket actor crashes (the supervisor can run cleanup logic).
+3. Use the room system for all broadcast needs -- it handles cleanup automatically.
 
-**Phase mapping:** LSP features phase. Performance optimization can be deferred, but timing instrumentation should be added now.
+**Phase mapping:** Real-time streaming phase.
 
 ---
 
@@ -411,51 +517,59 @@ Mistakes that cause broken user experience, security incidents, or require signi
 
 | Phase Topic | Likely Pitfall | Mitigation |
 |-------------|---------------|------------|
-| Install script | Corrupted binary from interrupted download | SHA256 verification before install (Pitfall 1) |
-| Install script | Wrong platform detection | Normalize arch names, test on all platforms (Pitfall 2) |
-| Install script | PATH not updated | Detect shell, update profile, print instructions (Pitfall 9) |
-| Install script | No CI builds for all platforms | Build matrix with LLVM per-platform (Pitfall 10) |
-| Install script | Missing release assets at launch | Block script publish on asset availability (Pitfall 19) |
-| VS Code grammar | New keywords not highlighted | Update grammar when parser changes (Pitfall 6) |
-| VS Code publish | Secrets in .vsix package | .vsixignore, `vsce ls` review (Pitfall 5) |
-| VS Code publish | Version collision on Marketplace | Auto-bump version in CI (Pitfall 15) |
-| VS Code publish | `create-publisher` removed from vsce | Use Marketplace web portal (Pitfall 16) |
-| LSP completion | Wrong UTF-16 offsets for non-ASCII | Use existing `offset_to_position` (Pitfall 7) |
-| LSP completion | Unwanted popups during `::` typing | Only `.` as trigger character (Pitfall 12) |
-| LSP document symbols | selection_range outside range | Same coordinate system for both (Pitfall 11) |
-| LSP signature help | Fires on non-call `(` | Check CST context before returning (Pitfall 18) |
-| LSP all features | Capabilities not advertised | Extend initialize test (Pitfall 4) |
-| LSP all features | Mutex deadlock | Never hold lock across `.await` (Pitfall 3) |
-| LSP all features | Slow for large files | Debounce did_change, add timing (Pitfall 20) |
-| REPL/formatter | Silent data loss for new syntax | Catch-all arm in formatter, snapshot tests (Pitfall 13) |
-| Docs | Wrong commands on getting-started page | Walk through on clean system (Pitfall 14) |
-| Docs | Extension error does not link to install | Add install URL to error message (Pitfall 17) |
+| **All phases** | Dual-bug confusion: app vs compiler | Minimal repro discipline, fix compiler bugs immediately (Pitfall 1) |
+| **All phases** | Single-line pipe chains unreadable | Use intermediate let bindings (Pitfall 7) |
+| **Ingestion pipeline** | No backpressure, events dropped | Buffer actor + batch writes + 429 response (Pitfall 14) |
+| **Ingestion pipeline** | Map linear scan bottleneck | Limit metadata size, minimize lookups (Pitfall 3) |
+| **Ingestion pipeline** | Conservative GC false retention | Minimize live variables, periodic actor restart (Pitfall 11) |
+| **Ingestion pipeline** | Log parsing without string destructuring | Use structured events, String.split (Pitfall 18) |
+| **Database schema** | Unpartitioned events table | Time-based partitioning from day one (Pitfall 4) |
+| **Database integration** | Pool blocking scheduler workers | Right-size pool, batch buffer pattern (Pitfall 16) |
+| **Error grouping** | Over/under grouping | Simple fingerprint, user overrides, versioned algorithm (Pitfall 9) |
+| **Error grouping** | Map.collect integer key assumption | Manual map building for string keys (Pitfall 12) |
+| **Error grouping** | Missing List.group_by | Implement manually or add to stdlib (Pitfall 19) |
+| **Alerting** | Alert storms from cascading rules | Deduplication window, grouping, cooldown (Pitfall 5) |
+| **Alerting** | Timer.send_after thread explosion | Single recurring timer actor, batch evaluation (Pitfall 2) |
+| **Real-time streaming** | WebSocket memory pressure | Connection limits, room broadcasts, idle timeouts (Pitfall 8) |
+| **Real-time streaming** | Disconnect cleanup leaks | on_close cleanup, supervision tree (Pitfall 21) |
+| **Multi-node** | Split brain without consensus | PostgreSQL as truth, single alerting node (Pitfall 13) |
+| **Multi-node** | Broadcast amplification | Single-origin broadcast, message deduplication (Pitfall 17) |
+| **Multi-node** | Clock skew ordering | NTP, client timestamps, query tolerance (Pitfall 20) |
+| **Compiler interaction** | List.find pattern match crash | Fix codegen bug or use filter workaround (Pitfall 6) |
+| **Compiler interaction** | Collected iterator .to_string() failure | Use string interpolation (Pitfall 15) |
+| **HTTP middleware** | Missing type annotations | Convention: always annotate :: Request (Pitfall 10) |
+
+---
 
 ## Sources
 
-### Primary (HIGH confidence -- direct codebase analysis)
-- `crates/mesh-lsp/src/server.rs` -- MeshBackend, Mutex<HashMap>, handler implementations, ServerCapabilities
-- `crates/mesh-lsp/src/analysis.rs` -- offset_to_position (UTF-16), position_to_offset, analyze_document
-- `crates/mesh-lsp/src/definition.rs` -- source_to_tree_offset, tree_to_source_offset (whitespace-skipping coordinate system)
-- `crates/mesh-lsp/src/lib.rs` -- run_server, tower-lsp Server setup
-- `editors/vscode-mesh/package.json` -- Extension configuration, publisher, scripts, dependencies
-- `editors/vscode-mesh/src/extension.ts` -- findMeshc() well-known paths, LanguageClient setup
-- `editors/vscode-mesh/syntaxes/mesh.tmLanguage.json` -- Grammar patterns, rule ordering
-- `.cargo/config.toml` -- LLVM_SYS_211_PREFIX hardcoded to /opt/homebrew
-- `Cargo.toml` -- inkwell with llvm21-1 feature, tower-lsp 0.20
-- `crates/meshc/src/main.rs` -- CLI subcommands (build, fmt, repl, lsp)
-- `website/docs/docs/getting-started/index.md` -- Current install instructions (build from source only)
+### Primary (HIGH confidence -- direct Mesh source analysis)
+- `crates/mesh-rt/src/actor/mod.rs:581-600` -- Timer.send_after OS thread spawn implementation
+- `crates/mesh-rt/src/actor/heap.rs:111-137` -- Per-actor heap, 256 KiB GC threshold, conservative scanning
+- `crates/mesh-rt/src/actor/process.rs:220` -- DEFAULT_REDUCTIONS = 4000, scheduler preemption
+- `crates/mesh-rt/src/collections/map.rs:1-60` -- Map linear scan implementation, KEY_TYPE_INT/STR tags
+- `crates/mesh-rt/src/db/pool.rs:1-100` -- Connection pool with parking_lot Mutex, checkout timeout
+- `crates/mesh-rt/src/ws/server.rs:579` -- WebSocket reader thread spawn per connection
+- `crates/mesh-rt/src/dist/node.rs` -- Distributed actor system, no consensus protocol
+- `.planning/PROJECT.md:234-243` -- Documented tech debt and known limitations
+- `.planning/PROJECT.md:271` -- Conservative stack scanning design decision
 
-### Secondary (MEDIUM confidence -- official documentation, multiple sources agree)
-- [tower-lsp LanguageServer trait docs](https://docs.rs/tower-lsp/latest/tower_lsp/trait.LanguageServer.html) -- Handler signatures, capability requirements
-- [LSP Specification 3.17](https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/) -- UTF-16 positions, TextEdit range requirements, capability negotiation
-- [DocumentSymbol struct docs](https://docs.rs/lsp-types/latest/lsp_types/struct.DocumentSymbol.html) -- range/selection_range containment requirement
-- [VS Code Publishing Extensions](https://code.visualstudio.com/api/working-with-extensions/publishing-extension) -- PAT creation, vsce workflow, .vsixignore
-- [Tokio shared state guide](https://tokio.rs/tokio/tutorial/shared-state) -- Mutex in async code, deadlock prevention
-- [tower-lsp concurrent handler issue #284](https://github.com/ebkalderon/tower-lsp/issues/284) -- Concurrent handler execution correctness concerns
-- [How to deadlock Tokio with a single mutex](https://turso.tech/blog/how-to-deadlock-tokio-application-in-rust-with-just-a-single-mutex) -- std::sync::Mutex blocking in async context
-- [cargo-dist](https://axodotdev.github.io/cargo-dist/) -- Automated Rust binary distribution with install scripts
-- [Wiz Research: Supply chain risk in VS Code extensions](https://www.wiz.io/blog/supply-chain-risk-in-vscode-extension-marketplaces) -- 550+ secrets leaked in published extensions
-- [Cross-compiling Rust on GitHub Actions](https://blog.timhutt.co.uk/cross-compiling-rust/) -- Platform matrix, LLVM cross-compile challenges
-- [Chef: 5 ways to deal with curl|bash](https://www.chef.io/blog/5-ways-to-deal-with-the-install-sh-curl-pipe-bash-problem) -- Partial download risk, verification best practices
-- [TextMate Language Grammars manual](https://manual.macromates.com/en/language_grammars) -- Pattern priority, first-match-wins semantics
+### Secondary (MEDIUM confidence -- monitoring domain research, multiple sources agree)
+- [Sentry Developer Docs: Grouping](https://develop.sentry.dev/backend/application-domains/grouping/) -- Error fingerprinting design challenges, platform variance
+- [Sentry Developer Docs: Ingestion](https://develop.sentry.dev/ingestion/) -- Relay -> Kafka -> ClickHouse pipeline architecture
+- [Sentry Fingerprint Rules](https://docs.sentry.io/concepts/data-management/event-grouping/fingerprint-rules/) -- Custom fingerprinting, `{{ default }}` extension
+- [PostgreSQL Write-Heavy Tuning](https://www.cloudraft.io/blog/tuning-postgresql-for-write-heavy-workloads) -- WAL, checkpoint, index overhead
+- [PostgreSQL Partitioning Scalability Bottlenecks](https://www.postgresql.org/message-id/510b887e-c0ce-4a0c-a17a-2c6abb8d9a5c@enterprisedb.com) -- Many-partition lock contention
+- [Table Partitioning for Performance](https://medium.com/cubbit/table-partitioning-in-postgresql-performance-bloat-7c248dd2d604) -- BRIN vs B-tree, autovacuum impact
+- [Scaling Data Ingestion](https://www.matia.io/blog/best-practices-and-pitfalls-of-scaling-data-ingestion-for-high-volume-sources) -- Batch vs row-by-row, schema drift
+- [Sentry at Scale](https://www.mindfulchase.com/explore/troubleshooting-tips/devops-tools/sentry-at-scale-diagnosing-ingestion-and-alerting-challenges-in-enterprise-devops.html) -- Ingestion saturation, Kafka partitioning
+- [Alert Fatigue Solutions 2025](https://incident.io/blog/alert-fatigue-solutions-for-dev-ops-teams-in-2025-what-works) -- Deduplication, tiered alerts, actionability metrics
+- [Alert Fatigue in Monitoring](https://icinga.com/blog/alert-fatigue-monitoring/) -- Alert storms, parent-child dependencies, cooldown
+- [Alert Fatigue Prevention](https://www.datadoghq.com/blog/best-practices-to-prevent-alert-fatigue/) -- 30-50% actionable rate target, continuous tuning
+- [WebSocket Scale 2025](https://www.videosdk.live/developer-hub/websocket/websocket-scale) -- Connection limits, memory per connection, OS tuning
+- [Scaling WebSockets](https://ably.com/topic/the-challenge-of-scaling-websockets) -- Sticky sessions, connection lifecycle, memory leaks
+- [WebSocket Performance Issues](https://oneuptime.com/blog/post/2026-01-24-websocket-performance/view) -- Reconnection storms, buffer bloat
+- [Split-Brain in Distributed Systems](https://dzone.com/articles/split-brain-in-distributed-systems) -- Quorum, fencing, STONITH
+- [Clock Skew in Distributed Systems](https://braineanear.medium.com/taming-clocks-in-distributed-systems-unraveling-the-complexity-of-time-307867b8caf9) -- NTP, logical clocks, vector clocks
+- [The Difficulty of Dogfooding](https://blog.codinghorror.com/the-difficulty-of-dogfooding/) -- Developers as unrepresentative users
+- [Understanding Compiler Bugs](https://www.cs.sjtu.edu.cn/~zhonghao/paper/understandingbug.pdf) -- Workaround patterns, bug propagation

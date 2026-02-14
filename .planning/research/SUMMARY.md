@@ -1,274 +1,317 @@
 # Project Research Summary
 
-**Project:** Mesh Developer Tooling Milestone
-**Domain:** Programming language developer tooling (install scripts, binary distribution, LSP enhancements, VS Code extension publishing)
-**Researched:** 2026-02-13
+**Project:** Mesher -- Monitoring/Observability SaaS Platform
+**Domain:** Core monitoring platform for log ingestion, error tracking, real-time streaming, alerting
+**Researched:** 2026-02-14
 **Confidence:** HIGH
 
 ## Executive Summary
 
-Mesh requires production-grade developer tooling to move from "build from source" to "install with one command." The research reveals that all the necessary infrastructure is already in place -- the LSP server already has the type information and AST needed for code completion, document symbols, and signature help; the VS Code extension already uses the correct patterns and checks the right install paths; and the existing LLVM-linked binary can be distributed as-is without new dependencies.
+Mesher is a monitoring and observability platform designed as the ultimate dogfooding exercise for the Mesh programming language. The entire backend is written in Mesh (.mpl files), using no additional frameworks or runtimes -- just the Mesh compiler, PostgreSQL for storage, and a separate Vue 3 frontend. This is a classic event ingestion pipeline with error grouping, real-time WebSocket streaming, alerting, and multi-tenant organization. The architecture is intentionally actor-heavy: every component (HTTP ingestion, event processing, database writing, WebSocket streaming, alert evaluation) is one or more supervised actors communicating via message passing.
 
-The recommended approach is to build in three parallel tracks: (1) implement LSP features by adding query functions over existing data (no new analysis passes needed), (2) create a GitHub Actions release workflow with native builds per platform and a shell install script following the Rust/Gleam pattern, and (3) update the VS Code extension with marketplace metadata and publish to both VS Code Marketplace and Open VSX. These tracks are architecturally independent but must coordinate on naming conventions (binary paths, release asset names).
+The recommended approach is to build incrementally from foundation to complexity. Start with the data model (projects, events, issues), then build the ingestion pipeline (HTTP POST endpoint, event validation, actor-based processing), add error grouping (fingerprinting via pattern matching and string operations), implement real-time streaming (WebSocket rooms with actor-per-connection), layer on alerting (timer-driven rule evaluation), and finally add multi-node clustering as an overlay. The Vue 3 frontend is a separate workstream that consumes the REST API and WebSocket endpoints. The technology stack leverages existing Mesh capabilities: the HTTP server, WebSocket server with rooms, PostgreSQL driver with connection pooling, JSON serde via deriving(Json), and the actor system with supervision trees. The frontend uses Vue 3 + Vite + TypeScript with shadcn-vue (already established in the docs site), ECharts for time-series charting, TanStack libraries for data tables and virtual scrolling, and native fetch for API calls.
 
-The key risks are LLVM linkage complexity in CI builds (mitigated by building natively on each platform rather than cross-compiling), LSP mutex deadlocks from concurrent requests (mitigated by never holding locks across async await points), and supply chain security in the install script (mitigated by SHA-256 checksum verification). The existing codebase is well-structured for this work -- the LSP already has hover and go-to-definition working correctly, proving the analysis pipeline is solid.
+The key risks are the dual-bug problem (app bugs versus compiler bugs, since this is the first large Mesh application), timer management (Timer.send_after spawns OS threads, not sustainable for hundreds of recurring timers), and database schema design (must use time-based partitioning from day one or face query/retention nightmares). Mitigation strategies: maintain a compiler bug journal with minimal reproductions, use a single recurring timer actor for alerting instead of per-rule timers, and design PostgreSQL schema with native PARTITION BY RANGE on timestamps. The project should expect to surface compiler/runtime issues and fix them immediately rather than working around them long-term.
 
 ## Key Findings
 
 ### Recommended Stack
 
-**No new dependencies are required.** The existing stack is sufficient for all planned features. The LSP server uses tower-lsp 0.20 which provides completion, document_symbol, and signature_help trait methods ready to override. The VS Code extension uses vscode-languageclient ^9.0.1 which automatically supports all these features client-side when the server advertises the capabilities. Binary distribution requires only shell scripting and GitHub Actions standard actions.
+The stack is dictated by what Mesh already provides plus established frontend technologies. The backend is 100% Mesh with zero external dependencies beyond PostgreSQL. The frontend is a standalone Vue 3 SPA in the monorepo, communicating via REST and WebSocket.
 
 **Core technologies:**
-- **tower-lsp 0.20** — LSP server framework with all needed protocol features (completion, document symbols, signature help) already available in current version
-- **vscode-languageclient ^9.0.1** — LSP client that automatically picks up new server capabilities without extension code changes
-- **@vscode/vsce ^2.22.0** — VS Code extension packaging and publishing to Marketplace (already in devDependencies)
-- **GitHub Actions** — CI/CD for native binary builds per platform (macOS x86_64/arm64, Linux x86_64/arm64)
-- **POSIX shell script** — Install script following rustup/Gleam pattern (no runtime dependencies beyond curl/tar)
 
-**Critical insight:** The existing mesh-lsp analysis pipeline already computes everything needed. The AnalysisResult contains the full Parse (rowan CST) and TypeckResult (type map, type registry with all struct/sum type definitions, trait registry). Completion, symbols, and signature help are pure query functions over this existing data -- no modifications to the parser or type checker required.
+- **Mesh (.mpl source files)** -- Entire backend, compiled to native binary by meshc. Exercises HTTP server, WebSocket with rooms, PostgreSQL driver with pooling, JSON serde, actor concurrency, supervision trees, distributed actors for multi-node clustering.
+- **PostgreSQL 16+** -- Storage layer with native range partitioning (no TimescaleDB), connection pooling, full-text search via tsvector. Schema designed for high write volume with time-series partitioning.
+- **Vue 3 (^3.5.28) + Vite (^6.2) + TypeScript (^5.9.3)** -- Frontend framework, already used in docs site. Reactivity model fits real-time dashboard needs. Monorepo consistency.
+- **ECharts (^6.0.0) + vue-echarts (^8.0.1)** -- Charting for time-series event volume, error breakdowns, issue timelines. Apache 2.0 licensed, handles large datasets, supports brush/zoom needed for monitoring.
+- **shadcn-vue + Tailwind CSS 4.1** -- UI components (already established in docs site). Copy-paste component library built on reka-ui primitives with Tailwind styling.
+- **TanStack Vue libraries** -- @tanstack/vue-table for sortable/filterable data tables (official shadcn-vue pattern), @tanstack/vue-virtual for log viewer virtual scrolling (60 FPS with 100K+ items).
+- **date-fns (^4.1.0)** -- Date formatting with first-class timezone support (critical for monitoring events from different regions).
+- **Native fetch** -- No axios/ky needed. Single backend, thin composable wrapper for auth headers and JSON parsing.
+
+**What NOT to add:** TimescaleDB (extension dependency, operational complexity), InfluxDB/ClickHouse (Mesh has no driver), OpenTelemetry SDK (over-engineered for log/error use case), Nuxt (SSR unnecessary for dashboard SPA), Socket.io (Mesh uses raw RFC 6455 WebSocket), GraphQL (REST is simpler), Redis/message queue (actor mailboxes handle in-memory processing).
 
 ### Expected Features
 
+Mesher is a monitoring platform, not a full observability platform. No distributed tracing, no APM, no infrastructure metrics, no session replay. Focus on error events and log entries.
+
 **Must have (table stakes):**
-- **One-line install script** (`curl | sh`) with platform detection and SHA-256 verification -- every modern language has this
-- **Prebuilt binaries** for macOS (x86_64, arm64) and Linux (x86_64) -- users cannot be expected to have LLVM toolchain
-- **VS Code Marketplace publishing** -- if users can't `ext install`, the language doesn't exist to most developers
-- **LSP document symbols** -- powers Outline panel, breadcrumbs, and Go to Symbol (Cmd+Shift+O) which are essential for navigating files
-- **LSP completion** for keywords, types, and built-in functions (minimum viable) -- most basic editor intelligence feature
-- **TextMate grammar completeness** -- all 48 keywords properly highlighted, missing operators added, doc comments distinguished
 
-**Should have (competitive):**
-- **LSP signature help** -- shows function parameter info during typing, standard feature for typed languages
-- **LSP formatting integration** -- wire existing mesh_fmt through textDocument/formatting handler
-- **Scope-aware completion** -- completions filtered by visibility (local vars, function params, module-level names)
-- **Open VSX publishing** -- Cursor, VSCodium, and other VS Code forks (10M+ users) rely on Open VSX exclusively
-- **Install script version management** -- ability to install specific versions, not just latest
-- **Extension status bar** -- show "Mesh LSP: Running" vs "Error" for visibility
+- Event ingestion API (POST /api/v1/events) with DSN authentication and rate limiting
+- Error grouping via fingerprinting (hash of stack trace + error type + normalized message)
+- Issue lifecycle (open, resolved, archived) with regression detection
+- Project/org multi-tenancy with RBAC
+- Search and filtering (full-text via PostgreSQL tsvector, tag-based, time-range)
+- Real-time WebSocket streaming of new events to dashboards (actor-per-connection, rooms)
+- Alerting with threshold-based rules and webhook/WebSocket notifications
+- Data retention with configurable per-project expiration
+- Dashboard aggregation queries (event volume over time, error breakdowns, top issues)
+- Event detail view with stack traces, breadcrumbs, tags, user context
 
-**Defer (v2+):**
-- **Dot-triggered completion** (e.g., `list.` suggests methods) -- requires type resolution at cursor position, significantly more complex
-- **Semantic tokens** -- semantic highlighting on top of TextMate grammar, requires full textDocument/semanticTokens implementation
-- **Workspace symbols** (Cmd+T) -- requires multi-file indexing which LSP currently doesn't support (single-file only)
-- **Tree-sitter grammar** -- duplicates TextMate effort, only needed for Neovim/Helix users
-- **Debug Adapter Protocol** -- enormous scope, users can use gdb/lldb on compiled binaries
+**Should have (competitive/dogfooding differentiators):**
+
+- Multi-node event processing via distributed actors (location-transparent send, global registry)
+- Actor-per-connection WebSocket with crash isolation
+- Supervision tree resilience (self-healing event pipeline)
+- Zero-dependency backend (single binary, no Kafka/Redis/Elasticsearch)
+- Live alert rule evaluation (actor receives event stream, maintains in-memory counters)
+- Cross-node WebSocket broadcast (dashboards on different nodes see same real-time events)
+
+**Defer to v2+ (anti-features for this milestone):**
+
+- Distributed tracing/APM (span collection, service maps)
+- Infrastructure metrics (CPU/memory monitoring)
+- Session replay (DOM snapshots)
+- Source map processing for JavaScript
+- Release tracking with git commit integration
+- Profiling (CPU/memory flame graphs)
+- Custom dashboard builder (drag-and-drop widgets)
+- Log query language (stick to full-text search + structured tags)
+- Multi-region data residency
+- Billing/usage-based pricing
+- Email alerting (requires SMTP, which Mesh lacks)
+- Mobile SDKs
 
 ### Architecture Approach
 
-The architecture is additive, not transformative. Three independent workstreams with minimal integration points: (1) LSP enhancements add new modules (completion.rs, symbols.rs, signature.rs) that call existing analysis.rs utilities, (2) install infrastructure adds CI workflow and shell script with no code dependencies, (3) VS Code extension updates are mostly metadata (package.json) with optional status bar additions in extension.ts.
+Pipeline-of-actors pattern with layered supervision. Every conceptual component is an actor or service (stateful actor). Data flows from ingestion actors through processing actors to three destinations: storage (batch write to PostgreSQL), streaming (WebSocket broadcast to rooms), and alerting (rule evaluation with in-memory state).
 
 **Major components:**
 
-1. **mesh-lsp/src/completion.rs (NEW)** — Build CompletionItem lists from three data sources already available: built-in names from builtins.rs (static list), user-defined names from TypeckResult.type_registry (all struct/sum type defs), and keywords (static list from SyntaxKind). Context detection determines what to offer: after `.` lookup receiver type for fields/methods, after `::` offer type names, bare identifier offer everything in scope.
+1. **Ingestion Layer** -- HTTP Server (actor-per-connection) and WebSocket Ingestion Server accept events, validate, route to EventRouter service which dispatches by project_id to processor pool.
+2. **Processing Layer** -- Processor actors fingerprint events (pattern matching on stack traces, string operations for normalization), resolve fingerprint to issue_id via Fingerprinter service (Map cache), enrich events with metadata, fan out to downstream.
+3. **Storage Layer** -- StorageWriter service accumulates events in List buffer, flushes in batches to PostgreSQL via connection pool. Uses PostgreSQL transactions with ON CONFLICT for issue upserts.
+4. **Streaming Layer** -- StreamBroadcaster actor receives enriched events, broadcasts to WebSocket rooms. WS Dashboard Server (actor-per-connection) joins clients to rooms with filters.
+5. **Alerting Layer** -- AlertRuleStore service maintains rule cache, AlertEvaluator service runs on timer (single recurring timer actor, not per-rule timers), AlertNotifier sends notifications (WebSocket first, webhooks require HTTP client capability).
+6. **Cluster Layer** (multi-node) -- NodeManager actor handles mesh formation via Node.connect, ClusterSync service uses Global.register for service discovery, cross-node room broadcast automatic via DIST_ROOM_BROADCAST.
 
-2. **mesh-lsp/src/symbols.rs (NEW)** — Walk the CST using existing Parse to produce hierarchical DocumentSymbol responses. Direct mapping from SyntaxKind to SymbolKind: FN_DEF -> Function, STRUCT_DEF -> Struct, MODULE_DEF -> Module with nested children. Powers Outline view, breadcrumbs, and Go to Symbol with a single implementation. Uses existing offset_to_position for coordinate conversion.
+**Key patterns:** Actor-per-connection with crash isolation (HTTP/WS), service as stateful singleton (EventRouter, Fingerprinter, StorageWriter use GenServer pattern), timer-driven periodic work (single timer actor for alerting, batch flush timer), pipeline fan-out via message passing (processor sends to storage/streaming/alerting independently), authentication middleware (extract API key, validate against projects table).
 
-3. **mesh-lsp/src/signature.rs (NEW)** — Find enclosing CALL_EXPR at cursor position, count commas for active parameter, resolve callee name through existing definition.rs patterns, look up function type scheme in TypeckResult or builtins, format parameters with types from the scheme. Triggered by `(` and `,` characters.
-
-4. **scripts/install.sh (NEW)** — Detect OS (`uname -s`) and arch (`uname -m`), normalize to release asset naming convention, download tarball + SHA-256 from GitHub Releases, verify checksum, extract to `~/.mesh/bin/meshc` (path VS Code extension already checks), add to PATH via shell profile detection (.bashrc/.zshrc/.profile).
-
-5. **.github/workflows/release.yml (NEW)** — Matrix build on tag push: macos-13 (x86_64), macos-latest (arm64), ubuntu-latest (x86_64), ubuntu-24.04-arm (arm64). Install LLVM 21 per platform (brew on macOS, apt on Linux), cargo build --release natively (no cross-compilation due to LLVM complexity), create tarballs + SHA-256, upload to GitHub Release.
-
-6. **editors/vscode-mesh/package.json (MODIFIED)** — Add marketplace metadata: icon, repository, categories, badges. Version bump to 0.2.0 signals intentional first public release. No code changes needed for LSP features -- vscode-languageclient automatically enables features when server advertises capabilities.
-
-**Pattern to follow:** Every LSP handler follows the MeshBackend pattern from server.rs: lock documents mutex, get DocumentState, call query function in separate module, drop lock before any await. The query functions are pure (no side effects, no async, no locking) and operate only on AnalysisResult. This pattern prevents deadlocks and keeps handlers simple.
-
-**Anti-pattern to avoid:** Never hold std::sync::Mutex across await points. Tokio can schedule multiple handlers on the same thread; if task A holds the mutex and awaits, task B scheduled on the same thread will deadlock trying to acquire the same mutex. The existing hover/definition handlers do this correctly; all new handlers must follow the same pattern.
+**Database schema:** Events table partitioned by timestamp (PARTITION BY RANGE, daily partitions), issues table with UNIQUE(project_id, fingerprint) for upsert, BRIN indexes on time columns, GIN indexes on JSONB tag columns. Batch writes via accumulated List with periodic flush. Retention via DROP old partitions (instant) not DELETE (hours).
 
 ### Critical Pitfalls
 
-1. **Install script downloads 50MB+ binary without SHA-256 verification** — The meshc binary statically links LLVM 21, producing 50-100MB files. Without checksum verification, interrupted downloads (common at this size) produce corrupted binaries that segfault with confusing errors. Users blame Mesh. Prevention: Generate .sha256 files for every release artifact, download and verify before extraction, fail clearly if mismatch. Also prevents supply chain attacks from compromised CDN/GitHub.
+Top 5 risks that could derail the project:
 
-2. **Platform detection fails on non-standard environments** — `uname -m` returns `aarch64` on Linux but `arm64` on macOS for the same ARM64 architecture. Rosetta terminals on Apple Silicon report x86_64 even on ARM hardware. Prevention: Normalize arch names in install script (map both aarch64 and arm64 to single canonical name), use consistent asset naming in GitHub Releases (meshc-{os}-{arch}.tar.gz), detect Rosetta via sysctl on macOS to avoid emulated binaries.
+1. **Dual-bug problem (app vs compiler)** -- This is the first large Mesh application. Every bug requires triage: is it my code or the compiler? Prevention: minimal reproduction discipline (isolate in standalone .mpl file), compiler bug journal, fix compiler bugs immediately instead of working around them. If a workaround would be more than a few lines, fix the compiler first.
 
-3. **LSP mutex deadlock under concurrent requests** — tower-lsp executes up to 4 async handlers concurrently. If handler A locks std::sync::Mutex and then awaits (e.g., client.log_message().await), Tokio may schedule handler B on the same thread which also tries to lock -- deadlock. Non-deterministic, appears as intermittent "server hangs." Prevention: Never hold mutex guard across await. Lock, extract data to local vars, drop lock, then do async work. Consider switching to tokio::sync::RwLock for document store since most operations are reads.
+2. **Timer.send_after thread explosion** -- Timer.send_after spawns an OS thread per call. Alerting with hundreds of rules firing every 10 seconds creates thousands of threads, exhausting OS limits. Prevention: Use a single recurring timer actor that evaluates all alert rules per tick, not one timer per rule. Batch alerts by evaluation interval.
 
-4. **Forgetting to advertise new LSP capabilities** — Implementing completion() on LanguageServer trait but forgetting to set completion_provider in initialize() ServerCapabilities means the editor never sends requests. Feature silently does nothing. No compile-time check links capability declaration to handler. Prevention: Add capabilities and handlers in same commit, extend server_capabilities test to assert each new capability is present, write integration test that sends request and verifies non-empty response.
+3. **Unpartitioned events table** -- Without time-based partitioning, the events table becomes unusable after a week. Query latency grows linearly, autovacuum cannot keep pace, disk fills. Prevention: PARTITION BY RANGE on timestamp from day one. Create daily partitions at startup. Use BRIN indexes for timestamps. Retention via DROP partition, not DELETE + VACUUM.
 
-5. **VS Code extension published with secrets or wrong PAT scope** — vsce package bundles everything not in .vsixignore. Missing or incomplete .vsixignore leaks .env files, PAT tokens, API keys into published package (Wiz Research found 550+ secrets in published extensions). Also, Azure DevOps PAT must have "Marketplace (Manage)" scope with "All accessible organizations" or vsce publish fails with opaque auth errors. Prevention: Create .vsixignore that excludes everything except required files (out/, syntaxes/, package.json, README.md), run vsce ls before every publish to inspect contents, store PAT as GitHub Secret and automate publishing via CI.
+4. **Map linear scan bottleneck** -- Mesh's Map uses vector with linear scan. Event metadata maps with 50+ keys make lookups O(n). 10 lookups per event at 10K events/second = 5M comparisons/second. Prevention: Limit metadata map sizes (max 32 tags), extract fields once into local variables, avoid repeated Map.get in hot paths. Profile before assuming this is the bottleneck -- may be fast enough.
+
+5. **Alert storms from cascading rules** -- Single failure triggers hundreds of alerts (high error rate, slow response, connection failures all fire independently). Operators ignore all notifications. Prevention: Deduplication window (suppress duplicate alerts for same rule for 5 minutes), alert grouping (batch alerts that fire within 30 seconds), cooldown periods (do not re-fire same alert even if condition persists), start with fewer, broader rules.
 
 ## Implications for Roadmap
 
-Based on research, the work divides into three parallel tracks with minimal dependencies. The recommended phase structure prioritizes high-impact, low-complexity features first (TextMate grammar, LSP document symbols) to deliver immediate value, then tackles the install infrastructure that unblocks wider adoption, followed by more complex LSP features.
+Based on combined research, the dependency chain is linear and deep. Project setup must come first, then ingestion, then grouping, then everything else. Multi-node clustering is an overlay that can be added to any phase without changing single-node architecture. The SDK is a parallel workstream.
 
-### Phase 1: Foundation -- Grammar + Document Symbols
-**Rationale:** TextMate grammar update is a single file change with triple impact (VS Code highlighting, website Shiki highlighting via shared import, and correct token scopes for all users). LSP document symbols is the simplest LSP feature (pure CST walk, no type information needed) and powers three VS Code features simultaneously (Outline, Breadcrumbs, Go to Symbol). Both can be done in parallel with zero dependencies on each other.
+### Phase 1: Foundation (Data Model + Database + Storage)
 
-**Delivers:** Complete syntax highlighting for all 48 keywords plus missing operators (`.., <>, ++, =>, ?, |, &&, ||`), doc comments with distinct scope, hex/binary/scientific number literals, triple-quoted strings. Fully functional Outline panel and breadcrumb navigation for all Mesh files.
+**Rationale:** Types are imported by every module. Database schema must support high write volume and time-series queries from the start -- retrofitting partitioning is a major migration. Storage writer establishes the batch-write pattern used by all subsequent phases.
 
-**Addresses:** Table stakes features from FEATURES.md -- syntax highlighting completeness and basic navigation features users expect.
+**Delivers:** All struct definitions (Event, Issue, AlertRule, Project) with deriving(Json, Row), PostgreSQL schema with partitioning, StorageWriter service with batch accumulation and flush timer, database migrations runner.
 
-**Avoids:** Pitfall 6 (TextMate grammar keyword/type conflicts) by updating grammar in correct pattern order and testing with comprehensive test file.
+**Addresses:** Database schema pitfall (Pitfall 4), establishes foundational types for all phases.
 
-**Research flags:** SKIP -- both are well-documented patterns (TextMate grammar spec, LSP DocumentSymbol examples in tower-lsp docs).
+**Avoids:** Creating schema without partitioning, individual INSERT pattern that cannot scale.
 
-### Phase 2: Install Infrastructure -- CI + Script
-**Rationale:** Binary distribution and install script are the gateway to wider adoption. Users cannot be expected to build from source with LLVM toolchain. Must come before VS Code Marketplace publishing so the extension can reference working install instructions. CI workflow and install script must be developed together to ensure naming alignment.
+**Research needed:** Standard pattern, skip research-phase. PostgreSQL partitioning is well-documented.
 
-**Delivers:** GitHub Actions workflow that builds meshc for 4 targets (darwin-x86_64, darwin-arm64, linux-x86_64, linux-arm64) on tag push, creates GitHub Release with tarballs + SHA-256 checksums. POSIX shell install script with platform detection, checksum verification, PATH configuration, idempotent re-runs.
+### Phase 2: Ingestion Pipeline (HTTP + Event Processing)
 
-**Uses:** GitHub Actions standard actions (actions/checkout, actions/upload-artifact, softprops/action-gh-release), platform-specific LLVM installation (Homebrew on macOS, apt on Linux), native builds on each runner (no cross-compilation).
+**Rationale:** Core pipeline must exist before any downstream features work. This immediately exercises HTTP server, JSON serde, actor concurrency, connection pooling. Highest dogfooding value per line of code.
 
-**Implements:** scripts/install.sh that downloads from GitHub Releases to ~/.mesh/bin/meshc (path VS Code extension already checks), .github/workflows/release.yml with build matrix.
+**Delivers:** POST /api/v1/events endpoint with DSN authentication, rate limiting, validation, EventRouter service, Processor actor pool with fingerprinting and enrichment, fan-out to storage.
 
-**Avoids:** Pitfall 1 (corrupted downloads) via SHA-256 verification, Pitfall 2 (platform detection) via arch name normalization, Pitfall 10 (LLVM missing in CI) via per-platform LLVM installation, Pitfall 8 (existing installation handling) via version detection and atomic replacement.
+**Addresses:** Ingestion backpressure (Pitfall 14), Map linear scan (Pitfall 3), batch writes to storage.
 
-**Research flags:** MEDIUM -- LLVM installation in CI needs validation (apt-get install llvm-21-dev availability, Homebrew llvm@21 formula), binary size with static LLVM linkage needs measurement. Consider one task for "validate LLVM CI setup" before implementing full workflow.
+**Uses:** HTTP server, middleware, deriving(Json), actor messaging, pattern matching, StorageWriter from Phase 1.
 
-### Phase 3: LSP Completion + Signature Help
-**Rationale:** Code completion is the most valuable LSP feature but also the most complex. Start with keyword/type/snippet completion (static lists, no analysis work) to deliver immediate value, then add scope-aware completion (requires CST upward walk), defer dot-triggered completion to v2. Signature help reuses completion's context detection infrastructure (finding call expressions, looking up function types).
+**Avoids:** No backpressure (spawn unlimited actors), synchronous call chains blocking pipeline, unbounded batch buffer.
 
-**Delivers:** Keyword completion (48 Mesh keywords), built-in type completion (Int, Float, String, List, Map, etc.), snippet completion for common patterns (fn, let, struct), scope-aware variable/function completion (all visible names at cursor position), signature help showing function parameters and types during call expression typing.
+**Research needed:** Standard pattern, skip research-phase. Event ingestion is well-understood (Sentry SDK docs).
 
-**Uses:** Existing AnalysisResult data (Parse CST, TypeckResult with type_registry and types map), existing offset conversion utilities (offset_to_position, position_to_offset), existing builtins.rs for built-in function names.
+### Phase 3: Error Grouping and Issue Lifecycle
 
-**Implements:** mesh-lsp/src/completion.rs with completion_items_at() query function, mesh-lsp/src/signature.rs with signature_at() query function, ServerCapabilities advertisement in initialize(), completion() and signature_help() handlers in server.rs.
+**Rationale:** The feature that makes this a monitoring platform, not a log database. Fingerprinting exercises pattern matching, string operations, traits, PostgreSQL transactions with upserts.
 
-**Avoids:** Pitfall 3 (mutex deadlock) by following existing handler pattern (lock, extract, drop, async work), Pitfall 4 (missing capability advertisement) by extending server_capabilities test, Pitfall 7 (wrong UTF-16 offsets) by always using offset_to_position, Pitfall 12 (completion trigger conflicts) by only using `.` as trigger character (not `:`).
+**Delivers:** Fingerprint computation (hash of message + stack frames + error type), Fingerprinter service with cache, issue creation with ON CONFLICT upsert, regression detection during ingestion, issue state machine (open/resolved/archived/regressed).
 
-**Research flags:** LOW for keyword/type completion (static lists), MEDIUM for scope-aware completion (requires CST upward traversal similar to definition.rs but collecting all names instead of finding one). Signature help is MEDIUM (finding call expressions and counting commas for active parameter).
+**Addresses:** Error grouping accuracy (Pitfall 9), establishes issue-centric workflow.
 
-### Phase 4: VS Code Marketplace Publishing
-**Rationale:** Publishing to Marketplace makes the extension discoverable to all VS Code users. Must come after grammar update (so published extension has correct highlighting) and ideally after install script exists (so extension error messages can link to install instructions). Publishing to both VS Code Marketplace and Open VSX captures full user base (VS Code + forks).
+**Uses:** Pattern matching, String operations, Map cache, sum types for IssueStatus, PostgreSQL transactions.
 
-**Delivers:** Extension published to both VS Code Marketplace and Open VSX with icon, repository link, screenshots, CHANGELOG.md. Version bumped to 0.2.0. CI workflow that automates publishing on release tags. Optional: status bar showing "Mesh LSP: Running/Error", auto-install prompt if meshc not found.
+**Implements:** Fingerprinter trait with DefaultFingerprinter implementation (extensibility via traits).
 
-**Uses:** @vscode/vsce for Marketplace publishing, npx ovsx for Open VSX publishing, Azure DevOps PAT (VSCE_PAT) and OVSX token (OVSX_PAT) stored as GitHub Secrets.
+**Avoids:** Over-grouping (too coarse fingerprints), under-grouping (line numbers in fingerprint), missing user override capability.
 
-**Implements:** package.json marketplace metadata updates, editors/vscode-mesh/README.md for marketplace landing page, .vsixignore for excluding dev files, GitHub Actions workflow for vsce publish + ovsx publish on tag push. Optional: extension.ts status bar additions.
+**Research needed:** Skip research-phase. Sentry grouping algorithm is thoroughly documented.
 
-**Avoids:** Pitfall 5 (secrets in .vsix or wrong PAT scope) via .vsixignore and vsce ls review, Pitfall 15 (version collision) via auto-bump in CI, Pitfall 16 (create-publisher removed) by using Marketplace web portal, Pitfall 17 (extension error without install link) by adding install URL to error message.
+### Phase 4: Real-Time Streaming (WebSocket)
 
-**Research flags:** SKIP for basic publishing (well-documented in VS Code official docs), LOW for status bar additions (standard VS Code extension API).
+**Rationale:** Most impressive demo feature and best dogfooding of WebSocket rooms. Events flow from ingestion to dashboard in real-time via actor message passing. Exercises WebSocket, rooms, actor-per-connection, cross-node broadcast.
 
-### Phase 5: LSP Formatting + Audit
-**Rationale:** Wire existing mesh_fmt through LSP textDocument/formatting handler (trivial integration). Audit REPL and formatter for support of new language features added in phases 1.7-7.0 (for, while, trait, impl, From/Into conversion, etc.). This is a quality pass, not a feature addition -- ensures existing tools work correctly with the full current language.
+**Delivers:** WS Dashboard Server (actor-per-connection), StreamBroadcaster actor, room-based event broadcast, filtered streaming (clients subscribe to project:id, project:id:errors rooms), new issue notifications, issue count updates.
 
-**Delivers:** LSP formatting integration so VS Code "Format Document" runs meshc fmt. REPL audit covering multi-line continuation edge cases, string result formatting for complex types, error recovery, :load interaction. Formatter audit covering pipe operator multiline formatting, interface method bodies, comment preservation, long parameter wrapping. Fixes for any issues found.
+**Addresses:** WebSocket memory pressure (Pitfall 8), connection cleanup (Pitfall 21).
 
-**Uses:** Existing mesh_fmt::format_source() function (pure function: source in, formatted source out), existing rowan CST walker in mesh-fmt/src/walker.rs, existing rustyline REPL infrastructure, existing JIT execution via inkwell.
+**Uses:** WebSocket server, Ws.join/broadcast, rooms, actor-per-connection crash isolation, pattern matching on subscriptions.
 
-**Implements:** formatting() handler in server.rs that calls mesh_fmt::format_source and produces single full-document TextEdit, potential fixes in mesh-fmt/src/walker.rs for missing SyntaxKind match arms (formatter silently drops unknown nodes), potential fixes in mesh-repl for edge cases.
+**Avoids:** Unbounded connections (enforce limits per project), missing on_close cleanup (resource leaks), sending to individual connections instead of rooms.
 
-**Avoids:** Pitfall 13 (formatter data loss for new syntax) by adding catch-all arm in walker.rs that preserves unknown nodes verbatim, adding snapshot tests for every syntax construct.
+**Research needed:** Skip research-phase. WebSocket rooms are a known Mesh feature with examples.
 
-**Research flags:** SKIP -- no new patterns needed. This is audit/bugfix work, not feature research.
+### Phase 5: REST API (Query + CRUD)
 
-### Phase 6: Documentation Corrections
-**Rationale:** Must come after install script exists so docs can reference the real install command. Update getting-started guide, fix binary name (mesh -> meshc), fix compilation command (mesh hello.mpl -> meshc build .), remove fake install command from landing page or replace with real one.
+**Rationale:** Makes the platform usable for investigation. Dashboard needs to query events, issues, projects. CRUD endpoints for projects and alert rules. Exercises HTTP routing, JSON encoding, complex SQL queries.
 
-**Delivers:** Accurate getting-started documentation that works when copy-pasted on clean system. All code examples tested and verified. Landing page install command is real and functional.
+**Delivers:** GET /api/v1/events (search, filter, pagination), GET /api/v1/issues (sort, filter, pagination), POST/PUT/DELETE /api/v1/projects, POST/PUT/DELETE /api/v1/alerts, dashboard aggregation queries (event volume, error breakdowns, top issues).
 
-**Uses:** The working install script from Phase 2, the working meshc binary, the actual CLI interface.
+**Addresses:** Search/filtering (PostgreSQL tsvector is well-documented), pagination with keyset cursors.
 
-**Implements:** Updates to website/docs/docs/getting-started/index.md and landing page, potential addition of CI job that extracts code blocks and runs them in Docker to verify they work.
+**Uses:** HTTP routing with path params, deriving(Json) for response encoding, Pool.query for reads, PostgreSQL full-text search, dynamic SQL query building.
 
-**Avoids:** Pitfall 14 (docs show wrong commands) by manually walking through entire getting-started guide on clean macOS and Linux systems after install script is working.
+**Avoids:** SQL injection (use parameterized queries), OFFSET pagination (use keyset), missing middleware (auth, CORS).
 
-**Research flags:** SKIP -- this is documentation QA, not technical research.
+**Research needed:** Skip research-phase. REST API patterns are standard.
+
+### Phase 6: Alerting System
+
+**Rationale:** Closes the loop -- users don't have to watch the dashboard. Exercises timer-driven actor, service state management, pattern matching on sum types, HTTP client for webhooks (if capability exists).
+
+**Delivers:** AlertRuleStore service (CRUD + in-memory cache), AlertEvaluator service (single recurring timer, evaluates all rules per tick), alert conditions (EventCountAbove, ErrorRateAbove, NewIssueDetected, IssueRegressed), alert actions (WebSocket notification, log message, webhook if HTTP client available), deduplication window, cooldown periods.
+
+**Addresses:** Timer thread explosion (Pitfall 2), alert storms (Pitfall 5).
+
+**Uses:** Timer.send_after in loop (single timer actor), service with List/Map state, pattern matching on AlertCondition sum type, Ws.broadcast for in-app alerts.
+
+**Avoids:** One timer per rule (thread exhaustion), no deduplication (alert fatigue), no cooldown (re-fire spam).
+
+**Research needed:** Consider research-phase if webhook HTTP client capability is uncertain. Timer-driven evaluation is standard pattern.
+
+### Phase 7: Data Retention and Cleanup
+
+**Rationale:** Background actor with daily cleanup. Exercises Timer.send_after for scheduling, bulk DELETE operations, partition management.
+
+**Delivers:** Retention policy configuration per project (retention_days), background actor runs daily DELETE, partition manager creates future partitions at startup, storage usage tracking.
+
+**Addresses:** Unbounded storage growth, query performance degradation.
+
+**Uses:** Timer.send_after for daily schedule, PostgreSQL DELETE with WHERE timestamp, DROP old partitions.
+
+**Avoids:** DELETE without WHERE (wipes all data), forgetting autovacuum impact, manual partition management.
+
+**Research needed:** Skip research-phase. Retention is a standard database operation.
+
+### Phase 8: Multi-Node Clustering
+
+**Rationale:** Ultimate dogfooding phase. Exercises distributed actors, global registry, cross-node rooms, location-transparent PIDs, node monitoring. Should be last because it layers on top of fully-working single-node system.
+
+**Delivers:** NodeManager actor (Node.start, connect, monitor), ClusterSync service (Global.register for EventRouter, StorageWriter), cross-node event routing, cross-node WebSocket broadcast (automatic via DIST_ROOM_BROADCAST), remote processor spawning under load.
+
+**Addresses:** Split brain (Pitfall 13), broadcast amplification (Pitfall 17), clock skew (Pitfall 20).
+
+**Uses:** Node.connect, Global.register/whereis, Node.spawn, location-transparent send, :nodedown/:nodeup pattern matching.
+
+**Avoids:** Expecting strong consistency (no consensus protocol), dual-fire alerts (designate single alerting node), relying on in-memory state (PostgreSQL is source of truth).
+
+**Research needed:** Consider research-phase for split-brain handling patterns. Distributed consensus is complex.
+
+### Phase 9: Vue Frontend
+
+**Rationale:** Separate directory, not Mesh code. Consumes REST API and WebSocket from previous phases. Can be built in parallel with backend phases 1-6.
+
+**Delivers:** Vue 3 SPA with Vite, dashboard views (project overview, event list, issue list, event detail, alert rules), real-time event streaming via WebSocket, ECharts time-series charts, TanStack data tables, shadcn-vue components.
+
+**Uses:** Vue 3 composition API, vue-router 5, Pinia for state, native fetch for API, native WebSocket for streaming, ECharts for charting, TanStack Vue Table for sortable/filterable tables, TanStack Vue Virtual for log viewer.
+
+**Avoids:** Sharing code with docs site (separate package.json), using Nuxt (SSR unnecessary), Socket.io client (use native WebSocket).
+
+**Research needed:** Skip research-phase. Frontend stack is established technologies.
 
 ### Phase Ordering Rationale
 
-- **Grammar + Document Symbols first** because they have zero dependencies, deliver immediate visible value, and establish patterns for later LSP work. Both can be done in parallel.
-- **Install infrastructure second** because it's a hard dependency for Marketplace publishing (extension needs to reference install instructions) and unblocks wider adoption. CI workflow and install script must be coordinated on naming conventions.
-- **Completion + Signature third** because they're the most complex LSP features and benefit from having document symbols working first (proves the CST traversal patterns). Completion and signature can reuse each other's utilities.
-- **Marketplace publishing fourth** because it depends on grammar update (correct highlighting in published version) and install script existence (error messages can link to install docs).
-- **Formatting + Audit fifth** because it's a quality pass over existing features, not critical path for new functionality. Can be done after core LSP features are working.
-- **Documentation corrections last** because they depend on install script being production-ready and all features working so commands can be tested end-to-end.
-
-**Dependency chain:**
-```
-Grammar (independent) ─────┐
-                           ├─> Marketplace Publishing ──> Docs Corrections
-Document Symbols ──────────┘
-
-Install Script <── CI Workflow ──> Marketplace Publishing ──> Docs Corrections
-
-Completion ──┐
-             ├─> (can be done in parallel with Install track)
-Signature ───┘
-
-Formatting + Audit (independent, can be parallel with any phase)
-```
+- **Types first** because every module imports them.
+- **Storage before ingestion** because writer must exist before events can be stored.
+- **Ingestion before streaming** because events must flow into system before streaming out.
+- **Grouping after ingestion** because fingerprinting operates on validated events.
+- **Streaming after grouping** because broadcasts include issue_id from grouping.
+- **REST API after ingestion** because it queries data that ingestion writes.
+- **Alerting after REST API** because alert rules need CRUD endpoints.
+- **Retention after storage** because it operates on stored events.
+- **Clustering last** because it layers on top of fully-working single-node.
+- **Frontend last** because it consumes API and WebSocket that must work first.
 
 ### Research Flags
 
-**Phases needing deeper research during planning:**
-- **Phase 2 (Install Infrastructure):** LLVM installation in CI (apt package availability for llvm-21-dev on Ubuntu 22.04/24.04, Homebrew formula llvm@21 on macOS 13/14, static vs dynamic linking strategy). Binary size measurement with static LLVM. Asset naming coordination between CI and install script.
-- **Phase 3 (LSP Completion):** Scope-aware name collection requires CST upward walk similar to definition.rs but collecting all visible names -- may need to prototype the traversal logic before planning the full implementation.
+**Phases likely needing deeper research during planning:**
+
+- **Phase 8 (Multi-Node Clustering)** -- Split-brain handling without consensus protocol. Needs pattern research for distributed state consistency. Consider /gsd:research-phase for conflict resolution strategies.
 
 **Phases with standard patterns (skip research-phase):**
-- **Phase 1 (Grammar + Document Symbols):** TextMate grammar is data-only, well-documented. DocumentSymbol LSP pattern is straightforward CST walk with examples in tower-lsp docs.
-- **Phase 4 (Marketplace Publishing):** VS Code extension publishing is extremely well-documented in official docs. Standard vsce workflow.
-- **Phase 5 (Formatting + Audit):** No new patterns, audit scope only. Existing mesh_fmt and mesh-repl codebases are the specification.
-- **Phase 6 (Docs Corrections):** Documentation QA, no technical research needed.
+
+- **Phase 1 (Foundation)** -- PostgreSQL partitioning well-documented, standard schema design.
+- **Phase 2 (Ingestion)** -- HTTP ingestion is standard REST pattern, Sentry SDK docs cover event format.
+- **Phase 3 (Grouping)** -- Sentry grouping algorithm thoroughly documented in developer docs.
+- **Phase 4 (Streaming)** -- WebSocket rooms are known Mesh feature with E2E tests.
+- **Phase 5 (REST API)** -- Standard CRUD patterns, PostgreSQL full-text search documented.
+- **Phase 6 (Alerting)** -- Timer-driven evaluation is standard pattern, alerting best practices well-known.
+- **Phase 7 (Retention)** -- Standard database cleanup pattern.
+- **Phase 9 (Frontend)** -- Established Vue 3 ecosystem, shadcn-vue already used in docs site.
 
 ## Confidence Assessment
 
 | Area | Confidence | Notes |
 |------|------------|-------|
-| Stack | HIGH | All recommended technologies are already in use and verified working (tower-lsp, vscode-languageclient, vsce, rowan CST). No new dependencies. Direct source code analysis confirms all data structures exist. |
-| Features | HIGH | Table stakes features verified via LSP 3.17 spec, VS Code API docs, and analysis of other language tooling (Rust, Gleam, Deno). Feature priorities based on what existing Mesh LSP already supports (hover, definition work correctly). |
-| Architecture | HIGH | All architectural recommendations based on direct reading of current codebase (mesh-lsp/src/server.rs, analysis.rs, definition.rs, mesh-typeck TypeckResult). Integration points verified (VS Code extension already checks ~/.mesh/bin/meshc, website already imports mesh.tmLanguage.json). |
-| Pitfalls | HIGH | Critical pitfalls sourced from official docs (LSP spec UTF-16 requirement, tower-lsp async handler concurrency, VS Code Marketplace PAT setup, Wiz Research extension secrets finding). Platform detection issues verified from Rust/Gleam install script examples. |
+| Stack | HIGH | Backend is 100% existing Mesh capabilities (HTTP, WS, PG, actors, JSON). Frontend uses established Vue 3 ecosystem already proven in docs site. Versions verified against npm. |
+| Features | HIGH | Feature set derived from authoritative Sentry developer docs and established monitoring platform patterns. Table stakes well-understood. Differentiators map directly to Mesh's actor/distributed capabilities. |
+| Architecture | HIGH | Architecture derived directly from verified Mesh language primitives (actors, services, supervision, rooms). Patterns validated against existing E2E tests. Component boundaries clear. |
+| Pitfalls | HIGH | Critical pitfalls identified from Mesh runtime source analysis (Timer.send_after thread spawn, Map linear scan, conservative GC) and monitoring domain research (partitioning, alert storms, error grouping). |
 
 **Overall confidence:** HIGH
 
-The research is grounded in direct codebase analysis (all mesh-lsp files read, all relevant structs examined) combined with official documentation for tower-lsp, LSP specification, and VS Code extension API. The recommendation to use existing data structures rather than adding new dependencies significantly reduces risk -- the analysis pipeline already works correctly for hover and go-to-definition, proving the foundation is solid.
-
 ### Gaps to Address
 
-**LLVM static linking strategy** — The recommendation is to build binaries natively on each platform, but the exact LLVM linkage strategy (static vs dynamic, which LLVM shared libraries to bundle if dynamic) needs validation during Phase 2 planning. The inkwell llvm21-1 feature implies static linking, but actual binary size and portability need measurement. Mitigation: Add task in Phase 2 to build test binary on each CI runner and verify it runs on clean system without LLVM installed.
+- **HTTP client capability for webhook alerts** -- Mesh runtime has no outbound HTTP client. Alert webhooks (POST to Slack/Discord/PagerDuty) require this. Options: (1) build minimal HTTP client in Mesh runtime during dogfooding, (2) shell out to curl, (3) defer webhooks to v2 and start with WebSocket-only alerts. Recommend option 1 if webhooks are critical, option 3 for faster MVP.
 
-**Scope-aware completion complexity** — The recommendation includes scope-aware completion (all visible names at cursor position) in Phase 3, but the CST upward walk to collect all let bindings, function params, and top-level definitions may be more complex than anticipated. The existing definition.rs shows the pattern for finding one definition, but collecting all visible names is broader. Mitigation: During Phase 3 planning, prototype the scope collection function before committing to scope-aware completion in the same phase. May split into "basic completion" (keywords/types/snippets) and "scope-aware completion" (separate phase).
+- **List.find Option pattern matching codegen bug** -- Pre-existing LLVM verification error. Must be fixed before or during Phase 2 (ingestion pipeline) because finding events in lists is a bread-and-butter operation. Workaround is verbose (List.filter + List.length check). Track as high-priority compiler fix.
 
-**Non-ASCII completion offset handling** — The research identifies Pitfall 7 (wrong UTF-16 offsets for non-ASCII) as critical, and the existing offset_to_position function in analysis.rs correctly handles UTF-16. But completion items also need TextEdit ranges which must use the same UTF-16 conversion. Mitigation: During Phase 3 implementation, write tests with multi-byte characters (emoji, CJK) first to verify TextEdit ranges are correct before considering completion feature complete.
+- **Map.collect integer key assumption** -- Collecting iterators into Map<String, V> produces incorrect results. Needed for Phase 3 (error grouping) to aggregate events by string fields. Workaround is manual Map building with fold. Track as runtime fix.
 
-**CI LLVM installation time** — GitHub Actions runners do not have LLVM 21 pre-installed. Installing via apt or Homebrew adds time to every CI build. If LLVM installation takes 10+ minutes per runner, the matrix build (4 platforms) becomes 40+ minutes. Mitigation: During Phase 2 planning, measure LLVM install time on each runner type (ubuntu-latest, ubuntu-arm, macos-13, macos-latest) and add caching strategy if needed. Pre-built LLVM packages should be fast, but this needs verification.
+- **Multi-line pipe continuation** -- Parser limitation makes complex pipelines unreadable. Accept intermediate let bindings as standard pattern for now. Consider parser fix if pipe-heavy code becomes constant pain point.
+
+- **Missing stdlib functions** -- List.group_by likely needed for Phase 3. Check stdlib during implementation. If missing, implement in Mesher codebase and track as candidate for stdlib addition.
+
+All gaps have documented workarounds. None are project-blocking. The gaps themselves are valuable dogfooding findings.
 
 ## Sources
 
 ### Primary (HIGH confidence)
 
-**Direct codebase analysis:**
-- crates/mesh-lsp/src/server.rs — MeshBackend, DocumentState, LanguageServer trait impl, ServerCapabilities advertisement
-- crates/mesh-lsp/src/analysis.rs — AnalysisResult struct, analyze_document(), offset_to_position (UTF-16), position_to_offset
-- crates/mesh-lsp/src/definition.rs — find_definition(), source_to_tree_offset, tree_to_source_offset, CST traversal patterns
-- crates/mesh-typeck/src/lib.rs — TypeckResult (types map, type_registry, trait_registry, qualified_modules)
-- crates/mesh-typeck/src/ty.rs — Ty enum, Display impl for type formatting
-- crates/mesh-typeck/src/builtins.rs — Built-in function registrations (println, print, default, compare)
-- crates/mesh-parser/src/syntax_kind.rs — All SyntaxKind variants (FN_DEF, STRUCT_DEF, CALL_EXPR, etc.)
-- editors/vscode-mesh/package.json — Extension config, publisher, dependencies (vscode-languageclient ^9.0.1, @vscode/vsce ^2.22.0)
-- editors/vscode-mesh/src/extension.ts — findMeshc() checking ~/.mesh/bin/meshc, LanguageClient setup
-- editors/vscode-mesh/syntaxes/mesh.tmLanguage.json — TextMate grammar with keyword patterns
-- .cargo/config.toml — LLVM_SYS_211_PREFIX hardcoded to /opt/homebrew/opt/llvm
-- Cargo.toml — workspace members, tower-lsp 0.20, inkwell with llvm21-1 feature
-
-**Official documentation:**
-- tower-lsp 0.20 docs (docs.rs/tower-lsp/0.20.0) — LanguageServer trait methods, ServerCapabilities
-- LSP 3.17 Specification (microsoft.github.io) — UTF-16 position requirements, DocumentSymbol range/selection_range, CompletionItem, SignatureHelp
-- VS Code Language Extensions (code.visualstudio.com/api/language-extensions) — Syntax highlighting, semantic highlighting, LSP client integration
-- VS Code Publishing Extensions (code.visualstudio.com/api/working-with-extensions/publishing-extension) — vsce workflow, PAT setup, .vsixignore, Marketplace requirements
-- TextMate Language Grammars (macromates.com/manual/en/language_grammars) — Pattern priority, first-match-wins semantics
-- lsp-types crate docs — DocumentSymbol, CompletionItem, SignatureHelp struct definitions
+- Mesh runtime source analysis: crates/mesh-rt/src/{http, ws, db, actor, dist, collections}
+- Mesh language documentation: website/docs/docs/{concurrency, web, databases, distributed}
+- Mesh E2E tests: tests/e2e/{supervisor_basic, service_call_cast, stdlib_http_server_runtime, stdlib_pg, deriving_json_sum_type}.mpl
+- PROJECT.md: tech debt list (lines 234-243), conservative GC decision (line 271)
+- [Sentry Developer Docs](https://develop.sentry.dev/) -- Event payloads, grouping algorithm, SDK expected features, envelope protocol (authoritative)
+- [PostgreSQL Partitioning Documentation](https://www.postgresql.org/docs/current/ddl-partitioning.html) -- Native PARTITION BY RANGE (authoritative)
+- [vue-echarts npm](https://www.npmjs.com/package/vue-echarts) -- v8.0.1 compatibility verified
+- [@tanstack/vue-table](https://www.npmjs.com/package/@tanstack/vue-table) -- v8.21.3, official shadcn-vue data table pattern
+- [shadcn-vue Data Table docs](https://www.shadcn-vue.com/docs/components/data-table) -- TanStack Table integration
 
 ### Secondary (MEDIUM confidence)
 
-**Community consensus, multiple sources agree:**
-- Gleam Installation Guide (gleam.run) — Install script pattern, binary distribution for Rust-built language toolchain
-- Rust rustup-init installer architecture (deepwiki.com/rust-lang/rustup) — Platform detection, PATH configuration, shell profile handling
-- cargo-dist documentation (axodotdev.github.io/cargo-dist) — Binary distribution patterns, LLVM dependency limitations
-- Tokio shared state guide (tokio.rs/tokio/tutorial/shared-state) — Mutex in async code, deadlock prevention
-- tower-lsp GitHub issues #284 — Concurrent handler execution, std::sync::Mutex blocking in async context
-- Wiz Research: Supply chain risk in VS Code extensions (wiz.io/blog) — 550+ secrets leaked in published extensions, .vsixignore importance
-- Chef: 5 ways to deal with curl|bash (chef.io/blog) — Install script partial download risk, SHA-256 verification best practices
-- Cross-compiling Rust on GitHub Actions (blog.timhutt.co.uk) — Platform matrix patterns, LLVM cross-compile challenges
-- Open VSX Registry (open-vsx.org) — Alternative marketplace for VS Code forks (Cursor, VSCodium, etc.)
-
-### Tertiary (LOW confidence)
-
-None — all research grounded in primary sources (direct codebase reading and official documentation).
+- [PostgreSQL Write-Heavy Tuning](https://aws.amazon.com/blogs/database/speed-up-time-series-data-ingestion-by-partitioning-tables-on-amazon-rds-for-postgresql/) -- AWS best practices
+- [pg_partman vs Hypertables](https://www.tigerdata.com/learn/pg_partman-vs-hypertables-for-postgres-partitioning) -- Partitioning approach comparison
+- [Alert Fatigue Solutions 2025](https://incident.io/blog/alert-fatigue-solutions-for-dev-ops-teams-in-2025-what-works) -- Deduplication, actionability metrics
+- [WebSocket Scale 2025](https://www.videosdk.live/developer-hub/websocket/websocket-scale) -- Connection limits, memory per connection
+- [Luzmo Vue Chart Libraries Guide](https://www.luzmo.com/blog/vue-chart-libraries) -- 2025 comparison of Vue charting options
+- [System Design: Monitoring and Alerting](https://algomaster.io/learn/system-design-interviews/design-monitoring-and-alerting-system) -- Architecture patterns
+- [GlitchTip Architecture](https://glitchtip.com/documentation/hosted-architecture/) -- Open source Sentry alternative reference
 
 ---
-*Research completed: 2026-02-13*
+
+*Research completed: 2026-02-14*
 *Ready for roadmap: yes*
