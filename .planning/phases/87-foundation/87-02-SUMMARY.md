@@ -32,7 +32,17 @@ key-files:
   created:
     - mesher/main.mpl
     - mesher/storage/writer.mpl
-  modified: []
+  modified:
+    - mesher/storage/queries.mpl
+    - mesher/storage/schema.mpl
+    - mesher/types/event.mpl
+    - mesher/types/issue.mpl
+    - mesher/types/project.mpl
+    - mesher/types/user.mpl
+    - mesher/types/alert.mpl
+    - crates/mesh-typeck/src/infer.rs
+    - crates/mesh-codegen/src/codegen/expr.rs
+    - crates/mesh-codegen/src/mir/lower.rs
 
 key-decisions:
   - "All services in main.mpl -- Mesh cannot export services cross-module (ModuleExports lacks ServiceDef)"
@@ -77,8 +87,14 @@ Tasks 1 and 2 were combined into a single commit because all services share `mes
 1. **Tasks 1+2: Entity services + StorageWriter + main entry** - `19af21f7` (feat)
 
 ## Files Created/Modified
-- `mesher/main.mpl` - All 4 services (Org, Project, User, StorageWriter), flush/retry logic, buffer helpers, flush_ticker actor, main entry point (315 lines)
+- `mesher/main.mpl` - All 4 services (Org, Project, User, StorageWriter), flush/retry logic, buffer helpers, flush_ticker actor, main entry point (321 lines)
 - `mesher/storage/writer.mpl` - insert_event helper using PostgreSQL jsonb extraction (16 lines)
+- `mesher/storage/queries.mpl` - Corrected: PoolHandle types, Map-based row construction, Pool.execute intermediate binding
+- `mesher/storage/schema.mpl` - Corrected: removed module declaration
+- `mesher/types/*.mpl` - Corrected: removed module declarations, Option<String> to String, module to module_name
+- `crates/mesh-typeck/src/infer.rs` - Fix: resolve_type_annotation for generic parameter types (List<String>)
+- `crates/mesh-codegen/src/codegen/expr.rs` - Fix: service struct state type detection (pointer vs i64)
+- `crates/mesh-codegen/src/mir/lower.rs` - Fix: MIR lowering for service dispatch with struct state
 
 ## Decisions Made
 1. **All services in main.mpl:** Mesh's ModuleExports does not include ServiceDef. Services register methods locally in the typechecker and cannot be imported cross-module. All 4 services must coexist in main.mpl.
@@ -137,8 +153,9 @@ Tasks 1 and 2 were combined into a single commit because all services share `mes
 **Impact on plan:** All auto-fixes necessary to achieve compilation. No scope creep. Service API surface matches plan exactly (16 call + 2 cast handlers). Internal implementation differs from plan due to Mesh compiler limitations.
 
 ## Issues Encountered
-- Mesh compiler has 3 distinct codegen bugs affecting service development: ? operator return type, Err(e) domination, and cross-module polymorphic type variables. All worked around without modifying the compiler.
-- The plan assumed separate service files and Map-based event buffers; reality required consolidation to main.mpl and JSON string buffers.
+- Mesh compiler had 3 codegen bugs affecting service development: ? operator return type, Err(e) domination, and service struct state pointer/i64 mismatch. Fixed with compiler patches to expr.rs (state type detection) and lower.rs (service dispatch MIR).
+- Typechecker bug: function parameters with generic type annotations (e.g., `List<String>`) were resolved as unparameterized types. Fixed in infer.rs to use `resolve_type_annotation` for parameters.
+- Plan assumed separate service files and Map-based event buffers; reality required consolidation to main.mpl and JSON string buffers due to compiler/language limitations.
 
 ## User Setup Required
 None - no external service configuration required. PostgreSQL database needed at runtime (postgres://mesh:mesh@localhost:5432/mesher).
