@@ -4,9 +4,20 @@
 
 Mesh is a programming language that combines Elixir/Ruby-style expressive syntax with static Hindley-Milner type inference and BEAM-style concurrency (actors, supervision trees, fault tolerance), compiled via LLVM to native single-binary executables. The compiler is written in Rust. v1.0-v1.9 built a complete language: compiler pipeline, actor runtime, trait system, module system, loops, stdlib, and developer tooling. v2.0 added database drivers and JSON serde. v3.0 made Mesh production-ready: TLS encryption for PostgreSQL and HTTPS, connection pooling with health checks, panic-safe database transactions, and automatic struct-to-row mapping via `deriving(Row)`. v4.0 added WebSocket support with RFC 6455 protocol, actor-per-connection model, TLS (wss://), heartbeat, fragmentation, and rooms/channels. v5.0 added distributed actors: location-transparent PIDs, TLS-encrypted inter-node connections with cookie auth and mesh formation, transparent remote send, remote process/node monitoring with fault propagation, remote spawn via function name registry, global process registry, and cross-node WebSocket rooms and supervision trees -- all with zero new crate dependencies. v6.0 added a documentation website with VitePress, custom syntax highlighting, 9 documentation guides, landing page, and production-quality site features. v7.0 added associated types to the trait system and built a comprehensive trait-based protocol ecosystem: lazy iterators with pipe-style composition, From/Into conversion, numeric traits for user-extensible arithmetic, and Collect for iterator materialization. ~97K LOC Rust + ~5K LOC website across 17 milestones. Zero known compiler correctness issues.
 
+## Current Milestone: v8.0 Developer Tooling
+
+**Goal:** Make Mesh installable, editable, and debuggable — real install script with prebuilt binaries, updated VS Code extension grammar, LSP improvements, REPL/formatter audit, and docs corrections.
+
+**Target features:**
+- Install script (`curl | sh`) with prebuilt macOS/Linux binaries and GitHub releases
+- VS Code extension grammar updated for all v1.7-v7.0 language features
+- LSP enhancements: code completion, document symbols, signature help
+- REPL and formatter audited for v7.0 language features
+- Website/docs fixes: version badge, install instructions, terminology corrections
+
 ## Current State
 
-Shipped v7.0 Iterator Protocol & Trait Ecosystem (2026-02-14). 17 milestones complete, 80 phases, 218 plans. 10 days from project start to trait ecosystem. All milestones shipped.
+Shipped v7.0 Iterator Protocol & Trait Ecosystem (2026-02-14). 17 milestones complete, 80 phases, 218 plans. 10 days from project start to trait ecosystem. Starting v8.0 Developer Tooling.
 
 **Latest milestone (v7.0):** Associated types in traits with HM inference integration. Iterator/Iterable two-trait protocol with built-in implementations for all collections. Lazy iterator pipelines (map, filter, take, skip, enumerate, zip) with type-tag dispatch. Terminal operations (count, sum, any, all, find, reduce). From/Into conversion traits with automatic Into generation and ? operator error type conversion. Numeric traits (Add/Sub/Mul/Div/Neg) with Output associated type. Collect trait for materialization into List, Map, Set, String. Complete website documentation updated. 33/33 requirements satisfied.
 
@@ -155,7 +166,11 @@ Expressive, readable concurrency -- writing concurrent programs should feel as n
 
 ### Active
 
-(No active requirements -- all milestones complete)
+- [ ] Install script with prebuilt binaries for macOS and Linux
+- [ ] VS Code extension grammar updated for all language features through v7.0
+- [ ] LSP code completion, document symbols, signature help
+- [ ] REPL and formatter compatibility with v7.0 features
+- [ ] Website and docs corrections (install instructions, version badge, terminology)
 
 ### Out of Scope
 
@@ -352,4 +367,4 @@ Tech debt (minor, pre-existing):
 | Safe Vec<u64> intermediary for collect | Bounds checking vs mesh_list_builder which has none | ✓ Good -- v7.0, safe collection |
 
 ---
-*Last updated: 2026-02-14 after v7.0 milestone completion*
+*Last updated: 2026-02-13 after v8.0 milestone start*
