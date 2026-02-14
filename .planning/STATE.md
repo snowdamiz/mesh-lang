@@ -10,9 +10,9 @@ See: .planning/PROJECT.md (updated 2026-02-13)
 ## Current Position
 
 Phase: 76 of 79 (Iterator Protocol)
-Plan: 0 of TBD in current phase
-Status: Ready to plan
-Last activity: 2026-02-13 -- Phase 75 (Numeric Traits) complete, verified 11/11 must-haves
+Plan: 1 of 2 in current phase
+Status: Executing
+Last activity: 2026-02-14 -- Plan 76-01 complete (Iterator/Iterable foundation)
 
 Progress: [██░░░░░░░░] 33% (v7.0)
 
@@ -54,6 +54,8 @@ Progress: [██░░░░░░░░] 33% (v7.0)
 - Parser disambiguates self keyword: self() is actor self-call, self.x is method receiver field access
 - Typeck fn_ty for impl methods includes all params (self + non-self) for correct MIR lowering
 - Comparison ops keep Bool return; arithmetic ops use Output type from resolve_range
+- [Phase 76]: Used opaque TyCon names (ListIterator, MapIterator, etc.) for iterator handle types in trait registry
+- [Phase 76]: Two-trait protocol: Iterable for collections, Iterator for stateful cursor; infer_for_in checks Iterable first then Iterator
 
 ### Research Notes
 
@@ -81,7 +83,7 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-02-13
-Stopped at: Phase 75 (Numeric Traits) complete, verified passed
+Last session: 2026-02-14
+Stopped at: Completed 76-01-PLAN.md (Iterator/Iterable foundation)
 Resume file: None
-Next action: `/gsd:plan-phase 76` (Iterator Protocol)
+Next action: Execute 76-02-PLAN.md (Iterator codegen)
