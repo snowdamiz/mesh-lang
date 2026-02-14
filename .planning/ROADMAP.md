@@ -175,7 +175,10 @@ Plans:
   1. User can `impl Add for Vec2 do type Output = Vec2 fn add(self, other) ... end` and use `v1 + v2` with their custom type
   2. Binary operators (+, -, *, /) infer the result type from the Output associated type (not hardcoded to operand type)
   3. User can implement Neg for a type and use `-value` with unary minus dispatching to the trait method
-**Plans**: TBD
+**Plans:** 2 plans
+Plans:
+- [ ] 75-01-PLAN.md -- Add Output to arithmetic traits, register Neg, update type inference
+- [ ] 75-02-PLAN.md -- Fix MIR dispatch, add Neg codegen dispatch, E2E tests
 
 #### Phase 76: Iterator Protocol
 **Goal**: Users can iterate over any type that implements Iterable, including all built-in collections
@@ -243,7 +246,7 @@ Plans:
 | 63-69 | v5.0 | 20/20 | Complete | 2026-02-13 |
 | 70-73 | v6.0 | 11/11 | Complete | 2026-02-13 |
 | 74 | v7.0 | 3/3 | Complete | 2026-02-13 |
-| 75 | v7.0 | 0/TBD | Not started | - |
+| 75 | v7.0 | 0/2 | Not started | - |
 | 76 | v7.0 | 0/TBD | Not started | - |
 | 77 | v7.0 | 0/TBD | Not started | - |
 | 78 | v7.0 | 0/TBD | Not started | - |
