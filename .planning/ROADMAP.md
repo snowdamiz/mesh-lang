@@ -169,11 +169,11 @@ See milestones/v7.0-ROADMAP.md for full phase details.
   Plans:
   - [x] 83-01-PLAN.md -- Code completion: keyword/type/snippet completions, scope-aware variable/function completion from CST walk
   - [x] 83-02-PLAN.md -- Signature help: parameter extraction from type system, active parameter tracking, trigger characters
-- [ ] **Phase 84: VS Code Extension Publishing** - Users can discover and install the Mesh extension from VS Code Marketplace or Open VSX with one click
+- [x] **Phase 84: VS Code Extension Publishing** - Users can discover and install the Mesh extension from VS Code Marketplace or Open VSX with one click (completed 2026-02-14)
   **Plans:** 2 plans
   Plans:
-  - [ ] 84-01-PLAN.md -- Marketplace metadata: icon, README, CHANGELOG, .vscodeignore, version bump to 0.2.0
-  - [ ] 84-02-PLAN.md -- Publishing: GitHub Actions dual-registry workflow (VS Code Marketplace + Open VSX) on ext-v* tags
+  - [x] 84-01-PLAN.md -- Marketplace metadata: icon, README, CHANGELOG, .vscodeignore, version bump to 0.2.0
+  - [x] 84-02-PLAN.md -- Publishing: GitHub Actions dual-registry workflow (VS Code Marketplace + Open VSX) on ext-v* tags
 - [ ] **Phase 85: Formatting + Audit** - LSP formatting, formatter/REPL v7.0 audit
 - [ ] **Phase 86: Documentation Corrections** - Binary name, install command, version badge, examples
 
@@ -199,6 +199,6 @@ See milestones/v8.0-ROADMAP.md for full phase details.
 | 63-69 | v5.0 | 20/20 | Complete | 2026-02-13 |
 | 70-73 | v6.0 | 11/11 | Complete | 2026-02-13 |
 | 74-80 | v7.0 | 17/17 | Complete | 2026-02-14 |
-| 81-86 | v8.0 | 6/TBD | In progress | - |
+| 81-86 | v8.0 | 8/TBD | In progress | - |
 
-**Total: 83 phases shipped across 17 milestones. 224 plans completed. 6 phases planned for v8.0.**
+**Total: 84 phases shipped across 17 milestones. 226 plans completed. 6 phases planned for v8.0.**

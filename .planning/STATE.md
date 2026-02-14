@@ -10,17 +10,17 @@ See: .planning/PROJECT.md (updated 2026-02-13)
 ## Current Position
 
 Phase: 84 (4 of 6 in v8.0) -- VS Code Extension Publishing
-Plan: 1 of 2 in current phase
-Status: Plan 84-01 complete
-Last activity: 2026-02-14 -- Plan 84-01 complete (Marketplace Metadata)
+Plan: 2 of 2 in current phase
+Status: Phase 84 complete
+Last activity: 2026-02-14 -- Plan 84-02 complete (Publish to Marketplace)
 
-Progress: [████░░░░░░] 50%
+Progress: [████████░░] 100%
 
 ## Performance Metrics
 
 **All-time Totals:**
-- Plans completed: 225
-- Phases completed: 83
+- Plans completed: 226
+- Phases completed: 84
 - Milestones shipped: 17 (v1.0-v7.0)
 - Lines of Rust: ~97,200
 - Lines of website: ~5,500
@@ -50,6 +50,9 @@ Progress: [████░░░░░░] 50%
 - 83-02: Parameter names from CST FN_DEF nodes; type-only labels for built-in functions
 - 84-01: Generated icon from SVG using Pillow with 4x supersampling for antialiasing
 - 84-01: VSIX at 18KB with zero dev artifacts -- only grammar, compiled JS, and metadata
+- 84-02: Publisher ID changed from mesh-lang to OpenWorthTechnologies to match actual Marketplace publisher
+- 84-02: Open VSX publish step uses continue-on-error to avoid blocking Marketplace publish
+- 84-02: VSIX packaged in separate step with path via step output for reliability
 
 ### Pending Todos
 
@@ -70,10 +73,11 @@ None. (Phase 83 scope-walk concern resolved -- pattern works correctly.)
 | Phase 83 P01 | 4min | 2 tasks | 3 files |
 | Phase 83 P02 | 4min | 2 tasks | 3 files |
 | Phase 84 P01 | 4min | 2 tasks | 6 files |
+| Phase 84 P02 | ~15min | 2 tasks | 3 files |
 
 ## Session Continuity
 
 Last session: 2026-02-14
-Stopped at: Completed 84-01-PLAN.md (Marketplace Metadata)
+Stopped at: Completed 84-02-PLAN.md (Publish to Marketplace) -- Phase 84 complete
 Resume file: None
-Next action: Execute 84-02-PLAN.md (Publish to Marketplace)
+Next action: Plan/execute Phase 85 (Formatting + Audit)
