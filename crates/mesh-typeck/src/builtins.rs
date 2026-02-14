@@ -8,7 +8,7 @@
 use rustc_hash::FxHashMap;
 
 use crate::env::TypeEnv;
-use crate::traits::{ImplDef, ImplMethodSig, TraitDef, TraitMethodSig, TraitRegistry};
+use crate::traits::{AssocTypeDef, ImplDef, ImplMethodSig, TraitDef, TraitMethodSig, TraitRegistry};
 use crate::ty::{Scheme, Ty, TyCon, TyVar};
 use crate::unify::InferCtx;
 
@@ -832,7 +832,7 @@ fn register_compiler_known_traits(registry: &mut TraitRegistry) {
                 return_type: None, // return type is Self (the implementing type)
                 has_default_body: false,
             }],
-            associated_types: vec![],
+            associated_types: vec![AssocTypeDef { name: "Output".to_string() }],
         });
 
         // Register impls for Int and Float.
@@ -846,14 +846,52 @@ fn register_compiler_known_traits(registry: &mut TraitRegistry) {
                     return_type: Some(ty.clone()),
                 },
             );
+            let mut assoc_types = FxHashMap::default();
+            assoc_types.insert("Output".to_string(), ty.clone());
             let _ = registry.register_impl(ImplDef {
                 trait_name: trait_name.to_string(),
                 impl_type: ty.clone(),
                 impl_type_name: ty_name.to_string(),
                 methods,
-                associated_types: FxHashMap::default(),
+                associated_types: assoc_types,
             });
         }
+    }
+
+    // ── Neg trait ─────────────────────────────────────────────────
+
+    registry.register_trait(TraitDef {
+        name: "Neg".to_string(),
+        methods: vec![TraitMethodSig {
+            name: "neg".to_string(),
+            has_self: true,
+            param_count: 0,
+            return_type: None,
+            has_default_body: false,
+        }],
+        associated_types: vec![AssocTypeDef { name: "Output".to_string() }],
+    });
+
+    // Neg impls for Int and Float.
+    for (ty, ty_name) in &[(Ty::int(), "Int"), (Ty::float(), "Float")] {
+        let mut methods = FxHashMap::default();
+        methods.insert(
+            "neg".to_string(),
+            ImplMethodSig {
+                has_self: true,
+                param_count: 0,
+                return_type: Some(ty.clone()),
+            },
+        );
+        let mut assoc_types = FxHashMap::default();
+        assoc_types.insert("Output".to_string(), ty.clone());
+        let _ = registry.register_impl(ImplDef {
+            trait_name: "Neg".to_string(),
+            impl_type: ty.clone(),
+            impl_type_name: ty_name.to_string(),
+            methods,
+            associated_types: assoc_types,
+        });
     }
 
     // ── Eq trait ────────────────────────────────────────────────────
