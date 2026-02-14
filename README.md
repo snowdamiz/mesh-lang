@@ -1,6 +1,8 @@
-# Mesh Programming Language
-
 <div align="center">
+
+<img src="website/docs/public/logo-icon-black.svg" alt="Mesh Language Logo" width="200" />
+
+# Mesh Language
 
 ![Version](https://img.shields.io/badge/version-v6.0-blue.svg?style=flat-square)
 ![License](https://img.shields.io/badge/license-MIT-green.svg?style=flat-square)
