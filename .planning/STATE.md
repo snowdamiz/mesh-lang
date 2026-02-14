@@ -5,25 +5,25 @@
 See: .planning/PROJECT.md (updated 2026-02-13)
 
 **Core value:** Expressive, readable concurrency -- writing concurrent programs should feel as natural and clean as writing sequential code, with the safety net of supervision and fault tolerance built into the language.
-**Current focus:** v7.0 Phase 79 - Collect
+**Current focus:** v7.0 Documentation Update complete
 
 ## Current Position
 
-Phase: 79 of 79 (Collect) -- PHASE COMPLETE
+Phase: 80 of 80 (Documentation Update for v7.0 APIs) -- PHASE COMPLETE
 Plan: 2 of 2 in current phase (COMPLETE)
-Status: Phase 79 complete -- all collect operations implemented and E2E tested
-Last activity: 2026-02-14 -- Plan 79-02 (Collect E2E Tests) complete, 2/2 tasks
+Status: Phase 80 complete -- all v7.0 documentation updated
+Last activity: 2026-02-14 -- Plan 80-02 (Existing Pages Update) complete, 2/2 tasks
 
-Progress: [██████████] 100% (v7.0)
+Progress: [██████████] 100% (v7.0 docs)
 
 ## Performance Metrics
 
 **All-time Totals:**
-- Plans completed: 216
+- Plans completed: 217
 - Phases completed: 79
 - Milestones shipped: 17 (v1.0-v7.0)
 - Lines of Rust: ~93,500
-- Lines of website: ~5,100
+- Lines of website: ~5,500
 - Timeline: 9 days (2026-02-05 -> 2026-02-14)
 
 ## Accumulated Context
@@ -103,6 +103,14 @@ Progress: [██████████] 100% (v7.0)
 **Phase 79-02:**
 - Used string interpolation instead of .to_string() for collected collection output (TyVar from Ptr->List<T> remains unresolved, crashes trait method lookup)
 
+**Phase 80-01:**
+- All pipe chain code examples kept on single lines (parser does not support multi-line |> continuation)
+- Included Iter.find documentation based on confirmed compiler/runtime wiring despite no E2E test
+
+### Roadmap Evolution
+
+- Phase 80 added: Documentation Update for v7.0 APIs
+
 ### Research Notes
 
 v7.0 research completed (HIGH confidence). Key findings:
@@ -130,6 +138,6 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-14
-Stopped at: Completed 79-02-PLAN.md (Collect E2E Tests) -- Phase 79 complete
+Stopped at: Completed 80-01-PLAN.md (Iterators Documentation)
 Resume file: None
-Next action: v7.0 milestone complete. All phases (74-79) implemented and tested.
+Next action: Execute plan 80-02 (type-system updates, cheatsheet entries, cross-link updates)
