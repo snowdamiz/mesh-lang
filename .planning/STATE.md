@@ -5,21 +5,21 @@
 See: .planning/PROJECT.md (updated 2026-02-13)
 
 **Core value:** Expressive, readable concurrency -- writing concurrent programs should feel as natural and clean as writing sequential code, with the safety net of supervision and fault tolerance built into the language.
-**Current focus:** v8.0 Developer Tooling -- Phase 82 (Install Infrastructure)
+**Current focus:** v8.0 Developer Tooling -- Phase 83 (Completion & Signature Help)
 
 ## Current Position
 
-Phase: 82 (2 of 6 in v8.0) -- Install Infrastructure
-Plan: 2 of 2 in current phase
-Status: Phase complete
-Last activity: 2026-02-14 -- Plan 82-02 complete (Install Scripts)
+Phase: 83 (3 of 6 in v8.0) -- Completion & Signature Help
+Plan: 1 of 2 in current phase
+Status: Plan 83-01 complete
+Last activity: 2026-02-14 -- Plan 83-01 complete (Completion Engine)
 
-Progress: [██░░░░░░░░] 33%
+Progress: [███░░░░░░░] 42%
 
 ## Performance Metrics
 
 **All-time Totals:**
-- Plans completed: 222
+- Plans completed: 223
 - Phases completed: 82
 - Milestones shipped: 17 (v1.0-v7.0)
 - Lines of Rust: ~97,200
@@ -43,6 +43,9 @@ Progress: [██░░░░░░░░] 33%
 - 82-02: Install location ~/.mesh/bin with ~/.mesh/env sourced from shell profiles (rustup convention)
 - 82-02: Marker-based idempotent PATH configuration using '# Mesh compiler' comment
 - 82-02: Checksum verification gracefully degrades (warns and continues if tools unavailable)
+- 83-01: Used actual 48-keyword list from keyword_from_str instead of plan's incorrect list
+- 83-01: Whitespace fallback collects top-level names when cursor is past tokens
+- 83-01: Sort ordering: 0_scope > 1_types > 2_keywords > 3_snippets for intuitive ranking
 
 ### Pending Todos
 
@@ -50,7 +53,7 @@ None.
 
 ### Blockers/Concerns
 
-- Phase 83 (Completion): Scope-aware CST walk complexity -- may need prototype before full implementation
+None. (Phase 83 scope-walk concern resolved -- pattern works correctly.)
 
 ### Quick Tasks Completed
 
@@ -60,10 +63,11 @@ None.
 | 2 | Write article: How Opus 4.6 and I Built a Production-Ready Programming Language in 9 Days | 2026-02-13 | (current) | [2-mesh-story-article](./quick/2-mesh-story-article/) |
 | Phase 82 P01 | 3min | 2 tasks | 4 files |
 | Phase 82 P02 | 3min | 2 tasks | 4 files |
+| Phase 83 P01 | 4min | 2 tasks | 3 files |
 
 ## Session Continuity
 
 Last session: 2026-02-14
-Stopped at: Completed 82-02-PLAN.md (Install Scripts)
+Stopped at: Completed 83-01-PLAN.md (Completion Engine)
 Resume file: None
-Next action: Mark Phase 82 complete, begin Phase 83 planning
+Next action: Execute 83-02-PLAN.md (Signature Help)
