@@ -3712,20 +3712,234 @@ impl<'ctx> CodeGen<'ctx> {
 
     // ── For-in over Iterator (Iterable/Iterator protocol) ─────────────
 
+    /// Resolve a mangled trait method name to its runtime function name.
+    /// For built-in iterator types (ListIterator, MapIterator, etc.), the
+    /// mangled name (e.g., "Iterator__next__ListIterator") maps to a C runtime
+    /// function (e.g., "mesh_list_iter_next"). For user-defined types, the
+    /// mangled name IS the function name (compiled from their impl block).
+    fn resolve_iterator_fn(&self, mangled: &str) -> Option<inkwell::values::FunctionValue<'ctx>> {
+        // First: try to find as a user-compiled function in the module.
+        if let Some(f) = self.module.get_function(mangled) {
+            return Some(f);
+        }
+        // Second: map known built-in iterator mangled names to runtime names.
+        let runtime_name = match mangled {
+            "Iterator__next__ListIterator" => "mesh_list_iter_next",
+            "Iterator__next__MapIterator" => "mesh_map_iter_next",
+            "Iterator__next__SetIterator" => "mesh_set_iter_next",
+            "Iterator__next__RangeIterator" => "mesh_range_iter_next",
+            "Iterable__iter__List" => "mesh_list_iter_new",
+            "Iterable__iter__Map" => "mesh_map_iter_new",
+            "Iterable__iter__Set" => "mesh_set_iter_new",
+            _ => mangled, // Fall through to intrinsic lookup.
+        };
+        self.module.get_function(runtime_name)
+    }
+
     fn codegen_for_in_iterator(
         &mut self,
-        _var: &str,
-        _iterator_expr: &MirExpr,
-        _filter: Option<&MirExpr>,
-        _body_expr: &MirExpr,
-        _elem_ty: &MirType,
-        _body_ty: &MirType,
-        _next_fn: &str,
-        _iter_fn: &str,
+        var: &str,
+        iterator_expr: &MirExpr,
+        filter: Option<&MirExpr>,
+        body_expr: &MirExpr,
+        elem_ty: &MirType,
+        body_ty: &MirType,
+        next_fn: &str,
+        iter_fn: &str,
         _ty: &MirType,
     ) -> Result<BasicValueEnum<'ctx>, String> {
-        // Stub -- full implementation in Task 2.
-        Err("codegen_for_in_iterator not yet implemented".to_string())
+        let fn_val = self.current_function();
+        let i64_ty = self.context.i64_type();
+        let i8_ty = self.context.i8_type();
+        let ptr_ty = self.context.ptr_type(inkwell::AddressSpace::default());
+
+        // Step 1: Codegen the collection/iterator expression.
+        let collection_val = self.codegen_expr(iterator_expr)?;
+
+        // Step 2: If iter_fn is non-empty, call iter() to get the iterator.
+        let iter_val = if !iter_fn.is_empty() {
+            let iter_func = self.resolve_iterator_fn(iter_fn)
+                .unwrap_or_else(|| get_intrinsic(&self.module, iter_fn));
+            let result = self.builder.build_call(iter_func, &[collection_val.into()], "iter")
+                .map_err(|e| e.to_string())?
+                .try_as_basic_value()
+                .basic()
+                .ok_or_else(|| format!("{} returned void", iter_fn))?;
+            result.into_pointer_value()
+        } else {
+            // Direct Iterator: the expression IS the iterator.
+            collection_val.into_pointer_value()
+        };
+
+        // Step 3: Store iterator in alloca.
+        let iter_alloca = self.builder.build_alloca(ptr_ty, "iter_alloca")
+            .map_err(|e| e.to_string())?;
+        self.builder.build_store(iter_alloca, iter_val)
+            .map_err(|e| e.to_string())?;
+
+        // Step 4: Pre-allocate result list builder (comprehension semantics).
+        let list_builder_new = get_intrinsic(&self.module, "mesh_list_builder_new");
+        let result_list = self.builder.build_call(list_builder_new, &[i64_ty.const_int(0, false).into()], "result_list")
+            .map_err(|e| e.to_string())?
+            .try_as_basic_value()
+            .basic()
+            .ok_or_else(|| "mesh_list_builder_new returned void".to_string())?
+            .into_pointer_value();
+
+        let result_alloca = self.builder.build_alloca(ptr_ty, "result_alloca")
+            .map_err(|e| e.to_string())?;
+        self.builder.build_store(result_alloca, result_list)
+            .map_err(|e| e.to_string())?;
+
+        // Step 5: Create basic blocks.
+        let header_bb = self.context.append_basic_block(fn_val, "iter_header");
+        let body_bb = self.context.append_basic_block(fn_val, "iter_body");
+        let latch_bb = self.context.append_basic_block(fn_val, "iter_latch");
+        let merge_bb = self.context.append_basic_block(fn_val, "iter_merge");
+
+        // Push loop context for break/continue.
+        self.loop_stack.push((latch_bb, merge_bb));
+
+        self.builder.build_unconditional_branch(header_bb)
+            .map_err(|e| e.to_string())?;
+
+        // Step 6: Header -- call next(), check Option tag.
+        self.builder.position_at_end(header_bb);
+        let iter_loaded = self.builder.build_load(ptr_ty, iter_alloca, "iter_loaded")
+            .map_err(|e| e.to_string())?
+            .into_pointer_value();
+
+        // Call Iterator__next__TypeName(iter) or mesh_*_iter_next(iter).
+        let next_func = self.resolve_iterator_fn(next_fn)
+            .unwrap_or_else(|| get_intrinsic(&self.module, next_fn));
+        let next_result = self.builder.build_call(next_func, &[iter_loaded.into()], "next_result")
+            .map_err(|e| e.to_string())?
+            .try_as_basic_value()
+            .basic()
+            .ok_or_else(|| format!("{} returned void", next_fn))?
+            .into_pointer_value();
+
+        // Option is MeshOption { tag: u8, value: *mut u8 }.
+        // tag 0 = Some, tag 1 = None.
+        // GEP to tag field (index 0).
+        let mesh_option_ty = self.context.struct_type(
+            &[i8_ty.into(), ptr_ty.into()],
+            false,
+        );
+        let tag_ptr = self.builder.build_struct_gep(mesh_option_ty, next_result, 0, "tag_ptr")
+            .map_err(|e| e.to_string())?;
+        let tag_val = self.builder.build_load(i8_ty, tag_ptr, "tag")
+            .map_err(|e| e.to_string())?
+            .into_int_value();
+
+        // Compare tag == 0 (Some).
+        let is_some = self.builder.build_int_compare(
+            IntPredicate::EQ, tag_val, i8_ty.const_int(0, false), "is_some",
+        ).map_err(|e| e.to_string())?;
+
+        self.builder.build_conditional_branch(is_some, body_bb, merge_bb)
+            .map_err(|e| e.to_string())?;
+
+        // Step 7: Body -- extract element, bind variable, run body, push result.
+        self.builder.position_at_end(body_bb);
+
+        // GEP to value field (index 1).
+        let value_ptr = self.builder.build_struct_gep(mesh_option_ty, next_result, 1, "value_ptr")
+            .map_err(|e| e.to_string())?;
+        let raw_value = self.builder.build_load(ptr_ty, value_ptr, "raw_value")
+            .map_err(|e| e.to_string())?;
+
+        // Convert from raw pointer to typed element.
+        // For Int: ptr -> i64 via ptrtoint. For String/Ptr types: ptr -> ptr (no conversion).
+        let typed_elem: BasicValueEnum<'ctx> = match elem_ty {
+            MirType::Int => {
+                let as_int = self.builder.build_ptr_to_int(raw_value.into_pointer_value(), i64_ty, "as_int")
+                    .map_err(|e| e.to_string())?;
+                as_int.into()
+            }
+            MirType::Float => {
+                let as_int = self.builder.build_ptr_to_int(raw_value.into_pointer_value(), i64_ty, "as_int_f")
+                    .map_err(|e| e.to_string())?;
+                self.builder.build_bit_cast(as_int, self.context.f64_type(), "as_float")
+                    .map_err(|e| e.to_string())?
+            }
+            MirType::Bool => {
+                let as_int = self.builder.build_ptr_to_int(raw_value.into_pointer_value(), i64_ty, "as_int_b")
+                    .map_err(|e| e.to_string())?;
+                self.builder.build_int_truncate(as_int, self.context.bool_type(), "as_bool")
+                    .map_err(|e| e.to_string())?
+                    .into()
+            }
+            _ => {
+                // Ptr types (String, structs, collections): already a pointer.
+                raw_value
+            }
+        };
+
+        // Create alloca for loop variable.
+        let elem_llvm_ty = self.llvm_type(elem_ty);
+        let var_alloca = self.builder.build_alloca(elem_llvm_ty, var)
+            .map_err(|e| e.to_string())?;
+        self.builder.build_store(var_alloca, typed_elem)
+            .map_err(|e| e.to_string())?;
+
+        // Save old locals.
+        let old_alloca = self.locals.insert(var.to_string(), var_alloca);
+        let old_type = self.local_types.insert(var.to_string(), elem_ty.clone());
+
+        // Optional filter.
+        if let Some(filter_expr) = filter {
+            let filter_val = self.codegen_expr(filter_expr)?
+                .into_int_value();
+            let do_body_bb = self.context.append_basic_block(fn_val, "iter_do_body");
+            self.builder.build_conditional_branch(filter_val, do_body_bb, latch_bb)
+                .map_err(|e| e.to_string())?;
+            self.builder.position_at_end(do_body_bb);
+        }
+
+        // Codegen body.
+        let body_val = self.codegen_expr(body_expr)?;
+
+        // Push body result to result list.
+        if let Some(bb) = self.builder.get_insert_block() {
+            if bb.get_terminator().is_none() {
+                let body_as_i64 = self.convert_to_list_element(body_val, body_ty)?;
+                let list_builder_push = get_intrinsic(&self.module, "mesh_list_builder_push");
+                let result_loaded = self.builder.build_load(ptr_ty, result_alloca, "res_list")
+                    .map_err(|e| e.to_string())?
+                    .into_pointer_value();
+                self.builder.build_call(list_builder_push, &[result_loaded.into(), body_as_i64.into()], "")
+                    .map_err(|e| e.to_string())?;
+                self.builder.build_unconditional_branch(latch_bb)
+                    .map_err(|e| e.to_string())?;
+            }
+        }
+
+        // Step 8: Latch -- reduction check, branch back to header.
+        self.builder.position_at_end(latch_bb);
+        self.emit_reduction_check();
+        self.builder.build_unconditional_branch(header_bb)
+            .map_err(|e| e.to_string())?;
+
+        // Step 9: Cleanup.
+        self.loop_stack.pop();
+
+        if let Some(prev) = old_alloca {
+            self.locals.insert(var.to_string(), prev);
+        } else {
+            self.locals.remove(var);
+        }
+        if let Some(prev) = old_type {
+            self.local_types.insert(var.to_string(), prev);
+        } else {
+            self.local_types.remove(var);
+        }
+
+        // Return result list.
+        self.builder.position_at_end(merge_bb);
+        let final_result = self.builder.build_load(ptr_ty, result_alloca, "iter_result")
+            .map_err(|e| e.to_string())?;
+        Ok(final_result)
     }
 
     // ── For-in over Map ──────────────────────────────────────────────────

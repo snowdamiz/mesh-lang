@@ -800,6 +800,26 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
         void_type.fn_type(&[ptr_type.into(), i64_type.into(), ptr_type.into(), i64_type.into(), ptr_type.into(), i64_type.into()], false),
         Some(inkwell::module::Linkage::External));
 
+    // ── Phase 76: Iterator runtime functions ──────────────────────────────
+    // mesh_list_iter_new(list: ptr) -> ptr
+    module.add_function("mesh_list_iter_new", ptr_type.fn_type(&[ptr_type.into()], false), Some(inkwell::module::Linkage::External));
+    // mesh_list_iter_next(iter: ptr) -> ptr (MeshOption)
+    module.add_function("mesh_list_iter_next", ptr_type.fn_type(&[ptr_type.into()], false), Some(inkwell::module::Linkage::External));
+    // mesh_map_iter_new(map: ptr) -> ptr
+    module.add_function("mesh_map_iter_new", ptr_type.fn_type(&[ptr_type.into()], false), Some(inkwell::module::Linkage::External));
+    // mesh_map_iter_next(iter: ptr) -> ptr (MeshOption)
+    module.add_function("mesh_map_iter_next", ptr_type.fn_type(&[ptr_type.into()], false), Some(inkwell::module::Linkage::External));
+    // mesh_set_iter_new(set: ptr) -> ptr
+    module.add_function("mesh_set_iter_new", ptr_type.fn_type(&[ptr_type.into()], false), Some(inkwell::module::Linkage::External));
+    // mesh_set_iter_next(iter: ptr) -> ptr (MeshOption)
+    module.add_function("mesh_set_iter_next", ptr_type.fn_type(&[ptr_type.into()], false), Some(inkwell::module::Linkage::External));
+    // mesh_range_iter_new(start: i64, end: i64) -> ptr
+    module.add_function("mesh_range_iter_new", ptr_type.fn_type(&[i64_type.into(), i64_type.into()], false), Some(inkwell::module::Linkage::External));
+    // mesh_range_iter_next(iter: ptr) -> ptr (MeshOption)
+    module.add_function("mesh_range_iter_next", ptr_type.fn_type(&[ptr_type.into()], false), Some(inkwell::module::Linkage::External));
+    // mesh_iter_from(collection: ptr) -> ptr (Iter.from entry point)
+    module.add_function("mesh_iter_from", ptr_type.fn_type(&[ptr_type.into()], false), Some(inkwell::module::Linkage::External));
+
     // ── Phase 68: Global Registry ──────────────────────────────────────
 
     // mesh_global_register(name_ptr: ptr, name_len: i64, pid: i64) -> i64
@@ -1117,6 +1137,17 @@ mod tests {
         assert!(module.get_function("mesh_global_register").is_some());
         assert!(module.get_function("mesh_global_whereis").is_some());
         assert!(module.get_function("mesh_global_unregister").is_some());
+
+        // Phase 76: Iterator runtime functions
+        assert!(module.get_function("mesh_list_iter_new").is_some());
+        assert!(module.get_function("mesh_list_iter_next").is_some());
+        assert!(module.get_function("mesh_map_iter_new").is_some());
+        assert!(module.get_function("mesh_map_iter_next").is_some());
+        assert!(module.get_function("mesh_set_iter_new").is_some());
+        assert!(module.get_function("mesh_set_iter_next").is_some());
+        assert!(module.get_function("mesh_range_iter_new").is_some());
+        assert!(module.get_function("mesh_range_iter_next").is_some());
+        assert!(module.get_function("mesh_iter_from").is_some());
     }
 
     #[test]
