@@ -10,16 +10,16 @@ See: .planning/PROJECT.md (updated 2026-02-13)
 ## Current Position
 
 Phase: 77 of 79 (From/Into Conversion)
-Plan: 2 of 2 in current phase (COMPLETE)
-Status: Phase 77 complete
-Last activity: 2026-02-14 -- Plan 77-02 (From/Into Codegen Pipeline) complete, 2/2 tasks
+Plan: 3 of 3 in current phase (COMPLETE)
+Status: Phase 77 complete (gap closure done)
+Last activity: 2026-02-14 -- Plan 77-03 (Gap Closure: Struct Error Types) complete, 2/2 tasks
 
 Progress: [██████████] 100% (v7.0)
 
 ## Performance Metrics
 
 **All-time Totals:**
-- Plans completed: 208
+- Plans completed: 209
 - Phases completed: 76
 - Milestones shipped: 16 (v1.0-v6.0)
 - Lines of Rust: ~93,500
@@ -74,7 +74,11 @@ Progress: [██████████] 100% (v7.0)
 - Static trait methods (no self) do not prepend impl_type to param list (fixes From.from)
 - ctx.errors.truncate used for error rollback when From impl exists in ? operator type checking
 - Monomorphized Result name parsing extracts error type (Result_Int_String -> String)
-- Struct error types in Result are pre-existing limitation; From tested with pointer-level types
+
+**Phase 77-03:**
+- MirType::Struct normalized to Ptr in lower_try_result From conversion to match Result { i8, ptr } layout
+- Struct-to-ptr coercion in codegen_call: GC-allocate struct return values when MIR expects Ptr
+- Two-layer fix needed: MIR normalization + codegen coercion (user-defined functions return structs by value, not as pointers)
 
 ### Research Notes
 
@@ -103,6 +107,6 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-14
-Stopped at: Completed 77-02-PLAN.md (From/Into codegen pipeline)
+Stopped at: Completed 77-03-PLAN.md (Gap Closure: Struct Error Types in Result)
 Resume file: None
-Next action: Phase 77 complete. Proceed to Phase 78 if planned.
+Next action: Phase 77 fully complete (all 4 success criteria verified). Proceed to Phase 78 if planned.
