@@ -1630,3 +1630,14 @@ fn e2e_pg() {
     // Verify completion
     assert!(output.contains("done"), "Program should complete successfully");
 }
+
+// ── Phase 87.1: Codegen Bug Fixes ──────────────────────────────────────
+
+/// Phase 87.1: List.find Option pattern matching compiles and runs.
+/// Pattern matching Some(x)/None on List.find result works correctly.
+#[test]
+fn e2e_list_find_option_match() {
+    let source = read_fixture("list_find_option_match.mpl");
+    let output = compile_and_run(&source);
+    assert_eq!(output, "found: 30\nnot found\n");
+}

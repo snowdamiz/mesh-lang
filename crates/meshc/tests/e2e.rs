@@ -2792,3 +2792,14 @@ fn e2e_collect_set_string() {
     let output = compile_and_run(&source);
     assert_eq!(output, "3\n3\ntrue\nhello world\nabc\n");
 }
+
+// ── Phase 87.1: Codegen Bug Fixes ──────────────────────────────────────
+
+/// Phase 87.1: Err(e) variable binding in pattern matching compiles and runs.
+/// Multiple case expressions in the same function reuse variable names correctly.
+#[test]
+fn e2e_err_binding_pattern() {
+    let source = read_fixture("err_binding_pattern.mpl");
+    let output = compile_and_run(&source);
+    assert_eq!(output, "ok: 10\nnegative: -3\n");
+}

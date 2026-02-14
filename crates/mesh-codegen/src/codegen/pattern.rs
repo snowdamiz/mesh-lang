@@ -154,9 +154,26 @@ impl<'ctx> CodeGen<'ctx> {
         merge_bb: BasicBlock<'ctx>,
     ) -> Result<(), String> {
         // Bind variables from access paths.
-        // Skip variables already bound by a guard node (avoids duplicate allocas).
         for (name, ty, path) in bindings {
-            if self.locals.contains_key(name) {
+            // If already bound by a guard node for this arm, just update the
+            // store so the value is current (guard pre-binds for guard-expr
+            // evaluation but the scrutinee may differ between case expressions).
+            if let Some(&existing_alloca) = self.locals.get(name) {
+                let val = self.navigate_access_path(scrutinee_alloca, scrutinee_ty, path)?;
+                let llvm_ty = self.llvm_type(ty);
+                let val = if matches!(ty, MirType::Struct(_) | MirType::SumType(_))
+                    && val.is_pointer_value()
+                    && !llvm_ty.is_pointer_type()
+                {
+                    self.builder
+                        .build_load(llvm_ty, val.into_pointer_value(), "deref_struct")
+                        .map_err(|e| e.to_string())?
+                } else {
+                    val
+                };
+                self.builder
+                    .build_store(existing_alloca, val)
+                    .map_err(|e| e.to_string())?;
                 continue;
             }
             let val = self.navigate_access_path(scrutinee_alloca, scrutinee_ty, path)?;
@@ -176,10 +193,24 @@ impl<'ctx> CodeGen<'ctx> {
                 val
             };
 
+            // Place alloca in the function entry block for proper LLVM domination.
+            // Without this, allocas inside case blocks (e.g., for Err(e) or Some(x)
+            // bindings) fail verification when referenced from subsequent code.
+            let current_bb = self.builder.get_insert_block().unwrap();
+            let fn_val = self.current_function();
+            let entry_bb = fn_val.get_first_basic_block().unwrap();
+            if let Some(first_instr) = entry_bb.get_first_instruction() {
+                self.builder.position_before(&first_instr);
+            } else {
+                self.builder.position_at_end(entry_bb);
+            }
             let alloca = self
                 .builder
                 .build_alloca(llvm_ty, name)
                 .map_err(|e| e.to_string())?;
+
+            // Store the value at the original position (not in entry block).
+            self.builder.position_at_end(current_bb);
             self.builder
                 .build_store(alloca, val)
                 .map_err(|e| e.to_string())?;
