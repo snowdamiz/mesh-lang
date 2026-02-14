@@ -267,3 +267,13 @@ Plans:
 | 79 | v7.0 | 2/2 | Complete | 2026-02-14 |
 
 **Total: 79 phases shipped across 17 milestones. 216 plans completed.**
+
+### Phase 80: Documentation Update for v7.0 APIs
+
+**Goal:** Update the website documentation to cover all v7.0 features: custom interfaces, associated types, numeric traits, From/Into conversion, iterator protocol, lazy combinators, terminal operations, and collect
+**Depends on:** Phase 79
+**Plans:** 2 plans
+
+Plans:
+- [ ] 80-01-PLAN.md -- Create Iterators documentation page + sidebar config
+- [ ] 80-02-PLAN.md -- Update Type System, Cheatsheet, and Language Basics pages
