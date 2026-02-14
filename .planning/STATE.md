@@ -10,11 +10,11 @@ See: .planning/PROJECT.md (updated 2026-02-13)
 ## Current Position
 
 Phase: 77 of 79 (From/Into Conversion)
-Plan: 1 of 2 in current phase
-Status: Executing plan 02
-Last activity: 2026-02-14 -- Plan 77-01 (Trait Infrastructure) complete, 2/2 tasks
+Plan: 2 of 2 in current phase (COMPLETE)
+Status: Phase 77 complete
+Last activity: 2026-02-14 -- Plan 77-02 (From/Into Codegen Pipeline) complete, 2/2 tasks
 
-Progress: [█████░░░░░] 50% (v7.0)
+Progress: [██████████] 100% (v7.0)
 
 ## Performance Metrics
 
@@ -69,6 +69,13 @@ Progress: [█████░░░░░] 50% (v7.0)
 - String.from uses polymorphic TyVar(91100) input; Float.from is monomorphic (Int only)
 - GENERIC_ARG_LIST extraction in infer_impl_def uses direct children of IMPL_DEF node
 
+**Phase 77-02:**
+- mangle_trait_method helper centralizes parameterized trait mangling (From_Int__from__Float)
+- Static trait methods (no self) do not prepend impl_type to param list (fixes From.from)
+- ctx.errors.truncate used for error rollback when From impl exists in ? operator type checking
+- Monomorphized Result name parsing extracts error type (Result_Int_String -> String)
+- Struct error types in Result are pre-existing limitation; From tested with pointer-level types
+
 ### Research Notes
 
 v7.0 research completed (HIGH confidence). Key findings:
@@ -96,6 +103,6 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-14
-Stopped at: Completed 77-01-PLAN.md (From/Into trait infrastructure)
+Stopped at: Completed 77-02-PLAN.md (From/Into codegen pipeline)
 Resume file: None
-Next action: Execute 77-02-PLAN.md (MIR lowering, codegen dispatch, ? operator)
+Next action: Phase 77 complete. Proceed to Phase 78 if planned.
