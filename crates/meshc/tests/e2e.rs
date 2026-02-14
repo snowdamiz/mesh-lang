@@ -2549,3 +2549,59 @@ fn e2e_assoc_type_with_deriving() {
     let output = compile_and_run(&source);
     assert_eq!(output, "Wrapper(1, 2)\n99\n");
 }
+
+/// Phase 74: Missing associated type binding produces E0040.
+/// Iterator requires `type Item` but the impl omits it.
+#[test]
+fn e2e_assoc_type_missing_compile_fail() {
+    let source = r#"
+interface Iterator do
+  type Item
+  fn next(self) -> Int
+end
+
+impl Iterator for Int do
+  fn next(self) -> Int do
+    42
+  end
+end
+
+fn main() do
+  println("should not compile")
+end
+"#;
+    let error = compile_expect_error(source);
+    assert!(
+        error.contains("E0040") || error.contains("missing associated type"),
+        "Expected E0040 MissingAssocType error, got:\n{}",
+        error
+    );
+}
+
+/// Phase 74: Extra associated type binding produces E0041.
+/// Printable has no associated types, but the impl provides `type Output`.
+#[test]
+fn e2e_assoc_type_extra_compile_fail() {
+    let source = r#"
+interface Printable do
+  fn show(self) -> String
+end
+
+impl Printable for Int do
+  type Output = String
+  fn show(self) -> String do
+    "int"
+  end
+end
+
+fn main() do
+  println("should not compile")
+end
+"#;
+    let error = compile_expect_error(source);
+    assert!(
+        error.contains("E0041") || error.contains("not declared by the trait"),
+        "Expected E0041 ExtraAssocType error, got:\n{}",
+        error
+    );
+}
