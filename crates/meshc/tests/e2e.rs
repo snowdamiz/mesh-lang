@@ -2744,3 +2744,22 @@ fn e2e_iter_enumerate_zip() {
     let output = compile_and_run(&source);
     assert_eq!(output, "3\n3\n2\n");
 }
+
+/// Phase 78 TERM-01 through TERM-05: All terminal operations.
+/// count, sum, any (true/false), all (true/false), reduce (product/sum).
+#[test]
+fn e2e_iter_terminals() {
+    let source = read_fixture("iter_terminals.mpl");
+    let output = compile_and_run(&source);
+    assert_eq!(output, "5\n15\ntrue\nfalse\ntrue\nfalse\n120\n15\n");
+}
+
+/// Phase 78 COMB-06 + SC4: Multi-combinator pipeline with short-circuit.
+/// map->filter->take->count, filter->map->sum, skip->take->count (windowing),
+/// closure capturing local variable in pipeline.
+#[test]
+fn e2e_iter_pipeline() {
+    let source = read_fixture("iter_pipeline.mpl");
+    let output = compile_and_run(&source);
+    assert_eq!(output, "3\n400\n5\n7\n");
+}
