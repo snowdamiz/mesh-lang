@@ -189,6 +189,16 @@ Plans:
 - [x] 87-01-PLAN.md -- Data types, PostgreSQL schema DDL, and query helpers
 - [x] 87-02-PLAN.md -- Org/project/user services, StorageWriter, and main entry point
 
+### Phase 87.1: Issues Encountered (INSERTED)
+
+**Goal:** Fix 5 compiler bugs (codegen + module system) discovered during Phase 87 that block idiomatic Result handling and modular service architecture
+**Depends on:** Phase 87
+**Plans:** 2 plans
+
+Plans:
+- [ ] 87.1-01-PLAN.md -- Codegen fixes: ? operator return type, Err(e) alloca domination, List.find Option matching
+- [ ] 87.1-02-PLAN.md -- Module system fixes: cross-module service export, polymorphic type variable normalization
+
 ### Phase 88: Ingestion Pipeline
 **Goal**: External clients can send error events into the system via HTTP and WebSocket, with authentication, validation, rate limiting, and supervised actor-based processing
 **Depends on**: Phase 87
