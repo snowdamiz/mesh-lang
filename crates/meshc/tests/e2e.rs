@@ -2763,3 +2763,23 @@ fn e2e_iter_pipeline() {
     let output = compile_and_run(&source);
     assert_eq!(output, "3\n400\n5\n7\n");
 }
+
+// ── Phase 79: Collect E2E Tests ─────────────────────────────────────────
+
+/// Phase 79 COLL-01: List.collect with map, filter, take pipelines and direct call syntax.
+/// Pipe syntax (iter |> List.collect()) and direct call (List.collect(iter)) both work.
+/// Empty iterator via take(0) produces empty list.
+#[test]
+fn e2e_collect_list() {
+    let source = read_fixture("collect_list.mpl");
+    let output = compile_and_run(&source);
+    assert_eq!(output, "3\n[2, 4, 6]\n[4, 5]\n[10, 20, 30]\n0\n");
+}
+
+/// Phase 79 COLL-02: Map.collect from enumerate (index->value) and zip (key->value) tuple iterators.
+#[test]
+fn e2e_collect_map() {
+    let source = read_fixture("collect_map.mpl");
+    let output = compile_and_run(&source);
+    assert_eq!(output, "%{0 => 100, 1 => 200, 2 => 300}\n%{10 => 1, 20 => 2, 30 => 3}\n3\n");
+}
