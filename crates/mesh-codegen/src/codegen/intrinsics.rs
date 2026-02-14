@@ -865,6 +865,16 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
     // mesh_iter_zip_next(adapter: ptr) -> ptr (MeshOption)
     module.add_function("mesh_iter_zip_next", ptr_type.fn_type(&[ptr_type.into()], false), Some(inkwell::module::Linkage::External));
 
+    // ── Phase 79: Collect terminal operations ────────────────────────────
+    // mesh_list_collect(iter: ptr) -> ptr
+    module.add_function("mesh_list_collect", ptr_type.fn_type(&[ptr_type.into()], false), Some(inkwell::module::Linkage::External));
+    // mesh_map_collect(iter: ptr) -> ptr
+    module.add_function("mesh_map_collect", ptr_type.fn_type(&[ptr_type.into()], false), Some(inkwell::module::Linkage::External));
+    // mesh_set_collect(iter: ptr) -> ptr
+    module.add_function("mesh_set_collect", ptr_type.fn_type(&[ptr_type.into()], false), Some(inkwell::module::Linkage::External));
+    // mesh_string_collect(iter: ptr) -> ptr
+    module.add_function("mesh_string_collect", ptr_type.fn_type(&[ptr_type.into()], false), Some(inkwell::module::Linkage::External));
+
     // ── Phase 68: Global Registry ──────────────────────────────────────
 
     // mesh_global_register(name_ptr: ptr, name_len: i64, pid: i64) -> i64
@@ -1214,6 +1224,12 @@ mod tests {
         assert!(module.get_function("mesh_iter_skip_next").is_some());
         assert!(module.get_function("mesh_iter_enumerate_next").is_some());
         assert!(module.get_function("mesh_iter_zip_next").is_some());
+
+        // Phase 79: Collect terminal operations
+        assert!(module.get_function("mesh_list_collect").is_some());
+        assert!(module.get_function("mesh_map_collect").is_some());
+        assert!(module.get_function("mesh_set_collect").is_some());
+        assert!(module.get_function("mesh_string_collect").is_some());
     }
 
     #[test]

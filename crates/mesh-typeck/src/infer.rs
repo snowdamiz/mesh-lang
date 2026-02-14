@@ -277,6 +277,10 @@ fn stdlib_modules() -> HashMap<String, HashMap<String, Scheme>> {
             ty: Ty::fun(vec![Ty::Var(from_input_var)], Ty::string()),
         });
     }
+    // Phase 79: String.collect(iter) -> String
+    string_mod.insert("collect".to_string(), Scheme::mono(
+        Ty::fun(vec![Ty::Con(TyCon::new("Ptr"))], Ty::string())
+    ));
     modules.insert("String".to_string(), string_mod);
 
     // ── IO module ──────────────────────────────────────────────────
@@ -376,6 +380,8 @@ fn stdlib_modules() -> HashMap<String, HashMap<String, Scheme>> {
     list_mod.insert("drop".to_string(), Scheme { vars: vec![t_var], ty: Ty::fun(vec![list_t.clone(), Ty::int()], list_t.clone()) });
     list_mod.insert("last".to_string(), Scheme { vars: vec![t_var], ty: Ty::fun(vec![list_t.clone()], t.clone()) });
     list_mod.insert("nth".to_string(), Scheme { vars: vec![t_var], ty: Ty::fun(vec![list_t.clone(), Ty::int()], t.clone()) });
+    // Phase 79: List.collect(iter) -> List<T>
+    list_mod.insert("collect".to_string(), Scheme { vars: vec![t_var], ty: Ty::fun(vec![Ty::Con(TyCon::new("Ptr"))], list_t.clone()) });
     modules.insert("List".to_string(), list_mod);
 
     // Map module -- polymorphic: Map<K, V> with type variables for key/value.
@@ -398,6 +404,8 @@ fn stdlib_modules() -> HashMap<String, HashMap<String, Scheme>> {
     map_mod.insert("merge".to_string(), Scheme { vars: vec![k_var, v_var], ty: Ty::fun(vec![map_kv.clone(), map_kv.clone()], map_kv.clone()) });
     map_mod.insert("to_list".to_string(), Scheme { vars: vec![k_var, v_var], ty: Ty::fun(vec![map_kv.clone()], Ty::list(Ty::Tuple(vec![k.clone(), v.clone()]))) });
     map_mod.insert("from_list".to_string(), Scheme { vars: vec![k_var, v_var], ty: Ty::fun(vec![Ty::list(Ty::Tuple(vec![k.clone(), v.clone()]))], map_kv.clone()) });
+    // Phase 79: Map.collect(iter) -> Map<K, V>
+    map_mod.insert("collect".to_string(), Scheme { vars: vec![k_var, v_var], ty: Ty::fun(vec![Ty::Con(TyCon::new("Ptr"))], map_kv.clone()) });
     modules.insert("Map".to_string(), map_mod);
 
     let set_t = Ty::set_untyped();
@@ -413,6 +421,8 @@ fn stdlib_modules() -> HashMap<String, HashMap<String, Scheme>> {
     set_mod.insert("difference".to_string(), Scheme::mono(Ty::fun(vec![set_t.clone(), set_t.clone()], set_t.clone())));
     set_mod.insert("to_list".to_string(), Scheme::mono(Ty::fun(vec![set_t.clone()], Ty::list(Ty::int()))));
     set_mod.insert("from_list".to_string(), Scheme::mono(Ty::fun(vec![Ty::list(Ty::int())], set_t.clone())));
+    // Phase 79: Set.collect(iter) -> Set
+    set_mod.insert("collect".to_string(), Scheme::mono(Ty::fun(vec![Ty::Con(TyCon::new("Ptr"))], set_t.clone())));
     modules.insert("Set".to_string(), set_mod);
 
     let mut tuple_mod = HashMap::new();

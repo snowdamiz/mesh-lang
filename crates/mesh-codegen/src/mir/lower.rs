@@ -9873,6 +9873,11 @@ fn map_builtin_name(name: &str) -> String {
         "iter_all" => "mesh_iter_all".to_string(),
         "iter_find" => "mesh_iter_find".to_string(),
         "iter_reduce" => "mesh_iter_reduce".to_string(),
+        // ── Phase 79: Collect terminal operations ────────────────────────
+        "list_collect" => "mesh_list_collect".to_string(),
+        "map_collect" => "mesh_map_collect".to_string(),
+        "set_collect" => "mesh_set_collect".to_string(),
+        "string_collect" => "mesh_string_collect".to_string(),
         _ => name.to_string(),
     }
 }
