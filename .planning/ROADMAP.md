@@ -155,6 +155,10 @@ See milestones/v7.0-ROADMAP.md for full phase details.
 **Milestone Goal:** Make Mesh installable, editable, and navigable -- one-command install, complete syntax highlighting, code intelligence, and accurate documentation.
 
 - [ ] **Phase 81: Grammar + Document Symbols** - Complete syntax highlighting + LSP outline/breadcrumbs/go-to-symbol
+  **Plans:** 2 plans
+  Plans:
+  - [ ] 81-01-PLAN.md -- Complete TextMate grammar (GRAM-01 through GRAM-10)
+  - [ ] 81-02-PLAN.md -- LSP document symbol handler (SYM-01 through SYM-03)
 - [ ] **Phase 82: Install Infrastructure** - CI pipeline, prebuilt binaries, install script
 - [ ] **Phase 83: Completion + Signature Help** - Code completion and function parameter info
 - [ ] **Phase 84: VS Code Extension Publishing** - Marketplace + Open VSX publishing
