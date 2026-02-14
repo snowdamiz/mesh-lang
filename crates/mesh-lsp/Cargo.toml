@@ -9,6 +9,7 @@ mesh-lexer = { path = "../mesh-lexer" }
 mesh-parser = { path = "../mesh-parser" }
 mesh-typeck = { path = "../mesh-typeck" }
 mesh-common = { path = "../mesh-common" }
+mesh-fmt = { path = "../mesh-fmt" }
 tower-lsp = { workspace = true }
 tokio = { workspace = true }
 rowan = { workspace = true }

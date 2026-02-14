@@ -85,6 +85,7 @@ impl LanguageServer for MeshBackend {
                 hover_provider: Some(HoverProviderCapability::Simple(true)),
                 definition_provider: Some(OneOf::Left(true)),
                 document_symbol_provider: Some(OneOf::Left(true)),
+                document_formatting_provider: Some(OneOf::Left(true)),
                 completion_provider: Some(CompletionOptions {
                     trigger_characters: None,
                     resolve_provider: Some(false),
@@ -290,6 +291,39 @@ impl LanguageServer for MeshBackend {
             &doc.analysis,
             &position,
         ))
+    }
+
+    async fn formatting(
+        &self,
+        params: DocumentFormattingParams,
+    ) -> Result<Option<Vec<TextEdit>>> {
+        let uri_str = params.text_document.uri.to_string();
+        let docs = self.documents.lock().unwrap();
+        let doc = match docs.get(&uri_str) {
+            Some(doc) => doc,
+            None => return Ok(None),
+        };
+
+        let config = mesh_fmt::FormatConfig {
+            indent_size: params.options.tab_size as usize,
+            ..Default::default()
+        };
+        let formatted = mesh_fmt::format_source(&doc.source, &config);
+
+        if formatted == doc.source {
+            return Ok(None);
+        }
+
+        // Full-document replacement: single TextEdit covering entire document.
+        let line_count = doc.source.lines().count() as u32;
+        let last_line_len = doc.source.lines().last().map_or(0, |l| l.len()) as u32;
+        Ok(Some(vec![TextEdit {
+            range: Range::new(
+                Position::new(0, 0),
+                Position::new(line_count, last_line_len),
+            ),
+            new_text: formatted,
+        }]))
     }
 }
 
@@ -551,5 +585,6 @@ mod tests {
         assert!(caps.document_symbol_provider.is_some());
         assert!(caps.completion_provider.is_some());
         assert!(caps.signature_help_provider.is_some());
+        assert!(caps.document_formatting_provider.is_some());
     }
 }
