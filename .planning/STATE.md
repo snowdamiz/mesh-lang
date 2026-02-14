@@ -10,9 +10,9 @@ See: .planning/PROJECT.md (updated 2026-02-13)
 ## Current Position
 
 Phase: 74 of 79 (Associated Types)
-Plan: 2 of 3 in current phase
+Plan: 3 of 3 in current phase
 Status: Executing
-Last activity: 2026-02-13 -- Completed 74-02 (type-checker core for associated types)
+Last activity: 2026-02-14 -- Completed 74-03 (MIR integration and E2E tests for associated types)
 
 Progress: [█░░░░░░░░░] 5% (v7.0)
 
@@ -41,6 +41,11 @@ Progress: [█░░░░░░░░░] 5% (v7.0)
 - Associated type bindings extracted by iterating tokens after EQ in ASSOC_TYPE_BINDING node
 - resolve_self_assoc_type filters whitespace trivia before pattern matching
 
+**Phase 74-03:**
+- Skip trait method return type comparison when expected type contains Self (Self.Item resolves only in impl context)
+- MIR lowering naturally handles associated types: ImplDef.methods() already skips ASSOC_TYPE_BINDING nodes via FnDef::cast
+- ExportedSymbols carries associated types through clone (no changes needed)
+
 ### Research Notes
 
 v7.0 research completed (HIGH confidence). Key findings:
@@ -67,7 +72,7 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-02-13
-Stopped at: Completed 74-02-PLAN.md (type-checker core for associated types)
+Last session: 2026-02-14
+Stopped at: Completed 74-03-PLAN.md (MIR integration and E2E tests for associated types)
 Resume file: None
-Next action: `/gsd:execute-phase 74` (Plan 03 -- MIR lowering for associated types)
+Next action: Phase 74 complete (all 3 plans done). Next phase 75 or continue v7.0 roadmap.
