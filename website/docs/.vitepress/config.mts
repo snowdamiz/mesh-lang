@@ -12,6 +12,9 @@ export default defineConfig({
   // Built-in dark mode with FOUC prevention
   appearance: true,
 
+  // Enable clean URLs
+  cleanUrls: true,
+
   // Enable git-based last-updated timestamps
   lastUpdated: true,
 
