@@ -10,17 +10,17 @@ See: .planning/PROJECT.md (updated 2026-02-13)
 ## Current Position
 
 Phase: 83 (3 of 6 in v8.0) -- Completion & Signature Help
-Plan: 1 of 2 in current phase
-Status: Plan 83-01 complete
-Last activity: 2026-02-14 -- Plan 83-01 complete (Completion Engine)
+Plan: 2 of 2 in current phase
+Status: Phase 83 complete
+Last activity: 2026-02-14 -- Plan 83-02 complete (Signature Help)
 
 Progress: [███░░░░░░░] 42%
 
 ## Performance Metrics
 
 **All-time Totals:**
-- Plans completed: 223
-- Phases completed: 82
+- Plans completed: 224
+- Phases completed: 83
 - Milestones shipped: 17 (v1.0-v7.0)
 - Lines of Rust: ~97,200
 - Lines of website: ~5,500
@@ -46,6 +46,8 @@ Progress: [███░░░░░░░] 42%
 - 83-01: Used actual 48-keyword list from keyword_from_str instead of plan's incorrect list
 - 83-01: Whitespace fallback collects top-level names when cursor is past tokens
 - 83-01: Sort ordering: 0_scope > 1_types > 2_keywords > 3_snippets for intuitive ranking
+- 83-02: Multi-strategy callee type resolution: direct range, NAME_REF children, Ty::Fun containment
+- 83-02: Parameter names from CST FN_DEF nodes; type-only labels for built-in functions
 
 ### Pending Todos
 
@@ -64,10 +66,11 @@ None. (Phase 83 scope-walk concern resolved -- pattern works correctly.)
 | Phase 82 P01 | 3min | 2 tasks | 4 files |
 | Phase 82 P02 | 3min | 2 tasks | 4 files |
 | Phase 83 P01 | 4min | 2 tasks | 3 files |
+| Phase 83 P02 | 4min | 2 tasks | 3 files |
 
 ## Session Continuity
 
 Last session: 2026-02-14
-Stopped at: Completed 83-01-PLAN.md (Completion Engine)
+Stopped at: Completed 83-02-PLAN.md (Signature Help) -- Phase 83 complete
 Resume file: None
-Next action: Execute 83-02-PLAN.md (Signature Help)
+Next action: Begin next phase in v8.0 Developer Tooling milestone
