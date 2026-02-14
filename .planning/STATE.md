@@ -10,16 +10,16 @@ See: .planning/PROJECT.md (updated 2026-02-13)
 ## Current Position
 
 Phase: 81 (1 of 6 in v8.0) -- Grammar + Document Symbols
-Plan: 0 of TBD in current phase
-Status: Ready to plan
-Last activity: 2026-02-13 -- Roadmap created for v8.0 Developer Tooling (6 phases, 42 requirements)
+Plan: 1 of 2 in current phase
+Status: Executing
+Last activity: 2026-02-14 -- Completed 81-01 (TextMate grammar + Shiki themes)
 
-Progress: [░░░░░░░░░░] 0%
+Progress: [█████░░░░░] 50%
 
 ## Performance Metrics
 
 **All-time Totals:**
-- Plans completed: 218
+- Plans completed: 219
 - Phases completed: 80
 - Milestones shipped: 17 (v1.0-v7.0)
 - Lines of Rust: ~97,200
@@ -31,7 +31,10 @@ Progress: [░░░░░░░░░░] 0%
 ### Decisions
 
 (See PROJECT.md Key Decisions table for full log)
-No new decisions yet for v8.0.
+
+- 81-01: Removed nil from constant.language -- Mesh uses None (support.function) not nil
+- 81-01: Doc comments use non-italic greener shade to visually distinguish from regular italic comments
+- 81-01: Module-qualified call pattern uses lookahead to only match call sites, not field access
 
 ### Pending Todos
 
@@ -51,7 +54,7 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-02-13
-Stopped at: v8.0 roadmap created, ready to plan Phase 81
+Last session: 2026-02-14
+Stopped at: Completed 81-01-PLAN.md (TextMate grammar + Shiki themes)
 Resume file: None
-Next action: Plan Phase 81 (Grammar + Document Symbols)
+Next action: Execute 81-02-PLAN.md (LSP document symbols)
