@@ -1,248 +1,308 @@
-# Technology Stack
+# Stack Research
 
-**Project:** Mesh v7.0 -- Iterator Protocol & Trait Ecosystem
+**Domain:** Developer Tooling for Mesh Programming Language (install scripts, binary distribution, LSP improvements, VS Code extension publishing, REPL/formatter audit)
 **Researched:** 2026-02-13
+**Confidence:** HIGH
 
 ## Recommended Stack
 
-No new Rust crate dependencies required. All v7.0 features are compiler-internal changes to existing crates (mesh-parser, mesh-typeck, mesh-codegen, mesh-rt). This is consistent with Mesh's zero-new-deps philosophy for compiler features.
+### Core Technologies
 
-### Compiler Internals: What Changes
+| Technology | Version | Purpose | Why Recommended |
+|------------|---------|---------|-----------------|
+| tower-lsp | 0.20 (existing) | LSP server framework | Already in use; provides `completion`, `signature_help`, `document_symbol` trait methods ready to implement -- no version change needed |
+| lsp-types | 0.94 (via tower-lsp 0.20) | LSP protocol types | CompletionItem, DocumentSymbol, SignatureInformation all available in current version |
+| @vscode/vsce | ^2.22.0 (existing) | VS Code extension packaging and publishing | Already in devDependencies; handles `vsce package` and `vsce publish` to Marketplace |
+| vscode-languageclient | ^9.0.1 (existing) | VS Code LSP client | Already in use; supports all LSP 3.17 features client-side including completion, signature help, document symbols |
+| GitHub Actions | N/A | CI/CD for binary releases and extension publishing | Already using for website deploy; extend for release workflow |
+| Shell script (POSIX sh) | N/A | Install script for prebuilt binaries | Standard `curl -LsSf | sh` pattern used by Rust ecosystem (rustup, cargo-dist, Gleam) |
 
-| Component | Crate | Purpose | Changes Required |
-|-----------|-------|---------|-----------------|
-| Parser | mesh-parser | Parse associated type declarations in interfaces | New `ASSOC_TYPE` syntax kind, `type Item` in interface bodies |
-| Type Representation | mesh-typeck/ty.rs | Represent associated type projections | New `Ty::Projection` variant for `Self.Item` |
-| Unification Engine | mesh-typeck/unify.rs | Handle projection types during unification | Deferred normalization when encountering projections |
-| Trait Registry | mesh-typeck/traits.rs | Store associated type info in trait/impl defs | `associated_types` field on `TraitDef` and `ImplDef` |
-| Type Inference | mesh-typeck/infer.rs | Infer associated types, resolve projections | Projection normalization pass, `Self.Item` resolution |
-| Builtins | mesh-typeck/builtins.rs | Register Iterator/Iterable/From/Into/Add/.../Collect | New trait registrations with associated types |
-| MIR Lowering | mesh-codegen/mir/lower.rs | Desugar for-in to Iterable protocol, iterator state | New iterator state machine lowering, for-in rewrite |
-| MIR Types | mesh-codegen/mir/types.rs | Resolve projection types to concrete MIR types | Projection normalization in `resolve_type` |
-| Runtime | mesh-rt | Iterator runtime helpers | `mesh_iter_*` functions for lazy evaluation support |
+### Supporting Libraries (Rust -- No New Dependencies)
 
-### Core Framework (No Changes)
+No new Rust crate dependencies are needed. All LSP features are implemented by overriding additional trait methods on the existing `tower_lsp::LanguageServer` trait. The data needed for completion, symbols, and signature help is already present in the existing `TypeckResult`, `Parse`, and `TypeEnv` structures.
 
-| Technology | Version | Purpose | Why No Change |
-|------------|---------|---------|---------------|
-| Rust | stable | Compiler language | Existing toolchain sufficient |
-| LLVM 21 | via Inkwell 0.8 | Code generation | No new LLVM features needed |
-| ena | existing | Union-find for unification | Works with projection extensions |
-| rowan | existing | CST for parsing | Existing node types extensible |
-| rustc_hash | existing | FxHashMap throughout | No change |
+| Existing Library | Version | New Usage | Why Sufficient |
+|-----------------|---------|-----------|----------------|
+| tower-lsp | 0.20 | Override `completion()`, `signature_help()`, `document_symbol()` methods | These are provided methods on `LanguageServer` trait; just override them |
+| rowan | 0.16 | Walk CST for document symbols extraction | Already used for go-to-definition; same traversal pattern for symbols |
+| mesh-typeck | internal | Extract function/struct/type info for completions | `TypeckResult.type_registry` has all struct/sum-type defs; `builtins.rs` has all built-in names |
+| mesh-parser | internal | AST item enumeration for document symbols | `SourceFile::items()` already iterates FnDef, StructDef, ModuleDef, etc. with Name/ParamList |
+| mesh-fmt | internal | LSP formatting integration via `textDocument/formatting` | `format_source()` already works; just wire to LSP `formatting()` method |
+
+### Supporting Libraries (Node.js/TypeScript -- No New Dependencies)
+
+The VS Code extension needs no new dependencies. `vscode-languageclient` ^9.0.1 already supports all client-side features for completion, signature help, and document symbols. The extension currently declares `documentSelector` and `fileEvents` which is sufficient for all new LSP capabilities.
+
+| Existing Library | Version | Notes |
+|-----------------|---------|-------|
+| vscode-languageclient | ^9.0.1 | Completion, signature help, symbols all work automatically when server advertises capabilities |
+| @vscode/vsce | ^2.22.0 | `vsce publish` with Personal Access Token for Marketplace |
+| typescript | ^5.3.0 | Build toolchain, no change needed |
+
+### Development Tools
+
+| Tool | Purpose | Notes |
+|------|---------|-------|
+| GitHub Actions (release workflow) | Build prebuilt binaries for macOS (x86_64 + aarch64), Linux (x86_64) | Matrix build with `cargo build --release`, then upload to GitHub Releases |
+| `vsce` CLI | Package and publish VS Code extension | Run `vsce package --no-dependencies` then `vsce publish` with PAT |
+| Azure DevOps PAT | VS Code Marketplace authentication | Required for publishing; max 1-year expiry, store in GitHub Secrets |
+| `softprops/action-gh-release` | GitHub Action for creating releases | Standard Action for uploading binary artifacts to GitHub Releases |
 
 ## Detailed Technical Decisions
 
-### 1. Associated Types: Projection-Based Representation
+### 1. Install Script: POSIX Shell Script (Not cargo-dist)
 
-**Decision:** Add `Ty::Projection { trait_name: String, assoc_name: String, self_ty: Box<Ty> }` variant to the `Ty` enum.
+**Decision:** Write a custom POSIX shell install script, not use cargo-dist.
 
-**Why:** Mesh's existing `Ty` enum (Var, Con, Fun, App, Tuple, Never) has no way to represent "the Item type of T's Iterator impl." A projection type is the standard approach used by Rust (chalk), Haskell (type families), and Swift (associated types). It keeps the type representation self-contained -- no need for external lookup during pure type operations.
+**Why:** Mesh depends on LLVM 21 at compile time. cargo-dist is designed for standalone Rust binaries and has significant limitations with LLVM system dependencies:
+- cargo-dist's musl static linking explicitly cannot dynamically link against C libraries (which LLVM requires)
+- The `llvm-sys` crate needs `llvm-config` available at build time, which binary distributions of LLVM typically don't include
+- cargo-dist's cross-compilation support is still evolving for complex system deps
 
-**Alternative considered:** Eagerly resolving associated types to concrete types at trait-impl registration time. Rejected because this fails when the Self type is still a type variable during inference (e.g., in generic functions like `fn sum<T>(iter: T) where T: Iterator`).
+**Install script pattern:** Follow the Gleam/rustup model:
+1. Detect OS (macOS/Linux) and architecture (x86_64/aarch64)
+2. Construct download URL from GitHub Releases: `https://github.com/{owner}/{repo}/releases/latest/download/meshc-{os}-{arch}.tar.gz`
+3. Download, verify checksum, extract to `~/.mesh/bin/`
+4. Add to PATH (or print instructions)
 
-**Confidence:** HIGH -- this is the established pattern in every language with associated types and type inference.
+**The script itself needs no dependencies** beyond `curl`, `tar`, and `sh` -- all present on macOS and Linux by default.
 
-### 2. Deferred Projection Normalization
+**Confidence:** HIGH -- this pattern is proven by rustup, Gleam, Deno, Bun, and many other language toolchains.
 
-**Decision:** When unification encounters a `Ty::Projection` against another type T, succeed immediately and emit a deferred `ProjectionEq(projection, T)` constraint. Resolve these constraints after the main unification pass when more type information is available.
+### 2. Binary Distribution: Native Builds per Platform via GitHub Actions
 
-**Why:** Mesh's existing unification (Algorithm J via ena union-find) resolves types eagerly. But projection types often can't be resolved until the Self type is fully known. Chalk (Rust's trait solver) and OutsideIn(X) (GHC) both use deferred constraint strategies for exactly this reason.
+**Decision:** Build binaries natively on each platform runner (not cross-compile).
 
-**Integration with existing InferCtx:** Add a `pending_projections: Vec<(Ty, Ty)>` field to `InferCtx`. After each top-level inference pass, drain pending projections and attempt normalization. If Self is resolved, look up the impl and substitute. If still unresolved, keep deferred.
+**Why:** Mesh's `meshc` binary links against LLVM 21. Cross-compiling LLVM-linked binaries is extremely fragile. Building natively on `macos-latest` (for aarch64) and `ubuntu-latest` (for x86_64 Linux) avoids all linker complexity.
 
-**Alternative considered:** Immediately failing when projection can't be resolved. Rejected because this would break inference for generic code where types flow in from multiple directions.
+**Build matrix:**
 
-**Confidence:** HIGH -- deferred constraint resolution is standard for associated types.
+| Target | Runner | Notes |
+|--------|--------|-------|
+| `x86_64-apple-darwin` | `macos-13` | Intel Mac; install LLVM 21 via Homebrew |
+| `aarch64-apple-darwin` | `macos-latest` (ARM) | Apple Silicon; install LLVM 21 via Homebrew |
+| `x86_64-unknown-linux-gnu` | `ubuntu-latest` | Install LLVM 21 from apt.llvm.org |
 
-### 3. Projection Normalization Algorithm
+**Not targeting Windows initially** because Mesh does not currently have Windows support in its codegen/runtime (the runtime uses POSIX APIs). Adding Windows is a separate future effort.
 
-**Decision:** Normalize `Ty::Projection { trait_name, assoc_name, self_ty }` by:
-1. Resolve `self_ty` through the unification table
-2. Look up `trait_name` impl for the resolved self_ty in `TraitRegistry`
-3. If found, substitute the associated type value from the impl
-4. If self_ty is still a type variable, defer
+**Linking strategy:** Dynamic linking to LLVM on macOS (Homebrew manages LLVM), static linking on Linux where possible. The install script should document LLVM as a runtime dependency on macOS or bundle the required LLVM shared libraries.
 
-**Why:** This is the minimal algorithm that handles Mesh's use case. Mesh doesn't need Rust's full trait solver (no lifetime parameters, no higher-ranked trait bounds, no specialization, no negative impls). The existing `TraitRegistry::find_impl` + structural unification already handles step 2 correctly.
+**Alternative considered:** cargo-dist. Rejected because cargo-dist cannot handle the LLVM system dependency correctly for static binary distribution, and its cross-compilation for C-dependent crates is unreliable.
 
-**Key simplification vs. Rust:** Mesh uses monomorphization exclusively (no trait objects, no dynamic dispatch). This means every projection MUST normalize to a concrete type before codegen. No need for placeholder/applicative types as in Chalk -- unresolved projections at codegen time are errors.
+**Confidence:** HIGH -- native CI builds are the most reliable approach for LLVM-dependent binaries.
 
-**Confidence:** HIGH -- simplification is valid given Mesh's static dispatch model.
+### 3. LSP Completion: Use Existing TypeckResult + Builtins Data
 
-### 4. Iterator Protocol: Two-Trait Design (Iterator + Iterable)
+**Decision:** Build completion items from three sources, all already available:
+1. **Built-in names** from `builtins.rs`: `println`, `print`, `IO.read_line`, `String.length`, etc.
+2. **User-defined names** from `TypeckResult.type_registry`: struct defs, sum type defs, function schemes
+3. **Keywords**: `fn`, `let`, `if`, `case`, `do`, `end`, `struct`, `module`, `type`, `import`, `from`, etc.
 
-**Decision:** Define two traits:
+**tower-lsp integration:** Override `completion()` method, declare `completion_provider: Some(CompletionOptions { trigger_characters: Some(vec![".".to_string()]), ..Default::default() })` in ServerCapabilities.
+
+**No new crates needed.** The `AnalysisResult` in `mesh-lsp/analysis.rs` already contains the `TypeckResult` which has `type_registry` (all struct/sum-type defs) and `types` (all inferred types). The `analysis::analyze_document` function runs the full parse + typecheck pipeline on every change.
+
+**Confidence:** HIGH -- all data sources already exist; this is wiring, not research.
+
+### 4. LSP Document Symbols: Walk AST Items
+
+**Decision:** Use the existing `SourceFile::items()` iterator to produce hierarchical `DocumentSymbol` responses.
+
+**Mapping:**
+
+| Mesh Item | LSP SymbolKind | Detail String |
+|-----------|---------------|---------------|
+| FnDef | Function | Parameter list + return type if annotated |
+| StructDef | Struct | Field names |
+| SumTypeDef | Enum | Variant names |
+| ModuleDef | Module | (children are nested symbols) |
+| LetBinding | Variable | Inferred type from TypeckResult |
+| InterfaceDef | Interface | Method names |
+| ImplDef | Class | "impl Trait for Type" |
+| ActorDef | Class | Actor name |
+| ServiceDef | Class | Service name |
+| TypeAliasDef | TypeParameter | Aliased type |
+
+**Return format:** Use hierarchical `DocumentSymbol` (not flat `SymbolInformation`) because Mesh has nested items (functions inside modules, methods inside actors/services).
+
+**Confidence:** HIGH -- direct mapping from existing AST types.
+
+### 5. LSP Signature Help: Extract From TypeckResult
+
+**Decision:** Implement `signature_help()` by:
+1. Finding the enclosing call expression at the cursor position
+2. Resolving the callee name through the existing name resolution
+3. Looking up the function's type scheme in `TypeckResult` or builtins
+4. Formatting parameters with types from the scheme
+
+**Trigger characters:** `(` and `,` -- standard for function call signature help.
+
+**tower-lsp integration:** Declare `signature_help_provider: Some(SignatureHelpOptions { trigger_characters: Some(vec!["(".to_string(), ",".to_string()]), ..Default::default() })` in ServerCapabilities.
+
+**Confidence:** MEDIUM -- requires finding the enclosing call expression, which needs new CST traversal logic (unlike document symbols which just walk top-level items). The type lookup part is straightforward.
+
+### 6. LSP Formatting: Wire mesh-fmt to textDocument/formatting
+
+**Decision:** Implement `formatting()` by calling `mesh_fmt::format_source()` and producing a single full-document `TextEdit`.
+
+**Why full-document TextEdit:** `mesh-fmt` already produces the complete formatted output. Diffing to produce minimal edits is unnecessary complexity -- VS Code handles full-document replacement efficiently.
+
+**Confidence:** HIGH -- trivial integration; `format_source()` is a pure function that takes source and returns formatted source.
+
+### 7. VS Code Extension Publishing: vsce + GitHub Actions
+
+**Decision:** Publish to the VS Code Marketplace using `@vscode/vsce` (already in devDeps) with Azure DevOps Personal Access Token.
+
+**Publishing workflow:**
+1. Create publisher on marketplace.visualstudio.com (publisher name: `mesh-lang`, already in package.json)
+2. Generate Azure DevOps PAT with Marketplace publish scope
+3. Store PAT as GitHub Secret `VSCE_PAT`
+4. Add GitHub Actions workflow: on tag push, `vsce publish` with version from tag
+
+**Extension updates needed before publishing:**
+- Add `icon` field in package.json (128px squared PNG)
+- Add `repository` field pointing to GitHub
+- Ensure `README.md` exists in editors/vscode-mesh/ (marketplace description)
+- Add `CHANGELOG.md` for marketplace changelog tab
+- Consider `galleryBanner.color` for visual branding
+
+**Not publishing to Open VSX initially.** Open VSX has ~6K extensions vs Marketplace's ~80K. Add later if demand exists.
+
+**Confidence:** HIGH -- vsce is the standard tool, already configured in the project.
+
+### 8. REPL Audit: No Stack Changes
+
+**Decision:** The REPL audit is a quality pass, not a feature addition. No new dependencies.
+
+**Areas to audit:**
+- Multi-line continuation edge cases (nested do/end with comments)
+- String result formatting for complex types (lists, structs, sum types)
+- Error recovery (partial input that fails parse/typecheck should not crash the JIT)
+- `:load` interaction with session state
+
+**Existing stack is sufficient:** rustyline 15 for line editing, inkwell 0.8 for JIT execution, mesh-rt for runtime support.
+
+**Confidence:** HIGH -- audit scope, not stack scope.
+
+### 9. Formatter Audit: No Stack Changes
+
+**Decision:** The formatter audit is a quality pass. No new dependencies.
+
+**Areas to audit:**
+- Pipe operator multiline formatting (documented known issue)
+- Interface method body formatting (documented known issue)
+- Comment preservation edge cases
+- Long parameter list wrapping
+
+**Existing stack is sufficient:** rowan 0.16 CST, Wadler-Lindig IR in mesh-fmt.
+
+**Confidence:** HIGH -- audit scope, not stack scope.
+
+## Installation
+
+No new Rust dependencies to install. The workspace Cargo.toml remains unchanged.
+
+For the VS Code extension publishing setup:
+```bash
+# One-time: create marketplace publisher
+# Visit https://marketplace.visualstudio.com/manage and create publisher "mesh-lang"
+
+# One-time: generate PAT at https://dev.azure.com
+# Add to GitHub Secrets as VSCE_PAT
+
+# Build and publish (automated via GitHub Actions, or manually):
+cd editors/vscode-mesh
+npm run compile
+npx vsce publish
 ```
-interface Iterator do
-  type Item
-  fn next(self) :: Option<Self.Item>
-end
 
-interface Iterable do
-  type Item
-  type Iter        # must implement Iterator
-  fn iter(self) :: Self.Iter
-end
+For the install script (no build step, it's a shell script):
+```bash
+# The install script itself is a static file served from GitHub
+# Users will run:
+curl -LsSf https://raw.githubusercontent.com/{owner}/{repo}/main/install.sh | sh
 ```
-
-**Why:** This mirrors Rust's `Iterator`/`IntoIterator` split, which is the battle-tested design. The separation allows:
-- Types that ARE iterators (stateful, have next()) to be used directly
-- Types that CAN PRODUCE iterators (collections) to be iterable via for-in
-- Multiple iterator types per collection (e.g., values vs. entries for Map)
-
-**Mesh-specific adaptation:** Use `iter()` instead of Rust's `into_iter()` because Mesh has no ownership/move semantics. All values are GC-managed, so "consuming" vs. "borrowing" iteration is not a concern.
-
-**For-in desugaring:** `for x in collection do body end` desugars to:
-```
-let __iter = Iterable.iter(collection)
-while true do
-  case Iterator.next(__iter) do
-    Some(x) -> body
-    None -> break
-  end
-end
-```
-
-This reuses the existing while/break/case infrastructure. The desugaring happens in MIR lowering (lower.rs), replacing the current indexed iteration paths.
-
-**Confidence:** HIGH -- Rust's design is proven, and the adaptation to Mesh's GC model is straightforward.
-
-### 5. Lazy Iterator Combinators: Struct-Based State Machines
-
-**Decision:** Each combinator (map, filter, take, etc.) returns a new struct that implements Iterator. These structs are compiler-generated during monomorphization.
-
-Example: `list.iter().map(fn x -> x * 2 end).filter(fn x -> x > 5 end)` produces:
-- `ListIterator<Int>` (from list.iter())
-- `MapIterator<ListIterator<Int>, Int>` (wrapping the ListIterator + closure)
-- `FilterIterator<MapIterator<...>, Int>` (wrapping the MapIterator + closure)
-
-Each struct's `next()` calls the inner iterator's `next()` and applies the transformation.
-
-**Why:** This is how Rust, C++, and every compiled language with monomorphized iterators works. The monomorphization pass already generates specialized code per type, so each combinator chain produces a unique, fully-inlined call sequence. No heap allocation for the iterator pipeline itself (closures may still capture to heap, but the iterator structs are stack-allocated or register-promoted).
-
-**Mesh-specific consideration:** Mesh's GC manages all heap objects. Iterator structs will be GC-allocated (like all Mesh structs) but are typically short-lived and collected quickly. The existing mark-sweep GC handles this fine.
-
-**Alternative considered:** Implementing combinators as built-in runtime functions (like current List.map). Rejected because this defeats laziness -- each step would materialize an intermediate list. The whole point of the iterator protocol is lazy, fused evaluation.
-
-**Confidence:** HIGH -- this is the standard compiled-language approach.
-
-### 6. From/Into: Synthetic Impl Generation (Not Blanket Impls)
-
-**Decision:** Implement From/Into as:
-```
-interface From<T> do
-  fn from(value :: T) :: Self
-end
-
-interface Into<T> do
-  fn into(self) :: T
-end
-```
-
-When the user writes `impl From<String> for Int`, the compiler automatically generates the reverse `impl Into<Int> for String`. This is a synthetic impl, generated during trait registration.
-
-**Why:** Mesh does not support blanket impls (overlapping impls are out of scope per PROJECT.md). Instead of the Rust approach (`impl<T, U> Into<U> for T where U: From<T>`), Mesh synthesizes concrete Into impls from each From impl. This is simpler and avoids the need for a blanket impl system.
-
-**Coherence:** Since Mesh generates the Into impl deterministically from each From impl, there is no coherence concern. The existing `TraitRegistry::register_impl` duplicate detection catches any conflicts.
-
-**Integration with ? operator:** Currently, `?` desugars Result/Option with identical error types. With From/Into, `?` can convert error types: if the function returns `Result<T, TargetError>` and the expression is `Result<T, SourceError>`, the Err arm calls `From.from(err)` to convert. This extends the existing `lower_try_result` in MIR lowering.
-
-**Confidence:** MEDIUM -- synthetic impl generation is non-standard but simpler than blanket impls. The ? operator integration adds complexity to the existing desugaring.
-
-### 7. Numeric Traits: Extend Existing Operator Dispatch
-
-**Decision:** The existing Add/Sub/Mul/Div/Mod traits (already in builtins.rs) become the user-facing numeric traits. Add Neg for unary minus. Users can `impl Add for MyType` to enable `+` on their types.
-
-**What changes:** Currently, `infer_trait_binary_op` checks `trait_registry.has_impl(trait_name, &resolved)` and returns the resolved type. This already works for user types. The key addition is:
-1. Making the existing compiler-known Add/Sub/Mul/Div traits user-implementable (they already are -- users just haven't had this documented/tested)
-2. Adding Neg trait for unary `-` dispatch (currently unary minus returns operand_ty without trait check)
-3. Verifying that `resolve_trait_callee` in MIR correctly mangles user-defined numeric trait impls
-
-**Simplification decision:** Keep Mesh's current same-type constraint for arithmetic (`a + b` requires a and b to be the same type). This avoids mixed-type arithmetic complexity while still enabling `impl Add for Vector2D`.
-
-**Why:** The infrastructure is already 90% there. The existing `register_compiler_known_traits` registers Add/Sub/Mul/Div/Mod with impls for Int and Float. The `infer_trait_binary_op` function already dispatches through the trait registry. The `resolve_trait_callee` in MIR already mangles to `Add__add__TypeName`. Adding user-defined impls is extending what exists, not building new.
-
-**Confidence:** HIGH -- builds directly on existing infrastructure with minimal new code.
-
-### 8. Collect Trait: Type-Directed Materialization
-
-**Decision:** Define Collect as:
-```
-interface Collect do
-  type Item
-  type Output
-  fn from_iter(iter) :: Self.Output
-end
-```
-
-Usage: `iter.collect()` where the target type is inferred from context (let binding annotation or return type).
-
-**Implementation approach:** The `collect()` method on Iterator calls `Collect.from_iter(self)`. The type checker resolves which Collect impl to use based on the expected return type. Built-in impls provided for:
-- Collect for List -- produces `List<T>` from any `Iterator<Item=T>`
-- Collect for Map -- produces `Map<K,V>` from `Iterator<Item=(K,V)>`
-- Collect for Set -- produces `Set<T>` from `Iterator<Item=T>`
-- Collect for String -- produces String from `Iterator<Item=String>` (join)
-
-**Type inference integration:** `collect()` returns a type determined by context. The type checker uses the target type annotation to select the appropriate Collect impl. Example:
-```
-let result :: List<Int> = numbers.iter().map(fn x -> x * 2 end).collect()
-```
-The `List<Int>` annotation drives inference, selecting the List collect impl.
-
-**Confidence:** MEDIUM -- type-directed dispatch through projection normalization is the right approach but requires the associated types infrastructure to be solid first.
-
-## Algorithms and Data Structures Needed
-
-### New in mesh-typeck
-
-| Algorithm/DS | Purpose | Complexity |
-|-------------|---------|------------|
-| Projection normalization | Resolve `Self.Item` to concrete type | O(1) per lookup via TraitRegistry |
-| Deferred projection constraints | Queue unresolved projections for later resolution | Vec<(Ty, Ty)> on InferCtx |
-| Associated type storage in TraitDef | Store `type Item` declarations | FxHashMap<String, Option<Ty>> on TraitDef |
-| Associated type storage in ImplDef | Store `type Item = ConcreteType` | FxHashMap<String, Ty> on ImplDef |
-| Synthetic Into impl generation | Auto-generate Into from From | Deterministic rewrite at registration time |
-
-### New in mesh-codegen
-
-| Algorithm/DS | Purpose | Complexity |
-|-------------|---------|------------|
-| Iterator struct generation | Create MapIterator, FilterIterator, etc. | Monomorphization produces structs per chain |
-| For-in desugaring to Iterable | Rewrite for-in to iter()+next() loop | Replaces indexed iteration in lower_for_in_expr |
-| Collect dispatch in MIR | Route collect() to correct from_iter impl | resolve_trait_callee with projection resolution |
-| From-based ? error conversion | Extend lower_try_expr with From::from call | Additional match arm in Err case |
-
-### New in mesh-rt
-
-| Function | Purpose | Signature |
-|----------|---------|-----------|
-| mesh_list_iter | Create ListIterator from List | (list_ptr) -> iter_ptr |
-| mesh_map_iter | Create MapIterator from Map | (map_ptr) -> iter_ptr |
-| mesh_set_iter | Create SetIterator from Set | (set_ptr) -> iter_ptr |
-| mesh_range_iter | Create RangeIterator from Range | (start, end) -> iter_ptr |
-| mesh_iter_next_* | Advance specific iterator type | (iter_ptr) -> option_ptr |
 
 ## Alternatives Considered
 
-| Category | Recommended | Alternative | Why Not |
-|----------|-------------|-------------|---------|
-| Associated type representation | Ty::Projection variant | External lookup table | Projection variant is self-contained, works with existing resolve/unify |
-| Projection resolution | Deferred constraints | Eager resolution | Fails for generic code where Self is still a type variable |
-| Iterator design | Two-trait (Iterator + Iterable) | Single-trait Iterable | Cannot distinguish stateful iterators from iterable collections |
-| Lazy evaluation | Struct-based state machines | Generator/coroutine-based | Struct approach needs no new runtime machinery, monomorphizes cleanly |
-| From/Into blanket impl | Synthetic concrete impls | Full blanket impl system | Blanket impls require specialization/negative-reasoning; out of scope |
-| Collect dispatch | Type-directed via context | Explicit target type parameter | Context-driven approach gives better ergonomics |
-| Numeric traits | Extend existing Add/Sub/Mul/Div | New separate numeric trait hierarchy | Existing traits already work; just need user-facing exposure |
+| Recommended | Alternative | When to Use Alternative |
+|-------------|-------------|-------------------------|
+| Custom shell install script | cargo-dist | If Mesh didn't depend on LLVM; cargo-dist works great for pure-Rust binaries |
+| Native CI builds per platform | Cross-compilation from Linux | If binary had no C/LLVM dependencies; cross works for pure Rust or simple C deps |
+| tower-lsp 0.20 (stay) | tower-lsp-server (community fork) | If needing LSP 3.18 features or notebook support; not needed for Mesh's use case |
+| tower-lsp 0.20 (stay) | Upgrade to tower-lsp-server (community) | When tower-lsp 0.20 becomes unmaintained; community fork has newer lsp-types but requires dropping async_trait macro |
+| Full-document TextEdit for formatting | Minimal diff-based edits | If formatter performance on large files becomes an issue (unlikely for Mesh source sizes) |
+| VS Code Marketplace only | Marketplace + Open VSX | When significant Codium/Theia/Eclipse user base requests it |
+| Dynamic LLVM linking (macOS) | Static LLVM linking | If producing fully self-contained binaries; requires building LLVM from source with static libs |
+| GitHub Releases | Homebrew tap | After initial distribution is stable; Homebrew is a secondary channel |
+
+## What NOT to Use
+
+| Avoid | Why | Use Instead |
+|-------|-----|-------------|
+| cargo-dist for binary releases | Cannot handle LLVM system dependency correctly; musl static linking prohibits C library linkage | Custom GitHub Actions workflow with native builds per platform |
+| `cross` (cross-rs) for CI builds | Cannot cross-compile to macOS; Docker-based approach fails with LLVM system deps | Native runner per platform (`macos-latest`, `ubuntu-latest`) |
+| tower-lsp-server (community fork) | Breaking change: removes `#[async_trait]` macro, requires lsp-types migration; tower-lsp 0.20 has all needed methods | Stay on tower-lsp 0.20; monitor community fork for future migration |
+| esbuild/webpack bundler for VS Code extension | Extension has minimal dependencies (just vscode-languageclient); bundling adds complexity with no benefit | `vsce package --no-dependencies` (already configured) |
+| Homebrew formula as primary distribution | Requires maintaining a tap, formula updates, and adds friction for non-macOS users | Shell install script that works on macOS and Linux uniformly |
+| `lsp-types` upgrade (0.94 -> 0.97) | Would require tower-lsp fork or migration to community fork; 0.94 has all types needed | Stay on lsp-types 0.94 (via tower-lsp 0.20) |
+
+## Version Compatibility
+
+| Package | Compatible With | Notes |
+|---------|-----------------|-------|
+| tower-lsp 0.20 | tokio 1.x, lsp-types 0.94 | Stable; last release from original author. All needed LSP 3.17 features present. |
+| vscode-languageclient ^9.0.1 | VS Code ^1.75.0 | Supports LSP 3.17; auto-negotiates capabilities with server |
+| @vscode/vsce ^2.22.0 | Node.js >= 18 | Used for packaging and publishing |
+| LLVM 21 (Inkwell 0.8) | Rust stable (tested 1.92.0) | Binary builds must match LLVM version exactly |
+| rustyline 15 | Rust stable | No compatibility concerns |
+| rowan 0.16 | Rust stable | No compatibility concerns |
+
+## Integration Points
+
+### LSP Server -> VS Code Extension (Automatic)
+
+The VS Code extension does NOT need code changes for new LSP features. The `vscode-languageclient` library automatically:
+- Sends `textDocument/completion` requests when the user types
+- Sends `textDocument/signatureHelp` requests on trigger characters
+- Sends `textDocument/documentSymbol` requests for outline view and breadcrumbs
+- Sends `textDocument/formatting` requests on format command
+
+All of this is driven by the server's `ServerCapabilities` response in `initialize()`. The extension just needs to start the server and declare the document selector -- which it already does.
+
+### Install Script -> Binary Distribution
+
+The install script must match the exact naming convention used by the GitHub Actions release workflow:
+```
+meshc-x86_64-apple-darwin.tar.gz
+meshc-aarch64-apple-darwin.tar.gz
+meshc-x86_64-unknown-linux-gnu.tar.gz
+```
+
+The install script and release workflow must be developed together to ensure naming alignment.
+
+### meshc Binary -> LSP Server
+
+The install script installs `meshc` to `~/.mesh/bin/meshc`. The VS Code extension already checks this path (line 42 of `extension.ts`):
+```typescript
+path.join(home, ".mesh", "bin", "meshc"),
+```
+
+No changes needed -- the extension's `findMeshc()` function already looks in the correct location.
 
 ## Sources
 
-- [Rust Chalk: Type Equality and Unification](https://rust-lang.github.io/chalk/book/clauses/type_equality.html) -- projection normalization algorithm (HIGH confidence)
-- [Niko Matsakis: Unification in Chalk Part 2](https://smallcultfollowing.com/babysteps/blog/2017/04/23/unification-in-chalk-part-2/) -- deferred projection constraints (HIGH confidence)
-- [Rust Compiler Dev Guide: Trait Resolution](https://rustc-dev-guide.rust-lang.org/traits/resolution.html) -- candidate assembly for associated types (HIGH confidence)
-- [Rust Compiler Dev Guide: Type Inference](https://rustc-dev-guide.rust-lang.org/type-inference.html) -- InferCtxt and union-find integration (HIGH confidence)
-- [Rust IntoIterator PR #20790](https://github.com/rust-lang/rust/pull/20790) -- for-loop desugaring design (HIGH confidence)
-- [Rust RFC 0195: Associated Items](https://rust-lang.github.io/rfcs/0195-associated-items.html) -- original associated types design (HIGH confidence)
-- [Rust RFC 0235: Collections Conventions](https://rust-lang.github.io/rfcs/0235-collections-conventions.html) -- collect/from_iter patterns (HIGH confidence)
-- [C# Iterator Block State Machines](https://csharpindepth.com/articles/IteratorBlockImplementation) -- state machine compilation pattern (MEDIUM confidence)
-- [Swift Associated Type Inference](https://forums.swift.org/t/recent-improvements-to-associated-type-inference/70265) -- practical challenges (MEDIUM confidence)
-- [Rust Coherence and Orphan Rules](https://ohadravid.github.io/posts/2023-05-coherence-and-errors/) -- From/Into coherence patterns (HIGH confidence)
+- [tower-lsp 0.20 docs](https://docs.rs/tower-lsp/0.20.0/tower_lsp/trait.LanguageServer.html) -- LanguageServer trait with completion, signature_help, document_symbol methods (HIGH confidence)
+- [tower-lsp GitHub](https://github.com/ebkalderon/tower-lsp) -- Repository and release history (HIGH confidence)
+- [tower-lsp-community/tower-lsp-server](https://github.com/tower-lsp-community/tower-lsp-server) -- Community fork with updated lsp-types; evaluated and not adopted (HIGH confidence)
+- [LSP 3.17 Specification](https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/) -- Protocol capability definitions (HIGH confidence)
+- [VS Code Publishing Extensions](https://code.visualstudio.com/api/working-with-extensions/publishing-extension) -- vsce publishing workflow, PAT setup, marketplace requirements (HIGH confidence)
+- [Gleam Installation Guide](https://gleam.run/getting-started/installing/) -- Install script and binary distribution pattern for a similar Rust-built language toolchain (HIGH confidence)
+- [cargo-dist releases](https://github.com/axodotdev/cargo-dist/releases) -- Evaluated for binary distribution; rejected due to LLVM dependency constraints (HIGH confidence)
+- [Cross-platform Rust CI/CD Pipeline](https://ahmedjama.com/blog/2025/12/cross-platform-rust-pipeline-github-actions/) -- GitHub Actions matrix build pattern for Rust binaries (MEDIUM confidence)
+- [houseabsolute/actions-rust-cross](https://github.com/houseabsolute/actions-rust-cross) -- Cross-compilation GitHub Action; evaluated, not suitable for LLVM deps (HIGH confidence)
+- [cargo-dist LLVM limitations](https://github.com/axodotdev/cargo-dist/releases/tag/v0.4.0) -- System dependency handling and musl static linking constraints (HIGH confidence)
+
+---
+*Stack research for: Mesh Developer Tooling Milestone*
+*Researched: 2026-02-13*

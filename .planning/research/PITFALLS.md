@@ -1,271 +1,409 @@
 # Domain Pitfalls
 
-**Domain:** Adding associated types, iterator protocol, From/Into traits, numeric traits, and Collect trait to existing Mesh compiler
+**Domain:** Developer tooling additions to existing Mesh programming language -- install script, VS Code extension updates, LSP features, REPL/formatter audit, docs corrections
 **Researched:** 2026-02-13
-**Confidence:** HIGH (codebase-informed, architecture-verified)
+**Confidence:** HIGH (codebase-informed, ecosystem research verified)
 
 ## Critical Pitfalls
 
-Mistakes that cause rewrites, inference regressions, or correctness failures across the existing 93K LOC compiler.
+Mistakes that cause broken user experience, security incidents, or require significant rework.
 
 ---
 
-### Pitfall 1: Associated Types Break HM Principal Types Property
+### Pitfall 1: Install Script Downloads 50MB+ Binary Without Verification
 
-**What goes wrong:** The current `Ty` enum has no representation for associated type projections (e.g., `<T as Iterator>::Item`). Adding them requires a new `Ty` variant that participates in unification, but associated type projections are not first-class terms in standard HM -- they are type-level functions that may not be injective. This means the unifier cannot always determine a principal type, and inference may produce ambiguous results where it previously succeeded.
+**What goes wrong:** The `meshc` binary statically links LLVM 21 (via `inkwell` with `llvm21-1` feature), producing a binary in the 50-100MB range. A `curl | sh` install script that downloads this binary without SHA256 checksum verification leaves users vulnerable to supply chain attacks, and large downloads are more likely to be interrupted mid-stream -- a partially downloaded binary that is `chmod +x`'d and placed in `$PATH` will produce confusing "exec format error" or segfault messages rather than a clear error.
 
-**Why it happens:** Standard HM unification treats all type constructors as injective: `List<A> = List<B>` implies `A = B`. But `<T as Iterator>::Item = Int` does NOT imply `T = SomeSpecificType`, because multiple types can have `Item = Int`. The unifier in `unify.rs` currently assumes all `Ty::App` arguments can be structurally decomposed. A projection variant breaks this assumption.
+**Why it happens:** Most install script tutorials show a simple `curl -L | tar xz && mv binary /usr/local/bin/` pattern without verification. When the binary is small (<5MB), the risk of interrupted downloads is low. At 50MB+, network interruptions become common, especially on CI runners, slower connections, and corporate proxies that time out large downloads.
 
 **Consequences:**
-- Programs that previously inferred types unambiguously may now require type annotations
-- The occurs check in `unify.rs:170-195` does not understand projections and may loop or give false negatives
-- `resolve()` in `unify.rs:128-162` would need to handle normalization (reducing `<Vec<Int> as Iterator>::Item` to `Int`), which requires trait resolution during unification -- creating a circular dependency between inference and trait solving
+- Users who `curl | sh` on a flaky connection get a corrupted binary that segfaults, and blame Mesh
+- No checksum verification means a compromised CDN/GitHub release could serve a malicious binary
+- The install script cannot distinguish between "download interrupted" and "successful download" without verification
+- Corporate environments and CI systems often require checksum verification for security policy compliance
 
 **Prevention:**
-1. Do NOT add a `Ty::Projection` variant that participates in general unification. Instead, normalize projections eagerly: whenever an associated type is referenced, immediately look up the concrete impl and substitute the concrete type. This keeps the unifier unchanged.
-2. Require that all associated type references occur in contexts where the implementing type is already known (fully resolved). The `TraitRegistry::find_impl()` already does structural matching -- use it to resolve the associated type to a concrete `Ty` before it enters the unification table.
-3. Add a `Ty::AssocProjection { trait_name, type_name, assoc_name }` for deferred cases, but treat it as an error if it survives past the normalization pass. Never unify two projections directly.
+1. Generate SHA256 checksums for every release artifact and publish them alongside the binaries in GitHub Releases (e.g., `meshc-darwin-arm64.tar.gz.sha256`).
+2. The install script must: (a) download the tarball to a temp file, (b) download the checksum file, (c) verify the checksum BEFORE extracting or installing, (d) fail with a clear error message if verification fails.
+3. Use `curl -fSL` (fail on HTTP errors, show errors, follow redirects) rather than just `curl -sSf` to ensure HTTP errors are caught.
+4. Always `set -euo pipefail` at the top of the install script so any failure aborts immediately rather than continuing with partial state.
 
-**Detection:** Test that all programs in the existing test suite still compile with zero annotation changes. Any new "ambiguous type" errors indicate a regression.
+**Detection:** Test the install script with artificially truncated downloads (truncate the tarball at 50%, run the script). It must fail clearly, not install a broken binary.
 
-**Phase mapping:** Must be addressed FIRST, before Iterator or From/Into. Associated types are a prerequisite for `type Item` in Iterator and `type Output` in From.
+**Phase mapping:** Install script phase. Must be implemented correctly from the first version -- a broken install experience will be users' first interaction with Mesh.
 
 ---
 
-### Pitfall 2: Iterator State Machine Representation in MIR
+### Pitfall 2: Platform Detection Fails on Non-Standard Environments
 
-**What goes wrong:** The current for-in loop codegen uses specialized MIR nodes (`ForInList`, `ForInMap`, `ForInSet`, `ForInRange`) that are each lowered to custom LLVM IR with indexed iteration. An iterator protocol requires a fundamentally different representation: each iterator is a struct holding mutable state, and `next()` is a method call that returns `Option<Item>`. The MIR has no concept of "mutable iterator state" -- all for-in loops currently use ephemeral counter variables generated inline during codegen.
+**What goes wrong:** The install script uses `uname -s` and `uname -m` to detect OS and architecture, then maps these to GitHub Release asset names. But the mapping has well-known failure modes: `uname -m` returns `aarch64` on Linux but `arm64` on macOS for the same ARM64 architecture. WSL2 reports `Linux` but users may want the Windows binary. Some CI containers report unexpected values. If the script does not handle these variations, it downloads the wrong binary or fails with an opaque "asset not found" error.
 
-**Why it happens:** The existing codegen in `codegen/expr.rs:146-160` emits basic blocks with integer counters (`i = 0; while i < len { elem = get(coll, i); ... ; i += 1 }`). This is efficient but hardcoded per-collection-type. An Iterator trait requires: (a) constructing an iterator struct from a collection, (b) calling `next()` which mutates the iterator and returns `Option<Item>`, (c) pattern matching the Option to extract the element or break.
+**Why it happens:** There is no universal standard for how `uname` reports architecture. Common variations:
+- macOS: `arm64` or `x86_64`
+- Linux: `aarch64` or `x86_64`
+- Some Linux ARM: `armv7l` (32-bit ARM, which Mesh probably does not support)
+- Rosetta on macOS: `uname -m` may report `x86_64` even on ARM hardware if the shell is running under Rosetta
 
 **Consequences:**
-- The existing `ForInList`/`ForInMap`/`ForInSet`/`ForInRange` MIR nodes must continue working for backward compatibility (existing programs must not break)
-- Adding iterator-based for-in alongside indexed for-in creates two parallel codegen paths that must produce identical semantics
-- Iterator structs need heap or stack allocation, GC integration, and the monomorphization pass (`mono.rs`) must handle iterator type specialization
-- The comprehension semantics (all for-in loops return `List<T>` of collected body results) must work identically with both indexed and iterator-based iteration
+- Users on ARM Linux get a confusing "no matching release asset" error
+- Users running a Rosetta terminal on Apple Silicon download the x86_64 binary, which works but runs under emulation (significantly slower, especially for a compiler)
+- The install script silently downloads the wrong binary for the platform
 
 **Prevention:**
-1. Keep the existing `ForInList`/`ForInMap`/`ForInSet`/`ForInRange` MIR nodes as-is. They are optimized codegen paths for known collection types.
-2. Add a NEW `ForInIterator { var, iterator_expr, body, elem_ty, body_ty, ty }` MIR node for trait-based iteration. This is used when for-in encounters a type that implements `Iterable`/`IntoIterator` but is not a known collection.
-3. In the MIR lowerer, check: if the collection type is a known type (List, Map, Set, Range), emit the existing specialized nodes. Otherwise, desugar to: `let iter = IntoIterator.into_iter(collection); while let Some(elem) = Iterator.next(iter) do body end`.
-4. The iterator struct itself should be stack-allocated (like closures: `MakeClosure` already handles this pattern with `{fn_ptr, env_ptr}`). Use the same alloca + GEP pattern.
+1. Normalize architecture names in the script: map both `aarch64` and `arm64` to a single canonical name that matches the GitHub Release asset naming convention.
+2. On macOS, additionally check `sysctl -n machdep.cpu.brand_string` or `arch` to detect Apple Silicon even when running under Rosetta.
+3. Explicitly list supported platforms and fail with a clear message for unsupported ones: "Mesh does not provide prebuilt binaries for armv7l. Build from source instead."
+4. Use a consistent asset naming convention: `meshc-{os}-{arch}.tar.gz` where `os` is `linux`/`darwin` and `arch` is `x86_64`/`arm64` (not `aarch64`).
 
-**Detection:** Run the full for-in test suite after adding iterator support. Every existing for-in test must produce identical output. Add new tests for custom iterables.
+**Detection:** Test the install script in: native macOS ARM64, macOS x86_64, Rosetta terminal, Linux x86_64, Linux aarch64 (GitHub's arm64 runner), and WSL2.
 
-**Phase mapping:** Iterator MIR representation should come AFTER associated types are working, since `type Item` is an associated type on the Iterator trait.
+**Phase mapping:** Install script phase. The detection logic must be correct before the first release or every user hitting the wrong case will file a bug.
 
 ---
 
-### Pitfall 3: From/Into Blanket Impl Creates Inference Ambiguity
+### Pitfall 3: LSP Mutex Deadlock Under Concurrent Requests
 
-**What goes wrong:** The standard From/Into pattern requires a blanket impl: `impl Into<U> for T where T: From<U>`. But the current trait system (`traits.rs`) has no concept of blanket impls (impls parameterized over type variables with trait bounds). Adding one creates a chicken-and-egg problem: to resolve `Into<String> for Int`, the system must first check if `From<Int> for String` exists, which requires trait resolution during impl lookup -- the exact circular dependency that the current `TraitRegistry::has_impl()` avoids by doing simple structural matching.
+**What goes wrong:** The existing `MeshBackend` in `server.rs` uses `std::sync::Mutex<HashMap<String, DocumentState>>` to protect the document store. tower-lsp executes up to 4 async handlers concurrently. If handler A locks the mutex and then calls `self.client.log_message().await` (or any other `.await`), the Tokio runtime may schedule handler B on the same thread, which also tries to lock the mutex -- causing a deadlock. The existing code already has this pattern: `analyze_and_publish()` locks the mutex, does work, drops the lock, then awaits `publish_diagnostics`. This is currently safe because the lock is dropped before the `.await`, but adding new LSP features (completion, document symbols, signature help) increases the risk of accidentally holding the lock across an `.await`.
 
-**Why it happens:** The current `register_impl()` in `traits.rs:97-157` stores concrete impls like `ImplDef { trait_name: "Add", impl_type: Ty::int() }`. A blanket impl would be `ImplDef { trait_name: "Into", impl_type: Ty::Var(?), ... }` with an additional constraint `where T: From<U>`. The `find_impl()` method does structural unification against stored impls, but it has no mechanism to check where-clause constraints during the match. Adding this check means `find_impl` becomes recursive (checking `has_impl("From", ...)` inside `find_impl("Into", ...)`), which can loop.
+**Why it happens:** `tower-lsp` unconditionally executes pending async tasks concurrently (up to 4 at a time) without guaranteeing execution order. `std::sync::Mutex` blocks the OS thread when contended. If task A holds the mutex and is suspended at an `.await` point, and task B is scheduled on the same OS thread and tries to acquire the same mutex, the thread deadlocks because task A cannot be resumed to release the lock.
 
 **Consequences:**
-- Naive implementation causes infinite recursion: `Into` lookup triggers `From` lookup, which could trigger another `Into` lookup
-- Even with cycle detection, the search space explodes: for each type, the solver must check all `From` impls to determine available `Into` impls
-- Error messages become confusing: "type X does not implement Into<Y>" when the real issue is "type X does not implement From<Y>"
+- The LSP server hangs completely -- the editor shows "Mesh Language Server" as not responding
+- The user must restart VS Code or kill the process
+- The deadlock is non-deterministic and hard to reproduce, making it appear as intermittent "server hangs"
+- Adding new features (completion, document symbols) that read from the document store increases contention and makes deadlocks more likely
 
 **Prevention:**
-1. Do NOT implement a general blanket impl mechanism for v7.0. Instead, use a compiler-known auto-derivation: whenever `impl From<A> for B` is registered, ALSO automatically register `impl Into<B> for A` as a concrete impl. This is the same pattern used for compiler-known traits in `builtins.rs:821-1230` (Add/Sub/Mul/etc are registered with explicit impls for Int and Float, not derived from a blanket).
-2. In `register_impl()`, add a post-registration hook: if `trait_name == "From"`, extract `A` (the impl type) and `B` (the `From<B>` type parameter), then register a synthetic `Into<B> for A` impl with a method that calls the `From` method.
-3. This avoids recursive trait solving entirely while giving users the expected behavior: write `From`, get `Into` for free.
+1. NEVER hold `std::sync::Mutex` guard across an `.await` point. The current code does this correctly, but it must be enforced as a pattern rule for all new handlers.
+2. For new LSP features, follow the existing pattern in `hover()` and `goto_definition()`: lock the mutex, clone/extract the needed data, drop the lock, then do async work.
+3. Consider switching to `tokio::sync::RwLock` for the document store. Completion, document symbols, and hover are all read-only operations. Using an `RwLock` allows multiple readers concurrently while only blocking on writes (did_open, did_change). This dramatically reduces contention.
+4. Keep the lock scope as small as possible: lock, extract what you need into local variables, unlock immediately. Never call any method on `self` while holding the lock.
 
-**Detection:** Test that `impl From<Int> for String` automatically enables `Into<String>` for `Int`. Test that explicit `impl Into<X> for Y` still works and does not conflict with auto-derived ones. Test that circular `From` impls (A -> B -> A) produce a clear error rather than infinite recursion.
+**Detection:** Run the LSP server with rapid successive requests (type a character, immediately hover, immediately request completions). If the server hangs, there is a deadlock. Clippy lint `clippy::await_holding_lock` catches some cases statically.
 
-**Phase mapping:** From/Into should come AFTER associated types (since `From<T>` may want `type Output`), but can be implemented before Iterator since it is simpler.
+**Phase mapping:** LSP features phase. Must be reviewed for EVERY new handler implementation.
 
 ---
 
-### Pitfall 4: Numeric Trait Output Type Breaks Operator Chaining
+### Pitfall 4: Forgetting to Advertise New LSP Capabilities
 
-**What goes wrong:** The current arithmetic operators (Add, Sub, Mul, Div, Mod) in `builtins.rs:824-855` use `return_type: None` (meaning "Self" -- the implementing type). The actual return type is stored per-impl as `Some(Ty::int())` or `Some(Ty::float())`. This works because `Int + Int = Int` and `Float + Float = Float`. But if we introduce `type Output` as an associated type on Add (like Rust's `Add<Rhs = Self, Output = Self>`), the output type can differ from the input types. This breaks the assumption in `infer.rs` where `infer_binary_op` uses the LHS type as the result type of the operation.
+**What goes wrong:** In tower-lsp, the `initialize` method returns `ServerCapabilities` that tell the editor which features the server supports. If you implement `completion()`, `document_symbol()`, or `signature_help()` on the `LanguageServer` trait but forget to set the corresponding capability in `initialize`, the editor will NEVER send those requests to the server. The feature silently does nothing, and the developer wastes hours debugging why their handler is never called.
 
-**Why it happens:** The MIR lowerer (`lower.rs`) and LLVM codegen (`codegen/expr.rs`) both assume `BinOp { op: Add, lhs, rhs, ty }` where `ty` equals the type of `lhs`. The `codegen_int_binop` / `codegen_float_binop` functions produce LLVM instructions whose result type matches the operand type. If `Add::Output` is a different type (e.g., `Vec + Vec = Matrix`), the MIR type annotation is wrong, and the LLVM IR will be mistyped.
+**Why it happens:** The capability declaration and the handler implementation are in different parts of the code (capabilities in `initialize()`, handler as a separate `async fn`). There is no compile-time check that links them -- tower-lsp provides default no-op implementations for all handlers, so missing a capability produces no error.
 
 **Consequences:**
-- `a + b + c` may fail: if `a + b` returns type `C` (not type `A`), then `C + c` requires `Add` impl for `C`, not `A`
-- The type recorded in `MirExpr::BinOp { ty }` must be the OUTPUT type, not the LHS type
-- `codegen_binop` in `expr.rs` selects the codegen path based on `lhs_ty` -- if output differs, it selects the wrong path
-- Compound assignment (`+=`) must unify `lhs_type` with `Add::Output`, not with `rhs_type`
+- Completion, document symbols, or signature help silently do not work
+- The developer thinks the handler has a bug, but the handler is never invoked
+- Hours wasted on debugging the handler logic when the problem is a missing one-liner in `initialize()`
 
 **Prevention:**
-1. For v7.0, keep the simple model: `Add<Self> -> Self`. The output type equals the implementing type. Do NOT introduce a separate `Output` associated type on arithmetic traits yet.
-2. When extending existing Add/Sub/Mul/Div/Mod trait defs in `builtins.rs`, keep `return_type: Some(ty.clone())` where `ty` is the implementing type. This preserves the invariant that `BinOp.ty == lhs_ty == rhs_ty == result_ty` for primitives.
-3. For user-defined operator overloading (e.g., `impl Add for Point`), the MIR lowerer already rewrites `BinOp` to `Call` for non-primitive types (Phase 18-03 established this). The `Call` node carries its own return type from the function signature, so the output type can differ safely.
-4. If `type Output` is added later, it requires updating: (a) `infer_binary_op` to use `TraitRegistry.resolve_trait_method("add", lhs_ty)` for the result type instead of assuming LHS type, (b) `MirExpr::BinOp { ty }` to carry the resolved output type, (c) `codegen_binop` to handle mismatched input/output types.
+1. Add capabilities and handler implementations in the same commit, reviewed together.
+2. For each new feature, add a test that calls `server.initialize()` and asserts the relevant capability is present. The existing `server_capabilities` test in `server.rs:213-224` checks for `hover_provider` and `text_document_sync` -- extend it for each new capability:
+   - `completion_provider: Some(CompletionOptions { trigger_characters: Some(vec![".".into(), ":".into()]), .. })`
+   - `document_symbol_provider: Some(OneOf::Left(true))`
+   - `signature_help_provider: Some(SignatureHelpOptions { trigger_characters: Some(vec!["(".into(), ",".into()]), .. })`
+3. Write an integration test that sends a `textDocument/completion` request and verifies a non-empty response for a known-good file. If capabilities are missing, this test fails immediately.
 
-**Detection:** Test `a + b + c` with user-defined types. Test that the inferred type of `x + y` matches the declared return type of the `add` method, not the type of `x`.
+**Detection:** The capability test catches this at CI time. Alternatively, enable LSP tracing in VS Code (`"mesh.trace.server": "verbose"`) and verify the initialize response includes the expected capabilities.
 
-**Phase mapping:** Numeric traits (Add/Sub/Mul/Div/Neg) should be extended BEFORE Iterator, because iterator adapters like `sum()` depend on numeric traits.
+**Phase mapping:** LSP features phase. Check for EVERY new LSP method added.
 
 ---
 
-### Pitfall 5: Monomorphization Name Mangling Collision with Associated Types
+### Pitfall 5: VS Code Extension Published with Secrets or Wrong Scope
 
-**What goes wrong:** The current name mangling scheme uses single underscores for generic type instantiation (`Option_Int`, `Result_Int_String` in `types.rs:148-155`) and double underscores for trait method dispatch (`Add__add__Int` in `lower.rs:1137`). Associated types add a third dimension: the same trait method may be instantiated for different associated type bindings. If mangling does not account for associated types, two different monomorphizations may collide.
+**What goes wrong:** Publishing a VS Code extension to the Marketplace requires an Azure DevOps Personal Access Token (PAT). Two critical mistakes are common: (1) the PAT is created with the wrong scope (must be "Marketplace (Manage)" with "All accessible organizations"), causing 401/403 errors during `vsce publish`; (2) the `.vsix` package accidentally includes `.env` files, PAT tokens, or API keys from the development environment, which are then publicly downloadable by anyone who installs the extension.
 
-**Why it happens:** Consider `Iterator__next__List_Int` (Iterator.next() on List<Int>) and `Iterator__next__List_String` (Iterator.next() on List<String>). These already mangle differently because the implementing type differs. But if a generic function takes `T: Iterator` and calls `T.next()`, monomorphization must create a version for each concrete `T` AND each concrete `Item`. The current `mangle_type_name` in `types.rs:148` only handles the base type's generic args, not trait-associated type bindings.
+**Why it happens:** The `vsce package` command bundles everything in the extension directory that is not excluded by `.vsixignore`. If `.vsixignore` is missing or incomplete, sensitive files from the development process leak into the published package. Microsoft's Wiz Research found over 550 validated secrets across more than 500 published VS Code extensions -- this is a widespread problem, not a theoretical one.
 
 **Consequences:**
-- Linker errors from duplicate symbols if two different instantiations produce the same mangled name
-- Incorrect function calls if monomorphization picks the wrong specialization
-- The `mir_type_to_impl_name` function in `types.rs:210-220` returns `"Unknown"` for complex types, which would cause ALL complex-type iterator instances to collide
+- Leaked PAT tokens can be used to publish malicious updates to your extension, affecting all users
+- Microsoft now blocks extensions with detected secrets, causing publish failures and delays
+- Wrong PAT scope causes `vsce publish` to fail with opaque authentication errors that are difficult to debug
 
 **Prevention:**
-1. Extend `mangle_type_name` to include the associated type bindings when mangling trait method calls. Format: `Trait__method__ImplType__AssocName_ConcreteType` (e.g., `Iterator__next__ListInt__Item_Int`).
-2. Fix `mir_type_to_impl_name` to handle `MirType::Tuple`, `MirType::Closure`, and `MirType::Ptr` cases instead of returning `"Unknown"`. Every MIR type must produce a unique, deterministic name suffix.
-3. In the monomorphization pass (`mono.rs:24-30`), when specializing generic functions that use associated types, include the associated type bindings in the function's mangled name. Currently mono.rs only does reachability analysis -- it needs to be extended to actually specialize when associated types are involved.
+1. Create a `.vsixignore` file that excludes everything except the required files:
+   ```
+   **
+   !out/**
+   !syntaxes/**
+   !language-configuration.json
+   !package.json
+   !LICENSE
+   !README.md
+   !CHANGELOG.md
+   ```
+2. Before publishing, inspect the `.vsix` contents: `vsce ls` shows what will be included. Review for any files that should not be there.
+3. Store the PAT as a GitHub Actions secret (`VSCE_PAT`), never in the repo. Automate publishing via CI so the PAT is never on a developer's machine.
+4. When creating the Azure DevOps PAT: select "All accessible organizations" in the Organization dropdown, and set scope to "Marketplace (Manage)". These are the two most common mistakes.
+5. The existing `package.json` already has `"package": "vsce package --no-dependencies"` -- this is good, as it avoids bundling `node_modules`. Verify that `--no-dependencies` continues to be used.
 
-**Detection:** Compile a program with two different iterator types whose `Item` types differ. Verify that the linker produces no duplicate symbol errors and that each iterator correctly yields its own `Item` type.
+**Detection:** Run `vsce ls` before every publish and review the file list. Add a CI step that runs `vsce package` and then inspects the `.vsix` for known secret patterns (`.env`, `token`, `key`, `secret` in filenames).
 
-**Phase mapping:** Must be addressed during associated types implementation, before Iterator, since Iterator is the first trait that uses associated types.
+**Phase mapping:** VS Code extension phase. Must be correct for the first marketplace publish -- you cannot un-publish secrets.
 
 ---
 
-### Pitfall 6: Collect Trait Requires Higher-Kinded-Like Dispatch
+### Pitfall 6: TextMate Grammar Conflicts Between Keywords and Type Names
 
-**What goes wrong:** A `Collect` trait (like Rust's `FromIterator`/`collect()`) needs to convert an iterator into a collection. The return type depends on the TARGET collection, not the iterator: `iter.collect::<Vec<_>>()` vs `iter.collect::<HashSet<_>>()`. This requires the caller to specify the output type, and the trait solver to find the right impl based on the return type context. HM inference flows type information from arguments to return types (bottom-up), not from return types to arguments (top-down). Selecting a trait impl based on the expected return type requires bidirectional type flow.
+**What goes wrong:** The existing `mesh.tmLanguage.json` has a broad `entity.name.type.mesh` pattern that matches `\b[A-Z][a-zA-Z0-9_]*\b` (any PascalCase identifier). This pattern also matches keywords that happen to be PascalCase, like `Some`, `None`, `Ok`, `Err`, `Int`, `Float`, `String`, `Bool`, etc. The grammar has a separate `support.function.mesh` for `Some|None|Ok|Err` and `support.type.mesh` for `Int|Float|String|...`, but TextMate grammar rule priority depends on declaration ORDER within the patterns array, not specificity. If the `types` repository (which contains the broad PascalCase pattern) is included BEFORE `keywords`, user-defined types like `Some` or `Result` could be incorrectly highlighted.
 
-**Why it happens:** The current `InferCtx` in `unify.rs` works bottom-up: it infers the type of each expression from its subexpressions, then unifies with any annotation. For `collect()`, the return type is a fresh variable that gets unified with the context's expected type. But selecting which `Collect` impl to use requires knowing the return type FIRST, to find the right impl, to determine the `collect` method's behavior. This is a "type-directed dispatch" problem that standard HM does not handle.
+**Why it happens:** TextMate grammars use first-match-wins within a pattern list. The current top-level `patterns` array includes `#keywords` before `#types`, which is correct -- keywords match first. But when adding new language features (new keywords, new built-in types), developers often add them to the wrong section or forget to add them to the keyword exclusion list, causing them to be matched by the catch-all type pattern instead.
 
 **Consequences:**
-- Without type annotations, `let result = iter.collect()` cannot be inferred -- which collection type?
-- The inference engine would need to enumerate all `Collect` impls and try each one, which is expensive and may produce multiple valid solutions (ambiguity)
-- Error messages become opaque: "could not infer type for collect()" gives no hint about which collection types are available
+- New keywords added to Mesh but not to the grammar show up as type names (wrong color)
+- User-defined types that happen to share a name with a built-in get inconsistent highlighting
+- String interpolation expressions lose their highlighting if the interpolation grammar includes are in the wrong order
 
 **Prevention:**
-1. For v7.0, require explicit type annotations on `collect()` calls: `let xs: List<Int> = iter.collect()` or `iter.collect::<List<Int>>()`. The annotation constrains the return type, making impl selection unambiguous.
-2. Implement collect as a simpler pattern first: `iter.to_list()`, `iter.to_set()`, `iter.to_map()` -- named methods that each return a specific collection type. This avoids the return-type-directed dispatch problem entirely.
-3. If a general `Collect` trait is desired, implement it as: when the return type annotation is present, use it to select the impl. When absent, emit a specific error: "collect() requires a type annotation -- try `let x: List<T> = ...`".
-4. The `Scheme` type already supports polymorphic functions (see `builtins.rs:70-77` for `default()`). Use the same pattern: `collect` is polymorphic in its return type, and the call-site type annotation drives instantiation.
+1. When adding new Mesh keywords or built-in types, ALWAYS update the TextMate grammar's keyword patterns first.
+2. Keep the pattern include order as: `#comments`, `#strings`, `#numbers`, `#keywords`, `#operators`, `#functions`, `#types`, `#variables`. This ensures specific patterns win over general ones.
+3. Test grammar changes with a comprehensive test file that includes every keyword, every built-in type, user-defined types, and edge cases (type names that are substrings of keywords, keywords inside string interpolation).
+4. Use the "TextMate Syntax Highlighting and Intellisense" extension (`RedCMD.tmlanguage-syntax-highlighter`) during development to get live feedback on grammar changes.
 
-**Detection:** Test `collect()` with explicit annotations (must work). Test `collect()` without annotations (must produce a clear error, not a cryptic inference failure).
+**Detection:** Create a `test.mpl` file with all keywords and types, open in VS Code, and visually inspect. Use the "Developer: Inspect Editor Tokens and Scopes" command to verify each token's scope.
 
-**Phase mapping:** Collect should be the LAST feature implemented, after Iterator and From/Into, since it depends on both.
+**Phase mapping:** VS Code extension phase. Must be verified whenever the grammar is updated for new language features.
 
 ---
 
-### Pitfall 7: For-In Backward Compatibility -- Existing Comprehension Semantics
+### Pitfall 7: Completion Items with Wrong UTF-16 Position Offsets
 
-**What goes wrong:** All existing for-in loops in Mesh have comprehension semantics: they return `List<T>` of collected body results (see `MirExpr::ForInList { ty: MirType::Ptr }` and the list builder pattern in codegen). If the new iterator-based for-in changes this semantic (e.g., returning `Unit` like Rust's for loops), existing programs that depend on the return value silently change behavior.
+**What goes wrong:** The LSP specification requires positions in UTF-16 code units, not byte offsets or Unicode scalar values. The existing `analysis.rs` correctly handles UTF-16 conversion for diagnostics, hover, and go-to-definition. But completion items require `TextEdit` ranges that specify where the completion text should be inserted, and these ranges must also use UTF-16 character offsets. If completion ranges use byte offsets instead of UTF-16 offsets, completion inserts text at the wrong position for any line containing non-ASCII characters (emoji, CJK characters, multi-byte UTF-8 sequences).
 
-**Why it happens:** The current for-in implementation (`codegen_for_in_list`, etc.) creates a list builder, pushes each body result into it, and returns the built list. The MIR type of for-in is `Ptr` (a list). If iterator-based for-in returns the last `next()` result or `Unit` instead, the type changes and existing code breaks.
+**Why it happens:** Internally, Mesh source code is stored as a Rust `String` (UTF-8 bytes). Rowan's `TextRange` uses byte offsets. The temptation when building completion items is to pass the byte offset directly as the LSP `Position.character`, which works for ASCII-only code but breaks for multi-byte characters. The existing `offset_to_position` function in `analysis.rs:73-88` correctly counts UTF-16 code units, but a developer adding completion support might bypass it and construct `Position` directly from byte offsets.
 
 **Consequences:**
-- `let squares = for x in [1, 2, 3] do x * x end` currently evaluates to `[1, 4, 9]`. If iterator-based for-in returns Unit, this becomes `()`.
-- The break-returns-partial-list semantics would also need to be preserved
-- Filter clauses (`when condition`) work by skipping the list builder push, not by skipping the iterator -- the two mechanisms interact differently
+- Completion inserts text at the wrong column for non-ASCII source files
+- The misalignment can corrupt source code (inserting in the middle of a multi-byte character)
+- The bug only manifests with non-ASCII content, so it passes most English-only tests
 
 **Prevention:**
-1. Preserve comprehension semantics for ALL for-in loops, regardless of whether they use indexed or iterator-based codegen.
-2. For iterator-based for-in, the codegen must STILL wrap the loop body in a list builder. The desugaring is: `let builder = list_builder_new(); let iter = into_iter(coll); while let Some(elem) = next(iter) do builder.push(body(elem)) end; builder.finish()`.
-3. Do NOT change the return type of for-in. It remains `List<T>` where `T` is the body expression type.
-4. Add integration tests that verify `let result = for x in custom_iterable do x * 2 end` returns a list, identical to `let result = for x in [1, 2, 3] do x * 2 end`.
+1. ALWAYS use the existing `offset_to_position` and `position_to_offset` functions from `analysis.rs` when constructing LSP positions. Never construct `Position { line, character }` manually from byte counts.
+2. Prefer using `textEdit` over `insertText` in completion items. The LSP spec says `insertText` is "subject to interpretation by the client side" and some clients modify it unexpectedly. `textEdit` with explicit range is unambiguous.
+3. Add tests with non-ASCII source code (e.g., variable names with Unicode, comments with emoji) that verify completion inserts at the correct position.
 
-**Detection:** Any existing for-in test that captures the return value will catch this regression immediately.
+**Detection:** Write a test with source like `let emoji_var = "test" # comment` where there are multi-byte characters before the completion position. Verify the `TextEdit.range` uses UTF-16 offsets.
 
-**Phase mapping:** Must be verified during Iterator implementation. Regression tests from the v1.7 loop system milestone are the safety net.
+**Phase mapping:** LSP completion phase. Must be verified with non-ASCII test cases.
 
 ---
 
 ## Moderate Pitfalls
 
-### Pitfall 8: TraitMethodSig Has No Associated Type Declarations
+### Pitfall 8: Install Script Does Not Handle Existing Installation
 
-**What goes wrong:** The current `TraitMethodSig` in `traits.rs:15-29` stores method signatures but has no field for associated type declarations. A trait like `Iterator` needs to declare `type Item` as part of the trait definition, and impls must provide the concrete type for `Item`. Without storage for associated types in `TraitDef`, the trait registry cannot validate that impls provide all required associated types, and method signatures cannot reference associated types.
+**What goes wrong:** The install script downloads and installs `meshc` to `$HOME/.mesh/bin/meshc` (matching the well-known path in the VS Code extension's `findMeshc()`). If the user already has a previous version installed, the script must either upgrade cleanly or warn about the existing installation. A naive script that silently overwrites the binary can break if the old process is still running (common with LSP servers that are kept alive by the editor).
 
 **Prevention:**
-1. Add `associated_types: Vec<AssocTypeDef>` to `TraitDef` where `AssocTypeDef = { name: String, bounds: Vec<String> }`.
-2. Add `associated_types: FxHashMap<String, Ty>` to `ImplDef` mapping associated type names to their concrete types.
-3. During `register_impl`, validate that all associated types declared in the trait are provided by the impl, similar to how missing methods are currently detected in `traits.rs:102-114`.
+1. Check for an existing installation and display the current version before overwriting.
+2. On upgrade, write the new binary to a temp file first, then atomically rename it to the final path. This avoids a window where the binary is partially written.
+3. If the old binary is currently running (check with `pgrep meshc` or `lsof`), warn the user to restart their editor after the upgrade.
+4. The VS Code extension checks `$HOME/.mesh/bin/meshc` as a well-known path (line 42 of `extension.ts`). The install script MUST use this exact path or the extension will not find the binary.
 
-**Phase mapping:** Must be implemented as part of associated types, before Iterator.
+**Phase mapping:** Install script phase.
 
 ---
 
-### Pitfall 9: freshen_type_params Only Recognizes Single-Letter Type Params
+### Pitfall 9: Install Script Does Not Update PATH
 
-**What goes wrong:** The `freshen_type_params` function in `traits.rs:333-381` uses a heuristic: `Ty::Con` names that are a single uppercase ASCII letter (A-Z) are treated as type parameters. This breaks for associated type names like `Item`, `Output`, or `Error`, which are multi-character. These would NOT be freshened during structural matching, causing false negatives when matching generic impls that reference associated types.
+**What goes wrong:** The script installs the binary to `$HOME/.mesh/bin/` but the user's `$PATH` does not include this directory. After installation, `meshc --version` fails with "command not found". The user thinks installation failed.
 
 **Prevention:**
-1. When associated types are added to `TraitDef`, pass the list of declared associated type names to `freshen_type_params` (or its replacement). These names should also be freshened.
-2. Alternatively, switch to an explicit tracking approach: when registering an impl, record which `Ty::Con` names are type parameters (from the trait's generic params list) and which are associated types (from the trait's associated type list). Freshen both categories.
-3. The safest long-term fix: represent type parameters as `Ty::Var` from the start (during parsing/inference of trait definitions), not as `Ty::Con`. This eliminates the need for heuristic freshening entirely.
+1. After installing the binary, check if `$HOME/.mesh/bin` is already in `$PATH`. If not, append the appropriate line to `~/.bashrc`, `~/.zshrc`, or `~/.profile` (detect the user's shell first).
+2. Print a clear message: "Add `export PATH=$HOME/.mesh/bin:$PATH` to your shell profile, then restart your terminal."
+3. Also create a symlink in `/usr/local/bin/meshc` if the user has write access, as a convenience fallback.
+4. Test with a fresh user profile that has no prior Mesh configuration.
 
-**Phase mapping:** Must be fixed when adding associated types. The heuristic is already fragile for multi-letter type params (e.g., `Key`, `Value`).
+**Phase mapping:** Install script phase.
 
 ---
 
-### Pitfall 10: IntoIterator vs Iterator -- Two Traits or One?
+### Pitfall 10: GitHub Actions CI Does Not Have LLVM for Cross-Platform Builds
 
-**What goes wrong:** Rust separates `Iterator` (has `next()`, holds mutable state) from `IntoIterator` (has `into_iter()`, converts a collection into an iterator). If Mesh conflates these (one `Iterable` trait with both `next()` and `into_iter()`), then collections would need mutable iteration state embedded in themselves, which breaks value semantics and makes collections non-reentrant (iterating twice simultaneously is impossible).
+**What goes wrong:** Building `meshc` requires LLVM 21 (`inkwell` with `llvm21-1` feature). The current `.cargo/config.toml` hardcodes `LLVM_SYS_211_PREFIX = "/opt/homebrew/opt/llvm"` which is specific to Apple Silicon macOS with Homebrew. A GitHub Actions workflow building for Linux x86_64, Linux arm64, macOS x86_64, and macOS arm64 needs LLVM 21 installed on each runner, and the LLVM path differs per platform.
+
+**Why it happens:** LLVM is not pre-installed on GitHub Actions runners. Installing LLVM 21 from source takes 30-60 minutes per build. Pre-built LLVM packages exist but are platform-specific and may not match the exact version/configuration required by `inkwell`.
+
+**Consequences:**
+- CI builds fail because LLVM is not found
+- Build times become 30+ minutes if LLVM is compiled from source on each run
+- The `.cargo/config.toml` `LLVM_SYS_211_PREFIX` path breaks on non-macOS runners
+- Cross-compilation for ARM64 Linux from x86_64 runners requires cross-compiled LLVM libraries, which is complex
 
 **Prevention:**
-1. Define TWO traits: `Iterator` with `type Item` and `fn next(self) -> Option<Item>`, and `Iterable` with `type Item` and `type Iter: Iterator` and `fn iter(self) -> Iter`.
-2. For-in desugars to: `let iter = Iterable.iter(collection); while let Some(elem) = Iterator.next(iter) do ... end`.
-3. Collections (List, Map, Set) implement `Iterable` but NOT `Iterator`. The iterator struct is a separate type with mutable state.
-4. Iterators implement both `Iterator` AND `Iterable` (trivially -- `iter(self)` returns `self`), so passing an iterator directly to for-in works.
+1. Do NOT hardcode `LLVM_SYS_211_PREFIX` in `.cargo/config.toml` for CI builds. Instead, set it as an environment variable per CI job, varying by runner OS and architecture.
+2. Use pre-built LLVM packages for CI: `apt-get install llvm-21-dev` on Ubuntu, `brew install llvm@21` on macOS.
+3. Cache the LLVM installation between CI runs to avoid repeated downloads.
+4. Build native binaries on native runners (macOS arm64 on `macos-14`, macOS x86_64 on `macos-13`, Linux x86_64 on `ubuntu-latest`, Linux arm64 on `ubuntu-latest-arm64`) rather than cross-compiling. Cross-compilation with LLVM is fragile.
+5. Consider `cargo-dist` which automates multi-platform Rust binary releases with install script generation, handling all the LLVM complexity.
 
-**Phase mapping:** Architecture decision that must be made before implementing Iterator. Affects trait definitions, MIR representation, and codegen.
+**Detection:** The CI workflow must successfully build on all target platforms. Test with a clean runner (no cache) to verify the LLVM installation step works independently.
+
+**Phase mapping:** Install script / release infrastructure phase. Blocks the entire install script feature since there are no binaries to download without CI builds.
 
 ---
 
-### Pitfall 11: Neg Trait for Unary Minus -- UnaryOp Codegen Path
+### Pitfall 11: Document Symbols Return Wrong `selection_range`
 
-**What goes wrong:** The current `UnaryOp::Neg` in MIR (`mir/mod.rs:553-558`) is hardcoded to numeric types. Adding a `Neg` trait for user-defined types requires the same MIR lowerer rewrite that was done for BinOp in Phase 18-03: detect non-primitive types and emit a `Call` to `Neg__neg__TypeName` instead of `UnaryOp`.
+**What goes wrong:** The LSP `DocumentSymbol` struct requires two ranges: `range` (the full extent of the symbol, including its body) and `selection_range` (the identifier itself, e.g., the function name). The spec requires that `selection_range` is CONTAINED within `range`. If the whitespace-skipping coordinate system issue (documented in `definition.rs` comments) causes `selection_range` to extend beyond `range`, editors may crash or refuse to display the symbol outline.
+
+**Why it happens:** The Mesh lexer skips whitespace, so rowan CST offsets differ from source byte offsets. The existing `tree_to_source_offset` and `source_to_tree_offset` functions handle this translation, but they add complexity. If `range` and `selection_range` are computed using different coordinate systems (one in tree offsets, one in source offsets), the containment invariant may be violated.
 
 **Prevention:**
-1. Follow the exact same pattern as BinOp dispatch unification from Phase 18-03: in the MIR lowerer, when lowering a unary negation, check if the operand type is a primitive. If yes, emit `MirExpr::UnaryOp`. If no, emit `MirExpr::Call` to the mangled Neg trait method.
-2. Register `Neg` as a compiler-known trait in `builtins.rs` with impls for Int and Float, following the same pattern as Add/Sub/Mul/Div/Mod.
+1. Always compute BOTH `range` and `selection_range` in the same coordinate system. Use source byte offsets for both, then convert both through `offset_to_position()`.
+2. After computing both ranges, add a debug assertion that `selection_range.start >= range.start && selection_range.end <= range.end`.
+3. For functions: `range` = from `fn` keyword to `end` keyword; `selection_range` = just the function name. For structs: `range` = from `struct` keyword to `end`; `selection_range` = just the struct name.
+4. Reuse the tree-to-source offset mapping from `definition.rs` rather than reimplementing it.
 
-**Phase mapping:** Should be done alongside numeric trait extension (Add/Sub/Mul/Div/Neg together).
+**Phase mapping:** LSP document symbols phase.
 
 ---
 
-### Pitfall 12: Generic Iterator Adapters Cause Monomorphization Explosion
+### Pitfall 12: Completion Trigger Characters Conflict with Mesh Syntax
 
-**What goes wrong:** Iterator adapters like `map`, `filter`, `take`, `zip` each create a new iterator type wrapping the previous one. A chain like `list.iter().map(f).filter(g).take(n)` creates a deeply nested type: `Take<Filter<Map<ListIter<Int>, F>, G>>`. Monomorphization must specialize ALL generic functions for each unique nested type, which can cause exponential code generation.
+**What goes wrong:** LSP completion trigger characters tell the editor "send a completion request when the user types this character." Common trigger characters are `.` (member access) and `:` (type annotations). In Mesh, `::` is the type annotation operator and `|>` is the pipe operator. If `.` is a trigger character, typing `IO.println` triggers completion after the `.`, which is correct. But if `:` is a trigger character, typing `x :: Int` triggers completion after the first `:`, which is likely wrong (the user is typing a type annotation, not requesting completions).
+
+**Why it happens:** Trigger characters are single characters, not sequences. There is no way to say "trigger on `::` but not on `:`". Some editors handle this by checking context (are we in a type annotation position?), but many just fire the completion request on every `:`.
+
+**Consequences:**
+- Unnecessary completion popups appear while typing type annotations (`x :: Int`)
+- The completion popup interrupts the user's flow
+- If the completion handler is slow (re-parses the document), it causes perceptible lag on every `:` keystroke
 
 **Prevention:**
-1. For v7.0, limit the iterator adapter set to the essentials: `map`, `filter`, `take`, `zip`, `enumerate`. Do not implement the full Rust `itertools` suite.
-2. Monitor binary sizes during development. If a simple iterator chain causes >2x code size increase, consider boxing intermediate iterators (erasing the type) as an escape hatch.
-3. The current monomorphization pass (`mono.rs`) only does reachability analysis. It does NOT actually specialize functions. This means generic iterator adapter functions are currently emitted as-is, which would fail at LLVM codegen (LLVM needs concrete types). The mono pass must be extended to actually stamp out specialized copies.
+1. Start with ONLY `.` as a trigger character. This handles module member access (`IO.println`, `List.map`) which is the most useful completion context.
+2. Do NOT add `:` as a trigger character for v1. Users can still trigger completion manually with Ctrl+Space for type annotations.
+3. If `:` is needed later, the completion handler must check context: if the character before the cursor is also `:` (forming `::`), filter completion results to only return type names.
+4. For pipe operator completions (`x |> ___`), do not use `|` or `>` as trigger characters. Instead, rely on the editor's built-in identifier completion after the user starts typing a function name.
 
-**Phase mapping:** Becomes relevant when implementing iterator adapters, which is after the basic Iterator trait.
+**Detection:** Type `x :: Int` in the editor and verify no completion popup appears. Type `IO.` and verify completions appear.
+
+**Phase mapping:** LSP completion phase.
+
+---
+
+### Pitfall 13: REPL and Formatter Audit Misses New Language Features
+
+**What goes wrong:** When new language features are added to the parser and type checker (e.g., `from X import Y`, `impl From<A> for B`, iterators), the REPL and formatter may not support them. The REPL uses the full compiler pipeline (`mesh-parser` -> `mesh-typeck` -> `mesh-codegen` with JIT), so parser changes are picked up automatically, but the REPL's session state management may not handle new top-level forms. The formatter (`mesh-fmt`) uses its own CST walker (`walker.rs`) that explicitly matches on `SyntaxKind` variants -- new variants are silently ignored, producing unformatted output.
+
+**Why it happens:** The formatter's `walker.rs` has explicit match arms for each `SyntaxKind`. When a new syntax node is added to the parser (e.g., `SyntaxKind::ASSOC_TYPE_DEF`), if no match arm is added to the formatter, the node's children are not visited and their formatting is lost (output is empty for that node).
+
+**Consequences:**
+- `meshc fmt` silently drops new syntax constructs from the output, corrupting source files
+- The REPL may error on valid new syntax that works in compiled mode
+- Users discover the bug only after running `meshc fmt` on their files and losing code
+
+**Prevention:**
+1. The formatter should have a catch-all arm for unknown `SyntaxKind` variants that preserves the original text verbatim rather than dropping it. This is the "do no harm" principle: unknown syntax should pass through unchanged.
+2. When adding new syntax to the parser, immediately check: does the formatter handle it? Does the REPL handle it? Add this to the review checklist for every parser change.
+3. Add snapshot tests (`insta` is already a dependency) for the formatter that cover every syntax construct, including new ones.
+4. For the REPL, test each new syntax construct interactively and verify it works in the JIT pipeline.
+
+**Detection:** Format a file containing every new syntax feature and diff the output against the input. Any disappearing lines indicate a formatter bug.
+
+**Phase mapping:** REPL/formatter audit phase. Must be done AFTER all language features for the current milestone are implemented.
+
+---
+
+### Pitfall 14: Documentation Shows Wrong Install Commands
+
+**What goes wrong:** The current getting-started docs show `./target/release/mesh --version` (the binary is actually `meshc`, not `mesh`) and `mesh hello.mpl` (the actual command is `meshc build <dir>`, not `meshc <file>`). The landing page reportedly shows a fake `curl | sh` command that does not work. If the install script is implemented but the docs are not updated to match, users copy-paste commands that fail.
+
+**Why it happens:** Documentation is written before or independently from the actual implementation. The getting-started guide was written when the CLI interface was different (or aspirational). The docs reference `mesh` as the binary name but the actual binary is `meshc`. The docs show `mesh hello.mpl` (single-file compilation) but the CLI expects `meshc build <dir>` (directory-based project compilation).
+
+**Consequences:**
+- New users' very first experience is copy-pasting a command that fails
+- Users lose trust in the documentation and in the project
+- Support burden increases with "basic install doesn't work" issues
+
+**Prevention:**
+1. After the install script is working, manually walk through the entire getting-started guide on a clean system, executing every command.
+2. Update the getting-started guide to show the actual install command (`curl -fsSL https://mesh-lang.dev/install.sh | sh`), the actual binary name (`meshc`), and the actual compilation command (`meshc build .`).
+3. Add a CI job that extracts code blocks from the docs and runs them in a Docker container to verify they work (doc-testing).
+4. The landing page's fake install command must be replaced with the real one, or removed entirely until the install script exists.
+
+**Detection:** Fresh install on a clean macOS and Linux VM, following only the docs. Every command must succeed.
+
+**Phase mapping:** Docs correction phase. Must be done AFTER the install script is working to ensure docs match reality.
 
 ---
 
 ## Minor Pitfalls
 
-### Pitfall 13: AST Parsing for Associated Type Syntax
+### Pitfall 15: VS Code Extension Version Not Bumped Before Publish
 
-**What goes wrong:** The parser (`mesh-parser`) currently has no syntax for `type Item = Int` inside trait or impl definitions. Adding associated type syntax requires new parser rules, new CST/AST node types, and coordination between the parser and type checker.
+**What goes wrong:** The VS Code Marketplace rejects extension uploads with the same version number as an already-published version. The current `package.json` has `"version": "0.1.0"`. If a developer publishes 0.1.0, makes changes, and forgets to bump the version before publishing again, the publish fails.
 
-**Prevention:** Design the syntax before implementing. Suggested: `type Item = ConcreteType` in impl blocks, `type Item` in interface blocks. This is a small parser change (add a new item variant) but must be done carefully to avoid ambiguity with existing `type` alias syntax.
+**Prevention:**
+1. Automate version bumping in the publish CI workflow: `vsce publish patch` automatically increments the patch version.
+2. Alternatively, tie the extension version to the git tag: extract version from the release tag and inject it into `package.json` before packaging.
+3. Add a CI check that the version in `package.json` is different from the currently published version.
 
-**Phase mapping:** Must be the very first implementation step -- parser changes enable everything else.
-
----
-
-### Pitfall 14: Option Type Required for Iterator.next()
-
-**What goes wrong:** `Iterator.next()` returns `Option<Item>`. The existing `Option` type is a built-in sum type with `Some(T)` and `None` variants. However, the current type checker registers Option as a built-in in `builtins.rs` and the codegen has special handling for Option pattern matching. If the Iterator's `next()` method returns `Option<Item>` where `Item` is an associated type, the type checker must unify `Option<associated_type_projection>` with the expected `Option<ConcreteType>`, which requires associated type normalization to work correctly first.
-
-**Prevention:** Ensure associated type normalization happens BEFORE Option type checking. When type-checking `iter.next()`, first resolve `Item` to its concrete type (e.g., `Int`), then construct `Option<Int>`, then proceed with normal type checking. Do not attempt to construct `Option<Item>` as a symbolic type.
-
-**Phase mapping:** Automatically handled if associated type normalization (Pitfall 1) is implemented correctly.
+**Phase mapping:** VS Code extension publish phase.
 
 ---
 
-### Pitfall 15: Cross-Module Trait Export for Associated Types
+### Pitfall 16: `vsce create-publisher` Is No Longer Available
 
-**What goes wrong:** The `ExportedSymbols` type in `lib.rs:98-112` exports trait defs and trait impls. But `TraitDef` has no associated type declarations (Pitfall 8), and `ImplDef` has no associated type bindings. When a module exports an Iterator impl, the importing module needs to know what `Item` type it provides. Without this information in the export structure, cross-module iterator usage is impossible.
+**What goes wrong:** The `vsce create-publisher` command was removed from `vsce`. Developers following old tutorials will get an error. Publisher accounts must now be created at the Visual Studio Marketplace publisher management page (https://marketplace.visualstudio.com/manage).
 
-**Prevention:** When extending `TraitDef` and `ImplDef` with associated types (Pitfall 8), also update `collect_exports` in `lib.rs:191-318` to include associated type information in exported trait defs and impls. The `ImportContext` in `lib.rs:52-69` carries `all_trait_defs` and `all_trait_impls` -- these will automatically include the new associated type fields if the structs are updated.
+**Prevention:** Document the correct publisher creation process. The publisher name in `package.json` (`"publisher": "mesh-lang"`) must exactly match the publisher created on the Marketplace portal.
 
-**Phase mapping:** Must be done alongside associated type implementation. Verify with a multi-module test where one module defines an Iterator impl and another module uses it.
+**Phase mapping:** VS Code extension publish phase.
+
+---
+
+### Pitfall 17: Extension Does Not Bundle LSP Binary
+
+**What goes wrong:** The VS Code extension expects `meshc` to be in the user's PATH or at a well-known location (`$HOME/.mesh/bin/meshc`). If neither exists, the extension shows an error dialog. But the error message says "Install Mesh or configure the path to meshc" -- it does not tell the user HOW to install Mesh. If the install script does not exist yet when the extension is published, or the extension is published before the install script is well-known, users will be stuck.
+
+**Prevention:**
+1. The extension's error message should include a direct link to the installation instructions: "Install Mesh: https://mesh-lang.dev/docs/getting-started"
+2. Consider adding an automatic download option: the extension could offer to download the `meshc` binary directly, similar to how the Rust analyzer extension can download `rust-analyzer`.
+3. Ensure the install script is published and documented BEFORE the VS Code extension is published to the Marketplace.
+
+**Phase mapping:** VS Code extension + install script. The install script should be completed first.
+
+---
+
+### Pitfall 18: Signature Help Fires on Every `(` Including Non-Function Calls
+
+**What goes wrong:** If `(` is registered as a signature help trigger character, the editor sends a signature help request every time `(` is typed. In Mesh, `(` is used for function calls (`add(1, 2)`), grouped expressions (`(a + b) * c`), and tuple construction. Only function calls should show signature help. If the handler does not distinguish these contexts, it returns wrong or empty signature information for non-call contexts, causing visual noise.
+
+**Prevention:**
+1. In the signature help handler, check if the `(` follows an identifier that resolves to a function. If not, return `None`.
+2. Use the existing analysis infrastructure (CST traversal, name resolution) to determine if the cursor is inside a `CALL_EXPR` node before computing signatures.
+3. Return `None` (no signature help) rather than an empty `SignatureHelp` for non-call contexts. Some editors handle empty vs. None differently.
+
+**Phase mapping:** LSP signature help phase.
+
+---
+
+### Pitfall 19: GitHub Release Assets Not Available for All Platforms at Launch
+
+**What goes wrong:** The install script is published but GitHub Release assets only exist for macOS arm64 (the developer's machine). Linux users and macOS x86_64 users get "no matching asset found" errors. The install script is blamed, but the issue is missing release artifacts.
+
+**Prevention:**
+1. Do not publish the install script until release assets exist for ALL advertised platforms.
+2. The CI release workflow must build for at minimum: `darwin-arm64`, `darwin-x86_64`, `linux-x86_64`, `linux-arm64`.
+3. The install script should list supported platforms and clearly state which are available. If an asset is missing, say "No prebuilt binary available for [platform]. Build from source: [instructions]" rather than a generic error.
+
+**Phase mapping:** Install script + CI release workflow. The CI workflow must be working before the install script is published.
+
+---
+
+### Pitfall 20: LSP Full Document Sync Is Expensive for Large Files
+
+**What goes wrong:** The current LSP server uses `TextDocumentSyncKind::FULL`, meaning the entire document is sent on every keystroke. For small files this is fine, but for large Mesh files (hundreds of lines), re-parsing and re-typechecking the entire document on every keystroke causes perceptible lag, especially since the type checker is not incremental.
+
+**Prevention:**
+1. For v1 of the new LSP features, keep `FULL` sync. It is simpler and correctness matters more than performance at this stage.
+2. Add a debounce in the `did_change` handler: do not analyze immediately on every change, but wait 100-200ms after the last change before re-analyzing. This batches rapid keystrokes into a single analysis pass.
+3. Log timing information (`analyze_document` duration) to identify when performance becomes a problem.
+4. Future optimization: switch to `INCREMENTAL` sync, which only sends the changed range, and incrementally re-parse using rowan's green tree editing.
+
+**Phase mapping:** LSP features phase. Performance optimization can be deferred, but timing instrumentation should be added now.
 
 ---
 
@@ -273,84 +411,51 @@ Mistakes that cause rewrites, inference regressions, or correctness failures acr
 
 | Phase Topic | Likely Pitfall | Mitigation |
 |-------------|---------------|------------|
-| Associated types (type system) | Breaks principal types, unifier loops | Eager normalization, no projection in unification (Pitfall 1) |
-| Associated types (parser) | Syntax ambiguity with type aliases | Design syntax carefully, test against existing type alias parsing (Pitfall 13) |
-| Associated types (trait registry) | No storage, no validation | Extend TraitDef/ImplDef structs (Pitfall 8) |
-| Associated types (mangling) | Name collisions | Include assoc type bindings in mangled names (Pitfall 5) |
-| Associated types (freshening) | Single-letter heuristic fails | Pass explicit param/assoc type name lists (Pitfall 9) |
-| Iterator protocol (MIR) | No iterator state representation | New ForInIterator MIR node alongside existing nodes (Pitfall 2) |
-| Iterator protocol (semantics) | Comprehension semantics broken | Always wrap iterator loop in list builder (Pitfall 7) |
-| Iterator protocol (design) | IntoIterator vs Iterator confusion | Two separate traits (Pitfall 10) |
-| Iterator protocol (Option) | Associated type in return position | Normalize before Option construction (Pitfall 14) |
-| From/Into traits | Blanket impl recursion | Auto-derive Into from From registrations (Pitfall 3) |
-| From/Into (cross-module) | Export structure missing assoc types | Update ExportedSymbols (Pitfall 15) |
-| Numeric traits (Add/Sub/Mul/Div) | Output type breaks chaining | Keep Output = Self for v7.0 (Pitfall 4) |
-| Numeric traits (Neg) | Unary codegen path hardcoded | Same pattern as BinOp dispatch (Pitfall 11) |
-| Collect trait | Return-type-directed dispatch | Require annotations or use named methods (Pitfall 6) |
-| Iterator adapters | Monomorphization explosion | Limit adapter set, monitor binary sizes (Pitfall 12) |
-
-## Recommended Phase Ordering (Based on Pitfall Dependencies)
-
-```
-Phase 1: Associated Types (foundation)
-  - Parser syntax for `type X` in interface/impl
-  - TraitDef/ImplDef storage extension
-  - Eager normalization in type checker
-  - freshen_type_params fix
-  - Name mangling extension
-  - Cross-module export updates
-  Addresses: Pitfalls 1, 5, 8, 9, 13, 15
-
-Phase 2: Numeric Traits Extension (low risk, unblocks Phase 3)
-  - Add Neg trait to builtins
-  - Extend Add/Sub/Mul/Div with user-defined type support
-  - UnaryOp dispatch in MIR lowerer
-  Addresses: Pitfalls 4, 11
-
-Phase 3: Iterator Protocol (core)
-  - Iterator + Iterable trait definitions
-  - Iterator struct representation
-  - ForInIterator MIR node
-  - Codegen for trait-based iteration
-  - Comprehension semantics preservation
-  Addresses: Pitfalls 2, 7, 10, 14
-
-Phase 4: From/Into Traits (depends on associated types)
-  - From/Into trait definitions
-  - Auto-derive Into from From
-  Addresses: Pitfall 3
-
-Phase 5: Collect Trait (depends on Iterator + From)
-  - Collect trait with annotation requirement
-  - to_list/to_set/to_map convenience methods
-  Addresses: Pitfalls 6, 12
-```
+| Install script | Corrupted binary from interrupted download | SHA256 verification before install (Pitfall 1) |
+| Install script | Wrong platform detection | Normalize arch names, test on all platforms (Pitfall 2) |
+| Install script | PATH not updated | Detect shell, update profile, print instructions (Pitfall 9) |
+| Install script | No CI builds for all platforms | Build matrix with LLVM per-platform (Pitfall 10) |
+| Install script | Missing release assets at launch | Block script publish on asset availability (Pitfall 19) |
+| VS Code grammar | New keywords not highlighted | Update grammar when parser changes (Pitfall 6) |
+| VS Code publish | Secrets in .vsix package | .vsixignore, `vsce ls` review (Pitfall 5) |
+| VS Code publish | Version collision on Marketplace | Auto-bump version in CI (Pitfall 15) |
+| VS Code publish | `create-publisher` removed from vsce | Use Marketplace web portal (Pitfall 16) |
+| LSP completion | Wrong UTF-16 offsets for non-ASCII | Use existing `offset_to_position` (Pitfall 7) |
+| LSP completion | Unwanted popups during `::` typing | Only `.` as trigger character (Pitfall 12) |
+| LSP document symbols | selection_range outside range | Same coordinate system for both (Pitfall 11) |
+| LSP signature help | Fires on non-call `(` | Check CST context before returning (Pitfall 18) |
+| LSP all features | Capabilities not advertised | Extend initialize test (Pitfall 4) |
+| LSP all features | Mutex deadlock | Never hold lock across `.await` (Pitfall 3) |
+| LSP all features | Slow for large files | Debounce did_change, add timing (Pitfall 20) |
+| REPL/formatter | Silent data loss for new syntax | Catch-all arm in formatter, snapshot tests (Pitfall 13) |
+| Docs | Wrong commands on getting-started page | Walk through on clean system (Pitfall 14) |
+| Docs | Extension error does not link to install | Add install URL to error message (Pitfall 17) |
 
 ## Sources
 
 ### Primary (HIGH confidence -- direct codebase analysis)
-- `crates/mesh-typeck/src/ty.rs` -- Ty enum, TyCon, Scheme, TyVar (no associated type variant)
-- `crates/mesh-typeck/src/unify.rs` -- InferCtx, unification, occurs check, generalization (no projection handling)
-- `crates/mesh-typeck/src/traits.rs` -- TraitRegistry, TraitDef, ImplDef, freshen_type_params (single-letter heuristic)
-- `crates/mesh-typeck/src/builtins.rs` -- Compiler-known traits (Add/Sub/Mul/Div/Mod/Eq/Ord/Not/Display/Debug/Hash/Default)
-- `crates/mesh-typeck/src/lib.rs` -- TypeckResult, ExportedSymbols, ImportContext
-- `crates/mesh-typeck/src/error.rs` -- TypeError variants
-- `crates/mesh-codegen/src/mir/mod.rs` -- MIR types, ForInList/ForInMap/ForInSet/ForInRange nodes
-- `crates/mesh-codegen/src/mir/types.rs` -- resolve_type, mangle_type_name, mir_type_to_impl_name
-- `crates/mesh-codegen/src/mir/mono.rs` -- Monomorphization pass (reachability only, no specialization)
-- `crates/mesh-codegen/src/mir/lower.rs` -- MIR lowering, trait method dispatch mangling
-- `crates/mesh-codegen/src/codegen/expr.rs` -- LLVM codegen, for-in codegen, BinOp/UnaryOp dispatch
-- `.planning/phases/18-trait-infrastructure/18-RESEARCH.md` -- Phase 18 trait infrastructure research
+- `crates/mesh-lsp/src/server.rs` -- MeshBackend, Mutex<HashMap>, handler implementations, ServerCapabilities
+- `crates/mesh-lsp/src/analysis.rs` -- offset_to_position (UTF-16), position_to_offset, analyze_document
+- `crates/mesh-lsp/src/definition.rs` -- source_to_tree_offset, tree_to_source_offset (whitespace-skipping coordinate system)
+- `crates/mesh-lsp/src/lib.rs` -- run_server, tower-lsp Server setup
+- `editors/vscode-mesh/package.json` -- Extension configuration, publisher, scripts, dependencies
+- `editors/vscode-mesh/src/extension.ts` -- findMeshc() well-known paths, LanguageClient setup
+- `editors/vscode-mesh/syntaxes/mesh.tmLanguage.json` -- Grammar patterns, rule ordering
+- `.cargo/config.toml` -- LLVM_SYS_211_PREFIX hardcoded to /opt/homebrew
+- `Cargo.toml` -- inkwell with llvm21-1 feature, tower-lsp 0.20
+- `crates/meshc/src/main.rs` -- CLI subcommands (build, fmt, repl, lsp)
+- `website/docs/docs/getting-started/index.md` -- Current install instructions (build from source only)
 
-### Secondary (MEDIUM confidence -- web research, multiple sources agree)
-- [Unification in Chalk, part 2](https://smallcultfollowing.com/babysteps/blog/2017/04/23/unification-in-chalk-part-2/) -- Associated type projection in unification, termination concerns
-- [Rust Coherence (Chalk)](https://rust-lang.github.io/chalk/book/clauses/coherence.html) -- Coherence rules for trait impls
-- [RFC 1023: Rebalancing Coherence](https://rust-lang.github.io/rfcs/1023-rebalancing-coherence.html) -- Orphan rules and blanket impl constraints
-- [RFC 2451: Re-rebalancing Coherence](https://rust-lang.github.io/rfcs/2451-re-rebalancing-coherence.html) -- Updated coherence rules
-- [Rust orphan rules documentation](https://github.com/Ixrec/rust-orphan-rules) -- Comprehensive orphan rule analysis
-- [Rust Monomorphization Dev Guide](https://rustc-dev-guide.rust-lang.org/backend/monomorph.html) -- Monomorphization and code bloat
-- [Code bloat from monomorphization (rust-lang/rust#77767)](https://github.com/rust-lang/rust/issues/77767) -- Concrete code bloat examples
-- [Generics and Compile-Time in Rust (PingCAP)](https://www.pingcap.com/blog/generics-and-compile-time-in-rust/) -- Monomorphization compilation time impact
-- [GHC Type Families User Guide](https://ghc.gitlab.haskell.org/ghc/doc/users_guide/exts/type_families.html) -- Type family inference pitfalls, injectivity
-- [Simple unification-based type inference for GADTs (Microsoft Research)](https://www.microsoft.com/en-us/research/wp-content/uploads/2016/02/gadt-pldi.pdf) -- Extending HM with type-level features
-- [LLVM IR introduction (mcyoung)](https://mcyoung.xyz/2023/08/01/llvm-ir/) -- Iterator overhead in compiled IR
+### Secondary (MEDIUM confidence -- official documentation, multiple sources agree)
+- [tower-lsp LanguageServer trait docs](https://docs.rs/tower-lsp/latest/tower_lsp/trait.LanguageServer.html) -- Handler signatures, capability requirements
+- [LSP Specification 3.17](https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/) -- UTF-16 positions, TextEdit range requirements, capability negotiation
+- [DocumentSymbol struct docs](https://docs.rs/lsp-types/latest/lsp_types/struct.DocumentSymbol.html) -- range/selection_range containment requirement
+- [VS Code Publishing Extensions](https://code.visualstudio.com/api/working-with-extensions/publishing-extension) -- PAT creation, vsce workflow, .vsixignore
+- [Tokio shared state guide](https://tokio.rs/tokio/tutorial/shared-state) -- Mutex in async code, deadlock prevention
+- [tower-lsp concurrent handler issue #284](https://github.com/ebkalderon/tower-lsp/issues/284) -- Concurrent handler execution correctness concerns
+- [How to deadlock Tokio with a single mutex](https://turso.tech/blog/how-to-deadlock-tokio-application-in-rust-with-just-a-single-mutex) -- std::sync::Mutex blocking in async context
+- [cargo-dist](https://axodotdev.github.io/cargo-dist/) -- Automated Rust binary distribution with install scripts
+- [Wiz Research: Supply chain risk in VS Code extensions](https://www.wiz.io/blog/supply-chain-risk-in-vscode-extension-marketplaces) -- 550+ secrets leaked in published extensions
+- [Cross-compiling Rust on GitHub Actions](https://blog.timhutt.co.uk/cross-compiling-rust/) -- Platform matrix, LLVM cross-compile challenges
+- [Chef: 5 ways to deal with curl|bash](https://www.chef.io/blog/5-ways-to-deal-with-the-install-sh-curl-pipe-bash-problem) -- Partial download risk, verification best practices
+- [TextMate Language Grammars manual](https://manual.macromates.com/en/language_grammars) -- Pattern priority, first-match-wins semantics
