@@ -154,11 +154,11 @@ See milestones/v7.0-ROADMAP.md for full phase details.
 
 **Milestone Goal:** Make Mesh installable, editable, and navigable -- one-command install, complete syntax highlighting, code intelligence, and accurate documentation.
 
-- [ ] **Phase 81: Grammar + Document Symbols** - Complete syntax highlighting + LSP outline/breadcrumbs/go-to-symbol
+- [x] **Phase 81: Grammar + Document Symbols** - Complete syntax highlighting + LSP outline/breadcrumbs/go-to-symbol (completed 2026-02-14)
   **Plans:** 2 plans
   Plans:
-  - [ ] 81-01-PLAN.md -- Complete TextMate grammar (GRAM-01 through GRAM-10)
-  - [ ] 81-02-PLAN.md -- LSP document symbol handler (SYM-01 through SYM-03)
+  - [x] 81-01-PLAN.md -- Complete TextMate grammar (GRAM-01 through GRAM-10)
+  - [x] 81-02-PLAN.md -- LSP document symbol handler (SYM-01 through SYM-03)
 - [ ] **Phase 82: Install Infrastructure** - CI pipeline, prebuilt binaries, install script
 - [ ] **Phase 83: Completion + Signature Help** - Code completion and function parameter info
 - [ ] **Phase 84: VS Code Extension Publishing** - Marketplace + Open VSX publishing
@@ -187,6 +187,6 @@ See milestones/v8.0-ROADMAP.md for full phase details.
 | 63-69 | v5.0 | 20/20 | Complete | 2026-02-13 |
 | 70-73 | v6.0 | 11/11 | Complete | 2026-02-13 |
 | 74-80 | v7.0 | 17/17 | Complete | 2026-02-14 |
-| 81-86 | v8.0 | 0/TBD | In progress | - |
+| 81-86 | v8.0 | 2/TBD | In progress | - |
 
-**Total: 80 phases shipped across 17 milestones. 218 plans completed. 6 phases planned for v8.0.**
+**Total: 81 phases shipped across 17 milestones. 220 plans completed. 6 phases planned for v8.0.**

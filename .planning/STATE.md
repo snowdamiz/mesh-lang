@@ -5,16 +5,16 @@
 See: .planning/PROJECT.md (updated 2026-02-13)
 
 **Core value:** Expressive, readable concurrency -- writing concurrent programs should feel as natural and clean as writing sequential code, with the safety net of supervision and fault tolerance built into the language.
-**Current focus:** v8.0 Developer Tooling -- Phase 81 (Grammar + Document Symbols)
+**Current focus:** v8.0 Developer Tooling -- Phase 82 (Install Infrastructure)
 
 ## Current Position
 
-Phase: 81 (1 of 6 in v8.0) -- Grammar + Document Symbols [COMPLETE]
-Plan: 2 of 2 in current phase
-Status: Phase complete
-Last activity: 2026-02-14 -- Completed 81-02 (LSP document symbols)
+Phase: 82 (2 of 6 in v8.0) -- Install Infrastructure
+Plan: 0 of TBD in current phase
+Status: Ready to plan
+Last activity: 2026-02-14 -- Phase 81 complete (Grammar + Document Symbols)
 
-Progress: [██████████] 100%
+Progress: [█░░░░░░░░░] 17%
 
 ## Performance Metrics
 
@@ -58,6 +58,6 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-14
-Stopped at: Completed 81-02-PLAN.md (LSP document symbols) -- Phase 81 complete
+Stopped at: Phase 81 complete, roadmap updated
 Resume file: None
-Next action: Plan Phase 82 (Install + Build)
+Next action: Plan Phase 82 (Install Infrastructure)
