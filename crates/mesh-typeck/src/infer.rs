@@ -2955,6 +2955,9 @@ fn infer_impl_def(
         env.push_scope();
         env.insert("self".into(), Scheme::mono(impl_type.clone()));
 
+        // Collect all param types for fn_ty (self + non-self params).
+        let mut all_param_tys: Vec<Ty> = vec![impl_type.clone()];
+
         if let Some(param_list) = method.param_list() {
             for param in param_list.params() {
                 let is_self = param
@@ -2976,7 +2979,8 @@ fn infer_impl_def(
                                     .or_else(|| resolve_type_name(&ann))
                             })
                             .unwrap_or_else(|| ctx.fresh_var());
-                        env.insert(name_text, Scheme::mono(param_ty));
+                        env.insert(name_text, Scheme::mono(param_ty.clone()));
+                        all_param_tys.push(param_ty);
                     }
                 }
             }
@@ -3004,10 +3008,10 @@ fn infer_impl_def(
         env.pop_scope();
 
         // Register the method as a callable function so `to_string(42)` works.
+        // Include all params (self + non-self) so the MIR lowerer can bind them.
         let fn_ty = {
-            let params = vec![impl_type.clone()];
             let ret = return_type.clone().unwrap_or_else(|| Ty::Tuple(vec![]));
-            Ty::Fun(params, Box::new(ret))
+            Ty::Fun(all_param_tys, Box::new(ret))
         };
         // Store the function type in the types map so the MIR lowerer can look it up.
         types.insert(method.syntax().text_range(), fn_ty.clone());

@@ -146,9 +146,11 @@ impl Literal {
 ast_node!(NameRef, NAME_REF);
 
 impl NameRef {
-    /// The identifier text.
+    /// The identifier text (also handles `self` keyword used as method receiver).
     pub fn text(&self) -> Option<String> {
-        child_token(&self.syntax, SyntaxKind::IDENT).map(|t| t.text().to_string())
+        child_token(&self.syntax, SyntaxKind::IDENT)
+            .or_else(|| child_token(&self.syntax, SyntaxKind::SELF_KW))
+            .map(|t| t.text().to_string())
     }
 }
 

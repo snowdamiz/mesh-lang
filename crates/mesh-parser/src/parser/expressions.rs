@@ -292,7 +292,19 @@ fn lhs(p: &mut Parser) -> Option<MarkClosed> {
         SyntaxKind::SPAWN_KW => Some(parse_spawn_expr(p)),
         SyntaxKind::SEND_KW => Some(parse_send_expr(p)),
         SyntaxKind::RECEIVE_KW => Some(parse_receive_expr(p)),
-        SyntaxKind::SELF_KW => Some(parse_self_expr(p)),
+        SyntaxKind::SELF_KW => {
+            // `self()` is the actor self-call; `self.x` or bare `self` is a
+            // method-receiver reference (impl method bodies).  Disambiguate
+            // by looking at the next token.
+            if p.nth(1) == SyntaxKind::L_PAREN {
+                Some(parse_self_expr(p))
+            } else {
+                // Treat as NAME_REF so postfix `.field` works.
+                let m = p.open();
+                p.advance(); // SELF_KW
+                Some(p.close(m, SyntaxKind::NAME_REF))
+            }
+        }
         SyntaxKind::LINK_KW => Some(parse_link_expr(p)),
 
         _ => {

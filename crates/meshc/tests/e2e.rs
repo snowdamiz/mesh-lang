@@ -2605,3 +2605,26 @@ end
         error
     );
 }
+
+// ── Phase 75: Numeric Traits ─────────────────────────────────────────
+
+/// Phase 75: User-defined arithmetic operators with Output associated type.
+/// Vec2 struct implements Add, Sub, Mul with Output = Vec2; operators produce
+/// correct Vec2 results (not Bool). Also tests primitive backward compat and
+/// operator chaining.
+#[test]
+fn e2e_numeric_traits() {
+    let source = read_fixture("numeric_traits.mpl");
+    let output = compile_and_run(&source);
+    assert_eq!(output, "4\n6\n-2\n-2\n3\n8\n3\n12\n14\n26\n");
+}
+
+/// Phase 75: User-defined Neg trait for unary minus.
+/// Point struct implements Neg with Output = Point; unary minus produces
+/// correct Point result. Also tests primitive neg backward compat.
+#[test]
+fn e2e_numeric_neg() {
+    let source = read_fixture("numeric_neg.mpl");
+    let output = compile_and_run(&source);
+    assert_eq!(output, "-3\n-7\n-42\n-3.5\n");
+}
