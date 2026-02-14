@@ -15,6 +15,7 @@ pub mod analysis;
 pub mod completion;
 pub mod definition;
 pub mod server;
+pub mod signature_help;
 
 use tower_lsp::{LspService, Server};
 
