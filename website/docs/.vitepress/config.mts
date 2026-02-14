@@ -88,6 +88,7 @@ export default defineConfig({
           items: [
             { text: 'Language Basics', link: '/docs/language-basics/' },
             { text: 'Type System', link: '/docs/type-system/' },
+            { text: 'Iterators', link: '/docs/iterators/' },
             { text: 'Concurrency', link: '/docs/concurrency/' },
           ],
         },
