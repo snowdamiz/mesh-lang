@@ -2,25 +2,13 @@
 
 ## What This Is
 
-Mesh is a programming language that combines Elixir/Ruby-style expressive syntax with static Hindley-Milner type inference and BEAM-style concurrency (actors, supervision trees, fault tolerance), compiled via LLVM to native single-binary executables. The compiler is written in Rust. v1.0-v1.9 built a complete language: compiler pipeline, actor runtime, trait system, module system, loops, stdlib, and developer tooling. v2.0 added database drivers and JSON serde. v3.0 made Mesh production-ready: TLS encryption for PostgreSQL and HTTPS, connection pooling with health checks, panic-safe database transactions, and automatic struct-to-row mapping via `deriving(Row)`. v4.0 added WebSocket support with RFC 6455 protocol, actor-per-connection model, TLS (wss://), heartbeat, fragmentation, and rooms/channels. v5.0 added distributed actors: location-transparent PIDs, TLS-encrypted inter-node connections with cookie auth and mesh formation, transparent remote send, remote process/node monitoring with fault propagation, remote spawn via function name registry, global process registry, and cross-node WebSocket rooms and supervision trees -- all with zero new crate dependencies. v6.0 added a documentation website with VitePress, custom syntax highlighting, 9 documentation guides, landing page, and production-quality site features. ~93K LOC Rust + ~5K LOC website across 16 milestones. Zero known compiler correctness issues.
-
-## Current Milestone: v7.0 Iterator Protocol & Trait Ecosystem
-
-**Goal:** Add associated types to the trait system, then build a comprehensive trait-based protocol ecosystem: lazy iterators with pipe-style composition, From/Into conversion, numeric traits for generic math, and the Collect trait for iterator materialization.
-
-**Target features:**
-- Associated types in traits (type Item, Self.Item, bounded associated types, HM inference integration)
-- Iterator protocol (Iterator/Iterable traits, lazy combinators, for-in desugaring via Iterable)
-- Built-in Iterable implementations for List, Map, Set, Range (coexisting with eager operations)
-- From/Into conversion traits with ? operator error type conversion
-- Numeric traits (Add, Sub, Mul, Div, Neg) with operator dispatch for generic numeric programming
-- Collect trait for generic iterator materialization into List, Map, Set, String
+Mesh is a programming language that combines Elixir/Ruby-style expressive syntax with static Hindley-Milner type inference and BEAM-style concurrency (actors, supervision trees, fault tolerance), compiled via LLVM to native single-binary executables. The compiler is written in Rust. v1.0-v1.9 built a complete language: compiler pipeline, actor runtime, trait system, module system, loops, stdlib, and developer tooling. v2.0 added database drivers and JSON serde. v3.0 made Mesh production-ready: TLS encryption for PostgreSQL and HTTPS, connection pooling with health checks, panic-safe database transactions, and automatic struct-to-row mapping via `deriving(Row)`. v4.0 added WebSocket support with RFC 6455 protocol, actor-per-connection model, TLS (wss://), heartbeat, fragmentation, and rooms/channels. v5.0 added distributed actors: location-transparent PIDs, TLS-encrypted inter-node connections with cookie auth and mesh formation, transparent remote send, remote process/node monitoring with fault propagation, remote spawn via function name registry, global process registry, and cross-node WebSocket rooms and supervision trees -- all with zero new crate dependencies. v6.0 added a documentation website with VitePress, custom syntax highlighting, 9 documentation guides, landing page, and production-quality site features. v7.0 added associated types to the trait system and built a comprehensive trait-based protocol ecosystem: lazy iterators with pipe-style composition, From/Into conversion, numeric traits for user-extensible arithmetic, and Collect for iterator materialization. ~97K LOC Rust + ~5K LOC website across 17 milestones. Zero known compiler correctness issues.
 
 ## Current State
 
-Shipped v6.0 Website & Documentation (2026-02-13). 16 milestones complete, 73 phases, 201 plans. 9 days from project start to documentation site. Starting v7.0.
+Shipped v7.0 Iterator Protocol & Trait Ecosystem (2026-02-14). 17 milestones complete, 80 phases, 218 plans. 10 days from project start to trait ecosystem. All milestones shipped.
 
-**Latest milestone (v6.0):** Complete documentation website and landing page built with VitePress + Tailwind v4 + shadcn-vue. Custom Mesh syntax highlighting via TextMate grammar. 9 documentation guides covering all language features. Landing page with feature showcase. Full-text search, SEO, copy buttons, edit links, version badge. 32/32 requirements satisfied.
+**Latest milestone (v7.0):** Associated types in traits with HM inference integration. Iterator/Iterable two-trait protocol with built-in implementations for all collections. Lazy iterator pipelines (map, filter, take, skip, enumerate, zip) with type-tag dispatch. Terminal operations (count, sum, any, all, find, reduce). From/Into conversion traits with automatic Into generation and ? operator error type conversion. Numeric traits (Add/Sub/Mul/Div/Neg) with Output associated type. Collect trait for materialization into List, Map, Set, String. Complete website documentation updated. 33/33 requirements satisfied.
 
 ## Core Value
 
@@ -156,15 +144,18 @@ Expressive, readable concurrency -- writing concurrent programs should feel as n
 - ✓ Cross-node WebSocket room broadcast via DIST_ROOM_BROADCAST wire message -- v5.0
 - ✓ Remote supervision: supervision trees can monitor and restart children on remote nodes -- v5.0
 - ✓ Mesh website with landing page, 9 documentation guides, custom syntax highlighting, search, SEO -- v6.0
+- ✓ Associated types in traits (`type Item`, `Self.Item`) with HM inference integration -- v7.0
+- ✓ Iterator/Iterable two-trait protocol with built-in implementations for List, Map, Set, Range -- v7.0
+- ✓ Lazy iterator pipeline composition (map, filter, take, skip, enumerate, zip) with short-circuit evaluation -- v7.0
+- ✓ Terminal operations (count, sum, any, all, find, reduce) for consuming iterators -- v7.0
+- ✓ From/Into conversion traits with automatic Into generation and ? operator error type conversion -- v7.0
+- ✓ Numeric traits (Add, Sub, Mul, Div, Neg) with Output associated type for user-extensible arithmetic -- v7.0
+- ✓ Collect trait for iterator materialization into List, Map, Set, String -- v7.0
+- ✓ Website documentation updated with all v7.0 features (Iterators page, Type System, Cheatsheet, Language Basics) -- v7.0
 
 ### Active
 
-- [ ] Associated types in traits with HM inference integration
-- [ ] Iterator protocol with lazy combinators and for-in desugaring
-- [ ] Built-in Iterable for List, Map, Set, Range
-- [ ] From/Into conversion traits with ? operator integration
-- [ ] Numeric traits (Add, Sub, Mul, Div, Neg) with operator dispatch
-- [ ] Collect trait for iterator materialization
+(No active requirements -- all milestones complete)
 
 ### Out of Scope
 
@@ -192,13 +183,13 @@ Expressive, readable concurrency -- writing concurrent programs should feel as n
 
 ## Context
 
-Shipped v6.0 with 93,515 lines of Rust + 5,134 lines of website source (Vue/TypeScript/CSS/Markdown).
+Shipped v7.0 with 97,190 lines of Rust + ~5,500 lines of website source (Vue/TypeScript/CSS/Markdown).
 Tech stack: Rust compiler, LLVM 21 (Inkwell 0.8), corosensei coroutines, rowan CST, ariadne diagnostics.
 Website: VitePress, Vue 3, Tailwind CSS v4, shadcn-vue, Shiki syntax highlighting.
 Crates: snow-lexer, snow-parser, snow-typeck, snow-mir, snow-codegen, snow-rt, snow-fmt, snow-repl, snow-pkg, snow-lsp, snowc.
 Deps: libsqlite3-sys (bundled), sha2/hmac/md-5/base64ct (PG auth), rustls 0.23/webpki-roots/ring (TLS + certs + SHA-1 for WS handshake).
 
-Zero known critical bugs. Zero known compiler correctness issues. All 16 milestones shipped.
+Zero known critical bugs. Zero known compiler correctness issues. All 17 milestones shipped.
 
 Known limitations: None.
 
@@ -210,6 +201,9 @@ Tech debt (minor, pre-existing):
 - Middleware requires explicit `:: Request` parameter type annotations (incomplete inference)
 - PostgreSQL E2E test requires external server, marked `#[ignore]`
 - send_dist_unlink marked dead_code since snow_actor_unlink not yet exposed as extern C
+- TyVar from Ptr->List<T> remains unresolved for .to_string() on collected collections (use string interpolation instead)
+- Single-line pipe chains only (parser does not support multi-line |> continuation)
+- Map.collect assumes integer keys (string-keyed Map.collect deferred)
 
 ## Constraints
 
@@ -347,6 +341,15 @@ Tech debt (minor, pre-existing):
 | E2E-verified code examples in docs | All examples sourced from test files, not invented; prevents stale/wrong docs | ✓ Good -- v6.0, accurate documentation |
 | VPNavBarSearch for search | Zero-config MiniSearch; handles Cmd+K, modal, results without custom code | ✓ Good -- v6.0, minimal implementation |
 | CSS-only copy button | VitePress injects button.copy on code blocks; only CSS styling needed | ✓ Good -- v6.0, zero custom JS |
+| Dedicated parse_impl_body for assoc types | Avoids changing shared parse_item_block_body code paths used by module/function bodies | ✓ Good -- v7.0, isolated parsing |
+| IDENT text matching for Self | Uppercase Self is IDENT not SELF_KW; resolution uses text comparison | ✓ Good -- v7.0, no new keyword needed |
+| Two-trait Iterator/Iterable protocol | Iterable for collections, Iterator for stateful cursor; infer_for_in checks Iterable first | ✓ Good -- v7.0, clean separation |
+| Opaque TyCon names for iterator handles | ListIterator, MapIterator etc. as type names; resolve to MirType::Ptr | ✓ Good -- v7.0, uniform pointer handling |
+| Synthetic Into generation | Inserts directly into impls HashMap; avoids blanket impl coherence problems | ✓ Good -- v7.0, no infinite recursion |
+| Parameterized trait registry | TraitRegistry extended with type args for From<T>/Into<T> | ✓ Good -- v7.0, clean parameterization |
+| Type-tag dispatch for iterators | u8 tag as first byte of all iterator handles for uniform generic_next | ✓ Good -- v7.0, simple dispatch |
+| iterator_ptr_compatible() unification | ListIterator and adapter types unify with Ptr for combinator chaining | ✓ Good -- v7.0, seamless pipelines |
+| Safe Vec<u64> intermediary for collect | Bounds checking vs mesh_list_builder which has none | ✓ Good -- v7.0, safe collection |
 
 ---
-*Last updated: 2026-02-13 after v7.0 milestone start*
+*Last updated: 2026-02-14 after v7.0 milestone completion*

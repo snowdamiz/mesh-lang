@@ -1,5 +1,34 @@
 # Project Milestones: Mesh
 
+## v7.0 Iterator Protocol & Trait Ecosystem (Shipped: 2026-02-14)
+
+**Delivered:** Added associated types to the trait system and built a comprehensive trait-based protocol ecosystem: lazy iterators with pipe-style composition, From/Into conversion with ? operator error type conversion, numeric traits for user-extensible arithmetic, Collect for iterator materialization, and complete website documentation for all new features.
+
+**Phases completed:** 74-80 (17 plans total)
+
+**Key accomplishments:**
+- Associated types in traits (`type Item`, `Self.Item`) with full HM inference integration and clear error diagnostics
+- User-extensible arithmetic operators via Add/Sub/Mul/Div/Neg numeric traits with Output associated type
+- Iterator/Iterable two-trait protocol with built-in implementations for List, Map, Set, Range and for-in desugaring
+- From/Into conversion traits with automatic Into generation, built-in primitive conversions, and ? operator error type conversion
+- Lazy iterator pipeline composition (map, filter, take, skip, enumerate, zip) with type-tag dispatch and short-circuit evaluation
+- Terminal operations (count, sum, any, all, find, reduce) and Collect trait for materialization into List, Map, Set, String
+- Complete website documentation: new Iterators page, updated Type System, Cheatsheet, and Language Basics pages
+
+**Stats:**
+- 128 files changed, +16,117 / -334 lines
+- 97,190 lines of Rust (+3,675 from v6.0)
+- 7 phases, 17 plans
+- 2 days (2026-02-13 -> 2026-02-14)
+- 84 commits
+- 33/33 requirements satisfied
+
+**Git range:** `feat(74-01)` -> `docs(phase-80)`
+
+**What's next:** All 17 milestones complete. Potential directions include additional combinators (flat_map, chain, skip_while, take_while), bounded associated types, TryFrom/TryInto, infinite iterators, iterator fusion optimization, or new language features.
+
+---
+
 ## v6.0 Website & Documentation (Shipped: 2026-02-13)
 
 **Delivered:** Complete documentation website and landing page for the Mesh programming language, built with VitePress, Tailwind v4, and shadcn-vue, featuring custom Mesh syntax highlighting, monochrome design with dark/light mode, 9 documentation guides covering all language features, and production-quality site features (search, SEO, copy button, 404 page, edit links, version badge).
@@ -400,215 +429,3 @@
 **What's next:** TBD -- language is feature-complete for v1. Potential v2 directions include distributed actors, hot code reloading, and macros.
 
 ---
-
-## v1.7 Loops & Iteration (Shipped: 2026-02-09)
-
-**Delivered:** Complete loop and iteration system with while loops, for-in over ranges and collections (List, Map, Set), break/continue control flow, comprehension semantics returning collected lists, filter clause (`when`), and actor-safe reduction checks at loop back-edges.
-
-**Phases completed:** 33-36 (8 plans total)
-
-**Key accomplishments:**
-- While loops (`while condition do body end`) with break/continue, loop-depth tracking, closure boundary enforcement (E0032/E0033)
-- For-in over integer ranges (`for i in 0..10 do body end`) with zero-allocation counter and half-open range semantics
-- For-in over collections (List, Map with `{k,v}` destructuring, Set) with indexed iteration and O(N) list builder
-- Comprehension semantics: all for-in loops return `List<T>` of collected body results; break returns partial list
-- Filter clause (`for x in list when condition do body end`) with five-block codegen pattern across all collection types
-- Reduction checks at loop back-edges for actor scheduler fairness; runtime list builder for O(N) allocation
-
-**Stats:**
-- 53 files modified
-- 70,501 lines of Rust (+2,955 net from v1.6)
-- 4 phases, 8 plans
-- 2 days (2026-02-08 → 2026-02-09)
-- 34 commits
-
-**Git range:** `feat(33-01)` → `docs(phase-36)`
-
-**What's next:** TBD -- loop system complete. Potential directions include iterator protocol/Iterable trait, `break value`, labeled breaks, string character iteration, distributed actors, or hot code reloading.
-
----
-
-
-## v1.8 Module System (Shipped: 2026-02-09)
-
-**Delivered:** Complete module system enabling multi-file projects with file-based modules, pub visibility, qualified and selective imports, dependency graph resolution with cycle detection, cross-module type checking for functions/structs/sum types/traits, module-qualified name mangling, and module-aware diagnostics -- compiled into a single LLVM binary via MIR merge.
-
-**Phases completed:** 37-42 (12 plans total)
-
-**Key accomplishments:**
-- File-based module graph with recursive `.snow` discovery, path-to-name convention (`math/vector.snow` -> `Math.Vector`), Kahn's toposort, and cycle detection
-- Multi-file build pipeline (`snowc build <dir>`) with ProjectData, per-module parsing, and zero single-file regressions across 84 pre-existing E2E tests
-- Cross-module type checking with qualified imports (`import M` -> `M.fn()`), selective imports (`from M import { fn }`), accumulator-pattern inference, and MIR merge codegen
-- Private-by-default visibility with `pub` modifier, PrivateItem E0035 error with "add pub" suggestion
-- Module-qualified name mangling (`ModuleName__fn`) preventing private name collisions, cross-module generic monomorphization
-- Module-aware diagnostics: file paths in errors via ariadne named-sources, module-qualified type names in type errors (`Geometry.Point`)
-
-**Stats:**
-- 70 files modified
-- 73,384 lines of Rust (+2,883 net from v1.7)
-- 6 phases, 12 plans
-- 4 days (2026-02-05 -> 2026-02-09)
-- 52 commits
-- 27/27 requirements satisfied, 111 E2E tests passing (+31 new in v1.8)
-
-**Git range:** `feat(37-01)` -> `docs(phase-42)`
-
-**What's next:** TBD -- module system complete. Potential directions include import aliasing, unused import warnings, re-exports, incremental compilation, iterator protocol, distributed actors, or hot code reloading.
-
----
-
-
-## v1.9 Stdlib & Ergonomics (Shipped: 2026-02-10)
-
-**Delivered:** Made Snow practical for real programs by adding math stdlib via LLVM intrinsics, ? operator for Result/Option error propagation, receive timeouts and timer primitives, 20 collection operations across List/Map/Set/String, and self-recursive tail-call elimination -- all with zero new Rust crate dependencies and zero regressions.
-
-**Phases completed:** 43-48 (13 plans total)
-
-**Key accomplishments:**
-- Math stdlib: 10 numeric operations (abs, min, max, pow, sqrt, floor, ceil, round, pi) via LLVM intrinsics + bidirectional Int/Float type conversion
-- ? operator: Result<T,E> and Option<T> error propagation desugared to Match+Return in MIR, with E0036/E0037 diagnostics for misuse
-- Receive timeouts: `receive { ... } after ms -> body` with null-check branching codegen completing the actor timeout feature
-- Timer primitives: Timer.sleep (cooperative yield loop) and Timer.send_after (background OS thread with deep-copied message)
-- Collection operations: 20 functions across List (sort, find, any, all, contains, zip, flat_map, flatten, enumerate, take, drop), String (split, join, to_int, to_float), Map (merge, to_list, from_list), Set (difference, to_list, from_list)
-- Tail-call elimination: Self-recursive tail calls transformed to loops via MIR rewrite pass, supporting 7 tail position contexts (if/else, case, receive, blocks, let-chains, multi-clause, actor), 1M+ iterations without stack overflow
-
-**Stats:**
-- 89 files modified
-- 76,100 lines of Rust (+2,716 net from v1.8)
-- 6 phases, 13 plans
-- 2 days (2026-02-09 -> 2026-02-10)
-- 56 commits
-- 28/28 requirements satisfied, 1,419 tests passing (+37 new v1.9-specific e2e tests)
-
-**Git range:** `feat(43-01)` -> `docs(48-02)`
-
-**What's next:** TBD -- stdlib and ergonomics complete. Potential directions include mutual TCE via musttail, From trait for ? operator error conversion, iterator protocol/Iterable trait, distributed actors, hot code reloading, or incremental compilation.
-
----
-
-
-## v2.0 Database & Serialization (Shipped: 2026-02-12)
-
-**Delivered:** Made Snow viable for real backend applications with JSON struct/sum-type serde via `deriving(Json)`, SQLite and PostgreSQL database drivers with parameterized queries, HTTP path parameters with method-specific routing, and composable middleware pipelines.
-
-**Phases completed:** 49-54 (13 plans total)
-
-**Key accomplishments:**
-- JSON struct serde with `deriving(Json)`, typed extractors, and callback-based collection encode/decode for nested structs, Option, List, Map fields
-- Sum type and generic struct JSON serialization via tagged union encoding (`{"tag":"V","fields":[...]}`) and monomorphization
-- HTTP path parameter matching (`/users/:id`) with method-specific routing (GET/POST/PUT/DELETE) and three-pass priority (exact > parameterized > wildcard)
-- Composable middleware pipeline with trampoline-based chain execution, short-circuit support, and automatic 404 wrapping
-- SQLite driver with bundled C FFI (zero system deps), opaque GC-safe u64 handles, and `?` parameterized queries
-- PostgreSQL pure wire protocol client (~550 lines Rust) with SCRAM-SHA-256/MD5 auth and Extended Query protocol ($1, $2 params)
-
-**Stats:**
-- 76 files modified
-- 81,006 lines of Rust (+4,906 net from v1.9)
-- 6 phases, 13 plans
-- 2 days (2026-02-11 -> 2026-02-12)
-- 52 commits
-- 32/32 requirements satisfied, 287+ tests passing (+16 new v2.0 E2E tests)
-
-**Git range:** `feat(49-01)` -> `docs(54-02)`
-
-**What's next:** TBD -- database and serialization complete. Potential directions include connection pooling, TLS for PostgreSQL, transaction support, struct-to-row mapping, JSON pretty-print, iterator protocol, distributed actors, or hot code reloading.
-
----
-
-
-## v3.0 Production Backend (Shipped: 2026-02-12)
-
-**Delivered:** Made Snow viable for production backend deployments with TLS encryption for PostgreSQL and HTTPS, connection pooling with health checks, panic-safe database transactions, and automatic struct-to-row mapping via `deriving(Row)`.
-
-**Phases completed:** 55-58 (8 plans total)
-
-**Key accomplishments:**
-- PostgreSQL TLS via SSLRequest protocol with sslmode=disable/prefer/require, PgStream enum for zero-cost Plain/Tls dispatch, rustls 0.23 with webpki-roots
-- HTTPS server via Http.serve_tls with hand-rolled HTTP/1.1 parser replacing tiny_http, HttpStream enum mirroring PgStream pattern
-- Connection pooling with Mutex+Condvar synchronization, configurable min/max/timeout, health check (SELECT 1) on checkout, automatic ROLLBACK on dirty checkin
-- Database transactions: Pg.begin/commit/rollback/transaction with catch_unwind panic-safe rollback, Sqlite.begin/commit/rollback manual control
-- Struct-to-row mapping via deriving(Row) with from_row function generation, Pg.query_as/Pool.query_as one-step query+hydration, E0039 compile error for non-mappable fields
-
-**Stats:**
-- 48 files modified
-- 83,451 lines of Rust (+2,445 net from v2.0)
-- 4 phases, 8 plans
-- 1 day (2026-02-12)
-- 33 commits
-- 24/24 requirements satisfied, 290+ tests passing (+18 new v3.0 tests)
-
-**Git range:** `feat(55-01)` -> `docs(v3.0)`
-
-**What's next:** TBD -- production backend complete. Potential directions include WebSocket support, HTTP/2, async file I/O, distributed actors, hot code reloading, iterator protocol, or incremental compilation.
-
----
-
-
-## v4.0 WebSocket Support (Shipped: 2026-02-13)
-
-**Delivered:** Added real-time bidirectional communication to Snow with a complete RFC 6455 WebSocket implementation: frame codec with masking, HTTP upgrade handshake, actor-per-connection server with crash isolation, TLS (wss://), heartbeat with dead connection detection, message fragmentation, and named rooms with pub/sub broadcast.
-
-**Phases completed:** 59-62 (8 plans total)
-
-**Key accomplishments:**
-- RFC 6455 frame codec with 3 payload length encodings, XOR masking, 6 opcodes, HTTP upgrade handshake with Sec-WebSocket-Accept, close handshake, and UTF-8 text validation
-- Actor-per-connection WebSocket server with reader thread bridge delivering frames to actor mailbox via reserved type tags, crash isolation (close 1011), and exit signal propagation
-- Callback API (on_connect/on_message/on_close) with connection rejection, Ws.serve(handler, port) entry point, Ws.send/Ws.send_binary for responses
-- TLS (wss://) via WsStream enum reusing existing rustls 0.23 infrastructure, with build_server_config shared across HTTP and WS
-- Heartbeat ping/pong with 30s interval, 10s dead connection timeout, payload validation, plus fragment reassembly with 16 MiB limit and interleaved control frame handling
-- Named rooms with RoomRegistry (join/leave/broadcast/broadcast_except), concurrent access via dual-map design, and automatic disconnect cleanup
-
-**Stats:**
-- 47 files modified
-- ~84,400 lines of Rust (+~950 net from v3.0)
-- 4 phases, 8 plans, 50 truths verified
-- 1 day (2026-02-12)
-- 38 commits
-- 37/37 requirements satisfied, 1,524 tests passing (+44 new WebSocket-specific tests)
-
-**Git range:** `feat(59-01)` -> `feat(62-02)`
-
-**What's next:** TBD -- WebSocket support complete. Potential directions include per-message deflate compression, subprotocol negotiation, WebSocket client library, distributed actors, hot code reloading, iterator protocol, or incremental compilation.
-
----
-
-
-## v5.0 Distributed Actors (Shipped: 2026-02-13)
-
-**Delivered:** BEAM-style distributed actor system enabling Snow programs on different machines to form a cluster with location-transparent PIDs, remote spawn, cross-node monitoring, global process registry, and a binary wire format (STF) over TLS -- all with zero new crate dependencies.
-
-**Phases completed:** 63-69 (20 plans total)
-
-**Key accomplishments:**
-- Location-transparent PIDs with 16-bit node_id bit-packing in existing u64 and Snow Term Format (STF) binary serialization for all Snow types with round-trip fidelity
-- TLS-encrypted inter-node connections with HMAC-SHA256 cookie-based authentication, ephemeral ECDSA P-256 certificates, heartbeat dead connection detection, and automatic mesh formation
-- Transparent remote send: `send(pid, msg)` routes to remote nodes automatically; `send({name, node}, msg)` for named remote processes; message ordering preserved per sender-receiver pair
-- Distributed fault tolerance: remote process monitors (`:down`), node monitors (`:nodedown`/`:nodeup`), bidirectional exit signal propagation, and partition-aware link cleanup
-- Remote spawn via function name registry: `Node.spawn(node, function, args)` and `Node.spawn_link` with LLVM codegen for Node/Process/Global modules (10+ new intrinsics)
-- Global process registry: `Global.register/whereis/unregister` with cluster-wide broadcast, sync-on-connect, and automatic cleanup on node disconnect
-- Cross-node integration: WebSocket room broadcasts transparently reach all cluster nodes via DIST_ROOM_BROADCAST; supervision trees can monitor and restart remote children
-
-**Stats:**
-- 75 files modified
-- 93,515 lines of Rust (+9,115 net from v4.0)
-- 7 phases, 20 plans
-- 1 day (2026-02-12 -> 2026-02-13)
-- 75 commits
-- 29/29 requirements satisfied
-
-**Git range:** `feat(63-01)` -> `docs(phase-69)`
-
-**What's next:** TBD -- distributed actors complete. Potential directions include atom cache optimization, process groups (pg), distributed ETS, hot code reloading, iterator protocol, or incremental compilation.
-
----
-
-
-## v6.0 Website & Documentation (Shipped: 2026-02-13)
-
-**Phases completed:** 73 phases, 199 plans, 46 tasks
-
-**Key accomplishments:**
-- (none recorded)
-
----
-
