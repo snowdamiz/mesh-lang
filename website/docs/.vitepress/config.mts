@@ -15,22 +15,30 @@ export default defineConfig({
   // Enable git-based last-updated timestamps
   lastUpdated: true,
 
+  // Generate sitemap
+  sitemap: {
+    hostname: 'https://meshlang.dev',
+  },
+
   // Site-wide SEO defaults
   head: [
+    ['link', { rel: 'icon', type: 'image/svg+xml', href: '/logo-icon-black.svg', media: '(prefers-color-scheme: light)' }],
+    ['link', { rel: 'icon', type: 'image/svg+xml', href: '/logo-icon-white.svg', media: '(prefers-color-scheme: dark)' }],
+    ['meta', { name: 'theme-color', content: '#1e1e1e' }],
     ['meta', { property: 'og:site_name', content: 'Mesh Programming Language' }],
-    ['meta', { name: 'twitter:card', content: 'summary' }],
+    ['meta', { name: 'twitter:card', content: 'summary_large_image' }],
   ],
 
   // Per-page dynamic SEO meta tags
   transformPageData(pageData) {
-    const canonicalUrl = `https://meshlang.org/${pageData.relativePath}`
+    const canonicalUrl = `https://meshlang.dev/${pageData.relativePath}`
       .replace(/index\.md$/, '')
       .replace(/\.md$/, '.html')
     pageData.frontmatter.head ??= []
     pageData.frontmatter.head.push(
       ['link', { rel: 'canonical', href: canonicalUrl }],
-      ['meta', { property: 'og:title', content: pageData.title + ' | Mesh' }],
-      ['meta', { property: 'og:description', content: pageData.description }],
+      ['meta', { property: 'og:title', content: pageData.title ? `${pageData.title} | Mesh` : 'Mesh Programming Language' }],
+      ['meta', { property: 'og:description', content: pageData.description || 'Expressive, concurrent, type-safe programming language.' }],
       ['meta', { property: 'og:url', content: canonicalUrl }],
       ['meta', { property: 'og:type', content: 'article' }],
     )
@@ -52,7 +60,7 @@ export default defineConfig({
   themeConfig: {
     search: { provider: 'local' },
     editLink: {
-      pattern: 'https://github.com/user/mesh/edit/main/website/docs/:path',
+      pattern: 'https://github.com/snowdamiz/mesh-lang/edit/main/website/docs/:path',
       text: 'Edit this page on GitHub',
     },
     meshVersion: '0.1.0',

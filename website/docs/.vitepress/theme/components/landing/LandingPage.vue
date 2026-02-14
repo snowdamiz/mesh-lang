@@ -1,19 +1,19 @@
 <script setup lang="ts">
 import HeroSection from './HeroSection.vue'
+import CapabilitiesBar from './CapabilitiesBar.vue'
 import FeatureShowcase from './FeatureShowcase.vue'
 import WhyMesh from './WhyMesh.vue'
+import GetStartedCTA from './GetStartedCTA.vue'
+import LandingFooter from './LandingFooter.vue'
 </script>
 
 <template>
   <div class="min-h-screen">
     <HeroSection />
+    <CapabilitiesBar />
     <FeatureShowcase />
     <WhyMesh />
-    <!-- Footer -->
-    <footer class="border-t border-border py-8">
-      <div class="mx-auto max-w-5xl px-4 text-center text-xs text-muted-foreground">
-        The Mesh Programming Language
-      </div>
-    </footer>
+    <GetStartedCTA />
+    <LandingFooter />
   </div>
 </template>

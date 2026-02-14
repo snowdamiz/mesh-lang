@@ -19,7 +19,7 @@ const active = computed(() => isActive(page.value.relativePath, props.item.link)
       class="block rounded-md px-2 py-1.5 text-[13px] transition-colors"
       :class="[
         active
-          ? 'bg-foreground text-background font-medium'
+          ? 'bg-accent text-foreground font-semibold'
           : 'text-muted-foreground hover:text-foreground hover:bg-accent',
       ]"
     >

@@ -88,3 +88,149 @@
   margin-top: 0.375rem;
   margin-bottom: 0.375rem;
 }
+
+/* h4 styling */
+.prose :where(h4):not(:where(.not-prose, .not-prose *)) {
+  font-size: 1rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  line-height: 1.5;
+  margin-top: 1.5rem;
+  margin-bottom: 0.5rem;
+}
+
+/* Scroll margin for sticky nav clearance */
+.prose :where(h1, h2, h3, h4, h5, h6):not(:where(.not-prose, .not-prose *)) {
+  scroll-margin-top: 5rem;
+}
+
+/* Strong at weight 650 (matching h2 weight) */
+.prose :where(strong):not(:where(.not-prose, .not-prose *)) {
+  font-weight: 650;
+}
+
+/* Horizontal rule */
+.prose :where(hr):not(:where(.not-prose, .not-prose *)) {
+  border-color: var(--border);
+  margin-top: 2rem;
+  margin-bottom: 2rem;
+}
+
+/* Tables */
+.prose :where(table):not(:where(.not-prose, .not-prose *)) {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+}
+
+.prose :where(thead th):not(:where(.not-prose, .not-prose *)) {
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted-foreground);
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+}
+
+.prose :where(tbody td):not(:where(.not-prose, .not-prose *)) {
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+}
+
+.prose :where(tbody tr):not(:where(.not-prose, .not-prose *)):hover {
+  background-color: var(--muted);
+}
+
+/* Blockquotes */
+.prose :where(blockquote):not(:where(.not-prose, .not-prose *)) {
+  border-left: 3px solid var(--border);
+  background-color: var(--muted);
+  border-radius: 0 0.5rem 0.5rem 0;
+  padding: 0.75rem 1rem;
+  margin-top: 1.25rem;
+  margin-bottom: 1.25rem;
+  font-style: normal;
+  color: var(--foreground);
+}
+
+.prose :where(blockquote p):not(:where(.not-prose, .not-prose *)) {
+  margin-bottom: 0;
+}
+
+/* Custom containers (:::tip, :::warning, :::danger, :::info) */
+.prose .custom-block {
+  border-radius: 0.75rem;
+  border: 1px solid;
+  padding: 1rem 1.25rem;
+  margin-top: 1.25rem;
+  margin-bottom: 1.25rem;
+}
+
+.prose .custom-block .custom-block-title {
+  font-weight: 600;
+  font-size: 0.875rem;
+  margin-bottom: 0.5rem;
+}
+
+.prose .custom-block p {
+  margin-bottom: 0;
+}
+
+/* Tip */
+.prose .custom-block.tip {
+  border-color: oklch(0.72 0.15 155);
+  background-color: oklch(0.72 0.15 155 / 0.08);
+}
+
+.prose .custom-block.tip .custom-block-title {
+  color: oklch(0.72 0.15 155);
+}
+
+.dark .prose .custom-block.tip {
+  background-color: oklch(0.72 0.15 155 / 0.12);
+}
+
+/* Info */
+.prose .custom-block.info {
+  border-color: oklch(0.65 0.15 250);
+  background-color: oklch(0.65 0.15 250 / 0.08);
+}
+
+.prose .custom-block.info .custom-block-title {
+  color: oklch(0.65 0.15 250);
+}
+
+.dark .prose .custom-block.info {
+  background-color: oklch(0.65 0.15 250 / 0.12);
+}
+
+/* Warning */
+.prose .custom-block.warning {
+  border-color: oklch(0.75 0.15 70);
+  background-color: oklch(0.75 0.15 70 / 0.08);
+}
+
+.prose .custom-block.warning .custom-block-title {
+  color: oklch(0.75 0.15 70);
+}
+
+.dark .prose .custom-block.warning {
+  background-color: oklch(0.75 0.15 70 / 0.12);
+}
+
+/* Danger */
+.prose .custom-block.danger {
+  border-color: oklch(0.63 0.2 25);
+  background-color: oklch(0.63 0.2 25 / 0.08);
+}
+
+.prose .custom-block.danger .custom-block-title {
+  color: oklch(0.63 0.2 25);
+}
+
+.dark .prose .custom-block.danger {
+  background-color: oklch(0.63 0.2 25 / 0.12);
+}

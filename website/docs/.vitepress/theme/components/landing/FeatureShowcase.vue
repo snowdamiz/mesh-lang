@@ -1,18 +1,23 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { getHighlighter, highlightCode } from '@/composables/useShiki'
+import { useScrollReveal } from '@/composables/useScrollReveal'
 
 interface Feature {
+  number: string
   title: string
   description: string
+  filename: string
   code: string
 }
 
 const features: Feature[] = [
   {
+    number: '01',
     title: 'Lightweight Actors',
     description:
       'Spawn millions of lightweight actors with crash isolation and supervision trees. Each actor has its own heap and message queue.',
+    filename: 'actors.mpl',
     code: `actor Counter do
   def init() do
     0
@@ -32,9 +37,11 @@ cast(pid, :increment)
 let count = call(pid, :get)`,
   },
   {
+    number: '02',
     title: 'Pattern Matching',
     description:
-      'First-class pattern matching with exhaustiveness checking. Destructure any value -- structs, tuples, sum types, lists.',
+      'First-class pattern matching with exhaustiveness checking. Destructure any value — structs, tuples, sum types, lists.',
+    filename: 'patterns.mpl',
     code: `fn describe(value) do
   match value do
     0 -> "zero"
@@ -51,9 +58,11 @@ fn process(result) do
 end`,
   },
   {
+    number: '03',
     title: 'Type Inference',
     description:
       'Hindley-Milner type inference means you rarely write type annotations. The compiler catches errors at compile time.',
+    filename: 'types.mpl',
     code: `# Types are inferred -- no annotations needed
 let name = "Mesh"
 let numbers = [1, 2, 3, 4, 5]
@@ -70,9 +79,11 @@ end
 let user = User { name: "Alice", age: 30 }`,
   },
   {
+    number: '04',
     title: 'Pipe Operator',
     description:
       'Chain transformations naturally with the pipe operator. Data flows left to right, just like you read it.',
+    filename: 'pipes.mpl',
     code: `let result = "hello world"
   |> String.split(" ")
   |> List.map(fn(word) do
@@ -85,8 +96,14 @@ let user = User { name: "Alice", age: 30 }`,
 ]
 
 const highlighted = ref<Record<number, string>>({})
+const { observe } = useScrollReveal()
+const rows = ref<HTMLElement[]>([])
 
 onMounted(async () => {
+  rows.value.forEach((el) => {
+    if (el) observe(el)
+  })
+
   try {
     const hl = await getHighlighter()
     features.forEach((feature, index) => {
@@ -100,37 +117,56 @@ onMounted(async () => {
 
 <template>
   <section class="border-t border-border py-20 md:py-28">
-    <div class="mx-auto max-w-5xl px-4">
+    <div class="mx-auto max-w-6xl px-4">
+      <!-- Section header -->
       <div class="text-center">
-        <h2 class="text-3xl font-bold tracking-tight text-foreground sm:text-4xl" style="letter-spacing: -0.03em;">
+        <div class="text-sm font-mono uppercase tracking-widest text-muted-foreground">Features</div>
+        <h2 class="mt-3 text-3xl font-bold tracking-tight text-foreground sm:text-4xl lg:text-5xl">
           What makes Mesh special
         </h2>
-        <p class="mx-auto mt-4 max-w-lg text-muted-foreground">
+        <p class="mx-auto mt-4 max-w-lg text-lg text-muted-foreground">
           A language designed for building reliable, concurrent systems with minimal boilerplate.
         </p>
       </div>
 
-      <div class="mt-14 grid gap-5 md:grid-cols-2">
+      <!-- Feature rows -->
+      <div class="mt-16 space-y-20 md:space-y-28">
         <div
           v-for="(feature, index) in features"
           :key="feature.title"
-          class="group rounded-xl border border-border bg-card p-6 transition-colors hover:border-foreground/20"
+          :ref="(el) => { if (el) rows[index] = el as HTMLElement }"
+          class="reveal grid items-center gap-10 lg:grid-cols-2 lg:gap-16"
         >
-          <h3 class="text-base font-semibold text-foreground tracking-tight">
-            {{ feature.title }}
-          </h3>
-          <p class="mt-2 text-sm leading-relaxed text-muted-foreground">
-            {{ feature.description }}
-          </p>
-          <div class="mt-4 overflow-hidden rounded-lg border border-border bg-muted/50">
+          <!-- Text -->
+          <div :class="{ 'lg:order-last': index % 2 === 1 }">
+            <div class="font-mono text-sm font-semibold text-muted-foreground">{{ feature.number }}</div>
+            <h3 class="mt-2 text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
+              {{ feature.title }}
+            </h3>
+            <p class="mt-3 max-w-md text-base leading-relaxed text-muted-foreground sm:text-lg">
+              {{ feature.description }}
+            </p>
+          </div>
+
+          <!-- Code block -->
+          <div class="overflow-hidden rounded-xl border border-border bg-card shadow-lg">
+            <!-- Terminal chrome -->
+            <div class="flex items-center gap-2 border-b border-border px-4 py-3">
+              <div class="flex gap-1.5">
+                <div class="size-3 rounded-full" style="background: #ff5f57;" />
+                <div class="size-3 rounded-full" style="background: #febc2e;" />
+                <div class="size-3 rounded-full" style="background: #28c840;" />
+              </div>
+              <span class="ml-2 text-xs text-muted-foreground font-medium">{{ feature.filename }}</span>
+            </div>
             <div
               v-if="highlighted[index]"
               v-html="highlighted[index]"
-              class="vp-code [&_pre]:p-4 [&_pre]:!bg-transparent [&_pre]:text-xs [&_pre]:leading-relaxed"
+              class="vp-code [&_pre]:p-5 [&_pre]:!bg-transparent [&_pre]:text-sm [&_pre]:leading-relaxed"
             />
             <pre
               v-else
-              class="overflow-x-auto p-4 text-xs leading-relaxed text-foreground font-mono"
+              class="overflow-x-auto p-5 text-sm leading-relaxed text-foreground font-mono"
             ><code>{{ feature.code }}</code></pre>
           </div>
         </div>

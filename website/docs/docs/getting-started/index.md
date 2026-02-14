@@ -32,7 +32,7 @@ curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 Clone the repository and build the compiler:
 
 ```bash
-git clone https://github.com/user/mesh.git
+git clone https://github.com/snowdamiz/mesh-lang.git
 cd mesh
 cargo build --release
 ```

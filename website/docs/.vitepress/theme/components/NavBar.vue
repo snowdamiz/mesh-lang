@@ -11,7 +11,7 @@ const { isDark } = useData()
 
 <template>
   <header class="sticky top-0 z-50 w-full border-b border-border/50 bg-background/80 backdrop-blur-xl">
-    <div class="mx-auto flex h-14 max-w-[90rem] items-center px-4 lg:px-6">
+    <div class="relative mx-auto flex h-14 max-w-[90rem] items-center px-4 lg:px-6">
       <!-- Logo -->
       <div class="flex shrink-0 items-center gap-3">
         <button
@@ -27,24 +27,24 @@ const { isDark } = useData()
         </a>
       </div>
 
-      <!-- Navigation Links (centered) -->
-      <nav class="hidden flex-1 items-center justify-center gap-1 text-sm md:flex">
+      <!-- Navigation Links (viewport-centered) -->
+      <nav class="hidden items-center justify-center gap-1 text-sm md:flex absolute inset-0 pointer-events-none">
         <a
           href="/docs/getting-started/"
-          class="rounded-md px-3 py-1.5 text-muted-foreground transition-colors hover:text-foreground hover:bg-accent"
+          class="pointer-events-auto rounded-md px-3 py-1.5 text-muted-foreground transition-colors hover:text-foreground hover:bg-accent"
         >
           Docs
         </a>
         <a
-          href="https://github.com/user/mesh"
-          class="rounded-md px-3 py-1.5 text-muted-foreground transition-colors hover:text-foreground hover:bg-accent"
+          href="https://github.com/snowdamiz/mesh-lang"
+          class="pointer-events-auto rounded-md px-3 py-1.5 text-muted-foreground transition-colors hover:text-foreground hover:bg-accent"
         >
           GitHub
         </a>
       </nav>
 
       <!-- Search + Theme toggle (right) -->
-      <div class="flex shrink-0 items-center gap-1">
+      <div class="flex shrink-0 items-center gap-1 ml-auto">
         <VPNavBarSearch />
         <ThemeToggle />
       </div>

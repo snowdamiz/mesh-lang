@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { Content } from 'vitepress'
+import { ref, watch } from 'vue'
+import { Content, useRoute } from 'vitepress'
 import { useSidebar } from '@/composables/useSidebar'
 import { useMediaQuery } from '@vueuse/core'
 import DocsSidebar from './DocsSidebar.vue'
@@ -13,6 +14,13 @@ import MobileSidebar from './MobileSidebar.vue'
 const { sidebar, hasSidebar } = useSidebar()
 const isDesktop = useMediaQuery('(min-width: 960px)')
 const isWide = useMediaQuery('(min-width: 1280px)')
+
+const route = useRoute()
+const contentKey = ref(0)
+
+watch(() => route.path, () => {
+  contentKey.value++
+})
 </script>
 
 <template>
@@ -29,12 +37,12 @@ const isWide = useMediaQuery('(min-width: 1280px)')
     <MobileSidebar v-if="hasSidebar && !isDesktop" :items="sidebar" />
 
     <!-- Main content -->
-    <main class="min-w-0 flex-1 px-6 py-10 lg:px-10">
+    <main class="min-w-0 flex-1 px-6 py-12 lg:px-12">
       <div class="mx-auto max-w-3xl">
-        <div class="docs-content prose dark:prose-invert max-w-none">
+        <div :key="contentKey" class="docs-content prose dark:prose-invert max-w-none animate-fade-in">
           <Content />
         </div>
-        <div class="mt-10 flex flex-wrap items-center justify-between gap-4 border-t border-border pt-5 not-prose">
+        <div class="mt-12 flex flex-wrap items-center justify-between gap-4 border-t border-border pt-5 not-prose">
           <DocsEditLink />
           <div class="flex items-center gap-3">
             <DocsVersionBadge />

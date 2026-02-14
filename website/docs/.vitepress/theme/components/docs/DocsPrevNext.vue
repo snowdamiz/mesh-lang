@@ -6,15 +6,18 @@ const prevNext = usePrevNext()
 </script>
 
 <template>
-  <div class="not-prose flex justify-between gap-4 border-t border-border pt-6">
+  <div class="not-prose grid grid-cols-2 gap-4">
     <!-- Previous link -->
     <a
       v-if="prevNext.prev?.link"
       :href="prevNext.prev.link"
-      class="group flex items-center gap-2 rounded-lg border border-border px-4 py-3 text-sm transition-colors hover:border-foreground/20 hover:bg-accent"
+      class="group flex items-center gap-3 rounded-xl border border-border p-5 text-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg hover:border-foreground/20"
     >
-      <ChevronLeft class="size-4 text-muted-foreground group-hover:text-foreground transition-colors" />
-      <span class="text-muted-foreground group-hover:text-foreground transition-colors">{{ prevNext.prev.text }}</span>
+      <ChevronLeft class="size-4 shrink-0 text-muted-foreground transition-transform duration-200 group-hover:-translate-x-0.5" />
+      <div class="min-w-0">
+        <div class="text-xs text-muted-foreground mb-1">Previous</div>
+        <div class="font-medium text-foreground truncate">{{ prevNext.prev.text }}</div>
+      </div>
     </a>
     <span v-else />
 
@@ -22,10 +25,14 @@ const prevNext = usePrevNext()
     <a
       v-if="prevNext.next?.link"
       :href="prevNext.next.link"
-      class="group ml-auto flex items-center gap-2 rounded-lg border border-border px-4 py-3 text-sm transition-colors hover:border-foreground/20 hover:bg-accent"
+      class="group flex items-center justify-end gap-3 rounded-xl border border-border p-5 text-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg hover:border-foreground/20"
+      :class="{ 'col-start-2': !prevNext.prev?.link }"
     >
-      <span class="text-muted-foreground group-hover:text-foreground transition-colors">{{ prevNext.next.text }}</span>
-      <ChevronRight class="size-4 text-muted-foreground group-hover:text-foreground transition-colors" />
+      <div class="min-w-0 text-right">
+        <div class="text-xs text-muted-foreground mb-1">Next</div>
+        <div class="font-medium text-foreground truncate">{{ prevNext.next.text }}</div>
+      </div>
+      <ChevronRight class="size-4 shrink-0 text-muted-foreground transition-transform duration-200 group-hover:translate-x-0.5" />
     </a>
   </div>
 </template>

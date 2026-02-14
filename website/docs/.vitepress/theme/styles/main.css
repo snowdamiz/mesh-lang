@@ -135,16 +135,109 @@
   }
 }
 
-/* VitePress icon rendering (needed for search icon) */
+/* Animations */
+@keyframes fade-in-up {
+  from {
+    opacity: 0;
+    transform: translateY(24px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes glow-pulse {
+  0%, 100% { opacity: 0.4; transform: scale(1); }
+  50% { opacity: 0.7; transform: scale(1.05); }
+}
+
+.animate-fade-in-up {
+  animation: fade-in-up 0.7s ease-out both;
+}
+
+.animate-fade-in {
+  animation: fade-in 0.6s ease-out both;
+}
+
+.animate-glow-pulse {
+  animation: glow-pulse 4s ease-in-out infinite;
+}
+
+/* Scroll reveal */
+.reveal {
+  opacity: 0;
+  transform: translateY(24px);
+  transition: opacity 0.7s ease-out, transform 0.7s ease-out;
+}
+
+.reveal.is-visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.reveal-delay-1 { transition-delay: 0.1s; }
+.reveal-delay-2 { transition-delay: 0.2s; }
+.reveal-delay-3 { transition-delay: 0.3s; }
+.reveal-delay-4 { transition-delay: 0.4s; }
+
+/* VitePress icon system (needed for search component icons) */
+[class^='vpi-'],
+[class*=' vpi-'],
 .vp-icon {
   width: 1em;
   height: 1em;
+}
+[class^='vpi-']:not(.bg),
+[class*=' vpi-']:not(.bg),
+.vp-icon:not(.bg) {
   -webkit-mask: var(--icon) no-repeat;
   mask: var(--icon) no-repeat;
   -webkit-mask-size: 100% 100%;
   mask-size: 100% 100%;
   background-color: currentColor;
   color: inherit;
+}
+.vpi-arrow-right,
+.vpi-arrow-down,
+.vpi-arrow-left,
+.vpi-arrow-up {
+  --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' stroke='currentColor' stroke-linecap='round' stroke-linejoin='round' stroke-width='2' viewBox='0 0 24 24'%3E%3Cpath d='M5 12h14M12 5l7 7-7 7'/%3E%3C/svg%3E");
+}
+.vpi-chevron-right,
+.vpi-chevron-down,
+.vpi-chevron-left,
+.vpi-chevron-up {
+  --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' stroke='currentColor' stroke-linecap='round' stroke-linejoin='round' stroke-width='2' viewBox='0 0 24 24'%3E%3Cpath d='m9 18 6-6-6-6'/%3E%3C/svg%3E");
+}
+.vpi-chevron-down,
+.vpi-arrow-down {
+  transform: rotate(90deg);
+}
+.vpi-chevron-left,
+.vpi-arrow-left {
+  transform: rotate(180deg);
+}
+.vpi-chevron-up,
+.vpi-arrow-up {
+  transform: rotate(-90deg);
+}
+.vpi-search {
+  --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' stroke='currentColor' stroke-linecap='round' stroke-linejoin='round' stroke-width='2' viewBox='0 0 24 24'%3E%3Ccircle cx='11' cy='11' r='8'/%3E%3Cpath d='m21 21-4.3-4.3'/%3E%3C/svg%3E");
+}
+.vpi-layout-list {
+  --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' stroke='currentColor' stroke-linecap='round' stroke-linejoin='round' stroke-width='2' viewBox='0 0 24 24'%3E%3Crect width='7' height='7' x='3' y='3' rx='1'/%3E%3Crect width='7' height='7' x='3' y='14' rx='1'/%3E%3Cpath d='M14 4h7M14 9h7M14 15h7M14 20h7'/%3E%3C/svg%3E");
+}
+.vpi-delete {
+  --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' stroke='currentColor' stroke-linecap='round' stroke-linejoin='round' stroke-width='2' viewBox='0 0 24 24'%3E%3Cpath d='M20 5H9l-7 7 7 7h11a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2ZM18 9l-6 6M12 9l6 6'/%3E%3C/svg%3E");
+}
+.vpi-corner-down-left {
+  --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' stroke='currentColor' stroke-linecap='round' stroke-linejoin='round' stroke-width='2' viewBox='0 0 24 24'%3E%3Cpath d='m9 10-5 5 5 5'/%3E%3Cpath d='M20 4v7a4 4 0 0 1-4 4H4'/%3E%3C/svg%3E");
 }
 
 /* Search button sizing */
@@ -178,9 +271,103 @@
   --vp-z-index-backdrop: 40;
   --vp-z-index-sidebar: 50;
   --vp-z-index-footer: 60;
+
+  /* Local search dialog variables */
+  --vp-backdrop-bg-color: rgba(0, 0, 0, 0.6);
+  --vp-local-search-bg: var(--background);
+  --vp-local-search-result-bg: var(--background);
+  --vp-local-search-result-border: transparent;
+  --vp-local-search-result-selected-bg: var(--accent);
+  --vp-local-search-result-selected-border: var(--border);
+  --vp-local-search-highlight-bg: oklch(0.88 0.15 84);
+  --vp-local-search-highlight-text: oklch(0.25 0 0);
 }
 .dark {
   --vp-shadow-1: 0 1px 2px rgba(0, 0, 0, 0.24), 0 1px 2px rgba(0, 0, 0, 0.36);
   --vp-shadow-2: 0 3px 12px rgba(0, 0, 0, 0.36), 0 1px 4px rgba(0, 0, 0, 0.32);
   --vp-shadow-3: 0 12px 32px rgba(0, 0, 0, 0.4), 0 2px 6px rgba(0, 0, 0, 0.32);
+  --vp-backdrop-bg-color: rgba(0, 0, 0, 0.7);
+  --vp-local-search-highlight-bg: oklch(0.75 0.15 84);
+  --vp-local-search-highlight-text: oklch(0.15 0 0);
+}
+
+/* Search dialog overrides (teleported to body, so global styles reach it) */
+.VPLocalSearchBox .shell {
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: 12px !important;
+  padding: 16px !important;
+}
+
+.VPLocalSearchBox .search-bar {
+  border-radius: 8px !important;
+  background: var(--muted) !important;
+  border: none !important;
+  padding: 2px 12px !important;
+}
+
+.VPLocalSearchBox .search-bar:focus-within {
+  background: var(--muted) !important;
+  box-shadow: none !important;
+}
+
+.VPLocalSearchBox .search-input {
+  font-size: 15px !important;
+  border: none !important;
+  outline: none !important;
+  background: transparent !important;
+}
+
+.VPLocalSearchBox .result {
+  border-width: 1px !important;
+  border-radius: 8px !important;
+  transition: background-color 0.15s ease, border-color 0.15s ease !important;
+}
+
+.VPLocalSearchBox .result:hover {
+  background: var(--accent) !important;
+}
+
+.VPLocalSearchBox .result.selected {
+  background: var(--accent) !important;
+  border-color: var(--border) !important;
+}
+
+.VPLocalSearchBox .title-icon {
+  color: var(--muted-foreground) !important;
+  font-size: 0.85em !important;
+}
+
+.VPLocalSearchBox .result.selected .title-icon {
+  color: var(--foreground) !important;
+}
+
+.VPLocalSearchBox .title .text {
+  color: var(--muted-foreground);
+  font-size: 0.9em;
+}
+
+.VPLocalSearchBox .title.main .text {
+  color: var(--foreground);
+  font-weight: 600;
+  font-size: 0.95em;
+}
+
+.VPLocalSearchBox .search-keyboard-shortcuts {
+  opacity: 1 !important;
+  color: var(--muted-foreground);
+  margin-top: 4px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.VPLocalSearchBox .search-keyboard-shortcuts kbd {
+  background: var(--muted) !important;
+  border-color: var(--border) !important;
+  box-shadow: none !important;
+  font-family: var(--font-sans);
+}
+
+.VPLocalSearchBox .no-results {
+  color: var(--muted-foreground);
 }
