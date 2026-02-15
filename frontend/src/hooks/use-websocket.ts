@@ -7,6 +7,7 @@ export function useProjectWebSocket(projectId: string | null) {
   const retriesRef = useRef(0);
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const setStatus = useWsStore((s) => s.setStatus);
+  const setSendMessage = useWsStore((s) => s.setSendMessage);
   const onMessage = useWsStore((s) => s.onMessage);
 
   const connect = useCallback(() => {
@@ -29,6 +30,12 @@ export function useProjectWebSocket(projectId: string | null) {
     ws.onopen = () => {
       retriesRef.current = 0;
       setStatus("connected");
+      // Expose send function via store
+      setSendMessage((msg: string) => {
+        if (ws.readyState === WebSocket.OPEN) {
+          ws.send(msg);
+        }
+      });
     };
 
     ws.onmessage = (e) => {
@@ -46,6 +53,7 @@ export function useProjectWebSocket(projectId: string | null) {
 
     ws.onclose = () => {
       setStatus("disconnected");
+      setSendMessage(null);
       wsRef.current = null;
 
       // Exponential backoff with jitter
@@ -58,7 +66,7 @@ export function useProjectWebSocket(projectId: string | null) {
 
       reconnectTimerRef.current = setTimeout(connect, delay + jitter);
     };
-  }, [projectId, setStatus, onMessage]);
+  }, [projectId, setStatus, setSendMessage, onMessage]);
 
   useEffect(() => {
     connect();
@@ -73,7 +81,8 @@ export function useProjectWebSocket(projectId: string | null) {
         wsRef.current.close();
         wsRef.current = null;
       }
+      setSendMessage(null);
       setStatus("disconnected");
     };
-  }, [connect, setStatus]);
+  }, [connect, setStatus, setSendMessage]);
 }
