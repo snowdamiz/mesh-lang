@@ -5,6 +5,8 @@
 from Services.RateLimiter import RateLimiter
 from Services.EventProcessor import EventProcessor
 from Services.Writer import StorageWriter
+from Services.StreamManager import StreamManager
+from Services.StreamManager import stream_drain_ticker
 from Storage.Queries import check_volume_spikes
 
 # Registry state holds pool handle and all service PIDs.
@@ -55,6 +57,14 @@ fn restart_all_services(pool :: PoolHandle) do
 
   let writer_pid = StorageWriter.start(pool, "default")
   println("[Mesher] StorageWriter restarted")
+
+  let stream_mgr_pid = StreamManager.start()
+  let _ = Process.register("stream_manager", stream_mgr_pid)
+  println("[Mesher] StreamManager restarted")
+
+  # Spawn drain ticker for StreamManager buffer backpressure (250ms interval)
+  let _ = spawn stream_drain_ticker(stream_mgr_pid, 250)
+  println("[Mesher] StreamManager drain ticker restarted (250ms interval)")
 
   let registry_pid = PipelineRegistry.start(pool, rate_limiter_pid, processor_pid, writer_pid)
   let _ = Process.register("mesher_registry", registry_pid)
@@ -116,6 +126,15 @@ end
 # 6. Spawn health checker for automatic restart
 # Returns registry PID.
 pub fn start_pipeline(pool :: PoolHandle) do
+  # Start stream manager (before other services so WS handler can find it)
+  let stream_mgr_pid = StreamManager.start()
+  let _ = Process.register("stream_manager", stream_mgr_pid)
+  println("[Mesher] StreamManager started")
+
+  # Spawn drain ticker for StreamManager buffer backpressure (250ms interval)
+  let _ = spawn stream_drain_ticker(stream_mgr_pid, 250)
+  println("[Mesher] StreamManager drain ticker started (250ms interval)")
+
   # Start rate limiter
   let rate_limiter_pid = RateLimiter.start(60, 1000)
   println("[Mesher] RateLimiter started (60s window, 1000 max)")
