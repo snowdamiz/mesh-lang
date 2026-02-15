@@ -174,6 +174,7 @@ See milestones/v8.0-ROADMAP.md for full phase details.
 - [x] **Phase 92: Alerting System** - Rule engine, timer-driven evaluation, notifications, dedup/cooldown (completed 2026-02-15)
 - [x] **Phase 93: Data Retention & Cleanup** - Retention policies, partition management, storage tracking, sampling (completed 2026-02-15)
 - [x] **Phase 93.1: Issues Encountered** - Fix forward-reference compilation errors in detail.mpl and team.mpl (INSERTED, completed 2026-02-15)
+- [x] **Phase 93.2: Fix Actor Spawn Segfault** - Actor wrapper+body ABI fix for parameterized actors (INSERTED, completed 2026-02-15)
 - [ ] **Phase 94: Multi-Node Clustering** - Distributed actors, global registry, cross-node event routing and broadcast
 - [ ] **Phase 95: Vue Frontend** - SPA dashboard with ECharts, TanStack tables, real-time WebSocket streaming
 
@@ -327,7 +328,7 @@ Plans:
 **Plans:** 1 plan
 
 Plans:
-- [ ] 93.2-01-PLAN.md -- Generate actor wrapper function for args deserialization, add e2e tests for parameterized actors
+- [x] 93.2-01-PLAN.md -- Generate actor wrapper function for args deserialization, add e2e tests for parameterized actors
 
 ### Phase 93.1: Issues Encountered (INSERTED)
 
@@ -397,7 +398,8 @@ Note: Phase 93 depends only on 87 (can run in parallel with 88-92 if desired). P
 | 92 | v9.0 | 3/3 | Complete | 2026-02-15 |
 | 93 | v9.0 | 2/2 | Complete | 2026-02-15 |
 | 93.1 | v9.0 | 1/1 | Complete | 2026-02-15 |
+| 93.2 | v9.0 | 1/1 | Complete | 2026-02-15 |
 | 94 | v9.0 | 0/TBD | Not started | - |
 | 95 | v9.0 | 0/TBD | Not started | - |
 
-**Total: 97 phases shipped across 18 milestones. 268 plans completed. 10 phases planned for v9.0.**
+**Total: 99 phases shipped across 18 milestones. 269 plans completed. 12 phases planned for v9.0.**
