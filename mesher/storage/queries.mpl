@@ -352,3 +352,73 @@ pub fn list_events_for_issue(pool :: PoolHandle, issue_id :: String, cursor :: S
     Ok(rows)
   end
 end
+
+# --- Dashboard aggregation queries (Phase 91 Plan 02) ---
+
+# DASH-01: Event volume bucketed by hour or day for a project.
+# bucket param is either "hour" or "day" (passed from handler).
+# Default 24-hour time window.
+pub fn event_volume_hourly(pool :: PoolHandle, project_id :: String, bucket :: String) -> List<Map<String, String>>!String do
+  let sql = "SELECT date_trunc($2, received_at)::text AS bucket, count(*)::text AS count FROM events WHERE project_id = $1::uuid AND received_at > now() - interval '24 hours' GROUP BY bucket ORDER BY bucket"
+  let rows = Pool.query(pool, sql, [project_id, bucket])?
+  Ok(rows)
+end
+
+# DASH-02: Error breakdown by severity level for a project.
+# Groups events by level (error, warning, info, etc.) with counts.
+pub fn error_breakdown_by_level(pool :: PoolHandle, project_id :: String) -> List<Map<String, String>>!String do
+  let sql = "SELECT level, count(*)::text AS count FROM events WHERE project_id = $1::uuid AND received_at > now() - interval '24 hours' GROUP BY level ORDER BY count DESC"
+  let rows = Pool.query(pool, sql, [project_id])?
+  Ok(rows)
+end
+
+# DASH-03: Top issues ranked by frequency (event count).
+# Returns unresolved issues ordered by event_count DESC.
+pub fn top_issues_by_frequency(pool :: PoolHandle, project_id :: String, limit_str :: String) -> List<Map<String, String>>!String do
+  let sql = "SELECT id::text, title, level, status, event_count::text, last_seen::text FROM issues WHERE project_id = $1::uuid AND status = 'unresolved' ORDER BY event_count DESC LIMIT $2::int"
+  let rows = Pool.query(pool, sql, [project_id, limit_str])?
+  Ok(rows)
+end
+
+# DASH-04: Event breakdown by tag key (environment, release, etc.).
+# Uses JSONB key-exists operator to filter events that have the specified tag.
+pub fn event_breakdown_by_tag(pool :: PoolHandle, project_id :: String, tag_key :: String) -> List<Map<String, String>>!String do
+  let sql = "SELECT tags->>$2 AS tag_value, count(*)::text AS count FROM events WHERE project_id = $1::uuid AND received_at > now() - interval '24 hours' AND tags ? $2 GROUP BY tag_value ORDER BY count DESC LIMIT 20"
+  let rows = Pool.query(pool, sql, [project_id, tag_key])?
+  Ok(rows)
+end
+
+# DASH-05: Per-issue event timeline (recent events for a specific issue).
+# Ordered by received_at DESC for chronological browsing.
+pub fn issue_event_timeline(pool :: PoolHandle, issue_id :: String, limit_str :: String) -> List<Map<String, String>>!String do
+  let sql = "SELECT id::text, level, message, received_at::text FROM events WHERE issue_id = $1::uuid ORDER BY received_at DESC LIMIT $2::int"
+  let rows = Pool.query(pool, sql, [issue_id, limit_str])?
+  Ok(rows)
+end
+
+# DASH-06: Project health summary with key metrics.
+# Returns single row: unresolved issue count, events in last 24h, new issues today.
+pub fn project_health_summary(pool :: PoolHandle, project_id :: String) -> List<Map<String, String>>!String do
+  let sql = "SELECT (SELECT count(*) FROM issues WHERE project_id = $1::uuid AND status = 'unresolved')::text AS unresolved_count, (SELECT count(*) FROM events WHERE project_id = $1::uuid AND received_at > now() - interval '24 hours')::text AS events_24h, (SELECT count(*) FROM issues WHERE project_id = $1::uuid AND first_seen > now() - interval '24 hours')::text AS new_today"
+  let rows = Pool.query(pool, sql, [project_id])?
+  Ok(rows)
+end
+
+# --- Event detail queries (Phase 91 Plan 02) ---
+
+# DETAIL-01..04, DETAIL-06: Get complete event with all JSONB fields.
+# Returns full event payload including exception, stacktrace, breadcrumbs,
+# tags, extra, user_context. JSONB fields use COALESCE for null safety.
+pub fn get_event_detail(pool :: PoolHandle, event_id :: String) -> List<Map<String, String>>!String do
+  let sql = "SELECT id::text, project_id::text, issue_id::text, level, message, fingerprint, COALESCE(exception::text, 'null') AS exception, COALESCE(stacktrace::text, '[]') AS stacktrace, COALESCE(breadcrumbs::text, '[]') AS breadcrumbs, COALESCE(tags::text, '{}') AS tags, COALESCE(extra::text, '{}') AS extra, COALESCE(user_context::text, 'null') AS user_context, COALESCE(sdk_name, '') AS sdk_name, COALESCE(sdk_version, '') AS sdk_version, received_at::text FROM events WHERE id = $1::uuid"
+  let rows = Pool.query(pool, sql, [event_id])?
+  Ok(rows)
+end
+
+# DETAIL-05: Get next and previous event IDs within an issue for navigation.
+# Uses tuple comparison (received_at, id) for stable ordering.
+pub fn get_event_neighbors(pool :: PoolHandle, issue_id :: String, received_at :: String, event_id :: String) -> List<Map<String, String>>!String do
+  let sql = "SELECT (SELECT id::text FROM events WHERE issue_id = $1::uuid AND (received_at, id) > ($2::timestamptz, $3::uuid) ORDER BY received_at, id LIMIT 1) AS next_id, (SELECT id::text FROM events WHERE issue_id = $1::uuid AND (received_at, id) < ($2::timestamptz, $3::uuid) ORDER BY received_at DESC, id DESC LIMIT 1) AS prev_id"
+  let rows = Pool.query(pool, sql, [issue_id, received_at, event_id])?
+  Ok(rows)
+end
