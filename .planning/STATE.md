@@ -10,11 +10,11 @@ See: .planning/PROJECT.md (updated 2026-02-14)
 ## Current Position
 
 Phase: 90 of 95 (Real-Time Streaming)
-Plan: 1 of 3 in current phase (90-01 complete)
+Plan: 3 of 3 in current phase (90-03 complete)
 Status: Executing Phase 90
-Last activity: 2026-02-15 -- Completed 90-01 (WebSocket Room Types & StreamManager)
+Last activity: 2026-02-15 -- Completed 90-03 (Backpressure Buffer Drain)
 
-Progress: [####################..........] 98% overall (257/261 plans shipped)
+Progress: [####################..........] 99% overall (259/261 plans shipped)
 
 ## Performance Metrics
 
@@ -24,7 +24,7 @@ Progress: [####################..........] 98% overall (257/261 plans shipped)
 - Milestones shipped: 18 (v1.0-v8.0)
 - Lines of Rust: ~98,800
 - Lines of website: ~5,500
-- Lines of Mesh: ~1885 (first Mesh application code, refactored into modules, ingestion pipeline wired with health monitoring, error grouping pipeline, issue lifecycle API, streaming state management)
+- Lines of Mesh: ~2005 (first Mesh application code, refactored into modules, ingestion pipeline wired with health monitoring, error grouping pipeline, issue lifecycle API, streaming state management, backpressure buffer drain)
 - Timeline: 10 days (2026-02-05 -> 2026-02-14)
 
 ## Accumulated Context
@@ -83,6 +83,9 @@ Cleared at milestone boundary. v8.0 decisions archived in PROJECT.md.
 - [90-01] Map.delete for map entry removal (Map.remove not in runtime); Map.has_key extracted to let bindings before if conditions (parser limitation)
 - [90-01] both_match helper for AND logic instead of && operator (LLVM PHI node codegen issue in nested if blocks)
 - [90-01] Connection handle typed as Int at Mesh level consistent with Ws.send pattern (pointer cast to i64)
+- [90-03] Helper functions ordered bottom-up (leaf first) for Mesh define-before-use requirement in cross-referencing chains
+- [90-03] Cast handler if/else guard logic extracted to helper functions (parser limitation with branching in cast bodies)
+- [90-03] 250ms drain ticker interval for responsive WS buffer flushing (cheaper than DB writes, shorter than flush_ticker)
 
 ### Roadmap Evolution
 
@@ -111,6 +114,6 @@ Research flags from research/SUMMARY.md:
 ## Session Continuity
 
 Last session: 2026-02-15
-Stopped at: Completed 90-01-PLAN.md (WebSocket Room Types & StreamManager)
+Stopped at: Completed 90-03-PLAN.md (Backpressure Buffer Drain)
 Resume file: None
-Next action: Execute 90-02-PLAN.md (WebSocket Streaming Handler)
+Next action: Verify all 90-0X plans complete and finalize Phase 90
