@@ -313,7 +313,11 @@ Plans:
   1. User can configure retention period per project (30/60/90 days) and the system drops old partitions on schedule
   2. Issue summaries (counts, first/last seen) are preserved even after their underlying events are deleted
   3. User can view storage usage per project and configure event sampling rate for high-volume projects
-**Plans**: TBD
+**Plans:** 2 plans
+
+Plans:
+- [ ] 93-01-PLAN.md -- Schema extension (retention columns), retention/storage/settings/sampling queries, retention cleaner actor
+- [ ] 93-02-PLAN.md -- Settings API handlers, sampling at ingestion, retention cleaner wiring, route registration
 
 ### Phase 94: Multi-Node Clustering
 **Goal**: Multiple Mesher nodes form a cluster and distribute event processing, service discovery, and WebSocket broadcasts across the mesh
