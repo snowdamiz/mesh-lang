@@ -10,11 +10,11 @@ See: .planning/PROJECT.md (updated 2026-02-14)
 ## Current Position
 
 Phase: 95 of 95 (React Frontend)
-Plan: 2 of 7 in current phase -- COMPLETE
-Status: Plan 02 complete -- Dashboard page with Recharts charts, health stats, issue list, WebSocket live updates
-Last activity: 2026-02-15 - Split-view dashboard with volume/level charts, health stat cards, compact issue list, time range selector, WS live updates
+Plan: 3 of 7 in current phase -- COMPLETE
+Status: Plan 03 complete -- Issues and Events list pages with TanStack Table, shared DataTable/FilterBar/Pagination
+Last activity: 2026-02-15 - Issues page with 5-column table, keyset pagination, default unresolved filter; Events search page with 4-column table
 
-Progress: [########----------------------] 29% phase (2/7 plans shipped)
+Progress: [############------------------] 43% phase (3/7 plans shipped)
 
 ## Performance Metrics
 
@@ -136,6 +136,10 @@ Cleared at milestone boundary. v8.0 decisions archived in PROJECT.md.
 - [95-02] Semantic colors only for error/warning severity; info/debug/resolved/archived use monochrome theme variants
 - [95-02] WebSocket updates applied optimistically to local dashboard state without full API refetch
 - [95-02] formatRelativeTime extracted to lib/format.ts for cross-component reuse
+- [95-03] Events page requires search query before showing results (empty state prompt by default)
+- [95-03] Client-side level filtering on Events page since search endpoint lacks level param
+- [95-03] Cursor stack pattern for bidirectional keyset pagination (push on Next, pop on Previous)
+- [95-03] Default 'unresolved' status filter on Issues page per decision [89-02]
 
 ### Roadmap Evolution
 
@@ -169,6 +173,6 @@ Research flags from research/SUMMARY.md:
 ## Session Continuity
 
 Last session: 2026-02-15
-Stopped at: Completed 95-02-PLAN.md (Dashboard page with charts, stats, issue list, WebSocket live updates)
+Stopped at: Completed 95-03-PLAN.md (Issues and Events list pages with shared components)
 Resume file: None
-Next action: Continue with 95-03-PLAN.md (Issues list and Events list pages).
+Next action: Continue with 95-04-PLAN.md (Issue and Event detail panels).
