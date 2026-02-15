@@ -5,16 +5,16 @@
 See: .planning/PROJECT.md (updated 2026-02-14)
 
 **Core value:** Expressive, readable concurrency -- writing concurrent programs should feel as natural and clean as writing sequential code, with the safety net of supervision and fault tolerance built into the language.
-**Current focus:** v9.0 Mesher Phase 92 (Alerting System)
+**Current focus:** v9.0 Mesher Phase 91.1 (Refactor to Idiomatic Mesh)
 
 ## Current Position
 
-Phase: 91 of 95 (REST API) -- COMPLETE
-Plan: 3 of 3 in current phase (all plans complete)
-Status: Phase 91 complete, verified (5/5 must-haves passed), and closed
-Last activity: 2026-02-15 -- Phase 91 verified and closed
+Phase: 91.1 of 95 (Refactor Mesher to Idiomatic Mesh) -- IN PROGRESS
+Plan: 1 of 2 in current phase (Plan 01 complete)
+Status: Plan 91.1-01 complete -- shared helpers extracted, recursive loops replaced
+Last activity: 2026-02-15 -- Plan 91.1-01 completed
 
-Progress: [####################..........] 99% overall (260/261 plans shipped)
+Progress: [####################..........] 99% overall (261/263 plans shipped)
 
 ## Performance Metrics
 
@@ -24,7 +24,7 @@ Progress: [####################..........] 99% overall (260/261 plans shipped)
 - Milestones shipped: 18 (v1.0-v8.0)
 - Lines of Rust: ~98,800
 - Lines of website: ~5,500
-- Lines of Mesh: ~3275 (first Mesh application code, refactored into modules, ingestion pipeline wired with health monitoring, error grouping pipeline, issue lifecycle API, streaming state management, backpressure buffer drain, subscription protocol and event broadcasting, search/filter/pagination REST API, dashboard aggregation and event detail endpoints, team membership and API token management)
+- Lines of Mesh: ~3200 (first Mesh application code, refactored into modules, ingestion pipeline wired with health monitoring, error grouping pipeline, issue lifecycle API, streaming state management, backpressure buffer drain, subscription protocol and event broadcasting, search/filter/pagination REST API, dashboard aggregation and event detail endpoints, team membership and API token management, refactored with shared helpers and idiomatic patterns)
 - Timeline: 10 days (2026-02-05 -> 2026-02-14)
 
 ## Accumulated Context
@@ -101,11 +101,15 @@ Cleared at milestone boundary. v8.0 decisions archived in PROJECT.md.
 - [91-03] SQL-side role validation (AND $2 IN ('owner','admin','member')) ensures only valid roles at database level
 - [91-03] API key revoked_at formatted as JSON null for nullable timestamps in API responses
 - [91-03] extract_json_field reusable helper for PostgreSQL-based JSON body field extraction
+- [91.1-01] Cross-module import of query_or_default with inferred request type works without explicit annotation (TyVar normalization from 87.1-02)
+- [91.1-01] Json.encode(issue) includes project_id and fingerprint fields not in manual version -- backward compatible (additive)
+- [91.1-01] Shared helper module pattern: from Api.Helpers import query_or_default, to_json_array
 
 ### Roadmap Evolution
 
 - Phase 87.1 inserted after Phase 87: Issues Encountered (URGENT)
 - Phase 87.2 inserted after Phase 87.1: Refactor Phase 87 code to use cross-module services (URGENT)
+- Phase 91.1 inserted after Phase 91: Refactor Mesher to use pipe operators and idiomatic Mesh features (URGENT)
 
 ### Pending Todos
 
@@ -129,6 +133,6 @@ Research flags from research/SUMMARY.md:
 ## Session Continuity
 
 Last session: 2026-02-15
-Stopped at: Phase 91 complete and verified (5/5 must-haves passed)
+Stopped at: Completed 91.1-01-PLAN.md (shared helpers + recursive loop replacement)
 Resume file: None
-Next action: Plan Phase 92 (Alerting System)
+Next action: Execute 91.1-02-PLAN.md (pipe-chain HTTP router and data transforms)
