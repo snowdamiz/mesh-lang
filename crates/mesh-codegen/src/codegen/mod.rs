@@ -482,8 +482,16 @@ impl<'ctx> CodeGen<'ctx> {
                         .map_err(|e| e.to_string())?;
                 }
                 _ => {
+                    // Coerce the return value to match the function's declared return type.
+                    // This handles mismatches like ptr vs { i8, ptr } (Result type).
+                    let fn_ret_ty = fn_val.get_type().get_return_type();
+                    let coerced_result = if let Some(expected_ty) = fn_ret_ty {
+                        self.coerce_return_value(result, expected_ty)?
+                    } else {
+                        result
+                    };
                     self.builder
-                        .build_return(Some(&result))
+                        .build_return(Some(&coerced_result))
                         .map_err(|e| e.to_string())?;
                 }
             }
@@ -494,6 +502,92 @@ impl<'ctx> CodeGen<'ctx> {
         self.tce_param_names.clear();
 
         Ok(())
+    }
+
+    /// Coerce a return value to match the function's declared return type.
+    ///
+    /// Handles common mismatches:
+    /// - ptr result, struct return type: load struct from pointer
+    /// - struct result, ptr return type: heap-alloc + store + return pointer
+    /// - struct result, different struct return type: bitcast via alloca
+    fn coerce_return_value(
+        &self,
+        result: inkwell::values::BasicValueEnum<'ctx>,
+        expected_ty: inkwell::types::BasicTypeEnum<'ctx>,
+    ) -> Result<inkwell::values::BasicValueEnum<'ctx>, String> {
+        use inkwell::values::BasicValueEnum;
+
+        let result_ty = result.get_type();
+
+        // Types already match - no coercion needed
+        if result_ty == expected_ty {
+            return Ok(result);
+        }
+
+        match (result, expected_ty) {
+            // ptr -> struct (e.g., ptr -> { i8, ptr } Result type):
+            // Load the struct from the pointer
+            (BasicValueEnum::PointerValue(pv), expected) if expected.is_struct_type() => {
+                self.builder
+                    .build_load(expected, pv, "ret_coerce_load")
+                    .map_err(|e| e.to_string())
+            }
+
+            // struct -> ptr: heap-alloc + store + return pointer
+            (BasicValueEnum::StructValue(sv), expected) if expected.is_pointer_type() => {
+                let sv_ty = sv.get_type();
+                let i64_type = self.context.i64_type();
+                let size = sv_ty.size_of().unwrap_or(i64_type.const_int(64, false));
+                let align = i64_type.const_int(8, false);
+                let gc_alloc = self.module.get_function("mesh_gc_alloc_actor")
+                    .ok_or("mesh_gc_alloc_actor not found")?;
+                let heap_ptr = self.builder
+                    .build_call(gc_alloc, &[size.into(), align.into()], "ret_coerce_heap")
+                    .map_err(|e| e.to_string())?
+                    .try_as_basic_value()
+                    .basic()
+                    .ok_or("gc_alloc returned void")?
+                    .into_pointer_value();
+                self.builder
+                    .build_store(heap_ptr, sv)
+                    .map_err(|e| e.to_string())?;
+                Ok(heap_ptr.into())
+            }
+
+            // int -> ptr: inttoptr
+            (BasicValueEnum::IntValue(iv), expected) if expected.is_pointer_type() => {
+                let ptr_ty = self.context.ptr_type(inkwell::AddressSpace::default());
+                let cast = self.builder
+                    .build_int_to_ptr(iv, ptr_ty, "ret_coerce_inttoptr")
+                    .map_err(|e| e.to_string())?;
+                Ok(cast.into())
+            }
+
+            // ptr -> int: ptrtoint
+            (BasicValueEnum::PointerValue(pv), expected) if expected.is_int_type() => {
+                let cast = self.builder
+                    .build_ptr_to_int(pv, expected.into_int_type(), "ret_coerce_ptrtoint")
+                    .map_err(|e| e.to_string())?;
+                Ok(cast.into())
+            }
+
+            // Struct -> different struct: bitcast via alloca
+            // (e.g., { %ProcessorState, { i8, ptr } } vs expected struct layout)
+            (BasicValueEnum::StructValue(sv), expected) if expected.is_struct_type() => {
+                let alloca = self.builder
+                    .build_alloca(sv.get_type(), "ret_coerce_tmp")
+                    .map_err(|e| e.to_string())?;
+                self.builder
+                    .build_store(alloca, sv)
+                    .map_err(|e| e.to_string())?;
+                self.builder
+                    .build_load(expected, alloca, "ret_coerce_reinterpret")
+                    .map_err(|e| e.to_string())
+            }
+
+            // No coercion possible - return as-is (LLVM may still error)
+            (val, _) => Ok(val),
+        }
     }
 
     /// Generate the C-level `main` function wrapper.

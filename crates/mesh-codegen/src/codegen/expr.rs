@@ -484,9 +484,31 @@ impl<'ctx> CodeGen<'ctx> {
         rhs: BasicValueEnum<'ctx>,
     ) -> Result<BasicValueEnum<'ctx>, String> {
         let concat_fn = get_intrinsic(&self.module, "mesh_string_concat");
+        let ptr_ty = self.context.ptr_type(inkwell::AddressSpace::default());
+        // Coerce args to ptr if needed (e.g., Unit {} -> null ptr, i64 -> inttoptr)
+        let lhs_coerced: BasicMetadataValueEnum<'ctx> = match lhs {
+            BasicValueEnum::StructValue(sv) if sv.get_type().count_fields() == 0 => {
+                ptr_ty.const_null().into()
+            }
+            BasicValueEnum::IntValue(iv) => {
+                self.builder.build_int_to_ptr(iv, ptr_ty, "concat_arg_ptr")
+                    .map_err(|e| e.to_string())?.into()
+            }
+            other => other.into(),
+        };
+        let rhs_coerced: BasicMetadataValueEnum<'ctx> = match rhs {
+            BasicValueEnum::StructValue(sv) if sv.get_type().count_fields() == 0 => {
+                ptr_ty.const_null().into()
+            }
+            BasicValueEnum::IntValue(iv) => {
+                self.builder.build_int_to_ptr(iv, ptr_ty, "concat_arg_ptr")
+                    .map_err(|e| e.to_string())?.into()
+            }
+            other => other.into(),
+        };
         let result = self
             .builder
-            .build_call(concat_fn, &[lhs.into(), rhs.into()], "concat")
+            .build_call(concat_fn, &[lhs_coerced, rhs_coerced], "concat")
             .map_err(|e| e.to_string())?;
         result
             .try_as_basic_value()
@@ -606,11 +628,36 @@ impl<'ctx> CodeGen<'ctx> {
 
         // Compile arguments, splitting closure structs into (fn_ptr, env_ptr) pairs
         // only for runtime intrinsics that expect separate pointer arguments.
+        //
+        // To avoid adding spurious env_ptr args to functions that don't expect them
+        // (e.g., mesh_http_route_post takes a plain fn_ptr, not a closure pair),
+        // we check whether expanding closures/FnPtrs would exceed the target function's
+        // declared parameter count.
+        let target_param_count: Option<usize> = if let MirExpr::Var(name, _) = func {
+            self.module.get_function(name).map(|f| f.count_params() as usize)
+        } else {
+            None
+        };
+        // Pre-compute how many LLVM args we'd produce with expansion.
+        let expanded_arg_count: usize = args.iter().map(|arg| {
+            if !is_user_fn && matches!(arg.ty(), MirType::Closure(_, _) | MirType::FnPtr(_, _)) {
+                2 // fn_ptr + env_ptr
+            } else {
+                1
+            }
+        }).sum();
+        // Only expand closure/FnPtr args if the expanded count matches the target's param count.
+        // If expansion would cause a mismatch, pass values as-is.
+        let should_expand_closures = match target_param_count {
+            Some(expected) => expanded_arg_count == expected && !is_user_fn,
+            None => !is_user_fn, // unknown target, expand by default
+        };
+
         let mut arg_vals: Vec<BasicMetadataValueEnum<'ctx>> = Vec::new();
         let mut _has_closure_args = false;
         for arg in args {
             let val = self.codegen_expr(arg)?;
-            if matches!(arg.ty(), MirType::Closure(_, _)) && !is_user_fn {
+            if matches!(arg.ty(), MirType::Closure(_, _)) && should_expand_closures {
                 // Extract fn_ptr and env_ptr from the closure struct { ptr, ptr }.
                 let cls_ty = closure_type(self.context);
                 let ptr_ty = self.context.ptr_type(inkwell::AddressSpace::default());
@@ -640,7 +687,7 @@ impl<'ctx> CodeGen<'ctx> {
                 arg_vals.push(fn_ptr_val.into());
                 arg_vals.push(env_ptr_val.into());
                 _has_closure_args = true;
-            } else if matches!(arg.ty(), MirType::FnPtr(_, _)) && !is_user_fn {
+            } else if matches!(arg.ty(), MirType::FnPtr(_, _)) && should_expand_closures {
                 // Bare function reference passed to runtime intrinsic.
                 // Runtime expects (fn_ptr, env_ptr) pairs; env_ptr is null for non-closures.
                 let ptr_ty = self.context.ptr_type(inkwell::AddressSpace::default());
@@ -881,9 +928,102 @@ impl<'ctx> CodeGen<'ctx> {
         // Check if it's a direct call to a known function
         if let MirExpr::Var(name, _) = func {
             if let Some(fn_val) = self.functions.get(name).copied() {
+                // Coerce argument types to match function parameter types.
+                // Handles cases where MIR type resolution is imprecise (e.g.,
+                // Unit {} values that should be Int/Ptr, or struct vs ptr mismatches).
+                let param_types = fn_val.get_type().get_param_types();
+                let mut coerced_args = arg_vals.clone();
+                for (i, param_ty) in param_types.iter().enumerate() {
+                    if i < coerced_args.len() {
+                        match coerced_args[i] {
+                            BasicMetadataValueEnum::StructValue(sv) => {
+                                // Unit {} (empty struct) -> i64/ptr: pass zero/null
+                                if sv.get_type().count_fields() == 0 {
+                                    if let inkwell::types::BasicMetadataTypeEnum::IntType(it) = param_ty {
+                                        coerced_args[i] = it.const_zero().into();
+                                    } else if let inkwell::types::BasicMetadataTypeEnum::PointerType(pt) = param_ty {
+                                        coerced_args[i] = pt.const_null().into();
+                                    }
+                                } else if let inkwell::types::BasicMetadataTypeEnum::PointerType(_) = param_ty {
+                                    // Non-empty struct -> ptr: heap-alloc + store
+                                    let sv_ty = sv.get_type();
+                                    let i64_type = self.context.i64_type();
+                                    let size = sv_ty.size_of().unwrap_or(i64_type.const_int(64, false));
+                                    let align = i64_type.const_int(8, false);
+                                    let gc_alloc = self.module.get_function("mesh_gc_alloc_actor")
+                                        .ok_or("mesh_gc_alloc_actor not found")?;
+                                    let heap_ptr = self.builder
+                                        .build_call(gc_alloc, &[size.into(), align.into()], "arg_struct_heap")
+                                        .map_err(|e| e.to_string())?
+                                        .try_as_basic_value()
+                                        .basic()
+                                        .ok_or("gc_alloc returned void")?
+                                        .into_pointer_value();
+                                    self.builder
+                                        .build_store(heap_ptr, sv)
+                                        .map_err(|e| e.to_string())?;
+                                    coerced_args[i] = heap_ptr.into();
+                                } else if let inkwell::types::BasicMetadataTypeEnum::IntType(it) = param_ty {
+                                    if it.get_bit_width() == 64 {
+                                        // Non-empty struct -> i64: heap-alloc + ptrtoint
+                                        let sv_ty = sv.get_type();
+                                        let i64_type = self.context.i64_type();
+                                        let size = sv_ty.size_of().unwrap_or(i64_type.const_int(64, false));
+                                        let align = i64_type.const_int(8, false);
+                                        let gc_alloc = self.module.get_function("mesh_gc_alloc_actor")
+                                            .ok_or("mesh_gc_alloc_actor not found")?;
+                                        let heap_ptr = self.builder
+                                            .build_call(gc_alloc, &[size.into(), align.into()], "arg_struct_heap")
+                                            .map_err(|e| e.to_string())?
+                                            .try_as_basic_value()
+                                            .basic()
+                                            .ok_or("gc_alloc returned void")?
+                                            .into_pointer_value();
+                                        self.builder
+                                            .build_store(heap_ptr, sv)
+                                            .map_err(|e| e.to_string())?;
+                                        let cast = self.builder
+                                            .build_ptr_to_int(heap_ptr, *it, "struct_ptr_to_i64")
+                                            .map_err(|e| e.to_string())?;
+                                        coerced_args[i] = cast.into();
+                                    }
+                                }
+                            }
+                            BasicMetadataValueEnum::IntValue(iv) => {
+                                if let inkwell::types::BasicMetadataTypeEnum::PointerType(_) = param_ty {
+                                    if iv.get_type().get_bit_width() == 64 {
+                                        let ptr_ty = self.context.ptr_type(inkwell::AddressSpace::default());
+                                        let cast = self.builder
+                                            .build_int_to_ptr(iv, ptr_ty, "i64_to_ptr")
+                                            .map_err(|e| e.to_string())?;
+                                        coerced_args[i] = cast.into();
+                                    }
+                                } else if let inkwell::types::BasicMetadataTypeEnum::IntType(param_it) = param_ty {
+                                    if iv.get_type().get_bit_width() < param_it.get_bit_width() {
+                                        let extended = self.builder
+                                            .build_int_z_extend(iv, *param_it, "zext_arg")
+                                            .map_err(|e| e.to_string())?;
+                                        coerced_args[i] = extended.into();
+                                    }
+                                }
+                            }
+                            BasicMetadataValueEnum::PointerValue(pv) => {
+                                if let inkwell::types::BasicMetadataTypeEnum::IntType(param_it) = param_ty {
+                                    if param_it.get_bit_width() == 64 {
+                                        let cast = self.builder
+                                            .build_ptr_to_int(pv, *param_it, "ptr_to_i64")
+                                            .map_err(|e| e.to_string())?;
+                                        coerced_args[i] = cast.into();
+                                    }
+                                }
+                            }
+                            _ => {}
+                        }
+                    }
+                }
                 let call = self
                     .builder
-                    .build_call(fn_val, &arg_vals, "call")
+                    .build_call(fn_val, &coerced_args, "call")
                     .map_err(|e| e.to_string())?;
 
                 // Insert reduction check after function call
@@ -947,6 +1087,17 @@ impl<'ctx> CodeGen<'ctx> {
                                             .map_err(|e| e.to_string())?;
                                         coerced_args[i] = extended.into();
                                     }
+                                } else if let inkwell::types::BasicMetadataTypeEnum::PointerType(_) = param_ty {
+                                    // Runtime function expects ptr but we have i64
+                                    // (e.g., connection handle passed to mesh_ws_send).
+                                    if arg_iv.get_type().get_bit_width() == 64 {
+                                        let ptr_ty = self.context.ptr_type(inkwell::AddressSpace::default());
+                                        let cast = self
+                                            .builder
+                                            .build_int_to_ptr(arg_iv, ptr_ty, "i64_to_ptr")
+                                            .map_err(|e| e.to_string())?;
+                                        coerced_args[i] = cast.into();
+                                    }
                                 }
                             }
                             BasicMetadataValueEnum::PointerValue(arg_pv) => {
@@ -976,11 +1127,48 @@ impl<'ctx> CodeGen<'ctx> {
                                 }
                             }
                             BasicMetadataValueEnum::StructValue(arg_sv) => {
+                                // Special case: empty struct {} (Unit type) - pass null/zero.
+                                // This occurs when type resolution couldn't determine the variable's
+                                // type and defaulted to Unit.
+                                if arg_sv.get_type().count_fields() == 0 {
+                                    if let inkwell::types::BasicMetadataTypeEnum::PointerType(pt) = param_ty {
+                                        coerced_args[i] = pt.const_null().into();
+                                    } else if let inkwell::types::BasicMetadataTypeEnum::IntType(it) = param_ty {
+                                        coerced_args[i] = it.const_zero().into();
+                                    }
+                                }
+                                // If the runtime function expects i64 but we have a struct value
+                                // (e.g., ConnectionState passed to mesh_map_put), heap-alloc + ptrtoint.
+                                else if let inkwell::types::BasicMetadataTypeEnum::IntType(param_it) = param_ty {
+                                    if param_it.get_bit_width() == 64 {
+                                        let sv_ty = arg_sv.get_type();
+                                        let i64_type = self.context.i64_type();
+                                        let size = sv_ty.size_of().unwrap_or(i64_type.const_int(64, false));
+                                        let align = i64_type.const_int(8, false);
+                                        let gc_alloc = self.module.get_function("mesh_gc_alloc_actor")
+                                            .ok_or("mesh_gc_alloc_actor not found")?;
+                                        let heap_ptr = self.builder
+                                            .build_call(gc_alloc, &[size.into(), align.into()], "struct_heap")
+                                            .map_err(|e| e.to_string())?
+                                            .try_as_basic_value()
+                                            .basic()
+                                            .ok_or("gc_alloc returned void")?
+                                            .into_pointer_value();
+                                        self.builder
+                                            .build_store(heap_ptr, arg_sv)
+                                            .map_err(|e| e.to_string())?;
+                                        let cast = self
+                                            .builder
+                                            .build_ptr_to_int(heap_ptr, *param_it, "struct_ptr_to_i64")
+                                            .map_err(|e| e.to_string())?;
+                                        coerced_args[i] = cast.into();
+                                    }
+                                }
                                 // If the runtime function expects a pointer but we have a struct value
                                 // (e.g., struct passed to mesh_alloc_result), heap-allocate + store + pass ptr.
                                 // Must use GC heap (not stack alloca) because the pointer may be stored
                                 // in a MeshResult that outlives the current stack frame.
-                                if let inkwell::types::BasicMetadataTypeEnum::PointerType(_) = param_ty {
+                                else if let inkwell::types::BasicMetadataTypeEnum::PointerType(_) = param_ty {
                                     let sv_ty = arg_sv.get_type();
                                     let i64_type = self.context.i64_type();
                                     let ptr_type = self.context.ptr_type(inkwell::AddressSpace::default());
@@ -2684,6 +2872,55 @@ impl<'ctx> CodeGen<'ctx> {
     ///
     /// Inserted after function call sites and closure calls to enable
     /// cooperative preemption of actor processes.
+    /// Coerce any BasicValueEnum to an i64 IntValue.
+    /// - IntValue: zero-extend if narrower than 64 bits, identity if already i64
+    /// - PointerValue: ptrtoint
+    /// - FloatValue: bitcast f64 to i64
+    /// - StructValue: store to alloca, load as i64 (first 8 bytes)
+    fn coerce_to_i64(
+        &self,
+        val: BasicValueEnum<'ctx>,
+    ) -> Result<inkwell::values::IntValue<'ctx>, String> {
+        let i64_ty = self.context.i64_type();
+        match val {
+            BasicValueEnum::IntValue(iv) => {
+                if iv.get_type().get_bit_width() < 64 {
+                    self.builder
+                        .build_int_z_extend(iv, i64_ty, "zext_to_i64")
+                        .map_err(|e| e.to_string())
+                } else {
+                    Ok(iv)
+                }
+            }
+            BasicValueEnum::PointerValue(pv) => {
+                self.builder
+                    .build_ptr_to_int(pv, i64_ty, "ptr_to_i64")
+                    .map_err(|e| e.to_string())
+            }
+            BasicValueEnum::FloatValue(fv) => {
+                let alloca = self.builder
+                    .build_alloca(self.context.f64_type(), "f64_tmp")
+                    .map_err(|e| e.to_string())?;
+                self.builder.build_store(alloca, fv).map_err(|e| e.to_string())?;
+                Ok(self.builder
+                    .build_load(i64_ty, alloca, "f64_to_i64")
+                    .map_err(|e| e.to_string())?
+                    .into_int_value())
+            }
+            BasicValueEnum::StructValue(sv) => {
+                let alloca = self.builder
+                    .build_alloca(sv.get_type(), "struct_tmp")
+                    .map_err(|e| e.to_string())?;
+                self.builder.build_store(alloca, sv).map_err(|e| e.to_string())?;
+                Ok(self.builder
+                    .build_load(i64_ty, alloca, "struct_to_i64")
+                    .map_err(|e| e.to_string())?
+                    .into_int_value())
+            }
+            _ => Err(format!("Cannot coerce {:?} to i64", val)),
+        }
+    }
+
     fn emit_reduction_check(&self) {
         if let Some(check_fn) = self.module.get_function("mesh_reduction_check") {
             // Only emit if the current block is not yet terminated.
@@ -2920,22 +3157,23 @@ impl<'ctx> CodeGen<'ctx> {
 
         // Determine the state LLVM type from the first handler function's first param.
         // All handlers share the same state type (the init function's return type).
+        // The state may be a struct type (e.g., RateLimitState, StreamState), a pointer,
+        // or i64. We must use the actual LLVM type, not just ptr-vs-i64.
         let first_handler_name = call_handlers.first()
             .map(|(_, name, _)| name.as_str())
             .or_else(|| cast_handlers.first().map(|(_, name, _)| name.as_str()));
-        let state_is_ptr = if let Some(name) = first_handler_name {
+        let state_llvm_ty: inkwell::types::BasicTypeEnum<'ctx> = if let Some(name) = first_handler_name {
             if let Some(handler_fn) = self.functions.get(name) {
                 let param_types = handler_fn.get_type().get_param_types();
-                // First param is state; check if it's a pointer type
-                !param_types.is_empty() && param_types[0].is_pointer_type()
+                if !param_types.is_empty() {
+                    inkwell::types::BasicTypeEnum::try_from(param_types[0])
+                        .unwrap_or(i64_ty.into())
+                } else {
+                    i64_ty.into()
+                }
             } else {
-                false
+                i64_ty.into()
             }
-        } else {
-            false
-        };
-        let state_llvm_ty: inkwell::types::BasicTypeEnum<'ctx> = if state_is_ptr {
-            ptr_ty.into()
         } else {
             i64_ty.into()
         };
@@ -3255,12 +3493,24 @@ impl<'ctx> CodeGen<'ctx> {
                     )
                     .map_err(|e| e.to_string())?;
 
-                // Convert new_state_val to the proper state type.
-                if state_is_ptr {
+                // Convert new_state_val (i64 from tuple) to the proper state type.
+                // Tuples store all values as i64. For pointer/struct state types,
+                // the i64 is actually a pointer value (inttoptr). For struct types,
+                // the pointer points to a heap-allocated copy of the struct.
+                if state_llvm_ty.is_pointer_type() {
                     let state_ptr: inkwell::values::PointerValue<'ctx> = self.builder
                         .build_int_to_ptr(new_state_val, ptr_ty, "new_state_ptr")
                         .map_err(|e| e.to_string())?;
                     state_ptr.into()
+                } else if state_llvm_ty.is_struct_type() {
+                    // Struct state: the i64 from the tuple is a pointer to the struct.
+                    // Convert to pointer, then load the struct value.
+                    let state_ptr = self.builder
+                        .build_int_to_ptr(new_state_val, ptr_ty, "new_state_struct_ptr")
+                        .map_err(|e| e.to_string())?;
+                    self.builder
+                        .build_load(state_llvm_ty, state_ptr, "new_state_struct")
+                        .map_err(|e| e.to_string())?
                 } else {
                     let v: inkwell::values::BasicValueEnum<'ctx> = new_state_val.into();
                     v
@@ -3408,9 +3658,14 @@ impl<'ctx> CodeGen<'ctx> {
         let pid_val = self.codegen_expr(&args[0])?.into_int_value();
         let tag_val = self.codegen_expr(&args[1])?.into_int_value();
 
+        // Compile handler args and coerce all values to i64 for the payload buffer.
+        // Pointers become ptrtoint, bools become zext, etc.
         let handler_args: Vec<_> = args[2..]
             .iter()
-            .map(|a| self.codegen_expr(a).map(|v| v.into_int_value()))
+            .map(|a| {
+                let v = self.codegen_expr(a)?;
+                self.coerce_to_i64(v)
+            })
             .collect::<Result<Vec<_>, _>>()?;
 
         // Build payload buffer: [i64 arg0, i64 arg1, ...]
@@ -3482,9 +3737,13 @@ impl<'ctx> CodeGen<'ctx> {
         let pid_val = self.codegen_expr(&args[0])?.into_int_value();
         let tag_val = self.codegen_expr(&args[1])?.into_int_value();
 
+        // Compile handler args and coerce all values to i64 for the message buffer.
         let handler_args: Vec<_> = args[2..]
             .iter()
-            .map(|a| self.codegen_expr(a).map(|v| v.into_int_value()))
+            .map(|a| {
+                let v = self.codegen_expr(a)?;
+                self.coerce_to_i64(v)
+            })
             .collect::<Result<Vec<_>, _>>()?;
 
         // Build message buffer: [u64 type_tag][u64 0 (no caller)][i64 handler_args...]

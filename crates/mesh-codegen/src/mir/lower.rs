@@ -8784,6 +8784,7 @@ impl<'a> Lowerer<'a> {
             snake_name: String,
             tag: u64,
             param_names: Vec<String>,
+            param_types: Vec<MirType>,
             state_param: Option<String>,
         }
 
@@ -8792,6 +8793,7 @@ impl<'a> Lowerer<'a> {
             snake_name: String,
             tag: u64,
             param_names: Vec<String>,
+            param_types: Vec<MirType>,
             state_param: Option<String>,
         }
 
@@ -8802,24 +8804,26 @@ impl<'a> Lowerer<'a> {
                 .and_then(|n| n.text())
                 .unwrap_or_else(|| format!("call_{}", i));
             let snake_name = to_snake_case(&variant_name);
-            let param_names: Vec<String> = handler
-                .params()
-                .map(|pl| {
-                    pl.params()
-                        .map(|p| {
-                            p.name()
-                                .map(|t| t.text().to_string())
-                                .unwrap_or_else(|| format!("arg{}", 0))
-                        })
-                        .collect()
-                })
-                .unwrap_or_default();
+            let mut param_names: Vec<String> = Vec::new();
+            let mut param_types: Vec<MirType> = Vec::new();
+            if let Some(pl) = handler.params() {
+                for p in pl.params() {
+                    let p_name = p.name()
+                        .map(|t| t.text().to_string())
+                        .unwrap_or_else(|| format!("arg{}", 0));
+                    let p_ty = self.resolve_range(p.syntax().text_range());
+                    let mir_ty = if matches!(p_ty, MirType::Unit) { MirType::Int } else { p_ty };
+                    param_names.push(p_name);
+                    param_types.push(mir_ty);
+                }
+            }
             let state_param = handler.state_param_name();
             call_infos.push(CallInfo {
                 variant_name,
                 snake_name,
                 tag: i as u64,
                 param_names,
+                param_types,
                 state_param,
             });
         }
@@ -8831,24 +8835,26 @@ impl<'a> Lowerer<'a> {
                 .and_then(|n| n.text())
                 .unwrap_or_else(|| format!("cast_{}", i));
             let snake_name = to_snake_case(&variant_name);
-            let param_names: Vec<String> = handler
-                .params()
-                .map(|pl| {
-                    pl.params()
-                        .map(|p| {
-                            p.name()
-                                .map(|t| t.text().to_string())
-                                .unwrap_or_else(|| format!("arg{}", 0))
-                        })
-                        .collect()
-                })
-                .unwrap_or_default();
+            let mut param_names: Vec<String> = Vec::new();
+            let mut param_types: Vec<MirType> = Vec::new();
+            if let Some(pl) = handler.params() {
+                for p in pl.params() {
+                    let p_name = p.name()
+                        .map(|t| t.text().to_string())
+                        .unwrap_or_else(|| format!("arg{}", 0));
+                    let p_ty = self.resolve_range(p.syntax().text_range());
+                    let mir_ty = if matches!(p_ty, MirType::Unit) { MirType::Int } else { p_ty };
+                    param_names.push(p_name);
+                    param_types.push(mir_ty);
+                }
+            }
             let state_param = handler.state_param_name();
             cast_infos.push(CastInfo {
                 variant_name,
                 snake_name,
                 tag: (num_calls + i) as u64,
                 param_names,
+                param_types,
                 state_param,
             });
         }
@@ -9143,9 +9149,11 @@ impl<'a> Lowerer<'a> {
         for info in &call_infos {
             let fn_name = format!("__service_{}_call_{}", name_lower, info.snake_name);
             methods.push((info.snake_name.clone(), fn_name.clone()));
+            let mut fn_param_types = vec![MirType::Pid(None)];
+            fn_param_types.extend(info.param_types.iter().cloned());
             self.known_functions.insert(
                 fn_name.clone(),
-                MirType::FnPtr(vec![MirType::Pid(None)], Box::new(MirType::Int)),
+                MirType::FnPtr(fn_param_types, Box::new(MirType::Int)),
             );
         }
 
@@ -9153,9 +9161,11 @@ impl<'a> Lowerer<'a> {
         for info in &cast_infos {
             let fn_name = format!("__service_{}_cast_{}", name_lower, info.snake_name);
             methods.push((info.snake_name.clone(), fn_name.clone()));
+            let mut fn_param_types = vec![MirType::Pid(None)];
+            fn_param_types.extend(info.param_types.iter().cloned());
             self.known_functions.insert(
                 fn_name.clone(),
-                MirType::FnPtr(vec![MirType::Pid(None)], Box::new(MirType::Unit)),
+                MirType::FnPtr(fn_param_types, Box::new(MirType::Unit)),
             );
         }
 
@@ -9171,18 +9181,15 @@ impl<'a> Lowerer<'a> {
         for info in &call_infos {
             let fn_name = format!("__service_{}_call_{}", name_lower, info.snake_name);
 
+            // Use actual param types so LLVM function signature matches call sites.
             let mut params = vec![("__pid".to_string(), MirType::Int)];
-            for p_name in &info.param_names {
-                params.push((p_name.clone(), MirType::Int));
+            for (p_name, p_ty) in info.param_names.iter().zip(info.param_types.iter()) {
+                params.push((p_name.clone(), p_ty.clone()));
             }
 
             // Body: call mesh_service_call(pid, tag, payload, size)
-            // We represent this as a Call to mesh_service_call with the right args.
-            // The codegen for Call on "mesh_service_call" will handle the details.
-            //
-            // Actually, we need to build the payload buffer. This requires stack allocation
-            // which is done in codegen. So we'll represent the call helper body as a
-            // special ServiceCall MIR node.
+            // Codegen intercepts calls to "mesh_service_call" and packs args
+            // into a payload buffer, coercing all values to i64.
             let body = MirExpr::Call {
                 func: Box::new(MirExpr::Var(
                     "mesh_service_call".to_string(),
@@ -9197,9 +9204,9 @@ impl<'a> Lowerer<'a> {
                         MirExpr::IntLit(info.tag as i64, MirType::Int),
                     ];
                     // Pack the call arguments as the payload.
-                    // We'll pass them as individual i64 args; codegen will pack.
-                    for p_name in &info.param_names {
-                        args.push(MirExpr::Var(p_name.clone(), MirType::Int));
+                    // Codegen will coerce each arg to i64 for the message buffer.
+                    for (p_name, p_ty) in info.param_names.iter().zip(info.param_types.iter()) {
+                        args.push(MirExpr::Var(p_name.clone(), p_ty.clone()));
                     }
                     args
                 },
@@ -9225,21 +9232,15 @@ impl<'a> Lowerer<'a> {
         for info in &cast_infos {
             let fn_name = format!("__service_{}_cast_{}", name_lower, info.snake_name);
 
+            // Use actual param types so LLVM function signature matches call sites.
             let mut params = vec![("__pid".to_string(), MirType::Int)];
-            for p_name in &info.param_names {
-                params.push((p_name.clone(), MirType::Int));
+            for (p_name, p_ty) in info.param_names.iter().zip(info.param_types.iter()) {
+                params.push((p_name.clone(), p_ty.clone()));
             }
 
             // Body: build message buffer with [tag][args] and call mesh_actor_send.
-            // Represent as an ActorSend with a constructed message.
-            // Actually, we need the message to include the type_tag as part of the data.
-            // For cast, the message is: [u64 type_tag][args as i64s] (no caller_pid).
-            //
-            // Wait - for cast, the service loop still receives via the same dispatch.
-            // The message format should be consistent. Let's use:
-            //   Cast message: [u64 type_tag][u64 0 (no caller)][args as i64s]
-            // This way the loop can always extract tag at offset 0 and caller at offset 8.
-
+            // Cast message format: [u64 type_tag][u64 0 (no caller)][args as i64s]
+            // Codegen intercepts the mesh_actor_send with int-lit tag and packs args.
             let body = MirExpr::Call {
                 func: Box::new(MirExpr::Var(
                     "mesh_actor_send".to_string(),
@@ -9253,8 +9254,8 @@ impl<'a> Lowerer<'a> {
                         MirExpr::Var("__pid".to_string(), MirType::Int),
                         MirExpr::IntLit(info.tag as i64, MirType::Int),
                     ];
-                    for p_name in &info.param_names {
-                        args.push(MirExpr::Var(p_name.clone(), MirType::Int));
+                    for (p_name, p_ty) in info.param_names.iter().zip(info.param_types.iter()) {
+                        args.push(MirExpr::Var(p_name.clone(), p_ty.clone()));
                     }
                     args
                 },
