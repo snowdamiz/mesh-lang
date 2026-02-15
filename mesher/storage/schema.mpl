@@ -19,6 +19,8 @@ pub fn create_schema(pool :: PoolHandle) -> Int!String do
   Pool.execute(pool, "CREATE TABLE IF NOT EXISTS alerts (id UUID PRIMARY KEY DEFAULT uuidv7(), rule_id UUID NOT NULL REFERENCES alert_rules(id) ON DELETE CASCADE, project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE, status TEXT NOT NULL DEFAULT 'active', message TEXT NOT NULL, condition_snapshot JSONB NOT NULL, triggered_at TIMESTAMPTZ NOT NULL DEFAULT now(), acknowledged_at TIMESTAMPTZ, resolved_at TIMESTAMPTZ)", [])?
   Pool.execute(pool, "ALTER TABLE alert_rules ADD COLUMN IF NOT EXISTS cooldown_minutes INTEGER NOT NULL DEFAULT 60", [])?
   Pool.execute(pool, "ALTER TABLE alert_rules ADD COLUMN IF NOT EXISTS last_fired_at TIMESTAMPTZ", [])?
+  Pool.execute(pool, "ALTER TABLE projects ADD COLUMN IF NOT EXISTS retention_days INTEGER NOT NULL DEFAULT 90", [])?
+  Pool.execute(pool, "ALTER TABLE projects ADD COLUMN IF NOT EXISTS sample_rate REAL NOT NULL DEFAULT 1.0", [])?
   Pool.execute(pool, "CREATE INDEX IF NOT EXISTS idx_org_memberships_user ON org_memberships(user_id)", [])?
   Pool.execute(pool, "CREATE INDEX IF NOT EXISTS idx_org_memberships_org ON org_memberships(org_id)", [])?
   Pool.execute(pool, "CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id)", [])?

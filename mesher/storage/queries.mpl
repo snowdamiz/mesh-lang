@@ -553,3 +553,63 @@ pub fn get_threshold_rules(pool :: PoolHandle) -> List<Map<String, String>>!Stri
   let rows = Pool.query(pool, sql, [])?
   Ok(rows)
 end
+
+# --- Retention and storage queries (Phase 93) ---
+
+# Delete expired events for a project based on its retention_days setting.
+# Returns the number of deleted rows.
+pub fn delete_expired_events(pool :: PoolHandle, project_id :: String, retention_days_str :: String) -> Int!String do
+  Pool.execute(pool, "DELETE FROM events WHERE project_id = $1::uuid AND received_at < now() - ($2 || ' days')::interval", [project_id, retention_days_str])
+end
+
+# Find event partitions older than max_days (for partition cleanup).
+# Queries pg_inherits to find child tables of 'events' with names matching events_YYYYMMDD.
+pub fn get_expired_partitions(pool :: PoolHandle, max_days_str :: String) -> List<Map<String, String>>!String do
+  let sql = "SELECT c.relname::text AS partition_name FROM pg_inherits i JOIN pg_class c ON c.oid = i.inhrelid JOIN pg_class p ON p.oid = i.inhparent WHERE p.relname = 'events' AND c.relname ~ '^events_[0-9]{8}$' AND to_date(substring(c.relname from '[0-9]{8}$'), 'YYYYMMDD') < (current_date - ($1 || ' days')::interval)"
+  let rows = Pool.query(pool, sql, [max_days_str])?
+  Ok(rows)
+end
+
+# Drop a single event partition by name.
+# The partition_name comes from the trusted pg_inherits query, not user input.
+pub fn drop_partition(pool :: PoolHandle, partition_name :: String) -> Int!String do
+  Pool.execute(pool, "DROP TABLE IF EXISTS " <> partition_name, [])
+end
+
+# Get all projects with their retention settings for the cleanup loop.
+pub fn get_all_project_retention(pool :: PoolHandle) -> List<Map<String, String>>!String do
+  let rows = Pool.query(pool, "SELECT id::text, retention_days::text FROM projects", [])?
+  Ok(rows)
+end
+
+# Estimate storage usage for a project (event count and estimated bytes).
+# Uses 1024 byte average row estimate.
+pub fn get_project_storage(pool :: PoolHandle, project_id :: String) -> List<Map<String, String>>!String do
+  let sql = "SELECT count(*)::text AS event_count, (count(*) * 1024)::text AS estimated_bytes FROM events WHERE project_id = $1::uuid"
+  let rows = Pool.query(pool, sql, [project_id])?
+  Ok(rows)
+end
+
+# Update project retention and sampling settings from JSON body.
+# Uses SQL-side JSON extraction per decision [91-03].
+pub fn update_project_settings(pool :: PoolHandle, project_id :: String, body :: String) -> Int!String do
+  Pool.execute(pool, "UPDATE projects SET retention_days = COALESCE(($2::jsonb->>'retention_days')::int, retention_days), sample_rate = COALESCE(($2::jsonb->>'sample_rate')::real, sample_rate) WHERE id = $1::uuid", [project_id, body])
+end
+
+# Get retention and sampling settings for a project.
+pub fn get_project_settings(pool :: PoolHandle, project_id :: String) -> List<Map<String, String>>!String do
+  let rows = Pool.query(pool, "SELECT retention_days::text, sample_rate::text FROM projects WHERE id = $1::uuid", [project_id])?
+  Ok(rows)
+end
+
+# Check if an event should be kept based on the project's sample_rate.
+# Returns true if the event should be kept, false if it should be dropped.
+# Defaults to keeping all events (sample_rate = 1.0) if project not found.
+pub fn check_sample_rate(pool :: PoolHandle, project_id :: String) -> Bool!String do
+  let rows = Pool.query(pool, "SELECT random() < COALESCE((SELECT sample_rate FROM projects WHERE id = $1::uuid), 1.0) AS keep", [project_id])?
+  if List.length(rows) > 0 do
+    Ok(Map.get(List.head(rows), "keep") == "t")
+  else
+    Ok(true)
+  end
+end
