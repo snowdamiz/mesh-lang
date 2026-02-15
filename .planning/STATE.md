@@ -132,10 +132,11 @@ Research flags from research/SUMMARY.md:
 |---|-------------|------|--------|-----------|
 | 1 | Rename project from Snow to Mesh, change .snow file extension to .mpl | 2026-02-13 | 3fe109e1 | [1-rename-project-from-snow-to-mesh-change-](./quick/1-rename-project-from-snow-to-mesh-change-/) |
 | 2 | Write article: How Opus 4.6 and I Built a Production-Ready Programming Language in 9 Days | 2026-02-13 | (current) | [2-mesh-story-article](./quick/2-mesh-story-article/) |
+| 3 | Validate codegen bug fixes (LLVM type coercion for service args, returns, actor messages) | 2026-02-15 | 7f429957 | [3-ensure-all-tests-still-pass-after-applyi](./quick/3-ensure-all-tests-still-pass-after-applyi/) |
 
 ## Session Continuity
 
 Last session: 2026-02-15
-Stopped at: Phase 91.1 complete and verified (11/11 must-haves passed)
+Stopped at: Completed quick-3 (codegen bug fixes validated and committed)
 Resume file: None
 Next action: Plan Phase 92 (Alerting System)
