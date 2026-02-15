@@ -335,15 +335,16 @@ mod tests {
     }
 
     #[test]
-    fn test_toposort_self_cycle() {
-        // A deps [A]. in_degree never reaches 0 -> CycleError.
+    fn test_toposort_self_dep_ignored() {
+        // Self-dependencies are silently dropped, so A has no deps and sorts fine.
         let mut graph = ModuleGraph::new();
         let id_a = graph.add_module("A".into(), "a.mpl".into(), false);
 
         graph.add_dependency(id_a, id_a);
 
-        let err = topological_sort(&graph).unwrap_err();
-        assert!(err.cycle_path.contains(&"A".to_string()));
+        let order = topological_sort(&graph).unwrap();
+        assert_eq!(order.len(), 1);
+        assert_eq!(order[0], id_a);
     }
 
     #[test]

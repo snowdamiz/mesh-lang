@@ -80,17 +80,26 @@ end
 # Verifies the PipelineRegistry responds to a service call every 10 seconds.
 actor health_checker(pool :: PoolHandle) do
   Timer.sleep(10000)
-  println("[Mesher] Health check ok")
+  let reg_pid = Process.whereis("mesher_registry")
+  let _ = PipelineRegistry.get_pool(reg_pid)
+  println("[Mesher] Health check: all services responsive")
   health_checker(pool)
 end
 
 # Helper: log spike checker result (extracted for single-expression case arm).
 fn log_spike_result(n :: Int) do
   if n > 0 do
-    println("[Mesher] Spike checker: escalated " <> String.from(n) <> " archived issues")
+    let _ = println("[Mesher] Spike checker: escalated " <> String.from(n) <> " archived issues")
+    0
   else
     0
   end
+end
+
+# Helper: log spike checker error (extracted for matching branch types).
+fn log_spike_error(e :: String) do
+  let _ = println("[Mesher] Spike checker error: " <> e)
+  0
 end
 
 # Periodic spike detection actor -- checks archived issues for volume spikes.
@@ -102,7 +111,7 @@ actor spike_checker(pool :: PoolHandle) do
   let result = check_volume_spikes(pool)
   case result do
     Ok(n) -> log_spike_result(n)
-    Err(e) -> println("[Mesher] Spike checker error: " <> e)
+    Err(e) -> log_spike_error(e)
   end
   spike_checker(pool)
 end

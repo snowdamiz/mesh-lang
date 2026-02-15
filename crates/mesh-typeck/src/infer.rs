@@ -550,10 +550,10 @@ fn stdlib_modules() -> HashMap<String, HashMap<String, Scheme>> {
         vec![request_t.clone(), Ty::string()],
         Ty::option(Ty::string()),
     )));
-    // Phase 51: Path parameter accessor
+    // Phase 51: Path parameter accessor (returns String -- route matched guarantees param exists)
     request_mod.insert("param".to_string(), Scheme::mono(Ty::fun(
         vec![request_t.clone(), Ty::string()],
-        Ty::option(Ty::string()),
+        Ty::string(),
     )));
     modules.insert("Request".to_string(), request_mod);
 
