@@ -10,21 +10,21 @@ See: .planning/PROJECT.md (updated 2026-02-14)
 ## Current Position
 
 Phase: 94 of 95 (Multi-Node Clustering) -- COMPLETE
-Plan: 3 of 3 in current phase -- COMPLETE
-Status: Plan 03 complete -- load monitoring and remote processor spawning
-Last activity: 2026-02-15 - Load monitor actor, event counter tracking, remote spawning via Global.whereis
+Plan: 4 of 4 in current phase -- COMPLETE
+Status: Plan 04 complete -- Node.spawn and Node.monitor gap closure
+Last activity: 2026-02-15 - Node.spawn remote processor spawning, Node.monitor peer health tracking, codegen fix
 
-Progress: [##############################] 100% overall (272/272 plans shipped)
+Progress: [##############################] 100% overall (273/273 plans shipped)
 
 ## Performance Metrics
 
 **All-time Totals:**
-- Plans completed: 270
+- Plans completed: 271
 - Phases completed: 98
 - Milestones shipped: 18 (v1.0-v8.0)
 - Lines of Rust: ~98,800
 - Lines of website: ~5,500
-- Lines of Mesh: ~3960 (first Mesh application code, refactored into modules, ingestion pipeline wired with health monitoring, error grouping pipeline, issue lifecycle API, streaming state management, backpressure buffer drain, subscription protocol and event broadcasting, search/filter/pagination REST API, dashboard aggregation and event detail endpoints, team membership and API token management, refactored with shared helpers, pipe-chained router and data transforms, alerting data foundation, alert evaluation engine, alert HTTP API routes, retention data foundation, settings API and ingestion sampling, forward-reference fixes for clean compilation, actor spawn ABI fix, distributed node startup and global service registration, cross-node service discovery via get_registry, load monitoring and remote processor spawning)
+- Lines of Mesh: ~4020 (first Mesh application code, refactored into modules, ingestion pipeline wired with health monitoring, error grouping pipeline, issue lifecycle API, streaming state management, backpressure buffer drain, subscription protocol and event broadcasting, search/filter/pagination REST API, dashboard aggregation and event detail endpoints, team membership and API token management, refactored with shared helpers, pipe-chained router and data transforms, alerting data foundation, alert evaluation engine, alert HTTP API routes, retention data foundation, settings API and ingestion sampling, forward-reference fixes for clean compilation, actor spawn ABI fix, distributed node startup and global service registration, cross-node service discovery via get_registry, load monitoring and remote processor spawning, Node.spawn and Node.monitor gap closure)
 - Timeline: 11 days (2026-02-05 -> 2026-02-15)
 
 ## Accumulated Context
@@ -129,6 +129,9 @@ Cleared at milestone boundary. v8.0 decisions archived in PROJECT.md.
 - [94-03] Event count threshold: 100 events per 5-second window for remote spawning consideration
 - [94-03] PoolHandle never sent across nodes; remote spawning uses Global.whereis to find remote node's own registry
 - [94-03] Bulk event requests count as 1 event for load rate tracking
+- [94-04] Node.spawn return value (Pid) discarded -- Pid is {} in LLVM, cannot pass to String.from
+- [94-04] codegen_node_spawn reloads alloca as i64 when MIR type is Unit (Ty::Var -> MirType::Unit workaround for unresolved type variables)
+- [94-04] Zero-arg remote worker pattern: Node.spawn sends function name, worker uses Process.whereis for local resources (no PoolHandle across nodes)
 
 ### Roadmap Evolution
 
@@ -162,6 +165,6 @@ Research flags from research/SUMMARY.md:
 ## Session Continuity
 
 Last session: 2026-02-15
-Stopped at: Completed 94-03-PLAN.md (load monitoring and remote processor spawning)
+Stopped at: Completed 94-04-PLAN.md (Node.spawn and Node.monitor gap closure)
 Resume file: None
-Next action: Phase 94 complete. All 3 plans shipped. Phase 95 next (if applicable).
+Next action: Phase 94 fully complete. All 4 plans shipped (including gap closure). Phase 95 next (if applicable).
