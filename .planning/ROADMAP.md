@@ -298,7 +298,12 @@ Plans:
   3. System delivers alert notifications via WebSocket to connected dashboards in real-time
   4. System enforces deduplication windows and cooldown periods to prevent duplicate and repeated alert firing
   5. User can manage alert states (active, acknowledged, resolved)
-**Plans**: TBD
+**Plans:** 3 plans
+
+Plans:
+- [ ] 92-01-PLAN.md -- Schema extension (alerts table, cooldown columns), Alert type, query helpers
+- [ ] 92-02-PLAN.md -- Alert evaluator actor (timer-driven threshold evaluation) and event-based alert triggers
+- [ ] 92-03-PLAN.md -- HTTP API routes for alert rule CRUD and alert state management
 
 ### Phase 93: Data Retention & Cleanup
 **Goal**: Stored event data is automatically cleaned up per project retention policies, with partition-based deletion and storage visibility
@@ -366,9 +371,9 @@ Note: Phase 93 depends only on 87 (can run in parallel with 88-92 if desired). P
 | 90 | v9.0 | 3/3 | Complete | 2026-02-15 |
 | 91 | v9.0 | 3/3 | Complete | 2026-02-15 |
 | 91.1 | v9.0 | 2/2 | Complete | 2026-02-15 |
-| 92 | v9.0 | 0/TBD | Not started | - |
+| 92 | v9.0 | 0/3 | Not started | - |
 | 93 | v9.0 | 0/TBD | Not started | - |
 | 94 | v9.0 | 0/TBD | Not started | - |
 | 95 | v9.0 | 0/TBD | Not started | - |
 
-**Total: 94 phases shipped across 18 milestones. 260 plans completed. 10 phases planned for v9.0.**
+**Total: 94 phases shipped across 18 milestones. 262 plans completed. 10 phases planned for v9.0.**
