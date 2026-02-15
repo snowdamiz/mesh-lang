@@ -1,6 +1,7 @@
 import { Outlet } from "react-router";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { Toaster } from "@/components/ui/sonner";
 import { AppSidebar } from "@/components/layout/app-sidebar";
 import { Header } from "@/components/layout/header";
 import { useProjectWebSocket } from "@/hooks/use-websocket";
@@ -24,6 +25,7 @@ export default function App() {
             </main>
           </div>
         </div>
+        <Toaster />
       </SidebarProvider>
     </TooltipProvider>
   );
