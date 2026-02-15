@@ -20,9 +20,11 @@ fn bad_request_response(reason :: String) do
   HTTP.response(400, "{\"error\":\"" <> reason <> "\"}")
 end
 
-# Helper: build 429 rate-limited response
+# Helper: build 429 rate-limited response with Retry-After header
 fn rate_limited_response() do
-  HTTP.response(429, "{\"error\":\"rate limited\"}")
+  let empty_headers = Map.new()
+  let headers = Map.put(empty_headers, "Retry-After", "60")
+  HTTP.response_with_headers(429, "{\"error\":\"rate limited\"}", headers)
 end
 
 # Helper: build 202 accepted response
@@ -74,7 +76,11 @@ pub fn handle_event(request) do
   end
 end
 
-# Helper: handle bulk after authentication succeeds
+# Helper: handle bulk after authentication succeeds.
+# Validates size (5MB limit for bulk), then routes the entire bulk payload
+# to EventProcessor for persistence. Individual JSON array element parsing
+# is not supported at the Mesh language level; the StorageWriter stores
+# the complete bulk JSON for downstream processing.
 fn handle_bulk_authed(project_id :: String, rate_limiter_pid, processor_pid, writer_pid, request) do
   let allowed = RateLimiter.check_limit(rate_limiter_pid, project_id)
   if allowed do
@@ -82,7 +88,7 @@ fn handle_bulk_authed(project_id :: String, rate_limiter_pid, processor_pid, wri
     let size_check = validate_payload_size(body, 5242880)
     case size_check do
       Err(reason) -> bad_request_response(reason)
-      Ok(_) -> accepted_response()
+      Ok(_) -> route_to_processor(processor_pid, project_id, writer_pid, body)
     end
   else
     rate_limited_response()

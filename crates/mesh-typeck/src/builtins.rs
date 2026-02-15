@@ -557,6 +557,18 @@ pub fn register_builtins(
         "http_response".into(),
         Scheme::mono(Ty::fun(vec![Ty::int(), Ty::string()], response_t.clone())),
     );
+    // HTTP.response_with_headers(Int, String, Map<K, V>) -> Response
+    {
+        let k_var = TyVar(92000);
+        let v_var = TyVar(92001);
+        let k = Ty::Var(k_var);
+        let v = Ty::Var(v_var);
+        let map_kv = Ty::map(k, v);
+        env.insert(
+            "http_response_with_headers".into(),
+            Scheme { vars: vec![k_var, v_var], ty: Ty::fun(vec![Ty::int(), Ty::string(), map_kv], response_t.clone()) },
+        );
+    }
     // HTTP.get(String) -> Result<String, String>
     env.insert(
         "http_get".into(),

@@ -455,6 +455,9 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
     // mesh_http_response_new(status: i64, body: ptr) -> ptr
     module.add_function("mesh_http_response_new", ptr_type.fn_type(&[i64_type.into(), ptr_type.into()], false), Some(inkwell::module::Linkage::External));
 
+    // mesh_http_response_with_headers(status: i64, body: ptr, headers: ptr) -> ptr
+    module.add_function("mesh_http_response_with_headers", ptr_type.fn_type(&[i64_type.into(), ptr_type.into(), ptr_type.into()], false), Some(inkwell::module::Linkage::External));
+
     // mesh_http_get(url: ptr) -> ptr (MeshResult)
     module.add_function("mesh_http_get", ptr_type.fn_type(&[ptr_type.into()], false), Some(inkwell::module::Linkage::External));
 
