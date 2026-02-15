@@ -254,7 +254,11 @@ Plans:
   2. Client can apply filters (level, environment) to the WebSocket stream and only receive matching events
   3. System pushes new issue notifications and issue count updates to all connected dashboards for that project
   4. System drops old queued events for slow clients instead of letting buffers grow unbounded
-**Plans**: TBD
+**Plans:** 2 plans
+
+Plans:
+- [ ] 90-01-PLAN.md -- Typechecker gap closure (Ws.join/leave/broadcast/broadcast_except) + StreamManager service
+- [ ] 90-02-PLAN.md -- Subscription protocol, event/issue broadcasting, pipeline integration
 
 ### Phase 91: REST API
 **Goal**: Users can query, search, and browse all platform data through a complete REST API with pagination, aggregation, and CRUD operations
