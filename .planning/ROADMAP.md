@@ -348,7 +348,12 @@ Plans:
   2. Services (EventRouter, StorageWriter) register in the global process registry for cross-node discovery
   3. Events ingested on one node are routed to processors on other nodes, and WebSocket broadcasts reach dashboards on all nodes
   4. System spawns remote processor actors on other nodes when local load is high
-**Plans**: TBD
+**Plans:** 3 plans
+
+Plans:
+- [ ] 94-01-PLAN.md -- Node startup, mesh formation, and global service registration
+- [ ] 94-02-PLAN.md -- Cross-node event routing and distributed service discovery
+- [ ] 94-03-PLAN.md -- Load-based remote processor spawning with monitoring
 
 ### Phase 95: Vue Frontend
 **Goal**: Users can interact with the entire Mesher platform through a Vue SPA with dashboards, event browsing, issue management, alerting, and real-time streaming
@@ -399,7 +404,7 @@ Note: Phase 93 depends only on 87 (can run in parallel with 88-92 if desired). P
 | 93 | v9.0 | 2/2 | Complete | 2026-02-15 |
 | 93.1 | v9.0 | 1/1 | Complete | 2026-02-15 |
 | 93.2 | v9.0 | 1/1 | Complete | 2026-02-15 |
-| 94 | v9.0 | 0/TBD | Not started | - |
+| 94 | v9.0 | 0/3 | Planned | - |
 | 95 | v9.0 | 0/TBD | Not started | - |
 
 **Total: 99 phases shipped across 18 milestones. 269 plans completed. 12 phases planned for v9.0.**
