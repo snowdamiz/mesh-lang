@@ -198,26 +198,15 @@ end
 # --- Issue management route handlers (Phase 89 Plan 02) ---
 
 # Helper: build a JSON string for a single Issue.
-# event_count is Int, so we convert with String.from.
+# Uses deriving(Json) on the Issue struct for automatic serialization.
 fn issue_to_json_str(issue :: Issue) -> String do
-  "{\"id\":\"" <> issue.id <> "\",\"title\":\"" <> issue.title <> "\",\"level\":\"" <> issue.level <> "\",\"status\":\"" <> issue.status <> "\",\"event_count\":" <> String.from(issue.event_count) <> ",\"first_seen\":\"" <> issue.first_seen <> "\",\"last_seen\":\"" <> issue.last_seen <> "\",\"assigned_to\":\"" <> issue.assigned_to <> "\"}"
+  Json.encode(issue)
 end
 
-# Helper: build JSON array from list of issues (recursive accumulator).
-fn issues_to_json_loop(issues :: List<Issue>, acc :: String, i :: Int, total :: Int) -> String do
-  if i < total do
-    let issue = List.get(issues, i)
-    let json_str = issue_to_json_str(issue)
-    let new_acc = if i > 0 do acc <> "," <> json_str else json_str end
-    issues_to_json_loop(issues, new_acc, i + 1, total)
-  else
-    "[" <> acc <> "]"
-  end
-end
-
-# Helper: build JSON array from list of issues.
+# Build JSON array from list of issues.
 fn issues_to_json(issues :: List<Issue>) -> String do
-  issues_to_json_loop(issues, "", 0, List.length(issues))
+  let json_items = List.map(issues, fn(issue) do issue_to_json_str(issue) end)
+  "[" <> String.join(json_items, ",") <> "]"
 end
 
 # Handle GET /api/v1/projects/:project_id/issues?status=unresolved

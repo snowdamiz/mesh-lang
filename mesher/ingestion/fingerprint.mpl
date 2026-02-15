@@ -25,25 +25,11 @@ fn fingerprint_frame(frame :: StackFrame) -> String do
   frame.filename <> "|" <> frame.function_name
 end
 
-# Recursive loop to build fingerprint string from stack frames.
-# Mesh has no mutable variables so we accumulate via recursion.
-# Joins frame components with ";" and appends ":normalized_message".
-fn fingerprint_frames_loop(frames, acc :: String, i :: Int, total :: Int, msg :: String) -> String do
-  if i < total do
-    let frame = List.get(frames, i)
-    let part = fingerprint_frame(frame)
-    let new_acc = if String.length(acc) > 0 do acc <> ";" <> part else part end
-    fingerprint_frames_loop(frames, new_acc, i + 1, total, msg)
-  else
-    acc <> ":" <> normalize_message(msg)
-  end
-end
-
 # Build fingerprint from stack trace frames and message (GROUP-01).
 # Format: "file|func;file|func;...:normalized_message"
 fn fingerprint_from_frames(frames, msg :: String) -> String do
-  let total = List.length(frames)
-  fingerprint_frames_loop(frames, "", 0, total, msg)
+  let parts = List.map(frames, fn(frame) do fingerprint_frame(frame) end)
+  String.join(parts, ";") <> ":" <> normalize_message(msg)
 end
 
 # Fallback fingerprint when no stack trace is available (GROUP-02).
