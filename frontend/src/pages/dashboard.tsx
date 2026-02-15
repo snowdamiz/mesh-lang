@@ -18,6 +18,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ScrollArea } from "@/components/ui/scroll-area";
 
+const REFRESH_INTERVAL_MS = 60_000;
+
 type TimeRange = "24h" | "7d";
 
 interface DashboardData {
@@ -30,6 +32,8 @@ interface DashboardData {
 export default function DashboardPage() {
   const activeProjectId = useProjectStore((s) => s.activeProjectId);
   const lastEvent = useWsStore((s) => s.lastEvent);
+  const wsUnresolvedCount = useWsStore((s) => s.unresolvedCount);
+  const wsEventCount = useWsStore((s) => s.eventCount);
   const openDetail = useUiStore((s) => s.openDetail);
 
   const [data, setData] = useState<DashboardData | null>(null);
@@ -39,11 +43,13 @@ export default function DashboardPage() {
 
   // Track last WS event to avoid re-processing
   const lastProcessedRef = useRef<unknown>(null);
+  const timeRangeRef = useRef<TimeRange>(timeRange);
+  timeRangeRef.current = timeRange;
 
   const fetchDashboard = useCallback(
-    async (range: TimeRange) => {
+    async (range: TimeRange, showLoading = true) => {
       if (!activeProjectId) return;
-      setLoading(true);
+      if (showLoading) setLoading(true);
       setError(null);
       try {
         const bucket = range === "24h" ? "hour" : "day";
@@ -55,11 +61,13 @@ export default function DashboardPage() {
         ]);
         setData({ volume, levels, topIssues, health });
       } catch (err) {
-        setError(
-          err instanceof Error ? err.message : "Failed to load dashboard"
-        );
+        if (showLoading) {
+          setError(
+            err instanceof Error ? err.message : "Failed to load dashboard"
+          );
+        }
       } finally {
-        setLoading(false);
+        if (showLoading) setLoading(false);
       }
     },
     [activeProjectId]
@@ -70,7 +78,18 @@ export default function DashboardPage() {
     fetchDashboard(timeRange);
   }, [fetchDashboard, timeRange]);
 
-  // WebSocket live updates
+  // Periodic 60-second refresh for data accuracy
+  useEffect(() => {
+    const interval = setInterval(() => {
+      // Skip refresh if page is not visible
+      if (document.hidden) return;
+      fetchDashboard(timeRangeRef.current, false);
+    }, REFRESH_INTERVAL_MS);
+
+    return () => clearInterval(interval);
+  }, [fetchDashboard]);
+
+  // WebSocket live updates -- optimistic state mutations
   useEffect(() => {
     if (!lastEvent || lastEvent === lastProcessedRef.current) return;
     lastProcessedRef.current = lastEvent;
@@ -126,6 +145,19 @@ export default function DashboardPage() {
     });
   }, [lastEvent]);
 
+  // Sync ws-store unresolvedCount into dashboard health immediately
+  useEffect(() => {
+    if (wsUnresolvedCount === null) return;
+    setData((prev) => {
+      if (!prev) return prev;
+      if (prev.health.unresolved_count === wsUnresolvedCount) return prev;
+      return {
+        ...prev,
+        health: { ...prev.health, unresolved_count: wsUnresolvedCount },
+      };
+    });
+  }, [wsUnresolvedCount]);
+
   if (error) {
     return (
       <div className="flex h-full items-center justify-center p-6">
@@ -161,6 +193,11 @@ export default function DashboardPage() {
           >
             Last 7 days
           </TimeRangeButton>
+          {wsEventCount > 0 && (
+            <span className="ml-auto text-xs tabular-nums text-muted-foreground">
+              {wsEventCount} event{wsEventCount !== 1 ? "s" : ""} this session
+            </span>
+          )}
         </div>
 
         {/* Health stat cards */}
@@ -216,7 +253,7 @@ export default function DashboardPage() {
           <h2 className="text-sm font-semibold">Issues</h2>
           {data && (
             <Badge variant="secondary" className="text-xs tabular-nums">
-              {data.topIssues.length}
+              {data.health.unresolved_count}
             </Badge>
           )}
         </div>
