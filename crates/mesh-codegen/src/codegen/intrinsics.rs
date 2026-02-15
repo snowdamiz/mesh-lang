@@ -805,16 +805,6 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
         i64_type.fn_type(&[ptr_type.into()], false),
         Some(inkwell::module::Linkage::External));
 
-    // mesh_ws_send(conn: i64, msg: ptr) -> i64
-    module.add_function("mesh_ws_send",
-        i64_type.fn_type(&[i64_type.into(), ptr_type.into()], false),
-        Some(inkwell::module::Linkage::External));
-
-    // mesh_ws_serve(on_connect: ptr, on_message: ptr, on_close: ptr, port: i64) -> void
-    module.add_function("mesh_ws_serve",
-        void_type.fn_type(&[ptr_type.into(), ptr_type.into(), ptr_type.into(), i64_type.into()], false),
-        Some(inkwell::module::Linkage::External));
-
     // mesh_actor_send_named(name_ptr: ptr, name_len: i64, node_ptr: ptr, node_len: i64, msg_ptr: ptr, msg_size: i64) -> void
     module.add_function("mesh_actor_send_named",
         void_type.fn_type(&[ptr_type.into(), i64_type.into(), ptr_type.into(), i64_type.into(), ptr_type.into(), i64_type.into()], false),

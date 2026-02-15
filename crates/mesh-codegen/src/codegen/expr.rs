@@ -640,6 +640,13 @@ impl<'ctx> CodeGen<'ctx> {
                 arg_vals.push(fn_ptr_val.into());
                 arg_vals.push(env_ptr_val.into());
                 _has_closure_args = true;
+            } else if matches!(arg.ty(), MirType::FnPtr(_, _)) && !is_user_fn {
+                // Bare function reference passed to runtime intrinsic.
+                // Runtime expects (fn_ptr, env_ptr) pairs; env_ptr is null for non-closures.
+                let ptr_ty = self.context.ptr_type(inkwell::AddressSpace::default());
+                arg_vals.push(val.into());
+                arg_vals.push(ptr_ty.const_null().into());
+                _has_closure_args = true;
             } else {
                 arg_vals.push(val.into());
             }

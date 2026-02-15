@@ -9885,9 +9885,7 @@ fn map_builtin_name(name: &str) -> String {
         "global_register" => "mesh_global_register".to_string(),
         "global_whereis" => "mesh_global_whereis".to_string(),
         "global_unregister" => "mesh_global_unregister".to_string(),
-        // ── Phase 88: WebSocket functions ────────────────────────────
-        "ws_send" => "mesh_ws_send".to_string(),
-        "ws_serve" => "mesh_ws_serve".to_string(),
+        // ── Phase 88: WebSocket functions (handled above in Phase 60)
         // ── Phase 76: Iterator functions ──────────────────────────────
         "iter_from" => "mesh_iter_from".to_string(),
         // ── Phase 78: Lazy Combinators & Terminals ──────────────────
