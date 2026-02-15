@@ -200,6 +200,7 @@ end
 # Flow: get registry -> get pool+pids -> auth -> rate limit -> validate -> process -> 202
 pub fn handle_event(request) do
   let reg_pid = get_registry()
+  let _ = PipelineRegistry.increment_event_count(reg_pid)
   let pool = PipelineRegistry.get_pool(reg_pid)
   let rate_limiter_pid = PipelineRegistry.get_rate_limiter(reg_pid)
   let processor_pid = PipelineRegistry.get_processor(reg_pid)
@@ -251,6 +252,7 @@ end
 # Handle POST /api/v1/events/bulk
 pub fn handle_bulk(request) do
   let reg_pid = get_registry()
+  let _ = PipelineRegistry.increment_event_count(reg_pid)
   let pool = PipelineRegistry.get_pool(reg_pid)
   let rate_limiter_pid = PipelineRegistry.get_rate_limiter(reg_pid)
   let processor_pid = PipelineRegistry.get_processor(reg_pid)
