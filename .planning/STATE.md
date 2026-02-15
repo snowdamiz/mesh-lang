@@ -9,12 +9,12 @@ See: .planning/PROJECT.md (updated 2026-02-14)
 
 ## Current Position
 
-Phase: 91.1 of 95 (Refactor Mesher to Idiomatic Mesh) -- IN PROGRESS
-Plan: 1 of 2 in current phase (Plan 01 complete)
-Status: Plan 91.1-01 complete -- shared helpers extracted, recursive loops replaced
-Last activity: 2026-02-15 -- Plan 91.1-01 completed
+Phase: 91.1 of 95 (Refactor Mesher to Idiomatic Mesh) -- COMPLETE
+Plan: 2 of 2 in current phase (all plans complete)
+Status: Phase 91.1 complete -- pipe-chained router and data transforms
+Last activity: 2026-02-15 -- Plan 91.1-02 completed
 
-Progress: [####################..........] 99% overall (261/263 plans shipped)
+Progress: [####################..........] 99% overall (263/263 plans shipped)
 
 ## Performance Metrics
 
@@ -24,7 +24,7 @@ Progress: [####################..........] 99% overall (261/263 plans shipped)
 - Milestones shipped: 18 (v1.0-v8.0)
 - Lines of Rust: ~98,800
 - Lines of website: ~5,500
-- Lines of Mesh: ~3200 (first Mesh application code, refactored into modules, ingestion pipeline wired with health monitoring, error grouping pipeline, issue lifecycle API, streaming state management, backpressure buffer drain, subscription protocol and event broadcasting, search/filter/pagination REST API, dashboard aggregation and event detail endpoints, team membership and API token management, refactored with shared helpers and idiomatic patterns)
+- Lines of Mesh: ~3200 (first Mesh application code, refactored into modules, ingestion pipeline wired with health monitoring, error grouping pipeline, issue lifecycle API, streaming state management, backpressure buffer drain, subscription protocol and event broadcasting, search/filter/pagination REST API, dashboard aggregation and event detail endpoints, team membership and API token management, refactored with shared helpers, pipe-chained router and data transforms)
 - Timeline: 10 days (2026-02-05 -> 2026-02-14)
 
 ## Accumulated Context
@@ -104,6 +104,9 @@ Cleared at milestone boundary. v8.0 decisions archived in PROJECT.md.
 - [91.1-01] Cross-module import of query_or_default with inferred request type works without explicit annotation (TyVar normalization from 87.1-02)
 - [91.1-01] Json.encode(issue) includes project_id and fingerprint fields not in manual version -- backward compatible (additive)
 - [91.1-01] Shared helper module pattern: from Api.Helpers import query_or_default, to_json_array
+- [91.1-02] Multi-line pipe chains require parentheses (Mesh parser treats newlines as statement terminators at zero delimiter depth)
+- [91.1-02] Comments between pipe steps break parsing -- must be removed or placed on same line
+- [91.1-02] Router pipe chain inlined into HTTP.serve() to avoid let-binding scoping issue with parenthesized expressions
 
 ### Roadmap Evolution
 
@@ -133,6 +136,6 @@ Research flags from research/SUMMARY.md:
 ## Session Continuity
 
 Last session: 2026-02-15
-Stopped at: Completed 91.1-01-PLAN.md (shared helpers + recursive loop replacement)
+Stopped at: Completed 91.1-02-PLAN.md (pipe-chained router and data transforms)
 Resume file: None
-Next action: Execute 91.1-02-PLAN.md (pipe-chain HTTP router and data transforms)
+Next action: Phase 91.1 complete. Ready for Phase 92 (Alerting) or next milestone phase.
