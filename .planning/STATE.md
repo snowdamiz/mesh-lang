@@ -10,11 +10,11 @@ See: .planning/PROJECT.md (updated 2026-02-14)
 ## Current Position
 
 Phase: 95 of 95 (React Frontend)
-Plan: 3 of 7 in current phase -- COMPLETE
-Status: Plan 03 complete -- Issues and Events list pages with TanStack Table, shared DataTable/FilterBar/Pagination
-Last activity: 2026-02-15 - Issues page with 5-column table, keyset pagination, default unresolved filter; Events search page with 4-column table
+Plan: 6 of 7 in current phase -- COMPLETE
+Status: Plan 06 complete -- Alerts page (rules CRUD, fired alerts) and Settings page (project, team, API keys, storage)
+Last activity: 2026-02-15 - Alert rules create/toggle/delete, fired alerts acknowledge/resolve, settings retention/sampling/team/API keys/storage
 
-Progress: [############------------------] 43% phase (3/7 plans shipped)
+Progress: [#########################-----] 86% phase (6/7 plans shipped)
 
 ## Performance Metrics
 
@@ -140,6 +140,10 @@ Cleared at milestone boundary. v8.0 decisions archived in PROJECT.md.
 - [95-03] Client-side level filtering on Events page since search endpoint lacks level param
 - [95-03] Cursor stack pattern for bidirectional keyset pagination (push on Next, pop on Previous)
 - [95-03] Default 'unresolved' status filter on Issues page per decision [89-02]
+- [95-06] Fixed sonner Toaster to use local useTheme hook instead of next-themes (Vite project, not Next.js)
+- [95-06] Hardcoded orgId "default" for team management (no org CRUD endpoints in backend)
+- [95-06] API key full value shown once after creation, masked to first 8 chars in list view
+- [95-06] AlertDialog for destructive confirmations (delete rule, remove member, revoke key)
 
 ### Roadmap Evolution
 
@@ -173,6 +177,6 @@ Research flags from research/SUMMARY.md:
 ## Session Continuity
 
 Last session: 2026-02-15
-Stopped at: Completed 95-03-PLAN.md (Issues and Events list pages with shared components)
+Stopped at: Completed 95-06-PLAN.md (Alerts and Settings pages with full CRUD)
 Resume file: None
-Next action: Continue with 95-04-PLAN.md (Issue and Event detail panels).
+Next action: Continue with 95-07-PLAN.md (final integration and polish).
