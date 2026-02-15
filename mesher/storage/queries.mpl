@@ -193,3 +193,46 @@ pub fn get_user_orgs(pool :: PoolHandle, user_id :: String) -> List<OrgMembershi
     OrgMembership { id: Map.get(row, "id"), user_id: Map.get(row, "user_id"), org_id: Map.get(row, "org_id"), role: Map.get(row, "role"), joined_at: Map.get(row, "joined_at") }
   end))
 end
+
+# --- Issue queries (Phase 89) ---
+
+# Upsert an issue: insert on first occurrence, update on subsequent.
+# Uses PostgreSQL ON CONFLICT on (project_id, fingerprint) unique constraint.
+# Handles GROUP-04 (new issue), GROUP-05 (event_count + last_seen), and
+# ISSUE-02 (regression: resolved flips to unresolved on new event).
+# Returns Ok(issue_id) or Err.
+pub fn upsert_issue(pool :: PoolHandle, project_id :: String, fingerprint :: String, title :: String, level :: String) -> String!String do
+  let sql = "INSERT INTO issues (project_id, fingerprint, title, level, event_count) VALUES ($1::uuid, $2, $3, $4, 1) ON CONFLICT (project_id, fingerprint) DO UPDATE SET event_count = issues.event_count + 1, last_seen = now(), status = CASE WHEN issues.status = 'resolved' THEN 'unresolved' ELSE issues.status END RETURNING id::text"
+  let rows = Pool.query(pool, sql, [project_id, fingerprint, title, level])?
+  if List.length(rows) > 0 do
+    Ok(Map.get(List.head(rows), "id"))
+  else
+    Err("upsert_issue: no id returned")
+  end
+end
+
+# Check if an issue with the given fingerprint is discarded (ISSUE-05 suppression).
+# Returns true if the issue exists with status = 'discarded', false otherwise.
+pub fn is_issue_discarded(pool :: PoolHandle, project_id :: String, fingerprint :: String) -> Bool!String do
+  let rows = Pool.query(pool, "SELECT 1 AS found FROM issues WHERE project_id = $1::uuid AND fingerprint = $2 AND status = 'discarded'", [project_id, fingerprint])?
+  if List.length(rows) > 0 do
+    Ok(true)
+  else
+    Ok(false)
+  end
+end
+
+# Extract event fields from JSON and compute fingerprint using PostgreSQL.
+# This avoids the cross-module from_json limitation (decision [88-02]) by
+# computing the fingerprint server-side with the same fallback chain as
+# Ingestion.Fingerprint: custom > stacktrace frames > exception type > message.
+# Returns a Map with keys: fingerprint, title, level.
+pub fn extract_event_fields(pool :: PoolHandle, event_json :: String) -> Map<String, String>!String do
+  let sql = "SELECT CASE WHEN length(COALESCE(j->>'fingerprint', '')) > 0 THEN j->>'fingerprint' WHEN j->'stacktrace' IS NOT NULL AND jsonb_typeof(j->'stacktrace') = 'array' AND jsonb_array_length(j->'stacktrace') > 0 THEN (SELECT string_agg(frame->>'filename' || '|' || frame->>'function_name', ';' ORDER BY ordinality) FROM jsonb_array_elements(j->'stacktrace') WITH ORDINALITY AS t(frame, ordinality)) || ':' || lower(COALESCE(replace(j->>'message', '0x', ''), '')) WHEN j->'exception' IS NOT NULL AND j->'exception'->>'type_name' IS NOT NULL THEN (j->'exception'->>'type_name') || ':' || lower(COALESCE(replace(j->'exception'->>'value', '0x', ''), '')) ELSE 'msg:' || lower(COALESCE(replace(j->>'message', '0x', ''), '')) END AS fingerprint, COALESCE(NULLIF(j->>'message', ''), 'Untitled') AS title, COALESCE(j->>'level', 'error') AS level FROM (SELECT $1::jsonb AS j) AS sub"
+  let rows = Pool.query(pool, sql, [event_json])?
+  if List.length(rows) > 0 do
+    Ok(List.head(rows))
+  else
+    Err("extract_event_fields: no result")
+  end
+end

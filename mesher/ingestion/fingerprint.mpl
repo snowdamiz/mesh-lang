@@ -1,0 +1,82 @@
+# Fingerprint computation module for error grouping.
+# Computes a deterministic fingerprint from event payload fields using a
+# priority-based fallback chain: custom fingerprint > stack trace frames >
+# exception type + value > raw message.
+#
+# Fingerprints are plain concatenated strings (not hashed). The UNIQUE
+# constraint on (project_id, fingerprint) in the issues table handles dedup.
+# Line numbers are intentionally excluded from frame fingerprints because
+# they change with unrelated code edits (per Rollbar/Sentry best practices).
+
+from Types.Event import EventPayload, StackFrame, ExceptionInfo
+
+# Normalize an error message for stable fingerprinting.
+# Lowercases and strips hex address prefixes (0x). Full regex not available
+# in Mesh; this covers the most common source of fingerprint instability.
+fn normalize_message(msg :: String) -> String do
+  let lower = String.to_lower(msg)
+  let no_hex = String.replace(lower, "0x", "")
+  String.trim(no_hex)
+end
+
+# Build a fingerprint component from a single stack frame.
+# Uses filename and function_name only (no line numbers -- GROUP-01).
+fn fingerprint_frame(frame :: StackFrame) -> String do
+  frame.filename <> "|" <> frame.function_name
+end
+
+# Recursive loop to build fingerprint string from stack frames.
+# Mesh has no mutable variables so we accumulate via recursion.
+# Joins frame components with ";" and appends ":normalized_message".
+fn fingerprint_frames_loop(frames, acc :: String, i :: Int, total :: Int, msg :: String) -> String do
+  if i < total do
+    let frame = List.get(frames, i)
+    let part = fingerprint_frame(frame)
+    let new_acc = if String.length(acc) > 0 do acc <> ";" <> part else part end
+    fingerprint_frames_loop(frames, new_acc, i + 1, total, msg)
+  else
+    acc <> ":" <> normalize_message(msg)
+  end
+end
+
+# Build fingerprint from stack trace frames and message (GROUP-01).
+# Format: "file|func;file|func;...:normalized_message"
+fn fingerprint_from_frames(frames, msg :: String) -> String do
+  let total = List.length(frames)
+  fingerprint_frames_loop(frames, "", 0, total, msg)
+end
+
+# Fallback fingerprint when no stack trace is available (GROUP-02).
+# Priority: exception type:value > "msg:normalized_message"
+fn fallback_fingerprint(payload :: EventPayload) -> String do
+  case payload.exception do
+    Some(exc) -> exc.type_name <> ":" <> normalize_message(exc.value)
+    None -> "msg:" <> normalize_message(payload.message)
+  end
+end
+
+# Compute fingerprint from stacktrace with fallback chain.
+# If stacktrace frames produce a non-empty fingerprint, use it;
+# otherwise fall back to exception type or raw message.
+fn compute_from_stacktrace_or_fallback(payload :: EventPayload) -> String do
+  case payload.stacktrace do
+    Some(frames) ->
+      let fp = fingerprint_from_frames(frames, payload.message)
+      if String.length(fp) > 0 do fp else fallback_fingerprint(payload) end
+    None -> fallback_fingerprint(payload)
+  end
+end
+
+# Main entry point for fingerprint computation.
+# Fallback chain (GROUP-01, GROUP-02, GROUP-03):
+#   1. Custom fingerprint override (payload.fingerprint non-empty)
+#   2. Stack trace frames (file + function + normalized message)
+#   3. Exception type + normalized value
+#   4. "msg:" + normalized message
+pub fn compute_fingerprint(payload :: EventPayload) -> String do
+  if String.length(payload.fingerprint) > 0 do
+    payload.fingerprint
+  else
+    compute_from_stacktrace_or_fallback(payload)
+  end
+end
