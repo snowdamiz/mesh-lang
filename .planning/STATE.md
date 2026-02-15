@@ -10,21 +10,21 @@ See: .planning/PROJECT.md (updated 2026-02-14)
 ## Current Position
 
 Phase: 88 of 95 (Ingestion Pipeline)
-Plan: 2 of 3 in current phase
-Status: In progress
-Last activity: 2026-02-15 -- Completed 88-02 (Ingestion Services)
+Plan: 3 of 3 in current phase
+Status: Phase complete
+Last activity: 2026-02-15 -- Completed 88-03 (HTTP Routes, WS Handler, Pipeline)
 
-Progress: [####################..........] 96% overall (250/260 plans shipped)
+Progress: [####################..........] 96% overall (251/260 plans shipped)
 
 ## Performance Metrics
 
 **All-time Totals:**
-- Plans completed: 249
+- Plans completed: 251
 - Phases completed: 90
 - Milestones shipped: 18 (v1.0-v8.0)
 - Lines of Rust: ~98,800
 - Lines of website: ~5,500
-- Lines of Mesh: ~940 (first Mesh application code, refactored into modules, ingestion services added)
+- Lines of Mesh: ~1120 (first Mesh application code, refactored into modules, ingestion pipeline wired)
 - Timeline: 10 days (2026-02-05 -> 2026-02-14)
 
 ## Accumulated Context
@@ -58,6 +58,10 @@ Cleared at milestone boundary. v8.0 decisions archived in PROJECT.md.
 - [88-02] EventProcessor delegates validation to caller due to cross-module from_json not resolving for imported types
 - [88-02] Service call handlers use inferred return types; explicit :: Result annotation causes type check failure
 - [88-02] Mesh parser single-expression case arms: extract multi-line logic into helper functions
+- [88-03] PipelineRegistry service pattern for HTTP handler context -- closures not supported in HTTP routing
+- [88-03] MeshString-based Process.register/whereis runtime functions for compiler-generated string args
+- [88-03] SEND_KW added to parser field access for Ws.send module-qualified access
+- [88-03] Ws.serve deferred -- type inference cascade with callback signatures needs investigation
 
 ### Roadmap Evolution
 
@@ -86,6 +90,6 @@ Research flags from research/SUMMARY.md:
 ## Session Continuity
 
 Last session: 2026-02-15
-Stopped at: Completed 88-02-PLAN.md
+Stopped at: Completed 88-03-PLAN.md
 Resume file: None
-Next action: Execute 88-03-PLAN.md (HTTP Routes and WebSocket Handler)
+Next action: Phase 88 complete. Next phase: 89 (Dashboard)
