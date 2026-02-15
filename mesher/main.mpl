@@ -12,6 +12,7 @@ from Ingestion.Pipeline import start_pipeline
 from Ingestion.Routes import handle_event, handle_bulk, handle_resolve_issue, handle_archive_issue, handle_unresolve_issue, handle_assign_issue, handle_discard_issue, handle_delete_issue
 from Api.Search import handle_search_issues, handle_search_events, handle_filter_by_tag, handle_list_issue_events
 from Api.Dashboard import handle_event_volume, handle_error_breakdown, handle_top_issues, handle_tag_breakdown, handle_issue_timeline, handle_project_health
+from Api.Detail import handle_event_detail
 from Ingestion.WsHandler import ws_on_connect, ws_on_message, ws_on_close
 
 fn on_ws_connect(conn, path, headers) do
@@ -74,6 +75,9 @@ fn start_services(pool :: PoolHandle) do
   let r = HTTP.on_get(r, "/api/v1/projects/:project_id/dashboard/tags", handle_tag_breakdown)
   let r = HTTP.on_get(r, "/api/v1/issues/:issue_id/timeline", handle_issue_timeline)
   let r = HTTP.on_get(r, "/api/v1/projects/:project_id/dashboard/health", handle_project_health)
+
+  # Event detail route (Phase 91 Plan 02)
+  let r = HTTP.on_get(r, "/api/v1/events/:event_id", handle_event_detail)
 
   # Issue management routes
   let r = HTTP.on_post(r, "/api/v1/issues/:id/resolve", handle_resolve_issue)
