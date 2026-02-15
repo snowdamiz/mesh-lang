@@ -366,7 +366,16 @@ Plans:
   3. User can manage issues (state transitions, assignment) and manage alert rules (create, edit, delete)
   4. User can see real-time event streaming via WebSocket updating the dashboard live
   5. User can manage organizations and projects through the UI
-**Plans**: TBD
+**Plans:** 7 plans
+
+Plans:
+- [ ] 95-01-PLAN.md -- Scaffold Vite + React 19 project, app shell, shared infrastructure (routing, API client, stores, hooks, types, theme)
+- [ ] 95-02-PLAN.md -- Dashboard page with Recharts charts (volume, levels, health) and issue list
+- [ ] 95-03-PLAN.md -- Issues and Events pages with TanStack Table, filters, and pagination
+- [ ] 95-04-PLAN.md -- Event detail and issue detail push panels (stack trace, breadcrumbs, tags, state transitions)
+- [ ] 95-05-PLAN.md -- Live Stream page and WebSocket integration for real-time dashboard updates
+- [ ] 95-06-PLAN.md -- Alerts page (rule CRUD, fired alerts) and Settings page (project, team, API keys, storage)
+- [ ] 95-07-PLAN.md -- Integration fixes, production build verification, and visual checkpoint
 
 ## Progress
 
