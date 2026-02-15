@@ -245,18 +245,27 @@ fn log_load_status(event_count :: Int, node_count :: Int) do
   println("[Mesher] Load monitor: " <> String.from(event_count) <> " events/5s, " <> String.from(node_count) <> " peers")
 end
 
+# Worker function for remote event processing (CLUSTER-05).
+# Spawned on remote nodes via Node.spawn. Looks up THIS node's own
+# PipelineRegistry via Process.whereis to get the local pool and processor.
+# Does NOT accept PoolHandle as argument (raw pointer, not serializable -- pitfall 1).
+fn event_processor_worker() do
+  let reg_pid = Process.whereis("mesher_registry")
+  let pool = PipelineRegistry.get_pool(reg_pid)
+  let _ = EventProcessor.start(pool)
+  println("[Mesher] Remote event processor worker started")
+  0
+end
+
 # Helper: attempt remote processor spawn on a peer node.
+# Uses Node.spawn to spawn event_processor_worker on the target node.
+# The worker looks up its own node's PipelineRegistry via Process.whereis.
 # Does NOT send local PoolHandle across nodes (research pitfall 1 -- raw pointer, meaningless remotely).
-# Instead, looks up the remote node's own registry via Global.whereis to find its pool.
-# Note: Global.whereis returns Pid<()>; Pid-to-Int comparison not supported (decision [88-05]).
-# We attempt the lookup and call unconditionally. If the remote registry is not yet
-# registered, the service call will return a default/zero value harmlessly.
 fn try_remote_spawn(nodes) do
   let target = List.head(nodes)
   let _ = println("[Mesher] Load high -- spawning remote processor on " <> target)
-  let remote_reg = Global.whereis("mesher_registry@" <> target)
-  let _ = PipelineRegistry.get_pool(remote_reg)
-  let _ = println("[Mesher] Remote processor delegation available via " <> target)
+  let _ = Node.spawn(target, event_processor_worker)
+  let _ = println("[Mesher] Spawned remote event_processor_worker on " <> target)
   0
 end
 

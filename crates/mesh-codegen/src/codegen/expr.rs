@@ -740,11 +740,11 @@ impl<'ctx> CodeGen<'ctx> {
             }
             // Node.spawn(node, func, args...) -> mesh_node_spawn(node_ptr, node_len, fn_name_ptr, fn_name_len, args_ptr, args_size, link_flag)
             if name == "mesh_node_spawn" {
-                return self.codegen_node_spawn(args, 0);
+                return self.codegen_node_spawn(args, &arg_vals, 0);
             }
             // Node.spawn_link -> same as spawn but with link_flag=1
             if name == "mesh_node_spawn_link" {
-                return self.codegen_node_spawn(args, 1);
+                return self.codegen_node_spawn(args, &arg_vals, 1);
             }
             // ── Phase 68: Global Registry codegen ───────────────────────────
             // Global.register(name, pid) -> mesh_global_register(name_ptr, name_len, pid)
@@ -2298,14 +2298,31 @@ impl<'ctx> CodeGen<'ctx> {
     fn codegen_node_spawn(
         &mut self,
         args: &[MirExpr],
+        _pre_evaluated: &[BasicMetadataValueEnum<'ctx>],
         link_flag: u8,
     ) -> Result<BasicValueEnum<'ctx>, String> {
         let i64_ty = self.context.i64_type();
         let i8_ty = self.context.i8_type();
         let ptr_ty = self.context.ptr_type(inkwell::AddressSpace::default());
 
-        // args[0] = node name (String expression)
-        let node_val = self.codegen_expr(&args[0])?;
+        // args[0] = node name (String expression).
+        // When the arg is a variable with MirType::Unit (from unresolved Ty::Var),
+        // codegen_expr loads from the alloca with type {} and returns an empty struct.
+        // The actual stored value is an i64 (string pointer). Reload as i64 directly
+        // from the local alloca to recover the correct runtime value.
+        let node_val = match &args[0] {
+            MirExpr::Var(name, mir_ty) if matches!(mir_ty, MirType::Unit) => {
+                // Variable has unresolved type -- load as i64 from the alloca directly
+                if let Some(alloca) = self.locals.get(name).copied() {
+                    self.builder
+                        .build_load(i64_ty, alloca, &format!("{}_as_i64", name))
+                        .map_err(|e| e.to_string())?
+                } else {
+                    self.codegen_expr(&args[0])?
+                }
+            }
+            _ => self.codegen_expr(&args[0])?,
+        };
         let (node_ptr, node_len) = self.codegen_unpack_string(node_val)?;
 
         // args[1] = function reference -- extract the name as a string constant.
