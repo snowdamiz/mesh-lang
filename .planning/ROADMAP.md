@@ -170,6 +170,7 @@ See milestones/v8.0-ROADMAP.md for full phase details.
 - [x] **Phase 89: Error Grouping & Issue Lifecycle** - Fingerprinting, issue creation, regression detection, state machine (completed 2026-02-15)
 - [x] **Phase 90: Real-Time Streaming** - WebSocket dashboard streaming with rooms, filters, backpressure (completed 2026-02-15)
 - [x] **Phase 91: REST API** - Search, filter, pagination, dashboard aggregation, project/alert/org CRUD, event detail (completed 2026-02-15)
+- [ ] **Phase 91.1: Idiomatic Refactor** - Pipe operators, String.join, shared helpers, DRY (INSERTED)
 - [ ] **Phase 92: Alerting System** - Rule engine, timer-driven evaluation, notifications, dedup/cooldown
 - [ ] **Phase 93: Data Retention & Cleanup** - Retention policies, partition management, storage tracking, sampling
 - [ ] **Phase 94: Multi-Node Clustering** - Distributed actors, global registry, cross-node event routing and broadcast
@@ -277,6 +278,16 @@ Plans:
 - [x] 91-02-PLAN.md -- Dashboard aggregation and event detail (DASH-01..06, DETAIL-01..06)
 - [x] 91-03-PLAN.md -- Team membership and API token management (ORG-04, ORG-05)
 
+### Phase 91.1: Refactor Mesher to use pipe operators and idiomatic Mesh features (INSERTED)
+
+**Goal:** Refactor Mesher application code to use pipe operators and idiomatic Mesh features, making the codebase a showcase of idiomatic Mesh
+**Depends on:** Phase 91
+**Plans:** 2 plans
+
+Plans:
+- [ ] 91.1-01-PLAN.md -- Extract shared helpers (to_json_array, query_or_default) and replace recursive JSON builders with String.join
+- [ ] 91.1-02-PLAN.md -- Pipe-chain HTTP router and data transform pipelines
+
 ### Phase 92: Alerting System
 **Goal**: Users can define alert rules that the system evaluates on a timer, triggering notifications with deduplication and cooldown to prevent alert fatigue
 **Depends on**: Phase 91
@@ -325,7 +336,7 @@ Plans:
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 87 -> 87.1 -> 87.2 -> 88 -> 89 -> 90 -> 91 -> 92 -> 93 -> 94 -> 95
+Phases execute in numeric order: 87 -> 87.1 -> 87.2 -> 88 -> 89 -> 90 -> 91 -> 91.1 -> 92 -> 93 -> 94 -> 95
 Note: Phase 93 depends only on 87 (can run in parallel with 88-92 if desired). Phase 90 and 89 both depend on 88.
 
 | Phase | Milestone | Plans Complete | Status | Completed |
@@ -354,6 +365,7 @@ Note: Phase 93 depends only on 87 (can run in parallel with 88-92 if desired). P
 | 89 | v9.0 | 2/2 | Complete | 2026-02-15 |
 | 90 | v9.0 | 3/3 | Complete | 2026-02-15 |
 | 91 | v9.0 | 3/3 | Complete | 2026-02-15 |
+| 91.1 | v9.0 | 0/2 | Planned | - |
 | 92 | v9.0 | 0/TBD | Not started | - |
 | 93 | v9.0 | 0/TBD | Not started | - |
 | 94 | v9.0 | 0/TBD | Not started | - |
