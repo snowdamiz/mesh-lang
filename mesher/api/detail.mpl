@@ -6,7 +6,7 @@
 
 from Ingestion.Pipeline import PipelineRegistry
 from Storage.Queries import get_event_detail, get_event_neighbors
-from Api.Helpers import require_param
+from Api.Helpers import require_param, get_registry
 
 # --- Helper functions (leaf first, per define-before-use requirement) ---
 
@@ -98,7 +98,7 @@ end
 # Returns full event payload with all JSONB fields and next/prev navigation.
 # Makes two sequential queries: event detail, then event neighbors.
 pub fn handle_event_detail(request) do
-  let reg_pid = Process.whereis("mesher_registry")
+  let reg_pid = get_registry()
   let pool = PipelineRegistry.get_pool(reg_pid)
   let event_id = require_param(request, "event_id")
   let result = get_event_detail(pool, event_id)

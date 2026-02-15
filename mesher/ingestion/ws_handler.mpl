@@ -9,6 +9,7 @@
 from Services.EventProcessor import EventProcessor
 from Services.StreamManager import StreamManager
 from Ingestion.Pipeline import PipelineRegistry
+from Api.Helpers import get_registry
 
 # Helper: check authorization header as fallback
 fn check_authorization_header(conn, headers) do
@@ -107,7 +108,7 @@ end
 # Helper: update subscription filters from a JSON subscribe message.
 # Uses PostgreSQL jsonb extraction (same pattern as handle_assign_issue in routes.mpl).
 fn handle_subscribe_update(conn, message :: String) do
-  let reg_pid = Process.whereis("mesher_registry")
+  let reg_pid = get_registry()
   let pool = PipelineRegistry.get_pool(reg_pid)
   let query_result = Pool.query(pool, "SELECT COALESCE($1::jsonb->'filters'->>'level', '') AS level, COALESCE($1::jsonb->'filters'->>'environment', '') AS env", [message])
   case query_result do
@@ -118,7 +119,7 @@ end
 
 # Helper: handle message from an ingestion client (existing behavior)
 fn handle_ingest_message(conn, message :: String) do
-  let reg_pid = Process.whereis("mesher_registry")
+  let reg_pid = get_registry()
   let processor_pid = PipelineRegistry.get_processor(reg_pid)
   let writer_pid = PipelineRegistry.get_writer(reg_pid)
   let result = EventProcessor.process_event(processor_pid, "ws-project", writer_pid, message)

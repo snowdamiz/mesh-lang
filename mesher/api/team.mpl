@@ -6,7 +6,7 @@
 
 from Ingestion.Pipeline import PipelineRegistry
 from Storage.Queries import get_members_with_users, add_member, update_member_role, remove_member, list_api_keys, create_api_key, revoke_api_key
-from Api.Helpers import query_or_default, to_json_array, require_param
+from Api.Helpers import query_or_default, to_json_array, require_param, get_registry
 
 # --- Shared helpers (leaf functions first, per define-before-use requirement) ---
 
@@ -161,7 +161,7 @@ end
 # Handle GET /api/v1/orgs/:org_id/members
 # Lists all members of an organization with user info (email, display_name).
 pub fn handle_list_members(request) do
-  let reg_pid = Process.whereis("mesher_registry")
+  let reg_pid = get_registry()
   let pool = PipelineRegistry.get_pool(reg_pid)
   let org_id = require_param(request, "org_id")
   let result = get_members_with_users(pool, org_id)
@@ -175,7 +175,7 @@ end
 # Adds a member to an organization. Body: {"user_id":"...","role":"member"}
 # role defaults to "member" if omitted.
 pub fn handle_add_member(request) do
-  let reg_pid = Process.whereis("mesher_registry")
+  let reg_pid = get_registry()
   let pool = PipelineRegistry.get_pool(reg_pid)
   let org_id = require_param(request, "org_id")
   let body = Request.body(request)
@@ -185,7 +185,7 @@ end
 # Handle POST /api/v1/orgs/:org_id/members/:membership_id/role
 # Updates a member's role. Body: {"role":"admin"}
 pub fn handle_update_member_role(request) do
-  let reg_pid = Process.whereis("mesher_registry")
+  let reg_pid = get_registry()
   let pool = PipelineRegistry.get_pool(reg_pid)
   let membership_id = require_param(request, "membership_id")
   let body = Request.body(request)
@@ -195,7 +195,7 @@ end
 # Handle POST /api/v1/orgs/:org_id/members/:membership_id/remove
 # Removes a member from an organization.
 pub fn handle_remove_member(request) do
-  let reg_pid = Process.whereis("mesher_registry")
+  let reg_pid = get_registry()
   let pool = PipelineRegistry.get_pool(reg_pid)
   let membership_id = require_param(request, "membership_id")
   let result = remove_member(pool, membership_id)
@@ -208,7 +208,7 @@ end
 # Handle GET /api/v1/projects/:project_id/api-keys
 # Lists all API keys for a project with revocation status.
 pub fn handle_list_api_keys(request) do
-  let reg_pid = Process.whereis("mesher_registry")
+  let reg_pid = get_registry()
   let pool = PipelineRegistry.get_pool(reg_pid)
   let project_id = require_param(request, "project_id")
   let result = list_api_keys(pool, project_id)
@@ -222,7 +222,7 @@ end
 # Creates a new API key for a project. Body: {"label":"my-key"}
 # label defaults to "default" if omitted.
 pub fn handle_create_api_key(request) do
-  let reg_pid = Process.whereis("mesher_registry")
+  let reg_pid = get_registry()
   let pool = PipelineRegistry.get_pool(reg_pid)
   let project_id = require_param(request, "project_id")
   let body = Request.body(request)
@@ -232,7 +232,7 @@ end
 # Handle POST /api/v1/api-keys/:key_id/revoke
 # Revokes an API key by setting revoked_at to now().
 pub fn handle_revoke_api_key(request) do
-  let reg_pid = Process.whereis("mesher_registry")
+  let reg_pid = get_registry()
   let pool = PipelineRegistry.get_pool(reg_pid)
   let key_id = require_param(request, "key_id")
   let result = revoke_api_key(pool, key_id)

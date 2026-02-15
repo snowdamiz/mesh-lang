@@ -5,7 +5,7 @@
 
 from Ingestion.Pipeline import PipelineRegistry
 from Storage.Queries import list_issues_filtered, search_events_fulltext, filter_events_by_tag, list_events_for_issue
-from Api.Helpers import query_or_default, to_json_array, require_param
+from Api.Helpers import query_or_default, to_json_array, require_param, get_registry
 
 # --- Shared helpers (leaf functions first, per define-before-use requirement) ---
 
@@ -148,7 +148,7 @@ end
 # Supports optional filters: status, level, assigned_to
 # Supports keyset pagination: cursor, cursor_id
 pub fn handle_search_issues(request) do
-  let reg_pid = Process.whereis("mesher_registry")
+  let reg_pid = get_registry()
   let pool = PipelineRegistry.get_pool(reg_pid)
   let project_id = require_param(request, "project_id")
   let status = query_or_default(request, "status", "")
@@ -195,7 +195,7 @@ end
 # Handle GET /api/v1/projects/:project_id/events/search?q=...
 # Full-text search on event messages using PostgreSQL tsvector.
 pub fn handle_search_events(request) do
-  let reg_pid = Process.whereis("mesher_registry")
+  let reg_pid = get_registry()
   let pool = PipelineRegistry.get_pool(reg_pid)
   let project_id = require_param(request, "project_id")
   let q = query_or_default(request, "q", "")
@@ -241,7 +241,7 @@ end
 # Handle GET /api/v1/projects/:project_id/events/tags?key=...&value=...
 # Filter events by tag key-value pair using JSONB containment.
 pub fn handle_filter_by_tag(request) do
-  let reg_pid = Process.whereis("mesher_registry")
+  let reg_pid = get_registry()
   let pool = PipelineRegistry.get_pool(reg_pid)
   let project_id = require_param(request, "project_id")
   let key = query_or_default(request, "key", "")
@@ -265,7 +265,7 @@ end
 # Handle GET /api/v1/issues/:issue_id/events
 # List events for a specific issue with keyset pagination.
 pub fn handle_list_issue_events(request) do
-  let reg_pid = Process.whereis("mesher_registry")
+  let reg_pid = get_registry()
   let pool = PipelineRegistry.get_pool(reg_pid)
   let issue_id = require_param(request, "issue_id")
   let cursor = query_or_default(request, "cursor", "")

@@ -1,7 +1,7 @@
 # HTTP route handlers for the ingestion API.
 # Handlers are bare functions (HTTP routing does not support closures).
 # Service PIDs and pool handle are obtained via the PipelineRegistry service,
-# which is looked up by name using Process.whereis.
+# which is looked up by name using the cluster-aware get_registry() helper.
 
 from Ingestion.Auth import authenticate_request
 from Ingestion.Validation import validate_payload_size
@@ -11,7 +11,7 @@ from Services.EventProcessor import EventProcessor
 from Types.Project import Project
 from Types.Issue import Issue
 from Storage.Queries import resolve_issue, archive_issue, unresolve_issue, assign_issue, discard_issue, delete_issue, list_issues_by_status, check_new_issue, get_event_alert_rules, should_fire_by_cooldown, fire_alert, check_sample_rate
-from Api.Helpers import require_param
+from Api.Helpers import require_param, get_registry
 
 # Helper: build 401 response
 fn unauthorized_response() do
@@ -52,7 +52,7 @@ end
 
 # Helper: broadcast updated issue count for a project
 fn broadcast_issue_count(project_id :: String) do
-  let reg_pid = Process.whereis("mesher_registry")
+  let reg_pid = get_registry()
   let pool = PipelineRegistry.get_pool(reg_pid)
   let count_result = Pool.query(pool, "SELECT count(*)::text AS cnt FROM issues WHERE project_id = $1::uuid AND status = 'unresolved'", [project_id])
   case count_result do
@@ -143,7 +143,7 @@ fn broadcast_event(project_id :: String, issue_id :: String, body :: String) do
   let notification = "{\"type\":\"event\",\"issue_id\":\"" <> issue_id <> "\",\"data\":" <> body <> "}"
   let _ = Ws.broadcast(room, notification)
   let _ = broadcast_issue_count(project_id)
-  let reg_pid = Process.whereis("mesher_registry")
+  let reg_pid = get_registry()
   let pool = PipelineRegistry.get_pool(reg_pid)
   let _ = check_event_alerts(pool, project_id, issue_id)
   accepted_response()
@@ -199,7 +199,7 @@ end
 # Handle POST /api/v1/events
 # Flow: get registry -> get pool+pids -> auth -> rate limit -> validate -> process -> 202
 pub fn handle_event(request) do
-  let reg_pid = Process.whereis("mesher_registry")
+  let reg_pid = get_registry()
   let pool = PipelineRegistry.get_pool(reg_pid)
   let rate_limiter_pid = PipelineRegistry.get_rate_limiter(reg_pid)
   let processor_pid = PipelineRegistry.get_processor(reg_pid)
@@ -250,7 +250,7 @@ end
 
 # Handle POST /api/v1/events/bulk
 pub fn handle_bulk(request) do
-  let reg_pid = Process.whereis("mesher_registry")
+  let reg_pid = get_registry()
   let pool = PipelineRegistry.get_pool(reg_pid)
   let rate_limiter_pid = PipelineRegistry.get_rate_limiter(reg_pid)
   let processor_pid = PipelineRegistry.get_processor(reg_pid)
@@ -328,7 +328,7 @@ end
 # Handle GET /api/v1/projects/:project_id/issues?status=unresolved
 # Defaults to listing 'unresolved' issues (query string parsing not available in Mesh).
 pub fn handle_list_issues(request) do
-  let reg_pid = Process.whereis("mesher_registry")
+  let reg_pid = get_registry()
   let pool = PipelineRegistry.get_pool(reg_pid)
   let project_id = require_param(request, "project_id")
   let result = list_issues_by_status(pool, project_id, "unresolved")
@@ -340,7 +340,7 @@ end
 
 # Handle POST /api/v1/issues/:id/resolve
 pub fn handle_resolve_issue(request) do
-  let reg_pid = Process.whereis("mesher_registry")
+  let reg_pid = get_registry()
   let pool = PipelineRegistry.get_pool(reg_pid)
   let issue_id = require_param(request, "id")
   let result = resolve_issue(pool, issue_id)
@@ -352,7 +352,7 @@ end
 
 # Handle POST /api/v1/issues/:id/archive
 pub fn handle_archive_issue(request) do
-  let reg_pid = Process.whereis("mesher_registry")
+  let reg_pid = get_registry()
   let pool = PipelineRegistry.get_pool(reg_pid)
   let issue_id = require_param(request, "id")
   let result = archive_issue(pool, issue_id)
@@ -364,7 +364,7 @@ end
 
 # Handle POST /api/v1/issues/:id/unresolve
 pub fn handle_unresolve_issue(request) do
-  let reg_pid = Process.whereis("mesher_registry")
+  let reg_pid = get_registry()
   let pool = PipelineRegistry.get_pool(reg_pid)
   let issue_id = require_param(request, "id")
   let result = unresolve_issue(pool, issue_id)
@@ -391,7 +391,7 @@ end
 # Handle POST /api/v1/issues/:id/assign
 # Extracts user_id from JSON body using PostgreSQL jsonb parsing.
 pub fn handle_assign_issue(request) do
-  let reg_pid = Process.whereis("mesher_registry")
+  let reg_pid = get_registry()
   let pool = PipelineRegistry.get_pool(reg_pid)
   let issue_id = require_param(request, "id")
   let body = Request.body(request)
@@ -404,7 +404,7 @@ end
 
 # Handle POST /api/v1/issues/:id/discard
 pub fn handle_discard_issue(request) do
-  let reg_pid = Process.whereis("mesher_registry")
+  let reg_pid = get_registry()
   let pool = PipelineRegistry.get_pool(reg_pid)
   let issue_id = require_param(request, "id")
   let result = discard_issue(pool, issue_id)
@@ -416,7 +416,7 @@ end
 
 # Handle POST /api/v1/issues/:id/delete
 pub fn handle_delete_issue(request) do
-  let reg_pid = Process.whereis("mesher_registry")
+  let reg_pid = get_registry()
   let pool = PipelineRegistry.get_pool(reg_pid)
   let issue_id = require_param(request, "id")
   let result = delete_issue(pool, issue_id)

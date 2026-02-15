@@ -5,7 +5,7 @@
 
 from Ingestion.Pipeline import PipelineRegistry
 from Storage.Queries import event_volume_hourly, error_breakdown_by_level, top_issues_by_frequency, event_breakdown_by_tag, issue_event_timeline, project_health_summary
-from Api.Helpers import query_or_default, to_json_array, require_param
+from Api.Helpers import query_or_default, to_json_array, require_param, get_registry
 
 # --- Shared helpers (leaf functions first, per define-before-use requirement) ---
 
@@ -64,7 +64,7 @@ end
 # Handle GET /api/v1/projects/:project_id/dashboard/volume
 # Returns event volume bucketed by hour or day.
 pub fn handle_event_volume(request) do
-  let reg_pid = Process.whereis("mesher_registry")
+  let reg_pid = get_registry()
   let pool = PipelineRegistry.get_pool(reg_pid)
   let project_id = require_param(request, "project_id")
   let bucket = query_or_default(request, "bucket", "hour")
@@ -84,7 +84,7 @@ end
 # Handle GET /api/v1/projects/:project_id/dashboard/levels
 # Returns error breakdown by severity level.
 pub fn handle_error_breakdown(request) do
-  let reg_pid = Process.whereis("mesher_registry")
+  let reg_pid = get_registry()
   let pool = PipelineRegistry.get_pool(reg_pid)
   let project_id = require_param(request, "project_id")
   let result = error_breakdown_by_level(pool, project_id)
@@ -103,7 +103,7 @@ end
 # Handle GET /api/v1/projects/:project_id/dashboard/top-issues
 # Returns top issues ranked by frequency.
 pub fn handle_top_issues(request) do
-  let reg_pid = Process.whereis("mesher_registry")
+  let reg_pid = get_registry()
   let pool = PipelineRegistry.get_pool(reg_pid)
   let project_id = require_param(request, "project_id")
   let limit = query_or_default(request, "limit", "10")
@@ -132,7 +132,7 @@ end
 # Handle GET /api/v1/projects/:project_id/dashboard/tags?key=...
 # Returns event breakdown by tag value for the specified tag key.
 pub fn handle_tag_breakdown(request) do
-  let reg_pid = Process.whereis("mesher_registry")
+  let reg_pid = get_registry()
   let pool = PipelineRegistry.get_pool(reg_pid)
   let project_id = require_param(request, "project_id")
   let key = query_or_default(request, "key", "")
@@ -152,7 +152,7 @@ end
 # Handle GET /api/v1/issues/:issue_id/timeline
 # Returns per-issue event timeline.
 pub fn handle_issue_timeline(request) do
-  let reg_pid = Process.whereis("mesher_registry")
+  let reg_pid = get_registry()
   let pool = PipelineRegistry.get_pool(reg_pid)
   let issue_id = require_param(request, "issue_id")
   let limit = query_or_default(request, "limit", "50")
@@ -179,7 +179,7 @@ end
 # Handle GET /api/v1/projects/:project_id/dashboard/health
 # Returns project health summary: unresolved count, 24h events, new today.
 pub fn handle_project_health(request) do
-  let reg_pid = Process.whereis("mesher_registry")
+  let reg_pid = get_registry()
   let pool = PipelineRegistry.get_pool(reg_pid)
   let project_id = require_param(request, "project_id")
   let result = project_health_summary(pool, project_id)

@@ -4,7 +4,7 @@
 
 from Ingestion.Pipeline import PipelineRegistry
 from Storage.Queries import get_project_settings, update_project_settings, get_project_storage
-from Api.Helpers import require_param
+from Api.Helpers import require_param, get_registry
 
 # --- Helper functions (defined before handlers) ---
 
@@ -33,7 +33,7 @@ end
 # Handle GET /api/v1/projects/:project_id/settings (RETAIN-01)
 # Returns retention_days and sample_rate for a project.
 pub fn handle_get_project_settings(request) do
-  let reg_pid = Process.whereis("mesher_registry")
+  let reg_pid = get_registry()
   let pool = PipelineRegistry.get_pool(reg_pid)
   let project_id = require_param(request, "project_id")
   let result = get_project_settings(pool, project_id)
@@ -46,7 +46,7 @@ end
 # Handle POST /api/v1/projects/:project_id/settings (RETAIN-01)
 # Updates retention_days and/or sample_rate from JSON body.
 pub fn handle_update_project_settings(request) do
-  let reg_pid = Process.whereis("mesher_registry")
+  let reg_pid = get_registry()
   let pool = PipelineRegistry.get_pool(reg_pid)
   let project_id = require_param(request, "project_id")
   let body = Request.body(request)
@@ -60,7 +60,7 @@ end
 # Handle GET /api/v1/projects/:project_id/storage (RETAIN-03)
 # Returns event_count and estimated_bytes for a project.
 pub fn handle_get_project_storage(request) do
-  let reg_pid = Process.whereis("mesher_registry")
+  let reg_pid = get_registry()
   let pool = PipelineRegistry.get_pool(reg_pid)
   let project_id = require_param(request, "project_id")
   let result = get_project_storage(pool, project_id)
