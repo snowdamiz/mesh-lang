@@ -13,6 +13,7 @@ from Ingestion.Routes import handle_event, handle_bulk, handle_resolve_issue, ha
 from Api.Search import handle_search_issues, handle_search_events, handle_filter_by_tag, handle_list_issue_events
 from Api.Dashboard import handle_event_volume, handle_error_breakdown, handle_top_issues, handle_tag_breakdown, handle_issue_timeline, handle_project_health
 from Api.Detail import handle_event_detail
+from Api.Team import handle_list_members, handle_add_member, handle_update_member_role, handle_remove_member, handle_list_api_keys, handle_create_api_key, handle_revoke_api_key
 from Ingestion.WsHandler import ws_on_connect, ws_on_message, ws_on_close
 
 fn on_ws_connect(conn, path, headers) do
@@ -86,6 +87,17 @@ fn start_services(pool :: PoolHandle) do
   let r = HTTP.on_post(r, "/api/v1/issues/:id/assign", handle_assign_issue)
   let r = HTTP.on_post(r, "/api/v1/issues/:id/discard", handle_discard_issue)
   let r = HTTP.on_post(r, "/api/v1/issues/:id/delete", handle_delete_issue)
+
+  # Team management routes (ORG-04)
+  let r = HTTP.on_get(r, "/api/v1/orgs/:org_id/members", handle_list_members)
+  let r = HTTP.on_post(r, "/api/v1/orgs/:org_id/members", handle_add_member)
+  let r = HTTP.on_post(r, "/api/v1/orgs/:org_id/members/:membership_id/role", handle_update_member_role)
+  let r = HTTP.on_post(r, "/api/v1/orgs/:org_id/members/:membership_id/remove", handle_remove_member)
+
+  # API token routes (ORG-05)
+  let r = HTTP.on_get(r, "/api/v1/projects/:project_id/api-keys", handle_list_api_keys)
+  let r = HTTP.on_post(r, "/api/v1/projects/:project_id/api-keys", handle_create_api_key)
+  let r = HTTP.on_post(r, "/api/v1/api-keys/:key_id/revoke", handle_revoke_api_key)
 
   # Start WebSocket server (non-blocking -- spawns accept thread in runtime)
   println("[Mesher] WebSocket server starting on :8081")
