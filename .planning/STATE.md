@@ -9,12 +9,12 @@ See: .planning/PROJECT.md (updated 2026-02-14)
 
 ## Current Position
 
-Phase: 93.1 of 95 (Issues Encountered) -- COMPLETE
+Phase: 93.2 of 95 (Fix Actor Spawn Segfault) -- COMPLETE
 Plan: 1 of 1 in current phase -- ALL COMPLETE
-Status: Phase 93.1 complete -- all 7 compilation errors fixed, Mesher compiles cleanly
-Last activity: 2026-02-15 - Fixed forward-reference ordering in detail.mpl and team.mpl (7 errors -> 0)
+Status: Phase 93.2 complete -- actor ABI wrapper generation fixes segfault for actors with parameters
+Last activity: 2026-02-15 - Actor wrapper+body function pair for ABI-correct spawn with typed args
 
-Progress: [#######################.......] 100% overall (268/268 plans shipped)
+Progress: [#######################.......] 100% overall (269/269 plans shipped)
 
 ## Performance Metrics
 
@@ -24,7 +24,7 @@ Progress: [#######################.......] 100% overall (268/268 plans shipped)
 - Milestones shipped: 18 (v1.0-v8.0)
 - Lines of Rust: ~98,800
 - Lines of website: ~5,500
-- Lines of Mesh: ~3860 (first Mesh application code, refactored into modules, ingestion pipeline wired with health monitoring, error grouping pipeline, issue lifecycle API, streaming state management, backpressure buffer drain, subscription protocol and event broadcasting, search/filter/pagination REST API, dashboard aggregation and event detail endpoints, team membership and API token management, refactored with shared helpers, pipe-chained router and data transforms, alerting data foundation, alert evaluation engine, alert HTTP API routes, retention data foundation, settings API and ingestion sampling, forward-reference fixes for clean compilation)
+- Lines of Mesh: ~3860 (first Mesh application code, refactored into modules, ingestion pipeline wired with health monitoring, error grouping pipeline, issue lifecycle API, streaming state management, backpressure buffer drain, subscription protocol and event broadcasting, search/filter/pagination REST API, dashboard aggregation and event detail endpoints, team membership and API token management, refactored with shared helpers, pipe-chained router and data transforms, alerting data foundation, alert evaluation engine, alert HTTP API routes, retention data foundation, settings API and ingestion sampling, forward-reference fixes for clean compilation, actor spawn ABI fix)
 - Timeline: 11 days (2026-02-05 -> 2026-02-15)
 
 ## Accumulated Context
@@ -114,6 +114,9 @@ Cleared at milestone boundary. v8.0 decisions archived in PROJECT.md.
 - [93-02] ~~Actors cannot be imported across modules in Mesh -- retention_cleaner duplicated in pipeline.mpl~~ FIXED: actors now exported/imported like services (always exported, no pub prefix)
 - [93-02] Separate bulk sampling path (handle_bulk_sampled) preserves 5MB size limit vs 1MB single-event limit
 - [93.1-01] main.mpl handle_top_issues type mismatch was cascading inference failure from broken Api.Detail -- no explicit return type annotation needed
+- [93.2-01] Actor wrapper keeps original name, body renamed to __actor_{name}_body -- spawn references resolve to wrapper
+- [93.2-01] TCE rewrite uses original actor name for matching (recursive calls use original name, not body name)
+- [93.2-01] Monomorphize pass explicitly marks __actor_*_body as reachable from wrapper functions (same pattern as service dispatch)
 
 ### Roadmap Evolution
 
@@ -121,6 +124,7 @@ Cleared at milestone boundary. v8.0 decisions archived in PROJECT.md.
 - Phase 87.2 inserted after Phase 87.1: Refactor Phase 87 code to use cross-module services (URGENT)
 - Phase 91.1 inserted after Phase 91: Refactor Mesher to use pipe operators and idiomatic Mesh features (URGENT)
 - Phase 93.1 inserted after Phase 93: Issues Encountered (URGENT)
+- Phase 93.2 inserted after Phase 93: Fix actor spawn segfault in project mode (URGENT)
 
 ### Pending Todos
 
@@ -145,6 +149,6 @@ Research flags from research/SUMMARY.md:
 ## Session Continuity
 
 Last session: 2026-02-15
-Stopped at: Phase 93.1 executed and verified
+Stopped at: Completed 93.2-01-PLAN.md
 Resume file: None
 Next action: Plan Phase 94 (Multi-Node Clustering)
