@@ -1178,6 +1178,8 @@ pub fn infer_with_imports(parse: &Parse, import_ctx: &ImportContext) -> TypeckRe
         default_method_bodies,
         qualified_modules: qualified_modules_for_codegen,
         imported_functions: ctx.imported_functions,
+        imported_service_methods: ctx.imported_service_methods,
+        local_service_exports: ctx.local_service_exports,
     }
 }
 
@@ -1964,6 +1966,26 @@ fn infer_item(
                     }
                     // Sum type variant constructors are already in mod_exports.functions
                     // (registered during the exporting module's type check).
+
+                    // Register service definitions for qualified access (ServiceName.method)
+                    for (service_name, service_info) in &mod_exports.service_defs {
+                        // Register each helper function type in the environment
+                        for (method_name, scheme) in &service_info.helpers {
+                            let qualified = format!("{}.{}", service_name, method_name);
+                            env.insert(qualified, scheme.clone());
+                            // Also add to qualified_modules for MIR lowering
+                            ctx.qualified_modules.entry(service_name.clone())
+                                .or_default()
+                                .insert(method_name.clone(), scheme.clone());
+                        }
+                        // Register the service name as a type constructor for field access
+                        env.insert(service_name.clone(), Scheme::mono(Ty::Con(TyCon::new(service_name))));
+                        // Register method mappings for MIR lowering
+                        ctx.imported_service_methods.insert(
+                            service_name.clone(),
+                            service_info.methods.clone(),
+                        );
+                    }
                 } else if is_stdlib_module(&last_segment) {
                     // Stdlib module -- already handled in infer_field_access.
                     // No action needed (backward compat).
@@ -2018,6 +2040,24 @@ fn infer_item(
                                         &sum_def.variants,
                                     );
                                 }
+                                // Check service definitions (importing a service brings its helpers)
+                                else if let Some(service_info) = mod_exports.service_defs.get(&name) {
+                                    // Register each helper function type in the environment
+                                    for (method_name, scheme) in &service_info.helpers {
+                                        let qualified = format!("{}.{}", name, method_name);
+                                        env.insert(qualified, scheme.clone());
+                                        ctx.qualified_modules.entry(name.clone())
+                                            .or_default()
+                                            .insert(method_name.clone(), scheme.clone());
+                                    }
+                                    // Register the service name as a type constructor
+                                    env.insert(name.clone(), Scheme::mono(Ty::Con(TyCon::new(&name))));
+                                    // Register method mappings for MIR lowering
+                                    ctx.imported_service_methods.insert(
+                                        name.clone(),
+                                        service_info.methods.clone(),
+                                    );
+                                }
                                 else {
                                     // Check if item exists but is private (VIS-03)
                                     if mod_exports.private_names.contains(&name) {
@@ -2031,6 +2071,7 @@ fn infer_item(
                                         let available: Vec<String> = mod_exports.functions.keys()
                                             .chain(mod_exports.struct_defs.keys())
                                             .chain(mod_exports.sum_type_defs.keys())
+                                            .chain(mod_exports.service_defs.keys())
                                             .cloned()
                                             .collect();
                                         ctx.errors.push(TypeError::ImportNameNotFound {
@@ -6788,6 +6829,49 @@ fn infer_service_def(
         let fn_ty = Ty::Fun(fn_params, Box::new(Ty::Tuple(vec![])));
         let qualified = format!("{}.{}", service_name, snake_name);
         env.insert(qualified, Scheme::mono(fn_ty));
+    }
+
+    // ── Build service export info for cross-module export ──────────────
+    {
+        use crate::ServiceExportInfo;
+        use rustc_hash::FxHashMap as FxMap;
+
+        let name_lower = service_name.to_lowercase();
+        let mut info = ServiceExportInfo {
+            name: service_name.clone(),
+            helpers: FxMap::default(),
+            methods: Vec::new(),
+        };
+
+        // Start helper
+        let resolved_start = ctx.resolve(start_fn_ty.clone());
+        info.helpers.insert("start".to_string(), Scheme::mono(resolved_start));
+        info.methods.push(("start".to_string(), format!("__service_{}_start", name_lower)));
+
+        // Call handler helpers
+        for (variant_name, param_types, reply_ty) in &call_handler_info {
+            let snake_name = to_snake_case(variant_name);
+            let mut fn_params = vec![pid_ty.clone()];
+            fn_params.extend(param_types.iter().cloned());
+            let resolved_reply = ctx.resolve(reply_ty.clone());
+            let fn_ty = Ty::Fun(fn_params, Box::new(resolved_reply));
+            let resolved_fn = ctx.resolve(fn_ty);
+            info.helpers.insert(snake_name.clone(), Scheme::mono(resolved_fn));
+            info.methods.push((snake_name, format!("__service_{}_call_{}", name_lower, to_snake_case(variant_name))));
+        }
+
+        // Cast handler helpers
+        for (variant_name, param_types) in &cast_handler_info {
+            let snake_name = to_snake_case(variant_name);
+            let mut fn_params = vec![pid_ty.clone()];
+            fn_params.extend(param_types.iter().cloned());
+            let fn_ty = Ty::Fun(fn_params, Box::new(Ty::Tuple(vec![])));
+            let resolved_fn = ctx.resolve(fn_ty);
+            info.helpers.insert(snake_name.clone(), Scheme::mono(resolved_fn));
+            info.methods.push((snake_name, format!("__service_{}_cast_{}", name_lower, to_snake_case(variant_name))));
+        }
+
+        ctx.local_service_exports.insert(service_name.clone(), info);
     }
 
     ctx.leave_level();

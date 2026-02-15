@@ -2850,3 +2850,47 @@ end
     ]);
     assert_eq!(output, "42\n42\nhello world\n");
 }
+
+/// Phase 87.1-02: Cross-module service import.
+/// A service defined in one module can be imported and used from another module.
+/// Tests the full service export/import pipeline: type checking, MIR lowering,
+/// and cross-module symbol resolution.
+#[test]
+fn e2e_cross_module_service() {
+    let output = compile_multifile_and_run(&[
+        ("services.mpl", r#"
+service Store do
+  fn init(start_val :: Int) -> Int do
+    start_val
+  end
+
+  call Get() :: Int do |state|
+    (state, state)
+  end
+
+  call Set(value :: Int) :: Int do |_state|
+    (value, value)
+  end
+
+  cast Clear() do |_state|
+    0
+  end
+end
+"#),
+        ("main.mpl", r#"
+from Services import Store
+
+fn main() do
+  let pid = Store.start(100)
+  let v1 = Store.get(pid)
+  println("${v1}")
+  let v2 = Store.set(pid, 200)
+  println("${v2}")
+  Store.clear(pid)
+  let v3 = Store.get(pid)
+  println("${v3}")
+end
+"#),
+    ]);
+    assert_eq!(output, "100\n200\n0\n");
+}

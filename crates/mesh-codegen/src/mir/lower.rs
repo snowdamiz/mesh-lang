@@ -277,7 +277,9 @@ impl<'a> Lowerer<'a> {
             closure_counter: 0,
             known_functions: HashMap::new(),
             entry_function: None,
-            service_modules: HashMap::new(),
+            service_modules: typeck.imported_service_methods.iter()
+                .map(|(k, v)| (k.clone(), v.clone()))
+                .collect(),
             mono_depth: 0,
             max_mono_depth: 64,
             monomorphized_trait_fns: HashSet::new(),
@@ -5906,7 +5908,24 @@ impl<'a> Lowerer<'a> {
         if let Some(base_expr) = fa.base() {
             if let Expr::NameRef(ref name_ref) = base_expr {
                 if let Some(base_name) = name_ref.text() {
-                    // Check user-defined modules FIRST (Phase 39) -- they shadow stdlib.
+                    // Check service modules FIRST -- service methods map to generated
+                    // function names (e.g., Counter.start -> __service_counter_start).
+                    // Must come before user_modules which would resolve to bare names.
+                    if let Some(methods) = self.service_modules.get(&base_name).cloned() {
+                        let field = fa
+                            .field()
+                            .map(|t| t.text().to_string())
+                            .unwrap_or_default();
+                        for (method_name, generated_fn) in &methods {
+                            if *method_name == field {
+                                let ty = self.resolve_range(fa.syntax().text_range());
+                                // Return the generated function name as a Var reference.
+                                return MirExpr::Var(generated_fn.clone(), ty);
+                            }
+                        }
+                    }
+
+                    // Check user-defined modules (Phase 39) -- they shadow stdlib.
                     if let Some(func_names) = self.user_modules.get(&base_name) {
                         let field = fa
                             .field()
@@ -5937,21 +5956,6 @@ impl<'a> Lowerer<'a> {
                             self.resolve_range(fa.syntax().text_range())
                         };
                         return MirExpr::Var(runtime_name, ty);
-                    }
-
-                    // Check if this is a service module method (e.g., Counter.start).
-                    if let Some(methods) = self.service_modules.get(&base_name).cloned() {
-                        let field = fa
-                            .field()
-                            .map(|t| t.text().to_string())
-                            .unwrap_or_default();
-                        for (method_name, generated_fn) in &methods {
-                            if *method_name == field {
-                                let ty = self.resolve_range(fa.syntax().text_range());
-                                // Return the generated function name as a Var reference.
-                                return MirExpr::Var(generated_fn.clone(), ty);
-                            }
-                        }
                     }
 
                     // Check if this is StructName.from_json or SumTypeName.from_json

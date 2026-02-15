@@ -90,6 +90,9 @@ pub struct ModuleExports {
     /// Sum type definitions exported by this module.
     pub sum_type_defs: FxHashMap<String, SumTypeDefInfo>,
 
+    /// Service definitions exported by this module.
+    pub service_defs: FxHashMap<String, ServiceExportInfo>,
+
     /// Names of private (non-pub) items, for distinguishing "private" from "nonexistent" in errors.
     pub private_names: FxHashSet<String>,
 }
@@ -103,12 +106,29 @@ pub struct ExportedSymbols {
     pub struct_defs: FxHashMap<String, StructDefInfo>,
     /// Sum type definitions.
     pub sum_type_defs: FxHashMap<String, SumTypeDefInfo>,
+    /// Service definitions with helper function info.
+    pub service_defs: FxHashMap<String, ServiceExportInfo>,
     /// Trait definitions declared in this module.
     pub trait_defs: Vec<TraitDef>,
     /// Trait impls declared in this module.
     pub trait_impls: Vec<TraitImplDef>,
     /// Names of private (non-pub) items, for distinguishing "private" from "nonexistent" in errors.
     pub private_names: FxHashSet<String>,
+}
+
+/// Information about an exported service, containing the helper function
+/// signatures and method mappings needed by importing modules.
+#[derive(Debug, Default, Clone)]
+pub struct ServiceExportInfo {
+    /// Service name (e.g., "Counter").
+    pub name: String,
+    /// Helper functions: maps unqualified name (e.g., "start", "increment")
+    /// to their type scheme. These are registered as ServiceName.method in
+    /// the importing module's type environment.
+    pub helpers: FxHashMap<String, Scheme>,
+    /// Method names with their generated function names for MIR resolution.
+    /// Maps (method_name, generated_fn_name), e.g., ("start", "__service_counter_start").
+    pub methods: Vec<(String, String)>,
 }
 
 // ── TypeckResult ────────────────────────────────────────────────────────
@@ -149,6 +169,14 @@ pub struct TypeckResult {
     /// These names are directly callable without qualification.
     /// Used by the MIR lowerer to skip trait dispatch for imported functions.
     pub imported_functions: Vec<String>,
+    /// Service method mappings imported from other modules.
+    /// Maps service_name -> Vec<(method_name, generated_fn_name)>.
+    /// Used by the MIR lowerer to populate service_modules for cross-module calls.
+    pub imported_service_methods: FxHashMap<String, Vec<(String, String)>>,
+    /// Locally-defined service export info (for collect_exports).
+    /// Maps service_name -> ServiceExportInfo with resolved helper types.
+    /// Populated during infer_service_def, consumed by collect_exports.
+    pub local_service_exports: FxHashMap<String, ServiceExportInfo>,
 }
 
 impl TypeckResult {
@@ -253,6 +281,12 @@ pub fn collect_exports(
                 }
             }
         }
+    }
+
+    // Copy service defs from typeck.local_service_exports.
+    // Services are always exported (no `pub` prefix in current grammar).
+    for (name, info) in &typeck.local_service_exports {
+        exports.service_defs.insert(name.clone(), info.clone());
     }
 
     // Extract trait defs from AST InterfaceDef items, filtered by visibility.

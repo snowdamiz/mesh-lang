@@ -37,6 +37,13 @@ pub struct InferCtx {
     /// Function names imported via `from Module import name1, name2`.
     /// Tracked so the MIR lowerer can skip trait dispatch for these.
     pub imported_functions: Vec<String>,
+    /// Service method mappings imported from other modules.
+    /// Maps service_name -> Vec<(method_name, generated_fn_name)>.
+    /// Populated during import resolution, propagated to TypeckResult for MIR lowering.
+    pub imported_service_methods: FxHashMap<String, Vec<(String, String)>>,
+    /// Locally-defined service export info for collect_exports.
+    /// Populated by infer_service_def with resolved helper function types.
+    pub local_service_exports: FxHashMap<String, crate::ServiceExportInfo>,
     /// The name of the current module being type-checked (e.g., "Geometry").
     /// None for single-file mode. Used to set display_prefix on locally-defined types.
     pub current_module: Option<String>,
@@ -58,6 +65,8 @@ impl InferCtx {
             loop_depth: 0,
             qualified_modules: FxHashMap::default(),
             imported_functions: Vec::new(),
+            imported_service_methods: FxHashMap::default(),
+            local_service_exports: FxHashMap::default(),
             current_module: None,
             fn_return_type_stack: Vec::new(),
         }
