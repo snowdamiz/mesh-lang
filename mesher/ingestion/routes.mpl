@@ -146,6 +146,55 @@ pub fn handle_bulk(request) do
   end
 end
 
+# --- Issue state change broadcasting helpers (STREAM-03) ---
+# Defined before issue management handlers (Mesh requires define-before-use).
+
+# Helper: broadcast issue update from project lookup rows
+fn broadcast_update_from_rows(rows, issue_id :: String, action :: String) do
+  if List.length(rows) > 0 do
+    let project_id = Map.get(List.head(rows), "project_id")
+    let room = "project:" <> project_id
+    let msg = "{\"type\":\"issue\",\"action\":\"" <> action <> "\",\"issue_id\":\"" <> issue_id <> "\"}"
+    let _ = Ws.broadcast(room, msg)
+    0
+  else
+    0
+  end
+end
+
+# Helper: look up project_id for an issue and broadcast state change notification
+fn broadcast_issue_update(pool, issue_id :: String, action :: String) do
+  let rows_result = Pool.query(pool, "SELECT project_id::text FROM issues WHERE id = $1::uuid", [issue_id])
+  case rows_result do
+    Ok(rows) -> broadcast_update_from_rows(rows, issue_id, action)
+    Err(_) -> 0
+  end
+end
+
+# Helper: broadcast resolve notification then return success response
+fn resolve_success(pool, issue_id :: String, n :: Int) do
+  let _ = broadcast_issue_update(pool, issue_id, "resolved")
+  HTTP.response(200, "{\"status\":\"ok\",\"affected\":" <> String.from(n) <> "}")
+end
+
+# Helper: broadcast archive notification then return success response
+fn archive_success(pool, issue_id :: String, n :: Int) do
+  let _ = broadcast_issue_update(pool, issue_id, "archived")
+  HTTP.response(200, "{\"status\":\"ok\",\"affected\":" <> String.from(n) <> "}")
+end
+
+# Helper: broadcast unresolve notification then return success response
+fn unresolve_success(pool, issue_id :: String, n :: Int) do
+  let _ = broadcast_issue_update(pool, issue_id, "unresolved")
+  HTTP.response(200, "{\"status\":\"ok\",\"affected\":" <> String.from(n) <> "}")
+end
+
+# Helper: broadcast discard notification then return success response
+fn discard_success(pool, issue_id :: String, n :: Int) do
+  let _ = broadcast_issue_update(pool, issue_id, "discarded")
+  HTTP.response(200, "{\"status\":\"ok\",\"affected\":" <> String.from(n) <> "}")
+end
+
 # --- Issue management route handlers (Phase 89 Plan 02) ---
 
 # Helper: build a JSON string for a single Issue.
@@ -191,7 +240,7 @@ pub fn handle_resolve_issue(request) do
   let issue_id = Request.param(request, "id")
   let result = resolve_issue(pool, issue_id)
   case result do
-    Ok(n) -> HTTP.response(200, "{\"status\":\"ok\",\"affected\":" <> String.from(n) <> "}")
+    Ok(n) -> resolve_success(pool, issue_id, n)
     Err(e) -> HTTP.response(500, "{\"error\":\"" <> e <> "\"}")
   end
 end
@@ -203,7 +252,7 @@ pub fn handle_archive_issue(request) do
   let issue_id = Request.param(request, "id")
   let result = archive_issue(pool, issue_id)
   case result do
-    Ok(n) -> HTTP.response(200, "{\"status\":\"ok\",\"affected\":" <> String.from(n) <> "}")
+    Ok(n) -> archive_success(pool, issue_id, n)
     Err(e) -> HTTP.response(500, "{\"error\":\"" <> e <> "\"}")
   end
 end
@@ -215,7 +264,7 @@ pub fn handle_unresolve_issue(request) do
   let issue_id = Request.param(request, "id")
   let result = unresolve_issue(pool, issue_id)
   case result do
-    Ok(n) -> HTTP.response(200, "{\"status\":\"ok\",\"affected\":" <> String.from(n) <> "}")
+    Ok(n) -> unresolve_success(pool, issue_id, n)
     Err(e) -> HTTP.response(500, "{\"error\":\"" <> e <> "\"}")
   end
 end
@@ -255,7 +304,7 @@ pub fn handle_discard_issue(request) do
   let issue_id = Request.param(request, "id")
   let result = discard_issue(pool, issue_id)
   case result do
-    Ok(n) -> HTTP.response(200, "{\"status\":\"ok\",\"affected\":" <> String.from(n) <> "}")
+    Ok(n) -> discard_success(pool, issue_id, n)
     Err(e) -> HTTP.response(500, "{\"error\":\"" <> e <> "\"}")
   end
 end
