@@ -269,9 +269,36 @@ fn try_remote_spawn(nodes) do
   0
 end
 
+# Monitor a peer node for NODEDOWN events (CLUSTER-05 health tracking).
+# Node.monitor(node_name) registers the calling process to receive
+# NODEDOWN notifications when the specified node disconnects.
+# Returns 0 on success, 1 on failure.
+fn monitor_peer(node_name :: String) do
+  let result = Node.monitor(node_name)
+  if result == 0 do
+    let _ = println("[Mesher] Monitoring peer: " <> node_name)
+    0
+  else
+    let _ = println("[Mesher] Failed to monitor peer: " <> node_name)
+    0
+  end
+end
+
+# Monitor all peers in a list by index.
+fn monitor_all_peers(nodes, i :: Int, total :: Int) do
+  if i < total do
+    let node_name = List.get(nodes, i)
+    let _ = monitor_peer(node_name)
+    monitor_all_peers(nodes, i + 1, total)
+  else
+    0
+  end
+end
+
 # Load monitor actor -- checks event processing rate and peer nodes every 5 seconds.
 # When connected peers exist and local load exceeds threshold, attempts remote processor spawning.
-actor load_monitor(pool :: PoolHandle, threshold :: Int) do
+# Tracks peer count changes to detect new peers (set up monitors) and lost peers (NODEDOWN).
+actor load_monitor(pool :: PoolHandle, threshold :: Int, prev_peers :: Int) do
   Timer.sleep(5000)
 
   let reg_pid = Process.whereis("mesher_registry")
@@ -283,6 +310,20 @@ actor load_monitor(pool :: PoolHandle, threshold :: Int) do
 
   let _ = log_load_status(event_count, node_count)
 
+  # Detect peer changes and set up monitoring for new peers
+  if node_count > prev_peers do
+    let _ = println("[Mesher] New peers detected (" <> String.from(prev_peers) <> " -> " <> String.from(node_count) <> "), setting up monitors")
+    let _ = monitor_all_peers(nodes, 0, node_count)
+    0
+  else
+    if node_count < prev_peers do
+      let _ = println("[Mesher] Peer lost (" <> String.from(prev_peers) <> " -> " <> String.from(node_count) <> ") -- NODEDOWN detected")
+      0
+    else
+      0
+    end
+  end
+
   if node_count > 0 do
     if event_count > threshold do
       try_remote_spawn(nodes)
@@ -293,7 +334,7 @@ actor load_monitor(pool :: PoolHandle, threshold :: Int) do
     0
   end
 
-  load_monitor(pool, threshold)
+  load_monitor(pool, threshold, node_count)
 end
 
 # Register PipelineRegistry globally for cross-node discovery (CLUSTER-02).
@@ -334,7 +375,7 @@ fn restart_all_services(pool :: PoolHandle) do
   let _ = spawn(retention_cleaner, pool)
 
   # Spawn load monitor for cluster-aware load balancing (5s interval, 100 events/5s threshold)
-  let _ = spawn(load_monitor, pool, 100)
+  let _ = spawn(load_monitor, pool, 100, 0)
 
   let registry_pid = PipelineRegistry.start(pool, rate_limiter_pid, processor_pid, writer_pid)
   let _ = Process.register("mesher_registry", registry_pid)
@@ -397,7 +438,7 @@ pub fn start_pipeline(pool :: PoolHandle) do
   println("[Mesher] Retention cleaner started (24h interval)")
 
   # Spawn load monitor for cluster-aware load balancing (5s interval, 100 events/5s threshold)
-  let _ = spawn(load_monitor, pool, 100)
+  let _ = spawn(load_monitor, pool, 100, 0)
   println("[Mesher] Load monitor started (5s interval, threshold: 100 events)")
 
   registry_pid
