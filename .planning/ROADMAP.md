@@ -221,13 +221,14 @@ Plans:
   3. System enforces per-project rate limits and returns 429 with Retry-After header when exceeded
   4. Client can stream events over a persistent WebSocket connection with crash-isolated actor-per-connection
   5. Event processing pipeline runs under a supervision tree that automatically restarts crashed processor actors
-**Plans:** 5 plans
+**Plans:** 6 plans
 Plans:
 - [x] 88-01-PLAN.md -- Runtime extension: response headers, 202/429 status codes, HTTP.response_with_headers API
 - [x] 88-02-PLAN.md -- Core ingestion services: RateLimiter, EventProcessor, auth helpers, validation functions
 - [x] 88-03-PLAN.md -- HTTP routes, WebSocket handler, supervision tree, main.mpl integration
-- [ ] 88-04-PLAN.md -- Gap closure: Fix Ws.serve codegen (duplicate intrinsic, bare-function fn_ptr/env_ptr splitting) and wire WebSocket server
-- [ ] 88-05-PLAN.md -- Gap closure: Process.monitor-based restart watcher for pipeline service self-healing
+- [x] 88-04-PLAN.md -- Gap closure: Fix Ws.serve codegen (duplicate intrinsic, bare-function fn_ptr/env_ptr splitting) and wire WebSocket server
+- [x] 88-05-PLAN.md -- Gap closure: Health checker actor with Timer.sleep-based periodic monitoring
+- [ ] 88-06-PLAN.md -- Gap closure: Retry-After header on 429 responses, bulk endpoint event processing
 
 ### Phase 89: Error Grouping & Issue Lifecycle
 **Goal**: Events are automatically grouped into issues via fingerprinting, and users can manage issue states with regression detection
@@ -337,7 +338,7 @@ Note: Phase 93 depends only on 87 (can run in parallel with 88-92 if desired). P
 | 87 | v9.0 | 2/2 | Complete | 2026-02-14 |
 | 87.1 | v9.0 | 2/2 | Complete | 2026-02-14 |
 | 87.2 | v9.0 | 2/2 | Complete | 2026-02-15 |
-| 88 | v9.0 | 3/5 | Gap closure | - |
+| 88 | v9.0 | 5/6 | Gap closure | - |
 | 89 | v9.0 | 0/TBD | Not started | - |
 | 90 | v9.0 | 0/TBD | Not started | - |
 | 91 | v9.0 | 0/TBD | Not started | - |
