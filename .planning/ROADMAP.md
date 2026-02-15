@@ -221,7 +221,11 @@ Plans:
   3. System enforces per-project rate limits and returns 429 with Retry-After header when exceeded
   4. Client can stream events over a persistent WebSocket connection with crash-isolated actor-per-connection
   5. Event processing pipeline runs under a supervision tree that automatically restarts crashed processor actors
-**Plans**: TBD
+**Plans:** 3 plans
+Plans:
+- [ ] 88-01-PLAN.md -- Runtime extension: response headers, 202/429 status codes, HTTP.response_with_headers API
+- [ ] 88-02-PLAN.md -- Core ingestion services: RateLimiter, EventProcessor, auth helpers, validation functions
+- [ ] 88-03-PLAN.md -- HTTP routes, WebSocket handler, supervision tree, main.mpl integration
 
 ### Phase 89: Error Grouping & Issue Lifecycle
 **Goal**: Events are automatically grouped into issues via fingerprinting, and users can manage issue states with regression detection
@@ -331,7 +335,7 @@ Note: Phase 93 depends only on 87 (can run in parallel with 88-92 if desired). P
 | 87 | v9.0 | 2/2 | Complete | 2026-02-14 |
 | 87.1 | v9.0 | 2/2 | Complete | 2026-02-14 |
 | 87.2 | v9.0 | 2/2 | Complete | 2026-02-15 |
-| 88 | v9.0 | 0/TBD | Not started | - |
+| 88 | v9.0 | 0/3 | Planned | - |
 | 89 | v9.0 | 0/TBD | Not started | - |
 | 90 | v9.0 | 0/TBD | Not started | - |
 | 91 | v9.0 | 0/TBD | Not started | - |
