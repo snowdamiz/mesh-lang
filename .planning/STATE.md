@@ -111,7 +111,7 @@ Cleared at milestone boundary. v8.0 decisions archived in PROJECT.md.
 - [92-02] restart_all_services moved after alert_evaluator actor for define-before-use compliance (nothing calls restart_all_services from within pipeline.mpl so safe to reorder)
 - [92-03] No new compilation errors from alert HTTP routes -- 7 pre-existing errors unchanged
 - [93-01] Use 'actor' not 'pub actor' -- Mesh grammar doesn't support pub before actor keyword
-- [93-02] Actors cannot be imported across modules in Mesh -- retention_cleaner duplicated in pipeline.mpl (consistent with all other pipeline actors)
+- [93-02] ~~Actors cannot be imported across modules in Mesh -- retention_cleaner duplicated in pipeline.mpl~~ FIXED: actors now exported/imported like services (always exported, no pub prefix)
 - [93-02] Separate bulk sampling path (handle_bulk_sampled) preserves 5MB size limit vs 1MB single-event limit
 - [93.1-01] main.mpl handle_top_issues type mismatch was cascading inference failure from broken Api.Detail -- no explicit return type annotation needed
 
