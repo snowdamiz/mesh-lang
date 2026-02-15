@@ -7,17 +7,18 @@ from Ingestion.Pipeline import PipelineRegistry
 
 # Helper: check authorization header as fallback
 fn check_authorization_header(conn, headers) do
-  let bearer = Map.get(headers, "authorization")
-  if bearer == 0 do
-    0
-  else
+  let has_auth = Map.has_key(headers, "authorization")
+  if has_auth do
     conn
+  else
+    0
   end
 end
 
 # Helper: send a text frame to a WS connection (discards send result).
 fn ws_write(conn, msg :: String) do
-  let _ = Ws.send(conn, msg)
+  let _result = Ws.send(conn, msg)
+  nil
 end
 
 # Helper: send accepted response over WS
@@ -36,11 +37,11 @@ end
 # Authenticates via API key in headers. Returns conn to accept, or 0 to reject.
 pub fn ws_on_connect(conn, path, headers) do
   # Check for x-sentry-auth header first
-  let key = Map.get(headers, "x-sentry-auth")
-  if key == 0 do
-    check_authorization_header(conn, headers)
-  else
+  let has_key = Map.has_key(headers, "x-sentry-auth")
+  if has_key do
     conn
+  else
+    check_authorization_header(conn, headers)
   end
 end
 

@@ -343,6 +343,43 @@ pub extern "C" fn mesh_ws_serve(
 
     eprintln!("[mesh-rt] WebSocket server listening on {}", addr);
 
+    // Wrap raw pointers for Send (function pointers are valid for program lifetime).
+    let handler = SendableHandler {
+        on_connect_fn,
+        on_connect_env,
+        on_message_fn,
+        on_message_env,
+        on_close_fn,
+        on_close_env,
+    };
+
+    // Spawn an OS thread for the accept loop so Ws.serve returns immediately.
+    // This allows calling Ws.serve before HTTP.serve in the same function
+    // without blocking (both are blocking accept loops).
+    std::thread::Builder::new()
+        .name(format!("ws-accept-{}", port))
+        .spawn(move || {
+            ws_accept_loop(listener, handler);
+        })
+        .expect("Failed to spawn WebSocket accept thread");
+}
+
+/// Wrapper for raw callback pointers to satisfy Send requirement.
+/// Safe because these are function pointers (or null) that remain valid
+/// for the entire program lifetime.
+struct SendableHandler {
+    on_connect_fn: *mut u8,
+    on_connect_env: *mut u8,
+    on_message_fn: *mut u8,
+    on_message_env: *mut u8,
+    on_close_fn: *mut u8,
+    on_close_env: *mut u8,
+}
+unsafe impl Send for SendableHandler {}
+
+/// Accept loop for WebSocket connections. Runs on a dedicated OS thread,
+/// dispatching each accepted connection to an actor on the Mesh scheduler.
+fn ws_accept_loop(listener: TcpListener, h: SendableHandler) {
     for tcp_stream in listener.incoming() {
         let tcp_stream = match tcp_stream {
             Ok(s) => s,
@@ -359,12 +396,12 @@ pub extern "C" fn mesh_ws_serve(
 
         // Pack handler (copy the 6 pointers) and stream into args.
         let handler = WsHandler {
-            on_connect_fn,
-            on_connect_env,
-            on_message_fn,
-            on_message_env,
-            on_close_fn,
-            on_close_env,
+            on_connect_fn: h.on_connect_fn,
+            on_connect_env: h.on_connect_env,
+            on_message_fn: h.on_message_fn,
+            on_message_env: h.on_message_env,
+            on_close_fn: h.on_close_fn,
+            on_close_env: h.on_close_env,
         };
         let stream_ptr = Box::into_raw(Box::new(ws_stream)) as usize;
         let args = WsConnectionArgs {

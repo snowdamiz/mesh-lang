@@ -12,6 +12,18 @@ from Ingestion.Pipeline import start_pipeline
 from Ingestion.Routes import handle_event, handle_bulk
 from Ingestion.WsHandler import ws_on_connect, ws_on_message, ws_on_close
 
+fn on_ws_connect(conn, path, headers) do
+  ws_on_connect(conn, path, headers)
+end
+
+fn on_ws_message(conn, msg) do
+  ws_on_message(conn, msg)
+end
+
+fn on_ws_close(conn, code, reason) do
+  ws_on_close(conn, code, reason)
+end
+
 fn start_services(pool :: PoolHandle) do
   # Run schema creation (idempotent -- all CREATE IF NOT EXISTS)
   let schema_result = create_schema(pool)
@@ -46,6 +58,10 @@ fn start_services(pool :: PoolHandle) do
   let r = HTTP.router()
   let r = HTTP.on_post(r, "/api/v1/events", handle_event)
   let r = HTTP.on_post(r, "/api/v1/events/bulk", handle_bulk)
+
+  # Start WebSocket server (non-blocking -- spawns accept thread in runtime)
+  println("[Mesher] WebSocket server starting on :8081")
+  Ws.serve(on_ws_connect, on_ws_message, on_ws_close, 8081)
 
   println("[Mesher] HTTP server starting on :8080")
   HTTP.serve(r, 8080)
