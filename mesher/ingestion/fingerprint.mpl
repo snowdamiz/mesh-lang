@@ -55,14 +55,19 @@ fn fallback_fingerprint(payload :: EventPayload) -> String do
   end
 end
 
+# Try stacktrace fingerprint, falling back if empty.
+# Extracted from case arm per Mesh single-expression case arm constraint.
+fn try_stacktrace_fingerprint(frames, payload :: EventPayload) -> String do
+  let fp = fingerprint_from_frames(frames, payload.message)
+  if String.length(fp) > 0 do fp else fallback_fingerprint(payload) end
+end
+
 # Compute fingerprint from stacktrace with fallback chain.
 # If stacktrace frames produce a non-empty fingerprint, use it;
 # otherwise fall back to exception type or raw message.
 fn compute_from_stacktrace_or_fallback(payload :: EventPayload) -> String do
   case payload.stacktrace do
-    Some(frames) ->
-      let fp = fingerprint_from_frames(frames, payload.message)
-      if String.length(fp) > 0 do fp else fallback_fingerprint(payload) end
+    Some(frames) -> try_stacktrace_fingerprint(frames, payload)
     None -> fallback_fingerprint(payload)
   end
 end

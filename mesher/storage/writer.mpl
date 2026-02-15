@@ -6,11 +6,15 @@
 #
 # Events are stored as JSON strings. PostgreSQL parses the JSON server-side
 # during INSERT using jsonb extraction operators.
+# issue_id and fingerprint are passed as separate SQL parameters (not extracted
+# from JSON) -- see research Open Question 1, Option B.
 
 # Insert a single event into the events table from a JSON-encoded string.
-# Uses PostgreSQL jsonb extraction to parse event fields server-side.
+# issue_id and fingerprint are passed separately (computed by EventProcessor
+# via extract_event_fields + upsert_issue) rather than extracted from JSON.
+# Uses PostgreSQL jsonb extraction for remaining fields.
 # Returns the number of rows affected (1 on success).
-pub fn insert_event(pool :: PoolHandle, project_id :: String, json_str :: String) -> Int!String do
-  let result = Pool.execute(pool, "INSERT INTO events (project_id, issue_id, level, message, fingerprint, exception, stacktrace, breadcrumbs, tags, extra, user_context, sdk_name, sdk_version) SELECT $1::uuid, (j->>'issue_id')::uuid, j->>'level', j->>'message', j->>'fingerprint', (j->'exception')::jsonb, (j->'stacktrace')::jsonb, (j->'breadcrumbs')::jsonb, COALESCE((j->'tags')::jsonb, '{}'::jsonb), COALESCE((j->'extra')::jsonb, '{}'::jsonb), (j->'user_context')::jsonb, j->>'sdk_name', j->>'sdk_version' FROM (SELECT $2::jsonb AS j) AS sub", [project_id, json_str])
+pub fn insert_event(pool :: PoolHandle, project_id :: String, issue_id :: String, fingerprint :: String, json_str :: String) -> Int!String do
+  let result = Pool.execute(pool, "INSERT INTO events (project_id, issue_id, level, message, fingerprint, exception, stacktrace, breadcrumbs, tags, extra, user_context, sdk_name, sdk_version) SELECT $1::uuid, $2::uuid, j->>'level', j->>'message', $3, (j->'exception')::jsonb, (j->'stacktrace')::jsonb, (j->'breadcrumbs')::jsonb, COALESCE((j->'tags')::jsonb, '{}'::jsonb), COALESCE((j->'extra')::jsonb, '{}'::jsonb), (j->'user_context')::jsonb, j->>'sdk_name', j->>'sdk_version' FROM (SELECT $4::jsonb AS j) AS sub", [project_id, issue_id, fingerprint, json_str])
   result
 end
