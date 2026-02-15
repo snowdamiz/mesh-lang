@@ -18,6 +18,69 @@ from Api.Alerts import handle_create_alert_rule, handle_list_alert_rules, handle
 from Api.Settings import handle_get_project_settings, handle_update_project_settings, handle_get_project_storage
 from Ingestion.WsHandler import ws_on_connect, ws_on_message, ws_on_close
 
+fn get_env_or_default(key :: String, default_val :: String) -> String do
+  let result = Env.get(key)
+  case result do
+    Some(val) -> val
+    None -> default_val
+  end
+end
+
+fn parse_port(port_str :: String, default_port :: Int) -> Int do
+  let parsed = String.to_int(port_str)
+  case parsed do
+    Some(p) -> p
+    None -> default_port
+  end
+end
+
+fn connect_to_peer(peer :: String) do
+  if peer != "" do
+    let connect_result = Node.connect(peer)
+    if connect_result == 0 do
+      println("[Mesher] Connected to peer: " <> peer)
+    else
+      println("[Mesher] Failed to connect to peer: " <> peer)
+    end
+  else
+    println("[Mesher] No peers configured")
+  end
+end
+
+fn try_connect_peers() do
+  let peer_opt = Env.get("MESHER_PEERS")
+  case peer_opt do
+    Some(peer) -> connect_to_peer(peer)
+    None -> println("[Mesher] No peers configured")
+  end
+end
+
+fn start_node_with(node_name :: String, cookie :: String) do
+  let start_result = Node.start(node_name, cookie)
+  if start_result == 0 do
+    println("[Mesher] Node started: " <> node_name)
+  else
+    println("[Mesher] Node start failed for: " <> node_name)
+  end
+  try_connect_peers()
+end
+
+fn try_start_with_cookie(node_name :: String) do
+  let cookie_opt = Env.get("MESHER_COOKIE")
+  case cookie_opt do
+    Some(cookie) -> start_node_with(node_name, cookie)
+    None -> println("[Mesher] Running in standalone mode (no distribution)")
+  end
+end
+
+fn start_node() do
+  let name_opt = Env.get("MESHER_NODE_NAME")
+  case name_opt do
+    Some(node_name) -> try_start_with_cookie(node_name)
+    None -> println("[Mesher] Running in standalone mode (no distribution)")
+  end
+end
+
 fn on_ws_connect(conn, path, headers) do
   ws_on_connect(conn, path, headers)
 end
@@ -31,6 +94,9 @@ fn on_ws_close(conn, code, reason) do
 end
 
 fn start_services(pool :: PoolHandle) do
+  # Start distributed node if configured (before services, after PG)
+  start_node()
+
   # Run schema creation (idempotent -- all CREATE IF NOT EXISTS)
   let schema_result = create_schema(pool)
   case schema_result do
@@ -60,12 +126,18 @@ fn start_services(pool :: PoolHandle) do
 
   println("[Mesher] Foundation ready")
 
+  # Read configurable ports from environment (defaults: 8080 HTTP, 8081 WS)
+  let ws_port_str = get_env_or_default("MESHER_WS_PORT", "8081")
+  let ws_port = parse_port(ws_port_str, 8081)
+  let http_port_str = get_env_or_default("MESHER_HTTP_PORT", "8080")
+  let http_port = parse_port(http_port_str, 8080)
+
   # Start WebSocket server (non-blocking -- spawns accept thread in runtime)
-  println("[Mesher] WebSocket server starting on :8081")
-  Ws.serve(on_ws_connect, on_ws_message, on_ws_close, 8081)
+  println("[Mesher] WebSocket server starting on :" <> ws_port_str)
+  Ws.serve(on_ws_connect, on_ws_message, on_ws_close, ws_port)
 
   # Set up HTTP routes and start server (ingestion, search, dashboard, detail, issues, team, API keys)
-  println("[Mesher] HTTP server starting on :8080")
+  println("[Mesher] HTTP server starting on :" <> http_port_str)
   HTTP.serve((HTTP.router()
     |> HTTP.on_post("/api/v1/events", handle_event)
     |> HTTP.on_post("/api/v1/events/bulk", handle_bulk)
@@ -102,7 +174,7 @@ fn start_services(pool :: PoolHandle) do
     |> HTTP.on_post("/api/v1/alerts/:id/resolve", handle_resolve_alert)
     |> HTTP.on_get("/api/v1/projects/:project_id/settings", handle_get_project_settings)
     |> HTTP.on_post("/api/v1/projects/:project_id/settings", handle_update_project_settings)
-    |> HTTP.on_get("/api/v1/projects/:project_id/storage", handle_get_project_storage)), 8080)
+    |> HTTP.on_get("/api/v1/projects/:project_id/storage", handle_get_project_storage)), http_port)
 end
 
 fn main() do
