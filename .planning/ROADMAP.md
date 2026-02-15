@@ -165,7 +165,7 @@ See milestones/v8.0-ROADMAP.md for full phase details.
 
 - [x] **Phase 87: Foundation** - Data model, database schema, storage writer, org/project tenancy (completed 2026-02-14)
 - [x] **Phase 87.1: Issues Encountered** - Codegen + module system fixes for idiomatic Result handling and modular services (completed 2026-02-14)
-- [ ] **Phase 87.2: Refactor Phase 87 code to use cross-module services** (INSERTED)
+- [x] **Phase 87.2: Refactor Phase 87 code to use cross-module services** (INSERTED, completed 2026-02-15)
 - [ ] **Phase 88: Ingestion Pipeline** - HTTP/WS event ingestion with DSN auth, rate limiting, supervised processing
 - [ ] **Phase 89: Error Grouping & Issue Lifecycle** - Fingerprinting, issue creation, regression detection, state machine
 - [ ] **Phase 90: Real-Time Streaming** - WebSocket dashboard streaming with rooms, filters, backpressure
@@ -208,8 +208,8 @@ Plans:
 **Plans:** 2 plans
 
 Plans:
-- [ ] 87.2-01-PLAN.md -- Extract OrgService, ProjectService, UserService into service modules
-- [ ] 87.2-02-PLAN.md -- Extract StorageWriter + buffer/flush logic, apply ? operator, slim main.mpl
+- [x] 87.2-01-PLAN.md -- Extract OrgService, ProjectService, UserService into service modules
+- [x] 87.2-02-PLAN.md -- Extract StorageWriter + buffer/flush logic, apply ? operator, slim main.mpl
 
 ### Phase 88: Ingestion Pipeline
 **Goal**: External clients can send error events into the system via HTTP and WebSocket, with authentication, validation, rate limiting, and supervised actor-based processing
@@ -330,7 +330,7 @@ Note: Phase 93 depends only on 87 (can run in parallel with 88-92 if desired). P
 | 81-86 | v8.0 | 11/11 | Complete | 2026-02-14 |
 | 87 | v9.0 | 2/2 | Complete | 2026-02-14 |
 | 87.1 | v9.0 | 2/2 | Complete | 2026-02-14 |
-| 87.2 | v9.0 | 0/TBD | Not started | - |
+| 87.2 | v9.0 | 2/2 | Complete | 2026-02-15 |
 | 88 | v9.0 | 0/TBD | Not started | - |
 | 89 | v9.0 | 0/TBD | Not started | - |
 | 90 | v9.0 | 0/TBD | Not started | - |
@@ -340,4 +340,4 @@ Note: Phase 93 depends only on 87 (can run in parallel with 88-92 if desired). P
 | 94 | v9.0 | 0/TBD | Not started | - |
 | 95 | v9.0 | 0/TBD | Not started | - |
 
-**Total: 87 phases shipped across 18 milestones. 244 plans completed. 10 phases planned for v9.0.**
+**Total: 88 phases shipped across 18 milestones. 248 plans completed. 10 phases planned for v9.0.**
