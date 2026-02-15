@@ -11,6 +11,7 @@ from Services.EventProcessor import EventProcessor
 from Types.Project import Project
 from Types.Issue import Issue
 from Storage.Queries import resolve_issue, archive_issue, unresolve_issue, assign_issue, discard_issue, delete_issue, list_issues_by_status
+from Api.Helpers import require_param
 
 # Helper: build 401 response
 fn unauthorized_response() do
@@ -214,7 +215,7 @@ end
 pub fn handle_list_issues(request) do
   let reg_pid = Process.whereis("mesher_registry")
   let pool = PipelineRegistry.get_pool(reg_pid)
-  let project_id = Request.param(request, "project_id")
+  let project_id = require_param(request, "project_id")
   let result = list_issues_by_status(pool, project_id, "unresolved")
   case result do
     Ok(issues) -> HTTP.response(200, issues_to_json(issues))
@@ -226,7 +227,7 @@ end
 pub fn handle_resolve_issue(request) do
   let reg_pid = Process.whereis("mesher_registry")
   let pool = PipelineRegistry.get_pool(reg_pid)
-  let issue_id = Request.param(request, "id")
+  let issue_id = require_param(request, "id")
   let result = resolve_issue(pool, issue_id)
   case result do
     Ok(n) -> resolve_success(pool, issue_id, n)
@@ -238,7 +239,7 @@ end
 pub fn handle_archive_issue(request) do
   let reg_pid = Process.whereis("mesher_registry")
   let pool = PipelineRegistry.get_pool(reg_pid)
-  let issue_id = Request.param(request, "id")
+  let issue_id = require_param(request, "id")
   let result = archive_issue(pool, issue_id)
   case result do
     Ok(n) -> archive_success(pool, issue_id, n)
@@ -250,7 +251,7 @@ end
 pub fn handle_unresolve_issue(request) do
   let reg_pid = Process.whereis("mesher_registry")
   let pool = PipelineRegistry.get_pool(reg_pid)
-  let issue_id = Request.param(request, "id")
+  let issue_id = require_param(request, "id")
   let result = unresolve_issue(pool, issue_id)
   case result do
     Ok(n) -> unresolve_success(pool, issue_id, n)
@@ -277,7 +278,7 @@ end
 pub fn handle_assign_issue(request) do
   let reg_pid = Process.whereis("mesher_registry")
   let pool = PipelineRegistry.get_pool(reg_pid)
-  let issue_id = Request.param(request, "id")
+  let issue_id = require_param(request, "id")
   let body = Request.body(request)
   let rows_result = Pool.query(pool, "SELECT COALESCE($1::jsonb->>'user_id', '') AS user_id", [body])
   case rows_result do
@@ -290,7 +291,7 @@ end
 pub fn handle_discard_issue(request) do
   let reg_pid = Process.whereis("mesher_registry")
   let pool = PipelineRegistry.get_pool(reg_pid)
-  let issue_id = Request.param(request, "id")
+  let issue_id = require_param(request, "id")
   let result = discard_issue(pool, issue_id)
   case result do
     Ok(n) -> discard_success(pool, issue_id, n)
@@ -302,7 +303,7 @@ end
 pub fn handle_delete_issue(request) do
   let reg_pid = Process.whereis("mesher_registry")
   let pool = PipelineRegistry.get_pool(reg_pid)
-  let issue_id = Request.param(request, "id")
+  let issue_id = require_param(request, "id")
   let result = delete_issue(pool, issue_id)
   case result do
     Ok(n) -> HTTP.response(200, "{\"status\":\"ok\",\"affected\":" <> String.from(n) <> "}")

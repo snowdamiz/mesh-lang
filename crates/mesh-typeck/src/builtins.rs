@@ -815,12 +815,12 @@ pub fn register_builtins(
             Ty::option(Ty::string()),
         )),
     );
-    // Request.param(Request, String) -> String  (Phase 51, route match guarantees existence)
+    // Request.param(Request, String) -> Option<String>
     env.insert(
         "request_param".into(),
         Scheme::mono(Ty::fun(
             vec![request_t.clone(), Ty::string()],
-            Ty::string(),
+            Ty::option(Ty::string()),
         )),
     );
 }

@@ -1210,13 +1210,19 @@ mod tests {
         assert_eq!(close_ctr.load(Ordering::SeqCst), 0);
 
         let mut stream = ws_connect(port);
-        std::thread::sleep(Duration::from_millis(200));
+        for _ in 0..50 {
+            if connect_ctr.load(Ordering::SeqCst) >= 1 { break; }
+            std::thread::sleep(Duration::from_millis(20));
+        }
         assert_eq!(connect_ctr.load(Ordering::SeqCst), 1, "on_connect should fire");
 
         // Send close -> on_close should fire
         ws_send_close(&mut stream, 1000);
         let _ = read_frame(&mut stream); // consume close echo
-        std::thread::sleep(Duration::from_millis(500));
+        for _ in 0..100 {
+            if close_ctr.load(Ordering::SeqCst) >= 1 { break; }
+            std::thread::sleep(Duration::from_millis(20));
+        }
         assert_eq!(close_ctr.load(Ordering::SeqCst), 1, "on_close should fire");
     }
 

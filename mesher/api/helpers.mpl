@@ -12,6 +12,16 @@ pub fn query_or_default(request, param :: String, default :: String) -> String d
   end
 end
 
+# Extract a required path parameter.
+# Request.param returns Option<String>; route matching guarantees existence.
+pub fn require_param(request, name :: String) -> String do
+  let opt = Request.param(request, name)
+  case opt do
+    Some(v) -> v
+    None -> ""
+  end
+end
+
 # Convert a list of JSON strings to a JSON array.
 # Replaces the old recursive json_array_loop pattern with String.join.
 pub fn to_json_array(items) -> String do

@@ -6,6 +6,7 @@
 
 from Ingestion.Pipeline import PipelineRegistry
 from Storage.Queries import get_event_detail, get_event_neighbors
+from Api.Helpers import require_param
 
 # --- Helper functions (leaf first, per define-before-use requirement) ---
 
@@ -99,7 +100,7 @@ end
 pub fn handle_event_detail(request) do
   let reg_pid = Process.whereis("mesher_registry")
   let pool = PipelineRegistry.get_pool(reg_pid)
-  let event_id = Request.param(request, "event_id")
+  let event_id = require_param(request, "event_id")
   let result = get_event_detail(pool, event_id)
   case result do
     Ok(rows) -> build_event_response_from_rows(pool, event_id, rows)

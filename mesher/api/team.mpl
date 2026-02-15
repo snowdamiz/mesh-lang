@@ -6,7 +6,7 @@
 
 from Ingestion.Pipeline import PipelineRegistry
 from Storage.Queries import get_members_with_users, add_member, update_member_role, remove_member, list_api_keys, create_api_key, revoke_api_key
-from Api.Helpers import query_or_default, to_json_array
+from Api.Helpers import query_or_default, to_json_array, require_param
 
 # --- Shared helpers (leaf functions first, per define-before-use requirement) ---
 
@@ -163,7 +163,7 @@ end
 pub fn handle_list_members(request) do
   let reg_pid = Process.whereis("mesher_registry")
   let pool = PipelineRegistry.get_pool(reg_pid)
-  let org_id = Request.param(request, "org_id")
+  let org_id = require_param(request, "org_id")
   let result = get_members_with_users(pool, org_id)
   case result do
     Ok(rows) -> HTTP.response(200, rows |> List.map(fn(row) do member_to_json(row) end) |> to_json_array())
@@ -177,7 +177,7 @@ end
 pub fn handle_add_member(request) do
   let reg_pid = Process.whereis("mesher_registry")
   let pool = PipelineRegistry.get_pool(reg_pid)
-  let org_id = Request.param(request, "org_id")
+  let org_id = require_param(request, "org_id")
   let body = Request.body(request)
   validate_add_member(pool, org_id, body)
 end
@@ -187,7 +187,7 @@ end
 pub fn handle_update_member_role(request) do
   let reg_pid = Process.whereis("mesher_registry")
   let pool = PipelineRegistry.get_pool(reg_pid)
-  let membership_id = Request.param(request, "membership_id")
+  let membership_id = require_param(request, "membership_id")
   let body = Request.body(request)
   do_update_role(pool, membership_id, body)
 end
@@ -197,7 +197,7 @@ end
 pub fn handle_remove_member(request) do
   let reg_pid = Process.whereis("mesher_registry")
   let pool = PipelineRegistry.get_pool(reg_pid)
-  let membership_id = Request.param(request, "membership_id")
+  let membership_id = require_param(request, "membership_id")
   let result = remove_member(pool, membership_id)
   case result do
     Ok(n) -> remove_success(n)
@@ -210,7 +210,7 @@ end
 pub fn handle_list_api_keys(request) do
   let reg_pid = Process.whereis("mesher_registry")
   let pool = PipelineRegistry.get_pool(reg_pid)
-  let project_id = Request.param(request, "project_id")
+  let project_id = require_param(request, "project_id")
   let result = list_api_keys(pool, project_id)
   case result do
     Ok(rows) -> HTTP.response(200, rows |> List.map(fn(row) do api_key_to_json(row) end) |> to_json_array())
@@ -224,7 +224,7 @@ end
 pub fn handle_create_api_key(request) do
   let reg_pid = Process.whereis("mesher_registry")
   let pool = PipelineRegistry.get_pool(reg_pid)
-  let project_id = Request.param(request, "project_id")
+  let project_id = require_param(request, "project_id")
   let body = Request.body(request)
   do_create_key(pool, project_id, body)
 end
@@ -234,7 +234,7 @@ end
 pub fn handle_revoke_api_key(request) do
   let reg_pid = Process.whereis("mesher_registry")
   let pool = PipelineRegistry.get_pool(reg_pid)
-  let key_id = Request.param(request, "key_id")
+  let key_id = require_param(request, "key_id")
   let result = revoke_api_key(pool, key_id)
   case result do
     Ok(n) -> revoke_key_success(n)
