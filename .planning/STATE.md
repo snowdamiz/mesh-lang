@@ -61,7 +61,12 @@ Cleared at milestone boundary. v8.0 decisions archived in PROJECT.md.
 - [88-03] PipelineRegistry service pattern for HTTP handler context -- closures not supported in HTTP routing
 - [88-03] MeshString-based Process.register/whereis runtime functions for compiler-generated string args
 - [88-03] SEND_KW added to parser field access for Ws.send module-qualified access
-- [88-03] Ws.serve deferred -- type inference cascade with callback signatures needs investigation
+- [88-03] ~~Ws.serve deferred -- type inference cascade with callback signatures needs investigation~~ FIXED in 88-04
+- [88-04] FnPtr splitting: bare function refs to runtime intrinsics emit (fn_ptr, null_env_ptr) pairs
+- [88-04] Non-blocking mesh_ws_serve: OS thread for accept loop (Mesh spawn expects Pid return, incompatible with void server loops)
+- [88-04] Cross-module callback wrappers isolate type inference when passing imported functions to Ws.serve
+- [88-04] ws_write returns nil (Unit) to satisfy Ws.serve on_message fn(Int,String)->() signature
+- [88-04] Map.has_key instead of Map.get==0 for header checks (avoids String==Int type mismatch under Ws.serve unification)
 - [88-05] Timer.sleep + recursive call for health_checker actor -- established pattern per 87-02, Timer.send_after incompatible with typed dispatch
 - [88-05] PipelineRegistry.get_pool as liveness probe -- service call success implies all services responsive
 - [88-05] Pid liveness comparison deferred -- Process.whereis returns Pid type, Pid > 0 comparison needs future Pid.to_int support
@@ -93,6 +98,6 @@ Research flags from research/SUMMARY.md:
 ## Session Continuity
 
 Last session: 2026-02-15
-Stopped at: Completed 88-05-PLAN.md (gap closure)
+Stopped at: Completed 88-04-PLAN.md (gap closure -- Ws.serve codegen fix and wiring)
 Resume file: None
-Next action: Phase 88 fully complete (including gap closure). Next phase: 89 (Dashboard)
+Next action: Phase 88 fully complete (all 5 plans including gap closure). Next phase: 89 (Dashboard)
