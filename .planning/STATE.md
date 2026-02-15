@@ -5,21 +5,21 @@
 See: .planning/PROJECT.md (updated 2026-02-14)
 
 **Core value:** Expressive, readable concurrency -- writing concurrent programs should feel as natural and clean as writing sequential code, with the safety net of supervision and fault tolerance built into the language.
-**Current focus:** v9.0 Mesher Phase 88 (Ingestion Pipeline)
+**Current focus:** v9.0 Mesher Phase 87.2 (Refactor Phase 87 code to use cross-module services)
 
 ## Current Position
 
-Phase: 88 of 95 (Ingestion Pipeline)
-Plan: 0 of TBD in current phase
-Status: Not started
-Last activity: 2026-02-14 -- Completed Phase 87.1 (Issues Encountered)
+Phase: 87.2 of 95 (Refactor Phase 87 code to use cross-module services)
+Plan: 1 of 2 in current phase
+Status: In progress
+Last activity: 2026-02-15 -- Completed 87.2-01 (Extract Entity Services)
 
-Progress: [####################..........] 91% overall (244/258 plans shipped)
+Progress: [####################..........] 91% overall (245/260 plans shipped)
 
 ## Performance Metrics
 
 **All-time Totals:**
-- Plans completed: 244
+- Plans completed: 245
 - Phases completed: 88
 - Milestones shipped: 18 (v1.0-v8.0)
 - Lines of Rust: ~98,800
@@ -48,10 +48,13 @@ Cleared at milestone boundary. v8.0 decisions archived in PROJECT.md.
 - [87.1-02] Normalize TyVar IDs to sequential 0-based in exported Schemes for cross-module safety
 - [87.1-02] Services exported by default (no pub prefix) since grammar lacks pub service syntax
 - [87.1-02] Check service_modules before user_modules in MIR field access for generated function names
+- [87.2-01] Service module convention: services/X.mpl -> from Services.X import XService
+- [87.2-01] Service modules only depend on Storage.Queries and Types.*, never on each other
 
 ### Roadmap Evolution
 
 - Phase 87.1 inserted after Phase 87: Issues Encountered (URGENT)
+- Phase 87.2 inserted after Phase 87.1: Refactor Phase 87 code to use cross-module services (URGENT)
 
 ### Pending Todos
 
@@ -74,7 +77,7 @@ Research flags from research/SUMMARY.md:
 
 ## Session Continuity
 
-Last session: 2026-02-14
-Stopped at: Completed Phase 87.1 (Issues Encountered)
+Last session: 2026-02-15
+Stopped at: Completed 87.2-01-PLAN.md (Extract Entity Services)
 Resume file: None
-Next action: Plan Phase 88 (Ingestion Pipeline)
+Next action: Execute 87.2-02-PLAN.md (Extract StorageWriter)
