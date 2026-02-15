@@ -93,6 +93,10 @@ pub struct ModuleExports {
     /// Service definitions exported by this module.
     pub service_defs: FxHashMap<String, ServiceExportInfo>,
 
+    /// Actor definitions exported by this module (name -> type scheme).
+    /// Actors are always exported (no `pub` prefix in grammar, same as services).
+    pub actor_defs: FxHashMap<String, Scheme>,
+
     /// Names of private (non-pub) items, for distinguishing "private" from "nonexistent" in errors.
     pub private_names: FxHashSet<String>,
 }
@@ -108,6 +112,8 @@ pub struct ExportedSymbols {
     pub sum_type_defs: FxHashMap<String, SumTypeDefInfo>,
     /// Service definitions with helper function info.
     pub service_defs: FxHashMap<String, ServiceExportInfo>,
+    /// Actor definitions (name -> type scheme).
+    pub actor_defs: FxHashMap<String, Scheme>,
     /// Trait definitions declared in this module.
     pub trait_defs: Vec<TraitDef>,
     /// Trait impls declared in this module.
@@ -287,6 +293,22 @@ pub fn collect_exports(
     // Services are always exported (no `pub` prefix in current grammar).
     for (name, info) in &typeck.local_service_exports {
         exports.service_defs.insert(name.clone(), info.clone());
+    }
+
+    // Copy actor defs from typeck.types via AST traversal.
+    // Actors are always exported (no `pub` prefix in current grammar, same as services).
+    for item in tree.items() {
+        if let Item::ActorDef(actor_def) = item {
+            if let Some(name) = actor_def.name().and_then(|n| n.text()) {
+                let range = actor_def.syntax().text_range();
+                if let Some(ty) = typeck.types.get(&range) {
+                    exports.actor_defs.insert(
+                        name,
+                        Scheme::normalize_from_ty(ty.clone()),
+                    );
+                }
+            }
+        }
     }
 
     // Extract trait defs from AST InterfaceDef items, filtered by visibility.

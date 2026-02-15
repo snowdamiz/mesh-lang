@@ -2103,6 +2103,11 @@ fn infer_item(
                                         &sum_def.variants,
                                     );
                                 }
+                                // Check actor definitions (importing an actor brings its spawn function)
+                                else if let Some(scheme) = mod_exports.actor_defs.get(&name) {
+                                    env.insert(name.clone(), scheme.clone());
+                                    ctx.imported_functions.push(name.clone());
+                                }
                                 // Check service definitions (importing a service brings its helpers)
                                 else if let Some(service_info) = mod_exports.service_defs.get(&name) {
                                     // Register each helper function type in the environment
@@ -2135,6 +2140,7 @@ fn infer_item(
                                             .chain(mod_exports.struct_defs.keys())
                                             .chain(mod_exports.sum_type_defs.keys())
                                             .chain(mod_exports.service_defs.keys())
+                                            .chain(mod_exports.actor_defs.keys())
                                             .cloned()
                                             .collect();
                                         ctx.errors.push(TypeError::ImportNameNotFound {
