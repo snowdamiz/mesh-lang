@@ -9,7 +9,7 @@ from Services.Project import ProjectService
 from Services.User import UserService
 from Services.Writer import StorageWriter
 from Ingestion.Pipeline import start_pipeline
-from Ingestion.Routes import handle_event, handle_bulk
+from Ingestion.Routes import handle_event, handle_bulk, handle_list_issues, handle_resolve_issue, handle_archive_issue, handle_unresolve_issue, handle_assign_issue, handle_discard_issue, handle_delete_issue
 from Ingestion.WsHandler import ws_on_connect, ws_on_message, ws_on_close
 
 fn on_ws_connect(conn, path, headers) do
@@ -58,6 +58,15 @@ fn start_services(pool :: PoolHandle) do
   let r = HTTP.router()
   let r = HTTP.on_post(r, "/api/v1/events", handle_event)
   let r = HTTP.on_post(r, "/api/v1/events/bulk", handle_bulk)
+
+  # Issue management routes
+  let r = HTTP.on_get(r, "/api/v1/projects/:project_id/issues", handle_list_issues)
+  let r = HTTP.on_post(r, "/api/v1/issues/:id/resolve", handle_resolve_issue)
+  let r = HTTP.on_post(r, "/api/v1/issues/:id/archive", handle_archive_issue)
+  let r = HTTP.on_post(r, "/api/v1/issues/:id/unresolve", handle_unresolve_issue)
+  let r = HTTP.on_post(r, "/api/v1/issues/:id/assign", handle_assign_issue)
+  let r = HTTP.on_post(r, "/api/v1/issues/:id/discard", handle_discard_issue)
+  let r = HTTP.on_post(r, "/api/v1/issues/:id/delete", handle_delete_issue)
 
   # Start WebSocket server (non-blocking -- spawns accept thread in runtime)
   println("[Mesher] WebSocket server starting on :8081")

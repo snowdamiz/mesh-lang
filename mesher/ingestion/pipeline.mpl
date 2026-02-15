@@ -5,6 +5,7 @@
 from Services.RateLimiter import RateLimiter
 from Services.EventProcessor import EventProcessor
 from Services.Writer import StorageWriter
+from Storage.Queries import check_volume_spikes
 
 # Registry state holds pool handle and all service PIDs.
 struct RegistryState do
@@ -83,6 +84,29 @@ actor health_checker(pool :: PoolHandle) do
   health_checker(pool)
 end
 
+# Periodic spike detection actor -- checks archived issues for volume spikes.
+# Runs every 5 minutes (300000ms). If an archived issue has a sudden burst of events
+# (>10x average hourly rate), it's auto-escalated to 'unresolved' (ISSUE-03).
+# Uses Timer.sleep + recursive call pattern (established in flush_ticker, health_checker).
+actor spike_checker(pool :: PoolHandle) do
+  Timer.sleep(300000)
+  let result = check_volume_spikes(pool)
+  case result do
+    Ok(n) -> log_spike_result(n)
+    Err(e) -> println("[Mesher] Spike checker error: " <> e)
+  end
+  spike_checker(pool)
+end
+
+# Helper: log spike checker result (extracted for single-expression case arm).
+fn log_spike_result(n :: Int) do
+  if n > 0 do
+    println("[Mesher] Spike checker: escalated " <> String.from(n) <> " archived issues")
+  else
+    0
+  end
+end
+
 # Start the full ingestion pipeline.
 # 1. Start RateLimiter
 # 2. Start EventProcessor
@@ -112,6 +136,10 @@ pub fn start_pipeline(pool :: PoolHandle) do
   # Spawn health checker for automatic restart (10s interval)
   let _ = spawn(health_checker, pool)
   println("[Mesher] Health checker started (10s interval)")
+
+  # Spawn spike detection checker (5 minute interval)
+  let _ = spawn(spike_checker, pool)
+  println("[Mesher] Spike checker started (5 min interval)")
 
   registry_pid
 end
