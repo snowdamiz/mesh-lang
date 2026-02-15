@@ -176,7 +176,7 @@ See milestones/v8.0-ROADMAP.md for full phase details.
 - [x] **Phase 93.1: Issues Encountered** - Fix forward-reference compilation errors in detail.mpl and team.mpl (INSERTED, completed 2026-02-15)
 - [x] **Phase 93.2: Fix Actor Spawn Segfault** - Actor wrapper+body ABI fix for parameterized actors (INSERTED, completed 2026-02-15)
 - [x] **Phase 94: Multi-Node Clustering** - Distributed actors, global registry, cross-node event routing and broadcast (completed 2026-02-15)
-- [ ] **Phase 95: Vue Frontend** - SPA dashboard with ECharts, TanStack tables, real-time WebSocket streaming
+- [ ] **Phase 95: React Frontend** - SPA dashboard with Recharts, TanStack tables, real-time WebSocket streaming
 
 ## Phase Details
 
@@ -356,12 +356,12 @@ Plans:
 - [x] 94-03-PLAN.md -- Load-based remote processor spawning with monitoring
 - [x] 94-04-PLAN.md -- Gap closure: Node.spawn remote spawning and Node.monitor health tracking
 
-### Phase 95: Vue Frontend
-**Goal**: Users can interact with the entire Mesher platform through a Vue SPA with dashboards, event browsing, issue management, alerting, and real-time streaming
+### Phase 95: React Frontend
+**Goal**: Users can interact with the entire Mesher platform through a React 19 SPA with dashboards, event browsing, issue management, alerting, and real-time streaming
 **Depends on**: Phase 91, Phase 90
 **Requirements**: UI-01, UI-02, UI-03, UI-04, UI-05, UI-06, UI-07, UI-08
 **Success Criteria** (what must be TRUE):
-  1. User can view a project overview dashboard with ECharts time-series charts (event volume, error breakdown) and a TanStack-powered issue list
+  1. User can view a project overview dashboard with Recharts time-series charts (event volume, error breakdown) and a TanStack-powered issue list
   2. User can browse and search events with filters, pagination, and view event detail with formatted stack traces, breadcrumbs, and tags
   3. User can manage issues (state transitions, assignment) and manage alert rules (create, edit, delete)
   4. User can see real-time event streaming via WebSocket updating the dashboard live
