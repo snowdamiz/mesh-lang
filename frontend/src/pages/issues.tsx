@@ -6,6 +6,8 @@ import { FilterBar, type FilterState } from "@/components/shared/filter-bar";
 import { Pagination } from "@/components/shared/pagination";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { PushPanelLayout } from "@/components/layout/push-panel";
+import { EventDetail } from "@/components/detail/event-detail";
+import { IssueDetail } from "@/components/detail/issue-detail";
 import { api } from "@/lib/api";
 import { formatRelativeTime, formatNumber } from "@/lib/format";
 import { useProjectStore } from "@/stores/project-store";
@@ -161,12 +163,22 @@ export default function IssuesPage() {
     }
   }, [activeProjectId, fetchIssues]);
 
+  const { closeDetail } = useUiStore();
+
+  const refetchIssues = useCallback(() => {
+    fetchIssues(filtersRef.current);
+  }, [fetchIssues]);
+
   const panel = detailPanel ? (
-    <div className="p-6">
-      <p className="text-sm text-muted-foreground">
-        {detailPanel.type} detail: {detailPanel.id}
-      </p>
-    </div>
+    detailPanel.type === "issue" ? (
+      <IssueDetail
+        issueId={detailPanel.id}
+        onClose={closeDetail}
+        onUpdate={refetchIssues}
+      />
+    ) : detailPanel.type === "event" ? (
+      <EventDetail eventId={detailPanel.id} onClose={closeDetail} />
+    ) : null
   ) : null;
 
   return (

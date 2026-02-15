@@ -6,6 +6,7 @@ import { DataTable } from "@/components/shared/data-table";
 import { FilterBar, type FilterState } from "@/components/shared/filter-bar";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { PushPanelLayout } from "@/components/layout/push-panel";
+import { EventDetail } from "@/components/detail/event-detail";
 import { api } from "@/lib/api";
 import { formatRelativeTime } from "@/lib/format";
 import { useProjectStore } from "@/stores/project-store";
@@ -118,12 +119,12 @@ export default function EventsPage() {
     }
   }, [activeProjectId, fetchEvents]);
 
+  const { closeDetail } = useUiStore();
+
   const panel = detailPanel ? (
-    <div className="p-6">
-      <p className="text-sm text-muted-foreground">
-        {detailPanel.type} detail: {detailPanel.id}
-      </p>
-    </div>
+    detailPanel.type === "event" ? (
+      <EventDetail eventId={detailPanel.id} onClose={closeDetail} />
+    ) : null
   ) : null;
 
   return (
