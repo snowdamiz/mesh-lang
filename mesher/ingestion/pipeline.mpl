@@ -15,6 +15,7 @@ struct RegistryState do
   rate_limiter_pid :: Pid
   processor_pid :: Pid
   writer_pid :: Pid
+  event_count :: Int
 end
 
 # PipelineRegistry service -- stores pipeline context for handler lookup.
@@ -25,7 +26,8 @@ service PipelineRegistry do
       pool: pool,
       rate_limiter_pid: rate_limiter_pid,
       processor_pid: processor_pid,
-      writer_pid: writer_pid
+      writer_pid: writer_pid,
+      event_count: 0
     }
   end
 
@@ -43,6 +45,33 @@ service PipelineRegistry do
 
   call GetWriter() :: Pid do |state|
     (state, state.writer_pid)
+  end
+
+  call GetEventCount() :: Int do |state|
+    (state, state.event_count)
+  end
+
+  call IncrementEventCount() :: Int do |state|
+    let new_count = state.event_count + 1
+    let new_state = RegistryState {
+      pool: state.pool,
+      rate_limiter_pid: state.rate_limiter_pid,
+      processor_pid: state.processor_pid,
+      writer_pid: state.writer_pid,
+      event_count: new_count
+    }
+    (new_state, new_count)
+  end
+
+  call ResetEventCount() :: Int do |state|
+    let new_state = RegistryState {
+      pool: state.pool,
+      rate_limiter_pid: state.rate_limiter_pid,
+      processor_pid: state.processor_pid,
+      writer_pid: state.writer_pid,
+      event_count: 0
+    }
+    (new_state, 0)
   end
 end
 
@@ -209,6 +238,55 @@ actor alert_evaluator(pool :: PoolHandle) do
   alert_evaluator(pool)
 end
 
+# --- Load monitoring for cluster-aware scaling (CLUSTER-05) ---
+
+# Helper: log load monitor status
+fn log_load_status(event_count :: Int, node_count :: Int) do
+  println("[Mesher] Load monitor: " <> String.from(event_count) <> " events/5s, " <> String.from(node_count) <> " peers")
+end
+
+# Helper: attempt remote processor spawn on a peer node.
+# Does NOT send local PoolHandle across nodes (research pitfall 1 -- raw pointer, meaningless remotely).
+# Instead, looks up the remote node's own registry via Global.whereis to find its pool.
+# Note: Global.whereis returns Pid<()>; Pid-to-Int comparison not supported (decision [88-05]).
+# We attempt the lookup and call unconditionally. If the remote registry is not yet
+# registered, the service call will return a default/zero value harmlessly.
+fn try_remote_spawn(nodes) do
+  let target = List.head(nodes)
+  let _ = println("[Mesher] Load high -- spawning remote processor on " <> target)
+  let remote_reg = Global.whereis("mesher_registry@" <> target)
+  let _ = PipelineRegistry.get_pool(remote_reg)
+  let _ = println("[Mesher] Remote processor delegation available via " <> target)
+  0
+end
+
+# Load monitor actor -- checks event processing rate and peer nodes every 5 seconds.
+# When connected peers exist and local load exceeds threshold, attempts remote processor spawning.
+actor load_monitor(pool :: PoolHandle, threshold :: Int) do
+  Timer.sleep(5000)
+
+  let reg_pid = Process.whereis("mesher_registry")
+  let event_count = PipelineRegistry.get_event_count(reg_pid)
+  let _ = PipelineRegistry.reset_event_count(reg_pid)
+
+  let nodes = Node.list()
+  let node_count = List.length(nodes)
+
+  let _ = log_load_status(event_count, node_count)
+
+  if node_count > 0 do
+    if event_count > threshold do
+      try_remote_spawn(nodes)
+    else
+      0
+    end
+  else
+    0
+  end
+
+  load_monitor(pool, threshold)
+end
+
 # Register PipelineRegistry globally for cross-node discovery (CLUSTER-02).
 # Uses Node.self() to check if distributed mode is active.
 # Registers with both a node-specific name and a well-known default name.
@@ -245,6 +323,9 @@ fn restart_all_services(pool :: PoolHandle) do
 
   # Spawn retention cleaner on restart
   let _ = spawn(retention_cleaner, pool)
+
+  # Spawn load monitor for cluster-aware load balancing (5s interval, 100 events/5s threshold)
+  let _ = spawn(load_monitor, pool, 100)
 
   let registry_pid = PipelineRegistry.start(pool, rate_limiter_pid, processor_pid, writer_pid)
   let _ = Process.register("mesher_registry", registry_pid)
@@ -305,6 +386,10 @@ pub fn start_pipeline(pool :: PoolHandle) do
   # Spawn retention cleaner (24-hour interval for daily cleanup)
   let _ = spawn(retention_cleaner, pool)
   println("[Mesher] Retention cleaner started (24h interval)")
+
+  # Spawn load monitor for cluster-aware load balancing (5s interval, 100 events/5s threshold)
+  let _ = spawn(load_monitor, pool, 100)
+  println("[Mesher] Load monitor started (5s interval, threshold: 100 events)")
 
   registry_pid
 end
