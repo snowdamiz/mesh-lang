@@ -9,12 +9,12 @@ See: .planning/PROJECT.md (updated 2026-02-14)
 
 ## Current Position
 
-Phase: 93.2 of 95 (Fix Actor Spawn Segfault) -- COMPLETE
-Plan: 1 of 1 in current phase -- ALL COMPLETE
-Status: Phase 93.2 complete -- actor ABI wrapper generation fixes segfault for actors with parameters
-Last activity: 2026-02-15 - Actor wrapper+body function pair for ABI-correct spawn with typed args
+Phase: 94 of 95 (Multi-Node Clustering) -- IN PROGRESS
+Plan: 1 of 3 in current phase -- COMPLETE
+Status: Plan 01 complete -- env-based node startup and global service registration
+Last activity: 2026-02-15 - Node startup with env config, Global.register for PipelineRegistry
 
-Progress: [#######################.......] 100% overall (269/269 plans shipped)
+Progress: [#######################.......] 100% overall (270/272 plans shipped)
 
 ## Performance Metrics
 
@@ -24,7 +24,7 @@ Progress: [#######################.......] 100% overall (269/269 plans shipped)
 - Milestones shipped: 18 (v1.0-v8.0)
 - Lines of Rust: ~98,800
 - Lines of website: ~5,500
-- Lines of Mesh: ~3860 (first Mesh application code, refactored into modules, ingestion pipeline wired with health monitoring, error grouping pipeline, issue lifecycle API, streaming state management, backpressure buffer drain, subscription protocol and event broadcasting, search/filter/pagination REST API, dashboard aggregation and event detail endpoints, team membership and API token management, refactored with shared helpers, pipe-chained router and data transforms, alerting data foundation, alert evaluation engine, alert HTTP API routes, retention data foundation, settings API and ingestion sampling, forward-reference fixes for clean compilation, actor spawn ABI fix)
+- Lines of Mesh: ~3860 (first Mesh application code, refactored into modules, ingestion pipeline wired with health monitoring, error grouping pipeline, issue lifecycle API, streaming state management, backpressure buffer drain, subscription protocol and event broadcasting, search/filter/pagination REST API, dashboard aggregation and event detail endpoints, team membership and API token management, refactored with shared helpers, pipe-chained router and data transforms, alerting data foundation, alert evaluation engine, alert HTTP API routes, retention data foundation, settings API and ingestion sampling, forward-reference fixes for clean compilation, actor spawn ABI fix, distributed node startup and global service registration)
 - Timeline: 11 days (2026-02-05 -> 2026-02-15)
 
 ## Accumulated Context
@@ -117,6 +117,11 @@ Cleared at milestone boundary. v8.0 decisions archived in PROJECT.md.
 - [93.2-01] Actor wrapper keeps original name, body renamed to __actor_{name}_body -- spawn references resolve to wrapper
 - [93.2-01] TCE rewrite uses original actor name for matching (recursive calls use original name, not body name)
 - [93.2-01] Monomorphize pass explicitly marks __actor_*_body as reachable from wrapper functions (same pattern as service dispatch)
+- [94-01] Global.register/whereis type signatures fixed to Pid<()> for consistency with Process.register/whereis (runtime u64)
+- [94-01] Helper functions extracted for nested case arms in start_node (Mesh single-expression case arm constraint)
+- [94-01] Node startup placed after PG pool but before schema creation (HTTP.serve blocks, per research pitfall 4)
+- [94-01] StreamManager kept node-local with Process.register only (connection handles are local pointers)
+- [94-01] Global.register first-writer-wins for well-known "mesher_registry"; node-specific names for targeted cross-node lookup
 
 ### Roadmap Evolution
 
@@ -150,6 +155,6 @@ Research flags from research/SUMMARY.md:
 ## Session Continuity
 
 Last session: 2026-02-15
-Stopped at: Completed quick task 4 (build mesher and fix warnings)
+Stopped at: Completed 94-01-PLAN.md (node startup and global service registration)
 Resume file: None
-Next action: Plan Phase 94 (Multi-Node Clustering)
+Next action: Execute 94-02-PLAN.md (cross-node service discovery)
