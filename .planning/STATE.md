@@ -10,21 +10,21 @@ See: .planning/PROJECT.md (updated 2026-02-14)
 ## Current Position
 
 Phase: 88 of 95 (Ingestion Pipeline)
-Plan: 3 of 3 in current phase
-Status: Phase complete
-Last activity: 2026-02-15 -- Completed 88-03 (HTTP Routes, WS Handler, Pipeline)
+Plan: 5 of 5 in current phase
+Status: Phase complete (including gap closure plans 04-05)
+Last activity: 2026-02-15 -- Completed 88-05 (Health Checker Actor)
 
-Progress: [####################..........] 96% overall (251/260 plans shipped)
+Progress: [####################..........] 97% overall (253/260 plans shipped)
 
 ## Performance Metrics
 
 **All-time Totals:**
-- Plans completed: 251
+- Plans completed: 253
 - Phases completed: 90
 - Milestones shipped: 18 (v1.0-v8.0)
 - Lines of Rust: ~98,800
 - Lines of website: ~5,500
-- Lines of Mesh: ~1120 (first Mesh application code, refactored into modules, ingestion pipeline wired)
+- Lines of Mesh: ~1165 (first Mesh application code, refactored into modules, ingestion pipeline wired with health monitoring)
 - Timeline: 10 days (2026-02-05 -> 2026-02-14)
 
 ## Accumulated Context
@@ -62,6 +62,9 @@ Cleared at milestone boundary. v8.0 decisions archived in PROJECT.md.
 - [88-03] MeshString-based Process.register/whereis runtime functions for compiler-generated string args
 - [88-03] SEND_KW added to parser field access for Ws.send module-qualified access
 - [88-03] Ws.serve deferred -- type inference cascade with callback signatures needs investigation
+- [88-05] Timer.sleep + recursive call for health_checker actor -- established pattern per 87-02, Timer.send_after incompatible with typed dispatch
+- [88-05] PipelineRegistry.get_pool as liveness probe -- service call success implies all services responsive
+- [88-05] Pid liveness comparison deferred -- Process.whereis returns Pid type, Pid > 0 comparison needs future Pid.to_int support
 
 ### Roadmap Evolution
 
@@ -90,6 +93,6 @@ Research flags from research/SUMMARY.md:
 ## Session Continuity
 
 Last session: 2026-02-15
-Stopped at: Completed 88-03-PLAN.md
+Stopped at: Completed 88-05-PLAN.md (gap closure)
 Resume file: None
-Next action: Phase 88 complete. Next phase: 89 (Dashboard)
+Next action: Phase 88 fully complete (including gap closure). Next phase: 89 (Dashboard)
