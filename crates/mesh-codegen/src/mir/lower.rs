@@ -8567,18 +8567,73 @@ impl<'a> Lowerer<'a> {
             );
         }
 
-        // TCE: Rewrite self-recursive tail calls to TailCall nodes (Phase 48).
-        let has_tail_calls = rewrite_tail_calls(&mut body, &name);
+        // For actors WITH parameters, generate a wrapper + body pair (Phase 93.2).
+        // The runtime calls actor entry functions with signature `extern "C" fn(*const u8)`,
+        // passing a pointer to a serialized args buffer. Actors with typed parameters need
+        // a wrapper that accepts the raw pointer and deserializes args before calling the
+        // actual actor body with typed values.
+        if !params.is_empty() {
+            let body_fn_name = format!("__actor_{}_body", name);
 
-        self.functions.push(MirFunction {
-            name,
-            params,
-            return_type,
-            body,
-            is_closure_fn: false,
-            captures: Vec::new(),
-            has_tail_calls,
-        });
+            // TCE: Rewrite self-recursive tail calls to TailCall nodes (Phase 48).
+            // The recursive calls in the source use the original actor name (e.g., `counter(next)`),
+            // so we pass the original name to rewrite_tail_calls for matching.
+            let has_tail_calls = rewrite_tail_calls(&mut body, &name);
+
+            // 1. Push the body function with original typed params.
+            self.functions.push(MirFunction {
+                name: body_fn_name.clone(),
+                params: params.clone(),
+                return_type: return_type.clone(),
+                body,
+                is_closure_fn: false,
+                captures: Vec::new(),
+                has_tail_calls,
+            });
+
+            // Register the body function in known_functions so codegen can find it.
+            let body_param_types: Vec<MirType> = params.iter().map(|(_, ty)| ty.clone()).collect();
+            self.known_functions.insert(
+                body_fn_name,
+                MirType::FnPtr(body_param_types, Box::new(MirType::Unit)),
+            );
+
+            // 2. Push the wrapper function with Ptr param and Unit body.
+            // Codegen detects this pattern (single __args_ptr param + matching __actor_*_body)
+            // and generates the arg deserialization + body call.
+            self.functions.push(MirFunction {
+                name: name.clone(),
+                params: vec![("__args_ptr".to_string(), MirType::Ptr)],
+                return_type,
+                body: MirExpr::Unit,
+                is_closure_fn: false,
+                captures: Vec::new(),
+                has_tail_calls: false,
+            });
+
+            // Register the wrapper in known_functions with Ptr -> Unit signature
+            // so that spawn references resolve correctly.
+            self.known_functions.insert(
+                name,
+                MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Unit)),
+            );
+        } else {
+            // For actors WITHOUT parameters, keep existing behavior unchanged.
+            // The runtime passes null as args_ptr which is harmlessly ignored.
+
+            // TCE: Rewrite self-recursive tail calls to TailCall nodes (Phase 48).
+            let has_tail_calls = rewrite_tail_calls(&mut body, &name);
+
+            self.functions.push(MirFunction {
+                name,
+                params,
+                return_type,
+                body,
+                is_closure_fn: false,
+                captures: Vec::new(),
+                has_tail_calls,
+            });
+        }
     }
 
     // ── Supervisor lowering ─────────────────────────────────────────────

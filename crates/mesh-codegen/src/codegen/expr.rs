@@ -3541,6 +3541,107 @@ impl<'ctx> CodeGen<'ctx> {
         Ok(())
     }
 
+    /// Generate an actor wrapper function body that deserializes arguments from
+    /// a raw pointer buffer and calls the actual actor body function.
+    ///
+    /// The runtime calls actor entry functions with `extern "C" fn(*const u8)`.
+    /// The wrapper loads each argument from the args buffer at 8-byte offsets
+    /// (matching the serialization in `codegen_actor_spawn`) and calls the
+    /// typed body function.
+    pub(crate) fn codegen_actor_wrapper(
+        &mut self,
+        _wrapper_name: &str,
+        body_fn_name: &str,
+    ) -> Result<(), String> {
+        let i64_ty = self.context.i64_type();
+        let ptr_ty = self.context.ptr_type(inkwell::AddressSpace::default());
+
+        // Get the body function (already forward-declared).
+        let body_fn = *self
+            .functions
+            .get(body_fn_name)
+            .ok_or_else(|| format!("Actor body function '{}' not found", body_fn_name))?;
+
+        // Load the __args_ptr parameter value.
+        let args_ptr_alloca = *self
+            .locals
+            .get("__args_ptr")
+            .ok_or("Missing __args_ptr parameter in actor wrapper")?;
+        let args_ptr_val = self
+            .builder
+            .build_load(ptr_ty, args_ptr_alloca, "args_ptr_val")
+            .map_err(|e| e.to_string())?
+            .into_pointer_value();
+
+        // Get the body function's parameter types from LLVM.
+        let body_param_types = body_fn.get_type().get_param_types();
+        let num_params = body_param_types.len();
+
+        // Create an array type for GEP indexing (same as codegen_actor_spawn).
+        let arr_ty = i64_ty.array_type(num_params as u32);
+
+        // Load each argument from the buffer at 8-byte offsets.
+        let mut call_args: Vec<inkwell::values::BasicMetadataValueEnum<'ctx>> =
+            Vec::with_capacity(num_params);
+
+        for i in 0..num_params {
+            let idx = self.context.i32_type().const_int(i as u64, false);
+            let zero = self.context.i32_type().const_int(0, false);
+            let element_ptr = unsafe {
+                self.builder
+                    .build_gep(arr_ty, args_ptr_val, &[zero, idx], &format!("arg_ptr_{}", i))
+                    .map_err(|e| e.to_string())?
+            };
+
+            // Convert BasicMetadataTypeEnum to BasicTypeEnum for type checking.
+            let param_ty: inkwell::types::BasicTypeEnum<'ctx> =
+                inkwell::types::BasicTypeEnum::try_from(body_param_types[i])
+                    .unwrap_or(i64_ty.into());
+
+            let loaded_val = if param_ty.is_pointer_type() {
+                // Load as i64 then inttoptr
+                let raw = self
+                    .builder
+                    .build_load(i64_ty, element_ptr, &format!("arg_raw_{}", i))
+                    .map_err(|e| e.to_string())?
+                    .into_int_value();
+                self.builder
+                    .build_int_to_ptr(raw, ptr_ty, &format!("arg_ptr_{}", i))
+                    .map_err(|e| e.to_string())?
+                    .into()
+            } else if param_ty.is_float_type() {
+                // Load as i64 then bitcast to float
+                let raw = self
+                    .builder
+                    .build_load(i64_ty, element_ptr, &format!("arg_raw_{}", i))
+                    .map_err(|e| e.to_string())?;
+                self.builder
+                    .build_bit_cast(raw, param_ty, &format!("arg_float_{}", i))
+                    .map_err(|e| e.to_string())?
+            } else {
+                // Integer type: load as i64 directly
+                self.builder
+                    .build_load(i64_ty, element_ptr, &format!("arg_{}", i))
+                    .map_err(|e| e.to_string())?
+            };
+
+            call_args.push(loaded_val.into());
+        }
+
+        // Call the body function with deserialized arguments.
+        self.builder
+            .build_call(body_fn, &call_args, "body_call")
+            .map_err(|e| e.to_string())?;
+
+        // Return Unit (empty struct).
+        let unit_val = self.context.struct_type(&[], false).const_zero();
+        self.builder
+            .build_return(Some(&unit_val))
+            .map_err(|e| e.to_string())?;
+
+        Ok(())
+    }
+
     /// Generate a service call helper function body.
     ///
     /// Allocate a runtime tuple on the GC heap.

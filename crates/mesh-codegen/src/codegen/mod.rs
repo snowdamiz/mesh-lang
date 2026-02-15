@@ -463,6 +463,19 @@ impl<'ctx> CodeGen<'ctx> {
             }
         }
 
+        // Check if this is an actor wrapper function that needs arg deserialization.
+        // Actor wrappers have a single __args_ptr param and a matching __actor_{name}_body function.
+        {
+            let actor_body_name = format!("__actor_{}_body", func.name);
+            if func.params.len() == 1
+                && func.params[0].0 == "__args_ptr"
+                && func.params[0].1 == MirType::Ptr
+                && self.functions.contains_key(&actor_body_name)
+            {
+                return self.codegen_actor_wrapper(&func.name, &actor_body_name);
+            }
+        }
+
         // Compile the function body.
         let result = self.codegen_expr(&func.body)?;
 
