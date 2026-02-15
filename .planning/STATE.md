@@ -9,12 +9,12 @@ See: .planning/PROJECT.md (updated 2026-02-14)
 
 ## Current Position
 
-Phase: 89 of 95 (Error Grouping & Issue Lifecycle)
-Plan: 1 of 2 in current phase
-Status: Plan 89-01 complete (fingerprint computation + issue upsert + enriched EventProcessor)
-Last activity: 2026-02-15 -- Phase 89 Plan 01 complete
+Phase: 89 of 95 (Error Grouping & Issue Lifecycle) -- COMPLETE
+Plan: 2 of 2 in current phase (all plans complete)
+Status: Phase 89 complete (error grouping + issue lifecycle management)
+Last activity: 2026-02-15 -- Phase 89 Plan 02 complete
 
-Progress: [####################..........] 98% overall (255/261 plans shipped)
+Progress: [####################..........] 99% overall (257/261 plans shipped)
 
 ## Performance Metrics
 
@@ -24,7 +24,7 @@ Progress: [####################..........] 98% overall (255/261 plans shipped)
 - Milestones shipped: 18 (v1.0-v8.0)
 - Lines of Rust: ~98,800
 - Lines of website: ~5,500
-- Lines of Mesh: ~1290 (first Mesh application code, refactored into modules, ingestion pipeline wired with health monitoring, error grouping pipeline)
+- Lines of Mesh: ~1780 (first Mesh application code, refactored into modules, ingestion pipeline wired with health monitoring, error grouping pipeline, issue lifecycle API)
 - Timeline: 10 days (2026-02-05 -> 2026-02-14)
 
 ## Accumulated Context
@@ -76,6 +76,10 @@ Cleared at milestone boundary. v8.0 decisions archived in PROJECT.md.
 - [89-01] Triple-pipe delimiter (|||) for enriched event entries -- safe separator never appearing in JSON or UUIDs
 - [89-01] issue_id and fingerprint passed as separate SQL params to insert_event (avoids JSON field injection in Mesh)
 - [89-01] Mesh fingerprint module (Ingestion.Fingerprint) kept as reference; runtime path uses PostgreSQL SQL approach
+- [89-02] POST routes for all issue state transitions instead of PUT/DELETE -- avoids untested HTTP method support
+- [89-02] Default to 'unresolved' status filter for list endpoint -- Mesh lacks query string parsing
+- [89-02] PostgreSQL jsonb extraction for assign request body parsing -- consistent with SQL-based field extraction
+- [89-02] Extracted log_spike_result helper for single-expression case arm constraint in spike_checker actor
 
 ### Roadmap Evolution
 
@@ -104,6 +108,6 @@ Research flags from research/SUMMARY.md:
 ## Session Continuity
 
 Last session: 2026-02-15
-Stopped at: Completed 89-01-PLAN.md (fingerprint computation + issue grouping pipeline)
+Stopped at: Completed 89-02-PLAN.md (issue lifecycle management APIs + spike detection)
 Resume file: None
-Next action: Execute Phase 89 Plan 02 (Issue lifecycle management APIs)
+Next action: Execute Phase 90 (Alerting & Notifications)
