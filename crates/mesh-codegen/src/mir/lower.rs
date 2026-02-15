@@ -9879,10 +9879,15 @@ fn map_builtin_name(name: &str) -> String {
         // ── Phase 67: Process monitor/demonitor ───────────────────────────
         "process_monitor" => "mesh_process_monitor".to_string(),
         "process_demonitor" => "mesh_process_demonitor".to_string(),
+        "process_register" => "mesh_process_register".to_string(),
+        "process_whereis" => "mesh_process_whereis".to_string(),
         // ── Phase 68: Global registry functions ─────────────────────────
         "global_register" => "mesh_global_register".to_string(),
         "global_whereis" => "mesh_global_whereis".to_string(),
         "global_unregister" => "mesh_global_unregister".to_string(),
+        // ── Phase 88: WebSocket functions ────────────────────────────
+        "ws_send" => "mesh_ws_send".to_string(),
+        "ws_serve" => "mesh_ws_serve".to_string(),
         // ── Phase 76: Iterator functions ──────────────────────────────
         "iter_from" => "mesh_iter_from".to_string(),
         // ── Phase 78: Lazy Combinators & Terminals ──────────────────

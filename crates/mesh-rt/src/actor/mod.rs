@@ -776,6 +776,41 @@ pub extern "C" fn mesh_actor_register(name_ptr: *const u8, name_len: u64) -> u64
     }
 }
 
+/// Register an actor under a name (MeshString variant).
+///
+/// Called from compiled Mesh code for `Process.register(name, pid)`.
+/// Takes a MeshString pointer for the name and a raw PID u64.
+/// Returns 0 on success, 1 on error.
+#[no_mangle]
+pub extern "C" fn mesh_process_register(name: *const crate::string::MeshString, pid: u64) -> u64 {
+    if name.is_null() || pid == 0 {
+        return 1;
+    }
+    let name_str = unsafe { (*name).as_str().to_string() };
+    let pid_val = process::ProcessId(pid);
+    match registry::global_registry().register(name_str, pid_val) {
+        Ok(()) => 0,
+        Err(_) => 1,
+    }
+}
+
+/// Look up a registered actor by name (MeshString variant).
+///
+/// Called from compiled Mesh code for `Process.whereis(name)`.
+/// Takes a MeshString pointer for the name.
+/// Returns the PID as u64, or 0 if not found.
+#[no_mangle]
+pub extern "C" fn mesh_process_whereis(name: *const crate::string::MeshString) -> u64 {
+    if name.is_null() {
+        return 0;
+    }
+    let name_str = unsafe { (*name).as_str() };
+    match registry::global_registry().whereis(name_str) {
+        Some(pid) => pid.as_u64(),
+        None => 0,
+    }
+}
+
 /// Look up a registered actor by name.
 ///
 /// Returns the PID of the actor registered under the given name, or 0

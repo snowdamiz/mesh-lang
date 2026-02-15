@@ -118,12 +118,13 @@ fn expr_bp(p: &mut Parser, min_bp: u8) -> Option<MarkClosed> {
             let m = p.open_before(lhs);
             p.advance(); // .
             // Accept IDENT or keywords that are valid as field names
-            // (e.g., Node.self, Node.monitor, Node.spawn, Process.monitor).
+            // (e.g., Node.self, Node.monitor, Node.spawn, Process.monitor, Ws.send).
             if !p.eat(SyntaxKind::IDENT)
                 && !p.eat(SyntaxKind::SELF_KW)
                 && !p.eat(SyntaxKind::MONITOR_KW)
                 && !p.eat(SyntaxKind::SPAWN_KW)
-                && !p.eat(SyntaxKind::LINK_KW) {
+                && !p.eat(SyntaxKind::LINK_KW)
+                && !p.eat(SyntaxKind::SEND_KW) {
                 p.error("expected IDENT");
             }
             lhs = p.close(m, SyntaxKind::FIELD_ACCESS);

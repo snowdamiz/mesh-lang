@@ -818,6 +818,16 @@ fn stdlib_modules() -> HashMap<String, HashMap<String, Scheme>> {
         vec![Ty::int()],
         Ty::int(),
     )));
+    // Process.register: fn(String, Pid<()>) -> Int  (name, pid -> 0 success, 1 error)
+    process_mod.insert("register".to_string(), Scheme::mono(Ty::fun(
+        vec![Ty::string(), Ty::Con(TyCon::new("Pid"))],
+        Ty::int(),
+    )));
+    // Process.whereis: fn(String) -> Pid<()>  (name -> pid, 0 if not found)
+    process_mod.insert("whereis".to_string(), Scheme::mono(Ty::fun(
+        vec![Ty::string()],
+        Ty::Con(TyCon::new("Pid")),
+    )));
     modules.insert("Process".to_string(), process_mod);
 
     // ── Global module (Phase 68) ─────────────────────────────────────
@@ -838,6 +848,25 @@ fn stdlib_modules() -> HashMap<String, HashMap<String, Scheme>> {
         Ty::int(),
     )));
     modules.insert("Global".to_string(), global_mod);
+
+    // ── Ws (WebSocket) module (Phase 88) ─────────────────────────
+    let mut ws_mod = HashMap::new();
+    // Ws.send: fn(Int, String) -> Int  (conn_handle, message -> 0 success)
+    ws_mod.insert("send".to_string(), Scheme::mono(Ty::fun(
+        vec![Ty::int(), Ty::string()],
+        Ty::int(),
+    )));
+    // Ws.serve: fn(fn(Int, String, Map<String,String>) -> Int, fn(Int, String) -> (), fn(Int, Int, String) -> (), Int) -> ()
+    ws_mod.insert("serve".to_string(), Scheme::mono(Ty::fun(
+        vec![
+            Ty::fun(vec![Ty::int(), Ty::string(), Ty::map(Ty::string(), Ty::string())], Ty::int()),
+            Ty::fun(vec![Ty::int(), Ty::string()], Ty::Tuple(vec![])),
+            Ty::fun(vec![Ty::int(), Ty::int(), Ty::string()], Ty::Tuple(vec![])),
+            Ty::int(),
+        ],
+        Ty::Tuple(vec![]),
+    )));
+    modules.insert("Ws".to_string(), ws_mod);
 
     // ── Iter module (Phase 76 + Phase 78) ──────────────────────────
     {
@@ -959,6 +988,7 @@ const STDLIB_MODULE_NAMES: &[&str] = &[
     "Node", "Process",  // Phase 67
     "Global",  // Phase 68
     "Iter",  // Phase 76
+    "Ws",  // Phase 88
 ];
 
 /// Check if a name is a known stdlib module.
