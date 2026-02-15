@@ -18,3 +18,17 @@ pub struct AlertCondition do
   threshold :: Int
   window_minutes :: Int
 end deriving(Json)
+
+# Fired alert record -- all-String fields per Row struct convention (decision [87-01]).
+# JSONB condition_snapshot stored as String. Nullable timestamps COALESCE'd to empty string in queries.
+pub struct Alert do
+  id :: String
+  rule_id :: String
+  project_id :: String
+  status :: String
+  message :: String
+  condition_snapshot :: String
+  triggered_at :: String
+  acknowledged_at :: String
+  resolved_at :: String
+end deriving(Json, Row)

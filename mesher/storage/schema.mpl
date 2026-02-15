@@ -1,5 +1,5 @@
 # PostgreSQL schema DDL for Mesher monitoring platform.
-# Creates all 10 tables, 15 indexes, and manages daily event partitions.
+# Creates all 11 tables, 18 indexes, and manages daily event partitions.
 # All operations are idempotent (IF NOT EXISTS) and use Pool.execute.
 
 # Create the complete Mesher database schema.
@@ -16,6 +16,9 @@ pub fn create_schema(pool :: PoolHandle) -> Int!String do
   Pool.execute(pool, "CREATE TABLE IF NOT EXISTS issues (id UUID PRIMARY KEY DEFAULT uuidv7(), project_id UUID NOT NULL, fingerprint TEXT NOT NULL, title TEXT NOT NULL, level TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'unresolved', event_count INTEGER NOT NULL DEFAULT 0, first_seen TIMESTAMPTZ NOT NULL DEFAULT now(), last_seen TIMESTAMPTZ NOT NULL DEFAULT now(), assigned_to UUID REFERENCES users(id), UNIQUE(project_id, fingerprint))", [])?
   Pool.execute(pool, "CREATE TABLE IF NOT EXISTS events (id UUID NOT NULL DEFAULT uuidv7(), project_id UUID NOT NULL, issue_id UUID NOT NULL, level TEXT NOT NULL, message TEXT NOT NULL, fingerprint TEXT NOT NULL, exception JSONB, stacktrace JSONB, breadcrumbs JSONB, tags JSONB NOT NULL DEFAULT '{}', extra JSONB NOT NULL DEFAULT '{}', user_context JSONB, sdk_name TEXT, sdk_version TEXT, received_at TIMESTAMPTZ NOT NULL DEFAULT now(), PRIMARY KEY (id, received_at)) PARTITION BY RANGE (received_at)", [])?
   Pool.execute(pool, "CREATE TABLE IF NOT EXISTS alert_rules (id UUID PRIMARY KEY DEFAULT uuidv7(), project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE, name TEXT NOT NULL, condition_json JSONB NOT NULL, action_json JSONB NOT NULL, enabled BOOLEAN NOT NULL DEFAULT true, created_at TIMESTAMPTZ NOT NULL DEFAULT now())", [])?
+  Pool.execute(pool, "CREATE TABLE IF NOT EXISTS alerts (id UUID PRIMARY KEY DEFAULT uuidv7(), rule_id UUID NOT NULL REFERENCES alert_rules(id) ON DELETE CASCADE, project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE, status TEXT NOT NULL DEFAULT 'active', message TEXT NOT NULL, condition_snapshot JSONB NOT NULL, triggered_at TIMESTAMPTZ NOT NULL DEFAULT now(), acknowledged_at TIMESTAMPTZ, resolved_at TIMESTAMPTZ)", [])?
+  Pool.execute(pool, "ALTER TABLE alert_rules ADD COLUMN IF NOT EXISTS cooldown_minutes INTEGER NOT NULL DEFAULT 60", [])?
+  Pool.execute(pool, "ALTER TABLE alert_rules ADD COLUMN IF NOT EXISTS last_fired_at TIMESTAMPTZ", [])?
   Pool.execute(pool, "CREATE INDEX IF NOT EXISTS idx_org_memberships_user ON org_memberships(user_id)", [])?
   Pool.execute(pool, "CREATE INDEX IF NOT EXISTS idx_org_memberships_org ON org_memberships(org_id)", [])?
   Pool.execute(pool, "CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id)", [])?
@@ -31,6 +34,9 @@ pub fn create_schema(pool :: PoolHandle) -> Int!String do
   Pool.execute(pool, "CREATE INDEX IF NOT EXISTS idx_events_fingerprint ON events(fingerprint)", [])?
   Pool.execute(pool, "CREATE INDEX IF NOT EXISTS idx_events_tags ON events USING GIN(tags jsonb_path_ops)", [])?
   Pool.execute(pool, "CREATE INDEX IF NOT EXISTS idx_alert_rules_project ON alert_rules(project_id) WHERE enabled = true", [])?
+  Pool.execute(pool, "CREATE INDEX IF NOT EXISTS idx_alerts_project_status ON alerts(project_id, status)", [])?
+  Pool.execute(pool, "CREATE INDEX IF NOT EXISTS idx_alerts_rule ON alerts(rule_id)", [])?
+  Pool.execute(pool, "CREATE INDEX IF NOT EXISTS idx_alerts_triggered ON alerts(triggered_at DESC)", [])?
   Ok(0)
 end
 
