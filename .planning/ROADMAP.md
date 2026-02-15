@@ -171,7 +171,7 @@ See milestones/v8.0-ROADMAP.md for full phase details.
 - [x] **Phase 90: Real-Time Streaming** - WebSocket dashboard streaming with rooms, filters, backpressure (completed 2026-02-15)
 - [x] **Phase 91: REST API** - Search, filter, pagination, dashboard aggregation, project/alert/org CRUD, event detail (completed 2026-02-15)
 - [x] **Phase 91.1: Idiomatic Refactor** - Pipe operators, String.join, shared helpers, DRY (INSERTED, completed 2026-02-15)
-- [ ] **Phase 92: Alerting System** - Rule engine, timer-driven evaluation, notifications, dedup/cooldown
+- [x] **Phase 92: Alerting System** - Rule engine, timer-driven evaluation, notifications, dedup/cooldown (completed 2026-02-15)
 - [ ] **Phase 93: Data Retention & Cleanup** - Retention policies, partition management, storage tracking, sampling
 - [ ] **Phase 94: Multi-Node Clustering** - Distributed actors, global registry, cross-node event routing and broadcast
 - [ ] **Phase 95: Vue Frontend** - SPA dashboard with ECharts, TanStack tables, real-time WebSocket streaming
@@ -301,9 +301,9 @@ Plans:
 **Plans:** 3 plans
 
 Plans:
-- [ ] 92-01-PLAN.md -- Schema extension (alerts table, cooldown columns), Alert type, query helpers
-- [ ] 92-02-PLAN.md -- Alert evaluator actor (timer-driven threshold evaluation) and event-based alert triggers
-- [ ] 92-03-PLAN.md -- HTTP API routes for alert rule CRUD and alert state management
+- [x] 92-01-PLAN.md -- Schema extension (alerts table, cooldown columns), Alert type, query helpers
+- [x] 92-02-PLAN.md -- Alert evaluator actor (timer-driven threshold evaluation) and event-based alert triggers
+- [x] 92-03-PLAN.md -- HTTP API routes for alert rule CRUD and alert state management
 
 ### Phase 93: Data Retention & Cleanup
 **Goal**: Stored event data is automatically cleaned up per project retention policies, with partition-based deletion and storage visibility
@@ -371,9 +371,9 @@ Note: Phase 93 depends only on 87 (can run in parallel with 88-92 if desired). P
 | 90 | v9.0 | 3/3 | Complete | 2026-02-15 |
 | 91 | v9.0 | 3/3 | Complete | 2026-02-15 |
 | 91.1 | v9.0 | 2/2 | Complete | 2026-02-15 |
-| 92 | v9.0 | 0/3 | Not started | - |
+| 92 | v9.0 | 3/3 | Complete | 2026-02-15 |
 | 93 | v9.0 | 0/TBD | Not started | - |
 | 94 | v9.0 | 0/TBD | Not started | - |
 | 95 | v9.0 | 0/TBD | Not started | - |
 
-**Total: 94 phases shipped across 18 milestones. 262 plans completed. 10 phases planned for v9.0.**
+**Total: 95 phases shipped across 18 milestones. 265 plans completed. 10 phases planned for v9.0.**
