@@ -14,6 +14,7 @@ from Api.Search import handle_search_issues, handle_search_events, handle_filter
 from Api.Dashboard import handle_event_volume, handle_error_breakdown, handle_top_issues, handle_tag_breakdown, handle_issue_timeline, handle_project_health
 from Api.Detail import handle_event_detail
 from Api.Team import handle_list_members, handle_add_member, handle_update_member_role, handle_remove_member, handle_list_api_keys, handle_create_api_key, handle_revoke_api_key
+from Api.Alerts import handle_create_alert_rule, handle_list_alert_rules, handle_toggle_alert_rule, handle_delete_alert_rule, handle_list_alerts, handle_acknowledge_alert, handle_resolve_alert
 from Ingestion.WsHandler import ws_on_connect, ws_on_message, ws_on_close
 
 fn on_ws_connect(conn, path, headers) do
@@ -90,7 +91,14 @@ fn start_services(pool :: PoolHandle) do
     |> HTTP.on_post("/api/v1/orgs/:org_id/members/:membership_id/remove", handle_remove_member)
     |> HTTP.on_get("/api/v1/projects/:project_id/api-keys", handle_list_api_keys)
     |> HTTP.on_post("/api/v1/projects/:project_id/api-keys", handle_create_api_key)
-    |> HTTP.on_post("/api/v1/api-keys/:key_id/revoke", handle_revoke_api_key)), 8080)
+    |> HTTP.on_post("/api/v1/api-keys/:key_id/revoke", handle_revoke_api_key)
+    |> HTTP.on_get("/api/v1/projects/:project_id/alert-rules", handle_list_alert_rules)
+    |> HTTP.on_post("/api/v1/projects/:project_id/alert-rules", handle_create_alert_rule)
+    |> HTTP.on_post("/api/v1/alert-rules/:rule_id/toggle", handle_toggle_alert_rule)
+    |> HTTP.on_post("/api/v1/alert-rules/:rule_id/delete", handle_delete_alert_rule)
+    |> HTTP.on_get("/api/v1/projects/:project_id/alerts", handle_list_alerts)
+    |> HTTP.on_post("/api/v1/alerts/:id/acknowledge", handle_acknowledge_alert)
+    |> HTTP.on_post("/api/v1/alerts/:id/resolve", handle_resolve_alert)), 8080)
 end
 
 fn main() do
