@@ -175,7 +175,7 @@ See milestones/v8.0-ROADMAP.md for full phase details.
 - [x] **Phase 93: Data Retention & Cleanup** - Retention policies, partition management, storage tracking, sampling (completed 2026-02-15)
 - [x] **Phase 93.1: Issues Encountered** - Fix forward-reference compilation errors in detail.mpl and team.mpl (INSERTED, completed 2026-02-15)
 - [x] **Phase 93.2: Fix Actor Spawn Segfault** - Actor wrapper+body ABI fix for parameterized actors (INSERTED, completed 2026-02-15)
-- [ ] **Phase 94: Multi-Node Clustering** - Distributed actors, global registry, cross-node event routing and broadcast
+- [x] **Phase 94: Multi-Node Clustering** - Distributed actors, global registry, cross-node event routing and broadcast (completed 2026-02-15)
 - [ ] **Phase 95: Vue Frontend** - SPA dashboard with ECharts, TanStack tables, real-time WebSocket streaming
 
 ## Phase Details
@@ -351,10 +351,10 @@ Plans:
 **Plans:** 4 plans
 
 Plans:
-- [ ] 94-01-PLAN.md -- Node startup, mesh formation, and global service registration
-- [ ] 94-02-PLAN.md -- Cross-node event routing and distributed service discovery
-- [ ] 94-03-PLAN.md -- Load-based remote processor spawning with monitoring
-- [ ] 94-04-PLAN.md -- Gap closure: Node.spawn remote spawning and Node.monitor health tracking
+- [x] 94-01-PLAN.md -- Node startup, mesh formation, and global service registration
+- [x] 94-02-PLAN.md -- Cross-node event routing and distributed service discovery
+- [x] 94-03-PLAN.md -- Load-based remote processor spawning with monitoring
+- [x] 94-04-PLAN.md -- Gap closure: Node.spawn remote spawning and Node.monitor health tracking
 
 ### Phase 95: Vue Frontend
 **Goal**: Users can interact with the entire Mesher platform through a Vue SPA with dashboards, event browsing, issue management, alerting, and real-time streaming
@@ -405,7 +405,7 @@ Note: Phase 93 depends only on 87 (can run in parallel with 88-92 if desired). P
 | 93 | v9.0 | 2/2 | Complete | 2026-02-15 |
 | 93.1 | v9.0 | 1/1 | Complete | 2026-02-15 |
 | 93.2 | v9.0 | 1/1 | Complete | 2026-02-15 |
-| 94 | v9.0 | 0/3 | Planned | - |
+| 94 | v9.0 | 4/4 | Complete | 2026-02-15 |
 | 95 | v9.0 | 0/TBD | Not started | - |
 
-**Total: 99 phases shipped across 18 milestones. 269 plans completed. 12 phases planned for v9.0.**
+**Total: 100 phases shipped across 18 milestones. 273 plans completed. 12 phases planned for v9.0.**
