@@ -6,7 +6,7 @@ from Services.RateLimiter import RateLimiter
 from Services.EventProcessor import EventProcessor
 from Services.Writer import StorageWriter
 from Services.StreamManager import StreamManager
-from Storage.Queries import check_volume_spikes, get_threshold_rules, evaluate_threshold_rule, fire_alert
+from Storage.Queries import check_volume_spikes, get_threshold_rules, evaluate_threshold_rule, fire_alert, delete_expired_events, get_all_project_retention, get_expired_partitions, drop_partition
 
 # Registry state holds pool handle and all service PIDs.
 struct RegistryState do
@@ -209,6 +209,73 @@ actor alert_evaluator(pool :: PoolHandle) do
   alert_evaluator(pool)
 end
 
+# --- Retention cleanup helpers (RETAIN-01) ---
+# Defined before retention_cleaner actor (define-before-use).
+
+# Log helpers for retention cleanup (extracted for single-expression case arms).
+fn log_cleanup_result(deleted :: Int) do
+  let _ = println("[Mesher] Retention cleanup: deleted " <> String.from(deleted) <> " expired events")
+  0
+end
+
+fn log_cleanup_error(e :: String) do
+  let _ = println("[Mesher] Retention cleanup error: " <> e)
+  0
+end
+
+fn log_partition_drop(name :: String) do
+  let _ = println("[Mesher] Dropped expired partition: " <> name)
+  0
+end
+
+# Loop through projects list by index, deleting expired events for each.
+fn cleanup_projects_loop(pool :: PoolHandle, projects, i :: Int, total :: Int, deleted :: Int) -> Int!String do
+  if i < total do
+    let row = List.get(projects, i)
+    let id = Map.get(row, "id")
+    let retention_days_str = Map.get(row, "retention_days")
+    let count = delete_expired_events(pool, id, retention_days_str)?
+    cleanup_projects_loop(pool, projects, i + 1, total, deleted + count)
+  else
+    Ok(deleted)
+  end
+end
+
+# Loop through expired partitions, dropping each one.
+fn drop_partitions_loop(pool :: PoolHandle, partitions, i :: Int, total :: Int) -> Int!String do
+  if i < total do
+    let row = List.get(partitions, i)
+    let partition_name = Map.get(row, "partition_name")
+    let _ = drop_partition(pool, partition_name)?
+    let _ = log_partition_drop(partition_name)
+    drop_partitions_loop(pool, partitions, i + 1, total)
+  else
+    Ok(total)
+  end
+end
+
+# Orchestration: run per-project deletion then global partition cleanup.
+fn run_retention_cleanup(pool :: PoolHandle) -> Int!String do
+  let projects = get_all_project_retention(pool)?
+  let deleted = cleanup_projects_loop(pool, projects, 0, List.length(projects), 0)?
+  let partitions = get_expired_partitions(pool, "90")?
+  let _ = drop_partitions_loop(pool, partitions, 0, List.length(partitions))?
+  Ok(deleted)
+end
+
+# Retention cleaner actor -- runs every 24 hours (86400000ms).
+# Iterates all projects to delete expired events per their retention_days setting,
+# then drops any partitions older than 90 days (the maximum retention period).
+actor retention_cleaner(pool :: PoolHandle) do
+  Timer.sleep(86400000)
+  let result = run_retention_cleanup(pool)
+  case result do
+    Ok(n) -> log_cleanup_result(n)
+    Err(e) -> log_cleanup_error(e)
+  end
+  retention_cleaner(pool)
+end
+
 # Restart all pipeline services and re-register PipelineRegistry.
 # Called by health_checker when the registry is unreachable (one_for_all strategy).
 # Defined after alert_evaluator actor (define-before-use, decision [90-03]).
@@ -227,6 +294,9 @@ fn restart_all_services(pool :: PoolHandle) do
 
   # Spawn alert evaluator on restart
   let _ = spawn(alert_evaluator, pool)
+
+  # Spawn retention cleaner on restart
+  let _ = spawn(retention_cleaner, pool)
 
   let registry_pid = PipelineRegistry.start(pool, rate_limiter_pid, processor_pid, writer_pid)
   let _ = Process.register("mesher_registry", registry_pid)
@@ -281,6 +351,10 @@ pub fn start_pipeline(pool :: PoolHandle) do
   # Spawn alert evaluator (30-second interval for threshold rules)
   let _ = spawn(alert_evaluator, pool)
   println("[Mesher] Alert evaluator started (30s interval)")
+
+  # Spawn retention cleaner (24-hour interval for daily cleanup)
+  let _ = spawn(retention_cleaner, pool)
+  println("[Mesher] Retention cleaner started (24h interval)")
 
   registry_pid
 end
