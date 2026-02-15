@@ -422,3 +422,36 @@ pub fn get_event_neighbors(pool :: PoolHandle, issue_id :: String, received_at :
   let rows = Pool.query(pool, sql, [issue_id, received_at, event_id])?
   Ok(rows)
 end
+
+# --- Team management queries (Phase 91 Plan 03 -- ORG-04) ---
+
+# Update a member's role. SQL-side validation ensures only valid roles accepted.
+# Returns affected row count (0 if invalid role or membership not found).
+pub fn update_member_role(pool :: PoolHandle, membership_id :: String, new_role :: String) -> Int!String do
+  Pool.execute(pool, "UPDATE org_memberships SET role = $2 WHERE id = $1::uuid AND $2 IN ('owner', 'admin', 'member')", [membership_id, new_role])
+end
+
+# Remove a member from an organization.
+# Returns affected row count (0 if membership not found).
+pub fn remove_member(pool :: PoolHandle, membership_id :: String) -> Int!String do
+  Pool.execute(pool, "DELETE FROM org_memberships WHERE id = $1::uuid", [membership_id])
+end
+
+# List all members of an organization with user info (email, display_name).
+# JOIN with users table for enriched member listing.
+# Returns raw Map rows for flexible JSON serialization.
+pub fn get_members_with_users(pool :: PoolHandle, org_id :: String) -> List<Map<String, String>>!String do
+  let sql = "SELECT m.id::text, m.user_id::text, m.org_id::text, m.role, m.joined_at::text, u.email, u.display_name FROM org_memberships m JOIN users u ON u.id = m.user_id WHERE m.org_id = $1::uuid ORDER BY m.joined_at"
+  let rows = Pool.query(pool, sql, [org_id])?
+  Ok(rows)
+end
+
+# --- API token management queries (Phase 91 Plan 03 -- ORG-05) ---
+
+# List all API keys for a project with full details.
+# Returns raw Map rows. revoked_at is empty string if not revoked.
+pub fn list_api_keys(pool :: PoolHandle, project_id :: String) -> List<Map<String, String>>!String do
+  let sql = "SELECT id::text, project_id::text, key_value, label, created_at::text, COALESCE(revoked_at::text, '') AS revoked_at FROM api_keys WHERE project_id = $1::uuid ORDER BY created_at DESC"
+  let rows = Pool.query(pool, sql, [project_id])?
+  Ok(rows)
+end
