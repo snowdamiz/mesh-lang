@@ -56,17 +56,6 @@ fn build_detail_response(detail_json :: String, nav_json :: String) -> String do
   "{\"event\":" <> detail_json <> ",\"navigation\":" <> nav_json <> "}"
 end
 
-# Helper: add navigation data to event detail and build final response.
-# Makes the second query (get_event_neighbors) using issue_id and received_at
-# from the detail row, then combines both into the response.
-fn add_navigation(pool, event_id :: String, issue_id :: String, received_at :: String, detail_json :: String) do
-  let nav_result = get_event_neighbors(pool, issue_id, received_at, event_id)
-  case nav_result do
-    Ok(nav_rows) -> build_nav_response(detail_json, nav_rows)
-    Err(_) -> HTTP.response(200, build_detail_response(detail_json, "{\"next_id\":null,\"prev_id\":null}"))
-  end
-end
-
 # Helper: build response from navigation rows.
 fn build_nav_response(detail_json :: String, nav_rows) do
   if List.length(nav_rows) > 0 do
@@ -75,6 +64,17 @@ fn build_nav_response(detail_json :: String, nav_rows) do
     HTTP.response(200, build_detail_response(detail_json, nav_json))
   else
     HTTP.response(200, build_detail_response(detail_json, "{\"next_id\":null,\"prev_id\":null}"))
+  end
+end
+
+# Helper: add navigation data to event detail and build final response.
+# Makes the second query (get_event_neighbors) using issue_id and received_at
+# from the detail row, then combines both into the response.
+fn add_navigation(pool, event_id :: String, issue_id :: String, received_at :: String, detail_json :: String) do
+  let nav_result = get_event_neighbors(pool, issue_id, received_at, event_id)
+  case nav_result do
+    Ok(nav_rows) -> build_nav_response(detail_json, nav_rows)
+    Err(_) -> HTTP.response(200, build_detail_response(detail_json, "{\"next_id\":null,\"prev_id\":null}"))
   end
 end
 

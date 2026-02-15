@@ -98,15 +98,6 @@ fn add_member_with_role(pool :: PoolHandle, org_id :: String, user_id :: String,
   end
 end
 
-# Helper: validate user_id and dispatch add member.
-fn validate_add_member(pool :: PoolHandle, org_id :: String, body :: String) do
-  let uid_result = extract_json_field(pool, body, "user_id")
-  case uid_result do
-    Ok(user_id) -> check_user_id(pool, org_id, user_id, body)
-    Err(e) -> HTTP.response(400, "{\"error\":\"invalid json\"}")
-  end
-end
-
 # Helper: check user_id is non-empty.
 fn check_user_id(pool :: PoolHandle, org_id :: String, user_id :: String, body :: String) do
   if String.length(user_id) == 0 do
@@ -116,16 +107,16 @@ fn check_user_id(pool :: PoolHandle, org_id :: String, user_id :: String, body :
   end
 end
 
-# --- Update member role helper chain ---
-
-# Helper: extract role and perform update.
-fn do_update_role(pool :: PoolHandle, membership_id :: String, body :: String) do
-  let role_result = extract_json_field(pool, body, "role")
-  case role_result do
-    Ok(role) -> perform_role_update(pool, membership_id, role)
+# Helper: validate user_id and dispatch add member.
+fn validate_add_member(pool :: PoolHandle, org_id :: String, body :: String) do
+  let uid_result = extract_json_field(pool, body, "user_id")
+  case uid_result do
+    Ok(user_id) -> check_user_id(pool, org_id, user_id, body)
     Err(e) -> HTTP.response(400, "{\"error\":\"invalid json\"}")
   end
 end
+
+# --- Update member role helper chain ---
 
 # Helper: perform the actual role update.
 fn perform_role_update(pool :: PoolHandle, membership_id :: String, role :: String) do
@@ -136,16 +127,16 @@ fn perform_role_update(pool :: PoolHandle, membership_id :: String, role :: Stri
   end
 end
 
-# --- Create API key helper chain ---
-
-# Helper: extract label and perform key creation.
-fn do_create_key(pool :: PoolHandle, project_id :: String, body :: String) do
-  let label_result = extract_json_field(pool, body, "label")
-  case label_result do
-    Ok(label) -> perform_create_key(pool, project_id, if String.length(label) == 0 do "default" else label end)
+# Helper: extract role and perform update.
+fn do_update_role(pool :: PoolHandle, membership_id :: String, body :: String) do
+  let role_result = extract_json_field(pool, body, "role")
+  case role_result do
+    Ok(role) -> perform_role_update(pool, membership_id, role)
     Err(e) -> HTTP.response(400, "{\"error\":\"invalid json\"}")
   end
 end
+
+# --- Create API key helper chain ---
 
 # Helper: perform the actual key creation.
 fn perform_create_key(pool :: PoolHandle, project_id :: String, label :: String) do
@@ -153,6 +144,15 @@ fn perform_create_key(pool :: PoolHandle, project_id :: String, label :: String)
   case result do
     Ok(key_value) -> create_key_success(key_value)
     Err(e) -> HTTP.response(500, "{\"error\":\"" <> e <> "\"}")
+  end
+end
+
+# Helper: extract label and perform key creation.
+fn do_create_key(pool :: PoolHandle, project_id :: String, body :: String) do
+  let label_result = extract_json_field(pool, body, "label")
+  case label_result do
+    Ok(label) -> perform_create_key(pool, project_id, if String.length(label) == 0 do "default" else label end)
+    Err(e) -> HTTP.response(400, "{\"error\":\"invalid json\"}")
   end
 end
 
