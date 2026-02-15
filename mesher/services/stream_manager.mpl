@@ -192,13 +192,3 @@ service StreamManager do
     drain_all_buffers(state)
   end
 end
-
-# Ticker actor for periodic buffer drain (STREAM-05 backpressure).
-# Uses Timer.sleep + recursive call because Timer.send_after delivers raw bytes
-# that cannot match service cast dispatch tags (type_tag-based dispatch).
-# Spawned alongside StreamManager in pipeline.mpl.
-actor stream_drain_ticker(stream_mgr_pid, interval :: Int) do
-  Timer.sleep(interval)
-  StreamManager.drain_buffers(stream_mgr_pid)
-  stream_drain_ticker(stream_mgr_pid, interval)
-end

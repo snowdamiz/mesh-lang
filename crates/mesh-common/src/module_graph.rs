@@ -84,8 +84,15 @@ impl ModuleGraph {
     }
 
     /// Record that module `from` depends on module `to`.
+    /// Duplicate and self-dependencies are ignored.
     pub fn add_dependency(&mut self, from: ModuleId, to: ModuleId) {
-        self.modules[from.0 as usize].dependencies.push(to);
+        if from == to {
+            return;
+        }
+        let deps = &mut self.modules[from.0 as usize].dependencies;
+        if !deps.contains(&to) {
+            deps.push(to);
+        }
     }
 
     /// Return the number of modules in the graph.

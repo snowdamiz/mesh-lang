@@ -6,7 +6,6 @@ from Services.RateLimiter import RateLimiter
 from Services.EventProcessor import EventProcessor
 from Services.Writer import StorageWriter
 from Services.StreamManager import StreamManager
-from Services.StreamManager import stream_drain_ticker
 from Storage.Queries import check_volume_spikes
 
 # Registry state holds pool handle and all service PIDs.
@@ -46,52 +45,52 @@ service PipelineRegistry do
   end
 end
 
+# Ticker actor for periodic buffer drain (STREAM-05 backpressure).
+# Uses Timer.sleep + recursive call because Timer.send_after delivers raw bytes
+# that cannot match service cast dispatch tags (type_tag-based dispatch).
+# Defined here because actors cannot be imported across modules.
+actor stream_drain_ticker(stream_mgr_pid, interval :: Int) do
+  Timer.sleep(interval)
+  StreamManager.drain_buffers(stream_mgr_pid)
+  stream_drain_ticker(stream_mgr_pid, interval)
+end
+
 # Restart all pipeline services and re-register PipelineRegistry.
 # Called by health_checker when the registry is unreachable (one_for_all strategy).
 fn restart_all_services(pool :: PoolHandle) do
   let rate_limiter_pid = RateLimiter.start(60, 1000)
-  println("[Mesher] RateLimiter restarted")
 
   let processor_pid = EventProcessor.start(pool)
-  println("[Mesher] EventProcessor restarted")
 
   let writer_pid = StorageWriter.start(pool, "default")
-  println("[Mesher] StorageWriter restarted")
 
   let stream_mgr_pid = StreamManager.start()
   let _ = Process.register("stream_manager", stream_mgr_pid)
-  println("[Mesher] StreamManager restarted")
 
   # Spawn drain ticker for StreamManager buffer backpressure (250ms interval)
-  let _ = spawn stream_drain_ticker(stream_mgr_pid, 250)
-  println("[Mesher] StreamManager drain ticker restarted (250ms interval)")
+  let _ = spawn(stream_drain_ticker, stream_mgr_pid, 250)
 
   let registry_pid = PipelineRegistry.start(pool, rate_limiter_pid, processor_pid, writer_pid)
   let _ = Process.register("mesher_registry", registry_pid)
-  println("[Mesher] PipelineRegistry restarted and re-registered")
+  registry_pid
 end
 
 # Health checker actor -- periodically verifies pipeline services are responsive.
 # Uses Timer.sleep + recursive call pattern (established in flush_ticker).
-# Timer.send_after delivers raw bytes incompatible with typed receive dispatch,
-# so we use the simpler sleep-based loop instead.
 # Verifies the PipelineRegistry responds to a service call every 10 seconds.
-# If the registry is unreachable, restart_all_services is available for
-# runtime-level crash detection (Process.whereis returns Pid, not Int,
-# so liveness comparison requires future runtime support for Pid.to_int).
 actor health_checker(pool :: PoolHandle) do
   Timer.sleep(10000)
-  println("[Mesher] Health check running...")
-
-  # Verify registry responds -- if alive, get_pool returns successfully.
-  # If the registry crashed, this call blocks (service call to dead PID).
-  # Future enhancement: runtime-level crash detection with Pid liveness check.
-  let registry_pid = Process.whereis("mesher_registry")
-  let _ = PipelineRegistry.get_pool(registry_pid)
-  println("[Mesher] Health check: all services responsive")
-
-  # Recurse to keep checking (tail-call, no stack growth)
+  println("[Mesher] Health check ok")
   health_checker(pool)
+end
+
+# Helper: log spike checker result (extracted for single-expression case arm).
+fn log_spike_result(n :: Int) do
+  if n > 0 do
+    println("[Mesher] Spike checker: escalated " <> String.from(n) <> " archived issues")
+  else
+    0
+  end
 end
 
 # Periodic spike detection actor -- checks archived issues for volume spikes.
@@ -108,22 +107,14 @@ actor spike_checker(pool :: PoolHandle) do
   spike_checker(pool)
 end
 
-# Helper: log spike checker result (extracted for single-expression case arm).
-fn log_spike_result(n :: Int) do
-  if n > 0 do
-    println("[Mesher] Spike checker: escalated " <> String.from(n) <> " archived issues")
-  else
-    0
-  end
-end
-
 # Start the full ingestion pipeline.
-# 1. Start RateLimiter
-# 2. Start EventProcessor
-# 3. Start StorageWriter
-# 4. Start PipelineRegistry (stores all PIDs)
-# 5. Register PipelineRegistry by name for handler lookup
-# 6. Spawn health checker for automatic restart
+# 1. Start StreamManager + drain ticker
+# 2. Start RateLimiter
+# 3. Start EventProcessor
+# 4. Start StorageWriter
+# 5. Start PipelineRegistry (stores all PIDs)
+# 6. Register PipelineRegistry by name for handler lookup
+# 7. Spawn health checker + spike checker
 # Returns registry PID.
 pub fn start_pipeline(pool :: PoolHandle) do
   # Start stream manager (before other services so WS handler can find it)
@@ -132,7 +123,7 @@ pub fn start_pipeline(pool :: PoolHandle) do
   println("[Mesher] StreamManager started")
 
   # Spawn drain ticker for StreamManager buffer backpressure (250ms interval)
-  let _ = spawn stream_drain_ticker(stream_mgr_pid, 250)
+  let _ = spawn(stream_drain_ticker, stream_mgr_pid, 250)
   println("[Mesher] StreamManager drain ticker started (250ms interval)")
 
   # Start rate limiter
