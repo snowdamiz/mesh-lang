@@ -10,7 +10,7 @@ from Services.RateLimiter import RateLimiter
 from Services.EventProcessor import EventProcessor
 from Types.Project import Project
 from Types.Issue import Issue
-from Storage.Queries import resolve_issue, archive_issue, unresolve_issue, assign_issue, discard_issue, delete_issue, list_issues_by_status, check_new_issue, get_event_alert_rules, should_fire_by_cooldown, fire_alert
+from Storage.Queries import resolve_issue, archive_issue, unresolve_issue, assign_issue, discard_issue, delete_issue, list_issues_by_status, check_new_issue, get_event_alert_rules, should_fire_by_cooldown, fire_alert, check_sample_rate
 from Api.Helpers import require_param
 
 # Helper: build 401 response
@@ -178,6 +178,24 @@ fn handle_event_authed(project_id :: String, rate_limiter_pid, processor_pid, wr
   end
 end
 
+# Helper: act on sampling decision (true = process, false = drop silently).
+fn handle_event_sample_decision(should_keep :: Bool, project_id :: String, rate_limiter_pid, processor_pid, writer_pid, request) do
+  if should_keep do
+    handle_event_authed(project_id, rate_limiter_pid, processor_pid, writer_pid, request)
+  else
+    accepted_response()
+  end
+end
+
+# Helper: check sampling before proceeding to rate limit + process.
+fn handle_event_sampled(pool :: PoolHandle, project_id :: String, rate_limiter_pid, processor_pid, writer_pid, request) do
+  let sample_result = check_sample_rate(pool, project_id)
+  case sample_result do
+    Ok(should_keep) -> handle_event_sample_decision(should_keep, project_id, rate_limiter_pid, processor_pid, writer_pid, request)
+    Err(_) -> handle_event_authed(project_id, rate_limiter_pid, processor_pid, writer_pid, request)
+  end
+end
+
 # Handle POST /api/v1/events
 # Flow: get registry -> get pool+pids -> auth -> rate limit -> validate -> process -> 202
 pub fn handle_event(request) do
@@ -189,7 +207,7 @@ pub fn handle_event(request) do
   let auth_result = authenticate_request(pool, request)
   case auth_result do
     Err(_) -> unauthorized_response()
-    Ok(project) -> handle_event_authed(project.id, rate_limiter_pid, processor_pid, writer_pid, request)
+    Ok(project) -> handle_event_sampled(pool, project.id, rate_limiter_pid, processor_pid, writer_pid, request)
   end
 end
 
@@ -212,6 +230,24 @@ fn handle_bulk_authed(project_id :: String, rate_limiter_pid, processor_pid, wri
   end
 end
 
+# Helper: act on bulk sampling decision (true = process, false = drop silently).
+fn handle_bulk_sample_decision(should_keep :: Bool, project_id :: String, rate_limiter_pid, processor_pid, writer_pid, request) do
+  if should_keep do
+    handle_bulk_authed(project_id, rate_limiter_pid, processor_pid, writer_pid, request)
+  else
+    accepted_response()
+  end
+end
+
+# Helper: check sampling before proceeding to bulk rate limit + process.
+fn handle_bulk_sampled(pool :: PoolHandle, project_id :: String, rate_limiter_pid, processor_pid, writer_pid, request) do
+  let sample_result = check_sample_rate(pool, project_id)
+  case sample_result do
+    Ok(should_keep) -> handle_bulk_sample_decision(should_keep, project_id, rate_limiter_pid, processor_pid, writer_pid, request)
+    Err(_) -> handle_bulk_authed(project_id, rate_limiter_pid, processor_pid, writer_pid, request)
+  end
+end
+
 # Handle POST /api/v1/events/bulk
 pub fn handle_bulk(request) do
   let reg_pid = Process.whereis("mesher_registry")
@@ -222,7 +258,7 @@ pub fn handle_bulk(request) do
   let auth_result = authenticate_request(pool, request)
   case auth_result do
     Err(_) -> unauthorized_response()
-    Ok(project) -> handle_bulk_authed(project.id, rate_limiter_pid, processor_pid, writer_pid, request)
+    Ok(project) -> handle_bulk_sampled(pool, project.id, rate_limiter_pid, processor_pid, writer_pid, request)
   end
 end
 
