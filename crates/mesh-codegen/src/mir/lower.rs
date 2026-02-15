@@ -5428,8 +5428,13 @@ impl<'a> Lowerer<'a> {
                 return MirExpr::Var(runtime_name, var_ty.clone());
             }
 
-            // Defense-in-depth warning
-            if self.lookup_var(name).is_none() {
+            // Defense-in-depth warning -- skip module-scoped helpers (Module__func),
+            // compiler-generated service stubs (__service_*), and runtime intrinsics (mesh_*).
+            if self.lookup_var(name).is_none()
+                && !self.known_functions.contains_key(name)
+                && !name.contains("__")
+                && !name.starts_with("mesh_")
+            {
                 let type_name = mir_type_to_impl_name(first_arg_ty);
                 eprintln!(
                     "[mesh-codegen] warning: call to '{}' could not be resolved \
