@@ -10,11 +10,11 @@ See: .planning/PROJECT.md (updated 2026-02-14)
 ## Current Position
 
 Phase: 87.1 of 95 (Issues Encountered)
-Plan: 1 of 2 in current phase
-Status: In Progress
-Last activity: 2026-02-14 -- Completed 87.1-01 (Codegen Fixes)
+Plan: 2 of 2 in current phase (COMPLETE)
+Status: Phase Complete
+Last activity: 2026-02-14 -- Completed 87.1-02 (Module System Fixes)
 
-Progress: [####################..........] 91% overall (243/258 plans shipped)
+Progress: [####################..........] 91% overall (244/258 plans shipped)
 
 ## Performance Metrics
 
@@ -38,13 +38,16 @@ Cleared at milestone boundary. v8.0 decisions archived in PROJECT.md.
 - [87-01] UUID columns cast to ::text in SELECT for deriving(Row) compatibility
 - [87-01] User struct excludes password_hash -- never exposed to application code
 - [87-01] Flat org -> project hierarchy with org_memberships for roles
-- [87-02] All services in main.mpl -- cross-module service export not supported in Mesh
+- [87-02] ~~All services in main.mpl -- cross-module service export not supported in Mesh~~ FIXED in 87.1-02
 - [87-02] Explicit case matching instead of ? operator -- LLVM codegen bug with ? in Result functions
-- [87-02] JSON string buffer for StorageWriter -- polymorphic type variables can't cross module boundaries
+- [87-02] JSON string buffer for StorageWriter -- ~~polymorphic type variables can't cross module boundaries~~ FIXED in 87.1-02 (normalized TyVar export)
 - [87-02] Timer actor pattern (recursive sleep + cast) for periodic flush -- Timer.send_after incompatible with service dispatch
 - [87.1-01] Entry-block alloca placement in codegen_leaf matches existing codegen_guard pattern
 - [87.1-01] Re-store to existing alloca when same variable name reused across case expressions
 - [87.1-01] Defensive ptr-to-struct load in codegen_return even though current code returns struct values
+- [87.1-02] Normalize TyVar IDs to sequential 0-based in exported Schemes for cross-module safety
+- [87.1-02] Services exported by default (no pub prefix) since grammar lacks pub service syntax
+- [87.1-02] Check service_modules before user_modules in MIR field access for generated function names
 
 ### Roadmap Evolution
 
@@ -72,6 +75,6 @@ Research flags from research/SUMMARY.md:
 ## Session Continuity
 
 Last session: 2026-02-14
-Stopped at: Completed 87.1-01-PLAN.md (Codegen Fixes)
+Stopped at: Completed 87.1-02-PLAN.md (Module System Fixes)
 Resume file: None
-Next action: Execute 87.1-02-PLAN.md (Module System Fixes)
+Next action: Phase 87.1 complete. Proceed to next phase.
