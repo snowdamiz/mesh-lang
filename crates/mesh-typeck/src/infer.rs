@@ -878,6 +878,27 @@ fn stdlib_modules() -> HashMap<String, HashMap<String, Scheme>> {
         ],
         Ty::Tuple(vec![]),
     )));
+    // ── WebSocket Room functions (Phase 90) ────────────────────────
+    // Ws.join: fn(Int, String) -> Int  (conn_handle, room_name -> 0 success)
+    ws_mod.insert("join".to_string(), Scheme::mono(Ty::fun(
+        vec![Ty::int(), Ty::string()],
+        Ty::int(),
+    )));
+    // Ws.leave: fn(Int, String) -> Int  (conn_handle, room_name -> 0 success)
+    ws_mod.insert("leave".to_string(), Scheme::mono(Ty::fun(
+        vec![Ty::int(), Ty::string()],
+        Ty::int(),
+    )));
+    // Ws.broadcast: fn(String, String) -> Int  (room_name, message -> failure_count)
+    ws_mod.insert("broadcast".to_string(), Scheme::mono(Ty::fun(
+        vec![Ty::string(), Ty::string()],
+        Ty::int(),
+    )));
+    // Ws.broadcast_except: fn(String, String, Int) -> Int  (room, msg, except_conn -> failure_count)
+    ws_mod.insert("broadcast_except".to_string(), Scheme::mono(Ty::fun(
+        vec![Ty::string(), Ty::string(), Ty::int()],
+        Ty::int(),
+    )));
     modules.insert("Ws".to_string(), ws_mod);
 
     // ── Iter module (Phase 76 + Phase 78) ──────────────────────────
