@@ -10,11 +10,11 @@ See: .planning/PROJECT.md (updated 2026-02-14)
 ## Current Position
 
 Phase: 95 of 95 (React Frontend)
-Plan: 1 of 7 in current phase -- COMPLETE
-Status: Plan 01 complete -- React SPA scaffold with app shell, typed API client, WebSocket hook
-Last activity: 2026-02-15 - React 19 + Vite + Tailwind v4 + shadcn project scaffold, sidebar/header/routing, API client, WS hook, Zustand stores
+Plan: 2 of 7 in current phase -- COMPLETE
+Status: Plan 02 complete -- Dashboard page with Recharts charts, health stats, issue list, WebSocket live updates
+Last activity: 2026-02-15 - Split-view dashboard with volume/level charts, health stat cards, compact issue list, time range selector, WS live updates
 
-Progress: [####--------------------------] 14% phase (1/7 plans shipped)
+Progress: [########----------------------] 29% phase (2/7 plans shipped)
 
 ## Performance Metrics
 
@@ -132,6 +132,10 @@ Cleared at milestone boundary. v8.0 decisions archived in PROJECT.md.
 - [94-04] Node.spawn return value (Pid) discarded -- Pid is {} in LLVM, cannot pass to String.from
 - [94-04] codegen_node_spawn reloads alloca as i64 when MIR type is Unit (Ty::Var -> MirType::Unit workaround for unresolved type variables)
 - [94-04] Zero-arg remote worker pattern: Node.spawn sends function name, worker uses Process.whereis for local resources (no PoolHandle across nodes)
+- [95-02] Health endpoint returns single snapshot not time-series -- rendered as stat cards instead of LineChart
+- [95-02] Semantic colors only for error/warning severity; info/debug/resolved/archived use monochrome theme variants
+- [95-02] WebSocket updates applied optimistically to local dashboard state without full API refetch
+- [95-02] formatRelativeTime extracted to lib/format.ts for cross-component reuse
 
 ### Roadmap Evolution
 
@@ -165,6 +169,6 @@ Research flags from research/SUMMARY.md:
 ## Session Continuity
 
 Last session: 2026-02-15
-Stopped at: Completed 95-01-PLAN.md (React SPA scaffold with app shell and shared infrastructure)
+Stopped at: Completed 95-02-PLAN.md (Dashboard page with charts, stats, issue list, WebSocket live updates)
 Resume file: None
-Next action: Continue with 95-02-PLAN.md (Dashboard page with charts and live issue list).
+Next action: Continue with 95-03-PLAN.md (Issues list and Events list pages).
