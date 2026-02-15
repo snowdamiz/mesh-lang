@@ -254,11 +254,12 @@ Plans:
   2. Client can apply filters (level, environment) to the WebSocket stream and only receive matching events
   3. System pushes new issue notifications and issue count updates to all connected dashboards for that project
   4. System drops old queued events for slow clients instead of letting buffers grow unbounded
-**Plans:** 2 plans
+**Plans:** 3 plans
 
 Plans:
 - [ ] 90-01-PLAN.md -- Typechecker gap closure (Ws.join/leave/broadcast/broadcast_except) + StreamManager service
 - [ ] 90-02-PLAN.md -- Subscription protocol, event/issue broadcasting, pipeline integration
+- [ ] 90-03-PLAN.md -- Backpressure buffer drain ticker (STREAM-05)
 
 ### Phase 91: REST API
 **Goal**: Users can query, search, and browse all platform data through a complete REST API with pagination, aggregation, and CRUD operations
@@ -347,7 +348,7 @@ Note: Phase 93 depends only on 87 (can run in parallel with 88-92 if desired). P
 | 87.2 | v9.0 | 2/2 | Complete | 2026-02-15 |
 | 88 | v9.0 | 6/6 | Complete | 2026-02-15 |
 | 89 | v9.0 | 2/2 | Complete | 2026-02-15 |
-| 90 | v9.0 | 0/TBD | Not started | - |
+| 90 | v9.0 | 0/3 | Not started | - |
 | 91 | v9.0 | 0/TBD | Not started | - |
 | 92 | v9.0 | 0/TBD | Not started | - |
 | 93 | v9.0 | 0/TBD | Not started | - |
