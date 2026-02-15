@@ -2812,3 +2812,41 @@ fn e2e_try_operator_result() {
     let output = compile_and_run(&source);
     assert_eq!(output, "valid: 42\nerror: must be positive\nerror: too large\n");
 }
+
+// ── Phase 87.1-02: Module System Fixes ────────────────────────────────
+
+/// Phase 87.1-02: Cross-module polymorphic function import.
+/// Functions with inferred types (using Scheme normalization) can be imported
+/// cross-module without TyVar index-out-of-bounds panics.
+/// Tests that type variable normalization in export makes schemes self-contained.
+#[test]
+fn e2e_cross_module_polymorphic() {
+    let output = compile_multifile_and_run(&[
+        ("utils.mpl", r#"
+pub fn double(x) do
+  x * 2
+end
+
+pub fn add_one(x) do
+  x + 1
+end
+
+pub fn make_greeting(name :: String) -> String do
+  "hello " <> name
+end
+"#),
+        ("main.mpl", r#"
+from Utils import double, add_one, make_greeting
+
+fn main() do
+  let a = double(21)
+  let b = add_one(41)
+  let c = make_greeting("world")
+  println("${a}")
+  println("${b}")
+  println(c)
+end
+"#),
+    ]);
+    assert_eq!(output, "42\n42\nhello world\n");
+}

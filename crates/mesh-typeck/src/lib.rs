@@ -209,7 +209,7 @@ pub fn collect_exports(
                         if fn_def.visibility().is_some() {
                             exports.functions.insert(
                                 name,
-                                Scheme::mono(ty.clone()),
+                                Scheme::normalize_from_ty(ty.clone()),
                             );
                         } else {
                             exports.private_names.insert(name);

@@ -4,6 +4,7 @@
 //! (`TyVar`), and polymorphic type schemes (`Scheme`). These form the
 //! foundation of Hindley-Milner type inference.
 
+use std::collections::HashMap;
 use std::fmt;
 
 /// A type variable, identified by a `u32` index into the unification table.
@@ -248,6 +249,95 @@ impl Scheme {
         Scheme {
             vars: Vec::new(),
             ty,
+        }
+    }
+
+    /// Create a self-contained scheme from a resolved type by collecting all
+    /// free TyVars and remapping them to sequential IDs starting from 0.
+    ///
+    /// This makes the scheme independent of any particular InferCtx's
+    /// unification table. Essential for cross-module export: without
+    /// normalization, TyVar IDs from the exporting module would index
+    /// out of bounds in the importing module's unification table.
+    pub fn normalize_from_ty(ty: Ty) -> Self {
+        let mut seen_vars: Vec<TyVar> = Vec::new();
+        collect_free_tyvars(&ty, &mut seen_vars);
+        if seen_vars.is_empty() {
+            return Scheme { vars: Vec::new(), ty };
+        }
+        let mut mapping: HashMap<TyVar, TyVar> = HashMap::new();
+        let mut next_id: u32 = 0;
+        for var in &seen_vars {
+            if !mapping.contains_key(var) {
+                mapping.insert(*var, TyVar(next_id));
+                next_id += 1;
+            }
+        }
+        let new_vars: Vec<TyVar> = seen_vars.iter()
+            .map(|v| mapping[v])
+            .collect();
+        // Deduplicate vars while preserving order.
+        let mut deduped_vars: Vec<TyVar> = Vec::new();
+        let mut seen_set = std::collections::HashSet::new();
+        for v in &new_vars {
+            if seen_set.insert(*v) {
+                deduped_vars.push(*v);
+            }
+        }
+        let new_ty = remap_tyvars(&ty, &mapping);
+        Scheme { vars: deduped_vars, ty: new_ty }
+    }
+}
+
+/// Collect all TyVar references in a type, in order of first appearance.
+fn collect_free_tyvars(ty: &Ty, out: &mut Vec<TyVar>) {
+    match ty {
+        Ty::Var(v) => out.push(*v),
+        Ty::Con(_) | Ty::Never => {}
+        Ty::Fun(params, ret) => {
+            for p in params {
+                collect_free_tyvars(p, out);
+            }
+            collect_free_tyvars(ret, out);
+        }
+        Ty::App(con, args) => {
+            collect_free_tyvars(con, out);
+            for a in args {
+                collect_free_tyvars(a, out);
+            }
+        }
+        Ty::Tuple(elems) => {
+            for e in elems {
+                collect_free_tyvars(e, out);
+            }
+        }
+    }
+}
+
+/// Remap TyVar IDs in a type according to the given mapping.
+fn remap_tyvars(ty: &Ty, mapping: &HashMap<TyVar, TyVar>) -> Ty {
+    match ty {
+        Ty::Var(v) => {
+            if let Some(new_v) = mapping.get(v) {
+                Ty::Var(*new_v)
+            } else {
+                ty.clone()
+            }
+        }
+        Ty::Con(_) | Ty::Never => ty.clone(),
+        Ty::Fun(params, ret) => {
+            let params = params.iter().map(|p| remap_tyvars(p, mapping)).collect();
+            let ret = Box::new(remap_tyvars(ret, mapping));
+            Ty::Fun(params, ret)
+        }
+        Ty::App(con, args) => {
+            let con = Box::new(remap_tyvars(con, mapping));
+            let args = args.iter().map(|a| remap_tyvars(a, mapping)).collect();
+            Ty::App(con, args)
+        }
+        Ty::Tuple(elems) => {
+            let elems = elems.iter().map(|e| remap_tyvars(e, mapping)).collect();
+            Ty::Tuple(elems)
         }
     }
 }
