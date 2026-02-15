@@ -209,6 +209,21 @@ actor alert_evaluator(pool :: PoolHandle) do
   alert_evaluator(pool)
 end
 
+# Register PipelineRegistry globally for cross-node discovery (CLUSTER-02).
+# Uses Node.self() to check if distributed mode is active.
+# Registers with both a node-specific name and a well-known default name.
+# Node-specific name allows targeted cross-node lookup; default name is first-writer-wins.
+fn register_global_services(registry_pid) do
+  let node_name = Node.self()
+  if node_name != "" do
+    let _ = Global.register("mesher_registry@" <> node_name, registry_pid)
+    let _ = Global.register("mesher_registry", registry_pid)
+    println("[Mesher] Services registered globally as mesher_registry@" <> node_name)
+  else
+    println("[Mesher] Running in standalone mode (skipping global registration)")
+  end
+end
+
 # Restart all pipeline services and re-register PipelineRegistry.
 # Called by health_checker when the registry is unreachable (one_for_all strategy).
 # Defined after alert_evaluator actor (define-before-use, decision [90-03]).
@@ -233,6 +248,7 @@ fn restart_all_services(pool :: PoolHandle) do
 
   let registry_pid = PipelineRegistry.start(pool, rate_limiter_pid, processor_pid, writer_pid)
   let _ = Process.register("mesher_registry", registry_pid)
+  register_global_services(registry_pid)
 
   registry_pid
 end
@@ -271,6 +287,7 @@ pub fn start_pipeline(pool :: PoolHandle) do
   # Start pipeline registry
   let registry_pid = PipelineRegistry.start(pool, rate_limiter_pid, processor_pid, writer_pid)
   let _ = Process.register("mesher_registry", registry_pid)
+  register_global_services(registry_pid)
   println("[Mesher] PipelineRegistry started and registered")
 
   # Spawn health checker for automatic restart (10s interval)

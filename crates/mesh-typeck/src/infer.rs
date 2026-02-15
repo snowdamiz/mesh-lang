@@ -844,15 +844,17 @@ fn stdlib_modules() -> HashMap<String, HashMap<String, Scheme>> {
 
     // ── Global module (Phase 68) ─────────────────────────────────────
     let mut global_mod = HashMap::new();
-    // Global.register: fn(String, Int) -> Int  (name, pid -> 0 success, 1 error)
+    // Global.register: fn(String, Pid<()>) -> Int  (name, pid -> 0 success, 1 error)
+    // Pid type matches Process.register for consistency; runtime treats Pid as u64.
     global_mod.insert("register".to_string(), Scheme::mono(Ty::fun(
-        vec![Ty::string(), Ty::int()],
+        vec![Ty::string(), Ty::Con(TyCon::new("Pid"))],
         Ty::int(),
     )));
-    // Global.whereis: fn(String) -> Int  (name -> pid raw u64, 0 if not found)
+    // Global.whereis: fn(String) -> Pid<()>  (name -> pid, 0 if not found)
+    // Pid type matches Process.whereis for consistency; runtime treats Pid as u64.
     global_mod.insert("whereis".to_string(), Scheme::mono(Ty::fun(
         vec![Ty::string()],
-        Ty::int(),
+        Ty::Con(TyCon::new("Pid")),
     )));
     // Global.unregister: fn(String) -> Int  (name -> 0 success, 1 not found)
     global_mod.insert("unregister".to_string(), Scheme::mono(Ty::fun(
