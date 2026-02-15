@@ -10,9 +10,9 @@ See: .planning/PROJECT.md (updated 2026-02-14)
 ## Current Position
 
 Phase: 95 of 95 (React Frontend)
-Plan: 6 of 7 in current phase -- COMPLETE
-Status: Plan 06 complete -- Alerts page (rules CRUD, fired alerts) and Settings page (project, team, API keys, storage)
-Last activity: 2026-02-15 - Alert rules create/toggle/delete, fired alerts acknowledge/resolve, settings retention/sampling/team/API keys/storage
+Plan: 7 of 7 in current phase
+Status: Plan 05 complete -- Live Stream page with real-time event cards and Dashboard WebSocket integration
+Last activity: 2026-02-15 - Live Stream page, EventCard component, ws-store sendMessage, Dashboard periodic refresh
 
 Progress: [#########################-----] 86% phase (6/7 plans shipped)
 
@@ -144,6 +144,10 @@ Cleared at milestone boundary. v8.0 decisions archived in PROJECT.md.
 - [95-06] Hardcoded orgId "default" for team management (no org CRUD endpoints in backend)
 - [95-06] API key full value shown once after creation, masked to first 8 chars in list view
 - [95-06] AlertDialog for destructive confirmations (delete rule, remove member, revoke key)
+- [95-05] WS event data extracted with fallback defaults (generated IDs, current timestamp if received_at missing)
+- [95-05] Client-side search filter on Live Stream (server-side subscribe only sends level/environment)
+- [95-05] Dashboard issue badge uses health.unresolved_count (WS-synced) instead of topIssues.length
+- [95-05] Silent background refresh (no loading spinner) for 60-second periodic API re-fetch
 
 ### Roadmap Evolution
 
@@ -177,6 +181,6 @@ Research flags from research/SUMMARY.md:
 ## Session Continuity
 
 Last session: 2026-02-15
-Stopped at: Completed 95-06-PLAN.md (Alerts and Settings pages with full CRUD)
+Stopped at: Completed 95-05-PLAN.md (Live Stream page and Dashboard WebSocket integration)
 Resume file: None
 Next action: Continue with 95-07-PLAN.md (final integration and polish).
