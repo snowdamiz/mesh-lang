@@ -271,7 +271,11 @@ Plans:
   3. Dashboard endpoints return event volume over time (hourly/daily buckets), error breakdown by level, top issues by frequency, event breakdown by tag, per-issue event timeline, and project health summary
   4. User can view full event payload, formatted stack traces, breadcrumbs, tags, user context, and navigate between events within an issue
   5. User can manage team membership with roles (owner/admin/member) and create API tokens for programmatic access
-**Plans**: TBD
+**Plans:** 3 plans
+Plans:
+- [ ] 91-01-PLAN.md -- Search, filtering, and keyset pagination (SEARCH-01..05)
+- [ ] 91-02-PLAN.md -- Dashboard aggregation and event detail (DASH-01..06, DETAIL-01..06)
+- [ ] 91-03-PLAN.md -- Team membership and API token management (ORG-04, ORG-05)
 
 ### Phase 92: Alerting System
 **Goal**: Users can define alert rules that the system evaluates on a timer, triggering notifications with deduplication and cooldown to prevent alert fatigue
@@ -349,7 +353,7 @@ Note: Phase 93 depends only on 87 (can run in parallel with 88-92 if desired). P
 | 88 | v9.0 | 6/6 | Complete | 2026-02-15 |
 | 89 | v9.0 | 2/2 | Complete | 2026-02-15 |
 | 90 | v9.0 | 3/3 | Complete | 2026-02-15 |
-| 91 | v9.0 | 0/TBD | Not started | - |
+| 91 | v9.0 | 0/3 | Planned | - |
 | 92 | v9.0 | 0/TBD | Not started | - |
 | 93 | v9.0 | 0/TBD | Not started | - |
 | 94 | v9.0 | 0/TBD | Not started | - |
