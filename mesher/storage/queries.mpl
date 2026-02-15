@@ -222,6 +222,71 @@ pub fn is_issue_discarded(pool :: PoolHandle, project_id :: String, fingerprint 
   end
 end
 
+# --- Issue management queries (Phase 89 Plan 02) ---
+
+# Transition an issue to 'resolved' status (ISSUE-01).
+pub fn resolve_issue(pool :: PoolHandle, issue_id :: String) -> Int!String do
+  Pool.execute(pool, "UPDATE issues SET status = 'resolved' WHERE id = $1::uuid AND status != 'resolved'", [issue_id])
+end
+
+# Transition an issue to 'archived' status (ISSUE-01).
+pub fn archive_issue(pool :: PoolHandle, issue_id :: String) -> Int!String do
+  Pool.execute(pool, "UPDATE issues SET status = 'archived' WHERE id = $1::uuid", [issue_id])
+end
+
+# Reopen an issue -- set status back to 'unresolved' (ISSUE-01).
+pub fn unresolve_issue(pool :: PoolHandle, issue_id :: String) -> Int!String do
+  Pool.execute(pool, "UPDATE issues SET status = 'unresolved' WHERE id = $1::uuid", [issue_id])
+end
+
+# Assign an issue to a user. Pass empty string to unassign (ISSUE-04).
+pub fn assign_issue(pool :: PoolHandle, issue_id :: String, user_id :: String) -> Int!String do
+  if String.length(user_id) > 0 do
+    Pool.execute(pool, "UPDATE issues SET assigned_to = $2::uuid WHERE id = $1::uuid", [issue_id, user_id])
+  else
+    Pool.execute(pool, "UPDATE issues SET assigned_to = NULL WHERE id = $1::uuid", [issue_id])
+  end
+end
+
+# Mark an issue as discarded -- future events with this fingerprint are suppressed (ISSUE-05).
+pub fn discard_issue(pool :: PoolHandle, issue_id :: String) -> Int!String do
+  Pool.execute(pool, "UPDATE issues SET status = 'discarded' WHERE id = $1::uuid", [issue_id])
+end
+
+# Delete an issue and all associated events (ISSUE-05).
+# Events deleted first due to FK constraint on issue_id.
+pub fn delete_issue(pool :: PoolHandle, issue_id :: String) -> Int!String do
+  let _ = Pool.execute(pool, "DELETE FROM events WHERE issue_id = $1::uuid", [issue_id])?
+  Pool.execute(pool, "DELETE FROM issues WHERE id = $1::uuid", [issue_id])
+end
+
+# Helper: parse event_count string to Int, defaulting to 0 on failure.
+fn parse_event_count(s :: String) -> Int do
+  let result = String.to_int(s)
+  case result do
+    Some(n) -> n
+    None -> 0
+  end
+end
+
+# List issues for a project filtered by status (for API listing).
+# Constructs Issue structs manually with parse_event_count for the Int field.
+pub fn list_issues_by_status(pool :: PoolHandle, project_id :: String, status :: String) -> List<Issue>!String do
+  let rows = Pool.query(pool, "SELECT id::text, project_id::text, fingerprint, title, level, status, event_count::text, first_seen::text, last_seen::text, COALESCE(assigned_to::text, '') as assigned_to FROM issues WHERE project_id = $1::uuid AND status = $2 ORDER BY last_seen DESC", [project_id, status])?
+  Ok(List.map(rows, fn(row) do
+    Issue { id: Map.get(row, "id"), project_id: Map.get(row, "project_id"), fingerprint: Map.get(row, "fingerprint"), title: Map.get(row, "title"), level: Map.get(row, "level"), status: Map.get(row, "status"), event_count: parse_event_count(Map.get(row, "event_count")), first_seen: Map.get(row, "first_seen"), last_seen: Map.get(row, "last_seen"), assigned_to: Map.get(row, "assigned_to") }
+  end))
+end
+
+# Spike detection: escalate archived issues with sudden volume bursts (ISSUE-03).
+# If an archived issue has >10x its average hourly rate (or >10 absolute) in the
+# last hour, it's auto-escalated to 'unresolved'. The WHERE status='archived'
+# naturally prevents re-escalation after the first flip (research Pitfall 5).
+# Returns number of escalated issues.
+pub fn check_volume_spikes(pool :: PoolHandle) -> Int!String do
+  Pool.execute(pool, "UPDATE issues SET status = 'unresolved' WHERE status = 'archived' AND id IN (SELECT i.id FROM issues i JOIN events e ON e.issue_id = i.id AND e.received_at > now() - interval '1 hour' WHERE i.status = 'archived' GROUP BY i.id HAVING count(*) > GREATEST(10, (SELECT count(*) FROM events e2 WHERE e2.issue_id = i.id AND e2.received_at > now() - interval '7 days') / 168 * 10))", [])
+end
+
 # Extract event fields from JSON and compute fingerprint using PostgreSQL.
 # This avoids the cross-module from_json limitation (decision [88-02]) by
 # computing the fingerprint server-side with the same fallback chain as

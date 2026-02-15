@@ -9,6 +9,8 @@ from Ingestion.Pipeline import PipelineRegistry
 from Services.RateLimiter import RateLimiter
 from Services.EventProcessor import EventProcessor
 from Types.Project import Project
+from Types.Issue import Issue
+from Storage.Queries import resolve_issue, archive_issue, unresolve_issue, assign_issue, discard_issue, delete_issue, list_issues_by_status
 
 # Helper: build 401 response
 fn unauthorized_response() do
@@ -106,5 +108,131 @@ pub fn handle_bulk(request) do
   case auth_result do
     Err(_) -> unauthorized_response()
     Ok(project) -> handle_bulk_authed(project.id, rate_limiter_pid, processor_pid, writer_pid, request)
+  end
+end
+
+# --- Issue management route handlers (Phase 89 Plan 02) ---
+
+# Helper: build a JSON string for a single Issue.
+# event_count is Int, so we convert with String.from.
+fn issue_to_json_str(issue :: Issue) -> String do
+  "{\"id\":\"" <> issue.id <> "\",\"title\":\"" <> issue.title <> "\",\"level\":\"" <> issue.level <> "\",\"status\":\"" <> issue.status <> "\",\"event_count\":" <> String.from(issue.event_count) <> ",\"first_seen\":\"" <> issue.first_seen <> "\",\"last_seen\":\"" <> issue.last_seen <> "\",\"assigned_to\":\"" <> issue.assigned_to <> "\"}"
+end
+
+# Helper: build JSON array from list of issues (recursive accumulator).
+fn issues_to_json_loop(issues :: List<Issue>, acc :: String, i :: Int, total :: Int) -> String do
+  if i < total do
+    let issue = List.get(issues, i)
+    let json_str = issue_to_json_str(issue)
+    let new_acc = if i > 0 do acc <> "," <> json_str else json_str end
+    issues_to_json_loop(issues, new_acc, i + 1, total)
+  else
+    "[" <> acc <> "]"
+  end
+end
+
+# Helper: build JSON array from list of issues.
+fn issues_to_json(issues :: List<Issue>) -> String do
+  issues_to_json_loop(issues, "", 0, List.length(issues))
+end
+
+# Handle GET /api/v1/projects/:project_id/issues?status=unresolved
+# Defaults to listing 'unresolved' issues (query string parsing not available in Mesh).
+pub fn handle_list_issues(request) do
+  let reg_pid = Process.whereis("mesher_registry")
+  let pool = PipelineRegistry.get_pool(reg_pid)
+  let project_id = Request.param(request, "project_id")
+  let result = list_issues_by_status(pool, project_id, "unresolved")
+  case result do
+    Ok(issues) -> HTTP.response(200, issues_to_json(issues))
+    Err(e) -> HTTP.response(500, "{\"error\":\"" <> e <> "\"}")
+  end
+end
+
+# Handle POST /api/v1/issues/:id/resolve
+pub fn handle_resolve_issue(request) do
+  let reg_pid = Process.whereis("mesher_registry")
+  let pool = PipelineRegistry.get_pool(reg_pid)
+  let issue_id = Request.param(request, "id")
+  let result = resolve_issue(pool, issue_id)
+  case result do
+    Ok(n) -> HTTP.response(200, "{\"status\":\"ok\",\"affected\":" <> String.from(n) <> "}")
+    Err(e) -> HTTP.response(500, "{\"error\":\"" <> e <> "\"}")
+  end
+end
+
+# Handle POST /api/v1/issues/:id/archive
+pub fn handle_archive_issue(request) do
+  let reg_pid = Process.whereis("mesher_registry")
+  let pool = PipelineRegistry.get_pool(reg_pid)
+  let issue_id = Request.param(request, "id")
+  let result = archive_issue(pool, issue_id)
+  case result do
+    Ok(n) -> HTTP.response(200, "{\"status\":\"ok\",\"affected\":" <> String.from(n) <> "}")
+    Err(e) -> HTTP.response(500, "{\"error\":\"" <> e <> "\"}")
+  end
+end
+
+# Handle POST /api/v1/issues/:id/unresolve
+pub fn handle_unresolve_issue(request) do
+  let reg_pid = Process.whereis("mesher_registry")
+  let pool = PipelineRegistry.get_pool(reg_pid)
+  let issue_id = Request.param(request, "id")
+  let result = unresolve_issue(pool, issue_id)
+  case result do
+    Ok(n) -> HTTP.response(200, "{\"status\":\"ok\",\"affected\":" <> String.from(n) <> "}")
+    Err(e) -> HTTP.response(500, "{\"error\":\"" <> e <> "\"}")
+  end
+end
+
+# Helper: perform assignment after extracting user_id from parsed JSON rows.
+fn assign_from_rows(pool :: PoolHandle, issue_id :: String, rows) do
+  if List.length(rows) > 0 do
+    let user_id = Map.get(List.head(rows), "user_id")
+    let result = assign_issue(pool, issue_id, user_id)
+    case result do
+      Ok(n) -> HTTP.response(200, "{\"status\":\"ok\"}")
+      Err(e) -> HTTP.response(500, "{\"error\":\"" <> e <> "\"}")
+    end
+  else
+    HTTP.response(400, "{\"error\":\"invalid body\"}")
+  end
+end
+
+# Handle POST /api/v1/issues/:id/assign
+# Extracts user_id from JSON body using PostgreSQL jsonb parsing.
+pub fn handle_assign_issue(request) do
+  let reg_pid = Process.whereis("mesher_registry")
+  let pool = PipelineRegistry.get_pool(reg_pid)
+  let issue_id = Request.param(request, "id")
+  let body = Request.body(request)
+  let rows_result = Pool.query(pool, "SELECT COALESCE($1::jsonb->>'user_id', '') AS user_id", [body])
+  case rows_result do
+    Err(e) -> HTTP.response(400, "{\"error\":\"invalid json\"}")
+    Ok(rows) -> assign_from_rows(pool, issue_id, rows)
+  end
+end
+
+# Handle POST /api/v1/issues/:id/discard
+pub fn handle_discard_issue(request) do
+  let reg_pid = Process.whereis("mesher_registry")
+  let pool = PipelineRegistry.get_pool(reg_pid)
+  let issue_id = Request.param(request, "id")
+  let result = discard_issue(pool, issue_id)
+  case result do
+    Ok(n) -> HTTP.response(200, "{\"status\":\"ok\",\"affected\":" <> String.from(n) <> "}")
+    Err(e) -> HTTP.response(500, "{\"error\":\"" <> e <> "\"}")
+  end
+end
+
+# Handle POST /api/v1/issues/:id/delete
+pub fn handle_delete_issue(request) do
+  let reg_pid = Process.whereis("mesher_registry")
+  let pool = PipelineRegistry.get_pool(reg_pid)
+  let issue_id = Request.param(request, "id")
+  let result = delete_issue(pool, issue_id)
+  case result do
+    Ok(n) -> HTTP.response(200, "{\"status\":\"ok\",\"affected\":" <> String.from(n) <> "}")
+    Err(e) -> HTTP.response(500, "{\"error\":\"" <> e <> "\"}")
   end
 end
