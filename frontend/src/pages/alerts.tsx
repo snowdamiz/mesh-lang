@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { api } from "@/lib/api";
+import { formatRelativeTime } from "@/lib/format";
 import { useProjectStore } from "@/stores/project-store";
 import { useWsStore } from "@/stores/ws-store";
 import type { Alert, AlertRule } from "@/types/api";
@@ -57,18 +58,9 @@ function conditionDescription(rule: AlertRule): string {
   }
 }
 
-function relativeTime(dateStr: string | null): string {
+function formatNullableTime(dateStr: string | null): string {
   if (!dateStr) return "Never";
-  const date = new Date(dateStr);
-  const now = new Date();
-  const diffMs = now.getTime() - date.getTime();
-  const diffMin = Math.floor(diffMs / 60000);
-  if (diffMin < 1) return "just now";
-  if (diffMin < 60) return `${diffMin}m ago`;
-  const diffHours = Math.floor(diffMin / 60);
-  if (diffHours < 24) return `${diffHours}h ago`;
-  const diffDays = Math.floor(diffHours / 24);
-  return `${diffDays}d ago`;
+  return formatRelativeTime(dateStr);
 }
 
 export default function AlertsPage() {
@@ -338,7 +330,7 @@ export default function AlertsPage() {
                       <span>
                         Last fired:{" "}
                         <span className="text-foreground">
-                          {relativeTime(rule.last_fired_at)}
+                          {formatNullableTime(rule.last_fired_at)}
                         </span>
                       </span>
                     </div>

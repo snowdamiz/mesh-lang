@@ -1,6 +1,7 @@
 import type { Alert } from "@/types/api";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { formatRelativeTime } from "@/lib/format";
 import {
   Table,
   TableBody,
@@ -45,19 +46,6 @@ function statusBadge(status: string) {
   }
 }
 
-function relativeTime(dateStr: string): string {
-  const date = new Date(dateStr);
-  const now = new Date();
-  const diffMs = now.getTime() - date.getTime();
-  const diffMin = Math.floor(diffMs / 60000);
-
-  if (diffMin < 1) return "just now";
-  if (diffMin < 60) return `${diffMin}m ago`;
-  const diffHours = Math.floor(diffMin / 60);
-  if (diffHours < 24) return `${diffHours}h ago`;
-  const diffDays = Math.floor(diffHours / 24);
-  return `${diffDays}d ago`;
-}
 
 export function AlertList({ alerts, onAcknowledge, onResolve }: AlertListProps) {
   if (alerts.length === 0) {
@@ -89,7 +77,7 @@ export function AlertList({ alerts, onAcknowledge, onResolve }: AlertListProps) 
               {alert.message}
             </TableCell>
             <TableCell className="text-muted-foreground">
-              {relativeTime(alert.triggered_at)}
+              {formatRelativeTime(alert.triggered_at)}
             </TableCell>
             <TableCell className="text-right">
               <div className="flex justify-end gap-1">
