@@ -9,22 +9,22 @@ See: .planning/PROJECT.md (updated 2026-02-14)
 
 ## Current Position
 
-Phase: 90 of 95 (Real-Time Streaming) -- COMPLETE
-Plan: 3 of 3 in current phase (all plans complete)
-Status: Phase 90 complete, verified (13/13 must-haves passed), and closed
-Last activity: 2026-02-15 -- Phase 90 verified and closed
+Phase: 91 of 95 (REST API)
+Plan: 1 of 3 in current phase
+Status: Executing Phase 91 -- Plan 01 complete
+Last activity: 2026-02-15 -- Phase 91 Plan 01 complete
 
-Progress: [####################..........] 99% overall (257/261 plans shipped)
+Progress: [####################..........] 99% overall (258/261 plans shipped)
 
 ## Performance Metrics
 
 **All-time Totals:**
-- Plans completed: 257
+- Plans completed: 258
 - Phases completed: 93
 - Milestones shipped: 18 (v1.0-v8.0)
 - Lines of Rust: ~98,800
 - Lines of website: ~5,500
-- Lines of Mesh: ~2200 (first Mesh application code, refactored into modules, ingestion pipeline wired with health monitoring, error grouping pipeline, issue lifecycle API, streaming state management, backpressure buffer drain, subscription protocol and event broadcasting)
+- Lines of Mesh: ~2500 (first Mesh application code, refactored into modules, ingestion pipeline wired with health monitoring, error grouping pipeline, issue lifecycle API, streaming state management, backpressure buffer drain, subscription protocol and event broadcasting, search/filter/pagination REST API)
 - Timeline: 10 days (2026-02-05 -> 2026-02-14)
 
 ## Accumulated Context
@@ -90,6 +90,9 @@ Cleared at milestone boundary. v8.0 decisions archived in PROJECT.md.
 - [90-02] Success helper per action (resolve_success, archive_success, etc.) for single-expression case arm constraint in issue state transition handlers
 - [90-02] stream_drain_ticker defined in pipeline.mpl (actors cannot be imported across modules in Mesh)
 - [90-02] ModuleGraph::add_dependency rejects self-dependencies and duplicates (fixes circular dependency from 90-01/90-03 imports)
+- [91-01] Search queries return raw Map rows (not typed structs) for flexible JSON serialization without cross-module issues
+- [91-01] Inline to_tsvector in WHERE clause (not stored column) avoids partition complications on events table
+- [91-01] Tag JSON constructed from key/value params in handler (not raw user JSON) prevents JSONB injection
 
 ### Roadmap Evolution
 
@@ -118,6 +121,6 @@ Research flags from research/SUMMARY.md:
 ## Session Continuity
 
 Last session: 2026-02-15
-Stopped at: Phase 90 complete and verified (13/13 must-haves passed)
+Stopped at: Completed 91-01-PLAN.md (search, filtering, pagination)
 Resume file: None
-Next action: Plan Phase 91 (REST API)
+Next action: Execute 91-02-PLAN.md (dashboard aggregations)
