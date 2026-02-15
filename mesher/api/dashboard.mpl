@@ -57,8 +57,8 @@ end
 
 # Helper: serialize volume rows and respond.
 fn respond_volume(rows) do
-  let json_items = List.map(rows, fn(row) do bucket_to_json(row) end)
-  HTTP.response(200, to_json_array(json_items))
+  let body = rows |> List.map(fn(row) do bucket_to_json(row) end) |> to_json_array()
+  HTTP.response(200, body)
 end
 
 # Handle GET /api/v1/projects/:project_id/dashboard/volume
@@ -77,8 +77,8 @@ end
 
 # Helper: serialize level breakdown rows and respond.
 fn respond_levels(rows) do
-  let json_items = List.map(rows, fn(row) do level_to_json(row) end)
-  HTTP.response(200, to_json_array(json_items))
+  let body = rows |> List.map(fn(row) do level_to_json(row) end) |> to_json_array()
+  HTTP.response(200, body)
 end
 
 # Handle GET /api/v1/projects/:project_id/dashboard/levels
@@ -96,8 +96,8 @@ end
 
 # Helper: serialize top issues rows and respond.
 fn respond_top_issues(rows) do
-  let json_items = List.map(rows, fn(row) do top_issue_to_json(row) end)
-  HTTP.response(200, to_json_array(json_items))
+  let body = rows |> List.map(fn(row) do top_issue_to_json(row) end) |> to_json_array()
+  HTTP.response(200, body)
 end
 
 # Handle GET /api/v1/projects/:project_id/dashboard/top-issues
@@ -116,8 +116,8 @@ end
 
 # Helper: serialize tag breakdown rows and respond.
 fn respond_tag_breakdown(rows) do
-  let json_items = List.map(rows, fn(row) do tag_entry_to_json(row) end)
-  HTTP.response(200, to_json_array(json_items))
+  let body = rows |> List.map(fn(row) do tag_entry_to_json(row) end) |> to_json_array()
+  HTTP.response(200, body)
 end
 
 # Helper: perform tag breakdown query and respond.
@@ -145,8 +145,8 @@ end
 
 # Helper: serialize timeline event rows and respond.
 fn respond_timeline(rows) do
-  let json_items = List.map(rows, fn(row) do timeline_event_to_json(row) end)
-  HTTP.response(200, to_json_array(json_items))
+  let body = rows |> List.map(fn(row) do timeline_event_to_json(row) end) |> to_json_array()
+  HTTP.response(200, body)
 end
 
 # Handle GET /api/v1/issues/:issue_id/timeline

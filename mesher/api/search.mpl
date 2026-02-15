@@ -129,8 +129,9 @@ end
 
 # Helper: serialize issue rows to paginated JSON response.
 fn serialize_issue_rows(rows, limit_str :: String) -> String do
-  let json_items = List.map(rows, fn(row) do row_to_issue_json(row) end)
-  let json_array = to_json_array(json_items)
+  let json_array = rows
+    |> List.map(fn(row) do row_to_issue_json(row) end)
+    |> to_json_array()
   let limit = limit_to_int(limit_str)
   build_paginated_response(json_array, rows, limit)
 end
@@ -167,8 +168,7 @@ end
 
 # Helper: serialize event search rows to JSON array.
 fn serialize_event_search(rows) -> String do
-  let json_items = List.map(rows, fn(row) do row_to_event_json(row) end)
-  to_json_array(json_items)
+  rows |> List.map(fn(row) do row_to_event_json(row) end) |> to_json_array()
 end
 
 # Helper: handle empty search query.
@@ -207,8 +207,7 @@ end
 
 # Helper: serialize tag filter rows to JSON array.
 fn serialize_tag_events(rows) -> String do
-  let json_items = List.map(rows, fn(row) do row_to_tag_event_json(row) end)
-  to_json_array(json_items)
+  rows |> List.map(fn(row) do row_to_tag_event_json(row) end) |> to_json_array()
 end
 
 # Helper: handle missing tag parameters.
@@ -255,8 +254,9 @@ end
 
 # Helper: serialize event list rows to paginated JSON response.
 fn serialize_issue_event_rows(rows, limit_str :: String) -> String do
-  let json_items = List.map(rows, fn(row) do row_to_issue_event_json(row) end)
-  let json_array = to_json_array(json_items)
+  let json_array = rows
+    |> List.map(fn(row) do row_to_issue_event_json(row) end)
+    |> to_json_array()
   let limit = limit_to_int(limit_str)
   build_event_paginated_response(json_array, rows, limit)
 end

@@ -166,7 +166,7 @@ pub fn handle_list_members(request) do
   let org_id = Request.param(request, "org_id")
   let result = get_members_with_users(pool, org_id)
   case result do
-    Ok(rows) -> HTTP.response(200, to_json_array(List.map(rows, fn(row) do member_to_json(row) end)))
+    Ok(rows) -> HTTP.response(200, rows |> List.map(fn(row) do member_to_json(row) end) |> to_json_array())
     Err(e) -> HTTP.response(500, "{\"error\":\"" <> e <> "\"}")
   end
 end
@@ -213,7 +213,7 @@ pub fn handle_list_api_keys(request) do
   let project_id = Request.param(request, "project_id")
   let result = list_api_keys(pool, project_id)
   case result do
-    Ok(rows) -> HTTP.response(200, to_json_array(List.map(rows, fn(row) do api_key_to_json(row) end)))
+    Ok(rows) -> HTTP.response(200, rows |> List.map(fn(row) do api_key_to_json(row) end) |> to_json_array())
     Err(e) -> HTTP.response(500, "{\"error\":\"" <> e <> "\"}")
   end
 end
