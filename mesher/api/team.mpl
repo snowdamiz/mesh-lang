@@ -6,17 +6,9 @@
 
 from Ingestion.Pipeline import PipelineRegistry
 from Storage.Queries import get_members_with_users, add_member, update_member_role, remove_member, list_api_keys, create_api_key, revoke_api_key
+from Api.Helpers import query_or_default, to_json_array
 
 # --- Shared helpers (leaf functions first, per define-before-use requirement) ---
-
-# Extract optional query parameter with a default value.
-fn query_or_default(request, param :: String, default :: String) -> String do
-  let opt = Request.query(request, param)
-  case opt do
-    Some(v) -> v
-    None -> default
-  end
-end
 
 # Serialize a member row (with user info) to JSON.
 # Fields: id, user_id, email, display_name, role, joined_at
@@ -44,21 +36,6 @@ fn api_key_to_json(row) -> String do
   "{\"id\":\"" <> id <> "\",\"project_id\":\"" <> project_id <> "\",\"key_value\":\"" <> key_value <> "\",\"label\":\"" <> label <> "\",\"created_at\":\"" <> created_at <> "\",\"revoked_at\":" <> revoked_str <> "}"
 end
 
-# Recursive JSON array builder from a list of JSON strings.
-fn json_array_loop(items, i :: Int, total :: Int, acc :: String) -> String do
-  if i < total do
-    let item = List.get(items, i)
-    let new_acc = if i > 0 do acc <> "," <> item else item end
-    json_array_loop(items, i + 1, total, new_acc)
-  else
-    "[" <> acc <> "]"
-  end
-end
-
-# Wrapper: convert list of JSON strings to a JSON array.
-fn to_json_array(items) -> String do
-  json_array_loop(items, 0, List.length(items), "")
-end
 
 # Extract a field from a JSON body using PostgreSQL jsonb extraction.
 # Reuses the pattern from handle_assign_issue in routes.mpl.

@@ -5,18 +5,9 @@
 
 from Ingestion.Pipeline import PipelineRegistry
 from Storage.Queries import list_issues_filtered, search_events_fulltext, filter_events_by_tag, list_events_for_issue
+from Api.Helpers import query_or_default, to_json_array
 
 # --- Shared helpers (leaf functions first, per define-before-use requirement) ---
-
-# Extract optional query parameter with a default value.
-# Request.query returns Option<String>; case match to Some/None.
-fn query_or_default(request, param :: String, default :: String) -> String do
-  let opt = Request.query(request, param)
-  case opt do
-    Some(v) -> v
-    None -> default
-  end
-end
 
 # Helper: cap a parsed limit value at 100, minimum 1, default 25.
 fn cap_limit(n :: Int) -> String do
@@ -94,21 +85,6 @@ fn row_to_issue_event_json(row) -> String do
   "{\"id\":\"" <> id <> "\",\"level\":\"" <> level <> "\",\"message\":\"" <> message <> "\",\"received_at\":\"" <> received_at <> "\"}"
 end
 
-# Recursive JSON array builder from a list of JSON strings.
-fn json_array_loop(items, i :: Int, total :: Int, acc :: String) -> String do
-  if i < total do
-    let item = List.get(items, i)
-    let new_acc = if i > 0 do acc <> "," <> item else item end
-    json_array_loop(items, i + 1, total, new_acc)
-  else
-    "[" <> acc <> "]"
-  end
-end
-
-# Wrapper: convert list of JSON strings to a JSON array.
-fn to_json_array(items) -> String do
-  json_array_loop(items, 0, List.length(items), "")
-end
 
 # Helper: extract last_seen and id from the last row for pagination cursor.
 fn extract_cursor_from_last(rows, last_seen_key :: String, id_key :: String) -> String do

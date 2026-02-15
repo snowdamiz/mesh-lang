@@ -5,17 +5,9 @@
 
 from Ingestion.Pipeline import PipelineRegistry
 from Storage.Queries import event_volume_hourly, error_breakdown_by_level, top_issues_by_frequency, event_breakdown_by_tag, issue_event_timeline, project_health_summary
+from Api.Helpers import query_or_default, to_json_array
 
 # --- Shared helpers (leaf functions first, per define-before-use requirement) ---
-
-# Extract optional query parameter with a default value.
-fn query_or_default(request, param :: String, default :: String) -> String do
-  let opt = Request.query(request, param)
-  case opt do
-    Some(v) -> v
-    None -> default
-  end
-end
 
 # Serialize {bucket, count} row to JSON. count is numeric (no quotes).
 fn bucket_to_json(row) -> String do
@@ -60,21 +52,6 @@ fn timeline_event_to_json(row) -> String do
   "{\"id\":\"" <> id <> "\",\"level\":\"" <> level <> "\",\"message\":\"" <> message <> "\",\"received_at\":\"" <> received_at <> "\"}"
 end
 
-# Recursive JSON array builder from a list of JSON strings.
-fn json_array_loop(items, i :: Int, total :: Int, acc :: String) -> String do
-  if i < total do
-    let item = List.get(items, i)
-    let new_acc = if i > 0 do acc <> "," <> item else item end
-    json_array_loop(items, i + 1, total, new_acc)
-  else
-    "[" <> acc <> "]"
-  end
-end
-
-# Wrapper: convert list of JSON strings to a JSON array.
-fn to_json_array(items) -> String do
-  json_array_loop(items, 0, List.length(items), "")
-end
 
 # --- Handler functions (pub, defined after all helpers) ---
 
