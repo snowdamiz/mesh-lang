@@ -169,7 +169,7 @@ See milestones/v8.0-ROADMAP.md for full phase details.
 - [x] **Phase 88: Ingestion Pipeline** - HTTP/WS event ingestion with DSN auth, rate limiting, supervised processing (completed 2026-02-15)
 - [x] **Phase 89: Error Grouping & Issue Lifecycle** - Fingerprinting, issue creation, regression detection, state machine (completed 2026-02-15)
 - [x] **Phase 90: Real-Time Streaming** - WebSocket dashboard streaming with rooms, filters, backpressure (completed 2026-02-15)
-- [ ] **Phase 91: REST API** - Search, filter, pagination, dashboard aggregation, project/alert/org CRUD, event detail
+- [x] **Phase 91: REST API** - Search, filter, pagination, dashboard aggregation, project/alert/org CRUD, event detail (completed 2026-02-15)
 - [ ] **Phase 92: Alerting System** - Rule engine, timer-driven evaluation, notifications, dedup/cooldown
 - [ ] **Phase 93: Data Retention & Cleanup** - Retention policies, partition management, storage tracking, sampling
 - [ ] **Phase 94: Multi-Node Clustering** - Distributed actors, global registry, cross-node event routing and broadcast
@@ -273,9 +273,9 @@ Plans:
   5. User can manage team membership with roles (owner/admin/member) and create API tokens for programmatic access
 **Plans:** 3 plans
 Plans:
-- [ ] 91-01-PLAN.md -- Search, filtering, and keyset pagination (SEARCH-01..05)
-- [ ] 91-02-PLAN.md -- Dashboard aggregation and event detail (DASH-01..06, DETAIL-01..06)
-- [ ] 91-03-PLAN.md -- Team membership and API token management (ORG-04, ORG-05)
+- [x] 91-01-PLAN.md -- Search, filtering, and keyset pagination (SEARCH-01..05)
+- [x] 91-02-PLAN.md -- Dashboard aggregation and event detail (DASH-01..06, DETAIL-01..06)
+- [x] 91-03-PLAN.md -- Team membership and API token management (ORG-04, ORG-05)
 
 ### Phase 92: Alerting System
 **Goal**: Users can define alert rules that the system evaluates on a timer, triggering notifications with deduplication and cooldown to prevent alert fatigue
@@ -353,10 +353,10 @@ Note: Phase 93 depends only on 87 (can run in parallel with 88-92 if desired). P
 | 88 | v9.0 | 6/6 | Complete | 2026-02-15 |
 | 89 | v9.0 | 2/2 | Complete | 2026-02-15 |
 | 90 | v9.0 | 3/3 | Complete | 2026-02-15 |
-| 91 | v9.0 | 0/3 | Planned | - |
+| 91 | v9.0 | 3/3 | Complete | 2026-02-15 |
 | 92 | v9.0 | 0/TBD | Not started | - |
 | 93 | v9.0 | 0/TBD | Not started | - |
 | 94 | v9.0 | 0/TBD | Not started | - |
 | 95 | v9.0 | 0/TBD | Not started | - |
 
-**Total: 89 phases shipped across 18 milestones. 257 plans completed. 10 phases planned for v9.0.**
+**Total: 94 phases shipped across 18 milestones. 260 plans completed. 10 phases planned for v9.0.**
