@@ -320,6 +320,15 @@ Plans:
 - [x] 93-01-PLAN.md -- Schema extension (retention columns), retention/storage/settings/sampling queries, retention cleaner actor
 - [x] 93-02-PLAN.md -- Settings API handlers, sampling at ingestion, retention cleaner wiring, route registration
 
+### Phase 93.2: Fix actor spawn segfault in project mode (INSERTED)
+
+**Goal:** Fix ABI mismatch between actor spawn serialization and actor entry function signatures so actors with arguments receive correct typed values instead of raw buffer pointers
+**Depends on:** Phase 93
+**Plans:** 1 plan
+
+Plans:
+- [ ] 93.2-01-PLAN.md -- Generate actor wrapper function for args deserialization, add e2e tests for parameterized actors
+
 ### Phase 93.1: Issues Encountered (INSERTED)
 
 **Goal:** Fix 7 compilation errors (forward-reference violations and cascading type mismatches) in detail.mpl, team.mpl, and main.mpl to restore Mesher compilation
@@ -355,7 +364,7 @@ Plans:
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 87 -> 87.1 -> 87.2 -> 88 -> 89 -> 90 -> 91 -> 91.1 -> 92 -> 93 -> 93.1 -> 94 -> 95
+Phases execute in numeric order: 87 -> 87.1 -> 87.2 -> 88 -> 89 -> 90 -> 91 -> 91.1 -> 92 -> 93 -> 93.1 -> 93.2 -> 94 -> 95
 Note: Phase 93 depends only on 87 (can run in parallel with 88-92 if desired). Phase 90 and 89 both depend on 88.
 
 | Phase | Milestone | Plans Complete | Status | Completed |
