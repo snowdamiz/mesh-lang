@@ -166,7 +166,7 @@ See milestones/v8.0-ROADMAP.md for full phase details.
 - [x] **Phase 87: Foundation** - Data model, database schema, storage writer, org/project tenancy (completed 2026-02-14)
 - [x] **Phase 87.1: Issues Encountered** - Codegen + module system fixes for idiomatic Result handling and modular services (completed 2026-02-14)
 - [x] **Phase 87.2: Refactor Phase 87 code to use cross-module services** (INSERTED, completed 2026-02-15)
-- [ ] **Phase 88: Ingestion Pipeline** - HTTP/WS event ingestion with DSN auth, rate limiting, supervised processing
+- [x] **Phase 88: Ingestion Pipeline** - HTTP/WS event ingestion with DSN auth, rate limiting, supervised processing (completed 2026-02-15)
 - [ ] **Phase 89: Error Grouping & Issue Lifecycle** - Fingerprinting, issue creation, regression detection, state machine
 - [ ] **Phase 90: Real-Time Streaming** - WebSocket dashboard streaming with rooms, filters, backpressure
 - [ ] **Phase 91: REST API** - Search, filter, pagination, dashboard aggregation, project/alert/org CRUD, event detail
@@ -338,7 +338,7 @@ Note: Phase 93 depends only on 87 (can run in parallel with 88-92 if desired). P
 | 87 | v9.0 | 2/2 | Complete | 2026-02-14 |
 | 87.1 | v9.0 | 2/2 | Complete | 2026-02-14 |
 | 87.2 | v9.0 | 2/2 | Complete | 2026-02-15 |
-| 88 | v9.0 | 5/6 | Gap closure | - |
+| 88 | v9.0 | 6/6 | Complete | 2026-02-15 |
 | 89 | v9.0 | 0/TBD | Not started | - |
 | 90 | v9.0 | 0/TBD | Not started | - |
 | 91 | v9.0 | 0/TBD | Not started | - |
