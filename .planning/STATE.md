@@ -10,11 +10,11 @@ See: .planning/PROJECT.md (updated 2026-02-14)
 ## Current Position
 
 Phase: 88 of 95 (Ingestion Pipeline)
-Plan: 1 of 3 in current phase
+Plan: 2 of 3 in current phase
 Status: In progress
-Last activity: 2026-02-15 -- Completed 88-01 (HTTP Response Headers)
+Last activity: 2026-02-15 -- Completed 88-02 (Ingestion Services)
 
-Progress: [####################..........] 95% overall (249/260 plans shipped)
+Progress: [####################..........] 96% overall (250/260 plans shipped)
 
 ## Performance Metrics
 
@@ -24,7 +24,7 @@ Progress: [####################..........] 95% overall (249/260 plans shipped)
 - Milestones shipped: 18 (v1.0-v8.0)
 - Lines of Rust: ~98,800
 - Lines of website: ~5,500
-- Lines of Mesh: ~780 (first Mesh application code, refactored into modules)
+- Lines of Mesh: ~940 (first Mesh application code, refactored into modules, ingestion services added)
 - Timeline: 10 days (2026-02-05 -> 2026-02-14)
 
 ## Accumulated Context
@@ -54,6 +54,10 @@ Cleared at milestone boundary. v8.0 decisions archived in PROJECT.md.
 - [87.2-02] Apply ? operator only in flush_loop; keep explicit case in retry functions where Err branch calls retry logic
 - [88-01] Headers field added as third field in MeshHttpResponse (after status, body) -- backward compatible with null default
 - [88-01] Direct MeshMap entries array iteration (offset 16, [u64;2] per entry) for header extraction -- avoids mesh_map_to_list allocation
+- [88-02] Map.get returns 0 for missing keys -- correct default for Int counter tracking in RateLimiter
+- [88-02] EventProcessor delegates validation to caller due to cross-module from_json not resolving for imported types
+- [88-02] Service call handlers use inferred return types; explicit :: Result annotation causes type check failure
+- [88-02] Mesh parser single-expression case arms: extract multi-line logic into helper functions
 
 ### Roadmap Evolution
 
@@ -82,6 +86,6 @@ Research flags from research/SUMMARY.md:
 ## Session Continuity
 
 Last session: 2026-02-15
-Stopped at: Completed 88-01-PLAN.md
+Stopped at: Completed 88-02-PLAN.md
 Resume file: None
-Next action: Execute 88-02-PLAN.md (Ingestion Pipeline Mesh code)
+Next action: Execute 88-03-PLAN.md (HTTP Routes and WebSocket Handler)
