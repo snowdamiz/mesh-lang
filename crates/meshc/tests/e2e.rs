@@ -2894,3 +2894,58 @@ end
     ]);
     assert_eq!(output, "100\n200\n0\n");
 }
+
+/// Phase 87.1-02: Cross-module ? operator with Result types.
+/// A validation function in one module returns Result, and another module
+/// calls it with the ? operator inside a function that also returns Result.
+/// Tests that Result types and ? operator work correctly across module boundaries.
+#[test]
+fn e2e_cross_module_try_operator() {
+    let output = compile_multifile_and_run(&[
+        ("validation.mpl", r#"
+pub fn validate_positive(n :: Int) -> Int!String do
+  if n > 0 do
+    Ok(n)
+  else
+    Err("must be positive")
+  end
+end
+
+pub fn validate_small(n :: Int) -> Int!String do
+  if n < 100 do
+    Ok(n)
+  else
+    Err("too large")
+  end
+end
+"#),
+        ("main.mpl", r#"
+from Validation import validate_positive, validate_small
+
+fn process(n :: Int) -> Int!String do
+  let a = validate_positive(n)?
+  let b = validate_small(a)?
+  Ok(b * 2)
+end
+
+fn main() do
+  let r1 = process(10)
+  case r1 do
+    Ok(v) -> println("ok: ${v}")
+    Err(e) -> println("err: ${e}")
+  end
+  let r2 = process(-5)
+  case r2 do
+    Ok(v) -> println("ok: ${v}")
+    Err(e) -> println("err: ${e}")
+  end
+  let r3 = process(200)
+  case r3 do
+    Ok(v) -> println("ok: ${v}")
+    Err(e) -> println("err: ${e}")
+  end
+end
+"#),
+    ]);
+    assert_eq!(output, "ok: 20\nerr: must be positive\nerr: too large\n");
+}
