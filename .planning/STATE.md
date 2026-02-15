@@ -9,22 +9,22 @@ See: .planning/PROJECT.md (updated 2026-02-14)
 
 ## Current Position
 
-Phase: 89 of 95 (Error Grouping & Issue Lifecycle) -- COMPLETE
-Plan: 2 of 2 in current phase (all plans complete)
-Status: Phase 89 complete, verified (5/5 success criteria passed), and closed
-Last activity: 2026-02-15 -- Phase 89 verified and closed
+Phase: 90 of 95 (Real-Time Streaming)
+Plan: 1 of 3 in current phase (90-01 complete)
+Status: Executing Phase 90
+Last activity: 2026-02-15 -- Completed 90-01 (WebSocket Room Types & StreamManager)
 
-Progress: [####################..........] 98% overall (256/261 plans shipped)
+Progress: [####################..........] 98% overall (257/261 plans shipped)
 
 ## Performance Metrics
 
 **All-time Totals:**
-- Plans completed: 256
+- Plans completed: 257
 - Phases completed: 92
 - Milestones shipped: 18 (v1.0-v8.0)
 - Lines of Rust: ~98,800
 - Lines of website: ~5,500
-- Lines of Mesh: ~1780 (first Mesh application code, refactored into modules, ingestion pipeline wired with health monitoring, error grouping pipeline, issue lifecycle API)
+- Lines of Mesh: ~1885 (first Mesh application code, refactored into modules, ingestion pipeline wired with health monitoring, error grouping pipeline, issue lifecycle API, streaming state management)
 - Timeline: 10 days (2026-02-05 -> 2026-02-14)
 
 ## Accumulated Context
@@ -80,6 +80,9 @@ Cleared at milestone boundary. v8.0 decisions archived in PROJECT.md.
 - [89-02] Default to 'unresolved' status filter for list endpoint -- Mesh lacks query string parsing
 - [89-02] PostgreSQL jsonb extraction for assign request body parsing -- consistent with SQL-based field extraction
 - [89-02] Extracted log_spike_result helper for single-expression case arm constraint in spike_checker actor
+- [90-01] Map.delete for map entry removal (Map.remove not in runtime); Map.has_key extracted to let bindings before if conditions (parser limitation)
+- [90-01] both_match helper for AND logic instead of && operator (LLVM PHI node codegen issue in nested if blocks)
+- [90-01] Connection handle typed as Int at Mesh level consistent with Ws.send pattern (pointer cast to i64)
 
 ### Roadmap Evolution
 
@@ -108,6 +111,6 @@ Research flags from research/SUMMARY.md:
 ## Session Continuity
 
 Last session: 2026-02-15
-Stopped at: Phase 89 complete and verified (5/5 success criteria passed)
+Stopped at: Completed 90-01-PLAN.md (WebSocket Room Types & StreamManager)
 Resume file: None
-Next action: Plan Phase 90 (Real-Time Streaming)
+Next action: Execute 90-02-PLAN.md (WebSocket Streaming Handler)
