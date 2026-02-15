@@ -10,11 +10,11 @@ See: .planning/PROJECT.md (updated 2026-02-14)
 ## Current Position
 
 Phase: 87.2 of 95 (Refactor Phase 87 code to use cross-module services)
-Plan: 1 of 2 in current phase
-Status: In progress
-Last activity: 2026-02-15 -- Completed 87.2-01 (Extract Entity Services)
+Plan: 2 of 2 in current phase (PHASE COMPLETE)
+Status: Phase complete
+Last activity: 2026-02-15 -- Completed 87.2-02 (Extract StorageWriter)
 
-Progress: [####################..........] 91% overall (245/260 plans shipped)
+Progress: [####################..........] 95% overall (246/260 plans shipped)
 
 ## Performance Metrics
 
@@ -24,7 +24,7 @@ Progress: [####################..........] 91% overall (245/260 plans shipped)
 - Milestones shipped: 18 (v1.0-v8.0)
 - Lines of Rust: ~98,800
 - Lines of website: ~5,500
-- Lines of Mesh: ~950 (first Mesh application code)
+- Lines of Mesh: ~780 (first Mesh application code, refactored into modules)
 - Timeline: 10 days (2026-02-05 -> 2026-02-14)
 
 ## Accumulated Context
@@ -50,6 +50,8 @@ Cleared at milestone boundary. v8.0 decisions archived in PROJECT.md.
 - [87.1-02] Check service_modules before user_modules in MIR field access for generated function names
 - [87.2-01] Service module convention: services/X.mpl -> from Services.X import XService
 - [87.2-01] Service modules only depend on Storage.Queries and Types.*, never on each other
+- [87.2-02] Co-locate flush_ticker actor with StorageWriter to avoid untested cross-module actor-to-service references
+- [87.2-02] Apply ? operator only in flush_loop; keep explicit case in retry functions where Err branch calls retry logic
 
 ### Roadmap Evolution
 
@@ -78,6 +80,6 @@ Research flags from research/SUMMARY.md:
 ## Session Continuity
 
 Last session: 2026-02-15
-Stopped at: Completed 87.2-01-PLAN.md (Extract Entity Services)
+Stopped at: Completed 87.2-02-PLAN.md (Extract StorageWriter) -- Phase 87.2 complete
 Resume file: None
-Next action: Execute 87.2-02-PLAN.md (Extract StorageWriter)
+Next action: Begin Phase 88 (Ingestion Pipeline)
