@@ -53,6 +53,7 @@ enum Event {
     /// Consume the current token, advancing the token position.
     Advance,
     /// Emit an error message (wrapped in an ERROR_NODE in the tree).
+    #[allow(dead_code)]
     Error { message: String },
 }
 
@@ -197,6 +198,7 @@ impl<'src> Parser<'src> {
     }
 
     /// Check if the current significant token matches any of the given kinds.
+    #[allow(dead_code)]
     pub(crate) fn at_any(&self, kinds: &[SyntaxKind]) -> bool {
         let current = self.current();
         kinds.contains(&current)
@@ -283,6 +285,7 @@ impl<'src> Parser<'src> {
 
     /// Consume the current token wrapped in an ERROR_NODE, advancing past it.
     /// Used when encountering an unexpected token.
+    #[allow(dead_code)]
     pub(crate) fn advance_with_error(&mut self, message: &str) {
         let m = self.open();
         self.error(message);

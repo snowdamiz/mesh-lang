@@ -367,6 +367,7 @@ impl<'a> Lowerer<'a> {
         }
     }
 
+    #[allow(dead_code)]
     fn resolve_range_closure(&self, range: TextRange) -> MirType {
         if let Some(ty) = self.types.get(&range) {
             resolve_type(ty, self.registry, true)
@@ -2596,7 +2597,7 @@ impl<'a> Lowerer<'a> {
 
     /// Generate a synthetic `Ord__compare__StructName` MIR function.
     /// Returns Ordering (Less | Equal | Greater) by delegating to lt and eq.
-    fn generate_compare_struct(&mut self, name: &str, fields: &[(String, MirType)]) {
+    fn generate_compare_struct(&mut self, name: &str, _fields: &[(String, MirType)]) {
         let mangled = format!("Ord__compare__{}", name);
         let struct_ty = MirType::Struct(name.to_string());
         let ordering_ty = MirType::SumType("Ordering".to_string());
@@ -4936,6 +4937,7 @@ impl<'a> Lowerer<'a> {
 
     // ── Let binding lowering ─────────────────────────────────────────
 
+    #[allow(dead_code)]
     fn lower_let_binding(&mut self, let_: &LetBinding) -> MirExpr {
         let name = let_
             .name()
@@ -5572,7 +5574,7 @@ impl<'a> Lowerer<'a> {
         // the typeck resolved to a Tuple type, use Ptr. This prevents LLVM
         // struct/pointer mismatches where typeck resolves e.g. List.head on
         // List<(A,B)> as Tuple([A,B]) but the runtime returns an opaque Ptr.
-        if let MirExpr::Var(ref name, ref callee_ty) = callee {
+        if let MirExpr::Var(ref _name, ref callee_ty) = callee {
             if let MirType::FnPtr(_, ref ret_ty) = callee_ty {
                 if matches!(ty, MirType::Tuple(_)) && matches!(**ret_ty, MirType::Ptr) {
                     ty = MirType::Ptr;
@@ -8180,7 +8182,7 @@ impl<'a> Lowerer<'a> {
             _ => false,
         };
 
-        let (err_body_expr, err_body_ty) = if needs_from_conversion {
+        let (err_body_expr, _err_body_ty) = if needs_from_conversion {
             let source_err_name = operand_err_name.as_deref().unwrap();
             let target_err_name = fn_err_name.as_deref().unwrap();
             let source_err_ty = self.type_name_to_mir_type(source_err_name);
@@ -8345,7 +8347,7 @@ impl<'a> Lowerer<'a> {
         // Runtime layout: { u64 len, u64[len] elements }
         // Allocate via mesh_gc_alloc_actor, store length + elements, return pointer.
         let n = elements.len();
-        let total_size = 8 + n * 8; // u64 len + n * u64 elements
+        let _total_size = 8 + n * 8; // u64 len + n * u64 elements
 
         // Generate a synthetic __mesh_make_tuple(elem0, elem1, ...) call.
         // Codegen expands this inline: gc_alloc + store length + store elements.
@@ -8840,6 +8842,7 @@ impl<'a> Lowerer<'a> {
 
         // For each call handler: (variant_name, snake_name, tag, param_names, state_param)
         struct CallInfo {
+            #[allow(dead_code)]
             variant_name: String,
             snake_name: String,
             tag: u64,
@@ -8849,6 +8852,7 @@ impl<'a> Lowerer<'a> {
         }
 
         struct CastInfo {
+            #[allow(dead_code)]
             variant_name: String,
             snake_name: String,
             tag: u64,

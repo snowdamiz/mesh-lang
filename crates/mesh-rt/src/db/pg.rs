@@ -833,6 +833,7 @@ pub extern "C" fn mesh_pg_connect(url: *const MeshString) -> *mut u8 {
         }
 
         // Read messages until ReadyForQuery ('Z')
+        #[allow(unused_assignments)]
         let mut last_txn_status: u8 = b'I';
         loop {
             let (tag, body) = match read_message(&mut stream) {

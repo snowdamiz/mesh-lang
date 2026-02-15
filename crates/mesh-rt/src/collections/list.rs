@@ -24,6 +24,7 @@ unsafe fn list_len(list: *const u8) -> u64 {
 }
 
 /// Read the capacity field from a list pointer.
+#[allow(dead_code)]
 unsafe fn list_cap(list: *const u8) -> u64 {
     *((list as *const u64).add(1))
 }

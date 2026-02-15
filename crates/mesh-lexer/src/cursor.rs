@@ -46,6 +46,7 @@ impl<'src> Cursor<'src> {
     }
 
     /// Whether there are no more characters to consume.
+    #[allow(dead_code)]
     pub fn is_eof(&self) -> bool {
         self.peek().is_none()
     }

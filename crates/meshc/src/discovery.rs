@@ -255,6 +255,7 @@ pub fn build_project(project_root: &Path) -> Result<ProjectData, String> {
 /// Convenience wrapper around [`build_project`] that returns only the graph
 /// and compilation order (no parse data). Preserves the Phase 37 API for
 /// existing tests and callers that don't need per-file parse results.
+#[allow(dead_code)]
 pub fn build_module_graph(project_root: &Path) -> Result<(ModuleGraph, Vec<ModuleId>), String> {
     let project = build_project(project_root)?;
     Ok((project.graph, project.compilation_order))

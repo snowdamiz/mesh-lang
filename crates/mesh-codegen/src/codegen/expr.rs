@@ -1171,7 +1171,7 @@ impl<'ctx> CodeGen<'ctx> {
                                 else if let inkwell::types::BasicMetadataTypeEnum::PointerType(_) = param_ty {
                                     let sv_ty = arg_sv.get_type();
                                     let i64_type = self.context.i64_type();
-                                    let ptr_type = self.context.ptr_type(inkwell::AddressSpace::default());
+                                    let _ptr_type = self.context.ptr_type(inkwell::AddressSpace::default());
                                     let size = sv_ty.size_of().unwrap_or(i64_type.const_int(64, false));
                                     let align = i64_type.const_int(8, false);
                                     let gc_alloc = self.module.get_function("mesh_gc_alloc_actor")

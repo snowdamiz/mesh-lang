@@ -234,7 +234,7 @@ fn build(
         .copied()
         .find(|id| project.graph.get(*id).is_entry)
         .ok_or("No entry module found in module graph")?;
-    let entry_idx = entry_id.0 as usize;
+    let _entry_idx = entry_id.0 as usize;
 
     // Check parse errors in ALL modules (not just entry)
     let mut has_errors = false;
@@ -465,6 +465,7 @@ fn build_import_context(
 /// When `diag_opts.json` is true, outputs one JSON object per line to stderr.
 /// Otherwise, outputs colorized (or colorless) human-readable diagnostics.
 /// Returns true if there are any errors.
+#[allow(dead_code)]
 fn report_diagnostics(
     source: &str,
     path: &Path,

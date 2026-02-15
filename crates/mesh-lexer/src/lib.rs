@@ -25,6 +25,7 @@ enum LexerState {
 /// Uses a state stack to handle nested string interpolation contexts.
 pub struct Lexer<'src> {
     cursor: Cursor<'src>,
+    #[allow(dead_code)]
     source: &'src str,
     /// Whether we have already emitted the `Eof` token.
     emitted_eof: bool,
