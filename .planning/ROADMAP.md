@@ -19,7 +19,7 @@
 - [x] **v6.0 Website & Documentation** - Phases 70-73 (shipped 2026-02-13)
 - [x] **v7.0 Iterator Protocol & Trait Ecosystem** - Phases 74-80 (shipped 2026-02-14)
 - [x] **v8.0 Developer Tooling** - Phases 81-86 (shipped 2026-02-14)
-- [ ] **v9.0 Mesher** - Phases 87-95 (in progress)
+- [x] **v9.0 Mesher** - Phases 87-95 (shipped 2026-02-15)
 
 ## Phases
 
@@ -159,7 +159,7 @@ See milestones/v8.0-ROADMAP.md for full phase details.
 
 </details>
 
-### v9.0 Mesher (In Progress)
+### v9.0 Mesher (SHIPPED 2026-02-15)
 
 **Milestone Goal:** Build a full monitoring/observability SaaS platform ("Mesher") using Mesh for the entire backend, dogfooding every language feature under high-concurrency, high-throughput conditions. Separate Vue frontend in same monorepo. PostgreSQL for storage. Zero external dependencies beyond PG.
 
@@ -176,7 +176,7 @@ See milestones/v8.0-ROADMAP.md for full phase details.
 - [x] **Phase 93.1: Issues Encountered** - Fix forward-reference compilation errors in detail.mpl and team.mpl (INSERTED, completed 2026-02-15)
 - [x] **Phase 93.2: Fix Actor Spawn Segfault** - Actor wrapper+body ABI fix for parameterized actors (INSERTED, completed 2026-02-15)
 - [x] **Phase 94: Multi-Node Clustering** - Distributed actors, global registry, cross-node event routing and broadcast (completed 2026-02-15)
-- [ ] **Phase 95: React Frontend** - SPA dashboard with Recharts, TanStack tables, real-time WebSocket streaming
+- [x] **Phase 95: React Frontend** - SPA dashboard with Recharts, TanStack tables, real-time WebSocket streaming (completed 2026-02-15)
 
 ## Phase Details
 
@@ -369,13 +369,13 @@ Plans:
 **Plans:** 7 plans
 
 Plans:
-- [ ] 95-01-PLAN.md -- Scaffold Vite + React 19 project, app shell, shared infrastructure (routing, API client, stores, hooks, types, theme)
-- [ ] 95-02-PLAN.md -- Dashboard page with Recharts charts (volume, levels, health) and issue list
-- [ ] 95-03-PLAN.md -- Issues and Events pages with TanStack Table, filters, and pagination
-- [ ] 95-04-PLAN.md -- Event detail and issue detail push panels (stack trace, breadcrumbs, tags, state transitions)
-- [ ] 95-05-PLAN.md -- Live Stream page and WebSocket integration for real-time dashboard updates
-- [ ] 95-06-PLAN.md -- Alerts page (rule CRUD, fired alerts) and Settings page (project, team, API keys, storage)
-- [ ] 95-07-PLAN.md -- Integration fixes, production build verification, and visual checkpoint
+- [x] 95-01-PLAN.md -- Scaffold Vite + React 19 project, app shell, shared infrastructure (routing, API client, stores, hooks, types, theme)
+- [x] 95-02-PLAN.md -- Dashboard page with Recharts charts (volume, levels, health) and issue list
+- [x] 95-03-PLAN.md -- Issues and Events pages with TanStack Table, filters, and pagination
+- [x] 95-04-PLAN.md -- Event detail and issue detail push panels (stack trace, breadcrumbs, tags, state transitions)
+- [x] 95-05-PLAN.md -- Live Stream page and WebSocket integration for real-time dashboard updates
+- [x] 95-06-PLAN.md -- Alerts page (rule CRUD, fired alerts) and Settings page (project, team, API keys, storage)
+- [x] 95-07-PLAN.md -- Integration fixes, production build verification, and visual checkpoint
 
 ## Progress
 
@@ -415,6 +415,6 @@ Note: Phase 93 depends only on 87 (can run in parallel with 88-92 if desired). P
 | 93.1 | v9.0 | 1/1 | Complete | 2026-02-15 |
 | 93.2 | v9.0 | 1/1 | Complete | 2026-02-15 |
 | 94 | v9.0 | 4/4 | Complete | 2026-02-15 |
-| 95 | v9.0 | 0/TBD | Not started | - |
+| 95 | v9.0 | 7/7 | Complete | 2026-02-15 |
 
-**Total: 100 phases shipped across 18 milestones. 273 plans completed. 12 phases planned for v9.0.**
+**Total: 101 phases shipped across 18 milestones. 280 plans completed. 12 phases completed for v9.0.**
