@@ -301,3 +301,54 @@ pub fn extract_event_fields(pool :: PoolHandle, event_json :: String) -> Map<Str
     Err("extract_event_fields: no result")
   end
 end
+
+# --- Search, filter, and pagination queries (Phase 91 Plan 01) ---
+
+# SEARCH-01 + SEARCH-05: List issues with optional filters and keyset pagination.
+# Optional filters use SQL-side conditionals ($N = '' OR column = $N) to avoid injection.
+# Keyset pagination uses (last_seen, id) < ($cursor, $cursor_id) for stable browsing.
+# Returns raw Map rows (not Issue struct) for flexible JSON serialization.
+pub fn list_issues_filtered(pool :: PoolHandle, project_id :: String, status :: String, level :: String, assigned_to :: String, cursor :: String, cursor_id :: String, limit_str :: String) -> List<Map<String, String>>!String do
+  if String.length(cursor) > 0 do
+    let sql = "SELECT id::text, project_id::text, fingerprint, title, level, status, event_count::text, first_seen::text, last_seen::text, COALESCE(assigned_to::text, '') as assigned_to FROM issues WHERE project_id = $1::uuid AND ($2 = '' OR status = $2) AND ($3 = '' OR level = $3) AND ($4 = '' OR assigned_to = $4::uuid) AND (last_seen, id) < ($5::timestamptz, $6::uuid) ORDER BY last_seen DESC, id DESC LIMIT $7::int"
+    let rows = Pool.query(pool, sql, [project_id, status, level, assigned_to, cursor, cursor_id, limit_str])?
+    Ok(rows)
+  else
+    let sql = "SELECT id::text, project_id::text, fingerprint, title, level, status, event_count::text, first_seen::text, last_seen::text, COALESCE(assigned_to::text, '') as assigned_to FROM issues WHERE project_id = $1::uuid AND ($2 = '' OR status = $2) AND ($3 = '' OR level = $3) AND ($4 = '' OR assigned_to = $4::uuid) ORDER BY last_seen DESC, id DESC LIMIT $5::int"
+    let rows = Pool.query(pool, sql, [project_id, status, level, assigned_to, limit_str])?
+    Ok(rows)
+  end
+end
+
+# SEARCH-02: Full-text search on event messages using inline tsvector.
+# Uses inline to_tsvector (avoids partition complications with stored tsvector column).
+# Includes 24-hour default time range (SEARCH-04) for partition pruning.
+# Returns relevance rank for ordering.
+pub fn search_events_fulltext(pool :: PoolHandle, project_id :: String, search_query :: String, limit_str :: String) -> List<Map<String, String>>!String do
+  let sql = "SELECT id::text, issue_id::text, level, message, received_at::text, ts_rank(to_tsvector('english', message), plainto_tsquery('english', $2))::text AS rank FROM events WHERE project_id = $1::uuid AND to_tsvector('english', message) @@ plainto_tsquery('english', $2) AND received_at > now() - interval '24 hours' ORDER BY rank DESC, received_at DESC LIMIT $3::int"
+  let rows = Pool.query(pool, sql, [project_id, search_query, limit_str])?
+  Ok(rows)
+end
+
+# SEARCH-03: Filter events by tag key-value pair using JSONB containment.
+# Uses tags @> $2::jsonb operator which leverages existing GIN index (idx_events_tags).
+# Includes 24-hour default time range (SEARCH-04).
+pub fn filter_events_by_tag(pool :: PoolHandle, project_id :: String, tag_json :: String, limit_str :: String) -> List<Map<String, String>>!String do
+  let sql = "SELECT id::text, issue_id::text, level, message, tags::text, received_at::text FROM events WHERE project_id = $1::uuid AND tags @> $2::jsonb AND received_at > now() - interval '24 hours' ORDER BY received_at DESC LIMIT $3::int"
+  let rows = Pool.query(pool, sql, [project_id, tag_json, limit_str])?
+  Ok(rows)
+end
+
+# Event listing within an issue with keyset pagination (for DETAIL-05 context).
+# Keyset pagination on (received_at, id) for stable browsing.
+pub fn list_events_for_issue(pool :: PoolHandle, issue_id :: String, cursor :: String, cursor_id :: String, limit_str :: String) -> List<Map<String, String>>!String do
+  if String.length(cursor) > 0 do
+    let sql = "SELECT id::text, level, message, received_at::text FROM events WHERE issue_id = $1::uuid AND (received_at, id) < ($2::timestamptz, $3::uuid) ORDER BY received_at DESC, id DESC LIMIT $4::int"
+    let rows = Pool.query(pool, sql, [issue_id, cursor, cursor_id, limit_str])?
+    Ok(rows)
+  else
+    let sql = "SELECT id::text, level, message, received_at::text FROM events WHERE issue_id = $1::uuid ORDER BY received_at DESC, id DESC LIMIT $2::int"
+    let rows = Pool.query(pool, sql, [issue_id, limit_str])?
+    Ok(rows)
+  end
+end
