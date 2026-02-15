@@ -10,11 +10,11 @@ See: .planning/PROJECT.md (updated 2026-02-14)
 ## Current Position
 
 Phase: 94 of 95 (Multi-Node Clustering) -- IN PROGRESS
-Plan: 1 of 3 in current phase -- COMPLETE
-Status: Plan 01 complete -- env-based node startup and global service registration
-Last activity: 2026-02-15 - Node startup with env config, Global.register for PipelineRegistry
+Plan: 2 of 3 in current phase -- COMPLETE
+Status: Plan 02 complete -- cross-node service discovery via get_registry() helper
+Last activity: 2026-02-15 - Cluster-aware registry lookup across all handlers
 
-Progress: [#######################.......] 100% overall (270/272 plans shipped)
+Progress: [#######################.......] 100% overall (271/272 plans shipped)
 
 ## Performance Metrics
 
@@ -24,7 +24,7 @@ Progress: [#######################.......] 100% overall (270/272 plans shipped)
 - Milestones shipped: 18 (v1.0-v8.0)
 - Lines of Rust: ~98,800
 - Lines of website: ~5,500
-- Lines of Mesh: ~3860 (first Mesh application code, refactored into modules, ingestion pipeline wired with health monitoring, error grouping pipeline, issue lifecycle API, streaming state management, backpressure buffer drain, subscription protocol and event broadcasting, search/filter/pagination REST API, dashboard aggregation and event detail endpoints, team membership and API token management, refactored with shared helpers, pipe-chained router and data transforms, alerting data foundation, alert evaluation engine, alert HTTP API routes, retention data foundation, settings API and ingestion sampling, forward-reference fixes for clean compilation, actor spawn ABI fix, distributed node startup and global service registration)
+- Lines of Mesh: ~3870 (first Mesh application code, refactored into modules, ingestion pipeline wired with health monitoring, error grouping pipeline, issue lifecycle API, streaming state management, backpressure buffer drain, subscription protocol and event broadcasting, search/filter/pagination REST API, dashboard aggregation and event detail endpoints, team membership and API token management, refactored with shared helpers, pipe-chained router and data transforms, alerting data foundation, alert evaluation engine, alert HTTP API routes, retention data foundation, settings API and ingestion sampling, forward-reference fixes for clean compilation, actor spawn ABI fix, distributed node startup and global service registration, cross-node service discovery via get_registry)
 - Timeline: 11 days (2026-02-05 -> 2026-02-15)
 
 ## Accumulated Context
@@ -122,6 +122,9 @@ Cleared at milestone boundary. v8.0 decisions archived in PROJECT.md.
 - [94-01] Node startup placed after PG pool but before schema creation (HTTP.serve blocks, per research pitfall 4)
 - [94-01] StreamManager kept node-local with Process.register only (connection handles are local pointers)
 - [94-01] Global.register first-writer-wins for well-known "mesher_registry"; node-specific names for targeted cross-node lookup
+- [94-02] Node.self() check for cluster/standalone mode instead of Pid-to-Int comparison (Pid type constraint, decision [88-05])
+- [94-02] Global.whereis for cluster mode, Process.whereis for standalone mode -- both return valid Pid in their respective modes
+- [94-02] StreamManager kept node-local (Process.whereis only) -- connection handles are local pointers
 
 ### Roadmap Evolution
 
@@ -155,6 +158,6 @@ Research flags from research/SUMMARY.md:
 ## Session Continuity
 
 Last session: 2026-02-15
-Stopped at: Completed 94-01-PLAN.md (node startup and global service registration)
+Stopped at: Completed 94-02-PLAN.md (cross-node service discovery)
 Resume file: None
-Next action: Execute 94-02-PLAN.md (cross-node service discovery)
+Next action: Execute 94-03-PLAN.md (load-based remote processor spawning)
