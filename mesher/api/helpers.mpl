@@ -3,15 +3,15 @@
 # All functions are pub for cross-module import.
 
 # Cluster-aware registry lookup.
-# Tries node-local Process.whereis first (zero overhead).
-# Falls back to Global.whereis for cross-node discovery in cluster mode.
-# In standalone mode, Process.whereis always succeeds (Global.whereis never called).
+# In cluster mode (Node.self returns non-empty), uses Global.whereis for
+# cross-node discovery. In standalone mode, uses Process.whereis (zero overhead).
+# Both return Pid<()>; the runtime representation is u64 in either case.
 pub fn get_registry() do
-  let local = Process.whereis("mesher_registry")
-  if local != 0 do
-    local
-  else
+  let node_name = Node.self()
+  if node_name != "" do
     Global.whereis("mesher_registry")
+  else
+    Process.whereis("mesher_registry")
   end
 end
 
