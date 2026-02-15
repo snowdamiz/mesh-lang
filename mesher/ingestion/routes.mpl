@@ -34,11 +34,46 @@ fn accepted_response() do
   HTTP.response(202, "{\"status\":\"accepted\"}")
 end
 
-# Helper: route event to processor and build response
+# --- Event broadcasting helpers (STREAM-01, STREAM-04) ---
+# Defined before route_to_processor (Mesh requires define-before-use).
+
+# Helper: broadcast issue count from query result rows
+fn broadcast_count_from_rows(project_id :: String, rows) do
+  if List.length(rows) > 0 do
+    let count = Map.get(List.head(rows), "cnt")
+    let room = "project:" <> project_id
+    let _ = Ws.broadcast(room, "{\"type\":\"issue_count\",\"project_id\":\"" <> project_id <> "\",\"count\":" <> count <> "}")
+    0
+  else
+    0
+  end
+end
+
+# Helper: broadcast updated issue count for a project
+fn broadcast_issue_count(project_id :: String) do
+  let reg_pid = Process.whereis("mesher_registry")
+  let pool = PipelineRegistry.get_pool(reg_pid)
+  let count_result = Pool.query(pool, "SELECT count(*)::text AS cnt FROM issues WHERE project_id = $1::uuid AND status = 'unresolved'", [project_id])
+  case count_result do
+    Ok(rows) -> broadcast_count_from_rows(project_id, rows)
+    Err(_) -> 0
+  end
+end
+
+# Helper: broadcast event notification and issue count update to project room
+fn broadcast_event(project_id :: String, issue_id :: String, body :: String) do
+  let room = "project:" <> project_id
+  let notification = "{\"type\":\"event\",\"issue_id\":\"" <> issue_id <> "\",\"data\":" <> body <> "}"
+  let _ = Ws.broadcast(room, notification)
+  broadcast_issue_count(project_id)
+  accepted_response()
+end
+
+# Helper: route event to processor, broadcast on success, and build response
 fn route_to_processor(processor_pid, project_id :: String, writer_pid, body :: String) do
   let result = EventProcessor.process_event(processor_pid, project_id, writer_pid, body)
   case result do
-    Ok(_) -> accepted_response()
+    Ok(issue_id) -> broadcast_event(project_id, issue_id, body)
     Err(reason) -> bad_request_response(reason)
   end
 end
