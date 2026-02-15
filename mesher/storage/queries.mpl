@@ -8,7 +8,7 @@ from Types.Project import Organization, Project, ApiKey
 from Types.User import User, OrgMembership, Session
 from Types.Issue import Issue
 from Types.Event import Event
-from Types.Alert import AlertRule
+from Types.Alert import AlertRule, Alert
 
 # --- Organization queries ---
 
@@ -453,5 +453,103 @@ end
 pub fn list_api_keys(pool :: PoolHandle, project_id :: String) -> List<Map<String, String>>!String do
   let sql = "SELECT id::text, project_id::text, key_value, label, created_at::text, COALESCE(revoked_at::text, '') AS revoked_at FROM api_keys WHERE project_id = $1::uuid ORDER BY created_at DESC"
   let rows = Pool.query(pool, sql, [project_id])?
+  Ok(rows)
+end
+
+# --- Alert system queries (Phase 92) ---
+
+# ALERT-01: Insert alert rule from JSON body using PostgreSQL JSONB extraction.
+pub fn create_alert_rule(pool :: PoolHandle, project_id :: String, body :: String) -> String!String do
+  let sql = "INSERT INTO alert_rules (project_id, name, condition_json, action_json, cooldown_minutes) SELECT $1::uuid, COALESCE(j->>'name', 'Unnamed Rule'), COALESCE((j->'condition')::jsonb, '{}'::jsonb), COALESCE((j->'action')::jsonb, '{\"type\":\"websocket\"}'::jsonb), COALESCE((j->>'cooldown_minutes')::int, 60) FROM (SELECT $2::jsonb AS j) AS sub RETURNING id::text"
+  let rows = Pool.query(pool, sql, [project_id, body])?
+  if List.length(rows) > 0 do
+    Ok(Map.get(List.head(rows), "id"))
+  else
+    Err("create_alert_rule: no id returned")
+  end
+end
+
+# ALERT-01: List all alert rules for a project.
+pub fn list_alert_rules(pool :: PoolHandle, project_id :: String) -> List<Map<String, String>>!String do
+  let sql = "SELECT id::text, project_id::text, name, condition_json::text, action_json::text, enabled::text, cooldown_minutes::text, COALESCE(last_fired_at::text, '') AS last_fired_at, created_at::text FROM alert_rules WHERE project_id = $1::uuid ORDER BY created_at DESC"
+  let rows = Pool.query(pool, sql, [project_id])?
+  Ok(rows)
+end
+
+# Enable/disable an alert rule.
+pub fn toggle_alert_rule(pool :: PoolHandle, rule_id :: String, enabled_str :: String) -> Int!String do
+  Pool.execute(pool, "UPDATE alert_rules SET enabled = $2::boolean WHERE id = $1::uuid", [rule_id, enabled_str])
+end
+
+# Delete an alert rule.
+pub fn delete_alert_rule(pool :: PoolHandle, rule_id :: String) -> Int!String do
+  Pool.execute(pool, "DELETE FROM alert_rules WHERE id = $1::uuid", [rule_id])
+end
+
+# ALERT-02: Count events in time window AND check cooldown, return true if should fire.
+pub fn evaluate_threshold_rule(pool :: PoolHandle, rule_id :: String, project_id :: String, threshold_str :: String, window_str :: String, cooldown_str :: String) -> Bool!String do
+  let sql = "SELECT CASE WHEN event_count > $3::int AND (last_fired IS NULL OR last_fired < now() - interval '1 minute' * $6::int) THEN 1 ELSE 0 END AS should_fire FROM (SELECT count(*) AS event_count FROM events WHERE project_id = $2::uuid AND received_at > now() - interval '1 minute' * $4::int) counts, (SELECT last_fired_at AS last_fired FROM alert_rules WHERE id = $1::uuid) cooldown"
+  let rows = Pool.query(pool, sql, [rule_id, project_id, threshold_str, window_str, "", cooldown_str])?
+  if List.length(rows) > 0 do
+    let should_fire = Map.get(List.head(rows), "should_fire")
+    Ok(should_fire == "1")
+  else
+    Ok(false)
+  end
+end
+
+# ALERT-04/05: Insert alert record, update last_fired_at atomically, return alert_id.
+pub fn fire_alert(pool :: PoolHandle, rule_id :: String, project_id :: String, message :: String, condition_type :: String, rule_name :: String) -> String!String do
+  let sql = "INSERT INTO alerts (rule_id, project_id, status, message, condition_snapshot) VALUES ($1::uuid, $2::uuid, 'active', $3, jsonb_build_object('condition_type', $4, 'rule_name', $5)) RETURNING id::text"
+  let rows = Pool.query(pool, sql, [rule_id, project_id, message, condition_type, rule_name])?
+  if List.length(rows) > 0 do
+    let alert_id = Map.get(List.head(rows), "id")
+    let _ = Pool.execute(pool, "UPDATE alert_rules SET last_fired_at = now() WHERE id = $1::uuid", [rule_id])
+    Ok(alert_id)
+  else
+    Err("fire_alert: no id returned")
+  end
+end
+
+# ALERT-03: Check if an issue was just created (first_seen = last_seen).
+pub fn check_new_issue(pool :: PoolHandle, issue_id :: String) -> Bool!String do
+  let rows = Pool.query(pool, "SELECT 1 AS is_new FROM issues WHERE id = $1::uuid AND first_seen = last_seen", [issue_id])?
+  Ok(List.length(rows) > 0)
+end
+
+# ALERT-03: Get enabled alert rules for event-based conditions for a project.
+pub fn get_event_alert_rules(pool :: PoolHandle, project_id :: String, condition_type :: String) -> List<Map<String, String>>!String do
+  let sql = "SELECT id::text, name, cooldown_minutes::text FROM alert_rules WHERE project_id = $1::uuid AND enabled = true AND condition_json->>'condition_type' = $2"
+  let rows = Pool.query(pool, sql, [project_id, condition_type])?
+  Ok(rows)
+end
+
+# ALERT-05: Check cooldown before firing (for event-based triggers).
+pub fn should_fire_by_cooldown(pool :: PoolHandle, rule_id :: String, cooldown_str :: String) -> Bool!String do
+  let rows = Pool.query(pool, "SELECT 1 AS ok FROM alert_rules WHERE id = $1::uuid AND (last_fired_at IS NULL OR last_fired_at < now() - interval '1 minute' * $2::int)", [rule_id, cooldown_str])?
+  Ok(List.length(rows) > 0)
+end
+
+# ALERT-06: Transition alert to acknowledged.
+pub fn acknowledge_alert(pool :: PoolHandle, alert_id :: String) -> Int!String do
+  Pool.execute(pool, "UPDATE alerts SET status = 'acknowledged', acknowledged_at = now() WHERE id = $1::uuid AND status = 'active'", [alert_id])
+end
+
+# ALERT-06: Transition alert to resolved.
+pub fn resolve_fired_alert(pool :: PoolHandle, alert_id :: String) -> Int!String do
+  Pool.execute(pool, "UPDATE alerts SET status = 'resolved', resolved_at = now() WHERE id = $1::uuid AND status IN ('active', 'acknowledged')", [alert_id])
+end
+
+# ALERT-06: List alerts for a project filtered by status.
+pub fn list_alerts(pool :: PoolHandle, project_id :: String, status :: String) -> List<Map<String, String>>!String do
+  let sql = "SELECT a.id::text, a.rule_id::text, a.project_id::text, a.status, a.message, a.condition_snapshot::text, a.triggered_at::text, COALESCE(a.acknowledged_at::text, '') AS acknowledged_at, COALESCE(a.resolved_at::text, '') AS resolved_at, r.name AS rule_name FROM alerts a JOIN alert_rules r ON r.id = a.rule_id WHERE a.project_id = $1::uuid AND ($2 = '' OR a.status = $2) ORDER BY a.triggered_at DESC LIMIT 50"
+  let rows = Pool.query(pool, sql, [project_id, status])?
+  Ok(rows)
+end
+
+# Load all enabled threshold rules for evaluation.
+pub fn get_threshold_rules(pool :: PoolHandle) -> List<Map<String, String>>!String do
+  let sql = "SELECT id::text, project_id::text, name, condition_json::text, cooldown_minutes::text FROM alert_rules WHERE enabled = true AND condition_json->>'condition_type' = 'threshold'"
+  let rows = Pool.query(pool, sql, [])?
   Ok(rows)
 end
