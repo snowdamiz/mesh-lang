@@ -67,6 +67,21 @@ fn collect_reachable_functions(module: &MirModule) -> HashSet<String> {
             }
         }
 
+        // If this is an actor wrapper function, add the body function as reachable.
+        // Actor wrappers have body: MirExpr::Unit and a single __args_ptr param.
+        // The body function is named __actor_{name}_body and is called by codegen,
+        // not referenced in MIR expressions.
+        if let Some(func) = module.functions.iter().find(|f| f.name == name) {
+            if func.params.len() == 1 && func.params[0].0 == "__args_ptr" {
+                let body_fn_name = format!("__actor_{}_body", name);
+                if module.functions.iter().any(|f| f.name == body_fn_name) {
+                    if !reachable.contains(&body_fn_name) {
+                        worklist.push(body_fn_name);
+                    }
+                }
+            }
+        }
+
         // Find the function and scan its body for referenced functions.
         if let Some(func) = module.functions.iter().find(|f| f.name == name) {
             let mut refs = Vec::new();

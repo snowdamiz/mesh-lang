@@ -281,3 +281,27 @@ fn gc_bounded_memory() {
         output
     );
 }
+
+/// Test 9: Actors with arguments -- spawn passes initial state correctly.
+/// Actors receive typed arguments, not raw buffer pointers. Tests the
+/// wrapper function that deserializes args from the spawn buffer.
+#[test]
+fn actors_with_args() {
+    let source = read_fixture("actors_with_args.mpl");
+    let output = compile_and_run_with_timeout(&source, 10);
+    assert!(
+        output.contains("15"),
+        "Expected '15' (adder initial=10 + msg=5) in output, got: {}",
+        output
+    );
+    assert!(
+        output.contains("42"),
+        "Expected '42' (calculator 30 + 12) in output, got: {}",
+        output
+    );
+    assert!(
+        output.contains("args test done"),
+        "Expected 'args test done' in output, got: {}",
+        output
+    );
+}
