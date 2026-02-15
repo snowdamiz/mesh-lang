@@ -9,23 +9,23 @@ See: .planning/PROJECT.md (updated 2026-02-14)
 
 ## Current Position
 
-Phase: 92 of 95 (Alerting System) -- COMPLETE
-Plan: 3 of 3 in current phase (all plans complete)
-Status: Phase 92 complete, verified (10/10 must-haves passed), and closed
-Last activity: 2026-02-15 - Phase 92 executed and verified (alerting system: schema, evaluator, HTTP API)
+Phase: 93 of 95 (Data Retention & Cleanup)
+Plan: 1 of 2 in current phase
+Status: Plan 93-01 complete, Plan 93-02 remaining
+Last activity: 2026-02-15 - Phase 93 Plan 01 executed (retention data foundation: schema, queries, cleaner actor)
 
-Progress: [######################........] 99% overall (265/266 plans shipped)
+Progress: [######################........] 99% overall (266/268 plans shipped)
 
 ## Performance Metrics
 
 **All-time Totals:**
-- Plans completed: 265
+- Plans completed: 266
 - Phases completed: 96
 - Milestones shipped: 18 (v1.0-v8.0)
 - Lines of Rust: ~98,800
 - Lines of website: ~5,500
-- Lines of Mesh: ~3540 (first Mesh application code, refactored into modules, ingestion pipeline wired with health monitoring, error grouping pipeline, issue lifecycle API, streaming state management, backpressure buffer drain, subscription protocol and event broadcasting, search/filter/pagination REST API, dashboard aggregation and event detail endpoints, team membership and API token management, refactored with shared helpers, pipe-chained router and data transforms, alerting data foundation, alert evaluation engine, alert HTTP API routes)
-- Timeline: 10 days (2026-02-05 -> 2026-02-14)
+- Lines of Mesh: ~3680 (first Mesh application code, refactored into modules, ingestion pipeline wired with health monitoring, error grouping pipeline, issue lifecycle API, streaming state management, backpressure buffer drain, subscription protocol and event broadcasting, search/filter/pagination REST API, dashboard aggregation and event detail endpoints, team membership and API token management, refactored with shared helpers, pipe-chained router and data transforms, alerting data foundation, alert evaluation engine, alert HTTP API routes, retention data foundation)
+- Timeline: 11 days (2026-02-05 -> 2026-02-15)
 
 ## Accumulated Context
 
@@ -110,6 +110,7 @@ Cleared at milestone boundary. v8.0 decisions archived in PROJECT.md.
 - [92-01] 8 pre-existing compilation errors baseline (not 7 as plan estimated) -- no new errors from alerting data foundation
 - [92-02] restart_all_services moved after alert_evaluator actor for define-before-use compliance (nothing calls restart_all_services from within pipeline.mpl so safe to reorder)
 - [92-03] No new compilation errors from alert HTTP routes -- 7 pre-existing errors unchanged
+- [93-01] Use 'actor' not 'pub actor' -- Mesh grammar doesn't support pub before actor keyword
 
 ### Roadmap Evolution
 
@@ -140,6 +141,6 @@ Research flags from research/SUMMARY.md:
 ## Session Continuity
 
 Last session: 2026-02-15
-Stopped at: Phase 92 executed and verified
+Stopped at: Completed 93-01-PLAN.md
 Resume file: None
-Next action: Plan Phase 93 (Data Retention & Cleanup)
+Next action: Execute 93-02-PLAN.md (Retention API routes and ingestion sampling)
