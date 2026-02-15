@@ -5,22 +5,22 @@
 See: .planning/PROJECT.md (updated 2026-02-14)
 
 **Core value:** Expressive, readable concurrency -- writing concurrent programs should feel as natural and clean as writing sequential code, with the safety net of supervision and fault tolerance built into the language.
-**Current focus:** v9.0 Mesher Phase 90 (Real-Time Streaming)
+**Current focus:** v9.0 Mesher Phase 91 (REST API)
 
 ## Current Position
 
-Phase: 90 of 95 (Real-Time Streaming)
-Plan: 3 of 3 in current phase (90-02 complete, all plans done)
-Status: Phase 90 Complete
-Last activity: 2026-02-15 -- Completed 90-02 (Subscription Protocol & Event Broadcasting)
+Phase: 90 of 95 (Real-Time Streaming) -- COMPLETE
+Plan: 3 of 3 in current phase (all plans complete)
+Status: Phase 90 complete, verified (13/13 must-haves passed), and closed
+Last activity: 2026-02-15 -- Phase 90 verified and closed
 
-Progress: [####################..........] 99% overall (260/261 plans shipped)
+Progress: [####################..........] 99% overall (257/261 plans shipped)
 
 ## Performance Metrics
 
 **All-time Totals:**
-- Plans completed: 258
-- Phases completed: 92
+- Plans completed: 257
+- Phases completed: 93
 - Milestones shipped: 18 (v1.0-v8.0)
 - Lines of Rust: ~98,800
 - Lines of website: ~5,500
@@ -118,6 +118,6 @@ Research flags from research/SUMMARY.md:
 ## Session Continuity
 
 Last session: 2026-02-15
-Stopped at: Completed 90-02-PLAN.md (Subscription Protocol & Event Broadcasting)
+Stopped at: Phase 90 complete and verified (13/13 must-haves passed)
 Resume file: None
-Next action: Finalize Phase 90 (all 3 plans complete: 90-01, 90-02, 90-03)
+Next action: Plan Phase 91 (REST API)

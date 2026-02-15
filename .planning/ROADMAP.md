@@ -168,7 +168,7 @@ See milestones/v8.0-ROADMAP.md for full phase details.
 - [x] **Phase 87.2: Refactor Phase 87 code to use cross-module services** (INSERTED, completed 2026-02-15)
 - [x] **Phase 88: Ingestion Pipeline** - HTTP/WS event ingestion with DSN auth, rate limiting, supervised processing (completed 2026-02-15)
 - [x] **Phase 89: Error Grouping & Issue Lifecycle** - Fingerprinting, issue creation, regression detection, state machine (completed 2026-02-15)
-- [ ] **Phase 90: Real-Time Streaming** - WebSocket dashboard streaming with rooms, filters, backpressure
+- [x] **Phase 90: Real-Time Streaming** - WebSocket dashboard streaming with rooms, filters, backpressure (completed 2026-02-15)
 - [ ] **Phase 91: REST API** - Search, filter, pagination, dashboard aggregation, project/alert/org CRUD, event detail
 - [ ] **Phase 92: Alerting System** - Rule engine, timer-driven evaluation, notifications, dedup/cooldown
 - [ ] **Phase 93: Data Retention & Cleanup** - Retention policies, partition management, storage tracking, sampling
@@ -257,9 +257,9 @@ Plans:
 **Plans:** 3 plans
 
 Plans:
-- [ ] 90-01-PLAN.md -- Typechecker gap closure (Ws.join/leave/broadcast/broadcast_except) + StreamManager service
-- [ ] 90-02-PLAN.md -- Subscription protocol, event/issue broadcasting, pipeline integration
-- [ ] 90-03-PLAN.md -- Backpressure buffer drain ticker (STREAM-05)
+- [x] 90-01-PLAN.md -- Typechecker gap closure (Ws.join/leave/broadcast/broadcast_except) + StreamManager service
+- [x] 90-02-PLAN.md -- Subscription protocol, event/issue broadcasting, pipeline integration
+- [x] 90-03-PLAN.md -- Backpressure buffer drain ticker (STREAM-05)
 
 ### Phase 91: REST API
 **Goal**: Users can query, search, and browse all platform data through a complete REST API with pagination, aggregation, and CRUD operations
@@ -348,11 +348,11 @@ Note: Phase 93 depends only on 87 (can run in parallel with 88-92 if desired). P
 | 87.2 | v9.0 | 2/2 | Complete | 2026-02-15 |
 | 88 | v9.0 | 6/6 | Complete | 2026-02-15 |
 | 89 | v9.0 | 2/2 | Complete | 2026-02-15 |
-| 90 | v9.0 | 0/3 | Not started | - |
+| 90 | v9.0 | 3/3 | Complete | 2026-02-15 |
 | 91 | v9.0 | 0/TBD | Not started | - |
 | 92 | v9.0 | 0/TBD | Not started | - |
 | 93 | v9.0 | 0/TBD | Not started | - |
 | 94 | v9.0 | 0/TBD | Not started | - |
 | 95 | v9.0 | 0/TBD | Not started | - |
 
-**Total: 88 phases shipped across 18 milestones. 254 plans completed. 10 phases planned for v9.0.**
+**Total: 89 phases shipped across 18 milestones. 257 plans completed. 10 phases planned for v9.0.**
