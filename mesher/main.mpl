@@ -58,48 +58,39 @@ fn start_services(pool :: PoolHandle) do
 
   println("[Mesher] Foundation ready")
 
-  # Set up HTTP routes with ingestion handlers
-  let r = HTTP.router()
-    # Ingestion
+  # Start WebSocket server (non-blocking -- spawns accept thread in runtime)
+  println("[Mesher] WebSocket server starting on :8081")
+  Ws.serve(on_ws_connect, on_ws_message, on_ws_close, 8081)
+
+  # Set up HTTP routes and start server (ingestion, search, dashboard, detail, issues, team, API keys)
+  println("[Mesher] HTTP server starting on :8080")
+  HTTP.serve((HTTP.router()
     |> HTTP.on_post("/api/v1/events", handle_event)
     |> HTTP.on_post("/api/v1/events/bulk", handle_bulk)
-    # Issue listing with search, filtering, and pagination (Phase 91)
     |> HTTP.on_get("/api/v1/projects/:project_id/issues", handle_search_issues)
     |> HTTP.on_get("/api/v1/projects/:project_id/events/search", handle_search_events)
     |> HTTP.on_get("/api/v1/projects/:project_id/events/tags", handle_filter_by_tag)
     |> HTTP.on_get("/api/v1/issues/:issue_id/events", handle_list_issue_events)
-    # Dashboard aggregation (Phase 91 Plan 02)
     |> HTTP.on_get("/api/v1/projects/:project_id/dashboard/volume", handle_event_volume)
     |> HTTP.on_get("/api/v1/projects/:project_id/dashboard/levels", handle_error_breakdown)
     |> HTTP.on_get("/api/v1/projects/:project_id/dashboard/top-issues", handle_top_issues)
     |> HTTP.on_get("/api/v1/projects/:project_id/dashboard/tags", handle_tag_breakdown)
     |> HTTP.on_get("/api/v1/issues/:issue_id/timeline", handle_issue_timeline)
     |> HTTP.on_get("/api/v1/projects/:project_id/dashboard/health", handle_project_health)
-    # Event detail (Phase 91 Plan 02)
     |> HTTP.on_get("/api/v1/events/:event_id", handle_event_detail)
-    # Issue management
     |> HTTP.on_post("/api/v1/issues/:id/resolve", handle_resolve_issue)
     |> HTTP.on_post("/api/v1/issues/:id/archive", handle_archive_issue)
     |> HTTP.on_post("/api/v1/issues/:id/unresolve", handle_unresolve_issue)
     |> HTTP.on_post("/api/v1/issues/:id/assign", handle_assign_issue)
     |> HTTP.on_post("/api/v1/issues/:id/discard", handle_discard_issue)
     |> HTTP.on_post("/api/v1/issues/:id/delete", handle_delete_issue)
-    # Team management (ORG-04)
     |> HTTP.on_get("/api/v1/orgs/:org_id/members", handle_list_members)
     |> HTTP.on_post("/api/v1/orgs/:org_id/members", handle_add_member)
     |> HTTP.on_post("/api/v1/orgs/:org_id/members/:membership_id/role", handle_update_member_role)
     |> HTTP.on_post("/api/v1/orgs/:org_id/members/:membership_id/remove", handle_remove_member)
-    # API token management (ORG-05)
     |> HTTP.on_get("/api/v1/projects/:project_id/api-keys", handle_list_api_keys)
     |> HTTP.on_post("/api/v1/projects/:project_id/api-keys", handle_create_api_key)
-    |> HTTP.on_post("/api/v1/api-keys/:key_id/revoke", handle_revoke_api_key)
-
-  # Start WebSocket server (non-blocking -- spawns accept thread in runtime)
-  println("[Mesher] WebSocket server starting on :8081")
-  Ws.serve(on_ws_connect, on_ws_message, on_ws_close, 8081)
-
-  println("[Mesher] HTTP server starting on :8080")
-  HTTP.serve(r, 8080)
+    |> HTTP.on_post("/api/v1/api-keys/:key_id/revoke", handle_revoke_api_key)), 8080)
 end
 
 fn main() do
