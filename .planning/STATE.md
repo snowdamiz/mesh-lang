@@ -10,11 +10,11 @@ See: .planning/PROJECT.md (updated 2026-02-14)
 ## Current Position
 
 Phase: 91 of 95 (REST API)
-Plan: 2 of 3 in current phase
-Status: Executing Phase 91 -- Plan 02 complete
-Last activity: 2026-02-15 -- Phase 91 Plan 02 complete
+Plan: 3 of 3 in current phase (PHASE COMPLETE)
+Status: Phase 91 complete -- all 3 plans shipped
+Last activity: 2026-02-15 -- Phase 91 Plan 03 complete
 
-Progress: [####################..........] 99% overall (259/261 plans shipped)
+Progress: [####################..........] 99% overall (260/261 plans shipped)
 
 ## Performance Metrics
 
@@ -24,7 +24,7 @@ Progress: [####################..........] 99% overall (259/261 plans shipped)
 - Milestones shipped: 18 (v1.0-v8.0)
 - Lines of Rust: ~98,800
 - Lines of website: ~5,500
-- Lines of Mesh: ~2900 (first Mesh application code, refactored into modules, ingestion pipeline wired with health monitoring, error grouping pipeline, issue lifecycle API, streaming state management, backpressure buffer drain, subscription protocol and event broadcasting, search/filter/pagination REST API, dashboard aggregation and event detail endpoints)
+- Lines of Mesh: ~3275 (first Mesh application code, refactored into modules, ingestion pipeline wired with health monitoring, error grouping pipeline, issue lifecycle API, streaming state management, backpressure buffer drain, subscription protocol and event broadcasting, search/filter/pagination REST API, dashboard aggregation and event detail endpoints, team membership and API token management)
 - Timeline: 10 days (2026-02-05 -> 2026-02-14)
 
 ## Accumulated Context
@@ -97,6 +97,10 @@ Cleared at milestone boundary. v8.0 decisions archived in PROJECT.md.
 - [91-02] Two-query pattern in event detail handler: detail then neighbors, combined via helper functions for case arm constraint
 - [91-02] Null neighbor IDs formatted as JSON null (not empty string) for clean API contract
 - [91-02] Health summary returns numeric values without string quoting for direct consumption
+- [91-03] PostgreSQL jsonb extraction (COALESCE($1::jsonb->>$2, '')) for request body field parsing, consistent with routes.mpl pattern
+- [91-03] SQL-side role validation (AND $2 IN ('owner','admin','member')) ensures only valid roles at database level
+- [91-03] API key revoked_at formatted as JSON null for nullable timestamps in API responses
+- [91-03] extract_json_field reusable helper for PostgreSQL-based JSON body field extraction
 
 ### Roadmap Evolution
 
@@ -125,6 +129,6 @@ Research flags from research/SUMMARY.md:
 ## Session Continuity
 
 Last session: 2026-02-15
-Stopped at: Completed 91-02-PLAN.md (dashboard aggregation and event detail)
+Stopped at: Completed 91-03-PLAN.md (team membership and API token management) -- Phase 91 complete
 Resume file: None
-Next action: Execute 91-03-PLAN.md
+Next action: Begin Phase 92
