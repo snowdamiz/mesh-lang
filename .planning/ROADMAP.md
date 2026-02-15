@@ -172,7 +172,7 @@ See milestones/v8.0-ROADMAP.md for full phase details.
 - [x] **Phase 91: REST API** - Search, filter, pagination, dashboard aggregation, project/alert/org CRUD, event detail (completed 2026-02-15)
 - [x] **Phase 91.1: Idiomatic Refactor** - Pipe operators, String.join, shared helpers, DRY (INSERTED, completed 2026-02-15)
 - [x] **Phase 92: Alerting System** - Rule engine, timer-driven evaluation, notifications, dedup/cooldown (completed 2026-02-15)
-- [ ] **Phase 93: Data Retention & Cleanup** - Retention policies, partition management, storage tracking, sampling
+- [x] **Phase 93: Data Retention & Cleanup** - Retention policies, partition management, storage tracking, sampling (completed 2026-02-15)
 - [ ] **Phase 94: Multi-Node Clustering** - Distributed actors, global registry, cross-node event routing and broadcast
 - [ ] **Phase 95: Vue Frontend** - SPA dashboard with ECharts, TanStack tables, real-time WebSocket streaming
 
@@ -316,8 +316,8 @@ Plans:
 **Plans:** 2 plans
 
 Plans:
-- [ ] 93-01-PLAN.md -- Schema extension (retention columns), retention/storage/settings/sampling queries, retention cleaner actor
-- [ ] 93-02-PLAN.md -- Settings API handlers, sampling at ingestion, retention cleaner wiring, route registration
+- [x] 93-01-PLAN.md -- Schema extension (retention columns), retention/storage/settings/sampling queries, retention cleaner actor
+- [x] 93-02-PLAN.md -- Settings API handlers, sampling at ingestion, retention cleaner wiring, route registration
 
 ### Phase 94: Multi-Node Clustering
 **Goal**: Multiple Mesher nodes form a cluster and distribute event processing, service discovery, and WebSocket broadcasts across the mesh
@@ -376,8 +376,8 @@ Note: Phase 93 depends only on 87 (can run in parallel with 88-92 if desired). P
 | 91 | v9.0 | 3/3 | Complete | 2026-02-15 |
 | 91.1 | v9.0 | 2/2 | Complete | 2026-02-15 |
 | 92 | v9.0 | 3/3 | Complete | 2026-02-15 |
-| 93 | v9.0 | 0/TBD | Not started | - |
+| 93 | v9.0 | 2/2 | Complete | 2026-02-15 |
 | 94 | v9.0 | 0/TBD | Not started | - |
 | 95 | v9.0 | 0/TBD | Not started | - |
 
-**Total: 95 phases shipped across 18 milestones. 265 plans completed. 10 phases planned for v9.0.**
+**Total: 96 phases shipped across 18 milestones. 267 plans completed. 10 phases planned for v9.0.**
