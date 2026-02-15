@@ -705,6 +705,7 @@ impl<'a> Lowerer<'a> {
         self.known_functions.insert("mesh_http_serve".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Int], Box::new(MirType::Unit)));
         self.known_functions.insert("mesh_http_serve_tls".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Int, MirType::String, MirType::String], Box::new(MirType::Unit)));
         self.known_functions.insert("mesh_http_response_new".to_string(), MirType::FnPtr(vec![MirType::Int, MirType::String], Box::new(MirType::Ptr)));
+        self.known_functions.insert("mesh_http_response_with_headers".to_string(), MirType::FnPtr(vec![MirType::Int, MirType::String, MirType::Ptr], Box::new(MirType::Ptr)));
         self.known_functions.insert("mesh_http_get".to_string(), MirType::FnPtr(vec![MirType::String], Box::new(MirType::Ptr)));
         self.known_functions.insert("mesh_http_post".to_string(), MirType::FnPtr(vec![MirType::String, MirType::String], Box::new(MirType::Ptr)));
         self.known_functions.insert("mesh_http_request_method".to_string(), MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::String)));
@@ -9783,6 +9784,7 @@ fn map_builtin_name(name: &str) -> String {
         "http_serve" => "mesh_http_serve".to_string(),
         "http_serve_tls" => "mesh_http_serve_tls".to_string(),
         "http_response" => "mesh_http_response_new".to_string(),
+        "http_response_with_headers" => "mesh_http_response_with_headers".to_string(),
         "http_get" => "mesh_http_get".to_string(),
         "http_post" => "mesh_http_post".to_string(),
         // Request accessor functions (prefixed form from module-qualified access)
