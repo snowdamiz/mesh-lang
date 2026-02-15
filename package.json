@@ -1,0 +1,14 @@
+{
+  "name": "mesh",
+  "version": "9.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "PATH=./target/release:$PATH concurrently -n mesher,frontend,website -c blue,green,magenta \"npm run dev:mesher\" \"npm run dev:frontend\" \"npm run dev:website\"",
+    "dev:mesher": "PATH=./target/release:$PATH meshc build mesher/ && cd mesher && ./mesher",
+    "dev:frontend": "cd frontend && npm run dev",
+    "dev:website": "cd website && npm run dev -- --port 3000"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  }
+}
