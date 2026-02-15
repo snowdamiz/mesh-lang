@@ -141,7 +141,7 @@ export default function AlertsPage() {
     if (!activeProjectId) return;
     setIsCreating(true);
     try {
-      await api.alerts.createRule(activeProjectId, payload);
+      await api.alerts.createRule(activeProjectId, payload as Parameters<typeof api.alerts.createRule>[1]);
       toast.success("Alert rule created");
       setCreateDialogOpen(false);
       fetchRules();

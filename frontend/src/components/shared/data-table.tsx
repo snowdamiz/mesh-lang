@@ -3,7 +3,7 @@ import {
   type SortingState,
   flexRender,
   getCoreRowModel,
-  getSortingRowModel,
+  getSortedRowModel,
   useReactTable,
 } from "@tanstack/react-table";
 import { ChevronDown, ChevronUp, ChevronsUpDown } from "lucide-react";
@@ -39,7 +39,7 @@ export function DataTable<TData, TValue>({
     data,
     columns,
     getCoreRowModel: getCoreRowModel(),
-    getSortingRowModel: getSortingRowModel(),
+    getSortedRowModel: getSortedRowModel(),
     onSortingChange: setSorting,
     state: { sorting },
   });
