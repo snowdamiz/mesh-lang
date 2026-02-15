@@ -119,17 +119,24 @@ pub struct MeshHttpRequest {
 }
 
 /// HTTP response returned by Mesh handler functions.
+///
+/// IMPORTANT: This struct is `#[repr(C)]` -- new fields MUST be appended
+/// at the end to preserve existing field offsets.
 #[repr(C)]
 pub struct MeshHttpResponse {
     /// HTTP status code (e.g. 200, 404).
     pub status: i64,
     /// Response body as MeshString.
     pub body: *mut u8,
+    /// Optional response headers as MeshMap (string keys -> string values).
+    /// Null when no custom headers are set (backward compatible).
+    pub headers: *mut u8,
 }
 
 // ── Response constructor ───────────────────────────────────────────────
 
 /// Create a new HTTP response with the given status code and body.
+/// Headers are set to null (no custom headers).
 #[no_mangle]
 pub extern "C" fn mesh_http_response_new(status: i64, body: *const MeshString) -> *mut u8 {
     unsafe {
@@ -139,6 +146,29 @@ pub extern "C" fn mesh_http_response_new(status: i64, body: *const MeshString) -
         ) as *mut MeshHttpResponse;
         (*ptr).status = status;
         (*ptr).body = body as *mut u8;
+        (*ptr).headers = std::ptr::null_mut();
+        ptr as *mut u8
+    }
+}
+
+/// Create a new HTTP response with status, body, and custom headers.
+///
+/// The `headers` parameter is a MeshMap pointer (string keys -> string values).
+/// These headers are emitted in the HTTP response alongside the standard headers.
+#[no_mangle]
+pub extern "C" fn mesh_http_response_with_headers(
+    status: i64,
+    body: *const MeshString,
+    headers: *mut u8,
+) -> *mut u8 {
+    unsafe {
+        let ptr = mesh_gc_alloc_actor(
+            std::mem::size_of::<MeshHttpResponse>() as u64,
+            std::mem::align_of::<MeshHttpResponse>() as u64,
+        ) as *mut MeshHttpResponse;
+        (*ptr).status = status;
+        (*ptr).body = body as *mut u8;
+        (*ptr).headers = headers;
         ptr as *mut u8
     }
 }
@@ -314,11 +344,20 @@ fn parse_request(stream: &mut HttpStream) -> Result<ParsedRequest, String> {
 /// Write an HTTP/1.1 response to an `HttpStream` (plain TCP or TLS).
 ///
 /// Format: status line, Content-Type, Content-Length, Connection: close,
-/// blank line, body bytes.
-fn write_response(stream: &mut HttpStream, status: u16, body: &[u8]) -> Result<(), String> {
+/// optional extra headers, blank line, body bytes.
+///
+/// When `extra_headers` is `Some`, each header is emitted as `{name}: {value}\r\n`
+/// between the standard headers and the blank line.
+fn write_response(
+    stream: &mut HttpStream,
+    status: u16,
+    body: &[u8],
+    extra_headers: Option<Vec<(String, String)>>,
+) -> Result<(), String> {
     let status_text = match status {
         200 => "OK",
         201 => "Created",
+        202 => "Accepted",
         204 => "No Content",
         301 => "Moved Permanently",
         302 => "Found",
@@ -327,14 +366,23 @@ fn write_response(stream: &mut HttpStream, status: u16, body: &[u8]) -> Result<(
         403 => "Forbidden",
         404 => "Not Found",
         405 => "Method Not Allowed",
+        429 => "Too Many Requests",
         500 => "Internal Server Error",
         _ => "OK",
     };
 
-    let header = format!(
-        "HTTP/1.1 {} {}\r\nContent-Type: application/json; charset=utf-8\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+    let mut header = format!(
+        "HTTP/1.1 {} {}\r\nContent-Type: application/json; charset=utf-8\r\nContent-Length: {}\r\nConnection: close\r\n",
         status, status_text, body.len()
     );
+
+    if let Some(ref headers) = extra_headers {
+        for (name, value) in headers {
+            header.push_str(&format!("{}: {}\r\n", name, value));
+        }
+    }
+
+    header.push_str("\r\n");
 
     stream
         .write_all(header.as_bytes())
@@ -383,8 +431,8 @@ extern "C" fn connection_handler_entry(args: *const u8) {
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         match parse_request(&mut stream) {
             Ok(parsed) => {
-                let (status, body) = process_request(router_ptr, parsed);
-                let _ = write_response(&mut stream, status, &body);
+                let (status, body, headers) = process_request(router_ptr, parsed);
+                let _ = write_response(&mut stream, status, &body, headers);
             }
             Err(e) => {
                 eprintln!("[mesh-rt] HTTP parse error: {}", e);
@@ -655,8 +703,8 @@ fn call_middleware(fn_ptr: *mut u8, env_ptr: *mut u8, request: *mut u8, next_clo
 /// Process a single HTTP request by matching it against the router
 /// and calling the appropriate handler function.
 ///
-/// Returns `(status_code, body_bytes)` for the response.
-fn process_request(router_ptr: *mut u8, parsed: ParsedRequest) -> (u16, Vec<u8>) {
+/// Returns `(status_code, body_bytes, optional_extra_headers)` for the response.
+fn process_request(router_ptr: *mut u8, parsed: ParsedRequest) -> (u16, Vec<u8>, Option<Vec<(String, String)>>) {
     unsafe {
         let router = &*(router_ptr as *const MeshRouter);
 
@@ -760,7 +808,7 @@ fn process_request(router_ptr: *mut u8, parsed: ParsedRequest) -> (u16, Vec<u8>)
             chain_next(Box::into_raw(state) as *mut u8, req_ptr)
         } else {
             // 404 without middleware: respond directly.
-            return (404, b"Not Found".to_vec());
+            return (404, b"Not Found".to_vec(), None);
         };
 
         // Extract response from the Mesh response pointer.
@@ -773,7 +821,33 @@ fn process_request(router_ptr: *mut u8, parsed: ParsedRequest) -> (u16, Vec<u8>)
             body_mesh.as_str()
         };
 
-        (status_code, body_str.as_bytes().to_vec())
+        // Extract custom headers from the response if present.
+        let extra_headers = if resp.headers.is_null() {
+            None
+        } else {
+            let headers_map = resp.headers;
+            let len = map::mesh_map_size(headers_map) as usize;
+            if len == 0 {
+                None
+            } else {
+                let mut headers_vec = Vec::with_capacity(len);
+                // Iterate the MeshMap's internal entries array.
+                // Layout: [u64; 2] per entry where [0] = key, [1] = value.
+                // Both are MeshString pointers cast to u64 (string-keyed map).
+                let entries = (headers_map as *const u8).add(16) as *const [u64; 2];
+                for i in 0..len {
+                    let entry = &*entries.add(i);
+                    let key_ptr = entry[0] as *const MeshString;
+                    let val_ptr = entry[1] as *const MeshString;
+                    let key_str = (*key_ptr).as_str().to_string();
+                    let val_str = (*val_ptr).as_str().to_string();
+                    headers_vec.push((key_str, val_str));
+                }
+                Some(headers_vec)
+            }
+        };
+
+        (status_code, body_str.as_bytes().to_vec(), extra_headers)
     }
 }
 
@@ -793,6 +867,33 @@ mod tests {
             assert_eq!(resp.status, 200);
             let body_str = &*(resp.body as *const MeshString);
             assert_eq!(body_str.as_str(), "Hello");
+            // Old constructor sets headers to null (backward compatible).
+            assert!(resp.headers.is_null());
+        }
+    }
+
+    #[test]
+    fn test_response_with_headers() {
+        mesh_rt_init();
+        let body = mesh_string_new(b"{\"retry_after\":60}".as_ptr(), 18);
+
+        // Build a headers map with a Retry-After header.
+        let mut headers_map = map::mesh_map_new_typed(1);
+        let key = mesh_string_new(b"Retry-After".as_ptr(), 11);
+        let val = mesh_string_new(b"60".as_ptr(), 2);
+        headers_map = map::mesh_map_put(headers_map, key as u64, val as u64);
+
+        let resp_ptr = mesh_http_response_with_headers(429, body, headers_map);
+        assert!(!resp_ptr.is_null());
+        unsafe {
+            let resp = &*(resp_ptr as *const MeshHttpResponse);
+            assert_eq!(resp.status, 429);
+            let body_str = &*(resp.body as *const MeshString);
+            assert_eq!(body_str.as_str(), "{\"retry_after\":60}");
+            // Headers should be non-null.
+            assert!(!resp.headers.is_null());
+            // Verify the headers map has one entry.
+            assert_eq!(map::mesh_map_size(resp.headers), 1);
         }
     }
 
