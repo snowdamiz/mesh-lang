@@ -165,6 +165,7 @@ See milestones/v8.0-ROADMAP.md for full phase details.
 
 - [x] **Phase 87: Foundation** - Data model, database schema, storage writer, org/project tenancy (completed 2026-02-14)
 - [x] **Phase 87.1: Issues Encountered** - Codegen + module system fixes for idiomatic Result handling and modular services (completed 2026-02-14)
+- [ ] **Phase 87.2: Refactor Phase 87 code to use cross-module services** (INSERTED)
 - [ ] **Phase 88: Ingestion Pipeline** - HTTP/WS event ingestion with DSN auth, rate limiting, supervised processing
 - [ ] **Phase 89: Error Grouping & Issue Lifecycle** - Fingerprinting, issue creation, regression detection, state machine
 - [ ] **Phase 90: Real-Time Streaming** - WebSocket dashboard streaming with rooms, filters, backpressure
@@ -199,6 +200,16 @@ Plans:
 Plans:
 - [x] 87.1-01-PLAN.md -- Codegen fixes: ? operator return type, Err(e) alloca domination, List.find Option matching
 - [x] 87.1-02-PLAN.md -- Module system fixes: cross-module service export, polymorphic type variable normalization
+
+### Phase 87.2: Refactor Phase 87 code to use cross-module services (INSERTED)
+
+**Goal:** Refactor the Mesher application code from Phase 87 to use cross-module services now that Phase 87.1 fixed the compiler limitations. Move services out of main.mpl into proper modules, use ? operator for Result handling, and leverage polymorphic type exports.
+**Depends on:** Phase 87.1
+**Plans:** 2 plans
+
+Plans:
+- [ ] 87.2-01-PLAN.md -- Extract OrgService, ProjectService, UserService into service modules
+- [ ] 87.2-02-PLAN.md -- Extract StorageWriter + buffer/flush logic, apply ? operator, slim main.mpl
 
 ### Phase 88: Ingestion Pipeline
 **Goal**: External clients can send error events into the system via HTTP and WebSocket, with authentication, validation, rate limiting, and supervised actor-based processing
@@ -295,7 +306,7 @@ Plans:
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 87 -> 88 -> 89 -> 90 -> 91 -> 92 -> 93 -> 94 -> 95
+Phases execute in numeric order: 87 -> 87.1 -> 87.2 -> 88 -> 89 -> 90 -> 91 -> 92 -> 93 -> 94 -> 95
 Note: Phase 93 depends only on 87 (can run in parallel with 88-92 if desired). Phase 90 and 89 both depend on 88.
 
 | Phase | Milestone | Plans Complete | Status | Completed |
@@ -319,6 +330,7 @@ Note: Phase 93 depends only on 87 (can run in parallel with 88-92 if desired). P
 | 81-86 | v8.0 | 11/11 | Complete | 2026-02-14 |
 | 87 | v9.0 | 2/2 | Complete | 2026-02-14 |
 | 87.1 | v9.0 | 2/2 | Complete | 2026-02-14 |
+| 87.2 | v9.0 | 0/TBD | Not started | - |
 | 88 | v9.0 | 0/TBD | Not started | - |
 | 89 | v9.0 | 0/TBD | Not started | - |
 | 90 | v9.0 | 0/TBD | Not started | - |
@@ -328,4 +340,4 @@ Note: Phase 93 depends only on 87 (can run in parallel with 88-92 if desired). P
 | 94 | v9.0 | 0/TBD | Not started | - |
 | 95 | v9.0 | 0/TBD | Not started | - |
 
-**Total: 87 phases shipped across 18 milestones. 242 plans completed. 9 phases planned for v9.0.**
+**Total: 87 phases shipped across 18 milestones. 244 plans completed. 10 phases planned for v9.0.**
