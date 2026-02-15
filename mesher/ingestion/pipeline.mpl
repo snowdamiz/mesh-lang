@@ -6,7 +6,7 @@ from Services.RateLimiter import RateLimiter
 from Services.EventProcessor import EventProcessor
 from Services.Writer import StorageWriter
 from Services.StreamManager import StreamManager
-from Storage.Queries import check_volume_spikes
+from Storage.Queries import check_volume_spikes, get_threshold_rules, evaluate_threshold_rule, fire_alert
 
 # Registry state holds pool handle and all service PIDs.
 struct RegistryState do
@@ -55,26 +55,6 @@ actor stream_drain_ticker(stream_mgr_pid, interval :: Int) do
   stream_drain_ticker(stream_mgr_pid, interval)
 end
 
-# Restart all pipeline services and re-register PipelineRegistry.
-# Called by health_checker when the registry is unreachable (one_for_all strategy).
-fn restart_all_services(pool :: PoolHandle) do
-  let rate_limiter_pid = RateLimiter.start(60, 1000)
-
-  let processor_pid = EventProcessor.start(pool)
-
-  let writer_pid = StorageWriter.start(pool, "default")
-
-  let stream_mgr_pid = StreamManager.start()
-  let _ = Process.register("stream_manager", stream_mgr_pid)
-
-  # Spawn drain ticker for StreamManager buffer backpressure (250ms interval)
-  let _ = spawn(stream_drain_ticker, stream_mgr_pid, 250)
-
-  let registry_pid = PipelineRegistry.start(pool, rate_limiter_pid, processor_pid, writer_pid)
-  let _ = Process.register("mesher_registry", registry_pid)
-  registry_pid
-end
-
 # Health checker actor -- periodically verifies pipeline services are responsive.
 # Uses Timer.sleep + recursive call pattern (established in flush_ticker).
 # Verifies the PipelineRegistry responds to a service call every 10 seconds.
@@ -116,6 +96,144 @@ actor spike_checker(pool :: PoolHandle) do
   spike_checker(pool)
 end
 
+# --- Alert evaluation helpers (ALERT-02, ALERT-04, ALERT-05) ---
+# Defined before alert_evaluator actor (define-before-use, decision [90-03]).
+
+# Broadcast alert notification to project WebSocket room (ALERT-04).
+fn broadcast_alert(project_id :: String, alert_id :: String, rule_name :: String, condition_type :: String, message :: String) do
+  let room = "project:" <> project_id
+  let msg = "{\"type\":\"alert\",\"alert_id\":\"" <> alert_id <> "\",\"rule_name\":\"" <> rule_name <> "\",\"condition\":\"" <> condition_type <> "\",\"message\":\"" <> message <> "\"}"
+  let _ = Ws.broadcast(room, msg)
+  0
+end
+
+# Fire alert record then broadcast (combines fire_alert + broadcast_alert).
+fn fire_and_broadcast(pool :: PoolHandle, rule_id :: String, project_id :: String, rule_name :: String, condition_type :: String, message :: String) do
+  let result = fire_alert(pool, rule_id, project_id, message, condition_type, rule_name)
+  case result do
+    Ok(alert_id) -> broadcast_alert(project_id, alert_id, rule_name, condition_type, message)
+    Err(_) -> 0
+  end
+end
+
+# Extract a field from condition_json string using PostgreSQL.
+fn extract_condition_field(pool :: PoolHandle, condition_json :: String, field :: String) -> String!String do
+  let rows = Pool.query(pool, "SELECT COALESCE($1::jsonb->>$2, '') AS val", [condition_json, field])?
+  if List.length(rows) > 0 do
+    Ok(Map.get(List.head(rows), "val"))
+  else
+    Ok("")
+  end
+end
+
+# Fire if threshold exceeded.
+fn fire_threshold_if_needed(pool :: PoolHandle, rule_id :: String, project_id :: String, rule_name :: String, should_fire :: Bool, threshold_str :: String, window_str :: String) do
+  if should_fire do
+    let message = "Event count exceeded " <> threshold_str <> " in " <> window_str <> " minutes"
+    fire_and_broadcast(pool, rule_id, project_id, rule_name, "threshold", message)
+  else
+    0
+  end
+end
+
+# Final threshold check and fire.
+fn check_and_fire_threshold(pool :: PoolHandle, rule_id :: String, project_id :: String, rule_name :: String, cooldown_str :: String, threshold_str :: String, window_str :: String) do
+  let should_fire_result = evaluate_threshold_rule(pool, rule_id, project_id, threshold_str, window_str, cooldown_str)
+  case should_fire_result do
+    Ok(should_fire) -> fire_threshold_if_needed(pool, rule_id, project_id, rule_name, should_fire, threshold_str, window_str)
+    Err(_) -> 0
+  end
+end
+
+# Continue evaluation after threshold extracted.
+fn evaluate_threshold_with_window(pool :: PoolHandle, rule_id :: String, project_id :: String, rule_name :: String, condition_json :: String, cooldown_str :: String, threshold_str :: String) do
+  let window_result = extract_condition_field(pool, condition_json, "window_minutes")
+  case window_result do
+    Ok(window_str) -> check_and_fire_threshold(pool, rule_id, project_id, rule_name, cooldown_str, threshold_str, window_str)
+    Err(_) -> 0
+  end
+end
+
+# Evaluate one threshold rule and fire if threshold exceeded.
+fn evaluate_single_threshold(pool :: PoolHandle, rule_id :: String, project_id :: String, rule_name :: String, condition_json :: String, cooldown_str :: String) do
+  let threshold_result = extract_condition_field(pool, condition_json, "threshold")
+  case threshold_result do
+    Ok(threshold_str) -> evaluate_threshold_with_window(pool, rule_id, project_id, rule_name, condition_json, cooldown_str, threshold_str)
+    Err(_) -> 0
+  end
+end
+
+# Loop through rules list by index.
+fn evaluate_rules_loop(pool :: PoolHandle, rules, i :: Int, total :: Int, fired :: Int) -> Int!String do
+  if i < total do
+    let rule = List.get(rules, i)
+    let rule_id = Map.get(rule, "id")
+    let project_id = Map.get(rule, "project_id")
+    let rule_name = Map.get(rule, "name")
+    let condition_json = Map.get(rule, "condition_json")
+    let cooldown_str = Map.get(rule, "cooldown_minutes")
+    let _ = evaluate_single_threshold(pool, rule_id, project_id, rule_name, condition_json, cooldown_str)
+    evaluate_rules_loop(pool, rules, i + 1, total, fired)
+  else
+    Ok(fired)
+  end
+end
+
+# Load and evaluate all enabled threshold rules.
+fn evaluate_all_threshold_rules(pool :: PoolHandle) -> Int!String do
+  let rules = get_threshold_rules(pool)?
+  evaluate_rules_loop(pool, rules, 0, List.length(rules), 0)
+end
+
+# Log helpers (extracted for single-expression case arms, decision [88-02]).
+fn log_eval_result(n :: Int) do
+  let _ = println("[Mesher] Alert evaluator: checked rules, " <> String.from(n) <> " fired")
+  0
+end
+
+fn log_eval_error(e :: String) do
+  let _ = println("[Mesher] Alert evaluator error: " <> e)
+  0
+end
+
+# Timer-driven alert evaluator actor (ALERT-02).
+# Runs every 30 seconds, evaluates all enabled threshold rules.
+# Uses Timer.sleep + recursive call pattern (established in flush_ticker, health_checker).
+actor alert_evaluator(pool :: PoolHandle) do
+  Timer.sleep(30000)
+  let result = evaluate_all_threshold_rules(pool)
+  case result do
+    Ok(n) -> log_eval_result(n)
+    Err(e) -> log_eval_error(e)
+  end
+  alert_evaluator(pool)
+end
+
+# Restart all pipeline services and re-register PipelineRegistry.
+# Called by health_checker when the registry is unreachable (one_for_all strategy).
+# Defined after alert_evaluator actor (define-before-use, decision [90-03]).
+fn restart_all_services(pool :: PoolHandle) do
+  let rate_limiter_pid = RateLimiter.start(60, 1000)
+
+  let processor_pid = EventProcessor.start(pool)
+
+  let writer_pid = StorageWriter.start(pool, "default")
+
+  let stream_mgr_pid = StreamManager.start()
+  let _ = Process.register("stream_manager", stream_mgr_pid)
+
+  # Spawn drain ticker for StreamManager buffer backpressure (250ms interval)
+  let _ = spawn(stream_drain_ticker, stream_mgr_pid, 250)
+
+  # Spawn alert evaluator on restart
+  let _ = spawn(alert_evaluator, pool)
+
+  let registry_pid = PipelineRegistry.start(pool, rate_limiter_pid, processor_pid, writer_pid)
+  let _ = Process.register("mesher_registry", registry_pid)
+
+  registry_pid
+end
+
 # Start the full ingestion pipeline.
 # 1. Start StreamManager + drain ticker
 # 2. Start RateLimiter
@@ -123,7 +241,7 @@ end
 # 4. Start StorageWriter
 # 5. Start PipelineRegistry (stores all PIDs)
 # 6. Register PipelineRegistry by name for handler lookup
-# 7. Spawn health checker + spike checker
+# 7. Spawn health checker + spike checker + alert evaluator
 # Returns registry PID.
 pub fn start_pipeline(pool :: PoolHandle) do
   # Start stream manager (before other services so WS handler can find it)
@@ -159,6 +277,10 @@ pub fn start_pipeline(pool :: PoolHandle) do
   # Spawn spike detection checker (5 minute interval)
   let _ = spawn(spike_checker, pool)
   println("[Mesher] Spike checker started (5 min interval)")
+
+  # Spawn alert evaluator (30-second interval for threshold rules)
+  let _ = spawn(alert_evaluator, pool)
+  println("[Mesher] Alert evaluator started (30s interval)")
 
   registry_pid
 end
