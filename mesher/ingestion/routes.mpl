@@ -10,7 +10,7 @@ from Services.RateLimiter import RateLimiter
 from Services.EventProcessor import EventProcessor
 from Types.Project import Project
 from Types.Issue import Issue
-from Storage.Queries import resolve_issue, archive_issue, unresolve_issue, assign_issue, discard_issue, delete_issue, list_issues_by_status
+from Storage.Queries import resolve_issue, archive_issue, unresolve_issue, assign_issue, discard_issue, delete_issue, list_issues_by_status, check_new_issue, get_event_alert_rules, should_fire_by_cooldown, fire_alert
 from Api.Helpers import require_param
 
 # Helper: build 401 response
@@ -61,12 +61,91 @@ fn broadcast_issue_count(project_id :: String) do
   end
 end
 
-# Helper: broadcast event notification and issue count update to project room
+# --- Event-based alert helpers (ALERT-03, ALERT-04, ALERT-05) ---
+# Defined before broadcast_event (define-before-use, decision [90-03]).
+
+# Broadcast alert notification to project WebSocket room (ALERT-04).
+fn broadcast_alert_notification(project_id :: String, alert_id :: String, rule_name :: String, condition_type :: String, message :: String) do
+  let room = "project:" <> project_id
+  let msg = "{\"type\":\"alert\",\"alert_id\":\"" <> alert_id <> "\",\"rule_name\":\"" <> rule_name <> "\",\"condition\":\"" <> condition_type <> "\",\"message\":\"" <> message <> "\"}"
+  let _ = Ws.broadcast(room, msg)
+  0
+end
+
+# Fire alert if cooldown allows (ALERT-05).
+fn fire_if_cooldown_ok(pool :: PoolHandle, rule_id :: String, project_id :: String, rule_name :: String, condition_type :: String, issue_id :: String, should_fire :: Bool) do
+  if should_fire do
+    let message = condition_type <> " detected for issue " <> issue_id
+    let result = fire_alert(pool, rule_id, project_id, message, condition_type, rule_name)
+    case result do
+      Ok(alert_id) -> broadcast_alert_notification(project_id, alert_id, rule_name, condition_type, message)
+      Err(_) -> 0
+    end
+  else
+    0
+  end
+end
+
+# Fire and broadcast a single event-based alert with cooldown check.
+fn fire_event_alert(pool :: PoolHandle, rule_id :: String, project_id :: String, rule_name :: String, condition_type :: String, cooldown_str :: String, issue_id :: String) do
+  let cooldown_ok = should_fire_by_cooldown(pool, rule_id, cooldown_str)
+  case cooldown_ok do
+    Ok(should_fire) -> fire_if_cooldown_ok(pool, rule_id, project_id, rule_name, condition_type, issue_id, should_fire)
+    Err(_) -> 0
+  end
+end
+
+# Loop through matching rules and fire alerts.
+fn fire_event_alerts_loop(pool :: PoolHandle, rules, project_id :: String, condition_type :: String, issue_id :: String, i :: Int, total :: Int) do
+  if i < total do
+    let rule = List.get(rules, i)
+    let rule_id = Map.get(rule, "id")
+    let rule_name = Map.get(rule, "name")
+    let cooldown_str = Map.get(rule, "cooldown_minutes")
+    let _ = fire_event_alert(pool, rule_id, project_id, rule_name, condition_type, cooldown_str, issue_id)
+    fire_event_alerts_loop(pool, rules, project_id, condition_type, issue_id, i + 1, total)
+  else
+    0
+  end
+end
+
+# Get matching rules and fire alerts for a condition type.
+fn fire_matching_event_alerts(pool :: PoolHandle, project_id :: String, condition_type :: String, issue_id :: String) do
+  let rules_result = get_event_alert_rules(pool, project_id, condition_type)
+  case rules_result do
+    Ok(rules) -> fire_event_alerts_loop(pool, rules, project_id, condition_type, issue_id, 0, List.length(rules))
+    Err(_) -> 0
+  end
+end
+
+# Fire new_issue alerts if issue is new.
+fn handle_new_issue_alert(pool :: PoolHandle, project_id :: String, issue_id :: String, is_new :: Bool) do
+  if is_new do
+    let _ = fire_matching_event_alerts(pool, project_id, "new_issue", issue_id)
+    0
+  else
+    0
+  end
+end
+
+# Check for new-issue alerts after event processing (ALERT-03).
+fn check_event_alerts(pool :: PoolHandle, project_id :: String, issue_id :: String) do
+  let new_result = check_new_issue(pool, issue_id)
+  case new_result do
+    Ok(is_new) -> handle_new_issue_alert(pool, project_id, issue_id, is_new)
+    Err(_) -> 0
+  end
+end
+
+# Helper: broadcast event notification, issue count, check alerts, and return response
 fn broadcast_event(project_id :: String, issue_id :: String, body :: String) do
   let room = "project:" <> project_id
   let notification = "{\"type\":\"event\",\"issue_id\":\"" <> issue_id <> "\",\"data\":" <> body <> "}"
   let _ = Ws.broadcast(room, notification)
-  broadcast_issue_count(project_id)
+  let _ = broadcast_issue_count(project_id)
+  let reg_pid = Process.whereis("mesher_registry")
+  let pool = PipelineRegistry.get_pool(reg_pid)
+  let _ = check_event_alerts(pool, project_id, issue_id)
   accepted_response()
 end
 
