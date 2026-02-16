@@ -10,11 +10,11 @@ See: .planning/PROJECT.md (updated 2026-02-16)
 ## Current Position
 
 Phase: 98 of 102 (Query Builder + Repo)
-Plan: 0 of 3 in current phase
-Status: Ready to plan
-Last activity: 2026-02-16 -- Phase 97 verified and complete (2/2 plans, 9/9 must-haves passed)
+Plan: 1 of 3 in current phase
+Status: Executing
+Last activity: 2026-02-16 -- 98-01 complete (Query module + runtime builder functions, 7 e2e tests)
 
-Progress: [████░░░░░░] 35% (7/20 plans)
+Progress: [████░░░░░░] 40% (8/20 plans)
 
 ## Performance Metrics
 
@@ -56,6 +56,10 @@ Progress: [████░░░░░░] 35% (7/20 plans)
 - 97-02: WHERE clause format: 'column op' space-separated (e.g. 'name =', 'age >', 'status IS NULL').
 - 97-02: IS NULL/IS NOT NULL WHERE clauses do not consume parameter slots.
 - 97-02: UPDATE parameter numbering: SET columns $1..$N, WHERE clauses continue from $N+1.
+- 98-01: Query type signatures use Atom type for field/operator parameters (atoms are typeck-distinct, lower to StringLit at MIR).
+- 98-01: Ptr and Atom type constructors added to resolve_con (Ptr->MirType::Ptr, Atom->MirType::String).
+- 98-01: Parser accepts WHERE_KW after dot for Query.where() field access syntax.
+- 98-01: Schema pipe transform deferred: explicit Query.from(User.__table__()) used instead of implicit User |> Query.where().
 
 ### Roadmap Evolution
 
@@ -84,6 +88,6 @@ Known limitations relevant to ORM development:
 ## Session Continuity
 
 Last session: 2026-02-16
-Stopped at: Phase 97 verified and complete. Ready for Phase 98.
+Stopped at: Completed 98-01-PLAN.md (Query module + builder functions)
 Resume file: None
-Next action: `/gsd:plan-phase 98` (Query Builder + Repo)
+Next action: Execute 98-02-PLAN.md (Repo reads)
