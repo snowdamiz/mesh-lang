@@ -35,7 +35,7 @@ jobs:
             archive_ext: tar.gz
           - target: x86_64-unknown-linux-musl
             os: ubuntu-24.04
-            llvm_method: tarball
+            llvm_method: docker
             archive_ext: tar.gz
           - target: x86_64-pc-windows-msvc
             os: windows-latest
@@ -66,7 +66,6 @@ jobs:
         if: >-
           matrix.llvm_method == 'tarball' &&
           runner.os == 'Linux' &&
-          matrix.target != 'aarch64-unknown-linux-gnu' &&
           steps.cache-llvm.outputs.cache-hit != 'true'
         run: |
           LLVM_VERSION="21.1.8"
@@ -104,9 +103,9 @@ jobs:
           $LLVM_URL = "https://github.com/llvm/llvm-project/releases/download/llvmorg-${LLVM_VERSION}/clang+llvm-${LLVM_VERSION}-x86_64-pc-windows-msvc.tar.xz"
           Invoke-WebRequest -Uri $LLVM_URL -OutFile llvm.tar.xz
           7z x llvm.tar.xz
-          7z x "clang+llvm-${LLVM_VERSION}-x86_64-pc-windows-msvc.tar" -o"$env:USERPROFILE"
+          7z x llvm.tar -o"$env:USERPROFILE"
           Rename-Item "$env:USERPROFILE\clang+llvm-${LLVM_VERSION}-x86_64-pc-windows-msvc" $LLVM_DIR
-          Remove-Item llvm.tar.xz, "clang+llvm-${LLVM_VERSION}-x86_64-pc-windows-msvc.tar" -Force
+          Remove-Item llvm.tar.xz, llvm.tar -Force
 
       - name: Set LLVM prefix (Linux tarball)
         if: matrix.llvm_method == 'tarball' && runner.os == 'Linux'
@@ -118,15 +117,6 @@ jobs:
         run: echo "LLVM_SYS_211_PREFIX=$env:USERPROFILE\llvm" >> $env:GITHUB_ENV
 
       # ── Platform dependencies ─────────────────────────────────────
-
-      - name: Install musl tools
-        if: matrix.target == 'x86_64-unknown-linux-musl'
-        run: |
-          sudo apt-get update && sudo apt-get install -y musl-tools perl make
-          # LLVM's llvm-config --cxxflags includes -flto=thin which produces
-          # LTO objects that the musl static-pie linker cannot handle.
-          echo "CFLAGS=-fno-lto" >> "$GITHUB_ENV"
-          echo "CXXFLAGS=-fno-lto" >> "$GITHUB_ENV"
 
       - name: Install libxml2 (Windows)
         if: runner.os == 'Windows'
@@ -141,19 +131,42 @@ jobs:
       # ── Rust Toolchain ────────────────────────────────────────────
 
       - name: Install Rust
+        if: matrix.llvm_method != 'docker'
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
 
       - name: Cargo cache
+        if: matrix.llvm_method != 'docker'
         uses: Swatinem/rust-cache@v2
         with:
           key: ${{ matrix.target }}
 
       # ── Build ─────────────────────────────────────────────────────
 
+      - name: Build meshc (Alpine/musl)
+        if: matrix.llvm_method == 'docker'
+        run: |
+          docker run --rm \
+            -v "$GITHUB_WORKSPACE:/workspace" \
+            -w /workspace \
+            alpine:3.23 sh -c '
+              apk add --no-cache \
+                llvm21-dev llvm21-static \
+                musl-dev gcc g++ make cmake perl \
+                zlib-dev zlib-static zstd-dev zstd-static \
+                libffi-dev libxml2-dev libxml2-static \
+                openssl-dev openssl-libs-static \
+                linux-headers curl git &&
+              curl --proto "=https" --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable &&
+              source "$HOME/.cargo/env" &&
+              export LLVM_SYS_211_PREFIX=/usr/lib/llvm21 &&
+              cargo build --release --target x86_64-unknown-linux-musl
+            '
+          sudo chown -R $(id -u):$(id -g) target/
+
       - name: Build meshc (Unix)
-        if: runner.os != 'Windows'
+        if: runner.os != 'Windows' && matrix.llvm_method != 'docker'
         run: cargo build --release --target ${{ matrix.target }}
         env:
           LLVM_SYS_211_PREFIX: ${{ env.LLVM_SYS_211_PREFIX }}
