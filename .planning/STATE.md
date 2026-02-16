@@ -10,11 +10,11 @@ See: .planning/PROJECT.md (updated 2026-02-16)
 ## Current Position
 
 Phase: 97 of 102 (Schema Metadata + SQL Generation)
-Plan: 1 of 2 in current phase
-Status: Executing
-Last activity: 2026-02-16 -- Completed 97-01 (Enhanced Schema Metadata codegen)
+Plan: 2 of 2 in current phase (COMPLETE)
+Status: Phase 97 Complete
+Last activity: 2026-02-16 -- Completed 97-02 (Runtime SQL Generation)
 
-Progress: [████░░░░░░] 30% (6/20 plans)
+Progress: [████░░░░░░] 35% (7/20 plans)
 
 ## Performance Metrics
 
@@ -52,6 +52,10 @@ Progress: [████░░░░░░] 30% (6/20 plans)
 - 97-01: Column accessors use __field_col__ double-underscore pattern matching existing convention.
 - 97-01: Timestamps inject inserted_at/updated_at as String fields into MirStructDef layout.
 - 97-01: MirType -> SQL type mapping: Int->BIGINT, Float->DOUBLE PRECISION, Bool->BOOLEAN, String->TEXT.
+- 97-02: Pure Rust SQL helpers separated from extern C wrappers for unit testability without GC.
+- 97-02: WHERE clause format: 'column op' space-separated (e.g. 'name =', 'age >', 'status IS NULL').
+- 97-02: IS NULL/IS NOT NULL WHERE clauses do not consume parameter slots.
+- 97-02: UPDATE parameter numbering: SET columns $1..$N, WHERE clauses continue from $N+1.
 
 ### Roadmap Evolution
 
@@ -80,6 +84,6 @@ Known limitations relevant to ORM development:
 ## Session Continuity
 
 Last session: 2026-02-16
-Stopped at: Completed 97-01-PLAN.md (Enhanced Schema Metadata codegen)
+Stopped at: Completed 97-02-PLAN.md (Runtime SQL Generation) -- Phase 97 fully complete
 Resume file: None
-Next action: Execute 97-02-PLAN.md (Runtime SQL Generation)
+Next action: Execute Phase 98 (Query Builder)
