@@ -2949,3 +2949,36 @@ end
     ]);
     assert_eq!(output, "ok: 20\nerr: must be positive\nerr: too large\n");
 }
+
+/// Atom literals compile and execute, printing their string representation.
+#[test]
+fn e2e_atom_literals() {
+    let output = compile_and_run(r#"
+fn main() do
+  let name = :name
+  let email = :email
+  let asc = :asc
+  println("name atom works")
+  println("email atom works")
+  println("asc atom works")
+end
+"#);
+    assert_eq!(output, "name atom works\nemail atom works\nasc atom works\n");
+}
+
+/// Atom type is distinct from String -- assigning an atom to a String-annotated
+/// variable produces a type error.
+#[test]
+fn e2e_atom_type_distinct() {
+    let error = compile_expect_error(r#"
+fn main() do
+  let x :: String = :name
+  println(x)
+end
+"#);
+    assert!(
+        error.contains("Atom") && error.contains("String"),
+        "Expected type error mentioning Atom and String, got: {}",
+        error
+    );
+}

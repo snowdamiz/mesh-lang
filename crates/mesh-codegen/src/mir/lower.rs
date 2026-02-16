@@ -5007,6 +5007,11 @@ impl<'a> Lowerer<'a> {
             Expr::ForInExpr(for_in) => self.lower_for_in_expr(&for_in),
             // Try expression -- desugar to Match + Return (Phase 45)
             Expr::TryExpr(try_expr) => self.lower_try_expr(&try_expr),
+            // Atom literal -- lower to string constant at runtime
+            Expr::AtomLiteral(atom) => {
+                let name = atom.atom_text().unwrap_or_default();
+                MirExpr::StringLit(name, MirType::String)
+            }
         }
     }
 

@@ -3641,6 +3641,10 @@ fn infer_expr(
         Expr::TryExpr(try_expr) => {
             infer_try_expr(ctx, env, try_expr, types, type_registry, trait_registry, fn_constraints)?
         }
+        Expr::AtomLiteral(_atom) => {
+            // Atoms have a distinct type from String -- they are opaque typed values.
+            Ty::Con(TyCon::new("Atom"))
+        }
     };
 
     let resolved = ctx.resolve(ty.clone());
@@ -5226,7 +5230,7 @@ fn format_abstract_pat(pat: &AbsPat) -> String {
 /// and other complex expressions are disallowed.
 fn validate_guard_expr(expr: &Expr) -> Result<(), String> {
     match expr {
-        Expr::Literal(_) | Expr::NameRef(_) => Ok(()),
+        Expr::Literal(_) | Expr::NameRef(_) | Expr::AtomLiteral(_) => Ok(()),
         Expr::BinaryExpr(bin) => {
             // Allow comparisons and boolean ops.
             if let Some(op) = bin.op() {
