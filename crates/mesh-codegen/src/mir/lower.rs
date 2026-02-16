@@ -348,6 +348,7 @@ impl<'a> Lowerer<'a> {
         const BUILTIN_PREFIXES: &[&str] = &[
             "mesh_", "Ord__", "Eq__", "Display__", "Debug__", "Hash__",
             "Default__", "Add__", "Sub__", "Mul__", "Div__", "Rem__", "Neg__",
+            "FromRow__", "FromJson__", "ToJson__",
         ];
         for prefix in BUILTIN_PREFIXES {
             if name.starts_with(prefix) {
@@ -10706,6 +10707,65 @@ pub fn lower_to_mir(parse: &Parse, typeck: &TypeckResult, module_name: &str, pub
     lowerer.generate_compare_primitive("Int", MirType::Int);
     lowerer.generate_compare_primitive("Float", MirType::Float);
     lowerer.generate_compare_primitive("String", MirType::String);
+
+    // Generate cross-module trait method wrappers for imported structs/sum types.
+    // When a struct like User is defined in module A with deriving(Json), module A
+    // generates FromJson__from_json__User and __json_decode__User. After MIR merge,
+    // these functions are available globally. But the importing module's lowerer
+    // needs __json_decode__User in known_functions so that User.from_json(str)
+    // resolves correctly in lower_field_access. Generate the thin wrappers here
+    // BEFORE lower_source_file so they're available during field access resolution.
+    {
+        let struct_names: Vec<String> = typeck.type_registry.struct_defs.keys().cloned().collect();
+        for name in &struct_names {
+            // FromJson: generate __json_decode__ wrapper if not already present
+            let wrapper_name = format!("__json_decode__{}", name);
+            if !lowerer.known_functions.contains_key(&wrapper_name) {
+                let struct_ty = Ty::Con(mesh_typeck::ty::TyCon::new(name));
+                if typeck.trait_registry.has_impl("FromJson", &struct_ty) {
+                    lowerer.generate_from_json_string_wrapper(name);
+                }
+            }
+
+            // ToJson: register known_functions entry for ToJson__to_json__StructName
+            // The actual function body is generated in the defining module's MIR.
+            let to_json_name = format!("ToJson__to_json__{}", name);
+            if !lowerer.known_functions.contains_key(&to_json_name) {
+                let struct_ty = Ty::Con(mesh_typeck::ty::TyCon::new(name));
+                if typeck.trait_registry.has_impl("ToJson", &struct_ty) {
+                    lowerer.known_functions.insert(
+                        to_json_name,
+                        MirType::FnPtr(vec![MirType::Struct(name.clone())], Box::new(MirType::Ptr)),
+                    );
+                }
+            }
+
+            // FromRow: register known_functions entry for FromRow__from_row__StructName
+            // The actual function body is generated in the defining module's MIR.
+            let from_row_name = format!("FromRow__from_row__{}", name);
+            if !lowerer.known_functions.contains_key(&from_row_name) {
+                let struct_ty = Ty::Con(mesh_typeck::ty::TyCon::new(name));
+                if typeck.trait_registry.has_impl("FromRow", &struct_ty) {
+                    lowerer.known_functions.insert(
+                        from_row_name,
+                        MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Ptr)),
+                    );
+                }
+            }
+        }
+
+        // Also handle sum types with FromJson
+        let sum_names: Vec<String> = typeck.type_registry.sum_type_defs.keys().cloned().collect();
+        for name in &sum_names {
+            let wrapper_name = format!("__json_decode__{}", name);
+            if !lowerer.known_functions.contains_key(&wrapper_name) {
+                let sum_ty = Ty::Con(mesh_typeck::ty::TyCon::new(name));
+                if typeck.trait_registry.has_impl("FromJson", &sum_ty) {
+                    lowerer.generate_from_json_string_wrapper(name);
+                }
+            }
+        }
+    }
 
     lowerer.lower_source_file(source_file);
 

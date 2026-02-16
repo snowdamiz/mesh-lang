@@ -2960,6 +2960,75 @@ end
     assert_eq!(output, "ok: 20\nerr: must be positive\nerr: too large\n");
 }
 
+/// Phase 96 COMP-08: Cross-module from_json resolution.
+/// Struct with deriving(Json) defined in one module, from_json called from another.
+/// Verifies that FromJson__/ToJson__ prefixes skip module qualification and that
+/// deriving-generated trait impls are exported across module boundaries.
+#[test]
+fn e2e_cross_module_from_json() {
+    let output = compile_multifile_and_run(&[
+        ("models.mpl", r#"
+pub struct User do
+  name :: String
+  age :: Int
+end deriving(Json)
+
+pub fn make_user(name :: String, age :: Int) -> User do
+  User { name: name, age: age }
+end
+"#),
+        ("main.mpl", r#"
+import Models
+
+fn main() do
+  let u = Models.make_user("Alice", 30)
+  let json = Json.encode(u)
+  println(json)
+  let result = User.from_json(json)
+  case result do
+    Ok(u2) -> println("${u2.name} ${u2.age}")
+    Err(e) -> println("Error: ${e}")
+  end
+end
+"#),
+    ]);
+    let lines: Vec<&str> = output.trim().lines().collect();
+    assert_eq!(lines.len(), 2, "expected 2 lines, got: {:?}", lines);
+    // JSON key order is non-deterministic; check both possible orderings
+    assert!(
+        lines[0] == "{\"name\":\"Alice\",\"age\":30}" || lines[0] == "{\"age\":30,\"name\":\"Alice\"}",
+        "unexpected JSON: {}", lines[0]
+    );
+    assert_eq!(lines[1], "Alice 30");
+}
+
+/// Cross-module from_json works with selective import (`from Module import Name`).
+#[test]
+fn e2e_cross_module_from_json_selective_import() {
+    let output = compile_multifile_and_run(&[
+        ("models.mpl", r#"
+pub struct User do
+  name :: String
+  age :: Int
+end deriving(Json)
+"#),
+        ("main.mpl", r#"
+from Models import User
+
+fn main() do
+  let u = User { name: "Bob", age: 25 }
+  let json = Json.encode(u)
+  let result = User.from_json(json)
+  case result do
+    Ok(u2) -> println("${u2.name} ${u2.age}")
+    Err(e) -> println("Error: ${e}")
+  end
+end
+"#),
+    ]);
+    assert_eq!(output.trim(), "Bob 25");
+}
+
 /// Atom literals compile and execute, printing their string representation.
 #[test]
 fn e2e_atom_literals() {
