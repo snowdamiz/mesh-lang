@@ -5,22 +5,22 @@
 See: .planning/PROJECT.md (updated 2026-02-16)
 
 **Core value:** Expressive, readable concurrency -- writing concurrent programs should feel as natural and clean as writing sequential code, with the safety net of supervision and fault tolerance built into the language.
-**Current focus:** v10.0 ORM -- Phase 96 (Compiler Additions)
+**Current focus:** v10.0 ORM -- Phase 97 (Schema Metadata + SQL Generation)
 
 ## Current Position
 
-Phase: 96 of 102 (Compiler Additions)
-Plan: 5 of 5 in current phase (PHASE COMPLETE)
-Status: Phase Complete
-Last activity: 2026-02-16 -- Completed 96-05 (Map.collect string keys + cross-module from_json/from_row)
+Phase: 97 of 102 (Schema Metadata + SQL Generation)
+Plan: 0 of 2 in current phase
+Status: Ready to plan
+Last activity: 2026-02-16 -- Phase 96 verified and complete (5/5 plans, all must-haves passed)
 
 Progress: [███░░░░░░░] 25% (5/20 plans)
 
 ## Performance Metrics
 
 **All-time Totals:**
-- Plans completed: 281
-- Phases completed: 101
+- Plans completed: 285
+- Phases completed: 102
 - Milestones shipped: 19 (v1.0-v9.0)
 - Lines of Rust: ~98,800
 - Lines of website: ~5,500
@@ -76,6 +76,6 @@ Known limitations relevant to ORM development:
 ## Session Continuity
 
 Last session: 2026-02-16
-Stopped at: Completed 96-05-PLAN.md (Map.collect string keys + cross-module from_json/from_row)
+Stopped at: Phase 96 verified and complete. Ready for Phase 97.
 Resume file: None
-Next action: Phase 96 complete. Plan Phase 97 (Schema Metadata).
+Next action: `/gsd:plan-phase 97` (Schema Metadata + SQL Generation)

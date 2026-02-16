@@ -172,7 +172,7 @@ See milestones/v9.0-ROADMAP.md for full phase details.
 
 **Milestone Goal:** Build a full ORM library in Mesh targeting PostgreSQL -- schema DSL, pipe-chain query builder, full relationships, changesets, migrations. Validated by rewriting Mesher's entire DB layer (627 lines raw SQL + 82 lines DDL) to use the ORM.
 
-- [ ] **Phase 96: Compiler Additions** - Language primitives enabling ergonomic ORM syntax
+- [x] **Phase 96: Compiler Additions** - Language primitives enabling ergonomic ORM syntax (shipped 2026-02-16)
 - [ ] **Phase 97: Schema Metadata + SQL Generation** - deriving(Schema) codegen and runtime SQL builder
 - [ ] **Phase 98: Query Builder + Repo** - Pipe-composable queries and database operations
 - [ ] **Phase 99: Changesets** - Validation pipeline and type-safe casting before persistence
@@ -195,11 +195,11 @@ See milestones/v9.0-ROADMAP.md for full phase details.
 **Plans**: 5 plans
 
 Plans:
-- [ ] 96-01-PLAN.md -- Atom literal syntax (lexer, parser, typeck, codegen)
-- [ ] 96-02-PLAN.md -- Keyword arguments and multi-line pipe chains (parser, typeck)
-- [ ] 96-03-PLAN.md -- Struct update syntax (parser, typeck, codegen)
-- [ ] 96-04-PLAN.md -- deriving(Schema) infrastructure and relationship declarations (typeck, MIR, codegen)
-- [ ] 96-05-PLAN.md -- Bugfixes: Map.collect string key propagation and cross-module from_row resolution
+- [x] 96-01-PLAN.md -- Atom literal syntax (lexer, parser, typeck, codegen)
+- [x] 96-02-PLAN.md -- Keyword arguments and multi-line pipe chains (parser, typeck)
+- [x] 96-03-PLAN.md -- Struct update syntax (parser, typeck, codegen)
+- [x] 96-04-PLAN.md -- deriving(Schema) infrastructure and relationship declarations (typeck, MIR, codegen)
+- [x] 96-05-PLAN.md -- Bugfixes: Map.collect string key propagation and cross-module from_row resolution
 
 ### Phase 97: Schema Metadata + SQL Generation
 **Goal**: Schema structs produce complete compile-time metadata (table name, fields, types, primary key, timestamps, column accessors) and a runtime SQL generation module builds parameterized queries from structured data
@@ -323,7 +323,7 @@ Note: Phase 100 and 101 both depend on earlier phases but are independent of eac
 | 74-80 | v7.0 | 17/17 | Complete | 2026-02-14 |
 | 81-86 | v8.0 | 11/11 | Complete | 2026-02-14 |
 | 87-95 | v9.0 | 38/38 | Complete | 2026-02-15 |
-| 96 | v10.0 | 0/5 | Not started | - |
+| 96 | v10.0 | 5/5 | Complete | 2026-02-16 |
 | 97 | v10.0 | 0/2 | Not started | - |
 | 98 | v10.0 | 0/3 | Not started | - |
 | 99 | v10.0 | 0/2 | Not started | - |
@@ -331,4 +331,4 @@ Note: Phase 100 and 101 both depend on earlier phases but are independent of eac
 | 101 | v10.0 | 0/3 | Not started | - |
 | 102 | v10.0 | 0/3 | Not started | - |
 
-**Total: 101 phases shipped across 18 milestones. 280 plans completed. v10.0: 7 phases, 20 plans planned.**
+**Total: 101 phases shipped across 18 milestones. 285 plans completed. v10.0: 1/7 phases complete, 5/20 plans done.**
