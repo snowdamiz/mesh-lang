@@ -54,7 +54,7 @@ jobs:
         id: cache-llvm
         with:
           path: ~/llvm
-          key: llvm-21.1.8-v2-${{ matrix.target }}
+          key: llvm-21.1.8-v3-${{ matrix.target }}
 
       - name: Install LLVM 21 (Homebrew)
         if: matrix.llvm_method == 'brew'
@@ -65,7 +65,8 @@ jobs:
       - name: Install LLVM 21 (Linux x86_64)
         if: >-
           matrix.llvm_method == 'tarball' &&
-          (matrix.target == 'x86_64-unknown-linux-gnu' || matrix.target == 'x86_64-unknown-linux-musl') &&
+          runner.os == 'Linux' &&
+          matrix.target != 'aarch64-unknown-linux-gnu' &&
           steps.cache-llvm.outputs.cache-hit != 'true'
         run: |
           LLVM_VERSION="21.1.8"
@@ -99,11 +100,13 @@ jobs:
         run: |
           $LLVM_VERSION = "21.1.8"
           $LLVM_DIR = "$env:USERPROFILE\llvm"
-          # Use the official installer which includes llvm-config and all target backends
-          $LLVM_URL = "https://github.com/llvm/llvm-project/releases/download/llvmorg-${LLVM_VERSION}/LLVM-${LLVM_VERSION}-win64.exe"
-          Invoke-WebRequest -Uri $LLVM_URL -OutFile llvm-installer.exe
-          Start-Process -FilePath .\llvm-installer.exe -ArgumentList "/S","/D=$LLVM_DIR" -Wait -NoNewWindow
-          Remove-Item llvm-installer.exe -Force
+          # Use the clang+llvm tarball which includes llvm-config, headers, and static libs
+          $LLVM_URL = "https://github.com/llvm/llvm-project/releases/download/llvmorg-${LLVM_VERSION}/clang+llvm-${LLVM_VERSION}-x86_64-pc-windows-msvc.tar.xz"
+          Invoke-WebRequest -Uri $LLVM_URL -OutFile llvm.tar.xz
+          7z x llvm.tar.xz
+          7z x "clang+llvm-${LLVM_VERSION}-x86_64-pc-windows-msvc.tar" -o"$env:USERPROFILE"
+          Rename-Item "$env:USERPROFILE\clang+llvm-${LLVM_VERSION}-x86_64-pc-windows-msvc" $LLVM_DIR
+          Remove-Item llvm.tar.xz, "clang+llvm-${LLVM_VERSION}-x86_64-pc-windows-msvc.tar" -Force
 
       - name: Set LLVM prefix (Linux tarball)
         if: matrix.llvm_method == 'tarball' && runner.os == 'Linux'
@@ -118,7 +121,12 @@ jobs:
 
       - name: Install musl tools
         if: matrix.target == 'x86_64-unknown-linux-musl'
-        run: sudo apt-get update && sudo apt-get install -y musl-tools perl make
+        run: |
+          sudo apt-get update && sudo apt-get install -y musl-tools perl make
+          # LLVM's llvm-config --cxxflags includes -flto=thin which produces
+          # LTO objects that the musl static-pie linker cannot handle.
+          echo "CFLAGS=-fno-lto" >> "$GITHUB_ENV"
+          echo "CXXFLAGS=-fno-lto" >> "$GITHUB_ENV"
 
       - name: Install libxml2 (Windows)
         if: runner.os == 'Windows'
