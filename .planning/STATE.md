@@ -10,11 +10,11 @@ See: .planning/PROJECT.md (updated 2026-02-16)
 ## Current Position
 
 Phase: 98 of 102 (Query Builder + Repo)
-Plan: 1 of 3 in current phase
+Plan: 2 of 3 in current phase
 Status: Executing
-Last activity: 2026-02-16 -- 98-01 complete (Query module + runtime builder functions, 7 e2e tests)
+Last activity: 2026-02-16 -- 98-02 complete (Repo read operations + SQL generation, 5 e2e tests)
 
-Progress: [████░░░░░░] 40% (8/20 plans)
+Progress: [████░░░░░░] 45% (9/20 plans)
 
 ## Performance Metrics
 
@@ -60,6 +60,9 @@ Progress: [████░░░░░░] 40% (8/20 plans)
 - 98-01: Ptr and Atom type constructors added to resolve_con (Ptr->MirType::Ptr, Atom->MirType::String).
 - 98-01: Parser accepts WHERE_KW after dot for Query.where() field access syntax.
 - 98-01: Schema pipe transform deferred: explicit Query.from(User.__table__()) used instead of implicit User |> Query.where().
+- 98-02: Repo functions use PoolHandle (MirType::Int / i64) for pool parameter, matching existing Pool.query pattern.
+- 98-02: SQL builder separated into pure Rust functions for unit testability without GC.
+- 98-02: Repo.count uses SELECT COUNT(*) with 'count' column key extraction; Repo.exists uses SELECT EXISTS(SELECT 1 ... LIMIT 1).
 
 ### Roadmap Evolution
 
@@ -88,6 +91,6 @@ Known limitations relevant to ORM development:
 ## Session Continuity
 
 Last session: 2026-02-16
-Stopped at: Completed 98-01-PLAN.md (Query module + builder functions)
+Stopped at: Completed 98-02-PLAN.md (Repo read operations)
 Resume file: None
-Next action: Execute 98-02-PLAN.md (Repo reads)
+Next action: Execute 98-03-PLAN.md (Repo writes + transactions)
