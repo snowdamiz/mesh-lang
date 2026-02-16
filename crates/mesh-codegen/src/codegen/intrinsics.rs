@@ -1038,6 +1038,13 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
         ptr_type.fn_type(&[i64_type.into(), ptr_type.into(), ptr_type.into()], false),
         Some(inkwell::module::Linkage::External));
 
+    // ── Phase 100: Repo Preloading ─────────────────────────────────────
+
+    // mesh_repo_preload(pool: i64, rows: ptr, associations: ptr, rel_meta: ptr) -> ptr
+    module.add_function("mesh_repo_preload",
+        ptr_type.fn_type(&[i64_type.into(), ptr_type.into(), ptr_type.into(), ptr_type.into()], false),
+        Some(inkwell::module::Linkage::External));
+
     // ── Phase 99: Repo Changeset Operations ────────────────────────────
 
     // mesh_repo_insert_changeset(pool: i64, table: ptr, changeset: ptr) -> ptr

@@ -902,6 +902,9 @@ impl<'a> Lowerer<'a> {
         self.known_functions.insert("mesh_repo_insert_changeset".to_string(), MirType::FnPtr(vec![MirType::Int, MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
         // mesh_repo_update_changeset(pool: i64, table: ptr, id: ptr, changeset: ptr) -> ptr
         self.known_functions.insert("mesh_repo_update_changeset".to_string(), MirType::FnPtr(vec![MirType::Int, MirType::Ptr, MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
+        // ── Phase 100: Repo Preloading ──────────────────────────────────
+        // mesh_repo_preload(pool: i64, rows: ptr, associations: ptr, rel_meta: ptr) -> ptr
+        self.known_functions.insert("mesh_repo_preload".to_string(), MirType::FnPtr(vec![MirType::Int, MirType::Ptr, MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
         // ── Phase 99: Changeset Operations ──────────────────────────────
         // mesh_changeset_cast(data: ptr, params: ptr, allowed: ptr) -> ptr
         self.known_functions.insert("mesh_changeset_cast".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
@@ -10440,6 +10443,8 @@ fn map_builtin_name(name: &str) -> String {
         "repo_update" => "mesh_repo_update".to_string(),
         "repo_delete" => "mesh_repo_delete".to_string(),
         "repo_transaction" => "mesh_repo_transaction".to_string(),
+        // ── Phase 100: Repo Preloading ──────────────────────────────────
+        "repo_preload" => "mesh_repo_preload".to_string(),
         // ── Phase 99: Repo Changeset Operations ─────────────────────────
         "repo_insert_changeset" => "mesh_repo_insert_changeset".to_string(),
         "repo_update_changeset" => "mesh_repo_update_changeset".to_string(),

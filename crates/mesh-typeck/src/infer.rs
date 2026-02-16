@@ -1184,6 +1184,13 @@ fn stdlib_modules() -> HashMap<String, HashMap<String, Scheme>> {
             vec![pool_t.clone(), Ty::string(), Ty::string(), ptr_t.clone()],
             ptr_t.clone(),
         )));
+        // ── Phase 100: Repo Preloading ───────────────────────────────────
+        // Repo.preload(PoolHandle, Ptr, Ptr, Ptr) -> Ptr
+        // (pool, rows: List<Map>, associations: List<String>, rel_meta: List<String>) -> Result<List<Map>, String>
+        repo_mod.insert("preload".to_string(), Scheme::mono(Ty::fun(
+            vec![pool_t.clone(), ptr_t.clone(), ptr_t.clone(), ptr_t.clone()],
+            ptr_t.clone(),
+        )));
         modules.insert("Repo".to_string(), repo_mod);
     }
 

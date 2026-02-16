@@ -23,7 +23,7 @@
 //! - `mesh_repo_transaction`: Wraps callback in checkout/begin/commit-or-rollback/checkin
 
 use crate::collections::list::{mesh_list_get, mesh_list_length, mesh_list_new, mesh_list_append};
-use crate::collections::map::mesh_map_get;
+use crate::collections::map::{mesh_map_get, mesh_map_put};
 use crate::db::pool::{mesh_pool_query, mesh_pool_checkout, mesh_pool_checkin};
 use crate::db::pg::{mesh_pg_begin, mesh_pg_commit, mesh_pg_rollback};
 use crate::db::changeset::{
@@ -1206,6 +1206,363 @@ pub extern "C" fn mesh_repo_update_changeset(
                 alloc_result(1, cs_with_err) as *mut u8
             }
         }
+    }
+}
+
+// ── Preload Operations (Phase 100) ─────────────────────────────────
+
+use std::collections::{HashMap, HashSet};
+
+/// Parsed relationship metadata from "kind:name:target:fk:target_table" strings.
+struct RelMeta {
+    kind: String,       // "belongs_to", "has_many", "has_one"
+    _name: String,      // association name (e.g., "posts")
+    _target: String,    // target struct name (e.g., "Post")
+    fk: String,         // foreign key column (e.g., "user_id")
+    target_table: String, // target table (e.g., "posts")
+}
+
+/// Parse relationship metadata strings into a lookup map keyed by association name.
+fn parse_relationship_meta(meta_strings: &[String]) -> HashMap<String, RelMeta> {
+    let mut map = HashMap::new();
+    for entry in meta_strings {
+        let parts: Vec<&str> = entry.splitn(5, ':').collect();
+        if parts.len() == 5 {
+            map.insert(parts[1].to_string(), RelMeta {
+                kind: parts[0].to_string(),
+                _name: parts[1].to_string(),
+                _target: parts[2].to_string(),
+                fk: parts[3].to_string(),
+                target_table: parts[4].to_string(),
+            });
+        }
+    }
+    map
+}
+
+/// Build a simple SELECT query with an IN clause for preloading.
+/// Returns (sql, params) where params are the IN values.
+fn build_preload_sql(table: &str, where_col: &str, ids: &[String]) -> (String, Vec<String>) {
+    let mut sql = format!("SELECT * FROM {}", quote_ident(table));
+    if ids.is_empty() {
+        // Should not reach here (caller checks), but safety.
+        return (sql, vec![]);
+    }
+    let placeholders: Vec<String> = (1..=ids.len()).map(|i| format!("${}", i)).collect();
+    sql.push_str(&format!(
+        " WHERE {} IN ({})",
+        quote_ident(where_col),
+        placeholders.join(", ")
+    ));
+    (sql, ids.to_vec())
+}
+
+/// Preload a single direct association onto a list of rows.
+///
+/// For has_many/has_one: collects parent "id" values, queries WHERE fk IN (...), groups by fk.
+/// For belongs_to: collects parent FK values, queries WHERE id IN (...), groups by id.
+///
+/// Returns a new list with each row enriched with the association data:
+/// - has_many: a List pointer under the association key
+/// - has_one/belongs_to: a Map pointer (single row) under the association key, or null
+unsafe fn preload_direct(
+    pool: u64,
+    rows: *mut u8,
+    assoc_name: &str,
+    rel_map: &HashMap<String, RelMeta>,
+) -> Result<*mut u8, *mut u8> {
+    let meta = rel_map.get(assoc_name)
+        .ok_or_else(|| err_result(&format!("Repo.preload: unknown association '{}' -- check that the relationship metadata includes this association", assoc_name)))?;
+
+    let row_count = mesh_list_length(rows);
+
+    // Determine which column to extract from parent rows and which column to match in target
+    let (parent_key, target_match_key) = match meta.kind.as_str() {
+        "has_many" | "has_one" => {
+            // Parent PK "id" -> target FK: collect parent "id" values,
+            // query target WHERE fk IN (...), group by fk
+            ("id".to_string(), meta.fk.clone())
+        }
+        "belongs_to" => {
+            // Parent FK -> target PK "id": collect parent FK values,
+            // query target WHERE id IN (...), group by id
+            (meta.fk.clone(), "id".to_string())
+        }
+        _ => return Err(err_result(&format!("Repo.preload: unknown relationship kind '{}'", meta.kind))),
+    };
+
+    // 1. Collect unique parent values for the IN clause
+    let parent_key_mesh = rust_str_to_mesh(&parent_key);
+    let mut id_set: Vec<String> = Vec::new();
+    let mut seen = HashSet::new();
+    for i in 0..row_count {
+        let row = mesh_list_get(rows, i) as *mut u8;
+        let val = mesh_map_get(row, parent_key_mesh as u64);
+        if val != 0 {
+            let s = mesh_str_ref(val as *mut u8).to_string();
+            if seen.insert(s.clone()) {
+                id_set.push(s);
+            }
+        }
+    }
+
+    if id_set.is_empty() {
+        // No IDs to query -- attach empty associations and return
+        return Ok(attach_empty_association(rows, row_count, assoc_name, &meta.kind));
+    }
+
+    // 2. Build and execute the IN query
+    let (sql, params) = build_preload_sql(&meta.target_table, &target_match_key, &id_set);
+
+    let sql_ptr = rust_str_to_mesh(&sql) as *const MeshString;
+    let params_ptr = strings_to_mesh_list(&params);
+    let result = mesh_pool_query(pool, sql_ptr, params_ptr);
+
+    let r = &*(result as *const MeshResult);
+    if r.tag != 0 {
+        return Err(result);
+    }
+    let result_rows = r.value;
+
+    // 3. Group results by the match key
+    let match_key_mesh = rust_str_to_mesh(&target_match_key);
+    let result_count = mesh_list_length(result_rows);
+    let mut grouped: HashMap<String, Vec<*mut u8>> = HashMap::new();
+    for i in 0..result_count {
+        let row = mesh_list_get(result_rows, i) as *mut u8;
+        let key_val = mesh_map_get(row, match_key_mesh as u64);
+        if key_val != 0 {
+            let key_str = mesh_str_ref(key_val as *mut u8).to_string();
+            grouped.entry(key_str).or_default().push(row);
+        }
+    }
+
+    // 4. Attach results to each parent row under the association key
+    let assoc_key_mesh = rust_str_to_mesh(assoc_name);
+    let mut enriched = mesh_list_new();
+    for i in 0..row_count {
+        let row = mesh_list_get(rows, i) as *mut u8;
+        let parent_val = mesh_map_get(row, parent_key_mesh as u64);
+        let parent_str = if parent_val != 0 {
+            mesh_str_ref(parent_val as *mut u8).to_string()
+        } else {
+            String::new()
+        };
+
+        let assoc_data: u64 = match meta.kind.as_str() {
+            "has_many" => {
+                // Build a List of associated rows
+                let mut list = mesh_list_new();
+                if let Some(matches) = grouped.get(&parent_str) {
+                    for &m in matches {
+                        list = mesh_list_append(list, m as u64);
+                    }
+                }
+                list as u64
+            }
+            "has_one" | "belongs_to" => {
+                // Single associated row or null pointer (0)
+                grouped.get(&parent_str)
+                    .and_then(|v| v.first())
+                    .map(|&m| m as u64)
+                    .unwrap_or(0)
+            }
+            _ => 0,
+        };
+
+        // Add association to the row's map (creates new map via copy-on-write)
+        let new_row = mesh_map_put(row, assoc_key_mesh as u64, assoc_data);
+        enriched = mesh_list_append(enriched, new_row as u64);
+    }
+
+    Ok(enriched)
+}
+
+/// Attach empty associations (empty List for has_many, null for has_one/belongs_to)
+/// to all rows when there are no parent IDs to query.
+unsafe fn attach_empty_association(
+    rows: *mut u8,
+    row_count: i64,
+    assoc_name: &str,
+    kind: &str,
+) -> *mut u8 {
+    let assoc_key_mesh = rust_str_to_mesh(assoc_name);
+    let mut enriched = mesh_list_new();
+    for i in 0..row_count {
+        let row = mesh_list_get(rows, i) as *mut u8;
+        let empty_val: u64 = if kind == "has_many" {
+            mesh_list_new() as u64
+        } else {
+            0 // null for has_one/belongs_to with no match
+        };
+        let new_row = mesh_map_put(row, assoc_key_mesh as u64, empty_val);
+        enriched = mesh_list_append(enriched, new_row as u64);
+    }
+    enriched
+}
+
+/// Preload a nested association path like "posts.comments".
+///
+/// Algorithm:
+/// 1. Split path into parent_assoc ("posts") and child_assoc ("comments")
+/// 2. Collect all intermediate rows from the parent association (flatten all has_many lists)
+/// 3. Preload child_assoc on the intermediate rows using the SAME merged metadata
+/// 4. Re-stitch: rebuild parent association lists using positional tracking
+unsafe fn preload_nested(
+    pool: u64,
+    rows: *mut u8,
+    assoc_path: &str,
+    rel_map: &HashMap<String, RelMeta>,
+) -> Result<*mut u8, *mut u8> {
+    let parts: Vec<&str> = assoc_path.splitn(2, '.').collect();
+    if parts.len() != 2 {
+        return Err(err_result(&format!("Repo.preload: invalid nested association path '{}'", assoc_path)));
+    }
+    let parent_assoc = parts[0];
+    let child_assoc = parts[1];
+
+    let row_count = mesh_list_length(rows);
+    let parent_key_mesh = rust_str_to_mesh(parent_assoc);
+
+    // Check parent association's kind to decide how to extract intermediate rows
+    let parent_meta = rel_map.get(parent_assoc)
+        .ok_or_else(|| err_result(&format!("Repo.preload: unknown parent association '{}' in nested path", parent_assoc)))?;
+
+    // Collect intermediate rows and track which parent row each came from
+    // and its position within the parent's association list.
+    // Structure: Vec<(parent_row_index, position_in_list, intermediate_row_ptr)>
+    let mut intermediate_rows = mesh_list_new();
+    let mut position_map: Vec<(i64, i64)> = Vec::new(); // (parent_idx, pos_in_list)
+
+    for i in 0..row_count {
+        let row = mesh_list_get(rows, i) as *mut u8;
+        let assoc_val = mesh_map_get(row, parent_key_mesh as u64);
+        if assoc_val != 0 {
+            if parent_meta.kind == "has_many" {
+                let sub_list = assoc_val as *mut u8;
+                let sub_count = mesh_list_length(sub_list);
+                for j in 0..sub_count {
+                    let sub_row = mesh_list_get(sub_list, j);
+                    intermediate_rows = mesh_list_append(intermediate_rows, sub_row);
+                    position_map.push((i, j));
+                }
+            } else {
+                // has_one or belongs_to: single row
+                intermediate_rows = mesh_list_append(intermediate_rows, assoc_val);
+                position_map.push((i, 0));
+            }
+        }
+    }
+
+    let intermediate_count = mesh_list_length(intermediate_rows);
+    if intermediate_count == 0 {
+        return Ok(rows); // nothing to preload at nested level
+    }
+
+    // Preload child_assoc on intermediate rows (recursive if child_assoc contains dots)
+    let enriched_intermediate = if child_assoc.contains('.') {
+        preload_nested(pool, intermediate_rows, child_assoc, rel_map)?
+    } else {
+        preload_direct(pool, intermediate_rows, child_assoc, rel_map)?
+    };
+
+    // Re-stitch: rebuild parent rows with enriched intermediate rows
+    // Group enriched intermediate rows back by parent index
+    let mut parent_groups: HashMap<i64, Vec<*mut u8>> = HashMap::new();
+    for (idx, &(parent_idx, _pos)) in position_map.iter().enumerate() {
+        let enriched_row = mesh_list_get(enriched_intermediate, idx as i64) as *mut u8;
+        parent_groups.entry(parent_idx).or_default().push(enriched_row);
+    }
+
+    // Rebuild parent rows
+    let assoc_key_mesh_parent = rust_str_to_mesh(parent_assoc);
+    let mut result = mesh_list_new();
+    for i in 0..row_count {
+        let row = mesh_list_get(rows, i) as *mut u8;
+        if let Some(enriched_children) = parent_groups.get(&i) {
+            if parent_meta.kind == "has_many" {
+                // Rebuild the has_many list with enriched rows
+                let mut new_list = mesh_list_new();
+                for &child in enriched_children {
+                    new_list = mesh_list_append(new_list, child as u64);
+                }
+                let new_row = mesh_map_put(row, assoc_key_mesh_parent as u64, new_list as u64);
+                result = mesh_list_append(result, new_row as u64);
+            } else {
+                // has_one/belongs_to: single enriched row
+                let new_row = mesh_map_put(row, assoc_key_mesh_parent as u64, enriched_children[0] as u64);
+                result = mesh_list_append(result, new_row as u64);
+            }
+        } else {
+            // No intermediate rows for this parent -- keep as-is
+            result = mesh_list_append(result, row as u64);
+        }
+    }
+
+    Ok(result)
+}
+
+/// Batch preload associated records for a list of parent rows.
+///
+/// `Repo.preload(pool, rows, associations, relationship_meta)`
+///   -> `Result<List<Map<String,String>>, String>`
+///
+/// For each association in the list:
+/// 1. Parse relationship metadata to find FK, target table, cardinality
+/// 2. Collect unique parent IDs
+/// 3. Execute: SELECT * FROM "target_table" WHERE "fk" IN ($1, $2, ...)
+/// 4. Group results by FK value
+/// 5. Attach grouped results to each parent row under the association key
+///
+/// Associations are sorted by nesting depth (atoms/direct first, then "a.b", then "a.b.c")
+/// to ensure parent-level data is loaded before nested preloading accesses it.
+#[no_mangle]
+pub extern "C" fn mesh_repo_preload(
+    pool: u64,
+    rows: *mut u8,
+    associations: *mut u8,
+    rel_meta: *mut u8,
+) -> *mut u8 {
+    unsafe {
+        let row_count = mesh_list_length(rows);
+        if row_count == 0 {
+            return ok_result(rows); // nothing to preload
+        }
+
+        // Parse relationship metadata into lookup map
+        let meta_strings = list_to_strings(rel_meta);
+        let rel_map = parse_relationship_meta(&meta_strings);
+
+        // Parse association names
+        let assoc_names = list_to_strings(associations);
+
+        // Sort by depth: direct associations (depth 0) first, then nested
+        let mut sorted_assocs: Vec<(usize, String)> = assoc_names
+            .iter()
+            .map(|a| (a.matches('.').count(), a.clone()))
+            .collect();
+        sorted_assocs.sort_by_key(|(depth, _)| *depth);
+
+        // Working copy: enrich rows progressively
+        let mut current_rows = rows;
+
+        for (_depth, assoc_path) in &sorted_assocs {
+            if assoc_path.contains('.') {
+                // Nested preload: "posts.comments"
+                match preload_nested(pool, current_rows, assoc_path, &rel_map) {
+                    Ok(enriched) => current_rows = enriched,
+                    Err(e) => return e,
+                }
+            } else {
+                // Direct preload: "posts"
+                match preload_direct(pool, current_rows, assoc_path, &rel_map) {
+                    Ok(enriched) => current_rows = enriched,
+                    Err(e) => return e,
+                }
+            }
+        }
+
+        ok_result(current_rows)
     }
 }
 
