@@ -66,6 +66,12 @@ pub use db::changeset::{
     mesh_changeset_valid, mesh_changeset_errors, mesh_changeset_changes,
     mesh_changeset_get_change, mesh_changeset_get_error,
 };
+pub use db::migration::{
+    mesh_migration_create_table, mesh_migration_drop_table,
+    mesh_migration_add_column, mesh_migration_drop_column,
+    mesh_migration_rename_column, mesh_migration_create_index,
+    mesh_migration_drop_index, mesh_migration_execute,
+};
 pub use db::repo::{
     mesh_repo_all, mesh_repo_one, mesh_repo_get, mesh_repo_get_by,
     mesh_repo_count, mesh_repo_exists,
