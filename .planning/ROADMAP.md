@@ -242,11 +242,11 @@ Plans:
   2. Developer can chain validations (`|> validate_required([:name]) |> validate_length(:name, min: 2) |> validate_format(:email, "@")`) and the changeset accumulates all errors without short-circuiting
   3. Repo.insert and Repo.update accept Changeset structs, check `changeset.valid` before executing SQL, and return `Result<T, Changeset>` with errors attached on failure
   4. PostgreSQL constraint violations (unique index, foreign key) are caught and mapped to human-readable changeset errors on the appropriate field instead of raw database error strings
-**Plans**: TBD
+**Plans**: 2 plans
 
 Plans:
-- [ ] 99-01: Changeset struct, cast function, and validation pipeline (validate_required, validate_length, validate_format, validate_inclusion, validate_number)
-- [ ] 99-02: Constraint error mapping (PG unique/FK violations) and Repo.insert/update changeset integration
+- [ ] 99-01-PLAN.md -- Changeset struct (opaque 8-slot Ptr), Changeset.cast/cast_with_types, five validators (validate_required, validate_length, validate_format, validate_inclusion, validate_number), field accessors, pipe-chain composition
+- [ ] 99-02-PLAN.md -- Enhanced PG error parsing (SQLSTATE + constraint extraction), constraint-to-changeset error mapping, Repo.insert_changeset/update_changeset with validation-before-SQL
 
 ### Phase 100: Relationships + Preloading
 **Goal**: Schema structs can declare relationships (belongs_to, has_many, has_one) and the ORM provides batch preloading that loads associated records in separate queries, eliminating N+1 patterns
