@@ -9,12 +9,12 @@ See: .planning/PROJECT.md (updated 2026-02-16)
 
 ## Current Position
 
-Phase: 100 of 102 (Relationships + Preloading)
-Plan: 1 of 2 in current phase
-Status: In progress
-Last activity: 2026-02-16 -- Completed 100-01 (Relationship metadata __relationship_meta__)
+Phase: 100 of 102 (Relationships + Preloading) -- COMPLETE
+Plan: 2 of 2 in current phase
+Status: Phase complete
+Last activity: 2026-02-16 -- Completed 100-02 (Repo.preload batch preloader)
 
-Progress: [██████░░░░] 65% (13/20 plans)
+Progress: [███████░░░] 70% (14/20 plans)
 
 ## Performance Metrics
 
@@ -79,6 +79,8 @@ Progress: [██████░░░░] 65% (13/20 plans)
 - 100-01: __relationship_meta__() returns 5-field "kind:name:target:fk:target_table" encoding for preloader consumption.
 - 100-01: FK convention: has_many/has_one uses {owner_lowercase}_id, belongs_to uses {assoc_name}_id (Ecto convention).
 - 100-01: Target table inferred by naive pluralization {target_lowercase}s, consistent with __table__() convention.
+- 100-02: Repo.preload uses separate WHERE fk IN (...) query per association level (not JOINs), matching Ecto's design.
+- 100-02: Nested preloading uses positional tracking (parent_idx, pos_in_list) for re-stitching enriched rows.
 
 ### Roadmap Evolution
 
@@ -107,6 +109,6 @@ Known limitations relevant to ORM development:
 ## Session Continuity
 
 Last session: 2026-02-16
-Stopped at: Completed 100-01-PLAN.md (Relationship metadata __relationship_meta__)
+Stopped at: Completed 100-02-PLAN.md (Repo.preload batch preloader)
 Resume file: None
-Next action: Execute 100-02-PLAN.md (Preloading)
+Next action: Execute Phase 101 (Migrations)
