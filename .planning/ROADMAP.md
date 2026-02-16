@@ -192,14 +192,14 @@ See milestones/v9.0-ROADMAP.md for full phase details.
   3. Developer can write multi-line pipe chains where `|>` at line start continues the previous expression, making query chains readable across multiple lines
   4. Developer can write struct update expressions (`%{user | name: "Bob"}`) to produce a new struct with specific fields changed and all others copied
   5. A struct with `deriving(Schema)` generates callable `__table__()`, `__fields__()`, and `__primary_key__()` metadata functions, and relationship declarations (`belongs_to`, `has_many`, `has_one`) inside struct bodies produce queryable relationship metadata
-**Plans**: TBD
+**Plans**: 5 plans
 
 Plans:
-- [ ] 96-01: Atom literal syntax (lexer, parser, typeck, codegen)
-- [ ] 96-02: Keyword arguments and multi-line pipe chains (parser, typeck)
-- [ ] 96-03: Struct update syntax (parser, typeck, codegen)
-- [ ] 96-04: deriving(Schema) infrastructure and relationship declarations (typeck, MIR, codegen)
-- [ ] 96-05: Bugfixes -- Map.collect string key propagation and cross-module from_row resolution
+- [ ] 96-01-PLAN.md -- Atom literal syntax (lexer, parser, typeck, codegen)
+- [ ] 96-02-PLAN.md -- Keyword arguments and multi-line pipe chains (parser, typeck)
+- [ ] 96-03-PLAN.md -- Struct update syntax (parser, typeck, codegen)
+- [ ] 96-04-PLAN.md -- deriving(Schema) infrastructure and relationship declarations (typeck, MIR, codegen)
+- [ ] 96-05-PLAN.md -- Bugfixes: Map.collect string key propagation and cross-module from_row resolution
 
 ### Phase 97: Schema Metadata + SQL Generation
 **Goal**: Schema structs produce complete compile-time metadata (table name, fields, types, primary key, timestamps, column accessors) and a runtime SQL generation module builds parameterized queries from structured data
