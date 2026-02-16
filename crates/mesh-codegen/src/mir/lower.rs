@@ -9343,31 +9343,33 @@ impl<'a> Lowerer<'a> {
 
         {
             // Body: let state = init(args); spawn(loop, state)
+            // Use the actual init return type (e.g., struct type) so the full
+            // state is allocated and copied into the spawn args buffer.
             let init_call = MirExpr::Call {
                 func: Box::new(MirExpr::Var(
                     init_fn_name.clone(),
                     MirType::FnPtr(
                         init_params.iter().map(|(_, t)| t.clone()).collect(),
-                        Box::new(MirType::Int),
+                        Box::new(init_ret_ty.clone()),
                     ),
                 )),
                 args: init_params
                     .iter()
                     .map(|(n, t)| MirExpr::Var(n.clone(), t.clone()))
                     .collect(),
-                ty: MirType::Int,
+                ty: init_ret_ty.clone(),
             };
 
             let body = MirExpr::Let {
                 name: "__init_state".to_string(),
-                ty: MirType::Int,
+                ty: init_ret_ty.clone(),
                 value: Box::new(init_call),
                 body: Box::new(MirExpr::ActorSpawn {
                     func: Box::new(MirExpr::Var(
                         loop_fn_name.clone(),
-                        MirType::FnPtr(vec![MirType::Int], Box::new(MirType::Unit)),
+                        MirType::FnPtr(vec![init_ret_ty.clone()], Box::new(MirType::Unit)),
                     )),
-                    args: vec![MirExpr::Var("__init_state".to_string(), MirType::Int)],
+                    args: vec![MirExpr::Var("__init_state".to_string(), init_ret_ty.clone())],
                     priority: 1,
                     terminate_callback: None,
                     ty: MirType::Pid(None),
