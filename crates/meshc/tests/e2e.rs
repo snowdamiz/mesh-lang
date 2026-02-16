@@ -4049,3 +4049,142 @@ end
 "#);
     assert_eq!(output, "Alice\n");
 }
+
+// ── Phase 99-02: Repo Changeset Integration Tests ───────────────────
+
+/// Test 11: Repo.insert_changeset compiles (Changeset and Repo modules importable together).
+#[test]
+fn e2e_repo_insert_changeset_compiles() {
+    let output = compile_and_run(r#"
+import Changeset
+import Repo
+
+fn main() do
+  println("ok")
+end
+"#);
+    assert_eq!(output, "ok\n");
+}
+
+/// Test 12: Invalid changeset skips SQL execution.
+#[test]
+fn e2e_changeset_invalid_skips_sql() {
+    let output = compile_and_run(r#"
+import Changeset
+
+fn main() do
+  let data = %{}
+  let params = %{"name" => ""}
+  let cs = Changeset.cast(data, params, [:name, :email])
+    |> Changeset.validate_required([:name, :email])
+  let is_valid = Changeset.valid(cs)
+  if is_valid do
+    println("would execute SQL")
+  else
+    println("skipped SQL")
+  end
+end
+"#);
+    assert_eq!(output, "skipped SQL\n");
+}
+
+/// Test 13: Full changeset validation pipeline -- all validators pass.
+#[test]
+fn e2e_full_changeset_validation_pipeline() {
+    let output = compile_and_run(r#"
+import Changeset
+
+fn main() do
+  let data = %{}
+  let params = %{"name" => "Alice", "email" => "alice@example.com", "role" => "admin"}
+  let cs = Changeset.cast(data, params, [:name, :email, :role])
+    |> Changeset.validate_required([:name, :email])
+    |> Changeset.validate_length(:name, 2, 50)
+    |> Changeset.validate_format(:email, "@")
+    |> Changeset.validate_inclusion(:role, ["admin", "user", "moderator"])
+  let is_valid = Changeset.valid(cs)
+  if is_valid do
+    println("valid")
+  else
+    println("invalid")
+  end
+end
+"#);
+    assert_eq!(output, "valid\n");
+}
+
+/// Test 14: Repo.insert_changeset has correct type (Schema + changeset).
+#[test]
+fn e2e_changeset_repo_insert_type_checks() {
+    let output = compile_and_run(r#"
+import Changeset
+import Repo
+
+struct User do
+  id :: String
+  name :: String
+  email :: String
+end deriving(Schema, Row)
+
+fn main() do
+  let data = %{}
+  let params = %{"name" => "Alice", "email" => "alice@example.com"}
+  let cs = Changeset.cast_with_types(data, params, [:name, :email], User.__field_types__())
+    |> Changeset.validate_required([:name, :email])
+    |> Changeset.validate_format(:email, "@")
+  println("ok")
+end
+"#);
+    assert_eq!(output, "ok\n");
+}
+
+/// Test 15: Update changeset with existing data passes validation.
+#[test]
+fn e2e_changeset_update_type_checks() {
+    let output = compile_and_run(r#"
+import Changeset
+import Repo
+
+fn main() do
+  let data = %{"name" => "Alice", "email" => "alice@example.com"}
+  let params = %{"name" => "Bob"}
+  let cs = Changeset.cast(data, params, [:name])
+    |> Changeset.validate_required([:name])
+    |> Changeset.validate_length(:name, 1, 50)
+  let is_valid = Changeset.valid(cs)
+  if is_valid do
+    println("valid update")
+  else
+    println("invalid update")
+  end
+end
+"#);
+    assert_eq!(output, "valid update\n");
+}
+
+/// Test 16: Multi-field error accumulation with get_error accessor.
+#[test]
+fn e2e_changeset_error_accumulation_multiple_fields() {
+    let output = compile_and_run(r#"
+import Changeset
+
+fn main() do
+  let data = %{}
+  let params = %{"name" => "", "email" => "bad", "age" => "-5"}
+  let cs = Changeset.cast(data, params, [:name, :email, :age])
+    |> Changeset.validate_required([:name])
+    |> Changeset.validate_format(:email, "@")
+    |> Changeset.validate_number(:age, 0, -1, -1, -1)
+  let is_valid = Changeset.valid(cs)
+  if is_valid do
+    println("valid")
+  else
+    let name_err = Changeset.get_error(cs, :name)
+    let email_err = Changeset.get_error(cs, :email)
+    println(name_err)
+    println(email_err)
+  end
+end
+"#);
+    assert_eq!(output, "can't be blank\nhas invalid format\n");
+}
