@@ -13,7 +13,7 @@
 
 use libsqlite3_sys::*;
 use std::ffi::{CStr, CString};
-use std::os::raw::c_int;
+use std::os::raw::{c_char, c_int};
 
 use crate::collections::list::{mesh_list_append, mesh_list_new};
 use crate::collections::map::{mesh_map_new_typed, mesh_map_put};
@@ -314,7 +314,7 @@ pub extern "C" fn mesh_sqlite_query(
                     if text_ptr.is_null() {
                         String::new()
                     } else {
-                        CStr::from_ptr(text_ptr as *const i8)
+                        CStr::from_ptr(text_ptr as *const c_char)
                             .to_string_lossy()
                             .into_owned()
                     }
