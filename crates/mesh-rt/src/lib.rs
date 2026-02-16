@@ -49,6 +49,9 @@ pub use actor::{
     mesh_global_register, mesh_global_whereis, mesh_global_unregister,
 };
 pub use actor::service::{mesh_service_call, mesh_service_reply};
+pub use db::orm::{
+    mesh_orm_build_select, mesh_orm_build_insert, mesh_orm_build_update, mesh_orm_build_delete,
+};
 pub use db::pg::{
     mesh_pg_connect, mesh_pg_close, mesh_pg_execute, mesh_pg_query,
 };
