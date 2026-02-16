@@ -3,7 +3,8 @@
 # Services are defined in mesher/services/ modules.
 # Ingestion pipeline wires HTTP routes and WS handler.
 
-from Storage.Schema import create_schema, create_partitions_ahead
+# Schema DDL is managed by `meshc migrate up` -- run before starting the application.
+from Storage.Schema import create_partitions_ahead
 from Services.Org import OrgService
 from Services.Project import ProjectService
 from Services.User import UserService
@@ -96,13 +97,6 @@ end
 fn start_services(pool :: PoolHandle) do
   # Start distributed node if configured (before services, after PG)
   start_node()
-
-  # Run schema creation (idempotent -- all CREATE IF NOT EXISTS)
-  let schema_result = create_schema(pool)
-  case schema_result do
-    Ok(_) -> println("[Mesher] Schema created/verified")
-    Err(_) -> println("[Mesher] Schema error")
-  end
 
   # Create initial partitions (7 days ahead)
   let partition_result = create_partitions_ahead(pool, 7)
