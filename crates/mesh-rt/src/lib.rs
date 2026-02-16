@@ -52,6 +52,12 @@ pub use actor::service::{mesh_service_call, mesh_service_reply};
 pub use db::orm::{
     mesh_orm_build_select, mesh_orm_build_insert, mesh_orm_build_update, mesh_orm_build_delete,
 };
+pub use db::query::{
+    mesh_query_from, mesh_query_where, mesh_query_where_op, mesh_query_where_in,
+    mesh_query_where_null, mesh_query_where_not_null, mesh_query_select, mesh_query_order_by,
+    mesh_query_limit, mesh_query_offset, mesh_query_join, mesh_query_group_by,
+    mesh_query_having, mesh_query_fragment,
+};
 pub use db::pg::{
     mesh_pg_connect, mesh_pg_close, mesh_pg_execute, mesh_pg_query,
 };

@@ -846,6 +846,35 @@ impl<'a> Lowerer<'a> {
         self.known_functions.insert("mesh_orm_build_update".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr, MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
         // mesh_orm_build_delete(table: ptr, where_clauses: ptr, returning: ptr) -> ptr
         self.known_functions.insert("mesh_orm_build_delete".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
+        // ── Phase 98: Query Builder ─────────────────────────────────────
+        // mesh_query_from(table: ptr) -> ptr
+        self.known_functions.insert("mesh_query_from".to_string(), MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Ptr)));
+        // mesh_query_where(q: ptr, field: ptr, value: ptr) -> ptr
+        self.known_functions.insert("mesh_query_where".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
+        // mesh_query_where_op(q: ptr, field: ptr, op: ptr, value: ptr) -> ptr
+        self.known_functions.insert("mesh_query_where_op".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr, MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
+        // mesh_query_where_in(q: ptr, field: ptr, values: ptr) -> ptr
+        self.known_functions.insert("mesh_query_where_in".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
+        // mesh_query_where_null(q: ptr, field: ptr) -> ptr
+        self.known_functions.insert("mesh_query_where_null".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
+        // mesh_query_where_not_null(q: ptr, field: ptr) -> ptr
+        self.known_functions.insert("mesh_query_where_not_null".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
+        // mesh_query_select(q: ptr, fields: ptr) -> ptr
+        self.known_functions.insert("mesh_query_select".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
+        // mesh_query_order_by(q: ptr, field: ptr, direction: ptr) -> ptr
+        self.known_functions.insert("mesh_query_order_by".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
+        // mesh_query_limit(q: ptr, n: i64) -> ptr
+        self.known_functions.insert("mesh_query_limit".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Int], Box::new(MirType::Ptr)));
+        // mesh_query_offset(q: ptr, n: i64) -> ptr
+        self.known_functions.insert("mesh_query_offset".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Int], Box::new(MirType::Ptr)));
+        // mesh_query_join(q: ptr, type: ptr, table: ptr, on_clause: ptr) -> ptr
+        self.known_functions.insert("mesh_query_join".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr, MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
+        // mesh_query_group_by(q: ptr, field: ptr) -> ptr
+        self.known_functions.insert("mesh_query_group_by".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
+        // mesh_query_having(q: ptr, clause: ptr, value: ptr) -> ptr
+        self.known_functions.insert("mesh_query_having".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
+        // mesh_query_fragment(q: ptr, sql: ptr, params: ptr) -> ptr
+        self.known_functions.insert("mesh_query_fragment".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
         // ── Job functions (Phase 9 Plan 04) ──────────────────────────────
         // mesh_job_async takes (fn_ptr, env_ptr) -> i64 (PID)
         // But the closure splitting at codegen will expand the closure arg into (fn_ptr, env_ptr)
@@ -10059,6 +10088,7 @@ const STDLIB_MODULES: &[&str] = &[
     "Global",  // Phase 68
     "Iter",  // Phase 76
     "Orm",  // Phase 97
+    "Query",  // Phase 98
 ];
 
 /// Map Mesh builtin function names to their runtime equivalents.
@@ -10282,6 +10312,21 @@ fn map_builtin_name(name: &str) -> String {
         "orm_build_insert" => "mesh_orm_build_insert".to_string(),
         "orm_build_update" => "mesh_orm_build_update".to_string(),
         "orm_build_delete" => "mesh_orm_build_delete".to_string(),
+        // ── Phase 98: Query Builder ─────────────────────────────────────
+        "query_from" => "mesh_query_from".to_string(),
+        "query_where" => "mesh_query_where".to_string(),
+        "query_where_op" => "mesh_query_where_op".to_string(),
+        "query_where_in" => "mesh_query_where_in".to_string(),
+        "query_where_null" => "mesh_query_where_null".to_string(),
+        "query_where_not_null" => "mesh_query_where_not_null".to_string(),
+        "query_select" => "mesh_query_select".to_string(),
+        "query_order_by" => "mesh_query_order_by".to_string(),
+        "query_limit" => "mesh_query_limit".to_string(),
+        "query_offset" => "mesh_query_offset".to_string(),
+        "query_join" => "mesh_query_join".to_string(),
+        "query_group_by" => "mesh_query_group_by".to_string(),
+        "query_having" => "mesh_query_having".to_string(),
+        "query_fragment" => "mesh_query_fragment".to_string(),
         // NOTE: No bare name mappings for HTTP/Request (router, route, get,
         // post, method, path, body, etc.) because they collide with common
         // variable names. Use module-qualified access instead:

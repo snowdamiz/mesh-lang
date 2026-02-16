@@ -266,6 +266,22 @@ fn register_runtime_symbols() {
     add_sym("mesh_orm_build_update", mesh_rt::mesh_orm_build_update as *const ());
     add_sym("mesh_orm_build_delete", mesh_rt::mesh_orm_build_delete as *const ());
 
+    // Query Builder (Phase 98)
+    add_sym("mesh_query_from", mesh_rt::mesh_query_from as *const ());
+    add_sym("mesh_query_where", mesh_rt::mesh_query_where as *const ());
+    add_sym("mesh_query_where_op", mesh_rt::mesh_query_where_op as *const ());
+    add_sym("mesh_query_where_in", mesh_rt::mesh_query_where_in as *const ());
+    add_sym("mesh_query_where_null", mesh_rt::mesh_query_where_null as *const ());
+    add_sym("mesh_query_where_not_null", mesh_rt::mesh_query_where_not_null as *const ());
+    add_sym("mesh_query_select", mesh_rt::mesh_query_select as *const ());
+    add_sym("mesh_query_order_by", mesh_rt::mesh_query_order_by as *const ());
+    add_sym("mesh_query_limit", mesh_rt::mesh_query_limit as *const ());
+    add_sym("mesh_query_offset", mesh_rt::mesh_query_offset as *const ());
+    add_sym("mesh_query_join", mesh_rt::mesh_query_join as *const ());
+    add_sym("mesh_query_group_by", mesh_rt::mesh_query_group_by as *const ());
+    add_sym("mesh_query_having", mesh_rt::mesh_query_having as *const ());
+    add_sym("mesh_query_fragment", mesh_rt::mesh_query_fragment as *const ());
+
     // HTTP
     add_sym("mesh_http_get", mesh_rt::mesh_http_get as *const ());
     add_sym("mesh_http_post", mesh_rt::mesh_http_post as *const ());

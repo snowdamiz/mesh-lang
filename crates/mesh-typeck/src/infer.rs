@@ -1039,6 +1039,83 @@ fn stdlib_modules() -> HashMap<String, HashMap<String, Scheme>> {
         modules.insert("Orm".to_string(), orm_mod);
     }
 
+    // ── Query module (Phase 98) ─────────────────────────────────────
+    {
+        let ptr_t = Ty::Con(TyCon::new("Ptr"));
+        let mut query_mod = HashMap::new();
+        // Query.from(String) -> Ptr
+        query_mod.insert("from".to_string(), Scheme::mono(Ty::fun(
+            vec![Ty::string()],
+            ptr_t.clone(),
+        )));
+        // Query.where(Ptr, String, String) -> Ptr  (3-arg equality: field = value)
+        query_mod.insert("where".to_string(), Scheme::mono(Ty::fun(
+            vec![ptr_t.clone(), Ty::string(), Ty::string()],
+            ptr_t.clone(),
+        )));
+        // Query.where_op(Ptr, String, String, String) -> Ptr  (4-arg operator: field op value)
+        query_mod.insert("where_op".to_string(), Scheme::mono(Ty::fun(
+            vec![ptr_t.clone(), Ty::string(), Ty::string(), Ty::string()],
+            ptr_t.clone(),
+        )));
+        // Query.where_in(Ptr, String, Ptr) -> Ptr  (field IN values_list)
+        query_mod.insert("where_in".to_string(), Scheme::mono(Ty::fun(
+            vec![ptr_t.clone(), Ty::string(), ptr_t.clone()],
+            ptr_t.clone(),
+        )));
+        // Query.where_null(Ptr, String) -> Ptr  (field IS NULL)
+        query_mod.insert("where_null".to_string(), Scheme::mono(Ty::fun(
+            vec![ptr_t.clone(), Ty::string()],
+            ptr_t.clone(),
+        )));
+        // Query.where_not_null(Ptr, String) -> Ptr  (field IS NOT NULL)
+        query_mod.insert("where_not_null".to_string(), Scheme::mono(Ty::fun(
+            vec![ptr_t.clone(), Ty::string()],
+            ptr_t.clone(),
+        )));
+        // Query.select(Ptr, Ptr) -> Ptr  (select fields list)
+        query_mod.insert("select".to_string(), Scheme::mono(Ty::fun(
+            vec![ptr_t.clone(), ptr_t.clone()],
+            ptr_t.clone(),
+        )));
+        // Query.order_by(Ptr, String, String) -> Ptr  (field, direction atom)
+        query_mod.insert("order_by".to_string(), Scheme::mono(Ty::fun(
+            vec![ptr_t.clone(), Ty::string(), Ty::string()],
+            ptr_t.clone(),
+        )));
+        // Query.limit(Ptr, Int) -> Ptr
+        query_mod.insert("limit".to_string(), Scheme::mono(Ty::fun(
+            vec![ptr_t.clone(), Ty::int()],
+            ptr_t.clone(),
+        )));
+        // Query.offset(Ptr, Int) -> Ptr
+        query_mod.insert("offset".to_string(), Scheme::mono(Ty::fun(
+            vec![ptr_t.clone(), Ty::int()],
+            ptr_t.clone(),
+        )));
+        // Query.join(Ptr, String, String, String) -> Ptr  (type atom, table, on_clause)
+        query_mod.insert("join".to_string(), Scheme::mono(Ty::fun(
+            vec![ptr_t.clone(), Ty::string(), Ty::string(), Ty::string()],
+            ptr_t.clone(),
+        )));
+        // Query.group_by(Ptr, String) -> Ptr  (field atom)
+        query_mod.insert("group_by".to_string(), Scheme::mono(Ty::fun(
+            vec![ptr_t.clone(), Ty::string()],
+            ptr_t.clone(),
+        )));
+        // Query.having(Ptr, String, String) -> Ptr  (clause, value)
+        query_mod.insert("having".to_string(), Scheme::mono(Ty::fun(
+            vec![ptr_t.clone(), Ty::string(), Ty::string()],
+            ptr_t.clone(),
+        )));
+        // Query.fragment(Ptr, String, Ptr) -> Ptr  (raw sql, params list)
+        query_mod.insert("fragment".to_string(), Scheme::mono(Ty::fun(
+            vec![ptr_t.clone(), Ty::string(), ptr_t.clone()],
+            ptr_t.clone(),
+        )));
+        modules.insert("Query".to_string(), query_mod);
+    }
+
     modules
 }
 
@@ -1051,6 +1128,7 @@ const STDLIB_MODULE_NAMES: &[&str] = &[
     "Iter",  // Phase 76
     "Ws",  // Phase 88
     "Orm",  // Phase 97
+    "Query",  // Phase 98
 ];
 
 /// Check if a name is a known stdlib module.

@@ -1,0 +1,406 @@
+//! Query builder runtime module for the Mesh runtime.
+//!
+//! Provides an immutable, pipe-composable Query struct that accumulates
+//! SQL clauses. Each builder function allocates a new Query via
+//! `mesh_gc_alloc_actor`, copies the previous state, and modifies the
+//! relevant slots. The Query object is never mutated in place.
+//!
+//! ## Query object layout (13 slots, 104 bytes)
+//!
+//! | Slot | Offset | Name            | Type                   |
+//! |------|--------|-----------------|------------------------|
+//! |  0   |   0    | source          | *mut u8 (MeshString)   |
+//! |  1   |   8    | select_fields   | *mut u8 (List<String>) |
+//! |  2   |  16    | where_clauses   | *mut u8 (List<String>) |
+//! |  3   |  24    | where_params    | *mut u8 (List<String>) |
+//! |  4   |  32    | order_fields    | *mut u8 (List<String>) |
+//! |  5   |  40    | limit_val       | i64 (-1 = no limit)    |
+//! |  6   |  48    | offset_val      | i64 (-1 = no offset)   |
+//! |  7   |  56    | join_clauses    | *mut u8 (List<String>) |
+//! |  8   |  64    | group_fields    | *mut u8 (List<String>) |
+//! |  9   |  72    | having_clauses  | *mut u8 (List<String>) |
+//! | 10   |  80    | having_params   | *mut u8 (List<String>) |
+//! | 11   |  88    | fragment_parts  | *mut u8 (List<String>) |
+//! | 12   |  96    | fragment_params | *mut u8 (List<String>) |
+
+use crate::collections::list::{mesh_list_append, mesh_list_get, mesh_list_length, mesh_list_new};
+use crate::gc::mesh_gc_alloc_actor;
+use crate::string::{mesh_string_new, MeshString};
+
+// ── Constants ────────────────────────────────────────────────────────
+
+const QUERY_SLOTS: usize = 13;
+const QUERY_SIZE: usize = QUERY_SLOTS * 8; // 104 bytes
+
+// Slot indices
+const SLOT_SOURCE: usize = 0;
+const SLOT_SELECT: usize = 1;
+const SLOT_WHERE_CLAUSES: usize = 2;
+const SLOT_WHERE_PARAMS: usize = 3;
+const SLOT_ORDER: usize = 4;
+const SLOT_LIMIT: usize = 5;
+const SLOT_OFFSET: usize = 6;
+const SLOT_JOIN: usize = 7;
+const SLOT_GROUP: usize = 8;
+const SLOT_HAVING_CLAUSES: usize = 9;
+const SLOT_HAVING_PARAMS: usize = 10;
+const SLOT_FRAGMENT_PARTS: usize = 11;
+const SLOT_FRAGMENT_PARAMS: usize = 12;
+
+// ── Slot access helpers ──────────────────────────────────────────────
+
+unsafe fn query_get(q: *mut u8, slot: usize) -> *mut u8 {
+    *(q.add(slot * 8) as *mut *mut u8)
+}
+
+unsafe fn query_set(q: *mut u8, slot: usize, val: *mut u8) {
+    *(q.add(slot * 8) as *mut *mut u8) = val;
+}
+
+#[allow(dead_code)]
+unsafe fn query_get_int(q: *mut u8, slot: usize) -> i64 {
+    *(q.add(slot * 8) as *mut i64)
+}
+
+unsafe fn query_set_int(q: *mut u8, slot: usize, val: i64) {
+    *(q.add(slot * 8) as *mut i64) = val;
+}
+
+// ── String helpers ───────────────────────────────────────────────────
+
+/// Create a MeshString from a Rust &str and return as *mut u8.
+unsafe fn rust_str_to_mesh(s: &str) -> *mut u8 {
+    mesh_string_new(s.as_ptr(), s.len() as u64) as *mut u8
+}
+
+/// Read a MeshString pointer as a Rust &str.
+unsafe fn mesh_str_ref(ptr: *mut u8) -> &'static str {
+    let ms = ptr as *const MeshString;
+    (*ms).as_str()
+}
+
+/// Concatenate two MeshString pointers, returning a new MeshString as *mut u8.
+#[allow(dead_code)]
+unsafe fn mesh_concat(a: *mut u8, b: *mut u8) -> *mut u8 {
+    crate::string::mesh_string_concat(a as *const MeshString, b as *const MeshString) as *mut u8
+}
+
+// ── Atom-to-SQL mapping ──────────────────────────────────────────────
+
+fn atom_to_sql_op(atom: &str) -> &str {
+    match atom {
+        "eq" => "=",
+        "neq" => "!=",
+        "lt" => "<",
+        "gt" => ">",
+        "lte" => "<=",
+        "gte" => ">=",
+        "like" => "LIKE",
+        _ => "=", // default to equality
+    }
+}
+
+fn atom_to_direction(atom: &str) -> &str {
+    match atom {
+        "asc" => "ASC",
+        "desc" => "DESC",
+        _ => "ASC",
+    }
+}
+
+fn atom_to_join_type(atom: &str) -> &str {
+    match atom {
+        "inner" => "INNER",
+        "left" => "LEFT",
+        "right" => "RIGHT",
+        _ => "INNER",
+    }
+}
+
+// ── Query allocation helpers ─────────────────────────────────────────
+
+/// Allocate a fresh Query with all pointer slots set to empty lists
+/// and integer slots set to -1.
+unsafe fn alloc_query() -> *mut u8 {
+    let q = mesh_gc_alloc_actor(QUERY_SIZE as u64, 8);
+    std::ptr::write_bytes(q, 0, QUERY_SIZE);
+    // Initialize list slots to empty lists
+    let empty = mesh_list_new();
+    query_set(q, SLOT_SELECT, empty);
+    query_set(q, SLOT_WHERE_CLAUSES, mesh_list_new());
+    query_set(q, SLOT_WHERE_PARAMS, mesh_list_new());
+    query_set(q, SLOT_ORDER, mesh_list_new());
+    query_set(q, SLOT_JOIN, mesh_list_new());
+    query_set(q, SLOT_GROUP, mesh_list_new());
+    query_set(q, SLOT_HAVING_CLAUSES, mesh_list_new());
+    query_set(q, SLOT_HAVING_PARAMS, mesh_list_new());
+    query_set(q, SLOT_FRAGMENT_PARTS, mesh_list_new());
+    query_set(q, SLOT_FRAGMENT_PARAMS, mesh_list_new());
+    // Integer slots: -1 means "not set"
+    query_set_int(q, SLOT_LIMIT, -1);
+    query_set_int(q, SLOT_OFFSET, -1);
+    q
+}
+
+/// Clone a Query: allocate new 104 bytes and copy all data from source.
+unsafe fn clone_query(src: *mut u8) -> *mut u8 {
+    let dst = mesh_gc_alloc_actor(QUERY_SIZE as u64, 8);
+    std::ptr::copy_nonoverlapping(src, dst, QUERY_SIZE);
+    dst
+}
+
+// ── Extern C builder functions ───────────────────────────────────────
+
+/// Create a new Query from a table name string.
+///
+/// `Query.from("users")` -> opaque Query pointer
+#[no_mangle]
+pub extern "C" fn mesh_query_from(table: *mut u8) -> *mut u8 {
+    unsafe {
+        let q = alloc_query();
+        query_set(q, SLOT_SOURCE, table);
+        q
+    }
+}
+
+/// Add an equality WHERE clause: `field = value`.
+///
+/// `Query.where(q, :name, "Alice")` -> new Query with WHERE name = $N
+#[no_mangle]
+pub extern "C" fn mesh_query_where(q: *mut u8, field: *mut u8, value: *mut u8) -> *mut u8 {
+    unsafe {
+        let new_q = clone_query(q);
+        let field_str = mesh_str_ref(field);
+        let clause = format!("{} =", field_str);
+        let clause_mesh = rust_str_to_mesh(&clause);
+        let wc = query_get(new_q, SLOT_WHERE_CLAUSES);
+        query_set(new_q, SLOT_WHERE_CLAUSES, mesh_list_append(wc, clause_mesh as u64));
+        let wp = query_get(new_q, SLOT_WHERE_PARAMS);
+        query_set(new_q, SLOT_WHERE_PARAMS, mesh_list_append(wp, value as u64));
+        new_q
+    }
+}
+
+/// Add an operator WHERE clause: `field op value`.
+///
+/// `Query.where_op(q, :age, :gt, "21")` -> new Query with WHERE age > $N
+#[no_mangle]
+pub extern "C" fn mesh_query_where_op(
+    q: *mut u8,
+    field: *mut u8,
+    op: *mut u8,
+    value: *mut u8,
+) -> *mut u8 {
+    unsafe {
+        let new_q = clone_query(q);
+        let field_str = mesh_str_ref(field);
+        let op_str = mesh_str_ref(op);
+        let sql_op = atom_to_sql_op(op_str);
+        let clause = format!("{} {}", field_str, sql_op);
+        let clause_mesh = rust_str_to_mesh(&clause);
+        let wc = query_get(new_q, SLOT_WHERE_CLAUSES);
+        query_set(new_q, SLOT_WHERE_CLAUSES, mesh_list_append(wc, clause_mesh as u64));
+        let wp = query_get(new_q, SLOT_WHERE_PARAMS);
+        query_set(new_q, SLOT_WHERE_PARAMS, mesh_list_append(wp, value as u64));
+        new_q
+    }
+}
+
+/// Add a WHERE IN clause: `field IN (values...)`.
+///
+/// `Query.where_in(q, :status, ["active", "pending"])` -> new Query with WHERE status IN ($N, $M)
+#[no_mangle]
+pub extern "C" fn mesh_query_where_in(
+    q: *mut u8,
+    field: *mut u8,
+    values: *mut u8,
+) -> *mut u8 {
+    unsafe {
+        let new_q = clone_query(q);
+        let field_str = mesh_str_ref(field);
+        let list_len = mesh_list_length(values);
+        let clause = format!("{} IN:{}", field_str, list_len);
+        let clause_mesh = rust_str_to_mesh(&clause);
+        let wc = query_get(new_q, SLOT_WHERE_CLAUSES);
+        query_set(new_q, SLOT_WHERE_CLAUSES, mesh_list_append(wc, clause_mesh as u64));
+        // Append each value from the list to where_params
+        let mut wp = query_get(new_q, SLOT_WHERE_PARAMS);
+        for i in 0..list_len {
+            let elem = mesh_list_get(values, i);
+            wp = mesh_list_append(wp, elem);
+        }
+        query_set(new_q, SLOT_WHERE_PARAMS, wp);
+        new_q
+    }
+}
+
+/// Add a WHERE IS NULL clause.
+///
+/// `Query.where_null(q, :deleted_at)` -> new Query with WHERE deleted_at IS NULL
+#[no_mangle]
+pub extern "C" fn mesh_query_where_null(q: *mut u8, field: *mut u8) -> *mut u8 {
+    unsafe {
+        let new_q = clone_query(q);
+        let field_str = mesh_str_ref(field);
+        let clause = format!("{} IS NULL", field_str);
+        let clause_mesh = rust_str_to_mesh(&clause);
+        let wc = query_get(new_q, SLOT_WHERE_CLAUSES);
+        query_set(new_q, SLOT_WHERE_CLAUSES, mesh_list_append(wc, clause_mesh as u64));
+        new_q
+    }
+}
+
+/// Add a WHERE IS NOT NULL clause.
+///
+/// `Query.where_not_null(q, :name)` -> new Query with WHERE name IS NOT NULL
+#[no_mangle]
+pub extern "C" fn mesh_query_where_not_null(q: *mut u8, field: *mut u8) -> *mut u8 {
+    unsafe {
+        let new_q = clone_query(q);
+        let field_str = mesh_str_ref(field);
+        let clause = format!("{} IS NOT NULL", field_str);
+        let clause_mesh = rust_str_to_mesh(&clause);
+        let wc = query_get(new_q, SLOT_WHERE_CLAUSES);
+        query_set(new_q, SLOT_WHERE_CLAUSES, mesh_list_append(wc, clause_mesh as u64));
+        new_q
+    }
+}
+
+/// Set the SELECT fields for the query.
+///
+/// `Query.select(q, ["id", "name"])` -> new Query with SELECT id, name
+#[no_mangle]
+pub extern "C" fn mesh_query_select(q: *mut u8, fields: *mut u8) -> *mut u8 {
+    unsafe {
+        let new_q = clone_query(q);
+        query_set(new_q, SLOT_SELECT, fields);
+        new_q
+    }
+}
+
+/// Add an ORDER BY clause.
+///
+/// `Query.order_by(q, :name, :asc)` -> new Query with ORDER BY name ASC
+#[no_mangle]
+pub extern "C" fn mesh_query_order_by(
+    q: *mut u8,
+    field: *mut u8,
+    direction: *mut u8,
+) -> *mut u8 {
+    unsafe {
+        let new_q = clone_query(q);
+        let field_str = mesh_str_ref(field);
+        let dir_str = mesh_str_ref(direction);
+        let dir_sql = atom_to_direction(dir_str);
+        let order = format!("{} {}", field_str, dir_sql);
+        let order_mesh = rust_str_to_mesh(&order);
+        let of = query_get(new_q, SLOT_ORDER);
+        query_set(new_q, SLOT_ORDER, mesh_list_append(of, order_mesh as u64));
+        new_q
+    }
+}
+
+/// Set the LIMIT for the query.
+///
+/// `Query.limit(q, 10)` -> new Query with LIMIT 10
+#[no_mangle]
+pub extern "C" fn mesh_query_limit(q: *mut u8, n: i64) -> *mut u8 {
+    unsafe {
+        let new_q = clone_query(q);
+        query_set_int(new_q, SLOT_LIMIT, n);
+        new_q
+    }
+}
+
+/// Set the OFFSET for the query.
+///
+/// `Query.offset(q, 20)` -> new Query with OFFSET 20
+#[no_mangle]
+pub extern "C" fn mesh_query_offset(q: *mut u8, n: i64) -> *mut u8 {
+    unsafe {
+        let new_q = clone_query(q);
+        query_set_int(new_q, SLOT_OFFSET, n);
+        new_q
+    }
+}
+
+/// Add a JOIN clause.
+///
+/// `Query.join(q, :inner, "posts", "users.id = posts.user_id")` -> new Query with INNER JOIN
+#[no_mangle]
+pub extern "C" fn mesh_query_join(
+    q: *mut u8,
+    join_type: *mut u8,
+    table: *mut u8,
+    on_clause: *mut u8,
+) -> *mut u8 {
+    unsafe {
+        let new_q = clone_query(q);
+        let jt_str = mesh_str_ref(join_type);
+        let tbl_str = mesh_str_ref(table);
+        let on_str = mesh_str_ref(on_clause);
+        let jt_sql = atom_to_join_type(jt_str);
+        let join = format!("{}:{}:{}", jt_sql, tbl_str, on_str);
+        let join_mesh = rust_str_to_mesh(&join);
+        let jc = query_get(new_q, SLOT_JOIN);
+        query_set(new_q, SLOT_JOIN, mesh_list_append(jc, join_mesh as u64));
+        new_q
+    }
+}
+
+/// Add a GROUP BY field.
+///
+/// `Query.group_by(q, :category)` -> new Query with GROUP BY category
+#[no_mangle]
+pub extern "C" fn mesh_query_group_by(q: *mut u8, field: *mut u8) -> *mut u8 {
+    unsafe {
+        let new_q = clone_query(q);
+        let gf = query_get(new_q, SLOT_GROUP);
+        query_set(new_q, SLOT_GROUP, mesh_list_append(gf, field as u64));
+        new_q
+    }
+}
+
+/// Add a HAVING clause.
+///
+/// `Query.having(q, "count(*) >", "5")` -> new Query with HAVING count(*) > $N
+#[no_mangle]
+pub extern "C" fn mesh_query_having(
+    q: *mut u8,
+    clause: *mut u8,
+    value: *mut u8,
+) -> *mut u8 {
+    unsafe {
+        let new_q = clone_query(q);
+        let hc = query_get(new_q, SLOT_HAVING_CLAUSES);
+        query_set(new_q, SLOT_HAVING_CLAUSES, mesh_list_append(hc, clause as u64));
+        let hp = query_get(new_q, SLOT_HAVING_PARAMS);
+        query_set(new_q, SLOT_HAVING_PARAMS, mesh_list_append(hp, value as u64));
+        new_q
+    }
+}
+
+/// Add a raw SQL fragment.
+///
+/// `Query.fragment(q, "WHERE custom_fn($1)", params)` -> new Query with raw fragment
+#[no_mangle]
+pub extern "C" fn mesh_query_fragment(
+    q: *mut u8,
+    sql: *mut u8,
+    params: *mut u8,
+) -> *mut u8 {
+    unsafe {
+        let new_q = clone_query(q);
+        let fp = query_get(new_q, SLOT_FRAGMENT_PARTS);
+        query_set(new_q, SLOT_FRAGMENT_PARTS, mesh_list_append(fp, sql as u64));
+        // Append each param from the params list to fragment_params
+        let mut fpar = query_get(new_q, SLOT_FRAGMENT_PARAMS);
+        let param_len = mesh_list_length(params);
+        for i in 0..param_len {
+            let elem = mesh_list_get(params, i);
+            fpar = mesh_list_append(fpar, elem);
+        }
+        query_set(new_q, SLOT_FRAGMENT_PARAMS, fpar);
+        new_q
+    }
+}

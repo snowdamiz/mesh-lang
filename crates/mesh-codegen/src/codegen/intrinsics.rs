@@ -912,6 +912,78 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
         ptr_type.fn_type(&[ptr_type.into(), ptr_type.into(), ptr_type.into()], false),
         Some(inkwell::module::Linkage::External));
 
+    // ── Phase 98: Query Builder ───────────────────────────────────────
+
+    // mesh_query_from(table: ptr) -> ptr
+    module.add_function("mesh_query_from",
+        ptr_type.fn_type(&[ptr_type.into()], false),
+        Some(inkwell::module::Linkage::External));
+
+    // mesh_query_where(q: ptr, field: ptr, value: ptr) -> ptr
+    module.add_function("mesh_query_where",
+        ptr_type.fn_type(&[ptr_type.into(), ptr_type.into(), ptr_type.into()], false),
+        Some(inkwell::module::Linkage::External));
+
+    // mesh_query_where_op(q: ptr, field: ptr, op: ptr, value: ptr) -> ptr
+    module.add_function("mesh_query_where_op",
+        ptr_type.fn_type(&[ptr_type.into(), ptr_type.into(), ptr_type.into(), ptr_type.into()], false),
+        Some(inkwell::module::Linkage::External));
+
+    // mesh_query_where_in(q: ptr, field: ptr, values: ptr) -> ptr
+    module.add_function("mesh_query_where_in",
+        ptr_type.fn_type(&[ptr_type.into(), ptr_type.into(), ptr_type.into()], false),
+        Some(inkwell::module::Linkage::External));
+
+    // mesh_query_where_null(q: ptr, field: ptr) -> ptr
+    module.add_function("mesh_query_where_null",
+        ptr_type.fn_type(&[ptr_type.into(), ptr_type.into()], false),
+        Some(inkwell::module::Linkage::External));
+
+    // mesh_query_where_not_null(q: ptr, field: ptr) -> ptr
+    module.add_function("mesh_query_where_not_null",
+        ptr_type.fn_type(&[ptr_type.into(), ptr_type.into()], false),
+        Some(inkwell::module::Linkage::External));
+
+    // mesh_query_select(q: ptr, fields: ptr) -> ptr
+    module.add_function("mesh_query_select",
+        ptr_type.fn_type(&[ptr_type.into(), ptr_type.into()], false),
+        Some(inkwell::module::Linkage::External));
+
+    // mesh_query_order_by(q: ptr, field: ptr, direction: ptr) -> ptr
+    module.add_function("mesh_query_order_by",
+        ptr_type.fn_type(&[ptr_type.into(), ptr_type.into(), ptr_type.into()], false),
+        Some(inkwell::module::Linkage::External));
+
+    // mesh_query_limit(q: ptr, n: i64) -> ptr
+    module.add_function("mesh_query_limit",
+        ptr_type.fn_type(&[ptr_type.into(), i64_type.into()], false),
+        Some(inkwell::module::Linkage::External));
+
+    // mesh_query_offset(q: ptr, n: i64) -> ptr
+    module.add_function("mesh_query_offset",
+        ptr_type.fn_type(&[ptr_type.into(), i64_type.into()], false),
+        Some(inkwell::module::Linkage::External));
+
+    // mesh_query_join(q: ptr, type: ptr, table: ptr, on_clause: ptr) -> ptr
+    module.add_function("mesh_query_join",
+        ptr_type.fn_type(&[ptr_type.into(), ptr_type.into(), ptr_type.into(), ptr_type.into()], false),
+        Some(inkwell::module::Linkage::External));
+
+    // mesh_query_group_by(q: ptr, field: ptr) -> ptr
+    module.add_function("mesh_query_group_by",
+        ptr_type.fn_type(&[ptr_type.into(), ptr_type.into()], false),
+        Some(inkwell::module::Linkage::External));
+
+    // mesh_query_having(q: ptr, clause: ptr, value: ptr) -> ptr
+    module.add_function("mesh_query_having",
+        ptr_type.fn_type(&[ptr_type.into(), ptr_type.into(), ptr_type.into()], false),
+        Some(inkwell::module::Linkage::External));
+
+    // mesh_query_fragment(q: ptr, sql: ptr, params: ptr) -> ptr
+    module.add_function("mesh_query_fragment",
+        ptr_type.fn_type(&[ptr_type.into(), ptr_type.into(), ptr_type.into()], false),
+        Some(inkwell::module::Linkage::External));
+
     // ── Phase 68: Global Registry ──────────────────────────────────────
 
     // mesh_global_register(name_ptr: ptr, name_len: i64, pid: i64) -> i64
@@ -1273,6 +1345,22 @@ mod tests {
         assert!(module.get_function("mesh_orm_build_insert").is_some());
         assert!(module.get_function("mesh_orm_build_update").is_some());
         assert!(module.get_function("mesh_orm_build_delete").is_some());
+
+        // Phase 98: Query Builder
+        assert!(module.get_function("mesh_query_from").is_some());
+        assert!(module.get_function("mesh_query_where").is_some());
+        assert!(module.get_function("mesh_query_where_op").is_some());
+        assert!(module.get_function("mesh_query_where_in").is_some());
+        assert!(module.get_function("mesh_query_where_null").is_some());
+        assert!(module.get_function("mesh_query_where_not_null").is_some());
+        assert!(module.get_function("mesh_query_select").is_some());
+        assert!(module.get_function("mesh_query_order_by").is_some());
+        assert!(module.get_function("mesh_query_limit").is_some());
+        assert!(module.get_function("mesh_query_offset").is_some());
+        assert!(module.get_function("mesh_query_join").is_some());
+        assert!(module.get_function("mesh_query_group_by").is_some());
+        assert!(module.get_function("mesh_query_having").is_some());
+        assert!(module.get_function("mesh_query_fragment").is_some());
     }
 
     #[test]
