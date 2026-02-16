@@ -341,17 +341,112 @@ fn lhs(p: &mut Parser) -> Option<MarkClosed> {
 
 // ── Map Literal ───────────────────────────────────────────────────
 
-/// Parse a map literal: `%{key1 => value1, key2 => value2, ...}`
+/// Parse a map literal or struct update expression.
 ///
-/// Each entry is `expr => expr`, separated by commas (or newlines inside braces).
-/// Produces MAP_ENTRY children inside the MAP_LITERAL node.
+/// Map literal: `%{key1 => value1, key2 => value2, ...}`
+/// Struct update: `%{base_expr | field: value, ...}`
+///
+/// Disambiguation: After `%{`, parse the first expression and save its mark.
+/// If the next token is `BAR` (`|`), this is a struct update expression.
+/// If `FAT_ARROW` (`=>`), use `open_before` to retroactively wrap the key
+/// in a MAP_ENTRY node and continue as a map literal. Empty `%{}` is a map.
 fn parse_map_literal(p: &mut Parser) -> MarkClosed {
     let m = p.open();
     p.advance(); // PERCENT
     p.expect(SyntaxKind::L_BRACE);
 
     // Handle empty map literal: %{}
-    while !p.at(SyntaxKind::R_BRACE) && !p.at(SyntaxKind::EOF) {
+    if p.at(SyntaxKind::R_BRACE) {
+        p.advance(); // R_BRACE
+        return p.close(m, SyntaxKind::MAP_LITERAL);
+    }
+
+    // Parse the first expression (could be map key or struct update base).
+    // Save the MarkClosed so we can retroactively wrap it in MAP_ENTRY if needed.
+    let first_expr_mark = match expr_bp(p, 0) {
+        Some(mark) => mark,
+        None => {
+            p.expect(SyntaxKind::R_BRACE);
+            return p.close(m, SyntaxKind::MAP_LITERAL);
+        }
+    };
+
+    if p.has_error() {
+        p.expect(SyntaxKind::R_BRACE);
+        return p.close(m, SyntaxKind::MAP_LITERAL);
+    }
+
+    // Disambiguate: BAR means struct update, FAT_ARROW means map literal.
+    if p.at(SyntaxKind::BAR) {
+        // ── Struct Update: %{base | field: value, ...} ──
+        p.advance(); // BAR
+
+        // Parse comma-separated `name: expr` override fields (reuse STRUCT_LITERAL_FIELD).
+        loop {
+            if p.at(SyntaxKind::R_BRACE) || p.at(SyntaxKind::EOF) {
+                break;
+            }
+
+            let field = p.open();
+
+            // Field name.
+            if p.at(SyntaxKind::IDENT) {
+                let name = p.open();
+                p.advance(); // field name
+                p.close(name, SyntaxKind::NAME);
+            } else {
+                p.error("expected field name in struct update");
+                p.close(field, SyntaxKind::STRUCT_LITERAL_FIELD);
+                break;
+            }
+
+            // Colon.
+            p.expect(SyntaxKind::COLON);
+
+            // Field value expression.
+            if !p.has_error() {
+                expr_bp(p, 0);
+            }
+
+            p.close(field, SyntaxKind::STRUCT_LITERAL_FIELD);
+
+            if p.has_error() {
+                break;
+            }
+
+            // Separator: comma or implicit (newlines inside braces are insignificant).
+            if !p.eat(SyntaxKind::COMMA) {
+                if p.at(SyntaxKind::R_BRACE) || p.at(SyntaxKind::EOF) {
+                    break;
+                }
+            }
+        }
+
+        p.expect(SyntaxKind::R_BRACE);
+        return p.close(m, SyntaxKind::STRUCT_UPDATE_EXPR);
+    }
+
+    // ── Map Literal: retroactively wrap first key expression in MAP_ENTRY ──
+    {
+        let entry = p.open_before(first_expr_mark);
+        p.expect(SyntaxKind::FAT_ARROW); // =>
+        if !p.has_error() {
+            expr_bp(p, 0); // value expression
+        }
+        p.close(entry, SyntaxKind::MAP_ENTRY);
+    }
+
+    if p.has_error() {
+        p.expect(SyntaxKind::R_BRACE);
+        return p.close(m, SyntaxKind::MAP_LITERAL);
+    }
+
+    // Parse remaining map entries.
+    while p.eat(SyntaxKind::COMMA) {
+        if p.at(SyntaxKind::R_BRACE) || p.at(SyntaxKind::EOF) {
+            break; // trailing comma
+        }
+
         let entry = p.open();
         expr_bp(p, 0); // key expression
         p.expect(SyntaxKind::FAT_ARROW); // =>
@@ -362,13 +457,6 @@ fn parse_map_literal(p: &mut Parser) -> MarkClosed {
 
         if p.has_error() {
             break;
-        }
-
-        // Separator: comma or implicit (newlines inside braces are insignificant).
-        if !p.eat(SyntaxKind::COMMA) {
-            if p.at(SyntaxKind::R_BRACE) || p.at(SyntaxKind::EOF) {
-                break;
-            }
         }
     }
 

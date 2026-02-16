@@ -47,6 +47,8 @@ pub enum Expr {
     TryExpr(TryExpr),
     // Atom literal
     AtomLiteral(AtomLiteral),
+    // Struct update expression
+    StructUpdate(StructUpdate),
 }
 
 impl Expr {
@@ -91,6 +93,9 @@ impl Expr {
             SyntaxKind::LINK_EXPR => Some(Expr::LinkExpr(LinkExpr { syntax: node })),
             SyntaxKind::TRY_EXPR => Some(Expr::TryExpr(TryExpr { syntax: node })),
             SyntaxKind::ATOM_EXPR => Some(Expr::AtomLiteral(AtomLiteral { syntax: node })),
+            SyntaxKind::STRUCT_UPDATE_EXPR => {
+                Some(Expr::StructUpdate(StructUpdate { syntax: node }))
+            }
             _ => None,
         }
     }
@@ -127,6 +132,7 @@ impl Expr {
             Expr::LinkExpr(n) => &n.syntax,
             Expr::TryExpr(n) => &n.syntax,
             Expr::AtomLiteral(n) => &n.syntax,
+            Expr::StructUpdate(n) => &n.syntax,
         }
     }
 }
@@ -572,6 +578,22 @@ impl MapEntry {
             return None;
         }
         self.key().map(|k| k.syntax().text().to_string())
+    }
+}
+
+// ── Struct Update Expression ─────────────────────────────────────────────
+
+ast_node!(StructUpdate, STRUCT_UPDATE_EXPR);
+
+impl StructUpdate {
+    /// The base expression (the struct being updated) -- first child expression.
+    pub fn base_expr(&self) -> Option<Expr> {
+        self.syntax.children().find_map(Expr::cast)
+    }
+
+    /// The override fields (`name: value` pairs) -- reuses StructLiteralField AST nodes.
+    pub fn override_fields(&self) -> Vec<StructLiteralField> {
+        child_nodes(&self.syntax).collect()
     }
 }
 

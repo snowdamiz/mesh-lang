@@ -282,6 +282,8 @@ pub enum SyntaxKind {
     MAP_LITERAL,
     /// Single entry in a map literal: `key => value`
     MAP_ENTRY,
+    /// Struct update expression: `%{base | field: value, ...}`
+    STRUCT_UPDATE_EXPR,
     /// List literal: `[expr, expr, ...]`
     LIST_LITERAL,
 
@@ -686,6 +688,7 @@ mod tests {
             SyntaxKind::CLOSURE_CLAUSE,
             SyntaxKind::MAP_LITERAL,
             SyntaxKind::MAP_ENTRY,
+            SyntaxKind::STRUCT_UPDATE_EXPR,
             SyntaxKind::LIST_LITERAL,
             // Loop node kinds
             SyntaxKind::WHILE_EXPR,
@@ -717,8 +720,8 @@ mod tests {
             SyntaxKind::SECONDS_LIMIT,
         ];
         assert!(
-            node_kinds.len() >= 85,
-            "expected at least 85 composite node kinds, got {}",
+            node_kinds.len() >= 86,
+            "expected at least 86 composite node kinds, got {}",
             node_kinds.len()
         );
     }
