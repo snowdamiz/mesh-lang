@@ -4,7 +4,9 @@
   "private": true,
   "scripts": {
     "dev": "PATH=./target/release:$PATH concurrently -n mesher,frontend,website -c blue,green,magenta \"npm run dev:mesher\" \"npm run dev:frontend\" \"npm run dev:website\"",
-    "dev:mesher": "PATH=./target/release:$PATH meshc build mesher/ && cd mesher && ./mesher",
+    "dev:mesher": "(docker start mesher-postgres 2>/dev/null || docker run -d --name mesher-postgres -e POSTGRES_USER=mesh -e POSTGRES_PASSWORD=mesh -e POSTGRES_DB=mesher -p 5432:5432 postgres:17-alpine) && until docker exec mesher-postgres pg_isready -U mesh -d mesher -q 2>/dev/null; do sleep 1; done && PATH=./target/release:$PATH meshc build mesher/ && cd mesher && ./mesher",
+    "build:compiler": "cargo build --release",
+    "build:mesher": "PATH=./target/release:$PATH meshc build mesher/",
     "dev:frontend": "cd frontend && npm run dev",
     "dev:website": "cd website && npm run dev -- --port 3000"
   },
