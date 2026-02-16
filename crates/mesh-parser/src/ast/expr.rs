@@ -549,9 +549,29 @@ impl MapEntry {
         self.syntax.children().find_map(Expr::cast)
     }
 
-    /// The value expression (second child expression, after `=>`).
+    /// The value expression (second child expression, after `=>` or `:`).
     pub fn value(&self) -> Option<Expr> {
         self.syntax.children().filter_map(Expr::cast).nth(1)
+    }
+
+    /// Whether this entry is a keyword argument entry (uses `:` not `=>`).
+    ///
+    /// Keyword args like `name: "Alice"` produce MAP_ENTRY nodes with a COLON
+    /// separator instead of FAT_ARROW. The key is a NAME_REF whose text should
+    /// be treated as a string literal key.
+    pub fn is_keyword_entry(&self) -> bool {
+        child_token(&self.syntax, SyntaxKind::COLON).is_some()
+            && child_token(&self.syntax, SyntaxKind::FAT_ARROW).is_none()
+    }
+
+    /// For keyword entries, return the key name as a string.
+    ///
+    /// Returns the text of the NAME_REF key for keyword argument entries.
+    pub fn keyword_key_text(&self) -> Option<String> {
+        if !self.is_keyword_entry() {
+            return None;
+        }
+        self.key().map(|k| k.syntax().text().to_string())
     }
 }
 

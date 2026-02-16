@@ -8420,10 +8420,19 @@ impl<'a> Lowerer<'a> {
         );
 
         for entry in map_lit.entries() {
-            let key = entry
-                .key()
-                .map(|e| self.lower_expr(&e))
-                .unwrap_or(MirExpr::Unit);
+            // For keyword argument entries (name: value), the key is a NAME_REF
+            // that should be treated as a string literal (the identifier text).
+            let key = if entry.is_keyword_entry() {
+                entry
+                    .keyword_key_text()
+                    .map(|text| MirExpr::StringLit(text, MirType::String))
+                    .unwrap_or(MirExpr::Unit)
+            } else {
+                entry
+                    .key()
+                    .map(|e| self.lower_expr(&e))
+                    .unwrap_or(MirExpr::Unit)
+            };
             let val = entry
                 .value()
                 .map(|e| self.lower_expr(&e))

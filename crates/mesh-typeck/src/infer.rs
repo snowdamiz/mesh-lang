@@ -5891,7 +5891,13 @@ fn infer_map_literal(
 
     for entry in map_lit.entries() {
         if let Some(key_expr) = entry.key() {
-            let key_inferred = infer_expr(ctx, env, &key_expr, types, type_registry, trait_registry, fn_constraints)?;
+            // For keyword argument entries (name: value), the key is a NAME_REF
+            // representing the identifier text as a string key, not a variable reference.
+            let key_inferred = if entry.is_keyword_entry() {
+                Ty::string()
+            } else {
+                infer_expr(ctx, env, &key_expr, types, type_registry, trait_registry, fn_constraints)?
+            };
             ctx.unify(
                 key_inferred,
                 k_ty.clone(),

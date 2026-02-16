@@ -2982,3 +2982,40 @@ end
         error
     );
 }
+
+// ── Phase 96 Plan 02: Keyword Arguments ─────────────────────────────
+
+/// Keyword arguments desugar to a Map parameter: `greet(name: "Alice")` becomes
+/// `greet(%{"name" => "Alice"})`.
+#[test]
+fn e2e_keyword_arguments() {
+    let output = compile_and_run(r#"
+fn greet(opts :: Map<String, String>) -> String do
+  Map.get(opts, "name")
+end
+
+fn main() do
+  let result = greet(name: "Alice")
+  println(result)
+end
+"#);
+    assert_eq!(output, "Alice\n");
+}
+
+/// Mixed positional and keyword arguments: `query("users", name: "Alice")` desugars
+/// to `query("users", %{"name" => "Alice"})`.
+#[test]
+fn e2e_keyword_args_mixed() {
+    let output = compile_and_run(r#"
+fn query(table :: String, opts :: Map<String, String>) -> String do
+  let name = Map.get(opts, "name")
+  "${table}:${name}"
+end
+
+fn main() do
+  let result = query("users", name: "Alice")
+  println(result)
+end
+"#);
+    assert_eq!(output, "users:Alice\n");
+}

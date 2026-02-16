@@ -415,24 +415,99 @@ fn parse_struct_literal_body(p: &mut Parser) {
 
 // ── Argument List ──────────────────────────────────────────────────────
 
+/// Check if the current position starts a keyword argument: `IDENT COLON`
+/// where COLON is not part of `COLON_COLON` (type annotation).
+fn at_keyword_arg(p: &Parser) -> bool {
+    p.current() == SyntaxKind::IDENT && p.nth(1) == SyntaxKind::COLON
+}
+
 /// Parse an argument list: `(expr, expr, ...)`.
+///
+/// Supports keyword arguments at the end of the list:
+/// - `f(name: "Alice", age: 30)` desugars to `f(%{"name" => "Alice", "age" => 30})`
+/// - `f(x, name: "Alice")` desugars to `f(x, %{"name" => "Alice"})`
+///
+/// Keyword arguments are detected by the `IDENT COLON` pattern (not `IDENT COLON_COLON`).
+/// Once a keyword argument is seen, all remaining arguments must be keyword arguments.
+/// The keyword arguments are wrapped in a synthetic MAP_LITERAL node appended as
+/// the final argument.
 fn parse_arg_list(p: &mut Parser) {
     let m = p.open();
     p.advance(); // (
 
-    // Parse comma-separated arguments.
+    // Parse comma-separated arguments, detecting keyword args.
     if !p.at(SyntaxKind::R_PAREN) {
-        expr_bp(p, 0);
-        while p.eat(SyntaxKind::COMMA) {
-            if p.at(SyntaxKind::R_PAREN) {
-                break; // trailing comma
-            }
+        // Check if the very first argument is a keyword arg.
+        if at_keyword_arg(p) {
+            // Entire arg list is keyword args (zero positional, one map arg).
+            parse_keyword_args_as_map(p);
+        } else {
+            // Parse first positional argument.
             expr_bp(p, 0);
+
+            // Parse remaining arguments.
+            while p.eat(SyntaxKind::COMMA) {
+                if p.at(SyntaxKind::R_PAREN) {
+                    break; // trailing comma
+                }
+                // Check if this argument starts keyword args.
+                if at_keyword_arg(p) {
+                    parse_keyword_args_as_map(p);
+                    break; // keyword args are always last
+                }
+                expr_bp(p, 0);
+            }
         }
     }
 
     p.expect(SyntaxKind::R_PAREN);
     p.close(m, SyntaxKind::ARG_LIST);
+}
+
+/// Parse keyword arguments and wrap them in a MAP_LITERAL node.
+///
+/// Called when the parser has detected `IDENT COLON` at the current position.
+/// Parses all remaining `name: expr` pairs, wrapping each in a MAP_ENTRY
+/// and the whole set in a MAP_LITERAL. The key identifier is wrapped in a
+/// NAME_REF node; the MIR lowerer converts these to string literals.
+fn parse_keyword_args_as_map(p: &mut Parser) {
+    let map_m = p.open();
+
+    // Parse first keyword entry.
+    parse_keyword_entry(p);
+
+    // Parse remaining keyword entries.
+    while p.eat(SyntaxKind::COMMA) {
+        if p.at(SyntaxKind::R_PAREN) {
+            break; // trailing comma
+        }
+        parse_keyword_entry(p);
+    }
+
+    p.close(map_m, SyntaxKind::MAP_LITERAL);
+}
+
+/// Parse a single keyword argument entry: `name: expr`.
+///
+/// Produces a MAP_ENTRY node with the identifier wrapped in NAME_REF as key
+/// and the parsed expression as value.
+fn parse_keyword_entry(p: &mut Parser) {
+    let entry = p.open();
+
+    // Key: wrap the identifier in a NAME_REF node.
+    let key = p.open();
+    p.advance(); // IDENT
+    p.close(key, SyntaxKind::NAME_REF);
+
+    // Consume the colon separator.
+    p.advance(); // COLON
+
+    // Value expression.
+    if !p.has_error() {
+        expr_bp(p, 0);
+    }
+
+    p.close(entry, SyntaxKind::MAP_ENTRY);
 }
 
 // ── String Expression ──────────────────────────────────────────────────
