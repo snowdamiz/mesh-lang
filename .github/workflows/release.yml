@@ -176,7 +176,6 @@ jobs:
         run: cargo build --release --target ${{ matrix.target }}
         env:
           LLVM_SYS_211_PREFIX: ${{ env.LLVM_SYS_211_PREFIX }}
-          RUSTFLAGS: -Clink-args=/FORCE:MULTIPLE
 
       # ── Strip & Package ───────────────────────────────────────────
 
