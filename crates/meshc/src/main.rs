@@ -22,6 +22,7 @@
 static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
 mod discovery;
+mod migrate;
 
 use std::path::{Path, PathBuf};
 use std::process;
@@ -100,6 +101,30 @@ enum Commands {
     Repl,
     /// Start the LSP server (communicates via stdin/stdout)
     Lsp,
+    /// Run database migrations
+    Migrate {
+        #[command(subcommand)]
+        action: Option<MigrateAction>,
+
+        /// Project directory (default: current directory)
+        #[arg(default_value = ".")]
+        dir: PathBuf,
+    },
+}
+
+#[derive(Subcommand)]
+enum MigrateAction {
+    /// Apply all pending migrations (default)
+    Up,
+    /// Rollback the last applied migration
+    Down,
+    /// Show migration status (applied vs pending)
+    Status,
+    /// Generate a new migration scaffold
+    Generate {
+        /// Migration name (e.g., "create_users")
+        name: String,
+    },
 }
 
 fn main() {
@@ -194,11 +219,24 @@ fn main() {
             let rt = tokio::runtime::Runtime::new().expect("Failed to create tokio runtime");
             rt.block_on(mesh_lsp::run_server());
         }
+        Commands::Migrate { action, dir } => {
+            let action = action.unwrap_or(MigrateAction::Up);
+            let result = match action {
+                MigrateAction::Up => migrate::run_migrations_up(&dir),
+                MigrateAction::Down => migrate::run_migrations_down(&dir),
+                MigrateAction::Status => migrate::show_migration_status(&dir),
+                MigrateAction::Generate { name } => migrate::generate_migration(&dir, &name),
+            };
+            if let Err(e) = result {
+                eprintln!("error: {}", e);
+                process::exit(1);
+            }
+        }
     }
 }
 
 /// Execute the build pipeline: discover all .mpl files -> parse -> typecheck entry -> codegen -> link.
-fn build(
+pub(crate) fn build(
     dir: &Path,
     opt_level: u8,
     emit_llvm: bool,
