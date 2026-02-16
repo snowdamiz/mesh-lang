@@ -304,12 +304,14 @@ impl<'ctx> CodeGen<'ctx> {
     }
 
     fn create_sum_type_layouts(&mut self, sum_types: &[MirSumTypeDef]) {
+        let target_data = self.target_machine.get_target_data();
         for st in sum_types {
             let layout = create_sum_type_layout(
                 self.context,
                 st,
                 &self.struct_types,
                 &self.sum_type_layouts,
+                &target_data,
             );
             self.sum_type_layouts.insert(st.name.clone(), layout);
             self.sum_type_defs.insert(st.name.clone(), st.clone());

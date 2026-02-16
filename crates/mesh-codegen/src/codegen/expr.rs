@@ -1841,7 +1841,7 @@ impl<'ctx> CodeGen<'ctx> {
             let env_struct_ty = self.context.struct_type(&cap_types, false);
 
             // Calculate size via target data
-            let target_data = inkwell::targets::TargetData::create("");
+            let target_data = self.target_machine.get_target_data();
             let env_size = target_data.get_store_size(&env_struct_ty);
 
             // Allocate via mesh_gc_alloc_actor(size, align=8)
@@ -1965,8 +1965,8 @@ impl<'ctx> CodeGen<'ctx> {
         };
 
         // Serialize arguments to a byte buffer.
-        // Allocate an array of i64 on the stack for args. Each arg is stored
-        // as an i64 (ints directly, pointers via ptrtoint).
+        // For scalar args (int, ptr, float): each is stored as an i64 (8 bytes).
+        // For struct args: the struct is stored directly with its full byte size.
         let (args_ptr, args_size) = if args.is_empty() {
             (ptr_ty.const_null(), i64_ty.const_int(0, false))
         } else {
@@ -1975,10 +1975,25 @@ impl<'ctx> CodeGen<'ctx> {
                 .map(|a| self.codegen_expr(a))
                 .collect::<Result<Vec<_>, _>>()?;
 
+            // Compute the total byte size needed for all args.
+            // Scalar values (int, ptr, float) take 8 bytes each.
+            // Struct values take their full LLVM store size.
+            let target_data = self.target_machine.get_target_data();
+            let mut total_size: u64 = 0;
+            let mut arg_offsets: Vec<u64> = Vec::new();
+            for val in &arg_vals {
+                arg_offsets.push(total_size);
+                if val.is_struct_value() {
+                    let st = val.into_struct_value().get_type();
+                    total_size += target_data.get_store_size(&st);
+                } else {
+                    total_size += 8; // i64, ptr, or float
+                }
+            }
+
             // Allocate spawn args on the GC heap (not the stack) because the
             // actor runs asynchronously after the caller returns. Stack allocas
             // would be freed before the actor reads the args.
-            let total_size = (arg_vals.len() * 8) as u64;
             let gc_alloc_fn = get_intrinsic(&self.module, "mesh_gc_alloc_actor");
             let size_val = i64_ty.const_int(total_size, false);
             let align_val = i64_ty.const_int(8, false);
@@ -1989,38 +2004,49 @@ impl<'ctx> CodeGen<'ctx> {
                 .basic()
                 .ok_or("mesh_gc_alloc_actor returned void")?
                 .into_pointer_value();
-            let arr_ty = i64_ty.array_type(arg_vals.len() as u32);
 
-            // Store each arg as i64 into the array.
+            // Store each arg into the buffer at its computed offset.
+            let i8_ty = self.context.i8_type();
             for (i, val) in arg_vals.iter().enumerate() {
-                let int_val = if val.is_int_value() {
-                    val.into_int_value()
-                } else if val.is_pointer_value() {
-                    self.builder
-                        .build_ptr_to_int(val.into_pointer_value(), i64_ty, "arg_int")
-                        .map_err(|e| e.to_string())?
-                } else if val.is_float_value() {
-                    self.builder
-                        .build_bit_cast(val.into_float_value(), i64_ty, "arg_int")
-                        .map_err(|e: inkwell::builder::BuilderError| e.to_string())?
-                        .into_int_value()
+                let offset = arg_offsets[i];
+                let element_ptr = if offset == 0 {
+                    buf_alloca
                 } else {
-                    // Fallback: store as zero
-                    i64_ty.const_int(0, false)
+                    unsafe {
+                        self.builder
+                            .build_gep(i8_ty, buf_alloca, &[i64_ty.const_int(offset, false)], &format!("arg_ptr_{}", i))
+                            .map_err(|e| e.to_string())?
+                    }
                 };
-                let idx = self.context.i32_type().const_int(i as u64, false);
-                let zero = self.context.i32_type().const_int(0, false);
-                let element_ptr = unsafe {
+
+                if val.is_struct_value() {
+                    // Store the full struct value directly.
                     self.builder
-                        .build_gep(arr_ty, buf_alloca, &[zero, idx], "arg_ptr")
-                        .map_err(|e| e.to_string())?
-                };
-                self.builder
-                    .build_store(element_ptr, int_val)
-                    .map_err(|e| e.to_string())?;
+                        .build_store(element_ptr, *val)
+                        .map_err(|e| e.to_string())?;
+                } else {
+                    // Convert scalar to i64 and store.
+                    let int_val = if val.is_int_value() {
+                        val.into_int_value()
+                    } else if val.is_pointer_value() {
+                        self.builder
+                            .build_ptr_to_int(val.into_pointer_value(), i64_ty, "arg_int")
+                            .map_err(|e| e.to_string())?
+                    } else if val.is_float_value() {
+                        self.builder
+                            .build_bit_cast(val.into_float_value(), i64_ty, "arg_int")
+                            .map_err(|e: inkwell::builder::BuilderError| e.to_string())?
+                            .into_int_value()
+                    } else {
+                        // Fallback: store as zero
+                        i64_ty.const_int(0, false)
+                    };
+                    self.builder
+                        .build_store(element_ptr, int_val)
+                        .map_err(|e| e.to_string())?;
+                }
             }
 
-            let total_size = (arg_vals.len() * 8) as u64;
             (buf_alloca, i64_ty.const_int(total_size, false))
         };
 
@@ -2090,7 +2116,7 @@ impl<'ctx> CodeGen<'ctx> {
                 .map_err(|e| e.to_string())?;
 
             // Compute size via target data.
-            let target_data = inkwell::targets::TargetData::create("");
+            let target_data = self.target_machine.get_target_data();
             let size = target_data.get_store_size(&msg_ty);
 
             (msg_alloca, i64_ty.const_int(size, false))
@@ -2136,7 +2162,7 @@ impl<'ctx> CodeGen<'ctx> {
                 .build_store(msg_alloca, msg_val)
                 .map_err(|e| e.to_string())?;
 
-            let target_data = inkwell::targets::TargetData::create("");
+            let target_data = self.target_machine.get_target_data();
             let size = target_data.get_store_size(&msg_ty);
 
             (msg_alloca, i64_ty.const_int(size, false))
@@ -3734,19 +3760,42 @@ impl<'ctx> CodeGen<'ctx> {
                         .into_int_value()
                 }
                 BasicMetadataValueEnum::StructValue(sv) => {
-                    // Store struct to alloca, then load as i64 (treats it as opaque bits).
-                    // This handles Result/tagged-union values in tuples.
-                    let sv_alloca = self.builder
-                        .build_alloca(sv.get_type(), "struct_tmp")
-                        .map_err(|e| format!("{}", e))?;
-                    self.builder
-                        .build_store(sv_alloca, sv)
-                        .map_err(|e| format!("{}", e))?;
-                    // Load the first i64 worth of data (the tag or pointer representation).
-                    self.builder
-                        .build_load(i64_type, sv_alloca, "struct_to_i64")
-                        .map_err(|e| format!("{}", e))?
-                        .into_int_value()
+                    let sv_ty = sv.get_type();
+                    let target_data = self.target_machine.get_target_data();
+                    let struct_size = target_data.get_store_size(&sv_ty);
+                    if struct_size <= 8 {
+                        // Small struct (e.g., tagged union {i8, ptr}): store as opaque i64 bits.
+                        let sv_alloca = self.builder
+                            .build_alloca(sv_ty, "struct_tmp")
+                            .map_err(|e| format!("{}", e))?;
+                        self.builder
+                            .build_store(sv_alloca, sv)
+                            .map_err(|e| format!("{}", e))?;
+                        self.builder
+                            .build_load(i64_type, sv_alloca, "struct_to_i64")
+                            .map_err(|e| format!("{}", e))?
+                            .into_int_value()
+                    } else {
+                        // Large struct (e.g., service state): heap-allocate and store pointer.
+                        // The tuple consumer (service loop) will inttoptr -> load to recover the struct.
+                        let size = sv_ty.size_of().unwrap_or(i64_type.const_int(struct_size, false));
+                        let align = i64_type.const_int(8, false);
+                        let gc_alloc = self.module.get_function("mesh_gc_alloc_actor")
+                            .ok_or("mesh_gc_alloc_actor not found")?;
+                        let heap_ptr = self.builder
+                            .build_call(gc_alloc, &[size.into(), align.into()], "struct_heap")
+                            .map_err(|e| format!("{}", e))?
+                            .try_as_basic_value()
+                            .basic()
+                            .ok_or("mesh_gc_alloc_actor returned void")?
+                            .into_pointer_value();
+                        self.builder
+                            .build_store(heap_ptr, sv)
+                            .map_err(|e| format!("{}", e))?;
+                        self.builder
+                            .build_ptr_to_int(heap_ptr, i64_type, "struct_ptr_to_i64")
+                            .map_err(|e| e.to_string())?
+                    }
                 }
                 _ => return Err("Unsupported tuple element type".to_string()),
             };

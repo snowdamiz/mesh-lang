@@ -138,6 +138,7 @@ pub fn create_sum_type_layout<'ctx>(
     sum_type: &MirSumTypeDef,
     struct_types: &FxHashMap<String, StructType<'ctx>>,
     sum_type_layouts: &FxHashMap<String, StructType<'ctx>>,
+    target_data: &inkwell::targets::TargetData,
 ) -> StructType<'ctx> {
     let tag_type = context.i8_type();
     let ptr_type = context.ptr_type(inkwell::AddressSpace::default());
@@ -162,7 +163,6 @@ pub fn create_sum_type_layout<'ctx>(
     // Calculate max variant overlay size across all variants.
     // We use the full overlay type { i8 tag, field0, field1, ... } to account
     // for alignment padding between the tag and the first field.
-    let target_data = inkwell::targets::TargetData::create(""); // temp for size queries
     let max_overlay_size = sum_type
         .variants
         .iter()
@@ -287,7 +287,8 @@ mod tests {
             ],
         };
 
-        let layout = create_sum_type_layout(&context, &sum_def, &structs, &sums);
+        let td = inkwell::targets::TargetData::create("");
+        let layout = create_sum_type_layout(&context, &sum_def, &structs, &sums, &td);
         // Nullary variants: just { i8 }
         assert_eq!(layout.count_fields(), 1);
     }
@@ -314,7 +315,8 @@ mod tests {
             ],
         };
 
-        let layout = create_sum_type_layout(&context, &sum_def, &structs, &sums);
+        let td = inkwell::targets::TargetData::create("");
+        let layout = create_sum_type_layout(&context, &sum_def, &structs, &sums, &td);
         // { i8 tag, [N x i8] payload }
         assert_eq!(layout.count_fields(), 2);
     }
