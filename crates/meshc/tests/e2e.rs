@@ -3329,6 +3329,93 @@ end
     assert_eq!(output, "belongs_to:user:User\nhas_many:posts:Post\n");
 }
 
+/// __relationship_meta__() returns 5-field encoded strings with FK and target table.
+#[test]
+fn e2e_relationship_meta_has_many() {
+    let output = compile_and_run(r#"
+struct User do
+  id :: String
+  name :: String
+  has_many :posts, Post
+end deriving(Schema)
+
+struct Post do
+  id :: String
+  title :: String
+  user_id :: String
+  belongs_to :user, User
+end deriving(Schema)
+
+fn main() do
+  let meta = User.__relationship_meta__()
+  let m0 = List.get(meta, 0)
+  println(m0)
+  let post_meta = Post.__relationship_meta__()
+  let pm0 = List.get(post_meta, 0)
+  println(pm0)
+end
+"#);
+    assert_eq!(output, "has_many:posts:Post:user_id:posts\nbelongs_to:user:User:user_id:users\n");
+}
+
+/// __relationship_meta__() for has_one relationships.
+#[test]
+fn e2e_relationship_meta_has_one() {
+    let output = compile_and_run(r#"
+struct User do
+  id :: String
+  name :: String
+  has_one :profile, Profile
+end deriving(Schema)
+
+struct Profile do
+  id :: String
+  bio :: String
+  user_id :: String
+  belongs_to :user, User
+end deriving(Schema)
+
+fn main() do
+  let meta = User.__relationship_meta__()
+  let m0 = List.get(meta, 0)
+  println(m0)
+end
+"#);
+    assert_eq!(output, "has_one:profile:Profile:user_id:profiles\n");
+}
+
+/// __relationship_meta__() with multiple relationships on one struct.
+#[test]
+fn e2e_relationship_meta_multiple() {
+    let output = compile_and_run(r#"
+struct User do
+  id :: String
+  name :: String
+  has_many :posts, Post
+  has_one :profile, Profile
+end deriving(Schema)
+
+struct Post do
+  id :: String
+  title :: String
+end deriving(Schema)
+
+struct Profile do
+  id :: String
+  bio :: String
+end deriving(Schema)
+
+fn main() do
+  let meta = User.__relationship_meta__()
+  let m0 = List.get(meta, 0)
+  let m1 = List.get(meta, 1)
+  println(m0)
+  println(m1)
+end
+"#);
+    assert_eq!(output, "has_many:posts:Post:user_id:posts\nhas_one:profile:Profile:user_id:profiles\n");
+}
+
 /// deriving(Schema) works alongside other derives (Schema, Eq).
 #[test]
 fn e2e_deriving_schema_with_other_derives() {
