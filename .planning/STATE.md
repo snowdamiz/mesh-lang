@@ -10,11 +10,11 @@ See: .planning/PROJECT.md (updated 2026-02-16)
 ## Current Position
 
 Phase: 99 of 102 (Changesets)
-Plan: 0 of 2 in current phase
-Status: Ready to plan
-Last activity: 2026-02-16 -- Phase 98 verified and complete (3/3 plans, 15/15 must-haves passed)
+Plan: 1 of 2 in current phase
+Status: In progress
+Last activity: 2026-02-16 -- Completed 99-01 (Changeset struct + cast + validation pipeline)
 
-Progress: [█████░░░░░] 50% (10/20 plans)
+Progress: [█████░░░░░] 55% (11/20 plans)
 
 ## Performance Metrics
 
@@ -67,6 +67,11 @@ Progress: [█████░░░░░] 50% (10/20 plans)
 - 98-03: ORM SQL builders exposed as pub(crate) wrappers from orm.rs for cross-module reuse by repo.rs.
 - 98-03: Repo.transaction takes pool (not conn), manages full checkout/begin/callback/commit-or-rollback/checkin lifecycle.
 - 98-03: All write operations use RETURNING * -- insert/update/delete return the affected row as Map<String,String>.
+- 99-01: Changeset uses 8-slot/64-byte GC-allocated layout (data, changes, errors, valid, field_types, table, pk, action), matching Query's slot-based pattern.
+- 99-01: Validators follow clone-check-error-return pattern: each clones the changeset so all validators run without short-circuiting.
+- 99-01: First error per field wins; subsequent validators skip fields with existing errors.
+- 99-01: Typeck signatures use concrete types (Map<String,String>, List<Atom>) for user-facing params; Ptr only for opaque changeset returns.
+- 99-01: Parser allows CAST_KW after dot in field access (Changeset.cast) since cast is both a service keyword and a method name.
 
 ### Roadmap Evolution
 
@@ -95,6 +100,6 @@ Known limitations relevant to ORM development:
 ## Session Continuity
 
 Last session: 2026-02-16
-Stopped at: Phase 98 verified and complete. Ready for Phase 99.
+Stopped at: Completed 99-01-PLAN.md (Changeset struct + cast + validation pipeline)
 Resume file: None
-Next action: `/gsd:plan-phase 99` (Changesets)
+Next action: Execute 99-02-PLAN.md (Repo.insert_changeset / Repo.update_changeset integration)
