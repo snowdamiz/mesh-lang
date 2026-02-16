@@ -3160,3 +3160,108 @@ end
 "#);
     assert_eq!(output, "localhost\n8080\nlocalhost\n9090\n");
 }
+
+// ── Phase 96-04: deriving(Schema) ──────────────────────────────────────────
+
+/// deriving(Schema) __table__() returns lowercased, pluralized struct name.
+#[test]
+fn e2e_deriving_schema_table() {
+    let output = compile_and_run(r#"
+struct User do
+  id :: String
+  name :: String
+  email :: String
+end deriving(Schema)
+
+fn main() do
+  println(User.__table__())
+end
+"#);
+    assert_eq!(output, "users\n");
+}
+
+/// deriving(Schema) __primary_key__() returns "id" by default.
+#[test]
+fn e2e_deriving_schema_primary_key() {
+    let output = compile_and_run(r#"
+struct Comment do
+  id :: String
+  text :: String
+end deriving(Schema)
+
+fn main() do
+  println(Comment.__primary_key__())
+end
+"#);
+    assert_eq!(output, "id\n");
+}
+
+/// deriving(Schema) __fields__() returns list of field name strings.
+#[test]
+fn e2e_deriving_schema_fields() {
+    let output = compile_and_run(r#"
+struct Post do
+  id :: String
+  title :: String
+  body :: String
+end deriving(Schema)
+
+fn main() do
+  let fields = Post.__fields__()
+  let len = List.length(fields)
+  println("${len}")
+  let f0 = List.get(fields, 0)
+  println(f0)
+  let f1 = List.get(fields, 1)
+  println(f1)
+  let f2 = List.get(fields, 2)
+  println(f2)
+end
+"#);
+    assert_eq!(output, "3\nid\ntitle\nbody\n");
+}
+
+/// deriving(Schema) __relationships__() returns list of relationship metadata strings.
+#[test]
+fn e2e_deriving_schema_relationships() {
+    let output = compile_and_run(r#"
+struct Post do
+  id :: String
+  title :: String
+  user_id :: String
+  belongs_to :user, User
+end deriving(Schema)
+
+struct User do
+  id :: String
+  name :: String
+  has_many :posts, Post
+end deriving(Schema)
+
+fn main() do
+  let post_rels = Post.__relationships__()
+  let user_rels = User.__relationships__()
+  let pr0 = List.get(post_rels, 0)
+  println(pr0)
+  let ur0 = List.get(user_rels, 0)
+  println(ur0)
+end
+"#);
+    assert_eq!(output, "belongs_to:user:User\nhas_many:posts:Post\n");
+}
+
+/// deriving(Schema) works alongside other derives (Schema, Eq).
+#[test]
+fn e2e_deriving_schema_with_other_derives() {
+    let output = compile_and_run(r#"
+struct Item do
+  id :: String
+  name :: String
+end deriving(Schema, Eq)
+
+fn main() do
+  println(Item.__table__())
+end
+"#);
+    assert_eq!(output, "items\n");
+}

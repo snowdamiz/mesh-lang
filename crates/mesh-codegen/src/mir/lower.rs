@@ -14,8 +14,8 @@ use mesh_parser::ast::expr::{
     WhileExpr,
 };
 use mesh_parser::ast::item::{
-    ActorDef, Block, FnDef, ImplDef, InterfaceMethod, Item, LetBinding, ServiceDef, SourceFile,
-    StructDef, SumTypeDef, SupervisorDef,
+    ActorDef, Block, FnDef, ImplDef, InterfaceMethod, Item, LetBinding, RelationshipDecl,
+    ServiceDef, SourceFile, StructDef, SumTypeDef, SupervisorDef,
 };
 use mesh_parser::ast::pat::Pattern;
 use mesh_parser::ast::AstNode;
@@ -1745,6 +1745,12 @@ impl<'a> Lowerer<'a> {
             // Row: only via explicit deriving(Row), never auto-derived
             if derive_list.iter().any(|t| t == "Row") {
                 self.generate_from_row_struct(&name, &fields);
+            }
+
+            // Schema: only via explicit deriving(Schema), never auto-derived
+            if derive_list.iter().any(|t| t == "Schema") {
+                let relationships = struct_def.relationships();
+                self.generate_schema_metadata(&name, &fields, &relationships);
             }
 
             self.structs.push(MirStructDef { name, fields });
@@ -4293,6 +4299,111 @@ impl<'a> Lowerer<'a> {
         }
     }
 
+    /// Generate Schema metadata functions for a struct with `deriving(Schema)`.
+    ///
+    /// Generates four synthetic MIR functions:
+    /// - `{Name}____table__()` -> String (lowercased, pluralized struct name)
+    /// - `{Name}____fields__()` -> List<String> (field name strings)
+    /// - `{Name}____primary_key__()` -> String (default: "id")
+    /// - `{Name}____relationships__()` -> List<String> (encoded as "kind:name:target")
+    fn generate_schema_metadata(
+        &mut self,
+        name: &str,
+        fields: &[(String, MirType)],
+        relationships: &[RelationshipDecl],
+    ) {
+        // ── __table__() ──────────────────────────────────────────────
+        // Returns lowercased struct name + "s" (naive pluralization).
+        let table_name = format!("{}s", name.to_lowercase());
+        let table_fn_name = format!("{}____table__", name);
+        self.functions.push(MirFunction {
+            name: table_fn_name.clone(),
+            params: vec![],
+            return_type: MirType::String,
+            body: MirExpr::StringLit(table_name, MirType::String),
+            is_closure_fn: false,
+            captures: vec![],
+            has_tail_calls: false,
+        });
+        self.known_functions.insert(
+            table_fn_name,
+            MirType::FnPtr(vec![], Box::new(MirType::String)),
+        );
+
+        // ── __fields__() ─────────────────────────────────────────────
+        // Returns a List<String> of field names.
+        let field_elements: Vec<MirExpr> = fields
+            .iter()
+            .map(|(fname, _)| MirExpr::StringLit(fname.clone(), MirType::String))
+            .collect();
+        let fields_fn_name = format!("{}____fields__", name);
+        self.functions.push(MirFunction {
+            name: fields_fn_name.clone(),
+            params: vec![],
+            return_type: MirType::Ptr, // List<String> is Ptr at runtime
+            body: MirExpr::ListLit {
+                elements: field_elements,
+                ty: MirType::Ptr,
+            },
+            is_closure_fn: false,
+            captures: vec![],
+            has_tail_calls: false,
+        });
+        self.known_functions.insert(
+            fields_fn_name,
+            MirType::FnPtr(vec![], Box::new(MirType::Ptr)),
+        );
+
+        // ── __primary_key__() ────────────────────────────────────────
+        // Returns "id" as the default primary key.
+        let pk_fn_name = format!("{}____primary_key__", name);
+        self.functions.push(MirFunction {
+            name: pk_fn_name.clone(),
+            params: vec![],
+            return_type: MirType::String,
+            body: MirExpr::StringLit("id".to_string(), MirType::String),
+            is_closure_fn: false,
+            captures: vec![],
+            has_tail_calls: false,
+        });
+        self.known_functions.insert(
+            pk_fn_name,
+            MirType::FnPtr(vec![], Box::new(MirType::String)),
+        );
+
+        // ── __relationships__() ──────────────────────────────────────
+        // Returns a List<String> where each string is "kind:name:target".
+        let rel_elements: Vec<MirExpr> = relationships
+            .iter()
+            .filter_map(|rel| {
+                let kind = rel.kind_text()?;
+                let assoc = rel.assoc_name()?;
+                let target = rel.target_type()?;
+                Some(MirExpr::StringLit(
+                    format!("{}:{}:{}", kind, assoc, target),
+                    MirType::String,
+                ))
+            })
+            .collect();
+        let rels_fn_name = format!("{}____relationships__", name);
+        self.functions.push(MirFunction {
+            name: rels_fn_name.clone(),
+            params: vec![],
+            return_type: MirType::Ptr, // List<String> is Ptr at runtime
+            body: MirExpr::ListLit {
+                elements: rel_elements,
+                ty: MirType::Ptr,
+            },
+            is_closure_fn: false,
+            captures: vec![],
+            has_tail_calls: false,
+        });
+        self.known_functions.insert(
+            rels_fn_name,
+            MirType::FnPtr(vec![], Box::new(MirType::Ptr)),
+        );
+    }
+
     /// Emit a from_json extraction for a value of the given MIR type.
     /// Returns a MirExpr that produces a Result (Ok(value) or Err(string)).
     fn emit_from_json_for_type(&self, json_expr: MirExpr, target_ty: &MirType, _context_struct: &str) -> MirExpr {
@@ -6058,6 +6169,24 @@ impl<'a> Lowerer<'a> {
                             let unparameterized = format!("From__from__{}", base_name);
                             if let Some(fn_ty) = self.known_functions.get(&unparameterized).cloned() {
                                 return MirExpr::Var(unparameterized, fn_ty);
+                            }
+                        }
+                    }
+
+                    // Check if this is StructName.__table__/__fields__/__primary_key__/__relationships__
+                    // (Schema metadata functions from deriving(Schema)).
+                    // Mangled name: {Name}____{method} e.g. User____table__
+                    if self.registry.struct_defs.contains_key(&base_name) {
+                        let field = fa
+                            .field()
+                            .map(|t| t.text().to_string())
+                            .unwrap_or_default();
+                        if field == "__table__" || field == "__fields__"
+                            || field == "__primary_key__" || field == "__relationships__"
+                        {
+                            let fn_name = format!("{}__{}", base_name, field);
+                            if let Some(fn_ty) = self.known_functions.get(&fn_name).cloned() {
+                                return MirExpr::Var(fn_name, fn_ty);
                             }
                         }
                     }
