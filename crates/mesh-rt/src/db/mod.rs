@@ -2,5 +2,6 @@ pub mod orm;
 pub mod pg;
 pub mod pool;
 pub mod query;
+pub mod repo;
 pub mod row;
 pub mod sqlite;

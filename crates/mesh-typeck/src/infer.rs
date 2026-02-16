@@ -1117,6 +1117,44 @@ fn stdlib_modules() -> HashMap<String, HashMap<String, Scheme>> {
         modules.insert("Query".to_string(), query_mod);
     }
 
+    // ── Repo module (Phase 98) ──────────────────────────────────────
+    {
+        let ptr_t = Ty::Con(TyCon::new("Ptr"));
+        let pool_t = Ty::Con(TyCon::new("PoolHandle"));
+        let mut repo_mod = HashMap::new();
+        // Repo.all(PoolHandle, Ptr) -> Ptr  (pool, query -> Result<List<Map<String,String>>, String>)
+        repo_mod.insert("all".to_string(), Scheme::mono(Ty::fun(
+            vec![pool_t.clone(), ptr_t.clone()],
+            ptr_t.clone(),
+        )));
+        // Repo.one(PoolHandle, Ptr) -> Ptr  (pool, query -> Result<Map<String,String>, String>)
+        repo_mod.insert("one".to_string(), Scheme::mono(Ty::fun(
+            vec![pool_t.clone(), ptr_t.clone()],
+            ptr_t.clone(),
+        )));
+        // Repo.get(PoolHandle, String, String) -> Ptr  (pool, table, id -> Result<Map<String,String>, String>)
+        repo_mod.insert("get".to_string(), Scheme::mono(Ty::fun(
+            vec![pool_t.clone(), Ty::string(), Ty::string()],
+            ptr_t.clone(),
+        )));
+        // Repo.get_by(PoolHandle, String, String, String) -> Ptr  (pool, table, field, value -> Result<Map<String,String>, String>)
+        repo_mod.insert("get_by".to_string(), Scheme::mono(Ty::fun(
+            vec![pool_t.clone(), Ty::string(), Ty::string(), Ty::string()],
+            ptr_t.clone(),
+        )));
+        // Repo.count(PoolHandle, Ptr) -> Ptr  (pool, query -> Result<Int, String>)
+        repo_mod.insert("count".to_string(), Scheme::mono(Ty::fun(
+            vec![pool_t.clone(), ptr_t.clone()],
+            ptr_t.clone(),
+        )));
+        // Repo.exists(PoolHandle, Ptr) -> Ptr  (pool, query -> Result<Bool, String>)
+        repo_mod.insert("exists".to_string(), Scheme::mono(Ty::fun(
+            vec![pool_t.clone(), ptr_t.clone()],
+            ptr_t.clone(),
+        )));
+        modules.insert("Repo".to_string(), repo_mod);
+    }
+
     modules
 }
 
@@ -1130,6 +1168,7 @@ const STDLIB_MODULE_NAMES: &[&str] = &[
     "Ws",  // Phase 88
     "Orm",  // Phase 97
     "Query",  // Phase 98
+    "Repo",  // Phase 98
 ];
 
 /// Check if a name is a known stdlib module.

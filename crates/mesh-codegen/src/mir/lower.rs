@@ -875,6 +875,19 @@ impl<'a> Lowerer<'a> {
         self.known_functions.insert("mesh_query_having".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
         // mesh_query_fragment(q: ptr, sql: ptr, params: ptr) -> ptr
         self.known_functions.insert("mesh_query_fragment".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
+        // ── Phase 98: Repo Read Operations ───────────────────────────────
+        // mesh_repo_all(pool: i64, query: ptr) -> ptr
+        self.known_functions.insert("mesh_repo_all".to_string(), MirType::FnPtr(vec![MirType::Int, MirType::Ptr], Box::new(MirType::Ptr)));
+        // mesh_repo_one(pool: i64, query: ptr) -> ptr
+        self.known_functions.insert("mesh_repo_one".to_string(), MirType::FnPtr(vec![MirType::Int, MirType::Ptr], Box::new(MirType::Ptr)));
+        // mesh_repo_get(pool: i64, table: ptr, id: ptr) -> ptr
+        self.known_functions.insert("mesh_repo_get".to_string(), MirType::FnPtr(vec![MirType::Int, MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
+        // mesh_repo_get_by(pool: i64, table: ptr, field: ptr, value: ptr) -> ptr
+        self.known_functions.insert("mesh_repo_get_by".to_string(), MirType::FnPtr(vec![MirType::Int, MirType::Ptr, MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
+        // mesh_repo_count(pool: i64, query: ptr) -> ptr
+        self.known_functions.insert("mesh_repo_count".to_string(), MirType::FnPtr(vec![MirType::Int, MirType::Ptr], Box::new(MirType::Ptr)));
+        // mesh_repo_exists(pool: i64, query: ptr) -> ptr
+        self.known_functions.insert("mesh_repo_exists".to_string(), MirType::FnPtr(vec![MirType::Int, MirType::Ptr], Box::new(MirType::Ptr)));
         // ── Job functions (Phase 9 Plan 04) ──────────────────────────────
         // mesh_job_async takes (fn_ptr, env_ptr) -> i64 (PID)
         // But the closure splitting at codegen will expand the closure arg into (fn_ptr, env_ptr)
@@ -10089,6 +10102,7 @@ const STDLIB_MODULES: &[&str] = &[
     "Iter",  // Phase 76
     "Orm",  // Phase 97
     "Query",  // Phase 98
+    "Repo",  // Phase 98
 ];
 
 /// Map Mesh builtin function names to their runtime equivalents.
@@ -10327,6 +10341,13 @@ fn map_builtin_name(name: &str) -> String {
         "query_group_by" => "mesh_query_group_by".to_string(),
         "query_having" => "mesh_query_having".to_string(),
         "query_fragment" => "mesh_query_fragment".to_string(),
+        // ── Phase 98: Repo Read Operations ──────────────────────────────
+        "repo_all" => "mesh_repo_all".to_string(),
+        "repo_one" => "mesh_repo_one".to_string(),
+        "repo_get" => "mesh_repo_get".to_string(),
+        "repo_get_by" => "mesh_repo_get_by".to_string(),
+        "repo_count" => "mesh_repo_count".to_string(),
+        "repo_exists" => "mesh_repo_exists".to_string(),
         // NOTE: No bare name mappings for HTTP/Request (router, route, get,
         // post, method, path, body, etc.) because they collide with common
         // variable names. Use module-qualified access instead:

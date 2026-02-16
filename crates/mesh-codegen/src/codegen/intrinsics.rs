@@ -984,6 +984,38 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
         ptr_type.fn_type(&[ptr_type.into(), ptr_type.into(), ptr_type.into()], false),
         Some(inkwell::module::Linkage::External));
 
+    // ── Phase 98: Repo Read Operations ───────────────────────────────
+
+    // mesh_repo_all(pool: i64, query: ptr) -> ptr
+    module.add_function("mesh_repo_all",
+        ptr_type.fn_type(&[i64_type.into(), ptr_type.into()], false),
+        Some(inkwell::module::Linkage::External));
+
+    // mesh_repo_one(pool: i64, query: ptr) -> ptr
+    module.add_function("mesh_repo_one",
+        ptr_type.fn_type(&[i64_type.into(), ptr_type.into()], false),
+        Some(inkwell::module::Linkage::External));
+
+    // mesh_repo_get(pool: i64, table: ptr, id: ptr) -> ptr
+    module.add_function("mesh_repo_get",
+        ptr_type.fn_type(&[i64_type.into(), ptr_type.into(), ptr_type.into()], false),
+        Some(inkwell::module::Linkage::External));
+
+    // mesh_repo_get_by(pool: i64, table: ptr, field: ptr, value: ptr) -> ptr
+    module.add_function("mesh_repo_get_by",
+        ptr_type.fn_type(&[i64_type.into(), ptr_type.into(), ptr_type.into(), ptr_type.into()], false),
+        Some(inkwell::module::Linkage::External));
+
+    // mesh_repo_count(pool: i64, query: ptr) -> ptr
+    module.add_function("mesh_repo_count",
+        ptr_type.fn_type(&[i64_type.into(), ptr_type.into()], false),
+        Some(inkwell::module::Linkage::External));
+
+    // mesh_repo_exists(pool: i64, query: ptr) -> ptr
+    module.add_function("mesh_repo_exists",
+        ptr_type.fn_type(&[i64_type.into(), ptr_type.into()], false),
+        Some(inkwell::module::Linkage::External));
+
     // ── Phase 68: Global Registry ──────────────────────────────────────
 
     // mesh_global_register(name_ptr: ptr, name_len: i64, pid: i64) -> i64

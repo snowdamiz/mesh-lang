@@ -58,6 +58,10 @@ pub use db::query::{
     mesh_query_limit, mesh_query_offset, mesh_query_join, mesh_query_group_by,
     mesh_query_having, mesh_query_fragment,
 };
+pub use db::repo::{
+    mesh_repo_all, mesh_repo_one, mesh_repo_get, mesh_repo_get_by,
+    mesh_repo_count, mesh_repo_exists,
+};
 pub use db::pg::{
     mesh_pg_connect, mesh_pg_close, mesh_pg_execute, mesh_pg_query,
 };

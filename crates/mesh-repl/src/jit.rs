@@ -282,6 +282,14 @@ fn register_runtime_symbols() {
     add_sym("mesh_query_having", mesh_rt::mesh_query_having as *const ());
     add_sym("mesh_query_fragment", mesh_rt::mesh_query_fragment as *const ());
 
+    // Repo Read Operations (Phase 98)
+    add_sym("mesh_repo_all", mesh_rt::mesh_repo_all as *const ());
+    add_sym("mesh_repo_one", mesh_rt::mesh_repo_one as *const ());
+    add_sym("mesh_repo_get", mesh_rt::mesh_repo_get as *const ());
+    add_sym("mesh_repo_get_by", mesh_rt::mesh_repo_get_by as *const ());
+    add_sym("mesh_repo_count", mesh_rt::mesh_repo_count as *const ());
+    add_sym("mesh_repo_exists", mesh_rt::mesh_repo_exists as *const ());
+
     // HTTP
     add_sym("mesh_http_get", mesh_rt::mesh_http_get as *const ());
     add_sym("mesh_http_post", mesh_rt::mesh_http_post as *const ());
