@@ -1790,4 +1790,51 @@ mod tests {
         let result = map_constraint_error("42601", "", "", "");
         assert_eq!(result, None);
     }
+
+    // ── Preload unit tests (Phase 100) ──────────────────────────────────
+
+    #[test]
+    fn test_parse_relationship_meta() {
+        let meta = vec![
+            "has_many:posts:Post:user_id:posts".to_string(),
+            "has_one:profile:Profile:user_id:profiles".to_string(),
+            "belongs_to:user:User:user_id:users".to_string(),
+        ];
+        let map = parse_relationship_meta(&meta);
+        assert_eq!(map.len(), 3);
+        let posts = map.get("posts").unwrap();
+        assert_eq!(posts.kind, "has_many");
+        assert_eq!(posts.fk, "user_id");
+        assert_eq!(posts.target_table, "posts");
+        let profile = map.get("profile").unwrap();
+        assert_eq!(profile.kind, "has_one");
+        let user = map.get("user").unwrap();
+        assert_eq!(user.kind, "belongs_to");
+        assert_eq!(user.fk, "user_id");
+        assert_eq!(user.target_table, "users");
+    }
+
+    #[test]
+    fn test_build_preload_sql_basic() {
+        let ids = vec!["1".to_string(), "2".to_string(), "3".to_string()];
+        let (sql, params) = build_preload_sql("posts", "user_id", &ids);
+        assert_eq!(sql, "SELECT * FROM \"posts\" WHERE \"user_id\" IN ($1, $2, $3)");
+        assert_eq!(params, vec!["1", "2", "3"]);
+    }
+
+    #[test]
+    fn test_build_preload_sql_single_id() {
+        let ids = vec!["42".to_string()];
+        let (sql, params) = build_preload_sql("users", "id", &ids);
+        assert_eq!(sql, "SELECT * FROM \"users\" WHERE \"id\" IN ($1)");
+        assert_eq!(params, vec!["42"]);
+    }
+
+    #[test]
+    fn test_build_preload_sql_empty() {
+        let ids: Vec<String> = vec![];
+        let (sql, params) = build_preload_sql("posts", "user_id", &ids);
+        assert_eq!(sql, "SELECT * FROM \"posts\"");
+        assert!(params.is_empty());
+    }
 }

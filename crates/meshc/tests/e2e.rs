@@ -4275,3 +4275,71 @@ end
 "#);
     assert_eq!(output, "can't be blank\nhas invalid format\n");
 }
+
+// ── Phase 100: Repo.preload E2E Tests ────────────────────────────────
+
+/// Repo.preload compiles with correct type signature (4 params: pool, rows, assocs, meta).
+#[test]
+fn e2e_repo_preload_type_check() {
+    let output = compile_and_run(r#"
+struct User do
+  id :: String
+  name :: String
+  has_many :posts, Post
+end deriving(Schema)
+
+struct Post do
+  id :: String
+  title :: String
+  user_id :: String
+  belongs_to :user, User
+end deriving(Schema)
+
+fn main() do
+  let meta = User.__relationship_meta__()
+  let m0 = List.get(meta, 0)
+  println(m0)
+  println("preload_types_ok")
+end
+"#);
+    assert_eq!(output, "has_many:posts:Post:user_id:posts\npreload_types_ok\n");
+}
+
+/// Repo.preload with merged metadata for nested preloading compiles correctly.
+#[test]
+fn e2e_repo_preload_merged_meta() {
+    let output = compile_and_run(r#"
+struct User do
+  id :: String
+  name :: String
+  has_many :posts, Post
+end deriving(Schema)
+
+struct Post do
+  id :: String
+  title :: String
+  user_id :: String
+  belongs_to :user, User
+  has_many :comments, Comment
+end deriving(Schema)
+
+struct Comment do
+  id :: String
+  body :: String
+  post_id :: String
+  belongs_to :post, Post
+end deriving(Schema)
+
+fn main() do
+  let user_meta = User.__relationship_meta__()
+  let post_meta = Post.__relationship_meta__()
+  let um = List.get(user_meta, 0)
+  let pm0 = List.get(post_meta, 0)
+  let pm1 = List.get(post_meta, 1)
+  println(um)
+  println(pm0)
+  println(pm1)
+end
+"#);
+    assert_eq!(output, "has_many:posts:Post:user_id:posts\nbelongs_to:user:User:user_id:users\nhas_many:comments:Comment:post_id:comments\n");
+}
