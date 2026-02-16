@@ -11,6 +11,7 @@ end deriving(Json)
 # Database Row struct for issues. Status stored as text in DB,
 # parsed to IssueStatus via from_json when needed.
 pub struct Issue do
+  table "issues"
   id :: String
   project_id :: String
   fingerprint :: String
@@ -21,4 +22,6 @@ pub struct Issue do
   first_seen :: String
   last_seen :: String
   assigned_to :: String
-end deriving(Json, Row)
+  belongs_to :project, Project
+  has_many :events, Event
+end deriving(Schema, Json, Row)

@@ -42,6 +42,7 @@ end deriving(Json)
 # stacktrace, breadcrumbs, tags, extra, user_context) arrive as JSON strings
 # that must be parsed with from_json() in a separate step.
 pub struct Event do
+  table "events"
   id :: String
   project_id :: String
   issue_id :: String
@@ -57,7 +58,9 @@ pub struct Event do
   sdk_name :: String
   sdk_version :: String
   received_at :: String
-end deriving(Json, Row)
+  belongs_to :project, Project
+  belongs_to :issue, Issue
+end deriving(Schema, Json, Row)
 
 # Typed payload struct for JSON deserialization of incoming events.
 # Uses proper types for structured fields -- not a Row struct.
