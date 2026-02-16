@@ -273,12 +273,12 @@ Plans:
   3. Running `meshc migrate down` rolls back the last applied migration; `meshc migrate status` shows applied vs pending
   4. Running `meshc migrate generate <name>` creates a timestamped scaffold file with empty up/down function stubs
   5. Migration documentation follows expand-migrate-contract philosophy: additive changes first, destructive changes only after code deployment
-**Plans**: TBD
+**Plans**: 3 plans
 
 Plans:
-- [ ] 101-01: Migration DSL (create_table, alter_table, drop_table, create_index, drop_index) and file format
-- [ ] 101-02: Migration runner (discover, sort, apply, rollback, tracking table) and meshc CLI integration
-- [ ] 101-03: Migration scaffold generation (meshc migrate generate) and expand-migrate-contract documentation
+- [ ] 101-01-PLAN.md -- Migration DSL runtime functions (create_table, drop_table, add_column, drop_column, rename_column, create_index, drop_index, execute) + compiler pipeline registration
+- [ ] 101-02-PLAN.md -- Migration runner + tracking table + meshc migrate CLI (up, down, status)
+- [ ] 101-03-PLAN.md -- Scaffold generation (meshc migrate generate) + e2e tests
 
 ### Phase 102: Mesher Rewrite
 **Goal**: Mesher's entire database layer is rewritten using the ORM, validating that every ORM feature works correctly in a real application with 11 schema types, complex filtered queries, and multi-table relationships
