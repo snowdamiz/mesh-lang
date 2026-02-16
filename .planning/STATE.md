@@ -10,11 +10,11 @@ See: .planning/PROJECT.md (updated 2026-02-16)
 ## Current Position
 
 Phase: 102 of 102 (Mesher Rewrite)
-Plan: 2 of 3 in current phase
-Status: Plan 102-02 complete
-Last activity: 2026-02-16 -- Plan 102-02 complete (CRUD query conversion to ORM)
+Plan: 3 of 3 in current phase
+Status: Phase 102 complete -- v10.0 ORM milestone finished
+Last activity: 2026-02-16 -- Plan 102-03 complete (Service module delegation and end-to-end verification)
 
-Progress: [█████████░] 95% (19/20 plans)
+Progress: [██████████] 100% (20/20 plans)
 
 ## Performance Metrics
 
@@ -98,6 +98,9 @@ Progress: [█████████░] 95% (19/20 plans)
 - 102-02: Cross-module Schema metadata requires both trait impl registration during deriving(Schema) and env re-registration during struct import.
 - 102-02: Repo.delete returns Map (RETURNING *) not Int; wrapper returns Ok(1) to preserve Int!String signature.
 - 102-02: ORM conversions only for simple CRUD; raw SQL kept for PG functions, JOINs, casts, conditional updates, analytics.
+- 102-03: JSONB utility Pool.query calls preserved in 5 non-storage files (they parse JSON parameters, not query tables).
+- 102-03: writer.mpl insert_event preserved as raw Pool.execute (JSONB extraction INSERT not expressible in ORM).
+- 102-03: New helper functions (count_unresolved_issues, get_issue_project_id) in queries.mpl centralize table-query SQL.
 
 ### Roadmap Evolution
 
@@ -126,6 +129,6 @@ Known limitations relevant to ORM development:
 ## Session Continuity
 
 Last session: 2026-02-16
-Stopped at: Completed 102-02-PLAN.md (CRUD query conversion to ORM)
+Stopped at: Completed 102-03-PLAN.md (Service module delegation and end-to-end verification)
 Resume file: None
-Next action: Execute 102-03-PLAN.md (Mesher Rewrite -- final plan)
+Next action: v10.0 ORM milestone complete. All 7 phases (96-102) delivered.
