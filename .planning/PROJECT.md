@@ -4,33 +4,26 @@
 
 Mesh is a programming language that combines Elixir/Ruby-style expressive syntax with static Hindley-Milner type inference and BEAM-style concurrency (actors, supervision trees, fault tolerance), compiled via LLVM to native single-binary executables. The compiler is written in Rust. v1.0-v1.9 built a complete language: compiler pipeline, actor runtime, trait system, module system, loops, stdlib, and developer tooling. v2.0 added database drivers and JSON serde. v3.0 made Mesh production-ready: TLS encryption for PostgreSQL and HTTPS, connection pooling with health checks, panic-safe database transactions, and automatic struct-to-row mapping via `deriving(Row)`. v4.0 added WebSocket support with RFC 6455 protocol, actor-per-connection model, TLS (wss://), heartbeat, fragmentation, and rooms/channels. v5.0 added distributed actors: location-transparent PIDs, TLS-encrypted inter-node connections with cookie auth and mesh formation, transparent remote send, remote process/node monitoring with fault propagation, remote spawn via function name registry, global process registry, and cross-node WebSocket rooms and supervision trees -- all with zero new crate dependencies. v6.0 added a documentation website with VitePress, custom syntax highlighting, 9 documentation guides, landing page, and production-quality site features. v7.0 added associated types to the trait system and built a comprehensive trait-based protocol ecosystem: lazy iterators with pipe-style composition, From/Into conversion, numeric traits for user-extensible arithmetic, and Collect for iterator materialization. v8.0 made Mesh installable and editable: one-command install scripts with prebuilt binaries, complete TextMate grammar and Shiki themes, LSP code completion/signature help/formatting/document symbols, VS Code Marketplace publishing, and documentation corrections. ~99K LOC Rust + ~5K LOC website across 18 milestones. Zero known compiler correctness issues.
 
-## Current Milestone: v9.0 Mesher
+## Current Milestone: v10.0 ORM
 
-**Goal:** Build a full monitoring/observability SaaS platform ("Mesher") using Mesh for the entire backend, dogfooding every language feature under high-concurrency, high-throughput conditions to stress-test the compiler, runtime, and actor system.
+**Goal:** Build a full ORM library in Mesh targeting PostgreSQL — schema DSL for model definition, pipe-chain query builder, full relationship support (belongs_to, has_many, has_one, many-to-many), migration tooling, and whatever compiler additions are needed to make the ORM expressive and type-safe. Validated by rewriting Mesher's entire DB layer to use the ORM.
 
 **Target features:**
-- High-volume log/error ingestion over HTTP and WebSocket (actor-per-connection)
-- Event processing pipeline with actor supervision trees and crash recovery
-- PostgreSQL storage with connection pooling, transactions, deriving(Row)/deriving(Json)
-- Real-time WebSocket streaming to dashboards with room-based filtering
-- Error grouping and fingerprinting using pattern matching and sum types
-- Rule-based alerting with timer-driven evaluation
-- Multi-node clustering via distributed actors (global registry, remote spawn, cross-node broadcast)
-- Separate Vue frontend in same monorepo
-- TLS everywhere (HTTPS API, wss:// streaming, encrypted PG connections)
-
-**Stress-test goals:**
-- Thousands of concurrent ingestion actors exercising scheduler fairness and GC
-- High database write throughput with pooled connections
-- Cross-node event routing and WebSocket room broadcasts
-- Complex type hierarchies (generics, sum types, traits, iterators) for compiler correctness
-- Every Mesh feature exercised in production-like conditions
+- Schema DSL for model definition (schema Users do field :name, String end)
+- Pipe-chain query builder (User |> where(name: "Alice") |> Repo.all())
+- Full relationships: belongs_to, has_many, has_one, many-to-many with join tables
+- Eager loading / preloading with nested relationship support
+- Migration tooling: generate migration files from schema changes, up/down, tracking
+- Repo pattern for database operations (insert, update, delete, all, get, get_by)
+- Changesets for validation and casting before persistence
+- Compiler additions as needed (new derive macros, DSL syntax, keyword args, etc.)
+- Rewrite Mesher's DB layer as validation
 
 ## Current State
 
-Shipped v8.0 Developer Tooling (2026-02-14). 18 milestones complete, 86 phases, 240 plans. 10 days from project start to full developer tooling. Starting v9.0 Mesher -- dogfooding Mesh with a real SaaS application.
+Shipped v9.0 Mesher (2026-02-15). 19 milestones complete, 101 phases, 280 plans. 11 days from project start to full SaaS application. Starting v10.0 ORM -- building a production-quality ORM library in Mesh.
 
-**Latest milestone (v8.0):** Complete TextMate grammar and Shiki themes for all Mesh syntax. GitHub Actions 6-target CI pipeline with LLVM static linking. POSIX/PowerShell install scripts with platform detection and SHA-256 verification. LSP code completion (keywords, types, snippets, scope-aware names), signature help with parameter tracking, document symbols, and formatting. VS Code extension published to Marketplace and Open VSX. REPL JIT updated with 80+ v7.0 runtime symbols. Documentation corrections across website. 42/42 requirements satisfied.
+**Latest milestone (v9.0):** Full monitoring/observability SaaS platform dogfooding every Mesh feature. 4020 lines of Mesh across ingestion, processing, storage, streaming, alerting, clustering, and React frontend. 95 phases, 280 plans. Stress-tested compiler, runtime, and actor system under production-like conditions.
 
 ## Core Value
 
@@ -183,15 +176,15 @@ Expressive, readable concurrency -- writing concurrent programs should feel as n
 
 ### Active
 
-- [ ] Mesher: Log/error ingestion API with high-concurrency actor-per-connection model
-- [ ] Mesher: Event processing pipeline with supervision trees and crash recovery
-- [ ] Mesher: PostgreSQL storage with pooling, transactions, Row/Json deriving
-- [ ] Mesher: Real-time WebSocket streaming with room-based filtering
-- [ ] Mesher: Error grouping, fingerprinting, and search
-- [ ] Mesher: Rule-based alerting with timer-driven evaluation
-- [ ] Mesher: Multi-node clustering with distributed actors
-- [ ] Mesher: Vue frontend with dashboards, log viewer, and alert management
-- [ ] Mesher: TLS across all endpoints (HTTPS, wss://, PG)
+- [ ] ORM: Schema DSL for model definition with field types and options
+- [ ] ORM: Pipe-chain query builder with where, order_by, limit, offset, select, join
+- [ ] ORM: Full relationships (belongs_to, has_many, has_one, many-to-many)
+- [ ] ORM: Eager loading / preloading with nested relationship support
+- [ ] ORM: Migration tooling (generate, run up/down, track applied)
+- [ ] ORM: Repo pattern (insert, update, delete, all, get, get_by)
+- [ ] ORM: Changesets for validation and casting
+- [ ] ORM: Compiler additions for ORM expressiveness (DSL syntax, derive macros, etc.)
+- [ ] ORM: Rewrite Mesher DB layer using ORM as validation
 
 ### Out of Scope
 
@@ -397,4 +390,4 @@ Tech debt (minor, pre-existing):
 | Dynamic version badge via useData().theme | DocsVersionBadge.vue pattern avoids hardcoded version strings | ✓ Good -- v8.0, maintenance-free |
 
 ---
-*Last updated: 2026-02-14 after v9.0 Mesher milestone started*
+*Last updated: 2026-02-16 after v10.0 ORM milestone started*

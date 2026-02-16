@@ -2,19 +2,17 @@
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-02-14)
+See: .planning/PROJECT.md (updated 2026-02-16)
 
 **Core value:** Expressive, readable concurrency -- writing concurrent programs should feel as natural and clean as writing sequential code, with the safety net of supervision and fault tolerance built into the language.
-**Current focus:** v9.0 Mesher -- MILESTONE COMPLETE
+**Current focus:** v10.0 ORM
 
 ## Current Position
 
-Phase: 95 of 95 (React Frontend) -- COMPLETE
-Plan: 7 of 7 in current phase -- COMPLETE
-Status: Phase 95 verified and shipped. v9.0 Mesher milestone complete.
-Last activity: 2026-02-15 - React frontend complete (7 plans: scaffold, dashboard, issues/events, detail panels, live stream, alerts/settings, integration)
-
-Progress: [##############################] 100% overall (280/280 plans shipped)
+Phase: Not started (defining requirements)
+Plan: —
+Status: Defining requirements
+Last activity: 2026-02-16 — Milestone v10.0 started
 
 ## Performance Metrics
 
@@ -24,144 +22,18 @@ Progress: [##############################] 100% overall (280/280 plans shipped)
 - Milestones shipped: 19 (v1.0-v9.0)
 - Lines of Rust: ~98,800
 - Lines of website: ~5,500
-- Lines of Mesh: ~4020 (first Mesh application code, refactored into modules, ingestion pipeline wired with health monitoring, error grouping pipeline, issue lifecycle API, streaming state management, backpressure buffer drain, subscription protocol and event broadcasting, search/filter/pagination REST API, dashboard aggregation and event detail endpoints, team membership and API token management, refactored with shared helpers, pipe-chained router and data transforms, alerting data foundation, alert evaluation engine, alert HTTP API routes, retention data foundation, settings API and ingestion sampling, forward-reference fixes for clean compilation, actor spawn ABI fix, distributed node startup and global service registration, cross-node service discovery via get_registry, load monitoring and remote processor spawning, Node.spawn and Node.monitor gap closure)
+- Lines of Mesh: ~4020
 - Timeline: 11 days (2026-02-05 -> 2026-02-15)
 
 ## Accumulated Context
 
 ### Decisions
 
-Cleared at milestone boundary. v8.0 decisions archived in PROJECT.md.
-
-- [87-01] Row structs use all-String fields for DB text protocol; JSONB parsed with from_json() separately
-- [87-01] Recursive helper functions for iteration (Mesh has no mutable variable assignment)
-- [87-01] UUID columns cast to ::text in SELECT for deriving(Row) compatibility
-- [87-01] User struct excludes password_hash -- never exposed to application code
-- [87-01] Flat org -> project hierarchy with org_memberships for roles
-- [87-02] ~~All services in main.mpl -- cross-module service export not supported in Mesh~~ FIXED in 87.1-02
-- [87-02] Explicit case matching instead of ? operator -- LLVM codegen bug with ? in Result functions
-- [87-02] JSON string buffer for StorageWriter -- ~~polymorphic type variables can't cross module boundaries~~ FIXED in 87.1-02 (normalized TyVar export)
-- [87-02] Timer actor pattern (recursive sleep + cast) for periodic flush -- Timer.send_after incompatible with service dispatch
-- [87.1-01] Entry-block alloca placement in codegen_leaf matches existing codegen_guard pattern
-- [87.1-01] Re-store to existing alloca when same variable name reused across case expressions
-- [87.1-01] Defensive ptr-to-struct load in codegen_return even though current code returns struct values
-- [87.1-02] Normalize TyVar IDs to sequential 0-based in exported Schemes for cross-module safety
-- [87.1-02] Services exported by default (no pub prefix) since grammar lacks pub service syntax
-- [87.1-02] Check service_modules before user_modules in MIR field access for generated function names
-- [87.2-01] Service module convention: services/X.mpl -> from Services.X import XService
-- [87.2-01] Service modules only depend on Storage.Queries and Types.*, never on each other
-- [87.2-02] Co-locate flush_ticker actor with StorageWriter to avoid untested cross-module actor-to-service references
-- [87.2-02] Apply ? operator only in flush_loop; keep explicit case in retry functions where Err branch calls retry logic
-- [88-01] Headers field added as third field in MeshHttpResponse (after status, body) -- backward compatible with null default
-- [88-01] Direct MeshMap entries array iteration (offset 16, [u64;2] per entry) for header extraction -- avoids mesh_map_to_list allocation
-- [88-02] Map.get returns 0 for missing keys -- correct default for Int counter tracking in RateLimiter
-- [88-02] EventProcessor delegates validation to caller due to cross-module from_json not resolving for imported types
-- [88-02] Service call handlers use inferred return types; explicit :: Result annotation causes type check failure
-- [88-02] Mesh parser single-expression case arms: extract multi-line logic into helper functions
-- [88-03] PipelineRegistry service pattern for HTTP handler context -- closures not supported in HTTP routing
-- [88-03] MeshString-based Process.register/whereis runtime functions for compiler-generated string args
-- [88-03] SEND_KW added to parser field access for Ws.send module-qualified access
-- [88-03] ~~Ws.serve deferred -- type inference cascade with callback signatures needs investigation~~ FIXED in 88-04
-- [88-04] FnPtr splitting: bare function refs to runtime intrinsics emit (fn_ptr, null_env_ptr) pairs
-- [88-04] Non-blocking mesh_ws_serve: OS thread for accept loop (Mesh spawn expects Pid return, incompatible with void server loops)
-- [88-04] Cross-module callback wrappers isolate type inference when passing imported functions to Ws.serve
-- [88-04] ws_write returns nil (Unit) to satisfy Ws.serve on_message fn(Int,String)->() signature
-- [88-04] Map.has_key instead of Map.get==0 for header checks (avoids String==Int type mismatch under Ws.serve unification)
-- [88-05] Timer.sleep + recursive call for health_checker actor -- established pattern per 87-02, Timer.send_after incompatible with typed dispatch
-- [88-05] PipelineRegistry.get_pool as liveness probe -- service call success implies all services responsive
-- [88-05] Pid liveness comparison deferred -- Process.whereis returns Pid type, Pid > 0 comparison needs future Pid.to_int support
-- [88-06] HTTP.response_with_headers requires entries in builtins.rs, stdlib_modules() in infer.rs, AND intrinsics.rs for full compiler pipeline support
-- [88-06] Bulk payload routed as single JSON string to EventProcessor (Json.array_get not exposed in Mesh for per-element parsing)
-- [89-01] SQL-based fingerprint computation (extract_event_fields) instead of Mesh-level parsing to avoid cross-module from_json limitation
-- [89-01] Triple-pipe delimiter (|||) for enriched event entries -- safe separator never appearing in JSON or UUIDs
-- [89-01] issue_id and fingerprint passed as separate SQL params to insert_event (avoids JSON field injection in Mesh)
-- [89-01] Mesh fingerprint module (Ingestion.Fingerprint) kept as reference; runtime path uses PostgreSQL SQL approach
-- [89-02] POST routes for all issue state transitions instead of PUT/DELETE -- avoids untested HTTP method support
-- [89-02] Default to 'unresolved' status filter for list endpoint -- Mesh lacks query string parsing
-- [89-02] PostgreSQL jsonb extraction for assign request body parsing -- consistent with SQL-based field extraction
-- [89-02] Extracted log_spike_result helper for single-expression case arm constraint in spike_checker actor
-- [90-01] Map.delete for map entry removal (Map.remove not in runtime); Map.has_key extracted to let bindings before if conditions (parser limitation)
-- [90-01] both_match helper for AND logic instead of && operator (LLVM PHI node codegen issue in nested if blocks)
-- [90-01] Connection handle typed as Int at Mesh level consistent with Ws.send pattern (pointer cast to i64)
-- [90-03] Helper functions ordered bottom-up (leaf first) for Mesh define-before-use requirement in cross-referencing chains
-- [90-03] Cast handler if/else guard logic extracted to helper functions (parser limitation with branching in cast bodies)
-- [90-03] 250ms drain ticker interval for responsive WS buffer flushing (cheaper than DB writes, shorter than flush_ticker)
-- [90-02] Broadcast after process_event returns (in route handler), not inside EventProcessor service actor (avoids I/O bottleneck on single-threaded actor)
-- [90-02] Success helper per action (resolve_success, archive_success, etc.) for single-expression case arm constraint in issue state transition handlers
-- [90-02] stream_drain_ticker defined in pipeline.mpl (actors cannot be imported across modules in Mesh)
-- [90-02] ModuleGraph::add_dependency rejects self-dependencies and duplicates (fixes circular dependency from 90-01/90-03 imports)
-- [91-01] Search queries return raw Map rows (not typed structs) for flexible JSON serialization without cross-module issues
-- [91-01] Inline to_tsvector in WHERE clause (not stored column) avoids partition complications on events table
-- [91-01] Tag JSON constructed from key/value params in handler (not raw user JSON) prevents JSONB injection
-- [91-02] JSONB fields (exception, stacktrace, breadcrumbs, tags, extra, user_context) embedded raw in JSON response without double-quoting
-- [91-02] Two-query pattern in event detail handler: detail then neighbors, combined via helper functions for case arm constraint
-- [91-02] Null neighbor IDs formatted as JSON null (not empty string) for clean API contract
-- [91-02] Health summary returns numeric values without string quoting for direct consumption
-- [91-03] PostgreSQL jsonb extraction (COALESCE($1::jsonb->>$2, '')) for request body field parsing, consistent with routes.mpl pattern
-- [91-03] SQL-side role validation (AND $2 IN ('owner','admin','member')) ensures only valid roles at database level
-- [91-03] API key revoked_at formatted as JSON null for nullable timestamps in API responses
-- [91-03] extract_json_field reusable helper for PostgreSQL-based JSON body field extraction
-- [91.1-01] Cross-module import of query_or_default with inferred request type works without explicit annotation (TyVar normalization from 87.1-02)
-- [91.1-01] Json.encode(issue) includes project_id and fingerprint fields not in manual version -- backward compatible (additive)
-- [91.1-01] Shared helper module pattern: from Api.Helpers import query_or_default, to_json_array
-- [91.1-02] Multi-line pipe chains require parentheses (Mesh parser treats newlines as statement terminators at zero delimiter depth)
-- [91.1-02] Comments between pipe steps break parsing -- must be removed or placed on same line
-- [91.1-02] Router pipe chain inlined into HTTP.serve() to avoid let-binding scoping issue with parenthesized expressions
-- [92-01] 8 pre-existing compilation errors baseline (not 7 as plan estimated) -- no new errors from alerting data foundation
-- [92-02] restart_all_services moved after alert_evaluator actor for define-before-use compliance (nothing calls restart_all_services from within pipeline.mpl so safe to reorder)
-- [92-03] No new compilation errors from alert HTTP routes -- 7 pre-existing errors unchanged
-- [93-01] Use 'actor' not 'pub actor' -- Mesh grammar doesn't support pub before actor keyword
-- [93-02] ~~Actors cannot be imported across modules in Mesh -- retention_cleaner duplicated in pipeline.mpl~~ FIXED: actors now exported/imported like services (always exported, no pub prefix)
-- [93-02] Separate bulk sampling path (handle_bulk_sampled) preserves 5MB size limit vs 1MB single-event limit
-- [93.1-01] main.mpl handle_top_issues type mismatch was cascading inference failure from broken Api.Detail -- no explicit return type annotation needed
-- [93.2-01] Actor wrapper keeps original name, body renamed to __actor_{name}_body -- spawn references resolve to wrapper
-- [93.2-01] TCE rewrite uses original actor name for matching (recursive calls use original name, not body name)
-- [93.2-01] Monomorphize pass explicitly marks __actor_*_body as reachable from wrapper functions (same pattern as service dispatch)
-- [94-01] Global.register/whereis type signatures fixed to Pid<()> for consistency with Process.register/whereis (runtime u64)
-- [94-01] Helper functions extracted for nested case arms in start_node (Mesh single-expression case arm constraint)
-- [94-01] Node startup placed after PG pool but before schema creation (HTTP.serve blocks, per research pitfall 4)
-- [94-01] StreamManager kept node-local with Process.register only (connection handles are local pointers)
-- [94-01] Global.register first-writer-wins for well-known "mesher_registry"; node-specific names for targeted cross-node lookup
-- [94-02] Node.self() check for cluster/standalone mode instead of Pid-to-Int comparison (Pid type constraint, decision [88-05])
-- [94-02] Global.whereis for cluster mode, Process.whereis for standalone mode -- both return valid Pid in their respective modes
-- [94-02] StreamManager kept node-local (Process.whereis only) -- connection handles are local pointers
-- [94-03] try_remote_spawn uses Global.whereis unconditionally (no Pid-to-Int null check) -- service call on null Pid returns harmless default
-- [94-03] Event count threshold: 100 events per 5-second window for remote spawning consideration
-- [94-03] PoolHandle never sent across nodes; remote spawning uses Global.whereis to find remote node's own registry
-- [94-03] Bulk event requests count as 1 event for load rate tracking
-- [94-04] Node.spawn return value (Pid) discarded -- Pid is {} in LLVM, cannot pass to String.from
-- [94-04] codegen_node_spawn reloads alloca as i64 when MIR type is Unit (Ty::Var -> MirType::Unit workaround for unresolved type variables)
-- [94-04] Zero-arg remote worker pattern: Node.spawn sends function name, worker uses Process.whereis for local resources (no PoolHandle across nodes)
-- [95-02] Health endpoint returns single snapshot not time-series -- rendered as stat cards instead of LineChart
-- [95-02] Semantic colors only for error/warning severity; info/debug/resolved/archived use monochrome theme variants
-- [95-02] WebSocket updates applied optimistically to local dashboard state without full API refetch
-- [95-02] formatRelativeTime extracted to lib/format.ts for cross-component reuse
-- [95-03] Events page requires search query before showing results (empty state prompt by default)
-- [95-03] Client-side level filtering on Events page since search endpoint lacks level param
-- [95-03] Cursor stack pattern for bidirectional keyset pagination (push on Next, pop on Previous)
-- [95-03] Default 'unresolved' status filter on Issues page per decision [89-02]
-- [95-06] Fixed sonner Toaster to use local useTheme hook instead of next-themes (Vite project, not Next.js)
-- [95-06] Hardcoded orgId "default" for team management (no org CRUD endpoints in backend)
-- [95-06] API key full value shown once after creation, masked to first 8 chars in list view
-- [95-06] AlertDialog for destructive confirmations (delete rule, remove member, revoke key)
-- [95-04] Issue detail fetches data via issues.events and issues.timeline endpoints (no direct issue detail endpoint)
-- [95-04] Event navigation uses navigation.prev_id/next_id from event detail API response
-- [95-04] Issue detail recent event click switches panel to EventDetail via uiStore.openDetail
-- [95-04] Delete confirmation uses shadcn AlertDialog for destructive action protection
-- [95-05] WS event data extracted with fallback defaults (generated IDs, current timestamp if received_at missing)
-- [95-05] Client-side search filter on Live Stream (server-side subscribe only sends level/environment)
-- [95-05] Dashboard issue badge uses health.unresolved_count (WS-synced) instead of topIssues.length
-- [95-05] Silent background refresh (no loading spinner) for 60-second periodic API re-fetch
-- [95-07] Consolidated duplicate relativeTime functions in alerts components into shared formatRelativeTime from lib/format.ts
-- [95-07] Removed unused next-themes dependency (sonner already uses local useTheme hook since plan 06 fix)
+Cleared at milestone boundary. v9.0 decisions archived in PROJECT.md.
 
 ### Roadmap Evolution
 
-- Phase 87.1 inserted after Phase 87: Issues Encountered (URGENT)
-- Phase 87.2 inserted after Phase 87.1: Refactor Phase 87 code to use cross-module services (URGENT)
-- Phase 91.1 inserted after Phase 91: Refactor Mesher to use pipe operators and idiomatic Mesh features (URGENT)
-- Phase 93.1 inserted after Phase 93: Issues Encountered (URGENT)
-- Phase 93.2 inserted after Phase 93: Fix actor spawn segfault in project mode (URGENT)
+(None yet)
 
 ### Pending Todos
 
@@ -169,11 +41,11 @@ None.
 
 ### Blockers/Concerns
 
-Research flags from research/SUMMARY.md:
-- ~~List.find Option pattern matching codegen bug~~ -- FIXED in 87.1-01
+Known limitations relevant to ORM development:
 - Map.collect integer key assumption -- workaround: manual Map building with fold
-- Timer.send_after spawns OS thread per call -- use single recurring timer actor for alerting
-- Phase 94 (Multi-Node Clustering) may need research-phase for split-brain handling
+- Timer.send_after spawns OS thread per call -- use single recurring timer actor
+- Single-line pipe chains only (parser does not support multi-line |> continuation) -- parenthesized workaround exists
+- Middleware requires explicit `:: Request` parameter type annotations (incomplete inference)
 
 ### Quick Tasks Completed
 
@@ -186,7 +58,7 @@ Research flags from research/SUMMARY.md:
 
 ## Session Continuity
 
-Last session: 2026-02-15
-Stopped at: v9.0 Mesher milestone complete. All 95 phases shipped (280 plans).
+Last session: 2026-02-16
+Stopped at: v10.0 ORM milestone started. Defining requirements.
 Resume file: None
-Next action: `/gsd:complete-milestone` to archive v9.0.
+Next action: Complete requirements and roadmap definition.
