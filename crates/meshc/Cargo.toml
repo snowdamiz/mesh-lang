@@ -21,6 +21,7 @@ tokio = { workspace = true }
 
 [target.'cfg(target_env = "musl")'.dependencies]
 mimalloc = { workspace = true }
+openssl-sys = { version = "0.9", features = ["vendored"] }
 
 [dev-dependencies]
 tempfile = "3"
