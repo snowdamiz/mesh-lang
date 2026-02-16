@@ -271,13 +271,25 @@ pub(crate) fn parse_struct_def(p: &mut Parser) {
     let do_span = p.current_span();
     p.expect(SyntaxKind::DO_KW);
 
-    // Parse fields.
+    // Parse fields and relationship declarations.
     if !p.has_error() {
         loop {
             p.eat_newlines();
 
             if p.at(SyntaxKind::END_KW) || p.at(SyntaxKind::EOF) {
                 break;
+            }
+
+            // Check for relationship declarations: belongs_to, has_many, has_one
+            if p.at(SyntaxKind::IDENT) {
+                let text = p.current_text().to_string();
+                if text == "belongs_to" || text == "has_many" || text == "has_one" {
+                    parse_relationship_decl(p);
+                    if p.has_error() {
+                        break;
+                    }
+                    continue;
+                }
             }
 
             parse_struct_field(p);
@@ -331,6 +343,43 @@ fn parse_struct_field(p: &mut Parser) {
     }
 
     p.close(m, SyntaxKind::STRUCT_FIELD);
+}
+
+/// Parse a relationship declaration inside a struct body.
+///
+/// Syntax: `belongs_to :name, Type` / `has_many :name, Type` / `has_one :name, Type`
+///
+/// These are contextual identifiers (not keywords) recognized only inside struct bodies.
+/// They produce RELATIONSHIP_DECL nodes containing the relationship kind identifier,
+/// atom literal (association name), and type identifier (target type).
+fn parse_relationship_decl(p: &mut Parser) {
+    let m = p.open();
+
+    // Bump the relationship kind identifier (belongs_to, has_many, has_one).
+    p.advance(); // IDENT
+
+    // Expect atom literal: :name
+    if p.at(SyntaxKind::ATOM_LITERAL) {
+        p.advance();
+    } else {
+        p.error("expected atom literal (e.g., :user) after relationship kind");
+        p.close(m, SyntaxKind::RELATIONSHIP_DECL);
+        return;
+    }
+
+    // Expect comma separator.
+    p.expect(SyntaxKind::COMMA);
+
+    // Expect target type name.
+    if !p.has_error() {
+        if p.at(SyntaxKind::IDENT) {
+            p.advance();
+        } else {
+            p.error("expected target type name after comma in relationship declaration");
+        }
+    }
+
+    p.close(m, SyntaxKind::RELATIONSHIP_DECL);
 }
 
 /// Parse a deriving clause: `deriving(Trait1, Trait2, ...)`

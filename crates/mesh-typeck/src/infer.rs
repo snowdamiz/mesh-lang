@@ -2273,7 +2273,7 @@ fn register_struct_def(
     let derive_all = !has_deriving; // no clause = derive all defaults
 
     // Validate derive trait names.
-    let valid_derives = ["Eq", "Ord", "Display", "Debug", "Hash", "Json", "Row"];
+    let valid_derives = ["Eq", "Ord", "Display", "Debug", "Hash", "Json", "Row", "Schema"];
     for trait_name in &derive_list {
         if !valid_derives.contains(&trait_name.as_str()) {
             ctx.errors.push(TypeError::UnsupportedDerive {
@@ -2308,6 +2308,28 @@ fn register_struct_def(
         let param_tys: Vec<Ty> = generic_params.iter().map(|p| Ty::Con(TyCon::new(p))).collect();
         Ty::App(Box::new(base_ty), param_tys)
     };
+
+    // Schema metadata functions -- only via explicit deriving(Schema), structs only.
+    // Registers __table__, __fields__, __primary_key__, __relationships__ as static
+    // functions callable via StructName.__table__() syntax.
+    if derive_list.iter().any(|t| t == "Schema") {
+        // __table__ :: () -> String
+        let table_fn_name = format!("{}.__table__", name);
+        env.insert(table_fn_name, Scheme::mono(Ty::fun(vec![], Ty::string())));
+
+        // __fields__ :: () -> List<String>
+        let fields_fn_name = format!("{}.__fields__", name);
+        env.insert(fields_fn_name, Scheme::mono(Ty::fun(vec![], Ty::list(Ty::string()))));
+
+        // __primary_key__ :: () -> String
+        let pk_fn_name = format!("{}.__primary_key__", name);
+        env.insert(pk_fn_name, Scheme::mono(Ty::fun(vec![], Ty::string())));
+
+        // __relationships__ :: () -> List<String>
+        // Each relationship encoded as "kind:name:target" string.
+        let rels_fn_name = format!("{}.__relationships__", name);
+        env.insert(rels_fn_name, Scheme::mono(Ty::fun(vec![], Ty::list(Ty::string()))));
+    }
 
     // Debug impl
     if derive_all || derive_list.iter().any(|t| t == "Debug") {
@@ -2740,7 +2762,7 @@ fn register_sum_type_def(
     let derive_all = !has_deriving; // no clause = derive all defaults
 
     // Validate derive trait names.
-    let valid_derives = ["Eq", "Ord", "Display", "Debug", "Hash", "Json", "Row"];
+    let valid_derives = ["Eq", "Ord", "Display", "Debug", "Hash", "Json", "Row", "Schema"];
     for trait_name in &derive_list {
         if !valid_derives.contains(&trait_name.as_str()) {
             ctx.errors.push(TypeError::UnsupportedDerive {
@@ -2748,6 +2770,14 @@ fn register_sum_type_def(
                 type_name: name.clone(),
             });
         }
+    }
+
+    // Schema is only supported on structs, not sum types.
+    if derive_list.iter().any(|t| t == "Schema") {
+        ctx.errors.push(TypeError::UnsupportedDerive {
+            trait_name: "Schema".to_string(),
+            type_name: name.clone(),
+        });
     }
 
     // Check trait dependencies: Ord requires Eq.
@@ -5593,6 +5623,18 @@ fn infer_field_access(
                         let result_ty = Ty::result(struct_ty, Ty::string());
                         return Ok(Ty::fun(vec![map_ty], result_ty));
                     }
+                }
+            }
+
+            // Check if base is a struct type name with Schema metadata functions.
+            // e.g. User.__table__() -- User is a struct with deriving(Schema).
+            if field_name == "__table__" || field_name == "__fields__"
+                || field_name == "__primary_key__" || field_name == "__relationships__"
+            {
+                let qualified = format!("{}.{}", base_name, field_name);
+                if let Some(scheme) = env.lookup(&qualified) {
+                    let ty = ctx.instantiate(scheme);
+                    return Ok(ty);
                 }
             }
         }

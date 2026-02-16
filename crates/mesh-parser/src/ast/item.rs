@@ -303,6 +303,14 @@ impl StructDef {
             })
             .unwrap_or_default()
     }
+
+    /// All relationship declarations in the struct body.
+    pub fn relationships(&self) -> Vec<RelationshipDecl> {
+        self.syntax
+            .children()
+            .filter_map(RelationshipDecl::cast)
+            .collect()
+    }
 }
 
 ast_node!(StructField, STRUCT_FIELD);
@@ -316,6 +324,55 @@ impl StructField {
     /// The type annotation.
     pub fn type_annotation(&self) -> Option<TypeAnnotation> {
         child_node(&self.syntax)
+    }
+}
+
+// ── Relationship Declaration ─────────────────────────────────────────────
+
+ast_node!(RelationshipDecl, RELATIONSHIP_DECL);
+
+impl RelationshipDecl {
+    /// The relationship kind: "belongs_to", "has_many", or "has_one".
+    pub fn kind_text(&self) -> Option<String> {
+        // First IDENT child is the relationship kind.
+        self.syntax
+            .children_with_tokens()
+            .filter_map(|it| it.into_token())
+            .find(|t| t.kind() == SyntaxKind::IDENT)
+            .map(|t| t.text().to_string())
+    }
+
+    /// The association name (from the atom literal, e.g., "user" from `:user`).
+    pub fn assoc_name(&self) -> Option<String> {
+        self.syntax
+            .children_with_tokens()
+            .filter_map(|it| it.into_token())
+            .find(|t| t.kind() == SyntaxKind::ATOM_LITERAL)
+            .map(|t| {
+                let text = t.text().to_string();
+                // Strip leading colon from atom literal.
+                if text.starts_with(':') {
+                    text[1..].to_string()
+                } else {
+                    text
+                }
+            })
+    }
+
+    /// The target type name (e.g., "User" from `belongs_to :user, User`).
+    pub fn target_type(&self) -> Option<String> {
+        // The target type is the IDENT after the COMMA token.
+        let mut after_comma = false;
+        for element in self.syntax.children_with_tokens() {
+            if let Some(token) = element.as_token() {
+                if token.kind() == SyntaxKind::COMMA {
+                    after_comma = true;
+                } else if after_comma && token.kind() == SyntaxKind::IDENT {
+                    return Some(token.text().to_string());
+                }
+            }
+        }
+        None
     }
 }
 

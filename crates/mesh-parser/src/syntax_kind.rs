@@ -286,6 +286,8 @@ pub enum SyntaxKind {
     STRUCT_UPDATE_EXPR,
     /// List literal: `[expr, expr, ...]`
     LIST_LITERAL,
+    /// Relationship declaration in a struct body: `belongs_to :name, Type`
+    RELATIONSHIP_DECL,
 
     // ── Loop node kinds ───────────────────────────────────────────────
     /// While expression: `while cond do body end`
@@ -690,6 +692,7 @@ mod tests {
             SyntaxKind::MAP_ENTRY,
             SyntaxKind::STRUCT_UPDATE_EXPR,
             SyntaxKind::LIST_LITERAL,
+            SyntaxKind::RELATIONSHIP_DECL,
             // Loop node kinds
             SyntaxKind::WHILE_EXPR,
             SyntaxKind::BREAK_EXPR,
@@ -720,8 +723,8 @@ mod tests {
             SyntaxKind::SECONDS_LIMIT,
         ];
         assert!(
-            node_kinds.len() >= 86,
-            "expected at least 86 composite node kinds, got {}",
+            node_kinds.len() >= 87,
+            "expected at least 87 composite node kinds, got {}",
             node_kinds.len()
         );
     }
