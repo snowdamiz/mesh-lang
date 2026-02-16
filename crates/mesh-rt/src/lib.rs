@@ -58,6 +58,14 @@ pub use db::query::{
     mesh_query_limit, mesh_query_offset, mesh_query_join, mesh_query_group_by,
     mesh_query_having, mesh_query_fragment,
 };
+pub use db::changeset::{
+    mesh_changeset_cast, mesh_changeset_cast_with_types,
+    mesh_changeset_validate_required, mesh_changeset_validate_length,
+    mesh_changeset_validate_format, mesh_changeset_validate_inclusion,
+    mesh_changeset_validate_number,
+    mesh_changeset_valid, mesh_changeset_errors, mesh_changeset_changes,
+    mesh_changeset_get_change, mesh_changeset_get_error,
+};
 pub use db::repo::{
     mesh_repo_all, mesh_repo_one, mesh_repo_get, mesh_repo_get_by,
     mesh_repo_count, mesh_repo_exists,

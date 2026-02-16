@@ -295,6 +295,20 @@ fn register_runtime_symbols() {
     add_sym("mesh_repo_delete", mesh_rt::mesh_repo_delete as *const ());
     add_sym("mesh_repo_transaction", mesh_rt::mesh_repo_transaction as *const ());
 
+    // Changeset Operations (Phase 99)
+    add_sym("mesh_changeset_cast", mesh_rt::mesh_changeset_cast as *const ());
+    add_sym("mesh_changeset_cast_with_types", mesh_rt::mesh_changeset_cast_with_types as *const ());
+    add_sym("mesh_changeset_validate_required", mesh_rt::mesh_changeset_validate_required as *const ());
+    add_sym("mesh_changeset_validate_length", mesh_rt::mesh_changeset_validate_length as *const ());
+    add_sym("mesh_changeset_validate_format", mesh_rt::mesh_changeset_validate_format as *const ());
+    add_sym("mesh_changeset_validate_inclusion", mesh_rt::mesh_changeset_validate_inclusion as *const ());
+    add_sym("mesh_changeset_validate_number", mesh_rt::mesh_changeset_validate_number as *const ());
+    add_sym("mesh_changeset_valid", mesh_rt::mesh_changeset_valid as *const ());
+    add_sym("mesh_changeset_errors", mesh_rt::mesh_changeset_errors as *const ());
+    add_sym("mesh_changeset_changes", mesh_rt::mesh_changeset_changes as *const ());
+    add_sym("mesh_changeset_get_change", mesh_rt::mesh_changeset_get_change as *const ());
+    add_sym("mesh_changeset_get_error", mesh_rt::mesh_changeset_get_error as *const ());
+
     // HTTP
     add_sym("mesh_http_get", mesh_rt::mesh_http_get as *const ());
     add_sym("mesh_http_post", mesh_rt::mesh_http_post as *const ());

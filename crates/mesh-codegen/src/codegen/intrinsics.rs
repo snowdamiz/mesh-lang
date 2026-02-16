@@ -1038,6 +1038,68 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
         ptr_type.fn_type(&[i64_type.into(), ptr_type.into(), ptr_type.into()], false),
         Some(inkwell::module::Linkage::External));
 
+    // ── Phase 99: Changeset Operations ────────────────────────────────
+
+    // mesh_changeset_cast(data: ptr, params: ptr, allowed: ptr) -> ptr
+    module.add_function("mesh_changeset_cast",
+        ptr_type.fn_type(&[ptr_type.into(), ptr_type.into(), ptr_type.into()], false),
+        Some(inkwell::module::Linkage::External));
+
+    // mesh_changeset_cast_with_types(data: ptr, params: ptr, allowed: ptr, field_types: ptr) -> ptr
+    module.add_function("mesh_changeset_cast_with_types",
+        ptr_type.fn_type(&[ptr_type.into(), ptr_type.into(), ptr_type.into(), ptr_type.into()], false),
+        Some(inkwell::module::Linkage::External));
+
+    // mesh_changeset_validate_required(cs: ptr, fields: ptr) -> ptr
+    module.add_function("mesh_changeset_validate_required",
+        ptr_type.fn_type(&[ptr_type.into(), ptr_type.into()], false),
+        Some(inkwell::module::Linkage::External));
+
+    // mesh_changeset_validate_length(cs: ptr, field: ptr, min: i64, max: i64) -> ptr
+    module.add_function("mesh_changeset_validate_length",
+        ptr_type.fn_type(&[ptr_type.into(), ptr_type.into(), ptr_type.into(), ptr_type.into()], false),
+        Some(inkwell::module::Linkage::External));
+
+    // mesh_changeset_validate_format(cs: ptr, field: ptr, pattern: ptr) -> ptr
+    module.add_function("mesh_changeset_validate_format",
+        ptr_type.fn_type(&[ptr_type.into(), ptr_type.into(), ptr_type.into()], false),
+        Some(inkwell::module::Linkage::External));
+
+    // mesh_changeset_validate_inclusion(cs: ptr, field: ptr, allowed_values: ptr) -> ptr
+    module.add_function("mesh_changeset_validate_inclusion",
+        ptr_type.fn_type(&[ptr_type.into(), ptr_type.into(), ptr_type.into()], false),
+        Some(inkwell::module::Linkage::External));
+
+    // mesh_changeset_validate_number(cs: ptr, field: ptr, gt: i64, lt: i64, gte: i64, lte: i64) -> ptr
+    module.add_function("mesh_changeset_validate_number",
+        ptr_type.fn_type(&[ptr_type.into(), ptr_type.into(), ptr_type.into(), ptr_type.into(), ptr_type.into(), ptr_type.into()], false),
+        Some(inkwell::module::Linkage::External));
+
+    // mesh_changeset_valid(cs: ptr) -> ptr
+    module.add_function("mesh_changeset_valid",
+        ptr_type.fn_type(&[ptr_type.into()], false),
+        Some(inkwell::module::Linkage::External));
+
+    // mesh_changeset_errors(cs: ptr) -> ptr
+    module.add_function("mesh_changeset_errors",
+        ptr_type.fn_type(&[ptr_type.into()], false),
+        Some(inkwell::module::Linkage::External));
+
+    // mesh_changeset_changes(cs: ptr) -> ptr
+    module.add_function("mesh_changeset_changes",
+        ptr_type.fn_type(&[ptr_type.into()], false),
+        Some(inkwell::module::Linkage::External));
+
+    // mesh_changeset_get_change(cs: ptr, field: ptr) -> ptr
+    module.add_function("mesh_changeset_get_change",
+        ptr_type.fn_type(&[ptr_type.into(), ptr_type.into()], false),
+        Some(inkwell::module::Linkage::External));
+
+    // mesh_changeset_get_error(cs: ptr, field: ptr) -> ptr
+    module.add_function("mesh_changeset_get_error",
+        ptr_type.fn_type(&[ptr_type.into(), ptr_type.into()], false),
+        Some(inkwell::module::Linkage::External));
+
     // ── Phase 68: Global Registry ──────────────────────────────────────
 
     // mesh_global_register(name_ptr: ptr, name_len: i64, pid: i64) -> i64

@@ -897,6 +897,31 @@ impl<'a> Lowerer<'a> {
         self.known_functions.insert("mesh_repo_delete".to_string(), MirType::FnPtr(vec![MirType::Int, MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
         // mesh_repo_transaction(pool: i64, fn_ptr: ptr, env_ptr: ptr) -> ptr
         self.known_functions.insert("mesh_repo_transaction".to_string(), MirType::FnPtr(vec![MirType::Int, MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
+        // ── Phase 99: Changeset Operations ──────────────────────────────
+        // mesh_changeset_cast(data: ptr, params: ptr, allowed: ptr) -> ptr
+        self.known_functions.insert("mesh_changeset_cast".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
+        // mesh_changeset_cast_with_types(data: ptr, params: ptr, allowed: ptr, field_types: ptr) -> ptr
+        self.known_functions.insert("mesh_changeset_cast_with_types".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr, MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
+        // mesh_changeset_validate_required(cs: ptr, fields: ptr) -> ptr
+        self.known_functions.insert("mesh_changeset_validate_required".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
+        // mesh_changeset_validate_length(cs: ptr, field: ptr, min: ptr, max: ptr) -> ptr
+        self.known_functions.insert("mesh_changeset_validate_length".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr, MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
+        // mesh_changeset_validate_format(cs: ptr, field: ptr, pattern: ptr) -> ptr
+        self.known_functions.insert("mesh_changeset_validate_format".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
+        // mesh_changeset_validate_inclusion(cs: ptr, field: ptr, allowed_values: ptr) -> ptr
+        self.known_functions.insert("mesh_changeset_validate_inclusion".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
+        // mesh_changeset_validate_number(cs: ptr, field: ptr, gt: ptr, lt: ptr, gte: ptr, lte: ptr) -> ptr
+        self.known_functions.insert("mesh_changeset_validate_number".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr, MirType::Ptr, MirType::Ptr, MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
+        // mesh_changeset_valid(cs: ptr) -> ptr
+        self.known_functions.insert("mesh_changeset_valid".to_string(), MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Ptr)));
+        // mesh_changeset_errors(cs: ptr) -> ptr
+        self.known_functions.insert("mesh_changeset_errors".to_string(), MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Ptr)));
+        // mesh_changeset_changes(cs: ptr) -> ptr
+        self.known_functions.insert("mesh_changeset_changes".to_string(), MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Ptr)));
+        // mesh_changeset_get_change(cs: ptr, field: ptr) -> ptr
+        self.known_functions.insert("mesh_changeset_get_change".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
+        // mesh_changeset_get_error(cs: ptr, field: ptr) -> ptr
+        self.known_functions.insert("mesh_changeset_get_error".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
         // ── Job functions (Phase 9 Plan 04) ──────────────────────────────
         // mesh_job_async takes (fn_ptr, env_ptr) -> i64 (PID)
         // But the closure splitting at codegen will expand the closure arg into (fn_ptr, env_ptr)
@@ -10112,6 +10137,7 @@ const STDLIB_MODULES: &[&str] = &[
     "Orm",  // Phase 97
     "Query",  // Phase 98
     "Repo",  // Phase 98
+    "Changeset",  // Phase 99
 ];
 
 /// Map Mesh builtin function names to their runtime equivalents.
@@ -10362,6 +10388,19 @@ fn map_builtin_name(name: &str) -> String {
         "repo_update" => "mesh_repo_update".to_string(),
         "repo_delete" => "mesh_repo_delete".to_string(),
         "repo_transaction" => "mesh_repo_transaction".to_string(),
+        // ── Phase 99: Changeset Operations ──────────────────────────────
+        "changeset_cast" => "mesh_changeset_cast".to_string(),
+        "changeset_cast_with_types" => "mesh_changeset_cast_with_types".to_string(),
+        "changeset_validate_required" => "mesh_changeset_validate_required".to_string(),
+        "changeset_validate_length" => "mesh_changeset_validate_length".to_string(),
+        "changeset_validate_format" => "mesh_changeset_validate_format".to_string(),
+        "changeset_validate_inclusion" => "mesh_changeset_validate_inclusion".to_string(),
+        "changeset_validate_number" => "mesh_changeset_validate_number".to_string(),
+        "changeset_valid" => "mesh_changeset_valid".to_string(),
+        "changeset_errors" => "mesh_changeset_errors".to_string(),
+        "changeset_changes" => "mesh_changeset_changes".to_string(),
+        "changeset_get_change" => "mesh_changeset_get_change".to_string(),
+        "changeset_get_error" => "mesh_changeset_get_error".to_string(),
         // NOTE: No bare name mappings for HTTP/Request (router, route, get,
         // post, method, path, body, etc.) because they collide with common
         // variable names. Use module-qualified access instead:

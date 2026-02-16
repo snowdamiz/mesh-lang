@@ -1,3 +1,4 @@
+pub mod changeset;
 pub mod orm;
 pub mod pg;
 pub mod pool;
