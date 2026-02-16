@@ -257,11 +257,11 @@ Plans:
   2. `Repo.preload(pool, users, [:posts])` loads all posts for a list of users in a single `WHERE user_id IN (...)` query instead of N separate queries, correctly grouping results by foreign key
   3. Nested preloading works (`Repo.preload(pool, users, [:posts, "posts.comments"])`) issuing one query per association level regardless of parent record count
   4. Preloaded data is accessible through a predictable structure (Map with association keys) and unloaded associations produce clear error messages directing the developer to use Repo.preload
-**Plans**: TBD
+**Plans**: 2 plans
 
 Plans:
-- [ ] 100-01: Relationship metadata generation and preload query builder
-- [ ] 100-02: Repo.preload implementation with batch loading, nested preloading, and result stitching
+- [ ] 100-01-PLAN.md -- Enhanced relationship metadata (__relationship_meta__ with FK and target table) in compiler pipeline
+- [ ] 100-02-PLAN.md -- Repo.preload runtime implementation with batch IN queries, nested preloading, and result stitching
 
 ### Phase 101: Migration System
 **Goal**: Developers can define database schema changes as versioned migration files with up/down functions, run them via CLI, and track applied state -- following a forward-only philosophy with expand-migrate-contract pattern
