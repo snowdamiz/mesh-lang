@@ -226,12 +226,12 @@ Plans:
   3. Repo.all, Repo.one, Repo.get, Repo.get_by correctly execute queries and return typed results; Repo.insert, Repo.update, Repo.delete correctly persist changes with RETURNING clauses
   4. Repo.count and Repo.exists return aggregate results; Repo.transaction wraps operations with automatic commit/rollback
   5. Composable scopes work as pure functions (`pub fn active(q) do q |> Query.where(:status, "active") end`) that can be mixed into any query pipeline
-**Plans**: TBD
+**Plans**: 3 plans
 
 Plans:
-- [ ] 98-01: Query struct and pipe-composable builder functions (where, select, order_by, limit, offset, join, group_by, having, fragment)
-- [ ] 98-02: Repo read operations (all, one, get, get_by, count, exists) integrated with SQL generation and Pool.query
-- [ ] 98-03: Repo write operations (insert, update, delete, transaction) with changeset integration points
+- [ ] 98-01-PLAN.md -- Query struct as opaque Ptr, pipe-composable builder functions (from, where, where_op, where_in, where_null, where_not_null, select, order_by, limit, offset, join, group_by, having, fragment), pipe schema-to-table transformation
+- [ ] 98-02-PLAN.md -- Repo read operations (all, one, get, get_by, count, exists) with comprehensive SQL generation from Query struct
+- [ ] 98-03-PLAN.md -- Repo write operations (insert, update, delete) with RETURNING clauses, Repo.transaction with Pool.checkout + Pg.begin/commit/rollback + Pool.checkin
 
 ### Phase 99: Changesets
 **Goal**: Developers can validate and cast external data before persistence using a pipe-chain validation pipeline, with type coercion from raw params, built-in validators, and PostgreSQL constraint error mapping
