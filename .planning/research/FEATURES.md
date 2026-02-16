@@ -1,367 +1,413 @@
-# Feature Landscape
+# Feature Landscape: Mesh ORM
 
-**Domain:** Core monitoring/observability SaaS platform (Mesher) -- log ingestion, error tracking, real-time streaming, alerting, dashboards. NOT full observability (no distributed tracing, no APM, no infrastructure metrics).
-**Researched:** 2026-02-14
-**Confidence:** HIGH for core feature set (well-documented domain with Sentry, GlitchTip, Highlight.io as references). MEDIUM for SDK design specifics (depends on Mesh's capabilities as a client library target). HIGH for architecture patterns (standard ingestion pipeline patterns).
+**Domain:** ORM library for a statically-typed, LLVM-compiled functional language (Mesh) targeting PostgreSQL
+**Researched:** 2026-02-16
+**Confidence:** HIGH for core ORM features (Ecto, ActiveRecord, Prisma, Diesel, SeaORM thoroughly documented). MEDIUM for Mesh-specific DSL design (depends on compiler additions). HIGH for anti-patterns (extensive post-mortems across ecosystems).
+
+---
 
 ## Existing System Baseline
 
-Before defining features, here is what Mesh already provides (verified from PROJECT.md):
+What Mesh already provides that the ORM builds upon:
 
-- **HTTP server:** Hand-rolled HTTP/1.1 parser with TLS (HTTPS), path parameters, method routing, middleware pipeline. Actor-per-connection model with crash isolation.
-- **WebSocket server:** RFC 6455 with TLS (wss://), rooms/channels with join/leave/broadcast, heartbeat, actor-per-connection. Cross-node room broadcast via distributed actors.
-- **PostgreSQL driver:** Pure wire protocol, SCRAM-SHA-256 auth, TLS, connection pooling (min/max/timeout), transactions with panic-safe rollback, `deriving(Row)` for struct mapping, `Pool.query_as` for one-step query+hydration.
-- **SQLite driver:** Bundled (zero system deps), parameterized queries.
-- **JSON serde:** `deriving(Json)` for automatic encode/decode, nested structs, Option, List, Map, tagged union sum types.
-- **Actor system:** Lightweight actors with typed message passing, supervision trees with let-it-crash, process monitoring, linked processes, selective receive.
-- **Distributed actors:** Location-transparent PIDs, TLS-encrypted inter-node connections, cookie auth, mesh formation, global process registry, remote spawn, cross-node supervision.
-- **Language features:** HM type inference, pattern matching with exhaustiveness, sum types, traits with associated types, iterators, From/Into, generic monomorphization, modules, pipe operator.
-- **Timers:** `Timer.sleep`, `Timer.send_after` for delayed messages, receive timeouts.
+- **PostgreSQL driver:** Pure wire protocol, SCRAM-SHA-256 auth, TLS, connection pooling, transactions with panic-safe rollback
+- **`deriving(Row)`:** Generates `from_row` mapping `Map<String, String>` to typed structs (String, Int, Float, Bool, Option)
+- **`deriving(Json)`:** Automatic JSON encode/decode for structs, sum types, nested types, Option, List, Map
+- **`Pool.query` / `Pool.execute`:** Parameterized queries with `$1` placeholders, returns `List<Map<String, String>>`
+- **`Pool.query_as`:** One-step query + struct hydration via `from_row`
+- **`Pg.transaction`:** Panic-safe transactions with automatic commit/rollback via catch_unwind
+- **Pipe operator:** `value |> fn(args)` with pipe-aware type inference
+- **Traits with associated types:** Monomorphization-based static dispatch
+- **Pattern matching:** Exhaustive, with sum types, structs, literals, wildcards, guards
+- **Module system:** File-based with `pub` visibility, qualified imports, cross-module type checking
+- **Iterators:** Lazy pipeline composition (map, filter, take, skip), Collect into List/Map/Set/String
 
-### What Mesh Does NOT Have (Relevant Gaps)
+### What Mesh Does NOT Have (Relevant Gaps for ORM)
 
-- **No HTTP client** -- cannot make outbound HTTP requests (needed for webhook alerting). Would need to be built or use a shell-out pattern.
-- **No email sending** -- alerting via email requires SMTP or external service integration.
-- **No full-text search engine** -- PostgreSQL `LIKE`/`tsvector` or build custom indexing.
-- **No background job queue** -- actors with timers serve this purpose (evaluate alert rules on intervals).
-- **No template engine** -- email templates would be string interpolation.
-- **No rate limiting primitive** -- must be built from actor state + timers.
-- **No cursor/pagination primitive** -- must be built from SQL OFFSET/LIMIT or keyset pagination.
+| Gap | Impact on ORM | Mitigation |
+|-----|--------------|------------|
+| **No keyword arguments** | Cannot write `where(name: "Alice")` -- the most natural ORM syntax | PROJECT.md explicitly lists keyword args as potential compiler addition. **Highest-leverage compiler change.** |
+| **Single-line pipe chains only** | `User |> where(...) |> limit(10) |> Repo.all()` must be on one line | Parser change to support multi-line `|>` continuation. Known limitation in STATE.md. |
+| **No macros** | Schema DSL must be `deriving` variants or new parser syntax, not user-definable macros | Use `deriving(Schema)` or new dedicated syntax (like `schema` block) |
+| **No runtime reflection** | Struct field names/types not queryable at runtime | Compile-time code generation must produce metadata functions |
+| **No atom type** | Cannot use `:name` to reference fields symbolically | Add atom literals to the language, or use strings as field references |
+| **No default function arguments** | Every argument must be provided explicitly | Multi-clause functions with pattern matching as workaround |
+| **No method overloading** | Cannot have `where(field, value)` and `where(map)` at same arity | Multi-clause with pattern matching distinguishes cases |
+| **No struct update syntax** | Cannot write `%{user | name: "Bob"}` to produce a modified copy | Needed for changeset `apply_changes`. Compiler addition. |
+
+### What Mesher Currently Does (the code the ORM must replace)
+
+Analysis of `/Users/sn0w/Documents/dev/snow/mesher/storage/queries.mpl` (627 lines) reveals the pain points:
+
+1. **Manual struct construction from Map:** Every query function manually maps `Map.get(row, "column")` to struct fields. Example: `Organization { id: Map.get(row, "id"), name: Map.get(row, "name"), ... }` -- 6+ fields per struct, repeated for every query function.
+2. **Raw SQL strings everywhere:** 40+ raw SQL query strings, each hand-written with `$1` placeholders. No reuse of WHERE clauses or common patterns.
+3. **Manual type casting:** `parse_event_count(Map.get(row, "event_count"))` -- converting `String.to_int` manually because `Pool.query` returns all strings.
+4. **No validation before persistence:** Data goes straight from API to `Pool.execute` with no changeset/validation layer.
+5. **Schema DDL as imperative code:** `create_schema` function runs 25+ `Pool.execute` calls for CREATE TABLE / CREATE INDEX. No migration versioning.
+6. **Duplicated query patterns:** `if List.length(rows) > 0 do Ok(List.head(rows)) else Err("not found") end` repeated in 15+ functions.
+
+The ORM must eliminate all six of these pain points.
 
 ---
 
 ## Table Stakes
 
-Features users expect from a monitoring platform. Missing = product feels incomplete or unusable.
+Features every ORM user expects. Missing any of these makes the ORM feel incomplete.
 
-### 1. Event Ingestion API
+### 1. Schema DSL for Model Definition
 
-The foundational capability -- accepting error events and log entries from client applications.
+The foundation. Users define their data model in code; the ORM uses it for queries, validation, and migrations.
 
-| Feature | Why Expected | Complexity | Mesh Dependency | Notes |
-|---------|--------------|------------|-----------------|-------|
-| POST `/api/v1/events` endpoint | Every monitoring platform has an HTTP ingestion endpoint. This is literally the entry point for all data. | **Low** | HTTP server, JSON serde | Accept JSON event payloads with required fields: `event_id`, `timestamp`, `platform`, `level`, `message`. |
-| Authentication via DSN/API key | Events must be associated with a project. DSN (Data Source Name) embeds project ID + secret key in a URL. Sentry pioneered this pattern and every competitor uses it. | **Low** | HTTP middleware | DSN format: `https://<key>@<host>/<project_id>`. Parse from `X-Mesher-Auth` header or query string. |
-| Event validation and normalization | Reject malformed events, normalize timestamps, trim oversized fields, set defaults. | **Med** | Pattern matching, sum types | Validate required fields, normalize timestamp to UTC, truncate message at 8KB, tags at 200 chars. |
-| Bulk event ingestion | SDKs batch events for efficiency. Must accept arrays of events in a single request. | **Low** | JSON serde (List) | POST `/api/v1/events/bulk` accepting `List<Event>`. Process sequentially or fan out to actors. |
-| Rate limiting per project | Protect the system from runaway clients. Must enforce events-per-minute limits per project and return 429 with `Retry-After` header. | **Med** | Actor state + timers | Per-project actor tracking event count per window. Sliding window or token bucket algorithm. |
-| Response with event ID | Client needs confirmation the event was accepted and an ID for correlation. | **Low** | JSON serde | Return `{"id": "<event_id>"}` on 202 Accepted. |
-| WebSocket ingestion for streaming | High-throughput clients benefit from persistent connections. Actor-per-connection model is natural here. | **Med** | WebSocket server, rooms | Connect once, stream events as JSON frames. Natural fit for Mesh's actor-per-connection. |
+| Feature | Why Expected | Complexity | Notes |
+|---------|--------------|------------|-------|
+| Schema block defining table name + fields | Every ORM has this. Without it, there is no ORM. | **High** | Requires compiler work: new syntax or deriving macro. Ecto uses `schema "users" do field :name, :string end`. |
+| Field types mapping to PG types | Each field has a Mesh type mapped to a PG type (String->TEXT, Int->INTEGER, Float->DOUBLE PRECISION, Bool->BOOLEAN). | **Med** | Start with types `deriving(Row)` already handles. Add DateTime/UUID later. |
+| Primary key configuration | Default auto-increment `id :: Int` or configurable UUID. | **Low** | Ecto defaults to `{:id, :id, autogenerate: true}`. Match that convention. |
+| `timestamps()` macro/function | Automatic `inserted_at` and `updated_at` fields. Universal across ORMs. | **Low** | Auto-set `inserted_at` on insert, auto-update `updated_at` on update. |
+| Virtual fields (not persisted) | Fields for computed values, not stored in DB. Ecto: `field :full_name, :string, virtual: true`. | **Low** | Exclude from INSERT/UPDATE/SELECT generation. |
+| Schema metadata generation | Query builder and Repo need table name, field names, field types, PK at compile time. Ecto generates `__schema__/1`. | **High** | Bridge between schema definition and query builder. Must be compile-time generated. |
 
-**Confidence: HIGH** -- Standard REST ingestion pattern. Mesh's HTTP server, JSON serde, and actor model directly support this.
+**Cross-ORM comparison:**
+- **Ecto:** `schema "users" do field :name, :string; has_many :posts, Post end` -- macro-based, generates struct + metadata
+- **ActiveRecord:** Schema inferred from database at runtime (no code definition), or `t.string :name` in migrations
+- **Prisma:** `model User { name String }` in `.prisma` schema file, generates typed client
+- **Diesel:** `table!` macro auto-generated from DB schema by `diesel print-schema`
+- **SeaORM:** `#[derive(DeriveEntityModel)]` on Rust struct with attribute annotations
 
-### 2. Error Grouping and Fingerprinting
+**Recommendation for Mesh:** Follow Ecto. Define schema in Mesh code using a DSL block that generates the struct and metadata. Fits Mesh's `do/end` syntax. Avoids external schema files (Prisma) and database inference (ActiveRecord). Use `deriving(Schema)` or a new `schema` block.
 
-The feature that separates a monitoring platform from a log aggregator. Without grouping, users drown in individual events.
+### 2. Query Builder with Pipe Composition
 
-| Feature | Why Expected | Complexity | Mesh Dependency | Notes |
-|---------|--------------|------------|-----------------|-------|
-| Automatic fingerprinting from stack trace | Sentry's primary grouping mechanism. Identical stack traces (same file + function + line across frames) produce the same fingerprint hash. Users expect "100 occurrences of this error" not "100 separate errors." | **High** | Pattern matching, string ops | Hash stack trace frames: normalize frame data (strip line numbers for some languages, keep function names), compute SHA-256 of concatenated frame signatures. |
-| Fallback to exception type + message | When no stack trace available, group by error type and message (with variable parts stripped). Standard Sentry fallback hierarchy. | **Med** | Pattern matching, string ops | Regex-strip numbers, UUIDs, hex addresses, file paths from error messages before hashing. |
-| Fallback to raw message | Last resort when neither stack trace nor exception type available. Group by normalized message content. | **Low** | String ops | Strip parameters, compute hash of remaining text. |
-| Custom fingerprint override | SDKs should be able to set an explicit fingerprint array on events, overriding automatic grouping. Sentry supports this and power users rely on it. | **Low** | JSON serde (List<String>) | If `fingerprint` field present in event, use it directly instead of computing. |
-| Issue creation from first event | First event with a new fingerprint creates an "Issue" -- the aggregate container. Subsequent events with the same fingerprint increment the issue's event count. | **Med** | PostgreSQL, transactions | Insert into `issues` table on first occurrence. Use `ON CONFLICT DO UPDATE` for atomic upsert. |
-| Event count and first/last seen timestamps | Each issue tracks total events, first seen, and last seen. Essential for triage. | **Low** | PostgreSQL | `UPDATE issues SET event_count = event_count + 1, last_seen = NOW() WHERE fingerprint = $1`. |
+The ORM's primary API. Users construct queries by chaining operations via pipe operator.
 
-**Confidence: HIGH** -- Sentry's grouping algorithm is well-documented in their developer docs. The fallback hierarchy (stack trace -> exception -> message) is the industry standard.
+| Feature | Why Expected | Complexity | Notes |
+|---------|--------------|------------|-------|
+| `where` clause filtering | Most fundamental query operation. Filter records by field conditions. | **High** | Needs keyword args OR positional: `where(:name, "Alice")`. |
+| `select` field selection | Choose columns to return. Default: all schema fields. | **Med** | `User |> select([:name, :email])` using list of field references. |
+| `order_by` sorting | Sort by fields with ASC/DESC. | **Low** | `User |> order_by(:name, :asc)`. |
+| `limit` and `offset` | Pagination building blocks. | **Low** | `User |> limit(10) |> offset(20)`. |
+| `join` for associations | Join related tables. Inner, left joins. | **High** | Complex. Simplified via schema associations: `join(:left, :posts)`. |
+| `group_by` and `having` | Aggregation queries. | **Med** | Needed for dashboard/reporting. |
+| `preload` for eager loading | Load associated records. Prevents N+1. Critical. | **High** | Generates separate query per association. |
+| Query composition | Queries are data structures, composable before execution. | **Med** | `base = User |> where(:active, true); base |> limit(10) |> Repo.all()` |
+| Parameterized (injection-safe) | All values parameterized, never interpolated. | **Low** | Already built into Pool.query. |
+| Raw SQL escape hatch | Drop to raw SQL when the builder cannot express what you need. | **Low** | Pool.query/Pool.execute already exist. |
 
-### 3. Issue Lifecycle and Triage
+**How pipe-based query building works (Ecto model):**
 
-Users need to track issues through a workflow: new -> acknowledged -> resolved -> regressed.
+Each query function takes a Query struct as first argument (or a Schema module that auto-converts) and returns a new Query struct. The pipe operator threads the query through:
 
-| Feature | Why Expected | Complexity | Mesh Dependency | Notes |
-|---------|--------------|------------|-----------------|-------|
-| Issue states: unresolved, resolved, archived | Minimum viable workflow. Sentry uses: unresolved, resolved, archived (with escalating sub-state). Start simpler. | **Low** | PostgreSQL, sum types | `status` column as enum: `Unresolved`, `Resolved`, `Archived`. Sum type maps directly. |
-| Resolve an issue | Mark as fixed. If the same fingerprint appears again, auto-reopen (regression). | **Low** | PostgreSQL | `UPDATE issues SET status = 'Resolved', resolved_at = NOW()`. |
-| Regression detection | If a resolved issue gets a new event, automatically change status back to `Unresolved` and flag as regressed. Users expect this -- it is how Sentry ensures fixed bugs stay fixed. | **Med** | PostgreSQL, event processing | During event ingestion: if matching issue is `Resolved`, set to `Unresolved` and set `is_regressed = true`. |
-| Archive (mute) an issue | Low-priority or noisy issues can be archived to clean up the issue list. Should auto-unarchive if event volume spikes (escalation). | **Med** | PostgreSQL, actor timer | Track event velocity. If archived issue receives >10x normal volume in 1 hour, unarchive and flag as escalating. |
-| Assign issue to user | Team members need to own issues. Simple foreign key to user. | **Low** | PostgreSQL | `assigned_to` column on issues table. |
-| Delete and discard | Remove an issue and optionally discard all future events matching that fingerprint. Prevents known-noise from consuming quota. | **Med** | PostgreSQL, in-memory set | Maintain a discard set (fingerprints to silently drop). Check during ingestion before processing. |
+```
+# Pseudocode of how this works in Mesh
+User                          # Schema module -> converts to Query<User>
+  |> where(:name, "Alice")   # Query<User> -> Query<User> with WHERE clause
+  |> where(:active, true)    # Query<User> -> Query<User> with additional WHERE
+  |> order_by(:created_at, :desc)  # adds ORDER BY
+  |> limit(10)               # adds LIMIT
+  |> Repo.all()              # executes: returns List<User>
+```
 
-**Confidence: HIGH** -- Sentry's issue lifecycle is thoroughly documented in their blog series and docs.
+The Query struct accumulates clauses as data. SQL is generated only when a terminal operation (Repo.all, Repo.one, etc.) is called. This is Ecto's greatest design insight and maps perfectly to Mesh's pipe operator.
 
-### 4. Project and Team Organization
+**Keyword args are the key unlock.** Without them, conditions must use positional args: `where(:name, :eq, "Alice")` or `where("name", "Alice")`. With keyword args: `where(name: "Alice", active: true)`. The ergonomic difference is enormous.
 
-Multi-tenant structure for organizing monitoring data.
+### 3. Repo Pattern for Database Operations
 
-| Feature | Why Expected | Complexity | Mesh Dependency | Notes |
-|---------|--------------|------------|-----------------|-------|
-| Organizations (tenants) | Top-level container. All data is scoped to an org. Required for any SaaS platform. | **Low** | PostgreSQL | `organizations` table with name, slug, created_at. |
-| Projects within organizations | Each monitored application is a project. Issues, events, and settings are project-scoped. Sentry, Datadog, and every competitor uses this hierarchy. | **Low** | PostgreSQL | `projects` table with org_id FK, name, platform, DSN key. |
-| DSN key generation per project | Each project gets a unique DSN for SDK configuration. Format: `https://<public_key>@<host>/<project_id>`. | **Low** | Crypto (random bytes) | Generate 32-char hex key on project creation. Store in `project_keys` table. |
-| Team membership with roles | Users belong to orgs with roles: owner, admin, member. Controls who can manage projects, resolve issues, configure alerts. | **Med** | PostgreSQL, middleware | `memberships` table with user_id, org_id, role. Middleware checks role on protected endpoints. |
-| API key / auth token management | Programmatic access for CI/CD, scripts, and custom integrations. | **Low** | PostgreSQL, crypto | `api_tokens` table with hashed token, user_id, scopes, expiry. |
+All database operations go through a central Repo module. No model.save() scattered throughout the code.
 
-**Confidence: HIGH** -- Standard SaaS multi-tenancy pattern. Well-understood RBAC model.
+| Feature | Why Expected | Complexity | Notes |
+|---------|--------------|------------|-------|
+| `Repo.all(query)` | Execute query, return all matching records as `List<Schema>`. | **Med** | Build SQL from Query, execute via Pool.query, hydrate via from_row. |
+| `Repo.one(query)` | Execute query, return exactly one record or error. | **Low** | Repo.all + assert single result. Return `Option<T>` or `Result<T, String>`. |
+| `Repo.get(Schema, id)` | Fetch by primary key. Most common single-record fetch. | **Low** | Sugar for `Schema |> where(:id, id) |> Repo.one()`. |
+| `Repo.get_by(Schema, clauses)` | Fetch by arbitrary conditions. | **Low** | Sugar for `Schema |> where(clauses) |> Repo.one()`. |
+| `Repo.insert(changeset)` | Insert from changeset. Return inserted record with generated fields. | **Med** | Generate INSERT from changeset changes. RETURNING for id/timestamps. |
+| `Repo.update(changeset)` | Update from changeset. Only SET changed fields. | **Med** | Generate UPDATE SET for changed fields only. WHERE id = pk. |
+| `Repo.delete(struct)` | Delete by primary key. | **Low** | `DELETE FROM table WHERE id = $1`. |
+| `Repo.preload(struct, assocs)` | Load associations on already-fetched structs. | **High** | Post-fetch: given a User, query their posts, attach to struct. |
+| `Repo.transaction(fn)` | Atomic multi-operation. Already exists as Pg.transaction. | **Low** | Wrap Repo operations in existing transaction support. |
 
-### 5. Search and Filtering
+### 4. Relationships (Associations)
 
-Users must be able to find specific events and issues. A monitoring platform without search is useless at scale.
+Defining and querying relationships between schemas.
 
-| Feature | Why Expected | Complexity | Mesh Dependency | Notes |
-|---------|--------------|------------|-----------------|-------|
-| Issue list with filters | Filter issues by: status (unresolved/resolved/archived), level (error/warning/info), first seen, last seen, assigned user, event count. | **Med** | PostgreSQL | Dynamic SQL query building with WHERE clauses. Use parameterized queries for safety. |
-| Full-text search on event messages | Users search for "NullPointerException" or "timeout" across all events. Table stakes for any log/error tool. | **Med** | PostgreSQL tsvector | Use PostgreSQL's built-in full-text search: `tsvector` column on events, `GIN` index, `to_tsquery` for searches. Avoids external search engine. |
-| Tag-based filtering | Events carry tags (environment, release, server, custom). Users filter by `environment:production` or `release:v2.3.1`. | **Med** | PostgreSQL, JSONB or separate table | Store tags as JSONB on events table, or normalize into `event_tags` table with GIN index for fast lookup. |
-| Time range filtering | Every query should be scoped to a time range. Default to last 24 hours. | **Low** | PostgreSQL | `WHERE timestamp BETWEEN $1 AND $2`. Index on timestamp column. |
-| Pagination | Issue and event lists must paginate. Keyset pagination (cursor-based) preferred over OFFSET for performance at scale. | **Med** | PostgreSQL | Use `WHERE id > $cursor ORDER BY id LIMIT $page_size`. Return next cursor in response. |
-| Sort by frequency, last seen, first seen | Users need to prioritize by most frequent, most recent, or newest issues. | **Low** | PostgreSQL | `ORDER BY event_count DESC` / `ORDER BY last_seen DESC` / `ORDER BY first_seen DESC`. |
+| Feature | Why Expected | Complexity | Notes |
+|---------|--------------|------------|-------|
+| `belongs_to` (many-to-one) | Post belongs_to User. Post has `user_id` FK. | **Med** | Adds FK field to schema. Enables preloading parent. |
+| `has_many` (one-to-many) | User has_many Posts. | **Med** | Reverse of belongs_to. `SELECT * FROM posts WHERE user_id = $1`. |
+| `has_one` (one-to-one) | User has_one Profile. | **Low** | Variant of has_many returning `Option<Profile>` not list. |
+| `many_to_many` (join table) | Users have many Roles through `user_roles`. | **High** | JOIN through bridge table. Two-step query or explicit join. |
+| Nested preloading | `User |> preload(posts: :comments)` | **High** | Multiple queries, recursive result stitching. |
 
-**Confidence: HIGH** -- PostgreSQL full-text search is well-documented and sufficient for a monitoring platform's scale. No need for Elasticsearch at MVP.
+**Critical design decision: Explicit preloading only. No lazy loading.** This is the single most important architectural choice. Ecto chose this deliberately and it is universally praised. Lazy loading (ActiveRecord, SQLAlchemy) silently triggers N+1 queries and is the #1 source of ORM performance issues. In a functional language without mutable state, lazy loading is even more problematic -- it requires hidden side effects.
 
-### 6. Real-Time Event Streaming
+Unloaded associations return a `NotLoaded` marker value. Accessing it produces a clear error: "association :posts not loaded. Use Repo.preload or include in query." This forces developers to be explicit about what data they need.
 
-Users expect to see events appear in their dashboard immediately, not after a page refresh.
+### 5. Changesets for Validation and Casting
 
-| Feature | Why Expected | Complexity | Mesh Dependency | Notes |
-|---------|--------------|------------|-----------------|-------|
-| WebSocket stream of new events | Live tail -- events appear in real-time as they are ingested. Every modern monitoring tool has this. Sentry has live event feed, Datadog has live tail. | **Med** | WebSocket server, rooms | One WebSocket room per project. When an event is ingested, broadcast to the project's room. Mesh's room system handles this natively. |
-| Filtered streaming | Users want to stream only errors (not warnings), or only events from production environment. | **Med** | WebSocket, pattern matching | Client sends filter criteria on connect. Server-side actor applies filters before forwarding events. |
-| New issue notifications | When a brand new issue is created (not just a new event on existing issue), push a notification to connected dashboards. | **Low** | WebSocket rooms | Broadcast `{type: "new_issue", issue: {...}}` to project room on first-occurrence events. |
-| Issue count updates | When an existing issue gets more events, update the count in real-time on the dashboard without full page reload. | **Low** | WebSocket rooms | Broadcast `{type: "issue_update", issue_id: ..., event_count: ...}` to project room. |
-| Connection management and backpressure | Don't overwhelm slow clients. Buffer or drop old events if client can't keep up. | **Med** | Actor mailbox, WebSocket | Per-client actor mailbox provides natural backpressure. If mailbox fills, drop oldest undelivered events. |
+The pipeline between raw external data and the database.
 
-**Confidence: HIGH** -- Mesh's WebSocket room system and actor-per-connection model are purpose-built for this. This is the strongest dogfooding opportunity.
+| Feature | Why Expected | Complexity | Notes |
+|---------|--------------|------------|-------|
+| `Changeset.cast(struct, params, allowed)` | Filter + type-cast external params to schema types. Prevents mass assignment. | **High** | Takes struct + Map + list of allowed fields. Converts string values to schema types. |
+| `validate_required(cs, fields)` | Ensure fields present and non-empty. Most common validation. | **Low** | Check each field has value in changes. Add error if missing. |
+| `validate_length(cs, field, opts)` | String/list length bounds (min, max). | **Low** | `validate_length(:name, min: 2, max: 100)`. |
+| `validate_format(cs, field, pattern)` | String pattern matching. Email, phone, etc. | **Low** | Mesh string operations or regex if added. |
+| `validate_inclusion(cs, field, values)` | Value in allowed set. For enum-like fields. | **Low** | `validate_inclusion(:role, ["admin", "member"])`. Uses List.contains. |
+| `validate_number(cs, field, opts)` | Numeric bounds. greater_than, less_than. | **Low** | `validate_number(:age, greater_than: 0)`. |
+| Custom validation functions | User-defined validation logic. | **Low** | `fn(changeset) -> changeset` that calls add_error. Pipe-friendly. |
+| `unique_constraint(cs, field)` | Map PG unique violation to changeset error. | **Med** | Catch PG 23505 error, convert to field error. |
+| `foreign_key_constraint(cs, field)` | Map FK violation to changeset error. | **Med** | Catch PG 23503 error, convert to field error. |
+| Change tracking (dirty fields) | Know which fields changed for UPDATE optimization. | **Med** | Changeset stores changes map. Repo.update only SETs changed fields. |
 
-### 7. Alerting System
+**How the changeset pipeline works:**
 
-Notify teams when something goes wrong. Without alerting, users must constantly watch the dashboard.
+```
+# Pseudocode for Mesh ORM changeset workflow
+user
+  |> Changeset.cast(params, [:name, :email, :age])   # filter + type-cast
+  |> Changeset.validate_required([:name, :email])     # check presence
+  |> Changeset.validate_format(:email, "@")           # check format
+  |> Changeset.validate_number(:age, greater_than: 0) # check bounds
+  |> Repo.insert()                                     # persist or return errors
+```
 
-| Feature | Why Expected | Complexity | Mesh Dependency | Notes |
-|---------|--------------|------------|-----------------|-------|
-| Alert rules with conditions | "Alert when issue X has >100 events in 1 hour" or "Alert on any new issue with level=fatal." Sentry's default: alert on first occurrence of any new issue. | **High** | Actor system, timers, PostgreSQL | Alert rules stored in DB. Evaluator actor runs on a timer (e.g., every 60s), queries event counts against rule conditions. |
-| Threshold-based alerts | "Error rate > N events per M minutes." The most common alert type. | **Med** | PostgreSQL aggregate queries | `SELECT COUNT(*) FROM events WHERE project_id = $1 AND timestamp > NOW() - interval '1 hour'`. Compare against threshold. |
-| New issue alert | Alert immediately when a never-before-seen issue appears. This is Sentry's default alert rule. | **Low** | Event processing pipeline | During ingestion, if fingerprint is new (INSERT succeeded, not UPDATE), trigger alert. |
-| Regression alert | Alert when a resolved issue regresses (reappears). Critical for teams that mark issues as fixed. | **Low** | Event processing pipeline | During regression detection (see Issue Lifecycle), trigger alert. |
-| Alert notification via WebSocket | In-app notifications in the dashboard. Simplest notification channel, fully within Mesh's capabilities. | **Low** | WebSocket rooms | Broadcast alert to org-wide notification room. |
-| Alert notification via webhook | POST alert payload to a user-configured URL. Enables Slack, Discord, PagerDuty integration without building each one. | **High** | **Needs HTTP client** | This requires outbound HTTP capability. Either build a minimal HTTP client in Mesh, or shell out to `curl`. Major gap. |
-| Alert cooldown / deduplication | Don't send the same alert every 60 seconds. Enforce a cooldown period (e.g., alert at most once per hour per rule). | **Med** | Actor state, timers | Track last_triggered timestamp per rule. Skip if within cooldown window. |
-| Alert states: active, acknowledged, resolved | Track whether alerts have been seen and addressed. Auto-resolve when condition no longer met. | **Med** | PostgreSQL, actor timers | `alerts` table with state machine. Evaluator actor checks if condition is still true, auto-resolves if not. |
+The Changeset struct shape:
+- `data :: T` -- the original struct
+- `changes :: Map<String, String>` -- approved modifications (field name -> new value)
+- `errors :: List<{String, String}>` -- validation failures (field, message)
+- `valid :: Bool` -- overall validity flag
 
-**Confidence: MEDIUM** -- Alert rule evaluation is straightforward. The major concern is **webhook notification requiring an HTTP client**, which Mesh does not have. In-app (WebSocket) alerts are fully supported. Webhook alerts are the industry standard notification mechanism and will need the HTTP client gap addressed.
+Repo.insert/update check `valid` before executing SQL. If invalid, return `Err(changeset)` with errors attached.
 
-### 8. Dashboard and Visualization Data
+### 6. Migration Tooling
 
-The API must serve pre-aggregated data that a Vue frontend can render as charts and widgets.
+Schema evolution over time. Every production application needs this.
 
-| Feature | Why Expected | Complexity | Mesh Dependency | Notes |
-|---------|--------------|------------|-----------------|-------|
-| Event volume over time | Time-series data: events per hour/day for a project. Powers the main overview chart. Every monitoring dashboard has this. | **Med** | PostgreSQL, `date_trunc` | `SELECT date_trunc('hour', timestamp) as bucket, COUNT(*) FROM events WHERE project_id = $1 GROUP BY bucket ORDER BY bucket`. |
-| Error breakdown by level | Pie/bar chart: how many fatal vs error vs warning vs info events. | **Low** | PostgreSQL | `SELECT level, COUNT(*) FROM events WHERE project_id = $1 GROUP BY level`. |
-| Top issues by frequency | "Most frequent errors" list. The primary triage view. | **Low** | PostgreSQL | `SELECT * FROM issues WHERE project_id = $1 ORDER BY event_count DESC LIMIT 10`. |
-| Events by tag (environment, release) | Breakdown by deployment context. "How many errors in production vs staging?" | **Med** | PostgreSQL, JSONB or tags table | Aggregate on tag values. If JSONB: `SELECT tags->>'environment', COUNT(*) GROUP BY 1`. |
-| Issue event timeline | For a single issue: events over time. Shows if the issue is getting worse or better. | **Med** | PostgreSQL | `SELECT date_trunc('hour', timestamp), COUNT(*) FROM events WHERE issue_id = $1 GROUP BY 1`. |
-| Project health summary | At-a-glance: total unresolved issues, events in last 24h, new issues today. Dashboard overview widget. | **Low** | PostgreSQL | Three simple COUNT queries aggregated into one response. |
+| Feature | Why Expected | Complexity | Notes |
+|---------|--------------|------------|-------|
+| Migration file generation | Create timestamped files with up/down. | **Med** | `mesh orm.gen.migration CreateUsers` -> `20260216120000_create_users.mpl` |
+| `create_table` DDL helper | DSL for creating tables. | **Med** | `create_table("users") do add(:name, :string, null: false) end` |
+| `alter_table` DDL helper | Add/remove/rename columns. | **Med** | `alter_table("users") do add(:email, :string) end` |
+| `drop_table` helper | Drop tables in down migrations. | **Low** | `drop_table("users")` |
+| `create_index` helper | Create indexes. | **Low** | `create_index("users", [:email], unique: true)` |
+| Migration runner (up/down) | Apply pending, rollback last. | **Med** | `schema_migrations` table tracks applied by version timestamp. |
+| Rollback support | Undo last N migrations. | **Med** | Run down function of last applied migration. |
 
-**Confidence: HIGH** -- Pure SQL aggregation queries. PostgreSQL handles this well at moderate scale. The Vue frontend consumes JSON and renders with a charting library (Chart.js or similar).
-
-### 9. Event Detail View
-
-When a user clicks on an event, they need full context.
-
-| Feature | Why Expected | Complexity | Mesh Dependency | Notes |
-|---------|--------------|------------|-----------------|-------|
-| Full event payload display | Show all event data: message, stack trace, tags, extra context, user info, breadcrumbs, timestamp, level. | **Low** | PostgreSQL, JSON serde | Store full event JSON in a `payload` JSONB column. Return directly to frontend. |
-| Stack trace rendering | Formatted stack trace with file names, line numbers, function names. The core debugging view. | **Low** | JSON serde (frontend concern) | Backend stores stack trace as structured JSON (list of frames). Frontend renders with syntax highlighting. |
-| Breadcrumbs (event trail) | Chronological list of actions/events leading up to the error. SDKs send these as part of the event payload. | **Low** | JSON serde | Stored as part of event payload. `breadcrumbs: [{timestamp, category, message, level}]`. |
-| Tags display | Key-value pairs showing environment, release, server, custom tags. | **Low** | JSON serde | Already part of event payload. Frontend renders as tag chips. |
-| Navigation between events in an issue | "Next event" / "Previous event" buttons within an issue. | **Low** | PostgreSQL | `SELECT id FROM events WHERE issue_id = $1 AND id > $2 ORDER BY id LIMIT 1`. |
-| User context | Which user experienced the error. SDKs send user info (id, email, IP). | **Low** | JSON serde | Part of event payload. `user: {id, email, ip_address, username}`. |
-
-**Confidence: HIGH** -- This is essentially storing and retrieving JSON documents. The complexity is in the frontend rendering, not the backend.
-
-### 10. Data Retention
-
-Events accumulate fast. Must manage storage lifecycle.
-
-| Feature | Why Expected | Complexity | Mesh Dependency | Notes |
-|---------|--------------|------------|-----------------|-------|
-| Configurable retention period per project | "Keep events for 30/60/90 days." After that, delete. Sentry and all competitors offer this. | **Med** | PostgreSQL, actor timer | `retention_days` column on projects. Background actor runs daily: `DELETE FROM events WHERE project_id = $1 AND timestamp < NOW() - interval '$N days'`. |
-| Preserve issue summaries after event deletion | When old events are purged, keep the issue record (fingerprint, count, first/last seen). Losing issue history is unacceptable. | **Low** | PostgreSQL | Only delete from `events` table. `issues` table is preserved. |
-| Storage usage display | Show users how much storage each project uses. Needed for quota management. | **Med** | PostgreSQL | `SELECT pg_total_relation_size('events')` or track per-project with a materialized count. |
-| Event sampling at ingestion | When volume is extreme, sample (keep 1 in N events). Reduces storage while preserving statistical accuracy. | **Med** | Actor state, random | Per-project sample rate config. During ingestion, generate random float, drop if > sample_rate. Track dropped count. |
-
-**Confidence: HIGH** -- Standard data lifecycle management. PostgreSQL handles bulk deletes and partitioning well.
+**Recommendation:** Use explicit `up`/`down` functions (Ecto/Diesel pattern). NOT auto-diff (Prisma pattern) -- schema diffing is extremely complex and dangerous for production. Users write migration logic explicitly. Provide `mesh orm.gen.migration` to scaffold empty files.
 
 ---
 
 ## Differentiators
 
-Features that set Mesher apart from the competition. Not expected, but valuable.
+Features that set the Mesh ORM apart. Not expected, but valuable.
 
-| Feature | Value Proposition | Complexity | Mesh Dependency | Notes |
-|---------|-------------------|------------|-----------------|-------|
-| **Multi-node event processing** | Distribute event ingestion across multiple Mesh nodes using distributed actors. No single point of failure. Demonstrates Mesh's clustering capability under real load. | **High** | Distributed actors, global registry | Ingestion actors on multiple nodes. Global registry for service discovery. Cross-node event routing. This is THE differentiator as a dogfooding exercise. |
-| **Actor-per-connection streaming** | Each WebSocket dashboard connection is its own actor with its own state and filters. Crashes in one connection never affect others. True isolation. | **Low** | WebSocket server, actors | Already how Mesh WebSocket works. Just needs filter state per actor. |
-| **Supervision tree resilience** | If the event processing pipeline crashes, it automatically restarts via supervision. Zero manual intervention. Live demo of Mesh's fault tolerance. | **Med** | Supervision trees, crash recovery | Design processing pipeline as supervised actor tree. Intentionally stress-test crash recovery. |
-| **Zero-dependency backend** | Single Mesh binary for the entire backend. No Kafka, no Redis, no Elasticsearch, no Zookeeper. Compare to self-hosted Sentry's 12+ services. GlitchTip-level simplicity. | **Med** | All existing Mesh features | PostgreSQL is the only external dependency. Actor mailboxes replace message queues. Actor state replaces Redis caches. PG full-text search replaces Elasticsearch. |
-| **Live alert rule evaluation** | Alert rules evaluated by a dedicated actor that receives events via message passing, not by polling the database. Lower latency than cron-based evaluation. | **Med** | Actor system, pattern matching | Alert evaluator actor subscribes to event stream. Maintains in-memory counters. Fires alerts in real-time. |
-| **Cross-node WebSocket broadcast** | Dashboard users connected to different Mesh nodes all see the same real-time events. Demonstrates cross-node room broadcast. | **Med** | Distributed actors, cross-node rooms | Already supported by Mesh's DIST_ROOM_BROADCAST. Just wire it into the event pipeline. |
-| **Built with the language it monitors** | Meta-dogfooding: Mesher is built in Mesh, and Mesher monitors Mesh applications. The SDK is written in Mesh. Unique narrative. | **Low** | All of Mesh | Marketing differentiator and ultimate stress test. |
+| Feature | Value Proposition | Complexity | Notes |
+|---------|-------------------|------------|-------|
+| **Pipe-native query builder** | Designed from the ground up for `|>` composition. More natural than Ecto's binding syntax. | **Low** | Each function takes Query as first arg, returns Query. Natural pipe threading. |
+| **Compile-time field validation** | Catch `:naem` typos at compile time, not runtime. | **Med** | If atoms are compile-time values, check against schema field list during type checking. |
+| **Actor-integrated transactions** | Transaction blocks run with crash isolation via catch_unwind. Already exists. | **Low** | Pg.transaction already does this. ORM wraps it. |
+| **Composable scopes as functions** | Named query fragments: `pub fn active(q) do q |> where(:active, true) end`. | **Low** | Free with pipe composition -- just functions returning Query structs. |
+| **Upsert support (insert_or_update)** | PostgreSQL `ON CONFLICT` clause. Heavily used in Mesher's `upsert_issue`. | **Med** | `Repo.insert(changeset, on_conflict: :replace_all, conflict_target: [:email])`. |
+| **Schemaless changesets** | Validate data without a database-backed schema. Useful for API input validation. | **Med** | Changeset works with any `{data, types}` pair, not just schema structs. |
+| **Schema metadata at compile time** | No runtime reflection overhead. All metadata baked in at compilation. Zero-cost. | **Med** | `deriving(Schema)` generates static functions/constants. |
+| **PostgreSQL-native features** | JSONB queries, array types, CTEs, window functions via raw SQL escape hatch. No multi-DB abstraction tax. | **Low** | PG-only means we can use PG features freely. |
 
 ---
 
 ## Anti-Features
 
-Features to explicitly NOT build. Each would expand scope beyond "core monitoring" into "full observability platform."
+Features to explicitly NOT build. Each has strong reasons.
 
 | Anti-Feature | Why Avoid | What to Do Instead |
 |--------------|-----------|-------------------|
-| **Distributed tracing / APM** | Requires span collection, trace assembly, waterfall visualization, service maps. Enormous scope. Sentry bolted this on later, separate from core error tracking. This is a full product. | Focus on error events and log entries. If users want tracing, they use Jaeger/Zipkin alongside Mesher. |
-| **Infrastructure metrics** | CPU, memory, disk, network monitoring requires agents on hosts, time-series database, different query patterns. Datadog's core business, not ours. | Mesher monitors application errors, not infrastructure. Point users to Prometheus/Grafana for infra. |
-| **Session replay** | Recording user browser sessions (DOM snapshots, mouse movements, clicks) requires specialized SDKs, massive storage, and a complex replay player. Highlight.io's differentiator. | Breadcrumbs provide lightweight context. Session replay is a separate product. |
-| **Source map processing** | Unminifying JavaScript stack traces requires uploading, storing, and processing source maps during ingestion. Significant complexity for one platform. | Accept stack traces as-is. Document that source map processing is deferred. Users can use Sentry for JS-heavy needs. |
-| **Release tracking and deploy integration** | Associating events with git commits, PRs, and deploy timestamps. Sentry's "suspect commits" feature. Requires deep SCM integration. | Accept `release` as a string tag on events. No commit-level resolution. |
-| **Profiling** | Code-level performance profiling (CPU/memory flame graphs). Sentry added this as a separate product. Requires agent-level instrumentation. | Out of scope. Focus on error events. |
-| **Custom dashboards builder** | Drag-and-drop dashboard creation with arbitrary widget placement. Grafana's core product. Enormous frontend complexity. | Provide fixed, well-designed dashboard layouts. Customization limited to filter/time-range selection. |
-| **Log aggregation with query language** | Building a full log query language (like Datadog's or Splunk's) with parsing, regex, aggregation pipelines. This is a search engine project. | Full-text search on event messages via PostgreSQL. Structured tag filtering. No custom query DSL. |
-| **Multi-region data residency** | Storing data in specific geographic regions for GDPR compliance. Requires multi-region infrastructure and routing logic. | Single-region deployment. Document data location. Compliance is a v2+ concern. |
-| **Billing and usage-based pricing** | Metering, invoicing, plan management, Stripe integration. Full SaaS billing is a product in itself. | Track usage for display purposes. No billing system. Mesher is a dogfooding project, not a revenue product. |
-| **Email alerting** | Requires SMTP client, email templates, delivery tracking, bounce handling. Mesh has no SMTP capability. | Use webhooks for external notification. In-app WebSocket alerts are the primary channel. |
-| **Mobile SDK** | iOS/Android SDKs require platform-specific crash reporting (signal handlers, NDK, etc.). Each is a separate project. | Mesher SDKs target server-side applications only (Mesh, then possibly Python/Node). |
-| **AI-powered grouping** | Sentry uses ML to improve grouping beyond fingerprints. Requires ML pipeline, training data, inference infrastructure. | Use deterministic fingerprinting (stack trace hash, exception type, message normalization). AI is a v2+ feature. |
+| **Lazy loading** | #1 ORM anti-pattern. Silently triggers N+1 queries. In a functional language without mutable state, it requires hidden side effects. Ecto deliberately omitted this; universally praised. ActiveRecord/SQLAlchemy lazy loading causes more production perf issues than any other ORM feature. | Explicit preloading only. Unloaded associations return `NotLoaded` marker that errors on access, forcing explicit preload. |
+| **Active Record pattern (model.save)** | Blurs data/DB boundary. Leads to `User.save()` scattered everywhere. Violates separation of concerns. Incompatible with Mesh's functional paradigm (no mutable objects with methods). | Repo pattern: all DB ops through `Repo.insert/update/delete/all`. Models are pure data structs. |
+| **Identity map / session cache** | SQLAlchemy's Session tracks every loaded object. Adds enormous complexity (stale data, cache invalidation). In a functional language with immutable data, an identity map is nonsensical. | Every query returns fresh data. No caching in ORM. Application builds its own cache if needed. |
+| **Unit of Work (batch flush)** | SQLAlchemy auto-tracks changes, flushes in batch. Complex implicit behavior. "Why did my UPDATE run here?" Explicit is better in functional languages. | Explicit operations: Repo.insert inserts immediately. Use Repo.transaction to batch atomically. |
+| **Automatic schema-diff migrations** | Prisma-style auto-generation hides complexity. Column rename vs drop+add ambiguity. Data loss detection is extremely hard. Dangerous for production. | Explicit migration files with up/down. Add `mesh orm.gen.migration` scaffold. Schema-diff as future differentiator. |
+| **Multi-database support** | Supporting MySQL + PG + SQLite makes every feature 3x harder. Prevents PG-specific features (JSONB, arrays, upserts, CTEs, window functions). | PostgreSQL only. Use PG features freely. Matches existing Mesh driver. |
+| **Callback hooks (before_save, after_create)** | ActiveRecord callbacks scatter side effects throughout model lifecycle. Order-dependent, hard to test, surprising. "Why did sending email happen in my unit test?" | No lifecycle callbacks. Explicit function calls in application code. Ecto deliberately omits callbacks. |
+| **Dynamic finders (find_by_name)** | Magic methods generated at runtime. No compile-time safety. Nonsensical in a statically-typed language. | Use `Repo.get_by(User, name: "Alice")` or query builder. |
+| **Polymorphic associations** | Breaks referential integrity. Complex to implement. Different meaning across ORMs. | Use explicit join tables or sum types. |
+| **Full SQL parser** | SQL grammar is enormous. Diminishing returns. | Query builder for 95% of cases. Raw SQL escape hatch for the rest. |
+| **Embedded schemas** | Ecto has these for non-persisted data. Adds complexity for marginal value. | Use regular structs with `deriving(Json)` for non-persisted data. |
+| **Query caching / prepared statements** | Premature optimization. PG already caches query plans. Adds complexity. | Use PG's built-in plan caching. Add prepared statements later if needed. |
+| **Cyclic association loading** | `User -> Posts -> User -> Posts -> ...` infinite traversal. Some ORMs handle with session cache. Creates infinite object graphs. | Preloading is always one-directional and explicitly bounded. Nest explicitly: `preload(posts: :user)`. |
 
 ---
 
 ## Feature Dependencies
 
 ```
-Project/Org Setup (foundation -- everything depends on this)
+Compiler Additions (parallel track -- enables ergonomic DSL)
   |
-  +-> DSN Key Generation (projects need keys for SDK auth)
+  +-> Keyword Arguments (enables where(name: "Alice") syntax)
   |     |
-  |     +-> Event Ingestion API (needs DSN to authenticate events)
-  |           |
-  |           +-> Event Validation & Normalization
-  |           |     |
-  |           |     +-> Error Grouping / Fingerprinting (needs validated events)
-  |           |     |     |
-  |           |     |     +-> Issue Creation (first occurrence of fingerprint)
-  |           |     |     |     |
-  |           |     |     |     +-> Issue Lifecycle (resolve, archive, assign)
-  |           |     |     |     |
-  |           |     |     |     +-> Regression Detection (needs resolved issues + new events)
-  |           |     |     |
-  |           |     |     +-> Discard Set (needs fingerprints to filter against)
-  |           |     |
-  |           |     +-> Real-Time Streaming (broadcast ingested events to WebSocket rooms)
-  |           |     |     |
-  |           |     |     +-> Filtered Streaming (needs events + filter criteria)
-  |           |     |     |
-  |           |     |     +-> Issue Count Updates (needs issue IDs from grouping)
-  |           |     |
-  |           |     +-> Alert Rule Evaluation (needs event stream to evaluate against rules)
-  |           |           |
-  |           |           +-> Alert Notifications (WebSocket first, webhook later)
-  |           |           |
-  |           |           +-> Alert Cooldown / Dedup (needs alert history)
-  |           |
-  |           +-> Event Storage in PostgreSQL (needs validated, normalized events)
-  |                 |
-  |                 +-> Search and Filtering (needs stored events)
-  |                 |     |
-  |                 |     +-> Full-Text Search (needs tsvector index on events)
-  |                 |     |
-  |                 |     +-> Tag-Based Filtering (needs tags stored/indexed)
-  |                 |
-  |                 +-> Dashboard Aggregation Queries (needs event data)
-  |                 |
-  |                 +-> Data Retention (needs events to age out)
+  |     +-> Query Builder conditions
+  |     +-> Changeset cast field lists
+  |     +-> Migration DSL options
   |
-  +-> Team Membership / RBAC (needs orgs and users)
+  +-> Multi-line Pipe Chains (enables readable query pipelines)
+  |     |
+  |     +-> Query Builder usability
+  |
+  +-> Atom Literals (enables :field_name references)
+  |     |
+  |     +-> Schema field references in queries
+  |     +-> Validation field references
+  |
+  +-> Struct Update Syntax (enables %{user | name: "Bob"})
         |
-        +-> Issue Assignment (needs users and issues)
+        +-> Changeset apply_changes
 
-Multi-Node Clustering (can be layered on top of single-node at any time)
+Schema DSL (foundation -- everything depends on this)
   |
-  +-> Distributed Event Ingestion (multiple ingestion nodes)
+  +-> Schema Metadata Generation (field names, types, table, PK)
+  |     |
+  |     +-> Query Builder (needs metadata for SQL generation)
+  |     |     |
+  |     |     +-> where, select, order_by, limit, offset
+  |     |     +-> join (needs relationship metadata)
+  |     |     +-> group_by, having
+  |     |
+  |     +-> Changeset System (needs metadata for casting)
+  |     |     |
+  |     |     +-> cast (type conversion)
+  |     |     +-> validate_* functions
+  |     |     +-> constraint error mapping (PG error -> changeset error)
+  |     |
+  |     +-> Repo Operations (needs metadata for SQL generation)
+  |           |
+  |           +-> Repo.insert (changeset + metadata -> INSERT SQL)
+  |           +-> Repo.update (changeset + PK + changes -> UPDATE SQL)
+  |           +-> Repo.delete (PK -> DELETE SQL)
+  |           +-> Repo.all / one / get / get_by (query builder -> SELECT SQL)
   |
-  +-> Cross-Node WebSocket Broadcast (real-time streaming across nodes)
+  +-> Relationship Definitions (belongs_to, has_many, has_one, many_to_many)
+  |     |
+  |     +-> FK Field Generation (belongs_to adds user_id)
+  |     +-> Preload Queries (has_many generates SELECT WHERE fk = $1)
+  |     +-> Join Queries (builder uses relationship metadata)
+  |     +-> Nested Preloading (recursive preload + stitch)
   |
-  +-> Global Process Registry for service discovery
-
-SDK (parallel track -- can be built independently)
-  |
-  +-> Mesh SDK (captures errors, sends to ingestion API)
-  |
-  +-> JavaScript SDK (optional, for monitoring web apps)
+  +-> Migration Tooling (parallel, uses schema metadata for future auto-gen)
+        |
+        +-> Migration DSL (create_table, alter_table, create_index)
+        +-> Migration Runner (up/down, schema_migrations tracking)
+        +-> Migration Generation CLI (mesh orm.gen.migration)
 ```
 
-**Key ordering insight:** The dependency chain is linear and deep. Project setup must come first, then ingestion, then grouping, then everything else. Real-time streaming and alerting both depend on the ingestion pipeline being complete. Multi-node clustering is an overlay that can be added to any phase without changing the single-node architecture. The SDK is a parallel workstream.
+**Key ordering insight:** Compiler additions should come first or in parallel with Schema DSL because they unlock ergonomic syntax for everything downstream. Schema DSL is the next critical foundation -- query builder, changesets, Repo, and relationships all depend on schema metadata. Query builder and changesets are independent of each other but both feed into Repo operations. Relationships and preloading layer on top. Migrations are partially independent.
 
 ---
 
 ## MVP Recommendation
 
-Prioritize by dependency order and dogfooding value:
+Build in dependency order. Each step unlocks the next.
 
-1. **Project/Org data model + auth** -- Foundation. Create orgs, projects, DSN keys, user accounts, API tokens. Without this, nothing else works. Low complexity, pure PostgreSQL schema + CRUD endpoints.
+### Phase 1: Compiler Additions + Schema DSL
+1. **Keyword arguments** -- Highest-leverage compiler change. Unlocks `where(name: "Alice")`.
+2. **Atom literals** -- Enable `:field_name` references for field identification.
+3. **Multi-line pipe chains** -- Already a known limitation. Unlock readable query pipelines.
+4. **Struct update syntax** -- `%{user | name: "Bob"}`. Needed for changeset apply.
+5. **Schema DSL** -- `schema Users, "users" do field :name, String end`. Generates struct + metadata.
 
-2. **Event ingestion API** -- Core pipeline. HTTP POST endpoint accepting events, validating, storing in PostgreSQL. This immediately stress-tests HTTP server, JSON serde, connection pooling, and actor concurrency. Highest dogfooding value per line of code.
+### Phase 2: Query Builder + Repo Basics
+6. **Query struct + basic clauses** -- where, select, order_by, limit, offset. Pipe-composable.
+7. **Repo.all / Repo.one / Repo.get / Repo.get_by** -- Execute queries against DB.
+8. **Repo.insert / Repo.update / Repo.delete** -- Basic CRUD through Repo.
 
-3. **Error grouping and issue creation** -- The feature that makes this a monitoring platform, not a log database. Fingerprint computation using pattern matching and string operations. Issue upsert with PostgreSQL transactions. Exercises `deriving(Row)`, `deriving(Json)`, sum types.
+### Phase 3: Changesets
+9. **Changeset struct + cast** -- Type-safe casting from external params.
+10. **Validation functions** -- validate_required, validate_length, validate_format, validate_inclusion, validate_number.
+11. **Constraint error mapping** -- PG unique/FK violations -> changeset errors.
 
-4. **Real-time WebSocket streaming** -- The most impressive demo feature and best dogfooding of WebSocket rooms. Events flow from ingestion to dashboard in real-time via actor message passing. Exercises WebSocket, rooms, actor-per-connection.
+### Phase 4: Relationships + Preloading
+12. **belongs_to / has_many / has_one** -- Define associations in schema.
+13. **Preloading** -- `Repo.preload(user, :posts)` and `User |> preload(:posts) |> Repo.all()`.
+14. **many_to_many** -- Join table relationships.
+15. **Nested preloading** -- `preload(posts: :comments)`.
 
-5. **Issue lifecycle (resolve/archive/regress)** -- Makes the platform usable for actual triage. State machine in PostgreSQL. Regression detection during ingestion. Low incremental complexity.
+### Phase 5: Migration Tooling
+16. **Migration DSL** -- create_table, alter_table, drop_table, create_index.
+17. **Migration runner** -- Apply/rollback, schema_migrations tracking.
+18. **Migration generation CLI** -- `mesh orm.gen.migration CreateUsers`.
 
-6. **Search and filtering + dashboard data** -- Makes the platform useful for investigation. PostgreSQL full-text search, tag filtering, time-series aggregation. Exercises complex SQL with parameterized queries.
+### Phase 6: Validation (Rewrite Mesher)
+19. **Rewrite Mesher's DB layer** using the ORM. Replace all 627 lines of raw SQL queries + 82 lines of schema DDL.
 
-7. **Alerting (rules + WebSocket notifications)** -- Closes the loop: users don't have to watch the dashboard. Actor-based rule evaluator with timer-driven evaluation. Start with in-app WebSocket notifications only (defer webhooks until HTTP client exists).
-
-8. **Data retention** -- Background actor with daily cleanup. Exercises Timer.send_after for scheduling.
-
-9. **Multi-node clustering** -- The ultimate dogfooding phase. Distribute ingestion and streaming across multiple Mesh nodes. Exercises distributed actors, global registry, cross-node rooms.
-
-**Defer to follow-up:**
-- Webhook alerting (requires HTTP client capability in Mesh -- significant language work)
-- SDK for external languages (Python, Node, etc.)
-- Source map processing
-- Advanced dashboard customization
-- Log aggregation query language
-- Email notifications
+**Defer to post-MVP:**
+- Compile-time query field validation (complex type system work)
+- Schema-diff migration auto-generation (complex DB introspection)
+- Schemaless changesets (nice-to-have)
+- Aggregate functions as first-class query builder ops (use raw SQL)
+- Upsert support (raw SQL for Mesher's upsert_issue initially)
+- Subqueries and CTEs (raw SQL escape hatch)
+- Streaming/cursor queries (LIMIT/OFFSET pagination initially)
 
 ---
 
 ## Complexity Summary
 
-| Feature Area | Complexity | Primary Mesh Features Exercised |
-|--------------|------------|-------------------------------|
-| Project/Org/Auth | Low | HTTP server, PostgreSQL, JSON serde, middleware |
-| Event Ingestion | Med | HTTP server, WebSocket, actors, connection pooling, JSON serde |
-| Error Grouping | High | Pattern matching, string ops, PostgreSQL transactions, sum types |
-| Issue Lifecycle | Low | PostgreSQL, sum types, pattern matching |
-| Real-Time Streaming | Med | WebSocket rooms, actor-per-connection, message passing |
-| Search & Filtering | Med | PostgreSQL full-text search, parameterized queries |
-| Dashboard Data | Med | PostgreSQL aggregation, JSON serde |
-| Alerting | High | Actor system, timers, supervision, PostgreSQL |
-| Data Retention | Low | Actor timers, PostgreSQL bulk operations |
-| Multi-Node | High | Distributed actors, global registry, cross-node rooms, clustering |
-| Event Detail View | Low | PostgreSQL, JSON serde |
+| Feature Area | Complexity | Why | Primary Dependencies |
+|--------------|------------|-----|---------------------|
+| Compiler: Keyword Args | **High** | Touches every compiler stage: lexer, parser, typeck, MIR, codegen | All compiler crates |
+| Compiler: Multi-line Pipes | **Med** | Parser change only. Well-understood from Elixir | mesh-parser |
+| Compiler: Atom Literals | **Med** | Lexer + parser + type system. New type `Atom` | mesh-lexer, mesh-parser, mesh-typeck |
+| Compiler: Struct Update | **Med** | Parser + codegen. Must generate correct field copying | mesh-parser, mesh-codegen |
+| Schema DSL | **High** | New syntax or deriving. Must generate struct + metadata at compile time | Parser or deriving, code generation |
+| Query Builder (basic) | **Med** | Struct with SQL generation. Well-understood from Ecto | Schema metadata |
+| Query Builder (joins) | **High** | Relationship metadata, binding management, SQL joins | Schema relationships |
+| Repo Operations | **Med** | SQL generation + Pool.query. Builds on existing infra | Query builder, Pool.query |
+| Changesets | **Med** | Pure data structure + validation functions | Schema metadata for casting |
+| Relationships | **High** | Schema additions, FK conventions, preload generation | Schema DSL |
+| Preloading (basic) | **Med** | Separate queries, stitch results | Relationships |
+| Preloading (nested) | **High** | Recursive planning, multiple queries, nested stitching | Basic preloading |
+| Migration DSL | **Med** | SQL DDL generation from function calls | None (standalone) |
+| Migration Runner | **Med** | Track applied, execute in order, rollback | PostgreSQL |
+| Mesher Rewrite | **High** | 627 lines raw SQL + 82 lines DDL to replace. Real-world validation | All ORM features |
 
 ---
 
 ## Sources
 
-- [Sentry Issue Grouping](https://docs.sentry.io/concepts/data-management/event-grouping/) -- HIGH confidence, authoritative
-- [Sentry Grouping Developer Docs](https://develop.sentry.dev/backend/application-domains/grouping/) -- HIGH confidence, authoritative
-- [Sentry Event Payloads](https://develop.sentry.dev/sdk/event-payloads/) -- HIGH confidence, authoritative
-- [Sentry SDK Expected Features](https://develop.sentry.dev/sdk/expected-features/) -- HIGH confidence, authoritative
-- [Sentry Envelope Protocol](https://develop.sentry.dev/sdk/envelopes/) -- HIGH confidence, authoritative
-- [Sentry Rate Limiting](https://develop.sentry.dev/sdk/expected-features/rate-limiting/) -- HIGH confidence, authoritative
-- [Sentry Issue States](https://docs.sentry.io/product/issues/states-triage/) -- HIGH confidence, authoritative
-- [Sentry Workflow: Resolve](https://blog.sentry.io/the-sentry-workflow-resolve/) -- HIGH confidence
-- [Sentry Fingerprint Rules](https://docs.sentry.io/concepts/data-management/event-grouping/fingerprint-rules/) -- HIGH confidence
-- [GlitchTip Architecture](https://glitchtip.com/documentation/hosted-architecture/) -- HIGH confidence
-- [GlitchTip](https://glitchtip.com/) -- HIGH confidence, open source reference
-- [Highlight.io vs Sentry](https://www.highlight.io/compare/highlight-vs-sentry) -- MEDIUM confidence
-- [Sentry Self-Hosted Developer Docs](https://develop.sentry.dev/self-hosted/) -- HIGH confidence
-- [Datadog vs Sentry Comparison](https://betterstack.com/community/comparisons/datadog-vs-sentry/) -- MEDIUM confidence
-- [System Design: Monitoring and Alerting](https://algomaster.io/learn/system-design-interviews/design-monitoring-and-alerting-system) -- MEDIUM confidence
-- [Datadog Dashboard Widgets](https://docs.datadoghq.com/dashboards/widgets/) -- HIGH confidence, authoritative
-- [Log Retention Policies](https://www.groundcover.com/learn/logging/log-retention-policies) -- MEDIUM confidence
-- [ClickHouse Full-Text Search](https://www.cloudquery.io/blog/why-and-how-we-built-our-own-full-text-search-engine-with-clickhouse) -- MEDIUM confidence
-- [Multi-Tenant RBAC Design](https://workos.com/blog/how-to-design-multi-tenant-rbac-saas) -- MEDIUM confidence
-- [SDK Best Practices](https://www.speakeasy.com/blog/sdk-best-practices) -- MEDIUM confidence
-- [Observability Trends 2026](https://www.ibm.com/think/insights/observability-trends) -- MEDIUM confidence
-- [Google SRE Monitoring](https://sre.google/sre-book/monitoring-distributed-systems/) -- HIGH confidence, authoritative
+### Ecto (Elixir) -- Primary Reference
+- [Ecto.Schema v3.13.5](https://hexdocs.pm/ecto/Ecto.Schema.html) -- HIGH confidence
+- [Ecto.Query v3.13.5](https://hexdocs.pm/ecto/Ecto.Query.html) -- HIGH confidence
+- [Ecto.Changeset v3.13.5](https://hexdocs.pm/ecto/Ecto.Changeset.html) -- HIGH confidence
+- [Ecto.Repo v3.13.5](https://hexdocs.pm/ecto/Ecto.Repo.html) -- HIGH confidence
+- [Ecto Associations](https://hexdocs.pm/ecto/associations.html) -- HIGH confidence
+- [Preloading Nested Associations (Thoughtbot)](https://thoughtbot.com/blog/preloading-nested-associations-with-ecto) -- MEDIUM confidence
+- [Ecto.Query.preload vs Ecto.Repo.preload](https://appunite.com/blog/ecto-query-preload-vs-ecto-repo-preload) -- MEDIUM confidence
+- [Composing Ecto Queries (AmberBit)](https://www.amberbit.com/blog/2019/4/16/composing-ecto-queries-filters-and-preloads/) -- MEDIUM confidence
+
+### ActiveRecord (Ruby/Rails)
+- [Active Record Query Interface](https://guides.rubyonrails.org/active_record_querying.html) -- HIGH confidence
+- [ActiveRecord::QueryMethods](https://api.rubyonrails.org/classes/ActiveRecord/QueryMethods.html) -- HIGH confidence
+
+### Prisma (TypeScript)
+- [Prisma ORM](https://www.prisma.io/orm) -- HIGH confidence
+- [Drizzle vs Prisma 2026](https://makerkit.dev/blog/tutorials/drizzle-vs-prisma) -- MEDIUM confidence
+
+### Diesel / SeaORM (Rust)
+- [Diesel ORM](https://diesel.rs/) -- HIGH confidence
+- [SeaORM](https://www.sea-ql.org/SeaORM/) -- HIGH confidence
+- [SeaORM 2.0](https://www.sea-ql.org/blog/2025-12-12-sea-orm-2.0/) -- HIGH confidence
+- [Rust ORMs Guide (Shuttle)](https://www.shuttle.dev/blog/2024/01/16/best-orm-rust) -- MEDIUM confidence
+
+### SQLAlchemy (Python)
+- [SQLAlchemy Session Basics](https://docs.sqlalchemy.org/en/20/orm/session_basics.html) -- HIGH confidence
+
+### ORM Anti-Patterns
+- [The Basic Mistake All ORMs Make (Vogten)](https://martijnvogten.github.io/2025/04/16/the-basic-mistake-all-orms-make-and-how-to-fix-it.html) -- MEDIUM confidence
+- [ORM Lazy Loading Anti-Pattern](https://www.mehdi-khalili.com/orm-anti-patterns-part-3-lazy-loading) -- MEDIUM confidence
+- [ORM Framework Anti-Patterns (Lindbakk)](https://lindbakk.com/blog/orm-frameworks-anti-patterns) -- MEDIUM confidence
+
+### Migration Tooling
+- [MikroORM Migrations](https://mikro-orm.io/docs/migrations) -- MEDIUM confidence
+- [Schema Migration Tools 2025](https://www.getgalaxy.io/learn/data-tools/best-database-schema-migration-version-control-tools-2025) -- MEDIUM confidence
+
+---
+*Feature research for: Mesh ORM Library (v10.0)*
+*Researched: 2026-02-16*

@@ -1,396 +1,303 @@
 # Technology Stack
 
-**Project:** Mesher -- Monitoring/Observability SaaS Platform
-**Researched:** 2026-02-14
-**Confidence:** HIGH (frontend), HIGH (backend/Mesh), MEDIUM (database schema patterns)
+**Project:** Mesh ORM Library (v10.0)
+**Researched:** 2026-02-16
+**Confidence:** HIGH (compiler analysis), MEDIUM (DSL design patterns), HIGH (migration tooling)
 
-## Recommended Stack
+## Executive Summary
 
-### Backend (Mesh -- Already Validated)
+Building an ORM for Mesh requires a combination of **compiler additions** and **pure Mesh library code**. The key insight from analyzing Ecto, Diesel, and the existing Mesh compiler is that Mesh already has most of the building blocks -- `deriving(Row)`, struct definitions, pipe operator, closures, traits, generics -- but lacks three critical features needed for an expressive ORM:
 
-The entire backend is written in Mesh (.mpl files compiled by meshc). No new Rust crates or compiler changes are needed. All required backend capabilities already exist in the Mesh language and runtime:
+1. **Atom/symbol literals** (`:name`, `:email`) for field references in queries and schema DSL
+2. **Keyword arguments** (`where(name: "Alice", age: 30)`) for ergonomic query builder API
+3. **Extended deriving system** (`deriving(Schema)`) for compile-time generation of schema metadata, relationship accessors, and changeset functions
 
-| Capability | Mesh Feature | Status |
-|------------|-------------|--------|
-| HTTP API (ingestion + REST) | `HTTP.on_get/on_post/on_put/on_delete`, middleware, path params, TLS | Shipped v2.0-v3.0 |
-| WebSocket streaming | `Ws.serve`, actor-per-connection, rooms, TLS | Shipped v4.0 |
-| PostgreSQL storage | `Pg.connect`, `Pool.new`, `Pool.query_as`, transactions, `deriving(Row)` | Shipped v2.0-v3.0 |
-| JSON serde | `deriving(Json)`, encode/decode for structs, sum types, generics | Shipped v2.0 |
-| Actor concurrency | Spawn, send, receive, supervision trees, crash isolation | Shipped v1.0 |
-| Distributed clustering | Node.connect, Global.register, remote spawn, cross-node rooms | Shipped v5.0 |
-| Timers | Timer.sleep, Timer.send_after, receive timeouts | Shipped v1.9 |
-| Pattern matching | Case expressions, sum type matching, guards, exhaustiveness | Shipped v1.0 |
-| Iterators/Collections | Lazy iterators, map/filter/reduce, Collect | Shipped v7.0 |
-| Module system | Multi-file builds, pub visibility, imports | Shipped v1.8 |
+No macro system is needed. No new parser grammar for a "schema DSL block" is needed. The ORM can be built using the existing `struct` + `deriving` pattern, with atoms and keyword args as the two new language primitives.
 
-**No new Mesh stdlib additions are required for v9.0.** The existing HTTP server, WebSocket server, PostgreSQL driver, JSON serde, actor system, and distributed actors cover all Mesher backend needs. If anything surfaces during implementation (e.g., a missing string function), it would be a minor stdlib addition, not a stack decision.
+## What Exists Today (DO NOT rebuild)
 
-### Frontend (Vue 3 -- New Application)
+These Mesh features are validated and ready for ORM use:
 
-The Mesher frontend is a separate Vue 3 SPA in the same monorepo, communicating with the Mesh backend via REST API and WebSocket. The existing website (VitePress docs site) is completely separate and should not share code with Mesher.
+| Capability | How ORM Uses It | Status |
+|------------|----------------|--------|
+| `struct` definitions with typed fields | Schema model definitions (struct User do name :: String end) | Shipped |
+| `deriving(Row)` | Basis for `deriving(Schema)` -- same compiler-generated function pattern | Shipped |
+| `deriving(Json)` | Changeset serialization, API integration | Shipped |
+| Pipe operator `\|>` | Query builder chains: `User \|> where(...) \|> Repo.all()` | Shipped |
+| Closures `fn(x) -> expr end` | Dynamic query fragments, custom validations | Shipped |
+| Trailing closures `foo() do \|x\| ... end` | Transaction blocks: `Repo.transaction() do \|conn\| ... end` | Shipped |
+| Trait system with associated types | Queryable, Changeable, Schema traits for type-safe dispatch | Shipped |
+| `From/Into` conversion traits | Type coercion in changesets (string -> int parsing) | Shipped |
+| Result/Option with `?` propagation | Error handling in Repo operations | Shipped |
+| `Pg.execute`, `Pg.query`, parameterized queries | Underlying SQL execution layer | Shipped |
+| Connection pooling with `Pool.open/query_as/execute` | Production database access | Shipped |
+| Transactions `Pg.transaction(conn, fn)` | Transaction support for Repo operations | Shipped |
+| Map type with string keys | Row data representation, changeset params | Shipped |
+| Pattern matching, case expressions | Changeset validation branching | Shipped |
+| Module system with pub visibility | ORM library organization (Repo, Query, Schema, Migration modules) | Shipped |
+| `List.map`, `List.filter`, iterators | Collection operations on query results | Shipped |
 
-#### Core Framework
+## Recommended Stack Additions
 
-| Technology | Version | Purpose | Why |
-|------------|---------|---------|-----|
-| Vue | ^3.5.28 | UI framework | Already used for docs site; team expertise; excellent reactivity for real-time dashboards |
-| Vite | ^6.2 | Build tool / dev server | Default for Vue 3; fast HMR; already used by VitePress under the hood |
-| TypeScript | ^5.9.3 | Type safety | Already used in project; catches API contract mismatches at build time |
-| vue-router | ^5.0.2 | Client-side routing | Official Vue router; v5 merges file-based routing into core; no breaking changes from v4 |
-| Pinia | ^3.0.4 | State management | Official Vue state management; lightweight (1.5KB); composition API native; devtools support |
+### 1. Atom Literals (Compiler Addition -- REQUIRED)
 
-#### UI Components
+| Property | Detail |
+|----------|--------|
+| Syntax | `:name`, `:email`, `:inserted_at`, `:asc`, `:desc` |
+| Runtime representation | Interned string pointer (like Erlang atoms) or compile-time string constant |
+| Type | New `Atom` type in the type system |
+| Why required | Field references in queries (`where(:name, "Alice")`), ordering direction (`:asc`/`:desc`), association keys (`:user_id`), migration column specification |
 
-| Technology | Version | Purpose | Why |
-|------------|---------|---------|-----|
-| Tailwind CSS | ^4.1 | Utility-first CSS | Already used in docs site; consistent styling approach across monorepo |
-| shadcn-vue | (copy-paste, no version) | Component primitives | Already used in docs site (button, collapsible, dropdown-menu, scroll-area, sheet); provides accessible, unstyled building blocks |
-| reka-ui | ^2.8.0 | Headless primitives (shadcn-vue dep) | Already a dependency; provides Dialog, Popover, Select, Tabs used by shadcn-vue |
-| lucide-vue-next | ^0.564.0 | Icon library | Already a dependency; consistent iconography |
+**Why atoms and not plain strings:** Strings are runtime values that can be anything. Atoms are compile-time-known identifiers that the compiler can validate against struct field definitions. `where(:naem, "Alice")` can produce a compile error; `where("naem", "Alice")` cannot. Atoms also read better in DSL code -- they look like field references, not arbitrary data.
 
-#### Data Visualization
+**Implementation approach:**
 
-| Technology | Version | Purpose | Why |
-|------------|---------|---------|-----|
-| Apache ECharts | ^6.0.0 | Charting engine | Most feature-complete open-source charting library; handles time-series line charts, bar charts, heatmaps, and large datasets efficiently; free (Apache 2.0) |
-| vue-echarts | ^8.0.1 | Vue 3 wrapper for ECharts | Official Vue integration; smart option merging; reactive updates; 459 dependents on npm |
+Lexer: Add `:` followed by identifier as a new token kind `AtomLiteral`. The `:` is already a `Colon` token, so the lexer needs a contextual rule: when `:` is followed immediately (no space) by an identifier character, lex as `AtomLiteral` instead of `Colon` + `Ident`. This avoids ambiguity with type annotations (`:: Type`) which use `ColonColon`.
 
-**Why ECharts over alternatives:**
-- **vs Chart.js**: Chart.js is simpler but lacks time-series zoom/brush, heatmaps, and large dataset rendering needed for monitoring dashboards
-- **vs ApexCharts**: ApexCharts is good for interactive charts but ECharts handles 100K+ data points with better performance via canvas rendering and progressive loading
-- **vs Highcharts**: Highcharts requires a commercial license for SaaS; ECharts is Apache 2.0
-- **vs Unovis**: Unovis is newer and less proven; ECharts has 63K+ GitHub stars and years of production use in monitoring tools (Apache projects, Alibaba, Baidu)
+Parser: Add `ATOM_LITERAL` to SyntaxKind. Parse as a primary expression (like string/int literals). The AST node carries the atom name as a string.
 
-#### Virtual Scrolling (Log Viewer)
+Type checker: Add `Ty::Atom` or use `Ty::Con(TyCon::new("Atom"))`. For the ORM, atoms don't need to be a full algebraic type -- they're just compile-time string constants with a distinct type. The type checker can optionally validate atoms against known field names when used in ORM contexts.
 
-| Technology | Version | Purpose | Why |
-|------------|---------|---------|-----|
-| @tanstack/vue-virtual | ^3.13.18 | Virtual scrolling for log viewer | Headless virtualizer; 60FPS with 100K+ items; framework-agnostic core with Vue adapter; recommended by VueUse over their own useVirtualList |
+Codegen: Atoms compile to string constants. At the MIR/LLVM level, an atom is just a pointer to a string literal in the data section. No interning table needed for v10.0 -- that's an optimization for a future version.
 
-**Why TanStack Virtual over alternatives:**
-- **vs vue-virtual-scroller**: TanStack is more actively maintained, has better TypeScript support, and is framework-agnostic (same API patterns as TanStack Table/Query)
-- **vs native intersection observer**: Manual implementation is error-prone for variable-height log entries with different severity colors/stack traces
-- **vs Quasar virtual scroll**: Quasar is a full framework; we only need the virtualizer
+**Estimated scope:** ~200 LOC across lexer, parser, type checker, codegen. Small, self-contained change.
 
-#### Data Tables
+### 2. Keyword Arguments (Compiler Addition -- REQUIRED)
 
-| Technology | Version | Purpose | Why |
-|------------|---------|---------|-----|
-| @tanstack/vue-table | ^8.21.3 | Data table logic (sorting, filtering, pagination) | Headless; works with shadcn-vue Table component; 24K+ GitHub stars; official shadcn-vue data table pattern |
+| Property | Detail |
+|----------|--------|
+| Syntax | `where(name: "Alice", age: 30)` at call sites |
+| Representation | Desugared to `Map<Atom, Any>` or a struct literal at the call site |
+| Why required | Ergonomic query builder API, changeset `cast` field lists, migration column options |
 
-**Why TanStack Table:** shadcn-vue's official data table guide is built on TanStack Table. This gives us sorting, filtering, column visibility, and pagination with full TypeScript support while keeping our own shadcn-vue styled markup.
+**Why keyword args and not Map literals:** `where(%{name: "Alice"})` is verbose and ugly. `where(name: "Alice")` is the Ecto/Ruby ergonomic that makes ORM code readable. Keyword arguments at call sites are syntactic sugar that makes the pipe-chain query builder feel natural.
 
-#### Date Handling
+**Implementation approach -- two options:**
 
-| Technology | Version | Purpose | Why |
-|------------|---------|---------|-----|
-| date-fns | ^4.1.0 | Date formatting and manipulation | Tree-shakable (import only what you use); functional API (no mutable objects); first-class timezone support in v4; 200+ functions; 35K+ GitHub stars |
+**Option A (Recommended): Keyword args as last-position Map sugar.**
+When the parser sees `name: expr` pairs in a function argument list (identifiers followed by `:` then expression), collect them as a single `Map<String, T>` argument. This is exactly how Ruby and Elixir handle keyword arguments.
 
-**Why date-fns over Day.js:** date-fns v4 has built-in timezone support (critical for monitoring -- events from different timezones), better tree-shaking (smaller effective bundle), and a functional API that fits Vue's composition API pattern. Day.js requires plugins for timezone and relative time.
-
-#### HTTP Client
-
-| Technology | Version | Purpose | Why |
-|------------|---------|---------|-----|
-| Native fetch | (browser built-in) | REST API calls to Mesh backend | No library needed; modern browsers support fetch natively; AbortController for cancellation; Response.json() for parsing |
-
-**Why NOT axios/ky/ofetch:** The Mesher frontend has a single backend (the Mesh API server). A thin fetch wrapper composable (e.g., `useMesherApi()`) provides all needed functionality: base URL, auth headers, JSON parsing, error handling. Adding a dependency for this is over-engineering.
-
-### Database (PostgreSQL -- Schema Patterns)
-
-No additional database technology is needed. The Mesh PostgreSQL driver with connection pooling handles all storage. The schema design is the important decision, not the technology.
-
-| Decision | Recommendation | Why |
-|----------|---------------|-----|
-| Database engine | PostgreSQL (already supported) | Mesh has full PG driver with TLS, pooling, transactions, deriving(Row) |
-| Time-series approach | Native `PARTITION BY RANGE` on timestamp | No extension dependencies (TimescaleDB adds operational complexity); native partitioning is sufficient for Mesher's scale |
-| Partition granularity | Daily partitions for events/logs | Enables efficient data expiration (DROP partition vs DELETE rows); keeps per-partition indexes small |
-| Partition management | Manual CREATE via Mesh startup code | pg_partman requires PG extension installation; manual partition creation (30 days ahead) is simpler for a self-hosted product |
-| ID generation | BIGSERIAL or UUID v7 (time-sortable) | ULIDs/UUID v7 are time-sortable, enabling time-range queries on primary key; BIGSERIAL is simpler if timestamps are always included in queries |
-
-**Why NOT TimescaleDB:** TimescaleDB adds an extension dependency that complicates deployment (requires installation on PG server, version compatibility concerns). Native PostgreSQL partitioning provides the core benefit (partition pruning on time-range queries, efficient data expiration) without any extensions. For Mesher's expected scale (thousands of events/second, not millions), native partitioning is sufficient.
-
-### SDK / Agent (Lightweight HTTP Client)
-
-The Mesher SDK sends events from user applications to the Mesher ingestion API. Design it as a simple HTTP POST client, not a complex agent.
-
-| Decision | Recommendation | Why |
-|----------|---------------|-----|
-| Transport protocol | HTTPS POST with JSON body | Simple, universal, works from any language; no gRPC/protobuf complexity |
-| Ingestion endpoint | `POST /api/v1/events` | Single endpoint; event type in payload, not URL path |
-| Authentication | API key in header (`X-Mesher-Key: <key>`) | Simple; no OAuth complexity for server-to-server calls |
-| Batching | Client-side batching (flush every 5s or 100 events) | Reduces HTTP overhead; prevents event loss on crash via flush-on-shutdown |
-| Retry | Exponential backoff with jitter, max 3 retries | Standard pattern; prevents thundering herd |
-| SDK languages (initial) | JavaScript/TypeScript only | Start with one; expand later |
-| SDK size | < 5KB minified | Tiny footprint; no heavy dependencies |
-
-**Event payload format (JSON):**
-```json
-{
-  "type": "error",
-  "timestamp": "2026-02-14T12:00:00.000Z",
-  "level": "error",
-  "message": "Connection refused",
-  "fingerprint": "conn_refused_pg",
-  "metadata": {
-    "service": "api-gateway",
-    "environment": "production",
-    "runtime": "node/22.0.0"
-  },
-  "stacktrace": "Error: Connection refused\n  at connect (pg.js:42)\n  ..."
-}
+```
+where(name: "Alice", age: 30)
+# desugars to:
+where(%{"name" => "Alice", "age" => 30})
 ```
 
-**Why NOT OpenTelemetry format:** OTLP is complex (protobuf, spans, trace context). Mesher is a log/error monitoring tool, not a full APM/tracing platform. A simple JSON format keeps the SDK tiny and the ingestion pipeline simple. Users who want OTLP can add a bridge later.
+This requires:
+- Parser: Detect `ident COLON expr` pattern in arg lists, collect into a MAP_LITERAL node as the final argument
+- Type checker: The function signature expects a Map (or a new KeywordList type) as the last parameter
+- Codegen: No change -- it's just a Map
 
-### Deployment
+**Option B: Keyword args as ordered list of pairs (Elixir-style).**
+`[name: "Alice", age: 30]` desugars to `[(:name, "Alice"), (:age, 30)]` -- a `List<(Atom, T)>`. This preserves ordering and allows duplicate keys.
 
-| Technology | Purpose | Why |
-|------------|---------|-----|
-| Single Mesh binary | Backend server | meshc compiles to a native binary; no runtime dependencies |
-| Vite build (static files) | Frontend assets | `vite build` produces static HTML/JS/CSS served by Mesh HTTP server or a CDN |
-| PostgreSQL 16+ | Database | Standard; supports native partitioning; widely available |
-| TLS certificates | HTTPS/WSS | Mesh supports Http.serve_tls and Ws.serve_tls; use Let's Encrypt or self-signed for dev |
-| Docker (optional) | Containerized deployment | Mesh binary + PG in docker-compose for easy local dev and deployment |
+**Recommendation: Option A** (Map sugar) because Mesh already has Map with full codegen support. The `List<(Atom, T)>` approach requires tuple-of-mixed-types which is harder to type-check with HM inference.
+
+**Estimated scope:** ~300 LOC in parser (detect pattern in arg lists), ~50 LOC type checker, 0 LOC codegen.
+
+### 3. Extended Deriving System: `deriving(Schema)` (Compiler Addition -- REQUIRED)
+
+| Property | Detail |
+|----------|--------|
+| Syntax | `struct User do ... end deriving(Schema, table: "users")` |
+| What it generates | `__schema__/1` metadata function, `changeset/2`, `from_row/1` (already exists from Row), field type map, relationship accessors |
+| Why required | Schema metadata must be accessible at runtime for query building, validation, and relationship loading |
+
+**How deriving(Schema) extends the existing pattern:**
+
+The existing `deriving(Row)` generates a `from_row` function. `deriving(Json)` generates `to_json`/`from_json`. Following this exact pattern, `deriving(Schema)` generates:
+
+1. **`__table__()` -> String**: Returns the table name (from the `table:` option, or pluralized struct name as default)
+2. **`__fields__()` -> List<(String, String)>`: Returns field names and their SQL types
+3. **`__primary_key__()` -> String**: Returns the primary key field name (default: `"id"`)
+4. **`changeset(struct, params)` -> Changeset<T>**: Casts external params onto the struct with type checking
+5. Relationship metadata functions (generated from relationship declarations -- see below)
+
+**Estimated scope:** ~500 LOC in type checker (registration), ~800 LOC in codegen (MIR generation), following the exact pattern of `generate_from_row_struct` and `generate_to_json_struct`.
+
+### 4. Relationship Declarations (New Struct Annotation Syntax -- Compiler Addition)
+
+| Property | Detail |
+|----------|--------|
+| Syntax | Inside struct body: `belongs_to :user, User` / `has_many :posts, Post` / `has_one :profile, Profile` |
+| Parser change | New node types inside STRUCT_DEF: BELONGS_TO_DECL, HAS_MANY_DECL, HAS_ONE_DECL |
+| What they generate | Foreign key field (for belongs_to), association loader functions, preload metadata |
+
+**Implementation approach:**
+
+These are NOT new keywords. They are parsed as function-call-like declarations within a struct body when `deriving(Schema)` is present. The parser sees `belongs_to` as an identifier followed by atom and type arguments.
+
+Actually, to keep it simpler and avoid keyword reservation: **use the `def` keyword pattern** already in the language, or simply make `belongs_to`, `has_many`, `has_one` new keywords. Given the language already has 48 keywords and the ORM is a first-class feature, adding 3 more keywords is justified.
+
+**Recommended: Add `belongs_to`, `has_many`, `has_one` as parser-recognized declarations inside struct bodies.**
+
+Lexer: Add 3 new keywords.
+Parser: Inside struct body parsing, recognize these as relationship declarations.
+Type checker: Validate relationship targets exist, generate appropriate types.
+Codegen: Generate loader functions and metadata.
+
+**Estimated scope:** ~100 LOC lexer/parser, ~300 LOC type checker, ~400 LOC codegen.
+
+### 5. Multi-line Pipe Chains (Compiler Fix -- STRONGLY RECOMMENDED)
+
+| Property | Detail |
+|----------|--------|
+| Current limitation | `\|>` must be on same line as previous expression |
+| Needed | `User \|> where(name: "Alice") \|> limit(10) \|> Repo.all()` across multiple lines |
+| Impact | Without this, every ORM query chain must be on one long line or use parenthesized workaround |
+
+**This is listed as a known limitation in STATE.md.** Fix it for v10.0 because ORM query chains are the primary use case for multi-line pipes.
+
+**Implementation:** In the parser's newline handling, when a line starts with `|>`, treat it as a continuation of the previous expression rather than a new statement. This is a ~50 LOC parser change.
+
+### 6. Struct Update Syntax (Compiler Addition -- RECOMMENDED)
+
+| Property | Detail |
+|----------|--------|
+| Syntax | `%{user \| name: "Bob", age: 31}` or `User { ...user, name: "Bob" }` |
+| Why needed | Changeset application: `apply_changes(changeset)` returns a new struct with changed fields applied |
+| Current workaround | Manually construct new struct with all fields, which is verbose and error-prone |
+
+**Implementation:** Add spread/update syntax to struct literals. When the parser sees `...expr` inside a struct literal, it copies all fields from the source struct and overrides the specified ones.
+
+**Estimated scope:** ~150 LOC parser, ~200 LOC type checker (verify field compatibility), ~300 LOC codegen.
+
+## What Does NOT Need Compiler Changes
+
+These ORM components are implementable in **pure Mesh** using existing features:
+
+| Component | Implementation Approach | Why No Compiler Change |
+|-----------|------------------------|----------------------|
+| Query builder types | Mesh structs with builder methods | Just structs and functions |
+| `Repo.all/insert/update/delete` | Module functions calling `Pool.query_as`/`Pool.execute` | Existing DB primitives |
+| SQL generation from Query struct | String concatenation with parameterized placeholders | Pure string building |
+| Migration file format | Mesh source files with `up()`/`down()` functions | Standard Mesh code |
+| Migration runner | Module that reads migration files, tracks applied versions | Existing FS + DB operations |
+| Changeset validation pipeline | Pipe-chain of validation functions on Changeset struct | Closures + pipes |
+| Preloading/eager loading | Separate queries + Map-based association | Existing Map + List operations |
+| Connection pool management | Already exists via `Pool.open` | Shipped |
+| Transaction wrapping | Already exists via `Pg.transaction` | Shipped |
+
+## Stack Decision Matrix
+
+| Component | Compiler Change? | Mesh Library? | Complexity | Priority |
+|-----------|-----------------|---------------|------------|----------|
+| Atom literals | YES | - | Low | P0 (blocks everything) |
+| Keyword arguments | YES | - | Medium | P0 (blocks query builder) |
+| Multi-line pipes | YES (parser fix) | - | Low | P0 (blocks usability) |
+| `deriving(Schema)` | YES | - | High | P1 (core feature) |
+| Relationship declarations | YES | - | Medium | P1 (core feature) |
+| Struct update syntax | YES | - | Medium | P2 (changeset convenience) |
+| Query builder | - | YES | High | P1 |
+| Repo module | - | YES | Medium | P1 |
+| Migration tooling | - | YES | Medium | P2 |
+| Changeset system | - | YES | Medium | P1 |
+| Preloading | - | YES | High | P2 |
 
 ## Alternatives Considered
 
-| Category | Recommended | Alternative | Why Not |
+| Decision | Recommended | Alternative | Why Not |
 |----------|-------------|-------------|---------|
-| Charting | ECharts + vue-echarts | Chart.js / vue-chartjs | Lacks time-series brush/zoom, heatmaps, and large dataset handling needed for monitoring |
-| Charting | ECharts + vue-echarts | Highcharts | Commercial license required for SaaS products |
-| Charting | ECharts + vue-echarts | Unovis | Newer, smaller ecosystem; less proven at scale |
-| Virtual scroll | @tanstack/vue-virtual | vue-virtual-scroller | Less active maintenance; TanStack has better TS types |
-| Data table | @tanstack/vue-table | ag-Grid | ag-Grid community is limited; enterprise is paid; shadcn-vue integrates with TanStack |
-| State management | Pinia | Vuex | Vuex is legacy; Pinia is the official successor |
-| Router | vue-router 5 | vue-router 4 | v5 is latest npm release; no breaking changes from v4 |
-| Date library | date-fns | Day.js | Day.js lacks built-in timezone support; requires plugins |
-| Date library | date-fns | VueUse useDateFormat | Too limited for timezone conversion and relative time ("5 minutes ago") |
-| HTTP client | Native fetch | Axios | Unnecessary dependency for single-backend SPA |
-| Time-series DB | PostgreSQL native partitioning | TimescaleDB | Extension dependency; operational complexity; not needed at Mesher's scale |
-| Time-series DB | PostgreSQL native partitioning | InfluxDB / ClickHouse | Different database entirely; Mesh only has a PG driver |
-| SDK format | Simple JSON over HTTPS | OpenTelemetry OTLP | OTLP is complex; Mesher is not a full APM; simple JSON keeps SDK < 5KB |
-| Frontend framework | Vue 3 | React / Svelte | Existing team expertise with Vue; docs site already in Vue; monorepo consistency |
+| Field references | Atom literals (`:name`) | String literals (`"name"`) | No compile-time validation, looks like data not identifiers |
+| Query builder API | Keyword args (`where(name: "x")`) | Map args (`where(%{name: "x"})`) | Verbose, ugly, doesn't match Ecto ergonomics |
+| Schema DSL | Extended `deriving(Schema)` on structs | New `schema` keyword/block | Structs already work; adding a whole new declaration type adds parser complexity for no benefit |
+| Relationship syntax | Keywords in struct body | Annotations/decorators | Mesh has no annotation system; keywords are simpler |
+| Migration format | Mesh source files (.mpl) | SQL files | Mesh files can use the migration DSL for reversibility |
+| Query approach | Query builder + raw SQL escape hatch | Full SQL parser | Parsing SQL is massive scope; query builder handles 95% of cases |
+| Macro system | NOT adding one | Elixir-style compile-time macros | Massive compiler scope creep; `deriving` handles the code generation needs |
+| Runtime reflection | NOT adding | Runtime type introspection | `deriving(Schema)` generates all needed metadata at compile time; no reflection needed |
 
-## Installation
+## Version/Compatibility
 
-### Frontend (new app in monorepo)
+| Technology | Current Version | Changes for v10.0 |
+|------------|----------------|-------------------|
+| Mesh compiler (meshc) | ~99K LOC Rust | +~2500 LOC for atom, kwargs, schema deriving, relationships, struct update, multi-line pipes |
+| PostgreSQL driver | Shipped v2.0 | No changes -- ORM builds on top |
+| Connection pooling | Shipped v3.0 | No changes |
+| Type checker (HM) | Shipped v1.0-v7.0 | Extended for atom type, keyword arg desugaring, schema validation |
+| Lexer | 96 token kinds | +1 (AtomLiteral), +3 keywords (belongs_to, has_many, has_one) |
+| Parser | ~120 syntax kinds | +5-8 new node kinds (ATOM_LITERAL, BELONGS_TO_DECL, HAS_MANY_DECL, HAS_ONE_DECL, STRUCT_UPDATE) |
 
-```bash
-# Create the Mesher frontend app
-mkdir -p mesher/frontend
-cd mesher/frontend
+## Resulting ORM API (Target Syntax)
 
-# Initialize with Vite
-npm create vite@latest . -- --template vue-ts
+This is what the ORM code looks like with all stack additions in place:
 
-# Core dependencies
-npm install vue@^3.5.28 vue-router@^5.0.2 pinia@^3.0.4
+```mesh
+# Schema definition
+struct User do
+  id :: Int
+  name :: String
+  email :: String
+  age :: Int
+  inserted_at :: String
+  updated_at :: String
 
-# UI
-npm install tailwindcss@^4.1 @tailwindcss/vite@^4.1 @tailwindcss/typography@^0.5
-npm install class-variance-authority@^0.7.1 clsx@^2.1.1 tailwind-merge@^3.4.0
-npm install reka-ui@^2.8.0 lucide-vue-next@^0.564.0
+  has_many :posts, Post
+  belongs_to :team, Team
+end deriving(Schema, table: "users")
 
-# Data visualization
-npm install echarts@^6.0.0 vue-echarts@^8.0.1
+# Query builder (pipe chains)
+let users = User
+  |> Query.where(name: "Alice")
+  |> Query.order_by(:inserted_at, :desc)
+  |> Query.limit(10)
+  |> Repo.all(pool)
 
-# Data tables & virtual scrolling
-npm install @tanstack/vue-table@^8.21.3 @tanstack/vue-virtual@^3.13.18
+# Changeset
+let changeset = User.changeset(user, %{name: "Bob", age: 31})
+  |> Changeset.validate_required([:name, :email])
+  |> Changeset.validate_length(:name, min: 2, max: 100)
 
-# Date handling
-npm install date-fns@^4.1.0
+case Repo.update(pool, changeset) do
+  Ok(updated_user) -> println("Updated: ${updated_user.name}")
+  Err(changeset) -> println("Errors: ${changeset.errors}")
+end
 
-# Dev dependencies
-npm install -D typescript@^5.9.3 @types/node@^25.2.3
-```
+# Migration
+module CreateUsers do
+  pub fn up(conn) do
+    Migration.create_table(conn, "users") do |t|
+      t.string(:name)
+      t.string(:email)
+      t.integer(:age)
+      t.timestamps()
+    end
 
-### Backend (Mesh -- no installation)
+    Migration.create_index(conn, "users", [:email], unique: true)
+  end
 
-No new dependencies. The Mesher backend is pure Mesh code using existing stdlib modules:
-
-```
-# File structure for Mesh backend
-mesher/backend/
-  main.mpl              # Entry point: start HTTP + WS servers
-  config.mpl            # Configuration loading
-  ingestion/
-    handler.mpl          # HTTP ingestion endpoint
-    processor.mpl        # Event processing pipeline
-  api/
-    router.mpl           # REST API routes
-    events.mpl           # Event query endpoints
-    projects.mpl         # Project CRUD
-    alerts.mpl           # Alert rule endpoints
-  ws/
-    handler.mpl          # WebSocket connection handler
-    streaming.mpl        # Real-time event streaming
-  storage/
-    schema.mpl           # Database schema setup
-    events.mpl           # Event storage queries
-    projects.mpl         # Project storage queries
-  alerting/
-    engine.mpl           # Rule evaluation engine
-    notifier.mpl         # Alert notification dispatch
-  grouping/
-    fingerprint.mpl      # Error fingerprinting
-    dedup.mpl            # Deduplication logic
-```
-
-### SDK (TypeScript, separate package)
-
-```bash
-# Create SDK package
-mkdir -p mesher/sdk
-cd mesher/sdk
-npm init -y
-
-# No production dependencies -- pure TypeScript with native fetch
-npm install -D typescript@^5.9.3
-```
-
-## What NOT to Add
-
-| Avoid | Why | Do Instead |
-|-------|-----|------------|
-| TimescaleDB | Extension dependency; operational complexity; Mesh PG driver works with native PG | Use native PostgreSQL PARTITION BY RANGE |
-| InfluxDB / ClickHouse | Mesh has no driver for these; adding one is scope creep | Use PostgreSQL with partitioning |
-| Axios / ky / ofetch | Unnecessary dependency for single-backend SPA | Use native fetch with a thin composable wrapper |
-| Full OpenTelemetry SDK | Over-engineered for Mesher's log/error use case | Simple JSON POST SDK |
-| Nuxt | SSR is unnecessary for a dashboard SPA; adds build complexity | Plain Vite + Vue 3 |
-| Quasar / Vuetify / PrimeVue | Full component frameworks conflict with shadcn-vue / Tailwind approach | Use shadcn-vue (already established in project) |
-| Socket.io client | Mesh uses raw WebSocket (RFC 6455), not Socket.io protocol | Use native WebSocket API |
-| D3.js directly | Too low-level for dashboard charts; ECharts provides the right abstraction | Use ECharts via vue-echarts |
-| GraphQL | Adds query language complexity; REST is simpler for dashboard CRUD + event queries | Use REST endpoints |
-| Redis / message queue | Mesh actors with supervision trees handle all in-memory processing; adding external state is unnecessary | Use Mesh actor mailboxes for event pipeline |
-| Webpack | Vite is the standard Vue 3 build tool; Webpack adds configuration overhead | Use Vite |
-| CSS-in-JS (styled-components, emotion) | Conflicts with Tailwind approach; worse performance | Use Tailwind CSS |
-
-## Integration Points
-
-### Frontend <-> Mesh Backend (REST API)
-
-The Vue frontend communicates with the Mesh HTTP server via REST endpoints:
-
-```
-GET    /api/v1/projects                  # List projects
-POST   /api/v1/projects                  # Create project
-GET    /api/v1/projects/:id/events       # Query events (with filters)
-GET    /api/v1/projects/:id/events/:eid  # Single event detail
-GET    /api/v1/projects/:id/groups       # Error groups
-GET    /api/v1/projects/:id/stats        # Dashboard statistics
-POST   /api/v1/projects/:id/alerts       # Create alert rule
-GET    /api/v1/projects/:id/alerts       # List alert rules
-```
-
-**CORS:** The Mesh HTTP server needs to add CORS headers via middleware. This is a Mesh middleware function, not a stack addition:
-```
-# Mesh middleware (pseudocode)
-fn cors_middleware(req, next) do
-  response = next(req)
-  # Add Access-Control-Allow-Origin, etc.
-  response
+  pub fn down(conn) do
+    Migration.drop_table(conn, "users")
+  end
 end
 ```
 
-### Frontend <-> Mesh Backend (WebSocket)
+## Implementation Order
 
-The Vue frontend connects to the Mesh WebSocket server for real-time streaming:
+The compiler additions must be built in dependency order:
 
-```
-wss://mesher.example.com/ws/stream?project=<id>&token=<auth>
-```
+1. **Atom literals** -- No dependencies. Enables field references everywhere.
+2. **Multi-line pipe chains** -- No dependencies. Parser fix only.
+3. **Keyword arguments** -- Depends on atoms (keywords desugar with atom keys).
+4. **Struct update syntax** -- No dependencies. Standalone parser+codegen feature.
+5. **`deriving(Schema)`** -- Depends on atoms (schema metadata uses atoms for field names).
+6. **Relationship declarations** -- Depends on Schema deriving (extends it).
 
-- Mesh WS handler joins the connection to a room per project
-- Events flow: Ingestion -> Processing Actor -> Ws.broadcast(room, event_json)
-- Frontend receives JSON messages via native WebSocket API
-- No Socket.io or other WS library needed on either side
-
-### SDK -> Mesh Backend (Ingestion)
-
-```
-POST /api/v1/ingest
-Headers:
-  Content-Type: application/json
-  X-Mesher-Key: <project_api_key>
-Body: { events: [...] }  # Batched events array
-```
-
-The Mesh HTTP server deserializes via Json.decode, processes via actor pipeline, and stores in PostgreSQL.
-
-### Mesh Backend -> PostgreSQL
-
-All queries use the existing `Pool.query_as` / `Pool.execute` with `deriving(Row)` for struct mapping. No ORM, no query builder -- raw parameterized SQL strings. This is the Mesh way (explicit, no magic).
-
-## Version Compatibility Matrix
-
-| Package | Compatible With | Notes |
-|---------|----------------|-------|
-| Vue 3.5.28 | Vite 6.x, Pinia 3.x, vue-router 5.x | Current stable |
-| Pinia 3.0.4 | Vue 3 only (dropped Vue 2) | Straightforward upgrade from Pinia 2 |
-| vue-router 5.0.2 | Vue 3 only | No breaking changes from vue-router 4 |
-| echarts 6.0.0 | vue-echarts 8.0.1 | Major version pairing |
-| @tanstack/vue-table 8.21.3 | Vue 3.x | Stable; v9 alpha exists but not ready |
-| @tanstack/vue-virtual 3.13.18 | Vue 3.x | Stable |
-| date-fns 4.1.0 | Any framework | Pure functions; no framework coupling |
-| Tailwind CSS 4.1 | Vite 6.x via @tailwindcss/vite | Already proven in docs site |
-| shadcn-vue | Tailwind 4.x, reka-ui 2.x | Copy-paste components; no version lock |
-
-## Monorepo Structure
-
-```
-snow/
-  crates/                    # Mesh compiler (Rust) -- existing
-  website/                   # VitePress docs site -- existing
-  mesher/                    # NEW: Mesher monitoring platform
-    backend/                 # Mesh source files (.mpl)
-      main.mpl
-      ingestion/
-      api/
-      ws/
-      storage/
-      alerting/
-      grouping/
-    frontend/                # Vue 3 SPA
-      package.json
-      vite.config.ts
-      src/
-        main.ts
-        App.vue
-        router/
-        stores/
-        views/
-        components/
-        composables/
-        lib/                 # shadcn-vue components
-    sdk/                     # TypeScript SDK
-      package.json
-      src/
-        index.ts
-        client.ts
-        types.ts
-```
-
-The frontend and SDK have separate `package.json` files. They do NOT share the website's `package.json` -- different apps with different dependencies.
+After compiler additions (phases 1-6), all ORM library code (Query builder, Repo, Changeset, Migration) is pure Mesh.
 
 ## Sources
 
-- [vue-echarts npm](https://www.npmjs.com/package/vue-echarts) -- v8.0.1, verified against echarts 6.0.0 (HIGH confidence)
-- [echarts npm](https://www.npmjs.com/package/echarts) -- v6.0.0, Apache 2.0 license (HIGH confidence)
-- [vue-router npm](https://www.npmjs.com/package/vue-router) -- v5.0.2, released Feb 2026 (HIGH confidence)
-- [Pinia npm](https://www.npmjs.com/package/pinia) -- v3.0.4, Vue 3 only (HIGH confidence)
-- [@tanstack/vue-virtual npm](https://www.npmjs.com/package/@tanstack/vue-virtual) -- v3.13.18 (HIGH confidence)
-- [@tanstack/vue-table npm](https://www.npmjs.com/package/@tanstack/vue-table) -- v8.21.3 (HIGH confidence)
-- [date-fns npm](https://www.npmjs.com/package/date-fns) -- v4.1.0 with timezone support (HIGH confidence)
-- [shadcn-vue Data Table docs](https://www.shadcn-vue.com/docs/components/data-table) -- TanStack Table integration guide (HIGH confidence)
-- [PostgreSQL Partitioning docs](https://www.postgresql.org/docs/current/ddl-partitioning.html) -- Native PARTITION BY RANGE (HIGH confidence)
-- [Sentry SDK Overview](https://develop.sentry.dev/sdk/overview/) -- SDK design patterns and event payload format (HIGH confidence)
-- [Sentry Event Payloads](https://develop.sentry.dev/sdk/data-model/event-payloads/) -- JSON event structure reference (HIGH confidence)
-- [TanStack Virtual docs](https://tanstack.com/virtual/latest) -- Virtual scrolling for massive lists (HIGH confidence)
-- [Luzmo Vue Chart Libraries Guide](https://www.luzmo.com/blog/vue-chart-libraries) -- 2025 comparison of Vue charting options (MEDIUM confidence)
-- [PostgreSQL Partitioning for Time-Series](https://aws.amazon.com/blogs/database/speed-up-time-series-data-ingestion-by-partitioning-tables-on-amazon-rds-for-postgresql/) -- AWS best practices for PG partitioning (MEDIUM confidence)
-- [pg_partman vs Hypertables](https://www.tigerdata.com/learn/pg_partman-vs-hypertables-for-postgres-partitioning) -- Comparison of partitioning approaches (MEDIUM confidence)
+- [Ecto.Schema documentation](https://hexdocs.pm/ecto/Ecto.Schema.html) -- Schema DSL design, macro-based field/relationship declarations (HIGH confidence)
+- [Ecto.Changeset documentation](https://hexdocs.pm/ecto/Ecto.Changeset.html) -- Changeset pipeline design, validation vs constraints, cast/validate separation (HIGH confidence)
+- [Ecto.Migration documentation](https://hexdocs.pm/ecto_sql/Ecto.Migration.html) -- Migration file format, up/down/change, transaction behavior, schema_migrations tracking (HIGH confidence)
+- [Ecto.Query documentation](https://hexdocs.pm/ecto/Ecto.Query.html) -- Query builder API, binding system, type safety, composability (HIGH confidence)
+- [Diesel ORM](https://diesel.rs/) -- Rust compile-time query validation via type system, table! macro code generation (HIGH confidence)
+- [Anatomy of an Ecto migration](https://fly.io/phoenix-files/anatomy-of-an-ecto-migration/) -- Migration internals, timestamp versioning, deferred execution (MEDIUM confidence)
+- [Elixir School: Ecto Associations](https://elixirschool.com/en/lessons/ecto/associations) -- belongs_to/has_many implementation patterns (MEDIUM confidence)
+- [A Guide to Rust ORMs in 2025](https://www.shuttle.dev/blog/2024/01/16/best-orm-rust) -- Comparison of Diesel vs SeaORM vs SQLx approaches (MEDIUM confidence)
+- Mesh compiler source analysis: mesh-lexer, mesh-parser, mesh-typeck, mesh-codegen (HIGH confidence -- direct code reading)
+- Mesh PROJECT.md v10.0 requirements (HIGH confidence -- direct project specification)
 
 ---
-*Stack research for: Mesher Monitoring Platform (v9.0)*
-*Researched: 2026-02-14*
+*Stack research for: Mesh ORM Library (v10.0)*
+*Researched: 2026-02-16*

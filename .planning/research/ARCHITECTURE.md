@@ -1,915 +1,961 @@
 # Architecture Patterns
 
-**Domain:** Monitoring/observability SaaS platform (Mesher) -- built entirely in Mesh
-**Researched:** 2026-02-14
-**Overall confidence:** HIGH (architecture derived directly from verified Mesh language primitives and established monitoring platform patterns)
+**Domain:** ORM library integration into the Mesh programming language
+**Researched:** 2026-02-16
+**Overall confidence:** HIGH (architecture derived from direct codebase analysis of all compiler crates, runtime DB layer, and Mesher application code)
 
 ## Executive Summary
 
-Mesher is a monitoring/observability platform where the entire backend is written in Mesh (.mpl files compiled by meshc). The architecture maps directly onto Mesh's actor system: every conceptual component (ingestion endpoint, event processor, aggregator, alerting evaluator, WebSocket streamer) is one or more actors, supervised by a layered supervision tree. Data flows from HTTP/WebSocket ingestion actors through processing actors into PostgreSQL via connection pools, and simultaneously streams to dashboard clients via WebSocket rooms.
+The Mesh ORM integrates into a compiler/runtime system with well-defined boundaries: a Rust compiler (mesh-lexer through mesh-codegen), a Rust runtime (mesh-rt with PG driver, connection pool, row parsing), and Mesh-level user code (types, queries, services). The ORM's architecture must span all three layers -- new compiler deriving infrastructure, new runtime functions for query execution and SQL generation, and a Mesh-level library providing the user-facing API (Schema, Query, Repo, Changeset, Migration).
 
-The architecture is intentionally actor-heavy. Where a traditional web framework would use middleware chains and thread pools, Mesher uses dedicated actor types with message passing. This creates maximum stress on the actor runtime (scheduler fairness, GC under load, mailbox throughput) and exercises every Mesh language feature: sum types for event modeling, generics for typed processing pipelines, traits for extensible fingerprinting, iterators for data transformation, services for stateful aggregation, supervisors for fault tolerance, distributed actors for multi-node clustering, and deriving(Json)/deriving(Row) for serialization boundaries.
+The key architectural insight from studying the existing codebase is that Mesh already has all the building blocks for an ORM, but they exist as disconnected primitives. The `deriving(Row)` system maps database rows to structs. `Pool.query` and `Pool.execute` run SQL. Type annotations give struct field metadata at compile time. What the ORM adds is the connective tissue: schema metadata that links struct fields to database columns, a query builder that composes SQL from struct types, a Repo module that combines pool operations with row mapping, and a migration system that generates DDL from schema definitions.
 
-The key architectural decision is the **pipeline-of-actors** pattern: ingestion actors accept events, normalize them, and forward to processor actors. Processors perform fingerprinting, grouping, and enrichment, then fan out to three destinations: (1) storage actors that batch-write to PostgreSQL, (2) streaming actors that broadcast to WebSocket rooms, and (3) alerting actors that evaluate rules against aggregated state. Each stage is independently supervised, so a crash in alerting never impacts ingestion or storage.
+The architecture follows Ecto's four-module pattern (Schema, Repo, Query, Changeset) because Mesh's language primitives map almost 1:1 to Elixir's: pipe-chain composition, functional data transformation, structs with metadata, and explicit separation of data and behavior. This is not coincidence -- Mesh was designed with Elixir's philosophy, so Ecto's patterns are the natural ORM architecture for this language.
+
+## Existing Architecture (What We Are Integrating Into)
+
+### Current Layer Map
+
+```
+LAYER 1: Mesh User Code (.mpl files)
+  Types/User.mpl       struct User do ... end deriving(Json, Row)
+  Storage/Queries.mpl   Pool.query(pool, "SELECT ...", [params])
+  Services/User.mpl     service UserService do ... end
+
+LAYER 2: Mesh Compiler (Rust, ~99K LOC)
+  mesh-parser       Parses deriving() clauses, struct defs, fn defs
+  mesh-typeck       Registers trait impls for deriving, validates trait names
+  mesh-codegen      Generates MIR functions: FromRow__from_row__User, to_json, etc.
+
+LAYER 3: Mesh Runtime (Rust, mesh-rt crate)
+  db/pool.rs        mesh_pool_query, mesh_pool_execute (auto checkout/checkin)
+  db/pg.rs          Wire protocol v3, SCRAM-SHA-256, TLS
+  db/row.rs         mesh_row_from_row_get, mesh_row_parse_int/float/bool
+  json.rs           mesh_json_encode, mesh_json_decode
+```
+
+### Current Data Flow (Raw SQL Pattern)
+
+```
+Mesh code:                Pool.query(pool, sql_string, params_list)
+                               |
+Compiler resolves to:     mesh_pool_query(pool_handle, sql_ptr, params_ptr)
+                               |
+Runtime (pool.rs):        checkout conn -> mesh_pg_query -> checkin conn
+                               |
+Runtime (pg.rs):          Send Query message -> Parse DataRow -> Build Map<String, String>
+                               |
+Returns to Mesh:          List<Map<String, String>>  (raw row maps)
+                               |
+Mesh code:                Manual struct construction from Map.get(row, "field")
+```
+
+### Current Struct-to-Row Mapping (deriving(Row))
+
+```
+Mesh code:                Pool.query_as(pool, sql, params, User.from_row)
+                               |
+Compiler generates:       FromRow__from_row__User function at compile time
+                               |
+Generated function:       For each field: mesh_row_from_row_get(row, "field_name")
+                          Then: parse to correct type (String passthrough, Int/Float/Bool parse)
+                          Then: Construct struct literal with all fields
+                               |
+Runtime (row.rs):         mesh_row_from_row_get extracts from Map, parse functions convert
+                               |
+Returns to Mesh:          Result<User, String> (typed struct or error)
+```
+
+### Current Pain Points (What the ORM Solves)
+
+1. **Manual SQL strings everywhere**: 627 lines of queries.mpl with hand-written SQL
+2. **Manual struct construction**: Every query function manually maps Map fields to struct fields
+3. **No schema-query coupling**: Struct fields and SQL column lists are maintained separately
+4. **No relationship support**: JOINs are hand-written, no eager loading
+5. **No migration system**: Schema DDL is imperative `CREATE TABLE IF NOT EXISTS` in Mesh code
+6. **No validation layer**: Input validation is scattered across handlers
+7. **No query composition**: Each query is a monolithic SQL string, not composable
 
 ## Recommended Architecture
 
-### System Overview Diagram
+### ORM Layer Map
 
 ```
-                        INGESTION LAYER
-                        ===============
-  HTTP Clients ──> [HTTP Server (actor-per-conn)]
-                        |
-  WS Clients   ──> [WS Ingestion Server (actor-per-conn)]
-                        |
-                   ┌────┴────┐
-                   │ Router  │  (dispatches by project_id)
-                   │ Actor   │
-                   └────┬────┘
-                        |
-                   PROCESSING LAYER
-                   ================
-           ┌────────────┼────────────┐
-           v            v            v
-    [Processor    [Processor    [Processor
-     Actor #1]    Actor #2]    Actor #N]
-     (fingerprint, group, enrich)
-           |            |            |
-           └────────────┼────────────┘
-                        |
-                   ┌────┴────────────────┐
-                   |                     |
-              FAN-OUT LAYER         ALERTING LAYER
-              =============         ==============
-         ┌────────┴────────┐    [AlertEvaluator
-         v                 v     Service (timer)]
-   [StorageWriter    [StreamBroadcaster        |
-    Service]          Actor]              [AlertNotifier
-         |                 |               Actor]
-         v                 v
-   [PostgreSQL       [WS Dashboard
-    Pool]             Server rooms]
+LAYER 1: Mesh User Code (.mpl files) -- ORM Library
+  Orm/Schema.mpl        Schema definition functions, field/belongs_to/has_many metadata
+  Orm/Query.mpl         Query builder: where, order_by, limit, select, join, preload
+  Orm/Repo.mpl          Database operations: all, get, get_by, insert, update, delete
+  Orm/Changeset.mpl     Validation, casting, constraint checking
+  Orm/Migration.mpl     Migration runner, schema diffing, DDL generation
+
+LAYER 2: Mesh Compiler (Rust additions)
+  mesh-typeck           New deriving trait: deriving(Schema) -- registers table/column metadata
+  mesh-codegen          Generate schema metadata functions: __schema_table__, __schema_fields__,
+                        __schema_field_type__, __schema_associations__, etc.
+
+LAYER 3: Mesh Runtime (Rust additions)
+  db/orm.rs             mesh_orm_build_select, mesh_orm_build_insert, mesh_orm_build_update,
+                        mesh_orm_build_delete, mesh_orm_build_where -- SQL generation from
+                        metadata structs. Returns parameterized SQL + params list.
+```
+
+### System Diagram
+
+```
+                     USER CODE (Mesher services)
+                     ==========================
                           |
-                     Dashboard Clients
-```
-
-### Actor Topology
-
-```
-RootSupervisor (one_for_one)
-├── IngestionSupervisor (one_for_one)
-│   ├── HTTP Server (actor-per-connection, crash-isolated)
-│   ├── WS Ingestion Server (actor-per-connection, crash-isolated)
-│   └── EventRouter Service (stateful: project routing table)
-│
-├── ProcessingSupervisor (one_for_one)
-│   ├── ProcessorPool (N processor actors, one_for_all within pool)
-│   └── Fingerprinter Service (stateful: fingerprint cache)
-│
-├── StorageSupervisor (rest_for_one)
-│   ├── PgPool (connection pool - must start first)
-│   ├── SchemaManager (runs migrations on startup)
-│   └── StorageWriter Service (batch accumulator + flush)
-│
-├── StreamingSupervisor (one_for_one)
-│   ├── WS Dashboard Server (actor-per-connection)
-│   └── StreamBroadcaster Actor (room management)
-│
-├── AlertingSupervisor (one_for_one)
-│   ├── AlertRuleStore Service (stateful: rule definitions)
-│   ├── AlertEvaluator Service (timer-driven: checks rules)
-│   └── AlertNotifier Actor (sends notifications)
-│
-└── ClusterSupervisor (one_for_one)      [multi-node only]
-    ├── NodeManager Actor (mesh formation)
-    └── ClusterSync Service (global registry + state sync)
+           User |> Query.where("email", email)
+                |> Query.limit(1)
+                |> Repo.one(pool)
+                          |
+                     ORM LIBRARY (Mesh .mpl files)
+                     ============================
+                          |
+          +---------+-----+------+-----------+
+          |         |            |           |
+      Schema    Query       Changeset    Repo
+      Module    Builder     Module       Module
+          |         |            |           |
+          |    Builds query  Validates   Executes
+          |    struct with   changes     query via
+          |    clauses       before      Pool layer
+          |         |        persist         |
+          |         +--------+--+           |
+          |                  |              |
+          |           SQL Generation        |
+          |           (Runtime Rust)        |
+          |                  |              |
+          +---> Schema       +----> Pool.query / Pool.execute
+                Metadata              |
+                (Compiler-            |
+                 generated)    Existing PG Driver
+                                      |
+                                 PostgreSQL
 ```
 
 ### Component Boundaries
 
-| Component | Responsibility | Communicates With | Mesh Features Exercised |
-|-----------|---------------|-------------------|------------------------|
-| HTTP Ingestion Server | Accept POST /api/events, parse JSON, validate | EventRouter (send) | actor-per-conn, HTTP routing, middleware, deriving(Json), ? operator |
-| WS Ingestion Server | Accept streaming events over WebSocket | EventRouter (send) | actor-per-conn WS, on_connect/on_message/on_close callbacks |
-| EventRouter Service | Route events to correct processor by project_id | ProcessorPool actors (send) | service (GenServer), Map state, pattern matching on project_id |
-| Processor Actor | Fingerprint, group, enrich events | StorageWriter (send), StreamBroadcaster (send), AlertEvaluator (send) | sum types, pattern matching, iterators, traits (Fingerprint interface), closures |
-| Fingerprinter Service | Maintain fingerprint -> issue_id cache | Processor actors (call/response) | service with Map state, String operations, hashing |
-| StorageWriter Service | Batch events and flush to PostgreSQL | PgPool (Pool.execute, Pool.query) | service state (List accumulator), Timer.send_after for flush, deriving(Row), transactions |
-| WS Dashboard Server | Serve real-time dashboards over WebSocket | StreamBroadcaster (messages arrive in mailbox) | actor-per-conn WS, Ws.join/broadcast rooms, pattern matching on subscriptions |
-| StreamBroadcaster Actor | Fan out processed events to WS rooms | WS Dashboard Server rooms (Ws.broadcast) | Ws.broadcast, room naming by project/filter, cross-node via distributed rooms |
-| AlertRuleStore Service | CRUD for alert rules, in-memory cache | AlertEvaluator (call), HTTP API handlers | service with List/Map state, deriving(Json) for rule serialization |
-| AlertEvaluator Service | Periodically evaluate rules against recent data | AlertNotifier (send), PgPool (query) | service with timer (Timer.send_after loop), pattern matching on rule conditions, iterators |
-| AlertNotifier Actor | Send alert notifications (webhook, log) | HTTP.post for webhook delivery | HTTP client, error handling with Result, retry logic |
-| NodeManager Actor | Start node, connect to peers, monitor cluster | Global registry, Node.monitor | Node.start, Node.connect, Node.list, Node.monitor, Global.register |
-| ClusterSync Service | Sync state across nodes on connect/disconnect | NodeManager events, Global registry | Global.register/whereis, send to remote PIDs, pattern matching on :nodedown |
+| Component | Responsibility | Language | Communicates With |
+|-----------|---------------|----------|-------------------|
+| `Orm.Schema` | Define table name, fields, types, associations, constraints | Mesh | Compiler (via deriving), Query, Repo, Migration |
+| `Orm.Query` | Build composable query structs with where/order/limit/join/preload clauses | Mesh | Repo (passes query struct), Schema (reads metadata) |
+| `Orm.Repo` | Execute queries against database, hydrate results to structs | Mesh | Pool (existing), Query (receives query structs), Schema (row mapping) |
+| `Orm.Changeset` | Validate and cast data before persistence, track changes | Mesh | Repo (changesets passed to insert/update), Schema (field types) |
+| `Orm.Migration` | Generate and execute DDL, track migration state | Mesh + Runtime | Pool (executes DDL), Schema (reads definitions) |
+| `deriving(Schema)` | Generate compile-time metadata functions from struct definition | Rust (compiler) | Schema module (metadata consumed at runtime) |
+| `db/orm.rs` | Build parameterized SQL from query metadata structs | Rust (runtime) | Repo module (called via FFI), PG driver (SQL execution) |
 
-### Data Flow: Event Ingestion to Storage
+## Detailed Component Design
 
-```
-1. HTTP POST /api/v1/events
-   Body: {"project_id": "abc", "level": "error", "message": "...", "stacktrace": "..."}
+### 1. Schema Definition (deriving(Schema))
 
-2. HTTP handler actor (spawned per connection):
-   - Parse JSON body with Event.from_json(body)?
-   - Validate required fields
-   - Extract project_id
-   - send(router_pid, ProcessEvent(event))
-   - Return HTTP 202 Accepted
+**Where it lives:** New compiler deriving trait + Mesh-level Schema module
 
-3. EventRouter Service receives ProcessEvent:
-   - Look up processor PID for project_id from routing table
-   - If no processor assigned, round-robin to ProcessorPool
-   - Forward: send(processor_pid, RawEvent(event))
+**Design decision:** Schema metadata is generated at compile time via `deriving(Schema)` rather than defined via runtime DSL macros. This is because Mesh has no macro system, but has a proven deriving infrastructure that already generates `from_row`, `to_json`, and `from_json` functions from struct field metadata.
 
-4. Processor Actor receives RawEvent:
-   - Generate fingerprint (hash of message + stacktrace frames)
-   - call Fingerprinter to resolve fingerprint -> issue_id (or create new)
-   - Enrich event with issue_id, timestamp, severity
-   - Fan out:
-     a. send(storage_writer_pid, StoreEvent(enriched_event))
-     b. send(stream_broadcaster_pid, BroadcastEvent(enriched_event))
-     c. send(alert_evaluator_pid, CheckEvent(enriched_event))
-
-5. StorageWriter Service receives StoreEvent:
-   - Append to batch buffer (List<EnrichedEvent> state)
-   - If batch_size >= 100 OR flush_timer fires:
-     - Pool.transaction: INSERT batch into events table
-     - UPDATE issues SET last_seen, event_count
-     - Clear batch buffer
-
-6. StreamBroadcaster receives BroadcastEvent:
-   - Encode event as JSON
-   - Ws.broadcast("project:{project_id}", json)
-   - Ws.broadcast("project:{project_id}:errors", json) if level == Error
-```
-
-### Data Flow: Real-Time Dashboard Subscription
+**What `deriving(Schema)` generates:**
 
 ```
-1. Client connects via WebSocket to WS Dashboard Server
-
-2. on_connect(conn):
-   - Ws.send(conn, "connected")
-
-3. Client sends: {"subscribe": "project:abc"}
-
-4. on_message(conn, msg):
-   - Parse subscription request
-   - Ws.join(conn, "project:abc")
-   - Query recent events from PgPool for initial state
-   - Ws.send(conn, initial_state_json)
-
-5. When StreamBroadcaster calls Ws.broadcast("project:abc", event_json):
-   - All subscribed dashboard connections receive the event
-   - In multi-node cluster: broadcast automatically propagates via DIST_ROOM_BROADCAST
-```
-
-## Module Structure (Multi-File Project)
-
-```
-mesher/
-├── main.mpl                      # Entry point: start supervisors, HTTP/WS servers
-├── config.mpl                    # Configuration loading
-├── types/
-│   ├── event.mpl                 # Event, RawEvent, EnrichedEvent structs + sum types
-│   ├── issue.mpl                 # Issue struct, IssueStatus sum type
-│   ├── alert.mpl                 # AlertRule, AlertCondition, AlertAction structs
-│   ├── project.mpl               # Project struct
-│   └── api.mpl                   # ApiResponse, ApiError types
-├── ingestion/
-│   ├── http_handler.mpl          # HTTP route handlers for event ingestion
-│   ├── ws_handler.mpl            # WebSocket ingestion handlers
-│   └── router.mpl                # EventRouter service
-├── processing/
-│   ├── processor.mpl             # Processor actor (fingerprint + enrich + fan-out)
-│   ├── fingerprint.mpl           # Fingerprinter service + fingerprint algorithm
-│   └── grouping.mpl              # Issue grouping logic
-├── storage/
-│   ├── writer.mpl                # StorageWriter service (batch + flush)
-│   ├── queries.mpl               # SQL query functions
-│   └── migrations.mpl            # Schema migration runner
-├── streaming/
-│   ├── dashboard_handler.mpl     # WS dashboard handlers
-│   └── broadcaster.mpl           # StreamBroadcaster actor
-├── alerting/
-│   ├── rule_store.mpl            # AlertRuleStore service
-│   ├── evaluator.mpl             # AlertEvaluator service
-│   └── notifier.mpl              # AlertNotifier actor
-├── api/
-│   ├── routes.mpl                # HTTP API route registration
-│   ├── events_api.mpl            # GET /api/v1/events, /issues endpoints
-│   ├── projects_api.mpl          # Project CRUD endpoints
-│   └── alerts_api.mpl            # Alert rule CRUD endpoints
-└── cluster/
-    ├── node_manager.mpl          # Node startup and mesh formation
-    └── cluster_sync.mpl          # Cross-node state synchronization
-```
-
-**Module naming convention:** `mesher/types/event.mpl` -> `Types.Event`, imported as `import Types.Event` or `from Types.Event import { Event, RawEvent }`.
-
-**Build command:** `meshc build mesher/` produces a single native binary.
-
-## Type System Design
-
-### Core Event Types (types/event.mpl)
-
-```mesh
-# Severity levels as sum type -- pattern matching + exhaustiveness
-type Severity do
-  Debug
-  Info
-  Warning
-  Error
-  Fatal
-end deriving(Eq, Ord, Display, Json)
-
-# Event status for lifecycle tracking
-type EventStatus do
-  Received
-  Processed
-  Stored
-  Failed(String)
-end deriving(Display, Json)
-
-# Raw event from ingestion (before processing)
-struct RawEvent do
-  project_id :: String
-  level :: Severity
-  message :: String
-  stacktrace :: String?     # Option<String>
-  tags :: Map<String, String>
-  timestamp :: String        # ISO 8601
-  sdk_name :: String?
-  sdk_version :: String?
-end deriving(Json)
-
-# Enriched event (after processing)
-struct EnrichedEvent do
-  id :: String               # UUID
-  project_id :: String
-  issue_id :: String          # Fingerprint-derived group
-  level :: Severity
-  message :: String
-  stacktrace :: String?
-  fingerprint :: String
-  tags :: Map<String, String>
-  received_at :: String
-  processed_at :: String
-end deriving(Json, Row)
-
-# Database row for events table
-struct EventRow do
+# User code writes:
+pub struct User do
   id :: String
-  project_id :: String
-  issue_id :: String
-  level :: String
-  message :: String
-  stacktrace :: String?
-  fingerprint :: String
-  tags_json :: String
-  received_at :: String
-  processed_at :: String
-end deriving(Row)
+  email :: String
+  display_name :: String
+  created_at :: String
+end deriving(Json, Row, Schema)
+
+# Compiler generates these functions (accessible as User.__schema_table__(), etc.):
+
+fn __schema_table__() -> String = "users"
+
+fn __schema_fields__() -> List<String> = ["id", "email", "display_name", "created_at"]
+
+fn __schema_field_type__(field :: String) -> String
+  # Returns "string", "int", "float", "bool", "option_string", etc.
+
+fn __schema_primary_key__() -> String = "id"
 ```
 
-### Issue Types (types/issue.mpl)
+**Table name convention:** Struct name lowercased + pluralized (User -> users, ApiKey -> api_keys). Overridable via a separate function or annotation approach if needed.
 
-```mesh
-type IssueStatus do
-  Open
-  Resolved
-  Ignored
-  Regressed
-end deriving(Eq, Display, Json)
+**Why compile-time metadata, not runtime DSL:**
+- Mesh has no macro/metaprogramming system -- cannot generate code at compile time from DSL blocks
+- The deriving system already processes struct fields and generates functions per field
+- Compile-time metadata means the compiler can validate schema consistency (field types match DB types)
+- Generated metadata functions are regular Mesh functions, callable from any module
 
-struct Issue do
+**Compiler changes required:**
+1. `mesh-typeck/src/infer.rs`: Add `"Schema"` to `valid_derives` array (currently `["Eq", "Ord", "Display", "Debug", "Hash", "Json", "Row"]`)
+2. `mesh-typeck/src/infer.rs`: Register Schema trait impl for the type
+3. `mesh-codegen/src/mir/lower.rs`: Add `generate_schema_metadata_struct()` method alongside existing `generate_from_row_struct()`, `generate_to_json_struct()`, etc.
+4. Generated MIR functions return string constants and list literals -- no new MIR node types needed
+
+**Association metadata:** Relationship information (belongs_to, has_many) needs a separate mechanism because struct fields alone do not encode relationship semantics. Two options:
+
+**Option A -- Companion metadata functions (RECOMMENDED):**
+```
+# Written alongside the struct definition
+pub struct Post do
   id :: String
-  project_id :: String
-  fingerprint :: String
-  title :: String              # First line of message
-  level :: Severity
-  status :: IssueStatus
-  event_count :: Int
-  first_seen :: String
-  last_seen :: String
-end deriving(Json, Row)
+  user_id :: String
+  title :: String
+  body :: String
+end deriving(Json, Row, Schema)
+
+# Separate metadata registration using module-level functions
+pub fn __belongs_to__() -> List<Map<String, String>> = [
+  %{"name" => "user", "module" => "User", "foreign_key" => "user_id"}
+]
+
+pub fn __has_many__() -> List<Map<String, String>> = [
+  %{"name" => "comments", "module" => "Comment", "foreign_key" => "post_id"}
+]
 ```
 
-### Alert Types (types/alert.mpl)
-
-```mesh
-type AlertCondition do
-  EventCountAbove(Int, Int)           # threshold, window_seconds
-  ErrorRateAbove(Float, Int)          # rate, window_seconds
-  NewIssueDetected
-  IssueRegressed(String)              # issue_id
-end deriving(Json)
-
-type AlertAction do
-  WebhookPost(String)                 # URL
-  LogMessage(String)                  # log prefix
-end deriving(Json)
-
-struct AlertRule do
-  id :: String
-  project_id :: String
-  name :: String
-  condition :: AlertCondition
-  action :: AlertAction
-  enabled :: Bool
-end deriving(Json, Row)
+**Option B -- Convention functions in a Schema module:**
+```
+# In a dedicated schema module
+module PostSchema do
+  pub fn table() = "posts"
+  pub fn belongs_to() = [("user", "User", "user_id")]
+  pub fn has_many() = [("comments", "Comment", "post_id")]
+end
 ```
 
-### API Response Types (types/api.mpl)
+Option A is recommended because it keeps metadata co-located with the struct and leverages the existing module system. The ORM library functions can look up these metadata functions by name convention.
 
-```mesh
-struct ApiResponse<T> do
-  data :: T
-  meta :: ApiMeta
-end deriving(Json)
+### 2. Query Builder (Orm.Query)
 
-struct ApiMeta do
-  total :: Int
-  page :: Int
-  per_page :: Int
-end deriving(Json)
+**Where it lives:** Pure Mesh library code (Orm/Query.mpl)
 
-type ApiError do
-  BadRequest(String)
-  NotFound(String)
-  InternalError(String)
-  Unauthorized
+**Design decision:** The query builder uses structs + pipe functions, not a service/actor pattern. Queries are pure data -- they should be immutable values that can be composed, stored, and passed around. Building a query does not perform I/O; only Repo functions execute queries.
+
+**Query struct:**
+
+```
+pub struct Query do
+  source :: String           # Table name ("users")
+  select_fields :: List<String>  # ["id", "email"] or [] for all
+  where_clauses :: List<String>  # Serialized where conditions
+  where_params :: List<String>   # Parameter values
+  order_fields :: List<String>   # ["created_at DESC", "name ASC"]
+  limit_val :: Int               # 0 = no limit
+  offset_val :: Int              # 0 = no offset
+  join_clauses :: List<String>   # Serialized join specs
+  preload_assocs :: List<String> # Association names to preload
+  group_fields :: List<String>   # GROUP BY fields
 end deriving(Json)
 ```
 
-### Message Types Between Actors
+**Pipe-chain API:**
 
-```mesh
-# Router -> Processor messages
-type ProcessorMsg do
-  ProcessRaw(RawEvent)
-  Shutdown
+```
+# Start from a schema type name
+User
+  |> Query.from()
+  |> Query.where("email", "=", email)
+  |> Query.where("status", "=", "active")
+  |> Query.order_by("created_at", "desc")
+  |> Query.limit(10)
+  |> Query.select(["id", "email", "display_name"])
+  |> Repo.all(pool)
+```
+
+**How Query.from() works:**
+
+`Query.from()` does not need the actual struct type at runtime. It needs the table name. Two approaches:
+
+**Approach A -- String-based (simpler, recommended for Phase 1):**
+```
+pub fn from(table :: String) -> Query do
+  Query { source: table, select_fields: [], ... }
 end
 
-# Processor -> StorageWriter messages
-type StorageMsg do
-  StoreEvent(EnrichedEvent)
-  FlushNow
-end
+# Usage: Query.from("users") |> ...
+```
 
-# Processor -> StreamBroadcaster messages
-type StreamMsg do
-  BroadcastEvent(EnrichedEvent)
-  BroadcastAlert(String, String)    # room, message
-end
+**Approach B -- Schema-aware (requires metadata function lookup):**
+```
+# The query builder calls __schema_table__() on the module
+# This requires the ORM to resolve module names to metadata functions
+# Deferred to Phase 2 -- requires compiler support for function-as-value from module name
+```
 
-# Timer -> AlertEvaluator self-messages
-type AlertMsg do
-  Evaluate
-  RuleUpdated(AlertRule)
-  RuleDeleted(String)                # rule_id
+**SQL generation:** The Query struct is converted to parameterized SQL by a runtime Rust function. This is in the runtime (not the Mesh library) because:
+1. String manipulation for SQL building is performance-sensitive
+2. Proper parameter placeholder numbering ($1, $2, $3...) is mechanical
+3. SQL injection prevention (escaping identifiers) is best done in Rust
+4. The runtime already handles SQL string manipulation in pg.rs
+
+**Runtime function signature:**
+```rust
+#[no_mangle]
+pub extern "C" fn mesh_orm_build_select(query_ptr: *mut u8) -> *mut u8
+// Takes serialized Query struct, returns MeshResult<(sql_string, params_list), error>
+```
+
+**Alternative considered -- pure Mesh SQL generation:**
+Building SQL via string concatenation in Mesh is possible (the existing codebase does it extensively in queries.mpl). However, it leads to the exact code duplication the ORM is meant to eliminate. The runtime approach centralizes SQL generation logic in one place.
+
+### 3. Repo Module (Orm.Repo)
+
+**Where it lives:** Mesh library code (Orm/Repo.mpl), calling into runtime functions
+
+**Design:** Stateless module with functions that take a pool handle and a query/changeset. Does not hold state. This matches Mesher's existing pattern where all query functions take `pool :: PoolHandle` as the first argument.
+
+**Core operations:**
+
+```
+# Read operations
+pub fn all(pool :: PoolHandle, query :: Query) -> List<Map<String, String>>!String
+pub fn one(pool :: PoolHandle, query :: Query) -> Map<String, String>!String
+pub fn get(pool :: PoolHandle, table :: String, id :: String) -> Map<String, String>!String
+pub fn get_by(pool :: PoolHandle, table :: String, field :: String, value :: String) -> Map<String, String>!String
+
+# Write operations (take changesets)
+pub fn insert(pool :: PoolHandle, changeset :: Changeset) -> Map<String, String>!String
+pub fn update(pool :: PoolHandle, changeset :: Changeset) -> Map<String, String>!String
+pub fn delete(pool :: PoolHandle, table :: String, id :: String) -> Int!String
+
+# Aggregate operations
+pub fn count(pool :: PoolHandle, query :: Query) -> Int!String
+pub fn exists(pool :: PoolHandle, query :: Query) -> Bool!String
+```
+
+**Return type decision:** Repo functions return `Map<String, String>` (raw row) rather than typed structs. This is because Mesh does not have dynamic dispatch or trait objects -- the Repo cannot call a generic `from_row` function for an arbitrary type T. The caller converts the Map to a struct using the existing deriving(Row) `from_row` function:
+
+```
+# Pattern for typed queries:
+let row = Repo.get(pool, "users", user_id)?
+let user = User.from_row(row)?
+
+# Or the existing Pool.query_as pattern continues to work for custom queries
+```
+
+**Future optimization:** A `Repo.all_as(pool, query, User.from_row)` function could take the from_row callback directly, similar to the existing `Pool.query_as` pattern. This avoids the intermediate `List<Map<String, String>>` allocation.
+
+**Data flow for Repo.all:**
+
+```
+1. Repo.all(pool, query)
+2.   -> mesh_orm_build_select(query)          [Runtime: build SQL + params]
+3.   -> Returns (sql_string, params_list)
+4.   -> Pool.query(pool, sql_string, params)  [Existing pool infrastructure]
+5.   -> Returns List<Map<String, String>>     [Existing PG driver]
+6. Caller: List.map(rows, fn(row) do User.from_row(row) end)
+```
+
+### 4. Changeset Module (Orm.Changeset)
+
+**Where it lives:** Pure Mesh library code (Orm/Changeset.mpl)
+
+**Design:** A Changeset is a struct that wraps pending changes with validation state. It does not touch the database -- it is pure data transformation until passed to Repo.insert/Repo.update.
+
+```
+pub struct Changeset do
+  table :: String                    # Target table
+  fields :: Map<String, String>      # Field values to write
+  changes :: Map<String, String>     # Only the changed fields (for updates)
+  errors :: List<Map<String, String>>  # Validation errors: [{"field": "email", "message": "required"}]
+  valid :: Bool                      # Quick check: are there errors?
+  action :: String                   # "insert" or "update"
+  primary_key_value :: String        # For updates: the ID of the row being updated
+end deriving(Json)
+```
+
+**Changeset API:**
+
+```
+# Create a changeset for insert
+pub fn cast(table :: String, params :: Map<String, String>, allowed :: List<String>) -> Changeset
+
+# Validations (return new Changeset with errors appended if invalid)
+pub fn validate_required(changeset :: Changeset, fields :: List<String>) -> Changeset
+pub fn validate_length(changeset :: Changeset, field :: String, min :: Int, max :: Int) -> Changeset
+pub fn validate_format(changeset :: Changeset, field :: String, pattern :: String) -> Changeset
+pub fn validate_inclusion(changeset :: Changeset, field :: String, values :: List<String>) -> Changeset
+
+# For updates: create changeset from existing data + new params
+pub fn cast_update(table :: String, existing :: Map<String, String>, params :: Map<String, String>, allowed :: List<String>) -> Changeset
+```
+
+**Usage pattern:**
+
+```
+let changeset = Changeset.cast("users", params, ["email", "display_name", "password"])
+  |> Changeset.validate_required(["email", "display_name", "password"])
+  |> Changeset.validate_length("password", 8, 128)
+  |> Changeset.validate_length("display_name", 1, 100)
+
+if changeset.valid do
+  Repo.insert(pool, changeset)
+else
+  Err(to_json(changeset.errors))
 end
 ```
 
-## Trait-Based Extension Points
+### 5. Migration System (Orm.Migration)
 
-### Fingerprint Interface
+**Where it lives:** Mesh library code + CLI integration
 
-```mesh
-# Extensible fingerprinting via trait
-interface Fingerprinter do
-  fn fingerprint(self, event :: RawEvent) -> String
-end
+**Design decision:** Migrations are Mesh functions (not separate SQL files) that call DDL helper functions. This keeps everything in the Mesh ecosystem and allows type checking of migration code.
 
-# Default implementation: hash message + first N stacktrace frames
-struct DefaultFingerprinter do
-end
+**Migration structure:**
 
-impl Fingerprinter for DefaultFingerprinter do
-  fn fingerprint(self, event :: RawEvent) -> String do
-    let base = event.message
-    let trace_part = case event.stacktrace do
-      Some(st) -> st |> String.split("\n") |> List.take(5) |> String.join("\n")
-      None -> ""
-    end
-    # Use string concatenation as hash input
-    # Hash the combined string for the fingerprint
-    base <> "::" <> trace_part
-  end
-end
 ```
+# migrations/20260216_create_users.mpl
+pub fn up(pool :: PoolHandle) -> Int!String do
+  Migration.create_table(pool, "users", [
+    Migration.column("id", "uuid", ["primary_key", "default gen_random_uuid()"]),
+    Migration.column("email", "text", ["not_null", "unique"]),
+    Migration.column("display_name", "text", ["not_null"]),
+    Migration.column("password_hash", "text", ["not_null"]),
+    Migration.column("created_at", "timestamptz", ["not_null", "default now()"])
+  ])?
+  Migration.create_index(pool, "users", ["email"], ["unique"])?
+  Ok(0)
+end
 
-**Mesh features exercised:** traits (interface + impl), pattern matching on Option, pipe operator, iterators (split/take/join), closures.
-
-## Database Schema
-
-### PostgreSQL Tables
-
-```sql
--- Projects table
-CREATE TABLE projects (
-    id          TEXT PRIMARY KEY,
-    name        TEXT NOT NULL,
-    api_key     TEXT NOT NULL UNIQUE,
-    created_at  TIMESTAMP NOT NULL DEFAULT NOW()
-);
-
--- Events table (append-only, high write volume)
--- Partitioned by received_at for time-range queries and retention
-CREATE TABLE events (
-    id           TEXT NOT NULL,
-    project_id   TEXT NOT NULL,
-    issue_id     TEXT NOT NULL,
-    level        TEXT NOT NULL,
-    message      TEXT NOT NULL,
-    stacktrace   TEXT,
-    fingerprint  TEXT NOT NULL,
-    tags_json    TEXT NOT NULL DEFAULT '{}',
-    received_at  TIMESTAMP NOT NULL,
-    processed_at TIMESTAMP NOT NULL,
-    PRIMARY KEY (id, received_at)
-) PARTITION BY RANGE (received_at);
-
--- Create daily partitions (managed by a startup migration actor)
--- CREATE TABLE events_2026_02_14 PARTITION OF events
---   FOR VALUES FROM ('2026-02-14') TO ('2026-02-15');
-
--- Issues table (updated on each event, grouped by fingerprint)
-CREATE TABLE issues (
-    id           TEXT PRIMARY KEY,
-    project_id   TEXT NOT NULL REFERENCES projects(id),
-    fingerprint  TEXT NOT NULL,
-    title        TEXT NOT NULL,
-    level        TEXT NOT NULL,
-    status       TEXT NOT NULL DEFAULT 'open',
-    event_count  INTEGER NOT NULL DEFAULT 0,
-    first_seen   TIMESTAMP NOT NULL,
-    last_seen    TIMESTAMP NOT NULL,
-    UNIQUE(project_id, fingerprint)
-);
-
--- Alert rules table
-CREATE TABLE alert_rules (
-    id           TEXT PRIMARY KEY,
-    project_id   TEXT NOT NULL REFERENCES projects(id),
-    name         TEXT NOT NULL,
-    condition_json TEXT NOT NULL,
-    action_json  TEXT NOT NULL,
-    enabled      BOOLEAN NOT NULL DEFAULT true,
-    created_at   TIMESTAMP NOT NULL DEFAULT NOW()
-);
-
--- Alert history (for audit trail)
-CREATE TABLE alert_history (
-    id           TEXT PRIMARY KEY,
-    rule_id      TEXT NOT NULL REFERENCES alert_rules(id),
-    project_id   TEXT NOT NULL,
-    triggered_at TIMESTAMP NOT NULL,
-    details_json TEXT NOT NULL
-);
-
--- Indexes for common query patterns
-CREATE INDEX idx_events_project_time ON events (project_id, received_at DESC);
-CREATE INDEX idx_events_issue ON events (issue_id, received_at DESC);
-CREATE INDEX idx_issues_project_status ON issues (project_id, status);
-CREATE INDEX idx_issues_project_last_seen ON issues (project_id, last_seen DESC);
-CREATE INDEX idx_alert_rules_project ON alert_rules (project_id, enabled);
-```
-
-**Schema design rationale:**
-- **Events partitioned by day:** PostgreSQL native range partitioning on `received_at`. No TimescaleDB needed -- Mesher manages partition creation at startup and via a daily timer. This gives efficient time-range queries and simple retention (drop old partitions).
-- **All values as TEXT for Mesh compatibility:** Mesh's `deriving(Row)` maps `Map<String, String>` to struct fields. PostgreSQL returns all values as text in the wire protocol. Using TEXT for JSON columns (tags_json, condition_json, action_json) keeps the schema simple and maps directly to Mesh's JSON capabilities.
-- **Issues table with UNIQUE(project_id, fingerprint):** The fingerprinter generates a deterministic fingerprint. On each new event, the processor does an upsert: INSERT new issue or UPDATE event_count/last_seen on existing.
-
-### Batch Write Strategy
-
-The StorageWriter Service accumulates events in a List and flushes either when the batch reaches a size threshold or a timer fires:
-
-```mesh
-service StorageWriter do
-  fn init(pool, batch_size :: Int) -> WriterState do
-    # Schedule first flush timer
-    Timer.send_after(self(), 1000, FlushNow)
-    WriterState { pool: pool, buffer: [], batch_size: batch_size }
-  end
-
-  cast StoreEvent(event :: EnrichedEvent) do |state|
-    let new_buffer = [event] ++ state.buffer
-    if List.length(new_buffer) >= state.batch_size do
-      flush_batch(state.pool, new_buffer)
-      WriterState { pool: state.pool, buffer: [], batch_size: state.batch_size }
-    else
-      WriterState { pool: state.pool, buffer: new_buffer, batch_size: state.batch_size }
-    end
-  end
-
-  cast FlushNow() do |state|
-    if List.length(state.buffer) > 0 do
-      flush_batch(state.pool, state.buffer)
-    end
-    # Reschedule flush timer
-    Timer.send_after(self(), 1000, FlushNow)
-    WriterState { pool: state.pool, buffer: [], batch_size: state.batch_size }
-  end
+pub fn down(pool :: PoolHandle) -> Int!String do
+  Migration.drop_table(pool, "users")?
+  Ok(0)
 end
 ```
 
-**Mesh features exercised:** service (GenServer), list operations, Timer.send_after for periodic work, pattern matching, struct update.
+**Migration tracking:** A `_mesh_migrations` table stores applied migration names + timestamps. The migration runner:
+1. Reads all migration modules from a `migrations/` directory
+2. Queries `_mesh_migrations` for already-applied migrations
+3. Runs unapplied migrations in filename order within a transaction
+4. Records each successful migration in `_mesh_migrations`
 
-## Supervision Tree Design
+**CLI integration:** `meshc migrate` (or `mesh migrate`) command that:
+1. Discovers migration files in the project
+2. Connects to the database
+3. Runs pending migrations
 
-### Root Supervisor
+This requires a new subcommand in the `meshc` binary. The existing `meshc` main.rs already handles `build` and `fmt` subcommands.
 
-```mesh
-supervisor RootSupervisor do
-  strategy: one_for_one
-  max_restarts: 10
-  max_seconds: 60
+**Alternative considered -- SQL migration files:**
+Plain .sql files are simpler but lose Mesh type checking and cannot use Mesh functions. Since migrations are run infrequently and debuggability matters more than raw performance, keeping them as Mesh code is worth the extra compilation step.
 
-  child ingestion do
-    start: fn -> spawn(IngestionSupervisor) end
-    restart: permanent
-    shutdown: 10000
-  end
+### 6. Relationship and Preloading
 
-  child processing do
-    start: fn -> spawn(ProcessingSupervisor) end
-    restart: permanent
-    shutdown: 10000
-  end
+**Where it lives:** Orm.Query (preload specification) + Orm.Repo (preload execution)
 
-  child storage do
-    start: fn -> spawn(StorageSupervisor) end
-    restart: permanent
-    shutdown: 10000
-  end
+**Design:** Relationships are metadata-driven. The ORM reads relationship metadata from companion functions (see Schema section) and generates appropriate JOINs or separate queries.
 
-  child streaming do
-    start: fn -> spawn(StreamingSupervisor) end
-    restart: permanent
-    shutdown: 10000
-  end
-
-  child alerting do
-    start: fn -> spawn(AlertingSupervisor) end
-    restart: permanent
-    shutdown: 10000
-  end
-end
-```
-
-**Strategy rationale:**
-- **Root: one_for_one** -- each subsystem is independent. If alerting crashes, ingestion/storage/streaming continue.
-- **Storage: rest_for_one** -- the PgPool must start before SchemaManager, which must run before StorageWriter. If the pool crashes, everything downstream restarts in order.
-- **Processing: one_for_one** -- individual processor actors are independent. If one crashes, others continue processing.
-
-### Fault Isolation Boundaries
+**Preload strategy -- Separate queries (not JOINs):**
 
 ```
-Layer 1 (Critical):  Ingestion + Storage   -- must never go down together
-Layer 2 (Important): Streaming             -- degraded UX but no data loss if down
-Layer 3 (Deferrable): Alerting             -- alerts delayed but events still stored
-Layer 4 (Optional):  Clustering            -- single-node still fully functional
+# Load a user with their posts and each post's comments:
+let user = Repo.get(pool, "users", user_id)?
+let posts = Query.from("posts")
+  |> Query.where("user_id", "=", user_id)
+  |> Repo.all(pool)?
+# For each post, load comments:
+let posts_with_comments = List.map(posts, fn(post) do
+  let comments = Query.from("comments")
+    |> Query.where("post_id", "=", Map.get(post, "id"))
+    |> Repo.all(pool)?
+  Map.put(post, "_comments", to_json(comments))
+end)
 ```
 
-The one_for_one root strategy ensures a crash in Layer 3 never cascades to Layer 1. Each layer supervisor independently manages its children's restart policy.
+**Why separate queries, not JOINs for preloading:**
+1. Mesh does not have dynamic struct extension -- cannot add a `posts` field to a User struct at runtime
+2. Separate queries avoid the M*N row explosion from JOINing multiple has_many associations
+3. Ecto uses the same strategy (separate queries per association by default)
+4. Simpler to implement, easier to debug, more predictable performance
 
-## Multi-Node Distribution Strategy
+**Preload API (Phase 2):**
 
-### Cluster Formation
+```
+# Automatic preloading via Repo helper
+let user = Repo.get(pool, "users", user_id)?
+let user_with_posts = Repo.preload(pool, user, "User", ["posts"])?
+# Returns a Map with "_posts" key containing the loaded association
 
-```mesh
-# In cluster/node_manager.mpl
-actor NodeManager(node_name :: String, cookie :: String, peers :: List<String>) do
-  # Start this node
-  Node.start(node_name, cookie)
-
-  # Register critical services globally
-  Global.register("event_router", EventRouter.whereis())
-  Global.register("storage_writer", StorageWriter.whereis())
-
-  # Connect to peer nodes
-  for peer in peers do
-    Node.connect(peer)
-  end
-
-  # Monitor all connected nodes
-  let nodes = Node.list()
-  for node in nodes do
-    Node.monitor(node)
-  end
-
-  # Handle cluster events
-  loop(node_name, cookie, peers)
-end
-
-fn loop(name :: String, cookie :: String, peers :: List<String>) do
-  receive do
-    (:nodedown, node_name) ->
-      println("Node disconnected: ${node_name}")
-      # Re-register local services that may have been shadowed
-      # Trigger rebalance of processor pool
-      loop(name, cookie, peers)
-
-    (:nodeup, node_name) ->
-      println("Node connected: ${node_name}")
-      Node.monitor(node_name)
-      loop(name, cookie, peers)
-  end
-end
+# Nested preloading
+let user_with_all = Repo.preload(pool, user, "User", ["posts.comments", "org_memberships"])?
 ```
 
-### Cross-Node Event Distribution
+**Data representation for loaded associations:**
 
-Three distribution strategies used in Mesher, each exercising different Mesh distributed features:
+Since Mesh structs are statically typed and cannot have dynamic fields, preloaded associations are stored as JSON string values in a wrapper Map or as separate variables. The recommended pattern:
 
-**1. Ingestion Load Distribution (Global Registry)**
-- Each node runs an HTTP ingestion server on a different port
-- A load balancer distributes requests across nodes
-- EventRouter is registered globally: `Global.register("event_router", pid)`
-- Any node can route events to the globally-registered router: `send(Global.whereis("event_router"), msg)`
+```
+# Instead of trying to attach posts to a User struct,
+# return a tuple or map with both:
+let user = Repo.get(pool, "users", user_id)?
+let posts = Repo.preload_assoc(pool, "User", "posts", user_id)?
+# user :: Map<String, String>, posts :: List<Map<String, String>>
+```
 
-**2. WebSocket Room Broadcast (Cross-Node Rooms)**
-- Ws.broadcast automatically reaches room members on all nodes via DIST_ROOM_BROADCAST
-- Dashboard clients connect to any node; room membership is node-local but broadcasts are cluster-wide
-- Zero application code needed for cross-node broadcast -- the runtime handles it
+### 7. Connection to Existing Pool/Pg Layer
 
-**3. Remote Processor Spawning (Node.spawn)**
-- Under heavy load, the EventRouter can spawn processors on remote nodes: `Node.spawn("worker@host:4001", processor_fn, [config])`
-- Processors on remote nodes send results back to the local StorageWriter and StreamBroadcaster via location-transparent PIDs
-- Remote supervision: the ProcessingSupervisor can monitor and restart remote processor actors
+**Zero changes to the existing pool and PG driver.** The ORM builds SQL strings and parameter lists, then calls the same `Pool.query` and `Pool.execute` functions that Mesher already uses.
 
-**Mesh features exercised:** Node.start/connect/list/monitor, Global.register/whereis, Ws.broadcast (cross-node), Node.spawn/spawn_link, location-transparent send, :nodedown/:nodeup pattern matching, remote supervision.
+```
+ORM:          mesh_orm_build_select(query_struct) -> (sql, params)
+Existing:     Pool.query(pool, sql, params)       -> List<Map<String, String>>
+Existing:     Pool.execute(pool, sql, params)      -> Int
+Existing:     Pool.query_as(pool, sql, params, from_row_fn) -> List<Struct>
+```
+
+The only runtime addition is `db/orm.rs` for SQL generation. It does not touch `db/pool.rs` or `db/pg.rs`.
+
+## Data Flow Diagrams
+
+### Query Execution Flow (Read)
+
+```
+Mesh User Code                    ORM Library                  Runtime (Rust)              PostgreSQL
+=============                    ===========                  ==============              ==========
+
+User
+  |> Query.from("users")         Creates Query struct
+  |> Query.where("email", v)     Appends to where_clauses
+  |> Query.limit(1)              Sets limit_val
+  |> Repo.one(pool)              --->
+                                 mesh_orm_build_select(query) -->
+                                                                  Builds SQL:
+                                                                  "SELECT * FROM users
+                                                                   WHERE email = $1
+                                                                   LIMIT 1"
+                                                                  Returns (sql, ["alice@..."])
+                                 <---
+                                 Pool.query(pool, sql, params) -->
+                                                                  mesh_pool_query -->
+                                                                  checkout -> pg_query -> checkin
+                                                                                          Execute SQL
+                                                                                          <-- DataRows
+                                                                  <-- List<Map<String,String>>
+                                 <---
+                                 Return first row or Err
+<--- Map<String, String>
+User.from_row(row)?
+<--- User struct
+```
+
+### Insert Flow (Write)
+
+```
+Mesh User Code                    ORM Library                  Runtime (Rust)              PostgreSQL
+=============                    ===========                  ==============              ==========
+
+Changeset.cast("users",
+  params, allowed)               Creates Changeset struct
+  |> validate_required(...)      Validates fields
+  |> validate_length(...)        Appends errors if invalid
+
+Repo.insert(pool, changeset) --> Check changeset.valid
+                                 If invalid: return Err(errors)
+                                 mesh_orm_build_insert(cs) ------>
+                                                                  Builds SQL:
+                                                                  "INSERT INTO users
+                                                                   (email, display_name, ...)
+                                                                   VALUES ($1, $2, ...)
+                                                                   RETURNING *"
+                                                                  Returns (sql, params)
+                                 <---
+                                 Pool.query(pool, sql, params) -->
+                                                                  Execute INSERT
+                                                                  <-- RETURNING row
+                                 <---
+                                 Return inserted row Map
+<--- Map<String, String>
+```
 
 ## Patterns to Follow
 
-### Pattern 1: Actor-Per-Connection with Crash Isolation
+### Pattern 1: Struct-as-Query (Immutable Query Composition)
 
-**What:** Each HTTP request and WebSocket connection runs in its own actor. A panic in one handler kills only that actor; the server continues accepting new connections.
+**What:** Queries are immutable struct values. Each pipe operation returns a new Query with the modification applied. This is the established Mesh pattern (see HTTP.router() pipe chain in main.mpl).
 
-**When:** All HTTP and WebSocket servers in Mesher.
+**When:** All query building.
 
 **Example:**
-```mesh
-fn handle_ingest(request) do
-  let body = Request.body(request)
-  let result = RawEvent.from_json(body)
-  case result do
-    Ok(event) ->
-      let router_pid = Global.whereis("event_router")
-      send(router_pid, ProcessRaw(event))
-      HTTP.response(202, "{\"status\":\"accepted\"}")
-    Err(e) ->
-      HTTP.response(400, "{\"error\":\"${e}\"}")
-  end
+```
+# Each operation returns a new Query, not mutating the original
+let base_query = Query.from("issues")
+  |> Query.where("project_id", "=", project_id)
+
+# Reuse base for different views
+let unresolved = base_query |> Query.where("status", "=", "unresolved")
+let resolved = base_query |> Query.where("status", "=", "resolved")
+```
+
+### Pattern 2: Pool-First-Arg Convention
+
+**What:** All functions that touch the database take `pool :: PoolHandle` as the first argument. This is the universal convention in all 627 lines of Mesher's queries.mpl and all service modules.
+
+**When:** Any Repo function.
+
+**Example:**
+```
+# Consistent with existing codebase
+pub fn all(pool :: PoolHandle, query :: Query) -> List<Map<String, String>>!String
+pub fn get(pool :: PoolHandle, table :: String, id :: String) -> Map<String, String>!String
+```
+
+### Pattern 3: Result-Error Propagation
+
+**What:** All fallible operations return `T!String` (Result<T, String>) and are composable with the `?` operator. This is the established pattern throughout Mesher.
+
+**When:** Any operation that can fail.
+
+**Example:**
+```
+pub fn get_user_with_posts(pool :: PoolHandle, user_id :: String) -> Map<String, String>!String do
+  let user = Repo.get(pool, "users", user_id)?
+  let posts = Query.from("posts")
+    |> Query.where("user_id", "=", user_id)
+    |> Repo.all(pool)?
+  # Combine...
+  Ok(user)
 end
 ```
 
-If `from_json` triggers a panic (malformed input), only this request's actor crashes. The supervisor restarts nothing (the actor was transient -- it dies after handling one request). The HTTP server spawns a new actor for the next request.
+### Pattern 4: Generated Metadata Functions (deriving Pattern)
 
-### Pattern 2: Service as Stateful Singleton
+**What:** Compile-time code generation produces named functions with predictable mangled names. The ORM follows the exact same pattern as `deriving(Json)` (generates `to_json__User`, `from_json__User`) and `deriving(Row)` (generates `FromRow__from_row__User`).
 
-**What:** Use Mesh's `service` (GenServer) for components that maintain state: the EventRouter (routing table), Fingerprinter (fingerprint cache), StorageWriter (batch buffer), AlertRuleStore (rule cache), AlertEvaluator (timer state).
-
-**When:** Any component that needs mutable state shared across messages.
+**When:** Schema metadata generation.
 
 **Example:**
-```mesh
-service EventRouter do
-  fn init() -> Map<String, Int> do
-    # project_id -> processor_pid mapping
-    Map.new()
-  end
-
-  call Route(event :: RawEvent) :: Int do |routing_table|
-    let project_id = event.project_id
-    let pid = case Map.get(routing_table, project_id) do
-      Some(p) -> p
-      None -> pick_processor()  # round-robin from pool
-    end
-    send(pid, ProcessRaw(event))
-    (pid, routing_table)
-  end
-
-  cast UpdateRoute(project_id :: String, pid :: Int) do |routing_table|
-    Map.put(routing_table, project_id, pid)
-  end
-end
 ```
-
-### Pattern 3: Timer-Driven Periodic Work
-
-**What:** Use `Timer.send_after(self(), ms, msg)` in a receive loop to implement periodic tasks: batch flushing, alert evaluation, partition management, metric aggregation.
-
-**When:** AlertEvaluator (check rules every N seconds), StorageWriter (flush every second), partition manager (create partitions daily).
-
-**Example:**
-```mesh
-actor alert_evaluator(pool, rules :: List<AlertRule>) do
-  Timer.send_after(self(), 10000, Evaluate)
-  eval_loop(pool, rules)
-end
-
-fn eval_loop(pool, rules :: List<AlertRule>) do
-  receive do
-    Evaluate ->
-      for rule in rules when rule.enabled do
-        evaluate_rule(pool, rule)
-      end
-      Timer.send_after(self(), 10000, Evaluate)
-      eval_loop(pool, rules)
-
-    RuleUpdated(rule) ->
-      let updated = List.map(rules, fn(r) do
-        if r.id == rule.id do rule else r end
-      end)
-      eval_loop(pool, updated)
-
-    RuleDeleted(rule_id) ->
-      let filtered = List.filter(rules, fn(r) -> r.id != rule_id end)
-      eval_loop(pool, filtered)
-  end
-end
-```
-
-**Mesh features exercised:** Timer.send_after, tail-recursive receive loop (TCE), for-in with filter (when clause), List.map/filter with closures, pattern matching on sum types.
-
-### Pattern 4: Pipeline Fan-Out via Message Passing
-
-**What:** After processing an event, the processor sends the result to multiple downstream actors (storage, streaming, alerting) using separate `send()` calls. Each downstream handles the message independently and at its own pace.
-
-**When:** The processor -> storage/streaming/alerting fan-out point.
-
-**Why not function calls:** Function calls would make the processor block on each downstream operation. Message passing is async -- the processor can handle the next event immediately while storage batches writes and alerting evaluates rules.
-
-### Pattern 5: Authentication Middleware
-
-**What:** HTTP middleware that extracts the API key from the Authorization header and resolves it to a project_id.
-
-**When:** All API endpoints.
-
-```mesh
-fn auth_middleware(request :: Request, next) -> Response do
-  let auth = Request.header(request, "authorization")
-  case auth do
-    Some(key) ->
-      # In a real implementation, validate key against projects table
-      # For now, pass through with the key as context
-      next(request)
-    None ->
-      HTTP.response(401, "{\"error\":\"missing api key\"}")
-  end
-end
+# deriving(Schema) on struct User generates:
+# Schema__table__User() -> "users"
+# Schema__fields__User() -> ["id", "email", "display_name", "created_at"]
+# Schema__primary_key__User() -> "id"
 ```
 
 ## Anti-Patterns to Avoid
 
-### Anti-Pattern 1: Shared Mutable State Between Actors
+### Anti-Pattern 1: Runtime Schema Reflection
 
-**What:** Trying to share a database connection or mutable data structure between actors.
+**What:** Discovering struct field names at runtime by introspecting memory layout or using dynamic lookups.
 
-**Why bad:** Mesh's actor model enforces isolation. There is no shared memory. Attempting to pass connection handles between actors will fail because connections are opaque u64 handles tied to a specific OS thread/connection state.
+**Why bad:** Mesh has no runtime reflection. All type information is erased during compilation. The GC does not store type metadata. Attempting runtime reflection would require a parallel type metadata system.
 
-**Instead:** Use the connection pool (`Pool.query`, `Pool.execute`). The pool handles checkout/checkin automatically and is thread-safe. Every actor that needs database access uses the pool handle (which is a u64 that can be safely passed in messages or closed over).
+**Instead:** Generate all metadata at compile time via deriving(Schema).
 
-### Anti-Pattern 2: Synchronous Call Chains in the Hot Path
+### Anti-Pattern 2: Dynamic Return Types
 
-**What:** Using `Service.call()` (synchronous) for every step in the ingestion pipeline.
+**What:** A generic `Repo.all<T>()` that returns `List<T>` for any schema type T.
 
-**Why bad:** Service calls block the caller until the callee responds. A chain of synchronous calls (ingest -> route -> process -> store) would serialize the entire pipeline and eliminate concurrency benefits.
+**Why bad:** Mesh uses monomorphization, not dynamic dispatch. There are no trait objects. The generic version would need to be monomorphized for every schema type, which requires the compiler to see the concrete type at every call site. This works for simple generics but breaks down for a Repo module that needs to work with any schema.
 
-**Instead:** Use `send()` (async fire-and-forget) between pipeline stages. The ingestion handler sends to the router and immediately returns HTTP 202. The router sends to a processor and handles the next event. Only use synchronous `call` when the caller truly needs the response (e.g., fingerprint cache lookup where the processor needs the issue_id before continuing).
+**Instead:** Return `List<Map<String, String>>` from Repo functions and let callers apply their specific `from_row` function. This matches how the existing `Pool.query` works.
 
-### Anti-Pattern 3: One Giant Actor for Everything
+### Anti-Pattern 3: SQL String Building in Mesh
 
-**What:** Putting all logic in a single actor or service that handles HTTP, processing, storage, and alerting.
+**What:** Building SQL by concatenating strings in Mesh code (e.g., `"SELECT " <> fields <> " FROM " <> table <> " WHERE " <> conditions`).
 
-**Why bad:** Defeats supervision isolation. A crash in alerting logic would kill the entire application. Also serializes all work through one mailbox.
+**Why bad:** This is exactly what queries.mpl does today, producing 627 lines of brittle, repetitive code. It is error-prone (missing spaces, wrong parameter numbering), hard to compose, and impossible to validate.
 
-**Instead:** Separate concerns into distinct actors with distinct supervision trees, as shown in the topology above. This is also the dogfooding goal -- exercise as many actors, supervisors, and message flows as possible.
+**Instead:** Build SQL in the Rust runtime from structured Query data. One place to handle SQL generation correctly.
 
-### Anti-Pattern 4: Unbounded Batch Buffer
+### Anti-Pattern 4: Actor/Service for Query Building
 
-**What:** Accumulating events in the StorageWriter without a size limit, relying only on the timer to flush.
+**What:** Making the query builder a stateful service (like OrgService, ProjectService) that accumulates query state via message passing.
 
-**Why bad:** Under high ingestion load, the batch buffer grows unboundedly, consuming actor heap memory. The GC will keep the list alive because it is reachable state.
+**Why bad:** Query building is a pure computation. It does not need concurrency, state management, or fault tolerance. Making it a service adds latency (message passing), complexity (service lifecycle), and breaks composition (cannot pass query values across pipe chains).
 
-**Instead:** Flush when batch_size >= threshold OR timer fires, whichever comes first. Also consider applying backpressure by having the EventRouter slow down if the StorageWriter's batch exceeds a high-water mark.
+**Instead:** Use plain structs and pure functions. Queries are values, not processes.
 
-### Anti-Pattern 5: Blocking Database Calls in Ingestion Actors
+## New vs. Modified Components
 
-**What:** Performing Pool.query inside the HTTP handler actor before returning the response.
+### New Components
 
-**Why bad:** Database calls block the actor (the connection checkout + query + result). Under high concurrency with many ingestion actors, all pool connections could be checked out by ingestion actors, starving the storage writer and API query handlers.
+| Component | Type | Location | Purpose |
+|-----------|------|----------|---------|
+| `Orm/Schema.mpl` | Mesh library | Mesher or separate ORM package | Schema helper functions (from, field metadata lookup) |
+| `Orm/Query.mpl` | Mesh library | Mesher or separate ORM package | Query builder struct + pipe functions |
+| `Orm/Repo.mpl` | Mesh library | Mesher or separate ORM package | Database operation wrappers |
+| `Orm/Changeset.mpl` | Mesh library | Mesher or separate ORM package | Validation and casting |
+| `Orm/Migration.mpl` | Mesh library | Mesher or separate ORM package | Migration DDL helpers and runner |
+| `db/orm.rs` | Rust runtime | `crates/mesh-rt/src/db/` | SQL generation from query structs |
+| `generate_schema_metadata_struct()` | Rust compiler | `crates/mesh-codegen/src/mir/lower.rs` | MIR generation for schema metadata |
 
-**Instead:** Ingestion actors should only parse + validate + forward. Database writes happen in the StorageWriter service. API query endpoints (GET /issues) can query the database directly since they are lower-volume read operations.
+### Modified Components
 
-## Stress-Test Points (Dogfooding Goals)
+| Component | Change | Risk |
+|-----------|--------|------|
+| `mesh-typeck/src/infer.rs` | Add "Schema" to valid_derives, register trait impl | LOW -- follows exact pattern of "Json" and "Row" |
+| `mesh-codegen/src/mir/lower.rs` | Add schema metadata generation alongside existing deriving code | LOW -- isolated addition to existing deriving switch |
+| `mesh-codegen/src/mir/lower.rs` | Register new runtime functions (mesh_orm_*) in known_functions | LOW -- additive only |
+| `mesh-rt/src/db/mod.rs` | Add `pub mod orm;` | LOW -- new module, no existing code changed |
+| `meshc/src/main.rs` | Add `migrate` subcommand | LOW -- additive CLI path |
 
-Every architectural decision is chosen to exercise specific Mesh features under load:
+### Unchanged Components
 
-| Stress Target | Architecture Decision | Mesh Feature Exercised |
-|---------------|----------------------|----------------------|
-| Scheduler fairness | Thousands of concurrent HTTP ingestion actors | M:N scheduler, reduction checks, GC at yield points |
-| Mailbox throughput | High-volume message passing between pipeline stages | Actor mailbox, selective receive |
-| GC under pressure | Long-lived services with growing/shrinking state (batch buffer, caches) | Mark-sweep GC per actor, bounded memory |
-| Supervision recovery | Intentional crash scenarios in processors | Supervisor restart, one_for_one/rest_for_one strategies |
-| Database pool contention | Many actors competing for pooled connections | Pool checkout/checkin, timeout handling, transaction safety |
-| Complex type hierarchies | Sum types with fields, generic structs, nested deriving | Type inference, monomorphization, deriving(Json)/deriving(Row) |
-| Iterator pipelines | Event filtering, transformation, aggregation using Iter combinators | Lazy iterators, pipe operator, Collect |
-| Pattern matching depth | Matching on nested sum types (AlertCondition variants, EventStatus) | Exhaustiveness checking, sum type field extraction |
-| Service state management | Services maintaining Maps, Lists, counters as state | GenServer call/cast, state threading |
-| Timer correctness | Periodic alert evaluation, batch flush timers | Timer.send_after, cooperative scheduling |
-| WebSocket rooms | Hundreds of dashboard clients subscribing to filtered rooms | Ws.join/broadcast, room management, cross-node broadcast |
-| Distributed messaging | Cross-node event routing and global process discovery | Node.spawn, Global.register/whereis, location-transparent PIDs |
-| HTTP middleware | Request validation, auth, CORS through middleware pipeline | HTTP.use, trampoline-based chain |
-| Error propagation | ? operator chaining through database calls, JSON parsing | Result/Option ?, From/Into error conversion |
-| Multi-file compilation | 20+ module project with cross-module imports | Module system, pub visibility, qualified imports |
-| Trait dispatch | Custom Fingerprinter trait with multiple implementations | interface, impl, static dispatch |
+| Component | Why Unchanged |
+|-----------|---------------|
+| `mesh-lexer` | No new tokens needed |
+| `mesh-parser` | No new grammar -- deriving(Schema) uses existing deriving clause syntax |
+| `mesh-rt/src/db/pg.rs` | ORM builds SQL, PG driver executes it -- no changes needed |
+| `mesh-rt/src/db/pool.rs` | ORM calls Pool.query/Pool.execute as-is |
+| `mesh-rt/src/db/row.rs` | Row parsing works unchanged -- deriving(Row) continues to work |
 
-## Suggested Build Order
+## Build Order (Implementation Phases)
+
+The build order is driven by dependencies: each phase must have its prerequisites complete before starting.
+
+### Phase 1: Schema Metadata (Foundation)
+
+**Prerequisites:** None (builds on existing deriving infrastructure)
+
+**What:** Add `deriving(Schema)` to the compiler. When a struct has `deriving(Schema)`, generate metadata functions that return the table name, field list, field types, and primary key.
+
+**Deliverables:**
+1. Add "Schema" to valid_derives in mesh-typeck
+2. Implement `generate_schema_metadata_struct()` in mesh-codegen
+3. Register generated functions in known_functions
+4. E2E test: struct with deriving(Schema) produces callable metadata functions
+
+**Why first:** Everything else in the ORM depends on schema metadata. The Query builder needs table names. The Repo needs field lists. The Migration system needs field types. Without this, all ORM library code would hardcode strings.
+
+### Phase 2: SQL Generation Runtime
+
+**Prerequisites:** Phase 1 (needs to know what Query struct looks like)
+
+**What:** Implement `db/orm.rs` in the Mesh runtime with functions to build parameterized SQL from structured input. Functions: `mesh_orm_build_select`, `mesh_orm_build_insert`, `mesh_orm_build_update`, `mesh_orm_build_delete`.
+
+**Deliverables:**
+1. New `crates/mesh-rt/src/db/orm.rs` module
+2. SQL generation for SELECT with WHERE, ORDER BY, LIMIT, OFFSET, GROUP BY
+3. SQL generation for INSERT with RETURNING
+4. SQL generation for UPDATE with WHERE and RETURNING
+5. SQL generation for DELETE with WHERE
+6. Parameter numbering ($1, $2, ...) and identifier quoting
+7. Rust unit tests for all SQL generation paths
+
+**Why second:** The Repo module needs to call these functions. Building them first allows Repo development to proceed with a working SQL backend.
+
+### Phase 3: Query Builder + Repo (Core API)
+
+**Prerequisites:** Phase 1 (schema metadata), Phase 2 (SQL generation)
+
+**What:** Implement the Mesh-level ORM library: Query struct, pipe-chain builder functions, and Repo module with all CRUD operations.
+
+**Deliverables:**
+1. `Orm/Query.mpl` -- Query struct + from/where/order_by/limit/offset/select/group_by
+2. `Orm/Repo.mpl` -- all/one/get/get_by/insert_raw/update_raw/delete/count/exists
+3. Integration test: build query, execute via Repo, verify results
+4. Mesher smoke test: rewrite one simple query (e.g., get_org) to use ORM
+
+**Why third:** This is the core user-facing API. It requires both schema metadata (Phase 1) and SQL generation (Phase 2) to function.
+
+### Phase 4: Changesets (Validation Layer)
+
+**Prerequisites:** Phase 3 (Repo for insert/update)
+
+**What:** Implement the Changeset module for validating and casting data before persistence. Connect Repo.insert/Repo.update to accept changesets.
+
+**Deliverables:**
+1. `Orm/Changeset.mpl` -- cast, validate_required, validate_length, validate_format, validate_inclusion
+2. Repo.insert and Repo.update accept Changeset structs
+3. Validation error propagation (changeset.valid check)
+4. Integration test: invalid changeset returns errors, valid changeset inserts
+
+**Why fourth:** Changesets enhance Repo operations. They are not needed for basic querying, so they can come after the core Repo is working.
+
+### Phase 5: Relationships and Preloading
+
+**Prerequisites:** Phase 3 (Query + Repo), Phase 1 (Schema metadata for associations)
+
+**What:** Implement relationship metadata, association queries, and preloading.
+
+**Deliverables:**
+1. Convention for declaring belongs_to/has_many/has_one metadata
+2. `Repo.preload_assoc` for loading a single association
+3. `Repo.preload` for loading multiple associations on a result
+4. Nested preloading support (posts.comments)
+5. Many-to-many through join table support
+
+**Why fifth:** Relationships are the most complex ORM feature and depend on everything else working correctly. They require working queries, schema metadata, and Repo operations.
+
+### Phase 6: Migration System
+
+**Prerequisites:** Phase 2 (SQL generation for DDL), Phase 1 (Schema metadata)
+
+**What:** Implement migration infrastructure: DDL helper functions, migration tracking table, migration runner, and CLI integration.
+
+**Deliverables:**
+1. `Orm/Migration.mpl` -- create_table, drop_table, add_column, remove_column, create_index, etc.
+2. Migration tracking (_mesh_migrations table)
+3. Migration runner (discover, sort, run pending)
+4. `meshc migrate` CLI subcommand
+5. `meshc migrate rollback` for down migrations
+6. Migration generation: `meshc migrate generate create_users`
+
+**Why sixth:** Migrations are operationally important but not required for query/data operations. They can be developed in parallel with Phase 5 if resources allow.
+
+### Phase 7: Mesher Rewrite (Validation)
+
+**Prerequisites:** All of Phases 1-6
+
+**What:** Rewrite Mesher's entire storage layer to use the ORM. This validates every ORM feature against a real application.
+
+**Deliverables:**
+1. Convert all 11 type structs to use deriving(Schema)
+2. Replace storage/queries.mpl (627 lines) with ORM query calls
+3. Replace storage/schema.mpl (82 lines) with migration files
+4. Replace storage/writer.mpl with ORM insert
+5. Update all service modules to use Repo instead of raw queries
+6. Update all API handlers that use raw Map results
+7. Verify all existing functionality works identically
+
+**Estimated reduction:** 627 lines of queries.mpl -> ~100-150 lines of ORM calls. 82 lines of schema.mpl -> ~150 lines of migration files (more structured, but declarative).
+
+## Mesher DB Layer Refactoring Plan
+
+### Current Structure (Before ORM)
 
 ```
-Phase 1: Foundation (Types + Database + Storage)
-  ├── types/*.mpl -- define all structs, sum types, deriving
-  ├── storage/migrations.mpl -- schema creation
-  ├── storage/queries.mpl -- SQL helper functions
-  └── storage/writer.mpl -- StorageWriter service with batch + flush
-  Dependencies: None (pure types + database)
-  Exercises: structs, sum types, deriving(Json/Row), Pool, transactions, services
-
-Phase 2: Ingestion Pipeline (HTTP + Processing)
-  ├── ingestion/http_handler.mpl -- POST /api/v1/events
-  ├── ingestion/router.mpl -- EventRouter service
-  ├── processing/fingerprint.mpl -- Fingerprinter trait + DefaultFingerprinter
-  ├── processing/processor.mpl -- Processor actor
-  └── main.mpl (partial) -- start HTTP server + supervisors
-  Dependencies: Phase 1 types + storage
-  Exercises: HTTP server, middleware, actor messaging, traits, pattern matching
-
-Phase 3: Real-Time Streaming (WebSocket)
-  ├── streaming/broadcaster.mpl -- StreamBroadcaster actor
-  ├── streaming/dashboard_handler.mpl -- WS dashboard server
-  └── Integration with processor fan-out
-  Dependencies: Phase 2 (events flow from processor)
-  Exercises: WebSocket, rooms, Ws.broadcast, actor-per-connection
-
-Phase 4: REST API (Query + CRUD)
-  ├── api/routes.mpl -- route registration
-  ├── api/events_api.mpl -- GET events, issues
-  ├── api/projects_api.mpl -- project CRUD
-  └── api/alerts_api.mpl -- alert rule CRUD
-  Dependencies: Phase 1 (queries), Phase 2 (ingestion running)
-  Exercises: HTTP routing, JSON encoding, Pool.query, deriving(Json)
-
-Phase 5: Alerting System
-  ├── alerting/rule_store.mpl -- AlertRuleStore service
-  ├── alerting/evaluator.mpl -- AlertEvaluator with timer
-  └── alerting/notifier.mpl -- AlertNotifier with HTTP webhook
-  Dependencies: Phase 4 (alert rule CRUD), Phase 1 (queries)
-  Exercises: Timer.send_after, service state, HTTP client, pattern matching on sum types
-
-Phase 6: Multi-Node Clustering
-  ├── cluster/node_manager.mpl -- Node.start, connect, monitor
-  ├── cluster/cluster_sync.mpl -- Global registry for services
-  └── Integration: cross-node WS broadcast, remote processor spawn
-  Dependencies: Phases 1-5 (full single-node working)
-  Exercises: Distributed actors, Global registry, Node.spawn, location-transparent PIDs
-
-Phase 7: Vue Frontend
-  └── Separate directory, not Mesh code
-  Dependencies: Phase 4 (REST API), Phase 3 (WS streaming)
+mesher/
+  types/
+    user.mpl          pub struct User ... end deriving(Json, Row)
+    project.mpl       pub struct Organization, Project, ApiKey ... end deriving(Json, Row)
+    event.mpl         pub struct Event, EventPayload, StackFrame ... end deriving(Json, Row)
+    issue.mpl         pub struct Issue ... end deriving(Json, Row)
+    alert.mpl         pub struct AlertRule, Alert ... end deriving(Json, Row)
+  storage/
+    schema.mpl        82 lines: create_schema(), create_partition(), create_partitions_ahead()
+    queries.mpl       627 lines: 50+ functions with raw SQL strings
+    writer.mpl        21 lines: insert_event() with raw SQL
+  services/
+    org.mpl           OrgService delegates to Storage.Queries
+    project.mpl       ProjectService delegates to Storage.Queries
+    user.mpl          UserService delegates to Storage.Queries
+    event_processor   EventProcessor uses Storage.Queries
+    writer.mpl        StorageWriter batches and calls Storage.Writer
+    retention.mpl     RetentionCleaner calls Storage.Queries
 ```
 
-**Build order rationale:**
-- Types come first because every other module imports them.
-- Storage before ingestion because the writer must exist before events can be stored.
-- Ingestion before streaming because events must flow into the system before they can be streamed out.
-- REST API after ingestion because it queries data that ingestion writes.
-- Alerting after REST API because alert rules need CRUD endpoints.
-- Clustering last because it layers on top of a fully-working single-node system.
-- Frontend last because it consumes the API and WebSocket that must already work.
+### Target Structure (After ORM)
+
+```
+mesher/
+  types/
+    user.mpl          pub struct User ... end deriving(Json, Row, Schema)   # ADD Schema
+    project.mpl       pub struct Organization, Project, ApiKey ... end deriving(Json, Row, Schema)
+    event.mpl         pub struct Event ... end deriving(Json, Row, Schema)
+    issue.mpl         pub struct Issue ... end deriving(Json, Row, Schema)
+    alert.mpl         pub struct AlertRule, Alert ... end deriving(Json, Row, Schema)
+  orm/                # NEW: ORM library
+    schema.mpl        Schema helper functions
+    query.mpl         Query struct + builder functions
+    repo.mpl          Database operations
+    changeset.mpl     Validation
+    migration.mpl     Migration helpers
+  migrations/         # NEW: Migration files
+    001_create_organizations.mpl
+    002_create_users.mpl
+    003_create_org_memberships.mpl
+    004_create_sessions.mpl
+    005_create_projects.mpl
+    006_create_api_keys.mpl
+    007_create_issues.mpl
+    008_create_events.mpl
+    009_create_alert_rules.mpl
+    010_create_alerts.mpl
+    011_add_retention_settings.mpl
+  storage/
+    queries.mpl       REMOVED (replaced by ORM calls in services)
+    schema.mpl        REMOVED (replaced by migrations)
+    writer.mpl        SIMPLIFIED (uses Repo.insert instead of raw SQL)
+  services/
+    org.mpl           Uses Repo.get/Repo.all instead of Storage.Queries
+    project.mpl       Uses Repo.get/Repo.all instead of Storage.Queries
+    user.mpl          Uses Repo.get/Changeset/Repo.insert
+    ...
+```
+
+### Specific Refactoring Examples
+
+**Before (raw SQL):**
+```
+pub fn get_org(pool :: PoolHandle, id :: String) -> Organization!String do
+  let rows = Pool.query(pool, "SELECT id::text, name, slug, created_at::text FROM organizations WHERE id = $1::uuid", [id])?
+  if List.length(rows) > 0 do
+    let row = List.head(rows)
+    Ok(Organization { id: Map.get(row, "id"), name: Map.get(row, "name"), slug: Map.get(row, "slug"), created_at: Map.get(row, "created_at") })
+  else
+    Err("not found")
+  end
+end
+```
+
+**After (ORM):**
+```
+pub fn get_org(pool :: PoolHandle, id :: String) -> Organization!String do
+  let row = Repo.get(pool, "organizations", id)?
+  Organization.from_row(row)
+end
+```
+
+**Before (complex filtered query):**
+```
+pub fn list_issues_filtered(pool :: PoolHandle, project_id :: String, status :: String, level :: String, assigned_to :: String, cursor :: String, cursor_id :: String, limit_str :: String) -> List<Map<String, String>>!String do
+  if String.length(cursor) > 0 do
+    let sql = "SELECT id::text, project_id::text, fingerprint, title, level, status, event_count::text, first_seen::text, last_seen::text, COALESCE(assigned_to::text, '') as assigned_to FROM issues WHERE project_id = $1::uuid AND ($2 = '' OR status = $2) AND ($3 = '' OR level = $3) AND ($4 = '' OR assigned_to = $4::uuid) AND (last_seen, id) < ($5::timestamptz, $6::uuid) ORDER BY last_seen DESC, id DESC LIMIT $7::int"
+    Pool.query(pool, sql, [project_id, status, level, assigned_to, cursor, cursor_id, limit_str])
+  else
+    # ... 6 more lines
+  end
+end
+```
+
+**After (ORM):**
+```
+pub fn list_issues_filtered(pool :: PoolHandle, project_id :: String, status :: String, level :: String, assigned_to :: String, cursor :: String, cursor_id :: String, limit_str :: String) -> List<Map<String, String>>!String do
+  let query = Query.from("issues")
+    |> Query.where("project_id", "=", project_id)
+    |> Query.where_if(status != "", "status", "=", status)
+    |> Query.where_if(level != "", "level", "=", level)
+    |> Query.where_if(assigned_to != "", "assigned_to", "=", assigned_to)
+    |> Query.where_if(cursor != "", "(last_seen, id) <", "", cursor <> "," <> cursor_id)
+    |> Query.order_by("last_seen", "desc")
+    |> Query.order_by("id", "desc")
+    |> Query.limit_str(limit_str)
+  Repo.all(pool, query)
+end
+```
+
+### Queries That May Remain as Raw SQL
+
+Some Mesher queries are too complex or PostgreSQL-specific for a general ORM:
+
+1. **Event partitioning** (`create_partition`, `create_partitions_ahead`): Uses dynamic DDL with date arithmetic. Keep as raw SQL.
+2. **Spike detection** (`check_volume_spikes`): Complex correlated subquery with interval arithmetic. Keep as raw SQL.
+3. **Extract event fields** (`extract_event_fields`): Server-side JSONB extraction with CASE expressions. Keep as raw SQL.
+4. **Insert event** (`insert_event`): Uses `SELECT ... FROM (SELECT $4::jsonb) AS sub` for JSONB extraction. Consider ORM insert for simple version, keep raw for JSONB.
+
+The ORM provides a `Repo.raw_query` escape hatch for these:
+```
+pub fn raw_query(pool :: PoolHandle, sql :: String, params :: List<String>) -> List<Map<String, String>>!String do
+  Pool.query(pool, sql, params)
+end
+```
 
 ## Scalability Considerations
 
-| Concern | Single Node | 3-Node Cluster | 10-Node Cluster |
-|---------|-------------|----------------|-----------------|
-| Event ingestion | HTTP actor-per-conn, thousands concurrent | Load-balanced across nodes | Horizontal scale-out |
-| Processing throughput | N processor actors (cpu-core scaling) | Remote-spawn processors on other nodes | Processor pools per node |
-| Database writes | Batch writer with Pool (10-20 conns) | Shared PG, per-node pools | Single PG with larger pool, or PG replicas for reads |
-| WebSocket streaming | Rooms on single node | DIST_ROOM_BROADCAST cross-node | Automatic via Mesh distributed rooms |
-| Alert evaluation | Timer-driven in one service | Single evaluator (leader election via Global) | Same -- alerting is low-volume |
-| State sync | N/A | Global.register for service discovery | Global registry with broadcast |
+| Concern | At Mesher Scale (~10 tables) | At 50 Tables | At 200+ Tables |
+|---------|-------------------------------|--------------|----------------|
+| Schema metadata | Negligible compile time | Negligible | May add ~1s to compile |
+| Query building | Struct allocation per query | Same -- structs are cheap | Same |
+| SQL generation | <1ms per query in runtime | Same | Same |
+| Migration management | Linear scan of files | Same (migrations run once) | Index on tracking table |
+| Preloading N+1 | Separate query per assoc | Batched IN queries | Batched IN queries |
 
 ## Sources
 
-- Direct analysis of Mesh runtime APIs: `crates/mesh-rt/src/http/`, `crates/mesh-rt/src/ws/`, `crates/mesh-rt/src/dist/`, `crates/mesh-rt/src/actor/`, `crates/mesh-rt/src/db/`
-- Mesh language documentation: `website/docs/docs/concurrency/`, `website/docs/docs/web/`, `website/docs/docs/databases/`, `website/docs/docs/distributed/`
-- Mesh language examples: `tests/e2e/supervisor_basic.mpl`, `tests/e2e/service_call_cast.mpl`, `tests/e2e/stdlib_http_server_runtime.mpl`, `tests/e2e/stdlib_pg.mpl`, `tests/e2e/deriving_json_sum_type.mpl`
-- Mesh module system: `crates/meshc/src/main.rs` (meshc build <dir>)
-- [Sentry issue grouping architecture](https://develop.sentry.dev/backend/application-domains/grouping/) -- fingerprinting hierarchy (fingerprint > stacktrace > exception > message), GroupHash model
-- [Sentry event fingerprinting](https://docs.sentry.io/concepts/data-management/event-grouping/fingerprint-rules/) -- custom fingerprint rules, SDK-side vs server-side fingerprinting
-- [PostgreSQL native partitioning for time-series](https://aws.amazon.com/blogs/database/designing-high-performance-time-series-data-tables-on-amazon-rds-for-postgresql/) -- range partitioning by timestamp, daily granularity, partition pruning
-- [PostgreSQL partitioning strategies](https://medium.com/@connect.hashblock/9-postgres-partitioning-strategies-for-time-series-at-scale-c1b764a9b691) -- partition granularity selection, hot/warm/cold tiers
-- Confidence: HIGH -- all Mesh language capabilities verified against existing test files and runtime FFI exports; monitoring domain patterns based on established architectures (Sentry, Datadog)
+- Direct codebase analysis of all files in `/Users/sn0w/Documents/dev/snow/crates/` and `/Users/sn0w/Documents/dev/snow/mesher/`
+- [Ecto documentation (v3.13.5)](https://hexdocs.pm/ecto/Ecto.html) -- four-module architecture reference
+- [Ecto.Schema documentation](https://hexdocs.pm/ecto/Ecto.Schema.html) -- schema design patterns
+- [Ecto/Elixir database operations guide](https://oneuptime.com/blog/post/2026-01-26-elixir-ecto-database/view) -- practical Ecto patterns
+- [ORMs vs Query Builders comparison](https://neon.com/blog/orms-vs-query-builders-for-your-typescript-application) -- architectural tradeoffs
+- [Prisma Data Guide: SQL vs ORMs vs Query Builders](https://www.prisma.io/dataguide/types/relational/comparing-sql-query-builders-and-orms) -- approach comparison

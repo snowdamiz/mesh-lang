@@ -1,317 +1,331 @@
 # Project Research Summary
 
-**Project:** Mesher -- Monitoring/Observability SaaS Platform
-**Domain:** Core monitoring platform for log ingestion, error tracking, real-time streaming, alerting
-**Researched:** 2026-02-14
+**Project:** Mesh ORM Library (v10.0)
+**Domain:** ORM library for a statically-typed, LLVM-compiled functional language targeting PostgreSQL
+**Researched:** 2026-02-16
 **Confidence:** HIGH
 
 ## Executive Summary
 
-Mesher is a monitoring and observability platform designed as the ultimate dogfooding exercise for the Mesh programming language. The entire backend is written in Mesh (.mpl files), using no additional frameworks or runtimes -- just the Mesh compiler, PostgreSQL for storage, and a separate Vue 3 frontend. This is a classic event ingestion pipeline with error grouping, real-time WebSocket streaming, alerting, and multi-tenant organization. The architecture is intentionally actor-heavy: every component (HTTP ingestion, event processing, database writing, WebSocket streaming, alert evaluation) is one or more supervised actors communicating via message passing.
+Building an ORM for Mesh requires a hybrid approach: compiler additions to provide language primitives (atoms, keyword arguments, multi-line pipes, deriving(Schema), struct update syntax) combined with pure Mesh library code for the ORM API (Query builder, Repo, Changeset, Migration). The key architectural insight is that Mesh already has most building blocks needed for an ORM — deriving(Row) for struct-to-row mapping, Pool.query for SQL execution, traits for type-safe dispatch, pipe operator for query composition — but lacks the connective tissue to make these primitives feel like an integrated ORM. The missing pieces are language-level: atoms for field references, keyword arguments for ergonomic DSL syntax, and deriving(Schema) for compile-time metadata generation.
 
-The recommended approach is to build incrementally from foundation to complexity. Start with the data model (projects, events, issues), then build the ingestion pipeline (HTTP POST endpoint, event validation, actor-based processing), add error grouping (fingerprinting via pattern matching and string operations), implement real-time streaming (WebSocket rooms with actor-per-connection), layer on alerting (timer-driven rule evaluation), and finally add multi-node clustering as an overlay. The Vue 3 frontend is a separate workstream that consumes the REST API and WebSocket endpoints. The technology stack leverages existing Mesh capabilities: the HTTP server, WebSocket server with rooms, PostgreSQL driver with connection pooling, JSON serde via deriving(Json), and the actor system with supervision trees. The frontend uses Vue 3 + Vite + TypeScript with shadcn-vue (already established in the docs site), ECharts for time-series charting, TanStack libraries for data tables and virtual scrolling, and native fetch for API calls.
+The recommended approach follows Ecto's four-module pattern (Schema, Query, Repo, Changeset) because Mesh's language design maps almost 1:1 to Elixir's functional paradigm. Schema definitions use deriving(Schema) to generate table metadata at compile time. Queries are immutable structs composed via pipe chains, with SQL generation delegated to runtime Rust functions. The Repo module provides stateless database operations that combine Pool.query with schema metadata. Changesets handle validation and type coercion as pure data transformations. Migrations use explicit up/down functions in Mesh files with a forward-only, expand-migrate-contract philosophy.
 
-The key risks are the dual-bug problem (app bugs versus compiler bugs, since this is the first large Mesh application), timer management (Timer.send_after spawns OS threads, not sustainable for hundreds of recurring timers), and database schema design (must use time-based partitioning from day one or face query/retention nightmares). Mitigation strategies: maintain a compiler bug journal with minimal reproductions, use a single recurring timer actor for alerting instead of per-rule timers, and design PostgreSQL schema with native PARTITION BY RANGE on timestamps. The project should expect to surface compiler/runtime issues and fix them immediately rather than working around them long-term.
+The critical risks are: (1) attempting to replicate Ecto's macro-based DSL without macros leads to runtime configuration hell — use deriving(Schema) instead; (2) single-line pipe chains make query building unusable — fix the parser first; (3) string-based column references enable SQL injection — generate column accessors at compile time; (4) N+1 queries without lazy loading — implement Ecto-style explicit preloading; (5) PostgreSQL text protocol returns all-strings — build a centralized type coercion layer in schema metadata. Address these via compiler additions in Phase 1 before building library code.
 
 ## Key Findings
 
 ### Recommended Stack
 
-The stack is dictated by what Mesh already provides plus established frontend technologies. The backend is 100% Mesh with zero external dependencies beyond PostgreSQL. The frontend is a standalone Vue 3 SPA in the monorepo, communicating via REST and WebSocket.
+Mesh ORM is built as three layers: compiler additions (atoms, keyword args, deriving(Schema), struct update, multi-line pipes), runtime SQL generation functions (mesh-rt/db/orm.rs), and pure Mesh library code (Query, Repo, Changeset, Migration modules). No macro system is needed. No new parser grammar for schema blocks is needed. The ORM leverages existing features — struct definitions, deriving infrastructure, pipe operator, traits, Result/Option types, pattern matching — with targeted compiler additions to unlock ergonomic syntax.
 
 **Core technologies:**
+- **Atom literals (`:name`, `:email`)**: Compiler addition for field references in queries and schema DSL — enables compile-time validation of field names
+- **Keyword arguments (`where(name: "Alice")`)**: Compiler addition desugaring to Map literals — unlocks Ecto-style ergonomic query builder API
+- **deriving(Schema)**: Compiler addition generating `__table__()`, `__fields__()`, `__primary_key__()` metadata functions — connects struct definitions to database schema
+- **Multi-line pipe chains**: Parser fix to treat `|>` at line start as continuation — makes query builder readable
+- **Struct update syntax (`%{user | name: "Bob"}`)**: Parser/codegen addition for functional data updates — needed for changeset application
+- **Runtime SQL generation (Rust)**: New mesh-rt/db/orm.rs module with mesh_orm_build_select/insert/update/delete — centralizes parameterized SQL generation
+- **Pure Mesh ORM library**: Query, Repo, Changeset, Migration modules using existing language features — no runtime changes to Pool/Pg driver needed
 
-- **Mesh (.mpl source files)** -- Entire backend, compiled to native binary by meshc. Exercises HTTP server, WebSocket with rooms, PostgreSQL driver with pooling, JSON serde, actor concurrency, supervision trees, distributed actors for multi-node clustering.
-- **PostgreSQL 16+** -- Storage layer with native range partitioning (no TimescaleDB), connection pooling, full-text search via tsvector. Schema designed for high write volume with time-series partitioning.
-- **Vue 3 (^3.5.28) + Vite (^6.2) + TypeScript (^5.9.3)** -- Frontend framework, already used in docs site. Reactivity model fits real-time dashboard needs. Monorepo consistency.
-- **ECharts (^6.0.0) + vue-echarts (^8.0.1)** -- Charting for time-series event volume, error breakdowns, issue timelines. Apache 2.0 licensed, handles large datasets, supports brush/zoom needed for monitoring.
-- **shadcn-vue + Tailwind CSS 4.1** -- UI components (already established in docs site). Copy-paste component library built on reka-ui primitives with Tailwind styling.
-- **TanStack Vue libraries** -- @tanstack/vue-table for sortable/filterable data tables (official shadcn-vue pattern), @tanstack/vue-virtual for log viewer virtual scrolling (60 FPS with 100K+ items).
-- **date-fns (^4.1.0)** -- Date formatting with first-class timezone support (critical for monitoring events from different regions).
-- **Native fetch** -- No axios/ky needed. Single backend, thin composable wrapper for auth headers and JSON parsing.
+**Critical ordering**: Atoms first (no dependencies), then multi-line pipes (parser fix), then keyword args (depends on atoms), then struct update (independent), then deriving(Schema) (depends on atoms), then relationship declarations (extends Schema). After compiler additions, all ORM library code is pure Mesh.
 
-**What NOT to add:** TimescaleDB (extension dependency, operational complexity), InfluxDB/ClickHouse (Mesh has no driver), OpenTelemetry SDK (over-engineered for log/error use case), Nuxt (SSR unnecessary for dashboard SPA), Socket.io (Mesh uses raw RFC 6455 WebSocket), GraphQL (REST is simpler), Redis/message queue (actor mailboxes handle in-memory processing).
+**Alternatives rejected**: Runtime schema registry (requires mutable globals), macro system (massive scope creep), SQL parser (diminishing returns), multi-database support (prevents PG-specific features), lazy loading (causes N+1 problems), Active Record pattern (incompatible with functional paradigm).
 
 ### Expected Features
 
-Mesher is a monitoring platform, not a full observability platform. No distributed tracing, no APM, no infrastructure metrics, no session replay. Focus on error events and log entries.
+Research identified table stakes (features users expect in any ORM), differentiators (what sets Mesh ORM apart), and anti-features (explicit non-goals based on ORM ecosystem learnings).
 
 **Must have (table stakes):**
+- **Schema DSL**: Struct + deriving(Schema) generates table name, field metadata, primary key, timestamps
+- **Query builder**: Pipe-composable where/select/order_by/limit/offset/join/group_by/having — returns immutable Query struct
+- **Repo pattern**: Stateless all/one/get/get_by/insert/update/delete operations through central Repo module
+- **Relationships**: belongs_to, has_many, has_one declarations with preload support
+- **Changesets**: cast/validate pipeline with type coercion, validation functions (required/length/format/inclusion/number), constraint error mapping
+- **Migrations**: Timestamped files with up/down functions, schema_migrations tracking, create_table/alter_table/create_index helpers
 
-- Event ingestion API (POST /api/v1/events) with DSN authentication and rate limiting
-- Error grouping via fingerprinting (hash of stack trace + error type + normalized message)
-- Issue lifecycle (open, resolved, archived) with regression detection
-- Project/org multi-tenancy with RBAC
-- Search and filtering (full-text via PostgreSQL tsvector, tag-based, time-range)
-- Real-time WebSocket streaming of new events to dashboards (actor-per-connection, rooms)
-- Alerting with threshold-based rules and webhook/WebSocket notifications
-- Data retention with configurable per-project expiration
-- Dashboard aggregation queries (event volume over time, error breakdowns, top issues)
-- Event detail view with stack traces, breadcrumbs, tags, user context
+**Should have (competitive):**
+- **Pipe-native query builder**: Designed from ground up for `|>` composition, more natural than Ecto's binding syntax
+- **Compile-time field validation**: Catch `:naem` typos at compile time via atom validation against schema fields
+- **Actor-integrated transactions**: Crash isolation via catch_unwind (already exists in Pg.transaction)
+- **Composable scopes**: Named query fragments as pure functions returning Query structs
+- **Upsert support**: PostgreSQL ON CONFLICT clause (heavily used in Mesher)
+- **Zero-cost metadata**: All schema metadata baked in at compilation, no runtime reflection overhead
 
-**Should have (competitive/dogfooding differentiators):**
+**Defer (v2+):**
+- **Compile-time query field validation**: Complex type system work beyond atom checking
+- **Schema-diff migration auto-generation**: Requires DB introspection and schema comparison
+- **Schemaless changesets**: Validate data without database-backed schema
+- **Aggregate functions as first-class ops**: Use raw SQL escape hatch initially
+- **Subqueries and CTEs**: Raw SQL escape hatch covers these
+- **Streaming/cursor queries**: LIMIT/OFFSET pagination initially
 
-- Multi-node event processing via distributed actors (location-transparent send, global registry)
-- Actor-per-connection WebSocket with crash isolation
-- Supervision tree resilience (self-healing event pipeline)
-- Zero-dependency backend (single binary, no Kafka/Redis/Elasticsearch)
-- Live alert rule evaluation (actor receives event stream, maintains in-memory counters)
-- Cross-node WebSocket broadcast (dashboards on different nodes see same real-time events)
-
-**Defer to v2+ (anti-features for this milestone):**
-
-- Distributed tracing/APM (span collection, service maps)
-- Infrastructure metrics (CPU/memory monitoring)
-- Session replay (DOM snapshots)
-- Source map processing for JavaScript
-- Release tracking with git commit integration
-- Profiling (CPU/memory flame graphs)
-- Custom dashboard builder (drag-and-drop widgets)
-- Log query language (stick to full-text search + structured tags)
-- Multi-region data residency
-- Billing/usage-based pricing
-- Email alerting (requires SMTP, which Mesh lacks)
-- Mobile SDKs
+**Anti-features (explicit non-goals):**
+- **Lazy loading**: The #1 ORM anti-pattern, causes N+1 queries, requires mutable state
+- **Active Record pattern (model.save)**: Incompatible with functional paradigm
+- **Identity map/session cache**: Complex, causes stale data issues, nonsensical with immutable data
+- **Automatic schema-diff migrations**: Dangerous for production, hides complexity
+- **Multi-database support**: Makes every feature 3x harder, prevents PG-specific features
+- **Callback hooks (before_save)**: Scatter side effects, hard to test, explicitly rejected by Ecto
 
 ### Architecture Approach
 
-Pipeline-of-actors pattern with layered supervision. Every conceptual component is an actor or service (stateful actor). Data flows from ingestion actors through processing actors to three destinations: storage (batch write to PostgreSQL), streaming (WebSocket broadcast to rooms), and alerting (rule evaluation with in-memory state).
+The ORM integrates into Mesh's existing three-layer architecture: Layer 1 (Mesh user code — ORM library modules), Layer 2 (Rust compiler — deriving(Schema) code generation), Layer 3 (Rust runtime — SQL generation functions). Zero changes to the existing Pool/Pg driver. The ORM builds SQL strings and parameter lists, then calls Pool.query/Pool.execute unchanged.
 
 **Major components:**
+1. **deriving(Schema)** (compiler) — Generates `__table__()`, `__fields__()`, `__primary_key__()` metadata functions from struct definitions following the deriving(Row)/deriving(Json) pattern
+2. **Query builder** (Mesh library) — Immutable Query struct with pipe-composable where/order/limit functions, builds query data structure without executing
+3. **SQL generator** (runtime Rust) — mesh_orm_build_select/insert/update/delete functions in db/orm.rs, converts Query struct to parameterized SQL + params list
+4. **Repo module** (Mesh library) — Stateless functions (all/one/get/insert/update/delete) that combine Query builder + SQL generator + Pool.query
+5. **Changeset module** (Mesh library) — Pure data transformations for casting (Map -> typed struct) and validation (pipe-chain of validation functions)
+6. **Migration system** (Mesh library + CLI) — Migration files as Mesh functions (up/down), migration runner with schema_migrations tracking, meshc migrate subcommand
 
-1. **Ingestion Layer** -- HTTP Server (actor-per-connection) and WebSocket Ingestion Server accept events, validate, route to EventRouter service which dispatches by project_id to processor pool.
-2. **Processing Layer** -- Processor actors fingerprint events (pattern matching on stack traces, string operations for normalization), resolve fingerprint to issue_id via Fingerprinter service (Map cache), enrich events with metadata, fan out to downstream.
-3. **Storage Layer** -- StorageWriter service accumulates events in List buffer, flushes in batches to PostgreSQL via connection pool. Uses PostgreSQL transactions with ON CONFLICT for issue upserts.
-4. **Streaming Layer** -- StreamBroadcaster actor receives enriched events, broadcasts to WebSocket rooms. WS Dashboard Server (actor-per-connection) joins clients to rooms with filters.
-5. **Alerting Layer** -- AlertRuleStore service maintains rule cache, AlertEvaluator service runs on timer (single recurring timer actor, not per-rule timers), AlertNotifier sends notifications (WebSocket first, webhooks require HTTP client capability).
-6. **Cluster Layer** (multi-node) -- NodeManager actor handles mesh formation via Node.connect, ClusterSync service uses Global.register for service discovery, cross-node room broadcast automatic via DIST_ROOM_BROADCAST.
+**Key patterns**: Struct-as-Query (immutable composition), pool-first-arg convention (all DB functions take PoolHandle first), Result-error propagation (T!String with ? operator), generated metadata functions (deriving pattern). Anti-patterns to avoid: runtime schema reflection, dynamic return types, SQL string building in Mesh, actor/service for query building.
 
-**Key patterns:** Actor-per-connection with crash isolation (HTTP/WS), service as stateful singleton (EventRouter, Fingerprinter, StorageWriter use GenServer pattern), timer-driven periodic work (single timer actor for alerting, batch flush timer), pipeline fan-out via message passing (processor sends to storage/streaming/alerting independently), authentication middleware (extract API key, validate against projects table).
-
-**Database schema:** Events table partitioned by timestamp (PARTITION BY RANGE, daily partitions), issues table with UNIQUE(project_id, fingerprint) for upsert, BRIN indexes on time columns, GIN indexes on JSONB tag columns. Batch writes via accumulated List with periodic flush. Retention via DROP old partitions (instant) not DELETE (hours).
+**Data flow for query execution**: User writes `User |> where("email", v) |> Repo.one(pool)` -> Query builder creates Query struct -> Repo.one calls mesh_orm_build_select(query) -> Runtime Rust builds SQL "SELECT * FROM users WHERE email = $1" -> Pool.query executes -> Returns Map<String, String> -> Caller applies User.from_row(map) for typed result.
 
 ### Critical Pitfalls
 
-Top 5 risks that could derail the project:
+Research identified 20 pitfalls across 3 severity levels. Top 5 critical (cause rewrites or fundamental breakage):
 
-1. **Dual-bug problem (app vs compiler)** -- This is the first large Mesh application. Every bug requires triage: is it my code or the compiler? Prevention: minimal reproduction discipline (isolate in standalone .mpl file), compiler bug journal, fix compiler bugs immediately instead of working around them. If a workaround would be more than a few lines, fix the compiler first.
+1. **Schema DSL without macros (the Ecto trap)** — Attempting to replicate Ecto's `schema "users" do field :name, :string end` macro-based DSL without macros leads to runtime configuration hell with no compile-time safety. **Prevention**: Use deriving(Schema) as the single entry point, following the established deriving(Json)/deriving(Row) pattern. The struct definition IS the schema. Compiler generates metadata at MIR lowering time.
 
-2. **Timer.send_after thread explosion** -- Timer.send_after spawns an OS thread per call. Alerting with hundreds of rules firing every 10 seconds creates thousands of threads, exhausting OS limits. Prevention: Use a single recurring timer actor that evaluates all alert rules per tick, not one timer per rule. Batch alerts by evaluation interval.
+2. **Query builder type safety (string concatenation trap)** — Implementing the query builder as string concatenation with unchecked column names (`where(query, column, value)` where `column` is arbitrary string) provides zero type safety and enables SQL injection through column name injection. **Prevention**: Generate column accessor functions per schema field. When deriving(Schema) processes `name :: String`, generate `User.name_col() -> String`. Query builder accepts these accessor return values, not arbitrary strings.
 
-3. **Unpartitioned events table** -- Without time-based partitioning, the events table becomes unusable after a week. Query latency grows linearly, autovacuum cannot keep pace, disk fills. Prevention: PARTITION BY RANGE on timestamp from day one. Create daily partitions at startup. Use BRIN indexes for timestamps. Retention via DROP partition, not DELETE + VACUUM.
+3. **N+1 problem without lazy loading (preload design failure)** — The natural code pattern (load users, iterate and query each user's posts) executes N+1 queries. Mesh has no lazy loading (correct decision — prevents invisible N+1), but must provide ergonomic explicit preloading. **Prevention**: Implement Ecto-style preloading with separate queries. `Repo.preload(users, ["posts"])` collects all user IDs, executes single `SELECT * FROM posts WHERE user_id IN (...)`, maps results to parents in memory. Turns N+1 into 2 queries.
 
-4. **Map linear scan bottleneck** -- Mesh's Map uses vector with linear scan. Event metadata maps with 50+ keys make lookups O(n). 10 lookups per event at 10K events/second = 5M comparisons/second. Prevention: Limit metadata map sizes (max 32 tags), extract fields once into local variables, avoid repeated Map.get in hot paths. Profile before assuming this is the bottleneck -- may be fast enough.
+4. **deriving(Row) all-strings problem infects the entire ORM** — PostgreSQL text protocol returns all values as strings. The ORM must maintain consistent type coercion layer between Mesh types and PostgreSQL text representations at every boundary: insert (Mesh -> SQL params), select (SQL result -> Mesh struct), where clause values, join conditions. **Prevention**: Centralize type coercion in schema metadata. Each field's metadata includes to_param (Mesh value -> SQL string) and from_column (SQL string -> Mesh value) functions generated by deriving(Schema). Changeset casting validates and coerces in one step before persistence.
 
-5. **Alert storms from cascading rules** -- Single failure triggers hundreds of alerts (high error rate, slow response, connection failures all fire independently). Operators ignore all notifications. Prevention: Deduplication window (suppress duplicate alerts for same rule for 5 minutes), alert grouping (batch alerts that fire within 30 seconds), cooldown periods (do not re-fire same alert even if condition persists), start with fewer, broader rules.
+5. **Single-line pipe chains make query builder unusable** — The ORM's showcase feature (pipe-chain query building) produces 100+ character single lines because Mesh parser treats newline after `User` as statement terminator and `|>` at line start as syntax error. **Prevention**: Add multi-line pipe continuation to parser (if line ends with `|>` or starts with `|>`, treat as continuation). If parser not extended, verify parenthesized workaround works and document as standard pattern.
+
+**Other critical pitfalls**: Migration rollback data loss (use forward-only + expand-migrate-contract pattern), single-expression case arms break ORM Result handling (add multi-expression case arms or use ? operator aggressively), Map.collect integer key assumption breaks preload grouping (fix collect codegen key type propagation).
 
 ## Implications for Roadmap
 
-Based on combined research, the dependency chain is linear and deep. Project setup must come first, then ingestion, then grouping, then everything else. Multi-node clustering is an overlay that can be added to any phase without changing single-node architecture. The SDK is a parallel workstream.
+Based on research, the implementation must follow strict dependency order: compiler additions first (enable ergonomic syntax), then schema metadata (foundation for everything), then query builder + Repo (core API), then changesets (validation layer), then relationships (most complex feature), then migrations (operational tooling), finally Mesher rewrite (validation).
 
-### Phase 1: Foundation (Data Model + Database + Storage)
+### Phase 1: Compiler Additions (Language Primitives)
+**Rationale:** Every subsequent phase depends on these language features. Attempting to build the ORM without atoms, keyword args, multi-line pipes, and deriving(Schema) leads to verbose, unsafe, unergonomic code. These are prerequisites, not nice-to-haves.
 
-**Rationale:** Types are imported by every module. Database schema must support high write volume and time-series queries from the start -- retrofitting partitioning is a major migration. Storage writer establishes the batch-write pattern used by all subsequent phases.
+**Delivers:**
+- Atom literal syntax (`:name`) with lexer/parser/typeck/codegen support
+- Keyword argument syntax desugaring to Map literals
+- Multi-line pipe chain support (parser fix)
+- Struct update syntax (`%{user | name: "Bob"}`)
+- deriving(Schema) infrastructure (typeck registration, MIR generation)
+- Relationship declaration syntax (belongs_to, has_many, has_one keywords)
 
-**Delivers:** All struct definitions (Event, Issue, AlertRule, Project) with deriving(Json, Row), PostgreSQL schema with partitioning, StorageWriter service with batch accumulation and flush timer, database migrations runner.
+**Addresses:**
+- Features: Ergonomic schema DSL, pipe-composable query builder syntax
+- Pitfalls: #1 (schema DSL without macros), #2 (string column names), #7 (single-expression case arms), #8 (single-line pipes), #12 (struct update), #15 (relationship declaration syntax)
 
-**Addresses:** Database schema pitfall (Pitfall 4), establishes foundational types for all phases.
+**Estimated scope:** ~2500 LOC across compiler crates (lexer, parser, typeck, codegen)
 
-**Avoids:** Creating schema without partitioning, individual INSERT pattern that cannot scale.
+### Phase 2: Schema Metadata + SQL Generation
+**Rationale:** Schema metadata is the foundation. Query builder, Repo, Changeset, and Migrations all depend on knowing table names, field names, field types, and primary keys at compile time.
 
-**Research needed:** Standard pattern, skip research-phase. PostgreSQL partitioning is well-documented.
+**Delivers:**
+- deriving(Schema) generates `__table__()`, `__fields__()`, `__primary_key__()` functions
+- Runtime SQL generation module (mesh-rt/db/orm.rs)
+- mesh_orm_build_select/insert/update/delete functions
+- Parameterized SQL generation with proper $1, $2 placeholders
+- Identifier quoting and type casting
 
-### Phase 2: Ingestion Pipeline (HTTP + Event Processing)
+**Uses:**
+- Stack: Atom literals for field references, deriving infrastructure from Phase 1
+- Architecture: Generated metadata functions pattern, runtime SQL generation layer
 
-**Rationale:** Core pipeline must exist before any downstream features work. This immediately exercises HTTP server, JSON serde, actor concurrency, connection pooling. Highest dogfooding value per line of code.
+**Implements:** Schema component, SQL generator component
 
-**Delivers:** POST /api/v1/events endpoint with DSN authentication, rate limiting, validation, EventRouter service, Processor actor pool with fingerprinting and enrichment, fan-out to storage.
+**Avoids:** Pitfall #1 (runtime schema registration), #4 (type coercion gaps)
 
-**Addresses:** Ingestion backpressure (Pitfall 14), Map linear scan (Pitfall 3), batch writes to storage.
+### Phase 3: Query Builder + Repo (Core API)
+**Rationale:** These are the user-facing ORM API. Developers write queries and execute them through Repo. Must work before adding complexity like changesets or relationships.
 
-**Uses:** HTTP server, middleware, deriving(Json), actor messaging, pattern matching, StorageWriter from Phase 1.
+**Delivers:**
+- Query struct with where/select/order_by/limit/offset/join/group_by
+- Pipe-composable query builder functions
+- Repo.all/one/get/get_by/insert_raw/update_raw/delete/count/exists
+- Integration with Pool.query via SQL generator
+- Raw SQL escape hatch (fragment function)
 
-**Avoids:** No backpressure (spawn unlimited actors), synchronous call chains blocking pipeline, unbounded batch buffer.
+**Addresses:**
+- Features: Query builder (table stakes), Repo pattern (table stakes), composable scopes (differentiator)
+- Pitfalls: #8 (multi-line pipes now available), #13 (expression problem — fragment escape hatch)
 
-**Research needed:** Standard pattern, skip research-phase. Event ingestion is well-understood (Sentry SDK docs).
+**Implements:** Query builder component, Repo module component
 
-### Phase 3: Error Grouping and Issue Lifecycle
+### Phase 4: Changesets (Validation Layer)
+**Rationale:** Changesets enhance Repo operations with type-safe validation. Not needed for basic querying, so comes after core Repo is working. Builds on schema metadata for type coercion.
 
-**Rationale:** The feature that makes this a monitoring platform, not a log database. Fingerprinting exercises pattern matching, string operations, traits, PostgreSQL transactions with upserts.
+**Delivers:**
+- Changeset struct (data, changes, errors, valid)
+- Changeset.cast for type coercion from Map params
+- Validation functions: required/length/format/inclusion/number
+- Constraint error mapping (PG unique/FK violations -> changeset errors)
+- Repo.insert/update accept Changeset structs
 
-**Delivers:** Fingerprint computation (hash of message + stack frames + error type), Fingerprinter service with cache, issue creation with ON CONFLICT upsert, regression detection during ingestion, issue state machine (open/resolved/archived/regressed).
+**Addresses:**
+- Features: Changesets (table stakes), type-safe casting (differentiator)
+- Pitfalls: #4 (centralized type coercion), #12 (struct update for error accumulation)
 
-**Addresses:** Error grouping accuracy (Pitfall 9), establishes issue-centric workflow.
+**Implements:** Changeset module component
 
-**Uses:** Pattern matching, String operations, Map cache, sum types for IssueStatus, PostgreSQL transactions.
+### Phase 5: Relationships + Preloading
+**Rationale:** Most complex ORM feature. Requires working queries, schema metadata, and Repo operations. Relationships are cross-schema (User -> Post requires both schemas known). Preloading requires correct string-keyed map grouping.
 
-**Implements:** Fingerprinter trait with DefaultFingerprinter implementation (extensibility via traits).
+**Delivers:**
+- belongs_to/has_many/has_one metadata declarations
+- Relationship metadata generation in deriving(Schema)
+- Repo.preload_assoc for single association loading
+- Repo.preload for multiple associations (separate queries, not JOINs)
+- Nested preloading support (posts.comments)
+- many_to_many through join table support
 
-**Avoids:** Over-grouping (too coarse fingerprints), under-grouping (line numbers in fingerprint), missing user override capability.
+**Addresses:**
+- Features: Relationships (table stakes), preloading (table stakes)
+- Pitfalls: #3 (N+1 problem — explicit preloading prevents it), #11 (relationship metadata without reflection), #14 (Map.collect string keys for grouping)
 
-**Research needed:** Skip research-phase. Sentry grouping algorithm is thoroughly documented.
+**Implements:** Relationship definitions, preload component
 
-### Phase 4: Real-Time Streaming (WebSocket)
+### Phase 6: Migration System
+**Rationale:** Migrations are operationally important but not required for query/data operations. Can be developed in parallel with Phase 5 if resources allow. Uses schema metadata for future auto-generation but starts with manual migration files.
 
-**Rationale:** Most impressive demo feature and best dogfooding of WebSocket rooms. Events flow from ingestion to dashboard in real-time via actor message passing. Exercises WebSocket, rooms, actor-per-connection, cross-node broadcast.
+**Delivers:**
+- Migration file format (Mesh functions with up/down)
+- Migration DSL (create_table, alter_table, drop_table, create_index)
+- Migration tracking (_mesh_migrations table)
+- Migration runner (discover, sort, apply pending, rollback)
+- meshc migrate CLI subcommand
+- Migration generation scaffold (meshc migrate generate name)
 
-**Delivers:** WS Dashboard Server (actor-per-connection), StreamBroadcaster actor, room-based event broadcast, filtered streaming (clients subscribe to project:id, project:id:errors rooms), new issue notifications, issue count updates.
+**Addresses:**
+- Features: Migrations (table stakes)
+- Pitfalls: #5 (multi-line SQL strings — use plain SQL files or multi-line string literals), #6 (rollback data loss — forward-only + expand-migrate-contract)
 
-**Addresses:** WebSocket memory pressure (Pitfall 8), connection cleanup (Pitfall 21).
+**Implements:** Migration module component, CLI integration
 
-**Uses:** WebSocket server, Ws.join/broadcast, rooms, actor-per-connection crash isolation, pattern matching on subscriptions.
+### Phase 7: Mesher Rewrite (Validation)
+**Rationale:** Rewriting Mesher's entire storage layer validates every ORM feature against a real application. This is the dogfooding phase that exposes API usability issues and missing features.
 
-**Avoids:** Unbounded connections (enforce limits per project), missing on_close cleanup (resource leaks), sending to individual connections instead of rooms.
+**Delivers:**
+- 11 type structs converted to deriving(Schema)
+- 627 lines of storage/queries.mpl replaced with ORM calls
+- 82 lines of storage/schema.mpl replaced with migration files
+- All service modules using Repo instead of raw Pool.query
+- All API handlers using typed structs instead of raw Maps
+- Verification that all existing functionality works identically
 
-**Research needed:** Skip research-phase. WebSocket rooms are a known Mesh feature with examples.
+**Estimated impact:** 627 lines -> ~100-150 lines of ORM calls. More maintainable, type-safe, less SQL duplication.
 
-### Phase 5: REST API (Query + CRUD)
-
-**Rationale:** Makes the platform usable for investigation. Dashboard needs to query events, issues, projects. CRUD endpoints for projects and alert rules. Exercises HTTP routing, JSON encoding, complex SQL queries.
-
-**Delivers:** GET /api/v1/events (search, filter, pagination), GET /api/v1/issues (sort, filter, pagination), POST/PUT/DELETE /api/v1/projects, POST/PUT/DELETE /api/v1/alerts, dashboard aggregation queries (event volume, error breakdowns, top issues).
-
-**Addresses:** Search/filtering (PostgreSQL tsvector is well-documented), pagination with keyset cursors.
-
-**Uses:** HTTP routing with path params, deriving(Json) for response encoding, Pool.query for reads, PostgreSQL full-text search, dynamic SQL query building.
-
-**Avoids:** SQL injection (use parameterized queries), OFFSET pagination (use keyset), missing middleware (auth, CORS).
-
-**Research needed:** Skip research-phase. REST API patterns are standard.
-
-### Phase 6: Alerting System
-
-**Rationale:** Closes the loop -- users don't have to watch the dashboard. Exercises timer-driven actor, service state management, pattern matching on sum types, HTTP client for webhooks (if capability exists).
-
-**Delivers:** AlertRuleStore service (CRUD + in-memory cache), AlertEvaluator service (single recurring timer, evaluates all rules per tick), alert conditions (EventCountAbove, ErrorRateAbove, NewIssueDetected, IssueRegressed), alert actions (WebSocket notification, log message, webhook if HTTP client available), deduplication window, cooldown periods.
-
-**Addresses:** Timer thread explosion (Pitfall 2), alert storms (Pitfall 5).
-
-**Uses:** Timer.send_after in loop (single timer actor), service with List/Map state, pattern matching on AlertCondition sum type, Ws.broadcast for in-app alerts.
-
-**Avoids:** One timer per rule (thread exhaustion), no deduplication (alert fatigue), no cooldown (re-fire spam).
-
-**Research needed:** Consider research-phase if webhook HTTP client capability is uncertain. Timer-driven evaluation is standard pattern.
-
-### Phase 7: Data Retention and Cleanup
-
-**Rationale:** Background actor with daily cleanup. Exercises Timer.send_after for scheduling, bulk DELETE operations, partition management.
-
-**Delivers:** Retention policy configuration per project (retention_days), background actor runs daily DELETE, partition manager creates future partitions at startup, storage usage tracking.
-
-**Addresses:** Unbounded storage growth, query performance degradation.
-
-**Uses:** Timer.send_after for daily schedule, PostgreSQL DELETE with WHERE timestamp, DROP old partitions.
-
-**Avoids:** DELETE without WHERE (wipes all data), forgetting autovacuum impact, manual partition management.
-
-**Research needed:** Skip research-phase. Retention is a standard database operation.
-
-### Phase 8: Multi-Node Clustering
-
-**Rationale:** Ultimate dogfooding phase. Exercises distributed actors, global registry, cross-node rooms, location-transparent PIDs, node monitoring. Should be last because it layers on top of fully-working single-node system.
-
-**Delivers:** NodeManager actor (Node.start, connect, monitor), ClusterSync service (Global.register for EventRouter, StorageWriter), cross-node event routing, cross-node WebSocket broadcast (automatic via DIST_ROOM_BROADCAST), remote processor spawning under load.
-
-**Addresses:** Split brain (Pitfall 13), broadcast amplification (Pitfall 17), clock skew (Pitfall 20).
-
-**Uses:** Node.connect, Global.register/whereis, Node.spawn, location-transparent send, :nodedown/:nodeup pattern matching.
-
-**Avoids:** Expecting strong consistency (no consensus protocol), dual-fire alerts (designate single alerting node), relying on in-memory state (PostgreSQL is source of truth).
-
-**Research needed:** Consider research-phase for split-brain handling patterns. Distributed consensus is complex.
-
-### Phase 9: Vue Frontend
-
-**Rationale:** Separate directory, not Mesh code. Consumes REST API and WebSocket from previous phases. Can be built in parallel with backend phases 1-6.
-
-**Delivers:** Vue 3 SPA with Vite, dashboard views (project overview, event list, issue list, event detail, alert rules), real-time event streaming via WebSocket, ECharts time-series charts, TanStack data tables, shadcn-vue components.
-
-**Uses:** Vue 3 composition API, vue-router 5, Pinia for state, native fetch for API, native WebSocket for streaming, ECharts for charting, TanStack Vue Table for sortable/filterable tables, TanStack Vue Virtual for log viewer.
-
-**Avoids:** Sharing code with docs site (separate package.json), using Nuxt (SSR unnecessary), Socket.io client (use native WebSocket).
-
-**Research needed:** Skip research-phase. Frontend stack is established technologies.
+**Validates:** All features work together in production-like environment. Real-world query patterns (filtering, pagination, aggregation, preloading) are supported.
 
 ### Phase Ordering Rationale
 
-- **Types first** because every module imports them.
-- **Storage before ingestion** because writer must exist before events can be stored.
-- **Ingestion before streaming** because events must flow into system before streaming out.
-- **Grouping after ingestion** because fingerprinting operates on validated events.
-- **Streaming after grouping** because broadcasts include issue_id from grouping.
-- **REST API after ingestion** because it queries data that ingestion writes.
-- **Alerting after REST API** because alert rules need CRUD endpoints.
-- **Retention after storage** because it operates on stored events.
-- **Clustering last** because it layers on top of fully-working single-node.
-- **Frontend last** because it consumes API and WebSocket that must work first.
+- **Phase 1 first (compiler)**: Language primitives are prerequisites. Building ORM without them produces verbose, unsafe code that needs rewriting when primitives are added later.
+- **Phase 2 second (schema)**: Everything depends on schema metadata. Query builder needs table/field names. Repo needs field types. Changesets need type coercion rules.
+- **Phase 3 third (query + repo)**: Core user-facing API. Must work before adding complexity. Changesets and relationships are enhancements.
+- **Phase 4 fourth (changesets)**: Enhances Repo operations. Independent of relationships. Can be developed in parallel with Phase 5.
+- **Phase 5 fifth (relationships)**: Most complex feature. Depends on everything else working. Preloading requires correct query builder, schema metadata, and Map grouping.
+- **Phase 6 parallel (migrations)**: Partially independent. Can start after Phase 2 (schema metadata) and develop in parallel with Phases 3-5.
+- **Phase 7 final (validation)**: Requires all features complete. Real-world testing phase.
+
+**Dependency chain**: Phase 1 -> Phase 2 -> (Phase 3, Phase 6) -> (Phase 4, Phase 5) -> Phase 7. Phases in parentheses can run in parallel.
 
 ### Research Flags
 
-**Phases likely needing deeper research during planning:**
-
-- **Phase 8 (Multi-Node Clustering)** -- Split-brain handling without consensus protocol. Needs pattern research for distributed state consistency. Consider /gsd:research-phase for conflict resolution strategies.
+**Phases needing deeper research during planning:**
+- **Phase 1 (compiler additions)**: Known parser/typeck patterns but need careful design for keyword args desugaring, atom type representation, deriving(Schema) metadata generation strategy
+- **Phase 5 (relationships + preloading)**: Complex cross-schema metadata, nested preloading with recursive planning, many-to-many through tables
 
 **Phases with standard patterns (skip research-phase):**
-
-- **Phase 1 (Foundation)** -- PostgreSQL partitioning well-documented, standard schema design.
-- **Phase 2 (Ingestion)** -- HTTP ingestion is standard REST pattern, Sentry SDK docs cover event format.
-- **Phase 3 (Grouping)** -- Sentry grouping algorithm thoroughly documented in developer docs.
-- **Phase 4 (Streaming)** -- WebSocket rooms are known Mesh feature with E2E tests.
-- **Phase 5 (REST API)** -- Standard CRUD patterns, PostgreSQL full-text search documented.
-- **Phase 6 (Alerting)** -- Timer-driven evaluation is standard pattern, alerting best practices well-known.
-- **Phase 7 (Retention)** -- Standard database cleanup pattern.
-- **Phase 9 (Frontend)** -- Established Vue 3 ecosystem, shadcn-vue already used in docs site.
+- **Phase 2 (schema metadata)**: Follows existing deriving(Row)/deriving(Json) pattern exactly
+- **Phase 3 (query builder + repo)**: Well-documented Ecto patterns, straightforward Rust SQL generation
+- **Phase 4 (changesets)**: Pure data transformation, established validation patterns
+- **Phase 6 (migrations)**: Standard migration runner pattern (Rails, Ecto, Diesel all use same approach)
+- **Phase 7 (Mesher rewrite)**: No research needed, direct code translation
 
 ## Confidence Assessment
 
 | Area | Confidence | Notes |
 |------|------------|-------|
-| Stack | HIGH | Backend is 100% existing Mesh capabilities (HTTP, WS, PG, actors, JSON). Frontend uses established Vue 3 ecosystem already proven in docs site. Versions verified against npm. |
-| Features | HIGH | Feature set derived from authoritative Sentry developer docs and established monitoring platform patterns. Table stakes well-understood. Differentiators map directly to Mesh's actor/distributed capabilities. |
-| Architecture | HIGH | Architecture derived directly from verified Mesh language primitives (actors, services, supervision, rooms). Patterns validated against existing E2E tests. Component boundaries clear. |
-| Pitfalls | HIGH | Critical pitfalls identified from Mesh runtime source analysis (Timer.send_after thread spawn, Map linear scan, conservative GC) and monitoring domain research (partitioning, alert storms, error grouping). |
+| Stack | HIGH | Compiler source directly analyzed, existing deriving infrastructure validated, runtime Rust patterns proven in current codebase |
+| Features | HIGH | Ecto/Diesel/ActiveRecord/Prisma thoroughly documented, Mesher pain points clearly identified (627 LOC queries.mpl) |
+| Architecture | HIGH | Architecture derived from direct codebase analysis of all compiler crates, runtime DB layer, Mesher application code |
+| Pitfalls | HIGH | 20 pitfalls identified from Mesh compiler limitations (single-line pipes, cross-module from_row), ORM ecosystem learnings (N+1, lazy loading, migration rollback), and Mesher development experience |
 
 **Overall confidence:** HIGH
 
+Research is based on: (1) Direct Mesh compiler source analysis (~99K LOC across crates), (2) Mesher application analysis (627 LOC queries demonstrating pain points), (3) Established ORM patterns (Ecto, Diesel, ActiveRecord with extensive documentation), (4) Known Mesh language limitations documented in STATE.md and PROJECT.md.
+
 ### Gaps to Address
 
-- **HTTP client capability for webhook alerts** -- Mesh runtime has no outbound HTTP client. Alert webhooks (POST to Slack/Discord/PagerDuty) require this. Options: (1) build minimal HTTP client in Mesh runtime during dogfooding, (2) shell out to curl, (3) defer webhooks to v2 and start with WebSocket-only alerts. Recommend option 1 if webhooks are critical, option 3 for faster MVP.
+**Compiler additions feasibility**: All proposed additions (atoms, keyword args, multi-line pipes, deriving(Schema), struct update) follow existing patterns in the compiler, but implementation complexity needs validation during Phase 1. Keyword arguments have most uncertainty — desugaring to Map vs special calling convention.
 
-- **List.find Option pattern matching codegen bug** -- Pre-existing LLVM verification error. Must be fixed before or during Phase 2 (ingestion pipeline) because finding events in lists is a bread-and-butter operation. Workaround is verbose (List.filter + List.length check). Track as high-priority compiler fix.
+**Cross-module from_row resolution**: Known issue from Mesher Phase 88 that MUST be fixed in Phase 1. If not fixed, ORM is non-functional across module boundaries (which is the default case).
 
-- **Map.collect integer key assumption** -- Collecting iterators into Map<String, V> produces incorrect results. Needed for Phase 3 (error grouping) to aggregate events by string fields. Workaround is manual Map building with fold. Track as runtime fix.
+**Map.collect string key assumption**: Known issue from PROJECT.md that breaks preload grouping. Must be fixed in Phase 1 or worked around with manual Map.put loops.
 
-- **Multi-line pipe continuation** -- Parser limitation makes complex pipelines unreadable. Accept intermediate let bindings as standard pattern for now. Consider parser fix if pipe-heavy code becomes constant pain point.
+**Relationship metadata propagation**: No runtime reflection means relationship metadata must flow through function calls or be looked up via generated functions. Design approach needs finalization in Phase 2.
 
-- **Missing stdlib functions** -- List.group_by likely needed for Phase 3. Check stdlib during implementation. If missing, implement in Mesher codebase and track as candidate for stdlib addition.
+**Mesher UUID vs Integer PKs**: Mesher uses UUID primary keys (`gen_random_uuid()`). ORM must support both UUID and Integer PKs based on schema field type. Default to UUID to match Mesher pattern.
 
-All gaps have documented workarounds. None are project-blocking. The gaps themselves are valuable dogfooding findings.
+**PostgreSQL text protocol coercion edge cases**: Boolean (`t`/`f`), NULL (missing Map key), JSONB (JSON string requiring from_json), timestamps (string without DateTime type). Coercion layer must handle all cases. Test coverage critical.
 
 ## Sources
 
 ### Primary (HIGH confidence)
 
-- Mesh runtime source analysis: crates/mesh-rt/src/{http, ws, db, actor, dist, collections}
-- Mesh language documentation: website/docs/docs/{concurrency, web, databases, distributed}
-- Mesh E2E tests: tests/e2e/{supervisor_basic, service_call_cast, stdlib_http_server_runtime, stdlib_pg, deriving_json_sum_type}.mpl
-- PROJECT.md: tech debt list (lines 234-243), conservative GC decision (line 271)
-- [Sentry Developer Docs](https://develop.sentry.dev/) -- Event payloads, grouping algorithm, SDK expected features, envelope protocol (authoritative)
-- [PostgreSQL Partitioning Documentation](https://www.postgresql.org/docs/current/ddl-partitioning.html) -- Native PARTITION BY RANGE (authoritative)
-- [vue-echarts npm](https://www.npmjs.com/package/vue-echarts) -- v8.0.1 compatibility verified
-- [@tanstack/vue-table](https://www.npmjs.com/package/@tanstack/vue-table) -- v8.21.3, official shadcn-vue data table pattern
-- [shadcn-vue Data Table docs](https://www.shadcn-vue.com/docs/components/data-table) -- TanStack Table integration
+**Mesh compiler/runtime source analysis:**
+- Direct codebase analysis of crates/mesh-lexer, mesh-parser, mesh-typeck, mesh-codegen, mesh-rt
+- crates/mesh-typeck/src/infer.rs:2276 — valid_derives array, deriving infrastructure entry point
+- crates/mesh-codegen/src/mir/lower.rs:1689-1746 — lower_struct_def, deriving code generation patterns
+- crates/mesh-rt/src/db/pool.rs, pg.rs, row.rs — existing database layer
+- mesher/storage/queries.mpl (627 lines) — pain points the ORM eliminates
+- mesher/types/*.mpl — all structs use deriving(Row), deriving(Json)
+
+**Mesh language limitations:**
+- .planning/PROJECT.md:235-236 — single-line pipes, Map.collect integer key assumption
+- .planning/STATE.md:44-48 — known blockers for ORM development
+- .planning/phases/88-02-SUMMARY.md:142-143 — cross-module from_json resolution failure
+- .planning/phases/87.1-RESEARCH.md:246-248 — Row all-String fields limitation
+
+**Ecto (primary reference for architecture):**
+- [Ecto.Schema v3.13.5](https://hexdocs.pm/ecto/Ecto.Schema.html) — macro-based schema DSL, metadata generation
+- [Ecto.Query v3.13.5](https://hexdocs.pm/ecto/Ecto.Query.html) — query builder API, composability, type safety
+- [Ecto.Changeset v3.13.5](https://hexdocs.pm/ecto/Ecto.Changeset.html) — validation pipeline, casting, constraint error mapping
+- [Ecto.Repo v3.13.5](https://hexdocs.pm/ecto/Ecto.Repo.html) — repository pattern, preloading strategy
+- [Ecto Associations](https://hexdocs.pm/ecto/associations.html) — relationship metadata, belongs_to/has_many
 
 ### Secondary (MEDIUM confidence)
 
-- [PostgreSQL Write-Heavy Tuning](https://aws.amazon.com/blogs/database/speed-up-time-series-data-ingestion-by-partitioning-tables-on-amazon-rds-for-postgresql/) -- AWS best practices
-- [pg_partman vs Hypertables](https://www.tigerdata.com/learn/pg_partman-vs-hypertables-for-postgres-partitioning) -- Partitioning approach comparison
-- [Alert Fatigue Solutions 2025](https://incident.io/blog/alert-fatigue-solutions-for-dev-ops-teams-in-2025-what-works) -- Deduplication, actionability metrics
-- [WebSocket Scale 2025](https://www.videosdk.live/developer-hub/websocket/websocket-scale) -- Connection limits, memory per connection
-- [Luzmo Vue Chart Libraries Guide](https://www.luzmo.com/blog/vue-chart-libraries) -- 2025 comparison of Vue charting options
-- [System Design: Monitoring and Alerting](https://algomaster.io/learn/system-design-interviews/design-monitoring-and-alerting-system) -- Architecture patterns
-- [GlitchTip Architecture](https://glitchtip.com/documentation/hosted-architecture/) -- Open source Sentry alternative reference
+**Rust ORMs:**
+- [Diesel ORM](https://diesel.rs/) — compile-time query validation, type-safe query builder
+- [SeaORM](https://www.sea-ql.org/SeaORM/) — derive-based schema, async support
+- [Rust ORMs Guide (Shuttle)](https://www.shuttle.dev/blog/2024/01/16/best-orm-rust) — Diesel vs SeaORM vs SQLx comparison
+
+**ORM patterns and anti-patterns:**
+- [The Basic Mistake All ORMs Make (Vogten)](https://martijnvogten.github.io/2025/04/16/the-basic-mistake-all-orms-make-and-how-to-fix-it.html) — lazy loading critique
+- [ORM Lazy Loading Anti-Pattern](https://www.mehdi-khalili.com/orm-anti-patterns-part-3-lazy-loading) — N+1 problem
+- [ORM Framework Anti-Patterns (Lindbakk)](https://lindbakk.com/blog/orm-frameworks-anti-patterns) — identity map, callbacks
+- [SQL injection in ORMs](https://snyk.io/blog/sql-injection-orm-vulnerabilities/) — column name injection risks
+
+**Migration patterns:**
+- [Ecto.Migration documentation](https://hexdocs.pm/ecto_sql/Ecto.Migration.html) — migration file format, schema_migrations tracking
+- [Atlas: Database rollback hard truths](https://atlasgo.io/blog/2024/11/14/the-hard-truth-about-gitops-and-db-rollbacks) — forward-only migration philosophy
+- [Database migrations: safe strategies](https://vadimkravcenko.com/shorts/database-migrations/) — expand-migrate-contract pattern
+
+**Other ORMs:**
+- [ActiveRecord Query Interface](https://guides.rubyonrails.org/active_record_querying.html) — established patterns, callbacks
+- [Prisma ORM](https://www.prisma.io/orm) — schema-first approach, type generation
+- [SQLAlchemy Session Basics](https://docs.sqlalchemy.org/en/20/orm/session_basics.html) — unit of work, identity map
+
+### Tertiary (LOW confidence, needs validation)
+
+- [Elixir School: Ecto Associations](https://elixirschool.com/en/lessons/ecto/associations) — relationship implementation patterns
+- [Composing Ecto Queries (AmberBit)](https://www.amberbit.com/blog/2019/4/16/composing-ecto-queries-filters-and-preloads/) — query composition patterns
+- [Drizzle vs Prisma 2026](https://makerkit.dev/blog/tutorials/drizzle-vs-prisma) — TypeScript ORM comparison
 
 ---
-
-*Research completed: 2026-02-14*
+*Research completed: 2026-02-16*
 *Ready for roadmap: yes*
