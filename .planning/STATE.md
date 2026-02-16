@@ -9,12 +9,12 @@ See: .planning/PROJECT.md (updated 2026-02-16)
 
 ## Current Position
 
-Phase: 99 of 102 (Changesets) -- COMPLETE
-Plan: 2 of 2 in current phase
-Status: Phase complete
-Last activity: 2026-02-16 -- Completed 99-02 (Repo changeset integration + constraint mapping)
+Phase: 100 of 102 (Relationships + Preloading)
+Plan: 1 of 2 in current phase
+Status: In progress
+Last activity: 2026-02-16 -- Completed 100-01 (Relationship metadata __relationship_meta__)
 
-Progress: [██████░░░░] 60% (12/20 plans)
+Progress: [██████░░░░] 65% (13/20 plans)
 
 ## Performance Metrics
 
@@ -76,6 +76,9 @@ Progress: [██████░░░░] 60% (12/20 plans)
 - 99-02: Constraint names parsed via PostgreSQL convention: {table}_{column}_{key|fkey|pkey|check} for field extraction.
 - 99-02: Invalid changesets short-circuit before SQL execution, returning Err(changeset) immediately.
 - 99-02: Unmapped PG errors get generic _base error on changeset rather than losing error information.
+- 100-01: __relationship_meta__() returns 5-field "kind:name:target:fk:target_table" encoding for preloader consumption.
+- 100-01: FK convention: has_many/has_one uses {owner_lowercase}_id, belongs_to uses {assoc_name}_id (Ecto convention).
+- 100-01: Target table inferred by naive pluralization {target_lowercase}s, consistent with __table__() convention.
 
 ### Roadmap Evolution
 
@@ -104,6 +107,6 @@ Known limitations relevant to ORM development:
 ## Session Continuity
 
 Last session: 2026-02-16
-Stopped at: Completed 99-02-PLAN.md (Repo changeset integration + constraint mapping)
+Stopped at: Completed 100-01-PLAN.md (Relationship metadata __relationship_meta__)
 Resume file: None
-Next action: `/gsd:plan-phase 100` (Relationships + Preloading)
+Next action: Execute 100-02-PLAN.md (Preloading)
