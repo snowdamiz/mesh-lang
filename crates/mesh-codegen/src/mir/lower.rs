@@ -4615,6 +4615,53 @@ impl<'a> Lowerer<'a> {
             MirType::FnPtr(vec![], Box::new(MirType::Ptr)),
         );
 
+        // ── __relationship_meta__() ──────────────────────────────────
+        // Returns List<String> where each string is "kind:name:target:fk:target_table".
+        let meta_elements: Vec<MirExpr> = relationships
+            .iter()
+            .filter_map(|rel| {
+                let kind = rel.kind_text()?;
+                let assoc = rel.assoc_name()?;
+                let target = rel.target_type()?;
+
+                // Infer foreign key by convention:
+                // - belongs_to :user, User -> fk is "user_id" (assoc_name + "_id")
+                // - has_many :posts, Post on User -> fk is "user_id" (owner_lowercase + "_id")
+                // - has_one :profile, Profile on User -> fk is "user_id" (owner_lowercase + "_id")
+                let fk = match kind.as_str() {
+                    "belongs_to" => format!("{}_id", assoc),
+                    "has_many" | "has_one" => format!("{}_id", name.to_lowercase()),
+                    _ => return None,
+                };
+
+                // Infer target table by naive pluralization (lowercase + "s")
+                let target_table = format!("{}s", target.to_lowercase());
+
+                Some(MirExpr::StringLit(
+                    format!("{}:{}:{}:{}:{}", kind, assoc, target, fk, target_table),
+                    MirType::String,
+                ))
+            })
+            .collect();
+
+        let meta_fn_name = format!("{}____relationship_meta__", name);
+        self.functions.push(MirFunction {
+            name: meta_fn_name.clone(),
+            params: vec![],
+            return_type: MirType::Ptr,
+            body: MirExpr::ListLit {
+                elements: meta_elements,
+                ty: MirType::Ptr,
+            },
+            is_closure_fn: false,
+            captures: vec![],
+            has_tail_calls: false,
+        });
+        self.known_functions.insert(
+            meta_fn_name,
+            MirType::FnPtr(vec![], Box::new(MirType::Ptr)),
+        );
+
         // ── Per-field column accessors ───────────────────────────────
         // User.__name_col__() -> "name"
         for (fname, _fty) in fields {
@@ -6431,7 +6478,7 @@ impl<'a> Lowerer<'a> {
                             .unwrap_or_default();
                         if field == "__table__" || field == "__fields__"
                             || field == "__primary_key__" || field == "__relationships__"
-                            || field == "__field_types__"
+                            || field == "__field_types__" || field == "__relationship_meta__"
                             || (field.starts_with("__") && field.ends_with("_col__"))
                         {
                             let fn_name = format!("{}__{}", base_name, field);

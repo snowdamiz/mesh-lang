@@ -2588,6 +2588,11 @@ fn register_struct_def(
         let ft_fn_name = format!("{}.__field_types__", name);
         env.insert(ft_fn_name, Scheme::mono(Ty::fun(vec![], Ty::list(Ty::string()))));
 
+        // __relationship_meta__ :: () -> List<String>
+        // Each relationship encoded as "kind:name:target:fk:target_table" string.
+        let meta_fn_name = format!("{}.__relationship_meta__", name);
+        env.insert(meta_fn_name, Scheme::mono(Ty::fun(vec![], Ty::list(Ty::string()))));
+
         // Per-field column accessor functions: __{field}_col__ :: () -> String
         for field in struct_def.fields() {
             let field_name = field
@@ -5898,7 +5903,7 @@ fn infer_field_access(
             // e.g. User.__table__() -- User is a struct with deriving(Schema).
             if field_name == "__table__" || field_name == "__fields__"
                 || field_name == "__primary_key__" || field_name == "__relationships__"
-                || field_name == "__field_types__"
+                || field_name == "__field_types__" || field_name == "__relationship_meta__"
                 || (field_name.starts_with("__") && field_name.ends_with("_col__"))
             {
                 let qualified = format!("{}.{}", base_name, field_name);
