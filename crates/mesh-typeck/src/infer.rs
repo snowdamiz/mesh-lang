@@ -1173,6 +1173,17 @@ fn stdlib_modules() -> HashMap<String, HashMap<String, Scheme>> {
             vec![pool_t.clone(), Ty::fun(vec![ptr_t.clone()], ptr_t.clone())],
             ptr_t.clone(),
         )));
+        // ── Phase 99: Repo Changeset Operations ────────────────────────
+        // Repo.insert_changeset(PoolHandle, String, Ptr) -> Ptr  (pool, table, changeset -> Result<Map, Changeset>)
+        repo_mod.insert("insert_changeset".to_string(), Scheme::mono(Ty::fun(
+            vec![pool_t.clone(), Ty::string(), ptr_t.clone()],
+            ptr_t.clone(),
+        )));
+        // Repo.update_changeset(PoolHandle, String, String, Ptr) -> Ptr  (pool, table, id, changeset -> Result<Map, Changeset>)
+        repo_mod.insert("update_changeset".to_string(), Scheme::mono(Ty::fun(
+            vec![pool_t.clone(), Ty::string(), Ty::string(), ptr_t.clone()],
+            ptr_t.clone(),
+        )));
         modules.insert("Repo".to_string(), repo_mod);
     }
 

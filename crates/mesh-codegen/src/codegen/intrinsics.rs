@@ -1038,6 +1038,18 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
         ptr_type.fn_type(&[i64_type.into(), ptr_type.into(), ptr_type.into()], false),
         Some(inkwell::module::Linkage::External));
 
+    // ── Phase 99: Repo Changeset Operations ────────────────────────────
+
+    // mesh_repo_insert_changeset(pool: i64, table: ptr, changeset: ptr) -> ptr
+    module.add_function("mesh_repo_insert_changeset",
+        ptr_type.fn_type(&[i64_type.into(), ptr_type.into(), ptr_type.into()], false),
+        Some(inkwell::module::Linkage::External));
+
+    // mesh_repo_update_changeset(pool: i64, table: ptr, id: ptr, changeset: ptr) -> ptr
+    module.add_function("mesh_repo_update_changeset",
+        ptr_type.fn_type(&[i64_type.into(), ptr_type.into(), ptr_type.into(), ptr_type.into()], false),
+        Some(inkwell::module::Linkage::External));
+
     // ── Phase 99: Changeset Operations ────────────────────────────────
 
     // mesh_changeset_cast(data: ptr, params: ptr, allowed: ptr) -> ptr

@@ -26,6 +26,10 @@ use crate::collections::list::{mesh_list_get, mesh_list_length, mesh_list_new, m
 use crate::collections::map::mesh_map_get;
 use crate::db::pool::{mesh_pool_query, mesh_pool_checkout, mesh_pool_checkin};
 use crate::db::pg::{mesh_pg_begin, mesh_pg_commit, mesh_pg_rollback};
+use crate::db::changeset::{
+    SLOT_CHANGES, SLOT_VALID,
+    map_constraint_error, add_constraint_error_to_changeset,
+};
 use crate::io::{alloc_result, MeshResult};
 use crate::string::{mesh_string_new, MeshString};
 
@@ -1041,6 +1045,170 @@ pub extern "C" fn mesh_repo_transaction(
     }
 }
 
+// ── Changeset slot access ────────────────────────────────────────────
+
+/// Read a pointer slot from a changeset.
+unsafe fn cs_get(cs: *mut u8, slot: usize) -> *mut u8 {
+    *(cs.add(slot * 8) as *const *mut u8)
+}
+
+/// Read an integer slot from a changeset.
+unsafe fn cs_get_int(cs: *mut u8, slot: usize) -> i64 {
+    *(cs.add(slot * 8) as *const i64)
+}
+
+// ── PG error string parsing ─────────────────────────────────────────
+
+/// Parse the structured error string from pg.rs (tab-separated format).
+///
+/// Format: `{sqlstate}\t{constraint}\t{table}\t{column}\t{message}`
+/// Returns: (sqlstate, constraint, table, column, message)
+fn parse_pg_error_string(err: &str) -> (&str, &str, &str, &str, &str) {
+    let parts: Vec<&str> = err.splitn(5, '\t').collect();
+    if parts.len() == 5 {
+        (parts[0], parts[1], parts[2], parts[3], parts[4])
+    } else {
+        // Fallback for non-PG errors or unstructured error strings
+        ("", "", "", "", err)
+    }
+}
+
+// ── Changeset Write Operations ──────────────────────────────────────
+
+/// Insert a row using a changeset, validating before SQL execution.
+///
+/// `Repo.insert_changeset(pool, table, changeset)` -> `Result<Map<String,String>, Changeset>`
+///
+/// 1. If changeset is invalid (valid == 0): return Err(changeset) without executing SQL
+/// 2. Extract changes map, build INSERT SQL with RETURNING *
+/// 3. Execute via Pool.query
+/// 4. On success: return Ok(first_row)
+/// 5. On PG error: parse structured error, map constraint to changeset error, return Err(changeset)
+#[no_mangle]
+pub extern "C" fn mesh_repo_insert_changeset(
+    pool: u64,
+    table: *mut u8,
+    changeset: *mut u8,
+) -> *mut u8 {
+    unsafe {
+        // 1. Check if changeset is valid
+        if cs_get_int(changeset, SLOT_VALID) == 0 {
+            return alloc_result(1, changeset) as *mut u8;
+        }
+
+        // 2. Extract changes map
+        let changes = cs_get(changeset, SLOT_CHANGES);
+        let (columns, values) = map_to_columns_and_values(changes);
+
+        if columns.is_empty() {
+            return alloc_result(1, changeset) as *mut u8;
+        }
+
+        // 3. Build INSERT SQL with RETURNING *
+        let table_str = mesh_str_ref(table);
+        let returning = vec!["*".to_string()];
+        let sql = crate::db::orm::build_insert_sql_pure(table_str, &columns, &returning);
+
+        let sql_ptr = rust_str_to_mesh(&sql) as *const MeshString;
+        let params_ptr = strings_to_mesh_list(&values);
+        let result = mesh_pool_query(pool, sql_ptr, params_ptr);
+
+        // 4. Check result
+        let r = &*(result as *const MeshResult);
+        if r.tag == 0 {
+            // Success: extract first row
+            let list = r.value;
+            let list_len = mesh_list_length(list);
+            if list_len == 0 {
+                return err_result("insert_changeset: no row returned");
+            }
+            let first_row = mesh_list_get(list, 0) as *mut u8;
+            ok_result(first_row)
+        } else {
+            // Error: try to map constraint violation to changeset error
+            let err_str = mesh_str_ref(r.value);
+            let (sqlstate, constraint, pg_table, column, _message) = parse_pg_error_string(err_str);
+
+            if let Some((field, msg)) = map_constraint_error(sqlstate, constraint, pg_table, column) {
+                let cs_with_err = add_constraint_error_to_changeset(changeset, &field, &msg);
+                alloc_result(1, cs_with_err) as *mut u8
+            } else {
+                // Unknown error: add as generic _base error
+                let cs_with_err = add_constraint_error_to_changeset(changeset, "_base", "database error");
+                alloc_result(1, cs_with_err) as *mut u8
+            }
+        }
+    }
+}
+
+/// Update a row using a changeset, validating before SQL execution.
+///
+/// `Repo.update_changeset(pool, table, id, changeset)` -> `Result<Map<String,String>, Changeset>`
+///
+/// Same pattern as insert_changeset but builds UPDATE SQL with WHERE id = $N+1.
+#[no_mangle]
+pub extern "C" fn mesh_repo_update_changeset(
+    pool: u64,
+    table: *mut u8,
+    id: *mut u8,
+    changeset: *mut u8,
+) -> *mut u8 {
+    unsafe {
+        // 1. Check if changeset is valid
+        if cs_get_int(changeset, SLOT_VALID) == 0 {
+            return alloc_result(1, changeset) as *mut u8;
+        }
+
+        // 2. Extract changes map
+        let changes = cs_get(changeset, SLOT_CHANGES);
+        let (columns, mut values) = map_to_columns_and_values(changes);
+
+        if columns.is_empty() {
+            return alloc_result(1, changeset) as *mut u8;
+        }
+
+        // 3. Build UPDATE SQL with RETURNING *
+        let table_str = mesh_str_ref(table);
+        let wheres = vec!["id =".to_string()];
+        let returning = vec!["*".to_string()];
+        let sql = crate::db::orm::build_update_sql_pure(table_str, &columns, &wheres, &returning);
+
+        // Params: SET values first, then id value for WHERE
+        let id_str = mesh_str_ref(id);
+        values.push(id_str.to_string());
+
+        let sql_ptr = rust_str_to_mesh(&sql) as *const MeshString;
+        let params_ptr = strings_to_mesh_list(&values);
+        let result = mesh_pool_query(pool, sql_ptr, params_ptr);
+
+        // 4. Check result
+        let r = &*(result as *const MeshResult);
+        if r.tag == 0 {
+            // Success: extract first row
+            let list = r.value;
+            let list_len = mesh_list_length(list);
+            if list_len == 0 {
+                return err_result("update_changeset: no row returned (id not found)");
+            }
+            let first_row = mesh_list_get(list, 0) as *mut u8;
+            ok_result(first_row)
+        } else {
+            // Error: try to map constraint violation to changeset error
+            let err_str = mesh_str_ref(r.value);
+            let (sqlstate, constraint, pg_table, column, _message) = parse_pg_error_string(err_str);
+
+            if let Some((field, msg)) = map_constraint_error(sqlstate, constraint, pg_table, column) {
+                let cs_with_err = add_constraint_error_to_changeset(changeset, &field, &msg);
+                alloc_result(1, cs_with_err) as *mut u8
+            } else {
+                // Unknown error: add as generic _base error
+                let cs_with_err = add_constraint_error_to_changeset(changeset, "_base", "database error");
+                alloc_result(1, cs_with_err) as *mut u8
+            }
+        }
+    }
+}
+
 // ── Unit tests ───────────────────────────────────────────────────────
 
 #[cfg(test)]
@@ -1214,5 +1382,55 @@ mod tests {
             "SELECT EXISTS(SELECT 1 FROM \"users\" WHERE \"name\" = $1 LIMIT 1)"
         );
         assert_eq!(params, vec!["Alice"]);
+    }
+
+    // ── PG error string parsing tests ─────────────────────────────────
+
+    #[test]
+    fn test_parse_pg_error_string_structured() {
+        let err = "23505\tusers_email_key\tusers\t\tduplicate key value violates unique constraint";
+        let (sqlstate, constraint, table, column, message) = parse_pg_error_string(err);
+        assert_eq!(sqlstate, "23505");
+        assert_eq!(constraint, "users_email_key");
+        assert_eq!(table, "users");
+        assert_eq!(column, "");
+        assert_eq!(message, "duplicate key value violates unique constraint");
+    }
+
+    #[test]
+    fn test_parse_pg_error_string_unstructured() {
+        let err = "some random error";
+        let (sqlstate, constraint, table, column, message) = parse_pg_error_string(err);
+        assert_eq!(sqlstate, "");
+        assert_eq!(constraint, "");
+        assert_eq!(table, "");
+        assert_eq!(column, "");
+        assert_eq!(message, "some random error");
+    }
+
+    // ── Constraint mapping tests ──────────────────────────────────────
+
+    #[test]
+    fn test_map_constraint_unique_violation() {
+        let result = map_constraint_error("23505", "users_email_key", "users", "");
+        assert_eq!(result, Some(("email".to_string(), "has already been taken".to_string())));
+    }
+
+    #[test]
+    fn test_map_constraint_foreign_key_violation() {
+        let result = map_constraint_error("23503", "posts_user_id_fkey", "posts", "");
+        assert_eq!(result, Some(("user_id".to_string(), "does not exist".to_string())));
+    }
+
+    #[test]
+    fn test_map_constraint_not_null_violation() {
+        let result = map_constraint_error("23502", "", "", "name");
+        assert_eq!(result, Some(("name".to_string(), "can't be blank".to_string())));
+    }
+
+    #[test]
+    fn test_map_constraint_unknown_sqlstate() {
+        let result = map_constraint_error("42601", "", "", "");
+        assert_eq!(result, None);
     }
 }

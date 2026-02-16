@@ -70,6 +70,7 @@ pub use db::repo::{
     mesh_repo_all, mesh_repo_one, mesh_repo_get, mesh_repo_get_by,
     mesh_repo_count, mesh_repo_exists,
     mesh_repo_insert, mesh_repo_update, mesh_repo_delete, mesh_repo_transaction,
+    mesh_repo_insert_changeset, mesh_repo_update_changeset,
 };
 pub use db::pg::{
     mesh_pg_connect, mesh_pg_close, mesh_pg_execute, mesh_pg_query,

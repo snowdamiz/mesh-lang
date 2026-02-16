@@ -295,6 +295,10 @@ fn register_runtime_symbols() {
     add_sym("mesh_repo_delete", mesh_rt::mesh_repo_delete as *const ());
     add_sym("mesh_repo_transaction", mesh_rt::mesh_repo_transaction as *const ());
 
+    // Repo Changeset Operations (Phase 99)
+    add_sym("mesh_repo_insert_changeset", mesh_rt::mesh_repo_insert_changeset as *const ());
+    add_sym("mesh_repo_update_changeset", mesh_rt::mesh_repo_update_changeset as *const ());
+
     // Changeset Operations (Phase 99)
     add_sym("mesh_changeset_cast", mesh_rt::mesh_changeset_cast as *const ());
     add_sym("mesh_changeset_cast_with_types", mesh_rt::mesh_changeset_cast_with_types as *const ());
