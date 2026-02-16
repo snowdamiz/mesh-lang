@@ -113,7 +113,7 @@ pub enum SyntaxKind {
     SEMICOLON,
     NEWLINE,
 
-    // ── Literals (7) ───────────────────────────────────────────────────
+    // ── Literals (8) ───────────────────────────────────────────────────
     INT_LITERAL,
     FLOAT_LITERAL,
     STRING_START,
@@ -121,6 +121,7 @@ pub enum SyntaxKind {
     STRING_CONTENT,
     INTERPOLATION_START,
     INTERPOLATION_END,
+    ATOM_LITERAL,
 
     // ── Identifiers and comments (4) ───────────────────────────────────
     IDENT,
@@ -189,6 +190,8 @@ pub enum SyntaxKind {
     CLOSURE_EXPR,
     /// Literal expression (int, float, bool, nil).
     LITERAL,
+    /// Atom literal expression: `:name`, `:email`, `:asc`.
+    ATOM_EXPR,
     /// Name in a definition position.
     NAME,
     /// Name reference (identifier used as expression).
@@ -454,6 +457,7 @@ impl From<TokenKind> for SyntaxKind {
             TokenKind::StringContent => SyntaxKind::STRING_CONTENT,
             TokenKind::InterpolationStart => SyntaxKind::INTERPOLATION_START,
             TokenKind::InterpolationEnd => SyntaxKind::INTERPOLATION_END,
+            TokenKind::Atom => SyntaxKind::ATOM_LITERAL,
             // Identifiers and comments
             TokenKind::Ident => SyntaxKind::IDENT,
             TokenKind::Comment => SyntaxKind::COMMENT,
@@ -561,7 +565,7 @@ mod tests {
             TokenKind::Colon,
             TokenKind::Semicolon,
             TokenKind::Newline,
-            // Literals (7)
+            // Literals (8)
             TokenKind::IntLiteral,
             TokenKind::FloatLiteral,
             TokenKind::StringStart,
@@ -569,6 +573,7 @@ mod tests {
             TokenKind::StringContent,
             TokenKind::InterpolationStart,
             TokenKind::InterpolationEnd,
+            TokenKind::Atom,
             // Identifiers and comments (4)
             TokenKind::Ident,
             TokenKind::Comment,
@@ -579,7 +584,7 @@ mod tests {
             TokenKind::Error,
         ];
 
-        assert_eq!(all_kinds.len(), 96, "must test all 96 TokenKind variants");
+        assert_eq!(all_kinds.len(), 97, "must test all 97 TokenKind variants");
 
         for kind in all_kinds {
             let _syntax_kind: SyntaxKind = kind.into();
@@ -636,6 +641,7 @@ mod tests {
             SyntaxKind::STRUCT_FIELD,
             SyntaxKind::CLOSURE_EXPR,
             SyntaxKind::LITERAL,
+            SyntaxKind::ATOM_EXPR,
             SyntaxKind::NAME,
             SyntaxKind::NAME_REF,
             SyntaxKind::PATH,
@@ -711,8 +717,8 @@ mod tests {
             SyntaxKind::SECONDS_LIMIT,
         ];
         assert!(
-            node_kinds.len() >= 84,
-            "expected at least 84 composite node kinds, got {}",
+            node_kinds.len() >= 85,
+            "expected at least 85 composite node kinds, got {}",
             node_kinds.len()
         );
     }

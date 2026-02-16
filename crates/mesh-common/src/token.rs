@@ -153,7 +153,7 @@ pub enum TokenKind {
     /// Significant newline (statement terminator).
     Newline,
 
-    // ── Literals (7) ───────────────────────────────────────────────────
+    // ── Literals (8) ───────────────────────────────────────────────────
     /// Integer literal, e.g. `42`, `0xFF`, `0b1010`.
     IntLiteral,
     /// Floating-point literal, e.g. `3.14`, `1.0e10`.
@@ -168,6 +168,8 @@ pub enum TokenKind {
     InterpolationStart,
     /// `}` that closes a string interpolation.
     InterpolationEnd,
+    /// Atom literal, e.g. `:name`, `:email`, `:asc`.
+    Atom,
 
     // ── Identifiers and comments (4) ───────────────────────────────────
     /// Regular identifier, e.g. `foo`, `my_var`.
@@ -341,10 +343,10 @@ mod tests {
         let operators = 24;
         let delimiters = 6;
         let punctuation = 5;
-        let literals = 7;
+        let literals = 8;
         let ident_comments = 4;
         let special = 2;
         let total = keywords + operators + delimiters + punctuation + literals + ident_comments + special;
-        assert_eq!(total, 96, "TokenKind should have 96 variants");
+        assert_eq!(total, 97, "TokenKind should have 97 variants");
     }
 }

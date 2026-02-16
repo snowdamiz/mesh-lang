@@ -261,12 +261,20 @@ impl<'src> Lexer<'src> {
         }
     }
 
-    /// `:` -> `Colon`, `::` -> `ColonColon`
+    /// `:` -> `Colon`, `::` -> `ColonColon`, `:ident` -> `Atom`
     fn lex_colon(&mut self, start: u32) -> Token {
         self.cursor.advance(); // consume ':'
         if self.cursor.peek() == Some(':') {
             self.cursor.advance();
             Token::new(TokenKind::ColonColon, start, self.cursor.pos())
+        } else if self
+            .cursor
+            .peek()
+            .is_some_and(|c| c.is_ascii_lowercase() || c == '_')
+        {
+            // Atom literal: `:name`, `:email`, `:asc`, `:_field`
+            self.cursor.eat_while(is_ident_continue);
+            Token::new(TokenKind::Atom, start, self.cursor.pos())
         } else {
             Token::new(TokenKind::Colon, start, self.cursor.pos())
         }

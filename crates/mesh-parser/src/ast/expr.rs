@@ -45,6 +45,8 @@ pub enum Expr {
     LinkExpr(LinkExpr),
     // Error propagation
     TryExpr(TryExpr),
+    // Atom literal
+    AtomLiteral(AtomLiteral),
 }
 
 impl Expr {
@@ -88,6 +90,7 @@ impl Expr {
             SyntaxKind::SELF_EXPR => Some(Expr::SelfExpr(SelfExpr { syntax: node })),
             SyntaxKind::LINK_EXPR => Some(Expr::LinkExpr(LinkExpr { syntax: node })),
             SyntaxKind::TRY_EXPR => Some(Expr::TryExpr(TryExpr { syntax: node })),
+            SyntaxKind::ATOM_EXPR => Some(Expr::AtomLiteral(AtomLiteral { syntax: node })),
             _ => None,
         }
     }
@@ -123,6 +126,7 @@ impl Expr {
             Expr::SelfExpr(n) => &n.syntax,
             Expr::LinkExpr(n) => &n.syntax,
             Expr::TryExpr(n) => &n.syntax,
+            Expr::AtomLiteral(n) => &n.syntax,
         }
     }
 }
@@ -728,5 +732,22 @@ impl TryExpr {
     /// The operand expression (the expression before `?`).
     pub fn operand(&self) -> Option<Expr> {
         self.syntax.children().find_map(Expr::cast)
+    }
+}
+
+// ── Atom Literal Expression ─────────────────────────────────────────────
+
+ast_node!(AtomLiteral, ATOM_EXPR);
+
+impl AtomLiteral {
+    /// Extract the atom name (without the leading `:`).
+    ///
+    /// For `:name`, returns `Some("name")`.
+    pub fn atom_text(&self) -> Option<String> {
+        child_token(&self.syntax, SyntaxKind::ATOM_LITERAL).map(|t| {
+            let text = t.text().to_string();
+            // Strip leading ':'
+            text.strip_prefix(':').unwrap_or(&text).to_string()
+        })
     }
 }

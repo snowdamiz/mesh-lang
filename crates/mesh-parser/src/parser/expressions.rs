@@ -206,6 +206,13 @@ fn lhs(p: &mut Parser) -> Option<MarkClosed> {
             Some(p.close(m, SyntaxKind::LITERAL))
         }
 
+        // Atom literal
+        SyntaxKind::ATOM_LITERAL => {
+            let m = p.open();
+            p.advance();
+            Some(p.close(m, SyntaxKind::ATOM_EXPR))
+        }
+
         // Identifier
         SyntaxKind::IDENT => {
             let m = p.open();
