@@ -129,13 +129,67 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| (populated after roadmap creation) | | |
+| COMP-01 | Phase 96 | Pending |
+| COMP-02 | Phase 96 | Pending |
+| COMP-03 | Phase 96 | Pending |
+| COMP-04 | Phase 96 | Pending |
+| COMP-05 | Phase 96 | Pending |
+| COMP-06 | Phase 96, Phase 100 | Pending |
+| COMP-07 | Phase 96 | Pending |
+| COMP-08 | Phase 96 | Pending |
+| SCHM-01 | Phase 97 | Pending |
+| SCHM-02 | Phase 97 | Pending |
+| SCHM-03 | Phase 97 | Pending |
+| SCHM-04 | Phase 97 | Pending |
+| SCHM-05 | Phase 97 | Pending |
+| QBLD-01 | Phase 98 | Pending |
+| QBLD-02 | Phase 98 | Pending |
+| QBLD-03 | Phase 98 | Pending |
+| QBLD-04 | Phase 98 | Pending |
+| QBLD-05 | Phase 98 | Pending |
+| QBLD-06 | Phase 98 | Pending |
+| QBLD-07 | Phase 98 | Pending |
+| QBLD-08 | Phase 98 | Pending |
+| QBLD-09 | Phase 98 | Pending |
+| REPO-01 | Phase 98 | Pending |
+| REPO-02 | Phase 98 | Pending |
+| REPO-03 | Phase 98 | Pending |
+| REPO-04 | Phase 98 | Pending |
+| REPO-05 | Phase 98 | Pending |
+| REPO-06 | Phase 98 | Pending |
+| REPO-07 | Phase 98 | Pending |
+| REPO-08 | Phase 98 | Pending |
+| REPO-09 | Phase 98 | Pending |
+| REPO-10 | Phase 100 | Pending |
+| REPO-11 | Phase 98 | Pending |
+| CHST-01 | Phase 99 | Pending |
+| CHST-02 | Phase 99 | Pending |
+| CHST-03 | Phase 99 | Pending |
+| CHST-04 | Phase 99 | Pending |
+| CHST-05 | Phase 99 | Pending |
+| CHST-06 | Phase 99 | Pending |
+| CHST-07 | Phase 99 | Pending |
+| CHST-08 | Phase 99 | Pending |
+| CHST-09 | Phase 99 | Pending |
+| MIGR-01 | Phase 101 | Pending |
+| MIGR-02 | Phase 101 | Pending |
+| MIGR-03 | Phase 101 | Pending |
+| MIGR-04 | Phase 101 | Pending |
+| MIGR-05 | Phase 101 | Pending |
+| MIGR-06 | Phase 101 | Pending |
+| MIGR-07 | Phase 101 | Pending |
+| MIGR-08 | Phase 101 | Pending |
+| MSHR-01 | Phase 102 | Pending |
+| MSHR-02 | Phase 102 | Pending |
+| MSHR-03 | Phase 102 | Pending |
+| MSHR-04 | Phase 102 | Pending |
+| MSHR-05 | Phase 102 | Pending |
 
 **Coverage:**
 - v10.0 requirements: 50 total
-- Mapped to phases: 0
-- Unmapped: 50
+- Mapped to phases: 50
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-02-16*
-*Last updated: 2026-02-16*
+*Last updated: 2026-02-16 -- Traceability populated after roadmap creation*

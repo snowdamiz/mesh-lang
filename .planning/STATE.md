@@ -5,14 +5,16 @@
 See: .planning/PROJECT.md (updated 2026-02-16)
 
 **Core value:** Expressive, readable concurrency -- writing concurrent programs should feel as natural and clean as writing sequential code, with the safety net of supervision and fault tolerance built into the language.
-**Current focus:** v10.0 ORM
+**Current focus:** v10.0 ORM -- Phase 96 (Compiler Additions)
 
 ## Current Position
 
-Phase: Not started (defining requirements)
-Plan: —
-Status: Defining requirements
-Last activity: 2026-02-16 — Milestone v10.0 started
+Phase: 96 of 102 (Compiler Additions)
+Plan: 0 of 5 in current phase
+Status: Ready to plan
+Last activity: 2026-02-16 -- Roadmap created for v10.0 ORM (7 phases, 20 plans)
+
+Progress: [░░░░░░░░░░] 0% (0/20 plans)
 
 ## Performance Metrics
 
@@ -33,7 +35,7 @@ Cleared at milestone boundary. v9.0 decisions archived in PROJECT.md.
 
 ### Roadmap Evolution
 
-(None yet)
+v10.0 ORM roadmap created 2026-02-16. 7 phases (96-102), 50 requirements across 7 categories. Research-recommended 7-phase structure adopted with strict dependency ordering: compiler additions first, then schema metadata, then query builder + repo, then changesets and relationships (parallel-capable), then migrations, finally Mesher rewrite validation.
 
 ### Pending Todos
 
@@ -42,10 +44,9 @@ None.
 ### Blockers/Concerns
 
 Known limitations relevant to ORM development:
-- Map.collect integer key assumption -- workaround: manual Map building with fold
-- Timer.send_after spawns OS thread per call -- use single recurring timer actor
-- Single-line pipe chains only (parser does not support multi-line |> continuation) -- parenthesized workaround exists
-- Middleware requires explicit `:: Request` parameter type annotations (incomplete inference)
+- Map.collect integer key assumption -- COMP-07 fix scheduled for Phase 96
+- Single-line pipe chains only -- COMP-03 fix scheduled for Phase 96
+- Cross-module from_row/from_json resolution edge cases -- COMP-08 fix scheduled for Phase 96
 
 ### Quick Tasks Completed
 
@@ -59,6 +60,6 @@ Known limitations relevant to ORM development:
 ## Session Continuity
 
 Last session: 2026-02-16
-Stopped at: v10.0 ORM milestone started. Defining requirements.
+Stopped at: v10.0 ORM roadmap created. Ready to plan Phase 96.
 Resume file: None
-Next action: Complete requirements and roadmap definition.
+Next action: `/gsd:plan-phase 96` (Compiler Additions)

@@ -20,6 +20,7 @@
 - [x] **v7.0 Iterator Protocol & Trait Ecosystem** - Phases 74-80 (shipped 2026-02-14)
 - [x] **v8.0 Developer Tooling** - Phases 81-86 (shipped 2026-02-14)
 - [x] **v9.0 Mesher** - Phases 87-95 (shipped 2026-02-15)
+- [ ] **v10.0 ORM** - Phases 96-102 (in progress)
 
 ## Phases
 
@@ -159,229 +160,148 @@ See milestones/v8.0-ROADMAP.md for full phase details.
 
 </details>
 
-### v9.0 Mesher (SHIPPED 2026-02-15)
+<details>
+<summary>v9.0 Mesher (Phases 87-95) - SHIPPED 2026-02-15</summary>
 
-**Milestone Goal:** Build a full monitoring/observability SaaS platform ("Mesher") using Mesh for the entire backend, dogfooding every language feature under high-concurrency, high-throughput conditions. Separate Vue frontend in same monorepo. PostgreSQL for storage. Zero external dependencies beyond PG.
+See milestones/v9.0-ROADMAP.md for full phase details.
+38 plans across 14 phases (including inserted phases). ~4,020 lines of Mesh. 95 phases total.
 
-- [x] **Phase 87: Foundation** - Data model, database schema, storage writer, org/project tenancy (completed 2026-02-14)
-- [x] **Phase 87.1: Issues Encountered** - Codegen + module system fixes for idiomatic Result handling and modular services (completed 2026-02-14)
-- [x] **Phase 87.2: Refactor Phase 87 code to use cross-module services** (INSERTED, completed 2026-02-15)
-- [x] **Phase 88: Ingestion Pipeline** - HTTP/WS event ingestion with DSN auth, rate limiting, supervised processing (completed 2026-02-15)
-- [x] **Phase 89: Error Grouping & Issue Lifecycle** - Fingerprinting, issue creation, regression detection, state machine (completed 2026-02-15)
-- [x] **Phase 90: Real-Time Streaming** - WebSocket dashboard streaming with rooms, filters, backpressure (completed 2026-02-15)
-- [x] **Phase 91: REST API** - Search, filter, pagination, dashboard aggregation, project/alert/org CRUD, event detail (completed 2026-02-15)
-- [x] **Phase 91.1: Idiomatic Refactor** - Pipe operators, String.join, shared helpers, DRY (INSERTED, completed 2026-02-15)
-- [x] **Phase 92: Alerting System** - Rule engine, timer-driven evaluation, notifications, dedup/cooldown (completed 2026-02-15)
-- [x] **Phase 93: Data Retention & Cleanup** - Retention policies, partition management, storage tracking, sampling (completed 2026-02-15)
-- [x] **Phase 93.1: Issues Encountered** - Fix forward-reference compilation errors in detail.mpl and team.mpl (INSERTED, completed 2026-02-15)
-- [x] **Phase 93.2: Fix Actor Spawn Segfault** - Actor wrapper+body ABI fix for parameterized actors (INSERTED, completed 2026-02-15)
-- [x] **Phase 94: Multi-Node Clustering** - Distributed actors, global registry, cross-node event routing and broadcast (completed 2026-02-15)
-- [x] **Phase 95: React Frontend** - SPA dashboard with Recharts, TanStack tables, real-time WebSocket streaming (completed 2026-02-15)
+</details>
+
+### v10.0 ORM (In Progress)
+
+**Milestone Goal:** Build a full ORM library in Mesh targeting PostgreSQL -- schema DSL, pipe-chain query builder, full relationships, changesets, migrations. Validated by rewriting Mesher's entire DB layer (627 lines raw SQL + 82 lines DDL) to use the ORM.
+
+- [ ] **Phase 96: Compiler Additions** - Language primitives enabling ergonomic ORM syntax
+- [ ] **Phase 97: Schema Metadata + SQL Generation** - deriving(Schema) codegen and runtime SQL builder
+- [ ] **Phase 98: Query Builder + Repo** - Pipe-composable queries and database operations
+- [ ] **Phase 99: Changesets** - Validation pipeline and type-safe casting before persistence
+- [ ] **Phase 100: Relationships + Preloading** - belongs_to/has_many/has_one with batch preloading
+- [ ] **Phase 101: Migration System** - Migration DSL, runner, CLI, and scaffold generation
+- [ ] **Phase 102: Mesher Rewrite** - Replace all raw SQL with ORM calls, validate end-to-end
 
 ## Phase Details
 
-### Phase 87: Foundation
-**Goal**: All data types, database schema, and storage layer exist so that subsequent phases can store and retrieve events, issues, projects, and organizations
-**Depends on**: Nothing (first phase of v9.0)
-**Requirements**: ORG-01, ORG-02, ORG-03
+### Phase 96: Compiler Additions
+**Goal**: Mesh language has all primitive features needed for an ergonomic, type-safe ORM -- atoms for field references, keyword arguments for DSL syntax, multi-line pipes for readable query chains, struct update for immutable data transformation, and deriving(Schema) infrastructure for compile-time metadata generation
+**Depends on**: Nothing (first phase of v10.0)
+**Requirements**: COMP-01, COMP-02, COMP-03, COMP-04, COMP-05, COMP-06, COMP-07, COMP-08
 **Success Criteria** (what must be TRUE):
-  1. Mesh compiles and runs a multi-module Mesher project that defines Event, Issue, Project, Organization, and AlertRule structs with deriving(Json, Row)
-  2. PostgreSQL schema exists with time-partitioned events table, issues table with UNIQUE(project_id, fingerprint), and organization/project tables
-  3. StorageWriter service accumulates events in a buffer and flushes them to PostgreSQL in batches on a timer
-  4. User can create organizations and projects via Mesh service calls, and the system generates unique DSN keys per project
-**Plans:** 2 plans
-Plans:
-- [x] 87-01-PLAN.md -- Data types, PostgreSQL schema DDL, and query helpers
-- [x] 87-02-PLAN.md -- Org/project/user services, StorageWriter, and main entry point
-
-### Phase 87.1: Issues Encountered (INSERTED)
-
-**Goal:** Fix 5 compiler bugs (codegen + module system) discovered during Phase 87 that block idiomatic Result handling and modular service architecture
-**Depends on:** Phase 87
-**Plans:** 2 plans
+  1. Developer can write atom literals (`:name`, `:email`, `:asc`) and they compile to string constants with a distinct Atom type recognized by the type checker
+  2. Developer can write keyword arguments at call sites (`where(name: "Alice", age: 30)`) that desugar to Map parameters without explicit Map literal syntax
+  3. Developer can write multi-line pipe chains where `|>` at line start continues the previous expression, making query chains readable across multiple lines
+  4. Developer can write struct update expressions (`%{user | name: "Bob"}`) to produce a new struct with specific fields changed and all others copied
+  5. A struct with `deriving(Schema)` generates callable `__table__()`, `__fields__()`, and `__primary_key__()` metadata functions, and relationship declarations (`belongs_to`, `has_many`, `has_one`) inside struct bodies produce queryable relationship metadata
+**Plans**: TBD
 
 Plans:
-- [x] 87.1-01-PLAN.md -- Codegen fixes: ? operator return type, Err(e) alloca domination, List.find Option matching
-- [x] 87.1-02-PLAN.md -- Module system fixes: cross-module service export, polymorphic type variable normalization
+- [ ] 96-01: Atom literal syntax (lexer, parser, typeck, codegen)
+- [ ] 96-02: Keyword arguments and multi-line pipe chains (parser, typeck)
+- [ ] 96-03: Struct update syntax (parser, typeck, codegen)
+- [ ] 96-04: deriving(Schema) infrastructure and relationship declarations (typeck, MIR, codegen)
+- [ ] 96-05: Bugfixes -- Map.collect string key propagation and cross-module from_row resolution
 
-### Phase 87.2: Refactor Phase 87 code to use cross-module services (INSERTED)
-
-**Goal:** Refactor the Mesher application code from Phase 87 to use cross-module services now that Phase 87.1 fixed the compiler limitations. Move services out of main.mpl into proper modules, use ? operator for Result handling, and leverage polymorphic type exports.
-**Depends on:** Phase 87.1
-**Plans:** 2 plans
-
-Plans:
-- [x] 87.2-01-PLAN.md -- Extract OrgService, ProjectService, UserService into service modules
-- [x] 87.2-02-PLAN.md -- Extract StorageWriter + buffer/flush logic, apply ? operator, slim main.mpl
-
-### Phase 88: Ingestion Pipeline
-**Goal**: External clients can send error events into the system via HTTP and WebSocket, with authentication, validation, rate limiting, and supervised actor-based processing
-**Depends on**: Phase 87
-**Requirements**: INGEST-01, INGEST-02, INGEST-03, INGEST-04, INGEST-05, INGEST-06, RESIL-01, RESIL-02, RESIL-03
+### Phase 97: Schema Metadata + SQL Generation
+**Goal**: Schema structs produce complete compile-time metadata (table name, fields, types, primary key, timestamps, column accessors) and a runtime SQL generation module builds parameterized queries from structured data
+**Depends on**: Phase 96
+**Requirements**: SCHM-01, SCHM-02, SCHM-03, SCHM-04, SCHM-05
 **Success Criteria** (what must be TRUE):
-  1. Client can POST an event to /api/v1/events with a DSN key and receive a 202 response with an event ID
-  2. System validates events (required fields, UTC timestamps, size limits) and rejects malformed payloads with appropriate error codes
-  3. System enforces per-project rate limits and returns 429 with Retry-After header when exceeded
-  4. Client can stream events over a persistent WebSocket connection with crash-isolated actor-per-connection
-  5. Event processing pipeline runs under a supervision tree that automatically restarts crashed processor actors
-**Plans:** 6 plans
-Plans:
-- [x] 88-01-PLAN.md -- Runtime extension: response headers, 202/429 status codes, HTTP.response_with_headers API
-- [x] 88-02-PLAN.md -- Core ingestion services: RateLimiter, EventProcessor, auth helpers, validation functions
-- [x] 88-03-PLAN.md -- HTTP routes, WebSocket handler, supervision tree, main.mpl integration
-- [x] 88-04-PLAN.md -- Gap closure: Fix Ws.serve codegen (duplicate intrinsic, bare-function fn_ptr/env_ptr splitting) and wire WebSocket server
-- [x] 88-05-PLAN.md -- Gap closure: Health checker actor with Timer.sleep-based periodic monitoring
-- [x] 88-06-PLAN.md -- Gap closure: Retry-After header on 429 responses, bulk endpoint event processing
+  1. A `struct User do ... end deriving(Schema)` generates the correct pluralized table name (`"users"`), field list with column-to-type mappings, and configurable primary key (default UUID `id`)
+  2. Schema structs with `timestamps: true` option automatically include `inserted_at` and `updated_at` fields in their metadata and SQL generation
+  3. Column accessor functions are generated per field (`User.name_col()`) enabling type-safe column references in queries instead of arbitrary strings
+  4. Runtime Rust functions (`mesh_orm_build_select`, `mesh_orm_build_insert`, `mesh_orm_build_update`, `mesh_orm_build_delete`) produce correctly parameterized SQL with `$1, $2` placeholders and proper identifier quoting
+**Plans**: TBD
 
-### Phase 89: Error Grouping & Issue Lifecycle
-**Goal**: Events are automatically grouped into issues via fingerprinting, and users can manage issue states with regression detection
-**Depends on**: Phase 88
-**Requirements**: GROUP-01, GROUP-02, GROUP-03, GROUP-04, GROUP-05, ISSUE-01, ISSUE-02, ISSUE-03, ISSUE-04, ISSUE-05
+Plans:
+- [ ] 97-01: deriving(Schema) codegen -- table name, field metadata, primary key, timestamps, column accessors
+- [ ] 97-02: Runtime SQL generation module (mesh-rt/db/orm.rs) -- SELECT, INSERT, UPDATE, DELETE builders
+
+### Phase 98: Query Builder + Repo
+**Goal**: Developers can compose queries using pipe chains and execute them through a stateless Repo module, covering all standard CRUD operations, aggregation, transactions, and raw SQL escape hatches
+**Depends on**: Phase 97
+**Requirements**: QBLD-01, QBLD-02, QBLD-03, QBLD-04, QBLD-05, QBLD-06, QBLD-07, QBLD-08, QBLD-09, REPO-01, REPO-02, REPO-03, REPO-04, REPO-05, REPO-06, REPO-07, REPO-08, REPO-09, REPO-11
 **Success Criteria** (what must be TRUE):
-  1. System computes fingerprints from stack trace frames, falls back to exception type or raw message, and respects user-provided custom fingerprint overrides
-  2. First occurrence of a fingerprint creates a new Issue; subsequent events increment the count and update last_seen
-  3. User can transition issues between unresolved, resolved, and archived states, and the system detects regressions when a resolved issue receives a new event
-  4. User can assign issues to team members and can delete/discard issues to suppress future events for that fingerprint
-  5. System auto-escalates archived issues when a volume spike occurs for that fingerprint
-**Plans:** 2 plans
-Plans:
-- [ ] 89-01-PLAN.md -- Fingerprint computation, issue upsert with regression detection, EventProcessor enrichment
-- [x] 89-02-PLAN.md -- Issue management API (state transitions, assign, delete/discard), spike detection
+  1. Developer can write `User |> Query.where(:name, "Alice") |> Query.order_by(:name, :asc) |> Query.limit(10) |> Repo.all(pool)` and receive a `List<Map<String, String>>` of matching rows
+  2. All query builder functions (where with operators, select, order_by, limit, offset, join, group_by, having, fragment) are pipe-composable and return new immutable Query structs
+  3. Repo.all, Repo.one, Repo.get, Repo.get_by correctly execute queries and return typed results; Repo.insert, Repo.update, Repo.delete correctly persist changes with RETURNING clauses
+  4. Repo.count and Repo.exists return aggregate results; Repo.transaction wraps operations with automatic commit/rollback
+  5. Composable scopes work as pure functions (`pub fn active(q) do q |> Query.where(:status, "active") end`) that can be mixed into any query pipeline
+**Plans**: TBD
 
-### Phase 90: Real-Time Streaming
-**Goal**: Connected dashboard clients receive new events and issue updates in real-time via WebSocket rooms with filtering and backpressure
-**Depends on**: Phase 88
-**Requirements**: STREAM-01, STREAM-02, STREAM-03, STREAM-04, STREAM-05
+Plans:
+- [ ] 98-01: Query struct and pipe-composable builder functions (where, select, order_by, limit, offset, join, group_by, having, fragment)
+- [ ] 98-02: Repo read operations (all, one, get, get_by, count, exists) integrated with SQL generation and Pool.query
+- [ ] 98-03: Repo write operations (insert, update, delete, transaction) with changeset integration points
+
+### Phase 99: Changesets
+**Goal**: Developers can validate and cast external data before persistence using a pipe-chain validation pipeline, with type coercion from raw params, built-in validators, and PostgreSQL constraint error mapping
+**Depends on**: Phase 98
+**Requirements**: CHST-01, CHST-02, CHST-03, CHST-04, CHST-05, CHST-06, CHST-07, CHST-08, CHST-09
 **Success Criteria** (what must be TRUE):
-  1. Client can subscribe to a WebSocket stream and receive new events for a specific project in real-time
-  2. Client can apply filters (level, environment) to the WebSocket stream and only receive matching events
-  3. System pushes new issue notifications and issue count updates to all connected dashboards for that project
-  4. System drops old queued events for slow clients instead of letting buffers grow unbounded
-**Plans:** 3 plans
+  1. Developer can create a Changeset from a struct and params map via `Changeset.cast(user, params, [:name, :email])` that filters allowed fields and coerces string values to schema field types
+  2. Developer can chain validations (`|> validate_required([:name]) |> validate_length(:name, min: 2) |> validate_format(:email, "@")`) and the changeset accumulates all errors without short-circuiting
+  3. Repo.insert and Repo.update accept Changeset structs, check `changeset.valid` before executing SQL, and return `Result<T, Changeset>` with errors attached on failure
+  4. PostgreSQL constraint violations (unique index, foreign key) are caught and mapped to human-readable changeset errors on the appropriate field instead of raw database error strings
+**Plans**: TBD
 
 Plans:
-- [x] 90-01-PLAN.md -- Typechecker gap closure (Ws.join/leave/broadcast/broadcast_except) + StreamManager service
-- [x] 90-02-PLAN.md -- Subscription protocol, event/issue broadcasting, pipeline integration
-- [x] 90-03-PLAN.md -- Backpressure buffer drain ticker (STREAM-05)
+- [ ] 99-01: Changeset struct, cast function, and validation pipeline (validate_required, validate_length, validate_format, validate_inclusion, validate_number)
+- [ ] 99-02: Constraint error mapping (PG unique/FK violations) and Repo.insert/update changeset integration
 
-### Phase 91: REST API
-**Goal**: Users can query, search, and browse all platform data through a complete REST API with pagination, aggregation, and CRUD operations
-**Depends on**: Phase 89
-**Requirements**: SEARCH-01, SEARCH-02, SEARCH-03, SEARCH-04, SEARCH-05, DASH-01, DASH-02, DASH-03, DASH-04, DASH-05, DASH-06, DETAIL-01, DETAIL-02, DETAIL-03, DETAIL-04, DETAIL-05, DETAIL-06, ORG-04, ORG-05
+### Phase 100: Relationships + Preloading
+**Goal**: Schema structs can declare relationships (belongs_to, has_many, has_one) and the ORM provides batch preloading that loads associated records in separate queries, eliminating N+1 patterns
+**Depends on**: Phase 98
+**Requirements**: COMP-06, REPO-10
 **Success Criteria** (what must be TRUE):
-  1. User can filter issues by status, level, time range, and assignment; search event messages via full-text search; and filter events by tag key-value pairs
-  2. User can paginate issue and event lists using keyset pagination with a default 24-hour time range
-  3. Dashboard endpoints return event volume over time (hourly/daily buckets), error breakdown by level, top issues by frequency, event breakdown by tag, per-issue event timeline, and project health summary
-  4. User can view full event payload, formatted stack traces, breadcrumbs, tags, user context, and navigate between events within an issue
-  5. User can manage team membership with roles (owner/admin/member) and create API tokens for programmatic access
-**Plans:** 3 plans
-Plans:
-- [x] 91-01-PLAN.md -- Search, filtering, and keyset pagination (SEARCH-01..05)
-- [x] 91-02-PLAN.md -- Dashboard aggregation and event detail (DASH-01..06, DETAIL-01..06)
-- [x] 91-03-PLAN.md -- Team membership and API token management (ORG-04, ORG-05)
-
-### Phase 91.1: Refactor Mesher to use pipe operators and idiomatic Mesh features (INSERTED)
-
-**Goal:** Refactor Mesher application code to use pipe operators and idiomatic Mesh features, making the codebase a showcase of idiomatic Mesh
-**Depends on:** Phase 91
-**Plans:** 2 plans
+  1. Developer can declare `has_many :posts, Post`, `belongs_to :user, User`, and `has_one :profile, Profile` in struct bodies and the compiler generates queryable relationship metadata (target table, foreign key, cardinality)
+  2. `Repo.preload(pool, users, [:posts])` loads all posts for a list of users in a single `WHERE user_id IN (...)` query instead of N separate queries, correctly grouping results by foreign key
+  3. Nested preloading works (`Repo.preload(pool, users, [:posts, "posts.comments"])`) issuing one query per association level regardless of parent record count
+  4. Preloaded data is accessible through a predictable structure (Map with association keys) and unloaded associations produce clear error messages directing the developer to use Repo.preload
+**Plans**: TBD
 
 Plans:
-- [x] 91.1-01-PLAN.md -- Extract shared helpers (to_json_array, query_or_default) and replace recursive JSON builders with String.join
-- [x] 91.1-02-PLAN.md -- Pipe-chain HTTP router and data transform pipelines
+- [ ] 100-01: Relationship metadata generation and preload query builder
+- [ ] 100-02: Repo.preload implementation with batch loading, nested preloading, and result stitching
 
-### Phase 92: Alerting System
-**Goal**: Users can define alert rules that the system evaluates on a timer, triggering notifications with deduplication and cooldown to prevent alert fatigue
-**Depends on**: Phase 91
-**Requirements**: ALERT-01, ALERT-02, ALERT-03, ALERT-04, ALERT-05, ALERT-06
+### Phase 101: Migration System
+**Goal**: Developers can define database schema changes as versioned migration files with up/down functions, run them via CLI, and track applied state -- following a forward-only philosophy with expand-migrate-contract pattern
+**Depends on**: Phase 97
+**Requirements**: MIGR-01, MIGR-02, MIGR-03, MIGR-04, MIGR-05, MIGR-06, MIGR-07, MIGR-08
 **Success Criteria** (what must be TRUE):
-  1. User can create alert rules with configurable conditions (event count above threshold in time window, new issue creation, issue regression)
-  2. A single timer-driven evaluator actor checks all alert rules per tick and triggers matching alerts
-  3. System delivers alert notifications via WebSocket to connected dashboards in real-time
-  4. System enforces deduplication windows and cooldown periods to prevent duplicate and repeated alert firing
-  5. User can manage alert states (active, acknowledged, resolved)
-**Plans:** 3 plans
+  1. Developer can write migration files as Mesh functions with `up(pool)` and `down(pool)` definitions using DSL helpers (`Migration.create_table`, `Migration.alter_table`, `Migration.drop_table`, `Migration.create_index`, `Migration.drop_index`)
+  2. Running `meshc migrate` discovers pending migrations, applies them in timestamp order within transactions, and records each in a `_mesh_migrations` tracking table
+  3. Running `meshc migrate down` rolls back the last applied migration; `meshc migrate status` shows applied vs pending
+  4. Running `meshc migrate generate <name>` creates a timestamped scaffold file with empty up/down function stubs
+  5. Migration documentation follows expand-migrate-contract philosophy: additive changes first, destructive changes only after code deployment
+**Plans**: TBD
 
 Plans:
-- [x] 92-01-PLAN.md -- Schema extension (alerts table, cooldown columns), Alert type, query helpers
-- [x] 92-02-PLAN.md -- Alert evaluator actor (timer-driven threshold evaluation) and event-based alert triggers
-- [x] 92-03-PLAN.md -- HTTP API routes for alert rule CRUD and alert state management
+- [ ] 101-01: Migration DSL (create_table, alter_table, drop_table, create_index, drop_index) and file format
+- [ ] 101-02: Migration runner (discover, sort, apply, rollback, tracking table) and meshc CLI integration
+- [ ] 101-03: Migration scaffold generation (meshc migrate generate) and expand-migrate-contract documentation
 
-### Phase 93: Data Retention & Cleanup
-**Goal**: Stored event data is automatically cleaned up per project retention policies, with partition-based deletion and storage visibility
-**Depends on**: Phase 87
-**Requirements**: RETAIN-01, RETAIN-02, RETAIN-03, RETAIN-04
+### Phase 102: Mesher Rewrite
+**Goal**: Mesher's entire database layer is rewritten using the ORM, validating that every ORM feature works correctly in a real application with 11 schema types, complex filtered queries, and multi-table relationships
+**Depends on**: Phase 96, Phase 97, Phase 98, Phase 99, Phase 100, Phase 101
+**Requirements**: MSHR-01, MSHR-02, MSHR-03, MSHR-04, MSHR-05
 **Success Criteria** (what must be TRUE):
-  1. User can configure retention period per project (30/60/90 days) and the system drops old partitions on schedule
-  2. Issue summaries (counts, first/last seen) are preserved even after their underlying events are deleted
-  3. User can view storage usage per project and configure event sampling rate for high-volume projects
-**Plans:** 2 plans
+  1. All 11 Mesher type structs (Organization, User, OrgMembership, Session, Project, ApiKey, Event, Issue, AlertRule, Alert, RetentionSettings) use `deriving(Schema)` and their metadata functions return correct table/field/PK information
+  2. storage/queries.mpl (627 lines of raw SQL) is replaced with ORM Repo calls, reducing to approximately 100-150 lines of ORM query code
+  3. storage/schema.mpl (82 lines of imperative DDL) is replaced with versioned migration files using the Migration DSL
+  4. All service modules (OrgService, ProjectService, UserService, EventProcessor, etc.) use Repo operations instead of raw Pool.query/Pool.execute calls
+  5. All existing Mesher functionality (ingestion, error grouping, REST API, streaming, alerting, retention, clustering) works identically after the rewrite -- verified by running the full application
+**Plans**: TBD
 
 Plans:
-- [x] 93-01-PLAN.md -- Schema extension (retention columns), retention/storage/settings/sampling queries, retention cleaner actor
-- [x] 93-02-PLAN.md -- Settings API handlers, sampling at ingestion, retention cleaner wiring, route registration
-
-### Phase 93.2: Fix actor spawn segfault in project mode (INSERTED)
-
-**Goal:** Fix ABI mismatch between actor spawn serialization and actor entry function signatures so actors with arguments receive correct typed values instead of raw buffer pointers
-**Depends on:** Phase 93
-**Plans:** 1 plan
-
-Plans:
-- [x] 93.2-01-PLAN.md -- Generate actor wrapper function for args deserialization, add e2e tests for parameterized actors
-
-### Phase 93.1: Issues Encountered (INSERTED)
-
-**Goal:** Fix 7 compilation errors (forward-reference violations and cascading type mismatches) in detail.mpl, team.mpl, and main.mpl to restore Mesher compilation
-**Depends on:** Phase 93
-**Plans:** 1 plan
-
-Plans:
-- [x] 93.1-01-PLAN.md -- Reorder functions to leaf-first in detail.mpl and team.mpl, verify cascading fix in main.mpl
-
-### Phase 94: Multi-Node Clustering
-**Goal**: Multiple Mesher nodes form a cluster and distribute event processing, service discovery, and WebSocket broadcasts across the mesh
-**Depends on**: Phase 90
-**Requirements**: CLUSTER-01, CLUSTER-02, CLUSTER-03, CLUSTER-04, CLUSTER-05
-**Success Criteria** (what must be TRUE):
-  1. Mesher nodes discover each other via Node.connect and form a mesh with automatic peer exchange
-  2. Services (EventRouter, StorageWriter) register in the global process registry for cross-node discovery
-  3. Events ingested on one node are routed to processors on other nodes, and WebSocket broadcasts reach dashboards on all nodes
-  4. System spawns remote processor actors on other nodes when local load is high
-**Plans:** 4 plans
-
-Plans:
-- [x] 94-01-PLAN.md -- Node startup, mesh formation, and global service registration
-- [x] 94-02-PLAN.md -- Cross-node event routing and distributed service discovery
-- [x] 94-03-PLAN.md -- Load-based remote processor spawning with monitoring
-- [x] 94-04-PLAN.md -- Gap closure: Node.spawn remote spawning and Node.monitor health tracking
-
-### Phase 95: React Frontend
-**Goal**: Users can interact with the entire Mesher platform through a React 19 SPA with dashboards, event browsing, issue management, alerting, and real-time streaming
-**Depends on**: Phase 91, Phase 90
-**Requirements**: UI-01, UI-02, UI-03, UI-04, UI-05, UI-06, UI-07, UI-08
-**Success Criteria** (what must be TRUE):
-  1. User can view a project overview dashboard with Recharts time-series charts (event volume, error breakdown) and a TanStack-powered issue list
-  2. User can browse and search events with filters, pagination, and view event detail with formatted stack traces, breadcrumbs, and tags
-  3. User can manage issues (state transitions, assignment) and manage alert rules (create, edit, delete)
-  4. User can see real-time event streaming via WebSocket updating the dashboard live
-  5. User can manage organizations and projects through the UI
-**Plans:** 7 plans
-
-Plans:
-- [x] 95-01-PLAN.md -- Scaffold Vite + React 19 project, app shell, shared infrastructure (routing, API client, stores, hooks, types, theme)
-- [x] 95-02-PLAN.md -- Dashboard page with Recharts charts (volume, levels, health) and issue list
-- [x] 95-03-PLAN.md -- Issues and Events pages with TanStack Table, filters, and pagination
-- [x] 95-04-PLAN.md -- Event detail and issue detail push panels (stack trace, breadcrumbs, tags, state transitions)
-- [x] 95-05-PLAN.md -- Live Stream page and WebSocket integration for real-time dashboard updates
-- [x] 95-06-PLAN.md -- Alerts page (rule CRUD, fired alerts) and Settings page (project, team, API keys, storage)
-- [x] 95-07-PLAN.md -- Integration fixes, production build verification, and visual checkpoint
+- [ ] 102-01: Convert all 11 type structs to deriving(Schema) and create migration files
+- [ ] 102-02: Rewrite storage/queries.mpl with ORM Repo calls and update service modules
+- [ ] 102-03: End-to-end verification -- all Mesher features working identically
 
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 87 -> 87.1 -> 87.2 -> 88 -> 89 -> 90 -> 91 -> 91.1 -> 92 -> 93 -> 93.1 -> 93.2 -> 94 -> 95
-Note: Phase 93 depends only on 87 (can run in parallel with 88-92 if desired). Phase 90 and 89 both depend on 88.
+Phases execute in numeric order: 96 -> 97 -> 98 -> 99 -> 100 -> 101 -> 102
+Note: Phase 100 and 101 both depend on earlier phases but are independent of each other. Phase 101 could start after Phase 97 if desired. Phase 102 requires all other v10.0 phases complete.
 
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
@@ -402,19 +322,13 @@ Note: Phase 93 depends only on 87 (can run in parallel with 88-92 if desired). P
 | 70-73 | v6.0 | 11/11 | Complete | 2026-02-13 |
 | 74-80 | v7.0 | 17/17 | Complete | 2026-02-14 |
 | 81-86 | v8.0 | 11/11 | Complete | 2026-02-14 |
-| 87 | v9.0 | 2/2 | Complete | 2026-02-14 |
-| 87.1 | v9.0 | 2/2 | Complete | 2026-02-14 |
-| 87.2 | v9.0 | 2/2 | Complete | 2026-02-15 |
-| 88 | v9.0 | 6/6 | Complete | 2026-02-15 |
-| 89 | v9.0 | 2/2 | Complete | 2026-02-15 |
-| 90 | v9.0 | 3/3 | Complete | 2026-02-15 |
-| 91 | v9.0 | 3/3 | Complete | 2026-02-15 |
-| 91.1 | v9.0 | 2/2 | Complete | 2026-02-15 |
-| 92 | v9.0 | 3/3 | Complete | 2026-02-15 |
-| 93 | v9.0 | 2/2 | Complete | 2026-02-15 |
-| 93.1 | v9.0 | 1/1 | Complete | 2026-02-15 |
-| 93.2 | v9.0 | 1/1 | Complete | 2026-02-15 |
-| 94 | v9.0 | 4/4 | Complete | 2026-02-15 |
-| 95 | v9.0 | 7/7 | Complete | 2026-02-15 |
+| 87-95 | v9.0 | 38/38 | Complete | 2026-02-15 |
+| 96 | v10.0 | 0/5 | Not started | - |
+| 97 | v10.0 | 0/2 | Not started | - |
+| 98 | v10.0 | 0/3 | Not started | - |
+| 99 | v10.0 | 0/2 | Not started | - |
+| 100 | v10.0 | 0/2 | Not started | - |
+| 101 | v10.0 | 0/3 | Not started | - |
+| 102 | v10.0 | 0/3 | Not started | - |
 
-**Total: 101 phases shipped across 18 milestones. 280 plans completed. 12 phases completed for v9.0.**
+**Total: 101 phases shipped across 18 milestones. 280 plans completed. v10.0: 7 phases, 20 plans planned.**
