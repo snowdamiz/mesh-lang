@@ -176,7 +176,7 @@ See milestones/v9.0-ROADMAP.md for full phase details.
 - [x] **Phase 97: Schema Metadata + SQL Generation** - deriving(Schema) codegen and runtime SQL builder (shipped 2026-02-16)
 - [x] **Phase 98: Query Builder + Repo** - Pipe-composable queries and database operations (shipped 2026-02-16)
 - [x] **Phase 99: Changesets** - Validation pipeline and type-safe casting before persistence (shipped 2026-02-16)
-- [ ] **Phase 100: Relationships + Preloading** - belongs_to/has_many/has_one with batch preloading
+- [x] **Phase 100: Relationships + Preloading** - belongs_to/has_many/has_one with batch preloading (shipped 2026-02-16)
 - [ ] **Phase 101: Migration System** - Migration DSL, runner, CLI, and scaffold generation
 - [ ] **Phase 102: Mesher Rewrite** - Replace all raw SQL with ORM calls, validate end-to-end
 
@@ -260,8 +260,8 @@ Plans:
 **Plans**: 2 plans
 
 Plans:
-- [ ] 100-01-PLAN.md -- Enhanced relationship metadata (__relationship_meta__ with FK and target table) in compiler pipeline
-- [ ] 100-02-PLAN.md -- Repo.preload runtime implementation with batch IN queries, nested preloading, and result stitching
+- [x] 100-01-PLAN.md -- Enhanced relationship metadata (__relationship_meta__ with FK and target table) in compiler pipeline
+- [x] 100-02-PLAN.md -- Repo.preload runtime implementation with batch IN queries, nested preloading, and result stitching
 
 ### Phase 101: Migration System
 **Goal**: Developers can define database schema changes as versioned migration files with up/down functions, run them via CLI, and track applied state -- following a forward-only philosophy with expand-migrate-contract pattern
@@ -327,8 +327,8 @@ Note: Phase 100 and 101 both depend on earlier phases but are independent of eac
 | 97 | v10.0 | 2/2 | Complete | 2026-02-16 |
 | 98 | v10.0 | 3/3 | Complete | 2026-02-16 |
 | 99 | v10.0 | 2/2 | Complete | 2026-02-16 |
-| 100 | v10.0 | 0/2 | Not started | - |
+| 100 | v10.0 | 2/2 | Complete | 2026-02-16 |
 | 101 | v10.0 | 0/3 | Not started | - |
 | 102 | v10.0 | 0/3 | Not started | - |
 
-**Total: 102 phases shipped across 18 milestones. 292 plans completed. v10.0: 4/7 phases complete, 12/20 plans done.**
+**Total: 102 phases shipped across 18 milestones. 294 plans completed. v10.0: 5/7 phases complete, 14/20 plans done.**
