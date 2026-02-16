@@ -5,7 +5,7 @@
 See: .planning/PROJECT.md (updated 2026-02-16)
 
 **Core value:** Expressive, readable concurrency -- writing concurrent programs should feel as natural and clean as writing sequential code, with the safety net of supervision and fault tolerance built into the language.
-**Current focus:** v10.0 ORM -- Phase 99 (Changesets)
+**Current focus:** v10.0 ORM -- Phase 100 (Relationships + Preloading)
 
 ## Current Position
 
@@ -19,8 +19,8 @@ Progress: [██████░░░░] 60% (12/20 plans)
 ## Performance Metrics
 
 **All-time Totals:**
-- Plans completed: 290
-- Phases completed: 103
+- Plans completed: 292
+- Phases completed: 104
 - Milestones shipped: 19 (v1.0-v9.0)
 - Lines of Rust: ~98,800
 - Lines of website: ~5,500
@@ -106,4 +106,4 @@ Known limitations relevant to ORM development:
 Last session: 2026-02-16
 Stopped at: Completed 99-02-PLAN.md (Repo changeset integration + constraint mapping)
 Resume file: None
-Next action: Begin Phase 100 (Relationships) or Phase 101 (Migrations)
+Next action: `/gsd:plan-phase 100` (Relationships + Preloading)

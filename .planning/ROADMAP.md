@@ -175,7 +175,7 @@ See milestones/v9.0-ROADMAP.md for full phase details.
 - [x] **Phase 96: Compiler Additions** - Language primitives enabling ergonomic ORM syntax (shipped 2026-02-16)
 - [x] **Phase 97: Schema Metadata + SQL Generation** - deriving(Schema) codegen and runtime SQL builder (shipped 2026-02-16)
 - [x] **Phase 98: Query Builder + Repo** - Pipe-composable queries and database operations (shipped 2026-02-16)
-- [ ] **Phase 99: Changesets** - Validation pipeline and type-safe casting before persistence
+- [x] **Phase 99: Changesets** - Validation pipeline and type-safe casting before persistence (shipped 2026-02-16)
 - [ ] **Phase 100: Relationships + Preloading** - belongs_to/has_many/has_one with batch preloading
 - [ ] **Phase 101: Migration System** - Migration DSL, runner, CLI, and scaffold generation
 - [ ] **Phase 102: Mesher Rewrite** - Replace all raw SQL with ORM calls, validate end-to-end
@@ -245,8 +245,8 @@ Plans:
 **Plans**: 2 plans
 
 Plans:
-- [ ] 99-01-PLAN.md -- Changeset struct (opaque 8-slot Ptr), Changeset.cast/cast_with_types, five validators (validate_required, validate_length, validate_format, validate_inclusion, validate_number), field accessors, pipe-chain composition
-- [ ] 99-02-PLAN.md -- Enhanced PG error parsing (SQLSTATE + constraint extraction), constraint-to-changeset error mapping, Repo.insert_changeset/update_changeset with validation-before-SQL
+- [x] 99-01-PLAN.md -- Changeset struct (opaque 8-slot Ptr), Changeset.cast/cast_with_types, five validators (validate_required, validate_length, validate_format, validate_inclusion, validate_number), field accessors, pipe-chain composition
+- [x] 99-02-PLAN.md -- Enhanced PG error parsing (SQLSTATE + constraint extraction), constraint-to-changeset error mapping, Repo.insert_changeset/update_changeset with validation-before-SQL
 
 ### Phase 100: Relationships + Preloading
 **Goal**: Schema structs can declare relationships (belongs_to, has_many, has_one) and the ORM provides batch preloading that loads associated records in separate queries, eliminating N+1 patterns
@@ -326,9 +326,9 @@ Note: Phase 100 and 101 both depend on earlier phases but are independent of eac
 | 96 | v10.0 | 5/5 | Complete | 2026-02-16 |
 | 97 | v10.0 | 2/2 | Complete | 2026-02-16 |
 | 98 | v10.0 | 3/3 | Complete | 2026-02-16 |
-| 99 | v10.0 | 0/2 | Not started | - |
+| 99 | v10.0 | 2/2 | Complete | 2026-02-16 |
 | 100 | v10.0 | 0/2 | Not started | - |
 | 101 | v10.0 | 0/3 | Not started | - |
 | 102 | v10.0 | 0/3 | Not started | - |
 
-**Total: 102 phases shipped across 18 milestones. 290 plans completed. v10.0: 3/7 phases complete, 10/20 plans done.**
+**Total: 102 phases shipped across 18 milestones. 292 plans completed. v10.0: 4/7 phases complete, 12/20 plans done.**
