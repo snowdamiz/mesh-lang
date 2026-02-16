@@ -10,11 +10,11 @@ See: .planning/PROJECT.md (updated 2026-02-16)
 ## Current Position
 
 Phase: 97 of 102 (Schema Metadata + SQL Generation)
-Plan: 0 of 2 in current phase
-Status: Ready to plan
-Last activity: 2026-02-16 -- Phase 96 verified and complete (5/5 plans, all must-haves passed)
+Plan: 1 of 2 in current phase
+Status: Executing
+Last activity: 2026-02-16 -- Completed 97-01 (Enhanced Schema Metadata codegen)
 
-Progress: [███░░░░░░░] 25% (5/20 plans)
+Progress: [████░░░░░░] 30% (6/20 plans)
 
 ## Performance Metrics
 
@@ -48,6 +48,10 @@ Progress: [███░░░░░░░] 25% (5/20 plans)
 - 96-05: Separate mesh_map_collect_string_keys runtime function; codegen selects based on compile-time pipe chain analysis.
 - 96-05: Cross-module __json_decode__ wrappers pre-generated before lower_source_file; ToJson/FromRow registered in known_functions.
 - 96-05: collect_exports now exports deriving-generated trait impls (not just explicit ImplDef AST nodes).
+- 97-01: Schema options use contextual identifiers (table/primary_key/timestamps) not @ annotations.
+- 97-01: Column accessors use __field_col__ double-underscore pattern matching existing convention.
+- 97-01: Timestamps inject inserted_at/updated_at as String fields into MirStructDef layout.
+- 97-01: MirType -> SQL type mapping: Int->BIGINT, Float->DOUBLE PRECISION, Bool->BOOLEAN, String->TEXT.
 
 ### Roadmap Evolution
 
@@ -76,6 +80,6 @@ Known limitations relevant to ORM development:
 ## Session Continuity
 
 Last session: 2026-02-16
-Stopped at: Phase 96 verified and complete. Ready for Phase 97.
+Stopped at: Completed 97-01-PLAN.md (Enhanced Schema Metadata codegen)
 Resume file: None
-Next action: `/gsd:plan-phase 97` (Schema Metadata + SQL Generation)
+Next action: Execute 97-02-PLAN.md (Runtime SQL Generation)
