@@ -1,41 +1,36 @@
 # Reusable query helper functions for all Mesher entity types.
-# Provides CRUD operations using Pool.query and Pool.execute.
+# Provides CRUD operations using ORM Repo/Query calls for simple CRUD
+# and raw Pool.query/Pool.execute for complex analytics, PG functions,
+# JOINs, and conditional updates.
 # All functions take the pool handle (PoolHandle) as first argument.
-# Pool.query returns List<Map<String, String>>; struct construction
-# is done manually from the Map fields.
 
 from Types.Project import Organization, Project, ApiKey
 from Types.User import User, OrgMembership, Session
 from Types.Issue import Issue
 from Types.Event import Event
 from Types.Alert import AlertRule, Alert
+from Types.Retention import RetentionSettings
 
 # --- Organization queries ---
 
 # Insert a new organization. Returns the generated UUID.
 pub fn insert_org(pool :: PoolHandle, name :: String, slug :: String) -> String!String do
-  let rows = Pool.query(pool, "INSERT INTO organizations (name, slug) VALUES ($1, $2) RETURNING id::text", [name, slug])?
-  if List.length(rows) > 0 do
-    Ok(Map.get(List.head(rows), "id"))
-  else
-    Err("insert_org: no id returned")
-  end
+  let fields = %{"name" => name, "slug" => slug}
+  let row = Repo.insert(pool, Organization.__table__(), fields)?
+  Ok(Map.get(row, "id"))
 end
 
 # Get an organization by ID.
 pub fn get_org(pool :: PoolHandle, id :: String) -> Organization!String do
-  let rows = Pool.query(pool, "SELECT id::text, name, slug, created_at::text FROM organizations WHERE id = $1::uuid", [id])?
-  if List.length(rows) > 0 do
-    let row = List.head(rows)
-    Ok(Organization { id: Map.get(row, "id"), name: Map.get(row, "name"), slug: Map.get(row, "slug"), created_at: Map.get(row, "created_at") })
-  else
-    Err("not found")
-  end
+  let row = Repo.get(pool, Organization.__table__(), id)?
+  Ok(Organization { id: Map.get(row, "id"), name: Map.get(row, "name"), slug: Map.get(row, "slug"), created_at: Map.get(row, "created_at") })
 end
 
 # List all organizations.
 pub fn list_orgs(pool :: PoolHandle) -> List<Organization>!String do
-  let rows = Pool.query(pool, "SELECT id::text, name, slug, created_at::text FROM organizations ORDER BY name", [])?
+  let q = Query.from(Organization.__table__())
+    |> Query.order_by(:name, :asc)
+  let rows = Repo.all(pool, q)?
   Ok(List.map(rows, fn(row) do
     Organization { id: Map.get(row, "id"), name: Map.get(row, "name"), slug: Map.get(row, "slug"), created_at: Map.get(row, "created_at") }
   end))
@@ -45,39 +40,30 @@ end
 
 # Insert a new project. Returns the generated UUID.
 pub fn insert_project(pool :: PoolHandle, org_id :: String, name :: String, platform :: String) -> String!String do
-  let rows = Pool.query(pool, "INSERT INTO projects (org_id, name, platform) VALUES ($1::uuid, $2, $3) RETURNING id::text", [org_id, name, platform])?
-  if List.length(rows) > 0 do
-    Ok(Map.get(List.head(rows), "id"))
-  else
-    Err("insert_project: no id returned")
-  end
+  let fields = %{"org_id" => org_id, "name" => name, "platform" => platform}
+  let row = Repo.insert(pool, Project.__table__(), fields)?
+  Ok(Map.get(row, "id"))
 end
 
 # Resolve a project slug to its UUID. Returns the id as a string.
 # Used by API handlers to support slug-based project identifiers (e.g. "default").
 pub fn get_project_id_by_slug(pool :: PoolHandle, slug :: String) -> String!String do
-  let rows = Pool.query(pool, "SELECT id::text FROM projects WHERE slug = $1", [slug])?
-  if List.length(rows) > 0 do
-    Ok(Map.get(List.head(rows), "id"))
-  else
-    Err("project not found for slug: " <> slug)
-  end
+  let row = Repo.get_by(pool, Project.__table__(), "slug", slug)?
+  Ok(Map.get(row, "id"))
 end
 
 # Get a project by ID.
 pub fn get_project(pool :: PoolHandle, id :: String) -> Project!String do
-  let rows = Pool.query(pool, "SELECT id::text, org_id::text, name, platform, created_at::text FROM projects WHERE id = $1::uuid", [id])?
-  if List.length(rows) > 0 do
-    let row = List.head(rows)
-    Ok(Project { id: Map.get(row, "id"), org_id: Map.get(row, "org_id"), name: Map.get(row, "name"), platform: Map.get(row, "platform"), created_at: Map.get(row, "created_at") })
-  else
-    Err("not found")
-  end
+  let row = Repo.get(pool, Project.__table__(), id)?
+  Ok(Project { id: Map.get(row, "id"), org_id: Map.get(row, "org_id"), name: Map.get(row, "name"), platform: Map.get(row, "platform"), created_at: Map.get(row, "created_at") })
 end
 
 # List all projects for an organization.
 pub fn list_projects_by_org(pool :: PoolHandle, org_id :: String) -> List<Project>!String do
-  let rows = Pool.query(pool, "SELECT id::text, org_id::text, name, platform, created_at::text FROM projects WHERE org_id = $1::uuid ORDER BY name", [org_id])?
+  let q = Query.from(Project.__table__())
+    |> Query.where(:org_id, org_id)
+    |> Query.order_by(:name, :asc)
+  let rows = Repo.all(pool, q)?
   Ok(List.map(rows, fn(row) do
     Project { id: Map.get(row, "id"), org_id: Map.get(row, "org_id"), name: Map.get(row, "name"), platform: Map.get(row, "platform"), created_at: Map.get(row, "created_at") }
   end))

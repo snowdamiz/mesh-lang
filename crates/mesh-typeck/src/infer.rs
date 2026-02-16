@@ -1269,6 +1269,56 @@ fn stdlib_modules() -> HashMap<String, HashMap<String, Scheme>> {
         modules.insert("Changeset".to_string(), cs_mod);
     }
 
+    // ── Migration module (Phase 101) ──────────────────────────────────
+    {
+        let pool_t = Ty::Con(TyCon::new("PoolHandle"));
+        let result_t = Ty::result(Ty::int(), Ty::string());
+        let mut migration_mod = HashMap::new();
+
+        // Migration.create_table: fn(PoolHandle, String, List<String>) -> Result<Int, String>
+        migration_mod.insert("create_table".to_string(), Scheme::mono(Ty::fun(
+            vec![pool_t.clone(), Ty::string(), Ty::list(Ty::string())],
+            result_t.clone(),
+        )));
+        // Migration.drop_table: fn(PoolHandle, String) -> Result<Int, String>
+        migration_mod.insert("drop_table".to_string(), Scheme::mono(Ty::fun(
+            vec![pool_t.clone(), Ty::string()],
+            result_t.clone(),
+        )));
+        // Migration.add_column: fn(PoolHandle, String, String) -> Result<Int, String>
+        migration_mod.insert("add_column".to_string(), Scheme::mono(Ty::fun(
+            vec![pool_t.clone(), Ty::string(), Ty::string()],
+            result_t.clone(),
+        )));
+        // Migration.drop_column: fn(PoolHandle, String, String) -> Result<Int, String>
+        migration_mod.insert("drop_column".to_string(), Scheme::mono(Ty::fun(
+            vec![pool_t.clone(), Ty::string(), Ty::string()],
+            result_t.clone(),
+        )));
+        // Migration.rename_column: fn(PoolHandle, String, String, String) -> Result<Int, String>
+        migration_mod.insert("rename_column".to_string(), Scheme::mono(Ty::fun(
+            vec![pool_t.clone(), Ty::string(), Ty::string(), Ty::string()],
+            result_t.clone(),
+        )));
+        // Migration.create_index: fn(PoolHandle, String, List<String>, String) -> Result<Int, String>
+        migration_mod.insert("create_index".to_string(), Scheme::mono(Ty::fun(
+            vec![pool_t.clone(), Ty::string(), Ty::list(Ty::string()), Ty::string()],
+            result_t.clone(),
+        )));
+        // Migration.drop_index: fn(PoolHandle, String, List<String>) -> Result<Int, String>
+        migration_mod.insert("drop_index".to_string(), Scheme::mono(Ty::fun(
+            vec![pool_t.clone(), Ty::string(), Ty::list(Ty::string())],
+            result_t.clone(),
+        )));
+        // Migration.execute: fn(PoolHandle, String) -> Result<Int, String>
+        migration_mod.insert("execute".to_string(), Scheme::mono(Ty::fun(
+            vec![pool_t.clone(), Ty::string()],
+            result_t.clone(),
+        )));
+
+        modules.insert("Migration".to_string(), migration_mod);
+    }
+
     modules
 }
 
@@ -1284,6 +1334,7 @@ const STDLIB_MODULE_NAMES: &[&str] = &[
     "Query",  // Phase 98
     "Repo",  // Phase 98
     "Changeset",  // Phase 99
+    "Migration",  // Phase 101
 ];
 
 /// Check if a name is a known stdlib module.
@@ -2354,6 +2405,32 @@ fn infer_item(
                                     env.insert(name.clone(), Scheme::mono(struct_ty));
                                     // Also register the struct in type_registry
                                     type_registry.register_struct(struct_def.clone());
+
+                                    // Re-register Schema metadata functions for cross-module access.
+                                    // When a struct has deriving(Schema), its __table__, __fields__, etc.
+                                    // are only in the defining module's env. Re-register them here so
+                                    // importing modules can call Organization.__table__() etc.
+                                    let has_schema = import_ctx.all_trait_impls.iter().any(|imp| {
+                                        imp.trait_name == "Schema" && imp.impl_type_name == name
+                                    });
+                                    if has_schema {
+                                        // __table__ :: () -> String
+                                        env.insert(format!("{}.__table__", name), Scheme::mono(Ty::fun(vec![], Ty::string())));
+                                        // __fields__ :: () -> List<String>
+                                        env.insert(format!("{}.__fields__", name), Scheme::mono(Ty::fun(vec![], Ty::list(Ty::string()))));
+                                        // __primary_key__ :: () -> String
+                                        env.insert(format!("{}.__primary_key__", name), Scheme::mono(Ty::fun(vec![], Ty::string())));
+                                        // __relationships__ :: () -> List<String>
+                                        env.insert(format!("{}.__relationships__", name), Scheme::mono(Ty::fun(vec![], Ty::list(Ty::string()))));
+                                        // __field_types__ :: () -> List<String>
+                                        env.insert(format!("{}.__field_types__", name), Scheme::mono(Ty::fun(vec![], Ty::list(Ty::string()))));
+                                        // __relationship_meta__ :: () -> List<String>
+                                        env.insert(format!("{}.__relationship_meta__", name), Scheme::mono(Ty::fun(vec![], Ty::list(Ty::string()))));
+                                        // Per-field column accessors: __{field}_col__ :: () -> String
+                                        for (field_name, _) in &struct_def.fields {
+                                            env.insert(format!("{}.__{}_col__", name, field_name), Scheme::mono(Ty::fun(vec![], Ty::string())));
+                                        }
+                                    }
                                 }
                                 // Check sum type names (importing sum type brings constructors)
                                 else if let Some(sum_def) = mod_exports.sum_type_defs.get(&name) {
@@ -2609,6 +2686,17 @@ fn register_struct_def(
             let col_fn_name = format!("{}.__{}_col__", name, field_name);
             env.insert(col_fn_name, Scheme::mono(Ty::fun(vec![], Ty::string())));
         }
+
+        // Register Schema trait impl so it's exported via collect_exports
+        // and available for cross-module import resolution.
+        let _ = trait_registry.register_impl(TraitImplDef {
+            trait_name: "Schema".to_string(),
+            trait_type_args: vec![],
+            impl_type: impl_ty.clone(),
+            impl_type_name: name.clone(),
+            methods: FxHashMap::default(),
+            associated_types: FxHashMap::default(),
+        });
     }
 
     // Debug impl
