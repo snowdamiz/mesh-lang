@@ -10,11 +10,11 @@ See: .planning/PROJECT.md (updated 2026-02-16)
 ## Current Position
 
 Phase: 96 of 102 (Compiler Additions)
-Plan: 4 of 5 in current phase
-Status: Executing
-Last activity: 2026-02-16 -- Completed 96-04 (deriving(Schema) and Relationship Declarations)
+Plan: 5 of 5 in current phase (PHASE COMPLETE)
+Status: Phase Complete
+Last activity: 2026-02-16 -- Completed 96-05 (Map.collect string keys + cross-module from_json/from_row)
 
-Progress: [██░░░░░░░░] 20% (4/20 plans)
+Progress: [███░░░░░░░] 25% (5/20 plans)
 
 ## Performance Metrics
 
@@ -44,6 +44,10 @@ Progress: [██░░░░░░░░] 20% (4/20 plans)
 - 96-04: Schema metadata functions use StructName.__method__() static syntax, same pattern as from_row/from_json.
 - 96-04: Default primary key is always "id"; Phase 97 adds schema options for override.
 - 96-04: Schema derive rejected on sum types with UnsupportedDerive error.
+- 96-05: Pipe chain AST backward walk for string key detection (HM generalization severs type vars through Ptr bottleneck).
+- 96-05: Separate mesh_map_collect_string_keys runtime function; codegen selects based on compile-time pipe chain analysis.
+- 96-05: Cross-module __json_decode__ wrappers pre-generated before lower_source_file; ToJson/FromRow registered in known_functions.
+- 96-05: collect_exports now exports deriving-generated trait impls (not just explicit ImplDef AST nodes).
 
 ### Roadmap Evolution
 
@@ -56,9 +60,9 @@ None.
 ### Blockers/Concerns
 
 Known limitations relevant to ORM development:
-- Map.collect integer key assumption -- COMP-07 fix scheduled for Phase 96
+- ~~Map.collect integer key assumption~~ -- FIXED in 96-05 (COMP-07: pipe chain AST analysis + string key collect variant)
 - ~~Single-line pipe chains only~~ -- FIXED in 96-02 (multi-line pipe continuation)
-- Cross-module from_row/from_json resolution edge cases -- COMP-08 fix scheduled for Phase 96
+- ~~Cross-module from_row/from_json resolution edge cases~~ -- FIXED in 96-05 (COMP-08: BUILTIN_PREFIXES + cross-module wrapper pre-generation)
 
 ### Quick Tasks Completed
 
@@ -72,6 +76,6 @@ Known limitations relevant to ORM development:
 ## Session Continuity
 
 Last session: 2026-02-16
-Stopped at: Completed 96-04-PLAN.md (deriving(Schema) and Relationship Declarations)
+Stopped at: Completed 96-05-PLAN.md (Map.collect string keys + cross-module from_json/from_row)
 Resume file: None
-Next action: Execute 96-05-PLAN.md
+Next action: Phase 96 complete. Plan Phase 97 (Schema Metadata).
