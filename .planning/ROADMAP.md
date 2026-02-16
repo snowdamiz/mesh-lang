@@ -173,7 +173,7 @@ See milestones/v9.0-ROADMAP.md for full phase details.
 **Milestone Goal:** Build a full ORM library in Mesh targeting PostgreSQL -- schema DSL, pipe-chain query builder, full relationships, changesets, migrations. Validated by rewriting Mesher's entire DB layer (627 lines raw SQL + 82 lines DDL) to use the ORM.
 
 - [x] **Phase 96: Compiler Additions** - Language primitives enabling ergonomic ORM syntax (shipped 2026-02-16)
-- [ ] **Phase 97: Schema Metadata + SQL Generation** - deriving(Schema) codegen and runtime SQL builder
+- [x] **Phase 97: Schema Metadata + SQL Generation** - deriving(Schema) codegen and runtime SQL builder (shipped 2026-02-16)
 - [ ] **Phase 98: Query Builder + Repo** - Pipe-composable queries and database operations
 - [ ] **Phase 99: Changesets** - Validation pipeline and type-safe casting before persistence
 - [ ] **Phase 100: Relationships + Preloading** - belongs_to/has_many/has_one with batch preloading
@@ -324,11 +324,11 @@ Note: Phase 100 and 101 both depend on earlier phases but are independent of eac
 | 81-86 | v8.0 | 11/11 | Complete | 2026-02-14 |
 | 87-95 | v9.0 | 38/38 | Complete | 2026-02-15 |
 | 96 | v10.0 | 5/5 | Complete | 2026-02-16 |
-| 97 | v10.0 | 0/2 | Not started | - |
+| 97 | v10.0 | 2/2 | Complete | 2026-02-16 |
 | 98 | v10.0 | 0/3 | Not started | - |
 | 99 | v10.0 | 0/2 | Not started | - |
 | 100 | v10.0 | 0/2 | Not started | - |
 | 101 | v10.0 | 0/3 | Not started | - |
 | 102 | v10.0 | 0/3 | Not started | - |
 
-**Total: 101 phases shipped across 18 milestones. 285 plans completed. v10.0: 1/7 phases complete, 5/20 plans done.**
+**Total: 102 phases shipped across 18 milestones. 287 plans completed. v10.0: 2/7 phases complete, 7/20 plans done.**

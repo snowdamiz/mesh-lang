@@ -5,22 +5,22 @@
 See: .planning/PROJECT.md (updated 2026-02-16)
 
 **Core value:** Expressive, readable concurrency -- writing concurrent programs should feel as natural and clean as writing sequential code, with the safety net of supervision and fault tolerance built into the language.
-**Current focus:** v10.0 ORM -- Phase 97 (Schema Metadata + SQL Generation)
+**Current focus:** v10.0 ORM -- Phase 98 (Query Builder + Repo)
 
 ## Current Position
 
-Phase: 97 of 102 (Schema Metadata + SQL Generation)
-Plan: 2 of 2 in current phase (COMPLETE)
-Status: Phase 97 Complete
-Last activity: 2026-02-16 -- Completed 97-02 (Runtime SQL Generation)
+Phase: 98 of 102 (Query Builder + Repo)
+Plan: 0 of 3 in current phase
+Status: Ready to plan
+Last activity: 2026-02-16 -- Phase 97 verified and complete (2/2 plans, 9/9 must-haves passed)
 
 Progress: [████░░░░░░] 35% (7/20 plans)
 
 ## Performance Metrics
 
 **All-time Totals:**
-- Plans completed: 285
-- Phases completed: 102
+- Plans completed: 287
+- Phases completed: 103
 - Milestones shipped: 19 (v1.0-v9.0)
 - Lines of Rust: ~98,800
 - Lines of website: ~5,500
@@ -84,6 +84,6 @@ Known limitations relevant to ORM development:
 ## Session Continuity
 
 Last session: 2026-02-16
-Stopped at: Completed 97-02-PLAN.md (Runtime SQL Generation) -- Phase 97 fully complete
+Stopped at: Phase 97 verified and complete. Ready for Phase 98.
 Resume file: None
-Next action: Execute Phase 98 (Query Builder)
+Next action: `/gsd:plan-phase 98` (Query Builder + Repo)
