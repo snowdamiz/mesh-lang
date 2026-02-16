@@ -9,12 +9,12 @@ See: .planning/PROJECT.md (updated 2026-02-16)
 
 ## Current Position
 
-Phase: 100 of 102 (Relationships + Preloading) -- COMPLETE
-Plan: 2 of 2 in current phase
-Status: Phase complete, verified PASSED
-Last activity: 2026-02-16 -- Phase 100 complete (Relationships + Preloading)
+Phase: 101 of 102 (Migration System) -- IN PROGRESS
+Plan: 1 of 3 in current phase (101-01 complete)
+Status: Executing wave 1 complete, wave 2 next
+Last activity: 2026-02-16 -- Plan 101-01 complete (Migration DDL runtime + compiler pipeline)
 
-Progress: [███████░░░] 70% (14/20 plans)
+Progress: [███████░░░] 75% (15/20 plans)
 
 ## Performance Metrics
 
@@ -81,6 +81,10 @@ Progress: [███████░░░] 70% (14/20 plans)
 - 100-01: Target table inferred by naive pluralization {target_lowercase}s, consistent with __table__() convention.
 - 100-02: Repo.preload uses separate WHERE fk IN (...) query per association level (not JOINs), matching Ecto's design.
 - 100-02: Nested preloading uses positional tracking (parent_idx, pos_in_list) for re-stitching enriched rows.
+- 101-01: Migration DDL builders follow exact same pattern as orm.rs: pure Rust helpers + extern C wrappers.
+- 101-01: Column definitions use colon-separated encoding (name:TYPE:CONSTRAINTS) for create_table and add_column.
+- 101-01: Index names auto-generated as idx_table_col1_col2 convention.
+- 101-01: All 8 Migration functions return Result<Int, String> matching Repo pattern.
 
 ### Roadmap Evolution
 
@@ -109,6 +113,6 @@ Known limitations relevant to ORM development:
 ## Session Continuity
 
 Last session: 2026-02-16
-Stopped at: Phase 100 complete (Relationships + Preloading) -- verified PASSED
+Stopped at: Phase 101 plan 01 complete, wave 2 executing
 Resume file: None
-Next action: `/gsd:plan-phase 101` (Migration System)
+Next action: Execute wave 2 (plans 101-02 + 101-03)
