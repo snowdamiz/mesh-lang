@@ -5582,6 +5582,35 @@ impl<'a> Lowerer<'a> {
             }
         }
 
+        // When the typeck produces an unresolved type variable for a call to a
+        // known function, the resolved MIR type is Unit (the fallback for
+        // Ty::Var). This happens when function parameters lack type annotations
+        // and the call is type-checked before the call site that provides the
+        // concrete type. Fall back to the known function's declared return type
+        // so that the codegen doesn't discard the return value (which causes
+        // SIGBUS on arm64 when the value is later used as a pointer).
+        if matches!(ty, MirType::Unit) {
+            if let MirExpr::Var(ref name, ref callee_ty) = callee {
+                if let MirType::FnPtr(_, ref ret_ty) = callee_ty {
+                    if !matches!(**ret_ty, MirType::Unit) {
+                        ty = *ret_ty.clone();
+                    }
+                }
+                // Also check known_functions for the definitive return type.
+                // This handles cases where the callee Var's type was also
+                // resolved from an unresolved typeck variable.
+                if matches!(ty, MirType::Unit) {
+                    if let Some(known_ty) = self.known_functions.get(name) {
+                        if let MirType::FnPtr(_, ref ret_ty) = known_ty {
+                            if !matches!(**ret_ty, MirType::Unit) {
+                                ty = *ret_ty.clone();
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         // Check if this is a variant constructor call (e.g., Circle(5.0)).
         if let MirExpr::Var(ref name, _) = callee {
             for (_, sum_info) in &self.registry.sum_type_defs {
