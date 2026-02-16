@@ -2469,7 +2469,7 @@ pub extern "C" fn mesh_node_connect(
 
 /// Return the current node's name as a Mesh string pointer.
 ///
-/// Returns null pointer if node is not started (mesh_node_start not called).
+/// Returns an empty string if node is not started (mesh_node_start not called).
 /// The returned string is GC-allocated via mesh_string_new.
 #[no_mangle]
 pub extern "C" fn mesh_node_self() -> *const u8 {
@@ -2480,7 +2480,11 @@ pub extern "C" fn mesh_node_self() -> *const u8 {
                 state.name.len() as u64,
             ) as *const u8
         }
-        None => std::ptr::null(),
+        None => {
+            // Return an empty string instead of null to prevent null pointer
+            // dereference when Mesh code compares the result (e.g., `Node.self() != ""`).
+            crate::string::mesh_string_new(b"".as_ptr(), 0) as *const u8
+        }
     }
 }
 
@@ -3453,17 +3457,17 @@ mod tests {
 
     #[test]
     fn test_mesh_node_self_returns_value_or_null() {
-        // mesh_node_self returns null when NODE_STATE is not initialized,
-        // or a valid string pointer when it IS initialized.
+        // mesh_node_self returns an empty string when NODE_STATE is not initialized,
+        // or the node name string when it IS initialized.
         // Since tests share a process and NODE_STATE is a OnceLock, another
         // test may have initialized it. We test both cases:
         let result = mesh_node_self();
+        // Should always return a valid (non-null) pointer, even when node not started.
+        assert!(!result.is_null(), "expected non-null pointer from mesh_node_self");
         if node_state().is_none() {
-            // Not initialized: should return null
-            assert!(result.is_null(), "expected null when node not started");
-        } else {
-            // Already initialized by another test: should return non-null
-            assert!(!result.is_null(), "expected non-null when node started");
+            // Not initialized: should return empty string
+            let s = unsafe { &*(result as *const crate::string::MeshString) };
+            assert_eq!(s.len, 0, "expected empty string when node not started");
         }
     }
 
