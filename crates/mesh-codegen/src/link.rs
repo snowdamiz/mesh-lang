@@ -75,7 +75,10 @@ pub fn link(
 /// Locate the Mesh runtime static library (`libmesh_rt.a`).
 ///
 /// Searches in the workspace target directory under both `debug` and `release`
-/// profiles. Prefers the debug build.
+/// profiles. Prefers the profile matching the compiler's own build: a release
+/// `meshc` links the release runtime, a debug `meshc` links the debug runtime.
+/// This prevents stale cross-profile linking (e.g., linking a debug runtime
+/// with outdated stack sizes when the release runtime has been updated).
 fn find_mesh_rt() -> Result<PathBuf, String> {
     // Walk up from the current executable's directory to find the workspace root,
     // or use the CARGO_MANIFEST_DIR-based heuristic.
@@ -84,8 +87,15 @@ fn find_mesh_rt() -> Result<PathBuf, String> {
         find_workspace_target_dir(),
     ];
 
+    // Prefer the runtime that matches meshc's own build profile.
+    let profiles: &[&str] = if cfg!(debug_assertions) {
+        &["debug", "release"]
+    } else {
+        &["release", "debug"]
+    };
+
     for candidate in candidates.iter().flatten() {
-        for profile in &["debug", "release"] {
+        for profile in profiles {
             let path = candidate.join(profile).join("libmesh_rt.a");
             if path.exists() {
                 return Ok(path);

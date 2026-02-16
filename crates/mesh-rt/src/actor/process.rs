@@ -219,11 +219,13 @@ pub type TerminateCallback = extern "C" fn(state_ptr: *const u8, reason_ptr: *co
 /// Matches BEAM's approach of preemptive reduction counting.
 pub const DEFAULT_REDUCTIONS: u32 = 4000;
 
-/// Default coroutine stack size: 64 KiB.
+/// Default coroutine stack size: 512 KiB.
 ///
-/// Virtual memory lazy-commits pages, so 100K actors each with 64 KiB
-/// virtual stacks is feasible on modern systems.
-pub const DEFAULT_STACK_SIZE: usize = 64 * 1024;
+/// Virtual memory lazy-commits pages, so actors with 512 KiB virtual
+/// stacks remain feasible on modern systems. The larger size accommodates
+/// deep call chains in compiled Mesh handlers (service calls, DB queries,
+/// JSON construction) that overflow 64 KiB stacks under concurrent load.
+pub const DEFAULT_STACK_SIZE: usize = 512 * 1024;
 
 // ---------------------------------------------------------------------------
 // Process (the PCB)
