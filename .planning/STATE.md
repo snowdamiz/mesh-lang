@@ -10,11 +10,11 @@ See: .planning/PROJECT.md (updated 2026-02-16)
 ## Current Position
 
 Phase: 101 of 102 (Migration System) -- IN PROGRESS
-Plan: 1 of 3 in current phase (101-01 complete)
-Status: Executing wave 1 complete, wave 2 next
-Last activity: 2026-02-16 -- Plan 101-01 complete (Migration DDL runtime + compiler pipeline)
+Plan: 3 of 3 in current phase (101-03 complete, 101-02 in parallel)
+Status: Wave 2 executing -- 101-03 scaffold generation complete
+Last activity: 2026-02-16 -- Plan 101-03 complete (Migration scaffold generation + e2e tests)
 
-Progress: [███████░░░] 75% (15/20 plans)
+Progress: [████████░░] 80% (16/20 plans)
 
 ## Performance Metrics
 
@@ -85,6 +85,9 @@ Progress: [███████░░░] 75% (15/20 plans)
 - 101-01: Column definitions use colon-separated encoding (name:TYPE:CONSTRAINTS) for create_table and add_column.
 - 101-01: Index names auto-generated as idx_table_col1_col2 convention.
 - 101-01: All 8 Migration functions return Result<Int, String> matching Repo pattern.
+- 101-03: Howard Hinnant civil_from_days algorithm for chrono-free UTC timestamp formatting (no external deps).
+- 101-03: Migration name validation: lowercase ASCII + digits + underscores only.
+- 101-03: Scaffold template includes documented Migration DSL examples as comments in up/down stubs.
 
 ### Roadmap Evolution
 
@@ -113,6 +116,6 @@ Known limitations relevant to ORM development:
 ## Session Continuity
 
 Last session: 2026-02-16
-Stopped at: Phase 101 plan 01 complete, wave 2 executing
+Stopped at: Phase 101 plan 03 complete, plan 02 executing in parallel
 Resume file: None
-Next action: Execute wave 2 (plans 101-02 + 101-03)
+Next action: Complete plan 101-02 (migration runner), then phase 102
