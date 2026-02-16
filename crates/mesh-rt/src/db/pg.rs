@@ -541,10 +541,33 @@ fn scram_client_final(
 
 // ── Error Response Parsing ─────────────────────────────────────────────
 
-/// Extract the human-readable message from an ErrorResponse body.
-/// Format: sequence of (Byte1 field_type, String value) pairs, terminated by Byte1(0).
-/// Field 'M' = human-readable message.
-fn parse_error_response(body: &[u8]) -> String {
+/// Structured PostgreSQL error extracted from an ErrorResponse message.
+///
+/// Contains SQLSTATE code, human-readable message, and optional constraint/table/column info
+/// for mapping database constraint violations to user-friendly changeset errors.
+pub(crate) struct PgError {
+    pub sqlstate: String,           // 'C' field (e.g., "23505")
+    pub message: String,            // 'M' field
+    #[allow(dead_code)]
+    pub detail: Option<String>,     // 'D' field
+    pub constraint: Option<String>, // 'n' field
+    pub table: Option<String>,      // 't' field
+    pub column: Option<String>,     // 'c' field
+}
+
+/// Parse all tagged fields from an ErrorResponse body.
+///
+/// The body format is: `[field_type_byte][null_terminated_string]...[0]`
+/// This is the same format the existing `parse_error_response()` uses but extracts
+/// additional fields beyond just the message ('M').
+pub(crate) fn parse_error_response_full(body: &[u8]) -> PgError {
+    let mut sqlstate = String::new();
+    let mut message = String::new();
+    let mut detail: Option<String> = None;
+    let mut constraint: Option<String> = None;
+    let mut table: Option<String> = None;
+    let mut column: Option<String> = None;
+
     let mut i = 0;
     while i < body.len() {
         let field_type = body[i];
@@ -557,12 +580,45 @@ fn parse_error_response(body: &[u8]) -> String {
         while i < body.len() && body[i] != 0 {
             i += 1;
         }
-        if field_type == b'M' {
-            return String::from_utf8_lossy(&body[start..i]).into_owned();
+        let value = String::from_utf8_lossy(&body[start..i]).into_owned();
+        match field_type {
+            b'C' => sqlstate = value,
+            b'M' => message = value,
+            b'D' => detail = Some(value),
+            b'n' => constraint = Some(value),
+            b't' => table = Some(value),
+            b'c' => column = Some(value),
+            _ => {} // skip other fields (S, V, P, q, W, etc.)
         }
         i += 1; // skip null terminator
     }
-    "unknown PostgreSQL error".to_string()
+
+    if message.is_empty() {
+        message = "unknown PostgreSQL error".to_string();
+    }
+
+    PgError { sqlstate, message, detail, constraint, table, column }
+}
+
+/// Extract the human-readable message from an ErrorResponse body.
+/// Format: sequence of (Byte1 field_type, String value) pairs, terminated by Byte1(0).
+/// Field 'M' = human-readable message.
+fn parse_error_response(body: &[u8]) -> String {
+    parse_error_response_full(body).message
+}
+
+/// Format a PgError into a tab-separated structured error string.
+///
+/// Format: `{sqlstate}\t{constraint}\t{table}\t{column}\t{message}`
+///
+/// This structured string is used by Repo changeset functions to extract
+/// SQLSTATE and constraint info for mapping to changeset errors.
+fn format_pg_error_string(pg_err: &PgError) -> String {
+    let constraint_str = pg_err.constraint.as_deref().unwrap_or("");
+    let table_str = pg_err.table.as_deref().unwrap_or("");
+    let column_str = pg_err.column.as_deref().unwrap_or("");
+    format!("{}\t{}\t{}\t{}\t{}",
+        pg_err.sqlstate, constraint_str, table_str, column_str, pg_err.message)
 }
 
 // ── MeshString / MeshResult Helpers ────────────────────────────────────
@@ -932,8 +988,9 @@ pub extern "C" fn mesh_pg_execute(
                     rows_affected = parse_command_tag(tag_str);
                 }
                 b'E' => {
-                    // ErrorResponse
-                    error_msg = Some(parse_error_response(&body));
+                    // ErrorResponse -- use structured format for constraint mapping
+                    let pg_err = parse_error_response_full(&body);
+                    error_msg = Some(format_pg_error_string(&pg_err));
                 }
                 b'Z' => {
                     conn.txn_status = if !body.is_empty() { body[0] } else { b'I' };
@@ -1066,8 +1123,9 @@ pub extern "C" fn mesh_pg_query(
                 }
                 b'C' => {} // CommandComplete -- skip for query
                 b'E' => {
-                    // ErrorResponse
-                    error_msg = Some(parse_error_response(&body));
+                    // ErrorResponse -- use structured format for constraint mapping
+                    let pg_err = parse_error_response_full(&body);
+                    error_msg = Some(format_pg_error_string(&pg_err));
                 }
                 b'Z' => {
                     conn.txn_status = if !body.is_empty() { body[0] } else { b'I' };

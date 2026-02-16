@@ -525,3 +525,102 @@ pub extern "C" fn mesh_changeset_get_error(cs: *mut u8, field: *mut u8) -> *mut 
         }
     }
 }
+
+// ── Constraint-to-changeset error mapping ───────────────────────────
+
+/// Map a PostgreSQL SQLSTATE code and constraint name to a (field, message) pair.
+///
+/// Handles:
+/// - `23505` (unique_violation): "has already been taken"
+/// - `23503` (foreign_key_violation): "does not exist"
+/// - `23502` (not_null_violation): "can't be blank"
+///
+/// Returns `None` for unknown SQLSTATE codes.
+pub(crate) fn map_constraint_error(
+    sqlstate: &str,
+    constraint: &str,
+    table: &str,
+    column: &str,
+) -> Option<(String, String)> {
+    match sqlstate {
+        "23505" => {
+            // unique_violation
+            let field = extract_field_from_constraint(constraint, table)
+                .unwrap_or_else(|| "_base".to_string());
+            Some((field, "has already been taken".to_string()))
+        }
+        "23503" => {
+            // foreign_key_violation
+            let field = extract_field_from_constraint(constraint, table)
+                .unwrap_or_else(|| "_base".to_string());
+            Some((field, "does not exist".to_string()))
+        }
+        "23502" => {
+            // not_null_violation
+            if !column.is_empty() {
+                Some((column.to_string(), "can't be blank".to_string()))
+            } else {
+                Some(("_base".to_string(), "can't be blank".to_string()))
+            }
+        }
+        _ => None,
+    }
+}
+
+/// Extract a field name from a PostgreSQL constraint name using naming conventions.
+///
+/// PostgreSQL constraint names follow these conventions:
+/// - `{table}_{column}_key` for unique constraints (e.g., "users_email_key" -> "email")
+/// - `{table}_{column}_fkey` for foreign keys (e.g., "posts_user_id_fkey" -> "user_id")
+/// - `{table}_pkey` for primary key (e.g., "users_pkey" -> None)
+/// - `{table}_{column}_check` for check constraints
+///
+/// Returns the extracted field name, or None if the constraint name doesn't match.
+pub(crate) fn extract_field_from_constraint(constraint_name: &str, table_name: &str) -> Option<String> {
+    // Strip the {table}_ prefix
+    let prefix = format!("{}_", table_name);
+    let remainder = constraint_name.strip_prefix(&prefix)?;
+
+    // Try each known suffix
+    for suffix in &["_key", "_fkey", "_pkey", "_check"] {
+        if let Some(field) = remainder.strip_suffix(suffix) {
+            if field.is_empty() {
+                return None; // e.g., "users_pkey" -> empty field
+            }
+            return Some(field.to_string());
+        }
+    }
+
+    // No known suffix matched -- return None
+    None
+}
+
+/// Add a constraint error to a changeset, returning a new changeset with the error added.
+///
+/// Clones the changeset, adds the error if no error exists for that field yet,
+/// updates SLOT_VALID, and returns the new changeset pointer.
+///
+/// # Safety
+///
+/// The `cs` pointer must be a valid changeset allocation.
+pub(crate) unsafe fn add_constraint_error_to_changeset(
+    cs: *mut u8,
+    field: &str,
+    message: &str,
+) -> *mut u8 {
+    let new_cs = clone_changeset(cs);
+    let mut errors = cs_get(new_cs, SLOT_ERRORS);
+
+    let key_mesh = rust_str_to_mesh(field);
+    let key_u64 = key_mesh as u64;
+
+    // Only add if no error exists for this field yet
+    if mesh_map_has_key(errors, key_u64) == 0 {
+        let msg_mesh = rust_str_to_mesh(message);
+        errors = mesh_map_put(errors, key_u64, msg_mesh as u64);
+    }
+
+    cs_set(new_cs, SLOT_ERRORS, errors);
+    cs_set_int(new_cs, SLOT_VALID, if mesh_map_size(errors) > 0 { 0 } else { 1 });
+    new_cs
+}
