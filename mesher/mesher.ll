@@ -1,5 +1,6 @@
 ; ModuleID = 'mesh_module'
 source_filename = "mesh_module"
+target datalayout = "e-m:o-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-n32:64-S128-Fn32"
 target triple = "arm64-apple-darwin25.2.0"
 
 %RateLimitState = type { ptr, i64, i64 }
@@ -2067,10 +2068,10 @@ entry:
 then:                                             ; preds = %entry
   %str2 = call ptr @mesh_string_new(ptr @.str.1, i64 15)
   %str3 = call ptr @mesh_string_new(ptr @.str.2, i64 15)
-  %str_len = load i64, ptr %str3, align 4
+  %str_len = load i64, ptr %str3, align 8
   %str_data = getelementptr i8, ptr %str3, i64 8
   %node_call = call i64 @mesh_global_whereis(ptr %str_data, i64 %str_len)
-  store i64 %node_call, ptr %if_result, align 4
+  store i64 %node_call, ptr %if_result, align 8
   br label %if_merge
 
 else:                                             ; preds = %entry
@@ -2081,7 +2082,7 @@ else:                                             ; preds = %entry
   br label %if_merge
 
 if_merge:                                         ; preds = %else, %then
-  %if_val = load i64, ptr %if_result, align 4
+  %if_val = load i64, ptr %if_result, align 8
   ret i64 %if_val
 }
 
@@ -2209,13 +2210,13 @@ entry:
   %project_id2 = load ptr, ptr %project_id, align 8
   %ptr_to_i64 = ptrtoint ptr %project_id2 to i64
   %call3 = call i64 @mesh_map_get(ptr %call, i64 %ptr_to_i64)
-  store i64 %call3, ptr %count, align 4
-  %count4 = load i64, ptr %count, align 4
+  store i64 %call3, ptr %count, align 8
+  %count4 = load i64, ptr %count, align 8
   %state5 = load %RateLimitState, ptr %state, align 8
   %obj_tmp6 = alloca %RateLimitState, align 8
   store %RateLimitState %state5, ptr %obj_tmp6, align 8
   %field_ptr7 = getelementptr inbounds nuw %RateLimitState, ptr %obj_tmp6, i32 0, i32 2
-  %field_val8 = load i64, ptr %field_ptr7, align 4
+  %field_val8 = load i64, ptr %field_ptr7, align 8
   %ge = icmp sge i64 %count4, %field_val8
   %if_result = alloca { %RateLimitState, i1 }, align 8
   br i1 %ge, label %then, label %else
@@ -2223,18 +2224,18 @@ entry:
 then:                                             ; preds = %entry
   %state9 = load %RateLimitState, ptr %state, align 8
   %tuple_ptr = call ptr @mesh_gc_alloc_actor(i64 24, i64 8)
-  store i64 2, ptr %tuple_ptr, align 4
+  store i64 2, ptr %tuple_ptr, align 8
   %tuple_base = ptrtoint ptr %tuple_ptr to i64
   %elem_addr = add i64 %tuple_base, 8
   %elem_ptr = inttoptr i64 %elem_addr to ptr
-  %struct_tmp = alloca %RateLimitState, align 8
-  store %RateLimitState %state9, ptr %struct_tmp, align 8
-  %struct_to_i64 = load i64, ptr %struct_tmp, align 4
-  store i64 %struct_to_i64, ptr %elem_ptr, align 4
+  %struct_heap = call ptr @mesh_gc_alloc_actor(i64 ptrtoint (ptr getelementptr (%RateLimitState, ptr null, i32 1) to i64), i64 8)
+  store %RateLimitState %state9, ptr %struct_heap, align 8
+  %struct_ptr_to_i64 = ptrtoint ptr %struct_heap to i64
+  store i64 %struct_ptr_to_i64, ptr %elem_ptr, align 8
   %tuple_base10 = ptrtoint ptr %tuple_ptr to i64
   %elem_addr11 = add i64 %tuple_base10, 16
   %elem_ptr12 = inttoptr i64 %elem_addr11 to ptr
-  store i64 0, ptr %elem_ptr12, align 4
+  store i64 0, ptr %elem_ptr12, align 8
   store ptr %tuple_ptr, ptr %if_result, align 8
   br label %if_merge
 
@@ -2247,7 +2248,7 @@ else:                                             ; preds = %entry
   %field_val16 = load ptr, ptr %field_ptr15, align 8
   %call17 = call ptr @mesh_map_tag_string(ptr %field_val16)
   %project_id18 = load ptr, ptr %project_id, align 8
-  %count19 = load i64, ptr %count, align 4
+  %count19 = load i64, ptr %count, align 8
   %add = add i64 %count19, 1
   %ptr_to_i6420 = ptrtoint ptr %project_id18 to i64
   %call21 = call ptr @mesh_map_put(ptr %call17, i64 %ptr_to_i6420, i64 %add)
@@ -2261,32 +2262,32 @@ else:                                             ; preds = %entry
   %obj_tmp25 = alloca %RateLimitState, align 8
   store %RateLimitState %state24, ptr %obj_tmp25, align 8
   %field_ptr26 = getelementptr inbounds nuw %RateLimitState, ptr %obj_tmp25, i32 0, i32 1
-  %field_val27 = load i64, ptr %field_ptr26, align 4
+  %field_val27 = load i64, ptr %field_ptr26, align 8
   %field_ptr28 = getelementptr inbounds nuw %RateLimitState, ptr %struct_lit, i32 0, i32 1
-  store i64 %field_val27, ptr %field_ptr28, align 4
+  store i64 %field_val27, ptr %field_ptr28, align 8
   %state29 = load %RateLimitState, ptr %state, align 8
   %obj_tmp30 = alloca %RateLimitState, align 8
   store %RateLimitState %state29, ptr %obj_tmp30, align 8
   %field_ptr31 = getelementptr inbounds nuw %RateLimitState, ptr %obj_tmp30, i32 0, i32 2
-  %field_val32 = load i64, ptr %field_ptr31, align 4
+  %field_val32 = load i64, ptr %field_ptr31, align 8
   %field_ptr33 = getelementptr inbounds nuw %RateLimitState, ptr %struct_lit, i32 0, i32 2
-  store i64 %field_val32, ptr %field_ptr33, align 4
+  store i64 %field_val32, ptr %field_ptr33, align 8
   %struct_val = load %RateLimitState, ptr %struct_lit, align 8
   store %RateLimitState %struct_val, ptr %new_state, align 8
   %new_state34 = load %RateLimitState, ptr %new_state, align 8
   %tuple_ptr35 = call ptr @mesh_gc_alloc_actor(i64 24, i64 8)
-  store i64 2, ptr %tuple_ptr35, align 4
+  store i64 2, ptr %tuple_ptr35, align 8
   %tuple_base36 = ptrtoint ptr %tuple_ptr35 to i64
   %elem_addr37 = add i64 %tuple_base36, 8
   %elem_ptr38 = inttoptr i64 %elem_addr37 to ptr
-  %struct_tmp39 = alloca %RateLimitState, align 8
-  store %RateLimitState %new_state34, ptr %struct_tmp39, align 8
-  %struct_to_i6440 = load i64, ptr %struct_tmp39, align 4
-  store i64 %struct_to_i6440, ptr %elem_ptr38, align 4
+  %struct_heap39 = call ptr @mesh_gc_alloc_actor(i64 ptrtoint (ptr getelementptr (%RateLimitState, ptr null, i32 1) to i64), i64 8)
+  store %RateLimitState %new_state34, ptr %struct_heap39, align 8
+  %struct_ptr_to_i6440 = ptrtoint ptr %struct_heap39 to i64
+  store i64 %struct_ptr_to_i6440, ptr %elem_ptr38, align 8
   %tuple_base41 = ptrtoint ptr %tuple_ptr35 to i64
   %elem_addr42 = add i64 %tuple_base41, 16
   %elem_ptr43 = inttoptr i64 %elem_addr42 to ptr
-  store i64 1, ptr %elem_ptr43, align 4
+  store i64 1, ptr %elem_ptr43, align 8
   store ptr %tuple_ptr35, ptr %if_result, align 8
   br label %if_merge
 
@@ -2307,16 +2308,16 @@ entry:
   %obj_tmp = alloca %RateLimitState, align 8
   store %RateLimitState %state1, ptr %obj_tmp, align 8
   %field_ptr2 = getelementptr inbounds nuw %RateLimitState, ptr %obj_tmp, i32 0, i32 1
-  %field_val = load i64, ptr %field_ptr2, align 4
+  %field_val = load i64, ptr %field_ptr2, align 8
   %field_ptr3 = getelementptr inbounds nuw %RateLimitState, ptr %struct_lit, i32 0, i32 1
-  store i64 %field_val, ptr %field_ptr3, align 4
+  store i64 %field_val, ptr %field_ptr3, align 8
   %state4 = load %RateLimitState, ptr %state, align 8
   %obj_tmp5 = alloca %RateLimitState, align 8
   store %RateLimitState %state4, ptr %obj_tmp5, align 8
   %field_ptr6 = getelementptr inbounds nuw %RateLimitState, ptr %obj_tmp5, i32 0, i32 2
-  %field_val7 = load i64, ptr %field_ptr6, align 4
+  %field_val7 = load i64, ptr %field_ptr6, align 8
   %field_ptr8 = getelementptr inbounds nuw %RateLimitState, ptr %struct_lit, i32 0, i32 2
-  store i64 %field_val7, ptr %field_ptr8, align 4
+  store i64 %field_val7, ptr %field_ptr8, align 8
   %struct_val = load %RateLimitState, ptr %struct_lit, align 8
   ret %RateLimitState %struct_val
 }
@@ -2324,19 +2325,19 @@ entry:
 define %RateLimitState @__service_ratelimiter_init(i64 %0, i64 %1) {
 entry:
   %window_seconds = alloca i64, align 8
-  store i64 %0, ptr %window_seconds, align 4
+  store i64 %0, ptr %window_seconds, align 8
   %max_events = alloca i64, align 8
-  store i64 %1, ptr %max_events, align 4
+  store i64 %1, ptr %max_events, align 8
   %struct_lit = alloca %RateLimitState, align 8
   %call = call ptr @mesh_map_new()
   %field_ptr = getelementptr inbounds nuw %RateLimitState, ptr %struct_lit, i32 0, i32 0
   store ptr %call, ptr %field_ptr, align 8
-  %window_seconds1 = load i64, ptr %window_seconds, align 4
+  %window_seconds1 = load i64, ptr %window_seconds, align 8
   %field_ptr2 = getelementptr inbounds nuw %RateLimitState, ptr %struct_lit, i32 0, i32 1
-  store i64 %window_seconds1, ptr %field_ptr2, align 4
-  %max_events3 = load i64, ptr %max_events, align 4
+  store i64 %window_seconds1, ptr %field_ptr2, align 8
+  %max_events3 = load i64, ptr %max_events, align 8
   %field_ptr4 = getelementptr inbounds nuw %RateLimitState, ptr %struct_lit, i32 0, i32 2
-  store i64 %max_events3, ptr %field_ptr4, align 4
+  store i64 %max_events3, ptr %field_ptr4, align 8
   %struct_val = load %RateLimitState, ptr %struct_lit, align 8
   ret %RateLimitState %struct_val
 }
@@ -2369,32 +2370,32 @@ entry:
 define i64 @__service_ratelimiter_call_check_limit(i64 %0, ptr %1) {
 entry:
   %__pid = alloca i64, align 8
-  store i64 %0, ptr %__pid, align 4
+  store i64 %0, ptr %__pid, align 8
   %project_id = alloca ptr, align 8
   store ptr %1, ptr %project_id, align 8
-  %__pid1 = load i64, ptr %__pid, align 4
+  %__pid1 = load i64, ptr %__pid, align 8
   %project_id2 = load ptr, ptr %project_id, align 8
-  %__pid3 = load i64, ptr %__pid, align 4
+  %__pid3 = load i64, ptr %__pid, align 8
   %project_id4 = load ptr, ptr %project_id, align 8
   %ptr_to_i64 = ptrtoint ptr %project_id4 to i64
   %call_payload = alloca [1 x i64], align 8
   %payload_elem = getelementptr [1 x i64], ptr %call_payload, i32 0, i32 0
-  store i64 %ptr_to_i64, ptr %payload_elem, align 4
+  store i64 %ptr_to_i64, ptr %payload_elem, align 8
   %call_result = call ptr @mesh_service_call(i64 %__pid3, i64 0, ptr %call_payload, i64 8)
   %reply_data = getelementptr i8, ptr %call_result, i64 16
-  %reply_val = load i64, ptr %reply_data, align 4
+  %reply_val = load i64, ptr %reply_data, align 8
   ret i64 %reply_val
 }
 
 define i64 @__service_ratelimiter_start(i64 %0, i64 %1) {
 entry:
   %window_seconds = alloca i64, align 8
-  store i64 %0, ptr %window_seconds, align 4
+  store i64 %0, ptr %window_seconds, align 8
   %max_events = alloca i64, align 8
-  store i64 %1, ptr %max_events, align 4
+  store i64 %1, ptr %max_events, align 8
   %__init_state = alloca %RateLimitState, align 8
-  %window_seconds1 = load i64, ptr %window_seconds, align 4
-  %max_events2 = load i64, ptr %max_events, align 4
+  %window_seconds1 = load i64, ptr %window_seconds, align 8
+  %max_events2 = load i64, ptr %max_events, align 8
   %call = call %RateLimitState @__service_ratelimiter_init(i64 %window_seconds1, i64 %max_events2)
   call void @mesh_reduction_check()
   store %RateLimitState %call, ptr %__init_state, align 8
@@ -2426,9 +2427,9 @@ exit_loop:                                        ; preds = %loop
 
 continue_loop:                                    ; preds = %loop
   %data_ptr = getelementptr i8, ptr %msg_ptr, i64 16
-  %type_tag = load i64, ptr %data_ptr, align 4
+  %type_tag = load i64, ptr %data_ptr, align 8
   %caller_ptr = getelementptr i8, ptr %data_ptr, i64 8
-  %caller_pid = load i64, ptr %caller_ptr, align 4
+  %caller_pid = load i64, ptr %caller_ptr, align 8
   switch i64 %type_tag, label %default [
     i64 0, label %handler_0
     i64 1, label %handler_1
@@ -2444,7 +2445,7 @@ handler_0:                                        ; preds = %continue_loop
   %new_state = call i64 @mesh_tuple_first(ptr %handler_result)
   %reply = call i64 @mesh_tuple_second(ptr %handler_result)
   %reply_buf = alloca i64, align 8
-  store i64 %reply, ptr %reply_buf, align 4
+  store i64 %reply, ptr %reply_buf, align 8
   call void @mesh_service_reply(i64 %caller_pid, ptr %reply_buf, i64 8)
   %new_state_struct_ptr = inttoptr i64 %new_state to ptr
   %new_state_struct = load %RateLimitState, ptr %new_state_struct_ptr, align 8
@@ -2462,7 +2463,7 @@ entry:
   %state = alloca %StreamState, align 8
   store %StreamState %0, ptr %state, align 8
   %conn = alloca i64, align 8
-  store i64 %1, ptr %conn, align 4
+  store i64 %1, ptr %conn, align 8
   %project_id = alloca ptr, align 8
   store ptr %2, ptr %project_id, align 8
   %level_filter = alloca ptr, align 8
@@ -2484,9 +2485,9 @@ entry:
   %field_ptr6 = getelementptr inbounds nuw %ConnectionState, ptr %struct_lit, i32 0, i32 3
   store ptr %call, ptr %field_ptr6, align 8
   %field_ptr7 = getelementptr inbounds nuw %ConnectionState, ptr %struct_lit, i32 0, i32 4
-  store i64 0, ptr %field_ptr7, align 4
+  store i64 0, ptr %field_ptr7, align 8
   %field_ptr8 = getelementptr inbounds nuw %ConnectionState, ptr %struct_lit, i32 0, i32 5
-  store i64 100, ptr %field_ptr8, align 4
+  store i64 100, ptr %field_ptr8, align 8
   %struct_val = load %ConnectionState, ptr %struct_lit, align 8
   store %ConnectionState %struct_val, ptr %cs, align 8
   %new_conns = alloca ptr, align 8
@@ -2495,7 +2496,7 @@ entry:
   store %StreamState %state9, ptr %obj_tmp, align 8
   %field_ptr10 = getelementptr inbounds nuw %StreamState, ptr %obj_tmp, i32 0, i32 0
   %field_val = load ptr, ptr %field_ptr10, align 8
-  %conn11 = load i64, ptr %conn, align 4
+  %conn11 = load i64, ptr %conn, align 8
   %cs12 = load %ConnectionState, ptr %cs, align 8
   %struct_heap = call ptr @mesh_gc_alloc_actor(i64 ptrtoint (ptr getelementptr (%ConnectionState, ptr null, i32 1) to i64), i64 8)
   store %ConnectionState %cs12, ptr %struct_heap, align 8
@@ -2515,14 +2516,14 @@ entry:
   %state = alloca %StreamState, align 8
   store %StreamState %0, ptr %state, align 8
   %conn = alloca i64, align 8
-  store i64 %1, ptr %conn, align 4
+  store i64 %1, ptr %conn, align 8
   %new_conns = alloca ptr, align 8
   %state1 = load %StreamState, ptr %state, align 8
   %obj_tmp = alloca %StreamState, align 8
   store %StreamState %state1, ptr %obj_tmp, align 8
   %field_ptr = getelementptr inbounds nuw %StreamState, ptr %obj_tmp, i32 0, i32 0
   %field_val = load ptr, ptr %field_ptr, align 8
-  %conn2 = load i64, ptr %conn, align 4
+  %conn2 = load i64, ptr %conn, align 8
   %call = call ptr @mesh_map_delete(ptr %field_val, i64 %conn2)
   store ptr %call, ptr %new_conns, align 8
   %struct_lit = alloca %StreamState, align 8
@@ -2538,13 +2539,13 @@ entry:
   %state = alloca %StreamState, align 8
   store %StreamState %0, ptr %state, align 8
   %conn = alloca i64, align 8
-  store i64 %1, ptr %conn, align 4
+  store i64 %1, ptr %conn, align 8
   %state1 = load %StreamState, ptr %state, align 8
   %obj_tmp = alloca %StreamState, align 8
   store %StreamState %state1, ptr %obj_tmp, align 8
   %field_ptr = getelementptr inbounds nuw %StreamState, ptr %obj_tmp, i32 0, i32 0
   %field_val = load ptr, ptr %field_ptr, align 8
-  %conn2 = load i64, ptr %conn, align 4
+  %conn2 = load i64, ptr %conn, align 8
   %call = call i8 @mesh_map_has_key(ptr %field_val, i64 %conn2)
   %to_bool = trunc i8 %call to i1
   ret i1 %to_bool
@@ -2555,14 +2556,14 @@ entry:
   %state = alloca %StreamState, align 8
   store %StreamState %0, ptr %state, align 8
   %conn = alloca i64, align 8
-  store i64 %1, ptr %conn, align 4
+  store i64 %1, ptr %conn, align 8
   %has = alloca i1, align 1
   %state1 = load %StreamState, ptr %state, align 8
   %obj_tmp = alloca %StreamState, align 8
   store %StreamState %state1, ptr %obj_tmp, align 8
   %field_ptr = getelementptr inbounds nuw %StreamState, ptr %obj_tmp, i32 0, i32 0
   %field_val = load ptr, ptr %field_ptr, align 8
-  %conn2 = load i64, ptr %conn, align 4
+  %conn2 = load i64, ptr %conn, align 8
   %call = call i8 @mesh_map_has_key(ptr %field_val, i64 %conn2)
   %to_bool = trunc i8 %call to i1
   store i1 %to_bool, ptr %has, align 1
@@ -2577,7 +2578,7 @@ then:                                             ; preds = %entry
   store %StreamState %state4, ptr %obj_tmp5, align 8
   %field_ptr6 = getelementptr inbounds nuw %StreamState, ptr %obj_tmp5, i32 0, i32 0
   %field_val7 = load ptr, ptr %field_ptr6, align 8
-  %conn8 = load i64, ptr %conn, align 4
+  %conn8 = load i64, ptr %conn, align 8
   %call9 = call i64 @mesh_map_get(ptr %field_val7, i64 %conn8)
   %i64_to_ptr = inttoptr i64 %call9 to ptr
   %deref_sum = load %ConnectionState, ptr %i64_to_ptr, align 8
@@ -2629,7 +2630,7 @@ entry:
   %state = alloca %StreamState, align 8
   store %StreamState %0, ptr %state, align 8
   %conn = alloca i64, align 8
-  store i64 %1, ptr %conn, align 4
+  store i64 %1, ptr %conn, align 8
   %level = alloca ptr, align 8
   store ptr %2, ptr %level, align 8
   %environment = alloca ptr, align 8
@@ -2640,7 +2641,7 @@ entry:
   store %StreamState %state1, ptr %obj_tmp, align 8
   %field_ptr = getelementptr inbounds nuw %StreamState, ptr %obj_tmp, i32 0, i32 0
   %field_val = load ptr, ptr %field_ptr, align 8
-  %conn2 = load i64, ptr %conn, align 4
+  %conn2 = load i64, ptr %conn, align 8
   %call = call i8 @mesh_map_has_key(ptr %field_val, i64 %conn2)
   %to_bool = trunc i8 %call to i1
   store i1 %to_bool, ptr %has, align 1
@@ -2655,7 +2656,7 @@ then:                                             ; preds = %entry
   store %StreamState %state4, ptr %obj_tmp5, align 8
   %field_ptr6 = getelementptr inbounds nuw %StreamState, ptr %obj_tmp5, i32 0, i32 0
   %field_val7 = load ptr, ptr %field_ptr6, align 8
-  %conn8 = load i64, ptr %conn, align 4
+  %conn8 = load i64, ptr %conn, align 8
   %call9 = call i64 @mesh_map_get(ptr %field_val7, i64 %conn8)
   %i64_to_ptr = inttoptr i64 %call9 to ptr
   %deref_sum = load %ConnectionState, ptr %i64_to_ptr, align 8
@@ -2743,7 +2744,7 @@ entry:
   %state = alloca %StreamState, align 8
   store %StreamState %0, ptr %state, align 8
   %conn = alloca i64, align 8
-  store i64 %1, ptr %conn, align 4
+  store i64 %1, ptr %conn, align 8
   %msg = alloca ptr, align 8
   store ptr %2, ptr %msg, align 8
   %cs = alloca %ConnectionState, align 8
@@ -2752,7 +2753,7 @@ entry:
   store %StreamState %state1, ptr %obj_tmp, align 8
   %field_ptr = getelementptr inbounds nuw %StreamState, ptr %obj_tmp, i32 0, i32 0
   %field_val = load ptr, ptr %field_ptr, align 8
-  %conn2 = load i64, ptr %conn, align 4
+  %conn2 = load i64, ptr %conn, align 8
   %call = call i64 @mesh_map_get(ptr %field_val, i64 %conn2)
   %i64_to_ptr = inttoptr i64 %call to ptr
   %deref_sum = load %ConnectionState, ptr %i64_to_ptr, align 8
@@ -2772,28 +2773,28 @@ entry:
   %obj_tmp10 = alloca %ConnectionState, align 8
   store %ConnectionState %cs9, ptr %obj_tmp10, align 8
   %field_ptr11 = getelementptr inbounds nuw %ConnectionState, ptr %obj_tmp10, i32 0, i32 4
-  %field_val12 = load i64, ptr %field_ptr11, align 4
+  %field_val12 = load i64, ptr %field_ptr11, align 8
   %add = add i64 %field_val12, 1
-  store i64 %add, ptr %new_len, align 4
+  store i64 %add, ptr %new_len, align 8
   %buf = alloca ptr, align 8
-  %new_len13 = load i64, ptr %new_len, align 4
+  %new_len13 = load i64, ptr %new_len, align 8
   %cs14 = load %ConnectionState, ptr %cs, align 8
   %obj_tmp15 = alloca %ConnectionState, align 8
   store %ConnectionState %cs14, ptr %obj_tmp15, align 8
   %field_ptr16 = getelementptr inbounds nuw %ConnectionState, ptr %obj_tmp15, i32 0, i32 5
-  %field_val17 = load i64, ptr %field_ptr16, align 4
+  %field_val17 = load i64, ptr %field_ptr16, align 8
   %gt = icmp sgt i64 %new_len13, %field_val17
   %if_result = alloca ptr, align 8
   br i1 %gt, label %then, label %else
 
 then:                                             ; preds = %entry
   %appended18 = load ptr, ptr %appended, align 8
-  %new_len19 = load i64, ptr %new_len, align 4
+  %new_len19 = load i64, ptr %new_len, align 8
   %cs20 = load %ConnectionState, ptr %cs, align 8
   %obj_tmp21 = alloca %ConnectionState, align 8
   store %ConnectionState %cs20, ptr %obj_tmp21, align 8
   %field_ptr22 = getelementptr inbounds nuw %ConnectionState, ptr %obj_tmp21, i32 0, i32 5
-  %field_val23 = load i64, ptr %field_ptr22, align 4
+  %field_val23 = load i64, ptr %field_ptr22, align 8
   %sub = sub i64 %new_len19, %field_val23
   %call24 = call ptr @mesh_list_drop(ptr %appended18, i64 %sub)
   store ptr %call24, ptr %if_result, align 8
@@ -2808,12 +2809,12 @@ if_merge:                                         ; preds = %else, %then
   %if_val = load ptr, ptr %if_result, align 8
   store ptr %if_val, ptr %buf, align 8
   %blen = alloca i64, align 8
-  %new_len26 = load i64, ptr %new_len, align 4
+  %new_len26 = load i64, ptr %new_len, align 8
   %cs27 = load %ConnectionState, ptr %cs, align 8
   %obj_tmp28 = alloca %ConnectionState, align 8
   store %ConnectionState %cs27, ptr %obj_tmp28, align 8
   %field_ptr29 = getelementptr inbounds nuw %ConnectionState, ptr %obj_tmp28, i32 0, i32 5
-  %field_val30 = load i64, ptr %field_ptr29, align 4
+  %field_val30 = load i64, ptr %field_ptr29, align 8
   %gt31 = icmp sgt i64 %new_len26, %field_val30
   %if_result32 = alloca i64, align 8
   br i1 %gt31, label %then33, label %else34
@@ -2823,18 +2824,18 @@ then33:                                           ; preds = %if_merge
   %obj_tmp37 = alloca %ConnectionState, align 8
   store %ConnectionState %cs36, ptr %obj_tmp37, align 8
   %field_ptr38 = getelementptr inbounds nuw %ConnectionState, ptr %obj_tmp37, i32 0, i32 5
-  %field_val39 = load i64, ptr %field_ptr38, align 4
-  store i64 %field_val39, ptr %if_result32, align 4
+  %field_val39 = load i64, ptr %field_ptr38, align 8
+  store i64 %field_val39, ptr %if_result32, align 8
   br label %if_merge35
 
 else34:                                           ; preds = %if_merge
-  %new_len40 = load i64, ptr %new_len, align 4
-  store i64 %new_len40, ptr %if_result32, align 4
+  %new_len40 = load i64, ptr %new_len, align 8
+  store i64 %new_len40, ptr %if_result32, align 8
   br label %if_merge35
 
 if_merge35:                                       ; preds = %else34, %then33
-  %if_val41 = load i64, ptr %if_result32, align 4
-  store i64 %if_val41, ptr %blen, align 4
+  %if_val41 = load i64, ptr %if_result32, align 8
+  store i64 %if_val41, ptr %blen, align 8
   %new_cs = alloca %ConnectionState, align 8
   %struct_lit = alloca %ConnectionState, align 8
   %cs42 = load %ConnectionState, ptr %cs, align 8
@@ -2861,16 +2862,16 @@ if_merge35:                                       ; preds = %else34, %then33
   %buf57 = load ptr, ptr %buf, align 8
   %field_ptr58 = getelementptr inbounds nuw %ConnectionState, ptr %struct_lit, i32 0, i32 3
   store ptr %buf57, ptr %field_ptr58, align 8
-  %blen59 = load i64, ptr %blen, align 4
+  %blen59 = load i64, ptr %blen, align 8
   %field_ptr60 = getelementptr inbounds nuw %ConnectionState, ptr %struct_lit, i32 0, i32 4
-  store i64 %blen59, ptr %field_ptr60, align 4
+  store i64 %blen59, ptr %field_ptr60, align 8
   %cs61 = load %ConnectionState, ptr %cs, align 8
   %obj_tmp62 = alloca %ConnectionState, align 8
   store %ConnectionState %cs61, ptr %obj_tmp62, align 8
   %field_ptr63 = getelementptr inbounds nuw %ConnectionState, ptr %obj_tmp62, i32 0, i32 5
-  %field_val64 = load i64, ptr %field_ptr63, align 4
+  %field_val64 = load i64, ptr %field_ptr63, align 8
   %field_ptr65 = getelementptr inbounds nuw %ConnectionState, ptr %struct_lit, i32 0, i32 5
-  store i64 %field_val64, ptr %field_ptr65, align 4
+  store i64 %field_val64, ptr %field_ptr65, align 8
   %struct_val = load %ConnectionState, ptr %struct_lit, align 8
   store %ConnectionState %struct_val, ptr %new_cs, align 8
   %new_conns = alloca ptr, align 8
@@ -2879,7 +2880,7 @@ if_merge35:                                       ; preds = %else34, %then33
   store %StreamState %state66, ptr %obj_tmp67, align 8
   %field_ptr68 = getelementptr inbounds nuw %StreamState, ptr %obj_tmp67, i32 0, i32 0
   %field_val69 = load ptr, ptr %field_ptr68, align 8
-  %conn70 = load i64, ptr %conn, align 4
+  %conn70 = load i64, ptr %conn, align 8
   %new_cs71 = load %ConnectionState, ptr %new_cs, align 8
   %struct_heap = call ptr @mesh_gc_alloc_actor(i64 ptrtoint (ptr getelementptr (%ConnectionState, ptr null, i32 1) to i64), i64 8)
   store %ConnectionState %new_cs71, ptr %struct_heap, align 8
@@ -2899,12 +2900,12 @@ entry:
   %state = alloca %StreamState, align 8
   store %StreamState %0, ptr %state, align 8
   %conn = alloca i64, align 8
-  store i64 %1, ptr %conn, align 4
+  store i64 %1, ptr %conn, align 8
   %msg = alloca ptr, align 8
   store ptr %2, ptr %msg, align 8
   %has = alloca i1, align 1
   %state1 = load %StreamState, ptr %state, align 8
-  %conn2 = load i64, ptr %conn, align 4
+  %conn2 = load i64, ptr %conn, align 8
   %call = call i1 @Services_StreamManager__is_stream_client(%StreamState %state1, i64 %conn2)
   call void @mesh_reduction_check()
   store i1 %call, ptr %has, align 1
@@ -2914,7 +2915,7 @@ entry:
 
 then:                                             ; preds = %entry
   %state4 = load %StreamState, ptr %state, align 8
-  %conn5 = load i64, ptr %conn, align 4
+  %conn5 = load i64, ptr %conn, align 8
   %msg6 = load ptr, ptr %msg, align 8
   %call7 = call %StreamState @Services_StreamManager__buffer_message_for_conn(%StreamState %state4, i64 %conn5, ptr %msg6)
   call void @mesh_reduction_check()
@@ -2938,63 +2939,63 @@ entry:
   %msg = alloca {}, align 8
   %if_result = alloca i64, align 8
   %conn = alloca i64, align 8
-  store i64 %0, ptr %conn, align 4
+  store i64 %0, ptr %conn, align 8
   %buffer = alloca ptr, align 8
   store ptr %1, ptr %buffer, align 8
   %i = alloca i64, align 8
-  store i64 %2, ptr %i, align 4
+  store i64 %2, ptr %i, align 8
   %total = alloca i64, align 8
-  store i64 %3, ptr %total, align 4
+  store i64 %3, ptr %total, align 8
   br label %tce_loop
 
 tce_loop:                                         ; preds = %else11, %entry
-  %i1 = load i64, ptr %i, align 4
-  %total2 = load i64, ptr %total, align 4
+  %i1 = load i64, ptr %i, align 8
+  %total2 = load i64, ptr %total, align 8
   %lt = icmp slt i64 %i1, %total2
   br i1 %lt, label %then, label %else
 
 then:                                             ; preds = %tce_loop
   %buffer3 = load ptr, ptr %buffer, align 8
-  %i4 = load i64, ptr %i, align 4
+  %i4 = load i64, ptr %i, align 8
   %call = call i64 @mesh_list_get(ptr %buffer3, i64 %i4)
   store {} zeroinitializer, ptr %msg, align 1
-  %conn5 = load i64, ptr %conn, align 4
+  %conn5 = load i64, ptr %conn, align 8
   %msg6 = load {}, ptr %msg, align 1
   %i64_to_ptr = inttoptr i64 %conn5 to ptr
   %call7 = call i64 @mesh_ws_send(ptr %i64_to_ptr, ptr null)
-  store i64 %call7, ptr %result, align 4
-  %result8 = load i64, ptr %result, align 4
+  store i64 %call7, ptr %result, align 8
+  %result8 = load i64, ptr %result, align 8
   %eq = icmp eq i64 %result8, -1
   br i1 %eq, label %then10, label %else11
 
 else:                                             ; preds = %tce_loop
-  store i64 0, ptr %if_result, align 4
+  store i64 0, ptr %if_result, align 8
   br label %if_merge
 
 if_merge:                                         ; preds = %else, %if_merge12
-  %if_val17 = load i64, ptr %if_result, align 4
+  %if_val17 = load i64, ptr %if_result, align 8
   ret i64 %if_val17
 
 then10:                                           ; preds = %then
-  store i64 -1, ptr %if_result9, align 4
+  store i64 -1, ptr %if_result9, align 8
   br label %if_merge12
 
 else11:                                           ; preds = %then
-  %conn13 = load i64, ptr %conn, align 4
+  %conn13 = load i64, ptr %conn, align 8
   %buffer14 = load ptr, ptr %buffer, align 8
-  %i15 = load i64, ptr %i, align 4
+  %i15 = load i64, ptr %i, align 8
   %add = add i64 %i15, 1
-  %total16 = load i64, ptr %total, align 4
-  store i64 %conn13, ptr %conn, align 4
+  %total16 = load i64, ptr %total, align 8
+  store i64 %conn13, ptr %conn, align 8
   store ptr %buffer14, ptr %buffer, align 8
-  store i64 %add, ptr %i, align 4
-  store i64 %total16, ptr %total, align 4
+  store i64 %add, ptr %i, align 8
+  store i64 %total16, ptr %total, align 8
   call void @mesh_reduction_check()
   br label %tce_loop
 
 if_merge12:                                       ; preds = %then10
-  %if_val = load i64, ptr %if_result9, align 4
-  store i64 %if_val, ptr %if_result, align 4
+  %if_val = load i64, ptr %if_result9, align 8
+  store i64 %if_val, ptr %if_result, align 8
   br label %if_merge
 }
 
@@ -3003,14 +3004,14 @@ entry:
   %state = alloca %StreamState, align 8
   store %StreamState %0, ptr %state, align 8
   %conn = alloca i64, align 8
-  store i64 %1, ptr %conn, align 4
+  store i64 %1, ptr %conn, align 8
   %cs = alloca %ConnectionState, align 8
   %state1 = load %StreamState, ptr %state, align 8
   %obj_tmp = alloca %StreamState, align 8
   store %StreamState %state1, ptr %obj_tmp, align 8
   %field_ptr = getelementptr inbounds nuw %StreamState, ptr %obj_tmp, i32 0, i32 0
   %field_val = load ptr, ptr %field_ptr, align 8
-  %conn2 = load i64, ptr %conn, align 4
+  %conn2 = load i64, ptr %conn, align 8
   %call = call i64 @mesh_map_get(ptr %field_val, i64 %conn2)
   %i64_to_ptr = inttoptr i64 %call to ptr
   %deref_sum = load %ConnectionState, ptr %i64_to_ptr, align 8
@@ -3019,14 +3020,14 @@ entry:
   %obj_tmp4 = alloca %ConnectionState, align 8
   store %ConnectionState %cs3, ptr %obj_tmp4, align 8
   %field_ptr5 = getelementptr inbounds nuw %ConnectionState, ptr %obj_tmp4, i32 0, i32 4
-  %field_val6 = load i64, ptr %field_ptr5, align 4
+  %field_val6 = load i64, ptr %field_ptr5, align 8
   %gt = icmp sgt i64 %field_val6, 0
   %if_result = alloca %StreamState, align 8
   br i1 %gt, label %then, label %else
 
 then:                                             ; preds = %entry
   %send_ok = alloca i64, align 8
-  %conn7 = load i64, ptr %conn, align 4
+  %conn7 = load i64, ptr %conn, align 8
   %cs8 = load %ConnectionState, ptr %cs, align 8
   %obj_tmp9 = alloca %ConnectionState, align 8
   store %ConnectionState %cs8, ptr %obj_tmp9, align 8
@@ -3036,11 +3037,11 @@ then:                                             ; preds = %entry
   %obj_tmp13 = alloca %ConnectionState, align 8
   store %ConnectionState %cs12, ptr %obj_tmp13, align 8
   %field_ptr14 = getelementptr inbounds nuw %ConnectionState, ptr %obj_tmp13, i32 0, i32 4
-  %field_val15 = load i64, ptr %field_ptr14, align 4
+  %field_val15 = load i64, ptr %field_ptr14, align 8
   %call16 = call i64 @Services_StreamManager__send_buffer_loop(i64 %conn7, ptr %field_val11, i64 0, i64 %field_val15)
   call void @mesh_reduction_check()
-  store i64 %call16, ptr %send_ok, align 4
-  %send_ok17 = load i64, ptr %send_ok, align 4
+  store i64 %call16, ptr %send_ok, align 8
+  %send_ok17 = load i64, ptr %send_ok, align 8
   %eq = icmp eq i64 %send_ok17, 0
   %if_result18 = alloca %StreamState, align 8
   br i1 %eq, label %then19, label %else20
@@ -3082,14 +3083,14 @@ then19:                                           ; preds = %then
   %field_ptr38 = getelementptr inbounds nuw %ConnectionState, ptr %struct_lit, i32 0, i32 3
   store ptr %call37, ptr %field_ptr38, align 8
   %field_ptr39 = getelementptr inbounds nuw %ConnectionState, ptr %struct_lit, i32 0, i32 4
-  store i64 0, ptr %field_ptr39, align 4
+  store i64 0, ptr %field_ptr39, align 8
   %cs40 = load %ConnectionState, ptr %cs, align 8
   %obj_tmp41 = alloca %ConnectionState, align 8
   store %ConnectionState %cs40, ptr %obj_tmp41, align 8
   %field_ptr42 = getelementptr inbounds nuw %ConnectionState, ptr %obj_tmp41, i32 0, i32 5
-  %field_val43 = load i64, ptr %field_ptr42, align 4
+  %field_val43 = load i64, ptr %field_ptr42, align 8
   %field_ptr44 = getelementptr inbounds nuw %ConnectionState, ptr %struct_lit, i32 0, i32 5
-  store i64 %field_val43, ptr %field_ptr44, align 4
+  store i64 %field_val43, ptr %field_ptr44, align 8
   %struct_val = load %ConnectionState, ptr %struct_lit, align 8
   store %ConnectionState %struct_val, ptr %cleared_cs, align 8
   %new_conns = alloca ptr, align 8
@@ -3098,7 +3099,7 @@ then19:                                           ; preds = %then
   store %StreamState %state45, ptr %obj_tmp46, align 8
   %field_ptr47 = getelementptr inbounds nuw %StreamState, ptr %obj_tmp46, i32 0, i32 0
   %field_val48 = load ptr, ptr %field_ptr47, align 8
-  %conn49 = load i64, ptr %conn, align 4
+  %conn49 = load i64, ptr %conn, align 8
   %cleared_cs50 = load %ConnectionState, ptr %cleared_cs, align 8
   %struct_heap = call ptr @mesh_gc_alloc_actor(i64 ptrtoint (ptr getelementptr (%ConnectionState, ptr null, i32 1) to i64), i64 8)
   store %ConnectionState %cleared_cs50, ptr %struct_heap, align 8
@@ -3115,7 +3116,7 @@ then19:                                           ; preds = %then
 
 else20:                                           ; preds = %then
   %state56 = load %StreamState, ptr %state, align 8
-  %conn57 = load i64, ptr %conn, align 4
+  %conn57 = load i64, ptr %conn, align 8
   %call58 = call %StreamState @Services_StreamManager__remove_client(%StreamState %state56, i64 %conn57)
   call void @mesh_reduction_check()
   store %StreamState %call58, ptr %if_result18, align 8
@@ -3137,20 +3138,20 @@ entry:
   %conns = alloca ptr, align 8
   store ptr %1, ptr %conns, align 8
   %i = alloca i64, align 8
-  store i64 %2, ptr %i, align 4
+  store i64 %2, ptr %i, align 8
   %total = alloca i64, align 8
-  store i64 %3, ptr %total, align 4
+  store i64 %3, ptr %total, align 8
   br label %tce_loop
 
 tce_loop:                                         ; preds = %then, %entry
-  %i1 = load i64, ptr %i, align 4
-  %total2 = load i64, ptr %total, align 4
+  %i1 = load i64, ptr %i, align 8
+  %total2 = load i64, ptr %total, align 8
   %lt = icmp slt i64 %i1, %total2
   br i1 %lt, label %then, label %else
 
 then:                                             ; preds = %tce_loop
   %conns3 = load ptr, ptr %conns, align 8
-  %i4 = load i64, ptr %i, align 4
+  %i4 = load i64, ptr %i, align 8
   %call = call i64 @mesh_list_get(ptr %conns3, i64 %i4)
   store {} zeroinitializer, ptr %conn, align 1
   %state5 = load %StreamState, ptr %state, align 8
@@ -3160,13 +3161,13 @@ then:                                             ; preds = %tce_loop
   store %StreamState %call7, ptr %new_state, align 8
   %new_state8 = load %StreamState, ptr %new_state, align 8
   %conns9 = load ptr, ptr %conns, align 8
-  %i10 = load i64, ptr %i, align 4
+  %i10 = load i64, ptr %i, align 8
   %add = add i64 %i10, 1
-  %total11 = load i64, ptr %total, align 4
+  %total11 = load i64, ptr %total, align 8
   store %StreamState %new_state8, ptr %state, align 8
   store ptr %conns9, ptr %conns, align 8
-  store i64 %add, ptr %i, align 4
-  store i64 %total11, ptr %total, align 4
+  store i64 %add, ptr %i, align 8
+  store i64 %total11, ptr %total, align 8
   call void @mesh_reduction_check()
   br label %tce_loop
 
@@ -3216,26 +3217,26 @@ entry:
   %state = alloca %StreamState, align 8
   store %StreamState %0, ptr %state, align 8
   %conn = alloca i64, align 8
-  store i64 %1, ptr %conn, align 4
+  store i64 %1, ptr %conn, align 8
   %state1 = load %StreamState, ptr %state, align 8
   %state2 = load %StreamState, ptr %state, align 8
-  %conn3 = load i64, ptr %conn, align 4
+  %conn3 = load i64, ptr %conn, align 8
   %call = call i1 @Services_StreamManager__is_stream_client(%StreamState %state2, i64 %conn3)
   call void @mesh_reduction_check()
   %tuple_ptr = call ptr @mesh_gc_alloc_actor(i64 24, i64 8)
-  store i64 2, ptr %tuple_ptr, align 4
+  store i64 2, ptr %tuple_ptr, align 8
   %tuple_base = ptrtoint ptr %tuple_ptr to i64
   %elem_addr = add i64 %tuple_base, 8
   %elem_ptr = inttoptr i64 %elem_addr to ptr
   %struct_tmp = alloca %StreamState, align 8
   store %StreamState %state1, ptr %struct_tmp, align 8
-  %struct_to_i64 = load i64, ptr %struct_tmp, align 4
-  store i64 %struct_to_i64, ptr %elem_ptr, align 4
+  %struct_to_i64 = load i64, ptr %struct_tmp, align 8
+  store i64 %struct_to_i64, ptr %elem_ptr, align 8
   %tuple_base4 = ptrtoint ptr %tuple_ptr to i64
   %elem_addr5 = add i64 %tuple_base4, 16
   %elem_ptr6 = inttoptr i64 %elem_addr5 to ptr
   %zext_elem = zext i1 %call to i64
-  store i64 %zext_elem, ptr %elem_ptr6, align 4
+  store i64 %zext_elem, ptr %elem_ptr6, align 8
   ret ptr %tuple_ptr
 }
 
@@ -3244,26 +3245,26 @@ entry:
   %state = alloca %StreamState, align 8
   store %StreamState %0, ptr %state, align 8
   %conn = alloca i64, align 8
-  store i64 %1, ptr %conn, align 4
+  store i64 %1, ptr %conn, align 8
   %state1 = load %StreamState, ptr %state, align 8
   %state2 = load %StreamState, ptr %state, align 8
-  %conn3 = load i64, ptr %conn, align 4
+  %conn3 = load i64, ptr %conn, align 8
   %call = call ptr @Services_StreamManager__get_project_id(%StreamState %state2, i64 %conn3)
   call void @mesh_reduction_check()
   %tuple_ptr = call ptr @mesh_gc_alloc_actor(i64 24, i64 8)
-  store i64 2, ptr %tuple_ptr, align 4
+  store i64 2, ptr %tuple_ptr, align 8
   %tuple_base = ptrtoint ptr %tuple_ptr to i64
   %elem_addr = add i64 %tuple_base, 8
   %elem_ptr = inttoptr i64 %elem_addr to ptr
   %struct_tmp = alloca %StreamState, align 8
   store %StreamState %state1, ptr %struct_tmp, align 8
-  %struct_to_i64 = load i64, ptr %struct_tmp, align 4
-  store i64 %struct_to_i64, ptr %elem_ptr, align 4
+  %struct_to_i64 = load i64, ptr %struct_tmp, align 8
+  store i64 %struct_to_i64, ptr %elem_ptr, align 8
   %tuple_base4 = ptrtoint ptr %tuple_ptr to i64
   %elem_addr5 = add i64 %tuple_base4, 16
   %elem_ptr6 = inttoptr i64 %elem_addr5 to ptr
   %ptr_to_i64 = ptrtoint ptr %call to i64
-  store i64 %ptr_to_i64, ptr %elem_ptr6, align 4
+  store i64 %ptr_to_i64, ptr %elem_ptr6, align 8
   ret ptr %tuple_ptr
 }
 
@@ -3272,32 +3273,32 @@ entry:
   %state = alloca %StreamState, align 8
   store %StreamState %0, ptr %state, align 8
   %conn = alloca i64, align 8
-  store i64 %1, ptr %conn, align 4
+  store i64 %1, ptr %conn, align 8
   %level = alloca ptr, align 8
   store ptr %2, ptr %level, align 8
   %environment = alloca ptr, align 8
   store ptr %3, ptr %environment, align 8
   %state1 = load %StreamState, ptr %state, align 8
   %state2 = load %StreamState, ptr %state, align 8
-  %conn3 = load i64, ptr %conn, align 4
+  %conn3 = load i64, ptr %conn, align 8
   %level4 = load ptr, ptr %level, align 8
   %environment5 = load ptr, ptr %environment, align 8
   %call = call i1 @Services_StreamManager__matches_filter(%StreamState %state2, i64 %conn3, ptr %level4, ptr %environment5)
   call void @mesh_reduction_check()
   %tuple_ptr = call ptr @mesh_gc_alloc_actor(i64 24, i64 8)
-  store i64 2, ptr %tuple_ptr, align 4
+  store i64 2, ptr %tuple_ptr, align 8
   %tuple_base = ptrtoint ptr %tuple_ptr to i64
   %elem_addr = add i64 %tuple_base, 8
   %elem_ptr = inttoptr i64 %elem_addr to ptr
   %struct_tmp = alloca %StreamState, align 8
   store %StreamState %state1, ptr %struct_tmp, align 8
-  %struct_to_i64 = load i64, ptr %struct_tmp, align 4
-  store i64 %struct_to_i64, ptr %elem_ptr, align 4
+  %struct_to_i64 = load i64, ptr %struct_tmp, align 8
+  store i64 %struct_to_i64, ptr %elem_ptr, align 8
   %tuple_base6 = ptrtoint ptr %tuple_ptr to i64
   %elem_addr7 = add i64 %tuple_base6, 16
   %elem_ptr8 = inttoptr i64 %elem_addr7 to ptr
   %zext_elem = zext i1 %call to i64
-  store i64 %zext_elem, ptr %elem_ptr8, align 4
+  store i64 %zext_elem, ptr %elem_ptr8, align 8
   ret ptr %tuple_ptr
 }
 
@@ -3306,7 +3307,7 @@ entry:
   %state = alloca %StreamState, align 8
   store %StreamState %0, ptr %state, align 8
   %conn = alloca i64, align 8
-  store i64 %1, ptr %conn, align 4
+  store i64 %1, ptr %conn, align 8
   %project_id = alloca ptr, align 8
   store ptr %2, ptr %project_id, align 8
   %level_filter = alloca ptr, align 8
@@ -3314,7 +3315,7 @@ entry:
   %env_filter = alloca ptr, align 8
   store ptr %4, ptr %env_filter, align 8
   %state1 = load %StreamState, ptr %state, align 8
-  %conn2 = load i64, ptr %conn, align 4
+  %conn2 = load i64, ptr %conn, align 8
   %project_id3 = load ptr, ptr %project_id, align 8
   %level_filter4 = load ptr, ptr %level_filter, align 8
   %env_filter5 = load ptr, ptr %env_filter, align 8
@@ -3328,9 +3329,9 @@ entry:
   %state = alloca %StreamState, align 8
   store %StreamState %0, ptr %state, align 8
   %conn = alloca i64, align 8
-  store i64 %1, ptr %conn, align 4
+  store i64 %1, ptr %conn, align 8
   %state1 = load %StreamState, ptr %state, align 8
-  %conn2 = load i64, ptr %conn, align 4
+  %conn2 = load i64, ptr %conn, align 8
   %call = call %StreamState @Services_StreamManager__remove_client(%StreamState %state1, i64 %conn2)
   call void @mesh_reduction_check()
   ret %StreamState %call
@@ -3341,11 +3342,11 @@ entry:
   %state = alloca %StreamState, align 8
   store %StreamState %0, ptr %state, align 8
   %conn = alloca i64, align 8
-  store i64 %1, ptr %conn, align 4
+  store i64 %1, ptr %conn, align 8
   %msg = alloca ptr, align 8
   store ptr %2, ptr %msg, align 8
   %state1 = load %StreamState, ptr %state, align 8
-  %conn2 = load i64, ptr %conn, align 4
+  %conn2 = load i64, ptr %conn, align 8
   %msg3 = load ptr, ptr %msg, align 8
   %call = call %StreamState @Services_StreamManager__buffer_if_client(%StreamState %state1, i64 %conn2, ptr %msg3)
   call void @mesh_reduction_check()
@@ -3365,60 +3366,60 @@ entry:
 define i64 @__service_streammanager_call_is_stream_client(i64 %0, i64 %1) {
 entry:
   %__pid = alloca i64, align 8
-  store i64 %0, ptr %__pid, align 4
+  store i64 %0, ptr %__pid, align 8
   %conn = alloca i64, align 8
-  store i64 %1, ptr %conn, align 4
-  %__pid1 = load i64, ptr %__pid, align 4
-  %conn2 = load i64, ptr %conn, align 4
-  %__pid3 = load i64, ptr %__pid, align 4
-  %conn4 = load i64, ptr %conn, align 4
+  store i64 %1, ptr %conn, align 8
+  %__pid1 = load i64, ptr %__pid, align 8
+  %conn2 = load i64, ptr %conn, align 8
+  %__pid3 = load i64, ptr %__pid, align 8
+  %conn4 = load i64, ptr %conn, align 8
   %call_payload = alloca [1 x i64], align 8
   %payload_elem = getelementptr [1 x i64], ptr %call_payload, i32 0, i32 0
-  store i64 %conn4, ptr %payload_elem, align 4
+  store i64 %conn4, ptr %payload_elem, align 8
   %call_result = call ptr @mesh_service_call(i64 %__pid3, i64 0, ptr %call_payload, i64 8)
   %reply_data = getelementptr i8, ptr %call_result, i64 16
-  %reply_val = load i64, ptr %reply_data, align 4
+  %reply_val = load i64, ptr %reply_data, align 8
   ret i64 %reply_val
 }
 
 define i64 @__service_streammanager_call_get_project_id(i64 %0, i64 %1) {
 entry:
   %__pid = alloca i64, align 8
-  store i64 %0, ptr %__pid, align 4
+  store i64 %0, ptr %__pid, align 8
   %conn = alloca i64, align 8
-  store i64 %1, ptr %conn, align 4
-  %__pid1 = load i64, ptr %__pid, align 4
-  %conn2 = load i64, ptr %conn, align 4
-  %__pid3 = load i64, ptr %__pid, align 4
-  %conn4 = load i64, ptr %conn, align 4
+  store i64 %1, ptr %conn, align 8
+  %__pid1 = load i64, ptr %__pid, align 8
+  %conn2 = load i64, ptr %conn, align 8
+  %__pid3 = load i64, ptr %__pid, align 8
+  %conn4 = load i64, ptr %conn, align 8
   %call_payload = alloca [1 x i64], align 8
   %payload_elem = getelementptr [1 x i64], ptr %call_payload, i32 0, i32 0
-  store i64 %conn4, ptr %payload_elem, align 4
+  store i64 %conn4, ptr %payload_elem, align 8
   %call_result = call ptr @mesh_service_call(i64 %__pid3, i64 1, ptr %call_payload, i64 8)
   %reply_data = getelementptr i8, ptr %call_result, i64 16
-  %reply_val = load i64, ptr %reply_data, align 4
+  %reply_val = load i64, ptr %reply_data, align 8
   ret i64 %reply_val
 }
 
 define {} @__service_streammanager_cast_register_client(i64 %0, i64 %1, ptr %2, ptr %3, ptr %4) {
 entry:
   %__pid = alloca i64, align 8
-  store i64 %0, ptr %__pid, align 4
+  store i64 %0, ptr %__pid, align 8
   %conn = alloca i64, align 8
-  store i64 %1, ptr %conn, align 4
+  store i64 %1, ptr %conn, align 8
   %project_id = alloca ptr, align 8
   store ptr %2, ptr %project_id, align 8
   %level_filter = alloca ptr, align 8
   store ptr %3, ptr %level_filter, align 8
   %env_filter = alloca ptr, align 8
   store ptr %4, ptr %env_filter, align 8
-  %__pid1 = load i64, ptr %__pid, align 4
-  %conn2 = load i64, ptr %conn, align 4
+  %__pid1 = load i64, ptr %__pid, align 8
+  %conn2 = load i64, ptr %conn, align 8
   %project_id3 = load ptr, ptr %project_id, align 8
   %level_filter4 = load ptr, ptr %level_filter, align 8
   %env_filter5 = load ptr, ptr %env_filter, align 8
-  %__pid6 = load i64, ptr %__pid, align 4
-  %conn7 = load i64, ptr %conn, align 4
+  %__pid6 = load i64, ptr %__pid, align 8
+  %conn7 = load i64, ptr %conn, align 8
   %project_id8 = load ptr, ptr %project_id, align 8
   %ptr_to_i64 = ptrtoint ptr %project_id8 to i64
   %level_filter9 = load ptr, ptr %level_filter, align 8
@@ -3427,17 +3428,17 @@ entry:
   %ptr_to_i6412 = ptrtoint ptr %env_filter11 to i64
   %cast_msg = alloca [6 x i64], align 8
   %tag_slot = getelementptr [6 x i64], ptr %cast_msg, i32 0, i32 0
-  store i64 3, ptr %tag_slot, align 4
+  store i64 3, ptr %tag_slot, align 8
   %caller_slot = getelementptr [6 x i64], ptr %cast_msg, i32 0, i32 1
-  store i64 0, ptr %caller_slot, align 4
+  store i64 0, ptr %caller_slot, align 8
   %arg_slot = getelementptr [6 x i64], ptr %cast_msg, i32 0, i32 2
-  store i64 %conn7, ptr %arg_slot, align 4
+  store i64 %conn7, ptr %arg_slot, align 8
   %arg_slot13 = getelementptr [6 x i64], ptr %cast_msg, i32 0, i32 3
-  store i64 %ptr_to_i64, ptr %arg_slot13, align 4
+  store i64 %ptr_to_i64, ptr %arg_slot13, align 8
   %arg_slot14 = getelementptr [6 x i64], ptr %cast_msg, i32 0, i32 4
-  store i64 %ptr_to_i6410, ptr %arg_slot14, align 4
+  store i64 %ptr_to_i6410, ptr %arg_slot14, align 8
   %arg_slot15 = getelementptr [6 x i64], ptr %cast_msg, i32 0, i32 5
-  store i64 %ptr_to_i6412, ptr %arg_slot15, align 4
+  store i64 %ptr_to_i6412, ptr %arg_slot15, align 8
   call void @mesh_actor_send(i64 %__pid6, ptr %cast_msg, i64 48)
   ret {} zeroinitializer
 }
@@ -3445,20 +3446,20 @@ entry:
 define {} @__service_streammanager_cast_remove_client(i64 %0, i64 %1) {
 entry:
   %__pid = alloca i64, align 8
-  store i64 %0, ptr %__pid, align 4
+  store i64 %0, ptr %__pid, align 8
   %conn = alloca i64, align 8
-  store i64 %1, ptr %conn, align 4
-  %__pid1 = load i64, ptr %__pid, align 4
-  %conn2 = load i64, ptr %conn, align 4
-  %__pid3 = load i64, ptr %__pid, align 4
-  %conn4 = load i64, ptr %conn, align 4
+  store i64 %1, ptr %conn, align 8
+  %__pid1 = load i64, ptr %__pid, align 8
+  %conn2 = load i64, ptr %conn, align 8
+  %__pid3 = load i64, ptr %__pid, align 8
+  %conn4 = load i64, ptr %conn, align 8
   %cast_msg = alloca [3 x i64], align 8
   %tag_slot = getelementptr [3 x i64], ptr %cast_msg, i32 0, i32 0
-  store i64 4, ptr %tag_slot, align 4
+  store i64 4, ptr %tag_slot, align 8
   %caller_slot = getelementptr [3 x i64], ptr %cast_msg, i32 0, i32 1
-  store i64 0, ptr %caller_slot, align 4
+  store i64 0, ptr %caller_slot, align 8
   %arg_slot = getelementptr [3 x i64], ptr %cast_msg, i32 0, i32 2
-  store i64 %conn4, ptr %arg_slot, align 4
+  store i64 %conn4, ptr %arg_slot, align 8
   call void @mesh_actor_send(i64 %__pid3, ptr %cast_msg, i64 24)
   ret {} zeroinitializer
 }
@@ -3466,14 +3467,14 @@ entry:
 define {} @__service_streammanager_cast_drain_buffers(i64 %0) {
 entry:
   %__pid = alloca i64, align 8
-  store i64 %0, ptr %__pid, align 4
-  %__pid1 = load i64, ptr %__pid, align 4
-  %__pid2 = load i64, ptr %__pid, align 4
+  store i64 %0, ptr %__pid, align 8
+  %__pid1 = load i64, ptr %__pid, align 8
+  %__pid2 = load i64, ptr %__pid, align 8
   %cast_msg = alloca [2 x i64], align 8
   %tag_slot = getelementptr [2 x i64], ptr %cast_msg, i32 0, i32 0
-  store i64 6, ptr %tag_slot, align 4
+  store i64 6, ptr %tag_slot, align 8
   %caller_slot = getelementptr [2 x i64], ptr %cast_msg, i32 0, i32 1
-  store i64 0, ptr %caller_slot, align 4
+  store i64 0, ptr %caller_slot, align 8
   call void @mesh_actor_send(i64 %__pid2, ptr %cast_msg, i64 16)
   ret {} zeroinitializer
 }
@@ -3512,9 +3513,9 @@ exit_loop:                                        ; preds = %loop
 
 continue_loop:                                    ; preds = %loop
   %data_ptr = getelementptr i8, ptr %msg_ptr, i64 16
-  %type_tag = load i64, ptr %data_ptr, align 4
+  %type_tag = load i64, ptr %data_ptr, align 8
   %caller_ptr = getelementptr i8, ptr %data_ptr, i64 8
-  %caller_pid = load i64, ptr %caller_ptr, align 4
+  %caller_pid = load i64, ptr %caller_ptr, align 8
   switch i64 %type_tag, label %default [
     i64 0, label %handler_0
     i64 1, label %handler_1
@@ -3530,12 +3531,12 @@ default:                                          ; preds = %continue_loop
 
 handler_0:                                        ; preds = %continue_loop
   %arg_0_ptr = getelementptr i8, ptr %data_ptr, i64 16
-  %arg_0 = load i64, ptr %arg_0_ptr, align 4
+  %arg_0 = load i64, ptr %arg_0_ptr, align 8
   %handler_result = call ptr @__service_streammanager_handle_call_is_stream_client(%StreamState %state, i64 %arg_0)
   %new_state = call i64 @mesh_tuple_first(ptr %handler_result)
   %reply = call i64 @mesh_tuple_second(ptr %handler_result)
   %reply_buf = alloca i64, align 8
-  store i64 %reply, ptr %reply_buf, align 4
+  store i64 %reply, ptr %reply_buf, align 8
   call void @mesh_service_reply(i64 %caller_pid, ptr %reply_buf, i64 8)
   %new_state_struct_ptr = inttoptr i64 %new_state to ptr
   %new_state_struct = load %StreamState, ptr %new_state_struct_ptr, align 8
@@ -3544,12 +3545,12 @@ handler_0:                                        ; preds = %continue_loop
 
 handler_1:                                        ; preds = %continue_loop
   %arg_0_ptr1 = getelementptr i8, ptr %data_ptr, i64 16
-  %arg_02 = load i64, ptr %arg_0_ptr1, align 4
+  %arg_02 = load i64, ptr %arg_0_ptr1, align 8
   %handler_result3 = call ptr @__service_streammanager_handle_call_get_project_id(%StreamState %state, i64 %arg_02)
   %new_state4 = call i64 @mesh_tuple_first(ptr %handler_result3)
   %reply5 = call i64 @mesh_tuple_second(ptr %handler_result3)
   %reply_buf6 = alloca i64, align 8
-  store i64 %reply5, ptr %reply_buf6, align 4
+  store i64 %reply5, ptr %reply_buf6, align 8
   call void @mesh_service_reply(i64 %caller_pid, ptr %reply_buf6, i64 8)
   %new_state_struct_ptr7 = inttoptr i64 %new_state4 to ptr
   %new_state_struct8 = load %StreamState, ptr %new_state_struct_ptr7, align 8
@@ -3558,7 +3559,7 @@ handler_1:                                        ; preds = %continue_loop
 
 handler_2:                                        ; preds = %continue_loop
   %arg_0_ptr9 = getelementptr i8, ptr %data_ptr, i64 16
-  %arg_010 = load i64, ptr %arg_0_ptr9, align 4
+  %arg_010 = load i64, ptr %arg_0_ptr9, align 8
   %arg_1_ptr = getelementptr i8, ptr %data_ptr, i64 24
   %arg_1 = load ptr, ptr %arg_1_ptr, align 8
   %arg_2_ptr = getelementptr i8, ptr %data_ptr, i64 32
@@ -3567,7 +3568,7 @@ handler_2:                                        ; preds = %continue_loop
   %new_state12 = call i64 @mesh_tuple_first(ptr %handler_result11)
   %reply13 = call i64 @mesh_tuple_second(ptr %handler_result11)
   %reply_buf14 = alloca i64, align 8
-  store i64 %reply13, ptr %reply_buf14, align 4
+  store i64 %reply13, ptr %reply_buf14, align 8
   call void @mesh_service_reply(i64 %caller_pid, ptr %reply_buf14, i64 8)
   %new_state_struct_ptr15 = inttoptr i64 %new_state12 to ptr
   %new_state_struct16 = load %StreamState, ptr %new_state_struct_ptr15, align 8
@@ -3576,7 +3577,7 @@ handler_2:                                        ; preds = %continue_loop
 
 handler_3:                                        ; preds = %continue_loop
   %arg_0_ptr17 = getelementptr i8, ptr %data_ptr, i64 16
-  %arg_018 = load i64, ptr %arg_0_ptr17, align 4
+  %arg_018 = load i64, ptr %arg_0_ptr17, align 8
   %arg_1_ptr19 = getelementptr i8, ptr %data_ptr, i64 24
   %arg_120 = load ptr, ptr %arg_1_ptr19, align 8
   %arg_2_ptr21 = getelementptr i8, ptr %data_ptr, i64 32
@@ -3589,14 +3590,14 @@ handler_3:                                        ; preds = %continue_loop
 
 handler_4:                                        ; preds = %continue_loop
   %arg_0_ptr24 = getelementptr i8, ptr %data_ptr, i64 16
-  %arg_025 = load i64, ptr %arg_0_ptr24, align 4
+  %arg_025 = load i64, ptr %arg_0_ptr24, align 8
   %handler_result26 = call %StreamState @__service_streammanager_handle_cast_remove_client(%StreamState %state, i64 %arg_025)
   store %StreamState %handler_result26, ptr %__state, align 8
   br label %loop
 
 handler_5:                                        ; preds = %continue_loop
   %arg_0_ptr27 = getelementptr i8, ptr %data_ptr, i64 16
-  %arg_028 = load i64, ptr %arg_0_ptr27, align 4
+  %arg_028 = load i64, ptr %arg_0_ptr27, align 8
   %arg_1_ptr29 = getelementptr i8, ptr %data_ptr, i64 24
   %arg_130 = load ptr, ptr %arg_1_ptr29, align 8
   %handler_result31 = call %StreamState @__service_streammanager_handle_cast_buffer_message(%StreamState %state, i64 %arg_028, ptr %arg_130)
@@ -3678,8 +3679,8 @@ entry:
   %__try_err_1 = alloca ptr, align 8
   %__try_val_1 = alloca i64, align 8
   %pool = alloca i64, align 8
-  store i64 %0, ptr %pool, align 4
-  %pool1 = load i64, ptr %pool, align 4
+  store i64 %0, ptr %pool, align 8
+  %pool1 = load i64, ptr %pool, align 8
   %str = call ptr @mesh_string_new(ptr @.str.13, i64 39)
   %call = call ptr @mesh_list_new()
   %call2 = call ptr @mesh_pool_execute(i64 %pool1, ptr %str, ptr %call)
@@ -3692,8 +3693,8 @@ entry:
   ]
 
 match_merge:                                      ; preds = %case_Ok
-  %match_val = load i64, ptr %match_result, align 4
-  %pool8 = load i64, ptr %pool, align 4
+  %match_val = load i64, ptr %match_result, align 8
+  %pool8 = load i64, ptr %pool, align 8
   %str9 = call ptr @mesh_string_new(ptr @.str.16, i64 182)
   %call10 = call ptr @mesh_list_new()
   %call11 = call ptr @mesh_pool_execute(i64 %pool8, ptr %str9, ptr %call10)
@@ -3713,8 +3714,8 @@ case_Ok:                                          ; preds = %entry
   %variant_field = getelementptr inbounds nuw { i8, ptr }, ptr %call2, i32 0, i32 1
   %path_val = load ptr, ptr %variant_field, align 8
   store ptr %path_val, ptr %__try_val_1, align 8
-  %__try_val_13 = load i64, ptr %__try_val_1, align 4
-  store i64 %__try_val_13, ptr %match_result, align 4
+  %__try_val_13 = load i64, ptr %__try_val_1, align 8
+  store i64 %__try_val_13, ptr %match_result, align 8
   br label %match_merge
 
 case_Err:                                         ; preds = %entry
@@ -3731,8 +3732,8 @@ case_Err:                                         ; preds = %entry
   ret { i8, ptr } %variant_val
 
 match_merge13:                                    ; preds = %case_Ok17
-  %match_val29 = load i64, ptr %match_result12, align 4
-  %pool30 = load i64, ptr %pool, align 4
+  %match_val29 = load i64, ptr %match_result12, align 8
+  %pool30 = load i64, ptr %pool, align 8
   %str31 = call ptr @mesh_string_new(ptr @.str.19, i64 212)
   %call32 = call ptr @mesh_list_new()
   %call33 = call ptr @mesh_pool_execute(i64 %pool30, ptr %str31, ptr %call32)
@@ -3752,8 +3753,8 @@ case_Ok17:                                        ; preds = %match_merge
   %variant_field19 = getelementptr inbounds nuw { i8, ptr }, ptr %call11, i32 0, i32 1
   %path_val20 = load ptr, ptr %variant_field19, align 8
   store ptr %path_val20, ptr %__try_val_2, align 8
-  %__try_val_221 = load i64, ptr %__try_val_2, align 4
-  store i64 %__try_val_221, ptr %match_result12, align 4
+  %__try_val_221 = load i64, ptr %__try_val_2, align 8
+  store i64 %__try_val_221, ptr %match_result12, align 8
   br label %match_merge13
 
 case_Err18:                                       ; preds = %match_merge
@@ -3770,8 +3771,8 @@ case_Err18:                                       ; preds = %match_merge
   ret { i8, ptr } %variant_val28
 
 match_merge35:                                    ; preds = %case_Ok39
-  %match_val51 = load i64, ptr %match_result34, align 4
-  %pool52 = load i64, ptr %pool, align 4
+  %match_val51 = load i64, ptr %match_result34, align 8
+  %pool52 = load i64, ptr %pool, align 8
   %str53 = call ptr @mesh_string_new(ptr @.str.22, i64 329)
   %call54 = call ptr @mesh_list_new()
   %call55 = call ptr @mesh_pool_execute(i64 %pool52, ptr %str53, ptr %call54)
@@ -3791,8 +3792,8 @@ case_Ok39:                                        ; preds = %match_merge13
   %variant_field41 = getelementptr inbounds nuw { i8, ptr }, ptr %call33, i32 0, i32 1
   %path_val42 = load ptr, ptr %variant_field41, align 8
   store ptr %path_val42, ptr %__try_val_3, align 8
-  %__try_val_343 = load i64, ptr %__try_val_3, align 4
-  store i64 %__try_val_343, ptr %match_result34, align 4
+  %__try_val_343 = load i64, ptr %__try_val_3, align 8
+  store i64 %__try_val_343, ptr %match_result34, align 8
   br label %match_merge35
 
 case_Err40:                                       ; preds = %match_merge13
@@ -3809,8 +3810,8 @@ case_Err40:                                       ; preds = %match_merge13
   ret { i8, ptr } %variant_val50
 
 match_merge57:                                    ; preds = %case_Ok61
-  %match_val73 = load i64, ptr %match_result56, align 4
-  %pool74 = load i64, ptr %pool, align 4
+  %match_val73 = load i64, ptr %match_result56, align 8
+  %pool74 = load i64, ptr %pool, align 8
   %str75 = call ptr @mesh_string_new(ptr @.str.25, i64 236)
   %call76 = call ptr @mesh_list_new()
   %call77 = call ptr @mesh_pool_execute(i64 %pool74, ptr %str75, ptr %call76)
@@ -3830,8 +3831,8 @@ case_Ok61:                                        ; preds = %match_merge35
   %variant_field63 = getelementptr inbounds nuw { i8, ptr }, ptr %call55, i32 0, i32 1
   %path_val64 = load ptr, ptr %variant_field63, align 8
   store ptr %path_val64, ptr %__try_val_4, align 8
-  %__try_val_465 = load i64, ptr %__try_val_4, align 4
-  store i64 %__try_val_465, ptr %match_result56, align 4
+  %__try_val_465 = load i64, ptr %__try_val_4, align 8
+  store i64 %__try_val_465, ptr %match_result56, align 8
   br label %match_merge57
 
 case_Err62:                                       ; preds = %match_merge35
@@ -3848,8 +3849,8 @@ case_Err62:                                       ; preds = %match_merge35
   ret { i8, ptr } %variant_val72
 
 match_merge79:                                    ; preds = %case_Ok83
-  %match_val95 = load i64, ptr %match_result78, align 4
-  %pool96 = load i64, ptr %pool, align 4
+  %match_val95 = load i64, ptr %match_result78, align 8
+  %pool96 = load i64, ptr %pool, align 8
   %str97 = call ptr @mesh_string_new(ptr @.str.28, i64 234)
   %call98 = call ptr @mesh_list_new()
   %call99 = call ptr @mesh_pool_execute(i64 %pool96, ptr %str97, ptr %call98)
@@ -3869,8 +3870,8 @@ case_Ok83:                                        ; preds = %match_merge57
   %variant_field85 = getelementptr inbounds nuw { i8, ptr }, ptr %call77, i32 0, i32 1
   %path_val86 = load ptr, ptr %variant_field85, align 8
   store ptr %path_val86, ptr %__try_val_5, align 8
-  %__try_val_587 = load i64, ptr %__try_val_5, align 4
-  store i64 %__try_val_587, ptr %match_result78, align 4
+  %__try_val_587 = load i64, ptr %__try_val_5, align 8
+  store i64 %__try_val_587, ptr %match_result78, align 8
   br label %match_merge79
 
 case_Err84:                                       ; preds = %match_merge57
@@ -3887,8 +3888,8 @@ case_Err84:                                       ; preds = %match_merge57
   ret { i8, ptr } %variant_val94
 
 match_merge101:                                   ; preds = %case_Ok105
-  %match_val117 = load i64, ptr %match_result100, align 4
-  %pool118 = load i64, ptr %pool, align 4
+  %match_val117 = load i64, ptr %match_result100, align 8
+  %pool118 = load i64, ptr %pool, align 8
   %str119 = call ptr @mesh_string_new(ptr @.str.31, i64 293)
   %call120 = call ptr @mesh_list_new()
   %call121 = call ptr @mesh_pool_execute(i64 %pool118, ptr %str119, ptr %call120)
@@ -3908,8 +3909,8 @@ case_Ok105:                                       ; preds = %match_merge79
   %variant_field107 = getelementptr inbounds nuw { i8, ptr }, ptr %call99, i32 0, i32 1
   %path_val108 = load ptr, ptr %variant_field107, align 8
   store ptr %path_val108, ptr %__try_val_6, align 8
-  %__try_val_6109 = load i64, ptr %__try_val_6, align 4
-  store i64 %__try_val_6109, ptr %match_result100, align 4
+  %__try_val_6109 = load i64, ptr %__try_val_6, align 8
+  store i64 %__try_val_6109, ptr %match_result100, align 8
   br label %match_merge101
 
 case_Err106:                                      ; preds = %match_merge79
@@ -3926,8 +3927,8 @@ case_Err106:                                      ; preds = %match_merge79
   ret { i8, ptr } %variant_val116
 
 match_merge123:                                   ; preds = %case_Ok127
-  %match_val139 = load i64, ptr %match_result122, align 4
-  %pool140 = load i64, ptr %pool, align 4
+  %match_val139 = load i64, ptr %match_result122, align 8
+  %pool140 = load i64, ptr %pool, align 8
   %str141 = call ptr @mesh_string_new(ptr @.str.34, i64 424)
   %call142 = call ptr @mesh_list_new()
   %call143 = call ptr @mesh_pool_execute(i64 %pool140, ptr %str141, ptr %call142)
@@ -3947,8 +3948,8 @@ case_Ok127:                                       ; preds = %match_merge101
   %variant_field129 = getelementptr inbounds nuw { i8, ptr }, ptr %call121, i32 0, i32 1
   %path_val130 = load ptr, ptr %variant_field129, align 8
   store ptr %path_val130, ptr %__try_val_7, align 8
-  %__try_val_7131 = load i64, ptr %__try_val_7, align 4
-  store i64 %__try_val_7131, ptr %match_result122, align 4
+  %__try_val_7131 = load i64, ptr %__try_val_7, align 8
+  store i64 %__try_val_7131, ptr %match_result122, align 8
   br label %match_merge123
 
 case_Err128:                                      ; preds = %match_merge101
@@ -3965,8 +3966,8 @@ case_Err128:                                      ; preds = %match_merge101
   ret { i8, ptr } %variant_val138
 
 match_merge145:                                   ; preds = %case_Ok149
-  %match_val161 = load i64, ptr %match_result144, align 4
-  %pool162 = load i64, ptr %pool, align 4
+  %match_val161 = load i64, ptr %match_result144, align 8
+  %pool162 = load i64, ptr %pool, align 8
   %str163 = call ptr @mesh_string_new(ptr @.str.37, i64 487)
   %call164 = call ptr @mesh_list_new()
   %call165 = call ptr @mesh_pool_execute(i64 %pool162, ptr %str163, ptr %call164)
@@ -3986,8 +3987,8 @@ case_Ok149:                                       ; preds = %match_merge123
   %variant_field151 = getelementptr inbounds nuw { i8, ptr }, ptr %call143, i32 0, i32 1
   %path_val152 = load ptr, ptr %variant_field151, align 8
   store ptr %path_val152, ptr %__try_val_8, align 8
-  %__try_val_8153 = load i64, ptr %__try_val_8, align 4
-  store i64 %__try_val_8153, ptr %match_result144, align 4
+  %__try_val_8153 = load i64, ptr %__try_val_8, align 8
+  store i64 %__try_val_8153, ptr %match_result144, align 8
   br label %match_merge145
 
 case_Err150:                                      ; preds = %match_merge123
@@ -4004,8 +4005,8 @@ case_Err150:                                      ; preds = %match_merge123
   ret { i8, ptr } %variant_val160
 
 match_merge167:                                   ; preds = %case_Ok171
-  %match_val183 = load i64, ptr %match_result166, align 4
-  %pool184 = load i64, ptr %pool, align 4
+  %match_val183 = load i64, ptr %match_result166, align 8
+  %pool184 = load i64, ptr %pool, align 8
   %str185 = call ptr @mesh_string_new(ptr @.str.40, i64 319)
   %call186 = call ptr @mesh_list_new()
   %call187 = call ptr @mesh_pool_execute(i64 %pool184, ptr %str185, ptr %call186)
@@ -4025,8 +4026,8 @@ case_Ok171:                                       ; preds = %match_merge145
   %variant_field173 = getelementptr inbounds nuw { i8, ptr }, ptr %call165, i32 0, i32 1
   %path_val174 = load ptr, ptr %variant_field173, align 8
   store ptr %path_val174, ptr %__try_val_9, align 8
-  %__try_val_9175 = load i64, ptr %__try_val_9, align 4
-  store i64 %__try_val_9175, ptr %match_result166, align 4
+  %__try_val_9175 = load i64, ptr %__try_val_9, align 8
+  store i64 %__try_val_9175, ptr %match_result166, align 8
   br label %match_merge167
 
 case_Err172:                                      ; preds = %match_merge145
@@ -4043,8 +4044,8 @@ case_Err172:                                      ; preds = %match_merge145
   ret { i8, ptr } %variant_val182
 
 match_merge189:                                   ; preds = %case_Ok193
-  %match_val205 = load i64, ptr %match_result188, align 4
-  %pool206 = load i64, ptr %pool, align 4
+  %match_val205 = load i64, ptr %match_result188, align 8
+  %pool206 = load i64, ptr %pool, align 8
   %str207 = call ptr @mesh_string_new(ptr @.str.43, i64 417)
   %call208 = call ptr @mesh_list_new()
   %call209 = call ptr @mesh_pool_execute(i64 %pool206, ptr %str207, ptr %call208)
@@ -4064,8 +4065,8 @@ case_Ok193:                                       ; preds = %match_merge167
   %variant_field195 = getelementptr inbounds nuw { i8, ptr }, ptr %call187, i32 0, i32 1
   %path_val196 = load ptr, ptr %variant_field195, align 8
   store ptr %path_val196, ptr %__try_val_10, align 8
-  %__try_val_10197 = load i64, ptr %__try_val_10, align 4
-  store i64 %__try_val_10197, ptr %match_result188, align 4
+  %__try_val_10197 = load i64, ptr %__try_val_10, align 8
+  store i64 %__try_val_10197, ptr %match_result188, align 8
   br label %match_merge189
 
 case_Err194:                                      ; preds = %match_merge167
@@ -4082,8 +4083,8 @@ case_Err194:                                      ; preds = %match_merge167
   ret { i8, ptr } %variant_val204
 
 match_merge211:                                   ; preds = %case_Ok215
-  %match_val227 = load i64, ptr %match_result210, align 4
-  %pool228 = load i64, ptr %pool, align 4
+  %match_val227 = load i64, ptr %match_result210, align 8
+  %pool228 = load i64, ptr %pool, align 8
   %str229 = call ptr @mesh_string_new(ptr @.str.46, i64 93)
   %call230 = call ptr @mesh_list_new()
   %call231 = call ptr @mesh_pool_execute(i64 %pool228, ptr %str229, ptr %call230)
@@ -4103,8 +4104,8 @@ case_Ok215:                                       ; preds = %match_merge189
   %variant_field217 = getelementptr inbounds nuw { i8, ptr }, ptr %call209, i32 0, i32 1
   %path_val218 = load ptr, ptr %variant_field217, align 8
   store ptr %path_val218, ptr %__try_val_11, align 8
-  %__try_val_11219 = load i64, ptr %__try_val_11, align 4
-  store i64 %__try_val_11219, ptr %match_result210, align 4
+  %__try_val_11219 = load i64, ptr %__try_val_11, align 8
+  store i64 %__try_val_11219, ptr %match_result210, align 8
   br label %match_merge211
 
 case_Err216:                                      ; preds = %match_merge189
@@ -4121,8 +4122,8 @@ case_Err216:                                      ; preds = %match_merge189
   ret { i8, ptr } %variant_val226
 
 match_merge233:                                   ; preds = %case_Ok237
-  %match_val249 = load i64, ptr %match_result232, align 4
-  %pool250 = load i64, ptr %pool, align 4
+  %match_val249 = load i64, ptr %match_result232, align 8
+  %pool250 = load i64, ptr %pool, align 8
   %str251 = call ptr @mesh_string_new(ptr @.str.49, i64 74)
   %call252 = call ptr @mesh_list_new()
   %call253 = call ptr @mesh_pool_execute(i64 %pool250, ptr %str251, ptr %call252)
@@ -4142,8 +4143,8 @@ case_Ok237:                                       ; preds = %match_merge211
   %variant_field239 = getelementptr inbounds nuw { i8, ptr }, ptr %call231, i32 0, i32 1
   %path_val240 = load ptr, ptr %variant_field239, align 8
   store ptr %path_val240, ptr %__try_val_12, align 8
-  %__try_val_12241 = load i64, ptr %__try_val_12, align 4
-  store i64 %__try_val_12241, ptr %match_result232, align 4
+  %__try_val_12241 = load i64, ptr %__try_val_12, align 8
+  store i64 %__try_val_12241, ptr %match_result232, align 8
   br label %match_merge233
 
 case_Err238:                                      ; preds = %match_merge211
@@ -4160,8 +4161,8 @@ case_Err238:                                      ; preds = %match_merge211
   ret { i8, ptr } %variant_val248
 
 match_merge255:                                   ; preds = %case_Ok259
-  %match_val272 = load i64, ptr %match_result254, align 4
-  %pool273 = load i64, ptr %pool, align 4
+  %match_val272 = load i64, ptr %match_result254, align 8
+  %pool273 = load i64, ptr %pool, align 8
   %str274 = call ptr @mesh_string_new(ptr @.str.52, i64 88)
   %call275 = call ptr @mesh_list_new()
   %call276 = call ptr @mesh_pool_execute(i64 %pool273, ptr %str274, ptr %call275)
@@ -4181,8 +4182,8 @@ case_Ok259:                                       ; preds = %match_merge233
   %variant_field261 = getelementptr inbounds nuw { i8, ptr }, ptr %call253, i32 0, i32 1
   %path_val262 = load ptr, ptr %variant_field261, align 8
   store ptr %path_val262, ptr %__try_val_13263, align 8
-  %__try_val_13264 = load i64, ptr %__try_val_13263, align 4
-  store i64 %__try_val_13264, ptr %match_result254, align 4
+  %__try_val_13264 = load i64, ptr %__try_val_13263, align 8
+  store i64 %__try_val_13264, ptr %match_result254, align 8
   br label %match_merge255
 
 case_Err260:                                      ; preds = %match_merge233
@@ -4199,8 +4200,8 @@ case_Err260:                                      ; preds = %match_merge233
   ret { i8, ptr } %variant_val271
 
 match_merge278:                                   ; preds = %case_Ok282
-  %match_val294 = load i64, ptr %match_result277, align 4
-  %pool295 = load i64, ptr %pool, align 4
+  %match_val294 = load i64, ptr %match_result277, align 8
+  %pool295 = load i64, ptr %pool, align 8
   %str296 = call ptr @mesh_string_new(ptr @.str.55, i64 83)
   %call297 = call ptr @mesh_list_new()
   %call298 = call ptr @mesh_pool_execute(i64 %pool295, ptr %str296, ptr %call297)
@@ -4220,8 +4221,8 @@ case_Ok282:                                       ; preds = %match_merge255
   %variant_field284 = getelementptr inbounds nuw { i8, ptr }, ptr %call276, i32 0, i32 1
   %path_val285 = load ptr, ptr %variant_field284, align 8
   store ptr %path_val285, ptr %__try_val_14, align 8
-  %__try_val_14286 = load i64, ptr %__try_val_14, align 4
-  store i64 %__try_val_14286, ptr %match_result277, align 4
+  %__try_val_14286 = load i64, ptr %__try_val_14, align 8
+  store i64 %__try_val_14286, ptr %match_result277, align 8
   br label %match_merge278
 
 case_Err283:                                      ; preds = %match_merge255
@@ -4238,8 +4239,8 @@ case_Err283:                                      ; preds = %match_merge255
   ret { i8, ptr } %variant_val293
 
 match_merge300:                                   ; preds = %case_Ok304
-  %match_val316 = load i64, ptr %match_result299, align 4
-  %pool317 = load i64, ptr %pool, align 4
+  %match_val316 = load i64, ptr %match_result299, align 8
+  %pool317 = load i64, ptr %pool, align 8
   %str318 = call ptr @mesh_string_new(ptr @.str.58, i64 79)
   %call319 = call ptr @mesh_list_new()
   %call320 = call ptr @mesh_pool_execute(i64 %pool317, ptr %str318, ptr %call319)
@@ -4259,8 +4260,8 @@ case_Ok304:                                       ; preds = %match_merge278
   %variant_field306 = getelementptr inbounds nuw { i8, ptr }, ptr %call298, i32 0, i32 1
   %path_val307 = load ptr, ptr %variant_field306, align 8
   store ptr %path_val307, ptr %__try_val_15, align 8
-  %__try_val_15308 = load i64, ptr %__try_val_15, align 4
-  store i64 %__try_val_15308, ptr %match_result299, align 4
+  %__try_val_15308 = load i64, ptr %__try_val_15, align 8
+  store i64 %__try_val_15308, ptr %match_result299, align 8
   br label %match_merge300
 
 case_Err305:                                      ; preds = %match_merge278
@@ -4277,8 +4278,8 @@ case_Err305:                                      ; preds = %match_merge278
   ret { i8, ptr } %variant_val315
 
 match_merge322:                                   ; preds = %case_Ok326
-  %match_val338 = load i64, ptr %match_result321, align 4
-  %pool339 = load i64, ptr %pool, align 4
+  %match_val338 = load i64, ptr %match_result321, align 8
+  %pool339 = load i64, ptr %pool, align 8
   %str340 = call ptr @mesh_string_new(ptr @.str.61, i64 77)
   %call341 = call ptr @mesh_list_new()
   %call342 = call ptr @mesh_pool_execute(i64 %pool339, ptr %str340, ptr %call341)
@@ -4298,8 +4299,8 @@ case_Ok326:                                       ; preds = %match_merge300
   %variant_field328 = getelementptr inbounds nuw { i8, ptr }, ptr %call320, i32 0, i32 1
   %path_val329 = load ptr, ptr %variant_field328, align 8
   store ptr %path_val329, ptr %__try_val_16, align 8
-  %__try_val_16330 = load i64, ptr %__try_val_16, align 4
-  store i64 %__try_val_16330, ptr %match_result321, align 4
+  %__try_val_16330 = load i64, ptr %__try_val_16, align 8
+  store i64 %__try_val_16330, ptr %match_result321, align 8
   br label %match_merge322
 
 case_Err327:                                      ; preds = %match_merge300
@@ -4316,8 +4317,8 @@ case_Err327:                                      ; preds = %match_merge300
   ret { i8, ptr } %variant_val337
 
 match_merge344:                                   ; preds = %case_Ok348
-  %match_val361 = load i64, ptr %match_result343, align 4
-  %pool362 = load i64, ptr %pool, align 4
+  %match_val361 = load i64, ptr %match_result343, align 8
+  %pool362 = load i64, ptr %pool, align 8
   %str363 = call ptr @mesh_string_new(ptr @.str.64, i64 65)
   %call364 = call ptr @mesh_list_new()
   %call365 = call ptr @mesh_pool_execute(i64 %pool362, ptr %str363, ptr %call364)
@@ -4337,8 +4338,8 @@ case_Ok348:                                       ; preds = %match_merge322
   %variant_field350 = getelementptr inbounds nuw { i8, ptr }, ptr %call342, i32 0, i32 1
   %path_val351 = load ptr, ptr %variant_field350, align 8
   store ptr %path_val351, ptr %__try_val_17, align 8
-  %__try_val_17352 = load i64, ptr %__try_val_17, align 4
-  store i64 %__try_val_17352, ptr %match_result343, align 4
+  %__try_val_17352 = load i64, ptr %__try_val_17, align 8
+  store i64 %__try_val_17352, ptr %match_result343, align 8
   br label %match_merge344
 
 case_Err349:                                      ; preds = %match_merge322
@@ -4355,8 +4356,8 @@ case_Err349:                                      ; preds = %match_merge322
   ret { i8, ptr } %variant_val360
 
 match_merge367:                                   ; preds = %case_Ok371
-  %match_val383 = load i64, ptr %match_result366, align 4
-  %pool384 = load i64, ptr %pool, align 4
+  %match_val383 = load i64, ptr %match_result366, align 8
+  %pool384 = load i64, ptr %pool, align 8
   %str385 = call ptr @mesh_string_new(ptr @.str.67, i64 71)
   %call386 = call ptr @mesh_list_new()
   %call387 = call ptr @mesh_pool_execute(i64 %pool384, ptr %str385, ptr %call386)
@@ -4376,8 +4377,8 @@ case_Ok371:                                       ; preds = %match_merge344
   %variant_field373 = getelementptr inbounds nuw { i8, ptr }, ptr %call365, i32 0, i32 1
   %path_val374 = load ptr, ptr %variant_field373, align 8
   store ptr %path_val374, ptr %__try_val_18, align 8
-  %__try_val_18375 = load i64, ptr %__try_val_18, align 4
-  store i64 %__try_val_18375, ptr %match_result366, align 4
+  %__try_val_18375 = load i64, ptr %__try_val_18, align 8
+  store i64 %__try_val_18375, ptr %match_result366, align 8
   br label %match_merge367
 
 case_Err372:                                      ; preds = %match_merge344
@@ -4394,8 +4395,8 @@ case_Err372:                                      ; preds = %match_merge344
   ret { i8, ptr } %variant_val382
 
 match_merge389:                                   ; preds = %case_Ok393
-  %match_val405 = load i64, ptr %match_result388, align 4
-  %pool406 = load i64, ptr %pool, align 4
+  %match_val405 = load i64, ptr %match_result388, align 8
+  %pool406 = load i64, ptr %pool, align 8
   %str407 = call ptr @mesh_string_new(ptr @.str.70, i64 63)
   %call408 = call ptr @mesh_list_new()
   %call409 = call ptr @mesh_pool_execute(i64 %pool406, ptr %str407, ptr %call408)
@@ -4415,8 +4416,8 @@ case_Ok393:                                       ; preds = %match_merge367
   %variant_field395 = getelementptr inbounds nuw { i8, ptr }, ptr %call387, i32 0, i32 1
   %path_val396 = load ptr, ptr %variant_field395, align 8
   store ptr %path_val396, ptr %__try_val_19, align 8
-  %__try_val_19397 = load i64, ptr %__try_val_19, align 4
-  store i64 %__try_val_19397, ptr %match_result388, align 4
+  %__try_val_19397 = load i64, ptr %__try_val_19, align 8
+  store i64 %__try_val_19397, ptr %match_result388, align 8
   br label %match_merge389
 
 case_Err394:                                      ; preds = %match_merge367
@@ -4433,8 +4434,8 @@ case_Err394:                                      ; preds = %match_merge367
   ret { i8, ptr } %variant_val404
 
 match_merge411:                                   ; preds = %case_Ok415
-  %match_val427 = load i64, ptr %match_result410, align 4
-  %pool428 = load i64, ptr %pool, align 4
+  %match_val427 = load i64, ptr %match_result410, align 8
+  %pool428 = load i64, ptr %pool, align 8
   %str429 = call ptr @mesh_string_new(ptr @.str.73, i64 71)
   %call430 = call ptr @mesh_list_new()
   %call431 = call ptr @mesh_pool_execute(i64 %pool428, ptr %str429, ptr %call430)
@@ -4454,8 +4455,8 @@ case_Ok415:                                       ; preds = %match_merge389
   %variant_field417 = getelementptr inbounds nuw { i8, ptr }, ptr %call409, i32 0, i32 1
   %path_val418 = load ptr, ptr %variant_field417, align 8
   store ptr %path_val418, ptr %__try_val_20, align 8
-  %__try_val_20419 = load i64, ptr %__try_val_20, align 4
-  store i64 %__try_val_20419, ptr %match_result410, align 4
+  %__try_val_20419 = load i64, ptr %__try_val_20, align 8
+  store i64 %__try_val_20419, ptr %match_result410, align 8
   br label %match_merge411
 
 case_Err416:                                      ; preds = %match_merge389
@@ -4472,8 +4473,8 @@ case_Err416:                                      ; preds = %match_merge389
   ret { i8, ptr } %variant_val426
 
 match_merge433:                                   ; preds = %case_Ok437
-  %match_val449 = load i64, ptr %match_result432, align 4
-  %pool450 = load i64, ptr %pool, align 4
+  %match_val449 = load i64, ptr %match_result432, align 8
+  %pool450 = load i64, ptr %pool, align 8
   %str451 = call ptr @mesh_string_new(ptr @.str.76, i64 93)
   %call452 = call ptr @mesh_list_new()
   %call453 = call ptr @mesh_pool_execute(i64 %pool450, ptr %str451, ptr %call452)
@@ -4493,8 +4494,8 @@ case_Ok437:                                       ; preds = %match_merge411
   %variant_field439 = getelementptr inbounds nuw { i8, ptr }, ptr %call431, i32 0, i32 1
   %path_val440 = load ptr, ptr %variant_field439, align 8
   store ptr %path_val440, ptr %__try_val_21, align 8
-  %__try_val_21441 = load i64, ptr %__try_val_21, align 4
-  store i64 %__try_val_21441, ptr %match_result432, align 4
+  %__try_val_21441 = load i64, ptr %__try_val_21, align 8
+  store i64 %__try_val_21441, ptr %match_result432, align 8
   br label %match_merge433
 
 case_Err438:                                      ; preds = %match_merge411
@@ -4511,8 +4512,8 @@ case_Err438:                                      ; preds = %match_merge411
   ret { i8, ptr } %variant_val448
 
 match_merge455:                                   ; preds = %case_Ok459
-  %match_val471 = load i64, ptr %match_result454, align 4
-  %pool472 = load i64, ptr %pool, align 4
+  %match_val471 = load i64, ptr %match_result454, align 8
+  %pool472 = load i64, ptr %pool, align 8
   %str473 = call ptr @mesh_string_new(ptr @.str.79, i64 82)
   %call474 = call ptr @mesh_list_new()
   %call475 = call ptr @mesh_pool_execute(i64 %pool472, ptr %str473, ptr %call474)
@@ -4532,8 +4533,8 @@ case_Ok459:                                       ; preds = %match_merge433
   %variant_field461 = getelementptr inbounds nuw { i8, ptr }, ptr %call453, i32 0, i32 1
   %path_val462 = load ptr, ptr %variant_field461, align 8
   store ptr %path_val462, ptr %__try_val_22, align 8
-  %__try_val_22463 = load i64, ptr %__try_val_22, align 4
-  store i64 %__try_val_22463, ptr %match_result454, align 4
+  %__try_val_22463 = load i64, ptr %__try_val_22, align 8
+  store i64 %__try_val_22463, ptr %match_result454, align 8
   br label %match_merge455
 
 case_Err460:                                      ; preds = %match_merge433
@@ -4550,8 +4551,8 @@ case_Err460:                                      ; preds = %match_merge433
   ret { i8, ptr } %variant_val470
 
 match_merge477:                                   ; preds = %case_Ok481
-  %match_val493 = load i64, ptr %match_result476, align 4
-  %pool494 = load i64, ptr %pool, align 4
+  %match_val493 = load i64, ptr %match_result476, align 8
+  %pool494 = load i64, ptr %pool, align 8
   %str495 = call ptr @mesh_string_new(ptr @.str.82, i64 93)
   %call496 = call ptr @mesh_list_new()
   %call497 = call ptr @mesh_pool_execute(i64 %pool494, ptr %str495, ptr %call496)
@@ -4571,8 +4572,8 @@ case_Ok481:                                       ; preds = %match_merge455
   %variant_field483 = getelementptr inbounds nuw { i8, ptr }, ptr %call475, i32 0, i32 1
   %path_val484 = load ptr, ptr %variant_field483, align 8
   store ptr %path_val484, ptr %__try_val_23, align 8
-  %__try_val_23485 = load i64, ptr %__try_val_23, align 4
-  store i64 %__try_val_23485, ptr %match_result476, align 4
+  %__try_val_23485 = load i64, ptr %__try_val_23, align 8
+  store i64 %__try_val_23485, ptr %match_result476, align 8
   br label %match_merge477
 
 case_Err482:                                      ; preds = %match_merge455
@@ -4589,8 +4590,8 @@ case_Err482:                                      ; preds = %match_merge455
   ret { i8, ptr } %variant_val492
 
 match_merge499:                                   ; preds = %case_Ok503
-  %match_val515 = load i64, ptr %match_result498, align 4
-  %pool516 = load i64, ptr %pool, align 4
+  %match_val515 = load i64, ptr %match_result498, align 8
+  %pool516 = load i64, ptr %pool, align 8
   %str517 = call ptr @mesh_string_new(ptr @.str.85, i64 94)
   %call518 = call ptr @mesh_list_new()
   %call519 = call ptr @mesh_pool_execute(i64 %pool516, ptr %str517, ptr %call518)
@@ -4610,8 +4611,8 @@ case_Ok503:                                       ; preds = %match_merge477
   %variant_field505 = getelementptr inbounds nuw { i8, ptr }, ptr %call497, i32 0, i32 1
   %path_val506 = load ptr, ptr %variant_field505, align 8
   store ptr %path_val506, ptr %__try_val_24, align 8
-  %__try_val_24507 = load i64, ptr %__try_val_24, align 4
-  store i64 %__try_val_24507, ptr %match_result498, align 4
+  %__try_val_24507 = load i64, ptr %__try_val_24, align 8
+  store i64 %__try_val_24507, ptr %match_result498, align 8
   br label %match_merge499
 
 case_Err504:                                      ; preds = %match_merge477
@@ -4628,8 +4629,8 @@ case_Err504:                                      ; preds = %match_merge477
   ret { i8, ptr } %variant_val514
 
 match_merge521:                                   ; preds = %case_Ok525
-  %match_val537 = load i64, ptr %match_result520, align 4
-  %pool538 = load i64, ptr %pool, align 4
+  %match_val537 = load i64, ptr %match_result520, align 8
+  %pool538 = load i64, ptr %pool, align 8
   %str539 = call ptr @mesh_string_new(ptr @.str.88, i64 90)
   %call540 = call ptr @mesh_list_new()
   %call541 = call ptr @mesh_pool_execute(i64 %pool538, ptr %str539, ptr %call540)
@@ -4649,8 +4650,8 @@ case_Ok525:                                       ; preds = %match_merge499
   %variant_field527 = getelementptr inbounds nuw { i8, ptr }, ptr %call519, i32 0, i32 1
   %path_val528 = load ptr, ptr %variant_field527, align 8
   store ptr %path_val528, ptr %__try_val_25, align 8
-  %__try_val_25529 = load i64, ptr %__try_val_25, align 4
-  store i64 %__try_val_25529, ptr %match_result520, align 4
+  %__try_val_25529 = load i64, ptr %__try_val_25, align 8
+  store i64 %__try_val_25529, ptr %match_result520, align 8
   br label %match_merge521
 
 case_Err526:                                      ; preds = %match_merge499
@@ -4667,8 +4668,8 @@ case_Err526:                                      ; preds = %match_merge499
   ret { i8, ptr } %variant_val536
 
 match_merge543:                                   ; preds = %case_Ok547
-  %match_val559 = load i64, ptr %match_result542, align 4
-  %pool560 = load i64, ptr %pool, align 4
+  %match_val559 = load i64, ptr %match_result542, align 8
+  %pool560 = load i64, ptr %pool, align 8
   %str561 = call ptr @mesh_string_new(ptr @.str.91, i64 78)
   %call562 = call ptr @mesh_list_new()
   %call563 = call ptr @mesh_pool_execute(i64 %pool560, ptr %str561, ptr %call562)
@@ -4688,8 +4689,8 @@ case_Ok547:                                       ; preds = %match_merge521
   %variant_field549 = getelementptr inbounds nuw { i8, ptr }, ptr %call541, i32 0, i32 1
   %path_val550 = load ptr, ptr %variant_field549, align 8
   store ptr %path_val550, ptr %__try_val_26, align 8
-  %__try_val_26551 = load i64, ptr %__try_val_26, align 4
-  store i64 %__try_val_26551, ptr %match_result542, align 4
+  %__try_val_26551 = load i64, ptr %__try_val_26, align 8
+  store i64 %__try_val_26551, ptr %match_result542, align 8
   br label %match_merge543
 
 case_Err548:                                      ; preds = %match_merge521
@@ -4706,8 +4707,8 @@ case_Err548:                                      ; preds = %match_merge521
   ret { i8, ptr } %variant_val558
 
 match_merge565:                                   ; preds = %case_Ok569
-  %match_val581 = load i64, ptr %match_result564, align 4
-  %pool582 = load i64, ptr %pool, align 4
+  %match_val581 = load i64, ptr %match_result564, align 8
+  %pool582 = load i64, ptr %pool, align 8
   %str583 = call ptr @mesh_string_new(ptr @.str.94, i64 72)
   %call584 = call ptr @mesh_list_new()
   %call585 = call ptr @mesh_pool_execute(i64 %pool582, ptr %str583, ptr %call584)
@@ -4727,8 +4728,8 @@ case_Ok569:                                       ; preds = %match_merge543
   %variant_field571 = getelementptr inbounds nuw { i8, ptr }, ptr %call563, i32 0, i32 1
   %path_val572 = load ptr, ptr %variant_field571, align 8
   store ptr %path_val572, ptr %__try_val_27, align 8
-  %__try_val_27573 = load i64, ptr %__try_val_27, align 4
-  store i64 %__try_val_27573, ptr %match_result564, align 4
+  %__try_val_27573 = load i64, ptr %__try_val_27, align 8
+  store i64 %__try_val_27573, ptr %match_result564, align 8
   br label %match_merge565
 
 case_Err570:                                      ; preds = %match_merge543
@@ -4745,8 +4746,8 @@ case_Err570:                                      ; preds = %match_merge543
   ret { i8, ptr } %variant_val580
 
 match_merge587:                                   ; preds = %case_Ok591
-  %match_val603 = load i64, ptr %match_result586, align 4
-  %pool604 = load i64, ptr %pool, align 4
+  %match_val603 = load i64, ptr %match_result586, align 8
+  %pool604 = load i64, ptr %pool, align 8
   %str605 = call ptr @mesh_string_new(ptr @.str.97, i64 83)
   %call606 = call ptr @mesh_list_new()
   %call607 = call ptr @mesh_pool_execute(i64 %pool604, ptr %str605, ptr %call606)
@@ -4766,8 +4767,8 @@ case_Ok591:                                       ; preds = %match_merge565
   %variant_field593 = getelementptr inbounds nuw { i8, ptr }, ptr %call585, i32 0, i32 1
   %path_val594 = load ptr, ptr %variant_field593, align 8
   store ptr %path_val594, ptr %__try_val_28, align 8
-  %__try_val_28595 = load i64, ptr %__try_val_28, align 4
-  store i64 %__try_val_28595, ptr %match_result586, align 4
+  %__try_val_28595 = load i64, ptr %__try_val_28, align 8
+  store i64 %__try_val_28595, ptr %match_result586, align 8
   br label %match_merge587
 
 case_Err592:                                      ; preds = %match_merge565
@@ -4784,8 +4785,8 @@ case_Err592:                                      ; preds = %match_merge565
   ret { i8, ptr } %variant_val602
 
 match_merge609:                                   ; preds = %case_Ok613
-  %match_val625 = load i64, ptr %match_result608, align 4
-  %pool626 = load i64, ptr %pool, align 4
+  %match_val625 = load i64, ptr %match_result608, align 8
+  %pool626 = load i64, ptr %pool, align 8
   %str627 = call ptr @mesh_string_new(ptr @.str.100, i64 98)
   %call628 = call ptr @mesh_list_new()
   %call629 = call ptr @mesh_pool_execute(i64 %pool626, ptr %str627, ptr %call628)
@@ -4805,8 +4806,8 @@ case_Ok613:                                       ; preds = %match_merge587
   %variant_field615 = getelementptr inbounds nuw { i8, ptr }, ptr %call607, i32 0, i32 1
   %path_val616 = load ptr, ptr %variant_field615, align 8
   store ptr %path_val616, ptr %__try_val_29, align 8
-  %__try_val_29617 = load i64, ptr %__try_val_29, align 4
-  store i64 %__try_val_29617, ptr %match_result608, align 4
+  %__try_val_29617 = load i64, ptr %__try_val_29, align 8
+  store i64 %__try_val_29617, ptr %match_result608, align 8
   br label %match_merge609
 
 case_Err614:                                      ; preds = %match_merge587
@@ -4823,8 +4824,8 @@ case_Err614:                                      ; preds = %match_merge587
   ret { i8, ptr } %variant_val624
 
 match_merge631:                                   ; preds = %case_Ok635
-  %match_val647 = load i64, ptr %match_result630, align 4
-  %pool648 = load i64, ptr %pool, align 4
+  %match_val647 = load i64, ptr %match_result630, align 8
+  %pool648 = load i64, ptr %pool, align 8
   %str649 = call ptr @mesh_string_new(ptr @.str.103, i64 82)
   %call650 = call ptr @mesh_list_new()
   %call651 = call ptr @mesh_pool_execute(i64 %pool648, ptr %str649, ptr %call650)
@@ -4844,8 +4845,8 @@ case_Ok635:                                       ; preds = %match_merge609
   %variant_field637 = getelementptr inbounds nuw { i8, ptr }, ptr %call629, i32 0, i32 1
   %path_val638 = load ptr, ptr %variant_field637, align 8
   store ptr %path_val638, ptr %__try_val_30, align 8
-  %__try_val_30639 = load i64, ptr %__try_val_30, align 4
-  store i64 %__try_val_30639, ptr %match_result630, align 4
+  %__try_val_30639 = load i64, ptr %__try_val_30, align 8
+  store i64 %__try_val_30639, ptr %match_result630, align 8
   br label %match_merge631
 
 case_Err636:                                      ; preds = %match_merge609
@@ -4862,8 +4863,8 @@ case_Err636:                                      ; preds = %match_merge609
   ret { i8, ptr } %variant_val646
 
 match_merge653:                                   ; preds = %case_Ok657
-  %match_val669 = load i64, ptr %match_result652, align 4
-  %pool670 = load i64, ptr %pool, align 4
+  %match_val669 = load i64, ptr %match_result652, align 8
+  %pool670 = load i64, ptr %pool, align 8
   %str671 = call ptr @mesh_string_new(ptr @.str.106, i64 61)
   %call672 = call ptr @mesh_list_new()
   %call673 = call ptr @mesh_pool_execute(i64 %pool670, ptr %str671, ptr %call672)
@@ -4883,8 +4884,8 @@ case_Ok657:                                       ; preds = %match_merge631
   %variant_field659 = getelementptr inbounds nuw { i8, ptr }, ptr %call651, i32 0, i32 1
   %path_val660 = load ptr, ptr %variant_field659, align 8
   store ptr %path_val660, ptr %__try_val_31, align 8
-  %__try_val_31661 = load i64, ptr %__try_val_31, align 4
-  store i64 %__try_val_31661, ptr %match_result652, align 4
+  %__try_val_31661 = load i64, ptr %__try_val_31, align 8
+  store i64 %__try_val_31661, ptr %match_result652, align 8
   br label %match_merge653
 
 case_Err658:                                      ; preds = %match_merge631
@@ -4901,8 +4902,8 @@ case_Err658:                                      ; preds = %match_merge631
   ret { i8, ptr } %variant_val668
 
 match_merge675:                                   ; preds = %case_Ok679
-  %match_val691 = load i64, ptr %match_result674, align 4
-  %pool692 = load i64, ptr %pool, align 4
+  %match_val691 = load i64, ptr %match_result674, align 8
+  %pool692 = load i64, ptr %pool, align 8
   %str693 = call ptr @mesh_string_new(ptr @.str.109, i64 76)
   %call694 = call ptr @mesh_list_new()
   %call695 = call ptr @mesh_pool_execute(i64 %pool692, ptr %str693, ptr %call694)
@@ -4922,8 +4923,8 @@ case_Ok679:                                       ; preds = %match_merge653
   %variant_field681 = getelementptr inbounds nuw { i8, ptr }, ptr %call673, i32 0, i32 1
   %path_val682 = load ptr, ptr %variant_field681, align 8
   store ptr %path_val682, ptr %__try_val_32, align 8
-  %__try_val_32683 = load i64, ptr %__try_val_32, align 4
-  store i64 %__try_val_32683, ptr %match_result674, align 4
+  %__try_val_32683 = load i64, ptr %__try_val_32, align 8
+  store i64 %__try_val_32683, ptr %match_result674, align 8
   br label %match_merge675
 
 case_Err680:                                      ; preds = %match_merge653
@@ -4940,12 +4941,12 @@ case_Err680:                                      ; preds = %match_merge653
   ret { i8, ptr } %variant_val690
 
 match_merge697:                                   ; preds = %case_Ok701
-  %match_val713 = load i64, ptr %match_result696, align 4
+  %match_val713 = load i64, ptr %match_result696, align 8
   %variant714 = alloca { i8, ptr }, align 8
   %tag_ptr715 = getelementptr inbounds nuw { i8, ptr }, ptr %variant714, i32 0, i32 0
   store i8 0, ptr %tag_ptr715, align 1
   %vfield_ptr716 = getelementptr inbounds nuw { i8, ptr }, ptr %variant714, i32 0, i32 1
-  store i64 0, ptr %vfield_ptr716, align 4
+  store i64 0, ptr %vfield_ptr716, align 8
   %variant_val717 = load { i8, ptr }, ptr %variant714, align 8
   ret { i8, ptr } %variant_val717
 
@@ -4957,8 +4958,8 @@ case_Ok701:                                       ; preds = %match_merge675
   %variant_field703 = getelementptr inbounds nuw { i8, ptr }, ptr %call695, i32 0, i32 1
   %path_val704 = load ptr, ptr %variant_field703, align 8
   store ptr %path_val704, ptr %__try_val_33, align 8
-  %__try_val_33705 = load i64, ptr %__try_val_33, align 4
-  store i64 %__try_val_33705, ptr %match_result696, align 4
+  %__try_val_33705 = load i64, ptr %__try_val_33, align 8
+  store i64 %__try_val_33705, ptr %match_result696, align 8
   br label %match_merge697
 
 case_Err702:                                      ; preds = %match_merge675
@@ -4980,7 +4981,7 @@ entry:
   %__try_err_34 = alloca ptr, align 8
   %__try_val_34 = alloca i64, align 8
   %pool = alloca i64, align 8
-  store i64 %0, ptr %pool, align 4
+  store i64 %0, ptr %pool, align 8
   %date_str = alloca ptr, align 8
   store ptr %1, ptr %date_str, align 8
   %year = alloca ptr, align 8
@@ -5024,7 +5025,7 @@ entry:
   %str25 = call ptr @mesh_string_new(ptr @.str.117, i64 13)
   %concat26 = call ptr @mesh_string_concat(ptr %concat24, ptr %str25)
   store ptr %concat26, ptr %sql, align 8
-  %pool27 = load i64, ptr %pool, align 4
+  %pool27 = load i64, ptr %pool, align 8
   %sql28 = load ptr, ptr %sql, align 8
   %call29 = call ptr @mesh_list_new()
   %call30 = call ptr @mesh_pool_execute(i64 %pool27, ptr %sql28, ptr %call29)
@@ -5037,12 +5038,12 @@ entry:
   ]
 
 match_merge:                                      ; preds = %case_Ok
-  %match_val = load i64, ptr %match_result, align 4
+  %match_val = load i64, ptr %match_result, align 8
   %variant36 = alloca { i8, ptr }, align 8
   %tag_ptr37 = getelementptr inbounds nuw { i8, ptr }, ptr %variant36, i32 0, i32 0
   store i8 0, ptr %tag_ptr37, align 1
   %vfield_ptr38 = getelementptr inbounds nuw { i8, ptr }, ptr %variant36, i32 0, i32 1
-  store i64 0, ptr %vfield_ptr38, align 4
+  store i64 0, ptr %vfield_ptr38, align 8
   %variant_val39 = load { i8, ptr }, ptr %variant36, align 8
   ret { i8, ptr } %variant_val39
 
@@ -5054,8 +5055,8 @@ case_Ok:                                          ; preds = %entry
   %variant_field = getelementptr inbounds nuw { i8, ptr }, ptr %call30, i32 0, i32 1
   %path_val = load ptr, ptr %variant_field, align 8
   store ptr %path_val, ptr %__try_val_34, align 8
-  %__try_val_3431 = load i64, ptr %__try_val_34, align 4
-  store i64 %__try_val_3431, ptr %match_result, align 4
+  %__try_val_3431 = load i64, ptr %__try_val_34, align 8
+  store i64 %__try_val_3431, ptr %match_result, align 8
   br label %match_merge
 
 case_Err:                                         ; preds = %entry
@@ -5087,30 +5088,30 @@ entry:
   %offset_str = alloca ptr, align 8
   %if_result = alloca { i8, ptr }, align 8
   %pool = alloca i64, align 8
-  store i64 %0, ptr %pool, align 4
+  store i64 %0, ptr %pool, align 8
   %days = alloca i64, align 8
-  store i64 %1, ptr %days, align 4
+  store i64 %1, ptr %days, align 8
   %i = alloca i64, align 8
-  store i64 %2, ptr %i, align 4
+  store i64 %2, ptr %i, align 8
   br label %tce_loop
 
 tce_loop:                                         ; preds = %if_merge17, %entry
-  %i1 = load i64, ptr %i, align 4
-  %days2 = load i64, ptr %days, align 4
+  %i1 = load i64, ptr %i, align 8
+  %days2 = load i64, ptr %days, align 8
   %lt = icmp slt i64 %i1, %days2
   br i1 %lt, label %then, label %else
 
 then:                                             ; preds = %tce_loop
-  %i3 = load i64, ptr %i, align 4
+  %i3 = load i64, ptr %i, align 8
   %call = call ptr @mesh_int_to_string(i64 %i3)
   store ptr %call, ptr %offset_str, align 8
-  %pool4 = load i64, ptr %pool, align 4
+  %pool4 = load i64, ptr %pool, align 8
   %str = call ptr @mesh_string_new(ptr @.str.120, i64 66)
   %list_arr = alloca [1 x i64], align 8
   %offset_str5 = load ptr, ptr %offset_str, align 8
   %ptr_to_i64 = ptrtoint ptr %offset_str5 to i64
   %elem_ptr = getelementptr [1 x i64], ptr %list_arr, i32 0, i32 0
-  store i64 %ptr_to_i64, ptr %elem_ptr, align 4
+  store i64 %ptr_to_i64, ptr %elem_ptr, align 8
   %list = call ptr @mesh_list_from_array(ptr %list_arr, i64 1)
   %call6 = call ptr @mesh_pool_query(i64 %pool4, ptr %str, ptr %list)
   %tag_ptr = getelementptr inbounds nuw { i8, ptr }, ptr %call6, i32 0, i32 0
@@ -5125,7 +5126,7 @@ else:                                             ; preds = %tce_loop
   %tag_ptr50 = getelementptr inbounds nuw { i8, ptr }, ptr %variant49, i32 0, i32 0
   store i8 0, ptr %tag_ptr50, align 1
   %vfield_ptr51 = getelementptr inbounds nuw { i8, ptr }, ptr %variant49, i32 0, i32 1
-  store i64 0, ptr %vfield_ptr51, align 4
+  store i64 0, ptr %vfield_ptr51, align 8
   %variant_val52 = load { i8, ptr }, ptr %variant49, align 8
   store { i8, ptr } %variant_val52, ptr %if_result, align 8
   br label %if_merge
@@ -5177,7 +5178,7 @@ then15:                                           ; preds = %match_merge
   %call23 = call i64 @mesh_map_get(ptr %call20, i64 %ptr_to_i6422)
   %i64_to_ptr24 = inttoptr i64 %call23 to ptr
   store ptr %i64_to_ptr24, ptr %date_str, align 8
-  %pool25 = load i64, ptr %pool, align 4
+  %pool25 = load i64, ptr %pool, align 8
   %date_str26 = load ptr, ptr %date_str, align 8
   %call27 = call { i8, ptr } @create_partition(i64 %pool25, ptr %date_str26)
   call void @mesh_reduction_check()
@@ -5190,24 +5191,24 @@ then15:                                           ; preds = %match_merge
   ]
 
 else16:                                           ; preds = %match_merge
-  store i64 0, ptr %if_result14, align 4
+  store i64 0, ptr %if_result14, align 8
   br label %if_merge17
 
 if_merge17:                                       ; preds = %else16, %match_merge29
-  %if_val = load i64, ptr %if_result14, align 4
-  %pool46 = load i64, ptr %pool, align 4
-  %days47 = load i64, ptr %days, align 4
-  %i48 = load i64, ptr %i, align 4
+  %if_val = load i64, ptr %if_result14, align 8
+  %pool46 = load i64, ptr %pool, align 8
+  %days47 = load i64, ptr %days, align 8
+  %i48 = load i64, ptr %i, align 8
   %add = add i64 %i48, 1
-  store i64 %pool46, ptr %pool, align 4
-  store i64 %days47, ptr %days, align 4
-  store i64 %add, ptr %i, align 4
+  store i64 %pool46, ptr %pool, align 8
+  store i64 %days47, ptr %days, align 8
+  store i64 %add, ptr %i, align 8
   call void @mesh_reduction_check()
   br label %tce_loop
 
 match_merge29:                                    ; preds = %case_Ok33
-  %match_val45 = load i64, ptr %match_result28, align 4
-  store i64 0, ptr %if_result14, align 4
+  %match_val45 = load i64, ptr %match_result28, align 8
+  store i64 0, ptr %if_result14, align 8
   br label %if_merge17
 
 switch_default32:                                 ; preds = %then15
@@ -5218,8 +5219,8 @@ case_Ok33:                                        ; preds = %then15
   %variant_field35 = getelementptr inbounds nuw { i8, ptr }, ptr %scrutinee, i32 0, i32 1
   %path_val36 = load ptr, ptr %variant_field35, align 8
   store ptr %path_val36, ptr %__try_val_36, align 8
-  %__try_val_3637 = load i64, ptr %__try_val_36, align 4
-  store i64 %__try_val_3637, ptr %match_result28, align 4
+  %__try_val_3637 = load i64, ptr %__try_val_36, align 8
+  store i64 %__try_val_3637, ptr %match_result28, align 8
   br label %match_merge29
 
 case_Err34:                                       ; preds = %then15
@@ -5239,11 +5240,11 @@ case_Err34:                                       ; preds = %then15
 define { i8, ptr } @create_partitions_ahead(i64 %0, i64 %1) {
 entry:
   %pool = alloca i64, align 8
-  store i64 %0, ptr %pool, align 4
+  store i64 %0, ptr %pool, align 8
   %days = alloca i64, align 8
-  store i64 %1, ptr %days, align 4
-  %pool1 = load i64, ptr %pool, align 4
-  %days2 = load i64, ptr %days, align 4
+  store i64 %1, ptr %days, align 8
+  %pool1 = load i64, ptr %pool, align 8
+  %days2 = load i64, ptr %days, align 8
   %call = call { i8, ptr } @Storage_Schema__create_partitions_loop(i64 %pool1, i64 %days2, i64 0)
   call void @mesh_reduction_check()
   ret { i8, ptr } %call
@@ -5252,7 +5253,7 @@ entry:
 define { i8, ptr } @insert_event(i64 %0, ptr %1, ptr %2, ptr %3, ptr %4) {
 entry:
   %pool = alloca i64, align 8
-  store i64 %0, ptr %pool, align 4
+  store i64 %0, ptr %pool, align 8
   %project_id = alloca ptr, align 8
   store ptr %1, ptr %project_id, align 8
   %issue_id = alloca ptr, align 8
@@ -5262,25 +5263,25 @@ entry:
   %json_str = alloca ptr, align 8
   store ptr %4, ptr %json_str, align 8
   %result = alloca { i8, ptr }, align 8
-  %pool1 = load i64, ptr %pool, align 4
+  %pool1 = load i64, ptr %pool, align 8
   %str = call ptr @mesh_string_new(ptr @.str.126, i64 478)
   %list_arr = alloca [4 x i64], align 8
   %project_id2 = load ptr, ptr %project_id, align 8
   %ptr_to_i64 = ptrtoint ptr %project_id2 to i64
   %elem_ptr = getelementptr [4 x i64], ptr %list_arr, i32 0, i32 0
-  store i64 %ptr_to_i64, ptr %elem_ptr, align 4
+  store i64 %ptr_to_i64, ptr %elem_ptr, align 8
   %issue_id3 = load ptr, ptr %issue_id, align 8
   %ptr_to_i644 = ptrtoint ptr %issue_id3 to i64
   %elem_ptr5 = getelementptr [4 x i64], ptr %list_arr, i32 0, i32 1
-  store i64 %ptr_to_i644, ptr %elem_ptr5, align 4
+  store i64 %ptr_to_i644, ptr %elem_ptr5, align 8
   %fingerprint6 = load ptr, ptr %fingerprint, align 8
   %ptr_to_i647 = ptrtoint ptr %fingerprint6 to i64
   %elem_ptr8 = getelementptr [4 x i64], ptr %list_arr, i32 0, i32 2
-  store i64 %ptr_to_i647, ptr %elem_ptr8, align 4
+  store i64 %ptr_to_i647, ptr %elem_ptr8, align 8
   %json_str9 = load ptr, ptr %json_str, align 8
   %ptr_to_i6410 = ptrtoint ptr %json_str9 to i64
   %elem_ptr11 = getelementptr [4 x i64], ptr %list_arr, i32 0, i32 3
-  store i64 %ptr_to_i6410, ptr %elem_ptr11, align 4
+  store i64 %ptr_to_i6410, ptr %elem_ptr11, align 8
   %list = call ptr @mesh_list_from_array(ptr %list_arr, i64 4)
   %call = call ptr @mesh_pool_execute(i64 %pool1, ptr %str, ptr %list)
   %deref_sum = load { i8, ptr }, ptr %call, align 8
@@ -5302,26 +5303,26 @@ entry:
   %entry3 = alloca {}, align 8
   %if_result = alloca { i8, ptr }, align 8
   %pool = alloca i64, align 8
-  store i64 %0, ptr %pool, align 4
+  store i64 %0, ptr %pool, align 8
   %project_id = alloca ptr, align 8
   store ptr %1, ptr %project_id, align 8
   %events = alloca ptr, align 8
   store ptr %2, ptr %events, align 8
   %i = alloca i64, align 8
-  store i64 %3, ptr %i, align 4
+  store i64 %3, ptr %i, align 8
   %total = alloca i64, align 8
-  store i64 %4, ptr %total, align 4
+  store i64 %4, ptr %total, align 8
   br label %tce_loop
 
 tce_loop:                                         ; preds = %match_merge, %entry
-  %i1 = load i64, ptr %i, align 4
-  %total2 = load i64, ptr %total, align 4
+  %i1 = load i64, ptr %i, align 8
+  %total2 = load i64, ptr %total, align 8
   %lt = icmp slt i64 %i1, %total2
   br i1 %lt, label %then, label %else
 
 then:                                             ; preds = %tce_loop
   %events4 = load ptr, ptr %events, align 8
-  %i5 = load i64, ptr %i, align 4
+  %i5 = load i64, ptr %i, align 8
   %call = call i64 @mesh_list_get(ptr %events4, i64 %i5)
   store {} zeroinitializer, ptr %entry3, align 1
   %entry6 = load {}, ptr %entry3, align 1
@@ -5340,7 +5341,7 @@ then:                                             ; preds = %tce_loop
   %call14 = call i64 @mesh_list_get(ptr %parts13, i64 2)
   %i64_to_ptr15 = inttoptr i64 %call14 to ptr
   store ptr %i64_to_ptr15, ptr %event_json, align 8
-  %pool16 = load i64, ptr %pool, align 4
+  %pool16 = load i64, ptr %pool, align 8
   %project_id17 = load ptr, ptr %project_id, align 8
   %issue_id18 = load ptr, ptr %issue_id, align 8
   %fingerprint19 = load ptr, ptr %fingerprint, align 8
@@ -5360,7 +5361,7 @@ else:                                             ; preds = %tce_loop
   %tag_ptr33 = getelementptr inbounds nuw { i8, ptr }, ptr %variant32, i32 0, i32 0
   store i8 0, ptr %tag_ptr33, align 1
   %vfield_ptr34 = getelementptr inbounds nuw { i8, ptr }, ptr %variant32, i32 0, i32 1
-  store i64 0, ptr %vfield_ptr34, align 4
+  store i64 0, ptr %vfield_ptr34, align 8
   %variant_val35 = load { i8, ptr }, ptr %variant32, align 8
   store { i8, ptr } %variant_val35, ptr %if_result, align 8
   br label %if_merge
@@ -5370,18 +5371,18 @@ if_merge:                                         ; preds = %else
   ret { i8, ptr } %if_val
 
 match_merge:                                      ; preds = %case_Ok
-  %match_val = load i64, ptr %match_result, align 4
-  %pool27 = load i64, ptr %pool, align 4
+  %match_val = load i64, ptr %match_result, align 8
+  %pool27 = load i64, ptr %pool, align 8
   %project_id28 = load ptr, ptr %project_id, align 8
   %events29 = load ptr, ptr %events, align 8
-  %i30 = load i64, ptr %i, align 4
+  %i30 = load i64, ptr %i, align 8
   %add = add i64 %i30, 1
-  %total31 = load i64, ptr %total, align 4
-  store i64 %pool27, ptr %pool, align 4
+  %total31 = load i64, ptr %total, align 8
+  store i64 %pool27, ptr %pool, align 8
   store ptr %project_id28, ptr %project_id, align 8
   store ptr %events29, ptr %events, align 8
-  store i64 %add, ptr %i, align 4
-  store i64 %total31, ptr %total, align 4
+  store i64 %add, ptr %i, align 8
+  store i64 %total31, ptr %total, align 8
   call void @mesh_reduction_check()
   br label %tce_loop
 
@@ -5393,8 +5394,8 @@ case_Ok:                                          ; preds = %then
   %variant_field = getelementptr inbounds nuw { i8, ptr }, ptr %scrutinee, i32 0, i32 1
   %path_val = load ptr, ptr %variant_field, align 8
   store ptr %path_val, ptr %__try_val_1, align 8
-  %__try_val_122 = load i64, ptr %__try_val_1, align 4
-  store i64 %__try_val_122, ptr %match_result, align 4
+  %__try_val_122 = load i64, ptr %__try_val_1, align 8
+  store i64 %__try_val_122, ptr %match_result, align 8
   br label %match_merge
 
 case_Err:                                         ; preds = %then
@@ -5414,7 +5415,7 @@ case_Err:                                         ; preds = %then
 define { i8, ptr } @Services_Writer__flush_batch(i64 %0, ptr %1, ptr %2) {
 entry:
   %pool = alloca i64, align 8
-  store i64 %0, ptr %pool, align 4
+  store i64 %0, ptr %pool, align 8
   %project_id = alloca ptr, align 8
   store ptr %1, ptr %project_id, align 8
   %events = alloca ptr, align 8
@@ -5422,11 +5423,11 @@ entry:
   %total = alloca i64, align 8
   %events1 = load ptr, ptr %events, align 8
   %call = call i64 @mesh_list_length(ptr %events1)
-  store i64 %call, ptr %total, align 4
-  %pool2 = load i64, ptr %pool, align 4
+  store i64 %call, ptr %total, align 8
+  %pool2 = load i64, ptr %pool, align 8
   %project_id3 = load ptr, ptr %project_id, align 8
   %events4 = load ptr, ptr %events, align 8
-  %total5 = load i64, ptr %total, align 4
+  %total5 = load i64, ptr %total, align 8
   %call6 = call { i8, ptr } @Services_Writer__flush_loop(i64 %pool2, ptr %project_id3, ptr %events4, i64 0, i64 %total5)
   call void @mesh_reduction_check()
   ret { i8, ptr } %call6
@@ -5437,9 +5438,9 @@ entry:
   %project_id = alloca ptr, align 8
   store ptr %0, ptr %project_id, align 8
   %count_val = alloca i64, align 8
-  store i64 %1, ptr %count_val, align 4
+  store i64 %1, ptr %count_val, align 8
   %str = call ptr @mesh_string_new(ptr @.str.130, i64 34)
-  %count_val1 = load i64, ptr %count_val, align 4
+  %count_val1 = load i64, ptr %count_val, align 8
   %call = call ptr @mesh_int_to_string(i64 %count_val1)
   %concat = call ptr @mesh_string_concat(ptr %str, ptr %call)
   %str2 = call ptr @mesh_string_new(ptr @.str.131, i64 20)
@@ -5453,7 +5454,7 @@ entry:
   %tag_ptr = getelementptr inbounds nuw { i8, ptr }, ptr %variant, i32 0, i32 0
   store i8 0, ptr %tag_ptr, align 1
   %vfield_ptr = getelementptr inbounds nuw { i8, ptr }, ptr %variant, i32 0, i32 1
-  store i64 0, ptr %vfield_ptr, align 4
+  store i64 0, ptr %vfield_ptr, align 8
   %variant_val = load { i8, ptr }, ptr %variant, align 8
   ret { i8, ptr } %variant_val
 }
@@ -5462,16 +5463,16 @@ define { i8, ptr } @Services_Writer__flush_retry3(i64 %0, ptr %1, ptr %2, i64 %3
 entry:
   %n = alloca i64, align 8
   %pool = alloca i64, align 8
-  store i64 %0, ptr %pool, align 4
+  store i64 %0, ptr %pool, align 8
   %project_id = alloca ptr, align 8
   store ptr %1, ptr %project_id, align 8
   %events = alloca ptr, align 8
   store ptr %2, ptr %events, align 8
   %event_count = alloca i64, align 8
-  store i64 %3, ptr %event_count, align 4
+  store i64 %3, ptr %event_count, align 8
   call void @mesh_timer_sleep(i64 500)
   %r3 = alloca { i8, ptr }, align 8
-  %pool1 = load i64, ptr %pool, align 4
+  %pool1 = load i64, ptr %pool, align 8
   %project_id2 = load ptr, ptr %project_id, align 8
   %events3 = load ptr, ptr %events, align 8
   %call = call { i8, ptr } @Services_Writer__flush_batch(i64 %pool1, ptr %project_id2, ptr %events3)
@@ -5503,16 +5504,16 @@ case_Ok:                                          ; preds = %entry
   %variant = alloca { i8, ptr }, align 8
   %tag_ptr5 = getelementptr inbounds nuw { i8, ptr }, ptr %variant, i32 0, i32 0
   store i8 0, ptr %tag_ptr5, align 1
-  %n6 = load i64, ptr %n, align 4
+  %n6 = load i64, ptr %n, align 8
   %vfield_ptr = getelementptr inbounds nuw { i8, ptr }, ptr %variant, i32 0, i32 1
-  store i64 %n6, ptr %vfield_ptr, align 4
+  store i64 %n6, ptr %vfield_ptr, align 8
   %variant_val = load { i8, ptr }, ptr %variant, align 8
   store { i8, ptr } %variant_val, ptr %match_result, align 8
   br label %match_merge
 
 case_Err:                                         ; preds = %entry
   %project_id7 = load ptr, ptr %project_id, align 8
-  %event_count8 = load i64, ptr %event_count, align 4
+  %event_count8 = load i64, ptr %event_count, align 8
   %call9 = call { i8, ptr } @Services_Writer__flush_drop(ptr %project_id7, i64 %event_count8)
   call void @mesh_reduction_check()
   store { i8, ptr } %call9, ptr %match_result, align 8
@@ -5523,16 +5524,16 @@ define { i8, ptr } @Services_Writer__flush_retry2(i64 %0, ptr %1, ptr %2, i64 %3
 entry:
   %n = alloca i64, align 8
   %pool = alloca i64, align 8
-  store i64 %0, ptr %pool, align 4
+  store i64 %0, ptr %pool, align 8
   %project_id = alloca ptr, align 8
   store ptr %1, ptr %project_id, align 8
   %events = alloca ptr, align 8
   store ptr %2, ptr %events, align 8
   %event_count = alloca i64, align 8
-  store i64 %3, ptr %event_count, align 4
+  store i64 %3, ptr %event_count, align 8
   call void @mesh_timer_sleep(i64 100)
   %r2 = alloca { i8, ptr }, align 8
-  %pool1 = load i64, ptr %pool, align 4
+  %pool1 = load i64, ptr %pool, align 8
   %project_id2 = load ptr, ptr %project_id, align 8
   %events3 = load ptr, ptr %events, align 8
   %call = call { i8, ptr } @Services_Writer__flush_batch(i64 %pool1, ptr %project_id2, ptr %events3)
@@ -5564,18 +5565,18 @@ case_Ok:                                          ; preds = %entry
   %variant = alloca { i8, ptr }, align 8
   %tag_ptr5 = getelementptr inbounds nuw { i8, ptr }, ptr %variant, i32 0, i32 0
   store i8 0, ptr %tag_ptr5, align 1
-  %n6 = load i64, ptr %n, align 4
+  %n6 = load i64, ptr %n, align 8
   %vfield_ptr = getelementptr inbounds nuw { i8, ptr }, ptr %variant, i32 0, i32 1
-  store i64 %n6, ptr %vfield_ptr, align 4
+  store i64 %n6, ptr %vfield_ptr, align 8
   %variant_val = load { i8, ptr }, ptr %variant, align 8
   store { i8, ptr } %variant_val, ptr %match_result, align 8
   br label %match_merge
 
 case_Err:                                         ; preds = %entry
-  %pool7 = load i64, ptr %pool, align 4
+  %pool7 = load i64, ptr %pool, align 8
   %project_id8 = load ptr, ptr %project_id, align 8
   %events9 = load ptr, ptr %events, align 8
-  %event_count10 = load i64, ptr %event_count, align 4
+  %event_count10 = load i64, ptr %event_count, align 8
   %call11 = call { i8, ptr } @Services_Writer__flush_retry3(i64 %pool7, ptr %project_id8, ptr %events9, i64 %event_count10)
   call void @mesh_reduction_check()
   store { i8, ptr } %call11, ptr %match_result, align 8
@@ -5586,7 +5587,7 @@ define { i8, ptr } @Services_Writer__flush_with_retry(i64 %0, ptr %1, ptr %2) {
 entry:
   %n = alloca i64, align 8
   %pool = alloca i64, align 8
-  store i64 %0, ptr %pool, align 4
+  store i64 %0, ptr %pool, align 8
   %project_id = alloca ptr, align 8
   store ptr %1, ptr %project_id, align 8
   %events = alloca ptr, align 8
@@ -5594,9 +5595,9 @@ entry:
   %event_count = alloca i64, align 8
   %events1 = load ptr, ptr %events, align 8
   %call = call i64 @mesh_list_length(ptr %events1)
-  store i64 %call, ptr %event_count, align 4
+  store i64 %call, ptr %event_count, align 8
   %r1 = alloca { i8, ptr }, align 8
-  %pool2 = load i64, ptr %pool, align 4
+  %pool2 = load i64, ptr %pool, align 8
   %project_id3 = load ptr, ptr %project_id, align 8
   %events4 = load ptr, ptr %events, align 8
   %call5 = call { i8, ptr } @Services_Writer__flush_batch(i64 %pool2, ptr %project_id3, ptr %events4)
@@ -5628,18 +5629,18 @@ case_Ok:                                          ; preds = %entry
   %variant = alloca { i8, ptr }, align 8
   %tag_ptr7 = getelementptr inbounds nuw { i8, ptr }, ptr %variant, i32 0, i32 0
   store i8 0, ptr %tag_ptr7, align 1
-  %n8 = load i64, ptr %n, align 4
+  %n8 = load i64, ptr %n, align 8
   %vfield_ptr = getelementptr inbounds nuw { i8, ptr }, ptr %variant, i32 0, i32 1
-  store i64 %n8, ptr %vfield_ptr, align 4
+  store i64 %n8, ptr %vfield_ptr, align 8
   %variant_val = load { i8, ptr }, ptr %variant, align 8
   store { i8, ptr } %variant_val, ptr %match_result, align 8
   br label %match_merge
 
 case_Err:                                         ; preds = %entry
-  %pool9 = load i64, ptr %pool, align 4
+  %pool9 = load i64, ptr %pool, align 8
   %project_id10 = load ptr, ptr %project_id, align 8
   %events11 = load ptr, ptr %events, align 8
-  %event_count12 = load i64, ptr %event_count, align 4
+  %event_count12 = load i64, ptr %event_count, align 8
   %call13 = call { i8, ptr } @Services_Writer__flush_retry2(i64 %pool9, ptr %project_id10, ptr %events11, i64 %event_count12)
   call void @mesh_reduction_check()
   store { i8, ptr } %call13, ptr %match_result, align 8
@@ -5667,28 +5668,28 @@ entry:
   %obj_tmp4 = alloca %WriterState, align 8
   store %WriterState %state3, ptr %obj_tmp4, align 8
   %field_ptr5 = getelementptr inbounds nuw %WriterState, ptr %obj_tmp4, i32 0, i32 3
-  %field_val6 = load i64, ptr %field_ptr5, align 4
+  %field_val6 = load i64, ptr %field_ptr5, align 8
   %add = add i64 %field_val6, 1
-  store i64 %add, ptr %new_len, align 4
+  store i64 %add, ptr %new_len, align 8
   %buf = alloca ptr, align 8
-  %new_len7 = load i64, ptr %new_len, align 4
+  %new_len7 = load i64, ptr %new_len, align 8
   %state8 = load %WriterState, ptr %state, align 8
   %obj_tmp9 = alloca %WriterState, align 8
   store %WriterState %state8, ptr %obj_tmp9, align 8
   %field_ptr10 = getelementptr inbounds nuw %WriterState, ptr %obj_tmp9, i32 0, i32 5
-  %field_val11 = load i64, ptr %field_ptr10, align 4
+  %field_val11 = load i64, ptr %field_ptr10, align 8
   %gt = icmp sgt i64 %new_len7, %field_val11
   %if_result = alloca ptr, align 8
   br i1 %gt, label %then, label %else
 
 then:                                             ; preds = %entry
   %appended12 = load ptr, ptr %appended, align 8
-  %new_len13 = load i64, ptr %new_len, align 4
+  %new_len13 = load i64, ptr %new_len, align 8
   %state14 = load %WriterState, ptr %state, align 8
   %obj_tmp15 = alloca %WriterState, align 8
   store %WriterState %state14, ptr %obj_tmp15, align 8
   %field_ptr16 = getelementptr inbounds nuw %WriterState, ptr %obj_tmp15, i32 0, i32 5
-  %field_val17 = load i64, ptr %field_ptr16, align 4
+  %field_val17 = load i64, ptr %field_ptr16, align 8
   %sub = sub i64 %new_len13, %field_val17
   %call18 = call ptr @mesh_list_drop(ptr %appended12, i64 %sub)
   store ptr %call18, ptr %if_result, align 8
@@ -5703,12 +5704,12 @@ if_merge:                                         ; preds = %else, %then
   %if_val = load ptr, ptr %if_result, align 8
   store ptr %if_val, ptr %buf, align 8
   %blen = alloca i64, align 8
-  %new_len20 = load i64, ptr %new_len, align 4
+  %new_len20 = load i64, ptr %new_len, align 8
   %state21 = load %WriterState, ptr %state, align 8
   %obj_tmp22 = alloca %WriterState, align 8
   store %WriterState %state21, ptr %obj_tmp22, align 8
   %field_ptr23 = getelementptr inbounds nuw %WriterState, ptr %obj_tmp22, i32 0, i32 5
-  %field_val24 = load i64, ptr %field_ptr23, align 4
+  %field_val24 = load i64, ptr %field_ptr23, align 8
   %gt25 = icmp sgt i64 %new_len20, %field_val24
   %if_result26 = alloca i64, align 8
   br i1 %gt25, label %then27, label %else28
@@ -5718,24 +5719,24 @@ then27:                                           ; preds = %if_merge
   %obj_tmp31 = alloca %WriterState, align 8
   store %WriterState %state30, ptr %obj_tmp31, align 8
   %field_ptr32 = getelementptr inbounds nuw %WriterState, ptr %obj_tmp31, i32 0, i32 5
-  %field_val33 = load i64, ptr %field_ptr32, align 4
-  store i64 %field_val33, ptr %if_result26, align 4
+  %field_val33 = load i64, ptr %field_ptr32, align 8
+  store i64 %field_val33, ptr %if_result26, align 8
   br label %if_merge29
 
 else28:                                           ; preds = %if_merge
-  %new_len34 = load i64, ptr %new_len, align 4
-  store i64 %new_len34, ptr %if_result26, align 4
+  %new_len34 = load i64, ptr %new_len, align 8
+  store i64 %new_len34, ptr %if_result26, align 8
   br label %if_merge29
 
 if_merge29:                                       ; preds = %else28, %then27
-  %if_val35 = load i64, ptr %if_result26, align 4
-  store i64 %if_val35, ptr %blen, align 4
-  %blen36 = load i64, ptr %blen, align 4
+  %if_val35 = load i64, ptr %if_result26, align 8
+  store i64 %if_val35, ptr %blen, align 8
+  %blen36 = load i64, ptr %blen, align 8
   %state37 = load %WriterState, ptr %state, align 8
   %obj_tmp38 = alloca %WriterState, align 8
   store %WriterState %state37, ptr %obj_tmp38, align 8
   %field_ptr39 = getelementptr inbounds nuw %WriterState, ptr %obj_tmp38, i32 0, i32 4
-  %field_val40 = load i64, ptr %field_ptr39, align 4
+  %field_val40 = load i64, ptr %field_ptr39, align 8
   %ge = icmp sge i64 %blen36, %field_val40
   %if_result41 = alloca %WriterState, align 8
   br i1 %ge, label %then42, label %else43
@@ -5746,7 +5747,7 @@ then42:                                           ; preds = %if_merge29
   %obj_tmp46 = alloca %WriterState, align 8
   store %WriterState %state45, ptr %obj_tmp46, align 8
   %field_ptr47 = getelementptr inbounds nuw %WriterState, ptr %obj_tmp46, i32 0, i32 0
-  %field_val48 = load i64, ptr %field_ptr47, align 4
+  %field_val48 = load i64, ptr %field_ptr47, align 8
   %state49 = load %WriterState, ptr %state, align 8
   %obj_tmp50 = alloca %WriterState, align 8
   store %WriterState %state49, ptr %obj_tmp50, align 8
@@ -5761,9 +5762,9 @@ then42:                                           ; preds = %if_merge29
   %obj_tmp56 = alloca %WriterState, align 8
   store %WriterState %state55, ptr %obj_tmp56, align 8
   %field_ptr57 = getelementptr inbounds nuw %WriterState, ptr %obj_tmp56, i32 0, i32 0
-  %field_val58 = load i64, ptr %field_ptr57, align 4
+  %field_val58 = load i64, ptr %field_ptr57, align 8
   %field_ptr59 = getelementptr inbounds nuw %WriterState, ptr %struct_lit, i32 0, i32 0
-  store i64 %field_val58, ptr %field_ptr59, align 4
+  store i64 %field_val58, ptr %field_ptr59, align 8
   %state60 = load %WriterState, ptr %state, align 8
   %obj_tmp61 = alloca %WriterState, align 8
   store %WriterState %state60, ptr %obj_tmp61, align 8
@@ -5775,21 +5776,21 @@ then42:                                           ; preds = %if_merge29
   %field_ptr66 = getelementptr inbounds nuw %WriterState, ptr %struct_lit, i32 0, i32 2
   store ptr %call65, ptr %field_ptr66, align 8
   %field_ptr67 = getelementptr inbounds nuw %WriterState, ptr %struct_lit, i32 0, i32 3
-  store i64 0, ptr %field_ptr67, align 4
+  store i64 0, ptr %field_ptr67, align 8
   %state68 = load %WriterState, ptr %state, align 8
   %obj_tmp69 = alloca %WriterState, align 8
   store %WriterState %state68, ptr %obj_tmp69, align 8
   %field_ptr70 = getelementptr inbounds nuw %WriterState, ptr %obj_tmp69, i32 0, i32 4
-  %field_val71 = load i64, ptr %field_ptr70, align 4
+  %field_val71 = load i64, ptr %field_ptr70, align 8
   %field_ptr72 = getelementptr inbounds nuw %WriterState, ptr %struct_lit, i32 0, i32 4
-  store i64 %field_val71, ptr %field_ptr72, align 4
+  store i64 %field_val71, ptr %field_ptr72, align 8
   %state73 = load %WriterState, ptr %state, align 8
   %obj_tmp74 = alloca %WriterState, align 8
   store %WriterState %state73, ptr %obj_tmp74, align 8
   %field_ptr75 = getelementptr inbounds nuw %WriterState, ptr %obj_tmp74, i32 0, i32 5
-  %field_val76 = load i64, ptr %field_ptr75, align 4
+  %field_val76 = load i64, ptr %field_ptr75, align 8
   %field_ptr77 = getelementptr inbounds nuw %WriterState, ptr %struct_lit, i32 0, i32 5
-  store i64 %field_val76, ptr %field_ptr77, align 4
+  store i64 %field_val76, ptr %field_ptr77, align 8
   %struct_val = load %WriterState, ptr %struct_lit, align 8
   store %WriterState %struct_val, ptr %if_result41, align 8
   br label %if_merge44
@@ -5800,9 +5801,9 @@ else43:                                           ; preds = %if_merge29
   %obj_tmp80 = alloca %WriterState, align 8
   store %WriterState %state79, ptr %obj_tmp80, align 8
   %field_ptr81 = getelementptr inbounds nuw %WriterState, ptr %obj_tmp80, i32 0, i32 0
-  %field_val82 = load i64, ptr %field_ptr81, align 4
+  %field_val82 = load i64, ptr %field_ptr81, align 8
   %field_ptr83 = getelementptr inbounds nuw %WriterState, ptr %struct_lit78, i32 0, i32 0
-  store i64 %field_val82, ptr %field_ptr83, align 4
+  store i64 %field_val82, ptr %field_ptr83, align 8
   %state84 = load %WriterState, ptr %state, align 8
   %obj_tmp85 = alloca %WriterState, align 8
   store %WriterState %state84, ptr %obj_tmp85, align 8
@@ -5813,23 +5814,23 @@ else43:                                           ; preds = %if_merge29
   %buf89 = load ptr, ptr %buf, align 8
   %field_ptr90 = getelementptr inbounds nuw %WriterState, ptr %struct_lit78, i32 0, i32 2
   store ptr %buf89, ptr %field_ptr90, align 8
-  %blen91 = load i64, ptr %blen, align 4
+  %blen91 = load i64, ptr %blen, align 8
   %field_ptr92 = getelementptr inbounds nuw %WriterState, ptr %struct_lit78, i32 0, i32 3
-  store i64 %blen91, ptr %field_ptr92, align 4
+  store i64 %blen91, ptr %field_ptr92, align 8
   %state93 = load %WriterState, ptr %state, align 8
   %obj_tmp94 = alloca %WriterState, align 8
   store %WriterState %state93, ptr %obj_tmp94, align 8
   %field_ptr95 = getelementptr inbounds nuw %WriterState, ptr %obj_tmp94, i32 0, i32 4
-  %field_val96 = load i64, ptr %field_ptr95, align 4
+  %field_val96 = load i64, ptr %field_ptr95, align 8
   %field_ptr97 = getelementptr inbounds nuw %WriterState, ptr %struct_lit78, i32 0, i32 4
-  store i64 %field_val96, ptr %field_ptr97, align 4
+  store i64 %field_val96, ptr %field_ptr97, align 8
   %state98 = load %WriterState, ptr %state, align 8
   %obj_tmp99 = alloca %WriterState, align 8
   store %WriterState %state98, ptr %obj_tmp99, align 8
   %field_ptr100 = getelementptr inbounds nuw %WriterState, ptr %obj_tmp99, i32 0, i32 5
-  %field_val101 = load i64, ptr %field_ptr100, align 4
+  %field_val101 = load i64, ptr %field_ptr100, align 8
   %field_ptr102 = getelementptr inbounds nuw %WriterState, ptr %struct_lit78, i32 0, i32 5
-  store i64 %field_val101, ptr %field_ptr102, align 4
+  store i64 %field_val101, ptr %field_ptr102, align 8
   %struct_val103 = load %WriterState, ptr %struct_lit78, align 8
   store %WriterState %struct_val103, ptr %if_result41, align 8
   br label %if_merge44
@@ -5847,7 +5848,7 @@ entry:
   %obj_tmp = alloca %WriterState, align 8
   store %WriterState %state1, ptr %obj_tmp, align 8
   %field_ptr = getelementptr inbounds nuw %WriterState, ptr %obj_tmp, i32 0, i32 3
-  %field_val = load i64, ptr %field_ptr, align 4
+  %field_val = load i64, ptr %field_ptr, align 8
   %gt = icmp sgt i64 %field_val, 0
   %if_result = alloca %WriterState, align 8
   br i1 %gt, label %then, label %else
@@ -5858,7 +5859,7 @@ then:                                             ; preds = %entry
   %obj_tmp3 = alloca %WriterState, align 8
   store %WriterState %state2, ptr %obj_tmp3, align 8
   %field_ptr4 = getelementptr inbounds nuw %WriterState, ptr %obj_tmp3, i32 0, i32 0
-  %field_val5 = load i64, ptr %field_ptr4, align 4
+  %field_val5 = load i64, ptr %field_ptr4, align 8
   %state6 = load %WriterState, ptr %state, align 8
   %obj_tmp7 = alloca %WriterState, align 8
   store %WriterState %state6, ptr %obj_tmp7, align 8
@@ -5877,9 +5878,9 @@ then:                                             ; preds = %entry
   %obj_tmp15 = alloca %WriterState, align 8
   store %WriterState %state14, ptr %obj_tmp15, align 8
   %field_ptr16 = getelementptr inbounds nuw %WriterState, ptr %obj_tmp15, i32 0, i32 0
-  %field_val17 = load i64, ptr %field_ptr16, align 4
+  %field_val17 = load i64, ptr %field_ptr16, align 8
   %field_ptr18 = getelementptr inbounds nuw %WriterState, ptr %struct_lit, i32 0, i32 0
-  store i64 %field_val17, ptr %field_ptr18, align 4
+  store i64 %field_val17, ptr %field_ptr18, align 8
   %state19 = load %WriterState, ptr %state, align 8
   %obj_tmp20 = alloca %WriterState, align 8
   store %WriterState %state19, ptr %obj_tmp20, align 8
@@ -5891,21 +5892,21 @@ then:                                             ; preds = %entry
   %field_ptr25 = getelementptr inbounds nuw %WriterState, ptr %struct_lit, i32 0, i32 2
   store ptr %call24, ptr %field_ptr25, align 8
   %field_ptr26 = getelementptr inbounds nuw %WriterState, ptr %struct_lit, i32 0, i32 3
-  store i64 0, ptr %field_ptr26, align 4
+  store i64 0, ptr %field_ptr26, align 8
   %state27 = load %WriterState, ptr %state, align 8
   %obj_tmp28 = alloca %WriterState, align 8
   store %WriterState %state27, ptr %obj_tmp28, align 8
   %field_ptr29 = getelementptr inbounds nuw %WriterState, ptr %obj_tmp28, i32 0, i32 4
-  %field_val30 = load i64, ptr %field_ptr29, align 4
+  %field_val30 = load i64, ptr %field_ptr29, align 8
   %field_ptr31 = getelementptr inbounds nuw %WriterState, ptr %struct_lit, i32 0, i32 4
-  store i64 %field_val30, ptr %field_ptr31, align 4
+  store i64 %field_val30, ptr %field_ptr31, align 8
   %state32 = load %WriterState, ptr %state, align 8
   %obj_tmp33 = alloca %WriterState, align 8
   store %WriterState %state32, ptr %obj_tmp33, align 8
   %field_ptr34 = getelementptr inbounds nuw %WriterState, ptr %obj_tmp33, i32 0, i32 5
-  %field_val35 = load i64, ptr %field_ptr34, align 4
+  %field_val35 = load i64, ptr %field_ptr34, align 8
   %field_ptr36 = getelementptr inbounds nuw %WriterState, ptr %struct_lit, i32 0, i32 5
-  store i64 %field_val35, ptr %field_ptr36, align 4
+  store i64 %field_val35, ptr %field_ptr36, align 8
   %struct_val = load %WriterState, ptr %struct_lit, align 8
   store %WriterState %struct_val, ptr %if_result, align 8
   br label %if_merge
@@ -5923,13 +5924,13 @@ if_merge:                                         ; preds = %else, %then
 define %WriterState @__service_storagewriter_init(i64 %0, ptr %1) {
 entry:
   %pool = alloca i64, align 8
-  store i64 %0, ptr %pool, align 4
+  store i64 %0, ptr %pool, align 8
   %project_id = alloca ptr, align 8
   store ptr %1, ptr %project_id, align 8
   %struct_lit = alloca %WriterState, align 8
-  %pool1 = load i64, ptr %pool, align 4
+  %pool1 = load i64, ptr %pool, align 8
   %field_ptr = getelementptr inbounds nuw %WriterState, ptr %struct_lit, i32 0, i32 0
-  store i64 %pool1, ptr %field_ptr, align 4
+  store i64 %pool1, ptr %field_ptr, align 8
   %project_id2 = load ptr, ptr %project_id, align 8
   %field_ptr3 = getelementptr inbounds nuw %WriterState, ptr %struct_lit, i32 0, i32 1
   store ptr %project_id2, ptr %field_ptr3, align 8
@@ -5937,11 +5938,11 @@ entry:
   %field_ptr4 = getelementptr inbounds nuw %WriterState, ptr %struct_lit, i32 0, i32 2
   store ptr %call, ptr %field_ptr4, align 8
   %field_ptr5 = getelementptr inbounds nuw %WriterState, ptr %struct_lit, i32 0, i32 3
-  store i64 0, ptr %field_ptr5, align 4
+  store i64 0, ptr %field_ptr5, align 8
   %field_ptr6 = getelementptr inbounds nuw %WriterState, ptr %struct_lit, i32 0, i32 4
-  store i64 50, ptr %field_ptr6, align 4
+  store i64 50, ptr %field_ptr6, align 8
   %field_ptr7 = getelementptr inbounds nuw %WriterState, ptr %struct_lit, i32 0, i32 5
-  store i64 500, ptr %field_ptr7, align 4
+  store i64 500, ptr %field_ptr7, align 8
   %struct_val = load %WriterState, ptr %struct_lit, align 8
   ret %WriterState %struct_val
 }
@@ -5972,21 +5973,21 @@ entry:
 define {} @__service_storagewriter_cast_store(i64 %0, ptr %1) {
 entry:
   %__pid = alloca i64, align 8
-  store i64 %0, ptr %__pid, align 4
+  store i64 %0, ptr %__pid, align 8
   %event_json = alloca ptr, align 8
   store ptr %1, ptr %event_json, align 8
-  %__pid1 = load i64, ptr %__pid, align 4
+  %__pid1 = load i64, ptr %__pid, align 8
   %event_json2 = load ptr, ptr %event_json, align 8
-  %__pid3 = load i64, ptr %__pid, align 4
+  %__pid3 = load i64, ptr %__pid, align 8
   %event_json4 = load ptr, ptr %event_json, align 8
   %ptr_to_i64 = ptrtoint ptr %event_json4 to i64
   %cast_msg = alloca [3 x i64], align 8
   %tag_slot = getelementptr [3 x i64], ptr %cast_msg, i32 0, i32 0
-  store i64 0, ptr %tag_slot, align 4
+  store i64 0, ptr %tag_slot, align 8
   %caller_slot = getelementptr [3 x i64], ptr %cast_msg, i32 0, i32 1
-  store i64 0, ptr %caller_slot, align 4
+  store i64 0, ptr %caller_slot, align 8
   %arg_slot = getelementptr [3 x i64], ptr %cast_msg, i32 0, i32 2
-  store i64 %ptr_to_i64, ptr %arg_slot, align 4
+  store i64 %ptr_to_i64, ptr %arg_slot, align 8
   call void @mesh_actor_send(i64 %__pid3, ptr %cast_msg, i64 24)
   ret {} zeroinitializer
 }
@@ -5994,11 +5995,11 @@ entry:
 define i64 @__service_storagewriter_start(i64 %0, ptr %1) {
 entry:
   %pool = alloca i64, align 8
-  store i64 %0, ptr %pool, align 4
+  store i64 %0, ptr %pool, align 8
   %project_id = alloca ptr, align 8
   store ptr %1, ptr %project_id, align 8
   %__init_state = alloca %WriterState, align 8
-  %pool1 = load i64, ptr %pool, align 4
+  %pool1 = load i64, ptr %pool, align 8
   %project_id2 = load ptr, ptr %project_id, align 8
   %call = call %WriterState @__service_storagewriter_init(i64 %pool1, ptr %project_id2)
   call void @mesh_reduction_check()
@@ -6031,9 +6032,9 @@ exit_loop:                                        ; preds = %loop
 
 continue_loop:                                    ; preds = %loop
   %data_ptr = getelementptr i8, ptr %msg_ptr, i64 16
-  %type_tag = load i64, ptr %data_ptr, align 4
+  %type_tag = load i64, ptr %data_ptr, align 8
   %caller_ptr = getelementptr i8, ptr %data_ptr, i64 8
-  %caller_pid = load i64, ptr %caller_ptr, align 4
+  %caller_pid = load i64, ptr %caller_ptr, align 8
   switch i64 %type_tag, label %default [
     i64 0, label %handler_0
     i64 1, label %handler_1
@@ -6060,13 +6061,13 @@ entry:
   %body = alloca ptr, align 8
   store ptr %0, ptr %body, align 8
   %max_bytes = alloca i64, align 8
-  store i64 %1, ptr %max_bytes, align 4
+  store i64 %1, ptr %max_bytes, align 8
   %body_len = alloca i64, align 8
   %body1 = load ptr, ptr %body, align 8
   %call = call i64 @mesh_string_length(ptr %body1)
-  store i64 %call, ptr %body_len, align 4
-  %body_len2 = load i64, ptr %body_len, align 4
-  %max_bytes3 = load i64, ptr %max_bytes, align 4
+  store i64 %call, ptr %body_len, align 8
+  %body_len2 = load i64, ptr %body_len, align 8
+  %max_bytes3 = load i64, ptr %max_bytes, align 8
   %gt = icmp sgt i64 %body_len2, %max_bytes3
   %if_result = alloca { i8, ptr }, align 8
   br i1 %gt, label %then, label %else
@@ -6103,23 +6104,23 @@ entry:
   %__try_err_1 = alloca ptr, align 8
   %__try_val_1 = alloca ptr, align 8
   %pool = alloca i64, align 8
-  store i64 %0, ptr %pool, align 4
+  store i64 %0, ptr %pool, align 8
   %name = alloca ptr, align 8
   store ptr %1, ptr %name, align 8
   %slug = alloca ptr, align 8
   store ptr %2, ptr %slug, align 8
   %rows = alloca ptr, align 8
-  %pool1 = load i64, ptr %pool, align 4
+  %pool1 = load i64, ptr %pool, align 8
   %str = call ptr @mesh_string_new(ptr @.str.141, i64 73)
   %list_arr = alloca [2 x i64], align 8
   %name2 = load ptr, ptr %name, align 8
   %ptr_to_i64 = ptrtoint ptr %name2 to i64
   %elem_ptr = getelementptr [2 x i64], ptr %list_arr, i32 0, i32 0
-  store i64 %ptr_to_i64, ptr %elem_ptr, align 4
+  store i64 %ptr_to_i64, ptr %elem_ptr, align 8
   %slug3 = load ptr, ptr %slug, align 8
   %ptr_to_i644 = ptrtoint ptr %slug3 to i64
   %elem_ptr5 = getelementptr [2 x i64], ptr %list_arr, i32 0, i32 1
-  store i64 %ptr_to_i644, ptr %elem_ptr5, align 4
+  store i64 %ptr_to_i644, ptr %elem_ptr5, align 8
   %list = call ptr @mesh_list_from_array(ptr %list_arr, i64 2)
   %call = call ptr @mesh_pool_query(i64 %pool1, ptr %str, ptr %list)
   %match_result = alloca ptr, align 8
@@ -6203,17 +6204,17 @@ entry:
   %__try_err_2 = alloca ptr, align 8
   %__try_val_2 = alloca ptr, align 8
   %pool = alloca i64, align 8
-  store i64 %0, ptr %pool, align 4
+  store i64 %0, ptr %pool, align 8
   %id = alloca ptr, align 8
   store ptr %1, ptr %id, align 8
   %rows = alloca ptr, align 8
-  %pool1 = load i64, ptr %pool, align 4
+  %pool1 = load i64, ptr %pool, align 8
   %str = call ptr @mesh_string_new(ptr @.str.146, i64 84)
   %list_arr = alloca [1 x i64], align 8
   %id2 = load ptr, ptr %id, align 8
   %ptr_to_i64 = ptrtoint ptr %id2 to i64
   %elem_ptr = getelementptr [1 x i64], ptr %list_arr, i32 0, i32 0
-  store i64 %ptr_to_i64, ptr %elem_ptr, align 4
+  store i64 %ptr_to_i64, ptr %elem_ptr, align 8
   %list = call ptr @mesh_list_from_array(ptr %list_arr, i64 1)
   %call = call ptr @mesh_pool_query(i64 %pool1, ptr %str, ptr %list)
   %match_result = alloca ptr, align 8
@@ -6371,9 +6372,9 @@ entry:
   %__try_err_3 = alloca ptr, align 8
   %__try_val_3 = alloca ptr, align 8
   %pool = alloca i64, align 8
-  store i64 %0, ptr %pool, align 4
+  store i64 %0, ptr %pool, align 8
   %rows = alloca ptr, align 8
-  %pool1 = load i64, ptr %pool, align 4
+  %pool1 = load i64, ptr %pool, align 8
   %str = call ptr @mesh_string_new(ptr @.str.158, i64 78)
   %call = call ptr @mesh_list_new()
   %call2 = call ptr @mesh_pool_query(i64 %pool1, ptr %str, ptr %call)
@@ -6442,7 +6443,7 @@ entry:
   %__try_err_4 = alloca ptr, align 8
   %__try_val_4 = alloca ptr, align 8
   %pool = alloca i64, align 8
-  store i64 %0, ptr %pool, align 4
+  store i64 %0, ptr %pool, align 8
   %org_id = alloca ptr, align 8
   store ptr %1, ptr %org_id, align 8
   %name = alloca ptr, align 8
@@ -6450,21 +6451,21 @@ entry:
   %platform = alloca ptr, align 8
   store ptr %3, ptr %platform, align 8
   %rows = alloca ptr, align 8
-  %pool1 = load i64, ptr %pool, align 4
+  %pool1 = load i64, ptr %pool, align 8
   %str = call ptr @mesh_string_new(ptr @.str.161, i64 90)
   %list_arr = alloca [3 x i64], align 8
   %org_id2 = load ptr, ptr %org_id, align 8
   %ptr_to_i64 = ptrtoint ptr %org_id2 to i64
   %elem_ptr = getelementptr [3 x i64], ptr %list_arr, i32 0, i32 0
-  store i64 %ptr_to_i64, ptr %elem_ptr, align 4
+  store i64 %ptr_to_i64, ptr %elem_ptr, align 8
   %name3 = load ptr, ptr %name, align 8
   %ptr_to_i644 = ptrtoint ptr %name3 to i64
   %elem_ptr5 = getelementptr [3 x i64], ptr %list_arr, i32 0, i32 1
-  store i64 %ptr_to_i644, ptr %elem_ptr5, align 4
+  store i64 %ptr_to_i644, ptr %elem_ptr5, align 8
   %platform6 = load ptr, ptr %platform, align 8
   %ptr_to_i647 = ptrtoint ptr %platform6 to i64
   %elem_ptr8 = getelementptr [3 x i64], ptr %list_arr, i32 0, i32 2
-  store i64 %ptr_to_i647, ptr %elem_ptr8, align 4
+  store i64 %ptr_to_i647, ptr %elem_ptr8, align 8
   %list = call ptr @mesh_list_from_array(ptr %list_arr, i64 3)
   %call = call ptr @mesh_pool_query(i64 %pool1, ptr %str, ptr %list)
   %match_result = alloca ptr, align 8
@@ -6548,17 +6549,17 @@ entry:
   %__try_err_5 = alloca ptr, align 8
   %__try_val_5 = alloca ptr, align 8
   %pool = alloca i64, align 8
-  store i64 %0, ptr %pool, align 4
+  store i64 %0, ptr %pool, align 8
   %id = alloca ptr, align 8
   store ptr %1, ptr %id, align 8
   %rows = alloca ptr, align 8
-  %pool1 = load i64, ptr %pool, align 4
+  %pool1 = load i64, ptr %pool, align 8
   %str = call ptr @mesh_string_new(ptr @.str.166, i64 97)
   %list_arr = alloca [1 x i64], align 8
   %id2 = load ptr, ptr %id, align 8
   %ptr_to_i64 = ptrtoint ptr %id2 to i64
   %elem_ptr = getelementptr [1 x i64], ptr %list_arr, i32 0, i32 0
-  store i64 %ptr_to_i64, ptr %elem_ptr, align 4
+  store i64 %ptr_to_i64, ptr %elem_ptr, align 8
   %list = call ptr @mesh_list_from_array(ptr %list_arr, i64 1)
   %call = call ptr @mesh_pool_query(i64 %pool1, ptr %str, ptr %list)
   %match_result = alloca ptr, align 8
@@ -6732,17 +6733,17 @@ entry:
   %__try_err_6 = alloca ptr, align 8
   %__try_val_6 = alloca ptr, align 8
   %pool = alloca i64, align 8
-  store i64 %0, ptr %pool, align 4
+  store i64 %0, ptr %pool, align 8
   %org_id = alloca ptr, align 8
   store ptr %1, ptr %org_id, align 8
   %rows = alloca ptr, align 8
-  %pool1 = load i64, ptr %pool, align 4
+  %pool1 = load i64, ptr %pool, align 8
   %str = call ptr @mesh_string_new(ptr @.str.180, i64 115)
   %list_arr = alloca [1 x i64], align 8
   %org_id2 = load ptr, ptr %org_id, align 8
   %ptr_to_i64 = ptrtoint ptr %org_id2 to i64
   %elem_ptr = getelementptr [1 x i64], ptr %list_arr, i32 0, i32 0
-  store i64 %ptr_to_i64, ptr %elem_ptr, align 4
+  store i64 %ptr_to_i64, ptr %elem_ptr, align 8
   %list = call ptr @mesh_list_from_array(ptr %list_arr, i64 1)
   %call = call ptr @mesh_pool_query(i64 %pool1, ptr %str, ptr %list)
   %match_result = alloca ptr, align 8
@@ -6810,23 +6811,23 @@ entry:
   %__try_err_7 = alloca ptr, align 8
   %__try_val_7 = alloca ptr, align 8
   %pool = alloca i64, align 8
-  store i64 %0, ptr %pool, align 4
+  store i64 %0, ptr %pool, align 8
   %project_id = alloca ptr, align 8
   store ptr %1, ptr %project_id, align 8
   %label = alloca ptr, align 8
   store ptr %2, ptr %label, align 8
   %rows = alloca ptr, align 8
-  %pool1 = load i64, ptr %pool, align 4
+  %pool1 = load i64, ptr %pool, align 8
   %str = call ptr @mesh_string_new(ptr @.str.183, i64 141)
   %list_arr = alloca [2 x i64], align 8
   %project_id2 = load ptr, ptr %project_id, align 8
   %ptr_to_i64 = ptrtoint ptr %project_id2 to i64
   %elem_ptr = getelementptr [2 x i64], ptr %list_arr, i32 0, i32 0
-  store i64 %ptr_to_i64, ptr %elem_ptr, align 4
+  store i64 %ptr_to_i64, ptr %elem_ptr, align 8
   %label3 = load ptr, ptr %label, align 8
   %ptr_to_i644 = ptrtoint ptr %label3 to i64
   %elem_ptr5 = getelementptr [2 x i64], ptr %list_arr, i32 0, i32 1
-  store i64 %ptr_to_i644, ptr %elem_ptr5, align 4
+  store i64 %ptr_to_i644, ptr %elem_ptr5, align 8
   %list = call ptr @mesh_list_from_array(ptr %list_arr, i64 2)
   %call = call ptr @mesh_pool_query(i64 %pool1, ptr %str, ptr %list)
   %match_result = alloca ptr, align 8
@@ -6910,17 +6911,17 @@ entry:
   %__try_err_8 = alloca ptr, align 8
   %__try_val_8 = alloca ptr, align 8
   %pool = alloca i64, align 8
-  store i64 %0, ptr %pool, align 4
+  store i64 %0, ptr %pool, align 8
   %key_value = alloca ptr, align 8
   store ptr %1, ptr %key_value, align 8
   %rows = alloca ptr, align 8
-  %pool1 = load i64, ptr %pool, align 4
+  %pool1 = load i64, ptr %pool, align 8
   %str = call ptr @mesh_string_new(ptr @.str.188, i64 180)
   %list_arr = alloca [1 x i64], align 8
   %key_value2 = load ptr, ptr %key_value, align 8
   %ptr_to_i64 = ptrtoint ptr %key_value2 to i64
   %elem_ptr = getelementptr [1 x i64], ptr %list_arr, i32 0, i32 0
-  store i64 %ptr_to_i64, ptr %elem_ptr, align 4
+  store i64 %ptr_to_i64, ptr %elem_ptr, align 8
   %list = call ptr @mesh_list_from_array(ptr %list_arr, i64 1)
   %call = call ptr @mesh_pool_query(i64 %pool1, ptr %str, ptr %list)
   %match_result = alloca ptr, align 8
@@ -7041,17 +7042,17 @@ if_merge:                                         ; preds = %else, %then
 define { i8, ptr } @revoke_api_key(i64 %0, ptr %1) {
 entry:
   %pool = alloca i64, align 8
-  store i64 %0, ptr %pool, align 4
+  store i64 %0, ptr %pool, align 8
   %key_id = alloca ptr, align 8
   store ptr %1, ptr %key_id, align 8
   %result = alloca { i8, ptr }, align 8
-  %pool1 = load i64, ptr %pool, align 4
+  %pool1 = load i64, ptr %pool, align 8
   %str = call ptr @mesh_string_new(ptr @.str.197, i64 58)
   %list_arr = alloca [1 x i64], align 8
   %key_id2 = load ptr, ptr %key_id, align 8
   %ptr_to_i64 = ptrtoint ptr %key_id2 to i64
   %elem_ptr = getelementptr [1 x i64], ptr %list_arr, i32 0, i32 0
-  store i64 %ptr_to_i64, ptr %elem_ptr, align 4
+  store i64 %ptr_to_i64, ptr %elem_ptr, align 8
   %list = call ptr @mesh_list_from_array(ptr %list_arr, i64 1)
   %call = call ptr @mesh_pool_execute(i64 %pool1, ptr %str, ptr %list)
   %deref_sum = load { i8, ptr }, ptr %call, align 8
@@ -7065,7 +7066,7 @@ entry:
   %__try_err_9 = alloca ptr, align 8
   %__try_val_9 = alloca ptr, align 8
   %pool = alloca i64, align 8
-  store i64 %0, ptr %pool, align 4
+  store i64 %0, ptr %pool, align 8
   %email = alloca ptr, align 8
   store ptr %1, ptr %email, align 8
   %password = alloca ptr, align 8
@@ -7073,21 +7074,21 @@ entry:
   %display_name = alloca ptr, align 8
   store ptr %3, ptr %display_name, align 8
   %rows = alloca ptr, align 8
-  %pool1 = load i64, ptr %pool, align 4
+  %pool1 = load i64, ptr %pool, align 8
   %str = call ptr @mesh_string_new(ptr @.str.198, i64 120)
   %list_arr = alloca [3 x i64], align 8
   %email2 = load ptr, ptr %email, align 8
   %ptr_to_i64 = ptrtoint ptr %email2 to i64
   %elem_ptr = getelementptr [3 x i64], ptr %list_arr, i32 0, i32 0
-  store i64 %ptr_to_i64, ptr %elem_ptr, align 4
+  store i64 %ptr_to_i64, ptr %elem_ptr, align 8
   %password3 = load ptr, ptr %password, align 8
   %ptr_to_i644 = ptrtoint ptr %password3 to i64
   %elem_ptr5 = getelementptr [3 x i64], ptr %list_arr, i32 0, i32 1
-  store i64 %ptr_to_i644, ptr %elem_ptr5, align 4
+  store i64 %ptr_to_i644, ptr %elem_ptr5, align 8
   %display_name6 = load ptr, ptr %display_name, align 8
   %ptr_to_i647 = ptrtoint ptr %display_name6 to i64
   %elem_ptr8 = getelementptr [3 x i64], ptr %list_arr, i32 0, i32 2
-  store i64 %ptr_to_i647, ptr %elem_ptr8, align 4
+  store i64 %ptr_to_i647, ptr %elem_ptr8, align 8
   %list = call ptr @mesh_list_from_array(ptr %list_arr, i64 3)
   %call = call ptr @mesh_pool_query(i64 %pool1, ptr %str, ptr %list)
   %match_result = alloca ptr, align 8
@@ -7171,23 +7172,23 @@ entry:
   %__try_err_10 = alloca ptr, align 8
   %__try_val_10 = alloca ptr, align 8
   %pool = alloca i64, align 8
-  store i64 %0, ptr %pool, align 4
+  store i64 %0, ptr %pool, align 8
   %email = alloca ptr, align 8
   store ptr %1, ptr %email, align 8
   %password = alloca ptr, align 8
   store ptr %2, ptr %password, align 8
   %rows = alloca ptr, align 8
-  %pool1 = load i64, ptr %pool, align 4
+  %pool1 = load i64, ptr %pool, align 8
   %str = call ptr @mesh_string_new(ptr @.str.203, i64 127)
   %list_arr = alloca [2 x i64], align 8
   %email2 = load ptr, ptr %email, align 8
   %ptr_to_i64 = ptrtoint ptr %email2 to i64
   %elem_ptr = getelementptr [2 x i64], ptr %list_arr, i32 0, i32 0
-  store i64 %ptr_to_i64, ptr %elem_ptr, align 4
+  store i64 %ptr_to_i64, ptr %elem_ptr, align 8
   %password3 = load ptr, ptr %password, align 8
   %ptr_to_i644 = ptrtoint ptr %password3 to i64
   %elem_ptr5 = getelementptr [2 x i64], ptr %list_arr, i32 0, i32 1
-  store i64 %ptr_to_i644, ptr %elem_ptr5, align 4
+  store i64 %ptr_to_i644, ptr %elem_ptr5, align 8
   %list = call ptr @mesh_list_from_array(ptr %list_arr, i64 2)
   %call = call ptr @mesh_pool_query(i64 %pool1, ptr %str, ptr %list)
   %match_result = alloca ptr, align 8
@@ -7302,17 +7303,17 @@ entry:
   %__try_err_11 = alloca ptr, align 8
   %__try_val_11 = alloca ptr, align 8
   %pool = alloca i64, align 8
-  store i64 %0, ptr %pool, align 4
+  store i64 %0, ptr %pool, align 8
   %id = alloca ptr, align 8
   store ptr %1, ptr %id, align 8
   %rows = alloca ptr, align 8
-  %pool1 = load i64, ptr %pool, align 4
+  %pool1 = load i64, ptr %pool, align 8
   %str = call ptr @mesh_string_new(ptr @.str.211, i64 85)
   %list_arr = alloca [1 x i64], align 8
   %id2 = load ptr, ptr %id, align 8
   %ptr_to_i64 = ptrtoint ptr %id2 to i64
   %elem_ptr = getelementptr [1 x i64], ptr %list_arr, i32 0, i32 0
-  store i64 %ptr_to_i64, ptr %elem_ptr, align 4
+  store i64 %ptr_to_i64, ptr %elem_ptr, align 8
   %list = call ptr @mesh_list_from_array(ptr %list_arr, i64 1)
   %call = call ptr @mesh_pool_query(i64 %pool1, ptr %str, ptr %list)
   %match_result = alloca ptr, align 8
@@ -7427,17 +7428,17 @@ entry:
   %__try_err_12 = alloca ptr, align 8
   %__try_val_12 = alloca ptr, align 8
   %pool = alloca i64, align 8
-  store i64 %0, ptr %pool, align 4
+  store i64 %0, ptr %pool, align 8
   %user_id = alloca ptr, align 8
   store ptr %1, ptr %user_id, align 8
   %rows = alloca ptr, align 8
-  %pool1 = load i64, ptr %pool, align 4
+  %pool1 = load i64, ptr %pool, align 8
   %str = call ptr @mesh_string_new(ptr @.str.219, i64 108)
   %list_arr = alloca [1 x i64], align 8
   %user_id2 = load ptr, ptr %user_id, align 8
   %ptr_to_i64 = ptrtoint ptr %user_id2 to i64
   %elem_ptr = getelementptr [1 x i64], ptr %list_arr, i32 0, i32 0
-  store i64 %ptr_to_i64, ptr %elem_ptr, align 4
+  store i64 %ptr_to_i64, ptr %elem_ptr, align 8
   %list = call ptr @mesh_list_from_array(ptr %list_arr, i64 1)
   %call = call ptr @mesh_pool_query(i64 %pool1, ptr %str, ptr %list)
   %match_result = alloca ptr, align 8
@@ -7521,17 +7522,17 @@ entry:
   %__try_err_13 = alloca ptr, align 8
   %__try_val_13 = alloca ptr, align 8
   %pool = alloca i64, align 8
-  store i64 %0, ptr %pool, align 4
+  store i64 %0, ptr %pool, align 8
   %token = alloca ptr, align 8
   store ptr %1, ptr %token, align 8
   %rows = alloca ptr, align 8
-  %pool1 = load i64, ptr %pool, align 4
+  %pool1 = load i64, ptr %pool, align 8
   %str = call ptr @mesh_string_new(ptr @.str.224, i64 117)
   %list_arr = alloca [1 x i64], align 8
   %token2 = load ptr, ptr %token, align 8
   %ptr_to_i64 = ptrtoint ptr %token2 to i64
   %elem_ptr = getelementptr [1 x i64], ptr %list_arr, i32 0, i32 0
-  store i64 %ptr_to_i64, ptr %elem_ptr, align 4
+  store i64 %ptr_to_i64, ptr %elem_ptr, align 8
   %list = call ptr @mesh_list_from_array(ptr %list_arr, i64 1)
   %call = call ptr @mesh_pool_query(i64 %pool1, ptr %str, ptr %list)
   %match_result = alloca ptr, align 8
@@ -7644,17 +7645,17 @@ if_merge:                                         ; preds = %else, %then
 define { i8, ptr } @delete_session(i64 %0, ptr %1) {
 entry:
   %pool = alloca i64, align 8
-  store i64 %0, ptr %pool, align 4
+  store i64 %0, ptr %pool, align 8
   %token = alloca ptr, align 8
   store ptr %1, ptr %token, align 8
   %result = alloca { i8, ptr }, align 8
-  %pool1 = load i64, ptr %pool, align 4
+  %pool1 = load i64, ptr %pool, align 8
   %str = call ptr @mesh_string_new(ptr @.str.232, i64 37)
   %list_arr = alloca [1 x i64], align 8
   %token2 = load ptr, ptr %token, align 8
   %ptr_to_i64 = ptrtoint ptr %token2 to i64
   %elem_ptr = getelementptr [1 x i64], ptr %list_arr, i32 0, i32 0
-  store i64 %ptr_to_i64, ptr %elem_ptr, align 4
+  store i64 %ptr_to_i64, ptr %elem_ptr, align 8
   %list = call ptr @mesh_list_from_array(ptr %list_arr, i64 1)
   %call = call ptr @mesh_pool_execute(i64 %pool1, ptr %str, ptr %list)
   %deref_sum = load { i8, ptr }, ptr %call, align 8
@@ -7668,7 +7669,7 @@ entry:
   %__try_err_14 = alloca ptr, align 8
   %__try_val_14 = alloca ptr, align 8
   %pool = alloca i64, align 8
-  store i64 %0, ptr %pool, align 4
+  store i64 %0, ptr %pool, align 8
   %user_id = alloca ptr, align 8
   store ptr %1, ptr %user_id, align 8
   %org_id = alloca ptr, align 8
@@ -7676,21 +7677,21 @@ entry:
   %role = alloca ptr, align 8
   store ptr %3, ptr %role, align 8
   %rows = alloca ptr, align 8
-  %pool1 = load i64, ptr %pool, align 4
+  %pool1 = load i64, ptr %pool, align 8
   %str = call ptr @mesh_string_new(ptr @.str.233, i64 102)
   %list_arr = alloca [3 x i64], align 8
   %user_id2 = load ptr, ptr %user_id, align 8
   %ptr_to_i64 = ptrtoint ptr %user_id2 to i64
   %elem_ptr = getelementptr [3 x i64], ptr %list_arr, i32 0, i32 0
-  store i64 %ptr_to_i64, ptr %elem_ptr, align 4
+  store i64 %ptr_to_i64, ptr %elem_ptr, align 8
   %org_id3 = load ptr, ptr %org_id, align 8
   %ptr_to_i644 = ptrtoint ptr %org_id3 to i64
   %elem_ptr5 = getelementptr [3 x i64], ptr %list_arr, i32 0, i32 1
-  store i64 %ptr_to_i644, ptr %elem_ptr5, align 4
+  store i64 %ptr_to_i644, ptr %elem_ptr5, align 8
   %role6 = load ptr, ptr %role, align 8
   %ptr_to_i647 = ptrtoint ptr %role6 to i64
   %elem_ptr8 = getelementptr [3 x i64], ptr %list_arr, i32 0, i32 2
-  store i64 %ptr_to_i647, ptr %elem_ptr8, align 4
+  store i64 %ptr_to_i647, ptr %elem_ptr8, align 8
   %list = call ptr @mesh_list_from_array(ptr %list_arr, i64 3)
   %call = call ptr @mesh_pool_query(i64 %pool1, ptr %str, ptr %list)
   %match_result = alloca ptr, align 8
@@ -7825,17 +7826,17 @@ entry:
   %__try_err_15 = alloca ptr, align 8
   %__try_val_15 = alloca ptr, align 8
   %pool = alloca i64, align 8
-  store i64 %0, ptr %pool, align 4
+  store i64 %0, ptr %pool, align 8
   %org_id = alloca ptr, align 8
   store ptr %1, ptr %org_id, align 8
   %rows = alloca ptr, align 8
-  %pool1 = load i64, ptr %pool, align 4
+  %pool1 = load i64, ptr %pool, align 8
   %str = call ptr @mesh_string_new(ptr @.str.243, i64 112)
   %list_arr = alloca [1 x i64], align 8
   %org_id2 = load ptr, ptr %org_id, align 8
   %ptr_to_i64 = ptrtoint ptr %org_id2 to i64
   %elem_ptr = getelementptr [1 x i64], ptr %list_arr, i32 0, i32 0
-  store i64 %ptr_to_i64, ptr %elem_ptr, align 4
+  store i64 %ptr_to_i64, ptr %elem_ptr, align 8
   %list = call ptr @mesh_list_from_array(ptr %list_arr, i64 1)
   %call = call ptr @mesh_pool_query(i64 %pool1, ptr %str, ptr %list)
   %match_result = alloca ptr, align 8
@@ -7903,7 +7904,7 @@ entry:
   %__try_err_17 = alloca ptr, align 8
   %__try_val_17 = alloca ptr, align 8
   %pool = alloca i64, align 8
-  store i64 %0, ptr %pool, align 4
+  store i64 %0, ptr %pool, align 8
   %project_id = alloca ptr, align 8
   store ptr %1, ptr %project_id, align 8
   %fingerprint = alloca ptr, align 8
@@ -7916,25 +7917,25 @@ entry:
   %str = call ptr @mesh_string_new(ptr @.str.246, i64 319)
   store ptr %str, ptr %sql, align 8
   %rows = alloca ptr, align 8
-  %pool1 = load i64, ptr %pool, align 4
+  %pool1 = load i64, ptr %pool, align 8
   %sql2 = load ptr, ptr %sql, align 8
   %list_arr = alloca [4 x i64], align 8
   %project_id3 = load ptr, ptr %project_id, align 8
   %ptr_to_i64 = ptrtoint ptr %project_id3 to i64
   %elem_ptr = getelementptr [4 x i64], ptr %list_arr, i32 0, i32 0
-  store i64 %ptr_to_i64, ptr %elem_ptr, align 4
+  store i64 %ptr_to_i64, ptr %elem_ptr, align 8
   %fingerprint4 = load ptr, ptr %fingerprint, align 8
   %ptr_to_i645 = ptrtoint ptr %fingerprint4 to i64
   %elem_ptr6 = getelementptr [4 x i64], ptr %list_arr, i32 0, i32 1
-  store i64 %ptr_to_i645, ptr %elem_ptr6, align 4
+  store i64 %ptr_to_i645, ptr %elem_ptr6, align 8
   %title7 = load ptr, ptr %title, align 8
   %ptr_to_i648 = ptrtoint ptr %title7 to i64
   %elem_ptr9 = getelementptr [4 x i64], ptr %list_arr, i32 0, i32 2
-  store i64 %ptr_to_i648, ptr %elem_ptr9, align 4
+  store i64 %ptr_to_i648, ptr %elem_ptr9, align 8
   %level10 = load ptr, ptr %level, align 8
   %ptr_to_i6411 = ptrtoint ptr %level10 to i64
   %elem_ptr12 = getelementptr [4 x i64], ptr %list_arr, i32 0, i32 3
-  store i64 %ptr_to_i6411, ptr %elem_ptr12, align 4
+  store i64 %ptr_to_i6411, ptr %elem_ptr12, align 8
   %list = call ptr @mesh_list_from_array(ptr %list_arr, i64 4)
   %call = call ptr @mesh_pool_query(i64 %pool1, ptr %sql2, ptr %list)
   %match_result = alloca ptr, align 8
@@ -8018,23 +8019,23 @@ entry:
   %__try_err_18 = alloca ptr, align 8
   %__try_val_18 = alloca ptr, align 8
   %pool = alloca i64, align 8
-  store i64 %0, ptr %pool, align 4
+  store i64 %0, ptr %pool, align 8
   %project_id = alloca ptr, align 8
   store ptr %1, ptr %project_id, align 8
   %fingerprint = alloca ptr, align 8
   store ptr %2, ptr %fingerprint, align 8
   %rows = alloca ptr, align 8
-  %pool1 = load i64, ptr %pool, align 4
+  %pool1 = load i64, ptr %pool, align 8
   %str = call ptr @mesh_string_new(ptr @.str.251, i64 103)
   %list_arr = alloca [2 x i64], align 8
   %project_id2 = load ptr, ptr %project_id, align 8
   %ptr_to_i64 = ptrtoint ptr %project_id2 to i64
   %elem_ptr = getelementptr [2 x i64], ptr %list_arr, i32 0, i32 0
-  store i64 %ptr_to_i64, ptr %elem_ptr, align 4
+  store i64 %ptr_to_i64, ptr %elem_ptr, align 8
   %fingerprint3 = load ptr, ptr %fingerprint, align 8
   %ptr_to_i644 = ptrtoint ptr %fingerprint3 to i64
   %elem_ptr5 = getelementptr [2 x i64], ptr %list_arr, i32 0, i32 1
-  store i64 %ptr_to_i644, ptr %elem_ptr5, align 4
+  store i64 %ptr_to_i644, ptr %elem_ptr5, align 8
   %list = call ptr @mesh_list_from_array(ptr %list_arr, i64 2)
   %call = call ptr @mesh_pool_query(i64 %pool1, ptr %str, ptr %list)
   %match_result = alloca ptr, align 8
@@ -8107,16 +8108,16 @@ if_merge:                                         ; preds = %else, %then
 define { i8, ptr } @resolve_issue(i64 %0, ptr %1) {
 entry:
   %pool = alloca i64, align 8
-  store i64 %0, ptr %pool, align 4
+  store i64 %0, ptr %pool, align 8
   %issue_id = alloca ptr, align 8
   store ptr %1, ptr %issue_id, align 8
-  %pool1 = load i64, ptr %pool, align 4
+  %pool1 = load i64, ptr %pool, align 8
   %str = call ptr @mesh_string_new(ptr @.str.254, i64 82)
   %list_arr = alloca [1 x i64], align 8
   %issue_id2 = load ptr, ptr %issue_id, align 8
   %ptr_to_i64 = ptrtoint ptr %issue_id2 to i64
   %elem_ptr = getelementptr [1 x i64], ptr %list_arr, i32 0, i32 0
-  store i64 %ptr_to_i64, ptr %elem_ptr, align 4
+  store i64 %ptr_to_i64, ptr %elem_ptr, align 8
   %list = call ptr @mesh_list_from_array(ptr %list_arr, i64 1)
   %call = call ptr @mesh_pool_execute(i64 %pool1, ptr %str, ptr %list)
   %ret_coerce_load = load { i8, ptr }, ptr %call, align 8
@@ -8126,16 +8127,16 @@ entry:
 define { i8, ptr } @archive_issue(i64 %0, ptr %1) {
 entry:
   %pool = alloca i64, align 8
-  store i64 %0, ptr %pool, align 4
+  store i64 %0, ptr %pool, align 8
   %issue_id = alloca ptr, align 8
   store ptr %1, ptr %issue_id, align 8
-  %pool1 = load i64, ptr %pool, align 4
+  %pool1 = load i64, ptr %pool, align 8
   %str = call ptr @mesh_string_new(ptr @.str.255, i64 57)
   %list_arr = alloca [1 x i64], align 8
   %issue_id2 = load ptr, ptr %issue_id, align 8
   %ptr_to_i64 = ptrtoint ptr %issue_id2 to i64
   %elem_ptr = getelementptr [1 x i64], ptr %list_arr, i32 0, i32 0
-  store i64 %ptr_to_i64, ptr %elem_ptr, align 4
+  store i64 %ptr_to_i64, ptr %elem_ptr, align 8
   %list = call ptr @mesh_list_from_array(ptr %list_arr, i64 1)
   %call = call ptr @mesh_pool_execute(i64 %pool1, ptr %str, ptr %list)
   %ret_coerce_load = load { i8, ptr }, ptr %call, align 8
@@ -8145,16 +8146,16 @@ entry:
 define { i8, ptr } @unresolve_issue(i64 %0, ptr %1) {
 entry:
   %pool = alloca i64, align 8
-  store i64 %0, ptr %pool, align 4
+  store i64 %0, ptr %pool, align 8
   %issue_id = alloca ptr, align 8
   store ptr %1, ptr %issue_id, align 8
-  %pool1 = load i64, ptr %pool, align 4
+  %pool1 = load i64, ptr %pool, align 8
   %str = call ptr @mesh_string_new(ptr @.str.256, i64 59)
   %list_arr = alloca [1 x i64], align 8
   %issue_id2 = load ptr, ptr %issue_id, align 8
   %ptr_to_i64 = ptrtoint ptr %issue_id2 to i64
   %elem_ptr = getelementptr [1 x i64], ptr %list_arr, i32 0, i32 0
-  store i64 %ptr_to_i64, ptr %elem_ptr, align 4
+  store i64 %ptr_to_i64, ptr %elem_ptr, align 8
   %list = call ptr @mesh_list_from_array(ptr %list_arr, i64 1)
   %call = call ptr @mesh_pool_execute(i64 %pool1, ptr %str, ptr %list)
   %ret_coerce_load = load { i8, ptr }, ptr %call, align 8
@@ -8164,7 +8165,7 @@ entry:
 define { i8, ptr } @assign_issue(i64 %0, ptr %1, ptr %2) {
 entry:
   %pool = alloca i64, align 8
-  store i64 %0, ptr %pool, align 4
+  store i64 %0, ptr %pool, align 8
   %issue_id = alloca ptr, align 8
   store ptr %1, ptr %issue_id, align 8
   %user_id = alloca ptr, align 8
@@ -8176,30 +8177,30 @@ entry:
   br i1 %gt, label %then, label %else
 
 then:                                             ; preds = %entry
-  %pool2 = load i64, ptr %pool, align 4
+  %pool2 = load i64, ptr %pool, align 8
   %str = call ptr @mesh_string_new(ptr @.str.257, i64 60)
   %list_arr = alloca [2 x i64], align 8
   %issue_id3 = load ptr, ptr %issue_id, align 8
   %ptr_to_i64 = ptrtoint ptr %issue_id3 to i64
   %elem_ptr = getelementptr [2 x i64], ptr %list_arr, i32 0, i32 0
-  store i64 %ptr_to_i64, ptr %elem_ptr, align 4
+  store i64 %ptr_to_i64, ptr %elem_ptr, align 8
   %user_id4 = load ptr, ptr %user_id, align 8
   %ptr_to_i645 = ptrtoint ptr %user_id4 to i64
   %elem_ptr6 = getelementptr [2 x i64], ptr %list_arr, i32 0, i32 1
-  store i64 %ptr_to_i645, ptr %elem_ptr6, align 4
+  store i64 %ptr_to_i645, ptr %elem_ptr6, align 8
   %list = call ptr @mesh_list_from_array(ptr %list_arr, i64 2)
   %call7 = call ptr @mesh_pool_execute(i64 %pool2, ptr %str, ptr %list)
   store ptr %call7, ptr %if_result, align 8
   br label %if_merge
 
 else:                                             ; preds = %entry
-  %pool8 = load i64, ptr %pool, align 4
+  %pool8 = load i64, ptr %pool, align 8
   %str9 = call ptr @mesh_string_new(ptr @.str.258, i64 56)
   %list_arr10 = alloca [1 x i64], align 8
   %issue_id11 = load ptr, ptr %issue_id, align 8
   %ptr_to_i6412 = ptrtoint ptr %issue_id11 to i64
   %elem_ptr13 = getelementptr [1 x i64], ptr %list_arr10, i32 0, i32 0
-  store i64 %ptr_to_i6412, ptr %elem_ptr13, align 4
+  store i64 %ptr_to_i6412, ptr %elem_ptr13, align 8
   %list14 = call ptr @mesh_list_from_array(ptr %list_arr10, i64 1)
   %call15 = call ptr @mesh_pool_execute(i64 %pool8, ptr %str9, ptr %list14)
   store ptr %call15, ptr %if_result, align 8
@@ -8213,16 +8214,16 @@ if_merge:                                         ; preds = %else, %then
 define { i8, ptr } @discard_issue(i64 %0, ptr %1) {
 entry:
   %pool = alloca i64, align 8
-  store i64 %0, ptr %pool, align 4
+  store i64 %0, ptr %pool, align 8
   %issue_id = alloca ptr, align 8
   store ptr %1, ptr %issue_id, align 8
-  %pool1 = load i64, ptr %pool, align 4
+  %pool1 = load i64, ptr %pool, align 8
   %str = call ptr @mesh_string_new(ptr @.str.259, i64 58)
   %list_arr = alloca [1 x i64], align 8
   %issue_id2 = load ptr, ptr %issue_id, align 8
   %ptr_to_i64 = ptrtoint ptr %issue_id2 to i64
   %elem_ptr = getelementptr [1 x i64], ptr %list_arr, i32 0, i32 0
-  store i64 %ptr_to_i64, ptr %elem_ptr, align 4
+  store i64 %ptr_to_i64, ptr %elem_ptr, align 8
   %list = call ptr @mesh_list_from_array(ptr %list_arr, i64 1)
   %call = call ptr @mesh_pool_execute(i64 %pool1, ptr %str, ptr %list)
   %ret_coerce_load = load { i8, ptr }, ptr %call, align 8
@@ -8234,17 +8235,17 @@ entry:
   %__try_err_19 = alloca ptr, align 8
   %__try_val_19 = alloca i64, align 8
   %pool = alloca i64, align 8
-  store i64 %0, ptr %pool, align 4
+  store i64 %0, ptr %pool, align 8
   %issue_id = alloca ptr, align 8
   store ptr %1, ptr %issue_id, align 8
   %_ = alloca i64, align 8
-  %pool1 = load i64, ptr %pool, align 4
+  %pool1 = load i64, ptr %pool, align 8
   %str = call ptr @mesh_string_new(ptr @.str.260, i64 44)
   %list_arr = alloca [1 x i64], align 8
   %issue_id2 = load ptr, ptr %issue_id, align 8
   %ptr_to_i64 = ptrtoint ptr %issue_id2 to i64
   %elem_ptr = getelementptr [1 x i64], ptr %list_arr, i32 0, i32 0
-  store i64 %ptr_to_i64, ptr %elem_ptr, align 4
+  store i64 %ptr_to_i64, ptr %elem_ptr, align 8
   %list = call ptr @mesh_list_from_array(ptr %list_arr, i64 1)
   %call = call ptr @mesh_pool_execute(i64 %pool1, ptr %str, ptr %list)
   %match_result = alloca i64, align 8
@@ -8256,15 +8257,15 @@ entry:
   ]
 
 match_merge:                                      ; preds = %case_Ok
-  %match_val = load i64, ptr %match_result, align 4
-  store i64 %match_val, ptr %_, align 4
-  %pool8 = load i64, ptr %pool, align 4
+  %match_val = load i64, ptr %match_result, align 8
+  store i64 %match_val, ptr %_, align 8
+  %pool8 = load i64, ptr %pool, align 8
   %str9 = call ptr @mesh_string_new(ptr @.str.263, i64 38)
   %list_arr10 = alloca [1 x i64], align 8
   %issue_id11 = load ptr, ptr %issue_id, align 8
   %ptr_to_i6412 = ptrtoint ptr %issue_id11 to i64
   %elem_ptr13 = getelementptr [1 x i64], ptr %list_arr10, i32 0, i32 0
-  store i64 %ptr_to_i6412, ptr %elem_ptr13, align 4
+  store i64 %ptr_to_i6412, ptr %elem_ptr13, align 8
   %list14 = call ptr @mesh_list_from_array(ptr %list_arr10, i64 1)
   %call15 = call ptr @mesh_pool_execute(i64 %pool8, ptr %str9, ptr %list14)
   %ret_coerce_load = load { i8, ptr }, ptr %call15, align 8
@@ -8278,8 +8279,8 @@ case_Ok:                                          ; preds = %entry
   %variant_field = getelementptr inbounds nuw { i8, ptr }, ptr %call, i32 0, i32 1
   %path_val = load ptr, ptr %variant_field, align 8
   store ptr %path_val, ptr %__try_val_19, align 8
-  %__try_val_193 = load i64, ptr %__try_val_19, align 4
-  store i64 %__try_val_193, ptr %match_result, align 4
+  %__try_val_193 = load i64, ptr %__try_val_19, align 8
+  store i64 %__try_val_193, ptr %match_result, align 8
   br label %match_merge
 
 case_Err:                                         ; preds = %entry
@@ -8299,8 +8300,8 @@ case_Err:                                         ; preds = %entry
 define { i8, ptr } @check_volume_spikes(i64 %0) {
 entry:
   %pool = alloca i64, align 8
-  store i64 %0, ptr %pool, align 4
-  %pool1 = load i64, ptr %pool, align 4
+  store i64 %0, ptr %pool, align 8
+  %pool1 = load i64, ptr %pool, align 8
   %str = call ptr @mesh_string_new(ptr @.str.264, i64 374)
   %call = call ptr @mesh_list_new()
   %call2 = call ptr @mesh_pool_execute(i64 %pool1, ptr %str, ptr %call)
@@ -8313,20 +8314,20 @@ entry:
   %__try_err_21 = alloca ptr, align 8
   %__try_val_21 = alloca ptr, align 8
   %pool = alloca i64, align 8
-  store i64 %0, ptr %pool, align 4
+  store i64 %0, ptr %pool, align 8
   %event_json = alloca ptr, align 8
   store ptr %1, ptr %event_json, align 8
   %sql = alloca ptr, align 8
   %str = call ptr @mesh_string_new(ptr @.str.265, i64 866)
   store ptr %str, ptr %sql, align 8
   %rows = alloca ptr, align 8
-  %pool1 = load i64, ptr %pool, align 4
+  %pool1 = load i64, ptr %pool, align 8
   %sql2 = load ptr, ptr %sql, align 8
   %list_arr = alloca [1 x i64], align 8
   %event_json3 = load ptr, ptr %event_json, align 8
   %ptr_to_i64 = ptrtoint ptr %event_json3 to i64
   %elem_ptr = getelementptr [1 x i64], ptr %list_arr, i32 0, i32 0
-  store i64 %ptr_to_i64, ptr %elem_ptr, align 4
+  store i64 %ptr_to_i64, ptr %elem_ptr, align 8
   %list = call ptr @mesh_list_from_array(ptr %list_arr, i64 1)
   %call = call ptr @mesh_pool_query(i64 %pool1, ptr %sql2, ptr %list)
   %match_result = alloca ptr, align 8
@@ -8407,7 +8408,7 @@ entry:
   %__try_err_22 = alloca ptr, align 8
   %__try_val_22 = alloca ptr, align 8
   %pool = alloca i64, align 8
-  store i64 %0, ptr %pool, align 4
+  store i64 %0, ptr %pool, align 8
   %project_id = alloca ptr, align 8
   store ptr %1, ptr %project_id, align 8
   %status = alloca ptr, align 8
@@ -8433,37 +8434,37 @@ then:                                             ; preds = %entry
   %str = call ptr @mesh_string_new(ptr @.str.269, i64 404)
   store ptr %str, ptr %sql, align 8
   %rows = alloca ptr, align 8
-  %pool2 = load i64, ptr %pool, align 4
+  %pool2 = load i64, ptr %pool, align 8
   %sql3 = load ptr, ptr %sql, align 8
   %list_arr = alloca [7 x i64], align 8
   %project_id4 = load ptr, ptr %project_id, align 8
   %ptr_to_i64 = ptrtoint ptr %project_id4 to i64
   %elem_ptr = getelementptr [7 x i64], ptr %list_arr, i32 0, i32 0
-  store i64 %ptr_to_i64, ptr %elem_ptr, align 4
+  store i64 %ptr_to_i64, ptr %elem_ptr, align 8
   %status5 = load ptr, ptr %status, align 8
   %ptr_to_i646 = ptrtoint ptr %status5 to i64
   %elem_ptr7 = getelementptr [7 x i64], ptr %list_arr, i32 0, i32 1
-  store i64 %ptr_to_i646, ptr %elem_ptr7, align 4
+  store i64 %ptr_to_i646, ptr %elem_ptr7, align 8
   %level8 = load ptr, ptr %level, align 8
   %ptr_to_i649 = ptrtoint ptr %level8 to i64
   %elem_ptr10 = getelementptr [7 x i64], ptr %list_arr, i32 0, i32 2
-  store i64 %ptr_to_i649, ptr %elem_ptr10, align 4
+  store i64 %ptr_to_i649, ptr %elem_ptr10, align 8
   %assigned_to11 = load ptr, ptr %assigned_to, align 8
   %ptr_to_i6412 = ptrtoint ptr %assigned_to11 to i64
   %elem_ptr13 = getelementptr [7 x i64], ptr %list_arr, i32 0, i32 3
-  store i64 %ptr_to_i6412, ptr %elem_ptr13, align 4
+  store i64 %ptr_to_i6412, ptr %elem_ptr13, align 8
   %cursor14 = load ptr, ptr %cursor, align 8
   %ptr_to_i6415 = ptrtoint ptr %cursor14 to i64
   %elem_ptr16 = getelementptr [7 x i64], ptr %list_arr, i32 0, i32 4
-  store i64 %ptr_to_i6415, ptr %elem_ptr16, align 4
+  store i64 %ptr_to_i6415, ptr %elem_ptr16, align 8
   %cursor_id17 = load ptr, ptr %cursor_id, align 8
   %ptr_to_i6418 = ptrtoint ptr %cursor_id17 to i64
   %elem_ptr19 = getelementptr [7 x i64], ptr %list_arr, i32 0, i32 5
-  store i64 %ptr_to_i6418, ptr %elem_ptr19, align 4
+  store i64 %ptr_to_i6418, ptr %elem_ptr19, align 8
   %limit_str20 = load ptr, ptr %limit_str, align 8
   %ptr_to_i6421 = ptrtoint ptr %limit_str20 to i64
   %elem_ptr22 = getelementptr [7 x i64], ptr %list_arr, i32 0, i32 6
-  store i64 %ptr_to_i6421, ptr %elem_ptr22, align 4
+  store i64 %ptr_to_i6421, ptr %elem_ptr22, align 8
   %list = call ptr @mesh_list_from_array(ptr %list_arr, i64 7)
   %call23 = call ptr @mesh_pool_query(i64 %pool2, ptr %sql3, ptr %list)
   %match_result = alloca ptr, align 8
@@ -8479,29 +8480,29 @@ else:                                             ; preds = %entry
   %str35 = call ptr @mesh_string_new(ptr @.str.272, i64 354)
   store ptr %str35, ptr %sql34, align 8
   %rows36 = alloca ptr, align 8
-  %pool37 = load i64, ptr %pool, align 4
+  %pool37 = load i64, ptr %pool, align 8
   %sql38 = load ptr, ptr %sql34, align 8
   %list_arr39 = alloca [5 x i64], align 8
   %project_id40 = load ptr, ptr %project_id, align 8
   %ptr_to_i6441 = ptrtoint ptr %project_id40 to i64
   %elem_ptr42 = getelementptr [5 x i64], ptr %list_arr39, i32 0, i32 0
-  store i64 %ptr_to_i6441, ptr %elem_ptr42, align 4
+  store i64 %ptr_to_i6441, ptr %elem_ptr42, align 8
   %status43 = load ptr, ptr %status, align 8
   %ptr_to_i6444 = ptrtoint ptr %status43 to i64
   %elem_ptr45 = getelementptr [5 x i64], ptr %list_arr39, i32 0, i32 1
-  store i64 %ptr_to_i6444, ptr %elem_ptr45, align 4
+  store i64 %ptr_to_i6444, ptr %elem_ptr45, align 8
   %level46 = load ptr, ptr %level, align 8
   %ptr_to_i6447 = ptrtoint ptr %level46 to i64
   %elem_ptr48 = getelementptr [5 x i64], ptr %list_arr39, i32 0, i32 2
-  store i64 %ptr_to_i6447, ptr %elem_ptr48, align 4
+  store i64 %ptr_to_i6447, ptr %elem_ptr48, align 8
   %assigned_to49 = load ptr, ptr %assigned_to, align 8
   %ptr_to_i6450 = ptrtoint ptr %assigned_to49 to i64
   %elem_ptr51 = getelementptr [5 x i64], ptr %list_arr39, i32 0, i32 3
-  store i64 %ptr_to_i6450, ptr %elem_ptr51, align 4
+  store i64 %ptr_to_i6450, ptr %elem_ptr51, align 8
   %limit_str52 = load ptr, ptr %limit_str, align 8
   %ptr_to_i6453 = ptrtoint ptr %limit_str52 to i64
   %elem_ptr54 = getelementptr [5 x i64], ptr %list_arr39, i32 0, i32 4
-  store i64 %ptr_to_i6453, ptr %elem_ptr54, align 4
+  store i64 %ptr_to_i6453, ptr %elem_ptr54, align 8
   %list55 = call ptr @mesh_list_from_array(ptr %list_arr39, i64 5)
   %call56 = call ptr @mesh_pool_query(i64 %pool37, ptr %sql38, ptr %list55)
   %match_result57 = alloca ptr, align 8
@@ -8598,7 +8599,7 @@ entry:
   %__try_err_24 = alloca ptr, align 8
   %__try_val_24 = alloca ptr, align 8
   %pool = alloca i64, align 8
-  store i64 %0, ptr %pool, align 4
+  store i64 %0, ptr %pool, align 8
   %project_id = alloca ptr, align 8
   store ptr %1, ptr %project_id, align 8
   %search_query = alloca ptr, align 8
@@ -8609,21 +8610,21 @@ entry:
   %str = call ptr @mesh_string_new(ptr @.str.275, i64 361)
   store ptr %str, ptr %sql, align 8
   %rows = alloca ptr, align 8
-  %pool1 = load i64, ptr %pool, align 4
+  %pool1 = load i64, ptr %pool, align 8
   %sql2 = load ptr, ptr %sql, align 8
   %list_arr = alloca [3 x i64], align 8
   %project_id3 = load ptr, ptr %project_id, align 8
   %ptr_to_i64 = ptrtoint ptr %project_id3 to i64
   %elem_ptr = getelementptr [3 x i64], ptr %list_arr, i32 0, i32 0
-  store i64 %ptr_to_i64, ptr %elem_ptr, align 4
+  store i64 %ptr_to_i64, ptr %elem_ptr, align 8
   %search_query4 = load ptr, ptr %search_query, align 8
   %ptr_to_i645 = ptrtoint ptr %search_query4 to i64
   %elem_ptr6 = getelementptr [3 x i64], ptr %list_arr, i32 0, i32 1
-  store i64 %ptr_to_i645, ptr %elem_ptr6, align 4
+  store i64 %ptr_to_i645, ptr %elem_ptr6, align 8
   %limit_str7 = load ptr, ptr %limit_str, align 8
   %ptr_to_i648 = ptrtoint ptr %limit_str7 to i64
   %elem_ptr9 = getelementptr [3 x i64], ptr %list_arr, i32 0, i32 2
-  store i64 %ptr_to_i648, ptr %elem_ptr9, align 4
+  store i64 %ptr_to_i648, ptr %elem_ptr9, align 8
   %list = call ptr @mesh_list_from_array(ptr %list_arr, i64 3)
   %call = call ptr @mesh_pool_query(i64 %pool1, ptr %sql2, ptr %list)
   %match_result = alloca ptr, align 8
@@ -8677,7 +8678,7 @@ entry:
   %__try_err_25 = alloca ptr, align 8
   %__try_val_25 = alloca ptr, align 8
   %pool = alloca i64, align 8
-  store i64 %0, ptr %pool, align 4
+  store i64 %0, ptr %pool, align 8
   %project_id = alloca ptr, align 8
   store ptr %1, ptr %project_id, align 8
   %tag_json = alloca ptr, align 8
@@ -8688,21 +8689,21 @@ entry:
   %str = call ptr @mesh_string_new(ptr @.str.278, i64 226)
   store ptr %str, ptr %sql, align 8
   %rows = alloca ptr, align 8
-  %pool1 = load i64, ptr %pool, align 4
+  %pool1 = load i64, ptr %pool, align 8
   %sql2 = load ptr, ptr %sql, align 8
   %list_arr = alloca [3 x i64], align 8
   %project_id3 = load ptr, ptr %project_id, align 8
   %ptr_to_i64 = ptrtoint ptr %project_id3 to i64
   %elem_ptr = getelementptr [3 x i64], ptr %list_arr, i32 0, i32 0
-  store i64 %ptr_to_i64, ptr %elem_ptr, align 4
+  store i64 %ptr_to_i64, ptr %elem_ptr, align 8
   %tag_json4 = load ptr, ptr %tag_json, align 8
   %ptr_to_i645 = ptrtoint ptr %tag_json4 to i64
   %elem_ptr6 = getelementptr [3 x i64], ptr %list_arr, i32 0, i32 1
-  store i64 %ptr_to_i645, ptr %elem_ptr6, align 4
+  store i64 %ptr_to_i645, ptr %elem_ptr6, align 8
   %limit_str7 = load ptr, ptr %limit_str, align 8
   %ptr_to_i648 = ptrtoint ptr %limit_str7 to i64
   %elem_ptr9 = getelementptr [3 x i64], ptr %list_arr, i32 0, i32 2
-  store i64 %ptr_to_i648, ptr %elem_ptr9, align 4
+  store i64 %ptr_to_i648, ptr %elem_ptr9, align 8
   %list = call ptr @mesh_list_from_array(ptr %list_arr, i64 3)
   %call = call ptr @mesh_pool_query(i64 %pool1, ptr %sql2, ptr %list)
   %match_result = alloca ptr, align 8
@@ -8758,7 +8759,7 @@ entry:
   %__try_err_26 = alloca ptr, align 8
   %__try_val_26 = alloca ptr, align 8
   %pool = alloca i64, align 8
-  store i64 %0, ptr %pool, align 4
+  store i64 %0, ptr %pool, align 8
   %issue_id = alloca ptr, align 8
   store ptr %1, ptr %issue_id, align 8
   %cursor = alloca ptr, align 8
@@ -8778,25 +8779,25 @@ then:                                             ; preds = %entry
   %str = call ptr @mesh_string_new(ptr @.str.281, i64 189)
   store ptr %str, ptr %sql, align 8
   %rows = alloca ptr, align 8
-  %pool2 = load i64, ptr %pool, align 4
+  %pool2 = load i64, ptr %pool, align 8
   %sql3 = load ptr, ptr %sql, align 8
   %list_arr = alloca [4 x i64], align 8
   %issue_id4 = load ptr, ptr %issue_id, align 8
   %ptr_to_i64 = ptrtoint ptr %issue_id4 to i64
   %elem_ptr = getelementptr [4 x i64], ptr %list_arr, i32 0, i32 0
-  store i64 %ptr_to_i64, ptr %elem_ptr, align 4
+  store i64 %ptr_to_i64, ptr %elem_ptr, align 8
   %cursor5 = load ptr, ptr %cursor, align 8
   %ptr_to_i646 = ptrtoint ptr %cursor5 to i64
   %elem_ptr7 = getelementptr [4 x i64], ptr %list_arr, i32 0, i32 1
-  store i64 %ptr_to_i646, ptr %elem_ptr7, align 4
+  store i64 %ptr_to_i646, ptr %elem_ptr7, align 8
   %cursor_id8 = load ptr, ptr %cursor_id, align 8
   %ptr_to_i649 = ptrtoint ptr %cursor_id8 to i64
   %elem_ptr10 = getelementptr [4 x i64], ptr %list_arr, i32 0, i32 2
-  store i64 %ptr_to_i649, ptr %elem_ptr10, align 4
+  store i64 %ptr_to_i649, ptr %elem_ptr10, align 8
   %limit_str11 = load ptr, ptr %limit_str, align 8
   %ptr_to_i6412 = ptrtoint ptr %limit_str11 to i64
   %elem_ptr13 = getelementptr [4 x i64], ptr %list_arr, i32 0, i32 3
-  store i64 %ptr_to_i6412, ptr %elem_ptr13, align 4
+  store i64 %ptr_to_i6412, ptr %elem_ptr13, align 8
   %list = call ptr @mesh_list_from_array(ptr %list_arr, i64 4)
   %call14 = call ptr @mesh_pool_query(i64 %pool2, ptr %sql3, ptr %list)
   %match_result = alloca ptr, align 8
@@ -8812,17 +8813,17 @@ else:                                             ; preds = %entry
   %str26 = call ptr @mesh_string_new(ptr @.str.284, i64 137)
   store ptr %str26, ptr %sql25, align 8
   %rows27 = alloca ptr, align 8
-  %pool28 = load i64, ptr %pool, align 4
+  %pool28 = load i64, ptr %pool, align 8
   %sql29 = load ptr, ptr %sql25, align 8
   %list_arr30 = alloca [2 x i64], align 8
   %issue_id31 = load ptr, ptr %issue_id, align 8
   %ptr_to_i6432 = ptrtoint ptr %issue_id31 to i64
   %elem_ptr33 = getelementptr [2 x i64], ptr %list_arr30, i32 0, i32 0
-  store i64 %ptr_to_i6432, ptr %elem_ptr33, align 4
+  store i64 %ptr_to_i6432, ptr %elem_ptr33, align 8
   %limit_str34 = load ptr, ptr %limit_str, align 8
   %ptr_to_i6435 = ptrtoint ptr %limit_str34 to i64
   %elem_ptr36 = getelementptr [2 x i64], ptr %list_arr30, i32 0, i32 1
-  store i64 %ptr_to_i6435, ptr %elem_ptr36, align 4
+  store i64 %ptr_to_i6435, ptr %elem_ptr36, align 8
   %list37 = call ptr @mesh_list_from_array(ptr %list_arr30, i64 2)
   %call38 = call ptr @mesh_pool_query(i64 %pool28, ptr %sql29, ptr %list37)
   %match_result39 = alloca ptr, align 8
@@ -8919,7 +8920,7 @@ entry:
   %__try_err_28 = alloca ptr, align 8
   %__try_val_28 = alloca ptr, align 8
   %pool = alloca i64, align 8
-  store i64 %0, ptr %pool, align 4
+  store i64 %0, ptr %pool, align 8
   %project_id = alloca ptr, align 8
   store ptr %1, ptr %project_id, align 8
   %bucket = alloca ptr, align 8
@@ -8928,17 +8929,17 @@ entry:
   %str = call ptr @mesh_string_new(ptr @.str.287, i64 193)
   store ptr %str, ptr %sql, align 8
   %rows = alloca ptr, align 8
-  %pool1 = load i64, ptr %pool, align 4
+  %pool1 = load i64, ptr %pool, align 8
   %sql2 = load ptr, ptr %sql, align 8
   %list_arr = alloca [2 x i64], align 8
   %project_id3 = load ptr, ptr %project_id, align 8
   %ptr_to_i64 = ptrtoint ptr %project_id3 to i64
   %elem_ptr = getelementptr [2 x i64], ptr %list_arr, i32 0, i32 0
-  store i64 %ptr_to_i64, ptr %elem_ptr, align 4
+  store i64 %ptr_to_i64, ptr %elem_ptr, align 8
   %bucket4 = load ptr, ptr %bucket, align 8
   %ptr_to_i645 = ptrtoint ptr %bucket4 to i64
   %elem_ptr6 = getelementptr [2 x i64], ptr %list_arr, i32 0, i32 1
-  store i64 %ptr_to_i645, ptr %elem_ptr6, align 4
+  store i64 %ptr_to_i645, ptr %elem_ptr6, align 8
   %list = call ptr @mesh_list_from_array(ptr %list_arr, i64 2)
   %call = call ptr @mesh_pool_query(i64 %pool1, ptr %sql2, ptr %list)
   %match_result = alloca ptr, align 8
@@ -8992,20 +8993,20 @@ entry:
   %__try_err_29 = alloca ptr, align 8
   %__try_val_29 = alloca ptr, align 8
   %pool = alloca i64, align 8
-  store i64 %0, ptr %pool, align 4
+  store i64 %0, ptr %pool, align 8
   %project_id = alloca ptr, align 8
   store ptr %1, ptr %project_id, align 8
   %sql = alloca ptr, align 8
   %str = call ptr @mesh_string_new(ptr @.str.290, i64 158)
   store ptr %str, ptr %sql, align 8
   %rows = alloca ptr, align 8
-  %pool1 = load i64, ptr %pool, align 4
+  %pool1 = load i64, ptr %pool, align 8
   %sql2 = load ptr, ptr %sql, align 8
   %list_arr = alloca [1 x i64], align 8
   %project_id3 = load ptr, ptr %project_id, align 8
   %ptr_to_i64 = ptrtoint ptr %project_id3 to i64
   %elem_ptr = getelementptr [1 x i64], ptr %list_arr, i32 0, i32 0
-  store i64 %ptr_to_i64, ptr %elem_ptr, align 4
+  store i64 %ptr_to_i64, ptr %elem_ptr, align 8
   %list = call ptr @mesh_list_from_array(ptr %list_arr, i64 1)
   %call = call ptr @mesh_pool_query(i64 %pool1, ptr %sql2, ptr %list)
   %match_result = alloca ptr, align 8
@@ -9059,7 +9060,7 @@ entry:
   %__try_err_30 = alloca ptr, align 8
   %__try_val_30 = alloca ptr, align 8
   %pool = alloca i64, align 8
-  store i64 %0, ptr %pool, align 4
+  store i64 %0, ptr %pool, align 8
   %project_id = alloca ptr, align 8
   store ptr %1, ptr %project_id, align 8
   %limit_str = alloca ptr, align 8
@@ -9068,17 +9069,17 @@ entry:
   %str = call ptr @mesh_string_new(ptr @.str.293, i64 179)
   store ptr %str, ptr %sql, align 8
   %rows = alloca ptr, align 8
-  %pool1 = load i64, ptr %pool, align 4
+  %pool1 = load i64, ptr %pool, align 8
   %sql2 = load ptr, ptr %sql, align 8
   %list_arr = alloca [2 x i64], align 8
   %project_id3 = load ptr, ptr %project_id, align 8
   %ptr_to_i64 = ptrtoint ptr %project_id3 to i64
   %elem_ptr = getelementptr [2 x i64], ptr %list_arr, i32 0, i32 0
-  store i64 %ptr_to_i64, ptr %elem_ptr, align 4
+  store i64 %ptr_to_i64, ptr %elem_ptr, align 8
   %limit_str4 = load ptr, ptr %limit_str, align 8
   %ptr_to_i645 = ptrtoint ptr %limit_str4 to i64
   %elem_ptr6 = getelementptr [2 x i64], ptr %list_arr, i32 0, i32 1
-  store i64 %ptr_to_i645, ptr %elem_ptr6, align 4
+  store i64 %ptr_to_i645, ptr %elem_ptr6, align 8
   %list = call ptr @mesh_list_from_array(ptr %list_arr, i64 2)
   %call = call ptr @mesh_pool_query(i64 %pool1, ptr %sql2, ptr %list)
   %match_result = alloca ptr, align 8
@@ -9132,7 +9133,7 @@ entry:
   %__try_err_31 = alloca ptr, align 8
   %__try_val_31 = alloca ptr, align 8
   %pool = alloca i64, align 8
-  store i64 %0, ptr %pool, align 4
+  store i64 %0, ptr %pool, align 8
   %project_id = alloca ptr, align 8
   store ptr %1, ptr %project_id, align 8
   %tag_key = alloca ptr, align 8
@@ -9141,17 +9142,17 @@ entry:
   %str = call ptr @mesh_string_new(ptr @.str.296, i64 202)
   store ptr %str, ptr %sql, align 8
   %rows = alloca ptr, align 8
-  %pool1 = load i64, ptr %pool, align 4
+  %pool1 = load i64, ptr %pool, align 8
   %sql2 = load ptr, ptr %sql, align 8
   %list_arr = alloca [2 x i64], align 8
   %project_id3 = load ptr, ptr %project_id, align 8
   %ptr_to_i64 = ptrtoint ptr %project_id3 to i64
   %elem_ptr = getelementptr [2 x i64], ptr %list_arr, i32 0, i32 0
-  store i64 %ptr_to_i64, ptr %elem_ptr, align 4
+  store i64 %ptr_to_i64, ptr %elem_ptr, align 8
   %tag_key4 = load ptr, ptr %tag_key, align 8
   %ptr_to_i645 = ptrtoint ptr %tag_key4 to i64
   %elem_ptr6 = getelementptr [2 x i64], ptr %list_arr, i32 0, i32 1
-  store i64 %ptr_to_i645, ptr %elem_ptr6, align 4
+  store i64 %ptr_to_i645, ptr %elem_ptr6, align 8
   %list = call ptr @mesh_list_from_array(ptr %list_arr, i64 2)
   %call = call ptr @mesh_pool_query(i64 %pool1, ptr %sql2, ptr %list)
   %match_result = alloca ptr, align 8
@@ -9205,7 +9206,7 @@ entry:
   %__try_err_32 = alloca ptr, align 8
   %__try_val_32 = alloca ptr, align 8
   %pool = alloca i64, align 8
-  store i64 %0, ptr %pool, align 4
+  store i64 %0, ptr %pool, align 8
   %issue_id = alloca ptr, align 8
   store ptr %1, ptr %issue_id, align 8
   %limit_str = alloca ptr, align 8
@@ -9214,17 +9215,17 @@ entry:
   %str = call ptr @mesh_string_new(ptr @.str.299, i64 128)
   store ptr %str, ptr %sql, align 8
   %rows = alloca ptr, align 8
-  %pool1 = load i64, ptr %pool, align 4
+  %pool1 = load i64, ptr %pool, align 8
   %sql2 = load ptr, ptr %sql, align 8
   %list_arr = alloca [2 x i64], align 8
   %issue_id3 = load ptr, ptr %issue_id, align 8
   %ptr_to_i64 = ptrtoint ptr %issue_id3 to i64
   %elem_ptr = getelementptr [2 x i64], ptr %list_arr, i32 0, i32 0
-  store i64 %ptr_to_i64, ptr %elem_ptr, align 4
+  store i64 %ptr_to_i64, ptr %elem_ptr, align 8
   %limit_str4 = load ptr, ptr %limit_str, align 8
   %ptr_to_i645 = ptrtoint ptr %limit_str4 to i64
   %elem_ptr6 = getelementptr [2 x i64], ptr %list_arr, i32 0, i32 1
-  store i64 %ptr_to_i645, ptr %elem_ptr6, align 4
+  store i64 %ptr_to_i645, ptr %elem_ptr6, align 8
   %list = call ptr @mesh_list_from_array(ptr %list_arr, i64 2)
   %call = call ptr @mesh_pool_query(i64 %pool1, ptr %sql2, ptr %list)
   %match_result = alloca ptr, align 8
@@ -9278,20 +9279,20 @@ entry:
   %__try_err_33 = alloca ptr, align 8
   %__try_val_33 = alloca ptr, align 8
   %pool = alloca i64, align 8
-  store i64 %0, ptr %pool, align 4
+  store i64 %0, ptr %pool, align 8
   %project_id = alloca ptr, align 8
   store ptr %1, ptr %project_id, align 8
   %sql = alloca ptr, align 8
   %str = call ptr @mesh_string_new(ptr @.str.302, i64 364)
   store ptr %str, ptr %sql, align 8
   %rows = alloca ptr, align 8
-  %pool1 = load i64, ptr %pool, align 4
+  %pool1 = load i64, ptr %pool, align 8
   %sql2 = load ptr, ptr %sql, align 8
   %list_arr = alloca [1 x i64], align 8
   %project_id3 = load ptr, ptr %project_id, align 8
   %ptr_to_i64 = ptrtoint ptr %project_id3 to i64
   %elem_ptr = getelementptr [1 x i64], ptr %list_arr, i32 0, i32 0
-  store i64 %ptr_to_i64, ptr %elem_ptr, align 4
+  store i64 %ptr_to_i64, ptr %elem_ptr, align 8
   %list = call ptr @mesh_list_from_array(ptr %list_arr, i64 1)
   %call = call ptr @mesh_pool_query(i64 %pool1, ptr %sql2, ptr %list)
   %match_result = alloca ptr, align 8
@@ -9345,20 +9346,20 @@ entry:
   %__try_err_34 = alloca ptr, align 8
   %__try_val_34 = alloca ptr, align 8
   %pool = alloca i64, align 8
-  store i64 %0, ptr %pool, align 4
+  store i64 %0, ptr %pool, align 8
   %event_id = alloca ptr, align 8
   store ptr %1, ptr %event_id, align 8
   %sql = alloca ptr, align 8
   %str = call ptr @mesh_string_new(ptr @.str.305, i64 481)
   store ptr %str, ptr %sql, align 8
   %rows = alloca ptr, align 8
-  %pool1 = load i64, ptr %pool, align 4
+  %pool1 = load i64, ptr %pool, align 8
   %sql2 = load ptr, ptr %sql, align 8
   %list_arr = alloca [1 x i64], align 8
   %event_id3 = load ptr, ptr %event_id, align 8
   %ptr_to_i64 = ptrtoint ptr %event_id3 to i64
   %elem_ptr = getelementptr [1 x i64], ptr %list_arr, i32 0, i32 0
-  store i64 %ptr_to_i64, ptr %elem_ptr, align 4
+  store i64 %ptr_to_i64, ptr %elem_ptr, align 8
   %list = call ptr @mesh_list_from_array(ptr %list_arr, i64 1)
   %call = call ptr @mesh_pool_query(i64 %pool1, ptr %sql2, ptr %list)
   %match_result = alloca ptr, align 8
@@ -9412,7 +9413,7 @@ entry:
   %__try_err_35 = alloca ptr, align 8
   %__try_val_35 = alloca ptr, align 8
   %pool = alloca i64, align 8
-  store i64 %0, ptr %pool, align 4
+  store i64 %0, ptr %pool, align 8
   %issue_id = alloca ptr, align 8
   store ptr %1, ptr %issue_id, align 8
   %received_at = alloca ptr, align 8
@@ -9423,21 +9424,21 @@ entry:
   %str = call ptr @mesh_string_new(ptr @.str.308, i64 321)
   store ptr %str, ptr %sql, align 8
   %rows = alloca ptr, align 8
-  %pool1 = load i64, ptr %pool, align 4
+  %pool1 = load i64, ptr %pool, align 8
   %sql2 = load ptr, ptr %sql, align 8
   %list_arr = alloca [3 x i64], align 8
   %issue_id3 = load ptr, ptr %issue_id, align 8
   %ptr_to_i64 = ptrtoint ptr %issue_id3 to i64
   %elem_ptr = getelementptr [3 x i64], ptr %list_arr, i32 0, i32 0
-  store i64 %ptr_to_i64, ptr %elem_ptr, align 4
+  store i64 %ptr_to_i64, ptr %elem_ptr, align 8
   %received_at4 = load ptr, ptr %received_at, align 8
   %ptr_to_i645 = ptrtoint ptr %received_at4 to i64
   %elem_ptr6 = getelementptr [3 x i64], ptr %list_arr, i32 0, i32 1
-  store i64 %ptr_to_i645, ptr %elem_ptr6, align 4
+  store i64 %ptr_to_i645, ptr %elem_ptr6, align 8
   %event_id7 = load ptr, ptr %event_id, align 8
   %ptr_to_i648 = ptrtoint ptr %event_id7 to i64
   %elem_ptr9 = getelementptr [3 x i64], ptr %list_arr, i32 0, i32 2
-  store i64 %ptr_to_i648, ptr %elem_ptr9, align 4
+  store i64 %ptr_to_i648, ptr %elem_ptr9, align 8
   %list = call ptr @mesh_list_from_array(ptr %list_arr, i64 3)
   %call = call ptr @mesh_pool_query(i64 %pool1, ptr %sql2, ptr %list)
   %match_result = alloca ptr, align 8
@@ -9489,22 +9490,22 @@ case_Err:                                         ; preds = %entry
 define { i8, ptr } @update_member_role(i64 %0, ptr %1, ptr %2) {
 entry:
   %pool = alloca i64, align 8
-  store i64 %0, ptr %pool, align 4
+  store i64 %0, ptr %pool, align 8
   %membership_id = alloca ptr, align 8
   store ptr %1, ptr %membership_id, align 8
   %new_role = alloca ptr, align 8
   store ptr %2, ptr %new_role, align 8
-  %pool1 = load i64, ptr %pool, align 4
+  %pool1 = load i64, ptr %pool, align 8
   %str = call ptr @mesh_string_new(ptr @.str.311, i64 95)
   %list_arr = alloca [2 x i64], align 8
   %membership_id2 = load ptr, ptr %membership_id, align 8
   %ptr_to_i64 = ptrtoint ptr %membership_id2 to i64
   %elem_ptr = getelementptr [2 x i64], ptr %list_arr, i32 0, i32 0
-  store i64 %ptr_to_i64, ptr %elem_ptr, align 4
+  store i64 %ptr_to_i64, ptr %elem_ptr, align 8
   %new_role3 = load ptr, ptr %new_role, align 8
   %ptr_to_i644 = ptrtoint ptr %new_role3 to i64
   %elem_ptr5 = getelementptr [2 x i64], ptr %list_arr, i32 0, i32 1
-  store i64 %ptr_to_i644, ptr %elem_ptr5, align 4
+  store i64 %ptr_to_i644, ptr %elem_ptr5, align 8
   %list = call ptr @mesh_list_from_array(ptr %list_arr, i64 2)
   %call = call ptr @mesh_pool_execute(i64 %pool1, ptr %str, ptr %list)
   %ret_coerce_load = load { i8, ptr }, ptr %call, align 8
@@ -9514,16 +9515,16 @@ entry:
 define { i8, ptr } @remove_member(i64 %0, ptr %1) {
 entry:
   %pool = alloca i64, align 8
-  store i64 %0, ptr %pool, align 4
+  store i64 %0, ptr %pool, align 8
   %membership_id = alloca ptr, align 8
   store ptr %1, ptr %membership_id, align 8
-  %pool1 = load i64, ptr %pool, align 4
+  %pool1 = load i64, ptr %pool, align 8
   %str = call ptr @mesh_string_new(ptr @.str.312, i64 47)
   %list_arr = alloca [1 x i64], align 8
   %membership_id2 = load ptr, ptr %membership_id, align 8
   %ptr_to_i64 = ptrtoint ptr %membership_id2 to i64
   %elem_ptr = getelementptr [1 x i64], ptr %list_arr, i32 0, i32 0
-  store i64 %ptr_to_i64, ptr %elem_ptr, align 4
+  store i64 %ptr_to_i64, ptr %elem_ptr, align 8
   %list = call ptr @mesh_list_from_array(ptr %list_arr, i64 1)
   %call = call ptr @mesh_pool_execute(i64 %pool1, ptr %str, ptr %list)
   %ret_coerce_load = load { i8, ptr }, ptr %call, align 8
@@ -9535,20 +9536,20 @@ entry:
   %__try_err_36 = alloca ptr, align 8
   %__try_val_36 = alloca ptr, align 8
   %pool = alloca i64, align 8
-  store i64 %0, ptr %pool, align 4
+  store i64 %0, ptr %pool, align 8
   %org_id = alloca ptr, align 8
   store ptr %1, ptr %org_id, align 8
   %sql = alloca ptr, align 8
   %str = call ptr @mesh_string_new(ptr @.str.313, i64 205)
   store ptr %str, ptr %sql, align 8
   %rows = alloca ptr, align 8
-  %pool1 = load i64, ptr %pool, align 4
+  %pool1 = load i64, ptr %pool, align 8
   %sql2 = load ptr, ptr %sql, align 8
   %list_arr = alloca [1 x i64], align 8
   %org_id3 = load ptr, ptr %org_id, align 8
   %ptr_to_i64 = ptrtoint ptr %org_id3 to i64
   %elem_ptr = getelementptr [1 x i64], ptr %list_arr, i32 0, i32 0
-  store i64 %ptr_to_i64, ptr %elem_ptr, align 4
+  store i64 %ptr_to_i64, ptr %elem_ptr, align 8
   %list = call ptr @mesh_list_from_array(ptr %list_arr, i64 1)
   %call = call ptr @mesh_pool_query(i64 %pool1, ptr %sql2, ptr %list)
   %match_result = alloca ptr, align 8
@@ -9602,20 +9603,20 @@ entry:
   %__try_err_37 = alloca ptr, align 8
   %__try_val_37 = alloca ptr, align 8
   %pool = alloca i64, align 8
-  store i64 %0, ptr %pool, align 4
+  store i64 %0, ptr %pool, align 8
   %project_id = alloca ptr, align 8
   store ptr %1, ptr %project_id, align 8
   %sql = alloca ptr, align 8
   %str = call ptr @mesh_string_new(ptr @.str.316, i64 182)
   store ptr %str, ptr %sql, align 8
   %rows = alloca ptr, align 8
-  %pool1 = load i64, ptr %pool, align 4
+  %pool1 = load i64, ptr %pool, align 8
   %sql2 = load ptr, ptr %sql, align 8
   %list_arr = alloca [1 x i64], align 8
   %project_id3 = load ptr, ptr %project_id, align 8
   %ptr_to_i64 = ptrtoint ptr %project_id3 to i64
   %elem_ptr = getelementptr [1 x i64], ptr %list_arr, i32 0, i32 0
-  store i64 %ptr_to_i64, ptr %elem_ptr, align 4
+  store i64 %ptr_to_i64, ptr %elem_ptr, align 8
   %list = call ptr @mesh_list_from_array(ptr %list_arr, i64 1)
   %call = call ptr @mesh_pool_query(i64 %pool1, ptr %sql2, ptr %list)
   %match_result = alloca ptr, align 8
@@ -9669,7 +9670,7 @@ entry:
   %__try_err_38 = alloca ptr, align 8
   %__try_val_38 = alloca ptr, align 8
   %pool = alloca i64, align 8
-  store i64 %0, ptr %pool, align 4
+  store i64 %0, ptr %pool, align 8
   %project_id = alloca ptr, align 8
   store ptr %1, ptr %project_id, align 8
   %body = alloca ptr, align 8
@@ -9678,17 +9679,17 @@ entry:
   %str = call ptr @mesh_string_new(ptr @.str.319, i64 358)
   store ptr %str, ptr %sql, align 8
   %rows = alloca ptr, align 8
-  %pool1 = load i64, ptr %pool, align 4
+  %pool1 = load i64, ptr %pool, align 8
   %sql2 = load ptr, ptr %sql, align 8
   %list_arr = alloca [2 x i64], align 8
   %project_id3 = load ptr, ptr %project_id, align 8
   %ptr_to_i64 = ptrtoint ptr %project_id3 to i64
   %elem_ptr = getelementptr [2 x i64], ptr %list_arr, i32 0, i32 0
-  store i64 %ptr_to_i64, ptr %elem_ptr, align 4
+  store i64 %ptr_to_i64, ptr %elem_ptr, align 8
   %body4 = load ptr, ptr %body, align 8
   %ptr_to_i645 = ptrtoint ptr %body4 to i64
   %elem_ptr6 = getelementptr [2 x i64], ptr %list_arr, i32 0, i32 1
-  store i64 %ptr_to_i645, ptr %elem_ptr6, align 4
+  store i64 %ptr_to_i645, ptr %elem_ptr6, align 8
   %list = call ptr @mesh_list_from_array(ptr %list_arr, i64 2)
   %call = call ptr @mesh_pool_query(i64 %pool1, ptr %sql2, ptr %list)
   %match_result = alloca ptr, align 8
@@ -9772,20 +9773,20 @@ entry:
   %__try_err_39 = alloca ptr, align 8
   %__try_val_39 = alloca ptr, align 8
   %pool = alloca i64, align 8
-  store i64 %0, ptr %pool, align 4
+  store i64 %0, ptr %pool, align 8
   %project_id = alloca ptr, align 8
   store ptr %1, ptr %project_id, align 8
   %sql = alloca ptr, align 8
   %str = call ptr @mesh_string_new(ptr @.str.324, i64 259)
   store ptr %str, ptr %sql, align 8
   %rows = alloca ptr, align 8
-  %pool1 = load i64, ptr %pool, align 4
+  %pool1 = load i64, ptr %pool, align 8
   %sql2 = load ptr, ptr %sql, align 8
   %list_arr = alloca [1 x i64], align 8
   %project_id3 = load ptr, ptr %project_id, align 8
   %ptr_to_i64 = ptrtoint ptr %project_id3 to i64
   %elem_ptr = getelementptr [1 x i64], ptr %list_arr, i32 0, i32 0
-  store i64 %ptr_to_i64, ptr %elem_ptr, align 4
+  store i64 %ptr_to_i64, ptr %elem_ptr, align 8
   %list = call ptr @mesh_list_from_array(ptr %list_arr, i64 1)
   %call = call ptr @mesh_pool_query(i64 %pool1, ptr %sql2, ptr %list)
   %match_result = alloca ptr, align 8
@@ -9837,22 +9838,22 @@ case_Err:                                         ; preds = %entry
 define { i8, ptr } @toggle_alert_rule(i64 %0, ptr %1, ptr %2) {
 entry:
   %pool = alloca i64, align 8
-  store i64 %0, ptr %pool, align 4
+  store i64 %0, ptr %pool, align 8
   %rule_id = alloca ptr, align 8
   store ptr %1, ptr %rule_id, align 8
   %enabled_str = alloca ptr, align 8
   store ptr %2, ptr %enabled_str, align 8
-  %pool1 = load i64, ptr %pool, align 4
+  %pool1 = load i64, ptr %pool, align 8
   %str = call ptr @mesh_string_new(ptr @.str.327, i64 64)
   %list_arr = alloca [2 x i64], align 8
   %rule_id2 = load ptr, ptr %rule_id, align 8
   %ptr_to_i64 = ptrtoint ptr %rule_id2 to i64
   %elem_ptr = getelementptr [2 x i64], ptr %list_arr, i32 0, i32 0
-  store i64 %ptr_to_i64, ptr %elem_ptr, align 4
+  store i64 %ptr_to_i64, ptr %elem_ptr, align 8
   %enabled_str3 = load ptr, ptr %enabled_str, align 8
   %ptr_to_i644 = ptrtoint ptr %enabled_str3 to i64
   %elem_ptr5 = getelementptr [2 x i64], ptr %list_arr, i32 0, i32 1
-  store i64 %ptr_to_i644, ptr %elem_ptr5, align 4
+  store i64 %ptr_to_i644, ptr %elem_ptr5, align 8
   %list = call ptr @mesh_list_from_array(ptr %list_arr, i64 2)
   %call = call ptr @mesh_pool_execute(i64 %pool1, ptr %str, ptr %list)
   %ret_coerce_load = load { i8, ptr }, ptr %call, align 8
@@ -9862,16 +9863,16 @@ entry:
 define { i8, ptr } @delete_alert_rule(i64 %0, ptr %1) {
 entry:
   %pool = alloca i64, align 8
-  store i64 %0, ptr %pool, align 4
+  store i64 %0, ptr %pool, align 8
   %rule_id = alloca ptr, align 8
   store ptr %1, ptr %rule_id, align 8
-  %pool1 = load i64, ptr %pool, align 4
+  %pool1 = load i64, ptr %pool, align 8
   %str = call ptr @mesh_string_new(ptr @.str.328, i64 43)
   %list_arr = alloca [1 x i64], align 8
   %rule_id2 = load ptr, ptr %rule_id, align 8
   %ptr_to_i64 = ptrtoint ptr %rule_id2 to i64
   %elem_ptr = getelementptr [1 x i64], ptr %list_arr, i32 0, i32 0
-  store i64 %ptr_to_i64, ptr %elem_ptr, align 4
+  store i64 %ptr_to_i64, ptr %elem_ptr, align 8
   %list = call ptr @mesh_list_from_array(ptr %list_arr, i64 1)
   %call = call ptr @mesh_pool_execute(i64 %pool1, ptr %str, ptr %list)
   %ret_coerce_load = load { i8, ptr }, ptr %call, align 8
@@ -9883,7 +9884,7 @@ entry:
   %__try_err_40 = alloca ptr, align 8
   %__try_val_40 = alloca ptr, align 8
   %pool = alloca i64, align 8
-  store i64 %0, ptr %pool, align 4
+  store i64 %0, ptr %pool, align 8
   %rule_id = alloca ptr, align 8
   store ptr %1, ptr %rule_id, align 8
   %project_id = alloca ptr, align 8
@@ -9898,33 +9899,33 @@ entry:
   %str = call ptr @mesh_string_new(ptr @.str.329, i64 375)
   store ptr %str, ptr %sql, align 8
   %rows = alloca ptr, align 8
-  %pool1 = load i64, ptr %pool, align 4
+  %pool1 = load i64, ptr %pool, align 8
   %sql2 = load ptr, ptr %sql, align 8
   %list_arr = alloca [6 x i64], align 8
   %rule_id3 = load ptr, ptr %rule_id, align 8
   %ptr_to_i64 = ptrtoint ptr %rule_id3 to i64
   %elem_ptr = getelementptr [6 x i64], ptr %list_arr, i32 0, i32 0
-  store i64 %ptr_to_i64, ptr %elem_ptr, align 4
+  store i64 %ptr_to_i64, ptr %elem_ptr, align 8
   %project_id4 = load ptr, ptr %project_id, align 8
   %ptr_to_i645 = ptrtoint ptr %project_id4 to i64
   %elem_ptr6 = getelementptr [6 x i64], ptr %list_arr, i32 0, i32 1
-  store i64 %ptr_to_i645, ptr %elem_ptr6, align 4
+  store i64 %ptr_to_i645, ptr %elem_ptr6, align 8
   %threshold_str7 = load ptr, ptr %threshold_str, align 8
   %ptr_to_i648 = ptrtoint ptr %threshold_str7 to i64
   %elem_ptr9 = getelementptr [6 x i64], ptr %list_arr, i32 0, i32 2
-  store i64 %ptr_to_i648, ptr %elem_ptr9, align 4
+  store i64 %ptr_to_i648, ptr %elem_ptr9, align 8
   %window_str10 = load ptr, ptr %window_str, align 8
   %ptr_to_i6411 = ptrtoint ptr %window_str10 to i64
   %elem_ptr12 = getelementptr [6 x i64], ptr %list_arr, i32 0, i32 3
-  store i64 %ptr_to_i6411, ptr %elem_ptr12, align 4
+  store i64 %ptr_to_i6411, ptr %elem_ptr12, align 8
   %str13 = call ptr @mesh_string_new(ptr @.str.330, i64 0)
   %ptr_to_i6414 = ptrtoint ptr %str13 to i64
   %elem_ptr15 = getelementptr [6 x i64], ptr %list_arr, i32 0, i32 4
-  store i64 %ptr_to_i6414, ptr %elem_ptr15, align 4
+  store i64 %ptr_to_i6414, ptr %elem_ptr15, align 8
   %cooldown_str16 = load ptr, ptr %cooldown_str, align 8
   %ptr_to_i6417 = ptrtoint ptr %cooldown_str16 to i64
   %elem_ptr18 = getelementptr [6 x i64], ptr %list_arr, i32 0, i32 5
-  store i64 %ptr_to_i6417, ptr %elem_ptr18, align 4
+  store i64 %ptr_to_i6417, ptr %elem_ptr18, align 8
   %list = call ptr @mesh_list_from_array(ptr %list_arr, i64 6)
   %call = call ptr @mesh_pool_query(i64 %pool1, ptr %sql2, ptr %list)
   %match_result = alloca ptr, align 8
@@ -10013,7 +10014,7 @@ entry:
   %__try_err_41 = alloca ptr, align 8
   %__try_val_41 = alloca ptr, align 8
   %pool = alloca i64, align 8
-  store i64 %0, ptr %pool, align 4
+  store i64 %0, ptr %pool, align 8
   %rule_id = alloca ptr, align 8
   store ptr %1, ptr %rule_id, align 8
   %project_id = alloca ptr, align 8
@@ -10028,29 +10029,29 @@ entry:
   %str = call ptr @mesh_string_new(ptr @.str.335, i64 197)
   store ptr %str, ptr %sql, align 8
   %rows = alloca ptr, align 8
-  %pool1 = load i64, ptr %pool, align 4
+  %pool1 = load i64, ptr %pool, align 8
   %sql2 = load ptr, ptr %sql, align 8
   %list_arr = alloca [5 x i64], align 8
   %rule_id3 = load ptr, ptr %rule_id, align 8
   %ptr_to_i64 = ptrtoint ptr %rule_id3 to i64
   %elem_ptr = getelementptr [5 x i64], ptr %list_arr, i32 0, i32 0
-  store i64 %ptr_to_i64, ptr %elem_ptr, align 4
+  store i64 %ptr_to_i64, ptr %elem_ptr, align 8
   %project_id4 = load ptr, ptr %project_id, align 8
   %ptr_to_i645 = ptrtoint ptr %project_id4 to i64
   %elem_ptr6 = getelementptr [5 x i64], ptr %list_arr, i32 0, i32 1
-  store i64 %ptr_to_i645, ptr %elem_ptr6, align 4
+  store i64 %ptr_to_i645, ptr %elem_ptr6, align 8
   %message7 = load ptr, ptr %message, align 8
   %ptr_to_i648 = ptrtoint ptr %message7 to i64
   %elem_ptr9 = getelementptr [5 x i64], ptr %list_arr, i32 0, i32 2
-  store i64 %ptr_to_i648, ptr %elem_ptr9, align 4
+  store i64 %ptr_to_i648, ptr %elem_ptr9, align 8
   %condition_type10 = load ptr, ptr %condition_type, align 8
   %ptr_to_i6411 = ptrtoint ptr %condition_type10 to i64
   %elem_ptr12 = getelementptr [5 x i64], ptr %list_arr, i32 0, i32 3
-  store i64 %ptr_to_i6411, ptr %elem_ptr12, align 4
+  store i64 %ptr_to_i6411, ptr %elem_ptr12, align 8
   %rule_name13 = load ptr, ptr %rule_name, align 8
   %ptr_to_i6414 = ptrtoint ptr %rule_name13 to i64
   %elem_ptr15 = getelementptr [5 x i64], ptr %list_arr, i32 0, i32 4
-  store i64 %ptr_to_i6414, ptr %elem_ptr15, align 4
+  store i64 %ptr_to_i6414, ptr %elem_ptr15, align 8
   %list = call ptr @mesh_list_from_array(ptr %list_arr, i64 5)
   %call = call ptr @mesh_pool_query(i64 %pool1, ptr %sql2, ptr %list)
   %match_result = alloca ptr, align 8
@@ -10107,13 +10108,13 @@ then:                                             ; preds = %match_merge
   %i64_to_ptr29 = inttoptr i64 %call28 to ptr
   store ptr %i64_to_ptr29, ptr %alert_id, align 8
   %_ = alloca { i8, ptr }, align 8
-  %pool30 = load i64, ptr %pool, align 4
+  %pool30 = load i64, ptr %pool, align 8
   %str31 = call ptr @mesh_string_new(ptr @.str.339, i64 64)
   %list_arr32 = alloca [1 x i64], align 8
   %rule_id33 = load ptr, ptr %rule_id, align 8
   %ptr_to_i6434 = ptrtoint ptr %rule_id33 to i64
   %elem_ptr35 = getelementptr [1 x i64], ptr %list_arr32, i32 0, i32 0
-  store i64 %ptr_to_i6434, ptr %elem_ptr35, align 4
+  store i64 %ptr_to_i6434, ptr %elem_ptr35, align 8
   %list36 = call ptr @mesh_list_from_array(ptr %list_arr32, i64 1)
   %call37 = call ptr @mesh_pool_execute(i64 %pool30, ptr %str31, ptr %list36)
   %deref_sum = load { i8, ptr }, ptr %call37, align 8
@@ -10149,17 +10150,17 @@ entry:
   %__try_err_42 = alloca ptr, align 8
   %__try_val_42 = alloca ptr, align 8
   %pool = alloca i64, align 8
-  store i64 %0, ptr %pool, align 4
+  store i64 %0, ptr %pool, align 8
   %issue_id = alloca ptr, align 8
   store ptr %1, ptr %issue_id, align 8
   %rows = alloca ptr, align 8
-  %pool1 = load i64, ptr %pool, align 4
+  %pool1 = load i64, ptr %pool, align 8
   %str = call ptr @mesh_string_new(ptr @.str.341, i64 77)
   %list_arr = alloca [1 x i64], align 8
   %issue_id2 = load ptr, ptr %issue_id, align 8
   %ptr_to_i64 = ptrtoint ptr %issue_id2 to i64
   %elem_ptr = getelementptr [1 x i64], ptr %list_arr, i32 0, i32 0
-  store i64 %ptr_to_i64, ptr %elem_ptr, align 4
+  store i64 %ptr_to_i64, ptr %elem_ptr, align 8
   %list = call ptr @mesh_list_from_array(ptr %list_arr, i64 1)
   %call = call ptr @mesh_pool_query(i64 %pool1, ptr %str, ptr %list)
   %match_result = alloca ptr, align 8
@@ -10215,7 +10216,7 @@ entry:
   %__try_err_43 = alloca ptr, align 8
   %__try_val_43 = alloca ptr, align 8
   %pool = alloca i64, align 8
-  store i64 %0, ptr %pool, align 4
+  store i64 %0, ptr %pool, align 8
   %project_id = alloca ptr, align 8
   store ptr %1, ptr %project_id, align 8
   %condition_type = alloca ptr, align 8
@@ -10224,17 +10225,17 @@ entry:
   %str = call ptr @mesh_string_new(ptr @.str.344, i64 152)
   store ptr %str, ptr %sql, align 8
   %rows = alloca ptr, align 8
-  %pool1 = load i64, ptr %pool, align 4
+  %pool1 = load i64, ptr %pool, align 8
   %sql2 = load ptr, ptr %sql, align 8
   %list_arr = alloca [2 x i64], align 8
   %project_id3 = load ptr, ptr %project_id, align 8
   %ptr_to_i64 = ptrtoint ptr %project_id3 to i64
   %elem_ptr = getelementptr [2 x i64], ptr %list_arr, i32 0, i32 0
-  store i64 %ptr_to_i64, ptr %elem_ptr, align 4
+  store i64 %ptr_to_i64, ptr %elem_ptr, align 8
   %condition_type4 = load ptr, ptr %condition_type, align 8
   %ptr_to_i645 = ptrtoint ptr %condition_type4 to i64
   %elem_ptr6 = getelementptr [2 x i64], ptr %list_arr, i32 0, i32 1
-  store i64 %ptr_to_i645, ptr %elem_ptr6, align 4
+  store i64 %ptr_to_i645, ptr %elem_ptr6, align 8
   %list = call ptr @mesh_list_from_array(ptr %list_arr, i64 2)
   %call = call ptr @mesh_pool_query(i64 %pool1, ptr %sql2, ptr %list)
   %match_result = alloca ptr, align 8
@@ -10288,23 +10289,23 @@ entry:
   %__try_err_44 = alloca ptr, align 8
   %__try_val_44 = alloca ptr, align 8
   %pool = alloca i64, align 8
-  store i64 %0, ptr %pool, align 4
+  store i64 %0, ptr %pool, align 8
   %rule_id = alloca ptr, align 8
   store ptr %1, ptr %rule_id, align 8
   %cooldown_str = alloca ptr, align 8
   store ptr %2, ptr %cooldown_str, align 8
   %rows = alloca ptr, align 8
-  %pool1 = load i64, ptr %pool, align 4
+  %pool1 = load i64, ptr %pool, align 8
   %str = call ptr @mesh_string_new(ptr @.str.347, i64 136)
   %list_arr = alloca [2 x i64], align 8
   %rule_id2 = load ptr, ptr %rule_id, align 8
   %ptr_to_i64 = ptrtoint ptr %rule_id2 to i64
   %elem_ptr = getelementptr [2 x i64], ptr %list_arr, i32 0, i32 0
-  store i64 %ptr_to_i64, ptr %elem_ptr, align 4
+  store i64 %ptr_to_i64, ptr %elem_ptr, align 8
   %cooldown_str3 = load ptr, ptr %cooldown_str, align 8
   %ptr_to_i644 = ptrtoint ptr %cooldown_str3 to i64
   %elem_ptr5 = getelementptr [2 x i64], ptr %list_arr, i32 0, i32 1
-  store i64 %ptr_to_i644, ptr %elem_ptr5, align 4
+  store i64 %ptr_to_i644, ptr %elem_ptr5, align 8
   %list = call ptr @mesh_list_from_array(ptr %list_arr, i64 2)
   %call = call ptr @mesh_pool_query(i64 %pool1, ptr %str, ptr %list)
   %match_result = alloca ptr, align 8
@@ -10358,16 +10359,16 @@ case_Err:                                         ; preds = %entry
 define { i8, ptr } @acknowledge_alert(i64 %0, ptr %1) {
 entry:
   %pool = alloca i64, align 8
-  store i64 %0, ptr %pool, align 4
+  store i64 %0, ptr %pool, align 8
   %alert_id = alloca ptr, align 8
   store ptr %1, ptr %alert_id, align 8
-  %pool1 = load i64, ptr %pool, align 4
+  %pool1 = load i64, ptr %pool, align 8
   %str = call ptr @mesh_string_new(ptr @.str.350, i64 108)
   %list_arr = alloca [1 x i64], align 8
   %alert_id2 = load ptr, ptr %alert_id, align 8
   %ptr_to_i64 = ptrtoint ptr %alert_id2 to i64
   %elem_ptr = getelementptr [1 x i64], ptr %list_arr, i32 0, i32 0
-  store i64 %ptr_to_i64, ptr %elem_ptr, align 4
+  store i64 %ptr_to_i64, ptr %elem_ptr, align 8
   %list = call ptr @mesh_list_from_array(ptr %list_arr, i64 1)
   %call = call ptr @mesh_pool_execute(i64 %pool1, ptr %str, ptr %list)
   %ret_coerce_load = load { i8, ptr }, ptr %call, align 8
@@ -10377,16 +10378,16 @@ entry:
 define { i8, ptr } @resolve_fired_alert(i64 %0, ptr %1) {
 entry:
   %pool = alloca i64, align 8
-  store i64 %0, ptr %pool, align 4
+  store i64 %0, ptr %pool, align 8
   %alert_id = alloca ptr, align 8
   store ptr %1, ptr %alert_id, align 8
-  %pool1 = load i64, ptr %pool, align 4
+  %pool1 = load i64, ptr %pool, align 8
   %str = call ptr @mesh_string_new(ptr @.str.351, i64 119)
   %list_arr = alloca [1 x i64], align 8
   %alert_id2 = load ptr, ptr %alert_id, align 8
   %ptr_to_i64 = ptrtoint ptr %alert_id2 to i64
   %elem_ptr = getelementptr [1 x i64], ptr %list_arr, i32 0, i32 0
-  store i64 %ptr_to_i64, ptr %elem_ptr, align 4
+  store i64 %ptr_to_i64, ptr %elem_ptr, align 8
   %list = call ptr @mesh_list_from_array(ptr %list_arr, i64 1)
   %call = call ptr @mesh_pool_execute(i64 %pool1, ptr %str, ptr %list)
   %ret_coerce_load = load { i8, ptr }, ptr %call, align 8
@@ -10398,7 +10399,7 @@ entry:
   %__try_err_45 = alloca ptr, align 8
   %__try_val_45 = alloca ptr, align 8
   %pool = alloca i64, align 8
-  store i64 %0, ptr %pool, align 4
+  store i64 %0, ptr %pool, align 8
   %project_id = alloca ptr, align 8
   store ptr %1, ptr %project_id, align 8
   %status = alloca ptr, align 8
@@ -10407,17 +10408,17 @@ entry:
   %str = call ptr @mesh_string_new(ptr @.str.352, i64 406)
   store ptr %str, ptr %sql, align 8
   %rows = alloca ptr, align 8
-  %pool1 = load i64, ptr %pool, align 4
+  %pool1 = load i64, ptr %pool, align 8
   %sql2 = load ptr, ptr %sql, align 8
   %list_arr = alloca [2 x i64], align 8
   %project_id3 = load ptr, ptr %project_id, align 8
   %ptr_to_i64 = ptrtoint ptr %project_id3 to i64
   %elem_ptr = getelementptr [2 x i64], ptr %list_arr, i32 0, i32 0
-  store i64 %ptr_to_i64, ptr %elem_ptr, align 4
+  store i64 %ptr_to_i64, ptr %elem_ptr, align 8
   %status4 = load ptr, ptr %status, align 8
   %ptr_to_i645 = ptrtoint ptr %status4 to i64
   %elem_ptr6 = getelementptr [2 x i64], ptr %list_arr, i32 0, i32 1
-  store i64 %ptr_to_i645, ptr %elem_ptr6, align 4
+  store i64 %ptr_to_i645, ptr %elem_ptr6, align 8
   %list = call ptr @mesh_list_from_array(ptr %list_arr, i64 2)
   %call = call ptr @mesh_pool_query(i64 %pool1, ptr %sql2, ptr %list)
   %match_result = alloca ptr, align 8
@@ -10471,12 +10472,12 @@ entry:
   %__try_err_46 = alloca ptr, align 8
   %__try_val_46 = alloca ptr, align 8
   %pool = alloca i64, align 8
-  store i64 %0, ptr %pool, align 4
+  store i64 %0, ptr %pool, align 8
   %sql = alloca ptr, align 8
   %str = call ptr @mesh_string_new(ptr @.str.355, i64 175)
   store ptr %str, ptr %sql, align 8
   %rows = alloca ptr, align 8
-  %pool1 = load i64, ptr %pool, align 4
+  %pool1 = load i64, ptr %pool, align 8
   %sql2 = load ptr, ptr %sql, align 8
   %call = call ptr @mesh_list_new()
   %call3 = call ptr @mesh_pool_query(i64 %pool1, ptr %sql2, ptr %call)
@@ -10529,22 +10530,22 @@ case_Err:                                         ; preds = %entry
 define { i8, ptr } @delete_expired_events(i64 %0, ptr %1, ptr %2) {
 entry:
   %pool = alloca i64, align 8
-  store i64 %0, ptr %pool, align 4
+  store i64 %0, ptr %pool, align 8
   %project_id = alloca ptr, align 8
   store ptr %1, ptr %project_id, align 8
   %retention_days_str = alloca ptr, align 8
   store ptr %2, ptr %retention_days_str, align 8
-  %pool1 = load i64, ptr %pool, align 4
+  %pool1 = load i64, ptr %pool, align 8
   %str = call ptr @mesh_string_new(ptr @.str.358, i64 98)
   %list_arr = alloca [2 x i64], align 8
   %project_id2 = load ptr, ptr %project_id, align 8
   %ptr_to_i64 = ptrtoint ptr %project_id2 to i64
   %elem_ptr = getelementptr [2 x i64], ptr %list_arr, i32 0, i32 0
-  store i64 %ptr_to_i64, ptr %elem_ptr, align 4
+  store i64 %ptr_to_i64, ptr %elem_ptr, align 8
   %retention_days_str3 = load ptr, ptr %retention_days_str, align 8
   %ptr_to_i644 = ptrtoint ptr %retention_days_str3 to i64
   %elem_ptr5 = getelementptr [2 x i64], ptr %list_arr, i32 0, i32 1
-  store i64 %ptr_to_i644, ptr %elem_ptr5, align 4
+  store i64 %ptr_to_i644, ptr %elem_ptr5, align 8
   %list = call ptr @mesh_list_from_array(ptr %list_arr, i64 2)
   %call = call ptr @mesh_pool_execute(i64 %pool1, ptr %str, ptr %list)
   %ret_coerce_load = load { i8, ptr }, ptr %call, align 8
@@ -10556,20 +10557,20 @@ entry:
   %__try_err_47 = alloca ptr, align 8
   %__try_val_47 = alloca ptr, align 8
   %pool = alloca i64, align 8
-  store i64 %0, ptr %pool, align 4
+  store i64 %0, ptr %pool, align 8
   %max_days_str = alloca ptr, align 8
   store ptr %1, ptr %max_days_str, align 8
   %sql = alloca ptr, align 8
   %str = call ptr @mesh_string_new(ptr @.str.359, i64 307)
   store ptr %str, ptr %sql, align 8
   %rows = alloca ptr, align 8
-  %pool1 = load i64, ptr %pool, align 4
+  %pool1 = load i64, ptr %pool, align 8
   %sql2 = load ptr, ptr %sql, align 8
   %list_arr = alloca [1 x i64], align 8
   %max_days_str3 = load ptr, ptr %max_days_str, align 8
   %ptr_to_i64 = ptrtoint ptr %max_days_str3 to i64
   %elem_ptr = getelementptr [1 x i64], ptr %list_arr, i32 0, i32 0
-  store i64 %ptr_to_i64, ptr %elem_ptr, align 4
+  store i64 %ptr_to_i64, ptr %elem_ptr, align 8
   %list = call ptr @mesh_list_from_array(ptr %list_arr, i64 1)
   %call = call ptr @mesh_pool_query(i64 %pool1, ptr %sql2, ptr %list)
   %match_result = alloca ptr, align 8
@@ -10621,10 +10622,10 @@ case_Err:                                         ; preds = %entry
 define { i8, ptr } @drop_partition(i64 %0, ptr %1) {
 entry:
   %pool = alloca i64, align 8
-  store i64 %0, ptr %pool, align 4
+  store i64 %0, ptr %pool, align 8
   %partition_name = alloca ptr, align 8
   store ptr %1, ptr %partition_name, align 8
-  %pool1 = load i64, ptr %pool, align 4
+  %pool1 = load i64, ptr %pool, align 8
   %str = call ptr @mesh_string_new(ptr @.str.362, i64 21)
   %partition_name2 = load ptr, ptr %partition_name, align 8
   %concat = call ptr @mesh_string_concat(ptr %str, ptr %partition_name2)
@@ -10639,9 +10640,9 @@ entry:
   %__try_err_48 = alloca ptr, align 8
   %__try_val_48 = alloca ptr, align 8
   %pool = alloca i64, align 8
-  store i64 %0, ptr %pool, align 4
+  store i64 %0, ptr %pool, align 8
   %rows = alloca ptr, align 8
-  %pool1 = load i64, ptr %pool, align 4
+  %pool1 = load i64, ptr %pool, align 8
   %str = call ptr @mesh_string_new(ptr @.str.363, i64 51)
   %call = call ptr @mesh_list_new()
   %call2 = call ptr @mesh_pool_query(i64 %pool1, ptr %str, ptr %call)
@@ -10696,20 +10697,20 @@ entry:
   %__try_err_49 = alloca ptr, align 8
   %__try_val_49 = alloca ptr, align 8
   %pool = alloca i64, align 8
-  store i64 %0, ptr %pool, align 4
+  store i64 %0, ptr %pool, align 8
   %project_id = alloca ptr, align 8
   store ptr %1, ptr %project_id, align 8
   %sql = alloca ptr, align 8
   %str = call ptr @mesh_string_new(ptr @.str.366, i64 120)
   store ptr %str, ptr %sql, align 8
   %rows = alloca ptr, align 8
-  %pool1 = load i64, ptr %pool, align 4
+  %pool1 = load i64, ptr %pool, align 8
   %sql2 = load ptr, ptr %sql, align 8
   %list_arr = alloca [1 x i64], align 8
   %project_id3 = load ptr, ptr %project_id, align 8
   %ptr_to_i64 = ptrtoint ptr %project_id3 to i64
   %elem_ptr = getelementptr [1 x i64], ptr %list_arr, i32 0, i32 0
-  store i64 %ptr_to_i64, ptr %elem_ptr, align 4
+  store i64 %ptr_to_i64, ptr %elem_ptr, align 8
   %list = call ptr @mesh_list_from_array(ptr %list_arr, i64 1)
   %call = call ptr @mesh_pool_query(i64 %pool1, ptr %sql2, ptr %list)
   %match_result = alloca ptr, align 8
@@ -10761,22 +10762,22 @@ case_Err:                                         ; preds = %entry
 define { i8, ptr } @update_project_settings(i64 %0, ptr %1, ptr %2) {
 entry:
   %pool = alloca i64, align 8
-  store i64 %0, ptr %pool, align 4
+  store i64 %0, ptr %pool, align 8
   %project_id = alloca ptr, align 8
   store ptr %1, ptr %project_id, align 8
   %body = alloca ptr, align 8
   store ptr %2, ptr %body, align 8
-  %pool1 = load i64, ptr %pool, align 4
+  %pool1 = load i64, ptr %pool, align 8
   %str = call ptr @mesh_string_new(ptr @.str.369, i64 190)
   %list_arr = alloca [2 x i64], align 8
   %project_id2 = load ptr, ptr %project_id, align 8
   %ptr_to_i64 = ptrtoint ptr %project_id2 to i64
   %elem_ptr = getelementptr [2 x i64], ptr %list_arr, i32 0, i32 0
-  store i64 %ptr_to_i64, ptr %elem_ptr, align 4
+  store i64 %ptr_to_i64, ptr %elem_ptr, align 8
   %body3 = load ptr, ptr %body, align 8
   %ptr_to_i644 = ptrtoint ptr %body3 to i64
   %elem_ptr5 = getelementptr [2 x i64], ptr %list_arr, i32 0, i32 1
-  store i64 %ptr_to_i644, ptr %elem_ptr5, align 4
+  store i64 %ptr_to_i644, ptr %elem_ptr5, align 8
   %list = call ptr @mesh_list_from_array(ptr %list_arr, i64 2)
   %call = call ptr @mesh_pool_execute(i64 %pool1, ptr %str, ptr %list)
   %ret_coerce_load = load { i8, ptr }, ptr %call, align 8
@@ -10788,17 +10789,17 @@ entry:
   %__try_err_50 = alloca ptr, align 8
   %__try_val_50 = alloca ptr, align 8
   %pool = alloca i64, align 8
-  store i64 %0, ptr %pool, align 4
+  store i64 %0, ptr %pool, align 8
   %project_id = alloca ptr, align 8
   store ptr %1, ptr %project_id, align 8
   %rows = alloca ptr, align 8
-  %pool1 = load i64, ptr %pool, align 4
+  %pool1 = load i64, ptr %pool, align 8
   %str = call ptr @mesh_string_new(ptr @.str.370, i64 80)
   %list_arr = alloca [1 x i64], align 8
   %project_id2 = load ptr, ptr %project_id, align 8
   %ptr_to_i64 = ptrtoint ptr %project_id2 to i64
   %elem_ptr = getelementptr [1 x i64], ptr %list_arr, i32 0, i32 0
-  store i64 %ptr_to_i64, ptr %elem_ptr, align 4
+  store i64 %ptr_to_i64, ptr %elem_ptr, align 8
   %list = call ptr @mesh_list_from_array(ptr %list_arr, i64 1)
   %call = call ptr @mesh_pool_query(i64 %pool1, ptr %str, ptr %list)
   %match_result = alloca ptr, align 8
@@ -10852,17 +10853,17 @@ entry:
   %__try_err_51 = alloca ptr, align 8
   %__try_val_51 = alloca ptr, align 8
   %pool = alloca i64, align 8
-  store i64 %0, ptr %pool, align 4
+  store i64 %0, ptr %pool, align 8
   %project_id = alloca ptr, align 8
   store ptr %1, ptr %project_id, align 8
   %rows = alloca ptr, align 8
-  %pool1 = load i64, ptr %pool, align 4
+  %pool1 = load i64, ptr %pool, align 8
   %str = call ptr @mesh_string_new(ptr @.str.373, i64 95)
   %list_arr = alloca [1 x i64], align 8
   %project_id2 = load ptr, ptr %project_id, align 8
   %ptr_to_i64 = ptrtoint ptr %project_id2 to i64
   %elem_ptr = getelementptr [1 x i64], ptr %list_arr, i32 0, i32 0
-  store i64 %ptr_to_i64, ptr %elem_ptr, align 4
+  store i64 %ptr_to_i64, ptr %elem_ptr, align 8
   %list = call ptr @mesh_list_from_array(ptr %list_arr, i64 1)
   %call = call ptr @mesh_pool_query(i64 %pool1, ptr %str, ptr %list)
   %match_result = alloca ptr, align 8
@@ -11052,7 +11053,7 @@ define { i8, ptr } @authenticate_request(i64 %0, ptr %1) {
 entry:
   %key = alloca ptr, align 8
   %pool = alloca i64, align 8
-  store i64 %0, ptr %pool, align 4
+  store i64 %0, ptr %pool, align 8
   %request = alloca ptr, align 8
   store ptr %1, ptr %request, align 8
   %key_opt = alloca { i8, ptr }, align 8
@@ -11083,7 +11084,7 @@ case_Some:                                        ; preds = %entry
   %variant_field = getelementptr inbounds nuw { i8, ptr }, ptr %scrutinee, i32 0, i32 1
   %path_val = load ptr, ptr %variant_field, align 8
   store ptr %path_val, ptr %key, align 8
-  %pool3 = load i64, ptr %pool, align 4
+  %pool3 = load i64, ptr %pool, align 8
   %key4 = load ptr, ptr %key, align 8
   %call5 = call { i8, ptr } @get_project_by_api_key(i64 %pool3, ptr %key4)
   call void @mesh_reduction_check()
@@ -11125,9 +11126,9 @@ entry:
 define { %ProcessorState, { i8, ptr } } @Services_EventProcessor__store_enriched_event(%ProcessorState %0, i64 %1, ptr %2, ptr %3, ptr %4) {
 entry:
   %state = alloca %ProcessorState, align 8
-  store %ProcessorState %0, ptr %state, align 4
+  store %ProcessorState %0, ptr %state, align 8
   %writer_pid = alloca i64, align 8
-  store i64 %1, ptr %writer_pid, align 4
+  store i64 %1, ptr %writer_pid, align 8
   %event_json = alloca ptr, align 8
   store ptr %2, ptr %event_json, align 8
   %issue_id = alloca ptr, align 8
@@ -11141,30 +11142,30 @@ entry:
   %call = call ptr @Services_EventProcessor__build_enriched_entry(ptr %issue_id1, ptr %fingerprint2, ptr %event_json3)
   call void @mesh_reduction_check()
   store ptr %call, ptr %enriched, align 8
-  %writer_pid4 = load i64, ptr %writer_pid, align 4
+  %writer_pid4 = load i64, ptr %writer_pid, align 8
   %enriched5 = load ptr, ptr %enriched, align 8
   %call6 = call {} @__service_storagewriter_cast_store(i64 %writer_pid4, ptr %enriched5)
   call void @mesh_reduction_check()
   %new_state = alloca %ProcessorState, align 8
   %struct_lit = alloca %ProcessorState, align 8
-  %state7 = load %ProcessorState, ptr %state, align 4
+  %state7 = load %ProcessorState, ptr %state, align 8
   %obj_tmp = alloca %ProcessorState, align 8
-  store %ProcessorState %state7, ptr %obj_tmp, align 4
+  store %ProcessorState %state7, ptr %obj_tmp, align 8
   %field_ptr = getelementptr inbounds nuw %ProcessorState, ptr %obj_tmp, i32 0, i32 0
-  %field_val = load i64, ptr %field_ptr, align 4
+  %field_val = load i64, ptr %field_ptr, align 8
   %field_ptr8 = getelementptr inbounds nuw %ProcessorState, ptr %struct_lit, i32 0, i32 0
-  store i64 %field_val, ptr %field_ptr8, align 4
-  %state9 = load %ProcessorState, ptr %state, align 4
+  store i64 %field_val, ptr %field_ptr8, align 8
+  %state9 = load %ProcessorState, ptr %state, align 8
   %obj_tmp10 = alloca %ProcessorState, align 8
-  store %ProcessorState %state9, ptr %obj_tmp10, align 4
+  store %ProcessorState %state9, ptr %obj_tmp10, align 8
   %field_ptr11 = getelementptr inbounds nuw %ProcessorState, ptr %obj_tmp10, i32 0, i32 1
-  %field_val12 = load i64, ptr %field_ptr11, align 4
+  %field_val12 = load i64, ptr %field_ptr11, align 8
   %add = add i64 %field_val12, 1
   %field_ptr13 = getelementptr inbounds nuw %ProcessorState, ptr %struct_lit, i32 0, i32 1
-  store i64 %add, ptr %field_ptr13, align 4
-  %struct_val = load %ProcessorState, ptr %struct_lit, align 4
-  store %ProcessorState %struct_val, ptr %new_state, align 4
-  %new_state14 = load %ProcessorState, ptr %new_state, align 4
+  store i64 %add, ptr %field_ptr13, align 8
+  %struct_val = load %ProcessorState, ptr %struct_lit, align 8
+  store %ProcessorState %struct_val, ptr %new_state, align 8
+  %new_state14 = load %ProcessorState, ptr %new_state, align 8
   %variant = alloca { i8, ptr }, align 8
   %tag_ptr = getelementptr inbounds nuw { i8, ptr }, ptr %variant, i32 0, i32 0
   store i8 0, ptr %tag_ptr, align 1
@@ -11173,21 +11174,21 @@ entry:
   store ptr %issue_id15, ptr %vfield_ptr, align 8
   %variant_val = load { i8, ptr }, ptr %variant, align 8
   %tuple_ptr = call ptr @mesh_gc_alloc_actor(i64 24, i64 8)
-  store i64 2, ptr %tuple_ptr, align 4
+  store i64 2, ptr %tuple_ptr, align 8
   %tuple_base = ptrtoint ptr %tuple_ptr to i64
   %elem_addr = add i64 %tuple_base, 8
   %elem_ptr = inttoptr i64 %elem_addr to ptr
-  %struct_tmp = alloca %ProcessorState, align 8
-  store %ProcessorState %new_state14, ptr %struct_tmp, align 4
-  %struct_to_i64 = load i64, ptr %struct_tmp, align 4
-  store i64 %struct_to_i64, ptr %elem_ptr, align 4
+  %struct_heap = call ptr @mesh_gc_alloc_actor(i64 ptrtoint (ptr getelementptr (%ProcessorState, ptr null, i32 1) to i64), i64 8)
+  store %ProcessorState %new_state14, ptr %struct_heap, align 8
+  %struct_ptr_to_i64 = ptrtoint ptr %struct_heap to i64
+  store i64 %struct_ptr_to_i64, ptr %elem_ptr, align 8
   %tuple_base16 = ptrtoint ptr %tuple_ptr to i64
   %elem_addr17 = add i64 %tuple_base16, 16
   %elem_ptr18 = inttoptr i64 %elem_addr17 to ptr
-  %struct_tmp19 = alloca { i8, ptr }, align 8
-  store { i8, ptr } %variant_val, ptr %struct_tmp19, align 8
-  %struct_to_i6420 = load i64, ptr %struct_tmp19, align 4
-  store i64 %struct_to_i6420, ptr %elem_ptr18, align 4
+  %struct_heap19 = call ptr @mesh_gc_alloc_actor(i64 ptrtoint (ptr getelementptr ({ i8, ptr }, ptr null, i32 1) to i64), i64 8)
+  store { i8, ptr } %variant_val, ptr %struct_heap19, align 8
+  %struct_ptr_to_i6420 = ptrtoint ptr %struct_heap19 to i64
+  store i64 %struct_ptr_to_i6420, ptr %elem_ptr18, align 8
   %ret_coerce_load = load { %ProcessorState, { i8, ptr } }, ptr %tuple_ptr, align 8
   ret { %ProcessorState, { i8, ptr } } %ret_coerce_load
 }
@@ -11197,11 +11198,11 @@ entry:
   %issue_id = alloca ptr, align 8
   %e = alloca ptr, align 8
   %state = alloca %ProcessorState, align 8
-  store %ProcessorState %0, ptr %state, align 4
+  store %ProcessorState %0, ptr %state, align 8
   %project_id = alloca ptr, align 8
   store ptr %1, ptr %project_id, align 8
   %writer_pid = alloca i64, align 8
-  store i64 %2, ptr %writer_pid, align 4
+  store i64 %2, ptr %writer_pid, align 8
   %event_json = alloca ptr, align 8
   store ptr %3, ptr %event_json, align 8
   %fingerprint = alloca ptr, align 8
@@ -11211,11 +11212,11 @@ entry:
   %level = alloca ptr, align 8
   store ptr %6, ptr %level, align 8
   %upsert_result = alloca { i8, ptr }, align 8
-  %state1 = load %ProcessorState, ptr %state, align 4
+  %state1 = load %ProcessorState, ptr %state, align 8
   %obj_tmp = alloca %ProcessorState, align 8
-  store %ProcessorState %state1, ptr %obj_tmp, align 4
+  store %ProcessorState %state1, ptr %obj_tmp, align 8
   %field_ptr = getelementptr inbounds nuw %ProcessorState, ptr %obj_tmp, i32 0, i32 0
-  %field_val = load i64, ptr %field_ptr, align 4
+  %field_val = load i64, ptr %field_ptr, align 8
   %project_id2 = load ptr, ptr %project_id, align 8
   %fingerprint3 = load ptr, ptr %fingerprint, align 8
   %title4 = load ptr, ptr %title, align 8
@@ -11246,7 +11247,7 @@ case_Err:                                         ; preds = %entry
   %variant_field = getelementptr inbounds nuw { i8, ptr }, ptr %scrutinee, i32 0, i32 1
   %path_val = load ptr, ptr %variant_field, align 8
   store ptr %path_val, ptr %e, align 8
-  %state7 = load %ProcessorState, ptr %state, align 4
+  %state7 = load %ProcessorState, ptr %state, align 8
   %variant = alloca { i8, ptr }, align 8
   %tag_ptr8 = getelementptr inbounds nuw { i8, ptr }, ptr %variant, i32 0, i32 0
   store i8 1, ptr %tag_ptr8, align 1
@@ -11255,21 +11256,21 @@ case_Err:                                         ; preds = %entry
   store ptr %e9, ptr %vfield_ptr, align 8
   %variant_val = load { i8, ptr }, ptr %variant, align 8
   %tuple_ptr = call ptr @mesh_gc_alloc_actor(i64 24, i64 8)
-  store i64 2, ptr %tuple_ptr, align 4
+  store i64 2, ptr %tuple_ptr, align 8
   %tuple_base = ptrtoint ptr %tuple_ptr to i64
   %elem_addr = add i64 %tuple_base, 8
   %elem_ptr = inttoptr i64 %elem_addr to ptr
-  %struct_tmp = alloca %ProcessorState, align 8
-  store %ProcessorState %state7, ptr %struct_tmp, align 4
-  %struct_to_i64 = load i64, ptr %struct_tmp, align 4
-  store i64 %struct_to_i64, ptr %elem_ptr, align 4
+  %struct_heap = call ptr @mesh_gc_alloc_actor(i64 ptrtoint (ptr getelementptr (%ProcessorState, ptr null, i32 1) to i64), i64 8)
+  store %ProcessorState %state7, ptr %struct_heap, align 8
+  %struct_ptr_to_i64 = ptrtoint ptr %struct_heap to i64
+  store i64 %struct_ptr_to_i64, ptr %elem_ptr, align 8
   %tuple_base10 = ptrtoint ptr %tuple_ptr to i64
   %elem_addr11 = add i64 %tuple_base10, 16
   %elem_ptr12 = inttoptr i64 %elem_addr11 to ptr
-  %struct_tmp13 = alloca { i8, ptr }, align 8
-  store { i8, ptr } %variant_val, ptr %struct_tmp13, align 8
-  %struct_to_i6414 = load i64, ptr %struct_tmp13, align 4
-  store i64 %struct_to_i6414, ptr %elem_ptr12, align 4
+  %struct_heap13 = call ptr @mesh_gc_alloc_actor(i64 ptrtoint (ptr getelementptr ({ i8, ptr }, ptr null, i32 1) to i64), i64 8)
+  store { i8, ptr } %variant_val, ptr %struct_heap13, align 8
+  %struct_ptr_to_i6414 = ptrtoint ptr %struct_heap13 to i64
+  store i64 %struct_ptr_to_i6414, ptr %elem_ptr12, align 8
   store ptr %tuple_ptr, ptr %match_result, align 8
   br label %match_merge
 
@@ -11277,8 +11278,8 @@ case_Ok:                                          ; preds = %entry
   %variant_field15 = getelementptr inbounds nuw { i8, ptr }, ptr %scrutinee, i32 0, i32 1
   %path_val16 = load ptr, ptr %variant_field15, align 8
   store ptr %path_val16, ptr %issue_id, align 8
-  %state17 = load %ProcessorState, ptr %state, align 4
-  %writer_pid18 = load i64, ptr %writer_pid, align 4
+  %state17 = load %ProcessorState, ptr %state, align 8
+  %writer_pid18 = load i64, ptr %writer_pid, align 8
   %event_json19 = load ptr, ptr %event_json, align 8
   %issue_id20 = load ptr, ptr %issue_id, align 8
   %fingerprint21 = load ptr, ptr %fingerprint, align 8
@@ -11291,11 +11292,11 @@ case_Ok:                                          ; preds = %entry
 define { %ProcessorState, { i8, ptr } } @Services_EventProcessor__process_if_not_discarded(%ProcessorState %0, ptr %1, i64 %2, ptr %3, ptr %4, ptr %5, ptr %6, i1 %7) {
 entry:
   %state = alloca %ProcessorState, align 8
-  store %ProcessorState %0, ptr %state, align 4
+  store %ProcessorState %0, ptr %state, align 8
   %project_id = alloca ptr, align 8
   store ptr %1, ptr %project_id, align 8
   %writer_pid = alloca i64, align 8
-  store i64 %2, ptr %writer_pid, align 4
+  store i64 %2, ptr %writer_pid, align 8
   %event_json = alloca ptr, align 8
   store ptr %3, ptr %event_json, align 8
   %fingerprint = alloca ptr, align 8
@@ -11311,7 +11312,7 @@ entry:
   br i1 %discarded1, label %then, label %else
 
 then:                                             ; preds = %entry
-  %state2 = load %ProcessorState, ptr %state, align 4
+  %state2 = load %ProcessorState, ptr %state, align 8
   %variant = alloca { i8, ptr }, align 8
   %tag_ptr = getelementptr inbounds nuw { i8, ptr }, ptr %variant, i32 0, i32 0
   store i8 0, ptr %tag_ptr, align 1
@@ -11320,28 +11321,28 @@ then:                                             ; preds = %entry
   store ptr %str, ptr %vfield_ptr, align 8
   %variant_val = load { i8, ptr }, ptr %variant, align 8
   %tuple_ptr = call ptr @mesh_gc_alloc_actor(i64 24, i64 8)
-  store i64 2, ptr %tuple_ptr, align 4
+  store i64 2, ptr %tuple_ptr, align 8
   %tuple_base = ptrtoint ptr %tuple_ptr to i64
   %elem_addr = add i64 %tuple_base, 8
   %elem_ptr = inttoptr i64 %elem_addr to ptr
-  %struct_tmp = alloca %ProcessorState, align 8
-  store %ProcessorState %state2, ptr %struct_tmp, align 4
-  %struct_to_i64 = load i64, ptr %struct_tmp, align 4
-  store i64 %struct_to_i64, ptr %elem_ptr, align 4
+  %struct_heap = call ptr @mesh_gc_alloc_actor(i64 ptrtoint (ptr getelementptr (%ProcessorState, ptr null, i32 1) to i64), i64 8)
+  store %ProcessorState %state2, ptr %struct_heap, align 8
+  %struct_ptr_to_i64 = ptrtoint ptr %struct_heap to i64
+  store i64 %struct_ptr_to_i64, ptr %elem_ptr, align 8
   %tuple_base3 = ptrtoint ptr %tuple_ptr to i64
   %elem_addr4 = add i64 %tuple_base3, 16
   %elem_ptr5 = inttoptr i64 %elem_addr4 to ptr
-  %struct_tmp6 = alloca { i8, ptr }, align 8
-  store { i8, ptr } %variant_val, ptr %struct_tmp6, align 8
-  %struct_to_i647 = load i64, ptr %struct_tmp6, align 4
-  store i64 %struct_to_i647, ptr %elem_ptr5, align 4
+  %struct_heap6 = call ptr @mesh_gc_alloc_actor(i64 ptrtoint (ptr getelementptr ({ i8, ptr }, ptr null, i32 1) to i64), i64 8)
+  store { i8, ptr } %variant_val, ptr %struct_heap6, align 8
+  %struct_ptr_to_i647 = ptrtoint ptr %struct_heap6 to i64
+  store i64 %struct_ptr_to_i647, ptr %elem_ptr5, align 8
   store ptr %tuple_ptr, ptr %if_result, align 8
   br label %if_merge
 
 else:                                             ; preds = %entry
-  %state8 = load %ProcessorState, ptr %state, align 4
+  %state8 = load %ProcessorState, ptr %state, align 8
   %project_id9 = load ptr, ptr %project_id, align 8
-  %writer_pid10 = load i64, ptr %writer_pid, align 4
+  %writer_pid10 = load i64, ptr %writer_pid, align 8
   %event_json11 = load ptr, ptr %event_json, align 8
   %fingerprint12 = load ptr, ptr %fingerprint, align 8
   %title13 = load ptr, ptr %title, align 8
@@ -11361,11 +11362,11 @@ entry:
   %discarded = alloca i1, align 1
   %e = alloca ptr, align 8
   %state = alloca %ProcessorState, align 8
-  store %ProcessorState %0, ptr %state, align 4
+  store %ProcessorState %0, ptr %state, align 8
   %project_id = alloca ptr, align 8
   store ptr %1, ptr %project_id, align 8
   %writer_pid = alloca i64, align 8
-  store i64 %2, ptr %writer_pid, align 4
+  store i64 %2, ptr %writer_pid, align 8
   %event_json = alloca ptr, align 8
   store ptr %3, ptr %event_json, align 8
   %fingerprint = alloca ptr, align 8
@@ -11375,11 +11376,11 @@ entry:
   %level = alloca ptr, align 8
   store ptr %6, ptr %level, align 8
   %discarded_result = alloca { i8, ptr }, align 8
-  %state1 = load %ProcessorState, ptr %state, align 4
+  %state1 = load %ProcessorState, ptr %state, align 8
   %obj_tmp = alloca %ProcessorState, align 8
-  store %ProcessorState %state1, ptr %obj_tmp, align 4
+  store %ProcessorState %state1, ptr %obj_tmp, align 8
   %field_ptr = getelementptr inbounds nuw %ProcessorState, ptr %obj_tmp, i32 0, i32 0
-  %field_val = load i64, ptr %field_ptr, align 4
+  %field_val = load i64, ptr %field_ptr, align 8
   %project_id2 = load ptr, ptr %project_id, align 8
   %fingerprint3 = load ptr, ptr %fingerprint, align 8
   %call = call { i8, ptr } @is_issue_discarded(i64 %field_val, ptr %project_id2, ptr %fingerprint3)
@@ -11408,7 +11409,7 @@ case_Err:                                         ; preds = %entry
   %variant_field = getelementptr inbounds nuw { i8, ptr }, ptr %scrutinee, i32 0, i32 1
   %path_val = load ptr, ptr %variant_field, align 8
   store ptr %path_val, ptr %e, align 8
-  %state5 = load %ProcessorState, ptr %state, align 4
+  %state5 = load %ProcessorState, ptr %state, align 8
   %variant = alloca { i8, ptr }, align 8
   %tag_ptr6 = getelementptr inbounds nuw { i8, ptr }, ptr %variant, i32 0, i32 0
   store i8 1, ptr %tag_ptr6, align 1
@@ -11417,21 +11418,21 @@ case_Err:                                         ; preds = %entry
   store ptr %e7, ptr %vfield_ptr, align 8
   %variant_val = load { i8, ptr }, ptr %variant, align 8
   %tuple_ptr = call ptr @mesh_gc_alloc_actor(i64 24, i64 8)
-  store i64 2, ptr %tuple_ptr, align 4
+  store i64 2, ptr %tuple_ptr, align 8
   %tuple_base = ptrtoint ptr %tuple_ptr to i64
   %elem_addr = add i64 %tuple_base, 8
   %elem_ptr = inttoptr i64 %elem_addr to ptr
-  %struct_tmp = alloca %ProcessorState, align 8
-  store %ProcessorState %state5, ptr %struct_tmp, align 4
-  %struct_to_i64 = load i64, ptr %struct_tmp, align 4
-  store i64 %struct_to_i64, ptr %elem_ptr, align 4
+  %struct_heap = call ptr @mesh_gc_alloc_actor(i64 ptrtoint (ptr getelementptr (%ProcessorState, ptr null, i32 1) to i64), i64 8)
+  store %ProcessorState %state5, ptr %struct_heap, align 8
+  %struct_ptr_to_i64 = ptrtoint ptr %struct_heap to i64
+  store i64 %struct_ptr_to_i64, ptr %elem_ptr, align 8
   %tuple_base8 = ptrtoint ptr %tuple_ptr to i64
   %elem_addr9 = add i64 %tuple_base8, 16
   %elem_ptr10 = inttoptr i64 %elem_addr9 to ptr
-  %struct_tmp11 = alloca { i8, ptr }, align 8
-  store { i8, ptr } %variant_val, ptr %struct_tmp11, align 8
-  %struct_to_i6412 = load i64, ptr %struct_tmp11, align 4
-  store i64 %struct_to_i6412, ptr %elem_ptr10, align 4
+  %struct_heap11 = call ptr @mesh_gc_alloc_actor(i64 ptrtoint (ptr getelementptr ({ i8, ptr }, ptr null, i32 1) to i64), i64 8)
+  store { i8, ptr } %variant_val, ptr %struct_heap11, align 8
+  %struct_ptr_to_i6412 = ptrtoint ptr %struct_heap11 to i64
+  store i64 %struct_ptr_to_i6412, ptr %elem_ptr10, align 8
   store ptr %tuple_ptr, ptr %match_result, align 8
   br label %match_merge
 
@@ -11439,9 +11440,9 @@ case_Ok:                                          ; preds = %entry
   %variant_field13 = getelementptr inbounds nuw { i8, ptr }, ptr %scrutinee, i32 0, i32 1
   %path_val14 = load ptr, ptr %variant_field13, align 8
   store ptr %path_val14, ptr %discarded, align 8
-  %state15 = load %ProcessorState, ptr %state, align 4
+  %state15 = load %ProcessorState, ptr %state, align 8
   %project_id16 = load ptr, ptr %project_id, align 8
-  %writer_pid17 = load i64, ptr %writer_pid, align 4
+  %writer_pid17 = load i64, ptr %writer_pid, align 8
   %event_json18 = load ptr, ptr %event_json, align 8
   %fingerprint19 = load ptr, ptr %fingerprint, align 8
   %title20 = load ptr, ptr %title, align 8
@@ -11456,11 +11457,11 @@ case_Ok:                                          ; preds = %entry
 define { %ProcessorState, { i8, ptr } } @Services_EventProcessor__process_extracted_fields(%ProcessorState %0, ptr %1, i64 %2, ptr %3, ptr %4) {
 entry:
   %state = alloca %ProcessorState, align 8
-  store %ProcessorState %0, ptr %state, align 4
+  store %ProcessorState %0, ptr %state, align 8
   %project_id = alloca ptr, align 8
   store ptr %1, ptr %project_id, align 8
   %writer_pid = alloca i64, align 8
-  store i64 %2, ptr %writer_pid, align 4
+  store i64 %2, ptr %writer_pid, align 8
   %event_json = alloca ptr, align 8
   store ptr %3, ptr %event_json, align 8
   %fields = alloca ptr, align 8
@@ -11489,9 +11490,9 @@ entry:
   %call13 = call i64 @mesh_map_get(ptr %call10, i64 %ptr_to_i6412)
   %i64_to_ptr14 = inttoptr i64 %call13 to ptr
   store ptr %i64_to_ptr14, ptr %level, align 8
-  %state15 = load %ProcessorState, ptr %state, align 4
+  %state15 = load %ProcessorState, ptr %state, align 8
   %project_id16 = load ptr, ptr %project_id, align 8
-  %writer_pid17 = load i64, ptr %writer_pid, align 4
+  %writer_pid17 = load i64, ptr %writer_pid, align 8
   %event_json18 = load ptr, ptr %event_json, align 8
   %fingerprint19 = load ptr, ptr %fingerprint, align 8
   %title20 = load ptr, ptr %title, align 8
@@ -11506,19 +11507,19 @@ entry:
   %fields = alloca ptr, align 8
   %e = alloca ptr, align 8
   %state = alloca %ProcessorState, align 8
-  store %ProcessorState %0, ptr %state, align 4
+  store %ProcessorState %0, ptr %state, align 8
   %project_id = alloca ptr, align 8
   store ptr %1, ptr %project_id, align 8
   %writer_pid = alloca i64, align 8
-  store i64 %2, ptr %writer_pid, align 4
+  store i64 %2, ptr %writer_pid, align 8
   %event_json = alloca ptr, align 8
   store ptr %3, ptr %event_json, align 8
   %fields_result = alloca { i8, ptr }, align 8
-  %state1 = load %ProcessorState, ptr %state, align 4
+  %state1 = load %ProcessorState, ptr %state, align 8
   %obj_tmp = alloca %ProcessorState, align 8
-  store %ProcessorState %state1, ptr %obj_tmp, align 4
+  store %ProcessorState %state1, ptr %obj_tmp, align 8
   %field_ptr = getelementptr inbounds nuw %ProcessorState, ptr %obj_tmp, i32 0, i32 0
-  %field_val = load i64, ptr %field_ptr, align 4
+  %field_val = load i64, ptr %field_ptr, align 8
   %event_json2 = load ptr, ptr %event_json, align 8
   %call = call { i8, ptr } @extract_event_fields(i64 %field_val, ptr %event_json2)
   call void @mesh_reduction_check()
@@ -11546,7 +11547,7 @@ case_Err:                                         ; preds = %entry
   %variant_field = getelementptr inbounds nuw { i8, ptr }, ptr %scrutinee, i32 0, i32 1
   %path_val = load ptr, ptr %variant_field, align 8
   store ptr %path_val, ptr %e, align 8
-  %state4 = load %ProcessorState, ptr %state, align 4
+  %state4 = load %ProcessorState, ptr %state, align 8
   %variant = alloca { i8, ptr }, align 8
   %tag_ptr5 = getelementptr inbounds nuw { i8, ptr }, ptr %variant, i32 0, i32 0
   store i8 1, ptr %tag_ptr5, align 1
@@ -11555,21 +11556,21 @@ case_Err:                                         ; preds = %entry
   store ptr %e6, ptr %vfield_ptr, align 8
   %variant_val = load { i8, ptr }, ptr %variant, align 8
   %tuple_ptr = call ptr @mesh_gc_alloc_actor(i64 24, i64 8)
-  store i64 2, ptr %tuple_ptr, align 4
+  store i64 2, ptr %tuple_ptr, align 8
   %tuple_base = ptrtoint ptr %tuple_ptr to i64
   %elem_addr = add i64 %tuple_base, 8
   %elem_ptr = inttoptr i64 %elem_addr to ptr
-  %struct_tmp = alloca %ProcessorState, align 8
-  store %ProcessorState %state4, ptr %struct_tmp, align 4
-  %struct_to_i64 = load i64, ptr %struct_tmp, align 4
-  store i64 %struct_to_i64, ptr %elem_ptr, align 4
+  %struct_heap = call ptr @mesh_gc_alloc_actor(i64 ptrtoint (ptr getelementptr (%ProcessorState, ptr null, i32 1) to i64), i64 8)
+  store %ProcessorState %state4, ptr %struct_heap, align 8
+  %struct_ptr_to_i64 = ptrtoint ptr %struct_heap to i64
+  store i64 %struct_ptr_to_i64, ptr %elem_ptr, align 8
   %tuple_base7 = ptrtoint ptr %tuple_ptr to i64
   %elem_addr8 = add i64 %tuple_base7, 16
   %elem_ptr9 = inttoptr i64 %elem_addr8 to ptr
-  %struct_tmp10 = alloca { i8, ptr }, align 8
-  store { i8, ptr } %variant_val, ptr %struct_tmp10, align 8
-  %struct_to_i6411 = load i64, ptr %struct_tmp10, align 4
-  store i64 %struct_to_i6411, ptr %elem_ptr9, align 4
+  %struct_heap10 = call ptr @mesh_gc_alloc_actor(i64 ptrtoint (ptr getelementptr ({ i8, ptr }, ptr null, i32 1) to i64), i64 8)
+  store { i8, ptr } %variant_val, ptr %struct_heap10, align 8
+  %struct_ptr_to_i6411 = ptrtoint ptr %struct_heap10 to i64
+  store i64 %struct_ptr_to_i6411, ptr %elem_ptr9, align 8
   store ptr %tuple_ptr, ptr %match_result, align 8
   br label %match_merge
 
@@ -11577,9 +11578,9 @@ case_Ok:                                          ; preds = %entry
   %variant_field12 = getelementptr inbounds nuw { i8, ptr }, ptr %scrutinee, i32 0, i32 1
   %path_val13 = load ptr, ptr %variant_field12, align 8
   store ptr %path_val13, ptr %fields, align 8
-  %state14 = load %ProcessorState, ptr %state, align 4
+  %state14 = load %ProcessorState, ptr %state, align 8
   %project_id15 = load ptr, ptr %project_id, align 8
-  %writer_pid16 = load i64, ptr %writer_pid, align 4
+  %writer_pid16 = load i64, ptr %writer_pid, align 8
   %event_json17 = load ptr, ptr %event_json, align 8
   %fields18 = load ptr, ptr %fields, align 8
   %call19 = call { %ProcessorState, { i8, ptr } } @Services_EventProcessor__process_extracted_fields(%ProcessorState %state14, ptr %project_id15, i64 %writer_pid16, ptr %event_json17, ptr %fields18)
@@ -11591,30 +11592,30 @@ case_Ok:                                          ; preds = %entry
 define %ProcessorState @__service_eventprocessor_init(i64 %0) {
 entry:
   %pool = alloca i64, align 8
-  store i64 %0, ptr %pool, align 4
+  store i64 %0, ptr %pool, align 8
   %struct_lit = alloca %ProcessorState, align 8
-  %pool1 = load i64, ptr %pool, align 4
+  %pool1 = load i64, ptr %pool, align 8
   %field_ptr = getelementptr inbounds nuw %ProcessorState, ptr %struct_lit, i32 0, i32 0
-  store i64 %pool1, ptr %field_ptr, align 4
+  store i64 %pool1, ptr %field_ptr, align 8
   %field_ptr2 = getelementptr inbounds nuw %ProcessorState, ptr %struct_lit, i32 0, i32 1
-  store i64 0, ptr %field_ptr2, align 4
-  %struct_val = load %ProcessorState, ptr %struct_lit, align 4
+  store i64 0, ptr %field_ptr2, align 8
+  %struct_val = load %ProcessorState, ptr %struct_lit, align 8
   ret %ProcessorState %struct_val
 }
 
 define ptr @__service_eventprocessor_handle_call_process_event(%ProcessorState %0, ptr %1, i64 %2, ptr %3) {
 entry:
   %state = alloca %ProcessorState, align 8
-  store %ProcessorState %0, ptr %state, align 4
+  store %ProcessorState %0, ptr %state, align 8
   %project_id = alloca ptr, align 8
   store ptr %1, ptr %project_id, align 8
   %writer_pid = alloca i64, align 8
-  store i64 %2, ptr %writer_pid, align 4
+  store i64 %2, ptr %writer_pid, align 8
   %event_json = alloca ptr, align 8
   store ptr %3, ptr %event_json, align 8
-  %state1 = load %ProcessorState, ptr %state, align 4
+  %state1 = load %ProcessorState, ptr %state, align 8
   %project_id2 = load ptr, ptr %project_id, align 8
-  %writer_pid3 = load i64, ptr %writer_pid, align 4
+  %writer_pid3 = load i64, ptr %writer_pid, align 8
   %event_json4 = load ptr, ptr %event_json, align 8
   %call = call { %ProcessorState, { i8, ptr } } @Services_EventProcessor__route_event(%ProcessorState %state1, ptr %project_id2, i64 %writer_pid3, ptr %event_json4)
   call void @mesh_reduction_check()
@@ -11626,48 +11627,48 @@ entry:
 define i64 @__service_eventprocessor_call_process_event(i64 %0, ptr %1, i64 %2, ptr %3) {
 entry:
   %__pid = alloca i64, align 8
-  store i64 %0, ptr %__pid, align 4
+  store i64 %0, ptr %__pid, align 8
   %project_id = alloca ptr, align 8
   store ptr %1, ptr %project_id, align 8
   %writer_pid = alloca i64, align 8
-  store i64 %2, ptr %writer_pid, align 4
+  store i64 %2, ptr %writer_pid, align 8
   %event_json = alloca ptr, align 8
   store ptr %3, ptr %event_json, align 8
-  %__pid1 = load i64, ptr %__pid, align 4
+  %__pid1 = load i64, ptr %__pid, align 8
   %project_id2 = load ptr, ptr %project_id, align 8
-  %writer_pid3 = load i64, ptr %writer_pid, align 4
+  %writer_pid3 = load i64, ptr %writer_pid, align 8
   %event_json4 = load ptr, ptr %event_json, align 8
-  %__pid5 = load i64, ptr %__pid, align 4
+  %__pid5 = load i64, ptr %__pid, align 8
   %project_id6 = load ptr, ptr %project_id, align 8
   %ptr_to_i64 = ptrtoint ptr %project_id6 to i64
-  %writer_pid7 = load i64, ptr %writer_pid, align 4
+  %writer_pid7 = load i64, ptr %writer_pid, align 8
   %event_json8 = load ptr, ptr %event_json, align 8
   %ptr_to_i649 = ptrtoint ptr %event_json8 to i64
   %call_payload = alloca [3 x i64], align 8
   %payload_elem = getelementptr [3 x i64], ptr %call_payload, i32 0, i32 0
-  store i64 %ptr_to_i64, ptr %payload_elem, align 4
+  store i64 %ptr_to_i64, ptr %payload_elem, align 8
   %payload_elem10 = getelementptr [3 x i64], ptr %call_payload, i32 0, i32 1
-  store i64 %writer_pid7, ptr %payload_elem10, align 4
+  store i64 %writer_pid7, ptr %payload_elem10, align 8
   %payload_elem11 = getelementptr [3 x i64], ptr %call_payload, i32 0, i32 2
-  store i64 %ptr_to_i649, ptr %payload_elem11, align 4
+  store i64 %ptr_to_i649, ptr %payload_elem11, align 8
   %call_result = call ptr @mesh_service_call(i64 %__pid5, i64 0, ptr %call_payload, i64 24)
   %reply_data = getelementptr i8, ptr %call_result, i64 16
-  %reply_val = load i64, ptr %reply_data, align 4
+  %reply_val = load i64, ptr %reply_data, align 8
   ret i64 %reply_val
 }
 
 define i64 @__service_eventprocessor_start(i64 %0) {
 entry:
   %pool = alloca i64, align 8
-  store i64 %0, ptr %pool, align 4
+  store i64 %0, ptr %pool, align 8
   %__init_state = alloca %ProcessorState, align 8
-  %pool1 = load i64, ptr %pool, align 4
+  %pool1 = load i64, ptr %pool, align 8
   %call = call %ProcessorState @__service_eventprocessor_init(i64 %pool1)
   call void @mesh_reduction_check()
-  store %ProcessorState %call, ptr %__init_state, align 4
-  %__init_state2 = load %ProcessorState, ptr %__init_state, align 4
+  store %ProcessorState %call, ptr %__init_state, align 8
+  %__init_state2 = load %ProcessorState, ptr %__init_state, align 8
   %spawn_args = call ptr @mesh_gc_alloc_actor(i64 16, i64 8)
-  store %ProcessorState %__init_state2, ptr %spawn_args, align 4
+  store %ProcessorState %__init_state2, ptr %spawn_args, align 8
   %pid = call i64 @mesh_actor_spawn(ptr @__service_eventprocessor_loop, ptr %spawn_args, i64 16, i8 1)
   ret i64 %pid
 }
@@ -11677,13 +11678,13 @@ entry:
   %__args_ptr = alloca ptr, align 8
   store ptr %0, ptr %__args_ptr, align 8
   %args_ptr_val = load ptr, ptr %__args_ptr, align 8
-  %init_state = load %ProcessorState, ptr %args_ptr_val, align 4
+  %init_state = load %ProcessorState, ptr %args_ptr_val, align 8
   %__state = alloca %ProcessorState, align 8
-  store %ProcessorState %init_state, ptr %__state, align 4
+  store %ProcessorState %init_state, ptr %__state, align 8
   br label %loop
 
 loop:                                             ; preds = %default, %handler_0, %entry
-  %state = load %ProcessorState, ptr %__state, align 4
+  %state = load %ProcessorState, ptr %__state, align 8
   %msg_ptr = call ptr @mesh_actor_receive(i64 -1)
   %msg_is_null = icmp eq ptr %msg_ptr, null
   br i1 %msg_is_null, label %exit_loop, label %continue_loop
@@ -11693,9 +11694,9 @@ exit_loop:                                        ; preds = %loop
 
 continue_loop:                                    ; preds = %loop
   %data_ptr = getelementptr i8, ptr %msg_ptr, i64 16
-  %type_tag = load i64, ptr %data_ptr, align 4
+  %type_tag = load i64, ptr %data_ptr, align 8
   %caller_ptr = getelementptr i8, ptr %data_ptr, i64 8
-  %caller_pid = load i64, ptr %caller_ptr, align 4
+  %caller_pid = load i64, ptr %caller_ptr, align 8
   switch i64 %type_tag, label %default [
     i64 0, label %handler_0
   ]
@@ -11707,131 +11708,131 @@ handler_0:                                        ; preds = %continue_loop
   %arg_0_ptr = getelementptr i8, ptr %data_ptr, i64 16
   %arg_0 = load ptr, ptr %arg_0_ptr, align 8
   %arg_1_ptr = getelementptr i8, ptr %data_ptr, i64 24
-  %arg_1 = load i64, ptr %arg_1_ptr, align 4
+  %arg_1 = load i64, ptr %arg_1_ptr, align 8
   %arg_2_ptr = getelementptr i8, ptr %data_ptr, i64 32
   %arg_2 = load ptr, ptr %arg_2_ptr, align 8
   %handler_result = call ptr @__service_eventprocessor_handle_call_process_event(%ProcessorState %state, ptr %arg_0, i64 %arg_1, ptr %arg_2)
   %new_state = call i64 @mesh_tuple_first(ptr %handler_result)
   %reply = call i64 @mesh_tuple_second(ptr %handler_result)
   %reply_buf = alloca i64, align 8
-  store i64 %reply, ptr %reply_buf, align 4
+  store i64 %reply, ptr %reply_buf, align 8
   call void @mesh_service_reply(i64 %caller_pid, ptr %reply_buf, i64 8)
   %new_state_struct_ptr = inttoptr i64 %new_state to ptr
-  %new_state_struct = load %ProcessorState, ptr %new_state_struct_ptr, align 4
-  store %ProcessorState %new_state_struct, ptr %__state, align 4
+  %new_state_struct = load %ProcessorState, ptr %new_state_struct_ptr, align 8
+  store %ProcessorState %new_state_struct, ptr %__state, align 8
   br label %loop
 }
 
 define i64 @__service_orgservice_init(i64 %0) {
 entry:
   %pool = alloca i64, align 8
-  store i64 %0, ptr %pool, align 4
-  %pool1 = load i64, ptr %pool, align 4
+  store i64 %0, ptr %pool, align 8
+  %pool1 = load i64, ptr %pool, align 8
   ret i64 %pool1
 }
 
 define ptr @__service_orgservice_handle_call_create_org(i64 %0, ptr %1, ptr %2) {
 entry:
   %pool = alloca i64, align 8
-  store i64 %0, ptr %pool, align 4
+  store i64 %0, ptr %pool, align 8
   %name = alloca ptr, align 8
   store ptr %1, ptr %name, align 8
   %slug = alloca ptr, align 8
   store ptr %2, ptr %slug, align 8
   %result = alloca { i8, ptr }, align 8
-  %pool1 = load i64, ptr %pool, align 4
+  %pool1 = load i64, ptr %pool, align 8
   %name2 = load ptr, ptr %name, align 8
   %slug3 = load ptr, ptr %slug, align 8
   %call = call { i8, ptr } @insert_org(i64 %pool1, ptr %name2, ptr %slug3)
   call void @mesh_reduction_check()
   store { i8, ptr } %call, ptr %result, align 8
-  %pool4 = load i64, ptr %pool, align 4
+  %pool4 = load i64, ptr %pool, align 8
   %result5 = load { i8, ptr }, ptr %result, align 8
   %tuple_ptr = call ptr @mesh_gc_alloc_actor(i64 24, i64 8)
-  store i64 2, ptr %tuple_ptr, align 4
+  store i64 2, ptr %tuple_ptr, align 8
   %tuple_base = ptrtoint ptr %tuple_ptr to i64
   %elem_addr = add i64 %tuple_base, 8
   %elem_ptr = inttoptr i64 %elem_addr to ptr
-  store i64 %pool4, ptr %elem_ptr, align 4
+  store i64 %pool4, ptr %elem_ptr, align 8
   %tuple_base6 = ptrtoint ptr %tuple_ptr to i64
   %elem_addr7 = add i64 %tuple_base6, 16
   %elem_ptr8 = inttoptr i64 %elem_addr7 to ptr
-  %struct_tmp = alloca { i8, ptr }, align 8
-  store { i8, ptr } %result5, ptr %struct_tmp, align 8
-  %struct_to_i64 = load i64, ptr %struct_tmp, align 4
-  store i64 %struct_to_i64, ptr %elem_ptr8, align 4
+  %struct_heap = call ptr @mesh_gc_alloc_actor(i64 ptrtoint (ptr getelementptr ({ i8, ptr }, ptr null, i32 1) to i64), i64 8)
+  store { i8, ptr } %result5, ptr %struct_heap, align 8
+  %struct_ptr_to_i64 = ptrtoint ptr %struct_heap to i64
+  store i64 %struct_ptr_to_i64, ptr %elem_ptr8, align 8
   ret ptr %tuple_ptr
 }
 
 define ptr @__service_orgservice_handle_call_get_org(i64 %0, ptr %1) {
 entry:
   %pool = alloca i64, align 8
-  store i64 %0, ptr %pool, align 4
+  store i64 %0, ptr %pool, align 8
   %id = alloca ptr, align 8
   store ptr %1, ptr %id, align 8
   %result = alloca { i8, ptr }, align 8
-  %pool1 = load i64, ptr %pool, align 4
+  %pool1 = load i64, ptr %pool, align 8
   %id2 = load ptr, ptr %id, align 8
   %call = call { i8, ptr } @get_org(i64 %pool1, ptr %id2)
   call void @mesh_reduction_check()
   store { i8, ptr } %call, ptr %result, align 8
-  %pool3 = load i64, ptr %pool, align 4
+  %pool3 = load i64, ptr %pool, align 8
   %result4 = load { i8, ptr }, ptr %result, align 8
   %tuple_ptr = call ptr @mesh_gc_alloc_actor(i64 24, i64 8)
-  store i64 2, ptr %tuple_ptr, align 4
+  store i64 2, ptr %tuple_ptr, align 8
   %tuple_base = ptrtoint ptr %tuple_ptr to i64
   %elem_addr = add i64 %tuple_base, 8
   %elem_ptr = inttoptr i64 %elem_addr to ptr
-  store i64 %pool3, ptr %elem_ptr, align 4
+  store i64 %pool3, ptr %elem_ptr, align 8
   %tuple_base5 = ptrtoint ptr %tuple_ptr to i64
   %elem_addr6 = add i64 %tuple_base5, 16
   %elem_ptr7 = inttoptr i64 %elem_addr6 to ptr
-  %struct_tmp = alloca { i8, ptr }, align 8
-  store { i8, ptr } %result4, ptr %struct_tmp, align 8
-  %struct_to_i64 = load i64, ptr %struct_tmp, align 4
-  store i64 %struct_to_i64, ptr %elem_ptr7, align 4
+  %struct_heap = call ptr @mesh_gc_alloc_actor(i64 ptrtoint (ptr getelementptr ({ i8, ptr }, ptr null, i32 1) to i64), i64 8)
+  store { i8, ptr } %result4, ptr %struct_heap, align 8
+  %struct_ptr_to_i64 = ptrtoint ptr %struct_heap to i64
+  store i64 %struct_ptr_to_i64, ptr %elem_ptr7, align 8
   ret ptr %tuple_ptr
 }
 
 define ptr @__service_orgservice_handle_call_list_orgs(i64 %0) {
 entry:
   %pool = alloca i64, align 8
-  store i64 %0, ptr %pool, align 4
+  store i64 %0, ptr %pool, align 8
   %result = alloca { i8, ptr }, align 8
-  %pool1 = load i64, ptr %pool, align 4
+  %pool1 = load i64, ptr %pool, align 8
   %call = call { i8, ptr } @list_orgs(i64 %pool1)
   call void @mesh_reduction_check()
   store { i8, ptr } %call, ptr %result, align 8
-  %pool2 = load i64, ptr %pool, align 4
+  %pool2 = load i64, ptr %pool, align 8
   %result3 = load { i8, ptr }, ptr %result, align 8
   %tuple_ptr = call ptr @mesh_gc_alloc_actor(i64 24, i64 8)
-  store i64 2, ptr %tuple_ptr, align 4
+  store i64 2, ptr %tuple_ptr, align 8
   %tuple_base = ptrtoint ptr %tuple_ptr to i64
   %elem_addr = add i64 %tuple_base, 8
   %elem_ptr = inttoptr i64 %elem_addr to ptr
-  store i64 %pool2, ptr %elem_ptr, align 4
+  store i64 %pool2, ptr %elem_ptr, align 8
   %tuple_base4 = ptrtoint ptr %tuple_ptr to i64
   %elem_addr5 = add i64 %tuple_base4, 16
   %elem_ptr6 = inttoptr i64 %elem_addr5 to ptr
-  %struct_tmp = alloca { i8, ptr }, align 8
-  store { i8, ptr } %result3, ptr %struct_tmp, align 8
-  %struct_to_i64 = load i64, ptr %struct_tmp, align 4
-  store i64 %struct_to_i64, ptr %elem_ptr6, align 4
+  %struct_heap = call ptr @mesh_gc_alloc_actor(i64 ptrtoint (ptr getelementptr ({ i8, ptr }, ptr null, i32 1) to i64), i64 8)
+  store { i8, ptr } %result3, ptr %struct_heap, align 8
+  %struct_ptr_to_i64 = ptrtoint ptr %struct_heap to i64
+  store i64 %struct_ptr_to_i64, ptr %elem_ptr6, align 8
   ret ptr %tuple_ptr
 }
 
 define i64 @__service_orgservice_start(i64 %0) {
 entry:
   %pool = alloca i64, align 8
-  store i64 %0, ptr %pool, align 4
+  store i64 %0, ptr %pool, align 8
   %__init_state = alloca i64, align 8
-  %pool1 = load i64, ptr %pool, align 4
+  %pool1 = load i64, ptr %pool, align 8
   %call = call i64 @__service_orgservice_init(i64 %pool1)
   call void @mesh_reduction_check()
-  store i64 %call, ptr %__init_state, align 4
-  %__init_state2 = load i64, ptr %__init_state, align 4
+  store i64 %call, ptr %__init_state, align 8
+  %__init_state2 = load i64, ptr %__init_state, align 8
   %spawn_args = call ptr @mesh_gc_alloc_actor(i64 8, i64 8)
-  store i64 %__init_state2, ptr %spawn_args, align 4
+  store i64 %__init_state2, ptr %spawn_args, align 8
   %pid = call i64 @mesh_actor_spawn(ptr @__service_orgservice_loop, ptr %spawn_args, i64 8, i8 1)
   ret i64 %pid
 }
@@ -11841,13 +11842,13 @@ entry:
   %__args_ptr = alloca ptr, align 8
   store ptr %0, ptr %__args_ptr, align 8
   %args_ptr_val = load ptr, ptr %__args_ptr, align 8
-  %init_state = load i64, ptr %args_ptr_val, align 4
+  %init_state = load i64, ptr %args_ptr_val, align 8
   %__state = alloca i64, align 8
-  store i64 %init_state, ptr %__state, align 4
+  store i64 %init_state, ptr %__state, align 8
   br label %loop
 
 loop:                                             ; preds = %default, %handler_2, %handler_1, %handler_0, %entry
-  %state = load i64, ptr %__state, align 4
+  %state = load i64, ptr %__state, align 8
   %msg_ptr = call ptr @mesh_actor_receive(i64 -1)
   %msg_is_null = icmp eq ptr %msg_ptr, null
   br i1 %msg_is_null, label %exit_loop, label %continue_loop
@@ -11857,9 +11858,9 @@ exit_loop:                                        ; preds = %loop
 
 continue_loop:                                    ; preds = %loop
   %data_ptr = getelementptr i8, ptr %msg_ptr, i64 16
-  %type_tag = load i64, ptr %data_ptr, align 4
+  %type_tag = load i64, ptr %data_ptr, align 8
   %caller_ptr = getelementptr i8, ptr %data_ptr, i64 8
-  %caller_pid = load i64, ptr %caller_ptr, align 4
+  %caller_pid = load i64, ptr %caller_ptr, align 8
   switch i64 %type_tag, label %default [
     i64 0, label %handler_0
     i64 1, label %handler_1
@@ -11878,9 +11879,9 @@ handler_0:                                        ; preds = %continue_loop
   %new_state = call i64 @mesh_tuple_first(ptr %handler_result)
   %reply = call i64 @mesh_tuple_second(ptr %handler_result)
   %reply_buf = alloca i64, align 8
-  store i64 %reply, ptr %reply_buf, align 4
+  store i64 %reply, ptr %reply_buf, align 8
   call void @mesh_service_reply(i64 %caller_pid, ptr %reply_buf, i64 8)
-  store i64 %new_state, ptr %__state, align 4
+  store i64 %new_state, ptr %__state, align 8
   br label %loop
 
 handler_1:                                        ; preds = %continue_loop
@@ -11890,9 +11891,9 @@ handler_1:                                        ; preds = %continue_loop
   %new_state4 = call i64 @mesh_tuple_first(ptr %handler_result3)
   %reply5 = call i64 @mesh_tuple_second(ptr %handler_result3)
   %reply_buf6 = alloca i64, align 8
-  store i64 %reply5, ptr %reply_buf6, align 4
+  store i64 %reply5, ptr %reply_buf6, align 8
   call void @mesh_service_reply(i64 %caller_pid, ptr %reply_buf6, i64 8)
-  store i64 %new_state4, ptr %__state, align 4
+  store i64 %new_state4, ptr %__state, align 8
   br label %loop
 
 handler_2:                                        ; preds = %continue_loop
@@ -11900,24 +11901,24 @@ handler_2:                                        ; preds = %continue_loop
   %new_state8 = call i64 @mesh_tuple_first(ptr %handler_result7)
   %reply9 = call i64 @mesh_tuple_second(ptr %handler_result7)
   %reply_buf10 = alloca i64, align 8
-  store i64 %reply9, ptr %reply_buf10, align 4
+  store i64 %reply9, ptr %reply_buf10, align 8
   call void @mesh_service_reply(i64 %caller_pid, ptr %reply_buf10, i64 8)
-  store i64 %new_state8, ptr %__state, align 4
+  store i64 %new_state8, ptr %__state, align 8
   br label %loop
 }
 
 define i64 @__service_projectservice_init(i64 %0) {
 entry:
   %pool = alloca i64, align 8
-  store i64 %0, ptr %pool, align 4
-  %pool1 = load i64, ptr %pool, align 4
+  store i64 %0, ptr %pool, align 8
+  %pool1 = load i64, ptr %pool, align 8
   ret i64 %pool1
 }
 
 define ptr @__service_projectservice_handle_call_create_project(i64 %0, ptr %1, ptr %2, ptr %3) {
 entry:
   %pool = alloca i64, align 8
-  store i64 %0, ptr %pool, align 4
+  store i64 %0, ptr %pool, align 8
   %org_id = alloca ptr, align 8
   store ptr %1, ptr %org_id, align 8
   %name = alloca ptr, align 8
@@ -11925,196 +11926,196 @@ entry:
   %platform = alloca ptr, align 8
   store ptr %3, ptr %platform, align 8
   %result = alloca { i8, ptr }, align 8
-  %pool1 = load i64, ptr %pool, align 4
+  %pool1 = load i64, ptr %pool, align 8
   %org_id2 = load ptr, ptr %org_id, align 8
   %name3 = load ptr, ptr %name, align 8
   %platform4 = load ptr, ptr %platform, align 8
   %call = call { i8, ptr } @insert_project(i64 %pool1, ptr %org_id2, ptr %name3, ptr %platform4)
   call void @mesh_reduction_check()
   store { i8, ptr } %call, ptr %result, align 8
-  %pool5 = load i64, ptr %pool, align 4
+  %pool5 = load i64, ptr %pool, align 8
   %result6 = load { i8, ptr }, ptr %result, align 8
   %tuple_ptr = call ptr @mesh_gc_alloc_actor(i64 24, i64 8)
-  store i64 2, ptr %tuple_ptr, align 4
+  store i64 2, ptr %tuple_ptr, align 8
   %tuple_base = ptrtoint ptr %tuple_ptr to i64
   %elem_addr = add i64 %tuple_base, 8
   %elem_ptr = inttoptr i64 %elem_addr to ptr
-  store i64 %pool5, ptr %elem_ptr, align 4
+  store i64 %pool5, ptr %elem_ptr, align 8
   %tuple_base7 = ptrtoint ptr %tuple_ptr to i64
   %elem_addr8 = add i64 %tuple_base7, 16
   %elem_ptr9 = inttoptr i64 %elem_addr8 to ptr
-  %struct_tmp = alloca { i8, ptr }, align 8
-  store { i8, ptr } %result6, ptr %struct_tmp, align 8
-  %struct_to_i64 = load i64, ptr %struct_tmp, align 4
-  store i64 %struct_to_i64, ptr %elem_ptr9, align 4
+  %struct_heap = call ptr @mesh_gc_alloc_actor(i64 ptrtoint (ptr getelementptr ({ i8, ptr }, ptr null, i32 1) to i64), i64 8)
+  store { i8, ptr } %result6, ptr %struct_heap, align 8
+  %struct_ptr_to_i64 = ptrtoint ptr %struct_heap to i64
+  store i64 %struct_ptr_to_i64, ptr %elem_ptr9, align 8
   ret ptr %tuple_ptr
 }
 
 define ptr @__service_projectservice_handle_call_get_project(i64 %0, ptr %1) {
 entry:
   %pool = alloca i64, align 8
-  store i64 %0, ptr %pool, align 4
+  store i64 %0, ptr %pool, align 8
   %id = alloca ptr, align 8
   store ptr %1, ptr %id, align 8
   %result = alloca { i8, ptr }, align 8
-  %pool1 = load i64, ptr %pool, align 4
+  %pool1 = load i64, ptr %pool, align 8
   %id2 = load ptr, ptr %id, align 8
   %call = call { i8, ptr } @get_project(i64 %pool1, ptr %id2)
   call void @mesh_reduction_check()
   store { i8, ptr } %call, ptr %result, align 8
-  %pool3 = load i64, ptr %pool, align 4
+  %pool3 = load i64, ptr %pool, align 8
   %result4 = load { i8, ptr }, ptr %result, align 8
   %tuple_ptr = call ptr @mesh_gc_alloc_actor(i64 24, i64 8)
-  store i64 2, ptr %tuple_ptr, align 4
+  store i64 2, ptr %tuple_ptr, align 8
   %tuple_base = ptrtoint ptr %tuple_ptr to i64
   %elem_addr = add i64 %tuple_base, 8
   %elem_ptr = inttoptr i64 %elem_addr to ptr
-  store i64 %pool3, ptr %elem_ptr, align 4
+  store i64 %pool3, ptr %elem_ptr, align 8
   %tuple_base5 = ptrtoint ptr %tuple_ptr to i64
   %elem_addr6 = add i64 %tuple_base5, 16
   %elem_ptr7 = inttoptr i64 %elem_addr6 to ptr
-  %struct_tmp = alloca { i8, ptr }, align 8
-  store { i8, ptr } %result4, ptr %struct_tmp, align 8
-  %struct_to_i64 = load i64, ptr %struct_tmp, align 4
-  store i64 %struct_to_i64, ptr %elem_ptr7, align 4
+  %struct_heap = call ptr @mesh_gc_alloc_actor(i64 ptrtoint (ptr getelementptr ({ i8, ptr }, ptr null, i32 1) to i64), i64 8)
+  store { i8, ptr } %result4, ptr %struct_heap, align 8
+  %struct_ptr_to_i64 = ptrtoint ptr %struct_heap to i64
+  store i64 %struct_ptr_to_i64, ptr %elem_ptr7, align 8
   ret ptr %tuple_ptr
 }
 
 define ptr @__service_projectservice_handle_call_list_projects_by_org(i64 %0, ptr %1) {
 entry:
   %pool = alloca i64, align 8
-  store i64 %0, ptr %pool, align 4
+  store i64 %0, ptr %pool, align 8
   %org_id = alloca ptr, align 8
   store ptr %1, ptr %org_id, align 8
   %result = alloca { i8, ptr }, align 8
-  %pool1 = load i64, ptr %pool, align 4
+  %pool1 = load i64, ptr %pool, align 8
   %org_id2 = load ptr, ptr %org_id, align 8
   %call = call { i8, ptr } @list_projects_by_org(i64 %pool1, ptr %org_id2)
   call void @mesh_reduction_check()
   store { i8, ptr } %call, ptr %result, align 8
-  %pool3 = load i64, ptr %pool, align 4
+  %pool3 = load i64, ptr %pool, align 8
   %result4 = load { i8, ptr }, ptr %result, align 8
   %tuple_ptr = call ptr @mesh_gc_alloc_actor(i64 24, i64 8)
-  store i64 2, ptr %tuple_ptr, align 4
+  store i64 2, ptr %tuple_ptr, align 8
   %tuple_base = ptrtoint ptr %tuple_ptr to i64
   %elem_addr = add i64 %tuple_base, 8
   %elem_ptr = inttoptr i64 %elem_addr to ptr
-  store i64 %pool3, ptr %elem_ptr, align 4
+  store i64 %pool3, ptr %elem_ptr, align 8
   %tuple_base5 = ptrtoint ptr %tuple_ptr to i64
   %elem_addr6 = add i64 %tuple_base5, 16
   %elem_ptr7 = inttoptr i64 %elem_addr6 to ptr
-  %struct_tmp = alloca { i8, ptr }, align 8
-  store { i8, ptr } %result4, ptr %struct_tmp, align 8
-  %struct_to_i64 = load i64, ptr %struct_tmp, align 4
-  store i64 %struct_to_i64, ptr %elem_ptr7, align 4
+  %struct_heap = call ptr @mesh_gc_alloc_actor(i64 ptrtoint (ptr getelementptr ({ i8, ptr }, ptr null, i32 1) to i64), i64 8)
+  store { i8, ptr } %result4, ptr %struct_heap, align 8
+  %struct_ptr_to_i64 = ptrtoint ptr %struct_heap to i64
+  store i64 %struct_ptr_to_i64, ptr %elem_ptr7, align 8
   ret ptr %tuple_ptr
 }
 
 define ptr @__service_projectservice_handle_call_create_api_key(i64 %0, ptr %1, ptr %2) {
 entry:
   %pool = alloca i64, align 8
-  store i64 %0, ptr %pool, align 4
+  store i64 %0, ptr %pool, align 8
   %project_id = alloca ptr, align 8
   store ptr %1, ptr %project_id, align 8
   %label = alloca ptr, align 8
   store ptr %2, ptr %label, align 8
   %result = alloca { i8, ptr }, align 8
-  %pool1 = load i64, ptr %pool, align 4
+  %pool1 = load i64, ptr %pool, align 8
   %project_id2 = load ptr, ptr %project_id, align 8
   %label3 = load ptr, ptr %label, align 8
   %call = call { i8, ptr } @create_api_key(i64 %pool1, ptr %project_id2, ptr %label3)
   call void @mesh_reduction_check()
   store { i8, ptr } %call, ptr %result, align 8
-  %pool4 = load i64, ptr %pool, align 4
+  %pool4 = load i64, ptr %pool, align 8
   %result5 = load { i8, ptr }, ptr %result, align 8
   %tuple_ptr = call ptr @mesh_gc_alloc_actor(i64 24, i64 8)
-  store i64 2, ptr %tuple_ptr, align 4
+  store i64 2, ptr %tuple_ptr, align 8
   %tuple_base = ptrtoint ptr %tuple_ptr to i64
   %elem_addr = add i64 %tuple_base, 8
   %elem_ptr = inttoptr i64 %elem_addr to ptr
-  store i64 %pool4, ptr %elem_ptr, align 4
+  store i64 %pool4, ptr %elem_ptr, align 8
   %tuple_base6 = ptrtoint ptr %tuple_ptr to i64
   %elem_addr7 = add i64 %tuple_base6, 16
   %elem_ptr8 = inttoptr i64 %elem_addr7 to ptr
-  %struct_tmp = alloca { i8, ptr }, align 8
-  store { i8, ptr } %result5, ptr %struct_tmp, align 8
-  %struct_to_i64 = load i64, ptr %struct_tmp, align 4
-  store i64 %struct_to_i64, ptr %elem_ptr8, align 4
+  %struct_heap = call ptr @mesh_gc_alloc_actor(i64 ptrtoint (ptr getelementptr ({ i8, ptr }, ptr null, i32 1) to i64), i64 8)
+  store { i8, ptr } %result5, ptr %struct_heap, align 8
+  %struct_ptr_to_i64 = ptrtoint ptr %struct_heap to i64
+  store i64 %struct_ptr_to_i64, ptr %elem_ptr8, align 8
   ret ptr %tuple_ptr
 }
 
 define ptr @__service_projectservice_handle_call_get_project_by_api_key(i64 %0, ptr %1) {
 entry:
   %pool = alloca i64, align 8
-  store i64 %0, ptr %pool, align 4
+  store i64 %0, ptr %pool, align 8
   %key_value = alloca ptr, align 8
   store ptr %1, ptr %key_value, align 8
   %result = alloca { i8, ptr }, align 8
-  %pool1 = load i64, ptr %pool, align 4
+  %pool1 = load i64, ptr %pool, align 8
   %key_value2 = load ptr, ptr %key_value, align 8
   %call = call { i8, ptr } @get_project_by_api_key(i64 %pool1, ptr %key_value2)
   call void @mesh_reduction_check()
   store { i8, ptr } %call, ptr %result, align 8
-  %pool3 = load i64, ptr %pool, align 4
+  %pool3 = load i64, ptr %pool, align 8
   %result4 = load { i8, ptr }, ptr %result, align 8
   %tuple_ptr = call ptr @mesh_gc_alloc_actor(i64 24, i64 8)
-  store i64 2, ptr %tuple_ptr, align 4
+  store i64 2, ptr %tuple_ptr, align 8
   %tuple_base = ptrtoint ptr %tuple_ptr to i64
   %elem_addr = add i64 %tuple_base, 8
   %elem_ptr = inttoptr i64 %elem_addr to ptr
-  store i64 %pool3, ptr %elem_ptr, align 4
+  store i64 %pool3, ptr %elem_ptr, align 8
   %tuple_base5 = ptrtoint ptr %tuple_ptr to i64
   %elem_addr6 = add i64 %tuple_base5, 16
   %elem_ptr7 = inttoptr i64 %elem_addr6 to ptr
-  %struct_tmp = alloca { i8, ptr }, align 8
-  store { i8, ptr } %result4, ptr %struct_tmp, align 8
-  %struct_to_i64 = load i64, ptr %struct_tmp, align 4
-  store i64 %struct_to_i64, ptr %elem_ptr7, align 4
+  %struct_heap = call ptr @mesh_gc_alloc_actor(i64 ptrtoint (ptr getelementptr ({ i8, ptr }, ptr null, i32 1) to i64), i64 8)
+  store { i8, ptr } %result4, ptr %struct_heap, align 8
+  %struct_ptr_to_i64 = ptrtoint ptr %struct_heap to i64
+  store i64 %struct_ptr_to_i64, ptr %elem_ptr7, align 8
   ret ptr %tuple_ptr
 }
 
 define ptr @__service_projectservice_handle_call_revoke_api_key(i64 %0, ptr %1) {
 entry:
   %pool = alloca i64, align 8
-  store i64 %0, ptr %pool, align 4
+  store i64 %0, ptr %pool, align 8
   %key_id = alloca ptr, align 8
   store ptr %1, ptr %key_id, align 8
   %result = alloca { i8, ptr }, align 8
-  %pool1 = load i64, ptr %pool, align 4
+  %pool1 = load i64, ptr %pool, align 8
   %key_id2 = load ptr, ptr %key_id, align 8
   %call = call { i8, ptr } @revoke_api_key(i64 %pool1, ptr %key_id2)
   call void @mesh_reduction_check()
   store { i8, ptr } %call, ptr %result, align 8
-  %pool3 = load i64, ptr %pool, align 4
+  %pool3 = load i64, ptr %pool, align 8
   %result4 = load { i8, ptr }, ptr %result, align 8
   %tuple_ptr = call ptr @mesh_gc_alloc_actor(i64 24, i64 8)
-  store i64 2, ptr %tuple_ptr, align 4
+  store i64 2, ptr %tuple_ptr, align 8
   %tuple_base = ptrtoint ptr %tuple_ptr to i64
   %elem_addr = add i64 %tuple_base, 8
   %elem_ptr = inttoptr i64 %elem_addr to ptr
-  store i64 %pool3, ptr %elem_ptr, align 4
+  store i64 %pool3, ptr %elem_ptr, align 8
   %tuple_base5 = ptrtoint ptr %tuple_ptr to i64
   %elem_addr6 = add i64 %tuple_base5, 16
   %elem_ptr7 = inttoptr i64 %elem_addr6 to ptr
-  %struct_tmp = alloca { i8, ptr }, align 8
-  store { i8, ptr } %result4, ptr %struct_tmp, align 8
-  %struct_to_i64 = load i64, ptr %struct_tmp, align 4
-  store i64 %struct_to_i64, ptr %elem_ptr7, align 4
+  %struct_heap = call ptr @mesh_gc_alloc_actor(i64 ptrtoint (ptr getelementptr ({ i8, ptr }, ptr null, i32 1) to i64), i64 8)
+  store { i8, ptr } %result4, ptr %struct_heap, align 8
+  %struct_ptr_to_i64 = ptrtoint ptr %struct_heap to i64
+  store i64 %struct_ptr_to_i64, ptr %elem_ptr7, align 8
   ret ptr %tuple_ptr
 }
 
 define i64 @__service_projectservice_start(i64 %0) {
 entry:
   %pool = alloca i64, align 8
-  store i64 %0, ptr %pool, align 4
+  store i64 %0, ptr %pool, align 8
   %__init_state = alloca i64, align 8
-  %pool1 = load i64, ptr %pool, align 4
+  %pool1 = load i64, ptr %pool, align 8
   %call = call i64 @__service_projectservice_init(i64 %pool1)
   call void @mesh_reduction_check()
-  store i64 %call, ptr %__init_state, align 4
-  %__init_state2 = load i64, ptr %__init_state, align 4
+  store i64 %call, ptr %__init_state, align 8
+  %__init_state2 = load i64, ptr %__init_state, align 8
   %spawn_args = call ptr @mesh_gc_alloc_actor(i64 8, i64 8)
-  store i64 %__init_state2, ptr %spawn_args, align 4
+  store i64 %__init_state2, ptr %spawn_args, align 8
   %pid = call i64 @mesh_actor_spawn(ptr @__service_projectservice_loop, ptr %spawn_args, i64 8, i8 1)
   ret i64 %pid
 }
@@ -12124,13 +12125,13 @@ entry:
   %__args_ptr = alloca ptr, align 8
   store ptr %0, ptr %__args_ptr, align 8
   %args_ptr_val = load ptr, ptr %__args_ptr, align 8
-  %init_state = load i64, ptr %args_ptr_val, align 4
+  %init_state = load i64, ptr %args_ptr_val, align 8
   %__state = alloca i64, align 8
-  store i64 %init_state, ptr %__state, align 4
+  store i64 %init_state, ptr %__state, align 8
   br label %loop
 
 loop:                                             ; preds = %default, %handler_5, %handler_4, %handler_3, %handler_2, %handler_1, %handler_0, %entry
-  %state = load i64, ptr %__state, align 4
+  %state = load i64, ptr %__state, align 8
   %msg_ptr = call ptr @mesh_actor_receive(i64 -1)
   %msg_is_null = icmp eq ptr %msg_ptr, null
   br i1 %msg_is_null, label %exit_loop, label %continue_loop
@@ -12140,9 +12141,9 @@ exit_loop:                                        ; preds = %loop
 
 continue_loop:                                    ; preds = %loop
   %data_ptr = getelementptr i8, ptr %msg_ptr, i64 16
-  %type_tag = load i64, ptr %data_ptr, align 4
+  %type_tag = load i64, ptr %data_ptr, align 8
   %caller_ptr = getelementptr i8, ptr %data_ptr, i64 8
-  %caller_pid = load i64, ptr %caller_ptr, align 4
+  %caller_pid = load i64, ptr %caller_ptr, align 8
   switch i64 %type_tag, label %default [
     i64 0, label %handler_0
     i64 1, label %handler_1
@@ -12166,9 +12167,9 @@ handler_0:                                        ; preds = %continue_loop
   %new_state = call i64 @mesh_tuple_first(ptr %handler_result)
   %reply = call i64 @mesh_tuple_second(ptr %handler_result)
   %reply_buf = alloca i64, align 8
-  store i64 %reply, ptr %reply_buf, align 4
+  store i64 %reply, ptr %reply_buf, align 8
   call void @mesh_service_reply(i64 %caller_pid, ptr %reply_buf, i64 8)
-  store i64 %new_state, ptr %__state, align 4
+  store i64 %new_state, ptr %__state, align 8
   br label %loop
 
 handler_1:                                        ; preds = %continue_loop
@@ -12178,9 +12179,9 @@ handler_1:                                        ; preds = %continue_loop
   %new_state4 = call i64 @mesh_tuple_first(ptr %handler_result3)
   %reply5 = call i64 @mesh_tuple_second(ptr %handler_result3)
   %reply_buf6 = alloca i64, align 8
-  store i64 %reply5, ptr %reply_buf6, align 4
+  store i64 %reply5, ptr %reply_buf6, align 8
   call void @mesh_service_reply(i64 %caller_pid, ptr %reply_buf6, i64 8)
-  store i64 %new_state4, ptr %__state, align 4
+  store i64 %new_state4, ptr %__state, align 8
   br label %loop
 
 handler_2:                                        ; preds = %continue_loop
@@ -12190,9 +12191,9 @@ handler_2:                                        ; preds = %continue_loop
   %new_state10 = call i64 @mesh_tuple_first(ptr %handler_result9)
   %reply11 = call i64 @mesh_tuple_second(ptr %handler_result9)
   %reply_buf12 = alloca i64, align 8
-  store i64 %reply11, ptr %reply_buf12, align 4
+  store i64 %reply11, ptr %reply_buf12, align 8
   call void @mesh_service_reply(i64 %caller_pid, ptr %reply_buf12, i64 8)
-  store i64 %new_state10, ptr %__state, align 4
+  store i64 %new_state10, ptr %__state, align 8
   br label %loop
 
 handler_3:                                        ; preds = %continue_loop
@@ -12204,9 +12205,9 @@ handler_3:                                        ; preds = %continue_loop
   %new_state18 = call i64 @mesh_tuple_first(ptr %handler_result17)
   %reply19 = call i64 @mesh_tuple_second(ptr %handler_result17)
   %reply_buf20 = alloca i64, align 8
-  store i64 %reply19, ptr %reply_buf20, align 4
+  store i64 %reply19, ptr %reply_buf20, align 8
   call void @mesh_service_reply(i64 %caller_pid, ptr %reply_buf20, i64 8)
-  store i64 %new_state18, ptr %__state, align 4
+  store i64 %new_state18, ptr %__state, align 8
   br label %loop
 
 handler_4:                                        ; preds = %continue_loop
@@ -12216,9 +12217,9 @@ handler_4:                                        ; preds = %continue_loop
   %new_state24 = call i64 @mesh_tuple_first(ptr %handler_result23)
   %reply25 = call i64 @mesh_tuple_second(ptr %handler_result23)
   %reply_buf26 = alloca i64, align 8
-  store i64 %reply25, ptr %reply_buf26, align 4
+  store i64 %reply25, ptr %reply_buf26, align 8
   call void @mesh_service_reply(i64 %caller_pid, ptr %reply_buf26, i64 8)
-  store i64 %new_state24, ptr %__state, align 4
+  store i64 %new_state24, ptr %__state, align 8
   br label %loop
 
 handler_5:                                        ; preds = %continue_loop
@@ -12228,19 +12229,19 @@ handler_5:                                        ; preds = %continue_loop
   %new_state30 = call i64 @mesh_tuple_first(ptr %handler_result29)
   %reply31 = call i64 @mesh_tuple_second(ptr %handler_result29)
   %reply_buf32 = alloca i64, align 8
-  store i64 %reply31, ptr %reply_buf32, align 4
+  store i64 %reply31, ptr %reply_buf32, align 8
   call void @mesh_service_reply(i64 %caller_pid, ptr %reply_buf32, i64 8)
-  store i64 %new_state30, ptr %__state, align 4
+  store i64 %new_state30, ptr %__state, align 8
   br label %loop
 }
 
 define i64 @Services_Retention__log_cleanup_result(i64 %0) {
 entry:
   %deleted = alloca i64, align 8
-  store i64 %0, ptr %deleted, align 4
+  store i64 %0, ptr %deleted, align 8
   %_ = alloca {}, align 8
   %str = call ptr @mesh_string_new(ptr @.str.399, i64 36)
-  %deleted1 = load i64, ptr %deleted, align 4
+  %deleted1 = load i64, ptr %deleted, align 8
   %call = call ptr @mesh_int_to_string(i64 %deleted1)
   %concat = call ptr @mesh_string_concat(ptr %str, ptr %call)
   %str2 = call ptr @mesh_string_new(ptr @.str.400, i64 15)
@@ -12288,26 +12289,26 @@ entry:
   %row = alloca {}, align 8
   %if_result = alloca { i8, ptr }, align 8
   %pool = alloca i64, align 8
-  store i64 %0, ptr %pool, align 4
+  store i64 %0, ptr %pool, align 8
   %projects = alloca ptr, align 8
   store ptr %1, ptr %projects, align 8
   %i = alloca i64, align 8
-  store i64 %2, ptr %i, align 4
+  store i64 %2, ptr %i, align 8
   %total = alloca i64, align 8
-  store i64 %3, ptr %total, align 4
+  store i64 %3, ptr %total, align 8
   %deleted = alloca i64, align 8
-  store i64 %4, ptr %deleted, align 4
+  store i64 %4, ptr %deleted, align 8
   br label %tce_loop
 
 tce_loop:                                         ; preds = %match_merge, %entry
-  %i1 = load i64, ptr %i, align 4
-  %total2 = load i64, ptr %total, align 4
+  %i1 = load i64, ptr %i, align 8
+  %total2 = load i64, ptr %total, align 8
   %lt = icmp slt i64 %i1, %total2
   br i1 %lt, label %then, label %else
 
 then:                                             ; preds = %tce_loop
   %projects3 = load ptr, ptr %projects, align 8
-  %i4 = load i64, ptr %i, align 4
+  %i4 = load i64, ptr %i, align 8
   %call = call i64 @mesh_list_get(ptr %projects3, i64 %i4)
   store {} zeroinitializer, ptr %row, align 1
   %row5 = load {}, ptr %row, align 1
@@ -12322,7 +12323,7 @@ then:                                             ; preds = %tce_loop
   %ptr_to_i6411 = ptrtoint ptr %str10 to i64
   %call12 = call i64 @mesh_map_get(ptr %call9, i64 %ptr_to_i6411)
   store {} zeroinitializer, ptr %retention_days_str, align 1
-  %pool13 = load i64, ptr %pool, align 4
+  %pool13 = load i64, ptr %pool, align 8
   %id14 = load {}, ptr %id, align 1
   %retention_days_str15 = load {}, ptr %retention_days_str, align 1
   %call16 = call { i8, ptr } @delete_expired_events(i64 %pool13, ptr null, ptr null)
@@ -12339,9 +12340,9 @@ else:                                             ; preds = %tce_loop
   %variant29 = alloca { i8, ptr }, align 8
   %tag_ptr30 = getelementptr inbounds nuw { i8, ptr }, ptr %variant29, i32 0, i32 0
   store i8 0, ptr %tag_ptr30, align 1
-  %deleted31 = load i64, ptr %deleted, align 4
+  %deleted31 = load i64, ptr %deleted, align 8
   %vfield_ptr32 = getelementptr inbounds nuw { i8, ptr }, ptr %variant29, i32 0, i32 1
-  store i64 %deleted31, ptr %vfield_ptr32, align 4
+  store i64 %deleted31, ptr %vfield_ptr32, align 8
   %variant_val33 = load { i8, ptr }, ptr %variant29, align 8
   store { i8, ptr } %variant_val33, ptr %if_result, align 8
   br label %if_merge
@@ -12351,21 +12352,21 @@ if_merge:                                         ; preds = %else
   ret { i8, ptr } %if_val
 
 match_merge:                                      ; preds = %case_Ok
-  %match_val = load i64, ptr %match_result, align 4
-  store i64 %match_val, ptr %count, align 4
-  %pool22 = load i64, ptr %pool, align 4
+  %match_val = load i64, ptr %match_result, align 8
+  store i64 %match_val, ptr %count, align 8
+  %pool22 = load i64, ptr %pool, align 8
   %projects23 = load ptr, ptr %projects, align 8
-  %i24 = load i64, ptr %i, align 4
+  %i24 = load i64, ptr %i, align 8
   %add = add i64 %i24, 1
-  %total25 = load i64, ptr %total, align 4
-  %deleted26 = load i64, ptr %deleted, align 4
-  %count27 = load i64, ptr %count, align 4
+  %total25 = load i64, ptr %total, align 8
+  %deleted26 = load i64, ptr %deleted, align 8
+  %count27 = load i64, ptr %count, align 8
   %add28 = add i64 %deleted26, %count27
-  store i64 %pool22, ptr %pool, align 4
+  store i64 %pool22, ptr %pool, align 8
   store ptr %projects23, ptr %projects, align 8
-  store i64 %add, ptr %i, align 4
-  store i64 %total25, ptr %total, align 4
-  store i64 %add28, ptr %deleted, align 4
+  store i64 %add, ptr %i, align 8
+  store i64 %total25, ptr %total, align 8
+  store i64 %add28, ptr %deleted, align 8
   call void @mesh_reduction_check()
   br label %tce_loop
 
@@ -12377,8 +12378,8 @@ case_Ok:                                          ; preds = %then
   %variant_field = getelementptr inbounds nuw { i8, ptr }, ptr %scrutinee, i32 0, i32 1
   %path_val = load ptr, ptr %variant_field, align 8
   store ptr %path_val, ptr %__try_val_1, align 8
-  %__try_val_117 = load i64, ptr %__try_val_1, align 4
-  store i64 %__try_val_117, ptr %match_result, align 4
+  %__try_val_117 = load i64, ptr %__try_val_1, align 8
+  store i64 %__try_val_117, ptr %match_result, align 8
   br label %match_merge
 
 case_Err:                                         ; preds = %then
@@ -12407,24 +12408,24 @@ entry:
   %row = alloca {}, align 8
   %if_result = alloca { i8, ptr }, align 8
   %pool = alloca i64, align 8
-  store i64 %0, ptr %pool, align 4
+  store i64 %0, ptr %pool, align 8
   %partitions = alloca ptr, align 8
   store ptr %1, ptr %partitions, align 8
   %i = alloca i64, align 8
-  store i64 %2, ptr %i, align 4
+  store i64 %2, ptr %i, align 8
   %total = alloca i64, align 8
-  store i64 %3, ptr %total, align 4
+  store i64 %3, ptr %total, align 8
   br label %tce_loop
 
 tce_loop:                                         ; preds = %match_merge, %entry
-  %i1 = load i64, ptr %i, align 4
-  %total2 = load i64, ptr %total, align 4
+  %i1 = load i64, ptr %i, align 8
+  %total2 = load i64, ptr %total, align 8
   %lt = icmp slt i64 %i1, %total2
   br i1 %lt, label %then, label %else
 
 then:                                             ; preds = %tce_loop
   %partitions3 = load ptr, ptr %partitions, align 8
-  %i4 = load i64, ptr %i, align 4
+  %i4 = load i64, ptr %i, align 8
   %call = call i64 @mesh_list_get(ptr %partitions3, i64 %i4)
   store {} zeroinitializer, ptr %row, align 1
   %row5 = load {}, ptr %row, align 1
@@ -12433,7 +12434,7 @@ then:                                             ; preds = %tce_loop
   %ptr_to_i64 = ptrtoint ptr %str to i64
   %call7 = call i64 @mesh_map_get(ptr %call6, i64 %ptr_to_i64)
   store {} zeroinitializer, ptr %partition_name, align 1
-  %pool8 = load i64, ptr %pool, align 4
+  %pool8 = load i64, ptr %pool, align 8
   %partition_name9 = load {}, ptr %partition_name, align 1
   %call10 = call { i8, ptr } @drop_partition(i64 %pool8, ptr null)
   call void @mesh_reduction_check()
@@ -12449,9 +12450,9 @@ else:                                             ; preds = %tce_loop
   %variant23 = alloca { i8, ptr }, align 8
   %tag_ptr24 = getelementptr inbounds nuw { i8, ptr }, ptr %variant23, i32 0, i32 0
   store i8 0, ptr %tag_ptr24, align 1
-  %total25 = load i64, ptr %total, align 4
+  %total25 = load i64, ptr %total, align 8
   %vfield_ptr26 = getelementptr inbounds nuw { i8, ptr }, ptr %variant23, i32 0, i32 1
-  store i64 %total25, ptr %vfield_ptr26, align 4
+  store i64 %total25, ptr %vfield_ptr26, align 8
   %variant_val27 = load { i8, ptr }, ptr %variant23, align 8
   store { i8, ptr } %variant_val27, ptr %if_result, align 8
   br label %if_merge
@@ -12461,21 +12462,21 @@ if_merge:                                         ; preds = %else
   ret { i8, ptr } %if_val
 
 match_merge:                                      ; preds = %case_Ok
-  %match_val = load i64, ptr %match_result, align 4
-  store i64 %match_val, ptr %_, align 4
+  %match_val = load i64, ptr %match_result, align 8
+  store i64 %match_val, ptr %_, align 8
   %partition_name17 = load {}, ptr %partition_name, align 1
   %call18 = call i64 @Services_Retention__log_partition_drop(ptr null)
   call void @mesh_reduction_check()
-  store i64 %call18, ptr %_16, align 4
-  %pool19 = load i64, ptr %pool, align 4
+  store i64 %call18, ptr %_16, align 8
+  %pool19 = load i64, ptr %pool, align 8
   %partitions20 = load ptr, ptr %partitions, align 8
-  %i21 = load i64, ptr %i, align 4
+  %i21 = load i64, ptr %i, align 8
   %add = add i64 %i21, 1
-  %total22 = load i64, ptr %total, align 4
-  store i64 %pool19, ptr %pool, align 4
+  %total22 = load i64, ptr %total, align 8
+  store i64 %pool19, ptr %pool, align 8
   store ptr %partitions20, ptr %partitions, align 8
-  store i64 %add, ptr %i, align 4
-  store i64 %total22, ptr %total, align 4
+  store i64 %add, ptr %i, align 8
+  store i64 %total22, ptr %total, align 8
   call void @mesh_reduction_check()
   br label %tce_loop
 
@@ -12487,8 +12488,8 @@ case_Ok:                                          ; preds = %then
   %variant_field = getelementptr inbounds nuw { i8, ptr }, ptr %scrutinee, i32 0, i32 1
   %path_val = load ptr, ptr %variant_field, align 8
   store ptr %path_val, ptr %__try_val_2, align 8
-  %__try_val_211 = load i64, ptr %__try_val_2, align 4
-  store i64 %__try_val_211, ptr %match_result, align 4
+  %__try_val_211 = load i64, ptr %__try_val_2, align 8
+  store i64 %__try_val_211, ptr %match_result, align 8
   br label %match_merge
 
 case_Err:                                         ; preds = %then
@@ -12516,9 +12517,9 @@ entry:
   %__try_err_3 = alloca ptr, align 8
   %__try_val_3 = alloca ptr, align 8
   %pool = alloca i64, align 8
-  store i64 %0, ptr %pool, align 4
+  store i64 %0, ptr %pool, align 8
   %projects = alloca ptr, align 8
-  %pool1 = load i64, ptr %pool, align 4
+  %pool1 = load i64, ptr %pool, align 8
   %call = call { i8, ptr } @get_all_project_retention(i64 %pool1)
   call void @mesh_reduction_check()
   %scrutinee = alloca { i8, ptr }, align 8
@@ -12535,7 +12536,7 @@ match_merge:                                      ; preds = %case_Ok
   %match_val = load ptr, ptr %match_result, align 8
   store ptr %match_val, ptr %projects, align 8
   %deleted = alloca i64, align 8
-  %pool7 = load i64, ptr %pool, align 4
+  %pool7 = load i64, ptr %pool, align 8
   %projects8 = load ptr, ptr %projects, align 8
   %projects9 = load ptr, ptr %projects, align 8
   %call10 = call i64 @mesh_list_length(ptr %projects9)
@@ -12577,10 +12578,10 @@ case_Err:                                         ; preds = %entry
   ret { i8, ptr } %variant_val
 
 match_merge14:                                    ; preds = %case_Ok18
-  %match_val30 = load i64, ptr %match_result13, align 4
-  store i64 %match_val30, ptr %deleted, align 4
+  %match_val30 = load i64, ptr %match_result13, align 8
+  store i64 %match_val30, ptr %deleted, align 8
   %partitions = alloca ptr, align 8
-  %pool31 = load i64, ptr %pool, align 4
+  %pool31 = load i64, ptr %pool, align 8
   %str = call ptr @mesh_string_new(ptr @.str.414, i64 2)
   %call32 = call { i8, ptr } @get_expired_partitions(i64 %pool31, ptr %str)
   call void @mesh_reduction_check()
@@ -12602,8 +12603,8 @@ case_Ok18:                                        ; preds = %match_merge
   %variant_field20 = getelementptr inbounds nuw { i8, ptr }, ptr %scrutinee12, i32 0, i32 1
   %path_val21 = load ptr, ptr %variant_field20, align 8
   store ptr %path_val21, ptr %__try_val_4, align 8
-  %__try_val_422 = load i64, ptr %__try_val_4, align 4
-  store i64 %__try_val_422, ptr %match_result13, align 4
+  %__try_val_422 = load i64, ptr %__try_val_4, align 8
+  store i64 %__try_val_422, ptr %match_result13, align 8
   br label %match_merge14
 
 case_Err19:                                       ; preds = %match_merge
@@ -12623,7 +12624,7 @@ match_merge35:                                    ; preds = %case_Ok39
   %match_val51 = load ptr, ptr %match_result34, align 8
   store ptr %match_val51, ptr %partitions, align 8
   %_ = alloca i64, align 8
-  %pool52 = load i64, ptr %pool, align 4
+  %pool52 = load i64, ptr %pool, align 8
   %partitions53 = load ptr, ptr %partitions, align 8
   %partitions54 = load ptr, ptr %partitions, align 8
   %call55 = call i64 @mesh_list_length(ptr %partitions54)
@@ -12665,14 +12666,14 @@ case_Err40:                                       ; preds = %match_merge14
   ret { i8, ptr } %variant_val50
 
 match_merge59:                                    ; preds = %case_Ok63
-  %match_val75 = load i64, ptr %match_result58, align 4
-  store i64 %match_val75, ptr %_, align 4
+  %match_val75 = load i64, ptr %match_result58, align 8
+  store i64 %match_val75, ptr %_, align 8
   %variant76 = alloca { i8, ptr }, align 8
   %tag_ptr77 = getelementptr inbounds nuw { i8, ptr }, ptr %variant76, i32 0, i32 0
   store i8 0, ptr %tag_ptr77, align 1
-  %deleted78 = load i64, ptr %deleted, align 4
+  %deleted78 = load i64, ptr %deleted, align 8
   %vfield_ptr79 = getelementptr inbounds nuw { i8, ptr }, ptr %variant76, i32 0, i32 1
-  store i64 %deleted78, ptr %vfield_ptr79, align 4
+  store i64 %deleted78, ptr %vfield_ptr79, align 8
   %variant_val80 = load { i8, ptr }, ptr %variant76, align 8
   ret { i8, ptr } %variant_val80
 
@@ -12684,8 +12685,8 @@ case_Ok63:                                        ; preds = %match_merge35
   %variant_field65 = getelementptr inbounds nuw { i8, ptr }, ptr %scrutinee57, i32 0, i32 1
   %path_val66 = load ptr, ptr %variant_field65, align 8
   store ptr %path_val66, ptr %__try_val_6, align 8
-  %__try_val_667 = load i64, ptr %__try_val_6, align 4
-  store i64 %__try_val_667, ptr %match_result58, align 4
+  %__try_val_667 = load i64, ptr %__try_val_6, align 8
+  store i64 %__try_val_667, ptr %match_result58, align 8
   br label %match_merge59
 
 case_Err64:                                       ; preds = %match_merge35
@@ -12710,12 +12711,12 @@ entry:
   %scrutinee = alloca { i8, ptr }, align 8
   %result = alloca { i8, ptr }, align 8
   %pool = alloca i64, align 8
-  store i64 %0, ptr %pool, align 4
+  store i64 %0, ptr %pool, align 8
   br label %tce_loop
 
 tce_loop:                                         ; preds = %match_merge, %entry
   call void @mesh_timer_sleep(i64 86400000)
-  %pool1 = load i64, ptr %pool, align 4
+  %pool1 = load i64, ptr %pool, align 8
   %call = call { i8, ptr } @Services_Retention__run_retention_cleanup(i64 %pool1)
   call void @mesh_reduction_check()
   store { i8, ptr } %call, ptr %result, align 8
@@ -12729,9 +12730,9 @@ tce_loop:                                         ; preds = %match_merge, %entry
   ]
 
 match_merge:                                      ; preds = %case_Err, %case_Ok
-  %match_val = load i64, ptr %match_result, align 4
-  %pool9 = load i64, ptr %pool, align 4
-  store i64 %pool9, ptr %pool, align 4
+  %match_val = load i64, ptr %match_result, align 8
+  %pool9 = load i64, ptr %pool, align 8
+  store i64 %pool9, ptr %pool, align 8
   call void @mesh_reduction_check()
   br label %tce_loop
 
@@ -12743,10 +12744,10 @@ case_Ok:                                          ; preds = %tce_loop
   %variant_field = getelementptr inbounds nuw { i8, ptr }, ptr %scrutinee, i32 0, i32 1
   %path_val = load ptr, ptr %variant_field, align 8
   store ptr %path_val, ptr %n, align 8
-  %n3 = load i64, ptr %n, align 4
+  %n3 = load i64, ptr %n, align 8
   %call4 = call i64 @Services_Retention__log_cleanup_result(i64 %n3)
   call void @mesh_reduction_check()
-  store i64 %call4, ptr %match_result, align 4
+  store i64 %call4, ptr %match_result, align 8
   br label %match_merge
 
 case_Err:                                         ; preds = %tce_loop
@@ -12756,7 +12757,7 @@ case_Err:                                         ; preds = %tce_loop
   %e7 = load ptr, ptr %e, align 8
   %call8 = call i64 @Services_Retention__log_cleanup_error(ptr %e7)
   call void @mesh_reduction_check()
-  store i64 %call8, ptr %match_result, align 4
+  store i64 %call8, ptr %match_result, align 8
   br label %match_merge
 }
 
@@ -12766,7 +12767,7 @@ entry:
   store ptr %0, ptr %__args_ptr, align 8
   %args_ptr_val = load ptr, ptr %__args_ptr, align 8
   %arg_ptr_0 = getelementptr [1 x i64], ptr %args_ptr_val, i32 0, i32 0
-  %arg_0 = load i64, ptr %arg_ptr_0, align 4
+  %arg_0 = load i64, ptr %arg_ptr_0, align 8
   %body_call = call {} @__actor_retention_cleaner_body(i64 %arg_0)
   ret {} zeroinitializer
 }
@@ -12775,13 +12776,13 @@ define { i8, ptr } @Services_User__login_user(i64 %0, ptr %1, ptr %2) {
 entry:
   %user = alloca %User, align 8
   %pool = alloca i64, align 8
-  store i64 %0, ptr %pool, align 4
+  store i64 %0, ptr %pool, align 8
   %email = alloca ptr, align 8
   store ptr %1, ptr %email, align 8
   %password = alloca ptr, align 8
   store ptr %2, ptr %password, align 8
   %auth_result = alloca { i8, ptr }, align 8
-  %pool1 = load i64, ptr %pool, align 4
+  %pool1 = load i64, ptr %pool, align 8
   %email2 = load ptr, ptr %email, align 8
   %password3 = load ptr, ptr %password, align 8
   %call = call { i8, ptr } @authenticate_user(i64 %pool1, ptr %email2, ptr %password3)
@@ -12811,7 +12812,7 @@ case_Ok:                                          ; preds = %entry
   %path_val = load ptr, ptr %variant_field, align 8
   %deref_struct = load %User, ptr %path_val, align 8
   store %User %deref_struct, ptr %user, align 8
-  %pool5 = load i64, ptr %pool, align 4
+  %pool5 = load i64, ptr %pool, align 8
   %user6 = load %User, ptr %user, align 8
   %obj_tmp = alloca %User, align 8
   store %User %user6, ptr %obj_tmp, align 8
@@ -12837,15 +12838,15 @@ case_Err:                                         ; preds = %entry
 define i64 @__service_userservice_init(i64 %0) {
 entry:
   %pool = alloca i64, align 8
-  store i64 %0, ptr %pool, align 4
-  %pool1 = load i64, ptr %pool, align 4
+  store i64 %0, ptr %pool, align 8
+  %pool1 = load i64, ptr %pool, align 8
   ret i64 %pool1
 }
 
 define ptr @__service_userservice_handle_call_register(i64 %0, ptr %1, ptr %2, ptr %3) {
 entry:
   %pool = alloca i64, align 8
-  store i64 %0, ptr %pool, align 4
+  store i64 %0, ptr %pool, align 8
   %email = alloca ptr, align 8
   store ptr %1, ptr %email, align 8
   %password = alloca ptr, align 8
@@ -12853,158 +12854,158 @@ entry:
   %display_name = alloca ptr, align 8
   store ptr %3, ptr %display_name, align 8
   %result = alloca { i8, ptr }, align 8
-  %pool1 = load i64, ptr %pool, align 4
+  %pool1 = load i64, ptr %pool, align 8
   %email2 = load ptr, ptr %email, align 8
   %password3 = load ptr, ptr %password, align 8
   %display_name4 = load ptr, ptr %display_name, align 8
   %call = call { i8, ptr } @create_user(i64 %pool1, ptr %email2, ptr %password3, ptr %display_name4)
   call void @mesh_reduction_check()
   store { i8, ptr } %call, ptr %result, align 8
-  %pool5 = load i64, ptr %pool, align 4
+  %pool5 = load i64, ptr %pool, align 8
   %result6 = load { i8, ptr }, ptr %result, align 8
   %tuple_ptr = call ptr @mesh_gc_alloc_actor(i64 24, i64 8)
-  store i64 2, ptr %tuple_ptr, align 4
+  store i64 2, ptr %tuple_ptr, align 8
   %tuple_base = ptrtoint ptr %tuple_ptr to i64
   %elem_addr = add i64 %tuple_base, 8
   %elem_ptr = inttoptr i64 %elem_addr to ptr
-  store i64 %pool5, ptr %elem_ptr, align 4
+  store i64 %pool5, ptr %elem_ptr, align 8
   %tuple_base7 = ptrtoint ptr %tuple_ptr to i64
   %elem_addr8 = add i64 %tuple_base7, 16
   %elem_ptr9 = inttoptr i64 %elem_addr8 to ptr
-  %struct_tmp = alloca { i8, ptr }, align 8
-  store { i8, ptr } %result6, ptr %struct_tmp, align 8
-  %struct_to_i64 = load i64, ptr %struct_tmp, align 4
-  store i64 %struct_to_i64, ptr %elem_ptr9, align 4
+  %struct_heap = call ptr @mesh_gc_alloc_actor(i64 ptrtoint (ptr getelementptr ({ i8, ptr }, ptr null, i32 1) to i64), i64 8)
+  store { i8, ptr } %result6, ptr %struct_heap, align 8
+  %struct_ptr_to_i64 = ptrtoint ptr %struct_heap to i64
+  store i64 %struct_ptr_to_i64, ptr %elem_ptr9, align 8
   ret ptr %tuple_ptr
 }
 
 define ptr @__service_userservice_handle_call_login(i64 %0, ptr %1, ptr %2) {
 entry:
   %pool = alloca i64, align 8
-  store i64 %0, ptr %pool, align 4
+  store i64 %0, ptr %pool, align 8
   %email = alloca ptr, align 8
   store ptr %1, ptr %email, align 8
   %password = alloca ptr, align 8
   store ptr %2, ptr %password, align 8
   %result = alloca { i8, ptr }, align 8
-  %pool1 = load i64, ptr %pool, align 4
+  %pool1 = load i64, ptr %pool, align 8
   %email2 = load ptr, ptr %email, align 8
   %password3 = load ptr, ptr %password, align 8
   %call = call { i8, ptr } @Services_User__login_user(i64 %pool1, ptr %email2, ptr %password3)
   call void @mesh_reduction_check()
   store { i8, ptr } %call, ptr %result, align 8
-  %pool4 = load i64, ptr %pool, align 4
+  %pool4 = load i64, ptr %pool, align 8
   %result5 = load { i8, ptr }, ptr %result, align 8
   %tuple_ptr = call ptr @mesh_gc_alloc_actor(i64 24, i64 8)
-  store i64 2, ptr %tuple_ptr, align 4
+  store i64 2, ptr %tuple_ptr, align 8
   %tuple_base = ptrtoint ptr %tuple_ptr to i64
   %elem_addr = add i64 %tuple_base, 8
   %elem_ptr = inttoptr i64 %elem_addr to ptr
-  store i64 %pool4, ptr %elem_ptr, align 4
+  store i64 %pool4, ptr %elem_ptr, align 8
   %tuple_base6 = ptrtoint ptr %tuple_ptr to i64
   %elem_addr7 = add i64 %tuple_base6, 16
   %elem_ptr8 = inttoptr i64 %elem_addr7 to ptr
-  %struct_tmp = alloca { i8, ptr }, align 8
-  store { i8, ptr } %result5, ptr %struct_tmp, align 8
-  %struct_to_i64 = load i64, ptr %struct_tmp, align 4
-  store i64 %struct_to_i64, ptr %elem_ptr8, align 4
+  %struct_heap = call ptr @mesh_gc_alloc_actor(i64 ptrtoint (ptr getelementptr ({ i8, ptr }, ptr null, i32 1) to i64), i64 8)
+  store { i8, ptr } %result5, ptr %struct_heap, align 8
+  %struct_ptr_to_i64 = ptrtoint ptr %struct_heap to i64
+  store i64 %struct_ptr_to_i64, ptr %elem_ptr8, align 8
   ret ptr %tuple_ptr
 }
 
 define ptr @__service_userservice_handle_call_validate_session(i64 %0, ptr %1) {
 entry:
   %pool = alloca i64, align 8
-  store i64 %0, ptr %pool, align 4
+  store i64 %0, ptr %pool, align 8
   %token = alloca ptr, align 8
   store ptr %1, ptr %token, align 8
   %result = alloca { i8, ptr }, align 8
-  %pool1 = load i64, ptr %pool, align 4
+  %pool1 = load i64, ptr %pool, align 8
   %token2 = load ptr, ptr %token, align 8
   %call = call { i8, ptr } @validate_session(i64 %pool1, ptr %token2)
   call void @mesh_reduction_check()
   store { i8, ptr } %call, ptr %result, align 8
-  %pool3 = load i64, ptr %pool, align 4
+  %pool3 = load i64, ptr %pool, align 8
   %result4 = load { i8, ptr }, ptr %result, align 8
   %tuple_ptr = call ptr @mesh_gc_alloc_actor(i64 24, i64 8)
-  store i64 2, ptr %tuple_ptr, align 4
+  store i64 2, ptr %tuple_ptr, align 8
   %tuple_base = ptrtoint ptr %tuple_ptr to i64
   %elem_addr = add i64 %tuple_base, 8
   %elem_ptr = inttoptr i64 %elem_addr to ptr
-  store i64 %pool3, ptr %elem_ptr, align 4
+  store i64 %pool3, ptr %elem_ptr, align 8
   %tuple_base5 = ptrtoint ptr %tuple_ptr to i64
   %elem_addr6 = add i64 %tuple_base5, 16
   %elem_ptr7 = inttoptr i64 %elem_addr6 to ptr
-  %struct_tmp = alloca { i8, ptr }, align 8
-  store { i8, ptr } %result4, ptr %struct_tmp, align 8
-  %struct_to_i64 = load i64, ptr %struct_tmp, align 4
-  store i64 %struct_to_i64, ptr %elem_ptr7, align 4
+  %struct_heap = call ptr @mesh_gc_alloc_actor(i64 ptrtoint (ptr getelementptr ({ i8, ptr }, ptr null, i32 1) to i64), i64 8)
+  store { i8, ptr } %result4, ptr %struct_heap, align 8
+  %struct_ptr_to_i64 = ptrtoint ptr %struct_heap to i64
+  store i64 %struct_ptr_to_i64, ptr %elem_ptr7, align 8
   ret ptr %tuple_ptr
 }
 
 define ptr @__service_userservice_handle_call_logout(i64 %0, ptr %1) {
 entry:
   %pool = alloca i64, align 8
-  store i64 %0, ptr %pool, align 4
+  store i64 %0, ptr %pool, align 8
   %token = alloca ptr, align 8
   store ptr %1, ptr %token, align 8
   %result = alloca { i8, ptr }, align 8
-  %pool1 = load i64, ptr %pool, align 4
+  %pool1 = load i64, ptr %pool, align 8
   %token2 = load ptr, ptr %token, align 8
   %call = call { i8, ptr } @delete_session(i64 %pool1, ptr %token2)
   call void @mesh_reduction_check()
   store { i8, ptr } %call, ptr %result, align 8
-  %pool3 = load i64, ptr %pool, align 4
+  %pool3 = load i64, ptr %pool, align 8
   %result4 = load { i8, ptr }, ptr %result, align 8
   %tuple_ptr = call ptr @mesh_gc_alloc_actor(i64 24, i64 8)
-  store i64 2, ptr %tuple_ptr, align 4
+  store i64 2, ptr %tuple_ptr, align 8
   %tuple_base = ptrtoint ptr %tuple_ptr to i64
   %elem_addr = add i64 %tuple_base, 8
   %elem_ptr = inttoptr i64 %elem_addr to ptr
-  store i64 %pool3, ptr %elem_ptr, align 4
+  store i64 %pool3, ptr %elem_ptr, align 8
   %tuple_base5 = ptrtoint ptr %tuple_ptr to i64
   %elem_addr6 = add i64 %tuple_base5, 16
   %elem_ptr7 = inttoptr i64 %elem_addr6 to ptr
-  %struct_tmp = alloca { i8, ptr }, align 8
-  store { i8, ptr } %result4, ptr %struct_tmp, align 8
-  %struct_to_i64 = load i64, ptr %struct_tmp, align 4
-  store i64 %struct_to_i64, ptr %elem_ptr7, align 4
+  %struct_heap = call ptr @mesh_gc_alloc_actor(i64 ptrtoint (ptr getelementptr ({ i8, ptr }, ptr null, i32 1) to i64), i64 8)
+  store { i8, ptr } %result4, ptr %struct_heap, align 8
+  %struct_ptr_to_i64 = ptrtoint ptr %struct_heap to i64
+  store i64 %struct_ptr_to_i64, ptr %elem_ptr7, align 8
   ret ptr %tuple_ptr
 }
 
 define ptr @__service_userservice_handle_call_get_user(i64 %0, ptr %1) {
 entry:
   %pool = alloca i64, align 8
-  store i64 %0, ptr %pool, align 4
+  store i64 %0, ptr %pool, align 8
   %id = alloca ptr, align 8
   store ptr %1, ptr %id, align 8
   %result = alloca { i8, ptr }, align 8
-  %pool1 = load i64, ptr %pool, align 4
+  %pool1 = load i64, ptr %pool, align 8
   %id2 = load ptr, ptr %id, align 8
   %call = call { i8, ptr } @get_user(i64 %pool1, ptr %id2)
   call void @mesh_reduction_check()
   store { i8, ptr } %call, ptr %result, align 8
-  %pool3 = load i64, ptr %pool, align 4
+  %pool3 = load i64, ptr %pool, align 8
   %result4 = load { i8, ptr }, ptr %result, align 8
   %tuple_ptr = call ptr @mesh_gc_alloc_actor(i64 24, i64 8)
-  store i64 2, ptr %tuple_ptr, align 4
+  store i64 2, ptr %tuple_ptr, align 8
   %tuple_base = ptrtoint ptr %tuple_ptr to i64
   %elem_addr = add i64 %tuple_base, 8
   %elem_ptr = inttoptr i64 %elem_addr to ptr
-  store i64 %pool3, ptr %elem_ptr, align 4
+  store i64 %pool3, ptr %elem_ptr, align 8
   %tuple_base5 = ptrtoint ptr %tuple_ptr to i64
   %elem_addr6 = add i64 %tuple_base5, 16
   %elem_ptr7 = inttoptr i64 %elem_addr6 to ptr
-  %struct_tmp = alloca { i8, ptr }, align 8
-  store { i8, ptr } %result4, ptr %struct_tmp, align 8
-  %struct_to_i64 = load i64, ptr %struct_tmp, align 4
-  store i64 %struct_to_i64, ptr %elem_ptr7, align 4
+  %struct_heap = call ptr @mesh_gc_alloc_actor(i64 ptrtoint (ptr getelementptr ({ i8, ptr }, ptr null, i32 1) to i64), i64 8)
+  store { i8, ptr } %result4, ptr %struct_heap, align 8
+  %struct_ptr_to_i64 = ptrtoint ptr %struct_heap to i64
+  store i64 %struct_ptr_to_i64, ptr %elem_ptr7, align 8
   ret ptr %tuple_ptr
 }
 
 define ptr @__service_userservice_handle_call_add_member(i64 %0, ptr %1, ptr %2, ptr %3) {
 entry:
   %pool = alloca i64, align 8
-  store i64 %0, ptr %pool, align 4
+  store i64 %0, ptr %pool, align 8
   %user_id = alloca ptr, align 8
   store ptr %1, ptr %user_id, align 8
   %org_id = alloca ptr, align 8
@@ -13012,73 +13013,73 @@ entry:
   %role = alloca ptr, align 8
   store ptr %3, ptr %role, align 8
   %result = alloca { i8, ptr }, align 8
-  %pool1 = load i64, ptr %pool, align 4
+  %pool1 = load i64, ptr %pool, align 8
   %user_id2 = load ptr, ptr %user_id, align 8
   %org_id3 = load ptr, ptr %org_id, align 8
   %role4 = load ptr, ptr %role, align 8
   %call = call { i8, ptr } @add_member(i64 %pool1, ptr %user_id2, ptr %org_id3, ptr %role4)
   call void @mesh_reduction_check()
   store { i8, ptr } %call, ptr %result, align 8
-  %pool5 = load i64, ptr %pool, align 4
+  %pool5 = load i64, ptr %pool, align 8
   %result6 = load { i8, ptr }, ptr %result, align 8
   %tuple_ptr = call ptr @mesh_gc_alloc_actor(i64 24, i64 8)
-  store i64 2, ptr %tuple_ptr, align 4
+  store i64 2, ptr %tuple_ptr, align 8
   %tuple_base = ptrtoint ptr %tuple_ptr to i64
   %elem_addr = add i64 %tuple_base, 8
   %elem_ptr = inttoptr i64 %elem_addr to ptr
-  store i64 %pool5, ptr %elem_ptr, align 4
+  store i64 %pool5, ptr %elem_ptr, align 8
   %tuple_base7 = ptrtoint ptr %tuple_ptr to i64
   %elem_addr8 = add i64 %tuple_base7, 16
   %elem_ptr9 = inttoptr i64 %elem_addr8 to ptr
-  %struct_tmp = alloca { i8, ptr }, align 8
-  store { i8, ptr } %result6, ptr %struct_tmp, align 8
-  %struct_to_i64 = load i64, ptr %struct_tmp, align 4
-  store i64 %struct_to_i64, ptr %elem_ptr9, align 4
+  %struct_heap = call ptr @mesh_gc_alloc_actor(i64 ptrtoint (ptr getelementptr ({ i8, ptr }, ptr null, i32 1) to i64), i64 8)
+  store { i8, ptr } %result6, ptr %struct_heap, align 8
+  %struct_ptr_to_i64 = ptrtoint ptr %struct_heap to i64
+  store i64 %struct_ptr_to_i64, ptr %elem_ptr9, align 8
   ret ptr %tuple_ptr
 }
 
 define ptr @__service_userservice_handle_call_get_members(i64 %0, ptr %1) {
 entry:
   %pool = alloca i64, align 8
-  store i64 %0, ptr %pool, align 4
+  store i64 %0, ptr %pool, align 8
   %org_id = alloca ptr, align 8
   store ptr %1, ptr %org_id, align 8
   %result = alloca { i8, ptr }, align 8
-  %pool1 = load i64, ptr %pool, align 4
+  %pool1 = load i64, ptr %pool, align 8
   %org_id2 = load ptr, ptr %org_id, align 8
   %call = call { i8, ptr } @get_members(i64 %pool1, ptr %org_id2)
   call void @mesh_reduction_check()
   store { i8, ptr } %call, ptr %result, align 8
-  %pool3 = load i64, ptr %pool, align 4
+  %pool3 = load i64, ptr %pool, align 8
   %result4 = load { i8, ptr }, ptr %result, align 8
   %tuple_ptr = call ptr @mesh_gc_alloc_actor(i64 24, i64 8)
-  store i64 2, ptr %tuple_ptr, align 4
+  store i64 2, ptr %tuple_ptr, align 8
   %tuple_base = ptrtoint ptr %tuple_ptr to i64
   %elem_addr = add i64 %tuple_base, 8
   %elem_ptr = inttoptr i64 %elem_addr to ptr
-  store i64 %pool3, ptr %elem_ptr, align 4
+  store i64 %pool3, ptr %elem_ptr, align 8
   %tuple_base5 = ptrtoint ptr %tuple_ptr to i64
   %elem_addr6 = add i64 %tuple_base5, 16
   %elem_ptr7 = inttoptr i64 %elem_addr6 to ptr
-  %struct_tmp = alloca { i8, ptr }, align 8
-  store { i8, ptr } %result4, ptr %struct_tmp, align 8
-  %struct_to_i64 = load i64, ptr %struct_tmp, align 4
-  store i64 %struct_to_i64, ptr %elem_ptr7, align 4
+  %struct_heap = call ptr @mesh_gc_alloc_actor(i64 ptrtoint (ptr getelementptr ({ i8, ptr }, ptr null, i32 1) to i64), i64 8)
+  store { i8, ptr } %result4, ptr %struct_heap, align 8
+  %struct_ptr_to_i64 = ptrtoint ptr %struct_heap to i64
+  store i64 %struct_ptr_to_i64, ptr %elem_ptr7, align 8
   ret ptr %tuple_ptr
 }
 
 define i64 @__service_userservice_start(i64 %0) {
 entry:
   %pool = alloca i64, align 8
-  store i64 %0, ptr %pool, align 4
+  store i64 %0, ptr %pool, align 8
   %__init_state = alloca i64, align 8
-  %pool1 = load i64, ptr %pool, align 4
+  %pool1 = load i64, ptr %pool, align 8
   %call = call i64 @__service_userservice_init(i64 %pool1)
   call void @mesh_reduction_check()
-  store i64 %call, ptr %__init_state, align 4
-  %__init_state2 = load i64, ptr %__init_state, align 4
+  store i64 %call, ptr %__init_state, align 8
+  %__init_state2 = load i64, ptr %__init_state, align 8
   %spawn_args = call ptr @mesh_gc_alloc_actor(i64 8, i64 8)
-  store i64 %__init_state2, ptr %spawn_args, align 4
+  store i64 %__init_state2, ptr %spawn_args, align 8
   %pid = call i64 @mesh_actor_spawn(ptr @__service_userservice_loop, ptr %spawn_args, i64 8, i8 1)
   ret i64 %pid
 }
@@ -13088,13 +13089,13 @@ entry:
   %__args_ptr = alloca ptr, align 8
   store ptr %0, ptr %__args_ptr, align 8
   %args_ptr_val = load ptr, ptr %__args_ptr, align 8
-  %init_state = load i64, ptr %args_ptr_val, align 4
+  %init_state = load i64, ptr %args_ptr_val, align 8
   %__state = alloca i64, align 8
-  store i64 %init_state, ptr %__state, align 4
+  store i64 %init_state, ptr %__state, align 8
   br label %loop
 
 loop:                                             ; preds = %default, %handler_6, %handler_5, %handler_4, %handler_3, %handler_2, %handler_1, %handler_0, %entry
-  %state = load i64, ptr %__state, align 4
+  %state = load i64, ptr %__state, align 8
   %msg_ptr = call ptr @mesh_actor_receive(i64 -1)
   %msg_is_null = icmp eq ptr %msg_ptr, null
   br i1 %msg_is_null, label %exit_loop, label %continue_loop
@@ -13104,9 +13105,9 @@ exit_loop:                                        ; preds = %loop
 
 continue_loop:                                    ; preds = %loop
   %data_ptr = getelementptr i8, ptr %msg_ptr, i64 16
-  %type_tag = load i64, ptr %data_ptr, align 4
+  %type_tag = load i64, ptr %data_ptr, align 8
   %caller_ptr = getelementptr i8, ptr %data_ptr, i64 8
-  %caller_pid = load i64, ptr %caller_ptr, align 4
+  %caller_pid = load i64, ptr %caller_ptr, align 8
   switch i64 %type_tag, label %default [
     i64 0, label %handler_0
     i64 1, label %handler_1
@@ -13131,9 +13132,9 @@ handler_0:                                        ; preds = %continue_loop
   %new_state = call i64 @mesh_tuple_first(ptr %handler_result)
   %reply = call i64 @mesh_tuple_second(ptr %handler_result)
   %reply_buf = alloca i64, align 8
-  store i64 %reply, ptr %reply_buf, align 4
+  store i64 %reply, ptr %reply_buf, align 8
   call void @mesh_service_reply(i64 %caller_pid, ptr %reply_buf, i64 8)
-  store i64 %new_state, ptr %__state, align 4
+  store i64 %new_state, ptr %__state, align 8
   br label %loop
 
 handler_1:                                        ; preds = %continue_loop
@@ -13145,9 +13146,9 @@ handler_1:                                        ; preds = %continue_loop
   %new_state6 = call i64 @mesh_tuple_first(ptr %handler_result5)
   %reply7 = call i64 @mesh_tuple_second(ptr %handler_result5)
   %reply_buf8 = alloca i64, align 8
-  store i64 %reply7, ptr %reply_buf8, align 4
+  store i64 %reply7, ptr %reply_buf8, align 8
   call void @mesh_service_reply(i64 %caller_pid, ptr %reply_buf8, i64 8)
-  store i64 %new_state6, ptr %__state, align 4
+  store i64 %new_state6, ptr %__state, align 8
   br label %loop
 
 handler_2:                                        ; preds = %continue_loop
@@ -13157,9 +13158,9 @@ handler_2:                                        ; preds = %continue_loop
   %new_state12 = call i64 @mesh_tuple_first(ptr %handler_result11)
   %reply13 = call i64 @mesh_tuple_second(ptr %handler_result11)
   %reply_buf14 = alloca i64, align 8
-  store i64 %reply13, ptr %reply_buf14, align 4
+  store i64 %reply13, ptr %reply_buf14, align 8
   call void @mesh_service_reply(i64 %caller_pid, ptr %reply_buf14, i64 8)
-  store i64 %new_state12, ptr %__state, align 4
+  store i64 %new_state12, ptr %__state, align 8
   br label %loop
 
 handler_3:                                        ; preds = %continue_loop
@@ -13169,9 +13170,9 @@ handler_3:                                        ; preds = %continue_loop
   %new_state18 = call i64 @mesh_tuple_first(ptr %handler_result17)
   %reply19 = call i64 @mesh_tuple_second(ptr %handler_result17)
   %reply_buf20 = alloca i64, align 8
-  store i64 %reply19, ptr %reply_buf20, align 4
+  store i64 %reply19, ptr %reply_buf20, align 8
   call void @mesh_service_reply(i64 %caller_pid, ptr %reply_buf20, i64 8)
-  store i64 %new_state18, ptr %__state, align 4
+  store i64 %new_state18, ptr %__state, align 8
   br label %loop
 
 handler_4:                                        ; preds = %continue_loop
@@ -13181,9 +13182,9 @@ handler_4:                                        ; preds = %continue_loop
   %new_state24 = call i64 @mesh_tuple_first(ptr %handler_result23)
   %reply25 = call i64 @mesh_tuple_second(ptr %handler_result23)
   %reply_buf26 = alloca i64, align 8
-  store i64 %reply25, ptr %reply_buf26, align 4
+  store i64 %reply25, ptr %reply_buf26, align 8
   call void @mesh_service_reply(i64 %caller_pid, ptr %reply_buf26, i64 8)
-  store i64 %new_state24, ptr %__state, align 4
+  store i64 %new_state24, ptr %__state, align 8
   br label %loop
 
 handler_5:                                        ; preds = %continue_loop
@@ -13197,9 +13198,9 @@ handler_5:                                        ; preds = %continue_loop
   %new_state34 = call i64 @mesh_tuple_first(ptr %handler_result33)
   %reply35 = call i64 @mesh_tuple_second(ptr %handler_result33)
   %reply_buf36 = alloca i64, align 8
-  store i64 %reply35, ptr %reply_buf36, align 4
+  store i64 %reply35, ptr %reply_buf36, align 8
   call void @mesh_service_reply(i64 %caller_pid, ptr %reply_buf36, i64 8)
-  store i64 %new_state34, ptr %__state, align 4
+  store i64 %new_state34, ptr %__state, align 8
   br label %loop
 
 handler_6:                                        ; preds = %continue_loop
@@ -13209,396 +13210,396 @@ handler_6:                                        ; preds = %continue_loop
   %new_state40 = call i64 @mesh_tuple_first(ptr %handler_result39)
   %reply41 = call i64 @mesh_tuple_second(ptr %handler_result39)
   %reply_buf42 = alloca i64, align 8
-  store i64 %reply41, ptr %reply_buf42, align 4
+  store i64 %reply41, ptr %reply_buf42, align 8
   call void @mesh_service_reply(i64 %caller_pid, ptr %reply_buf42, i64 8)
-  store i64 %new_state40, ptr %__state, align 4
+  store i64 %new_state40, ptr %__state, align 8
   br label %loop
 }
 
 define %RegistryState @__service_pipelineregistry_init(i64 %0, i64 %1, i64 %2, i64 %3) {
 entry:
   %pool = alloca i64, align 8
-  store i64 %0, ptr %pool, align 4
+  store i64 %0, ptr %pool, align 8
   %rate_limiter_pid = alloca i64, align 8
-  store i64 %1, ptr %rate_limiter_pid, align 4
+  store i64 %1, ptr %rate_limiter_pid, align 8
   %processor_pid = alloca i64, align 8
-  store i64 %2, ptr %processor_pid, align 4
+  store i64 %2, ptr %processor_pid, align 8
   %writer_pid = alloca i64, align 8
-  store i64 %3, ptr %writer_pid, align 4
+  store i64 %3, ptr %writer_pid, align 8
   %struct_lit = alloca %RegistryState, align 8
-  %pool1 = load i64, ptr %pool, align 4
+  %pool1 = load i64, ptr %pool, align 8
   %field_ptr = getelementptr inbounds nuw %RegistryState, ptr %struct_lit, i32 0, i32 0
-  store i64 %pool1, ptr %field_ptr, align 4
-  %rate_limiter_pid2 = load i64, ptr %rate_limiter_pid, align 4
+  store i64 %pool1, ptr %field_ptr, align 8
+  %rate_limiter_pid2 = load i64, ptr %rate_limiter_pid, align 8
   %field_ptr3 = getelementptr inbounds nuw %RegistryState, ptr %struct_lit, i32 0, i32 1
-  store i64 %rate_limiter_pid2, ptr %field_ptr3, align 4
-  %processor_pid4 = load i64, ptr %processor_pid, align 4
+  store i64 %rate_limiter_pid2, ptr %field_ptr3, align 8
+  %processor_pid4 = load i64, ptr %processor_pid, align 8
   %field_ptr5 = getelementptr inbounds nuw %RegistryState, ptr %struct_lit, i32 0, i32 2
-  store i64 %processor_pid4, ptr %field_ptr5, align 4
-  %writer_pid6 = load i64, ptr %writer_pid, align 4
+  store i64 %processor_pid4, ptr %field_ptr5, align 8
+  %writer_pid6 = load i64, ptr %writer_pid, align 8
   %field_ptr7 = getelementptr inbounds nuw %RegistryState, ptr %struct_lit, i32 0, i32 3
-  store i64 %writer_pid6, ptr %field_ptr7, align 4
+  store i64 %writer_pid6, ptr %field_ptr7, align 8
   %field_ptr8 = getelementptr inbounds nuw %RegistryState, ptr %struct_lit, i32 0, i32 4
-  store i64 0, ptr %field_ptr8, align 4
-  %struct_val = load %RegistryState, ptr %struct_lit, align 4
+  store i64 0, ptr %field_ptr8, align 8
+  %struct_val = load %RegistryState, ptr %struct_lit, align 8
   ret %RegistryState %struct_val
 }
 
 define ptr @__service_pipelineregistry_handle_call_get_pool(%RegistryState %0) {
 entry:
   %state = alloca %RegistryState, align 8
-  store %RegistryState %0, ptr %state, align 4
-  %state1 = load %RegistryState, ptr %state, align 4
-  %state2 = load %RegistryState, ptr %state, align 4
+  store %RegistryState %0, ptr %state, align 8
+  %state1 = load %RegistryState, ptr %state, align 8
+  %state2 = load %RegistryState, ptr %state, align 8
   %obj_tmp = alloca %RegistryState, align 8
-  store %RegistryState %state2, ptr %obj_tmp, align 4
+  store %RegistryState %state2, ptr %obj_tmp, align 8
   %field_ptr = getelementptr inbounds nuw %RegistryState, ptr %obj_tmp, i32 0, i32 0
-  %field_val = load i64, ptr %field_ptr, align 4
+  %field_val = load i64, ptr %field_ptr, align 8
   %tuple_ptr = call ptr @mesh_gc_alloc_actor(i64 24, i64 8)
-  store i64 2, ptr %tuple_ptr, align 4
+  store i64 2, ptr %tuple_ptr, align 8
   %tuple_base = ptrtoint ptr %tuple_ptr to i64
   %elem_addr = add i64 %tuple_base, 8
   %elem_ptr = inttoptr i64 %elem_addr to ptr
-  %struct_tmp = alloca %RegistryState, align 8
-  store %RegistryState %state1, ptr %struct_tmp, align 4
-  %struct_to_i64 = load i64, ptr %struct_tmp, align 4
-  store i64 %struct_to_i64, ptr %elem_ptr, align 4
+  %struct_heap = call ptr @mesh_gc_alloc_actor(i64 ptrtoint (ptr getelementptr (%RegistryState, ptr null, i32 1) to i64), i64 8)
+  store %RegistryState %state1, ptr %struct_heap, align 8
+  %struct_ptr_to_i64 = ptrtoint ptr %struct_heap to i64
+  store i64 %struct_ptr_to_i64, ptr %elem_ptr, align 8
   %tuple_base3 = ptrtoint ptr %tuple_ptr to i64
   %elem_addr4 = add i64 %tuple_base3, 16
   %elem_ptr5 = inttoptr i64 %elem_addr4 to ptr
-  store i64 %field_val, ptr %elem_ptr5, align 4
+  store i64 %field_val, ptr %elem_ptr5, align 8
   ret ptr %tuple_ptr
 }
 
 define ptr @__service_pipelineregistry_handle_call_get_rate_limiter(%RegistryState %0) {
 entry:
   %state = alloca %RegistryState, align 8
-  store %RegistryState %0, ptr %state, align 4
-  %state1 = load %RegistryState, ptr %state, align 4
-  %state2 = load %RegistryState, ptr %state, align 4
+  store %RegistryState %0, ptr %state, align 8
+  %state1 = load %RegistryState, ptr %state, align 8
+  %state2 = load %RegistryState, ptr %state, align 8
   %obj_tmp = alloca %RegistryState, align 8
-  store %RegistryState %state2, ptr %obj_tmp, align 4
+  store %RegistryState %state2, ptr %obj_tmp, align 8
   %field_ptr = getelementptr inbounds nuw %RegistryState, ptr %obj_tmp, i32 0, i32 1
-  %field_val = load i64, ptr %field_ptr, align 4
+  %field_val = load i64, ptr %field_ptr, align 8
   %tuple_ptr = call ptr @mesh_gc_alloc_actor(i64 24, i64 8)
-  store i64 2, ptr %tuple_ptr, align 4
+  store i64 2, ptr %tuple_ptr, align 8
   %tuple_base = ptrtoint ptr %tuple_ptr to i64
   %elem_addr = add i64 %tuple_base, 8
   %elem_ptr = inttoptr i64 %elem_addr to ptr
-  %struct_tmp = alloca %RegistryState, align 8
-  store %RegistryState %state1, ptr %struct_tmp, align 4
-  %struct_to_i64 = load i64, ptr %struct_tmp, align 4
-  store i64 %struct_to_i64, ptr %elem_ptr, align 4
+  %struct_heap = call ptr @mesh_gc_alloc_actor(i64 ptrtoint (ptr getelementptr (%RegistryState, ptr null, i32 1) to i64), i64 8)
+  store %RegistryState %state1, ptr %struct_heap, align 8
+  %struct_ptr_to_i64 = ptrtoint ptr %struct_heap to i64
+  store i64 %struct_ptr_to_i64, ptr %elem_ptr, align 8
   %tuple_base3 = ptrtoint ptr %tuple_ptr to i64
   %elem_addr4 = add i64 %tuple_base3, 16
   %elem_ptr5 = inttoptr i64 %elem_addr4 to ptr
-  store i64 %field_val, ptr %elem_ptr5, align 4
+  store i64 %field_val, ptr %elem_ptr5, align 8
   ret ptr %tuple_ptr
 }
 
 define ptr @__service_pipelineregistry_handle_call_get_processor(%RegistryState %0) {
 entry:
   %state = alloca %RegistryState, align 8
-  store %RegistryState %0, ptr %state, align 4
-  %state1 = load %RegistryState, ptr %state, align 4
-  %state2 = load %RegistryState, ptr %state, align 4
+  store %RegistryState %0, ptr %state, align 8
+  %state1 = load %RegistryState, ptr %state, align 8
+  %state2 = load %RegistryState, ptr %state, align 8
   %obj_tmp = alloca %RegistryState, align 8
-  store %RegistryState %state2, ptr %obj_tmp, align 4
+  store %RegistryState %state2, ptr %obj_tmp, align 8
   %field_ptr = getelementptr inbounds nuw %RegistryState, ptr %obj_tmp, i32 0, i32 2
-  %field_val = load i64, ptr %field_ptr, align 4
+  %field_val = load i64, ptr %field_ptr, align 8
   %tuple_ptr = call ptr @mesh_gc_alloc_actor(i64 24, i64 8)
-  store i64 2, ptr %tuple_ptr, align 4
+  store i64 2, ptr %tuple_ptr, align 8
   %tuple_base = ptrtoint ptr %tuple_ptr to i64
   %elem_addr = add i64 %tuple_base, 8
   %elem_ptr = inttoptr i64 %elem_addr to ptr
-  %struct_tmp = alloca %RegistryState, align 8
-  store %RegistryState %state1, ptr %struct_tmp, align 4
-  %struct_to_i64 = load i64, ptr %struct_tmp, align 4
-  store i64 %struct_to_i64, ptr %elem_ptr, align 4
+  %struct_heap = call ptr @mesh_gc_alloc_actor(i64 ptrtoint (ptr getelementptr (%RegistryState, ptr null, i32 1) to i64), i64 8)
+  store %RegistryState %state1, ptr %struct_heap, align 8
+  %struct_ptr_to_i64 = ptrtoint ptr %struct_heap to i64
+  store i64 %struct_ptr_to_i64, ptr %elem_ptr, align 8
   %tuple_base3 = ptrtoint ptr %tuple_ptr to i64
   %elem_addr4 = add i64 %tuple_base3, 16
   %elem_ptr5 = inttoptr i64 %elem_addr4 to ptr
-  store i64 %field_val, ptr %elem_ptr5, align 4
+  store i64 %field_val, ptr %elem_ptr5, align 8
   ret ptr %tuple_ptr
 }
 
 define ptr @__service_pipelineregistry_handle_call_get_writer(%RegistryState %0) {
 entry:
   %state = alloca %RegistryState, align 8
-  store %RegistryState %0, ptr %state, align 4
-  %state1 = load %RegistryState, ptr %state, align 4
-  %state2 = load %RegistryState, ptr %state, align 4
+  store %RegistryState %0, ptr %state, align 8
+  %state1 = load %RegistryState, ptr %state, align 8
+  %state2 = load %RegistryState, ptr %state, align 8
   %obj_tmp = alloca %RegistryState, align 8
-  store %RegistryState %state2, ptr %obj_tmp, align 4
+  store %RegistryState %state2, ptr %obj_tmp, align 8
   %field_ptr = getelementptr inbounds nuw %RegistryState, ptr %obj_tmp, i32 0, i32 3
-  %field_val = load i64, ptr %field_ptr, align 4
+  %field_val = load i64, ptr %field_ptr, align 8
   %tuple_ptr = call ptr @mesh_gc_alloc_actor(i64 24, i64 8)
-  store i64 2, ptr %tuple_ptr, align 4
+  store i64 2, ptr %tuple_ptr, align 8
   %tuple_base = ptrtoint ptr %tuple_ptr to i64
   %elem_addr = add i64 %tuple_base, 8
   %elem_ptr = inttoptr i64 %elem_addr to ptr
-  %struct_tmp = alloca %RegistryState, align 8
-  store %RegistryState %state1, ptr %struct_tmp, align 4
-  %struct_to_i64 = load i64, ptr %struct_tmp, align 4
-  store i64 %struct_to_i64, ptr %elem_ptr, align 4
+  %struct_heap = call ptr @mesh_gc_alloc_actor(i64 ptrtoint (ptr getelementptr (%RegistryState, ptr null, i32 1) to i64), i64 8)
+  store %RegistryState %state1, ptr %struct_heap, align 8
+  %struct_ptr_to_i64 = ptrtoint ptr %struct_heap to i64
+  store i64 %struct_ptr_to_i64, ptr %elem_ptr, align 8
   %tuple_base3 = ptrtoint ptr %tuple_ptr to i64
   %elem_addr4 = add i64 %tuple_base3, 16
   %elem_ptr5 = inttoptr i64 %elem_addr4 to ptr
-  store i64 %field_val, ptr %elem_ptr5, align 4
+  store i64 %field_val, ptr %elem_ptr5, align 8
   ret ptr %tuple_ptr
 }
 
 define ptr @__service_pipelineregistry_handle_call_get_event_count(%RegistryState %0) {
 entry:
   %state = alloca %RegistryState, align 8
-  store %RegistryState %0, ptr %state, align 4
-  %state1 = load %RegistryState, ptr %state, align 4
-  %state2 = load %RegistryState, ptr %state, align 4
+  store %RegistryState %0, ptr %state, align 8
+  %state1 = load %RegistryState, ptr %state, align 8
+  %state2 = load %RegistryState, ptr %state, align 8
   %obj_tmp = alloca %RegistryState, align 8
-  store %RegistryState %state2, ptr %obj_tmp, align 4
+  store %RegistryState %state2, ptr %obj_tmp, align 8
   %field_ptr = getelementptr inbounds nuw %RegistryState, ptr %obj_tmp, i32 0, i32 4
-  %field_val = load i64, ptr %field_ptr, align 4
+  %field_val = load i64, ptr %field_ptr, align 8
   %tuple_ptr = call ptr @mesh_gc_alloc_actor(i64 24, i64 8)
-  store i64 2, ptr %tuple_ptr, align 4
+  store i64 2, ptr %tuple_ptr, align 8
   %tuple_base = ptrtoint ptr %tuple_ptr to i64
   %elem_addr = add i64 %tuple_base, 8
   %elem_ptr = inttoptr i64 %elem_addr to ptr
-  %struct_tmp = alloca %RegistryState, align 8
-  store %RegistryState %state1, ptr %struct_tmp, align 4
-  %struct_to_i64 = load i64, ptr %struct_tmp, align 4
-  store i64 %struct_to_i64, ptr %elem_ptr, align 4
+  %struct_heap = call ptr @mesh_gc_alloc_actor(i64 ptrtoint (ptr getelementptr (%RegistryState, ptr null, i32 1) to i64), i64 8)
+  store %RegistryState %state1, ptr %struct_heap, align 8
+  %struct_ptr_to_i64 = ptrtoint ptr %struct_heap to i64
+  store i64 %struct_ptr_to_i64, ptr %elem_ptr, align 8
   %tuple_base3 = ptrtoint ptr %tuple_ptr to i64
   %elem_addr4 = add i64 %tuple_base3, 16
   %elem_ptr5 = inttoptr i64 %elem_addr4 to ptr
-  store i64 %field_val, ptr %elem_ptr5, align 4
+  store i64 %field_val, ptr %elem_ptr5, align 8
   ret ptr %tuple_ptr
 }
 
 define ptr @__service_pipelineregistry_handle_call_increment_event_count(%RegistryState %0) {
 entry:
   %state = alloca %RegistryState, align 8
-  store %RegistryState %0, ptr %state, align 4
+  store %RegistryState %0, ptr %state, align 8
   %new_count = alloca i64, align 8
-  %state1 = load %RegistryState, ptr %state, align 4
+  %state1 = load %RegistryState, ptr %state, align 8
   %obj_tmp = alloca %RegistryState, align 8
-  store %RegistryState %state1, ptr %obj_tmp, align 4
+  store %RegistryState %state1, ptr %obj_tmp, align 8
   %field_ptr = getelementptr inbounds nuw %RegistryState, ptr %obj_tmp, i32 0, i32 4
-  %field_val = load i64, ptr %field_ptr, align 4
+  %field_val = load i64, ptr %field_ptr, align 8
   %add = add i64 %field_val, 1
-  store i64 %add, ptr %new_count, align 4
+  store i64 %add, ptr %new_count, align 8
   %new_state = alloca %RegistryState, align 8
   %struct_lit = alloca %RegistryState, align 8
-  %state2 = load %RegistryState, ptr %state, align 4
+  %state2 = load %RegistryState, ptr %state, align 8
   %obj_tmp3 = alloca %RegistryState, align 8
-  store %RegistryState %state2, ptr %obj_tmp3, align 4
+  store %RegistryState %state2, ptr %obj_tmp3, align 8
   %field_ptr4 = getelementptr inbounds nuw %RegistryState, ptr %obj_tmp3, i32 0, i32 0
-  %field_val5 = load i64, ptr %field_ptr4, align 4
+  %field_val5 = load i64, ptr %field_ptr4, align 8
   %field_ptr6 = getelementptr inbounds nuw %RegistryState, ptr %struct_lit, i32 0, i32 0
-  store i64 %field_val5, ptr %field_ptr6, align 4
-  %state7 = load %RegistryState, ptr %state, align 4
+  store i64 %field_val5, ptr %field_ptr6, align 8
+  %state7 = load %RegistryState, ptr %state, align 8
   %obj_tmp8 = alloca %RegistryState, align 8
-  store %RegistryState %state7, ptr %obj_tmp8, align 4
+  store %RegistryState %state7, ptr %obj_tmp8, align 8
   %field_ptr9 = getelementptr inbounds nuw %RegistryState, ptr %obj_tmp8, i32 0, i32 1
-  %field_val10 = load i64, ptr %field_ptr9, align 4
+  %field_val10 = load i64, ptr %field_ptr9, align 8
   %field_ptr11 = getelementptr inbounds nuw %RegistryState, ptr %struct_lit, i32 0, i32 1
-  store i64 %field_val10, ptr %field_ptr11, align 4
-  %state12 = load %RegistryState, ptr %state, align 4
+  store i64 %field_val10, ptr %field_ptr11, align 8
+  %state12 = load %RegistryState, ptr %state, align 8
   %obj_tmp13 = alloca %RegistryState, align 8
-  store %RegistryState %state12, ptr %obj_tmp13, align 4
+  store %RegistryState %state12, ptr %obj_tmp13, align 8
   %field_ptr14 = getelementptr inbounds nuw %RegistryState, ptr %obj_tmp13, i32 0, i32 2
-  %field_val15 = load i64, ptr %field_ptr14, align 4
+  %field_val15 = load i64, ptr %field_ptr14, align 8
   %field_ptr16 = getelementptr inbounds nuw %RegistryState, ptr %struct_lit, i32 0, i32 2
-  store i64 %field_val15, ptr %field_ptr16, align 4
-  %state17 = load %RegistryState, ptr %state, align 4
+  store i64 %field_val15, ptr %field_ptr16, align 8
+  %state17 = load %RegistryState, ptr %state, align 8
   %obj_tmp18 = alloca %RegistryState, align 8
-  store %RegistryState %state17, ptr %obj_tmp18, align 4
+  store %RegistryState %state17, ptr %obj_tmp18, align 8
   %field_ptr19 = getelementptr inbounds nuw %RegistryState, ptr %obj_tmp18, i32 0, i32 3
-  %field_val20 = load i64, ptr %field_ptr19, align 4
+  %field_val20 = load i64, ptr %field_ptr19, align 8
   %field_ptr21 = getelementptr inbounds nuw %RegistryState, ptr %struct_lit, i32 0, i32 3
-  store i64 %field_val20, ptr %field_ptr21, align 4
-  %new_count22 = load i64, ptr %new_count, align 4
+  store i64 %field_val20, ptr %field_ptr21, align 8
+  %new_count22 = load i64, ptr %new_count, align 8
   %field_ptr23 = getelementptr inbounds nuw %RegistryState, ptr %struct_lit, i32 0, i32 4
-  store i64 %new_count22, ptr %field_ptr23, align 4
-  %struct_val = load %RegistryState, ptr %struct_lit, align 4
-  store %RegistryState %struct_val, ptr %new_state, align 4
-  %new_state24 = load %RegistryState, ptr %new_state, align 4
-  %new_count25 = load i64, ptr %new_count, align 4
+  store i64 %new_count22, ptr %field_ptr23, align 8
+  %struct_val = load %RegistryState, ptr %struct_lit, align 8
+  store %RegistryState %struct_val, ptr %new_state, align 8
+  %new_state24 = load %RegistryState, ptr %new_state, align 8
+  %new_count25 = load i64, ptr %new_count, align 8
   %tuple_ptr = call ptr @mesh_gc_alloc_actor(i64 24, i64 8)
-  store i64 2, ptr %tuple_ptr, align 4
+  store i64 2, ptr %tuple_ptr, align 8
   %tuple_base = ptrtoint ptr %tuple_ptr to i64
   %elem_addr = add i64 %tuple_base, 8
   %elem_ptr = inttoptr i64 %elem_addr to ptr
-  %struct_tmp = alloca %RegistryState, align 8
-  store %RegistryState %new_state24, ptr %struct_tmp, align 4
-  %struct_to_i64 = load i64, ptr %struct_tmp, align 4
-  store i64 %struct_to_i64, ptr %elem_ptr, align 4
+  %struct_heap = call ptr @mesh_gc_alloc_actor(i64 ptrtoint (ptr getelementptr (%RegistryState, ptr null, i32 1) to i64), i64 8)
+  store %RegistryState %new_state24, ptr %struct_heap, align 8
+  %struct_ptr_to_i64 = ptrtoint ptr %struct_heap to i64
+  store i64 %struct_ptr_to_i64, ptr %elem_ptr, align 8
   %tuple_base26 = ptrtoint ptr %tuple_ptr to i64
   %elem_addr27 = add i64 %tuple_base26, 16
   %elem_ptr28 = inttoptr i64 %elem_addr27 to ptr
-  store i64 %new_count25, ptr %elem_ptr28, align 4
+  store i64 %new_count25, ptr %elem_ptr28, align 8
   ret ptr %tuple_ptr
 }
 
 define ptr @__service_pipelineregistry_handle_call_reset_event_count(%RegistryState %0) {
 entry:
   %state = alloca %RegistryState, align 8
-  store %RegistryState %0, ptr %state, align 4
+  store %RegistryState %0, ptr %state, align 8
   %new_state = alloca %RegistryState, align 8
   %struct_lit = alloca %RegistryState, align 8
-  %state1 = load %RegistryState, ptr %state, align 4
+  %state1 = load %RegistryState, ptr %state, align 8
   %obj_tmp = alloca %RegistryState, align 8
-  store %RegistryState %state1, ptr %obj_tmp, align 4
+  store %RegistryState %state1, ptr %obj_tmp, align 8
   %field_ptr = getelementptr inbounds nuw %RegistryState, ptr %obj_tmp, i32 0, i32 0
-  %field_val = load i64, ptr %field_ptr, align 4
+  %field_val = load i64, ptr %field_ptr, align 8
   %field_ptr2 = getelementptr inbounds nuw %RegistryState, ptr %struct_lit, i32 0, i32 0
-  store i64 %field_val, ptr %field_ptr2, align 4
-  %state3 = load %RegistryState, ptr %state, align 4
+  store i64 %field_val, ptr %field_ptr2, align 8
+  %state3 = load %RegistryState, ptr %state, align 8
   %obj_tmp4 = alloca %RegistryState, align 8
-  store %RegistryState %state3, ptr %obj_tmp4, align 4
+  store %RegistryState %state3, ptr %obj_tmp4, align 8
   %field_ptr5 = getelementptr inbounds nuw %RegistryState, ptr %obj_tmp4, i32 0, i32 1
-  %field_val6 = load i64, ptr %field_ptr5, align 4
+  %field_val6 = load i64, ptr %field_ptr5, align 8
   %field_ptr7 = getelementptr inbounds nuw %RegistryState, ptr %struct_lit, i32 0, i32 1
-  store i64 %field_val6, ptr %field_ptr7, align 4
-  %state8 = load %RegistryState, ptr %state, align 4
+  store i64 %field_val6, ptr %field_ptr7, align 8
+  %state8 = load %RegistryState, ptr %state, align 8
   %obj_tmp9 = alloca %RegistryState, align 8
-  store %RegistryState %state8, ptr %obj_tmp9, align 4
+  store %RegistryState %state8, ptr %obj_tmp9, align 8
   %field_ptr10 = getelementptr inbounds nuw %RegistryState, ptr %obj_tmp9, i32 0, i32 2
-  %field_val11 = load i64, ptr %field_ptr10, align 4
+  %field_val11 = load i64, ptr %field_ptr10, align 8
   %field_ptr12 = getelementptr inbounds nuw %RegistryState, ptr %struct_lit, i32 0, i32 2
-  store i64 %field_val11, ptr %field_ptr12, align 4
-  %state13 = load %RegistryState, ptr %state, align 4
+  store i64 %field_val11, ptr %field_ptr12, align 8
+  %state13 = load %RegistryState, ptr %state, align 8
   %obj_tmp14 = alloca %RegistryState, align 8
-  store %RegistryState %state13, ptr %obj_tmp14, align 4
+  store %RegistryState %state13, ptr %obj_tmp14, align 8
   %field_ptr15 = getelementptr inbounds nuw %RegistryState, ptr %obj_tmp14, i32 0, i32 3
-  %field_val16 = load i64, ptr %field_ptr15, align 4
+  %field_val16 = load i64, ptr %field_ptr15, align 8
   %field_ptr17 = getelementptr inbounds nuw %RegistryState, ptr %struct_lit, i32 0, i32 3
-  store i64 %field_val16, ptr %field_ptr17, align 4
+  store i64 %field_val16, ptr %field_ptr17, align 8
   %field_ptr18 = getelementptr inbounds nuw %RegistryState, ptr %struct_lit, i32 0, i32 4
-  store i64 0, ptr %field_ptr18, align 4
-  %struct_val = load %RegistryState, ptr %struct_lit, align 4
-  store %RegistryState %struct_val, ptr %new_state, align 4
-  %new_state19 = load %RegistryState, ptr %new_state, align 4
+  store i64 0, ptr %field_ptr18, align 8
+  %struct_val = load %RegistryState, ptr %struct_lit, align 8
+  store %RegistryState %struct_val, ptr %new_state, align 8
+  %new_state19 = load %RegistryState, ptr %new_state, align 8
   %tuple_ptr = call ptr @mesh_gc_alloc_actor(i64 24, i64 8)
-  store i64 2, ptr %tuple_ptr, align 4
+  store i64 2, ptr %tuple_ptr, align 8
   %tuple_base = ptrtoint ptr %tuple_ptr to i64
   %elem_addr = add i64 %tuple_base, 8
   %elem_ptr = inttoptr i64 %elem_addr to ptr
-  %struct_tmp = alloca %RegistryState, align 8
-  store %RegistryState %new_state19, ptr %struct_tmp, align 4
-  %struct_to_i64 = load i64, ptr %struct_tmp, align 4
-  store i64 %struct_to_i64, ptr %elem_ptr, align 4
+  %struct_heap = call ptr @mesh_gc_alloc_actor(i64 ptrtoint (ptr getelementptr (%RegistryState, ptr null, i32 1) to i64), i64 8)
+  store %RegistryState %new_state19, ptr %struct_heap, align 8
+  %struct_ptr_to_i64 = ptrtoint ptr %struct_heap to i64
+  store i64 %struct_ptr_to_i64, ptr %elem_ptr, align 8
   %tuple_base20 = ptrtoint ptr %tuple_ptr to i64
   %elem_addr21 = add i64 %tuple_base20, 16
   %elem_ptr22 = inttoptr i64 %elem_addr21 to ptr
-  store i64 0, ptr %elem_ptr22, align 4
+  store i64 0, ptr %elem_ptr22, align 8
   ret ptr %tuple_ptr
 }
 
 define i64 @__service_pipelineregistry_call_get_pool(i64 %0) {
 entry:
   %__pid = alloca i64, align 8
-  store i64 %0, ptr %__pid, align 4
-  %__pid1 = load i64, ptr %__pid, align 4
-  %__pid2 = load i64, ptr %__pid, align 4
+  store i64 %0, ptr %__pid, align 8
+  %__pid1 = load i64, ptr %__pid, align 8
+  %__pid2 = load i64, ptr %__pid, align 8
   %call_result = call ptr @mesh_service_call(i64 %__pid2, i64 0, ptr null, i64 0)
   %reply_data = getelementptr i8, ptr %call_result, i64 16
-  %reply_val = load i64, ptr %reply_data, align 4
+  %reply_val = load i64, ptr %reply_data, align 8
   ret i64 %reply_val
 }
 
 define i64 @__service_pipelineregistry_call_get_rate_limiter(i64 %0) {
 entry:
   %__pid = alloca i64, align 8
-  store i64 %0, ptr %__pid, align 4
-  %__pid1 = load i64, ptr %__pid, align 4
-  %__pid2 = load i64, ptr %__pid, align 4
+  store i64 %0, ptr %__pid, align 8
+  %__pid1 = load i64, ptr %__pid, align 8
+  %__pid2 = load i64, ptr %__pid, align 8
   %call_result = call ptr @mesh_service_call(i64 %__pid2, i64 1, ptr null, i64 0)
   %reply_data = getelementptr i8, ptr %call_result, i64 16
-  %reply_val = load i64, ptr %reply_data, align 4
+  %reply_val = load i64, ptr %reply_data, align 8
   ret i64 %reply_val
 }
 
 define i64 @__service_pipelineregistry_call_get_processor(i64 %0) {
 entry:
   %__pid = alloca i64, align 8
-  store i64 %0, ptr %__pid, align 4
-  %__pid1 = load i64, ptr %__pid, align 4
-  %__pid2 = load i64, ptr %__pid, align 4
+  store i64 %0, ptr %__pid, align 8
+  %__pid1 = load i64, ptr %__pid, align 8
+  %__pid2 = load i64, ptr %__pid, align 8
   %call_result = call ptr @mesh_service_call(i64 %__pid2, i64 2, ptr null, i64 0)
   %reply_data = getelementptr i8, ptr %call_result, i64 16
-  %reply_val = load i64, ptr %reply_data, align 4
+  %reply_val = load i64, ptr %reply_data, align 8
   ret i64 %reply_val
 }
 
 define i64 @__service_pipelineregistry_call_get_writer(i64 %0) {
 entry:
   %__pid = alloca i64, align 8
-  store i64 %0, ptr %__pid, align 4
-  %__pid1 = load i64, ptr %__pid, align 4
-  %__pid2 = load i64, ptr %__pid, align 4
+  store i64 %0, ptr %__pid, align 8
+  %__pid1 = load i64, ptr %__pid, align 8
+  %__pid2 = load i64, ptr %__pid, align 8
   %call_result = call ptr @mesh_service_call(i64 %__pid2, i64 3, ptr null, i64 0)
   %reply_data = getelementptr i8, ptr %call_result, i64 16
-  %reply_val = load i64, ptr %reply_data, align 4
+  %reply_val = load i64, ptr %reply_data, align 8
   ret i64 %reply_val
 }
 
 define i64 @__service_pipelineregistry_call_get_event_count(i64 %0) {
 entry:
   %__pid = alloca i64, align 8
-  store i64 %0, ptr %__pid, align 4
-  %__pid1 = load i64, ptr %__pid, align 4
-  %__pid2 = load i64, ptr %__pid, align 4
+  store i64 %0, ptr %__pid, align 8
+  %__pid1 = load i64, ptr %__pid, align 8
+  %__pid2 = load i64, ptr %__pid, align 8
   %call_result = call ptr @mesh_service_call(i64 %__pid2, i64 4, ptr null, i64 0)
   %reply_data = getelementptr i8, ptr %call_result, i64 16
-  %reply_val = load i64, ptr %reply_data, align 4
+  %reply_val = load i64, ptr %reply_data, align 8
   ret i64 %reply_val
 }
 
 define i64 @__service_pipelineregistry_call_increment_event_count(i64 %0) {
 entry:
   %__pid = alloca i64, align 8
-  store i64 %0, ptr %__pid, align 4
-  %__pid1 = load i64, ptr %__pid, align 4
-  %__pid2 = load i64, ptr %__pid, align 4
+  store i64 %0, ptr %__pid, align 8
+  %__pid1 = load i64, ptr %__pid, align 8
+  %__pid2 = load i64, ptr %__pid, align 8
   %call_result = call ptr @mesh_service_call(i64 %__pid2, i64 5, ptr null, i64 0)
   %reply_data = getelementptr i8, ptr %call_result, i64 16
-  %reply_val = load i64, ptr %reply_data, align 4
+  %reply_val = load i64, ptr %reply_data, align 8
   ret i64 %reply_val
 }
 
 define i64 @__service_pipelineregistry_call_reset_event_count(i64 %0) {
 entry:
   %__pid = alloca i64, align 8
-  store i64 %0, ptr %__pid, align 4
-  %__pid1 = load i64, ptr %__pid, align 4
-  %__pid2 = load i64, ptr %__pid, align 4
+  store i64 %0, ptr %__pid, align 8
+  %__pid1 = load i64, ptr %__pid, align 8
+  %__pid2 = load i64, ptr %__pid, align 8
   %call_result = call ptr @mesh_service_call(i64 %__pid2, i64 6, ptr null, i64 0)
   %reply_data = getelementptr i8, ptr %call_result, i64 16
-  %reply_val = load i64, ptr %reply_data, align 4
+  %reply_val = load i64, ptr %reply_data, align 8
   ret i64 %reply_val
 }
 
 define i64 @__service_pipelineregistry_start(i64 %0, i64 %1, i64 %2, i64 %3) {
 entry:
   %pool = alloca i64, align 8
-  store i64 %0, ptr %pool, align 4
+  store i64 %0, ptr %pool, align 8
   %rate_limiter_pid = alloca i64, align 8
-  store i64 %1, ptr %rate_limiter_pid, align 4
+  store i64 %1, ptr %rate_limiter_pid, align 8
   %processor_pid = alloca i64, align 8
-  store i64 %2, ptr %processor_pid, align 4
+  store i64 %2, ptr %processor_pid, align 8
   %writer_pid = alloca i64, align 8
-  store i64 %3, ptr %writer_pid, align 4
+  store i64 %3, ptr %writer_pid, align 8
   %__init_state = alloca %RegistryState, align 8
-  %pool1 = load i64, ptr %pool, align 4
-  %rate_limiter_pid2 = load i64, ptr %rate_limiter_pid, align 4
-  %processor_pid3 = load i64, ptr %processor_pid, align 4
-  %writer_pid4 = load i64, ptr %writer_pid, align 4
+  %pool1 = load i64, ptr %pool, align 8
+  %rate_limiter_pid2 = load i64, ptr %rate_limiter_pid, align 8
+  %processor_pid3 = load i64, ptr %processor_pid, align 8
+  %writer_pid4 = load i64, ptr %writer_pid, align 8
   %call = call %RegistryState @__service_pipelineregistry_init(i64 %pool1, i64 %rate_limiter_pid2, i64 %processor_pid3, i64 %writer_pid4)
   call void @mesh_reduction_check()
-  store %RegistryState %call, ptr %__init_state, align 4
-  %__init_state5 = load %RegistryState, ptr %__init_state, align 4
+  store %RegistryState %call, ptr %__init_state, align 8
+  %__init_state5 = load %RegistryState, ptr %__init_state, align 8
   %spawn_args = call ptr @mesh_gc_alloc_actor(i64 40, i64 8)
-  store %RegistryState %__init_state5, ptr %spawn_args, align 4
+  store %RegistryState %__init_state5, ptr %spawn_args, align 8
   %pid = call i64 @mesh_actor_spawn(ptr @__service_pipelineregistry_loop, ptr %spawn_args, i64 40, i8 1)
   ret i64 %pid
 }
@@ -13608,13 +13609,13 @@ entry:
   %__args_ptr = alloca ptr, align 8
   store ptr %0, ptr %__args_ptr, align 8
   %args_ptr_val = load ptr, ptr %__args_ptr, align 8
-  %init_state = load %RegistryState, ptr %args_ptr_val, align 4
+  %init_state = load %RegistryState, ptr %args_ptr_val, align 8
   %__state = alloca %RegistryState, align 8
-  store %RegistryState %init_state, ptr %__state, align 4
+  store %RegistryState %init_state, ptr %__state, align 8
   br label %loop
 
 loop:                                             ; preds = %default, %handler_6, %handler_5, %handler_4, %handler_3, %handler_2, %handler_1, %handler_0, %entry
-  %state = load %RegistryState, ptr %__state, align 4
+  %state = load %RegistryState, ptr %__state, align 8
   %msg_ptr = call ptr @mesh_actor_receive(i64 -1)
   %msg_is_null = icmp eq ptr %msg_ptr, null
   br i1 %msg_is_null, label %exit_loop, label %continue_loop
@@ -13624,9 +13625,9 @@ exit_loop:                                        ; preds = %loop
 
 continue_loop:                                    ; preds = %loop
   %data_ptr = getelementptr i8, ptr %msg_ptr, i64 16
-  %type_tag = load i64, ptr %data_ptr, align 4
+  %type_tag = load i64, ptr %data_ptr, align 8
   %caller_ptr = getelementptr i8, ptr %data_ptr, i64 8
-  %caller_pid = load i64, ptr %caller_ptr, align 4
+  %caller_pid = load i64, ptr %caller_ptr, align 8
   switch i64 %type_tag, label %default [
     i64 0, label %handler_0
     i64 1, label %handler_1
@@ -13645,11 +13646,11 @@ handler_0:                                        ; preds = %continue_loop
   %new_state = call i64 @mesh_tuple_first(ptr %handler_result)
   %reply = call i64 @mesh_tuple_second(ptr %handler_result)
   %reply_buf = alloca i64, align 8
-  store i64 %reply, ptr %reply_buf, align 4
+  store i64 %reply, ptr %reply_buf, align 8
   call void @mesh_service_reply(i64 %caller_pid, ptr %reply_buf, i64 8)
   %new_state_struct_ptr = inttoptr i64 %new_state to ptr
-  %new_state_struct = load %RegistryState, ptr %new_state_struct_ptr, align 4
-  store %RegistryState %new_state_struct, ptr %__state, align 4
+  %new_state_struct = load %RegistryState, ptr %new_state_struct_ptr, align 8
+  store %RegistryState %new_state_struct, ptr %__state, align 8
   br label %loop
 
 handler_1:                                        ; preds = %continue_loop
@@ -13657,11 +13658,11 @@ handler_1:                                        ; preds = %continue_loop
   %new_state2 = call i64 @mesh_tuple_first(ptr %handler_result1)
   %reply3 = call i64 @mesh_tuple_second(ptr %handler_result1)
   %reply_buf4 = alloca i64, align 8
-  store i64 %reply3, ptr %reply_buf4, align 4
+  store i64 %reply3, ptr %reply_buf4, align 8
   call void @mesh_service_reply(i64 %caller_pid, ptr %reply_buf4, i64 8)
   %new_state_struct_ptr5 = inttoptr i64 %new_state2 to ptr
-  %new_state_struct6 = load %RegistryState, ptr %new_state_struct_ptr5, align 4
-  store %RegistryState %new_state_struct6, ptr %__state, align 4
+  %new_state_struct6 = load %RegistryState, ptr %new_state_struct_ptr5, align 8
+  store %RegistryState %new_state_struct6, ptr %__state, align 8
   br label %loop
 
 handler_2:                                        ; preds = %continue_loop
@@ -13669,11 +13670,11 @@ handler_2:                                        ; preds = %continue_loop
   %new_state8 = call i64 @mesh_tuple_first(ptr %handler_result7)
   %reply9 = call i64 @mesh_tuple_second(ptr %handler_result7)
   %reply_buf10 = alloca i64, align 8
-  store i64 %reply9, ptr %reply_buf10, align 4
+  store i64 %reply9, ptr %reply_buf10, align 8
   call void @mesh_service_reply(i64 %caller_pid, ptr %reply_buf10, i64 8)
   %new_state_struct_ptr11 = inttoptr i64 %new_state8 to ptr
-  %new_state_struct12 = load %RegistryState, ptr %new_state_struct_ptr11, align 4
-  store %RegistryState %new_state_struct12, ptr %__state, align 4
+  %new_state_struct12 = load %RegistryState, ptr %new_state_struct_ptr11, align 8
+  store %RegistryState %new_state_struct12, ptr %__state, align 8
   br label %loop
 
 handler_3:                                        ; preds = %continue_loop
@@ -13681,11 +13682,11 @@ handler_3:                                        ; preds = %continue_loop
   %new_state14 = call i64 @mesh_tuple_first(ptr %handler_result13)
   %reply15 = call i64 @mesh_tuple_second(ptr %handler_result13)
   %reply_buf16 = alloca i64, align 8
-  store i64 %reply15, ptr %reply_buf16, align 4
+  store i64 %reply15, ptr %reply_buf16, align 8
   call void @mesh_service_reply(i64 %caller_pid, ptr %reply_buf16, i64 8)
   %new_state_struct_ptr17 = inttoptr i64 %new_state14 to ptr
-  %new_state_struct18 = load %RegistryState, ptr %new_state_struct_ptr17, align 4
-  store %RegistryState %new_state_struct18, ptr %__state, align 4
+  %new_state_struct18 = load %RegistryState, ptr %new_state_struct_ptr17, align 8
+  store %RegistryState %new_state_struct18, ptr %__state, align 8
   br label %loop
 
 handler_4:                                        ; preds = %continue_loop
@@ -13693,11 +13694,11 @@ handler_4:                                        ; preds = %continue_loop
   %new_state20 = call i64 @mesh_tuple_first(ptr %handler_result19)
   %reply21 = call i64 @mesh_tuple_second(ptr %handler_result19)
   %reply_buf22 = alloca i64, align 8
-  store i64 %reply21, ptr %reply_buf22, align 4
+  store i64 %reply21, ptr %reply_buf22, align 8
   call void @mesh_service_reply(i64 %caller_pid, ptr %reply_buf22, i64 8)
   %new_state_struct_ptr23 = inttoptr i64 %new_state20 to ptr
-  %new_state_struct24 = load %RegistryState, ptr %new_state_struct_ptr23, align 4
-  store %RegistryState %new_state_struct24, ptr %__state, align 4
+  %new_state_struct24 = load %RegistryState, ptr %new_state_struct_ptr23, align 8
+  store %RegistryState %new_state_struct24, ptr %__state, align 8
   br label %loop
 
 handler_5:                                        ; preds = %continue_loop
@@ -13705,11 +13706,11 @@ handler_5:                                        ; preds = %continue_loop
   %new_state26 = call i64 @mesh_tuple_first(ptr %handler_result25)
   %reply27 = call i64 @mesh_tuple_second(ptr %handler_result25)
   %reply_buf28 = alloca i64, align 8
-  store i64 %reply27, ptr %reply_buf28, align 4
+  store i64 %reply27, ptr %reply_buf28, align 8
   call void @mesh_service_reply(i64 %caller_pid, ptr %reply_buf28, i64 8)
   %new_state_struct_ptr29 = inttoptr i64 %new_state26 to ptr
-  %new_state_struct30 = load %RegistryState, ptr %new_state_struct_ptr29, align 4
-  store %RegistryState %new_state_struct30, ptr %__state, align 4
+  %new_state_struct30 = load %RegistryState, ptr %new_state_struct_ptr29, align 8
+  store %RegistryState %new_state_struct30, ptr %__state, align 8
   br label %loop
 
 handler_6:                                        ; preds = %continue_loop
@@ -13717,32 +13718,32 @@ handler_6:                                        ; preds = %continue_loop
   %new_state32 = call i64 @mesh_tuple_first(ptr %handler_result31)
   %reply33 = call i64 @mesh_tuple_second(ptr %handler_result31)
   %reply_buf34 = alloca i64, align 8
-  store i64 %reply33, ptr %reply_buf34, align 4
+  store i64 %reply33, ptr %reply_buf34, align 8
   call void @mesh_service_reply(i64 %caller_pid, ptr %reply_buf34, i64 8)
   %new_state_struct_ptr35 = inttoptr i64 %new_state32 to ptr
-  %new_state_struct36 = load %RegistryState, ptr %new_state_struct_ptr35, align 4
-  store %RegistryState %new_state_struct36, ptr %__state, align 4
+  %new_state_struct36 = load %RegistryState, ptr %new_state_struct_ptr35, align 8
+  store %RegistryState %new_state_struct36, ptr %__state, align 8
   br label %loop
 }
 
 define {} @__actor_stream_drain_ticker_body(i64 %0, i64 %1) {
 entry:
   %stream_mgr_pid = alloca i64, align 8
-  store i64 %0, ptr %stream_mgr_pid, align 4
+  store i64 %0, ptr %stream_mgr_pid, align 8
   %interval = alloca i64, align 8
-  store i64 %1, ptr %interval, align 4
+  store i64 %1, ptr %interval, align 8
   br label %tce_loop
 
 tce_loop:                                         ; preds = %tce_loop, %entry
-  %interval1 = load i64, ptr %interval, align 4
+  %interval1 = load i64, ptr %interval, align 8
   call void @mesh_timer_sleep(i64 %interval1)
-  %stream_mgr_pid2 = load i64, ptr %stream_mgr_pid, align 4
+  %stream_mgr_pid2 = load i64, ptr %stream_mgr_pid, align 8
   %call = call {} @__service_streammanager_cast_drain_buffers(i64 %stream_mgr_pid2)
   call void @mesh_reduction_check()
-  %stream_mgr_pid3 = load i64, ptr %stream_mgr_pid, align 4
-  %interval4 = load i64, ptr %interval, align 4
-  store i64 %stream_mgr_pid3, ptr %stream_mgr_pid, align 4
-  store i64 %interval4, ptr %interval, align 4
+  %stream_mgr_pid3 = load i64, ptr %stream_mgr_pid, align 8
+  %interval4 = load i64, ptr %interval, align 8
+  store i64 %stream_mgr_pid3, ptr %stream_mgr_pid, align 8
+  store i64 %interval4, ptr %interval, align 8
   call void @mesh_reduction_check()
   br label %tce_loop
 }
@@ -13753,9 +13754,9 @@ entry:
   store ptr %0, ptr %__args_ptr, align 8
   %args_ptr_val = load ptr, ptr %__args_ptr, align 8
   %arg_ptr_0 = getelementptr [2 x i64], ptr %args_ptr_val, i32 0, i32 0
-  %arg_0 = load i64, ptr %arg_ptr_0, align 4
+  %arg_0 = load i64, ptr %arg_ptr_0, align 8
   %arg_ptr_1 = getelementptr [2 x i64], ptr %args_ptr_val, i32 0, i32 1
-  %arg_1 = load i64, ptr %arg_ptr_1, align 4
+  %arg_1 = load i64, ptr %arg_ptr_1, align 8
   %body_call = call {} @__actor_stream_drain_ticker_body(i64 %arg_0, i64 %arg_1)
   ret {} zeroinitializer
 }
@@ -13765,7 +13766,7 @@ entry:
   %_ = alloca i64, align 8
   %reg_pid = alloca i64, align 8
   %pool = alloca i64, align 8
-  store i64 %0, ptr %pool, align 4
+  store i64 %0, ptr %pool, align 8
   br label %tce_loop
 
 tce_loop:                                         ; preds = %tce_loop, %entry
@@ -13774,14 +13775,14 @@ tce_loop:                                         ; preds = %tce_loop, %entry
   %call = call i64 @mesh_process_whereis(ptr %str)
   %i64_to_ptr = inttoptr i64 %call to ptr
   store ptr %i64_to_ptr, ptr %reg_pid, align 8
-  %reg_pid1 = load i64, ptr %reg_pid, align 4
+  %reg_pid1 = load i64, ptr %reg_pid, align 8
   %call2 = call i64 @__service_pipelineregistry_call_get_pool(i64 %reg_pid1)
   call void @mesh_reduction_check()
-  store i64 %call2, ptr %_, align 4
+  store i64 %call2, ptr %_, align 8
   %str3 = call ptr @mesh_string_new(ptr @.str.425, i64 46)
   call void @mesh_println(ptr %str3)
-  %pool4 = load i64, ptr %pool, align 4
-  store i64 %pool4, ptr %pool, align 4
+  %pool4 = load i64, ptr %pool, align 8
+  store i64 %pool4, ptr %pool, align 8
   call void @mesh_reduction_check()
   br label %tce_loop
 }
@@ -13792,7 +13793,7 @@ entry:
   store ptr %0, ptr %__args_ptr, align 8
   %args_ptr_val = load ptr, ptr %__args_ptr, align 8
   %arg_ptr_0 = getelementptr [1 x i64], ptr %args_ptr_val, i32 0, i32 0
-  %arg_0 = load i64, ptr %arg_ptr_0, align 4
+  %arg_0 = load i64, ptr %arg_ptr_0, align 8
   %body_call = call {} @__actor_health_checker_body(i64 %arg_0)
   ret {} zeroinitializer
 }
@@ -13800,8 +13801,8 @@ entry:
 define i64 @Ingestion_Pipeline__log_spike_result(i64 %0) {
 entry:
   %n = alloca i64, align 8
-  store i64 %0, ptr %n, align 4
-  %n1 = load i64, ptr %n, align 4
+  store i64 %0, ptr %n, align 8
+  %n1 = load i64, ptr %n, align 8
   %gt = icmp sgt i64 %n1, 0
   %if_result = alloca i64, align 8
   br i1 %gt, label %then, label %else
@@ -13809,22 +13810,22 @@ entry:
 then:                                             ; preds = %entry
   %_ = alloca {}, align 8
   %str = call ptr @mesh_string_new(ptr @.str.426, i64 34)
-  %n2 = load i64, ptr %n, align 4
+  %n2 = load i64, ptr %n, align 8
   %call = call ptr @mesh_int_to_string(i64 %n2)
   %concat = call ptr @mesh_string_concat(ptr %str, ptr %call)
   %str3 = call ptr @mesh_string_new(ptr @.str.427, i64 16)
   %concat4 = call ptr @mesh_string_concat(ptr %concat, ptr %str3)
   call void @mesh_println(ptr %concat4)
   store {} zeroinitializer, ptr %_, align 1
-  store i64 0, ptr %if_result, align 4
+  store i64 0, ptr %if_result, align 8
   br label %if_merge
 
 else:                                             ; preds = %entry
-  store i64 0, ptr %if_result, align 4
+  store i64 0, ptr %if_result, align 8
   br label %if_merge
 
 if_merge:                                         ; preds = %else, %then
-  %if_val = load i64, ptr %if_result, align 4
+  %if_val = load i64, ptr %if_result, align 8
   ret i64 %if_val
 }
 
@@ -13849,12 +13850,12 @@ entry:
   %scrutinee = alloca { i8, ptr }, align 8
   %result = alloca { i8, ptr }, align 8
   %pool = alloca i64, align 8
-  store i64 %0, ptr %pool, align 4
+  store i64 %0, ptr %pool, align 8
   br label %tce_loop
 
 tce_loop:                                         ; preds = %match_merge, %entry
   call void @mesh_timer_sleep(i64 300000)
-  %pool1 = load i64, ptr %pool, align 4
+  %pool1 = load i64, ptr %pool, align 8
   %call = call { i8, ptr } @check_volume_spikes(i64 %pool1)
   call void @mesh_reduction_check()
   store { i8, ptr } %call, ptr %result, align 8
@@ -13868,9 +13869,9 @@ tce_loop:                                         ; preds = %match_merge, %entry
   ]
 
 match_merge:                                      ; preds = %case_Err, %case_Ok
-  %match_val = load i64, ptr %match_result, align 4
-  %pool9 = load i64, ptr %pool, align 4
-  store i64 %pool9, ptr %pool, align 4
+  %match_val = load i64, ptr %match_result, align 8
+  %pool9 = load i64, ptr %pool, align 8
+  store i64 %pool9, ptr %pool, align 8
   call void @mesh_reduction_check()
   br label %tce_loop
 
@@ -13882,10 +13883,10 @@ case_Ok:                                          ; preds = %tce_loop
   %variant_field = getelementptr inbounds nuw { i8, ptr }, ptr %scrutinee, i32 0, i32 1
   %path_val = load ptr, ptr %variant_field, align 8
   store ptr %path_val, ptr %n, align 8
-  %n3 = load i64, ptr %n, align 4
+  %n3 = load i64, ptr %n, align 8
   %call4 = call i64 @Ingestion_Pipeline__log_spike_result(i64 %n3)
   call void @mesh_reduction_check()
-  store i64 %call4, ptr %match_result, align 4
+  store i64 %call4, ptr %match_result, align 8
   br label %match_merge
 
 case_Err:                                         ; preds = %tce_loop
@@ -13895,7 +13896,7 @@ case_Err:                                         ; preds = %tce_loop
   %e7 = load ptr, ptr %e, align 8
   %call8 = call i64 @Ingestion_Pipeline__log_spike_error(ptr %e7)
   call void @mesh_reduction_check()
-  store i64 %call8, ptr %match_result, align 4
+  store i64 %call8, ptr %match_result, align 8
   br label %match_merge
 }
 
@@ -13905,7 +13906,7 @@ entry:
   store ptr %0, ptr %__args_ptr, align 8
   %args_ptr_val = load ptr, ptr %__args_ptr, align 8
   %arg_ptr_0 = getelementptr [1 x i64], ptr %args_ptr_val, i32 0, i32 0
-  %arg_0 = load i64, ptr %arg_ptr_0, align 4
+  %arg_0 = load i64, ptr %arg_ptr_0, align 8
   %body_call = call {} @__actor_spike_checker_body(i64 %arg_0)
   ret {} zeroinitializer
 }
@@ -13950,7 +13951,7 @@ entry:
   %room19 = load ptr, ptr %room, align 8
   %msg20 = load ptr, ptr %msg, align 8
   %call = call i64 @mesh_ws_broadcast(ptr %room19, ptr %msg20)
-  store i64 %call, ptr %_, align 4
+  store i64 %call, ptr %_, align 8
   ret i64 0
 }
 
@@ -13958,7 +13959,7 @@ define i64 @Ingestion_Pipeline__fire_and_broadcast(i64 %0, ptr %1, ptr %2, ptr %
 entry:
   %alert_id = alloca ptr, align 8
   %pool = alloca i64, align 8
-  store i64 %0, ptr %pool, align 4
+  store i64 %0, ptr %pool, align 8
   %rule_id = alloca ptr, align 8
   store ptr %1, ptr %rule_id, align 8
   %project_id = alloca ptr, align 8
@@ -13970,7 +13971,7 @@ entry:
   %message = alloca ptr, align 8
   store ptr %5, ptr %message, align 8
   %result = alloca { i8, ptr }, align 8
-  %pool1 = load i64, ptr %pool, align 4
+  %pool1 = load i64, ptr %pool, align 8
   %rule_id2 = load ptr, ptr %rule_id, align 8
   %project_id3 = load ptr, ptr %project_id, align 8
   %message4 = load ptr, ptr %message, align 8
@@ -13991,7 +13992,7 @@ entry:
   ]
 
 match_merge:                                      ; preds = %case_Err, %case_Ok
-  %match_val = load i64, ptr %match_result, align 4
+  %match_val = load i64, ptr %match_result, align 8
   ret i64 %match_val
 
 switch_default:                                   ; preds = %entry
@@ -14009,11 +14010,11 @@ case_Ok:                                          ; preds = %entry
   %message12 = load ptr, ptr %message, align 8
   %call13 = call i64 @Ingestion_Pipeline__broadcast_alert(ptr %project_id8, ptr %alert_id9, ptr %rule_name10, ptr %condition_type11, ptr %message12)
   call void @mesh_reduction_check()
-  store i64 %call13, ptr %match_result, align 4
+  store i64 %call13, ptr %match_result, align 8
   br label %match_merge
 
 case_Err:                                         ; preds = %entry
-  store i64 0, ptr %match_result, align 4
+  store i64 0, ptr %match_result, align 8
   br label %match_merge
 }
 
@@ -14022,23 +14023,23 @@ entry:
   %__try_err_1 = alloca ptr, align 8
   %__try_val_1 = alloca ptr, align 8
   %pool = alloca i64, align 8
-  store i64 %0, ptr %pool, align 4
+  store i64 %0, ptr %pool, align 8
   %condition_json = alloca ptr, align 8
   store ptr %1, ptr %condition_json, align 8
   %field = alloca ptr, align 8
   store ptr %2, ptr %field, align 8
   %rows = alloca ptr, align 8
-  %pool1 = load i64, ptr %pool, align 4
+  %pool1 = load i64, ptr %pool, align 8
   %str = call ptr @mesh_string_new(ptr @.str.439, i64 42)
   %list_arr = alloca [2 x i64], align 8
   %condition_json2 = load ptr, ptr %condition_json, align 8
   %ptr_to_i64 = ptrtoint ptr %condition_json2 to i64
   %elem_ptr = getelementptr [2 x i64], ptr %list_arr, i32 0, i32 0
-  store i64 %ptr_to_i64, ptr %elem_ptr, align 4
+  store i64 %ptr_to_i64, ptr %elem_ptr, align 8
   %field3 = load ptr, ptr %field, align 8
   %ptr_to_i644 = ptrtoint ptr %field3 to i64
   %elem_ptr5 = getelementptr [2 x i64], ptr %list_arr, i32 0, i32 1
-  store i64 %ptr_to_i644, ptr %elem_ptr5, align 4
+  store i64 %ptr_to_i644, ptr %elem_ptr5, align 8
   %list = call ptr @mesh_list_from_array(ptr %list_arr, i64 2)
   %call = call ptr @mesh_pool_query(i64 %pool1, ptr %str, ptr %list)
   %match_result = alloca ptr, align 8
@@ -14120,7 +14121,7 @@ if_merge:                                         ; preds = %else, %then
 define i64 @Ingestion_Pipeline__fire_threshold_if_needed(i64 %0, ptr %1, ptr %2, ptr %3, i1 %4, ptr %5, ptr %6) {
 entry:
   %pool = alloca i64, align 8
-  store i64 %0, ptr %pool, align 4
+  store i64 %0, ptr %pool, align 8
   %rule_id = alloca ptr, align 8
   store ptr %1, ptr %rule_id, align 8
   %project_id = alloca ptr, align 8
@@ -14149,7 +14150,7 @@ then:                                             ; preds = %entry
   %str7 = call ptr @mesh_string_new(ptr @.str.446, i64 8)
   %concat8 = call ptr @mesh_string_concat(ptr %concat6, ptr %str7)
   store ptr %concat8, ptr %message, align 8
-  %pool9 = load i64, ptr %pool, align 4
+  %pool9 = load i64, ptr %pool, align 8
   %rule_id10 = load ptr, ptr %rule_id, align 8
   %project_id11 = load ptr, ptr %project_id, align 8
   %rule_name12 = load ptr, ptr %rule_name, align 8
@@ -14157,15 +14158,15 @@ then:                                             ; preds = %entry
   %message14 = load ptr, ptr %message, align 8
   %call = call i64 @Ingestion_Pipeline__fire_and_broadcast(i64 %pool9, ptr %rule_id10, ptr %project_id11, ptr %rule_name12, ptr %str13, ptr %message14)
   call void @mesh_reduction_check()
-  store i64 %call, ptr %if_result, align 4
+  store i64 %call, ptr %if_result, align 8
   br label %if_merge
 
 else:                                             ; preds = %entry
-  store i64 0, ptr %if_result, align 4
+  store i64 0, ptr %if_result, align 8
   br label %if_merge
 
 if_merge:                                         ; preds = %else, %then
-  %if_val = load i64, ptr %if_result, align 4
+  %if_val = load i64, ptr %if_result, align 8
   ret i64 %if_val
 }
 
@@ -14173,7 +14174,7 @@ define i64 @Ingestion_Pipeline__check_and_fire_threshold(i64 %0, ptr %1, ptr %2,
 entry:
   %should_fire = alloca i1, align 1
   %pool = alloca i64, align 8
-  store i64 %0, ptr %pool, align 4
+  store i64 %0, ptr %pool, align 8
   %rule_id = alloca ptr, align 8
   store ptr %1, ptr %rule_id, align 8
   %project_id = alloca ptr, align 8
@@ -14187,7 +14188,7 @@ entry:
   %window_str = alloca ptr, align 8
   store ptr %6, ptr %window_str, align 8
   %should_fire_result = alloca { i8, ptr }, align 8
-  %pool1 = load i64, ptr %pool, align 4
+  %pool1 = load i64, ptr %pool, align 8
   %rule_id2 = load ptr, ptr %rule_id, align 8
   %project_id3 = load ptr, ptr %project_id, align 8
   %threshold_str4 = load ptr, ptr %threshold_str, align 8
@@ -14208,7 +14209,7 @@ entry:
   ]
 
 match_merge:                                      ; preds = %case_Err, %case_Ok
-  %match_val = load i64, ptr %match_result, align 4
+  %match_val = load i64, ptr %match_result, align 8
   ret i64 %match_val
 
 switch_default:                                   ; preds = %entry
@@ -14219,7 +14220,7 @@ case_Ok:                                          ; preds = %entry
   %variant_field = getelementptr inbounds nuw { i8, ptr }, ptr %scrutinee, i32 0, i32 1
   %path_val = load ptr, ptr %variant_field, align 8
   store ptr %path_val, ptr %should_fire, align 8
-  %pool8 = load i64, ptr %pool, align 4
+  %pool8 = load i64, ptr %pool, align 8
   %rule_id9 = load ptr, ptr %rule_id, align 8
   %project_id10 = load ptr, ptr %project_id, align 8
   %rule_name11 = load ptr, ptr %rule_name, align 8
@@ -14228,11 +14229,11 @@ case_Ok:                                          ; preds = %entry
   %window_str14 = load ptr, ptr %window_str, align 8
   %call15 = call i64 @Ingestion_Pipeline__fire_threshold_if_needed(i64 %pool8, ptr %rule_id9, ptr %project_id10, ptr %rule_name11, i1 %should_fire12, ptr %threshold_str13, ptr %window_str14)
   call void @mesh_reduction_check()
-  store i64 %call15, ptr %match_result, align 4
+  store i64 %call15, ptr %match_result, align 8
   br label %match_merge
 
 case_Err:                                         ; preds = %entry
-  store i64 0, ptr %match_result, align 4
+  store i64 0, ptr %match_result, align 8
   br label %match_merge
 }
 
@@ -14240,7 +14241,7 @@ define i64 @Ingestion_Pipeline__evaluate_threshold_with_window(i64 %0, ptr %1, p
 entry:
   %window_str = alloca ptr, align 8
   %pool = alloca i64, align 8
-  store i64 %0, ptr %pool, align 4
+  store i64 %0, ptr %pool, align 8
   %rule_id = alloca ptr, align 8
   store ptr %1, ptr %rule_id, align 8
   %project_id = alloca ptr, align 8
@@ -14254,7 +14255,7 @@ entry:
   %threshold_str = alloca ptr, align 8
   store ptr %6, ptr %threshold_str, align 8
   %window_result = alloca { i8, ptr }, align 8
-  %pool1 = load i64, ptr %pool, align 4
+  %pool1 = load i64, ptr %pool, align 8
   %condition_json2 = load ptr, ptr %condition_json, align 8
   %str = call ptr @mesh_string_new(ptr @.str.450, i64 14)
   %call = call { i8, ptr } @Ingestion_Pipeline__extract_condition_field(i64 %pool1, ptr %condition_json2, ptr %str)
@@ -14272,7 +14273,7 @@ entry:
   ]
 
 match_merge:                                      ; preds = %case_Err, %case_Ok
-  %match_val = load i64, ptr %match_result, align 4
+  %match_val = load i64, ptr %match_result, align 8
   ret i64 %match_val
 
 switch_default:                                   ; preds = %entry
@@ -14283,7 +14284,7 @@ case_Ok:                                          ; preds = %entry
   %variant_field = getelementptr inbounds nuw { i8, ptr }, ptr %scrutinee, i32 0, i32 1
   %path_val = load ptr, ptr %variant_field, align 8
   store ptr %path_val, ptr %window_str, align 8
-  %pool4 = load i64, ptr %pool, align 4
+  %pool4 = load i64, ptr %pool, align 8
   %rule_id5 = load ptr, ptr %rule_id, align 8
   %project_id6 = load ptr, ptr %project_id, align 8
   %rule_name7 = load ptr, ptr %rule_name, align 8
@@ -14292,11 +14293,11 @@ case_Ok:                                          ; preds = %entry
   %window_str10 = load ptr, ptr %window_str, align 8
   %call11 = call i64 @Ingestion_Pipeline__check_and_fire_threshold(i64 %pool4, ptr %rule_id5, ptr %project_id6, ptr %rule_name7, ptr %cooldown_str8, ptr %threshold_str9, ptr %window_str10)
   call void @mesh_reduction_check()
-  store i64 %call11, ptr %match_result, align 4
+  store i64 %call11, ptr %match_result, align 8
   br label %match_merge
 
 case_Err:                                         ; preds = %entry
-  store i64 0, ptr %match_result, align 4
+  store i64 0, ptr %match_result, align 8
   br label %match_merge
 }
 
@@ -14304,7 +14305,7 @@ define i64 @Ingestion_Pipeline__evaluate_single_threshold(i64 %0, ptr %1, ptr %2
 entry:
   %threshold_str = alloca ptr, align 8
   %pool = alloca i64, align 8
-  store i64 %0, ptr %pool, align 4
+  store i64 %0, ptr %pool, align 8
   %rule_id = alloca ptr, align 8
   store ptr %1, ptr %rule_id, align 8
   %project_id = alloca ptr, align 8
@@ -14316,7 +14317,7 @@ entry:
   %cooldown_str = alloca ptr, align 8
   store ptr %5, ptr %cooldown_str, align 8
   %threshold_result = alloca { i8, ptr }, align 8
-  %pool1 = load i64, ptr %pool, align 4
+  %pool1 = load i64, ptr %pool, align 8
   %condition_json2 = load ptr, ptr %condition_json, align 8
   %str = call ptr @mesh_string_new(ptr @.str.453, i64 9)
   %call = call { i8, ptr } @Ingestion_Pipeline__extract_condition_field(i64 %pool1, ptr %condition_json2, ptr %str)
@@ -14334,7 +14335,7 @@ entry:
   ]
 
 match_merge:                                      ; preds = %case_Err, %case_Ok
-  %match_val = load i64, ptr %match_result, align 4
+  %match_val = load i64, ptr %match_result, align 8
   ret i64 %match_val
 
 switch_default:                                   ; preds = %entry
@@ -14345,7 +14346,7 @@ case_Ok:                                          ; preds = %entry
   %variant_field = getelementptr inbounds nuw { i8, ptr }, ptr %scrutinee, i32 0, i32 1
   %path_val = load ptr, ptr %variant_field, align 8
   store ptr %path_val, ptr %threshold_str, align 8
-  %pool4 = load i64, ptr %pool, align 4
+  %pool4 = load i64, ptr %pool, align 8
   %rule_id5 = load ptr, ptr %rule_id, align 8
   %project_id6 = load ptr, ptr %project_id, align 8
   %rule_name7 = load ptr, ptr %rule_name, align 8
@@ -14354,11 +14355,11 @@ case_Ok:                                          ; preds = %entry
   %threshold_str10 = load ptr, ptr %threshold_str, align 8
   %call11 = call i64 @Ingestion_Pipeline__evaluate_threshold_with_window(i64 %pool4, ptr %rule_id5, ptr %project_id6, ptr %rule_name7, ptr %condition_json8, ptr %cooldown_str9, ptr %threshold_str10)
   call void @mesh_reduction_check()
-  store i64 %call11, ptr %match_result, align 4
+  store i64 %call11, ptr %match_result, align 8
   br label %match_merge
 
 case_Err:                                         ; preds = %entry
-  store i64 0, ptr %match_result, align 4
+  store i64 0, ptr %match_result, align 8
   br label %match_merge
 }
 
@@ -14373,26 +14374,26 @@ entry:
   %rule = alloca {}, align 8
   %if_result = alloca { i8, ptr }, align 8
   %pool = alloca i64, align 8
-  store i64 %0, ptr %pool, align 4
+  store i64 %0, ptr %pool, align 8
   %rules = alloca ptr, align 8
   store ptr %1, ptr %rules, align 8
   %i = alloca i64, align 8
-  store i64 %2, ptr %i, align 4
+  store i64 %2, ptr %i, align 8
   %total = alloca i64, align 8
-  store i64 %3, ptr %total, align 4
+  store i64 %3, ptr %total, align 8
   %fired = alloca i64, align 8
-  store i64 %4, ptr %fired, align 4
+  store i64 %4, ptr %fired, align 8
   br label %tce_loop
 
 tce_loop:                                         ; preds = %then, %entry
-  %i1 = load i64, ptr %i, align 4
-  %total2 = load i64, ptr %total, align 4
+  %i1 = load i64, ptr %i, align 8
+  %total2 = load i64, ptr %total, align 8
   %lt = icmp slt i64 %i1, %total2
   br i1 %lt, label %then, label %else
 
 then:                                             ; preds = %tce_loop
   %rules3 = load ptr, ptr %rules, align 8
-  %i4 = load i64, ptr %i, align 4
+  %i4 = load i64, ptr %i, align 8
   %call = call i64 @mesh_list_get(ptr %rules3, i64 %i4)
   store {} zeroinitializer, ptr %rule, align 1
   %rule5 = load {}, ptr %rule, align 1
@@ -14425,7 +14426,7 @@ then:                                             ; preds = %tce_loop
   %ptr_to_i6426 = ptrtoint ptr %str25 to i64
   %call27 = call i64 @mesh_map_get(ptr %call24, i64 %ptr_to_i6426)
   store {} zeroinitializer, ptr %cooldown_str, align 1
-  %pool28 = load i64, ptr %pool, align 4
+  %pool28 = load i64, ptr %pool, align 8
   %rule_id29 = load {}, ptr %rule_id, align 1
   %project_id30 = load {}, ptr %project_id, align 1
   %rule_name31 = load {}, ptr %rule_name, align 1
@@ -14433,18 +14434,18 @@ then:                                             ; preds = %tce_loop
   %cooldown_str33 = load {}, ptr %cooldown_str, align 1
   %call34 = call i64 @Ingestion_Pipeline__evaluate_single_threshold(i64 %pool28, ptr null, ptr null, ptr null, ptr null, ptr null)
   call void @mesh_reduction_check()
-  store i64 %call34, ptr %_, align 4
-  %pool35 = load i64, ptr %pool, align 4
+  store i64 %call34, ptr %_, align 8
+  %pool35 = load i64, ptr %pool, align 8
   %rules36 = load ptr, ptr %rules, align 8
-  %i37 = load i64, ptr %i, align 4
+  %i37 = load i64, ptr %i, align 8
   %add = add i64 %i37, 1
-  %total38 = load i64, ptr %total, align 4
-  %fired39 = load i64, ptr %fired, align 4
-  store i64 %pool35, ptr %pool, align 4
+  %total38 = load i64, ptr %total, align 8
+  %fired39 = load i64, ptr %fired, align 8
+  store i64 %pool35, ptr %pool, align 8
   store ptr %rules36, ptr %rules, align 8
-  store i64 %add, ptr %i, align 4
-  store i64 %total38, ptr %total, align 4
-  store i64 %fired39, ptr %fired, align 4
+  store i64 %add, ptr %i, align 8
+  store i64 %total38, ptr %total, align 8
+  store i64 %fired39, ptr %fired, align 8
   call void @mesh_reduction_check()
   br label %tce_loop
 
@@ -14452,9 +14453,9 @@ else:                                             ; preds = %tce_loop
   %variant = alloca { i8, ptr }, align 8
   %tag_ptr = getelementptr inbounds nuw { i8, ptr }, ptr %variant, i32 0, i32 0
   store i8 0, ptr %tag_ptr, align 1
-  %fired40 = load i64, ptr %fired, align 4
+  %fired40 = load i64, ptr %fired, align 8
   %vfield_ptr = getelementptr inbounds nuw { i8, ptr }, ptr %variant, i32 0, i32 1
-  store i64 %fired40, ptr %vfield_ptr, align 4
+  store i64 %fired40, ptr %vfield_ptr, align 8
   %variant_val = load { i8, ptr }, ptr %variant, align 8
   store { i8, ptr } %variant_val, ptr %if_result, align 8
   br label %if_merge
@@ -14469,9 +14470,9 @@ entry:
   %__try_err_2 = alloca ptr, align 8
   %__try_val_2 = alloca ptr, align 8
   %pool = alloca i64, align 8
-  store i64 %0, ptr %pool, align 4
+  store i64 %0, ptr %pool, align 8
   %rules = alloca ptr, align 8
-  %pool1 = load i64, ptr %pool, align 4
+  %pool1 = load i64, ptr %pool, align 8
   %call = call { i8, ptr } @get_threshold_rules(i64 %pool1)
   call void @mesh_reduction_check()
   %scrutinee = alloca { i8, ptr }, align 8
@@ -14487,7 +14488,7 @@ entry:
 match_merge:                                      ; preds = %case_Ok
   %match_val = load ptr, ptr %match_result, align 8
   store ptr %match_val, ptr %rules, align 8
-  %pool7 = load i64, ptr %pool, align 4
+  %pool7 = load i64, ptr %pool, align 8
   %rules8 = load ptr, ptr %rules, align 8
   %rules9 = load ptr, ptr %rules, align 8
   %call10 = call i64 @mesh_list_length(ptr %rules9)
@@ -14524,10 +14525,10 @@ case_Err:                                         ; preds = %entry
 define i64 @Ingestion_Pipeline__log_eval_result(i64 %0) {
 entry:
   %n = alloca i64, align 8
-  store i64 %0, ptr %n, align 4
+  store i64 %0, ptr %n, align 8
   %_ = alloca {}, align 8
   %str = call ptr @mesh_string_new(ptr @.str.463, i64 41)
-  %n1 = load i64, ptr %n, align 4
+  %n1 = load i64, ptr %n, align 8
   %call = call ptr @mesh_int_to_string(i64 %n1)
   %concat = call ptr @mesh_string_concat(ptr %str, ptr %call)
   %str2 = call ptr @mesh_string_new(ptr @.str.464, i64 6)
@@ -14558,12 +14559,12 @@ entry:
   %scrutinee = alloca { i8, ptr }, align 8
   %result = alloca { i8, ptr }, align 8
   %pool = alloca i64, align 8
-  store i64 %0, ptr %pool, align 4
+  store i64 %0, ptr %pool, align 8
   br label %tce_loop
 
 tce_loop:                                         ; preds = %match_merge, %entry
   call void @mesh_timer_sleep(i64 30000)
-  %pool1 = load i64, ptr %pool, align 4
+  %pool1 = load i64, ptr %pool, align 8
   %call = call { i8, ptr } @Ingestion_Pipeline__evaluate_all_threshold_rules(i64 %pool1)
   call void @mesh_reduction_check()
   store { i8, ptr } %call, ptr %result, align 8
@@ -14577,9 +14578,9 @@ tce_loop:                                         ; preds = %match_merge, %entry
   ]
 
 match_merge:                                      ; preds = %case_Err, %case_Ok
-  %match_val = load i64, ptr %match_result, align 4
-  %pool9 = load i64, ptr %pool, align 4
-  store i64 %pool9, ptr %pool, align 4
+  %match_val = load i64, ptr %match_result, align 8
+  %pool9 = load i64, ptr %pool, align 8
+  store i64 %pool9, ptr %pool, align 8
   call void @mesh_reduction_check()
   br label %tce_loop
 
@@ -14591,10 +14592,10 @@ case_Ok:                                          ; preds = %tce_loop
   %variant_field = getelementptr inbounds nuw { i8, ptr }, ptr %scrutinee, i32 0, i32 1
   %path_val = load ptr, ptr %variant_field, align 8
   store ptr %path_val, ptr %n, align 8
-  %n3 = load i64, ptr %n, align 4
+  %n3 = load i64, ptr %n, align 8
   %call4 = call i64 @Ingestion_Pipeline__log_eval_result(i64 %n3)
   call void @mesh_reduction_check()
-  store i64 %call4, ptr %match_result, align 4
+  store i64 %call4, ptr %match_result, align 8
   br label %match_merge
 
 case_Err:                                         ; preds = %tce_loop
@@ -14604,7 +14605,7 @@ case_Err:                                         ; preds = %tce_loop
   %e7 = load ptr, ptr %e, align 8
   %call8 = call i64 @Ingestion_Pipeline__log_eval_error(ptr %e7)
   call void @mesh_reduction_check()
-  store i64 %call8, ptr %match_result, align 4
+  store i64 %call8, ptr %match_result, align 8
   br label %match_merge
 }
 
@@ -14614,7 +14615,7 @@ entry:
   store ptr %0, ptr %__args_ptr, align 8
   %args_ptr_val = load ptr, ptr %__args_ptr, align 8
   %arg_ptr_0 = getelementptr [1 x i64], ptr %args_ptr_val, i32 0, i32 0
-  %arg_0 = load i64, ptr %arg_ptr_0, align 4
+  %arg_0 = load i64, ptr %arg_ptr_0, align 8
   %body_call = call {} @__actor_alert_evaluator_body(i64 %arg_0)
   ret {} zeroinitializer
 }
@@ -14622,16 +14623,16 @@ entry:
 define {} @Ingestion_Pipeline__log_load_status(i64 %0, i64 %1) {
 entry:
   %event_count = alloca i64, align 8
-  store i64 %0, ptr %event_count, align 4
+  store i64 %0, ptr %event_count, align 8
   %node_count = alloca i64, align 8
-  store i64 %1, ptr %node_count, align 4
+  store i64 %1, ptr %node_count, align 8
   %str = call ptr @mesh_string_new(ptr @.str.468, i64 23)
-  %event_count1 = load i64, ptr %event_count, align 4
+  %event_count1 = load i64, ptr %event_count, align 8
   %call = call ptr @mesh_int_to_string(i64 %event_count1)
   %concat = call ptr @mesh_string_concat(ptr %str, ptr %call)
   %str2 = call ptr @mesh_string_new(ptr @.str.469, i64 12)
   %concat3 = call ptr @mesh_string_concat(ptr %concat, ptr %str2)
-  %node_count4 = load i64, ptr %node_count, align 4
+  %node_count4 = load i64, ptr %node_count, align 8
   %call5 = call ptr @mesh_int_to_string(i64 %node_count4)
   %concat6 = call ptr @mesh_string_concat(ptr %concat3, ptr %call5)
   %str7 = call ptr @mesh_string_new(ptr @.str.470, i64 6)
@@ -14648,15 +14649,15 @@ entry:
   %i64_to_ptr = inttoptr i64 %call to ptr
   store ptr %i64_to_ptr, ptr %reg_pid, align 8
   %pool = alloca i64, align 8
-  %reg_pid1 = load i64, ptr %reg_pid, align 4
+  %reg_pid1 = load i64, ptr %reg_pid, align 8
   %call2 = call i64 @__service_pipelineregistry_call_get_pool(i64 %reg_pid1)
   call void @mesh_reduction_check()
-  store i64 %call2, ptr %pool, align 4
+  store i64 %call2, ptr %pool, align 8
   %_ = alloca i64, align 8
-  %pool3 = load i64, ptr %pool, align 4
+  %pool3 = load i64, ptr %pool, align 8
   %call4 = call i64 @__service_eventprocessor_start(i64 %pool3)
   call void @mesh_reduction_check()
-  store i64 %call4, ptr %_, align 4
+  store i64 %call4, ptr %_, align 8
   %str5 = call ptr @mesh_string_new(ptr @.str.472, i64 46)
   call void @mesh_println(ptr %str5)
   ret i64 0
@@ -14678,12 +14679,12 @@ entry:
   store {} zeroinitializer, ptr %_, align 1
   %_3 = alloca {}, align 8
   %target4 = load {}, ptr %target, align 1
-  %target_as_i64 = load i64, ptr %target, align 4
+  %target_as_i64 = load i64, ptr %target, align 8
   %str_ptr = inttoptr i64 %target_as_i64 to ptr
-  %str_len = load i64, ptr %str_ptr, align 4
+  %str_len = load i64, ptr %str_ptr, align 8
   %str_data = getelementptr i8, ptr %str_ptr, i64 8
   %remote_pid = call i64 @mesh_node_spawn(ptr %str_data, i64 %str_len, ptr @spawn_fn_name, i64 42, ptr null, i64 0, i8 0)
-  store i64 %remote_pid, ptr %_3, align 4
+  store i64 %remote_pid, ptr %_3, align 8
   %_5 = alloca {}, align 8
   %str6 = call ptr @mesh_string_new(ptr @.str.474, i64 50)
   %target7 = load {}, ptr %target, align 1
@@ -14700,11 +14701,11 @@ entry:
   %result = alloca i64, align 8
   %node_name1 = load ptr, ptr %node_name, align 8
   %node_name2 = load ptr, ptr %node_name, align 8
-  %str_len = load i64, ptr %node_name2, align 4
+  %str_len = load i64, ptr %node_name2, align 8
   %str_data = getelementptr i8, ptr %node_name2, i64 8
   %node_call = call i64 @mesh_node_monitor(ptr %str_data, i64 %str_len)
-  store i64 %node_call, ptr %result, align 4
-  %result3 = load i64, ptr %result, align 4
+  store i64 %node_call, ptr %result, align 8
+  %result3 = load i64, ptr %result, align 8
   %eq = icmp eq i64 %result3, 0
   %if_result = alloca i64, align 8
   br i1 %eq, label %then, label %else
@@ -14716,7 +14717,7 @@ then:                                             ; preds = %entry
   %concat = call ptr @mesh_string_concat(ptr %str, ptr %node_name4)
   call void @mesh_println(ptr %concat)
   store {} zeroinitializer, ptr %_, align 1
-  store i64 0, ptr %if_result, align 4
+  store i64 0, ptr %if_result, align 8
   br label %if_merge
 
 else:                                             ; preds = %entry
@@ -14726,11 +14727,11 @@ else:                                             ; preds = %entry
   %concat8 = call ptr @mesh_string_concat(ptr %str6, ptr %node_name7)
   call void @mesh_println(ptr %concat8)
   store {} zeroinitializer, ptr %_5, align 1
-  store i64 0, ptr %if_result, align 4
+  store i64 0, ptr %if_result, align 8
   br label %if_merge
 
 if_merge:                                         ; preds = %else, %then
-  %if_val = load i64, ptr %if_result, align 4
+  %if_val = load i64, ptr %if_result, align 8
   ret i64 %if_val
 }
 
@@ -14742,42 +14743,42 @@ entry:
   %nodes = alloca ptr, align 8
   store ptr %0, ptr %nodes, align 8
   %i = alloca i64, align 8
-  store i64 %1, ptr %i, align 4
+  store i64 %1, ptr %i, align 8
   %total = alloca i64, align 8
-  store i64 %2, ptr %total, align 4
+  store i64 %2, ptr %total, align 8
   br label %tce_loop
 
 tce_loop:                                         ; preds = %then, %entry
-  %i1 = load i64, ptr %i, align 4
-  %total2 = load i64, ptr %total, align 4
+  %i1 = load i64, ptr %i, align 8
+  %total2 = load i64, ptr %total, align 8
   %lt = icmp slt i64 %i1, %total2
   br i1 %lt, label %then, label %else
 
 then:                                             ; preds = %tce_loop
   %nodes3 = load ptr, ptr %nodes, align 8
-  %i4 = load i64, ptr %i, align 4
+  %i4 = load i64, ptr %i, align 8
   %call = call i64 @mesh_list_get(ptr %nodes3, i64 %i4)
   store {} zeroinitializer, ptr %node_name, align 1
   %node_name5 = load {}, ptr %node_name, align 1
   %call6 = call i64 @Ingestion_Pipeline__monitor_peer(ptr null)
   call void @mesh_reduction_check()
-  store i64 %call6, ptr %_, align 4
+  store i64 %call6, ptr %_, align 8
   %nodes7 = load ptr, ptr %nodes, align 8
-  %i8 = load i64, ptr %i, align 4
+  %i8 = load i64, ptr %i, align 8
   %add = add i64 %i8, 1
-  %total9 = load i64, ptr %total, align 4
+  %total9 = load i64, ptr %total, align 8
   store ptr %nodes7, ptr %nodes, align 8
-  store i64 %add, ptr %i, align 4
-  store i64 %total9, ptr %total, align 4
+  store i64 %add, ptr %i, align 8
+  store i64 %total9, ptr %total, align 8
   call void @mesh_reduction_check()
   br label %tce_loop
 
 else:                                             ; preds = %tce_loop
-  store i64 0, ptr %if_result, align 4
+  store i64 0, ptr %if_result, align 8
   br label %if_merge
 
 if_merge:                                         ; preds = %else
-  %if_val = load i64, ptr %if_result, align 4
+  %if_val = load i64, ptr %if_result, align 8
   ret i64 %if_val
 }
 
@@ -14797,11 +14798,11 @@ entry:
   %event_count = alloca i64, align 8
   %reg_pid = alloca i64, align 8
   %pool = alloca i64, align 8
-  store i64 %0, ptr %pool, align 4
+  store i64 %0, ptr %pool, align 8
   %threshold = alloca i64, align 8
-  store i64 %1, ptr %threshold, align 4
+  store i64 %1, ptr %threshold, align 8
   %prev_peers = alloca i64, align 8
-  store i64 %2, ptr %prev_peers, align 4
+  store i64 %2, ptr %prev_peers, align 8
   br label %tce_loop
 
 tce_loop:                                         ; preds = %if_merge53, %entry
@@ -14810,37 +14811,37 @@ tce_loop:                                         ; preds = %if_merge53, %entry
   %call = call i64 @mesh_process_whereis(ptr %str)
   %i64_to_ptr = inttoptr i64 %call to ptr
   store ptr %i64_to_ptr, ptr %reg_pid, align 8
-  %reg_pid1 = load i64, ptr %reg_pid, align 4
+  %reg_pid1 = load i64, ptr %reg_pid, align 8
   %call2 = call i64 @__service_pipelineregistry_call_get_event_count(i64 %reg_pid1)
   call void @mesh_reduction_check()
-  store i64 %call2, ptr %event_count, align 4
-  %reg_pid3 = load i64, ptr %reg_pid, align 4
+  store i64 %call2, ptr %event_count, align 8
+  %reg_pid3 = load i64, ptr %reg_pid, align 8
   %call4 = call i64 @__service_pipelineregistry_call_reset_event_count(i64 %reg_pid3)
   call void @mesh_reduction_check()
-  store i64 %call4, ptr %_, align 4
+  store i64 %call4, ptr %_, align 8
   %call5 = call ptr @mesh_node_list()
   store ptr %call5, ptr %nodes, align 8
   %nodes6 = load ptr, ptr %nodes, align 8
   %call7 = call i64 @mesh_list_length(ptr %nodes6)
-  store i64 %call7, ptr %node_count, align 4
-  %event_count9 = load i64, ptr %event_count, align 4
-  %node_count10 = load i64, ptr %node_count, align 4
+  store i64 %call7, ptr %node_count, align 8
+  %event_count9 = load i64, ptr %event_count, align 8
+  %node_count10 = load i64, ptr %node_count, align 8
   %call11 = call {} @Ingestion_Pipeline__log_load_status(i64 %event_count9, i64 %node_count10)
   call void @mesh_reduction_check()
   store {} zeroinitializer, ptr %_8, align 1
-  %node_count12 = load i64, ptr %node_count, align 4
-  %prev_peers13 = load i64, ptr %prev_peers, align 4
+  %node_count12 = load i64, ptr %node_count, align 8
+  %prev_peers13 = load i64, ptr %prev_peers, align 8
   %gt = icmp sgt i64 %node_count12, %prev_peers13
   br i1 %gt, label %then, label %else
 
 then:                                             ; preds = %tce_loop
   %str15 = call ptr @mesh_string_new(ptr @.str.478, i64 29)
-  %prev_peers16 = load i64, ptr %prev_peers, align 4
+  %prev_peers16 = load i64, ptr %prev_peers, align 8
   %call17 = call ptr @mesh_int_to_string(i64 %prev_peers16)
   %concat = call ptr @mesh_string_concat(ptr %str15, ptr %call17)
   %str18 = call ptr @mesh_string_new(ptr @.str.479, i64 4)
   %concat19 = call ptr @mesh_string_concat(ptr %concat, ptr %str18)
-  %node_count20 = load i64, ptr %node_count, align 4
+  %node_count20 = load i64, ptr %node_count, align 8
   %call21 = call ptr @mesh_int_to_string(i64 %node_count20)
   %concat22 = call ptr @mesh_string_concat(ptr %concat19, ptr %call21)
   %str23 = call ptr @mesh_string_new(ptr @.str.480, i64 22)
@@ -14848,69 +14849,69 @@ then:                                             ; preds = %tce_loop
   call void @mesh_println(ptr %concat24)
   store {} zeroinitializer, ptr %_14, align 1
   %nodes26 = load ptr, ptr %nodes, align 8
-  %node_count27 = load i64, ptr %node_count, align 4
+  %node_count27 = load i64, ptr %node_count, align 8
   %call28 = call i64 @Ingestion_Pipeline__monitor_all_peers(ptr %nodes26, i64 0, i64 %node_count27)
   call void @mesh_reduction_check()
-  store i64 %call28, ptr %_25, align 4
-  store i64 0, ptr %if_result, align 4
+  store i64 %call28, ptr %_25, align 8
+  store i64 0, ptr %if_result, align 8
   br label %if_merge
 
 else:                                             ; preds = %tce_loop
-  %node_count29 = load i64, ptr %node_count, align 4
-  %prev_peers30 = load i64, ptr %prev_peers, align 4
+  %node_count29 = load i64, ptr %node_count, align 8
+  %prev_peers30 = load i64, ptr %prev_peers, align 8
   %lt = icmp slt i64 %node_count29, %prev_peers30
   br i1 %lt, label %then32, label %else33
 
 if_merge:                                         ; preds = %if_merge34, %then
-  %if_val47 = load i64, ptr %if_result, align 4
-  %node_count48 = load i64, ptr %node_count, align 4
+  %if_val47 = load i64, ptr %if_result, align 8
+  %node_count48 = load i64, ptr %node_count, align 8
   %gt49 = icmp sgt i64 %node_count48, 0
   br i1 %gt49, label %then51, label %else52
 
 then32:                                           ; preds = %else
   %str36 = call ptr @mesh_string_new(ptr @.str.481, i64 20)
-  %prev_peers37 = load i64, ptr %prev_peers, align 4
+  %prev_peers37 = load i64, ptr %prev_peers, align 8
   %call38 = call ptr @mesh_int_to_string(i64 %prev_peers37)
   %concat39 = call ptr @mesh_string_concat(ptr %str36, ptr %call38)
   %str40 = call ptr @mesh_string_new(ptr @.str.482, i64 4)
   %concat41 = call ptr @mesh_string_concat(ptr %concat39, ptr %str40)
-  %node_count42 = load i64, ptr %node_count, align 4
+  %node_count42 = load i64, ptr %node_count, align 8
   %call43 = call ptr @mesh_int_to_string(i64 %node_count42)
   %concat44 = call ptr @mesh_string_concat(ptr %concat41, ptr %call43)
   %str45 = call ptr @mesh_string_new(ptr @.str.483, i64 22)
   %concat46 = call ptr @mesh_string_concat(ptr %concat44, ptr %str45)
   call void @mesh_println(ptr %concat46)
   store {} zeroinitializer, ptr %_35, align 1
-  store i64 0, ptr %if_result31, align 4
+  store i64 0, ptr %if_result31, align 8
   br label %if_merge34
 
 else33:                                           ; preds = %else
-  store i64 0, ptr %if_result31, align 4
+  store i64 0, ptr %if_result31, align 8
   br label %if_merge34
 
 if_merge34:                                       ; preds = %else33, %then32
-  %if_val = load i64, ptr %if_result31, align 4
-  store i64 %if_val, ptr %if_result, align 4
+  %if_val = load i64, ptr %if_result31, align 8
+  store i64 %if_val, ptr %if_result, align 8
   br label %if_merge
 
 then51:                                           ; preds = %if_merge
-  %event_count54 = load i64, ptr %event_count, align 4
-  %threshold55 = load i64, ptr %threshold, align 4
+  %event_count54 = load i64, ptr %event_count, align 8
+  %threshold55 = load i64, ptr %threshold, align 8
   %gt56 = icmp sgt i64 %event_count54, %threshold55
   br i1 %gt56, label %then58, label %else59
 
 else52:                                           ; preds = %if_merge
-  store i64 0, ptr %if_result50, align 4
+  store i64 0, ptr %if_result50, align 8
   br label %if_merge53
 
 if_merge53:                                       ; preds = %else52, %if_merge60
-  %if_val64 = load i64, ptr %if_result50, align 4
-  %pool65 = load i64, ptr %pool, align 4
-  %threshold66 = load i64, ptr %threshold, align 4
-  %node_count67 = load i64, ptr %node_count, align 4
-  store i64 %pool65, ptr %pool, align 4
-  store i64 %threshold66, ptr %threshold, align 4
-  store i64 %node_count67, ptr %prev_peers, align 4
+  %if_val64 = load i64, ptr %if_result50, align 8
+  %pool65 = load i64, ptr %pool, align 8
+  %threshold66 = load i64, ptr %threshold, align 8
+  %node_count67 = load i64, ptr %node_count, align 8
+  store i64 %pool65, ptr %pool, align 8
+  store i64 %threshold66, ptr %threshold, align 8
+  store i64 %node_count67, ptr %prev_peers, align 8
   call void @mesh_reduction_check()
   br label %tce_loop
 
@@ -14918,16 +14919,16 @@ then58:                                           ; preds = %then51
   %nodes61 = load ptr, ptr %nodes, align 8
   %call62 = call i64 @Ingestion_Pipeline__try_remote_spawn(ptr %nodes61)
   call void @mesh_reduction_check()
-  store i64 %call62, ptr %if_result57, align 4
+  store i64 %call62, ptr %if_result57, align 8
   br label %if_merge60
 
 else59:                                           ; preds = %then51
-  store i64 0, ptr %if_result57, align 4
+  store i64 0, ptr %if_result57, align 8
   br label %if_merge60
 
 if_merge60:                                       ; preds = %else59, %then58
-  %if_val63 = load i64, ptr %if_result57, align 4
-  store i64 %if_val63, ptr %if_result50, align 4
+  %if_val63 = load i64, ptr %if_result57, align 8
+  store i64 %if_val63, ptr %if_result50, align 8
   br label %if_merge53
 }
 
@@ -14937,11 +14938,11 @@ entry:
   store ptr %0, ptr %__args_ptr, align 8
   %args_ptr_val = load ptr, ptr %__args_ptr, align 8
   %arg_ptr_0 = getelementptr [3 x i64], ptr %args_ptr_val, i32 0, i32 0
-  %arg_0 = load i64, ptr %arg_ptr_0, align 4
+  %arg_0 = load i64, ptr %arg_ptr_0, align 8
   %arg_ptr_1 = getelementptr [3 x i64], ptr %args_ptr_val, i32 0, i32 1
-  %arg_1 = load i64, ptr %arg_ptr_1, align 4
+  %arg_1 = load i64, ptr %arg_ptr_1, align 8
   %arg_ptr_2 = getelementptr [3 x i64], ptr %args_ptr_val, i32 0, i32 2
-  %arg_2 = load i64, ptr %arg_ptr_2, align 4
+  %arg_2 = load i64, ptr %arg_ptr_2, align 8
   %body_call = call {} @__actor_load_monitor_body(i64 %arg_0, i64 %arg_1, i64 %arg_2)
   ret {} zeroinitializer
 }
@@ -14949,7 +14950,7 @@ entry:
 define {} @Ingestion_Pipeline__register_global_services(i64 %0) {
 entry:
   %registry_pid = alloca i64, align 8
-  store i64 %0, ptr %registry_pid, align 4
+  store i64 %0, ptr %registry_pid, align 8
   %node_name = alloca ptr, align 8
   %call = call ptr @mesh_node_self()
   store ptr %call, ptr %node_name, align 8
@@ -14966,24 +14967,24 @@ then:                                             ; preds = %entry
   %str2 = call ptr @mesh_string_new(ptr @.str.485, i64 16)
   %node_name3 = load ptr, ptr %node_name, align 8
   %concat = call ptr @mesh_string_concat(ptr %str2, ptr %node_name3)
-  %registry_pid4 = load i64, ptr %registry_pid, align 4
+  %registry_pid4 = load i64, ptr %registry_pid, align 8
   %str5 = call ptr @mesh_string_new(ptr @.str.486, i64 16)
   %node_name6 = load ptr, ptr %node_name, align 8
   %concat7 = call ptr @mesh_string_concat(ptr %str5, ptr %node_name6)
-  %str_len = load i64, ptr %concat7, align 4
+  %str_len = load i64, ptr %concat7, align 8
   %str_data = getelementptr i8, ptr %concat7, i64 8
-  %registry_pid8 = load i64, ptr %registry_pid, align 4
+  %registry_pid8 = load i64, ptr %registry_pid, align 8
   %global_register = call i64 @mesh_global_register(ptr %str_data, i64 %str_len, i64 %registry_pid8)
-  store i64 %global_register, ptr %_, align 4
+  store i64 %global_register, ptr %_, align 8
   %_9 = alloca i64, align 8
   %str10 = call ptr @mesh_string_new(ptr @.str.487, i64 15)
-  %registry_pid11 = load i64, ptr %registry_pid, align 4
+  %registry_pid11 = load i64, ptr %registry_pid, align 8
   %str12 = call ptr @mesh_string_new(ptr @.str.488, i64 15)
-  %str_len13 = load i64, ptr %str12, align 4
+  %str_len13 = load i64, ptr %str12, align 8
   %str_data14 = getelementptr i8, ptr %str12, i64 8
-  %registry_pid15 = load i64, ptr %registry_pid, align 4
+  %registry_pid15 = load i64, ptr %registry_pid, align 8
   %global_register16 = call i64 @mesh_global_register(ptr %str_data14, i64 %str_len13, i64 %registry_pid15)
-  store i64 %global_register16, ptr %_9, align 4
+  store i64 %global_register16, ptr %_9, align 8
   %str17 = call ptr @mesh_string_new(ptr @.str.489, i64 57)
   %node_name18 = load ptr, ptr %node_name, align 8
   %concat19 = call ptr @mesh_string_concat(ptr %str17, ptr %node_name18)
@@ -15005,112 +15006,112 @@ if_merge:                                         ; preds = %else, %then
 define i64 @start_pipeline(i64 %0) {
 entry:
   %pool = alloca i64, align 8
-  store i64 %0, ptr %pool, align 4
+  store i64 %0, ptr %pool, align 8
   %stream_mgr_pid = alloca i64, align 8
   %call = call i64 @__service_streammanager_start()
   call void @mesh_reduction_check()
-  store i64 %call, ptr %stream_mgr_pid, align 4
+  store i64 %call, ptr %stream_mgr_pid, align 8
   %_ = alloca i64, align 8
   %str = call ptr @mesh_string_new(ptr @.str.491, i64 14)
-  %stream_mgr_pid1 = load i64, ptr %stream_mgr_pid, align 4
+  %stream_mgr_pid1 = load i64, ptr %stream_mgr_pid, align 8
   %call2 = call i64 @mesh_process_register(ptr %str, i64 %stream_mgr_pid1)
-  store i64 %call2, ptr %_, align 4
+  store i64 %call2, ptr %_, align 8
   %str3 = call ptr @mesh_string_new(ptr @.str.492, i64 30)
   call void @mesh_println(ptr %str3)
   %_4 = alloca i64, align 8
-  %stream_mgr_pid5 = load i64, ptr %stream_mgr_pid, align 4
+  %stream_mgr_pid5 = load i64, ptr %stream_mgr_pid, align 8
   %spawn_args = call ptr @mesh_gc_alloc_actor(i64 16, i64 8)
-  store i64 %stream_mgr_pid5, ptr %spawn_args, align 4
+  store i64 %stream_mgr_pid5, ptr %spawn_args, align 8
   %arg_ptr_1 = getelementptr i8, ptr %spawn_args, i64 8
-  store i64 250, ptr %arg_ptr_1, align 4
+  store i64 250, ptr %arg_ptr_1, align 8
   %pid = call i64 @mesh_actor_spawn(ptr @stream_drain_ticker, ptr %spawn_args, i64 16, i8 1)
-  store i64 %pid, ptr %_4, align 4
+  store i64 %pid, ptr %_4, align 8
   %str6 = call ptr @mesh_string_new(ptr @.str.493, i64 60)
   call void @mesh_println(ptr %str6)
   %rate_limiter_pid = alloca i64, align 8
   %call7 = call i64 @__service_ratelimiter_start(i64 60, i64 1000)
   call void @mesh_reduction_check()
-  store i64 %call7, ptr %rate_limiter_pid, align 4
+  store i64 %call7, ptr %rate_limiter_pid, align 8
   %str8 = call ptr @mesh_string_new(ptr @.str.494, i64 51)
   call void @mesh_println(ptr %str8)
   %processor_pid = alloca i64, align 8
-  %pool9 = load i64, ptr %pool, align 4
+  %pool9 = load i64, ptr %pool, align 8
   %call10 = call i64 @__service_eventprocessor_start(i64 %pool9)
   call void @mesh_reduction_check()
-  store i64 %call10, ptr %processor_pid, align 4
+  store i64 %call10, ptr %processor_pid, align 8
   %str11 = call ptr @mesh_string_new(ptr @.str.495, i64 31)
   call void @mesh_println(ptr %str11)
   %writer_pid = alloca i64, align 8
-  %pool12 = load i64, ptr %pool, align 4
+  %pool12 = load i64, ptr %pool, align 8
   %str13 = call ptr @mesh_string_new(ptr @.str.496, i64 7)
   %call14 = call i64 @__service_storagewriter_start(i64 %pool12, ptr %str13)
   call void @mesh_reduction_check()
-  store i64 %call14, ptr %writer_pid, align 4
+  store i64 %call14, ptr %writer_pid, align 8
   %str15 = call ptr @mesh_string_new(ptr @.str.497, i64 48)
   call void @mesh_println(ptr %str15)
   %registry_pid = alloca i64, align 8
-  %pool16 = load i64, ptr %pool, align 4
-  %rate_limiter_pid17 = load i64, ptr %rate_limiter_pid, align 4
-  %processor_pid18 = load i64, ptr %processor_pid, align 4
-  %writer_pid19 = load i64, ptr %writer_pid, align 4
+  %pool16 = load i64, ptr %pool, align 8
+  %rate_limiter_pid17 = load i64, ptr %rate_limiter_pid, align 8
+  %processor_pid18 = load i64, ptr %processor_pid, align 8
+  %writer_pid19 = load i64, ptr %writer_pid, align 8
   %call20 = call i64 @__service_pipelineregistry_start(i64 %pool16, i64 %rate_limiter_pid17, i64 %processor_pid18, i64 %writer_pid19)
   call void @mesh_reduction_check()
-  store i64 %call20, ptr %registry_pid, align 4
+  store i64 %call20, ptr %registry_pid, align 8
   %_21 = alloca i64, align 8
   %str22 = call ptr @mesh_string_new(ptr @.str.498, i64 15)
-  %registry_pid23 = load i64, ptr %registry_pid, align 4
+  %registry_pid23 = load i64, ptr %registry_pid, align 8
   %call24 = call i64 @mesh_process_register(ptr %str22, i64 %registry_pid23)
-  store i64 %call24, ptr %_21, align 4
-  %registry_pid25 = load i64, ptr %registry_pid, align 4
+  store i64 %call24, ptr %_21, align 8
+  %registry_pid25 = load i64, ptr %registry_pid, align 8
   %call26 = call {} @Ingestion_Pipeline__register_global_services(i64 %registry_pid25)
   call void @mesh_reduction_check()
   %str27 = call ptr @mesh_string_new(ptr @.str.499, i64 48)
   call void @mesh_println(ptr %str27)
   %_28 = alloca i64, align 8
-  %pool29 = load i64, ptr %pool, align 4
+  %pool29 = load i64, ptr %pool, align 8
   %spawn_args30 = call ptr @mesh_gc_alloc_actor(i64 8, i64 8)
-  store i64 %pool29, ptr %spawn_args30, align 4
+  store i64 %pool29, ptr %spawn_args30, align 8
   %pid31 = call i64 @mesh_actor_spawn(ptr @health_checker, ptr %spawn_args30, i64 8, i8 1)
-  store i64 %pid31, ptr %_28, align 4
+  store i64 %pid31, ptr %_28, align 8
   %str32 = call ptr @mesh_string_new(ptr @.str.500, i64 46)
   call void @mesh_println(ptr %str32)
   %_33 = alloca i64, align 8
-  %pool34 = load i64, ptr %pool, align 4
+  %pool34 = load i64, ptr %pool, align 8
   %spawn_args35 = call ptr @mesh_gc_alloc_actor(i64 8, i64 8)
-  store i64 %pool34, ptr %spawn_args35, align 4
+  store i64 %pool34, ptr %spawn_args35, align 8
   %pid36 = call i64 @mesh_actor_spawn(ptr @spike_checker, ptr %spawn_args35, i64 8, i8 1)
-  store i64 %pid36, ptr %_33, align 4
+  store i64 %pid36, ptr %_33, align 8
   %str37 = call ptr @mesh_string_new(ptr @.str.501, i64 47)
   call void @mesh_println(ptr %str37)
   %_38 = alloca i64, align 8
-  %pool39 = load i64, ptr %pool, align 4
+  %pool39 = load i64, ptr %pool, align 8
   %spawn_args40 = call ptr @mesh_gc_alloc_actor(i64 8, i64 8)
-  store i64 %pool39, ptr %spawn_args40, align 4
+  store i64 %pool39, ptr %spawn_args40, align 8
   %pid41 = call i64 @mesh_actor_spawn(ptr @alert_evaluator, ptr %spawn_args40, i64 8, i8 1)
-  store i64 %pid41, ptr %_38, align 4
+  store i64 %pid41, ptr %_38, align 8
   %str42 = call ptr @mesh_string_new(ptr @.str.502, i64 47)
   call void @mesh_println(ptr %str42)
   %_43 = alloca i64, align 8
-  %pool44 = load i64, ptr %pool, align 4
+  %pool44 = load i64, ptr %pool, align 8
   %spawn_args45 = call ptr @mesh_gc_alloc_actor(i64 8, i64 8)
-  store i64 %pool44, ptr %spawn_args45, align 4
+  store i64 %pool44, ptr %spawn_args45, align 8
   %pid46 = call i64 @mesh_actor_spawn(ptr @retention_cleaner, ptr %spawn_args45, i64 8, i8 1)
-  store i64 %pid46, ptr %_43, align 4
+  store i64 %pid46, ptr %_43, align 8
   %str47 = call ptr @mesh_string_new(ptr @.str.503, i64 49)
   call void @mesh_println(ptr %str47)
   %_48 = alloca i64, align 8
-  %pool49 = load i64, ptr %pool, align 4
+  %pool49 = load i64, ptr %pool, align 8
   %spawn_args50 = call ptr @mesh_gc_alloc_actor(i64 24, i64 8)
-  store i64 %pool49, ptr %spawn_args50, align 4
+  store i64 %pool49, ptr %spawn_args50, align 8
   %arg_ptr_151 = getelementptr i8, ptr %spawn_args50, i64 8
-  store i64 100, ptr %arg_ptr_151, align 4
+  store i64 100, ptr %arg_ptr_151, align 8
   %arg_ptr_2 = getelementptr i8, ptr %spawn_args50, i64 16
-  store i64 0, ptr %arg_ptr_2, align 4
+  store i64 0, ptr %arg_ptr_2, align 8
   %pid52 = call i64 @mesh_actor_spawn(ptr @load_monitor, ptr %spawn_args50, i64 24, i8 1)
-  store i64 %pid52, ptr %_48, align 4
+  store i64 %pid52, ptr %_48, align 8
   %str53 = call ptr @mesh_string_new(ptr @.str.504, i64 66)
   call void @mesh_println(ptr %str53)
-  %registry_pid54 = load i64, ptr %registry_pid, align 4
+  %registry_pid54 = load i64, ptr %registry_pid, align 8
   ret i64 %registry_pid54
 }
 
@@ -15341,7 +15342,7 @@ entry:
   %e = alloca ptr, align 8
   %n = alloca i64, align 8
   %pool = alloca i64, align 8
-  store i64 %0, ptr %pool, align 4
+  store i64 %0, ptr %pool, align 8
   %rule_id = alloca ptr, align 8
   store ptr %1, ptr %rule_id, align 8
   %rows = alloca ptr, align 8
@@ -15363,7 +15364,7 @@ then:                                             ; preds = %entry
   %call5 = call i64 @mesh_map_get(ptr %call4, i64 %ptr_to_i64)
   store {} zeroinitializer, ptr %enabled_str, align 1
   %result = alloca { i8, ptr }, align 8
-  %pool6 = load i64, ptr %pool, align 4
+  %pool6 = load i64, ptr %pool, align 8
   %rule_id7 = load ptr, ptr %rule_id, align 8
   %enabled_str8 = load {}, ptr %enabled_str, align 1
   %call9 = call { i8, ptr } @toggle_alert_rule(i64 %pool6, ptr %rule_id7, ptr null)
@@ -15404,7 +15405,7 @@ case_Ok:                                          ; preds = %then
   %path_val = load ptr, ptr %variant_field, align 8
   store ptr %path_val, ptr %n, align 8
   %str11 = call ptr @mesh_string_new(ptr @.str.549, i64 32)
-  %n12 = load i64, ptr %n, align 4
+  %n12 = load i64, ptr %n, align 8
   %call13 = call ptr @mesh_int_to_string(i64 %n12)
   %concat = call ptr @mesh_string_concat(ptr %str11, ptr %call13)
   %str14 = call ptr @mesh_string_new(ptr @.str.550, i64 1)
@@ -15436,12 +15437,12 @@ entry:
   %reg_pid = alloca i64, align 8
   %call = call i64 @get_registry()
   call void @mesh_reduction_check()
-  store i64 %call, ptr %reg_pid, align 4
+  store i64 %call, ptr %reg_pid, align 8
   %pool = alloca i64, align 8
-  %reg_pid1 = load i64, ptr %reg_pid, align 4
+  %reg_pid1 = load i64, ptr %reg_pid, align 8
   %call2 = call i64 @__service_pipelineregistry_call_get_pool(i64 %reg_pid1)
   call void @mesh_reduction_check()
-  store i64 %call2, ptr %pool, align 4
+  store i64 %call2, ptr %pool, align 8
   %project_id = alloca ptr, align 8
   %request3 = load ptr, ptr %request, align 8
   %str = call ptr @mesh_string_new(ptr @.str.556, i64 10)
@@ -15453,7 +15454,7 @@ entry:
   %call6 = call ptr @mesh_http_request_body(ptr %request5)
   store ptr %call6, ptr %body, align 8
   %result = alloca { i8, ptr }, align 8
-  %pool7 = load i64, ptr %pool, align 4
+  %pool7 = load i64, ptr %pool, align 8
   %project_id8 = load ptr, ptr %project_id, align 8
   %body9 = load ptr, ptr %body, align 8
   %call10 = call { i8, ptr } @create_alert_rule(i64 %pool7, ptr %project_id8, ptr %body9)
@@ -15526,12 +15527,12 @@ entry:
   %reg_pid = alloca i64, align 8
   %call = call i64 @get_registry()
   call void @mesh_reduction_check()
-  store i64 %call, ptr %reg_pid, align 4
+  store i64 %call, ptr %reg_pid, align 8
   %pool = alloca i64, align 8
-  %reg_pid1 = load i64, ptr %reg_pid, align 4
+  %reg_pid1 = load i64, ptr %reg_pid, align 8
   %call2 = call i64 @__service_pipelineregistry_call_get_pool(i64 %reg_pid1)
   call void @mesh_reduction_check()
-  store i64 %call2, ptr %pool, align 4
+  store i64 %call2, ptr %pool, align 8
   %project_id = alloca ptr, align 8
   %request3 = load ptr, ptr %request, align 8
   %str = call ptr @mesh_string_new(ptr @.str.563, i64 10)
@@ -15539,7 +15540,7 @@ entry:
   call void @mesh_reduction_check()
   store ptr %call4, ptr %project_id, align 8
   %result = alloca { i8, ptr }, align 8
-  %pool5 = load i64, ptr %pool, align 4
+  %pool5 = load i64, ptr %pool, align 8
   %project_id6 = load ptr, ptr %project_id, align 8
   %call7 = call { i8, ptr } @list_alert_rules(i64 %pool5, ptr %project_id6)
   call void @mesh_reduction_check()
@@ -15611,12 +15612,12 @@ entry:
   %reg_pid = alloca i64, align 8
   %call = call i64 @get_registry()
   call void @mesh_reduction_check()
-  store i64 %call, ptr %reg_pid, align 4
+  store i64 %call, ptr %reg_pid, align 8
   %pool = alloca i64, align 8
-  %reg_pid1 = load i64, ptr %reg_pid, align 4
+  %reg_pid1 = load i64, ptr %reg_pid, align 8
   %call2 = call i64 @__service_pipelineregistry_call_get_pool(i64 %reg_pid1)
   call void @mesh_reduction_check()
-  store i64 %call2, ptr %pool, align 4
+  store i64 %call2, ptr %pool, align 8
   %rule_id = alloca ptr, align 8
   %request3 = load ptr, ptr %request, align 8
   %str = call ptr @mesh_string_new(ptr @.str.568, i64 7)
@@ -15628,13 +15629,13 @@ entry:
   %call6 = call ptr @mesh_http_request_body(ptr %request5)
   store ptr %call6, ptr %body, align 8
   %rows_result = alloca { i8, ptr }, align 8
-  %pool7 = load i64, ptr %pool, align 4
+  %pool7 = load i64, ptr %pool, align 8
   %str8 = call ptr @mesh_string_new(ptr @.str.569, i64 57)
   %list_arr = alloca [1 x i64], align 8
   %body9 = load ptr, ptr %body, align 8
   %ptr_to_i64 = ptrtoint ptr %body9 to i64
   %elem_ptr = getelementptr [1 x i64], ptr %list_arr, i32 0, i32 0
-  store i64 %ptr_to_i64, ptr %elem_ptr, align 4
+  store i64 %ptr_to_i64, ptr %elem_ptr, align 8
   %list = call ptr @mesh_list_from_array(ptr %list_arr, i64 1)
   %call10 = call ptr @mesh_pool_query(i64 %pool7, ptr %str8, ptr %list)
   %deref_sum = load { i8, ptr }, ptr %call10, align 8
@@ -15662,7 +15663,7 @@ case_Ok:                                          ; preds = %entry
   %variant_field = getelementptr inbounds nuw { i8, ptr }, ptr %scrutinee, i32 0, i32 1
   %path_val = load ptr, ptr %variant_field, align 8
   store ptr %path_val, ptr %rows, align 8
-  %pool12 = load i64, ptr %pool, align 4
+  %pool12 = load i64, ptr %pool, align 8
   %rule_id13 = load ptr, ptr %rule_id, align 8
   %rows14 = load ptr, ptr %rows, align 8
   %call15 = call ptr @Api_Alerts__toggle_from_rows(i64 %pool12, ptr %rule_id13, ptr %rows14)
@@ -15689,12 +15690,12 @@ entry:
   %reg_pid = alloca i64, align 8
   %call = call i64 @get_registry()
   call void @mesh_reduction_check()
-  store i64 %call, ptr %reg_pid, align 4
+  store i64 %call, ptr %reg_pid, align 8
   %pool = alloca i64, align 8
-  %reg_pid1 = load i64, ptr %reg_pid, align 4
+  %reg_pid1 = load i64, ptr %reg_pid, align 8
   %call2 = call i64 @__service_pipelineregistry_call_get_pool(i64 %reg_pid1)
   call void @mesh_reduction_check()
-  store i64 %call2, ptr %pool, align 4
+  store i64 %call2, ptr %pool, align 8
   %rule_id = alloca ptr, align 8
   %request3 = load ptr, ptr %request, align 8
   %str = call ptr @mesh_string_new(ptr @.str.573, i64 7)
@@ -15702,7 +15703,7 @@ entry:
   call void @mesh_reduction_check()
   store ptr %call4, ptr %rule_id, align 8
   %result = alloca { i8, ptr }, align 8
-  %pool5 = load i64, ptr %pool, align 4
+  %pool5 = load i64, ptr %pool, align 8
   %rule_id6 = load ptr, ptr %rule_id, align 8
   %call7 = call { i8, ptr } @delete_alert_rule(i64 %pool5, ptr %rule_id6)
   call void @mesh_reduction_check()
@@ -15731,7 +15732,7 @@ case_Ok:                                          ; preds = %entry
   %path_val = load ptr, ptr %variant_field, align 8
   store ptr %path_val, ptr %n, align 8
   %str9 = call ptr @mesh_string_new(ptr @.str.574, i64 32)
-  %n10 = load i64, ptr %n, align 4
+  %n10 = load i64, ptr %n, align 8
   %call11 = call ptr @mesh_int_to_string(i64 %n10)
   %concat = call ptr @mesh_string_concat(ptr %str9, ptr %call11)
   %str12 = call ptr @mesh_string_new(ptr @.str.575, i64 1)
@@ -15775,12 +15776,12 @@ entry:
   %reg_pid = alloca i64, align 8
   %call = call i64 @get_registry()
   call void @mesh_reduction_check()
-  store i64 %call, ptr %reg_pid, align 4
+  store i64 %call, ptr %reg_pid, align 8
   %pool = alloca i64, align 8
-  %reg_pid1 = load i64, ptr %reg_pid, align 4
+  %reg_pid1 = load i64, ptr %reg_pid, align 8
   %call2 = call i64 @__service_pipelineregistry_call_get_pool(i64 %reg_pid1)
   call void @mesh_reduction_check()
-  store i64 %call2, ptr %pool, align 4
+  store i64 %call2, ptr %pool, align 8
   %project_id = alloca ptr, align 8
   %request3 = load ptr, ptr %request, align 8
   %str = call ptr @mesh_string_new(ptr @.str.580, i64 10)
@@ -15795,7 +15796,7 @@ entry:
   call void @mesh_reduction_check()
   store ptr %call8, ptr %status, align 8
   %result = alloca { i8, ptr }, align 8
-  %pool9 = load i64, ptr %pool, align 4
+  %pool9 = load i64, ptr %pool, align 8
   %project_id10 = load ptr, ptr %project_id, align 8
   %status11 = load ptr, ptr %status, align 8
   %call12 = call { i8, ptr } @list_alerts(i64 %pool9, ptr %project_id10, ptr %status11)
@@ -15868,12 +15869,12 @@ entry:
   %reg_pid = alloca i64, align 8
   %call = call i64 @get_registry()
   call void @mesh_reduction_check()
-  store i64 %call, ptr %reg_pid, align 4
+  store i64 %call, ptr %reg_pid, align 8
   %pool = alloca i64, align 8
-  %reg_pid1 = load i64, ptr %reg_pid, align 4
+  %reg_pid1 = load i64, ptr %reg_pid, align 8
   %call2 = call i64 @__service_pipelineregistry_call_get_pool(i64 %reg_pid1)
   call void @mesh_reduction_check()
-  store i64 %call2, ptr %pool, align 4
+  store i64 %call2, ptr %pool, align 8
   %alert_id = alloca ptr, align 8
   %request3 = load ptr, ptr %request, align 8
   %str = call ptr @mesh_string_new(ptr @.str.587, i64 2)
@@ -15881,7 +15882,7 @@ entry:
   call void @mesh_reduction_check()
   store ptr %call4, ptr %alert_id, align 8
   %result = alloca { i8, ptr }, align 8
-  %pool5 = load i64, ptr %pool, align 4
+  %pool5 = load i64, ptr %pool, align 8
   %alert_id6 = load ptr, ptr %alert_id, align 8
   %call7 = call { i8, ptr } @acknowledge_alert(i64 %pool5, ptr %alert_id6)
   call void @mesh_reduction_check()
@@ -15910,7 +15911,7 @@ case_Ok:                                          ; preds = %entry
   %path_val = load ptr, ptr %variant_field, align 8
   store ptr %path_val, ptr %n, align 8
   %str9 = call ptr @mesh_string_new(ptr @.str.588, i64 32)
-  %n10 = load i64, ptr %n, align 4
+  %n10 = load i64, ptr %n, align 8
   %call11 = call ptr @mesh_int_to_string(i64 %n10)
   %concat = call ptr @mesh_string_concat(ptr %str9, ptr %call11)
   %str12 = call ptr @mesh_string_new(ptr @.str.589, i64 1)
@@ -15942,12 +15943,12 @@ entry:
   %reg_pid = alloca i64, align 8
   %call = call i64 @get_registry()
   call void @mesh_reduction_check()
-  store i64 %call, ptr %reg_pid, align 4
+  store i64 %call, ptr %reg_pid, align 8
   %pool = alloca i64, align 8
-  %reg_pid1 = load i64, ptr %reg_pid, align 4
+  %reg_pid1 = load i64, ptr %reg_pid, align 8
   %call2 = call i64 @__service_pipelineregistry_call_get_pool(i64 %reg_pid1)
   call void @mesh_reduction_check()
-  store i64 %call2, ptr %pool, align 4
+  store i64 %call2, ptr %pool, align 8
   %alert_id = alloca ptr, align 8
   %request3 = load ptr, ptr %request, align 8
   %str = call ptr @mesh_string_new(ptr @.str.594, i64 2)
@@ -15955,7 +15956,7 @@ entry:
   call void @mesh_reduction_check()
   store ptr %call4, ptr %alert_id, align 8
   %result = alloca { i8, ptr }, align 8
-  %pool5 = load i64, ptr %pool, align 4
+  %pool5 = load i64, ptr %pool, align 8
   %alert_id6 = load ptr, ptr %alert_id, align 8
   %call7 = call { i8, ptr } @resolve_fired_alert(i64 %pool5, ptr %alert_id6)
   call void @mesh_reduction_check()
@@ -15984,7 +15985,7 @@ case_Ok:                                          ; preds = %entry
   %path_val = load ptr, ptr %variant_field, align 8
   store ptr %path_val, ptr %n, align 8
   %str9 = call ptr @mesh_string_new(ptr @.str.595, i64 32)
-  %n10 = load i64, ptr %n, align 4
+  %n10 = load i64, ptr %n, align 8
   %call11 = call ptr @mesh_int_to_string(i64 %n10)
   %concat = call ptr @mesh_string_concat(ptr %str9, ptr %call11)
   %str12 = call ptr @mesh_string_new(ptr @.str.596, i64 1)
@@ -16296,12 +16297,12 @@ entry:
   %reg_pid = alloca i64, align 8
   %call = call i64 @get_registry()
   call void @mesh_reduction_check()
-  store i64 %call, ptr %reg_pid, align 4
+  store i64 %call, ptr %reg_pid, align 8
   %pool = alloca i64, align 8
-  %reg_pid1 = load i64, ptr %reg_pid, align 4
+  %reg_pid1 = load i64, ptr %reg_pid, align 8
   %call2 = call i64 @__service_pipelineregistry_call_get_pool(i64 %reg_pid1)
   call void @mesh_reduction_check()
-  store i64 %call2, ptr %pool, align 4
+  store i64 %call2, ptr %pool, align 8
   %project_id = alloca ptr, align 8
   %request3 = load ptr, ptr %request, align 8
   %str = call ptr @mesh_string_new(ptr @.str.641, i64 10)
@@ -16316,7 +16317,7 @@ entry:
   call void @mesh_reduction_check()
   store ptr %call8, ptr %bucket, align 8
   %result = alloca { i8, ptr }, align 8
-  %pool9 = load i64, ptr %pool, align 4
+  %pool9 = load i64, ptr %pool, align 8
   %project_id10 = load ptr, ptr %project_id, align 8
   %bucket11 = load ptr, ptr %bucket, align 8
   %call12 = call { i8, ptr } @event_volume_hourly(i64 %pool9, ptr %project_id10, ptr %bucket11)
@@ -16414,12 +16415,12 @@ entry:
   %reg_pid = alloca i64, align 8
   %call = call i64 @get_registry()
   call void @mesh_reduction_check()
-  store i64 %call, ptr %reg_pid, align 4
+  store i64 %call, ptr %reg_pid, align 8
   %pool = alloca i64, align 8
-  %reg_pid1 = load i64, ptr %reg_pid, align 4
+  %reg_pid1 = load i64, ptr %reg_pid, align 8
   %call2 = call i64 @__service_pipelineregistry_call_get_pool(i64 %reg_pid1)
   call void @mesh_reduction_check()
-  store i64 %call2, ptr %pool, align 4
+  store i64 %call2, ptr %pool, align 8
   %project_id = alloca ptr, align 8
   %request3 = load ptr, ptr %request, align 8
   %str = call ptr @mesh_string_new(ptr @.str.648, i64 10)
@@ -16427,7 +16428,7 @@ entry:
   call void @mesh_reduction_check()
   store ptr %call4, ptr %project_id, align 8
   %result = alloca { i8, ptr }, align 8
-  %pool5 = load i64, ptr %pool, align 4
+  %pool5 = load i64, ptr %pool, align 8
   %project_id6 = load ptr, ptr %project_id, align 8
   %call7 = call { i8, ptr } @error_breakdown_by_level(i64 %pool5, ptr %project_id6)
   call void @mesh_reduction_check()
@@ -16524,12 +16525,12 @@ entry:
   %reg_pid = alloca i64, align 8
   %call = call i64 @get_registry()
   call void @mesh_reduction_check()
-  store i64 %call, ptr %reg_pid, align 4
+  store i64 %call, ptr %reg_pid, align 8
   %pool = alloca i64, align 8
-  %reg_pid1 = load i64, ptr %reg_pid, align 4
+  %reg_pid1 = load i64, ptr %reg_pid, align 8
   %call2 = call i64 @__service_pipelineregistry_call_get_pool(i64 %reg_pid1)
   call void @mesh_reduction_check()
-  store i64 %call2, ptr %pool, align 4
+  store i64 %call2, ptr %pool, align 8
   %project_id = alloca ptr, align 8
   %request3 = load ptr, ptr %request, align 8
   %str = call ptr @mesh_string_new(ptr @.str.653, i64 10)
@@ -16544,7 +16545,7 @@ entry:
   call void @mesh_reduction_check()
   store ptr %call8, ptr %limit, align 8
   %result = alloca { i8, ptr }, align 8
-  %pool9 = load i64, ptr %pool, align 4
+  %pool9 = load i64, ptr %pool, align 8
   %project_id10 = load ptr, ptr %project_id, align 8
   %limit11 = load ptr, ptr %limit, align 8
   %call12 = call { i8, ptr } @top_issues_by_frequency(i64 %pool9, ptr %project_id10, ptr %limit11)
@@ -16638,13 +16639,13 @@ entry:
   %e = alloca ptr, align 8
   %rows = alloca ptr, align 8
   %pool = alloca i64, align 8
-  store i64 %0, ptr %pool, align 4
+  store i64 %0, ptr %pool, align 8
   %project_id = alloca ptr, align 8
   store ptr %1, ptr %project_id, align 8
   %key = alloca ptr, align 8
   store ptr %2, ptr %key, align 8
   %result = alloca { i8, ptr }, align 8
-  %pool1 = load i64, ptr %pool, align 4
+  %pool1 = load i64, ptr %pool, align 8
   %project_id2 = load ptr, ptr %project_id, align 8
   %key3 = load ptr, ptr %key, align 8
   %call = call { i8, ptr } @event_breakdown_by_tag(i64 %pool1, ptr %project_id2, ptr %key3)
@@ -16700,12 +16701,12 @@ entry:
   %reg_pid = alloca i64, align 8
   %call = call i64 @get_registry()
   call void @mesh_reduction_check()
-  store i64 %call, ptr %reg_pid, align 4
+  store i64 %call, ptr %reg_pid, align 8
   %pool = alloca i64, align 8
-  %reg_pid1 = load i64, ptr %reg_pid, align 4
+  %reg_pid1 = load i64, ptr %reg_pid, align 8
   %call2 = call i64 @__service_pipelineregistry_call_get_pool(i64 %reg_pid1)
   call void @mesh_reduction_check()
-  store i64 %call2, ptr %pool, align 4
+  store i64 %call2, ptr %pool, align 8
   %project_id = alloca ptr, align 8
   %request3 = load ptr, ptr %request, align 8
   %str = call ptr @mesh_string_new(ptr @.str.664, i64 10)
@@ -16732,7 +16733,7 @@ then:                                             ; preds = %entry
   br label %if_merge
 
 else:                                             ; preds = %entry
-  %pool13 = load i64, ptr %pool, align 4
+  %pool13 = load i64, ptr %pool, align 8
   %project_id14 = load ptr, ptr %project_id, align 8
   %key15 = load ptr, ptr %key, align 8
   %call16 = call ptr @Api_Dashboard__do_tag_breakdown(i64 %pool13, ptr %project_id14, ptr %key15)
@@ -16794,12 +16795,12 @@ entry:
   %reg_pid = alloca i64, align 8
   %call = call i64 @get_registry()
   call void @mesh_reduction_check()
-  store i64 %call, ptr %reg_pid, align 4
+  store i64 %call, ptr %reg_pid, align 8
   %pool = alloca i64, align 8
-  %reg_pid1 = load i64, ptr %reg_pid, align 4
+  %reg_pid1 = load i64, ptr %reg_pid, align 8
   %call2 = call i64 @__service_pipelineregistry_call_get_pool(i64 %reg_pid1)
   call void @mesh_reduction_check()
-  store i64 %call2, ptr %pool, align 4
+  store i64 %call2, ptr %pool, align 8
   %issue_id = alloca ptr, align 8
   %request3 = load ptr, ptr %request, align 8
   %str = call ptr @mesh_string_new(ptr @.str.668, i64 8)
@@ -16814,7 +16815,7 @@ entry:
   call void @mesh_reduction_check()
   store ptr %call8, ptr %limit, align 8
   %result = alloca { i8, ptr }, align 8
-  %pool9 = load i64, ptr %pool, align 4
+  %pool9 = load i64, ptr %pool, align 8
   %issue_id10 = load ptr, ptr %issue_id, align 8
   %limit11 = load ptr, ptr %limit, align 8
   %call12 = call { i8, ptr } @issue_event_timeline(i64 %pool9, ptr %issue_id10, ptr %limit11)
@@ -16937,12 +16938,12 @@ entry:
   %reg_pid = alloca i64, align 8
   %call = call i64 @get_registry()
   call void @mesh_reduction_check()
-  store i64 %call, ptr %reg_pid, align 4
+  store i64 %call, ptr %reg_pid, align 8
   %pool = alloca i64, align 8
-  %reg_pid1 = load i64, ptr %reg_pid, align 4
+  %reg_pid1 = load i64, ptr %reg_pid, align 8
   %call2 = call i64 @__service_pipelineregistry_call_get_pool(i64 %reg_pid1)
   call void @mesh_reduction_check()
-  store i64 %call2, ptr %pool, align 4
+  store i64 %call2, ptr %pool, align 8
   %project_id = alloca ptr, align 8
   %request3 = load ptr, ptr %request, align 8
   %str = call ptr @mesh_string_new(ptr @.str.683, i64 10)
@@ -16950,7 +16951,7 @@ entry:
   call void @mesh_reduction_check()
   store ptr %call4, ptr %project_id, align 8
   %result = alloca { i8, ptr }, align 8
-  %pool5 = load i64, ptr %pool, align 4
+  %pool5 = load i64, ptr %pool, align 8
   %project_id6 = load ptr, ptr %project_id, align 8
   %call7 = call { i8, ptr } @project_health_summary(i64 %pool5, ptr %project_id6)
   call void @mesh_reduction_check()
@@ -17307,7 +17308,7 @@ define ptr @Api_Detail__add_navigation(i64 %0, ptr %1, ptr %2, ptr %3, ptr %4) {
 entry:
   %nav_rows = alloca ptr, align 8
   %pool = alloca i64, align 8
-  store i64 %0, ptr %pool, align 4
+  store i64 %0, ptr %pool, align 8
   %event_id = alloca ptr, align 8
   store ptr %1, ptr %event_id, align 8
   %issue_id = alloca ptr, align 8
@@ -17317,7 +17318,7 @@ entry:
   %detail_json = alloca ptr, align 8
   store ptr %4, ptr %detail_json, align 8
   %nav_result = alloca { i8, ptr }, align 8
-  %pool1 = load i64, ptr %pool, align 4
+  %pool1 = load i64, ptr %pool, align 8
   %issue_id2 = load ptr, ptr %issue_id, align 8
   %received_at3 = load ptr, ptr %received_at, align 8
   %event_id4 = load ptr, ptr %event_id, align 8
@@ -17367,7 +17368,7 @@ case_Err:                                         ; preds = %entry
 define ptr @Api_Detail__build_event_response_from_rows(i64 %0, ptr %1, ptr %2) {
 entry:
   %pool = alloca i64, align 8
-  store i64 %0, ptr %pool, align 4
+  store i64 %0, ptr %pool, align 8
   %event_id = alloca ptr, align 8
   store ptr %1, ptr %event_id, align 8
   %rows = alloca ptr, align 8
@@ -17403,7 +17404,7 @@ then:                                             ; preds = %entry
   %ptr_to_i6412 = ptrtoint ptr %str11 to i64
   %call13 = call i64 @mesh_map_get(ptr %call10, i64 %ptr_to_i6412)
   store {} zeroinitializer, ptr %received_at, align 1
-  %pool14 = load i64, ptr %pool, align 4
+  %pool14 = load i64, ptr %pool, align 8
   %event_id15 = load ptr, ptr %event_id, align 8
   %issue_id16 = load {}, ptr %issue_id, align 1
   %received_at17 = load {}, ptr %received_at, align 1
@@ -17433,12 +17434,12 @@ entry:
   %reg_pid = alloca i64, align 8
   %call = call i64 @get_registry()
   call void @mesh_reduction_check()
-  store i64 %call, ptr %reg_pid, align 4
+  store i64 %call, ptr %reg_pid, align 8
   %pool = alloca i64, align 8
-  %reg_pid1 = load i64, ptr %reg_pid, align 4
+  %reg_pid1 = load i64, ptr %reg_pid, align 8
   %call2 = call i64 @__service_pipelineregistry_call_get_pool(i64 %reg_pid1)
   call void @mesh_reduction_check()
-  store i64 %call2, ptr %pool, align 4
+  store i64 %call2, ptr %pool, align 8
   %event_id = alloca ptr, align 8
   %request3 = load ptr, ptr %request, align 8
   %str = call ptr @mesh_string_new(ptr @.str.737, i64 8)
@@ -17446,7 +17447,7 @@ entry:
   call void @mesh_reduction_check()
   store ptr %call4, ptr %event_id, align 8
   %result = alloca { i8, ptr }, align 8
-  %pool5 = load i64, ptr %pool, align 4
+  %pool5 = load i64, ptr %pool, align 8
   %event_id6 = load ptr, ptr %event_id, align 8
   %call7 = call { i8, ptr } @get_event_detail(i64 %pool5, ptr %event_id6)
   call void @mesh_reduction_check()
@@ -17474,7 +17475,7 @@ case_Ok:                                          ; preds = %entry
   %variant_field = getelementptr inbounds nuw { i8, ptr }, ptr %scrutinee, i32 0, i32 1
   %path_val = load ptr, ptr %variant_field, align 8
   store ptr %path_val, ptr %rows, align 8
-  %pool9 = load i64, ptr %pool, align 4
+  %pool9 = load i64, ptr %pool, align 8
   %event_id10 = load ptr, ptr %event_id, align 8
   %rows11 = load ptr, ptr %rows, align 8
   %call12 = call ptr @Api_Detail__build_event_response_from_rows(i64 %pool9, ptr %event_id10, ptr %rows11)
@@ -17499,8 +17500,8 @@ case_Err:                                         ; preds = %entry
 define ptr @Api_Search__cap_limit(i64 %0) {
 entry:
   %n = alloca i64, align 8
-  store i64 %0, ptr %n, align 4
-  %n1 = load i64, ptr %n, align 4
+  store i64 %0, ptr %n, align 8
+  %n1 = load i64, ptr %n, align 8
   %gt = icmp sgt i64 %n1, 100
   %if_result = alloca ptr, align 8
   br i1 %gt, label %then, label %else
@@ -17511,7 +17512,7 @@ then:                                             ; preds = %entry
   br label %if_merge
 
 else:                                             ; preds = %entry
-  %n2 = load i64, ptr %n, align 4
+  %n2 = load i64, ptr %n, align 8
   %lt = icmp slt i64 %n2, 1
   %if_result3 = alloca ptr, align 8
   br i1 %lt, label %then4, label %else5
@@ -17526,7 +17527,7 @@ then4:                                            ; preds = %else
   br label %if_merge6
 
 else5:                                            ; preds = %else
-  %n8 = load i64, ptr %n, align 4
+  %n8 = load i64, ptr %n, align 8
   %call = call ptr @mesh_int_to_string(i64 %n8)
   store ptr %call, ptr %if_result3, align 8
   br label %if_merge6
@@ -17570,7 +17571,7 @@ case_Some:                                        ; preds = %entry
   %variant_field = getelementptr inbounds nuw { i8, ptr }, ptr %scrutinee, i32 0, i32 1
   %path_val = load ptr, ptr %variant_field, align 8
   store ptr %path_val, ptr %n, align 8
-  %n3 = load i64, ptr %n, align 4
+  %n3 = load i64, ptr %n, align 8
   %call4 = call ptr @Api_Search__cap_limit(i64 %n3)
   call void @mesh_reduction_check()
   store ptr %call4, ptr %match_result, align 8
@@ -17924,10 +17925,10 @@ entry:
   %total = alloca i64, align 8
   %rows1 = load ptr, ptr %rows, align 8
   %call = call i64 @mesh_list_length(ptr %rows1)
-  store i64 %call, ptr %total, align 4
+  store i64 %call, ptr %total, align 8
   %last_row = alloca {}, align 8
   %rows2 = load ptr, ptr %rows, align 8
-  %total3 = load i64, ptr %total, align 4
+  %total3 = load i64, ptr %total, align 8
   %sub = sub i64 %total3, 1
   %call4 = call i64 @mesh_list_get(ptr %rows2, i64 %sub)
   store {} zeroinitializer, ptr %last_row, align 1
@@ -17964,13 +17965,13 @@ entry:
   %rows = alloca ptr, align 8
   store ptr %1, ptr %rows, align 8
   %limit = alloca i64, align 8
-  store i64 %2, ptr %limit, align 4
+  store i64 %2, ptr %limit, align 8
   %count = alloca i64, align 8
   %rows1 = load ptr, ptr %rows, align 8
   %call = call i64 @mesh_list_length(ptr %rows1)
-  store i64 %call, ptr %count, align 4
-  %count2 = load i64, ptr %count, align 4
-  %limit3 = load i64, ptr %limit, align 4
+  store i64 %call, ptr %count, align 8
+  %count2 = load i64, ptr %count, align 8
+  %limit3 = load i64, ptr %limit, align 8
   %eq = icmp eq i64 %count2, %limit3
   %if_result = alloca ptr, align 8
   br i1 %eq, label %then, label %else
@@ -18009,13 +18010,13 @@ entry:
   %rows = alloca ptr, align 8
   store ptr %1, ptr %rows, align 8
   %limit = alloca i64, align 8
-  store i64 %2, ptr %limit, align 4
+  store i64 %2, ptr %limit, align 8
   %count = alloca i64, align 8
   %rows1 = load ptr, ptr %rows, align 8
   %call = call i64 @mesh_list_length(ptr %rows1)
-  store i64 %call, ptr %count, align 4
-  %count2 = load i64, ptr %count, align 4
-  %limit3 = load i64, ptr %limit, align 4
+  store i64 %call, ptr %count, align 8
+  %count2 = load i64, ptr %count, align 8
+  %limit3 = load i64, ptr %limit, align 8
   %eq = icmp eq i64 %count2, %limit3
   %if_result = alloca ptr, align 8
   br i1 %eq, label %then, label %else
@@ -18069,7 +18070,7 @@ entry:
   ]
 
 match_merge:                                      ; preds = %case_None, %case_Some
-  %match_val = load i64, ptr %match_result, align 4
+  %match_val = load i64, ptr %match_result, align 8
   ret i64 %match_val
 
 switch_default:                                   ; preds = %entry
@@ -18080,12 +18081,12 @@ case_Some:                                        ; preds = %entry
   %variant_field = getelementptr inbounds nuw { i8, ptr }, ptr %scrutinee, i32 0, i32 1
   %path_val = load ptr, ptr %variant_field, align 8
   store ptr %path_val, ptr %n, align 8
-  %n3 = load i64, ptr %n, align 4
-  store i64 %n3, ptr %match_result, align 4
+  %n3 = load i64, ptr %n, align 8
+  store i64 %n3, ptr %match_result, align 8
   br label %match_merge
 
 case_None:                                        ; preds = %entry
-  store i64 25, ptr %match_result, align 4
+  store i64 25, ptr %match_result, align 8
   br label %match_merge
 }
 
@@ -18130,10 +18131,10 @@ entry:
   %limit_str3 = load ptr, ptr %limit_str, align 8
   %call4 = call i64 @Api_Search__limit_to_int(ptr %limit_str3)
   call void @mesh_reduction_check()
-  store i64 %call4, ptr %limit, align 4
+  store i64 %call4, ptr %limit, align 8
   %json_array5 = load ptr, ptr %json_array, align 8
   %rows6 = load ptr, ptr %rows, align 8
-  %limit7 = load i64, ptr %limit, align 4
+  %limit7 = load i64, ptr %limit, align 8
   %call8 = call ptr @Api_Search__build_paginated_response(ptr %json_array5, ptr %rows6, i64 %limit7)
   call void @mesh_reduction_check()
   ret ptr %call8
@@ -18175,12 +18176,12 @@ entry:
   %reg_pid = alloca i64, align 8
   %call = call i64 @get_registry()
   call void @mesh_reduction_check()
-  store i64 %call, ptr %reg_pid, align 4
+  store i64 %call, ptr %reg_pid, align 8
   %pool = alloca i64, align 8
-  %reg_pid1 = load i64, ptr %reg_pid, align 4
+  %reg_pid1 = load i64, ptr %reg_pid, align 8
   %call2 = call i64 @__service_pipelineregistry_call_get_pool(i64 %reg_pid1)
   call void @mesh_reduction_check()
-  store i64 %call2, ptr %pool, align 4
+  store i64 %call2, ptr %pool, align 8
   %project_id = alloca ptr, align 8
   %request3 = load ptr, ptr %request, align 8
   %str = call ptr @mesh_string_new(ptr @.str.818, i64 10)
@@ -18228,7 +18229,7 @@ entry:
   call void @mesh_reduction_check()
   store ptr %call26, ptr %limit_str, align 8
   %result = alloca { i8, ptr }, align 8
-  %pool27 = load i64, ptr %pool, align 4
+  %pool27 = load i64, ptr %pool, align 8
   %project_id28 = load ptr, ptr %project_id, align 8
   %status29 = load ptr, ptr %status, align 8
   %level30 = load ptr, ptr %level, align 8
@@ -18328,7 +18329,7 @@ entry:
   %e = alloca ptr, align 8
   %rows = alloca ptr, align 8
   %pool = alloca i64, align 8
-  store i64 %0, ptr %pool, align 4
+  store i64 %0, ptr %pool, align 8
   %project_id = alloca ptr, align 8
   store ptr %1, ptr %project_id, align 8
   %q = alloca ptr, align 8
@@ -18336,7 +18337,7 @@ entry:
   %limit_str = alloca ptr, align 8
   store ptr %3, ptr %limit_str, align 8
   %result = alloca { i8, ptr }, align 8
-  %pool1 = load i64, ptr %pool, align 4
+  %pool1 = load i64, ptr %pool, align 8
   %project_id2 = load ptr, ptr %project_id, align 8
   %q3 = load ptr, ptr %q, align 8
   %limit_str4 = load ptr, ptr %limit_str, align 8
@@ -18390,7 +18391,7 @@ case_Err:                                         ; preds = %entry
 define ptr @Api_Search__dispatch_event_search(i64 %0, ptr %1, ptr %2, ptr %3) {
 entry:
   %pool = alloca i64, align 8
-  store i64 %0, ptr %pool, align 4
+  store i64 %0, ptr %pool, align 8
   %project_id = alloca ptr, align 8
   store ptr %1, ptr %project_id, align 8
   %q = alloca ptr, align 8
@@ -18410,7 +18411,7 @@ then:                                             ; preds = %entry
   br label %if_merge
 
 else:                                             ; preds = %entry
-  %pool3 = load i64, ptr %pool, align 4
+  %pool3 = load i64, ptr %pool, align 8
   %project_id4 = load ptr, ptr %project_id, align 8
   %q5 = load ptr, ptr %q, align 8
   %limit_str6 = load ptr, ptr %limit_str, align 8
@@ -18431,12 +18432,12 @@ entry:
   %reg_pid = alloca i64, align 8
   %call = call i64 @get_registry()
   call void @mesh_reduction_check()
-  store i64 %call, ptr %reg_pid, align 4
+  store i64 %call, ptr %reg_pid, align 8
   %pool = alloca i64, align 8
-  %reg_pid1 = load i64, ptr %reg_pid, align 4
+  %reg_pid1 = load i64, ptr %reg_pid, align 8
   %call2 = call i64 @__service_pipelineregistry_call_get_pool(i64 %reg_pid1)
   call void @mesh_reduction_check()
-  store i64 %call2, ptr %pool, align 4
+  store i64 %call2, ptr %pool, align 8
   %project_id = alloca ptr, align 8
   %request3 = load ptr, ptr %request, align 8
   %str = call ptr @mesh_string_new(ptr @.str.836, i64 10)
@@ -18455,7 +18456,7 @@ entry:
   %call10 = call ptr @Api_Search__get_limit(ptr %request9)
   call void @mesh_reduction_check()
   store ptr %call10, ptr %limit_str, align 8
-  %pool11 = load i64, ptr %pool, align 4
+  %pool11 = load i64, ptr %pool, align 8
   %project_id12 = load ptr, ptr %project_id, align 8
   %q13 = load ptr, ptr %q, align 8
   %limit_str14 = load ptr, ptr %limit_str, align 8
@@ -18512,7 +18513,7 @@ entry:
   %e = alloca ptr, align 8
   %rows = alloca ptr, align 8
   %pool = alloca i64, align 8
-  store i64 %0, ptr %pool, align 4
+  store i64 %0, ptr %pool, align 8
   %project_id = alloca ptr, align 8
   store ptr %1, ptr %project_id, align 8
   %tag_json = alloca ptr, align 8
@@ -18520,7 +18521,7 @@ entry:
   %limit_str = alloca ptr, align 8
   store ptr %3, ptr %limit_str, align 8
   %result = alloca { i8, ptr }, align 8
-  %pool1 = load i64, ptr %pool, align 4
+  %pool1 = load i64, ptr %pool, align 8
   %project_id2 = load ptr, ptr %project_id, align 8
   %tag_json3 = load ptr, ptr %tag_json, align 8
   %limit_str4 = load ptr, ptr %limit_str, align 8
@@ -18574,7 +18575,7 @@ case_Err:                                         ; preds = %entry
 define ptr @Api_Search__check_tag_params(i64 %0, ptr %1, ptr %2, ptr %3, ptr %4) {
 entry:
   %pool = alloca i64, align 8
-  store i64 %0, ptr %pool, align 4
+  store i64 %0, ptr %pool, align 8
   %project_id = alloca ptr, align 8
   store ptr %1, ptr %project_id, align 8
   %key = alloca ptr, align 8
@@ -18630,7 +18631,7 @@ else10:                                           ; preds = %else
   %str18 = call ptr @mesh_string_new(ptr @.str.846, i64 3)
   %concat19 = call ptr @mesh_string_concat(ptr %concat17, ptr %str18)
   store ptr %concat19, ptr %tag_json, align 8
-  %pool20 = load i64, ptr %pool, align 4
+  %pool20 = load i64, ptr %pool, align 8
   %project_id21 = load ptr, ptr %project_id, align 8
   %tag_json22 = load ptr, ptr %tag_json, align 8
   %limit_str23 = load ptr, ptr %limit_str, align 8
@@ -18652,12 +18653,12 @@ entry:
   %reg_pid = alloca i64, align 8
   %call = call i64 @get_registry()
   call void @mesh_reduction_check()
-  store i64 %call, ptr %reg_pid, align 4
+  store i64 %call, ptr %reg_pid, align 8
   %pool = alloca i64, align 8
-  %reg_pid1 = load i64, ptr %reg_pid, align 4
+  %reg_pid1 = load i64, ptr %reg_pid, align 8
   %call2 = call i64 @__service_pipelineregistry_call_get_pool(i64 %reg_pid1)
   call void @mesh_reduction_check()
-  store i64 %call2, ptr %pool, align 4
+  store i64 %call2, ptr %pool, align 8
   %project_id = alloca ptr, align 8
   %request3 = load ptr, ptr %request, align 8
   %str = call ptr @mesh_string_new(ptr @.str.847, i64 10)
@@ -18683,7 +18684,7 @@ entry:
   %call14 = call ptr @Api_Search__get_limit(ptr %request13)
   call void @mesh_reduction_check()
   store ptr %call14, ptr %limit_str, align 8
-  %pool15 = load i64, ptr %pool, align 4
+  %pool15 = load i64, ptr %pool, align 8
   %project_id16 = load ptr, ptr %project_id, align 8
   %key17 = load ptr, ptr %key, align 8
   %value18 = load ptr, ptr %value, align 8
@@ -18734,10 +18735,10 @@ entry:
   %limit_str3 = load ptr, ptr %limit_str, align 8
   %call4 = call i64 @Api_Search__limit_to_int(ptr %limit_str3)
   call void @mesh_reduction_check()
-  store i64 %call4, ptr %limit, align 4
+  store i64 %call4, ptr %limit, align 8
   %json_array5 = load ptr, ptr %json_array, align 8
   %rows6 = load ptr, ptr %rows, align 8
-  %limit7 = load i64, ptr %limit, align 4
+  %limit7 = load i64, ptr %limit, align 8
   %call8 = call ptr @Api_Search__build_event_paginated_response(ptr %json_array5, ptr %rows6, i64 %limit7)
   call void @mesh_reduction_check()
   ret ptr %call8
@@ -18766,12 +18767,12 @@ entry:
   %reg_pid = alloca i64, align 8
   %call = call i64 @get_registry()
   call void @mesh_reduction_check()
-  store i64 %call, ptr %reg_pid, align 4
+  store i64 %call, ptr %reg_pid, align 8
   %pool = alloca i64, align 8
-  %reg_pid1 = load i64, ptr %reg_pid, align 4
+  %reg_pid1 = load i64, ptr %reg_pid, align 8
   %call2 = call i64 @__service_pipelineregistry_call_get_pool(i64 %reg_pid1)
   call void @mesh_reduction_check()
-  store i64 %call2, ptr %pool, align 4
+  store i64 %call2, ptr %pool, align 8
   %issue_id = alloca ptr, align 8
   %request3 = load ptr, ptr %request, align 8
   %str = call ptr @mesh_string_new(ptr @.str.852, i64 8)
@@ -18798,7 +18799,7 @@ entry:
   call void @mesh_reduction_check()
   store ptr %call14, ptr %limit_str, align 8
   %result = alloca { i8, ptr }, align 8
-  %pool15 = load i64, ptr %pool, align 4
+  %pool15 = load i64, ptr %pool, align 8
   %issue_id16 = load ptr, ptr %issue_id, align 8
   %cursor17 = load ptr, ptr %cursor, align 8
   %cursor_id18 = load ptr, ptr %cursor_id, align 8
@@ -18959,12 +18960,12 @@ entry:
   %reg_pid = alloca i64, align 8
   %call = call i64 @get_registry()
   call void @mesh_reduction_check()
-  store i64 %call, ptr %reg_pid, align 4
+  store i64 %call, ptr %reg_pid, align 8
   %pool = alloca i64, align 8
-  %reg_pid1 = load i64, ptr %reg_pid, align 4
+  %reg_pid1 = load i64, ptr %reg_pid, align 8
   %call2 = call i64 @__service_pipelineregistry_call_get_pool(i64 %reg_pid1)
   call void @mesh_reduction_check()
-  store i64 %call2, ptr %pool, align 4
+  store i64 %call2, ptr %pool, align 8
   %project_id = alloca ptr, align 8
   %request3 = load ptr, ptr %request, align 8
   %str = call ptr @mesh_string_new(ptr @.str.873, i64 10)
@@ -18972,7 +18973,7 @@ entry:
   call void @mesh_reduction_check()
   store ptr %call4, ptr %project_id, align 8
   %result = alloca { i8, ptr }, align 8
-  %pool5 = load i64, ptr %pool, align 4
+  %pool5 = load i64, ptr %pool, align 8
   %project_id6 = load ptr, ptr %project_id, align 8
   %call7 = call { i8, ptr } @get_project_settings(i64 %pool5, ptr %project_id6)
   call void @mesh_reduction_check()
@@ -19029,12 +19030,12 @@ entry:
   %reg_pid = alloca i64, align 8
   %call = call i64 @get_registry()
   call void @mesh_reduction_check()
-  store i64 %call, ptr %reg_pid, align 4
+  store i64 %call, ptr %reg_pid, align 8
   %pool = alloca i64, align 8
-  %reg_pid1 = load i64, ptr %reg_pid, align 4
+  %reg_pid1 = load i64, ptr %reg_pid, align 8
   %call2 = call i64 @__service_pipelineregistry_call_get_pool(i64 %reg_pid1)
   call void @mesh_reduction_check()
-  store i64 %call2, ptr %pool, align 4
+  store i64 %call2, ptr %pool, align 8
   %project_id = alloca ptr, align 8
   %request3 = load ptr, ptr %request, align 8
   %str = call ptr @mesh_string_new(ptr @.str.878, i64 10)
@@ -19046,7 +19047,7 @@ entry:
   %call6 = call ptr @mesh_http_request_body(ptr %request5)
   store ptr %call6, ptr %body, align 8
   %result = alloca { i8, ptr }, align 8
-  %pool7 = load i64, ptr %pool, align 4
+  %pool7 = load i64, ptr %pool, align 8
   %project_id8 = load ptr, ptr %project_id, align 8
   %body9 = load ptr, ptr %body, align 8
   %call10 = call { i8, ptr } @update_project_settings(i64 %pool7, ptr %project_id8, ptr %body9)
@@ -19076,7 +19077,7 @@ case_Ok:                                          ; preds = %entry
   %path_val = load ptr, ptr %variant_field, align 8
   store ptr %path_val, ptr %n, align 8
   %str12 = call ptr @mesh_string_new(ptr @.str.879, i64 32)
-  %n13 = load i64, ptr %n, align 4
+  %n13 = load i64, ptr %n, align 8
   %call14 = call ptr @mesh_int_to_string(i64 %n13)
   %concat = call ptr @mesh_string_concat(ptr %str12, ptr %call14)
   %str15 = call ptr @mesh_string_new(ptr @.str.880, i64 1)
@@ -19108,12 +19109,12 @@ entry:
   %reg_pid = alloca i64, align 8
   %call = call i64 @get_registry()
   call void @mesh_reduction_check()
-  store i64 %call, ptr %reg_pid, align 4
+  store i64 %call, ptr %reg_pid, align 8
   %pool = alloca i64, align 8
-  %reg_pid1 = load i64, ptr %reg_pid, align 4
+  %reg_pid1 = load i64, ptr %reg_pid, align 8
   %call2 = call i64 @__service_pipelineregistry_call_get_pool(i64 %reg_pid1)
   call void @mesh_reduction_check()
-  store i64 %call2, ptr %pool, align 4
+  store i64 %call2, ptr %pool, align 8
   %project_id = alloca ptr, align 8
   %request3 = load ptr, ptr %request, align 8
   %str = call ptr @mesh_string_new(ptr @.str.885, i64 10)
@@ -19121,7 +19122,7 @@ entry:
   call void @mesh_reduction_check()
   store ptr %call4, ptr %project_id, align 8
   %result = alloca { i8, ptr }, align 8
-  %pool5 = load i64, ptr %pool, align 4
+  %pool5 = load i64, ptr %pool, align 8
   %project_id6 = load ptr, ptr %project_id, align 8
   %call7 = call { i8, ptr } @get_project_storage(i64 %pool5, ptr %project_id6)
   call void @mesh_reduction_check()
@@ -19346,23 +19347,23 @@ entry:
   %__try_err_1 = alloca ptr, align 8
   %__try_val_1 = alloca ptr, align 8
   %pool = alloca i64, align 8
-  store i64 %0, ptr %pool, align 4
+  store i64 %0, ptr %pool, align 8
   %body = alloca ptr, align 8
   store ptr %1, ptr %body, align 8
   %field = alloca ptr, align 8
   store ptr %2, ptr %field, align 8
   %rows = alloca ptr, align 8
-  %pool1 = load i64, ptr %pool, align 4
+  %pool1 = load i64, ptr %pool, align 8
   %str = call ptr @mesh_string_new(ptr @.str.919, i64 42)
   %list_arr = alloca [2 x i64], align 8
   %body2 = load ptr, ptr %body, align 8
   %ptr_to_i64 = ptrtoint ptr %body2 to i64
   %elem_ptr = getelementptr [2 x i64], ptr %list_arr, i32 0, i32 0
-  store i64 %ptr_to_i64, ptr %elem_ptr, align 4
+  store i64 %ptr_to_i64, ptr %elem_ptr, align 8
   %field3 = load ptr, ptr %field, align 8
   %ptr_to_i644 = ptrtoint ptr %field3 to i64
   %elem_ptr5 = getelementptr [2 x i64], ptr %list_arr, i32 0, i32 1
-  store i64 %ptr_to_i644, ptr %elem_ptr5, align 4
+  store i64 %ptr_to_i644, ptr %elem_ptr5, align 8
   %list = call ptr @mesh_list_from_array(ptr %list_arr, i64 2)
   %call = call ptr @mesh_pool_query(i64 %pool1, ptr %str, ptr %list)
   %match_result = alloca ptr, align 8
@@ -19457,9 +19458,9 @@ entry:
 define ptr @Api_Team__update_role_success(i64 %0) {
 entry:
   %n = alloca i64, align 8
-  store i64 %0, ptr %n, align 4
+  store i64 %0, ptr %n, align 8
   %str = call ptr @mesh_string_new(ptr @.str.926, i64 32)
-  %n1 = load i64, ptr %n, align 4
+  %n1 = load i64, ptr %n, align 8
   %call = call ptr @mesh_int_to_string(i64 %n1)
   %concat = call ptr @mesh_string_concat(ptr %str, ptr %call)
   %str2 = call ptr @mesh_string_new(ptr @.str.927, i64 1)
@@ -19471,9 +19472,9 @@ entry:
 define ptr @Api_Team__remove_success(i64 %0) {
 entry:
   %n = alloca i64, align 8
-  store i64 %0, ptr %n, align 4
+  store i64 %0, ptr %n, align 8
   %str = call ptr @mesh_string_new(ptr @.str.928, i64 32)
-  %n1 = load i64, ptr %n, align 4
+  %n1 = load i64, ptr %n, align 8
   %call = call ptr @mesh_int_to_string(i64 %n1)
   %concat = call ptr @mesh_string_concat(ptr %str, ptr %call)
   %str2 = call ptr @mesh_string_new(ptr @.str.929, i64 1)
@@ -19498,9 +19499,9 @@ entry:
 define ptr @Api_Team__revoke_key_success(i64 %0) {
 entry:
   %n = alloca i64, align 8
-  store i64 %0, ptr %n, align 4
+  store i64 %0, ptr %n, align 8
   %str = call ptr @mesh_string_new(ptr @.str.932, i64 32)
-  %n1 = load i64, ptr %n, align 4
+  %n1 = load i64, ptr %n, align 8
   %call = call ptr @mesh_int_to_string(i64 %n1)
   %concat = call ptr @mesh_string_concat(ptr %str, ptr %call)
   %str2 = call ptr @mesh_string_new(ptr @.str.933, i64 1)
@@ -19514,7 +19515,7 @@ entry:
   %e = alloca ptr, align 8
   %id = alloca ptr, align 8
   %pool = alloca i64, align 8
-  store i64 %0, ptr %pool, align 4
+  store i64 %0, ptr %pool, align 8
   %org_id = alloca ptr, align 8
   store ptr %1, ptr %org_id, align 8
   %user_id = alloca ptr, align 8
@@ -19522,7 +19523,7 @@ entry:
   %role = alloca ptr, align 8
   store ptr %3, ptr %role, align 8
   %result = alloca { i8, ptr }, align 8
-  %pool1 = load i64, ptr %pool, align 4
+  %pool1 = load i64, ptr %pool, align 8
   %user_id2 = load ptr, ptr %user_id, align 8
   %org_id3 = load ptr, ptr %org_id, align 8
   %role4 = load ptr, ptr %role, align 8
@@ -19577,7 +19578,7 @@ entry:
   %e = alloca ptr, align 8
   %role = alloca ptr, align 8
   %pool = alloca i64, align 8
-  store i64 %0, ptr %pool, align 4
+  store i64 %0, ptr %pool, align 8
   %org_id = alloca ptr, align 8
   store ptr %1, ptr %org_id, align 8
   %user_id = alloca ptr, align 8
@@ -19585,7 +19586,7 @@ entry:
   %body = alloca ptr, align 8
   store ptr %3, ptr %body, align 8
   %role_result = alloca { i8, ptr }, align 8
-  %pool1 = load i64, ptr %pool, align 4
+  %pool1 = load i64, ptr %pool, align 8
   %body2 = load ptr, ptr %body, align 8
   %str = call ptr @mesh_string_new(ptr @.str.938, i64 4)
   %call = call { i8, ptr } @Api_Team__extract_json_field(i64 %pool1, ptr %body2, ptr %str)
@@ -19614,7 +19615,7 @@ case_Ok:                                          ; preds = %entry
   %variant_field = getelementptr inbounds nuw { i8, ptr }, ptr %scrutinee, i32 0, i32 1
   %path_val = load ptr, ptr %variant_field, align 8
   store ptr %path_val, ptr %role, align 8
-  %pool4 = load i64, ptr %pool, align 4
+  %pool4 = load i64, ptr %pool, align 8
   %org_id5 = load ptr, ptr %org_id, align 8
   %user_id6 = load ptr, ptr %user_id, align 8
   %role7 = load ptr, ptr %role, align 8
@@ -19653,7 +19654,7 @@ if_merge:                                         ; preds = %else, %then
 define ptr @Api_Team__check_user_id(i64 %0, ptr %1, ptr %2, ptr %3) {
 entry:
   %pool = alloca i64, align 8
-  store i64 %0, ptr %pool, align 4
+  store i64 %0, ptr %pool, align 8
   %org_id = alloca ptr, align 8
   store ptr %1, ptr %org_id, align 8
   %user_id = alloca ptr, align 8
@@ -19673,7 +19674,7 @@ then:                                             ; preds = %entry
   br label %if_merge
 
 else:                                             ; preds = %entry
-  %pool3 = load i64, ptr %pool, align 4
+  %pool3 = load i64, ptr %pool, align 8
   %org_id4 = load ptr, ptr %org_id, align 8
   %user_id5 = load ptr, ptr %user_id, align 8
   %body6 = load ptr, ptr %body, align 8
@@ -19692,13 +19693,13 @@ entry:
   %e = alloca ptr, align 8
   %user_id = alloca ptr, align 8
   %pool = alloca i64, align 8
-  store i64 %0, ptr %pool, align 4
+  store i64 %0, ptr %pool, align 8
   %org_id = alloca ptr, align 8
   store ptr %1, ptr %org_id, align 8
   %body = alloca ptr, align 8
   store ptr %2, ptr %body, align 8
   %uid_result = alloca { i8, ptr }, align 8
-  %pool1 = load i64, ptr %pool, align 4
+  %pool1 = load i64, ptr %pool, align 8
   %body2 = load ptr, ptr %body, align 8
   %str = call ptr @mesh_string_new(ptr @.str.944, i64 7)
   %call = call { i8, ptr } @Api_Team__extract_json_field(i64 %pool1, ptr %body2, ptr %str)
@@ -19727,7 +19728,7 @@ case_Ok:                                          ; preds = %entry
   %variant_field = getelementptr inbounds nuw { i8, ptr }, ptr %scrutinee, i32 0, i32 1
   %path_val = load ptr, ptr %variant_field, align 8
   store ptr %path_val, ptr %user_id, align 8
-  %pool4 = load i64, ptr %pool, align 4
+  %pool4 = load i64, ptr %pool, align 8
   %org_id5 = load ptr, ptr %org_id, align 8
   %user_id6 = load ptr, ptr %user_id, align 8
   %body7 = load ptr, ptr %body, align 8
@@ -19751,13 +19752,13 @@ entry:
   %e = alloca ptr, align 8
   %n = alloca i64, align 8
   %pool = alloca i64, align 8
-  store i64 %0, ptr %pool, align 4
+  store i64 %0, ptr %pool, align 8
   %membership_id = alloca ptr, align 8
   store ptr %1, ptr %membership_id, align 8
   %role = alloca ptr, align 8
   store ptr %2, ptr %role, align 8
   %result = alloca { i8, ptr }, align 8
-  %pool1 = load i64, ptr %pool, align 4
+  %pool1 = load i64, ptr %pool, align 8
   %membership_id2 = load ptr, ptr %membership_id, align 8
   %role3 = load ptr, ptr %role, align 8
   %call = call { i8, ptr } @update_member_role(i64 %pool1, ptr %membership_id2, ptr %role3)
@@ -19786,7 +19787,7 @@ case_Ok:                                          ; preds = %entry
   %variant_field = getelementptr inbounds nuw { i8, ptr }, ptr %scrutinee, i32 0, i32 1
   %path_val = load ptr, ptr %variant_field, align 8
   store ptr %path_val, ptr %n, align 8
-  %n5 = load i64, ptr %n, align 4
+  %n5 = load i64, ptr %n, align 8
   %call6 = call ptr @Api_Team__update_role_success(i64 %n5)
   call void @mesh_reduction_check()
   store ptr %call6, ptr %match_result, align 8
@@ -19811,13 +19812,13 @@ entry:
   %e = alloca ptr, align 8
   %role = alloca ptr, align 8
   %pool = alloca i64, align 8
-  store i64 %0, ptr %pool, align 4
+  store i64 %0, ptr %pool, align 8
   %membership_id = alloca ptr, align 8
   store ptr %1, ptr %membership_id, align 8
   %body = alloca ptr, align 8
   store ptr %2, ptr %body, align 8
   %role_result = alloca { i8, ptr }, align 8
-  %pool1 = load i64, ptr %pool, align 4
+  %pool1 = load i64, ptr %pool, align 8
   %body2 = load ptr, ptr %body, align 8
   %str = call ptr @mesh_string_new(ptr @.str.952, i64 4)
   %call = call { i8, ptr } @Api_Team__extract_json_field(i64 %pool1, ptr %body2, ptr %str)
@@ -19846,7 +19847,7 @@ case_Ok:                                          ; preds = %entry
   %variant_field = getelementptr inbounds nuw { i8, ptr }, ptr %scrutinee, i32 0, i32 1
   %path_val = load ptr, ptr %variant_field, align 8
   store ptr %path_val, ptr %role, align 8
-  %pool4 = load i64, ptr %pool, align 4
+  %pool4 = load i64, ptr %pool, align 8
   %membership_id5 = load ptr, ptr %membership_id, align 8
   %role6 = load ptr, ptr %role, align 8
   %call7 = call ptr @Api_Team__perform_role_update(i64 %pool4, ptr %membership_id5, ptr %role6)
@@ -19869,13 +19870,13 @@ entry:
   %e = alloca ptr, align 8
   %key_value = alloca ptr, align 8
   %pool = alloca i64, align 8
-  store i64 %0, ptr %pool, align 4
+  store i64 %0, ptr %pool, align 8
   %project_id = alloca ptr, align 8
   store ptr %1, ptr %project_id, align 8
   %label = alloca ptr, align 8
   store ptr %2, ptr %label, align 8
   %result = alloca { i8, ptr }, align 8
-  %pool1 = load i64, ptr %pool, align 4
+  %pool1 = load i64, ptr %pool, align 8
   %project_id2 = load ptr, ptr %project_id, align 8
   %label3 = load ptr, ptr %label, align 8
   %call = call { i8, ptr } @create_api_key(i64 %pool1, ptr %project_id2, ptr %label3)
@@ -19929,13 +19930,13 @@ entry:
   %e = alloca ptr, align 8
   %label = alloca ptr, align 8
   %pool = alloca i64, align 8
-  store i64 %0, ptr %pool, align 4
+  store i64 %0, ptr %pool, align 8
   %project_id = alloca ptr, align 8
   store ptr %1, ptr %project_id, align 8
   %body = alloca ptr, align 8
   store ptr %2, ptr %body, align 8
   %label_result = alloca { i8, ptr }, align 8
-  %pool1 = load i64, ptr %pool, align 4
+  %pool1 = load i64, ptr %pool, align 8
   %body2 = load ptr, ptr %body, align 8
   %str = call ptr @mesh_string_new(ptr @.str.960, i64 5)
   %call = call { i8, ptr } @Api_Team__extract_json_field(i64 %pool1, ptr %body2, ptr %str)
@@ -19964,7 +19965,7 @@ case_Ok:                                          ; preds = %entry
   %variant_field = getelementptr inbounds nuw { i8, ptr }, ptr %scrutinee, i32 0, i32 1
   %path_val = load ptr, ptr %variant_field, align 8
   store ptr %path_val, ptr %label, align 8
-  %pool4 = load i64, ptr %pool, align 4
+  %pool4 = load i64, ptr %pool, align 8
   %project_id5 = load ptr, ptr %project_id, align 8
   %label6 = load ptr, ptr %label, align 8
   %call7 = call i64 @mesh_string_length(ptr %label6)
@@ -20020,12 +20021,12 @@ entry:
   %reg_pid = alloca i64, align 8
   %call = call i64 @get_registry()
   call void @mesh_reduction_check()
-  store i64 %call, ptr %reg_pid, align 4
+  store i64 %call, ptr %reg_pid, align 8
   %pool = alloca i64, align 8
-  %reg_pid1 = load i64, ptr %reg_pid, align 4
+  %reg_pid1 = load i64, ptr %reg_pid, align 8
   %call2 = call i64 @__service_pipelineregistry_call_get_pool(i64 %reg_pid1)
   call void @mesh_reduction_check()
-  store i64 %call2, ptr %pool, align 4
+  store i64 %call2, ptr %pool, align 8
   %org_id = alloca ptr, align 8
   %request3 = load ptr, ptr %request, align 8
   %str = call ptr @mesh_string_new(ptr @.str.965, i64 6)
@@ -20033,7 +20034,7 @@ entry:
   call void @mesh_reduction_check()
   store ptr %call4, ptr %org_id, align 8
   %result = alloca { i8, ptr }, align 8
-  %pool5 = load i64, ptr %pool, align 4
+  %pool5 = load i64, ptr %pool, align 8
   %org_id6 = load ptr, ptr %org_id, align 8
   %call7 = call { i8, ptr } @get_members_with_users(i64 %pool5, ptr %org_id6)
   call void @mesh_reduction_check()
@@ -20103,12 +20104,12 @@ entry:
   %reg_pid = alloca i64, align 8
   %call = call i64 @get_registry()
   call void @mesh_reduction_check()
-  store i64 %call, ptr %reg_pid, align 4
+  store i64 %call, ptr %reg_pid, align 8
   %pool = alloca i64, align 8
-  %reg_pid1 = load i64, ptr %reg_pid, align 4
+  %reg_pid1 = load i64, ptr %reg_pid, align 8
   %call2 = call i64 @__service_pipelineregistry_call_get_pool(i64 %reg_pid1)
   call void @mesh_reduction_check()
-  store i64 %call2, ptr %pool, align 4
+  store i64 %call2, ptr %pool, align 8
   %org_id = alloca ptr, align 8
   %request3 = load ptr, ptr %request, align 8
   %str = call ptr @mesh_string_new(ptr @.str.970, i64 6)
@@ -20119,7 +20120,7 @@ entry:
   %request5 = load ptr, ptr %request, align 8
   %call6 = call ptr @mesh_http_request_body(ptr %request5)
   store ptr %call6, ptr %body, align 8
-  %pool7 = load i64, ptr %pool, align 4
+  %pool7 = load i64, ptr %pool, align 8
   %org_id8 = load ptr, ptr %org_id, align 8
   %body9 = load ptr, ptr %body, align 8
   %call10 = call ptr @Api_Team__validate_add_member(i64 %pool7, ptr %org_id8, ptr %body9)
@@ -20134,12 +20135,12 @@ entry:
   %reg_pid = alloca i64, align 8
   %call = call i64 @get_registry()
   call void @mesh_reduction_check()
-  store i64 %call, ptr %reg_pid, align 4
+  store i64 %call, ptr %reg_pid, align 8
   %pool = alloca i64, align 8
-  %reg_pid1 = load i64, ptr %reg_pid, align 4
+  %reg_pid1 = load i64, ptr %reg_pid, align 8
   %call2 = call i64 @__service_pipelineregistry_call_get_pool(i64 %reg_pid1)
   call void @mesh_reduction_check()
-  store i64 %call2, ptr %pool, align 4
+  store i64 %call2, ptr %pool, align 8
   %membership_id = alloca ptr, align 8
   %request3 = load ptr, ptr %request, align 8
   %str = call ptr @mesh_string_new(ptr @.str.971, i64 13)
@@ -20150,7 +20151,7 @@ entry:
   %request5 = load ptr, ptr %request, align 8
   %call6 = call ptr @mesh_http_request_body(ptr %request5)
   store ptr %call6, ptr %body, align 8
-  %pool7 = load i64, ptr %pool, align 4
+  %pool7 = load i64, ptr %pool, align 8
   %membership_id8 = load ptr, ptr %membership_id, align 8
   %body9 = load ptr, ptr %body, align 8
   %call10 = call ptr @Api_Team__do_update_role(i64 %pool7, ptr %membership_id8, ptr %body9)
@@ -20167,12 +20168,12 @@ entry:
   %reg_pid = alloca i64, align 8
   %call = call i64 @get_registry()
   call void @mesh_reduction_check()
-  store i64 %call, ptr %reg_pid, align 4
+  store i64 %call, ptr %reg_pid, align 8
   %pool = alloca i64, align 8
-  %reg_pid1 = load i64, ptr %reg_pid, align 4
+  %reg_pid1 = load i64, ptr %reg_pid, align 8
   %call2 = call i64 @__service_pipelineregistry_call_get_pool(i64 %reg_pid1)
   call void @mesh_reduction_check()
-  store i64 %call2, ptr %pool, align 4
+  store i64 %call2, ptr %pool, align 8
   %membership_id = alloca ptr, align 8
   %request3 = load ptr, ptr %request, align 8
   %str = call ptr @mesh_string_new(ptr @.str.972, i64 13)
@@ -20180,7 +20181,7 @@ entry:
   call void @mesh_reduction_check()
   store ptr %call4, ptr %membership_id, align 8
   %result = alloca { i8, ptr }, align 8
-  %pool5 = load i64, ptr %pool, align 4
+  %pool5 = load i64, ptr %pool, align 8
   %membership_id6 = load ptr, ptr %membership_id, align 8
   %call7 = call { i8, ptr } @remove_member(i64 %pool5, ptr %membership_id6)
   call void @mesh_reduction_check()
@@ -20208,7 +20209,7 @@ case_Ok:                                          ; preds = %entry
   %variant_field = getelementptr inbounds nuw { i8, ptr }, ptr %scrutinee, i32 0, i32 1
   %path_val = load ptr, ptr %variant_field, align 8
   store ptr %path_val, ptr %n, align 8
-  %n9 = load i64, ptr %n, align 4
+  %n9 = load i64, ptr %n, align 8
   %call10 = call ptr @Api_Team__remove_success(i64 %n9)
   call void @mesh_reduction_check()
   store ptr %call10, ptr %match_result, align 8
@@ -20249,12 +20250,12 @@ entry:
   %reg_pid = alloca i64, align 8
   %call = call i64 @get_registry()
   call void @mesh_reduction_check()
-  store i64 %call, ptr %reg_pid, align 4
+  store i64 %call, ptr %reg_pid, align 8
   %pool = alloca i64, align 8
-  %reg_pid1 = load i64, ptr %reg_pid, align 4
+  %reg_pid1 = load i64, ptr %reg_pid, align 8
   %call2 = call i64 @__service_pipelineregistry_call_get_pool(i64 %reg_pid1)
   call void @mesh_reduction_check()
-  store i64 %call2, ptr %pool, align 4
+  store i64 %call2, ptr %pool, align 8
   %project_id = alloca ptr, align 8
   %request3 = load ptr, ptr %request, align 8
   %str = call ptr @mesh_string_new(ptr @.str.977, i64 10)
@@ -20262,7 +20263,7 @@ entry:
   call void @mesh_reduction_check()
   store ptr %call4, ptr %project_id, align 8
   %result = alloca { i8, ptr }, align 8
-  %pool5 = load i64, ptr %pool, align 4
+  %pool5 = load i64, ptr %pool, align 8
   %project_id6 = load ptr, ptr %project_id, align 8
   %call7 = call { i8, ptr } @list_api_keys(i64 %pool5, ptr %project_id6)
   call void @mesh_reduction_check()
@@ -20332,12 +20333,12 @@ entry:
   %reg_pid = alloca i64, align 8
   %call = call i64 @get_registry()
   call void @mesh_reduction_check()
-  store i64 %call, ptr %reg_pid, align 4
+  store i64 %call, ptr %reg_pid, align 8
   %pool = alloca i64, align 8
-  %reg_pid1 = load i64, ptr %reg_pid, align 4
+  %reg_pid1 = load i64, ptr %reg_pid, align 8
   %call2 = call i64 @__service_pipelineregistry_call_get_pool(i64 %reg_pid1)
   call void @mesh_reduction_check()
-  store i64 %call2, ptr %pool, align 4
+  store i64 %call2, ptr %pool, align 8
   %project_id = alloca ptr, align 8
   %request3 = load ptr, ptr %request, align 8
   %str = call ptr @mesh_string_new(ptr @.str.982, i64 10)
@@ -20348,7 +20349,7 @@ entry:
   %request5 = load ptr, ptr %request, align 8
   %call6 = call ptr @mesh_http_request_body(ptr %request5)
   store ptr %call6, ptr %body, align 8
-  %pool7 = load i64, ptr %pool, align 4
+  %pool7 = load i64, ptr %pool, align 8
   %project_id8 = load ptr, ptr %project_id, align 8
   %body9 = load ptr, ptr %body, align 8
   %call10 = call ptr @Api_Team__do_create_key(i64 %pool7, ptr %project_id8, ptr %body9)
@@ -20365,12 +20366,12 @@ entry:
   %reg_pid = alloca i64, align 8
   %call = call i64 @get_registry()
   call void @mesh_reduction_check()
-  store i64 %call, ptr %reg_pid, align 4
+  store i64 %call, ptr %reg_pid, align 8
   %pool = alloca i64, align 8
-  %reg_pid1 = load i64, ptr %reg_pid, align 4
+  %reg_pid1 = load i64, ptr %reg_pid, align 8
   %call2 = call i64 @__service_pipelineregistry_call_get_pool(i64 %reg_pid1)
   call void @mesh_reduction_check()
-  store i64 %call2, ptr %pool, align 4
+  store i64 %call2, ptr %pool, align 8
   %key_id = alloca ptr, align 8
   %request3 = load ptr, ptr %request, align 8
   %str = call ptr @mesh_string_new(ptr @.str.983, i64 6)
@@ -20378,7 +20379,7 @@ entry:
   call void @mesh_reduction_check()
   store ptr %call4, ptr %key_id, align 8
   %result = alloca { i8, ptr }, align 8
-  %pool5 = load i64, ptr %pool, align 4
+  %pool5 = load i64, ptr %pool, align 8
   %key_id6 = load ptr, ptr %key_id, align 8
   %call7 = call { i8, ptr } @revoke_api_key(i64 %pool5, ptr %key_id6)
   call void @mesh_reduction_check()
@@ -20406,7 +20407,7 @@ case_Ok:                                          ; preds = %entry
   %variant_field = getelementptr inbounds nuw { i8, ptr }, ptr %scrutinee, i32 0, i32 1
   %path_val = load ptr, ptr %variant_field, align 8
   store ptr %path_val, ptr %n, align 8
-  %n9 = load i64, ptr %n, align 4
+  %n9 = load i64, ptr %n, align 8
   %call10 = call ptr @Api_Team__revoke_key_success(i64 %n9)
   call void @mesh_reduction_check()
   store ptr %call10, ptr %match_result, align 8
@@ -20512,16 +20513,16 @@ then:                                             ; preds = %entry
   %str16 = call ptr @mesh_string_new(ptr @.str.999, i64 1)
   %concat17 = call ptr @mesh_string_concat(ptr %concat15, ptr %str16)
   %call18 = call i64 @mesh_ws_broadcast(ptr %room8, ptr %concat17)
-  store i64 %call18, ptr %_, align 4
-  store i64 0, ptr %if_result, align 4
+  store i64 %call18, ptr %_, align 8
+  store i64 0, ptr %if_result, align 8
   br label %if_merge
 
 else:                                             ; preds = %entry
-  store i64 0, ptr %if_result, align 4
+  store i64 0, ptr %if_result, align 8
   br label %if_merge
 
 if_merge:                                         ; preds = %else, %then
-  %if_val = load i64, ptr %if_result, align 4
+  %if_val = load i64, ptr %if_result, align 8
   ret i64 %if_val
 }
 
@@ -20533,20 +20534,20 @@ entry:
   %reg_pid = alloca i64, align 8
   %call = call i64 @get_registry()
   call void @mesh_reduction_check()
-  store i64 %call, ptr %reg_pid, align 4
+  store i64 %call, ptr %reg_pid, align 8
   %pool = alloca i64, align 8
-  %reg_pid1 = load i64, ptr %reg_pid, align 4
+  %reg_pid1 = load i64, ptr %reg_pid, align 8
   %call2 = call i64 @__service_pipelineregistry_call_get_pool(i64 %reg_pid1)
   call void @mesh_reduction_check()
-  store i64 %call2, ptr %pool, align 4
+  store i64 %call2, ptr %pool, align 8
   %count_result = alloca { i8, ptr }, align 8
-  %pool3 = load i64, ptr %pool, align 4
+  %pool3 = load i64, ptr %pool, align 8
   %str = call ptr @mesh_string_new(ptr @.str.1000, i64 94)
   %list_arr = alloca [1 x i64], align 8
   %project_id4 = load ptr, ptr %project_id, align 8
   %ptr_to_i64 = ptrtoint ptr %project_id4 to i64
   %elem_ptr = getelementptr [1 x i64], ptr %list_arr, i32 0, i32 0
-  store i64 %ptr_to_i64, ptr %elem_ptr, align 4
+  store i64 %ptr_to_i64, ptr %elem_ptr, align 8
   %list = call ptr @mesh_list_from_array(ptr %list_arr, i64 1)
   %call5 = call ptr @mesh_pool_query(i64 %pool3, ptr %str, ptr %list)
   %deref_sum = load { i8, ptr }, ptr %call5, align 8
@@ -20563,7 +20564,7 @@ entry:
   ]
 
 match_merge:                                      ; preds = %case_Err, %case_Ok
-  %match_val = load i64, ptr %match_result, align 4
+  %match_val = load i64, ptr %match_result, align 8
   ret i64 %match_val
 
 switch_default:                                   ; preds = %entry
@@ -20578,11 +20579,11 @@ case_Ok:                                          ; preds = %entry
   %rows8 = load ptr, ptr %rows, align 8
   %call9 = call i64 @Ingestion_Routes__broadcast_count_from_rows(ptr %project_id7, ptr %rows8)
   call void @mesh_reduction_check()
-  store i64 %call9, ptr %match_result, align 4
+  store i64 %call9, ptr %match_result, align 8
   br label %match_merge
 
 case_Err:                                         ; preds = %entry
-  store i64 0, ptr %match_result, align 4
+  store i64 0, ptr %match_result, align 8
   br label %match_merge
 }
 
@@ -20626,7 +20627,7 @@ entry:
   %room19 = load ptr, ptr %room, align 8
   %msg20 = load ptr, ptr %msg, align 8
   %call = call i64 @mesh_ws_broadcast(ptr %room19, ptr %msg20)
-  store i64 %call, ptr %_, align 4
+  store i64 %call, ptr %_, align 8
   ret i64 0
 }
 
@@ -20634,7 +20635,7 @@ define i64 @Ingestion_Routes__fire_if_cooldown_ok(i64 %0, ptr %1, ptr %2, ptr %3
 entry:
   %alert_id = alloca ptr, align 8
   %pool = alloca i64, align 8
-  store i64 %0, ptr %pool, align 4
+  store i64 %0, ptr %pool, align 8
   %rule_id = alloca ptr, align 8
   store ptr %1, ptr %rule_id, align 8
   %project_id = alloca ptr, align 8
@@ -20660,7 +20661,7 @@ then:                                             ; preds = %entry
   %concat4 = call ptr @mesh_string_concat(ptr %concat, ptr %issue_id3)
   store ptr %concat4, ptr %message, align 8
   %result = alloca { i8, ptr }, align 8
-  %pool5 = load i64, ptr %pool, align 4
+  %pool5 = load i64, ptr %pool, align 8
   %rule_id6 = load ptr, ptr %rule_id, align 8
   %project_id7 = load ptr, ptr %project_id, align 8
   %message8 = load ptr, ptr %message, align 8
@@ -20681,16 +20682,16 @@ then:                                             ; preds = %entry
   ]
 
 else:                                             ; preds = %entry
-  store i64 0, ptr %if_result, align 4
+  store i64 0, ptr %if_result, align 8
   br label %if_merge
 
 if_merge:                                         ; preds = %else, %match_merge
-  %if_val = load i64, ptr %if_result, align 4
+  %if_val = load i64, ptr %if_result, align 8
   ret i64 %if_val
 
 match_merge:                                      ; preds = %case_Err, %case_Ok
-  %match_val = load i64, ptr %match_result, align 4
-  store i64 %match_val, ptr %if_result, align 4
+  %match_val = load i64, ptr %match_result, align 8
+  store i64 %match_val, ptr %if_result, align 8
   br label %if_merge
 
 switch_default:                                   ; preds = %then
@@ -20708,11 +20709,11 @@ case_Ok:                                          ; preds = %then
   %message16 = load ptr, ptr %message, align 8
   %call17 = call i64 @Ingestion_Routes__broadcast_alert_notification(ptr %project_id12, ptr %alert_id13, ptr %rule_name14, ptr %condition_type15, ptr %message16)
   call void @mesh_reduction_check()
-  store i64 %call17, ptr %match_result, align 4
+  store i64 %call17, ptr %match_result, align 8
   br label %match_merge
 
 case_Err:                                         ; preds = %then
-  store i64 0, ptr %match_result, align 4
+  store i64 0, ptr %match_result, align 8
   br label %match_merge
 }
 
@@ -20720,7 +20721,7 @@ define i64 @Ingestion_Routes__fire_event_alert(i64 %0, ptr %1, ptr %2, ptr %3, p
 entry:
   %should_fire = alloca i1, align 1
   %pool = alloca i64, align 8
-  store i64 %0, ptr %pool, align 4
+  store i64 %0, ptr %pool, align 8
   %rule_id = alloca ptr, align 8
   store ptr %1, ptr %rule_id, align 8
   %project_id = alloca ptr, align 8
@@ -20734,7 +20735,7 @@ entry:
   %issue_id = alloca ptr, align 8
   store ptr %6, ptr %issue_id, align 8
   %cooldown_ok = alloca { i8, ptr }, align 8
-  %pool1 = load i64, ptr %pool, align 4
+  %pool1 = load i64, ptr %pool, align 8
   %rule_id2 = load ptr, ptr %rule_id, align 8
   %cooldown_str3 = load ptr, ptr %cooldown_str, align 8
   %call = call { i8, ptr } @should_fire_by_cooldown(i64 %pool1, ptr %rule_id2, ptr %cooldown_str3)
@@ -20752,7 +20753,7 @@ entry:
   ]
 
 match_merge:                                      ; preds = %case_Err, %case_Ok
-  %match_val = load i64, ptr %match_result, align 4
+  %match_val = load i64, ptr %match_result, align 8
   ret i64 %match_val
 
 switch_default:                                   ; preds = %entry
@@ -20763,7 +20764,7 @@ case_Ok:                                          ; preds = %entry
   %variant_field = getelementptr inbounds nuw { i8, ptr }, ptr %scrutinee, i32 0, i32 1
   %path_val = load ptr, ptr %variant_field, align 8
   store ptr %path_val, ptr %should_fire, align 8
-  %pool5 = load i64, ptr %pool, align 4
+  %pool5 = load i64, ptr %pool, align 8
   %rule_id6 = load ptr, ptr %rule_id, align 8
   %project_id7 = load ptr, ptr %project_id, align 8
   %rule_name8 = load ptr, ptr %rule_name, align 8
@@ -20772,11 +20773,11 @@ case_Ok:                                          ; preds = %entry
   %should_fire11 = load i1, ptr %should_fire, align 1
   %call12 = call i64 @Ingestion_Routes__fire_if_cooldown_ok(i64 %pool5, ptr %rule_id6, ptr %project_id7, ptr %rule_name8, ptr %condition_type9, ptr %issue_id10, i1 %should_fire11)
   call void @mesh_reduction_check()
-  store i64 %call12, ptr %match_result, align 4
+  store i64 %call12, ptr %match_result, align 8
   br label %match_merge
 
 case_Err:                                         ; preds = %entry
-  store i64 0, ptr %match_result, align 4
+  store i64 0, ptr %match_result, align 8
   br label %match_merge
 }
 
@@ -20789,7 +20790,7 @@ entry:
   %rule = alloca {}, align 8
   %if_result = alloca i64, align 8
   %pool = alloca i64, align 8
-  store i64 %0, ptr %pool, align 4
+  store i64 %0, ptr %pool, align 8
   %rules = alloca ptr, align 8
   store ptr %1, ptr %rules, align 8
   %project_id = alloca ptr, align 8
@@ -20799,20 +20800,20 @@ entry:
   %issue_id = alloca ptr, align 8
   store ptr %4, ptr %issue_id, align 8
   %i = alloca i64, align 8
-  store i64 %5, ptr %i, align 4
+  store i64 %5, ptr %i, align 8
   %total = alloca i64, align 8
-  store i64 %6, ptr %total, align 4
+  store i64 %6, ptr %total, align 8
   br label %tce_loop
 
 tce_loop:                                         ; preds = %then, %entry
-  %i1 = load i64, ptr %i, align 4
-  %total2 = load i64, ptr %total, align 4
+  %i1 = load i64, ptr %i, align 8
+  %total2 = load i64, ptr %total, align 8
   %lt = icmp slt i64 %i1, %total2
   br i1 %lt, label %then, label %else
 
 then:                                             ; preds = %tce_loop
   %rules3 = load ptr, ptr %rules, align 8
-  %i4 = load i64, ptr %i, align 4
+  %i4 = load i64, ptr %i, align 8
   %call = call i64 @mesh_list_get(ptr %rules3, i64 %i4)
   store {} zeroinitializer, ptr %rule, align 1
   %rule5 = load {}, ptr %rule, align 1
@@ -20833,7 +20834,7 @@ then:                                             ; preds = %tce_loop
   %ptr_to_i6416 = ptrtoint ptr %str15 to i64
   %call17 = call i64 @mesh_map_get(ptr %call14, i64 %ptr_to_i6416)
   store {} zeroinitializer, ptr %cooldown_str, align 1
-  %pool18 = load i64, ptr %pool, align 4
+  %pool18 = load i64, ptr %pool, align 8
   %rule_id19 = load {}, ptr %rule_id, align 1
   %project_id20 = load ptr, ptr %project_id, align 8
   %rule_name21 = load {}, ptr %rule_name, align 1
@@ -20842,31 +20843,31 @@ then:                                             ; preds = %tce_loop
   %issue_id24 = load ptr, ptr %issue_id, align 8
   %call25 = call i64 @Ingestion_Routes__fire_event_alert(i64 %pool18, ptr null, ptr %project_id20, ptr null, ptr %condition_type22, ptr null, ptr %issue_id24)
   call void @mesh_reduction_check()
-  store i64 %call25, ptr %_, align 4
-  %pool26 = load i64, ptr %pool, align 4
+  store i64 %call25, ptr %_, align 8
+  %pool26 = load i64, ptr %pool, align 8
   %rules27 = load ptr, ptr %rules, align 8
   %project_id28 = load ptr, ptr %project_id, align 8
   %condition_type29 = load ptr, ptr %condition_type, align 8
   %issue_id30 = load ptr, ptr %issue_id, align 8
-  %i31 = load i64, ptr %i, align 4
+  %i31 = load i64, ptr %i, align 8
   %add = add i64 %i31, 1
-  %total32 = load i64, ptr %total, align 4
-  store i64 %pool26, ptr %pool, align 4
+  %total32 = load i64, ptr %total, align 8
+  store i64 %pool26, ptr %pool, align 8
   store ptr %rules27, ptr %rules, align 8
   store ptr %project_id28, ptr %project_id, align 8
   store ptr %condition_type29, ptr %condition_type, align 8
   store ptr %issue_id30, ptr %issue_id, align 8
-  store i64 %add, ptr %i, align 4
-  store i64 %total32, ptr %total, align 4
+  store i64 %add, ptr %i, align 8
+  store i64 %total32, ptr %total, align 8
   call void @mesh_reduction_check()
   br label %tce_loop
 
 else:                                             ; preds = %tce_loop
-  store i64 0, ptr %if_result, align 4
+  store i64 0, ptr %if_result, align 8
   br label %if_merge
 
 if_merge:                                         ; preds = %else
-  %if_val = load i64, ptr %if_result, align 4
+  %if_val = load i64, ptr %if_result, align 8
   ret i64 %if_val
 }
 
@@ -20874,7 +20875,7 @@ define i64 @Ingestion_Routes__fire_matching_event_alerts(i64 %0, ptr %1, ptr %2,
 entry:
   %rules = alloca ptr, align 8
   %pool = alloca i64, align 8
-  store i64 %0, ptr %pool, align 4
+  store i64 %0, ptr %pool, align 8
   %project_id = alloca ptr, align 8
   store ptr %1, ptr %project_id, align 8
   %condition_type = alloca ptr, align 8
@@ -20882,7 +20883,7 @@ entry:
   %issue_id = alloca ptr, align 8
   store ptr %3, ptr %issue_id, align 8
   %rules_result = alloca { i8, ptr }, align 8
-  %pool1 = load i64, ptr %pool, align 4
+  %pool1 = load i64, ptr %pool, align 8
   %project_id2 = load ptr, ptr %project_id, align 8
   %condition_type3 = load ptr, ptr %condition_type, align 8
   %call = call { i8, ptr } @get_event_alert_rules(i64 %pool1, ptr %project_id2, ptr %condition_type3)
@@ -20900,7 +20901,7 @@ entry:
   ]
 
 match_merge:                                      ; preds = %case_Err, %case_Ok
-  %match_val = load i64, ptr %match_result, align 4
+  %match_val = load i64, ptr %match_result, align 8
   ret i64 %match_val
 
 switch_default:                                   ; preds = %entry
@@ -20911,7 +20912,7 @@ case_Ok:                                          ; preds = %entry
   %variant_field = getelementptr inbounds nuw { i8, ptr }, ptr %scrutinee, i32 0, i32 1
   %path_val = load ptr, ptr %variant_field, align 8
   store ptr %path_val, ptr %rules, align 8
-  %pool5 = load i64, ptr %pool, align 4
+  %pool5 = load i64, ptr %pool, align 8
   %rules6 = load ptr, ptr %rules, align 8
   %project_id7 = load ptr, ptr %project_id, align 8
   %condition_type8 = load ptr, ptr %condition_type, align 8
@@ -20920,18 +20921,18 @@ case_Ok:                                          ; preds = %entry
   %call11 = call i64 @mesh_list_length(ptr %rules10)
   %call12 = call i64 @Ingestion_Routes__fire_event_alerts_loop(i64 %pool5, ptr %rules6, ptr %project_id7, ptr %condition_type8, ptr %issue_id9, i64 0, i64 %call11)
   call void @mesh_reduction_check()
-  store i64 %call12, ptr %match_result, align 4
+  store i64 %call12, ptr %match_result, align 8
   br label %match_merge
 
 case_Err:                                         ; preds = %entry
-  store i64 0, ptr %match_result, align 4
+  store i64 0, ptr %match_result, align 8
   br label %match_merge
 }
 
 define i64 @Ingestion_Routes__handle_new_issue_alert(i64 %0, ptr %1, ptr %2, i1 %3) {
 entry:
   %pool = alloca i64, align 8
-  store i64 %0, ptr %pool, align 4
+  store i64 %0, ptr %pool, align 8
   %project_id = alloca ptr, align 8
   store ptr %1, ptr %project_id, align 8
   %issue_id = alloca ptr, align 8
@@ -20944,22 +20945,22 @@ entry:
 
 then:                                             ; preds = %entry
   %_ = alloca i64, align 8
-  %pool2 = load i64, ptr %pool, align 4
+  %pool2 = load i64, ptr %pool, align 8
   %project_id3 = load ptr, ptr %project_id, align 8
   %str = call ptr @mesh_string_new(ptr @.str.1019, i64 9)
   %issue_id4 = load ptr, ptr %issue_id, align 8
   %call = call i64 @Ingestion_Routes__fire_matching_event_alerts(i64 %pool2, ptr %project_id3, ptr %str, ptr %issue_id4)
   call void @mesh_reduction_check()
-  store i64 %call, ptr %_, align 4
-  store i64 0, ptr %if_result, align 4
+  store i64 %call, ptr %_, align 8
+  store i64 0, ptr %if_result, align 8
   br label %if_merge
 
 else:                                             ; preds = %entry
-  store i64 0, ptr %if_result, align 4
+  store i64 0, ptr %if_result, align 8
   br label %if_merge
 
 if_merge:                                         ; preds = %else, %then
-  %if_val = load i64, ptr %if_result, align 4
+  %if_val = load i64, ptr %if_result, align 8
   ret i64 %if_val
 }
 
@@ -20967,13 +20968,13 @@ define i64 @Ingestion_Routes__check_event_alerts(i64 %0, ptr %1, ptr %2) {
 entry:
   %is_new = alloca i1, align 1
   %pool = alloca i64, align 8
-  store i64 %0, ptr %pool, align 4
+  store i64 %0, ptr %pool, align 8
   %project_id = alloca ptr, align 8
   store ptr %1, ptr %project_id, align 8
   %issue_id = alloca ptr, align 8
   store ptr %2, ptr %issue_id, align 8
   %new_result = alloca { i8, ptr }, align 8
-  %pool1 = load i64, ptr %pool, align 4
+  %pool1 = load i64, ptr %pool, align 8
   %issue_id2 = load ptr, ptr %issue_id, align 8
   %call = call { i8, ptr } @check_new_issue(i64 %pool1, ptr %issue_id2)
   call void @mesh_reduction_check()
@@ -20990,7 +20991,7 @@ entry:
   ]
 
 match_merge:                                      ; preds = %case_Err, %case_Ok
-  %match_val = load i64, ptr %match_result, align 4
+  %match_val = load i64, ptr %match_result, align 8
   ret i64 %match_val
 
 switch_default:                                   ; preds = %entry
@@ -21001,17 +21002,17 @@ case_Ok:                                          ; preds = %entry
   %variant_field = getelementptr inbounds nuw { i8, ptr }, ptr %scrutinee, i32 0, i32 1
   %path_val = load ptr, ptr %variant_field, align 8
   store ptr %path_val, ptr %is_new, align 8
-  %pool4 = load i64, ptr %pool, align 4
+  %pool4 = load i64, ptr %pool, align 8
   %project_id5 = load ptr, ptr %project_id, align 8
   %issue_id6 = load ptr, ptr %issue_id, align 8
   %is_new7 = load i1, ptr %is_new, align 1
   %call8 = call i64 @Ingestion_Routes__handle_new_issue_alert(i64 %pool4, ptr %project_id5, ptr %issue_id6, i1 %is_new7)
   call void @mesh_reduction_check()
-  store i64 %call8, ptr %match_result, align 4
+  store i64 %call8, ptr %match_result, align 8
   br label %match_merge
 
 case_Err:                                         ; preds = %entry
-  store i64 0, ptr %match_result, align 4
+  store i64 0, ptr %match_result, align 8
   br label %match_merge
 }
 
@@ -21043,28 +21044,28 @@ entry:
   %room11 = load ptr, ptr %room, align 8
   %notification12 = load ptr, ptr %notification, align 8
   %call = call i64 @mesh_ws_broadcast(ptr %room11, ptr %notification12)
-  store i64 %call, ptr %_, align 4
+  store i64 %call, ptr %_, align 8
   %_13 = alloca i64, align 8
   %project_id14 = load ptr, ptr %project_id, align 8
   %call15 = call i64 @Ingestion_Routes__broadcast_issue_count(ptr %project_id14)
   call void @mesh_reduction_check()
-  store i64 %call15, ptr %_13, align 4
+  store i64 %call15, ptr %_13, align 8
   %reg_pid = alloca i64, align 8
   %call16 = call i64 @get_registry()
   call void @mesh_reduction_check()
-  store i64 %call16, ptr %reg_pid, align 4
+  store i64 %call16, ptr %reg_pid, align 8
   %pool = alloca i64, align 8
-  %reg_pid17 = load i64, ptr %reg_pid, align 4
+  %reg_pid17 = load i64, ptr %reg_pid, align 8
   %call18 = call i64 @__service_pipelineregistry_call_get_pool(i64 %reg_pid17)
   call void @mesh_reduction_check()
-  store i64 %call18, ptr %pool, align 4
+  store i64 %call18, ptr %pool, align 8
   %_19 = alloca i64, align 8
-  %pool20 = load i64, ptr %pool, align 4
+  %pool20 = load i64, ptr %pool, align 8
   %project_id21 = load ptr, ptr %project_id, align 8
   %issue_id22 = load ptr, ptr %issue_id, align 8
   %call23 = call i64 @Ingestion_Routes__check_event_alerts(i64 %pool20, ptr %project_id21, ptr %issue_id22)
   call void @mesh_reduction_check()
-  store i64 %call23, ptr %_19, align 4
+  store i64 %call23, ptr %_19, align 8
   %call24 = call ptr @Ingestion_Routes__accepted_response()
   call void @mesh_reduction_check()
   ret ptr %call24
@@ -21075,21 +21076,21 @@ entry:
   %reason = alloca ptr, align 8
   %issue_id = alloca ptr, align 8
   %processor_pid = alloca i64, align 8
-  store i64 %0, ptr %processor_pid, align 4
+  store i64 %0, ptr %processor_pid, align 8
   %project_id = alloca ptr, align 8
   store ptr %1, ptr %project_id, align 8
   %writer_pid = alloca i64, align 8
-  store i64 %2, ptr %writer_pid, align 4
+  store i64 %2, ptr %writer_pid, align 8
   %body = alloca ptr, align 8
   store ptr %3, ptr %body, align 8
   %result = alloca { i8, ptr }, align 8
-  %processor_pid1 = load i64, ptr %processor_pid, align 4
+  %processor_pid1 = load i64, ptr %processor_pid, align 8
   %project_id2 = load ptr, ptr %project_id, align 8
-  %writer_pid3 = load i64, ptr %writer_pid, align 4
+  %writer_pid3 = load i64, ptr %writer_pid, align 8
   %body4 = load ptr, ptr %body, align 8
   %call = call i64 @__service_eventprocessor_call_process_event(i64 %processor_pid1, ptr %project_id2, i64 %writer_pid3, ptr %body4)
   call void @mesh_reduction_check()
-  store i64 %call, ptr %result, align 4
+  store i64 %call, ptr %result, align 8
   %result5 = load { i8, ptr }, ptr %result, align 8
   %scrutinee = alloca { i8, ptr }, align 8
   store { i8, ptr } %result5, ptr %scrutinee, align 8
@@ -21136,11 +21137,11 @@ define ptr @Ingestion_Routes__process_event_body(i64 %0, ptr %1, i64 %2, ptr %3)
 entry:
   %reason = alloca ptr, align 8
   %processor_pid = alloca i64, align 8
-  store i64 %0, ptr %processor_pid, align 4
+  store i64 %0, ptr %processor_pid, align 8
   %project_id = alloca ptr, align 8
   store ptr %1, ptr %project_id, align 8
   %writer_pid = alloca i64, align 8
-  store i64 %2, ptr %writer_pid, align 4
+  store i64 %2, ptr %writer_pid, align 8
   %body = alloca ptr, align 8
   store ptr %3, ptr %body, align 8
   %size_check = alloca { i8, ptr }, align 8
@@ -21178,9 +21179,9 @@ case_Err:                                         ; preds = %entry
   br label %match_merge
 
 case_Ok:                                          ; preds = %entry
-  %processor_pid5 = load i64, ptr %processor_pid, align 4
+  %processor_pid5 = load i64, ptr %processor_pid, align 8
   %project_id6 = load ptr, ptr %project_id, align 8
-  %writer_pid7 = load i64, ptr %writer_pid, align 4
+  %writer_pid7 = load i64, ptr %writer_pid, align 8
   %body8 = load ptr, ptr %body, align 8
   %call9 = call ptr @Ingestion_Routes__route_to_processor(i64 %processor_pid5, ptr %project_id6, i64 %writer_pid7, ptr %body8)
   call void @mesh_reduction_check()
@@ -21193,19 +21194,19 @@ entry:
   %project_id = alloca ptr, align 8
   store ptr %0, ptr %project_id, align 8
   %rate_limiter_pid = alloca i64, align 8
-  store i64 %1, ptr %rate_limiter_pid, align 4
+  store i64 %1, ptr %rate_limiter_pid, align 8
   %processor_pid = alloca i64, align 8
-  store i64 %2, ptr %processor_pid, align 4
+  store i64 %2, ptr %processor_pid, align 8
   %writer_pid = alloca i64, align 8
-  store i64 %3, ptr %writer_pid, align 4
+  store i64 %3, ptr %writer_pid, align 8
   %request = alloca ptr, align 8
   store ptr %4, ptr %request, align 8
   %allowed = alloca i1, align 1
-  %rate_limiter_pid1 = load i64, ptr %rate_limiter_pid, align 4
+  %rate_limiter_pid1 = load i64, ptr %rate_limiter_pid, align 8
   %project_id2 = load ptr, ptr %project_id, align 8
   %call = call i64 @__service_ratelimiter_call_check_limit(i64 %rate_limiter_pid1, ptr %project_id2)
   call void @mesh_reduction_check()
-  store i64 %call, ptr %allowed, align 4
+  store i64 %call, ptr %allowed, align 8
   %allowed3 = load i1, ptr %allowed, align 1
   %if_result = alloca ptr, align 8
   br i1 %allowed3, label %then, label %else
@@ -21215,9 +21216,9 @@ then:                                             ; preds = %entry
   %request4 = load ptr, ptr %request, align 8
   %call5 = call ptr @mesh_http_request_body(ptr %request4)
   store ptr %call5, ptr %body, align 8
-  %processor_pid6 = load i64, ptr %processor_pid, align 4
+  %processor_pid6 = load i64, ptr %processor_pid, align 8
   %project_id7 = load ptr, ptr %project_id, align 8
-  %writer_pid8 = load i64, ptr %writer_pid, align 4
+  %writer_pid8 = load i64, ptr %writer_pid, align 8
   %body9 = load ptr, ptr %body, align 8
   %call10 = call ptr @Ingestion_Routes__process_event_body(i64 %processor_pid6, ptr %project_id7, i64 %writer_pid8, ptr %body9)
   call void @mesh_reduction_check()
@@ -21242,11 +21243,11 @@ entry:
   %project_id = alloca ptr, align 8
   store ptr %1, ptr %project_id, align 8
   %rate_limiter_pid = alloca i64, align 8
-  store i64 %2, ptr %rate_limiter_pid, align 4
+  store i64 %2, ptr %rate_limiter_pid, align 8
   %processor_pid = alloca i64, align 8
-  store i64 %3, ptr %processor_pid, align 4
+  store i64 %3, ptr %processor_pid, align 8
   %writer_pid = alloca i64, align 8
-  store i64 %4, ptr %writer_pid, align 4
+  store i64 %4, ptr %writer_pid, align 8
   %request = alloca ptr, align 8
   store ptr %5, ptr %request, align 8
   %should_keep1 = load i1, ptr %should_keep, align 1
@@ -21255,9 +21256,9 @@ entry:
 
 then:                                             ; preds = %entry
   %project_id2 = load ptr, ptr %project_id, align 8
-  %rate_limiter_pid3 = load i64, ptr %rate_limiter_pid, align 4
-  %processor_pid4 = load i64, ptr %processor_pid, align 4
-  %writer_pid5 = load i64, ptr %writer_pid, align 4
+  %rate_limiter_pid3 = load i64, ptr %rate_limiter_pid, align 8
+  %processor_pid4 = load i64, ptr %processor_pid, align 8
+  %writer_pid5 = load i64, ptr %writer_pid, align 8
   %request6 = load ptr, ptr %request, align 8
   %call = call ptr @Ingestion_Routes__handle_event_authed(ptr %project_id2, i64 %rate_limiter_pid3, i64 %processor_pid4, i64 %writer_pid5, ptr %request6)
   call void @mesh_reduction_check()
@@ -21279,19 +21280,19 @@ define ptr @Ingestion_Routes__handle_event_sampled(i64 %0, ptr %1, i64 %2, i64 %
 entry:
   %should_keep = alloca i1, align 1
   %pool = alloca i64, align 8
-  store i64 %0, ptr %pool, align 4
+  store i64 %0, ptr %pool, align 8
   %project_id = alloca ptr, align 8
   store ptr %1, ptr %project_id, align 8
   %rate_limiter_pid = alloca i64, align 8
-  store i64 %2, ptr %rate_limiter_pid, align 4
+  store i64 %2, ptr %rate_limiter_pid, align 8
   %processor_pid = alloca i64, align 8
-  store i64 %3, ptr %processor_pid, align 4
+  store i64 %3, ptr %processor_pid, align 8
   %writer_pid = alloca i64, align 8
-  store i64 %4, ptr %writer_pid, align 4
+  store i64 %4, ptr %writer_pid, align 8
   %request = alloca ptr, align 8
   store ptr %5, ptr %request, align 8
   %sample_result = alloca { i8, ptr }, align 8
-  %pool1 = load i64, ptr %pool, align 4
+  %pool1 = load i64, ptr %pool, align 8
   %project_id2 = load ptr, ptr %project_id, align 8
   %call = call { i8, ptr } @check_sample_rate(i64 %pool1, ptr %project_id2)
   call void @mesh_reduction_check()
@@ -21321,9 +21322,9 @@ case_Ok:                                          ; preds = %entry
   store ptr %path_val, ptr %should_keep, align 8
   %should_keep4 = load i1, ptr %should_keep, align 1
   %project_id5 = load ptr, ptr %project_id, align 8
-  %rate_limiter_pid6 = load i64, ptr %rate_limiter_pid, align 4
-  %processor_pid7 = load i64, ptr %processor_pid, align 4
-  %writer_pid8 = load i64, ptr %writer_pid, align 4
+  %rate_limiter_pid6 = load i64, ptr %rate_limiter_pid, align 8
+  %processor_pid7 = load i64, ptr %processor_pid, align 8
+  %writer_pid8 = load i64, ptr %writer_pid, align 8
   %request9 = load ptr, ptr %request, align 8
   %call10 = call ptr @Ingestion_Routes__handle_event_sample_decision(i1 %should_keep4, ptr %project_id5, i64 %rate_limiter_pid6, i64 %processor_pid7, i64 %writer_pid8, ptr %request9)
   call void @mesh_reduction_check()
@@ -21332,9 +21333,9 @@ case_Ok:                                          ; preds = %entry
 
 case_Err:                                         ; preds = %entry
   %project_id11 = load ptr, ptr %project_id, align 8
-  %rate_limiter_pid12 = load i64, ptr %rate_limiter_pid, align 4
-  %processor_pid13 = load i64, ptr %processor_pid, align 4
-  %writer_pid14 = load i64, ptr %writer_pid, align 4
+  %rate_limiter_pid12 = load i64, ptr %rate_limiter_pid, align 8
+  %processor_pid13 = load i64, ptr %processor_pid, align 8
+  %writer_pid14 = load i64, ptr %writer_pid, align 8
   %request15 = load ptr, ptr %request, align 8
   %call16 = call ptr @Ingestion_Routes__handle_event_authed(ptr %project_id11, i64 %rate_limiter_pid12, i64 %processor_pid13, i64 %writer_pid14, ptr %request15)
   call void @mesh_reduction_check()
@@ -21350,34 +21351,34 @@ entry:
   %reg_pid = alloca i64, align 8
   %call = call i64 @get_registry()
   call void @mesh_reduction_check()
-  store i64 %call, ptr %reg_pid, align 4
+  store i64 %call, ptr %reg_pid, align 8
   %_ = alloca i64, align 8
-  %reg_pid1 = load i64, ptr %reg_pid, align 4
+  %reg_pid1 = load i64, ptr %reg_pid, align 8
   %call2 = call i64 @__service_pipelineregistry_call_increment_event_count(i64 %reg_pid1)
   call void @mesh_reduction_check()
-  store i64 %call2, ptr %_, align 4
+  store i64 %call2, ptr %_, align 8
   %pool = alloca i64, align 8
-  %reg_pid3 = load i64, ptr %reg_pid, align 4
+  %reg_pid3 = load i64, ptr %reg_pid, align 8
   %call4 = call i64 @__service_pipelineregistry_call_get_pool(i64 %reg_pid3)
   call void @mesh_reduction_check()
-  store i64 %call4, ptr %pool, align 4
+  store i64 %call4, ptr %pool, align 8
   %rate_limiter_pid = alloca i64, align 8
-  %reg_pid5 = load i64, ptr %reg_pid, align 4
+  %reg_pid5 = load i64, ptr %reg_pid, align 8
   %call6 = call i64 @__service_pipelineregistry_call_get_rate_limiter(i64 %reg_pid5)
   call void @mesh_reduction_check()
-  store i64 %call6, ptr %rate_limiter_pid, align 4
+  store i64 %call6, ptr %rate_limiter_pid, align 8
   %processor_pid = alloca i64, align 8
-  %reg_pid7 = load i64, ptr %reg_pid, align 4
+  %reg_pid7 = load i64, ptr %reg_pid, align 8
   %call8 = call i64 @__service_pipelineregistry_call_get_processor(i64 %reg_pid7)
   call void @mesh_reduction_check()
-  store i64 %call8, ptr %processor_pid, align 4
+  store i64 %call8, ptr %processor_pid, align 8
   %writer_pid = alloca i64, align 8
-  %reg_pid9 = load i64, ptr %reg_pid, align 4
+  %reg_pid9 = load i64, ptr %reg_pid, align 8
   %call10 = call i64 @__service_pipelineregistry_call_get_writer(i64 %reg_pid9)
   call void @mesh_reduction_check()
-  store i64 %call10, ptr %writer_pid, align 4
+  store i64 %call10, ptr %writer_pid, align 8
   %auth_result = alloca { i8, ptr }, align 8
-  %pool11 = load i64, ptr %pool, align 4
+  %pool11 = load i64, ptr %pool, align 8
   %request12 = load ptr, ptr %request, align 8
   %call13 = call { i8, ptr } @authenticate_request(i64 %pool11, ptr %request12)
   call void @mesh_reduction_check()
@@ -21412,15 +21413,15 @@ case_Ok:                                          ; preds = %entry
   %path_val = load ptr, ptr %variant_field, align 8
   %deref_struct = load %Project, ptr %path_val, align 8
   store %Project %deref_struct, ptr %project, align 8
-  %pool16 = load i64, ptr %pool, align 4
+  %pool16 = load i64, ptr %pool, align 8
   %project17 = load %Project, ptr %project, align 8
   %obj_tmp = alloca %Project, align 8
   store %Project %project17, ptr %obj_tmp, align 8
   %field_ptr = getelementptr inbounds nuw %Project, ptr %obj_tmp, i32 0, i32 0
   %field_val = load ptr, ptr %field_ptr, align 8
-  %rate_limiter_pid18 = load i64, ptr %rate_limiter_pid, align 4
-  %processor_pid19 = load i64, ptr %processor_pid, align 4
-  %writer_pid20 = load i64, ptr %writer_pid, align 4
+  %rate_limiter_pid18 = load i64, ptr %rate_limiter_pid, align 8
+  %processor_pid19 = load i64, ptr %processor_pid, align 8
+  %writer_pid20 = load i64, ptr %writer_pid, align 8
   %request21 = load ptr, ptr %request, align 8
   %call22 = call ptr @Ingestion_Routes__handle_event_sampled(i64 %pool16, ptr %field_val, i64 %rate_limiter_pid18, i64 %processor_pid19, i64 %writer_pid20, ptr %request21)
   call void @mesh_reduction_check()
@@ -21434,19 +21435,19 @@ entry:
   %project_id = alloca ptr, align 8
   store ptr %0, ptr %project_id, align 8
   %rate_limiter_pid = alloca i64, align 8
-  store i64 %1, ptr %rate_limiter_pid, align 4
+  store i64 %1, ptr %rate_limiter_pid, align 8
   %processor_pid = alloca i64, align 8
-  store i64 %2, ptr %processor_pid, align 4
+  store i64 %2, ptr %processor_pid, align 8
   %writer_pid = alloca i64, align 8
-  store i64 %3, ptr %writer_pid, align 4
+  store i64 %3, ptr %writer_pid, align 8
   %request = alloca ptr, align 8
   store ptr %4, ptr %request, align 8
   %allowed = alloca i1, align 1
-  %rate_limiter_pid1 = load i64, ptr %rate_limiter_pid, align 4
+  %rate_limiter_pid1 = load i64, ptr %rate_limiter_pid, align 8
   %project_id2 = load ptr, ptr %project_id, align 8
   %call = call i64 @__service_ratelimiter_call_check_limit(i64 %rate_limiter_pid1, ptr %project_id2)
   call void @mesh_reduction_check()
-  store i64 %call, ptr %allowed, align 4
+  store i64 %call, ptr %allowed, align 8
   %allowed3 = load i1, ptr %allowed, align 1
   %if_result = alloca ptr, align 8
   br i1 %allowed3, label %then, label %else
@@ -21502,9 +21503,9 @@ case_Err:                                         ; preds = %then
   br label %match_merge
 
 case_Ok:                                          ; preds = %then
-  %processor_pid11 = load i64, ptr %processor_pid, align 4
+  %processor_pid11 = load i64, ptr %processor_pid, align 8
   %project_id12 = load ptr, ptr %project_id, align 8
-  %writer_pid13 = load i64, ptr %writer_pid, align 4
+  %writer_pid13 = load i64, ptr %writer_pid, align 8
   %body14 = load ptr, ptr %body, align 8
   %call15 = call ptr @Ingestion_Routes__route_to_processor(i64 %processor_pid11, ptr %project_id12, i64 %writer_pid13, ptr %body14)
   call void @mesh_reduction_check()
@@ -21519,11 +21520,11 @@ entry:
   %project_id = alloca ptr, align 8
   store ptr %1, ptr %project_id, align 8
   %rate_limiter_pid = alloca i64, align 8
-  store i64 %2, ptr %rate_limiter_pid, align 4
+  store i64 %2, ptr %rate_limiter_pid, align 8
   %processor_pid = alloca i64, align 8
-  store i64 %3, ptr %processor_pid, align 4
+  store i64 %3, ptr %processor_pid, align 8
   %writer_pid = alloca i64, align 8
-  store i64 %4, ptr %writer_pid, align 4
+  store i64 %4, ptr %writer_pid, align 8
   %request = alloca ptr, align 8
   store ptr %5, ptr %request, align 8
   %should_keep1 = load i1, ptr %should_keep, align 1
@@ -21532,9 +21533,9 @@ entry:
 
 then:                                             ; preds = %entry
   %project_id2 = load ptr, ptr %project_id, align 8
-  %rate_limiter_pid3 = load i64, ptr %rate_limiter_pid, align 4
-  %processor_pid4 = load i64, ptr %processor_pid, align 4
-  %writer_pid5 = load i64, ptr %writer_pid, align 4
+  %rate_limiter_pid3 = load i64, ptr %rate_limiter_pid, align 8
+  %processor_pid4 = load i64, ptr %processor_pid, align 8
+  %writer_pid5 = load i64, ptr %writer_pid, align 8
   %request6 = load ptr, ptr %request, align 8
   %call = call ptr @Ingestion_Routes__handle_bulk_authed(ptr %project_id2, i64 %rate_limiter_pid3, i64 %processor_pid4, i64 %writer_pid5, ptr %request6)
   call void @mesh_reduction_check()
@@ -21556,19 +21557,19 @@ define ptr @Ingestion_Routes__handle_bulk_sampled(i64 %0, ptr %1, i64 %2, i64 %3
 entry:
   %should_keep = alloca i1, align 1
   %pool = alloca i64, align 8
-  store i64 %0, ptr %pool, align 4
+  store i64 %0, ptr %pool, align 8
   %project_id = alloca ptr, align 8
   store ptr %1, ptr %project_id, align 8
   %rate_limiter_pid = alloca i64, align 8
-  store i64 %2, ptr %rate_limiter_pid, align 4
+  store i64 %2, ptr %rate_limiter_pid, align 8
   %processor_pid = alloca i64, align 8
-  store i64 %3, ptr %processor_pid, align 4
+  store i64 %3, ptr %processor_pid, align 8
   %writer_pid = alloca i64, align 8
-  store i64 %4, ptr %writer_pid, align 4
+  store i64 %4, ptr %writer_pid, align 8
   %request = alloca ptr, align 8
   store ptr %5, ptr %request, align 8
   %sample_result = alloca { i8, ptr }, align 8
-  %pool1 = load i64, ptr %pool, align 4
+  %pool1 = load i64, ptr %pool, align 8
   %project_id2 = load ptr, ptr %project_id, align 8
   %call = call { i8, ptr } @check_sample_rate(i64 %pool1, ptr %project_id2)
   call void @mesh_reduction_check()
@@ -21598,9 +21599,9 @@ case_Ok:                                          ; preds = %entry
   store ptr %path_val, ptr %should_keep, align 8
   %should_keep4 = load i1, ptr %should_keep, align 1
   %project_id5 = load ptr, ptr %project_id, align 8
-  %rate_limiter_pid6 = load i64, ptr %rate_limiter_pid, align 4
-  %processor_pid7 = load i64, ptr %processor_pid, align 4
-  %writer_pid8 = load i64, ptr %writer_pid, align 4
+  %rate_limiter_pid6 = load i64, ptr %rate_limiter_pid, align 8
+  %processor_pid7 = load i64, ptr %processor_pid, align 8
+  %writer_pid8 = load i64, ptr %writer_pid, align 8
   %request9 = load ptr, ptr %request, align 8
   %call10 = call ptr @Ingestion_Routes__handle_bulk_sample_decision(i1 %should_keep4, ptr %project_id5, i64 %rate_limiter_pid6, i64 %processor_pid7, i64 %writer_pid8, ptr %request9)
   call void @mesh_reduction_check()
@@ -21609,9 +21610,9 @@ case_Ok:                                          ; preds = %entry
 
 case_Err:                                         ; preds = %entry
   %project_id11 = load ptr, ptr %project_id, align 8
-  %rate_limiter_pid12 = load i64, ptr %rate_limiter_pid, align 4
-  %processor_pid13 = load i64, ptr %processor_pid, align 4
-  %writer_pid14 = load i64, ptr %writer_pid, align 4
+  %rate_limiter_pid12 = load i64, ptr %rate_limiter_pid, align 8
+  %processor_pid13 = load i64, ptr %processor_pid, align 8
+  %writer_pid14 = load i64, ptr %writer_pid, align 8
   %request15 = load ptr, ptr %request, align 8
   %call16 = call ptr @Ingestion_Routes__handle_bulk_authed(ptr %project_id11, i64 %rate_limiter_pid12, i64 %processor_pid13, i64 %writer_pid14, ptr %request15)
   call void @mesh_reduction_check()
@@ -21627,34 +21628,34 @@ entry:
   %reg_pid = alloca i64, align 8
   %call = call i64 @get_registry()
   call void @mesh_reduction_check()
-  store i64 %call, ptr %reg_pid, align 4
+  store i64 %call, ptr %reg_pid, align 8
   %_ = alloca i64, align 8
-  %reg_pid1 = load i64, ptr %reg_pid, align 4
+  %reg_pid1 = load i64, ptr %reg_pid, align 8
   %call2 = call i64 @__service_pipelineregistry_call_increment_event_count(i64 %reg_pid1)
   call void @mesh_reduction_check()
-  store i64 %call2, ptr %_, align 4
+  store i64 %call2, ptr %_, align 8
   %pool = alloca i64, align 8
-  %reg_pid3 = load i64, ptr %reg_pid, align 4
+  %reg_pid3 = load i64, ptr %reg_pid, align 8
   %call4 = call i64 @__service_pipelineregistry_call_get_pool(i64 %reg_pid3)
   call void @mesh_reduction_check()
-  store i64 %call4, ptr %pool, align 4
+  store i64 %call4, ptr %pool, align 8
   %rate_limiter_pid = alloca i64, align 8
-  %reg_pid5 = load i64, ptr %reg_pid, align 4
+  %reg_pid5 = load i64, ptr %reg_pid, align 8
   %call6 = call i64 @__service_pipelineregistry_call_get_rate_limiter(i64 %reg_pid5)
   call void @mesh_reduction_check()
-  store i64 %call6, ptr %rate_limiter_pid, align 4
+  store i64 %call6, ptr %rate_limiter_pid, align 8
   %processor_pid = alloca i64, align 8
-  %reg_pid7 = load i64, ptr %reg_pid, align 4
+  %reg_pid7 = load i64, ptr %reg_pid, align 8
   %call8 = call i64 @__service_pipelineregistry_call_get_processor(i64 %reg_pid7)
   call void @mesh_reduction_check()
-  store i64 %call8, ptr %processor_pid, align 4
+  store i64 %call8, ptr %processor_pid, align 8
   %writer_pid = alloca i64, align 8
-  %reg_pid9 = load i64, ptr %reg_pid, align 4
+  %reg_pid9 = load i64, ptr %reg_pid, align 8
   %call10 = call i64 @__service_pipelineregistry_call_get_writer(i64 %reg_pid9)
   call void @mesh_reduction_check()
-  store i64 %call10, ptr %writer_pid, align 4
+  store i64 %call10, ptr %writer_pid, align 8
   %auth_result = alloca { i8, ptr }, align 8
-  %pool11 = load i64, ptr %pool, align 4
+  %pool11 = load i64, ptr %pool, align 8
   %request12 = load ptr, ptr %request, align 8
   %call13 = call { i8, ptr } @authenticate_request(i64 %pool11, ptr %request12)
   call void @mesh_reduction_check()
@@ -21689,15 +21690,15 @@ case_Ok:                                          ; preds = %entry
   %path_val = load ptr, ptr %variant_field, align 8
   %deref_struct = load %Project, ptr %path_val, align 8
   store %Project %deref_struct, ptr %project, align 8
-  %pool16 = load i64, ptr %pool, align 4
+  %pool16 = load i64, ptr %pool, align 8
   %project17 = load %Project, ptr %project, align 8
   %obj_tmp = alloca %Project, align 8
   store %Project %project17, ptr %obj_tmp, align 8
   %field_ptr = getelementptr inbounds nuw %Project, ptr %obj_tmp, i32 0, i32 0
   %field_val = load ptr, ptr %field_ptr, align 8
-  %rate_limiter_pid18 = load i64, ptr %rate_limiter_pid, align 4
-  %processor_pid19 = load i64, ptr %processor_pid, align 4
-  %writer_pid20 = load i64, ptr %writer_pid, align 4
+  %rate_limiter_pid18 = load i64, ptr %rate_limiter_pid, align 8
+  %processor_pid19 = load i64, ptr %processor_pid, align 8
+  %writer_pid20 = load i64, ptr %writer_pid, align 8
   %request21 = load ptr, ptr %request, align 8
   %call22 = call ptr @Ingestion_Routes__handle_bulk_sampled(i64 %pool16, ptr %field_val, i64 %rate_limiter_pid18, i64 %processor_pid19, i64 %writer_pid20, ptr %request21)
   call void @mesh_reduction_check()
@@ -21749,16 +21750,16 @@ then:                                             ; preds = %entry
   %room17 = load ptr, ptr %room, align 8
   %msg18 = load ptr, ptr %msg, align 8
   %call19 = call i64 @mesh_ws_broadcast(ptr %room17, ptr %msg18)
-  store i64 %call19, ptr %_, align 4
-  store i64 0, ptr %if_result, align 4
+  store i64 %call19, ptr %_, align 8
+  store i64 0, ptr %if_result, align 8
   br label %if_merge
 
 else:                                             ; preds = %entry
-  store i64 0, ptr %if_result, align 4
+  store i64 0, ptr %if_result, align 8
   br label %if_merge
 
 if_merge:                                         ; preds = %else, %then
-  %if_val = load i64, ptr %if_result, align 4
+  %if_val = load i64, ptr %if_result, align 8
   ret i64 %if_val
 }
 
@@ -21766,19 +21767,19 @@ define i64 @Ingestion_Routes__broadcast_issue_update(i64 %0, ptr %1, ptr %2) {
 entry:
   %rows = alloca ptr, align 8
   %pool = alloca i64, align 8
-  store i64 %0, ptr %pool, align 4
+  store i64 %0, ptr %pool, align 8
   %issue_id = alloca ptr, align 8
   store ptr %1, ptr %issue_id, align 8
   %action = alloca ptr, align 8
   store ptr %2, ptr %action, align 8
   %rows_result = alloca { i8, ptr }, align 8
-  %pool1 = load i64, ptr %pool, align 4
+  %pool1 = load i64, ptr %pool, align 8
   %str = call ptr @mesh_string_new(ptr @.str.1045, i64 55)
   %list_arr = alloca [1 x i64], align 8
   %issue_id2 = load ptr, ptr %issue_id, align 8
   %ptr_to_i64 = ptrtoint ptr %issue_id2 to i64
   %elem_ptr = getelementptr [1 x i64], ptr %list_arr, i32 0, i32 0
-  store i64 %ptr_to_i64, ptr %elem_ptr, align 4
+  store i64 %ptr_to_i64, ptr %elem_ptr, align 8
   %list = call ptr @mesh_list_from_array(ptr %list_arr, i64 1)
   %call = call ptr @mesh_pool_query(i64 %pool1, ptr %str, ptr %list)
   %deref_sum = load { i8, ptr }, ptr %call, align 8
@@ -21795,7 +21796,7 @@ entry:
   ]
 
 match_merge:                                      ; preds = %case_Err, %case_Ok
-  %match_val = load i64, ptr %match_result, align 4
+  %match_val = load i64, ptr %match_result, align 8
   ret i64 %match_val
 
 switch_default:                                   ; preds = %entry
@@ -21811,31 +21812,31 @@ case_Ok:                                          ; preds = %entry
   %action6 = load ptr, ptr %action, align 8
   %call7 = call i64 @Ingestion_Routes__broadcast_update_from_rows(ptr %rows4, ptr %issue_id5, ptr %action6)
   call void @mesh_reduction_check()
-  store i64 %call7, ptr %match_result, align 4
+  store i64 %call7, ptr %match_result, align 8
   br label %match_merge
 
 case_Err:                                         ; preds = %entry
-  store i64 0, ptr %match_result, align 4
+  store i64 0, ptr %match_result, align 8
   br label %match_merge
 }
 
 define ptr @Ingestion_Routes__resolve_success(i64 %0, ptr %1, i64 %2) {
 entry:
   %pool = alloca i64, align 8
-  store i64 %0, ptr %pool, align 4
+  store i64 %0, ptr %pool, align 8
   %issue_id = alloca ptr, align 8
   store ptr %1, ptr %issue_id, align 8
   %n = alloca i64, align 8
-  store i64 %2, ptr %n, align 4
+  store i64 %2, ptr %n, align 8
   %_ = alloca i64, align 8
-  %pool1 = load i64, ptr %pool, align 4
+  %pool1 = load i64, ptr %pool, align 8
   %issue_id2 = load ptr, ptr %issue_id, align 8
   %str = call ptr @mesh_string_new(ptr @.str.1048, i64 8)
   %call = call i64 @Ingestion_Routes__broadcast_issue_update(i64 %pool1, ptr %issue_id2, ptr %str)
   call void @mesh_reduction_check()
-  store i64 %call, ptr %_, align 4
+  store i64 %call, ptr %_, align 8
   %str3 = call ptr @mesh_string_new(ptr @.str.1049, i64 32)
-  %n4 = load i64, ptr %n, align 4
+  %n4 = load i64, ptr %n, align 8
   %call5 = call ptr @mesh_int_to_string(i64 %n4)
   %concat = call ptr @mesh_string_concat(ptr %str3, ptr %call5)
   %str6 = call ptr @mesh_string_new(ptr @.str.1050, i64 1)
@@ -21847,20 +21848,20 @@ entry:
 define ptr @Ingestion_Routes__archive_success(i64 %0, ptr %1, i64 %2) {
 entry:
   %pool = alloca i64, align 8
-  store i64 %0, ptr %pool, align 4
+  store i64 %0, ptr %pool, align 8
   %issue_id = alloca ptr, align 8
   store ptr %1, ptr %issue_id, align 8
   %n = alloca i64, align 8
-  store i64 %2, ptr %n, align 4
+  store i64 %2, ptr %n, align 8
   %_ = alloca i64, align 8
-  %pool1 = load i64, ptr %pool, align 4
+  %pool1 = load i64, ptr %pool, align 8
   %issue_id2 = load ptr, ptr %issue_id, align 8
   %str = call ptr @mesh_string_new(ptr @.str.1051, i64 8)
   %call = call i64 @Ingestion_Routes__broadcast_issue_update(i64 %pool1, ptr %issue_id2, ptr %str)
   call void @mesh_reduction_check()
-  store i64 %call, ptr %_, align 4
+  store i64 %call, ptr %_, align 8
   %str3 = call ptr @mesh_string_new(ptr @.str.1052, i64 32)
-  %n4 = load i64, ptr %n, align 4
+  %n4 = load i64, ptr %n, align 8
   %call5 = call ptr @mesh_int_to_string(i64 %n4)
   %concat = call ptr @mesh_string_concat(ptr %str3, ptr %call5)
   %str6 = call ptr @mesh_string_new(ptr @.str.1053, i64 1)
@@ -21872,20 +21873,20 @@ entry:
 define ptr @Ingestion_Routes__unresolve_success(i64 %0, ptr %1, i64 %2) {
 entry:
   %pool = alloca i64, align 8
-  store i64 %0, ptr %pool, align 4
+  store i64 %0, ptr %pool, align 8
   %issue_id = alloca ptr, align 8
   store ptr %1, ptr %issue_id, align 8
   %n = alloca i64, align 8
-  store i64 %2, ptr %n, align 4
+  store i64 %2, ptr %n, align 8
   %_ = alloca i64, align 8
-  %pool1 = load i64, ptr %pool, align 4
+  %pool1 = load i64, ptr %pool, align 8
   %issue_id2 = load ptr, ptr %issue_id, align 8
   %str = call ptr @mesh_string_new(ptr @.str.1054, i64 10)
   %call = call i64 @Ingestion_Routes__broadcast_issue_update(i64 %pool1, ptr %issue_id2, ptr %str)
   call void @mesh_reduction_check()
-  store i64 %call, ptr %_, align 4
+  store i64 %call, ptr %_, align 8
   %str3 = call ptr @mesh_string_new(ptr @.str.1055, i64 32)
-  %n4 = load i64, ptr %n, align 4
+  %n4 = load i64, ptr %n, align 8
   %call5 = call ptr @mesh_int_to_string(i64 %n4)
   %concat = call ptr @mesh_string_concat(ptr %str3, ptr %call5)
   %str6 = call ptr @mesh_string_new(ptr @.str.1056, i64 1)
@@ -21897,20 +21898,20 @@ entry:
 define ptr @Ingestion_Routes__discard_success(i64 %0, ptr %1, i64 %2) {
 entry:
   %pool = alloca i64, align 8
-  store i64 %0, ptr %pool, align 4
+  store i64 %0, ptr %pool, align 8
   %issue_id = alloca ptr, align 8
   store ptr %1, ptr %issue_id, align 8
   %n = alloca i64, align 8
-  store i64 %2, ptr %n, align 4
+  store i64 %2, ptr %n, align 8
   %_ = alloca i64, align 8
-  %pool1 = load i64, ptr %pool, align 4
+  %pool1 = load i64, ptr %pool, align 8
   %issue_id2 = load ptr, ptr %issue_id, align 8
   %str = call ptr @mesh_string_new(ptr @.str.1057, i64 9)
   %call = call i64 @Ingestion_Routes__broadcast_issue_update(i64 %pool1, ptr %issue_id2, ptr %str)
   call void @mesh_reduction_check()
-  store i64 %call, ptr %_, align 4
+  store i64 %call, ptr %_, align 8
   %str3 = call ptr @mesh_string_new(ptr @.str.1058, i64 32)
-  %n4 = load i64, ptr %n, align 4
+  %n4 = load i64, ptr %n, align 8
   %call5 = call ptr @mesh_int_to_string(i64 %n4)
   %concat = call ptr @mesh_string_concat(ptr %str3, ptr %call5)
   %str6 = call ptr @mesh_string_new(ptr @.str.1059, i64 1)
@@ -21928,12 +21929,12 @@ entry:
   %reg_pid = alloca i64, align 8
   %call = call i64 @get_registry()
   call void @mesh_reduction_check()
-  store i64 %call, ptr %reg_pid, align 4
+  store i64 %call, ptr %reg_pid, align 8
   %pool = alloca i64, align 8
-  %reg_pid1 = load i64, ptr %reg_pid, align 4
+  %reg_pid1 = load i64, ptr %reg_pid, align 8
   %call2 = call i64 @__service_pipelineregistry_call_get_pool(i64 %reg_pid1)
   call void @mesh_reduction_check()
-  store i64 %call2, ptr %pool, align 4
+  store i64 %call2, ptr %pool, align 8
   %issue_id = alloca ptr, align 8
   %request3 = load ptr, ptr %request, align 8
   %str = call ptr @mesh_string_new(ptr @.str.1060, i64 2)
@@ -21941,7 +21942,7 @@ entry:
   call void @mesh_reduction_check()
   store ptr %call4, ptr %issue_id, align 8
   %result = alloca { i8, ptr }, align 8
-  %pool5 = load i64, ptr %pool, align 4
+  %pool5 = load i64, ptr %pool, align 8
   %issue_id6 = load ptr, ptr %issue_id, align 8
   %call7 = call { i8, ptr } @resolve_issue(i64 %pool5, ptr %issue_id6)
   call void @mesh_reduction_check()
@@ -21969,9 +21970,9 @@ case_Ok:                                          ; preds = %entry
   %variant_field = getelementptr inbounds nuw { i8, ptr }, ptr %scrutinee, i32 0, i32 1
   %path_val = load ptr, ptr %variant_field, align 8
   store ptr %path_val, ptr %n, align 8
-  %pool9 = load i64, ptr %pool, align 4
+  %pool9 = load i64, ptr %pool, align 8
   %issue_id10 = load ptr, ptr %issue_id, align 8
-  %n11 = load i64, ptr %n, align 4
+  %n11 = load i64, ptr %n, align 8
   %call12 = call ptr @Ingestion_Routes__resolve_success(i64 %pool9, ptr %issue_id10, i64 %n11)
   call void @mesh_reduction_check()
   store ptr %call12, ptr %match_result, align 8
@@ -22000,12 +22001,12 @@ entry:
   %reg_pid = alloca i64, align 8
   %call = call i64 @get_registry()
   call void @mesh_reduction_check()
-  store i64 %call, ptr %reg_pid, align 4
+  store i64 %call, ptr %reg_pid, align 8
   %pool = alloca i64, align 8
-  %reg_pid1 = load i64, ptr %reg_pid, align 4
+  %reg_pid1 = load i64, ptr %reg_pid, align 8
   %call2 = call i64 @__service_pipelineregistry_call_get_pool(i64 %reg_pid1)
   call void @mesh_reduction_check()
-  store i64 %call2, ptr %pool, align 4
+  store i64 %call2, ptr %pool, align 8
   %issue_id = alloca ptr, align 8
   %request3 = load ptr, ptr %request, align 8
   %str = call ptr @mesh_string_new(ptr @.str.1065, i64 2)
@@ -22013,7 +22014,7 @@ entry:
   call void @mesh_reduction_check()
   store ptr %call4, ptr %issue_id, align 8
   %result = alloca { i8, ptr }, align 8
-  %pool5 = load i64, ptr %pool, align 4
+  %pool5 = load i64, ptr %pool, align 8
   %issue_id6 = load ptr, ptr %issue_id, align 8
   %call7 = call { i8, ptr } @archive_issue(i64 %pool5, ptr %issue_id6)
   call void @mesh_reduction_check()
@@ -22041,9 +22042,9 @@ case_Ok:                                          ; preds = %entry
   %variant_field = getelementptr inbounds nuw { i8, ptr }, ptr %scrutinee, i32 0, i32 1
   %path_val = load ptr, ptr %variant_field, align 8
   store ptr %path_val, ptr %n, align 8
-  %pool9 = load i64, ptr %pool, align 4
+  %pool9 = load i64, ptr %pool, align 8
   %issue_id10 = load ptr, ptr %issue_id, align 8
-  %n11 = load i64, ptr %n, align 4
+  %n11 = load i64, ptr %n, align 8
   %call12 = call ptr @Ingestion_Routes__archive_success(i64 %pool9, ptr %issue_id10, i64 %n11)
   call void @mesh_reduction_check()
   store ptr %call12, ptr %match_result, align 8
@@ -22072,12 +22073,12 @@ entry:
   %reg_pid = alloca i64, align 8
   %call = call i64 @get_registry()
   call void @mesh_reduction_check()
-  store i64 %call, ptr %reg_pid, align 4
+  store i64 %call, ptr %reg_pid, align 8
   %pool = alloca i64, align 8
-  %reg_pid1 = load i64, ptr %reg_pid, align 4
+  %reg_pid1 = load i64, ptr %reg_pid, align 8
   %call2 = call i64 @__service_pipelineregistry_call_get_pool(i64 %reg_pid1)
   call void @mesh_reduction_check()
-  store i64 %call2, ptr %pool, align 4
+  store i64 %call2, ptr %pool, align 8
   %issue_id = alloca ptr, align 8
   %request3 = load ptr, ptr %request, align 8
   %str = call ptr @mesh_string_new(ptr @.str.1070, i64 2)
@@ -22085,7 +22086,7 @@ entry:
   call void @mesh_reduction_check()
   store ptr %call4, ptr %issue_id, align 8
   %result = alloca { i8, ptr }, align 8
-  %pool5 = load i64, ptr %pool, align 4
+  %pool5 = load i64, ptr %pool, align 8
   %issue_id6 = load ptr, ptr %issue_id, align 8
   %call7 = call { i8, ptr } @unresolve_issue(i64 %pool5, ptr %issue_id6)
   call void @mesh_reduction_check()
@@ -22113,9 +22114,9 @@ case_Ok:                                          ; preds = %entry
   %variant_field = getelementptr inbounds nuw { i8, ptr }, ptr %scrutinee, i32 0, i32 1
   %path_val = load ptr, ptr %variant_field, align 8
   store ptr %path_val, ptr %n, align 8
-  %pool9 = load i64, ptr %pool, align 4
+  %pool9 = load i64, ptr %pool, align 8
   %issue_id10 = load ptr, ptr %issue_id, align 8
-  %n11 = load i64, ptr %n, align 4
+  %n11 = load i64, ptr %n, align 8
   %call12 = call ptr @Ingestion_Routes__unresolve_success(i64 %pool9, ptr %issue_id10, i64 %n11)
   call void @mesh_reduction_check()
   store ptr %call12, ptr %match_result, align 8
@@ -22140,7 +22141,7 @@ entry:
   %e = alloca ptr, align 8
   %n = alloca i64, align 8
   %pool = alloca i64, align 8
-  store i64 %0, ptr %pool, align 4
+  store i64 %0, ptr %pool, align 8
   %issue_id = alloca ptr, align 8
   store ptr %1, ptr %issue_id, align 8
   %rows = alloca ptr, align 8
@@ -22162,7 +22163,7 @@ then:                                             ; preds = %entry
   %call5 = call i64 @mesh_map_get(ptr %call4, i64 %ptr_to_i64)
   store {} zeroinitializer, ptr %user_id, align 1
   %result = alloca { i8, ptr }, align 8
-  %pool6 = load i64, ptr %pool, align 4
+  %pool6 = load i64, ptr %pool, align 8
   %issue_id7 = load ptr, ptr %issue_id, align 8
   %user_id8 = load {}, ptr %user_id, align 1
   %call9 = call { i8, ptr } @assign_issue(i64 %pool6, ptr %issue_id7, ptr null)
@@ -22230,12 +22231,12 @@ entry:
   %reg_pid = alloca i64, align 8
   %call = call i64 @get_registry()
   call void @mesh_reduction_check()
-  store i64 %call, ptr %reg_pid, align 4
+  store i64 %call, ptr %reg_pid, align 8
   %pool = alloca i64, align 8
-  %reg_pid1 = load i64, ptr %reg_pid, align 4
+  %reg_pid1 = load i64, ptr %reg_pid, align 8
   %call2 = call i64 @__service_pipelineregistry_call_get_pool(i64 %reg_pid1)
   call void @mesh_reduction_check()
-  store i64 %call2, ptr %pool, align 4
+  store i64 %call2, ptr %pool, align 8
   %issue_id = alloca ptr, align 8
   %request3 = load ptr, ptr %request, align 8
   %str = call ptr @mesh_string_new(ptr @.str.1082, i64 2)
@@ -22247,13 +22248,13 @@ entry:
   %call6 = call ptr @mesh_http_request_body(ptr %request5)
   store ptr %call6, ptr %body, align 8
   %rows_result = alloca { i8, ptr }, align 8
-  %pool7 = load i64, ptr %pool, align 4
+  %pool7 = load i64, ptr %pool, align 8
   %str8 = call ptr @mesh_string_new(ptr @.str.1083, i64 53)
   %list_arr = alloca [1 x i64], align 8
   %body9 = load ptr, ptr %body, align 8
   %ptr_to_i64 = ptrtoint ptr %body9 to i64
   %elem_ptr = getelementptr [1 x i64], ptr %list_arr, i32 0, i32 0
-  store i64 %ptr_to_i64, ptr %elem_ptr, align 4
+  store i64 %ptr_to_i64, ptr %elem_ptr, align 8
   %list = call ptr @mesh_list_from_array(ptr %list_arr, i64 1)
   %call10 = call ptr @mesh_pool_query(i64 %pool7, ptr %str8, ptr %list)
   %deref_sum = load { i8, ptr }, ptr %call10, align 8
@@ -22290,7 +22291,7 @@ case_Ok:                                          ; preds = %entry
   %variant_field14 = getelementptr inbounds nuw { i8, ptr }, ptr %scrutinee, i32 0, i32 1
   %path_val15 = load ptr, ptr %variant_field14, align 8
   store ptr %path_val15, ptr %rows, align 8
-  %pool16 = load i64, ptr %pool, align 4
+  %pool16 = load i64, ptr %pool, align 8
   %issue_id17 = load ptr, ptr %issue_id, align 8
   %rows18 = load ptr, ptr %rows, align 8
   %call19 = call ptr @Ingestion_Routes__assign_from_rows(i64 %pool16, ptr %issue_id17, ptr %rows18)
@@ -22308,12 +22309,12 @@ entry:
   %reg_pid = alloca i64, align 8
   %call = call i64 @get_registry()
   call void @mesh_reduction_check()
-  store i64 %call, ptr %reg_pid, align 4
+  store i64 %call, ptr %reg_pid, align 8
   %pool = alloca i64, align 8
-  %reg_pid1 = load i64, ptr %reg_pid, align 4
+  %reg_pid1 = load i64, ptr %reg_pid, align 8
   %call2 = call i64 @__service_pipelineregistry_call_get_pool(i64 %reg_pid1)
   call void @mesh_reduction_check()
-  store i64 %call2, ptr %pool, align 4
+  store i64 %call2, ptr %pool, align 8
   %issue_id = alloca ptr, align 8
   %request3 = load ptr, ptr %request, align 8
   %str = call ptr @mesh_string_new(ptr @.str.1087, i64 2)
@@ -22321,7 +22322,7 @@ entry:
   call void @mesh_reduction_check()
   store ptr %call4, ptr %issue_id, align 8
   %result = alloca { i8, ptr }, align 8
-  %pool5 = load i64, ptr %pool, align 4
+  %pool5 = load i64, ptr %pool, align 8
   %issue_id6 = load ptr, ptr %issue_id, align 8
   %call7 = call { i8, ptr } @discard_issue(i64 %pool5, ptr %issue_id6)
   call void @mesh_reduction_check()
@@ -22349,9 +22350,9 @@ case_Ok:                                          ; preds = %entry
   %variant_field = getelementptr inbounds nuw { i8, ptr }, ptr %scrutinee, i32 0, i32 1
   %path_val = load ptr, ptr %variant_field, align 8
   store ptr %path_val, ptr %n, align 8
-  %pool9 = load i64, ptr %pool, align 4
+  %pool9 = load i64, ptr %pool, align 8
   %issue_id10 = load ptr, ptr %issue_id, align 8
-  %n11 = load i64, ptr %n, align 4
+  %n11 = load i64, ptr %n, align 8
   %call12 = call ptr @Ingestion_Routes__discard_success(i64 %pool9, ptr %issue_id10, i64 %n11)
   call void @mesh_reduction_check()
   store ptr %call12, ptr %match_result, align 8
@@ -22380,12 +22381,12 @@ entry:
   %reg_pid = alloca i64, align 8
   %call = call i64 @get_registry()
   call void @mesh_reduction_check()
-  store i64 %call, ptr %reg_pid, align 4
+  store i64 %call, ptr %reg_pid, align 8
   %pool = alloca i64, align 8
-  %reg_pid1 = load i64, ptr %reg_pid, align 4
+  %reg_pid1 = load i64, ptr %reg_pid, align 8
   %call2 = call i64 @__service_pipelineregistry_call_get_pool(i64 %reg_pid1)
   call void @mesh_reduction_check()
-  store i64 %call2, ptr %pool, align 4
+  store i64 %call2, ptr %pool, align 8
   %issue_id = alloca ptr, align 8
   %request3 = load ptr, ptr %request, align 8
   %str = call ptr @mesh_string_new(ptr @.str.1092, i64 2)
@@ -22393,7 +22394,7 @@ entry:
   call void @mesh_reduction_check()
   store ptr %call4, ptr %issue_id, align 8
   %result = alloca { i8, ptr }, align 8
-  %pool5 = load i64, ptr %pool, align 4
+  %pool5 = load i64, ptr %pool, align 8
   %issue_id6 = load ptr, ptr %issue_id, align 8
   %call7 = call { i8, ptr } @delete_issue(i64 %pool5, ptr %issue_id6)
   call void @mesh_reduction_check()
@@ -22422,7 +22423,7 @@ case_Ok:                                          ; preds = %entry
   %path_val = load ptr, ptr %variant_field, align 8
   store ptr %path_val, ptr %n, align 8
   %str9 = call ptr @mesh_string_new(ptr @.str.1093, i64 32)
-  %n10 = load i64, ptr %n, align 4
+  %n10 = load i64, ptr %n, align 8
   %call11 = call ptr @mesh_int_to_string(i64 %n10)
   %concat = call ptr @mesh_string_concat(ptr %str9, ptr %call11)
   %str12 = call ptr @mesh_string_new(ptr @.str.1094, i64 1)
@@ -22448,7 +22449,7 @@ case_Err:                                         ; preds = %entry
 define i64 @Ingestion_WsHandler__check_authorization_header(i64 %0, ptr %1) {
 entry:
   %conn = alloca i64, align 8
-  store i64 %0, ptr %conn, align 4
+  store i64 %0, ptr %conn, align 8
   %headers = alloca ptr, align 8
   store ptr %1, ptr %headers, align 8
   %has_auth = alloca i1, align 1
@@ -22464,39 +22465,39 @@ entry:
   br i1 %has_auth3, label %then, label %else
 
 then:                                             ; preds = %entry
-  %conn4 = load i64, ptr %conn, align 4
-  store i64 %conn4, ptr %if_result, align 4
+  %conn4 = load i64, ptr %conn, align 8
+  store i64 %conn4, ptr %if_result, align 8
   br label %if_merge
 
 else:                                             ; preds = %entry
-  store i64 0, ptr %if_result, align 4
+  store i64 0, ptr %if_result, align 8
   br label %if_merge
 
 if_merge:                                         ; preds = %else, %then
-  %if_val = load i64, ptr %if_result, align 4
+  %if_val = load i64, ptr %if_result, align 8
   ret i64 %if_val
 }
 
 define {} @Ingestion_WsHandler__ws_write(i64 %0, ptr %1) {
 entry:
   %conn = alloca i64, align 8
-  store i64 %0, ptr %conn, align 4
+  store i64 %0, ptr %conn, align 8
   %msg = alloca ptr, align 8
   store ptr %1, ptr %msg, align 8
   %_result = alloca i64, align 8
-  %conn1 = load i64, ptr %conn, align 4
+  %conn1 = load i64, ptr %conn, align 8
   %msg2 = load ptr, ptr %msg, align 8
   %i64_to_ptr = inttoptr i64 %conn1 to ptr
   %call = call i64 @mesh_ws_send(ptr %i64_to_ptr, ptr %msg2)
-  store i64 %call, ptr %_result, align 4
+  store i64 %call, ptr %_result, align 8
   ret {} zeroinitializer
 }
 
 define {} @Ingestion_WsHandler__ws_send_accepted(i64 %0) {
 entry:
   %conn = alloca i64, align 8
-  store i64 %0, ptr %conn, align 4
-  %conn1 = load i64, ptr %conn, align 4
+  store i64 %0, ptr %conn, align 8
+  %conn1 = load i64, ptr %conn, align 8
   %str = call ptr @mesh_string_new(ptr @.str.1100, i64 25)
   %call = call {} @Ingestion_WsHandler__ws_write(i64 %conn1, ptr %str)
   call void @mesh_reduction_check()
@@ -22506,7 +22507,7 @@ entry:
 define {} @Ingestion_WsHandler__ws_send_error(i64 %0, ptr %1) {
 entry:
   %conn = alloca i64, align 8
-  store i64 %0, ptr %conn, align 4
+  store i64 %0, ptr %conn, align 8
   %reason = alloca ptr, align 8
   store ptr %1, ptr %reason, align 8
   %msg = alloca ptr, align 8
@@ -22516,7 +22517,7 @@ entry:
   %str2 = call ptr @mesh_string_new(ptr @.str.1102, i64 3)
   %concat3 = call ptr @mesh_string_concat(ptr %concat, ptr %str2)
   store ptr %concat3, ptr %msg, align 8
-  %conn4 = load i64, ptr %conn, align 4
+  %conn4 = load i64, ptr %conn, align 8
   %msg5 = load ptr, ptr %msg, align 8
   %call = call {} @Ingestion_WsHandler__ws_write(i64 %conn4, ptr %msg5)
   call void @mesh_reduction_check()
@@ -22526,7 +22527,7 @@ entry:
 define i64 @Ingestion_WsHandler__handle_stream_connect(i64 %0, ptr %1) {
 entry:
   %conn = alloca i64, align 8
-  store i64 %0, ptr %conn, align 4
+  store i64 %0, ptr %conn, align 8
   %path = alloca ptr, align 8
   store ptr %1, ptr %path, align 8
   %parts = alloca ptr, align 8
@@ -22545,31 +22546,31 @@ entry:
   %concat = call ptr @mesh_string_concat(ptr %str4, ptr %project_id5)
   store ptr %concat, ptr %room, align 8
   %_ = alloca i64, align 8
-  %conn6 = load i64, ptr %conn, align 4
+  %conn6 = load i64, ptr %conn, align 8
   %room7 = load ptr, ptr %room, align 8
   %i64_to_ptr8 = inttoptr i64 %conn6 to ptr
   %call9 = call i64 @mesh_ws_join(ptr %i64_to_ptr8, ptr %room7)
-  store i64 %call9, ptr %_, align 4
+  store i64 %call9, ptr %_, align 8
   %stream_mgr_pid = alloca i64, align 8
   %str10 = call ptr @mesh_string_new(ptr @.str.1105, i64 14)
   %call11 = call i64 @mesh_process_whereis(ptr %str10)
   %i64_to_ptr12 = inttoptr i64 %call11 to ptr
   store ptr %i64_to_ptr12, ptr %stream_mgr_pid, align 8
-  %stream_mgr_pid13 = load i64, ptr %stream_mgr_pid, align 4
-  %conn14 = load i64, ptr %conn, align 4
+  %stream_mgr_pid13 = load i64, ptr %stream_mgr_pid, align 8
+  %conn14 = load i64, ptr %conn, align 8
   %project_id15 = load ptr, ptr %project_id, align 8
   %str16 = call ptr @mesh_string_new(ptr @.str.1106, i64 0)
   %str17 = call ptr @mesh_string_new(ptr @.str.1107, i64 0)
   %call18 = call {} @__service_streammanager_cast_register_client(i64 %stream_mgr_pid13, i64 %conn14, ptr %project_id15, ptr %str16, ptr %str17)
   call void @mesh_reduction_check()
-  %conn19 = load i64, ptr %conn, align 4
+  %conn19 = load i64, ptr %conn, align 8
   ret i64 %conn19
 }
 
 define i64 @Ingestion_WsHandler__handle_ingest_connect(i64 %0, ptr %1) {
 entry:
   %conn = alloca i64, align 8
-  store i64 %0, ptr %conn, align 4
+  store i64 %0, ptr %conn, align 8
   %headers = alloca ptr, align 8
   store ptr %1, ptr %headers, align 8
   %has_key = alloca i1, align 1
@@ -22585,20 +22586,20 @@ entry:
   br i1 %has_key3, label %then, label %else
 
 then:                                             ; preds = %entry
-  %conn4 = load i64, ptr %conn, align 4
-  store i64 %conn4, ptr %if_result, align 4
+  %conn4 = load i64, ptr %conn, align 8
+  store i64 %conn4, ptr %if_result, align 8
   br label %if_merge
 
 else:                                             ; preds = %entry
-  %conn5 = load i64, ptr %conn, align 4
+  %conn5 = load i64, ptr %conn, align 8
   %headers6 = load ptr, ptr %headers, align 8
   %call7 = call i64 @Ingestion_WsHandler__check_authorization_header(i64 %conn5, ptr %headers6)
   call void @mesh_reduction_check()
-  store i64 %call7, ptr %if_result, align 4
+  store i64 %call7, ptr %if_result, align 8
   br label %if_merge
 
 if_merge:                                         ; preds = %else, %then
-  %if_val = load i64, ptr %if_result, align 4
+  %if_val = load i64, ptr %if_result, align 8
   ret i64 %if_val
 }
 
@@ -22614,8 +22615,8 @@ entry:
   %len = alloca i64, align 8
   %parts2 = load ptr, ptr %parts, align 8
   %call3 = call i64 @mesh_list_length(ptr %parts2)
-  store i64 %call3, ptr %len, align 4
-  %len4 = load i64, ptr %len, align 4
+  store i64 %call3, ptr %len, align 8
+  %len4 = load i64, ptr %len, align 8
   %gt = icmp sgt i64 %len4, 3
   %if_result = alloca i1, align 1
   br i1 %gt, label %then, label %else
@@ -22670,7 +22671,7 @@ if_merge16:                                       ; preds = %else15, %then14
 define i64 @ws_on_connect(i64 %0, ptr %1, ptr %2) {
 entry:
   %conn = alloca i64, align 8
-  store i64 %0, ptr %conn, align 4
+  store i64 %0, ptr %conn, align 8
   %path = alloca ptr, align 8
   store ptr %1, ptr %path, align 8
   %headers = alloca ptr, align 8
@@ -22685,30 +22686,30 @@ entry:
   br i1 %is_stream2, label %then, label %else
 
 then:                                             ; preds = %entry
-  %conn3 = load i64, ptr %conn, align 4
+  %conn3 = load i64, ptr %conn, align 8
   %path4 = load ptr, ptr %path, align 8
   %call5 = call i64 @Ingestion_WsHandler__handle_stream_connect(i64 %conn3, ptr %path4)
   call void @mesh_reduction_check()
-  store i64 %call5, ptr %if_result, align 4
+  store i64 %call5, ptr %if_result, align 8
   br label %if_merge
 
 else:                                             ; preds = %entry
-  %conn6 = load i64, ptr %conn, align 4
+  %conn6 = load i64, ptr %conn, align 8
   %headers7 = load ptr, ptr %headers, align 8
   %call8 = call i64 @Ingestion_WsHandler__handle_ingest_connect(i64 %conn6, ptr %headers7)
   call void @mesh_reduction_check()
-  store i64 %call8, ptr %if_result, align 4
+  store i64 %call8, ptr %if_result, align 8
   br label %if_merge
 
 if_merge:                                         ; preds = %else, %then
-  %if_val = load i64, ptr %if_result, align 4
+  %if_val = load i64, ptr %if_result, align 8
   ret i64 %if_val
 }
 
 define {} @Ingestion_WsHandler__apply_filter_update(i64 %0, ptr %1) {
 entry:
   %conn = alloca i64, align 8
-  store i64 %0, ptr %conn, align 4
+  store i64 %0, ptr %conn, align 8
   %rows = alloca ptr, align 8
   store ptr %1, ptr %rows, align 8
   %rows1 = load ptr, ptr %rows, align 8
@@ -22743,19 +22744,19 @@ then:                                             ; preds = %entry
   %i64_to_ptr14 = inttoptr i64 %call13 to ptr
   store ptr %i64_to_ptr14, ptr %stream_mgr_pid, align 8
   %project_id = alloca ptr, align 8
-  %stream_mgr_pid15 = load i64, ptr %stream_mgr_pid, align 4
-  %conn16 = load i64, ptr %conn, align 4
+  %stream_mgr_pid15 = load i64, ptr %stream_mgr_pid, align 8
+  %conn16 = load i64, ptr %conn, align 8
   %call17 = call i64 @__service_streammanager_call_get_project_id(i64 %stream_mgr_pid15, i64 %conn16)
   call void @mesh_reduction_check()
-  store i64 %call17, ptr %project_id, align 4
-  %stream_mgr_pid18 = load i64, ptr %stream_mgr_pid, align 4
-  %conn19 = load i64, ptr %conn, align 4
+  store i64 %call17, ptr %project_id, align 8
+  %stream_mgr_pid18 = load i64, ptr %stream_mgr_pid, align 8
+  %conn19 = load i64, ptr %conn, align 8
   %project_id20 = load ptr, ptr %project_id, align 8
   %level21 = load {}, ptr %level, align 1
   %env22 = load {}, ptr %env, align 1
   %call23 = call {} @__service_streammanager_cast_register_client(i64 %stream_mgr_pid18, i64 %conn19, ptr %project_id20, ptr null, ptr null)
   call void @mesh_reduction_check()
-  %conn24 = load i64, ptr %conn, align 4
+  %conn24 = load i64, ptr %conn, align 8
   %str25 = call ptr @mesh_string_new(ptr @.str.1115, i64 30)
   %call26 = call {} @Ingestion_WsHandler__ws_write(i64 %conn24, ptr %str25)
   call void @mesh_reduction_check()
@@ -22763,7 +22764,7 @@ then:                                             ; preds = %entry
   br label %if_merge
 
 else:                                             ; preds = %entry
-  %conn27 = load i64, ptr %conn, align 4
+  %conn27 = load i64, ptr %conn, align 8
   %str28 = call ptr @mesh_string_new(ptr @.str.1116, i64 56)
   %call29 = call {} @Ingestion_WsHandler__ws_write(i64 %conn27, ptr %str28)
   call void @mesh_reduction_check()
@@ -22779,26 +22780,26 @@ define {} @Ingestion_WsHandler__handle_subscribe_update(i64 %0, ptr %1) {
 entry:
   %rows = alloca ptr, align 8
   %conn = alloca i64, align 8
-  store i64 %0, ptr %conn, align 4
+  store i64 %0, ptr %conn, align 8
   %message = alloca ptr, align 8
   store ptr %1, ptr %message, align 8
   %reg_pid = alloca i64, align 8
   %call = call i64 @get_registry()
   call void @mesh_reduction_check()
-  store i64 %call, ptr %reg_pid, align 4
+  store i64 %call, ptr %reg_pid, align 8
   %pool = alloca i64, align 8
-  %reg_pid1 = load i64, ptr %reg_pid, align 4
+  %reg_pid1 = load i64, ptr %reg_pid, align 8
   %call2 = call i64 @__service_pipelineregistry_call_get_pool(i64 %reg_pid1)
   call void @mesh_reduction_check()
-  store i64 %call2, ptr %pool, align 4
+  store i64 %call2, ptr %pool, align 8
   %query_result = alloca { i8, ptr }, align 8
-  %pool3 = load i64, ptr %pool, align 4
+  %pool3 = load i64, ptr %pool, align 8
   %str = call ptr @mesh_string_new(ptr @.str.1117, i64 119)
   %list_arr = alloca [1 x i64], align 8
   %message4 = load ptr, ptr %message, align 8
   %ptr_to_i64 = ptrtoint ptr %message4 to i64
   %elem_ptr = getelementptr [1 x i64], ptr %list_arr, i32 0, i32 0
-  store i64 %ptr_to_i64, ptr %elem_ptr, align 4
+  store i64 %ptr_to_i64, ptr %elem_ptr, align 8
   %list = call ptr @mesh_list_from_array(ptr %list_arr, i64 1)
   %call5 = call ptr @mesh_pool_query(i64 %pool3, ptr %str, ptr %list)
   %deref_sum = load { i8, ptr }, ptr %call5, align 8
@@ -22826,7 +22827,7 @@ case_Ok:                                          ; preds = %entry
   %variant_field = getelementptr inbounds nuw { i8, ptr }, ptr %scrutinee, i32 0, i32 1
   %path_val = load ptr, ptr %variant_field, align 8
   store ptr %path_val, ptr %rows, align 8
-  %conn7 = load i64, ptr %conn, align 4
+  %conn7 = load i64, ptr %conn, align 8
   %rows8 = load ptr, ptr %rows, align 8
   %call9 = call {} @Ingestion_WsHandler__apply_filter_update(i64 %conn7, ptr %rows8)
   call void @mesh_reduction_check()
@@ -22834,7 +22835,7 @@ case_Ok:                                          ; preds = %entry
   br label %match_merge
 
 case_Err:                                         ; preds = %entry
-  %conn10 = load i64, ptr %conn, align 4
+  %conn10 = load i64, ptr %conn, align 8
   %str11 = call ptr @mesh_string_new(ptr @.str.1118, i64 62)
   %call12 = call {} @Ingestion_WsHandler__ws_write(i64 %conn10, ptr %str11)
   call void @mesh_reduction_check()
@@ -22846,31 +22847,31 @@ define {} @Ingestion_WsHandler__handle_ingest_message(i64 %0, ptr %1) {
 entry:
   %reason = alloca ptr, align 8
   %conn = alloca i64, align 8
-  store i64 %0, ptr %conn, align 4
+  store i64 %0, ptr %conn, align 8
   %message = alloca ptr, align 8
   store ptr %1, ptr %message, align 8
   %reg_pid = alloca i64, align 8
   %call = call i64 @get_registry()
   call void @mesh_reduction_check()
-  store i64 %call, ptr %reg_pid, align 4
+  store i64 %call, ptr %reg_pid, align 8
   %processor_pid = alloca i64, align 8
-  %reg_pid1 = load i64, ptr %reg_pid, align 4
+  %reg_pid1 = load i64, ptr %reg_pid, align 8
   %call2 = call i64 @__service_pipelineregistry_call_get_processor(i64 %reg_pid1)
   call void @mesh_reduction_check()
-  store i64 %call2, ptr %processor_pid, align 4
+  store i64 %call2, ptr %processor_pid, align 8
   %writer_pid = alloca i64, align 8
-  %reg_pid3 = load i64, ptr %reg_pid, align 4
+  %reg_pid3 = load i64, ptr %reg_pid, align 8
   %call4 = call i64 @__service_pipelineregistry_call_get_writer(i64 %reg_pid3)
   call void @mesh_reduction_check()
-  store i64 %call4, ptr %writer_pid, align 4
+  store i64 %call4, ptr %writer_pid, align 8
   %result = alloca { i8, ptr }, align 8
-  %processor_pid5 = load i64, ptr %processor_pid, align 4
+  %processor_pid5 = load i64, ptr %processor_pid, align 8
   %str = call ptr @mesh_string_new(ptr @.str.1121, i64 10)
-  %writer_pid6 = load i64, ptr %writer_pid, align 4
+  %writer_pid6 = load i64, ptr %writer_pid, align 8
   %message7 = load ptr, ptr %message, align 8
   %call8 = call i64 @__service_eventprocessor_call_process_event(i64 %processor_pid5, ptr %str, i64 %writer_pid6, ptr %message7)
   call void @mesh_reduction_check()
-  store i64 %call8, ptr %result, align 4
+  store i64 %call8, ptr %result, align 8
   %result9 = load { i8, ptr }, ptr %result, align 8
   %scrutinee = alloca { i8, ptr }, align 8
   store { i8, ptr } %result9, ptr %scrutinee, align 8
@@ -22891,7 +22892,7 @@ switch_default:                                   ; preds = %entry
   unreachable
 
 case_Ok:                                          ; preds = %entry
-  %conn10 = load i64, ptr %conn, align 4
+  %conn10 = load i64, ptr %conn, align 8
   %call11 = call {} @Ingestion_WsHandler__ws_send_accepted(i64 %conn10)
   call void @mesh_reduction_check()
   store {} zeroinitializer, ptr %match_result, align 1
@@ -22901,7 +22902,7 @@ case_Err:                                         ; preds = %entry
   %variant_field = getelementptr inbounds nuw { i8, ptr }, ptr %scrutinee, i32 0, i32 1
   %path_val = load ptr, ptr %variant_field, align 8
   store ptr %path_val, ptr %reason, align 8
-  %conn12 = load i64, ptr %conn, align 4
+  %conn12 = load i64, ptr %conn, align 8
   %reason13 = load ptr, ptr %reason, align 8
   %call14 = call {} @Ingestion_WsHandler__ws_send_error(i64 %conn12, ptr %reason13)
   call void @mesh_reduction_check()
@@ -22912,7 +22913,7 @@ case_Err:                                         ; preds = %entry
 define {} @ws_on_message(i64 %0, ptr %1) {
 entry:
   %conn = alloca i64, align 8
-  store i64 %0, ptr %conn, align 4
+  store i64 %0, ptr %conn, align 8
   %message = alloca ptr, align 8
   store ptr %1, ptr %message, align 8
   %stream_mgr_pid = alloca i64, align 8
@@ -22921,17 +22922,17 @@ entry:
   %i64_to_ptr = inttoptr i64 %call to ptr
   store ptr %i64_to_ptr, ptr %stream_mgr_pid, align 8
   %is_stream = alloca i1, align 1
-  %stream_mgr_pid1 = load i64, ptr %stream_mgr_pid, align 4
-  %conn2 = load i64, ptr %conn, align 4
+  %stream_mgr_pid1 = load i64, ptr %stream_mgr_pid, align 8
+  %conn2 = load i64, ptr %conn, align 8
   %call3 = call i64 @__service_streammanager_call_is_stream_client(i64 %stream_mgr_pid1, i64 %conn2)
   call void @mesh_reduction_check()
-  store i64 %call3, ptr %is_stream, align 4
+  store i64 %call3, ptr %is_stream, align 8
   %is_stream4 = load i1, ptr %is_stream, align 1
   %if_result = alloca {}, align 8
   br i1 %is_stream4, label %then, label %else
 
 then:                                             ; preds = %entry
-  %conn5 = load i64, ptr %conn, align 4
+  %conn5 = load i64, ptr %conn, align 8
   %message6 = load ptr, ptr %message, align 8
   %call7 = call {} @Ingestion_WsHandler__handle_subscribe_update(i64 %conn5, ptr %message6)
   call void @mesh_reduction_check()
@@ -22939,7 +22940,7 @@ then:                                             ; preds = %entry
   br label %if_merge
 
 else:                                             ; preds = %entry
-  %conn8 = load i64, ptr %conn, align 4
+  %conn8 = load i64, ptr %conn, align 8
   %message9 = load ptr, ptr %message, align 8
   %call10 = call {} @Ingestion_WsHandler__handle_ingest_message(i64 %conn8, ptr %message9)
   call void @mesh_reduction_check()
@@ -22954,7 +22955,7 @@ if_merge:                                         ; preds = %else, %then
 define {} @ws_on_close(i64 %0, {} %1, {} %2) {
 entry:
   %conn = alloca i64, align 8
-  store i64 %0, ptr %conn, align 4
+  store i64 %0, ptr %conn, align 8
   %code = alloca {}, align 8
   store {} %1, ptr %code, align 1
   %reason = alloca {}, align 8
@@ -22964,8 +22965,8 @@ entry:
   %call = call i64 @mesh_process_whereis(ptr %str)
   %i64_to_ptr = inttoptr i64 %call to ptr
   store ptr %i64_to_ptr, ptr %stream_mgr_pid, align 8
-  %stream_mgr_pid1 = load i64, ptr %stream_mgr_pid, align 4
-  %conn2 = load i64, ptr %conn, align 4
+  %stream_mgr_pid1 = load i64, ptr %stream_mgr_pid, align 8
+  %conn2 = load i64, ptr %conn, align 8
   %call3 = call {} @__service_streammanager_cast_remove_client(i64 %stream_mgr_pid1, i64 %conn2)
   call void @mesh_reduction_check()
   %str4 = call ptr @mesh_string_new(ptr @.str.1126, i64 24)
@@ -23027,7 +23028,7 @@ entry:
   %port_str = alloca ptr, align 8
   store ptr %0, ptr %port_str, align 8
   %default_port = alloca i64, align 8
-  store i64 %1, ptr %default_port, align 4
+  store i64 %1, ptr %default_port, align 8
   %parsed = alloca { i8, ptr }, align 8
   %port_str1 = load ptr, ptr %port_str, align 8
   %call = call ptr @mesh_string_to_int(ptr %port_str1)
@@ -23045,7 +23046,7 @@ entry:
   ]
 
 match_merge:                                      ; preds = %case_None, %case_Some
-  %match_val = load i64, ptr %match_result, align 4
+  %match_val = load i64, ptr %match_result, align 8
   ret i64 %match_val
 
 switch_default:                                   ; preds = %entry
@@ -23056,13 +23057,13 @@ case_Some:                                        ; preds = %entry
   %variant_field = getelementptr inbounds nuw { i8, ptr }, ptr %scrutinee, i32 0, i32 1
   %path_val = load ptr, ptr %variant_field, align 8
   store ptr %path_val, ptr %p, align 8
-  %p3 = load i64, ptr %p, align 4
-  store i64 %p3, ptr %match_result, align 4
+  %p3 = load i64, ptr %p, align 8
+  store i64 %p3, ptr %match_result, align 8
   br label %match_merge
 
 case_None:                                        ; preds = %entry
-  %default_port4 = load i64, ptr %default_port, align 4
-  store i64 %default_port4, ptr %match_result, align 4
+  %default_port4 = load i64, ptr %default_port, align 8
+  store i64 %default_port4, ptr %match_result, align 8
   br label %match_merge
 }
 
@@ -23082,11 +23083,11 @@ then:                                             ; preds = %entry
   %connect_result = alloca i64, align 8
   %peer2 = load ptr, ptr %peer, align 8
   %peer3 = load ptr, ptr %peer, align 8
-  %str_len = load i64, ptr %peer3, align 4
+  %str_len = load i64, ptr %peer3, align 8
   %str_data = getelementptr i8, ptr %peer3, i64 8
   %node_call = call i64 @mesh_node_connect(ptr %str_data, i64 %str_len)
-  store i64 %node_call, ptr %connect_result, align 4
-  %connect_result4 = load i64, ptr %connect_result, align 4
+  store i64 %node_call, ptr %connect_result, align 8
+  %connect_result4 = load i64, ptr %connect_result, align 8
   %eq = icmp eq i64 %connect_result4, 0
   %if_result5 = alloca {}, align 8
   br i1 %eq, label %then6, label %else7
@@ -23178,13 +23179,13 @@ entry:
   %cookie2 = load ptr, ptr %cookie, align 8
   %node_name3 = load ptr, ptr %node_name, align 8
   %cookie4 = load ptr, ptr %cookie, align 8
-  %str_len = load i64, ptr %node_name3, align 4
+  %str_len = load i64, ptr %node_name3, align 8
   %str_data = getelementptr i8, ptr %node_name3, i64 8
-  %str_len5 = load i64, ptr %cookie4, align 4
+  %str_len5 = load i64, ptr %cookie4, align 8
   %str_data6 = getelementptr i8, ptr %cookie4, i64 8
   %node_start = call i64 @mesh_node_start(ptr %str_data, i64 %str_len, ptr %str_data6, i64 %str_len5)
-  store i64 %node_start, ptr %start_result, align 4
-  %start_result7 = load i64, ptr %start_result, align 4
+  store i64 %node_start, ptr %start_result, align 8
+  %start_result7 = load i64, ptr %start_result, align 8
   %eq = icmp eq i64 %start_result7, 0
   %if_result = alloca {}, align 8
   br i1 %eq, label %then, label %else
@@ -23306,12 +23307,12 @@ case_None:                                        ; preds = %entry
 define i64 @Main__on_ws_connect(i64 %0, ptr %1, ptr %2) {
 entry:
   %conn = alloca i64, align 8
-  store i64 %0, ptr %conn, align 4
+  store i64 %0, ptr %conn, align 8
   %path = alloca ptr, align 8
   store ptr %1, ptr %path, align 8
   %headers = alloca ptr, align 8
   store ptr %2, ptr %headers, align 8
-  %conn1 = load i64, ptr %conn, align 4
+  %conn1 = load i64, ptr %conn, align 8
   %path2 = load ptr, ptr %path, align 8
   %headers3 = load ptr, ptr %headers, align 8
   %call = call i64 @ws_on_connect(i64 %conn1, ptr %path2, ptr %headers3)
@@ -23322,10 +23323,10 @@ entry:
 define {} @Main__on_ws_message(i64 %0, ptr %1) {
 entry:
   %conn = alloca i64, align 8
-  store i64 %0, ptr %conn, align 4
+  store i64 %0, ptr %conn, align 8
   %msg = alloca ptr, align 8
   store ptr %1, ptr %msg, align 8
-  %conn1 = load i64, ptr %conn, align 4
+  %conn1 = load i64, ptr %conn, align 8
   %msg2 = load ptr, ptr %msg, align 8
   %call = call {} @ws_on_message(i64 %conn1, ptr %msg2)
   call void @mesh_reduction_check()
@@ -23335,12 +23336,12 @@ entry:
 define {} @Main__on_ws_close(i64 %0, {} %1, {} %2) {
 entry:
   %conn = alloca i64, align 8
-  store i64 %0, ptr %conn, align 4
+  store i64 %0, ptr %conn, align 8
   %code = alloca {}, align 8
   store {} %1, ptr %code, align 1
   %reason = alloca {}, align 8
   store {} %2, ptr %reason, align 1
-  %conn1 = load i64, ptr %conn, align 4
+  %conn1 = load i64, ptr %conn, align 8
   %code2 = load {}, ptr %code, align 1
   %reason3 = load {}, ptr %reason, align 1
   %call = call {} @ws_on_close(i64 %conn1, {} %code2, {} %reason3)
@@ -23351,11 +23352,11 @@ entry:
 define {} @Main__start_services(i64 %0) {
 entry:
   %pool = alloca i64, align 8
-  store i64 %0, ptr %pool, align 4
+  store i64 %0, ptr %pool, align 8
   %call = call {} @Main__start_node()
   call void @mesh_reduction_check()
   %schema_result = alloca { i8, ptr }, align 8
-  %pool1 = load i64, ptr %pool, align 4
+  %pool1 = load i64, ptr %pool, align 8
   %call2 = call { i8, ptr } @create_schema(i64 %pool1)
   call void @mesh_reduction_check()
   store { i8, ptr } %call2, ptr %schema_result, align 8
@@ -23373,7 +23374,7 @@ entry:
 match_merge:                                      ; preds = %case_Err, %case_Ok
   %match_val = load {}, ptr %match_result, align 1
   %partition_result = alloca { i8, ptr }, align 8
-  %pool5 = load i64, ptr %pool, align 4
+  %pool5 = load i64, ptr %pool, align 8
   %call6 = call { i8, ptr } @create_partitions_ahead(i64 %pool5, i64 7)
   call void @mesh_reduction_check()
   store { i8, ptr } %call6, ptr %partition_result, align 8
@@ -23407,31 +23408,31 @@ case_Err:                                         ; preds = %entry
 match_merge10:                                    ; preds = %case_Err15, %case_Ok14
   %match_val18 = load {}, ptr %match_result9, align 1
   %org_svc = alloca i64, align 8
-  %pool19 = load i64, ptr %pool, align 4
+  %pool19 = load i64, ptr %pool, align 8
   %call20 = call i64 @__service_orgservice_start(i64 %pool19)
   call void @mesh_reduction_check()
-  store i64 %call20, ptr %org_svc, align 4
+  store i64 %call20, ptr %org_svc, align 8
   %str21 = call ptr @mesh_string_new(ptr @.str.1157, i64 27)
   call void @mesh_println(ptr %str21)
   %project_svc = alloca i64, align 8
-  %pool22 = load i64, ptr %pool, align 4
+  %pool22 = load i64, ptr %pool, align 8
   %call23 = call i64 @__service_projectservice_start(i64 %pool22)
   call void @mesh_reduction_check()
-  store i64 %call23, ptr %project_svc, align 4
+  store i64 %call23, ptr %project_svc, align 8
   %str24 = call ptr @mesh_string_new(ptr @.str.1158, i64 31)
   call void @mesh_println(ptr %str24)
   %user_svc = alloca i64, align 8
-  %pool25 = load i64, ptr %pool, align 4
+  %pool25 = load i64, ptr %pool, align 8
   %call26 = call i64 @__service_userservice_start(i64 %pool25)
   call void @mesh_reduction_check()
-  store i64 %call26, ptr %user_svc, align 4
+  store i64 %call26, ptr %user_svc, align 8
   %str27 = call ptr @mesh_string_new(ptr @.str.1159, i64 28)
   call void @mesh_println(ptr %str27)
   %registry_pid = alloca i64, align 8
-  %pool28 = load i64, ptr %pool, align 4
+  %pool28 = load i64, ptr %pool, align 8
   %call29 = call i64 @start_pipeline(i64 %pool28)
   call void @mesh_reduction_check()
-  store i64 %call29, ptr %registry_pid, align 4
+  store i64 %call29, ptr %registry_pid, align 8
   %str30 = call ptr @mesh_string_new(ptr @.str.1160, i64 25)
   call void @mesh_println(ptr %str30)
   %ws_port_str = alloca ptr, align 8
@@ -23444,7 +23445,7 @@ match_merge10:                                    ; preds = %case_Err15, %case_O
   %ws_port_str34 = load ptr, ptr %ws_port_str, align 8
   %call35 = call i64 @Main__parse_port(ptr %ws_port_str34, i64 8081)
   call void @mesh_reduction_check()
-  store i64 %call35, ptr %ws_port, align 4
+  store i64 %call35, ptr %ws_port, align 8
   %http_port_str = alloca ptr, align 8
   %str36 = call ptr @mesh_string_new(ptr @.str.1163, i64 16)
   %str37 = call ptr @mesh_string_new(ptr @.str.1164, i64 4)
@@ -23455,12 +23456,12 @@ match_merge10:                                    ; preds = %case_Err15, %case_O
   %http_port_str39 = load ptr, ptr %http_port_str, align 8
   %call40 = call i64 @Main__parse_port(ptr %http_port_str39, i64 8080)
   call void @mesh_reduction_check()
-  store i64 %call40, ptr %http_port, align 4
+  store i64 %call40, ptr %http_port, align 8
   %str41 = call ptr @mesh_string_new(ptr @.str.1165, i64 39)
   %ws_port_str42 = load ptr, ptr %ws_port_str, align 8
   %concat = call ptr @mesh_string_concat(ptr %str41, ptr %ws_port_str42)
   call void @mesh_println(ptr %concat)
-  %ws_port43 = load i64, ptr %ws_port, align 4
+  %ws_port43 = load i64, ptr %ws_port, align 8
   call void @mesh_ws_serve(ptr @Main__on_ws_connect, ptr null, ptr @Main__on_ws_message, ptr null, ptr @Main__on_ws_close, ptr null, i64 %ws_port43)
   %str44 = call ptr @mesh_string_new(ptr @.str.1166, i64 34)
   %http_port_str45 = load ptr, ptr %http_port_str, align 8
@@ -23539,7 +23540,7 @@ match_merge10:                                    ; preds = %case_Err15, %case_O
   %call117 = call ptr @mesh_http_route_post(ptr %call115, ptr %str116, ptr @handle_update_project_settings)
   %str118 = call ptr @mesh_string_new(ptr @.str.1202, i64 36)
   %call119 = call ptr @mesh_http_route_get(ptr %call117, ptr %str118, ptr @handle_get_project_storage)
-  %http_port120 = load i64, ptr %http_port, align 4
+  %http_port120 = load i64, ptr %http_port, align 8
   call void @mesh_http_serve(ptr %call119, i64 %http_port120)
   ret {} zeroinitializer
 
@@ -23593,7 +23594,7 @@ case_Ok:                                          ; preds = %entry
   %variant_field = getelementptr inbounds nuw { i8, ptr }, ptr %scrutinee, i32 0, i32 1
   %path_val = load ptr, ptr %variant_field, align 8
   store ptr %path_val, ptr %pool, align 8
-  %pool3 = load i64, ptr %pool, align 4
+  %pool3 = load i64, ptr %pool, align 8
   %call4 = call {} @Main__start_services(i64 %pool3)
   call void @mesh_reduction_check()
   store {} zeroinitializer, ptr %match_result, align 1

@@ -153,6 +153,11 @@ impl<'ctx> CodeGen<'ctx> {
 
         let module = context.create_module(module_name);
         module.set_triple(&triple);
+        // Set the data layout so LLVM uses correct alignment for the target.
+        // Without this, LLVM defaults to a generic layout where i64 has 4-byte
+        // alignment, causing SIGBUS on ARM64 (which requires 8-byte alignment
+        // for 8-byte loads/stores).
+        module.set_data_layout(&target_machine.get_target_data().get_data_layout());
 
         let builder = context.create_builder();
 
