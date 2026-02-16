@@ -3019,3 +3019,81 @@ end
 "#);
     assert_eq!(output, "users:Alice\n");
 }
+
+// ── Phase 96 Plan 02: Multi-line Pipe Chains ────────────────────────
+
+/// Multi-line pipe chains where |> at line start continues the previous expression.
+#[test]
+fn e2e_multiline_pipe() {
+    let output = compile_and_run(r#"
+fn double(x :: Int) -> Int do
+  x * 2
+end
+
+fn add_one(x :: Int) -> Int do
+  x + 1
+end
+
+fn main() do
+  let result = 5
+    |> double
+    |> add_one
+  println("${result}")
+end
+"#);
+    assert_eq!(output, "11\n");
+}
+
+/// Multi-line pipe chain with more than 2 stages and function calls with arguments.
+#[test]
+fn e2e_multiline_pipe_complex() {
+    let output = compile_and_run(r#"
+fn add(x :: Int, y :: Int) -> Int do
+  x + y
+end
+
+fn mul(x :: Int, y :: Int) -> Int do
+  x * y
+end
+
+fn negate(x :: Int) -> Int do
+  0 - x
+end
+
+fn main() do
+  let result = 10
+    |> add(5)
+    |> mul(3)
+    |> negate
+  println("${result}")
+end
+"#);
+    assert_eq!(output, "-45\n");
+}
+
+/// Multi-line pipes work together with keyword arguments.
+#[test]
+fn e2e_multiline_pipe_with_keyword_args() {
+    let output = compile_and_run(r#"
+fn double(x :: Int) -> Int do
+  x * 2
+end
+
+fn add_one(x :: Int) -> Int do
+  x + 1
+end
+
+fn describe(opts :: Map<String, String>) -> String do
+  Map.get(opts, "result")
+end
+
+fn main() do
+  let num = 5
+    |> double
+    |> add_one
+  let msg = describe(result: "${num}")
+  println(msg)
+end
+"#);
+    assert_eq!(output, "11\n");
+}

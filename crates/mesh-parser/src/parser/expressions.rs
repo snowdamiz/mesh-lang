@@ -169,6 +169,23 @@ fn expr_bp(p: &mut Parser, min_bp: u8) -> Option<MarkClosed> {
             continue;
         }
 
+        // ── Multi-line pipe continuation ──
+        // At the top level (outside delimiters), newlines are significant.
+        // When the current token is NEWLINE and the next non-newline token
+        // is PIPE (|>), treat the newline as a continuation rather than a
+        // statement terminator. This allows multi-line pipe chains like:
+        //   users
+        //     |> filter(fn u -> u.active end)
+        //     |> map(fn u -> u.name end)
+        if current == SyntaxKind::NEWLINE && p.peek_past_newlines() == SyntaxKind::PIPE {
+            // PIPE has binding power (3, 4). Check if we can continue.
+            if 3 >= min_bp {
+                // Skip the newlines so the Pratt loop sees the PIPE operator.
+                p.skip_newlines_for_continuation();
+                continue;
+            }
+        }
+
         // Nothing matched -- exit the loop.
         break;
     }

@@ -395,6 +395,51 @@ impl<'src> Parser<'src> {
         pos
     }
 
+    /// Peek past newlines and comments at the top level (outside delimiters)
+    /// to find the next significant non-newline token kind.
+    ///
+    /// This is used for multi-line pipe continuation: after parsing an expression
+    /// and seeing a NEWLINE at the top level, we peek ahead to check if `|>`
+    /// follows on the next line. Returns the SyntaxKind of the first
+    /// non-newline, non-comment token after the current position.
+    pub(crate) fn peek_past_newlines(&self) -> SyntaxKind {
+        let mut pos = self.pos;
+        while pos < self.tokens.len() {
+            let kind = &self.tokens[pos].kind;
+            match kind {
+                TokenKind::Newline
+                | TokenKind::Comment
+                | TokenKind::DocComment
+                | TokenKind::ModuleDocComment => {
+                    pos += 1;
+                }
+                _ => return SyntaxKind::from(kind.clone()),
+            }
+        }
+        SyntaxKind::EOF
+    }
+
+    /// Skip newline and comment tokens at the current position, emitting
+    /// Advance events for each so they appear in the CST.
+    ///
+    /// Used for multi-line pipe continuation: after confirming that `|>` follows
+    /// newlines at the top level, consume the newlines so the Pratt parser can
+    /// see the `|>` operator.
+    pub(crate) fn skip_newlines_for_continuation(&mut self) {
+        while self.pos < self.tokens.len() {
+            match &self.tokens[self.pos].kind {
+                TokenKind::Newline
+                | TokenKind::Comment
+                | TokenKind::DocComment
+                | TokenKind::ModuleDocComment => {
+                    self.events.push(Event::Advance);
+                    self.pos += 1;
+                }
+                _ => break,
+            }
+        }
+    }
+
     /// Update delimiter depth when consuming a delimiter token.
     fn update_delimiter_depth(&mut self, kind: &TokenKind) {
         match kind {
