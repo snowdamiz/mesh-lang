@@ -11,6 +11,20 @@ from Types.Event import Event
 from Types.Alert import AlertRule, Alert
 from Types.Retention import RetentionSettings
 
+# --- Issue helpers for non-storage modules ---
+
+# Count unresolved issues for a project. Returns rows with "cnt" key.
+# Used by ingestion/routes.mpl for WebSocket issue count broadcasting.
+pub fn count_unresolved_issues(pool :: PoolHandle, project_id :: String) -> List<Map<String, String>>!String do
+  Pool.query(pool, "SELECT count(*)::text AS cnt FROM issues WHERE project_id = $1::uuid AND status = 'unresolved'", [project_id])
+end
+
+# Look up the project_id for an issue by issue_id. Returns rows with "project_id" key.
+# Used by ingestion/routes.mpl for broadcasting issue state change notifications.
+pub fn get_issue_project_id(pool :: PoolHandle, issue_id :: String) -> List<Map<String, String>>!String do
+  Pool.query(pool, "SELECT project_id::text FROM issues WHERE id = $1::uuid", [issue_id])
+end
+
 # --- Organization queries ---
 
 # Insert a new organization. Returns the generated UUID.

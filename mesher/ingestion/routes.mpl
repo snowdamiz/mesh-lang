@@ -10,7 +10,7 @@ from Services.RateLimiter import RateLimiter
 from Services.EventProcessor import EventProcessor
 from Types.Project import Project
 from Types.Issue import Issue
-from Storage.Queries import resolve_issue, archive_issue, unresolve_issue, assign_issue, discard_issue, delete_issue, list_issues_by_status, check_new_issue, get_event_alert_rules, should_fire_by_cooldown, fire_alert, check_sample_rate
+from Storage.Queries import resolve_issue, archive_issue, unresolve_issue, assign_issue, discard_issue, delete_issue, list_issues_by_status, check_new_issue, get_event_alert_rules, should_fire_by_cooldown, fire_alert, check_sample_rate, count_unresolved_issues, get_issue_project_id
 from Api.Helpers import require_param, get_registry
 
 # Helper: build 401 response
@@ -54,7 +54,7 @@ end
 fn broadcast_issue_count(project_id :: String) do
   let reg_pid = get_registry()
   let pool = PipelineRegistry.get_pool(reg_pid)
-  let count_result = Pool.query(pool, "SELECT count(*)::text AS cnt FROM issues WHERE project_id = $1::uuid AND status = 'unresolved'", [project_id])
+  let count_result = count_unresolved_issues(pool, project_id)
   case count_result do
     Ok(rows) -> broadcast_count_from_rows(project_id, rows)
     Err(_) -> 0
@@ -282,7 +282,7 @@ end
 
 # Helper: look up project_id for an issue and broadcast state change notification
 fn broadcast_issue_update(pool, issue_id :: String, action :: String) do
-  let rows_result = Pool.query(pool, "SELECT project_id::text FROM issues WHERE id = $1::uuid", [issue_id])
+  let rows_result = get_issue_project_id(pool, issue_id)
   case rows_result do
     Ok(rows) -> broadcast_update_from_rows(rows, issue_id, action)
     Err(_) -> 0
