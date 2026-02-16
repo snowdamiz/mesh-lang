@@ -210,11 +210,11 @@ Plans:
   2. Schema structs with `timestamps: true` option automatically include `inserted_at` and `updated_at` fields in their metadata and SQL generation
   3. Column accessor functions are generated per field (`User.name_col()`) enabling type-safe column references in queries instead of arbitrary strings
   4. Runtime Rust functions (`mesh_orm_build_select`, `mesh_orm_build_insert`, `mesh_orm_build_update`, `mesh_orm_build_delete`) produce correctly parameterized SQL with `$1, $2` placeholders and proper identifier quoting
-**Plans**: TBD
+**Plans**: 2 plans
 
 Plans:
-- [ ] 97-01: deriving(Schema) codegen -- table name, field metadata, primary key, timestamps, column accessors
-- [ ] 97-02: Runtime SQL generation module (mesh-rt/db/orm.rs) -- SELECT, INSERT, UPDATE, DELETE builders
+- [ ] 97-01-PLAN.md -- deriving(Schema) codegen: schema options parsing, field type metadata, column accessors, timestamps injection, configurable table/PK
+- [ ] 97-02-PLAN.md -- Runtime SQL generation module (mesh-rt/db/orm.rs): SELECT, INSERT, UPDATE, DELETE builders with parameterized queries
 
 ### Phase 98: Query Builder + Repo
 **Goal**: Developers can compose queries using pipe chains and execute them through a stateless Repo module, covering all standard CRUD operations, aggregation, transactions, and raw SQL escape hatches
