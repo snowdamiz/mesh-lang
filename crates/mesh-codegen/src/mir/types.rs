@@ -85,7 +85,11 @@ fn resolve_con(con: &TyCon, registry: &TypeRegistry) -> MirType {
         | "ListIterator" | "MapIterator" | "SetIterator" | "RangeIterator"
         // Phase 78: Adapter iterator types
         | "MapAdapterIterator" | "FilterAdapterIterator" | "TakeAdapterIterator"
-        | "SkipAdapterIterator" | "EnumerateAdapterIterator" | "ZipAdapterIterator" => MirType::Ptr,
+        | "SkipAdapterIterator" | "EnumerateAdapterIterator" | "ZipAdapterIterator"
+        // Phase 98: Ptr is an explicit opaque pointer type used by Query and other runtime types
+        | "Ptr" => MirType::Ptr,
+        // Atom type resolves to String at MIR level (atoms are compile-time only, lowered to StringLit)
+        "Atom" => MirType::String,
         name => {
             // Check registry: struct or sum type?
             if registry.struct_defs.contains_key(name) {

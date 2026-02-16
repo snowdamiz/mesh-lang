@@ -3533,3 +3533,117 @@ end
 "#);
     assert_eq!(output, "DELETE FROM \"users\" WHERE \"id\" = $1\n");
 }
+
+// ── Phase 98 Plan 01: Query Builder ─────────────────────────────────
+
+/// Query.from creates a valid Query value (opaque Ptr).
+#[test]
+fn e2e_query_builder_basic_from() {
+    let output = compile_and_run(r#"
+fn main() do
+  let q = Query.from("users")
+  println("ok")
+end
+"#);
+    assert_eq!(output, "ok\n");
+}
+
+/// Pipe-composable chain: from -> where -> order_by -> limit.
+#[test]
+fn e2e_query_builder_pipe_chain() {
+    let output = compile_and_run(r#"
+fn main() do
+  let q = Query.from("users")
+    |> Query.where(:name, "Alice")
+    |> Query.order_by(:name, :asc)
+    |> Query.limit(10)
+  println("ok")
+end
+"#);
+    assert_eq!(output, "ok\n");
+}
+
+/// Operator-based where, where_null, and where_not_null.
+#[test]
+fn e2e_query_builder_where_op() {
+    let output = compile_and_run(r#"
+fn main() do
+  let q = Query.from("posts")
+    |> Query.where_op(:age, :gt, "21")
+    |> Query.where_null(:deleted_at)
+    |> Query.where_not_null(:name)
+  println("ok")
+end
+"#);
+    assert_eq!(output, "ok\n");
+}
+
+/// All clause types compile and execute without crash.
+#[test]
+fn e2e_query_builder_all_clauses() {
+    let output = compile_and_run(r#"
+fn main() do
+  let q = Query.from("events")
+    |> Query.select(["id", "name"])
+    |> Query.where(:status, "active")
+    |> Query.order_by(:created_at, :desc)
+    |> Query.limit(100)
+    |> Query.offset(20)
+    |> Query.group_by(:category)
+    |> Query.having("count(*) >", "5")
+  println("ok")
+end
+"#);
+    assert_eq!(output, "ok\n");
+}
+
+/// Immutability: original Query is unchanged after pipe operations.
+#[test]
+fn e2e_query_builder_immutability() {
+    let output = compile_and_run(r#"
+fn main() do
+  let q1 = Query.from("users")
+  let q2 = q1 |> Query.where(:name, "Alice")
+  let q3 = q1 |> Query.where(:name, "Bob")
+  println("ok")
+end
+"#);
+    assert_eq!(output, "ok\n");
+}
+
+/// Composable scopes: regular functions taking and returning Query via pipes.
+#[test]
+fn e2e_query_builder_composable_scope() {
+    let output = compile_and_run(r#"
+pub fn active(q) do
+  q |> Query.where(:status, "active")
+end
+
+pub fn recent(q) do
+  q |> Query.order_by(:created_at, :desc) |> Query.limit(10)
+end
+
+pub fn main() do
+  let q = Query.from("users") |> active() |> recent()
+  println("ok")
+end
+"#);
+    assert_eq!(output, "ok\n");
+}
+
+/// Schema struct pipe with explicit Query.from using __table__().
+#[test]
+fn e2e_query_builder_schema_pipe_explicit() {
+    let output = compile_and_run(r#"
+struct User do
+  id :: String
+  name :: String
+end deriving(Schema)
+
+pub fn main() do
+  let q = Query.from(User.__table__()) |> Query.where(:name, "Alice")
+  println("ok")
+end
+"#);
+    assert_eq!(output, "ok\n");
+}

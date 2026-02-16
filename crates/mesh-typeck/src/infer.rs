@@ -1042,45 +1042,46 @@ fn stdlib_modules() -> HashMap<String, HashMap<String, Scheme>> {
     // ── Query module (Phase 98) ─────────────────────────────────────
     {
         let ptr_t = Ty::Con(TyCon::new("Ptr"));
+        let atom_t = Ty::Con(TyCon::new("Atom"));
         let mut query_mod = HashMap::new();
         // Query.from(String) -> Ptr
         query_mod.insert("from".to_string(), Scheme::mono(Ty::fun(
             vec![Ty::string()],
             ptr_t.clone(),
         )));
-        // Query.where(Ptr, String, String) -> Ptr  (3-arg equality: field = value)
+        // Query.where(Ptr, Atom, String) -> Ptr  (3-arg equality: field = value)
         query_mod.insert("where".to_string(), Scheme::mono(Ty::fun(
-            vec![ptr_t.clone(), Ty::string(), Ty::string()],
+            vec![ptr_t.clone(), atom_t.clone(), Ty::string()],
             ptr_t.clone(),
         )));
-        // Query.where_op(Ptr, String, String, String) -> Ptr  (4-arg operator: field op value)
+        // Query.where_op(Ptr, Atom, Atom, String) -> Ptr  (4-arg operator: field op value)
         query_mod.insert("where_op".to_string(), Scheme::mono(Ty::fun(
-            vec![ptr_t.clone(), Ty::string(), Ty::string(), Ty::string()],
+            vec![ptr_t.clone(), atom_t.clone(), atom_t.clone(), Ty::string()],
             ptr_t.clone(),
         )));
-        // Query.where_in(Ptr, String, Ptr) -> Ptr  (field IN values_list)
+        // Query.where_in(Ptr, Atom, Ptr) -> Ptr  (field IN values_list)
         query_mod.insert("where_in".to_string(), Scheme::mono(Ty::fun(
-            vec![ptr_t.clone(), Ty::string(), ptr_t.clone()],
+            vec![ptr_t.clone(), atom_t.clone(), ptr_t.clone()],
             ptr_t.clone(),
         )));
-        // Query.where_null(Ptr, String) -> Ptr  (field IS NULL)
+        // Query.where_null(Ptr, Atom) -> Ptr  (field IS NULL)
         query_mod.insert("where_null".to_string(), Scheme::mono(Ty::fun(
-            vec![ptr_t.clone(), Ty::string()],
+            vec![ptr_t.clone(), atom_t.clone()],
             ptr_t.clone(),
         )));
-        // Query.where_not_null(Ptr, String) -> Ptr  (field IS NOT NULL)
+        // Query.where_not_null(Ptr, Atom) -> Ptr  (field IS NOT NULL)
         query_mod.insert("where_not_null".to_string(), Scheme::mono(Ty::fun(
-            vec![ptr_t.clone(), Ty::string()],
+            vec![ptr_t.clone(), atom_t.clone()],
             ptr_t.clone(),
         )));
-        // Query.select(Ptr, Ptr) -> Ptr  (select fields list)
+        // Query.select(Ptr, List<String>) -> Ptr  (select fields list)
         query_mod.insert("select".to_string(), Scheme::mono(Ty::fun(
-            vec![ptr_t.clone(), ptr_t.clone()],
+            vec![ptr_t.clone(), Ty::list(Ty::string())],
             ptr_t.clone(),
         )));
-        // Query.order_by(Ptr, String, String) -> Ptr  (field, direction atom)
+        // Query.order_by(Ptr, Atom, Atom) -> Ptr  (field atom, direction atom)
         query_mod.insert("order_by".to_string(), Scheme::mono(Ty::fun(
-            vec![ptr_t.clone(), Ty::string(), Ty::string()],
+            vec![ptr_t.clone(), atom_t.clone(), atom_t.clone()],
             ptr_t.clone(),
         )));
         // Query.limit(Ptr, Int) -> Ptr
@@ -1093,14 +1094,14 @@ fn stdlib_modules() -> HashMap<String, HashMap<String, Scheme>> {
             vec![ptr_t.clone(), Ty::int()],
             ptr_t.clone(),
         )));
-        // Query.join(Ptr, String, String, String) -> Ptr  (type atom, table, on_clause)
+        // Query.join(Ptr, Atom, String, String) -> Ptr  (type atom, table, on_clause)
         query_mod.insert("join".to_string(), Scheme::mono(Ty::fun(
-            vec![ptr_t.clone(), Ty::string(), Ty::string(), Ty::string()],
+            vec![ptr_t.clone(), atom_t.clone(), Ty::string(), Ty::string()],
             ptr_t.clone(),
         )));
-        // Query.group_by(Ptr, String) -> Ptr  (field atom)
+        // Query.group_by(Ptr, Atom) -> Ptr  (field atom)
         query_mod.insert("group_by".to_string(), Scheme::mono(Ty::fun(
-            vec![ptr_t.clone(), Ty::string()],
+            vec![ptr_t.clone(), atom_t.clone()],
             ptr_t.clone(),
         )));
         // Query.having(Ptr, String, String) -> Ptr  (clause, value)

@@ -124,7 +124,8 @@ fn expr_bp(p: &mut Parser, min_bp: u8) -> Option<MarkClosed> {
                 && !p.eat(SyntaxKind::MONITOR_KW)
                 && !p.eat(SyntaxKind::SPAWN_KW)
                 && !p.eat(SyntaxKind::LINK_KW)
-                && !p.eat(SyntaxKind::SEND_KW) {
+                && !p.eat(SyntaxKind::SEND_KW)
+                && !p.eat(SyntaxKind::WHERE_KW) {
                 p.error("expected IDENT");
             }
             lhs = p.close(m, SyntaxKind::FIELD_ACCESS);

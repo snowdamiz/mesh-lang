@@ -293,7 +293,7 @@ impl FieldAccess {
         self.syntax
             .children_with_tokens()
             .filter_map(|it| it.into_token())
-            .filter(|t| matches!(t.kind(), SyntaxKind::IDENT | SyntaxKind::SELF_KW | SyntaxKind::MONITOR_KW | SyntaxKind::SPAWN_KW | SyntaxKind::LINK_KW | SyntaxKind::SEND_KW))
+            .filter(|t| matches!(t.kind(), SyntaxKind::IDENT | SyntaxKind::SELF_KW | SyntaxKind::MONITOR_KW | SyntaxKind::SPAWN_KW | SyntaxKind::LINK_KW | SyntaxKind::SEND_KW | SyntaxKind::WHERE_KW))
             .last()
     }
 }
