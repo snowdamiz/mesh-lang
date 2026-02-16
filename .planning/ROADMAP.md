@@ -20,7 +20,7 @@
 - [x] **v7.0 Iterator Protocol & Trait Ecosystem** - Phases 74-80 (shipped 2026-02-14)
 - [x] **v8.0 Developer Tooling** - Phases 81-86 (shipped 2026-02-14)
 - [x] **v9.0 Mesher** - Phases 87-95 (shipped 2026-02-15)
-- [ ] **v10.0 ORM** - Phases 96-102 (in progress)
+- [x] **v10.0 ORM** - Phases 96-102 (shipped 2026-02-16)
 
 ## Phases
 
@@ -168,7 +168,7 @@ See milestones/v9.0-ROADMAP.md for full phase details.
 
 </details>
 
-### v10.0 ORM (In Progress)
+### v10.0 ORM (SHIPPED 2026-02-16)
 
 **Milestone Goal:** Build a full ORM library in Mesh targeting PostgreSQL -- schema DSL, pipe-chain query builder, full relationships, changesets, migrations. Validated by rewriting Mesher's entire DB layer (627 lines raw SQL + 82 lines DDL) to use the ORM.
 
@@ -178,7 +178,7 @@ See milestones/v9.0-ROADMAP.md for full phase details.
 - [x] **Phase 99: Changesets** - Validation pipeline and type-safe casting before persistence (shipped 2026-02-16)
 - [x] **Phase 100: Relationships + Preloading** - belongs_to/has_many/has_one with batch preloading (shipped 2026-02-16)
 - [x] **Phase 101: Migration System** - Migration DSL, runner, CLI, and scaffold generation (shipped 2026-02-16)
-- [ ] **Phase 102: Mesher Rewrite** - Replace all raw SQL with ORM calls, validate end-to-end
+- [x] **Phase 102: Mesher Rewrite** - Replace all raw SQL with ORM calls, validate end-to-end (shipped 2026-02-16)
 
 ## Phase Details
 
@@ -293,9 +293,9 @@ Plans:
 **Plans**: 3 plans
 
 Plans:
-- [ ] 102-01-PLAN.md -- Schema struct conversion (all 11 types to deriving(Schema)) + initial migration file + main.mpl update
-- [ ] 102-02-PLAN.md -- Simple CRUD query conversion in queries.mpl (~13 functions to ORM Repo/Query)
-- [ ] 102-03-PLAN.md -- Non-storage module Pool.query migration + end-to-end verification
+- [x] 102-01-PLAN.md -- Schema struct conversion (all 11 types to deriving(Schema)) + initial migration file + main.mpl update
+- [x] 102-02-PLAN.md -- Simple CRUD query conversion in queries.mpl (~13 functions to ORM Repo/Query)
+- [x] 102-03-PLAN.md -- Non-storage module Pool.query migration + end-to-end verification
 
 ## Progress
 
@@ -329,6 +329,6 @@ Note: Phase 100 and 101 both depend on earlier phases but are independent of eac
 | 99 | v10.0 | 2/2 | Complete | 2026-02-16 |
 | 100 | v10.0 | 2/2 | Complete | 2026-02-16 |
 | 101 | v10.0 | 3/3 | Complete | 2026-02-16 |
-| 102 | v10.0 | 0/3 | Not started | - |
+| 102 | v10.0 | 3/3 | Complete | 2026-02-16 |
 
-**Total: 102 phases shipped across 18 milestones. 297 plans completed. v10.0: 6/7 phases complete, 17/20 plans done.**
+**Total: 102 phases shipped across 19 milestones. 300 plans completed. v10.0: 7/7 phases complete, 20/20 plans done.**
