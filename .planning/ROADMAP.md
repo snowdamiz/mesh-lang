@@ -290,12 +290,12 @@ Plans:
   3. storage/schema.mpl (82 lines of imperative DDL) is replaced with versioned migration files using the Migration DSL
   4. All service modules (OrgService, ProjectService, UserService, EventProcessor, etc.) use Repo operations instead of raw Pool.query/Pool.execute calls
   5. All existing Mesher functionality (ingestion, error grouping, REST API, streaming, alerting, retention, clustering) works identically after the rewrite -- verified by running the full application
-**Plans**: TBD
+**Plans**: 3 plans
 
 Plans:
-- [ ] 102-01: Convert all 11 type structs to deriving(Schema) and create migration files
-- [ ] 102-02: Rewrite storage/queries.mpl with ORM Repo calls and update service modules
-- [ ] 102-03: End-to-end verification -- all Mesher features working identically
+- [ ] 102-01-PLAN.md -- Schema struct conversion (all 11 types to deriving(Schema)) + initial migration file + main.mpl update
+- [ ] 102-02-PLAN.md -- Simple CRUD query conversion in queries.mpl (~13 functions to ORM Repo/Query)
+- [ ] 102-03-PLAN.md -- Non-storage module Pool.query migration + end-to-end verification
 
 ## Progress
 
