@@ -1,5 +1,5 @@
 # Install script for meshc - the Mesh compiler (Windows)
-# Usage: powershell -ExecutionPolicy ByPass -c "irm https://mesh-lang.org/install.ps1 | iex"
+# Usage: powershell -ExecutionPolicy ByPass -c "irm https://meshlang.dev/install.ps1 | iex"
 # Or: .\install.ps1 [-Version VERSION] [-Uninstall] [-Yes] [-Help]
 
 param(

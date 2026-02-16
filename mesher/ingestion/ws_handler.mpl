@@ -38,10 +38,18 @@ fn ws_send_error(conn, reason :: String) do
   ws_write(conn, msg)
 end
 
-# Helper: handle a /stream/projects/:id connection -- join room and register in StreamManager
+# Helper: handle a /stream/projects/:id or /ws/stream/projects/:id connection
+# Join room and register in StreamManager.
 fn handle_stream_connect(conn, path :: String) do
   let parts = String.split(path, "/")
-  let project_id = List.get(parts, 3)
+  # /stream/projects/:id  -> ["", "stream", "projects", ":id"]  -> index 3
+  # /ws/stream/projects/:id -> ["", "ws", "stream", "projects", ":id"] -> index 4
+  let seg1 = List.get(parts, 1)
+  let project_id = if seg1 == "ws" do
+    List.get(parts, 4)
+  else
+    List.get(parts, 3)
+  end
   let room = "project:" <> project_id
   let _ = Ws.join(conn, room)
   let stream_mgr_pid = Process.whereis("stream_manager")
@@ -59,22 +67,9 @@ fn handle_ingest_connect(conn, headers) do
   end
 end
 
-# Helper: check if path starts with /stream/projects/
+# Helper: check if path contains /stream/projects/ (handles /ws prefix from proxy)
 fn is_stream_path(path :: String) -> Bool do
-  let parts = String.split(path, "/")
-  let len = List.length(parts)
-  if len > 3 do
-    let seg1 = List.get(parts, 1)
-    let seg2 = List.get(parts, 2)
-    let s1_ok = seg1 == "stream"
-    if s1_ok do
-      seg2 == "projects"
-    else
-      false
-    end
-  else
-    false
-  end
+  String.contains(path, "/stream/projects/")
 end
 
 # WebSocket on_connect callback.

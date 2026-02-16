@@ -7162,7 +7162,7 @@ impl<'a> Lowerer<'a> {
                 SyntaxKind::STRING_CONTENT => {
                     let text = child
                         .as_token()
-                        .map(|t| t.text().to_string())
+                        .map(|t| unescape_string(t.text()))
                         .unwrap_or_default();
                     if !text.is_empty() {
                         segments.push(MirExpr::StringLit(text, MirType::String));
@@ -10022,6 +10022,31 @@ fn to_snake_case(name: &str) -> String {
     result
 }
 
+/// Process escape sequences in a raw string token, converting `\"` → `"`,
+/// `\\` → `\`, `\n` → newline, `\t` → tab, `\r` → carriage return, and
+/// `\0` → null. Any other `\X` sequence passes through `X` literally.
+fn unescape_string(raw: &str) -> String {
+    let mut result = String::with_capacity(raw.len());
+    let mut chars = raw.chars();
+    while let Some(c) = chars.next() {
+        if c == '\\' {
+            match chars.next() {
+                Some('n') => result.push('\n'),
+                Some('t') => result.push('\t'),
+                Some('r') => result.push('\r'),
+                Some('0') => result.push('\0'),
+                Some('\\') => result.push('\\'),
+                Some('"') => result.push('"'),
+                Some(other) => result.push(other),
+                None => result.push('\\'),
+            }
+        } else {
+            result.push(c);
+        }
+    }
+    result
+}
+
 /// Extract simple string content from a LITERAL or STRING_EXPR syntax node.
 /// Walks children looking for STRING_CONTENT tokens and concatenates them.
 fn extract_simple_string_content(node: &mesh_parser::cst::SyntaxNode) -> String {
@@ -10029,7 +10054,7 @@ fn extract_simple_string_content(node: &mesh_parser::cst::SyntaxNode) -> String 
     for child in node.children_with_tokens() {
         if child.kind() == SyntaxKind::STRING_CONTENT {
             if let Some(token) = child.as_token() {
-                content.push_str(token.text());
+                content.push_str(&unescape_string(token.text()));
             }
         }
     }

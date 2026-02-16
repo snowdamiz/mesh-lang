@@ -1,6 +1,6 @@
 #!/bin/sh
 # Install script for meshc - the Mesh compiler
-# Usage: curl -sSf https://mesh-lang.org/install.sh | sh
+# Usage: curl -sSf https://meshlang.dev/install.sh | sh
 # Or: sh install.sh [--version VERSION] [--uninstall] [--yes] [--help]
 set -eu
 
@@ -109,7 +109,7 @@ detect_platform() {
             ;;
         MINGW* | MSYS* | CYGWIN*)
             say_red "error: Windows detected. Please use install.ps1 instead:"
-            say_red "  powershell -ExecutionPolicy ByPass -c \"irm https://mesh-lang.org/install.ps1 | iex\""
+            say_red "  powershell -ExecutionPolicy ByPass -c \"irm https://meshlang.dev/install.ps1 | iex\""
             return 1
             ;;
         *)

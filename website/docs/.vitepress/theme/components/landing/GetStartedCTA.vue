@@ -8,7 +8,7 @@ const { observe } = useScrollReveal()
 const section = ref<HTMLElement>()
 const copied = ref(false)
 
-const installCommand = 'curl -sSf https://mesh-lang.org/install.sh | sh'
+const installCommand = 'curl -sSf https://meshlang.dev/install.sh | sh'
 
 async function copyCommand() {
   try {
