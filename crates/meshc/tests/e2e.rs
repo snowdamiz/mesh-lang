@@ -3824,3 +3824,228 @@ end
 "#);
     assert_eq!(output, "ok\n");
 }
+
+// ── Phase 99: Changeset e2e tests ────────────────────────────────────
+
+/// Test 1: Changeset.cast creates changeset from params, filtering to allowed fields.
+#[test]
+fn e2e_changeset_cast_basic() {
+    let output = compile_and_run(r#"
+import Changeset
+
+fn main() do
+  let data = %{}
+  let params = %{"name" => "Alice", "email" => "alice@example.com", "role" => "admin"}
+  let cs = Changeset.cast(data, params, [:name, :email])
+  let is_valid = Changeset.valid(cs)
+  if is_valid do
+    println("valid")
+  else
+    println("invalid")
+  end
+end
+"#);
+    assert_eq!(output, "valid\n");
+}
+
+/// Test 2: validate_required catches missing fields.
+#[test]
+fn e2e_changeset_validate_required() {
+    let output = compile_and_run(r#"
+import Changeset
+
+fn main() do
+  let data = %{}
+  let params = %{"name" => "Alice"}
+  let cs = Changeset.cast(data, params, [:name, :email])
+    |> Changeset.validate_required([:name, :email])
+  let is_valid = Changeset.valid(cs)
+  if is_valid do
+    println("valid")
+  else
+    println("invalid")
+  end
+end
+"#);
+    assert_eq!(output, "invalid\n");
+}
+
+/// Test 3: validate_length catches short strings.
+#[test]
+fn e2e_changeset_validate_length() {
+    let output = compile_and_run(r#"
+import Changeset
+
+fn main() do
+  let data = %{}
+  let params = %{"name" => "Al", "email" => "a@b.com"}
+  let cs = Changeset.cast(data, params, [:name, :email])
+    |> Changeset.validate_length(:name, 3, -1)
+  let is_valid = Changeset.valid(cs)
+  if is_valid do
+    println("valid")
+  else
+    println("invalid")
+  end
+end
+"#);
+    assert_eq!(output, "invalid\n");
+}
+
+/// Test 4: validate_format checks substring presence.
+#[test]
+fn e2e_changeset_validate_format() {
+    let output = compile_and_run(r#"
+import Changeset
+
+fn main() do
+  let data = %{}
+  let params = %{"email" => "not-an-email"}
+  let cs = Changeset.cast(data, params, [:email])
+    |> Changeset.validate_format(:email, "@")
+  let is_valid = Changeset.valid(cs)
+  if is_valid do
+    println("valid")
+  else
+    println("invalid")
+  end
+end
+"#);
+    assert_eq!(output, "invalid\n");
+}
+
+/// Test 5: validate_inclusion checks allowed values.
+#[test]
+fn e2e_changeset_validate_inclusion() {
+    let output = compile_and_run(r#"
+import Changeset
+
+fn main() do
+  let data = %{}
+  let params = %{"role" => "superadmin"}
+  let cs = Changeset.cast(data, params, [:role])
+    |> Changeset.validate_inclusion(:role, ["admin", "user"])
+  let is_valid = Changeset.valid(cs)
+  if is_valid do
+    println("valid")
+  else
+    println("invalid")
+  end
+end
+"#);
+    assert_eq!(output, "invalid\n");
+}
+
+/// Test 6: validate_number checks bounds.
+#[test]
+fn e2e_changeset_validate_number() {
+    let output = compile_and_run(r#"
+import Changeset
+
+fn main() do
+  let data = %{}
+  let params = %{"age" => "0"}
+  let cs = Changeset.cast(data, params, [:age])
+    |> Changeset.validate_number(:age, 0, -1, -1, -1)
+  let is_valid = Changeset.valid(cs)
+  if is_valid do
+    println("valid")
+  else
+    println("invalid")
+  end
+end
+"#);
+    assert_eq!(output, "invalid\n");
+}
+
+/// Test 7: Multiple validators on different fields accumulate errors.
+#[test]
+fn e2e_changeset_pipe_chain_accumulates_errors() {
+    let output = compile_and_run(r#"
+import Changeset
+
+fn main() do
+  let data = %{}
+  let params = %{"name" => "A", "email" => "bad"}
+  let cs = Changeset.cast(data, params, [:name, :email])
+    |> Changeset.validate_required([:name, :email])
+    |> Changeset.validate_length(:name, 2, -1)
+    |> Changeset.validate_format(:email, "@")
+  let is_valid = Changeset.valid(cs)
+  if is_valid do
+    println("valid")
+  else
+    println("invalid")
+  end
+end
+"#);
+    assert_eq!(output, "invalid\n");
+}
+
+/// Test 8: Changeset with all validations passing.
+#[test]
+fn e2e_changeset_valid_passes() {
+    let output = compile_and_run(r#"
+import Changeset
+
+fn main() do
+  let data = %{}
+  let params = %{"name" => "Alice", "email" => "alice@example.com"}
+  let cs = Changeset.cast(data, params, [:name, :email])
+    |> Changeset.validate_required([:name, :email])
+    |> Changeset.validate_length(:name, 2, 50)
+    |> Changeset.validate_format(:email, "@")
+  let is_valid = Changeset.valid(cs)
+  if is_valid do
+    println("valid")
+  else
+    println("invalid")
+  end
+end
+"#);
+    assert_eq!(output, "valid\n");
+}
+
+/// Test 9: 4-arg cast with field_types compiles and runs.
+#[test]
+fn e2e_changeset_cast_with_types_compiles() {
+    let output = compile_and_run(r#"
+import Changeset
+
+struct User do
+  id :: String
+  name :: String
+  email :: String
+end deriving(Schema, Row)
+
+fn main() do
+  let data = %{}
+  let params = %{"name" => "Alice", "email" => "alice@example.com"}
+  let cs = Changeset.cast_with_types(data, params, [:name, :email], User.__field_types__())
+  let is_valid = Changeset.valid(cs)
+  if is_valid do
+    println("valid")
+  else
+    println("invalid")
+  end
+end
+"#);
+    assert_eq!(output, "valid\n");
+}
+
+/// Test 10: Field accessors return correct data.
+#[test]
+fn e2e_changeset_accessors() {
+    let output = compile_and_run(r#"
+import Changeset
+
+fn main() do
+  let data = %{}
+  let params = %{"name" => "Alice", "email" => "alice@example.com"}
+  let cs = Changeset.cast(data, params, [:name, :email])
+  let name = Changeset.get_change(cs, :name)
+  println(name)
+end
+"#);
+    assert_eq!(output, "Alice\n");
+}

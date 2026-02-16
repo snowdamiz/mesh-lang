@@ -1180,41 +1180,43 @@ fn stdlib_modules() -> HashMap<String, HashMap<String, Scheme>> {
     {
         let ptr_t = Ty::Con(TyCon::new("Ptr"));
         let atom_t = Ty::Con(TyCon::new("Atom"));
+        let map_ss = Ty::map(Ty::string(), Ty::string());
+        let list_atom = Ty::list(atom_t.clone());
+        let list_str = Ty::list(Ty::string());
         let mut cs_mod = HashMap::new();
 
-        // Changeset.cast(Ptr, Ptr, Ptr) -> Ptr  (data, params, allowed -> changeset)
+        // Changeset.cast(Map<String,String>, Map<String,String>, List<Atom>) -> Ptr
         cs_mod.insert("cast".to_string(), Scheme::mono(Ty::fun(
-            vec![ptr_t.clone(), ptr_t.clone(), ptr_t.clone()],
+            vec![map_ss.clone(), map_ss.clone(), list_atom.clone()],
             ptr_t.clone(),
         )));
-        // Changeset.cast_with_types(Ptr, Ptr, Ptr, Ptr) -> Ptr  (data, params, allowed, field_types -> changeset)
+        // Changeset.cast_with_types(Map<String,String>, Map<String,String>, List<Atom>, List<String>) -> Ptr
         cs_mod.insert("cast_with_types".to_string(), Scheme::mono(Ty::fun(
-            vec![ptr_t.clone(), ptr_t.clone(), ptr_t.clone(), ptr_t.clone()],
+            vec![map_ss.clone(), map_ss.clone(), list_atom.clone(), list_str.clone()],
             ptr_t.clone(),
         )));
 
-        // Changeset.validate_required(Ptr, Ptr) -> Ptr  (changeset, fields_list -> changeset)
+        // Changeset.validate_required(Ptr, List<Atom>) -> Ptr
         cs_mod.insert("validate_required".to_string(), Scheme::mono(Ty::fun(
-            vec![ptr_t.clone(), ptr_t.clone()],
+            vec![ptr_t.clone(), list_atom.clone()],
             ptr_t.clone(),
         )));
-        // Changeset.validate_length(Ptr, Atom, Int, Int) -> Ptr  (changeset, field, min, max)
+        // Changeset.validate_length(Ptr, Atom, Int, Int) -> Ptr
         cs_mod.insert("validate_length".to_string(), Scheme::mono(Ty::fun(
             vec![ptr_t.clone(), atom_t.clone(), Ty::int(), Ty::int()],
             ptr_t.clone(),
         )));
-        // Changeset.validate_format(Ptr, Atom, String) -> Ptr  (changeset, field, pattern)
+        // Changeset.validate_format(Ptr, Atom, String) -> Ptr
         cs_mod.insert("validate_format".to_string(), Scheme::mono(Ty::fun(
             vec![ptr_t.clone(), atom_t.clone(), Ty::string()],
             ptr_t.clone(),
         )));
-        // Changeset.validate_inclusion(Ptr, Atom, Ptr) -> Ptr  (changeset, field, values_list)
+        // Changeset.validate_inclusion(Ptr, Atom, List<String>) -> Ptr
         cs_mod.insert("validate_inclusion".to_string(), Scheme::mono(Ty::fun(
-            vec![ptr_t.clone(), atom_t.clone(), ptr_t.clone()],
+            vec![ptr_t.clone(), atom_t.clone(), list_str.clone()],
             ptr_t.clone(),
         )));
         // Changeset.validate_number(Ptr, Atom, Int, Int, Int, Int) -> Ptr
-        //   (changeset, field, gt, lt, gte, lte) -- -1 = not set
         cs_mod.insert("validate_number".to_string(), Scheme::mono(Ty::fun(
             vec![ptr_t.clone(), atom_t.clone(), Ty::int(), Ty::int(), Ty::int(), Ty::int()],
             ptr_t.clone(),
@@ -1225,25 +1227,25 @@ fn stdlib_modules() -> HashMap<String, HashMap<String, Scheme>> {
             vec![ptr_t.clone()],
             Ty::bool(),
         )));
-        // Changeset.errors(Ptr) -> Ptr  (changeset -> Map<String,String>)
+        // Changeset.errors(Ptr) -> Map<String,String>
         cs_mod.insert("errors".to_string(), Scheme::mono(Ty::fun(
             vec![ptr_t.clone()],
-            ptr_t.clone(),
+            map_ss.clone(),
         )));
-        // Changeset.changes(Ptr) -> Ptr  (changeset -> Map<String,String>)
+        // Changeset.changes(Ptr) -> Map<String,String>
         cs_mod.insert("changes".to_string(), Scheme::mono(Ty::fun(
             vec![ptr_t.clone()],
-            ptr_t.clone(),
+            map_ss.clone(),
         )));
-        // Changeset.get_change(Ptr, Atom) -> Ptr  (changeset, field -> String value)
+        // Changeset.get_change(Ptr, Atom) -> String
         cs_mod.insert("get_change".to_string(), Scheme::mono(Ty::fun(
             vec![ptr_t.clone(), atom_t.clone()],
-            ptr_t.clone(),
+            Ty::string(),
         )));
-        // Changeset.get_error(Ptr, Atom) -> Ptr  (changeset, field -> String error)
+        // Changeset.get_error(Ptr, Atom) -> String
         cs_mod.insert("get_error".to_string(), Scheme::mono(Ty::fun(
             vec![ptr_t.clone(), atom_t.clone()],
-            ptr_t.clone(),
+            Ty::string(),
         )));
 
         modules.insert("Changeset".to_string(), cs_mod);
