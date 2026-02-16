@@ -10,11 +10,11 @@ See: .planning/PROJECT.md (updated 2026-02-16)
 ## Current Position
 
 Phase: 96 of 102 (Compiler Additions)
-Plan: 1 of 5 in current phase
+Plan: 2 of 5 in current phase
 Status: Executing
-Last activity: 2026-02-16 -- Completed 96-01 (Atom Literals)
+Last activity: 2026-02-16 -- Completed 96-02 (Keyword Args + Multi-line Pipes)
 
-Progress: [█░░░░░░░░░] 5% (1/20 plans)
+Progress: [██░░░░░░░░] 10% (2/20 plans)
 
 ## Performance Metrics
 
@@ -34,6 +34,9 @@ Progress: [█░░░░░░░░░] 5% (1/20 plans)
 - 96-01: Atoms lower to MirExpr::StringLit (string constants at LLVM level) -- no MirType::Atom needed. Type distinction is purely compile-time.
 - 96-01: Atom lexing requires lowercase/underscore after colon to avoid ColonColon ambiguity.
 - 96-01: ATOM_EXPR composite node wraps ATOM_LITERAL leaf token (follows LITERAL pattern).
+- 96-02: Keyword args reuse MAP_LITERAL/MAP_ENTRY nodes with is_keyword_entry() detection via COLON vs FAT_ARROW.
+- 96-02: Multi-line pipe continuation uses peek_past_newlines() in Pratt loop (not lexer-level newline suppression).
+- 96-02: Keyword entry keys are NAME_REF nodes; typeck returns String type, MIR lowerer converts to StringLit.
 
 ### Roadmap Evolution
 
@@ -47,7 +50,7 @@ None.
 
 Known limitations relevant to ORM development:
 - Map.collect integer key assumption -- COMP-07 fix scheduled for Phase 96
-- Single-line pipe chains only -- COMP-03 fix scheduled for Phase 96
+- ~~Single-line pipe chains only~~ -- FIXED in 96-02 (multi-line pipe continuation)
 - Cross-module from_row/from_json resolution edge cases -- COMP-08 fix scheduled for Phase 96
 
 ### Quick Tasks Completed
@@ -62,6 +65,6 @@ Known limitations relevant to ORM development:
 ## Session Continuity
 
 Last session: 2026-02-16
-Stopped at: Completed 96-01-PLAN.md (Atom Literals)
+Stopped at: Completed 96-02-PLAN.md (Keyword Args + Multi-line Pipes)
 Resume file: None
-Next action: Execute 96-02-PLAN.md
+Next action: Execute 96-03-PLAN.md
