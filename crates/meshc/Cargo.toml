@@ -14,7 +14,9 @@ mesh-lsp = { path = "../mesh-lsp" }
 mesh-fmt = { path = "../mesh-fmt" }
 mesh-pkg = { path = "../mesh-pkg" }
 mesh-repl = { path = "../mesh-repl" }
+mesh-rt = { path = "../mesh-rt" }
 clap = { workspace = true }
+tempfile = "3"
 ariadne = { workspace = true }
 serde_json = { workspace = true }
 tokio = { workspace = true }

@@ -6,6 +6,7 @@
 //! - `meshc init <name>` - Initialize a new Mesh project
 //! - `meshc deps [dir]` - Resolve and fetch dependencies
 //! - `meshc fmt <path>` - Format Mesh source files in-place
+//! - `meshc migrate [up|down|status|generate]` - Database migration management
 //! - `meshc repl` - Start an interactive REPL with LLVM JIT
 //! - `meshc lsp` - Start the LSP server (communicates via stdin/stdout)
 //!

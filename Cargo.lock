@@ -1057,6 +1057,7 @@ dependencies = [
  "mesh-parser",
  "mesh-pkg",
  "mesh-repl",
+ "mesh-rt",
  "mesh-typeck",
  "mimalloc",
  "openssl-sys",

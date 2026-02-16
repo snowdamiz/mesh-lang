@@ -1343,3 +1343,308 @@ pub extern "C" fn mesh_pg_query_as(
         alloc_result(0, result_list as *mut u8) as *mut u8
     }
 }
+
+// ── Pure Rust PG API (no MeshString/GC) ─────────────────────────────────
+//
+// These functions provide a direct Rust-level PostgreSQL client that does not
+// depend on the GC or MeshString allocations. Used by meshc's migration runner
+// for tracking table operations.
+
+/// A native Rust PostgreSQL connection handle.
+pub struct NativePgConn {
+    inner: PgConn,
+}
+
+/// Connect to PostgreSQL using a URL string. Returns a native connection.
+pub fn native_pg_connect(url: &str) -> Result<NativePgConn, String> {
+    let pg_url = parse_pg_url(url)?;
+
+    let addr_str = format!("{}:{}", pg_url.host, pg_url.port);
+    let addr: std::net::SocketAddr = addr_str
+        .to_socket_addrs()
+        .map_err(|e| format!("DNS resolution failed: {}", e))?
+        .next()
+        .ok_or_else(|| "could not resolve host".to_string())?;
+
+    let stream = TcpStream::connect_timeout(&addr, Duration::from_secs(10))
+        .map_err(|e| format!("connection failed: {}", e))?;
+    let _ = stream.set_read_timeout(Some(Duration::from_secs(30)));
+    let _ = stream.set_write_timeout(Some(Duration::from_secs(10)));
+
+    let mut stream = negotiate_tls(stream, &pg_url.host, pg_url.sslmode)?;
+
+    // Send StartupMessage
+    let mut buf = Vec::new();
+    write_startup_message(&mut buf, &pg_url.user, &pg_url.database);
+    stream
+        .write_all(&buf)
+        .map_err(|e| format!("send startup: {}", e))?;
+
+    // Read authentication response
+    let (tag, body) = read_message(&mut stream).map_err(|e| format!("read auth: {}", e))?;
+    if tag != b'R' {
+        if tag == b'E' {
+            return Err(parse_error_response(&body));
+        }
+        return Err(format!(
+            "expected auth message, got '{}'",
+            tag as char
+        ));
+    }
+    if body.len() < 4 {
+        return Err("auth message too short".to_string());
+    }
+
+    let auth_type = i32::from_be_bytes([body[0], body[1], body[2], body[3]]);
+
+    match auth_type {
+        0 => {} // AuthenticationOk -- no auth required
+        3 => {
+            // CleartextPassword
+            let mut buf = Vec::new();
+            write_password_message(&mut buf, &pg_url.password);
+            stream
+                .write_all(&buf)
+                .map_err(|e| format!("send password: {}", e))?;
+            let (tag, body) =
+                read_message(&mut stream).map_err(|e| format!("read auth response: {}", e))?;
+            if tag == b'E' {
+                return Err(parse_error_response(&body));
+            }
+        }
+        5 => {
+            // MD5Password
+            let salt = &body[4..8];
+            let hashed = compute_md5_password(&pg_url.user, &pg_url.password, salt);
+            let mut buf = Vec::new();
+            write_password_message(&mut buf, &hashed);
+            stream
+                .write_all(&buf)
+                .map_err(|e| format!("send md5: {}", e))?;
+            let (tag, body) =
+                read_message(&mut stream).map_err(|e| format!("read md5 response: {}", e))?;
+            if tag == b'E' {
+                return Err(parse_error_response(&body));
+            }
+        }
+        10 => {
+            // SASL
+            let (client_first, client_nonce) = scram_client_first(&pg_url.user);
+            let mut buf = Vec::new();
+            write_sasl_initial_response(&mut buf, "SCRAM-SHA-256", client_first.as_bytes());
+            stream
+                .write_all(&buf)
+                .map_err(|e| format!("send SASL init: {}", e))?;
+
+            let (tag, body) =
+                read_message(&mut stream).map_err(|e| format!("read SASL continue: {}", e))?;
+            if tag == b'E' {
+                return Err(parse_error_response(&body));
+            }
+            if tag != b'R' {
+                return Err("expected SASL continue".to_string());
+            }
+            let server_first = String::from_utf8_lossy(&body[4..]).to_string();
+            let (client_final, _expected_sig) =
+                scram_client_final(&pg_url.password, &client_nonce, &server_first)?;
+
+            let mut buf = Vec::new();
+            write_sasl_response(&mut buf, client_final.as_bytes());
+            stream
+                .write_all(&buf)
+                .map_err(|e| format!("send SASL final: {}", e))?;
+
+            let (tag, body) =
+                read_message(&mut stream).map_err(|e| format!("read SASL final: {}", e))?;
+            if tag == b'E' {
+                return Err(parse_error_response(&body));
+            }
+            // AuthenticationSASLFinal
+            if tag == b'R' {
+                let auth2 = i32::from_be_bytes([body[0], body[1], body[2], body[3]]);
+                if auth2 != 12 && auth2 != 0 {
+                    return Err(format!("unexpected SASL auth type: {}", auth2));
+                }
+            }
+            // Read AuthenticationOk if not already received
+            let (tag, body) =
+                read_message(&mut stream).map_err(|e| format!("read auth ok: {}", e))?;
+            if tag == b'E' {
+                return Err(parse_error_response(&body));
+            }
+        }
+        _ => {
+            return Err(format!("unsupported auth type: {}", auth_type));
+        }
+    }
+
+    // Read parameter status and ready-for-query messages
+    let mut txn_status = b'I';
+    loop {
+        let (tag, body) =
+            read_message(&mut stream).map_err(|e| format!("read startup params: {}", e))?;
+        match tag {
+            b'K' | b'S' | b'N' => {} // BackendKeyData, ParameterStatus, NoticeResponse
+            b'E' => return Err(parse_error_response(&body)),
+            b'Z' => {
+                if !body.is_empty() {
+                    txn_status = body[0];
+                }
+                break;
+            }
+            _ => {}
+        }
+    }
+
+    Ok(NativePgConn {
+        inner: PgConn {
+            stream,
+            txn_status,
+        },
+    })
+}
+
+/// Execute a SQL statement via native connection. Returns rows affected.
+pub fn native_pg_execute(conn: &mut NativePgConn, sql: &str, params: &[&str]) -> Result<i64, String> {
+    let mut buf = Vec::new();
+    write_parse(&mut buf, sql);
+    write_bind(&mut buf, params);
+    write_execute(&mut buf);
+    write_sync(&mut buf);
+
+    conn.inner
+        .stream
+        .write_all(&buf)
+        .map_err(|e| format!("send execute: {}", e))?;
+
+    let mut rows_affected: i64 = 0;
+    let mut error_msg: Option<String> = None;
+
+    loop {
+        let (tag, body) = read_message(&mut conn.inner.stream)
+            .map_err(|e| format!("read execute: {}", e))?;
+        match tag {
+            b'1' | b'2' => {}
+            b'C' => {
+                let tag_str = String::from_utf8_lossy(&body);
+                let tag_str = tag_str.trim_end_matches('\0');
+                rows_affected = parse_command_tag(tag_str);
+            }
+            b'E' => {
+                error_msg = Some(parse_error_response(&body));
+            }
+            b'Z' => {
+                conn.inner.txn_status = if !body.is_empty() { body[0] } else { b'I' };
+                break;
+            }
+            b'N' => {}
+            _ => {}
+        }
+    }
+
+    match error_msg {
+        Some(msg) => Err(msg),
+        None => Ok(rows_affected),
+    }
+}
+
+/// Execute a SQL query via native connection. Returns rows as Vec of column-value maps.
+pub fn native_pg_query(
+    conn: &mut NativePgConn,
+    sql: &str,
+    params: &[&str],
+) -> Result<Vec<Vec<(String, String)>>, String> {
+    let mut buf = Vec::new();
+    write_parse(&mut buf, sql);
+    write_bind(&mut buf, params);
+    write_describe_portal(&mut buf);
+    write_execute(&mut buf);
+    write_sync(&mut buf);
+
+    conn.inner
+        .stream
+        .write_all(&buf)
+        .map_err(|e| format!("send query: {}", e))?;
+
+    let mut columns: Vec<String> = Vec::new();
+    let mut rows: Vec<Vec<(String, String)>> = Vec::new();
+    let mut error_msg: Option<String> = None;
+
+    loop {
+        let (tag, body) = read_message(&mut conn.inner.stream)
+            .map_err(|e| format!("read query: {}", e))?;
+        match tag {
+            b'1' | b'2' | b'n' => {} // ParseComplete, BindComplete, NoData
+            b'T' => {
+                // RowDescription
+                if body.len() >= 2 {
+                    let num_fields = i16::from_be_bytes([body[0], body[1]]) as usize;
+                    let mut offset = 2;
+                    for _ in 0..num_fields {
+                        let name_end = body[offset..]
+                            .iter()
+                            .position(|&b| b == 0)
+                            .unwrap_or(0);
+                        let name =
+                            String::from_utf8_lossy(&body[offset..offset + name_end]).to_string();
+                        columns.push(name);
+                        offset += name_end + 1 + 18; // name + null + fixed fields
+                    }
+                }
+            }
+            b'D' => {
+                // DataRow
+                if body.len() >= 2 {
+                    let num_cols = i16::from_be_bytes([body[0], body[1]]) as usize;
+                    let mut offset = 2;
+                    let mut row = Vec::new();
+                    for i in 0..num_cols {
+                        if offset + 4 > body.len() {
+                            break;
+                        }
+                        let col_len = i32::from_be_bytes([
+                            body[offset],
+                            body[offset + 1],
+                            body[offset + 2],
+                            body[offset + 3],
+                        ]);
+                        offset += 4;
+                        let col_name = columns.get(i).cloned().unwrap_or_default();
+                        if col_len < 0 {
+                            // NULL
+                            row.push((col_name, String::new()));
+                        } else {
+                            let end = offset + col_len as usize;
+                            let val = String::from_utf8_lossy(&body[offset..end]).to_string();
+                            row.push((col_name, val));
+                            offset = end;
+                        }
+                    }
+                    rows.push(row);
+                }
+            }
+            b'C' => {} // CommandComplete
+            b'E' => {
+                error_msg = Some(parse_error_response(&body));
+            }
+            b'Z' => {
+                conn.inner.txn_status = if !body.is_empty() { body[0] } else { b'I' };
+                break;
+            }
+            b'N' => {}
+            _ => {}
+        }
+    }
+
+    match error_msg {
+        Some(msg) => Err(msg),
+        None => Ok(rows),
+    }
+}
+
+/// Close a native PG connection.
+pub fn native_pg_close(mut conn: NativePgConn) {
+    let mut buf = Vec::new();
+    write_terminate(&mut buf);
+    let _ = conn.inner.stream.write_all(&buf);
+}

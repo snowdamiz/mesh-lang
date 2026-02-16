@@ -1,32 +1,430 @@
-//! Migration CLI: scaffold generation, runner, and status.
+//! Migration runner and scaffold generation for `meshc migrate`.
 //!
-//! - `generate_migration`: Creates timestamped migration files with up/down stubs
-//! - `run_migrations_up`: Apply pending migrations (implemented by plan 101-02)
-//! - `run_migrations_down`: Rollback last migration (implemented by plan 101-02)
-//! - `show_migration_status`: Show applied vs pending (implemented by plan 101-02)
+//! Provides the following commands:
+//! - `meshc migrate up` - Apply all pending migrations
+//! - `meshc migrate down` - Rollback the last applied migration
+//! - `meshc migrate status` - Show applied vs pending migrations
+//! - `meshc migrate generate <name>` - Create a new migration scaffold
+//!
+//! The runner discovers `.mpl` migration files in `migrations/`, manages the
+//! `_mesh_migrations` tracking table in PostgreSQL via direct Rust PG wire
+//! protocol, compiles each migration as a synthetic Mesh project, and executes it.
 
 use std::path::Path;
 
+use mesh_rt::db::pg::{native_pg_close, native_pg_connect, native_pg_execute, native_pg_query};
+use mesh_typeck::diagnostics::DiagnosticOptions;
+
+// ── Migration Info ──────────────────────────────────────────────────────
+
+/// Metadata about a discovered migration file.
+struct MigrationInfo {
+    /// Numeric version extracted from filename prefix (e.g., 20260216120000).
+    version: i64,
+    /// Human-readable name extracted from filename (e.g., "create_users").
+    name: String,
+    /// Full filename (e.g., "20260216120000_create_users.mpl").
+    filename: String,
+}
+
+// ── Discovery ───────────────────────────────────────────────────────────
+
+/// Discover migration files in the `migrations/` directory.
+///
+/// Parses filenames matching `{YYYYMMDDHHMMSS}_{name}.mpl` pattern,
+/// extracts version and name, and returns sorted by version ascending.
+fn discover_migrations(migrations_dir: &Path) -> Result<Vec<MigrationInfo>, String> {
+    if !migrations_dir.exists() {
+        return Ok(vec![]);
+    }
+
+    let mut migrations = Vec::new();
+    for entry in std::fs::read_dir(migrations_dir)
+        .map_err(|e| format!("Failed to read migrations directory: {}", e))?
+    {
+        let entry = entry.map_err(|e| format!("Failed to read directory entry: {}", e))?;
+        let path = entry.path();
+        if path.extension().and_then(|e| e.to_str()) != Some("mpl") {
+            continue;
+        }
+        let filename = path.file_name().unwrap().to_string_lossy().to_string();
+        // Parse: YYYYMMDDHHMMSS_name.mpl
+        if let Some(underscore_pos) = filename.find('_') {
+            let version_str = &filename[..underscore_pos];
+            if let Ok(version) = version_str.parse::<i64>() {
+                let name = filename[underscore_pos + 1..]
+                    .trim_end_matches(".mpl")
+                    .to_string();
+                migrations.push(MigrationInfo {
+                    version,
+                    name,
+                    filename,
+                });
+            }
+        }
+    }
+
+    migrations.sort_by_key(|m| m.version);
+    Ok(migrations)
+}
+
+// ── Tracking Table ──────────────────────────────────────────────────────
+
+/// SQL to create the migration tracking table.
+const CREATE_TRACKING_TABLE: &str = "CREATE TABLE IF NOT EXISTS _mesh_migrations (\
+    version BIGINT PRIMARY KEY, \
+    name TEXT NOT NULL, \
+    applied_at TIMESTAMPTZ NOT NULL DEFAULT now())";
+
+/// Query applied migration versions from the tracking table.
+fn query_applied_versions(
+    conn: &mut mesh_rt::db::pg::NativePgConn,
+) -> Result<Vec<i64>, String> {
+    let rows = native_pg_query(
+        conn,
+        "SELECT version FROM _mesh_migrations ORDER BY version",
+        &[],
+    )?;
+    let mut versions = Vec::new();
+    for row in &rows {
+        for (col, val) in row {
+            if col == "version" {
+                if let Ok(v) = val.parse::<i64>() {
+                    versions.push(v);
+                }
+            }
+        }
+    }
+    Ok(versions)
+}
+
+// ── Synthetic Mesh Program Generation ───────────────────────────────────
+
+/// Generate a synthetic main.mpl that calls Migration.up(pool) or Migration.down(pool).
+///
+/// The migration file is copied to the temp directory as `migration.mpl`, so
+/// the synthetic main imports it as `Migration`.
+fn generate_migration_main(direction: &str) -> String {
+    format!(
+        r#"import Migration
+
+fn main() do
+  let url = Env.get("DATABASE_URL")
+  match Pool.open(url, 1, 2, 5000) do
+    Ok(pool) ->
+      match Migration.{dir}(pool) do
+        Ok(_) ->
+          Pool.close(pool)
+          0
+        Err(e) ->
+          IO.puts("MIGRATION_ERROR:" <> e)
+          Pool.close(pool)
+          0
+      end
+    Err(e) ->
+      IO.puts("CONNECTION_ERROR:" <> e)
+      0
+  end
+end
+"#,
+        dir = direction
+    )
+}
+
+/// Compile and run a single migration in a temporary directory.
+///
+/// 1. Creates a tempdir
+/// 2. Copies the migration file as `migration.mpl`
+/// 3. Generates a synthetic `main.mpl` that calls up() or down()
+/// 4. Compiles using `crate::build()`
+/// 5. Executes the resulting binary with DATABASE_URL set
+/// 6. Checks exit code and stdout for errors
+fn compile_and_run_migration(
+    project_dir: &Path,
+    url: &str,
+    migration: &MigrationInfo,
+    direction: &str,
+) -> Result<(), String> {
+    let tmp =
+        tempfile::tempdir().map_err(|e| format!("Failed to create temp directory: {}", e))?;
+    let tmp_path = tmp.path();
+
+    // Copy migration file as migration.mpl
+    let src = project_dir.join("migrations").join(&migration.filename);
+    std::fs::copy(&src, tmp_path.join("migration.mpl")).map_err(|e| {
+        format!(
+            "Failed to copy migration file '{}': {}",
+            migration.filename, e
+        )
+    })?;
+
+    // Generate synthetic main.mpl
+    let main_code = generate_migration_main(direction);
+    std::fs::write(tmp_path.join("main.mpl"), &main_code)
+        .map_err(|e| format!("Failed to write synthetic main.mpl: {}", e))?;
+
+    // Compile the synthetic project
+    let output_path = tmp_path.join("_migrate");
+    crate::build(
+        tmp_path,
+        0,
+        false,
+        Some(&output_path),
+        None,
+        &DiagnosticOptions::default(),
+    )
+    .map_err(|e| {
+        format!(
+            "Failed to compile migration {}_{}: {}",
+            migration.version, migration.name, e
+        )
+    })?;
+
+    // Execute the compiled binary
+    let output = std::process::Command::new(&output_path)
+        .env("DATABASE_URL", url)
+        .output()
+        .map_err(|e| {
+            format!(
+                "Failed to execute migration {}_{}: {}",
+                migration.version, migration.name, e
+            )
+        })?;
+
+    // Check for errors in stdout (the Mesh program prints errors to stdout via IO.puts)
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    if let Some(line) = stdout.lines().find(|l| l.starts_with("MIGRATION_ERROR:")) {
+        let error_msg = line.trim_start_matches("MIGRATION_ERROR:");
+        return Err(format!(
+            "Migration {}_{} failed: {}",
+            migration.version, migration.name, error_msg
+        ));
+    }
+    if let Some(line) = stdout.lines().find(|l| l.starts_with("CONNECTION_ERROR:")) {
+        let error_msg = line.trim_start_matches("CONNECTION_ERROR:");
+        return Err(format!(
+            "Migration {}_{} connection failed: {}",
+            migration.version, migration.name, error_msg
+        ));
+    }
+
+    // Check process exit code
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!(
+            "Migration {}_{} exited with non-zero status: {}",
+            migration.version,
+            migration.name,
+            stderr.trim()
+        ));
+    }
+
+    Ok(())
+}
+
+// ── Public API ──────────────────────────────────────────────────────────
+
 /// Apply all pending migrations.
 ///
-/// Placeholder -- full implementation provided by plan 101-02.
-pub fn run_migrations_up(_project_dir: &Path) -> Result<(), String> {
-    Err("meshc migrate up: not yet implemented (see plan 101-02)".to_string())
+/// 1. Reads DATABASE_URL from environment
+/// 2. Connects to PG and ensures tracking table exists
+/// 3. Discovers migration files and queries applied versions
+/// 4. For each pending migration: compiles, runs, records in tracking table
+pub fn run_migrations_up(project_dir: &Path) -> Result<(), String> {
+    let url = std::env::var("DATABASE_URL").map_err(|_| {
+        "meshc migrate: DATABASE_URL environment variable is required".to_string()
+    })?;
+
+    let migrations_dir = project_dir.join("migrations");
+    if !migrations_dir.exists() {
+        eprintln!(
+            "No migrations directory found. \
+             Run 'meshc migrate generate <name>' to create your first migration."
+        );
+        return Ok(());
+    }
+
+    let migrations = discover_migrations(&migrations_dir)?;
+    if migrations.is_empty() {
+        eprintln!("No migration files found in migrations/");
+        return Ok(());
+    }
+
+    // Connect to PG for tracking table operations
+    let mut conn = native_pg_connect(&url)
+        .map_err(|e| format!("Failed to connect to database: {}", e))?;
+
+    // Ensure tracking table exists
+    native_pg_execute(&mut conn, CREATE_TRACKING_TABLE, &[])
+        .map_err(|e| format!("Failed to create tracking table: {}", e))?;
+
+    // Query applied versions
+    let applied = query_applied_versions(&mut conn)?;
+
+    // Determine pending migrations
+    let pending: Vec<&MigrationInfo> = migrations
+        .iter()
+        .filter(|m| !applied.contains(&m.version))
+        .collect();
+
+    if pending.is_empty() {
+        eprintln!("No pending migrations");
+        native_pg_close(conn);
+        return Ok(());
+    }
+
+    eprintln!("Running {} pending migration(s):", pending.len());
+
+    let mut applied_count = 0;
+    for migration in &pending {
+        eprintln!("  Applying: {}_{}", migration.version, migration.name);
+
+        // Compile and run the migration
+        compile_and_run_migration(project_dir, &url, migration, "up")?;
+
+        // Record in tracking table
+        let version_str = migration.version.to_string();
+        native_pg_execute(
+            &mut conn,
+            "INSERT INTO _mesh_migrations (version, name) VALUES ($1, $2)",
+            &[&version_str, &migration.name],
+        )
+        .map_err(|e| {
+            format!(
+                "Failed to record migration {}_{}: {}",
+                migration.version, migration.name, e
+            )
+        })?;
+
+        eprintln!("  Applied:  {}_{}", migration.version, migration.name);
+        applied_count += 1;
+    }
+
+    native_pg_close(conn);
+    eprintln!("Applied {} migration(s)", applied_count);
+    Ok(())
 }
 
 /// Rollback the last applied migration.
 ///
-/// Placeholder -- full implementation provided by plan 101-02.
-pub fn run_migrations_down(_project_dir: &Path) -> Result<(), String> {
-    Err("meshc migrate down: not yet implemented (see plan 101-02)".to_string())
+/// 1. Connects to PG, queries the last applied version
+/// 2. Finds the corresponding migration file
+/// 3. Compiles and runs with direction "down"
+/// 4. Removes the tracking row
+pub fn run_migrations_down(project_dir: &Path) -> Result<(), String> {
+    let url = std::env::var("DATABASE_URL").map_err(|_| {
+        "meshc migrate: DATABASE_URL environment variable is required".to_string()
+    })?;
+
+    let migrations_dir = project_dir.join("migrations");
+
+    // Connect to PG
+    let mut conn = native_pg_connect(&url)
+        .map_err(|e| format!("Failed to connect to database: {}", e))?;
+
+    // Ensure tracking table exists
+    native_pg_execute(&mut conn, CREATE_TRACKING_TABLE, &[])
+        .map_err(|e| format!("Failed to create tracking table: {}", e))?;
+
+    // Query applied versions
+    let applied = query_applied_versions(&mut conn)?;
+
+    if applied.is_empty() {
+        eprintln!("No migrations to roll back");
+        native_pg_close(conn);
+        return Ok(());
+    }
+
+    // Find the last applied version
+    let last_version = *applied.last().unwrap();
+
+    // Find the corresponding migration file
+    let migrations = discover_migrations(&migrations_dir)?;
+    let migration = migrations.iter().find(|m| m.version == last_version).ok_or_else(|| {
+        format!(
+            "Migration file for version {} not found in migrations/",
+            last_version
+        )
+    })?;
+
+    eprintln!("Rolling back: {}_{}", migration.version, migration.name);
+
+    // Compile and run with direction "down"
+    compile_and_run_migration(project_dir, &url, migration, "down")?;
+
+    // Remove tracking row
+    let version_str = last_version.to_string();
+    native_pg_execute(
+        &mut conn,
+        "DELETE FROM _mesh_migrations WHERE version = $1",
+        &[&version_str],
+    )
+    .map_err(|e| {
+        format!(
+            "Failed to remove tracking row for version {}: {}",
+            last_version, e
+        )
+    })?;
+
+    native_pg_close(conn);
+    eprintln!("Rolled back: {}_{}", migration.version, migration.name);
+    Ok(())
 }
 
 /// Show migration status (applied vs pending).
 ///
-/// Placeholder -- full implementation provided by plan 101-02.
-pub fn show_migration_status(_project_dir: &Path) -> Result<(), String> {
-    Err("meshc migrate status: not yet implemented (see plan 101-02)".to_string())
+/// Connects to PG, discovers migration files, and prints a status table
+/// showing which migrations have been applied and which are pending.
+pub fn show_migration_status(project_dir: &Path) -> Result<(), String> {
+    let url = std::env::var("DATABASE_URL").map_err(|_| {
+        "meshc migrate: DATABASE_URL environment variable is required".to_string()
+    })?;
+
+    let migrations_dir = project_dir.join("migrations");
+    if !migrations_dir.exists() {
+        eprintln!(
+            "No migrations directory found. \
+             Run 'meshc migrate generate <name>' to create your first migration."
+        );
+        return Ok(());
+    }
+
+    let migrations = discover_migrations(&migrations_dir)?;
+    if migrations.is_empty() {
+        eprintln!("No migration files found in migrations/");
+        return Ok(());
+    }
+
+    // Connect to PG
+    let mut conn = native_pg_connect(&url)
+        .map_err(|e| format!("Failed to connect to database: {}", e))?;
+
+    // Ensure tracking table exists
+    native_pg_execute(&mut conn, CREATE_TRACKING_TABLE, &[])
+        .map_err(|e| format!("Failed to create tracking table: {}", e))?;
+
+    // Query applied versions
+    let applied = query_applied_versions(&mut conn)?;
+    native_pg_close(conn);
+
+    // Print status
+    eprintln!("Migration Status:");
+    let mut applied_count = 0;
+    let mut pending_count = 0;
+    for migration in &migrations {
+        if applied.contains(&migration.version) {
+            eprintln!("  [x] {}_{}", migration.version, migration.name);
+            applied_count += 1;
+        } else {
+            eprintln!("  [ ] {}_{}", migration.version, migration.name);
+            pending_count += 1;
+        }
+    }
+    eprintln!("{} applied, {} pending", applied_count, pending_count);
+    Ok(())
 }
+
+// ── Scaffold Generation ─────────────────────────────────────────────────
 
 /// Generate a new migration scaffold file in the `migrations/` directory.
 ///
@@ -105,6 +503,8 @@ end
     Ok(())
 }
 
+// ── Timestamp Utilities ─────────────────────────────────────────────────
+
 /// Generate a YYYYMMDDHHMMSS timestamp string from the current UTC time.
 fn format_timestamp_now() -> String {
     let secs = std::time::SystemTime::now()
@@ -116,15 +516,12 @@ fn format_timestamp_now() -> String {
 
 /// Convert a Unix timestamp (seconds since epoch) to a YYYYMMDDHHMMSS string.
 fn format_timestamp(secs: u64) -> String {
-    // Convert Unix timestamp to UTC date/time components
-    // Algorithm: days since epoch -> Gregorian calendar date
     let days = (secs / 86400) as i64;
     let time_of_day = secs % 86400;
     let hours = time_of_day / 3600;
     let minutes = (time_of_day % 3600) / 60;
     let seconds = time_of_day % 60;
 
-    // Civil date from days since 1970-01-01 (Howard Hinnant algorithm)
     let (year, month, day) = civil_from_days(days);
 
     format!(
@@ -138,13 +535,13 @@ fn format_timestamp(secs: u64) -> String {
 fn civil_from_days(days: i64) -> (i64, u64, u64) {
     let z = days + 719468;
     let era = if z >= 0 { z } else { z - 146096 } / 146097;
-    let doe = (z - era * 146097) as u64; // day of era [0, 146096]
-    let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365; // year of era [0, 399]
+    let doe = (z - era * 146097) as u64;
+    let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
     let y = yoe as i64 + era * 400;
-    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100); // day of year [0, 365]
-    let mp = (5 * doy + 2) / 153; // [0, 11]
-    let d = doy - (153 * mp + 2) / 5 + 1; // day [1, 31]
-    let m = if mp < 10 { mp + 3 } else { mp - 9 }; // month [1, 12]
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 };
     let y = if m <= 2 { y + 1 } else { y };
     (y, m as u64, d as u64)
 }
@@ -155,25 +552,21 @@ mod tests {
 
     #[test]
     fn test_format_timestamp_epoch() {
-        // 1970-01-01 00:00:00 UTC
         assert_eq!(format_timestamp(0), "19700101000000");
     }
 
     #[test]
     fn test_format_timestamp_known_date() {
-        // 2026-02-16 12:00:00 UTC = 1771243200
         assert_eq!(format_timestamp(1771243200), "20260216120000");
     }
 
     #[test]
     fn test_format_timestamp_y2k() {
-        // 2000-01-01 00:00:00 UTC = 946684800
         assert_eq!(format_timestamp(946684800), "20000101000000");
     }
 
     #[test]
     fn test_format_timestamp_end_of_day() {
-        // 2026-02-16 23:59:59 UTC = 1771243200 + 43199 = 1771286399
         assert_eq!(format_timestamp(1771286399), "20260216235959");
     }
 
@@ -184,15 +577,11 @@ mod tests {
 
     #[test]
     fn test_civil_from_days_known() {
-        // 2026-02-16 is day 20500 since epoch
-        // Actually, let's compute: 1771243200 / 86400 = 20500.5 -> day 20500
         assert_eq!(civil_from_days(20500), (2026, 2, 16));
     }
 
     #[test]
     fn test_civil_from_days_leap_year() {
-        // 2024-02-29 (leap day)
-        // 2024-02-29 00:00:00 UTC = 1709164800 / 86400 = 19782
         assert_eq!(civil_from_days(19782), (2024, 2, 29));
     }
 
@@ -226,33 +615,19 @@ mod tests {
         generate_migration(tmp.path(), "create_users").unwrap();
 
         let migrations_dir = tmp.path().join("migrations");
-        assert!(migrations_dir.exists(), "migrations/ directory should exist");
+        assert!(migrations_dir.exists());
 
         let entries: Vec<_> = std::fs::read_dir(&migrations_dir)
             .unwrap()
             .filter_map(|e| e.ok())
             .collect();
-        assert_eq!(entries.len(), 1, "Should have exactly one migration file");
+        assert_eq!(entries.len(), 1);
 
         let filename = entries[0].file_name().to_string_lossy().to_string();
-        assert!(
-            filename.ends_with("_create_users.mpl"),
-            "Filename should end with _create_users.mpl, got: {}",
-            filename
-        );
-
-        // Check timestamp prefix is 14 digits
+        assert!(filename.ends_with("_create_users.mpl"));
         let prefix = &filename[..14];
-        assert!(
-            prefix.chars().all(|c| c.is_ascii_digit()),
-            "First 14 chars should be digits, got: {}",
-            prefix
-        );
-        assert_eq!(
-            &filename[14..15],
-            "_",
-            "Character 15 should be underscore"
-        );
+        assert!(prefix.chars().all(|c| c.is_ascii_digit()));
+        assert_eq!(&filename[14..15], "_");
     }
 
     #[test]
@@ -268,41 +643,96 @@ mod tests {
             .unwrap();
         let content = std::fs::read_to_string(entry.path()).unwrap();
 
-        assert!(
-            content.contains("pub fn up(pool :: PoolHandle) -> Int!String do"),
-            "Should contain up function signature"
-        );
-        assert!(
-            content.contains("pub fn down(pool :: PoolHandle) -> Int!String do"),
-            "Should contain down function signature"
-        );
-        assert!(
-            content.contains("# Migration: create_users"),
-            "Should contain migration name comment"
-        );
-        assert!(
-            content.contains("Migration.create_table"),
-            "Should contain example DSL usage"
-        );
+        assert!(content.contains("pub fn up(pool :: PoolHandle) -> Int!String do"));
+        assert!(content.contains("pub fn down(pool :: PoolHandle) -> Int!String do"));
+        assert!(content.contains("# Migration: create_users"));
+        assert!(content.contains("Migration.create_table"));
     }
 
     #[test]
     fn test_generate_migration_creates_migrations_dir() {
         let tmp = tempfile::tempdir().unwrap();
         let migrations_dir = tmp.path().join("migrations");
-        assert!(!migrations_dir.exists(), "migrations/ should not exist yet");
-
+        assert!(!migrations_dir.exists());
         generate_migration(tmp.path(), "init").unwrap();
-        assert!(
-            migrations_dir.exists(),
-            "migrations/ should be created by generate"
-        );
+        assert!(migrations_dir.exists());
     }
 
     #[test]
     fn test_generate_migration_allows_digits_and_underscores() {
         let tmp = tempfile::tempdir().unwrap();
-        let result = generate_migration(tmp.path(), "add_column_v2");
-        assert!(result.is_ok(), "Should allow digits and underscores");
+        assert!(generate_migration(tmp.path(), "add_column_v2").is_ok());
+    }
+
+    #[test]
+    fn test_discover_migrations_empty_dir() {
+        let tmp = tempfile::tempdir().unwrap();
+        let migrations_dir = tmp.path().join("migrations");
+        std::fs::create_dir_all(&migrations_dir).unwrap();
+        let migrations = discover_migrations(&migrations_dir).unwrap();
+        assert!(migrations.is_empty());
+    }
+
+    #[test]
+    fn test_discover_migrations_no_dir() {
+        let tmp = tempfile::tempdir().unwrap();
+        let migrations_dir = tmp.path().join("migrations");
+        let migrations = discover_migrations(&migrations_dir).unwrap();
+        assert!(migrations.is_empty());
+    }
+
+    #[test]
+    fn test_discover_migrations_sorts_by_version() {
+        let tmp = tempfile::tempdir().unwrap();
+        let migrations_dir = tmp.path().join("migrations");
+        std::fs::create_dir_all(&migrations_dir).unwrap();
+
+        let stub = "pub fn up(pool :: PoolHandle) -> Int!String do Ok(0) end\n\
+                     pub fn down(pool :: PoolHandle) -> Int!String do Ok(0) end\n";
+        std::fs::write(migrations_dir.join("20260216120200_add_index.mpl"), stub).unwrap();
+        std::fs::write(migrations_dir.join("20260216120000_create_users.mpl"), stub).unwrap();
+        std::fs::write(migrations_dir.join("20260216120100_create_posts.mpl"), stub).unwrap();
+
+        let migrations = discover_migrations(&migrations_dir).unwrap();
+        assert_eq!(migrations.len(), 3);
+        assert_eq!(migrations[0].version, 20260216120000);
+        assert_eq!(migrations[0].name, "create_users");
+        assert_eq!(migrations[1].version, 20260216120100);
+        assert_eq!(migrations[1].name, "create_posts");
+        assert_eq!(migrations[2].version, 20260216120200);
+        assert_eq!(migrations[2].name, "add_index");
+    }
+
+    #[test]
+    fn test_discover_migrations_skips_non_mpl() {
+        let tmp = tempfile::tempdir().unwrap();
+        let migrations_dir = tmp.path().join("migrations");
+        std::fs::create_dir_all(&migrations_dir).unwrap();
+
+        let stub = "pub fn up(pool :: PoolHandle) -> Int!String do Ok(0) end\n\
+                     pub fn down(pool :: PoolHandle) -> Int!String do Ok(0) end\n";
+        std::fs::write(migrations_dir.join("20260216120000_create_users.mpl"), stub).unwrap();
+        std::fs::write(migrations_dir.join("README.md"), "readme").unwrap();
+        std::fs::write(migrations_dir.join(".gitkeep"), "").unwrap();
+
+        let migrations = discover_migrations(&migrations_dir).unwrap();
+        assert_eq!(migrations.len(), 1);
+        assert_eq!(migrations[0].name, "create_users");
+    }
+
+    #[test]
+    fn test_generate_migration_main_up() {
+        let main = generate_migration_main("up");
+        assert!(main.contains("import Migration"));
+        assert!(main.contains("Migration.up(pool)"));
+        assert!(main.contains("Pool.open(url, 1, 2, 5000)"));
+        assert!(main.contains("Pool.close(pool)"));
+    }
+
+    #[test]
+    fn test_generate_migration_main_down() {
+        let main = generate_migration_main("down");
+        assert!(main.contains("import Migration"));
+        assert!(main.contains("Migration.down(pool)"));
     }
 }
