@@ -174,7 +174,7 @@ See milestones/v9.0-ROADMAP.md for full phase details.
 
 - [x] **Phase 96: Compiler Additions** - Language primitives enabling ergonomic ORM syntax (shipped 2026-02-16)
 - [x] **Phase 97: Schema Metadata + SQL Generation** - deriving(Schema) codegen and runtime SQL builder (shipped 2026-02-16)
-- [ ] **Phase 98: Query Builder + Repo** - Pipe-composable queries and database operations
+- [x] **Phase 98: Query Builder + Repo** - Pipe-composable queries and database operations (shipped 2026-02-16)
 - [ ] **Phase 99: Changesets** - Validation pipeline and type-safe casting before persistence
 - [ ] **Phase 100: Relationships + Preloading** - belongs_to/has_many/has_one with batch preloading
 - [ ] **Phase 101: Migration System** - Migration DSL, runner, CLI, and scaffold generation
@@ -229,9 +229,9 @@ Plans:
 **Plans**: 3 plans
 
 Plans:
-- [ ] 98-01-PLAN.md -- Query struct as opaque Ptr, pipe-composable builder functions (from, where, where_op, where_in, where_null, where_not_null, select, order_by, limit, offset, join, group_by, having, fragment), pipe schema-to-table transformation
-- [ ] 98-02-PLAN.md -- Repo read operations (all, one, get, get_by, count, exists) with comprehensive SQL generation from Query struct
-- [ ] 98-03-PLAN.md -- Repo write operations (insert, update, delete) with RETURNING clauses, Repo.transaction with Pool.checkout + Pg.begin/commit/rollback + Pool.checkin
+- [x] 98-01-PLAN.md -- Query struct as opaque Ptr, pipe-composable builder functions (from, where, where_op, where_in, where_null, where_not_null, select, order_by, limit, offset, join, group_by, having, fragment), pipe schema-to-table transformation
+- [x] 98-02-PLAN.md -- Repo read operations (all, one, get, get_by, count, exists) with comprehensive SQL generation from Query struct
+- [x] 98-03-PLAN.md -- Repo write operations (insert, update, delete) with RETURNING clauses, Repo.transaction with Pool.checkout + Pg.begin/commit/rollback + Pool.checkin
 
 ### Phase 99: Changesets
 **Goal**: Developers can validate and cast external data before persistence using a pipe-chain validation pipeline, with type coercion from raw params, built-in validators, and PostgreSQL constraint error mapping
@@ -325,10 +325,10 @@ Note: Phase 100 and 101 both depend on earlier phases but are independent of eac
 | 87-95 | v9.0 | 38/38 | Complete | 2026-02-15 |
 | 96 | v10.0 | 5/5 | Complete | 2026-02-16 |
 | 97 | v10.0 | 2/2 | Complete | 2026-02-16 |
-| 98 | v10.0 | 0/3 | Not started | - |
+| 98 | v10.0 | 3/3 | Complete | 2026-02-16 |
 | 99 | v10.0 | 0/2 | Not started | - |
 | 100 | v10.0 | 0/2 | Not started | - |
 | 101 | v10.0 | 0/3 | Not started | - |
 | 102 | v10.0 | 0/3 | Not started | - |
 
-**Total: 102 phases shipped across 18 milestones. 287 plans completed. v10.0: 2/7 phases complete, 7/20 plans done.**
+**Total: 102 phases shipped across 18 milestones. 290 plans completed. v10.0: 3/7 phases complete, 10/20 plans done.**
