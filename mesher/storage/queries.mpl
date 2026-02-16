@@ -124,13 +124,8 @@ end
 
 # Get a user by ID.
 pub fn get_user(pool :: PoolHandle, id :: String) -> User!String do
-  let rows = Pool.query(pool, "SELECT id::text, email, display_name, created_at::text FROM users WHERE id = $1::uuid", [id])?
-  if List.length(rows) > 0 do
-    let row = List.head(rows)
-    Ok(User { id: Map.get(row, "id"), email: Map.get(row, "email"), display_name: Map.get(row, "display_name"), created_at: Map.get(row, "created_at") })
-  else
-    Err("not found")
-  end
+  let row = Repo.get(pool, User.__table__(), id)?
+  Ok(User { id: Map.get(row, "id"), email: Map.get(row, "email"), display_name: Map.get(row, "display_name"), created_at: Map.get(row, "created_at") })
 end
 
 # --- Session queries ---
@@ -167,17 +162,16 @@ end
 
 # Add a user to an organization with a role (owner/admin/member).
 pub fn add_member(pool :: PoolHandle, user_id :: String, org_id :: String, role :: String) -> String!String do
-  let rows = Pool.query(pool, "INSERT INTO org_memberships (user_id, org_id, role) VALUES ($1::uuid, $2::uuid, $3) RETURNING id::text", [user_id, org_id, role])?
-  if List.length(rows) > 0 do
-    Ok(Map.get(List.head(rows), "id"))
-  else
-    Err("add_member: no id returned")
-  end
+  let fields = %{"user_id" => user_id, "org_id" => org_id, "role" => role}
+  let row = Repo.insert(pool, OrgMembership.__table__(), fields)?
+  Ok(Map.get(row, "id"))
 end
 
 # Get all members of an organization.
 pub fn get_members(pool :: PoolHandle, org_id :: String) -> List<OrgMembership>!String do
-  let rows = Pool.query(pool, "SELECT id::text, user_id::text, org_id::text, role, joined_at::text FROM org_memberships WHERE org_id = $1::uuid", [org_id])?
+  let q = Query.from(OrgMembership.__table__())
+    |> Query.where(:org_id, org_id)
+  let rows = Repo.all(pool, q)?
   Ok(List.map(rows, fn(row) do
     OrgMembership { id: Map.get(row, "id"), user_id: Map.get(row, "user_id"), org_id: Map.get(row, "org_id"), role: Map.get(row, "role"), joined_at: Map.get(row, "joined_at") }
   end))
@@ -185,7 +179,9 @@ end
 
 # Get all organizations a user belongs to.
 pub fn get_user_orgs(pool :: PoolHandle, user_id :: String) -> List<OrgMembership>!String do
-  let rows = Pool.query(pool, "SELECT id::text, user_id::text, org_id::text, role, joined_at::text FROM org_memberships WHERE user_id = $1::uuid", [user_id])?
+  let q = Query.from(OrgMembership.__table__())
+    |> Query.where(:user_id, user_id)
+  let rows = Repo.all(pool, q)?
   Ok(List.map(rows, fn(row) do
     OrgMembership { id: Map.get(row, "id"), user_id: Map.get(row, "user_id"), org_id: Map.get(row, "org_id"), role: Map.get(row, "role"), joined_at: Map.get(row, "joined_at") }
   end))
@@ -431,7 +427,8 @@ end
 # Remove a member from an organization.
 # Returns affected row count (0 if membership not found).
 pub fn remove_member(pool :: PoolHandle, membership_id :: String) -> Int!String do
-  Pool.execute(pool, "DELETE FROM org_memberships WHERE id = $1::uuid", [membership_id])
+  let _ = Repo.delete(pool, OrgMembership.__table__(), membership_id)?
+  Ok(1)
 end
 
 # List all members of an organization with user info (email, display_name).
@@ -480,7 +477,8 @@ end
 
 # Delete an alert rule.
 pub fn delete_alert_rule(pool :: PoolHandle, rule_id :: String) -> Int!String do
-  Pool.execute(pool, "DELETE FROM alert_rules WHERE id = $1::uuid", [rule_id])
+  let _ = Repo.delete(pool, AlertRule.__table__(), rule_id)?
+  Ok(1)
 end
 
 # ALERT-02: Count events in time window AND check cooldown, return true if should fire.
