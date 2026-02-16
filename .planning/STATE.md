@@ -9,12 +9,12 @@ See: .planning/PROJECT.md (updated 2026-02-16)
 
 ## Current Position
 
-Phase: 98 of 102 (Query Builder + Repo)
-Plan: 2 of 3 in current phase
-Status: Executing
-Last activity: 2026-02-16 -- 98-02 complete (Repo read operations + SQL generation, 5 e2e tests)
+Phase: 99 of 102 (Changesets)
+Plan: 1 of ? in current phase
+Status: Ready
+Last activity: 2026-02-16 -- 98-03 complete (Repo write operations + transaction, Phase 98 complete)
 
-Progress: [████░░░░░░] 45% (9/20 plans)
+Progress: [█████░░░░░] 50% (10/20 plans)
 
 ## Performance Metrics
 
@@ -63,6 +63,10 @@ Progress: [████░░░░░░] 45% (9/20 plans)
 - 98-02: Repo functions use PoolHandle (MirType::Int / i64) for pool parameter, matching existing Pool.query pattern.
 - 98-02: SQL builder separated into pure Rust functions for unit testability without GC.
 - 98-02: Repo.count uses SELECT COUNT(*) with 'count' column key extraction; Repo.exists uses SELECT EXISTS(SELECT 1 ... LIMIT 1).
+- 98-03: Map fields extracted via direct internal structure access (header + entries array) for Repo.insert/update.
+- 98-03: ORM SQL builders exposed as pub(crate) wrappers from orm.rs for cross-module reuse by repo.rs.
+- 98-03: Repo.transaction takes pool (not conn), manages full checkout/begin/callback/commit-or-rollback/checkin lifecycle.
+- 98-03: All write operations use RETURNING * -- insert/update/delete return the affected row as Map<String,String>.
 
 ### Roadmap Evolution
 
@@ -91,6 +95,6 @@ Known limitations relevant to ORM development:
 ## Session Continuity
 
 Last session: 2026-02-16
-Stopped at: Completed 98-02-PLAN.md (Repo read operations)
+Stopped at: Completed 98-03-PLAN.md (Repo write operations + transaction, Phase 98 complete)
 Resume file: None
-Next action: Execute 98-03-PLAN.md (Repo writes + transactions)
+Next action: Execute Phase 99 (Changesets)
