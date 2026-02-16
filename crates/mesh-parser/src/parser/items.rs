@@ -280,6 +280,19 @@ pub(crate) fn parse_struct_def(p: &mut Parser) {
                 break;
             }
 
+            // Check for schema option declarations: table, primary_key, timestamps
+            // These must come before field declarations in struct bodies.
+            if p.at(SyntaxKind::IDENT) {
+                let text = p.current_text().to_string();
+                if text == "table" || text == "primary_key" || text == "timestamps" {
+                    parse_schema_option(p);
+                    if p.has_error() {
+                        break;
+                    }
+                    continue;
+                }
+            }
+
             // Check for relationship declarations: belongs_to, has_many, has_one
             if p.at(SyntaxKind::IDENT) {
                 let text = p.current_text().to_string();
@@ -380,6 +393,76 @@ fn parse_relationship_decl(p: &mut Parser) {
     }
 
     p.close(m, SyntaxKind::RELATIONSHIP_DECL);
+}
+
+/// Parse a schema option declaration inside a struct body.
+///
+/// Syntax:
+/// - `table "custom_table_name"` (STRING value)
+/// - `primary_key :custom_pk` (ATOM value)
+/// - `timestamps true` or `timestamps false` (IDENT value)
+///
+/// These are contextual identifiers (not keywords) recognized only inside struct bodies.
+/// They produce SCHEMA_OPTION nodes containing the option name identifier and its value.
+fn parse_schema_option(p: &mut Parser) {
+    let m = p.open();
+
+    // Read the option name (table, primary_key, timestamps).
+    let option_name = p.current_text().to_string();
+    p.advance(); // IDENT (option name)
+
+    match option_name.as_str() {
+        "table" => {
+            // Expect a string value: "custom_table_name"
+            if p.at(SyntaxKind::STRING_START) {
+                // Consume STRING_START, STRING_CONTENT, STRING_END
+                p.advance(); // STRING_START
+                if p.at(SyntaxKind::STRING_CONTENT) {
+                    p.advance(); // STRING_CONTENT
+                }
+                if p.at(SyntaxKind::STRING_END) {
+                    p.advance(); // STRING_END
+                } else {
+                    p.error("unterminated string in table option");
+                }
+            } else {
+                p.error("expected string literal after `table` (e.g., table \"people\")");
+            }
+        }
+        "primary_key" => {
+            // Expect an atom literal: :custom_pk
+            if p.at(SyntaxKind::ATOM_LITERAL) {
+                p.advance(); // ATOM_LITERAL
+            } else {
+                p.error("expected atom literal after `primary_key` (e.g., primary_key :uuid)");
+            }
+        }
+        "timestamps" => {
+            // Expect an IDENT "true" or "false"
+            if p.at(SyntaxKind::TRUE_KW) {
+                p.advance(); // TRUE_KW
+            } else if p.at(SyntaxKind::FALSE_KW) {
+                p.advance(); // FALSE_KW
+            } else if p.at(SyntaxKind::IDENT) {
+                let val = p.current_text().to_string();
+                if val == "true" || val == "false" {
+                    p.advance(); // IDENT
+                } else {
+                    p.error("expected `true` or `false` after `timestamps`");
+                }
+            } else {
+                p.error("expected `true` or `false` after `timestamps`");
+            }
+        }
+        _ => {
+            p.error(&format!("unknown schema option `{}`", option_name));
+        }
+    }
+
+    p.close(m, SyntaxKind::SCHEMA_OPTION);
+
+    // Skip optional newline after the option.
+    p.eat(SyntaxKind::NEWLINE);
 }
 
 /// Parse a deriving clause: `deriving(Trait1, Trait2, ...)`

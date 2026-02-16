@@ -288,6 +288,8 @@ pub enum SyntaxKind {
     LIST_LITERAL,
     /// Relationship declaration in a struct body: `belongs_to :name, Type`
     RELATIONSHIP_DECL,
+    /// Schema option declaration in a struct body: `table "name"`, `primary_key :id`, `timestamps true`
+    SCHEMA_OPTION,
 
     // ── Loop node kinds ───────────────────────────────────────────────
     /// While expression: `while cond do body end`
@@ -693,6 +695,7 @@ mod tests {
             SyntaxKind::STRUCT_UPDATE_EXPR,
             SyntaxKind::LIST_LITERAL,
             SyntaxKind::RELATIONSHIP_DECL,
+            SyntaxKind::SCHEMA_OPTION,
             // Loop node kinds
             SyntaxKind::WHILE_EXPR,
             SyntaxKind::BREAK_EXPR,
@@ -723,8 +726,8 @@ mod tests {
             SyntaxKind::SECONDS_LIMIT,
         ];
         assert!(
-            node_kinds.len() >= 87,
-            "expected at least 87 composite node kinds, got {}",
+            node_kinds.len() >= 88,
+            "expected at least 88 composite node kinds, got {}",
             node_kinds.len()
         );
     }

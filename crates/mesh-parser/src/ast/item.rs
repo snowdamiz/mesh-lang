@@ -311,6 +311,14 @@ impl StructDef {
             .filter_map(RelationshipDecl::cast)
             .collect()
     }
+
+    /// All schema option declarations in the struct body.
+    pub fn schema_options(&self) -> Vec<SchemaOption> {
+        self.syntax
+            .children()
+            .filter_map(SchemaOption::cast)
+            .collect()
+    }
 }
 
 ast_node!(StructField, STRUCT_FIELD);
@@ -369,6 +377,64 @@ impl RelationshipDecl {
                     after_comma = true;
                 } else if after_comma && token.kind() == SyntaxKind::IDENT {
                     return Some(token.text().to_string());
+                }
+            }
+        }
+        None
+    }
+}
+
+// ── Schema Option ────────────────────────────────────────────────────────
+
+ast_node!(SchemaOption, SCHEMA_OPTION);
+
+impl SchemaOption {
+    /// The option name: "table", "primary_key", or "timestamps".
+    pub fn option_name(&self) -> Option<String> {
+        // First IDENT child is the option name.
+        self.syntax
+            .children_with_tokens()
+            .filter_map(|it| it.into_token())
+            .find(|t| t.kind() == SyntaxKind::IDENT)
+            .map(|t| t.text().to_string())
+    }
+
+    /// The string value (for `table` option), with quotes stripped.
+    /// Returns the STRING_CONTENT text if present.
+    pub fn string_value(&self) -> Option<String> {
+        self.syntax
+            .children_with_tokens()
+            .filter_map(|it| it.into_token())
+            .find(|t| t.kind() == SyntaxKind::STRING_CONTENT)
+            .map(|t| t.text().to_string())
+    }
+
+    /// The atom value (for `primary_key` option), with leading colon stripped.
+    pub fn atom_value(&self) -> Option<String> {
+        self.syntax
+            .children_with_tokens()
+            .filter_map(|it| it.into_token())
+            .find(|t| t.kind() == SyntaxKind::ATOM_LITERAL)
+            .map(|t| {
+                let text = t.text().to_string();
+                if text.starts_with(':') {
+                    text[1..].to_string()
+                } else {
+                    text
+                }
+            })
+    }
+
+    /// The boolean value (for `timestamps` option).
+    pub fn bool_value(&self) -> Option<bool> {
+        for element in self.syntax.children_with_tokens() {
+            if let Some(token) = element.as_token() {
+                match token.kind() {
+                    SyntaxKind::TRUE_KW => return Some(true),
+                    SyntaxKind::FALSE_KW => return Some(false),
+                    SyntaxKind::IDENT if token.text() == "true" => return Some(true),
+                    SyntaxKind::IDENT if token.text() == "false" => return Some(false),
+                    _ => {}
                 }
             }
         }

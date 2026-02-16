@@ -2329,6 +2329,21 @@ fn register_struct_def(
         // Each relationship encoded as "kind:name:target" string.
         let rels_fn_name = format!("{}.__relationships__", name);
         env.insert(rels_fn_name, Scheme::mono(Ty::fun(vec![], Ty::list(Ty::string()))));
+
+        // __field_types__ :: () -> List<String>
+        // Each entry is "field_name:SQL_TYPE".
+        let ft_fn_name = format!("{}.__field_types__", name);
+        env.insert(ft_fn_name, Scheme::mono(Ty::fun(vec![], Ty::list(Ty::string()))));
+
+        // Per-field column accessor functions: __{field}_col__ :: () -> String
+        for field in struct_def.fields() {
+            let field_name = field
+                .name()
+                .and_then(|n| n.text())
+                .unwrap_or_else(|| "<unnamed>".to_string());
+            let col_fn_name = format!("{}.__{}_col__", name, field_name);
+            env.insert(col_fn_name, Scheme::mono(Ty::fun(vec![], Ty::string())));
+        }
     }
 
     // Debug impl
@@ -5630,6 +5645,8 @@ fn infer_field_access(
             // e.g. User.__table__() -- User is a struct with deriving(Schema).
             if field_name == "__table__" || field_name == "__fields__"
                 || field_name == "__primary_key__" || field_name == "__relationships__"
+                || field_name == "__field_types__"
+                || (field_name.starts_with("__") && field_name.ends_with("_col__"))
             {
                 let qualified = format!("{}.{}", base_name, field_name);
                 if let Some(scheme) = env.lookup(&qualified) {
