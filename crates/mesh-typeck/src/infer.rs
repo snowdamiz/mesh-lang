@@ -1152,6 +1152,27 @@ fn stdlib_modules() -> HashMap<String, HashMap<String, Scheme>> {
             vec![pool_t.clone(), ptr_t.clone()],
             ptr_t.clone(),
         )));
+        // Repo.insert(PoolHandle, String, Ptr) -> Ptr  (pool, table, fields_map -> Result<Map<String,String>, String>)
+        repo_mod.insert("insert".to_string(), Scheme::mono(Ty::fun(
+            vec![pool_t.clone(), Ty::string(), ptr_t.clone()],
+            ptr_t.clone(),
+        )));
+        // Repo.update(PoolHandle, String, String, Ptr) -> Ptr  (pool, table, id, fields_map -> Result<Map<String,String>, String>)
+        repo_mod.insert("update".to_string(), Scheme::mono(Ty::fun(
+            vec![pool_t.clone(), Ty::string(), Ty::string(), ptr_t.clone()],
+            ptr_t.clone(),
+        )));
+        // Repo.delete(PoolHandle, String, String) -> Ptr  (pool, table, id -> Result<Map<String,String>, String>)
+        repo_mod.insert("delete".to_string(), Scheme::mono(Ty::fun(
+            vec![pool_t.clone(), Ty::string(), Ty::string()],
+            ptr_t.clone(),
+        )));
+        // Repo.transaction(PoolHandle, fn(Ptr) -> Ptr) -> Ptr  (pool, callback -> Result<Ptr, String>)
+        // Closure calling convention: MIR lowerer splits closure into (fn_ptr, env_ptr)
+        repo_mod.insert("transaction".to_string(), Scheme::mono(Ty::fun(
+            vec![pool_t.clone(), Ty::fun(vec![ptr_t.clone()], ptr_t.clone())],
+            ptr_t.clone(),
+        )));
         modules.insert("Repo".to_string(), repo_mod);
     }
 

@@ -888,6 +888,15 @@ impl<'a> Lowerer<'a> {
         self.known_functions.insert("mesh_repo_count".to_string(), MirType::FnPtr(vec![MirType::Int, MirType::Ptr], Box::new(MirType::Ptr)));
         // mesh_repo_exists(pool: i64, query: ptr) -> ptr
         self.known_functions.insert("mesh_repo_exists".to_string(), MirType::FnPtr(vec![MirType::Int, MirType::Ptr], Box::new(MirType::Ptr)));
+        // ── Phase 98: Repo Write Operations ─────────────────────────────
+        // mesh_repo_insert(pool: i64, table: ptr, fields: ptr) -> ptr
+        self.known_functions.insert("mesh_repo_insert".to_string(), MirType::FnPtr(vec![MirType::Int, MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
+        // mesh_repo_update(pool: i64, table: ptr, id: ptr, fields: ptr) -> ptr
+        self.known_functions.insert("mesh_repo_update".to_string(), MirType::FnPtr(vec![MirType::Int, MirType::Ptr, MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
+        // mesh_repo_delete(pool: i64, table: ptr, id: ptr) -> ptr
+        self.known_functions.insert("mesh_repo_delete".to_string(), MirType::FnPtr(vec![MirType::Int, MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
+        // mesh_repo_transaction(pool: i64, fn_ptr: ptr, env_ptr: ptr) -> ptr
+        self.known_functions.insert("mesh_repo_transaction".to_string(), MirType::FnPtr(vec![MirType::Int, MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
         // ── Job functions (Phase 9 Plan 04) ──────────────────────────────
         // mesh_job_async takes (fn_ptr, env_ptr) -> i64 (PID)
         // But the closure splitting at codegen will expand the closure arg into (fn_ptr, env_ptr)
@@ -10348,6 +10357,11 @@ fn map_builtin_name(name: &str) -> String {
         "repo_get_by" => "mesh_repo_get_by".to_string(),
         "repo_count" => "mesh_repo_count".to_string(),
         "repo_exists" => "mesh_repo_exists".to_string(),
+        // ── Phase 98: Repo Write Operations ─────────────────────────────
+        "repo_insert" => "mesh_repo_insert".to_string(),
+        "repo_update" => "mesh_repo_update".to_string(),
+        "repo_delete" => "mesh_repo_delete".to_string(),
+        "repo_transaction" => "mesh_repo_transaction".to_string(),
         // NOTE: No bare name mappings for HTTP/Request (router, route, get,
         // post, method, path, body, etc.) because they collide with common
         // variable names. Use module-qualified access instead:

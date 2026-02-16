@@ -1016,6 +1016,28 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
         ptr_type.fn_type(&[i64_type.into(), ptr_type.into()], false),
         Some(inkwell::module::Linkage::External));
 
+    // ── Phase 98: Repo Write Operations ─────────────────────────────────
+
+    // mesh_repo_insert(pool: i64, table: ptr, fields: ptr) -> ptr
+    module.add_function("mesh_repo_insert",
+        ptr_type.fn_type(&[i64_type.into(), ptr_type.into(), ptr_type.into()], false),
+        Some(inkwell::module::Linkage::External));
+
+    // mesh_repo_update(pool: i64, table: ptr, id: ptr, fields: ptr) -> ptr
+    module.add_function("mesh_repo_update",
+        ptr_type.fn_type(&[i64_type.into(), ptr_type.into(), ptr_type.into(), ptr_type.into()], false),
+        Some(inkwell::module::Linkage::External));
+
+    // mesh_repo_delete(pool: i64, table: ptr, id: ptr) -> ptr
+    module.add_function("mesh_repo_delete",
+        ptr_type.fn_type(&[i64_type.into(), ptr_type.into(), ptr_type.into()], false),
+        Some(inkwell::module::Linkage::External));
+
+    // mesh_repo_transaction(pool: i64, fn_ptr: ptr, env_ptr: ptr) -> ptr
+    module.add_function("mesh_repo_transaction",
+        ptr_type.fn_type(&[i64_type.into(), ptr_type.into(), ptr_type.into()], false),
+        Some(inkwell::module::Linkage::External));
+
     // ── Phase 68: Global Registry ──────────────────────────────────────
 
     // mesh_global_register(name_ptr: ptr, name_len: i64, pid: i64) -> i64

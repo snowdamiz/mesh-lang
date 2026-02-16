@@ -1,11 +1,12 @@
 //! Repo (repository) module for the Mesh runtime.
 //!
-//! Provides stateless database read operations that consume Query structs
-//! (built by the Query module) and execute them via Pool.query. Each function
-//! reads the Query object's 13 slots to build parameterized SQL, then
-//! delegates to `mesh_pool_query` for execution.
+//! Provides stateless database operations that consume Query structs
+//! (built by the Query module) and execute them via Pool.query. Each read
+//! function reads the Query object's 13 slots to build parameterized SQL,
+//! then delegates to `mesh_pool_query` for execution. Write functions use
+//! the ORM SQL builders from orm.rs with RETURNING * clauses.
 //!
-//! ## Functions
+//! ## Read Functions
 //!
 //! - `mesh_repo_all`: Execute query, return all matching rows
 //! - `mesh_repo_one`: Execute query with LIMIT 1, return first row or error
@@ -13,10 +14,18 @@
 //! - `mesh_repo_get_by`: Fetch single row by field condition
 //! - `mesh_repo_count`: Return integer count of matching rows
 //! - `mesh_repo_exists`: Return boolean existence check
+//!
+//! ## Write Functions
+//!
+//! - `mesh_repo_insert`: INSERT with RETURNING *, accepts Map<String,String> fields
+//! - `mesh_repo_update`: UPDATE with RETURNING *, accepts id + Map<String,String> fields
+//! - `mesh_repo_delete`: DELETE with RETURNING *, accepts id
+//! - `mesh_repo_transaction`: Wraps callback in checkout/begin/commit-or-rollback/checkin
 
 use crate::collections::list::{mesh_list_get, mesh_list_length, mesh_list_new, mesh_list_append};
 use crate::collections::map::mesh_map_get;
-use crate::db::pool::mesh_pool_query;
+use crate::db::pool::{mesh_pool_query, mesh_pool_checkout, mesh_pool_checkin};
+use crate::db::pg::{mesh_pg_begin, mesh_pg_commit, mesh_pg_rollback};
 use crate::io::{alloc_result, MeshResult};
 use crate::string::{mesh_string_new, MeshString};
 
@@ -787,6 +796,248 @@ pub extern "C" fn mesh_repo_exists(pool: u64, query: *mut u8) -> *mut u8 {
             0
         };
         ok_result(exists_bool as *mut u8)
+    }
+}
+
+// ── Map extraction helpers ─────────────────────────────────────────
+
+/// Map header size in bytes (must match collections/map.rs)
+const MAP_HEADER_SIZE: usize = 16;
+
+/// Extract (column_names, values) from a Mesh Map<String, String> pointer.
+/// Reads the map's internal structure directly for efficiency.
+unsafe fn map_to_columns_and_values(map: *mut u8) -> (Vec<String>, Vec<String>) {
+    let len = *(map as *const u64) as usize;
+    let entries = map.add(MAP_HEADER_SIZE) as *const [u64; 2];
+    let mut columns = Vec::with_capacity(len);
+    let mut values = Vec::with_capacity(len);
+    for i in 0..len {
+        let key_ptr = (*entries.add(i))[0] as *const MeshString;
+        let val_ptr = (*entries.add(i))[1] as *const MeshString;
+        if !key_ptr.is_null() {
+            columns.push((*key_ptr).as_str().to_string());
+        }
+        if !val_ptr.is_null() {
+            values.push((*val_ptr).as_str().to_string());
+        } else {
+            values.push(String::new());
+        }
+    }
+    (columns, values)
+}
+
+// ── Write Operations ──────────────────────────────────────────────────
+
+/// Insert a new row and return the inserted record.
+///
+/// `Repo.insert(pool, table, fields_map)` -> `Result<Map<String,String>, String>`
+///
+/// 1. Extracts column names and values from the Map<String, String>
+/// 2. Builds INSERT SQL with RETURNING * using ORM SQL builder
+/// 3. Executes via Pool.query (RETURNING produces rows)
+/// 4. Returns the first (inserted) row
+#[no_mangle]
+pub extern "C" fn mesh_repo_insert(pool: u64, table: *mut u8, fields: *mut u8) -> *mut u8 {
+    unsafe {
+        let table_str = mesh_str_ref(table);
+        let (columns, values) = map_to_columns_and_values(fields);
+
+        if columns.is_empty() {
+            return err_result("insert: no fields provided");
+        }
+
+        // Build INSERT SQL with RETURNING *
+        let returning = vec!["*".to_string()];
+        let sql = crate::db::orm::build_insert_sql_pure(table_str, &columns, &returning);
+
+        let sql_ptr = rust_str_to_mesh(&sql) as *const MeshString;
+        let params_ptr = strings_to_mesh_list(&values);
+        let result = mesh_pool_query(pool, sql_ptr, params_ptr);
+
+        // Check if query succeeded
+        let r = &*(result as *const MeshResult);
+        if r.tag != 0 {
+            return result; // propagate query error
+        }
+
+        // Extract first row from the result list (the inserted row)
+        let list = r.value;
+        let list_len = mesh_list_length(list);
+        if list_len == 0 {
+            return err_result("insert: no row returned");
+        }
+
+        let first_row = mesh_list_get(list, 0) as *mut u8;
+        ok_result(first_row)
+    }
+}
+
+/// Update a row by primary key and return the updated record.
+///
+/// `Repo.update(pool, table, id, fields_map)` -> `Result<Map<String,String>, String>`
+///
+/// 1. Extracts column names and values from the Map<String, String>
+/// 2. Builds UPDATE SQL with SET columns and WHERE id = $N, RETURNING *
+/// 3. Params: SET values first ($1..$N), then id ($N+1)
+/// 4. Returns the first (updated) row
+#[no_mangle]
+pub extern "C" fn mesh_repo_update(
+    pool: u64,
+    table: *mut u8,
+    id: *mut u8,
+    fields: *mut u8,
+) -> *mut u8 {
+    unsafe {
+        let table_str = mesh_str_ref(table);
+        let (columns, mut values) = map_to_columns_and_values(fields);
+
+        if columns.is_empty() {
+            return err_result("update: no fields provided");
+        }
+
+        // Build UPDATE SQL: SET columns, WHERE id =, RETURNING *
+        let wheres = vec!["id =".to_string()];
+        let returning = vec!["*".to_string()];
+        let sql = crate::db::orm::build_update_sql_pure(table_str, &columns, &wheres, &returning);
+
+        // Params: SET values first, then id value for WHERE
+        let id_str = mesh_str_ref(id);
+        values.push(id_str.to_string());
+
+        let sql_ptr = rust_str_to_mesh(&sql) as *const MeshString;
+        let params_ptr = strings_to_mesh_list(&values);
+        let result = mesh_pool_query(pool, sql_ptr, params_ptr);
+
+        let r = &*(result as *const MeshResult);
+        if r.tag != 0 {
+            return result;
+        }
+
+        let list = r.value;
+        let list_len = mesh_list_length(list);
+        if list_len == 0 {
+            return err_result("update: no row returned (id not found)");
+        }
+
+        let first_row = mesh_list_get(list, 0) as *mut u8;
+        ok_result(first_row)
+    }
+}
+
+/// Delete a row by primary key and return the deleted record.
+///
+/// `Repo.delete(pool, table, id)` -> `Result<Map<String,String>, String>`
+///
+/// 1. Builds DELETE SQL with WHERE id = $1, RETURNING *
+/// 2. Returns the first (deleted) row
+#[no_mangle]
+pub extern "C" fn mesh_repo_delete(pool: u64, table: *mut u8, id: *mut u8) -> *mut u8 {
+    unsafe {
+        let table_str = mesh_str_ref(table);
+
+        // Build DELETE SQL: WHERE id =, RETURNING *
+        let wheres = vec!["id =".to_string()];
+        let returning = vec!["*".to_string()];
+        let sql = crate::db::orm::build_delete_sql_pure(table_str, &wheres, &returning);
+
+        let sql_ptr = rust_str_to_mesh(&sql) as *const MeshString;
+        let mut params_list = mesh_list_new();
+        params_list = mesh_list_append(params_list, id as u64);
+        let result = mesh_pool_query(pool, sql_ptr, params_list);
+
+        let r = &*(result as *const MeshResult);
+        if r.tag != 0 {
+            return result;
+        }
+
+        let list = r.value;
+        let list_len = mesh_list_length(list);
+        if list_len == 0 {
+            return err_result("delete: no row returned (id not found)");
+        }
+
+        let first_row = mesh_list_get(list, 0) as *mut u8;
+        ok_result(first_row)
+    }
+}
+
+/// Execute a callback inside a database transaction with automatic
+/// checkout/begin/commit-or-rollback/checkin lifecycle.
+///
+/// `Repo.transaction(pool, callback)` -> `Result<Ptr, String>`
+///
+/// Protocol:
+/// 1. Pool.checkout(pool) to get a connection handle
+/// 2. Pg.begin(conn) to start transaction
+/// 3. Call user callback with conn handle (via closure calling convention)
+/// 4. On Ok: Pg.commit(conn), Pool.checkin(pool, conn), return Ok(value)
+/// 5. On Err: Pg.rollback(conn), Pool.checkin(pool, conn), return Err(error)
+/// 6. On panic: Pg.rollback(conn), Pool.checkin(pool, conn), return Err("transaction panicked")
+#[no_mangle]
+pub extern "C" fn mesh_repo_transaction(
+    pool: u64,
+    fn_ptr: *const u8,
+    env_ptr: *const u8,
+) -> *mut u8 {
+    unsafe {
+        // 1. Checkout a connection from the pool
+        let checkout_result = mesh_pool_checkout(pool);
+        let r = &*(checkout_result as *const MeshResult);
+        if r.tag != 0 {
+            return checkout_result; // propagate checkout error
+        }
+        let conn_handle = r.value as u64;
+
+        // 2. BEGIN transaction
+        let begin_result = mesh_pg_begin(conn_handle);
+        let br = &*(begin_result as *const MeshResult);
+        if br.tag != 0 {
+            // BEGIN failed -- checkin and return error
+            mesh_pool_checkin(pool, conn_handle);
+            return begin_result;
+        }
+
+        // 3. Call the user callback with catch_unwind for panic safety
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            if env_ptr.is_null() {
+                let f: extern "C" fn(u64) -> *mut u8 = std::mem::transmute(fn_ptr);
+                f(conn_handle)
+            } else {
+                let f: extern "C" fn(*const u8, u64) -> *mut u8 = std::mem::transmute(fn_ptr);
+                f(env_ptr, conn_handle)
+            }
+        }));
+
+        match result {
+            Ok(result_ptr) => {
+                // Check if callback returned Ok or Err
+                let cr = &*(result_ptr as *const MeshResult);
+                if cr.tag == 0 {
+                    // Success -> COMMIT
+                    let commit_result = mesh_pg_commit(conn_handle);
+                    let cmr = &*(commit_result as *const MeshResult);
+                    if cmr.tag != 0 {
+                        // COMMIT failed -> ROLLBACK
+                        let _ = mesh_pg_rollback(conn_handle);
+                        mesh_pool_checkin(pool, conn_handle);
+                        return err_result("transaction: COMMIT failed");
+                    }
+                    mesh_pool_checkin(pool, conn_handle);
+                    result_ptr // return Ok(value) from callback
+                } else {
+                    // Error -> ROLLBACK
+                    let _ = mesh_pg_rollback(conn_handle);
+                    mesh_pool_checkin(pool, conn_handle);
+                    result_ptr // propagate the Err result from callback
+                }
+            }
+            Err(_) => {
+                // Panic -> ROLLBACK
+                let _ = mesh_pg_rollback(conn_handle);
+                mesh_pool_checkin(pool, conn_handle);
+                err_result("transaction aborted: panic in callback")
+            }
+        }
     }
 }
 

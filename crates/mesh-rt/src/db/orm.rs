@@ -124,6 +124,11 @@ fn build_select_sql(
 }
 
 /// Build an INSERT SQL string from pure Rust types.
+/// Public within crate for use by repo.rs write operations.
+pub(crate) fn build_insert_sql_pure(table: &str, columns: &[String], returning: &[String]) -> String {
+    build_insert_sql(table, columns, returning)
+}
+
 fn build_insert_sql(table: &str, columns: &[String], returning: &[String]) -> String {
     let mut sql = String::new();
 
@@ -153,6 +158,16 @@ fn build_insert_sql(table: &str, columns: &[String], returning: &[String]) -> St
 }
 
 /// Build an UPDATE SQL string from pure Rust types.
+/// Public within crate for use by repo.rs write operations.
+pub(crate) fn build_update_sql_pure(
+    table: &str,
+    set_columns: &[String],
+    wheres: &[String],
+    returning: &[String],
+) -> String {
+    build_update_sql(table, set_columns, wheres, returning)
+}
+
 fn build_update_sql(
     table: &str,
     set_columns: &[String],
@@ -210,6 +225,11 @@ fn build_update_sql(
 }
 
 /// Build a DELETE SQL string from pure Rust types.
+/// Public within crate for use by repo.rs write operations.
+pub(crate) fn build_delete_sql_pure(table: &str, wheres: &[String], returning: &[String]) -> String {
+    build_delete_sql(table, wheres, returning)
+}
+
 fn build_delete_sql(table: &str, wheres: &[String], returning: &[String]) -> String {
     let mut sql = String::new();
     let mut param_idx = 1;
