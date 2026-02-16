@@ -10,11 +10,11 @@ See: .planning/PROJECT.md (updated 2026-02-16)
 ## Current Position
 
 Phase: 96 of 102 (Compiler Additions)
-Plan: 2 of 5 in current phase
+Plan: 3 of 5 in current phase
 Status: Executing
-Last activity: 2026-02-16 -- Completed 96-02 (Keyword Args + Multi-line Pipes)
+Last activity: 2026-02-16 -- Completed 96-03 (Struct Update Expression)
 
-Progress: [██░░░░░░░░] 10% (2/20 plans)
+Progress: [██░░░░░░░░] 15% (3/20 plans)
 
 ## Performance Metrics
 
@@ -37,6 +37,8 @@ Progress: [██░░░░░░░░] 10% (2/20 plans)
 - 96-02: Keyword args reuse MAP_LITERAL/MAP_ENTRY nodes with is_keyword_entry() detection via COLON vs FAT_ARROW.
 - 96-02: Multi-line pipe continuation uses peek_past_newlines() in Pratt loop (not lexer-level newline suppression).
 - 96-02: Keyword entry keys are NAME_REF nodes; typeck returns String type, MIR lowerer converts to StringLit.
+- 96-03: Struct update %{base | field: value} disambiguated from map literal via parse-then-check (BAR vs FAT_ARROW after first expr).
+- 96-03: Struct update reuses STRUCT_LITERAL_FIELD nodes; codegen copies base fields then overwrites specified overrides (value semantics).
 
 ### Roadmap Evolution
 
@@ -65,6 +67,6 @@ Known limitations relevant to ORM development:
 ## Session Continuity
 
 Last session: 2026-02-16
-Stopped at: Completed 96-02-PLAN.md (Keyword Args + Multi-line Pipes)
+Stopped at: Completed 96-03-PLAN.md (Struct Update Expression)
 Resume file: None
-Next action: Execute 96-03-PLAN.md
+Next action: Execute 96-04-PLAN.md
