@@ -9,12 +9,12 @@ See: .planning/PROJECT.md (updated 2026-02-16)
 
 ## Current Position
 
-Phase: 99 of 102 (Changesets)
-Plan: 1 of 2 in current phase
-Status: In progress
-Last activity: 2026-02-16 -- Completed 99-01 (Changeset struct + cast + validation pipeline)
+Phase: 99 of 102 (Changesets) -- COMPLETE
+Plan: 2 of 2 in current phase
+Status: Phase complete
+Last activity: 2026-02-16 -- Completed 99-02 (Repo changeset integration + constraint mapping)
 
-Progress: [█████░░░░░] 55% (11/20 plans)
+Progress: [██████░░░░] 60% (12/20 plans)
 
 ## Performance Metrics
 
@@ -72,6 +72,10 @@ Progress: [█████░░░░░] 55% (11/20 plans)
 - 99-01: First error per field wins; subsequent validators skip fields with existing errors.
 - 99-01: Typeck signatures use concrete types (Map<String,String>, List<Atom>) for user-facing params; Ptr only for opaque changeset returns.
 - 99-01: Parser allows CAST_KW after dot in field access (Changeset.cast) since cast is both a service keyword and a method name.
+- 99-02: PG errors use tab-separated structured format (sqlstate\tconstraint\ttable\tcolumn\tmessage) for constraint mapping.
+- 99-02: Constraint names parsed via PostgreSQL convention: {table}_{column}_{key|fkey|pkey|check} for field extraction.
+- 99-02: Invalid changesets short-circuit before SQL execution, returning Err(changeset) immediately.
+- 99-02: Unmapped PG errors get generic _base error on changeset rather than losing error information.
 
 ### Roadmap Evolution
 
@@ -100,6 +104,6 @@ Known limitations relevant to ORM development:
 ## Session Continuity
 
 Last session: 2026-02-16
-Stopped at: Completed 99-01-PLAN.md (Changeset struct + cast + validation pipeline)
+Stopped at: Completed 99-02-PLAN.md (Repo changeset integration + constraint mapping)
 Resume file: None
-Next action: Execute 99-02-PLAN.md (Repo.insert_changeset / Repo.update_changeset integration)
+Next action: Begin Phase 100 (Relationships) or Phase 101 (Migrations)
