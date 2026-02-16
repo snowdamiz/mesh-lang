@@ -263,6 +263,19 @@ fn effective_return_type(expr: &MirExpr) -> MirType {
     }
 }
 
+/// Map a MIR type to its PostgreSQL SQL type string.
+///
+/// Used by `generate_schema_metadata` to produce `__field_types__()` entries.
+fn mir_type_to_sql_type(ty: &MirType) -> &'static str {
+    match ty {
+        MirType::Int => "BIGINT",
+        MirType::Float => "DOUBLE PRECISION",
+        MirType::Bool => "BOOLEAN",
+        MirType::String => "TEXT",
+        _ => "TEXT", // Default fallback for Ptr and other types
+    }
+}
+
 impl<'a> Lowerer<'a> {
     fn new(typeck: &'a TypeckResult, parse: &'a Parse, module_name: &str, pub_fns: &HashSet<String>) -> Self {
         Lowerer {
@@ -1795,10 +1808,41 @@ impl<'a> Lowerer<'a> {
             // Schema: only via explicit deriving(Schema), never auto-derived
             if derive_list.iter().any(|t| t == "Schema") {
                 let relationships = struct_def.relationships();
-                self.generate_schema_metadata(&name, &fields, &relationships);
-            }
+                let schema_opts = struct_def.schema_options();
 
-            self.structs.push(MirStructDef { name, fields });
+                // Extract schema option values.
+                let mut custom_table: Option<String> = None;
+                let mut custom_pk: Option<String> = None;
+                let mut has_timestamps = false;
+                for opt in &schema_opts {
+                    if let Some(opt_name) = opt.option_name() {
+                        match opt_name.as_str() {
+                            "table" => custom_table = opt.string_value(),
+                            "primary_key" => custom_pk = opt.atom_value(),
+                            "timestamps" => has_timestamps = opt.bool_value().unwrap_or(false),
+                            _ => {}
+                        }
+                    }
+                }
+
+                // Inject timestamp fields if requested.
+                let mut schema_fields = fields.clone();
+                if has_timestamps {
+                    schema_fields.push(("inserted_at".to_string(), MirType::String));
+                    schema_fields.push(("updated_at".to_string(), MirType::String));
+                }
+
+                self.generate_schema_metadata(&name, &schema_fields, &relationships, custom_table, custom_pk, has_timestamps);
+
+                // Use extended fields (with timestamps) for the struct layout.
+                if has_timestamps {
+                    self.structs.push(MirStructDef { name, fields: schema_fields });
+                } else {
+                    self.structs.push(MirStructDef { name, fields });
+                }
+            } else {
+                self.structs.push(MirStructDef { name, fields });
+            }
         }
         // For generic structs: trait functions generated lazily at instantiation
         // via ensure_monomorphized_struct_trait_fns. The MirStructDef is also
@@ -4346,20 +4390,25 @@ impl<'a> Lowerer<'a> {
 
     /// Generate Schema metadata functions for a struct with `deriving(Schema)`.
     ///
-    /// Generates four synthetic MIR functions:
-    /// - `{Name}____table__()` -> String (lowercased, pluralized struct name)
+    /// Generates synthetic MIR functions:
+    /// - `{Name}____table__()` -> String (lowercased, pluralized struct name or custom)
     /// - `{Name}____fields__()` -> List<String> (field name strings)
-    /// - `{Name}____primary_key__()` -> String (default: "id")
+    /// - `{Name}____primary_key__()` -> String (default: "id" or custom)
     /// - `{Name}____relationships__()` -> List<String> (encoded as "kind:name:target")
+    /// - `{Name}____field_types__()` -> List<String> (encoded as "field:SQL_TYPE")
+    /// - `{Name}____{field}_col__()` -> String (per-field column accessor)
     fn generate_schema_metadata(
         &mut self,
         name: &str,
         fields: &[(String, MirType)],
         relationships: &[RelationshipDecl],
+        custom_table: Option<String>,
+        custom_pk: Option<String>,
+        _has_timestamps: bool,
     ) {
         // ── __table__() ──────────────────────────────────────────────
-        // Returns lowercased struct name + "s" (naive pluralization).
-        let table_name = format!("{}s", name.to_lowercase());
+        // Returns custom table name or lowercased struct name + "s" (naive pluralization).
+        let table_name = custom_table.unwrap_or_else(|| format!("{}s", name.to_lowercase()));
         let table_fn_name = format!("{}____table__", name);
         self.functions.push(MirFunction {
             name: table_fn_name.clone(),
@@ -4400,13 +4449,14 @@ impl<'a> Lowerer<'a> {
         );
 
         // ── __primary_key__() ────────────────────────────────────────
-        // Returns "id" as the default primary key.
+        // Returns custom primary key or "id" as the default.
+        let pk_value = custom_pk.unwrap_or_else(|| "id".to_string());
         let pk_fn_name = format!("{}____primary_key__", name);
         self.functions.push(MirFunction {
             name: pk_fn_name.clone(),
             params: vec![],
             return_type: MirType::String,
-            body: MirExpr::StringLit("id".to_string(), MirType::String),
+            body: MirExpr::StringLit(pk_value, MirType::String),
             is_closure_fn: false,
             captures: vec![],
             has_tail_calls: false,
@@ -4447,6 +4497,52 @@ impl<'a> Lowerer<'a> {
             rels_fn_name,
             MirType::FnPtr(vec![], Box::new(MirType::Ptr)),
         );
+
+        // ── __field_types__() ────────────────────────────────────────
+        // Returns List<String> where each entry is "field_name:SQL_TYPE".
+        let field_type_elements: Vec<MirExpr> = fields
+            .iter()
+            .map(|(fname, fty)| {
+                let sql_type = mir_type_to_sql_type(fty);
+                MirExpr::StringLit(format!("{}:{}", fname, sql_type), MirType::String)
+            })
+            .collect();
+        let ft_fn_name = format!("{}____field_types__", name);
+        self.functions.push(MirFunction {
+            name: ft_fn_name.clone(),
+            params: vec![],
+            return_type: MirType::Ptr,
+            body: MirExpr::ListLit {
+                elements: field_type_elements,
+                ty: MirType::Ptr,
+            },
+            is_closure_fn: false,
+            captures: vec![],
+            has_tail_calls: false,
+        });
+        self.known_functions.insert(
+            ft_fn_name,
+            MirType::FnPtr(vec![], Box::new(MirType::Ptr)),
+        );
+
+        // ── Per-field column accessors ───────────────────────────────
+        // User.__name_col__() -> "name"
+        for (fname, _fty) in fields {
+            let col_fn_name = format!("{}____{}_col__", name, fname);
+            self.functions.push(MirFunction {
+                name: col_fn_name.clone(),
+                params: vec![],
+                return_type: MirType::String,
+                body: MirExpr::StringLit(fname.clone(), MirType::String),
+                is_closure_fn: false,
+                captures: vec![],
+                has_tail_calls: false,
+            });
+            self.known_functions.insert(
+                col_fn_name,
+                MirType::FnPtr(vec![], Box::new(MirType::String)),
+            );
+        }
     }
 
     /// Emit a from_json extraction for a value of the given MIR type.
@@ -6236,7 +6332,7 @@ impl<'a> Lowerer<'a> {
                     }
 
                     // Check if this is StructName.__table__/__fields__/__primary_key__/__relationships__
-                    // (Schema metadata functions from deriving(Schema)).
+                    // __field_types__ or __*_col__ (Schema metadata functions from deriving(Schema)).
                     // Mangled name: {Name}____{method} e.g. User____table__
                     if self.registry.struct_defs.contains_key(&base_name) {
                         let field = fa
@@ -6245,6 +6341,8 @@ impl<'a> Lowerer<'a> {
                             .unwrap_or_default();
                         if field == "__table__" || field == "__fields__"
                             || field == "__primary_key__" || field == "__relationships__"
+                            || field == "__field_types__"
+                            || (field.starts_with("__") && field.ends_with("_col__"))
                         {
                             let fn_name = format!("{}__{}", base_name, field);
                             if let Some(fn_ty) = self.known_functions.get(&fn_name).cloned() {

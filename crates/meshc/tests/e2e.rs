@@ -3344,3 +3344,121 @@ end
 "#);
     assert_eq!(output, "items\n");
 }
+
+// ── Schema metadata: field types, column accessors, schema options, timestamps (Phase 97) ──
+
+/// deriving(Schema) __field_types__() returns SQL type mappings.
+#[test]
+fn e2e_schema_field_types() {
+    let output = compile_and_run(r#"
+struct User do
+  id :: String
+  name :: String
+  age :: Int
+  active :: Bool
+  score :: Float
+end deriving(Schema)
+
+fn main() do
+  let types = User.__field_types__()
+  println(List.get(types, 0))
+  println(List.get(types, 2))
+  println(List.get(types, 3))
+  println(List.get(types, 4))
+end
+"#);
+    assert_eq!(output, "id:TEXT\nage:BIGINT\nactive:BOOLEAN\nscore:DOUBLE PRECISION\n");
+}
+
+/// deriving(Schema) per-field column accessors return column name strings.
+#[test]
+fn e2e_schema_column_accessor() {
+    let output = compile_and_run(r#"
+struct User do
+  id :: String
+  name :: String
+  email :: String
+end deriving(Schema)
+
+fn main() do
+  println(User.__name_col__())
+  println(User.__email_col__())
+  println(User.__id_col__())
+end
+"#);
+    assert_eq!(output, "name\nemail\nid\n");
+}
+
+/// deriving(Schema) with `table "people"` overrides default table name.
+#[test]
+fn e2e_schema_custom_table_name() {
+    let output = compile_and_run(r#"
+struct User do
+  table "people"
+  id :: String
+  name :: String
+end deriving(Schema)
+
+fn main() do
+  println(User.__table__())
+end
+"#);
+    assert_eq!(output, "people\n");
+}
+
+/// deriving(Schema) with `primary_key :uuid` overrides default "id".
+#[test]
+fn e2e_schema_custom_primary_key() {
+    let output = compile_and_run(r#"
+struct User do
+  primary_key :uuid
+  uuid :: String
+  name :: String
+end deriving(Schema)
+
+fn main() do
+  println(User.__primary_key__())
+end
+"#);
+    assert_eq!(output, "uuid\n");
+}
+
+/// deriving(Schema) with `timestamps true` injects inserted_at/updated_at fields.
+#[test]
+fn e2e_schema_timestamps() {
+    let output = compile_and_run(r#"
+struct User do
+  timestamps true
+  id :: String
+  name :: String
+end deriving(Schema)
+
+fn main() do
+  let fields = User.__fields__()
+  let types = User.__field_types__()
+  let n = List.length(fields)
+  println("${n}")
+  println(List.get(fields, 2))
+  println(List.get(fields, 3))
+  println(List.get(types, 2))
+end
+"#);
+    assert_eq!(output, "4\ninserted_at\nupdated_at\ninserted_at:TEXT\n");
+}
+
+/// deriving(Schema) defaults unchanged without options (backward compatibility).
+#[test]
+fn e2e_schema_defaults_unchanged() {
+    let output = compile_and_run(r#"
+struct Post do
+  id :: String
+  title :: String
+end deriving(Schema)
+
+fn main() do
+  println(Post.__table__())
+  println(Post.__primary_key__())
+end
+"#);
+    assert_eq!(output, "posts\nid\n");
+}
