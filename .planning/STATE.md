@@ -10,11 +10,11 @@ See: .planning/PROJECT.md (updated 2026-02-16)
 ## Current Position
 
 Phase: 102 of 102 (Mesher Rewrite)
-Plan: 1 of 3 in current phase
-Status: Plan 102-01 complete
-Last activity: 2026-02-16 -- Plan 102-01 complete (Schema struct conversion + initial migration)
+Plan: 2 of 3 in current phase
+Status: Plan 102-02 complete
+Last activity: 2026-02-16 -- Plan 102-02 complete (CRUD query conversion to ORM)
 
-Progress: [█████████░] 90% (18/20 plans)
+Progress: [█████████░] 95% (19/20 plans)
 
 ## Performance Metrics
 
@@ -95,6 +95,9 @@ Progress: [█████████░] 90% (18/20 plans)
 - 102-01: All indexes use raw Pool.execute for exact name control and support of partial/GIN/DESC indexes.
 - 102-01: Blank lines between consecutive Pool.execute calls in migration file to prevent Mesh parser multi-line continuation interference.
 - 102-01: Migration.create_index takes 4 args (pool, table, columns, options) not 5 -- index name is auto-generated.
+- 102-02: Cross-module Schema metadata requires both trait impl registration during deriving(Schema) and env re-registration during struct import.
+- 102-02: Repo.delete returns Map (RETURNING *) not Int; wrapper returns Ok(1) to preserve Int!String signature.
+- 102-02: ORM conversions only for simple CRUD; raw SQL kept for PG functions, JOINs, casts, conditional updates, analytics.
 
 ### Roadmap Evolution
 
@@ -123,6 +126,6 @@ Known limitations relevant to ORM development:
 ## Session Continuity
 
 Last session: 2026-02-16
-Stopped at: Completed 102-01-PLAN.md (Schema struct conversion + initial migration)
+Stopped at: Completed 102-02-PLAN.md (CRUD query conversion to ORM)
 Resume file: None
-Next action: Execute 102-02-PLAN.md (Mesher Rewrite -- next plan)
+Next action: Execute 102-03-PLAN.md (Mesher Rewrite -- final plan)
