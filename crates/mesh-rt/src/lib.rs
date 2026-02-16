@@ -93,7 +93,7 @@ pub use iter::{
     mesh_iter_enumerate, mesh_iter_enumerate_next,
     mesh_iter_zip, mesh_iter_zip_next,
     mesh_iter_count, mesh_iter_sum, mesh_iter_any, mesh_iter_all, mesh_iter_find, mesh_iter_reduce,
-    mesh_list_collect, mesh_map_collect, mesh_set_collect, mesh_string_collect,
+    mesh_list_collect, mesh_map_collect, mesh_map_collect_string_keys, mesh_set_collect, mesh_string_collect,
 };
 pub use option::{MeshOption, alloc_option};
 pub use file::{

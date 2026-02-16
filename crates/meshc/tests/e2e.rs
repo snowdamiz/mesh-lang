@@ -2793,6 +2793,16 @@ fn e2e_collect_set_string() {
     assert_eq!(output, "3\n3\ntrue\nhello world\nabc\n");
 }
 
+/// Phase 96 COMP-07: Map.collect with string keys roundtrip.
+/// Collect string-keyed tuple iterator back into a Map with correct key_type.
+/// Map.get on collected map uses string comparison, not integer comparison.
+#[test]
+fn e2e_collect_map_string_keys() {
+    let source = read_fixture("collect_map_string_keys.mpl");
+    let output = compile_and_run(&source);
+    assert_eq!(output, "1\n2\n3\n");
+}
+
 // ── Phase 87.1: Codegen Bug Fixes ──────────────────────────────────────
 
 /// Phase 87.1: Err(e) variable binding in pattern matching compiles and runs.

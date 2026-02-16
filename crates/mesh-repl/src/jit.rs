@@ -202,6 +202,7 @@ fn register_runtime_symbols() {
     // Collect operations
     add_sym("mesh_list_collect", mesh_rt::mesh_list_collect as *const ());
     add_sym("mesh_map_collect", mesh_rt::mesh_map_collect as *const ());
+    add_sym("mesh_map_collect_string_keys", mesh_rt::mesh_map_collect_string_keys as *const ());
     add_sym("mesh_set_collect", mesh_rt::mesh_set_collect as *const ());
     add_sym("mesh_string_collect", mesh_rt::mesh_string_collect as *const ());
 

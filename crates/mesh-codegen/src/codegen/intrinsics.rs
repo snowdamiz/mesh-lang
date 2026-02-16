@@ -883,6 +883,8 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
     module.add_function("mesh_list_collect", ptr_type.fn_type(&[ptr_type.into()], false), Some(inkwell::module::Linkage::External));
     // mesh_map_collect(iter: ptr) -> ptr
     module.add_function("mesh_map_collect", ptr_type.fn_type(&[ptr_type.into()], false), Some(inkwell::module::Linkage::External));
+    // mesh_map_collect_string_keys(iter: ptr) -> ptr (Phase 96: string key variant)
+    module.add_function("mesh_map_collect_string_keys", ptr_type.fn_type(&[ptr_type.into()], false), Some(inkwell::module::Linkage::External));
     // mesh_set_collect(iter: ptr) -> ptr
     module.add_function("mesh_set_collect", ptr_type.fn_type(&[ptr_type.into()], false), Some(inkwell::module::Linkage::External));
     // mesh_string_collect(iter: ptr) -> ptr

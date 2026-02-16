@@ -559,6 +559,30 @@ pub extern "C" fn mesh_map_collect(iter: *mut u8) -> *mut u8 {
     }
 }
 
+/// Map.collect(iter) variant for string keys -- materialize iterator of (key, value)
+/// tuples into a Map with string key_type (KEY_TYPE_STR = 1).
+/// Called by codegen when the type checker infers the map's key type as String.
+#[no_mangle]
+pub extern "C" fn mesh_map_collect_string_keys(iter: *mut u8) -> *mut u8 {
+    unsafe {
+        // Create map with string key_type from the start (key_type = 1)
+        let mut map = crate::collections::map::mesh_map_new_typed(1);
+        loop {
+            let option = mesh_iter_generic_next(iter);
+            let opt_ref = option as *mut MeshOption;
+            if (*opt_ref).tag == 1 {
+                break; // None
+            }
+            let tuple_ptr = (*opt_ref).value as *mut u8;
+            // Tuple layout: { u64 len=2, u64 key, u64 value }
+            let key = *((tuple_ptr as *const u64).add(1));
+            let val = *((tuple_ptr as *const u64).add(2));
+            map = mesh_map_put(map, key, val);
+        }
+        map
+    }
+}
+
 /// Set.collect(iter) -- materialize iterator into a Set.
 /// Duplicates are handled automatically by mesh_set_add.
 #[no_mangle]

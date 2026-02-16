@@ -385,19 +385,63 @@ impl<'a> Lowerer<'a> {
     /// Returns 1 for String keys, 0 for everything else (Int or unresolved).
     fn infer_map_key_type(&self, call_range: TextRange) -> i64 {
         if let Some(ty) = self.types.get(&call_range) {
-            // The resolved type should be Map<K, V> i.e. Ty::App(Con("Map"), [K, V]).
-            if let Ty::App(con, args) = ty {
-                if let Ty::Con(ref tc) = **con {
-                    if tc.name == "Map" && !args.is_empty() {
-                        // Check if the first type argument (key type) is String.
-                        if args[0] == Ty::string() {
-                            return 1; // KEY_TYPE_STR
-                        }
-                    }
-                }
+            if Self::ty_has_string_map_keys(ty) {
+                return 1;
             }
         }
         0 // KEY_TYPE_INT (default)
+    }
+
+    /// Check if a Ty represents Map<String, V> or List<(String, V)> (i.e., has
+    /// string keys that should be preserved through collect operations).
+    fn ty_has_string_map_keys(ty: &Ty) -> bool {
+        match ty {
+            Ty::App(con, args) => {
+                if let Ty::Con(ref tc) = **con {
+                    match tc.name.as_str() {
+                        "Map" if !args.is_empty() => args[0] == Ty::string(),
+                        "List" if !args.is_empty() => {
+                            // Check if the element is a tuple (String, V)
+                            if let Ty::Tuple(elems) = &args[0] {
+                                !elems.is_empty() && elems[0] == Ty::string()
+                            } else {
+                                false
+                            }
+                        }
+                        _ => false,
+                    }
+                } else {
+                    false
+                }
+            }
+            _ => false,
+        }
+    }
+
+    /// Walk a pipe chain backwards to determine if the source data has string
+    /// map keys. Used for Map.collect dispatch: when the source of the pipe
+    /// chain is a List<(String, V)> or Map<String, V>, the collected map needs
+    /// string key_type (1) rather than integer key_type (0).
+    fn pipe_chain_has_string_keys(&self, pipe: &PipeExpr) -> bool {
+        // Walk backwards through the pipe chain until we find a non-pipe LHS.
+        let mut current_lhs = pipe.lhs();
+        loop {
+            match current_lhs {
+                Some(Expr::PipeExpr(inner_pipe)) => {
+                    // Check the inner pipe's LHS type -- if it's not a pipe,
+                    // check its typeck type for string keys.
+                    current_lhs = inner_pipe.lhs();
+                }
+                Some(ref expr) => {
+                    // Found the deepest non-pipe expression. Check its typeck type.
+                    if let Some(ty) = self.types.get(&expr.syntax().text_range()) {
+                        return Self::ty_has_string_map_keys(ty);
+                    }
+                    return false;
+                }
+                None => return false,
+            }
+        }
     }
 
     // ── Top-level lowering ───────────────────────────────────────────
@@ -6019,7 +6063,7 @@ impl<'a> Lowerer<'a> {
         let rhs = pipe.rhs();
         let ty = self.resolve_range(pipe.syntax().text_range());
 
-        match rhs {
+        let mut result = match rhs {
             Some(Expr::CallExpr(call)) => {
                 // `x |> f(a, b)` -> `f(x, a, b)` -- prepend lhs to existing args.
                 let callee = call.callee().map(|e| self.lower_expr(&e));
@@ -6050,7 +6094,24 @@ impl<'a> Lowerer<'a> {
                 }
             }
             None => MirExpr::Unit,
+        };
+
+        // Phase 96: Map.collect string key detection.
+        // If the pipe result is mesh_map_collect and the pipe chain's source
+        // has string keys (e.g., List<(String, V)> or Map<String, V>), swap
+        // to the string-key variant.
+        if let MirExpr::Call { ref mut func, .. } = result {
+            if let MirExpr::Var(ref name, _) = **func {
+                if name == "mesh_map_collect" {
+                    if self.pipe_chain_has_string_keys(pipe) {
+                        let fn_ty = MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Ptr));
+                        **func = MirExpr::Var("mesh_map_collect_string_keys".to_string(), fn_ty);
+                    }
+                }
+            }
         }
+
+        result
     }
 
     // ── Field access lowering ────────────────────────────────────────
