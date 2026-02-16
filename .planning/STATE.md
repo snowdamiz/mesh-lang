@@ -5,16 +5,16 @@
 See: .planning/PROJECT.md (updated 2026-02-16)
 
 **Core value:** Expressive, readable concurrency -- writing concurrent programs should feel as natural and clean as writing sequential code, with the safety net of supervision and fault tolerance built into the language.
-**Current focus:** v10.0 ORM -- Phase 101 (Migration System)
+**Current focus:** v10.0 ORM -- Phase 102 (Mesher Rewrite)
 
 ## Current Position
 
-Phase: 101 of 102 (Migration System) -- COMPLETE
-Plan: 3 of 3 in current phase (all plans complete)
-Status: Phase complete, verified PASSED
-Last activity: 2026-02-16 -- Phase 101 complete (Migration System)
+Phase: 102 of 102 (Mesher Rewrite)
+Plan: 1 of 3 in current phase
+Status: Plan 102-01 complete
+Last activity: 2026-02-16 -- Plan 102-01 complete (Schema struct conversion + initial migration)
 
-Progress: [█████████░] 85% (17/20 plans)
+Progress: [█████████░] 90% (18/20 plans)
 
 ## Performance Metrics
 
@@ -91,6 +91,10 @@ Progress: [█████████░] 85% (17/20 plans)
 - 101-02: Native Rust PG API (NativePgConn) added to mesh-rt for GC-free database access from meshc.
 - 101-02: Synthetic Mesh compilation used only for migration execution (up/down), not tracking table operations.
 - 101-02: Migration tracking via _mesh_migrations table (version BIGINT PK, name TEXT, applied_at TIMESTAMPTZ).
+- 102-01: Raw Pool.execute used for tables with composite UNIQUE constraints (org_memberships, issues) since Migration.create_table column spec format does not support table-level constraints.
+- 102-01: All indexes use raw Pool.execute for exact name control and support of partial/GIN/DESC indexes.
+- 102-01: Blank lines between consecutive Pool.execute calls in migration file to prevent Mesh parser multi-line continuation interference.
+- 102-01: Migration.create_index takes 4 args (pool, table, columns, options) not 5 -- index name is auto-generated.
 
 ### Roadmap Evolution
 
@@ -119,6 +123,6 @@ Known limitations relevant to ORM development:
 ## Session Continuity
 
 Last session: 2026-02-16
-Stopped at: Phase 101 complete (Migration System) -- verified PASSED
+Stopped at: Completed 102-01-PLAN.md (Schema struct conversion + initial migration)
 Resume file: None
-Next action: `/gsd:plan-phase 102` (Mesher Rewrite)
+Next action: Execute 102-02-PLAN.md (Mesher Rewrite -- next plan)
