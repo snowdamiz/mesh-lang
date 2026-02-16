@@ -9,12 +9,12 @@ See: .planning/PROJECT.md (updated 2026-02-16)
 
 ## Current Position
 
-Phase: 101 of 102 (Migration System) -- IN PROGRESS
-Plan: 3 of 3 in current phase (101-03 complete, 101-02 in parallel)
-Status: Wave 2 executing -- 101-03 scaffold generation complete
-Last activity: 2026-02-16 -- Plan 101-03 complete (Migration scaffold generation + e2e tests)
+Phase: 101 of 102 (Migration System) -- COMPLETE
+Plan: 3 of 3 in current phase (all plans complete)
+Status: Phase 101 complete -- all 3 plans executed
+Last activity: 2026-02-16 -- Plan 101-02 complete (Migration runner + native PG API)
 
-Progress: [████████░░] 80% (16/20 plans)
+Progress: [█████████░] 85% (17/20 plans)
 
 ## Performance Metrics
 
@@ -88,6 +88,9 @@ Progress: [████████░░] 80% (16/20 plans)
 - 101-03: Howard Hinnant civil_from_days algorithm for chrono-free UTC timestamp formatting (no external deps).
 - 101-03: Migration name validation: lowercase ASCII + digits + underscores only.
 - 101-03: Scaffold template includes documented Migration DSL examples as comments in up/down stubs.
+- 101-02: Native Rust PG API (NativePgConn) added to mesh-rt for GC-free database access from meshc.
+- 101-02: Synthetic Mesh compilation used only for migration execution (up/down), not tracking table operations.
+- 101-02: Migration tracking via _mesh_migrations table (version BIGINT PK, name TEXT, applied_at TIMESTAMPTZ).
 
 ### Roadmap Evolution
 
@@ -116,6 +119,6 @@ Known limitations relevant to ORM development:
 ## Session Continuity
 
 Last session: 2026-02-16
-Stopped at: Phase 101 plan 03 complete, plan 02 executing in parallel
+Stopped at: Completed 101-02-PLAN.md -- Phase 101 complete
 Resume file: None
-Next action: Complete plan 101-02 (migration runner), then phase 102
+Next action: Phase 102 (Mesher rewrite validation)
