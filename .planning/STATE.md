@@ -10,11 +10,11 @@ See: .planning/PROJECT.md (updated 2026-02-16)
 ## Current Position
 
 Phase: 96 of 102 (Compiler Additions)
-Plan: 3 of 5 in current phase
+Plan: 4 of 5 in current phase
 Status: Executing
-Last activity: 2026-02-16 -- Completed 96-03 (Struct Update Expression)
+Last activity: 2026-02-16 -- Completed 96-04 (deriving(Schema) and Relationship Declarations)
 
-Progress: [██░░░░░░░░] 15% (3/20 plans)
+Progress: [██░░░░░░░░] 20% (4/20 plans)
 
 ## Performance Metrics
 
@@ -39,6 +39,11 @@ Progress: [██░░░░░░░░] 15% (3/20 plans)
 - 96-02: Keyword entry keys are NAME_REF nodes; typeck returns String type, MIR lowerer converts to StringLit.
 - 96-03: Struct update %{base | field: value} disambiguated from map literal via parse-then-check (BAR vs FAT_ARROW after first expr).
 - 96-03: Struct update reuses STRUCT_LITERAL_FIELD nodes; codegen copies base fields then overwrites specified overrides (value semantics).
+- 96-04: Naive pluralization (lowercase + s) for table names; Phase 97 handles configurable table names.
+- 96-04: Relationship metadata encoded as "kind:name:target" strings in List<String> to avoid complex map MIR.
+- 96-04: Schema metadata functions use StructName.__method__() static syntax, same pattern as from_row/from_json.
+- 96-04: Default primary key is always "id"; Phase 97 adds schema options for override.
+- 96-04: Schema derive rejected on sum types with UnsupportedDerive error.
 
 ### Roadmap Evolution
 
@@ -67,6 +72,6 @@ Known limitations relevant to ORM development:
 ## Session Continuity
 
 Last session: 2026-02-16
-Stopped at: Completed 96-03-PLAN.md (Struct Update Expression)
+Stopped at: Completed 96-04-PLAN.md (deriving(Schema) and Relationship Declarations)
 Resume file: None
-Next action: Execute 96-04-PLAN.md
+Next action: Execute 96-05-PLAN.md
