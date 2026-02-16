@@ -2,6 +2,8 @@
 # Provides common utilities used across search, dashboard, and team handlers.
 # All functions are pub for cross-module import.
 
+from Storage.Queries import get_project_id_by_slug
+
 # Cluster-aware registry lookup.
 # In cluster mode (Node.self returns non-empty), uses Global.whereis for
 # cross-node discovery. In standalone mode, uses Process.whereis (zero overhead).
@@ -12,6 +14,22 @@ pub fn get_registry() do
     Global.whereis("mesher_registry")
   else
     Process.whereis("mesher_registry")
+  end
+end
+
+# Resolve a project identifier to a UUID.
+# If the identifier is 36 chars (UUID format), returns it directly.
+# Otherwise, treats it as a slug and looks up the project UUID from the database.
+# Returns the UUID string on success, or an empty string if slug not found.
+pub fn resolve_project_id(pool :: PoolHandle, raw_id :: String) -> String do
+  if String.length(raw_id) == 36 do
+    raw_id
+  else
+    let result = get_project_id_by_slug(pool, raw_id)
+    case result do
+      Ok(uuid) -> uuid
+      Err(_) -> ""
+    end
   end
 end
 

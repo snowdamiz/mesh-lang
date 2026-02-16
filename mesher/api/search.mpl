@@ -5,7 +5,7 @@
 
 from Ingestion.Pipeline import PipelineRegistry
 from Storage.Queries import list_issues_filtered, search_events_fulltext, filter_events_by_tag, list_events_for_issue
-from Api.Helpers import query_or_default, to_json_array, require_param, get_registry
+from Api.Helpers import query_or_default, to_json_array, require_param, get_registry, resolve_project_id
 
 # --- Shared helpers (leaf functions first, per define-before-use requirement) ---
 
@@ -150,7 +150,8 @@ end
 pub fn handle_search_issues(request) do
   let reg_pid = get_registry()
   let pool = PipelineRegistry.get_pool(reg_pid)
-  let project_id = require_param(request, "project_id")
+  let raw_id = require_param(request, "project_id")
+  let project_id = resolve_project_id(pool, raw_id)
   let status = query_or_default(request, "status", "")
   let level = query_or_default(request, "level", "")
   let assigned_to = query_or_default(request, "assigned_to", "")
@@ -197,7 +198,8 @@ end
 pub fn handle_search_events(request) do
   let reg_pid = get_registry()
   let pool = PipelineRegistry.get_pool(reg_pid)
-  let project_id = require_param(request, "project_id")
+  let raw_id = require_param(request, "project_id")
+  let project_id = resolve_project_id(pool, raw_id)
   let q = query_or_default(request, "q", "")
   let limit_str = get_limit(request)
   dispatch_event_search(pool, project_id, q, limit_str)
@@ -243,7 +245,8 @@ end
 pub fn handle_filter_by_tag(request) do
   let reg_pid = get_registry()
   let pool = PipelineRegistry.get_pool(reg_pid)
-  let project_id = require_param(request, "project_id")
+  let raw_id = require_param(request, "project_id")
+  let project_id = resolve_project_id(pool, raw_id)
   let key = query_or_default(request, "key", "")
   let value = query_or_default(request, "value", "")
   let limit_str = get_limit(request)

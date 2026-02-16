@@ -4,7 +4,7 @@
 
 from Ingestion.Pipeline import PipelineRegistry
 from Storage.Queries import create_alert_rule, list_alert_rules, toggle_alert_rule, delete_alert_rule, list_alerts, acknowledge_alert, resolve_fired_alert
-from Api.Helpers import require_param, query_or_default, to_json_array, get_registry
+from Api.Helpers import require_param, query_or_default, to_json_array, get_registry, resolve_project_id
 
 # --- Helper functions (defined before handlers) ---
 
@@ -48,7 +48,8 @@ end
 pub fn handle_create_alert_rule(request) do
   let reg_pid = get_registry()
   let pool = PipelineRegistry.get_pool(reg_pid)
-  let project_id = require_param(request, "project_id")
+  let raw_id = require_param(request, "project_id")
+  let project_id = resolve_project_id(pool, raw_id)
   let body = Request.body(request)
   let result = create_alert_rule(pool, project_id, body)
   case result do
@@ -62,7 +63,8 @@ end
 pub fn handle_list_alert_rules(request) do
   let reg_pid = get_registry()
   let pool = PipelineRegistry.get_pool(reg_pid)
-  let project_id = require_param(request, "project_id")
+  let raw_id = require_param(request, "project_id")
+  let project_id = resolve_project_id(pool, raw_id)
   let result = list_alert_rules(pool, project_id)
   case result do
     Ok(rows) -> HTTP.response(200, rows |> List.map(fn(row) do rule_row_to_json(row) end) |> to_json_array())
@@ -102,7 +104,8 @@ end
 pub fn handle_list_alerts(request) do
   let reg_pid = get_registry()
   let pool = PipelineRegistry.get_pool(reg_pid)
-  let project_id = require_param(request, "project_id")
+  let raw_id = require_param(request, "project_id")
+  let project_id = resolve_project_id(pool, raw_id)
   let status = query_or_default(request, "status", "")
   let result = list_alerts(pool, project_id, status)
   case result do

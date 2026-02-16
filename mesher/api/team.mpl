@@ -6,7 +6,7 @@
 
 from Ingestion.Pipeline import PipelineRegistry
 from Storage.Queries import get_members_with_users, add_member, update_member_role, remove_member, list_api_keys, create_api_key, revoke_api_key
-from Api.Helpers import query_or_default, to_json_array, require_param, get_registry
+from Api.Helpers import query_or_default, to_json_array, require_param, get_registry, resolve_project_id
 
 # --- Shared helpers (leaf functions first, per define-before-use requirement) ---
 
@@ -210,7 +210,8 @@ end
 pub fn handle_list_api_keys(request) do
   let reg_pid = get_registry()
   let pool = PipelineRegistry.get_pool(reg_pid)
-  let project_id = require_param(request, "project_id")
+  let raw_id = require_param(request, "project_id")
+  let project_id = resolve_project_id(pool, raw_id)
   let result = list_api_keys(pool, project_id)
   case result do
     Ok(rows) -> HTTP.response(200, rows |> List.map(fn(row) do api_key_to_json(row) end) |> to_json_array())
@@ -224,7 +225,8 @@ end
 pub fn handle_create_api_key(request) do
   let reg_pid = get_registry()
   let pool = PipelineRegistry.get_pool(reg_pid)
-  let project_id = require_param(request, "project_id")
+  let raw_id = require_param(request, "project_id")
+  let project_id = resolve_project_id(pool, raw_id)
   let body = Request.body(request)
   do_create_key(pool, project_id, body)
 end

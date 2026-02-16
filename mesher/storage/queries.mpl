@@ -53,6 +53,17 @@ pub fn insert_project(pool :: PoolHandle, org_id :: String, name :: String, plat
   end
 end
 
+# Resolve a project slug to its UUID. Returns the id as a string.
+# Used by API handlers to support slug-based project identifiers (e.g. "default").
+pub fn get_project_id_by_slug(pool :: PoolHandle, slug :: String) -> String!String do
+  let rows = Pool.query(pool, "SELECT id::text FROM projects WHERE slug = $1", [slug])?
+  if List.length(rows) > 0 do
+    Ok(Map.get(List.head(rows), "id"))
+  else
+    Err("project not found for slug: " <> slug)
+  end
+end
+
 # Get a project by ID.
 pub fn get_project(pool :: PoolHandle, id :: String) -> Project!String do
   let rows = Pool.query(pool, "SELECT id::text, org_id::text, name, platform, created_at::text FROM projects WHERE id = $1::uuid", [id])?

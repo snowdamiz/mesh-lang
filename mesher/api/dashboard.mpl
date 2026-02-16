@@ -5,7 +5,7 @@
 
 from Ingestion.Pipeline import PipelineRegistry
 from Storage.Queries import event_volume_hourly, error_breakdown_by_level, top_issues_by_frequency, event_breakdown_by_tag, issue_event_timeline, project_health_summary
-from Api.Helpers import query_or_default, to_json_array, require_param, get_registry
+from Api.Helpers import query_or_default, to_json_array, require_param, get_registry, resolve_project_id
 
 # --- Shared helpers (leaf functions first, per define-before-use requirement) ---
 
@@ -66,7 +66,8 @@ end
 pub fn handle_event_volume(request) do
   let reg_pid = get_registry()
   let pool = PipelineRegistry.get_pool(reg_pid)
-  let project_id = require_param(request, "project_id")
+  let raw_id = require_param(request, "project_id")
+  let project_id = resolve_project_id(pool, raw_id)
   let bucket = query_or_default(request, "bucket", "hour")
   let result = event_volume_hourly(pool, project_id, bucket)
   case result do
@@ -86,7 +87,8 @@ end
 pub fn handle_error_breakdown(request) do
   let reg_pid = get_registry()
   let pool = PipelineRegistry.get_pool(reg_pid)
-  let project_id = require_param(request, "project_id")
+  let raw_id = require_param(request, "project_id")
+  let project_id = resolve_project_id(pool, raw_id)
   let result = error_breakdown_by_level(pool, project_id)
   case result do
     Ok(rows) -> respond_levels(rows)
@@ -105,7 +107,8 @@ end
 pub fn handle_top_issues(request) do
   let reg_pid = get_registry()
   let pool = PipelineRegistry.get_pool(reg_pid)
-  let project_id = require_param(request, "project_id")
+  let raw_id = require_param(request, "project_id")
+  let project_id = resolve_project_id(pool, raw_id)
   let limit = query_or_default(request, "limit", "10")
   let result = top_issues_by_frequency(pool, project_id, limit)
   case result do
@@ -134,7 +137,8 @@ end
 pub fn handle_tag_breakdown(request) do
   let reg_pid = get_registry()
   let pool = PipelineRegistry.get_pool(reg_pid)
-  let project_id = require_param(request, "project_id")
+  let raw_id = require_param(request, "project_id")
+  let project_id = resolve_project_id(pool, raw_id)
   let key = query_or_default(request, "key", "")
   if String.length(key) == 0 do
     HTTP.response(400, "{\"error\":\"missing key parameter\"}")
@@ -181,7 +185,8 @@ end
 pub fn handle_project_health(request) do
   let reg_pid = get_registry()
   let pool = PipelineRegistry.get_pool(reg_pid)
-  let project_id = require_param(request, "project_id")
+  let raw_id = require_param(request, "project_id")
+  let project_id = resolve_project_id(pool, raw_id)
   let result = project_health_summary(pool, project_id)
   case result do
     Ok(rows) -> respond_health(rows)

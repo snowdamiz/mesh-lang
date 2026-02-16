@@ -21,6 +21,9 @@ pub fn create_schema(pool :: PoolHandle) -> Int!String do
   Pool.execute(pool, "ALTER TABLE alert_rules ADD COLUMN IF NOT EXISTS last_fired_at TIMESTAMPTZ", [])?
   Pool.execute(pool, "ALTER TABLE projects ADD COLUMN IF NOT EXISTS retention_days INTEGER NOT NULL DEFAULT 90", [])?
   Pool.execute(pool, "ALTER TABLE projects ADD COLUMN IF NOT EXISTS sample_rate REAL NOT NULL DEFAULT 1.0", [])?
+  Pool.execute(pool, "ALTER TABLE projects ADD COLUMN IF NOT EXISTS slug TEXT", [])?
+  Pool.execute(pool, "UPDATE projects SET slug = 'default' WHERE slug IS NULL AND id = (SELECT id FROM projects ORDER BY created_at LIMIT 1)", [])?
+  Pool.execute(pool, "CREATE UNIQUE INDEX IF NOT EXISTS idx_projects_slug ON projects(slug) WHERE slug IS NOT NULL", [])?
   Pool.execute(pool, "CREATE INDEX IF NOT EXISTS idx_org_memberships_user ON org_memberships(user_id)", [])?
   Pool.execute(pool, "CREATE INDEX IF NOT EXISTS idx_org_memberships_org ON org_memberships(org_id)", [])?
   Pool.execute(pool, "CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id)", [])?

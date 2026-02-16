@@ -4,7 +4,7 @@
 
 from Ingestion.Pipeline import PipelineRegistry
 from Storage.Queries import get_project_settings, update_project_settings, get_project_storage
-from Api.Helpers import require_param, get_registry
+from Api.Helpers import require_param, get_registry, resolve_project_id
 
 # --- Helper functions (defined before handlers) ---
 
@@ -35,7 +35,8 @@ end
 pub fn handle_get_project_settings(request) do
   let reg_pid = get_registry()
   let pool = PipelineRegistry.get_pool(reg_pid)
-  let project_id = require_param(request, "project_id")
+  let raw_id = require_param(request, "project_id")
+  let project_id = resolve_project_id(pool, raw_id)
   let result = get_project_settings(pool, project_id)
   case result do
     Ok(rows) -> settings_row_to_json(rows)
@@ -48,7 +49,8 @@ end
 pub fn handle_update_project_settings(request) do
   let reg_pid = get_registry()
   let pool = PipelineRegistry.get_pool(reg_pid)
-  let project_id = require_param(request, "project_id")
+  let raw_id = require_param(request, "project_id")
+  let project_id = resolve_project_id(pool, raw_id)
   let body = Request.body(request)
   let result = update_project_settings(pool, project_id, body)
   case result do
@@ -62,7 +64,8 @@ end
 pub fn handle_get_project_storage(request) do
   let reg_pid = get_registry()
   let pool = PipelineRegistry.get_pool(reg_pid)
-  let project_id = require_param(request, "project_id")
+  let raw_id = require_param(request, "project_id")
+  let project_id = resolve_project_id(pool, raw_id)
   let result = get_project_storage(pool, project_id)
   case result do
     Ok(rows) -> storage_row_to_json(rows)
