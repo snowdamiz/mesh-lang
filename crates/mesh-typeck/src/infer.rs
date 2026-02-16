@@ -1013,6 +1013,32 @@ fn stdlib_modules() -> HashMap<String, HashMap<String, Scheme>> {
         modules.insert("Iter".to_string(), iter_mod);
     }
 
+    // ── Orm module (Phase 97) ───────────────────────────────────────
+    {
+        let mut orm_mod = HashMap::new();
+        // Orm.build_select: fn(String, List<String>, List<String>, List<String>, Int, Int) -> String
+        orm_mod.insert("build_select".to_string(), Scheme::mono(Ty::fun(
+            vec![Ty::string(), Ty::list(Ty::string()), Ty::list(Ty::string()), Ty::list(Ty::string()), Ty::int(), Ty::int()],
+            Ty::string(),
+        )));
+        // Orm.build_insert: fn(String, List<String>, List<String>) -> String
+        orm_mod.insert("build_insert".to_string(), Scheme::mono(Ty::fun(
+            vec![Ty::string(), Ty::list(Ty::string()), Ty::list(Ty::string())],
+            Ty::string(),
+        )));
+        // Orm.build_update: fn(String, List<String>, List<String>, List<String>) -> String
+        orm_mod.insert("build_update".to_string(), Scheme::mono(Ty::fun(
+            vec![Ty::string(), Ty::list(Ty::string()), Ty::list(Ty::string()), Ty::list(Ty::string())],
+            Ty::string(),
+        )));
+        // Orm.build_delete: fn(String, List<String>, List<String>) -> String
+        orm_mod.insert("build_delete".to_string(), Scheme::mono(Ty::fun(
+            vec![Ty::string(), Ty::list(Ty::string()), Ty::list(Ty::string())],
+            Ty::string(),
+        )));
+        modules.insert("Orm".to_string(), orm_mod);
+    }
+
     modules
 }
 
@@ -1024,6 +1050,7 @@ const STDLIB_MODULE_NAMES: &[&str] = &[
     "Global",  // Phase 68
     "Iter",  // Phase 76
     "Ws",  // Phase 88
+    "Orm",  // Phase 97
 ];
 
 /// Check if a name is a known stdlib module.

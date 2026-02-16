@@ -890,6 +890,28 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
     // mesh_string_collect(iter: ptr) -> ptr
     module.add_function("mesh_string_collect", ptr_type.fn_type(&[ptr_type.into()], false), Some(inkwell::module::Linkage::External));
 
+    // ── Phase 97: ORM SQL Generation ──────────────────────────────────
+
+    // mesh_orm_build_select(table: ptr, columns: ptr, where_clauses: ptr, order_by: ptr, limit: i64, offset: i64) -> ptr
+    module.add_function("mesh_orm_build_select",
+        ptr_type.fn_type(&[ptr_type.into(), ptr_type.into(), ptr_type.into(), ptr_type.into(), i64_type.into(), i64_type.into()], false),
+        Some(inkwell::module::Linkage::External));
+
+    // mesh_orm_build_insert(table: ptr, columns: ptr, returning: ptr) -> ptr
+    module.add_function("mesh_orm_build_insert",
+        ptr_type.fn_type(&[ptr_type.into(), ptr_type.into(), ptr_type.into()], false),
+        Some(inkwell::module::Linkage::External));
+
+    // mesh_orm_build_update(table: ptr, set_columns: ptr, where_clauses: ptr, returning: ptr) -> ptr
+    module.add_function("mesh_orm_build_update",
+        ptr_type.fn_type(&[ptr_type.into(), ptr_type.into(), ptr_type.into(), ptr_type.into()], false),
+        Some(inkwell::module::Linkage::External));
+
+    // mesh_orm_build_delete(table: ptr, where_clauses: ptr, returning: ptr) -> ptr
+    module.add_function("mesh_orm_build_delete",
+        ptr_type.fn_type(&[ptr_type.into(), ptr_type.into(), ptr_type.into()], false),
+        Some(inkwell::module::Linkage::External));
+
     // ── Phase 68: Global Registry ──────────────────────────────────────
 
     // mesh_global_register(name_ptr: ptr, name_len: i64, pid: i64) -> i64
@@ -1245,6 +1267,12 @@ mod tests {
         assert!(module.get_function("mesh_map_collect").is_some());
         assert!(module.get_function("mesh_set_collect").is_some());
         assert!(module.get_function("mesh_string_collect").is_some());
+
+        // Phase 97: ORM SQL Generation
+        assert!(module.get_function("mesh_orm_build_select").is_some());
+        assert!(module.get_function("mesh_orm_build_insert").is_some());
+        assert!(module.get_function("mesh_orm_build_update").is_some());
+        assert!(module.get_function("mesh_orm_build_delete").is_some());
     }
 
     #[test]

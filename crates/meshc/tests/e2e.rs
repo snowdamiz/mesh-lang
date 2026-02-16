@@ -3462,3 +3462,74 @@ end
 "#);
     assert_eq!(output, "posts\nid\n");
 }
+
+// ── Phase 97: ORM SQL Generation ─────────────────────────────────────
+
+/// Orm.build_select with columns, where, order, and limit.
+#[test]
+fn e2e_orm_build_select_simple() {
+    let output = compile_and_run(r#"
+fn main() do
+  let cols = ["id", "name"]
+  let wheres = ["name ="]
+  let orders = ["name ASC"]
+  let sql = Orm.build_select("users", cols, wheres, orders, 10, -1)
+  println(sql)
+end
+"#);
+    assert_eq!(output, "SELECT \"id\", \"name\" FROM \"users\" WHERE \"name\" = $1 ORDER BY \"name\" ASC LIMIT 10\n");
+}
+
+/// Orm.build_select with no columns (SELECT *), no where, no order.
+#[test]
+fn e2e_orm_build_select_all() {
+    let output = compile_and_run(r#"
+fn main() do
+  let sql = Orm.build_select("users", [], [], [], -1, -1)
+  println(sql)
+end
+"#);
+    assert_eq!(output, "SELECT * FROM \"users\"\n");
+}
+
+/// Orm.build_insert with columns and RETURNING.
+#[test]
+fn e2e_orm_build_insert() {
+    let output = compile_and_run(r#"
+fn main() do
+  let cols = ["name", "email"]
+  let returning = ["id"]
+  let sql = Orm.build_insert("users", cols, returning)
+  println(sql)
+end
+"#);
+    assert_eq!(output, "INSERT INTO \"users\" (\"name\", \"email\") VALUES ($1, $2) RETURNING \"id\"\n");
+}
+
+/// Orm.build_update with SET, WHERE, and RETURNING.
+#[test]
+fn e2e_orm_build_update() {
+    let output = compile_and_run(r#"
+fn main() do
+  let set_cols = ["name", "email"]
+  let wheres = ["id ="]
+  let returning = ["id", "name"]
+  let sql = Orm.build_update("users", set_cols, wheres, returning)
+  println(sql)
+end
+"#);
+    assert_eq!(output, "UPDATE \"users\" SET \"name\" = $1, \"email\" = $2 WHERE \"id\" = $3 RETURNING \"id\", \"name\"\n");
+}
+
+/// Orm.build_delete with WHERE clause.
+#[test]
+fn e2e_orm_build_delete() {
+    let output = compile_and_run(r#"
+fn main() do
+  let wheres = ["id ="]
+  let sql = Orm.build_delete("users", wheres, [])
+  println(sql)
+end
+"#);
+    assert_eq!(output, "DELETE FROM \"users\" WHERE \"id\" = $1\n");
+}

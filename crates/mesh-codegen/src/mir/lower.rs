@@ -837,6 +837,15 @@ impl<'a> Lowerer<'a> {
         self.known_functions.insert("mesh_row_parse_bool".to_string(), MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Ptr)));
         self.known_functions.insert("mesh_pg_query_as".to_string(), MirType::FnPtr(vec![MirType::Int, MirType::Ptr, MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
         self.known_functions.insert("mesh_pool_query_as".to_string(), MirType::FnPtr(vec![MirType::Int, MirType::Ptr, MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
+        // ── Phase 97: ORM SQL Generation ─────────────────────────────────
+        // mesh_orm_build_select(table: ptr, columns: ptr, where_clauses: ptr, order_by: ptr, limit: i64, offset: i64) -> ptr
+        self.known_functions.insert("mesh_orm_build_select".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr, MirType::Ptr, MirType::Ptr, MirType::Int, MirType::Int], Box::new(MirType::Ptr)));
+        // mesh_orm_build_insert(table: ptr, columns: ptr, returning: ptr) -> ptr
+        self.known_functions.insert("mesh_orm_build_insert".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
+        // mesh_orm_build_update(table: ptr, set_columns: ptr, where_clauses: ptr, returning: ptr) -> ptr
+        self.known_functions.insert("mesh_orm_build_update".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr, MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
+        // mesh_orm_build_delete(table: ptr, where_clauses: ptr, returning: ptr) -> ptr
+        self.known_functions.insert("mesh_orm_build_delete".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
         // ── Job functions (Phase 9 Plan 04) ──────────────────────────────
         // mesh_job_async takes (fn_ptr, env_ptr) -> i64 (PID)
         // But the closure splitting at codegen will expand the closure arg into (fn_ptr, env_ptr)
@@ -10049,6 +10058,7 @@ const STDLIB_MODULES: &[&str] = &[
     "Node", "Process",  // Phase 67
     "Global",  // Phase 68
     "Iter",  // Phase 76
+    "Orm",  // Phase 97
 ];
 
 /// Map Mesh builtin function names to their runtime equivalents.
@@ -10267,6 +10277,11 @@ fn map_builtin_name(name: &str) -> String {
         // ── Phase 58: Struct-to-Row Mapping ───────────────────────────────
         "pg_query_as" => "mesh_pg_query_as".to_string(),
         "pool_query_as" => "mesh_pool_query_as".to_string(),
+        // ── Phase 97: ORM SQL Generation ─────────────────────────────────
+        "orm_build_select" => "mesh_orm_build_select".to_string(),
+        "orm_build_insert" => "mesh_orm_build_insert".to_string(),
+        "orm_build_update" => "mesh_orm_build_update".to_string(),
+        "orm_build_delete" => "mesh_orm_build_delete".to_string(),
         // NOTE: No bare name mappings for HTTP/Request (router, route, get,
         // post, method, path, body, etc.) because they collide with common
         // variable names. Use module-qualified access instead:

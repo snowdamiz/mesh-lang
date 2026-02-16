@@ -260,6 +260,12 @@ fn register_runtime_symbols() {
     add_sym("mesh_json_encode_list", mesh_rt::mesh_json_encode_list as *const ());
     add_sym("mesh_json_encode_map", mesh_rt::mesh_json_encode_map as *const ());
 
+    // ORM SQL Generation (Phase 97)
+    add_sym("mesh_orm_build_select", mesh_rt::mesh_orm_build_select as *const ());
+    add_sym("mesh_orm_build_insert", mesh_rt::mesh_orm_build_insert as *const ());
+    add_sym("mesh_orm_build_update", mesh_rt::mesh_orm_build_update as *const ());
+    add_sym("mesh_orm_build_delete", mesh_rt::mesh_orm_build_delete as *const ());
+
     // HTTP
     add_sym("mesh_http_get", mesh_rt::mesh_http_get as *const ());
     add_sym("mesh_http_post", mesh_rt::mesh_http_post as *const ());
