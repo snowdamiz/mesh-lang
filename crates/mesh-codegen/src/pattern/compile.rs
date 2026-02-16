@@ -1179,6 +1179,12 @@ fn compile_expr_patterns(
                 compile_expr_patterns(field_expr, sum_type_defs);
             }
         }
+        MirExpr::StructUpdate { base, overrides, .. } => {
+            compile_expr_patterns(base, sum_type_defs);
+            for (_, val) in overrides {
+                compile_expr_patterns(val, sum_type_defs);
+            }
+        }
         MirExpr::FieldAccess { object, .. } => {
             compile_expr_patterns(object, sum_type_defs);
         }

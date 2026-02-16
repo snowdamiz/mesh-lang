@@ -3097,3 +3097,66 @@ end
 "#);
     assert_eq!(output, "11\n");
 }
+
+// ── Phase 96 Plan 03: Struct Update Expression ──────────────────────
+
+/// Basic struct update: create new struct with specific fields changed.
+#[test]
+fn e2e_struct_update_basic() {
+    let output = compile_and_run(r#"
+struct User do
+  name :: String
+  email :: String
+  age :: Int
+end
+
+fn main() do
+  let user = User { name: "Alice", email: "alice@example.com", age: 30 }
+  let updated = %{user | name: "Bob", age: 25}
+  println(updated.name)
+  println(updated.email)
+  println("${updated.age}")
+end
+"#);
+    assert_eq!(output, "Bob\nalice@example.com\n25\n");
+}
+
+/// Struct update with a single field override.
+#[test]
+fn e2e_struct_update_single_field() {
+    let output = compile_and_run(r#"
+struct Point do
+  x :: Int
+  y :: Int
+end
+
+fn main() do
+  let p = Point { x: 1, y: 2 }
+  let p2 = %{p | x: 10}
+  println("${p2.x}")
+  println("${p2.y}")
+end
+"#);
+    assert_eq!(output, "10\n2\n");
+}
+
+/// Struct update preserves original (immutability).
+#[test]
+fn e2e_struct_update_original_unchanged() {
+    let output = compile_and_run(r#"
+struct Config do
+  host :: String
+  port :: Int
+end
+
+fn main() do
+  let c1 = Config { host: "localhost", port: 8080 }
+  let c2 = %{c1 | port: 9090}
+  println(c1.host)
+  println("${c1.port}")
+  println(c2.host)
+  println("${c2.port}")
+end
+"#);
+    assert_eq!(output, "localhost\n8080\nlocalhost\n9090\n");
+}

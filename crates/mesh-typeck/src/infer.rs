@@ -14,8 +14,8 @@ use rowan::TextRange;
 use mesh_parser::ast::expr::{
     BinaryExpr, BreakExpr, CallExpr, CaseExpr, ClosureExpr, ContinueExpr, Expr, FieldAccess,
     ForInExpr, IfExpr, LinkExpr, ListLiteral, Literal, MapLiteral, NameRef, PipeExpr, ReceiveExpr,
-    ReturnExpr, SendExpr, SelfExpr, SpawnExpr, StructLiteral, TryExpr, TupleExpr, UnaryExpr,
-    WhileExpr,
+    ReturnExpr, SendExpr, SelfExpr, SpawnExpr, StructLiteral, StructUpdate, TryExpr, TupleExpr,
+    UnaryExpr, WhileExpr,
 };
 use mesh_parser::ast::item::{
     ActorDef, Block, FnDef, InterfaceDef, ImplDef as AstImplDef, Item, LetBinding, ServiceDef,
@@ -3645,6 +3645,9 @@ fn infer_expr(
             // Atoms have a distinct type from String -- they are opaque typed values.
             Ty::Con(TyCon::new("Atom"))
         }
+        Expr::StructUpdate(update) => {
+            infer_struct_update(ctx, env, update, types, type_registry, trait_registry, fn_constraints)?
+        }
     };
 
     let resolved = ctx.resolve(ty.clone());
@@ -5869,6 +5872,122 @@ fn infer_struct_literal(
         Box::new(Ty::Con(tycon)),
         generic_vars,
     ))
+}
+
+// ── Struct Update Inference ────────────────────────────────────────────
+
+/// Infer the type of a struct update expression: `%{base | field: value, ...}`
+///
+/// The base expression must resolve to a struct type. Each override field must
+/// exist in the struct definition and its value must unify with the field's type.
+/// Returns the same struct type as the base expression.
+fn infer_struct_update(
+    ctx: &mut InferCtx,
+    env: &mut TypeEnv,
+    update: &StructUpdate,
+    types: &mut FxHashMap<TextRange, Ty>,
+    type_registry: &TypeRegistry,
+    trait_registry: &TraitRegistry,
+    fn_constraints: &FxHashMap<String, FnConstraints>,
+) -> Result<Ty, TypeError> {
+    // Infer the type of the base expression.
+    let base_expr = match update.base_expr() {
+        Some(e) => e,
+        None => return Ok(ctx.fresh_var()),
+    };
+    let base_ty = infer_expr(ctx, env, &base_expr, types, type_registry, trait_registry, fn_constraints)?;
+    let resolved_base = ctx.resolve(base_ty.clone());
+
+    // Extract the struct name from the resolved type.
+    let struct_name = match &resolved_base {
+        Ty::Con(tc) => tc.name.clone(),
+        Ty::App(inner, _) => {
+            if let Ty::Con(tc) = inner.as_ref() {
+                tc.name.clone()
+            } else {
+                // Not a struct type -- emit a "no such field" error as a proxy.
+                let err = TypeError::NoSuchField {
+                    ty: resolved_base.clone(),
+                    field_name: "<struct update>".to_string(),
+                    span: base_expr.syntax().text_range(),
+                };
+                ctx.errors.push(err.clone());
+                return Err(err);
+            }
+        }
+        _ => {
+            let err = TypeError::NoSuchField {
+                ty: resolved_base.clone(),
+                field_name: "<struct update>".to_string(),
+                span: base_expr.syntax().text_range(),
+            };
+            ctx.errors.push(err.clone());
+            return Err(err);
+        }
+    };
+
+    // Look up the struct definition.
+    let struct_def = match type_registry.lookup_struct(&struct_name) {
+        Some(def) => def.clone(),
+        None => {
+            // Infer override values anyway.
+            for field in update.override_fields() {
+                if let Some(value) = field.value() {
+                    let _ = infer_expr(ctx, env, &value, types, type_registry, trait_registry, fn_constraints);
+                }
+            }
+            return Ok(resolved_base);
+        }
+    };
+
+    // Create fresh type variables for generic params (matching base type args).
+    let generic_vars: Vec<Ty> = match &resolved_base {
+        Ty::App(_, args) => args.clone(),
+        _ => struct_def.generic_params.iter().map(|_| ctx.fresh_var()).collect(),
+    };
+
+    // Validate and infer each override field.
+    for field in update.override_fields() {
+        let field_name = match field.name().and_then(|n| n.text()) {
+            Some(n) => n,
+            None => continue,
+        };
+
+        // Verify the field exists in the struct.
+        let expected_ty = struct_def
+            .fields
+            .iter()
+            .find(|(name, _)| *name == field_name)
+            .map(|(_, ty)| substitute_type_params(ty, &struct_def.generic_params, &generic_vars));
+
+        let expected_ty = match expected_ty {
+            Some(ty) => ty,
+            None => {
+                let err = TypeError::UnknownField {
+                    struct_name: struct_name.clone(),
+                    field_name: field_name.clone(),
+                    span: field.syntax().text_range(),
+                };
+                ctx.errors.push(err.clone());
+                return Err(err);
+            }
+        };
+
+        // Infer the override value and unify with expected field type.
+        if let Some(value) = field.value() {
+            let value_ty = infer_expr(ctx, env, &value, types, type_registry, trait_registry, fn_constraints)?;
+            ctx.unify(
+                value_ty,
+                expected_ty,
+                ConstraintOrigin::Annotation {
+                    annotation_span: field.syntax().text_range(),
+                },
+            )?;
+        }
+    }
+
+    // Return the same type as the base expression.
+    Ok(base_ty)
 }
 
 // ── Map Literal Inference ──────────────────────────────────────────────

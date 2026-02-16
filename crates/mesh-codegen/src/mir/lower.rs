@@ -10,7 +10,8 @@ use rustc_hash::FxHashMap;
 use mesh_parser::ast::expr::{
     BinaryExpr, CallExpr, CaseExpr, ClosureExpr, Expr, FieldAccess, ForInExpr, IfExpr, LinkExpr,
     ListLiteral, Literal, MapLiteral, MatchArm, NameRef, PipeExpr, ReceiveExpr, ReturnExpr,
-    SendExpr, SpawnExpr, StringExpr, StructLiteral, TryExpr, TupleExpr, UnaryExpr, WhileExpr,
+    SendExpr, SpawnExpr, StringExpr, StructLiteral, StructUpdate, TryExpr, TupleExpr, UnaryExpr,
+    WhileExpr,
 };
 use mesh_parser::ast::item::{
     ActorDef, Block, FnDef, ImplDef, InterfaceMethod, Item, LetBinding, ServiceDef, SourceFile,
@@ -5012,6 +5013,8 @@ impl<'a> Lowerer<'a> {
                 let name = atom.atom_text().unwrap_or_default();
                 MirExpr::StringLit(name, MirType::String)
             }
+            // Struct update expression: %{base | field: value, ...}
+            Expr::StructUpdate(update) => self.lower_struct_update(update),
         }
     }
 
@@ -8522,6 +8525,40 @@ impl<'a> Lowerer<'a> {
 
         MirExpr::StructLit { name, fields, ty }
     }
+
+    // ── Struct update lowering ────────────────────────────────────────
+
+    fn lower_struct_update(&mut self, update: &StructUpdate) -> MirExpr {
+        let base = update
+            .base_expr()
+            .map(|e| self.lower_expr(&e))
+            .unwrap_or(MirExpr::Unit);
+
+        let overrides: Vec<(String, MirExpr)> = update
+            .override_fields()
+            .iter()
+            .map(|f| {
+                let field_name = f
+                    .name()
+                    .and_then(|n| n.text())
+                    .unwrap_or_default();
+                let value = f
+                    .value()
+                    .map(|e| self.lower_expr(&e))
+                    .unwrap_or(MirExpr::Unit);
+                (field_name, value)
+            })
+            .collect();
+
+        let ty = self.resolve_range(update.syntax().text_range());
+
+        MirExpr::StructUpdate {
+            base: Box::new(base),
+            overrides,
+            ty,
+        }
+    }
+
     // ── Actor definition lowering ──────────────────────────────────────
 
     fn lower_actor_def(&mut self, actor_def: &ActorDef) {
@@ -10207,6 +10244,12 @@ fn collect_free_vars(
         }
         MirExpr::StructLit { fields, .. } => {
             for (_, val) in fields {
+                collect_free_vars(val, params, outer_vars, captures);
+            }
+        }
+        MirExpr::StructUpdate { base, overrides, .. } => {
+            collect_free_vars(base, params, outer_vars, captures);
+            for (_, val) in overrides {
                 collect_free_vars(val, params, outer_vars, captures);
             }
         }

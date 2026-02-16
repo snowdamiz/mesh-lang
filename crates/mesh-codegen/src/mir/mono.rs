@@ -167,6 +167,12 @@ fn collect_function_refs(expr: &MirExpr, refs: &mut Vec<String>) {
                 collect_function_refs(val, refs);
             }
         }
+        MirExpr::StructUpdate { base, overrides, .. } => {
+            collect_function_refs(base, refs);
+            for (_, val) in overrides {
+                collect_function_refs(val, refs);
+            }
+        }
         MirExpr::FieldAccess { object, .. } => {
             collect_function_refs(object, refs);
         }

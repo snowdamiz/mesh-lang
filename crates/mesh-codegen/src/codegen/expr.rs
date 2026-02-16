@@ -82,6 +82,12 @@ impl<'ctx> CodeGen<'ctx> {
                 ty: _,
             } => self.codegen_struct_lit(name, fields),
 
+            MirExpr::StructUpdate {
+                base,
+                overrides,
+                ty,
+            } => self.codegen_struct_update(base, overrides, ty),
+
             MirExpr::FieldAccess { object, field, ty } => {
                 self.codegen_field_access(object, field, ty)
             }
@@ -1665,6 +1671,94 @@ impl<'ctx> CodeGen<'ctx> {
         let result = self
             .builder
             .build_load(struct_ty.as_basic_type_enum(), alloca, "struct_val")
+            .map_err(|e| e.to_string())?;
+
+        Ok(result)
+    }
+
+    // ── Struct update ─────────────────────────────────────────────────
+
+    fn codegen_struct_update(
+        &mut self,
+        base: &MirExpr,
+        overrides: &[(String, MirExpr)],
+        ty: &MirType,
+    ) -> Result<BasicValueEnum<'ctx>, String> {
+        // Determine the struct name from the type.
+        let struct_name = match ty {
+            MirType::Struct(name) => name.clone(),
+            _ => return Err(format!("Struct update on non-struct type: {:?}", ty)),
+        };
+
+        let struct_ty = self
+            .struct_types
+            .get(&struct_name)
+            .ok_or_else(|| format!("Unknown struct type '{}'", struct_name))?;
+        let struct_ty = *struct_ty;
+
+        // Get the struct field definitions so we know the order.
+        let field_defs = self
+            .mir_struct_defs
+            .get(&struct_name)
+            .ok_or_else(|| format!("Unknown struct type '{}'", struct_name))?
+            .clone();
+
+        // Codegen the base expression.
+        let base_val = self.codegen_expr(base)?;
+
+        // Allocate a temporary for the base struct so we can GEP into it.
+        let base_alloca = self
+            .builder
+            .build_alloca(struct_ty.as_basic_type_enum(), "update_base")
+            .map_err(|e| e.to_string())?;
+        self.builder
+            .build_store(base_alloca, base_val)
+            .map_err(|e| e.to_string())?;
+
+        // Allocate the new struct.
+        let new_alloca = self
+            .builder
+            .build_alloca(struct_ty, "struct_update")
+            .map_err(|e| e.to_string())?;
+
+        // Build a lookup map for the override field names.
+        let override_map: std::collections::HashMap<&str, &MirExpr> = overrides
+            .iter()
+            .map(|(name, expr)| (name.as_str(), expr))
+            .collect();
+
+        // For each field in the struct definition:
+        for (i, (field_name, _field_ty)) in field_defs.iter().enumerate() {
+            let val = if let Some(override_expr) = override_map.get(field_name.as_str()) {
+                // Override: codegen the override expression.
+                self.codegen_expr(override_expr)?
+            } else {
+                // Copy from base: load the field from the base struct.
+                let field_ptr = self
+                    .builder
+                    .build_struct_gep(struct_ty, base_alloca, i as u32, "base_field_ptr")
+                    .map_err(|e| e.to_string())?;
+                let field_llvm_ty = struct_ty.get_field_type_at_index(i as u32)
+                    .ok_or_else(|| format!("No field at index {} in struct '{}'", i, struct_name))?;
+                self.builder
+                    .build_load(field_llvm_ty, field_ptr, "base_field_val")
+                    .map_err(|e| e.to_string())?
+            };
+
+            // Store the value in the new struct.
+            let new_field_ptr = self
+                .builder
+                .build_struct_gep(struct_ty, new_alloca, i as u32, "new_field_ptr")
+                .map_err(|e| e.to_string())?;
+            self.builder
+                .build_store(new_field_ptr, val)
+                .map_err(|e| e.to_string())?;
+        }
+
+        // Load and return the new struct value.
+        let result = self
+            .builder
+            .build_load(struct_ty.as_basic_type_enum(), new_alloca, "struct_update_val")
             .map_err(|e| e.to_string())?;
 
         Ok(result)

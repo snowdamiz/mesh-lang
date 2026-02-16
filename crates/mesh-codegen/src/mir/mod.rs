@@ -207,6 +207,12 @@ pub enum MirExpr {
         fields: Vec<(std::string::String, MirExpr)>,
         ty: MirType,
     },
+    /// Struct update: copy base struct and overwrite specific fields.
+    StructUpdate {
+        base: Box<MirExpr>,
+        overrides: Vec<(std::string::String, MirExpr)>,
+        ty: MirType,
+    },
     /// Field access on a struct.
     FieldAccess {
         object: Box<MirExpr>,
@@ -433,6 +439,7 @@ impl MirExpr {
             MirExpr::Block(_, ty) => ty,
             MirExpr::Match { ty, .. } => ty,
             MirExpr::StructLit { ty, .. } => ty,
+            MirExpr::StructUpdate { ty, .. } => ty,
             MirExpr::FieldAccess { ty, .. } => ty,
             MirExpr::ConstructVariant { ty, .. } => ty,
             MirExpr::MakeClosure { ty, .. } => ty,
