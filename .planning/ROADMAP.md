@@ -177,7 +177,7 @@ See milestones/v9.0-ROADMAP.md for full phase details.
 - [x] **Phase 98: Query Builder + Repo** - Pipe-composable queries and database operations (shipped 2026-02-16)
 - [x] **Phase 99: Changesets** - Validation pipeline and type-safe casting before persistence (shipped 2026-02-16)
 - [x] **Phase 100: Relationships + Preloading** - belongs_to/has_many/has_one with batch preloading (shipped 2026-02-16)
-- [ ] **Phase 101: Migration System** - Migration DSL, runner, CLI, and scaffold generation
+- [x] **Phase 101: Migration System** - Migration DSL, runner, CLI, and scaffold generation (shipped 2026-02-16)
 - [ ] **Phase 102: Mesher Rewrite** - Replace all raw SQL with ORM calls, validate end-to-end
 
 ## Phase Details
@@ -276,9 +276,9 @@ Plans:
 **Plans**: 3 plans
 
 Plans:
-- [ ] 101-01-PLAN.md -- Migration DSL runtime functions (create_table, drop_table, add_column, drop_column, rename_column, create_index, drop_index, execute) + compiler pipeline registration
-- [ ] 101-02-PLAN.md -- Migration runner + tracking table + meshc migrate CLI (up, down, status)
-- [ ] 101-03-PLAN.md -- Scaffold generation (meshc migrate generate) + e2e tests
+- [x] 101-01-PLAN.md -- Migration DSL runtime functions (create_table, drop_table, add_column, drop_column, rename_column, create_index, drop_index, execute) + compiler pipeline registration
+- [x] 101-02-PLAN.md -- Migration runner + tracking table + meshc migrate CLI (up, down, status)
+- [x] 101-03-PLAN.md -- Scaffold generation (meshc migrate generate) + e2e tests
 
 ### Phase 102: Mesher Rewrite
 **Goal**: Mesher's entire database layer is rewritten using the ORM, validating that every ORM feature works correctly in a real application with 11 schema types, complex filtered queries, and multi-table relationships
@@ -328,7 +328,7 @@ Note: Phase 100 and 101 both depend on earlier phases but are independent of eac
 | 98 | v10.0 | 3/3 | Complete | 2026-02-16 |
 | 99 | v10.0 | 2/2 | Complete | 2026-02-16 |
 | 100 | v10.0 | 2/2 | Complete | 2026-02-16 |
-| 101 | v10.0 | 0/3 | Not started | - |
+| 101 | v10.0 | 3/3 | Complete | 2026-02-16 |
 | 102 | v10.0 | 0/3 | Not started | - |
 
-**Total: 102 phases shipped across 18 milestones. 294 plans completed. v10.0: 5/7 phases complete, 14/20 plans done.**
+**Total: 102 phases shipped across 18 milestones. 297 plans completed. v10.0: 6/7 phases complete, 17/20 plans done.**
