@@ -24,7 +24,7 @@
 
 use crate::collections::list::{mesh_list_get, mesh_list_length, mesh_list_new, mesh_list_append};
 use crate::collections::map::{mesh_map_get, mesh_map_put};
-use crate::db::pool::{mesh_pool_query, mesh_pool_checkout, mesh_pool_checkin};
+use crate::db::pool::{mesh_pool_query, mesh_pool_execute, mesh_pool_checkout, mesh_pool_checkin};
 use crate::db::pg::{mesh_pg_begin, mesh_pg_commit, mesh_pg_rollback};
 use crate::db::changeset::{
     SLOT_CHANGES, SLOT_VALID,
@@ -177,7 +177,13 @@ fn build_select_sql_from_parts(
     if select_fields.is_empty() {
         sql.push('*');
     } else {
-        let cols: Vec<String> = select_fields.iter().map(|f| quote_ident(f)).collect();
+        let cols: Vec<String> = select_fields.iter().map(|f| {
+            if let Some(raw) = f.strip_prefix("RAW:") {
+                raw.to_string() // emit verbatim, no quoting
+            } else {
+                quote_ident(f)
+            }
+        }).collect();
         sql.push_str(&cols.join(", "));
     }
 
@@ -203,7 +209,27 @@ fn build_select_sql_from_parts(
         let mut conditions = Vec::new();
         let mut wp_idx = 0;
         for clause in where_clauses {
-            if let Some(space_pos) = clause.find(' ') {
+            if let Some(raw) = clause.strip_prefix("RAW:") {
+                // Raw WHERE clause: emit verbatim, replace ? with $N
+                let mut raw_sql = String::new();
+                let q_count = raw.chars().filter(|&c| c == '?').count();
+                for ch in raw.chars() {
+                    if ch == '?' {
+                        raw_sql.push_str(&format!("${}", param_idx));
+                        if wp_idx < where_params.len() {
+                            params.push(where_params[wp_idx].clone());
+                            wp_idx += 1;
+                        }
+                        param_idx += 1;
+                    } else {
+                        raw_sql.push(ch);
+                    }
+                }
+                if q_count == 0 {
+                    // No params needed -- just emit the clause
+                }
+                conditions.push(raw_sql);
+            } else if let Some(space_pos) = clause.find(' ') {
                 let col = &clause[..space_pos];
                 let op = clause[space_pos + 1..].trim();
                 if op == "IS NULL" || op == "IS NOT NULL" {
@@ -387,7 +413,23 @@ fn build_count_sql_from_parts(
         let mut conditions = Vec::new();
         let mut wp_idx = 0;
         for clause in where_clauses {
-            if let Some(space_pos) = clause.find(' ') {
+            if let Some(raw) = clause.strip_prefix("RAW:") {
+                // Raw WHERE clause: emit verbatim, replace ? with $N
+                let mut raw_sql = String::new();
+                for ch in raw.chars() {
+                    if ch == '?' {
+                        raw_sql.push_str(&format!("${}", param_idx));
+                        if wp_idx < where_params.len() {
+                            params.push(where_params[wp_idx].clone());
+                            wp_idx += 1;
+                        }
+                        param_idx += 1;
+                    } else {
+                        raw_sql.push(ch);
+                    }
+                }
+                conditions.push(raw_sql);
+            } else if let Some(space_pos) = clause.find(' ') {
                 let col = &clause[..space_pos];
                 let op = clause[space_pos + 1..].trim();
                 if op == "IS NULL" || op == "IS NOT NULL" {
@@ -512,7 +554,23 @@ fn build_exists_sql_from_parts(
         let mut conditions = Vec::new();
         let mut wp_idx = 0;
         for clause in where_clauses {
-            if let Some(space_pos) = clause.find(' ') {
+            if let Some(raw) = clause.strip_prefix("RAW:") {
+                // Raw WHERE clause: emit verbatim, replace ? with $N
+                let mut raw_sql = String::new();
+                for ch in raw.chars() {
+                    if ch == '?' {
+                        raw_sql.push_str(&format!("${}", param_idx));
+                        if wp_idx < where_params.len() {
+                            params.push(where_params[wp_idx].clone());
+                            wp_idx += 1;
+                        }
+                        param_idx += 1;
+                    } else {
+                        raw_sql.push(ch);
+                    }
+                }
+                conditions.push(raw_sql);
+            } else if let Some(space_pos) = clause.find(' ') {
                 let col = &clause[..space_pos];
                 let op = clause[space_pos + 1..].trim();
                 if op == "IS NULL" || op == "IS NOT NULL" {
@@ -1566,6 +1624,196 @@ pub extern "C" fn mesh_repo_preload(
     }
 }
 
+// ── Shared WHERE clause builder ──────────────────────────────────────
+
+/// Build a WHERE clause from decomposed where_clauses and where_params.
+///
+/// Returns `(where_sql, params, next_param_idx)`.
+/// `start_idx` is the first $N placeholder to use.
+fn build_where_from_query_parts(
+    where_clauses: &[String],
+    where_params: &[String],
+    start_idx: usize,
+) -> (String, Vec<String>, usize) {
+    let mut conditions = Vec::new();
+    let mut params = Vec::new();
+    let mut param_idx = start_idx;
+    let mut wp_idx = 0;
+
+    for clause in where_clauses {
+        if clause.starts_with("RAW:") {
+            let raw_sql = &clause[4..];
+            let mut frag_sql = String::new();
+            for ch in raw_sql.chars() {
+                if ch == '?' {
+                    frag_sql.push_str(&format!("${}", param_idx));
+                    if wp_idx < where_params.len() {
+                        params.push(where_params[wp_idx].clone());
+                        wp_idx += 1;
+                    }
+                    param_idx += 1;
+                } else {
+                    frag_sql.push(ch);
+                }
+            }
+            conditions.push(frag_sql);
+        } else if let Some(space_pos) = clause.find(' ') {
+            let col = &clause[..space_pos];
+            let op = clause[space_pos + 1..].trim();
+            if op == "IS NULL" || op == "IS NOT NULL" {
+                conditions.push(format!("{} {}", quote_ident(col), op));
+            } else if op.starts_with("IN:") {
+                let count: usize = op[3..].parse().unwrap_or(0);
+                let placeholders: Vec<String> = (0..count)
+                    .map(|i| format!("${}", param_idx + i))
+                    .collect();
+                conditions.push(format!(
+                    "{} IN ({})",
+                    quote_ident(col),
+                    placeholders.join(", ")
+                ));
+                for _ in 0..count {
+                    if wp_idx < where_params.len() {
+                        params.push(where_params[wp_idx].clone());
+                        wp_idx += 1;
+                    }
+                    param_idx += 1;
+                }
+            } else {
+                conditions.push(format!("{} {} ${}", quote_ident(col), op, param_idx));
+                if wp_idx < where_params.len() {
+                    params.push(where_params[wp_idx].clone());
+                    wp_idx += 1;
+                }
+                param_idx += 1;
+            }
+        } else {
+            conditions.push(format!("{} = ${}", quote_ident(clause), param_idx));
+            if wp_idx < where_params.len() {
+                params.push(where_params[wp_idx].clone());
+                wp_idx += 1;
+            }
+            param_idx += 1;
+        }
+    }
+
+    (conditions.join(" AND "), params, param_idx)
+}
+
+// ── Extended Write Operations (Phase 103) ────────────────────────────
+
+/// Update rows matching a Query's WHERE conditions.
+/// `Repo.update_where(pool, table, fields_map, query)` -> `Result<Map<String,String>, String>`
+#[no_mangle]
+pub extern "C" fn mesh_repo_update_where(
+    pool: u64,
+    table: *mut u8,
+    fields: *mut u8,
+    query: *mut u8,
+) -> *mut u8 {
+    unsafe {
+        let table_str = mesh_str_ref(table);
+        let (columns, mut values) = map_to_columns_and_values(fields);
+
+        if columns.is_empty() {
+            return err_result("update_where: no fields provided");
+        }
+
+        let where_clauses = list_to_strings(query_get(query, SLOT_WHERE_CLAUSES));
+        let where_params = list_to_strings(query_get(query, SLOT_WHERE_PARAMS));
+
+        if where_clauses.is_empty() {
+            return err_result("update_where: no WHERE conditions");
+        }
+
+        let mut sql = format!("UPDATE {} SET ", quote_ident(table_str));
+        let set_parts: Vec<String> = columns
+            .iter()
+            .enumerate()
+            .map(|(i, c)| format!("{} = ${}", quote_ident(c), i + 1))
+            .collect();
+        sql.push_str(&set_parts.join(", "));
+
+        let start_idx = columns.len() + 1;
+        let (where_sql, where_param_values, _next_idx) =
+            build_where_from_query_parts(&where_clauses, &where_params, start_idx);
+        sql.push_str(&format!(" WHERE {} RETURNING *", where_sql));
+
+        values.extend(where_param_values);
+
+        let sql_ptr = rust_str_to_mesh(&sql) as *const MeshString;
+        let params_ptr = strings_to_mesh_list(&values);
+        let result = mesh_pool_query(pool, sql_ptr, params_ptr);
+
+        let r = &*(result as *const MeshResult);
+        if r.tag != 0 {
+            return result;
+        }
+
+        let list = r.value;
+        let list_len = mesh_list_length(list);
+        if list_len == 0 {
+            return err_result("update_where: no rows matched");
+        }
+
+        let first_row = mesh_list_get(list, 0) as *mut u8;
+        ok_result(first_row)
+    }
+}
+
+/// Delete rows matching a Query's WHERE conditions.
+/// `Repo.delete_where(pool, table, query)` -> `Result<Int, String>`
+#[no_mangle]
+pub extern "C" fn mesh_repo_delete_where(
+    pool: u64,
+    table: *mut u8,
+    query: *mut u8,
+) -> *mut u8 {
+    unsafe {
+        let table_str = mesh_str_ref(table);
+
+        let where_clauses = list_to_strings(query_get(query, SLOT_WHERE_CLAUSES));
+        let where_params = list_to_strings(query_get(query, SLOT_WHERE_PARAMS));
+
+        if where_clauses.is_empty() {
+            return err_result("delete_where: no WHERE conditions");
+        }
+
+        let mut sql = format!("DELETE FROM {}", quote_ident(table_str));
+        let (where_sql, where_param_values, _next_idx) =
+            build_where_from_query_parts(&where_clauses, &where_params, 1);
+        sql.push_str(&format!(" WHERE {}", where_sql));
+
+        let sql_ptr = rust_str_to_mesh(&sql) as *const MeshString;
+        let params_ptr = strings_to_mesh_list(&where_param_values);
+        mesh_pool_execute(pool, sql_ptr, params_ptr)
+    }
+}
+
+/// Execute raw SQL and return rows.
+/// `Repo.query_raw(pool, sql, params)` -> `Result<List<Map<String,String>>, String>`
+#[no_mangle]
+pub extern "C" fn mesh_repo_query_raw(
+    pool: u64,
+    sql: *mut u8,
+    params: *mut u8,
+) -> *mut u8 {
+    let sql_ptr = sql as *const MeshString;
+    mesh_pool_query(pool, sql_ptr, params)
+}
+
+/// Execute raw SQL and return affected row count.
+/// `Repo.execute_raw(pool, sql, params)` -> `Result<Int, String>`
+#[no_mangle]
+pub extern "C" fn mesh_repo_execute_raw(
+    pool: u64,
+    sql: *mut u8,
+    params: *mut u8,
+) -> *mut u8 {
+    let sql_ptr = sql as *const MeshString;
+    mesh_pool_execute(pool, sql_ptr, params)
+}
+
 // ── Unit tests ───────────────────────────────────────────────────────
 
 #[cfg(test)]
@@ -1836,5 +2084,184 @@ mod tests {
         let (sql, params) = build_preload_sql("posts", "user_id", &ids);
         assert_eq!(sql, "SELECT * FROM \"posts\"");
         assert!(params.is_empty());
+    }
+
+    // ── RAW: prefix tests (Phase 103) ──────────────────────────────────
+
+    #[test]
+    fn test_select_with_raw_expressions() {
+        let (sql, params) = build_select_sql_from_parts(
+            "users",
+            &["RAW:count(*)::text AS count".into(), "level".into()],
+            &[], &[], &[], -1, -1, &[], &[], &[], &[], &[], &[],
+        );
+        assert_eq!(sql, "SELECT count(*)::text AS count, \"level\" FROM \"users\"");
+        assert!(params.is_empty());
+    }
+
+    #[test]
+    fn test_select_with_all_raw() {
+        let (sql, _) = build_select_sql_from_parts(
+            "sessions",
+            &["RAW:count(*)".into(), "RAW:max(created_at)".into()],
+            &[], &[], &[], -1, -1, &[], &[], &[], &[], &[], &[],
+        );
+        assert_eq!(sql, "SELECT count(*), max(created_at) FROM \"sessions\"");
+    }
+
+    #[test]
+    fn test_where_raw_no_params() {
+        let (sql, params) = build_select_sql_from_parts(
+            "sessions", &[],
+            &["RAW:expires_at > now()".into()],
+            &[],
+            &[], -1, -1, &[], &[], &[], &[], &[], &[],
+        );
+        assert_eq!(sql, "SELECT * FROM \"sessions\" WHERE expires_at > now()");
+        assert!(params.is_empty());
+    }
+
+    #[test]
+    fn test_where_raw_with_params() {
+        let (sql, params) = build_select_sql_from_parts(
+            "users", &[],
+            &["RAW:status IN (?, ?)".into()],
+            &["active".into(), "pending".into()],
+            &[], -1, -1, &[], &[], &[], &[], &[], &[],
+        );
+        assert_eq!(sql, "SELECT * FROM \"users\" WHERE status IN ($1, $2)");
+        assert_eq!(params, vec!["active", "pending"]);
+    }
+
+    #[test]
+    fn test_where_raw_mixed_with_normal() {
+        let (sql, params) = build_select_sql_from_parts(
+            "users", &[],
+            &["name =".into(), "RAW:expires_at > now()".into(), "age >".into()],
+            &["Alice".into(), "21".into()],
+            &[], -1, -1, &[], &[], &[], &[], &[], &[],
+        );
+        assert_eq!(
+            sql,
+            "SELECT * FROM \"users\" WHERE \"name\" = $1 AND expires_at > now() AND \"age\" > $2"
+        );
+        assert_eq!(params, vec!["Alice", "21"]);
+    }
+
+    #[test]
+    fn test_where_raw_with_params_mixed() {
+        // Normal where (1 param) + RAW with 2 params + normal where (1 param)
+        let (sql, params) = build_select_sql_from_parts(
+            "users", &[],
+            &["org_id =".into(), "RAW:role IN (?, ?)".into(), "active =".into()],
+            &["org1".into(), "admin".into(), "editor".into(), "true".into()],
+            &[], -1, -1, &[], &[], &[], &[], &[], &[],
+        );
+        assert_eq!(
+            sql,
+            "SELECT * FROM \"users\" WHERE \"org_id\" = $1 AND role IN ($2, $3) AND \"active\" = $4"
+        );
+        assert_eq!(params, vec!["org1", "admin", "editor", "true"]);
+    }
+
+    #[test]
+    fn test_count_with_raw_where() {
+        let (sql, params) = build_count_sql_from_parts(
+            "sessions",
+            &["RAW:expires_at > now()".into()],
+            &[],
+            &[], &[], &[], &[], &[], &[],
+        );
+        assert_eq!(sql, "SELECT COUNT(*) FROM \"sessions\" WHERE expires_at > now()");
+        assert!(params.is_empty());
+    }
+
+    #[test]
+    fn test_exists_with_raw_where() {
+        let (sql, params) = build_exists_sql_from_parts(
+            "sessions",
+            &["RAW:expires_at > now()".into(), "user_id =".into()],
+            &["42".into()],
+            &[],
+        );
+        assert_eq!(
+            sql,
+            "SELECT EXISTS(SELECT 1 FROM \"sessions\" WHERE expires_at > now() AND \"user_id\" = $1 LIMIT 1)"
+        );
+        assert_eq!(params, vec!["42"]);
+    }
+
+    // ── build_where_from_query_parts tests (Phase 103) ──────────────────
+
+    #[test]
+    fn test_where_builder_basic_equality() {
+        let (sql, params, next) = build_where_from_query_parts(
+            &["id =".into()],
+            &["42".into()],
+            1,
+        );
+        assert_eq!(sql, "\"id\" = $1");
+        assert_eq!(params, vec!["42"]);
+        assert_eq!(next, 2);
+    }
+
+    #[test]
+    fn test_where_builder_with_offset() {
+        let (sql, params, next) = build_where_from_query_parts(
+            &["id =".into(), "status !=".into()],
+            &["42".into(), "resolved".into()],
+            3,
+        );
+        assert_eq!(sql, "\"id\" = $3 AND \"status\" != $4");
+        assert_eq!(params, vec!["42", "resolved"]);
+        assert_eq!(next, 5);
+    }
+
+    #[test]
+    fn test_where_builder_is_null() {
+        let (sql, params, next) = build_where_from_query_parts(
+            &["deleted_at IS NULL".into(), "id =".into()],
+            &["42".into()],
+            1,
+        );
+        assert_eq!(sql, "\"deleted_at\" IS NULL AND \"id\" = $1");
+        assert_eq!(params, vec!["42"]);
+        assert_eq!(next, 2);
+    }
+
+    #[test]
+    fn test_where_builder_raw_clause() {
+        let (sql, params, next) = build_where_from_query_parts(
+            &["RAW:status IN (?, ?)".into()],
+            &["active".into(), "pending".into()],
+            1,
+        );
+        assert_eq!(sql, "status IN ($1, $2)");
+        assert_eq!(params, vec!["active", "pending"]);
+        assert_eq!(next, 3);
+    }
+
+    #[test]
+    fn test_where_builder_in_clause() {
+        let (sql, params, next) = build_where_from_query_parts(
+            &["id IN:3".into()],
+            &["1".into(), "2".into(), "3".into()],
+            1,
+        );
+        assert_eq!(sql, "\"id\" IN ($1, $2, $3)");
+        assert_eq!(params, vec!["1", "2", "3"]);
+        assert_eq!(next, 4);
+    }
+
+    #[test]
+    fn test_where_builder_default_eq() {
+        let (sql, params, next) = build_where_from_query_parts(
+            &["name".into()],
+            &["Alice".into()],
+            1,
+        );
+        assert_eq!(sql, "\"name\" = $1");
+        assert_eq!(params, vec!["Alice"]);
+        assert_eq!(next, 2);
     }
 }
