@@ -9394,6 +9394,11 @@ impl<'a> Lowerer<'a> {
             param_names: Vec<String>,
             param_types: Vec<MirType>,
             state_param: Option<String>,
+            /// The MIR type of the reply value (second element of the handler's
+            /// return tuple). Used to set the correct return type on the call
+            /// helper function so the codegen can properly convert the reply
+            /// from its tuple-encoded i64 representation.
+            reply_type: MirType,
         }
 
         struct CastInfo {
@@ -9427,6 +9432,32 @@ impl<'a> Lowerer<'a> {
                 }
             }
             let state_param = handler.state_param_name();
+
+            // Determine the reply type from the handler body's tail expression.
+            // The body returns (state, reply); we extract the second element.
+            // NOTE: The type checker does NOT store a type for the BLOCK node
+            // itself — only for expressions within it. We must use the tail
+            // expression (last expr in the block) to get the (state, reply)
+            // tuple type.
+            let reply_type = handler.body()
+                .and_then(|block| block.tail_expr())
+                .map(|expr| self.resolve_range(expr.syntax().text_range()))
+                .and_then(|ty| {
+                    if let MirType::Tuple(ref elems) = ty {
+                        if elems.len() >= 2 {
+                            Some(elems[1].clone())
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
+                    }
+                })
+                // Tuples are heap-allocated pointers at runtime, so collapse
+                // Tuple(...) to Ptr to match the LLVM representation.
+                .map(|ty| if matches!(ty, MirType::Tuple(_)) { MirType::Ptr } else { ty })
+                .unwrap_or(MirType::Int);
+
             call_infos.push(CallInfo {
                 variant_name,
                 snake_name,
@@ -9434,6 +9465,7 @@ impl<'a> Lowerer<'a> {
                 param_names,
                 param_types,
                 state_param,
+                reply_type,
             });
         }
 
@@ -9762,7 +9794,7 @@ impl<'a> Lowerer<'a> {
             fn_param_types.extend(info.param_types.iter().cloned());
             self.known_functions.insert(
                 fn_name.clone(),
-                MirType::FnPtr(fn_param_types, Box::new(MirType::Int)),
+                MirType::FnPtr(fn_param_types, Box::new(info.reply_type.clone())),
             );
         }
 
@@ -9819,13 +9851,13 @@ impl<'a> Lowerer<'a> {
                     }
                     args
                 },
-                ty: MirType::Int,
+                ty: info.reply_type.clone(),
             };
 
             self.functions.push(MirFunction {
                 name: fn_name.clone(),
                 params,
-                return_type: MirType::Int,
+                return_type: info.reply_type.clone(),
                 body,
                 is_closure_fn: false,
                 captures: Vec::new(),

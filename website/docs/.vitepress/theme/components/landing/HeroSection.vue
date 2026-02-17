@@ -9,25 +9,25 @@ const { theme } = useData()
 
 const highlightedHtml = ref('')
 
-const heroCode = `actor Counter do
-  def init(), do: 0
-  def handle_cast(:inc, state), do: state + 1
-  def handle_call(:get, _from, state) do
-    {:reply, state, state}
+const heroCode = `service Counter do
+  fn init(n :: Int) -> Int do n end
+
+  call Increment() :: Int do |count|
+    (count + 1, count + 1)
   end
 end
 
-pub fn main() do
-  let counter = spawn(Counter)
-  cast(counter, :inc)
+fn handle_count(request) do
+  let pid = Process.whereis("counter")
+  let count = Counter.increment(pid)
+  HTTP.response(200, "Count: \${count}")
+end
 
-  let router = HTTP.new()
-    |> HTTP.get("/", fn(_req) do
-      let count = call(counter, :get)
-      HTTP.json(200, %{"count": count})
-    end)
+fn main() do
+  let _ = Process.register("counter", Counter.start(0))
 
-  HTTP.serve(router, 8080)
+  HTTP.serve((HTTP.router()
+    |> HTTP.on_get("/count", handle_count)), 8080)
 end`
 
 onMounted(async () => {

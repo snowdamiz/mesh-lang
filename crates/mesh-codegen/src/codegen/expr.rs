@@ -4038,27 +4038,100 @@ impl<'ctx> CodeGen<'ctx> {
             .into_int_value();
 
         // The reply is a tuple-encoded i64. How to interpret it depends on the
-        // expected return type:
+        // expected return type. In the service handler's return tuple, each
+        // element is stored as i64:
+        //   - Small structs (≤ 8 bytes): bitcast to i64 (struct bits stored directly)
+        //   - Large structs (> 8 bytes): heap-allocated, i64 is pointer-as-int
+        //   - Pointers (String, Ptr): ptrtoint'd to i64
+        //   - Scalars (Int, Bool, Float, Pid): i64 IS the value
         //
-        // - SumType/Struct: The i64 is a heap pointer to the actual value (for types
-        //   > 8 bytes, which is the common case for sum types like String!String).
-        //   Convert to pointer so the let-binding coercion path loads through it.
-        //   For small sum types (<= 8 bytes), the i64 contains the bitcast struct
-        //   bits, but inttoptr is still safe because the let-binding deref path
-        //   will reinterpret via alloca store+load.
-        //
-        // - String/Ptr: The i64 is a pointer value (ptrtoint'd). Convert back to ptr.
-        //
-        // - Int/Bool/Float/Pid: The i64 IS the value. Return as-is.
+        // We must reverse this encoding based on the reply type.
         match reply_ty {
-            MirType::SumType(_) | MirType::Struct(_) | MirType::String | MirType::Ptr => {
+            MirType::SumType(name) => {
+                let layout = self.lookup_sum_type_layout(name)
+                    .ok_or_else(|| format!("Unknown sum type layout '{}' in service call reply", name))?;
+                let layout = *layout;
+                let target_data = self.target_machine.get_target_data();
+                let struct_size = target_data.get_store_size(&layout);
+                if struct_size <= 8 {
+                    // Small sum type: i64 contains the struct bits (bitcast).
+                    let tmp = self.builder
+                        .build_alloca(i64_ty, "reply_i64_tmp")
+                        .map_err(|e| e.to_string())?;
+                    self.builder
+                        .build_store(tmp, reply_i64)
+                        .map_err(|e| e.to_string())?;
+                    let reply_val = self.builder
+                        .build_load(layout, tmp, "reply_small_sum")
+                        .map_err(|e| e.to_string())?;
+                    Ok(reply_val)
+                } else {
+                    // Large sum type: i64 is a heap pointer. Load the struct.
+                    let reply_ptr = self.builder
+                        .build_int_to_ptr(reply_i64, ptr_ty, "reply_ptr")
+                        .map_err(|e| e.to_string())?;
+                    let reply_val = self.builder
+                        .build_load(layout, reply_ptr, "reply_sum")
+                        .map_err(|e| e.to_string())?;
+                    Ok(reply_val)
+                }
+            }
+            MirType::Struct(name) => {
+                let struct_ty = self.struct_types.get(name)
+                    .ok_or_else(|| format!("Unknown struct type '{}' in service call reply", name))?;
+                let struct_ty = *struct_ty;
+                let target_data = self.target_machine.get_target_data();
+                let struct_size = target_data.get_store_size(&struct_ty);
+                if struct_size <= 8 {
+                    let tmp = self.builder
+                        .build_alloca(i64_ty, "reply_i64_tmp")
+                        .map_err(|e| e.to_string())?;
+                    self.builder
+                        .build_store(tmp, reply_i64)
+                        .map_err(|e| e.to_string())?;
+                    let reply_val = self.builder
+                        .build_load(struct_ty, tmp, "reply_small_struct")
+                        .map_err(|e| e.to_string())?;
+                    Ok(reply_val)
+                } else {
+                    let reply_ptr = self.builder
+                        .build_int_to_ptr(reply_i64, ptr_ty, "reply_ptr")
+                        .map_err(|e| e.to_string())?;
+                    let reply_val = self.builder
+                        .build_load(struct_ty, reply_ptr, "reply_struct")
+                        .map_err(|e| e.to_string())?;
+                    Ok(reply_val)
+                }
+            }
+            MirType::String | MirType::Ptr => {
                 let reply_ptr = self.builder
                     .build_int_to_ptr(reply_i64, ptr_ty, "reply_ptr")
                     .map_err(|e| e.to_string())?;
                 Ok(reply_ptr.into())
             }
+            MirType::Bool => {
+                // Bool is i1 in LLVM. Truncate the i64 reply to i1.
+                let bool_val = self.builder
+                    .build_int_truncate(reply_i64, self.context.bool_type(), "reply_bool")
+                    .map_err(|e| e.to_string())?;
+                Ok(bool_val.into())
+            }
+            MirType::Float => {
+                // Float is f64 in LLVM. The i64 reply contains the float bits.
+                // Reinterpret via alloca store+load.
+                let tmp = self.builder
+                    .build_alloca(i64_ty, "reply_float_tmp")
+                    .map_err(|e| e.to_string())?;
+                self.builder
+                    .build_store(tmp, reply_i64)
+                    .map_err(|e| e.to_string())?;
+                let float_val = self.builder
+                    .build_load(self.context.f64_type(), tmp, "reply_float")
+                    .map_err(|e| e.to_string())?;
+                Ok(float_val)
+            }
             _ => {
-                // Scalar types (Int, Bool, Float, Pid, Unit): i64 is the value itself.
+                // Int, Pid, Unit: i64 is the value itself.
                 Ok(reply_i64.into())
             }
         }

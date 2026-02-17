@@ -18,23 +18,25 @@ const features: Feature[] = [
     description:
       'Spawn millions of lightweight actors with crash isolation and supervision trees. Each actor has its own heap and message queue.',
     filename: 'actors.mpl',
-    code: `actor Counter do
-  def init() do
+    code: `service Counter do
+  fn init(n :: Int) -> Int do n end
+
+  call Increment() :: Int do |count|
+    (count + 1, count + 1)
+  end
+
+  call GetCount() :: Int do |count|
+    (count, count)
+  end
+
+  cast Reset() do |_count|
     0
-  end
-
-  def handle_cast(:increment, state) do
-    state + 1
-  end
-
-  def handle_call(:get, _from, state) do
-    {:reply, state, state}
   end
 end
 
-let pid = spawn(Counter)
-cast(pid, :increment)
-let count = call(pid, :get)`,
+let pid = Counter.start(0)
+Counter.increment(pid)
+let count = Counter.get_count(pid)`,
   },
   {
     number: '02',
@@ -43,7 +45,7 @@ let count = call(pid, :get)`,
       'First-class pattern matching with exhaustiveness checking. Destructure any value — structs, tuples, sum types, lists.',
     filename: 'patterns.mpl',
     code: `fn describe(value) do
-  match value do
+  case value do
     0 -> "zero"
     n when n > 0 -> "positive"
     n when n < 0 -> "negative"
@@ -51,9 +53,9 @@ let count = call(pid, :get)`,
 end
 
 fn process(result) do
-  match result do
-    Ok(value) -> IO.puts("Got: \${value}")
-    Err(msg) -> IO.puts("Error: \${msg}")
+  case result do
+    Ok(value) -> println("Got: \${value}")
+    Err(msg) -> println("Error: \${msg}")
   end
 end`,
   },
@@ -87,7 +89,7 @@ let user = User { name: "Alice", age: 30 }`,
     code: `let result = "hello world"
   |> String.split(" ")
   |> List.map(fn(word) do
-    String.upcase(word)
+    String.to_upper(word)
   end)
   |> String.join(", ")
 
