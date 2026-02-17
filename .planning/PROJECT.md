@@ -4,26 +4,22 @@
 
 Mesh is a programming language that combines Elixir/Ruby-style expressive syntax with static Hindley-Milner type inference and BEAM-style concurrency (actors, supervision trees, fault tolerance), compiled via LLVM to native single-binary executables. The compiler is written in Rust. v1.0-v1.9 built a complete language: compiler pipeline, actor runtime, trait system, module system, loops, stdlib, and developer tooling. v2.0 added database drivers and JSON serde. v3.0 made Mesh production-ready: TLS encryption for PostgreSQL and HTTPS, connection pooling with health checks, panic-safe database transactions, and automatic struct-to-row mapping via `deriving(Row)`. v4.0 added WebSocket support with RFC 6455 protocol, actor-per-connection model, TLS (wss://), heartbeat, fragmentation, and rooms/channels. v5.0 added distributed actors: location-transparent PIDs, TLS-encrypted inter-node connections with cookie auth and mesh formation, transparent remote send, remote process/node monitoring with fault propagation, remote spawn via function name registry, global process registry, and cross-node WebSocket rooms and supervision trees -- all with zero new crate dependencies. v6.0 added a documentation website with VitePress, custom syntax highlighting, 9 documentation guides, landing page, and production-quality site features. v7.0 added associated types to the trait system and built a comprehensive trait-based protocol ecosystem: lazy iterators with pipe-style composition, From/Into conversion, numeric traits for user-extensible arithmetic, and Collect for iterator materialization. v8.0 made Mesh installable and editable: one-command install scripts with prebuilt binaries, complete TextMate grammar and Shiki themes, LSP code completion/signature help/formatting/document symbols, VS Code Marketplace publishing, and documentation corrections. ~99K LOC Rust + ~5K LOC website across 18 milestones. Zero known compiler correctness issues.
 
-## Current Milestone: v10.0 ORM
+## Current Milestone: v10.1 Stabilization
 
-**Goal:** Build a full ORM library in Mesh targeting PostgreSQL — schema DSL for model definition, pipe-chain query builder, full relationship support (belongs_to, has_many, has_one, many-to-many), migration tooling, and whatever compiler additions are needed to make the ORM expressive and type-safe. Validated by rewriting Mesher's entire DB layer to use the ORM.
+**Goal:** Fix all 47 Mesher compilation errors introduced during the v10.0 ORM integration (phases 96-103), rebuild Mesher successfully, run it, and verify all HTTP/WebSocket endpoints work correctly end-to-end.
 
 **Target features:**
-- Schema DSL for model definition (schema Users do field :name, String end)
-- Pipe-chain query builder (User |> where(name: "Alice") |> Repo.all())
-- Full relationships: belongs_to, has_many, has_one, many-to-many with join tables
-- Eager loading / preloading with nested relationship support
-- Migration tooling: generate migration files from schema changes, up/down, tracking
-- Repo pattern for database operations (insert, update, delete, all, get, get_by)
-- Changesets for validation and casting before persistence
-- Compiler additions as needed (new derive macros, DSL syntax, keyword args, etc.)
-- Rewrite Mesher's DB layer as validation
+- Fix all Mesher compilation errors (type mismatches, undefined variables, incorrect API usage)
+- Successful `meshc build mesher` with zero errors
+- Mesher runs and connects to PostgreSQL
+- All HTTP API endpoints return correct responses
+- WebSocket endpoints function correctly
 
 ## Current State
 
-Shipped v9.0 Mesher (2026-02-15). 19 milestones complete, 101 phases, 280 plans. 11 days from project start to full SaaS application. Starting v10.0 ORM -- building a production-quality ORM library in Mesh.
+Shipped v10.0 ORM (2026-02-17). 20 milestones complete, 103 phases, 301 plans. v10.0 added a full ORM to Mesh but the Mesher rewrite in phases 102-103 left 47 compilation errors. v10.1 focuses on getting Mesher back to a working state.
 
-**Latest milestone (v9.0):** Full monitoring/observability SaaS platform dogfooding every Mesh feature. 4020 lines of Mesh across ingestion, processing, storage, streaming, alerting, clustering, and React frontend. 95 phases, 280 plans. Stress-tested compiler, runtime, and actor system under production-like conditions.
+**Latest milestone (v10.0):** Full ORM library: schema DSL, query builder, repo pattern, changesets, relationships, preloading, migrations, and raw SQL elimination. 8 phases (96-103), 25 plans. Compiler additions: atoms, keyword args, multi-line pipes, struct update syntax, string key collect.
 
 ## Core Value
 
@@ -176,15 +172,16 @@ Expressive, readable concurrency -- writing concurrent programs should feel as n
 
 ### Active
 
-- [ ] ORM: Schema DSL for model definition with field types and options
-- [ ] ORM: Pipe-chain query builder with where, order_by, limit, offset, select, join
-- [ ] ORM: Full relationships (belongs_to, has_many, has_one, many-to-many)
-- [ ] ORM: Eager loading / preloading with nested relationship support
-- [ ] ORM: Migration tooling (generate, run up/down, track applied)
-- [ ] ORM: Repo pattern (insert, update, delete, all, get, get_by)
-- [ ] ORM: Changesets for validation and casting
-- [ ] ORM: Compiler additions for ORM expressiveness (DSL syntax, derive macros, etc.)
-- [ ] ORM: Rewrite Mesher DB layer using ORM as validation
+- ✓ ORM: Schema DSL for model definition with field types and options -- v10.0
+- ✓ ORM: Pipe-chain query builder with where, order_by, limit, offset, select, join -- v10.0
+- ✓ ORM: Full relationships (belongs_to, has_many, has_one, many-to-many) -- v10.0
+- ✓ ORM: Eager loading / preloading with nested relationship support -- v10.0
+- ✓ ORM: Migration tooling (generate, run up/down, track applied) -- v10.0
+- ✓ ORM: Repo pattern (insert, update, delete, all, get, get_by) -- v10.0
+- ✓ ORM: Changesets for validation and casting -- v10.0
+- ✓ ORM: Compiler additions for ORM expressiveness (DSL syntax, derive macros, etc.) -- v10.0
+- [ ] ORM: Mesher compiles and runs with ORM-based DB layer (47 errors remain)
+- [ ] Stabilization: All Mesher HTTP/WS endpoints verified end-to-end
 
 ### Out of Scope
 
@@ -390,4 +387,4 @@ Tech debt (minor, pre-existing):
 | Dynamic version badge via useData().theme | DocsVersionBadge.vue pattern avoids hardcoded version strings | ✓ Good -- v8.0, maintenance-free |
 
 ---
-*Last updated: 2026-02-16 after v10.0 ORM milestone started*
+*Last updated: 2026-02-16 after v10.1 Stabilization milestone started*
