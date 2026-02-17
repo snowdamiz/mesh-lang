@@ -243,3 +243,14 @@ Phases execute in numeric order: 104 -> 105
 | 105 | v10.1 | 2/2 | Complete | 2026-02-17 |
 
 **Total: 105 phases shipped across 21 milestones. 308 plans completed.**
+
+### Phase 105.1: Fix codegen ABI issues and workarounds from Phase 105 (INSERTED)
+
+**Goal:** Fix struct-in-Result sum type layout mismatch and service call reply serialization so that all Mesher endpoints work correctly, including the event ingestion pipeline that was crashing due to ABI segfaults
+**Depends on:** Phase 105
+**Plans:** 3 plans
+
+Plans:
+- [ ] 105.1-01-PLAN.md -- Fix struct-in-Result ABI: pointer-box struct payloads in sum type variant construction/destructuring
+- [ ] 105.1-02-PLAN.md -- Fix service call reply serialization for complex return types
+- [ ] 105.1-03-PLAN.md -- Remove auth workaround, rebuild Mesher, verify all endpoints
