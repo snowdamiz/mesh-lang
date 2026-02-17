@@ -10,11 +10,11 @@ See: .planning/PROJECT.md (updated 2026-02-16)
 ## Current Position
 
 Phase: 103 (Refactor ORM to Eliminate Raw SQL)
-Plan: 3 of 5 in current phase (103-01, 103-02, 103-03 complete)
+Plan: 4 of 5 in current phase (103-01, 103-02, 103-03, 103-04 complete)
 Status: Executing Phase 103
-Last activity: 2026-02-17 -- Plan 103-03 complete (Extended Repo Write Operations)
+Last activity: 2026-02-17 -- Plan 103-04 complete (Pool.query/Pool.execute Elimination)
 
-Progress: [██████████] 100% (20/20 milestone plans) + 3/5 Phase 103
+Progress: [██████████] 100% (20/20 milestone plans) + 4/5 Phase 103
 
 ## Performance Metrics
 
@@ -111,6 +111,9 @@ Progress: [██████████] 100% (20/20 milestone plans) + 3/5 Ph
 - 103-03: update_where and delete_where reject empty WHERE clauses to prevent accidental table-wide mutations.
 - 103-03: query_raw/execute_raw are thin wrappers over Pool.query/Pool.execute namespaced under Repo for explicit intent.
 - 103-03: update_where uses RETURNING * (returns first row as Map); delete_where uses Pool.execute (returns Int count).
+- 103-04: Repo.query_raw/execute_raw typeck changed from Ptr to concrete types matching Pool.query/Pool.execute for type-safe Mesh compilation.
+- 103-04: ORM Query builder (Repo.exists) deferred: Ptr return types in typeck prevent use in functions with concrete return types.
+- 103-04: Repo.query_raw is standard for all SQL queries in Mesh source; Pool.query reserved for runtime internals only.
 
 ### Roadmap Evolution
 
@@ -140,6 +143,6 @@ Known limitations relevant to ORM development:
 ## Session Continuity
 
 Last session: 2026-02-17
-Stopped at: Completed 103-03-PLAN.md (Extended Repo Write Operations)
+Stopped at: Completed 103-04-PLAN.md (Pool.query/Pool.execute Elimination)
 Resume file: None
-Next action: Execute 103-04-PLAN.md
+Next action: Execute 103-05-PLAN.md
