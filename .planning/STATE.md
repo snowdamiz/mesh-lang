@@ -10,11 +10,11 @@ See: .planning/PROJECT.md (updated 2026-02-16)
 ## Current Position
 
 Phase: 103 (Refactor ORM to Eliminate Raw SQL)
-Plan: 2 of 5 in current phase (103-01, 103-02 complete)
+Plan: 3 of 5 in current phase (103-01, 103-02, 103-03 complete)
 Status: Executing Phase 103
-Last activity: 2026-02-17 -- Plan 103-02 complete (Query Builder Raw Extensions)
+Last activity: 2026-02-17 -- Plan 103-03 complete (Extended Repo Write Operations)
 
-Progress: [██████████] 100% (20/20 milestone plans) + 2/5 Phase 103
+Progress: [██████████] 100% (20/20 milestone plans) + 3/5 Phase 103
 
 ## Performance Metrics
 
@@ -101,6 +101,9 @@ Progress: [██████████] 100% (20/20 milestone plans) + 2/5 Ph
 - 102-03: JSONB utility Pool.query calls preserved in 5 non-storage files (they parse JSON parameters, not query tables).
 - 102-03: writer.mpl insert_event preserved as raw Pool.execute (JSONB extraction INSERT not expressible in ORM).
 - 102-03: New helper functions (count_unresolved_issues, get_issue_project_id) in queries.mpl centralize table-query SQL.
+- 103-01: Json.get returns empty string on missing/invalid JSON (matches COALESCE pattern from all 5 call sites).
+- 103-01: Json.get_nested traverses exactly two levels (sufficient for ws_handler.mpl nested extraction).
+- 103-01: Pure Rust helpers separated from extern C wrappers for unit testability (follows orm.rs, migration.rs convention).
 - 103-02: RAW: prefix convention reuses existing SLOT_SELECT and SLOT_WHERE_CLAUSES (no new slots, no ABI change to 104-byte Query layout).
 - 103-02: ? placeholder in where_raw clauses renumbered to $N by SQL builder, matching existing fragment convention.
 - 103-02: select_raw appends RAW:-prefixed entries to existing select list, allowing mixed raw+quoted SELECT fields.
