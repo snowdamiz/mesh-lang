@@ -10486,6 +10486,11 @@ fn map_builtin_name(name: &str) -> String {
         "repo_update" => "mesh_repo_update".to_string(),
         "repo_delete" => "mesh_repo_delete".to_string(),
         "repo_transaction" => "mesh_repo_transaction".to_string(),
+        // ── Phase 103: Extended Repo Write Operations ────────────────────
+        "repo_update_where" => "mesh_repo_update_where".to_string(),
+        "repo_delete_where" => "mesh_repo_delete_where".to_string(),
+        "repo_query_raw" => "mesh_repo_query_raw".to_string(),
+        "repo_execute_raw" => "mesh_repo_execute_raw".to_string(),
         // ── Phase 100: Repo Preloading ──────────────────────────────────
         "repo_preload" => "mesh_repo_preload".to_string(),
         // ── Phase 99: Repo Changeset Operations ─────────────────────────

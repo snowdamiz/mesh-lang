@@ -1189,6 +1189,27 @@ fn stdlib_modules() -> HashMap<String, HashMap<String, Scheme>> {
             vec![pool_t.clone(), Ty::fun(vec![ptr_t.clone()], ptr_t.clone())],
             ptr_t.clone(),
         )));
+        // ── Phase 103: Extended Repo Write Operations ────────────────────
+        // Repo.update_where(PoolHandle, String, Ptr, Ptr) -> Ptr  (pool, table, fields_map, query -> Result<Map, String>)
+        repo_mod.insert("update_where".to_string(), Scheme::mono(Ty::fun(
+            vec![pool_t.clone(), Ty::string(), ptr_t.clone(), ptr_t.clone()],
+            ptr_t.clone(),
+        )));
+        // Repo.delete_where(PoolHandle, String, Ptr) -> Ptr  (pool, table, query -> Result<Int, String>)
+        repo_mod.insert("delete_where".to_string(), Scheme::mono(Ty::fun(
+            vec![pool_t.clone(), Ty::string(), ptr_t.clone()],
+            ptr_t.clone(),
+        )));
+        // Repo.query_raw(PoolHandle, String, Ptr) -> Ptr  (pool, sql, params -> Result<List<Map>, String>)
+        repo_mod.insert("query_raw".to_string(), Scheme::mono(Ty::fun(
+            vec![pool_t.clone(), Ty::string(), ptr_t.clone()],
+            ptr_t.clone(),
+        )));
+        // Repo.execute_raw(PoolHandle, String, Ptr) -> Ptr  (pool, sql, params -> Result<Int, String>)
+        repo_mod.insert("execute_raw".to_string(), Scheme::mono(Ty::fun(
+            vec![pool_t.clone(), Ty::string(), ptr_t.clone()],
+            ptr_t.clone(),
+        )));
         // ── Phase 99: Repo Changeset Operations ────────────────────────
         // Repo.insert_changeset(PoolHandle, String, Ptr) -> Ptr  (pool, table, changeset -> Result<Map, Changeset>)
         repo_mod.insert("insert_changeset".to_string(), Scheme::mono(Ty::fun(

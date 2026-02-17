@@ -300,6 +300,12 @@ fn register_runtime_symbols() {
     add_sym("mesh_repo_delete", mesh_rt::mesh_repo_delete as *const ());
     add_sym("mesh_repo_transaction", mesh_rt::mesh_repo_transaction as *const ());
 
+    // Extended Repo Write Operations (Phase 103)
+    add_sym("mesh_repo_update_where", mesh_rt::mesh_repo_update_where as *const ());
+    add_sym("mesh_repo_delete_where", mesh_rt::mesh_repo_delete_where as *const ());
+    add_sym("mesh_repo_query_raw", mesh_rt::mesh_repo_query_raw as *const ());
+    add_sym("mesh_repo_execute_raw", mesh_rt::mesh_repo_execute_raw as *const ());
+
     // Repo Preloading (Phase 100)
     add_sym("mesh_repo_preload", mesh_rt::mesh_repo_preload as *const ());
 
