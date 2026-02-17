@@ -27,17 +27,12 @@ fn alert_row_to_json(row) -> String do
   "{\"id\":\"" <> Map.get(row, "id") <> "\",\"rule_id\":\"" <> Map.get(row, "rule_id") <> "\",\"project_id\":\"" <> Map.get(row, "project_id") <> "\",\"status\":\"" <> Map.get(row, "status") <> "\",\"message\":\"" <> Map.get(row, "message") <> "\",\"condition_snapshot\":" <> Map.get(row, "condition_snapshot") <> ",\"triggered_at\":\"" <> Map.get(row, "triggered_at") <> "\",\"acknowledged_at\":" <> format_nullable_ts(Map.get(row, "acknowledged_at")) <> ",\"resolved_at\":" <> format_nullable_ts(Map.get(row, "resolved_at")) <> ",\"rule_name\":\"" <> Map.get(row, "rule_name") <> "\"}"
 end
 
-# Helper: extract enabled value from parsed rows and perform toggle.
-fn toggle_from_rows(pool :: PoolHandle, rule_id :: String, rows) do
-  if List.length(rows) > 0 do
-    let enabled_str = Map.get(List.head(rows), "enabled")
-    let result = toggle_alert_rule(pool, rule_id, enabled_str)
-    case result do
-      Ok(n) -> HTTP.response(200, "{\"status\":\"ok\",\"affected\":" <> String.from(n) <> "}")
-      Err(e) -> HTTP.response(500, "{\"error\":\"" <> e <> "\"}")
-    end
-  else
-    HTTP.response(400, "{\"error\":\"invalid body\"}")
+# Helper: perform toggle with extracted enabled value.
+fn do_toggle(pool :: PoolHandle, rule_id :: String, enabled_str :: String) do
+  let result = toggle_alert_rule(pool, rule_id, enabled_str)
+  case result do
+    Ok(n) -> HTTP.response(200, "{\"status\":\"ok\",\"affected\":" <> String.from(n) <> "}")
+    Err(e) -> HTTP.response(500, "{\"error\":\"" <> e <> "\"}")
   end
 end
 
@@ -74,16 +69,15 @@ end
 
 # Handle POST /api/v1/alert-rules/:rule_id/toggle (ALERT-01)
 # Toggles an alert rule enabled/disabled.
+# Uses Mesh-native Json.get for field extraction (no DB roundtrip).
 pub fn handle_toggle_alert_rule(request) do
   let reg_pid = get_registry()
   let pool = PipelineRegistry.get_pool(reg_pid)
   let rule_id = require_param(request, "rule_id")
   let body = Request.body(request)
-  let rows_result = Pool.query(pool, "SELECT COALESCE($1::jsonb->>'enabled', 'true') AS enabled", [body])
-  case rows_result do
-    Ok(rows) -> toggle_from_rows(pool, rule_id, rows)
-    Err(e) -> HTTP.response(400, "{\"error\":\"invalid json\"}")
-  end
+  let enabled_raw = Json.get(body, "enabled")
+  let enabled = if String.length(enabled_raw) > 0 do enabled_raw else "true" end
+  do_toggle(pool, rule_id, enabled)
 end
 
 # Handle POST /api/v1/alert-rules/:rule_id/delete (ALERT-01)

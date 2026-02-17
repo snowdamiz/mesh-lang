@@ -145,14 +145,9 @@ fn fire_and_broadcast(pool :: PoolHandle, rule_id :: String, project_id :: Strin
   end
 end
 
-# Extract a field from condition_json string using PostgreSQL.
+# Extract a field from condition_json string using Mesh-native Json.get (no DB roundtrip).
 fn extract_condition_field(pool :: PoolHandle, condition_json :: String, field :: String) -> String!String do
-  let rows = Pool.query(pool, "SELECT COALESCE($1::jsonb->>$2, '') AS val", [condition_json, field])?
-  if List.length(rows) > 0 do
-    Ok(Map.get(List.head(rows), "val"))
-  else
-    Ok("")
-  end
+  Ok(Json.get(condition_json, field))
 end
 
 # Fire if threshold exceeded.

@@ -377,31 +377,23 @@ pub fn handle_unresolve_issue(request) do
 end
 
 # Helper: perform assignment after extracting user_id from parsed JSON rows.
-fn assign_from_rows(pool :: PoolHandle, issue_id :: String, rows) do
-  if List.length(rows) > 0 do
-    let user_id = Map.get(List.head(rows), "user_id")
-    let result = assign_issue(pool, issue_id, user_id)
-    case result do
-      Ok(n) -> HTTP.response(200, "{\"status\":\"ok\"}")
-      Err(e) -> HTTP.response(500, "{\"error\":\"" <> e <> "\"}")
-    end
-  else
-    HTTP.response(400, "{\"error\":\"invalid body\"}")
+fn assign_with_user_id(pool :: PoolHandle, issue_id :: String, user_id :: String) do
+  let result = assign_issue(pool, issue_id, user_id)
+  case result do
+    Ok(n) -> HTTP.response(200, "{\"status\":\"ok\"}")
+    Err(e) -> HTTP.response(500, "{\"error\":\"" <> e <> "\"}")
   end
 end
 
 # Handle POST /api/v1/issues/:id/assign
-# Extracts user_id from JSON body using PostgreSQL jsonb parsing.
+# Extracts user_id from JSON body using Mesh-native Json.get (no DB roundtrip).
 pub fn handle_assign_issue(request) do
   let reg_pid = get_registry()
   let pool = PipelineRegistry.get_pool(reg_pid)
   let issue_id = require_param(request, "id")
   let body = Request.body(request)
-  let rows_result = Pool.query(pool, "SELECT COALESCE($1::jsonb->>'user_id', '') AS user_id", [body])
-  case rows_result do
-    Err(e) -> HTTP.response(400, "{\"error\":\"invalid json\"}")
-    Ok(rows) -> assign_from_rows(pool, issue_id, rows)
-  end
+  let user_id = Json.get(body, "user_id")
+  assign_with_user_id(pool, issue_id, user_id)
 end
 
 # Handle POST /api/v1/issues/:id/discard

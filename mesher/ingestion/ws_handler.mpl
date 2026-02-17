@@ -84,32 +84,15 @@ pub fn ws_on_connect(conn, path, headers) do
   end
 end
 
-# Helper: apply filter update from parsed rows
-# Defined before handle_subscribe_update (Mesh requires define-before-use).
-fn apply_filter_update(conn, rows) do
-  if List.length(rows) > 0 do
-    let row = List.head(rows)
-    let level = Map.get(row, "level")
-    let env = Map.get(row, "env")
-    let stream_mgr_pid = Process.whereis("stream_manager")
-    let project_id = StreamManager.get_project_id(stream_mgr_pid, conn)
-    StreamManager.register_client(stream_mgr_pid, conn, project_id, level, env)
-    ws_write(conn, "{\"type\":\"filters_updated\"}")
-  else
-    ws_write(conn, "{\"type\":\"error\",\"message\":\"filter parse failed\"}")
-  end
-end
-
 # Helper: update subscription filters from a JSON subscribe message.
-# Uses PostgreSQL jsonb extraction (same pattern as handle_assign_issue in routes.mpl).
+# Uses Mesh-native Json.get_nested for nested field extraction (no DB roundtrip).
 fn handle_subscribe_update(conn, message :: String) do
-  let reg_pid = get_registry()
-  let pool = PipelineRegistry.get_pool(reg_pid)
-  let query_result = Pool.query(pool, "SELECT COALESCE($1::jsonb->'filters'->>'level', '') AS level, COALESCE($1::jsonb->'filters'->>'environment', '') AS env", [message])
-  case query_result do
-    Ok(rows) -> apply_filter_update(conn, rows)
-    Err(_) -> ws_write(conn, "{\"type\":\"error\",\"message\":\"invalid subscribe message\"}")
-  end
+  let level = Json.get_nested(message, "filters", "level")
+  let env = Json.get_nested(message, "filters", "environment")
+  let stream_mgr_pid = Process.whereis("stream_manager")
+  let project_id = StreamManager.get_project_id(stream_mgr_pid, conn)
+  StreamManager.register_client(stream_mgr_pid, conn, project_id, level, env)
+  ws_write(conn, "{\"type\":\"filters_updated\"}")
 end
 
 # Helper: handle message from an ingestion client (existing behavior)

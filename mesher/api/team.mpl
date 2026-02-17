@@ -37,16 +37,10 @@ fn api_key_to_json(row) -> String do
 end
 
 
-# Extract a field from a JSON body using PostgreSQL jsonb extraction.
-# Reuses the pattern from handle_assign_issue in routes.mpl.
+# Extract a field from a JSON body using Mesh-native Json.get (no DB roundtrip).
 # Returns the value or empty string if field is missing/null.
 fn extract_json_field(pool :: PoolHandle, body :: String, field :: String) -> String!String do
-  let rows = Pool.query(pool, "SELECT COALESCE($1::jsonb->>$2, '') AS val", [body, field])?
-  if List.length(rows) > 0 do
-    Ok(Map.get(List.head(rows), "val"))
-  else
-    Ok("")
-  end
+  Ok(Json.get(body, field))
 end
 
 # --- Team membership helper functions for case arm extraction (ORG-04) ---
