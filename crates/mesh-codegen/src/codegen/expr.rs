@@ -710,7 +710,7 @@ impl<'ctx> CodeGen<'ctx> {
         // We need to pack extra_args into a payload buffer.
         if let MirExpr::Var(name, _) = func {
             if name == "mesh_service_call" && args.len() >= 2 {
-                return self.codegen_service_call_helper(args);
+                return self.codegen_service_call_helper(args, ty);
             }
             // Check if it's a service cast helper (mesh_actor_send with [pid, tag, ...args]).
             // Pattern: Call to mesh_actor_send from a __service_*_cast_* function.
@@ -1870,9 +1870,46 @@ impl<'ctx> CodeGen<'ctx> {
             let variant_ty =
                 variant_struct_type(self.context, &field_types, &self.struct_types, &self.sum_type_layouts);
 
-            // Store each field via the variant overlay
+            // Store each field via the variant overlay.
+            // For generic sum types like Result/Option where the layout is {i8, ptr},
+            // a struct payload (e.g., Ok(MyStruct{x,y})) may be larger than the 8-byte
+            // ptr slot. In that case, heap-allocate the struct and store the pointer
+            // so the store fits within the {i8, ptr} layout without overflow.
             for (i, field_expr) in fields.iter().enumerate() {
                 let val = self.codegen_expr(field_expr)?;
+
+                // Check if the value is a struct that exceeds the ptr slot size (8 bytes).
+                // If so, pointer-box it: heap-allocate and store the pointer instead.
+                let val = if val.is_struct_value() {
+                    let sv = val.into_struct_value();
+                    let sv_ty = sv.get_type();
+                    let target_data = self.target_machine.get_target_data();
+                    let struct_size = target_data.get_store_size(&sv_ty);
+                    if struct_size > 8 {
+                        // Large struct: heap-allocate and store pointer in the ptr slot.
+                        let i64_ty = self.context.i64_type();
+                        let size = sv_ty.size_of().unwrap_or(i64_ty.const_int(struct_size, false));
+                        let align = i64_ty.const_int(8, false);
+                        let gc_alloc = get_intrinsic(&self.module, "mesh_gc_alloc_actor");
+                        let heap_ptr = self
+                            .builder
+                            .build_call(gc_alloc, &[size.into(), align.into()], "variant_box")
+                            .map_err(|e| e.to_string())?
+                            .try_as_basic_value()
+                            .basic()
+                            .ok_or("mesh_gc_alloc_actor returned void")?
+                            .into_pointer_value();
+                        self.builder
+                            .build_store(heap_ptr, sv)
+                            .map_err(|e| e.to_string())?;
+                        heap_ptr.into()
+                    } else {
+                        sv.into()
+                    }
+                } else {
+                    val
+                };
+
                 // GEP into the variant overlay: field 0 is tag, field 1+ are data fields
                 let field_ptr = self
                     .builder
@@ -3633,21 +3670,39 @@ impl<'ctx> CodeGen<'ctx> {
                 // Convert new_state_val (i64 from tuple) to the proper state type.
                 // Tuples store all values as i64. For pointer/struct state types,
                 // the i64 is actually a pointer value (inttoptr). For struct types,
-                // the pointer points to a heap-allocated copy of the struct.
+                // the tuple encoding depends on size:
+                //   - Small structs (<= 8 bytes): bitcast from i64 (struct bits stored directly)
+                //   - Large structs (> 8 bytes): heap-allocated, i64 is pointer-as-int
                 if state_llvm_ty.is_pointer_type() {
                     let state_ptr: inkwell::values::PointerValue<'ctx> = self.builder
                         .build_int_to_ptr(new_state_val, ptr_ty, "new_state_ptr")
                         .map_err(|e| e.to_string())?;
                     state_ptr.into()
                 } else if state_llvm_ty.is_struct_type() {
-                    // Struct state: the i64 from the tuple is a pointer to the struct.
-                    // Convert to pointer, then load the struct value.
-                    let state_ptr = self.builder
-                        .build_int_to_ptr(new_state_val, ptr_ty, "new_state_struct_ptr")
-                        .map_err(|e| e.to_string())?;
-                    self.builder
-                        .build_load(state_llvm_ty, state_ptr, "new_state_struct")
-                        .map_err(|e| e.to_string())?
+                    let target_data = self.target_machine.get_target_data();
+                    let struct_size = target_data.get_store_size(&state_llvm_ty.into_struct_type());
+                    if struct_size <= 8 {
+                        // Small struct (<= 8 bytes): the i64 IS the struct bits (bitcast).
+                        // Reinterpret i64 bits as the struct type via alloca + load.
+                        let tmp = self.builder
+                            .build_alloca(i64_ty, "state_i64_tmp")
+                            .map_err(|e| e.to_string())?;
+                        self.builder
+                            .build_store(tmp, new_state_val)
+                            .map_err(|e| e.to_string())?;
+                        self.builder
+                            .build_load(state_llvm_ty, tmp, "new_state_small_struct")
+                            .map_err(|e| e.to_string())?
+                    } else {
+                        // Large struct (> 8 bytes): the i64 from the tuple is a pointer
+                        // to the heap-allocated struct. Convert to pointer, then load.
+                        let state_ptr = self.builder
+                            .build_int_to_ptr(new_state_val, ptr_ty, "new_state_struct_ptr")
+                            .map_err(|e| e.to_string())?;
+                        self.builder
+                            .build_load(state_llvm_ty, state_ptr, "new_state_struct")
+                            .map_err(|e| e.to_string())?
+                    }
                 } else {
                     let v: inkwell::values::BasicValueEnum<'ctx> = new_state_val.into();
                     v
@@ -3906,10 +3961,11 @@ impl<'ctx> CodeGen<'ctx> {
     /// Takes MIR args: [pid, tag, ...handler_args]
     /// Packs into a message buffer: [u64 handler_args[0], handler_args[1], ...]
     /// Calls mesh_service_call(pid, tag, payload_ptr, payload_size) -> ptr
-    /// Loads the reply from the returned pointer as i64.
+    /// Loads the reply from the returned pointer and converts based on expected type.
     fn codegen_service_call_helper(
         &mut self,
         args: &[MirExpr],
+        reply_ty: &MirType,
     ) -> Result<BasicValueEnum<'ctx>, String> {
         let i64_ty = self.context.i64_type();
         let ptr_ty = self.context.ptr_type(inkwell::AddressSpace::default());
@@ -3976,11 +4032,36 @@ impl<'ctx> CodeGen<'ctx> {
                 .build_gep(i8_ty, result_ptr, &[i64_ty.const_int(16, false)], "reply_data")
                 .map_err(|e| e.to_string())?
         };
-        let reply_val = self.builder
-            .build_load(i64_ty, reply_data_ptr, "reply_val")
-            .map_err(|e| e.to_string())?;
+        let reply_i64 = self.builder
+            .build_load(i64_ty, reply_data_ptr, "reply_i64")
+            .map_err(|e| e.to_string())?
+            .into_int_value();
 
-        Ok(reply_val)
+        // The reply is a tuple-encoded i64. How to interpret it depends on the
+        // expected return type:
+        //
+        // - SumType/Struct: The i64 is a heap pointer to the actual value (for types
+        //   > 8 bytes, which is the common case for sum types like String!String).
+        //   Convert to pointer so the let-binding coercion path loads through it.
+        //   For small sum types (<= 8 bytes), the i64 contains the bitcast struct
+        //   bits, but inttoptr is still safe because the let-binding deref path
+        //   will reinterpret via alloca store+load.
+        //
+        // - String/Ptr: The i64 is a pointer value (ptrtoint'd). Convert back to ptr.
+        //
+        // - Int/Bool/Float/Pid: The i64 IS the value. Return as-is.
+        match reply_ty {
+            MirType::SumType(_) | MirType::Struct(_) | MirType::String | MirType::Ptr => {
+                let reply_ptr = self.builder
+                    .build_int_to_ptr(reply_i64, ptr_ty, "reply_ptr")
+                    .map_err(|e| e.to_string())?;
+                Ok(reply_ptr.into())
+            }
+            _ => {
+                // Scalar types (Int, Bool, Float, Pid, Unit): i64 is the value itself.
+                Ok(reply_i64.into())
+            }
+        }
     }
 
     /// Generate a service cast helper function body.
