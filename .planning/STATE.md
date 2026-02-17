@@ -10,9 +10,9 @@ See: .planning/PROJECT.md (updated 2026-02-16)
 ## Current Position
 
 Phase: 105.1 (Fix Codegen ABI Issues and Workarounds from Phase 105)
-Plan: 2 of 3 in current phase -- COMPLETE (plans 01 and 02 done, plan 03 remaining)
-Status: Plan 105.1-01 complete (struct-in-Result pointer-boxing fix verified and tested)
-Last activity: 2026-02-17 -- Plan 105.1-01 completed (pointer-boxing tests added)
+Plan: 3 of 3 in current phase -- COMPLETE (all plans done)
+Status: Phase 105.1 complete. Auth workaround reverted. EventProcessor SIGSEGV persists (needs future investigation).
+Last activity: 2026-02-17 -- Plan 105.1-03 completed (auth workaround reverted, endpoints verified)
 
 Progress: [##########] 100%
 
@@ -34,6 +34,7 @@ Progress: [##########] 100%
 | 105   | 02   | 8min     | 3     | 4     |
 | 105.1 | 02   | 9min     | 1     | 1     |
 | 105.1 | 01   | 17min    | 2     | 5     |
+| 105.1 | 03   | 9min     | 2     | 2     |
 
 ## Accumulated Context
 
@@ -54,6 +55,8 @@ Recent decisions affecting current work:
 - Phase 105.1: Pass MIR return type to codegen_service_call_helper for type-aware reply conversion instead of always converting to pointer
 - Phase 105.1: Use target_data.get_store_size threshold (<=8 bytes) to match tuple encoding for struct state extraction
 - Phase 105.1: Construction-side fix only for struct-in-Result: existing codegen_leaf deref logic handles destructuring; no pattern.rs changes needed
+- Phase 105.1: Auth workaround reverted -- authenticate_request returns Project!String directly, confirmed working end-to-end
+- Phase 105.1: EventProcessor service call SIGSEGV persists in background processing despite Plan 02 reply conversion fix -- needs dedicated investigation
 
 ### Roadmap Evolution
 
@@ -65,11 +68,11 @@ None.
 
 ### Blockers/Concerns
 
-- Event ingestion (POST /api/v1/events) crashes due to EventProcessor service call ABI segfault. All other endpoints work. Requires codegen-level fix for service call reply serialization.
+- Event ingestion (POST /api/v1/events) crashes during background EventProcessor service call after HTTP response is sent. Auth pipeline (struct-in-Result) works. The SIGSEGV persists in asynchronous service call processing despite Plan 02 reply conversion fix. Requires deeper investigation of EventProcessor service loop state or call dispatch.
 
 ## Session Continuity
 
 Last session: 2026-02-17
-Stopped at: Completed 105.1-01-PLAN.md (Struct-in-Result Pointer-Boxing Fix)
+Stopped at: Completed 105.1-03-PLAN.md (Revert Auth Workaround and Verify Endpoints)
 Resume file: None
-Next action: Execute Plan 105.1-03 (end-to-end verification of all ABI fixes).
+Next action: Phase 105.1 complete. EventProcessor service call SIGSEGV needs future investigation plan.
