@@ -330,8 +330,9 @@ Note: Phase 100 and 101 both depend on earlier phases but are independent of eac
 | 100 | v10.0 | 2/2 | Complete | 2026-02-16 |
 | 101 | v10.0 | 3/3 | Complete | 2026-02-16 |
 | 102 | v10.0 | 3/3 | Complete | 2026-02-16 |
+| 103 | v10.0 | 5/5 | Complete | 2026-02-17 |
 
-**Total: 102 phases shipped across 19 milestones. 300 plans completed. v10.0: 7/7 phases complete, 20/20 plans done.**
+**Total: 103 phases shipped across 19 milestones. 305 plans completed. v10.0: 8/8 phases complete, 25/25 plans done.**
 
 ### Phase 103: Refactor ORM to eliminate raw SQL and rewrite Mesher
 
@@ -340,8 +341,8 @@ Note: Phase 100 and 101 both depend on earlier phases but are independent of eac
 **Plans:** 5 plans
 
 Plans:
-- [ ] 103-01-PLAN.md -- JSON field extraction intrinsic (Json.get, Json.get_nested) + replace 5 JSONB Pool.query calls
-- [ ] 103-02-PLAN.md -- Query builder extensions (Query.select_raw, Query.where_raw) with RAW: prefix convention
-- [ ] 103-03-PLAN.md -- Repo write extensions (Repo.update_where, delete_where, query_raw, execute_raw)
-- [ ] 103-04-PLAN.md -- Convert all queries.mpl from Pool.query/Pool.execute to Repo/Query APIs
-- [ ] 103-05-PLAN.md -- Convert writer.mpl + schema.mpl + final audit
+- [x] 103-01-PLAN.md -- JSON field extraction intrinsic (Json.get, Json.get_nested) + replace 5 JSONB Pool.query calls
+- [x] 103-02-PLAN.md -- Query builder extensions (Query.select_raw, Query.where_raw) with RAW: prefix convention
+- [x] 103-03-PLAN.md -- Repo write extensions (Repo.update_where, delete_where, query_raw, execute_raw)
+- [x] 103-04-PLAN.md -- Convert all queries.mpl from Pool.query/Pool.execute to Repo/Query APIs
+- [x] 103-05-PLAN.md -- Convert writer.mpl + schema.mpl + final audit
