@@ -358,4 +358,117 @@ mod tests {
         );
         assert_eq!(fn_ty.count_param_types(), 2);
     }
+
+    /// Verify that sum type layouts for struct-payload variants behave correctly.
+    ///
+    /// When builtin generic sum types (Result, Option) are registered with
+    /// `MirType::Ptr` fields, the layout is `{i8, ptr}` (the `all_single_ptr` path).
+    /// When user-defined sum types have `MirType::Struct` fields, the layout
+    /// uses the byte-array path `{i8, [N x i8]}` since Struct is not Ptr/String.
+    ///
+    /// The pointer-boxing fix in `codegen_construct_variant` bridges this gap:
+    /// when a struct value is stored into a generic `{i8, ptr}` sum type,
+    /// it is heap-allocated and the pointer is stored in the ptr slot.
+    #[test]
+    fn test_sum_type_layout_struct_payload() {
+        let context = Context::create();
+        let mut structs = FxHashMap::default();
+        let sums = FxHashMap::default();
+        let td = inkwell::targets::TargetData::create("");
+
+        // Register a multi-field struct type (like Project{id, name}).
+        let test_struct = context.opaque_struct_type("TestStruct");
+        test_struct.set_body(
+            &[context.i64_type().into(), context.i64_type().into()],
+            false,
+        );
+        structs.insert("TestStruct".to_string(), test_struct);
+
+        // Case 1: Generic Result with Ptr fields (builtin registration path).
+        // This is how Result/Option are registered -- generic params become Ptr.
+        let generic_result = MirSumTypeDef {
+            name: "Result".to_string(),
+            variants: vec![
+                MirVariantDef {
+                    name: "Ok".to_string(),
+                    fields: vec![MirType::Ptr],
+                    tag: 0,
+                },
+                MirVariantDef {
+                    name: "Err".to_string(),
+                    fields: vec![MirType::Ptr],
+                    tag: 1,
+                },
+            ],
+        };
+
+        let generic_layout = create_sum_type_layout(&context, &generic_result, &structs, &sums, &td);
+        // Generic Result: all_single_ptr is true (both variants have one Ptr field)
+        // Layout: {i8, ptr}
+        assert_eq!(generic_layout.count_fields(), 2, "Generic Result should have 2 fields (tag + ptr)");
+        assert!(
+            generic_layout.get_field_type_at_index(1).unwrap().is_pointer_type(),
+            "Generic Result field 1 should be ptr type"
+        );
+
+        // Case 2: User-defined sum type with Struct fields.
+        // This takes the byte-array path since Struct is not Ptr/String.
+        let struct_result = MirSumTypeDef {
+            name: "MyResult".to_string(),
+            variants: vec![
+                MirVariantDef {
+                    name: "Ok".to_string(),
+                    fields: vec![MirType::Struct("TestStruct".to_string())],
+                    tag: 0,
+                },
+                MirVariantDef {
+                    name: "Err".to_string(),
+                    fields: vec![MirType::String],
+                    tag: 1,
+                },
+            ],
+        };
+
+        let struct_layout = create_sum_type_layout(&context, &struct_result, &structs, &sums, &td);
+        // User-defined: all_single_ptr is false (Ok has Struct, not Ptr)
+        // Layout: {i8, [N x i8]} where N accommodates the largest variant overlay
+        assert_eq!(struct_layout.count_fields(), 2, "User sum type should have 2 fields (tag + payload)");
+        assert!(
+            struct_layout.get_field_type_at_index(1).unwrap().is_array_type(),
+            "User sum type field 1 should be byte array (not ptr)"
+        );
+
+        // Case 3: The variant overlay for Ptr fields matches the {i8, ptr} layout.
+        let ptr_overlay = variant_struct_type(&context, &[MirType::Ptr], &structs, &sums);
+        assert_eq!(ptr_overlay.count_fields(), 2);
+        assert!(
+            ptr_overlay.get_field_type_at_index(1).unwrap().is_pointer_type(),
+            "Ptr variant overlay should have ptr field"
+        );
+
+        // Case 4: The variant overlay for Struct fields does NOT match {i8, ptr}.
+        // This is why pointer-boxing is needed during construction.
+        let struct_overlay = variant_struct_type(
+            &context,
+            &[MirType::Struct("TestStruct".to_string())],
+            &structs,
+            &sums,
+        );
+        assert_eq!(struct_overlay.count_fields(), 2);
+        assert!(
+            struct_overlay.get_field_type_at_index(1).unwrap().is_struct_type(),
+            "Struct variant overlay should have struct field (not ptr)"
+        );
+
+        // The struct overlay size exceeds the generic layout size.
+        let generic_size = td.get_store_size(&generic_layout);
+        let struct_overlay_size = td.get_store_size(&struct_overlay);
+        assert!(
+            struct_overlay_size > generic_size,
+            "Struct variant overlay ({} bytes) should exceed generic layout ({} bytes) -- \
+             this is the mismatch that pointer-boxing fixes",
+            struct_overlay_size,
+            generic_size,
+        );
+    }
 }

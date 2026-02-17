@@ -1641,3 +1641,17 @@ fn e2e_list_find_option_match() {
     let output = compile_and_run(&source);
     assert_eq!(output, "found: 30\nnot found\n");
 }
+
+// ── Phase 105.1: Struct-in-Result ABI Fix ──────────────────────────────
+
+/// Phase 105.1: Result<MultiFieldStruct, String> construct + match roundtrip.
+/// Constructs Ok(Pair{42, 99}), Ok(Triple{10, 20, 30}), and Err("error"),
+/// pattern matches to extract field sums. Validates that pointer-boxing
+/// prevents the buffer overflow segfault when storing multi-field structs
+/// into the {i8, ptr} sum type layout.
+#[test]
+fn e2e_struct_in_result_roundtrip() {
+    let source = read_fixture("struct_in_result_roundtrip.mpl");
+    let output = compile_and_run(&source);
+    assert_eq!(output, "141\n-1\n60\n");
+}

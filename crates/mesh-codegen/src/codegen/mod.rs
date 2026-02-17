@@ -759,7 +759,7 @@ mod tests {
     use super::*;
     use crate::mir::{
         BinOp, MirExpr, MirLiteral, MirMatchArm, MirModule, MirPattern,
-        MirSumTypeDef, MirType, MirVariantDef, UnaryOp,
+        MirStructDef, MirSumTypeDef, MirType, MirVariantDef, UnaryOp,
     };
 
     fn empty_mir_module() -> MirModule {
@@ -1824,6 +1824,239 @@ mod tests {
         assert!(
             ir.contains("mesh_list_get"),
             "Should call mesh_list_get: {}",
+            ir
+        );
+    }
+
+    /// Verify that constructing a variant with a multi-field struct payload
+    /// generates pointer-boxing code (heap-allocate + store pointer) instead of
+    /// directly storing the oversized struct into the {i8, ptr} sum type slot.
+    ///
+    /// This tests the fix for the ABI segfault where Result<MultiFieldStruct, String>
+    /// caused a buffer overflow: the struct (>8 bytes) was written into the ptr slot
+    /// (8 bytes) of the {i8, ptr} sum type layout.
+    #[test]
+    fn test_struct_in_result_pointer_boxing() {
+        // Build a MIR module with:
+        // - struct TestPair { x: Int, y: Int } (16 bytes, > 8 byte ptr slot)
+        // - sum type Result with Ptr fields (like builtin registration)
+        // - function that constructs Ok(TestPair { x: 42, y: 99 })
+        let mir = MirModule {
+            functions: vec![MirFunction {
+                name: "make_ok".to_string(),
+                params: vec![],
+                return_type: MirType::SumType("Result".to_string()),
+                body: MirExpr::ConstructVariant {
+                    type_name: "Result".to_string(),
+                    variant: "Ok".to_string(),
+                    fields: vec![MirExpr::StructLit {
+                        name: "TestPair".to_string(),
+                        fields: vec![
+                            ("x".to_string(), MirExpr::IntLit(42, MirType::Int)),
+                            ("y".to_string(), MirExpr::IntLit(99, MirType::Int)),
+                        ],
+                        ty: MirType::Struct("TestPair".to_string()),
+                    }],
+                    ty: MirType::SumType("Result".to_string()),
+                },
+                is_closure_fn: false,
+                captures: vec![],
+                has_tail_calls: false,
+            }],
+            structs: vec![MirStructDef {
+                name: "TestPair".to_string(),
+                fields: vec![
+                    ("x".to_string(), MirType::Int),
+                    ("y".to_string(), MirType::Int),
+                ],
+            }],
+            sum_types: vec![MirSumTypeDef {
+                name: "Result".to_string(),
+                variants: vec![
+                    MirVariantDef {
+                        name: "Ok".to_string(),
+                        fields: vec![MirType::Ptr],
+                        tag: 0,
+                    },
+                    MirVariantDef {
+                        name: "Err".to_string(),
+                        fields: vec![MirType::Ptr],
+                        tag: 1,
+                    },
+                ],
+            }],
+            entry_function: None,
+            service_dispatch: std::collections::HashMap::new(),
+        };
+
+        let context = Context::create();
+        let mut codegen = CodeGen::new(&context, "test", 0, None).unwrap();
+        codegen.compile(&mir).unwrap();
+
+        let ir = codegen.get_llvm_ir();
+
+        // The IR should contain a call to mesh_gc_alloc_actor for heap-allocating
+        // the struct before storing it into the variant's ptr slot.
+        assert!(
+            ir.contains("variant_box") && ir.contains("mesh_gc_alloc_actor"),
+            "Should heap-allocate struct via mesh_gc_alloc_actor (variant_box): {}",
+            ir
+        );
+
+        // The IR should store the struct into the heap pointer, not into the variant directly.
+        assert!(
+            ir.contains("store %TestPair") && ir.contains("variant_box"),
+            "Should store struct into heap allocation: {}",
+            ir
+        );
+
+        // The variant's ptr slot should receive the heap pointer, not the struct.
+        assert!(
+            ir.contains("store ptr %variant_box"),
+            "Should store heap pointer into variant ptr slot: {}",
+            ir
+        );
+    }
+
+    /// Verify that constructing a variant with a struct payload AND pattern matching
+    /// to extract it generates correct IR with pointer-boxing (construction) and
+    /// pointer dereferencing (destructuring).
+    #[test]
+    fn test_struct_in_result_construct_and_match_ir() {
+        // Build a MIR module that constructs Ok(TestPair{42, 99}) and pattern
+        // matches to extract pair.x + pair.y. This mirrors the real-world
+        // case that caused segfaults before the pointer-boxing fix.
+        let mir = MirModule {
+            functions: vec![MirFunction {
+                name: "roundtrip".to_string(),
+                params: vec![],
+                return_type: MirType::Int,
+                body: MirExpr::Match {
+                    scrutinee: Box::new(MirExpr::ConstructVariant {
+                        type_name: "Result".to_string(),
+                        variant: "Ok".to_string(),
+                        fields: vec![MirExpr::StructLit {
+                            name: "TestPair".to_string(),
+                            fields: vec![
+                                ("x".to_string(), MirExpr::IntLit(42, MirType::Int)),
+                                ("y".to_string(), MirExpr::IntLit(99, MirType::Int)),
+                            ],
+                            ty: MirType::Struct("TestPair".to_string()),
+                        }],
+                        ty: MirType::SumType("Result".to_string()),
+                    }),
+                    arms: vec![
+                        MirMatchArm {
+                            pattern: MirPattern::Constructor {
+                                type_name: "Result".to_string(),
+                                variant: "Ok".to_string(),
+                                fields: vec![MirPattern::Var(
+                                    "pair".to_string(),
+                                    MirType::Struct("TestPair".to_string()),
+                                )],
+                                bindings: vec![(
+                                    "pair".to_string(),
+                                    MirType::Struct("TestPair".to_string()),
+                                )],
+                            },
+                            guard: None,
+                            body: MirExpr::BinOp {
+                                op: BinOp::Add,
+                                lhs: Box::new(MirExpr::FieldAccess {
+                                    object: Box::new(MirExpr::Var(
+                                        "pair".to_string(),
+                                        MirType::Struct("TestPair".to_string()),
+                                    )),
+                                    field: "x".to_string(),
+                                    ty: MirType::Int,
+                                }),
+                                rhs: Box::new(MirExpr::FieldAccess {
+                                    object: Box::new(MirExpr::Var(
+                                        "pair".to_string(),
+                                        MirType::Struct("TestPair".to_string()),
+                                    )),
+                                    field: "y".to_string(),
+                                    ty: MirType::Int,
+                                }),
+                                ty: MirType::Int,
+                            },
+                        },
+                        MirMatchArm {
+                            pattern: MirPattern::Constructor {
+                                type_name: "Result".to_string(),
+                                variant: "Err".to_string(),
+                                fields: vec![MirPattern::Wildcard],
+                                bindings: vec![],
+                            },
+                            guard: None,
+                            body: MirExpr::IntLit(0, MirType::Int),
+                        },
+                    ],
+                    ty: MirType::Int,
+                },
+                is_closure_fn: false,
+                captures: vec![],
+                has_tail_calls: false,
+            }],
+            structs: vec![MirStructDef {
+                name: "TestPair".to_string(),
+                fields: vec![
+                    ("x".to_string(), MirType::Int),
+                    ("y".to_string(), MirType::Int),
+                ],
+            }],
+            sum_types: vec![MirSumTypeDef {
+                name: "Result".to_string(),
+                variants: vec![
+                    MirVariantDef {
+                        name: "Ok".to_string(),
+                        fields: vec![MirType::Ptr],
+                        tag: 0,
+                    },
+                    MirVariantDef {
+                        name: "Err".to_string(),
+                        fields: vec![MirType::Ptr],
+                        tag: 1,
+                    },
+                ],
+            }],
+            entry_function: None,
+            service_dispatch: std::collections::HashMap::new(),
+        };
+
+        let context = Context::create();
+        let mut codegen = CodeGen::new(&context, "test", 0, None).unwrap();
+        codegen.compile(&mir).unwrap();
+
+        let ir = codegen.get_llvm_ir();
+
+        // Construction: should heap-allocate the struct payload.
+        assert!(
+            ir.contains("variant_box"),
+            "Construction should heap-allocate struct (variant_box): {}",
+            ir
+        );
+
+        // Destructuring: should load through the heap pointer.
+        // The pattern match binding loads the ptr from the variant slot, then
+        // dereferences it to get the actual struct (deref_struct).
+        assert!(
+            ir.contains("deref_struct"),
+            "Destructuring should dereference heap pointer (deref_struct): {}",
+            ir
+        );
+
+        // Should have switch on tag byte for pattern matching.
+        assert!(
+            ir.contains("switch i8"),
+            "Should switch on variant tag: {}",
+            ir
+        );
+
+        // Should have add instruction for pair.x + pair.y.
+        assert!(
+            ir.contains("add i64"),
+            "Should add pair.x + pair.y: {}",
             ir
         );
     }
