@@ -1200,15 +1200,15 @@ fn stdlib_modules() -> HashMap<String, HashMap<String, Scheme>> {
             vec![pool_t.clone(), Ty::string(), ptr_t.clone()],
             ptr_t.clone(),
         )));
-        // Repo.query_raw(PoolHandle, String, Ptr) -> Ptr  (pool, sql, params -> Result<List<Map>, String>)
+        // Repo.query_raw(PoolHandle, String, List<String>) -> Result<List<Map<String,String>>, String>
         repo_mod.insert("query_raw".to_string(), Scheme::mono(Ty::fun(
-            vec![pool_t.clone(), Ty::string(), ptr_t.clone()],
-            ptr_t.clone(),
+            vec![pool_t.clone(), Ty::string(), Ty::list(Ty::string())],
+            Ty::result(Ty::list(Ty::map(Ty::string(), Ty::string())), Ty::string()),
         )));
-        // Repo.execute_raw(PoolHandle, String, Ptr) -> Ptr  (pool, sql, params -> Result<Int, String>)
+        // Repo.execute_raw(PoolHandle, String, List<String>) -> Result<Int, String>
         repo_mod.insert("execute_raw".to_string(), Scheme::mono(Ty::fun(
-            vec![pool_t.clone(), Ty::string(), ptr_t.clone()],
-            ptr_t.clone(),
+            vec![pool_t.clone(), Ty::string(), Ty::list(Ty::string())],
+            Ty::result(Ty::int(), Ty::string()),
         )));
         // ── Phase 99: Repo Changeset Operations ────────────────────────
         // Repo.insert_changeset(PoolHandle, String, Ptr) -> Ptr  (pool, table, changeset -> Result<Map, Changeset>)

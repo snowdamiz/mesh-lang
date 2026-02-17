@@ -1,6 +1,6 @@
 # Reusable query helper functions for all Mesher entity types.
 # Provides CRUD operations using ORM Repo/Query calls for simple CRUD
-# and raw Pool.query/Pool.execute for complex analytics, PG functions,
+# and Repo.query_raw/Repo.execute_raw for complex analytics, PG functions,
 # JOINs, and conditional updates.
 # All functions take the pool handle (PoolHandle) as first argument.
 
@@ -16,13 +16,13 @@ from Types.Retention import RetentionSettings
 # Count unresolved issues for a project. Returns rows with "cnt" key.
 # Used by ingestion/routes.mpl for WebSocket issue count broadcasting.
 pub fn count_unresolved_issues(pool :: PoolHandle, project_id :: String) -> List<Map<String, String>>!String do
-  Pool.query(pool, "SELECT count(*)::text AS cnt FROM issues WHERE project_id = $1::uuid AND status = 'unresolved'", [project_id])
+  Repo.query_raw(pool, "SELECT count(*)::text AS cnt FROM issues WHERE project_id = $1::uuid AND status = 'unresolved'", [project_id])
 end
 
 # Look up the project_id for an issue by issue_id. Returns rows with "project_id" key.
 # Used by ingestion/routes.mpl for broadcasting issue state change notifications.
 pub fn get_issue_project_id(pool :: PoolHandle, issue_id :: String) -> List<Map<String, String>>!String do
-  Pool.query(pool, "SELECT project_id::text FROM issues WHERE id = $1::uuid", [issue_id])
+  Repo.query_raw(pool, "SELECT project_id::text FROM issues WHERE id = $1::uuid", [issue_id])
 end
 
 # --- Organization queries ---
@@ -87,7 +87,7 @@ end
 
 # Create a new API key for a project. Returns the generated key_value (mshr_ prefixed).
 pub fn create_api_key(pool :: PoolHandle, project_id :: String, label :: String) -> String!String do
-  let rows = Pool.query(pool, "INSERT INTO api_keys (project_id, key_value, label) VALUES ($1::uuid, 'mshr_' || encode(gen_random_bytes(24), 'hex'), $2) RETURNING key_value", [project_id, label])?
+  let rows = Repo.query_raw(pool, "INSERT INTO api_keys (project_id, key_value, label) VALUES ($1::uuid, 'mshr_' || encode(gen_random_bytes(24), 'hex'), $2) RETURNING key_value", [project_id, label])?
   if List.length(rows) > 0 do
     Ok(Map.get(List.head(rows), "key_value"))
   else
@@ -97,7 +97,7 @@ end
 
 # Get the project associated with a valid (non-revoked) API key.
 pub fn get_project_by_api_key(pool :: PoolHandle, key_value :: String) -> Project!String do
-  let rows = Pool.query(pool, "SELECT p.id::text, p.org_id::text, p.name, p.platform, p.created_at::text FROM projects p JOIN api_keys ak ON ak.project_id = p.id WHERE ak.key_value = $1 AND ak.revoked_at IS NULL", [key_value])?
+  let rows = Repo.query_raw(pool, "SELECT p.id::text, p.org_id::text, p.name, p.platform, p.created_at::text FROM projects p JOIN api_keys ak ON ak.project_id = p.id WHERE ak.key_value = $1 AND ak.revoked_at IS NULL", [key_value])?
   if List.length(rows) > 0 do
     let row = List.head(rows)
     Ok(Project { id: Map.get(row, "id"), org_id: Map.get(row, "org_id"), name: Map.get(row, "name"), platform: Map.get(row, "platform"), created_at: Map.get(row, "created_at") })
@@ -108,15 +108,14 @@ end
 
 # Revoke an API key by setting revoked_at to now().
 pub fn revoke_api_key(pool :: PoolHandle, key_id :: String) -> Int!String do
-  let result = Pool.execute(pool, "UPDATE api_keys SET revoked_at = now() WHERE id = $1::uuid", [key_id])
-  result
+  Repo.execute_raw(pool, "UPDATE api_keys SET revoked_at = now() WHERE id = $1::uuid", [key_id])
 end
 
 # --- User queries ---
 
 # Create a new user with bcrypt password hashing via pgcrypto (cost factor 12).
 pub fn create_user(pool :: PoolHandle, email :: String, password :: String, display_name :: String) -> String!String do
-  let rows = Pool.query(pool, "INSERT INTO users (email, password_hash, display_name) VALUES ($1, crypt($2, gen_salt('bf', 12)), $3) RETURNING id::text", [email, password, display_name])?
+  let rows = Repo.query_raw(pool, "INSERT INTO users (email, password_hash, display_name) VALUES ($1, crypt($2, gen_salt('bf', 12)), $3) RETURNING id::text", [email, password, display_name])?
   if List.length(rows) > 0 do
     Ok(Map.get(List.head(rows), "id"))
   else
@@ -127,7 +126,7 @@ end
 # Authenticate a user by email and password.
 # Returns the User if credentials match, Err("not found") otherwise.
 pub fn authenticate_user(pool :: PoolHandle, email :: String, password :: String) -> User!String do
-  let rows = Pool.query(pool, "SELECT id::text, email, display_name, created_at::text FROM users WHERE email = $1 AND password_hash = crypt($2, password_hash)", [email, password])?
+  let rows = Repo.query_raw(pool, "SELECT id::text, email, display_name, created_at::text FROM users WHERE email = $1 AND password_hash = crypt($2, password_hash)", [email, password])?
   if List.length(rows) > 0 do
     let row = List.head(rows)
     Ok(User { id: Map.get(row, "id"), email: Map.get(row, "email"), display_name: Map.get(row, "display_name"), created_at: Map.get(row, "created_at") })
@@ -147,7 +146,7 @@ end
 # Create a new session with a cryptographically random token.
 # Returns the 64-char hex token.
 pub fn create_session(pool :: PoolHandle, user_id :: String) -> String!String do
-  let rows = Pool.query(pool, "INSERT INTO sessions (token, user_id) VALUES (encode(gen_random_bytes(32), 'hex'), $1::uuid) RETURNING token", [user_id])?
+  let rows = Repo.query_raw(pool, "INSERT INTO sessions (token, user_id) VALUES (encode(gen_random_bytes(32), 'hex'), $1::uuid) RETURNING token", [user_id])?
   if List.length(rows) > 0 do
     Ok(Map.get(List.head(rows), "token"))
   else
@@ -157,7 +156,7 @@ end
 
 # Validate a session token. Returns the Session if valid and not expired.
 pub fn validate_session(pool :: PoolHandle, token :: String) -> Session!String do
-  let rows = Pool.query(pool, "SELECT token, user_id::text, created_at::text, expires_at::text FROM sessions WHERE token = $1 AND expires_at > now()", [token])?
+  let rows = Repo.query_raw(pool, "SELECT token, user_id::text, created_at::text, expires_at::text FROM sessions WHERE token = $1 AND expires_at > now()", [token])?
   if List.length(rows) > 0 do
     let row = List.head(rows)
     Ok(Session { token: Map.get(row, "token"), user_id: Map.get(row, "user_id"), created_at: Map.get(row, "created_at"), expires_at: Map.get(row, "expires_at") })
@@ -168,8 +167,7 @@ end
 
 # Delete a session by token (logout).
 pub fn delete_session(pool :: PoolHandle, token :: String) -> Int!String do
-  let result = Pool.execute(pool, "DELETE FROM sessions WHERE token = $1", [token])
-  result
+  Repo.execute_raw(pool, "DELETE FROM sessions WHERE token = $1", [token])
 end
 
 # --- Org membership queries ---
@@ -210,7 +208,7 @@ end
 # Returns Ok(issue_id) or Err.
 pub fn upsert_issue(pool :: PoolHandle, project_id :: String, fingerprint :: String, title :: String, level :: String) -> String!String do
   let sql = "INSERT INTO issues (project_id, fingerprint, title, level, event_count) VALUES ($1::uuid, $2, $3, $4, 1) ON CONFLICT (project_id, fingerprint) DO UPDATE SET event_count = issues.event_count + 1, last_seen = now(), status = CASE WHEN issues.status = 'resolved' THEN 'unresolved' ELSE issues.status END RETURNING id::text"
-  let rows = Pool.query(pool, sql, [project_id, fingerprint, title, level])?
+  let rows = Repo.query_raw(pool, sql, [project_id, fingerprint, title, level])?
   if List.length(rows) > 0 do
     Ok(Map.get(List.head(rows), "id"))
   else
@@ -221,7 +219,7 @@ end
 # Check if an issue with the given fingerprint is discarded (ISSUE-05 suppression).
 # Returns true if the issue exists with status = 'discarded', false otherwise.
 pub fn is_issue_discarded(pool :: PoolHandle, project_id :: String, fingerprint :: String) -> Bool!String do
-  let rows = Pool.query(pool, "SELECT 1 AS found FROM issues WHERE project_id = $1::uuid AND fingerprint = $2 AND status = 'discarded'", [project_id, fingerprint])?
+  let rows = Repo.query_raw(pool, "SELECT 1 AS found FROM issues WHERE project_id = $1::uuid AND fingerprint = $2 AND status = 'discarded'", [project_id, fingerprint])?
   if List.length(rows) > 0 do
     Ok(true)
   else
@@ -233,38 +231,38 @@ end
 
 # Transition an issue to 'resolved' status (ISSUE-01).
 pub fn resolve_issue(pool :: PoolHandle, issue_id :: String) -> Int!String do
-  Pool.execute(pool, "UPDATE issues SET status = 'resolved' WHERE id = $1::uuid AND status != 'resolved'", [issue_id])
+  Repo.execute_raw(pool, "UPDATE issues SET status = 'resolved' WHERE id = $1::uuid AND status != 'resolved'", [issue_id])
 end
 
 # Transition an issue to 'archived' status (ISSUE-01).
 pub fn archive_issue(pool :: PoolHandle, issue_id :: String) -> Int!String do
-  Pool.execute(pool, "UPDATE issues SET status = 'archived' WHERE id = $1::uuid", [issue_id])
+  Repo.execute_raw(pool, "UPDATE issues SET status = 'archived' WHERE id = $1::uuid", [issue_id])
 end
 
 # Reopen an issue -- set status back to 'unresolved' (ISSUE-01).
 pub fn unresolve_issue(pool :: PoolHandle, issue_id :: String) -> Int!String do
-  Pool.execute(pool, "UPDATE issues SET status = 'unresolved' WHERE id = $1::uuid", [issue_id])
+  Repo.execute_raw(pool, "UPDATE issues SET status = 'unresolved' WHERE id = $1::uuid", [issue_id])
 end
 
 # Assign an issue to a user. Pass empty string to unassign (ISSUE-04).
 pub fn assign_issue(pool :: PoolHandle, issue_id :: String, user_id :: String) -> Int!String do
   if String.length(user_id) > 0 do
-    Pool.execute(pool, "UPDATE issues SET assigned_to = $2::uuid WHERE id = $1::uuid", [issue_id, user_id])
+    Repo.execute_raw(pool, "UPDATE issues SET assigned_to = $2::uuid WHERE id = $1::uuid", [issue_id, user_id])
   else
-    Pool.execute(pool, "UPDATE issues SET assigned_to = NULL WHERE id = $1::uuid", [issue_id])
+    Repo.execute_raw(pool, "UPDATE issues SET assigned_to = NULL WHERE id = $1::uuid", [issue_id])
   end
 end
 
 # Mark an issue as discarded -- future events with this fingerprint are suppressed (ISSUE-05).
 pub fn discard_issue(pool :: PoolHandle, issue_id :: String) -> Int!String do
-  Pool.execute(pool, "UPDATE issues SET status = 'discarded' WHERE id = $1::uuid", [issue_id])
+  Repo.execute_raw(pool, "UPDATE issues SET status = 'discarded' WHERE id = $1::uuid", [issue_id])
 end
 
 # Delete an issue and all associated events (ISSUE-05).
 # Events deleted first due to FK constraint on issue_id.
 pub fn delete_issue(pool :: PoolHandle, issue_id :: String) -> Int!String do
-  let _ = Pool.execute(pool, "DELETE FROM events WHERE issue_id = $1::uuid", [issue_id])?
-  Pool.execute(pool, "DELETE FROM issues WHERE id = $1::uuid", [issue_id])
+  let _ = Repo.execute_raw(pool, "DELETE FROM events WHERE issue_id = $1::uuid", [issue_id])?
+  Repo.execute_raw(pool, "DELETE FROM issues WHERE id = $1::uuid", [issue_id])
 end
 
 # Helper: parse event_count string to Int, defaulting to 0 on failure.
@@ -279,7 +277,7 @@ end
 # List issues for a project filtered by status (for API listing).
 # Constructs Issue structs manually with parse_event_count for the Int field.
 pub fn list_issues_by_status(pool :: PoolHandle, project_id :: String, status :: String) -> List<Issue>!String do
-  let rows = Pool.query(pool, "SELECT id::text, project_id::text, fingerprint, title, level, status, event_count::text, first_seen::text, last_seen::text, COALESCE(assigned_to::text, '') as assigned_to FROM issues WHERE project_id = $1::uuid AND status = $2 ORDER BY last_seen DESC", [project_id, status])?
+  let rows = Repo.query_raw(pool, "SELECT id::text, project_id::text, fingerprint, title, level, status, event_count::text, first_seen::text, last_seen::text, COALESCE(assigned_to::text, '') as assigned_to FROM issues WHERE project_id = $1::uuid AND status = $2 ORDER BY last_seen DESC", [project_id, status])?
   Ok(List.map(rows, fn(row) do
     Issue { id: Map.get(row, "id"), project_id: Map.get(row, "project_id"), fingerprint: Map.get(row, "fingerprint"), title: Map.get(row, "title"), level: Map.get(row, "level"), status: Map.get(row, "status"), event_count: parse_event_count(Map.get(row, "event_count")), first_seen: Map.get(row, "first_seen"), last_seen: Map.get(row, "last_seen"), assigned_to: Map.get(row, "assigned_to") }
   end))
@@ -291,7 +289,7 @@ end
 # naturally prevents re-escalation after the first flip (research Pitfall 5).
 # Returns number of escalated issues.
 pub fn check_volume_spikes(pool :: PoolHandle) -> Int!String do
-  Pool.execute(pool, "UPDATE issues SET status = 'unresolved' WHERE status = 'archived' AND id IN (SELECT i.id FROM issues i JOIN events e ON e.issue_id = i.id AND e.received_at > now() - interval '1 hour' WHERE i.status = 'archived' GROUP BY i.id HAVING count(*) > GREATEST(10, (SELECT count(*) FROM events e2 WHERE e2.issue_id = i.id AND e2.received_at > now() - interval '7 days') / 168 * 10))", [])
+  Repo.execute_raw(pool, "UPDATE issues SET status = 'unresolved' WHERE status = 'archived' AND id IN (SELECT i.id FROM issues i JOIN events e ON e.issue_id = i.id AND e.received_at > now() - interval '1 hour' WHERE i.status = 'archived' GROUP BY i.id HAVING count(*) > GREATEST(10, (SELECT count(*) FROM events e2 WHERE e2.issue_id = i.id AND e2.received_at > now() - interval '7 days') / 168 * 10))", [])
 end
 
 # Extract event fields from JSON and compute fingerprint using PostgreSQL.
@@ -301,7 +299,7 @@ end
 # Returns a Map with keys: fingerprint, title, level.
 pub fn extract_event_fields(pool :: PoolHandle, event_json :: String) -> Map<String, String>!String do
   let sql = "SELECT CASE WHEN length(COALESCE(j->>'fingerprint', '')) > 0 THEN j->>'fingerprint' WHEN j->'stacktrace' IS NOT NULL AND jsonb_typeof(j->'stacktrace') = 'array' AND jsonb_array_length(j->'stacktrace') > 0 THEN (SELECT string_agg(frame->>'filename' || '|' || frame->>'function_name', ';' ORDER BY ordinality) FROM jsonb_array_elements(j->'stacktrace') WITH ORDINALITY AS t(frame, ordinality)) || ':' || lower(COALESCE(replace(j->>'message', '0x', ''), '')) WHEN j->'exception' IS NOT NULL AND j->'exception'->>'type_name' IS NOT NULL THEN (j->'exception'->>'type_name') || ':' || lower(COALESCE(replace(j->'exception'->>'value', '0x', ''), '')) ELSE 'msg:' || lower(COALESCE(replace(j->>'message', '0x', ''), '')) END AS fingerprint, COALESCE(NULLIF(j->>'message', ''), 'Untitled') AS title, COALESCE(j->>'level', 'error') AS level FROM (SELECT $1::jsonb AS j) AS sub"
-  let rows = Pool.query(pool, sql, [event_json])?
+  let rows = Repo.query_raw(pool, sql, [event_json])?
   if List.length(rows) > 0 do
     Ok(List.head(rows))
   else
@@ -318,11 +316,11 @@ end
 pub fn list_issues_filtered(pool :: PoolHandle, project_id :: String, status :: String, level :: String, assigned_to :: String, cursor :: String, cursor_id :: String, limit_str :: String) -> List<Map<String, String>>!String do
   if String.length(cursor) > 0 do
     let sql = "SELECT id::text, project_id::text, fingerprint, title, level, status, event_count::text, first_seen::text, last_seen::text, COALESCE(assigned_to::text, '') as assigned_to FROM issues WHERE project_id = $1::uuid AND ($2 = '' OR status = $2) AND ($3 = '' OR level = $3) AND ($4 = '' OR assigned_to = $4::uuid) AND (last_seen, id) < ($5::timestamptz, $6::uuid) ORDER BY last_seen DESC, id DESC LIMIT $7::int"
-    let rows = Pool.query(pool, sql, [project_id, status, level, assigned_to, cursor, cursor_id, limit_str])?
+    let rows = Repo.query_raw(pool, sql, [project_id, status, level, assigned_to, cursor, cursor_id, limit_str])?
     Ok(rows)
   else
     let sql = "SELECT id::text, project_id::text, fingerprint, title, level, status, event_count::text, first_seen::text, last_seen::text, COALESCE(assigned_to::text, '') as assigned_to FROM issues WHERE project_id = $1::uuid AND ($2 = '' OR status = $2) AND ($3 = '' OR level = $3) AND ($4 = '' OR assigned_to = $4::uuid) ORDER BY last_seen DESC, id DESC LIMIT $5::int"
-    let rows = Pool.query(pool, sql, [project_id, status, level, assigned_to, limit_str])?
+    let rows = Repo.query_raw(pool, sql, [project_id, status, level, assigned_to, limit_str])?
     Ok(rows)
   end
 end
@@ -333,7 +331,7 @@ end
 # Returns relevance rank for ordering.
 pub fn search_events_fulltext(pool :: PoolHandle, project_id :: String, search_query :: String, limit_str :: String) -> List<Map<String, String>>!String do
   let sql = "SELECT id::text, issue_id::text, level, message, received_at::text, ts_rank(to_tsvector('english', message), plainto_tsquery('english', $2))::text AS rank FROM events WHERE project_id = $1::uuid AND to_tsvector('english', message) @@ plainto_tsquery('english', $2) AND received_at > now() - interval '24 hours' ORDER BY rank DESC, received_at DESC LIMIT $3::int"
-  let rows = Pool.query(pool, sql, [project_id, search_query, limit_str])?
+  let rows = Repo.query_raw(pool, sql, [project_id, search_query, limit_str])?
   Ok(rows)
 end
 
@@ -342,7 +340,7 @@ end
 # Includes 24-hour default time range (SEARCH-04).
 pub fn filter_events_by_tag(pool :: PoolHandle, project_id :: String, tag_json :: String, limit_str :: String) -> List<Map<String, String>>!String do
   let sql = "SELECT id::text, issue_id::text, level, message, tags::text, received_at::text FROM events WHERE project_id = $1::uuid AND tags @> $2::jsonb AND received_at > now() - interval '24 hours' ORDER BY received_at DESC LIMIT $3::int"
-  let rows = Pool.query(pool, sql, [project_id, tag_json, limit_str])?
+  let rows = Repo.query_raw(pool, sql, [project_id, tag_json, limit_str])?
   Ok(rows)
 end
 
@@ -351,11 +349,11 @@ end
 pub fn list_events_for_issue(pool :: PoolHandle, issue_id :: String, cursor :: String, cursor_id :: String, limit_str :: String) -> List<Map<String, String>>!String do
   if String.length(cursor) > 0 do
     let sql = "SELECT id::text, level, message, received_at::text FROM events WHERE issue_id = $1::uuid AND (received_at, id) < ($2::timestamptz, $3::uuid) ORDER BY received_at DESC, id DESC LIMIT $4::int"
-    let rows = Pool.query(pool, sql, [issue_id, cursor, cursor_id, limit_str])?
+    let rows = Repo.query_raw(pool, sql, [issue_id, cursor, cursor_id, limit_str])?
     Ok(rows)
   else
     let sql = "SELECT id::text, level, message, received_at::text FROM events WHERE issue_id = $1::uuid ORDER BY received_at DESC, id DESC LIMIT $2::int"
-    let rows = Pool.query(pool, sql, [issue_id, limit_str])?
+    let rows = Repo.query_raw(pool, sql, [issue_id, limit_str])?
     Ok(rows)
   end
 end
@@ -367,7 +365,7 @@ end
 # Default 24-hour time window.
 pub fn event_volume_hourly(pool :: PoolHandle, project_id :: String, bucket :: String) -> List<Map<String, String>>!String do
   let sql = "SELECT date_trunc($2, received_at)::text AS bucket, count(*)::text AS count FROM events WHERE project_id = $1::uuid AND received_at > now() - interval '24 hours' GROUP BY bucket ORDER BY bucket"
-  let rows = Pool.query(pool, sql, [project_id, bucket])?
+  let rows = Repo.query_raw(pool, sql, [project_id, bucket])?
   Ok(rows)
 end
 
@@ -375,7 +373,7 @@ end
 # Groups events by level (error, warning, info, etc.) with counts.
 pub fn error_breakdown_by_level(pool :: PoolHandle, project_id :: String) -> List<Map<String, String>>!String do
   let sql = "SELECT level, count(*)::text AS count FROM events WHERE project_id = $1::uuid AND received_at > now() - interval '24 hours' GROUP BY level ORDER BY count DESC"
-  let rows = Pool.query(pool, sql, [project_id])?
+  let rows = Repo.query_raw(pool, sql, [project_id])?
   Ok(rows)
 end
 
@@ -383,7 +381,7 @@ end
 # Returns unresolved issues ordered by event_count DESC.
 pub fn top_issues_by_frequency(pool :: PoolHandle, project_id :: String, limit_str :: String) -> List<Map<String, String>>!String do
   let sql = "SELECT id::text, title, level, status, event_count::text, last_seen::text FROM issues WHERE project_id = $1::uuid AND status = 'unresolved' ORDER BY event_count DESC LIMIT $2::int"
-  let rows = Pool.query(pool, sql, [project_id, limit_str])?
+  let rows = Repo.query_raw(pool, sql, [project_id, limit_str])?
   Ok(rows)
 end
 
@@ -391,7 +389,7 @@ end
 # Uses JSONB key-exists operator to filter events that have the specified tag.
 pub fn event_breakdown_by_tag(pool :: PoolHandle, project_id :: String, tag_key :: String) -> List<Map<String, String>>!String do
   let sql = "SELECT tags->>$2 AS tag_value, count(*)::text AS count FROM events WHERE project_id = $1::uuid AND received_at > now() - interval '24 hours' AND tags ? $2 GROUP BY tag_value ORDER BY count DESC LIMIT 20"
-  let rows = Pool.query(pool, sql, [project_id, tag_key])?
+  let rows = Repo.query_raw(pool, sql, [project_id, tag_key])?
   Ok(rows)
 end
 
@@ -399,7 +397,7 @@ end
 # Ordered by received_at DESC for chronological browsing.
 pub fn issue_event_timeline(pool :: PoolHandle, issue_id :: String, limit_str :: String) -> List<Map<String, String>>!String do
   let sql = "SELECT id::text, level, message, received_at::text FROM events WHERE issue_id = $1::uuid ORDER BY received_at DESC LIMIT $2::int"
-  let rows = Pool.query(pool, sql, [issue_id, limit_str])?
+  let rows = Repo.query_raw(pool, sql, [issue_id, limit_str])?
   Ok(rows)
 end
 
@@ -407,7 +405,7 @@ end
 # Returns single row: unresolved issue count, events in last 24h, new issues today.
 pub fn project_health_summary(pool :: PoolHandle, project_id :: String) -> List<Map<String, String>>!String do
   let sql = "SELECT (SELECT count(*) FROM issues WHERE project_id = $1::uuid AND status = 'unresolved')::text AS unresolved_count, (SELECT count(*) FROM events WHERE project_id = $1::uuid AND received_at > now() - interval '24 hours')::text AS events_24h, (SELECT count(*) FROM issues WHERE project_id = $1::uuid AND first_seen > now() - interval '24 hours')::text AS new_today"
-  let rows = Pool.query(pool, sql, [project_id])?
+  let rows = Repo.query_raw(pool, sql, [project_id])?
   Ok(rows)
 end
 
@@ -418,7 +416,7 @@ end
 # tags, extra, user_context. JSONB fields use COALESCE for null safety.
 pub fn get_event_detail(pool :: PoolHandle, event_id :: String) -> List<Map<String, String>>!String do
   let sql = "SELECT id::text, project_id::text, issue_id::text, level, message, fingerprint, COALESCE(exception::text, 'null') AS exception, COALESCE(stacktrace::text, '[]') AS stacktrace, COALESCE(breadcrumbs::text, '[]') AS breadcrumbs, COALESCE(tags::text, '{}') AS tags, COALESCE(extra::text, '{}') AS extra, COALESCE(user_context::text, 'null') AS user_context, COALESCE(sdk_name, '') AS sdk_name, COALESCE(sdk_version, '') AS sdk_version, received_at::text FROM events WHERE id = $1::uuid"
-  let rows = Pool.query(pool, sql, [event_id])?
+  let rows = Repo.query_raw(pool, sql, [event_id])?
   Ok(rows)
 end
 
@@ -426,7 +424,7 @@ end
 # Uses tuple comparison (received_at, id) for stable ordering.
 pub fn get_event_neighbors(pool :: PoolHandle, issue_id :: String, received_at :: String, event_id :: String) -> List<Map<String, String>>!String do
   let sql = "SELECT (SELECT id::text FROM events WHERE issue_id = $1::uuid AND (received_at, id) > ($2::timestamptz, $3::uuid) ORDER BY received_at, id LIMIT 1) AS next_id, (SELECT id::text FROM events WHERE issue_id = $1::uuid AND (received_at, id) < ($2::timestamptz, $3::uuid) ORDER BY received_at DESC, id DESC LIMIT 1) AS prev_id"
-  let rows = Pool.query(pool, sql, [issue_id, received_at, event_id])?
+  let rows = Repo.query_raw(pool, sql, [issue_id, received_at, event_id])?
   Ok(rows)
 end
 
@@ -435,7 +433,7 @@ end
 # Update a member's role. SQL-side validation ensures only valid roles accepted.
 # Returns affected row count (0 if invalid role or membership not found).
 pub fn update_member_role(pool :: PoolHandle, membership_id :: String, new_role :: String) -> Int!String do
-  Pool.execute(pool, "UPDATE org_memberships SET role = $2 WHERE id = $1::uuid AND $2 IN ('owner', 'admin', 'member')", [membership_id, new_role])
+  Repo.execute_raw(pool, "UPDATE org_memberships SET role = $2 WHERE id = $1::uuid AND $2 IN ('owner', 'admin', 'member')", [membership_id, new_role])
 end
 
 # Remove a member from an organization.
@@ -450,7 +448,7 @@ end
 # Returns raw Map rows for flexible JSON serialization.
 pub fn get_members_with_users(pool :: PoolHandle, org_id :: String) -> List<Map<String, String>>!String do
   let sql = "SELECT m.id::text, m.user_id::text, m.org_id::text, m.role, m.joined_at::text, u.email, u.display_name FROM org_memberships m JOIN users u ON u.id = m.user_id WHERE m.org_id = $1::uuid ORDER BY m.joined_at"
-  let rows = Pool.query(pool, sql, [org_id])?
+  let rows = Repo.query_raw(pool, sql, [org_id])?
   Ok(rows)
 end
 
@@ -460,7 +458,7 @@ end
 # Returns raw Map rows. revoked_at is empty string if not revoked.
 pub fn list_api_keys(pool :: PoolHandle, project_id :: String) -> List<Map<String, String>>!String do
   let sql = "SELECT id::text, project_id::text, key_value, label, created_at::text, COALESCE(revoked_at::text, '') AS revoked_at FROM api_keys WHERE project_id = $1::uuid ORDER BY created_at DESC"
-  let rows = Pool.query(pool, sql, [project_id])?
+  let rows = Repo.query_raw(pool, sql, [project_id])?
   Ok(rows)
 end
 
@@ -469,7 +467,7 @@ end
 # ALERT-01: Insert alert rule from JSON body using PostgreSQL JSONB extraction.
 pub fn create_alert_rule(pool :: PoolHandle, project_id :: String, body :: String) -> String!String do
   let sql = "INSERT INTO alert_rules (project_id, name, condition_json, action_json, cooldown_minutes) SELECT $1::uuid, COALESCE(j->>'name', 'Unnamed Rule'), COALESCE((j->'condition')::jsonb, '{}'::jsonb), COALESCE((j->'action')::jsonb, '{\"type\":\"websocket\"}'::jsonb), COALESCE((j->>'cooldown_minutes')::int, 60) FROM (SELECT $2::jsonb AS j) AS sub RETURNING id::text"
-  let rows = Pool.query(pool, sql, [project_id, body])?
+  let rows = Repo.query_raw(pool, sql, [project_id, body])?
   if List.length(rows) > 0 do
     Ok(Map.get(List.head(rows), "id"))
   else
@@ -480,13 +478,13 @@ end
 # ALERT-01: List all alert rules for a project.
 pub fn list_alert_rules(pool :: PoolHandle, project_id :: String) -> List<Map<String, String>>!String do
   let sql = "SELECT id::text, project_id::text, name, condition_json::text, action_json::text, enabled::text, cooldown_minutes::text, COALESCE(last_fired_at::text, '') AS last_fired_at, created_at::text FROM alert_rules WHERE project_id = $1::uuid ORDER BY created_at DESC"
-  let rows = Pool.query(pool, sql, [project_id])?
+  let rows = Repo.query_raw(pool, sql, [project_id])?
   Ok(rows)
 end
 
 # Enable/disable an alert rule.
 pub fn toggle_alert_rule(pool :: PoolHandle, rule_id :: String, enabled_str :: String) -> Int!String do
-  Pool.execute(pool, "UPDATE alert_rules SET enabled = $2::boolean WHERE id = $1::uuid", [rule_id, enabled_str])
+  Repo.execute_raw(pool, "UPDATE alert_rules SET enabled = $2::boolean WHERE id = $1::uuid", [rule_id, enabled_str])
 end
 
 # Delete an alert rule.
@@ -498,7 +496,7 @@ end
 # ALERT-02: Count events in time window AND check cooldown, return true if should fire.
 pub fn evaluate_threshold_rule(pool :: PoolHandle, rule_id :: String, project_id :: String, threshold_str :: String, window_str :: String, cooldown_str :: String) -> Bool!String do
   let sql = "SELECT CASE WHEN event_count > $3::int AND (last_fired IS NULL OR last_fired < now() - interval '1 minute' * $6::int) THEN 1 ELSE 0 END AS should_fire FROM (SELECT count(*) AS event_count FROM events WHERE project_id = $2::uuid AND received_at > now() - interval '1 minute' * $4::int) counts, (SELECT last_fired_at AS last_fired FROM alert_rules WHERE id = $1::uuid) cooldown"
-  let rows = Pool.query(pool, sql, [rule_id, project_id, threshold_str, window_str, "", cooldown_str])?
+  let rows = Repo.query_raw(pool, sql, [rule_id, project_id, threshold_str, window_str, "", cooldown_str])?
   if List.length(rows) > 0 do
     let should_fire = Map.get(List.head(rows), "should_fire")
     Ok(should_fire == "1")
@@ -510,10 +508,10 @@ end
 # ALERT-04/05: Insert alert record, update last_fired_at atomically, return alert_id.
 pub fn fire_alert(pool :: PoolHandle, rule_id :: String, project_id :: String, message :: String, condition_type :: String, rule_name :: String) -> String!String do
   let sql = "INSERT INTO alerts (rule_id, project_id, status, message, condition_snapshot) VALUES ($1::uuid, $2::uuid, 'active', $3, jsonb_build_object('condition_type', $4, 'rule_name', $5)) RETURNING id::text"
-  let rows = Pool.query(pool, sql, [rule_id, project_id, message, condition_type, rule_name])?
+  let rows = Repo.query_raw(pool, sql, [rule_id, project_id, message, condition_type, rule_name])?
   if List.length(rows) > 0 do
     let alert_id = Map.get(List.head(rows), "id")
-    let _ = Pool.execute(pool, "UPDATE alert_rules SET last_fired_at = now() WHERE id = $1::uuid", [rule_id])
+    let _ = Repo.execute_raw(pool, "UPDATE alert_rules SET last_fired_at = now() WHERE id = $1::uuid", [rule_id])
     Ok(alert_id)
   else
     Err("fire_alert: no id returned")
@@ -522,44 +520,44 @@ end
 
 # ALERT-03: Check if an issue was just created (first_seen = last_seen).
 pub fn check_new_issue(pool :: PoolHandle, issue_id :: String) -> Bool!String do
-  let rows = Pool.query(pool, "SELECT 1 AS is_new FROM issues WHERE id = $1::uuid AND first_seen = last_seen", [issue_id])?
+  let rows = Repo.query_raw(pool, "SELECT 1 AS is_new FROM issues WHERE id = $1::uuid AND first_seen = last_seen", [issue_id])?
   Ok(List.length(rows) > 0)
 end
 
 # ALERT-03: Get enabled alert rules for event-based conditions for a project.
 pub fn get_event_alert_rules(pool :: PoolHandle, project_id :: String, condition_type :: String) -> List<Map<String, String>>!String do
   let sql = "SELECT id::text, name, cooldown_minutes::text FROM alert_rules WHERE project_id = $1::uuid AND enabled = true AND condition_json->>'condition_type' = $2"
-  let rows = Pool.query(pool, sql, [project_id, condition_type])?
+  let rows = Repo.query_raw(pool, sql, [project_id, condition_type])?
   Ok(rows)
 end
 
 # ALERT-05: Check cooldown before firing (for event-based triggers).
 pub fn should_fire_by_cooldown(pool :: PoolHandle, rule_id :: String, cooldown_str :: String) -> Bool!String do
-  let rows = Pool.query(pool, "SELECT 1 AS ok FROM alert_rules WHERE id = $1::uuid AND (last_fired_at IS NULL OR last_fired_at < now() - interval '1 minute' * $2::int)", [rule_id, cooldown_str])?
+  let rows = Repo.query_raw(pool, "SELECT 1 AS ok FROM alert_rules WHERE id = $1::uuid AND (last_fired_at IS NULL OR last_fired_at < now() - interval '1 minute' * $2::int)", [rule_id, cooldown_str])?
   Ok(List.length(rows) > 0)
 end
 
 # ALERT-06: Transition alert to acknowledged.
 pub fn acknowledge_alert(pool :: PoolHandle, alert_id :: String) -> Int!String do
-  Pool.execute(pool, "UPDATE alerts SET status = 'acknowledged', acknowledged_at = now() WHERE id = $1::uuid AND status = 'active'", [alert_id])
+  Repo.execute_raw(pool, "UPDATE alerts SET status = 'acknowledged', acknowledged_at = now() WHERE id = $1::uuid AND status = 'active'", [alert_id])
 end
 
 # ALERT-06: Transition alert to resolved.
 pub fn resolve_fired_alert(pool :: PoolHandle, alert_id :: String) -> Int!String do
-  Pool.execute(pool, "UPDATE alerts SET status = 'resolved', resolved_at = now() WHERE id = $1::uuid AND status IN ('active', 'acknowledged')", [alert_id])
+  Repo.execute_raw(pool, "UPDATE alerts SET status = 'resolved', resolved_at = now() WHERE id = $1::uuid AND status IN ('active', 'acknowledged')", [alert_id])
 end
 
 # ALERT-06: List alerts for a project filtered by status.
 pub fn list_alerts(pool :: PoolHandle, project_id :: String, status :: String) -> List<Map<String, String>>!String do
   let sql = "SELECT a.id::text, a.rule_id::text, a.project_id::text, a.status, a.message, a.condition_snapshot::text, a.triggered_at::text, COALESCE(a.acknowledged_at::text, '') AS acknowledged_at, COALESCE(a.resolved_at::text, '') AS resolved_at, r.name AS rule_name FROM alerts a JOIN alert_rules r ON r.id = a.rule_id WHERE a.project_id = $1::uuid AND ($2 = '' OR a.status = $2) ORDER BY a.triggered_at DESC LIMIT 50"
-  let rows = Pool.query(pool, sql, [project_id, status])?
+  let rows = Repo.query_raw(pool, sql, [project_id, status])?
   Ok(rows)
 end
 
 # Load all enabled threshold rules for evaluation.
 pub fn get_threshold_rules(pool :: PoolHandle) -> List<Map<String, String>>!String do
   let sql = "SELECT id::text, project_id::text, name, condition_json::text, cooldown_minutes::text FROM alert_rules WHERE enabled = true AND condition_json->>'condition_type' = 'threshold'"
-  let rows = Pool.query(pool, sql, [])?
+  let rows = Repo.query_raw(pool, sql, [])?
   Ok(rows)
 end
 
@@ -568,26 +566,26 @@ end
 # Delete expired events for a project based on its retention_days setting.
 # Returns the number of deleted rows.
 pub fn delete_expired_events(pool :: PoolHandle, project_id :: String, retention_days_str :: String) -> Int!String do
-  Pool.execute(pool, "DELETE FROM events WHERE project_id = $1::uuid AND received_at < now() - ($2 || ' days')::interval", [project_id, retention_days_str])
+  Repo.execute_raw(pool, "DELETE FROM events WHERE project_id = $1::uuid AND received_at < now() - ($2 || ' days')::interval", [project_id, retention_days_str])
 end
 
 # Find event partitions older than max_days (for partition cleanup).
 # Queries pg_inherits to find child tables of 'events' with names matching events_YYYYMMDD.
 pub fn get_expired_partitions(pool :: PoolHandle, max_days_str :: String) -> List<Map<String, String>>!String do
   let sql = "SELECT c.relname::text AS partition_name FROM pg_inherits i JOIN pg_class c ON c.oid = i.inhrelid JOIN pg_class p ON p.oid = i.inhparent WHERE p.relname = 'events' AND c.relname ~ '^events_[0-9]{8}$' AND to_date(substring(c.relname from '[0-9]{8}$'), 'YYYYMMDD') < (current_date - ($1 || ' days')::interval)"
-  let rows = Pool.query(pool, sql, [max_days_str])?
+  let rows = Repo.query_raw(pool, sql, [max_days_str])?
   Ok(rows)
 end
 
 # Drop a single event partition by name.
 # The partition_name comes from the trusted pg_inherits query, not user input.
 pub fn drop_partition(pool :: PoolHandle, partition_name :: String) -> Int!String do
-  Pool.execute(pool, "DROP TABLE IF EXISTS " <> partition_name, [])
+  Repo.execute_raw(pool, "DROP TABLE IF EXISTS " <> partition_name, [])
 end
 
 # Get all projects with their retention settings for the cleanup loop.
 pub fn get_all_project_retention(pool :: PoolHandle) -> List<Map<String, String>>!String do
-  let rows = Pool.query(pool, "SELECT id::text, retention_days::text FROM projects", [])?
+  let rows = Repo.query_raw(pool, "SELECT id::text, retention_days::text FROM projects", [])?
   Ok(rows)
 end
 
@@ -595,19 +593,19 @@ end
 # Uses 1024 byte average row estimate.
 pub fn get_project_storage(pool :: PoolHandle, project_id :: String) -> List<Map<String, String>>!String do
   let sql = "SELECT count(*)::text AS event_count, (count(*) * 1024)::text AS estimated_bytes FROM events WHERE project_id = $1::uuid"
-  let rows = Pool.query(pool, sql, [project_id])?
+  let rows = Repo.query_raw(pool, sql, [project_id])?
   Ok(rows)
 end
 
 # Update project retention and sampling settings from JSON body.
 # Uses SQL-side JSON extraction per decision [91-03].
 pub fn update_project_settings(pool :: PoolHandle, project_id :: String, body :: String) -> Int!String do
-  Pool.execute(pool, "UPDATE projects SET retention_days = COALESCE(($2::jsonb->>'retention_days')::int, retention_days), sample_rate = COALESCE(($2::jsonb->>'sample_rate')::real, sample_rate) WHERE id = $1::uuid", [project_id, body])
+  Repo.execute_raw(pool, "UPDATE projects SET retention_days = COALESCE(($2::jsonb->>'retention_days')::int, retention_days), sample_rate = COALESCE(($2::jsonb->>'sample_rate')::real, sample_rate) WHERE id = $1::uuid", [project_id, body])
 end
 
 # Get retention and sampling settings for a project.
 pub fn get_project_settings(pool :: PoolHandle, project_id :: String) -> List<Map<String, String>>!String do
-  let rows = Pool.query(pool, "SELECT retention_days::text, sample_rate::text FROM projects WHERE id = $1::uuid", [project_id])?
+  let rows = Repo.query_raw(pool, "SELECT retention_days::text, sample_rate::text FROM projects WHERE id = $1::uuid", [project_id])?
   Ok(rows)
 end
 
@@ -615,7 +613,7 @@ end
 # Returns true if the event should be kept, false if it should be dropped.
 # Defaults to keeping all events (sample_rate = 1.0) if project not found.
 pub fn check_sample_rate(pool :: PoolHandle, project_id :: String) -> Bool!String do
-  let rows = Pool.query(pool, "SELECT random() < COALESCE((SELECT sample_rate FROM projects WHERE id = $1::uuid), 1.0) AS keep", [project_id])?
+  let rows = Repo.query_raw(pool, "SELECT random() < COALESCE((SELECT sample_rate FROM projects WHERE id = $1::uuid), 1.0) AS keep", [project_id])?
   if List.length(rows) > 0 do
     Ok(Map.get(List.head(rows), "keep") == "t")
   else
