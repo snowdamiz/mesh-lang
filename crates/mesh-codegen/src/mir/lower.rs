@@ -11114,6 +11114,59 @@ pub fn lower_to_mir(parse: &Parse, typeck: &TypeckResult, module_name: &str, pub
                 }
             }
         }
+
+        // Schema metadata: register known_functions entries for imported structs
+        // with deriving(Schema). The actual function bodies are generated in the
+        // defining module's MIR and available after merge. The importing module's
+        // lowerer needs these in known_functions so that StructName.__table__(),
+        // StructName.__fields__(), etc. resolve correctly in lower_field_access.
+        for name in &struct_names {
+            let table_fn = format!("{}____table__", name);
+            if !lowerer.known_functions.contains_key(&table_fn) {
+                let struct_ty = Ty::Con(mesh_typeck::ty::TyCon::new(name));
+                if typeck.trait_registry.has_impl("Schema", &struct_ty) {
+                    // __table__() -> String
+                    lowerer.known_functions.insert(
+                        table_fn,
+                        MirType::FnPtr(vec![], Box::new(MirType::String)),
+                    );
+                    // __fields__() -> Ptr (List<String>)
+                    lowerer.known_functions.insert(
+                        format!("{}____fields__", name),
+                        MirType::FnPtr(vec![], Box::new(MirType::Ptr)),
+                    );
+                    // __primary_key__() -> String
+                    lowerer.known_functions.insert(
+                        format!("{}____primary_key__", name),
+                        MirType::FnPtr(vec![], Box::new(MirType::String)),
+                    );
+                    // __relationships__() -> Ptr (List<String>)
+                    lowerer.known_functions.insert(
+                        format!("{}____relationships__", name),
+                        MirType::FnPtr(vec![], Box::new(MirType::Ptr)),
+                    );
+                    // __field_types__() -> Ptr (List<String>)
+                    lowerer.known_functions.insert(
+                        format!("{}____field_types__", name),
+                        MirType::FnPtr(vec![], Box::new(MirType::Ptr)),
+                    );
+                    // __relationship_meta__() -> Ptr (List<String>)
+                    lowerer.known_functions.insert(
+                        format!("{}____relationship_meta__", name),
+                        MirType::FnPtr(vec![], Box::new(MirType::Ptr)),
+                    );
+                    // Per-field column accessors: __{field}_col__() -> String
+                    if let Some(info) = typeck.type_registry.struct_defs.get(name.as_str()) {
+                        for (field_name, _) in &info.fields {
+                            lowerer.known_functions.insert(
+                                format!("{}____{}_col__", name, field_name),
+                                MirType::FnPtr(vec![], Box::new(MirType::String)),
+                            );
+                        }
+                    }
+                }
+            }
+        }
     }
 
     lowerer.lower_source_file(source_file);
