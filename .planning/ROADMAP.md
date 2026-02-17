@@ -332,3 +332,16 @@ Note: Phase 100 and 101 both depend on earlier phases but are independent of eac
 | 102 | v10.0 | 3/3 | Complete | 2026-02-16 |
 
 **Total: 102 phases shipped across 19 milestones. 300 plans completed. v10.0: 7/7 phases complete, 20/20 plans done.**
+
+### Phase 103: Refactor ORM to eliminate raw SQL and rewrite Mesher
+
+**Goal:** Eliminate all Pool.query/Pool.execute calls from Mesher application code by adding JSON intrinsics, Query builder extensions (select_raw, where_raw), and Repo write extensions (update_where, delete_where, query_raw, execute_raw), then converting all 65+ raw SQL calls to use Repo/Query/Json APIs
+**Depends on:** Phase 102
+**Plans:** 5 plans
+
+Plans:
+- [ ] 103-01-PLAN.md -- JSON field extraction intrinsic (Json.get, Json.get_nested) + replace 5 JSONB Pool.query calls
+- [ ] 103-02-PLAN.md -- Query builder extensions (Query.select_raw, Query.where_raw) with RAW: prefix convention
+- [ ] 103-03-PLAN.md -- Repo write extensions (Repo.update_where, delete_where, query_raw, execute_raw)
+- [ ] 103-04-PLAN.md -- Convert all queries.mpl from Pool.query/Pool.execute to Repo/Query APIs
+- [ ] 103-05-PLAN.md -- Convert writer.mpl + schema.mpl + final audit
