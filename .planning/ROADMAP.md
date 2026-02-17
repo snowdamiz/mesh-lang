@@ -208,7 +208,10 @@ Plans:
   2. HTTP GET endpoints (e.g., organization list, project list) return valid JSON responses with correct status codes
   3. HTTP POST endpoints (e.g., create organization, create project) accept JSON payloads and persist data to the database
   4. WebSocket endpoint accepts connections, completes the upgrade handshake, and responds to messages
-**Plans**: TBD
+**Plans**: 2 plans
+Plans:
+- [ ] 105-01-PLAN.md -- Database setup, migration, and Mesher binary startup verification
+- [ ] 105-02-PLAN.md -- HTTP endpoint testing and WebSocket connectivity verification
 
 ## Progress
 
@@ -237,6 +240,6 @@ Phases execute in numeric order: 104 -> 105
 | 87-95 | v9.0 | 38/38 | Complete | 2026-02-15 |
 | 96-103 | v10.0 | 25/25 | Complete | 2026-02-17 |
 | 104 | v10.1 | 1/1 | Complete | 2026-02-17 |
-| 105 | v10.1 | 0/TBD | Not started | - |
+| 105 | v10.1 | 0/2 | Not started | - |
 
 **Total: 104 phases shipped across 20 milestones. 306 plans completed. v10.1: 1/2 phases complete.**
