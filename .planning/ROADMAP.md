@@ -20,7 +20,8 @@
 - [x] **v7.0 Iterator Protocol & Trait Ecosystem** - Phases 74-80 (shipped 2026-02-14)
 - [x] **v8.0 Developer Tooling** - Phases 81-86 (shipped 2026-02-14)
 - [x] **v9.0 Mesher** - Phases 87-95 (shipped 2026-02-15)
-- [x] **v10.0 ORM** - Phases 96-102 (shipped 2026-02-16)
+- [x] **v10.0 ORM** - Phases 96-103 (shipped 2026-02-17)
+- [ ] **v10.1 Stabilization** - Phases 104-105 (in progress)
 
 ## Phases
 
@@ -168,140 +169,49 @@ See milestones/v9.0-ROADMAP.md for full phase details.
 
 </details>
 
-### v10.0 ORM (SHIPPED 2026-02-16)
+<details>
+<summary>v10.0 ORM (Phases 96-103) - SHIPPED 2026-02-17</summary>
 
-**Milestone Goal:** Build a full ORM library in Mesh targeting PostgreSQL -- schema DSL, pipe-chain query builder, full relationships, changesets, migrations. Validated by rewriting Mesher's entire DB layer (627 lines raw SQL + 82 lines DDL) to use the ORM.
+25 plans across 8 phases. Full ORM library: schema DSL, query builder, repo pattern, changesets, relationships, preloading, migrations, and raw SQL elimination.
 
-- [x] **Phase 96: Compiler Additions** - Language primitives enabling ergonomic ORM syntax (shipped 2026-02-16)
-- [x] **Phase 97: Schema Metadata + SQL Generation** - deriving(Schema) codegen and runtime SQL builder (shipped 2026-02-16)
-- [x] **Phase 98: Query Builder + Repo** - Pipe-composable queries and database operations (shipped 2026-02-16)
-- [x] **Phase 99: Changesets** - Validation pipeline and type-safe casting before persistence (shipped 2026-02-16)
-- [x] **Phase 100: Relationships + Preloading** - belongs_to/has_many/has_one with batch preloading (shipped 2026-02-16)
-- [x] **Phase 101: Migration System** - Migration DSL, runner, CLI, and scaffold generation (shipped 2026-02-16)
-- [x] **Phase 102: Mesher Rewrite** - Replace all raw SQL with ORM calls, validate end-to-end (shipped 2026-02-16)
+</details>
+
+### v10.1 Stabilization (In Progress)
+
+**Milestone Goal:** Fix all 47 Mesher compilation errors introduced during the v10.0 ORM integration (phases 96-103), rebuild Mesher successfully, and verify all HTTP/WebSocket endpoints work correctly end-to-end.
+
+- [ ] **Phase 104: Fix Mesher Compilation Errors** - Resolve all 47 errors across 6 files to achieve zero-error build
+- [ ] **Phase 105: Verify Mesher Runtime** - Confirm Mesher runs, connects to PostgreSQL, and all endpoints work
 
 ## Phase Details
 
-### Phase 96: Compiler Additions
-**Goal**: Mesh language has all primitive features needed for an ergonomic, type-safe ORM -- atoms for field references, keyword arguments for DSL syntax, multi-line pipes for readable query chains, struct update for immutable data transformation, and deriving(Schema) infrastructure for compile-time metadata generation
-**Depends on**: Nothing (first phase of v10.0)
-**Requirements**: COMP-01, COMP-02, COMP-03, COMP-04, COMP-05, COMP-06, COMP-07, COMP-08
+### Phase 104: Fix Mesher Compilation Errors
+**Goal**: Mesher compiles with zero errors -- all type mismatches, undefined variables, incorrect `?` usage, missing module references, and argument count errors across queries.mpl, org.mpl, project.mpl, user.mpl, team.mpl, and main.mpl are resolved
+**Depends on**: Nothing (first phase of v10.1)
+**Requirements**: FIX-01, FIX-02, FIX-03, FIX-04, FIX-05, FIX-06
 **Success Criteria** (what must be TRUE):
-  1. Developer can write atom literals (`:name`, `:email`, `:asc`) and they compile to string constants with a distinct Atom type recognized by the type checker
-  2. Developer can write keyword arguments at call sites (`where(name: "Alice", age: 30)`) that desugar to Map parameters without explicit Map literal syntax
-  3. Developer can write multi-line pipe chains where `|>` at line start continues the previous expression, making query chains readable across multiple lines
-  4. Developer can write struct update expressions (`%{user | name: "Bob"}`) to produce a new struct with specific fields changed and all others copied
-  5. A struct with `deriving(Schema)` generates callable `__table__()`, `__fields__()`, and `__primary_key__()` metadata functions, and relationship declarations (`belongs_to`, `has_many`, `has_one`) inside struct bodies produce queryable relationship metadata
-**Plans**: 5 plans
+  1. `meshc build mesher` completes with zero compilation errors and produces a binary
+  2. All Repo/Query calls in queries.mpl use correct return types (Map and Result) with no Ptr-vs-Map or Map-vs-Result mismatches
+  3. All service files (org.mpl, project.mpl, user.mpl) reference only variables that are in scope -- no undefined variable errors from ORM migration artifacts
+  4. The `?` operator is used only on expressions returning Result or Option types -- no E0037 errors remain
+  5. All module imports resolve correctly in team.mpl and main.mpl, and all function calls pass the correct number of arguments
+**Plans**: TBD
 
-Plans:
-- [x] 96-01-PLAN.md -- Atom literal syntax (lexer, parser, typeck, codegen)
-- [x] 96-02-PLAN.md -- Keyword arguments and multi-line pipe chains (parser, typeck)
-- [x] 96-03-PLAN.md -- Struct update syntax (parser, typeck, codegen)
-- [x] 96-04-PLAN.md -- deriving(Schema) infrastructure and relationship declarations (typeck, MIR, codegen)
-- [x] 96-05-PLAN.md -- Bugfixes: Map.collect string key propagation and cross-module from_row resolution
-
-### Phase 97: Schema Metadata + SQL Generation
-**Goal**: Schema structs produce complete compile-time metadata (table name, fields, types, primary key, timestamps, column accessors) and a runtime SQL generation module builds parameterized queries from structured data
-**Depends on**: Phase 96
-**Requirements**: SCHM-01, SCHM-02, SCHM-03, SCHM-04, SCHM-05
+### Phase 105: Verify Mesher Runtime
+**Goal**: Mesher runs as a working application -- it starts, connects to PostgreSQL, serves HTTP API requests with correct responses, and accepts WebSocket connections
+**Depends on**: Phase 104
+**Requirements**: VER-01, VER-02, VER-03
 **Success Criteria** (what must be TRUE):
-  1. A `struct User do ... end deriving(Schema)` generates the correct pluralized table name (`"users"`), field list with column-to-type mappings, and configurable primary key (default UUID `id`)
-  2. Schema structs with `timestamps: true` option automatically include `inserted_at` and `updated_at` fields in their metadata and SQL generation
-  3. Column accessor functions are generated per field (`User.name_col()`) enabling type-safe column references in queries instead of arbitrary strings
-  4. Runtime Rust functions (`mesh_orm_build_select`, `mesh_orm_build_insert`, `mesh_orm_build_update`, `mesh_orm_build_delete`) produce correctly parameterized SQL with `$1, $2` placeholders and proper identifier quoting
-**Plans**: 2 plans
-
-Plans:
-- [ ] 97-01-PLAN.md -- deriving(Schema) codegen: schema options parsing, field type metadata, column accessors, timestamps injection, configurable table/PK
-- [ ] 97-02-PLAN.md -- Runtime SQL generation module (mesh-rt/db/orm.rs): SELECT, INSERT, UPDATE, DELETE builders with parameterized queries
-
-### Phase 98: Query Builder + Repo
-**Goal**: Developers can compose queries using pipe chains and execute them through a stateless Repo module, covering all standard CRUD operations, aggregation, transactions, and raw SQL escape hatches
-**Depends on**: Phase 97
-**Requirements**: QBLD-01, QBLD-02, QBLD-03, QBLD-04, QBLD-05, QBLD-06, QBLD-07, QBLD-08, QBLD-09, REPO-01, REPO-02, REPO-03, REPO-04, REPO-05, REPO-06, REPO-07, REPO-08, REPO-09, REPO-11
-**Success Criteria** (what must be TRUE):
-  1. Developer can write `User |> Query.where(:name, "Alice") |> Query.order_by(:name, :asc) |> Query.limit(10) |> Repo.all(pool)` and receive a `List<Map<String, String>>` of matching rows
-  2. All query builder functions (where with operators, select, order_by, limit, offset, join, group_by, having, fragment) are pipe-composable and return new immutable Query structs
-  3. Repo.all, Repo.one, Repo.get, Repo.get_by correctly execute queries and return typed results; Repo.insert, Repo.update, Repo.delete correctly persist changes with RETURNING clauses
-  4. Repo.count and Repo.exists return aggregate results; Repo.transaction wraps operations with automatic commit/rollback
-  5. Composable scopes work as pure functions (`pub fn active(q) do q |> Query.where(:status, "active") end`) that can be mixed into any query pipeline
-**Plans**: 3 plans
-
-Plans:
-- [x] 98-01-PLAN.md -- Query struct as opaque Ptr, pipe-composable builder functions (from, where, where_op, where_in, where_null, where_not_null, select, order_by, limit, offset, join, group_by, having, fragment), pipe schema-to-table transformation
-- [x] 98-02-PLAN.md -- Repo read operations (all, one, get, get_by, count, exists) with comprehensive SQL generation from Query struct
-- [x] 98-03-PLAN.md -- Repo write operations (insert, update, delete) with RETURNING clauses, Repo.transaction with Pool.checkout + Pg.begin/commit/rollback + Pool.checkin
-
-### Phase 99: Changesets
-**Goal**: Developers can validate and cast external data before persistence using a pipe-chain validation pipeline, with type coercion from raw params, built-in validators, and PostgreSQL constraint error mapping
-**Depends on**: Phase 98
-**Requirements**: CHST-01, CHST-02, CHST-03, CHST-04, CHST-05, CHST-06, CHST-07, CHST-08, CHST-09
-**Success Criteria** (what must be TRUE):
-  1. Developer can create a Changeset from a struct and params map via `Changeset.cast(user, params, [:name, :email])` that filters allowed fields and coerces string values to schema field types
-  2. Developer can chain validations (`|> validate_required([:name]) |> validate_length(:name, min: 2) |> validate_format(:email, "@")`) and the changeset accumulates all errors without short-circuiting
-  3. Repo.insert and Repo.update accept Changeset structs, check `changeset.valid` before executing SQL, and return `Result<T, Changeset>` with errors attached on failure
-  4. PostgreSQL constraint violations (unique index, foreign key) are caught and mapped to human-readable changeset errors on the appropriate field instead of raw database error strings
-**Plans**: 2 plans
-
-Plans:
-- [x] 99-01-PLAN.md -- Changeset struct (opaque 8-slot Ptr), Changeset.cast/cast_with_types, five validators (validate_required, validate_length, validate_format, validate_inclusion, validate_number), field accessors, pipe-chain composition
-- [x] 99-02-PLAN.md -- Enhanced PG error parsing (SQLSTATE + constraint extraction), constraint-to-changeset error mapping, Repo.insert_changeset/update_changeset with validation-before-SQL
-
-### Phase 100: Relationships + Preloading
-**Goal**: Schema structs can declare relationships (belongs_to, has_many, has_one) and the ORM provides batch preloading that loads associated records in separate queries, eliminating N+1 patterns
-**Depends on**: Phase 98
-**Requirements**: COMP-06, REPO-10
-**Success Criteria** (what must be TRUE):
-  1. Developer can declare `has_many :posts, Post`, `belongs_to :user, User`, and `has_one :profile, Profile` in struct bodies and the compiler generates queryable relationship metadata (target table, foreign key, cardinality)
-  2. `Repo.preload(pool, users, [:posts])` loads all posts for a list of users in a single `WHERE user_id IN (...)` query instead of N separate queries, correctly grouping results by foreign key
-  3. Nested preloading works (`Repo.preload(pool, users, [:posts, "posts.comments"])`) issuing one query per association level regardless of parent record count
-  4. Preloaded data is accessible through a predictable structure (Map with association keys) and unloaded associations produce clear error messages directing the developer to use Repo.preload
-**Plans**: 2 plans
-
-Plans:
-- [x] 100-01-PLAN.md -- Enhanced relationship metadata (__relationship_meta__ with FK and target table) in compiler pipeline
-- [x] 100-02-PLAN.md -- Repo.preload runtime implementation with batch IN queries, nested preloading, and result stitching
-
-### Phase 101: Migration System
-**Goal**: Developers can define database schema changes as versioned migration files with up/down functions, run them via CLI, and track applied state -- following a forward-only philosophy with expand-migrate-contract pattern
-**Depends on**: Phase 97
-**Requirements**: MIGR-01, MIGR-02, MIGR-03, MIGR-04, MIGR-05, MIGR-06, MIGR-07, MIGR-08
-**Success Criteria** (what must be TRUE):
-  1. Developer can write migration files as Mesh functions with `up(pool)` and `down(pool)` definitions using DSL helpers (`Migration.create_table`, `Migration.alter_table`, `Migration.drop_table`, `Migration.create_index`, `Migration.drop_index`)
-  2. Running `meshc migrate` discovers pending migrations, applies them in timestamp order within transactions, and records each in a `_mesh_migrations` tracking table
-  3. Running `meshc migrate down` rolls back the last applied migration; `meshc migrate status` shows applied vs pending
-  4. Running `meshc migrate generate <name>` creates a timestamped scaffold file with empty up/down function stubs
-  5. Migration documentation follows expand-migrate-contract philosophy: additive changes first, destructive changes only after code deployment
-**Plans**: 3 plans
-
-Plans:
-- [x] 101-01-PLAN.md -- Migration DSL runtime functions (create_table, drop_table, add_column, drop_column, rename_column, create_index, drop_index, execute) + compiler pipeline registration
-- [x] 101-02-PLAN.md -- Migration runner + tracking table + meshc migrate CLI (up, down, status)
-- [x] 101-03-PLAN.md -- Scaffold generation (meshc migrate generate) + e2e tests
-
-### Phase 102: Mesher Rewrite
-**Goal**: Mesher's entire database layer is rewritten using the ORM, validating that every ORM feature works correctly in a real application with 11 schema types, complex filtered queries, and multi-table relationships
-**Depends on**: Phase 96, Phase 97, Phase 98, Phase 99, Phase 100, Phase 101
-**Requirements**: MSHR-01, MSHR-02, MSHR-03, MSHR-04, MSHR-05
-**Success Criteria** (what must be TRUE):
-  1. All 11 Mesher type structs (Organization, User, OrgMembership, Session, Project, ApiKey, Event, Issue, AlertRule, Alert, RetentionSettings) use `deriving(Schema)` and their metadata functions return correct table/field/PK information
-  2. storage/queries.mpl (627 lines of raw SQL) is replaced with ORM Repo calls, reducing to approximately 100-150 lines of ORM query code
-  3. storage/schema.mpl (82 lines of imperative DDL) is replaced with versioned migration files using the Migration DSL
-  4. All service modules (OrgService, ProjectService, UserService, EventProcessor, etc.) use Repo operations instead of raw Pool.query/Pool.execute calls
-  5. All existing Mesher functionality (ingestion, error grouping, REST API, streaming, alerting, retention, clustering) works identically after the rewrite -- verified by running the full application
-**Plans**: 3 plans
-
-Plans:
-- [x] 102-01-PLAN.md -- Schema struct conversion (all 11 types to deriving(Schema)) + initial migration file + main.mpl update
-- [x] 102-02-PLAN.md -- Simple CRUD query conversion in queries.mpl (~13 functions to ORM Repo/Query)
-- [x] 102-03-PLAN.md -- Non-storage module Pool.query migration + end-to-end verification
+  1. Mesher binary starts without runtime crashes and successfully connects to a PostgreSQL database (prints connection confirmation or serves first request)
+  2. HTTP GET endpoints (e.g., organization list, project list) return valid JSON responses with correct status codes
+  3. HTTP POST endpoints (e.g., create organization, create project) accept JSON payloads and persist data to the database
+  4. WebSocket endpoint accepts connections, completes the upgrade handshake, and responds to messages
+**Plans**: TBD
 
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 96 -> 97 -> 98 -> 99 -> 100 -> 101 -> 102
-Note: Phase 100 and 101 both depend on earlier phases but are independent of each other. Phase 101 could start after Phase 97 if desired. Phase 102 requires all other v10.0 phases complete.
+Phases execute in numeric order: 104 -> 105
 
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
@@ -323,26 +233,8 @@ Note: Phase 100 and 101 both depend on earlier phases but are independent of eac
 | 74-80 | v7.0 | 17/17 | Complete | 2026-02-14 |
 | 81-86 | v8.0 | 11/11 | Complete | 2026-02-14 |
 | 87-95 | v9.0 | 38/38 | Complete | 2026-02-15 |
-| 96 | v10.0 | 5/5 | Complete | 2026-02-16 |
-| 97 | v10.0 | 2/2 | Complete | 2026-02-16 |
-| 98 | v10.0 | 3/3 | Complete | 2026-02-16 |
-| 99 | v10.0 | 2/2 | Complete | 2026-02-16 |
-| 100 | v10.0 | 2/2 | Complete | 2026-02-16 |
-| 101 | v10.0 | 3/3 | Complete | 2026-02-16 |
-| 102 | v10.0 | 3/3 | Complete | 2026-02-16 |
-| 103 | v10.0 | 5/5 | Complete | 2026-02-17 |
+| 96-103 | v10.0 | 25/25 | Complete | 2026-02-17 |
+| 104 | v10.1 | 0/TBD | Not started | - |
+| 105 | v10.1 | 0/TBD | Not started | - |
 
-**Total: 103 phases shipped across 19 milestones. 305 plans completed. v10.0: 8/8 phases complete, 25/25 plans done.**
-
-### Phase 103: Refactor ORM to eliminate raw SQL and rewrite Mesher
-
-**Goal:** Eliminate all Pool.query/Pool.execute calls from Mesher application code by adding JSON intrinsics, Query builder extensions (select_raw, where_raw), and Repo write extensions (update_where, delete_where, query_raw, execute_raw), then converting all 65+ raw SQL calls to use Repo/Query/Json APIs
-**Depends on:** Phase 102
-**Plans:** 5 plans
-
-Plans:
-- [x] 103-01-PLAN.md -- JSON field extraction intrinsic (Json.get, Json.get_nested) + replace 5 JSONB Pool.query calls
-- [x] 103-02-PLAN.md -- Query builder extensions (Query.select_raw, Query.where_raw) with RAW: prefix convention
-- [x] 103-03-PLAN.md -- Repo write extensions (Repo.update_where, delete_where, query_raw, execute_raw)
-- [x] 103-04-PLAN.md -- Convert all queries.mpl from Pool.query/Pool.execute to Repo/Query APIs
-- [x] 103-05-PLAN.md -- Convert writer.mpl + schema.mpl + final audit
+**Total: 103 phases shipped across 20 milestones. 305 plans completed. v10.1: 0/2 phases complete.**
