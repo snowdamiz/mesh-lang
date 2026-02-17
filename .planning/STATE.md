@@ -5,16 +5,16 @@
 See: .planning/PROJECT.md (updated 2026-02-16)
 
 **Core value:** Expressive, readable concurrency -- writing concurrent programs should feel as natural and clean as writing sequential code, with the safety net of supervision and fault tolerance built into the language.
-**Current focus:** v10.0 ORM -- MILESTONE COMPLETE
+**Current focus:** Phase 103 -- Refactor ORM to eliminate raw SQL and rewrite Mesher
 
 ## Current Position
 
-Phase: 102 of 102 (Mesher Rewrite) -- COMPLETE
-Plan: 3 of 3 in current phase (all plans complete)
-Status: Phase 102 complete, verified PASSED -- v10.0 ORM milestone finished
-Last activity: 2026-02-16 -- Phase 102 complete (Mesher Rewrite)
+Phase: 103 (Refactor ORM to Eliminate Raw SQL)
+Plan: 2 of 5 in current phase (103-01, 103-02 complete)
+Status: Executing Phase 103
+Last activity: 2026-02-17 -- Plan 103-02 complete (Query Builder Raw Extensions)
 
-Progress: [██████████] 100% (20/20 plans)
+Progress: [██████████] 100% (20/20 milestone plans) + 2/5 Phase 103
 
 ## Performance Metrics
 
@@ -101,10 +101,14 @@ Progress: [██████████] 100% (20/20 plans)
 - 102-03: JSONB utility Pool.query calls preserved in 5 non-storage files (they parse JSON parameters, not query tables).
 - 102-03: writer.mpl insert_event preserved as raw Pool.execute (JSONB extraction INSERT not expressible in ORM).
 - 102-03: New helper functions (count_unresolved_issues, get_issue_project_id) in queries.mpl centralize table-query SQL.
+- 103-02: RAW: prefix convention reuses existing SLOT_SELECT and SLOT_WHERE_CLAUSES (no new slots, no ABI change to 104-byte Query layout).
+- 103-02: ? placeholder in where_raw clauses renumbered to $N by SQL builder, matching existing fragment convention.
+- 103-02: select_raw appends RAW:-prefixed entries to existing select list, allowing mixed raw+quoted SELECT fields.
 
 ### Roadmap Evolution
 
 v10.0 ORM roadmap created 2026-02-16. 7 phases (96-102), 50 requirements across 7 categories. Research-recommended 7-phase structure adopted with strict dependency ordering: compiler additions first, then schema metadata, then query builder + repo, then changesets and relationships (parallel-capable), then migrations, finally Mesher rewrite validation.
+- Phase 103 added: Refactor ORM to eliminate raw SQL and rewrite Mesher
 
 ### Pending Todos
 
@@ -128,7 +132,7 @@ Known limitations relevant to ORM development:
 
 ## Session Continuity
 
-Last session: 2026-02-16
-Stopped at: Phase 102 complete (Mesher Rewrite) -- verified PASSED
+Last session: 2026-02-17
+Stopped at: Completed 103-02-PLAN.md (Query Builder Raw Extensions)
 Resume file: None
-Next action: `/gsd:complete-milestone` (v10.0 ORM)
+Next action: Execute 103-03-PLAN.md (Extended Repo Write Operations)
