@@ -107,6 +107,10 @@ Progress: [██████████] 100% (20/20 milestone plans) + 3/5 Ph
 - 103-02: RAW: prefix convention reuses existing SLOT_SELECT and SLOT_WHERE_CLAUSES (no new slots, no ABI change to 104-byte Query layout).
 - 103-02: ? placeholder in where_raw clauses renumbered to $N by SQL builder, matching existing fragment convention.
 - 103-02: select_raw appends RAW:-prefixed entries to existing select list, allowing mixed raw+quoted SELECT fields.
+- 103-03: build_where_from_query_parts extracted as shared helper with start_idx offset for parameter numbering.
+- 103-03: update_where and delete_where reject empty WHERE clauses to prevent accidental table-wide mutations.
+- 103-03: query_raw/execute_raw are thin wrappers over Pool.query/Pool.execute namespaced under Repo for explicit intent.
+- 103-03: update_where uses RETURNING * (returns first row as Map); delete_where uses Pool.execute (returns Int count).
 
 ### Roadmap Evolution
 
@@ -136,6 +140,6 @@ Known limitations relevant to ORM development:
 ## Session Continuity
 
 Last session: 2026-02-17
-Stopped at: Completed 103-02-PLAN.md (Query Builder Raw Extensions)
+Stopped at: Completed 103-03-PLAN.md (Extended Repo Write Operations)
 Resume file: None
-Next action: Execute 103-03-PLAN.md (Extended Repo Write Operations)
+Next action: Execute 103-04-PLAN.md
