@@ -1138,25 +1138,25 @@ fn stdlib_modules() -> HashMap<String, HashMap<String, Scheme>> {
         let ptr_t = Ty::Con(TyCon::new("Ptr"));
         let pool_t = Ty::Con(TyCon::new("PoolHandle"));
         let mut repo_mod = HashMap::new();
-        // Repo.all(PoolHandle, Ptr) -> Ptr  (pool, query -> Result<List<Map<String,String>>, String>)
+        // Repo.all(PoolHandle, Ptr) -> Result<List<Map<String,String>>, String>  (pool, query)
         repo_mod.insert("all".to_string(), Scheme::mono(Ty::fun(
             vec![pool_t.clone(), ptr_t.clone()],
-            ptr_t.clone(),
+            Ty::result(Ty::list(Ty::map(Ty::string(), Ty::string())), Ty::string()),
         )));
         // Repo.one(PoolHandle, Ptr) -> Ptr  (pool, query -> Result<Map<String,String>, String>)
         repo_mod.insert("one".to_string(), Scheme::mono(Ty::fun(
             vec![pool_t.clone(), ptr_t.clone()],
             ptr_t.clone(),
         )));
-        // Repo.get(PoolHandle, String, String) -> Ptr  (pool, table, id -> Result<Map<String,String>, String>)
+        // Repo.get(PoolHandle, String, String) -> Result<Map<String,String>, String>  (pool, table, id)
         repo_mod.insert("get".to_string(), Scheme::mono(Ty::fun(
             vec![pool_t.clone(), Ty::string(), Ty::string()],
-            ptr_t.clone(),
+            Ty::result(Ty::map(Ty::string(), Ty::string()), Ty::string()),
         )));
-        // Repo.get_by(PoolHandle, String, String, String) -> Ptr  (pool, table, field, value -> Result<Map<String,String>, String>)
+        // Repo.get_by(PoolHandle, String, String, String) -> Result<Map<String,String>, String>  (pool, table, field, value)
         repo_mod.insert("get_by".to_string(), Scheme::mono(Ty::fun(
             vec![pool_t.clone(), Ty::string(), Ty::string(), Ty::string()],
-            ptr_t.clone(),
+            Ty::result(Ty::map(Ty::string(), Ty::string()), Ty::string()),
         )));
         // Repo.count(PoolHandle, Ptr) -> Ptr  (pool, query -> Result<Int, String>)
         repo_mod.insert("count".to_string(), Scheme::mono(Ty::fun(
@@ -1168,20 +1168,20 @@ fn stdlib_modules() -> HashMap<String, HashMap<String, Scheme>> {
             vec![pool_t.clone(), ptr_t.clone()],
             ptr_t.clone(),
         )));
-        // Repo.insert(PoolHandle, String, Ptr) -> Ptr  (pool, table, fields_map -> Result<Map<String,String>, String>)
+        // Repo.insert(PoolHandle, String, Map<String,String>) -> Result<Map<String,String>, String>  (pool, table, fields_map)
         repo_mod.insert("insert".to_string(), Scheme::mono(Ty::fun(
-            vec![pool_t.clone(), Ty::string(), ptr_t.clone()],
-            ptr_t.clone(),
+            vec![pool_t.clone(), Ty::string(), Ty::map(Ty::string(), Ty::string())],
+            Ty::result(Ty::map(Ty::string(), Ty::string()), Ty::string()),
         )));
         // Repo.update(PoolHandle, String, String, Ptr) -> Ptr  (pool, table, id, fields_map -> Result<Map<String,String>, String>)
         repo_mod.insert("update".to_string(), Scheme::mono(Ty::fun(
             vec![pool_t.clone(), Ty::string(), Ty::string(), ptr_t.clone()],
             ptr_t.clone(),
         )));
-        // Repo.delete(PoolHandle, String, String) -> Ptr  (pool, table, id -> Result<Map<String,String>, String>)
+        // Repo.delete(PoolHandle, String, String) -> Result<Map<String,String>, String>  (pool, table, id)
         repo_mod.insert("delete".to_string(), Scheme::mono(Ty::fun(
             vec![pool_t.clone(), Ty::string(), Ty::string()],
-            ptr_t.clone(),
+            Ty::result(Ty::map(Ty::string(), Ty::string()), Ty::string()),
         )));
         // Repo.transaction(PoolHandle, fn(Ptr) -> Ptr) -> Ptr  (pool, callback -> Result<Ptr, String>)
         // Closure calling convention: MIR lowerer splits closure into (fn_ptr, env_ptr)
