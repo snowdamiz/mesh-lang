@@ -380,6 +380,63 @@ pub extern "C" fn mesh_query_having(
     }
 }
 
+/// Set SELECT fields using raw SQL expressions (no quoting/escaping).
+///
+/// `Query.select_raw(q, ["count(*)::text AS count", "level"])` -> new Query with raw SELECT expressions
+///
+/// Each expression is stored with a "RAW:" prefix so the SQL builder emits it verbatim.
+/// Can be mixed with Query.select -- normal fields get quoted, RAW: fields don't.
+#[no_mangle]
+pub extern "C" fn mesh_query_select_raw(q: *mut u8, expressions: *mut u8) -> *mut u8 {
+    unsafe {
+        let new_q = clone_query(q);
+        let expr_len = mesh_list_length(expressions);
+        let mut sf = query_get(new_q, SLOT_SELECT);
+        for i in 0..expr_len {
+            let elem = mesh_list_get(expressions, i) as *mut u8;
+            let expr_str = mesh_str_ref(elem);
+            let raw_expr = format!("RAW:{}", expr_str);
+            let raw_mesh = rust_str_to_mesh(&raw_expr);
+            sf = mesh_list_append(sf, raw_mesh as u64);
+        }
+        query_set(new_q, SLOT_SELECT, sf);
+        new_q
+    }
+}
+
+/// Add a raw SQL WHERE clause with optional parameter binding.
+///
+/// `Query.where_raw(q, "expires_at > now()", [])` -> new Query with raw WHERE clause
+/// `Query.where_raw(q, "status IN (?, ?)", ["active", "pending"])` -> with param binding
+///
+/// The clause is stored with a "RAW:" prefix. `?` placeholders in the clause are
+/// replaced with the next sequential `$N` by the SQL builder. Parameters are appended
+/// to the where_params list.
+#[no_mangle]
+pub extern "C" fn mesh_query_where_raw(
+    q: *mut u8,
+    clause: *mut u8,
+    params: *mut u8,
+) -> *mut u8 {
+    unsafe {
+        let new_q = clone_query(q);
+        let clause_str = mesh_str_ref(clause);
+        let raw_clause = format!("RAW:{}", clause_str);
+        let raw_mesh = rust_str_to_mesh(&raw_clause);
+        let wc = query_get(new_q, SLOT_WHERE_CLAUSES);
+        query_set(new_q, SLOT_WHERE_CLAUSES, mesh_list_append(wc, raw_mesh as u64));
+        // Append all params to where_params
+        let mut wp = query_get(new_q, SLOT_WHERE_PARAMS);
+        let param_len = mesh_list_length(params);
+        for i in 0..param_len {
+            let elem = mesh_list_get(params, i);
+            wp = mesh_list_append(wp, elem);
+        }
+        query_set(new_q, SLOT_WHERE_PARAMS, wp);
+        new_q
+    }
+}
+
 /// Add a raw SQL fragment.
 ///
 /// `Query.fragment(q, "WHERE custom_fn($1)", params)` -> new Query with raw fragment
