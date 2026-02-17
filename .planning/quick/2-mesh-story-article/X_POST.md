@@ -1,14 +1,10 @@
-9 days.
-93,000 lines of Rust.
-A custom LLVM backend.
-A distributed actor runtime.
-Written from scratch.
+12 days.
+111,000 lines of Rust.
+7,200 lines of Mesh.
+A compiled language with actors, an ORM, and a SaaS backend written in itself.
 
-Meet Mesh: A new statically typed, distributed functional language.
+Then we built an app IN the language to prove it works. It did.
 
-The secret? It wasn't just Opus 4.6. It was GSD (Get Shit Done).
-
-Here's how we turned an empty directory into a shipping language in just over a week:
 [LINK]
 
 #Rust #Compilers #Engineering #AI
