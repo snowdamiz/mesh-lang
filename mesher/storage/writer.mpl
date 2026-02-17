@@ -15,6 +15,6 @@
 # Uses PostgreSQL jsonb extraction for remaining fields.
 # Returns the number of rows affected (1 on success).
 pub fn insert_event(pool :: PoolHandle, project_id :: String, issue_id :: String, fingerprint :: String, json_str :: String) -> Int!String do
-  let result = Pool.execute(pool, "INSERT INTO events (project_id, issue_id, level, message, fingerprint, exception, stacktrace, breadcrumbs, tags, extra, user_context, sdk_name, sdk_version) SELECT $1::uuid, $2::uuid, j->>'level', j->>'message', $3, (j->'exception')::jsonb, (j->'stacktrace')::jsonb, (j->'breadcrumbs')::jsonb, COALESCE((j->'tags')::jsonb, '{}'::jsonb), COALESCE((j->'extra')::jsonb, '{}'::jsonb), (j->'user_context')::jsonb, j->>'sdk_name', j->>'sdk_version' FROM (SELECT $4::jsonb AS j) AS sub", [project_id, issue_id, fingerprint, json_str])
+  let result = Repo.execute_raw(pool, "INSERT INTO events (project_id, issue_id, level, message, fingerprint, exception, stacktrace, breadcrumbs, tags, extra, user_context, sdk_name, sdk_version) SELECT $1::uuid, $2::uuid, j->>'level', j->>'message', $3, (j->'exception')::jsonb, (j->'stacktrace')::jsonb, (j->'breadcrumbs')::jsonb, COALESCE((j->'tags')::jsonb, '{}'::jsonb), COALESCE((j->'extra')::jsonb, '{}'::jsonb), (j->'user_context')::jsonb, j->>'sdk_name', j->>'sdk_version' FROM (SELECT $4::jsonb AS j) AS sub", [project_id, issue_id, fingerprint, json_str])
   result
 end

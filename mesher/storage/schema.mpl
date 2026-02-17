@@ -11,14 +11,14 @@ pub fn create_partition(pool :: PoolHandle, date_str :: String) -> Int!String do
   let formatted = year <> "-" <> month <> "-" <> day
   let part1 = "CREATE TABLE IF NOT EXISTS events_" <> date_str <> " PARTITION OF events FOR VALUES FROM ('"
   let sql = part1 <> formatted <> "') TO (('" <> formatted <> "'::date + 1))"
-  Pool.execute(pool, sql, [])?
+  Repo.execute_raw(pool, sql, [])?
   Ok(0)
 end
 
 fn create_partitions_loop(pool :: PoolHandle, days :: Int, i :: Int) -> Int!String do
   if i < days do
     let offset_str = String.from(i)
-    let rows = Pool.query(pool, "SELECT to_char(now() + ($1 || ' days')::interval, 'YYYYMMDD') AS d", [offset_str])?
+    let rows = Repo.query_raw(pool, "SELECT to_char(now() + ($1 || ' days')::interval, 'YYYYMMDD') AS d", [offset_str])?
     if List.length(rows) > 0 do
       let date_str = Map.get(List.head(rows), "d")
       create_partition(pool, date_str)?
