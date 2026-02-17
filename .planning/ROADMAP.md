@@ -195,7 +195,9 @@ See milestones/v9.0-ROADMAP.md for full phase details.
   3. All service files (org.mpl, project.mpl, user.mpl) reference only variables that are in scope -- no undefined variable errors from ORM migration artifacts
   4. The `?` operator is used only on expressions returning Result or Option types -- no E0037 errors remain
   5. All module imports resolve correctly in team.mpl and main.mpl, and all function calls pass the correct number of arguments
-**Plans**: TBD
+**Plans**: 1 plan
+Plans:
+- [ ] 104-01-PLAN.md -- Fix Repo typeck signatures and verify zero-error Mesher build
 
 ### Phase 105: Verify Mesher Runtime
 **Goal**: Mesher runs as a working application -- it starts, connects to PostgreSQL, serves HTTP API requests with correct responses, and accepts WebSocket connections
