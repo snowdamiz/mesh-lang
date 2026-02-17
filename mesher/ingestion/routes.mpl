@@ -199,7 +199,7 @@ pub fn handle_event(request) do
   let auth_result = authenticate_request(pool, request)
   case auth_result do
     Err(_) -> unauthorized_response()
-    Ok(project_id) -> handle_event_sampled(pool, project_id, PipelineRegistry.get_rate_limiter(reg_pid), PipelineRegistry.get_processor(reg_pid), PipelineRegistry.get_writer(reg_pid), request)
+    Ok(project) -> handle_event_sampled(pool, project.id, PipelineRegistry.get_rate_limiter(reg_pid), PipelineRegistry.get_processor(reg_pid), PipelineRegistry.get_writer(reg_pid), request)
   end
 end
 
@@ -251,7 +251,7 @@ pub fn handle_bulk(request) do
   let auth_result = authenticate_request(pool, request)
   case auth_result do
     Err(_) -> unauthorized_response()
-    Ok(project_id) -> handle_bulk_sampled(pool, project_id, rate_limiter_pid, processor_pid, writer_pid, request)
+    Ok(project) -> handle_bulk_sampled(pool, project.id, rate_limiter_pid, processor_pid, writer_pid, request)
   end
 end
 
