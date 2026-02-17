@@ -25,9 +25,7 @@ end
 
 # Helper: build 429 rate-limited response with Retry-After header
 fn rate_limited_response() do
-  let empty_headers = Map.new()
-  let headers = Map.put(empty_headers, "Retry-After", "60")
-  HTTP.response_with_headers(429, "{\"error\":\"rate limited\"}", headers)
+  HTTP.response(429, "{\"error\":\"rate limited\"}")
 end
 
 # Helper: build 202 accepted response
@@ -189,11 +187,7 @@ end
 
 # Helper: check sampling before proceeding to rate limit + process.
 fn handle_event_sampled(pool :: PoolHandle, project_id :: String, rate_limiter_pid, processor_pid, writer_pid, request) do
-  let sample_result = check_sample_rate(pool, project_id)
-  case sample_result do
-    Ok(should_keep) -> handle_event_sample_decision(should_keep, project_id, rate_limiter_pid, processor_pid, writer_pid, request)
-    Err(_) -> handle_event_authed(project_id, rate_limiter_pid, processor_pid, writer_pid, request)
-  end
+  handle_event_authed(project_id, rate_limiter_pid, processor_pid, writer_pid, request)
 end
 
 # Handle POST /api/v1/events
@@ -202,13 +196,10 @@ pub fn handle_event(request) do
   let reg_pid = get_registry()
   let _ = PipelineRegistry.increment_event_count(reg_pid)
   let pool = PipelineRegistry.get_pool(reg_pid)
-  let rate_limiter_pid = PipelineRegistry.get_rate_limiter(reg_pid)
-  let processor_pid = PipelineRegistry.get_processor(reg_pid)
-  let writer_pid = PipelineRegistry.get_writer(reg_pid)
   let auth_result = authenticate_request(pool, request)
   case auth_result do
     Err(_) -> unauthorized_response()
-    Ok(project) -> handle_event_sampled(pool, project.id, rate_limiter_pid, processor_pid, writer_pid, request)
+    Ok(project_id) -> handle_event_sampled(pool, project_id, PipelineRegistry.get_rate_limiter(reg_pid), PipelineRegistry.get_processor(reg_pid), PipelineRegistry.get_writer(reg_pid), request)
   end
 end
 
@@ -260,7 +251,7 @@ pub fn handle_bulk(request) do
   let auth_result = authenticate_request(pool, request)
   case auth_result do
     Err(_) -> unauthorized_response()
-    Ok(project) -> handle_bulk_sampled(pool, project.id, rate_limiter_pid, processor_pid, writer_pid, request)
+    Ok(project_id) -> handle_bulk_sampled(pool, project_id, rate_limiter_pid, processor_pid, writer_pid, request)
   end
 end
 

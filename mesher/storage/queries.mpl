@@ -106,6 +106,18 @@ pub fn get_project_by_api_key(pool :: PoolHandle, key_value :: String) -> Projec
   end
 end
 
+# Get the project ID associated with a valid (non-revoked) API key.
+# Returns just the project ID string to avoid struct-in-Result ABI issues.
+# Used by ingestion auth to avoid returning multi-field struct in Result.
+pub fn get_project_id_by_key(pool :: PoolHandle, key_value :: String) -> String!String do
+  let rows = Repo.query_raw(pool, "SELECT p.id::text FROM projects p JOIN api_keys ak ON ak.project_id = p.id WHERE ak.key_value = $1 AND ak.revoked_at IS NULL", [key_value])?
+  if List.length(rows) > 0 do
+    Ok(Map.get(List.head(rows), "id"))
+  else
+    Err("not found")
+  end
+end
+
 # Revoke an API key by setting revoked_at to now().
 pub fn revoke_api_key(pool :: PoolHandle, key_id :: String) -> Int!String do
   Repo.execute_raw(pool, "UPDATE api_keys SET revoked_at = now() WHERE id = $1::uuid", [key_id])
