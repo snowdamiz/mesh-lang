@@ -907,6 +907,15 @@ impl<'a> Lowerer<'a> {
         self.known_functions.insert("mesh_repo_delete".to_string(), MirType::FnPtr(vec![MirType::Int, MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
         // mesh_repo_transaction(pool: i64, fn_ptr: ptr, env_ptr: ptr) -> ptr
         self.known_functions.insert("mesh_repo_transaction".to_string(), MirType::FnPtr(vec![MirType::Int, MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
+        // ── Phase 103: Extended Repo Write Operations ────────────────────
+        // mesh_repo_update_where(pool: i64, table: ptr, fields: ptr, query: ptr) -> ptr
+        self.known_functions.insert("mesh_repo_update_where".to_string(), MirType::FnPtr(vec![MirType::Int, MirType::Ptr, MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
+        // mesh_repo_delete_where(pool: i64, table: ptr, query: ptr) -> ptr
+        self.known_functions.insert("mesh_repo_delete_where".to_string(), MirType::FnPtr(vec![MirType::Int, MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
+        // mesh_repo_query_raw(pool: i64, sql: ptr, params: ptr) -> ptr
+        self.known_functions.insert("mesh_repo_query_raw".to_string(), MirType::FnPtr(vec![MirType::Int, MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
+        // mesh_repo_execute_raw(pool: i64, sql: ptr, params: ptr) -> ptr
+        self.known_functions.insert("mesh_repo_execute_raw".to_string(), MirType::FnPtr(vec![MirType::Int, MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
         // ── Phase 99: Repo Changeset Operations ─────────────────────────
         // mesh_repo_insert_changeset(pool: i64, table: ptr, changeset: ptr) -> ptr
         self.known_functions.insert("mesh_repo_insert_changeset".to_string(), MirType::FnPtr(vec![MirType::Int, MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));

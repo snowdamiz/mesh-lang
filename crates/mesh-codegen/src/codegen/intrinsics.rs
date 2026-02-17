@@ -1056,6 +1056,28 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
         ptr_type.fn_type(&[i64_type.into(), ptr_type.into(), ptr_type.into()], false),
         Some(inkwell::module::Linkage::External));
 
+    // ── Phase 103: Extended Repo Write Operations ──────────────────────
+
+    // mesh_repo_update_where(pool: i64, table: ptr, fields: ptr, query: ptr) -> ptr
+    module.add_function("mesh_repo_update_where",
+        ptr_type.fn_type(&[i64_type.into(), ptr_type.into(), ptr_type.into(), ptr_type.into()], false),
+        Some(inkwell::module::Linkage::External));
+
+    // mesh_repo_delete_where(pool: i64, table: ptr, query: ptr) -> ptr
+    module.add_function("mesh_repo_delete_where",
+        ptr_type.fn_type(&[i64_type.into(), ptr_type.into(), ptr_type.into()], false),
+        Some(inkwell::module::Linkage::External));
+
+    // mesh_repo_query_raw(pool: i64, sql: ptr, params: ptr) -> ptr
+    module.add_function("mesh_repo_query_raw",
+        ptr_type.fn_type(&[i64_type.into(), ptr_type.into(), ptr_type.into()], false),
+        Some(inkwell::module::Linkage::External));
+
+    // mesh_repo_execute_raw(pool: i64, sql: ptr, params: ptr) -> ptr
+    module.add_function("mesh_repo_execute_raw",
+        ptr_type.fn_type(&[i64_type.into(), ptr_type.into(), ptr_type.into()], false),
+        Some(inkwell::module::Linkage::External));
+
     // ── Phase 100: Repo Preloading ─────────────────────────────────────
 
     // mesh_repo_preload(pool: i64, rows: ptr, associations: ptr, rel_meta: ptr) -> ptr
