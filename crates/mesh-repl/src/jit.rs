@@ -248,6 +248,8 @@ fn register_runtime_symbols() {
     add_sym("mesh_env_args", mesh_rt::mesh_env_args as *const ());
 
     // JSON
+    add_sym("mesh_json_get", mesh_rt::mesh_json_get as *const ());
+    add_sym("mesh_json_get_nested", mesh_rt::mesh_json_get_nested as *const ());
     add_sym("mesh_json_parse", mesh_rt::mesh_json_parse as *const ());
     add_sym("mesh_json_encode", mesh_rt::mesh_json_encode as *const ());
     add_sym("mesh_json_from_string", mesh_rt::mesh_json_from_string as *const ());
@@ -281,6 +283,9 @@ fn register_runtime_symbols() {
     add_sym("mesh_query_group_by", mesh_rt::mesh_query_group_by as *const ());
     add_sym("mesh_query_having", mesh_rt::mesh_query_having as *const ());
     add_sym("mesh_query_fragment", mesh_rt::mesh_query_fragment as *const ());
+    // Query Builder Raw Extensions (Phase 103)
+    add_sym("mesh_query_select_raw", mesh_rt::mesh_query_select_raw as *const ());
+    add_sym("mesh_query_where_raw", mesh_rt::mesh_query_where_raw as *const ());
 
     // Repo Read Operations (Phase 98)
     add_sym("mesh_repo_all", mesh_rt::mesh_repo_all as *const ());
@@ -301,6 +306,16 @@ fn register_runtime_symbols() {
     // Repo Changeset Operations (Phase 99)
     add_sym("mesh_repo_insert_changeset", mesh_rt::mesh_repo_insert_changeset as *const ());
     add_sym("mesh_repo_update_changeset", mesh_rt::mesh_repo_update_changeset as *const ());
+
+    // Migration DDL Operations (Phase 101)
+    add_sym("mesh_migration_create_table", mesh_rt::mesh_migration_create_table as *const ());
+    add_sym("mesh_migration_drop_table", mesh_rt::mesh_migration_drop_table as *const ());
+    add_sym("mesh_migration_add_column", mesh_rt::mesh_migration_add_column as *const ());
+    add_sym("mesh_migration_drop_column", mesh_rt::mesh_migration_drop_column as *const ());
+    add_sym("mesh_migration_rename_column", mesh_rt::mesh_migration_rename_column as *const ());
+    add_sym("mesh_migration_create_index", mesh_rt::mesh_migration_create_index as *const ());
+    add_sym("mesh_migration_drop_index", mesh_rt::mesh_migration_drop_index as *const ());
+    add_sym("mesh_migration_execute", mesh_rt::mesh_migration_execute as *const ());
 
     // Changeset Operations (Phase 99)
     add_sym("mesh_changeset_cast", mesh_rt::mesh_changeset_cast as *const ());

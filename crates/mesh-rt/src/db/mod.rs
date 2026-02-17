@@ -1,4 +1,5 @@
 pub mod changeset;
+pub mod json;
 pub mod migration;
 pub mod orm;
 pub mod pg;

@@ -461,6 +461,12 @@ fn stdlib_modules() -> HashMap<String, HashMap<String, Scheme>> {
     json_mod.insert("encode_bool".to_string(), Scheme::mono(Ty::fun(vec![Ty::bool()], Ty::string())));
     json_mod.insert("encode_map".to_string(), Scheme::mono(Ty::fun(vec![Ty::map_untyped()], Ty::string())));
     json_mod.insert("encode_list".to_string(), Scheme::mono(Ty::fun(vec![Ty::list_untyped()], Ty::string())));
+    // Phase 103: JSON field extraction (no DB roundtrip)
+    // Json.get(json_string, key) -> String
+    json_mod.insert("get".to_string(), Scheme::mono(Ty::fun(vec![Ty::string(), Ty::string()], Ty::string())));
+    // Json.get_nested(json_string, path1, path2) -> String
+    json_mod.insert("get_nested".to_string(), Scheme::mono(Ty::fun(vec![Ty::string(), Ty::string(), Ty::string()], Ty::string())));
+
     modules.insert("JSON".to_string(), json_mod.clone());
 
     // Also register "Json" as an alias for the JSON module.
@@ -1112,6 +1118,16 @@ fn stdlib_modules() -> HashMap<String, HashMap<String, Scheme>> {
         // Query.fragment(Ptr, String, Ptr) -> Ptr  (raw sql, params list)
         query_mod.insert("fragment".to_string(), Scheme::mono(Ty::fun(
             vec![ptr_t.clone(), Ty::string(), ptr_t.clone()],
+            ptr_t.clone(),
+        )));
+        // Query.select_raw(Ptr, List<String>) -> Ptr  (raw SQL expressions list)
+        query_mod.insert("select_raw".to_string(), Scheme::mono(Ty::fun(
+            vec![ptr_t.clone(), Ty::list(Ty::string())],
+            ptr_t.clone(),
+        )));
+        // Query.where_raw(Ptr, String, List<String>) -> Ptr  (raw clause, params list)
+        query_mod.insert("where_raw".to_string(), Scheme::mono(Ty::fun(
+            vec![ptr_t.clone(), Ty::string(), Ty::list(Ty::string())],
             ptr_t.clone(),
         )));
         modules.insert("Query".to_string(), query_mod);

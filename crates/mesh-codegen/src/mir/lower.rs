@@ -738,6 +738,11 @@ impl<'a> Lowerer<'a> {
         self.known_functions.insert("mesh_json_from_float".to_string(), MirType::FnPtr(vec![MirType::Float], Box::new(MirType::Ptr)));
         self.known_functions.insert("mesh_json_from_bool".to_string(), MirType::FnPtr(vec![MirType::Bool], Box::new(MirType::Ptr)));
         self.known_functions.insert("mesh_json_from_string".to_string(), MirType::FnPtr(vec![MirType::String], Box::new(MirType::Ptr)));
+        // Phase 103: JSON field extraction (no DB roundtrip)
+        // mesh_json_get(json: String, key: String) -> String
+        self.known_functions.insert("mesh_json_get".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
+        // mesh_json_get_nested(json: String, path1: String, path2: String) -> String
+        self.known_functions.insert("mesh_json_get_nested".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
         // JSON structured object/array functions (Phase 49)
         self.known_functions.insert("mesh_json_object_new".to_string(), MirType::FnPtr(vec![], Box::new(MirType::Ptr)));
         self.known_functions.insert("mesh_json_object_put".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
@@ -875,6 +880,11 @@ impl<'a> Lowerer<'a> {
         self.known_functions.insert("mesh_query_having".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
         // mesh_query_fragment(q: ptr, sql: ptr, params: ptr) -> ptr
         self.known_functions.insert("mesh_query_fragment".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
+        // ── Phase 103: Query Builder Raw Extensions ─────────────────────
+        // mesh_query_select_raw(q: ptr, expressions: ptr) -> ptr
+        self.known_functions.insert("mesh_query_select_raw".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
+        // mesh_query_where_raw(q: ptr, clause: ptr, params: ptr) -> ptr
+        self.known_functions.insert("mesh_query_where_raw".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
         // ── Phase 98: Repo Read Operations ───────────────────────────────
         // mesh_repo_all(pool: i64, query: ptr) -> ptr
         self.known_functions.insert("mesh_repo_all".to_string(), MirType::FnPtr(vec![MirType::Int, MirType::Ptr], Box::new(MirType::Ptr)));
@@ -930,6 +940,23 @@ impl<'a> Lowerer<'a> {
         self.known_functions.insert("mesh_changeset_get_change".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
         // mesh_changeset_get_error(cs: ptr, field: ptr) -> ptr
         self.known_functions.insert("mesh_changeset_get_error".to_string(), MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
+        // ── Phase 101: Migration DDL Operations ─────────────────────────
+        // mesh_migration_create_table(pool: i64, table: ptr, columns: ptr) -> ptr
+        self.known_functions.insert("mesh_migration_create_table".to_string(), MirType::FnPtr(vec![MirType::Int, MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
+        // mesh_migration_drop_table(pool: i64, table: ptr) -> ptr
+        self.known_functions.insert("mesh_migration_drop_table".to_string(), MirType::FnPtr(vec![MirType::Int, MirType::Ptr], Box::new(MirType::Ptr)));
+        // mesh_migration_add_column(pool: i64, table: ptr, col_def: ptr) -> ptr
+        self.known_functions.insert("mesh_migration_add_column".to_string(), MirType::FnPtr(vec![MirType::Int, MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
+        // mesh_migration_drop_column(pool: i64, table: ptr, col: ptr) -> ptr
+        self.known_functions.insert("mesh_migration_drop_column".to_string(), MirType::FnPtr(vec![MirType::Int, MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
+        // mesh_migration_rename_column(pool: i64, table: ptr, old: ptr, new: ptr) -> ptr
+        self.known_functions.insert("mesh_migration_rename_column".to_string(), MirType::FnPtr(vec![MirType::Int, MirType::Ptr, MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
+        // mesh_migration_create_index(pool: i64, table: ptr, cols: ptr, opts: ptr) -> ptr
+        self.known_functions.insert("mesh_migration_create_index".to_string(), MirType::FnPtr(vec![MirType::Int, MirType::Ptr, MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
+        // mesh_migration_drop_index(pool: i64, table: ptr, cols: ptr) -> ptr
+        self.known_functions.insert("mesh_migration_drop_index".to_string(), MirType::FnPtr(vec![MirType::Int, MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)));
+        // mesh_migration_execute(pool: i64, sql: ptr) -> ptr
+        self.known_functions.insert("mesh_migration_execute".to_string(), MirType::FnPtr(vec![MirType::Int, MirType::Ptr], Box::new(MirType::Ptr)));
         // ── Job functions (Phase 9 Plan 04) ──────────────────────────────
         // mesh_job_async takes (fn_ptr, env_ptr) -> i64 (PID)
         // But the closure splitting at codegen will expand the closure arg into (fn_ptr, env_ptr)
@@ -10193,6 +10220,7 @@ const STDLIB_MODULES: &[&str] = &[
     "Query",  // Phase 98
     "Repo",  // Phase 98
     "Changeset",  // Phase 99
+    "Migration",  // Phase 101
 ];
 
 /// Map Mesh builtin function names to their runtime equivalents.
@@ -10350,6 +10378,9 @@ fn map_builtin_name(name: &str) -> String {
         "json_from_float" => "mesh_json_from_float".to_string(),
         "json_from_bool" => "mesh_json_from_bool".to_string(),
         "json_from_string" => "mesh_json_from_string".to_string(),
+        // Phase 103: JSON field extraction
+        "json_get" => "mesh_json_get".to_string(),
+        "json_get_nested" => "mesh_json_get_nested".to_string(),
         // JSON bare names for from/import usage
         "parse" => "mesh_json_parse".to_string(),
         "encode" => "mesh_json_encode".to_string(),
@@ -10431,6 +10462,9 @@ fn map_builtin_name(name: &str) -> String {
         "query_group_by" => "mesh_query_group_by".to_string(),
         "query_having" => "mesh_query_having".to_string(),
         "query_fragment" => "mesh_query_fragment".to_string(),
+        // ── Phase 103: Query Builder Raw Extensions ─────────────────────
+        "query_select_raw" => "mesh_query_select_raw".to_string(),
+        "query_where_raw" => "mesh_query_where_raw".to_string(),
         // ── Phase 98: Repo Read Operations ──────────────────────────────
         "repo_all" => "mesh_repo_all".to_string(),
         "repo_one" => "mesh_repo_one".to_string(),
@@ -10461,6 +10495,15 @@ fn map_builtin_name(name: &str) -> String {
         "changeset_changes" => "mesh_changeset_changes".to_string(),
         "changeset_get_change" => "mesh_changeset_get_change".to_string(),
         "changeset_get_error" => "mesh_changeset_get_error".to_string(),
+        // ── Phase 101: Migration DDL Operations ─────────────────────────
+        "migration_create_table" => "mesh_migration_create_table".to_string(),
+        "migration_drop_table" => "mesh_migration_drop_table".to_string(),
+        "migration_add_column" => "mesh_migration_add_column".to_string(),
+        "migration_drop_column" => "mesh_migration_drop_column".to_string(),
+        "migration_rename_column" => "mesh_migration_rename_column".to_string(),
+        "migration_create_index" => "mesh_migration_create_index".to_string(),
+        "migration_drop_index" => "mesh_migration_drop_index".to_string(),
+        "migration_execute" => "mesh_migration_execute".to_string(),
         // NOTE: No bare name mappings for HTTP/Request (router, route, get,
         // post, method, path, body, etc.) because they collide with common
         // variable names. Use module-qualified access instead:

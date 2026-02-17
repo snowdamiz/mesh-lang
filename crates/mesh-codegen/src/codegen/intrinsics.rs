@@ -372,6 +372,12 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
     // mesh_json_from_string(s: ptr) -> ptr
     module.add_function("mesh_json_from_string", ptr_type.fn_type(&[ptr_type.into()], false), Some(inkwell::module::Linkage::External));
 
+    // ── Phase 103: JSON field extraction (no DB roundtrip) ────────────
+    // mesh_json_get(json: ptr, key: ptr) -> ptr (MeshString)
+    module.add_function("mesh_json_get", ptr_type.fn_type(&[ptr_type.into(), ptr_type.into()], false), Some(inkwell::module::Linkage::External));
+    // mesh_json_get_nested(json: ptr, path1: ptr, path2: ptr) -> ptr (MeshString)
+    module.add_function("mesh_json_get_nested", ptr_type.fn_type(&[ptr_type.into(), ptr_type.into(), ptr_type.into()], false), Some(inkwell::module::Linkage::External));
+
     // ── Structured JSON object/array functions (Phase 49) ──────────────
     // mesh_json_object_new() -> ptr
     module.add_function("mesh_json_object_new", ptr_type.fn_type(&[], false), Some(inkwell::module::Linkage::External));
@@ -984,6 +990,18 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
         ptr_type.fn_type(&[ptr_type.into(), ptr_type.into(), ptr_type.into()], false),
         Some(inkwell::module::Linkage::External));
 
+    // ── Phase 103: Query Builder Raw Extensions ──────────────────────
+
+    // mesh_query_select_raw(q: ptr, expressions: ptr) -> ptr
+    module.add_function("mesh_query_select_raw",
+        ptr_type.fn_type(&[ptr_type.into(), ptr_type.into()], false),
+        Some(inkwell::module::Linkage::External));
+
+    // mesh_query_where_raw(q: ptr, clause: ptr, params: ptr) -> ptr
+    module.add_function("mesh_query_where_raw",
+        ptr_type.fn_type(&[ptr_type.into(), ptr_type.into(), ptr_type.into()], false),
+        Some(inkwell::module::Linkage::External));
+
     // ── Phase 98: Repo Read Operations ───────────────────────────────
 
     // mesh_repo_all(pool: i64, query: ptr) -> ptr
@@ -1117,6 +1135,48 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
     // mesh_changeset_get_error(cs: ptr, field: ptr) -> ptr
     module.add_function("mesh_changeset_get_error",
         ptr_type.fn_type(&[ptr_type.into(), ptr_type.into()], false),
+        Some(inkwell::module::Linkage::External));
+
+    // ── Phase 101: Migration DDL Operations ────────────────────────────
+
+    // mesh_migration_create_table(pool: i64, table: ptr, columns: ptr) -> ptr
+    module.add_function("mesh_migration_create_table",
+        ptr_type.fn_type(&[i64_type.into(), ptr_type.into(), ptr_type.into()], false),
+        Some(inkwell::module::Linkage::External));
+
+    // mesh_migration_drop_table(pool: i64, table: ptr) -> ptr
+    module.add_function("mesh_migration_drop_table",
+        ptr_type.fn_type(&[i64_type.into(), ptr_type.into()], false),
+        Some(inkwell::module::Linkage::External));
+
+    // mesh_migration_add_column(pool: i64, table: ptr, col_def: ptr) -> ptr
+    module.add_function("mesh_migration_add_column",
+        ptr_type.fn_type(&[i64_type.into(), ptr_type.into(), ptr_type.into()], false),
+        Some(inkwell::module::Linkage::External));
+
+    // mesh_migration_drop_column(pool: i64, table: ptr, col: ptr) -> ptr
+    module.add_function("mesh_migration_drop_column",
+        ptr_type.fn_type(&[i64_type.into(), ptr_type.into(), ptr_type.into()], false),
+        Some(inkwell::module::Linkage::External));
+
+    // mesh_migration_rename_column(pool: i64, table: ptr, old: ptr, new: ptr) -> ptr
+    module.add_function("mesh_migration_rename_column",
+        ptr_type.fn_type(&[i64_type.into(), ptr_type.into(), ptr_type.into(), ptr_type.into()], false),
+        Some(inkwell::module::Linkage::External));
+
+    // mesh_migration_create_index(pool: i64, table: ptr, cols: ptr, opts: ptr) -> ptr
+    module.add_function("mesh_migration_create_index",
+        ptr_type.fn_type(&[i64_type.into(), ptr_type.into(), ptr_type.into(), ptr_type.into()], false),
+        Some(inkwell::module::Linkage::External));
+
+    // mesh_migration_drop_index(pool: i64, table: ptr, cols: ptr) -> ptr
+    module.add_function("mesh_migration_drop_index",
+        ptr_type.fn_type(&[i64_type.into(), ptr_type.into(), ptr_type.into()], false),
+        Some(inkwell::module::Linkage::External));
+
+    // mesh_migration_execute(pool: i64, sql: ptr) -> ptr
+    module.add_function("mesh_migration_execute",
+        ptr_type.fn_type(&[i64_type.into(), ptr_type.into()], false),
         Some(inkwell::module::Linkage::External));
 
     // ── Phase 68: Global Registry ──────────────────────────────────────
@@ -1370,6 +1430,10 @@ mod tests {
         assert!(module.get_function("mesh_json_from_bool").is_some());
         assert!(module.get_function("mesh_json_from_string").is_some());
 
+        // Phase 103: JSON field extraction
+        assert!(module.get_function("mesh_json_get").is_some());
+        assert!(module.get_function("mesh_json_get_nested").is_some());
+
         // Structured JSON functions (Phase 49)
         assert!(module.get_function("mesh_json_object_new").is_some());
         assert!(module.get_function("mesh_json_object_put").is_some());
@@ -1480,6 +1544,16 @@ mod tests {
         assert!(module.get_function("mesh_orm_build_insert").is_some());
         assert!(module.get_function("mesh_orm_build_update").is_some());
         assert!(module.get_function("mesh_orm_build_delete").is_some());
+
+        // Phase 101: Migration DDL Operations
+        assert!(module.get_function("mesh_migration_create_table").is_some());
+        assert!(module.get_function("mesh_migration_drop_table").is_some());
+        assert!(module.get_function("mesh_migration_add_column").is_some());
+        assert!(module.get_function("mesh_migration_drop_column").is_some());
+        assert!(module.get_function("mesh_migration_rename_column").is_some());
+        assert!(module.get_function("mesh_migration_create_index").is_some());
+        assert!(module.get_function("mesh_migration_drop_index").is_some());
+        assert!(module.get_function("mesh_migration_execute").is_some());
 
         // Phase 98: Query Builder
         assert!(module.get_function("mesh_query_from").is_some());

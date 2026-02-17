@@ -66,6 +66,9 @@ pub use db::changeset::{
     mesh_changeset_valid, mesh_changeset_errors, mesh_changeset_changes,
     mesh_changeset_get_change, mesh_changeset_get_error,
 };
+pub use db::json::{
+    mesh_json_get, mesh_json_get_nested,
+};
 pub use db::migration::{
     mesh_migration_create_table, mesh_migration_drop_table,
     mesh_migration_add_column, mesh_migration_drop_column,
@@ -78,6 +81,8 @@ pub use db::repo::{
     mesh_repo_insert, mesh_repo_update, mesh_repo_delete, mesh_repo_transaction,
     mesh_repo_insert_changeset, mesh_repo_update_changeset,
     mesh_repo_preload,
+    mesh_repo_update_where, mesh_repo_delete_where,
+    mesh_repo_query_raw, mesh_repo_execute_raw,
 };
 pub use db::pg::{
     mesh_pg_connect, mesh_pg_close, mesh_pg_execute, mesh_pg_query,
