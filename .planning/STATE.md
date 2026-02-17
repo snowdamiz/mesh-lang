@@ -12,7 +12,7 @@ See: .planning/PROJECT.md (updated 2026-02-16)
 Phase: 105.1 (Fix Codegen ABI Issues and Workarounds from Phase 105)
 Plan: 3 of 3 in current phase -- COMPLETE (all plans done)
 Status: Phase 105.1 complete. Auth workaround reverted. EventProcessor SIGSEGV persists (needs future investigation).
-Last activity: 2026-02-17 -- Plan 105.1-03 completed (auth workaround reverted, endpoints verified)
+Last activity: 2026-02-17 - Completed quick task 5: Update article with new changes and additions from git history
 
 Progress: [##########] 100%
 
@@ -69,6 +69,12 @@ None.
 ### Blockers/Concerns
 
 - Event ingestion (POST /api/v1/events) crashes during background EventProcessor service call after HTTP response is sent. Auth pipeline (struct-in-Result) works. The SIGSEGV persists in asynchronous service call processing despite Plan 02 reply conversion fix. Requires deeper investigation of EventProcessor service loop state or call dispatch.
+
+### Quick Tasks Completed
+
+| # | Description | Date | Commit | Directory |
+|---|-------------|------|--------|-----------|
+| 5 | Update article with new changes and additions from git history | 2026-02-17 | 86b0384d | [5-update-article-with-new-changes-and-addi](./quick/5-update-article-with-new-changes-and-addi/) |
 
 ## Session Continuity
 
