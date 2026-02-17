@@ -23,6 +23,16 @@ fn quote_ident(name: &str) -> String {
     format!("\"{}\"", name.replace('"', "\"\""))
 }
 
+/// Quote a SQL identifier, but pass `*` through unquoted.
+/// Used in RETURNING clauses where `*` means "all columns", not a column named `*`.
+fn quote_ident_or_star(name: &str) -> String {
+    if name == "*" {
+        "*".to_string()
+    } else {
+        quote_ident(name)
+    }
+}
+
 /// Extract a Vec<String> from a Mesh List<String> pointer.
 unsafe fn list_to_strings(list_ptr: *mut u8) -> Vec<String> {
     let len = mesh_list_length(list_ptr);
@@ -150,7 +160,7 @@ fn build_insert_sql(table: &str, columns: &[String], returning: &[String]) -> St
     // RETURNING clause
     if !returning.is_empty() {
         sql.push_str(" RETURNING ");
-        let quoted_ret: Vec<String> = returning.iter().map(|c| quote_ident(c)).collect();
+        let quoted_ret: Vec<String> = returning.iter().map(|c| quote_ident_or_star(c)).collect();
         sql.push_str(&quoted_ret.join(", "));
     }
 
@@ -217,7 +227,7 @@ fn build_update_sql(
     // RETURNING clause
     if !returning.is_empty() {
         sql.push_str(" RETURNING ");
-        let quoted_ret: Vec<String> = returning.iter().map(|c| quote_ident(c)).collect();
+        let quoted_ret: Vec<String> = returning.iter().map(|c| quote_ident_or_star(c)).collect();
         sql.push_str(&quoted_ret.join(", "));
     }
 
@@ -262,7 +272,7 @@ fn build_delete_sql(table: &str, wheres: &[String], returning: &[String]) -> Str
     // RETURNING clause
     if !returning.is_empty() {
         sql.push_str(" RETURNING ");
-        let quoted_ret: Vec<String> = returning.iter().map(|c| quote_ident(c)).collect();
+        let quoted_ret: Vec<String> = returning.iter().map(|c| quote_ident_or_star(c)).collect();
         sql.push_str(&quoted_ret.join(", "));
     }
 
@@ -508,6 +518,19 @@ mod tests {
         assert_eq!(
             sql,
             "INSERT INTO \"users\" (\"name\", \"email\") VALUES ($1, $2) RETURNING \"id\", \"name\""
+        );
+    }
+
+    #[test]
+    fn test_insert_returning_star() {
+        let sql = build_insert_sql(
+            "users",
+            &["name".into(), "email".into()],
+            &["*".into()],
+        );
+        assert_eq!(
+            sql,
+            "INSERT INTO \"users\" (\"name\", \"email\") VALUES ($1, $2) RETURNING *"
         );
     }
 
