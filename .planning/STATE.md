@@ -10,16 +10,16 @@ See: .planning/PROJECT.md (updated 2026-02-16)
 ## Current Position
 
 Phase: 105.1 (Fix Codegen ABI Issues and Workarounds from Phase 105)
-Plan: 2 of 3 in current phase -- COMPLETE
-Status: Plan 105.1-02 complete (service call reply serialization fixed)
-Last activity: 2026-02-17 -- Plan 105.1-02 completed (type-aware service call reply conversion)
+Plan: 2 of 3 in current phase -- COMPLETE (plans 01 and 02 done, plan 03 remaining)
+Status: Plan 105.1-01 complete (struct-in-Result pointer-boxing fix verified and tested)
+Last activity: 2026-02-17 -- Plan 105.1-01 completed (pointer-boxing tests added)
 
 Progress: [##########] 100%
 
 ## Performance Metrics
 
 **All-time Totals:**
-- Plans completed: 309
+- Plans completed: 310
 - Phases completed: 105
 - Milestones shipped: 20 (v1.0-v10.0)
 - Lines of Rust: ~98,850
@@ -33,6 +33,7 @@ Progress: [##########] 100%
 | 105   | 01   | 18min    | 3     | 1     |
 | 105   | 02   | 8min     | 3     | 4     |
 | 105.1 | 02   | 9min     | 1     | 1     |
+| 105.1 | 01   | 17min    | 2     | 5     |
 
 ## Accumulated Context
 
@@ -52,6 +53,7 @@ Recent decisions affecting current work:
 - Phase 105: EventProcessor service call has ABI segfault in reply deserialization (deferred to future codegen fix)
 - Phase 105.1: Pass MIR return type to codegen_service_call_helper for type-aware reply conversion instead of always converting to pointer
 - Phase 105.1: Use target_data.get_store_size threshold (<=8 bytes) to match tuple encoding for struct state extraction
+- Phase 105.1: Construction-side fix only for struct-in-Result: existing codegen_leaf deref logic handles destructuring; no pattern.rs changes needed
 
 ### Roadmap Evolution
 
@@ -68,6 +70,6 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-17
-Stopped at: Completed 105.1-02-PLAN.md (Service Call Reply Serialization Fix)
+Stopped at: Completed 105.1-01-PLAN.md (Struct-in-Result Pointer-Boxing Fix)
 Resume file: None
-Next action: Continue with Plan 105.1-03 (end-to-end verification) or Plan 105.1-01 (ConstructVariant struct-in-Result fix).
+Next action: Execute Plan 105.1-03 (end-to-end verification of all ABI fixes).
