@@ -10,17 +10,17 @@ See: .planning/PROJECT.md (updated 2026-02-16)
 ## Current Position
 
 Phase: 105 of 105 (Verify Mesher Runtime)
-Plan: 1 of 2 in current phase -- COMPLETE
-Status: Plan 01 complete (Mesher startup verified), ready for Plan 02 (endpoint testing)
-Last activity: 2026-02-17 -- Plan 105-01 completed (Mesher boots cleanly)
+Plan: 2 of 2 in current phase -- COMPLETE
+Status: Phase 105 complete (all endpoints verified, event ingestion ABI issue documented)
+Last activity: 2026-02-17 -- Plan 105-02 completed (HTTP + WebSocket endpoints verified)
 
-Progress: [#########-] 50%
+Progress: [##########] 100%
 
 ## Performance Metrics
 
 **All-time Totals:**
-- Plans completed: 307
-- Phases completed: 104
+- Plans completed: 308
+- Phases completed: 105
 - Milestones shipped: 20 (v1.0-v10.0)
 - Lines of Rust: ~98,850
 - Lines of website: ~5,500
@@ -31,6 +31,7 @@ Progress: [#########-] 50%
 |-------|------|----------|-------|-------|
 | 104   | 01   | 12min    | 2     | 3     |
 | 105   | 01   | 18min    | 3     | 1     |
+| 105   | 02   | 8min     | 3     | 4     |
 
 ## Accumulated Context
 
@@ -46,6 +47,8 @@ Recent decisions affecting current work:
 - Phase 104: Schema metadata functions must be registered in MIR known_functions for cross-module imports (same pattern as FromJson/ToJson/FromRow)
 - Phase 105: Migration runner synthetic main must use single-expression match arms and from-import syntax (Mesh parser constraint)
 - Phase 105: Env.get returns Option<String> requiring case unwrap before passing to Pool.open
+- Phase 105: Returning multi-field struct in Result causes ABI segfault -- use String!String instead of Struct!String
+- Phase 105: EventProcessor service call has ABI segfault in reply deserialization (deferred to future codegen fix)
 
 ### Pending Todos
 
@@ -53,11 +56,11 @@ None.
 
 ### Blockers/Concerns
 
-None -- Mesher starts cleanly and all services are running.
+- Event ingestion (POST /api/v1/events) crashes due to EventProcessor service call ABI segfault. All other endpoints work. Requires codegen-level fix for service call reply serialization.
 
 ## Session Continuity
 
 Last session: 2026-02-17
-Stopped at: Completed 105-01-PLAN.md (Verify Mesher Startup)
+Stopped at: Completed 105-02-PLAN.md (HTTP + WebSocket Endpoint Testing)
 Resume file: None
-Next action: Execute 105-02-PLAN.md (Endpoint Testing)
+Next action: Phase 105 complete. v10.1 Stabilization milestone done. Event ingestion ABI fix is next priority.
