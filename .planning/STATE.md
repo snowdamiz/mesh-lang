@@ -19,7 +19,7 @@ Progress: [##########] 100%
 ## Performance Metrics
 
 **All-time Totals:**
-- Plans completed: 310
+- Plans completed: 311
 - Phases completed: 105
 - Milestones shipped: 20 (v1.0-v10.0)
 - Lines of Rust: ~98,850
@@ -50,7 +50,7 @@ Recent decisions affecting current work:
 - Phase 104: Schema metadata functions must be registered in MIR known_functions for cross-module imports (same pattern as FromJson/ToJson/FromRow)
 - Phase 105: Migration runner synthetic main must use single-expression match arms and from-import syntax (Mesh parser constraint)
 - Phase 105: Env.get returns Option<String> requiring case unwrap before passing to Pool.open
-- Phase 105: Returning multi-field struct in Result causes ABI segfault -- use String!String instead of Struct!String
+- Phase 105: Returning multi-field struct in Result caused ABI segfault -- FIXED in Phase 105.1 Plan 01 (pointer-boxing), workaround reverted in Plan 03
 - Phase 105: EventProcessor service call has ABI segfault in reply deserialization (deferred to future codegen fix)
 - Phase 105.1: Pass MIR return type to codegen_service_call_helper for type-aware reply conversion instead of always converting to pointer
 - Phase 105.1: Use target_data.get_store_size threshold (<=8 bytes) to match tuple encoding for struct state extraction
