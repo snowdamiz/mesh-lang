@@ -106,24 +106,42 @@ fn query_applied_versions(
 /// the synthetic main imports it as `Migration`.
 fn generate_migration_main(direction: &str) -> String {
     format!(
-        r#"import Migration
+        r#"from Migration import {dir}
+
+fn handle_ok(pool :: PoolHandle) do
+  Pool.close(pool)
+  println("MIGRATION_OK")
+end
+
+fn handle_err(e :: String) do
+  println("MIGRATION_ERROR:" <> e)
+end
+
+fn handle_conn_err(e :: String) do
+  println("CONNECTION_ERROR:" <> e)
+end
+
+fn run_migration(pool :: PoolHandle) do
+  let result = {dir}(pool)
+  case result do
+    Ok(_) -> handle_ok(pool)
+    Err(e) -> handle_err(e)
+  end
+end
+
+fn run_with_url(url :: String) do
+  let pool_result = Pool.open(url, 1, 2, 5000)
+  case pool_result do
+    Ok(pool) -> run_migration(pool)
+    Err(e) -> handle_conn_err(e)
+  end
+end
 
 fn main() do
-  let url = Env.get("DATABASE_URL")
-  match Pool.open(url, 1, 2, 5000) do
-    Ok(pool) ->
-      match Migration.{dir}(pool) do
-        Ok(_) ->
-          Pool.close(pool)
-          0
-        Err(e) ->
-          IO.puts("MIGRATION_ERROR:" <> e)
-          Pool.close(pool)
-          0
-      end
-    Err(e) ->
-      IO.puts("CONNECTION_ERROR:" <> e)
-      0
+  let url_opt = Env.get("DATABASE_URL")
+  case url_opt do
+    Some(url) -> run_with_url(url)
+    None -> println("DATABASE_URL not set")
   end
 end
 "#,
@@ -723,8 +741,8 @@ mod tests {
     #[test]
     fn test_generate_migration_main_up() {
         let main = generate_migration_main("up");
-        assert!(main.contains("import Migration"));
-        assert!(main.contains("Migration.up(pool)"));
+        assert!(main.contains("from Migration import up"));
+        assert!(main.contains("up(pool)"));
         assert!(main.contains("Pool.open(url, 1, 2, 5000)"));
         assert!(main.contains("Pool.close(pool)"));
     }
@@ -732,7 +750,7 @@ mod tests {
     #[test]
     fn test_generate_migration_main_down() {
         let main = generate_migration_main("down");
-        assert!(main.contains("import Migration"));
-        assert!(main.contains("Migration.down(pool)"));
+        assert!(main.contains("from Migration import down"));
+        assert!(main.contains("down(pool)"));
     }
 }
