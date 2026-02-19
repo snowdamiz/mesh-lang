@@ -122,7 +122,7 @@ end
 
 ## Documentation
 
-Full documentation, including guides and API references, is available at **[meshlang.dev](https://meshlang.dev)** (placeholder link).
+Full documentation, including guides and API references, is available at **[meshlang.dev](https://meshlang.dev)**.
 
 ## Project Status
 
