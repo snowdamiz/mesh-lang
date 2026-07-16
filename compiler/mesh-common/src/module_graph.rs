@@ -106,6 +106,12 @@ impl ModuleGraph {
     }
 }
 
+impl Default for ModuleGraph {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 /// Topological sort of the module graph using Kahn's algorithm.
 ///
 /// Returns modules in dependency order: leaf modules (no dependencies) first,

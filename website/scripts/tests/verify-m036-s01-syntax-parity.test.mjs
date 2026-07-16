@@ -10,7 +10,7 @@ const corpusPath = path.join(root, 'scripts/fixtures/m036-s01-syntax-corpus.json
 const sharedGrammarPath = path.join(root, 'tools/editors/vscode-mesh/syntaxes/mesh.tmLanguage.json')
 const shikiLightThemePath = path.join(root, 'website/docs/.vitepress/theme/shiki/mesh-light.json')
 const shikiDarkThemePath = path.join(root, 'website/docs/.vitepress/theme/shiki/mesh-dark.json')
-const clusterDecoratorFixturePath = path.join(root, 'scripts/fixtures/m048-s04-cluster-decorators.mpl')
+const clusterDecoratorFixturePath = path.join(root, 'scripts/fixtures/cluster-decorators.mpl')
 
 const BEGIN_SCOPE = 'punctuation.section.interpolation.begin.mesh'
 const END_SCOPE = 'punctuation.section.interpolation.end.mesh'

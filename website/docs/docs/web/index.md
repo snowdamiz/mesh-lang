@@ -7,7 +7,7 @@ description: HTTP servers, routing, middleware, WebSocket, and TLS in Mesh
 
 Mesh includes a built-in HTTP server and WebSocket server, so you can build web applications without external dependencies. This guide covers creating HTTP servers with routing and middleware, handling JSON, building real-time WebSocket applications with rooms and broadcasting, and securing connections with TLS.
 
-> **Production backend proof:** This page explains the web primitives in isolation. For the compact backend-proof handoff, start with [Production Backend Proof](/docs/production-backend-proof/). That page is the repo-boundary handoff into the [Hyperpush product repo](https://github.com/hyperpush-org/hyperpush-mono), its [`mesher/README.md`](https://github.com/hyperpush-org/hyperpush-mono/blob/main/mesher/README.md) maintainer runbook, and `bash mesher/scripts/verify-maintainer-surface.sh`; mesh-lang keeps `bash scripts/verify-m051-s01.sh` and `bash scripts/verify-m051-s02.sh` only as retained compatibility wrappers.
+> **Autonomous clusters:** This page explains web primitives. Continue with [Autonomous Clusters](/docs/autonomous-clusters/) for adaptive ingress routing and admission control.
 
 ## HTTP Server
 
@@ -476,22 +476,6 @@ end
 | `Http.send_with(client, req)` | Send request reusing the client's connection pool |
 | `Http.stream(req, fn chunk -> ... end)` | Stream response body chunk by chunk |
 | `Http.client_close(client)` | Close the client and release connections |
-
-### Legacy Single-Call API
-
-The original `HTTP.get` function (uppercase `HTTP`) is still available for simple GET requests:
-
-```mesh
-fn main() do
-  let result = HTTP.get("http://example.com")
-  case result do
-    Ok(body) -> println("ok")
-    Err(msg) -> println("error")
-  end
-end
-```
-
-For new code, prefer the `Http.build` fluent API — it supports all HTTP methods, headers, bodies, timeouts, streaming, and keep-alive connections.
 
 ## What's Next?
 

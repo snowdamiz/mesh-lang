@@ -1,7 +1,6 @@
 //! HTTP client runtime for the Mesh language.
 //!
-//! Provides both the legacy HTTP.get/post functions (backward compat) and the
-//! new Http client builder API (Http.build/header/body/timeout/query/json/send).
+//! Provides the Http client builder API (Http.build/header/body/timeout/query/json/send).
 //! Also provides streaming (Http.stream/stream_bytes), cancellation (Http.cancel),
 //! and keep-alive client (Http.client/send_with/client_close).
 //! Uses `ureq` 3 for HTTP requests.
@@ -27,59 +26,6 @@ fn alloc_result(tag: u8, value: *mut u8) -> *mut MeshResult {
         (*ptr).tag = tag;
         (*ptr).value = value;
         ptr
-    }
-}
-
-// ── Legacy HTTP GET/POST (backward compatibility, updated for ureq 3) ────────
-
-/// Make an HTTP GET request. Returns MeshResult:
-/// - tag 0 (Ok): value = MeshString response body
-/// - tag 1 (Err): value = MeshString error message
-#[no_mangle]
-pub extern "C" fn mesh_http_get(url: *const MeshString) -> *mut u8 {
-    unsafe {
-        let url_str = (*url).as_str();
-        let agent = Agent::new_with_defaults();
-        match agent.get(url_str).call() {
-            Ok(mut response) => {
-                let body = response.body_mut().read_to_string().unwrap_or_default();
-                let body_mesh = mesh_string_new(body.as_ptr(), body.len() as u64);
-                alloc_result(0, body_mesh as *mut u8) as *mut u8
-            }
-            Err(e) => {
-                let msg = e.to_string();
-                let msg_mesh = mesh_string_new(msg.as_ptr(), msg.len() as u64);
-                alloc_result(1, msg_mesh as *mut u8) as *mut u8
-            }
-        }
-    }
-}
-
-/// Make an HTTP POST request with a body. Returns MeshResult:
-/// - tag 0 (Ok): value = MeshString response body
-/// - tag 1 (Err): value = MeshString error message
-#[no_mangle]
-pub extern "C" fn mesh_http_post(url: *const MeshString, body: *const MeshString) -> *mut u8 {
-    unsafe {
-        let url_str = (*url).as_str();
-        let body_str = (*body).as_str().to_string();
-        let agent = Agent::new_with_defaults();
-        match agent
-            .post(url_str)
-            .header("Content-Type", "application/json")
-            .send(body_str.as_bytes())
-        {
-            Ok(mut response) => {
-                let resp_body = response.body_mut().read_to_string().unwrap_or_default();
-                let body_mesh = mesh_string_new(resp_body.as_ptr(), resp_body.len() as u64);
-                alloc_result(0, body_mesh as *mut u8) as *mut u8
-            }
-            Err(e) => {
-                let msg = e.to_string();
-                let msg_mesh = mesh_string_new(msg.as_ptr(), msg.len() as u64);
-                alloc_result(1, msg_mesh as *mut u8) as *mut u8
-            }
-        }
     }
 }
 

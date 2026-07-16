@@ -1,0 +1,438 @@
+/* ──────────────────────────────────────────────────
+   Landing — "living network" design system
+   Soft organic shapes · luminous signal-green accent
+   Bricolage Grotesque display · Instrument Serif accents
+   ────────────────────────────────────────────────── */
+
+.landing {
+  /* Accent comes from the site-wide brand tokens; backgrounds stay neutral */
+  --l-accent: var(--brand);
+  --l-accent-hi: var(--brand-hi);
+  --l-accent-ink: var(--brand-ink);
+
+  --ok: oklch(0.58 0.14 160);
+  --warn: oklch(0.7 0.13 75);
+  --err: oklch(0.58 0.19 25);
+
+  --l-shadow:
+    0 1px 2px oklch(0.3 0 0 / 0.04),
+    0 16px 40px -20px oklch(0.3 0.02 180 / 0.2);
+
+  background: var(--background);
+  color: var(--foreground);
+}
+
+.dark .landing {
+  --ok: oklch(0.76 0.15 160);
+  --warn: oklch(0.8 0.13 80);
+  --err: oklch(0.66 0.18 25);
+
+  --l-shadow:
+    inset 0 1px 0 oklch(1 0 0 / 0.05),
+    0 20px 48px -24px oklch(0 0 0 / 0.6);
+}
+
+.landing ::selection {
+  background: color-mix(in oklab, var(--l-accent) 30%, transparent);
+}
+
+/* Display face — Bricolage's soft ink traps carry the personality */
+.landing .font-display {
+  font-family: 'Bricolage Grotesque', var(--font-sans);
+  font-optical-sizing: auto;
+  letter-spacing: -0.025em;
+}
+
+/* Italic serif accent word inside headlines */
+.l-fancy {
+  font-family: 'Instrument Serif', Georgia, serif;
+  font-style: italic;
+  font-weight: 400;
+  font-size: 1.06em;
+  letter-spacing: 0.005em;
+  color: var(--l-accent);
+}
+
+/* Eyebrow — lowercase mono with a glowing dot */
+.l-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.65rem;
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  font-weight: 500;
+  letter-spacing: 0.1em;
+  color: var(--muted-foreground);
+}
+.l-eyebrow::before {
+  content: '';
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: var(--l-accent);
+  box-shadow: 0 0 10px color-mix(in oklab, var(--l-accent) 80%, transparent);
+}
+
+/* Pill buttons */
+.l-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.6rem;
+  height: 3.25rem;
+  padding: 0 1.9rem;
+  border-radius: 0.75rem;
+  font-size: 0.95rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  transition: transform 0.2s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.2s ease, background-color 0.2s ease;
+}
+.l-btn:hover {
+  transform: translateY(-2px);
+}
+.l-btn:active {
+  transform: translateY(0) scale(0.98);
+}
+.l-btn-primary {
+  background: var(--l-accent);
+  color: var(--l-accent-ink);
+  box-shadow:
+    inset 0 1px 0 oklch(1 0 0 / 0.25),
+    0 10px 28px -10px color-mix(in oklab, var(--l-accent) 65%, transparent);
+}
+.l-btn-primary:hover {
+  box-shadow:
+    inset 0 1px 0 oklch(1 0 0 / 0.25),
+    0 16px 36px -12px color-mix(in oklab, var(--l-accent) 80%, transparent);
+}
+.l-btn-soft {
+  background: color-mix(in oklab, var(--foreground) 5%, transparent);
+  color: var(--foreground);
+  border: 1px solid var(--border);
+}
+.l-btn-soft:hover {
+  background: color-mix(in oklab, var(--foreground) 9%, transparent);
+}
+
+/* Soft card */
+.l-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 0.875rem;
+  box-shadow: var(--l-shadow);
+}
+
+/* Code / terminal window */
+.l-window {
+  overflow: hidden;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 0.875rem;
+  box-shadow: var(--l-shadow);
+}
+.l-window-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.85rem 1.4rem;
+  border-bottom: 1px solid var(--border);
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  letter-spacing: 0.04em;
+  color: var(--muted-foreground);
+}
+.l-window-dots {
+  display: inline-flex;
+  gap: 6px;
+}
+.l-window-dots span {
+  width: 9px;
+  height: 9px;
+  border-radius: 999px;
+  background: color-mix(in oklab, var(--foreground) 14%, transparent);
+}
+.l-window-dots span:first-child {
+  background: color-mix(in oklab, var(--l-accent) 65%, transparent);
+}
+
+/* Pill chip */
+.l-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.4rem 0.8rem;
+  border-radius: 0.5rem;
+  border: 1px solid var(--border);
+  background: var(--card);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  letter-spacing: 0.02em;
+  color: var(--muted-foreground);
+  white-space: nowrap;
+}
+
+/* Aurora blob — position + size inline, this handles the softness */
+.l-aurora {
+  position: absolute;
+  border-radius: 999px;
+  filter: blur(90px);
+  pointer-events: none;
+}
+
+@keyframes l-breathe {
+  0%, 100% { opacity: 0.5; transform: scale(1); }
+  50% { opacity: 0.9; transform: scale(1.06); }
+}
+.l-breathe {
+  animation: l-breathe 6s ease-in-out infinite;
+}
+
+/* Gentler variant for the sim node halos (SVG) */
+@keyframes l-halo-breathe {
+  0%, 100% { opacity: 0.08; transform: scale(1); }
+  50% { opacity: 0.17; transform: scale(1.08); }
+}
+.l-node-halo {
+  animation: l-halo-breathe 5s ease-in-out infinite;
+}
+
+/* Spec pictogram: source lines pulsing into the binary */
+@keyframes l-code-pulse {
+  0%, 100% { opacity: 0.3; }
+  50% { opacity: 1; }
+}
+.l-compile-lines line {
+  animation: l-code-pulse 2.6s ease-in-out infinite;
+}
+
+/* Spec pictogram: packets riding actor lanes */
+@keyframes l-lane {
+  0% { transform: translateX(0); opacity: 0; }
+  14% { opacity: 1; }
+  86% { opacity: 1; }
+  100% { transform: translateX(44px); opacity: 0; }
+}
+.l-lane-dot {
+  transform-box: fill-box;
+  animation: l-lane 3s linear infinite;
+}
+
+/* Hero entrance choreography — delays set inline per element */
+@keyframes l-rise {
+  from {
+    opacity: 0;
+    transform: translateY(26px);
+    filter: blur(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+    filter: blur(0);
+  }
+}
+@keyframes l-rise-zoom {
+  from {
+    opacity: 0;
+    transform: translateY(22px) scale(0.97);
+    filter: blur(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+    filter: blur(0);
+  }
+}
+@keyframes l-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+.l-enter {
+  animation: l-rise 0.9s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+.l-enter-zoom {
+  animation: l-rise-zoom 1.05s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+.l-enter-fade {
+  animation: l-fade-in 1.6s ease-out both;
+}
+
+/* Slow drift for the hero mesh */
+@keyframes l-drift {
+  from { transform: translate3d(0, 0, 0); }
+  to { transform: translate3d(-18px, 10px, 0); }
+}
+.l-drift {
+  animation: l-drift 26s ease-in-out infinite alternate;
+}
+
+/* Code panels: transparent shiki bg + line numbers */
+.landing-code pre {
+  background: transparent !important;
+  counter-reset: ln;
+  overflow-x: auto;
+  padding: 1.15rem 1.5rem;
+  font-size: 0.8125rem;
+  line-height: 1.9;
+}
+.landing-code .line {
+  counter-increment: ln;
+}
+.landing-code .line::before {
+  content: counter(ln, decimal-leading-zero);
+  display: inline-block;
+  width: 1.75em;
+  margin-right: 1.5em;
+  text-align: right;
+  color: color-mix(in oklab, var(--foreground) 25%, transparent);
+  user-select: none;
+}
+
+/* Benchmark bars */
+.l-bar-track {
+  position: relative;
+  height: 10px;
+  border-radius: 3px;
+  background: color-mix(in oklab, var(--foreground) 7%, transparent);
+}
+.l-bar {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 1.1s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.l-bar-mesh {
+  background: linear-gradient(90deg, var(--l-accent), var(--l-accent-hi));
+  box-shadow: 0 0 14px color-mix(in oklab, var(--l-accent) 45%, transparent);
+}
+.l-bar-other {
+  background: color-mix(in oklab, var(--foreground) 22%, transparent);
+}
+
+/* Gradient stat / wordmark text */
+.l-grad-text {
+  background: linear-gradient(120deg, var(--l-accent), var(--l-accent-hi));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.l-wordmark {
+  font-family: 'Bricolage Grotesque', var(--font-sans);
+  background: linear-gradient(180deg, color-mix(in oklab, var(--foreground) 30%, transparent), transparent 92%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+/* Comparison marks */
+.l-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 999px;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 700;
+}
+.l-mark-yes {
+  background: color-mix(in oklab, var(--ok) 16%, transparent);
+  color: var(--ok);
+}
+.l-mark-partial {
+  background: color-mix(in oklab, var(--warn) 16%, transparent);
+  color: var(--warn);
+}
+.l-mark-no {
+  color: color-mix(in oklab, var(--muted-foreground) 55%, transparent);
+}
+
+/* Fault-injection pill */
+.l-fault-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.4rem 0.9rem;
+  border-radius: 0.5rem;
+  border: 1px solid color-mix(in oklab, var(--err) 45%, transparent);
+  background: color-mix(in oklab, var(--err) 8%, transparent);
+  color: var(--err);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  transition: background-color 0.2s ease, transform 0.2s ease;
+}
+.l-fault-btn:hover:not(:disabled) {
+  background: color-mix(in oklab, var(--err) 16%, transparent);
+  transform: translateY(-1px);
+}
+.l-fault-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* Status blink (fault indicator) */
+@keyframes l-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.25; }
+}
+.l-blink {
+  animation: l-blink 0.9s ease-in-out infinite;
+}
+
+/* Terminal caret */
+@keyframes l-caret {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+.l-caret {
+  animation: l-caret 1.1s steps(2, jump-none) infinite;
+}
+
+/* Live ping dot */
+.l-ping {
+  position: relative;
+  display: inline-flex;
+  width: 8px;
+  height: 8px;
+}
+.l-ping::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 999px;
+  background: var(--ok);
+  animation: l-ping 2.2s cubic-bezier(0, 0, 0.2, 1) infinite;
+}
+.l-ping::after {
+  content: '';
+  position: relative;
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--ok);
+}
+@keyframes l-ping {
+  0% { transform: scale(1); opacity: 0.7; }
+  75%, 100% { transform: scale(2.4); opacity: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .l-blink,
+  .l-caret,
+  .l-breathe,
+  .l-node-halo,
+  .l-drift,
+  .l-compile-lines line,
+  .l-lane-dot,
+  .l-enter,
+  .l-enter-zoom,
+  .l-enter-fade,
+  .l-ping::before {
+    animation: none;
+  }
+  .l-bar {
+    transition: none;
+  }
+}

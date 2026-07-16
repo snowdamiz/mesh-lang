@@ -98,6 +98,9 @@ pub struct CodeGen<'ctx> {
     /// Clustered work registrations that should auto-trigger after `mesh_main`.
     pub(crate) startup_work_registrations: Vec<StartupWorkRegistration>,
 
+    /// Versioned, compiler-normalized autonomous runtime configuration.
+    pub(crate) autonomous_config_json: Option<String>,
+
     /// TCE loop header block for the current tail-recursive function.
     /// Set during compile_function when has_tail_calls is true. NOT on loop_stack
     /// (separate from user while/for loops so break/continue don't interfere).
@@ -184,6 +187,7 @@ impl<'ctx> CodeGen<'ctx> {
             service_dispatch: std::collections::HashMap::new(),
             declared_handlers: Vec::new(),
             startup_work_registrations: Vec::new(),
+            autonomous_config_json: None,
             tce_loop_header: None,
             tce_param_names: Vec::new(),
         })
@@ -200,6 +204,10 @@ impl<'ctx> CodeGen<'ctx> {
         startup_work_registrations: &[StartupWorkRegistration],
     ) {
         self.startup_work_registrations = startup_work_registrations.to_vec();
+    }
+
+    pub fn set_autonomous_config_json(&mut self, config: Option<&str>) {
+        self.autonomous_config_json = config.map(str::to_string);
     }
 
     /// Compile a MIR module to LLVM IR.
@@ -665,7 +673,30 @@ impl<'ctx> CodeGen<'ctx> {
             .build_call(rt_init, &[], "")
             .map_err(|e| e.to_string())?;
 
-        // Call mesh_rt_init_actor(0) -- initialize actor scheduler with default threads
+        // Register the validated manifest before any runtime subsystem reads
+        // scheduler, routing, admission, or continuity defaults.
+        if let Some(config_json) = &self.autonomous_config_json {
+            let register_config =
+                intrinsics::get_intrinsic(&self.module, "mesh_register_autonomous_config_json");
+            let config_global = self
+                .builder
+                .build_global_string_ptr(config_json, "mesh_autonomous_config_json")
+                .map_err(|error| error.to_string())?;
+            let config_len = self
+                .context
+                .i64_type()
+                .const_int(config_json.len() as u64, false);
+            self.builder
+                .build_call(
+                    register_config,
+                    &[config_global.as_pointer_value().into(), config_len.into()],
+                    "",
+                )
+                .map_err(|error| error.to_string())?;
+        }
+
+        // Call mesh_rt_init_actor(0) after configuration registration so the
+        // elastic scheduler starts with the manifest's declared bounds.
         let rt_init_actor = intrinsics::get_intrinsic(&self.module, "mesh_rt_init_actor");
         let zero = self.context.i32_type().const_int(0, false);
         self.builder
@@ -1103,7 +1134,7 @@ mod tests {
     }
 
     #[test]
-    fn m047_s02_codegen_declared_handler_registration_emits_replication_count_marker() {
+    fn codegen_declared_handler_registration_emits_replication_count_marker() {
         let mir = MirModule {
             functions: vec![
                 MirFunction {
@@ -1171,7 +1202,7 @@ mod tests {
     }
 
     #[test]
-    fn m047_s07_codegen_declared_route_registration_emits_runtime_name_and_count_marker() {
+    fn codegen_declared_route_registration_emits_runtime_name_and_count_marker() {
         let mir = MirModule {
             functions: vec![
                 MirFunction {
@@ -1223,7 +1254,7 @@ mod tests {
     }
 
     #[test]
-    fn m047_s02_codegen_rejects_declared_handler_without_lowered_symbol() {
+    fn codegen_rejects_declared_handler_without_lowered_symbol() {
         let mir = hello_world_mir();
         let error = compile_with_declared_handlers_error(
             mir,

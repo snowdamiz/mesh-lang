@@ -10,21 +10,8 @@
 //! - `meshc repl --help` confirms REPL subcommand availability
 //! - `meshc lsp --help` confirms LSP subcommand availability
 
-mod support;
-
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use support::m051_reference_backend as retained_backend;
-
-/// Locate the repository root from the meshc package manifest directory.
-fn repo_root() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .expect("meshc crate should live under compiler/")
-        .parent()
-        .expect("workspace root should be above compiler/")
-        .to_path_buf()
-}
 
 /// Locate the meshc binary built by cargo.
 fn meshc_bin() -> PathBuf {
@@ -449,6 +436,11 @@ fn test_test_runs_tests_directory_target() {
 
     std::fs::create_dir_all(&tests_dir).unwrap();
     std::fs::write(
+        project.join("mesh.toml"),
+        "[package]\nname = \"tooling-test-project\"\nversion = \"0.1.0\"\n",
+    )
+    .unwrap();
+    std::fs::write(
         project.join("main.mpl"),
         "fn main() do\n  println(\"app\")\nend\n",
     )
@@ -536,43 +528,22 @@ fn test_test_specific_file_target_fails_closed_when_no_project_root_exists() {
 }
 
 #[test]
-fn test_test_reference_backend_project_directory_succeeds() {
-    let root = repo_root();
-    let target = retained_backend::RETAINED_FIXTURE_ROOT_RELATIVE;
-
-    let output = Command::new(meshc_bin())
-        .current_dir(&root)
-        .args(["test", target])
-        .output()
-        .expect("failed to run meshc test on the retained reference-backend fixture");
-
-    assert!(
-        output.status.success(),
-        "meshc test {} failed:\nstdout: {}\nstderr: {}",
-        target,
-        String::from_utf8_lossy(&output.stdout),
-        String::from_utf8_lossy(&output.stderr)
-    );
-
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(
-        stdout.contains("2 passed"),
-        "expected meshc test {} to execute two passing retained fixture test files, got:\n{}",
-        target,
-        stdout
-    );
-}
-
-#[test]
 fn test_test_coverage_reports_unsupported_contract() {
-    let root = repo_root();
-    let target = retained_backend::RETAINED_FIXTURE_ROOT_RELATIVE;
+    let project = tempfile::tempdir().unwrap();
+    write_file(
+        &project.path().join("mesh.toml"),
+        "[package]\nname = \"coverage-contract\"\nversion = \"0.1.0\"\nentrypoint = \"main.mpl\"\n",
+    );
+    write_file(&project.path().join("main.mpl"), "fn main() do\nend\n");
+    write_file(
+        &project.path().join("tests/basic.test.mpl"),
+        "test(\"basic\") do\n  assert(true)\nend\n",
+    );
 
     let output = Command::new(meshc_bin())
-        .current_dir(&root)
-        .args(["test", "--coverage", target])
+        .args(["test", "--coverage", project.path().to_str().unwrap()])
         .output()
-        .expect("failed to run meshc test --coverage on the retained reference-backend fixture");
+        .expect("failed to run meshc test --coverage");
 
     assert_eq!(
         output.status.code(),

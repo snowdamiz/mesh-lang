@@ -2,6 +2,15 @@
 !Cargo.toml
 !Cargo.lock
 !compiler/**
+!examples/
+!examples/todo-postgres/**
+!proof/
+proof/**
+!proof/fly-continuity-soak/
+!proof/fly-continuity-soak/**
+!proof/fly-autoscaling/
+!proof/fly-autoscaling/**
+!proof/docker-autoscaling/init.sql
 !cluster-proof/**
 !scripts/**
 

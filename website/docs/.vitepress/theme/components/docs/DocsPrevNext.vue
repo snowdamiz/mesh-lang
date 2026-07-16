@@ -11,7 +11,7 @@ const prevNext = usePrevNext()
     <a
       v-if="prevNext.prev?.link"
       :href="prevNext.prev.link"
-      class="group flex items-center gap-3 rounded-xl border border-border p-5 text-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg hover:border-foreground/20"
+      class="group flex items-center gap-3 rounded-xl border border-border p-5 text-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-[color-mix(in_oklab,var(--brand)_45%,var(--border))] hover:shadow-[0_16px_32px_-16px_color-mix(in_oklab,var(--brand)_30%,transparent)]"
     >
       <ChevronLeft class="size-4 shrink-0 text-muted-foreground transition-transform duration-200 group-hover:-translate-x-0.5" />
       <div class="min-w-0">
@@ -25,7 +25,7 @@ const prevNext = usePrevNext()
     <a
       v-if="prevNext.next?.link"
       :href="prevNext.next.link"
-      class="group flex items-center justify-end gap-3 rounded-xl border border-border p-5 text-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg hover:border-foreground/20"
+      class="group flex items-center justify-end gap-3 rounded-xl border border-border p-5 text-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-[color-mix(in_oklab,var(--brand)_45%,var(--border))] hover:shadow-[0_16px_32px_-16px_color-mix(in_oklab,var(--brand)_30%,transparent)]"
       :class="{ 'col-start-2': !prevNext.prev?.link }"
     >
       <div class="min-w-0 text-right">

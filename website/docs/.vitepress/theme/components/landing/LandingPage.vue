@@ -1,21 +1,23 @@
 <script setup lang="ts">
 import HeroSection from './HeroSection.vue'
-import CapabilitiesBar from './CapabilitiesBar.vue'
-import FeatureShowcase from './FeatureShowcase.vue'
+import InfraDiff from './InfraDiff.vue'
+import FailoverSim from './FailoverSim.vue'
+import StdlibGrid from './StdlibGrid.vue'
 import BenchmarkSection from './BenchmarkSection.vue'
-import WhyMesh from './WhyMesh.vue'
-import GetStartedCTA from './GetStartedCTA.vue'
+import ComparisonTable from './ComparisonTable.vue'
+import InstallCTA from './InstallCTA.vue'
 import LandingFooter from './LandingFooter.vue'
 </script>
 
 <template>
-  <div class="min-h-screen">
+  <div class="landing min-h-screen">
     <HeroSection />
-    <CapabilitiesBar />
-    <FeatureShowcase />
+    <InfraDiff />
+    <FailoverSim />
+    <StdlibGrid />
     <BenchmarkSection />
-    <WhyMesh />
-    <GetStartedCTA />
+    <ComparisonTable />
+    <InstallCTA />
     <LandingFooter />
   </div>
 </template>

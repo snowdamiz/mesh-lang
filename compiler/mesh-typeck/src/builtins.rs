@@ -578,7 +578,7 @@ pub fn register_builtins(
         Scheme::mono(Ty::fun(vec![http_client_handle_t], Ty::Tuple(vec![]))),
     );
 
-    // ── Continuity public API (M044) ──────────────────────────────────────
+    // ── Continuity public API (builtin) ──────────────────────────────────────
 
     let continuity_authority_status_t = Ty::Con(TyCon::new("ContinuityAuthorityStatus"));
     let continuity_record_t = Ty::Con(TyCon::new("ContinuityRecord"));
@@ -1247,23 +1247,6 @@ pub fn register_builtins(
             },
         );
     }
-    // HTTP.get(String) -> Result<String, String>
-    env.insert(
-        "http_get".into(),
-        Scheme::mono(Ty::fun(
-            vec![Ty::string()],
-            Ty::result(Ty::string(), Ty::string()),
-        )),
-    );
-    // HTTP.post(String, String) -> Result<String, String>
-    env.insert(
-        "http_post".into(),
-        Scheme::mono(Ty::fun(
-            vec![Ty::string(), Ty::string()],
-            Ty::result(Ty::string(), Ty::string()),
-        )),
-    );
-
     // ── Phase 51: Method-specific routing ────────────────────────────────
     // HTTP.on_get(Router, String, Fn(Request) -> Response) -> Router
     env.insert(
@@ -1558,6 +1541,32 @@ pub fn register_builtins(
             vec![request_t.clone(), Ty::string()],
             Ty::option(Ty::string()),
         )),
+    );
+    // HTTP.request_id(Request) -> String
+    env.insert(
+        "http_request_id".into(),
+        Scheme::mono(Ty::fun(vec![request_t.clone()], Ty::string())),
+    );
+    // HTTP.idempotency_key(Request) -> Option<String>
+    env.insert(
+        "http_idempotency_key".into(),
+        Scheme::mono(Ty::fun(vec![request_t.clone()], Ty::option(Ty::string()))),
+    );
+    env.insert(
+        "cluster_capacity".into(),
+        Scheme::mono(Ty::fun(vec![], Ty::map(Ty::string(), Ty::int()))),
+    );
+    env.insert(
+        "cluster_pressure".into(),
+        Scheme::mono(Ty::fun(vec![], Ty::map(Ty::string(), Ty::string()))),
+    );
+    env.insert(
+        "cluster_role".into(),
+        Scheme::mono(Ty::fun(vec![], Ty::string())),
+    );
+    env.insert(
+        "cluster_state".into(),
+        Scheme::mono(Ty::fun(vec![], Ty::string())),
     );
 
     // ── Phase 138: Test DSL builtins ─────────────────────────────────────────
@@ -2672,8 +2681,6 @@ mod tests {
         assert!(env.lookup("http_route").is_some());
         assert!(env.lookup("http_serve").is_some());
         assert!(env.lookup("http_response").is_some());
-        assert!(env.lookup("http_get").is_some());
-        assert!(env.lookup("http_post").is_some());
 
         // Request accessors
         assert!(env.lookup("request_method").is_some());

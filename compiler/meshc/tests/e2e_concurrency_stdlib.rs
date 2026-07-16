@@ -173,9 +173,8 @@ fn e2e_service_state_management() {
 
 // ── Service Return Type E2E Tests ─────────────────────────────────────
 
-/// Test: Service returning Bool (not Int) from a struct-state service.
-/// Exercises: Bool truncation path (i64 -> i1) in codegen_service_call_helper,
-/// and struct state serialization through ActorSpawn for large (>8 byte) state.
+/// Test: Service returning and accepting Bool (not Int).
+/// Exercises: Bool truncation path (i64 -> i1) in codegen_service_call_helper.
 #[test]
 fn e2e_service_bool_return() {
     let source = read_fixture("service_bool_return.mpl");

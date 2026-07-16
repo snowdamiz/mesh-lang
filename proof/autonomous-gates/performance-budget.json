@@ -1,0 +1,16 @@
+{
+  "schema_version": 2,
+  "baseline_revision": "autonomous-cluster-m0-local-release-budget-v2",
+  "routing_average_max_micros": 1000.0,
+  "protocol_round_trip_average_max_micros": 1000.0,
+  "continuity_write_p95_max_micros": 20000,
+  "snapshot_apply_min_mib_per_second": 1.0,
+  "consensus_commit_p95_max_micros": 20000,
+  "scheduler_resize_p95_max_micros": 1000,
+  "load_report_max_bytes": 2048,
+  "load_report_encode_average_max_micros": 1000.0,
+  "continuity_write_amplification_max_ratio": 20.0,
+  "continuity_compaction_min_records_per_second": 500.0,
+  "snapshot_join_max_millis": 10000,
+  "driver_reconcile_average_max_micros": 1000.0
+}

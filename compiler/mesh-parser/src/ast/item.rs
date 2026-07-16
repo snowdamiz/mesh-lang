@@ -1,6 +1,6 @@
 //! Typed AST nodes for declarations and items.
 //!
-//! Covers: SourceFile, FnDef, ClusteredDecl, ClusteredWorkDecl, ParamList, Param,
+//! Covers: SourceFile, FnDef, ClusteredDecl, ParamList, Param,
 //! TypeAnnotation, ModuleDef, ImportDecl, FromImportDecl, ImportList,
 //! StructDef, StructField, LetBinding, Visibility, Block, Name, NameRef,
 //! Path, SumTypeDef, VariantDef, VariantField.
@@ -84,7 +84,6 @@ pub enum ClusteredDeclKind {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ClusteredDeclSyntax {
     SourceDecorator,
-    LegacyCompat,
 }
 
 #[derive(Debug, Clone)]
@@ -94,12 +93,7 @@ pub struct ClusteredDecl {
 
 impl AstNode for ClusteredDecl {
     fn cast(node: SyntaxNode) -> Option<Self> {
-        match node.kind() {
-            SyntaxKind::CLUSTER_DECORATOR_DECL | SyntaxKind::CLUSTERED_WORK_DECL => {
-                Some(Self { syntax: node })
-            }
-            _ => None,
-        }
+        (node.kind() == SyntaxKind::CLUSTER_DECORATOR_DECL).then_some(Self { syntax: node })
     }
 
     fn syntax(&self) -> &SyntaxNode {
@@ -131,11 +125,7 @@ fn parse_u32_literal_text(text: &str) -> Option<u32> {
 
 impl ClusteredDecl {
     pub fn syntax_style(&self) -> ClusteredDeclSyntax {
-        match self.syntax.kind() {
-            SyntaxKind::CLUSTER_DECORATOR_DECL => ClusteredDeclSyntax::SourceDecorator,
-            SyntaxKind::CLUSTERED_WORK_DECL => ClusteredDeclSyntax::LegacyCompat,
-            _ => unreachable!("ClusteredDecl only casts clustered declaration nodes"),
-        }
+        ClusteredDeclSyntax::SourceDecorator
     }
 
     pub fn kind(&self) -> ClusteredDeclKind {
@@ -174,11 +164,6 @@ impl FnDef {
 
     /// Any supported clustered declaration decorator decorating this function.
     pub fn clustered_decl(&self) -> Option<ClusteredDecl> {
-        child_node(&self.syntax)
-    }
-
-    /// The legacy `clustered(work)` declaration marker, if present in older CSTs.
-    pub fn clustered_work_decl(&self) -> Option<ClusteredWorkDecl> {
         child_node(&self.syntax)
     }
 
@@ -234,20 +219,6 @@ impl FnDef {
 }
 
 // ── Parameter List ───────────────────────────────────────────────────────
-
-ast_node!(ClusteredWorkDecl, CLUSTERED_WORK_DECL);
-
-impl ClusteredWorkDecl {
-    /// The declared clustered target.
-    pub fn target(&self) -> Option<String> {
-        self.syntax
-            .children_with_tokens()
-            .filter_map(|it| it.into_token())
-            .filter(|t| t.kind() == SyntaxKind::IDENT && t.text() != "clustered")
-            .map(|t| t.text().to_string())
-            .next()
-    }
-}
 
 ast_node!(ParamList, PARAM_LIST);
 

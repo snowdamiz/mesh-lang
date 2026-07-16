@@ -308,11 +308,11 @@ pub extern "C" fn mesh_http_use_middleware(router: *mut u8, middleware_fn: *mut 
 mod tests {
     use super::*;
     use crate::dist::node::{
-        clear_declared_handler_registry_for_test, mesh_register_declared_handler,
+        clear_declared_handler_registry_for_test, declared_handler_registry_test_lock,
+        mesh_register_declared_handler,
     };
     use crate::gc::mesh_rt_init;
     use crate::string::mesh_string_new;
-    use std::sync::{Mutex, MutexGuard, OnceLock};
 
     fn plain_route(pattern: &str, method: Option<&str>, handler_fn: usize) -> RouteEntry {
         RouteEntry {
@@ -323,11 +323,6 @@ mod tests {
             declared_handler_runtime_name: None,
             replication_count: None,
         }
-    }
-
-    fn clustered_route_test_lock() -> MutexGuard<'static, ()> {
-        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-        LOCK.get_or_init(|| Mutex::new(())).lock().unwrap()
     }
 
     extern "C" fn clustered_route_handler(_request: *mut u8) -> *mut u8 {
@@ -480,7 +475,7 @@ mod tests {
 
     #[test]
     fn router_registration_attaches_clustered_runtime_metadata() {
-        let _guard = clustered_route_test_lock();
+        let _guard = declared_handler_registry_test_lock();
         mesh_rt_init();
         clear_declared_handler_registry_for_test();
 

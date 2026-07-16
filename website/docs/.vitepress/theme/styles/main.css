@@ -2,6 +2,7 @@
 @import "tw-animate-css";
 @import "./code.css";
 @import "./prose.css";
+@import "./landing.css";
 
 @plugin "@tailwindcss/typography";
 
@@ -22,6 +23,44 @@
   font-weight: 100 900;
   font-display: swap;
   src: url('https://fonts.gstatic.com/s/inter/v20/UcC73FwrK3iLTeHuS_nVMrMxCp50SjIa1ZL7W0Q5nw.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+  font-family: 'Bricolage Grotesque';
+  font-style: normal;
+  font-weight: 200 800;
+  font-stretch: 100%;
+  font-display: swap;
+  src: url('https://fonts.gstatic.com/s/bricolagegrotesque/v9/3y9K6as8bTXq_nANBjzKo3IeZx8z6up5BeSl9D4dj_x9PpZBMlGGInHWVyNJtvI.woff2') format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+
+@font-face {
+  font-family: 'Bricolage Grotesque';
+  font-style: normal;
+  font-weight: 200 800;
+  font-stretch: 100%;
+  font-display: swap;
+  src: url('https://fonts.gstatic.com/s/bricolagegrotesque/v9/3y9K6as8bTXq_nANBjzKo3IeZx8z6up5BeSl9D4dj_x9PpZBMlGIInHWVyNJ.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+  font-family: 'Instrument Serif';
+  font-style: italic;
+  font-weight: 400;
+  font-display: swap;
+  src: url('https://fonts.gstatic.com/s/instrumentserif/v5/jizHRFtNs2ka5fXjeivQ4LroWlx-6zAjgn7Motmp5r61.woff2') format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+
+@font-face {
+  font-family: 'Instrument Serif';
+  font-style: italic;
+  font-weight: 400;
+  font-display: swap;
+  src: url('https://fonts.gstatic.com/s/instrumentserif/v5/jizHRFtNs2ka5fXjeivQ4LroWlx-6zAjjH7Motmp5g.woff2') format('woff2');
   unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
 }
 
@@ -60,10 +99,13 @@
   --accent-foreground: oklch(0.145 0 0);
   --destructive: oklch(0.577 0.245 27.325);
   --destructive-foreground: oklch(0.577 0.245 27.325);
-  --border: oklch(0.80 0 0);
-  --input: oklch(0.80 0 0);
+  --border: oklch(0.87 0 0);
+  --input: oklch(0.87 0 0);
   --ring: oklch(0.60 0 0);
-  --radius: 0.5rem;
+  --radius: 0.625rem;
+  --brand: oklch(0.56 0.115 168);
+  --brand-hi: oklch(0.72 0.16 163);
+  --brand-ink: oklch(0.99 0.01 165);
   --sidebar: oklch(0.98 0 0);
   --sidebar-foreground: oklch(0.145 0 0);
   --sidebar-primary: oklch(0.145 0 0);
@@ -91,9 +133,12 @@
   --accent-foreground: oklch(0.955 0 0);
   --destructive: oklch(0.396 0.141 25.723);
   --destructive-foreground: oklch(0.637 0.237 25.331);
-  --border: oklch(0.32 0 0);
-  --input: oklch(0.32 0 0);
+  --border: oklch(0.29 0 0);
+  --input: oklch(0.29 0 0);
   --ring: oklch(0.50 0 0);
+  --brand: oklch(0.8 0.15 163);
+  --brand-hi: oklch(0.87 0.16 160);
+  --brand-ink: oklch(0.17 0.035 175);
   --sidebar: oklch(0.145 0 0);
   --sidebar-foreground: oklch(0.955 0 0);
   --sidebar-primary: oklch(0.955 0 0);
@@ -124,6 +169,9 @@
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
+  --color-brand: var(--brand);
+  --color-brand-hi: var(--brand-hi);
+  --color-brand-ink: var(--brand-ink);
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
@@ -261,22 +309,66 @@
   opacity: 0;
 }
 
-/* Scroll reveal */
-.reveal {
+/* ──────────────────────────────────────────────────
+   Scroll reveal system
+   .reveal          — rise + fade
+   .reveal-zoom     — rise + fade + slight scale (big panels)
+   .reveal-stagger  — children cascade in one after another
+   .reveal-d1..d3   — extra delay for sequencing within a section
+   ────────────────────────────────────────────────── */
+.reveal,
+.reveal-zoom {
   opacity: 0;
-  transform: translateY(24px);
-  transition: opacity 0.7s ease-out, transform 0.7s ease-out;
+  transform: translateY(28px);
+  transition:
+    opacity 0.9s cubic-bezier(0.22, 1, 0.36, 1),
+    transform 0.9s cubic-bezier(0.22, 1, 0.36, 1);
 }
-
-.reveal.is-visible {
+.reveal-zoom {
+  transform: translateY(24px) scale(0.975);
+}
+.reveal.is-visible,
+.reveal-zoom.is-visible {
   opacity: 1;
-  transform: translateY(0);
+  transform: none;
 }
 
-.reveal-delay-1 { transition-delay: 0.1s; }
-.reveal-delay-2 { transition-delay: 0.2s; }
-.reveal-delay-3 { transition-delay: 0.3s; }
-.reveal-delay-4 { transition-delay: 0.4s; }
+.reveal-stagger > * {
+  opacity: 0;
+  transform: translateY(22px);
+  transition:
+    opacity 0.75s cubic-bezier(0.22, 1, 0.36, 1),
+    transform 0.75s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.reveal-stagger.is-visible > * {
+  opacity: 1;
+  transform: none;
+}
+.reveal-stagger.is-visible > *:nth-child(2) { transition-delay: 0.07s; }
+.reveal-stagger.is-visible > *:nth-child(3) { transition-delay: 0.14s; }
+.reveal-stagger.is-visible > *:nth-child(4) { transition-delay: 0.21s; }
+.reveal-stagger.is-visible > *:nth-child(5) { transition-delay: 0.28s; }
+.reveal-stagger.is-visible > *:nth-child(6) { transition-delay: 0.35s; }
+.reveal-stagger.is-visible > *:nth-child(7) { transition-delay: 0.42s; }
+.reveal-stagger.is-visible > *:nth-child(8) { transition-delay: 0.49s; }
+.reveal-stagger.is-visible > *:nth-child(9) { transition-delay: 0.56s; }
+.reveal-stagger.is-visible > *:nth-child(10) { transition-delay: 0.63s; }
+.reveal-stagger.is-visible > *:nth-child(11) { transition-delay: 0.7s; }
+.reveal-stagger.is-visible > *:nth-child(n + 12) { transition-delay: 0.77s; }
+
+.reveal-d1 { transition-delay: 0.1s; }
+.reveal-d2 { transition-delay: 0.2s; }
+.reveal-d3 { transition-delay: 0.3s; }
+
+@media (prefers-reduced-motion: reduce) {
+  .reveal,
+  .reveal-zoom,
+  .reveal-stagger > * {
+    opacity: 1 !important;
+    transform: none !important;
+    transition: none !important;
+  }
+}
 
 /* VitePress icon system (needed for search component icons) */
 [class^='vpi-'],
@@ -332,7 +424,10 @@
   --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' stroke='currentColor' stroke-linecap='round' stroke-linejoin='round' stroke-width='2' viewBox='0 0 24 24'%3E%3Cpath d='m9 10-5 5 5 5'/%3E%3Cpath d='M20 4v7a4 4 0 0 1-4 4H4'/%3E%3C/svg%3E");
 }
 
-/* Search button sizing */
+/* Search button sizing + pill shape */
+.DocSearch-Button {
+  border-radius: 10px !important;
+}
 @media (min-width: 768px) {
   .DocSearch-Button {
     min-width: 200px;
@@ -351,9 +446,9 @@
   --vp-c-text-2: var(--muted-foreground);
   --vp-c-text-3: var(--muted-foreground);
   --vp-c-divider: var(--border);
-  --vp-c-brand-1: var(--foreground);
-  --vp-c-brand-2: var(--muted-foreground);
-  --vp-c-brand-3: var(--foreground);
+  --vp-c-brand-1: var(--brand);
+  --vp-c-brand-2: var(--brand-hi);
+  --vp-c-brand-3: var(--brand);
   --vp-c-default-soft: var(--accent);
   --vp-font-family-base: var(--font-sans);
   --vp-font-family-mono: var(--font-mono);
@@ -374,16 +469,16 @@
   --vp-local-search-result-border: transparent;
   --vp-local-search-result-selected-bg: var(--accent);
   --vp-local-search-result-selected-border: var(--border);
-  --vp-local-search-highlight-bg: oklch(0.88 0.15 84);
-  --vp-local-search-highlight-text: oklch(0.25 0 0);
+  --vp-local-search-highlight-bg: oklch(0.87 0.12 163);
+  --vp-local-search-highlight-text: oklch(0.22 0.02 175);
 }
 .dark {
   --vp-shadow-1: 0 1px 2px rgba(0, 0, 0, 0.24), 0 1px 2px rgba(0, 0, 0, 0.36);
   --vp-shadow-2: 0 3px 12px rgba(0, 0, 0, 0.36), 0 1px 4px rgba(0, 0, 0, 0.32);
   --vp-shadow-3: 0 12px 32px rgba(0, 0, 0, 0.4), 0 2px 6px rgba(0, 0, 0, 0.32);
   --vp-backdrop-bg-color: rgba(0, 0, 0, 0.7);
-  --vp-local-search-highlight-bg: oklch(0.75 0.15 84);
-  --vp-local-search-highlight-text: oklch(0.15 0 0);
+  --vp-local-search-highlight-bg: oklch(0.78 0.14 163);
+  --vp-local-search-highlight-text: oklch(0.15 0.02 175);
 }
 
 /* Search dialog overrides (teleported to body, so global styles reach it) */

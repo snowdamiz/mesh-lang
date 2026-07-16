@@ -2004,17 +2004,6 @@ impl<'a> Lowerer<'a> {
             ),
         );
         self.known_functions.insert(
-            "mesh_http_get".to_string(),
-            MirType::FnPtr(vec![MirType::String], Box::new(MirType::Ptr)),
-        );
-        self.known_functions.insert(
-            "mesh_http_post".to_string(),
-            MirType::FnPtr(
-                vec![MirType::String, MirType::String],
-                Box::new(MirType::Ptr),
-            ),
-        );
-        self.known_functions.insert(
             "mesh_http_request_method".to_string(),
             MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::String)),
         );
@@ -2033,6 +2022,30 @@ impl<'a> Lowerer<'a> {
         self.known_functions.insert(
             "mesh_http_request_query".to_string(),
             MirType::FnPtr(vec![MirType::Ptr, MirType::String], Box::new(MirType::Ptr)),
+        );
+        self.known_functions.insert(
+            "mesh_http_request_id".to_string(),
+            MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::String)),
+        );
+        self.known_functions.insert(
+            "mesh_http_idempotency_key".to_string(),
+            MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Ptr)),
+        );
+        self.known_functions.insert(
+            "mesh_cluster_capacity".to_string(),
+            MirType::FnPtr(vec![], Box::new(MirType::Ptr)),
+        );
+        self.known_functions.insert(
+            "mesh_cluster_pressure".to_string(),
+            MirType::FnPtr(vec![], Box::new(MirType::Ptr)),
+        );
+        self.known_functions.insert(
+            "mesh_cluster_role".to_string(),
+            MirType::FnPtr(vec![], Box::new(MirType::String)),
+        );
+        self.known_functions.insert(
+            "mesh_cluster_state".to_string(),
+            MirType::FnPtr(vec![], Box::new(MirType::String)),
         );
         // Phase 51: Method-specific routing and path parameter extraction
         self.known_functions.insert(
@@ -2214,7 +2227,7 @@ impl<'a> Lowerer<'a> {
                 Box::new(MirType::Ptr),
             ),
         );
-        // ── M033/S02: Pg expression helpers ─────────────────────────────
+        // ── PostgreSQL expression helpers ───────────────────────────────
         self.known_functions.insert(
             "mesh_pg_cast".to_string(),
             MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)),
@@ -2252,7 +2265,7 @@ impl<'a> Lowerer<'a> {
                 MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)),
             );
         }
-        // ── M033/S04: Pg schema helpers ───────────────────────────────
+        // ── PostgreSQL schema helpers ─────────────────────────────────
         self.known_functions.insert(
             "mesh_pg_create_extension".to_string(),
             MirType::FnPtr(vec![MirType::Int, MirType::Ptr], Box::new(MirType::Ptr)),
@@ -2414,7 +2427,7 @@ impl<'a> Lowerer<'a> {
                 Box::new(MirType::Ptr),
             ),
         );
-        // ── M033/S01: Neutral SQL expression builder ──────────────────
+        // ── Neutral SQL expression builder ────────────────────────────
         self.known_functions.insert(
             "mesh_expr_column".to_string(),
             MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Ptr)),
@@ -13320,11 +13333,11 @@ const STDLIB_MODULES: &[&str] = &[
     "Ws",
     "Pool",
     "Node",
-    "Process",    // Phase 67
-    "Global",     // Phase 68
-    "Iter",       // Phase 76
-    "Orm",        // Phase 97
-    "Expr",       // M033/S01
+    "Process", // Phase 67
+    "Global",  // Phase 68
+    "Iter",    // Phase 76
+    "Orm",     // Phase 97
+    "Expr",
     "Query",      // Phase 98
     "Repo",       // Phase 98
     "Changeset",  // Phase 99
@@ -13336,7 +13349,8 @@ const STDLIB_MODULES: &[&str] = &[
     "DateTime",   // Phase 136
     "Http",       // Phase 137
     "Test",       // Phase 138
-    "Continuity", // M042
+    "Continuity", // continuity
+    "Cluster",
 ];
 
 /// Map Mesh builtin function names to their runtime equivalents.
@@ -13581,8 +13595,6 @@ fn map_builtin_name(name: &str) -> String {
         "http_serve_tls" => "mesh_http_serve_tls".to_string(),
         "http_response" => "mesh_http_response_new".to_string(),
         "http_response_with_headers" => "mesh_http_response_with_headers".to_string(),
-        "http_get" => "mesh_http_get".to_string(),
-        "http_post" => "mesh_http_post".to_string(),
         // Request accessor functions (prefixed form from module-qualified access)
         "request_method" => "mesh_http_request_method".to_string(),
         "request_path" => "mesh_http_request_path".to_string(),
@@ -13591,6 +13603,12 @@ fn map_builtin_name(name: &str) -> String {
         "request_query" => "mesh_http_request_query".to_string(),
         // Phase 51: Path parameter accessor
         "request_param" => "mesh_http_request_param".to_string(),
+        "http_request_id" => "mesh_http_request_id".to_string(),
+        "http_idempotency_key" => "mesh_http_idempotency_key".to_string(),
+        "cluster_capacity" => "mesh_cluster_capacity".to_string(),
+        "cluster_pressure" => "mesh_cluster_pressure".to_string(),
+        "cluster_role" => "mesh_cluster_role".to_string(),
+        "cluster_state" => "mesh_cluster_state".to_string(),
         // Phase 51: Method-specific routing (HTTP.on_get -> http_on_get -> mesh_http_route_get)
         "http_on_get" => "mesh_http_route_get".to_string(),
         "http_on_post" => "mesh_http_route_post".to_string(),
@@ -13613,7 +13631,7 @@ fn map_builtin_name(name: &str) -> String {
         "pg_commit" => "mesh_pg_commit".to_string(),
         "pg_rollback" => "mesh_pg_rollback".to_string(),
         "pg_transaction" => "mesh_pg_transaction".to_string(),
-        // ── M033/S02: Pg expression helpers ─────────────────────────────
+        // ── PostgreSQL expression helpers ───────────────────────────────
         "pg_cast" => "mesh_pg_cast".to_string(),
         "pg_jsonb" => "mesh_pg_jsonb".to_string(),
         "pg_int" => "mesh_pg_int".to_string(),
@@ -13627,7 +13645,7 @@ fn map_builtin_name(name: &str) -> String {
         "pg_ts_rank" => "mesh_pg_ts_rank".to_string(),
         "pg_tsvector_matches" => "mesh_pg_tsvector_matches".to_string(),
         "pg_jsonb_contains" => "mesh_pg_jsonb_contains".to_string(),
-        // ── M033/S04: Pg schema helpers ─────────────────────────────
+        // ── PostgreSQL schema helpers ─────────────────────────────────
         "pg_create_extension" => "mesh_pg_create_extension".to_string(),
         "pg_create_range_partitioned_table" => "mesh_pg_create_range_partitioned_table".to_string(),
         "pg_create_gin_index" => "mesh_pg_create_gin_index".to_string(),
@@ -13653,7 +13671,7 @@ fn map_builtin_name(name: &str) -> String {
         "orm_build_insert" => "mesh_orm_build_insert".to_string(),
         "orm_build_update" => "mesh_orm_build_update".to_string(),
         "orm_build_delete" => "mesh_orm_build_delete".to_string(),
-        // ── M033/S01: neutral expression builder ────────────────────────
+        // ── Neutral expression builder ─────────────────────────────────
         "expr_column" => "mesh_expr_column".to_string(),
         "expr_value" => "mesh_expr_value".to_string(),
         "expr_null" => "mesh_expr_null".to_string(),
@@ -13818,7 +13836,7 @@ fn map_builtin_name(name: &str) -> String {
         "global_register" => "mesh_global_register".to_string(),
         "global_whereis" => "mesh_global_whereis".to_string(),
         "global_unregister" => "mesh_global_unregister".to_string(),
-        // ── M042: Continuity runtime functions ───────────────────────────
+        // ── continuity: Continuity runtime functions ───────────────────────────
         "continuity_submit" => "mesh_continuity_submit_with_durability".to_string(),
         "continuity_submit_declared_work" => "mesh_continuity_submit_declared_work".to_string(),
         "continuity_status" => "mesh_continuity_status".to_string(),
@@ -14426,7 +14444,7 @@ pub fn lower_to_mir(
         });
     }
 
-    // Pre-seed stdlib structs for builtin field access (Phase 137+ / M044).
+    // Pre-seed stdlib structs for builtin field access (Phase 137+).
     // Layouts MUST match the Mesh-facing runtime structs in mesh-rt exactly.
     lowerer.structs.push(MirStructDef {
         name: "HttpResponse".to_string(),
@@ -14832,7 +14850,7 @@ mod tests {
     }
 
     #[test]
-    fn m047_s07_lower_clustered_route_wrapper_rewrites_direct_and_pipe_forms_to_one_bare_shim() {
+    fn lower_clustered_route_wrapper_rewrites_direct_and_pipe_forms_to_one_bare_shim() {
         let mut import_ctx = ImportContext::empty();
         import_ctx.current_module = Some("App.Router".to_string());
         let mir = lower_with_imports(
@@ -14918,7 +14936,7 @@ end
     }
 
     #[test]
-    fn m047_s07_lower_clustered_route_wrapper_uses_imported_runtime_identity_for_shim_name() {
+    fn lower_clustered_route_wrapper_uses_imported_runtime_identity_for_shim_name() {
         let mut import_ctx = ImportContext::empty();
         import_ctx.current_module = Some("App.Router".to_string());
         import_ctx.module_exports.insert(

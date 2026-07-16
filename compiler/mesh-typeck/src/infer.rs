@@ -1313,6 +1313,14 @@ fn stdlib_modules() -> HashMap<String, HashMap<String, Scheme>> {
             router_t.clone(),
         )),
     );
+    http_mod.insert(
+        "request_id".to_string(),
+        Scheme::mono(Ty::fun(vec![request_t.clone()], Ty::string())),
+    );
+    http_mod.insert(
+        "idempotency_key".to_string(),
+        Scheme::mono(Ty::fun(vec![request_t.clone()], Ty::option(Ty::string()))),
+    );
     modules.insert("HTTP".to_string(), http_mod);
 
     // ── Request module (Phase 8 Plan 05) ─────────────────────────────
@@ -1352,6 +1360,25 @@ fn stdlib_modules() -> HashMap<String, HashMap<String, Scheme>> {
         )),
     );
     modules.insert("Request".to_string(), request_mod);
+
+    let mut cluster_mod = HashMap::new();
+    cluster_mod.insert(
+        "capacity".to_string(),
+        Scheme::mono(Ty::fun(vec![], Ty::map(Ty::string(), Ty::int()))),
+    );
+    cluster_mod.insert(
+        "pressure".to_string(),
+        Scheme::mono(Ty::fun(vec![], Ty::map(Ty::string(), Ty::string()))),
+    );
+    cluster_mod.insert(
+        "role".to_string(),
+        Scheme::mono(Ty::fun(vec![], Ty::string())),
+    );
+    cluster_mod.insert(
+        "state".to_string(),
+        Scheme::mono(Ty::fun(vec![], Ty::string())),
+    );
+    modules.insert("Cluster".to_string(), cluster_mod);
 
     // ── Job module (Phase 9 Plan 02) ─────────────────────────────────
     // Job provides fire-and-forget async computation with Pid-based futures.
@@ -1669,7 +1696,7 @@ fn stdlib_modules() -> HashMap<String, HashMap<String, Scheme>> {
     }
     let pg_pool_t = Ty::Con(TyCon::new("PoolHandle"));
     let pg_int_result_t = Ty::result(Ty::int(), Ty::string());
-    // M033/S04: explicit PostgreSQL schema helpers.
+    // Explicit PostgreSQL schema helpers.
     pg_mod.insert(
         "create_extension".to_string(),
         Scheme::mono(Ty::fun(
@@ -1938,7 +1965,7 @@ fn stdlib_modules() -> HashMap<String, HashMap<String, Scheme>> {
     );
     modules.insert("Global".to_string(), global_mod);
 
-    // ── Continuity module (M042/M044) ─────────────────────────────────
+    // ── Continuity module (continuity) ─────────────────────────────────
     let continuity_authority_status_t = Ty::Con(TyCon::new("ContinuityAuthorityStatus"));
     let continuity_record_t = Ty::Con(TyCon::new("ContinuityRecord"));
     let continuity_submit_decision_t = Ty::Con(TyCon::new("ContinuitySubmitDecision"));
@@ -2262,7 +2289,7 @@ fn stdlib_modules() -> HashMap<String, HashMap<String, Scheme>> {
         modules.insert("Orm".to_string(), orm_mod);
     }
 
-    // ── Expr module (M033/S01) ──────────────────────────────────────
+    // ── Expr module ─────────────────────────────────────────────────
     {
         let ptr_t = Ty::Con(TyCon::new("Ptr"));
         let mut expr_mod = HashMap::new();
@@ -3027,12 +3054,12 @@ const STDLIB_MODULE_NAMES: &[&str] = &[
     "Pg",
     "Pool",
     "Node",
-    "Process",    // Phase 67
-    "Global",     // Phase 68
-    "Iter",       // Phase 76
-    "Ws",         // Phase 88
-    "Orm",        // Phase 97
-    "Expr",       // M033/S01
+    "Process", // Phase 67
+    "Global",  // Phase 68
+    "Iter",    // Phase 76
+    "Ws",      // Phase 88
+    "Orm",     // Phase 97
+    "Expr",
     "Query",      // Phase 98
     "Repo",       // Phase 98
     "Changeset",  // Phase 99
@@ -3044,7 +3071,8 @@ const STDLIB_MODULE_NAMES: &[&str] = &[
     "DateTime",   // Phase 136
     "Http",       // Phase 137
     "Test",       // Phase 138
-    "Continuity", // M042
+    "Continuity", // continuity
+    "Cluster",
 ];
 
 /// Check if a name is a known stdlib module.
@@ -3074,7 +3102,7 @@ pub fn infer_with_imports(parse: &Parse, import_ctx: &ImportContext) -> TypeckRe
     builtins::register_builtins(&mut ctx, &mut env, &mut trait_registry);
     register_builtin_sum_types(&mut ctx, &mut env, &mut type_registry);
 
-    // Register stdlib struct types for field access (Phase 137+ / M044)
+    // Register stdlib struct types for field access (Phase 137+)
     // Layouts MUST match the Mesh-facing runtime structs allocated in mesh-rt.
     type_registry.register_struct(StructDefInfo {
         name: "HttpResponse".to_string(),
@@ -8652,8 +8680,8 @@ fn infer_block(
         }
     }
 
-    // Legacy: also process the tail expression if it wasn't already handled.
-    // This can happen if the tail expression's syntax node wasn't a direct child.
+    // Process a nested tail expression when its syntax node was not a direct
+    // block child and therefore was not visited above.
     if let Some(tail) = block.tail_expr() {
         let tail_range = tail.syntax().text_range();
         let already_processed = processed_ranges.iter().any(|r| *r == tail_range);

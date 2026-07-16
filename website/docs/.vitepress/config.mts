@@ -154,6 +154,9 @@ export default defineConfig({
 
   // Site-wide SEO defaults
   head: [
+    ['link', { rel: 'preconnect', href: 'https://fonts.googleapis.com' }],
+    ['link', { rel: 'preconnect', href: 'https://fonts.gstatic.com', crossorigin: '' }],
+    ['link', { rel: 'stylesheet', href: 'https://fonts.googleapis.com/css2?family=Archivo:ital,wdth,wght@0,62..125,100..900;1,62..125,100..900&display=swap' }],
     ['link', { rel: 'icon', type: 'image/svg+xml', href: '/logo-icon-black.svg', media: '(prefers-color-scheme: light)' }],
     ['link', { rel: 'icon', type: 'image/svg+xml', href: '/logo-icon-white.svg', media: '(prefers-color-scheme: dark)' }],
     ['link', { rel: 'image_src', href: SOCIAL_IMAGE_URL }],
@@ -261,6 +264,11 @@ export default defineConfig({
           collapsed: false,
           items: [
             { text: 'Distributed Actors', link: '/docs/distributed/', icon: 'Network' } as any,
+            { text: 'Autonomous Clusters', link: '/docs/autonomous-clusters/', icon: 'Network' } as any,
+            { text: 'Cluster Operations', link: '/docs/cluster-operations/', icon: 'Wrench' } as any,
+            { text: 'Capacity Drivers', link: '/docs/capacity-drivers/', icon: 'Container' } as any,
+            { text: 'Cluster Migration', link: '/docs/cluster-migration/', icon: 'Workflow' } as any,
+            { text: 'Release Notes', link: '/docs/autonomous-release-notes/', icon: 'FileText' } as any,
           ],
         },
         {
@@ -292,12 +300,6 @@ export default defineConfig({
             {
               text: 'Distributed Proof',
               link: '/docs/distributed-proof/',
-              icon: 'ShieldCheck',
-              includeInFooter: false,
-            } as any,
-            {
-              text: 'Production Backend Proof',
-              link: '/docs/production-backend-proof/',
               icon: 'ShieldCheck',
               includeInFooter: false,
             } as any,

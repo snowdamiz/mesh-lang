@@ -63,7 +63,6 @@ class RepoIdentity:
 class RepoIdentityContract:
     version: str
     language_repo: RepoIdentity
-    product_repo: RepoIdentity
 
 
 def require_string_field(section_name: str, section: object, field_name: str, *, allow_null: bool = False) -> str | None:
@@ -125,21 +124,14 @@ def load_repo_identity_contract() -> RepoIdentityContract:
 
     version = require_string_field("root", payload, "version")
     language_repo = parse_repo_identity("languageRepo", payload.get("languageRepo"), allow_null_public_roots=False)
-    product_repo = parse_repo_identity("productRepo", payload.get("productRepo"), allow_null_public_roots=True)
-
     if language_repo.workspace_dir != "mesh-lang":
         raise ContractError(
             f"{REPO_IDENTITY_RELATIVE_PATH} languageRepo.workspaceDir must stay 'mesh-lang'"
-        )
-    if product_repo.workspace_dir != "hyperpush-mono":
-        raise ContractError(
-            f"{REPO_IDENTITY_RELATIVE_PATH} productRepo.workspaceDir must stay 'hyperpush-mono'"
         )
 
     return RepoIdentityContract(
         version=version,
         language_repo=language_repo,
-        product_repo=product_repo,
     )
 
 
@@ -150,7 +142,6 @@ except ContractError as exc:
     raise SystemExit(1)
 
 LANGUAGE_REPO = REPO_IDENTITY.language_repo
-PRODUCT_REPO = REPO_IDENTITY.product_repo
 
 INSTALL_SH_URL = LANGUAGE_REPO.install_sh_url
 INSTALL_PS1_URL = LANGUAGE_REPO.install_ps1_url
@@ -176,7 +167,8 @@ README_REQUIRED_MARKERS = [
     INSTALL_PS1_URL,
     "meshc --version",
     "meshpkg --version",
-    "Production Backend Proof",
+    "Autonomous Clusters",
+    "Distributed Proof",
     "set -a && source .env && set +a && bash scripts/verify-m034-s05.sh",
     "v<Cargo version>",
     "ext-v<extension version>",
@@ -313,12 +305,6 @@ WORKFLOW_CONTRACT = {
     ],
     "deployServicesHealthCheckSteps": [
         "Verify public surface contract",
-    ],
-    "deployServicesForbiddenJobNames": [
-        "Deploy hyperpush landing",
-    ],
-    "deployServicesForbiddenHealthCheckSteps": [
-        "Verify hyperpush landing",
     ],
     "deployServicesRequiredHeadBranch": "main",
     "deployServicesExpectedRef": "refs/heads/main",
@@ -923,7 +909,6 @@ def describe_contract() -> int:
         "repoIdentity": {
             "version": REPO_IDENTITY.version,
             "languageRepo": repo_identity_to_dict(LANGUAGE_REPO),
-            "productRepo": repo_identity_to_dict(PRODUCT_REPO),
         },
         "retryBudget": {
             "attempts": DEFAULT_RETRY_ATTEMPTS,

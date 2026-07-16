@@ -156,25 +156,11 @@ fn generate_declared_work_wrapper(
         ("attempt_id".to_string(), MirType::String),
     ];
 
-    let (body_params, body_args) = match original.params.as_slice() {
-        [] => (hidden_continuity_params.clone(), Vec::new()),
-        [(request_name, request_ty), (attempt_name, attempt_ty)]
-            if *request_ty == MirType::String && *attempt_ty == MirType::String =>
-        {
-            (
-                original.params.clone(),
-                vec![
-                    MirExpr::Var(request_name.clone(), request_ty.clone()),
-                    MirExpr::Var(attempt_name.clone(), attempt_ty.clone()),
-                ],
-            )
-        }
-        _ => {
-            return Err(format!(
-                "declared work target `{runtime_registration_name}` must use either `pub fn name() -> ...` or the legacy `(request_key :: String, attempt_id :: String)` signature"
-            ))
-        }
-    };
+    if !original.params.is_empty() {
+        return Err(format!(
+            "declared work target `{runtime_registration_name}` must use `pub fn name() -> ...`; continuity metadata is runtime-owned"
+        ));
+    }
 
     let call = MirExpr::Call {
         func: Box::new(MirExpr::Var(
@@ -188,7 +174,7 @@ fn generate_declared_work_wrapper(
                 Box::new(original.return_type.clone()),
             ),
         )),
-        args: body_args,
+        args: Vec::new(),
         ty: original.return_type.clone(),
     };
 
@@ -205,7 +191,7 @@ fn generate_declared_work_wrapper(
 
     mir.functions.push(MirFunction {
         name: body_name,
-        params: body_params,
+        params: hidden_continuity_params,
         return_type: MirType::Unit,
         body,
         is_closure_fn: false,
@@ -480,7 +466,7 @@ mod tests {
     }
 
     #[test]
-    fn m047_s02_startup_work_registrations_filter_out_service_handlers() {
+    fn startup_work_registrations_filter_out_service_handlers() {
         let registrations = prepare_startup_work_registrations(&[
             DeclaredHandlerPlanEntry {
                 kind: DeclaredHandlerKind::Work,
@@ -511,7 +497,7 @@ mod tests {
     }
 
     #[test]
-    fn m047_s07_startup_work_registrations_filter_out_route_handlers() {
+    fn startup_work_registrations_filter_out_route_handlers() {
         let registrations = prepare_startup_work_registrations(&[
             DeclaredHandlerPlanEntry {
                 kind: DeclaredHandlerKind::Work,
@@ -536,7 +522,7 @@ mod tests {
     }
 
     #[test]
-    fn m047_s07_clustered_route_handler_plan_dedupes_identical_wrappers() {
+    fn clustered_route_handler_plan_dedupes_identical_wrappers() {
         let typeck = typecheck_routes_in_module(
             r#"
 pub fn handle(req :: Request) -> Response do
@@ -572,8 +558,7 @@ end
     }
 
     #[test]
-    fn m047_s07_clustered_route_handler_plan_rejects_conflicting_replication_counts_across_modules()
-    {
+    fn clustered_route_handler_plan_rejects_conflicting_replication_counts_across_modules() {
         let defaulted = typecheck_routes_with_imports(
             r#"
 from Api.Todos import handle_list_todos
@@ -610,7 +595,7 @@ end
     }
 
     #[test]
-    fn m047_s07_declared_runtime_handlers_preserve_route_runtime_name_and_counts() {
+    fn declared_runtime_handlers_preserve_route_runtime_name_and_counts() {
         let mut mir = empty_module();
         mir.functions.push(MirFunction {
             name: "__declared_route_api_todos_handle_list_todos".to_string(),
@@ -644,7 +629,7 @@ end
     }
 
     #[test]
-    fn m047_s07_declared_route_handlers_reject_missing_lowered_symbol_before_registration() {
+    fn declared_route_handlers_reject_missing_lowered_symbol_before_registration() {
         let mut mir = empty_module();
 
         let error = prepare_declared_runtime_handlers(
@@ -667,14 +652,11 @@ end
     }
 
     #[test]
-    fn m047_s02_declared_runtime_handlers_preserve_default_and_explicit_replication_counts() {
+    fn declared_runtime_handlers_preserve_default_and_explicit_replication_counts() {
         let mut mir = empty_module();
         mir.functions.push(MirFunction {
             name: "handle_submit".to_string(),
-            params: vec![
-                ("request_key".to_string(), MirType::String),
-                ("attempt_id".to_string(), MirType::String),
-            ],
+            params: vec![],
             return_type: MirType::Int,
             body: MirExpr::IntLit(0, MirType::Int),
             is_closure_fn: false,
@@ -683,10 +665,7 @@ end
         });
         mir.functions.push(MirFunction {
             name: "handle_retry".to_string(),
-            params: vec![
-                ("request_key".to_string(), MirType::String),
-                ("attempt_id".to_string(), MirType::String),
-            ],
+            params: vec![],
             return_type: MirType::Int,
             body: MirExpr::IntLit(1, MirType::Int),
             is_closure_fn: false,
@@ -741,7 +720,7 @@ end
     }
 
     #[test]
-    fn m047_s05_declared_runtime_handlers_wrap_zero_arg_work_with_hidden_metadata() {
+    fn declared_runtime_handlers_wrap_zero_arg_work_with_hidden_metadata() {
         let mut mir = empty_module();
         mir.functions.push(MirFunction {
             name: "add".to_string(),
@@ -784,7 +763,40 @@ end
     }
 
     #[test]
-    fn m047_s02_declared_runtime_handlers_reject_missing_lowered_symbol_before_registration() {
+    fn declared_runtime_handlers_reject_public_continuity_parameters() {
+        let mut mir = empty_module();
+        mir.functions.push(MirFunction {
+            name: "add".to_string(),
+            params: vec![
+                ("request_key".to_string(), MirType::String),
+                ("attempt_id".to_string(), MirType::String),
+            ],
+            return_type: MirType::Int,
+            body: MirExpr::IntLit(2, MirType::Int),
+            is_closure_fn: false,
+            captures: Vec::new(),
+            has_tail_calls: false,
+        });
+
+        let error = prepare_declared_runtime_handlers(
+            &mut mir,
+            &[DeclaredHandlerPlanEntry {
+                kind: DeclaredHandlerKind::Work,
+                runtime_registration_name: "Work.add".to_string(),
+                executable_symbol: "add".to_string(),
+                replication_count: 2,
+            }],
+        )
+        .expect_err("public continuity parameters must be rejected");
+
+        assert!(
+            error.contains("continuity metadata is runtime-owned"),
+            "unexpected error: {error}"
+        );
+    }
+
+    #[test]
+    fn declared_runtime_handlers_reject_missing_lowered_symbol_before_registration() {
         let mut mir = empty_module();
 
         let error = prepare_declared_runtime_handlers(
@@ -807,7 +819,7 @@ end
     }
 
     #[test]
-    fn m047_s02_declared_service_handlers_reject_helper_kind_mismatch() {
+    fn declared_service_handlers_reject_helper_kind_mismatch() {
         let mut mir = empty_module();
         mir.functions.push(MirFunction {
             name: "__service_jobs_cast_reset".to_string(),

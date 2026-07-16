@@ -693,7 +693,7 @@ fn register_runtime_symbols() {
         mesh_rt::mesh_migration_execute as *const (),
     );
 
-    // M033/S04: explicit PostgreSQL schema helpers
+    // Explicit PostgreSQL schema helpers.
     add_sym(
         "mesh_pg_create_extension",
         mesh_rt::mesh_pg_create_extension as *const (),
@@ -770,8 +770,6 @@ fn register_runtime_symbols() {
     );
 
     // HTTP
-    add_sym("mesh_http_get", mesh_rt::mesh_http_get as *const ());
-    add_sym("mesh_http_post", mesh_rt::mesh_http_post as *const ());
     add_sym("mesh_http_router", mesh_rt::mesh_http_router as *const ());
     add_sym("mesh_http_route", mesh_rt::mesh_http_route as *const ());
     add_sym("mesh_http_serve", mesh_rt::mesh_http_serve as *const ());

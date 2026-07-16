@@ -78,7 +78,7 @@ fn assert_no_generic_wrapper_noise(result: &TypeckResult) {
 }
 
 #[test]
-fn m047_s07_clustered_route_wrapper_accepts_direct_and_pipe_forms_and_tracks_counts() {
+fn clustered_route_wrapper_accepts_direct_and_pipe_forms_and_tracks_counts() {
     let src = r#"
 import Api.Todos
 
@@ -128,7 +128,7 @@ end
 }
 
 #[test]
-fn m047_s07_clustered_route_wrapper_preserves_imported_bare_handler_origin() {
+fn clustered_route_wrapper_preserves_imported_bare_handler_origin() {
     let src = r#"
 from Api.Todos import handle_list_todos
 
@@ -162,7 +162,7 @@ end
 }
 
 #[test]
-fn m047_s07_clustered_route_wrapper_rejects_non_route_position() {
+fn clustered_route_wrapper_rejects_non_route_position() {
     let src = r#"
 pub fn handle(req :: Request) -> Response do
   HTTP.response(200, "ok")
@@ -198,7 +198,7 @@ end
 }
 
 #[test]
-fn m047_s07_clustered_route_wrapper_rejects_closure_handler() {
+fn clustered_route_wrapper_rejects_closure_handler() {
     let src = r#"
 fn build() do
   HTTP.router() |> HTTP.on_get("/x", HTTP.clustered(fn (req) -> req end))
@@ -221,7 +221,7 @@ end
 }
 
 #[test]
-fn m047_s07_clustered_route_wrapper_rejects_private_handler() {
+fn clustered_route_wrapper_rejects_private_handler() {
     let src = r#"
 fn hidden(req :: Request) -> Response do
   HTTP.response(200, "ok")
@@ -248,7 +248,7 @@ end
 }
 
 #[test]
-fn m047_s07_clustered_route_wrapper_rejects_conflicting_replication_counts() {
+fn clustered_route_wrapper_rejects_conflicting_replication_counts() {
     let src = r#"
 pub fn handle(req :: Request) -> Response do
   HTTP.response(200, "ok")
@@ -280,7 +280,7 @@ end
 }
 
 #[test]
-fn m047_s07_clustered_route_wrapper_rejects_imported_origin_drift() {
+fn clustered_route_wrapper_rejects_imported_origin_drift() {
     let src = r#"
 from Api.Todos import handle_list_todos
 

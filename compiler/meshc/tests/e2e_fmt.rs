@@ -1,10 +1,7 @@
 //! End-to-end integration tests for `meshc fmt`.
 
-mod support;
-
 use std::path::PathBuf;
 use std::process::Command;
-use support::m051_reference_backend as retained_backend;
 
 fn find_meshc() -> PathBuf {
     let mut path = std::env::current_exe()
@@ -17,15 +14,6 @@ fn find_meshc() -> PathBuf {
         path.pop();
     }
     path.join("meshc")
-}
-
-fn repo_root() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .expect("compiler dir")
-        .parent()
-        .expect("repo root")
-        .to_path_buf()
 }
 
 fn fmt_file_contents(source: &str) -> String {
@@ -189,43 +177,6 @@ fn fmt_preserves_visibility_and_schema_option_spacing_exactly() {
     for (case, source, expected) in cases {
         assert_fmt_exact(case, source, expected);
     }
-}
-
-#[test]
-fn fmt_check_reference_backend_directory_succeeds() {
-    let repo_root = repo_root();
-    let backend_dir = retained_backend::retained_formatter_dir();
-    let health_file = retained_backend::retained_health_path();
-    let before = std::fs::read_to_string(&health_file).unwrap();
-
-    let output = Command::new(find_meshc())
-        .current_dir(&repo_root)
-        .args(["fmt", "--check", backend_dir.to_str().unwrap()])
-        .output()
-        .expect("failed to run meshc fmt --check on the bounded retained reference-backend formatter directory");
-
-    assert!(
-        output.status.success(),
-        "meshc fmt --check {} failed:\nstdout:\n{}\nstderr:\n{}",
-        retained_backend::RETAINED_FORMATTER_DIR_RELATIVE,
-        String::from_utf8_lossy(&output.stdout),
-        String::from_utf8_lossy(&output.stderr)
-    );
-    assert!(
-        output.stdout.is_empty() && output.stderr.is_empty(),
-        "fmt --check {} should be silent on success, got stdout:\n{}\nstderr:\n{}",
-        retained_backend::RETAINED_FORMATTER_DIR_RELATIVE,
-        String::from_utf8_lossy(&output.stdout),
-        String::from_utf8_lossy(&output.stderr)
-    );
-
-    let after = std::fs::read_to_string(&health_file).unwrap();
-    assert_eq!(
-        after,
-        before,
-        "fmt --check should not rewrite {}",
-        retained_backend::RETAINED_FIXTURE_HEALTH_RELATIVE,
-    );
 }
 
 #[test]

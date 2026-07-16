@@ -61,7 +61,7 @@ fn resolve_target_path(target: &Path) -> Result<PathBuf, String> {
 
 struct ResolvedTestProject {
     project_dir: PathBuf,
-    manifest_source: Option<String>,
+    manifest_source: String,
     entry_relative_path: PathBuf,
 }
 
@@ -71,27 +71,21 @@ fn find_project_dir_for_target(target: &Path) -> Option<PathBuf> {
     } else {
         target.parent()?.to_path_buf()
     };
-    let mut legacy_root = None;
-
     loop {
         if dir.join("mesh.toml").is_file() {
             return Some(dir);
         }
-        if legacy_root.is_none() && dir.join(DEFAULT_ENTRYPOINT).is_file() {
-            legacy_root = Some(dir.clone());
-        }
         match dir.parent() {
             Some(parent) => dir = parent.to_path_buf(),
-            None => return legacy_root,
+            None => return None,
         }
     }
 }
 
 fn project_root_resolution_error(target: &Path) -> String {
     format!(
-        "Could not resolve a Mesh project root for test target '{}'; expected an ancestor with 'mesh.toml' or legacy root '{}'.",
-        target.display(),
-        DEFAULT_ENTRYPOINT
+        "Could not resolve a Mesh project root for test target '{}'; expected an ancestor with 'mesh.toml'.",
+        target.display()
     )
 }
 
@@ -104,27 +98,19 @@ fn resolve_project_dir(target: Option<&Path>) -> Result<PathBuf, String> {
             let abs = resolve_target_path(target)?;
             find_project_dir_for_target(&abs).ok_or_else(|| project_root_resolution_error(&abs))
         }
-        None => Ok(find_project_dir_for_target(&cwd).unwrap_or(cwd)),
+        None => {
+            find_project_dir_for_target(&cwd).ok_or_else(|| project_root_resolution_error(&cwd))
+        }
     }
 }
 
 fn resolve_test_project(target: Option<&Path>) -> Result<ResolvedTestProject, String> {
     let project_dir = resolve_project_dir(target)?;
     let manifest_path = project_dir.join("mesh.toml");
-    let manifest_source = if manifest_path.exists() {
-        Some(
-            std::fs::read_to_string(&manifest_path)
-                .map_err(|e| format!("Failed to read '{}': {}", manifest_path.display(), e))?,
-        )
-    } else {
-        None
-    };
-    let manifest = if manifest_path.exists() {
-        Some(Manifest::from_file(&manifest_path)?)
-    } else {
-        None
-    };
-    let entry_relative_path = resolve_entrypoint(&project_dir, manifest.as_ref())?;
+    let manifest_source = std::fs::read_to_string(&manifest_path)
+        .map_err(|e| format!("Failed to read '{}': {}", manifest_path.display(), e))?;
+    let manifest = Manifest::from_file(&manifest_path)?;
+    let entry_relative_path = resolve_entrypoint(&project_dir, Some(&manifest))?;
 
     Ok(ResolvedTestProject {
         project_dir,
@@ -162,13 +148,7 @@ fn resolve_test_files(target: Option<&Path>) -> Result<Vec<PathBuf>, String> {
 }
 
 fn synthetic_test_manifest_source(test_project: &ResolvedTestProject) -> Result<String, String> {
-    match &test_project.manifest_source {
-        Some(source) => rewrite_manifest_entrypoint_source(source, Path::new(DEFAULT_ENTRYPOINT)),
-        None => Ok(format!(
-            "[package]\nname = \"mesh-test-project\"\nversion = \"0.0.0\"\nentrypoint = \"{}\"\n",
-            DEFAULT_ENTRYPOINT
-        )),
-    }
+    rewrite_manifest_entrypoint_source(&test_project.manifest_source, Path::new(DEFAULT_ENTRYPOINT))
 }
 
 fn prepare_temp_test_project(
@@ -1331,26 +1311,6 @@ mod tests {
         write_file(&test_file, "test(\"ok\") do\n  assert(true)\nend\n");
 
         let resolved = resolve_project_dir(Some(&test_file)).unwrap();
-
-        assert_eq!(resolved, project_dir);
-    }
-
-    #[test]
-    fn resolve_project_dir_falls_back_to_legacy_root_main_when_manifest_is_missing() {
-        let temp = tempfile::tempdir().unwrap();
-        let project_dir = temp.path().join("legacy-project");
-        let tests_dir = project_dir.join("tests");
-
-        write_file(
-            &project_dir.join("main.mpl"),
-            "fn main() do\n  println(\"legacy\")\nend\n",
-        );
-        write_file(
-            &tests_dir.join("legacy.test.mpl"),
-            "test(\"legacy\") do\n  assert(true)\nend\n",
-        );
-
-        let resolved = resolve_project_dir(Some(&tests_dir)).unwrap();
 
         assert_eq!(resolved, project_dir);
     }

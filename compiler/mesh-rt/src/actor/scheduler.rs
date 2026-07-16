@@ -1,8 +1,8 @@
 //! M:N work-stealing scheduler for Mesh actors.
 //!
-//! The scheduler multiplexes lightweight actor processes across a fixed number
-//! of OS threads (one per CPU core by default). Work distribution uses
-//! crossbeam-deque for lock-free work-stealing.
+//! The scheduler multiplexes lightweight actor processes across bounded OS
+//! worker threads. Workers can be activated or retired at runtime. Work
+//! distribution uses crossbeam-deque for lock-free work-stealing.
 //!
 //! ## Design
 //!
@@ -30,8 +30,9 @@ use crossbeam_deque::{Injector, Steal, Stealer, Worker};
 use parking_lot::{Mutex, RwLock};
 use rustc_hash::FxHashMap;
 
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::Arc;
+use std::time::Instant;
 
 use super::link;
 use super::process::{
@@ -75,8 +76,14 @@ type ProcessTable = Arc<RwLock<FxHashMap<ProcessId, Arc<Mutex<Process>>>>>;
 /// Manages a pool of OS worker threads, each with a local work-stealing deque.
 /// New actors are enqueued as spawn requests and distributed to workers.
 pub struct Scheduler {
-    /// Number of OS worker threads.
+    /// Maximum number of initialized OS worker threads.
     num_threads: usize,
+
+    /// Minimum number of workers that must remain active.
+    min_threads: usize,
+
+    /// Current target number of active workers.
+    active_threads: Arc<AtomicUsize>,
 
     /// Global injector queue for spawn requests (normal + low priority).
     /// Workers steal from this when their local deque is empty.
@@ -122,20 +129,34 @@ impl Scheduler {
             num_threads as usize
         };
 
+        Self::build(num_threads, num_threads)
+    }
+
+    /// Create a scheduler with runtime-resizable worker capacity.
+    pub fn new_elastic(min_threads: u32, max_threads: u32) -> Result<Self, String> {
+        if min_threads == 0 || max_threads == 0 || min_threads > max_threads {
+            return Err("scheduler_worker_bounds_invalid".to_string());
+        }
+        Ok(Self::build(min_threads as usize, max_threads as usize))
+    }
+
+    fn build(min_threads: usize, max_threads: usize) -> Self {
         let injector = Arc::new(Injector::new());
         let (high_tx, high_rx) = crossbeam_channel::unbounded();
 
-        let mut workers = Vec::with_capacity(num_threads);
-        let mut stealers = Vec::with_capacity(num_threads);
+        let mut workers = Vec::with_capacity(max_threads);
+        let mut stealers = Vec::with_capacity(max_threads);
 
-        for _ in 0..num_threads {
+        for _ in 0..max_threads {
             let w = Worker::new_lifo();
             stealers.push(w.stealer());
             workers.push(Some(w));
         }
 
         Scheduler {
-            num_threads,
+            num_threads: max_threads,
+            min_threads,
+            active_threads: Arc::new(AtomicUsize::new(min_threads)),
             injector,
             high_priority_tx: high_tx,
             high_priority_rx: high_rx,
@@ -146,6 +167,31 @@ impl Scheduler {
             active_count: Arc::new(AtomicU64::new(0)),
             worker_handles: Mutex::new(Vec::new()),
         }
+    }
+
+    /// Change the active worker target without rebuilding scheduler state.
+    pub fn resize(&self, desired: usize) -> Result<usize, String> {
+        if desired < self.min_threads || desired > self.num_threads {
+            return Err(format!(
+                "scheduler_worker_target_out_of_bounds:{desired}:{}..={}",
+                self.min_threads, self.num_threads
+            ));
+        }
+        self.active_threads.store(desired, Ordering::Release);
+        crate::dist::telemetry::runtime_telemetry().set_scheduler(
+            desired.try_into().unwrap_or(u16::MAX),
+            self.num_threads.try_into().unwrap_or(u16::MAX),
+            self.runnable_count(),
+        );
+        Ok(desired)
+    }
+
+    pub fn worker_bounds(&self) -> (usize, usize) {
+        (self.min_threads, self.num_threads)
+    }
+
+    pub fn active_workers(&self) -> usize {
+        self.active_threads.load(Ordering::Acquire)
     }
 
     /// Spawn a new actor process.
@@ -170,7 +216,8 @@ impl Scheduler {
         self.process_table.write().insert(pid, process);
 
         // Track active process count.
-        self.active_count.fetch_add(1, Ordering::SeqCst);
+        let active_count = self.active_count.fetch_add(1, Ordering::SeqCst) + 1;
+        crate::dist::telemetry::runtime_telemetry().set_runnable_actors(active_count);
 
         // Enqueue spawn request.
         let request = SpawnRequest {
@@ -221,17 +268,17 @@ impl Scheduler {
             let shutdown = Arc::clone(&self.shutdown);
             let active_count = Arc::clone(&self.active_count);
             let process_table = Arc::clone(&self.process_table);
+            let active_threads = Arc::clone(&self.active_threads);
 
             let handle = std::thread::spawn(move || {
-                worker_loop(
-                    worker,
+                let shared = WorkerLoopShared {
                     injector,
-                    high_rx,
-                    stealers,
                     shutdown,
                     active_count,
                     process_table,
-                );
+                    active_threads,
+                };
+                worker_loop(i, worker, high_rx, stealers, shared);
             });
             handles.push(handle);
         }
@@ -274,17 +321,17 @@ impl Scheduler {
                 let shutdown = Arc::clone(&self.shutdown);
                 let active_count = Arc::clone(&self.active_count);
                 let process_table = Arc::clone(&self.process_table);
+                let active_threads = Arc::clone(&self.active_threads);
 
                 scope.spawn(move |_| {
-                    worker_loop(
-                        worker,
+                    let shared = WorkerLoopShared {
                         injector,
-                        high_rx,
-                        stealers,
                         shutdown,
                         active_count,
                         process_table,
-                    );
+                        active_threads,
+                    };
+                    worker_loop(i, worker, high_rx, stealers, shared);
                 });
             }
         })
@@ -304,6 +351,40 @@ impl Scheduler {
     /// Get the number of active (non-exited) processes.
     pub fn active_count(&self) -> u64 {
         self.active_count.load(Ordering::SeqCst)
+    }
+
+    /// Count actors that can consume scheduler time now. Waiting actors remain
+    /// live but are intentionally excluded from runnable pressure.
+    pub fn runnable_count(&self) -> u64 {
+        self.process_table
+            .read()
+            .values()
+            .filter(|process| {
+                matches!(
+                    process.lock().state,
+                    ProcessState::Ready | ProcessState::Running
+                )
+            })
+            .count()
+            .try_into()
+            .unwrap_or(u64::MAX)
+    }
+
+    /// Refresh the bounded scheduler signals consumed by load reports and the
+    /// authenticated operator runtime view.
+    pub(crate) fn refresh_telemetry(&self) {
+        let worker_depths: Vec<_> = self.stealers.iter().map(Stealer::len).collect();
+        let global_depth = self
+            .injector
+            .len()
+            .saturating_add(self.high_priority_rx.len());
+        let telemetry = crate::dist::telemetry::runtime_telemetry();
+        telemetry.set_scheduler(
+            self.active_workers().try_into().unwrap_or(u16::MAX),
+            self.num_threads.try_into().unwrap_or(u16::MAX),
+            self.runnable_count(),
+        );
+        telemetry.set_scheduler_queues(global_depth, &worker_depths);
     }
 
     /// Create a process entry for the main thread.
@@ -356,6 +437,8 @@ impl std::fmt::Debug for Scheduler {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Scheduler")
             .field("num_threads", &self.num_threads)
+            .field("min_threads", &self.min_threads)
+            .field("active_threads", &self.active_workers())
             .field("shutdown", &self.shutdown.load(Ordering::Relaxed))
             .field("active_count", &self.active_count.load(Ordering::Relaxed))
             .finish()
@@ -375,15 +458,28 @@ impl std::fmt::Debug for Scheduler {
 /// 5. If a spawn request is found: create coroutine, run actor
 /// 6. After actor yields: add to local suspended list, re-run later
 /// 7. After actor completes: mark exited, decrement active count
-fn worker_loop(
-    local: Worker<SpawnRequest>,
+struct WorkerLoopShared {
     injector: Arc<Injector<SpawnRequest>>,
-    high_rx: Receiver<SpawnRequest>,
-    stealers: Vec<Stealer<SpawnRequest>>,
     shutdown: Arc<AtomicBool>,
     active_count: Arc<AtomicU64>,
     process_table: ProcessTable,
+    active_threads: Arc<AtomicUsize>,
+}
+
+fn worker_loop(
+    worker_index: usize,
+    local: Worker<SpawnRequest>,
+    high_rx: Receiver<SpawnRequest>,
+    stealers: Vec<Stealer<SpawnRequest>>,
+    shared: WorkerLoopShared,
 ) {
+    let WorkerLoopShared {
+        injector,
+        shutdown,
+        active_count,
+        process_table,
+        active_threads,
+    } = shared;
     // Local list of suspended coroutines (yielded, waiting to resume).
     // These are !Send so they must stay on this thread.
     let mut suspended: Vec<(ProcessId, CoroutineHandle)> = Vec::new();
@@ -391,7 +487,19 @@ fn worker_loop(
     let mut spin_count: u32 = 0;
 
     loop {
+        let cycle_started_at = Instant::now();
         let mut did_work = false;
+        let accepting_new_work = worker_index < active_threads.load(Ordering::Acquire);
+
+        if !accepting_new_work && suspended.is_empty() {
+            if shutdown.load(Ordering::SeqCst) && active_count.load(Ordering::SeqCst) == 0 {
+                break;
+            }
+            std::thread::park_timeout(std::time::Duration::from_millis(1));
+            crate::dist::telemetry::runtime_telemetry()
+                .record_scheduler_cycle(false, cycle_started_at.elapsed());
+            continue;
+        }
 
         // --- Phase 1: Run suspended coroutines (they have priority) ---
         // Drain suspended list, resuming each. If still not done, re-add.
@@ -438,13 +546,18 @@ fn worker_loop(
             } else {
                 // Actor completed.
                 handle_process_exit(&process_table, pid, ExitReason::Normal);
-                active_count.fetch_sub(1, Ordering::SeqCst);
+                let remaining = active_count
+                    .fetch_sub(1, Ordering::SeqCst)
+                    .saturating_sub(1);
+                crate::dist::telemetry::runtime_telemetry().set_runnable_actors(remaining);
             }
         }
         suspended = still_suspended;
 
         // --- Phase 2: Try to get new spawn requests ---
-        let request = try_get_request(&local, &injector, &high_rx, &stealers);
+        let request = accepting_new_work
+            .then(|| try_get_request(&local, &injector, &high_rx, &stealers))
+            .flatten();
 
         if let Some(req) = request {
             did_work = true;
@@ -480,7 +593,10 @@ fn worker_loop(
             } else {
                 // Actor completed on first run.
                 handle_process_exit(&process_table, req.pid, ExitReason::Normal);
-                active_count.fetch_sub(1, Ordering::SeqCst);
+                let remaining = active_count
+                    .fetch_sub(1, Ordering::SeqCst)
+                    .saturating_sub(1);
+                crate::dist::telemetry::runtime_telemetry().set_runnable_actors(remaining);
             }
         }
 
@@ -551,6 +667,8 @@ fn worker_loop(
         } else {
             spin_count = 0;
         }
+        crate::dist::telemetry::runtime_telemetry()
+            .record_scheduler_cycle(did_work, cycle_started_at.elapsed());
     }
 }
 
@@ -752,7 +870,7 @@ mod tests {
     #[test]
     fn test_single_actor_completes() {
         let initial = SPAWN_COUNTER.load(Ordering::SeqCst);
-        let mut sched = Scheduler::new(1);
+        let sched = Scheduler::new(1);
         sched.spawn(increment_entry as *const u8, std::ptr::null(), 0, 1);
         sched.signal_shutdown();
         sched.run();
@@ -769,7 +887,7 @@ mod tests {
     fn test_multiple_actors_complete() {
         let initial = SPAWN_COUNTER.load(Ordering::SeqCst);
         let num_actors = 10;
-        let mut sched = Scheduler::new(2);
+        let sched = Scheduler::new(2);
         for _ in 0..num_actors {
             sched.spawn(increment_entry as *const u8, std::ptr::null(), 0, 1);
         }
@@ -802,7 +920,7 @@ mod tests {
         WS_THREAD_IDS.lock().clear();
 
         let num_actors = 100;
-        let mut sched = Scheduler::new(4);
+        let sched = Scheduler::new(4);
         for _ in 0..num_actors {
             sched.spawn(ws_record_entry as *const u8, std::ptr::null(), 0, 1);
         }
@@ -837,7 +955,7 @@ mod tests {
         }
 
         YIELD_COUNTER.store(0, Ordering::SeqCst);
-        let mut sched = Scheduler::new(2);
+        let sched = Scheduler::new(2);
         sched.spawn(yield_entry as *const u8, std::ptr::null(), 0, 1);
         sched.signal_shutdown();
         sched.run();
@@ -868,7 +986,7 @@ mod tests {
         }
 
         STARVE_COUNTER.store(0, Ordering::SeqCst);
-        let mut sched = Scheduler::new(2);
+        let sched = Scheduler::new(2);
 
         // One yielding actor
         sched.spawn(starve_yield_entry as *const u8, std::ptr::null(), 0, 1);
@@ -897,7 +1015,7 @@ mod tests {
         }
 
         PRIO_COUNTER.store(0, Ordering::SeqCst);
-        let mut sched = Scheduler::new(1);
+        let sched = Scheduler::new(1);
         // Spawn low-priority actors
         for _ in 0..5 {
             sched.spawn(prio_entry as *const u8, std::ptr::null(), 0, 2); // Low
@@ -918,7 +1036,7 @@ mod tests {
     fn test_100_actors_no_hang() {
         let initial = SPAWN_COUNTER.load(Ordering::SeqCst);
         let num_actors: u64 = 100;
-        let mut sched = Scheduler::new(4);
+        let sched = Scheduler::new(4);
         for _ in 0..num_actors {
             sched.spawn(increment_entry as *const u8, std::ptr::null(), 0, 1);
         }
@@ -932,5 +1050,52 @@ mod tests {
             num_actors,
             completed
         );
+    }
+
+    #[test]
+    fn elastic_scheduler_enforces_worker_bounds() {
+        let scheduler = Scheduler::new_elastic(2, 4).expect("valid bounds");
+
+        assert_eq!(
+            scheduler.resize(1),
+            Err("scheduler_worker_target_out_of_bounds:1:2..=4".to_string())
+        );
+        assert_eq!(
+            scheduler.resize(5),
+            Err("scheduler_worker_target_out_of_bounds:5:2..=4".to_string())
+        );
+    }
+
+    #[test]
+    fn runnable_count_excludes_live_waiting_actors() {
+        let scheduler = Scheduler::new(1);
+        let pid = scheduler.spawn(increment_entry as *const u8, std::ptr::null(), 0, 1);
+        assert_eq!(scheduler.active_count(), 1);
+        assert_eq!(scheduler.runnable_count(), 1);
+
+        scheduler.get_process(pid).unwrap().lock().state = ProcessState::Waiting;
+        assert_eq!(scheduler.active_count(), 1);
+        assert_eq!(scheduler.runnable_count(), 0);
+    }
+
+    #[test]
+    fn elastic_scheduler_activates_parked_workers_without_restart() {
+        static ELASTIC_COUNTER: AtomicU64 = AtomicU64::new(0);
+
+        extern "C" fn elastic_entry(_args: *const u8) {
+            ELASTIC_COUNTER.fetch_add(1, Ordering::SeqCst);
+        }
+
+        ELASTIC_COUNTER.store(0, Ordering::SeqCst);
+        let scheduler = Scheduler::new_elastic(1, 3).expect("valid bounds");
+        scheduler.start();
+        scheduler.resize(3).expect("activate parked workers");
+        for _ in 0..30 {
+            scheduler.spawn(elastic_entry as *const u8, std::ptr::null(), 0, 1);
+        }
+        scheduler.signal_shutdown();
+        scheduler.wait();
+
+        assert_eq!(ELASTIC_COUNTER.load(Ordering::SeqCst), 30);
     }
 }

@@ -1,0 +1,98 @@
+name: Autonomous cluster proof
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  autonomous-cluster-proof:
+    name: Autonomous cluster proof
+    runs-on: ubuntu-24.04
+    timeout-minutes: 240
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Cache LLVM
+        uses: actions/cache@v5
+        id: cache-llvm
+        with:
+          path: ~/llvm
+          key: llvm-21.1.8-v4-x86_64-unknown-linux-gnu
+
+      - name: Install LLVM 21 (Linux x86_64)
+        if: steps.cache-llvm.outputs.cache-hit != 'true'
+        timeout-minutes: 10
+        shell: bash
+        run: |
+          set -euo pipefail
+          LLVM_VERSION="21.1.8"
+          LLVM_ARCHIVE="LLVM-${LLVM_VERSION}-Linux-X64.tar.xz"
+          LLVM_URL="https://github.com/llvm/llvm-project/releases/download/llvmorg-${LLVM_VERSION}/${LLVM_ARCHIVE}"
+          curl -sSfL "$LLVM_URL" -o llvm.tar.xz
+          mkdir -p "$HOME/llvm"
+          tar xf llvm.tar.xz --strip-components=1 -C "$HOME/llvm"
+          rm llvm.tar.xz
+
+      - name: Set LLVM prefix
+        shell: bash
+        run: echo "LLVM_SYS_211_PREFIX=$HOME/llvm" >> "$GITHUB_ENV"
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        timeout-minutes: 10
+        with:
+          targets: x86_64-unknown-linux-gnu
+
+      - name: Cargo cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: autonomous-cluster-proof-x86_64-unknown-linux-gnu
+
+      - name: Verify Docker Engine
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker version
+          docker compose version
+
+      - name: Run Docker and PostgreSQL autoscaling proof
+        id: docker-proof
+        shell: bash
+        timeout-minutes: 120
+        run: cargo run -p meshc --locked -- proof docker-autoscaling
+
+      - name: Run deterministic performance gate
+        shell: bash
+        timeout-minutes: 30
+        run: cargo run -p meshc --locked -- proof autonomous-performance
+
+      - name: Run deterministic chaos gate
+        shell: bash
+        timeout-minutes: 60
+        run: cargo run -p meshc --locked -- proof autonomous-chaos
+
+      - name: Run Fly driver conformance
+        shell: bash
+        timeout-minutes: 20
+        run: cargo run -p meshc --locked -- proof fly-driver-conformance
+
+      - name: Run continuity soak harness smoke
+        shell: bash
+        timeout-minutes: 10
+        run: >-
+          cargo run -p meshc --locked -- proof continuity-soak
+          --duration-seconds 10 --cycle-millis 10 --allow-short
+
+      - name: Upload proof evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        timeout-minutes: 10
+        with:
+          name: autonomous-cluster-proof-evidence
+          path: target/proof/**
+          if-no-files-found: error
+          retention-days: 14

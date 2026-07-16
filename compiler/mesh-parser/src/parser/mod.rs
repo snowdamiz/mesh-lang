@@ -682,7 +682,7 @@ pub(crate) fn parse_item_or_stmt(p: &mut Parser) {
 
         SyntaxKind::IMPORT_KW => items::parse_import_decl(p),
 
-        // Source-first `@cluster` prefixes and legacy `clustered(work)` cutover diagnostics before fn/def.
+        // Source-first `@cluster` prefixes and fail-closed diagnostics for removed spellings.
         _ if items::starts_clustered_fn_def(p) => {
             items::parse_fn_def(p);
         }

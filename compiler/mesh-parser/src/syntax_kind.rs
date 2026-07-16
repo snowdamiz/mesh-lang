@@ -288,8 +288,6 @@ pub enum SyntaxKind {
     GUARD_CLAUSE,
     /// Narrow source decorator declaration: `@cluster` or `@cluster(N)` before `fn|def`.
     CLUSTER_DECORATOR_DECL,
-    /// Narrow source declaration marker: `clustered(work)` before `fn|def`.
-    CLUSTERED_WORK_DECL,
     /// Deriving clause: `deriving(Eq, Display, ...)`
     DERIVING_CLAUSE,
     /// Expression body for `fn name(pattern) = expr` form.
@@ -718,7 +716,6 @@ mod tests {
             SyntaxKind::CONS_PAT,
             SyntaxKind::GUARD_CLAUSE,
             SyntaxKind::CLUSTER_DECORATOR_DECL,
-            SyntaxKind::CLUSTERED_WORK_DECL,
             SyntaxKind::DERIVING_CLAUSE,
             SyntaxKind::FN_EXPR_BODY,
             SyntaxKind::CLOSURE_CLAUSE,

@@ -7,7 +7,7 @@ description: Write and run tests in Mesh with meshc test — assertions, groupin
 
 Mesh includes a first-class testing framework accessible via `meshc test`. Test files use the `.test.mpl` extension and can contain individual tests, grouped tests with shared setup/teardown, mock actors, and receive assertions.
 
-> **Production backend proof:** This page covers the testing primitives. For the compact backend-proof handoff, start with [Production Backend Proof](/docs/production-backend-proof/). That page is the repo-boundary handoff into the [Hyperpush product repo](https://github.com/hyperpush-org/hyperpush-mono), its [`mesher/README.md`](https://github.com/hyperpush-org/hyperpush-mono/blob/main/mesher/README.md) maintainer runbook, and `bash mesher/scripts/verify-maintainer-surface.sh`; mesh-lang keeps `bash scripts/verify-m051-s01.sh` and `bash scripts/verify-m051-s02.sh` only as retained compatibility wrappers.
+> **Autonomous clusters:** This page covers testing primitives. Continue with [Distributed Proof](/docs/distributed-proof/) for the repository-owned integration, chaos, soak, and performance gates.
 
 ## Running Tests
 

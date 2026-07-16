@@ -20,13 +20,11 @@
 
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::TcpStream;
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
 use rustls::{ServerConfig, ServerConnection, StreamOwned};
 use rustls_pki_types::{pem::PemObject, CertificateDer, PrivateKeyDer};
-use sha2::{Digest, Sha256};
 
 use crate::actor;
 use crate::collections::map;
@@ -120,6 +118,10 @@ pub struct MeshHttpRequest {
     /// Path parameters as MeshMap (string keys -> string values).
     /// Populated by the router when matching parameterized routes.
     pub path_params: *mut u8,
+    /// Globally unique transport request identity, stable across remote dispatch.
+    pub request_id: *mut u8,
+    /// Validated caller idempotency key, or null when absent.
+    pub idempotency_key: *mut u8,
 }
 
 /// HTTP response returned by Mesh handler functions.
@@ -179,7 +181,10 @@ pub extern "C" fn mesh_http_response_with_headers(
 
 const CLUSTERED_ROUTE_FAILURE_STATUS: i64 = 503;
 const CLUSTERED_ROUTE_REQUEST_KEY_HEADER: &str = "X-Mesh-Continuity-Request-Key";
-static CLUSTERED_HTTP_ROUTE_REQUEST_SEQUENCE: AtomicU64 = AtomicU64::new(1);
+const IDEMPOTENCY_REPLAY_HEADER: &str = "Idempotency-Replayed";
+const CLUSTERED_ROUTE_INGRESS_HEADER: &str = "X-Mesh-Ingress-Node";
+const CLUSTERED_ROUTE_EXECUTION_HEADER: &str = "X-Mesh-Execution-Node";
+const CLUSTERED_ROUTE_REMOTE_HEADER: &str = "X-Mesh-Routed-Remotely";
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct TransportHttpRequest {
@@ -189,6 +194,8 @@ struct TransportHttpRequest {
     query_params: Vec<(String, String)>,
     headers: Vec<(String, String)>,
     path_params: Vec<(String, String)>,
+    request_id: String,
+    idempotency_key: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -258,6 +265,9 @@ fn mesh_request_to_transport(request_ptr: *mut u8) -> Result<TransportHttpReques
         query_params: mesh_map_to_pairs(request.query_params)?,
         headers: mesh_map_to_pairs(request.headers)?,
         path_params: mesh_map_to_pairs(request.path_params)?,
+        request_id: mesh_string_ptr_to_owned(request.request_id),
+        idempotency_key: (!request.idempotency_key.is_null())
+            .then(|| mesh_string_ptr_to_owned(request.idempotency_key)),
     })
 }
 
@@ -273,6 +283,12 @@ fn transport_request_to_mesh(request: &TransportHttpRequest) -> *mut u8 {
         (*req_ptr).query_params = pairs_to_mesh_map(&request.query_params);
         (*req_ptr).headers = pairs_to_mesh_map(&request.headers);
         (*req_ptr).path_params = pairs_to_mesh_map(&request.path_params);
+        (*req_ptr).request_id = mesh_string_to_ptr(&request.request_id);
+        (*req_ptr).idempotency_key = request
+            .idempotency_key
+            .as_deref()
+            .map(mesh_string_to_ptr)
+            .unwrap_or(std::ptr::null_mut());
         req_ptr as *mut u8
     }
 }
@@ -379,6 +395,14 @@ fn encode_transport_request(request: &TransportHttpRequest) -> Result<Vec<u8>, S
     encode_string_pairs(&mut payload, &request.query_params, "request_query_params")?;
     encode_string_pairs(&mut payload, &request.headers, "request_headers")?;
     encode_string_pairs(&mut payload, &request.path_params, "request_path_params")?;
+    encode_len_prefixed_string(&mut payload, &request.request_id, "request_id")?;
+    match &request.idempotency_key {
+        Some(key) => {
+            payload.push(1);
+            encode_len_prefixed_string(&mut payload, key, "idempotency_key")?;
+        }
+        None => payload.push(0),
+    }
     Ok(payload)
 }
 
@@ -387,13 +411,43 @@ fn decode_transport_request(payload: &[u8]) -> Result<TransportHttpRequest, Stri
         return Err("mesh_http_transport_request_empty".to_string());
     }
     let mut pos = 0usize;
+    let method = decode_len_prefixed_string(payload, &mut pos, "request_method")?;
+    let path = decode_len_prefixed_string(payload, &mut pos, "request_path")?;
+    let body = decode_len_prefixed_string(payload, &mut pos, "request_body")?;
+    let query_params = decode_string_pairs(payload, &mut pos, "request_query_params")?;
+    let headers = decode_string_pairs(payload, &mut pos, "request_headers")?;
+    let path_params = decode_string_pairs(payload, &mut pos, "request_path_params")?;
+    let request_id = if pos == payload.len() {
+        crate::dist::identity::request_id_generator()
+            .next()?
+            .to_string()
+    } else {
+        decode_len_prefixed_string(payload, &mut pos, "request_id")?
+    };
+    let idempotency_key = if pos == payload.len() {
+        None
+    } else {
+        let present = payload[pos];
+        pos += 1;
+        match present {
+            0 => None,
+            1 => {
+                let key = decode_len_prefixed_string(payload, &mut pos, "idempotency_key")?;
+                crate::dist::identity::validate_idempotency_key(&key)?;
+                Some(key)
+            }
+            _ => return Err("mesh_http_transport_idempotency_key_flag_invalid".to_string()),
+        }
+    };
     let request = TransportHttpRequest {
-        method: decode_len_prefixed_string(payload, &mut pos, "request_method")?,
-        path: decode_len_prefixed_string(payload, &mut pos, "request_path")?,
-        body: decode_len_prefixed_string(payload, &mut pos, "request_body")?,
-        query_params: decode_string_pairs(payload, &mut pos, "request_query_params")?,
-        headers: decode_string_pairs(payload, &mut pos, "request_headers")?,
-        path_params: decode_string_pairs(payload, &mut pos, "request_path_params")?,
+        method,
+        path,
+        body,
+        query_params,
+        headers,
+        path_params,
+        request_id,
+        idempotency_key,
     };
     if pos != payload.len() {
         return Err("mesh_http_transport_request_trailing_bytes".to_string());
@@ -436,6 +490,22 @@ pub(crate) fn decode_http_request_payload(payload: &[u8]) -> Result<*mut u8, Str
     Ok(transport_request_to_mesh(&request))
 }
 
+/// Returns whether Mesh may safely start a replacement execution after an
+/// indeterminate remote-dispatch failure.
+///
+/// A generated request ID is only a correlation identity. It must never turn
+/// an unsafe mutation into a replayable operation. Caller-scoped idempotency
+/// or an HTTP safe method is required before continuity recovery can execute
+/// the retained request payload on a new owner.
+pub(crate) fn http_request_payload_is_replay_safe(payload: &[u8]) -> Result<bool, String> {
+    let request = decode_transport_request(payload)?;
+    Ok(request.idempotency_key.is_some()
+        || matches!(
+            request.method.to_ascii_uppercase().as_str(),
+            "GET" | "HEAD" | "OPTIONS" | "TRACE"
+        ))
+}
+
 pub(crate) fn encode_http_response_payload(response_ptr: *mut u8) -> Result<Vec<u8>, String> {
     encode_transport_response(&mesh_response_to_transport(response_ptr)?)
 }
@@ -468,20 +538,57 @@ pub(crate) fn build_clustered_http_route_identity(
         return Err("clustered_route_request_payload_missing".to_string());
     }
 
-    let digest = Sha256::digest(request_payload);
-    let payload_hash = digest
+    let request = decode_transport_request(request_payload)?;
+    let semantic_headers: Vec<(String, String)> = request
+        .headers
         .iter()
-        .map(|byte| format!("{:02x}", byte))
-        .collect::<String>();
-    if payload_hash.is_empty() {
-        return Err("payload_hash_missing".to_string());
+        .filter(|(name, _)| {
+            matches!(
+                name.to_ascii_lowercase().as_str(),
+                "content-type" | "if-match" | "if-none-match"
+            )
+        })
+        .cloned()
+        .collect();
+    let tenant_scope = request
+        .headers
+        .iter()
+        .find(|(name, _)| name.eq_ignore_ascii_case("x-mesh-authenticated-tenant"))
+        .map(|(_, value)| value.as_str());
+    let payload_hash = crate::dist::identity::CanonicalHttpRequest {
+        method: &request.method,
+        route_id: runtime_name,
+        path_parameters: &request.path_params,
+        query_parameters: &request.query_params,
+        semantic_headers: &semantic_headers,
+        body: request.body.as_bytes(),
+        tenant_scope,
     }
+    .hash()?;
 
-    let request_id = CLUSTERED_HTTP_ROUTE_REQUEST_SEQUENCE.fetch_add(1, Ordering::Relaxed);
-    let request_key = format!("http-route::{runtime_name}::{request_id}");
-    if request_key.is_empty() {
-        return Err("request_key_missing".to_string());
-    }
+    let caller_key = request
+        .headers
+        .iter()
+        .find(|(name, _)| name.eq_ignore_ascii_case("idempotency-key"))
+        .map(|(_, value)| value.as_str());
+    let request_key = if let Some(caller_key) = caller_key {
+        let application_id =
+            std::env::var("MESH_APPLICATION_ID").unwrap_or_else(|_| "mesh-application".to_string());
+        format!(
+            "operation::{}",
+            crate::dist::identity::OperationKey::derive(
+                &application_id,
+                runtime_name,
+                tenant_scope,
+                caller_key,
+            )?
+        )
+    } else {
+        if request.request_id.is_empty() {
+            return Err("clustered_route_request_id_missing".to_string());
+        }
+        format!("request::{}", request.request_id)
+    };
 
     Ok((request_key, payload_hash))
 }
@@ -534,6 +641,16 @@ fn clustered_route_failure_response(reason: &str, request_key: Option<&str>) -> 
 }
 
 fn clustered_route_response_from_request(runtime_name: &str, request_ptr: *mut u8) -> *mut u8 {
+    let _admission =
+        match crate::dist::telemetry::global_admission_controller().reserve_application() {
+            Ok(permit) => permit,
+            Err(rejection) => {
+                return clustered_route_failure_response(
+                    &format!("admission_rejected:{rejection:?}"),
+                    None,
+                );
+            }
+        };
     let result = encode_http_request_payload(request_ptr).and_then(|request_payload| {
         let (request_key, payload_hash) =
             build_clustered_http_route_identity(runtime_name, &request_payload)?;
@@ -543,7 +660,33 @@ fn clustered_route_response_from_request(runtime_name: &str, request_ptr: *mut u
             &payload_hash,
             &request_payload,
         )
-        .and_then(|response_payload| decode_http_response_payload(&response_payload));
+        .and_then(|execution| {
+            let response_ptr = decode_http_response_payload(&execution.response_payload)?;
+            let response_ptr = set_response_header(
+                response_ptr,
+                CLUSTERED_ROUTE_INGRESS_HEADER,
+                &execution.ingress_node,
+            );
+            let response_ptr = set_response_header(
+                response_ptr,
+                CLUSTERED_ROUTE_EXECUTION_HEADER,
+                &execution.execution_node,
+            );
+            let response_ptr = set_response_header(
+                response_ptr,
+                CLUSTERED_ROUTE_REMOTE_HEADER,
+                if execution.routed_remotely {
+                    "true"
+                } else {
+                    "false"
+                },
+            );
+            Ok(if execution.replayed {
+                set_response_header(response_ptr, IDEMPOTENCY_REPLAY_HEADER, "true")
+            } else {
+                response_ptr
+            })
+        });
         Ok((request_key, response_result))
     });
 
@@ -633,6 +776,29 @@ pub extern "C" fn mesh_http_request_param(req: *mut u8, name: *const MeshString)
         } else {
             alloc_option(0, val as *mut u8)
         }
+    }
+}
+
+/// Return the globally unique request identity assigned at ingress.
+#[no_mangle]
+pub extern "C" fn mesh_http_request_id(req: *mut u8) -> *mut u8 {
+    if req.is_null() {
+        return mesh_string_to_ptr("");
+    }
+    unsafe { (*(req as *const MeshHttpRequest)).request_id }
+}
+
+/// Return the validated caller idempotency key, when supplied.
+#[no_mangle]
+pub extern "C" fn mesh_http_idempotency_key(req: *mut u8) -> *mut u8 {
+    if req.is_null() {
+        return alloc_option(1, std::ptr::null_mut());
+    }
+    let key = unsafe { (*(req as *const MeshHttpRequest)).idempotency_key };
+    if key.is_null() {
+        alloc_option(1, std::ptr::null_mut())
+    } else {
+        alloc_option(0, key)
     }
 }
 
@@ -791,6 +957,10 @@ struct ConnectionArgs {
     router_addr: usize,
     /// Raw pointer to a boxed `HttpStream`, transferred as usize.
     request_ptr: usize,
+    /// Owned queue permit released when the actor starts running.
+    queue_permit_ptr: usize,
+    /// Tracks accepted connections and request end-to-end/service latency.
+    connection_permit_ptr: usize,
 }
 
 /// Actor entry function for handling a single HTTP connection.
@@ -813,6 +983,18 @@ extern "C" fn connection_handler_entry(args: *const u8) {
     let args = unsafe { Box::from_raw(args as *mut ConnectionArgs) };
     let router_ptr = args.router_addr as *mut u8;
     let mut stream = unsafe { *Box::from_raw(args.request_ptr as *mut HttpStream) };
+    let mut connection_permit = (args.connection_permit_ptr != 0).then(|| unsafe {
+        Box::from_raw(
+            args.connection_permit_ptr as *mut crate::dist::telemetry::HttpConnectionPermit,
+        )
+    });
+    if args.queue_permit_ptr != 0 {
+        unsafe { Box::from_raw(args.queue_permit_ptr as *mut crate::dist::telemetry::QueuePermit) }
+            .begin();
+    }
+    if let Some(permit) = connection_permit.as_mut() {
+        permit.begin_service();
+    }
 
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         match parse_request(&mut stream) {
@@ -871,6 +1053,7 @@ pub extern "C" fn mesh_http_serve(router: *mut u8, port: i64) {
                 continue;
             }
         };
+        let connection_permit = crate::dist::telemetry::runtime_telemetry().begin_http_connection();
 
         // Set read timeout BEFORE wrapping in HttpStream.
         tcp_stream
@@ -878,10 +1061,25 @@ pub extern "C" fn mesh_http_serve(router: *mut u8, port: i64) {
             .ok();
 
         let http_stream = HttpStream::Plain(tcp_stream);
+        let queue_permit = match crate::dist::telemetry::global_admission_controller().enqueue(1) {
+            Ok(permit) => permit,
+            Err(rejection) => {
+                let mut stream = http_stream;
+                let _ = write_response(
+                    &mut stream,
+                    503,
+                    format!("admission_rejected:{rejection:?}").as_bytes(),
+                    Some(vec![("Retry-After".to_string(), "1".to_string())]),
+                );
+                continue;
+            }
+        };
         let stream_ptr = Box::into_raw(Box::new(http_stream)) as usize;
         let args = ConnectionArgs {
             router_addr,
             request_ptr: stream_ptr,
+            queue_permit_ptr: Box::into_raw(Box::new(queue_permit)) as usize,
+            connection_permit_ptr: Box::into_raw(Box::new(connection_permit)) as usize,
         };
         let args_ptr = Box::into_raw(Box::new(args)) as *const u8;
         let args_size = std::mem::size_of::<ConnectionArgs>() as u64;
@@ -953,6 +1151,7 @@ pub extern "C" fn mesh_http_serve_tls(
                 continue;
             }
         };
+        let connection_permit = crate::dist::telemetry::runtime_telemetry().begin_http_connection();
 
         // Set read timeout BEFORE wrapping in TLS (Pitfall 7 from research).
         tcp_stream
@@ -978,11 +1177,17 @@ pub extern "C" fn mesh_http_serve_tls(
         // BufReader::read_line -> HttpStream::Tls::read -> StreamOwned::read.
         let tls_stream = StreamOwned::new(conn, tcp_stream);
         let http_stream = HttpStream::Tls(tls_stream);
+        let queue_permit = match crate::dist::telemetry::global_admission_controller().enqueue(1) {
+            Ok(permit) => permit,
+            Err(_) => continue,
+        };
 
         let stream_ptr = Box::into_raw(Box::new(http_stream)) as usize;
         let args = ConnectionArgs {
             router_addr,
             request_ptr: stream_ptr,
+            queue_permit_ptr: Box::into_raw(Box::new(queue_permit)) as usize,
+            connection_permit_ptr: Box::into_raw(Box::new(connection_permit)) as usize,
         };
         let args_ptr = Box::into_raw(Box::new(args)) as *const u8;
         let args_size = std::mem::size_of::<ConnectionArgs>() as u64;
@@ -1129,6 +1334,26 @@ fn process_request(
         let body_bytes = parsed.body;
         let body = mesh_string_new(body_bytes.as_ptr(), body_bytes.len() as u64) as *mut u8;
 
+        let request_id_value = match crate::dist::identity::request_id_generator().next() {
+            Ok(request_id) => request_id.to_string(),
+            Err(error) => return (503, error.into_bytes(), None),
+        };
+        let request_id = mesh_string_to_ptr(&request_id_value);
+        let idempotency_key_value = parsed
+            .headers
+            .iter()
+            .find(|(name, _)| name.eq_ignore_ascii_case("idempotency-key"))
+            .map(|(_, value)| value.clone());
+        if let Some(key) = &idempotency_key_value {
+            if let Err(error) = crate::dist::identity::validate_idempotency_key(key) {
+                return (400, error.into_bytes(), None);
+            }
+        }
+        let idempotency_key = idempotency_key_value
+            .as_deref()
+            .map(mesh_string_to_ptr)
+            .unwrap_or(std::ptr::null_mut());
+
         // Parse query params into a MeshMap (string keys for content-based lookup).
         let mut query_map = map::mesh_map_new_typed(1);
         if !query_str.is_empty() {
@@ -1161,6 +1386,8 @@ fn process_request(
             (*mesh_req).query_params = query_map;
             (*mesh_req).headers = headers_map;
             (*mesh_req).path_params = path_params_map;
+            (*mesh_req).request_id = request_id;
+            (*mesh_req).idempotency_key = idempotency_key;
             mesh_req as *mut u8
         };
 
@@ -1260,17 +1487,12 @@ mod tests {
     use super::*;
     use crate::dist::continuity::{continuity_registry, ContinuityPhase, ContinuityResult};
     use crate::dist::node::{
-        clear_declared_handler_registry_for_test, mesh_register_declared_handler,
+        clear_declared_handler_registry_for_test, declared_handler_registry_test_lock,
+        mesh_register_declared_handler,
     };
     use crate::gc::mesh_rt_init;
     use crate::http::router::{mesh_http_route_get, mesh_http_router};
     use std::sync::atomic::{AtomicU64, Ordering};
-    use std::sync::{Mutex, MutexGuard, OnceLock};
-
-    fn http_server_test_lock() -> MutexGuard<'static, ()> {
-        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-        LOCK.get_or_init(|| Mutex::new(())).lock().unwrap()
-    }
 
     fn reset_clustered_runtime_state() {
         clear_declared_handler_registry_for_test();
@@ -1303,6 +1525,17 @@ mod tests {
             (*req_ptr).query_params = pairs_to_mesh_map(&owned_pairs(query_params));
             (*req_ptr).headers = pairs_to_mesh_map(&owned_pairs(headers));
             (*req_ptr).path_params = pairs_to_mesh_map(&owned_pairs(path_params));
+            (*req_ptr).request_id = mesh_string_to_ptr(
+                &crate::dist::identity::request_id_generator()
+                    .next()
+                    .expect("test request id")
+                    .to_string(),
+            );
+            (*req_ptr).idempotency_key = headers
+                .iter()
+                .find(|(name, _)| name.eq_ignore_ascii_case("idempotency-key"))
+                .map(|(_, value)| mesh_string_to_ptr(value))
+                .unwrap_or(std::ptr::null_mut());
             req_ptr as *mut u8
         }
     }
@@ -1340,14 +1573,22 @@ mod tests {
         value
     }
 
-    extern "C" fn simple_ok_handler(_request: *mut u8) -> *mut u8 {
-        build_test_response(200, "ok", &[])
-    }
-
     static CLUSTERED_ROUTE_HANDLER_CALLS: AtomicU64 = AtomicU64::new(0);
+    static IDEMPOTENCY_HANDLER_CALLS: AtomicU64 = AtomicU64::new(0);
 
     extern "C" fn clustered_route_test_handler(request: *mut u8) -> *mut u8 {
         CLUSTERED_ROUTE_HANDLER_CALLS.fetch_add(1, Ordering::Relaxed);
+        let request = unsafe { &*(request as *const MeshHttpRequest) };
+        let body = mesh_string_ptr_to_owned(request.body);
+        build_test_response(
+            200,
+            &format!("{{\"echo\":\"{}\"}}", body),
+            &[("X-Clustered", "true")],
+        )
+    }
+
+    extern "C" fn idempotency_test_handler(request: *mut u8) -> *mut u8 {
+        IDEMPOTENCY_HANDLER_CALLS.fetch_add(1, Ordering::Relaxed);
         let request = unsafe { &*(request as *const MeshHttpRequest) };
         let body = mesh_string_ptr_to_owned(request.body);
         build_test_response(
@@ -1390,7 +1631,14 @@ mod tests {
     #[test]
     fn test_request_accessors() {
         mesh_rt_init();
-        let req = build_test_request("GET", "/test", "", &[], &[], &[]);
+        let req = build_test_request(
+            "GET",
+            "/test",
+            "",
+            &[],
+            &[("Idempotency-Key", "accessor-key")],
+            &[],
+        );
 
         unsafe {
             let m = mesh_http_request_method(req);
@@ -1404,11 +1652,22 @@ mod tests {
             let b = mesh_http_request_body(req);
             let b_str = &*(b as *const MeshString);
             assert_eq!(b_str.as_str(), "");
+
+            let request_id = mesh_http_request_id(req);
+            let request_id = &*(request_id as *const MeshString);
+            assert_eq!(request_id.as_str().len(), 64);
+
+            let key = mesh_http_idempotency_key(req) as *const crate::option::MeshOption;
+            assert_eq!((*key).tag, 0);
+            assert_eq!(
+                (*((*key).value as *const MeshString)).as_str(),
+                "accessor-key"
+            );
         }
     }
 
     #[test]
-    fn m047_s07_http_request_transport_roundtrip_preserves_method_body_headers_and_params() {
+    fn http_request_transport_roundtrip_preserves_method_body_headers_and_params() {
         mesh_rt_init();
         let request_ptr = build_test_request(
             "POST",
@@ -1435,7 +1694,39 @@ mod tests {
     }
 
     #[test]
-    fn m047_s07_http_response_transport_roundtrip_preserves_status_body_and_headers() {
+    fn continuity_replay_requires_a_safe_method_or_caller_idempotency_key() {
+        mesh_rt_init();
+
+        let get =
+            encode_http_request_payload(build_test_request("GET", "/todos", "", &[], &[], &[]))
+                .expect("encode safe request");
+        assert!(http_request_payload_is_replay_safe(&get).unwrap());
+
+        let unsafe_post = encode_http_request_payload(build_test_request(
+            "POST",
+            "/todos",
+            "{\"title\":\"one\"}",
+            &[],
+            &[],
+            &[],
+        ))
+        .expect("encode unsafe request");
+        assert!(!http_request_payload_is_replay_safe(&unsafe_post).unwrap());
+
+        let idempotent_post = encode_http_request_payload(build_test_request(
+            "POST",
+            "/todos",
+            "{\"title\":\"one\"}",
+            &[],
+            &[("Idempotency-Key", "create-todo-1")],
+            &[],
+        ))
+        .expect("encode idempotent request");
+        assert!(http_request_payload_is_replay_safe(&idempotent_post).unwrap());
+    }
+
+    #[test]
+    fn http_response_transport_roundtrip_preserves_status_body_and_headers() {
         mesh_rt_init();
         let response_ptr = build_test_response(201, "{\"created\":true}", &[("X-Test", "yes")]);
 
@@ -1449,21 +1740,21 @@ mod tests {
     }
 
     #[test]
-    fn m047_s07_http_transport_rejects_malformed_request_and_response_payloads() {
+    fn http_transport_rejects_malformed_request_and_response_payloads() {
         assert!(decode_http_request_payload(&[]).is_err());
         assert!(decode_http_response_payload(&[1, 2, 3]).is_err());
     }
 
     #[test]
-    fn m047_s07_clustered_route_identity_rejects_empty_runtime_name_and_payload() {
+    fn clustered_route_identity_rejects_empty_runtime_name_and_payload() {
         assert!(build_clustered_http_route_identity("", b"payload").is_err());
         assert!(build_clustered_http_route_identity("Api.Todos.handle", b"").is_err());
     }
 
     #[test]
-    fn m054_s02_process_request_attaches_correlation_header_on_clustered_success_and_preserves_handler_headers(
+    fn process_request_attaches_correlation_header_on_clustered_success_and_preserves_handler_headers(
     ) {
-        let _guard = http_server_test_lock();
+        let _guard = declared_handler_registry_test_lock();
         mesh_rt_init();
         reset_clustered_runtime_state();
         CLUSTERED_ROUTE_HANDLER_CALLS.store(0, Ordering::Relaxed);
@@ -1523,11 +1814,11 @@ mod tests {
         let second_request_key =
             required_response_header(&second_headers, CLUSTERED_ROUTE_REQUEST_KEY_HEADER);
         assert!(
-            first_request_key.starts_with("http-route::Api.Todos.handle_list_todos::"),
+            first_request_key.starts_with("request::"),
             "unexpected first request key: {first_request_key}"
         );
         assert!(
-            second_request_key.starts_with("http-route::Api.Todos.handle_list_todos::"),
+            second_request_key.starts_with("request::"),
             "unexpected second request key: {second_request_key}"
         );
         assert_ne!(first_request_key, second_request_key);
@@ -1560,9 +1851,8 @@ mod tests {
     }
 
     #[test]
-    fn m054_s02_process_request_returns_503_with_correlation_header_and_durable_rejection_for_unsupported_clustered_route_count(
-    ) {
-        let _guard = http_server_test_lock();
+    fn process_request_returns_503_when_requested_replica_capacity_is_unavailable() {
+        let _guard = declared_handler_registry_test_lock();
         mesh_rt_init();
         reset_clustered_runtime_state();
         CLUSTERED_ROUTE_HANDLER_CALLS.store(0, Ordering::Relaxed);
@@ -1595,11 +1885,11 @@ mod tests {
         assert_eq!(status, 503);
         let request_key = required_response_header(&headers, CLUSTERED_ROUTE_REQUEST_KEY_HEADER);
         assert!(
-            request_key.starts_with("http-route::Api.Todos.handle_list_todos::"),
+            request_key.starts_with("request::"),
             "unexpected rejected request key: {request_key}"
         );
         let body = String::from_utf8(body).expect("response body utf8");
-        assert!(body.contains("unsupported_replication_count:3"), "{body}");
+        assert!(body.contains("replica_required_unavailable"), "{body}");
         assert_eq!(CLUSTERED_ROUTE_HANDLER_CALLS.load(Ordering::Relaxed), 0);
 
         let snapshot = continuity_registry().snapshot();
@@ -1608,7 +1898,7 @@ mod tests {
         assert_eq!(record.request_key, request_key);
         assert_eq!(record.phase, ContinuityPhase::Rejected);
         assert_eq!(record.result, ContinuityResult::Rejected);
-        assert_eq!(record.error, "unsupported_replication_count:3");
+        assert!(record.error.starts_with("replica_required_unavailable"));
         assert_eq!(record.declared_handler_runtime_name(), runtime_name);
         assert_eq!(record.replication_count, 3);
 
@@ -1616,8 +1906,56 @@ mod tests {
     }
 
     #[test]
-    fn m047_s07_invoke_route_handler_from_payload_executes_real_handler_boundary() {
-        let _guard = http_server_test_lock();
+    fn idempotency_key_replays_retained_success_without_reexecuting_handler() {
+        let _guard = declared_handler_registry_test_lock();
+        mesh_rt_init();
+        reset_clustered_runtime_state();
+        IDEMPOTENCY_HANDLER_CALLS.store(0, Ordering::Relaxed);
+
+        let runtime_name = "Api.Todos.handle_list_todos";
+        let executable_name = "__declared_route_api_todos_handle_list_todos";
+        mesh_register_declared_handler(
+            runtime_name.as_ptr(),
+            runtime_name.len() as u64,
+            executable_name.as_ptr(),
+            executable_name.len() as u64,
+            1,
+            idempotency_test_handler as *const u8,
+        );
+        let router = mesh_http_router();
+        let pattern = mesh_string_new(b"/todos".as_ptr(), 6);
+        let router = mesh_http_route_get(router, pattern, idempotency_test_handler as *mut u8);
+        let request = || ParsedRequest {
+            method: "GET".to_string(),
+            path: "/todos".to_string(),
+            headers: vec![
+                ("Idempotency-Key".to_string(), "replay-key-001".to_string()),
+                ("X-Request-Id".to_string(), "same".to_string()),
+            ],
+            body: Vec::new(),
+        };
+
+        let (first_status, first_body, first_headers) = process_request(router, request());
+        let (second_status, second_body, second_headers) = process_request(router, request());
+
+        assert_eq!(first_status, 200);
+        assert_eq!(second_status, 200);
+        assert_eq!(first_body, second_body);
+        assert_eq!(IDEMPOTENCY_HANDLER_CALLS.load(Ordering::Relaxed), 1);
+        assert!(first_headers.as_ref().is_none_or(|headers| !headers
+            .iter()
+            .any(|(name, _)| { name.eq_ignore_ascii_case(IDEMPOTENCY_REPLAY_HEADER) })));
+        assert_eq!(
+            required_response_header(&second_headers, IDEMPOTENCY_REPLAY_HEADER),
+            "true"
+        );
+
+        reset_clustered_runtime_state();
+    }
+
+    #[test]
+    fn invoke_route_handler_from_payload_executes_real_handler_boundary() {
+        let _guard = declared_handler_registry_test_lock();
         mesh_rt_init();
         CLUSTERED_ROUTE_HANDLER_CALLS.store(0, Ordering::Relaxed);
 

@@ -19,7 +19,7 @@ const editLink = computed(() => {
     :href="editLink.url"
     target="_blank"
     rel="noopener noreferrer"
-    class="inline-flex items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground"
+    class="inline-flex items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-brand"
   >
     <Pencil class="size-3.5" />
     {{ editLink.text }}

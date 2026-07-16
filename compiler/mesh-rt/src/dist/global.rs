@@ -208,6 +208,12 @@ impl GlobalRegistry {
     }
 }
 
+impl Default for GlobalRegistry {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Global singleton
 // ---------------------------------------------------------------------------
@@ -248,12 +254,11 @@ pub(crate) fn broadcast_global_register(name: &str, pid: ProcessId, node_name: &
     // Collect session references, then drop sessions lock before writing.
     let sessions: Vec<std::sync::Arc<super::node::NodeSession>> = {
         let map = state.sessions.read();
-        map.values().map(|s| std::sync::Arc::clone(s)).collect()
+        map.values().map(std::sync::Arc::clone).collect()
     };
 
     for session in &sessions {
-        let mut stream = session.stream.lock().unwrap();
-        let _ = super::node::write_msg(&mut *stream, &payload);
+        let _ = session.send(super::node::OutboundClass::Control, payload.clone());
     }
 }
 
@@ -276,12 +281,11 @@ pub(crate) fn broadcast_global_unregister(name: &str) {
     // Collect session references, then drop sessions lock before writing.
     let sessions: Vec<std::sync::Arc<super::node::NodeSession>> = {
         let map = state.sessions.read();
-        map.values().map(|s| std::sync::Arc::clone(s)).collect()
+        map.values().map(std::sync::Arc::clone).collect()
     };
 
     for session in &sessions {
-        let mut stream = session.stream.lock().unwrap();
-        let _ = super::node::write_msg(&mut *stream, &payload);
+        let _ = session.send(super::node::OutboundClass::Control, payload.clone());
     }
 }
 
@@ -316,8 +320,7 @@ pub(crate) fn send_global_sync(session: &std::sync::Arc<super::node::NodeSession
         payload.extend_from_slice(node_bytes);
     }
 
-    let mut stream = session.stream.lock().unwrap();
-    let _ = super::node::write_msg(&mut *stream, &payload);
+    let _ = session.send(super::node::OutboundClass::Snapshot, payload);
 }
 
 // ---------------------------------------------------------------------------

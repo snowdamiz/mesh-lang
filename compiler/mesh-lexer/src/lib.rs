@@ -367,11 +367,7 @@ impl<'src> Lexer<'src> {
                 }
                 Some(c) => {
                     pattern.push(c);
-                    if c == '\\' && !prev_was_backslash {
-                        prev_was_backslash = true;
-                    } else {
-                        prev_was_backslash = false;
-                    }
+                    prev_was_backslash = c == '\\' && !prev_was_backslash;
                     self.cursor.advance();
                 }
             }

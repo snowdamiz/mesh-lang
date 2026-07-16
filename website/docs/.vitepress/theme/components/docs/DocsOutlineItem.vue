@@ -16,8 +16,8 @@ defineProps<{
         class="block py-1 pl-3 text-[13px] -ml-px border-l-2 transition-all duration-200"
         :class="[
           activeId === item.link.slice(1)
-            ? 'border-foreground text-foreground font-medium'
-            : 'border-transparent text-muted-foreground hover:text-foreground hover:border-foreground/50',
+            ? 'border-brand text-brand font-medium'
+            : 'border-transparent text-muted-foreground hover:text-foreground hover:border-foreground/40',
         ]"
       >
         {{ item.title }}

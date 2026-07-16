@@ -1,7 +1,7 @@
 blank_issues_enabled: false
 contact_links:
   - name: Support guide
-    url: https://github.com/hyperpush-org/hyperpush-mono/blob/main/SUPPORT.md
+    url: https://github.com/hyperpush-org/mesh-lang/blob/main/SUPPORT.md
     about: Before filing an issue, check the support guide and starter/example pointers.
   - name: Getting Started docs
     url: https://meshlang.dev/docs/getting-started/
@@ -10,5 +10,5 @@ contact_links:
     url: https://meshlang.dev/docs/tooling/
     about: Compiler, editor, and tooling workflows.
   - name: Security policy
-    url: https://github.com/hyperpush-org/hyperpush-mono/blob/main/SECURITY.md
+    url: https://github.com/hyperpush-org/mesh-lang/blob/main/SECURITY.md
     about: Use the private reporting path for vulnerabilities instead of public issues.

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
+import { Search } from 'lucide-vue-next'
 import PackageCard from './PackageCard.vue'
 import PackageList from './PackageList.vue'
 
@@ -13,6 +14,8 @@ interface PackageItem {
   download_count?: number
   owner?: string
 }
+
+const pageTitle = 'Packages'
 
 const allPackages = ref<PackageItem[]>([])
 const featured = ref<PackageItem[]>([])
@@ -63,45 +66,62 @@ onMounted(fetchPackages)
 </script>
 
 <template>
-  <div class="max-w-5xl mx-auto px-4 py-10">
+  <div class="mx-auto max-w-5xl px-4 py-12 sm:px-6">
     <div class="mb-8">
-      <h1 class="text-3xl font-bold text-zinc-900 dark:text-zinc-100 mb-2">Packages</h1>
-      <p class="text-zinc-500 dark:text-zinc-400">Browse and install Mesh packages.</p>
+      <span class="inline-flex items-center gap-2.5 font-mono text-xs tracking-[0.1em] text-muted-foreground">
+        <span class="size-1.5 rounded-full bg-brand" aria-hidden="true" />
+        the registry
+      </span>
+      <h1
+        class="mt-3 text-4xl font-bold tracking-tight text-foreground"
+        style="font-family: 'Bricolage Grotesque', var(--font-sans); font-optical-sizing: auto; letter-spacing: -0.03em;"
+      >
+        {{ pageTitle }}
+      </h1>
+      <p class="mt-2 text-muted-foreground">Browse and install Mesh packages.</p>
     </div>
 
-    <!-- Search box -->
-    <div class="mb-8">
-      <input
-        v-model="searchQuery"
-        @input="onSearchInput"
-        type="text"
-        placeholder="Search packages by name or description..."
-        class="w-full px-4 py-2.5 rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100 placeholder-zinc-400 focus:outline-none focus:ring-2 focus:ring-violet-500 focus:border-transparent text-sm"
-      />
+    <!-- Search pill -->
+    <div class="mb-10">
+      <div class="relative">
+        <Search class="pointer-events-none absolute left-5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+        <input
+          v-model="searchQuery"
+          @input="onSearchInput"
+          type="text"
+          placeholder="Search packages by name or description…"
+          class="w-full rounded-xl border border-border bg-card py-3 pl-12 pr-5 text-sm text-foreground placeholder-muted-foreground/70 shadow-[0_1px_2px_rgba(0,0,0,0.03)] transition-colors focus:border-[color-mix(in_oklab,var(--brand)_55%,var(--border))] focus:outline-none focus:ring-2 focus:ring-brand/25"
+        />
+      </div>
     </div>
 
     <!-- Loading state -->
-    <div v-if="loading" class="flex items-center justify-center py-16 text-zinc-400">
-      <span>Loading packages...</span>
+    <div v-if="loading" class="flex items-center justify-center py-16 text-muted-foreground">
+      <span>Loading packages…</span>
     </div>
 
     <!-- Error state -->
-    <div v-else-if="error" class="py-12 text-center text-zinc-500">
+    <div v-else-if="error" class="py-12 text-center text-muted-foreground">
       <p class="text-sm">{{ error }}</p>
-      <button @click="fetchPackages" class="mt-3 text-sm text-violet-500 hover:underline">Retry</button>
+      <button
+        @click="fetchPackages"
+        class="mt-4 inline-flex items-center rounded-lg border border-border px-4 py-1.5 text-sm font-medium text-foreground transition-colors hover:border-[color-mix(in_oklab,var(--brand)_55%,var(--border))] hover:text-brand"
+      >
+        Retry
+      </button>
     </div>
 
     <!-- Empty state -->
-    <div v-else-if="allPackages.length === 0" class="py-12 text-center text-zinc-400">
+    <div v-else-if="allPackages.length === 0" class="py-12 text-center text-muted-foreground">
       <p class="text-sm">{{ searchQuery ? `No packages found for "${searchQuery}".` : 'No packages published yet.' }}</p>
     </div>
 
     <!-- Browse mode: featured cards + list -->
     <template v-else>
       <!-- Featured section (only shown when not searching) -->
-      <div v-if="!searchQuery && featured.length > 0" class="mb-10">
-        <h2 class="text-lg font-semibold text-zinc-700 dark:text-zinc-300 mb-4">Featured</h2>
-        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+      <div v-if="!searchQuery && featured.length > 0" class="mb-12">
+        <h2 class="mb-4 font-mono text-xs font-semibold tracking-[0.08em] text-foreground">featured</h2>
+        <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
           <PackageCard
             v-for="pkg in featured"
             :key="pkg.name"
@@ -116,8 +136,8 @@ onMounted(fetchPackages)
 
       <!-- All packages list (or search results) -->
       <div>
-        <h2 v-if="!searchQuery && rest.length > 0" class="text-lg font-semibold text-zinc-700 dark:text-zinc-300 mb-3">All Packages</h2>
-        <h2 v-else-if="searchQuery" class="text-lg font-semibold text-zinc-700 dark:text-zinc-300 mb-3">
+        <h2 v-if="!searchQuery && rest.length > 0" class="mb-3 font-mono text-xs font-semibold tracking-[0.08em] text-foreground">all packages</h2>
+        <h2 v-else-if="searchQuery" class="mb-3 font-mono text-xs font-semibold tracking-[0.08em] text-foreground">
           {{ allPackages.length }} result{{ allPackages.length !== 1 ? 's' : '' }} for "{{ searchQuery }}"
         </h2>
         <PackageList :packages="searchQuery ? allPackages : rest" />

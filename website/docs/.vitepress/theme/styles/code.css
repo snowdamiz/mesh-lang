@@ -17,7 +17,7 @@ div[class*='language-'] {
   border-radius: 0.75rem;
   overflow: hidden;
   border: 1px solid var(--border);
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04), 0 1px 2px rgba(0, 0, 0, 0.06);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03), 0 10px 24px -16px rgba(0, 0, 0, 0.12);
   margin-top: 1.25rem;
   margin-bottom: 1.25rem;
 }
@@ -63,7 +63,7 @@ div[class*='language-'] > button.copy {
   display: block;
   justify-content: center;
   align-items: center;
-  border-radius: 6px;
+  border-radius: 8px;
   width: 36px;
   height: 36px;
   border: 1px solid var(--border);
@@ -96,8 +96,8 @@ div[class*='language-'] > button.copy.copied::before {
   justify-content: center;
   align-items: center;
   border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 0 10px;
+  border-radius: 8px;
+  padding: 0 12px;
   width: fit-content;
   height: 36px;
   font-size: 12px;

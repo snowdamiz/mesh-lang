@@ -1,175 +1,94 @@
 ---
 title: Distributed Proof
-description: Canonical proof map for one public app URL in front of multiple nodes, server-side runtime placement, direct request-key lookup, and the serious PostgreSQL starter’s staged deploy/failover chain.
+description: Run the PostgreSQL-backed Docker proof for autonomous scaling, routing, failover, and drain
 prev: false
 next: false
 ---
 
 # Distributed Proof
 
-This is the only public-secondary docs page that carries the named clustered verifier rails.
-
-Use [Distributed Actors](/docs/distributed/) for the language/runtime primitives, [Clustered Example](/docs/getting-started/clustered-example/) for the scaffold-first walkthrough, and [Production Backend Proof](/docs/production-backend-proof/) when the work becomes backend-specific. The clustered proof story now centers the generated PostgreSQL starter's M053 chain: `bash scripts/verify-m053-s01.sh` owns staged deploy truth and `bash scripts/verify-m053-s02.sh` owns failover truth. Keep hosted/public-surface checks as operational follow-up instead of the routine public proof chain.
-
-Keep the public starter split honest here too: [`examples/todo-sqlite/README.md`](https://github.com/hyperpush-org/mesh-lang/blob/main/examples/todo-sqlite/README.md) is the honest local single-node starter with no `work.mpl`, `HTTP.clustered(...)`, or `meshc cluster` story, while [`examples/todo-postgres/README.md`](https://github.com/hyperpush-org/mesh-lang/blob/main/examples/todo-postgres/README.md) is the serious shared/deployable starter that keeps source-first `@cluster` work and only dogfoods explicit-count `HTTP.clustered(1, ...)` on `GET /todos` and `GET /todos/:id`.
-
-Once the public proof map reaches the maintained-app boundary, hand off into the [Hyperpush product repo](https://github.com/hyperpush-org/hyperpush-mono) and its [`mesher/README.md`](https://github.com/hyperpush-org/hyperpush-mono/blob/main/mesher/README.md) maintainer runbook. The local `verify-m051*` rails stay retained compatibility wrappers, not the public clustered story.
-
-A proxy/platform ingress may expose one public app URL in front of multiple nodes, but that is where the public routing story ends. Mesh runtime placement starts after ingress forwards the request: the runtime records ingress, owner, replica, and execution truth, and operators inspect that on `meshc cluster` instead of through sticky sessions, frontend-aware routing, or client-visible topology.
-
-## Public surfaces and verifier rails
-
-This page is the canonical clustered proof map. The other public-secondary pages should hand readers here instead of repeating the named clustered verifier ledger.
-
-- [Clustered Example](/docs/getting-started/clustered-example/) — first stop for the public scaffold surface
-- [`examples/todo-postgres/README.md`](https://github.com/hyperpush-org/mesh-lang/blob/main/examples/todo-postgres/README.md) — the serious shared/deployable starter that owns the shipped clustered contract
-- [`examples/todo-sqlite/README.md`](https://github.com/hyperpush-org/mesh-lang/blob/main/examples/todo-sqlite/README.md) — the honest local single-node SQLite starter, not a clustered/operator proof surface
-- `bash scripts/verify-m053-s01.sh` — starter-owned staged deploy proof that retains the generated PostgreSQL bundle plus bundled artifacts
-- `bash scripts/verify-m053-s02.sh` — starter-owned failover proof that replays S01, exercises the staged PostgreSQL starter under failover, and retains the failover proof bundle
-- [Production Backend Proof](/docs/production-backend-proof/) — the compact backend proof handoff before any maintainer-only surface
-- [Hyperpush product repo](https://github.com/hyperpush-org/hyperpush-mono) — repo-boundary maintained-app/backend handoff
-- [`mesher/README.md`](https://github.com/hyperpush-org/hyperpush-mono/blob/main/mesher/README.md) — deeper maintained app runbook after the repo-boundary handoff
-
-## One public URL, server-side placement, and request correlation
-
-Keep the clustered HTTP story bounded:
-
-- a proxy/platform ingress may expose one public app URL in front of multiple nodes, but it only chooses the HTTP ingress node
-- Mesh runtime placement begins after that ingress hop and records ingress, owner, replica, and execution truth on the runtime side
-- clustered `GET /todos` and `GET /todos/:id` responses include `X-Mesh-Continuity-Request-Key`; when you have that header, jump straight to the same request with `meshc cluster continuity <node-name@host:port> <request-key> --json`
-- continuity-list discovery stays for startup records and manual inspection when you do not already have a request key
-- `meshc cluster status` and `meshc cluster diagnostics` stay the outer operator/debug rails around either path
-
-## What the public clustered contract proves
-
-The public clustered story is intentionally smaller than the repo's full retained proof inventory:
-
-- start with `meshc init --clustered`, then branch to the generated Postgres or SQLite example that matches the contract you actually want
-- keep `meshc init --template todo-api --db postgres` as the fuller shared/deployable starter without changing the source-first `@cluster` contract
-- keep `meshc init --template todo-api --db sqlite` on its honest local single-node contract instead of projecting clustered/operator claims onto it
-- let one public app URL sit in front of multiple nodes while Mesh runtime placement stays server-side and operator truth stays on `meshc cluster`
-- let `bash scripts/verify-m053-s01.sh` own staged deploy proof for the generated PostgreSQL starter
-- let `bash scripts/verify-m053-s02.sh` own failover proof for that same staged PostgreSQL starter
-- keep hosted/public-surface checks as operational follow-up instead of the routine public proof chain
-- keep clustered declaration state in source instead of the manifest
-- rename legacy helper-shaped names to ordinary verbs instead of preserving runtime-plumbing-shaped public APIs
-- let the runtime own startup, placement, continuity, promotion, recovery, and diagnostics
-- use the same operator surfaces everywhere: status, direct continuity-record lookup when a clustered HTTP response already gave you a request key, continuity-list discovery for startup/manual inspection, and diagnostics
-- keep the PostgreSQL Todo starter's clustered-route adoption narrow: `work.mpl` stays route-free, `GET /todos` and `GET /todos/:id` use explicit-count `HTTP.clustered(1, ...)`, and `GET /health` plus mutating routes stay local application routes
-- keep Fly as a retained read-only reference/proof lane for already-deployed environments instead of treating it as a coequal public starter surface
-- keep the deeper backend handoff on Production Backend Proof, the Hyperpush product repo, and the retained backend-only compatibility wrappers instead of promoting any mesh-lang-local product-source path as a coequal first-contact clustered starter
-
-## Retained reference rails
-
-Older repo-owned rails still exist for compatibility, history, and deeper operator proof, but they are secondary to the M053 starter-owned chain above:
-
-- `bash scripts/verify-m051-s01.sh` — mesh-lang compatibility wrapper that confirms the public handoff still points at the product-owned Mesher verifier
-- `bash scripts/verify-m051-s02.sh` — retained backend-only verifier replay kept behind the repo-boundary handoff
-- `bash scripts/verify-m047-s04.sh` — authoritative M047 cutover rail for the source-first route-free clustered contract
-- `bash scripts/verify-m047-s05.sh` — retained historical clustered Todo subrail kept behind fixture-backed rails instead of the public starter contract
-- `cargo test -p meshc --test e2e_m047_s07 -- --nocapture` — repo S07 rail for default-count and two-node `HTTP.clustered(...)` behavior beyond the PostgreSQL starter's explicit-count read routes
-- `bash scripts/verify-m047-s06.sh` — docs and retained-proof closeout rail that wraps S05, rebuilds docs truth, and owns the assembled `.tmp/m047-s06/verify` bundle
-- `bash scripts/verify-m046-s06.sh`, `bash scripts/verify-m046-s05.sh`, `bash scripts/verify-m046-s04.sh`, `bash scripts/verify-m045-s05.sh`, `bash scripts/verify-m045-s04.sh`, and `bash scripts/verify-m045-s03.sh` — historical compatibility aliases and subrails retained for replay, not for first-contact starter teaching
-- `cargo run -q -p meshc -- build scripts/fixtures/clustered/tiny-cluster` plus `cargo run -q -p meshc -- test scripts/fixtures/clustered/tiny-cluster/tests` — lower-level retained tiny-cluster fixture contract
-- `cargo run -q -p meshc -- build scripts/fixtures/clustered/cluster-proof` plus `cargo run -q -p meshc -- test scripts/fixtures/clustered/cluster-proof/tests` — retained fixture contract for the bounded Fly/reference package
-- `bash scripts/verify-m043-s04-fly.sh --help` and the live mode behind `CLUSTER_PROOF_FLY_APP` / `CLUSTER_PROOF_BASE_URL` — retained read-only Fly sanity/config/log/probe verifier for an already-deployed reference environment
-
-## Named proof commands
-
-These are the repo-level commands behind the current distributed proof story:
+The autonomous clustering release gate is one repository-owned command:
 
 ```bash
-# public starter-owned clustered proof chain in mesh-lang
-bash scripts/verify-m053-s01.sh
-bash scripts/verify-m053-s02.sh
-
-# after the repo-boundary handoff in the Hyperpush product repo
-bash mesher/scripts/verify-maintainer-surface.sh
-
-# retained mesh-lang compatibility and history rails
-bash scripts/verify-m051-s01.sh
-bash scripts/verify-m051-s02.sh
-bash scripts/verify-m047-s04.sh
-bash scripts/verify-m047-s05.sh
-cargo test -p meshc --test e2e_m047_s07 -- --nocapture
-bash scripts/verify-m047-s06.sh
-bash scripts/verify-m046-s06.sh
-bash scripts/verify-m046-s05.sh
-bash scripts/verify-m046-s04.sh
-bash scripts/verify-m045-s05.sh
-bash scripts/verify-m045-s04.sh
-bash scripts/verify-m045-s03.sh
-cargo run -q -p meshc -- build scripts/fixtures/clustered/tiny-cluster
-cargo run -q -p meshc -- test scripts/fixtures/clustered/tiny-cluster/tests
-cargo run -q -p meshc -- build scripts/fixtures/clustered/cluster-proof
-cargo run -q -p meshc -- test scripts/fixtures/clustered/cluster-proof/tests
-npm --prefix website run build
-bash scripts/verify-m043-s04-fly.sh --help
-CLUSTER_PROOF_FLY_APP=mesh-cluster-proof \
-CLUSTER_PROOF_BASE_URL=https://mesh-cluster-proof.fly.dev \
-  bash scripts/verify-m043-s04-fly.sh
+cargo run -p meshc -- proof docker-autoscaling
 ```
 
-> **Note:** The Fly verifier is intentionally read-only and intentionally secondary. Use `bash scripts/verify-m043-s04-fly.sh --help` when you only want the non-live syntax/help path. Live mode inspects an already-deployed reference app and optionally reads an existing continuity key with `CLUSTER_PROOF_REQUEST_KEY`; it does not create new work, does not mutate authority, and does not replace the portable staged PostgreSQL starter contract.
+With an installed compiler, run `meshc proof docker-autoscaling`.
 
-## Operator workflow across the public clustered surfaces
+This is a real local proof, not a static Compose example. Mesh commits desired capacity from runtime telemetry, invokes its Docker capacity driver, creates and removes workers, routes live requests through two gateways, survives a worker and controller leader loss, drains surplus capacity, and validates shared PostgreSQL state.
 
-Whichever public surface you start from, keep the operator flow bounded:
+Use [Autonomous Clusters](/docs/autonomous-clusters/) for configuration and [Cluster Operations](/docs/cluster-operations/) for the operator commands exercised here.
 
-1. `meshc cluster status <node-name@host:port> --json`
-2. If a clustered HTTP response returned `X-Mesh-Continuity-Request-Key`, run `meshc cluster continuity <node-name@host:port> <request-key> --json` directly for that same public request.
-3. If you are inspecting startup work or doing manual discovery without a request key yet, run `meshc cluster continuity <node-name@host:port> --json` first and then drill into a single record.
-4. `meshc cluster diagnostics <node-name@host:port> --json`
+## Prerequisites
 
-The response header is an operator/debug seam, not a client routing signal. The runtime still owns ingress, owner, replica, and execution truth.
+- Docker Engine and Docker Compose v2
+- OpenSSL
+- a supported Linux host or Docker Desktop environment
+- enough memory and CPU for three controllers, two gateways, PostgreSQL, two baseline workers, four proof-support containers, and up to five Ready workers
+- local access to build the Mesh application and driver images
 
-## Supported topology and non-goals
+The first run may pull pinned base images. Once present, the proof does not require a cloud account, Kubernetes, Prometheus, an external load balancer, or a hosted control plane.
 
-Supported topology and operator seam:
+## Topology
 
-- one primary plus one standby using the same image and the same repo packaging path
-- small env surface: cookie, discovery seed, explicit identity injection, continuity role, and promotion epoch
-- same-image local proof for destructive failover and rejoin truth through the staged PostgreSQL starter chain
-- read-only Fly inspection for already-deployed reference apps
+The fixed topology contains three controller voters, two gateway-only processes, PostgreSQL, two baseline workers, a dedicated mTLS Docker driver service, a load generator, and an evidence collector. The driver creates additional worker-only containers on the proof network.
 
-Non-goals for this public rail:
+Application workers never receive Docker credentials. The dedicated driver service is the only container with Docker Engine access. Treat unrestricted socket access as host-root-equivalent; the proof fixture is not a recommended production credential boundary.
 
-- active-active writes or active-active intake
-- multi-standby quorum or consensus claims
-- sticky sessions, frontend-aware routing, or client-visible topology claims
-- package-owned operator surfaces that compete with the runtime CLI
-- presenting retained internal fixtures as the public onboarding story
-- projecting clustered/operator claims onto the SQLite starter
-- implying Fly is a required deploy target for the public clustered contract
-- implying the retained `cluster-proof` fixture is a coequal public starter surface
+## What PostgreSQL proves
 
-## When to use this page vs the generic distributed guide
+PostgreSQL is a shared application dependency and the final data-integrity oracle. The proof seeds acknowledged Todo mutations and verifies the final row count after routing, worker loss, leader loss, scale-up, and scale-down.
 
-Use the generic [Distributed Actors](/docs/distributed/) guide when you want the language/runtime primitives.
+PostgreSQL does not perform Mesh consensus, scaling, routing, continuity, or drain. Each node keeps a different private SQLite continuity file. Mesh replicates those records and synchronizes replacements through its protocol.
 
-Use this page when you want the named proof surfaces behind the scaffold/examples-first clustered story, the PostgreSQL starter's staged deploy + failover chain, the SQLite-local boundary, the Production Backend Proof handoff into the Hyperpush product repo, and the retained Fly reference rail.
+The PostgreSQL readiness check requires continuous availability across the image entrypoint's temporary initialization server and final server restart. A node cannot pass readiness by connecting only during the initialization window.
 
-## Failure inspection map
+## Proof sequence
 
-If a proof fails, rerun the named command for the exact surface you care about:
+The command:
 
-- **Starter staged deploy proof:** `bash scripts/verify-m053-s01.sh`
-- **Starter failover proof:** `bash scripts/verify-m053-s02.sh`
-- **Repo-boundary maintained-app handoff:** [Production Backend Proof](/docs/production-backend-proof/), [Hyperpush product repo](https://github.com/hyperpush-org/hyperpush-mono), and [`mesher/README.md`](https://github.com/hyperpush-org/hyperpush-mono/blob/main/mesher/README.md)
-- **Product-owned Mesher verifier:** `bash mesher/scripts/verify-maintainer-surface.sh`
-- **mesh-lang compatibility wrapper:** `bash scripts/verify-m051-s01.sh`
-- **Retained backend-only replay:** `bash scripts/verify-m051-s02.sh`
-- **Authoritative M047 cutover rail:** `bash scripts/verify-m047-s04.sh`
-- **Historical clustered Todo subrail:** `bash scripts/verify-m047-s05.sh`
-- **Repo S07 clustered-route rail:** `cargo test -p meshc --test e2e_m047_s07 -- --nocapture`
-- **Docs + retained-proof closeout rail:** `bash scripts/verify-m047-s06.sh`
-- **Historical M046 closeout alias:** `bash scripts/verify-m046-s06.sh`
-- **Historical M046 equal-surface alias:** `bash scripts/verify-m046-s05.sh`
-- **Historical M046 package/startup alias:** `bash scripts/verify-m046-s04.sh`
-- **Historical M045 closeout alias:** `bash scripts/verify-m045-s05.sh`
-- **Historical M045 assembled alias:** `bash scripts/verify-m045-s04.sh`
-- **Historical failover-only subrail:** `bash scripts/verify-m045-s03.sh`
-- **Lower-level retained tiny-cluster fixture contract:** `cargo run -q -p meshc -- build scripts/fixtures/clustered/tiny-cluster && cargo run -q -p meshc -- test scripts/fixtures/clustered/tiny-cluster/tests`
-- **Lower-level retained cluster-proof fixture contract:** `cargo run -q -p meshc -- build scripts/fixtures/clustered/cluster-proof && cargo run -q -p meshc -- test scripts/fixtures/clustered/cluster-proof/tests`
-- **Public docs build:** `npm --prefix website run build`
-- **Read-only Fly reference check:** `bash scripts/verify-m043-s04-fly.sh --help` for syntax, or `CLUSTER_PROOF_FLY_APP=mesh-cluster-proof CLUSTER_PROOF_BASE_URL=https://mesh-cluster-proof.fly.dev bash scripts/verify-m043-s04-fly.sh` for live inspection
+1. records Docker, Compose, source, and dirty-worktree information;
+2. generates temporary node and driver mTLS identities;
+3. validates the fully resolved Compose configuration with secrets redacted;
+4. reproducibly builds the application and driver images;
+5. starts a uniquely named project and waits for PostgreSQL, controller quorum, gateways, baseline workers, continuity synchronization, and application readiness;
+6. records baseline capacity and container labels;
+7. sends sustained traffic through both gateways and checks request-key uniqueness;
+8. observes a policy-committed desired-capacity increase and Docker EnsureNode operations;
+9. follows the latest committed desired revision and waits for desired, provider-observed, and routing-eligible worker state to remain converged before benchmarking;
+10. completes 1,000 synchronized remote requests with unique continuity keys, zero failures, and p99 at or below 6,000 ms;
+11. abruptly kills a worker and verifies replacement at the committed desired count;
+12. kills the active controller leader and verifies a higher-term leader without duplicate capacity;
+13. removes load and waits for the complete healthy scale-down window;
+14. observes Draining, routing exclusion, continuity transfer and re-replication, termination, and provider-observed absence;
+15. verifies return to minimum capacity without oscillation;
+16. validates operation IDs, labels, routing, error bounds, continuity, PostgreSQL state, and cleanup.
+
+No proof step changes desired capacity manually or uses `docker compose scale`.
+
+## Evidence
+
+The command prints a timestamped evidence directory. `summary.json` contains 36 release assertions plus the final pass state. The bundle also retains environment and image identities, redacted resolved Compose configuration, baseline/peak/draining/final capacity, controller consensus snapshots, ordered decisions and driver operations, container lifecycle and labels, per-gateway and per-worker routing counts, the 1,000-request and injected-failure summaries, sampled continuity, database integrity, the redacted Compose log, redacted per-managed-worker logs, and cleanup outcome.
+
+Evidence is collected before cleanup on success and failure. Cleanup removes the fixed project, driver-created workers, networks, temporary volumes, and temporary credentials by default.
+
+## Debugging options
+
+```bash
+# Keep the failed or successful topology for live inspection
+cargo run -p meshc -- proof docker-autoscaling --keep-running
+
+# Reuse local proof images
+cargo run -p meshc -- proof docker-autoscaling --no-build
+
+# Choose the evidence location
+cargo run -p meshc -- proof docker-autoscaling --evidence-dir ./proof-evidence
+```
+
+For a failure, read `summary.json` first. Then compare capacity snapshots, the load failure classification, consensus terms, driver operation IDs, managed-container labels, continuity records, database integrity, and the redacted Compose log. Use `--keep-running` only when retained evidence is insufficient.
+
+## Pass criteria
+
+The proof exits nonzero unless Mesh itself initiates scale-up and scale-down, desired/observed/Ready/provider counts converge, operation IDs stay unique, all 1,000 synchronized requests complete remotely with unique keys inside the p99 budget, both gateways serve traffic, execution reaches eligible workers only after Ready, draining nodes receive no new work, controller failover creates no duplicate capacity, admitted safe work retains continuity, PostgreSQL matches acknowledged mutations, capacity returns to minimum without flapping, all resource bounds remain enforced, and cleanup completes.
+
+This command is mandatory before autonomous clustering release. A mocked driver, manual replica change, hosted-only demonstration, or CI-only result does not replace it.

@@ -97,13 +97,6 @@ jobs:
           cargo test -p mesh-codegen --lib --locked
           cargo build --workspace --locked
 
-      - name: Run clustered tiny-cluster smoke
-        shell: bash
-        timeout-minutes: 20
-        run: |
-          cargo run -q -p meshc -- build scripts/fixtures/clustered/tiny-cluster
-          cargo run -q -p meshc -- test scripts/fixtures/clustered/tiny-cluster/tests
-
   docs-and-sites:
     name: Docs and sites build
     runs-on: ubuntu-latest
@@ -154,3 +147,8 @@ jobs:
         run: |
           npm --prefix tools/editors/vscode-mesh ci
           npm --prefix tools/editors/vscode-mesh run compile
+
+  autonomous-cluster-proof:
+    name: Autonomous cluster proof
+    needs: whitespace-guard
+    uses: ./.github/workflows/autonomous-cluster-proof.yml

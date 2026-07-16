@@ -85,18 +85,17 @@ Once hello-world runs, pick the starter that matches your next job.
 
 - `meshc init --clustered hello_cluster` — the minimal clustered starter. It keeps the public clustered-app contract small: `work.mpl` declares `@cluster`, `main.mpl` boots through `Node.start_from_env()`, and runtime inspection stays on Mesh-owned `meshc cluster status|continuity|diagnostics` commands.
 - `meshc init --template todo-api --db sqlite todo_api` — the honest local-only starter. It is a single-node SQLite Todo API, keeps SQLite single-node only, includes actor-backed write rate limiting plus generated package tests, and makes no clustered placement or operator claims.
-- `meshc init --template todo-api --db postgres shared_todo` — the serious shared/deployable PostgreSQL starter. It keeps clustered work source-first, uses migrations plus a real `DATABASE_URL`, dogfoods `HTTP.clustered(1, ...)` only on the shared read routes while local health and mutating routes stay local, and owns the staged deploy + failover proof chain once you step onto the proof pages.
+- `meshc init --template todo-api --db postgres shared_todo` — the serious shared/deployable PostgreSQL starter. It keeps clustered work source-first, uses migrations plus a real `DATABASE_URL`, clusters shared reads and idempotent `POST /todos`, keeps local health plus unsafe-keyless `PUT` and `DELETE` local, and owns the staged deploy + failover proof chain once you step onto the proof pages.
 
 ## What's Next?
 
-Keep the public first-contact ladder explicit and ordered: clustered scaffold first, then the honest local SQLite starter, then the serious shared/deployable PostgreSQL starter, and only then the maintainer-facing backend proof page.
-
-When you need the staged deploy + failover proof chain, continue from the generated PostgreSQL starter into Production Backend Proof. That page is the repo-boundary handoff into the [Hyperpush product repo](https://github.com/hyperpush-org/hyperpush-mono) when you need maintained app/backend surfaces. Keep those deeper proof commands behind the proof pages instead of turning this first-contact guide into a verifier runbook.
+Keep the public first-contact ladder explicit and ordered: clustered scaffold first, then the honest local SQLite starter, then the shared/deployable PostgreSQL starter, and finally the autonomous cluster and release-proof guides.
 
 - [Clustered Example](/docs/getting-started/clustered-example/) -- the scaffold-first clustered tutorial using `meshc init --clustered`
 - [SQLite Todo starter](https://github.com/hyperpush-org/mesh-lang/blob/main/examples/todo-sqlite/README.md) -- the honest local-only single-node Todo starter
 - [PostgreSQL Todo starter](https://github.com/hyperpush-org/mesh-lang/blob/main/examples/todo-postgres/README.md) -- the serious shared/deployable Todo starter and the proof-page handoff for staged deploy + failover.
-- [Production Backend Proof](/docs/production-backend-proof/) -- the maintainer-facing backend proof page that hands off into the Hyperpush product repo after the starter/examples-first ladder
+- [Autonomous Clusters](/docs/autonomous-clusters/) -- configure routing, continuity, and capacity drivers
+- [Distributed Proof](/docs/distributed-proof/) -- run the self-contained Docker/PostgreSQL release proof
 
 After that starter/examples-first ladder, continue with the language guides:
 

@@ -58,30 +58,6 @@ fn compile_and_run_with_timeout(source: &str, timeout_secs: u64) -> String {
     }
 }
 
-/// Helper: compile a Mesh source and expect compilation to fail.
-/// Returns the stderr output.
-fn compile_expect_error(source: &str) -> String {
-    let temp_dir = tempfile::tempdir().expect("failed to create temp dir");
-    let project_dir = temp_dir.path().join("project");
-    std::fs::create_dir_all(&project_dir).expect("failed to create project dir");
-
-    let main_mesh = project_dir.join("main.mpl");
-    std::fs::write(&main_mesh, source).expect("failed to write main.mpl");
-
-    let meshc = find_meshc();
-    let output = Command::new(&meshc)
-        .args(["build", project_dir.to_str().unwrap()])
-        .output()
-        .expect("failed to invoke meshc");
-
-    assert!(
-        !output.status.success(),
-        "expected compilation to fail but it succeeded"
-    );
-
-    String::from_utf8_lossy(&output.stderr).to_string()
-}
-
 /// Wait for a child process with a timeout. Kill it if it exceeds the timeout.
 fn wait_with_timeout(
     mut child: std::process::Child,

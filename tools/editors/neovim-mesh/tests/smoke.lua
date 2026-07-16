@@ -2,9 +2,9 @@ local repo_root = assert(os.getenv('MESH_REPO_ROOT'), 'MESH_REPO_ROOT is require
 local requested_phase = vim.g.mesh_smoke_phase or os.getenv('MESH_NVIM_SMOKE_PHASE') or 'all'
 local uv = vim.uv or vim.loop
 local mesh = require('mesh')
-local retained_backend_root = vim.fs.joinpath(repo_root, 'scripts', 'fixtures', 'backend', 'reference-backend')
-local retained_health_path = vim.fs.joinpath(retained_backend_root, 'api', 'health.mpl')
-local retained_jobs_path = vim.fs.joinpath(retained_backend_root, 'api', 'jobs.mpl')
+local example_root = vim.fs.joinpath(repo_root, 'examples', 'todo-postgres')
+local example_health_path = vim.fs.joinpath(example_root, 'api', 'health.mpl')
+local example_todos_path = vim.fs.joinpath(example_root, 'api', 'todos.mpl')
 
 local run_syntax = requested_phase == 'all' or requested_phase == 'syntax'
 local run_lsp = requested_phase == 'all' or requested_phase == 'lsp'
@@ -294,7 +294,7 @@ end
 
 local function run_cluster_decorator_syntax_case()
   local case_id = 'cluster-decorators'
-  local fixture_path = vim.fs.joinpath(repo_root, 'scripts', 'fixtures', 'm048-s04-cluster-decorators.mpl')
+  local fixture_path = vim.fs.joinpath(repo_root, 'scripts', 'fixtures', 'cluster-decorators.mpl')
   local lines = assert_mesh_syntax_fixture(case_id, fixture_path)
 
   local plain_line, plain_col = find_literal_position_or_fail(case_id, fixture_path, lines, '@cluster pub fn add()', 'plain-decorator')
@@ -635,18 +635,18 @@ local function assert_override_entry_project_attach()
 end
 
 local function assert_real_project_reuses_client()
-  local health_path = retained_health_path
-  local jobs_path = retained_jobs_path
+  local health_path = example_health_path
+  local todos_path = example_todos_path
 
   local health_buf = open_buffer(health_path)
   local health_client = wait_for_mesh_client(health_buf, 8000)
   if not health_client then
     fail('lsp', string.format('reason=attach_timeout case=health buffer=%s root_marker=%s last_error=%s', rel(health_path), mesh.detect_root(health_buf).marker, current_mesh_error()))
   end
-  summarize_client(health_buf, health_client, 'reference-health')
+  summarize_client(health_buf, health_client, 'example-health')
 
   local health_root = canonical(health_client.config.root_dir)
-  local expected_root = canonical(retained_backend_root)
+  local expected_root = canonical(example_root)
   if health_root ~= expected_root then
     fail('lsp', string.format('reason=wrong_root case=health expected=%s actual=%s', rel(expected_root), rel(health_client.config.root_dir)))
   end
@@ -659,20 +659,20 @@ local function assert_real_project_reuses_client()
     fail('lsp', 'reason=missing_candidate_trace case=health')
   end
 
-  local jobs_buf = open_buffer(jobs_path)
-  local jobs_client = wait_for_mesh_client(jobs_buf, 8000)
-  if not jobs_client then
-    fail('lsp', string.format('reason=attach_timeout case=jobs buffer=%s root_marker=%s last_error=%s', rel(jobs_path), mesh.detect_root(jobs_buf).marker, current_mesh_error()))
+  local todos_buf = open_buffer(todos_path)
+  local todos_client = wait_for_mesh_client(todos_buf, 8000)
+  if not todos_client then
+    fail('lsp', string.format('reason=attach_timeout case=todos buffer=%s root_marker=%s last_error=%s', rel(todos_path), mesh.detect_root(todos_buf).marker, current_mesh_error()))
   end
-  summarize_client(jobs_buf, jobs_client, 'reference-jobs')
+  summarize_client(todos_buf, todos_client, 'example-todos')
 
-  if jobs_client.id ~= health_client.id then
-    fail('lsp', string.format('reason=duplicate_client expected_reuse_of=%d actual=%d', health_client.id, jobs_client.id))
+  if todos_client.id ~= health_client.id then
+    fail('lsp', string.format('reason=duplicate_client expected_reuse_of=%d actual=%d', health_client.id, todos_client.id))
   end
 
-  local mesh_count = #mesh_clients(jobs_buf, false)
+  local mesh_count = #mesh_clients(todos_buf, false)
   if mesh_count ~= 1 then
-    fail('lsp', string.format('reason=unexpected_client_count count=%d buffer=%s', mesh_count, rel(jobs_path)))
+    fail('lsp', string.format('reason=unexpected_client_count count=%d buffer=%s', mesh_count, rel(todos_path)))
   end
 end
 
@@ -725,7 +725,7 @@ local function run_lsp_phase()
     fail('lsp', 'reason=missing_vim_lsp_enable')
   end
 
-  assert_missing_override_fails(retained_health_path)
+  assert_missing_override_fails(example_health_path)
   assert_real_project_reuses_client()
   assert_override_entry_project_attach()
   assert_single_file_attach()

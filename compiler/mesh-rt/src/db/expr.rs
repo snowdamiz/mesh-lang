@@ -1,6 +1,6 @@
 //! Neutral SQL expression builder for the Mesh runtime.
 //!
-//! This layer models the portable expression nodes needed by M033/S01 without
+//! This layer models portable database expression nodes without
 //! exposing vendor-specific helpers. Expressions serialize to SQL fragments plus
 //! ordered parameter lists so Query/Repo can embed them into SELECT, WHERE,
 //! UPDATE, and ON CONFLICT clauses.

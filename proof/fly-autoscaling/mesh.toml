@@ -1,0 +1,66 @@
+[package]
+name = "todo-postgres"
+version = "0.1.0"
+
+[dependencies]
+
+[cluster]
+mode = "autonomous"
+default_replicas = 2
+durability = "strict"
+
+[cluster.controllers]
+voters = 3
+autoscale = false
+
+[cluster.roles]
+gateway = true
+worker = true
+
+[cluster.autoscaling]
+enabled = true
+managed_roles = ["worker"]
+min_nodes = 2
+max_nodes = 5
+target_inflight_per_node = 2
+target_queue_wait = "25ms"
+scale_up_window = "1s"
+scale_down_window = "45s"
+cooldown = "10s"
+max_scale_up_step = 3
+max_scale_down_step = 1
+max_unavailable = 1
+
+[cluster.routing]
+algorithm = "adaptive"
+load_report_interval = "500ms"
+load_report_ttl = "5s"
+max_inflight_per_node = 2048
+max_queued_per_node = 4096
+max_queued_bytes_per_node = "16MiB"
+retry_budget_percent = 10
+
+[cluster.continuity]
+terminal_retention = "2h"
+tombstone_retention = "4h"
+max_terminal_records = 250000
+max_disk_bytes = "2GiB"
+snapshot_chunk_bytes = "1MiB"
+
+[cluster.capacity]
+driver = "fly"
+startup_timeout = "2m"
+drain_timeout = "2m"
+termination_timeout = "2m"
+
+[cluster.capacity.fly]
+app_name = "@@DATA_APP@@"
+token_env = "FLY_API_TOKEN"
+image = "@@WORKER_IMAGE@@"
+region = "@@REGION@@"
+pool = "workers"
+template_revision = "@@RUN_ID@@"
+cpu_kind = "shared"
+cpus = 1
+memory_mb = 512
+env = { PORT = "8080", TODO_RATE_LIMIT_WINDOW_SECONDS = "60", TODO_RATE_LIMIT_MAX_REQUESTS = "1000000", MESH_CLUSTER_ID = "@@CLUSTER_ID@@", MESH_CLUSTER_MODE = "autonomous", MESH_DISCOVERY_SEED = "@@CONTROLLER_APP@@.internal", MESH_CLUSTER_PORT = "4370", MESH_CONTROLLER_VOTERS = "@@VOTERS@@", MESH_ADAPTIVE_ROUTING = "true", MESH_CONTINUITY_DB = "/tmp/mesh-continuity.db", MESH_FAILURE_DOMAIN = "dynamic-worker", MESH_SCHEDULER_MIN_WORKERS = "2", MESH_SCHEDULER_MAX_WORKERS = "8", MESH_ROLES = "worker" }

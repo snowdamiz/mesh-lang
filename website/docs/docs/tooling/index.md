@@ -7,7 +7,7 @@ description: Formatter, REPL, package manager, LSP, and editor support for Mesh
 
 Mesh ships a developer toolchain centered on the `meshc` compiler plus the companion `meshpkg` package CLI. The verified public install path uses the documentation-served installer pair `https://meshlang.dev/install.sh` and `https://meshlang.dev/install.ps1` to place both binaries on your PATH before you choose a starter, configure formatting or testing, or wire Mesh into your editor.
 
-> **Production backend proof:** This page stays focused on the public day-one CLI workflow first. When you later need the deeper maintainer-facing backend proof path, start with [Production Backend Proof](/docs/production-backend-proof/). That page is the repo-boundary handoff into the [Hyperpush product repo](https://github.com/hyperpush-org/hyperpush-mono) instead of a first-contact repo-root runbook.
+> **Autonomous cluster proof:** This page stays focused on the public day-one CLI workflow. Use [Autonomous Clusters](/docs/autonomous-clusters/) for capacity configuration and [Distributed Proof](/docs/distributed-proof/) for the repository-owned release gates.
 
 ## Install the CLI tools
 
@@ -47,7 +47,7 @@ meshpkg update
 
 Both commands rerun the canonical installer path and refresh both `meshc` and `meshpkg` together.
 
-For the named maintainer-facing backend proof behind this public install contract, see [Production Backend Proof](/docs/production-backend-proof/) and follow its repo-boundary handoff into the Hyperpush product repo when the starter/examples-first ladder stops being enough.
+For the clustered release proof behind this install contract, see [Distributed Proof](/docs/distributed-proof/).
 
 If you are contributing to Mesh or need an unsupported target, build from source instead; treat that as an alternative workflow, not the primary public install contract.
 
@@ -95,7 +95,7 @@ That scaffold adds:
 - built-in operator guidance that points at the runtime-owned CLI instead of app-authored control-plane surfaces
 - follow-on guidance that points at [`examples/todo-postgres/README.md`](https://github.com/hyperpush-org/mesh-lang/blob/main/examples/todo-postgres/README.md) for the serious shared/deployable starter and [`examples/todo-sqlite/README.md`](https://github.com/hyperpush-org/mesh-lang/blob/main/examples/todo-sqlite/README.md) for the honest local starter instead of internal proof fixtures
 
-If you are migrating older clustered code, move `clustered(work)` into source-first `@cluster`, delete any `[cluster]` manifest stanza, and rename helper-shaped entries such as `execute_declared_work(...)` / `Work.execute_declared_work` to ordinary verbs like `add()` or `sync_todos()`. Keep the route-free `@cluster` surfaces canonical: the PostgreSQL Todo starter only dogfoods explicit-count `HTTP.clustered(1, ...)` on `GET /todos` and `GET /todos/:id`, while `GET /health` and mutating routes stay local. Default-count and two-node clustered-route behavior stay on the Distributed Proof handoff instead of the public starter contract.
+If you are migrating older clustered code, move `clustered(work)` into source-first `@cluster`, delete the removed placement stanza, and rename helper-shaped entries such as `execute_declared_work(...)` / `Work.execute_declared_work` to ordinary verbs like `add()` or `sync_todos()`. Keep source-declared `@cluster` surfaces canonical: the PostgreSQL Todo starter clusters `GET /todos`, `GET /todos/:id`, and idempotent `POST /todos`; `GET /health` plus unsafe-keyless `PUT` and `DELETE` stay local. The autonomous cluster manifest owns deployment policy rather than handler identity.
 
 If you want the honest local Todo starter, generate SQLite explicitly:
 
@@ -111,7 +111,7 @@ When you need the serious shared or deployable Todo starter, generate Postgres i
 meshc init --template todo-api --db postgres my_shared_todo
 ```
 
-The PostgreSQL Todo starter keeps the clustered-function contract source-first and route-free: `work.mpl` stays on `@cluster pub fn sync_todos()`, `main.mpl` boots through `Node.start_from_env()`, `GET /todos` and `GET /todos/:id` dogfood explicit-count `HTTP.clustered(1, ...)`, `GET /health` plus mutating routes stay local, and the Dockerfile packages the binary produced by `meshc build .`. Treat the PostgreSQL starter as the fuller starter layered above the same route-free clustered contract, not as a replacement for the canonical route-free public surfaces. It is also the generated starter that owns the staged deploy + failover proof chain once you leave this first-contact tooling page for the proof pages. Keep the SQLite starter on its honest single-node contract instead of treating it as a clustered/operator proof surface.
+The PostgreSQL Todo starter keeps the clustered-function contract source-first: `work.mpl` stays on `@cluster pub fn sync_todos()`, `main.mpl` boots through `Node.start_from_env()`, shared reads and idempotent `POST /todos` use `HTTP.clustered(...)`, `GET /health` plus unsafe-keyless `PUT` and `DELETE` stay local, and the Dockerfile packages the binary produced by `meshc build .`. It is also the generated starter that owns the staged deploy + failover proof chain once you leave this first-contact tooling page for the proof pages. Keep the SQLite starter on its honest single-node contract instead of treating it as a clustered/operator proof surface.
 
 Inspect a running clustered app with the same operator order used by the scaffold and [`examples/todo-postgres/README.md`](https://github.com/hyperpush-org/mesh-lang/blob/main/examples/todo-postgres/README.md):
 
@@ -122,14 +122,15 @@ meshc cluster continuity <node-name@host:port> <request_key> --json
 meshc cluster diagnostics <node-name@host:port> --json
 ```
 
-Use the list form first to discover startup or request keys, then inspect a single continuity record. After that CLI order, keep the public follow-on ladder explicit. Keep the deeper proof commands behind Production Backend Proof and Distributed Proof, and keep the product-owned runbook on the far side of the Hyperpush repo handoff instead of turning this first-contact tooling page into a verifier runbook: Keep the deeper proof commands behind Production Backend Proof and Distributed Proof instead of turning this first-contact tooling page into a verifier runbook:
+Use the list form first to discover startup or request keys, then inspect a single continuity record. Continue with:
 
 - [Clustered Example](/docs/getting-started/clustered-example/) — the scaffold-first clustered app story
 - [SQLite Todo starter](https://github.com/hyperpush-org/mesh-lang/blob/main/examples/todo-sqlite/README.md) — the honest local-only single-node starter
 - [PostgreSQL Todo starter](https://github.com/hyperpush-org/mesh-lang/blob/main/examples/todo-postgres/README.md) — the serious shared/deployable starter and the proof-page handoff for staged deploy + failover
-- [Production Backend Proof](/docs/production-backend-proof/) — the maintainer-facing backend proof page after the starter/examples-first ladder, where the repo-boundary handoff into the Hyperpush product repo begins
+- [Autonomous Clusters](/docs/autonomous-clusters/) — production routing, continuity, and capacity configuration
+- [Distributed Proof](/docs/distributed-proof/) — Docker/PostgreSQL and release-gate verification
 
-Keep the starter split explicit here too: [`examples/todo-sqlite/README.md`](https://github.com/hyperpush-org/mesh-lang/blob/main/examples/todo-sqlite/README.md) is the honest local starter with no `work.mpl`, `HTTP.clustered(...)`, or `meshc cluster` story, while [`examples/todo-postgres/README.md`](https://github.com/hyperpush-org/mesh-lang/blob/main/examples/todo-postgres/README.md) is the shared/deployable route-free starter that only dogfoods explicit-count `HTTP.clustered(1, ...)` on `GET /todos` and `GET /todos/:id`.
+Keep the starter split explicit here too: [`examples/todo-sqlite/README.md`](https://github.com/hyperpush-org/mesh-lang/blob/main/examples/todo-sqlite/README.md) is the honest local starter with no `work.mpl`, `HTTP.clustered(...)`, or `meshc cluster` story, while [`examples/todo-postgres/README.md`](https://github.com/hyperpush-org/mesh-lang/blob/main/examples/todo-postgres/README.md) is the shared/deployable starter with clustered reads and an idempotent clustered mutation.
 
 ### Project Manifest
 
@@ -494,16 +495,6 @@ Editors outside the first-class tier can still reuse the shared Mesh surfaces, b
 
 Best-effort examples include Emacs, Helix, Zed, Sublime Text, and TextMate-style consumers of the shared grammar. Mesh does not publish repo-owned editor-host smoke, packaging, or troubleshooting guides for those setups.
 
-## Assembled first-contact docs verifier
-
-When you need the repo-root proof that the public first-contact docs still tell one coherent story — install Mesh, run hello-world, then deliberately choose the clustered scaffold, the honest local SQLite Todo starter, or the serious shared/deployable Postgres starter — run:
-
-```bash
-bash scripts/verify-m050-s02.sh
-```
-
-This verifier replays the slice-owned first-contact source contract, the retained M047 docs rails plus the retained M048 and M036 tooling contracts, then performs a serial `npm --prefix website run build` and copies built HTML snapshots for Getting Started, Clustered Example, and Tooling into `.tmp/m050-s02/verify/` for diagnosis.
-
 ## Routine compatibility workflow
 
 Normal PRs and `main` pushes now also fan out through `compatibility-matrix.yml`.
@@ -546,24 +537,6 @@ The verifier persists the candidate and hosted-run evidence under:
 
 - `.tmp/m034-s05/verify/candidate-tags.json`
 - `.tmp/m034-s05/verify/remote-runs.json`
-
-## Assembled contract verifier
-
-When you need the retained repo-root proof for installer-backed updates, optional override entrypoints, package publish/archive truth, shared grammar parity, and the bounded editor surface, run:
-
-```bash
-bash scripts/verify-m048-s05.sh
-```
-
-## Assembled scaffold/example verifier
-
-When you need the repo-root proof that the public Todo onboarding story still stays scaffold/examples-first — SQLite remains the honest local starter, Postgres remains the serious shared/deployable path, and the retained M048/tooling guardrails stay green underneath that split — run:
-
-```bash
-bash scripts/verify-m049-s05.sh
-```
-
-This assembled verifier replays the new first-contact docs preflight, the dual-db scaffold rails, the direct `/examples` parity check, the retained clustered proof wrappers, and the retained M048 tooling verifier, then publishes one retained bundle under `.tmp/m049-s05/verify/` for diagnosis.
 
 ## Tool Summary
 

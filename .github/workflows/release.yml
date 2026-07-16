@@ -405,10 +405,10 @@ jobs:
       MESH_PUBLISH_OWNER: ${{ secrets.MESH_PUBLISH_OWNER }}
       MESH_PUBLISH_TOKEN: ${{ secrets.MESH_PUBLISH_TOKEN }}
 
-  authoritative-starter-failover-proof:
-    name: Authoritative starter failover proof
+  autonomous-cluster-proof:
+    name: Autonomous cluster proof
     if: startsWith(github.ref, 'refs/tags/v')
-    uses: ./.github/workflows/authoritative-starter-failover-proof.yml
+    uses: ./.github/workflows/autonomous-cluster-proof.yml
 
   # ── Release asset smoke ────────────────────────────────────────────
 
@@ -585,7 +585,7 @@ jobs:
 
   release:
     name: Create Release
-    needs: [build, build-meshpkg, authoritative-live-proof, authoritative-starter-failover-proof, verify-release-assets]
+    needs: [build, build-meshpkg, authoritative-live-proof, autonomous-cluster-proof, verify-release-assets]
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     permissions:

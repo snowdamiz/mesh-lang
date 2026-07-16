@@ -614,53 +614,47 @@ mod tests {
     use crate::gc::mesh_rt_init;
 
     fn init_runtime() {
-        unsafe { mesh_rt_init() };
+        mesh_rt_init();
     }
 
     #[test]
     fn test_list_collect() {
         init_runtime();
-        unsafe {
-            // Build a list [10, 20, 30]
-            let data: Vec<u64> = vec![10, 20, 30];
-            let list = mesh_list_from_array(data.as_ptr(), 3);
-            let iter = mesh_list_iter_new(list);
-            let collected = mesh_list_collect(iter);
+        // Build a list [10, 20, 30]
+        let data: Vec<u64> = vec![10, 20, 30];
+        let list = mesh_list_from_array(data.as_ptr(), 3);
+        let iter = mesh_list_iter_new(list);
+        let collected = mesh_list_collect(iter);
 
-            assert_eq!(mesh_list_length(collected), 3);
-            assert_eq!(mesh_list_get(collected, 0), 10);
-            assert_eq!(mesh_list_get(collected, 1), 20);
-            assert_eq!(mesh_list_get(collected, 2), 30);
-        }
+        assert_eq!(mesh_list_length(collected), 3);
+        assert_eq!(mesh_list_get(collected, 0), 10);
+        assert_eq!(mesh_list_get(collected, 1), 20);
+        assert_eq!(mesh_list_get(collected, 2), 30);
     }
 
     #[test]
     fn test_map_collect() {
         init_runtime();
-        unsafe {
-            // Build a list of 2 elements, then enumerate -> collect into map
-            // enumerate produces (index, value) tuples
-            let data: Vec<u64> = vec![100, 200];
-            let list = mesh_list_from_array(data.as_ptr(), 2);
-            let iter = mesh_list_iter_new(list);
-            let enum_iter = mesh_iter_enumerate(iter);
-            let collected_map = mesh_map_collect(enum_iter);
+        // Build a list of 2 elements, then enumerate -> collect into map
+        // enumerate produces (index, value) tuples
+        let data: Vec<u64> = vec![100, 200];
+        let list = mesh_list_from_array(data.as_ptr(), 2);
+        let iter = mesh_list_iter_new(list);
+        let enum_iter = mesh_iter_enumerate(iter);
+        let collected_map = mesh_map_collect(enum_iter);
 
-            assert_eq!(mesh_map_size(collected_map), 2);
-        }
+        assert_eq!(mesh_map_size(collected_map), 2);
     }
 
     #[test]
     fn test_set_collect() {
         init_runtime();
-        unsafe {
-            // Build a list [1, 2, 2, 3] -> collect into set (dedup)
-            let data: Vec<u64> = vec![1, 2, 2, 3];
-            let list = mesh_list_from_array(data.as_ptr(), 4);
-            let iter = mesh_list_iter_new(list);
-            let collected_set = mesh_set_collect(iter);
+        // Build a list [1, 2, 2, 3] -> collect into set (dedup)
+        let data: Vec<u64> = vec![1, 2, 2, 3];
+        let list = mesh_list_from_array(data.as_ptr(), 4);
+        let iter = mesh_list_iter_new(list);
+        let collected_set = mesh_set_collect(iter);
 
-            assert_eq!(mesh_set_size(collected_set), 3); // Deduplication: {1, 2, 3}
-        }
+        assert_eq!(mesh_set_size(collected_set), 3); // Deduplication: {1, 2, 3}
     }
 }

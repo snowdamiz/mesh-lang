@@ -15,11 +15,16 @@ corosensei = "0.3"
 parking_lot = "0.12"
 rustc-hash = { workspace = true }
 serde_json = "1"
+serde = { workspace = true }
 ureq = { version = "3", features = ["gzip"] }
+openraft = { version = "0.9.21", features = ["serde", "storage-v2"] }
+tokio = { version = "1", features = ["rt-multi-thread", "sync", "time", "macros"] }
+redb = "4.1"
 libsqlite3-sys = { version = "0.36", features = ["bundled"] }
 # Phase 54: PostgreSQL wire protocol
 sha2 = "0.10"
 hmac = "0.12"
+subtle = "2.6"
 md-5 = "0.10"
 pbkdf2 = { version = "0.12", default-features = false, features = ["hmac"] }
 base64 = "0.22"

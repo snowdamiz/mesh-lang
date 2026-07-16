@@ -1,40 +1,24 @@
 # Service Bool return E2E test.
-# Verifies: service call returning Bool type with struct state.
+# Verifies: service calls returning and accepting Bool values.
 # Exercises the Bool truncation path (i64 -> i1) in codegen_service_call_helper.
-# Also exercises Bool ARGUMENT passing to service handler (i64 -> trunc -> i1).
+# Also exercises Bool argument passing to a service handler (i64 -> trunc -> i1).
 # Expected output: true\ntrue\nfalse\nenabled:true\ndisabled:false\n
 
-struct LimitState do
-  count :: Int
-  max :: Int
-end
-
-fn check_impl(state :: LimitState) -> (LimitState, Bool) do
-  if state.count >= state.max do
-    (state, false)
-  else
-    let new_state = LimitState { count: state.count + 1, max: state.max }
-    (new_state, true)
-  end
-end
-
-fn set_enabled_impl(state :: LimitState, enabled :: Bool) -> (LimitState, Bool) do
-  let new_max = if enabled do state.max else 0 end
-  let new_state = LimitState { count: state.count, max: new_max }
-  (new_state, enabled)
-end
-
 service Limiter do
-  fn init(max :: Int) -> LimitState do
-    LimitState { count: 0, max: max }
+  fn init(remaining :: Int) -> Int do
+    remaining
   end
 
-  call Check() :: Bool do |state|
-    check_impl(state)
+  call Check() :: Bool do |remaining|
+    if remaining > 0 do
+      (remaining - 1, true)
+    else
+      (remaining, false)
+    end
   end
 
-  call SetEnabled(enabled :: Bool) :: Bool do |state|
-    set_enabled_impl(state, enabled)
+  call SetEnabled(enabled :: Bool) :: Bool do |remaining|
+    (remaining, enabled)
   end
 end
 
@@ -52,7 +36,7 @@ fn main() do
   else
     println("false")
   end
-  # Third call: count=2 >= max=2, should be false
+  # Third call: no capacity remains, so the result is false.
   let r3 = Limiter.check(pid)
   if r3 do
     println("true")

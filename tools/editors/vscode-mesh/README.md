@@ -42,7 +42,7 @@ meshc --version
 meshpkg --version
 ```
 
-For the broader backend/tooling proof behind this public install contract, start with [Production Backend Proof](https://meshlang.dev/docs/production-backend-proof/) and the public [Developer Tools](https://meshlang.dev/docs/tooling/) guide.
+For the clustered runtime proof behind this public install contract, use [Distributed Proof](https://meshlang.dev/docs/distributed-proof/) and the public [Developer Tools](https://meshlang.dev/docs/tooling/) guide.
 
 Then build the current packaged extension from source:
 

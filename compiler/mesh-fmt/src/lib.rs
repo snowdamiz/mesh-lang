@@ -311,15 +311,6 @@ mod idempotency_tests {
 mod edge_case_tests {
     use super::{format_source, FormatConfig};
 
-    const REFERENCE_BACKEND_HEALTH: &str = include_str!(concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/../../scripts/fixtures/backend/reference-backend/api/health.mpl"
-    ));
-    const REFERENCE_BACKEND_JOB_TYPES: &str = include_str!(concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/../../scripts/fixtures/backend/reference-backend/types/job.mpl"
-    ));
-
     fn fmt(source: &str) -> String {
         format_source(source, &FormatConfig::default())
     }
@@ -437,36 +428,6 @@ mod edge_case_tests {
             !result.contains("end\n\n\nfn"),
             "Should not have double blank lines, got:\n{}",
             result
-        );
-    }
-
-    #[test]
-    fn reference_backend_health_file_formats_canonically() {
-        let result = fmt(REFERENCE_BACKEND_HEALTH);
-        let second = fmt(&result);
-
-        assert_eq!(
-            result, REFERENCE_BACKEND_HEALTH,
-            "scripts/fixtures/backend/reference-backend/api/health.mpl should stay canonically formatted"
-        );
-        assert_eq!(
-            result, second,
-            "Formatting the backend health module should remain idempotent"
-        );
-    }
-
-    #[test]
-    fn reference_backend_job_types_file_formats_canonically() {
-        let result = fmt(REFERENCE_BACKEND_JOB_TYPES);
-        let second = fmt(&result);
-
-        assert_eq!(
-            result, REFERENCE_BACKEND_JOB_TYPES,
-            "scripts/fixtures/backend/reference-backend/types/job.mpl should stay canonically formatted"
-        );
-        assert_eq!(
-            result, second,
-            "Formatting the backend job types module should remain idempotent"
         );
     }
 }

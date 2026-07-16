@@ -51,6 +51,20 @@ fn alloc_result(tag: u8, value: *mut u8) -> *mut MeshResult {
     }
 }
 
+/// Store a job's machine-word result in owned payload memory.
+///
+/// Generic `Result<T, String>` uses a pointer payload slot. Pattern lowering
+/// dereferences that slot for scalar values and pointer values alike, so a raw
+/// integer cast to a pointer (for example `42 as *mut u8`) is not a valid
+/// result payload.
+fn box_job_value(value: i64) -> *mut u8 {
+    unsafe {
+        let ptr = mesh_gc_alloc_actor(std::mem::size_of::<i64>() as u64, 8) as *mut i64;
+        ptr.write(value);
+        ptr.cast()
+    }
+}
+
 /// Build an Err MeshResult from a Rust string slice.
 fn err_result(msg: &str) -> *mut MeshResult {
     let mesh_str = mesh_string_new(msg.as_ptr(), msg.len() as u64);
@@ -246,8 +260,9 @@ fn decode_job_message(msg_ptr: *const u8) -> *const u8 {
                     .try_into()
                     .unwrap(),
             );
-            // Return Ok(result_value)
-            alloc_result(0, result_value as *mut u8) as *const u8
+            // Return Ok(result_value). The payload slot owns a machine word;
+            // consumers load the concrete T from this storage.
+            alloc_result(0, box_job_value(result_value)) as *const u8
         } else if type_tag == EXIT_SIGNAL_TAG {
             // Job crashed. The data contains exit signal info.
             // Try to extract a reason string from the exit signal.
@@ -367,7 +382,7 @@ pub extern "C" fn mesh_job_map(
         let mut full_args = Vec::with_capacity(32);
         full_args.extend_from_slice(&(fn_ptr as u64).to_le_bytes());
         full_args.extend_from_slice(&(env_ptr as u64).to_le_bytes());
-        full_args.extend_from_slice(&(element as u64).to_le_bytes());
+        full_args.extend_from_slice(&element.to_le_bytes());
         full_args.extend_from_slice(&caller_pid.to_le_bytes());
 
         let full_args_heap = unsafe {
@@ -526,7 +541,7 @@ mod tests {
         let result = result_ptr as *const MeshResult;
         unsafe {
             assert_eq!((*result).tag, 0); // Ok
-            assert_eq!((*result).value as i64, 99);
+            assert_eq!(*((*result).value as *const i64), 99);
         }
     }
 

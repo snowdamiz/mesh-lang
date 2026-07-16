@@ -28,6 +28,8 @@ static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 mod cluster;
 mod discovery;
 mod migrate;
+mod proof;
+mod proof_gates;
 mod test_runner;
 
 use std::collections::{HashMap, HashSet};
@@ -106,6 +108,11 @@ enum Commands {
     Cluster {
         #[command(subcommand)]
         action: cluster::ClusterCommand,
+    },
+    /// Run repository-owned production proof scenarios.
+    Proof {
+        #[command(subcommand)]
+        action: proof::ProofCommand,
     },
     /// Resolve and fetch dependencies
     Deps {
@@ -315,6 +322,12 @@ fn main() {
                 process::exit(1);
             }
         }
+        Commands::Proof { action } => {
+            if let Err(e) = proof::run_proof_command(action) {
+                eprintln!("proof failed: {e}");
+                std::process::exit(1);
+            }
+        }
         Commands::Deps { dir } => {
             if let Err(e) = deps_command(&dir) {
                 eprintln!("error: {}", e);
@@ -414,6 +427,179 @@ pub(crate) struct PreparedBuild {
     pub(crate) merged_mir: mesh_codegen::mir::MirModule,
     pub(crate) clustered_execution_plan: Vec<ClusteredExecutionMetadata>,
     pub(crate) clustered_route_handler_plan: Vec<mesh_codegen::DeclaredHandlerPlanEntry>,
+    pub(crate) autonomous_config_json: Option<String>,
+}
+
+fn runtime_autonomous_config_json(
+    config: Option<&mesh_pkg::AutonomousClusterConfig>,
+) -> Result<Option<String>, String> {
+    use mesh_pkg::{
+        CapacityDriverKind, ClusterMode, DurabilityMode, ForcedTerminationPolicy, ManagedRole,
+        RoutingAlgorithm,
+    };
+    use mesh_rt::{
+        RuntimeAutonomousConfig, RuntimeCapacityDriverConfig, RuntimeContinuityConfig,
+        RuntimeFeatureGates, RuntimeRoutingConfig, RuntimeSchedulerConfig, ScalingPolicy,
+        AUTONOMOUS_CONFIG_SCHEMA_VERSION,
+    };
+
+    let Some(config) = config.filter(|config| config.mode == ClusterMode::Autonomous) else {
+        return Ok(None);
+    };
+    let driver = match (config.autoscaling.enabled, config.capacity.driver) {
+        (false, _) => RuntimeCapacityDriverConfig::Disabled,
+        (true, Some(CapacityDriverKind::Process)) => {
+            let process = config
+                .capacity
+                .process
+                .as_ref()
+                .ok_or_else(|| "validated process driver config missing".to_string())?;
+            RuntimeCapacityDriverConfig::Process {
+                command: process.command.clone(),
+                working_directory: process.working_directory.clone(),
+            }
+        }
+        (true, Some(CapacityDriverKind::Docker)) => {
+            let docker = config
+                .capacity
+                .docker
+                .as_ref()
+                .ok_or_else(|| "validated Docker driver config missing".to_string())?;
+            RuntimeCapacityDriverConfig::Docker {
+                image: docker.image.clone(),
+                pool: docker.pool.clone(),
+                network: docker.network.clone(),
+                environment: docker.env.clone(),
+            }
+        }
+        (true, Some(CapacityDriverKind::Fly)) => {
+            let fly = config
+                .capacity
+                .fly
+                .as_ref()
+                .ok_or_else(|| "validated Fly driver config missing".to_string())?;
+            RuntimeCapacityDriverConfig::Fly {
+                api_base_url: fly.api_base_url.clone(),
+                app_name: fly.app_name.clone(),
+                token_env: fly.token_env.clone(),
+                image: fly.image.clone(),
+                region: fly.region.clone(),
+                pool: fly.pool.clone(),
+                environment: fly.env.clone(),
+                cpu_kind: fly.cpu_kind.clone(),
+                cpus: fly.cpus,
+                memory_mb: fly.memory_mb,
+            }
+        }
+        (true, None) => return Err("validated autonomous capacity driver missing".to_string()),
+    };
+    let template_revision = if !config.autoscaling.enabled {
+        Some("disabled-v1".to_string())
+    } else {
+        match config.capacity.driver {
+            Some(CapacityDriverKind::Docker) => config
+                .capacity
+                .docker
+                .as_ref()
+                .map(|driver| driver.template_revision.clone()),
+            Some(CapacityDriverKind::Fly) => config
+                .capacity
+                .fly
+                .as_ref()
+                .map(|driver| driver.template_revision.clone()),
+            Some(CapacityDriverKind::Process) => Some("process-v1".to_string()),
+            None => None,
+        }
+    }
+    .ok_or_else(|| "validated capacity template revision missing".to_string())?;
+    let runtime = RuntimeAutonomousConfig {
+        schema_version: AUTONOMOUS_CONFIG_SCHEMA_VERSION,
+        enabled: true,
+        features: RuntimeFeatureGates {
+            protocol_two: config.features.protocol_two,
+            durable_continuity: config.features.durable_continuity,
+            telemetry: config.features.telemetry,
+            local_scheduler_autoscaling: config.features.local_scheduler_autoscaling,
+            adaptive_routing: config.features.adaptive_routing,
+            controller_quorum: config.features.controller_quorum,
+            horizontal_autoscaling: config.autoscaling.enabled,
+            horizontal_observe_only: config.features.horizontal_observe_only,
+            automatic_scale_up: config.features.automatic_scale_up,
+            automatic_scale_down: config.features.automatic_scale_down,
+        },
+        policy_revision: 1,
+        policy: ScalingPolicy {
+            min_nodes: config.autoscaling.min_nodes,
+            max_nodes: config.autoscaling.max_nodes,
+            target_inflight_per_node: config.autoscaling.target_inflight_per_node,
+            scale_up_window_millis: config.autoscaling.scale_up_window.as_millis(),
+            scale_down_window_millis: config.autoscaling.scale_down_window.as_millis(),
+            cooldown_millis: config.autoscaling.cooldown.as_millis(),
+            max_scale_up_step: config.autoscaling.max_scale_up_step,
+            max_scale_down_step: config.autoscaling.max_scale_down_step,
+            max_unavailable: config.autoscaling.max_unavailable,
+        },
+        managed_roles: config
+            .autoscaling
+            .managed_roles
+            .iter()
+            .map(|role| match role {
+                ManagedRole::Gateway => "gateway".to_string(),
+                ManagedRole::Worker => "worker".to_string(),
+            })
+            .collect(),
+        gateway_nodes: if config
+            .autoscaling
+            .managed_roles
+            .contains(&ManagedRole::Gateway)
+        {
+            0
+        } else {
+            u16::from(config.roles.gateway)
+        },
+        template_revision,
+        reconcile_interval_millis: config.routing.load_report_interval.as_millis().max(100),
+        startup_timeout_millis: config.capacity.startup_timeout.as_millis(),
+        drain_timeout_millis: config.capacity.drain_timeout.as_millis(),
+        termination_timeout_millis: config.capacity.termination_timeout.as_millis(),
+        force_termination_after_drain_timeout: config.capacity.forced_termination
+            == ForcedTerminationPolicy::AfterDrainTimeout,
+        scheduler: RuntimeSchedulerConfig {
+            min_workers: config.scheduler.min_workers,
+            max_workers: config.scheduler.max_workers,
+            target_runnable_per_worker: config.scheduler.target_runnable_per_worker,
+            target_queue_wait_millis: config.autoscaling.target_queue_wait.as_millis(),
+            scale_up_window_millis: config.scheduler.scale_up_window.as_millis(),
+            scale_down_window_millis: config.scheduler.scale_down_window.as_millis(),
+            cooldown_millis: config.autoscaling.cooldown.as_millis(),
+        },
+        routing: RuntimeRoutingConfig {
+            adaptive: config.features.adaptive_routing
+                && config.routing.algorithm == RoutingAlgorithm::Adaptive,
+            load_report_interval_millis: config.routing.load_report_interval.as_millis(),
+            load_report_ttl_millis: config.routing.load_report_ttl.as_millis(),
+            target_inflight: config.autoscaling.target_inflight_per_node,
+            target_queue_wait_millis: config.autoscaling.target_queue_wait.as_millis(),
+            max_inflight: config.routing.max_inflight_per_node,
+            max_queued_items: config.routing.max_queued_per_node,
+            max_queued_bytes: config.routing.max_queued_bytes_per_node.as_bytes(),
+            retry_budget_percent: config.routing.retry_budget_percent,
+        },
+        continuity: RuntimeContinuityConfig {
+            strict_durability: config.durability == DurabilityMode::Strict,
+            terminal_retention_millis: config.continuity.terminal_retention.as_millis(),
+            tombstone_retention_millis: config.continuity.tombstone_retention.as_millis(),
+            max_terminal_records: config.continuity.max_terminal_records,
+            max_disk_bytes: config.continuity.max_disk_bytes.as_bytes(),
+            snapshot_chunk_bytes: config.continuity.snapshot_chunk_bytes.as_bytes(),
+            path: config.continuity.path.clone(),
+        },
+        driver,
+    };
+    runtime.validate()?;
+    serde_json::to_string(&runtime)
+        .map(Some)
+        .map_err(|error| format!("autonomous runtime config encode failed: {error}"))
 }
 
 /// Execute the build pipeline: discover all .mpl files -> parse -> typecheck entry -> codegen -> link.
@@ -451,6 +637,7 @@ pub(crate) fn build(
             &prepared.merged_mir,
             &declared_handlers,
             &startup_work_registrations,
+            prepared.autonomous_config_json.as_deref(),
             &ll_path,
             target,
         )?;
@@ -463,6 +650,7 @@ pub(crate) fn build(
         &prepared.merged_mir,
         &declared_handlers,
         &startup_work_registrations,
+        prepared.autonomous_config_json.as_deref(),
         &output_path,
         opt_level,
         target,
@@ -647,21 +835,10 @@ pub(crate) fn prepare_project_build(
 
     let source_cluster_declarations =
         collect_source_cluster_declarations(&project.graph, &project.module_parses);
-    let clustered_execution_plan = if manifest
-        .as_ref()
-        .and_then(|manifest| manifest.cluster.as_ref())
-        .is_some()
-        || !source_cluster_declarations.is_empty()
-    {
+    let clustered_execution_plan = if !source_cluster_declarations.is_empty() {
         let surface =
             build_clustered_export_surface(&project.graph, &project.module_parses, &all_exports);
-        match validate_cluster_declarations_with_source(
-            manifest
-                .as_ref()
-                .and_then(|manifest| manifest.cluster.as_ref()),
-            &source_cluster_declarations,
-            &surface,
-        ) {
+        match validate_cluster_declarations_with_source(&source_cluster_declarations, &surface) {
             Ok(metadata) => metadata,
             Err(issues) => {
                 emit_clustered_declaration_diagnostics(&manifest_path, &issues, diag_opts);
@@ -739,6 +916,11 @@ pub(crate) fn prepare_project_build(
         merged_mir,
         clustered_execution_plan,
         clustered_route_handler_plan,
+        autonomous_config_json: runtime_autonomous_config_json(
+            manifest
+                .as_ref()
+                .and_then(|manifest| manifest.autonomous_cluster.as_ref()),
+        )?,
     })
 }
 
@@ -1198,4 +1380,89 @@ fn collect_mesh_files_recursive(dir: &Path, files: &mut Vec<PathBuf>) -> std::io
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod autonomous_config_tests {
+    use super::*;
+
+    #[test]
+    fn autonomous_data_plane_embeds_feature_gates_without_driver_authority() {
+        let manifest = Manifest::from_str(
+            r#"
+[package]
+name = "data-plane-only"
+version = "0.1.0"
+
+[cluster]
+mode = "autonomous"
+
+[cluster.controllers]
+voters = 3
+
+[cluster.autoscaling]
+enabled = false
+"#,
+        )
+        .expect("manifest");
+        let encoded = runtime_autonomous_config_json(manifest.autonomous_cluster.as_ref())
+            .expect("runtime config")
+            .expect("embedded config");
+        let runtime: mesh_rt::RuntimeAutonomousConfig =
+            serde_json::from_str(&encoded).expect("decode runtime config");
+
+        assert!(!runtime.features.horizontal_autoscaling);
+        assert!(runtime.features.protocol_two);
+        assert!(runtime.features.durable_continuity);
+        assert!(matches!(
+            runtime.driver,
+            mesh_rt::RuntimeCapacityDriverConfig::Disabled
+        ));
+    }
+
+    #[test]
+    fn observe_only_and_independent_action_gates_reach_runtime_schema() {
+        let manifest = Manifest::from_str(
+            r#"
+[package]
+name = "observe-only"
+version = "0.1.0"
+
+[cluster]
+mode = "autonomous"
+
+[cluster.controllers]
+voters = 3
+
+[cluster.features]
+horizontal_observe_only = true
+automatic_scale_up = true
+automatic_scale_down = false
+
+[cluster.autoscaling]
+enabled = true
+min_nodes = 2
+max_nodes = 5
+
+[cluster.capacity]
+driver = "docker"
+
+[cluster.capacity.docker]
+image = "worker@sha256:abc"
+pool = "workers"
+template_revision = "v1"
+"#,
+        )
+        .expect("manifest");
+        let encoded = runtime_autonomous_config_json(manifest.autonomous_cluster.as_ref())
+            .expect("runtime config")
+            .expect("embedded config");
+        let runtime: mesh_rt::RuntimeAutonomousConfig =
+            serde_json::from_str(&encoded).expect("decode runtime config");
+
+        assert!(runtime.features.horizontal_autoscaling);
+        assert!(runtime.features.horizontal_observe_only);
+        assert!(runtime.features.automatic_scale_up);
+        assert!(!runtime.features.automatic_scale_down);
+    }
 }

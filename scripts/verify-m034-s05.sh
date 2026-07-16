@@ -250,11 +250,9 @@ import sys
 root = Path(sys.argv[1])
 required_files = [
     'scripts/lib/m034_public_surface_contract.py',
-    'scripts/verify-m034-s05-workflows.sh',
-    'scripts/verify-m034-s02-workflows.sh',
+    'scripts/verify-workflows.sh',
     'scripts/verify-m034-s03.sh',
     'scripts/verify-m034-s04-extension.sh',
-    'scripts/verify-m034-s04-workflows.sh',
     'scripts/verify-m034-s01.sh',
     '.github/workflows/deploy.yml',
     '.github/workflows/deploy-services.yml',
@@ -659,10 +657,6 @@ workflow_specs = [
                 'Verify public surface contract',
             ],
         },
-        'forbiddenJobs': ['Deploy hyperpush landing'],
-        'forbiddenSteps': {
-            'Post-deploy health checks': ['Verify hyperpush landing'],
-        },
     },
     {
         'workflowFile': 'authoritative-verification.yml',
@@ -997,11 +991,6 @@ prepare_verify_root
 run_prereq_sweep
 run_candidate_tags
 
-start_phase "s05-workflows" "reuse the S05 deploy workflow verifier unchanged"
-run_command "s05-workflows" "s05-workflows" 120 "$ROOT_DIR" "bash scripts/verify-m034-s05-workflows.sh" ".tmp/m034-s05/workflows" bash scripts/verify-m034-s05-workflows.sh
-assert_file_exists "s05-workflows" "$ROOT_DIR/.tmp/m034-s05/workflows/phase-report.txt" "S05 workflow phase report"
-finish_phase "s05-workflows"
-
 start_phase "docs-build" "build VitePress before any live HTTP or publish work"
 run_command "docs-build" "docs-build" 1200 "$ROOT_DIR" "npm --prefix website run build" "" npm --prefix website run build
 finish_phase "docs-build"
@@ -1009,10 +998,10 @@ finish_phase "docs-build"
 run_local_docs_truth
 run_built_docs_truth
 
-start_phase "s02-workflows" "reuse the S02 workflow verifier unchanged"
-run_command "s02-workflows" "s02-workflows" 180 "$ROOT_DIR" "bash scripts/verify-m034-s02-workflows.sh" ".tmp/m034-s02/verify" bash scripts/verify-m034-s02-workflows.sh
-assert_file_exists "s02-workflows" "$ROOT_DIR/.tmp/m034-s02/verify/full-contract.log" "S02 workflow full-contract log"
-finish_phase "s02-workflows"
+start_phase "workflows" "verify current GitHub Actions workflow contracts"
+run_command "workflows" "workflows" 180 "$ROOT_DIR" "bash scripts/verify-workflows.sh" ".tmp/workflows" bash scripts/verify-workflows.sh
+assert_file_exists "workflows" "$ROOT_DIR/.tmp/workflows/summary.txt" "workflow contract summary"
+finish_phase "workflows"
 
 start_phase "s03-installer" "reuse the S03 installer verifier unchanged"
 run_command "s03-installer" "s03-installer" 2400 "$ROOT_DIR" "bash scripts/verify-m034-s03.sh" ".tmp/m034-s03/verify" bash scripts/verify-m034-s03.sh
@@ -1025,11 +1014,6 @@ run_command "s04-extension" "s04-extension" 3600 "$ROOT_DIR" "bash scripts/verif
 assert_file_exists "s04-extension" "$ROOT_DIR/.tmp/m034-s04/verify/verified-vsix-path.txt" "S04 verified VSIX path"
 assert_file_content_exact "s04-extension" "$ROOT_DIR/.tmp/m034-s04/verify/status.txt" "ok" "S04 extension status"
 finish_phase "s04-extension"
-
-start_phase "s04-workflows" "reuse the S04 workflow verifier unchanged"
-run_command "s04-workflows" "s04-workflows" 180 "$ROOT_DIR" "bash scripts/verify-m034-s04-workflows.sh" ".tmp/m034-s04/workflows" bash scripts/verify-m034-s04-workflows.sh
-assert_file_exists "s04-workflows" "$ROOT_DIR/.tmp/m034-s04/workflows/phase-report.txt" "S04 workflow phase report"
-finish_phase "s04-workflows"
 
 run_remote_evidence
 if should_stop_after_phase "remote-evidence"; then

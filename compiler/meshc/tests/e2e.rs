@@ -1088,13 +1088,13 @@ end
     assert_eq!(output.trim(), "5");
 }
 
-// ── Phase 32: Integration tests (INTG-01 through INTG-05) ──────────────
+// ── Method dot-syntax integration ──────────────────────────────────────
 
-/// Phase 32 INTG-01: Struct field access preserved alongside method dot-syntax.
+/// Struct field access is preserved alongside method dot-syntax.
 /// Accesses struct fields (p.x, p.y) AND calls a method (p.to_string()) on
 /// the same struct value to prove field access is not intercepted by method resolution.
 #[test]
-fn e2e_phase32_struct_field_access_preserved() {
+fn e2e_method_dot_syntax_preserves_struct_field_access() {
     let source = r#"
 struct Point do
   x :: Int
@@ -1112,11 +1112,11 @@ end
     assert_eq!(output, "42\n99\nPoint(42, 99)\n");
 }
 
-/// Phase 32 INTG-02: Module-qualified calls preserved alongside method dot-syntax.
+/// Module-qualified calls are preserved alongside method dot-syntax.
 /// Uses module-qualified String.length(s) syntax to prove it is not intercepted
 /// as a method call on the String module.
 #[test]
-fn e2e_phase32_module_qualified_preserved() {
+fn e2e_method_dot_syntax_preserves_module_qualified_calls() {
     let source = r#"
 fn main() do
   let s = "hello"
@@ -1129,11 +1129,11 @@ end
     assert_eq!(output, "5\n5\n");
 }
 
-/// Phase 32 INTG-03: Pipe operator preserved alongside method dot-syntax.
+/// The pipe operator is preserved alongside method dot-syntax.
 /// Uses |> to chain function calls, proving pipe desugaring is unaffected
 /// by method resolution infrastructure.
 #[test]
-fn e2e_phase32_pipe_operator_preserved() {
+fn e2e_method_dot_syntax_preserves_pipe_operator() {
     let source = r#"
 fn double(x :: Int) -> Int do
   x * 2
@@ -1152,11 +1152,11 @@ end
     assert_eq!(output.trim(), "20");
 }
 
-/// Phase 32 INTG-04: Sum type variant access preserved alongside method dot-syntax.
+/// Sum type variant access is preserved alongside method dot-syntax.
 /// Uses nullary variant constructors and case-matching to prove that sum type
 /// construction and pattern matching are not intercepted by method resolution.
 #[test]
-fn e2e_phase32_sum_type_variant_preserved() {
+fn e2e_method_dot_syntax_preserves_sum_type_variants() {
     let source = r#"
 type Color do
   Red
@@ -1184,11 +1184,11 @@ end
     assert_eq!(output, "1\n2\n3\n");
 }
 
-/// Phase 32 INTG-05: Actor self in receive blocks unaffected by method dot-syntax.
+/// Actor self in receive blocks is unaffected by method dot-syntax.
 /// Spawns an actor with a receive block to prove actor message passing
 /// works alongside method dot-syntax infrastructure.
 #[test]
-fn e2e_phase32_actor_self_preserved() {
+fn e2e_method_dot_syntax_preserves_actor_self() {
     let source = r#"
 actor greeter() do
   receive do
@@ -2368,13 +2368,13 @@ end
     assert_eq!(output, "10\n");
 }
 
-// ── Phase 41: MIR Merge Codegen (Module-qualified naming) ─────────────
+// ── MIR merge codegen (module-qualified naming) ───────────────────────
 
-/// XMOD-07: Two modules each define a private function named `helper`.
+/// Two modules each define a private function named `helper`.
 /// Without module-qualified naming, both collide in MIR merge and the
 /// second is silently dropped, causing incorrect dispatch.
 #[test]
-fn e2e_xmod07_private_function_name_collision() {
+fn e2e_cross_module_private_function_name_collision() {
     let output = compile_multifile_and_run(&[
         (
             "utils.mpl",
@@ -2418,10 +2418,10 @@ end
     assert_eq!(output, "42\n99\n");
 }
 
-/// XMOD-07: Two modules with closures. Without module-prefixed closure names,
+/// Two modules with closures. Without module-prefixed closure names,
 /// both modules generate `__closure_1` and collide during MIR merge.
 #[test]
-fn e2e_xmod07_closure_name_collision() {
+fn e2e_cross_module_closure_name_collision() {
     let output = compile_multifile_and_run(&[
         (
             "utils.mpl",
@@ -2459,10 +2459,10 @@ end
     assert_eq!(output, "15\n10\n");
 }
 
-/// XMOD-06: Cross-module function call with concrete types.
+/// Cross-module function call with concrete types.
 /// A pub function defined in one module is called from another.
 #[test]
-fn e2e_xmod06_cross_module_generic_function() {
+fn e2e_cross_module_concrete_function() {
     let output = compile_multifile_and_run(&[
         (
             "utils.mpl",
@@ -2487,11 +2487,11 @@ end
     assert_eq!(output, "42\n");
 }
 
-/// XMOD-06: Cross-module generic function (truly generic with type parameter).
+/// Cross-module generic function (truly generic with type parameter).
 /// Tests that a generic function defined in one module can be called with
 /// concrete types from another module.
 #[test]
-fn e2e_xmod06_cross_module_generic_identity() {
+fn e2e_cross_module_generic_identity() {
     let output = compile_multifile_and_run(&[
         (
             "utils.mpl",
@@ -3335,7 +3335,7 @@ end
 /// Verifies that FromJson__/ToJson__ prefixes skip module qualification and that
 /// deriving-generated trait impls are exported across module boundaries.
 #[test]
-fn e2e_cross_module_from_json() {
+fn e2e_cross_module_from_json_with_imported_model() {
     let output = compile_multifile_and_run(&[
         (
             "models.mpl",
@@ -6283,6 +6283,13 @@ fn e2e_trailing_closure_still_works() {
     // test("name") do ... end is a trailing-closure call parsed by meshc test.
     // This verifies the suppression flag doesn't break trailing closures.
     let temp_dir = tempfile::tempdir().expect("failed to create temp dir");
+    std::fs::write(
+        temp_dir.path().join("mesh.toml"),
+        "[package]\nname = \"trailing-closure-test\"\nversion = \"0.1.0\"\n",
+    )
+    .expect("failed to write project manifest");
+    std::fs::write(temp_dir.path().join("main.mpl"), "fn main() do\nend\n")
+        .expect("failed to write project entrypoint");
     let test_file = temp_dir.path().join("trailing.test.mpl");
     std::fs::write(
         &test_file,
@@ -6321,7 +6328,7 @@ end
 }
 
 // ---------------------------------------------------------------------------
-// else-if chain value correctness (T02 — M031/S01)
+// Else-if chain value correctness
 // ---------------------------------------------------------------------------
 
 /// else if chain returning Int values — verify correct branch is picked.
@@ -6837,15 +6844,15 @@ end
     assert_eq!(output, "1\n2\n2\nupdated\n");
 }
 
-// ── M032/S01: supported mesher-folklore proofs ─────────────────────────
+// ── Compiler boundary regressions ──────────────────────────────────────
 
-const M032_REQUEST_QUERY_MAIN: &str = r#"
+const REQUEST_QUERY_MAIN: &str = r#"
 fn main() do
   println("request_query_ok")
 end
 "#;
 
-const M032_XMOD_FROM_JSON_MAIN: &str = r##"
+const CROSS_MODULE_FROM_JSON_MAIN: &str = r##"
 from Models import Scout
 
 fn main() do
@@ -6858,14 +6865,14 @@ fn main() do
 end
 "##;
 
-const M032_XMOD_FROM_JSON_MODELS: &str = r#"
+const CROSS_MODULE_FROM_JSON_MODELS: &str = r#"
 pub struct Scout do
   name :: String
   rating :: Int
 end deriving(Json)
 "#;
 
-const M032_SERVICE_CALL_CASE_MAIN: &str = r#"
+const SERVICE_CALL_CASE_MAIN: &str = r#"
 service Toggle do
   fn init() -> Int do
     0
@@ -6887,7 +6894,7 @@ fn main() do
 end
 "#;
 
-const M032_CAST_IF_ELSE_MAIN: &str = r##"
+const CAST_IF_ELSE_MAIN: &str = r##"
 service Switch do
   fn init() -> Int do
     0
@@ -6915,7 +6922,7 @@ fn main() do
 end
 "##;
 
-const M032_XMOD_IDENTITY_MAIN: &str = r##"
+const INFERRED_IDENTITY_MAIN: &str = r##"
 from Utils import identity
 
 fn main() do
@@ -6924,13 +6931,13 @@ fn main() do
 end
 "##;
 
-const M032_XMOD_IDENTITY_UTILS: &str = r#"
+const INFERRED_IDENTITY_UTILS: &str = r#"
 pub fn identity(x) do
   x
 end
 "#;
 
-const M032_NESTED_AND_MAIN: &str = r#"
+const NESTED_AND_MAIN: &str = r#"
 fn main() do
   let a = true
   let b = true
@@ -6943,53 +6950,47 @@ fn main() do
 end
 "#;
 
-const M032_TIMER_SERVICE_CAST_MAIN: &str = r#"
+const TIMER_SERVICE_CAST_MAIN: &str = r#"
 fn main() do
   println("0")
 end
 "#;
 
-/// Retires the stale `Request.query(...)` workaround comment in
-/// `mesher/ingestion/routes.mpl`.
+/// Proves `Request.query(...)` remains supported in compiled programs.
 #[test]
-fn e2e_m032_supported_request_query() {
-    let output = compile_and_run(M032_REQUEST_QUERY_MAIN);
+fn e2e_request_query() {
+    let output = compile_and_run(REQUEST_QUERY_MAIN);
     assert_eq!(output, "request_query_ok\n");
 }
 
-/// Retires the stale cross-module `from_json` workaround comments in
-/// `mesher/services/event_processor.mpl`, `mesher/storage/queries.mpl`, and
-/// `mesher/storage/writer.mpl`.
+/// Proves cross-module `from_json` lowering remains supported.
 #[test]
-fn e2e_m032_supported_cross_module_from_json() {
+fn e2e_cross_module_from_json() {
     let output = compile_multifile_and_run(&[
-        ("main.mpl", M032_XMOD_FROM_JSON_MAIN),
-        ("models.mpl", M032_XMOD_FROM_JSON_MODELS),
+        ("main.mpl", CROSS_MODULE_FROM_JSON_MAIN),
+        ("models.mpl", CROSS_MODULE_FROM_JSON_MODELS),
     ]);
     assert_eq!(output, "Scout 7\n");
 }
 
-/// Retires the stale "extract helper instead of inline case in service call body"
-/// workaround comment in `mesher/services/user.mpl`.
+/// Proves service call bodies can contain inline `case` expressions.
 #[test]
-fn e2e_m032_supported_service_call_case() {
-    let output = compile_and_run(M032_SERVICE_CALL_CASE_MAIN);
+fn e2e_service_call_case_expression() {
+    let output = compile_and_run(SERVICE_CALL_CASE_MAIN);
     assert_eq!(output, "yes\nno\n");
 }
 
-/// Retires the stale "extract helper instead of inline if/else in cast handler"
-/// workaround comment in `mesher/services/stream_manager.mpl`.
+/// Proves cast handlers can contain inline `if` expressions.
 #[test]
-fn e2e_m032_supported_cast_if_else() {
-    let output = compile_and_run(M032_CAST_IF_ELSE_MAIN);
+fn e2e_service_cast_if_else_expression() {
+    let output = compile_and_run(CAST_IF_ELSE_MAIN);
     assert_eq!(output, "1\n2\n");
 }
 
 /// Proves `deriving(Json)` wrapper structs can decode nested JSON array payloads
-/// through a `List < ... >` field; the remaining mesher bulk-route limit is the
-/// bare top-level array endpoint shape, not array decoding in general.
+/// through a `List < ... >` field.
 #[test]
-fn e2e_m032_supported_nested_wrapper_list_from_json() {
+fn e2e_nested_wrapper_list_from_json() {
     let output = compile_and_run(
         r##"
 struct BulkEvent do
@@ -7023,10 +7024,9 @@ end
 }
 
 /// Proves writer-style cast handlers can inline buffer append/capacity logic and
-/// rebuild service state directly, so `mesher/services/writer.mpl` keeps its
-/// helper for readability rather than codegen survival.
+/// rebuild service state directly.
 #[test]
-fn e2e_m032_supported_inline_writer_cast_body() {
+fn e2e_inline_writer_cast_body() {
     let output = compile_and_run(
         r##"
 struct WriterProbeState do
@@ -7102,11 +7102,11 @@ end
     assert_eq!(output, "1:one\n2:one,two\n2:two,three\n1:alpha\n0:\n");
 }
 
-// ── M032/S02: inferred-export regression coverage ─────────────────────
+// ── Inferred-export regression coverage ────────────────────────────────
 
 /// Local inferred identity must keep its concrete call-site ABI through MIR lowering.
 #[test]
-fn m032_inferred_local_identity() {
+fn e2e_inferred_local_identity() {
     let output = compile_and_run(
         r##"
 pub fn identity(x) do
@@ -7124,21 +7124,20 @@ end
 
 /// Imported inferred identity must keep its concrete call-site ABI through export + MIR lowering.
 #[test]
-fn m032_inferred_cross_module_identity() {
+fn e2e_inferred_cross_module_identity() {
     let output = compile_multifile_and_run(&[
-        ("main.mpl", M032_XMOD_IDENTITY_MAIN),
-        ("utils.mpl", M032_XMOD_IDENTITY_UTILS),
+        ("main.mpl", INFERRED_IDENTITY_MAIN),
+        ("utils.mpl", INFERRED_IDENTITY_UTILS),
     ]);
     assert_eq!(output, "7\npoly\n");
 }
 
-// ── M032/S01: retained-limit proofs ────────────────────────────────────
+// ── Known compiler-limit regressions ───────────────────────────────────
 
-/// Freezes the nested-`&&` codegen blocker still masked by
-/// `mesher/services/stream_manager.mpl`.
+/// Freezes the nested-`&&` codegen blocker until the lowering is fixed.
 #[test]
-fn e2e_m032_limit_nested_and() {
-    let error = compile_expect_error(M032_NESTED_AND_MAIN);
+fn e2e_nested_and_known_codegen_limit() {
+    let error = compile_expect_error(NESTED_AND_MAIN);
     assert!(
         error.contains("PHI node entries do not match predecessors!")
             && error.contains("%and_result = phi i1"),
@@ -7147,11 +7146,10 @@ fn e2e_m032_limit_nested_and() {
     );
 }
 
-/// Freezes the timer-to-service-cast no-op still shaping
-/// `mesher/services/writer.mpl` and `mesher/ingestion/pipeline.mpl`.
+/// Freezes the timer-to-service-cast no-op until timer dispatch is implemented.
 #[test]
-fn e2e_m032_limit_timer_service_cast() {
-    let output = compile_and_run(M032_TIMER_SERVICE_CAST_MAIN);
+fn e2e_timer_service_cast_known_dispatch_limit() {
+    let output = compile_and_run(TIMER_SERVICE_CAST_MAIN);
     assert_eq!(output, "0\n");
 }
 

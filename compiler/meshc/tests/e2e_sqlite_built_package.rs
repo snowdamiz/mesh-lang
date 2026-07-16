@@ -1,4 +1,5 @@
-mod support;
+#[path = "support/test_artifacts.rs"]
+mod artifacts;
 
 use serde_json::json;
 use std::fs;
@@ -7,7 +8,6 @@ use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Output, Stdio};
 use std::thread::sleep;
 use std::time::{Duration, Instant};
-use support::m046_route_free as route_free;
 
 const RUN_TIMEOUT: Duration = Duration::from_secs(10);
 const SQLITE_BUILT_PACKAGE_SOURCE: &str = r#"
@@ -73,7 +73,7 @@ end
 "#;
 
 fn artifact_dir(test_name: &str) -> PathBuf {
-    route_free::artifact_dir("m047-s06", test_name)
+    artifacts::artifact_dir("sqlite-built-package", test_name)
 }
 
 fn write_package_fixture(artifacts: &Path) -> PathBuf {
@@ -87,7 +87,7 @@ fn write_package_fixture(artifacts: &Path) -> PathBuf {
     fs::write(project_dir.join("main.mpl"), SQLITE_BUILT_PACKAGE_SOURCE)
         .unwrap_or_else(|error| panic!("failed to write main.mpl: {error}"));
 
-    route_free::write_json_artifact(
+    artifacts::write_json_artifact(
         &artifacts.join("scenario-meta.json"),
         &json!({
             "package_dir": project_dir.display().to_string(),
@@ -105,9 +105,9 @@ fn write_package_fixture(artifacts: &Path) -> PathBuf {
 }
 
 fn build_package_binary(project_dir: &Path, artifacts: &Path) -> PathBuf {
-    route_free::ensure_mesh_rt_staticlib();
+    artifacts::ensure_mesh_rt_staticlib();
 
-    let output = Command::new(route_free::meshc_bin())
+    let output = Command::new(artifacts::meshc_bin())
         .current_dir(project_dir)
         .args(["build", "."])
         .output()
@@ -118,15 +118,15 @@ fn build_package_binary(project_dir: &Path, artifacts: &Path) -> PathBuf {
             )
         });
 
-    route_free::write_artifact(
+    artifacts::write_artifact(
         &artifacts.join("build.log"),
-        route_free::command_output_text(&output),
+        artifacts::command_output_text(&output),
     );
     assert!(
         output.status.success(),
         "meshc build . should succeed in {}:\n{}\nartifacts: {}",
         project_dir.display(),
-        route_free::command_output_text(&output),
+        artifacts::command_output_text(&output),
         artifacts.display()
     );
 
@@ -138,9 +138,9 @@ fn build_package_binary(project_dir: &Path, artifacts: &Path) -> PathBuf {
         artifacts.display()
     );
 
-    route_free::write_json_artifact(
+    artifacts::write_json_artifact(
         &artifacts.join("build-meta.json"),
-        &route_free::BuildOutputMetadata {
+        &artifacts::BuildOutputMetadata {
             source_package_dir: project_dir.to_path_buf(),
             binary_path: binary_path.clone(),
         },
@@ -201,7 +201,7 @@ fn run_binary(binary_path: &Path, current_dir: &Path, artifacts: &Path, label: &
         });
 
     let output = wait_with_timeout(child, RUN_TIMEOUT).unwrap_or_else(|error| {
-        route_free::write_artifact(&artifacts.join(format!("{label}.timeout.txt")), &error);
+        artifacts::write_artifact(&artifacts.join(format!("{label}.timeout.txt")), &error);
         panic!(
             "sqlite built-package regression timed out for {}\nartifacts: {}\n{}",
             binary_path.display(),
@@ -214,10 +214,10 @@ fn run_binary(binary_path: &Path, current_dir: &Path, artifacts: &Path, label: &
     let stderr = String::from_utf8_lossy(&output.stderr).to_string();
     let combined = format!("stdout:\n{}\nstderr:\n{}", stdout, stderr);
 
-    route_free::write_artifact(&artifacts.join(format!("{label}.stdout.log")), &stdout);
-    route_free::write_artifact(&artifacts.join(format!("{label}.stderr.log")), &stderr);
-    route_free::write_artifact(&artifacts.join(format!("{label}.combined.log")), &combined);
-    route_free::write_artifact(
+    artifacts::write_artifact(&artifacts.join(format!("{label}.stdout.log")), &stdout);
+    artifacts::write_artifact(&artifacts.join(format!("{label}.stderr.log")), &stderr);
+    artifacts::write_artifact(&artifacts.join(format!("{label}.combined.log")), &combined);
+    artifacts::write_artifact(
         &artifacts.join(format!("{label}.status.txt")),
         format!("{:?}", output.status.code()),
     );
@@ -235,7 +235,7 @@ fn non_empty_lines(output: &Output) -> Vec<String> {
 }
 
 #[test]
-fn m047_s06_built_package_sqlite_execute_handles_helper_rewraps_and_mismatch_errors() {
+fn built_package_sqlite_execute_handles_helper_rewraps_and_mismatch_errors() {
     let artifacts = artifact_dir("sqlite-built-package-execute");
     let project_dir = write_package_fixture(&artifacts);
     let binary_path = build_package_binary(&project_dir, &artifacts);

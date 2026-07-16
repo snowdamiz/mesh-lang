@@ -3,3 +3,69 @@ name = "todo-postgres"
 version = "0.1.0"
 
 [dependencies]
+
+[cluster]
+mode = "autonomous"
+default_replicas = 2
+durability = "strict"
+
+[cluster.controllers]
+voters = 3
+autoscale = false
+
+[cluster.roles]
+gateway = true
+worker = true
+
+[cluster.autoscaling]
+enabled = true
+managed_roles = ["worker"]
+min_nodes = 2
+max_nodes = 5
+target_inflight_per_node = 2
+target_queue_wait = "25ms"
+scale_up_window = "250ms"
+scale_down_window = "4s"
+cooldown = "500ms"
+max_scale_up_step = 3
+max_scale_down_step = 1
+max_unavailable = 1
+
+[cluster.routing]
+algorithm = "adaptive"
+load_report_interval = "250ms"
+load_report_ttl = "2s"
+max_inflight_per_node = 2048
+max_queued_per_node = 4096
+max_queued_bytes_per_node = "16MiB"
+retry_budget_percent = 10
+
+[cluster.continuity]
+terminal_retention = "24h"
+tombstone_retention = "48h"
+max_terminal_records = 1000000
+max_disk_bytes = "8GiB"
+snapshot_chunk_bytes = "1MiB"
+
+[cluster.capacity]
+driver = "docker"
+startup_timeout = "30s"
+drain_timeout = "30s"
+termination_timeout = "30s"
+
+[cluster.capacity.docker]
+image = "mesh-autoscaling-proof:local"
+pool = "workers"
+template_revision = "proof-v1"
+env = [
+  "PORT=8080",
+  "TODO_RATE_LIMIT_WINDOW_SECONDS=60",
+  "TODO_RATE_LIMIT_MAX_REQUESTS=100000",
+  "MESH_CLUSTER_MODE=autonomous",
+  "MESH_ROLES=worker",
+  "MESH_ADAPTIVE_ROUTING=true",
+  "MESH_CONTINUITY_DB=/tmp/mesh-continuity.db",
+  "MESH_FAILURE_DOMAIN=dynamic-worker",
+  "MESH_SCHEDULER_MIN_WORKERS=2",
+  "MESH_SCHEDULER_MAX_WORKERS=8",
+]

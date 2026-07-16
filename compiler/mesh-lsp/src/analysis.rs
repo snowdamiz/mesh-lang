@@ -35,10 +35,9 @@ pub struct AnalysisResult {
 /// Analyze a Mesh document: parse, type-check, and produce diagnostics.
 ///
 /// This is the main entry point called by the LSP server on didOpen/didChange.
-/// When the URI belongs to a Mesh project (an ancestor contains `mesh.toml`, or
-/// a legacy ancestor contains `main.mpl` when no manifest root exists),
+/// When the URI belongs to a Mesh project (an ancestor contains `mesh.toml`),
 /// analysis uses project-aware import resolution with open-document overlays so
-/// backend-shaped files behave like the real compiler path instead of isolated
+/// project files behave like the real compiler path instead of isolated
 /// single-file snippets.
 pub fn analyze_document(
     uri: &str,
@@ -478,29 +477,16 @@ fn cluster_diagnostics(
     current_relative_path: &Path,
     current_source: &str,
 ) -> Option<Vec<Diagnostic>> {
-    let manifest = match manifest {
-        None => None,
-        Some(Err(errors)) => return Some(errors),
-        Some(Ok(manifest)) => Some(manifest),
-    };
+    if let Some(Err(errors)) = manifest {
+        return Some(errors);
+    }
 
-    if manifest
-        .as_ref()
-        .and_then(|manifest| manifest.cluster.as_ref())
-        .is_none()
-        && source_cluster_declarations.is_empty()
-    {
+    if source_cluster_declarations.is_empty() {
         return None;
     }
 
     let surface = build_clustered_export_surface(graph, parses, all_exports);
-    match validate_cluster_declarations_with_source(
-        manifest
-            .as_ref()
-            .and_then(|manifest| manifest.cluster.as_ref()),
-        source_cluster_declarations,
-        &surface,
-    ) {
+    match validate_cluster_declarations_with_source(source_cluster_declarations, &surface) {
         Ok(_) => None,
         Err(issues) => Some(
             issues
@@ -691,17 +677,12 @@ fn find_project_root(path: &Path) -> Option<PathBuf> {
     } else {
         path.parent()?.to_path_buf()
     };
-    let mut legacy_root = None;
-
     loop {
         if current.join("mesh.toml").exists() {
             return Some(std::fs::canonicalize(&current).unwrap_or_else(|_| current.clone()));
         }
-        if legacy_root.is_none() && current.join(DEFAULT_ENTRYPOINT).exists() {
-            legacy_root = Some(std::fs::canonicalize(&current).unwrap_or_else(|_| current.clone()));
-        }
         if !current.pop() {
-            return legacy_root;
+            return None;
         }
     }
 }
@@ -984,18 +965,6 @@ mod tests {
             .expect("project graph should contain an entry module")
     }
 
-    fn clustered_project_main_source() -> &'static str {
-        "from Services import Jobs\nfrom Work import handle_submit\n\nfn main() do\n  let pid = Jobs.start(0)\n  let _ = Jobs.submit(pid, \"demo\")\n  let _ = handle_submit(\"demo\")\nend\n"
-    }
-
-    fn clustered_project_services_source() -> &'static str {
-        "service Jobs do\n  fn init(start :: Int) -> Int do\n    start\n  end\n\n  call Submit(payload :: String) :: String do |state|\n    (state, payload)\n  end\n\n  cast Reset() do |_state|\n    0\n  end\nend\n"
-    }
-
-    fn clustered_project_work_source() -> &'static str {
-        "pub fn handle_submit(payload :: String) -> String do\n  payload\nend\n\nfn hidden_submit(payload :: String) -> String do\n  payload\nend\n"
-    }
-
     fn source_declared_work_project_main_source() -> &'static str {
         "fn main() do\n  nil\nend\n"
     }
@@ -1008,35 +977,15 @@ mod tests {
         "@cluster fn hidden_submit(payload :: String) -> String do\n  payload\nend\n"
     }
 
-    fn legacy_clustered_work_source() -> &'static str {
+    fn removed_clustered_work_source() -> &'static str {
         "clustered(work) pub fn handle_submit(payload :: String) -> String do\n  payload\nend\n"
     }
 
-    fn legacy_manifest(name: &str) -> String {
+    fn removed_cluster_manifest(name: &str) -> String {
         format!(
             "{}\n[cluster]\nenabled = true\ndeclarations = [\n  {{ kind = \"work\", target = \"Work.handle_submit\" }},\n]\n",
             package_manifest(name)
         )
-    }
-
-    fn write_clustered_project(manifest: &str) -> (tempfile::TempDir, PathBuf, String) {
-        let tmp = tempfile::tempdir().unwrap();
-        let project_dir = tmp.path().join("project");
-        let main_path = project_dir.join("main.mpl");
-        std::fs::create_dir_all(&project_dir).unwrap();
-        std::fs::write(project_dir.join("mesh.toml"), manifest).unwrap();
-        std::fs::write(&main_path, clustered_project_main_source()).unwrap();
-        std::fs::write(
-            project_dir.join("services.mpl"),
-            clustered_project_services_source(),
-        )
-        .unwrap();
-        std::fs::write(
-            project_dir.join("work.mpl"),
-            clustered_project_work_source(),
-        )
-        .unwrap();
-        (tmp, main_path, clustered_project_main_source().to_string())
     }
 
     fn write_source_declared_work_project(
@@ -1098,22 +1047,22 @@ mod tests {
         );
     }
 
-    // ── M048 entrypoint-aware project analysis ──────────────────────────
+    // ── Entrypoint-aware project analysis ────────────────────────────────
 
     #[test]
-    fn m048_s02_find_project_root_prefers_manifest_before_legacy_main_marker() {
+    fn find_project_root_uses_manifest_ancestor() {
         let manifest = entrypoint_manifest("manifest-root", "app.mpl");
         let (_tmp, project_dir, open_path, _source) = write_mesh_project(
             Some(&manifest),
             &[
                 ("app.mpl", "fn main() do\n  0\nend\n"),
-                ("legacy/main.mpl", "fn main() do\n  1\nend\n"),
+                ("nested/main.mpl", "fn main() do\n  1\nend\n"),
                 (
-                    "legacy/support.mpl",
-                    "pub fn label() -> String do\n  \"legacy\"\nend\n",
+                    "nested/support.mpl",
+                    "pub fn label() -> String do\n  \"nested\"\nend\n",
                 ),
             ],
-            "legacy/support.mpl",
+            "nested/support.mpl",
         );
 
         let detected_root = find_project_root(&open_path).expect("manifest root should resolve");
@@ -1121,12 +1070,12 @@ mod tests {
         assert_eq!(
             detected_root,
             std::fs::canonicalize(&project_dir).unwrap(),
-            "manifest marker should win before a nearer legacy main.mpl"
+            "manifest marker should identify the project root"
         );
     }
 
     #[test]
-    fn m048_s02_override_only_project_marks_nested_entry_executable_and_analyzes_cleanly() {
+    fn override_only_project_marks_nested_entry_executable_and_analyzes_cleanly() {
         let manifest = entrypoint_manifest("override-only", "lib/start.mpl");
         let (_tmp, project_dir, open_path, source) = write_mesh_project(
             Some(&manifest),
@@ -1173,7 +1122,7 @@ mod tests {
     }
 
     #[test]
-    fn m048_s02_override_precedence_keeps_root_main_path_derived_but_not_executable() {
+    fn override_precedence_keeps_root_main_path_derived_but_not_executable() {
         let manifest = entrypoint_manifest("override-precedence", "lib/start.mpl");
         let (_tmp, project_dir, open_path, source) = write_mesh_project(
             Some(&manifest),
@@ -1231,44 +1180,7 @@ mod tests {
     }
 
     #[test]
-    fn m048_s02_legacy_manifestless_project_keeps_root_main_as_main_entry() {
-        let (_tmp, project_dir, open_path, source) = write_mesh_project(
-            None,
-            &[
-                (
-                    "main.mpl",
-                    "from Support import label\n\nfn main() do\n  println(label())\nend\n",
-                ),
-                (
-                    "support.mpl",
-                    "pub fn label() -> String do\n  \"default-support\"\nend\n",
-                ),
-            ],
-            "main.mpl",
-        );
-
-        let entry_relative_path = resolve_entrypoint(&project_dir, None).unwrap();
-        let project =
-            build_project_with_overlays(&project_dir, &entry_relative_path, &HashMap::new())
-                .unwrap();
-        let entry = entry_module(&project.graph);
-
-        assert_eq!(entry_relative_path, PathBuf::from(DEFAULT_ENTRYPOINT));
-        assert_eq!(entry.path, PathBuf::from(DEFAULT_ENTRYPOINT));
-        assert_eq!(entry.name, "Main");
-        assert!(entry.is_entry);
-
-        let result = analyze_document(&file_uri(&open_path), &source, &[]);
-        let messages = diagnostic_messages(&result);
-        assert!(
-            messages.is_empty(),
-            "legacy manifest-less projects should still analyze cleanly, got: {:?}",
-            messages
-        );
-    }
-
-    #[test]
-    fn m048_s02_missing_configured_entry_reports_project_diagnostic() {
+    fn missing_configured_entry_reports_project_diagnostic() {
         let manifest = entrypoint_manifest("broken-entry", "lib/start.mpl");
         let (_tmp, _project_dir, open_path, source) = write_mesh_project(
             Some(&manifest),
@@ -1298,7 +1210,7 @@ mod tests {
     }
 
     #[test]
-    fn m048_s02_invalid_manifest_entrypoint_reports_project_diagnostic() {
+    fn invalid_manifest_entrypoint_reports_project_diagnostic() {
         let manifest = entrypoint_manifest("escaping-entry", "../escape.mpl");
         let (_tmp, _project_dir, open_path, source) = write_mesh_project(
             Some(&manifest),
@@ -1330,7 +1242,7 @@ mod tests {
     // ── Clustered cutover contract ────────────────────────────────────
 
     #[test]
-    fn m047_s04_source_decorated_work_still_analyzes_without_diagnostics() {
+    fn source_decorated_work_still_analyzes_without_diagnostics() {
         let (_tmp, work_path, source) = write_source_declared_work_project(
             &package_manifest("clustered-source-proof"),
             source_declared_public_work_source(),
@@ -1351,9 +1263,9 @@ mod tests {
     }
 
     #[test]
-    fn m047_s04_legacy_manifest_cluster_section_reports_project_diagnostic() {
+    fn removed_manifest_cluster_section_reports_project_diagnostic() {
         let (_tmp, work_path, source) = write_source_declared_work_project(
-            &legacy_manifest("clustered-source-proof"),
+            &removed_cluster_manifest("clustered-source-proof"),
             source_declared_public_work_source(),
         );
 
@@ -1368,7 +1280,7 @@ mod tests {
             })
             .unwrap_or_else(|| {
                 panic!(
-                    "expected legacy manifest diagnostic, got: {:?}",
+                    "expected removed-manifest diagnostic, got: {:?}",
                     result
                         .diagnostics
                         .iter()
@@ -1381,10 +1293,10 @@ mod tests {
     }
 
     #[test]
-    fn m047_s04_legacy_clustered_work_reports_parse_diagnostic_at_source_range() {
+    fn removed_clustered_work_reports_parse_diagnostic_at_source_range() {
         let (_tmp, work_path, source) = write_source_declared_work_project(
             &package_manifest("clustered-source-proof"),
-            legacy_clustered_work_source(),
+            removed_clustered_work_source(),
         );
 
         let result = analyze_document(&file_uri(&work_path), &source, &[]);
@@ -1393,11 +1305,11 @@ mod tests {
             .iter()
             .find(|diag| {
                 diag.message
-                    .contains("legacy `clustered(work)` declarations are no longer supported")
+                    .contains("`clustered(work)` declarations are not supported")
             })
             .unwrap_or_else(|| {
                 panic!(
-                    "expected legacy clustered(work) diagnostic, got: {:?}",
+                    "expected removed clustered(work) diagnostic, got: {:?}",
                     result
                         .diagnostics
                         .iter()
@@ -1410,13 +1322,13 @@ mod tests {
         assert!(
             diag.range.end.line > diag.range.start.line
                 || diag.range.end.character > diag.range.start.character,
-            "expected non-empty legacy source range, got {:?}",
+            "expected non-empty removed-syntax source range, got {:?}",
             diag.range
         );
     }
 
     #[test]
-    fn m047_s01_source_decorated_work_analyzes_without_diagnostics() {
+    fn source_decorated_work_analyzes_without_diagnostics() {
         let (_tmp, work_path, source) = write_source_declared_work_project(
             &package_manifest("clustered-source-proof"),
             source_declared_public_work_source(),
@@ -1437,7 +1349,7 @@ mod tests {
     }
 
     #[test]
-    fn m047_s01_private_source_decorator_reports_declaration_range() {
+    fn private_source_decorator_reports_declaration_range() {
         let (_tmp, work_path, source) = write_source_declared_work_project(
             &package_manifest("clustered-source-proof"),
             source_declared_private_work_source(),
@@ -1467,9 +1379,9 @@ mod tests {
     }
 
     #[test]
-    fn m047_s01_manifest_source_duplicate_reports_declaration_range() {
+    fn manifest_source_duplicate_reports_declaration_range() {
         let (_tmp, work_path, source) = write_source_declared_work_project(
-            &legacy_manifest("clustered-source-proof"),
+            &removed_cluster_manifest("clustered-source-proof"),
             source_declared_public_work_source(),
         );
 
@@ -1484,7 +1396,7 @@ mod tests {
             })
             .unwrap_or_else(|| {
                 panic!(
-                    "expected legacy manifest diagnostic, got: {:?}",
+                    "expected removed-manifest diagnostic, got: {:?}",
                     result
                         .diagnostics
                         .iter()
@@ -1549,6 +1461,7 @@ mod tests {
         let main_path = project_dir.join("main.mpl");
 
         std::fs::create_dir_all(package_root.join("support")).unwrap();
+        std::fs::write(project_dir.join("mesh.toml"), package_manifest("consumer")).unwrap();
         std::fs::write(
             &main_path,
             "from Support.Message import message\n\nfn main() do\n  println(message())\nend\n",
@@ -1589,6 +1502,7 @@ mod tests {
         let main_path = project_dir.join("main.mpl");
 
         std::fs::create_dir_all(&package_root).unwrap();
+        std::fs::write(project_dir.join("mesh.toml"), package_manifest("consumer")).unwrap();
         std::fs::write(
             &main_path,
             "from Greeting import message\n\nfn main() do\n  println(message())\nend\n",
@@ -1617,7 +1531,7 @@ mod tests {
     }
 
     #[test]
-    fn m047_s07_clustered_route_wrapper_project_keeps_imported_origin_metadata() {
+    fn clustered_route_wrapper_project_keeps_imported_origin_metadata() {
         let (_tmp, main_path, source) = write_clustered_route_wrapper_project();
 
         let result = analyze_document(&file_uri(&main_path), &source, &[]);
@@ -1661,7 +1575,7 @@ mod tests {
     }
 
     #[test]
-    fn m047_s07_clustered_route_wrapper_reports_wrapper_range_in_lsp() {
+    fn clustered_route_wrapper_reports_wrapper_range_in_lsp() {
         let source = "pub fn handle(req :: Request) -> Response do\n  HTTP.response(200, \"ok\")\nend\n\nfn build() do\n  let wrapped = HTTP.clustered(handle)\n  wrapped\nend\n";
         let result = analyze_document("file:///test.mpl", source, &[]);
         let diag = result
@@ -1720,37 +1634,6 @@ mod tests {
                 .iter()
                 .map(|d| &d.message)
                 .collect::<Vec<_>>()
-        );
-    }
-
-    #[test]
-    fn analyze_reference_backend_jobs_uses_project_imports() {
-        let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .parent()
-            .expect("mesh-lsp crate should live under compiler/")
-            .parent()
-            .expect("workspace root should be above compiler/")
-            .to_path_buf();
-        let jobs_path = std::fs::canonicalize(
-            repo_root.join("scripts/fixtures/backend/reference-backend/api/jobs.mpl"),
-        )
-        .expect("retained reference-backend fixture jobs file should exist");
-        let uri = Url::from_file_path(&jobs_path)
-            .expect("jobs path should convert to file URI")
-            .to_string();
-        let source = std::fs::read_to_string(&jobs_path).expect("jobs source should be readable");
-
-        let result = analyze_document(&uri, &source, &[]);
-        let messages = result
-            .diagnostics
-            .iter()
-            .map(|diag| diag.message.as_str())
-            .collect::<Vec<_>>();
-
-        assert!(
-            messages.is_empty(),
-            "scripts/fixtures/backend/reference-backend/api/jobs.mpl should analyze without bogus import diagnostics, got: {:?}",
-            messages
         );
     }
 

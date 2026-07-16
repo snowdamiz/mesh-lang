@@ -497,15 +497,7 @@ mod tests {
 
     #[test]
     fn resolve_node_name_prefers_explicit_over_hostname() {
-        let result = resolve_node_name(
-            "mynode@10.0.0.1:4370",
-            "10.0.0.99",
-            "",
-            "",
-            "",
-            "",
-            4370,
-        );
+        let result = resolve_node_name("mynode@10.0.0.1:4370", "10.0.0.99", "", "", "", "", 4370);
         assert_eq!(result.unwrap(), "mynode@10.0.0.1:4370");
     }
 
@@ -579,8 +571,7 @@ mod tests {
             ..BootstrapInputs::default()
         };
 
-        let plan = resolve_bootstrap(inputs)
-            .expect("should resolve with system hostname identity");
+        let plan = resolve_bootstrap(inputs).expect("should resolve with system hostname identity");
         assert_eq!(plan.status.mode, BootstrapMode::Cluster);
         assert!(plan.status.node_name.contains('@'));
         assert!(plan.status.node_name.ends_with(":4370"));

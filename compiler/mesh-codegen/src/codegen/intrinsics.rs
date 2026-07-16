@@ -30,6 +30,13 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
         Some(inkwell::module::Linkage::External),
     );
 
+    // mesh_register_autonomous_config_json(data: ptr, len: u64) -> i32
+    module.add_function(
+        "mesh_register_autonomous_config_json",
+        i32_type.fn_type(&[ptr_type.into(), i64_type.into()], false),
+        Some(inkwell::module::Linkage::External),
+    );
+
     // mesh_gc_alloc_actor(size: u64, align: u64) -> ptr
     let gc_alloc_ty = ptr_type.fn_type(&[i64_type.into(), i64_type.into()], false);
     module.add_function(
@@ -1645,20 +1652,6 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
         Some(inkwell::module::Linkage::External),
     );
 
-    // mesh_http_get(url: ptr) -> ptr (MeshResult)
-    module.add_function(
-        "mesh_http_get",
-        ptr_type.fn_type(&[ptr_type.into()], false),
-        Some(inkwell::module::Linkage::External),
-    );
-
-    // mesh_http_post(url: ptr, body: ptr) -> ptr (MeshResult)
-    module.add_function(
-        "mesh_http_post",
-        ptr_type.fn_type(&[ptr_type.into(), ptr_type.into()], false),
-        Some(inkwell::module::Linkage::External),
-    );
-
     // mesh_http_request_method(req: ptr) -> ptr
     module.add_function(
         "mesh_http_request_method",
@@ -1691,6 +1684,41 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
     module.add_function(
         "mesh_http_request_query",
         ptr_type.fn_type(&[ptr_type.into(), ptr_type.into()], false),
+        Some(inkwell::module::Linkage::External),
+    );
+
+    // mesh_http_request_id(req: ptr) -> ptr (MeshString)
+    module.add_function(
+        "mesh_http_request_id",
+        ptr_type.fn_type(&[ptr_type.into()], false),
+        Some(inkwell::module::Linkage::External),
+    );
+
+    // mesh_http_idempotency_key(req: ptr) -> ptr (MeshOption<String>)
+    module.add_function(
+        "mesh_http_idempotency_key",
+        ptr_type.fn_type(&[ptr_type.into()], false),
+        Some(inkwell::module::Linkage::External),
+    );
+
+    module.add_function(
+        "mesh_cluster_capacity",
+        ptr_type.fn_type(&[], false),
+        Some(inkwell::module::Linkage::External),
+    );
+    module.add_function(
+        "mesh_cluster_pressure",
+        ptr_type.fn_type(&[], false),
+        Some(inkwell::module::Linkage::External),
+    );
+    module.add_function(
+        "mesh_cluster_role",
+        ptr_type.fn_type(&[], false),
+        Some(inkwell::module::Linkage::External),
+    );
+    module.add_function(
+        "mesh_cluster_state",
+        ptr_type.fn_type(&[], false),
         Some(inkwell::module::Linkage::External),
     );
 
@@ -1830,7 +1858,7 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
         Some(inkwell::module::Linkage::External),
     );
 
-    // ── M033/S02: Pg expression helpers ───────────────────────────────
+    // ── PostgreSQL expression helpers ─────────────────────────────────
 
     // mesh_pg_cast(expr: ptr, sql_type: ptr) -> ptr
     module.add_function(
@@ -1884,7 +1912,7 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
         );
     }
 
-    // ── M033/S04: explicit PostgreSQL schema helpers ──────────────────
+    // ── Explicit PostgreSQL schema helpers ────────────────────────────
 
     // mesh_pg_create_extension(pool: i64, name: ptr) -> ptr (MeshResult)
     module.add_function(
@@ -2691,7 +2719,7 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
         Some(inkwell::module::Linkage::External),
     );
 
-    // ── M033/S01: neutral SQL expression builder ─────────────────────
+    // ── Neutral SQL expression builder ────────────────────────────────
 
     module.add_function(
         "mesh_expr_column",
@@ -3499,7 +3527,7 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
         Some(inkwell::module::Linkage::External),
     );
 
-    // ── M042/M044: Continuity runtime functions ───────────────────────────
+    // ── continuity: Continuity runtime functions ───────────────────────────
     // mesh_continuity_submit_with_durability(...) -> ptr (MeshResult<ContinuitySubmitDecision, String>)
     module.add_function(
         "mesh_continuity_submit_with_durability",
@@ -3748,8 +3776,6 @@ mod tests {
         assert!(module.get_function("mesh_http_serve").is_some());
         assert!(module.get_function("mesh_http_serve_tls").is_some());
         assert!(module.get_function("mesh_http_response_new").is_some());
-        assert!(module.get_function("mesh_http_get").is_some());
-        assert!(module.get_function("mesh_http_post").is_some());
         assert!(module.get_function("mesh_http_request_method").is_some());
         assert!(module.get_function("mesh_http_request_path").is_some());
         assert!(module.get_function("mesh_http_request_body").is_some());
@@ -3784,7 +3810,7 @@ mod tests {
         assert!(module.get_function("mesh_pg_rollback").is_some());
         assert!(module.get_function("mesh_pg_transaction").is_some());
 
-        // M033/S02: Pg expression helpers
+        // PostgreSQL expression helpers.
         assert!(module.get_function("mesh_pg_cast").is_some());
         assert!(module.get_function("mesh_pg_jsonb").is_some());
         assert!(module.get_function("mesh_pg_int").is_some());
@@ -3799,7 +3825,7 @@ mod tests {
         assert!(module.get_function("mesh_pg_tsvector_matches").is_some());
         assert!(module.get_function("mesh_pg_jsonb_contains").is_some());
 
-        // M033/S04: Pg schema helpers
+        // PostgreSQL schema helpers.
         assert!(module.get_function("mesh_pg_create_extension").is_some());
         assert!(module
             .get_function("mesh_pg_create_range_partitioned_table")
@@ -3927,7 +3953,7 @@ mod tests {
         assert!(module.get_function("mesh_process_demonitor").is_some());
         assert!(module.get_function("mesh_actor_send_named").is_some());
 
-        // M042/M045: continuity runtime functions
+        // continuity: continuity runtime functions
         assert!(module
             .get_function("mesh_continuity_submit_with_durability")
             .is_some());
@@ -3997,7 +4023,7 @@ mod tests {
         assert!(module.get_function("mesh_orm_build_update").is_some());
         assert!(module.get_function("mesh_orm_build_delete").is_some());
 
-        // M033/S01: neutral SQL expression builder
+        // Neutral SQL expression builder.
         assert!(module.get_function("mesh_expr_column").is_some());
         assert!(module.get_function("mesh_expr_value").is_some());
         assert!(module.get_function("mesh_expr_null").is_some());

@@ -17,7 +17,14 @@ use crate::io::{alloc_result, MeshResult};
 use crate::string::{mesh_string_new, MeshString};
 use parking_lot::RwLock;
 use rustc_hash::FxHashMap;
-use std::sync::{Arc, OnceLock};
+use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
+use std::collections::{BTreeMap, BTreeSet};
+use std::sync::{Arc, Mutex, OnceLock};
+
+use super::continuity_store::{
+    configured_continuity_store, ContinuityLogEntry, ContinuityStore, SnapshotChunk,
+};
 
 const CONTINUITY_CONFLICT_REASON: &str = "request_key_conflict";
 const ATTEMPT_ID_MISMATCH: &str = "attempt_id_mismatch";
@@ -43,6 +50,15 @@ const PROMOTION_REJECTED_NOT_STANDBY: &str = "promotion_rejected:not_standby";
 #[cfg_attr(not(test), allow(dead_code))]
 const PROMOTION_REJECTED_NO_MIRRORED_STATE: &str = "promotion_rejected:no_mirrored_state";
 const STALE_PROMOTION_EPOCH_REJECTED: &str = "stale_promotion_epoch_rejected";
+
+pub(crate) fn request_key_fingerprint(request_key: &str) -> String {
+    let digest = Sha256::digest(request_key.as_bytes());
+    let short = digest[..12]
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect::<String>();
+    format!("sha256:{short}")
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ContinuityPhase {
@@ -307,11 +323,23 @@ fn parse_authority_config(
 pub struct ContinuityRecord {
     pub request_key: String,
     pub payload_hash: String,
+    /// Monotonic state version within one request identity.
+    pub(crate) record_version: u64,
+    /// Encoded request needed to resume an in-flight operation after owner loss.
+    /// Empty for declared work that reconstructs its arguments from the key.
+    pub(crate) request_payload: Vec<u8>,
     pub attempt_id: String,
     pub phase: ContinuityPhase,
     pub result: ContinuityResult,
     pub ingress_node: String,
     pub owner_node: String,
+    /// Replica targets selected for this attempt.
+    ///
+    /// `replica_node` remains the language/FFI-compatible primary replica.
+    pub(crate) replica_nodes: Vec<String>,
+    /// Replica targets that actually acknowledged the current attempt.
+    /// Runtime safety decisions must use this complete set.
+    pub(crate) acknowledged_replica_nodes: Vec<String>,
     pub replica_node: String,
     pub replication_count: u64,
     pub replica_status: ReplicaStatus,
@@ -333,6 +361,32 @@ impl ContinuityRecord {
         &self.declared_handler_runtime_name
     }
 
+    /// Returns the retained request bytes used by recoverable HTTP handlers.
+    pub fn request_payload(&self) -> &[u8] {
+        &self.request_payload
+    }
+
+    /// Returns the exact acknowledged replica holders for this attempt.
+    pub fn replica_nodes(&self) -> &[String] {
+        &self.replica_nodes
+    }
+
+    pub fn acknowledged_replica_nodes(&self) -> &[String] {
+        &self.acknowledged_replica_nodes
+    }
+
+    pub(crate) fn canonical_replica_nodes(&self) -> Vec<String> {
+        if self.replica_nodes.is_empty() {
+            if self.replica_node.is_empty() {
+                Vec::new()
+            } else {
+                vec![self.replica_node.clone()]
+            }
+        } else {
+            self.replica_nodes.clone()
+        }
+    }
+
     pub fn validate(&self) -> Result<(), String> {
         if self.request_key.is_empty() {
             return Err(REQUEST_KEY_MISSING.to_string());
@@ -343,11 +397,35 @@ impl ContinuityRecord {
         if self.attempt_id.is_empty() {
             return Err(ATTEMPT_ID_MISSING.to_string());
         }
+        if self.record_version == 0 {
+            return Err("continuity_record_version_invalid".to_string());
+        }
         if self.owner_node.is_empty() {
             return Err(OWNER_NODE_MISSING.to_string());
         }
         if self.replication_count == 0 {
             return Err(INVALID_REPLICATION_COUNT.to_string());
+        }
+        let replicas = self.canonical_replica_nodes();
+        let mut normalized = replicas.clone();
+        normalized.sort();
+        normalized.dedup();
+        if normalized.len() != replicas.len()
+            || replicas.iter().any(String::is_empty)
+            || replicas.iter().any(|node| node == &self.owner_node)
+            || (!self.replica_node.is_empty() && !replicas.contains(&self.replica_node))
+        {
+            return Err("continuity_replica_set_invalid".to_string());
+        }
+        let mut acknowledgements = self.acknowledged_replica_nodes.clone();
+        acknowledgements.sort();
+        acknowledgements.dedup();
+        if acknowledgements.len() != self.acknowledged_replica_nodes.len()
+            || acknowledgements
+                .iter()
+                .any(|replica| !replicas.contains(replica))
+        {
+            return Err("continuity_replica_ack_set_invalid".to_string());
         }
         if !self.replica_node.is_empty() && self.replica_node == self.owner_node {
             return Err(REPLICA_MATCHES_OWNER.to_string());
@@ -365,8 +443,10 @@ impl ContinuityRecord {
 pub struct SubmitRequest {
     pub request_key: String,
     pub payload_hash: String,
+    pub(crate) request_payload: Vec<u8>,
     pub ingress_node: String,
     pub owner_node: String,
+    pub(crate) replica_nodes: Vec<String>,
     pub replica_node: String,
     pub replication_count: u64,
     pub required_replica_count: u64,
@@ -393,6 +473,20 @@ impl SubmitRequest {
         }
         if self.required_replica_count > self.replication_count.saturating_sub(1) {
             return Err(INVALID_REQUIRED_REPLICA_COUNT.to_string());
+        }
+        let mut replicas = self.replica_nodes.clone();
+        if replicas.is_empty() && !self.replica_node.is_empty() {
+            replicas.push(self.replica_node.clone());
+        }
+        let mut normalized = replicas.clone();
+        normalized.sort();
+        normalized.dedup();
+        if normalized.len() != replicas.len()
+            || replicas.iter().any(String::is_empty)
+            || replicas.iter().any(|node| node == &self.owner_node)
+            || (!self.replica_node.is_empty() && !replicas.contains(&self.replica_node))
+        {
+            return Err("continuity_replica_set_invalid".to_string());
         }
         if !self.replica_node.is_empty() && self.replica_node == self.owner_node {
             return Err(REPLICA_MATCHES_OWNER.to_string());
@@ -451,17 +545,6 @@ struct ContinuityInner {
 
 pub struct ContinuityRegistry {
     inner: RwLock<ContinuityInner>,
-}
-
-fn unsupported_replication_count_reason(
-    required_replica_count: u64,
-    replication_count: u64,
-) -> Option<String> {
-    if required_replica_count > 1 {
-        Some(format!("unsupported_replication_count:{replication_count}"))
-    } else {
-        None
-    }
 }
 
 impl ContinuityRegistry {
@@ -532,6 +615,56 @@ impl ContinuityRegistry {
         self.inner.read().requests.get(request_key).cloned()
     }
 
+    /// Reserves a monotonically increasing attempt fence for a cooperative
+    /// ownership transfer. Reserving does not modify the active record, so a
+    /// failed replica prepare leaves the previous owner authoritative.
+    pub(crate) fn reserve_transfer_attempt(&self) -> (u64, String) {
+        let mut inner = self.inner.write();
+        let token = inner.next_attempt_token;
+        inner.next_attempt_token = inner.next_attempt_token.saturating_add(1);
+        (inner.next_attempt_token, attempt_id_from_token(token))
+    }
+
+    /// Atomically installs a drain replacement only while the expected
+    /// attempt is still current. This compare-and-swap fences concurrent
+    /// completion, retry, and duplicate drain orchestrators.
+    pub(crate) fn commit_drain_replacement(
+        &self,
+        expected_attempt_id: &str,
+        record: ContinuityRecord,
+    ) -> Result<ContinuityRecord, String> {
+        record.validate()?;
+        let mut inner = self.inner.write();
+        let current = inner
+            .requests
+            .get(&record.request_key)
+            .ok_or_else(|| REQUEST_KEY_NOT_FOUND.to_string())?;
+        if current.attempt_id != expected_attempt_id {
+            return Err("continuity_drain_attempt_fenced".to_string());
+        }
+        if current.phase != ContinuityPhase::Submitted
+            || current.result != ContinuityResult::Pending
+        {
+            return Err("continuity_drain_record_not_active".to_string());
+        }
+        let mut previous_participants =
+            BTreeSet::from([current.ingress_node.clone(), current.owner_node.clone()]);
+        previous_participants.extend(current.replica_nodes().iter().cloned());
+        update_next_attempt_token(&mut inner, &record, None);
+        inner
+            .requests
+            .insert(record.request_key.clone(), record.clone());
+        let watermark = inner.next_attempt_token;
+        drop(inner);
+
+        log_drain_replacement(&record, expected_attempt_id);
+        broadcast_continuity_upsert(watermark, &record);
+        for participant in previous_participants {
+            send_continuity_upsert_to_node(watermark, &record, &participant);
+        }
+        Ok(record)
+    }
+
     #[cfg(test)]
     pub(crate) fn clear_for_test(&self) {
         *self.inner.write() = ContinuityInner {
@@ -557,7 +690,11 @@ impl ContinuityRegistry {
     where
         F: FnOnce(&ContinuityRecord) -> Result<(), String>,
     {
-        self.submit_with_hooks(request, prepare_replica, |_, _| false)
+        self.submit_with_hooks(
+            request,
+            |record| prepare_replica(record).map(|()| record.canonical_replica_nodes()),
+            |_, _| false,
+        )
     }
 
     fn submit_with_hooks<F, G>(
@@ -567,7 +704,7 @@ impl ContinuityRegistry {
         recovery_eligible: G,
     ) -> Result<SubmitDecision, String>
     where
-        F: FnOnce(&ContinuityRecord) -> Result<(), String>,
+        F: FnOnce(&ContinuityRecord) -> Result<Vec<String>, String>,
         G: FnOnce(&ContinuityRecord, &SubmitRequest) -> bool,
     {
         request.validate()?;
@@ -640,21 +777,9 @@ impl ContinuityRegistry {
         prepare_replica: F,
     ) -> Result<SubmitDecision, String>
     where
-        F: FnOnce(&ContinuityRecord) -> Result<(), String>,
+        F: FnOnce(&ContinuityRecord) -> Result<Vec<String>, String>,
     {
         log_submit(&record, required_replica_count);
-
-        if let Some(reason) =
-            unsupported_replication_count_reason(required_replica_count, record.replication_count)
-        {
-            let rejected =
-                self.reject_durable_request(&record.request_key, &record.attempt_id, &reason)?;
-            return Ok(SubmitDecision {
-                outcome: SubmitOutcome::Rejected,
-                record: rejected,
-                conflict_reason: String::new(),
-            });
-        }
 
         if !requires_replica_prepare {
             broadcast_continuity_upsert(watermark, &record);
@@ -679,9 +804,12 @@ impl ContinuityRegistry {
         }
 
         match prepare_replica(&record) {
-            Ok(()) => {
-                let acked =
-                    self.acknowledge_replica_prepare(&record.request_key, &record.attempt_id)?;
+            Ok(acknowledged_replica_nodes) => {
+                let acked = self.acknowledge_replica_prepare_nodes(
+                    &record.request_key,
+                    &record.attempt_id,
+                    acknowledged_replica_nodes,
+                )?;
                 Ok(SubmitDecision {
                     outcome: SubmitOutcome::Created,
                     record: acked,
@@ -750,16 +878,47 @@ impl ContinuityRegistry {
                 if existing.payload_hash != record.payload_hash {
                     return Err(CONTINUITY_CONFLICT_REASON.to_string());
                 }
-                if existing.attempt_id != record.attempt_id {
-                    return Err(ATTEMPT_ID_MISMATCH.to_string());
+                let progress = existing
+                    .promotion_epoch
+                    .cmp(&record.promotion_epoch)
+                    .then_with(|| {
+                        match (
+                            parse_attempt_token(&existing.attempt_id),
+                            parse_attempt_token(&record.attempt_id),
+                        ) {
+                            (Some(left), Some(right)) => left.cmp(&right),
+                            _ if existing.attempt_id == record.attempt_id => {
+                                std::cmp::Ordering::Equal
+                            }
+                            _ => std::cmp::Ordering::Greater,
+                        }
+                    })
+                    .then_with(|| existing.record_version.cmp(&record.record_version));
+                match progress {
+                    std::cmp::Ordering::Greater => {
+                        return Err("stale_replica_prepare".to_string());
+                    }
+                    std::cmp::Ordering::Equal => {
+                        if existing.owner_node != record.owner_node {
+                            return Err("owner_node_mismatch".to_string());
+                        }
+                        if existing.canonical_replica_nodes() != record.canonical_replica_nodes() {
+                            return Err("replica_set_mismatch".to_string());
+                        }
+                    }
+                    std::cmp::Ordering::Less
+                        if existing.attempt_id == record.attempt_id
+                            && existing.owner_node != record.owner_node =>
+                    {
+                        return Err("owner_change_requires_new_attempt".to_string());
+                    }
+                    std::cmp::Ordering::Less => {}
                 }
-                if existing.owner_node != record.owner_node {
-                    return Err("owner_node_mismatch".to_string());
+                let preferred = preferred_record(existing.clone(), record.clone());
+                if preferred == existing && preferred != record {
+                    return Err("stale_replica_prepare".to_string());
                 }
-                if existing.replica_node != record.replica_node {
-                    return Err("replica_node_mismatch".to_string());
-                }
-                preferred_record(existing, record)
+                preferred
             }
             None => record,
         };
@@ -767,11 +926,16 @@ impl ContinuityRegistry {
         inner
             .requests
             .insert(merged.request_key.clone(), merged.clone());
-        let watermark = inner.next_attempt_token;
         drop(inner);
 
         log_replica_prepare(&merged);
-        broadcast_continuity_upsert(watermark, &merged);
+        // Prepare is the first half of a fenced ownership/replica change. It
+        // must be durable on the selected replica, but it is not authoritative
+        // cluster state until the coordinator installs and broadcasts the
+        // mirrored record. Rebroadcasting this provisional record can race the
+        // coordinator's compare-and-swap and leave every node fenced on an
+        // attempt that never committed.
+        super::continuity_store::persist_replica_prepare(&merged)?;
         Ok(merged)
     }
 
@@ -780,13 +944,27 @@ impl ContinuityRegistry {
         request_key: &str,
         attempt_id: &str,
     ) -> Result<ContinuityRecord, String> {
+        let replica_nodes = self
+            .record(request_key)
+            .ok_or_else(|| REQUEST_KEY_NOT_FOUND.to_string())?
+            .canonical_replica_nodes();
+        self.acknowledge_replica_prepare_nodes(request_key, attempt_id, replica_nodes)
+    }
+
+    fn acknowledge_replica_prepare_nodes(
+        &self,
+        request_key: &str,
+        attempt_id: &str,
+        acknowledged_replica_nodes: Vec<String>,
+    ) -> Result<ContinuityRecord, String> {
         let mut inner = self.inner.write();
         let record = inner
             .requests
             .get(request_key)
             .cloned()
             .ok_or_else(|| REQUEST_KEY_NOT_FOUND.to_string())?;
-        let next = transition_replica_ack_record(record, attempt_id)?;
+        let next = transition_replica_ack_record(record, attempt_id, acknowledged_replica_nodes)?;
+        next.validate()?;
         inner.requests.insert(request_key.to_string(), next.clone());
         let watermark = inner.next_attempt_token;
         drop(inner);
@@ -794,6 +972,22 @@ impl ContinuityRegistry {
         log_replica_ack(&next);
         broadcast_continuity_upsert(watermark, &next);
         Ok(next)
+    }
+
+    pub(crate) fn acknowledge_replica_node(
+        &self,
+        request_key: &str,
+        attempt_id: &str,
+        replica_node: &str,
+    ) -> Result<ContinuityRecord, String> {
+        let record = self
+            .record(request_key)
+            .ok_or_else(|| REQUEST_KEY_NOT_FOUND.to_string())?;
+        let mut acknowledgements = record.acknowledged_replica_nodes.clone();
+        if !acknowledgements.iter().any(|node| node == replica_node) {
+            acknowledgements.push(replica_node.to_string());
+        }
+        self.acknowledge_replica_prepare_nodes(request_key, attempt_id, acknowledgements)
     }
 
     pub fn reject_durable_request(
@@ -844,6 +1038,40 @@ impl ContinuityRegistry {
         }
 
         owner_lost_records
+    }
+
+    /// Mark only the currently executing request as owner-lost.
+    ///
+    /// A request timeout is not proof that the whole node disappeared: the
+    /// owner may merely be slow or its application queue may be saturated.
+    /// Node-disconnect handling uses `mark_owner_loss_records_for_node_loss`,
+    /// while request-scoped transport failures use this fenced transition so
+    /// unrelated work on the same owner is never replayed speculatively.
+    pub fn mark_owner_loss_for_request(
+        &self,
+        request_key: &str,
+        attempt_id: &str,
+        owner_node: &str,
+    ) -> Result<Option<ContinuityRecord>, String> {
+        let mut inner = self.inner.write();
+        let Some(record) = inner.requests.get(request_key).cloned() else {
+            return Err(REQUEST_KEY_NOT_FOUND.to_string());
+        };
+        if record.attempt_id != attempt_id || record.owner_node != owner_node {
+            return Ok(None);
+        }
+        let Some(owner_lost) = transition_owner_lost_record(record, owner_node) else {
+            return Ok(None);
+        };
+        inner
+            .requests
+            .insert(request_key.to_string(), owner_lost.clone());
+        let watermark = inner.next_attempt_token;
+        drop(inner);
+
+        log_owner_lost(&owner_lost, owner_node);
+        broadcast_continuity_upsert(watermark, &owner_lost);
+        Ok(Some(owner_lost))
     }
 
     pub fn degrade_replica_records_for_node_loss(
@@ -936,22 +1164,26 @@ impl ContinuityRegistry {
         if parse_attempt_token(&projected.attempt_id).is_none() {
             return Ok(());
         }
-        match inner.requests.get(&projected.request_key).cloned() {
+        let merged = match inner.requests.get(&projected.request_key).cloned() {
             Some(existing) => {
                 if existing.payload_hash != projected.payload_hash {
                     return Ok(());
                 }
-                inner.requests.insert(
-                    projected.request_key.clone(),
-                    preferred_record(existing, projected),
-                );
+                preferred_record(existing, projected)
             }
-            None => {
-                inner
-                    .requests
-                    .insert(projected.request_key.clone(), projected);
-            }
-        }
+            None => projected,
+        };
+        inner
+            .requests
+            .insert(merged.request_key.clone(), merged.clone());
+        let watermark = inner.next_attempt_token;
+        drop(inner);
+
+        // Remote merges are authoritative state changes too. Keeping only the
+        // in-memory registry current leaves the node-local durable store with
+        // an active predecessor, which can survive restart and falsely block
+        // scale-down as an only-copy responsibility.
+        super::continuity_store::persist_runtime_record(watermark, &merged);
         Ok(())
     }
 
@@ -960,6 +1192,7 @@ impl ContinuityRegistry {
         if inner.next_attempt_token < snapshot.next_attempt_token {
             inner.next_attempt_token = snapshot.next_attempt_token;
         }
+        let mut merged_records = Vec::new();
         for record in snapshot.records {
             record.validate()?;
             let incoming_authority = ContinuityAuthorityConfig::from_record(&record);
@@ -989,22 +1222,24 @@ impl ContinuityRegistry {
             if parse_attempt_token(&projected.attempt_id).is_none() {
                 continue;
             }
-            match inner.requests.get(&projected.request_key).cloned() {
+            let merged = match inner.requests.get(&projected.request_key).cloned() {
                 Some(existing) => {
                     if existing.payload_hash != projected.payload_hash {
                         continue;
                     }
-                    inner.requests.insert(
-                        projected.request_key.clone(),
-                        preferred_record(existing, projected),
-                    );
+                    preferred_record(existing, projected)
                 }
-                None => {
-                    inner
-                        .requests
-                        .insert(projected.request_key.clone(), projected);
-                }
-            }
+                None => projected,
+            };
+            inner
+                .requests
+                .insert(merged.request_key.clone(), merged.clone());
+            merged_records.push(merged);
+        }
+        let watermark = inner.next_attempt_token;
+        drop(inner);
+        for record in &merged_records {
+            super::continuity_store::persist_runtime_record(watermark, record);
         }
         Ok(())
     }
@@ -1058,17 +1293,35 @@ fn initial_replication_health() -> ReplicationHealth {
 }
 
 fn continuity_submitted_record(request: &SubmitRequest, attempt_token: u64) -> ContinuityRecord {
+    let replica_nodes = if request.replica_nodes.is_empty() {
+        if request.replica_node.is_empty() {
+            Vec::new()
+        } else {
+            vec![request.replica_node.clone()]
+        }
+    } else {
+        request.replica_nodes.clone()
+    };
+    let replica_node = if request.replica_node.is_empty() {
+        replica_nodes.first().cloned().unwrap_or_default()
+    } else {
+        request.replica_node.clone()
+    };
     ContinuityRecord {
         request_key: request.request_key.clone(),
         payload_hash: request.payload_hash.clone(),
+        record_version: 1,
+        request_payload: request.request_payload.clone(),
         attempt_id: attempt_id_from_token(attempt_token),
         phase: ContinuityPhase::Submitted,
         result: ContinuityResult::Pending,
         ingress_node: request.ingress_node.clone(),
         owner_node: request.owner_node.clone(),
-        replica_node: request.replica_node.clone(),
+        replica_nodes,
+        acknowledged_replica_nodes: Vec::new(),
+        replica_node: replica_node.clone(),
         replication_count: request.replication_count,
-        replica_status: initial_replica_status(&request.replica_node),
+        replica_status: initial_replica_status(&replica_node),
         cluster_role: request.cluster_role,
         promotion_epoch: request.promotion_epoch,
         replication_health: initial_replication_health(),
@@ -1160,6 +1413,7 @@ fn project_record_for_authority_change(
 
     record.cluster_role = next.cluster_role;
     record.promotion_epoch = next.promotion_epoch;
+    record.record_version = record.record_version.saturating_add(1);
 
     if moving_to_primary {
         if was_pending && !record.replica_node.is_empty() {
@@ -1208,6 +1462,19 @@ fn preferred_record(existing: ContinuityRecord, incoming: ContinuityRecord) -> C
 
     let existing_attempt = parse_attempt_token(&existing.attempt_id);
     let incoming_attempt = parse_attempt_token(&incoming.attempt_id);
+
+    // A higher attempt in Preparing is only a replica-local provisional write.
+    // It cannot erase a terminal result from the previously authoritative
+    // attempt. Once the replacement commits it is Mirrored (or explicitly
+    // degraded), and normal attempt ordering fences the predecessor.
+    if existing_attempt != incoming_attempt {
+        if existing.phase.is_terminal() && incoming.replica_status == ReplicaStatus::Preparing {
+            return existing;
+        }
+        if incoming.phase.is_terminal() && existing.replica_status == ReplicaStatus::Preparing {
+            return incoming;
+        }
+    }
     match (existing_attempt, incoming_attempt) {
         (Some(left), Some(right)) if right < left => return existing,
         (Some(left), Some(right)) if right > left => return incoming,
@@ -1221,6 +1488,35 @@ fn preferred_record(existing: ContinuityRecord, incoming: ContinuityRecord) -> C
     }
     if !existing.phase.is_terminal() && incoming.phase.is_terminal() {
         return incoming;
+    }
+
+    if incoming.record_version < existing.record_version {
+        return existing;
+    }
+    if incoming.record_version > existing.record_version {
+        return incoming;
+    }
+
+    // A repair grows the acknowledged set without allocating a new attempt.
+    // Prefer that progress over the otherwise higher-ranked degraded status,
+    // while still allowing a node-loss transition to shrink the set and win
+    // through the normal status ranking below.
+    if existing.canonical_replica_nodes() == incoming.canonical_replica_nodes() {
+        match incoming
+            .acknowledged_replica_nodes
+            .len()
+            .cmp(&existing.acknowledged_replica_nodes.len())
+        {
+            std::cmp::Ordering::Greater => return incoming,
+            std::cmp::Ordering::Less
+                if existing.replica_status == ReplicaStatus::Mirrored
+                    && incoming.replica_status == ReplicaStatus::DegradedContinuing =>
+            {
+                return incoming;
+            }
+            std::cmp::Ordering::Less => return existing,
+            std::cmp::Ordering::Equal => {}
+        }
     }
 
     let existing_rank = replica_status_rank(existing.replica_status);
@@ -1279,11 +1575,13 @@ fn transition_retry_rollover_record(
         recovery_request.declared_handler_runtime_name =
             existing.declared_handler_runtime_name.clone();
     }
+    if recovery_request.request_payload.is_empty() {
+        recovery_request.request_payload = existing.request_payload.clone();
+    }
 
-    Ok(continuity_submitted_record(
-        &recovery_request,
-        attempt_token,
-    ))
+    let mut recovered = continuity_submitted_record(&recovery_request, attempt_token);
+    recovered.record_version = existing.record_version.saturating_add(1);
+    Ok(recovered)
 }
 
 fn transition_completed_record(
@@ -1307,7 +1605,9 @@ fn transition_completed_record(
         return Err(TRANSITION_REJECTED_PHASE.to_string());
     }
 
+    let record_version = record.record_version.saturating_add(1);
     Ok(ContinuityRecord {
+        record_version,
         phase: ContinuityPhase::Completed,
         result: ContinuityResult::Succeeded,
         execution_node: execution_node.to_string(),
@@ -1319,22 +1619,45 @@ fn transition_completed_record(
 fn transition_replica_ack_record(
     record: ContinuityRecord,
     attempt_id: &str,
+    acknowledged_replica_nodes: Vec<String>,
 ) -> Result<ContinuityRecord, String> {
     if record.attempt_id != attempt_id {
         return Err(ATTEMPT_ID_MISMATCH.to_string());
     }
     if record.replica_node.is_empty()
         || record.phase == ContinuityPhase::Rejected
-        || record.replica_status == ReplicaStatus::DegradedContinuing
         || record.replica_status == ReplicaStatus::OwnerLost
     {
         return Ok(record);
     }
 
+    let mut acknowledged_replica_nodes = acknowledged_replica_nodes;
+    acknowledged_replica_nodes.sort();
+    acknowledged_replica_nodes.dedup();
+    let required_acknowledgements = (record.replication_count / 2) as usize;
+    let reached_threshold = acknowledged_replica_nodes.len() >= required_acknowledgements;
+    if !reached_threshold && !super::continuity_store::degraded_durability_enabled() {
+        return Err("continuity_replica_ack_threshold_unmet".to_string());
+    }
+    let record_version = record.record_version.saturating_add(1);
     Ok(ContinuityRecord {
-        replica_status: ReplicaStatus::Mirrored,
-        replication_health: ReplicationHealth::Healthy,
-        error: String::new(),
+        record_version,
+        acknowledged_replica_nodes,
+        replica_status: if reached_threshold {
+            ReplicaStatus::Mirrored
+        } else {
+            ReplicaStatus::DegradedContinuing
+        },
+        replication_health: if reached_threshold {
+            ReplicationHealth::Healthy
+        } else {
+            ReplicationHealth::Degraded
+        },
+        error: if reached_threshold {
+            String::new()
+        } else {
+            "continuity_replica_ack_threshold_degraded".to_string()
+        },
         ..record
     })
 }
@@ -1354,7 +1677,9 @@ fn transition_rejected_record(
         return Ok(record);
     }
 
+    let record_version = record.record_version.saturating_add(1);
     Ok(ContinuityRecord {
+        record_version,
         phase: ContinuityPhase::Rejected,
         result: ContinuityResult::Rejected,
         replica_status: ReplicaStatus::Rejected,
@@ -1376,12 +1701,14 @@ fn transition_owner_lost_record(
             record.replica_status,
             ReplicaStatus::Preparing | ReplicaStatus::Mirrored
         )
-        || record.replica_node.is_empty()
+        || record.acknowledged_replica_nodes.is_empty()
     {
         return None;
     }
 
+    let record_version = record.record_version.saturating_add(1);
     Some(ContinuityRecord {
+        record_version,
         replica_status: ReplicaStatus::OwnerLost,
         replication_health: ReplicationHealth::Unavailable,
         error: format!("owner_lost:{owner_node}"),
@@ -1394,7 +1721,10 @@ fn transition_degraded_record(
     replica_node: &str,
 ) -> Option<ContinuityRecord> {
     if record.cluster_role != ContinuityClusterRole::Primary
-        || record.replica_node != replica_node
+        || !record
+            .acknowledged_replica_nodes
+            .iter()
+            .any(|node| node == replica_node)
         || record.phase != ContinuityPhase::Submitted
         || record.result != ContinuityResult::Pending
         || record.replica_status != ReplicaStatus::Mirrored
@@ -1402,7 +1732,17 @@ fn transition_degraded_record(
         return None;
     }
 
+    let mut acknowledged_replica_nodes = record.acknowledged_replica_nodes.clone();
+    acknowledged_replica_nodes.retain(|node| node != replica_node);
+    let primary_replica = acknowledged_replica_nodes
+        .first()
+        .cloned()
+        .unwrap_or_default();
+    let record_version = record.record_version.saturating_add(1);
     Some(ContinuityRecord {
+        record_version,
+        acknowledged_replica_nodes,
+        replica_node: primary_replica,
         replica_status: ReplicaStatus::DegradedContinuing,
         replication_health: ReplicationHealth::Degraded,
         error: format!("replica_lost:{replica_node}"),
@@ -1418,12 +1758,18 @@ fn transition_replication_health_record(
         || record.phase != ContinuityPhase::Submitted
         || record.result != ContinuityResult::Pending
         || record.replication_health == ReplicationHealth::Unavailable
-        || (record.owner_node != node_name && record.replica_node != node_name)
+        || (record.owner_node != node_name
+            && !record
+                .acknowledged_replica_nodes
+                .iter()
+                .any(|node| node == node_name))
     {
         return None;
     }
 
+    let record_version = record.record_version.saturating_add(1);
     Some(ContinuityRecord {
+        record_version,
         replication_health: ReplicationHealth::Degraded,
         error: format!("replication_source_lost:{node_name}"),
         ..record
@@ -1451,7 +1797,7 @@ fn continuity_diagnostic(
 
     crate::dist::operator::OperatorDiagnosticRecord {
         transition: transition.to_string(),
-        request_key: Some(record.request_key.clone()),
+        request_key: Some(request_key_fingerprint(&record.request_key)),
         attempt_id: Some(record.attempt_id.clone()),
         owner_node: Some(record.owner_node.clone()),
         replica_node: Some(record.replica_node.clone()),
@@ -1482,7 +1828,7 @@ fn log_submit(record: &ContinuityRecord, required_replica_count: u64) {
     crate::dist::operator::record_diagnostic(diagnostic);
     eprintln!(
         "[mesh-rt continuity] transition=submit request_key={} attempt_id={} ingress={} owner={} replica={} replication_count={} required_replicas={} cluster_role={} promotion_epoch={} replication_health={} replica_status={} phase={}",
-        record.request_key,
+        request_key_fingerprint(&record.request_key),
         record.attempt_id,
         record.ingress_node,
         record.owner_node,
@@ -1494,6 +1840,27 @@ fn log_submit(record: &ContinuityRecord, required_replica_count: u64) {
         record.replication_health.as_str(),
         record.replica_status.as_str(),
         record.phase.as_str(),
+    );
+}
+
+fn log_drain_replacement(record: &ContinuityRecord, previous_attempt_id: &str) {
+    let mut diagnostic = continuity_diagnostic("drain_replacement", record);
+    diagnostic.metadata.push((
+        "previous_attempt_id".to_string(),
+        previous_attempt_id.to_string(),
+    ));
+    diagnostic.metadata.push((
+        "replica_set".to_string(),
+        record.canonical_replica_nodes().join(","),
+    ));
+    crate::dist::operator::record_diagnostic(diagnostic);
+    eprintln!(
+        "[mesh-rt continuity] transition=drain_replacement request_key={} previous_attempt_id={} next_attempt_id={} owner={} replicas={}",
+        request_key_fingerprint(&record.request_key),
+        previous_attempt_id,
+        record.attempt_id,
+        record.owner_node,
+        record.canonical_replica_nodes().join(","),
     );
 }
 
@@ -1511,7 +1878,7 @@ fn log_recovery_rollover(previous: &ContinuityRecord, next: &ContinuityRecord) {
     crate::dist::operator::record_diagnostic(diagnostic);
     eprintln!(
         "[mesh-rt continuity] transition=recovery_rollover request_key={} previous_attempt_id={} next_attempt_id={} previous_owner={} next_owner={} next_replica={} cluster_role={} promotion_epoch={} replication_health={} next_replica_status={} phase={}",
-        next.request_key,
+        request_key_fingerprint(&next.request_key),
         previous.attempt_id,
         next.attempt_id,
         previous.owner_node,
@@ -1529,7 +1896,7 @@ fn log_duplicate(record: &ContinuityRecord) {
     crate::dist::operator::record_diagnostic(continuity_diagnostic("duplicate", record));
     eprintln!(
         "[mesh-rt continuity] transition=duplicate request_key={} attempt_id={} phase={} result={} owner={} replica={} cluster_role={} promotion_epoch={} replication_health={}",
-        record.request_key,
+        request_key_fingerprint(&record.request_key),
         record.attempt_id,
         record.phase.as_str(),
         record.result.as_str(),
@@ -1543,12 +1910,12 @@ fn log_duplicate(record: &ContinuityRecord) {
 
 fn log_conflict(record: &ContinuityRecord, request_key: &str, reason: &str) {
     let mut diagnostic = continuity_diagnostic("conflict", record);
-    diagnostic.request_key = Some(request_key.to_string());
+    diagnostic.request_key = Some(request_key_fingerprint(request_key));
     diagnostic.reason = Some(reason.to_string());
     crate::dist::operator::record_diagnostic(diagnostic);
     eprintln!(
         "[mesh-rt continuity] transition=conflict request_key={} stored_attempt_id={} stored_phase={} stored_result={} cluster_role={} promotion_epoch={} replication_health={} reason={}",
-        request_key,
+        request_key_fingerprint(request_key),
         record.attempt_id,
         record.phase.as_str(),
         record.result.as_str(),
@@ -1563,7 +1930,7 @@ fn log_completion(record: &ContinuityRecord) {
     crate::dist::operator::record_diagnostic(continuity_diagnostic("completed", record));
     eprintln!(
         "[mesh-rt continuity] transition=completed request_key={} attempt_id={} execution={} owner={} replica={} cluster_role={} promotion_epoch={} replication_health={} replica_status={}",
-        record.request_key,
+        request_key_fingerprint(&record.request_key),
         record.attempt_id,
         record.execution_node,
         record.owner_node,
@@ -1583,7 +1950,7 @@ fn log_completion_rejected(
 ) {
     crate::dist::operator::record_diagnostic(crate::dist::operator::OperatorDiagnosticRecord {
         transition: "completion_rejected".to_string(),
-        request_key: Some(request_key.to_string()),
+        request_key: Some(request_key_fingerprint(request_key)),
         attempt_id: Some(attempt_id.to_string()),
         reason: Some(reason.to_string()),
         metadata: vec![(
@@ -1594,7 +1961,7 @@ fn log_completion_rejected(
     });
     eprintln!(
         "[mesh-rt continuity] transition=completion_rejected request_key={} attempt_id={} active_attempt_id={} reason={}",
-        request_key,
+        request_key_fingerprint(request_key),
         attempt_id,
         active_attempt_id,
         reason,
@@ -1605,7 +1972,7 @@ fn log_replica_prepare(record: &ContinuityRecord) {
     crate::dist::operator::record_diagnostic(continuity_diagnostic("replica_prepare", record));
     eprintln!(
         "[mesh-rt continuity] transition=replica_prepare request_key={} attempt_id={} owner={} replica={} cluster_role={} promotion_epoch={} replication_health={} replica_status={}",
-        record.request_key,
+        request_key_fingerprint(&record.request_key),
         record.attempt_id,
         record.owner_node,
         record.replica_node,
@@ -1620,7 +1987,7 @@ fn log_replica_ack(record: &ContinuityRecord) {
     crate::dist::operator::record_diagnostic(continuity_diagnostic("replica_ack", record));
     eprintln!(
         "[mesh-rt continuity] transition=replica_ack request_key={} attempt_id={} owner={} replica={} cluster_role={} promotion_epoch={} replication_health={} replica_status={}",
-        record.request_key,
+        request_key_fingerprint(&record.request_key),
         record.attempt_id,
         record.owner_node,
         record.replica_node,
@@ -1637,7 +2004,7 @@ fn log_rejection(record: &ContinuityRecord, reason: &str) {
     crate::dist::operator::record_diagnostic(diagnostic);
     eprintln!(
         "[mesh-rt continuity] transition=rejected request_key={} attempt_id={} owner={} replica={} cluster_role={} promotion_epoch={} replication_health={} replica_status={} reason={}",
-        record.request_key,
+        request_key_fingerprint(&record.request_key),
         record.attempt_id,
         record.owner_node,
         record.replica_node,
@@ -1655,7 +2022,7 @@ fn log_owner_lost(record: &ContinuityRecord, owner_node: &str) {
     crate::dist::operator::record_diagnostic(diagnostic);
     eprintln!(
         "[mesh-rt continuity] transition=owner_lost request_key={} attempt_id={} owner={} replica={} cluster_role={} promotion_epoch={} replication_health={} replica_status={} reason=owner_lost:{}",
-        record.request_key,
+        request_key_fingerprint(&record.request_key),
         record.attempt_id,
         record.owner_node,
         record.replica_node,
@@ -1673,7 +2040,7 @@ fn log_degraded(record: &ContinuityRecord, replica_node: &str) {
     crate::dist::operator::record_diagnostic(diagnostic);
     eprintln!(
         "[mesh-rt continuity] transition=degraded request_key={} attempt_id={} owner={} replica={} cluster_role={} promotion_epoch={} replication_health={} replica_status={} reason=replica_lost:{}",
-        record.request_key,
+        request_key_fingerprint(&record.request_key),
         record.attempt_id,
         record.owner_node,
         record.replica_node,
@@ -1691,7 +2058,7 @@ fn log_replication_degraded(record: &ContinuityRecord, node_name: &str) {
     crate::dist::operator::record_diagnostic(diagnostic);
     eprintln!(
         "[mesh-rt continuity] transition=replication_degraded request_key={} attempt_id={} owner={} replica={} cluster_role={} promotion_epoch={} replication_health={} replica_status={} reason=replication_source_lost:{}",
-        record.request_key,
+        request_key_fingerprint(&record.request_key),
         record.attempt_id,
         record.owner_node,
         record.replica_node,
@@ -1738,7 +2105,7 @@ fn log_authority_fenced(
 ) {
     crate::dist::operator::record_diagnostic(crate::dist::operator::OperatorDiagnosticRecord {
         transition: "fenced_rejoin".to_string(),
-        request_key: Some(request_key.to_string()),
+        request_key: Some(request_key_fingerprint(request_key)),
         attempt_id: Some(attempt_id.to_string()),
         cluster_role: Some(next.cluster_role.as_str().to_string()),
         promotion_epoch: Some(next.promotion_epoch),
@@ -1756,7 +2123,7 @@ fn log_authority_fenced(
     });
     eprintln!(
         "[mesh-rt continuity] transition=fenced_rejoin request_key={} attempt_id={} previous_role={} previous_epoch={} next_role={} next_epoch={}",
-        request_key,
+        request_key_fingerprint(request_key),
         attempt_id,
         previous.cluster_role.as_str(),
         previous.promotion_epoch,
@@ -1789,7 +2156,7 @@ fn log_stale_epoch_rejected(record: &ContinuityRecord, authority: ContinuityAuth
     crate::dist::operator::record_diagnostic(diagnostic);
     eprintln!(
         "[mesh-rt continuity] transition=stale_epoch_rejected request_key={} attempt_id={} incoming_role={} incoming_epoch={} local_role={} local_epoch={} replica_status={} phase={}",
-        record.request_key,
+        request_key_fingerprint(&record.request_key),
         record.attempt_id,
         record.cluster_role.as_str(),
         record.promotion_epoch,
@@ -1801,6 +2168,7 @@ fn log_stale_epoch_rejected(record: &ContinuityRecord, authority: ContinuityAuth
 }
 
 pub(crate) fn broadcast_continuity_upsert(next_attempt_token: u64, record: &ContinuityRecord) {
+    super::continuity_store::persist_runtime_record(next_attempt_token, record);
     let state = match super::node::node_state() {
         Some(s) => s,
         None => return,
@@ -1817,24 +2185,302 @@ pub(crate) fn broadcast_continuity_upsert(next_attempt_token: u64, record: &Cont
     };
 
     for session in &sessions {
-        let mut stream = session.stream.lock().unwrap();
-        let _ = super::node::write_msg(&mut *stream, &payload);
+        let participates = session.remote_has_role("controller")
+            || session.remote_name == record.ingress_node
+            || session.remote_name == record.owner_node
+            || record
+                .replica_nodes()
+                .iter()
+                .any(|replica| replica == &session.remote_name);
+        if participates {
+            // The active owner must observe its fenced attempt before a
+            // reservation/query for that attempt can overtake it. Both sends
+            // originate only after this function returns, so placing the
+            // owner's state fence on the same FIFO control lane establishes
+            // the required transport order. Other participants retain the
+            // high-throughput continuity lane.
+            let class = if session.remote_name == record.owner_node
+                && record.phase == ContinuityPhase::Submitted
+            {
+                super::node::OutboundClass::Control
+            } else {
+                super::node::OutboundClass::Continuity
+            };
+            let _ = session.send(class, payload.clone());
+        }
     }
+}
+
+fn send_continuity_upsert_to_node(
+    next_attempt_token: u64,
+    record: &ContinuityRecord,
+    target: &str,
+) {
+    let Some(state) = super::node::node_state() else {
+        return;
+    };
+    let Some(session) = state.sessions.read().get(target).cloned() else {
+        return;
+    };
+    let Ok(payload) = encode_upsert_payload(next_attempt_token, record) else {
+        return;
+    };
+    let _ = session.send(super::node::OutboundClass::Continuity, payload);
 }
 
 pub(crate) fn send_continuity_sync(session: &Arc<super::node::NodeSession>) {
     let snapshot = continuity_registry().snapshot();
     if snapshot.records.is_empty() && snapshot.next_attempt_token == 0 {
+        send_durable_store_sync(session);
         return;
     }
 
-    let payload = match encode_sync_payload(&snapshot) {
-        Ok(payload) => payload,
-        Err(_) => return,
-    };
+    if session
+        .negotiated_protocol
+        .capabilities
+        .contains(super::protocol::Capabilities::CHUNKED_SNAPSHOTS)
+    {
+        for record in &snapshot.records {
+            if let Ok(payload) = encode_upsert_payload(snapshot.next_attempt_token, record) {
+                let _ = session.send(super::node::OutboundClass::Snapshot, payload);
+            }
+        }
+        send_durable_store_sync(session);
+    } else if let Ok(payload) = encode_sync_payload(&snapshot) {
+        let _ = session.send(super::node::OutboundClass::Snapshot, payload);
+    }
+}
 
-    let mut stream = session.stream.lock().unwrap();
-    let _ = super::node::write_msg(&mut *stream, &payload);
+#[derive(Clone, Debug, Serialize, Deserialize)]
+struct StoreSnapshotAck {
+    snapshot_id: String,
+    next_sequence: u32,
+    high_water_mark: u64,
+    complete: bool,
+}
+
+#[derive(Debug)]
+struct IncomingStoreSnapshot {
+    next_sequence: u32,
+    high_water_mark: u64,
+    snapshot_checksum: [u8; 32],
+    chunk_checksums: Vec<[u8; 32]>,
+}
+
+static INCOMING_STORE_SNAPSHOTS: OnceLock<
+    Mutex<BTreeMap<(String, String), IncomingStoreSnapshot>>,
+> = OnceLock::new();
+static OUTGOING_STORE_SNAPSHOT_ACKS: OnceLock<Mutex<BTreeMap<(String, String), u32>>> =
+    OnceLock::new();
+
+fn incoming_store_snapshots() -> &'static Mutex<BTreeMap<(String, String), IncomingStoreSnapshot>> {
+    INCOMING_STORE_SNAPSHOTS.get_or_init(|| Mutex::new(BTreeMap::new()))
+}
+
+fn outgoing_store_snapshot_acks() -> &'static Mutex<BTreeMap<(String, String), u32>> {
+    OUTGOING_STORE_SNAPSHOT_ACKS.get_or_init(|| Mutex::new(BTreeMap::new()))
+}
+
+fn encode_tagged_json<T: Serialize>(tag: u8, value: &T) -> Result<Vec<u8>, String> {
+    let encoded = serde_json::to_vec(value)
+        .map_err(|error| format!("continuity_sync_encode_failed:{error}"))?;
+    let mut frame = Vec::with_capacity(1 + encoded.len());
+    frame.push(tag);
+    frame.extend_from_slice(&encoded);
+    Ok(frame)
+}
+
+fn decode_tagged_json<T: for<'de> Deserialize<'de>>(
+    expected_tag: u8,
+    frame: &[u8],
+) -> Result<T, String> {
+    if frame.first().copied() != Some(expected_tag) {
+        return Err("continuity_sync_tag_invalid".to_string());
+    }
+    serde_json::from_slice(&frame[1..])
+        .map_err(|error| format!("continuity_sync_decode_failed:{error}"))
+}
+
+fn send_durable_store_sync(session: &Arc<super::node::NodeSession>) {
+    if !session
+        .negotiated_protocol
+        .capabilities
+        .contains(super::protocol::Capabilities::CHUNKED_SNAPSHOTS)
+    {
+        return;
+    }
+    let Some(store) = configured_continuity_store() else {
+        return;
+    };
+    let configured = super::continuity_store::runtime_snapshot_chunk_bytes();
+    let chunk_bytes = configured
+        .max(128)
+        .min((session.negotiated_protocol.max_frame_bytes as usize / 6).max(128));
+    let Ok(chunks) = store.snapshot_chunks(chunk_bytes) else {
+        return;
+    };
+    let Some(first) = chunks.first() else {
+        return;
+    };
+    let resume_at = outgoing_store_snapshot_acks()
+        .lock()
+        .unwrap()
+        .get(&(session.remote_name.clone(), first.snapshot_id.clone()))
+        .copied()
+        .unwrap_or(0);
+    let high_water_mark = first.high_water_mark;
+    for chunk in chunks
+        .into_iter()
+        .filter(|chunk| chunk.sequence >= resume_at)
+    {
+        let Ok(frame) = encode_tagged_json(super::node::DIST_CONTINUITY_STORE_SNAPSHOT, &chunk)
+        else {
+            return;
+        };
+        if session
+            .send(super::node::OutboundClass::Snapshot, frame)
+            .is_err()
+        {
+            return;
+        }
+    }
+    let mut cursor = high_water_mark;
+    loop {
+        let Ok(entries) = store.log_entries_after(cursor, 256) else {
+            return;
+        };
+        if entries.is_empty() {
+            break;
+        }
+        for entry in &entries {
+            let Ok(frame) = encode_tagged_json(super::node::DIST_CONTINUITY_STORE_LOG_ENTRY, entry)
+            else {
+                return;
+            };
+            if session
+                .send(super::node::OutboundClass::Snapshot, frame)
+                .is_err()
+            {
+                return;
+            }
+            cursor = entry.sequence;
+        }
+        if entries.len() < 256 {
+            break;
+        }
+    }
+}
+
+pub(crate) fn handle_store_snapshot_chunk(
+    session: &Arc<super::node::NodeSession>,
+    frame: &[u8],
+) -> Result<(), String> {
+    let chunk: SnapshotChunk =
+        decode_tagged_json(super::node::DIST_CONTINUITY_STORE_SNAPSHOT, frame)?;
+    if !chunk.verify() {
+        return Err("continuity_snapshot_checksum_mismatch".to_string());
+    }
+    let key = (session.remote_name.clone(), chunk.snapshot_id.clone());
+    let mut incoming = incoming_store_snapshots().lock().unwrap();
+    let state = incoming
+        .entry(key.clone())
+        .or_insert_with(|| IncomingStoreSnapshot {
+            next_sequence: 0,
+            high_water_mark: chunk.high_water_mark,
+            snapshot_checksum: chunk.snapshot_checksum,
+            chunk_checksums: Vec::new(),
+        });
+    if state.high_water_mark != chunk.high_water_mark
+        || state.snapshot_checksum != chunk.snapshot_checksum
+    {
+        incoming.remove(&key);
+        return Err("continuity_snapshot_identity_changed".to_string());
+    }
+    if chunk.sequence > state.next_sequence {
+        return Err(format!(
+            "continuity_snapshot_chunk_gap:expected={}:actual={}",
+            state.next_sequence, chunk.sequence
+        ));
+    }
+    if chunk.sequence == state.next_sequence {
+        let store = configured_continuity_store()
+            .ok_or_else(|| "continuity_store_not_configured".to_string())?;
+        store.apply_snapshot_chunk(&chunk)?;
+        state.chunk_checksums.push(chunk.checksum);
+        state.next_sequence = state
+            .next_sequence
+            .checked_add(1)
+            .ok_or_else(|| "continuity_snapshot_sequence_exhausted".to_string())?;
+    }
+    let mut complete = false;
+    if chunk.final_chunk && chunk.sequence + 1 == state.next_sequence {
+        let mut hasher = Sha256::new();
+        for checksum in &state.chunk_checksums {
+            hasher.update(checksum);
+        }
+        if <[u8; 32]>::from(hasher.finalize()) != state.snapshot_checksum {
+            incoming.remove(&key);
+            return Err("continuity_snapshot_final_checksum_mismatch".to_string());
+        }
+        complete = true;
+    }
+    let ack = StoreSnapshotAck {
+        snapshot_id: chunk.snapshot_id,
+        next_sequence: state.next_sequence,
+        high_water_mark: state.high_water_mark,
+        complete,
+    };
+    if complete {
+        incoming.remove(&key);
+    }
+    drop(incoming);
+    let payload = encode_tagged_json(super::node::DIST_CONTINUITY_STORE_SNAPSHOT_ACK, &ack)?;
+    session.send(super::node::OutboundClass::Control, payload)?;
+    if complete {
+        crate::dist::readiness::mark_initial_state_synchronized();
+    }
+    Ok(())
+}
+
+pub(crate) fn handle_store_snapshot_ack(
+    session: &Arc<super::node::NodeSession>,
+    frame: &[u8],
+) -> Result<(), String> {
+    let ack: StoreSnapshotAck =
+        decode_tagged_json(super::node::DIST_CONTINUITY_STORE_SNAPSHOT_ACK, frame)?;
+    if ack.snapshot_id.is_empty() {
+        return Err("continuity_snapshot_ack_id_missing".to_string());
+    }
+    outgoing_store_snapshot_acks().lock().unwrap().insert(
+        (session.remote_name.clone(), ack.snapshot_id),
+        ack.next_sequence,
+    );
+    if ack.complete {
+        if let Some(store) = configured_continuity_store() {
+            store.acknowledge_replica_safe_point(&session.remote_name, ack.high_water_mark)?;
+            let _ = store.compact_log_to_replica_safe_point()?;
+        }
+    }
+    Ok(())
+}
+
+pub(crate) fn handle_store_log_entry(
+    session: &Arc<super::node::NodeSession>,
+    frame: &[u8],
+) -> Result<(), String> {
+    let entry: ContinuityLogEntry =
+        decode_tagged_json(super::node::DIST_CONTINUITY_STORE_LOG_ENTRY, frame)?;
+    configured_continuity_store()
+        .ok_or_else(|| "continuity_store_not_configured".to_string())?
+        .apply_log_entry(&entry)?;
+    let ack = StoreSnapshotAck {
+        snapshot_id: "incremental-log".to_string(),
+        next_sequence: 0,
+        high_water_mark: entry.sequence,
+        complete: true,
+    };
+    let frame = encode_tagged_json(super::node::DIST_CONTINUITY_STORE_SNAPSHOT_ACK, &ack)?;
+    session.send(super::node::OutboundClass::Control, frame)
 }
 
 pub(crate) fn encode_upsert_payload(
@@ -1926,6 +2572,42 @@ fn encode_record(record: &ContinuityRecord) -> Result<Vec<u8>, String> {
     out.push(record.fell_back_locally as u8);
     put_string(&mut out, &record.error)?;
     put_string(&mut out, &record.declared_handler_runtime_name)?;
+    out.extend_from_slice(b"RVRS");
+    out.extend_from_slice(&record.record_version.to_le_bytes());
+    let replica_nodes = record.canonical_replica_nodes();
+    if replica_nodes.len() > 1 {
+        out.extend_from_slice(b"RSET");
+        let count: u16 = replica_nodes
+            .len()
+            .try_into()
+            .map_err(|_| "continuity replica set too large".to_string())?;
+        out.extend_from_slice(&count.to_le_bytes());
+        for replica in replica_nodes {
+            put_string(&mut out, &replica)?;
+        }
+    }
+    if !record.acknowledged_replica_nodes.is_empty() {
+        out.extend_from_slice(b"RACK");
+        let count: u16 = record
+            .acknowledged_replica_nodes
+            .len()
+            .try_into()
+            .map_err(|_| "continuity replica acknowledgement set too large".to_string())?;
+        out.extend_from_slice(&count.to_le_bytes());
+        for replica in &record.acknowledged_replica_nodes {
+            put_string(&mut out, replica)?;
+        }
+    }
+    if !record.request_payload.is_empty() {
+        out.extend_from_slice(b"RPAY");
+        let length: u32 = record
+            .request_payload
+            .len()
+            .try_into()
+            .map_err(|_| "continuity request payload too large".to_string())?;
+        out.extend_from_slice(&length.to_le_bytes());
+        out.extend_from_slice(&record.request_payload);
+    }
     Ok(out)
 }
 
@@ -1949,17 +2631,79 @@ fn decode_record(data: &[u8]) -> Result<ContinuityRecord, String> {
     let fell_back_locally = take_u8(data, &mut pos)? != 0;
     let error = take_string(data, &mut pos)?;
     let declared_handler_runtime_name = take_string(data, &mut pos)?;
-    if pos != data.len() {
-        return Err("continuity record had trailing bytes".to_string());
+    let mut replica_nodes = if replica_node.is_empty() {
+        Vec::new()
+    } else {
+        vec![replica_node.clone()]
+    };
+    let mut acknowledged_replica_nodes = Vec::new();
+    let mut request_payload = Vec::new();
+    let mut record_version = 1;
+    while pos < data.len() {
+        let tag = data
+            .get(pos..pos + 4)
+            .ok_or_else(|| "continuity record extension truncated".to_string())?;
+        pos += 4;
+        match tag {
+            b"RSET" => {
+                if pos + 2 > data.len() {
+                    return Err("continuity replica set truncated".to_string());
+                }
+                let count = u16::from_le_bytes(data[pos..pos + 2].try_into().unwrap()) as usize;
+                pos += 2;
+                let mut replicas = Vec::with_capacity(count);
+                for _ in 0..count {
+                    replicas.push(take_string(data, &mut pos)?);
+                }
+                replica_nodes = replicas;
+            }
+            b"RPAY" => {
+                if pos + 4 > data.len() {
+                    return Err("continuity request payload length truncated".to_string());
+                }
+                let length = u32::from_le_bytes(data[pos..pos + 4].try_into().unwrap()) as usize;
+                pos += 4;
+                let end = pos
+                    .checked_add(length)
+                    .ok_or_else(|| "continuity request payload length overflow".to_string())?;
+                request_payload = data
+                    .get(pos..end)
+                    .ok_or_else(|| "continuity request payload truncated".to_string())?
+                    .to_vec();
+                pos = end;
+            }
+            b"RACK" => {
+                if pos + 2 > data.len() {
+                    return Err("continuity replica acknowledgement set truncated".to_string());
+                }
+                let count = u16::from_le_bytes(data[pos..pos + 2].try_into().unwrap()) as usize;
+                pos += 2;
+                acknowledged_replica_nodes = Vec::with_capacity(count);
+                for _ in 0..count {
+                    acknowledged_replica_nodes.push(take_string(data, &mut pos)?);
+                }
+            }
+            b"RVRS" => {
+                record_version = take_u64(data, &mut pos)?;
+            }
+            _ => return Err("continuity record extension invalid".to_string()),
+        }
+    }
+    if acknowledged_replica_nodes.is_empty() && replica_status == ReplicaStatus::Mirrored {
+        acknowledged_replica_nodes = replica_nodes.clone();
     }
     let record = ContinuityRecord {
         request_key,
         payload_hash,
+        record_version,
+        request_payload,
         attempt_id,
         phase,
         result,
         ingress_node,
         owner_node,
+        replica_nodes,
+        acknowledged_replica_nodes,
         replica_node,
         replication_count,
         replica_status,
@@ -1982,6 +2726,26 @@ pub(crate) fn encode_record_payload(record: &ContinuityRecord) -> Result<Vec<u8>
 
 pub(crate) fn decode_record_payload(data: &[u8]) -> Result<ContinuityRecord, String> {
     decode_record(data)
+}
+
+/// Rebuilds the in-memory registry from this node's durable journal before it
+/// joins routing or control-plane service.
+pub(crate) fn hydrate_runtime_continuity_from_store() -> Result<usize, String> {
+    let records = super::continuity_store::load_runtime_records()?;
+    hydrate_runtime_records(continuity_registry(), records)
+}
+
+fn hydrate_runtime_records(
+    registry: &ContinuityRegistry,
+    records: Vec<Vec<u8>>,
+) -> Result<usize, String> {
+    let mut hydrated = 0_usize;
+    for encoded in records {
+        let record = decode_record(&encoded)?;
+        registry.merge_remote_record(0, record)?;
+        hydrated = hydrated.saturating_add(1);
+    }
+    Ok(hydrated)
 }
 
 fn put_string(out: &mut Vec<u8>, value: &str) -> Result<(), String> {
@@ -2176,8 +2940,10 @@ pub extern "C" fn mesh_continuity_submit_with_durability(
     let request = SubmitRequest {
         request_key: mesh_string_to_owned(request_key),
         payload_hash: mesh_string_to_owned(payload_hash),
+        request_payload: Vec::new(),
         ingress_node: mesh_string_to_owned(ingress_node),
         owner_node: mesh_string_to_owned(owner_node),
+        replica_nodes: Vec::new(),
         replica_node: mesh_string_to_owned(replica_node),
         replication_count: required_replica_count.saturating_add(1),
         required_replica_count,
@@ -2352,16 +3118,16 @@ mod tests {
         replica_node: &str,
         required_replica_count: u64,
     ) -> SubmitRequest {
-        continuity_submit_request_with_authority_and_count(
+        continuity_submit_request_fixture(SubmitRequestFixture {
             request_key,
             payload_hash,
-            "owner@host",
+            owner_node: "owner@host",
             replica_node,
             required_replica_count,
-            required_replica_count.saturating_add(1),
-            ContinuityClusterRole::Primary,
-            0,
-        )
+            replication_count: required_replica_count.saturating_add(1),
+            cluster_role: ContinuityClusterRole::Primary,
+            promotion_epoch: 0,
+        })
     }
 
     fn continuity_submit_request_with_owner(
@@ -2371,16 +3137,16 @@ mod tests {
         replica_node: &str,
         required_replica_count: u64,
     ) -> SubmitRequest {
-        continuity_submit_request_with_authority_and_count(
+        continuity_submit_request_fixture(SubmitRequestFixture {
             request_key,
             payload_hash,
             owner_node,
             replica_node,
             required_replica_count,
-            required_replica_count.saturating_add(1),
-            ContinuityClusterRole::Primary,
-            0,
-        )
+            replication_count: required_replica_count.saturating_add(1),
+            cluster_role: ContinuityClusterRole::Primary,
+            promotion_epoch: 0,
+        })
     }
 
     fn continuity_submit_request_with_authority(
@@ -2392,33 +3158,51 @@ mod tests {
         cluster_role: ContinuityClusterRole,
         promotion_epoch: u64,
     ) -> SubmitRequest {
-        continuity_submit_request_with_authority_and_count(
+        continuity_submit_request_fixture(SubmitRequestFixture {
             request_key,
             payload_hash,
             owner_node,
             replica_node,
             required_replica_count,
-            required_replica_count.saturating_add(1),
+            replication_count: required_replica_count.saturating_add(1),
             cluster_role,
             promotion_epoch,
-        )
+        })
     }
 
-    fn continuity_submit_request_with_authority_and_count(
-        request_key: &str,
-        payload_hash: &str,
-        owner_node: &str,
-        replica_node: &str,
+    struct SubmitRequestFixture<'a> {
+        request_key: &'a str,
+        payload_hash: &'a str,
+        owner_node: &'a str,
+        replica_node: &'a str,
         required_replica_count: u64,
         replication_count: u64,
         cluster_role: ContinuityClusterRole,
         promotion_epoch: u64,
-    ) -> SubmitRequest {
+    }
+
+    fn continuity_submit_request_fixture(fixture: SubmitRequestFixture<'_>) -> SubmitRequest {
+        let SubmitRequestFixture {
+            request_key,
+            payload_hash,
+            owner_node,
+            replica_node,
+            required_replica_count,
+            replication_count,
+            cluster_role,
+            promotion_epoch,
+        } = fixture;
         SubmitRequest {
             request_key: request_key.to_string(),
             payload_hash: payload_hash.to_string(),
+            request_payload: Vec::new(),
             ingress_node: "ingress@host".to_string(),
             owner_node: owner_node.to_string(),
+            replica_nodes: if replica_node.is_empty() {
+                Vec::new()
+            } else {
+                vec![replica_node.to_string()]
+            },
             replica_node: replica_node.to_string(),
             replication_count,
             required_replica_count,
@@ -2500,7 +3284,7 @@ mod tests {
         let recovered = registry
             .submit_with_hooks(
                 continuity_submit_request_with_owner("req-1", "hash-a", "replica@host", "", 0),
-                |_| Ok(()),
+                |record| Ok(record.canonical_replica_nodes()),
                 |existing, request| {
                     existing.phase == ContinuityPhase::Submitted
                         && existing.result == ContinuityResult::Pending
@@ -2523,7 +3307,7 @@ mod tests {
         let rerolled = registry
             .submit_with_hooks(
                 continuity_submit_request_with_owner("req-1", "hash-a", "owner-2@host", "", 0),
-                |_| Ok(()),
+                |record| Ok(record.canonical_replica_nodes()),
                 |existing, request| {
                     existing.phase == ContinuityPhase::Submitted
                         && existing.result == ContinuityResult::Pending
@@ -2561,7 +3345,7 @@ mod tests {
         let duplicate = registry
             .submit_with_hooks(
                 continuity_submit_request_with_owner("req-1", "hash-a", "replica@host", "", 0),
-                |_| Ok(()),
+                |record| Ok(record.canonical_replica_nodes()),
                 |_, _| false,
             )
             .unwrap();
@@ -2572,25 +3356,25 @@ mod tests {
     }
 
     #[test]
-    fn m047_s02_continuity_submit_rejects_invalid_required_replica_count() {
+    fn continuity_submit_rejects_invalid_required_replica_count() {
         let registry = continuity_fresh_registry();
         let err = registry
-            .submit(continuity_submit_request_with_authority_and_count(
-                "req-1",
-                "hash-a",
-                "owner@host",
-                "replica@host",
-                2,
-                2,
-                ContinuityClusterRole::Primary,
-                0,
-            ))
+            .submit(continuity_submit_request_fixture(SubmitRequestFixture {
+                request_key: "req-1",
+                payload_hash: "hash-a",
+                owner_node: "owner@host",
+                replica_node: "replica@host",
+                required_replica_count: 2,
+                replication_count: 2,
+                cluster_role: ContinuityClusterRole::Primary,
+                promotion_epoch: 0,
+            }))
             .unwrap_err();
         assert_eq!(err, INVALID_REQUIRED_REPLICA_COUNT);
     }
 
     #[test]
-    fn m047_s02_continuity_submit_preserves_replication_count_and_runtime_name() {
+    fn continuity_submit_preserves_replication_count_and_runtime_name() {
         let registry = continuity_fresh_registry();
         let mut request = continuity_submit_request("req-1", "hash-a", "replica@host", 1);
         request.declared_handler_runtime_name = "Work.handle_submit".to_string();
@@ -2611,49 +3395,101 @@ mod tests {
     }
 
     #[test]
-    fn m047_s02_continuity_submit_rejects_unsupported_replication_count_with_durable_record() {
+    fn continuity_submit_supports_more_than_one_record_replica() {
         let registry = continuity_fresh_registry();
+        let mut prepared = false;
 
         let decision = registry
             .submit_with_replica_prepare(
-                continuity_submit_request_with_authority_and_count(
-                    "req-1",
-                    "hash-a",
-                    "owner@host",
-                    "replica@host",
-                    2,
-                    3,
-                    ContinuityClusterRole::Primary,
-                    0,
-                ),
-                |_| panic!("unsupported replication should reject before prepare"),
+                continuity_submit_request_fixture(SubmitRequestFixture {
+                    request_key: "req-1",
+                    payload_hash: "hash-a",
+                    owner_node: "owner@host",
+                    replica_node: "replica@host",
+                    required_replica_count: 2,
+                    replication_count: 3,
+                    cluster_role: ContinuityClusterRole::Primary,
+                    promotion_epoch: 0,
+                }),
+                |_| {
+                    prepared = true;
+                    Ok(())
+                },
             )
             .unwrap();
 
-        assert_eq!(decision.outcome, SubmitOutcome::Rejected);
-        assert_eq!(decision.record.phase, ContinuityPhase::Rejected);
+        assert!(prepared);
+        assert_eq!(decision.outcome, SubmitOutcome::Created);
+        assert_eq!(decision.record.phase, ContinuityPhase::Submitted);
         assert_eq!(decision.record.replication_count, 3);
-        assert_eq!(decision.record.error, "unsupported_replication_count:3");
-        let stored = registry.record("req-1").expect("stored rejected record");
+        assert_eq!(decision.record.replica_status, ReplicaStatus::Mirrored);
+        let stored = registry.record("req-1").expect("stored record");
         assert_eq!(stored.replication_count, 3);
-        assert_eq!(stored.error, "unsupported_replication_count:3");
+        assert!(stored.error.is_empty());
     }
 
     #[test]
-    fn m047_s07_default_count_route_completion_keeps_runtime_name_and_count_truth() {
+    fn three_total_replicas_require_one_record_ack_for_strict_majority() {
+        let registry = continuity_fresh_registry();
+        let mut request = continuity_submit_request_fixture(SubmitRequestFixture {
+            request_key: "req-majority",
+            payload_hash: "hash-majority",
+            owner_node: "owner@host",
+            replica_node: "replica-a@host",
+            required_replica_count: 2,
+            replication_count: 3,
+            cluster_role: ContinuityClusterRole::Primary,
+            promotion_epoch: 0,
+        });
+        request.replica_nodes = vec!["replica-a@host".to_string(), "replica-b@host".to_string()];
+
+        let decision = registry
+            .submit_with_hooks(
+                request,
+                |_| Ok(vec!["replica-a@host".to_string()]),
+                |_, _| false,
+            )
+            .expect("one replica plus the owner forms a majority of three");
+
+        assert_eq!(
+            decision.record.acknowledged_replica_nodes(),
+            &["replica-a@host".to_string()]
+        );
+    }
+
+    #[test]
+    fn durable_runtime_record_hydrates_complete_inflight_state() {
+        let source = continuity_fresh_registry();
+        let decision = source
+            .submit_with_replica_prepare(
+                continuity_submit_request("req-hydrate", "hash-hydrate", "replica@host", 1),
+                |_| Ok(()),
+            )
+            .expect("create source record");
+        let encoded = encode_record(&decision.record).expect("encode durable runtime record");
+        let restored = continuity_fresh_registry();
+
+        let hydrated = hydrate_runtime_records(&restored, vec![encoded]).expect("hydrate record");
+
+        assert_eq!(hydrated, 1);
+        assert_eq!(restored.record("req-hydrate"), Some(decision.record));
+    }
+
+    #[test]
+    fn default_count_route_completion_keeps_runtime_name_and_count_truth() {
         let registry = continuity_fresh_registry();
         ROUTE_BOUNDARY_HANDLER_CALLS.store(0, Ordering::Relaxed);
 
-        let mut request = continuity_submit_request_with_authority_and_count(
-            "http-route::Api.Todos.handle_list_todos::1",
-            "payload-hash-1",
-            "owner@host",
-            "replica@host",
-            1,
-            2,
-            ContinuityClusterRole::Primary,
-            0,
-        );
+        let mut request = continuity_submit_request_fixture(SubmitRequestFixture {
+            request_key: "http-route::Api.Todos.handle_list_todos::1",
+            payload_hash: "payload-hash-1",
+            owner_node: "owner@host",
+            replica_node: "replica@host",
+            required_replica_count: 1,
+            replication_count: 2,
+            cluster_role: ContinuityClusterRole::Primary,
+            promotion_epoch: 0,
+        });
         request.declared_handler_runtime_name = "Api.Todos.handle_list_todos".to_string();
 
         let decision = registry
@@ -3080,7 +3916,7 @@ mod tests {
         let recovered = registry
             .submit_with_hooks(
                 continuity_submit_request_with_owner("req-1", "hash-a", "replica@host", "", 0),
-                |_| Ok(()),
+                |record| Ok(record.canonical_replica_nodes()),
                 |existing, request| existing.owner_node != request.owner_node,
             )
             .unwrap();
@@ -3129,6 +3965,119 @@ mod tests {
     }
 
     #[test]
+    fn replica_prepare_accepts_monotonic_replica_replacement() {
+        let registry = continuity_fresh_registry();
+        let existing = registry
+            .submit(continuity_submit_request(
+                "req-1",
+                "hash-a",
+                "replica-a@host",
+                0,
+            ))
+            .unwrap()
+            .record;
+        let mut replacement = existing.clone();
+        replacement.record_version = replacement.record_version.saturating_add(1);
+        replacement.replica_nodes = vec!["replica-b@host".to_string()];
+        replacement.replica_node = "replica-b@host".to_string();
+        replacement.acknowledged_replica_nodes.clear();
+
+        let mirrored = registry.mirror_prepare(replacement.clone()).unwrap();
+        assert_eq!(mirrored, replacement);
+    }
+
+    #[test]
+    fn replica_prepare_accepts_fenced_owner_transfer_and_rejects_stale_attempt() {
+        let registry = continuity_fresh_registry();
+        let existing = registry
+            .submit(continuity_submit_request(
+                "req-1",
+                "hash-a",
+                "replica-a@host",
+                0,
+            ))
+            .unwrap()
+            .record;
+        let mut transferred = existing.clone();
+        transferred.record_version = transferred.record_version.saturating_add(1);
+        transferred.attempt_id = "attempt-1".to_string();
+        transferred.owner_node = "owner-b@host".to_string();
+        transferred.replica_nodes = vec!["replica-b@host".to_string()];
+        transferred.replica_node = "replica-b@host".to_string();
+        transferred.acknowledged_replica_nodes.clear();
+
+        assert_eq!(
+            registry.mirror_prepare(transferred.clone()).unwrap(),
+            transferred
+        );
+        assert_eq!(
+            registry.mirror_prepare(existing).unwrap_err(),
+            "stale_replica_prepare"
+        );
+    }
+
+    #[test]
+    fn replica_prepare_cannot_regress_terminal_record() {
+        let registry = continuity_fresh_registry();
+        let submitted = registry
+            .submit(continuity_submit_request(
+                "req-1",
+                "hash-a",
+                "replica-a@host",
+                0,
+            ))
+            .unwrap()
+            .record;
+        let completed = registry
+            .mark_completed("req-1", &submitted.attempt_id, "owner@host")
+            .unwrap();
+        let mut stale = submitted;
+        stale.record_version = completed.record_version.saturating_add(1);
+
+        assert_eq!(
+            registry.mirror_prepare(stale).unwrap_err(),
+            "stale_replica_prepare"
+        );
+        assert_eq!(registry.record("req-1").unwrap(), completed);
+    }
+
+    #[test]
+    fn provisional_higher_attempt_cannot_erase_terminal_result_until_committed() {
+        let registry = continuity_fresh_registry();
+        let submitted = registry
+            .submit(continuity_submit_request(
+                "req-1",
+                "hash-a",
+                "replica-a@host",
+                0,
+            ))
+            .unwrap()
+            .record;
+        let completed = registry
+            .mark_completed("req-1", &submitted.attempt_id, "owner@host")
+            .unwrap();
+
+        let mut provisional = submitted;
+        provisional.attempt_id = "attempt-1".to_string();
+        provisional.owner_node = "owner-b@host".to_string();
+        provisional.record_version = completed.record_version.saturating_add(1);
+        provisional.replica_status = ReplicaStatus::Preparing;
+        provisional.replication_health = ReplicationHealth::Unavailable;
+        provisional.acknowledged_replica_nodes.clear();
+
+        assert_eq!(
+            preferred_record(completed.clone(), provisional.clone()),
+            completed
+        );
+
+        let mut committed = provisional;
+        committed.replica_status = ReplicaStatus::Mirrored;
+        committed.replication_health = ReplicationHealth::Healthy;
+        committed.acknowledged_replica_nodes = committed.replica_nodes.clone();
+        assert_eq!(preferred_record(completed, committed.clone()), committed);
+    }
+
+    #[test]
     fn continuity_disconnect_marks_owner_lost_records_recoverable() {
         let registry = continuity_fresh_registry();
         let accepted = registry
@@ -3150,6 +4099,39 @@ mod tests {
             .unwrap();
         assert_eq!(acked_again.replica_status, ReplicaStatus::OwnerLost);
         assert_eq!(acked_again.error, "owner_lost:owner@host");
+    }
+
+    #[test]
+    fn request_timeout_marks_only_the_fenced_request_owner_lost() {
+        let registry = continuity_fresh_registry();
+        let first = registry
+            .submit_with_replica_prepare(
+                continuity_submit_request("req-1", "hash-a", "replica@host", 1),
+                |_| Ok(()),
+            )
+            .unwrap()
+            .record;
+        let second = registry
+            .submit_with_replica_prepare(
+                continuity_submit_request("req-2", "hash-b", "replica@host", 1),
+                |_| Ok(()),
+            )
+            .unwrap()
+            .record;
+
+        let transitioned = registry
+            .mark_owner_loss_for_request("req-1", &first.attempt_id, "owner@host")
+            .unwrap()
+            .expect("request transitioned");
+        assert_eq!(transitioned.replica_status, ReplicaStatus::OwnerLost);
+        assert_eq!(
+            registry.record("req-2").unwrap().replica_status,
+            second.replica_status
+        );
+        assert!(registry
+            .mark_owner_loss_for_request("req-2", "stale-attempt", "owner@host")
+            .unwrap()
+            .is_none());
     }
 
     #[test]
@@ -3346,7 +4328,7 @@ mod tests {
         let recovered = registry
             .submit_with_hooks(
                 continuity_submit_request_with_owner("req-1", "hash-a", "replica@host", "", 0),
-                |_| Ok(()),
+                |record| Ok(record.canonical_replica_nodes()),
                 |existing, request| existing.owner_node != request.owner_node,
             )
             .unwrap();
@@ -3415,7 +4397,7 @@ mod tests {
         let recovered = registry
             .submit_with_hooks(
                 continuity_submit_request_with_owner("req-1", "hash-a", "replica@host", "", 0),
-                |_| Ok(()),
+                |record| Ok(record.canonical_replica_nodes()),
                 |existing, request| existing.owner_node != request.owner_node,
             )
             .unwrap();
@@ -3478,11 +4460,15 @@ mod tests {
         let record = ContinuityRecord {
             request_key: "req-1".to_string(),
             payload_hash: "hash-a".to_string(),
+            record_version: 3,
+            request_payload: b"encoded-request".to_vec(),
             attempt_id: "attempt-4".to_string(),
             phase: ContinuityPhase::Submitted,
             result: ContinuityResult::Pending,
             ingress_node: "ingress@host".to_string(),
             owner_node: "owner@host".to_string(),
+            replica_nodes: vec!["replica@host".to_string()],
+            acknowledged_replica_nodes: vec!["replica@host".to_string()],
             replica_node: "replica@host".to_string(),
             replication_count: 2,
             replica_status: ReplicaStatus::Mirrored,
@@ -3512,11 +4498,15 @@ mod tests {
                 ContinuityRecord {
                     request_key: "req-1".to_string(),
                     payload_hash: "hash-a".to_string(),
+                    record_version: 3,
+                    request_payload: b"first-request".to_vec(),
                     attempt_id: "attempt-4".to_string(),
                     phase: ContinuityPhase::Completed,
                     result: ContinuityResult::Succeeded,
                     ingress_node: "ingress@host".to_string(),
                     owner_node: "owner@host".to_string(),
+                    replica_nodes: vec!["replica@host".to_string()],
+                    acknowledged_replica_nodes: vec!["replica@host".to_string()],
                     replica_node: "replica@host".to_string(),
                     replication_count: 2,
                     replica_status: ReplicaStatus::Mirrored,
@@ -3532,11 +4522,15 @@ mod tests {
                 ContinuityRecord {
                     request_key: "req-2".to_string(),
                     payload_hash: "hash-b".to_string(),
+                    record_version: 2,
+                    request_payload: Vec::new(),
                     attempt_id: "attempt-7".to_string(),
                     phase: ContinuityPhase::Rejected,
                     result: ContinuityResult::Rejected,
                     ingress_node: "ingress@host".to_string(),
                     owner_node: "owner@host".to_string(),
+                    replica_nodes: vec!["replica@host".to_string()],
+                    acknowledged_replica_nodes: Vec::new(),
                     replica_node: "replica@host".to_string(),
                     replication_count: 2,
                     replica_status: ReplicaStatus::Rejected,

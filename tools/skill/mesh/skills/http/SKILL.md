@@ -1,6 +1,6 @@
 ---
 name: mesh-http
-description: Mesh HTTP: server routing (`HTTP.router`, `HTTP.route`, `HTTP.on_get`/`HTTP.on_post`/`HTTP.on_put`/`HTTP.on_delete`, `HTTP.clustered`), middleware (`HTTP.use`), path parameters, HTTP client v14 fluent builder (`Http.build`/`send`/`stream`), legacy `HTTP.get`, and WebSocket.
+description: Mesh HTTP: server routing (`HTTP.router`, `HTTP.route`, `HTTP.on_get`/`HTTP.on_post`/`HTTP.on_put`/`HTTP.on_delete`, `HTTP.clustered`), middleware (`HTTP.use`), path parameters, the `Http.build`/`send`/`stream` client, and WebSocket.
 ---
 
 ## HTTP Server Basics
@@ -140,22 +140,6 @@ end
 ```
 
 ## HTTP Client
-
-Rules:
-1. `HTTP.get(url) -> Result<String, String>` — synchronous GET; returns body or error message.
-2. Returns `Ok(body_string)` on 2xx, `Err(message)` on failure.
-3. Use the `?` operator or `case` to handle the result.
-
-Code example (from tests/e2e/stdlib_http_client.mpl):
-```mesh
-let result = HTTP.get("http://api.example.com/data")
-case result do
-  Ok(body) -> println(body)
-  Err(msg) -> println("request failed: #{msg}")
-end
-```
-
-## HTTP Client v14 (Builder API)
 
 Rules:
 1. `Http.build(method, url)` — creates a new request. `method` is an atom: `:get`, `:post`, `:put`, `:delete`. Returns a Request handle.

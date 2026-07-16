@@ -1,30 +1,40 @@
-use std::collections::VecDeque;
+use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::fmt;
+use std::fs::OpenOptions;
+use std::io::Write;
+use std::path::Path;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{mpsc, Arc, OnceLock};
 use std::time::Duration;
 
-use parking_lot::RwLock;
+use hmac::{Hmac, Mac};
+use parking_lot::{Mutex, RwLock};
+use serde::{Deserialize, Serialize};
+use sha2::Sha256;
 
 use super::continuity::{
     continuity_registry, decode_record_payload, encode_record_payload, ContinuityAuthorityStatus,
     ContinuityRecord, ContinuityRegistry,
 };
 use super::node::{
-    execute_transient_operator_query, node_state, write_msg, NodeSession, DIST_OPERATOR_QUERY,
+    execute_transient_operator_query, node_state, NodeSession, DIST_OPERATOR_QUERY,
     DIST_OPERATOR_REPLY,
 };
 
 pub const DEFAULT_OPERATOR_QUERY_TIMEOUT: Duration = Duration::from_secs(5);
 const DEFAULT_DIAGNOSTIC_CAPACITY: usize = 128;
+const MAX_CONTINUITY_LIST_RECORDS: usize = 2_000;
 const QUERY_KIND_STATUS: u8 = 0;
 const QUERY_KIND_CONTINUITY_LOOKUP: u8 = 1;
 const QUERY_KIND_CONTINUITY_LIST: u8 = 2;
 const QUERY_KIND_DIAGNOSTICS: u8 = 3;
+const QUERY_KIND_RUNTIME: u8 = 4;
+const QUERY_KIND_CONTROL: u8 = 5;
 const REPLY_STATUS_OK: u8 = 0;
 const REPLY_STATUS_ERR: u8 = 1;
 
 static OPERATOR_QUERY_REQUEST_ID: AtomicU64 = AtomicU64::new(1);
+static DRAIN_PROPAGATION_SEQUENCE: AtomicU64 = AtomicU64::new(1);
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct OperatorMembershipSnapshot {
@@ -54,6 +64,293 @@ impl From<ContinuityAuthorityStatus> for OperatorAuthoritySnapshot {
 pub struct OperatorStatusSnapshot {
     pub membership: OperatorMembershipSnapshot,
     pub authority: OperatorAuthoritySnapshot,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct OperatorNodeRuntimeSnapshot {
+    pub node_id: String,
+    #[serde(default)]
+    pub protocol_version: u16,
+    #[serde(default)]
+    pub protocol_capabilities: u64,
+    #[serde(default)]
+    pub autonomous_protocol_enabled: bool,
+    #[serde(default)]
+    pub protocol_disabled_reason: Option<String>,
+    pub roles: Vec<String>,
+    pub state: String,
+    pub routing_eligible: bool,
+    pub capacity_units: u16,
+    pub active_workers: u16,
+    pub runnable_actors: u64,
+    pub inflight: u32,
+    #[serde(default)]
+    pub continuity_active_work: u32,
+    #[serde(default)]
+    pub continuity_replica_responsibilities: u32,
+    #[serde(default)]
+    pub continuity_active_ownership_transfers: u32,
+    #[serde(default)]
+    pub continuity_only_active_copy: bool,
+    pub queued_items: u32,
+    pub queued_bytes: u64,
+    pub reservations: u32,
+    pub pressure: f64,
+    pub dominant_signal: String,
+    pub report_sequence: u64,
+    pub control_term: u64,
+    pub membership_generation: u64,
+    pub failure_domain: String,
+    #[serde(default)]
+    pub handlers: Vec<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct OperatorRuntimeSnapshot {
+    pub schema_version: u16,
+    pub local_node: String,
+    pub telemetry_complete: bool,
+    pub desired_capacity: u16,
+    pub observed_capacity: u16,
+    pub ready_capacity: u16,
+    pub draining_capacity: u16,
+    pub autoscaler_paused: bool,
+    pub scheduler_min_workers: u16,
+    pub scheduler_max_workers: u16,
+    pub scheduler_active_workers: u16,
+    #[serde(default)]
+    pub local_readiness: super::readiness::NodeReadinessStatus,
+    #[serde(default)]
+    pub consensus: Option<super::consensus::ConsensusRuntimeSnapshot>,
+    #[serde(default)]
+    pub autonomous: super::autonomous::AutonomousControllerStatus,
+    #[serde(default)]
+    pub local_telemetry: super::telemetry::LocalTelemetrySnapshot,
+    #[serde(default)]
+    pub local_peer_sessions: Vec<super::telemetry::PeerSessionTelemetrySnapshot>,
+    #[serde(default)]
+    pub local_continuity_store: Option<super::continuity_store::ContinuityStoreStats>,
+    #[serde(default)]
+    pub local_continuity_store_error: Option<String>,
+    pub nodes: Vec<OperatorNodeRuntimeSnapshot>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "action", rename_all = "snake_case")]
+pub enum OperatorControlAction {
+    PauseAutoscaler,
+    ResumeAutoscaler,
+    SetDesiredCapacity {
+        worker_nodes: u16,
+    },
+    DrainNode {
+        node_id: String,
+    },
+    CancelDrain {
+        node_id: String,
+    },
+    CommitControlMutation {
+        command_id: String,
+        mutation: super::scaling::ControlMutation,
+    },
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct OperatorControlRequest {
+    pub schema_version: u16,
+    pub cluster_id: String,
+    pub actor: String,
+    pub sequence: u64,
+    pub expires_at_unix_millis: u64,
+    pub reason: String,
+    pub action: OperatorControlAction,
+    pub signature: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct OperatorControlOutcome {
+    pub schema_version: u16,
+    pub accepted: bool,
+    pub control_sequence: u64,
+    pub autoscaler_paused: bool,
+    pub desired_capacity_override: Option<u16>,
+    pub drain_intents: Vec<String>,
+    #[serde(default)]
+    pub consensus: Option<super::consensus::ConsensusResponse>,
+}
+
+#[derive(Default)]
+struct OperatorControlState {
+    autoscaler_paused: bool,
+    desired_capacity_override: Option<u16>,
+    drain_intents: BTreeSet<String>,
+    actor_sequences: BTreeMap<String, u64>,
+    control_sequence: u64,
+    last_consensus_log_index: u64,
+}
+
+static OPERATOR_CONTROL_STATE: OnceLock<Mutex<OperatorControlState>> = OnceLock::new();
+
+fn operator_control_state() -> &'static Mutex<OperatorControlState> {
+    OPERATOR_CONTROL_STATE.get_or_init(|| Mutex::new(OperatorControlState::default()))
+}
+
+pub(crate) fn autoscaler_paused() -> bool {
+    refresh_operator_control_from_consensus();
+    operator_control_state().lock().autoscaler_paused
+}
+
+pub(crate) fn drain_requested(node_id: &str) -> bool {
+    refresh_operator_control_from_consensus();
+    operator_control_state()
+        .lock()
+        .drain_intents
+        .contains(node_id)
+}
+
+pub(crate) fn set_runtime_drain_intent(node_id: &str, draining: bool) {
+    if node_id.is_empty() {
+        return;
+    }
+    let runtime_node_id =
+        super::node::resolve_runtime_node_id(node_id).unwrap_or_else(|_| node_id.to_string());
+    let mut state = operator_control_state().lock();
+    if draining {
+        state.drain_intents.insert(runtime_node_id.clone());
+    } else {
+        state.drain_intents.remove(node_id);
+        state.drain_intents.remove(&runtime_node_id);
+    }
+    state.control_sequence = state.control_sequence.saturating_add(1);
+    drop(state);
+    if node_state().is_some_and(|state| state.name == runtime_node_id) {
+        super::telemetry::global_admission_controller().set_draining(draining);
+    }
+}
+
+pub(crate) fn prepare_committed_drain(node_id: &str) {
+    let runtime_node_id =
+        super::node::resolve_runtime_node_id(node_id).unwrap_or_else(|_| node_id.to_string());
+    set_runtime_drain_intent(&runtime_node_id, true);
+    if node_state().is_some_and(|state| state.name == runtime_node_id) && node_id == runtime_node_id
+    {
+        return;
+    }
+    if node_state().is_some_and(|state| state.name != runtime_node_id) {
+        let sequence_floor = unix_millis();
+        let sequence = DRAIN_PROPAGATION_SEQUENCE
+            .fetch_update(Ordering::AcqRel, Ordering::Acquire, |current| {
+                Some(current.saturating_add(1).max(sequence_floor))
+            })
+            .unwrap_or(sequence_floor)
+            .saturating_add(1)
+            .max(sequence_floor);
+        let propagated = std::env::var("MESH_OPERATOR_KEY")
+            .map_err(|_| "operator_control_not_configured".to_string())
+            .and_then(|key| {
+                sign_operator_control_request(
+                    OperatorControlRequest {
+                        schema_version: 1,
+                        cluster_id: std::env::var("MESH_CLUSTER_ID")
+                            .unwrap_or_else(|_| "mesh".to_string()),
+                        actor: "mesh-drain-propagator".to_string(),
+                        sequence,
+                        expires_at_unix_millis: unix_millis().saturating_add(30_000),
+                        reason: "quorum-committed local drain admission fence".to_string(),
+                        action: OperatorControlAction::DrainNode {
+                            node_id: runtime_node_id.clone(),
+                        },
+                        signature: String::new(),
+                    },
+                    &key,
+                )
+            })
+            .and_then(|request| {
+                query_operator_control_remote(
+                    &runtime_node_id,
+                    &std::env::var("MESH_CLUSTER_COOKIE").unwrap_or_default(),
+                    request,
+                    Duration::from_secs(5),
+                )
+                .map(|_| ())
+                .map_err(|error| error.to_string())
+            });
+        if let Err(error) = propagated {
+            record_diagnostic(OperatorDiagnosticRecord {
+                transition: "drain_target_propagation_failed".to_string(),
+                reason: Some(error),
+                metadata: vec![("node_id".to_string(), runtime_node_id.clone())],
+                ..OperatorDiagnosticRecord::default()
+            });
+        }
+    }
+    if let Err(error) = super::node::prepare_continuity_for_drain(&runtime_node_id) {
+        record_diagnostic(OperatorDiagnosticRecord {
+            transition: "drain_continuity_blocked".to_string(),
+            reason: Some(error.clone()),
+            metadata: vec![("node_id".to_string(), runtime_node_id)],
+            ..OperatorDiagnosticRecord::default()
+        });
+        eprintln!(
+            "[mesh-rt drain] transition=continuity_blocked node_id={} reason={}",
+            node_id, error
+        );
+    }
+}
+
+pub(crate) fn cancel_committed_drain(node_id: &str) {
+    let runtime_node_id =
+        super::node::resolve_runtime_node_id(node_id).unwrap_or_else(|_| node_id.to_string());
+    set_runtime_drain_intent(&runtime_node_id, false);
+    if node_state().is_none_or(|state| state.name == runtime_node_id) {
+        return;
+    }
+    let sequence_floor = unix_millis();
+    let sequence = DRAIN_PROPAGATION_SEQUENCE
+        .fetch_update(Ordering::AcqRel, Ordering::Acquire, |current| {
+            Some(current.saturating_add(1).max(sequence_floor))
+        })
+        .unwrap_or(sequence_floor)
+        .saturating_add(1)
+        .max(sequence_floor);
+    let propagated = std::env::var("MESH_OPERATOR_KEY")
+        .map_err(|_| "operator_control_not_configured".to_string())
+        .and_then(|key| {
+            sign_operator_control_request(
+                OperatorControlRequest {
+                    schema_version: 1,
+                    cluster_id: std::env::var("MESH_CLUSTER_ID")
+                        .unwrap_or_else(|_| "mesh".to_string()),
+                    actor: "mesh-drain-propagator".to_string(),
+                    sequence,
+                    expires_at_unix_millis: unix_millis().saturating_add(30_000),
+                    reason: "quorum-committed drain cancellation".to_string(),
+                    action: OperatorControlAction::CancelDrain {
+                        node_id: runtime_node_id.clone(),
+                    },
+                    signature: String::new(),
+                },
+                &key,
+            )
+        })
+        .and_then(|request| {
+            query_operator_control_remote(
+                &runtime_node_id,
+                &std::env::var("MESH_CLUSTER_COOKIE").unwrap_or_default(),
+                request,
+                Duration::from_secs(5),
+            )
+            .map(|_| ())
+            .map_err(|error| error.to_string())
+        });
+    if let Err(error) = propagated {
+        record_diagnostic(OperatorDiagnosticRecord {
+            transition: "drain_cancel_propagation_failed".to_string(),
+            reason: Some(error),
+            metadata: vec![("node_id".to_string(), runtime_node_id)],
+            ..OperatorDiagnosticRecord::default()
+        });
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -131,6 +428,8 @@ pub enum OperatorQueryKind {
     ContinuityLookup,
     ContinuityList,
     Diagnostics,
+    Runtime,
+    Control,
 }
 
 impl OperatorQueryKind {
@@ -140,6 +439,8 @@ impl OperatorQueryKind {
             Self::ContinuityLookup => "continuity_lookup",
             Self::ContinuityList => "continuity_list",
             Self::Diagnostics => "diagnostics",
+            Self::Runtime => "runtime",
+            Self::Control => "control",
         }
     }
 
@@ -149,6 +450,8 @@ impl OperatorQueryKind {
             Self::ContinuityLookup => QUERY_KIND_CONTINUITY_LOOKUP,
             Self::ContinuityList => QUERY_KIND_CONTINUITY_LIST,
             Self::Diagnostics => QUERY_KIND_DIAGNOSTICS,
+            Self::Runtime => QUERY_KIND_RUNTIME,
+            Self::Control => QUERY_KIND_CONTROL,
         }
     }
 
@@ -158,6 +461,8 @@ impl OperatorQueryKind {
             QUERY_KIND_CONTINUITY_LOOKUP => Ok(Self::ContinuityLookup),
             QUERY_KIND_CONTINUITY_LIST => Ok(Self::ContinuityList),
             QUERY_KIND_DIAGNOSTICS => Ok(Self::Diagnostics),
+            QUERY_KIND_RUNTIME => Ok(Self::Runtime),
+            QUERY_KIND_CONTROL => Ok(Self::Control),
             other => Err(format!("invalid operator query kind {other}")),
         }
     }
@@ -323,6 +628,8 @@ enum OperatorQuery {
     ContinuityLookup { request_key: String },
     ContinuityList { limit: Option<usize> },
     Diagnostics { limit: Option<usize> },
+    Runtime,
+    Control(OperatorControlRequest),
 }
 
 impl OperatorQuery {
@@ -332,19 +639,29 @@ impl OperatorQuery {
             Self::ContinuityLookup { .. } => OperatorQueryKind::ContinuityLookup,
             Self::ContinuityList { .. } => OperatorQueryKind::ContinuityList,
             Self::Diagnostics { .. } => OperatorQueryKind::Diagnostics,
+            Self::Runtime => OperatorQueryKind::Runtime,
+            Self::Control(_) => OperatorQueryKind::Control,
         }
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq)]
 enum OperatorReply {
     Status(OperatorStatusSnapshot),
     ContinuityRecord(ContinuityRecord),
     ContinuityList(OperatorContinuityList),
     Diagnostics(OperatorDiagnosticsSnapshot),
+    Runtime(OperatorRuntimeSnapshot),
+    Control(OperatorControlOutcome),
 }
 
 pub(crate) fn record_diagnostic(record: OperatorDiagnosticRecord) {
+    let mut record = record;
+    if let Some(request_key) = record.request_key.as_deref() {
+        if !request_key.starts_with("sha256:") {
+            record.request_key = Some(super::continuity::request_key_fingerprint(request_key));
+        }
+    }
     diagnostics_buffer().record(record);
 }
 
@@ -386,6 +703,683 @@ pub fn operator_status() -> Result<OperatorStatusSnapshot, OperatorQueryError> {
         &peer_nodes,
         continuity_registry().authority_status(),
     ))
+}
+
+pub fn operator_runtime_snapshot() -> Result<OperatorRuntimeSnapshot, OperatorQueryError> {
+    let state = node_state().ok_or_else(|| OperatorQueryError::TargetUnavailable {
+        target: "<local>".to_string(),
+        query: OperatorQueryKind::Runtime,
+        reason: "node_not_started".to_string(),
+    })?;
+    Ok(runtime_snapshot_from_state(state))
+}
+
+fn runtime_snapshot_from_state(state: &super::node::NodeState) -> OperatorRuntimeSnapshot {
+    refresh_operator_control_from_consensus();
+    let now = std::time::Instant::now();
+    let routing_policy = super::routing::runtime_routing_policy();
+    let local_report = super::routing::local_load_report(&state.name, BTreeSet::new());
+    let _ = super::routing::load_report_registry().apply(local_report, now);
+    let mut membership = peer_names(state);
+    membership.push(state.name.clone());
+    membership.sort();
+    membership.dedup();
+    let live_nodes: BTreeSet<String> = membership.iter().cloned().collect();
+    let reports: Vec<_> = membership
+        .iter()
+        .filter_map(|node| {
+            super::routing::load_report_registry().report(node, now, routing_policy.load_report_ttl)
+        })
+        .collect();
+    let peer_protocols: BTreeMap<_, _> = state
+        .sessions
+        .read()
+        .iter()
+        .map(|(node, session)| (node.clone(), session.negotiated_protocol.clone()))
+        .collect();
+    let telemetry_complete = reports.len() == membership.len();
+    let nodes: Vec<_> = reports
+        .iter()
+        .map(|report| {
+            let pressure = report.pressure(
+                routing_policy.target_inflight,
+                routing_policy.target_queue_wait,
+            );
+            let mut roles = Vec::new();
+            if report
+                .roles
+                .contains(crate::dist::telemetry::NodeRoles::CONTROLLER)
+            {
+                roles.push("controller".to_string());
+            }
+            if report
+                .roles
+                .contains(crate::dist::telemetry::NodeRoles::GATEWAY)
+            {
+                roles.push("gateway".to_string());
+            }
+            if report
+                .roles
+                .contains(crate::dist::telemetry::NodeRoles::WORKER)
+            {
+                roles.push("worker".to_string());
+            }
+            let drain_intent = drain_requested(&report.node_id);
+            let protocol = peer_protocols.get(&report.node_id);
+            let local_protocol = report.node_id == state.name;
+            let continuity_safety =
+                super::continuity_store::continuity_node_safety(&report.node_id, &live_nodes)
+                    .unwrap_or(super::continuity_store::ContinuityNodeSafety {
+                        active_owned_records: u32::MAX,
+                        required_replica_responsibilities: u32::MAX,
+                        only_active_copy: true,
+                    });
+            OperatorNodeRuntimeSnapshot {
+                node_id: report.node_id.clone(),
+                protocol_version: protocol.map_or_else(
+                    || u16::from(local_protocol) * super::protocol::PROTOCOL_V2,
+                    |protocol| protocol.version,
+                ),
+                protocol_capabilities: protocol.map_or_else(
+                    || {
+                        if local_protocol {
+                            super::protocol::Capabilities::AUTONOMOUS_REQUIRED.bits()
+                        } else {
+                            0
+                        }
+                    },
+                    |protocol| protocol.capabilities.bits(),
+                ),
+                autonomous_protocol_enabled: protocol
+                    .is_some_and(|protocol| protocol.autonomous_enabled)
+                    || local_protocol,
+                protocol_disabled_reason: protocol
+                    .and_then(|protocol| protocol.disabled_reason.clone())
+                    .or_else(|| (!local_protocol).then(|| "session_unavailable".to_string())),
+                roles,
+                state: if drain_intent {
+                    "draining".to_string()
+                } else {
+                    report.state.as_str().to_string()
+                },
+                routing_eligible: report.state.routing_eligible() && !drain_intent,
+                capacity_units: report.capacity_units,
+                active_workers: report.active_workers,
+                runnable_actors: report.runnable_actors,
+                inflight: report.inflight,
+                continuity_active_work: continuity_safety.active_owned_records,
+                continuity_replica_responsibilities: continuity_safety
+                    .required_replica_responsibilities,
+                continuity_active_ownership_transfers:
+                    super::node::continuity_active_ownership_transfers(&report.node_id),
+                continuity_only_active_copy: continuity_safety.only_active_copy,
+                queued_items: report.queued_items,
+                queued_bytes: report.queued_bytes,
+                reservations: report.outstanding_reservations,
+                pressure: report.decision_pressure_ewma,
+                dominant_signal: pressure.dominant_signal.to_string(),
+                report_sequence: report.sequence,
+                control_term: report.control_term,
+                membership_generation: report.membership_generation,
+                failure_domain: report.failure_domain.clone(),
+                handlers: report.handlers.iter().cloned().collect(),
+            }
+        })
+        .collect();
+    let ready_capacity = nodes
+        .iter()
+        .filter(|node| node.state == "ready")
+        .count()
+        .try_into()
+        .unwrap_or(u16::MAX);
+    let draining_capacity = nodes
+        .iter()
+        .filter(|node| node.state == "draining")
+        .count()
+        .try_into()
+        .unwrap_or(u16::MAX);
+    let (scheduler_min_workers, scheduler_max_workers, scheduler_active_workers) =
+        crate::actor::GLOBAL_SCHEDULER
+            .get()
+            .map_or((0, 0, 0), |scheduler| {
+                let (minimum, maximum) = scheduler.worker_bounds();
+                (
+                    minimum.try_into().unwrap_or(u16::MAX),
+                    maximum.try_into().unwrap_or(u16::MAX),
+                    scheduler.active_workers().try_into().unwrap_or(u16::MAX),
+                )
+            });
+    let observed_capacity = membership.len().try_into().unwrap_or(u16::MAX);
+    let control = operator_control_state().lock();
+    let desired_capacity = control.desired_capacity_override.unwrap_or_else(|| {
+        std::env::var("MESH_DESIRED_CAPACITY")
+            .ok()
+            .and_then(|raw| raw.parse::<u16>().ok())
+            .unwrap_or(observed_capacity)
+    });
+    let autoscaler_paused = control.autoscaler_paused;
+    drop(control);
+    super::routing::refresh_local_routing_telemetry();
+    let local_peer_sessions = super::node::local_peer_session_telemetry();
+    let local_telemetry = super::telemetry::runtime_telemetry().snapshot();
+    let (local_continuity_store, local_continuity_store_error) =
+        match super::continuity_store::configured_continuity_store().map(|store| store.stats()) {
+            Some(Ok(stats)) => (Some(stats), None),
+            Some(Err(error)) => (None, Some(error)),
+            None => (None, None),
+        };
+    OperatorRuntimeSnapshot {
+        schema_version: 6,
+        local_node: state.name.clone(),
+        telemetry_complete,
+        desired_capacity,
+        observed_capacity,
+        ready_capacity,
+        draining_capacity,
+        autoscaler_paused,
+        scheduler_min_workers,
+        scheduler_max_workers,
+        scheduler_active_workers,
+        local_readiness: super::readiness::local_readiness_status(),
+        consensus: super::consensus::consensus_runtime_snapshot(),
+        autonomous: super::autonomous::autonomous_controller_status(),
+        local_telemetry,
+        local_peer_sessions,
+        local_continuity_store,
+        local_continuity_store_error,
+        nodes,
+    }
+}
+
+fn control_signature_payload(request: &OperatorControlRequest) -> Result<Vec<u8>, String> {
+    let action = serde_json::to_vec(&request.action)
+        .map_err(|error| format!("operator_control_action_encode_failed:{error}"))?;
+    let schema_version = request.schema_version.to_string();
+    let sequence = request.sequence.to_string();
+    let expires_at = request.expires_at_unix_millis.to_string();
+    let mut payload = Vec::new();
+    for component in [
+        schema_version.as_bytes(),
+        request.cluster_id.as_bytes(),
+        request.actor.as_bytes(),
+        sequence.as_bytes(),
+        expires_at.as_bytes(),
+        request.reason.as_bytes(),
+        action.as_slice(),
+    ] {
+        let length: u64 = component
+            .len()
+            .try_into()
+            .map_err(|_| "operator_control_component_too_large".to_string())?;
+        payload.extend_from_slice(&length.to_be_bytes());
+        payload.extend_from_slice(component);
+    }
+    Ok(payload)
+}
+
+pub fn sign_operator_control_request(
+    mut request: OperatorControlRequest,
+    operator_key: &str,
+) -> Result<OperatorControlRequest, String> {
+    let signing_key = operator_control_keys(operator_key)
+        .next()
+        .ok_or_else(|| "operator_control_key_missing".to_string())?;
+    let mut mac = Hmac::<Sha256>::new_from_slice(signing_key.as_bytes())
+        .map_err(|_| "operator_control_key_invalid".to_string())?;
+    mac.update(&control_signature_payload(&request)?);
+    request.signature = mac
+        .finalize()
+        .into_bytes()
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect();
+    Ok(request)
+}
+
+fn operator_control_keys(raw: &str) -> impl Iterator<Item = &str> {
+    raw.split(',').map(str::trim).filter(|key| key.len() >= 32)
+}
+
+fn operator_control_signature_matches(raw_keys: &str, payload: &[u8], signature: &[u8]) -> bool {
+    operator_control_keys(raw_keys).any(|candidate| {
+        let Ok(mut mac) = Hmac::<Sha256>::new_from_slice(candidate.as_bytes()) else {
+            return false;
+        };
+        mac.update(payload);
+        mac.verify_slice(signature).is_ok()
+    })
+}
+
+fn decode_hex_signature(signature: &str) -> Result<[u8; 32], String> {
+    if signature.len() != 64 {
+        return Err("operator_control_signature_invalid".to_string());
+    }
+    let mut bytes = [0u8; 32];
+    for (index, byte) in bytes.iter_mut().enumerate() {
+        *byte = u8::from_str_radix(&signature[index * 2..index * 2 + 2], 16)
+            .map_err(|_| "operator_control_signature_invalid".to_string())?;
+    }
+    Ok(bytes)
+}
+
+fn unix_millis() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis()
+        .try_into()
+        .unwrap_or(u64::MAX)
+}
+
+fn validate_internal_control_caller(
+    request: &OperatorControlRequest,
+    authenticated_controller: bool,
+) -> Result<(), String> {
+    if request.actor == "mesh-drain-propagator" && !authenticated_controller {
+        Err("operator_internal_control_requires_controller_identity".to_string())
+    } else {
+        Ok(())
+    }
+}
+
+fn apply_operator_control(
+    request: &OperatorControlRequest,
+    authenticated_controller: bool,
+) -> Result<OperatorControlOutcome, String> {
+    if request.schema_version != 1
+        || request.cluster_id.is_empty()
+        || request.cluster_id.len() > 128
+        || request.actor.is_empty()
+        || request.actor.len() > 256
+        || request.sequence == 0
+        || request.reason.trim().is_empty()
+        || request.reason.len() > 2_048
+    {
+        return Err("operator_control_request_invalid".to_string());
+    }
+    let expected_cluster = std::env::var("MESH_CLUSTER_ID").unwrap_or_else(|_| "mesh".to_string());
+    if request.cluster_id != expected_cluster {
+        return Err("operator_control_cluster_mismatch".to_string());
+    }
+    let now = unix_millis();
+    if request.expires_at_unix_millis < now
+        || request.expires_at_unix_millis > now.saturating_add(300_000)
+    {
+        return Err("operator_control_expired_or_too_far_future".to_string());
+    }
+    let key = std::env::var("MESH_OPERATOR_KEY")
+        .map_err(|_| "operator_control_not_configured".to_string())?;
+    let signature = decode_hex_signature(&request.signature)?;
+    let payload = control_signature_payload(request)?;
+    let authorized = operator_control_signature_matches(&key, &payload, &signature);
+    if !authorized {
+        return Err("operator_control_unauthorized".to_string());
+    }
+
+    refresh_operator_control_from_consensus();
+    let mut state = operator_control_state().lock();
+    let mut drain_to_prepare = None;
+    let mut drain_to_cancel = None;
+    if state
+        .actor_sequences
+        .get(&request.actor)
+        .is_some_and(|sequence| request.sequence <= *sequence)
+    {
+        return Err("operator_control_replay_rejected".to_string());
+    }
+    if request.actor == "mesh-drain-propagator" {
+        validate_internal_control_caller(request, authenticated_controller)?;
+        let (node_id, draining) = match &request.action {
+            OperatorControlAction::DrainNode { node_id } => (node_id, true),
+            OperatorControlAction::CancelDrain { node_id } => (node_id, false),
+            _ => return Err("operator_internal_control_action_invalid".to_string()),
+        };
+        let runtime_node_id = super::node::resolve_runtime_node_id(node_id)?;
+        if node_state().is_none_or(|local| local.name != runtime_node_id) {
+            return Err("operator_internal_control_target_mismatch".to_string());
+        }
+        if draining {
+            state.drain_intents.insert(runtime_node_id.clone());
+        } else {
+            state.drain_intents.remove(&runtime_node_id);
+        }
+        state
+            .actor_sequences
+            .insert(request.actor.clone(), request.sequence);
+        state.control_sequence = state.control_sequence.saturating_add(1);
+        let outcome = OperatorControlOutcome {
+            schema_version: 1,
+            accepted: true,
+            control_sequence: state.control_sequence,
+            autoscaler_paused: state.autoscaler_paused,
+            desired_capacity_override: state.desired_capacity_override,
+            drain_intents: state.drain_intents.iter().cloned().collect(),
+            consensus: None,
+        };
+        drop(state);
+        super::telemetry::global_admission_controller().set_draining(draining);
+        audit_operator_control(request, &outcome)?;
+        return Ok(outcome);
+    }
+    let (command_id, mutation) = match &request.action {
+        OperatorControlAction::PauseAutoscaler => (
+            format!(
+                "operator:{}:{}:{}",
+                request.cluster_id, request.actor, request.sequence
+            ),
+            super::scaling::ControlMutation::PauseAutoscaler { paused: true },
+        ),
+        OperatorControlAction::ResumeAutoscaler => (
+            format!(
+                "operator:{}:{}:{}",
+                request.cluster_id, request.actor, request.sequence
+            ),
+            super::scaling::ControlMutation::PauseAutoscaler { paused: false },
+        ),
+        OperatorControlAction::SetDesiredCapacity { worker_nodes } => {
+            if *worker_nodes == 0 {
+                return Err("operator_control_desired_capacity_invalid".to_string());
+            }
+            (
+                format!(
+                    "operator:{}:{}:{}",
+                    request.cluster_id, request.actor, request.sequence
+                ),
+                super::scaling::ControlMutation::ManualOverride {
+                    worker_nodes: *worker_nodes,
+                },
+            )
+        }
+        OperatorControlAction::DrainNode { node_id } => {
+            if node_id.trim().is_empty() {
+                return Err("operator_control_drain_node_invalid".to_string());
+            }
+            let runtime_node_id =
+                super::node::resolve_runtime_node_id(node_id).unwrap_or_else(|_| node_id.clone());
+            (
+                format!(
+                    "operator:{}:{}:{}",
+                    request.cluster_id, request.actor, request.sequence
+                ),
+                super::scaling::ControlMutation::DrainIntent {
+                    node_id: runtime_node_id,
+                    cancelled: false,
+                },
+            )
+        }
+        OperatorControlAction::CancelDrain { node_id } => {
+            if node_id.trim().is_empty() {
+                return Err("operator_control_drain_node_invalid".to_string());
+            }
+            let runtime_node_id =
+                super::node::resolve_runtime_node_id(node_id).unwrap_or_else(|_| node_id.clone());
+            (
+                format!(
+                    "operator:{}:{}:{}",
+                    request.cluster_id, request.actor, request.sequence
+                ),
+                super::scaling::ControlMutation::DrainIntent {
+                    node_id: runtime_node_id,
+                    cancelled: true,
+                },
+            )
+        }
+        OperatorControlAction::CommitControlMutation {
+            command_id,
+            mutation,
+        } => (command_id.clone(), mutation.clone()),
+    };
+    validate_control_mutation(&mutation)?;
+    let response = super::consensus::commit_consensus_command(
+        super::consensus::ConsensusCommand {
+            command_id,
+            actor: request.actor.clone(),
+            reason: request.reason.clone(),
+            timestamp_unix_millis: now,
+            actor_sequence: request.sequence,
+            mutation: mutation.clone(),
+        },
+        Duration::from_secs(10),
+    )?;
+    apply_committed_control_mutation(&mut state, &mutation)?;
+    if let super::scaling::ControlMutation::DrainIntent { node_id, cancelled } = &mutation {
+        if *cancelled {
+            drain_to_cancel = Some(node_id.clone());
+        } else {
+            drain_to_prepare = Some(node_id.clone());
+        }
+    }
+    state.last_consensus_log_index = state.last_consensus_log_index.max(response.log_index);
+    state
+        .actor_sequences
+        .insert(request.actor.clone(), request.sequence);
+    state.control_sequence = state.control_sequence.saturating_add(1);
+    let outcome = OperatorControlOutcome {
+        schema_version: 1,
+        accepted: true,
+        control_sequence: state.control_sequence,
+        autoscaler_paused: state.autoscaler_paused,
+        desired_capacity_override: state.desired_capacity_override,
+        drain_intents: state.drain_intents.iter().cloned().collect(),
+        consensus: Some(response),
+    };
+    drop(state);
+    if let Some(node_id) = drain_to_prepare.as_deref() {
+        prepare_committed_drain(node_id);
+    }
+    if let Some(node_id) = drain_to_cancel.as_deref() {
+        set_runtime_drain_intent(node_id, false);
+    }
+    audit_operator_control(request, &outcome)?;
+    Ok(outcome)
+}
+
+fn apply_committed_control_mutation(
+    state: &mut OperatorControlState,
+    mutation: &super::scaling::ControlMutation,
+) -> Result<(), String> {
+    match mutation {
+        super::scaling::ControlMutation::DesiredCapacity(desired) => {
+            if desired.worker_nodes == 0 || desired.revision.0 == 0 {
+                return Err("operator_control_desired_capacity_invalid".to_string());
+            }
+            state.desired_capacity_override = Some(desired.worker_nodes);
+        }
+        super::scaling::ControlMutation::ManualOverride { worker_nodes } => {
+            if *worker_nodes == 0 {
+                return Err("operator_control_desired_capacity_invalid".to_string());
+            }
+            state.desired_capacity_override = Some(*worker_nodes);
+        }
+        super::scaling::ControlMutation::PauseAutoscaler { paused } => {
+            state.autoscaler_paused = *paused;
+        }
+        super::scaling::ControlMutation::DrainIntent { node_id, cancelled } => {
+            if node_id.trim().is_empty() {
+                return Err("operator_control_drain_node_invalid".to_string());
+            }
+            if *cancelled {
+                state.drain_intents.remove(node_id);
+                if let Ok(runtime_node_id) = super::node::resolve_runtime_node_id(node_id) {
+                    state.drain_intents.remove(&runtime_node_id);
+                }
+            } else {
+                state.drain_intents.insert(
+                    super::node::resolve_runtime_node_id(node_id)
+                        .unwrap_or_else(|_| node_id.clone()),
+                );
+            }
+        }
+        super::scaling::ControlMutation::DriverOperation(_)
+        | super::scaling::ControlMutation::PolicyRevision { .. }
+        | super::scaling::ControlMutation::MembershipIntent { .. } => {}
+    }
+    Ok(())
+}
+
+fn validate_control_mutation(mutation: &super::scaling::ControlMutation) -> Result<(), String> {
+    match mutation {
+        super::scaling::ControlMutation::DesiredCapacity(desired)
+            if desired.worker_nodes == 0
+                || desired.revision.0 == 0
+                || desired.template_revision.trim().is_empty() =>
+        {
+            Err("operator_control_desired_capacity_invalid".to_string())
+        }
+        super::scaling::ControlMutation::ManualOverride { worker_nodes } if *worker_nodes == 0 => {
+            Err("operator_control_desired_capacity_invalid".to_string())
+        }
+        super::scaling::ControlMutation::DrainIntent { node_id, .. }
+            if node_id.trim().is_empty() =>
+        {
+            Err("operator_control_drain_node_invalid".to_string())
+        }
+        super::scaling::ControlMutation::PolicyRevision {
+            revision,
+            policy_json,
+            policy_sha256,
+        } if *revision == 0 || policy_json.trim().is_empty() || policy_sha256.len() != 64 => {
+            Err("operator_control_policy_revision_invalid".to_string())
+        }
+        super::scaling::ControlMutation::MembershipIntent { generation, nodes }
+            if *generation == 0
+                || nodes.is_empty()
+                || nodes.iter().any(|node| node.trim().is_empty()) =>
+        {
+            Err("operator_control_membership_intent_invalid".to_string())
+        }
+        _ => Ok(()),
+    }
+}
+
+fn refresh_operator_control_from_consensus() {
+    let Some(snapshot) = super::consensus::consensus_runtime_snapshot() else {
+        return;
+    };
+    let mut state = operator_control_state().lock();
+    for entry in &snapshot.entries {
+        if entry.index <= state.last_consensus_log_index {
+            continue;
+        }
+        if apply_committed_control_mutation(&mut state, &entry.mutation).is_ok() {
+            if entry.actor_sequence > 0 {
+                state
+                    .actor_sequences
+                    .entry(entry.actor.clone())
+                    .and_modify(|sequence| *sequence = (*sequence).max(entry.actor_sequence))
+                    .or_insert(entry.actor_sequence);
+            }
+            state.last_consensus_log_index = entry.index;
+            state.control_sequence = state.control_sequence.saturating_add(1);
+        }
+    }
+}
+
+fn audit_operator_control(
+    request: &OperatorControlRequest,
+    outcome: &OperatorControlOutcome,
+) -> Result<(), String> {
+    let action = serde_json::to_string(&request.action)
+        .map_err(|error| format!("operator_audit_encode_failed:{error}"))?;
+    record_diagnostic(OperatorDiagnosticRecord {
+        transition: "operator_control_committed".to_string(),
+        reason: Some(request.reason.clone()),
+        metadata: vec![
+            ("actor".to_string(), request.actor.clone()),
+            ("action".to_string(), action.clone()),
+            ("sequence".to_string(), request.sequence.to_string()),
+            (
+                "control_sequence".to_string(),
+                outcome.control_sequence.to_string(),
+            ),
+        ],
+        ..OperatorDiagnosticRecord::default()
+    });
+    append_operator_audit_entry(&serde_json::json!({
+        "schema_version": 1,
+        "timestamp_unix_millis": unix_millis(),
+        "cluster_id": request.cluster_id,
+        "actor": request.actor,
+        "sequence": request.sequence,
+        "reason": request.reason,
+        "action": request.action,
+        "outcome": "committed",
+        "control_sequence": outcome.control_sequence,
+    }))
+}
+
+fn operator_action_name(action: &OperatorControlAction) -> &'static str {
+    match action {
+        OperatorControlAction::PauseAutoscaler => "pause_autoscaler",
+        OperatorControlAction::ResumeAutoscaler => "resume_autoscaler",
+        OperatorControlAction::SetDesiredCapacity { .. } => "set_desired_capacity",
+        OperatorControlAction::DrainNode { .. } => "drain_node",
+        OperatorControlAction::CancelDrain { .. } => "cancel_drain",
+        OperatorControlAction::CommitControlMutation { .. } => "commit_control_mutation",
+    }
+}
+
+fn bounded_audit_value(value: &str, maximum: usize) -> String {
+    value.chars().take(maximum).collect()
+}
+
+fn audit_operator_control_rejection(request: &OperatorControlRequest, rejection: &str) {
+    let actor = bounded_audit_value(&request.actor, 256);
+    let rejection = bounded_audit_value(rejection, 512);
+    let action = operator_action_name(&request.action);
+    record_diagnostic(OperatorDiagnosticRecord {
+        transition: "operator_control_rejected".to_string(),
+        reason: Some(rejection.clone()),
+        metadata: vec![
+            ("actor".to_string(), actor.clone()),
+            ("action".to_string(), action.to_string()),
+            ("sequence".to_string(), request.sequence.to_string()),
+        ],
+        ..OperatorDiagnosticRecord::default()
+    });
+    if let Err(error) = append_operator_audit_entry(&serde_json::json!({
+        "schema_version": 1,
+        "timestamp_unix_millis": unix_millis(),
+        "cluster_id": bounded_audit_value(&request.cluster_id, 128),
+        "actor": actor,
+        "sequence": request.sequence,
+        "action": action,
+        "outcome": "rejected",
+        "rejection": rejection,
+    })) {
+        record_diagnostic(OperatorDiagnosticRecord {
+            transition: "operator_control_rejection_audit_failed".to_string(),
+            reason: Some(error),
+            ..OperatorDiagnosticRecord::default()
+        });
+    }
+}
+
+fn append_operator_audit_entry(entry: &serde_json::Value) -> Result<(), String> {
+    let Some(path) = std::env::var("MESH_OPERATOR_AUDIT_LOG")
+        .ok()
+        .filter(|path| !path.trim().is_empty())
+    else {
+        return Ok(());
+    };
+    if let Some(parent) = Path::new(&path).parent() {
+        std::fs::create_dir_all(parent)
+            .map_err(|error| format!("operator_audit_directory_failed:{error}"))?;
+    }
+    let mut file = OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&path)
+        .map_err(|error| format!("operator_audit_open_failed:{error}"))?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600))
+            .map_err(|error| format!("operator_audit_permissions_failed:{error}"))?;
+    }
+    writeln!(file, "{entry}").map_err(|error| format!("operator_audit_write_failed:{error}"))?;
+    file.sync_data()
+        .map_err(|error| format!("operator_audit_sync_failed:{error}"))
 }
 
 fn execute_transient_query(
@@ -443,6 +1437,37 @@ pub fn query_operator_status_remote(
         _ => Err(OperatorQueryError::Decode {
             target: target.to_string(),
             query: OperatorQueryKind::Status,
+            reason: "operator reply kind mismatch".to_string(),
+        }),
+    }
+}
+
+pub fn query_operator_runtime_remote(
+    target: &str,
+    cookie: &str,
+    timeout: Duration,
+) -> Result<OperatorRuntimeSnapshot, OperatorQueryError> {
+    match execute_transient_query(target, cookie, OperatorQuery::Runtime, timeout)? {
+        OperatorReply::Runtime(snapshot) => Ok(snapshot),
+        _ => Err(OperatorQueryError::Decode {
+            target: target.to_string(),
+            query: OperatorQueryKind::Runtime,
+            reason: "operator reply kind mismatch".to_string(),
+        }),
+    }
+}
+
+pub fn query_operator_control_remote(
+    target: &str,
+    cookie: &str,
+    request: OperatorControlRequest,
+    timeout: Duration,
+) -> Result<OperatorControlOutcome, OperatorQueryError> {
+    match execute_transient_query(target, cookie, OperatorQuery::Control(request), timeout)? {
+        OperatorReply::Control(outcome) => Ok(outcome),
+        _ => Err(OperatorQueryError::Decode {
+            target: target.to_string(),
+            query: OperatorQueryKind::Control,
             reason: "operator reply kind mismatch".to_string(),
         }),
     }
@@ -533,6 +1558,35 @@ pub fn query_operator_status(
     }
 }
 
+pub fn query_operator_runtime(
+    target: &str,
+    timeout: Duration,
+) -> Result<OperatorRuntimeSnapshot, OperatorQueryError> {
+    match execute_query(target, OperatorQuery::Runtime, timeout)? {
+        OperatorReply::Runtime(snapshot) => Ok(snapshot),
+        _ => Err(OperatorQueryError::Decode {
+            target: target.to_string(),
+            query: OperatorQueryKind::Runtime,
+            reason: "operator reply kind mismatch".to_string(),
+        }),
+    }
+}
+
+pub fn query_operator_control(
+    target: &str,
+    request: OperatorControlRequest,
+    timeout: Duration,
+) -> Result<OperatorControlOutcome, OperatorQueryError> {
+    match execute_query(target, OperatorQuery::Control(request), timeout)? {
+        OperatorReply::Control(outcome) => Ok(outcome),
+        _ => Err(OperatorQueryError::Decode {
+            target: target.to_string(),
+            query: OperatorQueryKind::Control,
+            reason: "operator reply kind mismatch".to_string(),
+        }),
+    }
+}
+
 pub fn query_operator_continuity_status(
     target: &str,
     request_key: &str,
@@ -591,10 +1645,19 @@ pub fn query_operator_diagnostics(
 }
 
 pub(crate) fn handle_operator_query_message(session: &Arc<NodeSession>, msg: &[u8]) {
-    match build_query_reply_frame(msg, continuity_registry(), diagnostics_buffer()) {
+    let authenticated_controller = session.negotiated_protocol.autonomous_enabled
+        && session
+            .remote_identity
+            .as_ref()
+            .is_some_and(|identity| identity.roles.iter().any(|role| role == "controller"));
+    match build_query_reply_frame(
+        msg,
+        continuity_registry(),
+        diagnostics_buffer(),
+        authenticated_controller,
+    ) {
         Ok(reply) => {
-            let mut stream = session.stream.lock().unwrap();
-            if let Err(error) = write_msg(&mut *stream, &reply) {
+            if let Err(error) = session.send(super::node::OutboundClass::Control, reply) {
                 eprintln!(
                     "mesh operator query: remote={} error=reply_write_failed:{}",
                     session.remote_name, error
@@ -650,6 +1713,7 @@ fn execute_query(
             continuity_registry(),
             diagnostics_buffer(),
             query,
+            false,
         )
         .map_err(|reason| OperatorQueryError::LocalRejected {
             query: query_kind,
@@ -682,8 +1746,7 @@ fn execute_query(
         .insert(request_id, tx);
 
     {
-        let mut stream = session.stream.lock().unwrap();
-        if let Err(error) = write_msg(&mut *stream, &payload) {
+        if let Err(error) = session.send(super::node::OutboundClass::Control, payload) {
             session
                 .pending_operator_queries
                 .lock()
@@ -785,7 +1848,10 @@ fn continuity_list_from_registry(
             .then_with(|| left.attempt_id.cmp(&right.attempt_id))
     });
     let total_records = records.len();
-    let take = limit.unwrap_or(total_records).min(total_records);
+    let take = limit
+        .unwrap_or(MAX_CONTINUITY_LIST_RECORDS)
+        .min(MAX_CONTINUITY_LIST_RECORDS)
+        .min(total_records);
     let truncated = take < total_records;
     records.truncate(take);
     OperatorContinuityList {
@@ -801,6 +1867,7 @@ fn execute_local_query(
     registry: &ContinuityRegistry,
     diagnostics: &OperatorDiagnosticsBuffer,
     query: OperatorQuery,
+    authenticated_controller: bool,
 ) -> Result<OperatorReply, String> {
     match query {
         OperatorQuery::Status => {
@@ -826,13 +1893,30 @@ fn execute_local_query(
         OperatorQuery::Diagnostics { limit } => {
             Ok(OperatorReply::Diagnostics(diagnostics.snapshot(limit)))
         }
+        OperatorQuery::Runtime => {
+            let state = node_state().ok_or_else(|| "node_not_started".to_string())?;
+            Ok(OperatorReply::Runtime(runtime_snapshot_from_state(state)))
+        }
+        OperatorQuery::Control(request) => {
+            match apply_operator_control(&request, authenticated_controller) {
+                Ok(outcome) => Ok(OperatorReply::Control(outcome)),
+                Err(reason) => {
+                    audit_operator_control_rejection(&request, &reason);
+                    Err(reason)
+                }
+            }
+        }
     }
 }
 
 fn encode_query_frame(request_id: u64, query: &OperatorQuery) -> Result<Vec<u8>, String> {
     let mut payload = Vec::new();
     match query {
-        OperatorQuery::Status => {}
+        OperatorQuery::Status | OperatorQuery::Runtime => {}
+        OperatorQuery::Control(request) => {
+            payload = serde_json::to_vec(request)
+                .map_err(|error| format!("operator control encode failed: {error}"))?;
+        }
         OperatorQuery::ContinuityLookup { request_key } => {
             encode_string(&mut payload, request_key)?;
         }
@@ -879,6 +1963,13 @@ fn decode_query(kind: OperatorQueryKind, payload: &[u8]) -> Result<OperatorQuery
         OperatorQueryKind::Diagnostics => OperatorQuery::Diagnostics {
             limit: decode_optional_limit(payload, &mut pos)?,
         },
+        OperatorQueryKind::Runtime => OperatorQuery::Runtime,
+        OperatorQueryKind::Control => {
+            let request = serde_json::from_slice(payload)
+                .map_err(|error| format!("operator control decode failed: {error}"))?;
+            pos = payload.len();
+            OperatorQuery::Control(request)
+        }
     };
     if pos != payload.len() {
         return Err("operator query payload trailing bytes".to_string());
@@ -940,6 +2031,7 @@ fn build_query_reply_frame(
     msg: &[u8],
     registry: &ContinuityRegistry,
     diagnostics: &OperatorDiagnosticsBuffer,
+    authenticated_controller: bool,
 ) -> Result<Vec<u8>, String> {
     let (request_id, kind, payload) = decode_query_header(msg)?;
     let kind = match OperatorQueryKind::from_wire(kind) {
@@ -963,6 +2055,7 @@ fn build_query_reply_frame(
         registry,
         diagnostics,
         query,
+        authenticated_controller,
     )
     .and_then(|reply| encode_query_reply_payload(&reply));
 
@@ -975,6 +2068,10 @@ fn encode_query_reply_payload(reply: &OperatorReply) -> Result<Vec<u8>, String> 
         OperatorReply::ContinuityRecord(record) => encode_record_payload(record),
         OperatorReply::ContinuityList(list) => encode_continuity_list(list),
         OperatorReply::Diagnostics(snapshot) => encode_diagnostics_snapshot(snapshot),
+        OperatorReply::Runtime(snapshot) => serde_json::to_vec(snapshot)
+            .map_err(|error| format!("operator runtime encode failed: {error}")),
+        OperatorReply::Control(outcome) => serde_json::to_vec(outcome)
+            .map_err(|error| format!("operator control outcome encode failed: {error}")),
     }
 }
 
@@ -993,6 +2090,12 @@ fn decode_query_reply_payload(
         OperatorQueryKind::Diagnostics => {
             decode_diagnostics_snapshot(payload).map(OperatorReply::Diagnostics)
         }
+        OperatorQueryKind::Runtime => serde_json::from_slice(payload)
+            .map(OperatorReply::Runtime)
+            .map_err(|error| format!("operator runtime decode failed: {error}")),
+        OperatorQueryKind::Control => serde_json::from_slice(payload)
+            .map(OperatorReply::Control)
+            .map_err(|error| format!("operator control outcome decode failed: {error}")),
     }
 }
 
@@ -1332,11 +2435,42 @@ mod tests {
 
     static OPERATOR_TEST_GUARD: std::sync::Mutex<()> = std::sync::Mutex::new(());
     static OPERATOR_QUERY_TEST_INIT: std::sync::Once = std::sync::Once::new();
-    static OPERATOR_QUERY_TEST_TARGET: OnceLock<String> = OnceLock::new();
     const OPERATOR_QUERY_TEST_COOKIE: &str = "mesh-operator-query-test-cookie";
 
     fn fresh_registry() -> ContinuityRegistry {
         ContinuityRegistry::new()
+    }
+
+    #[test]
+    fn operator_hmac_keyring_allows_rolling_rotation() {
+        let old = "old-operator-key-0123456789abcdef";
+        let new = "new-operator-key-0123456789abcdef";
+        let request = OperatorControlRequest {
+            schema_version: 1,
+            cluster_id: "cluster-a".to_string(),
+            actor: "operator-a".to_string(),
+            sequence: 1,
+            expires_at_unix_millis: 100,
+            reason: "rotation test".to_string(),
+            action: OperatorControlAction::PauseAutoscaler,
+            signature: String::new(),
+        };
+        assert_eq!(
+            sign_operator_control_request(request.clone(), "short-key"),
+            Err("operator_control_key_missing".to_string())
+        );
+        let signed = sign_operator_control_request(request, old).expect("signed request");
+        let signature = decode_hex_signature(&signed.signature).expect("signature");
+        let payload = control_signature_payload(&signed).expect("payload");
+
+        assert!(operator_control_signature_matches(
+            &format!("{new},{old}"),
+            &payload,
+            &signature,
+        ));
+        assert!(!operator_control_signature_matches(
+            new, &payload, &signature,
+        ));
     }
 
     fn unused_loopback_port() -> u16 {
@@ -1357,20 +2491,14 @@ mod tests {
                 OPERATOR_QUERY_TEST_COOKIE.as_ptr(),
                 OPERATOR_QUERY_TEST_COOKIE.len() as u64,
             );
-            assert_eq!(
-                start_code, 0,
-                "mesh_node_start should succeed for operator query test node"
+            assert!(
+                start_code == 0 || start_code == -1,
+                "mesh_node_start should succeed or reuse the process test node"
             );
-            OPERATOR_QUERY_TEST_TARGET
-                .set(target)
-                .expect("set operator query test target once");
             std::thread::sleep(Duration::from_millis(150));
         });
-
-        OPERATOR_QUERY_TEST_TARGET
-            .get()
-            .expect("operator query test node target initialized")
-            .clone()
+        crate::dist::node::start_one_shot_test_listener()
+            .expect("start a fresh operator query listener")
     }
 
     #[test]
@@ -1382,6 +2510,7 @@ mod tests {
             &registry,
             &OperatorDiagnosticsBuffer::new(8),
             OperatorQuery::Status,
+            false,
         )
         .expect("status query should succeed");
 
@@ -1401,17 +2530,21 @@ mod tests {
     }
 
     #[test]
-    fn m047_s07_continuity_list_supports_repeated_runtime_names_without_order_assumptions() {
+    fn continuity_list_supports_repeated_runtime_names_without_order_assumptions() {
         let registry = fresh_registry();
         let runtime_name = "Api.Todos.handle_list_todos";
         let base_record = ContinuityRecord {
             request_key: String::new(),
             payload_hash: String::new(),
+            record_version: 1,
+            request_payload: Vec::new(),
             attempt_id: String::new(),
             phase: crate::dist::continuity::ContinuityPhase::Completed,
             result: crate::dist::continuity::ContinuityResult::Succeeded,
             ingress_node: "ingress@host".to_string(),
             owner_node: "owner@host".to_string(),
+            replica_nodes: vec!["replica@host".to_string()],
+            acknowledged_replica_nodes: vec!["replica@host".to_string()],
             replica_node: "replica@host".to_string(),
             replication_count: 2,
             replica_status: crate::dist::continuity::ReplicaStatus::Mirrored,
@@ -1472,31 +2605,23 @@ mod tests {
         let _guard = OPERATOR_TEST_GUARD.lock().unwrap();
         let target = ensure_operator_query_test_node();
         let state = node_state().expect("operator query test node should be started");
-        assert_eq!(
-            state.sessions.read().len(),
-            0,
-            "test node should start without peers"
-        );
+        let sessions_before: Vec<String> = state.sessions.read().keys().cloned().collect();
 
-        let snapshot = query_operator_status_remote(
-            &target,
-            OPERATOR_QUERY_TEST_COOKIE,
-            Duration::from_secs(2),
-        )
-        .expect("transient operator query should succeed");
+        let snapshot = query_operator_status_remote(&target, &state.cookie, Duration::from_secs(2))
+            .expect("transient operator query should succeed");
 
-        assert_eq!(snapshot.membership.local_node, target);
-        assert!(snapshot.membership.peer_nodes.is_empty());
-        assert_eq!(
-            snapshot.membership.nodes,
-            vec![snapshot.membership.local_node.clone()]
-        );
+        assert_eq!(snapshot.membership.local_node, state.name);
+        let mut expected_nodes = sessions_before.clone();
+        expected_nodes.push(snapshot.membership.local_node.clone());
+        expected_nodes.sort();
+        expected_nodes.dedup();
+        assert_eq!(snapshot.membership.nodes, expected_nodes);
         assert_eq!(snapshot.authority.cluster_role, "primary");
         assert_eq!(snapshot.authority.promotion_epoch, 0);
         assert_eq!(snapshot.authority.replication_health, "local_only");
         assert_eq!(
-            state.sessions.read().len(),
-            0,
+            state.sessions.read().keys().cloned().collect::<Vec<_>>(),
+            sessions_before,
             "transient operator query must not register a visible peer session"
         );
     }
@@ -1511,7 +2636,7 @@ mod tests {
         frame.push(0xFF);
         frame.extend_from_slice(&0u32.to_le_bytes());
 
-        let reply = build_query_reply_frame(&frame, &registry, &diagnostics)
+        let reply = build_query_reply_frame(&frame, &registry, &diagnostics, false)
             .expect("rejectable malformed query should still produce reply frame");
         let (request_id, result) = decode_query_reply_frame(&reply).expect("decode error reply");
         assert_eq!(request_id, 7);
@@ -1534,7 +2659,7 @@ mod tests {
         )
         .expect("encode continuity lookup frame");
 
-        let reply = build_query_reply_frame(&frame, &registry, &diagnostics)
+        let reply = build_query_reply_frame(&frame, &registry, &diagnostics, false)
             .expect("missing request key should produce error reply");
         let (request_id, result) = decode_query_reply_frame(&reply).expect("decode error reply");
         assert_eq!(request_id, 9);
@@ -1542,6 +2667,89 @@ mod tests {
             result.expect_err("empty request key should reject"),
             "request_key_missing"
         );
+    }
+
+    #[test]
+    fn operator_control_query_consumes_the_json_payload() {
+        let request = OperatorControlRequest {
+            schema_version: 1,
+            cluster_id: "proof-cluster".to_string(),
+            actor: "proof-controller".to_string(),
+            sequence: 7,
+            expires_at_unix_millis: 42,
+            reason: "scale decision".to_string(),
+            action: OperatorControlAction::SetDesiredCapacity { worker_nodes: 4 },
+            signature: "test-signature".to_string(),
+        };
+        let frame = encode_query_frame(11, &OperatorQuery::Control(request.clone()))
+            .expect("encode control query");
+        let (request_id, kind, payload) = decode_query_header(&frame).expect("decode query header");
+        assert_eq!(request_id, 11);
+        assert_eq!(
+            decode_query(
+                OperatorQueryKind::from_wire(kind).expect("known query kind"),
+                payload
+            )
+            .expect("decode control query"),
+            OperatorQuery::Control(request)
+        );
+    }
+
+    #[test]
+    fn internal_drain_actor_requires_authenticated_controller_session() {
+        let request = OperatorControlRequest {
+            schema_version: 1,
+            cluster_id: "proof-cluster".to_string(),
+            actor: "mesh-drain-propagator".to_string(),
+            sequence: 7,
+            expires_at_unix_millis: 42,
+            reason: "propagate committed drain".to_string(),
+            action: OperatorControlAction::DrainNode {
+                node_id: "worker-a".to_string(),
+            },
+            signature: String::new(),
+        };
+
+        assert_eq!(
+            validate_internal_control_caller(&request, false),
+            Err("operator_internal_control_requires_controller_identity".to_string())
+        );
+        assert_eq!(validate_internal_control_caller(&request, true), Ok(()));
+    }
+
+    #[test]
+    fn rejected_operator_control_is_retained_without_signature_material() {
+        let request = OperatorControlRequest {
+            schema_version: 1,
+            cluster_id: "proof-cluster".to_string(),
+            actor: "untrusted-operator".to_string(),
+            sequence: 9,
+            expires_at_unix_millis: 42,
+            reason: "attempted action".to_string(),
+            action: OperatorControlAction::PauseAutoscaler,
+            signature: "must-never-be-audited".to_string(),
+        };
+
+        audit_operator_control_rejection(&request, "operator_control_unauthorized");
+
+        let snapshot = diagnostics_buffer().snapshot(None);
+        let entry = snapshot
+            .entries
+            .iter()
+            .rev()
+            .find(|entry| {
+                entry.transition == "operator_control_rejected"
+                    && entry
+                        .metadata
+                        .iter()
+                        .any(|(name, value)| name == "actor" && value == "untrusted-operator")
+            })
+            .expect("rejected control diagnostic");
+        assert_eq!(
+            entry.reason.as_deref(),
+            Some("operator_control_unauthorized")
+        );
+        assert!(!format!("{entry:?}").contains("must-never-be-audited"));
     }
 
     #[test]
@@ -1615,5 +2823,29 @@ mod tests {
             vec![("query_kind".to_string(), "diagnostics".to_string())]
         );
         diagnostics_buffer().clear();
+    }
+
+    #[test]
+    fn runtime_schema_six_preserves_schema_five_read_compatibility() {
+        let snapshot: OperatorRuntimeSnapshot = serde_json::from_value(serde_json::json!({
+            "schema_version": 5,
+            "local_node": "node-a",
+            "telemetry_complete": true,
+            "desired_capacity": 1,
+            "observed_capacity": 1,
+            "ready_capacity": 1,
+            "draining_capacity": 0,
+            "autoscaler_paused": false,
+            "scheduler_min_workers": 1,
+            "scheduler_max_workers": 2,
+            "scheduler_active_workers": 1,
+            "nodes": []
+        }))
+        .expect("schema-five runtime snapshot");
+
+        assert_eq!(snapshot.schema_version, 5);
+        assert_eq!(snapshot.local_telemetry, Default::default());
+        assert!(snapshot.local_peer_sessions.is_empty());
+        assert!(snapshot.local_continuity_store.is_none());
     }
 }

@@ -99,10 +99,6 @@ function validateSupportContract(baseRoot) {
     '### Other Editors',
     'Most editors can be configured to run the formatter automatically when you save a file.',
     'For other editors that support LSP (Neovim, Emacs, Helix, Zed), configure the language server command as:',
-    'reference-backend/',
-    'reference-backend/api/jobs.mpl',
-    'scripts/fixtures/backend/reference-backend',
-    '`reference-backend/README.md`',
   ])
 
   requireIncludes(errors, vscodeReadmePath, vscodeReadme, [
@@ -117,10 +113,6 @@ function validateSupportContract(baseRoot) {
     'this real Extension Development Host smoke',
   ])
   requireExcludes(errors, vscodeReadmePath, vscodeReadme, [
-    'reference-backend/',
-    'reference-backend/api/jobs.mpl',
-    'scripts/fixtures/backend/reference-backend',
-    '`reference-backend/README.md`',
   ])
 
   requireIncludes(errors, neovimReadmePath, neovimReadme, [
@@ -133,8 +125,6 @@ function validateSupportContract(baseRoot) {
     "Use the Neovim-specific verifier below when you only need to replay this pack's bounded proof surface:",
   ])
   requireExcludes(errors, neovimReadmePath, neovimReadme, [
-    'reference-backend/',
-    'scripts/fixtures/backend/reference-backend',
     'No public support-tier promise beyond the repo-local proof in `scripts/verify-m036-s02.sh`.',
     'No broader editor/tooling contract that belongs in later S03-facing docs.',
   ])
@@ -193,32 +183,6 @@ test('contract validation fails closed on stale Other Editors wording and best-e
   assert.ok(errors.some((error) => error.includes('website/docs/docs/tooling/index.md missing the best-effort support-tier table row')), errors.join('\n'))
 })
 
-test('contract validation fails closed when the tooling page reintroduces repo-root backend proof wording', (t) => {
-  const tmpRoot = mkTmpDir(t, 'verify-m036-s03-tooling-backend-')
-  for (const relativePath of [
-    'website/docs/docs/tooling/index.md',
-    'tools/editors/vscode-mesh/README.md',
-    'tools/editors/neovim-mesh/README.md',
-  ]) {
-    copyRepoFile(tmpRoot, relativePath)
-  }
-
-  const toolingPath = 'website/docs/docs/tooling/index.md'
-  const mutatedTooling = readFrom(tmpRoot, toolingPath)
-    .replace(
-      'small backend-shaped Mesh project over real stdio JSON-RPC',
-      '`reference-backend/` over real stdio JSON-RPC',
-    )
-    .replace(
-      'same-file go-to-definition inside backend-shaped project code',
-      'same-file go-to-definition on `reference-backend/api/jobs.mpl`',
-    )
-  writeTo(tmpRoot, toolingPath, mutatedTooling)
-
-  const errors = validateSupportContract(tmpRoot)
-  assert.ok(errors.some((error) => error.includes('website/docs/docs/tooling/index.md still contains stale text "reference-backend/"') || error.includes('website/docs/docs/tooling/index.md still contains stale text "reference-backend/api/jobs.mpl"')), errors.join('\n'))
-})
-
 test('contract validation fails closed when the Neovim README reverts to withholding the public tier', (t) => {
   const tmpRoot = mkTmpDir(t, 'verify-m036-s03-neovim-')
   for (const relativePath of [
@@ -235,46 +199,6 @@ test('contract validation fails closed when the Neovim README reverts to withhol
 
   const errors = validateSupportContract(tmpRoot)
   assert.ok(errors.some((error) => error.includes('tools/editors/neovim-mesh/README.md still contains stale text "No public support-tier promise beyond the repo-local proof in `scripts/verify-m036-s02.sh`."')), errors.join('\n'))
-})
-
-test('contract validation fails closed when the VS Code README reintroduces repo-root backend proof wording', (t) => {
-  const tmpRoot = mkTmpDir(t, 'verify-m036-s03-vscode-backend-')
-  for (const relativePath of [
-    'website/docs/docs/tooling/index.md',
-    'tools/editors/vscode-mesh/README.md',
-    'tools/editors/neovim-mesh/README.md',
-  ]) {
-    copyRepoFile(tmpRoot, relativePath)
-  }
-
-  const vscodePath = 'tools/editors/vscode-mesh/README.md'
-  const mutatedReadme = readFrom(tmpRoot, vscodePath)
-    .replace(
-      'same-file go-to-definition inside backend-shaped project code',
-      'same-file definition on `reference-backend/api/jobs.mpl`',
-    )
-  writeTo(tmpRoot, vscodePath, mutatedReadme)
-
-  const errors = validateSupportContract(tmpRoot)
-  assert.ok(errors.some((error) => error.includes('tools/editors/vscode-mesh/README.md still contains stale text "reference-backend/"') || error.includes('tools/editors/vscode-mesh/README.md still contains stale text "reference-backend/api/jobs.mpl"')), errors.join('\n'))
-})
-
-test('contract validation fails closed when editor READMEs leak the retained fixture path', (t) => {
-  const tmpRoot = mkTmpDir(t, 'verify-m036-s03-retained-fixture-')
-  for (const relativePath of [
-    'website/docs/docs/tooling/index.md',
-    'tools/editors/vscode-mesh/README.md',
-    'tools/editors/neovim-mesh/README.md',
-  ]) {
-    copyRepoFile(tmpRoot, relativePath)
-  }
-
-  const neovimPath = 'tools/editors/neovim-mesh/README.md'
-  const mutatedReadme = `${readFrom(tmpRoot, neovimPath)}\nMaintainer shortcut: open scripts/fixtures/backend/reference-backend directly when replaying this proof surface.\n`
-  writeTo(tmpRoot, neovimPath, mutatedReadme)
-
-  const errors = validateSupportContract(tmpRoot)
-  assert.ok(errors.some((error) => error.includes('tools/editors/neovim-mesh/README.md still contains stale text "scripts/fixtures/backend/reference-backend"')), errors.join('\n'))
 })
 
 test('the existing M034 tooling-page helper still passes on the current repo', () => {

@@ -1,0 +1,217 @@
+name: ${MESH_PROOF_PROJECT:-mesh-autoscaling-proof}
+
+x-mesh-node: &mesh-node
+  image: ${MESH_PROOF_IMAGE:-mesh-autoscaling-proof:local}
+  build:
+    context: ../..
+    dockerfile: proof/docker-autoscaling/Dockerfile
+    target: runtime
+  restart: "no"
+  environment: &mesh-environment
+    DATABASE_URL: postgres://postgres:postgres@postgres:5432/mesh_proof
+    PORT: "8080"
+    TODO_RATE_LIMIT_WINDOW_SECONDS: "60"
+    TODO_RATE_LIMIT_MAX_REQUESTS: "100000"
+    MESH_CLUSTER_ID: ${MESH_PROOF_CLUSTER_ID:-proof-cluster}
+    MESH_CLUSTER_MODE: autonomous
+    MESH_CLUSTER_COOKIE: proof-cookie-0123456789abcdef0123
+    MESH_OPERATOR_KEY: proof-operator-key-0123456789abcdef
+    MESH_DISCOVERY_SEED: mesh-cluster
+    MESH_CLUSTER_PORT: "4370"
+    MESH_CONTROLLER_VOTERS: >-
+      ${MESH_PROOF_CLUSTER_ID:-proof-cluster}/controller/controller1|controller1@controller1:4370,
+      ${MESH_PROOF_CLUSTER_ID:-proof-cluster}/controller/controller2|controller2@controller2:4370,
+      ${MESH_PROOF_CLUSTER_ID:-proof-cluster}/controller/controller3|controller3@controller3:4370
+    MESH_ADAPTIVE_ROUTING: "true"
+    MESH_CONTINUITY_DB: /tmp/mesh-continuity.db
+    MESH_SCHEDULER_MIN_WORKERS: "2"
+    MESH_SCHEDULER_MAX_WORKERS: "8"
+    MESH_SCHEDULER_SCALE_UP_WINDOW_MS: "1000"
+    MESH_SCHEDULER_SCALE_DOWN_WINDOW_MS: "3000"
+    MESH_OPERATOR_AUDIT_LOG: /tmp/mesh-operator-audit.jsonl
+    MESH_TLS_CA_DER_B64: ${MESH_PROOF_TLS_CA_DER_B64:?proof CA is required}
+    MESH_TLS_CERT_DER_B64: ${MESH_PROOF_TLS_CERT_DER_B64:?proof certificate is required}
+    MESH_TLS_KEY_DER_B64: ${MESH_PROOF_TLS_KEY_DER_B64:?proof private key is required}
+    MESH_NODE_IDENTITY_VERIFY_KEYS_B64: ${MESH_PROOF_IDENTITY_VERIFY_KEY_B64:?identity verify key is required}
+    MESH_CAPACITY_DOCKER_NETWORK: ${MESH_PROOF_PROJECT:-mesh-autoscaling-proof}_mesh
+    MESH_CAPACITY_WORKER_ENV_ALLOWLIST: >-
+      DATABASE_URL,MESH_CLUSTER_ID,MESH_CLUSTER_COOKIE,MESH_OPERATOR_KEY,
+      MESH_DISCOVERY_SEED,MESH_CLUSTER_PORT,MESH_CONTROLLER_VOTERS,
+      MESH_TLS_CA_DER_B64,MESH_TLS_CERT_DER_B64,MESH_TLS_KEY_DER_B64,
+      MESH_NODE_IDENTITY_VERIFY_KEYS_B64
+    MESH_DOCKER_DRIVER_ENDPOINT: docker-driver:7443
+    MESH_DOCKER_DRIVER_SERVER_NAME: docker-driver
+    MESH_DOCKER_DRIVER_SHARED_KEY: ${MESH_PROOF_DRIVER_SHARED_KEY:?driver shared key is required}
+    MESH_DOCKER_DRIVER_CA_DER_B64: ${MESH_PROOF_TLS_CA_DER_B64:?proof CA is required}
+    MESH_DOCKER_DRIVER_CLIENT_CERT_DER_B64: ${MESH_PROOF_TLS_CERT_DER_B64:?proof client certificate is required}
+    MESH_DOCKER_DRIVER_CLIENT_KEY_DER_B64: ${MESH_PROOF_TLS_KEY_DER_B64:?proof client key is required}
+  depends_on:
+    postgres:
+      condition: service_healthy
+    docker-driver:
+      condition: service_healthy
+  networks:
+    mesh:
+      aliases:
+        - mesh-cluster
+
+services:
+  postgres:
+    image: postgres:16.4-alpine@sha256:5660c2cbfea50c7a9127d17dc4e48543eedd3d7a41a595a2dfa572471e37e64c
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: mesh_proof
+    healthcheck:
+      # The official image briefly starts a temporary server while running init
+      # scripts. Require the proof database and schema to remain reachable
+      # across that server's shutdown/final-start transition.
+      test:
+        [
+          "CMD-SHELL",
+          "psql -U postgres -d mesh_proof -tAc 'SELECT 1 FROM proof_acknowledged_mutations LIMIT 1' >/dev/null && sleep 3 && psql -U postgres -d mesh_proof -tAc 'SELECT 1 FROM proof_acknowledged_mutations LIMIT 1' >/dev/null",
+        ]
+      interval: 1s
+      timeout: 5s
+      retries: 60
+    volumes:
+      - ./init.sql:/docker-entrypoint-initdb.d/001-proof.sql:ro
+      - postgres-data:/var/lib/postgresql/data
+    networks: [mesh]
+
+  controller1:
+    <<: *mesh-node
+    hostname: controller1
+    environment:
+      <<: *mesh-environment
+      MESH_ROLES: controller
+      MESH_STABLE_NODE_ID: ${MESH_PROOF_CLUSTER_ID:-proof-cluster}/controller/controller1
+      MESH_FAILURE_DOMAIN: controller-a
+      MESH_NODE_IDENTITY_ENVELOPE_B64: ${MESH_PROOF_IDENTITY_CONTROLLER1:?controller1 identity is required}
+    ports: ["14371:4370"]
+
+  controller2:
+    <<: *mesh-node
+    hostname: controller2
+    environment:
+      <<: *mesh-environment
+      MESH_ROLES: controller
+      MESH_STABLE_NODE_ID: ${MESH_PROOF_CLUSTER_ID:-proof-cluster}/controller/controller2
+      MESH_FAILURE_DOMAIN: controller-b
+      MESH_NODE_IDENTITY_ENVELOPE_B64: ${MESH_PROOF_IDENTITY_CONTROLLER2:?controller2 identity is required}
+    ports: ["14372:4370"]
+
+  controller3:
+    <<: *mesh-node
+    hostname: controller3
+    environment:
+      <<: *mesh-environment
+      MESH_ROLES: controller
+      MESH_STABLE_NODE_ID: ${MESH_PROOF_CLUSTER_ID:-proof-cluster}/controller/controller3
+      MESH_FAILURE_DOMAIN: controller-c
+      MESH_NODE_IDENTITY_ENVELOPE_B64: ${MESH_PROOF_IDENTITY_CONTROLLER3:?controller3 identity is required}
+    ports: ["14373:4370"]
+
+  gateway1:
+    <<: *mesh-node
+    hostname: gateway1
+    environment:
+      <<: *mesh-environment
+      MESH_ROLES: gateway
+      MESH_STABLE_NODE_ID: ${MESH_PROOF_CLUSTER_ID:-proof-cluster}/gateway/gateway1
+      MESH_FAILURE_DOMAIN: gateway-a
+      MESH_NODE_IDENTITY_ENVELOPE_B64: ${MESH_PROOF_IDENTITY_GATEWAY1:?gateway1 identity is required}
+    ports: ["18081:8080"]
+
+  gateway2:
+    <<: *mesh-node
+    hostname: gateway2
+    environment:
+      <<: *mesh-environment
+      MESH_ROLES: gateway
+      MESH_STABLE_NODE_ID: ${MESH_PROOF_CLUSTER_ID:-proof-cluster}/gateway/gateway2
+      MESH_FAILURE_DOMAIN: gateway-b
+      MESH_NODE_IDENTITY_ENVELOPE_B64: ${MESH_PROOF_IDENTITY_GATEWAY2:?gateway2 identity is required}
+    ports: ["18082:8080"]
+
+  worker1:
+    <<: *mesh-node
+    hostname: worker1
+    environment:
+      <<: *mesh-environment
+      MESH_ROLES: worker
+      MESH_STABLE_NODE_ID: ${MESH_PROOF_CLUSTER_ID:-proof-cluster}/worker/worker1
+      MESH_FAILURE_DOMAIN: worker-a
+      # Intentionally constrained so the proof can verify capacity-weighted
+      # routing sends it less work than worker2.
+      MESH_CAPACITY_UNITS: "1"
+      MESH_NODE_IDENTITY_ENVELOPE_B64: ${MESH_PROOF_IDENTITY_WORKER1:?worker1 identity is required}
+
+  worker2:
+    <<: *mesh-node
+    hostname: worker2
+    environment:
+      <<: *mesh-environment
+      MESH_ROLES: worker
+      MESH_STABLE_NODE_ID: ${MESH_PROOF_CLUSTER_ID:-proof-cluster}/worker/worker2
+      MESH_FAILURE_DOMAIN: worker-b
+      MESH_CAPACITY_UNITS: "16"
+      MESH_NODE_IDENTITY_ENVELOPE_B64: ${MESH_PROOF_IDENTITY_WORKER2:?worker2 identity is required}
+
+  docker-driver:
+    image: ${MESH_PROOF_DRIVER_IMAGE:-mesh-autoscaling-driver:local}
+    build:
+      context: ../..
+      dockerfile: proof/docker-autoscaling/Dockerfile
+      target: driver
+    container_name: ${MESH_PROOF_PROJECT:-mesh-autoscaling-proof}-docker-driver
+    read_only: true
+    environment:
+      MESH_DOCKER_DRIVER_LISTEN: 0.0.0.0:7443
+      MESH_DOCKER_DRIVER_ALLOWED_CLUSTER: ${MESH_PROOF_CLUSTER_ID:-proof-cluster}
+      MESH_DOCKER_DRIVER_ALLOWED_POOL: workers
+      MESH_DOCKER_DRIVER_ALLOWED_IMAGE: mesh-autoscaling-proof:local
+      MESH_DOCKER_DRIVER_ALLOWED_NETWORK: ${MESH_PROOF_PROJECT:-mesh-autoscaling-proof}_mesh
+      MESH_DOCKER_DRIVER_ALLOWED_ENV_NAMES: >-
+        DATABASE_URL,PORT,TODO_RATE_LIMIT_WINDOW_SECONDS,TODO_RATE_LIMIT_MAX_REQUESTS,
+        MESH_CLUSTER_ID,MESH_CLUSTER_MODE,MESH_CLUSTER_COOKIE,MESH_OPERATOR_KEY,
+        MESH_DISCOVERY_SEED,MESH_CLUSTER_PORT,MESH_CONTROLLER_VOTERS,
+        MESH_ADAPTIVE_ROUTING,MESH_CONTINUITY_DB,MESH_FAILURE_DOMAIN,
+        MESH_SCHEDULER_MIN_WORKERS,MESH_SCHEDULER_MAX_WORKERS,MESH_ROLES,
+        MESH_TLS_CA_DER_B64,MESH_TLS_CERT_DER_B64,MESH_TLS_KEY_DER_B64,
+        MESH_NODE_IDENTITY_VERIFY_KEYS_B64
+      MESH_DOCKER_DRIVER_FAULTS: ensure_response_loss_once,docker_api_timeout_once,unhealthy_new_worker_once
+      MESH_DOCKER_DRIVER_SHARED_KEY: ${MESH_PROOF_DRIVER_SHARED_KEY:?driver shared key is required}
+      MESH_DOCKER_DRIVER_CA_DER_B64: ${MESH_PROOF_TLS_CA_DER_B64:?proof CA is required}
+      MESH_DOCKER_DRIVER_SERVER_CERT_DER_B64: ${MESH_PROOF_DRIVER_CERT_DER_B64:?driver certificate is required}
+      MESH_DOCKER_DRIVER_SERVER_KEY_DER_B64: ${MESH_PROOF_DRIVER_KEY_DER_B64:?driver private key is required}
+      MESH_CAPACITY_IDENTITY_SIGNING_KEY_DER_B64: ${MESH_PROOF_IDENTITY_SIGNING_KEY_DER_B64:?capacity identity signing key is required}
+    healthcheck:
+      test: ["CMD-SHELL", "timeout 1 bash -c '</dev/tcp/127.0.0.1/7443'"]
+      interval: 1s
+      timeout: 2s
+      retries: 60
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    tmpfs:
+      - /tmp:size=16m,mode=1777
+    networks: [mesh]
+
+  load-generator:
+    image: alpine:3.21@sha256:48b0309ca019d89d40f670aa1bc06e426dc0931948452e8491e3d65087abc07d
+    command: ["sh", "-c", "while true; do sleep 3600; done"]
+    read_only: true
+    networks: [mesh]
+
+  evidence-collector:
+    image: alpine:3.21@sha256:48b0309ca019d89d40f670aa1bc06e426dc0931948452e8491e3d65087abc07d
+    command: ["sh", "-c", "while true; do sleep 3600; done"]
+    read_only: true
+    networks: [mesh]
+
+volumes:
+  postgres-data:
+
+networks:
+  mesh:
+    name: ${MESH_PROOF_PROJECT:-mesh-autoscaling-proof}_mesh

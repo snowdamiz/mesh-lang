@@ -1,5 +1,6 @@
 ---
-source: crates/mesh-lexer/tests/lexer_tests.rs
+source: compiler/mesh-lexer/tests/lexer_tests.rs
+assertion_line: 135
 expression: tokens
 ---
 - kind: Let
@@ -17,7 +18,7 @@ expression: tokens
   span:
     - 6
     - 7
-- kind: Error
+- kind: At
   text: "@"
   span:
     - 8

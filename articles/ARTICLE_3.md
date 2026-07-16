@@ -22,7 +22,7 @@ A few things, mostly:
 
 - **Shipping notes** when something real lands and deserves more than a bullet in a changelog.
 - **Technical writeups** on compiler, runtime, language, or distributed-systems work when the tradeoffs are interesting enough to explain properly.
-- **Product notes** when Hyperpush, Mesher, or the broader Mesh ecosystem takes a meaningful turn.
+- **Project notes** when the language, runtime, tooling, or broader Mesh ecosystem takes a meaningful turn.
 - **Postmortems and corrections** when something looked good on paper and got uglier under pressure.
 
 Some posts will be narrow and technical. Some will be broader and more product-facing. Most should still be readable in one sitting.

@@ -13,22 +13,22 @@ function packageUrl(name: string) {
 </script>
 
 <template>
-  <div class="divide-y divide-zinc-100 dark:divide-zinc-800">
+  <div class="overflow-hidden rounded-xl border border-border bg-card">
     <a
       v-for="pkg in packages"
       :key="pkg.name"
       :href="packageUrl(pkg.name)"
-      class="flex items-center gap-4 py-3 px-1 hover:bg-zinc-50 dark:hover:bg-zinc-900 transition-colors no-underline group"
+      class="group flex items-center gap-4 border-b border-border px-5 py-3.5 no-underline transition-colors last:border-b-0 hover:bg-muted/60"
     >
-      <div class="flex-1 min-w-0">
-        <span class="font-mono text-sm font-semibold text-zinc-800 dark:text-zinc-200 group-hover:text-violet-600 dark:group-hover:text-violet-400 break-all">
+      <div class="min-w-0 flex-1">
+        <span class="break-all font-mono text-sm font-semibold text-foreground transition-colors group-hover:text-brand">
           {{ pkg.name }}
         </span>
-        <span class="text-sm text-zinc-500 dark:text-zinc-400 ml-3 truncate hidden sm:inline">
+        <span class="ml-3 hidden truncate text-sm text-muted-foreground sm:inline">
           {{ pkg.description || 'No description.' }}
         </span>
       </div>
-      <span class="shrink-0 font-mono text-xs text-zinc-400 dark:text-zinc-500">v{{ pkg.version }}</span>
+      <span class="shrink-0 rounded-md bg-muted px-2 py-0.5 font-mono text-xs text-muted-foreground">v{{ pkg.version }}</span>
     </a>
   </div>
 </template>

@@ -29,14 +29,23 @@ impl Mailbox {
 
     /// Append a message to the back of the mailbox (FIFO enqueue).
     pub fn push(&self, msg: Message) {
-        self.queue.lock().push_back(msg);
+        let depth = {
+            let mut queue = self.queue.lock();
+            queue.push_back(msg);
+            queue.len()
+        };
+        crate::dist::telemetry::runtime_telemetry().record_mailbox_enqueue(depth);
     }
 
     /// Remove and return the front message (FIFO dequeue).
     ///
     /// Returns `None` if the mailbox is empty.
     pub fn pop(&self) -> Option<Message> {
-        self.queue.lock().pop_front()
+        let message = self.queue.lock().pop_front();
+        if message.is_some() {
+            crate::dist::telemetry::runtime_telemetry().record_mailbox_dequeue(1);
+        }
+        message
     }
 
     /// Check if the mailbox is empty.
@@ -64,10 +73,24 @@ impl Mailbox {
         let mut queue = self.queue.lock();
         for i in 0..queue.len() {
             if predicate(&queue[i]) {
-                return queue.remove(i);
+                let message = queue.remove(i);
+                drop(queue);
+                if message.is_some() {
+                    crate::dist::telemetry::runtime_telemetry().record_mailbox_dequeue(1);
+                }
+                return message;
             }
         }
         None
+    }
+}
+
+impl Drop for Mailbox {
+    fn drop(&mut self) {
+        let remaining = self.queue.get_mut().len();
+        if remaining > 0 {
+            crate::dist::telemetry::runtime_telemetry().record_mailbox_dequeue(remaining);
+        }
     }
 }
 

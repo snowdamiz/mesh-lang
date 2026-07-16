@@ -412,6 +412,7 @@ pub fn compile_mir_to_binary(
     mir: &mir::MirModule,
     declared_handlers: &[DeclaredRuntimeRegistration],
     startup_work_registrations: &[StartupWorkRegistration],
+    autonomous_config_json: Option<&str>,
     output: &Path,
     opt_level: u8,
     target_triple: Option<&str>,
@@ -427,6 +428,7 @@ pub fn compile_mir_to_binary(
         let mut codegen = CodeGen::new(&context, "mesh_module", opt_level, target_triple)?;
         codegen.set_declared_handlers(declared_handlers);
         codegen.set_startup_work_registrations(startup_work_registrations);
+        codegen.set_autonomous_config_json(autonomous_config_json);
 
         build_trace::set_stage("compile-llvm-module");
         codegen.compile(mir)?;
@@ -461,6 +463,7 @@ pub fn compile_mir_to_llvm_ir(
     mir: &mir::MirModule,
     declared_handlers: &[DeclaredRuntimeRegistration],
     startup_work_registrations: &[StartupWorkRegistration],
+    autonomous_config_json: Option<&str>,
     output: &Path,
     target_triple: Option<&str>,
 ) -> Result<(), String> {
@@ -468,6 +471,7 @@ pub fn compile_mir_to_llvm_ir(
     let mut codegen = CodeGen::new(&context, "mesh_module", 0, target_triple)?;
     codegen.set_declared_handlers(declared_handlers);
     codegen.set_startup_work_registrations(startup_work_registrations);
+    codegen.set_autonomous_config_json(autonomous_config_json);
     codegen.compile(mir)?;
 
     codegen.emit_llvm_ir(output)?;

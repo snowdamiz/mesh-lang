@@ -5,14 +5,17 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::fmt;
 use std::path::{Component, Path, PathBuf};
 
+use crate::autonomous::AutonomousClusterConfig;
+
 /// Represents a parsed mesh.toml manifest file.
 #[derive(Debug, Deserialize)]
 pub struct Manifest {
     pub package: Package,
     #[serde(default)]
     pub dependencies: BTreeMap<String, Dependency>,
-    #[serde(default)]
-    pub cluster: Option<ClusterConfig>,
+    /// Runtime-owned deployment policy parsed from the modern `[cluster]` table.
+    #[serde(skip)]
+    pub autonomous_cluster: Option<AutonomousClusterConfig>,
 }
 
 /// Package metadata from the [package] section of mesh.toml.
@@ -32,52 +35,8 @@ pub struct Package {
 
 pub const DEFAULT_ENTRYPOINT: &str = "main.mpl";
 
-/// Clustered-app configuration from the optional [cluster] section.
-#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
-#[serde(deny_unknown_fields)]
-pub struct ClusterConfig {
-    pub enabled: bool,
-    pub declarations: Vec<ClusteredDeclaration>,
-}
-
-impl ClusterConfig {
-    fn validate_shape(&self) -> Result<(), String> {
-        if !self.enabled {
-            return Err(
-                "[cluster].enabled must be true when the [cluster] section is present".to_string(),
-            );
-        }
-
-        if self.declarations.is_empty() {
-            return Err(
-                "[cluster].declarations must contain at least one clustered declaration"
-                    .to_string(),
-            );
-        }
-
-        for (idx, declaration) in self.declarations.iter().enumerate() {
-            if declaration.target.trim().is_empty() {
-                return Err(format!(
-                    "[cluster].declarations[{idx}].target must not be blank"
-                ));
-            }
-        }
-
-        Ok(())
-    }
-}
-
-/// One clustered declaration from the [cluster] section.
-#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
-#[serde(deny_unknown_fields)]
-pub struct ClusteredDeclaration {
-    pub kind: ClusteredDeclarationKind,
-    pub target: String,
-}
-
 /// The narrow public clustered-handler boundary.
-#[derive(Debug, Clone, Copy, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "snake_case")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ClusteredDeclarationKind {
     ServiceCall,
     ServiceCast,
@@ -158,14 +117,12 @@ impl fmt::Display for ClusteredReplicationCount {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SourceClusteredDeclarationSyntax {
     Decorator,
-    LegacyCompat,
 }
 
 impl SourceClusteredDeclarationSyntax {
     pub fn as_str(self) -> &'static str {
         match self {
             SourceClusteredDeclarationSyntax::Decorator => "`@cluster` decorator",
-            SourceClusteredDeclarationSyntax::LegacyCompat => "`clustered(work)` marker",
         }
     }
 }
@@ -180,7 +137,6 @@ impl From<ClusteredDeclSyntax> for SourceClusteredDeclarationSyntax {
     fn from(value: ClusteredDeclSyntax) -> Self {
         match value {
             ClusteredDeclSyntax::SourceDecorator => SourceClusteredDeclarationSyntax::Decorator,
-            ClusteredDeclSyntax::LegacyCompat => SourceClusteredDeclarationSyntax::LegacyCompat,
         }
     }
 }
@@ -207,7 +163,7 @@ pub struct SourceClusteredDeclaration {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ClusteredExecutionMetadata {
     pub kind: ClusteredDeclarationKind,
-    pub manifest_target: String,
+    pub source_target: String,
     pub runtime_registration_name: String,
     pub executable_symbol: String,
     pub replication_count: ClusteredReplicationCount,
@@ -228,14 +184,12 @@ pub struct ClusteredExportSurface {
 /// Where a clustered declaration came from.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ClusteredDeclarationOrigin {
-    Manifest,
     Source(ClusteredDeclarationProvenance),
 }
 
 impl ClusteredDeclarationOrigin {
     pub fn provenance(&self) -> Option<&ClusteredDeclarationProvenance> {
         match self {
-            ClusteredDeclarationOrigin::Manifest => None,
             ClusteredDeclarationOrigin::Source(provenance) => Some(provenance),
         }
     }
@@ -244,7 +198,6 @@ impl ClusteredDeclarationOrigin {
 impl fmt::Display for ClusteredDeclarationOrigin {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            ClusteredDeclarationOrigin::Manifest => f.write_str("mesh.toml"),
             ClusteredDeclarationOrigin::Source(provenance) => {
                 write!(f, "a source {}", provenance.syntax)
             }
@@ -254,7 +207,8 @@ impl fmt::Display for ClusteredDeclarationOrigin {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct ClusteredDeclarationEntry {
-    declaration: ClusteredDeclaration,
+    kind: ClusteredDeclarationKind,
+    target: String,
     origin: ClusteredDeclarationOrigin,
     replication_count: ClusteredReplicationCount,
 }
@@ -434,7 +388,7 @@ pub fn rewrite_manifest_entrypoint_source(
         .map_err(|error| format!("Failed to serialize manifest rewrite: {}", error))
 }
 
-fn legacy_cluster_section_error(source_path: Option<&Path>) -> String {
+fn removed_cluster_section_error(source_path: Option<&Path>) -> String {
     let message = "`[cluster]` manifest sections are no longer supported; move clustered declarations into source with `@cluster` or `@cluster(N)`";
     match source_path {
         Some(path) => format!("Failed to parse {}: {}", path.display(), message),
@@ -456,32 +410,47 @@ impl Manifest {
     }
 
     fn parse(content: &str, source_path: Option<&Path>) -> Result<Manifest, String> {
-        let value: toml::Value = toml::from_str(content).map_err(|error| match source_path {
-            Some(path) => format!("Failed to parse {}: {}", path.display(), error),
-            None => format!("Failed to parse manifest: {}", error),
-        })?;
+        let mut value: toml::Value =
+            toml::from_str(content).map_err(|error| match source_path {
+                Some(path) => format!("Failed to parse {}: {}", path.display(), error),
+                None => format!("Failed to parse manifest: {}", error),
+            })?;
 
-        if value
-            .as_table()
-            .is_some_and(|table| table.contains_key("cluster"))
+        let autonomous_cluster = if let Some(cluster_value) = value
+            .as_table_mut()
+            .and_then(|table| table.remove("cluster"))
         {
-            return Err(legacy_cluster_section_error(source_path));
-        }
+            let is_removed_shape = cluster_value.as_table().is_some_and(|cluster| {
+                cluster.contains_key("enabled") || cluster.contains_key("declarations")
+            });
+            if is_removed_shape {
+                return Err(removed_cluster_section_error(source_path));
+            }
+            let config: AutonomousClusterConfig =
+                cluster_value
+                    .try_into()
+                    .map_err(|error| match source_path {
+                        Some(path) => format!("Failed to parse {}: {}", path.display(), error),
+                        None => format!("Failed to parse manifest: {}", error),
+                    })?;
+            if let Err(errors) = config.validate() {
+                let message = errors.join("; ");
+                return Err(match source_path {
+                    Some(path) => format!("Failed to parse {}: {}", path.display(), message),
+                    None => format!("Failed to parse manifest: {}", message),
+                });
+            }
+            Some(config)
+        } else {
+            None
+        };
 
-        let manifest: Manifest = value.try_into().map_err(|error| match source_path {
+        let mut manifest: Manifest = value.try_into().map_err(|error| match source_path {
             Some(path) => format!("Failed to parse {}: {}", path.display(), error),
             None => format!("Failed to parse manifest: {}", error),
         })?;
 
-        if let Some(cluster) = &manifest.cluster {
-            cluster
-                .validate_shape()
-                .map_err(|error| match source_path {
-                    Some(path) => format!("Failed to parse {}: {}", path.display(), error),
-                    None => format!("Failed to parse manifest: {}", error),
-                })?;
-        }
-
+        manifest.autonomous_cluster = autonomous_cluster;
         Ok(manifest)
     }
 }
@@ -616,66 +585,29 @@ pub fn build_clustered_export_surface(
     surface
 }
 
-/// Validate manifest declarations against the compiler-known exported boundary.
-pub fn validate_cluster_declarations(
-    cluster: &ClusterConfig,
-    surface: &ClusteredExportSurface,
-) -> Result<Vec<ClusteredExecutionMetadata>, Vec<ClusteredDeclarationError>> {
-    let entries = cluster
-        .declarations
-        .iter()
-        .cloned()
-        .map(|declaration| ClusteredDeclarationEntry {
-            declaration,
-            origin: ClusteredDeclarationOrigin::Manifest,
-            replication_count: ClusteredReplicationCount::defaulted(),
-        })
-        .collect::<Vec<_>>();
-    validate_cluster_declaration_entries(&entries, surface)
-}
-
-/// Validate the combined manifest + source clustered declaration surface.
+/// Validate source-declared clustered handlers against the compiler-known export surface.
 pub fn validate_cluster_declarations_with_source(
-    cluster: Option<&ClusterConfig>,
     source_declarations: &[SourceClusteredDeclaration],
     surface: &ClusteredExportSurface,
 ) -> Result<Vec<ClusteredExecutionMetadata>, Vec<ClusteredDeclarationError>> {
     if source_declarations.is_empty() {
-        return match cluster {
-            Some(cluster) => validate_cluster_declarations(cluster, surface),
-            None => Ok(Vec::new()),
-        };
+        return Ok(Vec::new());
     }
 
-    let mut entries = cluster
-        .into_iter()
-        .flat_map(|cluster| cluster.declarations.iter().cloned())
-        .map(|declaration| ClusteredDeclarationEntry {
-            declaration,
-            origin: ClusteredDeclarationOrigin::Manifest,
-            replication_count: ClusteredReplicationCount::defaulted(),
-        })
-        .collect::<Vec<_>>();
+    let mut entries = Vec::with_capacity(source_declarations.len());
     let mut issues = Vec::new();
-    let mut seen_targets = entries
-        .iter()
-        .map(|entry| (entry.declaration.target.clone(), entry.origin.clone()))
-        .collect::<BTreeMap<_, _>>();
+    let mut seen_targets = BTreeSet::new();
 
     for declaration in source_declarations {
-        let key = declaration.target.clone();
-        if let Some(previous_origin) = seen_targets.get(&key) {
-            issues.push(source_duplicate_error(declaration, previous_origin));
+        if !seen_targets.insert(declaration.target.clone()) {
+            issues.push(source_duplicate_error(declaration));
             continue;
         }
 
         let origin = ClusteredDeclarationOrigin::Source(declaration.provenance.clone());
-        seen_targets.insert(key, origin.clone());
         entries.push(ClusteredDeclarationEntry {
-            declaration: ClusteredDeclaration {
-                kind: declaration.kind,
-                target: declaration.target.clone(),
-            },
+            kind: declaration.kind,
+            target: declaration.target.clone(),
             origin,
             replication_count: declaration.replication_count,
         });
@@ -691,26 +623,13 @@ pub fn validate_cluster_declarations_with_source(
     }
 }
 
-fn source_duplicate_error(
-    declaration: &SourceClusteredDeclaration,
-    previous_origin: &ClusteredDeclarationOrigin,
-) -> ClusteredDeclarationError {
-    let reason = match previous_origin {
-        ClusteredDeclarationOrigin::Manifest => {
-            "target is declared in both mesh.toml and source; keep only one declaration surface"
-                .to_string()
-        }
-        ClusteredDeclarationOrigin::Source(_) => {
-            "target is declared more than once via source clustered declarations".to_string()
-        }
-    };
-
+fn source_duplicate_error(declaration: &SourceClusteredDeclaration) -> ClusteredDeclarationError {
     ClusteredDeclarationError {
         origin: ClusteredDeclarationOrigin::Source(declaration.provenance.clone()),
         kind: declaration.kind,
         target: declaration.target.clone(),
         replication_count: declaration.replication_count,
-        reason,
+        reason: "target is declared more than once via source clustered declarations".to_string(),
     }
 }
 
@@ -722,21 +641,20 @@ fn validate_cluster_declaration_entries(
     let mut metadata = Vec::with_capacity(entries.len());
 
     for entry in entries {
-        let declaration = &entry.declaration;
-        if let Some(reason) = validate_declaration_shape(declaration) {
+        if let Some(reason) = validate_declaration_shape(entry.kind, &entry.target) {
             issues.push(ClusteredDeclarationError {
                 origin: entry.origin.clone(),
-                kind: declaration.kind,
-                target: declaration.target.clone(),
+                kind: entry.kind,
+                target: entry.target.clone(),
                 replication_count: entry.replication_count,
                 reason,
             });
             continue;
         }
 
-        match declaration.kind {
+        match entry.kind {
             ClusteredDeclarationKind::Work => {
-                if let Some(executable) = surface.work_functions.get(&declaration.target) {
+                if let Some(executable) = surface.work_functions.get(&entry.target) {
                     match clustered_execution_metadata(entry, executable, "public work function") {
                         Ok(planned) => metadata.push(planned),
                         Err(issue) => issues.push(issue),
@@ -744,24 +662,15 @@ fn validate_cluster_declaration_entries(
                     continue;
                 }
 
-                let reason = if surface
-                    .ambiguous_work_functions
-                    .contains(&declaration.target)
-                {
+                let reason = if surface.ambiguous_work_functions.contains(&entry.target) {
                     "target resolves to multiple public functions with the same source name; overloaded clustered work entrypoints are unsupported".to_string()
-                } else if surface.private_work_functions.contains(&declaration.target) {
+                } else if surface.private_work_functions.contains(&entry.target) {
                     "target resolves to a private function; declare a `pub fn` clustered work entrypoint".to_string()
-                } else if surface
-                    .service_call_handlers
-                    .contains_key(&declaration.target)
-                {
+                } else if surface.service_call_handlers.contains_key(&entry.target) {
                     "target resolves to a service call handler; declare it as `service_call` instead of `work`".to_string()
-                } else if surface
-                    .service_cast_handlers
-                    .contains_key(&declaration.target)
-                {
+                } else if surface.service_cast_handlers.contains_key(&entry.target) {
                     "target resolves to a service cast handler; declare it as `service_cast` instead of `work`".to_string()
-                } else if surface.service_start_helpers.contains(&declaration.target) {
+                } else if surface.service_start_helpers.contains(&entry.target) {
                     "target resolves to a service start helper; only public work functions belong to the `work` boundary".to_string()
                 } else {
                     "no public clustered work function matches this target".to_string()
@@ -769,14 +678,14 @@ fn validate_cluster_declaration_entries(
 
                 issues.push(ClusteredDeclarationError {
                     origin: entry.origin.clone(),
-                    kind: declaration.kind,
-                    target: declaration.target.clone(),
+                    kind: entry.kind,
+                    target: entry.target.clone(),
                     replication_count: entry.replication_count,
                     reason,
                 });
             }
             ClusteredDeclarationKind::ServiceCall => {
-                if let Some(executable) = surface.service_call_handlers.get(&declaration.target) {
+                if let Some(executable) = surface.service_call_handlers.get(&entry.target) {
                     match clustered_execution_metadata(entry, executable, "service call handler") {
                         Ok(planned) => metadata.push(planned),
                         Err(issue) => issues.push(issue),
@@ -784,13 +693,10 @@ fn validate_cluster_declaration_entries(
                     continue;
                 }
 
-                let reason = if surface
-                    .service_cast_handlers
-                    .contains_key(&declaration.target)
-                {
+                let reason = if surface.service_cast_handlers.contains_key(&entry.target) {
                     "target resolves to a service cast handler, not a service call handler"
                         .to_string()
-                } else if surface.service_start_helpers.contains(&declaration.target) {
+                } else if surface.service_start_helpers.contains(&entry.target) {
                     "target resolves to a service start helper; only call handlers are valid `service_call` targets"
                         .to_string()
                 } else {
@@ -799,14 +705,14 @@ fn validate_cluster_declaration_entries(
 
                 issues.push(ClusteredDeclarationError {
                     origin: entry.origin.clone(),
-                    kind: declaration.kind,
-                    target: declaration.target.clone(),
+                    kind: entry.kind,
+                    target: entry.target.clone(),
                     replication_count: entry.replication_count,
                     reason,
                 });
             }
             ClusteredDeclarationKind::ServiceCast => {
-                if let Some(executable) = surface.service_cast_handlers.get(&declaration.target) {
+                if let Some(executable) = surface.service_cast_handlers.get(&entry.target) {
                     match clustered_execution_metadata(entry, executable, "service cast handler") {
                         Ok(planned) => metadata.push(planned),
                         Err(issue) => issues.push(issue),
@@ -814,13 +720,10 @@ fn validate_cluster_declaration_entries(
                     continue;
                 }
 
-                let reason = if surface
-                    .service_call_handlers
-                    .contains_key(&declaration.target)
-                {
+                let reason = if surface.service_call_handlers.contains_key(&entry.target) {
                     "target resolves to a service call handler, not a service cast handler"
                         .to_string()
-                } else if surface.service_start_helpers.contains(&declaration.target) {
+                } else if surface.service_start_helpers.contains(&entry.target) {
                     "target resolves to a service start helper; only cast handlers are valid `service_cast` targets"
                         .to_string()
                 } else {
@@ -829,8 +732,8 @@ fn validate_cluster_declaration_entries(
 
                 issues.push(ClusteredDeclarationError {
                     origin: entry.origin.clone(),
-                    kind: declaration.kind,
-                    target: declaration.target.clone(),
+                    kind: entry.kind,
+                    target: entry.target.clone(),
                     replication_count: entry.replication_count,
                     reason,
                 });
@@ -850,13 +753,12 @@ fn clustered_execution_metadata(
     executable: &ClusteredExecutableSurfaceInfo,
     matched_kind: &str,
 ) -> Result<ClusteredExecutionMetadata, ClusteredDeclarationError> {
-    let declaration = &entry.declaration;
     let registration_name = executable.runtime_registration_name.trim();
     if registration_name.is_empty() {
         return Err(ClusteredDeclarationError {
             origin: entry.origin.clone(),
-            kind: declaration.kind,
-            target: declaration.target.clone(),
+            kind: entry.kind,
+            target: entry.target.clone(),
             replication_count: entry.replication_count,
             reason: format!(
                 "target resolves to an exported {matched_kind}, but execution planning could not derive a runtime registration name"
@@ -872,8 +774,8 @@ fn clustered_execution_metadata(
     else {
         return Err(ClusteredDeclarationError {
             origin: entry.origin.clone(),
-            kind: declaration.kind,
-            target: declaration.target.clone(),
+            kind: entry.kind,
+            target: entry.target.clone(),
             replication_count: entry.replication_count,
             reason: format!(
                 "target resolves to an exported {matched_kind}, but execution planning could not derive a runtime-executable symbol or wrapper"
@@ -882,8 +784,8 @@ fn clustered_execution_metadata(
     };
 
     Ok(ClusteredExecutionMetadata {
-        kind: declaration.kind,
-        manifest_target: declaration.target.clone(),
+        kind: entry.kind,
+        source_target: entry.target.clone(),
         runtime_registration_name: registration_name.to_string(),
         executable_symbol: executable_symbol.to_string(),
         replication_count: entry.replication_count,
@@ -891,14 +793,14 @@ fn clustered_execution_metadata(
     })
 }
 
-fn validate_declaration_shape(declaration: &ClusteredDeclaration) -> Option<String> {
-    let segments: Vec<&str> = declaration.target.split('.').collect();
+fn validate_declaration_shape(kind: ClusteredDeclarationKind, target: &str) -> Option<String> {
+    let segments: Vec<&str> = target.split('.').collect();
     let has_blank_segment = segments.iter().any(|segment| segment.is_empty());
     if has_blank_segment {
         return Some("target must not contain empty path segments".to_string());
     }
 
-    match declaration.kind {
+    match kind {
         ClusteredDeclarationKind::Work if segments.len() < 2 => {
             Some("work targets must use `<ModulePath>.<function>`".to_string())
         }
@@ -971,22 +873,16 @@ mod tests {
     }
 
     #[test]
-    fn m047_s01_collect_source_clustered_declarations_capture_counts_and_provenance() {
+    fn collect_source_cluster_decorators_capture_counts_and_provenance() {
         let mut graph = ModuleGraph::new();
         graph.add_module("Work".to_string(), "work.mpl".into(), false);
-        graph.add_module("Legacy".to_string(), "legacy.mpl".into(), false);
-        let parses = vec![
-            mesh_parser::parse(
-                "@cluster pub fn handle_submit(payload :: String) -> String do\n  payload\nend\n\n@cluster(3) pub fn handle_retry(payload :: String) -> String do\n  payload\nend\n",
-            ),
-            mesh_parser::parse(
-                "clustered(work) pub fn replay(payload :: String) -> String do\n  payload\nend\n",
-            ),
-        ];
+        let parses = vec![mesh_parser::parse(
+            "@cluster pub fn handle_submit(payload :: String) -> String do\n  payload\nend\n\n@cluster(3) pub fn handle_retry(payload :: String) -> String do\n  payload\nend\n",
+        )];
 
         let declarations = collect_source_cluster_declarations(&graph, &parses);
 
-        assert_eq!(declarations.len(), 3);
+        assert_eq!(declarations.len(), 2);
         assert_eq!(declarations[0].target, "Work.handle_submit");
         assert_eq!(
             declarations[0].replication_count,
@@ -1009,21 +905,12 @@ mod tests {
             SourceClusteredDeclarationSyntax::Decorator
         );
 
-        assert_eq!(declarations[2].target, "Legacy.replay");
-        assert_eq!(
-            declarations[2].replication_count,
-            ClusteredReplicationCount::defaulted()
-        );
-        assert_eq!(
-            declarations[2].provenance.syntax,
-            SourceClusteredDeclarationSyntax::LegacyCompat
-        );
+        assert!(parses[0].errors().is_empty());
     }
 
     #[test]
-    fn m047_s01_cluster_validation_preserves_source_count_and_origin() {
+    fn cluster_validation_preserves_source_count_and_origin() {
         let metadata = validate_cluster_declarations_with_source(
-            None,
             &[source_work_declaration(
                 "Work.handle_submit",
                 ClusteredReplicationCount::explicit(3),
@@ -1034,66 +921,56 @@ mod tests {
         .expect("source-only clustered work should validate");
 
         assert_eq!(metadata.len(), 1);
-        assert_eq!(metadata[0].manifest_target, "Work.handle_submit");
+        assert_eq!(metadata[0].source_target, "Work.handle_submit");
         assert_eq!(metadata[0].runtime_registration_name, "Work.handle_submit");
         assert_eq!(
             metadata[0].replication_count,
             ClusteredReplicationCount::explicit(3)
         );
-        match &metadata[0].origin {
-            ClusteredDeclarationOrigin::Source(provenance) => {
-                assert_eq!(provenance.file, PathBuf::from("work.mpl"));
-                assert_eq!(provenance.span, Span::new(0, 8));
-                assert_eq!(
-                    provenance.syntax,
-                    SourceClusteredDeclarationSyntax::Decorator
-                );
-            }
-            origin => panic!("expected source origin, got {origin:?}"),
-        }
+        let ClusteredDeclarationOrigin::Source(provenance) = &metadata[0].origin;
+        assert_eq!(provenance.file, PathBuf::from("work.mpl"));
+        assert_eq!(provenance.span, Span::new(0, 8));
+        assert_eq!(
+            provenance.syntax,
+            SourceClusteredDeclarationSyntax::Decorator
+        );
     }
 
     #[test]
-    fn m047_s01_cluster_validation_rejects_manifest_source_duplicate_with_provenance() {
-        let cluster = ClusterConfig {
-            enabled: true,
-            declarations: vec![ClusteredDeclaration {
-                kind: ClusteredDeclarationKind::Work,
-                target: "Work.handle_submit".to_string(),
-            }],
-        };
-
+    fn cluster_validation_rejects_duplicate_source_declarations_with_provenance() {
         let issues = validate_cluster_declarations_with_source(
-            Some(&cluster),
-            &[source_work_declaration(
-                "Work.handle_submit",
-                ClusteredReplicationCount::defaulted(),
-                SourceClusteredDeclarationSyntax::Decorator,
-            )],
+            &[
+                source_work_declaration(
+                    "Work.handle_submit",
+                    ClusteredReplicationCount::defaulted(),
+                    SourceClusteredDeclarationSyntax::Decorator,
+                ),
+                source_work_declaration(
+                    "Work.handle_submit",
+                    ClusteredReplicationCount::defaulted(),
+                    SourceClusteredDeclarationSyntax::Decorator,
+                ),
+            ],
             &cluster_surface(),
         )
-        .expect_err("manifest/source duplicate should fail");
+        .expect_err("duplicate source declarations should fail");
 
         assert_eq!(issues.len(), 1);
         assert_eq!(
             issues[0].replication_count,
             ClusteredReplicationCount::defaulted()
         );
-        assert!(issues[0].reason.contains("mesh.toml"), "{}", issues[0]);
-        match &issues[0].origin {
-            ClusteredDeclarationOrigin::Source(provenance) => {
-                assert_eq!(provenance.file, PathBuf::from("work.mpl"));
-                assert_eq!(
-                    provenance.syntax,
-                    SourceClusteredDeclarationSyntax::Decorator
-                );
-            }
-            origin => panic!("expected source origin, got {origin:?}"),
-        }
+        assert!(issues[0].reason.contains("more than once"), "{}", issues[0]);
+        let ClusteredDeclarationOrigin::Source(provenance) = &issues[0].origin;
+        assert_eq!(provenance.file, PathBuf::from("work.mpl"));
+        assert_eq!(
+            provenance.syntax,
+            SourceClusteredDeclarationSyntax::Decorator
+        );
     }
 
     #[test]
-    fn m047_s01_cluster_validation_rejects_ambiguous_source_work() {
+    fn cluster_validation_rejects_ambiguous_source_work() {
         let mut surface = cluster_surface();
         surface
             .ambiguous_work_functions
@@ -1101,7 +978,6 @@ mod tests {
         surface.work_functions.remove("Work.handle_submit");
 
         let issues = validate_cluster_declarations_with_source(
-            None,
             &[source_work_declaration(
                 "Work.handle_submit",
                 ClusteredReplicationCount::defaulted(),
@@ -1130,9 +1006,8 @@ mod tests {
     }
 
     #[test]
-    fn m047_s01_cluster_validation_rejects_private_source_work_with_count_context() {
+    fn cluster_validation_rejects_private_source_work_with_count_context() {
         let issues = validate_cluster_declarations_with_source(
-            None,
             &[source_work_declaration(
                 "Work.hidden_submit",
                 ClusteredReplicationCount::defaulted(),
@@ -1159,7 +1034,7 @@ mod tests {
     }
 
     #[test]
-    fn m047_s01_shared_export_surface_captures_work_and_service_handlers() {
+    fn shared_export_surface_captures_work_and_service_handlers() {
         let mut graph = ModuleGraph::new();
         graph.add_module("Work".to_string(), "work.mpl".into(), false);
         graph.add_module("Services".to_string(), "services.mpl".into(), false);
@@ -1221,20 +1096,22 @@ mod tests {
     }
 
     #[test]
-    fn m047_s01_manifest_validation_rejects_malformed_target_with_default_count_context() {
-        let cluster = ClusterConfig {
-            enabled: true,
-            declarations: vec![ClusteredDeclaration {
-                kind: ClusteredDeclarationKind::Work,
-                target: "handle_submit".to_string(),
-            }],
-        };
-
-        let err = validate_cluster_declarations(&cluster, &cluster_surface())
-            .expect_err("bad work target shape should fail");
+    fn source_validation_rejects_malformed_target_with_default_count_context() {
+        let err = validate_cluster_declarations_with_source(
+            &[source_work_declaration(
+                "handle_submit",
+                ClusteredReplicationCount::defaulted(),
+                SourceClusteredDeclarationSyntax::Decorator,
+            )],
+            &cluster_surface(),
+        )
+        .expect_err("bad work target shape should fail");
 
         assert_eq!(err.len(), 1);
-        assert_eq!(err[0].origin, ClusteredDeclarationOrigin::Manifest);
+        assert!(matches!(
+            err[0].origin,
+            ClusteredDeclarationOrigin::Source(_)
+        ));
         assert_eq!(
             err[0].replication_count,
             ClusteredReplicationCount::defaulted()
@@ -1312,7 +1189,6 @@ version = "0.0.1"
         assert!(manifest.package.authors.is_empty());
         assert!(manifest.package.entrypoint.is_none());
         assert!(manifest.dependencies.is_empty());
-        assert!(manifest.cluster.is_none());
     }
 
     #[test]
@@ -1659,7 +1535,7 @@ version = "1.0.0"
     }
 
     #[test]
-    fn m047_s04_manifest_rejects_legacy_cluster_section_with_migration_guidance() {
+    fn manifest_rejects_removed_cluster_section_with_migration_guidance() {
         let cases = [
             r#"
 [package]
@@ -1715,7 +1591,7 @@ declarations = [{ kind = "service", target = "Services.Jobs.submit" }]
     }
 
     #[test]
-    fn m047_s04_manifest_without_legacy_cluster_section_still_parses() {
+    fn manifest_without_removed_cluster_section_still_parses() {
         let toml = r#"
 [package]
 name = "clustered"
@@ -1727,186 +1603,5 @@ foo = { path = "../foo" }
 
         let manifest = Manifest::from_str(toml).unwrap();
         assert_eq!(manifest.package.name, "clustered");
-        assert!(manifest.cluster.is_none());
-    }
-
-    #[test]
-    fn m044_s01_clustered_manifest_validates_declared_targets_against_shared_surface() {
-        let cluster = ClusterConfig {
-            enabled: true,
-            declarations: vec![
-                ClusteredDeclaration {
-                    kind: ClusteredDeclarationKind::ServiceCall,
-                    target: "Services.Jobs.submit".to_string(),
-                },
-                ClusteredDeclaration {
-                    kind: ClusteredDeclarationKind::ServiceCast,
-                    target: "Services.Jobs.reset".to_string(),
-                },
-                ClusteredDeclaration {
-                    kind: ClusteredDeclarationKind::Work,
-                    target: "Work.handle_submit".to_string(),
-                },
-            ],
-        };
-
-        let metadata = validate_cluster_declarations(&cluster, &cluster_surface())
-            .expect("valid declarations should produce execution metadata");
-        assert_eq!(
-            metadata,
-            vec![
-                ClusteredExecutionMetadata {
-                    kind: ClusteredDeclarationKind::ServiceCall,
-                    manifest_target: "Services.Jobs.submit".to_string(),
-                    runtime_registration_name: "Services.Jobs.submit".to_string(),
-                    executable_symbol: "__service_jobs_call_submit".to_string(),
-                    replication_count: ClusteredReplicationCount::defaulted(),
-                    origin: ClusteredDeclarationOrigin::Manifest,
-                },
-                ClusteredExecutionMetadata {
-                    kind: ClusteredDeclarationKind::ServiceCast,
-                    manifest_target: "Services.Jobs.reset".to_string(),
-                    runtime_registration_name: "Services.Jobs.reset".to_string(),
-                    executable_symbol: "__service_jobs_cast_reset".to_string(),
-                    replication_count: ClusteredReplicationCount::defaulted(),
-                    origin: ClusteredDeclarationOrigin::Manifest,
-                },
-                ClusteredExecutionMetadata {
-                    kind: ClusteredDeclarationKind::Work,
-                    manifest_target: "Work.handle_submit".to_string(),
-                    runtime_registration_name: "Work.handle_submit".to_string(),
-                    executable_symbol: "handle_submit".to_string(),
-                    replication_count: ClusteredReplicationCount::defaulted(),
-                    origin: ClusteredDeclarationOrigin::Manifest,
-                },
-            ]
-        );
-    }
-
-    #[test]
-    fn m044_s02_clustered_manifest_rejects_missing_executable_symbol() {
-        let mut surface = cluster_surface();
-        surface.service_call_handlers.insert(
-            "Services.Jobs.submit".to_string(),
-            ClusteredExecutableSurfaceInfo {
-                runtime_registration_name: "Services.Jobs.submit".to_string(),
-                executable_symbol: None,
-            },
-        );
-
-        let cluster = ClusterConfig {
-            enabled: true,
-            declarations: vec![ClusteredDeclaration {
-                kind: ClusteredDeclarationKind::ServiceCall,
-                target: "Services.Jobs.submit".to_string(),
-            }],
-        };
-
-        let err = validate_cluster_declarations(&cluster, &surface)
-            .expect_err("missing executable symbol should fail");
-        assert_eq!(err.len(), 1);
-        assert!(
-            err[0]
-                .reason
-                .contains("runtime-executable symbol or wrapper"),
-            "{}",
-            err[0]
-        );
-    }
-
-    #[test]
-    fn m044_s01_clustered_manifest_rejects_ambiguous_work_target() {
-        let mut surface = cluster_surface();
-        surface
-            .ambiguous_work_functions
-            .insert("Work.handle_submit".to_string());
-        surface.work_functions.remove("Work.handle_submit");
-
-        let cluster = ClusterConfig {
-            enabled: true,
-            declarations: vec![ClusteredDeclaration {
-                kind: ClusteredDeclarationKind::Work,
-                target: "Work.handle_submit".to_string(),
-            }],
-        };
-
-        let err = validate_cluster_declarations(&cluster, &surface)
-            .expect_err("ambiguous work target should fail");
-        assert_eq!(err.len(), 1);
-        assert!(
-            err[0]
-                .reason
-                .contains("overloaded clustered work entrypoints"),
-            "{}",
-            err[0]
-        );
-    }
-
-    #[test]
-    fn m044_s01_clustered_manifest_rejects_private_work_target() {
-        let cluster = ClusterConfig {
-            enabled: true,
-            declarations: vec![ClusteredDeclaration {
-                kind: ClusteredDeclarationKind::Work,
-                target: "Work.hidden_submit".to_string(),
-            }],
-        };
-
-        let err = validate_cluster_declarations(&cluster, &cluster_surface())
-            .expect_err("private work target should fail");
-        assert_eq!(err.len(), 1);
-        assert!(err[0].reason.contains("private function"), "{}", err[0]);
-    }
-
-    #[test]
-    fn m044_s01_clustered_manifest_rejects_service_kind_mismatch() {
-        let cluster = ClusterConfig {
-            enabled: true,
-            declarations: vec![ClusteredDeclaration {
-                kind: ClusteredDeclarationKind::ServiceCall,
-                target: "Services.Jobs.reset".to_string(),
-            }],
-        };
-
-        let err = validate_cluster_declarations(&cluster, &cluster_surface())
-            .expect_err("service kind mismatch should fail");
-        assert_eq!(err.len(), 1);
-        assert!(err[0].reason.contains("service cast handler"), "{}", err[0]);
-    }
-
-    #[test]
-    fn m044_s01_clustered_manifest_rejects_bad_work_target_shape() {
-        let cluster = ClusterConfig {
-            enabled: true,
-            declarations: vec![ClusteredDeclaration {
-                kind: ClusteredDeclarationKind::Work,
-                target: "handle_submit".to_string(),
-            }],
-        };
-
-        let err = validate_cluster_declarations(&cluster, &cluster_surface())
-            .expect_err("bad work target shape should fail");
-        assert_eq!(err.len(), 1);
-        assert!(
-            err[0].reason.contains("<ModulePath>.<function>"),
-            "{}",
-            err[0]
-        );
-    }
-
-    #[test]
-    fn m044_s01_clustered_manifest_rejects_service_start_helper_target() {
-        let cluster = ClusterConfig {
-            enabled: true,
-            declarations: vec![ClusteredDeclaration {
-                kind: ClusteredDeclarationKind::ServiceCall,
-                target: "Services.Jobs.start".to_string(),
-            }],
-        };
-
-        let err = validate_cluster_declarations(&cluster, &cluster_surface())
-            .expect_err("service start helper should fail");
-        assert_eq!(err.len(), 1);
-        assert!(err[0].reason.contains("service start helper"), "{}", err[0]);
     }
 }

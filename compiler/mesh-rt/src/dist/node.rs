@@ -6,36 +6,47 @@
 //!
 //! 1. Parses the node name ("name@host" or "name@host:port")
 //! 2. Generates an ephemeral ECDSA P-256 self-signed certificate
-//! 3. Builds TLS server/client configs (cert verification skipped; cookie provides auth)
+//! 3. Builds mutually authenticated TLS configs in autonomous mode (manual
+//!    protocol-one mode uses the ephemeral-certificate/cookie path)
 //! 4. Initializes the global `NODE_STATE` singleton
 //! 5. Binds a TCP listener and spawns an accept loop thread
 //!
 //! ## Trust Model
 //!
 //! TLS provides confidentiality and integrity. Authentication is handled by the
-//! HMAC-SHA256 cookie challenge/response in Plan 02's handshake, NOT by PKI.
+//! Autonomous peers require mTLS plus a signed, cluster-scoped identity claim.
+//! The HMAC-SHA256 cookie handshake remains a compatibility and
+//! defense-in-depth layer, with comma-separated keyrings for rolling rotation.
 //! The client-side TLS config intentionally skips certificate verification.
 
+use std::collections::{BTreeMap, BTreeSet};
 use std::io::{self, Read, Write};
 use std::net::{TcpListener, TcpStream};
-use std::sync::atomic::{AtomicBool, AtomicU16, AtomicU64, AtomicU8, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU16, AtomicU64, AtomicU8, AtomicUsize, Ordering};
 use std::sync::{mpsc, Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
+use base64::Engine as _;
 use hmac::{Hmac, Mac};
 use parking_lot::RwLock;
 use ring::rand::SystemRandom;
 use ring::signature::{self, EcdsaKeyPair, KeyPair};
 use rustc_hash::FxHashMap;
 use rustls::client::danger::{HandshakeSignatureValid, ServerCertVerified, ServerCertVerifier};
-use rustls::pki_types::{CertificateDer, PrivateKeyDer, ServerName, UnixTime};
+use rustls::pki_types::{CertificateDer, PrivateKeyDer, PrivatePkcs8KeyDer, ServerName, UnixTime};
+use rustls::server::WebPkiClientVerifier;
 use rustls::{
-    ClientConfig, DigitallySignedStruct, Error, ServerConfig, SignatureScheme, StreamOwned,
+    ClientConfig, DigitallySignedStruct, Error, RootCertStore, ServerConfig, SignatureScheme,
+    StreamOwned,
 };
 use sha2::{Digest, Sha256};
 
 use super::bootstrap::{bootstrap_from_env_with, BootstrapStatus};
 use super::discovery::{parse_host_port, start_from_env as start_discovery_from_env};
+use super::protocol::{
+    negotiate_protocol, CircuitBreaker, CircuitState, MessageClass, NegotiatedProtocol,
+    ProtocolEnvelope, ProtocolHello, RetryBudget, PROTOCOL_V1, PROTOCOL_V2,
+};
 use crate::io::{alloc_result, MeshResult};
 use crate::string::{mesh_string_new, MeshString};
 
@@ -95,6 +106,134 @@ impl NodeState {
 
 /// Global node state singleton.
 static NODE_STATE: OnceLock<NodeState> = OnceLock::new();
+static PROTOCOL_BOOT_ID: OnceLock<[u8; 16]> = OnceLock::new();
+static ACTIVE_INCOMING_HANDSHAKES: AtomicUsize = AtomicUsize::new(0);
+static AUTH_FAILURE_WINDOW: OnceLock<Mutex<FixedWindowCounter>> = OnceLock::new();
+static OPERATOR_QUERY_WINDOW: OnceLock<Mutex<FixedWindowCounter>> = OnceLock::new();
+const MAX_INCOMING_HANDSHAKES: usize = 64;
+const NODE_HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(10);
+const MAX_AUTH_FAILURES_PER_SECOND: u32 = 128;
+const MAX_OPERATOR_QUERIES_PER_SECOND: u32 = 64;
+
+struct FixedWindowCounter {
+    started_at: Instant,
+    count: u32,
+}
+
+impl FixedWindowCounter {
+    fn new(now: Instant) -> Self {
+        Self {
+            started_at: now,
+            count: 0,
+        }
+    }
+
+    fn reset_if_elapsed(&mut self, now: Instant) {
+        if now.saturating_duration_since(self.started_at) >= Duration::from_secs(1) {
+            self.started_at = now;
+            self.count = 0;
+        }
+    }
+
+    fn below(&mut self, limit: u32, now: Instant) -> bool {
+        self.reset_if_elapsed(now);
+        self.count < limit
+    }
+
+    fn take(&mut self, limit: u32, now: Instant) -> bool {
+        if !self.below(limit, now) {
+            return false;
+        }
+        self.count = self.count.saturating_add(1);
+        true
+    }
+}
+
+fn auth_failures_below_limit() -> bool {
+    AUTH_FAILURE_WINDOW
+        .get_or_init(|| Mutex::new(FixedWindowCounter::new(Instant::now())))
+        .lock()
+        .unwrap()
+        .below(MAX_AUTH_FAILURES_PER_SECOND, Instant::now())
+}
+
+fn record_auth_failure() {
+    let mut window = AUTH_FAILURE_WINDOW
+        .get_or_init(|| Mutex::new(FixedWindowCounter::new(Instant::now())))
+        .lock()
+        .unwrap();
+    window.reset_if_elapsed(Instant::now());
+    window.count = window.count.saturating_add(1);
+}
+
+fn operator_query_allowed() -> bool {
+    OPERATOR_QUERY_WINDOW
+        .get_or_init(|| Mutex::new(FixedWindowCounter::new(Instant::now())))
+        .lock()
+        .unwrap()
+        .take(MAX_OPERATOR_QUERIES_PER_SECOND, Instant::now())
+}
+
+struct IncomingHandshakeGuard;
+
+impl Drop for IncomingHandshakeGuard {
+    fn drop(&mut self) {
+        ACTIVE_INCOMING_HANDSHAKES.fetch_sub(1, Ordering::AcqRel);
+    }
+}
+
+fn local_protocol_hello() -> ProtocolHello {
+    ProtocolHello::current(*PROTOCOL_BOOT_ID.get_or_init(rand::random))
+}
+
+fn local_protocol_hello_with_identity(local_name: &str) -> Result<ProtocolHello, String> {
+    let mut hello = local_protocol_hello();
+    let autonomous = autonomous_mode_requested();
+    let envelope = std::env::var(super::identity_claim::IDENTITY_ENVELOPE_ENV).ok();
+    let verify_keys = std::env::var(super::identity_claim::IDENTITY_VERIFY_KEYS_ENV).ok();
+    let cluster_id = std::env::var("MESH_CLUSTER_ID").ok();
+    match (envelope, verify_keys, cluster_id) {
+        (Some(envelope), Some(verify_keys), Some(cluster_id)) => {
+            hello.identity_envelope = super::identity_claim::decode_envelope_b64(&envelope)?;
+            let claim = super::identity_claim::decode_and_verify_identity(
+                &hello.identity_envelope,
+                &verify_keys,
+                &cluster_id,
+                local_name,
+                super::identity_claim::unix_millis(),
+            )?;
+            if claim.stable_node_id
+                != std::env::var("MESH_STABLE_NODE_ID")
+                    .unwrap_or_else(|_| claim.stable_node_id.clone())
+                || claim.roles
+                    != super::identity_claim::canonical_roles(
+                        &std::env::var("MESH_ROLES")
+                            .unwrap_or_default()
+                            .split(',')
+                            .map(str::to_string)
+                            .collect::<Vec<_>>(),
+                    )?
+            {
+                return Err("local_node_identity_claim_mismatch".to_string());
+            }
+        }
+        (None, None, None) if !autonomous => {}
+        _ if autonomous => return Err("autonomous_mode_requires_signed_node_identity".to_string()),
+        _ => return Err("node_identity_configuration_incomplete".to_string()),
+    }
+    Ok(hello)
+}
+
+fn protocol_one_hello() -> ProtocolHello {
+    ProtocolHello {
+        minimum_version: PROTOCOL_V1,
+        maximum_version: PROTOCOL_V1,
+        capabilities: super::protocol::Capabilities::default(),
+        max_frame_bytes: super::protocol::DEFAULT_MAX_FRAME_BYTES,
+        boot_id: [0; 16],
+        identity_envelope: Vec::new(),
+    }
+}
 
 /// Get a reference to the global node state, if initialized.
 ///
@@ -157,6 +296,10 @@ fn function_registry() -> &'static RwLock<FxHashMap<String, FnPtr>> {
 
 fn declared_handler_registry() -> &'static RwLock<FxHashMap<String, DeclaredHandlerEntry>> {
     DECLARED_HANDLER_REGISTRY.get_or_init(|| RwLock::new(FxHashMap::default()))
+}
+
+pub(crate) fn declared_handler_count() -> usize {
+    declared_handler_registry().read().len()
 }
 
 fn startup_work_registry() -> &'static RwLock<Vec<String>> {
@@ -296,9 +439,11 @@ pub(crate) fn lookup_declared_handler_route_metadata(
         .read()
         .iter()
         .find_map(|(runtime_name, entry)| {
-            (entry.fn_ptr.0 == fn_ptr as *const u8).then(|| DeclaredHandlerRouteMetadata {
-                runtime_name: runtime_name.clone(),
-                replication_count: entry.replication_count,
+            std::ptr::eq(entry.fn_ptr.0, fn_ptr.cast_const()).then(|| {
+                DeclaredHandlerRouteMetadata {
+                    runtime_name: runtime_name.clone(),
+                    replication_count: entry.replication_count,
+                }
             })
         })
 }
@@ -306,6 +451,14 @@ pub(crate) fn lookup_declared_handler_route_metadata(
 #[cfg(test)]
 pub(crate) fn clear_declared_handler_registry_for_test() {
     declared_handler_registry().write().clear();
+}
+
+#[cfg(test)]
+pub(crate) fn declared_handler_registry_test_lock() -> std::sync::MutexGuard<'static, ()> {
+    static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+    LOCK.get_or_init(|| Mutex::new(()))
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
 }
 
 fn lookup_declared_handler_executable(name: &str) -> Option<DeclaredHandlerEntry> {
@@ -357,16 +510,119 @@ fn automatic_recovery_effective_required_replica_count(
 static SPAWN_REQUEST_ID: AtomicU64 = AtomicU64::new(1);
 /// Monotonic counter for generating unique continuity prepare request IDs.
 static CONTINUITY_PREPARE_REQUEST_ID: AtomicU64 = AtomicU64::new(1);
+/// Correlation IDs for multiplexed clustered HTTP dispatch over peer sessions.
+static HTTP_ROUTE_CORRELATION_ID: AtomicU64 = AtomicU64::new(1);
+/// Correlation IDs for embedded OpenRaft RPCs over peer sessions.
+static CONSENSUS_RPC_REQUEST_ID: AtomicU64 = AtomicU64::new(1);
+static PEER_RETRY_BUDGETS: OnceLock<Mutex<FxHashMap<String, RetryBudget>>> = OnceLock::new();
+static PEER_CIRCUITS: OnceLock<Mutex<FxHashMap<String, CircuitBreaker>>> = OnceLock::new();
+
+fn peer_circuits() -> &'static Mutex<FxHashMap<String, CircuitBreaker>> {
+    PEER_CIRCUITS.get_or_init(|| Mutex::new(FxHashMap::default()))
+}
+
+fn peer_circuit_allow(peer: &str, now: Instant) -> bool {
+    let allowed = peer_circuits()
+        .lock()
+        .unwrap()
+        .entry(peer.to_string())
+        .or_insert_with(|| CircuitBreaker::new(3, Duration::from_secs(5)).unwrap())
+        .allow(now);
+    if !allowed {
+        crate::dist::telemetry::runtime_telemetry().record_remote_dispatch_circuit_rejection();
+    }
+    allowed
+}
+
+fn record_peer_transport_success(peer: &str) {
+    if let Some(circuit) = peer_circuits().lock().unwrap().get_mut(peer) {
+        circuit.record_success();
+    }
+}
+
+fn record_peer_transport_failure(peer: &str, now: Instant) {
+    peer_circuits()
+        .lock()
+        .unwrap()
+        .entry(peer.to_string())
+        .or_insert_with(|| CircuitBreaker::new(3, Duration::from_secs(5)).unwrap())
+        .record_failure(now);
+}
+
+pub(crate) fn peer_circuit_open(peer: &str, now: Instant) -> bool {
+    peer_circuit_state(peer, now) == CircuitState::Open
+}
+
+fn peer_circuit_state(peer: &str, now: Instant) -> CircuitState {
+    peer_circuits()
+        .lock()
+        .unwrap()
+        .get(peer)
+        .map_or(CircuitState::Closed, |circuit| circuit.state(now))
+}
+
+fn record_peer_original_attempt(peer: &str, now: Instant) {
+    let mut budgets = PEER_RETRY_BUDGETS
+        .get_or_init(|| Mutex::new(FxHashMap::default()))
+        .lock()
+        .unwrap();
+    budgets
+        .entry(peer.to_string())
+        .or_insert_with(|| {
+            RetryBudget::new(
+                crate::dist::routing::runtime_retry_budget_percent(),
+                1,
+                Duration::from_secs(10),
+                now,
+            )
+            .expect("validated retry budget defaults")
+        })
+        .record_original(now);
+}
+
+fn allow_peer_retry(peer: &str, now: Instant) -> bool {
+    let allowed = PEER_RETRY_BUDGETS
+        .get_or_init(|| Mutex::new(FxHashMap::default()))
+        .lock()
+        .unwrap()
+        .entry(peer.to_string())
+        .or_insert_with(|| {
+            RetryBudget::new(
+                crate::dist::routing::runtime_retry_budget_percent(),
+                1,
+                Duration::from_secs(10),
+                now,
+            )
+            .unwrap()
+        })
+        .try_retry(now);
+    if allowed {
+        crate::dist::telemetry::runtime_telemetry().record_remote_dispatch_retry();
+    }
+    allowed
+}
 
 // ---------------------------------------------------------------------------
-// NodeSession -- placeholder for Plan 02
+// Node sessions
 // ---------------------------------------------------------------------------
+
+type PendingCooperativeReplies<T> =
+    std::sync::Mutex<FxHashMap<u64, crate::actor::CooperativeSender<Result<T, String>>>>;
+type PendingOperatorQueries =
+    std::sync::Mutex<FxHashMap<u64, mpsc::Sender<Result<Vec<u8>, String>>>>;
+type PendingConsensusRpcs =
+    std::sync::Mutex<FxHashMap<u64, tokio::sync::oneshot::Sender<Result<Vec<u8>, String>>>>;
+
+struct RemoteSessionEndpoint {
+    remote_name: String,
+    remote_creation: u8,
+    node_id: u16,
+    direction: SessionDirection,
+}
 
 /// Represents a connection to a remote node.
 ///
 /// Holds the authenticated TLS stream, identity info, and shutdown flag.
-/// Plan 03 will add reader and heartbeat threads using the stream and
-/// shutdown flag.
 pub struct NodeSession {
     /// Full name of the remote node
     pub remote_name: String,
@@ -382,18 +638,466 @@ pub struct NodeSession {
     pub shutdown: AtomicBool,
     /// When this connection was established
     pub connected_at: Instant,
+    /// Version, bounds, and features negotiated during the authenticated handshake.
+    pub negotiated_protocol: NegotiatedProtocol,
+    /// Cluster/stable identity authenticated by the protocol-two signed claim.
+    pub remote_identity: Option<super::identity_claim::NodeIdentityClaim>,
     /// Pending remote spawn requests: request_id -> requesting ProcessId.
     /// Used by DIST_SPAWN_REPLY handler to route the spawned PID back to
     /// the requesting process.
     pub(crate) pending_spawns: std::sync::Mutex<FxHashMap<u64, crate::actor::process::ProcessId>>,
     /// Pending continuity prepare requests waiting for a replica ack.
     /// The sender side resolves to Ok(()) on ack or Err(reason) on reject/timeout.
-    pub(crate) pending_continuity_prepares:
-        std::sync::Mutex<FxHashMap<u64, mpsc::Sender<Result<(), String>>>>,
+    pub(crate) pending_continuity_prepares: PendingCooperativeReplies<()>,
     /// Pending read-only operator queries waiting for a reply frame.
     /// The sender side resolves to Ok(payload) on success or Err(reason) on reject.
-    pub(crate) pending_operator_queries:
-        std::sync::Mutex<FxHashMap<u64, mpsc::Sender<Result<Vec<u8>, String>>>>,
+    pub(crate) pending_operator_queries: PendingOperatorQueries,
+    /// Pending embedded-consensus RPCs. Tokio one-shot channels keep OpenRaft's
+    /// async network path off the distribution reader thread.
+    pub(crate) pending_consensus_rpcs: PendingConsensusRpcs,
+    /// Pending protocol-two HTTP dispatches multiplexed over this peer session.
+    pub(crate) pending_http_routes: PendingCooperativeReplies<Vec<u8>>,
+    /// Pending two-phase owner reservation replies.
+    pending_http_reservations: PendingCooperativeReplies<()>,
+    /// Accepted owner reservations, held until the matching payload starts or expires.
+    accepted_http_reservations: std::sync::Mutex<FxHashMap<u64, AcceptedHttpReservation>>,
+    persistent: bool,
+    control_outbound: crossbeam_channel::Sender<OutboundFrame>,
+    admission_outbound: crossbeam_channel::Sender<OutboundFrame>,
+    continuity_outbound: crossbeam_channel::Sender<OutboundFrame>,
+    application_outbound: crossbeam_channel::Sender<OutboundFrame>,
+    snapshot_outbound: crossbeam_channel::Sender<OutboundFrame>,
+    outbound_receivers: Mutex<Option<OutboundReceivers>>,
+    control_queued_bytes: AtomicUsize,
+    admission_queued_bytes: AtomicUsize,
+    continuity_queued_bytes: AtomicUsize,
+    application_queued_bytes: AtomicUsize,
+    snapshot_queued_bytes: AtomicUsize,
+}
+
+const CONTROL_QUEUE_ITEMS: usize = 256;
+const CONTROL_QUEUE_BYTES: usize = 4 * 1024 * 1024;
+const ADMISSION_QUEUE_ITEMS: usize = 4_096;
+const ADMISSION_QUEUE_BYTES: usize = 16 * 1024 * 1024;
+const CONTINUITY_QUEUE_ITEMS: usize = 4_096;
+const CONTINUITY_QUEUE_BYTES: usize = 32 * 1024 * 1024;
+const APPLICATION_QUEUE_ITEMS: usize = 1_024;
+const APPLICATION_QUEUE_BYTES: usize = 64 * 1024 * 1024;
+const SNAPSHOT_QUEUE_ITEMS: usize = 64;
+const SNAPSHOT_QUEUE_BYTES: usize = 16 * 1024 * 1024;
+const MAX_CONSECUTIVE_CONTROL_FRAMES: usize = 4;
+const MAX_OUTBOUND_WRITE_BATCH: usize = 32;
+const CONTINUITY_PREPARE_DISPATCH_ITEMS: usize = 8_192;
+const CONTINUITY_PREPARE_WORKERS: usize = 64;
+
+struct ContinuityPrepareTask {
+    session: Arc<NodeSession>,
+    request_id: u64,
+    record: crate::dist::continuity::ContinuityRecord,
+}
+
+static CONTINUITY_PREPARE_DISPATCHER: OnceLock<crossbeam_channel::Sender<ContinuityPrepareTask>> =
+    OnceLock::new();
+
+#[derive(Clone, Copy, Debug)]
+pub(crate) enum OutboundClass {
+    Control,
+    Admission,
+    Continuity,
+    Application,
+    Snapshot,
+}
+
+struct OutboundFrame {
+    payload: Vec<u8>,
+    class: OutboundClass,
+}
+
+struct OutboundReceivers {
+    control: crossbeam_channel::Receiver<OutboundFrame>,
+    admission: crossbeam_channel::Receiver<OutboundFrame>,
+    continuity: crossbeam_channel::Receiver<OutboundFrame>,
+    application: crossbeam_channel::Receiver<OutboundFrame>,
+    snapshot: crossbeam_channel::Receiver<OutboundFrame>,
+}
+
+impl NodeSession {
+    pub(crate) fn remote_has_role(&self, role: &str) -> bool {
+        self.remote_identity
+            .as_ref()
+            .is_some_and(|identity| identity.roles.iter().any(|candidate| candidate == role))
+    }
+
+    fn new(
+        endpoint: RemoteSessionEndpoint,
+        stream: NodeStream,
+        persistent: bool,
+        negotiated_protocol: NegotiatedProtocol,
+        remote_identity: Option<super::identity_claim::NodeIdentityClaim>,
+    ) -> Self {
+        let RemoteSessionEndpoint {
+            remote_name,
+            remote_creation,
+            node_id,
+            direction,
+        } = endpoint;
+        let (control_outbound, control) = crossbeam_channel::bounded(CONTROL_QUEUE_ITEMS);
+        let (admission_outbound, admission) = crossbeam_channel::bounded(ADMISSION_QUEUE_ITEMS);
+        let (continuity_outbound, continuity) = crossbeam_channel::bounded(CONTINUITY_QUEUE_ITEMS);
+        let (application_outbound, application) =
+            crossbeam_channel::bounded(APPLICATION_QUEUE_ITEMS);
+        let (snapshot_outbound, snapshot) = crossbeam_channel::bounded(SNAPSHOT_QUEUE_ITEMS);
+        Self {
+            remote_name,
+            remote_creation,
+            node_id,
+            direction,
+            stream: Mutex::new(stream),
+            shutdown: AtomicBool::new(false),
+            connected_at: Instant::now(),
+            negotiated_protocol,
+            remote_identity,
+            pending_spawns: std::sync::Mutex::new(FxHashMap::default()),
+            pending_continuity_prepares: std::sync::Mutex::new(FxHashMap::default()),
+            pending_operator_queries: std::sync::Mutex::new(FxHashMap::default()),
+            pending_consensus_rpcs: std::sync::Mutex::new(FxHashMap::default()),
+            pending_http_routes: std::sync::Mutex::new(FxHashMap::default()),
+            pending_http_reservations: std::sync::Mutex::new(FxHashMap::default()),
+            accepted_http_reservations: std::sync::Mutex::new(FxHashMap::default()),
+            persistent,
+            control_outbound,
+            admission_outbound,
+            continuity_outbound,
+            application_outbound,
+            snapshot_outbound,
+            outbound_receivers: Mutex::new(Some(OutboundReceivers {
+                control,
+                admission,
+                continuity,
+                application,
+                snapshot,
+            })),
+            control_queued_bytes: AtomicUsize::new(0),
+            admission_queued_bytes: AtomicUsize::new(0),
+            continuity_queued_bytes: AtomicUsize::new(0),
+            application_queued_bytes: AtomicUsize::new(0),
+            snapshot_queued_bytes: AtomicUsize::new(0),
+        }
+    }
+
+    pub(crate) fn send(&self, class: OutboundClass, payload: Vec<u8>) -> Result<(), String> {
+        if self.shutdown.load(Ordering::Acquire) {
+            return Err("peer_session_shutdown".to_string());
+        }
+        if !self.persistent {
+            let mut stream = self.stream.lock().unwrap();
+            return write_msg(&mut *stream, &payload)
+                .map_err(|error| format!("peer_session_write_failed:{error}"));
+        }
+        if matches!(class, OutboundClass::Application)
+            && !peer_circuit_allow(&self.remote_name, Instant::now())
+        {
+            return Err("peer_circuit_open".to_string());
+        }
+        let payload = encode_session_payload(class, payload, &self.negotiated_protocol)?;
+        let (sender, bytes, byte_limit) = match class {
+            OutboundClass::Control => (
+                &self.control_outbound,
+                &self.control_queued_bytes,
+                CONTROL_QUEUE_BYTES,
+            ),
+            OutboundClass::Admission => (
+                &self.admission_outbound,
+                &self.admission_queued_bytes,
+                ADMISSION_QUEUE_BYTES,
+            ),
+            OutboundClass::Continuity => (
+                &self.continuity_outbound,
+                &self.continuity_queued_bytes,
+                CONTINUITY_QUEUE_BYTES,
+            ),
+            OutboundClass::Application => (
+                &self.application_outbound,
+                &self.application_queued_bytes,
+                APPLICATION_QUEUE_BYTES,
+            ),
+            OutboundClass::Snapshot => (
+                &self.snapshot_outbound,
+                &self.snapshot_queued_bytes,
+                SNAPSHOT_QUEUE_BYTES,
+            ),
+        };
+        enqueue_outbound(sender, bytes, byte_limit, class, payload)
+    }
+
+    fn send_heartbeat(&self, payload: Vec<u8>) -> Result<(), String> {
+        if self.shutdown.load(Ordering::Acquire) {
+            return Err("peer_session_shutdown".to_string());
+        }
+        if !matches!(
+            payload.first(),
+            Some(&HEARTBEAT_PING) | Some(&HEARTBEAT_PONG)
+        ) {
+            return Err("heartbeat_frame_invalid".to_string());
+        }
+        let payload =
+            encode_session_payload(OutboundClass::Control, payload, &self.negotiated_protocol)?;
+        // Heartbeats are liveness control, not application admission. Writing
+        // them directly under the same stream mutex keeps frames atomic while
+        // preventing a reservation burst from causing a false node failure.
+        let mut stream = self.stream.lock().unwrap();
+        write_msg(&mut *stream, &payload).map_err(|error| format!("peer_heartbeat_failed:{error}"))
+    }
+
+    pub(crate) fn telemetry_snapshot(
+        &self,
+        now: Instant,
+    ) -> crate::dist::telemetry::PeerSessionTelemetrySnapshot {
+        let lanes = [
+            outbound_lane_snapshot(
+                "control",
+                self.control_outbound.len(),
+                self.control_queued_bytes.load(Ordering::Relaxed),
+                CONTROL_QUEUE_ITEMS,
+                CONTROL_QUEUE_BYTES,
+            ),
+            outbound_lane_snapshot(
+                "admission",
+                self.admission_outbound.len(),
+                self.admission_queued_bytes.load(Ordering::Relaxed),
+                ADMISSION_QUEUE_ITEMS,
+                ADMISSION_QUEUE_BYTES,
+            ),
+            outbound_lane_snapshot(
+                "continuity",
+                self.continuity_outbound.len(),
+                self.continuity_queued_bytes.load(Ordering::Relaxed),
+                CONTINUITY_QUEUE_ITEMS,
+                CONTINUITY_QUEUE_BYTES,
+            ),
+            outbound_lane_snapshot(
+                "application",
+                self.application_outbound.len(),
+                self.application_queued_bytes.load(Ordering::Relaxed),
+                APPLICATION_QUEUE_ITEMS,
+                APPLICATION_QUEUE_BYTES,
+            ),
+            outbound_lane_snapshot(
+                "snapshot",
+                self.snapshot_outbound.len(),
+                self.snapshot_queued_bytes.load(Ordering::Relaxed),
+                SNAPSHOT_QUEUE_ITEMS,
+                SNAPSHOT_QUEUE_BYTES,
+            ),
+        ];
+        crate::dist::telemetry::PeerSessionTelemetrySnapshot {
+            peer: self.remote_name.clone(),
+            healthy: !self.shutdown.load(Ordering::Acquire),
+            connected_millis: now
+                .saturating_duration_since(self.connected_at)
+                .as_millis()
+                .try_into()
+                .unwrap_or(u64::MAX),
+            circuit_state: match peer_circuit_state(&self.remote_name, now) {
+                CircuitState::Closed => "closed",
+                CircuitState::Open => "open",
+                CircuitState::HalfOpen => "half_open",
+            }
+            .to_string(),
+            lanes: lanes.into(),
+        }
+    }
+
+    fn queued_totals(&self) -> (usize, usize) {
+        let items = self
+            .control_outbound
+            .len()
+            .saturating_add(self.admission_outbound.len())
+            .saturating_add(self.continuity_outbound.len())
+            .saturating_add(self.application_outbound.len())
+            .saturating_add(self.snapshot_outbound.len());
+        let bytes = self
+            .control_queued_bytes
+            .load(Ordering::Relaxed)
+            .saturating_add(self.admission_queued_bytes.load(Ordering::Relaxed))
+            .saturating_add(self.continuity_queued_bytes.load(Ordering::Relaxed))
+            .saturating_add(self.application_queued_bytes.load(Ordering::Relaxed))
+            .saturating_add(self.snapshot_queued_bytes.load(Ordering::Relaxed));
+        (items, bytes)
+    }
+}
+
+fn outbound_lane_snapshot(
+    class: &str,
+    queued_items: usize,
+    queued_bytes: usize,
+    item_capacity: usize,
+    byte_capacity: usize,
+) -> crate::dist::telemetry::OutboundLaneTelemetrySnapshot {
+    let item_utilization = queued_items as f64 / item_capacity.max(1) as f64;
+    let byte_utilization = queued_bytes as f64 / byte_capacity.max(1) as f64;
+    crate::dist::telemetry::OutboundLaneTelemetrySnapshot {
+        class: class.to_string(),
+        queued_items: queued_items.try_into().unwrap_or(u32::MAX),
+        queued_bytes: queued_bytes.try_into().unwrap_or(u64::MAX),
+        item_capacity: item_capacity.try_into().unwrap_or(u32::MAX),
+        byte_capacity: byte_capacity.try_into().unwrap_or(u64::MAX),
+        utilization: item_utilization.max(byte_utilization),
+    }
+}
+
+pub(crate) fn local_peer_session_telemetry(
+) -> Vec<crate::dist::telemetry::PeerSessionTelemetrySnapshot> {
+    let Some(state) = node_state() else {
+        return Vec::new();
+    };
+    let sessions: Vec<_> = state.sessions.read().values().cloned().collect();
+    let now = Instant::now();
+    let snapshots: Vec<_> = sessions
+        .iter()
+        .map(|session| session.telemetry_snapshot(now))
+        .collect();
+    refresh_peer_session_telemetry();
+    snapshots
+}
+
+pub(crate) fn refresh_peer_session_telemetry() {
+    let Some(state) = node_state() else {
+        return;
+    };
+    let sessions = state.sessions.read();
+    let (queued_items, queued_bytes) =
+        sessions
+            .values()
+            .fold((0usize, 0usize), |(total_items, total_bytes), session| {
+                let (items, bytes) = session.queued_totals();
+                (
+                    total_items.saturating_add(items),
+                    total_bytes.saturating_add(bytes),
+                )
+            });
+    let now = Instant::now();
+    let circuits = peer_circuits().lock().unwrap();
+    let open_circuits = sessions
+        .keys()
+        .filter(|peer| {
+            circuits
+                .get(*peer)
+                .is_some_and(|circuit| circuit.state(now) == CircuitState::Open)
+        })
+        .count();
+    crate::dist::telemetry::runtime_telemetry().set_remote_dispatch_queue(
+        queued_items.try_into().unwrap_or(u32::MAX),
+        queued_bytes.try_into().unwrap_or(u64::MAX),
+        open_circuits.try_into().unwrap_or(u32::MAX),
+    );
+}
+
+fn enqueue_outbound(
+    sender: &crossbeam_channel::Sender<OutboundFrame>,
+    bytes: &AtomicUsize,
+    byte_limit: usize,
+    class: OutboundClass,
+    payload: Vec<u8>,
+) -> Result<(), String> {
+    if let Err(error) = reserve_queued_bytes(bytes, payload.len(), byte_limit) {
+        crate::dist::telemetry::runtime_telemetry().record_remote_dispatch_queue_rejection();
+        return Err(error);
+    }
+    if let Err(error) = sender.try_send(OutboundFrame { payload, class }) {
+        let length = match &error {
+            crossbeam_channel::TrySendError::Full(frame)
+            | crossbeam_channel::TrySendError::Disconnected(frame) => frame.payload.len(),
+        };
+        bytes.fetch_sub(length, Ordering::AcqRel);
+        crate::dist::telemetry::runtime_telemetry().record_remote_dispatch_queue_rejection();
+        return Err(match error {
+            crossbeam_channel::TrySendError::Full(_) => "peer_outbound_queue_full",
+            crossbeam_channel::TrySendError::Disconnected(_) => "peer_outbound_queue_disconnected",
+        }
+        .to_string());
+    }
+    Ok(())
+}
+
+fn encode_session_payload(
+    class: OutboundClass,
+    payload: Vec<u8>,
+    negotiated: &NegotiatedProtocol,
+) -> Result<Vec<u8>, String> {
+    if negotiated.version < PROTOCOL_V2 {
+        return Ok(payload);
+    }
+    let kind = payload
+        .first()
+        .copied()
+        .ok_or_else(|| "protocol_empty_distribution_message".to_string())?;
+    ProtocolEnvelope {
+        class: match (class, kind) {
+            (_, HEARTBEAT_PING | HEARTBEAT_PONG) => MessageClass::Heartbeat,
+            (OutboundClass::Control | OutboundClass::Admission | OutboundClass::Continuity, _) => {
+                MessageClass::Control
+            }
+            (OutboundClass::Application, _) => MessageClass::Application,
+            (OutboundClass::Snapshot, _) => MessageClass::Snapshot,
+        },
+        kind: u16::from(kind),
+        correlation_id: correlation_id_from_payload(kind, &payload),
+        chunk_sequence: 0,
+        final_chunk: true,
+        payload,
+    }
+    .encode(negotiated.max_frame_bytes)
+}
+
+fn decode_session_payload(
+    frame: Vec<u8>,
+    negotiated: &NegotiatedProtocol,
+) -> Result<Vec<u8>, String> {
+    if negotiated.version < PROTOCOL_V2 {
+        return Ok(frame);
+    }
+    let envelope = ProtocolEnvelope::decode(&frame, negotiated.max_frame_bytes)?;
+    let kind = envelope
+        .payload
+        .first()
+        .copied()
+        .ok_or_else(|| "protocol_empty_distribution_message".to_string())?;
+    if envelope.kind != u16::from(kind) {
+        return Err("protocol_envelope_kind_mismatch".to_string());
+    }
+    if !envelope.final_chunk || envelope.chunk_sequence != 0 {
+        return Err("protocol_unexpected_unreassembled_chunk".to_string());
+    }
+    Ok(envelope.payload)
+}
+
+fn correlation_id_from_payload(kind: u8, payload: &[u8]) -> u64 {
+    if matches!(
+        kind,
+        DIST_HTTP_ROUTE_V2_QUERY
+            | DIST_HTTP_ROUTE_V2_REPLY
+            | DIST_HTTP_RESERVE
+            | DIST_HTTP_RESERVE_REPLY
+            | DIST_OPERATOR_QUERY
+            | DIST_OPERATOR_REPLY
+            | DIST_CONSENSUS_RPC
+            | DIST_CONSENSUS_RPC_REPLY
+    ) && payload.len() >= 9
+    {
+        u64::from_le_bytes(payload[1..9].try_into().unwrap())
+    } else {
+        0
+    }
+}
+
+fn reserve_queued_bytes(counter: &AtomicUsize, amount: usize, limit: usize) -> Result<(), String> {
+    counter
+        .fetch_update(Ordering::AcqRel, Ordering::Acquire, |current| {
+            current.checked_add(amount).filter(|next| *next <= limit)
+        })
+        .map(|_| ())
+        .map_err(|_| "peer_outbound_byte_limit".to_string())
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -569,6 +1273,40 @@ pub(crate) const DIST_HTTP_ROUTE_QUERY: u8 = 0x25;
 /// Format: [tag 0x26][u8 status][u32 payload_len][payload or UTF-8 reason]
 pub(crate) const DIST_HTTP_ROUTE_REPLY: u8 = 0x26;
 
+/// Wire tag for compact protocol-two node load reports.
+/// Format: [tag 0x27][bounded NodeLoadReport payload]
+pub(crate) const DIST_LOAD_REPORT: u8 = 0x27;
+
+/// Protocol-two multiplexed HTTP request over an authenticated peer session.
+/// Format: [tag 0x28][u64 correlation_id][protocol-one route request fields]
+pub(crate) const DIST_HTTP_ROUTE_V2_QUERY: u8 = 0x28;
+
+/// Protocol-two multiplexed HTTP completion over an authenticated peer session.
+/// Format: [tag 0x29][u64 correlation_id][u8 status][u32 payload_len][payload]
+pub(crate) const DIST_HTTP_ROUTE_V2_REPLY: u8 = 0x29;
+
+/// Replicates a retained successful response to continuity peers.
+/// Format: [tag 0x2A][u32 operation_key_len][operation_key][u32 payload_len][payload]
+pub(crate) const DIST_CONTINUITY_RESPONSE: u8 = 0x2A;
+
+/// Checksummed durable SQLite continuity snapshot chunk.
+pub(crate) const DIST_CONTINUITY_STORE_SNAPSHOT: u8 = 0x2B;
+/// Resume acknowledgement for a durable continuity snapshot.
+pub(crate) const DIST_CONTINUITY_STORE_SNAPSHOT_ACK: u8 = 0x2C;
+/// Incremental durable continuity log entry after a snapshot high-water mark.
+pub(crate) const DIST_CONTINUITY_STORE_LOG_ENTRY: u8 = 0x2D;
+/// Two-phase remote owner admission request.
+pub(crate) const DIST_HTTP_RESERVE: u8 = 0x2E;
+/// Accepted or rejected response to a remote owner admission request.
+pub(crate) const DIST_HTTP_RESERVE_REPLY: u8 = 0x2F;
+
+/// Embedded OpenRaft RPC over the authenticated protocol-two control channel.
+/// Format: [tag 0x30][u64 correlation_id][u32 JSON length][JSON request]
+pub(crate) const DIST_CONSENSUS_RPC: u8 = 0x30;
+/// Embedded OpenRaft RPC reply.
+/// Format: [tag 0x31][u64 correlation_id][u32 JSON length][JSON reply]
+pub(crate) const DIST_CONSENSUS_RPC_REPLY: u8 = 0x31;
+
 /// Reserved type_tag for spawn reply messages in mailbox.
 pub(crate) const SPAWN_REPLY_TAG: u64 = u64::MAX - 4;
 
@@ -653,8 +1391,7 @@ fn send_peer_list(session: &Arc<NodeSession>) {
     }
     drop(sessions); // Release read lock before acquiring stream lock
 
-    let mut stream = session.stream.lock().unwrap();
-    let _ = write_msg(&mut *stream, &payload);
+    let _ = session.send(OutboundClass::Control, payload);
 }
 
 /// Handle an incoming DIST_PEER_LIST -- connect to unknown peers on a separate thread.
@@ -738,8 +1475,7 @@ pub(crate) fn send_dist_link(from_pid: crate::actor::ProcessId, to_pid: crate::a
     payload.push(DIST_LINK);
     payload.extend_from_slice(&from_pid.as_u64().to_le_bytes());
     payload.extend_from_slice(&to_pid.as_u64().to_le_bytes());
-    let mut stream = session.stream.lock().unwrap();
-    let _ = write_msg(&mut *stream, &payload);
+    let _ = session.send(OutboundClass::Application, payload);
 }
 
 /// Send DIST_UNLINK to remove a bidirectional link on the remote node.
@@ -770,8 +1506,7 @@ pub(crate) fn send_dist_unlink(from_pid: crate::actor::ProcessId, to_pid: crate:
     payload.push(DIST_UNLINK);
     payload.extend_from_slice(&from_pid.as_u64().to_le_bytes());
     payload.extend_from_slice(&to_pid.as_u64().to_le_bytes());
-    let mut stream = session.stream.lock().unwrap();
-    let _ = write_msg(&mut *stream, &payload);
+    let _ = session.send(OutboundClass::Application, payload);
 }
 
 /// Send DIST_EXIT to propagate an exit signal to a remote linked process.
@@ -806,8 +1541,7 @@ pub(crate) fn send_dist_exit(
     payload.extend_from_slice(&from_pid.as_u64().to_le_bytes());
     payload.extend_from_slice(&to_pid.as_u64().to_le_bytes());
     crate::actor::link::encode_reason(&mut payload, reason);
-    let mut stream = session.stream.lock().unwrap();
-    let _ = write_msg(&mut *stream, &payload);
+    let _ = session.send(OutboundClass::Application, payload);
 }
 
 /// Send DIST_MONITOR_EXIT to notify a remote monitoring process about a local process exit.
@@ -861,6 +1595,13 @@ fn spawn_session_threads(session: &Arc<NodeSession>) {
     let hs_for_heartbeat = Arc::clone(&heartbeat_state);
     let remote_name = session.remote_name.clone();
 
+    let session_for_writer = Arc::clone(session);
+    let writer_name = format!("mesh-node-writer-{}", session.remote_name);
+    std::thread::Builder::new()
+        .name(writer_name)
+        .spawn(move || writer_loop_session(session_for_writer))
+        .expect("failed to spawn node writer thread");
+
     // Reader thread
     let reader_name = format!("mesh-node-reader-{}", session.remote_name);
     std::thread::Builder::new()
@@ -881,6 +1622,152 @@ fn spawn_session_threads(session: &Arc<NodeSession>) {
         .expect("failed to spawn node heartbeat thread");
 }
 
+fn note_outbound_class(class: OutboundClass, consecutive_control_frames: &mut usize) {
+    if matches!(class, OutboundClass::Control) {
+        *consecutive_control_frames = consecutive_control_frames.saturating_add(1);
+    } else {
+        *consecutive_control_frames = 0;
+    }
+}
+
+fn try_next_outbound_frame(
+    receivers: &OutboundReceivers,
+    consecutive_control_frames: &mut usize,
+) -> Option<OutboundFrame> {
+    // Control traffic gets bounded priority, not an unbounded drain. A
+    // reservation followed by an application frame must make progress even
+    // while a synchronized burst keeps the control lane non-empty.
+    let frame = if *consecutive_control_frames >= MAX_CONSECUTIVE_CONTROL_FRAMES {
+        crossbeam_channel::select! {
+            recv(receivers.admission) -> frame => frame.ok(),
+            recv(receivers.application) -> frame => frame.ok(),
+            recv(receivers.continuity) -> frame => frame.ok(),
+            recv(receivers.snapshot) -> frame => frame.ok(),
+            default => receivers.control.try_recv().ok(),
+        }
+    } else {
+        receivers.control.try_recv().ok()
+    }
+    .or_else(|| {
+        crossbeam_channel::select! {
+            recv(receivers.control) -> frame => frame.ok(),
+            recv(receivers.admission) -> frame => frame.ok(),
+            recv(receivers.application) -> frame => frame.ok(),
+            recv(receivers.continuity) -> frame => frame.ok(),
+            recv(receivers.snapshot) -> frame => frame.ok(),
+            default => None,
+        }
+    });
+    if let Some(frame) = &frame {
+        note_outbound_class(frame.class, consecutive_control_frames);
+    }
+    frame
+}
+
+fn wait_for_outbound_frame(
+    receivers: &OutboundReceivers,
+    consecutive_control_frames: &mut usize,
+) -> Option<OutboundFrame> {
+    try_next_outbound_frame(receivers, consecutive_control_frames).or_else(|| {
+        let frame = crossbeam_channel::select! {
+            recv(receivers.control) -> frame => frame.ok(),
+            recv(receivers.admission) -> frame => frame.ok(),
+            recv(receivers.application) -> frame => frame.ok(),
+            recv(receivers.continuity) -> frame => frame.ok(),
+            recv(receivers.snapshot) -> frame => frame.ok(),
+            default(Duration::from_millis(25)) => None,
+        };
+        if let Some(frame) = &frame {
+            note_outbound_class(frame.class, consecutive_control_frames);
+        }
+        frame
+    })
+}
+
+fn release_outbound_frame_bytes(session: &NodeSession, frame: &OutboundFrame) {
+    let length = frame.payload.len();
+    match frame.class {
+        OutboundClass::Control => {
+            session
+                .control_queued_bytes
+                .fetch_sub(length, Ordering::AcqRel);
+        }
+        OutboundClass::Admission => {
+            session
+                .admission_queued_bytes
+                .fetch_sub(length, Ordering::AcqRel);
+        }
+        OutboundClass::Continuity => {
+            session
+                .continuity_queued_bytes
+                .fetch_sub(length, Ordering::AcqRel);
+        }
+        OutboundClass::Application => {
+            session
+                .application_queued_bytes
+                .fetch_sub(length, Ordering::AcqRel);
+        }
+        OutboundClass::Snapshot => {
+            session
+                .snapshot_queued_bytes
+                .fetch_sub(length, Ordering::AcqRel);
+        }
+    }
+}
+
+fn writer_loop_session(session: Arc<NodeSession>) {
+    let Some(receivers) = session.outbound_receivers.lock().unwrap().take() else {
+        session.shutdown.store(true, Ordering::Release);
+        return;
+    };
+    let mut consecutive_control_frames = 0usize;
+    while !session.shutdown.load(Ordering::Acquire) {
+        let Some(first) = wait_for_outbound_frame(&receivers, &mut consecutive_control_frames)
+        else {
+            continue;
+        };
+        let mut batch = Vec::with_capacity(MAX_OUTBOUND_WRITE_BATCH);
+        batch.push(first);
+        while batch.len() < MAX_OUTBOUND_WRITE_BATCH {
+            let Some(frame) = try_next_outbound_frame(&receivers, &mut consecutive_control_frames)
+            else {
+                break;
+            };
+            batch.push(frame);
+        }
+        // A rustls StreamOwned cannot be split into independent reader/writer
+        // halves. Batching amortizes contention with the bounded reader poll
+        // instead of reacquiring this lock for every small protocol frame.
+        let mut written_application = false;
+        let result = {
+            let mut stream = session.stream.lock().unwrap();
+            let mut result = Ok(());
+            for frame in &batch {
+                if let Err(error) = write_msg(&mut *stream, &frame.payload) {
+                    result = Err(error);
+                    break;
+                }
+                written_application |= matches!(frame.class, OutboundClass::Application);
+            }
+            result
+        };
+        for frame in &batch {
+            release_outbound_frame_bytes(&session, frame);
+        }
+        if let Err(error) = result {
+            record_peer_transport_failure(&session.remote_name, Instant::now());
+            eprintln!(
+                "mesh transport: transition=writer_failed remote={} reason={}",
+                session.remote_name, error
+            );
+            session.shutdown.store(true, Ordering::Release);
+            break;
+        } else if written_application {
+            record_peer_transport_success(&session.remote_name);
+        }
+    }
+}
+
 // ---------------------------------------------------------------------------
 // reader_loop_session -- receives messages on a dedicated OS thread
 // ---------------------------------------------------------------------------
@@ -896,11 +1783,14 @@ fn spawn_session_threads(session: &Arc<NodeSession>) {
 /// Uses a 100ms read timeout to allow periodic shutdown checks without
 /// busy-waiting.
 fn reader_loop_session(session: Arc<NodeSession>, heartbeat_state: Arc<Mutex<HeartbeatState>>) {
-    // Set read timeout to 100ms for periodic shutdown checks.
+    // The incremental frame reader preserves partial prefixes/bodies across
+    // socket timeouts, allowing the shared rustls stream lock to be released
+    // frequently for control-plane writes without desynchronizing framing.
     {
         let s = session.stream.lock().unwrap();
-        s.set_read_timeout(Some(Duration::from_millis(100))).ok();
+        s.set_read_timeout(Some(Duration::from_millis(25))).ok();
     }
+    let mut frame_reader = PersistentFrameReader::default();
 
     loop {
         if session.shutdown.load(Ordering::SeqCst) {
@@ -909,11 +1799,27 @@ fn reader_loop_session(session: Arc<NodeSession>, heartbeat_state: Arc<Mutex<Hea
 
         let result = {
             let mut s = session.stream.lock().unwrap();
-            read_dist_msg(&mut *s)
+            let maximum = if session.negotiated_protocol.version >= PROTOCOL_V2 {
+                session.negotiated_protocol.max_frame_bytes
+            } else {
+                MAX_DIST_MSG
+            };
+            frame_reader.read_next(&mut *s, maximum)
         };
 
         match result {
-            Ok(msg) => {
+            Ok(Some(frame)) => {
+                let msg = match decode_session_payload(frame, &session.negotiated_protocol) {
+                    Ok(message) => message,
+                    Err(error) => {
+                        eprintln!(
+                            "mesh transport: transition=protocol_violation remote={} reason={}",
+                            session.remote_name, error
+                        );
+                        session.shutdown.store(true, Ordering::Release);
+                        break;
+                    }
+                };
                 if msg.is_empty() {
                     continue;
                 }
@@ -923,8 +1829,9 @@ fn reader_loop_session(session: Arc<NodeSession>, heartbeat_state: Arc<Mutex<Hea
                             let mut pong = Vec::with_capacity(9);
                             pong.push(HEARTBEAT_PONG);
                             pong.extend_from_slice(&msg[1..9]);
-                            let mut s = session.stream.lock().unwrap();
-                            let _ = write_msg(&mut *s, &pong);
+                            if session.send_heartbeat(pong).is_err() {
+                                session.shutdown.store(true, Ordering::Release);
+                            }
                         }
                     }
                     HEARTBEAT_PONG => {
@@ -1410,6 +2317,8 @@ fn reader_loop_session(session: Arc<NodeSession>, heartbeat_state: Arc<Mutex<Hea
                                         "mesh continuity: transition=sync_rejected remote={} error={}",
                                         session.remote_name, error
                                     );
+                                } else {
+                                    crate::dist::readiness::mark_initial_state_synchronized();
                                 }
                             }
                             Err(error) => {
@@ -1420,18 +2329,39 @@ fn reader_loop_session(session: Arc<NodeSession>, heartbeat_state: Arc<Mutex<Hea
                             }
                         }
                     }
+                    DIST_CONTINUITY_STORE_SNAPSHOT => {
+                        if let Err(error) =
+                            crate::dist::continuity::handle_store_snapshot_chunk(&session, &msg)
+                        {
+                            eprintln!(
+                                "mesh continuity: transition=store_snapshot_rejected remote={} error={}",
+                                session.remote_name, error
+                            );
+                        }
+                    }
+                    DIST_CONTINUITY_STORE_SNAPSHOT_ACK => {
+                        if let Err(error) =
+                            crate::dist::continuity::handle_store_snapshot_ack(&session, &msg)
+                        {
+                            eprintln!(
+                                "mesh continuity: transition=store_snapshot_ack_rejected remote={} error={}",
+                                session.remote_name, error
+                            );
+                        }
+                    }
+                    DIST_CONTINUITY_STORE_LOG_ENTRY => {
+                        if let Err(error) =
+                            crate::dist::continuity::handle_store_log_entry(&session, &msg)
+                        {
+                            eprintln!(
+                                "mesh continuity: transition=store_log_rejected remote={} error={}",
+                                session.remote_name, error
+                            );
+                        }
+                    }
                     DIST_CONTINUITY_PREPARE => {
                         if let Ok((request_id, record)) = decode_continuity_prepare_payload(&msg) {
-                            let result = match node_state() {
-                                Some(state) if state.name == record.replica_node => {
-                                    crate::dist::continuity::continuity_registry()
-                                        .mirror_prepare(record)
-                                        .map(|_| ())
-                                }
-                                Some(_) => Err("replica_prepare_target_mismatch".to_string()),
-                                None => Err("replica_required_unavailable".to_string()),
-                            };
-                            send_continuity_prepare_reply(&session, request_id, &result);
+                            dispatch_continuity_prepare(Arc::clone(&session), request_id, record);
                         }
                     }
                     DIST_CONTINUITY_PREPARE_ACK => {
@@ -1447,11 +2377,144 @@ fn reader_loop_session(session: Arc<NodeSession>, heartbeat_state: Arc<Mutex<Hea
                         }
                     }
                     DIST_OPERATOR_QUERY => {
-                        crate::dist::operator::handle_operator_query_message(&session, &msg);
+                        if autonomous_mode_requested()
+                            && !session.remote_has_role("operator")
+                            && !session.remote_has_role("controller")
+                        {
+                            eprintln!(
+                                "mesh operator: transition=query_rejected remote={} reason=operator_identity_required",
+                                session.remote_name
+                            );
+                        } else {
+                            crate::dist::operator::handle_operator_query_message(&session, &msg);
+                        }
                     }
                     DIST_OPERATOR_REPLY => {
                         crate::dist::operator::handle_operator_reply_message(&session, &msg);
                     }
+                    DIST_CONSENSUS_RPC => {
+                        if autonomous_mode_requested() && !session.remote_has_role("controller") {
+                            eprintln!(
+                                "mesh consensus: transition=rpc_request_rejected remote={} reason=controller_identity_required",
+                                session.remote_name
+                            );
+                            continue;
+                        }
+                        match decode_consensus_rpc_frame(&msg, DIST_CONSENSUS_RPC) {
+                            Ok((correlation_id, request)) => {
+                                crate::dist::consensus::handle_mesh_consensus_rpc(
+                                    Arc::clone(&session),
+                                    correlation_id,
+                                    request,
+                                );
+                            }
+                            Err(error) => eprintln!(
+                            "mesh consensus: transition=rpc_request_rejected remote={} reason={}",
+                            session.remote_name, error
+                        ),
+                        }
+                    }
+                    DIST_CONSENSUS_RPC_REPLY => {
+                        if autonomous_mode_requested() && !session.remote_has_role("controller") {
+                            eprintln!(
+                                "mesh consensus: transition=rpc_reply_rejected remote={} reason=controller_identity_required",
+                                session.remote_name
+                            );
+                            continue;
+                        }
+                        match decode_consensus_rpc_frame(&msg, DIST_CONSENSUS_RPC_REPLY) {
+                            Ok((correlation_id, reply)) => {
+                                if let Some(sender) = session
+                                    .pending_consensus_rpcs
+                                    .lock()
+                                    .unwrap()
+                                    .remove(&correlation_id)
+                                {
+                                    let _ = sender.send(Ok(reply));
+                                }
+                            }
+                            Err(error) => eprintln!(
+                                "mesh consensus: transition=rpc_reply_rejected remote={} reason={}",
+                                session.remote_name, error
+                            ),
+                        }
+                    }
+                    DIST_LOAD_REPORT => {
+                        match crate::dist::routing::NodeLoadReport::decode(&msg[1..]) {
+                            Ok(report) if report.node_id == session.remote_name => {
+                                if let Err(error) = crate::dist::routing::load_report_registry()
+                                    .apply(report, Instant::now())
+                                {
+                                    eprintln!(
+                                        "mesh routing: transition=load_report_rejected remote={} reason={}",
+                                        session.remote_name, error
+                                    );
+                                }
+                            }
+                            Ok(_) => {
+                                eprintln!(
+                                    "mesh routing: transition=load_report_rejected remote={} reason=identity_mismatch",
+                                    session.remote_name
+                                );
+                            }
+                            Err(error) => {
+                                eprintln!(
+                                    "mesh routing: transition=load_report_rejected remote={} reason={}",
+                                    session.remote_name, error
+                                );
+                            }
+                        }
+                    }
+                    DIST_HTTP_ROUTE_V2_QUERY => {
+                        dispatch_http_route_v2_reply(Arc::clone(&session), msg);
+                    }
+                    DIST_HTTP_ROUTE_V2_REPLY => {
+                        if let Ok((correlation_id, result)) = decode_http_route_v2_reply_frame(&msg)
+                        {
+                            if let Some(sender) = session
+                                .pending_http_routes
+                                .lock()
+                                .unwrap()
+                                .remove(&correlation_id)
+                            {
+                                let _ = sender.send(result);
+                            }
+                        }
+                    }
+                    DIST_HTTP_RESERVE => {
+                        handle_http_reserve(&session, &msg);
+                    }
+                    DIST_HTTP_RESERVE_REPLY => {
+                        if let Ok((correlation_id, result)) = decode_http_reserve_reply(&msg) {
+                            if let Some(sender) = session
+                                .pending_http_reservations
+                                .lock()
+                                .unwrap()
+                                .remove(&correlation_id)
+                            {
+                                let _ = sender.send(result);
+                            }
+                        }
+                    }
+                    DIST_CONTINUITY_RESPONSE => match decode_continuity_response_frame(&msg) {
+                        Ok((operation_key, response)) => {
+                            if let Err(error) =
+                                crate::dist::continuity_store::persist_runtime_response(
+                                    &operation_key,
+                                    &response,
+                                )
+                            {
+                                eprintln!(
+                                        "mesh continuity: response_replica_failed operation={} reason={}",
+                                        operation_key, error
+                                    );
+                            }
+                        }
+                        Err(error) => eprintln!(
+                            "mesh continuity: response_replica_rejected remote={} reason={}",
+                            session.remote_name, error
+                        ),
+                    },
                     DIST_ROOM_BROADCAST => {
                         // Wire format: [tag 0x1E][u16 room_name_len][room_name][u32 msg_len][msg]
                         // Deliver to local room members only -- do NOT re-forward to other
@@ -1484,14 +2547,14 @@ fn reader_loop_session(session: Arc<NodeSession>, heartbeat_state: Arc<Mutex<Hea
                     }
                 }
             }
-            Err(e) => {
-                let msg = e.to_string();
-                if msg.contains("timed out")
-                    || msg.contains("WouldBlock")
-                    || msg.contains("temporarily unavailable")
-                {
-                    continue;
-                }
+            Ok(None) => continue,
+            Err(error) => {
+                eprintln!(
+                    "mesh transport: transition=reader_failed remote={} kind={:?} reason={}",
+                    session.remote_name,
+                    error.kind(),
+                    error
+                );
                 session.shutdown.store(true, Ordering::SeqCst);
                 break;
             }
@@ -1517,11 +2580,28 @@ fn heartbeat_loop_session(
     heartbeat_state: Arc<Mutex<HeartbeatState>>,
     session_name: String,
 ) {
+    let load_report_interval =
+        crate::dist::routing::runtime_load_report_interval().max(Duration::from_millis(25));
+    let loop_interval = load_report_interval.min(Duration::from_millis(500));
+    let mut last_load_report = Instant::now()
+        .checked_sub(load_report_interval)
+        .unwrap_or_else(Instant::now);
     loop {
-        std::thread::sleep(Duration::from_millis(500));
+        std::thread::sleep(loop_interval);
 
         if session.shutdown.load(Ordering::SeqCst) {
             break;
+        }
+
+        // A reservation can outlive its query when the application lane is
+        // saturated or a session is replaced between the two frames. Reap it
+        // from the always-running control loop so admission capacity is
+        // released even when no later application message arrives.
+        expire_http_reservations(&session, Instant::now());
+
+        if last_load_report.elapsed() >= load_report_interval {
+            send_load_report(&session);
+            last_load_report = Instant::now();
         }
 
         let mut hs = heartbeat_state.lock().unwrap();
@@ -1542,12 +2622,31 @@ fn heartbeat_loop_session(
             hs.pending_ping_payload = Some(payload);
             drop(hs);
 
-            let mut s = session.stream.lock().unwrap();
-            let _ = write_msg(&mut *s, &ping);
+            if session.send_heartbeat(ping).is_err() {
+                session.shutdown.store(true, Ordering::Release);
+                break;
+            }
         }
     }
 
     cleanup_session_if_current(&session);
+}
+
+fn send_load_report(session: &Arc<NodeSession>) {
+    let Some(state) = node_state() else {
+        return;
+    };
+    crate::dist::routing::refresh_local_routing_telemetry();
+    let handlers: BTreeSet<String> = declared_handler_registry().read().keys().cloned().collect();
+    let report = crate::dist::routing::local_load_report(&state.name, handlers);
+    let _ = crate::dist::routing::load_report_registry().apply(report.clone(), Instant::now());
+    let Ok(encoded) = report.encode() else {
+        return;
+    };
+    let mut payload = Vec::with_capacity(1 + encoded.len());
+    payload.push(DIST_LOAD_REPORT);
+    payload.extend_from_slice(&encoded);
+    let _ = session.send(OutboundClass::Control, payload);
 }
 
 // ---------------------------------------------------------------------------
@@ -1572,6 +2671,8 @@ fn cleanup_session_if_current(session: &Arc<NodeSession>) {
             }
         };
         if let Some(session) = removed {
+            record_peer_transport_failure(&session.remote_name, Instant::now());
+            fail_pending_session_requests(&session, "peer_session_disconnected");
             let node_id = session.node_id;
             let mut id_map = state.node_id_map.write();
             id_map.remove(&node_id);
@@ -1582,8 +2683,7 @@ fn cleanup_session_if_current(session: &Arc<NodeSession>) {
     }
 }
 
-/// Legacy cleanup helper used by tests; removes any session currently stored
-/// for the given remote name.
+/// Test cleanup helper that removes any session stored for the remote name.
 #[allow(dead_code)]
 fn cleanup_session(remote_name: &str) {
     if let Some(state) = NODE_STATE.get() {
@@ -1592,6 +2692,7 @@ fn cleanup_session(remote_name: &str) {
             sessions.remove(remote_name)
         };
         if let Some(session) = removed {
+            fail_pending_session_requests(&session, "peer_session_disconnected");
             let node_id = session.node_id;
             let mut id_map = state.node_id_map.write();
             id_map.remove(&node_id);
@@ -1600,6 +2701,141 @@ fn cleanup_session(remote_name: &str) {
             handle_node_disconnect(remote_name, node_id);
         }
     }
+}
+
+fn fail_pending_session_requests(session: &NodeSession, reason: &str) {
+    for (_, sender) in session.pending_continuity_prepares.lock().unwrap().drain() {
+        let _ = sender.send(Err(reason.to_string()));
+    }
+    for (_, sender) in session.pending_operator_queries.lock().unwrap().drain() {
+        let _ = sender.send(Err(reason.to_string()));
+    }
+    for (_, sender) in session.pending_consensus_rpcs.lock().unwrap().drain() {
+        let _ = sender.send(Err(reason.to_string()));
+    }
+    for (_, sender) in session.pending_http_routes.lock().unwrap().drain() {
+        let _ = sender.send(Err(reason.to_string()));
+    }
+    for (_, sender) in session.pending_http_reservations.lock().unwrap().drain() {
+        let _ = sender.send(Err(reason.to_string()));
+    }
+    session.accepted_http_reservations.lock().unwrap().clear();
+}
+
+fn encode_consensus_rpc_frame(
+    tag: u8,
+    correlation_id: u64,
+    payload: &[u8],
+) -> Result<Vec<u8>, String> {
+    if !matches!(tag, DIST_CONSENSUS_RPC | DIST_CONSENSUS_RPC_REPLY) {
+        return Err("consensus_rpc_tag_invalid".to_string());
+    }
+    let payload_len =
+        u32::try_from(payload.len()).map_err(|_| "consensus_rpc_payload_too_large".to_string())?;
+    let mut frame = Vec::with_capacity(13 + payload.len());
+    frame.push(tag);
+    frame.extend_from_slice(&correlation_id.to_le_bytes());
+    frame.extend_from_slice(&payload_len.to_le_bytes());
+    frame.extend_from_slice(payload);
+    Ok(frame)
+}
+
+fn decode_consensus_rpc_frame(msg: &[u8], expected_tag: u8) -> Result<(u64, Vec<u8>), String> {
+    if !matches!(expected_tag, DIST_CONSENSUS_RPC | DIST_CONSENSUS_RPC_REPLY)
+        || msg.first().copied() != Some(expected_tag)
+        || msg.len() < 13
+    {
+        return Err("consensus_rpc_frame_invalid".to_string());
+    }
+    let correlation_id = u64::from_le_bytes(msg[1..9].try_into().unwrap());
+    if correlation_id == 0 {
+        return Err("consensus_rpc_correlation_invalid".to_string());
+    }
+    let payload_len = u32::from_le_bytes(msg[9..13].try_into().unwrap()) as usize;
+    if msg.len() != 13usize.saturating_add(payload_len) {
+        return Err("consensus_rpc_length_invalid".to_string());
+    }
+    Ok((correlation_id, msg[13..].to_vec()))
+}
+
+/// Send one OpenRaft RPC over an already-authenticated persistent Mesh
+/// session. A dedicated async waiter prevents Raft traffic from blocking the
+/// distribution reader or actor scheduler.
+pub(crate) async fn execute_mesh_consensus_rpc(
+    target: &str,
+    payload: Vec<u8>,
+    snapshot: bool,
+    timeout: Duration,
+) -> Result<Vec<u8>, String> {
+    if target.trim().is_empty() || timeout.is_zero() {
+        return Err("consensus_rpc_target_invalid".to_string());
+    }
+    let state = node_state().ok_or_else(|| "consensus_rpc_node_not_started".to_string())?;
+    let session = state
+        .sessions
+        .read()
+        .get(target)
+        .cloned()
+        .ok_or_else(|| format!("consensus_rpc_session_unavailable:{target}"))?;
+    if !session.negotiated_protocol.autonomous_enabled {
+        return Err(session
+            .negotiated_protocol
+            .disabled_reason
+            .clone()
+            .unwrap_or_else(|| "consensus_rpc_capability_unavailable".to_string()));
+    }
+
+    let correlation_id = CONSENSUS_RPC_REQUEST_ID
+        .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |current| {
+            current.checked_add(1)
+        })
+        .map_err(|_| "consensus_rpc_correlation_exhausted".to_string())?;
+    let frame = encode_consensus_rpc_frame(DIST_CONSENSUS_RPC, correlation_id, &payload)?;
+    let (sender, receiver) = tokio::sync::oneshot::channel();
+    session
+        .pending_consensus_rpcs
+        .lock()
+        .unwrap()
+        .insert(correlation_id, sender);
+    let class = if snapshot {
+        OutboundClass::Snapshot
+    } else {
+        OutboundClass::Control
+    };
+    if let Err(error) = session.send(class, frame) {
+        session
+            .pending_consensus_rpcs
+            .lock()
+            .unwrap()
+            .remove(&correlation_id);
+        return Err(format!("consensus_rpc_write_failed:{error}"));
+    }
+
+    match tokio::time::timeout(timeout, receiver).await {
+        Ok(Ok(result)) => result,
+        Ok(Err(_)) => Err("consensus_rpc_reply_disconnected".to_string()),
+        Err(_) => {
+            session
+                .pending_consensus_rpcs
+                .lock()
+                .unwrap()
+                .remove(&correlation_id);
+            crate::dist::telemetry::runtime_telemetry().record_remote_dispatch_timeout();
+            Err("consensus_rpc_reply_timeout".to_string())
+        }
+    }
+}
+
+pub(crate) fn send_mesh_consensus_rpc_reply(
+    session: &Arc<NodeSession>,
+    correlation_id: u64,
+    payload: &[u8],
+) -> Result<(), String> {
+    if !session.negotiated_protocol.autonomous_enabled {
+        return Err("consensus_rpc_capability_unavailable".to_string());
+    }
+    let frame = encode_consensus_rpc_frame(DIST_CONSENSUS_RPC_REPLY, correlation_id, payload)?;
+    session.send(OutboundClass::Control, frame)
 }
 
 // ---------------------------------------------------------------------------
@@ -1758,9 +2994,27 @@ fn handle_node_disconnect(node_name: &str, node_id: u16) {
         }
     }
 
+    let registry = crate::dist::continuity::continuity_registry();
+    let continuity_affected = registry.snapshot().records.into_iter().any(|record| {
+        record.phase == crate::dist::continuity::ContinuityPhase::Submitted
+            && record.result == crate::dist::continuity::ContinuityResult::Pending
+            && (record.owner_node == node_name
+                || record
+                    .acknowledged_replica_nodes()
+                    .iter()
+                    .any(|replica| replica == node_name))
+    });
+
     // Mark pending continuity records that just lost their owner as recovery-eligible.
     let owner_lost_records = crate::dist::continuity::continuity_registry()
         .mark_owner_loss_records_for_node_loss(node_name);
+
+    let authority = registry.authority_status();
+    if continuity_affected
+        && authority.cluster_role == crate::dist::continuity::ContinuityClusterRole::Primary
+    {
+        maybe_spawn_primary_owner_loss_recovery(node_name);
+    }
 
     // Downgrade mirrored continuity records that just lost replica safety.
     let _ = crate::dist::continuity::continuity_registry()
@@ -1770,11 +3024,8 @@ fn handle_node_disconnect(node_name: &str, node_id: u16) {
     let _ = crate::dist::continuity::continuity_registry()
         .degrade_replication_health_for_node_loss(node_name);
 
-    if !owner_lost_records.is_empty()
-        || crate::dist::continuity::continuity_registry()
-            .authority_status()
-            .cluster_role
-            == crate::dist::continuity::ContinuityClusterRole::Standby
+    if authority.cluster_role == crate::dist::continuity::ContinuityClusterRole::Standby
+        && (!owner_lost_records.is_empty() || continuity_affected)
     {
         maybe_automatic_promote_and_resume(node_name);
     }
@@ -1862,8 +3113,7 @@ fn send_dist_monitor_exit(
     payload.extend_from_slice(&monitoring_pid.as_u64().to_le_bytes());
     payload.extend_from_slice(&monitor_ref.to_le_bytes());
     crate::actor::link::encode_reason(&mut payload, reason);
-    let mut stream = session.stream.lock().unwrap();
-    let _ = write_msg(&mut *stream, &payload);
+    let _ = session.send(OutboundClass::Control, payload);
 }
 
 // ---------------------------------------------------------------------------
@@ -1881,8 +3131,7 @@ fn send_spawn_reply(session: &NodeSession, req_id: u64, status: u8, spawned_loca
     payload.extend_from_slice(&req_id.to_le_bytes());
     payload.push(status);
     payload.extend_from_slice(&spawned_local_id.to_le_bytes());
-    let mut stream = session.stream.lock().unwrap();
-    let _ = write_msg(&mut *stream, &payload);
+    let _ = session.send(OutboundClass::Control, payload);
 }
 
 pub(crate) fn continuity_owner_loss_recovery_eligible(
@@ -1900,6 +3149,646 @@ pub(crate) fn continuity_owner_loss_recovery_eligible(
 
 pub(crate) fn prepare_continuity_replica(
     record: &crate::dist::continuity::ContinuityRecord,
+) -> Result<Vec<String>, String> {
+    let replicas = record_replica_set(record)?;
+    let required_acknowledgements = (record.replication_count / 2) as usize;
+    let mut acknowledged = Vec::new();
+    let mut failed = Vec::new();
+    for replica in replicas {
+        let mut replica_record = record.clone();
+        replica_record.replica_node = replica.clone();
+        match prepare_one_continuity_replica(&replica_record) {
+            Ok(()) => acknowledged.push(replica),
+            Err(reason) => failed.push((replica, reason)),
+        }
+    }
+    if acknowledged.len() < required_acknowledgements
+        && !crate::dist::continuity_store::degraded_durability_enabled()
+    {
+        return Err(format!(
+            "continuity_replica_ack_threshold_unmet:required={required_acknowledgements}:acknowledged={}:failures={failed:?}",
+            acknowledged.len()
+        ));
+    }
+    if !failed.is_empty() {
+        spawn_continuity_replica_repair(record.clone(), failed);
+    }
+    Ok(acknowledged)
+}
+
+fn spawn_continuity_replica_repair(
+    record: crate::dist::continuity::ContinuityRecord,
+    failed: Vec<(String, String)>,
+) {
+    let _ = std::thread::Builder::new()
+        .name("mesh-continuity-replica-repair".to_string())
+        .spawn(move || {
+            for (replica, _) in failed {
+                let mut replica_record = record.clone();
+                replica_record.replica_node = replica.clone();
+                for attempt in 0..5_u32 {
+                    if prepare_one_continuity_replica(&replica_record).is_ok() {
+                        let _ = crate::dist::continuity::continuity_registry()
+                            .acknowledge_replica_node(
+                                &record.request_key,
+                                &record.attempt_id,
+                                &replica,
+                            );
+                        break;
+                    }
+                    let base = 50_u64.saturating_mul(1_u64 << attempt.min(4));
+                    let jitter = rand::random::<u64>() % base.max(1);
+                    std::thread::park_timeout(Duration::from_millis(base + jitter));
+                }
+            }
+        });
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub(crate) struct DrainContinuityOutcome {
+    pub runtime_node_id: String,
+    pub ownership_transfers: u32,
+    pub replica_replacements: u32,
+    pub records_examined: u32,
+}
+
+static ACTIVE_OWNERSHIP_TRANSFERS: OnceLock<Mutex<BTreeMap<String, u32>>> = OnceLock::new();
+static ACTIVE_OWNER_LOSS_RECOVERIES: OnceLock<Mutex<BTreeSet<String>>> = OnceLock::new();
+
+fn active_ownership_transfers() -> &'static Mutex<BTreeMap<String, u32>> {
+    ACTIVE_OWNERSHIP_TRANSFERS.get_or_init(|| Mutex::new(BTreeMap::new()))
+}
+
+fn active_owner_loss_recoveries() -> &'static Mutex<BTreeSet<String>> {
+    ACTIVE_OWNER_LOSS_RECOVERIES.get_or_init(|| Mutex::new(BTreeSet::new()))
+}
+
+fn local_coordinates_node_loss_recovery(disconnected_node: &str) -> bool {
+    let Some(state) = node_state() else {
+        return false;
+    };
+    if let Some(consensus) = crate::dist::consensus::consensus_runtime_snapshot() {
+        return consensus.state == "leader"
+            && consensus.current_leader == Some(consensus.node_id)
+            && consensus.node_name == state.name;
+    }
+    let coordinator = canonical_declared_membership()
+        .into_iter()
+        .find(|node| node != disconnected_node);
+    coordinator.as_deref() == Some(state.name.as_str())
+}
+
+fn log_owner_loss_recovery_failure(disconnected_node: &str, reason: &str) {
+    crate::dist::operator::record_diagnostic(crate::dist::operator::OperatorDiagnosticRecord {
+        transition: "owner_loss_recovery_failed".to_string(),
+        reason: Some(reason.to_string()),
+        metadata: vec![(
+            "disconnected_node".to_string(),
+            disconnected_node.to_string(),
+        )],
+        ..crate::dist::operator::OperatorDiagnosticRecord::default()
+    });
+    eprintln!(
+        "mesh continuity: owner_loss_recovery_failed node={} reason={}",
+        disconnected_node, reason
+    );
+}
+
+fn maybe_spawn_primary_owner_loss_recovery(disconnected_node: &str) {
+    if !local_coordinates_node_loss_recovery(disconnected_node) {
+        return;
+    }
+
+    let disconnected_node = disconnected_node.to_string();
+    {
+        let mut active = active_owner_loss_recoveries().lock().unwrap();
+        if !active.insert(disconnected_node.clone()) {
+            return;
+        }
+    }
+    let recovery_node = disconnected_node.clone();
+    if let Err(error) = std::thread::Builder::new()
+        .name("mesh-continuity-owner-loss".to_string())
+        .spawn(move || {
+            let result = prepare_continuity_for_runtime_node(&recovery_node);
+            active_owner_loss_recoveries()
+                .lock()
+                .unwrap()
+                .remove(&recovery_node);
+            if let Err(reason) = result {
+                log_owner_loss_recovery_failure(&recovery_node, &reason);
+            }
+        })
+    {
+        active_owner_loss_recoveries()
+            .lock()
+            .unwrap()
+            .remove(&disconnected_node);
+        eprintln!(
+            "mesh continuity: owner_loss_recovery_thread_failed node={} reason={}",
+            disconnected_node, error
+        );
+    }
+}
+
+/// Re-drive owner-loss recovery from the fenced controller leader. A
+/// disconnect notification is edge-triggered and can race record replication;
+/// this level-triggered sweep makes recovery converge after either ordering.
+pub(crate) fn recover_pending_owner_losses_if_coordinator() {
+    let records = crate::dist::continuity::continuity_registry()
+        .snapshot()
+        .records;
+    let owners: BTreeSet<String> = records
+        .iter()
+        .filter(|record| {
+            record.cluster_role == crate::dist::continuity::ContinuityClusterRole::Primary
+                && record.phase == crate::dist::continuity::ContinuityPhase::Submitted
+                && record.result == crate::dist::continuity::ContinuityResult::Pending
+                && record.replica_status == crate::dist::continuity::ReplicaStatus::OwnerLost
+        })
+        .map(|record| record.owner_node.clone())
+        .collect();
+    let membership: BTreeSet<String> = canonical_declared_membership().into_iter().collect();
+    // Replica loss can be observed before a replacement leader is elected.
+    // Re-sweep missing configured replica participants from level-triggered
+    // state so that an edge-triggered disconnect cannot leave owner-only work
+    // permanently blocking scale-down.
+    let missing_replicas = missing_continuity_replica_participants(&records, &membership);
+    for participant in owners.union(&missing_replicas) {
+        maybe_spawn_primary_owner_loss_recovery(participant);
+    }
+}
+
+fn missing_continuity_replica_participants(
+    records: &[crate::dist::continuity::ContinuityRecord],
+    membership: &BTreeSet<String>,
+) -> BTreeSet<String> {
+    records
+        .iter()
+        .filter(|record| {
+            record.cluster_role == crate::dist::continuity::ContinuityClusterRole::Primary
+                && record.phase == crate::dist::continuity::ContinuityPhase::Submitted
+                && record.result == crate::dist::continuity::ContinuityResult::Pending
+        })
+        .flat_map(|record| record.replica_nodes().to_vec())
+        .filter(|replica| !membership.contains(replica))
+        .collect()
+}
+
+pub(crate) fn continuity_active_ownership_transfers(node_id: &str) -> u32 {
+    active_ownership_transfers()
+        .lock()
+        .unwrap()
+        .get(node_id)
+        .copied()
+        .unwrap_or(0)
+}
+
+struct OwnershipTransferGuard {
+    node_id: String,
+}
+
+impl OwnershipTransferGuard {
+    fn new(node_id: &str) -> Self {
+        let mut active = active_ownership_transfers().lock().unwrap();
+        let count = active.entry(node_id.to_string()).or_default();
+        *count = count.saturating_add(1);
+        Self {
+            node_id: node_id.to_string(),
+        }
+    }
+}
+
+impl Drop for OwnershipTransferGuard {
+    fn drop(&mut self) {
+        let mut active = active_ownership_transfers().lock().unwrap();
+        if let Some(count) = active.get_mut(&self.node_id) {
+            *count = count.saturating_sub(1);
+            if *count == 0 {
+                active.remove(&self.node_id);
+            }
+        }
+    }
+}
+
+/// Resolves a capacity-provider identifier to the stable Mesh runtime name.
+/// Docker exposes a full container id while Mesh names use its hostname
+/// prefix; exact names always win and ambiguous prefixes fail closed.
+pub(crate) fn resolve_runtime_node_id(identifier: &str) -> Result<String, String> {
+    let identifier = identifier.trim();
+    if identifier.is_empty() {
+        return Err("runtime_node_identifier_missing".to_string());
+    }
+    let membership = canonical_declared_membership();
+    if membership.iter().any(|node| node == identifier) {
+        return Ok(identifier.to_string());
+    }
+    let prefix = &identifier[..identifier.len().min(12)];
+    let matches: Vec<_> = membership
+        .into_iter()
+        .filter(|node| node.starts_with(prefix))
+        .collect();
+    match matches.as_slice() {
+        [node] => Ok(node.clone()),
+        [] => Err(format!("runtime_node_not_found:{identifier}")),
+        _ => Err(format!("runtime_node_identifier_ambiguous:{identifier}")),
+    }
+}
+
+/// Cooperatively removes a node from every active continuity record before a
+/// capacity driver may terminate it. Replica preparation happens before the
+/// compare-and-swap record update. Ownership changes allocate a new attempt id
+/// which fences late completion by the draining owner.
+pub(crate) fn prepare_continuity_for_drain(
+    identifier: &str,
+) -> Result<DrainContinuityOutcome, String> {
+    let runtime_node_id = resolve_runtime_node_id(identifier)?;
+    prepare_continuity_for_runtime_node(&runtime_node_id)
+}
+
+fn continuity_replacement_superseded(request_key: &str, expected_attempt_id: &str) -> bool {
+    crate::dist::continuity::continuity_registry()
+        .record(request_key)
+        .is_none_or(|current| {
+            current.attempt_id != expected_attempt_id
+                || current.phase != crate::dist::continuity::ContinuityPhase::Submitted
+                || current.result != crate::dist::continuity::ContinuityResult::Pending
+        })
+}
+
+fn dispatch_recovered_http_record(
+    record: crate::dist::continuity::ContinuityRecord,
+) -> Result<(), String> {
+    let request_key = record.request_key.clone();
+    let attempt_id = record.attempt_id.clone();
+    let thread_request_key = request_key.clone();
+    let thread_attempt_id = attempt_id.clone();
+    std::thread::Builder::new()
+        .name("mesh-continuity-http-recovery".to_string())
+        .spawn(move || {
+            let result = (|| -> Result<Vec<u8>, String> {
+                let entry = lookup_declared_handler(record.declared_handler_runtime_name())
+                    .ok_or_else(|| {
+                        format!(
+                            "continuity_recovery_handler_unavailable:{}",
+                            record.declared_handler_runtime_name()
+                        )
+                    })?;
+                if record.owner_node == node_state().map_or("", |state| state.name.as_str()) {
+                    execute_clustered_http_route_locally(
+                        entry.fn_ptr.0,
+                        &record.request_key,
+                        &record.attempt_id,
+                        record.request_payload(),
+                    )
+                } else {
+                    let state = node_state()
+                        .ok_or_else(|| "continuity_recovery_node_not_started".to_string())?;
+                    execute_clustered_http_route_remote(
+                        &record.owner_node,
+                        &state.cookie,
+                        record.declared_handler_runtime_name(),
+                        &record.request_key,
+                        &record.attempt_id,
+                        record.request_payload(),
+                    )
+                }
+            })();
+            match result {
+                Ok(response) => {
+                    retain_and_broadcast_continuity_response(&thread_request_key, &response)
+                }
+                Err(reason)
+                    if !continuity_replacement_superseded(
+                        &thread_request_key,
+                        &thread_attempt_id,
+                    ) =>
+                {
+                    reject_clustered_http_route_attempt(
+                        &thread_request_key,
+                        &thread_attempt_id,
+                        &reason,
+                    );
+                    log_owner_loss_recovery_failure(&thread_request_key, &reason);
+                }
+                Err(_) => {}
+            }
+        })
+        .map(|_| ())
+        .map_err(|error| {
+            let reason = format!("continuity_recovery_thread_failed:{error}");
+            reject_clustered_http_route_attempt(&request_key, &attempt_id, &reason);
+            reason
+        })
+}
+
+fn prepare_continuity_for_runtime_node(
+    runtime_node_id: &str,
+) -> Result<DrainContinuityOutcome, String> {
+    use crate::dist::continuity::{
+        ContinuityPhase, ContinuityResult, ReplicaStatus, ReplicationHealth,
+    };
+
+    let runtime_node_id = runtime_node_id.to_string();
+    let _transfer_guard = OwnershipTransferGuard::new(&runtime_node_id);
+    let membership: Vec<String> = canonical_declared_membership()
+        .into_iter()
+        .filter(|node| node != &runtime_node_id)
+        .collect();
+    let registry = crate::dist::continuity::continuity_registry();
+    let active: Vec<_> = registry
+        .snapshot()
+        .records
+        .into_iter()
+        .filter(|record| {
+            record.phase == ContinuityPhase::Submitted
+                && record.result == ContinuityResult::Pending
+                && (record.owner_node == runtime_node_id
+                    || record
+                        .acknowledged_replica_nodes()
+                        .iter()
+                        .any(|node| node == &runtime_node_id)
+                    || record
+                        .replica_nodes()
+                        .iter()
+                        .any(|node| node == &runtime_node_id))
+        })
+        .collect();
+    let mut outcome = DrainContinuityOutcome {
+        runtime_node_id: runtime_node_id.clone(),
+        records_examined: active.len().try_into().unwrap_or(u32::MAX),
+        ..DrainContinuityOutcome::default()
+    };
+
+    'records: for record in active {
+        let previous_attempt_id = record.attempt_id.clone();
+        if continuity_replacement_superseded(&record.request_key, &previous_attempt_id) {
+            continue;
+        }
+        let owner_transfer = record.owner_node == runtime_node_id;
+        if owner_transfer && record.declared_handler_runtime_name().is_empty() {
+            return Err(format!(
+                "continuity_drain_untransferable_active_record:{}",
+                record.request_key
+            ));
+        }
+        let required: usize = record
+            .replication_count
+            .saturating_sub(1)
+            .try_into()
+            .map_err(|_| "replication_count_exceeds_platform_limit".to_string())?;
+        let previous_replicas = record.acknowledged_replica_nodes().to_vec();
+        let reports = crate::dist::routing::load_report_registry();
+        let now = Instant::now();
+        let policy = crate::dist::routing::runtime_routing_policy();
+        let new_owner = if owner_transfer {
+            let mut eligible_workers: Vec<String> = membership
+                .iter()
+                .filter(|node| {
+                    reports
+                        .report(node, now, policy.load_report_ttl)
+                        .is_some_and(|report| {
+                            report.state.routing_eligible()
+                                && report
+                                    .roles
+                                    .contains(crate::dist::telemetry::NodeRoles::WORKER)
+                                && report
+                                    .handlers
+                                    .contains(record.declared_handler_runtime_name())
+                        })
+                })
+                .cloned()
+                .collect();
+            eligible_workers.sort_by_key(|node| {
+                (
+                    !previous_replicas.contains(node),
+                    stable_hash_u64(node),
+                    node.clone(),
+                )
+            });
+            eligible_workers
+                .into_iter()
+                .next()
+                .ok_or_else(|| "continuity_drain_owner_transfer_unavailable".to_string())?
+        } else {
+            record.owner_node.clone()
+        };
+
+        let mut replica_nodes: Vec<String> = previous_replicas
+            .iter()
+            .filter(|node| {
+                *node != &runtime_node_id && *node != &new_owner && membership.contains(*node)
+            })
+            .cloned()
+            .collect();
+        let mut candidates: Vec<_> = membership
+            .iter()
+            .filter(|node| *node != &new_owner && !replica_nodes.contains(*node))
+            .filter(|node| {
+                reports
+                    .report(node, now, policy.load_report_ttl)
+                    .is_some_and(|report| {
+                        report.state.routing_eligible()
+                            && (record.declared_handler_runtime_name().is_empty()
+                                || report
+                                    .handlers
+                                    .contains(record.declared_handler_runtime_name()))
+                    })
+            })
+            .cloned()
+            .collect();
+        candidates.sort();
+        for candidate in candidates {
+            if replica_nodes.len() >= required {
+                break;
+            }
+            replica_nodes.push(candidate);
+        }
+        if replica_nodes.len() != required {
+            return Err(format!(
+                "continuity_drain_replica_capacity_unavailable:request={}:required={required}:available={}",
+                crate::dist::continuity::request_key_fingerprint(&record.request_key),
+                replica_nodes.len()
+            ));
+        }
+
+        let (watermark, next_attempt_id) = if owner_transfer {
+            registry.reserve_transfer_attempt()
+        } else {
+            (registry.next_attempt_token(), previous_attempt_id.clone())
+        };
+        let mut next = record.clone();
+        next.record_version = next.record_version.saturating_add(1);
+        next.owner_node = new_owner.clone();
+        next.replica_nodes = replica_nodes.clone();
+        next.acknowledged_replica_nodes.clear();
+        next.replica_node = replica_nodes.first().cloned().unwrap_or_default();
+        next.attempt_id = next_attempt_id;
+        next.replica_status = if replica_nodes.is_empty() {
+            ReplicaStatus::Unassigned
+        } else {
+            ReplicaStatus::Preparing
+        };
+        next.replication_health = if replica_nodes.is_empty() {
+            ReplicationHealth::LocalOnly
+        } else {
+            ReplicationHealth::Unavailable
+        };
+        next.execution_node.clear();
+        next.error.clear();
+
+        let must_prepare_all = owner_transfer;
+        for replica in &replica_nodes {
+            if !must_prepare_all && previous_replicas.contains(replica) {
+                continue;
+            }
+            let mut replica_record = next.clone();
+            replica_record.replica_node = replica.clone();
+            if let Err(reason) = prepare_one_continuity_replica(&replica_record) {
+                if continuity_replacement_superseded(&record.request_key, &previous_attempt_id) {
+                    continue 'records;
+                }
+                return Err(reason);
+            }
+        }
+        if !replica_nodes.is_empty() {
+            next.replica_status = ReplicaStatus::Mirrored;
+            next.acknowledged_replica_nodes = replica_nodes.clone();
+        }
+        let committed = match registry.commit_drain_replacement(&previous_attempt_id, next) {
+            Ok(committed) => committed,
+            Err(_reason)
+                if continuity_replacement_superseded(&record.request_key, &previous_attempt_id) =>
+            {
+                continue
+            }
+            Err(reason) => return Err(reason),
+        };
+        if owner_transfer {
+            if !committed.request_payload().is_empty() {
+                dispatch_recovered_http_record(committed.clone())?;
+            } else {
+                let entry = lookup_declared_handler(committed.declared_handler_runtime_name())
+                    .ok_or_else(|| {
+                        format!(
+                            "continuity_drain_handler_unavailable:{}",
+                            committed.declared_handler_runtime_name()
+                        )
+                    })?;
+                if committed.owner_node == node_state().map_or("", |state| state.name.as_str()) {
+                    spawn_declared_work_local(
+                        &entry,
+                        &committed.request_key,
+                        &committed.attempt_id,
+                    )?;
+                } else {
+                    spawn_declared_work_remote(
+                        &committed.owner_node,
+                        &entry,
+                        &committed.request_key,
+                        &committed.attempt_id,
+                    )?;
+                }
+            }
+            outcome.ownership_transfers = outcome.ownership_transfers.saturating_add(1);
+        } else {
+            outcome.replica_replacements = outcome.replica_replacements.saturating_add(1);
+        }
+        let _ = watermark;
+    }
+
+    crate::dist::operator::record_diagnostic(crate::dist::operator::OperatorDiagnosticRecord {
+        transition: "drain_continuity_prepared".to_string(),
+        reason: Some(runtime_node_id.clone()),
+        metadata: vec![
+            (
+                "ownership_transfers".to_string(),
+                outcome.ownership_transfers.to_string(),
+            ),
+            (
+                "replica_replacements".to_string(),
+                outcome.replica_replacements.to_string(),
+            ),
+            (
+                "records_examined".to_string(),
+                outcome.records_examined.to_string(),
+            ),
+        ],
+        ..crate::dist::operator::OperatorDiagnosticRecord::default()
+    });
+    Ok(outcome)
+}
+
+pub(crate) fn record_replica_set(
+    record: &crate::dist::continuity::ContinuityRecord,
+) -> Result<Vec<String>, String> {
+    let required: usize = record
+        .replication_count
+        .saturating_sub(1)
+        .try_into()
+        .map_err(|_| "replication_count_exceeds_platform_limit".to_string())?;
+    if required == 0 {
+        return Ok(Vec::new());
+    }
+    let recorded = record.canonical_replica_nodes();
+    if recorded.len() == required {
+        return Ok(recorded);
+    }
+    if !recorded.is_empty() {
+        return Err(format!(
+            "continuity_replica_set_size_mismatch:required={required}:recorded={}",
+            recorded.len()
+        ));
+    }
+    select_continuity_replica_set(&record.owner_node, record.replication_count)
+}
+
+pub(crate) fn select_continuity_replica_set(
+    owner_node: &str,
+    replication_count: u64,
+) -> Result<Vec<String>, String> {
+    let required: usize = replication_count
+        .saturating_sub(1)
+        .try_into()
+        .map_err(|_| "replication_count_exceeds_platform_limit".to_string())?;
+    if required == 0 {
+        return Ok(Vec::new());
+    }
+    let membership = canonical_declared_membership();
+    if membership.len() <= required {
+        return Err(format!(
+            "replica_capacity_unavailable:required={required}:available={}",
+            membership.len().saturating_sub(1)
+        ));
+    }
+    let now = Instant::now();
+    let state = node_state().ok_or_else(|| "continuity_node_not_started".to_string())?;
+    let reports: Vec<_> = membership
+        .iter()
+        .filter(|node| {
+            if *node == &state.name {
+                return true;
+            }
+            state
+                .sessions
+                .read()
+                .get(*node)
+                .is_some_and(|session| !session.shutdown.load(Ordering::Acquire))
+                && !peer_circuit_open(node, now)
+        })
+        .filter_map(|node| {
+            crate::dist::routing::load_report_registry().report(
+                node,
+                now,
+                crate::dist::routing::runtime_routing_policy().load_report_ttl,
+            )
+        })
+        .collect();
+    crate::dist::routing::select_record_replicas(owner_node, required + 1, &reports)
+}
+
+fn prepare_one_continuity_replica(
+    record: &crate::dist::continuity::ContinuityRecord,
 ) -> Result<(), String> {
     let state = node_state().ok_or_else(|| "replica_required_unavailable".to_string())?;
     if state.name == record.replica_node {
@@ -1913,7 +3802,7 @@ pub(crate) fn prepare_continuity_replica(
 
     let request_id = CONTINUITY_PREPARE_REQUEST_ID.fetch_add(1, Ordering::Relaxed);
     let payload = encode_continuity_prepare_payload(request_id, record)?;
-    let (tx, rx) = mpsc::channel();
+    let (tx, rx) = crate::actor::cooperative_channel();
     session
         .pending_continuity_prepares
         .lock()
@@ -1921,8 +3810,7 @@ pub(crate) fn prepare_continuity_replica(
         .insert(request_id, tx);
 
     {
-        let mut stream = session.stream.lock().unwrap();
-        if write_msg(&mut *stream, &payload).is_err() {
+        if session.send(OutboundClass::Continuity, payload).is_err() {
             session
                 .pending_continuity_prepares
                 .lock()
@@ -1947,7 +3835,7 @@ pub(crate) fn prepare_continuity_replica(
             );
             eprintln!(
                 "mesh continuity: transition=prepare_write_failed request_key={} attempt_id={} cluster_role={} promotion_epoch={} replication_health={} replica={} error={}",
-                record.request_key,
+                crate::dist::continuity::request_key_fingerprint(&record.request_key),
                 record.attempt_id,
                 record.cluster_role.as_str(),
                 record.promotion_epoch,
@@ -1959,7 +3847,7 @@ pub(crate) fn prepare_continuity_replica(
         }
     }
 
-    match rx.recv_timeout(Duration::from_secs(5)) {
+    match crate::actor::cooperative_recv_timeout(&rx, Duration::from_secs(5)) {
         Ok(result) => result,
         Err(mpsc::RecvTimeoutError::Timeout) => {
             session
@@ -1967,6 +3855,7 @@ pub(crate) fn prepare_continuity_replica(
                 .lock()
                 .unwrap()
                 .remove(&request_id);
+            crate::dist::telemetry::runtime_telemetry().record_remote_dispatch_timeout();
             let error = "replica_prepare_timeout".to_string();
             crate::dist::operator::record_diagnostic(
                 crate::dist::operator::OperatorDiagnosticRecord {
@@ -1986,7 +3875,7 @@ pub(crate) fn prepare_continuity_replica(
             );
             eprintln!(
                 "mesh continuity: transition=prepare_timeout request_key={} attempt_id={} cluster_role={} promotion_epoch={} replication_health={} replica={} error={}",
-                record.request_key,
+                crate::dist::continuity::request_key_fingerprint(&record.request_key),
                 record.attempt_id,
                 record.cluster_role.as_str(),
                 record.promotion_epoch,
@@ -2062,6 +3951,57 @@ fn decode_continuity_prepare_payload(
     Ok((request_id, record))
 }
 
+fn continuity_prepare_dispatcher() -> &'static crossbeam_channel::Sender<ContinuityPrepareTask> {
+    CONTINUITY_PREPARE_DISPATCHER.get_or_init(|| {
+        let (sender, receiver) =
+            crossbeam_channel::bounded::<ContinuityPrepareTask>(CONTINUITY_PREPARE_DISPATCH_ITEMS);
+        for worker in 0..CONTINUITY_PREPARE_WORKERS {
+            let receiver = receiver.clone();
+            std::thread::Builder::new()
+                .name(format!("mesh-continuity-prepare-{worker}"))
+                .spawn(move || {
+                    while let Ok(task) = receiver.recv() {
+                        let result = match node_state() {
+                            Some(state) if state.name == task.record.replica_node => {
+                                crate::dist::continuity::continuity_registry()
+                                    .mirror_prepare(task.record)
+                                    .map(|_| ())
+                            }
+                            Some(_) => Err("replica_prepare_target_mismatch".to_string()),
+                            None => Err("replica_required_unavailable".to_string()),
+                        };
+                        send_continuity_prepare_reply(&task.session, task.request_id, &result);
+                    }
+                })
+                .expect("failed to spawn continuity prepare worker");
+        }
+        sender
+    })
+}
+
+fn dispatch_continuity_prepare(
+    session: Arc<NodeSession>,
+    request_id: u64,
+    record: crate::dist::continuity::ContinuityRecord,
+) {
+    let task = ContinuityPrepareTask {
+        session,
+        request_id,
+        record,
+    };
+    if let Err(error) = continuity_prepare_dispatcher().try_send(task) {
+        let (task, reason) = match error {
+            crossbeam_channel::TrySendError::Full(task) => {
+                (task, "replica_prepare_overloaded".to_string())
+            }
+            crossbeam_channel::TrySendError::Disconnected(task) => {
+                (task, "replica_required_unavailable".to_string())
+            }
+        };
+        send_continuity_prepare_reply(&task.session, task.request_id, &Err(reason));
+    }
+}
+
 fn encode_continuity_prepare_ack(request_id: u64, result: &Result<(), String>) -> Vec<u8> {
     let reason = match result {
         Ok(()) => "",
@@ -2103,8 +4043,7 @@ fn send_continuity_prepare_reply(
     result: &Result<(), String>,
 ) {
     let payload = encode_continuity_prepare_ack(request_id, result);
-    let mut stream = session.stream.lock().unwrap();
-    let _ = write_msg(&mut *stream, &payload);
+    let _ = session.send(OutboundClass::Continuity, payload);
 }
 
 /// Send a DIST_LINK using a known session (no PID-based routing).
@@ -2122,8 +4061,7 @@ fn send_dist_link_via_session(
     payload.push(DIST_LINK);
     payload.extend_from_slice(&from_pid.as_u64().to_le_bytes());
     payload.extend_from_slice(&to_pid.as_u64().to_le_bytes());
-    let mut stream = session.stream.lock().unwrap();
-    let _ = write_msg(&mut *stream, &payload);
+    let _ = session.send(OutboundClass::Application, payload);
 }
 
 // ---------------------------------------------------------------------------
@@ -2188,16 +4126,95 @@ const MAX_DIST_MSG: u32 = 16 * 1024 * 1024;
 /// allows full-size actor messages to be transmitted between nodes, while
 /// still preventing unbounded allocations from malicious or buggy peers.
 pub(crate) fn read_dist_msg(stream: &mut impl Read) -> io::Result<Vec<u8>> {
+    read_dist_msg_bounded(stream, MAX_DIST_MSG)
+}
+
+#[derive(Default)]
+struct PersistentFrameReader {
+    length: [u8; 4],
+    length_read: usize,
+    payload: Vec<u8>,
+    payload_read: usize,
+}
+
+impl PersistentFrameReader {
+    fn read_next(
+        &mut self,
+        stream: &mut impl Read,
+        max_frame_bytes: u32,
+    ) -> io::Result<Option<Vec<u8>>> {
+        while self.length_read < self.length.len() {
+            match stream.read(&mut self.length[self.length_read..]) {
+                Ok(0) => return Err(io::ErrorKind::UnexpectedEof.into()),
+                Ok(read) => self.length_read += read,
+                Err(error) if error.kind() == io::ErrorKind::Interrupted => continue,
+                Err(error)
+                    if matches!(
+                        error.kind(),
+                        io::ErrorKind::WouldBlock | io::ErrorKind::TimedOut
+                    ) =>
+                {
+                    return Ok(None);
+                }
+                Err(error) => return Err(error),
+            }
+        }
+
+        if self.payload.is_empty() && self.payload_read == 0 {
+            let length = u32::from_le_bytes(self.length);
+            let maximum = max_frame_bytes.min(MAX_DIST_MSG);
+            if length > maximum {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    format!("dist message too large: {length} bytes (max {maximum})"),
+                ));
+            }
+            if length == 0 {
+                self.reset();
+                return Ok(Some(Vec::new()));
+            }
+            self.payload.resize(length as usize, 0);
+        }
+
+        while self.payload_read < self.payload.len() {
+            match stream.read(&mut self.payload[self.payload_read..]) {
+                Ok(0) => return Err(io::ErrorKind::UnexpectedEof.into()),
+                Ok(read) => self.payload_read += read,
+                Err(error) if error.kind() == io::ErrorKind::Interrupted => continue,
+                Err(error)
+                    if matches!(
+                        error.kind(),
+                        io::ErrorKind::WouldBlock | io::ErrorKind::TimedOut
+                    ) =>
+                {
+                    return Ok(None);
+                }
+                Err(error) => return Err(error),
+            }
+        }
+
+        let frame = std::mem::take(&mut self.payload);
+        self.reset();
+        Ok(Some(frame))
+    }
+
+    fn reset(&mut self) {
+        self.length = [0; 4];
+        self.length_read = 0;
+        self.payload.clear();
+        self.payload_read = 0;
+    }
+}
+
+fn read_dist_msg_bounded(stream: &mut impl Read, max_frame_bytes: u32) -> io::Result<Vec<u8>> {
     let mut len_buf = [0u8; 4];
     stream.read_exact(&mut len_buf)?;
     let len = u32::from_le_bytes(len_buf);
-    if len > MAX_DIST_MSG {
+    let maximum = max_frame_bytes.min(MAX_DIST_MSG);
+    if len > maximum {
         return Err(io::Error::new(
             io::ErrorKind::InvalidData,
-            format!(
-                "dist message too large: {} bytes (max {})",
-                len, MAX_DIST_MSG
-            ),
+            format!("dist message too large: {} bytes (max {})", len, maximum),
         ));
     }
     let mut buf = vec![0u8; len as usize];
@@ -2217,9 +4234,28 @@ fn generate_challenge() -> [u8; 32] {
 /// Compute HMAC-SHA256(cookie, challenge) as the challenge response.
 ///
 /// Follows the pattern from `db/pg.rs` SCRAM-SHA-256 authentication.
+fn cluster_cookie_keys(cookie: &str) -> impl Iterator<Item = &str> {
+    cookie
+        .split(',')
+        .map(str::trim)
+        .filter(|key| !key.is_empty())
+}
+
+fn validate_cluster_cookie_strength(cookie: &str, autonomous: bool) -> Result<(), String> {
+    let keys = cluster_cookie_keys(cookie).collect::<Vec<_>>();
+    if keys.is_empty() {
+        return Err("cluster_cookie_missing".to_string());
+    }
+    if autonomous && keys.iter().any(|key| key.len() < 32) {
+        return Err("autonomous_cluster_cookie_too_short".to_string());
+    }
+    Ok(())
+}
+
 fn compute_response(cookie: &str, challenge: &[u8; 32]) -> [u8; 32] {
+    let signing_key = cluster_cookie_keys(cookie).next().unwrap_or(cookie);
     let mut mac =
-        HmacSha256::new_from_slice(cookie.as_bytes()).expect("HMAC can take key of any size");
+        HmacSha256::new_from_slice(signing_key.as_bytes()).expect("HMAC can take key of any size");
     mac.update(challenge);
     let result = mac.finalize().into_bytes();
     let mut out = [0u8; 32];
@@ -2232,10 +4268,12 @@ fn compute_response(cookie: &str, challenge: &[u8; 32]) -> [u8; 32] {
 /// Uses `Mac::verify_slice` for constant-time comparison, preventing
 /// timing attacks (research pitfall 3).
 fn verify_response(cookie: &str, challenge: &[u8; 32], response: &[u8; 32]) -> bool {
-    let mut mac =
-        HmacSha256::new_from_slice(cookie.as_bytes()).expect("HMAC can take key of any size");
-    mac.update(challenge);
-    mac.verify_slice(response).is_ok()
+    cluster_cookie_keys(cookie).any(|key| {
+        let mut mac =
+            HmacSha256::new_from_slice(key.as_bytes()).expect("HMAC can take key of any size");
+        mac.update(challenge);
+        mac.verify_slice(response).is_ok()
+    })
 }
 
 // ---------------------------------------------------------------------------
@@ -2255,15 +4293,21 @@ fn send_named_message(
     creation: u8,
 ) -> Result<(), String> {
     let name_bytes = name.as_bytes();
-    let mut payload = Vec::with_capacity(1 + 2 + name_bytes.len() + 1);
+    let hello = local_protocol_hello_with_identity(name)?.encode()?;
+    let mut payload = Vec::with_capacity(1 + 2 + name_bytes.len() + 1 + hello.len());
     payload.push(tag);
     payload.extend_from_slice(&(name_bytes.len() as u16).to_le_bytes());
     payload.extend_from_slice(name_bytes);
     payload.push(creation);
+    payload.extend_from_slice(&hello);
     write_msg(stream, &payload).map_err(|e| format!("{label} failed: {e}"))
 }
 
-fn decode_named_message(msg: &[u8], expected_tag: u8, label: &str) -> Result<(String, u8), String> {
+fn decode_named_message(
+    msg: &[u8],
+    expected_tag: u8,
+    label: &str,
+) -> Result<(String, u8, ProtocolHello), String> {
     if msg.is_empty() || msg[0] != expected_tag {
         return Err(format!(
             "expected {label} tag ({expected_tag}), got {}",
@@ -2281,11 +4325,17 @@ fn decode_named_message(msg: &[u8], expected_tag: u8, label: &str) -> Result<(St
         .map_err(|_| "invalid UTF-8 in node name".to_string())?
         .to_string();
     let creation = msg[3 + name_len];
-    Ok((name, creation))
+    let hello_start = 3 + name_len + 1;
+    let hello = if msg.len() == hello_start {
+        protocol_one_hello()
+    } else {
+        ProtocolHello::decode(&msg[hello_start..])?
+    };
+    Ok((name, creation, hello))
 }
 
 /// Receive and parse NAME message. Returns (name, creation).
-fn recv_name(stream: &mut impl Read) -> Result<(String, u8), String> {
+fn recv_name(stream: &mut impl Read) -> Result<(String, u8, ProtocolHello), String> {
     let msg = read_msg(stream).map_err(|e| format!("recv_name failed: {e}"))?;
     decode_named_message(&msg, HANDSHAKE_NAME, "HANDSHAKE_NAME")
 }
@@ -2316,12 +4366,14 @@ fn send_challenge_message(
     challenge: &[u8; 32],
 ) -> Result<(), String> {
     let name_bytes = name.as_bytes();
-    let mut payload = Vec::with_capacity(1 + 2 + name_bytes.len() + 1 + 32);
+    let hello = local_protocol_hello_with_identity(name)?.encode()?;
+    let mut payload = Vec::with_capacity(1 + 2 + name_bytes.len() + 1 + 32 + hello.len());
     payload.push(tag);
     payload.extend_from_slice(&(name_bytes.len() as u16).to_le_bytes());
     payload.extend_from_slice(name_bytes);
     payload.push(creation);
     payload.extend_from_slice(challenge);
+    payload.extend_from_slice(&hello);
     write_msg(stream, &payload).map_err(|e| format!("{label} failed: {e}"))
 }
 
@@ -2329,7 +4381,7 @@ fn decode_challenge_message(
     msg: &[u8],
     expected_tag: u8,
     label: &str,
-) -> Result<(String, u8, [u8; 32]), String> {
+) -> Result<(String, u8, [u8; 32], ProtocolHello), String> {
     if msg.is_empty() || msg[0] != expected_tag {
         return Err(format!(
             "expected {label} tag ({expected_tag}), got {}",
@@ -2349,11 +4401,17 @@ fn decode_challenge_message(
     let creation = msg[3 + name_len];
     let mut challenge = [0u8; 32];
     challenge.copy_from_slice(&msg[3 + name_len + 1..3 + name_len + 1 + 32]);
-    Ok((name, creation, challenge))
+    let hello_start = 3 + name_len + 1 + 32;
+    let hello = if msg.len() == hello_start {
+        protocol_one_hello()
+    } else {
+        ProtocolHello::decode(&msg[hello_start..])?
+    };
+    Ok((name, creation, challenge, hello))
 }
 
 /// Receive and parse CHALLENGE message. Returns (name, creation, challenge).
-fn recv_challenge(stream: &mut impl Read) -> Result<(String, u8, [u8; 32]), String> {
+fn recv_challenge(stream: &mut impl Read) -> Result<(String, u8, [u8; 32], ProtocolHello), String> {
     let msg = read_msg(stream).map_err(|e| format!("recv_challenge failed: {e}"))?;
     decode_challenge_message(&msg, HANDSHAKE_CHALLENGE, "HANDSHAKE_CHALLENGE")
 }
@@ -2477,19 +4535,82 @@ fn validate_advertised_node_name(name: &str) -> Result<(), String> {
 /// 4. Acceptor sends ACK (response to initiator's challenge)
 ///
 /// Returns `(remote_name, remote_creation)` on success, or an error string.
+fn validate_remote_node_identity(
+    remote_name: &str,
+    remote_hello: &ProtocolHello,
+) -> Result<Option<super::identity_claim::NodeIdentityClaim>, String> {
+    if remote_hello.identity_envelope.is_empty() {
+        return if autonomous_mode_requested() {
+            Err("autonomous_peer_missing_signed_identity".to_string())
+        } else {
+            Ok(None)
+        };
+    }
+    let cluster_id = std::env::var("MESH_CLUSTER_ID")
+        .map_err(|_| "node_identity_cluster_missing".to_string())?;
+    let verify_keys = std::env::var(super::identity_claim::IDENTITY_VERIFY_KEYS_ENV)
+        .map_err(|_| "node_identity_verify_keys_missing".to_string())?;
+    let claim = super::identity_claim::decode_and_verify_identity(
+        &remote_hello.identity_envelope,
+        &verify_keys,
+        &cluster_id,
+        remote_name,
+        super::identity_claim::unix_millis(),
+    )?;
+    let voters = std::env::var("MESH_CONTROLLER_VOTERS").unwrap_or_default();
+    let configured_voter = voters
+        .split(',')
+        .filter_map(|entry| entry.trim().split_once('|'));
+    let authenticated_name = if is_transient_operator_client(remote_name)
+        && claim.roles.iter().any(|role| role == "controller")
+    {
+        claim.advertised_name.as_str()
+    } else {
+        remote_name
+    };
+    let voter_binding_matches = configured_voter
+        .clone()
+        .any(|(stable_id, name)| stable_id == claim.stable_node_id && name == authenticated_name);
+    let name_is_voter = configured_voter
+        .clone()
+        .any(|(_, name)| name == authenticated_name);
+    if claim.roles.iter().any(|role| role == "controller") {
+        if !voter_binding_matches {
+            return Err("controller_identity_not_bound_to_voter".to_string());
+        }
+    } else if name_is_voter {
+        return Err("non_controller_claimed_voter_name".to_string());
+    }
+    let operator = claim.roles.iter().any(|role| role == "operator");
+    let controller = claim.roles.iter().any(|role| role == "controller");
+    let transient_operator = is_transient_operator_client(remote_name);
+    if (operator && !transient_operator) || (transient_operator && !operator && !controller) {
+        return Err("operator_identity_channel_mismatch".to_string());
+    }
+    Ok(Some(claim))
+}
+
 fn perform_handshake_with_identity(
     stream: &mut (impl Read + Write),
     local_name: &str,
     local_cookie: &str,
     local_creation: u8,
     is_initiator: bool,
-) -> Result<(String, u8), String> {
+) -> Result<
+    (
+        String,
+        u8,
+        NegotiatedProtocol,
+        Option<super::identity_claim::NodeIdentityClaim>,
+    ),
+    String,
+> {
     if is_initiator {
         // Step 1: Send our name
         send_name(stream, local_name, local_creation)?;
 
         // Step 2: Receive their name + challenge
-        let (remote_name, remote_creation, their_challenge) = recv_challenge(stream)?;
+        let (remote_name, remote_creation, their_challenge, remote_hello) = recv_challenge(stream)?;
         validate_advertised_node_name(&remote_name)?;
 
         // Step 3: Compute response + generate our own challenge
@@ -2506,10 +4627,12 @@ fn perform_handshake_with_identity(
             ));
         }
 
-        Ok((remote_name, remote_creation))
+        let negotiated = negotiate_protocol(&local_protocol_hello(), &remote_hello)?;
+        let identity = validate_remote_node_identity(&remote_name, &remote_hello)?;
+        Ok((remote_name, remote_creation, negotiated, identity))
     } else {
         // Step 1: Receive their name
-        let (remote_name, remote_creation) = recv_name(stream)?;
+        let (remote_name, remote_creation, remote_hello) = recv_name(stream)?;
         validate_advertised_node_name(&remote_name)?;
 
         // Duplicate-session resolution now happens in register_session after the
@@ -2536,15 +4659,25 @@ fn perform_handshake_with_identity(
         let our_response = compute_response(local_cookie, &their_challenge);
         send_challenge_ack(stream, &our_response)?;
 
-        Ok((remote_name, remote_creation))
+        let negotiated = negotiate_protocol(&local_protocol_hello(), &remote_hello)?;
+        let identity = validate_remote_node_identity(&remote_name, &remote_hello)?;
+        Ok((remote_name, remote_creation, negotiated, identity))
     }
 }
 
-fn perform_handshake(
+fn perform_handshake_negotiated(
     stream: &mut (impl Read + Write),
     state: &NodeState,
     is_initiator: bool,
-) -> Result<(String, u8), String> {
+) -> Result<
+    (
+        String,
+        u8,
+        NegotiatedProtocol,
+        Option<super::identity_claim::NodeIdentityClaim>,
+    ),
+    String,
+> {
     perform_handshake_with_identity(
         stream,
         &state.name,
@@ -2552,6 +4685,16 @@ fn perform_handshake(
         state.creation(),
         is_initiator,
     )
+}
+
+#[cfg(test)]
+fn perform_handshake(
+    stream: &mut (impl Read + Write),
+    state: &NodeState,
+    is_initiator: bool,
+) -> Result<(String, u8), String> {
+    perform_handshake_negotiated(stream, state, is_initiator)
+        .map(|(name, creation, _, _)| (name, creation))
 }
 
 // ---------------------------------------------------------------------------
@@ -2578,21 +4721,23 @@ fn register_session(
     remote_creation: u8,
     node_id: u16,
     stream: NodeStream,
+    negotiated_protocol: NegotiatedProtocol,
+    remote_identity: Option<super::identity_claim::NodeIdentityClaim>,
 ) -> Result<Arc<NodeSession>, String> {
     let direction = SessionDirection::from_stream(&stream);
     let preferred_direction = preferred_session_direction(&state.name, &remote_name);
-    let session = Arc::new(NodeSession {
-        remote_name: remote_name.clone(),
-        remote_creation,
-        node_id,
-        direction,
-        stream: Mutex::new(stream),
-        shutdown: AtomicBool::new(false),
-        connected_at: Instant::now(),
-        pending_spawns: std::sync::Mutex::new(FxHashMap::default()),
-        pending_continuity_prepares: std::sync::Mutex::new(FxHashMap::default()),
-        pending_operator_queries: std::sync::Mutex::new(FxHashMap::default()),
-    });
+    let session = Arc::new(NodeSession::new(
+        RemoteSessionEndpoint {
+            remote_name: remote_name.clone(),
+            remote_creation,
+            node_id,
+            direction,
+        },
+        stream,
+        true,
+        negotiated_protocol,
+        remote_identity,
+    ));
 
     let mut replaced_node_id = None;
     let inserted_fresh = {
@@ -2874,6 +5019,116 @@ fn build_node_client_config() -> Arc<ClientConfig> {
     Arc::new(config)
 }
 
+const TLS_CA_DER_B64_ENV: &str = "MESH_TLS_CA_DER_B64";
+const TLS_CERT_DER_B64_ENV: &str = "MESH_TLS_CERT_DER_B64";
+const TLS_KEY_DER_B64_ENV: &str = "MESH_TLS_KEY_DER_B64";
+
+fn autonomous_mode_requested() -> bool {
+    std::env::var("MESH_CLUSTER_MODE")
+        .is_ok_and(|value| value.trim().eq_ignore_ascii_case("autonomous"))
+        || std::env::var("MESH_AUTONOMOUS_MODE")
+            .is_ok_and(|value| matches!(value.trim(), "1" | "true" | "on"))
+        || super::autonomous::embedded_autonomous_config()
+            .is_some_and(|config| config.enabled && config.features.protocol_two)
+}
+
+fn decode_tls_der(name: &str, value: &str) -> Result<Vec<u8>, String> {
+    base64::engine::general_purpose::STANDARD
+        .decode(value.trim())
+        .map_err(|_| format!("{name}_invalid_base64"))
+        .and_then(|bytes| {
+            if bytes.is_empty() {
+                Err(format!("{name}_empty"))
+            } else {
+                Ok(bytes)
+            }
+        })
+}
+
+fn configured_mtls_material() -> Result<
+    Option<(
+        Vec<CertificateDer<'static>>,
+        CertificateDer<'static>,
+        PrivateKeyDer<'static>,
+    )>,
+    String,
+> {
+    let values = [
+        std::env::var(TLS_CA_DER_B64_ENV).ok(),
+        std::env::var(TLS_CERT_DER_B64_ENV).ok(),
+        std::env::var(TLS_KEY_DER_B64_ENV).ok(),
+    ];
+    if values.iter().all(Option::is_none) {
+        return Ok(None);
+    }
+    if values.iter().any(Option::is_none) {
+        return Err("mesh_mtls_configuration_incomplete".to_string());
+    }
+    let ca = values[0]
+        .as_deref()
+        .unwrap()
+        .split(',')
+        .map(str::trim)
+        .map(|value| decode_tls_der(TLS_CA_DER_B64_ENV, value).map(CertificateDer::from))
+        .collect::<Result<Vec<_>, _>>()?;
+    if ca.is_empty() {
+        return Err(format!("{TLS_CA_DER_B64_ENV}_empty"));
+    }
+    let cert = decode_tls_der(TLS_CERT_DER_B64_ENV, values[1].as_deref().unwrap())?;
+    let key = decode_tls_der(TLS_KEY_DER_B64_ENV, values[2].as_deref().unwrap())?;
+    Ok(Some((
+        ca,
+        CertificateDer::from(cert),
+        PrivateKeyDer::Pkcs8(PrivatePkcs8KeyDer::from(key)),
+    )))
+}
+
+type ConfiguredMtls = (Arc<ServerConfig>, Arc<ClientConfig>);
+
+fn configured_mtls_configs() -> Result<Option<ConfiguredMtls>, String> {
+    let Some((cas, certificate, private_key)) = configured_mtls_material()? else {
+        return Ok(None);
+    };
+    let mut roots = RootCertStore::empty();
+    for ca in cas {
+        roots
+            .add(ca)
+            .map_err(|error| format!("mesh_mtls_ca_invalid:{error}"))?;
+    }
+    let client_verifier = WebPkiClientVerifier::builder(Arc::new(roots.clone()))
+        .build()
+        .map_err(|error| format!("mesh_mtls_client_verifier_invalid:{error}"))?;
+    let server = ServerConfig::builder()
+        .with_client_cert_verifier(client_verifier)
+        .with_single_cert(vec![certificate.clone()], private_key.clone_key())
+        .map_err(|error| format!("mesh_mtls_server_identity_invalid:{error}"))?;
+    let client = ClientConfig::builder()
+        .with_root_certificates(roots)
+        .with_client_auth_cert(vec![certificate], private_key)
+        .map_err(|error| format!("mesh_mtls_client_identity_invalid:{error}"))?;
+    Ok(Some((Arc::new(server), Arc::new(client))))
+}
+
+fn node_tls_configs() -> Result<(Arc<ServerConfig>, Arc<ClientConfig>), String> {
+    if let Some(configs) = configured_mtls_configs()? {
+        return Ok(configs);
+    }
+    if autonomous_mode_requested() {
+        return Err("autonomous_mode_requires_mtls_identity".to_string());
+    }
+    let (certificate, key) = generate_ephemeral_cert();
+    Ok((
+        build_node_server_config(certificate, key),
+        build_node_client_config(),
+    ))
+}
+
+fn operator_tls_client_config() -> Result<Arc<ClientConfig>, String> {
+    Ok(configured_mtls_configs()?
+        .map(|(_, client)| client)
+        .unwrap_or_else(build_node_client_config))
+}
+
 // ---------------------------------------------------------------------------
 // SkipCertVerification -- trusts all server certificates
 // ---------------------------------------------------------------------------
@@ -3048,20 +5303,22 @@ pub(crate) fn handle_transient_operator_query_connection(
     remote_creation: u8,
     stream: NodeStream,
     timeout: Duration,
+    negotiated_protocol: NegotiatedProtocol,
+    remote_identity: Option<super::identity_claim::NodeIdentityClaim>,
 ) -> Result<(), String> {
     let direction = SessionDirection::from_stream(&stream);
-    let session = Arc::new(NodeSession {
-        remote_name,
-        remote_creation,
-        node_id: 0,
-        direction,
-        stream: Mutex::new(stream),
-        shutdown: AtomicBool::new(false),
-        connected_at: Instant::now(),
-        pending_spawns: std::sync::Mutex::new(FxHashMap::default()),
-        pending_continuity_prepares: std::sync::Mutex::new(FxHashMap::default()),
-        pending_operator_queries: std::sync::Mutex::new(FxHashMap::default()),
-    });
+    let session = Arc::new(NodeSession::new(
+        RemoteSessionEndpoint {
+            remote_name,
+            remote_creation,
+            node_id: 0,
+            direction,
+        },
+        stream,
+        false,
+        negotiated_protocol,
+        remote_identity,
+    ));
 
     {
         let stream = session.stream.lock().unwrap();
@@ -3109,11 +5366,11 @@ pub(crate) fn execute_transient_operator_query(
         .map_err(|e| format!("transient_operator_write_timeout_failed:{e}"))?;
 
     let server_name: ServerName<'static> = "mesh-node".try_into().unwrap();
-    let client_conn = rustls::ClientConnection::new(build_node_client_config(), server_name)
+    let client_conn = rustls::ClientConnection::new(operator_tls_client_config()?, server_name)
         .map_err(|e| format!("TLS client connection failed: {}", e))?;
     let mut tls_stream = StreamOwned::new(client_conn, tcp_stream);
 
-    let _ = perform_handshake_with_identity(
+    let (_, _, negotiated, _) = perform_handshake_with_identity(
         &mut tls_stream,
         &transient_operator_client_name(),
         cookie,
@@ -3124,23 +5381,32 @@ pub(crate) fn execute_transient_operator_query(
 
     write_msg(&mut tls_stream, payload)
         .map_err(|e| format!("transient_operator_query_write_failed:{e}"))?;
-    read_msg(&mut tls_stream).map_err(|e| format!("transient_operator_reply_read_failed:{e}"))
+    read_dist_msg_bounded(&mut tls_stream, negotiated.max_frame_bytes)
+        .map_err(|e| format!("transient_operator_reply_read_failed:{e}"))
 }
 
 const TRANSIENT_HTTP_ROUTE_CLIENT_NAME_PART: &str = "mesh-http-route";
 const CLUSTERED_HTTP_ROUTE_TIMEOUT: Duration = Duration::from_secs(5);
+const HTTP_RESERVATION_TIMEOUT: Duration = Duration::from_secs(3);
+// The lease starts on the owner before the acceptance reply crosses the
+// transport. It must outlive the ingress's complete post-acceptance route
+// timeout while remaining bounded against clients that never send a query.
+const HTTP_RESERVATION_LEASE: Duration = Duration::from_secs(10);
 
 struct TransientHttpRouteReplyTask {
     msg: Vec<u8>,
     tx: mpsc::Sender<Result<Vec<u8>, String>>,
 }
 
-fn transient_http_route_client_name() -> String {
-    format!("{TRANSIENT_HTTP_ROUTE_CLIENT_NAME_PART}@127.0.0.1:1")
-}
-
 fn is_transient_http_route_client(remote_name: &str) -> bool {
     remote_name.starts_with(&format!("{TRANSIENT_HTTP_ROUTE_CLIENT_NAME_PART}@"))
+}
+
+fn transient_http_route_compatibility_allowed(
+    negotiated: &NegotiatedProtocol,
+    autonomous_requested: bool,
+) -> bool {
+    !autonomous_requested && negotiated.version == PROTOCOL_V1
 }
 
 extern "C" fn transient_http_route_reply_entry(args: *const u8) {
@@ -3148,7 +5414,7 @@ extern "C" fn transient_http_route_reply_entry(args: *const u8) {
         return;
     }
 
-    let words = unsafe { std::slice::from_raw_parts(args as *const u64, 1) };
+    let words = unsafe { Box::from_raw(args as *mut [u64; 1]) };
     let task_ptr = words[0] as *mut TransientHttpRouteReplyTask;
     if task_ptr.is_null() {
         return;
@@ -3165,15 +5431,16 @@ extern "C" fn transient_http_route_reply_entry(args: *const u8) {
 fn build_http_route_reply_via_actor(msg: Vec<u8>, timeout: Duration) -> Result<Vec<u8>, String> {
     let (tx, rx) = mpsc::channel();
     let task_ptr = Box::into_raw(Box::new(TransientHttpRouteReplyTask { msg, tx })) as u64;
-    let args = [task_ptr];
+    let args_ptr = Box::into_raw(Box::new([task_ptr]));
     let pid = crate::actor::mesh_actor_spawn(
         transient_http_route_reply_entry as *const u8,
-        args.as_ptr().cast(),
+        args_ptr.cast(),
         std::mem::size_of::<u64>() as u64,
         1,
     );
     if pid == 0 {
         unsafe {
+            drop(Box::from_raw(args_ptr));
             drop(Box::from_raw(task_ptr as *mut TransientHttpRouteReplyTask));
         }
         return Err("transient_http_route_actor_spawn_failed".to_string());
@@ -3182,6 +5449,7 @@ fn build_http_route_reply_via_actor(msg: Vec<u8>, timeout: Duration) -> Result<V
     match rx.recv_timeout(timeout) {
         Ok(result) => result,
         Err(mpsc::RecvTimeoutError::Timeout) => {
+            crate::dist::telemetry::runtime_telemetry().record_remote_dispatch_timeout();
             Err("transient_http_route_execute_timeout".to_string())
         }
         Err(mpsc::RecvTimeoutError::Disconnected) => {
@@ -3310,6 +5578,353 @@ fn decode_http_route_reply_frame(data: &[u8]) -> Result<Result<Vec<u8>, String>,
     }
 }
 
+struct AcceptedHttpReservation {
+    _permit: crate::dist::telemetry::AdmissionPermit,
+    expires_at: Instant,
+}
+
+fn encode_http_reserve(
+    correlation_id: u64,
+    runtime_name: &str,
+    request_key: &str,
+    payload_bytes: usize,
+) -> Result<Vec<u8>, String> {
+    let payload_bytes = u32::try_from(payload_bytes)
+        .map_err(|_| "clustered_http_reservation_payload_too_large".to_string())?;
+    let mut frame = Vec::with_capacity(1 + 8 + 4 + 2 + runtime_name.len() + 2 + request_key.len());
+    frame.push(DIST_HTTP_RESERVE);
+    frame.extend_from_slice(&correlation_id.to_le_bytes());
+    frame.extend_from_slice(&payload_bytes.to_le_bytes());
+    encode_http_route_string(&mut frame, runtime_name)?;
+    encode_http_route_string(&mut frame, request_key)?;
+    Ok(frame)
+}
+
+fn decode_http_reserve(frame: &[u8]) -> Result<(u64, u32, String, String), String> {
+    if frame.len() < 13 || frame[0] != DIST_HTTP_RESERVE {
+        return Err("clustered_http_reservation_invalid".to_string());
+    }
+    let correlation_id = u64::from_le_bytes(frame[1..9].try_into().unwrap());
+    let payload_bytes = u32::from_le_bytes(frame[9..13].try_into().unwrap());
+    let mut position = 13;
+    let runtime_name = decode_http_route_string(frame, &mut position, "reservation_runtime")?;
+    let request_key = decode_http_route_string(frame, &mut position, "reservation_key")?;
+    if position != frame.len() || runtime_name.is_empty() || request_key.is_empty() {
+        return Err("clustered_http_reservation_metadata_invalid".to_string());
+    }
+    Ok((correlation_id, payload_bytes, runtime_name, request_key))
+}
+
+fn encode_http_reserve_reply(
+    correlation_id: u64,
+    result: Result<(), String>,
+) -> Result<Vec<u8>, String> {
+    let (accepted, reason) = match result {
+        Ok(()) => (1u8, Vec::new()),
+        Err(reason) => (0u8, reason.into_bytes()),
+    };
+    let reason_len = u16::try_from(reason.len())
+        .map_err(|_| "clustered_http_reservation_reason_too_large".to_string())?;
+    let mut frame = Vec::with_capacity(12 + reason.len());
+    frame.push(DIST_HTTP_RESERVE_REPLY);
+    frame.extend_from_slice(&correlation_id.to_le_bytes());
+    frame.push(accepted);
+    frame.extend_from_slice(&reason_len.to_le_bytes());
+    frame.extend_from_slice(&reason);
+    Ok(frame)
+}
+
+fn decode_http_reserve_reply(frame: &[u8]) -> Result<(u64, Result<(), String>), String> {
+    if frame.len() < 12 || frame[0] != DIST_HTTP_RESERVE_REPLY {
+        return Err("clustered_http_reservation_reply_invalid".to_string());
+    }
+    let correlation_id = u64::from_le_bytes(frame[1..9].try_into().unwrap());
+    let accepted = frame[9];
+    let reason_len = u16::from_le_bytes(frame[10..12].try_into().unwrap()) as usize;
+    if frame.len() != 12 + reason_len {
+        return Err("clustered_http_reservation_reply_length_invalid".to_string());
+    }
+    match accepted {
+        1 if reason_len == 0 => Ok((correlation_id, Ok(()))),
+        0 => Ok((
+            correlation_id,
+            Err(std::str::from_utf8(&frame[12..])
+                .map_err(|_| "clustered_http_reservation_reason_invalid".to_string())?
+                .to_string()),
+        )),
+        _ => Err("clustered_http_reservation_reply_status_invalid".to_string()),
+    }
+}
+
+fn expire_http_reservation_map(
+    reservations: &mut FxHashMap<u64, AcceptedHttpReservation>,
+    now: Instant,
+) {
+    reservations.retain(|_, reservation| reservation.expires_at > now);
+}
+
+fn expire_http_reservations(session: &NodeSession, now: Instant) {
+    expire_http_reservation_map(&mut session.accepted_http_reservations.lock().unwrap(), now);
+}
+
+fn handle_http_reserve(session: &Arc<NodeSession>, frame: &[u8]) {
+    let decoded = decode_http_reserve(frame);
+    let (correlation_id, result) = match decoded {
+        Ok((correlation_id, payload_bytes, runtime_name, _request_key)) => {
+            expire_http_reservations(session, Instant::now());
+            let result = if payload_bytes as usize > MAX_DIST_MSG as usize {
+                Err("owner_reservation_payload_limit".to_string())
+            } else if lookup_declared_handler(&runtime_name).is_none() {
+                Err(format!("declared_handler_not_registered:{runtime_name}"))
+            } else {
+                let mut reservations = session.accepted_http_reservations.lock().unwrap();
+                match reservations.entry(correlation_id) {
+                    std::collections::hash_map::Entry::Occupied(_) => Ok(()),
+                    std::collections::hash_map::Entry::Vacant(entry) => {
+                        crate::dist::telemetry::global_admission_controller()
+                            .reserve_application()
+                            .map(|permit| {
+                                entry.insert(AcceptedHttpReservation {
+                                    _permit: permit,
+                                    expires_at: Instant::now() + HTTP_RESERVATION_LEASE,
+                                });
+                            })
+                            .map_err(|rejection| {
+                                format!("owner_reservation_rejected:{rejection:?}")
+                            })
+                    }
+                }
+            };
+            (correlation_id, result)
+        }
+        Err(error) => (0, Err(error)),
+    };
+    if let Ok(reply) = encode_http_reserve_reply(correlation_id, result) {
+        if session.send(OutboundClass::Admission, reply).is_err() {
+            session
+                .accepted_http_reservations
+                .lock()
+                .unwrap()
+                .remove(&correlation_id);
+        }
+    }
+}
+
+fn encode_http_route_v2_query_frame(
+    correlation_id: u64,
+    runtime_name: &str,
+    request_key: &str,
+    attempt_id: &str,
+    request_payload: &[u8],
+) -> Result<Vec<u8>, String> {
+    let protocol_one =
+        encode_http_route_query_frame(runtime_name, request_key, attempt_id, request_payload)?;
+    let mut frame = Vec::with_capacity(8 + protocol_one.len());
+    frame.push(DIST_HTTP_ROUTE_V2_QUERY);
+    frame.extend_from_slice(&correlation_id.to_le_bytes());
+    frame.extend_from_slice(&protocol_one[1..]);
+    Ok(frame)
+}
+
+fn decode_http_route_v2_query_frame(data: &[u8]) -> Result<(u64, Vec<u8>), String> {
+    if data.len() < 9 || data[0] != DIST_HTTP_ROUTE_V2_QUERY {
+        return Err("clustered_http_route_v2_query_invalid".to_string());
+    }
+    let correlation_id = u64::from_le_bytes(data[1..9].try_into().unwrap());
+    let mut protocol_one = Vec::with_capacity(data.len() - 8);
+    protocol_one.push(DIST_HTTP_ROUTE_QUERY);
+    protocol_one.extend_from_slice(&data[9..]);
+    decode_http_route_query_frame(&protocol_one)?;
+    Ok((correlation_id, protocol_one))
+}
+
+fn encode_http_route_v2_reply_frame(
+    correlation_id: u64,
+    result: Result<Vec<u8>, String>,
+) -> Result<Vec<u8>, String> {
+    let protocol_one = encode_http_route_reply_frame(result)?;
+    let mut frame = Vec::with_capacity(8 + protocol_one.len());
+    frame.push(DIST_HTTP_ROUTE_V2_REPLY);
+    frame.extend_from_slice(&correlation_id.to_le_bytes());
+    frame.extend_from_slice(&protocol_one[1..]);
+    Ok(frame)
+}
+
+fn decode_http_route_v2_reply_frame(data: &[u8]) -> Result<(u64, Result<Vec<u8>, String>), String> {
+    if data.len() < 9 || data[0] != DIST_HTTP_ROUTE_V2_REPLY {
+        return Err("clustered_http_route_v2_reply_invalid".to_string());
+    }
+    let correlation_id = u64::from_le_bytes(data[1..9].try_into().unwrap());
+    let mut protocol_one = Vec::with_capacity(data.len() - 8);
+    protocol_one.push(DIST_HTTP_ROUTE_REPLY);
+    protocol_one.extend_from_slice(&data[9..]);
+    Ok((
+        correlation_id,
+        decode_http_route_reply_frame(&protocol_one)?,
+    ))
+}
+
+fn encode_continuity_response_frame(
+    operation_key: &str,
+    response: &[u8],
+) -> Result<Vec<u8>, String> {
+    let key_len: u32 = operation_key
+        .len()
+        .try_into()
+        .map_err(|_| "continuity_response_key_too_large".to_string())?;
+    let response_len: u32 = response
+        .len()
+        .try_into()
+        .map_err(|_| "continuity_response_payload_too_large".to_string())?;
+    let frame_len = 1usize
+        .saturating_add(4)
+        .saturating_add(operation_key.len())
+        .saturating_add(4)
+        .saturating_add(response.len());
+    if frame_len > MAX_DIST_MSG as usize {
+        return Err("continuity_response_frame_too_large".to_string());
+    }
+    let mut frame = Vec::with_capacity(frame_len);
+    frame.push(DIST_CONTINUITY_RESPONSE);
+    frame.extend_from_slice(&key_len.to_le_bytes());
+    frame.extend_from_slice(operation_key.as_bytes());
+    frame.extend_from_slice(&response_len.to_le_bytes());
+    frame.extend_from_slice(response);
+    Ok(frame)
+}
+
+fn decode_continuity_response_frame(data: &[u8]) -> Result<(String, Vec<u8>), String> {
+    if data.len() < 9 || data[0] != DIST_CONTINUITY_RESPONSE {
+        return Err("continuity_response_frame_invalid".to_string());
+    }
+    let key_len = u32::from_le_bytes(data[1..5].try_into().unwrap()) as usize;
+    let key_end = 5usize
+        .checked_add(key_len)
+        .ok_or_else(|| "continuity_response_key_length_invalid".to_string())?;
+    if key_end + 4 > data.len() {
+        return Err("continuity_response_key_truncated".to_string());
+    }
+    let operation_key = std::str::from_utf8(&data[5..key_end])
+        .map_err(|_| "continuity_response_key_invalid_utf8".to_string())?
+        .to_string();
+    let response_len = u32::from_le_bytes(data[key_end..key_end + 4].try_into().unwrap()) as usize;
+    let response_start = key_end + 4;
+    if response_start.saturating_add(response_len) != data.len() {
+        return Err("continuity_response_payload_length_invalid".to_string());
+    }
+    if operation_key.is_empty() || response_len == 0 {
+        return Err("continuity_response_payload_invalid".to_string());
+    }
+    Ok((operation_key, data[response_start..].to_vec()))
+}
+
+fn retain_and_broadcast_continuity_response(operation_key: &str, response: &[u8]) {
+    if let Err(error) =
+        crate::dist::continuity_store::persist_runtime_response(operation_key, response)
+    {
+        eprintln!(
+            "mesh continuity: response_store_failed operation={} reason={}",
+            operation_key, error
+        );
+    }
+    let Ok(frame) = encode_continuity_response_frame(operation_key, response) else {
+        return;
+    };
+    let targets: BTreeSet<String> = crate::dist::continuity::continuity_registry()
+        .record(operation_key)
+        .map(|record| {
+            let mut targets =
+                BTreeSet::from([record.ingress_node.clone(), record.owner_node.clone()]);
+            targets.extend(record.replica_nodes().iter().cloned());
+            targets
+        })
+        .unwrap_or_default();
+    let sessions: Vec<_> = node_state()
+        .map(|state| {
+            state
+                .sessions
+                .read()
+                .values()
+                .filter(|session| targets.contains(&session.remote_name))
+                .cloned()
+                .collect()
+        })
+        .unwrap_or_default();
+    for session in sessions {
+        let _ = session.send(OutboundClass::Application, frame.clone());
+    }
+}
+
+struct HttpRouteV2ReplyTask {
+    session: Arc<NodeSession>,
+    message: Vec<u8>,
+    _reservation: AcceptedHttpReservation,
+}
+
+extern "C" fn http_route_v2_reply_entry(args: *const u8) {
+    if args.is_null() {
+        return;
+    }
+    let words = unsafe { Box::from_raw(args as *mut [u64; 1]) };
+    let task_ptr = words[0] as *mut HttpRouteV2ReplyTask;
+    if task_ptr.is_null() {
+        return;
+    }
+    let task = unsafe { Box::from_raw(task_ptr) };
+    let reply = decode_http_route_v2_query_frame(&task.message).and_then(
+        |(correlation_id, protocol_one)| {
+            let result =
+                build_http_route_reply_frame(&protocol_one).and_then(|protocol_one_reply| {
+                    decode_http_route_reply_frame(&protocol_one_reply)
+                })?;
+            encode_http_route_v2_reply_frame(correlation_id, result)
+        },
+    );
+    if let Ok(reply) = reply {
+        let _ = task.session.send(OutboundClass::Application, reply);
+    }
+}
+
+fn dispatch_http_route_v2_reply(session: Arc<NodeSession>, message: Vec<u8>) {
+    expire_http_reservations(&session, Instant::now());
+    let correlation_id = match decode_http_route_v2_query_frame(&message) {
+        Ok((correlation_id, _)) => correlation_id,
+        Err(_) => return,
+    };
+    let Some(reservation) = session
+        .accepted_http_reservations
+        .lock()
+        .unwrap()
+        .remove(&correlation_id)
+    else {
+        if let Ok(reply) = encode_http_route_v2_reply_frame(
+            correlation_id,
+            Err("owner_reservation_missing_or_expired".to_string()),
+        ) {
+            let _ = session.send(OutboundClass::Application, reply);
+        }
+        return;
+    };
+    let task_ptr = Box::into_raw(Box::new(HttpRouteV2ReplyTask {
+        session,
+        message,
+        _reservation: reservation,
+    })) as u64;
+    let args_ptr = Box::into_raw(Box::new([task_ptr]));
+    let pid = crate::actor::mesh_actor_spawn(
+        http_route_v2_reply_entry as *const u8,
+        args_ptr.cast(),
+        std::mem::size_of::<u64>() as u64,
+        1,
+    );
+    if pid == 0 {
+        unsafe {
+            drop(Box::from_raw(args_ptr));
+            drop(Box::from_raw(task_ptr as *mut HttpRouteV2ReplyTask));
+        }
+    }
+}
+
 fn reject_clustered_http_route_attempt(request_key: &str, attempt_id: &str, reason: &str) {
     if request_key.is_empty() || attempt_id.is_empty() {
         return;
@@ -3343,6 +5958,8 @@ fn execute_clustered_http_route_locally(
         return Err(reason);
     }
 
+    retain_and_broadcast_continuity_response(request_key, &response_payload);
+
     Ok(response_payload)
 }
 
@@ -3354,39 +5971,96 @@ fn execute_clustered_http_route_remote(
     attempt_id: &str,
     request_payload: &[u8],
 ) -> Result<Vec<u8>, String> {
-    let payload =
-        encode_http_route_query_frame(runtime_name, request_key, attempt_id, request_payload)?;
-    let (_name_part, host, port) =
-        parse_node_name(target).map_err(|e| format!("invalid clustered route target: {e}"))?;
-
-    let tcp_stream = TcpStream::connect((host, port))
-        .map_err(|e| format!("clustered_http_route_connect_failed:{host}:{port}:{e}"))?;
-    tcp_stream
-        .set_read_timeout(Some(CLUSTERED_HTTP_ROUTE_TIMEOUT))
-        .map_err(|e| format!("clustered_http_route_read_timeout_failed:{e}"))?;
-    tcp_stream
-        .set_write_timeout(Some(CLUSTERED_HTTP_ROUTE_TIMEOUT))
-        .map_err(|e| format!("clustered_http_route_write_timeout_failed:{e}"))?;
-
-    let server_name: ServerName<'static> = "mesh-node".try_into().unwrap();
-    let client_conn = rustls::ClientConnection::new(build_node_client_config(), server_name)
-        .map_err(|e| format!("clustered_http_route_tls_client_failed:{e}"))?;
-    let mut tls_stream = StreamOwned::new(client_conn, tcp_stream);
-
-    let _ = perform_handshake_with_identity(
-        &mut tls_stream,
-        &transient_http_route_client_name(),
-        cookie,
-        0,
-        true,
-    )
-    .map_err(|e| format!("clustered_http_route_handshake_failed:{host}:{port}:{e}"))?;
-
-    write_msg(&mut tls_stream, &payload)
-        .map_err(|e| format!("clustered_http_route_query_write_failed:{e}"))?;
-    let reply = read_dist_msg(&mut tls_stream)
-        .map_err(|e| format!("clustered_http_route_reply_read_failed:{e}"))?;
-    decode_http_route_reply_frame(&reply)?
+    let _ = cookie;
+    let state = node_state().ok_or_else(|| "clustered_http_route_node_not_started".to_string())?;
+    let session = state
+        .sessions
+        .read()
+        .get(target)
+        .cloned()
+        .ok_or_else(|| format!("clustered_http_route_session_unavailable:{target}"))?;
+    let correlation_id = HTTP_ROUTE_CORRELATION_ID
+        .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |current| {
+            current.checked_add(1)
+        })
+        .map_err(|_| "clustered_http_route_correlation_exhausted".to_string())?;
+    let payload = encode_http_route_v2_query_frame(
+        correlation_id,
+        runtime_name,
+        request_key,
+        attempt_id,
+        request_payload,
+    )?;
+    let reservation = encode_http_reserve(
+        correlation_id,
+        runtime_name,
+        request_key,
+        request_payload.len(),
+    )?;
+    let (reservation_sender, reservation_receiver) = crate::actor::cooperative_channel();
+    session
+        .pending_http_reservations
+        .lock()
+        .unwrap()
+        .insert(correlation_id, reservation_sender);
+    // Reservation traffic has its own bounded lane so a burst cannot consume
+    // critical operator/consensus control capacity or application payload
+    // capacity. The writer schedules it fairly with the accepted payloads.
+    if let Err(error) = session.send(OutboundClass::Admission, reservation) {
+        session
+            .pending_http_reservations
+            .lock()
+            .unwrap()
+            .remove(&correlation_id);
+        return Err(format!("clustered_http_reservation_write_failed:{error}"));
+    }
+    match crate::actor::cooperative_recv_timeout(&reservation_receiver, HTTP_RESERVATION_TIMEOUT) {
+        Ok(Ok(())) => {}
+        Ok(Err(reason)) => return Err(reason),
+        Err(mpsc::RecvTimeoutError::Timeout) => {
+            session
+                .pending_http_reservations
+                .lock()
+                .unwrap()
+                .remove(&correlation_id);
+            crate::dist::telemetry::runtime_telemetry().record_remote_dispatch_timeout();
+            return Err("clustered_http_reservation_timeout".to_string());
+        }
+        Err(mpsc::RecvTimeoutError::Disconnected) => {
+            return Err("clustered_http_reservation_disconnected".to_string());
+        }
+    }
+    let (sender, receiver) = crate::actor::cooperative_channel();
+    session
+        .pending_http_routes
+        .lock()
+        .unwrap()
+        .insert(correlation_id, sender);
+    {
+        if let Err(error) = session.send(OutboundClass::Application, payload) {
+            session
+                .pending_http_routes
+                .lock()
+                .unwrap()
+                .remove(&correlation_id);
+            return Err(format!("clustered_http_route_query_write_failed:{error}"));
+        }
+    }
+    match crate::actor::cooperative_recv_timeout(&receiver, CLUSTERED_HTTP_ROUTE_TIMEOUT) {
+        Ok(result) => result,
+        Err(mpsc::RecvTimeoutError::Timeout) => {
+            session
+                .pending_http_routes
+                .lock()
+                .unwrap()
+                .remove(&correlation_id);
+            crate::dist::telemetry::runtime_telemetry().record_remote_dispatch_timeout();
+            Err("clustered_http_route_reply_timeout".to_string())
+        }
+        Err(mpsc::RecvTimeoutError::Disconnected) => {
+            Err("clustered_http_route_reply_disconnected".to_string())
+        }
+    }
 }
 
 fn build_http_route_reply_frame(msg: &[u8]) -> Result<Vec<u8>, String> {
@@ -3440,12 +6114,98 @@ pub(crate) fn handle_transient_http_route_connection(
     Ok(())
 }
 
+pub(crate) struct ClusteredHttpRouteExecution {
+    pub response_payload: Vec<u8>,
+    pub replayed: bool,
+    pub ingress_node: String,
+    pub execution_node: String,
+    pub routed_remotely: bool,
+}
+
+fn clustered_http_execution(
+    response_payload: Vec<u8>,
+    replayed: bool,
+    record: &crate::dist::continuity::ContinuityRecord,
+) -> ClusteredHttpRouteExecution {
+    ClusteredHttpRouteExecution {
+        response_payload,
+        replayed,
+        ingress_node: record.ingress_node.clone(),
+        execution_node: if record.execution_node.is_empty() {
+            record.owner_node.clone()
+        } else {
+            record.execution_node.clone()
+        },
+        routed_remotely: record.routed_remotely,
+    }
+}
+
+fn retryable_clustered_http_transport_failure(reason: &str) -> bool {
+    reason.starts_with("clustered_http_route_session_unavailable:")
+        || reason.starts_with("clustered_http_reservation_write_failed:")
+        // A draining owner rejects before handler execution and therefore
+        // provides a safe placement fence. The coordinator's drain transfer
+        // can move safe/idempotent work to another owner without ambiguity.
+        || reason == "owner_reservation_rejected:Draining"
+        || reason == "clustered_http_reservation_timeout"
+        || reason == "clustered_http_reservation_disconnected"
+        || reason.starts_with("clustered_http_route_query_write_failed:")
+        || reason == "clustered_http_route_reply_timeout"
+        || reason == "clustered_http_route_reply_disconnected"
+        || reason == "attempt_id_mismatch"
+}
+
+fn continuity_recovery_is_observable(
+    request_key: &str,
+    failed_attempt_id: &str,
+    failed_owner: &str,
+) -> bool {
+    use crate::dist::continuity::{ContinuityPhase, ContinuityResult, ReplicaStatus};
+
+    crate::dist::continuity::continuity_registry()
+        .record(request_key)
+        .is_some_and(|record| {
+            if record.phase == ContinuityPhase::Rejected
+                || record.result == ContinuityResult::Rejected
+            {
+                return false;
+            }
+            record.phase == ContinuityPhase::Completed
+                || record.result == ContinuityResult::Succeeded
+                || record.replica_status == ReplicaStatus::OwnerLost
+                || record.attempt_id != failed_attempt_id
+                || record.owner_node != failed_owner
+        })
+}
+
+fn await_recovered_continuity_response(request_key: &str) -> Option<Vec<u8>> {
+    let deadline = Instant::now()
+        + CLUSTERED_HTTP_ROUTE_TIMEOUT
+        + HTTP_RESERVATION_TIMEOUT
+        + Duration::from_millis(500);
+    loop {
+        if let Ok(Some(response)) =
+            crate::dist::continuity_store::replay_runtime_response(request_key)
+        {
+            return Some(response);
+        }
+        let record = crate::dist::continuity::continuity_registry().record(request_key);
+        if record.is_some_and(|record| {
+            record.phase == crate::dist::continuity::ContinuityPhase::Rejected
+        }) || Instant::now() >= deadline
+        {
+            return None;
+        }
+        std::thread::sleep(Duration::from_millis(10));
+    }
+}
+
 pub(crate) fn execute_clustered_http_route(
     runtime_name: &str,
     request_key: &str,
     payload_hash: &str,
     request_payload: &[u8],
-) -> Result<Vec<u8>, String> {
+) -> Result<ClusteredHttpRouteExecution, String> {
     if runtime_name.trim().is_empty() {
         return Err("declared_handler_runtime_name_missing".to_string());
     }
@@ -3465,9 +6225,27 @@ pub(crate) fn execute_clustered_http_route(
         request_key,
         payload_hash,
         required_replica_count,
+        request_payload,
     )?;
-    if prepared.decision.outcome != crate::dist::continuity::SubmitOutcome::Created {
-        return Err(rejected_submit_reason(&prepared.decision));
+    match prepared.decision.outcome {
+        crate::dist::continuity::SubmitOutcome::Created => {}
+        crate::dist::continuity::SubmitOutcome::Duplicate => {
+            if prepared.decision.record.phase != crate::dist::continuity::ContinuityPhase::Completed
+            {
+                return Err("idempotent_operation_in_progress".to_string());
+            }
+            let response = crate::dist::continuity_store::replay_runtime_response(request_key)?
+                .ok_or_else(|| "idempotent_response_not_retained".to_string())?;
+            return Ok(clustered_http_execution(
+                response,
+                true,
+                &prepared.decision.record,
+            ));
+        }
+        crate::dist::continuity::SubmitOutcome::Conflict
+        | crate::dist::continuity::SubmitOutcome::Rejected => {
+            return Err(rejected_submit_reason(&prepared.decision));
+        }
     }
     if prepared.decision.record.phase == crate::dist::continuity::ContinuityPhase::Rejected {
         return Err(rejected_submit_reason(&prepared.decision));
@@ -3480,6 +6258,7 @@ pub(crate) fn execute_clustered_http_route(
                 prepared.decision.record.owner_node
             )
         })?;
+        record_peer_original_attempt(&prepared.decision.record.owner_node, Instant::now());
         execute_clustered_http_route_remote(
             &prepared.decision.record.owner_node,
             &state.cookie,
@@ -3498,8 +6277,64 @@ pub(crate) fn execute_clustered_http_route(
     };
 
     match dispatch {
-        Ok(response_payload) => Ok(response_payload),
+        Ok(response_payload) => {
+            retain_and_broadcast_continuity_response(request_key, &response_payload);
+            Ok(clustered_http_execution(
+                response_payload,
+                false,
+                &prepared.decision.record,
+            ))
+        }
         Err(reason) => {
+            if prepared.placement.routed_remotely
+                && retryable_clustered_http_transport_failure(&reason)
+                && crate::http::server::http_request_payload_is_replay_safe(request_payload)?
+                && allow_peer_retry(&prepared.decision.record.owner_node, Instant::now())
+            {
+                let jitter_millis = rand::random_range(0..=100_u64);
+                std::thread::park_timeout(Duration::from_millis(jitter_millis));
+                let owner = prepared.decision.record.owner_node.clone();
+                let registry = crate::dist::continuity::continuity_registry();
+                let transitioned = registry
+                    .mark_owner_loss_for_request(
+                        &prepared.decision.record.request_key,
+                        &prepared.decision.record.attempt_id,
+                        &owner,
+                    )
+                    .ok()
+                    .flatten()
+                    .is_some();
+                if transitioned {
+                    maybe_spawn_primary_owner_loss_recovery(&owner);
+                }
+                if transitioned
+                    // The remote owner can reject a late completion after it
+                    // has already observed a newer fenced attempt, while this
+                    // ingress has not received that upsert yet. The mismatch
+                    // itself is therefore sufficient evidence to wait for the
+                    // authoritative safe-method recovery instead of exposing
+                    // the expected replication race to the client.
+                    || reason == "attempt_id_mismatch"
+                    || continuity_recovery_is_observable(
+                        &prepared.decision.record.request_key,
+                        &prepared.decision.record.attempt_id,
+                        &owner,
+                    )
+                {
+                    if let Some(response_payload) =
+                        await_recovered_continuity_response(&prepared.decision.record.request_key)
+                    {
+                        let recovered = crate::dist::continuity::continuity_registry()
+                            .record(&prepared.decision.record.request_key)
+                            .unwrap_or_else(|| prepared.decision.record.clone());
+                        return Ok(clustered_http_execution(
+                            response_payload,
+                            false,
+                            &recovered,
+                        ));
+                    }
+                }
+            }
             if prepared.placement.routed_remotely {
                 reject_clustered_http_route_attempt(
                     &prepared.decision.record.request_key,
@@ -3523,7 +6358,7 @@ pub(crate) fn execute_clustered_http_route(
 /// 2. Performs HMAC-SHA256 cookie handshake (acceptor side)
 /// 3. Registers authenticated session in NodeState
 /// 4. Spawns reader + heartbeat threads for the session
-fn accept_loop(listener: TcpListener, state: &NodeState) {
+fn accept_loop(listener: TcpListener, state: &'static NodeState) {
     // Use non-blocking mode with periodic shutdown checks.
     listener
         .set_nonblocking(true)
@@ -3536,82 +6371,24 @@ fn accept_loop(listener: TcpListener, state: &NodeState) {
 
         match listener.accept() {
             Ok((tcp_stream, _addr)) => {
-                // Switch to blocking mode for the TLS handshake
-                tcp_stream
-                    .set_nonblocking(false)
-                    .expect("set_nonblocking(false) failed on accepted stream");
-
-                // Wrap in TLS server connection
-                let server_conn =
-                    match rustls::ServerConnection::new(Arc::clone(&state.tls_server_config)) {
-                        Ok(conn) => conn,
-                        Err(e) => {
-                            eprintln!("mesh node: TLS server connection failed: {}", e);
-                            continue;
-                        }
-                    };
-                let mut tls_stream = StreamOwned::new(server_conn, tcp_stream);
-
-                // Perform HMAC-SHA256 cookie handshake (acceptor side)
-                let (remote_name, remote_creation) =
-                    match perform_handshake(&mut tls_stream, state, false) {
-                        Ok(result) => result,
-                        Err(e) => {
-                            eprintln!("mesh node: handshake failed: {}", e);
-                            continue;
-                        }
-                    };
-
-                if is_transient_operator_client(&remote_name) {
-                    let stream = NodeStream::ServerTls(tls_stream);
-                    if let Err(error) = handle_transient_operator_query_connection(
-                        remote_name.clone(),
-                        remote_creation,
-                        stream,
-                        Duration::from_secs(5),
-                    ) {
-                        eprintln!(
-                            "mesh node: transient operator query failed for {}: {}",
-                            remote_name, error
-                        );
-                    }
-                    continue;
-                }
-
-                if is_transient_http_route_client(&remote_name) {
-                    let stream = NodeStream::ServerTls(tls_stream);
-                    if let Err(error) = handle_transient_http_route_connection(
-                        remote_name.clone(),
-                        stream,
-                        CLUSTERED_HTTP_ROUTE_TIMEOUT,
-                    ) {
-                        eprintln!(
-                            "mesh node: transient clustered HTTP route failed for {}: {}",
-                            remote_name, error
-                        );
-                    }
-                    continue;
-                }
-
-                // Register the authenticated session
-                let node_id = state.assign_node_id();
-                let stream = NodeStream::ServerTls(tls_stream);
-                match register_session(state, remote_name.clone(), remote_creation, node_id, stream)
+                if ACTIVE_INCOMING_HANDSHAKES
+                    .fetch_update(Ordering::AcqRel, Ordering::Acquire, |active| {
+                        (active < MAX_INCOMING_HANDSHAKES).then_some(active + 1)
+                    })
+                    .is_err()
                 {
-                    Ok(session) => {
-                        spawn_session_threads(&session);
-                        send_peer_list(&session);
-                        crate::dist::global::send_global_sync(&session);
-                        crate::dist::continuity::send_continuity_sync(&session);
-                    }
-                    Err(e) => {
-                        if e != format!("already_connected:{}", remote_name) {
-                            eprintln!(
-                                "mesh node: session registration failed for {}: {}",
-                                remote_name, e
-                            );
-                        }
-                    }
+                    eprintln!("mesh node: incoming connection rejected: handshake_limit_reached");
+                    continue;
+                }
+                let spawn = std::thread::Builder::new()
+                    .name("mesh-node-handshake".to_string())
+                    .spawn(move || {
+                        let _active = IncomingHandshakeGuard;
+                        handle_accepted_connection(tcp_stream, state);
+                    });
+                if let Err(error) = spawn {
+                    ACTIVE_INCOMING_HANDSHAKES.fetch_sub(1, Ordering::AcqRel);
+                    eprintln!("mesh node: handshake worker spawn failed: {error}");
                 }
             }
             Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
@@ -3625,6 +6402,141 @@ fn accept_loop(listener: TcpListener, state: &NodeState) {
             }
         }
     }
+}
+
+fn handle_accepted_connection(tcp_stream: TcpStream, state: &NodeState) {
+    if !auth_failures_below_limit() {
+        eprintln!("mesh node: incoming connection rejected: authentication_rate_limited");
+        return;
+    }
+    if let Err(error) = tcp_stream.set_nonblocking(false) {
+        eprintln!("mesh node: accepted stream setup failed: {error}");
+        return;
+    }
+    if let Err(error) = tcp_stream.set_read_timeout(Some(NODE_HANDSHAKE_TIMEOUT)) {
+        eprintln!("mesh node: accepted stream read timeout setup failed: {error}");
+        return;
+    }
+    if let Err(error) = tcp_stream.set_write_timeout(Some(NODE_HANDSHAKE_TIMEOUT)) {
+        eprintln!("mesh node: accepted stream write timeout setup failed: {error}");
+        return;
+    }
+
+    let server_conn = match rustls::ServerConnection::new(Arc::clone(&state.tls_server_config)) {
+        Ok(connection) => connection,
+        Err(error) => {
+            eprintln!("mesh node: TLS server connection failed: {error}");
+            return;
+        }
+    };
+    let mut tls_stream = StreamOwned::new(server_conn, tcp_stream);
+    let (remote_name, remote_creation, negotiated_protocol, remote_identity) =
+        match perform_handshake_negotiated(&mut tls_stream, state, false) {
+            Ok(result) => result,
+            Err(error) => {
+                record_auth_failure();
+                eprintln!("mesh node: handshake failed: {error}");
+                return;
+            }
+        };
+
+    if is_transient_operator_client(&remote_name) {
+        if !operator_query_allowed() {
+            eprintln!("mesh node: transient operator query rejected: operator_query_rate_limited");
+            return;
+        }
+        let stream = NodeStream::ServerTls(tls_stream);
+        if let Err(error) = handle_transient_operator_query_connection(
+            remote_name.clone(),
+            remote_creation,
+            stream,
+            Duration::from_secs(5),
+            negotiated_protocol,
+            remote_identity,
+        ) {
+            eprintln!(
+                "mesh node: transient operator query failed for {}: {}",
+                remote_name, error
+            );
+        }
+        return;
+    }
+
+    if is_transient_http_route_client(&remote_name) {
+        if !transient_http_route_compatibility_allowed(
+            &negotiated_protocol,
+            autonomous_mode_requested(),
+        ) {
+            eprintln!(
+                "mesh node: transient clustered HTTP route rejected for {}: compatibility_channel_disabled",
+                remote_name
+            );
+            return;
+        }
+        let stream = NodeStream::ServerTls(tls_stream);
+        if let Err(error) = handle_transient_http_route_connection(
+            remote_name.clone(),
+            stream,
+            CLUSTERED_HTTP_ROUTE_TIMEOUT,
+        ) {
+            eprintln!(
+                "mesh node: transient clustered HTTP route failed for {}: {}",
+                remote_name, error
+            );
+        }
+        return;
+    }
+
+    if let Err(error) = tls_stream.sock.set_read_timeout(None) {
+        eprintln!("mesh node: accepted stream read timeout reset failed: {error}");
+        return;
+    }
+    if let Err(error) = tls_stream.sock.set_write_timeout(None) {
+        eprintln!("mesh node: accepted stream write timeout reset failed: {error}");
+        return;
+    }
+    let node_id = state.assign_node_id();
+    let stream = NodeStream::ServerTls(tls_stream);
+    match register_session(
+        state,
+        remote_name.clone(),
+        remote_creation,
+        node_id,
+        stream,
+        negotiated_protocol,
+        remote_identity,
+    ) {
+        Ok(session) => {
+            spawn_session_threads(&session);
+            send_peer_list(&session);
+            crate::dist::global::send_global_sync(&session);
+            crate::dist::continuity::send_continuity_sync(&session);
+        }
+        Err(error) if error == format!("already_connected:{remote_name}") => {}
+        Err(error) => {
+            eprintln!(
+                "mesh node: session registration failed for {}: {}",
+                remote_name, error
+            );
+        }
+    }
+}
+
+/// Start a fresh one-shot listener for tests that share process-global node state.
+#[cfg(test)]
+pub(crate) fn start_one_shot_test_listener() -> Result<String, String> {
+    let state = node_state().ok_or_else(|| "test node is not initialized".to_string())?;
+    let listener = TcpListener::bind((state.host.as_str(), 0))
+        .map_err(|error| format!("test listener bind failed: {error}"))?;
+    let port = listener
+        .local_addr()
+        .map_err(|error| format!("test listener address failed: {error}"))?
+        .port();
+    std::thread::spawn(move || match listener.accept() {
+        Ok((stream, _)) => handle_accepted_connection(stream, state),
+        Err(error) => eprintln!("mesh node: one-shot test listener failed: {error}"),
+    });
+    Ok(format!("operator-query-test@{}:{port}", state.host))
 }
 
 // ---------------------------------------------------------------------------
@@ -3689,7 +6601,18 @@ fn bootstrap_err_string(reason: &str) -> *mut MeshResult {
 /// Resolve startup mode from the public environment contract and start the
 /// node only when cluster mode is valid.
 pub fn start_from_env() -> Result<BootstrapStatus, String> {
-    bootstrap_from_env_with(start_named_node)
+    let status = bootstrap_from_env_with(start_named_node)?;
+    let hydrated = super::continuity::hydrate_runtime_continuity_from_store()?;
+    if hydrated > 0 {
+        eprintln!("mesh continuity: transition=hydrated records={hydrated}");
+    }
+    let consensus_enabled = super::autonomous::embedded_autonomous_config()
+        .is_none_or(|config| config.features.controller_quorum);
+    if consensus_enabled {
+        super::consensus::start_mesh_consensus_from_env(&status.node_name)?;
+    }
+    super::autonomous::start_autonomous_controller()?;
+    Ok(status)
 }
 
 #[no_mangle]
@@ -3756,20 +6679,26 @@ pub extern "C" fn mesh_node_start(
         }
     };
 
+    if let Err(error) = validate_cluster_cookie_strength(&cookie, autonomous_mode_requested()) {
+        eprintln!("mesh node: cluster authentication configuration failed: {error}");
+        return -3;
+    }
+
     // Parse "name@host" or "name@host:port"
-    let (_name_part, host, port) = match parse_bind_node_name(&name) {
+    let (name_part, host, port) = match parse_bind_node_name(&name) {
         Ok(parsed) => parsed,
         Err(_) => return -3,
     };
 
     let host_owned = host.to_string();
 
-    // Generate ephemeral TLS certificate
-    let (cert, key) = generate_ephemeral_cert();
-
-    // Build TLS configs
-    let tls_server_config = build_node_server_config(cert, key);
-    let tls_client_config = build_node_client_config();
+    let (tls_server_config, tls_client_config) = match node_tls_configs() {
+        Ok(configs) => configs,
+        Err(error) => {
+            eprintln!("mesh node: TLS configuration failed: {error}");
+            return -3;
+        }
+    };
 
     // Bind TCP listener
     let listener = match TcpListener::bind((host_owned.as_str(), port)) {
@@ -3779,10 +6708,15 @@ pub extern "C" fn mesh_node_start(
 
     // Determine actual port (may differ if port 0 was requested)
     let actual_port = listener.local_addr().map(|a| a.port()).unwrap_or(port);
+    let advertised_name = if port == 0 {
+        format!("{name_part}@{host_owned}:{actual_port}")
+    } else {
+        name.clone()
+    };
 
     // Initialize the global node state
     let _state = NODE_STATE.get_or_init(|| NodeState {
-        name: name.clone(),
+        name: advertised_name,
         host: host_owned,
         port: actual_port,
         cookie,
@@ -3820,6 +6754,12 @@ fn connect_to_remote_node(state: &NodeState, target: &str) -> Result<Arc<NodeSes
     // Open TCP connection
     let tcp_stream = TcpStream::connect((host, port))
         .map_err(|e| format!("TCP connect to {}:{} failed: {}", host, port, e))?;
+    tcp_stream
+        .set_read_timeout(Some(NODE_HANDSHAKE_TIMEOUT))
+        .map_err(|error| format!("TCP read timeout setup failed: {error}"))?;
+    tcp_stream
+        .set_write_timeout(Some(NODE_HANDSHAKE_TIMEOUT))
+        .map_err(|error| format!("TCP write timeout setup failed: {error}"))?;
 
     // Wrap in TLS client connection.
     // Server name is "mesh-node" -- doesn't matter since we skip verification.
@@ -3830,13 +6770,30 @@ fn connect_to_remote_node(state: &NodeState, target: &str) -> Result<Arc<NodeSes
     let mut tls_stream = StreamOwned::new(client_conn, tcp_stream);
 
     // Perform HMAC-SHA256 cookie handshake (initiator side)
-    let (remote_name, remote_creation) = perform_handshake(&mut tls_stream, state, true)
-        .map_err(|e| format!("handshake with {}:{} failed: {}", host, port, e))?;
+    let (remote_name, remote_creation, negotiated_protocol, remote_identity) =
+        perform_handshake_negotiated(&mut tls_stream, state, true)
+            .map_err(|e| format!("handshake with {}:{} failed: {}", host, port, e))?;
+    tls_stream
+        .sock
+        .set_read_timeout(None)
+        .map_err(|error| format!("TCP read timeout reset failed: {error}"))?;
+    tls_stream
+        .sock
+        .set_write_timeout(None)
+        .map_err(|error| format!("TCP write timeout reset failed: {error}"))?;
 
     // Register the authenticated session
     let node_id = state.assign_node_id();
     let stream = NodeStream::ClientTls(tls_stream);
-    match register_session(state, remote_name.clone(), remote_creation, node_id, stream) {
+    match register_session(
+        state,
+        remote_name.clone(),
+        remote_creation,
+        node_id,
+        stream,
+        negotiated_protocol,
+        remote_identity,
+    ) {
         Ok(session) => {
             spawn_session_threads(&session);
             send_peer_list(&session);
@@ -4067,7 +7024,7 @@ fn allocate_remote_spawn_args(values: &[u64]) -> *mut u8 {
         return std::ptr::null_mut();
     }
 
-    let total_size = values.len() * std::mem::size_of::<u64>();
+    let total_size = std::mem::size_of_val(values);
     let ptr = crate::gc::mesh_gc_alloc_actor(total_size as u64, 8);
     unsafe {
         std::ptr::copy_nonoverlapping(values.as_ptr(), ptr as *mut u64, values.len());
@@ -4121,13 +7078,13 @@ struct StartupConvergenceState {
     polls: usize,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 struct DeclaredWorkPlacement {
     ingress_node: String,
     owner_node: String,
-    replica_node: String,
     routed_remotely: bool,
     fell_back_locally: bool,
+    _routing_reservation: Option<crate::dist::routing::RoutingReservation>,
 }
 
 fn declared_work_membership() -> Vec<String> {
@@ -4306,7 +7263,10 @@ fn wait_for_startup_convergence(runtime_name: &str) -> Result<StartupConvergence
     )
 }
 
-fn declared_work_placement(request_key: &str) -> Result<DeclaredWorkPlacement, String> {
+fn declared_work_placement(
+    request_key: &str,
+    runtime_name: &str,
+) -> Result<DeclaredWorkPlacement, String> {
     let membership = canonical_declared_membership();
     if membership.is_empty() {
         return Err("declared_work_membership_empty".to_string());
@@ -4315,22 +7275,38 @@ fn declared_work_placement(request_key: &str) -> Result<DeclaredWorkPlacement, S
     let ingress_node = node_state()
         .map(|state| state.name.clone())
         .unwrap_or_else(|| DECLARED_WORK_LOCAL_NODE.to_string());
-    let owner_index =
-        (stable_hash_u64(&format!("request::{request_key}")) as usize) % membership.len();
-    let owner_node = membership[owner_index].clone();
-    let replica_node = if membership.len() > 1 {
-        membership[(owner_index + 1) % membership.len()].clone()
+    let adaptive_routing = crate::dist::routing::runtime_adaptive_routing_enabled();
+    let (owner_node, routing_reservation) = if adaptive_routing {
+        let handlers: BTreeSet<String> =
+            declared_handler_registry().read().keys().cloned().collect();
+        let local_report = crate::dist::routing::local_load_report(&ingress_node, handlers);
+        let _ = crate::dist::routing::load_report_registry().apply(local_report, Instant::now());
+        let (decision, reservation) = crate::dist::routing::select_owner_and_reserve(
+            request_key,
+            runtime_name,
+            &ingress_node,
+            &membership,
+            None,
+            &crate::dist::routing::runtime_routing_policy(),
+            Instant::now(),
+        )?;
+        (decision.selected_node, Some(reservation))
     } else {
-        String::new()
+        let owner_index =
+            (stable_hash_u64(&format!("request::{request_key}")) as usize) % membership.len();
+        (membership[owner_index].clone(), None)
     };
+    if !membership.iter().any(|member| member == &owner_node) {
+        return Err("declared_work_owner_not_in_membership".to_string());
+    }
     let routed_remotely = owner_node != ingress_node;
 
     Ok(DeclaredWorkPlacement {
         ingress_node,
         owner_node,
-        replica_node,
         routed_remotely,
         fell_back_locally: !routed_remotely,
+        _routing_reservation: routing_reservation,
     })
 }
 
@@ -4371,7 +7347,8 @@ fn log_startup_registered(identity: &StartupWorkIdentity) {
     });
     eprintln!(
         "[mesh-rt startup] transition=startup_registered runtime_name={} request_key={}",
-        identity.runtime_name, identity.request_key,
+        identity.runtime_name,
+        crate::dist::continuity::request_key_fingerprint(&identity.request_key),
     );
 }
 
@@ -4395,7 +7372,7 @@ fn log_startup_trigger(identity: &StartupWorkIdentity, convergence: &StartupConv
     eprintln!(
         "[mesh-rt startup] transition=startup_trigger runtime_name={} request_key={} required_replicas={} membership={}",
         identity.runtime_name,
-        identity.request_key,
+        crate::dist::continuity::request_key_fingerprint(&identity.request_key),
         convergence.required_replica_count,
         convergence.membership.join(","),
     );
@@ -4419,7 +7396,9 @@ fn log_startup_dispatch_window(runtime_name: &str, request_key: &str, pending_wi
     });
     eprintln!(
         "[mesh-rt startup] transition=startup_dispatch_window runtime_name={} request_key={} pending_window_ms={} ownership=language_owned",
-        runtime_name, request_key, pending_window_ms,
+        runtime_name,
+        crate::dist::continuity::request_key_fingerprint(request_key),
+        pending_window_ms,
     );
 }
 
@@ -4462,7 +7441,7 @@ fn log_startup_convergence_timeout(
     eprintln!(
         "[mesh-rt startup] transition=startup_convergence_timeout runtime_name={} request_key={} membership={} polls={} saw_peer={}",
         identity.runtime_name,
-        identity.request_key,
+        crate::dist::continuity::request_key_fingerprint(&identity.request_key),
         convergence.membership.join(","),
         convergence.polls,
         convergence.saw_peer,
@@ -4502,7 +7481,7 @@ fn log_startup_rejected(
     eprintln!(
         "[mesh-rt startup] transition=startup_rejected runtime_name={} request_key={} attempt_id={} owner={} replica={} reason={}",
         identity.runtime_name,
-        identity.request_key,
+        crate::dist::continuity::request_key_fingerprint(&identity.request_key),
         attempt_id.unwrap_or(""),
         owner_node.unwrap_or(""),
         replica_node.unwrap_or(""),
@@ -4523,7 +7502,10 @@ fn log_startup_completed(runtime_name: &str, record: &crate::dist::continuity::C
     });
     eprintln!(
         "[mesh-rt startup] transition=startup_completed runtime_name={} request_key={} attempt_id={} execution_node={}",
-        runtime_name, record.request_key, record.attempt_id, record.execution_node,
+        runtime_name,
+        crate::dist::continuity::request_key_fingerprint(&record.request_key),
+        record.attempt_id,
+        record.execution_node,
     );
 }
 
@@ -4556,7 +7538,10 @@ fn log_startup_fenced(
     });
     eprintln!(
         "[mesh-rt startup] transition=startup_fenced runtime_name={} request_key={} previous_attempt_id={} active_attempt_id={}",
-        runtime_name, request_key, previous_attempt_id, active_record.attempt_id,
+        runtime_name,
+        crate::dist::continuity::request_key_fingerprint(request_key),
+        previous_attempt_id,
+        active_record.attempt_id,
     );
 }
 
@@ -4592,7 +7577,7 @@ fn log_startup_skipped(
     eprintln!(
         "[mesh-rt startup] transition=startup_skipped runtime_name={} request_key={} cluster_role={} promotion_epoch={} reason=startup_skipped:standby_authority",
         identity.runtime_name,
-        identity.request_key,
+        crate::dist::continuity::request_key_fingerprint(&identity.request_key),
         cluster_role.as_str(),
         promotion_epoch,
     );
@@ -5058,7 +8043,10 @@ fn log_automatic_recovery(
     });
     eprintln!(
         "[mesh-rt continuity] transition=automatic_recovery request_key={} previous_attempt_id={} next_attempt_id={} runtime_name={}",
-        request_key, previous_attempt_id, next_attempt_id, runtime_name,
+        crate::dist::continuity::request_key_fingerprint(request_key),
+        previous_attempt_id,
+        next_attempt_id,
+        runtime_name,
     );
 }
 
@@ -5072,7 +8060,9 @@ fn log_automatic_recovery_rejected(request_key: &str, previous_attempt_id: &str,
     });
     eprintln!(
         "[mesh-rt continuity] transition=automatic_recovery_rejected request_key={} previous_attempt_id={} reason={}",
-        request_key, previous_attempt_id, reason,
+        crate::dist::continuity::request_key_fingerprint(request_key),
+        previous_attempt_id,
+        reason,
     );
 }
 
@@ -5222,17 +8212,27 @@ fn prepare_declared_handler_submission(
     request_key: &str,
     payload_hash: &str,
     required_replica_count: u64,
+    request_payload: &[u8],
 ) -> Result<DeclaredHandlerSubmission, String> {
     let entry = lookup_declared_handler(runtime_name)
         .ok_or_else(|| format!("declared_handler_not_registered:{runtime_name}"))?;
-    let placement = declared_work_placement(request_key)?;
+    let placement = declared_work_placement(request_key, runtime_name)?;
     let authority = crate::dist::continuity::continuity_registry().authority_status();
+    let replica_nodes =
+        match select_continuity_replica_set(&placement.owner_node, entry.replication_count) {
+            Ok(replica_nodes) => replica_nodes,
+            Err(reason) if reason.starts_with("replica_capacity_unavailable:") => Vec::new(),
+            Err(reason) => return Err(reason),
+        };
+    let replica_node = replica_nodes.first().cloned().unwrap_or_default();
     let request = crate::dist::continuity::SubmitRequest {
         request_key: request_key.to_string(),
         payload_hash: payload_hash.to_string(),
+        request_payload: request_payload.to_vec(),
         ingress_node: placement.ingress_node.clone(),
         owner_node: placement.owner_node.clone(),
-        replica_node: placement.replica_node.clone(),
+        replica_nodes,
+        replica_node,
         replication_count: entry.replication_count,
         required_replica_count,
         routed_remotely: placement.routed_remotely,
@@ -5274,6 +8274,7 @@ pub fn submit_declared_work(
         request_key,
         payload_hash,
         required_replica_count,
+        &[],
     )?;
     if prepared.decision.outcome != crate::dist::continuity::SubmitOutcome::Created {
         return Ok(prepared.decision);
@@ -5466,10 +8467,8 @@ pub extern "C" fn mesh_node_spawn(
     // tear it down, reconnect once, and retry the same request on the fresh
     // authenticated session.
     {
-        let write_result = {
-            let mut stream = session.stream.lock().unwrap();
-            write_msg(&mut *stream, &payload)
-        };
+        record_peer_original_attempt(node_name, Instant::now());
+        let write_result = session.send(OutboundClass::Application, payload.clone());
 
         if write_result.is_err() {
             eprintln!(
@@ -5479,6 +8478,16 @@ pub extern "C" fn mesh_node_spawn(
             session.pending_spawns.lock().unwrap().remove(&req_id);
             session.shutdown.store(true, Ordering::SeqCst);
             cleanup_session_if_current(&session);
+
+            if !allow_peer_retry(node_name, Instant::now()) {
+                eprintln!(
+                    "mesh node spawn failed target={} fn={}: retry_budget_exhausted",
+                    node_name, fn_name
+                );
+                return 0;
+            }
+            let jitter_millis = rand::random_range(0..=100_u64);
+            std::thread::park_timeout(Duration::from_millis(jitter_millis));
 
             session = match connect_to_remote_node(state, node_name) {
                 Ok(new_session) => new_session,
@@ -5496,10 +8505,7 @@ pub extern "C" fn mesh_node_spawn(
                 .unwrap()
                 .insert(req_id, my_pid);
 
-            let retry_result = {
-                let mut stream = session.stream.lock().unwrap();
-                write_msg(&mut *stream, &payload)
-            };
+            let retry_result = session.send(OutboundClass::Application, payload);
             if retry_result.is_err() {
                 eprintln!(
                     "mesh node spawn failed target={} fn={}: write_error_after_reconnect",
@@ -5588,11 +8594,7 @@ mod tests {
     extern "C" fn startup_work_test_declared_handler(_args: *const u8) {}
 
     fn startup_work_test_lock() -> std::sync::MutexGuard<'static, ()> {
-        static STARTUP_WORK_TEST_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-        STARTUP_WORK_TEST_LOCK
-            .get_or_init(|| Mutex::new(()))
-            .lock()
-            .unwrap()
+        declared_handler_registry_test_lock()
     }
 
     fn clear_startup_work_test_state() {
@@ -5636,7 +8638,7 @@ mod tests {
     }
 
     #[test]
-    fn m047_s02_declared_handler_registry_preserves_replication_count_by_runtime_name() {
+    fn declared_handler_registry_preserves_replication_count_by_runtime_name() {
         let _guard = startup_work_test_lock();
         clear_startup_work_test_state();
 
@@ -5672,7 +8674,7 @@ mod tests {
     }
 
     #[test]
-    fn m047_s02_required_replica_count_derives_from_registered_handler_metadata() {
+    fn required_replica_count_derives_from_registered_handler_metadata() {
         let _guard = startup_work_test_lock();
         clear_startup_work_test_state();
 
@@ -5721,7 +8723,7 @@ mod tests {
     }
 
     #[test]
-    fn m047_s02_declared_handler_registry_rejects_empty_runtime_or_executable_names() {
+    fn declared_handler_registry_rejects_empty_runtime_or_executable_names() {
         let _guard = startup_work_test_lock();
         clear_startup_work_test_state();
 
@@ -6115,6 +9117,35 @@ mod tests {
     }
 
     #[test]
+    fn test_cookie_keyring_allows_rolling_rotation() {
+        let challenge = [99_u8; 32];
+        let old_response = compute_response("old-cookie,new-cookie", &challenge);
+        let new_response = compute_response("new-cookie,old-cookie", &challenge);
+
+        assert!(verify_response(
+            "new-cookie,old-cookie",
+            &challenge,
+            &old_response
+        ));
+        assert!(verify_response(
+            "old-cookie,new-cookie",
+            &challenge,
+            &new_response
+        ));
+        assert!(!verify_response("new-cookie", &challenge, &old_response));
+    }
+
+    #[test]
+    fn autonomous_cookie_requires_256_bits_of_configured_secret_material() {
+        assert_eq!(
+            validate_cluster_cookie_strength("short-development-cookie", true),
+            Err("autonomous_cluster_cookie_too_short".to_string())
+        );
+        assert!(validate_cluster_cookie_strength("0123456789abcdef0123456789abcdef", true).is_ok());
+        assert!(validate_cluster_cookie_strength("short-development-cookie", false).is_ok());
+    }
+
+    #[test]
     fn test_mesh_node_start_binds_listener() {
         let _ = rustls::crypto::ring::default_provider().install_default();
 
@@ -6335,6 +9366,344 @@ mod tests {
         );
     }
 
+    #[test]
+    fn protocol_two_session_payload_uses_live_versioned_envelope() {
+        let negotiated = NegotiatedProtocol {
+            version: PROTOCOL_V2,
+            capabilities: super::super::protocol::Capabilities::AUTONOMOUS_REQUIRED,
+            max_frame_bytes: 4096,
+            autonomous_enabled: true,
+            disabled_reason: None,
+        };
+        let correlation = 41_u64;
+        let mut payload = vec![DIST_HTTP_ROUTE_V2_QUERY];
+        payload.extend_from_slice(&correlation.to_le_bytes());
+        payload.extend_from_slice(b"request");
+
+        let frame =
+            encode_session_payload(OutboundClass::Application, payload.clone(), &negotiated)
+                .expect("encode protocol-two frame");
+        let envelope = ProtocolEnvelope::decode(&frame, negotiated.max_frame_bytes)
+            .expect("decode protocol-two envelope");
+        assert_eq!(envelope.class, MessageClass::Application);
+        assert_eq!(envelope.kind, u16::from(DIST_HTTP_ROUTE_V2_QUERY));
+        assert_eq!(envelope.correlation_id, correlation);
+        assert_eq!(
+            decode_session_payload(frame, &negotiated).expect("unwrap session frame"),
+            payload
+        );
+    }
+
+    #[test]
+    fn clustered_http_execution_uses_reserved_owner_until_completion_is_observed() {
+        let record = crate::dist::continuity::ContinuityRecord {
+            request_key: "operation-key".to_string(),
+            payload_hash: "sha256:payload".to_string(),
+            record_version: 1,
+            request_payload: Vec::new(),
+            attempt_id: "attempt-1".to_string(),
+            phase: crate::dist::continuity::ContinuityPhase::Submitted,
+            result: crate::dist::continuity::ContinuityResult::Pending,
+            ingress_node: "gateway@127.0.0.1:4300".to_string(),
+            owner_node: "worker@127.0.0.1:4301".to_string(),
+            replica_nodes: vec!["replica@127.0.0.1:4302".to_string()],
+            acknowledged_replica_nodes: vec!["replica@127.0.0.1:4302".to_string()],
+            replica_node: "replica@127.0.0.1:4302".to_string(),
+            replication_count: 2,
+            replica_status: crate::dist::continuity::ReplicaStatus::Mirrored,
+            cluster_role: crate::dist::continuity::ContinuityClusterRole::Primary,
+            promotion_epoch: 0,
+            replication_health: crate::dist::continuity::ReplicationHealth::Healthy,
+            execution_node: String::new(),
+            routed_remotely: true,
+            fell_back_locally: false,
+            error: String::new(),
+            declared_handler_runtime_name: "Proof.handle".to_string(),
+        };
+
+        let execution = clustered_http_execution(vec![1, 2, 3], false, &record);
+
+        assert_eq!(execution.execution_node, record.owner_node);
+        assert!(execution.routed_remotely);
+    }
+
+    #[test]
+    fn leader_sweep_redrives_missing_replica_after_election() {
+        let active = crate::dist::continuity::ContinuityRecord {
+            request_key: "operation-key".to_string(),
+            payload_hash: "sha256:payload".to_string(),
+            record_version: 3,
+            request_payload: vec![1],
+            attempt_id: "attempt-1".to_string(),
+            phase: crate::dist::continuity::ContinuityPhase::Submitted,
+            result: crate::dist::continuity::ContinuityResult::Pending,
+            ingress_node: "gateway@host".to_string(),
+            owner_node: "worker@host".to_string(),
+            replica_nodes: vec!["controller1@host".to_string()],
+            acknowledged_replica_nodes: Vec::new(),
+            replica_node: String::new(),
+            replication_count: 2,
+            replica_status: crate::dist::continuity::ReplicaStatus::DegradedContinuing,
+            cluster_role: crate::dist::continuity::ContinuityClusterRole::Primary,
+            promotion_epoch: 0,
+            replication_health: crate::dist::continuity::ReplicationHealth::Degraded,
+            execution_node: String::new(),
+            routed_remotely: true,
+            fell_back_locally: false,
+            error: "replica_lost:controller1@host".to_string(),
+            declared_handler_runtime_name: "Proof.handle".to_string(),
+        };
+        let membership =
+            BTreeSet::from(["controller2@host".to_string(), "worker@host".to_string()]);
+
+        assert_eq!(
+            missing_continuity_replica_participants(std::slice::from_ref(&active), &membership),
+            BTreeSet::from(["controller1@host".to_string()])
+        );
+
+        let mut terminal = active;
+        terminal.phase = crate::dist::continuity::ContinuityPhase::Completed;
+        terminal.result = crate::dist::continuity::ContinuityResult::Succeeded;
+        assert!(missing_continuity_replica_participants(&[terminal], &membership).is_empty());
+    }
+
+    #[test]
+    fn protocol_one_session_payload_remains_wire_compatible() {
+        let negotiated = NegotiatedProtocol {
+            version: PROTOCOL_V1,
+            capabilities: super::super::protocol::Capabilities::default(),
+            max_frame_bytes: 4096,
+            autonomous_enabled: false,
+            disabled_reason: Some("protocol_two_not_negotiated".to_string()),
+        };
+        let payload = vec![HEARTBEAT_PING, 1, 2, 3];
+        assert_eq!(
+            encode_session_payload(OutboundClass::Control, payload.clone(), &negotiated)
+                .expect("protocol-one frame"),
+            payload
+        );
+        assert!(transient_http_route_compatibility_allowed(
+            &negotiated,
+            false
+        ));
+        assert!(!transient_http_route_compatibility_allowed(
+            &negotiated,
+            true
+        ));
+        let protocol_two = NegotiatedProtocol {
+            version: PROTOCOL_V2,
+            capabilities: super::super::protocol::Capabilities::AUTONOMOUS_REQUIRED,
+            max_frame_bytes: 4096,
+            autonomous_enabled: true,
+            disabled_reason: None,
+        };
+        assert!(!transient_http_route_compatibility_allowed(
+            &protocol_two,
+            false
+        ));
+    }
+
+    #[test]
+    fn negotiated_distribution_reader_accepts_operator_payload_above_handshake_limit() {
+        let payload = vec![DIST_OPERATOR_REPLY; 8 * 1024];
+        let mut framed = Vec::new();
+        write_msg(&mut framed, &payload).expect("frame operator reply");
+
+        assert_eq!(
+            read_dist_msg_bounded(&mut std::io::Cursor::new(framed), 16 * 1024)
+                .expect("read negotiated distribution frame"),
+            payload
+        );
+    }
+
+    #[test]
+    fn persistent_frame_reader_preserves_partial_frame_across_timeouts() {
+        struct ScriptedRead {
+            steps: std::collections::VecDeque<Result<Vec<u8>, io::ErrorKind>>,
+        }
+
+        impl Read for ScriptedRead {
+            fn read(&mut self, output: &mut [u8]) -> io::Result<usize> {
+                match self.steps.pop_front().expect("scripted read step") {
+                    Ok(bytes) => {
+                        assert!(bytes.len() <= output.len());
+                        output[..bytes.len()].copy_from_slice(&bytes);
+                        Ok(bytes.len())
+                    }
+                    Err(kind) => Err(io::Error::from(kind)),
+                }
+            }
+        }
+
+        let payload = b"raft-frame".to_vec();
+        let length = (payload.len() as u32).to_le_bytes();
+        let mut input = ScriptedRead {
+            steps: std::collections::VecDeque::from([
+                Ok(length[..2].to_vec()),
+                Err(io::ErrorKind::TimedOut),
+                Ok(length[2..].to_vec()),
+                Ok(payload[..3].to_vec()),
+                Err(io::ErrorKind::WouldBlock),
+                Ok(payload[3..].to_vec()),
+            ]),
+        };
+        let mut reader = PersistentFrameReader::default();
+        assert_eq!(reader.read_next(&mut input, 1024).unwrap(), None);
+        assert_eq!(reader.read_next(&mut input, 1024).unwrap(), None);
+        assert_eq!(reader.read_next(&mut input, 1024).unwrap(), Some(payload));
+    }
+
+    #[test]
+    fn outbound_queue_enforces_item_and_byte_bounds() {
+        let (sender, receiver) = crossbeam_channel::bounded(1);
+        let bytes = AtomicUsize::new(0);
+        enqueue_outbound(&sender, &bytes, 8, OutboundClass::Application, vec![1; 4])
+            .expect("first frame fits");
+        assert_eq!(bytes.load(Ordering::Acquire), 4);
+        assert_eq!(
+            enqueue_outbound(&sender, &bytes, 8, OutboundClass::Application, vec![2; 4],),
+            Err("peer_outbound_queue_full".to_string())
+        );
+        assert_eq!(bytes.load(Ordering::Acquire), 4);
+        let frame = receiver.recv().expect("queued frame");
+        bytes.fetch_sub(frame.payload.len(), Ordering::AcqRel);
+        assert_eq!(
+            enqueue_outbound(&sender, &bytes, 8, OutboundClass::Application, vec![3; 9],),
+            Err("peer_outbound_byte_limit".to_string())
+        );
+        assert_eq!(bytes.load(Ordering::Acquire), 0);
+    }
+
+    #[test]
+    fn admission_burst_cannot_consume_critical_control_queue_capacity() {
+        let (control_sender, _control_receiver) = crossbeam_channel::bounded(1);
+        let (admission_sender, _admission_receiver) = crossbeam_channel::bounded(1);
+        let control_bytes = AtomicUsize::new(0);
+        let admission_bytes = AtomicUsize::new(0);
+
+        enqueue_outbound(
+            &control_sender,
+            &control_bytes,
+            CONTROL_QUEUE_BYTES,
+            OutboundClass::Control,
+            vec![1],
+        )
+        .expect("critical control frame");
+        assert_eq!(
+            enqueue_outbound(
+                &control_sender,
+                &control_bytes,
+                CONTROL_QUEUE_BYTES,
+                OutboundClass::Control,
+                vec![2],
+            ),
+            Err("peer_outbound_queue_full".to_string())
+        );
+        enqueue_outbound(
+            &admission_sender,
+            &admission_bytes,
+            ADMISSION_QUEUE_BYTES,
+            OutboundClass::Admission,
+            vec![3],
+        )
+        .expect("independent admission capacity");
+
+        assert_eq!(control_bytes.load(Ordering::Acquire), 1);
+        assert_eq!(admission_bytes.load(Ordering::Acquire), 1);
+    }
+
+    #[test]
+    fn outbound_lane_snapshot_reports_item_or_byte_saturation() {
+        let lane = outbound_lane_snapshot("application", 2, 80, 10, 100);
+
+        assert_eq!(lane.class, "application");
+        assert_eq!(lane.queued_items, 2);
+        assert_eq!(lane.queued_bytes, 80);
+        assert_eq!(lane.utilization, 0.8);
+    }
+
+    #[test]
+    fn accepted_http_reservations_expire_without_a_followup_query() {
+        let controller = crate::dist::telemetry::global_admission_controller();
+        let now = Instant::now();
+        let mut reservations = FxHashMap::default();
+        reservations.insert(
+            1,
+            AcceptedHttpReservation {
+                _permit: controller
+                    .reserve_application()
+                    .expect("reserve expired application slot"),
+                expires_at: now.checked_sub(Duration::from_millis(1)).unwrap(),
+            },
+        );
+
+        expire_http_reservation_map(&mut reservations, now);
+        assert!(reservations.is_empty());
+
+        reservations.insert(
+            2,
+            AcceptedHttpReservation {
+                _permit: controller
+                    .reserve_application()
+                    .expect("reserve live application slot"),
+                expires_at: now + Duration::from_secs(1),
+            },
+        );
+        expire_http_reservation_map(&mut reservations, now);
+        assert!(reservations.contains_key(&2));
+    }
+
+    #[test]
+    fn outbound_control_priority_is_bounded_when_application_is_waiting() {
+        let (control_tx, control) = crossbeam_channel::bounded(16);
+        let (_admission_tx, admission) = crossbeam_channel::bounded(1);
+        let (_continuity_tx, continuity) = crossbeam_channel::bounded(1);
+        let (application_tx, application) = crossbeam_channel::bounded(1);
+        let (_snapshot_tx, snapshot) = crossbeam_channel::bounded(1);
+        for _ in 0..8 {
+            control_tx
+                .send(OutboundFrame {
+                    payload: vec![1],
+                    class: OutboundClass::Control,
+                })
+                .unwrap();
+        }
+        application_tx
+            .send(OutboundFrame {
+                payload: vec![2],
+                class: OutboundClass::Application,
+            })
+            .unwrap();
+        let receivers = OutboundReceivers {
+            control,
+            admission,
+            continuity,
+            application,
+            snapshot,
+        };
+        let mut consecutive_control_frames = 0;
+
+        for _ in 0..MAX_CONSECUTIVE_CONTROL_FRAMES {
+            let frame = try_next_outbound_frame(&receivers, &mut consecutive_control_frames)
+                .expect("queued control frame");
+            assert!(matches!(frame.class, OutboundClass::Control));
+        }
+        let frame = try_next_outbound_frame(&receivers, &mut consecutive_control_frames)
+            .expect("waiting application frame");
+        assert!(matches!(frame.class, OutboundClass::Application));
+        assert_eq!(consecutive_control_frames, 0);
+    }
+
+    #[test]
+    fn draining_owner_reservation_is_recoverable_before_execution() {
+        assert!(retryable_clustered_http_transport_failure(
+            "owner_reservation_rejected:Draining"
+        ));
+        assert!(!retryable_clustered_http_transport_failure(
+            "owner_reservation_rejected:InflightLimit"
+        ));
+    }
+
     // -------------------------------------------------------------------
     // Plan 03 tests: HeartbeatState, handshake, wire format, lifecycle
     // -------------------------------------------------------------------
@@ -6485,6 +9854,90 @@ mod tests {
         // Acceptor (bob) should see initiator (alice).
         assert_eq!(remote_name_b, "alice@127.0.0.1");
         assert_eq!(remote_creation_b, 1);
+    }
+
+    #[test]
+    fn test_mixed_version_handshake_keeps_protocol_one_service_and_fences_autonomy() {
+        use std::os::unix::net::UnixStream;
+
+        let (current_stream, protocol_one_stream) = UnixStream::pair().unwrap();
+        let cookie = "rolling-upgrade-cookie".to_string();
+        let protocol_one_cookie = cookie.clone();
+
+        let current = std::thread::spawn(move || {
+            let mut stream = current_stream;
+            perform_handshake_with_identity(&mut stream, "current@127.0.0.1:9100", &cookie, 2, true)
+        });
+        let protocol_one = std::thread::spawn(move || -> Result<String, String> {
+            let mut stream = protocol_one_stream;
+
+            // A protocol-one decoder consumes only the original name prefix and
+            // ignores extension bytes that a new peer appends after creation.
+            let name_message = read_msg(&mut stream)
+                .map_err(|error| format!("protocol_one_recv_name_failed:{error}"))?;
+            if name_message.first() != Some(&HANDSHAKE_NAME) || name_message.len() < 4 {
+                return Err("protocol_one_name_message_invalid".to_string());
+            }
+            let name_len = u16::from_le_bytes([name_message[1], name_message[2]]) as usize;
+            if name_message.len() < 4 + name_len {
+                return Err("protocol_one_name_message_truncated".to_string());
+            }
+            let remote_name = std::str::from_utf8(&name_message[3..3 + name_len])
+                .map_err(|_| "protocol_one_name_invalid_utf8".to_string())?
+                .to_string();
+
+            // Emit the exact protocol-one challenge shape: no version hello.
+            let challenge = generate_challenge();
+            let protocol_one_name = b"protocol-one@127.0.0.1:9101";
+            let mut challenge_message = Vec::new();
+            challenge_message.push(HANDSHAKE_CHALLENGE);
+            challenge_message.extend_from_slice(&(protocol_one_name.len() as u16).to_le_bytes());
+            challenge_message.extend_from_slice(protocol_one_name);
+            challenge_message.push(1);
+            challenge_message.extend_from_slice(&challenge);
+            write_msg(&mut stream, &challenge_message)
+                .map_err(|error| format!("protocol_one_send_challenge_failed:{error}"))?;
+
+            let (response, remote_challenge) = recv_challenge_reply(&mut stream)?;
+            if !verify_response(&protocol_one_cookie, &challenge, &response) {
+                return Err("protocol_one_cookie_response_invalid".to_string());
+            }
+            let ack = compute_response(&protocol_one_cookie, &remote_challenge);
+            send_challenge_ack(&mut stream, &ack)?;
+            Ok(remote_name)
+        });
+
+        let (_, _, negotiated, identity) = current
+            .join()
+            .expect("current handshake thread")
+            .expect("current peer accepts protocol one");
+        assert_eq!(
+            protocol_one
+                .join()
+                .expect("protocol-one handshake thread")
+                .expect("protocol-one peer accepts extended current name"),
+            "current@127.0.0.1:9100"
+        );
+        assert_eq!(negotiated.version, PROTOCOL_V1);
+        assert!(!negotiated.autonomous_enabled);
+        assert_eq!(
+            negotiated.disabled_reason.as_deref(),
+            Some("protocol_two_not_negotiated")
+        );
+        assert!(identity.is_none());
+        let application_payload = vec![DIST_SPAWN, 7, 8, 9];
+        let wire = encode_session_payload(
+            OutboundClass::Application,
+            application_payload.clone(),
+            &negotiated,
+        )
+        .expect("mixed-version data frame remains available");
+        assert_eq!(wire, application_payload);
+        assert_eq!(
+            decode_session_payload(wire, &negotiated)
+                .expect("mixed-version data frame remains decodable"),
+            application_payload
+        );
     }
 
     #[test]
@@ -7138,7 +10591,7 @@ mod tests {
         // then parse it to verify correctness.
 
         // Simulate the peer list we'd send (excluding the receiving node)
-        let all_sessions = vec![
+        let all_sessions = [
             "peer_x@10.0.0.10:5000".to_string(),
             "peer_y@10.0.0.11:5001".to_string(),
             "receiving_node@10.0.0.12:5002".to_string(),

@@ -80,7 +80,7 @@ Once hello-world runs, pick the starter that matches your next job:
 
 - `meshc init --clustered hello_cluster` — the minimal clustered starter. The generated example uses `@cluster pub fn add()` and the runtime-owned handler name `Work.add`.
 - `meshc init --template todo-api --db sqlite todo_api` — the **honest local-only starter** and the **honest local single-node SQLite starter**. It stays local-only, keeps SQLite single-node only, and includes actor-backed write rate limiting. See `examples/todo-sqlite/README.md`.
-- `meshc init --template todo-api --db postgres shared_todo` — the **shared/deployable** starter and the **serious shared/deployable PostgreSQL starter**. It uses `HTTP.clustered(1, ...)` for `GET /todos` and `GET /todos/:id`, while `GET /health` and mutating routes stay local. It is the generated starter that owns the staged deploy + failover proof chain once you step onto the proof pages. See `examples/todo-postgres/README.md`.
+- `meshc init --template todo-api --db postgres shared_todo` — the **shared/deployable** starter and the **serious shared/deployable PostgreSQL starter**. It clusters `GET /todos`, `GET /todos/:id`, and idempotent `POST /todos`; health plus unsafe-keyless `PUT` and `DELETE` remain local. It is the generated starter that owns the staged deploy + failover proof chain once you step onto the proof pages. See `examples/todo-postgres/README.md`.
 
 Then follow the generated project README, or go straight to the docs:
 
@@ -95,22 +95,13 @@ Keep the public ladder starter/examples-first: the scaffold and `/examples` stay
 - **Clustered walkthrough:** use `meshc init --clustered` and then follow https://meshlang.dev/docs/getting-started/clustered-example/
 - **SQLite Todo starter:** https://github.com/hyperpush-org/mesh-lang/blob/main/examples/todo-sqlite/README.md — the honest local-only, single-node-only starter.
 - **PostgreSQL Todo starter:** https://github.com/hyperpush-org/mesh-lang/blob/main/examples/todo-postgres/README.md — the serious shared/deployable starter and the handoff into the staged deploy + failover proof chain on the proof pages.
-- **Production Backend Proof:** https://meshlang.dev/docs/production-backend-proof/ — only after the starter/examples-first ladder, when you need the repo-boundary handoff into the [Hyperpush product repo](https://github.com/hyperpush-org/hyperpush-mono) for maintained app/backend surfaces.
+- **Autonomous Clusters:** https://meshlang.dev/docs/autonomous-clusters/ — configure adaptive routing, continuity, local elasticity, and horizontal capacity drivers.
+- **Distributed Proof:** https://meshlang.dev/docs/distributed-proof/ — run the self-contained Docker/PostgreSQL release proof.
 - **Tooling docs:** https://meshlang.dev/docs/tooling/
-
-## Workspace contract for maintainers
-
-M055 is a two-repo split only: the blessed sibling workspace is `mesh-lang/` plus `hyperpush-mono/`.
-
-`website/`, `packages-website/`, `registry/`, installers, and evaluator-facing starters/examples stay language-owned in `mesh-lang` for this milestone.
-
-Repo-local `.gsd` remains authoritative, and cross-repo work uses the lightweight coordination layer in [WORKSPACE.md](WORKSPACE.md).
-
-If you need the old `mesh-lang/mesher` path locally, use `bash scripts/setup-local-workspace.sh`. `mesh-lang` no longer tracks product source; that compatibility path is local-only and is not part of the canonical GitHub structure or CI contract.
 
 ## Maintainers / public release proof
 
-If you are working on Mesh itself rather than just using it, start the deeper app/backend handoff at https://meshlang.dev/docs/production-backend-proof/ and then continue in the [Hyperpush product repo](https://github.com/hyperpush-org/hyperpush-mono) for the maintained app/backend surfaces. Keep that path maintainer-facing; the public starter ladder above stays on scaffold output and `/examples`.
+The implementation roadmap for runtime-owned elasticity and execution routing is in [Autonomous Scaling and Built-In Load Balancing Plan](AUTONOMOUS-SCALING-AND-LOAD-BALANCING-PLAN.md). The release proof is owned entirely by this repository; see https://meshlang.dev/docs/distributed-proof/ for the Docker/PostgreSQL, chaos, performance, soak, and capacity-driver gates.
 
 Canonical assembled proof command:
 

@@ -130,7 +130,20 @@ pub use db::repo::{
     mesh_repo_update_where, mesh_repo_update_where_expr,
 };
 pub use db::sqlite::{mesh_sqlite_close, mesh_sqlite_execute, mesh_sqlite_open, mesh_sqlite_query};
+pub use dist::autonomous::{
+    autonomous_controller_status, embedded_autonomous_config, mesh_register_autonomous_config_json,
+    register_autonomous_config_json, AutonomousControllerStatus, RuntimeAutonomousConfig,
+    RuntimeCapacityDriverConfig, RuntimeContinuityConfig, RuntimeFeatureGates,
+    RuntimeRoutingConfig, RuntimeSchedulerConfig, AUTONOMOUS_CONFIG_SCHEMA_VERSION,
+};
 pub use dist::bootstrap::{BootstrapMode, BootstrapStatus};
+pub use dist::cluster_api::{
+    mesh_cluster_capacity, mesh_cluster_pressure, mesh_cluster_role, mesh_cluster_state,
+};
+pub use dist::consensus::{
+    commit_consensus_command, consensus_node_id_for_stable_id, consensus_runtime_snapshot,
+    ConsensusCommand, ConsensusResponse, ConsensusRuntimeSnapshot,
+};
 pub use dist::continuity::{
     attempt_id_from_token, continuity_registry, mesh_continuity_acknowledge_replica,
     mesh_continuity_authority_status, mesh_continuity_mark_completed, mesh_continuity_status,
@@ -140,6 +153,23 @@ pub use dist::continuity::{
     MeshContinuityAuthorityStatus, MeshContinuityRecord, MeshContinuitySubmitDecision,
     ReplicaStatus, SubmitDecision, SubmitOutcome, SubmitRequest,
 };
+pub use dist::continuity_store::{
+    configured_continuity_store, prove_interrupted_snapshot_resume, CompactionOutcome,
+    ContinuityStore, ContinuityStoreLimits, ContinuityStoreStats, SnapshotChunk,
+    SnapshotResumeProof, SqliteContinuityStore, StoredContinuityPhase, StoredContinuityRecord,
+};
+pub use dist::driver_service::{
+    serve_docker_driver_from_env, RemoteDockerCapacityDriver, RemoteDockerTemplate,
+};
+pub use dist::identity::{
+    request_id_generator, validate_idempotency_key, AttemptId, CanonicalHttpRequest, OperationKey,
+    OwnershipGeneration, RequestId, RequestIdGenerator,
+};
+pub use dist::identity_claim::{
+    generate_identity_signing_material, sign_identity_claim, NodeIdentityClaim,
+    CAPACITY_IDENTITY_SIGNING_KEY_ENV, IDENTITY_ENVELOPE_ENV, IDENTITY_SCHEMA_VERSION,
+    IDENTITY_VERIFY_KEYS_ENV,
+};
 pub use dist::node::{
     mesh_node_connect, mesh_node_list, mesh_node_self, mesh_node_spawn, mesh_node_start,
     mesh_node_start_from_env, mesh_register_declared_handler, mesh_register_function,
@@ -148,13 +178,42 @@ pub use dist::node::{
 };
 pub use dist::operator::{
     operator_continuity_list, operator_continuity_status, operator_recent_diagnostics,
-    operator_status, query_operator_continuity_list, query_operator_continuity_list_remote,
-    query_operator_continuity_status, query_operator_continuity_status_remote,
-    query_operator_diagnostics, query_operator_diagnostics_remote, query_operator_status,
-    query_operator_status_remote, OperatorAuthoritySnapshot, OperatorContinuityList,
-    OperatorDiagnosticEntry, OperatorDiagnosticRecord, OperatorDiagnosticsBuffer,
-    OperatorDiagnosticsSnapshot, OperatorMembershipSnapshot, OperatorQueryError, OperatorQueryKind,
-    OperatorStatusSnapshot, DEFAULT_OPERATOR_QUERY_TIMEOUT,
+    operator_runtime_snapshot, operator_status, query_operator_continuity_list,
+    query_operator_continuity_list_remote, query_operator_continuity_status,
+    query_operator_continuity_status_remote, query_operator_control, query_operator_control_remote,
+    query_operator_diagnostics, query_operator_diagnostics_remote, query_operator_runtime,
+    query_operator_runtime_remote, query_operator_status, query_operator_status_remote,
+    sign_operator_control_request, OperatorAuthoritySnapshot, OperatorContinuityList,
+    OperatorControlAction, OperatorControlOutcome, OperatorControlRequest, OperatorDiagnosticEntry,
+    OperatorDiagnosticRecord, OperatorDiagnosticsBuffer, OperatorDiagnosticsSnapshot,
+    OperatorMembershipSnapshot, OperatorNodeRuntimeSnapshot, OperatorQueryError, OperatorQueryKind,
+    OperatorRuntimeSnapshot, OperatorStatusSnapshot, DEFAULT_OPERATOR_QUERY_TIMEOUT,
+};
+pub use dist::protocol::{
+    chunk_payload, classify_retry, negotiate_protocol, Capabilities, ChunkReassembler,
+    CircuitBreaker, CircuitState, MessageClass, NegotiatedProtocol, ProtocolEnvelope,
+    ProtocolHello, RetryBudget, RetryClass,
+};
+pub use dist::readiness::{local_readiness_status, NodeReadinessStatus, ReadinessGate};
+pub use dist::routing::{
+    load_report_registry, local_load_report, select_owner, select_record_replicas,
+    IneligibilityReason, LoadReportRegistry, NodeLoadReport, RoutingDecision, RoutingPolicy,
+};
+pub use dist::scaling::{
+    capacity_operation_id, reconcile_scale_up, select_drain_candidate, Autoscaler, CapacityDriver,
+    CapacityNodeLifecycle, CapacityObservation, CapacityReconcileOutcome, CapacityReconciler,
+    CommittedDesiredCapacity, ControlLogEntry, ControlMutation, ControlPlaneCommitter, ControlTerm,
+    ControllerQuorum, DesiredCapacity, DesiredRevision, DockerCapacityDriver, DockerDriverConfig,
+    DockerEnvironmentFileMount, DrainCandidate, DrainPhase, DrainProgress, DriverOperation,
+    DriverOperationState, DurableControlLog, FakeCapacityDriver, FlyMachinesCapacityDriver,
+    FlyMachinesDriverConfig, LocalScalingDecision, LocalScalingPolicy, LocalSchedulerAutoscaler,
+    ObservedCapacityNode, ProcessCapacityDriver, ProcessDriverConfig, ReconcileNodeSafety,
+    ScalingAction, ScalingDecision, ScalingPolicy, ScalingSample,
+};
+pub use dist::telemetry::{
+    global_admission_controller, runtime_telemetry, AdmissionController, AdmissionLimits,
+    AdmissionPermit, AdmissionRejection, LocalTelemetrySnapshot, NodeLifecycleState, NodeRoles,
+    PressureSnapshot, QueuePermit, RuntimeTelemetry,
 };
 pub use env::{mesh_env_args, mesh_env_get, mesh_env_get_int, mesh_env_get_with_default};
 pub use file::{
@@ -165,9 +224,10 @@ pub use hash::{
     mesh_hash_bool, mesh_hash_combine, mesh_hash_float, mesh_hash_int, mesh_hash_string,
 };
 pub use http::{
-    mesh_http_get, mesh_http_post, mesh_http_request_body, mesh_http_request_header,
-    mesh_http_request_method, mesh_http_request_path, mesh_http_request_query,
-    mesh_http_response_new, mesh_http_route, mesh_http_router, mesh_http_serve,
+    mesh_http_idempotency_key, mesh_http_request_body, mesh_http_request_header,
+    mesh_http_request_id, mesh_http_request_method, mesh_http_request_path,
+    mesh_http_request_query, mesh_http_response_new, mesh_http_route, mesh_http_router,
+    mesh_http_serve,
 };
 pub use io::{mesh_io_eprintln, mesh_io_read_line};
 pub use iter::{

@@ -29,7 +29,7 @@ const quickLinks = [
             :href="link.href"
             :target="link.target"
             :rel="link.target === '_blank' ? 'noreferrer noopener' : undefined"
-            class="rounded-md px-2.5 py-2 text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+            class="rounded-lg px-2.5 py-2 text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
             @click="isOpen = false"
           >
             {{ link.text }}

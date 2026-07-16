@@ -77,6 +77,118 @@ pub(crate) fn global_scheduler() -> &'static Scheduler {
         .expect("actor scheduler not initialized -- call mesh_rt_init_actor() first")
 }
 
+/// A standard-library channel sender that wakes a suspended actor after a reply.
+///
+/// Distribution reader threads use this for request/reply protocols whose
+/// caller may be running inside a Mesh coroutine. The value still travels over
+/// an ordinary typed channel; the waiter identity only supplies the scheduler
+/// wakeup that `std::sync::mpsc` does not know how to perform.
+pub(crate) struct CooperativeSender<T> {
+    sender: std::sync::mpsc::Sender<T>,
+    waiter: Option<ProcessId>,
+}
+
+impl<T> CooperativeSender<T> {
+    pub(crate) fn send(&self, value: T) -> Result<(), std::sync::mpsc::SendError<T>> {
+        self.sender.send(value)?;
+        let Some(pid) = self.waiter else {
+            return Ok(());
+        };
+        let Some(scheduler) = GLOBAL_SCHEDULER.get() else {
+            return Ok(());
+        };
+        if let Some(process) = scheduler.get_process(pid) {
+            let mut process = process.lock();
+            if matches!(process.state, ProcessState::Waiting) {
+                process.state = ProcessState::Ready;
+                drop(process);
+                scheduler.wake_process(pid);
+            }
+        }
+        Ok(())
+    }
+}
+
+/// Create a reply channel that can suspend a Mesh actor without blocking its
+/// scheduler worker. Outside a coroutine it behaves like a normal MPSC channel.
+pub(crate) fn cooperative_channel<T>() -> (CooperativeSender<T>, std::sync::mpsc::Receiver<T>) {
+    let (sender, receiver) = std::sync::mpsc::channel();
+    let waiter = stack::CURRENT_YIELDER
+        .with(|current| current.get().is_some())
+        .then(stack::get_current_pid)
+        .flatten();
+    (CooperativeSender { sender, waiter }, receiver)
+}
+
+/// Receive a reply with a monotonic timeout while yielding a Mesh coroutine.
+///
+/// This is the scheduler-aware equivalent of `Receiver::recv_timeout`: an
+/// actor becomes Waiting and is resumed by either its reply sender or the
+/// bounded timer reactor. Non-actor callers retain the standard blocking
+/// behavior.
+pub(crate) fn cooperative_recv_timeout<T>(
+    receiver: &std::sync::mpsc::Receiver<T>,
+    timeout: std::time::Duration,
+) -> Result<T, std::sync::mpsc::RecvTimeoutError> {
+    let in_coroutine = stack::CURRENT_YIELDER.with(|current| current.get().is_some());
+    if !in_coroutine {
+        return receiver.recv_timeout(timeout);
+    }
+
+    let Some(pid) = stack::get_current_pid() else {
+        return receiver.recv_timeout(timeout);
+    };
+    let deadline = std::time::Instant::now() + timeout;
+    let scheduler = global_scheduler();
+    let timer_registered = timer_wake_sender()
+        .try_send(TimerWake { deadline, pid })
+        .is_ok();
+
+    loop {
+        match receiver.try_recv() {
+            Ok(value) => return Ok(value),
+            Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                return Err(std::sync::mpsc::RecvTimeoutError::Disconnected);
+            }
+            Err(std::sync::mpsc::TryRecvError::Empty) => {}
+        }
+        if std::time::Instant::now() >= deadline {
+            return Err(std::sync::mpsc::RecvTimeoutError::Timeout);
+        }
+
+        if timer_registered {
+            if let Some(process) = scheduler.get_process(pid) {
+                process.lock().state = ProcessState::Waiting;
+            }
+            match receiver.try_recv() {
+                Ok(value) => {
+                    if let Some(process) = scheduler.get_process(pid) {
+                        process.lock().state = ProcessState::Ready;
+                    }
+                    return Ok(value);
+                }
+                Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                    if let Some(process) = scheduler.get_process(pid) {
+                        process.lock().state = ProcessState::Ready;
+                    }
+                    return Err(std::sync::mpsc::RecvTimeoutError::Disconnected);
+                }
+                Err(std::sync::mpsc::TryRecvError::Empty) => {}
+            }
+            if std::time::Instant::now() >= deadline {
+                if let Some(process) = scheduler.get_process(pid) {
+                    process.lock().state = ProcessState::Ready;
+                }
+                return Err(std::sync::mpsc::RecvTimeoutError::Timeout);
+            }
+        }
+
+        // If the bounded timer queue is saturated, remain runnable and yield
+        // cooperatively until the deadline instead of blocking an OS worker.
+        stack::yield_current();
+    }
+}
+
 // ---------------------------------------------------------------------------
 // extern "C" ABI functions
 // ---------------------------------------------------------------------------
@@ -100,8 +212,28 @@ pub(crate) fn global_scheduler() -> &'static Scheduler {
 /// This function is idempotent -- subsequent calls are no-ops.
 #[no_mangle]
 pub extern "C" fn mesh_rt_init_actor(num_schedulers: u32) {
-    GLOBAL_SCHEDULER.get_or_init(|| {
-        let sched = Scheduler::new(num_schedulers);
+    let scheduler = GLOBAL_SCHEDULER.get_or_init(|| {
+        let default_workers = if num_schedulers == 0 {
+            std::thread::available_parallelism()
+                .map(|count| count.get() as u32)
+                .unwrap_or(1)
+        } else {
+            num_schedulers
+        };
+        let embedded =
+            crate::dist::autonomous::embedded_autonomous_config().map(|config| &config.scheduler);
+        let min_workers = std::env::var("MESH_SCHEDULER_MIN_WORKERS")
+            .ok()
+            .and_then(|raw| raw.parse::<u32>().ok())
+            .or_else(|| embedded.map(|config| u32::from(config.min_workers)))
+            .unwrap_or(default_workers);
+        let max_workers = std::env::var("MESH_SCHEDULER_MAX_WORKERS")
+            .ok()
+            .and_then(|raw| raw.parse::<u32>().ok())
+            .or_else(|| embedded.map(|config| u32::from(config.max_workers)))
+            .unwrap_or(min_workers);
+        let sched = Scheduler::new_elastic(min_workers, max_workers)
+            .unwrap_or_else(|_| Scheduler::new(default_workers));
 
         // Create a process entry for the main thread so it has a PID and mailbox.
         // This enables mesh_service_call to work from non-coroutine context.
@@ -114,6 +246,12 @@ pub extern "C" fn mesh_rt_init_actor(num_schedulers: u32) {
 
         sched
     });
+    crate::dist::telemetry::runtime_telemetry().set_scheduler(
+        scheduler.active_workers().try_into().unwrap_or(u16::MAX),
+        scheduler.worker_bounds().1.try_into().unwrap_or(u16::MAX),
+        scheduler.runnable_count(),
+    );
+    crate::dist::scaling::start_local_scheduler_autoscaler(scheduler);
 }
 
 /// Spawn a new actor process.
@@ -127,6 +265,10 @@ pub extern "C" fn mesh_rt_init_actor(num_schedulers: u32) {
 /// - `args`: pointer to the actor's arguments (opaque bytes)
 /// - `args_size`: size of the arguments in bytes
 /// - `priority`: 0 = High, 1 = Normal, 2 = Low
+///
+/// The scheduler does not copy `args`; the caller must keep the argument frame
+/// alive until the actor entry function takes ownership of it or no longer
+/// accesses it.
 #[no_mangle]
 pub extern "C" fn mesh_actor_spawn(
     fn_ptr: *const u8,
@@ -544,11 +686,81 @@ pub extern "C" fn mesh_actor_receive(timeout_ms: i64) -> *const u8 {
 
 // ── Timer functions (Phase 44 Plan 02) ──────────────────────────────
 
+#[derive(Clone, Copy, Eq, PartialEq)]
+struct TimerWake {
+    deadline: std::time::Instant,
+    pid: ProcessId,
+}
+
+impl Ord for TimerWake {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        // Reverse the natural ordering so BinaryHeap pops the earliest timer.
+        other
+            .deadline
+            .cmp(&self.deadline)
+            .then_with(|| other.pid.as_u64().cmp(&self.pid.as_u64()))
+    }
+}
+
+impl PartialOrd for TimerWake {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+const TIMER_WAKE_QUEUE_ITEMS: usize = 65_536;
+static TIMER_WAKE_SENDER: OnceLock<crossbeam_channel::Sender<TimerWake>> = OnceLock::new();
+
+fn timer_wake_sender() -> &'static crossbeam_channel::Sender<TimerWake> {
+    TIMER_WAKE_SENDER.get_or_init(|| {
+        let (sender, receiver) = crossbeam_channel::bounded(TIMER_WAKE_QUEUE_ITEMS);
+        std::thread::Builder::new()
+            .name("mesh-timer-reactor".to_string())
+            .spawn(move || timer_reactor(receiver))
+            .expect("failed to start Mesh timer reactor");
+        sender
+    })
+}
+
+fn timer_reactor(receiver: crossbeam_channel::Receiver<TimerWake>) {
+    let mut timers = std::collections::BinaryHeap::new();
+    loop {
+        let timeout = timers
+            .peek()
+            .map(|timer: &TimerWake| {
+                timer
+                    .deadline
+                    .saturating_duration_since(std::time::Instant::now())
+            })
+            .unwrap_or(std::time::Duration::from_secs(60));
+        match receiver.recv_timeout(timeout) {
+            Ok(timer) => timers.push(timer),
+            Err(crossbeam_channel::RecvTimeoutError::Timeout) => {}
+            Err(crossbeam_channel::RecvTimeoutError::Disconnected) => return,
+        }
+        while timers
+            .peek()
+            .is_some_and(|timer| timer.deadline <= std::time::Instant::now())
+        {
+            let timer = timers.pop().expect("timer was present");
+            let scheduler = global_scheduler();
+            if let Some(process) = scheduler.get_process(timer.pid) {
+                let mut process = process.lock();
+                if matches!(process.state, ProcessState::Waiting) {
+                    process.state = ProcessState::Ready;
+                    drop(process);
+                    scheduler.wake_process(timer.pid);
+                }
+            }
+        }
+    }
+}
+
 /// Sleep the current actor for `ms` milliseconds without blocking other actors.
 ///
-/// Uses a yield loop with deadline checking. The actor stays Ready (not Waiting)
-/// so the scheduler continues to resume it. On each resume, checks if the
-/// deadline has passed. Does NOT consume messages from the mailbox.
+/// Registers a bounded monotonic timer, marks the actor Waiting, and yields
+/// once. The shared timer reactor makes it Ready at the deadline, so sleeping
+/// actors do not create runnable pressure or busy-resume loops.
 #[no_mangle]
 pub extern "C" fn mesh_timer_sleep(ms: i64) {
     if ms <= 0 {
@@ -563,18 +775,34 @@ pub extern "C" fn mesh_timer_sleep(ms: i64) {
         return;
     }
 
-    // Coroutine path: yield loop with deadline
+    let Some(pid) = stack::get_current_pid() else {
+        return;
+    };
     let deadline = std::time::Instant::now() + std::time::Duration::from_millis(ms as u64);
-
+    let scheduler = global_scheduler();
     loop {
-        // Yield to scheduler (state stays Ready/Running -- NOT Waiting).
-        // If we set state to Waiting, the scheduler would skip this process
-        // and it would never be resumed (unless a message arrives).
-        stack::yield_current();
-
-        if std::time::Instant::now() >= deadline {
+        let now = std::time::Instant::now();
+        if now >= deadline {
             return;
         }
+        if let Some(process) = scheduler.get_process(pid) {
+            process.lock().state = ProcessState::Waiting;
+        }
+        if timer_wake_sender()
+            .try_send(TimerWake { deadline, pid })
+            .is_err()
+        {
+            // Fail boundedly without stranding the actor. Saturating the timer
+            // queue is exceptional; this fallback blocks only the current worker.
+            if let Some(process) = scheduler.get_process(pid) {
+                process.lock().state = ProcessState::Running;
+            }
+            std::thread::sleep(deadline.saturating_duration_since(now));
+            return;
+        }
+        stack::yield_current();
+        // A mailbox send may wake a sleeping actor early. Re-arm for the
+        // remaining monotonic duration without consuming that message.
     }
 }
 

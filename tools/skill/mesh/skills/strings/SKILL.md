@@ -8,7 +8,7 @@ description: Mesh string features: interpolation (#{} and ${}), heredocs, json {
 Rules:
 1. `"text #{expr} text"` — hash-brace `#{}` is the primary interpolation syntax.
 2. Any expression is valid inside `#{}`: variables, function calls, arithmetic.
-3. `"text ${expr}"` — dollar-brace `${}` also works (legacy syntax, fully supported).
+3. `"text ${expr}"` — dollar-brace `${}` is the supported alternate interpolation form.
 4. The expression is evaluated and converted to String via `.to_string()` automatically.
 5. Nested quotes in interpolated expressions do not require escaping.
 
@@ -67,7 +67,7 @@ Type serialization table:
 | `List<T>` | JSON array |
 | Struct with `deriving(Json)` | nested JSON object |
 
-Code example (from tests/e2e/json_literal_basic.mpl and phase 132 Mesher migration):
+Code example (from `tests/e2e/json_literal_basic.mpl`):
 ```mesh
 # Basic object — auto-coerces to String
 HTTP.response(200, json { status: "ok", count: 42 })

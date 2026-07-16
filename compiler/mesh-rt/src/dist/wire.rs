@@ -61,9 +61,6 @@ const MAX_STRING_LEN: u32 = 16 * 1024 * 1024;
 /// Maximum collection element count (1 million).
 const MAX_COLLECTION_LEN: u32 = 1_000_000;
 
-/// Maximum field name / type name length in bytes (64 KB).
-const MAX_NAME_LEN: u16 = u16::MAX;
-
 // ── StfType ──────────────────────────────────────────────────────────────
 
 /// Type hint enum that mirrors Mesh's runtime type system.
@@ -398,9 +395,6 @@ fn read_u32(data: &[u8], pos: &mut usize) -> Result<u32, StfError> {
 /// Helper: read a length-prefixed UTF-8 string (u16 len + bytes).
 fn read_name(data: &[u8], pos: &mut usize) -> Result<std::string::String, StfError> {
     let len = read_u16(data, pos)?;
-    if len > MAX_NAME_LEN {
-        return Err(StfError::PayloadTooLarge(len as u32));
-    }
     let bytes = read_bytes(data, pos, len as usize)?;
     std::str::from_utf8(bytes)
         .map(|s| s.to_string())
@@ -591,7 +585,7 @@ pub fn stf_decode(data: &[u8], pos: &mut usize) -> Result<(u64, StfType), StfErr
             let total = 8 + (field_count as usize) * 8;
             let ptr = crate::gc::mesh_gc_alloc_actor(total as u64, 8);
             unsafe {
-                *(ptr as *mut u8) = variant_tag;
+                *ptr = variant_tag;
             }
             let fields_ptr = unsafe { (ptr as *mut u64).add(1) };
             let mut field_types = Vec::with_capacity(field_count as usize);
@@ -689,7 +683,7 @@ mod tests {
     #[test]
     fn test_float_roundtrip() {
         mesh_rt_init();
-        let values: &[f64] = &[3.14, -0.0, f64::INFINITY, f64::NAN];
+        let values: &[f64] = &[3.5, -0.0, f64::INFINITY, f64::NAN];
         for &v in values {
             let bits = v.to_bits();
             let encoded = stf_encode_value(bits, &StfType::Float).unwrap();
@@ -882,7 +876,7 @@ mod tests {
         let map = crate::gc::mesh_gc_alloc_actor(total as u64, 8);
         unsafe {
             *(map as *mut u64) = 2; // len
-            *((map as *mut u64).add(1)) = (0u64 << 56) | 2; // key_type=0 (int), cap=2
+            *((map as *mut u64).add(1)) = 2; // key_type=0 (int), cap=2
             let entries = (map as *mut u64).add(2);
             *entries = 1; // key[0]
             *entries.add(1) = v1 as u64; // val[0]
@@ -1101,18 +1095,18 @@ mod tests {
     fn test_list_of_maps() {
         mesh_rt_init();
         // Create a map with 1 int->int entry: {10 => 20}
-        let map1 = crate::gc::mesh_gc_alloc_actor(16 + 1 * 16, 8);
+        let map1 = crate::gc::mesh_gc_alloc_actor(32, 8);
         unsafe {
             *(map1 as *mut u64) = 1; // len
-            *((map1 as *mut u64).add(1)) = (0u64 << 56) | 1; // key_type=0, cap=1
+            *((map1 as *mut u64).add(1)) = 1; // key_type=0, cap=1
             *((map1 as *mut u64).add(2)) = 10; // key
             *((map1 as *mut u64).add(3)) = 20; // val
         }
         // Create a map with 1 int->int entry: {30 => 40}
-        let map2 = crate::gc::mesh_gc_alloc_actor(16 + 1 * 16, 8);
+        let map2 = crate::gc::mesh_gc_alloc_actor(32, 8);
         unsafe {
             *(map2 as *mut u64) = 1;
-            *((map2 as *mut u64).add(1)) = (0u64 << 56) | 1;
+            *((map2 as *mut u64).add(1)) = 1;
             *((map2 as *mut u64).add(2)) = 30;
             *((map2 as *mut u64).add(3)) = 40;
         }

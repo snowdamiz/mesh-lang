@@ -94,6 +94,14 @@ pub fn handle_list_todos(_request :: Request) -> Response do
   end
 end
 
+# Deliberately bounded work used by the autonomous-scaling proof. Keeping the
+# delay in the clustered handler makes admission pressure observable without
+# changing database semantics or relying on synthetic telemetry.
+pub fn handle_pressure_probe(_request :: Request) -> Response do
+  Timer.sleep(2000)
+  HTTP.response(200, json { status : "ok" })
+end
+
 pub fn handle_get_todo(request :: Request) -> Response do
   let pool = get_pool()
   let id = require_param(request, "id")

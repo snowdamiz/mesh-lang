@@ -18,7 +18,10 @@ mesh-rt = { path = "../mesh-rt" }
 clap = { workspace = true }
 tempfile = "3"
 ariadne = { workspace = true }
+serde = { workspace = true }
 serde_json = { workspace = true }
+sha2 = { workspace = true }
+base64 = "0.22"
 tokio = { workspace = true }
 
 [target.'cfg(target_env = "musl")'.dependencies]
@@ -29,4 +32,3 @@ openssl-sys = { version = "0.9", features = ["vendored"] }
 tempfile = "3"
 serde = { workspace = true }
 serde_json = { workspace = true }
-sha2 = { workspace = true }

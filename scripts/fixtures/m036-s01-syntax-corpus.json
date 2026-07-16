@@ -2,18 +2,18 @@
   "contractVersion": "m036-s01-syntax-corpus-v1",
   "cases": [
     {
-      "id": "mesher-connected-peer-log",
-      "path": "mesher/main.mpl",
-      "startLine": 69,
-      "endLine": 69,
+      "id": "todo-postgres-bootstrap-log",
+      "path": "examples/todo-postgres/main.mpl",
+      "startLine": 8,
+      "endLine": 8,
       "expectedForms": ["hash"],
       "expectedStringKind": "double"
     },
     {
-      "id": "reference-backend-http-port-log",
-      "path": "scripts/fixtures/backend/reference-backend/main.mpl",
-      "startLine": 27,
-      "endLine": 27,
+      "id": "todo-postgres-http-port-log",
+      "path": "examples/todo-postgres/main.mpl",
+      "startLine": 39,
+      "endLine": 39,
       "expectedForms": ["hash"],
       "expectedStringKind": "double"
     },

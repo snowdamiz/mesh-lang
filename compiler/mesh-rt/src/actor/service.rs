@@ -133,20 +133,9 @@ pub extern "C" fn mesh_service_reply(caller_pid: u64, reply_ptr: *const u8, repl
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::actor::scheduler::Scheduler;
 
     #[test]
     fn test_service_reply_sends_message() {
-        let sched = Scheduler::new(1);
-        // Create a "caller" process.
-        extern "C" fn noop(_args: *const u8) {}
-        let caller_pid = sched.spawn(noop as *const u8, std::ptr::null(), 0, 1);
-
-        // Initialize the global scheduler for this test.
-        // (In real usage, mesh_rt_init_actor does this.)
-        // We can't easily set the global scheduler in a unit test without
-        // interfering with other tests, so test the message format instead.
-
         // Test that the call message format is correct.
         let msg_tag: u64 = 42;
         let caller: u64 = 123;

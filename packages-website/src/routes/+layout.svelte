@@ -9,7 +9,6 @@
 
   let dark = typeof document !== 'undefined' && document.documentElement.classList.contains('dark');
   const languageRepoUrl = 'https://github.com/hyperpush-org/mesh-lang';
-  const languageWorkspaceUrl = 'https://github.com/hyperpush-org/mesh-lang/blob/main/WORKSPACE.md';
 
   onMount(syncDarkFromDocument);
 
@@ -103,7 +102,6 @@
       <div class="flex items-center gap-6 text-sm text-muted-foreground">
         <a href="https://meshlang.dev" target="_blank" rel="noopener" class="transition-colors hover:text-foreground no-underline">Docs</a>
         <a href={languageRepoUrl} target="_blank" rel="noopener" class="transition-colors hover:text-foreground no-underline">mesh-lang repo</a>
-        <a href={languageWorkspaceUrl} target="_blank" rel="noopener" class="transition-colors hover:text-foreground no-underline">Workspace</a>
         <a href="https://meshlang.dev/docs/tooling" target="_blank" rel="noopener" class="transition-colors hover:text-foreground no-underline">meshpkg</a>
       </div>
     </div>

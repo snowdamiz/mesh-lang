@@ -22,10 +22,10 @@ const iconComponent = computed(() => {
   <div>
     <a
       :href="item.link"
-      class="flex items-center gap-2 rounded-md px-2 py-1.5 text-[13px] transition-colors"
+      class="flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-[13px] transition-colors"
       :class="[
         active
-          ? 'bg-accent text-foreground font-semibold'
+          ? 'bg-brand/10 text-brand font-semibold'
           : 'text-muted-foreground hover:text-foreground hover:bg-accent',
       ]"
     >

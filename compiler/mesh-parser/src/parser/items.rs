@@ -27,8 +27,7 @@ enum ClusteredDeclPrefixState {
     Absent,
     SourceDecoratorValid,
     SourceDecoratorInvalid,
-    LegacyCompatValid,
-    LegacyCompatInvalid,
+    RemovedSyntaxInvalid,
 }
 
 impl ClusteredDeclPrefixState {
@@ -37,12 +36,12 @@ impl ClusteredDeclPrefixState {
             Self::SourceDecoratorValid | Self::SourceDecoratorInvalid => {
                 Some("expected `fn` or `def` after `@cluster`")
             }
-            Self::LegacyCompatValid | Self::LegacyCompatInvalid | Self::Absent => None,
+            Self::RemovedSyntaxInvalid | Self::Absent => None,
         }
     }
 
-    fn is_legacy(self) -> bool {
-        matches!(self, Self::LegacyCompatValid | Self::LegacyCompatInvalid)
+    fn is_removed_syntax(self) -> bool {
+        matches!(self, Self::RemovedSyntaxInvalid)
     }
 }
 
@@ -136,7 +135,7 @@ fn parse_cluster_decorator_decl(p: &mut Parser) -> ClusteredDeclPrefixState {
     }
 }
 
-fn parse_legacy_clustered_work_decl(p: &mut Parser) -> ClusteredDeclPrefixState {
+fn reject_removed_clustered_work_decl(p: &mut Parser) -> ClusteredDeclPrefixState {
     if !(p.at(SyntaxKind::IDENT) && p.current_text() == "clustered") {
         return ClusteredDeclPrefixState::Absent;
     }
@@ -164,27 +163,27 @@ fn parse_legacy_clustered_work_decl(p: &mut Parser) -> ClusteredDeclPrefixState 
     }
 
     p.error_with_related(
-        "legacy `clustered(work)` declarations are no longer supported; migrate to `@cluster` or `@cluster(N)` before `fn`/`def`",
+        "`clustered(work)` declarations are not supported; use `@cluster` or `@cluster(N)` before `fn`/`def`",
         start_span,
-        "legacy clustered declaration started here",
+        "unsupported clustered declaration started here",
     );
     p.close(m, SyntaxKind::ERROR_NODE);
-    ClusteredDeclPrefixState::LegacyCompatInvalid
+    ClusteredDeclPrefixState::RemovedSyntaxInvalid
 }
 
 fn parse_optional_clustered_decl(p: &mut Parser) -> ClusteredDeclPrefixState {
     if p.at(SyntaxKind::AT) {
         parse_cluster_decorator_decl(p)
     } else {
-        parse_legacy_clustered_work_decl(p)
+        reject_removed_clustered_work_decl(p)
     }
 }
 
 /// Parse a function definition.
 ///
 /// Supports two body forms:
-/// - Block body: `[@cluster] [@cluster(N)] [clustered(work)] [pub] fn|def name(params) [-> ReturnType] [where ...] do body end`
-/// - Expression body: `[@cluster] [@cluster(N)] [clustered(work)] [pub] fn|def name(pattern_params) [when guard] = expr`
+/// - Block body: `[@cluster] [@cluster(N)] [pub] fn|def name(params) [-> ReturnType] [where ...] do body end`
+/// - Expression body: `[@cluster] [@cluster(N)] [pub] fn|def name(pattern_params) [when guard] = expr`
 ///
 /// Pattern parameters (literals, wildcards, constructors, tuples) are supported
 /// alongside regular named parameters in both forms.
@@ -202,7 +201,7 @@ pub(crate) fn parse_fn_def(p: &mut Parser) {
     } else {
         if let Some(message) = clustered_prefix.missing_fn_message() {
             p.error(message);
-        } else if !clustered_prefix.is_legacy() {
+        } else if !clustered_prefix.is_removed_syntax() {
             p.error("expected `fn` or `def`");
         }
         p.close(m, SyntaxKind::FN_DEF);

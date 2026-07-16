@@ -1,15 +1,15 @@
-//! End-to-end JSON-RPC tests for `meshc lsp` against backend-shaped files and
-//! manifest-driven override-entry projects.
+//! End-to-end JSON-RPC tests for `meshc lsp` against manifest-driven
+//! override-entry projects.
 //!
 //! Proves that a real LSP process behaves correctly on:
-//! - the retained reference backend transport rail
 //! - override-entry projects rooted by `mesh.toml` + `lib/start.mpl`
 //! - clean and broken diagnostics publication over stdio JSON-RPC
 //! - semantic provider requests that cross the project module graph
 //! - document formatting through the shared formatter path
 //! - signature help as an editor assist surface
 
-mod support;
+#[path = "support/test_artifacts.rs"]
+mod artifacts;
 
 use std::collections::VecDeque;
 use std::fs;
@@ -21,29 +21,16 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use serde_json::{json, Value};
-use support::m046_route_free as route_free;
-use support::m051_reference_backend as retained_backend;
 
 const MESSAGE_TIMEOUT: Duration = Duration::from_secs(8);
 const DEFAULT_ENTRYPOINT: &str = "main.mpl";
-
-fn repo_root() -> PathBuf {
-    fs::canonicalize(
-        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .parent()
-            .expect("meshc crate should live under compiler/")
-            .parent()
-            .expect("workspace root should be above compiler/"),
-    )
-    .expect("workspace root should canonicalize")
-}
 
 fn meshc_bin() -> PathBuf {
     PathBuf::from(env!("CARGO_BIN_EXE_meshc"))
 }
 
 fn artifact_dir(test_name: &str) -> PathBuf {
-    route_free::artifact_dir("m048-s02-lsp", test_name)
+    artifacts::artifact_dir("lsp", test_name)
 }
 
 fn file_uri(path: &Path) -> String {
@@ -177,7 +164,7 @@ fn write_override_project_fixture(
         ));
     }
 
-    route_free::archive_directory_tree(&project_dir, &artifacts.join("project"));
+    artifacts::archive_directory_tree(&project_dir, &artifacts.join("project"));
 
     let project_dir = fs::canonicalize(&project_dir).map_err(|error| {
         format!(
@@ -206,7 +193,7 @@ fn write_override_project_fixture(
         )
     })?;
 
-    route_free::write_artifact(
+    artifacts::write_artifact(
         &artifacts.join("fixture-paths.txt"),
         format!(
             "project_dir: {}\nentry_path: {}\nnested_support_path: {}\n",
@@ -259,7 +246,7 @@ fn override_precedence_nested_fixture(test_name: &str) -> Result<OverrideProject
         files: &[
             (
                 DEFAULT_ENTRYPOINT,
-                "fn main() do\n  println(\"legacy-root-main\")\nend\n",
+                "fn main() do\n  println(\"default-root-main\")\nend\n",
             ),
             (
                 "lib/start.mpl",
@@ -595,13 +582,13 @@ impl LspSession {
     }
 
     fn persist_observability(&self) {
-        route_free::write_artifact(
+        artifacts::write_artifact(
             &self
                 .artifacts
                 .join(format!("{}.trace.log", self.session_label)),
             self.trace_output(),
         );
-        route_free::write_artifact(
+        artifacts::write_artifact(
             &self
                 .artifacts
                 .join(format!("{}.stderr.log", self.session_label)),
@@ -627,33 +614,6 @@ impl Drop for LspSession {
         let _ = self.child.kill();
         let _ = self.child.wait();
         self.persist_observability();
-    }
-}
-
-fn require_single_location<'a>(response: &'a Value, context: &str) -> &'a Value {
-    let Some(result) = response.get("result") else {
-        panic!(
-            "{context} missing result payload: {}",
-            pretty_json(response)
-        );
-    };
-
-    match result {
-        Value::Object(_) => result,
-        Value::Array(locations) if locations.len() == 1 => &locations[0],
-        Value::Array(locations) => panic!(
-            "{context} expected exactly one location, got {} locations: {}",
-            locations.len(),
-            pretty_json(response)
-        ),
-        Value::Null => panic!(
-            "{context} returned null instead of a definition location: {}",
-            pretty_json(response)
-        ),
-        _ => panic!(
-            "{context} returned malformed location payload: {}",
-            pretty_json(response)
-        ),
     }
 }
 
@@ -730,266 +690,6 @@ fn read_json_rpc_message_rejects_malformed_payload() {
     assert!(
         error.contains("failed to parse JSON-RPC body as JSON"),
         "unexpected parser error: {error}"
-    );
-}
-
-#[test]
-fn lsp_json_rpc_reference_backend_flow() {
-    let repo_root = repo_root();
-    let artifacts = artifact_dir("reference-backend-flow");
-    let reference_backend = retained_backend::retained_fixture_root();
-    let health_path = fs::canonicalize(retained_backend::retained_health_path())
-        .expect("retained reference-backend health file should exist");
-    let jobs_path = fs::canonicalize(retained_backend::retained_jobs_path())
-        .expect("retained reference-backend jobs file should exist");
-    let health_uri = file_uri(&health_path);
-    let jobs_uri = file_uri(&jobs_path);
-    let health_source = fs::read_to_string(&health_path).expect("health source should be readable");
-    let jobs_source = fs::read_to_string(&jobs_path).expect("jobs source should be readable");
-
-    route_free::write_artifact(
-        &artifacts.join("reference-paths.txt"),
-        format!(
-            "repo_root: {}\nfixture_root: {}\nhealth_path: {}\njobs_path: {}\n",
-            repo_root.display(),
-            reference_backend.display(),
-            health_path.display(),
-            jobs_path.display()
-        ),
-    );
-
-    let mut session = LspSession::new(
-        &reference_backend,
-        artifacts.clone(),
-        "retained-reference-backend",
-    );
-
-    let initialize = session.request(
-        "initialize",
-        json!({
-            "processId": Value::Null,
-            "rootUri": file_uri(&reference_backend),
-            "capabilities": {},
-        }),
-    );
-    assert_eq!(
-        initialize["result"]["capabilities"]["documentFormattingProvider"].as_bool(),
-        Some(true),
-        "initialize should advertise document formatting support: {initialize:?}"
-    );
-    assert_eq!(
-        initialize["result"]["capabilities"]["hoverProvider"].as_bool(),
-        Some(true),
-        "initialize should advertise hover support: {initialize:?}"
-    );
-
-    session.notify("initialized", json!({}));
-
-    println!("[e2e_lsp] phase=reference-backend didOpen uri={health_uri}");
-    session.notify(
-        "textDocument/didOpen",
-        json!({
-            "textDocument": {
-                "uri": health_uri,
-                "languageId": "mesh",
-                "version": 1,
-                "text": health_source,
-            }
-        }),
-    );
-    let health_open_diagnostics = session.wait_for_diagnostics(&health_uri, "health didOpen");
-    assert!(
-        health_open_diagnostics.is_empty(),
-        "{} should open cleanly, got diagnostics: {:?}\nartifacts: {}",
-        retained_backend::RETAINED_FIXTURE_HEALTH_RELATIVE,
-        health_open_diagnostics,
-        artifacts.display()
-    );
-
-    println!("[e2e_lsp] phase=reference-backend didOpen uri={jobs_uri}");
-    session.notify(
-        "textDocument/didOpen",
-        json!({
-            "textDocument": {
-                "uri": jobs_uri,
-                "languageId": "mesh",
-                "version": 1,
-                "text": jobs_source,
-            }
-        }),
-    );
-    let jobs_open_diagnostics = session.wait_for_diagnostics(&jobs_uri, "jobs didOpen");
-    assert!(
-        jobs_open_diagnostics.is_empty(),
-        "{} should open cleanly, got diagnostics: {:?}\nartifacts: {}",
-        retained_backend::RETAINED_FIXTURE_JOBS_RELATIVE,
-        jobs_open_diagnostics,
-        artifacts.display()
-    );
-
-    let create_job_call = "create_job_response(job, body)";
-    let (create_job_call_line, create_job_call_character) =
-        source_position(&jobs_source, create_job_call, 0);
-    let create_job_definition = "fn create_job_response(job :: Job, payload :: String) do";
-    let (create_job_definition_line, _) = source_position(&jobs_source, create_job_definition, 0);
-    let log_create_success_call = "log_create_success(job, payload)";
-    let (log_create_success_line, log_create_success_character) =
-        source_position(&jobs_source, log_create_success_call, 0);
-    let log_create_success_active_param = log_create_success_character
-        + log_create_success_call
-            .find("payload")
-            .expect("log_create_success call should mention payload") as u64;
-
-    let hover = session.request(
-        "textDocument/hover",
-        json!({
-            "textDocument": { "uri": jobs_uri },
-            "position": {
-                "line": create_job_call_line,
-                "character": create_job_call_character,
-            },
-        }),
-    );
-    let hover_contents = hover["result"]["contents"]["value"]
-        .as_str()
-        .unwrap_or_default();
-    assert!(
-        hover_contents.contains("create_job_response")
-            || hover_contents.contains("Job")
-            || hover_contents.contains("String"),
-        "hover should return function type information for backend code, got: {hover:?}"
-    );
-
-    let definition = session.request(
-        "textDocument/definition",
-        json!({
-            "textDocument": { "uri": jobs_uri },
-            "position": {
-                "line": create_job_call_line,
-                "character": create_job_call_character,
-            },
-        }),
-    );
-    let definition_location =
-        require_single_location(&definition, "retained reference-backend definition");
-    println!(
-        "[e2e_lsp] phase=reference-backend provider=definition uri={jobs_uri} response={} ",
-        pretty_json(&definition)
-    );
-    assert_eq!(
-        definition_location["uri"].as_str(),
-        Some(jobs_uri.as_str()),
-        "definition should stay within {} for create_job_response call: {definition:?}",
-        retained_backend::RETAINED_FIXTURE_JOBS_RELATIVE,
-    );
-    assert_eq!(
-        definition_location["range"]["start"]["line"].as_u64(),
-        Some(create_job_definition_line),
-        "definition should jump to create_job_response definition, got: {definition:?}"
-    );
-
-    let signature_help = session.request(
-        "textDocument/signatureHelp",
-        json!({
-            "textDocument": { "uri": jobs_uri },
-            "position": {
-                "line": log_create_success_line,
-                "character": log_create_success_active_param,
-            },
-        }),
-    );
-    let signature_label = signature_help["result"]["signatures"][0]["label"]
-        .as_str()
-        .unwrap_or_default();
-    assert!(
-        signature_label.contains("log_create_success(job: Job, payload: String) -> ()"),
-        "signature help should name the backend helper being called, got: {signature_help:?}"
-    );
-    assert_eq!(
-        signature_help["result"]["activeParameter"].as_u64(),
-        Some(1),
-        "signature help should identify the second parameter inside log_create_success(...), got: {signature_help:?}"
-    );
-
-    let unformatted_health = health_source.replacen(
-        "  let wrapped = if String.length(value) > 0 do\n",
-        "let wrapped = if String.length(value) > 0 do\n",
-        1,
-    );
-    assert_ne!(
-        unformatted_health, health_source,
-        "the health formatter probe must actually make the backend file non-canonical"
-    );
-
-    session.notify(
-        "textDocument/didChange",
-        json!({
-            "textDocument": { "uri": health_uri, "version": 2 },
-            "contentChanges": [{ "text": unformatted_health }],
-        }),
-    );
-    let health_change_diagnostics =
-        session.wait_for_diagnostics(&health_uri, "health unformatted didChange");
-    assert!(
-        health_change_diagnostics.is_empty(),
-        "unformatted backend text should still type-check cleanly before formatting, got diagnostics: {:?}\nartifacts: {}",
-        health_change_diagnostics,
-        artifacts.display()
-    );
-
-    let formatting = session.request(
-        "textDocument/formatting",
-        json!({
-            "textDocument": { "uri": health_uri },
-            "options": { "tabSize": 2, "insertSpaces": true },
-        }),
-    );
-    let edits = formatting["result"]
-        .as_array()
-        .expect("formatting should return a text edit array for unformatted backend text");
-    assert_eq!(
-        edits.len(),
-        1,
-        "formatting should perform a single full-document replacement edit, got: {formatting:?}"
-    );
-    assert_eq!(
-        edits[0]["newText"].as_str(),
-        Some(health_source.as_str()),
-        "formatting should restore canonical {} text",
-        retained_backend::RETAINED_FIXTURE_HEALTH_RELATIVE,
-    );
-
-    let invalid_health = format!(
-        "{}\nlet broken :: Int = \"oops\"\n",
-        health_source.trim_end()
-    );
-    session.notify(
-        "textDocument/didChange",
-        json!({
-            "textDocument": { "uri": health_uri, "version": 3 },
-            "contentChanges": [{ "text": invalid_health }],
-        }),
-    );
-    let invalid_diagnostics = session.wait_for_diagnostics(&health_uri, "health invalid didChange");
-    assert!(
-        !invalid_diagnostics.is_empty(),
-        "invalid backend-shaped text should publish diagnostics instead of staying green"
-    );
-    assert!(
-        invalid_diagnostics.iter().any(|diag| {
-            diag["message"]
-                .as_str()
-                .map(|message| message.contains("type mismatch") || message.contains("Parse error"))
-                .unwrap_or(false)
-        }),
-        "invalid backend diagnostics should describe the backend buffer error instead of falling back to bogus import failures, got: {:?}",
-        invalid_diagnostics
-    );
-
-    let shutdown = session.request_without_params("shutdown");
-    assert!(
-        shutdown.get("result").is_some(),
-        "shutdown should return a JSON-RPC result, got: {shutdown:?}"
     );
 }
 

@@ -21,27 +21,6 @@ fn check_source(src: &str) -> TypeckResult {
     mesh_typeck::check(&parse)
 }
 
-/// Assert that the result has no errors and the final expression type
-/// matches the expected type.
-fn assert_result_type(result: &TypeckResult, expected: Ty) {
-    assert!(
-        result.errors.is_empty(),
-        "expected no errors, got: {:?}",
-        result.errors
-    );
-    let actual = result
-        .result_type
-        .as_ref()
-        .expect("expected a result type from inference");
-    let actual_str = format!("{}", actual);
-    let expected_str = format!("{}", expected);
-    assert_eq!(
-        actual_str, expected_str,
-        "expected type `{}`, got `{}`",
-        expected_str, actual_str
-    );
-}
-
 /// Assert that the result contains an error matching the given predicate.
 fn assert_has_error<F: Fn(&TypeError) -> bool>(result: &TypeckResult, pred: F, desc: &str) {
     assert!(

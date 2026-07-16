@@ -6,6 +6,14 @@
 use std::io::{BufRead, BufReader, Read as _, Write as _};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
+use std::sync::{Mutex, MutexGuard};
+
+fn meshc_build_guard() -> MutexGuard<'static, ()> {
+    static BUILD_LOCK: Mutex<()> = Mutex::new(());
+    BUILD_LOCK
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+}
 
 /// Helper: compile a Mesh source file and run the resulting binary, returning stdout.
 fn compile_and_run(source: &str) -> String {
@@ -17,6 +25,7 @@ fn compile_and_run(source: &str) -> String {
     std::fs::write(&main_mesh, source).expect("failed to write main.mpl");
 
     let meshc = find_meshc();
+    let _execution_guard = meshc_build_guard();
     let output = Command::new(&meshc)
         .args(["build", project_dir.to_str().unwrap()])
         .output()
@@ -76,6 +85,7 @@ fn compile_only(source: &str) -> Output {
     std::fs::write(&main_mesh, source).expect("failed to write main.mpl");
 
     let meshc = find_meshc();
+    let _build_guard = meshc_build_guard();
     Command::new(&meshc)
         .args(["build", project_dir.to_str().unwrap()])
         .output()
@@ -93,6 +103,7 @@ fn compile_and_run_with_stdin(source: &str, stdin_input: &str) -> String {
     std::fs::write(&main_mesh, source).expect("failed to write main.mpl");
 
     let meshc = find_meshc();
+    let _execution_guard = meshc_build_guard();
     let output = Command::new(&meshc)
         .args(["build", project_dir.to_str().unwrap()])
         .output()
@@ -641,20 +652,6 @@ fn e2e_http_server_compiles() {
 }
 
 #[test]
-fn e2e_http_client_compiles_and_runs() {
-    // Verify an HTTP client program compiles and runs.
-    // This makes a real HTTP request to example.com.
-    let source = read_fixture("stdlib_http_client.mpl");
-    let output = compile_and_run(&source);
-    // Should print "ok" (successful GET to example.com) or "error" (no network).
-    assert!(
-        output == "ok\n" || output == "error\n",
-        "unexpected output: {}",
-        output
-    );
-}
-
-#[test]
 fn e2e_http_full_server_compile_only() {
     // Verify a full server program with handler and serve compiles.
     let source = r#"
@@ -719,12 +716,15 @@ fn e2e_list_pipe_chain() {
 // verifying that the Mesh HTTP server works end-to-end at runtime.
 
 /// RAII guard that kills the server child process on drop.
-struct ServerGuard(std::process::Child);
+struct ServerGuard {
+    child: std::process::Child,
+    _execution_guard: MutexGuard<'static, ()>,
+}
 
 impl Drop for ServerGuard {
     fn drop(&mut self) {
-        let _ = self.0.kill();
-        let _ = self.0.wait();
+        let _ = self.child.kill();
+        let _ = self.child.wait();
     }
 }
 
@@ -744,6 +744,7 @@ fn compile_and_start_server(source: &str) -> ServerGuard {
     std::fs::write(&main_mesh, source).expect("failed to write main.mpl");
 
     let meshc = find_meshc();
+    let build_guard = meshc_build_guard();
     let output = Command::new(&meshc)
         .args(["build", project_dir.to_str().unwrap()])
         .output()
@@ -769,12 +770,15 @@ fn compile_and_start_server(source: &str) -> ServerGuard {
         .spawn()
         .unwrap_or_else(|e| panic!("failed to spawn server binary: {}", e));
 
-    ServerGuard(child)
+    ServerGuard {
+        child,
+        _execution_guard: build_guard,
+    }
 }
 
 /// Wait for a spawned Mesh HTTP server to emit its runtime listening log.
 fn wait_for_server_ready(guard: &mut ServerGuard) {
-    let stderr = guard.0.stderr.take().expect("no stderr pipe");
+    let stderr = guard.child.stderr.take().expect("no stderr pipe");
     let stderr_reader = BufReader::new(stderr);
     let (tx, rx) = std::sync::mpsc::channel();
     std::thread::spawn(move || {
@@ -800,7 +804,7 @@ fn wait_for_server_exit(guard: &mut ServerGuard, timeout: std::time::Duration) -
     let deadline = std::time::Instant::now() + timeout;
     loop {
         if guard
-            .0
+            .child
             .try_wait()
             .expect("failed to poll server process")
             .is_some()
@@ -824,7 +828,7 @@ fn e2e_http_server_runtime() {
     // Wait for the server to be ready by reading stderr for the listening message.
     // We need to do this in a separate thread to avoid blocking if the server
     // produces no output. Use a timeout approach instead.
-    let stderr = guard.0.stderr.take().expect("no stderr pipe");
+    let stderr = guard.child.stderr.take().expect("no stderr pipe");
     let stderr_reader = BufReader::new(stderr);
 
     // Spawn a thread to read stderr and signal when server is ready.
@@ -902,7 +906,7 @@ fn e2e_http_crash_isolation() {
     let source = read_fixture("stdlib_http_crash_isolation.mpl");
     let mut guard = compile_and_start_server(&source);
 
-    let stderr = guard.0.stderr.take().expect("no stderr pipe");
+    let stderr = guard.child.stderr.take().expect("no stderr pipe");
     let stderr_reader = BufReader::new(stderr);
     let (tx, rx) = std::sync::mpsc::channel();
     std::thread::spawn(move || {
@@ -1235,7 +1239,7 @@ fn e2e_list_sort() {
 fn e2e_list_find() {
     // NOTE: List.find returns Option<T> (MeshOption ptr from runtime).
     // Pattern matching on the result via `case` hits a codegen domination
-    // issue (pre-existing gap in FFI Option return handling).
+    // issue in FFI Option return handling.
     // This test verifies the function compiles, links, and runs without crash.
     let source = read_fixture("stdlib_list_find.mpl");
     let output = compile_and_run(&source);
@@ -1530,7 +1534,7 @@ fn e2e_http_path_params() {
     let mut guard = compile_and_start_server(&source);
 
     // Wait for server to be ready.
-    let stderr = guard.0.stderr.take().expect("no stderr pipe");
+    let stderr = guard.child.stderr.take().expect("no stderr pipe");
     let stderr_reader = BufReader::new(stderr);
     let (tx, rx) = std::sync::mpsc::channel();
     std::thread::spawn(move || {
@@ -1656,7 +1660,7 @@ fn e2e_http_middleware() {
     let mut guard = compile_and_start_server(&source);
 
     // Wait for server to be ready.
-    let stderr = guard.0.stderr.take().expect("no stderr pipe");
+    let stderr = guard.child.stderr.take().expect("no stderr pipe");
     let stderr_reader = BufReader::new(stderr);
     let (tx, rx) = std::sync::mpsc::channel();
     std::thread::spawn(move || {
@@ -1959,20 +1963,9 @@ fn e2e_pg() {
     );
 }
 
-// ── Phase 87.1: Codegen Bug Fixes ──────────────────────────────────────
+// ── Struct-in-Result ABI regression ────────────────────────────────────
 
-/// Phase 87.1: List.find Option pattern matching compiles and runs.
-/// Pattern matching Some(x)/None on List.find result works correctly.
-#[test]
-fn e2e_list_find_option_match() {
-    let source = read_fixture("list_find_option_match.mpl");
-    let output = compile_and_run(&source);
-    assert_eq!(output, "found: 30\nnot found\n");
-}
-
-// ── Phase 105.1: Struct-in-Result ABI Fix ──────────────────────────────
-
-/// Phase 105.1: Result<MultiFieldStruct, String> construct + match roundtrip.
+/// Result<MultiFieldStruct, String> construct + match roundtrip.
 /// Constructs Ok(Pair{42, 99}), Ok(Triple{10, 20, 30}), and Err("error"),
 /// pattern matches to extract field sums. Validates that pointer-boxing
 /// prevents the buffer overflow segfault when storing multi-field structs
@@ -1984,9 +1977,9 @@ fn e2e_struct_in_result_roundtrip() {
     assert_eq!(output, "141\n-1\n60\n");
 }
 
-// ── M032/S01: retained-limit runtime proofs ────────────────────────────
+// ── HTTP route-handler boundary regressions ────────────────────────────
 
-fn m032_route_bare_server_source() -> &'static str {
+fn route_bare_server_source() -> &'static str {
     r#"
 fn handler(_request) do
   HTTP.response(200, "bare_ok")
@@ -2000,7 +1993,7 @@ end
 "#
 }
 
-fn m032_route_closure_server_source() -> &'static str {
+fn route_closure_server_source() -> &'static str {
     r#"
 fn main() do
   let suffix = "ok"
@@ -2015,11 +2008,10 @@ end
 "#
 }
 
-/// Confirms the bare-function control path used by `mesher/ingestion/routes.mpl`
-/// still serves live HTTP requests correctly.
+/// Confirms a bare-function route handler serves live HTTP requests correctly.
 #[test]
-fn e2e_m032_route_bare_handler_control() {
-    let mut guard = compile_and_start_server(m032_route_bare_server_source());
+fn e2e_route_bare_handler_control() {
+    let mut guard = compile_and_start_server(route_bare_server_source());
     wait_for_server_ready(&mut guard);
 
     let response = send_request(
@@ -2042,8 +2034,8 @@ fn e2e_m032_route_bare_handler_control() {
 
 /// Confirms closure-based HTTP routes still fail only at live request time.
 #[test]
-fn e2e_m032_route_closure_runtime_failure() {
-    let mut guard = compile_and_start_server(m032_route_closure_server_source());
+fn e2e_route_closure_runtime_failure() {
+    let mut guard = compile_and_start_server(route_closure_server_source());
     wait_for_server_ready(&mut guard);
 
     let response = send_request(

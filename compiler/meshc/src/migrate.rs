@@ -107,10 +107,12 @@ fn generate_migration_main(direction: &str) -> String {
         r#"from Migration import {dir}
 
 fn handle_ok(pool :: PoolHandle) do
+  Pool.close(pool)
   println("MIGRATION_OK")
 end
 
-fn handle_err(e :: String) do
+fn handle_err(pool :: PoolHandle, e :: String) do
+  Pool.close(pool)
   println("MIGRATION_ERROR:" <> e)
 end
 
@@ -122,7 +124,7 @@ fn run_migration(pool :: PoolHandle) do
   let result = {dir}(pool)
   case result do
     Ok(_) -> handle_ok(pool)
-    Err(e) -> handle_err(e)
+    Err(e) -> handle_err(pool, e)
   end
 end
 

@@ -93,7 +93,7 @@ pub(crate) struct CandidateRejection {
     pub(crate) reason: CandidateRejectReason,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub(crate) struct FilteredCandidates {
     pub(crate) accepted: Vec<SocketAddr>,
     pub(crate) rejected: Vec<CandidateRejection>,
@@ -437,15 +437,6 @@ fn parse_positive_u64(raw: &str, label: &str) -> Result<u64, String> {
         return Err(format!("{} must be greater than zero", label));
     }
     Ok(value)
-}
-
-impl Default for FilteredCandidates {
-    fn default() -> Self {
-        Self {
-            accepted: Vec::new(),
-            rejected: Vec::new(),
-        }
-    }
 }
 
 #[cfg(test)]

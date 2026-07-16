@@ -30,23 +30,9 @@ const repoRoot = requiredEnv("MESH_VSCODE_SMOKE_REPO_ROOT");
 const meshcPath = requiredEnv("MESH_VSCODE_SMOKE_MESHC_PATH");
 const workspaceFile = requiredEnv("MESH_VSCODE_SMOKE_WORKSPACE_FILE");
 const extensionId = "OpenWorthTechnologies.mesh-lang";
-const retainedReferenceBackendRoot = path.join(
-  repoRoot,
-  "scripts",
-  "fixtures",
-  "backend",
-  "reference-backend"
-);
-const retainedHealthPath = path.join(
-  retainedReferenceBackendRoot,
-  "api",
-  "health.mpl"
-);
-const retainedJobsPath = path.join(
-  retainedReferenceBackendRoot,
-  "api",
-  "jobs.mpl"
-);
+const todoPostgresRoot = path.join(repoRoot, "examples", "todo-postgres");
+const todoHealthPath = path.join(todoPostgresRoot, "api", "health.mpl");
+const todoHandlersPath = path.join(todoPostgresRoot, "api", "todos.mpl");
 
 function log(message: string) {
   const line = `[smoke] ${message}`;
@@ -299,8 +285,8 @@ export async function runSmokeSuite(): Promise<void> {
     const extension = vscode.extensions.getExtension<MeshExtensionApi>(extensionId);
     assert.ok(extension, `[activation] Missing extension ${extensionId}.`);
 
-    log(`Using retained backend fixture root ${retainedReferenceBackendRoot}`);
-    const healthDocument = await openDocument(retainedHealthPath, "health");
+    log(`Using PostgreSQL Todo example root ${todoPostgresRoot}`);
+    const healthDocument = await openDocument(todoHealthPath, "health");
 
     log(`Waiting for extension activation via ${extensionId}`);
     const api = await withTimeout(
@@ -322,8 +308,8 @@ export async function runSmokeSuite(): Promise<void> {
 
     await assertCleanDiagnostics(diagnostics, healthDocument, "diagnostics/health");
 
-    const jobsDocument = await openDocument(retainedJobsPath, "jobs");
-    await assertCleanDiagnostics(diagnostics, jobsDocument, "diagnostics/jobs");
+    const handlersDocument = await openDocument(todoHandlersPath, "todo-handlers");
+    await assertCleanDiagnostics(diagnostics, handlersDocument, "diagnostics/todo-handlers");
 
     const overrideFixture = materializeOverrideEntryFixture();
     const overrideEntryDocument = await openDocument(
@@ -346,64 +332,64 @@ export async function runSmokeSuite(): Promise<void> {
       "diagnostics/override-entry-support"
     );
 
-    const jobsSource = fs.readFileSync(retainedJobsPath, "utf8");
-    const createJobCallMarker = "create_job_response(job, body)";
-    const createJobDefinitionMarker =
-      "fn create_job_response(job :: Job, payload :: String) do";
-    const createJobCallPosition = sourcePosition(jobsSource, createJobCallMarker, 0);
-    const createJobDefinitionPosition = sourcePosition(
-      jobsSource,
-      createJobDefinitionMarker,
+    const handlersSource = fs.readFileSync(todoHandlersPath, "utf8");
+    const createTodoCallMarker = "create_todo_with_body(pool, Request.body(request))";
+    const createTodoDefinitionMarker =
+      "fn create_todo_with_body(pool :: PoolHandle, body :: String) do";
+    const createTodoCallPosition = sourcePosition(handlersSource, createTodoCallMarker, 0);
+    const createTodoDefinitionPosition = sourcePosition(
+      handlersSource,
+      createTodoDefinitionMarker,
       0
     );
 
     log(
-      `Probing hover at ${jobsDocument.uri.fsPath}:${createJobCallPosition.line}:${createJobCallPosition.character}`
+      `Probing hover at ${handlersDocument.uri.fsPath}:${createTodoCallPosition.line}:${createTodoCallPosition.character}`
     );
     const hovers = await withTimeout(
       "probe/hover",
       vscode.commands.executeCommand<vscode.Hover[]>(
         "vscode.executeHoverProvider",
-        jobsDocument.uri,
-        createJobCallPosition
+        handlersDocument.uri,
+        createTodoCallPosition
       )
     );
     const hoverSummary = hoverText(hovers).trim();
     assert.ok(
       hoverSummary.length > 0,
-      `[probe/hover] Hover returned no content for ${jobsDocument.uri.fsPath}.`
+      `[probe/hover] Hover returned no content for ${handlersDocument.uri.fsPath}.`
     );
     assert.ok(
-      hoverSummary.includes("create_job_response") ||
-        hoverSummary.includes("Job") ||
+      hoverSummary.includes("create_todo_with_body") ||
+        hoverSummary.includes("PoolHandle") ||
         hoverSummary.includes("String"),
-      `[probe/hover] Hover content drifted for ${jobsDocument.uri.fsPath}: ${hoverSummary}`
+      `[probe/hover] Hover content drifted for ${handlersDocument.uri.fsPath}: ${hoverSummary}`
     );
     log(`Hover probe returned ${JSON.stringify(hoverSummary)}`);
 
     log(
-      `Probing definition at ${jobsDocument.uri.fsPath}:${createJobCallPosition.line}:${createJobCallPosition.character}`
+      `Probing definition at ${handlersDocument.uri.fsPath}:${createTodoCallPosition.line}:${createTodoCallPosition.character}`
     );
     const definitions = await withTimeout(
       "probe/definition",
       vscode.commands.executeCommand<(vscode.Location | vscode.LocationLink)[]>(
         "vscode.executeDefinitionProvider",
-        jobsDocument.uri,
-        createJobCallPosition
+        handlersDocument.uri,
+        createTodoCallPosition
       )
     );
     const targets = definitionTargets(definitions);
     assert.ok(
       targets.length > 0,
-      `[probe/definition] Definition returned no target for ${jobsDocument.uri.fsPath}.`
+      `[probe/definition] Definition returned no target for ${handlersDocument.uri.fsPath}.`
     );
     assert.ok(
       targets.some(
         (target) =>
-          target.uri.fsPath === retainedJobsPath &&
-          target.startLine === createJobDefinitionPosition.line
+          target.uri.fsPath === todoHandlersPath &&
+          target.startLine === createTodoDefinitionPosition.line
       ),
-      `[probe/definition] Expected definition target ${retainedJobsPath}:${createJobDefinitionPosition.line}, got ${JSON.stringify(
+      `[probe/definition] Expected definition target ${todoHandlersPath}:${createTodoDefinitionPosition.line}, got ${JSON.stringify(
         targets.map((target) => ({
           file: target.uri.fsPath,
           line: target.startLine,
@@ -411,7 +397,7 @@ export async function runSmokeSuite(): Promise<void> {
       )}.`
     );
     log(
-      `Definition probe resolved to ${retainedJobsPath}:${createJobDefinitionPosition.line}`
+      `Definition probe resolved to ${todoHandlersPath}:${createTodoDefinitionPosition.line}`
     );
 
     const overrideMessageCallPosition = sourcePosition(

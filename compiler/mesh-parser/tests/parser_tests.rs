@@ -2051,14 +2051,14 @@ fn fn_expr_body_bool_pattern() {
 }
 
 #[test]
-fn m047_s04_parser_legacy_clustered_work_rejects_cutover_and_keeps_fn_visible() {
+fn clustered_work_is_rejected_and_recovery_keeps_function_visible() {
     let source = "clustered(work) pub fn enqueue(job) do\n  job\nend";
     let p = parse(source);
-    assert!(!p.ok(), "legacy clustered(work) should fail closed");
+    assert!(!p.ok(), "removed clustered(work) syntax should fail closed");
     assert!(
         p.errors()[0]
             .message
-            .contains("legacy `clustered(work)` declarations are no longer supported"),
+            .contains("`clustered(work)` declarations are not supported"),
         "unexpected error: {}",
         p.errors()[0].message
     );
@@ -2074,29 +2074,31 @@ fn m047_s04_parser_legacy_clustered_work_rejects_cutover_and_keeps_fn_visible() 
         "function body should remain visible"
     );
     assert!(fn_def.clustered_decl().is_none());
-    assert!(fn_def.clustered_work_decl().is_none());
 }
 
 #[test]
-fn m047_s04_parser_legacy_clustered_work_rejects_non_function_prefix_without_cascade() {
+fn clustered_work_non_function_prefix_is_rejected_without_cascade() {
     let p = parse("clustered(work) let job = 1");
-    assert!(!p.ok(), "legacy prefix without function should fail closed");
+    assert!(
+        !p.ok(),
+        "removed prefix without function should fail closed"
+    );
     assert_eq!(
         p.errors().len(),
         1,
-        "legacy cutover should prefer one explicit error"
+        "removed syntax should prefer one explicit error"
     );
     assert!(
         p.errors()[0]
             .message
-            .contains("legacy `clustered(work)` declarations are no longer supported"),
+            .contains("`clustered(work)` declarations are not supported"),
         "unexpected error: {}",
         p.errors()[0].message
     );
 }
 
 #[test]
-fn m047_s04_parser_legacy_clustered_work_rejects_malformed_targets_with_same_guidance() {
+fn clustered_work_malformed_targets_are_rejected_with_same_guidance() {
     for source in [
         "clustered work fn enqueue(job) do\n  job\nend",
         "clustered() fn enqueue(job) do\n  job\nend",
@@ -2107,7 +2109,7 @@ fn m047_s04_parser_legacy_clustered_work_rejects_malformed_targets_with_same_gui
         assert!(
             p.errors()[0]
                 .message
-                .contains("legacy `clustered(work)` declarations are no longer supported"),
+                .contains("`clustered(work)` declarations are not supported"),
             "unexpected error for {source:?}: {}",
             p.errors()[0].message
         );
@@ -2115,10 +2117,10 @@ fn m047_s04_parser_legacy_clustered_work_rejects_malformed_targets_with_same_gui
 }
 
 #[test]
-fn m047_s04_parser_legacy_clustered_work_recovery_keeps_following_plain_functions() {
+fn clustered_work_recovery_keeps_following_plain_functions() {
     let source = "clustered(work) fn remote(job) do\n  job\nend\nfn local(job) do\n  job\nend";
     let p = parse(source);
-    assert!(!p.ok(), "legacy prefix should fail closed");
+    assert!(!p.ok(), "removed prefix should fail closed");
 
     let tree = p.tree();
     let fn_defs: Vec<_> = tree.fn_defs().collect();
@@ -2132,7 +2134,7 @@ fn m047_s04_parser_legacy_clustered_work_recovery_keeps_following_plain_function
 }
 
 #[test]
-fn m047_s04_parser_cluster_decorator_ast_accessor_stays_source_only() {
+fn cluster_decorator_ast_accessor_stays_source_only() {
     let source = "@cluster(3) def enqueue(job) do\n  job\nend";
     let p = parse(source);
     assert!(p.ok(), "parse errors: {:?}", p.errors());
@@ -2146,39 +2148,38 @@ fn m047_s04_parser_cluster_decorator_ast_accessor_stays_source_only() {
     assert_eq!(decl.kind(), ClusteredDeclKind::Work);
     assert_eq!(decl.syntax_style(), ClusteredDeclSyntax::SourceDecorator);
     assert_eq!(decl.explicit_replica_count(), Some(3));
-    assert!(fn_def.clustered_work_decl().is_none());
 }
 
 #[test]
-fn m047_s01_parser_cluster_decorator_fn_def() {
+fn parser_cluster_decorator_fn_def() {
     let source = "@cluster pub fn enqueue(job) do\n  job\nend";
     assert_snapshot!(source_and_debug(source));
 }
 
 #[test]
-fn m047_s01_parser_cluster_decorator_with_count_fn_def() {
+fn parser_cluster_decorator_with_count_fn_def() {
     let source = "@cluster(3) def enqueue(job) do\n  job\nend";
     assert_snapshot!(source_and_debug(source));
 }
 
 #[test]
-fn m047_s01_parser_cluster_decorator_invalid_count_shape() {
+fn parser_cluster_decorator_invalid_count_shape() {
     let source = "@cluster(1, 2) fn enqueue(job) do\n  job\nend";
     assert_snapshot!(source_and_debug(source));
 }
 
 #[test]
-fn m047_s04_parser_legacy_clustered_work_snapshot_mentions_cutover_message() {
+fn clustered_work_debug_output_mentions_unsupported_syntax() {
     let source = "clustered(work) pub fn enqueue(job) do\n  job\nend";
     let rendered = source_and_debug(source);
     assert!(
-        rendered.contains("legacy `clustered(work)` declarations are no longer supported"),
+        rendered.contains("`clustered(work)` declarations are not supported"),
         "unexpected debug output: {rendered}"
     );
 }
 
 #[test]
-fn m047_s01_parser_cluster_decorator_ast_accessor_present_for_pub_fn() {
+fn parser_cluster_decorator_ast_accessor_present_for_pub_fn() {
     let source = "@cluster pub fn enqueue(job) do\n  job\nend";
     let p = parse(source);
     assert!(p.ok(), "parse errors: {:?}", p.errors());
@@ -2202,7 +2203,7 @@ fn m047_s01_parser_cluster_decorator_ast_accessor_present_for_pub_fn() {
 }
 
 #[test]
-fn m047_s01_parser_cluster_decorator_ast_accessor_present_for_counted_def() {
+fn parser_cluster_decorator_ast_accessor_present_for_counted_def() {
     let source = "@cluster(3) def enqueue(job) do\n  job\nend";
     let p = parse(source);
     assert!(p.ok(), "parse errors: {:?}", p.errors());
@@ -2226,10 +2227,10 @@ fn m047_s01_parser_cluster_decorator_ast_accessor_present_for_counted_def() {
 }
 
 #[test]
-fn m047_s04_parser_legacy_clustered_work_does_not_expose_generic_accessor() {
+fn clustered_work_does_not_expose_generic_accessor() {
     let source = "clustered(work) pub fn enqueue(job) do\n  job\nend";
     let p = parse(source);
-    assert!(!p.ok(), "parse should fail closed for legacy syntax");
+    assert!(!p.ok(), "parse should fail closed for removed syntax");
 
     let tree = p.tree();
     let fn_def: FnDef = tree
@@ -2240,7 +2241,7 @@ fn m047_s04_parser_legacy_clustered_work_does_not_expose_generic_accessor() {
 }
 
 #[test]
-fn m047_s01_parser_cluster_decorator_rejects_missing_count_and_close() {
+fn parser_cluster_decorator_rejects_missing_count_and_close() {
     let p = parse("@cluster(");
     assert!(!p.ok(), "unterminated decorator should fail closed");
     assert!(
@@ -2260,7 +2261,7 @@ fn m047_s01_parser_cluster_decorator_rejects_missing_count_and_close() {
 }
 
 #[test]
-fn m047_s01_parser_cluster_decorator_rejects_non_integer_count() {
+fn parser_cluster_decorator_rejects_non_integer_count() {
     let p = parse("@cluster(foo) fn enqueue(job) do\n  job\nend");
     assert!(!p.ok(), "non-integer count should fail closed");
     assert!(
@@ -2273,7 +2274,7 @@ fn m047_s01_parser_cluster_decorator_rejects_non_integer_count() {
 }
 
 #[test]
-fn m047_s01_parser_cluster_decorator_rejects_extra_count_arguments() {
+fn parser_cluster_decorator_rejects_extra_count_arguments() {
     let p = parse("@cluster(1, 2) fn enqueue(job) do\n  job\nend");
     assert!(!p.ok(), "extra count arguments should fail closed");
     assert!(
@@ -2286,7 +2287,7 @@ fn m047_s01_parser_cluster_decorator_rejects_extra_count_arguments() {
 }
 
 #[test]
-fn m047_s01_parser_cluster_decorator_rejects_prefix_without_fn_or_def() {
+fn parser_cluster_decorator_rejects_prefix_without_fn_or_def() {
     let p = parse("@cluster let job = 1");
     assert!(!p.ok(), "decorator without function should fail closed");
     assert!(
@@ -2299,7 +2300,7 @@ fn m047_s01_parser_cluster_decorator_rejects_prefix_without_fn_or_def() {
 }
 
 #[test]
-fn m047_s01_parser_cluster_decorator_rejects_non_function_item() {
+fn parser_cluster_decorator_rejects_non_function_item() {
     let p = parse("@cluster module Jobs do\nend");
     assert!(!p.ok(), "decorator on non-function item should fail closed");
     assert!(
@@ -2312,7 +2313,7 @@ fn m047_s01_parser_cluster_decorator_rejects_non_function_item() {
 }
 
 #[test]
-fn m047_s01_parser_cluster_decorator_rejects_missing_r_paren() {
+fn parser_cluster_decorator_rejects_missing_r_paren() {
     let p = parse("@cluster(3 pub fn enqueue(job) do\n  job\nend");
     assert!(!p.ok(), "missing `)` should fail closed");
     assert!(
@@ -2325,7 +2326,7 @@ fn m047_s01_parser_cluster_decorator_rejects_missing_r_paren() {
 }
 
 #[test]
-fn m047_s01_parser_cluster_decorator_rejects_stray_at() {
+fn parser_cluster_decorator_rejects_stray_at() {
     let p = parse("@ fn enqueue(job) do\n  job\nend");
     assert!(!p.ok(), "stray `@` should fail closed");
     assert!(

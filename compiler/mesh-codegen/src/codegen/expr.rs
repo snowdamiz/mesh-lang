@@ -1780,7 +1780,17 @@ impl<'ctx> CodeGen<'ctx> {
             cond_val
         };
 
-        let result_ty = self.llvm_type(ty);
+        // Multi-element tuple expressions are represented by pointers to the
+        // runtime `{ len, elements... }` allocation. Preserve that
+        // representation across control-flow merges instead of allocating a
+        // by-value LLVM tuple and storing branch pointers into it.
+        let result_ty = if matches!(ty, MirType::Tuple(_)) {
+            self.context
+                .ptr_type(inkwell::AddressSpace::default())
+                .into()
+        } else {
+            self.llvm_type(ty)
+        };
         // Use entry-block alloca to prevent stack growth in TCE loops.
         let result_alloca = if self.tce_loop_header.is_some() {
             self.build_entry_alloca(result_ty, "if_result")?
@@ -4271,7 +4281,8 @@ impl<'ctx> CodeGen<'ctx> {
                 // Let me adjust the handler function return type.
                 //
                 // The handler returns a heap-allocated tuple pointer.
-                // If it's an IntValue (legacy path), cast to ptr. If it's already a ptr, use directly.
+                // Integer-encoded ABI results must be cast back to a pointer;
+                // pointer results can be used directly.
                 let result_ptr = if handler_result.is_pointer_value() {
                     handler_result.into_pointer_value()
                 } else {

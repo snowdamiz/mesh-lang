@@ -1,0 +1,7 @@
+# Build-only configuration. The provisioner supplies the real app with
+# `--app`, the Docker target, and all per-run build arguments.
+app = "mesh-fly-build-placeholder"
+primary_region = "iad"
+
+[build]
+dockerfile = "proof/fly-autoscaling/Dockerfile"
